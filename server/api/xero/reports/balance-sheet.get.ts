@@ -1,5 +1,5 @@
-import { $fetch } from 'ofetch'
-import { getTokenForSession } from '../../../utils/tokenStore'
+import { createXeroClient } from '../../../utils/xeroClient'
+import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
 
 function ensureDateString(d: Date) {
@@ -12,10 +12,7 @@ function getDefaultToDate() {
 }
 
 export default eventHandler(async (event) => {
-  const token = await getTokenForSession(event)
-  if (!token?.access_token) {
-    throw createError({ statusCode: 401, statusMessage: 'Not connected' })
-  }
+  const token = await getActiveTokenForSession(event)
   const tenantId = getSelectedTenant(event)
   if (!tenantId) {
     throw createError({ statusCode: 400, statusMessage: 'No organization selected' })
@@ -24,34 +21,36 @@ export default eventHandler(async (event) => {
   const query = getQuery(event)
   const toDate = String(query.toDate || getDefaultToDate())
 
-  const url = new URL('https://api.xero.com/api.xro/2.0/Reports/BalanceSheet')
-  url.searchParams.set('date', toDate)
-  url.searchParams.set('summarizeBy', 'Total')
-
-  const report = await $fetch<any>(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${token.access_token}`,
-      'xero-tenant-id': tenantId
-    }
-  })
+  const client = await createXeroClient({ tokenSet: token })
+  const { body: report } = await client.accountingApi.getReportBalanceSheet(
+    tenantId,
+    toDate,
+    undefined,
+    undefined,
+    false
+  )
 
   function flattenRows(rows: any[] | undefined, out: any[] = []): any[] {
     if (!rows) return out
     for (const row of rows) {
       out.push(row)
-      if (row.Rows) flattenRows(row.Rows, out)
+      const child = row?.Rows || row?.rows
+      if (child) flattenRows(child, out)
     }
     return out
   }
 
-  const rows = flattenRows(report?.Reports?.[0]?.Rows)
+  const reportRows = report?.reports || report?.Reports
+  const rows = flattenRows(reportRows?.[0]?.rows || reportRows?.[0]?.Rows)
   let totalAssets = 0
   let totalLiabilities = 0
   let totalEquity = 0
 
   for (const row of rows) {
-    const title = row?.Cells?.[0]?.Value || row?.Title || ''
-    const valueStr = row?.Cells?.[row.Cells?.length - 1]?.Value
+    const cells = row?.Cells || row?.cells || []
+    const title = cells?.[0]?.Value || cells?.[0]?.value || row?.Title || row?.title || ''
+    const lastCell = cells?.[cells.length - 1]
+    const valueStr = lastCell?.Value ?? lastCell?.value
     const numeric = typeof valueStr === 'string' ? Number(valueStr) : (typeof valueStr === 'number' ? valueStr : 0)
 
     if (/total\s+assets/i.test(title)) totalAssets = numeric

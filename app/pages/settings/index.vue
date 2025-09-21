@@ -46,13 +46,42 @@ function onFileClick() {
   fileRef.value?.click()
 }
 
-const { data: xeroStatus, refresh: refreshStatus } = await useFetch('/api/xero/status')
-const { data: tenants, refresh: refreshTenants } = await useFetch('/api/xero/tenants', { immediate: false })
+// Load status on client
+const { data: xeroStatus, refresh: refreshStatus } = await useFetch('/api/xero/status', { server: false })
 
-watchEffect(async () => {
-  if (xeroStatus?.value?.connected) {
-    await refreshTenants()
+// Explicit client-side tenants fetch to avoid SSR/stale data issues
+const tenantOptions = ref<{ label: string, value: string }[]>([])
+const tenantsLoading = ref(false)
+
+async function loadTenants() {
+  try {
+    tenantsLoading.value = true
+    const list = await $fetch<any[]>('/api/xero/tenants')
+    tenantOptions.value = (list || []).map(t => ({ label: t.tenantName, value: t.tenantId }))
+  } catch {
+    tenantOptions.value = []
+  } finally {
+    tenantsLoading.value = false
   }
+}
+
+onMounted(async () => {
+  if (xeroStatus.value?.connected) {
+    await loadTenants()
+  }
+})
+
+watch(() => xeroStatus?.value?.connected, async (connected) => {
+  if (connected) {
+    await loadTenants()
+  } else {
+    tenantOptions.value = []
+  }
+})
+
+const selectedTenant = ref<string | undefined>(undefined)
+watch(() => xeroStatus.value?.selectedTenantId, (v) => {
+  selectedTenant.value = (v as string | undefined)
 })
 
 async function selectTenant(tenantId: string) {
@@ -96,23 +125,53 @@ async function selectTenant(tenantId: string) {
           <UIcon :name="xeroStatus?.connected ? 'i-lucide-badge-check' : 'i-lucide-plug'" />
           <span>{{ xeroStatus?.connected ? 'Connected' : 'Not connected' }}</span>
         </div>
-        <UButton
-          :label="xeroStatus?.connected ? 'Reconnect' : 'Connect Xero'"
-          color="primary"
-          :to="'/api/xero/login'"
-        />
+        <div class="flex items-center gap-2">
+          <UButton
+            :label="xeroStatus?.connected ? 'Reconnect' : 'Connect Xero'"
+            color="primary"
+            href="/api/xero/login"
+          />
+          <UButton v-if="xeroStatus?.connected" label="Refresh orgs" color="neutral" variant="outline" @click="loadTenants" />
+        </div>
       </div>
 
-      <div v-if="xeroStatus?.connected" class="mt-4">
+      <div v-if="xeroStatus?.connected" class="mt-4 space-y-3">
         <UFormField label="Organization" class="flex items-center justify-between gap-4">
           <USelectMenu
-            :options="(tenants || []).map((t: any) => ({ label: t.tenantName, value: t.tenantId }))"
+            :loading="tenantsLoading"
+            :options="tenantOptions"
             placeholder="Select an organization"
             :model-value="xeroStatus?.selectedTenantId || undefined"
             @update:model-value="selectTenant"
             class="w-full max-w-md"
           />
         </UFormField>
+
+        <div v-if="tenantOptions.length" class="text-xs text-muted">Found {{ tenantOptions.length }} organization(s).</div>
+
+        <div v-if="!tenantOptions.length" class="text-xs text-muted">
+          No organizations loaded. Click Refresh orgs or Reconnect and select an org on the consent screen.
+        </div>
+
+        <div v-if="tenantOptions.length" class="pt-1">
+          <URadioGroup
+            v-model="selectedTenant"
+            :options="tenantOptions"
+            @update:model-value="selectTenant"
+            legend="Or pick below"
+          />
+          <div class="mt-2 flex flex-wrap gap-2">
+            <UButton
+              v-for="opt in tenantOptions"
+              :key="opt.value"
+              color="neutral"
+              variant="outline"
+              :label="opt.label"
+              @click="selectTenant(opt.value)"
+            />
+          </div>
+          <div class="text-2xs text-dimmed mt-1">Debug: {{ tenantOptions }}</div>
+        </div>
       </div>
     </UPageCard>
 

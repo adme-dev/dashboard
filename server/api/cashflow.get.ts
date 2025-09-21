@@ -14,10 +14,31 @@ export default eventHandler(async (event) => {
   const today = new Date()
   const todayStr = ensureDateString(today)
 
-  const [bank, invoices] = await Promise.all([
-    $fetch<any>('/api/xero/reports/bank-summary', { headers: event.headers }),
-    $fetch<any>('/api/xero/invoices', { headers: event.headers })
-  ])
+  // Ensure connection and tenant are present to avoid 500s from nested fetches
+  const status = await $fetch<any>('/api/xero/status', { headers: event.headers }).catch(() => null)
+  if (!status?.connected) {
+    throw createError({ statusCode: 401, statusMessage: 'Not connected' })
+  }
+  if (!status?.selectedTenantId) {
+    throw createError({ statusCode: 400, statusMessage: 'No organization selected' })
+  }
+
+  let bank: any = { totalBalance: 0 }
+  let invoices: any = { outstanding: [], overdue: [] }
+
+  try {
+    ;[bank, invoices] = await Promise.all([
+      $fetch<any>('/api/xero/reports/bank-summary', { headers: event.headers }),
+      $fetch<any>('/api/xero/invoices', { headers: event.headers })
+    ])
+  } catch (e: any) {
+    // Map nested route errors to a friendly status instead of 500
+    const code = e?.status || e?.statusCode || 500
+    if (code === 400 || code === 401) {
+      throw createError({ statusCode: code, statusMessage: e?.statusMessage || 'Authorization required' })
+    }
+    throw createError({ statusCode: 500, statusMessage: 'Failed to compute cashflow' })
+  }
 
   const starting = bank?.totalBalance ?? 0
 
@@ -33,7 +54,6 @@ export default eventHandler(async (event) => {
     return isNaN(+d) ? undefined : d
   }
 
-  // For ACCREC invoices, amountDue is cash in; for simplicity, treat amountPaid in Paid list as already realized
   for (const inv of (invoices?.outstanding || []).concat(invoices?.overdue || [])) {
     const due = parseDate(inv?.dueDate)
     if (!due) continue

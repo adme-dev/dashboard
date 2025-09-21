@@ -5,6 +5,24 @@ function formatCurrency(value?: number) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '-'
   return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 }
+
+const categoryColumns = [
+  { accessorKey: 'name', header: 'Category' },
+  {
+    accessorKey: 'amount',
+    header: 'Amount',
+    cell: ({ row }: any) => formatCurrency(row.getValue('amount'))
+  }
+]
+
+const vendorColumns = [
+  { accessorKey: 'name', header: 'Vendor' },
+  {
+    accessorKey: 'amount',
+    header: 'Amount',
+    cell: ({ row }: any) => formatCurrency(row.getValue('amount'))
+  }
+]
 </script>
 
 <template>
@@ -23,25 +41,11 @@ function formatCurrency(value?: number) {
 
     <UPageGrid v-else class="gap-4 sm:gap-6">
       <UPageCard title="Top Categories" variant="subtle">
-        <UTable :rows="data?.categories || []" :columns="[
-          { key: 'name', label: 'Category' },
-          { key: 'amount', label: 'Amount', class: 'text-right' }
-        ]">
-          <template #amount-data="{ row }">
-            <span class="text-right block">{{ formatCurrency(row.amount) }}</span>
-          </template>
-        </UTable>
+        <UTable :data="data?.categories || []" :columns="categoryColumns" />
       </UPageCard>
 
       <UPageCard title="Top Vendors" variant="subtle">
-        <UTable :rows="data?.vendors || []" :columns="[
-          { key: 'name', label: 'Vendor' },
-          { key: 'amount', label: 'Amount', class: 'text-right' }
-        ]">
-          <template #amount-data="{ row }">
-            <span class="text-right block">{{ formatCurrency(row.amount) }}</span>
-          </template>
-        </UTable>
+        <UTable :data="data?.vendors || []" :columns="vendorColumns" />
       </UPageCard>
     </UPageGrid>
   </UPage>

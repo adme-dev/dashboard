@@ -1,5 +1,5 @@
-import { $fetch } from 'ofetch'
-import { getTokenForSession } from '../../../utils/tokenStore'
+import { createXeroClient } from '../../../utils/xeroClient'
+import { getActiveTokenForSession } from '../../../utils/tokenStore'
 
 function ensureDateString(d: Date) { return d.toISOString().slice(0, 10) }
 function getDefaultRange() {
@@ -9,41 +9,45 @@ function getDefaultRange() {
   return { from: ensureDateString(from), to: ensureDateString(to) }
 }
 
-async function fetchTenants(accessToken: string) {
-  return await $fetch<any[]>('https://api.xero.com/connections', {
-    headers: { Authorization: `Bearer ${accessToken}` }
-  })
+async function fetchTenants(client: Awaited<ReturnType<typeof createXeroClient>>) {
+  return await client.updateTenants(false)
 }
 
-async function fetchPnLForTenant(accessToken: string, tenantId: string, from: string, to: string) {
-  const url = new URL('https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss')
-  url.searchParams.set('fromDate', from)
-  url.searchParams.set('toDate', to)
-  url.searchParams.set('summarizeBy', 'Total')
-
-  const report = await $fetch<any>(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'xero-tenant-id': tenantId
-    }
-  })
+async function fetchPnLForTenant(client: Awaited<ReturnType<typeof createXeroClient>>, tenantId: string, from: string, to: string) {
+  const { body: report } = await client.accountingApi.getReportProfitAndLoss(
+    tenantId,
+    from,
+    to,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    false
+  )
 
   function flattenRows(rows: any[] | undefined, out: any[] = []): any[] {
     if (!rows) return out
     for (const row of rows) {
       out.push(row)
-      if (row.Rows) flattenRows(row.Rows, out)
+      const child = row?.Rows || row?.rows
+      if (child) flattenRows(child, out)
     }
     return out
   }
-  const rows = flattenRows(report?.Reports?.[0]?.Rows)
+
+  const reportRows = report?.reports || report?.Reports
+  const rows = flattenRows(reportRows?.[0]?.rows || reportRows?.[0]?.Rows)
   let revenueTotal = 0
   let expensesTotal = 0
   let netProfit = 0
 
   for (const row of rows) {
-    const title = row?.Cells?.[0]?.Value || row?.Title || ''
-    const valueStr = row?.Cells?.[row.Cells?.length - 1]?.Value
+    const cells = row?.Cells || row?.cells || []
+    const title = cells?.[0]?.Value || cells?.[0]?.value || row?.Title || row?.title || ''
+    const lastCell = cells?.[cells.length - 1]
+    const valueStr = lastCell?.Value ?? lastCell?.value
     const numeric = typeof valueStr === 'string' ? Number(valueStr) : (typeof valueStr === 'number' ? valueStr : 0)
 
     if (/total\s+revenue/i.test(title)) revenueTotal = numeric
@@ -56,23 +60,22 @@ async function fetchPnLForTenant(accessToken: string, tenantId: string, from: st
 }
 
 export default eventHandler(async (event) => {
-  const token = await getTokenForSession(event)
-  if (!token?.access_token) {
-    throw createError({ statusCode: 401, statusMessage: 'Not connected' })
-  }
+  const token = await getActiveTokenForSession(event)
+  const client = await createXeroClient({ tokenSet: token })
 
   const query = getQuery(event)
   const fromDate = String(query.fromDate || '')
   const toDate = String(query.toDate || '')
   const { from, to } = (!fromDate || !toDate) ? getDefaultRange() : { from: fromDate, to: toDate }
 
-  const tenants = await fetchTenants(token.access_token)
+  const tenants = await fetchTenants(client)
 
   const results = [] as Array<{ tenantId: string, tenantName: string, revenueTotal: number, expensesTotal: number, netProfit: number, profitMargin: number }>
 
   for (const t of tenants) {
+    if (!t.tenantId || !t.tenantName) continue
     try {
-      const pnl = await fetchPnLForTenant(token.access_token, t.tenantId, from, to)
+      const pnl = await fetchPnLForTenant(client, t.tenantId, from, to)
       results.push({ tenantId: t.tenantId, tenantName: t.tenantName, ...pnl })
     } catch {
       // Skip tenant on error

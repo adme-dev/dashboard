@@ -1,5 +1,6 @@
-import { $fetch } from 'ofetch'
-import { getTokenForSession } from '../../utils/tokenStore'
+import { createError } from 'h3'
+import { createXeroClient } from '../../utils/xeroClient'
+import { getActiveTokenForSession } from '../../utils/tokenStore'
 import { getSelectedTenant } from '../../utils/session'
 
 function toISODate(d: Date) {
@@ -7,53 +8,78 @@ function toISODate(d: Date) {
 }
 
 export default eventHandler(async (event) => {
-  const token = await getTokenForSession(event)
-  if (!token?.access_token) {
-    throw createError({ statusCode: 401, statusMessage: 'Not connected' })
-  }
+  const token = await getActiveTokenForSession(event)
   const tenantId = getSelectedTenant(event)
   if (!tenantId) {
     throw createError({ statusCode: 400, statusMessage: 'No organization selected' })
   }
 
-  // Fetch authorised (open) and paid separately, then categorize
-  const base = 'https://api.xero.com/api.xro/2.0/Invoices'
-
-  const headers = {
-    Authorization: `Bearer ${token.access_token}`,
-    'xero-tenant-id': tenantId
-  } as const
+  const client = await createXeroClient({ tokenSet: token })
 
   const [authorised, paid] = await Promise.all([
-    $fetch<any>(`${base}?where=Type=="ACCREC"&&Status=="AUTHORISED"&order=DueDate%20ASC&page=1`, { headers }),
-    $fetch<any>(`${base}?where=Type=="ACCREC"&&Status=="PAID"&order=Date%20DESC&page=1`, { headers })
+    client.accountingApi.getInvoices(
+      tenantId,
+      undefined,
+      'Type=="ACCREC"&&Status=="AUTHORISED"',
+      'DueDate ASC',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      1,
+      undefined,
+      undefined,
+      undefined,
+      100
+    ),
+    client.accountingApi.getInvoices(
+      tenantId,
+      undefined,
+      'Type=="ACCREC"&&Status=="PAID"',
+      'Date DESC',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      1,
+      undefined,
+      undefined,
+      undefined,
+      100
+    )
   ])
 
   const today = toISODate(new Date())
 
   function simplify(inv: any) {
     return {
-      id: inv.InvoiceID,
-      number: inv.InvoiceNumber,
-      contact: inv?.Contact?.Name,
-      date: inv?.DateString || inv?.Date,
-      dueDate: inv?.DueDateString || inv?.DueDate,
-      status: inv?.Status,
-      total: inv?.Total ?? 0,
-      amountPaid: inv?.AmountPaid ?? 0,
-      amountDue: inv?.AmountDue ?? 0,
-      currency: inv?.CurrencyCode
+      id: inv.invoiceID,
+      number: inv.invoiceNumber,
+      contact: inv?.contact?.name,
+      date: inv?.date,
+      dueDate: inv?.dueDate,
+      status: inv?.status,
+      total: Number(inv?.total ?? 0),
+      amountPaid: Number(inv?.amountPaid ?? 0),
+      amountDue: Number(inv?.amountDue ?? 0),
+      currency: inv?.currencyCode
     }
   }
 
-  function iso(s?: string): string | undefined {
-    if (!s) return undefined
+  function iso(input?: string | Date | null): string | undefined {
+    if (!input) return undefined
+    if (typeof input === 'string') {
+      return input.slice(0, 10)
+    }
+    if (input instanceof Date) {
+      return input.toISOString().slice(0, 10)
+    }
     // s may already be YYYY-MM-DD
-    return s.slice(0, 10)
+    return undefined
   }
 
-  const authorisedList = (authorised?.Invoices || []).map(simplify)
-  const paidList = (paid?.Invoices || []).map(simplify)
+  const authorisedList = (authorised?.body?.invoices || []).map(simplify)
+  const paidList = (paid?.body?.invoices || []).map(simplify)
 
   const outstanding = [] as any[]
   const overdue = [] as any[]

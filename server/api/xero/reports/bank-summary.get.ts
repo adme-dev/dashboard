@@ -1,5 +1,5 @@
-import { $fetch } from 'ofetch'
-import { getTokenForSession } from '../../../utils/tokenStore'
+import { createXeroClient } from '../../../utils/xeroClient'
+import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
 
 function ensureDateString(d: Date) {
@@ -7,10 +7,7 @@ function ensureDateString(d: Date) {
 }
 
 export default eventHandler(async (event) => {
-  const token = await getTokenForSession(event)
-  if (!token?.access_token) {
-    throw createError({ statusCode: 401, statusMessage: 'Not connected' })
-  }
+  const token = await getActiveTokenForSession(event)
   const tenantId = getSelectedTenant(event)
   if (!tenantId) {
     throw createError({ statusCode: 400, statusMessage: 'No organization selected' })
@@ -19,47 +16,88 @@ export default eventHandler(async (event) => {
   const query = getQuery(event)
   const date = String(query.date || ensureDateString(new Date()))
 
-  const url = new URL('https://api.xero.com/api.xro/2.0/Reports/BankSummary')
-  url.searchParams.set('date', date)
-  url.searchParams.set('summarizeBy', 'Total')
+  const client = await createXeroClient({ tokenSet: token })
 
-  const report = await $fetch<any>(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${token.access_token}`,
-      'xero-tenant-id': tenantId
+  // Try Bank Summary first
+  try {
+    const { body: report } = await client.accountingApi.getReportBankSummary(
+      tenantId,
+      date,
+      undefined,
+      undefined,
+      false
+    )
+
+    function flattenRows(rows: any[] | undefined, out: any[] = []): any[] {
+      if (!rows) return out
+      for (const row of rows) {
+        out.push(row)
+        const child = row?.Rows || row?.rows
+        if (child) flattenRows(child, out)
+      }
+      return out
     }
-  })
 
-  function flattenRows(rows: any[] | undefined, out: any[] = []): any[] {
-    if (!rows) return out
+    const reportRows = report?.reports || report?.Reports
+    const rows = flattenRows(reportRows?.[0]?.rows || reportRows?.[0]?.Rows)
+    let totalBalance = 0
+
     for (const row of rows) {
-      out.push(row)
-      if (row.Rows) flattenRows(row.Rows, out)
-    }
-    return out
-  }
-
-  const rows = flattenRows(report?.Reports?.[0]?.Rows)
-  let totalBalance = 0
-
-  for (const row of rows) {
-    const title = row?.Cells?.[0]?.Value || row?.Title || ''
-    const valueStr = row?.Cells?.[row.Cells?.length - 1]?.Value
-    const numeric = typeof valueStr === 'string' ? Number(valueStr) : (typeof valueStr === 'number' ? valueStr : 0)
-    if (/total/i.test(title)) {
-      // Some variants include a total row
-      totalBalance = numeric
-    }
-  }
-
-  // If no explicit total row, sum leaf rows with numeric values
-  if (!totalBalance) {
-    totalBalance = rows.reduce((acc, row) => {
-      const valueStr = row?.Cells?.[row.Cells?.length - 1]?.Value
+      const cells = row?.Cells || row?.cells || []
+      const title = cells?.[0]?.Value || cells?.[0]?.value || row?.Title || row?.title || ''
+      const lastCell = cells?.[cells.length - 1]
+      const valueStr = lastCell?.Value ?? lastCell?.value
       const numeric = typeof valueStr === 'string' ? Number(valueStr) : (typeof valueStr === 'number' ? valueStr : 0)
-      return acc + (Number.isFinite(numeric) ? numeric : 0)
-    }, 0)
-  }
+      if (/total/i.test(title)) {
+        totalBalance = numeric
+      }
+    }
 
-  return { date, totalBalance }
+    if (!totalBalance) {
+      totalBalance = rows.reduce((acc, row) => {
+        const cells = row?.Cells || row?.cells || []
+        const lastCell = cells?.[cells.length - 1]
+        const valueStr = lastCell?.Value ?? lastCell?.value
+        const numeric = typeof valueStr === 'string' ? Number(valueStr) : (typeof valueStr === 'number' ? valueStr : 0)
+        return acc + (Number.isFinite(numeric) ? numeric : 0)
+      }, 0)
+    }
+
+    return { date, totalBalance }
+  } catch {
+    // Fallback to Balance Sheet: sum bank/cash assets
+    const { body: report } = await client.accountingApi.getReportBalanceSheet(
+      tenantId,
+      date,
+      undefined,
+      undefined,
+      false
+    )
+
+    function flattenRows(rows: any[] | undefined, out: any[] = []): any[] {
+      if (!rows) return out
+      for (const row of rows) {
+        out.push(row)
+        const child = row?.Rows || row?.rows
+        if (child) flattenRows(child, out)
+      }
+      return out
+    }
+
+    const reportRows = report?.reports || report?.Reports
+    const rows = flattenRows(reportRows?.[0]?.rows || reportRows?.[0]?.Rows)
+    let totalBalance = 0
+    for (const row of rows) {
+      const cells = row?.Cells || row?.cells || []
+      const title = (cells?.[0]?.Value || cells?.[0]?.value || row?.Title || row?.title || '').toLowerCase()
+      const lastCell = cells?.[cells.length - 1]
+      const valueStr = lastCell?.Value ?? lastCell?.value
+      const numeric = typeof valueStr === 'string' ? Number(valueStr) : (typeof valueStr === 'number' ? valueStr : 0)
+      if (/bank|cash\s+and\s+cash\s+equivalents|cash$/i.test(title)) {
+        totalBalance += Number.isFinite(numeric) ? numeric : 0
+      }
+    }
+
+    return { date, totalBalance }
+  }
 })
