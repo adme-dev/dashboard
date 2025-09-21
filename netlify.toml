@@ -1,6 +1,5 @@
 [build]
   command = "pnpm build"
-  publish = ".netlify/functions-internal"
 
 [functions]
   node_bundler = "esbuild"
