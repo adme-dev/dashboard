@@ -62,3 +62,19 @@ Check out the [deployment documentation](https://nuxt.com/docs/getting-started/d
 ## Renovate integration
 
 Install [Renovate GitHub app](https://github.com/apps/renovate/installations/select_target) on your repository and you are good to go.
+
+## Staging Setup (Xero Dashboard)
+
+1. Environment
+   - Set `XERO_CLIENT_ID`, `XERO_CLIENT_SECRET`, `XERO_REDIRECT_URI` (e.g. `https://your-domain.com/api/xero/callback`)
+   - Set `SESSION_SECRET`
+   - Optional: `DATABASE_URL`, `CACHE_URL`
+2. Xero App
+   - In Xero Developer portal, add the redirect URI to your app settings
+   - Scopes used: `offline_access accounting.reports.read accounting.settings.read accounting.transactions.read accounting.contacts.read`
+3. Deploy
+   - Build and deploy (`pnpm build`) to your hosting (Vercel/Netlify/etc.)
+   - Ensure env vars are configured in hosting provider
+4. Health & Webhooks
+   - Health check: `GET /api/health`
+   - Webhook (optional): `POST /api/xero/webhook` (configure to invalidate caches)

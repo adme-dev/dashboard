@@ -15,20 +15,6 @@ function formatCurrency(value: number): string {
 }
 
 const baseStats = [{
-  title: 'Customers',
-  icon: 'i-lucide-users',
-  minValue: 400,
-  maxValue: 1000,
-  minVariation: -15,
-  maxVariation: 25
-}, {
-  title: 'Conversions',
-  icon: 'i-lucide-chart-pie',
-  minValue: 1000,
-  maxValue: 2000,
-  minVariation: -10,
-  maxVariation: 20
-}, {
   title: 'Revenue',
   icon: 'i-lucide-circle-dollar-sign',
   minValue: 200000,
@@ -37,15 +23,44 @@ const baseStats = [{
   maxVariation: 30,
   formatter: formatCurrency
 }, {
-  title: 'Orders',
-  icon: 'i-lucide-shopping-cart',
-  minValue: 100,
-  maxValue: 300,
-  minVariation: -5,
-  maxVariation: 15
+  title: 'Expenses',
+  icon: 'i-lucide-wallet',
+  minValue: 120000,
+  maxValue: 300000,
+  minVariation: -15,
+  maxVariation: 25,
+  formatter: formatCurrency
+}, {
+  title: 'Profit',
+  icon: 'i-lucide-piggy-bank',
+  minValue: 50000,
+  maxValue: 150000,
+  minVariation: -20,
+  maxVariation: 30,
+  formatter: formatCurrency
+}, {
+  title: 'Profit Margin',
+  icon: 'i-lucide-percent',
+  minValue: 5,
+  maxValue: 40,
+  minVariation: -10,
+  maxVariation: 10,
+  formatter: (v: number) => `${v}%`
 }]
 
 const { data: stats } = await useAsyncData<Stat[]>('stats', async () => {
+  try {
+    const kpis = await $fetch<any[]>('/api/kpis')
+    if (kpis?.length) {
+      return kpis.map((k) => ({
+        title: k.title,
+        icon: k.icon,
+        value: typeof k.value === 'number' && k.title.includes('Profit Margin') ? `${k.value}%` : (typeof k.value === 'number' ? formatCurrency(k.value) : k.value),
+        variation: k.variation || 0
+      }))
+    }
+  } catch {}
+
   return baseStats.map((stat) => {
     const value = randomInt(stat.minValue, stat.maxValue)
     const variation = randomInt(stat.minVariation, stat.maxVariation)

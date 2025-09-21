@@ -29,6 +29,62 @@ const links = [[{
     open.value = false
   }
 }, {
+  label: 'Reports',
+  icon: 'i-lucide-file-text',
+  to: '/reports',
+  onSelect: () => {
+    open.value = false
+  }
+}, {
+  label: 'Invoices',
+  icon: 'i-lucide-receipt',
+  to: '/invoices',
+  onSelect: () => {
+    open.value = false
+  }
+}, {
+  label: 'Expenses',
+  icon: 'i-lucide-wallet',
+  to: '/expenses',
+  onSelect: () => {
+    open.value = false
+  }
+}, {
+  label: 'Cash Flow',
+  icon: 'i-lucide-trending-up',
+  to: '/cashflow',
+  onSelect: () => {
+    open.value = false
+  }
+}, {
+  label: 'Insights',
+  icon: 'i-lucide-lightbulb',
+  to: '/insights',
+  onSelect: () => {
+    open.value = false
+  }
+}, {
+  label: 'Anomalies',
+  icon: 'i-lucide-alert-triangle',
+  to: '/anomalies',
+  onSelect: () => {
+    open.value = false
+  }
+}, {
+  label: 'Recommendations',
+  icon: 'i-lucide-clipboard-check',
+  to: '/recommendations',
+  onSelect: () => {
+    open.value = false
+  }
+}, {
+  label: 'Chat',
+  icon: 'i-lucide-message-circle',
+  to: '/chat',
+  onSelect: () => {
+    open.value = false
+  }
+}, {
   label: 'Settings',
   to: '/settings',
   icon: 'i-lucide-settings',

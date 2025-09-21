@@ -1,0 +1,19 @@
+# Project Intelligence (.cursorrules)
+
+## Working Agreements
+- Maintain Memory Bank as source of truth; update after significant changes.
+- Prefer server routes for Xero API interactions; never expose secrets client-side.
+- Optimize for clarity and skimmability in UI and docs.
+
+## Patterns & Preferences
+- Use composables: `useXeroAuth`, `useXeroData`, `useAI` for separation of concerns.
+- Charts and widgets should receive normalized, typed data from server endpoints.
+- Cache-first reads; invalidate on webhook events or after scheduled sync.
+
+## Tooling
+- Package manager: pnpm
+- Linting: follow repo eslint config; no unused vars/any leaks.
+
+## Open Implementation Notes
+- Choose minimal persistence (SQLite/Prisma) for rapid Phase 1; plan Postgres.
+- Decide `xero-node` vs REST; REST may reduce dependency surface and improve control.

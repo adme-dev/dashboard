@@ -45,6 +45,21 @@ function onFileChange(e: Event) {
 function onFileClick() {
   fileRef.value?.click()
 }
+
+const { data: xeroStatus, refresh: refreshStatus } = await useFetch('/api/xero/status')
+const { data: tenants, refresh: refreshTenants } = await useFetch('/api/xero/tenants', { immediate: false })
+
+watchEffect(async () => {
+  if (xeroStatus?.value?.connected) {
+    await refreshTenants()
+  }
+})
+
+async function selectTenant(tenantId: string) {
+  await $fetch('/api/xero/select-tenant', { method: 'POST', body: { tenantId } })
+  await refreshStatus()
+  toast.add({ title: 'Organization selected', icon: 'i-lucide-check', color: 'success' })
+}
 </script>
 
 <template>
@@ -68,6 +83,37 @@ function onFileClick() {
         type="submit"
         class="w-fit lg:ms-auto"
       />
+    </UPageCard>
+
+    <UPageCard
+      title="Xero Connection"
+      description="Connect your Xero account to enable live financial data."
+      variant="subtle"
+      class="mb-4"
+    >
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <UIcon :name="xeroStatus?.connected ? 'i-lucide-badge-check' : 'i-lucide-plug'" />
+          <span>{{ xeroStatus?.connected ? 'Connected' : 'Not connected' }}</span>
+        </div>
+        <UButton
+          :label="xeroStatus?.connected ? 'Reconnect' : 'Connect Xero'"
+          color="primary"
+          :to="'/api/xero/login'"
+        />
+      </div>
+
+      <div v-if="xeroStatus?.connected" class="mt-4">
+        <UFormField label="Organization" class="flex items-center justify-between gap-4">
+          <USelectMenu
+            :options="(tenants || []).map((t: any) => ({ label: t.tenantName, value: t.tenantId }))"
+            placeholder="Select an organization"
+            :model-value="xeroStatus?.selectedTenantId || undefined"
+            @update:model-value="selectTenant"
+            class="w-full max-w-md"
+          />
+        </UFormField>
+      </div>
     </UPageCard>
 
     <UPageCard variant="subtle">

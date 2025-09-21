@@ -6,6 +6,21 @@ export default defineNuxtConfig({
     '@vueuse/nuxt'
   ],
 
+  runtimeConfig: {
+    xeroClientId: process.env.XERO_CLIENT_ID,
+    xeroClientSecret: process.env.XERO_CLIENT_SECRET,
+    xeroRedirectUri: process.env.XERO_REDIRECT_URI,
+    sessionSecret: process.env.SESSION_SECRET,
+    databaseUrl: process.env.DATABASE_URL,
+    public: {
+      xeroRedirectUri: process.env.XERO_REDIRECT_URI
+    }
+  },
+
+  nitro: {
+    preset: 'netlify'
+  },
+
   devtools: {
     enabled: true
   },
