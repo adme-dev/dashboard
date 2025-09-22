@@ -9,25 +9,34 @@ const props = defineProps<{
 }>()
 
 const palette = [
-  '#2563eb', '#14b8a6', '#f97316', '#a855f7', '#22c55e', '#eab308', 
+  '#2563eb', '#14b8a6', '#f97316', '#a855f7', '#22c55e', '#eab308',
   '#6366f1', '#ef4444', '#06b6d4', '#8b5cf6', '#f59e0b', '#10b981'
 ]
+
+const total = computed(() => {
+  if (!props.categories || !Array.isArray(props.categories)) {
+    return 0
+  }
+  return props.categories
+    .filter(category => category && typeof category.amount === 'number' && category.amount > 0)
+    .reduce((sum, item) => sum + (item.amount || 0), 0)
+})
 
 const data = computed(() => {
   if (!props.categories || !Array.isArray(props.categories)) {
     return []
   }
-  return props.categories
+  const filteredCategories = props.categories
     .filter(category => category && typeof category.amount === 'number' && category.amount > 0)
     .sort((a, b) => b.amount - a.amount) // Sort by amount descending
-    .map((category, index) => ({
-      ...category,
-      index,
-      color: palette[index % palette.length]
-    }))
-})
 
-const total = computed(() => data.value.reduce((sum, item) => sum + (item.amount || 0), 0))
+  return filteredCategories.map((category, index) => ({
+    ...category,
+    index,
+    color: palette[index % palette.length],
+    percentage: total.value > 0 ? (category.amount / total.value) * 100 : 0
+  }))
+})
 
 const formatCurrency = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -66,7 +75,7 @@ const processedData = computed(() => {
 </script>
 
 <template>
-  <UCard :ui="{ body: '!p-0' }" class="h-[800px] flex flex-col">
+  <UCard :ui="{ body: '!p-0' }" class="h-[1020px] flex flex-col">
     <template #header>
       <div>
         <p class="text-xs text-muted uppercase mb-1.5">
@@ -129,7 +138,7 @@ const processedData = computed(() => {
           </h4>
           
           <!-- Scrollable List -->
-          <div class="overflow-y-auto max-h-96 space-y-2 pr-2 scrollbar-thin">
+          <div class="overflow-y-auto max-h-166 space-y-2 pr-2 scrollbar-thin">
             <div
               v-for="(item, index) in data || []"
               :key="item?.name || index"
