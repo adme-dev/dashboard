@@ -1,4 +1,6 @@
 import { e as eventHandler } from '../../nitro/nitro.mjs';
+import 'groq-sdk';
+import 'xero-node';
 import 'node:http';
 import 'node:https';
 import 'node:events';

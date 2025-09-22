@@ -1,4 +1,6 @@
-import { e as eventHandler, $ as $fetch } from '../../nitro/nitro.mjs';
+import { e as eventHandler, $ as $fetch, c as createError } from '../../nitro/nitro.mjs';
+import 'groq-sdk';
+import 'xero-node';
 import 'node:http';
 import 'node:https';
 import 'node:events';
@@ -21,10 +23,28 @@ const cashflow_get = eventHandler(async (event) => {
   var _a, _b;
   const today = /* @__PURE__ */ new Date();
   const todayStr = ensureDateString(today);
-  const [bank, invoices] = await Promise.all([
-    $fetch("/api/xero/reports/bank-summary", { headers: event.headers }),
-    $fetch("/api/xero/invoices", { headers: event.headers })
-  ]);
+  const status = await $fetch("/api/xero/status", { headers: event.headers }).catch(() => null);
+  if (!(status == null ? void 0 : status.connected)) {
+    throw createError({ statusCode: 401, statusMessage: "Not connected" });
+  }
+  if (!(status == null ? void 0 : status.selectedTenantId)) {
+    throw createError({ statusCode: 400, statusMessage: "No organization selected" });
+  }
+  let bank = { totalBalance: 0 };
+  let invoices = { outstanding: [], overdue: [] };
+  try {
+    ;
+    [bank, invoices] = await Promise.all([
+      $fetch("/api/xero/reports/bank-summary", { headers: event.headers }),
+      $fetch("/api/xero/invoices", { headers: event.headers })
+    ]);
+  } catch (e) {
+    const code = (e == null ? void 0 : e.status) || (e == null ? void 0 : e.statusCode) || 500;
+    if (code === 400 || code === 401) {
+      throw createError({ statusCode: code, statusMessage: (e == null ? void 0 : e.statusMessage) || "Authorization required" });
+    }
+    throw createError({ statusCode: 500, statusMessage: "Failed to compute cashflow" });
+  }
   const starting = (_a = bank == null ? void 0 : bank.totalBalance) != null ? _a : 0;
   const buckets = [
     { label: "30d", end: addDays(today, 30), inflow: 0, outflow: 0 },

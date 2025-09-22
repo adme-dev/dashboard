@@ -1,4 +1,6 @@
-import { e as eventHandler, l as getTokenForSession, g as getSelectedTenant } from '../../../nitro/nitro.mjs';
+import { e as eventHandler, w as getTokenForSession, g as getActiveTokenForSession, a as getSelectedTenant } from '../../../nitro/nitro.mjs';
+import 'groq-sdk';
+import 'xero-node';
 import 'node:http';
 import 'node:https';
 import 'node:events';
@@ -10,8 +12,16 @@ import '@iconify/utils';
 import 'consola';
 
 const status_get = eventHandler(async (event) => {
-  const token = await getTokenForSession(event);
-  const connected = Boolean(token && token.access_token && token.expires_at > Date.now());
+  let token = await getTokenForSession(event);
+  let connected = Boolean(token && token.access_token);
+  if (connected) {
+    try {
+      token = await getActiveTokenForSession(event, { minTtlMs: 0 });
+      connected = Boolean(token && token.access_token);
+    } catch {
+      connected = false;
+    }
+  }
   const selectedTenantId = getSelectedTenant(event);
   return {
     connected,

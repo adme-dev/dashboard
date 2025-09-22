@@ -1,5 +1,7 @@
 import { e as eventHandler } from '../../nitro/nitro.mjs';
 import { sub } from 'date-fns';
+import 'groq-sdk';
+import 'xero-node';
 import 'node:http';
 import 'node:https';
 import 'node:events';

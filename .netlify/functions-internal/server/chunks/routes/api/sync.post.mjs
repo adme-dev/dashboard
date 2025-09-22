@@ -1,4 +1,6 @@
-import { e as eventHandler, g as getSelectedTenant, i as invalidatePrefix } from '../../nitro/nitro.mjs';
+import { e as eventHandler, a as getSelectedTenant, m as invalidatePrefix } from '../../nitro/nitro.mjs';
+import 'groq-sdk';
+import 'xero-node';
 import 'node:http';
 import 'node:https';
 import 'node:events';

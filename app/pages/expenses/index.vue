@@ -404,6 +404,7 @@ async function exportData(format: 'csv' | 'json') {
               </ClientOnly>
             </UCard>
 
+
             <!-- Quick Stats -->
             <UCard class="shadow-sm border-0 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm">
               <template #header>
@@ -543,6 +544,24 @@ async function exportData(format: 'csv' | 'json') {
           </div>
         </div>
         </div>
+        
+        <!-- AI-Powered Insights - Full Width at Bottom -->
+        <div class="mt-8">
+          <ClientOnly>
+            <ExpensesAIInsights />
+            <template #fallback>
+              <UCard class="shadow-sm border-0 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm">
+                <div class="flex items-center justify-center h-32">
+                  <div class="text-center">
+                    <USkeleton class="h-4 w-32 mx-auto mb-2" />
+                    <USkeleton class="h-3 w-24 mx-auto" />
+                  </div>
+                </div>
+              </UCard>
+            </template>
+          </ClientOnly>
+        </div>
+        
         <!-- End Dashboard Content -->
       </div>
     </template>

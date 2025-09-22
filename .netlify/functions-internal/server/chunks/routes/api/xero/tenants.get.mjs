@@ -1,4 +1,6 @@
-import { e as eventHandler, l as getTokenForSession, c as createError, $ as $fetch } from '../../../nitro/nitro.mjs';
+import { e as eventHandler, g as getActiveTokenForSession, d as createXeroClient } from '../../../nitro/nitro.mjs';
+import 'groq-sdk';
+import 'xero-node';
 import 'node:http';
 import 'node:https';
 import 'node:events';
@@ -10,15 +12,9 @@ import '@iconify/utils';
 import 'consola';
 
 const tenants_get = eventHandler(async (event) => {
-  const token = await getTokenForSession(event);
-  if (!(token == null ? void 0 : token.access_token)) {
-    throw createError({ statusCode: 401, statusMessage: "Not connected" });
-  }
-  const tenants = await $fetch("https://api.xero.com/connections", {
-    headers: {
-      Authorization: `Bearer ${token.access_token}`
-    }
-  });
+  const token = await getActiveTokenForSession(event);
+  const client = await createXeroClient({ tokenSet: token });
+  const tenants = await client.updateTenants(false);
   return tenants;
 });
 

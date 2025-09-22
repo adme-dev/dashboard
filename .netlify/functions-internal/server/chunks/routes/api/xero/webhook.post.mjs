@@ -1,4 +1,6 @@
-import { e as eventHandler, o as getHeader, r as readBody, i as invalidatePrefix } from '../../../nitro/nitro.mjs';
+import { e as eventHandler, y as getHeader, r as readBody, m as invalidatePrefix } from '../../../nitro/nitro.mjs';
+import 'groq-sdk';
+import 'xero-node';
 import 'node:http';
 import 'node:https';
 import 'node:events';

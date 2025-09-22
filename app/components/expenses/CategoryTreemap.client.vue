@@ -66,7 +66,7 @@ const processedData = computed(() => {
 </script>
 
 <template>
-  <UCard :ui="{ body: '!p-0' }" class="h-[600px] flex flex-col">
+  <UCard :ui="{ body: '!p-0' }" class="h-[800px] flex flex-col">
     <template #header>
       <div>
         <p class="text-xs text-muted uppercase mb-1.5">
@@ -129,7 +129,7 @@ const processedData = computed(() => {
           </h4>
           
           <!-- Scrollable List -->
-          <div class="overflow-y-auto max-h-60 space-y-2 pr-2 scrollbar-thin">
+          <div class="overflow-y-auto max-h-96 space-y-2 pr-2 scrollbar-thin">
             <div
               v-for="(item, index) in data || []"
               :key="item?.name || index"
