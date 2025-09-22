@@ -109,6 +109,23 @@ export default eventHandler(async (event) => {
 
   const client = await createXeroClient({ tokenSet: token })
 
+  // Fetch chart of accounts for proper category names
+  let accountsMap = new Map<string, string>()
+  try {
+    const { body } = await client.accountingApi.getAccounts(tenantId)
+    const accounts = body?.accounts || []
+    for (const account of accounts) {
+      if (account.accountID && account.name) {
+        accountsMap.set(account.accountID, account.name)
+        if (account.code) {
+          accountsMap.set(account.code, account.name)
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to fetch chart of accounts:', err)
+  }
+
   let all: any[] = []
   let lastError: any = null
   try {
@@ -153,9 +170,12 @@ export default eventHandler(async (event) => {
     const lines = inv?.lineItems || []
     if (lines.length) {
       for (const li of lines) {
-        const cat = li?.accountCode || li?.accountID || 'Uncategorized'
+        const accountKey = li?.accountCode || li?.accountID
+        const categoryName = accountKey && accountsMap.has(accountKey) 
+          ? accountsMap.get(accountKey)! 
+          : (accountKey || 'Uncategorized')
         const amount = toAmount(li?.lineAmount)
-        byCategory.set(cat, (byCategory.get(cat) || 0) + amount)
+        byCategory.set(categoryName, (byCategory.get(categoryName) || 0) + amount)
       }
     } else {
       byCategory.set('Uncategorized', (byCategory.get('Uncategorized') || 0) + total)
@@ -171,9 +191,12 @@ export default eventHandler(async (event) => {
       const lines = tx?.lineItems || []
       if (lines.length) {
         for (const li of lines) {
-          const cat = li?.accountCode || li?.accountID || 'Uncategorized'
+          const accountKey = li?.accountCode || li?.accountID
+          const categoryName = accountKey && accountsMap.has(accountKey) 
+            ? accountsMap.get(accountKey)! 
+            : (accountKey || 'Uncategorized')
           const amount = toAmount(li?.lineAmount)
-          byCategory.set(cat, (byCategory.get(cat) || 0) + amount)
+          byCategory.set(categoryName, (byCategory.get(categoryName) || 0) + amount)
         }
       } else {
         byCategory.set('Uncategorized', (byCategory.get('Uncategorized') || 0) + total)

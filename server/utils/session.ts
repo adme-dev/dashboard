@@ -1,12 +1,7 @@
 import type { H3Event } from 'h3'
 
-export type XeroTokenSet = {
-  access_token: string
-  refresh_token: string
-  expires_at: number // epoch ms
-  scope?: string
-  token_type?: string
-}
+// XeroTokenSet is imported from xeroClient.ts to avoid duplication
+import type { XeroTokenSet } from './xeroClient'
 
 const tokenStore = new Map<string, XeroTokenSet>()
 

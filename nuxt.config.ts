@@ -27,6 +27,8 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
+  ssr: false, // Enable SPA mode for better client-side experience with auth and real-time data
+
   routeRules: {
     '/api/**': {
       cors: true

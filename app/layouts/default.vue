@@ -14,6 +14,13 @@ const links = [[{
     open.value = false
   }
 }, {
+  label: 'Dashboard',
+  icon: 'i-lucide-layout-dashboard',
+  to: '/dashboard',
+  onSelect: () => {
+    open.value = false
+  }
+}, {
   label: 'Inbox',
   icon: 'i-lucide-inbox',
   to: '/inbox',
@@ -214,5 +221,8 @@ onMounted(async () => {
     <slot />
 
     <NotificationsSlideover />
+    
+    <!-- Command Palette -->
+    <CommandPalette />
   </UDashboardGroup>
 </template>
