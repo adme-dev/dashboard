@@ -20,10 +20,15 @@ export default eventHandler(async (event) => {
 
   // Try Bank Summary first
   try {
+    // For bank summary, we need a date range. Use the specified date as toDate and 30 days before as fromDate
+    const toDate = new Date(date)
+    const fromDate = new Date(toDate)
+    fromDate.setDate(fromDate.getDate() - 30)
+    
     const { body: report } = await client.accountingApi.getReportBankSummary(
       tenantId,
-      date,
-      undefined,
+      ensureDateString(fromDate),
+      ensureDateString(toDate),
       undefined,
       false
     )

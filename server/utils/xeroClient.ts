@@ -24,6 +24,7 @@ export async function createXeroClient(options: CreateClientOptions = {}) {
   const clientId = config.xeroClientId
   const clientSecret = config.xeroClientSecret
   const redirectUri = config.xeroRedirectUri
+  const httpTimeout = Number(config.xeroHttpTimeout ?? 15000)
 
   if (!clientId || !clientSecret || !redirectUri) {
     throw createError({ statusCode: 500, statusMessage: 'Xero OAuth not configured' })
@@ -34,10 +35,21 @@ export async function createXeroClient(options: CreateClientOptions = {}) {
     clientSecret,
     redirectUris: [redirectUri],
     scopes: DEFAULT_SCOPES,
-    state: options.state
+    state: options.state,
+    httpTimeout
   })
 
-  await client.initialize()
+  try {
+    await client.initialize()
+  } catch (err: any) {
+    if (err?.message?.includes('timeout')) {
+      throw createError({
+        statusCode: 504,
+        statusMessage: 'Xero authorization discovery timed out. Please try again or check network access.'
+      })
+    }
+    throw err
+  }
 
   if (options.tokenSet) {
     client.setTokenSet(toTokenSet(options.tokenSet))

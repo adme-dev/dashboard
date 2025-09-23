@@ -13,6 +13,10 @@ function addDays(date: Date, days: number) {
   return result
 }
 
+function toXeroDateTime(date: Date) {
+  return `DateTime(${date.getUTCFullYear()}, ${date.getUTCMonth() + 1}, ${date.getUTCDate()})`
+}
+
 export default eventHandler(async (event) => {
   const token = await getActiveTokenForSession(event)
   const tenantId = getSelectedTenant(event)
@@ -28,10 +32,12 @@ export default eventHandler(async (event) => {
   const client = await createXeroClient({ tokenSet: token })
 
   // Get current bank balances
+  // For bank summary, we need a date range. Use today as toDate and 30 days before as fromDate
+  const fromDate = addDays(today, -30)
   const { body: bankReport } = await client.accountingApi.getReportBankSummary(
     tenantId,
+    ensureDateString(fromDate),
     ensureDateString(today),
-    undefined,
     undefined,
     false
   )
@@ -101,7 +107,7 @@ export default eventHandler(async (event) => {
   const { body: recentExpenses } = await client.accountingApi.getInvoices(
     tenantId,
     undefined,
-    `Type=="ACCPAY"&&Status=="PAID"&&Date>=${ensureDateString(pastDate)}`,
+    `Type=="ACCPAY"&&Status=="PAID"&&Date>=${toXeroDateTime(pastDate)}`,
     'Date DESC',
     undefined,
     undefined,

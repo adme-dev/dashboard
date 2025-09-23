@@ -47,8 +47,11 @@ export default eventHandler(async (event) => {
   const bankAccounts = accountsResponse?.accounts || []
 
   // Get current bank balances
+  // For bank summary, we need a date range. Use today as toDate and 30 days before as fromDate
+  const fromDate = addDays(today, -30)
   const { body: bankSummary } = await client.accountingApi.getReportBankSummary(
     tenantId,
+    ensureDateString(fromDate),
     ensureDateString(today)
   )
 

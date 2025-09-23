@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { VisXYContainer, VisLine, VisArea, VisAxis, VisCrosshair, VisTooltip } from '@unovis/vue'
+// Temporarily disable Unovis to prevent initialization errors
+// import { VisXYContainer, VisLine, VisArea, VisAxis, VisCrosshair, VisTooltip } from '@unovis/vue'
 
 type PeriodDatum = {
   label: string

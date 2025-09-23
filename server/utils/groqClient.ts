@@ -1,9 +1,18 @@
 import Groq from 'groq-sdk'
 
-// Initialize Groq client with API key from environment
-const groq = new Groq({
-  apiKey: process.env.GROQ_API
-})
+// Lazy initialization to avoid startup errors
+let groq: Groq | null = null
+
+function getGroqClient() {
+  if (!groq) {
+    const apiKey = process.env.GROQ_API_KEY || process.env.GROQ_API
+    if (!apiKey) {
+      throw new Error('GROQ_API_KEY environment variable is required')
+    }
+    groq = new Groq({ apiKey })
+  }
+  return groq
+}
 
 // Available Groq models optimized for different use cases
 export const GROQ_MODELS = {
@@ -39,7 +48,8 @@ export async function generateGroqInsight(
   } = options
 
   try {
-    const completion = await groq.chat.completions.create({
+    const groqClient = getGroqClient()
+    const completion = await groqClient.chat.completions.create({
       messages: [
         {
           role: 'system',
@@ -250,4 +260,4 @@ Provide business insights in JSON format:
   }
 }
 
-export default groq
+export default getGroqClient

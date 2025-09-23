@@ -50,8 +50,8 @@ export default eventHandler(async (event) => {
     overdueInvoicesResponse,
     balanceSheetResponse
   ] = await Promise.allSettled([
-    // Current cash position
-    client.accountingApi.getReportBankSummary(tenantId, ensureDateString(today)),
+    // Current cash position - need date range for bank summary
+    client.accountingApi.getReportBankSummary(tenantId, ensureDateString(addDays(today, -30)), ensureDateString(today)),
     
     // Current month revenue
     client.accountingApi.getInvoices(
