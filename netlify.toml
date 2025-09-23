@@ -12,6 +12,7 @@
   to = "/.netlify/functions/server"
   status = 200
 
+# Redirect all other requests to the serverless function for SSR
 [[redirects]]
   from = "/*"
   to = "/.netlify/functions/server"
