@@ -1,5 +1,4 @@
-import { e as eventHandler, r as readBody, c as createError, x as setSelectedTenant } from '../../../nitro/nitro.mjs';
-import 'groq-sdk';
+import { e as eventHandler, r as readBody, c as createError, v as setSelectedTenant } from '../../../nitro/nitro.mjs';
 import 'xero-node';
 import 'node:http';
 import 'node:https';

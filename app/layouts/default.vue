@@ -43,6 +43,13 @@ const links = [[{
     open.value = false
   }
 }, {
+  label: 'Profit & Loss',
+  icon: 'i-lucide-pie-chart',
+  to: '/profit-loss',
+  onSelect: () => {
+    open.value = false
+  }
+}, {
   label: 'Invoices',
   icon: 'i-lucide-receipt',
   to: '/invoices',

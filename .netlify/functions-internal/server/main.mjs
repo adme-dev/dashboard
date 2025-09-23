@@ -1,5 +1,4 @@
-import process from 'node:process';globalThis._importMeta_={url:import.meta.url,env:process.env};export { I as default } from './chunks/nitro/nitro.mjs';
-import 'groq-sdk';
+import process from 'node:process';globalThis._importMeta_={url:import.meta.url,env:process.env};export { a1 as default } from './chunks/nitro/nitro.mjs';
 import 'xero-node';
 import 'node:http';
 import 'node:https';

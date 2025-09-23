@@ -1,5 +1,4 @@
-import { e as eventHandler, a as getSelectedTenant, k as getCached, $ as $fetch, l as setCached } from '../../nitro/nitro.mjs';
-import 'groq-sdk';
+import { e as eventHandler, a as getSelectedTenant, h as getCached, $ as $fetch, i as setCached } from '../../nitro/nitro.mjs';
 import 'xero-node';
 import 'node:http';
 import 'node:https';

@@ -1,5 +1,4 @@
 import { e as eventHandler, g as getActiveTokenForSession, a as getSelectedTenant, c as createError, b as getQuery, d as createXeroClient } from '../../../nitro/nitro.mjs';
-import 'groq-sdk';
 import 'xero-node';
 import 'node:http';
 import 'node:https';

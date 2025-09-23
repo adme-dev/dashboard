@@ -40,6 +40,14 @@ const commands: CommandItem[] = [
     group: 'Navigation'
   },
   {
+    id: 'nav-profit-loss',
+    label: 'Go to Profit & Loss',
+    description: 'Detailed last month and YTD view',
+    icon: 'i-lucide-pie-chart',
+    action: () => navigateTo('/profit-loss'),
+    group: 'Navigation'
+  },
+  {
     id: 'nav-cashflow',
     label: 'Go to Cash Flow',
     description: 'Cash flow analysis and forecasting',

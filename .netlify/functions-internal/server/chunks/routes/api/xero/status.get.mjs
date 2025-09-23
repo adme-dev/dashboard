@@ -1,5 +1,4 @@
-import { e as eventHandler, w as getTokenForSession, g as getActiveTokenForSession, a as getSelectedTenant } from '../../../nitro/nitro.mjs';
-import 'groq-sdk';
+import { e as eventHandler, q as getTokenForSession, g as getActiveTokenForSession, a as getSelectedTenant } from '../../../nitro/nitro.mjs';
 import 'xero-node';
 import 'node:http';
 import 'node:https';

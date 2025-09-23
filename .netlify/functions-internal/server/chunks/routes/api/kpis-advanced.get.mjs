@@ -1,5 +1,4 @@
 import { e as eventHandler, g as getActiveTokenForSession, a as getSelectedTenant, c as createError, d as createXeroClient } from '../../nitro/nitro.mjs';
-import 'groq-sdk';
 import 'xero-node';
 import 'node:http';
 import 'node:https';
@@ -13,6 +12,11 @@ import 'consola';
 
 function ensureDateString(d) {
   return d.toISOString().slice(0, 10);
+}
+function addDays(date, days) {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
 }
 function getMonthStart(date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -46,8 +50,8 @@ const kpisAdvanced_get = eventHandler(async (event) => {
     overdueInvoicesResponse,
     balanceSheetResponse
   ] = await Promise.allSettled([
-    // Current cash position
-    client.accountingApi.getReportBankSummary(tenantId, ensureDateString(today)),
+    // Current cash position - need date range for bank summary
+    client.accountingApi.getReportBankSummary(tenantId, ensureDateString(addDays(today, -30)), ensureDateString(today)),
     // Current month revenue
     client.accountingApi.getInvoices(
       tenantId,

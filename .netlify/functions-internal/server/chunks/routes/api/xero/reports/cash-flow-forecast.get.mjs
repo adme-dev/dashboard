@@ -1,5 +1,4 @@
 import { e as eventHandler, g as getActiveTokenForSession, a as getSelectedTenant, c as createError, b as getQuery, d as createXeroClient } from '../../../../nitro/nitro.mjs';
-import 'groq-sdk';
 import 'xero-node';
 import 'node:http';
 import 'node:https';
@@ -19,6 +18,9 @@ function addDays(date, days) {
   result.setDate(result.getDate() + days);
   return result;
 }
+function toXeroDateTime(date) {
+  return `DateTime(${date.getUTCFullYear()}, ${date.getUTCMonth() + 1}, ${date.getUTCDate()})`;
+}
 const cashFlowForecast_get = eventHandler(async (event) => {
   var _a, _b, _c, _d, _e, _f;
   const token = await getActiveTokenForSession(event);
@@ -31,10 +33,11 @@ const cashFlowForecast_get = eventHandler(async (event) => {
   const today = /* @__PURE__ */ new Date();
   addDays(today, daysAhead);
   const client = await createXeroClient({ tokenSet: token });
+  const fromDate = addDays(today, -30);
   const { body: bankReport } = await client.accountingApi.getReportBankSummary(
     tenantId,
+    ensureDateString(fromDate),
     ensureDateString(today),
-    void 0,
     void 0,
     false
   );
@@ -95,7 +98,7 @@ const cashFlowForecast_get = eventHandler(async (event) => {
   const { body: recentExpenses } = await client.accountingApi.getInvoices(
     tenantId,
     void 0,
-    `Type=="ACCPAY"&&Status=="PAID"&&Date>=${ensureDateString(pastDate)}`,
+    `Type=="ACCPAY"&&Status=="PAID"&&Date>=${toXeroDateTime(pastDate)}`,
     "Date DESC",
     void 0,
     void 0,

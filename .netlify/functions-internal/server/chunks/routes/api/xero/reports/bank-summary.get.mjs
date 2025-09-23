@@ -1,5 +1,4 @@
 import { e as eventHandler, g as getActiveTokenForSession, a as getSelectedTenant, c as createError, b as getQuery, d as createXeroClient } from '../../../../nitro/nitro.mjs';
-import 'groq-sdk';
 import 'xero-node';
 import 'node:http';
 import 'node:https';
@@ -34,10 +33,13 @@ const bankSummary_get = eventHandler(async (event) => {
       }
       return out;
     };
+    const toDate = new Date(date);
+    const fromDate = new Date(toDate);
+    fromDate.setDate(fromDate.getDate() - 30);
     const { body: report } = await client.accountingApi.getReportBankSummary(
       tenantId,
-      date,
-      void 0,
+      ensureDateString(fromDate),
+      ensureDateString(toDate),
       void 0,
       false
     );

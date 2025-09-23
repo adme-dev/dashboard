@@ -1,4 +1,3 @@
-import Groq from 'groq-sdk';
 import { XeroClient } from 'xero-node';
 import http from 'node:http';
 import https from 'node:https';
@@ -96,7 +95,7 @@ function encodeQueryValue(input) {
 function encodeQueryKey(text) {
   return encodeQueryValue(text).replace(EQUAL_RE, "%3D");
 }
-function decode$1(text = "") {
+function decode$2(text = "") {
   try {
     return decodeURIComponent("" + text);
   } catch {
@@ -104,10 +103,10 @@ function decode$1(text = "") {
   }
 }
 function decodeQueryKey(text) {
-  return decode$1(text.replace(PLUS_RE, " "));
+  return decode$2(text.replace(PLUS_RE, " "));
 }
 function decodeQueryValue(text) {
-  return decode$1(text.replace(PLUS_RE, " "));
+  return decode$2(text.replace(PLUS_RE, " "));
 }
 
 function parseQuery(parametersString = "") {
@@ -156,6 +155,8 @@ function stringifyQuery(query) {
 const PROTOCOL_STRICT_REGEX = /^[\s\w\0+.-]{2,}:([/\\]{1,2})/;
 const PROTOCOL_REGEX = /^[\s\w\0+.-]{2,}:([/\\]{2})?/;
 const PROTOCOL_RELATIVE_REGEX = /^([/\\]\s*){2,}[^/\\]/;
+const PROTOCOL_SCRIPT_RE = /^[\s\0]*(blob|data|javascript|vbscript):$/i;
+const TRAILING_SLASH_RE = /\/$|\/\?|\/#/;
 const JOIN_LEADING_SLASH_RE = /^\.?\//;
 function hasProtocol(inputString, opts = {}) {
   if (typeof opts === "boolean") {
@@ -166,20 +167,52 @@ function hasProtocol(inputString, opts = {}) {
   }
   return PROTOCOL_REGEX.test(inputString) || (opts.acceptRelative ? PROTOCOL_RELATIVE_REGEX.test(inputString) : false);
 }
+function isScriptProtocol(protocol) {
+  return !!protocol && PROTOCOL_SCRIPT_RE.test(protocol);
+}
 function hasTrailingSlash(input = "", respectQueryAndFragment) {
-  {
+  if (!respectQueryAndFragment) {
     return input.endsWith("/");
   }
+  return TRAILING_SLASH_RE.test(input);
 }
 function withoutTrailingSlash(input = "", respectQueryAndFragment) {
-  {
+  if (!respectQueryAndFragment) {
     return (hasTrailingSlash(input) ? input.slice(0, -1) : input) || "/";
   }
+  if (!hasTrailingSlash(input, true)) {
+    return input || "/";
+  }
+  let path = input;
+  let fragment = "";
+  const fragmentIndex = input.indexOf("#");
+  if (fragmentIndex !== -1) {
+    path = input.slice(0, fragmentIndex);
+    fragment = input.slice(fragmentIndex);
+  }
+  const [s0, ...s] = path.split("?");
+  const cleanPath = s0.endsWith("/") ? s0.slice(0, -1) : s0;
+  return (cleanPath || "/") + (s.length > 0 ? `?${s.join("?")}` : "") + fragment;
 }
 function withTrailingSlash(input = "", respectQueryAndFragment) {
-  {
+  if (!respectQueryAndFragment) {
     return input.endsWith("/") ? input : input + "/";
   }
+  if (hasTrailingSlash(input, true)) {
+    return input || "/";
+  }
+  let path = input;
+  let fragment = "";
+  const fragmentIndex = input.indexOf("#");
+  if (fragmentIndex !== -1) {
+    path = input.slice(0, fragmentIndex);
+    fragment = input.slice(fragmentIndex);
+    if (!path) {
+      return fragment;
+    }
+  }
+  const [s0, ...s] = path.split("?");
+  return s0 + "/" + (s.length > 0 ? `?${s.join("?")}` : "") + fragment;
 }
 function hasLeadingSlash(input = "") {
   return input.startsWith("/");
@@ -334,13 +367,13 @@ function stringifyParsedURL(parsed) {
   return proto + auth + host + pathname + search + hash;
 }
 
-function parse(str, options) {
+function parse$1(str, options) {
   if (typeof str !== "string") {
     throw new TypeError("argument str must be a string");
   }
   const obj = {};
   const opt = {};
-  const dec = opt.decode || decode;
+  const dec = opt.decode || decode$1;
   let index = 0;
   while (index < str.length) {
     const eqIdx = str.indexOf("=", index);
@@ -364,16 +397,16 @@ function parse(str, options) {
       if (val.codePointAt(0) === 34) {
         val = val.slice(1, -1);
       }
-      obj[key] = tryDecode(val, dec);
+      obj[key] = tryDecode$1(val, dec);
     }
     index = endIdx + 1;
   }
   return obj;
 }
-function decode(str) {
+function decode$1(str) {
   return str.includes("%") ? decodeURIComponent(str) : str;
 }
-function tryDecode(str, decode2) {
+function tryDecode$1(str, decode2) {
   try {
     return decode2(str);
   } catch {
@@ -1221,7 +1254,7 @@ function getDistinctCookieKey(name, opts) {
 }
 
 function parseCookies(event) {
-  return parse(event.node.req.headers.cookie || "");
+  return parse$1(event.node.req.headers.cookie || "");
 }
 function getCookie(event, name) {
   return parseCookies(event)[name];
@@ -3546,6 +3579,16 @@ function useStorage(base = "") {
 
 function serialize$1(o){return typeof o=="string"?`'${o}'`:new c().serialize(o)}const c=/*@__PURE__*/function(){class o{#t=new Map;compare(t,r){const e=typeof t,n=typeof r;return e==="string"&&n==="string"?t.localeCompare(r):e==="number"&&n==="number"?t-r:String.prototype.localeCompare.call(this.serialize(t,true),this.serialize(r,true))}serialize(t,r){if(t===null)return "null";switch(typeof t){case "string":return r?t:`'${t}'`;case "bigint":return `${t}n`;case "object":return this.$object(t);case "function":return this.$function(t)}return String(t)}serializeObject(t){const r=Object.prototype.toString.call(t);if(r!=="[object Object]")return this.serializeBuiltInType(r.length<10?`unknown:${r}`:r.slice(8,-1),t);const e=t.constructor,n=e===Object||e===void 0?"":e.name;if(n!==""&&globalThis[n]===e)return this.serializeBuiltInType(n,t);if(typeof t.toJSON=="function"){const i=t.toJSON();return n+(i!==null&&typeof i=="object"?this.$object(i):`(${this.serialize(i)})`)}return this.serializeObjectEntries(n,Object.entries(t))}serializeBuiltInType(t,r){const e=this["$"+t];if(e)return e.call(this,r);if(typeof r?.entries=="function")return this.serializeObjectEntries(t,r.entries());throw new Error(`Cannot serialize ${t}`)}serializeObjectEntries(t,r){const e=Array.from(r).sort((i,a)=>this.compare(i[0],a[0]));let n=`${t}{`;for(let i=0;i<e.length;i++){const[a,l]=e[i];n+=`${this.serialize(a,true)}:${this.serialize(l)}`,i<e.length-1&&(n+=",");}return n+"}"}$object(t){let r=this.#t.get(t);return r===void 0&&(this.#t.set(t,`#${this.#t.size}`),r=this.serializeObject(t),this.#t.set(t,r)),r}$function(t){const r=Function.prototype.toString.call(t);return r.slice(-15)==="[native code] }"?`${t.name||""}()[native]`:`${t.name}(${t.length})${r.replace(/\s*\n\s*/g,"")}`}$Array(t){let r="[";for(let e=0;e<t.length;e++)r+=this.serialize(t[e]),e<t.length-1&&(r+=",");return r+"]"}$Date(t){try{return `Date(${t.toISOString()})`}catch{return "Date(null)"}}$ArrayBuffer(t){return `ArrayBuffer[${new Uint8Array(t).join(",")}]`}$Set(t){return `Set${this.$Array(Array.from(t).sort((r,e)=>this.compare(r,e)))}`}$Map(t){return this.serializeObjectEntries("Map",t.entries())}}for(const s of ["Error","RegExp","URL"])o.prototype["$"+s]=function(t){return `${s}(${t})`};for(const s of ["Int8Array","Uint8Array","Uint8ClampedArray","Int16Array","Uint16Array","Int32Array","Uint32Array","Float32Array","Float64Array"])o.prototype["$"+s]=function(t){return `${s}[${t.join(",")}]`};for(const s of ["BigInt64Array","BigUint64Array"])o.prototype["$"+s]=function(t){return `${s}[${t.join("n,")}${t.length>0?"n":""}]`};return o}();
 
+function isEqual(object1, object2) {
+  if (object1 === object2) {
+    return true;
+  }
+  if (serialize$1(object1) === serialize$1(object2)) {
+    return true;
+  }
+  return false;
+}
+
 const e=globalThis.process?.getBuiltinModule?.("crypto")?.hash,r="sha256",s="base64url";function digest(t){if(e)return e(r,t,s);const o=createHash(r).update(t);return globalThis.process?.versions?.webcontainer?o.digest().toString(s):o.digest(s)}
 
 function hash$1(input) {
@@ -4220,7 +4263,7 @@ const inlineAppConfig = {
     }
   },
   "icon": {
-    "provider": "iconify",
+    "provider": "server",
     "class": "",
     "aliases": {},
     "iconifyApiEndpoint": "https://api.iconify.design",
@@ -4466,6 +4509,9 @@ function splitByCase(str, separators) {
   parts.push(buff);
   return parts;
 }
+function upperFirst(str) {
+  return str ? str[0].toUpperCase() + str.slice(1) : "";
+}
 function kebabCase(str, joiner) {
   return str ? (Array.isArray(str) ? str : splitByCase(str)).map((p) => p.toLowerCase()).join(joiner) : "";
 }
@@ -4514,7 +4560,7 @@ function _expandFromEnv(value) {
 const _inlineRuntimeConfig = {
   "app": {
     "baseURL": "/",
-    "buildId": "b1943f8e-896c-4988-91d2-bc1f8120e5e1",
+    "buildId": "09559dfd-5e0b-47f1-b21f-1125e739a636",
     "buildAssetsDir": "/_nuxt/",
     "cdnURL": ""
   },
@@ -4556,11 +4602,11 @@ const _inlineRuntimeConfig = {
     }
   },
   "public": {
-    "xeroRedirectUri": "http://localhost:3003/api/xero/callback"
+    "xeroRedirectUri": "http://localhost:3001/api/xero/callback"
   },
   "xeroClientId": "39FB5DBE368648268EC033AA8D8B366F",
   "xeroClientSecret": "j52hc0Jz6zOtAQ_2Zj3k2mLOD2owCBlk09emPlsf2rmdlGJE",
-  "xeroRedirectUri": "http://localhost:3003/api/xero/callback",
+  "xeroRedirectUri": "http://localhost:3001/api/xero/callback",
   "sessionSecret": "dev-session-secret",
   "databaseUrl": "",
   "icon": {
@@ -4711,6 +4757,28 @@ const defaultNamespace = _globalThis[globalKey] || (_globalThis[globalKey] = cre
 const getContext = (key, opts = {}) => defaultNamespace.get(key, opts);
 const asyncHandlersKey = "__unctx_async_handlers__";
 const asyncHandlers = _globalThis[asyncHandlersKey] || (_globalThis[asyncHandlersKey] = /* @__PURE__ */ new Set());
+function executeAsync(function_) {
+  const restores = [];
+  for (const leaveHandler of asyncHandlers) {
+    const restore2 = leaveHandler();
+    if (restore2) {
+      restores.push(restore2);
+    }
+  }
+  const restore = () => {
+    for (const restore2 of restores) {
+      restore2();
+    }
+  };
+  let awaitable = function_();
+  if (awaitable && typeof awaitable === "object" && "catch" in awaitable) {
+    awaitable = awaitable.catch((error) => {
+      restore();
+      throw error;
+    });
+  }
+  return [awaitable, restore];
+}
 
 getContext("nitro-app", {
   asyncContext: false,
@@ -5018,6 +5086,9 @@ function defineRenderHandler(render) {
   });
 }
 
+function baseURL() {
+  return useRuntimeConfig().app.baseURL;
+}
 function buildAssetsDir() {
   return useRuntimeConfig().app.buildAssetsDir;
 }
@@ -5056,182 +5127,6 @@ async function invalidatePrefix(prefix) {
   await Promise.all(targets.map((k) => storage.removeItem(k)));
 }
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API
-});
-const GROQ_MODELS = {
-  // Fast reasoning for financial analysis
-  LLAMA_70B: "llama-3.1-70b-versatile",
-  // Faster responses for simple insights
-  LLAMA_8B: "llama-3.1-8b-instant",
-  // Balanced performance
-  MIXTRAL_8X7B: "mixtral-8x7b-32768"
-};
-async function generateGroqInsight(prompt, options = {}) {
-  var _a, _b;
-  const {
-    model = GROQ_MODELS.LLAMA_70B,
-    temperature = 0.1,
-    // Low temperature for consistent financial analysis
-    maxTokens = 1e3,
-    systemPrompt = "You are a financial analyst AI assistant. Provide clear, actionable insights based on expense data."
-  } = options;
-  try {
-    const completion = await groq.chat.completions.create({
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      model,
-      temperature,
-      max_tokens: maxTokens,
-      stream: false
-    });
-    return ((_b = (_a = completion.choices[0]) == null ? void 0 : _a.message) == null ? void 0 : _b.content) || "Unable to generate insight";
-  } catch (error) {
-    console.error("Groq API Error:", error);
-    throw new Error("Failed to generate AI insight");
-  }
-}
-async function analyzeExpenseAnomalies(expenseData) {
-  const prompt = `
-Analyze this expense data for anomalies and patterns:
-
-${JSON.stringify(expenseData, null, 2)}
-
-Identify:
-1. Unusual spending patterns (amounts, frequencies, timing)
-2. Potential duplicate transactions
-3. Categories with significant variance
-4. Vendor concentration risks
-5. Budget overruns or concerning trends
-
-For each anomaly found, provide:
-- Type (e.g., "Duplicate Payment", "Unusual Amount", "Vendor Risk")
-- Severity level (low/medium/high/critical)
-- Description of the issue
-- Amount involved
-- Actionable suggestion
-
-Respond in JSON format:
-{
-  "anomalies": [...],
-  "summary": "Overall assessment and key recommendations"
-}
-`;
-  try {
-    const response = await generateGroqInsight(prompt, {
-      model: GROQ_MODELS.LLAMA_70B,
-      temperature: 0.1,
-      maxTokens: 2e3,
-      systemPrompt: "You are an expert financial auditor. Analyze expense data for anomalies, risks, and optimization opportunities. Always respond in valid JSON format."
-    });
-    return JSON.parse(response);
-  } catch (error) {
-    console.error("Error analyzing expense anomalies:", error);
-    return {
-      anomalies: [],
-      summary: "Unable to analyze expense data at this time."
-    };
-  }
-}
-async function generateExpenseOptimization(expenseData, budgetData) {
-  const prompt = `
-Analyze this expense data and provide optimization recommendations:
-
-Expense Data:
-${JSON.stringify(expenseData, null, 2)}
-
-${""}
-
-Provide recommendations for:
-1. Cost reduction opportunities
-2. Process improvements
-3. Policy changes needed
-4. Vendor negotiation opportunities
-5. Budget reallocation suggestions
-
-For each recommendation, include:
-- Category affected
-- Type of recommendation
-- Impact level (low/medium/high)
-- Estimated savings potential (dollar amount)
-- Clear description
-- Specific action steps
-
-Respond in JSON format:
-{
-  "recommendations": [...],
-  "summary": "Overall optimization strategy"
-}
-`;
-  try {
-    const response = await generateGroqInsight(prompt, {
-      model: GROQ_MODELS.LLAMA_70B,
-      temperature: 0.2,
-      maxTokens: 2500,
-      systemPrompt: "You are a strategic financial consultant. Provide actionable cost optimization recommendations based on expense analysis. Focus on practical, implementable solutions. Always respond in valid JSON format."
-    });
-    return JSON.parse(response);
-  } catch (error) {
-    console.error("Error generating expense optimization:", error);
-    return {
-      recommendations: [],
-      summary: "Unable to generate optimization recommendations at this time."
-    };
-  }
-}
-async function generateExpenseInsights(currentPeriodData, previousPeriodData) {
-  const prompt = `
-Generate natural language insights for this expense data:
-
-Current Period:
-${JSON.stringify(currentPeriodData, null, 2)}
-
-${previousPeriodData ? `Previous Period: ${JSON.stringify(previousPeriodData, null, 2)}` : ""}
-
-Provide:
-1. Key insights about spending patterns
-2. Notable trends (increases/decreases)
-3. Important alerts or concerns
-4. Executive summary
-
-Focus on business impact and actionable information.
-
-Respond in JSON format:
-{
-  "insights": ["insight 1", "insight 2", ...],
-  "trends": ["trend 1", "trend 2", ...],
-  "alerts": ["alert 1", "alert 2", ...],
-  "summary": "Executive summary paragraph"
-}
-`;
-  try {
-    const response = await generateGroqInsight(prompt, {
-      model: GROQ_MODELS.LLAMA_8B,
-      // Faster model for insights
-      temperature: 0.3,
-      maxTokens: 1500,
-      systemPrompt: "You are a business intelligence analyst. Generate clear, concise insights about expense data that help executives make informed decisions. Always respond in valid JSON format."
-    });
-    return JSON.parse(response);
-  } catch (error) {
-    console.error("Error generating expense insights:", error);
-    return {
-      insights: [],
-      trends: [],
-      alerts: [],
-      summary: "Unable to generate insights at this time."
-    };
-  }
-}
-
 const TENANT_COOKIE = "xero_tenant_id";
 function setSelectedTenant(event, tenantId) {
   setCookie(event, TENANT_COOKIE, tenantId, {
@@ -5254,10 +5149,12 @@ const DEFAULT_SCOPES = [
   "accounting.contacts.read"
 ];
 async function createXeroClient(options = {}) {
+  var _a, _b;
   const config = useRuntimeConfig();
   const clientId = config.xeroClientId;
   const clientSecret = config.xeroClientSecret;
   const redirectUri = config.xeroRedirectUri;
+  const httpTimeout = Number((_a = config.xeroHttpTimeout) != null ? _a : 15e3);
   if (!clientId || !clientSecret || !redirectUri) {
     throw createError$1({ statusCode: 500, statusMessage: "Xero OAuth not configured" });
   }
@@ -5266,9 +5163,20 @@ async function createXeroClient(options = {}) {
     clientSecret,
     redirectUris: [redirectUri],
     scopes: DEFAULT_SCOPES,
-    state: options.state
+    state: options.state,
+    httpTimeout
   });
-  await client.initialize();
+  try {
+    await client.initialize();
+  } catch (err) {
+    if ((_b = err == null ? void 0 : err.message) == null ? void 0 : _b.includes("timeout")) {
+      throw createError$1({
+        statusCode: 504,
+        statusMessage: "Xero authorization discovery timed out. Please try again or check network access."
+      });
+    }
+    throw err;
+  }
   if (options.tokenSet) {
     client.setTokenSet(toTokenSet(options.tokenSet));
   }
@@ -5371,6 +5279,8 @@ function getSessionId(event) {
 }
 
 const collections = {
+  'lucide': () => import('../_/icons.mjs').then(m => m.default),
+  'simple-icons': () => import('../_/icons2.mjs').then(m => m.default),
 };
 
 const DEFAULT_ENDPOINT = "https://api.iconify.design";
@@ -5428,12 +5338,14 @@ const _SxA8c9 = defineEventHandler(() => {});
 
 const _lazy_GlrtXn = () => import('../routes/api/ai/anomalies.get.mjs');
 const _lazy_yuOQcx = () => import('../routes/api/ai/anomaly-detection.get.mjs');
+const _lazy_qlShN7 = () => import('../routes/api/ai/cashflow-insights.post.mjs');
 const _lazy_k_dwj8 = () => import('../routes/api/ai/chat.post.mjs');
 const _lazy_UP2La5 = () => import('../routes/api/ai/expense-insights.get.mjs');
 const _lazy_3SY1wf = () => import('../routes/api/ai/insights.get.mjs');
 const _lazy_IRfff9 = () => import('../routes/api/ai/recommendations.get.mjs');
 const _lazy_3MAoS3 = () => import('../routes/api/cashflow.get.mjs');
 const _lazy_pMVf6x = () => import('../routes/api/customers.mjs');
+const _lazy_J25aUL = () => import('../routes/api/exports/cashflow.get.mjs');
 const _lazy_HTYp0y = () => import('../routes/api/exports/csv.post.mjs');
 const _lazy_bzIE5I = () => import('../routes/api/health.get.mjs');
 const _lazy_0DMn4N = () => import('../routes/api/kpis-advanced.get.mjs');
@@ -5455,23 +5367,29 @@ const _lazy_OWiOqg = () => import('../routes/api/xero/reports/balance-sheet.get.
 const _lazy_1wFxuc = () => import('../routes/api/xero/reports/bank-summary.get.mjs');
 const _lazy_VPVRK2 = () => import('../routes/api/xero/reports/budget-variance.get.mjs');
 const _lazy_ImI3dX = () => import('../routes/api/xero/reports/cash-flow-forecast.get.mjs');
+const _lazy_dXvB_B = () => import('../routes/api/xero/reports/cash-flow-insights.get.mjs');
+const _lazy_ZDe931 = () => import('../routes/api/xero/reports/cash-flow-scenarios.get.mjs');
+const _lazy_ec0K4w = () => import('../routes/api/xero/reports/cash-flow-waterfall.get.mjs');
 const _lazy_lOsb37 = () => import('../routes/api/xero/reports/pnl-consolidated.get.mjs');
+const _lazy_GvgseP = () => import('../routes/api/xero/reports/pnl-detailed.get.mjs');
 const _lazy_yrbluI = () => import('../routes/api/xero/reports/pnl.get.mjs');
 const _lazy_QayuE4 = () => import('../routes/api/xero/select-tenant.post.mjs');
 const _lazy_9aCPjE = () => import('../routes/api/xero/status.get.mjs');
 const _lazy_arko0r = () => import('../routes/api/xero/tenants.get.mjs');
 const _lazy_Sf23Ac = () => import('../routes/api/xero/webhook.post.mjs');
-const _lazy_xyAY7Q = () => import('../routes/renderer.mjs');
+const _lazy_xyAY7Q = () => import('../routes/renderer.mjs').then(function (n) { return n.r; });
 
 const handlers = [
   { route: '/api/ai/anomalies', handler: _lazy_GlrtXn, lazy: true, middleware: false, method: "get" },
   { route: '/api/ai/anomaly-detection', handler: _lazy_yuOQcx, lazy: true, middleware: false, method: "get" },
+  { route: '/api/ai/cashflow-insights', handler: _lazy_qlShN7, lazy: true, middleware: false, method: "post" },
   { route: '/api/ai/chat', handler: _lazy_k_dwj8, lazy: true, middleware: false, method: "post" },
   { route: '/api/ai/expense-insights', handler: _lazy_UP2La5, lazy: true, middleware: false, method: "get" },
   { route: '/api/ai/insights', handler: _lazy_3SY1wf, lazy: true, middleware: false, method: "get" },
   { route: '/api/ai/recommendations', handler: _lazy_IRfff9, lazy: true, middleware: false, method: "get" },
   { route: '/api/cashflow', handler: _lazy_3MAoS3, lazy: true, middleware: false, method: "get" },
   { route: '/api/customers', handler: _lazy_pMVf6x, lazy: true, middleware: false, method: undefined },
+  { route: '/api/exports/cashflow', handler: _lazy_J25aUL, lazy: true, middleware: false, method: "get" },
   { route: '/api/exports/csv', handler: _lazy_HTYp0y, lazy: true, middleware: false, method: "post" },
   { route: '/api/health', handler: _lazy_bzIE5I, lazy: true, middleware: false, method: "get" },
   { route: '/api/kpis-advanced', handler: _lazy_0DMn4N, lazy: true, middleware: false, method: "get" },
@@ -5493,7 +5411,11 @@ const handlers = [
   { route: '/api/xero/reports/bank-summary', handler: _lazy_1wFxuc, lazy: true, middleware: false, method: "get" },
   { route: '/api/xero/reports/budget-variance', handler: _lazy_VPVRK2, lazy: true, middleware: false, method: "get" },
   { route: '/api/xero/reports/cash-flow-forecast', handler: _lazy_ImI3dX, lazy: true, middleware: false, method: "get" },
+  { route: '/api/xero/reports/cash-flow-insights', handler: _lazy_dXvB_B, lazy: true, middleware: false, method: "get" },
+  { route: '/api/xero/reports/cash-flow-scenarios', handler: _lazy_ZDe931, lazy: true, middleware: false, method: "get" },
+  { route: '/api/xero/reports/cash-flow-waterfall', handler: _lazy_ec0K4w, lazy: true, middleware: false, method: "get" },
   { route: '/api/xero/reports/pnl-consolidated', handler: _lazy_lOsb37, lazy: true, middleware: false, method: "get" },
+  { route: '/api/xero/reports/pnl-detailed', handler: _lazy_GvgseP, lazy: true, middleware: false, method: "get" },
   { route: '/api/xero/reports/pnl', handler: _lazy_yrbluI, lazy: true, middleware: false, method: "get" },
   { route: '/api/xero/select-tenant', handler: _lazy_QayuE4, lazy: true, middleware: false, method: "post" },
   { route: '/api/xero/status', handler: _lazy_9aCPjE, lazy: true, middleware: false, method: "get" },
@@ -5643,6 +5565,53 @@ function useNitroApp() {
 }
 runNitroPlugins(nitroApp$1);
 
+function parse(str, options) {
+  if (typeof str !== "string") {
+    throw new TypeError("argument str must be a string");
+  }
+  const obj = {};
+  const opt = options || {};
+  const dec = opt.decode || decode;
+  let index = 0;
+  while (index < str.length) {
+    const eqIdx = str.indexOf("=", index);
+    if (eqIdx === -1) {
+      break;
+    }
+    let endIdx = str.indexOf(";", index);
+    if (endIdx === -1) {
+      endIdx = str.length;
+    } else if (endIdx < eqIdx) {
+      index = str.lastIndexOf(";", eqIdx - 1) + 1;
+      continue;
+    }
+    const key = str.slice(index, eqIdx).trim();
+    if (opt?.filter && !opt?.filter(key)) {
+      index = endIdx + 1;
+      continue;
+    }
+    if (void 0 === obj[key]) {
+      let val = str.slice(eqIdx + 1, endIdx).trim();
+      if (val.codePointAt(0) === 34) {
+        val = val.slice(1, -1);
+      }
+      obj[key] = tryDecode(val, dec);
+    }
+    index = endIdx + 1;
+  }
+  return obj;
+}
+function decode(str) {
+  return str.includes("%") ? decodeURIComponent(str) : str;
+}
+function tryDecode(str, decode2) {
+  try {
+    return decode2(str);
+  } catch {
+    return str;
+  }
+}
+
 const nitroApp = useNitroApp();
 const handler = async (req) => {
   const url = new URL(req.url);
@@ -5689,5 +5658,5 @@ function getCacheHeaders(url) {
   return {};
 }
 
-export { $fetch$1 as $, useRuntimeConfig as A, getResponseStatusText as B, getResponseStatus as C, defineRenderHandler as D, publicAssetsURL as E, destr as F, getRouteRules as G, useNitroApp as H, handler as I, getSelectedTenant as a, getQuery as b, createError$1 as c, createXeroClient as d, eventHandler as e, defineEventHandler as f, getActiveTokenForSession as g, generateExpenseInsights as h, analyzeExpenseAnomalies as i, generateExpenseOptimization as j, getCached as k, setCached as l, invalidatePrefix as m, getCookie as n, deleteCookie as o, getRequestURL as p, setTokenForSession as q, readBody as r, setHeader as s, toStoredTokenSet as t, sendRedirect as u, setCookie as v, getTokenForSession as w, setSelectedTenant as x, getHeader as y, buildAssetsURL as z };
+export { $fetch$1 as $, defineRenderHandler as A, publicAssetsURL as B, destr as C, getRouteRules as D, useNitroApp as E, serialize$1 as F, hasProtocol as G, isScriptProtocol as H, joinURL as I, isEqual as J, defu as K, parseQuery as L, hash$1 as M, defuFn as N, klona as O, withQuery as P, sanitizeStatusCode as Q, getContext as R, withTrailingSlash as S, withoutTrailingSlash as T, baseURL as U, createHooks as V, executeAsync as W, toRouteMatcher as X, createRouter$1 as Y, parse as Z, getRequestHeader as _, getSelectedTenant as a, upperFirst as a0, handler as a1, getQuery as b, createError$1 as c, createXeroClient as d, eventHandler as e, defineEventHandler as f, getActiveTokenForSession as g, getCached as h, setCached as i, invalidatePrefix as j, getCookie as k, deleteCookie as l, getRequestURL as m, setTokenForSession as n, sendRedirect as o, setCookie as p, getTokenForSession as q, readBody as r, setHeader as s, toStoredTokenSet as t, useRuntimeConfig as u, setSelectedTenant as v, getHeader as w, buildAssetsURL as x, getResponseStatusText as y, getResponseStatus as z };
 //# sourceMappingURL=nitro.mjs.map

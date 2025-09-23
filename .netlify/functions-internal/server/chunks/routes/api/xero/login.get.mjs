@@ -1,5 +1,4 @@
-import { e as eventHandler, d as createXeroClient, v as setCookie, u as sendRedirect } from '../../../nitro/nitro.mjs';
-import 'groq-sdk';
+import { e as eventHandler, d as createXeroClient, p as setCookie, o as sendRedirect } from '../../../nitro/nitro.mjs';
 import 'xero-node';
 import 'node:http';
 import 'node:https';

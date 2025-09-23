@@ -1,6 +1,5 @@
 <script setup lang="ts">
-// Temporarily disable Unovis to prevent initialization errors
-// import { VisDonut, VisTooltip } from '@unovis/vue'
+import { VisDonut, VisTooltip } from '@unovis/vue'
 
 type BreakdownDatum = {
   name: string
