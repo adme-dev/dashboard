@@ -80,7 +80,7 @@ Preview runs the production bundle on http://localhost:3000 with Nitro’s previ
 
 ## Deploying to Netlify
 
-This repository is configured for Netlify builds out of the box (`netlify.toml`, `_redirects`, `_headers`).
+This repository is configured for Netlify builds out of the box (`netlify.toml`, `_redirects`, `_headers`). If you deploy to Vercel instead, set `NITRO_PRESET=vercel` (or rely on Vercel’s `VERCEL` env var) so the SSR bundle targets the correct platform.
 
 1. Connect the repo at https://app.netlify.com/ and select **pnpm build** as the command (already in config).
 2. In “Site settings → Build & deploy → Environment”, add the variables listed above. For `XERO_REDIRECT_URI`, set `/api/xero/callback`.

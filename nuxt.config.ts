@@ -18,7 +18,7 @@ export default defineNuxtConfig({
   },
 
   nitro: {
-    preset: 'netlify'
+    preset: process.env.NITRO_PRESET || (process.env.VERCEL ? 'vercel' : 'netlify')
   },
 
   devtools: {
