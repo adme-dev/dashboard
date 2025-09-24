@@ -1,2 +1,5 @@
+# API routes go to serverless functions
 /api/*  /.netlify/functions/server  200
+
+# Catch-all for SSR - redirect everything else to serverless function
 /*      /.netlify/functions/server  200

@@ -1,4 +1,21 @@
 /*
-// X-Frame-Options: DENY
-// X-Content-Type-Options: nosniff
-// Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+# Cache static assets
+/_nuxt/builds/meta/*
+  cache-control: public, max-age=31536000, immutable
+/_nuxt/builds/*
+  cache-control: public, max-age=1, immutable
+/_fonts/*
+  cache-control: public, max-age=31536000, immutable
+/_nuxt/*
+  cache-control: public, max-age=31536000, immutable
+
+# API CORS headers
+/api/*
+  access-control-allow-origin: *
+  access-control-allow-methods: *
+  access-control-allow-headers: *
+  access-control-max-age: 0
