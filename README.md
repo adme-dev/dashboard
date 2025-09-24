@@ -1,80 +1,108 @@
-# Nuxt Dashboard Template
+# ADME Xero Dashboard
 
 [![Nuxt UI](https://img.shields.io/badge/Made%20with-Nuxt%20UI-00DC82?logo=nuxt&labelColor=020420)](https://ui.nuxt.com)
 
-Get started with the Nuxt dashboard template with multiple pages, collapsible sidebar, keyboard shortcuts, light & dark more, command palette and more, powered by [Nuxt UI](https://ui.nuxt.com).
+AI-assisted financial dashboard that connects to Xero to surface real-time KPIs, anomaly alerts, and decision support for advisors and finance teams. The project started from the official [Nuxt UI Dashboard template](https://github.com/nuxt-ui-templates/dashboard) and has been extended with secure Xero OAuth flows, server-side reporting, and Netlify deployment automation.
 
-- [Live demo](https://dashboard-template.nuxt.dev/)
-- [Documentation](https://ui4.nuxt.com/docs/getting-started/installation/nuxt)
+## Project Links
 
-<a href="https://dashboard-template.nuxt.dev/" target="_blank">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://ui4.nuxt.com/assets/templates/nuxt/dashboard-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="https://ui4.nuxt.com/assets/templates/nuxt/dashboard-light.png">
-    <img alt="Nuxt Dashboard Template" src="https://ui4.nuxt.com/assets/templates/nuxt/dashboard-light.png">
-  </picture>
-</a>
+- Production: https://ftgisuzuute.com.au
+- Latest Netlify deploy: https://adme-xero.netlify.app
+- Source repository: https://github.com/adme-dev/dashboard
 
-> The dashboard template for Vue is on https://github.com/nuxt-ui-templates/dashboard-vue.
+## Feature Highlights
 
-## Quick Start
+- **Real-time Xero insights** – cash flow, revenue, expense, and profit KPIs pulled directly from the Xero Accounting API.
+- **AI-driven analytics** – anomaly detection, scenario forecasts, and curated recommendations using external AI models.
+- **Secure OAuth integration** – token exchange, refresh, and multi-tenant support handled via Nitro server routes.
+- **Modern UX** – responsive Nuxt UI layout with command palette, theming, keyboard shortcuts, and modular widgets.
+- **Production-ready pipeline** – Netlify build + deploy flow, `_redirects`/`_headers` management, and environment configuration baked in.
 
-```bash [Terminal]
-npm create nuxt@latest -- -t github:nuxt-ui-templates/dashboard
-```
+## Tech Stack
 
-## Deploy your own
+- Nuxt 3 + Nitro (TypeScript, Vue 3, Vite)
+- Nuxt UI Pro components & Tailwind CSS
+- Netlify for hosting and serverless functions
+- `xero-node` SDK for OAuth + Accounting API access
+- pnpm for dependency management
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-name=dashboard&repository-url=https%3A%2F%2Fgithub.com%2Fnuxt-ui-templates%2Fdashboard&demo-image=https%3A%2F%2Fui4.nuxt.com%2Fassets%2Ftemplates%2Fnuxt%2Fdashboard-dark.png&demo-url=https%3A%2F%2Fdashboard-template.nuxt.dev%2F&demo-title=Nuxt%20Dashboard%20Template&demo-description=A%20dashboard%20template%20with%20multi-column%20layout%20for%20building%20sophisticated%20admin%20interfaces.)
+## Getting Started
 
-## Setup
+### Prerequisites
 
-Make sure to install the dependencies:
+- Node.js 22.x (matching `.nvmrc`)
+- pnpm ≥ 10
+- Xero developer account with an OAuth 2.0 app configured
+
+### Clone & Install
 
 ```bash
+git clone https://github.com/adme-dev/dashboard.git
+cd dashboard
 pnpm install
+cp .env.example .env
 ```
 
-## Development Server
+Populate `.env` with the secrets described below.
 
-Start the development server on `http://localhost:3000`:
+### Required Environment Variables
+
+| Variable | Description |
+| --- | --- |
+| `XERO_CLIENT_ID` | OAuth client id from Xero developer portal |
+| `XERO_CLIENT_SECRET` | OAuth client secret |
+| `XERO_REDIRECT_URI` | Callback path (use `/api/xero/callback` – host is resolved automatically) |
+| `SESSION_SECRET` | Random string for cookie/session signing |
+| `DATABASE_URL` | (Optional) persistence for tokens and metadata |
+| `CACHE_URL` | (Optional) external cache/Redis connection |
+
+Scopes requested from Xero: `offline_access accounting.reports.read accounting.settings.read accounting.transactions.read accounting.contacts.read`.
+
+### Run Locally
 
 ```bash
 pnpm dev
 ```
 
-## Production
+The app starts on http://localhost:3000. Use `netlify dev --offline` if you want to exercise Netlify-specific behaviour locally (SSR via `/.netlify/functions/server`).
 
-Build the application for production:
+### Build & Preview
 
 ```bash
 pnpm build
-```
-
-Locally preview production build:
-
-```bash
 pnpm preview
 ```
 
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+Preview runs the production bundle on http://localhost:3000 with Nitro’s preview server.
 
-## Renovate integration
+## Deploying to Netlify
 
-Install [Renovate GitHub app](https://github.com/apps/renovate/installations/select_target) on your repository and you are good to go.
+This repository is configured for Netlify builds out of the box (`netlify.toml`, `_redirects`, `_headers`).
 
-## Staging Setup (Xero Dashboard)
+1. Connect the repo at https://app.netlify.com/ and select **pnpm build** as the command (already in config).
+2. In “Site settings → Build & deploy → Environment”, add the variables listed above. For `XERO_REDIRECT_URI`, set `/api/xero/callback`.
+3. Trigger a deploy. Netlify will compile the Nitro server into `/.netlify/functions/server` and publish the static assets from `dist/`.
+4. To redeploy from the CLI:
 
-1. Environment
-   - Set `XERO_CLIENT_ID`, `XERO_CLIENT_SECRET`, `XERO_REDIRECT_URI` (e.g. `https://your-domain.com/api/xero/callback`)
-   - Set `SESSION_SECRET`
-   - Optional: `DATABASE_URL`, `CACHE_URL`
-2. Xero App
-   - In Xero Developer portal, add the redirect URI to your app settings
-   - Scopes used: `offline_access accounting.reports.read accounting.settings.read accounting.transactions.read accounting.contacts.read`
-3. Deploy
-   - Build and deploy (`pnpm build`) to your hosting (Vercel/Netlify/etc.)
-   - Ensure env vars are configured in hosting provider
-4. Health & Webhooks
-   - Health check: `GET /api/health`
-   - Webhook (optional): `POST /api/xero/webhook` (configure to invalidate caches)
+   ```bash
+   netlify deploy --prod --message "Deploy latest"
+   ```
+
+   Ensure you have authenticated with `netlify login` first.
+
+## Xero OAuth Checklist
+
+1. In the Xero developer portal, set the redirect URI to match the production domain plus `/api/xero/callback`.
+2. Enable the scopes listed above.
+3. During login at `/api/xero/login`, we generate CSRF-protected state + PKCE and redirect to Xero’s consent screen.
+4. The callback persists refresh tokens via Nitro server utilities (`server/utils/tokenStore.ts`).
+
+## Maintenance
+
+- Linting and formatting follow the Nuxt UI template conventions.
+- Renovate bot can be re-enabled if dependency automation is desired.
+- For AI model providers (e.g., Groq), add their keys to `.env` and hook into the `server/api/ai/*` endpoints.
+
+## Credits
+
+Originally based on the [nuxt-ui-templates/dashboard](https://github.com/nuxt-ui-templates/dashboard) starter by the Nuxt team. Extended and maintained by the ADME engineering group.
