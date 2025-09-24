@@ -6,9 +6,12 @@ AI-assisted financial dashboard that connects to Xero to surface real-time KPIs,
 
 ## Project Links
 
-- Production: https://ftgisuzuute.com.au
 - Latest Netlify deploy: https://adme-xero.netlify.app
 - Source repository: https://github.com/adme-dev/dashboard
+
+## Deploy
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fadme-dev%2Fdashboard&project-name=adme-xero-dashboard&repository-name=adme-xero-dashboard)
 
 ## Feature Highlights
 
