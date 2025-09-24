@@ -48,6 +48,17 @@ function onFileClick() {
 
 // Load status on client
 const { data: xeroStatus, refresh: refreshStatus } = await useFetch('/api/xero/status', { server: false })
+const { state: connectState, connect: connectXero } = useXeroConnect({ onStatusRefresh: refreshStatus })
+
+const connectLabel = computed(() => {
+  if (connectState.status === 'loading') {
+    return 'Opening Xero...'
+  }
+  if (connectState.status === 'completed' && xeroStatus.value?.connected) {
+    return 'Connected'
+  }
+  return xeroStatus.value?.connected ? 'Reconnect' : 'Connect Xero'
+})
 
 // Explicit client-side tenants fetch to avoid SSR/stale data issues
 const tenantOptions = ref<{ label: string, value: string }[]>([])
@@ -127,12 +138,21 @@ async function selectTenant(tenantId: string) {
         </div>
         <div class="flex items-center gap-2">
           <UButton
-            :label="xeroStatus?.connected ? 'Reconnect' : 'Connect Xero'"
+            :label="connectLabel"
             color="primary"
-            href="/api/xero/login"
+            :loading="connectState.status === 'loading'"
+            @click="connectXero"
           />
           <UButton v-if="xeroStatus?.connected" label="Refresh orgs" color="neutral" variant="outline" @click="loadTenants" />
         </div>
+      </div>
+
+      <div v-if="connectState.error" class="mt-4 text-sm text-danger bg-danger/10 rounded px-3 py-2">
+        {{ connectState.error }}
+      </div>
+
+      <div v-if="connectState.status === 'loading'" class="mt-4 text-sm text-muted">
+        Opening secure Xero login... if nothing happens, allow popups or <button type="button" class="underline" @click="connectXero">try again</button>.
       </div>
 
       <div v-if="xeroStatus?.connected" class="mt-4 space-y-3">
