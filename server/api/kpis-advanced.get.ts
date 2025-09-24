@@ -37,7 +37,7 @@ export default eventHandler(async (event) => {
   const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
   const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
   
-  const client = await createXeroClient({ tokenSet: token })
+  const client = await createXeroClient({ tokenSet: token, event })
 
   // Parallel data fetching for better performance
   const [

@@ -55,7 +55,7 @@ export default eventHandler(async (event) => {
   const monthStart = getMonthStart(new Date(targetYear, targetMonth))
   const monthEnd = getMonthEnd(new Date(targetYear, targetMonth))
 
-  const client = await createXeroClient({ tokenSet: token })
+  const client = await createXeroClient({ tokenSet: token, event })
 
   // Get chart of accounts for proper category names
   let accountsMap = new Map<string, string>()

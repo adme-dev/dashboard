@@ -46,7 +46,7 @@ export default eventHandler(async (event) => {
   const today = new Date()
   const startDate = addDays(today, -daysBack)
 
-  const client = await createXeroClient({ tokenSet: token })
+  const client = await createXeroClient({ tokenSet: token, event })
 
   // Get chart of accounts
   let accountsMap = new Map<string, string>()

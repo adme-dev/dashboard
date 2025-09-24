@@ -6,7 +6,7 @@ export default eventHandler(async (event) => {
     ? (crypto as any).randomUUID()
     : Math.random().toString(36).slice(2)
 
-  const client = await createXeroClient({ state })
+  const client = await createXeroClient({ state, event })
   const authorizeUrl = await client.buildConsentUrl()
 
   // Save state for CSRF protection

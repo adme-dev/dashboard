@@ -61,7 +61,7 @@ async function fetchPnLForTenant(client: Awaited<ReturnType<typeof createXeroCli
 
 export default eventHandler(async (event) => {
   const token = await getActiveTokenForSession(event)
-  const client = await createXeroClient({ tokenSet: token })
+  const client = await createXeroClient({ tokenSet: token, event })
 
   const query = getQuery(event)
   const fromDate = String(query.fromDate || '')

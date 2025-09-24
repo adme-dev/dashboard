@@ -49,7 +49,7 @@ export async function getActiveTokenForSession(event: H3Event, opts: { minTtlMs?
 
   const refreshPromise = (async () => {
     try {
-      const client = await createXeroClient({ tokenSet: token })
+      const client = await createXeroClient({ tokenSet: token, event })
       await client.refreshToken()
       const latest = client.readTokenSet()
       const next = toStoredTokenSet({

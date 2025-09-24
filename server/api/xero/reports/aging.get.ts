@@ -31,7 +31,7 @@ export default eventHandler(async (event) => {
   const reportType = String(query.type || 'receivables') // 'receivables' or 'payables'
   const today = new Date()
 
-  const client = await createXeroClient({ tokenSet: token })
+  const client = await createXeroClient({ tokenSet: token, event })
 
   // Determine invoice type based on report
   const invoiceType = reportType === 'receivables' ? 'ACCREC' : 'ACCPAY'

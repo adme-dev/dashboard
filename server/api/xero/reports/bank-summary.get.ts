@@ -16,7 +16,7 @@ export default eventHandler(async (event) => {
   const query = getQuery(event)
   const date = String(query.date || ensureDateString(new Date()))
 
-  const client = await createXeroClient({ tokenSet: token })
+  const client = await createXeroClient({ tokenSet: token, event })
 
   // Try Bank Summary first
   try {

@@ -107,7 +107,7 @@ export default eventHandler(async (event) => {
     today.setTime(temp.getTime())
   }
 
-  const client = await createXeroClient({ tokenSet: token })
+  const client = await createXeroClient({ tokenSet: token, event })
 
   // Fetch chart of accounts for proper category names
   let accountsMap = new Map<string, string>()

@@ -1,6 +1,7 @@
-import { createError } from 'h3'
+import { createError, getRequestURL } from 'h3'
 import { XeroClient } from 'xero-node'
 import type { TokenSet } from 'xero-node'
+import type { H3Event } from 'h3'
 
 const DEFAULT_SCOPES = [
   'offline_access',
@@ -17,17 +18,29 @@ export type XeroTokenSet = TokenSet & {
 type CreateClientOptions = {
   tokenSet?: XeroTokenSet
   state?: string
+  event?: H3Event
 }
 
 export async function createXeroClient(options: CreateClientOptions = {}) {
   const config = useRuntimeConfig()
   const clientId = config.xeroClientId
   const clientSecret = config.xeroClientSecret
-  const redirectUri = config.xeroRedirectUri
+  let redirectUri = config.xeroRedirectUri
   const httpTimeout = Number(config.xeroHttpTimeout ?? 15000)
 
   if (!clientId || !clientSecret || !redirectUri) {
     throw createError({ statusCode: 500, statusMessage: 'Xero OAuth not configured' })
+  }
+
+  // If redirect URI is relative, make it absolute using the current host
+  if (redirectUri.startsWith('/')) {
+    if (options.event) {
+      const url = getRequestURL(options.event)
+      redirectUri = `${url.protocol}//${url.host}${redirectUri}`
+    } else {
+      // Fallback for build time or when no event context is available
+      redirectUri = `https://adme-xero.netlify.app${redirectUri}`
+    }
   }
 
   const client = new XeroClient({

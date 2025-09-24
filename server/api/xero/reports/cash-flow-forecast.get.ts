@@ -29,7 +29,7 @@ export default eventHandler(async (event) => {
   const today = new Date()
   const endDate = addDays(today, daysAhead)
 
-  const client = await createXeroClient({ tokenSet: token })
+  const client = await createXeroClient({ tokenSet: token, event })
 
   // Get current bank balances
   // For bank summary, we need a date range. Use today as toDate and 30 days before as fromDate

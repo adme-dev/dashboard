@@ -34,7 +34,7 @@ export default eventHandler(async (event) => {
   const today = new Date()
   const startDate = addDays(today, -daysBack)
 
-  const client = await createXeroClient({ tokenSet: token })
+  const client = await createXeroClient({ tokenSet: token, event })
 
   // Get all bank accounts
   const { body: accountsResponse } = await client.accountingApi.getAccounts(

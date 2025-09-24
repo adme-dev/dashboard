@@ -7,7 +7,7 @@ export default eventHandler(async (event) => {
   if (!current?.refresh_token) {
     throw createError({ statusCode: 401, statusMessage: 'No refresh token available' })
   }
-  const client = await createXeroClient({ tokenSet: current })
+  const client = await createXeroClient({ tokenSet: current, event })
   await client.refreshToken()
   const latest = client.readTokenSet()
   const next = toStoredTokenSet({

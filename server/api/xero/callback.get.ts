@@ -14,7 +14,7 @@ export default eventHandler(async (event) => {
 
   deleteCookie(event, 'xero_oauth_state', { path: '/' })
 
-  const client = await createXeroClient({ state: expectedState })
+  const client = await createXeroClient({ state: expectedState, event })
   const requestUrl = getRequestURL(event).href
   await client.apiCallback(requestUrl)
   const tokenSet = client.readTokenSet()

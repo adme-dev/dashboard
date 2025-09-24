@@ -38,7 +38,7 @@ export default eventHandler(async (event) => {
   const query = getQuery(event)
   const toDate = String(query.toDate || getDefaultToDate())
 
-  const client = await createXeroClient({ tokenSet: token })
+  const client = await createXeroClient({ tokenSet: token, event })
   const { body: report } = await client.accountingApi.getReportBalanceSheet(
     tenantId,
     toDate,

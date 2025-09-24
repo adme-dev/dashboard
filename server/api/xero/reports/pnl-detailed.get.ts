@@ -384,7 +384,7 @@ export default eventHandler(async (event) => {
   const toDateStr = ensureDateString(monthEnd)
   const fromDateStr = ensureDateString(ytdStart)
 
-  const client = await createXeroClient({ tokenSet: token })
+  const client = await createXeroClient({ tokenSet: token, event })
   let report
   try {
     const response = await client.accountingApi.getReportProfitAndLoss(

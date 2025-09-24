@@ -10,7 +10,7 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'No organization selected' })
   }
 
-  const client = await createXeroClient({ tokenSet: token })
+  const client = await createXeroClient({ tokenSet: token, event })
 
   const [authorised, paid] = await Promise.all([
     client.accountingApi.getInvoices(

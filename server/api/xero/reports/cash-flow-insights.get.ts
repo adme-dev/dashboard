@@ -278,7 +278,7 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'No organization selected' })
   }
 
-  const client = await createXeroClient({ tokenSet: token })
+  const client = await createXeroClient({ tokenSet: token, event })
   const today = new Date()
 
   const balanceSheetResponse = await safeApiCall('balance-sheet', () =>
