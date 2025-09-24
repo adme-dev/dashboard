@@ -141,6 +141,7 @@ async function selectTenant(tenantId: string) {
             :label="connectLabel"
             color="primary"
             :loading="connectState.status === 'loading'"
+            type="button"
             @click="connectXero"
           />
           <UButton v-if="xeroStatus?.connected" label="Refresh orgs" color="neutral" variant="outline" @click="loadTenants" />
