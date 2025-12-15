@@ -26,7 +26,7 @@ const form = ref({
 const error = ref('')
 
 // Pre-fill email from invitation
-watch(invitation, (inv) => {
+watch(invitation, (inv: any) => {
   if (inv?.email) {
     form.value.email = inv.email
   }
@@ -75,7 +75,7 @@ async function handleSubmit() {
       </h1>
       <p class="text-muted mt-2">
         {{ invitation
-          ? `You've been invited to join ${invitation.invitedByName}'s team`
+          ? `You've been invited to join ${(invitation as any).invitedByName}'s team`
           : 'Set up your account to get started'
         }}
       </p>
@@ -114,8 +114,8 @@ async function handleSubmit() {
           <div class="flex items-center gap-2">
             <UIcon name="i-lucide-mail-check" class="h-5 w-5 text-primary" />
             <div>
-              <p class="text-sm font-medium text-highlighted">Invited as {{ invitation.role }}</p>
-              <p class="text-xs text-muted">{{ invitation.email }}</p>
+              <p class="text-sm font-medium text-highlighted">Invited as {{ (invitation as any).role }}</p>
+              <p class="text-xs text-muted">{{ (invitation as any).email }}</p>
             </div>
           </div>
         </div>

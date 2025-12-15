@@ -127,7 +127,7 @@ const payableInsights = computed(() => {
   }
 })
 
-const topOutstandingClients = computed(() => financialInsights.value?.clients?.topOutstanding || [])
+const topOutstandingClients = computed(() => (financialInsights.value?.clients?.topOutstanding || []) as any[])
 
 // Chart data for the main forecast
 const forecastChartData = computed(() => ({
@@ -190,10 +190,10 @@ const breadcrumbs = computed(() => ([
 
         <template #right>
           <div class="flex gap-2">
-            <UButton 
-              :icon="statusConfig[cashflowStatus].icon" 
-              :color="statusConfig[cashflowStatus].color"
-              variant="subtle" 
+            <UButton
+              :icon="statusConfig[cashflowStatus]?.icon"
+              :color="statusConfig[cashflowStatus]?.color"
+              variant="subtle"
               :label="cashflowStatus.charAt(0).toUpperCase() + cashflowStatus.slice(1)"
               size="sm"
             />
