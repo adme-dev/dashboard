@@ -3,9 +3,13 @@ import type { NavigationMenuItem } from '@nuxt/ui'
 
 const links = [[{
   label: 'General',
-  icon: 'i-lucide-user',
+  icon: 'i-lucide-settings',
   to: '/settings',
   exact: true
+}, {
+  label: 'Profile',
+  icon: 'i-lucide-user',
+  to: '/settings/profile'
 }, {
   label: 'Members',
   icon: 'i-lucide-users',
@@ -18,6 +22,10 @@ const links = [[{
   label: 'Security',
   icon: 'i-lucide-shield',
   to: '/settings/security'
+}, {
+  label: 'Admin',
+  icon: 'i-lucide-wrench',
+  to: '/settings/admin'
 }], [{
   label: 'Documentation',
   icon: 'i-lucide-book-open',

@@ -96,6 +96,16 @@ export async function queryCount(
 }
 
 /**
+ * Execute a query without returning rows (for INSERT/UPDATE/DELETE)
+ */
+export async function execute(
+  text: string,
+  params?: any[]
+): Promise<void> {
+  await query(text, params)
+}
+
+/**
  * Execute multiple queries in a transaction
  */
 export async function transaction<T>(

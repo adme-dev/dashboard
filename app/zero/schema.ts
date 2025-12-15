@@ -14,7 +14,7 @@ import {
 } from '@rocicorp/zero'
 
 // ============================================
-// Table Definitions
+// Original Agency Tables
 // ============================================
 
 const chartOfAccountsSchema = {
@@ -60,6 +60,7 @@ const teamMembersSchema = {
     name: { type: 'string' },
     email: { type: 'string' },
     role: { type: 'string', optional: true },
+    departmentId: { type: 'string', optional: true },
     defaultHourlyRate: { type: 'number', optional: true },
     targetUtilization: { type: 'number' },
     isActive: { type: 'boolean' },
@@ -263,12 +264,418 @@ const retainerPeriodsSchema = {
 } as const satisfies TableSchema
 
 // ============================================
+// Workflow Management Tables (Monday.com style)
+// ============================================
+
+const departmentsSchema = {
+  tableName: 'departments',
+  columns: {
+    id: { type: 'string' },
+    name: { type: 'string' },
+    slug: { type: 'string' },
+    description: { type: 'string', optional: true },
+    color: { type: 'string' },
+    icon: { type: 'string', optional: true },
+    managerId: { type: 'string', optional: true },
+    isActive: { type: 'boolean' },
+    sortOrder: { type: 'number' },
+    createdAt: { type: 'number' },
+    updatedAt: { type: 'number' },
+  },
+  primaryKey: 'id',
+  relationships: {
+    manager: {
+      sourceField: 'managerId',
+      destSchema: () => teamMembersSchema,
+      destField: 'id',
+    },
+  },
+} as const satisfies TableSchema
+
+const departmentMembersSchema = {
+  tableName: 'department_members',
+  columns: {
+    id: { type: 'string' },
+    departmentId: { type: 'string' },
+    teamMemberId: { type: 'string' },
+    role: { type: 'string' },
+    isPrimary: { type: 'boolean' },
+    createdAt: { type: 'number' },
+  },
+  primaryKey: 'id',
+  relationships: {
+    department: {
+      sourceField: 'departmentId',
+      destSchema: () => departmentsSchema,
+      destField: 'id',
+    },
+    teamMember: {
+      sourceField: 'teamMemberId',
+      destSchema: () => teamMembersSchema,
+      destField: 'id',
+    },
+  },
+} as const satisfies TableSchema
+
+const taskStatusesSchema = {
+  tableName: 'task_statuses',
+  columns: {
+    id: { type: 'string' },
+    departmentId: { type: 'string', optional: true },
+    name: { type: 'string' },
+    slug: { type: 'string' },
+    color: { type: 'string' },
+    icon: { type: 'string', optional: true },
+    category: { type: 'string' },
+    isDefault: { type: 'boolean' },
+    isFinal: { type: 'boolean' },
+    sortOrder: { type: 'number' },
+    createdAt: { type: 'number' },
+  },
+  primaryKey: 'id',
+  relationships: {
+    department: {
+      sourceField: 'departmentId',
+      destSchema: () => departmentsSchema,
+      destField: 'id',
+    },
+  },
+} as const satisfies TableSchema
+
+const tasksSchema = {
+  tableName: 'tasks',
+  columns: {
+    id: { type: 'string' },
+    projectId: { type: 'string', optional: true },
+    departmentId: { type: 'string' },
+    parentTaskId: { type: 'string', optional: true },
+    statusId: { type: 'string' },
+    title: { type: 'string' },
+    description: { type: 'string', optional: true },
+    priority: { type: 'string' },
+    taskType: { type: 'string' },
+    assigneeId: { type: 'string', optional: true },
+    reporterId: { type: 'string', optional: true },
+    dueDate: { type: 'string', optional: true },
+    startDate: { type: 'string', optional: true },
+    estimatedHours: { type: 'number', optional: true },
+    actualHours: { type: 'number', optional: true },
+    sortOrder: { type: 'number' },
+    isBlocked: { type: 'boolean' },
+    blockedReason: { type: 'string', optional: true },
+    completedAt: { type: 'number', optional: true },
+    createdAt: { type: 'number' },
+    updatedAt: { type: 'number' },
+  },
+  primaryKey: 'id',
+  relationships: {
+    project: {
+      sourceField: 'projectId',
+      destSchema: () => projectsSchema,
+      destField: 'id',
+    },
+    department: {
+      sourceField: 'departmentId',
+      destSchema: () => departmentsSchema,
+      destField: 'id',
+    },
+    parentTask: {
+      sourceField: 'parentTaskId',
+      destSchema: () => tasksSchema,
+      destField: 'id',
+    },
+    status: {
+      sourceField: 'statusId',
+      destSchema: () => taskStatusesSchema,
+      destField: 'id',
+    },
+    assignee: {
+      sourceField: 'assigneeId',
+      destSchema: () => teamMembersSchema,
+      destField: 'id',
+    },
+    reporter: {
+      sourceField: 'reporterId',
+      destSchema: () => teamMembersSchema,
+      destField: 'id',
+    },
+  },
+} as const satisfies TableSchema
+
+const taskAssigneesSchema = {
+  tableName: 'task_assignees',
+  columns: {
+    id: { type: 'string' },
+    taskId: { type: 'string' },
+    teamMemberId: { type: 'string' },
+    role: { type: 'string' },
+    createdAt: { type: 'number' },
+  },
+  primaryKey: 'id',
+  relationships: {
+    task: {
+      sourceField: 'taskId',
+      destSchema: () => tasksSchema,
+      destField: 'id',
+    },
+    teamMember: {
+      sourceField: 'teamMemberId',
+      destSchema: () => teamMembersSchema,
+      destField: 'id',
+    },
+  },
+} as const satisfies TableSchema
+
+const taskLabelsSchema = {
+  tableName: 'task_labels',
+  columns: {
+    id: { type: 'string' },
+    name: { type: 'string' },
+    color: { type: 'string' },
+    departmentId: { type: 'string', optional: true },
+    createdAt: { type: 'number' },
+  },
+  primaryKey: 'id',
+  relationships: {
+    department: {
+      sourceField: 'departmentId',
+      destSchema: () => departmentsSchema,
+      destField: 'id',
+    },
+  },
+} as const satisfies TableSchema
+
+const taskLabelAssignmentsSchema = {
+  tableName: 'task_label_assignments',
+  columns: {
+    taskId: { type: 'string' },
+    labelId: { type: 'string' },
+    createdAt: { type: 'number' },
+  },
+  primaryKey: ['taskId', 'labelId'],
+  relationships: {
+    task: {
+      sourceField: 'taskId',
+      destSchema: () => tasksSchema,
+      destField: 'id',
+    },
+    label: {
+      sourceField: 'labelId',
+      destSchema: () => taskLabelsSchema,
+      destField: 'id',
+    },
+  },
+} as const satisfies TableSchema
+
+const taskDependenciesSchema = {
+  tableName: 'task_dependencies',
+  columns: {
+    id: { type: 'string' },
+    taskId: { type: 'string' },
+    dependsOnTaskId: { type: 'string' },
+    dependencyType: { type: 'string' },
+    createdAt: { type: 'number' },
+  },
+  primaryKey: 'id',
+  relationships: {
+    task: {
+      sourceField: 'taskId',
+      destSchema: () => tasksSchema,
+      destField: 'id',
+    },
+    dependsOnTask: {
+      sourceField: 'dependsOnTaskId',
+      destSchema: () => tasksSchema,
+      destField: 'id',
+    },
+  },
+} as const satisfies TableSchema
+
+const taskActivitiesSchema = {
+  tableName: 'task_activities',
+  columns: {
+    id: { type: 'string' },
+    taskId: { type: 'string' },
+    userId: { type: 'string', optional: true },
+    activityType: { type: 'string' },
+    oldValue: { type: 'json', optional: true },
+    newValue: { type: 'json', optional: true },
+    content: { type: 'string', optional: true },
+    isInternal: { type: 'boolean' },
+    createdAt: { type: 'number' },
+  },
+  primaryKey: 'id',
+  relationships: {
+    task: {
+      sourceField: 'taskId',
+      destSchema: () => tasksSchema,
+      destField: 'id',
+    },
+    user: {
+      sourceField: 'userId',
+      destSchema: () => teamMembersSchema,
+      destField: 'id',
+    },
+  },
+} as const satisfies TableSchema
+
+const taskAttachmentsSchema = {
+  tableName: 'task_attachments',
+  columns: {
+    id: { type: 'string' },
+    taskId: { type: 'string' },
+    uploadedBy: { type: 'string', optional: true },
+    fileName: { type: 'string' },
+    fileUrl: { type: 'string' },
+    fileType: { type: 'string', optional: true },
+    fileSize: { type: 'number', optional: true },
+    thumbnailUrl: { type: 'string', optional: true },
+    createdAt: { type: 'number' },
+  },
+  primaryKey: 'id',
+  relationships: {
+    task: {
+      sourceField: 'taskId',
+      destSchema: () => tasksSchema,
+      destField: 'id',
+    },
+    uploader: {
+      sourceField: 'uploadedBy',
+      destSchema: () => teamMembersSchema,
+      destField: 'id',
+    },
+  },
+} as const satisfies TableSchema
+
+// ============================================
+// Approval Workflow Tables
+// ============================================
+
+const approvalWorkflowsSchema = {
+  tableName: 'approval_workflows',
+  columns: {
+    id: { type: 'string' },
+    name: { type: 'string' },
+    description: { type: 'string', optional: true },
+    departmentId: { type: 'string', optional: true },
+    isActive: { type: 'boolean' },
+    isDefault: { type: 'boolean' },
+    createdAt: { type: 'number' },
+    updatedAt: { type: 'number' },
+  },
+  primaryKey: 'id',
+  relationships: {
+    department: {
+      sourceField: 'departmentId',
+      destSchema: () => departmentsSchema,
+      destField: 'id',
+    },
+  },
+} as const satisfies TableSchema
+
+const approvalWorkflowStepsSchema = {
+  tableName: 'approval_workflow_steps',
+  columns: {
+    id: { type: 'string' },
+    workflowId: { type: 'string' },
+    stepOrder: { type: 'number' },
+    name: { type: 'string' },
+    description: { type: 'string', optional: true },
+    approverType: { type: 'string' },
+    approverId: { type: 'string', optional: true },
+    approverRole: { type: 'string', optional: true },
+    requiredApprovals: { type: 'number' },
+    canSkip: { type: 'boolean' },
+    autoApproveAfterHours: { type: 'number', optional: true },
+    createdAt: { type: 'number' },
+  },
+  primaryKey: 'id',
+  relationships: {
+    workflow: {
+      sourceField: 'workflowId',
+      destSchema: () => approvalWorkflowsSchema,
+      destField: 'id',
+    },
+    approver: {
+      sourceField: 'approverId',
+      destSchema: () => teamMembersSchema,
+      destField: 'id',
+    },
+  },
+} as const satisfies TableSchema
+
+const taskApprovalsSchema = {
+  tableName: 'task_approvals',
+  columns: {
+    id: { type: 'string' },
+    taskId: { type: 'string' },
+    workflowId: { type: 'string' },
+    currentStepId: { type: 'string', optional: true },
+    status: { type: 'string' },
+    startedAt: { type: 'number' },
+    completedAt: { type: 'number', optional: true },
+    createdAt: { type: 'number' },
+  },
+  primaryKey: 'id',
+  relationships: {
+    task: {
+      sourceField: 'taskId',
+      destSchema: () => tasksSchema,
+      destField: 'id',
+    },
+    workflow: {
+      sourceField: 'workflowId',
+      destSchema: () => approvalWorkflowsSchema,
+      destField: 'id',
+    },
+    currentStep: {
+      sourceField: 'currentStepId',
+      destSchema: () => approvalWorkflowStepsSchema,
+      destField: 'id',
+    },
+  },
+} as const satisfies TableSchema
+
+const taskApprovalResponsesSchema = {
+  tableName: 'task_approval_responses',
+  columns: {
+    id: { type: 'string' },
+    taskApprovalId: { type: 'string' },
+    workflowStepId: { type: 'string' },
+    respondedBy: { type: 'string', optional: true },
+    response: { type: 'string', optional: true },
+    comments: { type: 'string', optional: true },
+    respondedAt: { type: 'number', optional: true },
+    createdAt: { type: 'number' },
+  },
+  primaryKey: 'id',
+  relationships: {
+    taskApproval: {
+      sourceField: 'taskApprovalId',
+      destSchema: () => taskApprovalsSchema,
+      destField: 'id',
+    },
+    workflowStep: {
+      sourceField: 'workflowStepId',
+      destSchema: () => approvalWorkflowStepsSchema,
+      destField: 'id',
+    },
+    responder: {
+      sourceField: 'respondedBy',
+      destSchema: () => teamMembersSchema,
+      destField: 'id',
+    },
+  },
+} as const satisfies TableSchema
+
+// ============================================
 // Create Schema
 // ============================================
 
 export const schema = createSchema({
-  version: 1,
+  version: 2, // Bumped version for workflow tables
   tables: {
+    // Original agency tables
     chartOfAccounts: chartOfAccountsSchema,
     agencyClients: agencyClientsSchema,
     teamMembers: teamMembersSchema,
@@ -278,6 +685,22 @@ export const schema = createSchema({
     mediaSpend: mediaSpendSchema,
     agencyInvoices: agencyInvoicesSchema,
     retainerPeriods: retainerPeriodsSchema,
+    // Workflow tables
+    departments: departmentsSchema,
+    departmentMembers: departmentMembersSchema,
+    taskStatuses: taskStatusesSchema,
+    tasks: tasksSchema,
+    taskAssignees: taskAssigneesSchema,
+    taskLabels: taskLabelsSchema,
+    taskLabelAssignments: taskLabelAssignmentsSchema,
+    taskDependencies: taskDependenciesSchema,
+    taskActivities: taskActivitiesSchema,
+    taskAttachments: taskAttachmentsSchema,
+    // Approval workflow tables
+    approvalWorkflows: approvalWorkflowsSchema,
+    approvalWorkflowSteps: approvalWorkflowStepsSchema,
+    taskApprovals: taskApprovalsSchema,
+    taskApprovalResponses: taskApprovalResponsesSchema,
   },
 })
 
@@ -297,6 +720,7 @@ export const permissions = definePermissions<AuthData, typeof schema>(
     // For development/MVP: allow all operations for authenticated users
     // In production, add row-level permissions based on user roles
     return {
+      // Original agency tables
       chartOfAccounts: {
         row: {
           select: ANYONE_CAN,
@@ -304,7 +728,7 @@ export const permissions = definePermissions<AuthData, typeof schema>(
           update: {
             preMutation: ANYONE_CAN,
           },
-          delete: NOBODY_CAN, // protect COA from deletion
+          delete: NOBODY_CAN,
         },
       },
       agencyClients: {
@@ -314,7 +738,7 @@ export const permissions = definePermissions<AuthData, typeof schema>(
           update: {
             preMutation: ANYONE_CAN,
           },
-          delete: NOBODY_CAN, // soft delete instead
+          delete: NOBODY_CAN,
         },
       },
       teamMembers: {
@@ -344,7 +768,7 @@ export const permissions = definePermissions<AuthData, typeof schema>(
           update: {
             preMutation: ANYONE_CAN,
           },
-          delete: ANYONE_CAN, // allow deletion of time entries
+          delete: ANYONE_CAN,
         },
       },
       projectExpenses: {
@@ -374,10 +798,152 @@ export const permissions = definePermissions<AuthData, typeof schema>(
           update: {
             preMutation: ANYONE_CAN,
           },
-          delete: NOBODY_CAN, // invoices should be voided, not deleted
+          delete: NOBODY_CAN,
         },
       },
       retainerPeriods: {
+        row: {
+          select: ANYONE_CAN,
+          insert: ANYONE_CAN,
+          update: {
+            preMutation: ANYONE_CAN,
+          },
+          delete: NOBODY_CAN,
+        },
+      },
+      // Workflow tables
+      departments: {
+        row: {
+          select: ANYONE_CAN,
+          insert: ANYONE_CAN,
+          update: {
+            preMutation: ANYONE_CAN,
+          },
+          delete: NOBODY_CAN,
+        },
+      },
+      departmentMembers: {
+        row: {
+          select: ANYONE_CAN,
+          insert: ANYONE_CAN,
+          update: {
+            preMutation: ANYONE_CAN,
+          },
+          delete: ANYONE_CAN,
+        },
+      },
+      taskStatuses: {
+        row: {
+          select: ANYONE_CAN,
+          insert: ANYONE_CAN,
+          update: {
+            preMutation: ANYONE_CAN,
+          },
+          delete: NOBODY_CAN,
+        },
+      },
+      tasks: {
+        row: {
+          select: ANYONE_CAN,
+          insert: ANYONE_CAN,
+          update: {
+            preMutation: ANYONE_CAN,
+          },
+          delete: ANYONE_CAN,
+        },
+      },
+      taskAssignees: {
+        row: {
+          select: ANYONE_CAN,
+          insert: ANYONE_CAN,
+          update: {
+            preMutation: ANYONE_CAN,
+          },
+          delete: ANYONE_CAN,
+        },
+      },
+      taskLabels: {
+        row: {
+          select: ANYONE_CAN,
+          insert: ANYONE_CAN,
+          update: {
+            preMutation: ANYONE_CAN,
+          },
+          delete: ANYONE_CAN,
+        },
+      },
+      taskLabelAssignments: {
+        row: {
+          select: ANYONE_CAN,
+          insert: ANYONE_CAN,
+          update: {
+            preMutation: ANYONE_CAN,
+          },
+          delete: ANYONE_CAN,
+        },
+      },
+      taskDependencies: {
+        row: {
+          select: ANYONE_CAN,
+          insert: ANYONE_CAN,
+          update: {
+            preMutation: ANYONE_CAN,
+          },
+          delete: ANYONE_CAN,
+        },
+      },
+      taskActivities: {
+        row: {
+          select: ANYONE_CAN,
+          insert: ANYONE_CAN,
+          update: {
+            preMutation: ANYONE_CAN,
+          },
+          delete: NOBODY_CAN, // Activities are audit log, don't delete
+        },
+      },
+      taskAttachments: {
+        row: {
+          select: ANYONE_CAN,
+          insert: ANYONE_CAN,
+          update: {
+            preMutation: ANYONE_CAN,
+          },
+          delete: ANYONE_CAN,
+        },
+      },
+      // Approval workflow tables
+      approvalWorkflows: {
+        row: {
+          select: ANYONE_CAN,
+          insert: ANYONE_CAN,
+          update: {
+            preMutation: ANYONE_CAN,
+          },
+          delete: NOBODY_CAN,
+        },
+      },
+      approvalWorkflowSteps: {
+        row: {
+          select: ANYONE_CAN,
+          insert: ANYONE_CAN,
+          update: {
+            preMutation: ANYONE_CAN,
+          },
+          delete: ANYONE_CAN,
+        },
+      },
+      taskApprovals: {
+        row: {
+          select: ANYONE_CAN,
+          insert: ANYONE_CAN,
+          update: {
+            preMutation: ANYONE_CAN,
+          },
+          delete: NOBODY_CAN,
+        },
+      },
+      taskApprovalResponses: {
         row: {
           select: ANYONE_CAN,
           insert: ANYONE_CAN,
@@ -402,3 +968,18 @@ export type ProjectExpense = typeof projectExpensesSchema
 export type MediaSpend = typeof mediaSpendSchema
 export type AgencyInvoice = typeof agencyInvoicesSchema
 export type RetainerPeriod = typeof retainerPeriodsSchema
+// Workflow types
+export type Department = typeof departmentsSchema
+export type DepartmentMember = typeof departmentMembersSchema
+export type TaskStatus = typeof taskStatusesSchema
+export type Task = typeof tasksSchema
+export type TaskAssignee = typeof taskAssigneesSchema
+export type TaskLabel = typeof taskLabelsSchema
+export type TaskLabelAssignment = typeof taskLabelAssignmentsSchema
+export type TaskDependency = typeof taskDependenciesSchema
+export type TaskActivity = typeof taskActivitiesSchema
+export type TaskAttachment = typeof taskAttachmentsSchema
+export type ApprovalWorkflow = typeof approvalWorkflowsSchema
+export type ApprovalWorkflowStep = typeof approvalWorkflowStepsSchema
+export type TaskApproval = typeof taskApprovalsSchema
+export type TaskApprovalResponse = typeof taskApprovalResponsesSchema

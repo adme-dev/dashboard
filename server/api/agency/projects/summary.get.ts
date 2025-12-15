@@ -3,7 +3,7 @@
  * Returns aggregated project statistics and top projects for dashboard
  */
 
-import { queryOne, queryRows } from '~/server/utils/db'
+import { queryOne, queryRows } from '~~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
   try {

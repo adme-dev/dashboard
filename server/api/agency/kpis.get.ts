@@ -3,7 +3,7 @@
  * Returns key performance indicators calculated from Postgres
  */
 
-import { queryOne, queryRows } from '~/server/utils/db'
+import { queryOne, queryRows } from '~~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
   const currentPeriod = new Date().toISOString().slice(0, 7) // YYYY-MM

@@ -3,7 +3,7 @@
  * Returns all clients with profitability summary from Postgres
  */
 
-import { db, queryRows } from '~/server/utils/db'
+import { db, queryRows } from '~~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)

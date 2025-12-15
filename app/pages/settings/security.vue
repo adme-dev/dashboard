@@ -2,6 +2,8 @@
 import * as z from 'zod'
 import type { FormError } from '@nuxt/ui'
 
+const toast = useToast()
+
 const passwordSchema = z.object({
   current: z.string().min(8, 'Must be at least 8 characters'),
   new: z.string().min(8, 'Must be at least 8 characters')
@@ -14,12 +16,51 @@ const password = reactive<Partial<PasswordSchema>>({
   new: undefined
 })
 
+const isSubmitting = ref(false)
+
 const validate = (state: Partial<PasswordSchema>): FormError[] => {
   const errors: FormError[] = []
   if (state.current && state.new && state.current === state.new) {
     errors.push({ name: 'new', message: 'Passwords must be different' })
   }
   return errors
+}
+
+async function changePassword() {
+  if (!password.current || !password.new) {
+    toast.add({
+      title: 'Please fill in both password fields',
+      color: 'error'
+    })
+    return
+  }
+
+  isSubmitting.value = true
+  try {
+    await $fetch('/api/auth/password', {
+      method: 'PUT',
+      body: {
+        currentPassword: password.current,
+        newPassword: password.new
+      }
+    })
+
+    toast.add({
+      title: 'Password changed successfully',
+      color: 'success'
+    })
+
+    // Clear form
+    password.current = undefined
+    password.new = undefined
+  } catch (error: any) {
+    toast.add({
+      title: error.data?.message || 'Failed to change password',
+      color: 'error'
+    })
+  } finally {
+    isSubmitting.value = false
+  }
 }
 </script>
 
@@ -53,7 +94,14 @@ const validate = (state: Partial<PasswordSchema>): FormError[] => {
         />
       </UFormField>
 
-      <UButton label="Update" class="w-fit" type="submit" />
+      <UButton
+        label="Update"
+        class="w-fit"
+        type="submit"
+        :loading="isSubmitting"
+        :disabled="isSubmitting"
+        @click="changePassword"
+      />
     </UForm>
   </UPageCard>
 

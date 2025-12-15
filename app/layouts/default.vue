@@ -117,8 +117,80 @@ const links = [[{
       open.value = false
     }
   }, {
+    label: 'Briefs',
+    to: '/agency/briefs',
+    onSelect: () => {
+      open.value = false
+    }
+  }, {
     label: 'Clients',
     to: '/agency/clients',
+    onSelect: () => {
+      open.value = false
+    }
+  }, {
+    label: 'Sales & Pricing',
+    to: '/agency/sales',
+    onSelect: () => {
+      open.value = false
+    }
+  }, {
+    label: 'Time Tracking',
+    to: '/agency/time',
+    onSelect: () => {
+      open.value = false
+    }
+  }, {
+    label: 'Profitability',
+    to: '/agency/profitability',
+    onSelect: () => {
+      open.value = false
+    }
+  }, {
+    label: 'Invoices',
+    to: '/agency/invoices',
+    onSelect: () => {
+      open.value = false
+    }
+  }, {
+    label: 'Capacity',
+    to: '/agency/capacity',
+    onSelect: () => {
+      open.value = false
+    }
+  }, {
+    label: 'Expenses',
+    to: '/agency/expenses',
+    onSelect: () => {
+      open.value = false
+    }
+  }, {
+    label: 'Budget Health',
+    to: '/agency/budget-health',
+    onSelect: () => {
+      open.value = false
+    }
+  }, {
+    label: 'Templates',
+    to: '/agency/templates',
+    onSelect: () => {
+      open.value = false
+    }
+  }, {
+    label: 'Client Portal',
+    to: '/agency/client-portal',
+    onSelect: () => {
+      open.value = false
+    }
+  }, {
+    label: 'Team',
+    to: '/agency/team',
+    onSelect: () => {
+      open.value = false
+    }
+  }, {
+    label: 'Retainers',
+    to: '/agency/retainers',
     onSelect: () => {
       open.value = false
     }

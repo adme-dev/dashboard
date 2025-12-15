@@ -3,7 +3,7 @@
  * Returns recent time entries for the dashboard
  */
 
-import { queryRows, queryOne } from '~/server/utils/db'
+import { queryRows, queryOne } from '~~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)

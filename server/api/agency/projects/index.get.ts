@@ -3,7 +3,7 @@
  * Returns all projects with profitability calculations from Postgres
  */
 
-import { queryRows } from '~/server/utils/db'
+import { queryRows } from '~~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
