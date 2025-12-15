@@ -11,11 +11,14 @@ const activeFilter = ref<'all' | 'active' | 'inactive'>('active')
 const searchQuery = ref('')
 
 // Fetch clients
-const { data: clients, pending, refresh } = await useFetch('/api/agency/clients', {
+const { data: clientsData, pending, refresh } = await useFetch('/api/agency/clients', {
   query: {
     active: computed(() => activeFilter.value === 'all' ? undefined : activeFilter.value === 'active')
   }
 })
+
+// Cast clients to proper type
+const clients = computed(() => (clientsData.value || []) as unknown as AgencyClient[])
 
 // Filter options
 const activeOptions = [
@@ -26,13 +29,14 @@ const activeOptions = [
 
 // Filtered clients
 const filteredClients = computed(() => {
-  if (!clients.value) return []
+  const clientsList = clients.value
+  if (!clientsList) return []
 
-  let result = clients.value
+  let result = clientsList
 
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
-    result = result.filter(c => c.name.toLowerCase().includes(query))
+    result = result.filter((c: AgencyClient) => c.name?.toLowerCase().includes(query))
   }
 
   return result
@@ -40,19 +44,20 @@ const filteredClients = computed(() => {
 
 // Summary stats
 const summary = computed(() => {
-  if (!clients.value) return { total: 0, active: 0, totalRevenue: 0, avgMargin: 0, totalMRR: 0 }
+  const clientsList = clients.value
+  if (!clientsList) return { total: 0, active: 0, totalRevenue: 0, avgMargin: 0, totalMRR: 0 }
 
-  const active = clients.value.filter(c => c.isActive)
-  const totalRevenue = clients.value.reduce((sum, c) => sum + (c.totalRevenue || 0), 0)
-  const avgMargin = clients.value.length > 0
-    ? clients.value.reduce((sum, c) => sum + (c.grossMargin || 0), 0) / clients.value.length
+  const active = clientsList.filter((c: AgencyClient) => c.isActive)
+  const totalRevenue = clientsList.reduce((sum: number, c: AgencyClient) => sum + (c.totalRevenue || 0), 0)
+  const avgMargin = clientsList.length > 0
+    ? clientsList.reduce((sum: number, c: AgencyClient) => sum + (c.grossMargin || 0), 0) / clientsList.length
     : 0
   const totalMRR = active
-    .filter(c => c.retainerAmount)
-    .reduce((sum, c) => sum + (c.retainerAmount || 0), 0)
+    .filter((c: AgencyClient) => c.retainerAmount)
+    .reduce((sum: number, c: AgencyClient) => sum + (c.retainerAmount || 0), 0)
 
   return {
-    total: clients.value.length,
+    total: clientsList.length,
     active: active.length,
     totalRevenue,
     avgMargin,
@@ -72,12 +77,12 @@ const formatCurrency = (value: number) => {
 const formatPercent = (value: number) => `${value.toFixed(1)}%`
 
 // Billing type badge
-const getBillingTypeColor = (type: BillingType) => {
+const getBillingTypeColor = (type: BillingType): 'secondary' | 'info' | 'success' | 'warning' | 'neutral' => {
   switch (type) {
-    case 'retainer': return 'violet'
-    case 'project': return 'blue'
-    case 'hybrid': return 'emerald'
-    case 'commission': return 'amber'
+    case 'retainer': return 'secondary'
+    case 'project': return 'info'
+    case 'hybrid': return 'success'
+    case 'commission': return 'warning'
     default: return 'neutral'
   }
 }
@@ -94,14 +99,14 @@ const getBillingTypeLabel = (type: BillingType) => {
 
 // Table columns
 const columns = [
-  { key: 'name', label: 'Client', sortable: true },
-  { key: 'billingType', label: 'Billing Type' },
-  { key: 'retainerAmount', label: 'Retainer' },
-  { key: 'totalRevenue', label: 'Total Revenue', sortable: true },
-  { key: 'grossMargin', label: 'Margin', sortable: true },
-  { key: 'activeProjects', label: 'Projects' },
-  { key: 'status', label: 'Status' },
-  { key: 'actions', label: '' }
+  { accessorKey: 'name', header: 'Client', enableSorting: true },
+  { accessorKey: 'billingType', header: 'Billing Type' },
+  { accessorKey: 'retainerAmount', header: 'Retainer' },
+  { accessorKey: 'totalRevenue', header: 'Total Revenue', enableSorting: true },
+  { accessorKey: 'grossMargin', header: 'Margin', enableSorting: true },
+  { accessorKey: 'activeProjects', header: 'Projects' },
+  { accessorKey: 'status', header: 'Status' },
+  { accessorKey: 'actions', header: '' }
 ]
 
 // Actions
@@ -208,75 +213,74 @@ const showNewClientModal = ref(false)
         <UCard>
           <UTable
             :columns="columns"
-            :rows="filteredClients"
+            :data="filteredClients"
             :loading="pending"
-            :empty-state="{ icon: 'i-lucide-users', label: 'No clients found' }"
           >
-            <template #name-data="{ row }">
+            <template #name-cell="{ row }">
               <div class="flex items-center gap-3">
                 <UAvatar
-                  :text="row.name.charAt(0)"
+                  :text="row.original.name?.charAt(0) || '?'"
                   size="sm"
                 />
                 <div>
                   <NuxtLink
-                    :to="`/agency/clients/${row.id}`"
+                    :to="`/agency/clients/${row.original.id}`"
                     class="font-medium hover:text-primary-500"
                   >
-                    {{ row.name }}
+                    {{ row.original.name }}
                   </NuxtLink>
                   <p class="text-xs text-gray-500">
-                    Since {{ format(new Date(row.createdAt), 'MMM yyyy') }}
+                    Since {{ format(new Date(row.original.createdAt), 'MMM yyyy') }}
                   </p>
                 </div>
               </div>
             </template>
 
-            <template #billingType-data="{ row }">
-              <UBadge :color="getBillingTypeColor(row.billingType)" variant="subtle">
-                {{ getBillingTypeLabel(row.billingType) }}
+            <template #billingType-cell="{ row }">
+              <UBadge :color="getBillingTypeColor(row.original.billingType)" variant="subtle">
+                {{ getBillingTypeLabel(row.original.billingType) }}
               </UBadge>
             </template>
 
-            <template #retainerAmount-data="{ row }">
-              <span v-if="row.retainerAmount">
-                {{ formatCurrency(row.retainerAmount) }}/mo
+            <template #retainerAmount-cell="{ row }">
+              <span v-if="row.original.retainerAmount">
+                {{ formatCurrency(row.original.retainerAmount) }}/mo
               </span>
               <span v-else class="text-gray-400">-</span>
             </template>
 
-            <template #totalRevenue-data="{ row }">
-              {{ formatCurrency(row.totalRevenue || 0) }}
+            <template #totalRevenue-cell="{ row }">
+              {{ formatCurrency(row.original.totalRevenue || 0) }}
             </template>
 
-            <template #grossMargin-data="{ row }">
+            <template #grossMargin-cell="{ row }">
               <UBadge
-                v-if="row.grossMargin"
-                :color="row.grossMargin >= 30 ? 'success' : row.grossMargin >= 15 ? 'warning' : 'error'"
+                v-if="row.original.grossMargin"
+                :color="row.original.grossMargin >= 30 ? 'success' : row.original.grossMargin >= 15 ? 'warning' : 'error'"
               >
-                {{ formatPercent(row.grossMargin) }}
+                {{ formatPercent(row.original.grossMargin) }}
               </UBadge>
               <span v-else class="text-gray-400">-</span>
             </template>
 
-            <template #activeProjects-data="{ row }">
+            <template #activeProjects-cell="{ row }">
               <div class="flex items-center gap-1">
-                <span class="font-medium">{{ row.activeProjects || 0 }}</span>
-                <span class="text-gray-400">/ {{ row.projectCount || 0 }}</span>
+                <span class="font-medium">{{ row.original.activeProjects || 0 }}</span>
+                <span class="text-gray-400">/ {{ row.original.projectCount || 0 }}</span>
               </div>
             </template>
 
-            <template #status-data="{ row }">
+            <template #status-cell="{ row }">
               <UBadge
-                :color="row.isActive ? 'success' : 'neutral'"
+                :color="row.original.isActive ? 'success' : 'neutral'"
                 variant="subtle"
               >
-                {{ row.isActive ? 'Active' : 'Inactive' }}
+                {{ row.original.isActive ? 'Active' : 'Inactive' }}
               </UBadge>
             </template>
 
-            <template #actions-data="{ row }">
-              <UDropdown :items="getActions(row)">
+            <template #actions-cell="{ row }">
+              <UDropdown :items="getActions(row.original)">
                 <UButton
                   color="neutral"
                   variant="ghost"

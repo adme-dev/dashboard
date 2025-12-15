@@ -33,11 +33,12 @@ const { data: membersData } = await useFetch('/api/agency/departments/members', 
 })
 
 const members = computed(() => {
-  const data = membersData.value as any[]
-  return data?.map(m => ({
+  const response = membersData.value as { members?: any[] } | null
+  const data = response?.members || []
+  return data.map(m => ({
     label: m.name,
     value: m.id
-  })) || []
+  }))
 })
 
 // Fetch projects
@@ -46,11 +47,12 @@ const { data: projectsData } = await useFetch('/api/agency/projects', {
 })
 
 const projects = computed(() => {
-  const data = projectsData.value?.projects as any[]
-  return data?.map(p => ({
+  const response = projectsData.value as { projects?: any[] } | null
+  const data = response?.projects || []
+  return data.map(p => ({
     label: `${p.clientName ? p.clientName + ' / ' : ''}${p.name}`,
     value: p.id
-  })) || []
+  }))
 })
 
 // Form state
@@ -119,7 +121,7 @@ const handleSubmit = async () => {
       departmentId: props.departmentId
     }
 
-    emit('submit', payload)
+    emit('submit', payload as unknown as Partial<Task>)
   } catch (error) {
     console.error('Failed to save task:', error)
   } finally {
@@ -131,7 +133,9 @@ const handleSubmit = async () => {
 watch(statuses, (newStatuses) => {
   if (!form.statusId && newStatuses.length > 0) {
     const defaultStatus = newStatuses.find(s => s.isDefault) || newStatuses[0]
-    form.statusId = defaultStatus.id
+    if (defaultStatus) {
+      form.statusId = defaultStatus.id
+    }
   }
 }, { immediate: true })
 </script>
@@ -202,17 +206,10 @@ watch(statuses, (newStatuses) => {
     <UFormGroup label="Type">
       <URadioGroup
         v-model="form.taskType"
-        :options="taskTypeOptions"
+        :items="taskTypeOptions"
         :disabled="loading"
         :ui="{ fieldset: 'grid grid-cols-3 gap-2' }"
-      >
-        <template #label="{ option }">
-          <div class="flex items-center gap-2">
-            <UIcon :name="option.icon" class="h-4 w-4" />
-            <span>{{ option.label }}</span>
-          </div>
-        </template>
-      </URadioGroup>
+      />
     </UFormGroup>
 
     <!-- Assignee & Project -->
@@ -287,39 +284,12 @@ watch(statuses, (newStatuses) => {
     <UFormGroup label="Labels">
       <USelectMenu
         v-model="form.labelIds"
-        :options="labels.map(l => ({ label: l.name, value: l.id, color: l.color }))"
+        :items="labels.map(l => ({ label: l.name, value: l.id, color: l.color }))"
         placeholder="Select labels"
-        option-attribute="label"
-        value-attribute="value"
+        value-key="value"
         multiple
         :disabled="loading"
-      >
-        <template #label>
-          <div v-if="form.labelIds.length" class="flex flex-wrap gap-1">
-            <span
-              v-for="labelId in form.labelIds"
-              :key="labelId"
-              class="px-2 py-0.5 text-xs rounded-full"
-              :style="{
-                backgroundColor: `${labels.find(l => l.id === labelId)?.color}20`,
-                color: labels.find(l => l.id === labelId)?.color
-              }"
-            >
-              {{ labels.find(l => l.id === labelId)?.name }}
-            </span>
-          </div>
-          <span v-else class="text-muted">Select labels</span>
-        </template>
-        <template #option="{ option }">
-          <div class="flex items-center gap-2">
-            <div
-              class="w-3 h-3 rounded-full"
-              :style="{ backgroundColor: option.color }"
-            />
-            <span>{{ option.label }}</span>
-          </div>
-        </template>
-      </USelectMenu>
+      />
     </UFormGroup>
 
     <!-- Actions -->

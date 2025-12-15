@@ -115,13 +115,13 @@ const formatStatus = (status: string) => {
 
 // Table columns
 const columns = [
-  { key: 'reference', label: 'Reference', sortable: true },
-  { key: 'title', label: 'Title', sortable: true },
-  { key: 'templateName', label: 'Type', sortable: true },
-  { key: 'priority', label: 'Priority', sortable: true },
-  { key: 'status', label: 'Status', sortable: true },
-  { key: 'submittedAt', label: 'Submitted', sortable: true },
-  { key: 'actions', label: '' }
+  { accessorKey: 'reference', header: 'Reference', enableSorting: true },
+  { accessorKey: 'title', header: 'Title', enableSorting: true },
+  { accessorKey: 'templateName', header: 'Type', enableSorting: true },
+  { accessorKey: 'priority', header: 'Priority', enableSorting: true },
+  { accessorKey: 'status', header: 'Status', enableSorting: true },
+  { accessorKey: 'submittedAt', header: 'Submitted', enableSorting: true },
+  { accessorKey: 'actions', header: '' }
 ]
 
 // Actions dropdown items
@@ -216,59 +216,58 @@ const getActions = (brief: any) => [
         <UCard>
           <UTable
             :columns="columns"
-            :rows="filteredBriefs"
+            :data="filteredBriefs"
             :loading="pending"
-            :empty-state="{ icon: 'i-lucide-file-text', label: 'No briefs found' }"
           >
-            <template #reference-data="{ row }">
+            <template #reference-cell="{ row }">
               <NuxtLink
-                :to="`/agency/briefs/${row.id}`"
+                :to="`/agency/briefs/${(row.original as any).id}`"
                 class="font-mono text-sm font-medium hover:text-primary"
               >
-                {{ row.referenceNumber }}
+                {{ (row.original as any).referenceNumber }}
               </NuxtLink>
             </template>
 
-            <template #title-data="{ row }">
+            <template #title-cell="{ row }">
               <NuxtLink
-                :to="`/agency/briefs/${row.id}`"
+                :to="`/agency/briefs/${(row.original as any).id}`"
                 class="font-medium hover:text-primary"
               >
-                {{ row.title }}
+                {{ (row.original as any).title }}
               </NuxtLink>
-              <p v-if="row.submittedByName" class="text-xs text-muted">
-                by {{ row.submittedByName }}
+              <p v-if="(row.original as any).submittedByName" class="text-xs text-muted">
+                by {{ (row.original as any).submittedByName }}
               </p>
             </template>
 
-            <template #templateName-data="{ row }">
+            <template #templateName-cell="{ row }">
               <div class="flex items-center gap-2">
-                <UIcon v-if="row.templateIcon" :name="row.templateIcon" class="size-4 text-muted" />
-                <span>{{ row.templateName }}</span>
+                <UIcon v-if="(row.original as any).templateIcon" :name="(row.original as any).templateIcon" class="size-4 text-muted" />
+                <span>{{ (row.original as any).templateName }}</span>
               </div>
             </template>
 
-            <template #priority-data="{ row }">
-              <UBadge :color="getPriorityColor(row.priority)" variant="subtle" size="xs">
-                {{ row.priority }}
+            <template #priority-cell="{ row }">
+              <UBadge :color="getPriorityColor((row.original as any).priority)" variant="subtle" size="xs">
+                {{ (row.original as any).priority }}
               </UBadge>
             </template>
 
-            <template #status-data="{ row }">
-              <UBadge :color="getStatusColor(row.status)" variant="subtle">
-                {{ formatStatus(row.status) }}
+            <template #status-cell="{ row }">
+              <UBadge :color="getStatusColor((row.original as any).status)" variant="subtle">
+                {{ formatStatus((row.original as any).status) }}
               </UBadge>
             </template>
 
-            <template #submittedAt-data="{ row }">
-              <span v-if="row.submittedAt" class="text-sm">
-                {{ format(new Date(row.submittedAt), 'MMM d, yyyy') }}
+            <template #submittedAt-cell="{ row }">
+              <span v-if="(row.original as any).submittedAt" class="text-sm">
+                {{ format(new Date((row.original as any).submittedAt), 'MMM d, yyyy') }}
               </span>
               <span v-else class="text-sm text-muted">Draft</span>
             </template>
 
-            <template #actions-data="{ row }">
-              <UDropdown :items="getActions(row)">
+            <template #actions-cell="{ row }">
+              <UDropdown :items="getActions(row.original)">
                 <UButton
                   color="neutral"
                   variant="ghost"

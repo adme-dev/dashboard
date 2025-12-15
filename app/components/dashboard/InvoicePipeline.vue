@@ -221,7 +221,7 @@ const stageWidths = computed(() => {
             v-for="bottleneck in data.bottlenecks"
             :key="bottleneck.stage"
             icon="i-lucide-alert-triangle"
-            color="amber"
+            color="warning"
             variant="subtle"
             :title="bottleneck.stage.charAt(0).toUpperCase() + bottleneck.stage.slice(1)"
             :description="bottleneck.issue"

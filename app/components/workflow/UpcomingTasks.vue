@@ -20,7 +20,42 @@ const { data: upcomingData, pending: loading, refresh } = await useFetch('/api/a
   }))
 })
 
-const upcoming = computed(() => upcomingData.value || { stats: {}, tasks: [], byDay: {} })
+interface UpcomingStats {
+  total: number
+  dueToday: number
+  dueThisWeek: number
+  totalUpcoming: number
+  dueTomorrow: number
+  highPriority: number
+  departmentsWithDeadlines: number
+}
+
+interface ByDay {
+  today: number
+  tomorrow: number
+  thisWeek: number
+}
+
+interface UpcomingTask {
+  id: string
+  title: string
+  priority: string
+  dueDate: string
+  startDate: string | null
+  daysUntilDue: number
+  estimatedHours: number | null
+  isBlocked: boolean
+  blockedReason: string | null
+  status: { name: string; color: string; category: string }
+  department: { id: string; name: string; color: string }
+  project: { name: string; clientName: string } | null
+  assignee: { id: string; name: string; email: string } | null
+}
+
+const upcoming = computed(() => {
+  const data = upcomingData.value as unknown as { stats?: UpcomingStats; tasks?: UpcomingTask[]; byDay?: ByDay } | null
+  return data || { stats: {} as UpcomingStats, tasks: [] as UpcomingTask[], byDay: {} as ByDay }
+})
 
 // Priority colors
 const getPriorityColor = (priority: string) => {
@@ -177,7 +212,7 @@ defineExpose({ refresh })
       </div>
 
       <!-- View all link -->
-      <div v-if="upcoming.stats?.total > (limit || 20)" class="mt-4 text-center">
+      <div v-if="(upcoming.stats?.total ?? 0) > (limit || 20)" class="mt-4 text-center">
         <UButton
           label="View all upcoming tasks"
           color="neutral"

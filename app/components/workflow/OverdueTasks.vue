@@ -18,7 +18,39 @@ const { data: overdueData, pending: loading, refresh } = await useFetch('/api/ag
   }))
 })
 
-const overdue = computed(() => overdueData.value || { stats: {}, tasks: [], byDaysOverdue: {} })
+interface OverdueStats {
+  totalOverdue: number
+  urgentCount: number
+  highCount: number
+  overdueWeekPlus: number
+  departmentsAffected: number
+  assigneesAffected: number
+}
+
+interface ByDaysOverdue {
+  recent: number
+  critical: number
+  urgent: number
+}
+
+interface OverdueTask {
+  id: string
+  title: string
+  priority: string
+  dueDate: string
+  daysOverdue: number
+  isBlocked: boolean
+  blockedReason: string | null
+  status: { name: string; color: string }
+  department: { id: string; name: string; color: string }
+  project: { name: string; clientName: string } | null
+  assignee: { id: string; name: string; email: string } | null
+}
+
+const overdue = computed(() => {
+  const data = overdueData.value as { stats?: OverdueStats; tasks?: OverdueTask[]; byDaysOverdue?: ByDaysOverdue } | null
+  return data || { stats: {} as OverdueStats, tasks: [] as OverdueTask[], byDaysOverdue: {} as ByDaysOverdue }
+})
 
 // Priority badge colors
 const getPriorityColor = (priority: string) => {
@@ -158,7 +190,7 @@ defineExpose({ refresh })
       </div>
 
       <!-- View all link -->
-      <div v-if="overdue.stats?.totalOverdue > (limit || 20)" class="mt-4 text-center">
+      <div v-if="(overdue.stats?.totalOverdue ?? 0) > (limit || 20)" class="mt-4 text-center">
         <UButton
           label="View all overdue tasks"
           color="neutral"

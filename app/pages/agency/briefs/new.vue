@@ -18,7 +18,7 @@ const { data: categories, pending: categoriesLoading } = await useFetch('/api/ag
 
 // Fetch full template with fields when selected
 const { data: templateData, pending: templateLoading } = await useFetch(
-  () => selectedTemplate.value?.slug ? `/api/agency/briefs/templates/${selectedTemplate.value.slug}` : null,
+  () => selectedTemplate.value?.slug ? `/api/agency/briefs/templates/${selectedTemplate.value.slug}` as const : '/api/agency/briefs/templates' as const,
   {
     watch: [selectedTemplate],
     immediate: false
@@ -28,7 +28,8 @@ const { data: templateData, pending: templateLoading } = await useFetch(
 // Templates for selected category
 const categoryTemplates = computed(() => {
   if (!selectedCategory.value || !categories.value) return []
-  const category = categories.value.find((c: any) => c.id === selectedCategory.value?.id)
+  const categoriesList = categories.value as any[]
+  const category = categoriesList.find((c: any) => c.id === selectedCategory.value?.id)
   return category?.templates || []
 })
 
@@ -61,17 +62,18 @@ async function handleSubmit(values: Record<string, any>, isDraft: boolean) {
   isSubmitting.value = true
 
   try {
+    const templateDataValue = templateData.value as any
     const response = await $fetch('/api/agency/briefs', {
       method: 'POST',
       body: {
-        templateId: templateData.value.id,
-        title: values.project_name || values.title || `${templateData.value.name} - ${new Date().toLocaleDateString()}`,
+        templateId: templateDataValue.id,
+        title: values.project_name || values.title || `${templateDataValue.name} - ${new Date().toLocaleDateString()}`,
         description: values.description || values.project_description || '',
-        priority: values.priority || templateData.value.defaultPriority || 'normal',
+        priority: values.priority || templateDataValue.defaultPriority || 'normal',
         fieldValues: values,
         isDraft
       }
-    })
+    }) as any
 
     toast.add({
       title: isDraft ? 'Draft Saved' : 'Brief Submitted',
@@ -170,26 +172,26 @@ function getCategoryColorClass(category: any) {
 
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
             <UCard
-              v-for="category in categories"
-              :key="category.id"
+              v-for="category in (categories as any[])"
+              :key="(category as any).id"
               class="cursor-pointer hover:ring-2 hover:ring-primary transition-all"
-              @click="selectCategory(category)"
+              @click="selectCategory(category as any)"
             >
               <div class="flex flex-col items-center text-center p-4">
                 <div
                   class="w-16 h-16 rounded-full flex items-center justify-center mb-4"
-                  :class="getCategoryColorClass(category)"
+                  :class="getCategoryColorClass(category as any)"
                 >
-                  <UIcon :name="getCategoryIcon(category)" class="size-8" />
+                  <UIcon :name="getCategoryIcon(category as any)" class="size-8" />
                 </div>
                 <h3 class="text-lg font-semibold text-highlighted mb-2">
-                  {{ category.name }}
+                  {{ (category as any).name }}
                 </h3>
                 <p class="text-sm text-muted mb-4">
-                  {{ category.description }}
+                  {{ (category as any).description }}
                 </p>
                 <UBadge color="neutral" variant="subtle" size="xs">
-                  {{ category.templateCount || category.templates?.length || 0 }} templates
+                  {{ (category as any).templateCount || (category as any).templates?.length || 0 }} templates
                 </UBadge>
               </div>
             </UCard>

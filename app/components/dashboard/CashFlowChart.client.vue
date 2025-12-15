@@ -223,7 +223,7 @@ const insights = computed(() => {
           v-for="insight in insights"
           :key="insight.message"
           :icon="insight.icon"
-          :color="insight.type === 'critical' ? 'red' : 'amber'"
+          :color="insight.type === 'critical' ? 'error' : 'warning'"
           variant="subtle"
           :description="insight.message"
           class="text-sm"

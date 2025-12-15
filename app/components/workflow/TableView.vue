@@ -53,7 +53,10 @@ const { data: tagsData } = await useFetch('/api/agency/tags', {
 const tasks = computed(() => (tasksData.value?.tasks as Task[]) || [])
 const statuses = computed(() => (statusesData.value as TaskStatus[]) || [])
 const tags = computed(() => (tagsData.value as GlobalTag[]) || [])
-const canViewPricing = computed(() => pricingVisibility.value?.canViewPricing ?? false)
+const canViewPricing = computed(() => {
+  const data = pricingVisibility.value as { canViewPricing?: boolean; rules?: Record<string, unknown> } | null
+  return data?.canViewPricing ?? false
+})
 
 // Current sort state
 const currentSort = ref<SortRule[]>(props.sortConfig || [])
@@ -96,7 +99,7 @@ const groupedTasks = computed(() => {
     if (!groups[key]) {
       groups[key] = { key, label, tasks: [] }
     }
-    groups[key].tasks.push(task)
+    groups[key]!.tasks.push(task)
   }
 
   return Object.values(groups)
@@ -124,11 +127,11 @@ const columns = computed(() => {
   return cols
 })
 
-const priorityColors: Record<TaskPriority, string> = {
-  urgent: 'red',
-  high: 'orange',
-  medium: 'yellow',
-  low: 'green'
+const priorityColors: Record<TaskPriority, 'error' | 'warning' | 'info' | 'success' | 'neutral'> = {
+  urgent: 'error',
+  high: 'warning',
+  medium: 'info',
+  low: 'success'
 }
 
 function handleSort(column: string) {
@@ -136,11 +139,13 @@ function handleSort(column: string) {
 
   if (existingIndex >= 0) {
     const existing = currentSort.value[existingIndex]
-    if (existing.direction === 'asc') {
-      existing.direction = 'desc'
-    } else {
-      // Remove from sort
-      currentSort.value.splice(existingIndex, 1)
+    if (existing) {
+      if (existing.direction === 'asc') {
+        existing.direction = 'desc'
+      } else {
+        // Remove from sort
+        currentSort.value.splice(existingIndex, 1)
+      }
     }
   } else {
     // Add new sort column
@@ -242,7 +247,7 @@ defineExpose({ refreshTasks })
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-2">
                     <span class="font-medium">{{ task.title }}</span>
-                    <UBadge v-if="task.isBlocked" color="red" variant="subtle" size="xs">
+                    <UBadge v-if="task.isBlocked" color="error" variant="subtle" size="xs">
                       Blocked
                     </UBadge>
                   </div>

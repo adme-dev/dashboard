@@ -29,7 +29,7 @@ function formatPercent(value?: number) {
   return value.toLocaleString('en-US', { style: 'percent', maximumFractionDigits: 1 })
 }
 
-function formatDays(value?: number) {
+function formatDays(value?: number | null) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '-'
   return `${Math.round(value)} days`
 }
@@ -104,7 +104,7 @@ const workingCapitalMetrics = computed(() => {
 })
 
 const receivableInsights = computed(() => {
-  const data = financialInsights.value?.receivables
+  const data = financialInsights.value?.receivables as any
   if (!data) return null
 
   return {
@@ -116,7 +116,7 @@ const receivableInsights = computed(() => {
 })
 
 const payableInsights = computed(() => {
-  const data = financialInsights.value?.payables
+  const data = financialInsights.value?.payables as any
   if (!data) return null
 
   return {
@@ -145,12 +145,12 @@ const cashflowStatus = computed(() => {
   return 'healthy'
 })
 
-const statusConfig = {
-  healthy: { color: 'emerald', icon: 'i-lucide-trending-up' },
-  caution: { color: 'amber', icon: 'i-lucide-alert-triangle' },
-  warning: { color: 'orange', icon: 'i-lucide-alert-circle' },
-  critical: { color: 'red', icon: 'i-lucide-alert-octagon' },
-  unknown: { color: 'gray', icon: 'i-lucide-help-circle' }
+const statusConfig: Record<string, { color: 'success' | 'warning' | 'error' | 'neutral' | 'info', icon: string }> = {
+  healthy: { color: 'success', icon: 'i-lucide-trending-up' },
+  caution: { color: 'warning', icon: 'i-lucide-alert-triangle' },
+  warning: { color: 'warning', icon: 'i-lucide-alert-circle' },
+  critical: { color: 'error', icon: 'i-lucide-alert-octagon' },
+  unknown: { color: 'neutral', icon: 'i-lucide-help-circle' }
 }
 
 // Export modal state
@@ -222,7 +222,7 @@ const breadcrumbs = computed(() => ([
     <UAlert
       v-else-if="error"
       icon="i-lucide-alert-circle"
-      color="red"
+      color="error"
       variant="subtle"
       title="Failed to load cash flow data"
       :description="error.statusMessage || 'Please check your connection and try again.'"

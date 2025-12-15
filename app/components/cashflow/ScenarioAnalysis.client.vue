@@ -84,11 +84,11 @@ const likelyCaseColor = '#3b82f6' // blue-500
 const worstCaseColor = '#ef4444'  // red-500
 
 // Scenario configurations
-const scenarios = [
-  { key: 'all', label: 'All Scenarios', color: 'gray', icon: 'i-lucide-layers' },
-  { key: 'best', label: 'Best Case', color: 'emerald', icon: 'i-lucide-trending-up' },
-  { key: 'likely', label: 'Most Likely', color: 'blue', icon: 'i-lucide-target' },
-  { key: 'worst', label: 'Worst Case', color: 'red', icon: 'i-lucide-trending-down' }
+const scenarios: Array<{ key: string, label: string, color: 'neutral' | 'success' | 'info' | 'error', icon: string }> = [
+  { key: 'all', label: 'All Scenarios', color: 'neutral', icon: 'i-lucide-layers' },
+  { key: 'best', label: 'Best Case', color: 'success', icon: 'i-lucide-trending-up' },
+  { key: 'likely', label: 'Most Likely', color: 'info', icon: 'i-lucide-target' },
+  { key: 'worst', label: 'Worst Case', color: 'error', icon: 'i-lucide-trending-down' }
 ]
 
 // Calculate key metrics for each scenario
@@ -101,7 +101,7 @@ const scenarioMetrics = computed(() => {
       return chartData.value.map(item => item[accessor])
     }
 
-    const series = props.data.scenarios[key] || []
+    const series = props.data?.scenarios[key] || []
     return series.map(entry => toNumber((entry as any)[`${key}Case`] ?? entry.balance ?? 0))
   }
 
@@ -118,7 +118,7 @@ const scenarioMetrics = computed(() => {
       }
     }
 
-    const endBalance = values[values.length - 1]
+    const endBalance = values[values.length - 1] ?? 0
     const minBalance = Math.min(...values)
     const maxBalance = Math.max(...values)
     const shortfallDays = values.filter(v => v < 0).length
@@ -219,7 +219,7 @@ const yPosition = (value: number) => {
             :key="scenario.key"
             :label="scenario.label"
             :icon="scenario.icon"
-            :color="selectedScenario === scenario.key ? scenario.color : 'gray'"
+            :color="selectedScenario === scenario.key ? scenario.color : 'neutral'"
             :variant="selectedScenario === scenario.key ? 'solid' : 'ghost'"
             size="sm"
             @click="selectedScenario = scenario.key as any"

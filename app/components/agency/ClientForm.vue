@@ -119,16 +119,9 @@ const handleSubmit = async () => {
     <UFormGroup label="Billing Type" required>
       <URadioGroup
         v-model="form.billingType"
-        :options="billingTypeOptions"
+        :items="billingTypeOptions"
         :disabled="loading"
-      >
-        <template #label="{ option }">
-          <div>
-            <p class="font-medium">{{ option.label }}</p>
-            <p class="text-sm text-gray-500">{{ option.description }}</p>
-          </div>
-        </template>
-      </URadioGroup>
+      />
     </UFormGroup>
 
     <!-- Retainer Amount (conditional) -->

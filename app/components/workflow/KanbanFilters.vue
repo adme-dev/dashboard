@@ -19,12 +19,13 @@ const { data: membersData } = await useFetch('/api/agency/departments/members', 
 })
 
 const members = computed(() => {
-  const data = membersData.value as any[]
-  return data?.map(m => ({
+  const response = membersData.value as { members?: any[] } | undefined
+  const data = response?.members || []
+  return data.map(m => ({
     label: m.name,
     value: m.id,
     avatar: { alt: m.name }
-  })) || []
+  }))
 })
 
 // Fetch labels for label filter
@@ -49,11 +50,12 @@ const { data: projectsData } = await useFetch('/api/agency/projects', {
 })
 
 const projects = computed(() => {
-  const data = projectsData.value?.projects as any[]
-  return data?.map(p => ({
+  const response = projectsData.value as { projects?: any[] } | undefined
+  const data = response?.projects || []
+  return data.map(p => ({
     label: p.name,
     value: p.id
-  })) || []
+  }))
 })
 
 // Priority options
@@ -127,19 +129,7 @@ const clearFilters = () => {
       placeholder="Search tasks..."
       icon="i-lucide-search"
       class="w-64"
-      :ui="{ icon: { trailing: { pointer: '' } } }"
-    >
-      <template #trailing>
-        <UButton
-          v-if="localFilters.search"
-          icon="i-lucide-x"
-          color="neutral"
-          variant="link"
-          size="xs"
-          @click="localFilters.search = ''"
-        />
-      </template>
-    </UInput>
+    />
 
     <!-- Divider -->
     <div class="h-6 w-px bg-neutral-300 dark:bg-neutral-600" />
@@ -181,32 +171,12 @@ const clearFilters = () => {
     <!-- Labels Filter -->
     <USelectMenu
       v-model="localFilters.labels"
-      :options="labels"
+      :items="labels"
       placeholder="Labels"
-      option-attribute="label"
-      value-attribute="value"
       multiple
       class="w-36"
-    >
-      <template #leading>
-        <UIcon name="i-lucide-tag" class="h-4 w-4 text-muted" />
-      </template>
-      <template #label>
-        <span v-if="localFilters.labels?.length">
-          {{ localFilters.labels.length }} label{{ localFilters.labels.length > 1 ? 's' : '' }}
-        </span>
-        <span v-else class="text-muted">Labels</span>
-      </template>
-      <template #option="{ option }">
-        <div class="flex items-center gap-2">
-          <div
-            class="w-3 h-3 rounded-full"
-            :style="{ backgroundColor: option.color }"
-          />
-          <span>{{ option.label }}</span>
-        </div>
-      </template>
-    </USelectMenu>
+      value-key="value"
+    />
 
     <!-- Project Filter (optional) -->
     <USelectMenu

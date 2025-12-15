@@ -103,7 +103,7 @@ const saveProject = async () => {
   saving.value = true
   try {
     await $fetch(`/api/agency/projects/${projectId}`, {
-      method: 'PUT',
+      method: 'PUT' as const,
       body: editForm.value
     })
     toast.add({ title: 'Project updated', color: 'success' })

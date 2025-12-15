@@ -92,22 +92,22 @@ const formatCurrency = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 0
 }).format
 
-const getSeverityColor = (severity: string) => {
+const getSeverityColor = (severity: string): 'error' | 'warning' | 'info' | 'neutral' => {
   switch (severity) {
-    case 'critical': return 'red'
-    case 'high': return 'orange'
-    case 'medium': return 'yellow'
-    case 'low': return 'blue'
-    default: return 'gray'
+    case 'critical': return 'error'
+    case 'high': return 'error'
+    case 'medium': return 'warning'
+    case 'low': return 'info'
+    default: return 'neutral'
   }
 }
 
-const getImpactColor = (impact: string) => {
+const getImpactColor = (impact: string): 'success' | 'warning' | 'info' | 'neutral' => {
   switch (impact) {
-    case 'high': return 'green'
-    case 'medium': return 'yellow'
-    case 'low': return 'blue'
-    default: return 'gray'
+    case 'high': return 'success'
+    case 'medium': return 'warning'
+    case 'low': return 'info'
+    default: return 'neutral'
   }
 }
 
@@ -138,14 +138,14 @@ const getRecommendationIcon = (type: string) => {
             </div>
           </div>
           <div class="flex items-center gap-2">
-            <UBadge v-if="aiData?.data?.model" color="purple" variant="subtle">
+            <UBadge v-if="aiData?.data?.model" color="secondary" variant="subtle">
               {{ aiData.data.model }}
             </UBadge>
-            <UButton 
+            <UButton
               v-if="hasLoaded"
-              icon="i-lucide-refresh-cw" 
-              size="sm" 
-              color="gray" 
+              icon="i-lucide-refresh-cw"
+              size="sm"
+              color="neutral"
               variant="ghost"
               :loading="isLoading"
               @click="loadAIInsights"
@@ -166,9 +166,9 @@ const getRecommendationIcon = (type: string) => {
           </p>
         </div>
         
-        <UButton 
+        <UButton
           size="lg"
-          color="purple"
+          color="secondary"
           @click="loadAIInsights"
           class="shadow-lg"
         >
@@ -217,16 +217,16 @@ const getRecommendationIcon = (type: string) => {
             Connect your Xero account to unlock AI-powered expense insights, anomaly detection, and optimization recommendations.
           </p>
           <div class="flex flex-col sm:flex-row gap-3 justify-center items-center">
-            <UButton 
-              color="blue" 
+            <UButton
+              color="info"
               size="lg"
               @click="navigateTo('/api/xero/login')"
             >
               <UIcon name="i-lucide-link" class="h-5 w-5 mr-2" />
               Connect to Xero
             </UButton>
-            <UButton 
-              color="gray" 
+            <UButton
+              color="neutral"
               variant="ghost"
               size="lg"
               @click="navigateTo('/settings')"

@@ -15,7 +15,10 @@ const { data: activitiesData, pending: loading, refresh } = await useFetch(
   }
 )
 
-const activities = computed(() => (activitiesData.value as TaskActivity[]) || [])
+const activities = computed(() => {
+  const response = activitiesData.value as { activities?: TaskActivity[] } | undefined
+  return response?.activities || []
+})
 
 // Group activities by date
 const groupedActivities = computed(() => {

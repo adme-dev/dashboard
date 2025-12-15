@@ -30,50 +30,57 @@ const formatPercent = (value: number) => {
 }
 
 // KPI cards configuration
-const kpiCards = computed(() => [
-  {
-    title: 'Monthly Revenue',
-    value: formatCurrency(kpis.value?.totalRevenue || 0),
-    icon: 'i-lucide-dollar-sign',
-    change: kpis.value?.revenueChange || 0,
-    color: 'text-emerald-500'
-  },
-  {
-    title: 'Gross Margin',
-    value: formatPercent(kpis.value?.grossMargin || 0),
-    icon: 'i-lucide-trending-up',
-    change: kpis.value?.marginChange || 0,
-    color: kpis.value?.grossMargin >= 30 ? 'text-emerald-500' : 'text-amber-500'
-  },
-  {
-    title: 'Utilization Rate',
-    value: formatPercent(kpis.value?.avgUtilizationRate || 0),
-    icon: 'i-lucide-clock',
-    change: kpis.value?.utilizationChange || 0,
-    color: kpis.value?.avgUtilizationRate >= 70 ? 'text-emerald-500' : 'text-amber-500'
-  },
-  {
-    title: 'Active Projects',
-    value: kpis.value?.activeProjects || 0,
-    icon: 'i-lucide-folder-kanban',
-    change: 0,
-    color: 'text-blue-500'
-  },
-  {
-    title: 'MRR (Retainers)',
-    value: formatCurrency(kpis.value?.mrr || 0),
-    icon: 'i-lucide-repeat',
-    change: kpis.value?.mrrChange || 0,
-    color: 'text-violet-500'
-  },
-  {
-    title: 'Outstanding AR',
-    value: formatCurrency(kpis.value?.outstandingAR || 0),
-    icon: 'i-lucide-receipt',
-    change: 0,
-    color: kpis.value?.outstandingAR > 50000 ? 'text-red-500' : 'text-gray-500'
-  }
-])
+const kpiCards = computed(() => {
+  const kpisData = kpis.value as any
+  const grossMargin = kpisData?.grossMargin ?? 0
+  const avgUtilizationRate = kpisData?.avgUtilizationRate ?? 0
+  const outstandingAR = kpisData?.outstandingAR ?? 0
+
+  return [
+    {
+      title: 'Monthly Revenue',
+      value: formatCurrency(kpisData?.totalRevenue || 0),
+      icon: 'i-lucide-dollar-sign',
+      change: kpisData?.revenueChange || 0,
+      color: 'text-emerald-500'
+    },
+    {
+      title: 'Gross Margin',
+      value: formatPercent(grossMargin),
+      icon: 'i-lucide-trending-up',
+      change: kpisData?.marginChange || 0,
+      color: grossMargin >= 30 ? 'text-emerald-500' : 'text-amber-500'
+    },
+    {
+      title: 'Utilization Rate',
+      value: formatPercent(avgUtilizationRate),
+      icon: 'i-lucide-clock',
+      change: kpisData?.utilizationChange || 0,
+      color: avgUtilizationRate >= 70 ? 'text-emerald-500' : 'text-amber-500'
+    },
+    {
+      title: 'Active Projects',
+      value: kpisData?.activeProjects || 0,
+      icon: 'i-lucide-folder-kanban',
+      change: 0,
+      color: 'text-blue-500'
+    },
+    {
+      title: 'MRR (Retainers)',
+      value: formatCurrency(kpisData?.mrr || 0),
+      icon: 'i-lucide-repeat',
+      change: kpisData?.mrrChange || 0,
+      color: 'text-violet-500'
+    },
+    {
+      title: 'Outstanding AR',
+      value: formatCurrency(outstandingAR),
+      icon: 'i-lucide-receipt',
+      change: 0,
+      color: outstandingAR > 50000 ? 'text-red-500' : 'text-gray-500'
+    }
+  ]
+})
 
 // Project status distribution
 const projectStatusData = computed(() => {
@@ -161,36 +168,36 @@ const projectStatusData = computed(() => {
 
             <UTable
               :columns="[
-                { key: 'name', label: 'Project' },
-                { key: 'client', label: 'Client' },
-                { key: 'budget', label: 'Budget' },
-                { key: 'spent', label: 'Spent' },
-                { key: 'margin', label: 'Margin' },
-                { key: 'status', label: 'Status' }
-              ]"
-              :rows="projectsSummary?.topProjects || []"
+                { accessorKey: 'name', header: 'Project' },
+                { accessorKey: 'client', header: 'Client' },
+                { accessorKey: 'budget', header: 'Budget' },
+                { accessorKey: 'spent', header: 'Spent' },
+                { accessorKey: 'margin', header: 'Margin' },
+                { accessorKey: 'status', header: 'Status' }
+              ] as any"
+              :data="(projectsSummary as any)?.topProjects || []"
             >
-              <template #budget-data="{ row }">
-                {{ formatCurrency(row.budget) }}
+              <template #budget-cell="{ row }">
+                {{ formatCurrency((row.original as any).budget) }}
               </template>
-              <template #spent-data="{ row }">
-                <span :class="row.spent > row.budget ? 'text-red-500' : ''">
-                  {{ formatCurrency(row.spent) }}
+              <template #spent-cell="{ row }">
+                <span :class="(row.original as any).spent > (row.original as any).budget ? 'text-red-500' : ''">
+                  {{ formatCurrency((row.original as any).spent) }}
                 </span>
               </template>
-              <template #margin-data="{ row }">
+              <template #margin-cell="{ row }">
                 <UBadge
-                  :color="row.margin >= 30 ? 'success' : row.margin >= 15 ? 'warning' : 'error'"
+                  :color="(row.original as any).margin >= 30 ? 'success' : (row.original as any).margin >= 15 ? 'warning' : 'error'"
                 >
-                  {{ formatPercent(row.margin) }}
+                  {{ formatPercent((row.original as any).margin) }}
                 </UBadge>
               </template>
-              <template #status-data="{ row }">
+              <template #status-cell="{ row }">
                 <UBadge
-                  :color="row.status === 'active' ? 'success' : row.status === 'on_hold' ? 'warning' : 'neutral'"
+                  :color="(row.original as any).status === 'active' ? 'success' : (row.original as any).status === 'on_hold' ? 'warning' : 'neutral'"
                   variant="subtle"
                 >
-                  {{ row.status }}
+                  {{ (row.original as any).status }}
                 </UBadge>
               </template>
             </UTable>
@@ -209,22 +216,22 @@ const projectStatusData = computed(() => {
 
             <div class="space-y-4">
               <div
-                v-for="member in kpis?.teamUtilization || []"
-                :key="member.name"
+                v-for="member in ((kpis as any)?.teamUtilization || [])"
+                :key="(member as any).name"
                 class="space-y-1"
               >
                 <div class="flex justify-between text-sm">
-                  <span>{{ member.name }}</span>
+                  <span>{{ (member as any).name }}</span>
                   <span
-                    :class="member.rate >= member.target ? 'text-emerald-500' : 'text-amber-500'"
+                    :class="(member as any).rate >= (member as any).target ? 'text-emerald-500' : 'text-amber-500'"
                   >
-                    {{ formatPercent(member.rate) }}
+                    {{ formatPercent((member as any).rate) }}
                   </span>
                 </div>
                 <UProgress
-                  :value="member.rate"
+                  :value="(member as any).rate"
                   :max="100"
-                  :color="member.rate >= member.target ? 'success' : 'warning'"
+                  :color="(member as any).rate >= (member as any).target ? 'success' : 'warning'"
                   size="sm"
                 />
               </div>
@@ -248,20 +255,20 @@ const projectStatusData = computed(() => {
 
             <div class="space-y-3">
               <div
-                v-for="entry in recentTime?.entries || []"
-                :key="entry.id"
+                v-for="entry in ((recentTime as any)?.entries || [])"
+                :key="(entry as any).id"
                 class="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-800"
               >
                 <div>
-                  <p class="font-medium">{{ entry.project }}</p>
+                  <p class="font-medium">{{ (entry as any).project }}</p>
                   <p class="text-sm text-gray-500">
-                    {{ entry.user }} - {{ entry.description }}
+                    {{ (entry as any).user }} - {{ (entry as any).description }}
                   </p>
                 </div>
                 <div class="text-right">
-                  <p class="font-semibold">{{ entry.hours }}h</p>
+                  <p class="font-semibold">{{ (entry as any).hours }}h</p>
                   <p class="text-sm text-gray-500">
-                    {{ format(new Date(entry.date), 'MMM d') }}
+                    {{ format(new Date((entry as any).date), 'MMM d') }}
                   </p>
                 </div>
               </div>
@@ -279,24 +286,24 @@ const projectStatusData = computed(() => {
 
             <div class="space-y-3">
               <div
-                v-for="alert in kpis?.budgetAlerts || []"
-                :key="alert.project"
+                v-for="alert in ((kpis as any)?.budgetAlerts || [])"
+                :key="(alert as any).project"
                 class="p-3 rounded-lg border-l-4"
                 :class="{
-                  'border-red-500 bg-red-50 dark:bg-red-900/20': alert.severity === 'critical',
-                  'border-amber-500 bg-amber-50 dark:bg-amber-900/20': alert.severity === 'warning'
+                  'border-red-500 bg-red-50 dark:bg-red-900/20': (alert as any).severity === 'critical',
+                  'border-amber-500 bg-amber-50 dark:bg-amber-900/20': (alert as any).severity === 'warning'
                 }"
               >
                 <div class="flex justify-between">
-                  <p class="font-medium">{{ alert.project }}</p>
+                  <p class="font-medium">{{ (alert as any).project }}</p>
                   <UBadge
-                    :color="alert.severity === 'critical' ? 'error' : 'warning'"
+                    :color="(alert as any).severity === 'critical' ? 'error' : 'warning'"
                     size="xs"
                   >
-                    {{ alert.percentUsed }}% used
+                    {{ (alert as any).percentUsed }}% used
                   </UBadge>
                 </div>
-                <p class="text-sm mt-1">{{ alert.message }}</p>
+                <p class="text-sm mt-1">{{ (alert as any).message }}</p>
               </div>
 
               <div

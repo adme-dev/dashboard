@@ -322,7 +322,7 @@ const refreshAll = async () => {
         <UAlert
           title="Unable to load Profit &amp; Loss data"
           description="There was an issue retrieving the detailed report from Xero. Please try again."
-          color="negative"
+          color="error"
           variant="soft"
           icon="i-lucide-alert-triangle"
         />
@@ -398,7 +398,7 @@ const refreshAll = async () => {
               <p class="text-xs uppercase text-muted">Trailing performance clarity</p>
               <h3 class="text-lg font-semibold">Last {{ trailingSummary.periods }} months</h3>
             </div>
-            <UBadge :color="trailingSummary.netProfit >= 0 ? 'positive' : 'negative'" variant="subtle">
+            <UBadge :color="trailingSummary.netProfit >= 0 ? 'success' : 'error'" variant="subtle">
               {{ signedCurrency(trailingSummary.netProfit) }} net
             </UBadge>
           </header>

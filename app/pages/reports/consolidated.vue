@@ -14,7 +14,7 @@ function formatCurrency(value?: number) {
       description="Aggregated Profit & Loss across connected organizations"
     >
       <template #right>
-        <UButton label="Refresh" color="neutral" @click="refresh" />
+        <UButton label="Refresh" color="neutral" @click="() => refresh()" />
       </template>
     </UPageHeader>
 
@@ -44,24 +44,24 @@ function formatCurrency(value?: number) {
       </UPageCard>
 
       <UPageCard title="Per Organization" variant="subtle">
-        <UTable :rows="data?.tenants || []" :columns="[
-          { key: 'tenantName', label: 'Organization' },
-          { key: 'revenueTotal', label: 'Revenue', class: 'text-right' },
-          { key: 'expensesTotal', label: 'Expenses', class: 'text-right' },
-          { key: 'netProfit', label: 'Net Profit', class: 'text-right' },
-          { key: 'profitMargin', label: 'Margin', class: 'text-right' }
-        ]">
-          <template #revenueTotal-data="{ row }">
-            <span class="text-right block">{{ formatCurrency(row.revenueTotal) }}</span>
+        <UTable :data="data?.tenants || []" :columns="[
+          { accessorKey: 'tenantName', header: 'Organization' },
+          { accessorKey: 'revenueTotal', header: 'Revenue' },
+          { accessorKey: 'expensesTotal', header: 'Expenses' },
+          { accessorKey: 'netProfit', header: 'Net Profit' },
+          { accessorKey: 'profitMargin', header: 'Margin' }
+        ] as any">
+          <template #revenueTotal-cell="{ row }">
+            <span class="text-right block">{{ formatCurrency((row.original as any).revenueTotal) }}</span>
           </template>
-          <template #expensesTotal-data="{ row }">
-            <span class="text-right block">{{ formatCurrency(row.expensesTotal) }}</span>
+          <template #expensesTotal-cell="{ row }">
+            <span class="text-right block">{{ formatCurrency((row.original as any).expensesTotal) }}</span>
           </template>
-          <template #netProfit-data="{ row }">
-            <span class="text-right block">{{ formatCurrency(row.netProfit) }}</span>
+          <template #netProfit-cell="{ row }">
+            <span class="text-right block">{{ formatCurrency((row.original as any).netProfit) }}</span>
           </template>
-          <template #profitMargin-data="{ row }">
-            <span class="text-right block">{{ Math.round((row.profitMargin || 0) * 100) }}%</span>
+          <template #profitMargin-cell="{ row }">
+            <span class="text-right block">{{ Math.round(((row.original as any).profitMargin || 0) * 100) }}%</span>
           </template>
         </UTable>
       </UPageCard>

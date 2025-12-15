@@ -116,7 +116,7 @@ export function useNotifications() {
       const index = notifications.value.findIndex(n => n.id === notificationId)
       if (index !== -1) {
         const notification = notifications.value[index]
-        if (!notification.isRead) {
+        if (notification && !notification.isRead) {
           unreadCount.value = Math.max(0, unreadCount.value - 1)
         }
         notifications.value.splice(index, 1)

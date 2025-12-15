@@ -49,7 +49,7 @@ export function useAgencyClients() {
   const { zero } = useZero()
 
   const query = computed(() => {
-    if (!zero) return null
+    if (!zero?.query?.agencyClients) return null
     return zero.query.agencyClients
       .where('isActive', '=', true)
       .orderBy('name', 'asc')
@@ -71,7 +71,7 @@ export function useAgencyClient(clientId: MaybeRef<string>) {
   const id = toRef(clientId)
 
   const query = computed(() => {
-    if (!zero || !id.value) return null
+    if (!zero?.query?.agencyClients || !id.value) return null
     return zero.query.agencyClients.where('id', '=', id.value).one()
   })
 
@@ -95,7 +95,7 @@ export function useProjects(filters?: {
   const status = filters?.status ? toRef(filters.status) : ref(null)
 
   const query = computed(() => {
-    if (!zero) return null
+    if (!zero?.query?.projects) return null
 
     let q = zero.query.projects.related('client')
 
@@ -128,8 +128,8 @@ export function useProjectProfitability(projectId?: MaybeRef<string | null>) {
 
   // Query for time entries
   const timeQuery = computed(() => {
-    if (!zero) return null
-    let q = zero.query.timeEntries
+    if (!zero?.query?.timeEntries) return null
+    let q: any = zero.query.timeEntries
     if (id.value) {
       q = q.where('projectId', '=', id.value)
     }
@@ -138,8 +138,8 @@ export function useProjectProfitability(projectId?: MaybeRef<string | null>) {
 
   // Query for expenses
   const expenseQuery = computed(() => {
-    if (!zero) return null
-    let q = zero.query.projectExpenses
+    if (!zero?.query?.projectExpenses) return null
+    let q: any = zero.query.projectExpenses
     if (id.value) {
       q = q.where('projectId', '=', id.value)
     }
@@ -148,8 +148,8 @@ export function useProjectProfitability(projectId?: MaybeRef<string | null>) {
 
   // Query for projects
   const projectQuery = computed(() => {
-    if (!zero) return null
-    let q = zero.query.projects.related('client')
+    if (!zero?.query?.projects) return null
+    let q: any = zero.query.projects.related('client')
     if (id.value) {
       q = q.where('id', '=', id.value)
     }
@@ -164,21 +164,25 @@ export function useProjectProfitability(projectId?: MaybeRef<string | null>) {
   const profitability = computed(() => {
     if (!projects.value) return []
 
-    return projects.value.map((project) => {
-      const projectTime = timeEntries.value?.filter(
-        (t) => t.projectId === project.id
-      ) || []
-      const projectExpenses = expenses.value?.filter(
-        (e) => e.projectId === project.id
-      ) || []
+    const projectsArray = Array.isArray(projects.value) ? projects.value : []
+    const timeArray = Array.isArray(timeEntries.value) ? timeEntries.value : []
+    const expensesArray = Array.isArray(expenses.value) ? expenses.value : []
+
+    return projectsArray.map((project: any) => {
+      const projectTime = timeArray.filter(
+        (t: any) => t.projectId === project.id
+      )
+      const projectExpenses = expensesArray.filter(
+        (e: any) => e.projectId === project.id
+      )
 
       const laborCost = projectTime.reduce(
-        (sum, t) => sum + t.hours * t.hourlyRate,
+        (sum: number, t: any) => sum + t.hours * t.hourlyRate,
         0
       )
-      const expenseCost = projectExpenses.reduce((sum, e) => sum + e.amount, 0)
+      const expenseCost = projectExpenses.reduce((sum: number, e: any) => sum + e.amount, 0)
       const totalCost = laborCost + expenseCost
-      const hoursWorked = projectTime.reduce((sum, t) => sum + t.hours, 0)
+      const hoursWorked = projectTime.reduce((sum: number, t: any) => sum + t.hours, 0)
 
       // For now, revenue = budget (will be enhanced with actual invoicing)
       const revenue = project.budgetAmount
@@ -219,7 +223,7 @@ export function useUtilization(period?: MaybeRef<string | null>) {
   const periodRef = period ? toRef(period) : ref(null)
 
   const teamQuery = computed(() => {
-    if (!zero) return null
+    if (!zero?.query?.teamMembers) return null
     return zero.query.teamMembers.where('isActive', '=', true)
   })
 
@@ -235,29 +239,31 @@ export function useUtilization(period?: MaybeRef<string | null>) {
     if (!teamMembers.value) return []
 
     const periodFilter = periodRef.value
+    const membersArray = Array.isArray(teamMembers.value) ? teamMembers.value : []
+    const timeArray = Array.isArray(timeEntries.value) ? timeEntries.value : []
 
-    return teamMembers.value.map((member) => {
-      let memberTime = timeEntries.value?.filter(
-        (t) => t.userId === member.id
-      ) || []
+    return membersArray.map((member: any) => {
+      let memberTime = timeArray.filter(
+        (t: any) => t.userId === member.id
+      )
 
       // Filter by period if provided (YYYY-MM format)
       if (periodFilter) {
-        memberTime = memberTime.filter((t) => t.date.startsWith(periodFilter))
+        memberTime = memberTime.filter((t: any) => t.date.startsWith(periodFilter))
       }
 
-      const totalHours = memberTime.reduce((sum, t) => sum + t.hours, 0)
+      const totalHours = memberTime.reduce((sum: number, t: any) => sum + t.hours, 0)
       const billableHours = memberTime
-        .filter((t) => t.billable)
-        .reduce((sum, t) => sum + t.hours, 0)
+        .filter((t: any) => t.billable)
+        .reduce((sum: number, t: any) => sum + t.hours, 0)
       const nonBillableHours = totalHours - billableHours
 
       const utilizationRate =
         totalHours > 0 ? (billableHours / totalHours) * 100 : 0
 
       const billableRevenue = memberTime
-        .filter((t) => t.billable)
-        .reduce((sum, t) => sum + t.hours * t.hourlyRate, 0)
+        .filter((t: any) => t.billable)
+        .reduce((sum: number, t: any) => sum + t.hours * t.hourlyRate, 0)
 
       const effectiveRate = billableHours > 0 ? billableRevenue / billableHours : 0
 
@@ -290,9 +296,9 @@ export function useChartOfAccounts(category?: MaybeRef<string | null>) {
   const categoryRef = category ? toRef(category) : ref(null)
 
   const query = computed(() => {
-    if (!zero) return null
+    if (!zero?.query?.chartOfAccounts) return null
 
-    let q = zero.query.chartOfAccounts.where('isActive', '=', true)
+    let q: any = zero.query.chartOfAccounts.where('isActive', '=', true)
 
     if (categoryRef.value) {
       q = q.where('category', '=', categoryRef.value)
@@ -324,9 +330,9 @@ export function useMediaSpend(filters?: {
   const platform = filters?.platform ? toRef(filters.platform) : ref(null)
 
   const query = computed(() => {
-    if (!zero) return null
+    if (!zero?.query?.mediaSpend) return null
 
-    let q = zero.query.mediaSpend.related('client')
+    let q: any = zero.query.mediaSpend.related('client')
 
     if (clientId.value) {
       q = q.where('clientId', '=', clientId.value)
@@ -349,11 +355,13 @@ export function useMediaSpend(filters?: {
   const totals = computed(() => {
     if (!data.value) return null
 
+    const dataArray = Array.isArray(data.value) ? data.value : []
+
     return {
-      totalBudget: data.value.reduce((sum, m) => sum + m.budgetAllocated, 0),
-      totalSpend: data.value.reduce((sum, m) => sum + m.actualSpend, 0),
-      totalCommission: data.value.reduce((sum, m) => sum + m.commissionAmount, 0),
-      unreconciled: data.value.filter((m) => !m.reconciled).length,
+      totalBudget: dataArray.reduce((sum: number, m: any) => sum + m.budgetAllocated, 0),
+      totalSpend: dataArray.reduce((sum: number, m: any) => sum + m.actualSpend, 0),
+      totalCommission: dataArray.reduce((sum: number, m: any) => sum + m.commissionAmount, 0),
+      unreconciled: dataArray.filter((m: any) => !m.reconciled).length,
     }
   })
 
@@ -380,7 +388,7 @@ export async function upsertClient(
   const now = Date.now()
   const id = client.id || crypto.randomUUID()
 
-  await zero.mutate.agencyClients.upsert({
+  await zero.mutate?.agencyClients?.upsert({
     id,
     name: client.name || '',
     billingType: client.billingType || 'project',
@@ -406,7 +414,7 @@ export async function upsertProject(
   const now = Date.now()
   const id = project.id || crypto.randomUUID()
 
-  await zero.mutate.projects.upsert({
+  await zero.mutate?.projects?.upsert({
     id,
     clientId: project.clientId || '',
     name: project.name || '',
@@ -437,19 +445,20 @@ export async function logTimeEntry(
 
   const id = entry.id || crypto.randomUUID()
 
-  await zero.mutate.timeEntries.insert({
+  const { projectId, userId, hours, ...restEntry } = entry
+  await zero.mutate?.timeEntries?.insert({
     id,
-    projectId: entry.projectId,
-    userId: entry.userId,
+    projectId,
+    userId,
     date: entry.date || new Date().toISOString().split('T')[0],
-    hours: entry.hours,
+    hours,
     billable: entry.billable ?? true,
     hourlyRate: entry.hourlyRate || 0,
     description: entry.description || '',
     approved: false,
     invoiced: false,
     createdAt: Date.now(),
-    ...entry,
+    ...restEntry,
   })
 
   return id
@@ -470,22 +479,25 @@ export async function recordMediaSpend(
   const now = Date.now()
   const id = spend.id || crypto.randomUUID()
 
-  await zero.mutate.mediaSpend.upsert({
+  const { clientId, platform, ...restSpend } = spend
+  const actualSpend = spend.actualSpend || 0
+  const commissionRate = spend.commissionRate || 0
+
+  await zero.mutate?.mediaSpend?.upsert({
     id,
-    clientId: spend.clientId,
-    platform: spend.platform,
+    clientId,
+    platform,
     budgetAllocated: spend.budgetAllocated || 0,
-    actualSpend: spend.actualSpend || 0,
-    commissionRate: spend.commissionRate || 0,
-    commissionAmount:
-      ((spend.actualSpend || 0) * (spend.commissionRate || 0)) / 100,
+    actualSpend,
+    commissionRate,
+    commissionAmount: (Number(actualSpend) * Number(commissionRate)) / 100,
     period:
       spend.period ||
       `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`,
     reconciled: spend.reconciled || false,
     createdAt: now,
     updatedAt: now,
-    ...spend,
+    ...restSpend,
   })
 
   return id

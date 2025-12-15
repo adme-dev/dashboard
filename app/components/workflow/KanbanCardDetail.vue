@@ -23,7 +23,10 @@ const { data: activitiesData } = await useFetch(() => `/api/agency/tasks/${props
   immediate: props.open
 })
 
-const activities = computed(() => (activitiesData.value as TaskActivity[]) || [])
+const activities = computed(() => {
+  const response = activitiesData.value as { activities?: TaskActivity[] } | undefined
+  return response?.activities || []
+})
 
 // Fetch available statuses
 const { data: statusesData } = await useFetch('/api/agency/statuses', {
@@ -97,7 +100,8 @@ const saveDescription = async () => {
   isEditingDescription.value = false
 }
 
-const updateStatus = async (statusId: string) => {
+const updateStatus = async (statusId: unknown) => {
+  if (typeof statusId !== 'string') return
   await $fetch(`/api/agency/tasks/${props.taskId}/status`, {
     method: 'PATCH',
     body: { statusId }
@@ -182,7 +186,7 @@ watch(task, (t) => {
       <div class="flex items-center gap-3">
         <UIcon
           v-if="task?.taskType"
-          :name="taskTypeOptions.find(t => t.value === task.taskType)?.icon || 'i-lucide-check-square'"
+          :name="taskTypeOptions.find(t => t.value === task?.taskType)?.icon || 'i-lucide-check-square'"
           class="h-5 w-5 text-muted"
         />
         <span class="font-semibold">Task Details</span>

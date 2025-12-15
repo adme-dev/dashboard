@@ -6,7 +6,7 @@ const { data, pending, error, refresh } = await useFetch('/api/ai/recommendation
   <UPage>
     <UPageHeader title="Recommendations" description="Suggestions to optimize costs and collections">
       <template #right>
-        <UButton label="Refresh" color="neutral" @click="refresh" />
+        <UButton label="Refresh" color="neutral" @click="() => refresh()" />
       </template>
     </UPageHeader>
 

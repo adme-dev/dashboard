@@ -5,7 +5,7 @@ interface CommandItem {
   description?: string
   icon?: string
   shortcut?: string
-  action: () => void | Promise<void>
+  action: () => unknown
   group?: string
 }
 
@@ -111,7 +111,7 @@ const commands: CommandItem[] = [
     label: 'Open Xero',
     description: 'Open Xero in new tab',
     icon: 'i-lucide-external-link',
-    action: () => window.open('https://xero.com', '_blank'),
+    action: () => { window.open('https://xero.com', '_blank') },
     group: 'Quick Links'
   },
   {

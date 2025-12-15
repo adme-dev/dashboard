@@ -138,7 +138,7 @@ async function exportData(format: 'csv' | 'json') {
       title: 'Export Successful',
       description: `Expense data exported as ${format.toUpperCase()}`,
       icon: 'i-lucide-check-circle',
-      color: 'green'
+      color: 'success'
     })
   } catch (error) {
     console.error('Export failed:', error)
@@ -147,7 +147,7 @@ async function exportData(format: 'csv' | 'json') {
       title: 'Export Failed',
       description: 'Unable to export expense data',
       icon: 'i-lucide-alert-circle',
-      color: 'red'
+      color: 'error'
     })
   }
 }
@@ -237,16 +237,16 @@ async function exportData(format: 'csv' | 'json') {
               To view your expense analytics, you need to connect your Xero account. This ensures you see real, up-to-date financial data.
             </p>
             <div class="flex flex-col sm:flex-row gap-3 justify-center items-center">
-              <UButton 
-                color="red" 
+              <UButton
+                color="error"
                 size="lg"
                 @click="navigateTo('/api/xero/login')"
               >
                 <UIcon name="i-lucide-link" class="h-5 w-5 mr-2" />
                 Connect to Xero
               </UButton>
-              <UButton 
-                color="gray" 
+              <UButton
+                color="neutral"
                 variant="ghost"
                 size="lg"
                 @click="navigateTo('/settings')"
@@ -425,7 +425,7 @@ async function exportData(format: 'csv' | 'json') {
                     <UIcon name="i-lucide-users" class="h-4 w-4 text-blue-600" />
                     <span class="text-sm font-medium">Active Vendors</span>
                   </div>
-                  <UBadge color="blue" variant="subtle">{{ metrics.vendorCount }}</UBadge>
+                  <UBadge color="info" variant="subtle">{{ metrics.vendorCount }}</UBadge>
                 </div>
                 
                 <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
@@ -433,7 +433,7 @@ async function exportData(format: 'csv' | 'json') {
                     <UIcon name="i-lucide-layers" class="h-4 w-4 text-green-600" />
                     <span class="text-sm font-medium">Expense Categories</span>
                   </div>
-                  <UBadge color="green" variant="subtle">{{ metrics.categoryCount }}</UBadge>
+                  <UBadge color="success" variant="subtle">{{ metrics.categoryCount }}</UBadge>
                 </div>
 
                 <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
@@ -441,10 +441,10 @@ async function exportData(format: 'csv' | 'json') {
                     <UIcon name="i-lucide-percent" class="h-4 w-4 text-purple-600" />
                     <span class="text-sm font-medium">Top Category Share</span>
                   </div>
-                  <UBadge color="purple" variant="subtle">
-                    {{ metrics.topCategory && metrics.totalSpend > 0 
+                  <UBadge color="secondary" variant="subtle">
+                    {{ metrics.topCategory && metrics.totalSpend > 0
                       ? `${((metrics.topCategory.amount / metrics.totalSpend) * 100).toFixed(1)}%`
-                      : '0%' 
+                      : '0%'
                     }}
                   </UBadge>
                 </div>

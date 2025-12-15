@@ -266,7 +266,7 @@ async function removeAvatar() {
             v-if="user?.avatarUrl"
             icon="i-lucide-trash-2"
             variant="ghost"
-            color="red"
+            color="error"
             size="sm"
             :loading="removingAvatar"
             :disabled="uploadingAvatar || removingAvatar"

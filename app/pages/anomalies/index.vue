@@ -43,10 +43,10 @@ const { data, pending, error, refresh } = await useFetch<{ summary: AnomalySumma
 const anomalies = computed(() => data.value?.anomalies ?? [])
 const summary = computed(() => data.value?.summary ?? null)
 
-const severityMeta: Record<AnomalySeverity, { label: string, color: string, icon: string }> = {
-  critical: { label: 'Critical', color: 'red', icon: 'i-lucide-alert-octagon' },
-  warning: { label: 'Warning', color: 'orange', icon: 'i-lucide-alert-triangle' },
-  info: { label: 'Watch', color: 'blue', icon: 'i-lucide-info' }
+const severityMeta: Record<AnomalySeverity, { label: string, color: 'error' | 'warning' | 'info', icon: string }> = {
+  critical: { label: 'Critical', color: 'error', icon: 'i-lucide-alert-octagon' },
+  warning: { label: 'Warning', color: 'warning', icon: 'i-lucide-alert-triangle' },
+  info: { label: 'Watch', color: 'info', icon: 'i-lucide-info' }
 }
 
 const typeMeta: Record<AnomalyType, { label: string, description: string, icon: string }> = {
@@ -207,7 +207,7 @@ const totalAnomalies = computed(() => summary.value?.total ?? anomalies.value.le
             color="neutral"
             icon="i-lucide-refresh-cw"
             :loading="pending"
-            @click="refresh"
+            @click="() => refresh()"
           />
         </template>
       </UDashboardNavbar>
@@ -249,7 +249,7 @@ const totalAnomalies = computed(() => summary.value?.total ?? anomalies.value.le
 
       <div v-else-if="error" class="space-y-6">
         <UAlert
-          color="red"
+          color="error"
           icon="i-lucide-alert-circle"
           title="Failed to load anomalies"
           :description="error.statusMessage || 'We could not retrieve anomaly data. Try refreshing the page.'"
@@ -342,7 +342,7 @@ const totalAnomalies = computed(() => summary.value?.total ?? anomalies.value.le
             icon="i-lucide-refresh-cw"
             color="neutral"
             variant="subtle"
-            @click="refresh"
+            @click="() => refresh()"
           />
         </div>
 

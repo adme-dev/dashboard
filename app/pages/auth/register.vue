@@ -12,7 +12,7 @@ const inviteToken = computed(() => route.query.token as string | undefined)
 
 // Fetch invitation details if token provided
 const { data: invitation, pending: loadingInvitation } = await useLazyFetch(
-  () => inviteToken.value ? `/api/auth/invitations/${inviteToken.value}` : null,
+  () => inviteToken.value ? `/api/auth/invitations/${inviteToken.value}` as const : '/api/auth/invitations' as const,
   { immediate: !!inviteToken.value }
 )
 

@@ -67,7 +67,7 @@ const handleDragOver = (e: DragEvent) => {
 const handleDrop = (e: DragEvent) => {
   e.preventDefault()
 
-  if (props.dragOverIndex !== null) {
+  if (props.dragOverIndex !== null && props.dragOverIndex !== undefined) {
     emit('drop', props.dragOverIndex)
   }
 }

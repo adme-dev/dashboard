@@ -10,7 +10,38 @@ const { data: workloadData, pending: loading } = await useFetch('/api/agency/das
   }))
 })
 
-const workload = computed(() => workloadData.value || { members: [], summary: {} })
+interface WorkloadSummary {
+  totalMembers: number
+  totalActiveTasks: number
+  totalOverdue: number
+  totalUnassigned: number
+  totalEstimatedHours: number
+  membersWithTasks: number
+  averageTasksPerMember: number
+  totalTasks?: number
+  overdueTasks?: number
+  unassignedTasks?: number
+}
+
+interface WorkloadMember {
+  id: string
+  name: string
+  email: string
+  role: string
+  targetUtilization: number | null
+  defaultHourlyRate: number | null
+  primaryDepartment: { id: string; name: string; color: string } | null
+  activeTasks: number
+  overdueTasks?: number
+  dueTodayTasks?: number
+  inProgressTasks?: number
+  inReview?: number
+}
+
+const workload = computed(() => {
+  const data = workloadData.value as unknown as { members?: WorkloadMember[]; summary?: WorkloadSummary } | null
+  return data || { members: [] as WorkloadMember[], summary: {} as WorkloadSummary }
+})
 
 // Calculate bar widths
 const getBarWidth = (tasks: number, maxTasks: number) => {

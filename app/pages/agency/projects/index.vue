@@ -33,9 +33,9 @@ const statusOptions = [
 
 // Client options for dropdown
 const clientOptions = computed(() => {
-  const options = [{ label: 'All Clients', value: null }]
+  const options: { label: string; value: string | null }[] = [{ label: 'All Clients', value: null }]
   if (clients.value) {
-    clients.value.forEach(c => {
+    (clients.value as any[]).forEach(c => {
       options.push({ label: c.name, value: c.id })
     })
   }
@@ -46,7 +46,7 @@ const clientOptions = computed(() => {
 const filteredProjects = computed(() => {
   if (!projects.value) return []
 
-  let result = projects.value
+  let result = projects.value as any[]
 
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
@@ -61,16 +61,17 @@ const filteredProjects = computed(() => {
 
 // Summary stats
 const summary = computed(() => {
-  if (!projects.value) return { total: 0, totalBudget: 0, avgMargin: 0 }
+  if (!projects.value) return { total: 0, active: 0, totalBudget: 0, avgMargin: 0 }
 
-  const active = projects.value.filter(p => p.status === 'active')
+  const projectsList = projects.value as any[]
+  const active = projectsList.filter(p => p.status === 'active')
   const totalBudget = active.reduce((sum, p) => sum + p.budgetAmount, 0)
   const avgMargin = active.length > 0
     ? active.reduce((sum, p) => sum + (p.grossMargin || 0), 0) / active.length
     : 0
 
   return {
-    total: projects.value.length,
+    total: projectsList.length,
     active: active.length,
     totalBudget,
     avgMargin
@@ -109,14 +110,14 @@ const getMarginColor = (margin: number) => {
 
 // Table columns
 const columns = [
-  { key: 'name', label: 'Project', sortable: true },
-  { key: 'clientName', label: 'Client', sortable: true },
-  { key: 'budgetAmount', label: 'Budget', sortable: true },
-  { key: 'totalCost', label: 'Spent', sortable: true },
-  { key: 'grossMargin', label: 'Margin', sortable: true },
-  { key: 'hoursWorked', label: 'Hours', sortable: true },
-  { key: 'status', label: 'Status', sortable: true },
-  { key: 'actions', label: '' }
+  { accessorKey: 'name', header: 'Project', enableSorting: true },
+  { accessorKey: 'clientName', header: 'Client', enableSorting: true },
+  { accessorKey: 'budgetAmount', header: 'Budget', enableSorting: true },
+  { accessorKey: 'totalCost', header: 'Spent', enableSorting: true },
+  { accessorKey: 'grossMargin', header: 'Margin', enableSorting: true },
+  { accessorKey: 'hoursWorked', header: 'Hours', enableSorting: true },
+  { accessorKey: 'status', header: 'Status', enableSorting: true },
+  { accessorKey: 'actions', header: '' }
 ]
 
 // Actions dropdown items
@@ -226,62 +227,61 @@ const openTimeModal = (project: any) => {
         <UCard>
           <UTable
             :columns="columns"
-            :rows="filteredProjects"
+            :data="filteredProjects"
             :loading="pending"
-            :empty-state="{ icon: 'i-lucide-folder-open', label: 'No projects found' }"
           >
-            <template #name-data="{ row }">
+            <template #name-cell="{ row }">
               <NuxtLink
-                :to="`/agency/projects/${row.id}`"
+                :to="`/agency/projects/${(row.original as any).id}`"
                 class="font-medium hover:text-primary-500"
               >
-                {{ row.name }}
+                {{ (row.original as any).name }}
               </NuxtLink>
               <p class="text-xs text-gray-500">
-                {{ format(new Date(row.startDate), 'MMM d, yyyy') }}
-                <span v-if="row.endDate">
-                  - {{ format(new Date(row.endDate), 'MMM d, yyyy') }}
+                {{ format(new Date((row.original as any).startDate), 'MMM d, yyyy') }}
+                <span v-if="(row.original as any).endDate">
+                  - {{ format(new Date((row.original as any).endDate), 'MMM d, yyyy') }}
                 </span>
               </p>
             </template>
 
-            <template #budgetAmount-data="{ row }">
-              {{ formatCurrency(row.budgetAmount) }}
+            <template #budgetAmount-cell="{ row }">
+              {{ formatCurrency((row.original as any).budgetAmount) }}
             </template>
 
-            <template #totalCost-data="{ row }">
+            <template #totalCost-cell="{ row }">
               <div class="flex items-center gap-2">
-                <span :class="row.totalCost > row.budgetAmount ? 'text-red-500 font-semibold' : ''">
-                  {{ formatCurrency(row.totalCost || 0) }}
+                <span :class="(row.original as any).totalCost > (row.original as any).budgetAmount ? 'text-red-500 font-semibold' : ''">
+                  {{ formatCurrency((row.original as any).totalCost || 0) }}
                 </span>
                 <UProgress
-                  :value="((row.totalCost || 0) / row.budgetAmount) * 100"
+                  :value="(((row.original as any).totalCost || 0) / (row.original as any).budgetAmount) * 100"
                   :max="100"
-                  :color="row.totalCost > row.budgetAmount ? 'error' : row.totalCost > row.budgetAmount * 0.8 ? 'warning' : 'success'"
+                  :color="(row.original as any).totalCost > (row.original as any).budgetAmount ? 'error' : (row.original as any).totalCost > (row.original as any).budgetAmount * 0.8 ? 'warning' : 'success'"
                   size="xs"
                   class="w-16"
                 />
               </div>
             </template>
 
-            <template #grossMargin-data="{ row }">
-              <UBadge :color="getMarginColor(row.grossMargin || 0)">
-                {{ formatPercent(row.grossMargin || 0) }}
+            <template #grossMargin-cell="{ row }">
+              <UBadge :color="getMarginColor((row.original as any).grossMargin || 0)">
+                {{ formatPercent((row.original as any).grossMargin || 0) }}
               </UBadge>
             </template>
 
-            <template #hoursWorked-data="{ row }">
-              {{ (row.hoursWorked || 0).toFixed(1) }}h
+            <template #hoursWorked-cell="{ row }">
+              {{ ((row.original as any).hoursWorked || 0).toFixed(1) }}h
             </template>
 
-            <template #status-data="{ row }">
-              <UBadge :color="getStatusColor(row.status)" variant="subtle">
-                {{ row.status.replace('_', ' ') }}
+            <template #status-cell="{ row }">
+              <UBadge :color="getStatusColor((row.original as any).status)" variant="subtle">
+                {{ (row.original as any).status.replace('_', ' ') }}
               </UBadge>
             </template>
 
-            <template #actions-data="{ row }">
-              <UDropdown :items="getActions(row)">
+            <template #actions-cell="{ row }">
+              <UDropdown :items="getActions(row.original)">
                 <UButton
                   color="neutral"
                   variant="ghost"

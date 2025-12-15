@@ -26,11 +26,12 @@ const { data: membersData } = await useFetch('/api/agency/departments/members', 
 })
 
 const members = computed(() => {
-  const data = membersData.value as any[]
-  return data?.map(m => ({
+  const response = membersData.value as { members?: any[] } | null
+  const data = response?.members || []
+  return data.map(m => ({
     label: m.name,
     value: m.id
-  })) || []
+  }))
 })
 
 // Priority options
@@ -64,7 +65,7 @@ const handleSubmit = async () => {
       }
     })
 
-    emit('created', response.id)
+    emit('created', (response as unknown as { id: string }).id)
 
     // Reset form
     title.value = ''

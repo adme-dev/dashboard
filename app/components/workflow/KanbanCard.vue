@@ -199,7 +199,6 @@ const handleDragEnd = () => {
         <UAvatar
           :alt="task.assignee.name"
           size="2xs"
-          :ui="{ rounded: 'rounded-full' }"
         />
         <span class="text-xs text-muted truncate max-w-[80px]">
           {{ task.assignee.name.split(' ')[0] }}

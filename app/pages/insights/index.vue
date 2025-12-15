@@ -9,7 +9,7 @@ const { data, pending, error, refresh } = await useFetch('/api/ai/insights')
       description="Plain-English financial insights generated from your Xero data"
     >
       <template #right>
-        <UButton label="Refresh" color="neutral" @click="refresh" />
+        <UButton label="Refresh" color="neutral" @click="() => refresh()" />
       </template>
     </UPageHeader>
 

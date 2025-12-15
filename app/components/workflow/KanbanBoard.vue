@@ -95,12 +95,12 @@ const handleDrop = async (targetStatusId: string, targetIndex: number) => {
   if (targetTasks.length === 0) {
     newSortOrder = 1000
   } else if (targetIndex === 0) {
-    newSortOrder = targetTasks[0].sortOrder - 1000
+    newSortOrder = (targetTasks[0]?.sortOrder ?? 1000) - 1000
   } else if (targetIndex >= targetTasks.length) {
-    newSortOrder = targetTasks[targetTasks.length - 1].sortOrder + 1000
+    newSortOrder = (targetTasks[targetTasks.length - 1]?.sortOrder ?? 0) + 1000
   } else {
-    const prevOrder = targetTasks[targetIndex - 1].sortOrder
-    const nextOrder = targetTasks[targetIndex].sortOrder
+    const prevOrder = targetTasks[targetIndex - 1]?.sortOrder ?? 0
+    const nextOrder = targetTasks[targetIndex]?.sortOrder ?? 2000
     newSortOrder = Math.floor((prevOrder + nextOrder) / 2)
   }
 

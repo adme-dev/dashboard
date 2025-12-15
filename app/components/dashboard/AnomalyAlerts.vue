@@ -37,11 +37,11 @@ const formatCurrency = (value: number) => {
   }).format(value)
 }
 
-const getSeverityColor = (severity: string) => {
+const getSeverityColor = (severity: string): 'error' | 'warning' | 'info' | 'neutral' => {
   switch (severity) {
-    case 'high': return 'red'
-    case 'medium': return 'amber'
-    case 'low': return 'blue'
+    case 'high': return 'error'
+    case 'medium': return 'warning'
+    case 'low': return 'info'
     default: return 'neutral'
   }
 }
@@ -160,7 +160,7 @@ const summaryStats = computed(() => {
           <UProgress
             :value="summaryStats.anomalyRate"
             :max="10"
-            :color="summaryStats.anomalyRate > 5 ? 'red' : summaryStats.anomalyRate > 2 ? 'amber' : 'emerald'"
+            :color="summaryStats.anomalyRate > 5 ? 'error' : summaryStats.anomalyRate > 2 ? 'warning' : 'success'"
             class="w-16"
           />
         </div>

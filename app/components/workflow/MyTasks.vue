@@ -15,7 +15,10 @@ const { data: myTasksData, pending: loading, refresh } = await useFetch('/api/ag
   query: { userId: props.userId }
 })
 
-const myTasks = computed(() => myTasksData.value || { user: {}, stats: {}, tasks: {} })
+const myTasks = computed(() => {
+  const data = myTasksData.value as any
+  return data || { user: {}, stats: {}, tasks: { overdue: [], dueToday: [], inProgress: [], inReview: [] } }
+})
 
 // Priority colors
 const getPriorityColor = (priority: string) => {

@@ -89,7 +89,7 @@ async function exportData() {
       title: 'Export Successful',
       description: `Cash flow data exported as ${exportOptions.value.format.toUpperCase()}`,
       icon: 'i-lucide-download',
-      color: 'green'
+      color: 'success'
     })
 
   } catch (error: any) {
@@ -98,7 +98,7 @@ async function exportData() {
       title: 'Export Failed',
       description: error.message || 'Failed to export cash flow data',
       icon: 'i-lucide-alert-circle',
-      color: 'red'
+      color: 'error'
     })
   } finally {
     isExporting.value = false
@@ -118,12 +118,12 @@ const estimatedSize = computed(() => {
 </script>
 
 <template>
-  <UModal v-model="isOpen" :ui="{ width: 'sm:max-w-md' }">
-    <UCard :ui="{ ring: '', divide: 'divide-y divide-gray-200 dark:divide-gray-800' }">
+  <UModal v-model:open="isOpen">
+    <UCard>
       <template #header>
         <div class="flex items-center justify-between">
           <h3 class="text-lg font-semibold">Export Cash Flow Data</h3>
-          <UButton color="gray" variant="ghost" icon="i-lucide-x" @click="isOpen = false" />
+          <UButton color="neutral" variant="ghost" icon="i-lucide-x" @click="isOpen = false" />
         </div>
       </template>
 
@@ -165,18 +165,10 @@ const estimatedSize = computed(() => {
           <label class="block text-sm font-medium mb-3">Forecast Period</label>
           <USelectMenu
             v-model="exportOptions.period"
-            :options="periodOptions"
-            option-attribute="label"
-            value-attribute="value"
+            :items="periodOptions"
+            value-key="value"
             class="w-full"
-          >
-            <template #option="{ option }">
-              <div>
-                <div class="font-medium">{{ option.label }}</div>
-                <div class="text-xs text-muted">{{ option.description }}</div>
-              </div>
-            </template>
-          </USelectMenu>
+          />
         </div>
 
         <!-- Additional Data Options -->
@@ -214,9 +206,9 @@ const estimatedSize = computed(() => {
 
       <template #footer>
         <div class="flex justify-end gap-2">
-          <UButton 
-            color="gray" 
-            variant="ghost" 
+          <UButton
+            color="neutral"
+            variant="ghost"
             @click="isOpen = false"
             :disabled="isExporting"
           >

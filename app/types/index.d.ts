@@ -95,6 +95,13 @@ export interface AgencyClient {
   createdAt: string
   updatedAt: string
   notes?: string
+  // Computed profitability fields (from API)
+  totalRevenue?: number
+  totalCost?: number
+  grossProfit?: number
+  grossMargin?: number
+  projectCount?: number
+  activeProjects?: number
 }
 
 export interface Project {
@@ -1184,4 +1191,23 @@ export interface BriefFormStep {
 
 export interface BriefFormValues {
   [fieldKey: string]: any
+}
+
+// ============================================
+// UI Component Helpers
+// ============================================
+
+// Legacy table column format for backwards compatibility
+// Use this when migrating from the old UTable API
+export interface LegacyTableColumn {
+  key: string
+  label: string
+  sortable?: boolean
+  class?: string
+  id?: string
+}
+
+// KPI response types for dashboard
+export interface AgencyKPIsWithOptional extends Partial<AgencyKPIs> {
+  outstandingAR?: number
 }

@@ -106,15 +106,15 @@ const statusConfig = {
 
 // Impact and priority configurations
 const impactConfig = {
-  high: { color: 'red', label: 'High Impact' },
-  medium: { color: 'amber', label: 'Medium Impact' },
-  low: { color: 'gray', label: 'Low Impact' }
+  high: { color: 'error' as const, label: 'High Impact' },
+  medium: { color: 'warning' as const, label: 'Medium Impact' },
+  low: { color: 'neutral' as const, label: 'Low Impact' }
 }
 
-const timeframeConfig = {
-  immediate: { color: 'red', label: 'Immediate', icon: 'i-lucide-zap' },
-  'short-term': { color: 'amber', label: 'Short-term', icon: 'i-lucide-clock' },
-  'long-term': { color: 'blue', label: 'Long-term', icon: 'i-lucide-calendar' }
+const timeframeConfig: Record<string, { color: 'error' | 'warning' | 'info', label: string, icon: string }> = {
+  'immediate': { color: 'error', label: 'Immediate', icon: 'i-lucide-zap' },
+  'short-term': { color: 'warning', label: 'Short-term', icon: 'i-lucide-clock' },
+  'long-term': { color: 'info', label: 'Long-term', icon: 'i-lucide-calendar' }
 }
 
 const categoryIcons = {
@@ -125,15 +125,15 @@ const categoryIcons = {
 }
 
 const probabilityConfig = {
-  high: { color: 'red', label: 'High' },
-  medium: { color: 'amber', label: 'Medium' },
-  low: { color: 'green', label: 'Low' }
+  high: { color: 'error' as const, label: 'High' },
+  medium: { color: 'warning' as const, label: 'Medium' },
+  low: { color: 'success' as const, label: 'Low' }
 }
 
 const effortConfig = {
-  high: { color: 'red', label: 'High Effort' },
-  medium: { color: 'amber', label: 'Medium Effort' },
-  low: { color: 'green', label: 'Low Effort' }
+  high: { color: 'error' as const, label: 'High Effort' },
+  medium: { color: 'warning' as const, label: 'Medium Effort' },
+  low: { color: 'success' as const, label: 'Low Effort' }
 }
 </script>
 
@@ -167,7 +167,7 @@ const effortConfig = {
     <UAlert
       v-else-if="error"
       icon="i-lucide-alert-circle"
-      color="red"
+      color="error"
       variant="subtle"
       title="Unable to generate insights"
       description="AI analysis is temporarily unavailable. Please try again later."
@@ -233,13 +233,14 @@ const effortConfig = {
                   >
                     {{ impactConfig[action.impact].label }}
                   </UBadge>
-                  <UBadge 
-                    :color="timeframeConfig[action.timeframe].color" 
-                    variant="outline" 
+                  <UBadge
+                    v-if="timeframeConfig[action.timeframe]"
+                    :color="timeframeConfig[action.timeframe]?.color"
+                    variant="outline"
                     size="xs"
                   >
-                    <UIcon :name="timeframeConfig[action.timeframe].icon" class="h-3 w-3 mr-1" />
-                    {{ timeframeConfig[action.timeframe].label }}
+                    <UIcon :name="timeframeConfig[action.timeframe]?.icon ?? ''" class="h-3 w-3 mr-1" />
+                    {{ timeframeConfig[action.timeframe]?.label }}
                   </UBadge>
                 </div>
                 <p class="text-sm text-muted">{{ action.description }}</p>

@@ -141,10 +141,10 @@ const criticalAlerts = computed(() => {
         <template #right>
           <div class="flex items-center gap-4">
             <!-- Critical alerts badge -->
-            <UBadge 
+            <UBadge
               v-if="criticalAlerts.length > 0"
               :label="`${criticalAlerts.length} Critical Alert${criticalAlerts.length > 1 ? 's' : ''}`"
-              color="red"
+              color="error"
               variant="subtle"
             />
             
@@ -164,7 +164,7 @@ const criticalAlerts = computed(() => {
           v-for="alert in criticalAlerts"
           :key="alert.message"
           icon="i-lucide-alert-triangle"
-          color="red"
+          color="error"
           variant="subtle"
           :title="alert.type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())"
           :description="alert.message"
@@ -176,7 +176,7 @@ const criticalAlerts = computed(() => {
       <div v-if="kpiError && isConnected" class="mb-6">
         <UAlert
           icon="i-lucide-wifi-off"
-          color="red"
+          color="error"
           title="Connection Error"
           description="Unable to fetch live data from Xero. Please check your connection."
         />

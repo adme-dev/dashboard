@@ -138,28 +138,28 @@ const billingTypeOptions = [
 
 // Project columns
 const projectColumns = [
-  { key: 'name', label: 'Project' },
-  { key: 'status', label: 'Status' },
-  { key: 'budget', label: 'Budget' },
-  { key: 'spent', label: 'Spent' },
-  { key: 'margin', label: 'Margin' }
+  { accessorKey: 'name', header: 'Project' },
+  { accessorKey: 'status', header: 'Status' },
+  { accessorKey: 'budget', header: 'Budget' },
+  { accessorKey: 'spent', header: 'Spent' },
+  { accessorKey: 'margin', header: 'Margin' }
 ]
 
 // Time entry columns
 const timeColumns = [
-  { key: 'date', label: 'Date' },
-  { key: 'project', label: 'Project' },
-  { key: 'user', label: 'Team Member' },
-  { key: 'hours', label: 'Hours' },
-  { key: 'amount', label: 'Amount' }
+  { accessorKey: 'date', header: 'Date' },
+  { accessorKey: 'project', header: 'Project' },
+  { accessorKey: 'user', header: 'Team Member' },
+  { accessorKey: 'hours', header: 'Hours' },
+  { accessorKey: 'amount', header: 'Amount' }
 ]
 
 // Invoice columns
 const invoiceColumns = [
-  { key: 'number', label: 'Invoice #' },
-  { key: 'date', label: 'Date' },
-  { key: 'total', label: 'Total' },
-  { key: 'status', label: 'Status' }
+  { accessorKey: 'number', header: 'Invoice #' },
+  { accessorKey: 'date', header: 'Date' },
+  { accessorKey: 'total', header: 'Total' },
+  { accessorKey: 'status', header: 'Status' }
 ]
 </script>
 

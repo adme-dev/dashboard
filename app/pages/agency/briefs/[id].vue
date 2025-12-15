@@ -374,7 +374,7 @@ async function updateStatus(status: BriefStatus) {
                       <div>
                         <p class="font-medium text-sm">{{ attachment.fileName }}</p>
                         <p class="text-xs text-muted">
-                          {{ (attachment.fileSize / 1024).toFixed(1) }} KB
+                          {{ ((attachment.fileSize || 0) / 1024).toFixed(1) }} KB
                         </p>
                       </div>
                     </div>

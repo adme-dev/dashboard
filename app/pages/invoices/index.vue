@@ -152,7 +152,7 @@ const columnsAll = [
     <template #header>
       <UDashboardNavbar title="Invoices" description="Track outstanding balances, overdue risk, and recent payments">
         <template #right>
-          <UButton label="Refresh" color="neutral" icon="i-lucide-refresh-cw" @click="refresh" :loading="pending" />
+          <UButton label="Refresh" color="neutral" icon="i-lucide-refresh-cw" @click="() => refresh()" :loading="pending" />
         </template>
       </UDashboardNavbar>
 
@@ -174,8 +174,8 @@ const columnsAll = [
           <div class="inline-flex items-center gap-2">
             <UButton :variant="selectedView === 'all' ? 'solid' : 'ghost'" icon="i-lucide-layers" @click="selectedView = 'all'">All</UButton>
             <UButton :variant="selectedView === 'outstanding' ? 'solid' : 'ghost'" icon="i-lucide-calendar-clock" @click="selectedView = 'outstanding'">Outstanding</UButton>
-            <UButton :variant="selectedView === 'overdue' ? 'solid' : 'ghost'" icon="i-lucide-alarm-minus" color="red" @click="selectedView = 'overdue'">Overdue</UButton>
-            <UButton :variant="selectedView === 'paid' ? 'solid' : 'ghost'" icon="i-lucide-badge-check" color="emerald" @click="selectedView = 'paid'">Paid</UButton>
+            <UButton :variant="selectedView === 'overdue' ? 'solid' : 'ghost'" icon="i-lucide-alarm-minus" color="error" @click="selectedView = 'overdue'">Overdue</UButton>
+            <UButton :variant="selectedView === 'paid' ? 'solid' : 'ghost'" icon="i-lucide-badge-check" color="success" @click="selectedView = 'paid'">Paid</UButton>
           </div>
         </template>
       </UDashboardToolbar>
@@ -190,7 +190,7 @@ const columnsAll = [
       <UAlert
         v-else-if="error"
         icon="i-lucide-alert-octagon"
-        color="red"
+        color="error"
         variant="subtle"
         title="Unable to load invoices"
         :description="error.statusMessage || 'Please try refreshing.'"
@@ -414,10 +414,10 @@ const columnsAll = [
           >
             <template #status-data="{ row }">
               <UBadge
-                :color="row.status === 'PAID' ? 'emerald' : row.status === 'OVERDUE' ? 'red' : 'amber'"
+                :color="(row as any).status === 'PAID' ? 'success' : (row as any).status === 'OVERDUE' ? 'error' : 'warning'"
                 variant="subtle"
               >
-                {{ row.status === 'PAID' ? 'Paid' : row.status === 'OVERDUE' ? 'Overdue' : 'Outstanding' }}
+                {{ (row as any).status === 'PAID' ? 'Paid' : (row as any).status === 'OVERDUE' ? 'Overdue' : 'Outstanding' }}
               </UBadge>
             </template>
             <template #date-data="{ row }">{{ formatDate(row.date) }}</template>
