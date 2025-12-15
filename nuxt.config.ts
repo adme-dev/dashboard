@@ -13,7 +13,8 @@ export default defineNuxtConfig({
     sessionSecret: process.env.SESSION_SECRET,
     databaseUrl: process.env.DATABASE_URL,
     public: {
-      xeroRedirectUri: process.env.XERO_REDIRECT_URI
+      xeroRedirectUri: process.env.XERO_REDIRECT_URI,
+      zeroServerUrl: process.env.ZERO_SERVER_URL || 'http://localhost:4848'
     }
   },
 

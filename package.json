@@ -14,6 +14,7 @@
     "@iconify-json/lucide": "^1.2.68",
     "@iconify-json/simple-icons": "^1.2.52",
     "@nuxt/ui": "^4.0.0-alpha.2",
+    "@rocicorp/zero": "^0.18.0",
     "@unovis/ts": "^1.6.1",
     "@unovis/vue": "^1.6.1",
     "@vueuse/nuxt": "^13.9.0",
@@ -21,6 +22,7 @@
     "groq-sdk": "^0.32.0",
     "nuxt": "^4.0.3",
     "ofetch": "^1.4.1",
+    "pg": "^8.13.0",
     "xero-node": "^13.0.0",
     "xlsx": "^0.18.5",
     "zod": "^4.1.9"
