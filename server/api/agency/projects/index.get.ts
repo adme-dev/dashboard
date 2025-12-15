@@ -1,177 +1,111 @@
 /**
  * Projects List Endpoint
- * Returns all projects with profitability calculations
+ * Returns all projects with profitability calculations from Postgres
  */
 
-import type { ProjectProfitability } from '~/types'
+import { queryRows } from '~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const { status, clientId } = query
 
-  // Mock projects data - in production, this comes from database
-  const projects: (ProjectProfitability & {
-    id: string
-    startDate: string
-    endDate?: string
-    budgetType: string
-  })[] = [
-    {
-      id: '1',
-      projectId: '1',
-      projectName: 'Acme Q4 Campaign',
-      clientName: 'Acme Corporation',
-      budget: 75000,
-      budgetAmount: 75000,
-      laborCost: 48000,
-      expenseCost: 12000,
-      mediaCost: 8500,
-      totalCost: 68500,
-      revenue: 75000,
-      grossProfit: 6500,
-      grossMargin: 8.7,
-      hoursWorked: 320,
-      effectiveRate: 234,
-      status: 'active',
-      startDate: '2024-10-01',
-      endDate: '2024-12-31',
-      budgetType: 'fixed'
-    },
-    {
-      id: '2',
-      projectId: '2',
-      projectName: 'TechStart Website Redesign',
-      clientName: 'TechStart Inc',
-      budget: 45000,
-      budgetAmount: 45000,
-      laborCost: 28000,
-      expenseCost: 5000,
-      mediaCost: 0,
-      totalCost: 33000,
-      revenue: 45000,
-      grossProfit: 12000,
-      grossMargin: 26.7,
-      hoursWorked: 180,
-      effectiveRate: 250,
-      status: 'active',
-      startDate: '2024-11-01',
-      endDate: '2025-01-15',
-      budgetType: 'fixed'
-    },
-    {
-      id: '3',
-      projectId: '3',
-      projectName: 'Monthly Retainer - Social',
-      clientName: 'Acme Corporation',
-      budget: 15000,
-      budgetAmount: 15000,
-      laborCost: 8500,
-      expenseCost: 1200,
-      mediaCost: 0,
-      totalCost: 9700,
-      revenue: 15000,
-      grossProfit: 5300,
-      grossMargin: 35.3,
-      hoursWorked: 60,
-      effectiveRate: 250,
-      status: 'active',
-      startDate: '2024-12-01',
-      endDate: '2024-12-31',
-      budgetType: 'retainer_allocation'
-    },
-    {
-      id: '4',
-      projectId: '4',
-      projectName: 'Brand Guidelines Update',
-      clientName: 'Local Restaurant Group',
-      budget: 8500,
-      budgetAmount: 8500,
-      laborCost: 4200,
-      expenseCost: 800,
-      mediaCost: 0,
-      totalCost: 5000,
-      revenue: 8500,
-      grossProfit: 3500,
-      grossMargin: 41.2,
-      hoursWorked: 35,
-      effectiveRate: 243,
-      status: 'completed',
-      startDate: '2024-11-15',
-      endDate: '2024-12-10',
-      budgetType: 'fixed'
-    },
-    {
-      id: '5',
-      projectId: '5',
-      projectName: 'Google Ads Management',
-      clientName: 'TechStart Inc',
-      budget: 5000,
-      budgetAmount: 5000,
-      laborCost: 2800,
-      expenseCost: 0,
-      mediaCost: 0,
-      totalCost: 2800,
-      revenue: 5000,
-      grossProfit: 2200,
-      grossMargin: 44.0,
-      hoursWorked: 20,
-      effectiveRate: 250,
-      status: 'active',
-      startDate: '2024-12-01',
-      budgetType: 'retainer_allocation'
-    },
-    {
-      id: '6',
-      projectId: '6',
-      projectName: 'Holiday Campaign Creative',
-      clientName: 'Local Restaurant Group',
-      budget: 12000,
-      budgetAmount: 12000,
-      laborCost: 0,
-      expenseCost: 0,
-      mediaCost: 0,
-      totalCost: 0,
-      revenue: 12000,
-      grossProfit: 12000,
-      grossMargin: 100,
-      hoursWorked: 0,
-      effectiveRate: 0,
-      status: 'draft',
-      startDate: '2024-12-15',
-      endDate: '2024-12-24',
-      budgetType: 'fixed'
+  try {
+    // Build query with optional filters
+    let sql = `
+      SELECT
+        p.id,
+        p.name,
+        p.description,
+        p.budget_amount,
+        p.budget_type,
+        p.start_date,
+        p.end_date,
+        p.status,
+        c.id as client_id,
+        c.name as client_name,
+        COALESCE(t.labor_cost, 0) as labor_cost,
+        COALESCE(t.hours_worked, 0) as hours_worked,
+        COALESCE(e.expense_cost, 0) as expense_cost,
+        COALESCE(m.media_cost, 0) as media_cost,
+        COALESCE(t.labor_cost, 0) + COALESCE(e.expense_cost, 0) + COALESCE(m.media_cost, 0) as total_cost,
+        p.budget_amount - (COALESCE(t.labor_cost, 0) + COALESCE(e.expense_cost, 0) + COALESCE(m.media_cost, 0)) as gross_profit,
+        CASE
+          WHEN p.budget_amount > 0
+          THEN ((p.budget_amount - (COALESCE(t.labor_cost, 0) + COALESCE(e.expense_cost, 0) + COALESCE(m.media_cost, 0))) / p.budget_amount * 100)
+          ELSE 0
+        END as gross_margin,
+        CASE
+          WHEN COALESCE(t.hours_worked, 0) > 0
+          THEN p.budget_amount / t.hours_worked
+          ELSE 0
+        END as effective_rate
+      FROM projects p
+      JOIN agency_clients c ON p.client_id = c.id
+      LEFT JOIN (
+        SELECT project_id, SUM(hours * hourly_rate) as labor_cost, SUM(hours) as hours_worked
+        FROM time_entries
+        GROUP BY project_id
+      ) t ON p.id = t.project_id
+      LEFT JOIN (
+        SELECT project_id, SUM(amount) as expense_cost
+        FROM project_expenses
+        WHERE project_id IS NOT NULL
+        GROUP BY project_id
+      ) e ON p.id = e.project_id
+      LEFT JOIN (
+        SELECT project_id, SUM(actual_spend) as media_cost
+        FROM media_spend
+        WHERE project_id IS NOT NULL
+        GROUP BY project_id
+      ) m ON p.id = m.project_id
+      WHERE 1=1
+    `
+
+    const params: any[] = []
+    let paramIndex = 1
+
+    if (status && status !== 'all') {
+      sql += ` AND p.status = $${paramIndex}`
+      params.push(status)
+      paramIndex++
     }
-  ]
 
-  // Apply filters
-  let filtered = projects
+    if (clientId) {
+      sql += ` AND p.client_id = $${paramIndex}`
+      params.push(clientId)
+      paramIndex++
+    }
 
-  if (status && status !== 'all') {
-    filtered = filtered.filter(p => p.status === status)
+    sql += ' ORDER BY p.start_date DESC'
+
+    const projects = await queryRows(sql, params)
+
+    // Transform to camelCase
+    return projects.map(p => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      clientId: p.client_id,
+      clientName: p.client_name,
+      budgetAmount: Number(p.budget_amount),
+      budgetType: p.budget_type,
+      startDate: p.start_date,
+      endDate: p.end_date,
+      status: p.status,
+      laborCost: Number(p.labor_cost),
+      hoursWorked: Number(p.hours_worked),
+      expenseCost: Number(p.expense_cost),
+      mediaCost: Number(p.media_cost),
+      totalCost: Number(p.total_cost),
+      grossProfit: Number(p.gross_profit),
+      grossMargin: Number(p.gross_margin),
+      effectiveRate: Number(p.effective_rate),
+    }))
+  } catch (error) {
+    console.error('Failed to fetch projects:', error)
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Failed to fetch projects'
+    })
   }
-
-  if (clientId) {
-    // In production, filter by actual client ID
-    filtered = filtered.filter(p => p.clientName.toLowerCase().includes(String(clientId).toLowerCase()))
-  }
-
-  // Map to expected format
-  return filtered.map(p => ({
-    id: p.id,
-    name: p.projectName,
-    clientName: p.clientName,
-    budgetAmount: p.budget,
-    totalCost: p.totalCost,
-    laborCost: p.laborCost,
-    expenseCost: p.expenseCost,
-    mediaCost: p.mediaCost,
-    grossProfit: p.grossProfit,
-    grossMargin: p.grossMargin,
-    hoursWorked: p.hoursWorked,
-    effectiveRate: p.effectiveRate,
-    status: p.status,
-    startDate: p.startDate,
-    endDate: p.endDate,
-    budgetType: p.budgetType
-  }))
 })

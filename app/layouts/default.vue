@@ -99,6 +99,31 @@ const links = [[{
     open.value = false
   }
 }, {
+  label: 'Agency',
+  icon: 'i-lucide-briefcase',
+  to: '/agency',
+  type: 'trigger',
+  children: [{
+    label: 'Overview',
+    to: '/agency',
+    exact: true,
+    onSelect: () => {
+      open.value = false
+    }
+  }, {
+    label: 'Projects',
+    to: '/agency/projects',
+    onSelect: () => {
+      open.value = false
+    }
+  }, {
+    label: 'Clients',
+    to: '/agency/clients',
+    onSelect: () => {
+      open.value = false
+    }
+  }]
+}, {
   label: 'Settings',
   to: '/settings',
   icon: 'i-lucide-settings',

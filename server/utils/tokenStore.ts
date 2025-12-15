@@ -1,29 +1,104 @@
 import { createError, type H3Event } from 'h3'
 import { createXeroClient, toStoredTokenSet, type XeroTokenSet } from './xeroClient'
+import { queryOne, query } from './db'
 
-const TOKEN_KEY_PREFIX = 'xero:session:'
 const refreshLocks = new Map<string, Promise<XeroTokenSet>>()
 
-function buildKey(sessionId: string) {
-  return `${TOKEN_KEY_PREFIX}${sessionId}`
-}
-
+/**
+ * Store Xero tokens in Postgres for persistence across restarts
+ */
 export async function setTokenForSession(event: H3Event, token: XeroTokenSet) {
   const sid = getSessionId(event)
-  const storage = useStorage()
-  await storage.setItem(buildKey(sid), token)
+
+  // Upsert the session - insert or update if exists
+  await query(`
+    INSERT INTO xero_sessions (session_id, access_token, refresh_token, id_token, expires_at, scope, token_type)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    ON CONFLICT (session_id)
+    DO UPDATE SET
+      access_token = EXCLUDED.access_token,
+      refresh_token = EXCLUDED.refresh_token,
+      id_token = EXCLUDED.id_token,
+      expires_at = EXCLUDED.expires_at,
+      scope = EXCLUDED.scope,
+      token_type = EXCLUDED.token_type,
+      updated_at = NOW()
+  `, [
+    sid,
+    token.access_token,
+    token.refresh_token,
+    token.id_token,
+    new Date(token.expires_at),
+    token.scope,
+    token.token_type
+  ])
 }
 
 export async function getTokenForSession(event: H3Event): Promise<XeroTokenSet | undefined> {
   const sid = getSessionId(event)
-  const storage = useStorage()
-  return await storage.getItem<XeroTokenSet>(buildKey(sid))
+
+  const row = await queryOne<{
+    access_token: string
+    refresh_token: string | null
+    id_token: string | null
+    expires_at: Date
+    scope: string | null
+    token_type: string | null
+  }>(`
+    SELECT access_token, refresh_token, id_token, expires_at, scope, token_type
+    FROM xero_sessions
+    WHERE session_id = $1
+  `, [sid])
+
+  if (!row) return undefined
+
+  return {
+    access_token: row.access_token,
+    refresh_token: row.refresh_token || undefined,
+    id_token: row.id_token || undefined,
+    expires_at: new Date(row.expires_at).getTime(),
+    scope: row.scope || undefined,
+    token_type: row.token_type || 'Bearer'
+  }
 }
 
 export async function clearTokenForSession(event: H3Event) {
   const sid = getSessionId(event)
-  const storage = useStorage()
-  await storage.removeItem(buildKey(sid))
+  await query('DELETE FROM xero_sessions WHERE session_id = $1', [sid])
+}
+
+/**
+ * Store the selected tenant for a session
+ */
+export async function setTenantForSession(event: H3Event, tenantId: string, tenantName: string) {
+  const sid = getSessionId(event)
+
+  await query(`
+    INSERT INTO xero_tenants (session_id, tenant_id, tenant_name)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (session_id)
+    DO UPDATE SET
+      tenant_id = EXCLUDED.tenant_id,
+      tenant_name = EXCLUDED.tenant_name,
+      updated_at = NOW()
+  `, [sid, tenantId, tenantName])
+}
+
+export async function getTenantForSession(event: H3Event): Promise<{ tenantId: string; tenantName: string } | undefined> {
+  const sid = getSessionId(event)
+
+  const row = await queryOne<{ tenant_id: string; tenant_name: string }>(`
+    SELECT tenant_id, tenant_name
+    FROM xero_tenants
+    WHERE session_id = $1
+  `, [sid])
+
+  if (!row) return undefined
+
+  return {
+    tenantId: row.tenant_id,
+    tenantName: row.tenant_name
+  }
 }
 
 export async function getActiveTokenForSession(event: H3Event, opts: { minTtlMs?: number } = {}): Promise<XeroTokenSet> {

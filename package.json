@@ -5,10 +5,15 @@
   "scripts": {
     "build": "nuxt build",
     "dev": "nuxt dev",
+    "dev:all": "concurrently \"pnpm dev\" \"pnpm zero:dev\"",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "lint": "eslint .",
-    "typecheck": "nuxt typecheck"
+    "typecheck": "nuxt typecheck",
+    "zero:dev": "npx @rocicorp/zero-cache serve",
+    "db:setup": "psql $DATABASE_URL -f server/database/schema.sql",
+    "db:seed": "psql $DATABASE_URL -f server/database/seed-coa.sql",
+    "db:zero": "psql $DATABASE_URL -f server/database/setup-zero-replication.sql"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.68",
@@ -29,6 +34,8 @@
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.9.0",
+    "@types/pg": "^8.11.6",
+    "concurrently": "^9.1.0",
     "eslint": "^9.35.0",
     "typescript": "^5.9.2",
     "vue-tsc": "^3.0.7"

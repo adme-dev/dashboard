@@ -3,111 +3,91 @@
  * Returns recent time entries for the dashboard
  */
 
+import { queryRows, queryOne } from '~/server/utils/db'
+
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const limit = Number(query.limit) || 5
 
-  // Mock recent time entries - in production, from database
-  const entries = [
-    {
-      id: '1',
-      project: 'Acme Q4 Campaign',
-      projectId: '1',
-      user: 'Sarah Chen',
-      userId: 'u1',
-      description: 'Campaign creative development',
-      hours: 6.5,
-      date: '2024-12-14',
-      billable: true,
-      hourlyRate: 150
-    },
-    {
-      id: '2',
-      project: 'TechStart Website Redesign',
-      projectId: '2',
-      user: 'Mike Rodriguez',
-      userId: 'u2',
-      description: 'Homepage wireframes and mockups',
-      hours: 4.0,
-      date: '2024-12-14',
-      billable: true,
-      hourlyRate: 175
-    },
-    {
-      id: '3',
-      project: 'Monthly Retainer - Social',
-      projectId: '3',
-      user: 'Emily Thompson',
-      userId: 'u3',
-      description: 'Social media content calendar',
-      hours: 3.0,
-      date: '2024-12-13',
-      billable: true,
-      hourlyRate: 125
-    },
-    {
-      id: '4',
-      project: 'Google Ads Management',
-      projectId: '5',
-      user: 'David Kim',
-      userId: 'u4',
-      description: 'Campaign optimization and reporting',
-      hours: 2.5,
-      date: '2024-12-13',
-      billable: true,
-      hourlyRate: 140
-    },
-    {
-      id: '5',
-      project: 'Acme Q4 Campaign',
-      projectId: '1',
-      user: 'Sarah Chen',
-      userId: 'u1',
-      description: 'Client presentation prep',
-      hours: 2.0,
-      date: '2024-12-13',
-      billable: true,
-      hourlyRate: 150
-    },
-    {
-      id: '6',
-      project: 'Internal - Team Meeting',
-      projectId: null,
-      user: 'All Team',
-      userId: null,
-      description: 'Weekly status meeting',
-      hours: 1.0,
-      date: '2024-12-13',
-      billable: false,
-      hourlyRate: 0
-    }
-  ]
+  try {
+    // Get recent time entries
+    const entries = await queryRows(`
+      SELECT
+        te.id,
+        p.name as project,
+        te.project_id,
+        tm.name as user_name,
+        te.user_id,
+        te.description,
+        te.hours,
+        te.date,
+        te.billable,
+        te.hourly_rate
+      FROM time_entries te
+      LEFT JOIN projects p ON te.project_id = p.id
+      LEFT JOIN team_members tm ON te.user_id = tm.id
+      ORDER BY te.date DESC, te.created_at DESC
+      LIMIT $1
+    `, [limit])
 
-  // Calculate totals for today and this week
-  const today = new Date().toISOString().split('T')[0]
-  const todayEntries = entries.filter(e => e.date === today)
-  const todayHours = todayEntries.reduce((sum, e) => sum + e.hours, 0)
-  const todayBillable = todayEntries.filter(e => e.billable).reduce((sum, e) => sum + e.hours, 0)
+    // Get today's summary
+    const todaySummary = await queryOne(`
+      SELECT
+        COALESCE(SUM(hours), 0) as total,
+        COALESCE(SUM(CASE WHEN billable THEN hours ELSE 0 END), 0) as billable
+      FROM time_entries
+      WHERE date = CURRENT_DATE
+    `)
 
-  // Week totals (simplified - just sum all mock data)
-  const weekHours = entries.reduce((sum, e) => sum + e.hours, 0)
-  const weekBillable = entries.filter(e => e.billable).reduce((sum, e) => sum + e.hours, 0)
-  const weekRevenue = entries.filter(e => e.billable).reduce((sum, e) => sum + (e.hours * e.hourlyRate), 0)
+    // Get this week's summary (Monday to Sunday)
+    const weekSummary = await queryOne(`
+      SELECT
+        COALESCE(SUM(hours), 0) as total,
+        COALESCE(SUM(CASE WHEN billable THEN hours ELSE 0 END), 0) as billable,
+        COALESCE(SUM(CASE WHEN billable THEN hours * hourly_rate ELSE 0 END), 0) as revenue
+      FROM time_entries
+      WHERE date >= date_trunc('week', CURRENT_DATE)
+        AND date < date_trunc('week', CURRENT_DATE) + INTERVAL '7 days'
+    `)
 
-  return {
-    entries: entries.slice(0, limit),
-    summary: {
-      today: {
-        total: todayHours,
-        billable: todayBillable,
-        utilization: todayHours > 0 ? (todayBillable / todayHours) * 100 : 0
-      },
-      week: {
-        total: weekHours,
-        billable: weekBillable,
-        utilization: weekHours > 0 ? (weekBillable / weekHours) * 100 : 0,
-        revenue: weekRevenue
+    const todayTotal = Number(todaySummary?.total) || 0
+    const todayBillable = Number(todaySummary?.billable) || 0
+    const weekTotal = Number(weekSummary?.total) || 0
+    const weekBillable = Number(weekSummary?.billable) || 0
+    const weekRevenue = Number(weekSummary?.revenue) || 0
+
+    return {
+      entries: entries.map(e => ({
+        id: e.id,
+        project: e.project || 'Internal',
+        projectId: e.project_id,
+        user: e.user_name || 'Unknown',
+        userId: e.user_id,
+        description: e.description,
+        hours: Number(e.hours),
+        date: e.date,
+        billable: e.billable,
+        hourlyRate: Number(e.hourly_rate)
+      })),
+      summary: {
+        today: {
+          total: todayTotal,
+          billable: todayBillable,
+          utilization: todayTotal > 0 ? (todayBillable / todayTotal) * 100 : 0
+        },
+        week: {
+          total: weekTotal,
+          billable: weekBillable,
+          utilization: weekTotal > 0 ? (weekBillable / weekTotal) * 100 : 0,
+          revenue: weekRevenue
+        }
       }
     }
+  } catch (error) {
+    console.error('Failed to fetch recent time entries:', error)
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Failed to fetch recent time entries'
+    })
   }
 })

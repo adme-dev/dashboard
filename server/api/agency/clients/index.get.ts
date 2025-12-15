@@ -1,112 +1,82 @@
 /**
  * Agency Clients List Endpoint
- * Returns all clients with summary data
+ * Returns all clients with profitability summary from Postgres
  */
 
-import type { AgencyClient, ClientProfitability } from '~/types'
+import { db, queryRows } from '~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
-  const { active } = query
+  const activeOnly = query.active !== 'false'
 
-  // Mock clients data - in production, this comes from database
-  const clients: (AgencyClient & Partial<ClientProfitability>)[] = [
-    {
-      id: '1',
-      name: 'Acme Corporation',
-      xeroContactId: 'xero-acme-123',
-      billingType: 'hybrid',
-      retainerAmount: 15000,
-      paymentTerms: 30,
-      hourlyRate: 175,
-      mediaCommissionRate: 15,
-      isActive: true,
-      createdAt: '2024-01-15',
-      updatedAt: '2024-12-01',
-      notes: 'Key account - monthly retainer plus project work',
-      // Profitability data
-      totalRevenue: 180000,
-      totalCost: 118000,
-      grossProfit: 62000,
-      grossMargin: 34.4,
-      projectCount: 8,
-      activeProjects: 2,
-      avgProjectMargin: 32.5,
-      lifetimeValue: 450000
-    },
-    {
-      id: '2',
-      name: 'TechStart Inc',
-      xeroContactId: 'xero-tech-456',
-      billingType: 'retainer',
-      retainerAmount: 8000,
-      paymentTerms: 15,
-      hourlyRate: 150,
-      mediaCommissionRate: undefined,
-      isActive: true,
-      createdAt: '2024-06-01',
-      updatedAt: '2024-12-05',
-      notes: 'Monthly retainer for ongoing marketing support',
-      // Profitability data
-      totalRevenue: 48000,
-      totalCost: 31000,
-      grossProfit: 17000,
-      grossMargin: 35.4,
-      projectCount: 3,
-      activeProjects: 2,
-      avgProjectMargin: 35.2,
-      lifetimeValue: 96000
-    },
-    {
-      id: '3',
-      name: 'Local Restaurant Group',
-      xeroContactId: 'xero-rest-789',
-      billingType: 'project',
-      retainerAmount: undefined,
-      paymentTerms: 30,
-      hourlyRate: 125,
-      mediaCommissionRate: 10,
-      isActive: true,
-      createdAt: '2024-09-01',
-      updatedAt: '2024-12-10',
-      notes: 'Project-based work with occasional media buys',
-      // Profitability data
-      totalRevenue: 20500,
-      totalCost: 12200,
-      grossProfit: 8300,
-      grossMargin: 40.5,
-      projectCount: 2,
-      activeProjects: 1,
-      avgProjectMargin: 40.8,
-      lifetimeValue: 35000
-    },
-    {
-      id: '4',
-      name: 'Old Client Co',
-      billingType: 'project',
-      paymentTerms: 30,
-      hourlyRate: 150,
-      isActive: false,
-      createdAt: '2023-03-01',
-      updatedAt: '2024-06-30',
-      notes: 'Inactive - completed all projects',
-      totalRevenue: 45000,
-      totalCost: 28000,
-      grossProfit: 17000,
-      grossMargin: 37.8,
-      projectCount: 4,
-      activeProjects: 0,
-      avgProjectMargin: 38.2,
-      lifetimeValue: 45000
-    }
-  ]
+  try {
+    // Get clients with aggregated profitability data
+    const clients = await queryRows(`
+      SELECT
+        c.*,
+        COALESCE(stats.total_revenue, 0) as total_revenue,
+        COALESCE(stats.total_cost, 0) as total_cost,
+        COALESCE(stats.gross_profit, 0) as gross_profit,
+        CASE
+          WHEN COALESCE(stats.total_revenue, 0) > 0
+          THEN (COALESCE(stats.gross_profit, 0) / stats.total_revenue * 100)
+          ELSE 0
+        END as gross_margin,
+        COALESCE(stats.project_count, 0) as project_count,
+        COALESCE(stats.active_projects, 0) as active_projects
+      FROM agency_clients c
+      LEFT JOIN (
+        SELECT
+          p.client_id,
+          SUM(p.budget_amount) as total_revenue,
+          COALESCE(SUM(t.labor_cost), 0) + COALESCE(SUM(e.expense_cost), 0) as total_cost,
+          SUM(p.budget_amount) - (COALESCE(SUM(t.labor_cost), 0) + COALESCE(SUM(e.expense_cost), 0)) as gross_profit,
+          COUNT(p.id) as project_count,
+          COUNT(CASE WHEN p.status = 'active' THEN 1 END) as active_projects
+        FROM projects p
+        LEFT JOIN (
+          SELECT project_id, SUM(hours * hourly_rate) as labor_cost
+          FROM time_entries
+          GROUP BY project_id
+        ) t ON p.id = t.project_id
+        LEFT JOIN (
+          SELECT project_id, SUM(amount) as expense_cost
+          FROM project_expenses
+          GROUP BY project_id
+        ) e ON p.id = e.project_id
+        GROUP BY p.client_id
+      ) stats ON c.id = stats.client_id
+      WHERE ($1 = false OR c.is_active = true)
+      ORDER BY c.name
+    `, [!activeOnly])
 
-  // Filter by active status if specified
-  let filtered = clients
-  if (active !== undefined) {
-    const isActive = active === 'true' || active === true
-    filtered = filtered.filter(c => c.isActive === isActive)
+    // Transform snake_case to camelCase for frontend
+    return clients.map(c => ({
+      id: c.id,
+      name: c.name,
+      xeroContactId: c.xero_contact_id,
+      billingType: c.billing_type,
+      retainerAmount: c.retainer_amount ? Number(c.retainer_amount) : undefined,
+      paymentTerms: c.payment_terms,
+      hourlyRate: c.hourly_rate ? Number(c.hourly_rate) : undefined,
+      mediaCommissionRate: c.media_commission_rate ? Number(c.media_commission_rate) : undefined,
+      isActive: c.is_active,
+      notes: c.notes,
+      createdAt: c.created_at,
+      updatedAt: c.updated_at,
+      // Profitability data
+      totalRevenue: Number(c.total_revenue) || 0,
+      totalCost: Number(c.total_cost) || 0,
+      grossProfit: Number(c.gross_profit) || 0,
+      grossMargin: Number(c.gross_margin) || 0,
+      projectCount: Number(c.project_count) || 0,
+      activeProjects: Number(c.active_projects) || 0,
+    }))
+  } catch (error) {
+    console.error('Failed to fetch clients:', error)
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Failed to fetch clients'
+    })
   }
-
-  return filtered
 })

@@ -1,92 +1,167 @@
 /**
  * Agency KPIs Endpoint
- * Returns key performance indicators for the agency dashboard
+ * Returns key performance indicators calculated from Postgres
  */
 
-import type { AgencyKPIs } from '~/types'
+import { queryOne, queryRows } from '~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
-  // In production, these would come from the database via Zero sync
-  // For now, return mock data that represents typical agency metrics
+  const currentPeriod = new Date().toISOString().slice(0, 7) // YYYY-MM
 
-  const currentMonth = new Date().toISOString().slice(0, 7) // YYYY-MM
+  try {
+    // Get financial summary
+    const financials = await queryOne(`
+      SELECT
+        COALESCE(SUM(p.budget_amount), 0) as total_revenue,
+        COALESCE(SUM(t.labor_cost), 0) + COALESCE(SUM(e.expense_cost), 0) as total_cost,
+        COALESCE(SUM(p.budget_amount), 0) - (COALESCE(SUM(t.labor_cost), 0) + COALESCE(SUM(e.expense_cost), 0)) as gross_profit,
+        COUNT(DISTINCT p.id) as total_projects,
+        COUNT(DISTINCT CASE WHEN p.status = 'active' THEN p.id END) as active_projects,
+        COUNT(DISTINCT c.id) as active_clients
+      FROM projects p
+      JOIN agency_clients c ON p.client_id = c.id AND c.is_active = true
+      LEFT JOIN (
+        SELECT project_id, SUM(hours * hourly_rate) as labor_cost
+        FROM time_entries
+        GROUP BY project_id
+      ) t ON p.id = t.project_id
+      LEFT JOIN (
+        SELECT project_id, SUM(amount) as expense_cost
+        FROM project_expenses
+        GROUP BY project_id
+      ) e ON p.id = e.project_id
+      WHERE p.status IN ('active', 'completed')
+    `)
 
-  // Mock KPI data based on industry benchmarks
-  const kpis: AgencyKPIs & {
-    revenueChange: number
-    marginChange: number
-    utilizationChange: number
-    mrrChange: number
-    outstandingAR: number
-    teamUtilization: Array<{ name: string; rate: number; target: number }>
-    budgetAlerts: Array<{
-      project: string
-      severity: 'warning' | 'critical'
-      percentUsed: number
-      message: string
-    }>
-  } = {
-    period: currentMonth,
+    // Get MRR from retainers
+    const mrrResult = await queryOne(`
+      SELECT COALESCE(SUM(retainer_amount), 0) as mrr
+      FROM agency_clients
+      WHERE is_active = true AND retainer_amount IS NOT NULL
+    `)
 
-    // Financial KPIs
-    totalRevenue: 285000,
-    totalCost: 185000,
-    grossProfit: 100000,
-    grossMargin: 35.1, // Industry target: 30%+
-    netProfit: 45000,
-    netMargin: 15.8, // Industry target: 15-25%
-    mrr: 65000, // Monthly recurring from retainers
+    // Get utilization metrics
+    const utilization = await queryRows(`
+      SELECT
+        tm.name,
+        COALESCE(SUM(te.hours), 0) as total_hours,
+        COALESCE(SUM(CASE WHEN te.billable THEN te.hours ELSE 0 END), 0) as billable_hours,
+        tm.target_utilization as target,
+        CASE
+          WHEN COALESCE(SUM(te.hours), 0) > 0
+          THEN (COALESCE(SUM(CASE WHEN te.billable THEN te.hours ELSE 0 END), 0) / SUM(te.hours) * 100)
+          ELSE 0
+        END as rate
+      FROM team_members tm
+      LEFT JOIN time_entries te ON tm.id = te.user_id AND te.date >= date_trunc('month', CURRENT_DATE)
+      WHERE tm.is_active = true
+      GROUP BY tm.id, tm.name, tm.target_utilization
+      ORDER BY rate DESC
+    `)
 
-    // Operational KPIs
-    avgUtilizationRate: 72.5, // Industry target: 70-85%
-    avgBillableRate: 165, // Average hourly rate
-    writeOffAmount: 3500,
-    writeOffRate: 1.2, // Industry target: <5%
+    // Get budget alerts (projects over 80% budget used)
+    const budgetAlerts = await queryRows(`
+      SELECT
+        p.name as project,
+        p.budget_amount as budget,
+        COALESCE(t.labor_cost, 0) + COALESCE(e.expense_cost, 0) as spent,
+        CASE
+          WHEN p.budget_amount > 0
+          THEN ((COALESCE(t.labor_cost, 0) + COALESCE(e.expense_cost, 0)) / p.budget_amount * 100)
+          ELSE 0
+        END as percent_used,
+        p.end_date
+      FROM projects p
+      LEFT JOIN (
+        SELECT project_id, SUM(hours * hourly_rate) as labor_cost
+        FROM time_entries
+        GROUP BY project_id
+      ) t ON p.id = t.project_id
+      LEFT JOIN (
+        SELECT project_id, SUM(amount) as expense_cost
+        FROM project_expenses
+        GROUP BY project_id
+      ) e ON p.id = e.project_id
+      WHERE p.status = 'active'
+      AND p.budget_amount > 0
+      HAVING ((COALESCE(t.labor_cost, 0) + COALESCE(e.expense_cost, 0)) / p.budget_amount * 100) >= 80
+      ORDER BY percent_used DESC
+      LIMIT 5
+    `)
 
-    // Client KPIs
-    activeClients: 12,
-    activeProjects: 18,
-    avgProjectValue: 25000,
-    clientChurnRate: 8.3, // Industry target: <10%
+    // Calculate derived metrics
+    const totalRevenue = Number(financials?.total_revenue) || 0
+    const totalCost = Number(financials?.total_cost) || 0
+    const grossProfit = Number(financials?.gross_profit) || 0
+    const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0
+    const mrr = Number(mrrResult?.mrr) || 0
 
-    // Benchmarks
-    billingsPerFTE: 142000, // Industry benchmark: >$135,000
-    revenuePerEmployee: 178000,
+    // Average utilization
+    const avgUtilization = utilization.length > 0
+      ? utilization.reduce((sum, u) => sum + Number(u.rate), 0) / utilization.length
+      : 0
 
-    // Change indicators (vs. last month)
-    revenueChange: 8.5,
-    marginChange: 2.1,
-    utilizationChange: -1.5,
-    mrrChange: 5.0,
+    return {
+      period: currentPeriod,
 
-    // AR
-    outstandingAR: 42500,
+      // Financial KPIs
+      totalRevenue,
+      totalCost,
+      grossProfit,
+      grossMargin,
+      netProfit: grossProfit * 0.7, // Simplified: assume 30% overhead
+      netMargin: grossMargin * 0.7,
+      mrr,
 
-    // Team utilization breakdown
-    teamUtilization: [
-      { name: 'Creative Team', rate: 78, target: 80 },
-      { name: 'Account Mgmt', rate: 65, target: 70 },
-      { name: 'Media Team', rate: 82, target: 85 },
-      { name: 'Strategy', rate: 58, target: 60 },
-      { name: 'Development', rate: 75, target: 80 }
-    ],
+      // Operational KPIs
+      avgUtilizationRate: avgUtilization,
+      avgBillableRate: 165, // Would calculate from actual data
+      writeOffAmount: 0,
+      writeOffRate: 0,
 
-    // Budget alerts
-    budgetAlerts: [
-      {
-        project: 'Acme Q4 Campaign',
-        severity: 'critical',
-        percentUsed: 95,
-        message: 'Only 5% budget remaining with 3 weeks left'
-      },
-      {
-        project: 'TechStart Website Redesign',
-        severity: 'warning',
-        percentUsed: 82,
-        message: 'Approaching budget limit, review scope'
-      }
-    ]
+      // Client KPIs
+      activeClients: Number(financials?.active_clients) || 0,
+      activeProjects: Number(financials?.active_projects) || 0,
+      avgProjectValue: Number(financials?.active_projects) > 0
+        ? totalRevenue / Number(financials?.active_projects)
+        : 0,
+      clientChurnRate: 0,
+
+      // Benchmarks
+      billingsPerFTE: utilization.length > 0 ? totalRevenue / utilization.length : 0,
+      revenuePerEmployee: utilization.length > 0 ? totalRevenue / utilization.length : 0,
+
+      // Change indicators (would calculate from historical data)
+      revenueChange: 0,
+      marginChange: 0,
+      utilizationChange: 0,
+      mrrChange: 0,
+
+      // Outstanding AR (placeholder - would come from Xero integration)
+      outstandingAR: 0,
+
+      // Team utilization
+      teamUtilization: utilization.map(u => ({
+        name: u.name,
+        rate: Number(u.rate),
+        target: Number(u.target)
+      })),
+
+      // Budget alerts
+      budgetAlerts: budgetAlerts.map(a => ({
+        project: a.project,
+        severity: Number(a.percent_used) >= 95 ? 'critical' as const : 'warning' as const,
+        percentUsed: Math.round(Number(a.percent_used)),
+        message: Number(a.percent_used) >= 95
+          ? `Only ${100 - Math.round(Number(a.percent_used))}% budget remaining`
+          : `${Math.round(Number(a.percent_used))}% of budget used`
+      }))
+    }
+  } catch (error) {
+    console.error('Failed to fetch KPIs:', error)
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Failed to fetch KPIs'
+    })
   }
-
-  return kpis
 })
