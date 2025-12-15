@@ -17,8 +17,8 @@ function formatDate(value?: string) {
   return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-const summary = computed(() => data.value?.summary ?? null)
-const agingDetails = computed(() => summary.value?.agingDetails ?? null)
+const summary = computed(() => (data.value?.summary ?? null) as any)
+const agingDetails = computed(() => (summary.value?.agingDetails ?? null) as any)
 
 const pageSize = 20
 const pageAll = ref(1)
@@ -108,42 +108,42 @@ watch(selectedView, (view) => {
   if (view === 'paid') pagePaid.value = 1
 })
 
-const topCustomers = computed(() => summary.value?.topCustomers ?? [])
+const topCustomers = computed(() => (summary.value as any)?.topCustomers ?? [])
 
 const columnsOutstanding = [
-  { id: 'number', key: 'number', label: 'Invoice #' },
-  { id: 'contact', key: 'contact', label: 'Customer' },
-  { id: 'issued', key: 'date', label: 'Issued' },
-  { id: 'dueDate', key: 'dueDate', label: 'Due' },
-  { id: 'daysUntilDue', key: 'daysUntilDue', label: 'Days' },
-  { id: 'amountDue', key: 'amountDue', label: 'Amount Due', class: 'text-right' }
+  { accessorKey: 'number', header: 'Invoice #' },
+  { accessorKey: 'contact', header: 'Customer' },
+  { accessorKey: 'date', header: 'Issued' },
+  { accessorKey: 'dueDate', header: 'Due' },
+  { accessorKey: 'daysUntilDue', header: 'Days' },
+  { accessorKey: 'amountDue', header: 'Amount Due' }
 ]
 
 const columnsOverdue = [
-  { id: 'number', key: 'number', label: 'Invoice #' },
-  { id: 'contact', key: 'contact', label: 'Customer' },
-  { id: 'issued', key: 'date', label: 'Issued' },
-  { id: 'dueDate', key: 'dueDate', label: 'Due' },
-  { id: 'daysOverdue', key: 'daysOverdue', label: 'Days Overdue' },
-  { id: 'amountDue', key: 'amountDue', label: 'Amount Due', class: 'text-right' }
+  { accessorKey: 'number', header: 'Invoice #' },
+  { accessorKey: 'contact', header: 'Customer' },
+  { accessorKey: 'date', header: 'Issued' },
+  { accessorKey: 'dueDate', header: 'Due' },
+  { accessorKey: 'daysOverdue', header: 'Days Overdue' },
+  { accessorKey: 'amountDue', header: 'Amount Due' }
 ]
 
 const columnsPaid = [
-  { id: 'number', key: 'number', label: 'Invoice #' },
-  { id: 'contact', key: 'contact', label: 'Customer' },
-  { id: 'issued', key: 'date', label: 'Issued' },
-  { id: 'paidOn', key: 'fullyPaidOnDate', label: 'Paid On' },
-  { id: 'daysToPay', key: 'daysToPay', label: 'Days to Pay' },
-  { id: 'total', key: 'total', label: 'Total', class: 'text-right' }
+  { accessorKey: 'number', header: 'Invoice #' },
+  { accessorKey: 'contact', header: 'Customer' },
+  { accessorKey: 'date', header: 'Issued' },
+  { accessorKey: 'fullyPaidOnDate', header: 'Paid On' },
+  { accessorKey: 'daysToPay', header: 'Days to Pay' },
+  { accessorKey: 'total', header: 'Total' }
 ]
 
 const columnsAll = [
-  { id: 'number', key: 'number', label: 'Invoice #' },
-  { id: 'contact', key: 'contact', label: 'Customer' },
-  { id: 'status', key: 'status', label: 'Status' },
-  { id: 'issued', key: 'date', label: 'Issued' },
-  { id: 'dueDate', key: 'dueDate', label: 'Due' },
-  { id: 'amount', key: 'amountDue', label: 'Balance', class: 'text-right' }
+  { accessorKey: 'number', header: 'Invoice #' },
+  { accessorKey: 'contact', header: 'Customer' },
+  { accessorKey: 'status', header: 'Status' },
+  { accessorKey: 'date', header: 'Issued' },
+  { accessorKey: 'dueDate', header: 'Due' },
+  { accessorKey: 'amountDue', header: 'Balance' }
 ]
 </script>
 
@@ -202,7 +202,7 @@ const columnsAll = [
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-sm text-muted">Outstanding Balance</p>
-                <p class="text-2xl font-bold">{{ formatCurrency(summary?.outstandingTotal) }}</p>
+                <p class="text-2xl font-bold">{{ formatCurrency((summary as any)?.outstandingTotal) }}</p>
               </div>
               <UIcon name="i-lucide-file-text" class="h-7 w-7 text-emerald-500" />
             </div>
@@ -213,7 +213,7 @@ const columnsAll = [
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-sm text-muted">Overdue Balance</p>
-                <p class="text-2xl font-bold text-red-600">{{ formatCurrency(summary?.overdueTotal) }}</p>
+                <p class="text-2xl font-bold text-red-600">{{ formatCurrency((summary as any)?.overdueTotal) }}</p>
               </div>
               <UIcon name="i-lucide-alert-triangle" class="h-7 w-7 text-red-500" />
             </div>
@@ -224,7 +224,7 @@ const columnsAll = [
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-sm text-muted">Due in 7 days</p>
-                <p class="text-2xl font-bold text-amber-600">{{ formatCurrency(summary?.dueSoonTotal) }}</p>
+                <p class="text-2xl font-bold text-amber-600">{{ formatCurrency((summary as any)?.dueSoonTotal) }}</p>
               </div>
               <UIcon name="i-lucide-hourglass" class="h-7 w-7 text-amber-500" />
             </div>
@@ -261,22 +261,22 @@ const columnsAll = [
               </div>
               <div class="p-3 rounded-lg bg-red-50 dark:bg-red-950/20">
                 <p class="text-muted text-xs uppercase tracking-wide">Overdue &le; 7 days</p>
-                <p class="text-lg font-semibold">{{ summary?.agingBuckets?.overdue7 ?? summary?.agingBuckets?.bucket1 ?? 0 }}</p>
+                <p class="text-lg font-semibold">{{ (summary as any)?.agingBuckets?.overdue7 ?? (summary as any)?.agingBuckets?.bucket1 ?? 0 }}</p>
                 <p class="text-xs text-muted">Recently late</p>
               </div>
               <div class="p-3 rounded-lg bg-red-50/90 dark:bg-red-950/40">
                 <p class="text-muted text-xs uppercase tracking-wide">Overdue 8-14 days</p>
-                <p class="text-lg font-semibold">{{ summary?.agingBuckets?.overdue14 ?? summary?.agingBuckets?.bucket2 ?? 0 }}</p>
+                <p class="text-lg font-semibold">{{ (summary as any)?.agingBuckets?.overdue14 ?? (summary as any)?.agingBuckets?.bucket2 ?? 0 }}</p>
                 <p class="text-xs text-muted">Watch closely</p>
               </div>
               <div class="p-3 rounded-lg bg-red-100 dark:bg-red-950/60">
                 <p class="text-muted text-xs uppercase tracking-wide">Overdue 15-30 days</p>
-                <p class="text-lg font-semibold">{{ summary?.agingBuckets?.overdue30 ?? summary?.agingBuckets?.bucket3 ?? 0 }}</p>
+                <p class="text-lg font-semibold">{{ (summary as any)?.agingBuckets?.overdue30 ?? (summary as any)?.agingBuckets?.bucket3 ?? 0 }}</p>
                 <p class="text-xs text-muted">Escalate if needed</p>
               </div>
               <div class="p-3 rounded-lg bg-red-200 dark:bg-red-900/80">
                 <p class="text-muted text-xs uppercase tracking-wide">Overdue 30+ days</p>
-                <p class="text-lg font-semibold">{{ summary?.agingBuckets?.overdue60 ?? summary?.agingBuckets?.bucket4 ?? 0 }}</p>
+                <p class="text-lg font-semibold">{{ (summary as any)?.agingBuckets?.overdue60 ?? (summary as any)?.agingBuckets?.bucket4 ?? 0 }}</p>
                 <p class="text-xs text-muted">High risk</p>
               </div>
             </div>
@@ -358,7 +358,7 @@ const columnsAll = [
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <UCard v-if="data.value?.paidRecent?.length">
+          <UCard v-if="(data as any)?.paidRecent?.length">
             <template #header>
               <div class="flex items-center justify-between">
                 <h3 class="text-base font-semibold">Recent Payments</h3>
@@ -367,7 +367,7 @@ const columnsAll = [
             </template>
             <div class="space-y-3">
               <div
-                v-for="invoice in data.value?.paidRecent"
+                v-for="invoice in (data as any)?.paidRecent"
                 :key="invoice.id"
                 class="flex items-center justify-between text-sm p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/20"
               >
@@ -409,68 +409,68 @@ const columnsAll = [
 
           <UTable
             v-if="selectedView === 'all'"
-            :rows="paginatedAll"
+            :data="paginatedAll"
             :columns="columnsAll"
           >
-            <template #status-data="{ row }">
+            <template #status-cell="{ row }">
               <UBadge
-                :color="(row as any).status === 'PAID' ? 'success' : (row as any).status === 'OVERDUE' ? 'error' : 'warning'"
+                :color="(row.original as any).status === 'PAID' ? 'success' : (row.original as any).status === 'OVERDUE' ? 'error' : 'warning'"
                 variant="subtle"
               >
-                {{ (row as any).status === 'PAID' ? 'Paid' : (row as any).status === 'OVERDUE' ? 'Overdue' : 'Outstanding' }}
+                {{ (row.original as any).status === 'PAID' ? 'Paid' : (row.original as any).status === 'OVERDUE' ? 'Overdue' : 'Outstanding' }}
               </UBadge>
             </template>
-            <template #date-data="{ row }">{{ formatDate(row.date) }}</template>
-            <template #dueDate-data="{ row }">{{ formatDate(row.dueDate) }}</template>
-            <template #amount-data="{ row }">
-              <span class="text-right block font-medium" :class="row.status === 'OVERDUE' ? 'text-red-600' : ''">
-                {{ row.status === 'PAID' ? formatCurrency(row.total, row.currency) : formatCurrency(row.amountDue, row.currency) }}
+            <template #date-cell="{ row }">{{ formatDate((row.original as any).date) }}</template>
+            <template #dueDate-cell="{ row }">{{ formatDate((row.original as any).dueDate) }}</template>
+            <template #amountDue-cell="{ row }">
+              <span class="text-right block font-medium" :class="(row.original as any).status === 'OVERDUE' ? 'text-red-600' : ''">
+                {{ (row.original as any).status === 'PAID' ? formatCurrency((row.original as any).total, (row.original as any).currency) : formatCurrency((row.original as any).amountDue, (row.original as any).currency) }}
               </span>
             </template>
           </UTable>
 
           <UTable
             v-else-if="selectedView === 'outstanding'"
-            :rows="paginatedOutstanding"
+            :data="paginatedOutstanding"
             :columns="columnsOutstanding"
           >
-            <template #date-data="{ row }">{{ formatDate(row.date) }}</template>
-            <template #dueDate-data="{ row }">{{ formatDate(row.dueDate) }}</template>
-            <template #daysUntilDue-data="{ row }">
-              <span :class="row.daysUntilDue <= 3 ? 'text-amber-600 font-medium' : ''">
-                {{ row.daysUntilDue != null ? row.daysUntilDue : '-' }}
+            <template #date-cell="{ row }">{{ formatDate((row.original as any).date) }}</template>
+            <template #dueDate-cell="{ row }">{{ formatDate((row.original as any).dueDate) }}</template>
+            <template #daysUntilDue-cell="{ row }">
+              <span :class="(row.original as any).daysUntilDue <= 3 ? 'text-amber-600 font-medium' : ''">
+                {{ (row.original as any).daysUntilDue != null ? (row.original as any).daysUntilDue : '-' }}
               </span>
             </template>
-            <template #amountDue-data="{ row }">
-              <span class="text-right block font-medium">{{ formatCurrency(row.amountDue, row.currency) }}</span>
+            <template #amountDue-cell="{ row }">
+              <span class="text-right block font-medium">{{ formatCurrency((row.original as any).amountDue, (row.original as any).currency) }}</span>
             </template>
           </UTable>
 
           <UTable
             v-else-if="selectedView === 'overdue'"
-            :rows="paginatedOverdue"
+            :data="paginatedOverdue"
             :columns="columnsOverdue"
           >
-            <template #date-data="{ row }">{{ formatDate(row.date) }}</template>
-            <template #dueDate-data="{ row }">{{ formatDate(row.dueDate) }}</template>
-            <template #daysOverdue-data="{ row }">
-              <span class="text-red-600 font-medium">{{ row.daysOverdue ?? '-' }}</span>
+            <template #date-cell="{ row }">{{ formatDate((row.original as any).date) }}</template>
+            <template #dueDate-cell="{ row }">{{ formatDate((row.original as any).dueDate) }}</template>
+            <template #daysOverdue-cell="{ row }">
+              <span class="text-red-600 font-medium">{{ (row.original as any).daysOverdue ?? '-' }}</span>
             </template>
-            <template #amountDue-data="{ row }">
-              <span class="text-right block font-medium text-red-600">{{ formatCurrency(row.amountDue, row.currency) }}</span>
+            <template #amountDue-cell="{ row }">
+              <span class="text-right block font-medium text-red-600">{{ formatCurrency((row.original as any).amountDue, (row.original as any).currency) }}</span>
             </template>
           </UTable>
 
           <UTable
             v-else
-            :rows="paginatedPaid"
+            :data="paginatedPaid"
             :columns="columnsPaid"
           >
-            <template #date-data="{ row }">{{ formatDate(row.date) }}</template>
-            <template #fullyPaidOnDate-data="{ row }">{{ formatDate(row.fullyPaidOnDate) }}</template>
-            <template #daysToPay-data="{ row }">{{ row.daysToPay ?? '-' }}</template>
-            <template #total-data="{ row }">
-              <span class="text-right block font-medium">{{ formatCurrency(row.total, row.currency) }}</span>
+            <template #date-cell="{ row }">{{ formatDate((row.original as any).date) }}</template>
+            <template #fullyPaidOnDate-cell="{ row }">{{ formatDate((row.original as any).fullyPaidOnDate) }}</template>
+            <template #daysToPay-cell="{ row }">{{ (row.original as any).daysToPay ?? '-' }}</template>
+            <template #total-cell="{ row }">
+              <span class="text-right block font-medium">{{ formatCurrency((row.original as any).total, (row.original as any).currency) }}</span>
             </template>
           </UTable>
 

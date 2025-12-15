@@ -102,8 +102,8 @@ const saving = ref(false)
 const saveProject = async () => {
   saving.value = true
   try {
-    await $fetch(`/api/agency/projects/${projectId}`, {
-      method: 'PUT' as const,
+    await ($fetch as any)(`/api/agency/projects/${projectId}`, {
+      method: 'PUT',
       body: editForm.value
     })
     toast.add({ title: 'Project updated', color: 'success' })

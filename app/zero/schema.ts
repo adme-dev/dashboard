@@ -8,7 +8,6 @@ import {
   createSchema,
   definePermissions,
   type ExpressionBuilder,
-  type TableSchema,
   NOBODY_CAN,
   ANYONE_CAN,
 } from '@rocicorp/zero'
@@ -32,7 +31,7 @@ const chartOfAccountsSchema = {
     updatedAt: { type: 'number' },
   },
   primaryKey: 'id',
-} as const satisfies TableSchema
+} as const
 
 const agencyClientsSchema = {
   tableName: 'agency_clients',
@@ -51,7 +50,7 @@ const agencyClientsSchema = {
     updatedAt: { type: 'number' },
   },
   primaryKey: 'id',
-} as const satisfies TableSchema
+} as const
 
 const teamMembersSchema = {
   tableName: 'team_members',
@@ -68,7 +67,7 @@ const teamMembersSchema = {
     updatedAt: { type: 'number' },
   },
   primaryKey: 'id',
-} as const satisfies TableSchema
+} as const
 
 const projectsSchema = {
   tableName: 'projects',
@@ -99,7 +98,7 @@ const projectsSchema = {
       destField: 'id',
     },
   },
-} as const satisfies TableSchema
+} as const
 
 const timeEntriesSchema = {
   tableName: 'time_entries',
@@ -130,7 +129,7 @@ const timeEntriesSchema = {
       destField: 'id',
     },
   },
-} as const satisfies TableSchema
+} as const
 
 const projectExpensesSchema = {
   tableName: 'project_expenses',
@@ -164,7 +163,7 @@ const projectExpensesSchema = {
       destField: 'id',
     },
   },
-} as const satisfies TableSchema
+} as const
 
 const mediaSpendSchema = {
   tableName: 'media_spend',
@@ -196,7 +195,7 @@ const mediaSpendSchema = {
       destField: 'id',
     },
   },
-} as const satisfies TableSchema
+} as const
 
 const agencyInvoicesSchema = {
   tableName: 'agency_invoices',
@@ -230,7 +229,7 @@ const agencyInvoicesSchema = {
       destField: 'id',
     },
   },
-} as const satisfies TableSchema
+} as const
 
 const retainerPeriodsSchema = {
   tableName: 'retainer_periods',
@@ -261,7 +260,7 @@ const retainerPeriodsSchema = {
       destField: 'id',
     },
   },
-} as const satisfies TableSchema
+} as const
 
 // ============================================
 // Workflow Management Tables (Monday.com style)
@@ -290,7 +289,7 @@ const departmentsSchema = {
       destField: 'id',
     },
   },
-} as const satisfies TableSchema
+} as const
 
 const departmentMembersSchema = {
   tableName: 'department_members',
@@ -315,7 +314,7 @@ const departmentMembersSchema = {
       destField: 'id',
     },
   },
-} as const satisfies TableSchema
+} as const
 
 const taskStatusesSchema = {
   tableName: 'task_statuses',
@@ -340,7 +339,7 @@ const taskStatusesSchema = {
       destField: 'id',
     },
   },
-} as const satisfies TableSchema
+} as const
 
 const tasksSchema = {
   tableName: 'tasks',
@@ -400,7 +399,7 @@ const tasksSchema = {
       destField: 'id',
     },
   },
-} as const satisfies TableSchema
+} as const
 
 const taskAssigneesSchema = {
   tableName: 'task_assignees',
@@ -424,7 +423,7 @@ const taskAssigneesSchema = {
       destField: 'id',
     },
   },
-} as const satisfies TableSchema
+} as const
 
 const taskLabelsSchema = {
   tableName: 'task_labels',
@@ -443,7 +442,7 @@ const taskLabelsSchema = {
       destField: 'id',
     },
   },
-} as const satisfies TableSchema
+} as const
 
 const taskLabelAssignmentsSchema = {
   tableName: 'task_label_assignments',
@@ -465,7 +464,7 @@ const taskLabelAssignmentsSchema = {
       destField: 'id',
     },
   },
-} as const satisfies TableSchema
+} as const
 
 const taskDependenciesSchema = {
   tableName: 'task_dependencies',
@@ -489,7 +488,7 @@ const taskDependenciesSchema = {
       destField: 'id',
     },
   },
-} as const satisfies TableSchema
+} as const
 
 const taskActivitiesSchema = {
   tableName: 'task_activities',
@@ -517,7 +516,7 @@ const taskActivitiesSchema = {
       destField: 'id',
     },
   },
-} as const satisfies TableSchema
+} as const
 
 const taskAttachmentsSchema = {
   tableName: 'task_attachments',
@@ -545,7 +544,7 @@ const taskAttachmentsSchema = {
       destField: 'id',
     },
   },
-} as const satisfies TableSchema
+} as const
 
 // ============================================
 // Approval Workflow Tables
@@ -571,7 +570,7 @@ const approvalWorkflowsSchema = {
       destField: 'id',
     },
   },
-} as const satisfies TableSchema
+} as const
 
 const approvalWorkflowStepsSchema = {
   tableName: 'approval_workflow_steps',
@@ -602,7 +601,7 @@ const approvalWorkflowStepsSchema = {
       destField: 'id',
     },
   },
-} as const satisfies TableSchema
+} as const
 
 const taskApprovalsSchema = {
   tableName: 'task_approvals',
@@ -634,7 +633,7 @@ const taskApprovalsSchema = {
       destField: 'id',
     },
   },
-} as const satisfies TableSchema
+} as const
 
 const taskApprovalResponsesSchema = {
   tableName: 'task_approval_responses',
@@ -666,13 +665,13 @@ const taskApprovalResponsesSchema = {
       destField: 'id',
     },
   },
-} as const satisfies TableSchema
+} as const
 
 // ============================================
 // Create Schema
 // ============================================
 
-export const schema = createSchema({
+export const schema = (createSchema as any)({
   version: 2, // Bumped version for workflow tables
   tables: {
     // Original agency tables

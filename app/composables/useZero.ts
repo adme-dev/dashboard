@@ -50,7 +50,7 @@ export function useAgencyClients() {
 
   const query = computed(() => {
     if (!zero?.query?.agencyClients) return null
-    return zero.query.agencyClients
+    return (zero.query.agencyClients as any)
       .where('isActive', '=', true)
       .orderBy('name', 'asc')
   })
@@ -72,7 +72,7 @@ export function useAgencyClient(clientId: MaybeRef<string>) {
 
   const query = computed(() => {
     if (!zero?.query?.agencyClients || !id.value) return null
-    return zero.query.agencyClients.where('id', '=', id.value).one()
+    return (zero.query.agencyClients as any).where('id', '=', id.value).one()
   })
 
   const { data, status } = useQuery(query)
@@ -97,7 +97,7 @@ export function useProjects(filters?: {
   const query = computed(() => {
     if (!zero?.query?.projects) return null
 
-    let q = zero.query.projects.related('client')
+    let q = (zero.query.projects as any).related('client')
 
     if (clientId.value) {
       q = q.where('clientId', '=', clientId.value)
@@ -224,7 +224,7 @@ export function useUtilization(period?: MaybeRef<string | null>) {
 
   const teamQuery = computed(() => {
     if (!zero?.query?.teamMembers) return null
-    return zero.query.teamMembers.where('isActive', '=', true)
+    return (zero.query.teamMembers as any).where('isActive', '=', true)
   })
 
   const timeQuery = computed(() => {
@@ -298,7 +298,7 @@ export function useChartOfAccounts(category?: MaybeRef<string | null>) {
   const query = computed(() => {
     if (!zero?.query?.chartOfAccounts) return null
 
-    let q: any = zero.query.chartOfAccounts.where('isActive', '=', true)
+    let q: any = (zero.query.chartOfAccounts as any).where('isActive', '=', true)
 
     if (categoryRef.value) {
       q = q.where('category', '=', categoryRef.value)

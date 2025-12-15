@@ -172,8 +172,8 @@ export function getExportFilename(type: string, format: 'csv' | 'json' = 'csv'):
  */
 export async function exportExpenses(apiEndpoint: string = '/api/xero/expenses'): Promise<void> {
   try {
-    const { data } = await $fetch(apiEndpoint)
-    
+    const { data } = await $fetch(apiEndpoint) as any
+
     if (!data?.categories?.length && !data?.vendors?.length) {
       throw new Error('No expense data to export')
     }
@@ -208,14 +208,14 @@ export async function exportExpenses(apiEndpoint: string = '/api/xero/expenses')
  */
 export async function exportKPIs(apiEndpoint: string = '/api/kpis-advanced'): Promise<void> {
   try {
-    const data = await $fetch(apiEndpoint)
-    
+    const data = await $fetch(apiEndpoint) as any
+
     const kpiData = [
-      { name: 'Revenue', value: data.revenue?.current || 0, trend: data.revenue?.trend || '' },
-      { name: 'Expenses', value: data.expenses?.current || 0, trend: data.expenses?.trend || '' },
-      { name: 'Profit', value: data.profit?.current || 0, trend: data.profit?.trend || '' },
-      { name: 'Cash Position', value: data.cash?.current || 0, trend: 'stable' },
-      { name: 'Health Score', value: data.ratios?.healthScore || 0, trend: 'stable' }
+      { name: 'Revenue', value: data?.revenue?.current || 0, trend: data?.revenue?.trend || '' },
+      { name: 'Expenses', value: data?.expenses?.current || 0, trend: data?.expenses?.trend || '' },
+      { name: 'Profit', value: data?.profit?.current || 0, trend: data?.profit?.trend || '' },
+      { name: 'Cash Position', value: data?.cash?.current || 0, trend: 'stable' },
+      { name: 'Health Score', value: data?.ratios?.healthScore || 0, trend: 'stable' }
     ]
     
     const formatted = formatForExport(kpiData, 'kpis')
@@ -232,8 +232,8 @@ export async function exportKPIs(apiEndpoint: string = '/api/kpis-advanced'): Pr
  */
 export async function exportCashFlow(apiEndpoint: string = '/api/xero/reports/cash-flow-forecast'): Promise<void> {
   try {
-    const data = await $fetch(apiEndpoint)
-    
+    const data = await $fetch(apiEndpoint) as any
+
     if (!data?.forecast?.length) {
       throw new Error('No cash flow data to export')
     }

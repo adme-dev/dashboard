@@ -66,15 +66,15 @@ const statusOptions = [
 ]
 
 // Table columns
-const columns: any[] = [
-  { key: 'invoiceNumber', label: 'Invoice #' },
-  { key: 'clientName', label: 'Client' },
-  { key: 'issueDate', label: 'Issue Date' },
-  { key: 'dueDate', label: 'Due Date' },
-  { key: 'totalAmount', label: 'Total' },
-  { key: 'amountDue', label: 'Due' },
-  { key: 'status', label: 'Status' },
-  { key: 'actions', label: '' }
+const columns = [
+  { accessorKey: 'invoiceNumber', header: 'Invoice #' },
+  { accessorKey: 'clientName', header: 'Client' },
+  { accessorKey: 'issueDate', header: 'Issue Date' },
+  { accessorKey: 'dueDate', header: 'Due Date' },
+  { accessorKey: 'totalAmount', header: 'Total' },
+  { accessorKey: 'amountDue', header: 'Due' },
+  { accessorKey: 'status', header: 'Status' },
+  { accessorKey: 'actions', header: '' }
 ]
 
 // Status colors
@@ -269,62 +269,62 @@ const sendInvoice = async (invoice: any) => {
         <!-- Invoices Table -->
         <UCard v-else>
           <UTable :data="invoices" :columns="columns">
-            <template #invoiceNumber-cell="{ row: r }">
-              <NuxtLink :to="`/agency/invoices/${(r as any).id}`" class="font-medium text-primary-500 hover:underline">
-                {{ (r as any).invoiceNumber }}
+            <template #invoiceNumber-cell="{ row }">
+              <NuxtLink :to="`/agency/invoices/${(row.original as any).id}`" class="font-medium text-primary-500 hover:underline">
+                {{ (row.original as any).invoiceNumber }}
               </NuxtLink>
             </template>
 
-            <template #clientName-cell="{ row: r }">
-              <span class="font-medium">{{ (r as any).clientName }}</span>
-              <span v-if="(r as any).projectName" class="block text-xs text-gray-500">
-                {{ (r as any).projectName }}
+            <template #clientName-cell="{ row }">
+              <span class="font-medium">{{ (row.original as any).clientName }}</span>
+              <span v-if="(row.original as any).projectName" class="block text-xs text-gray-500">
+                {{ (row.original as any).projectName }}
               </span>
             </template>
 
-            <template #issueDate-cell="{ row: r }">
-              {{ formatDate((r as any).issueDate) }}
+            <template #issueDate-cell="{ row }">
+              {{ formatDate((row.original as any).issueDate) }}
             </template>
 
-            <template #dueDate-cell="{ row: r }">
-              <span :class="{ 'text-red-500': (r as any).daysOverdue > 0 }">
-                {{ formatDate((r as any).dueDate) }}
+            <template #dueDate-cell="{ row }">
+              <span :class="{ 'text-red-500': (row.original as any).daysOverdue > 0 }">
+                {{ formatDate((row.original as any).dueDate) }}
               </span>
-              <span v-if="(r as any).daysOverdue > 0" class="block text-xs text-red-500">
-                {{ (r as any).daysOverdue }} days overdue
-              </span>
-            </template>
-
-            <template #totalAmount-cell="{ row: r }">
-              {{ formatCurrency((r as any).totalAmount) }}
-            </template>
-
-            <template #amountDue-cell="{ row: r }">
-              <span :class="{ 'text-emerald-500': (r as any).amountDue === 0, 'font-semibold': (r as any).amountDue > 0 }">
-                {{ formatCurrency((r as any).amountDue) }}
+              <span v-if="(row.original as any).daysOverdue > 0" class="block text-xs text-red-500">
+                {{ (row.original as any).daysOverdue }} days overdue
               </span>
             </template>
 
-            <template #status-cell="{ row: r }">
-              <UBadge :color="getStatusColor((r as any).status)" variant="subtle">
-                {{ getStatusLabel((r as any).status) }}
+            <template #totalAmount-cell="{ row }">
+              {{ formatCurrency((row.original as any).totalAmount) }}
+            </template>
+
+            <template #amountDue-cell="{ row }">
+              <span :class="{ 'text-emerald-500': (row.original as any).amountDue === 0, 'font-semibold': (row.original as any).amountDue > 0 }">
+                {{ formatCurrency((row.original as any).amountDue) }}
+              </span>
+            </template>
+
+            <template #status-cell="{ row }">
+              <UBadge :color="getStatusColor((row.original as any).status)" variant="subtle">
+                {{ getStatusLabel((row.original as any).status) }}
               </UBadge>
             </template>
 
-            <template #actions-cell="{ row: r }">
+            <template #actions-cell="{ row }">
               <div class="flex items-center gap-1">
                 <UButton
-                  v-if="(r as any).status === 'draft'"
+                  v-if="(row.original as any).status === 'draft'"
                   variant="ghost"
                   icon="i-lucide-send"
                   size="xs"
-                  @click="sendInvoice(r)"
+                  @click="sendInvoice(row.original)"
                 />
                 <UButton
                   variant="ghost"
                   icon="i-lucide-eye"
                   size="xs"
-                  @click="navigateTo(`/agency/invoices/${(r as any).id}`)"
+                  @click="navigateTo(`/agency/invoices/${(row.original as any).id}`)"
                 />
               </div>
             </template>

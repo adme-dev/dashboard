@@ -470,16 +470,16 @@ const breadcrumbs = computed(() => ([
           </div>
         </template>
 
-        <CashFlowChart :data="forecastChartData?.data" :loading="forecastChartData?.loading || false" />
+        <CashFlowChart :data="forecastChartData?.data as any" :loading="forecastChartData?.loading || false" />
       </UCard>
 
       <!-- Advanced Analysis -->
       <div class="space-y-6">
         <!-- Waterfall Chart -->
-        <WaterfallChart :data="waterfallData" :loading="waterfallPending" />
+        <WaterfallChart :data="waterfallData as any" :loading="waterfallPending" />
 
         <!-- Scenario Analysis -->
-        <ScenarioAnalysis :data="scenarioData" :loading="scenarioPending" />
+        <ScenarioAnalysis :data="scenarioData as any" :loading="scenarioPending" />
       </div>
 
       <!-- Detailed Analysis Grid -->

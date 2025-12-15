@@ -12,7 +12,7 @@ const { data: invitations, refresh: refreshInvitations } = await useFetch('/api/
   default: () => []
 })
 
-const pendingInvitations = computed(() => invitations.value?.filter(i => i.status === 'pending') || [])
+const pendingInvitations = computed(() => (invitations.value as any[])?.filter((i: any) => i.status === 'pending') || [])
 
 const q = ref('')
 
@@ -77,6 +77,27 @@ const roleOptions = [
   { value: 'viewer', label: 'Viewer' },
   { value: 'guest', label: 'Guest' }
 ]
+
+// Resend invitation
+async function resendInvitation(inviteId: string) {
+  try {
+    await $fetch('/api/auth/invitations/resend', { method: 'POST', body: { invitationId: inviteId } })
+    toast.add({ title: 'Invitation resent!', color: 'success' })
+  } catch (e) {
+    toast.add({ title: 'Failed to resend', color: 'error' })
+  }
+}
+
+// Revoke invitation
+async function revokeInvitation(inviteId: string) {
+  try {
+    await $fetch(`/api/auth/invitations/${inviteId}`, { method: 'DELETE' })
+    toast.add({ title: 'Invitation revoked', color: 'success' })
+    await refreshInvitations()
+  } catch (e) {
+    toast.add({ title: 'Failed to revoke', color: 'error' })
+  }
+}
 </script>
 
 <template>
@@ -129,29 +150,14 @@ const roleOptions = [
               color="neutral"
               variant="soft"
               label="Resend"
-              @click="async () => {
-                try {
-                  await $fetch('/api/auth/invitations/resend', { method: 'POST', body: { invitationId: invite.id } })
-                  toast.add({ title: 'Invitation resent!', color: 'success' })
-                } catch (e) {
-                  toast.add({ title: 'Failed to resend', color: 'error' })
-                }
-              }"
+              @click="resendInvitation(invite.id)"
             />
             <UButton
               size="xs"
               color="error"
               variant="ghost"
               icon="i-lucide-x"
-              @click="async () => {
-                try {
-                  await $fetch(`/api/auth/invitations/${invite.id}`, { method: 'DELETE' })
-                  toast.add({ title: 'Invitation revoked', color: 'success' })
-                  await refreshInvitations()
-                } catch (e) {
-                  toast.add({ title: 'Failed to revoke', color: 'error' })
-                }
-              }"
+              @click="revokeInvitation(invite.id)"
             />
           </div>
         </li>
@@ -183,7 +189,7 @@ const roleOptions = [
       </template>
 
       <template v-else>
-        <SettingsMembersList :members="filteredMembers" @refresh="refresh" />
+        <SettingsMembersList :members="filteredMembers as any[]" @refresh="refresh" />
       </template>
     </UPageCard>
 

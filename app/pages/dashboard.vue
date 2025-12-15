@@ -185,9 +185,9 @@ const criticalAlerts = computed(() => {
       <div class="space-y-6">
         <!-- KPI Cards -->
         <ClientOnly>
-          <AsyncKPICards 
-            :data="kpiData" 
-            :loading="kpiPending" 
+          <AsyncKPICards
+            :data="kpiData as any"
+            :loading="kpiPending"
             :connected="isConnected"
           />
           <template #fallback>
@@ -202,8 +202,8 @@ const criticalAlerts = computed(() => {
           <!-- Cash Flow Forecast (2/3 width) -->
           <div class="xl:col-span-2">
             <ClientOnly>
-              <AsyncCashFlowChart 
-                :data="cashFlowData" 
+              <AsyncCashFlowChart
+                :data="cashFlowData as any"
                 :loading="cashFlowPending"
               />
               <template #fallback>
@@ -215,8 +215,8 @@ const criticalAlerts = computed(() => {
           <!-- Anomaly Alerts (1/3 width) -->
           <div>
             <ClientOnly>
-              <AsyncAnomalyAlerts 
-                :data="anomalyData" 
+              <AsyncAnomalyAlerts
+                :data="anomalyData as any"
                 :loading="anomalyPending"
               />
               <template #fallback>
@@ -228,8 +228,8 @@ const criticalAlerts = computed(() => {
 
         <!-- Invoice Pipeline -->
         <ClientOnly>
-          <AsyncInvoicePipeline 
-            :data="pipelineData" 
+          <AsyncInvoicePipeline
+            :data="pipelineData as any"
             :loading="pipelinePending"
           />
           <template #fallback>

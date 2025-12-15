@@ -237,7 +237,7 @@ async function removeAvatar() {
         <!-- Avatar preview -->
         <div class="relative">
           <UAvatar
-            :src="user?.avatarUrl"
+            :src="user?.avatarUrl ?? undefined"
             :alt="user?.name || 'User'"
             size="xl"
             class="ring-2 ring-offset-2 ring-default"

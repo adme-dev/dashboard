@@ -95,8 +95,9 @@ watch(() => xeroStatus.value?.selectedTenantId, (v) => {
   selectedTenant.value = (v as string | undefined)
 })
 
-async function selectTenant(tenantId: string) {
-  await $fetch('/api/xero/select-tenant', { method: 'POST', body: { tenantId } })
+async function selectTenant(tenantId: string | any) {
+  const id = typeof tenantId === 'string' ? tenantId : tenantId?.value || tenantId
+  await $fetch('/api/xero/select-tenant', { method: 'POST', body: { tenantId: id } })
   await refreshStatus()
   toast.add({ title: 'Organization selected', icon: 'i-lucide-check', color: 'success' })
 }

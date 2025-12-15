@@ -316,7 +316,7 @@ function getCategoryColorClass(category: any) {
           <!-- Form -->
           <UCard v-else-if="templateData">
             <BriefsBriefFormRenderer
-              :template="templateData"
+              :template="templateData as any"
               :disabled="isSubmitting"
               @submit="handleSubmit"
               @cancel="handleCancel"
