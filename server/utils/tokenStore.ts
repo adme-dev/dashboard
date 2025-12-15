@@ -59,7 +59,7 @@ export async function getTokenForSession(event: H3Event): Promise<XeroTokenSet |
     expires_at: new Date(row.expires_at).getTime(),
     scope: row.scope || undefined,
     token_type: row.token_type || 'Bearer'
-  }
+  } as any
 }
 
 export async function clearTokenForSession(event: H3Event) {
@@ -130,7 +130,7 @@ export async function getActiveTokenForSession(event: H3Event, opts: { minTtlMs?
       const next = toStoredTokenSet({
         ...latest,
         refresh_token: latest.refresh_token || token.refresh_token
-      })
+      } as any)
       await setTokenForSession(event, next)
       return next
     } catch (err) {
@@ -155,12 +155,12 @@ export function getSessionId(event: H3Event): string {
       ? (crypto as any).randomUUID()
       : Math.random().toString(36).slice(2)
     sid = random
-    setCookie(event, 'sid', sid, {
+    setCookie(event, 'sid', sid!, {
       httpOnly: true,
       sameSite: 'lax',
       secure: process.env.NODE_ENV === 'production',
       path: '/'
     })
   }
-  return sid
+  return sid!
 }

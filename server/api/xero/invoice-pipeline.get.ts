@@ -46,7 +46,7 @@ export default eventHandler(async (event) => {
   
   const invoicePromises = invoiceStatuses.map(async (status) => {
     try {
-      const { body } = await client.accountingApi.getInvoices(
+      const { body } = await (client.accountingApi.getInvoices as any)(
         tenantId,
         undefined,
         `Type=="ACCREC"&&Status=="${status}"&&Date>=${dtExpr(startDate)}`,
@@ -80,7 +80,7 @@ export default eventHandler(async (event) => {
   )
 
   // Process pipeline stages
-  const pipelineStages = {
+  const pipelineStages: Record<string, { name: string; count: number; value: number; invoices: any[]; averageDaysInStage: number; color: string }> = {
     draft: {
       name: 'Draft',
       count: 0,

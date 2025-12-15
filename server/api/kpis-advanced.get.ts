@@ -54,42 +54,42 @@ export default eventHandler(async (event) => {
     client.accountingApi.getReportBankSummary(tenantId, ensureDateString(addDays(today, -30)), ensureDateString(today)),
     
     // Current month revenue
-    client.accountingApi.getInvoices(
-      tenantId, undefined, 
+    (client.accountingApi.getInvoices as any)(
+      tenantId, undefined,
       `Type=="ACCREC"&&Status=="PAID"&&Date>=${dtExpr(monthStart)}&&Date<=${dtExpr(today)}`,
       'Date DESC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 500
     ),
-    
+
     // Last month revenue (for comparison)
-    client.accountingApi.getInvoices(
+    (client.accountingApi.getInvoices as any)(
       tenantId, undefined,
       `Type=="ACCREC"&&Status=="PAID"&&Date>=${dtExpr(lastMonth)}&&Date<=${dtExpr(lastMonthEnd)}`,
       'Date DESC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 500
     ),
-    
+
     // Current month expenses
-    client.accountingApi.getInvoices(
+    (client.accountingApi.getInvoices as any)(
       tenantId, undefined,
       `Type=="ACCPAY"&&Status=="PAID"&&Date>=${dtExpr(monthStart)}&&Date<=${dtExpr(today)}`,
       'Date DESC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 500
     ),
-    
+
     // Last month expenses (for comparison)
-    client.accountingApi.getInvoices(
+    (client.accountingApi.getInvoices as any)(
       tenantId, undefined,
       `Type=="ACCPAY"&&Status=="PAID"&&Date>=${dtExpr(lastMonth)}&&Date<=${dtExpr(lastMonthEnd)}`,
       'Date DESC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 500
     ),
-    
+
     // Outstanding receivables
-    client.accountingApi.getInvoices(
+    (client.accountingApi.getInvoices as any)(
       tenantId, undefined,
       'Type=="ACCREC"&&Status=="AUTHORISED"',
       'DueDate ASC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 200
     ),
-    
+
     // Overdue receivables
-    client.accountingApi.getInvoices(
+    (client.accountingApi.getInvoices as any)(
       tenantId, undefined,
       `Type=="ACCREC"&&Status=="AUTHORISED"&&DueDate<${dtExpr(today)}`,
       'DueDate ASC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 200

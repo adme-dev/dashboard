@@ -3,7 +3,7 @@
  * Provides connection pooling and query helpers for Postgres
  */
 
-import { Pool, type PoolClient, type QueryResult } from 'pg'
+import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from 'pg'
 
 // Connection pool (singleton)
 let pool: Pool | null = null
@@ -39,7 +39,7 @@ export function getPool(): Pool {
 /**
  * Execute a query with parameters
  */
-export async function query<T = any>(
+export async function query<T extends QueryResultRow = any>(
   text: string,
   params?: any[]
 ): Promise<QueryResult<T>> {
