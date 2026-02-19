@@ -134,24 +134,24 @@ export default eventHandler(async (event) => {
 
   // Process revenue data
   const currentMonthRevenue = extractData(currentMonthInvoicesResponse)?.body?.invoices
-    ?.reduce((sum, inv) => sum + (Number(inv?.total) || 0), 0) || 0
-  
+    ?.reduce((sum: number, inv: any) => sum + (Number(inv?.total) || 0), 0) || 0
+
   const lastMonthRevenue = extractData(lastMonthInvoicesResponse)?.body?.invoices
-    ?.reduce((sum, inv) => sum + (Number(inv?.total) || 0), 0) || 0
+    ?.reduce((sum: number, inv: any) => sum + (Number(inv?.total) || 0), 0) || 0
 
   // Process expense data
   const currentMonthExpenses = extractData(currentMonthExpensesResponse)?.body?.invoices
-    ?.reduce((sum, inv) => sum + (Number(inv?.total) || 0), 0) || 0
-    
+    ?.reduce((sum: number, inv: any) => sum + (Number(inv?.total) || 0), 0) || 0
+
   const lastMonthExpenses = extractData(lastMonthExpensesResponse)?.body?.invoices
-    ?.reduce((sum, inv) => sum + (Number(inv?.total) || 0), 0) || 0
+    ?.reduce((sum: number, inv: any) => sum + (Number(inv?.total) || 0), 0) || 0
 
   // Process outstanding invoices
   const outstandingInvoices = extractData(outstandingInvoicesResponse)?.body?.invoices || []
-  const totalOutstanding = outstandingInvoices.reduce((sum, inv) => sum + (Number(inv?.amountDue) || 0), 0)
-  
+  const totalOutstanding = outstandingInvoices.reduce((sum: number, inv: any) => sum + (Number(inv?.amountDue) || 0), 0)
+
   const overdueInvoices = extractData(overdueInvoicesResponse)?.body?.invoices || []
-  const totalOverdue = overdueInvoices.reduce((sum, inv) => sum + (Number(inv?.amountDue) || 0), 0)
+  const totalOverdue = overdueInvoices.reduce((sum: number, inv: any) => sum + (Number(inv?.amountDue) || 0), 0)
 
   // Process balance sheet data
   const balanceSheet = extractData(balanceSheetResponse)?.body?.reports?.[0] || null

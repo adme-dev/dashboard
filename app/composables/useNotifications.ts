@@ -33,6 +33,8 @@ export function useNotifications() {
   const unreadCount = useState<number>('notifications-unread', () => 0)
   const loading = useState<boolean>('notifications-loading', () => false)
   const hasMore = useState<boolean>('notifications-has-more', () => false)
+  const isConnected = useState<boolean>('notifications-connected', () => false)
+  const eventSource = useState<EventSource | null>('notifications-eventsource', () => null)
 
   /**
    * Fetch notifications from API
@@ -45,7 +47,7 @@ export function useNotifications() {
       if (options?.unreadOnly) params.set('unread', 'true')
       if (offset) params.set('offset', String(offset))
 
-      const data = await $fetch<NotificationsResponse>(`/api/notifications?${params}`)
+      const data = await $fetch(`/api/notifications?${params}`) as NotificationsResponse
 
       if (options?.append) {
         notifications.value = [...notifications.value, ...data.notifications]
@@ -185,17 +187,101 @@ export function useNotifications() {
     return date.toLocaleDateString()
   }
 
+  /**
+   * Connect to SSE stream for real-time notifications
+   */
+  function connectToStream() {
+    // Only run on client side
+    if (import.meta.server) return
+
+    // Don't create multiple connections
+    if (eventSource.value) return
+
+    try {
+      const es = new EventSource('/api/notifications/stream')
+
+      es.addEventListener('connected', () => {
+        isConnected.value = true
+        console.log('[Notifications] SSE connected')
+      })
+
+      es.addEventListener('notification', (event) => {
+        try {
+          const notification = JSON.parse(event.data)
+          // Add to beginning of notifications list
+          const newNotification: Notification = {
+            id: notification.id,
+            type: notification.type,
+            title: notification.title,
+            message: notification.message,
+            link: notification.link,
+            metadata: notification.metadata,
+            isRead: false,
+            readAt: null,
+            createdAt: notification.createdAt,
+            actor: notification.actor
+          }
+
+          // Check if notification already exists
+          const exists = notifications.value.some(n => n.id === newNotification.id)
+          if (!exists) {
+            notifications.value = [newNotification, ...notifications.value]
+          }
+        } catch (error) {
+          console.error('[Notifications] Failed to parse notification:', error)
+        }
+      })
+
+      es.addEventListener('unread_count', (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          unreadCount.value = data.count
+        } catch (error) {
+          console.error('[Notifications] Failed to parse unread count:', error)
+        }
+      })
+
+      es.addEventListener('heartbeat', () => {
+        // Connection is alive
+      })
+
+      es.onerror = () => {
+        isConnected.value = false
+        // EventSource will automatically try to reconnect
+      }
+
+      eventSource.value = es
+    } catch (error) {
+      console.error('[Notifications] Failed to connect to SSE:', error)
+    }
+  }
+
+  /**
+   * Disconnect from SSE stream
+   */
+  function disconnectFromStream() {
+    if (eventSource.value) {
+      eventSource.value.close()
+      eventSource.value = null
+      isConnected.value = false
+      console.log('[Notifications] SSE disconnected')
+    }
+  }
+
   return {
     notifications,
     unreadCount,
     loading,
     hasMore,
+    isConnected,
     fetchNotifications,
     markAsRead,
     markAllAsRead,
     deleteNotification,
     getNotificationIcon,
     getNotificationColor,
-    formatRelativeTime
+    formatRelativeTime,
+    connectToStream,
+    disconnectFromStream
   }
 }

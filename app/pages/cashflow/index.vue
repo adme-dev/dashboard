@@ -6,8 +6,21 @@ import ScenarioAnalysis from '~/components/cashflow/ScenarioAnalysis.client.vue'
 import AIInsights from '~/components/cashflow/AIInsights.vue'
 import ExportModal from '~/components/cashflow/ExportModal.vue'
 
+// Type for cash flow forecast API response
+interface CashFlowForecast {
+  currentCash: number
+  forecastPeriod: number
+  projectedEndBalance: number
+  minProjectedBalance: number
+  maxProjectedBalance: number
+  dailyBurnRate: number
+  shortfallDates: string[]
+  forecast: Array<{ date: string; balance: number; inflows: number; outflows: number; netChange: number }>
+  dailyForecast: Array<{ date: string; balance: number; inflows: number; outflows: number; netChange: number }>
+}
+
 // Fetch comprehensive cash flow data
-const { data: cashflowData, pending: cashflowPending, error: cashflowError, refresh: refreshCashflow } = await useFetch('/api/xero/reports/cash-flow-forecast?days=90')
+const { data: cashflowData, pending: cashflowPending, error: cashflowError, refresh: refreshCashflow } = await useFetch<CashFlowForecast>('/api/xero/reports/cash-flow-forecast?days=90')
 const { data: scenarioData, pending: scenarioPending, error: scenarioError, refresh: refreshScenarios } = await useFetch('/api/xero/reports/cash-flow-scenarios?days=90')
 const { data: waterfallData, pending: waterfallPending, error: waterfallError, refresh: refreshWaterfall } = await useFetch('/api/xero/reports/cash-flow-waterfall?period=30')
 const { data: invoiceData, pending: invoicePending, error: invoiceError, refresh: refreshInvoices } = await useFetch('/api/xero/invoices')

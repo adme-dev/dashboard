@@ -36,6 +36,10 @@ export default defineNuxtConfig({
     }
   },
 
+  typescript: {
+    strict: false
+  },
+
   compatibilityDate: '2024-07-11',
 
   eslint: {

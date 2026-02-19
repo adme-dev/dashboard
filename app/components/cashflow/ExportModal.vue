@@ -47,7 +47,7 @@ async function exportData() {
 
     if (exportOptions.value.format === 'excel') {
       // For Excel, we need to handle it differently since we need to generate the file client-side
-      const response = await $fetch(`/api/exports/cashflow?${params}`)
+      const response = await fetch(`/api/exports/cashflow?${params}`).then(r => r.json()) as { type: string; data: { sheets: any[] }; filename: string }
       
       if (response.type === 'excel' && process.client) {
         try {

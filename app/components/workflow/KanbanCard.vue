@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { format, isPast, isToday, isTomorrow, differenceInDays } from 'date-fns'
+import { format, isPast, isToday, isTomorrow, differenceInDays, differenceInMinutes } from 'date-fns'
 import type { Task, TaskPriority } from '~/types'
 
 const props = defineProps<{
   task: Task
   isDragging?: boolean
+  isSelected?: boolean
+  showRecentlyUpdated?: boolean // Show pulse animation for recently updated tasks
 }>()
 
 const emit = defineEmits<{
@@ -94,27 +96,44 @@ const handleDragStart = (e: DragEvent) => {
 const handleDragEnd = () => {
   emit('dragEnd')
 }
+
+// Check if task was recently updated (within last 5 minutes)
+const isRecentlyUpdated = computed(() => {
+  if (!props.showRecentlyUpdated) return false
+  if (!props.task.updatedAt) return false
+  const updatedAt = new Date(props.task.updatedAt)
+  const minutesAgo = differenceInMinutes(new Date(), updatedAt)
+  return minutesAgo <= 5
+})
 </script>
 
 <template>
-  <div
+  <article
     class="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 p-3 cursor-pointer transition-all hover:shadow-md hover:border-primary/50 group"
     :class="{
       'opacity-50 scale-95 rotate-2': isDragging,
-      'ring-2 ring-red-500/50': task.isBlocked
+      'ring-2 ring-red-500/50': task.isBlocked,
+      'ring-2 ring-primary shadow-md': isSelected,
+      'animate-pulse-subtle ring-1 ring-primary/30': isRecentlyUpdated && !isSelected
     }"
     draggable="true"
+    role="listitem"
+    :aria-label="`${task.title}, ${priorityStyle.label} priority${task.assignee ? `, assigned to ${task.assignee.name}` : ', unassigned'}${dueDateInfo ? `, due ${dueDateInfo.label}` : ''}${task.isBlocked ? ', blocked' : ''}`"
+    tabindex="0"
     @click="emit('click')"
+    @keydown.enter="emit('click')"
+    @keydown.space.prevent="emit('click')"
     @dragstart="handleDragStart"
     @dragend="handleDragEnd"
   >
     <!-- Header: Priority & Type -->
-    <div class="flex items-center gap-2 mb-2">
+    <div class="flex items-center gap-2 mb-2" aria-hidden="true">
       <UTooltip :text="priorityStyle.label">
         <UIcon
           :name="priorityStyle.icon"
           :class="priorityStyle.color"
           class="h-4 w-4"
+          :aria-label="priorityStyle.label"
         />
       </UTooltip>
 
@@ -122,6 +141,7 @@ const handleDragEnd = () => {
         <UIcon
           :name="taskTypeIcon"
           class="h-4 w-4 text-muted"
+          :aria-label="task.taskType"
         />
       </UTooltip>
 
@@ -133,6 +153,21 @@ const handleDragEnd = () => {
           name="i-lucide-ban"
           class="h-4 w-4 text-red-500"
         />
+      </UTooltip>
+
+      <!-- Time tracking indicator -->
+      <UTooltip v-if="task.actualHours || task.estimatedHours" :text="`${task.actualHours || 0}h / ${task.estimatedHours || 0}h`">
+        <div
+          class="flex items-center gap-1"
+          :class="{
+            'text-error-500': task.estimatedHours && task.actualHours && task.actualHours > task.estimatedHours,
+            'text-success-500': task.estimatedHours && task.actualHours && task.actualHours <= task.estimatedHours,
+            'text-muted': !task.estimatedHours || !task.actualHours
+          }"
+        >
+          <UIcon name="i-lucide-clock" class="h-3.5 w-3.5" />
+          <span class="text-xs">{{ task.actualHours || 0 }}h</span>
+        </div>
       </UTooltip>
 
       <!-- Comments count -->
@@ -215,8 +250,40 @@ const handleDragEnd = () => {
       v-if="task.project"
       class="mt-2 pt-2 border-t border-neutral-100 dark:border-neutral-700 text-xs text-muted truncate"
     >
-      <UIcon name="i-lucide-folder" class="h-3 w-3 inline mr-1" />
+      <UIcon name="i-lucide-folder" class="h-3 w-3 inline mr-1" aria-hidden="true" />
+      <span class="sr-only">Project: </span>
       {{ task.project.clientName ? `${task.project.clientName} / ` : '' }}{{ task.project.name }}
     </div>
-  </div>
+  </article>
 </template>
+
+<style scoped>
+/* Subtle pulse animation for recently updated tasks */
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+    background-color: var(--color-white);
+  }
+  50% {
+    opacity: 0.95;
+    background-color: rgba(var(--color-primary-50), 0.3);
+  }
+}
+
+.dark .animate-pulse-subtle {
+  @keyframes pulse-subtle {
+    0%, 100% {
+      opacity: 1;
+      background-color: rgb(38, 38, 38);
+    }
+    50% {
+      opacity: 0.95;
+      background-color: rgba(var(--color-primary-950), 0.3);
+    }
+  }
+}
+</style>

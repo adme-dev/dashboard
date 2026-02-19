@@ -11,8 +11,10 @@ const emit = defineEmits<{
 }>()
 
 // Fetch attachments
-const { data: attachmentsData, pending: loading, refresh } = await useFetch<TaskAttachment[]>(
-  () => `/api/agency/tasks/${props.taskId}/attachments`
+const { data: attachmentsData, pending: loading, refresh } = await useAsyncData(
+  `task-attachments-${props.taskId}`,
+  () => fetch(`/api/agency/tasks/${props.taskId}/attachments`).then(r => r.json()) as Promise<TaskAttachment[]>,
+  { watch: [() => props.taskId] }
 )
 
 const attachments = computed(() => attachmentsData.value || [])
@@ -62,7 +64,7 @@ const handleFileSelect = async (event: Event) => {
       const formData = new FormData()
       formData.append('file', file)
 
-      await $fetch(`/api/agency/tasks/${props.taskId}/attachments`, {
+      await fetch(`/api/agency/tasks/${props.taskId}/attachments`, {
         method: 'POST',
         body: formData
       })

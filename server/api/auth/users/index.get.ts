@@ -71,7 +71,7 @@ export default defineEventHandler(async (event) => {
         if (!departmentsMap[m.team_member_id]) {
           departmentsMap[m.team_member_id] = []
         }
-        departmentsMap[m.team_member_id].push({
+        departmentsMap[m.team_member_id]!.push({
           id: m.department_id,
           name: m.department_name,
           color: m.department_color,

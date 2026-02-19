@@ -66,13 +66,10 @@ function toCurrency(value: number | undefined | null) {
 }
 
 export default eventHandler(async (event) => {
-  const [pnl, expenses] = await Promise.all<[
-    ProfitAndLossReport | null,
-    ExpensesSummary | null
-  ]>([
+  const [pnl, expenses] = await Promise.all([
     $fetch<ProfitAndLossReport>('/api/xero/reports/pnl', { headers: event.headers }).catch(() => null),
     $fetch<ExpensesSummary>('/api/xero/expenses', { headers: event.headers }).catch(() => null)
-  ])
+  ]) as [ProfitAndLossReport | null, ExpensesSummary | null]
 
   const anomalies: Anomaly[] = []
   const detectedAt = new Date().toISOString()

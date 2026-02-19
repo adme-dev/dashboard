@@ -23,8 +23,17 @@ const { data: activitiesData } = await useFetch(() => `/api/agency/tasks/${props
   immediate: props.open
 })
 
+// Fetch time entries for this task
+const { data: timeEntriesData, refresh: refreshTimeEntries } = await useFetch(
+  () => `/api/agency/tasks/${props.taskId}/time-entries`,
+  { immediate: props.open }
+)
+
+const timeEntries = computed(() => (timeEntriesData.value as any)?.entries || [])
+const timeSummary = computed(() => (timeEntriesData.value as any)?.summary || {})
+
 const activities = computed(() => {
-  const response = activitiesData.value as { activities?: TaskActivity[] } | undefined
+  const response = activitiesData.value as unknown as { activities?: TaskActivity[] } | undefined
   return response?.activities || []
 })
 
@@ -117,6 +126,50 @@ const updateAssignee = async (assigneeId: string | null) => {
   })
   await refresh()
   emit('updated')
+}
+
+// Time entry handling
+const showAddTimeEntry = ref(false)
+const newTimeEntry = ref({
+  date: new Date().toISOString().split('T')[0],
+  hours: 1,
+  description: '',
+  billable: true
+})
+const submittingTimeEntry = ref(false)
+
+const addTimeEntry = async () => {
+  if (!task.value || newTimeEntry.value.hours <= 0) return
+
+  submittingTimeEntry.value = true
+  try {
+    await $fetch('/api/agency/time/entries', {
+      method: 'POST',
+      body: {
+        taskId: props.taskId,
+        projectId: task.value.projectId,
+        date: newTimeEntry.value.date,
+        hours: newTimeEntry.value.hours,
+        description: newTimeEntry.value.description,
+        billable: newTimeEntry.value.billable
+      }
+    })
+    // Reset form
+    newTimeEntry.value = {
+      date: new Date().toISOString().split('T')[0],
+      hours: 1,
+      description: '',
+      billable: true
+    }
+    showAddTimeEntry.value = false
+    await refreshTimeEntries()
+    await refresh()
+    emit('updated')
+  } catch (error) {
+    console.error('Failed to add time entry:', error)
+  } finally {
+    submittingTimeEntry.value = false
+  }
 }
 
 // Comment handling
@@ -364,6 +417,131 @@ watch(task, (t) => {
           <p v-if="task.blockedReason" class="text-sm text-red-600/80 dark:text-red-400/80 mt-1">
             {{ task.blockedReason }}
           </p>
+        </div>
+
+        <!-- Approval Workflow -->
+        <div class="border-t border-neutral-200 dark:border-neutral-700 pt-6">
+          <ApprovalWorkflow :task-id="taskId" @updated="refresh(); emit('updated')" />
+        </div>
+
+        <!-- Time Tracking -->
+        <div class="border-t border-neutral-200 dark:border-neutral-700 pt-6">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-medium flex items-center gap-2">
+              <UIcon name="i-lucide-clock" class="h-4 w-4" />
+              Time Tracking
+            </h3>
+            <UButton
+              icon="i-lucide-plus"
+              size="xs"
+              color="primary"
+              variant="ghost"
+              label="Log Time"
+              @click="showAddTimeEntry = true"
+            />
+          </div>
+
+          <!-- Time Summary -->
+          <div v-if="timeSummary.totalHours > 0 || task.estimatedHours" class="grid grid-cols-3 gap-3 mb-4">
+            <div class="p-3 bg-neutral-50 dark:bg-neutral-900 rounded-lg text-center">
+              <p class="text-xs text-neutral-500">Estimated</p>
+              <p class="text-lg font-semibold">{{ task.estimatedHours || 0 }}h</p>
+            </div>
+            <div class="p-3 bg-neutral-50 dark:bg-neutral-900 rounded-lg text-center">
+              <p class="text-xs text-neutral-500">Logged</p>
+              <p class="text-lg font-semibold" :class="{ 'text-error-600': timeSummary.isOverBudget }">
+                {{ timeSummary.totalHours || 0 }}h
+              </p>
+            </div>
+            <div class="p-3 bg-neutral-50 dark:bg-neutral-900 rounded-lg text-center">
+              <p class="text-xs text-neutral-500">Remaining</p>
+              <p class="text-lg font-semibold" :class="timeSummary.variance > 0 ? 'text-error-600' : 'text-success-600'">
+                {{ task.estimatedHours ? Math.max(0, (task.estimatedHours - (timeSummary.totalHours || 0))).toFixed(1) : '-' }}h
+              </p>
+            </div>
+          </div>
+
+          <!-- Progress bar if estimated hours exist -->
+          <div v-if="task.estimatedHours" class="mb-4">
+            <div class="flex justify-between text-xs text-neutral-500 mb-1">
+              <span>Progress</span>
+              <span>{{ Math.round(((timeSummary.totalHours || 0) / task.estimatedHours) * 100) }}%</span>
+            </div>
+            <div class="h-2 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
+              <div
+                class="h-full transition-all"
+                :class="timeSummary.isOverBudget ? 'bg-error-500' : 'bg-primary-500'"
+                :style="{ width: `${Math.min(100, ((timeSummary.totalHours || 0) / task.estimatedHours) * 100)}%` }"
+              />
+            </div>
+          </div>
+
+          <!-- Add Time Entry Form -->
+          <div v-if="showAddTimeEntry" class="p-4 bg-neutral-50 dark:bg-neutral-900 rounded-lg mb-4 space-y-3">
+            <div class="grid grid-cols-2 gap-3">
+              <UFormField label="Date">
+                <UInput v-model="newTimeEntry.date" type="date" size="sm" />
+              </UFormField>
+              <UFormField label="Hours">
+                <UInput v-model.number="newTimeEntry.hours" type="number" step="0.25" min="0.25" max="24" size="sm" />
+              </UFormField>
+            </div>
+            <UFormField label="Description">
+              <UInput v-model="newTimeEntry.description" placeholder="What did you work on?" size="sm" />
+            </UFormField>
+            <div class="flex items-center justify-between">
+              <UCheckbox v-model="newTimeEntry.billable" label="Billable" />
+              <div class="flex gap-2">
+                <UButton label="Cancel" size="sm" color="neutral" variant="ghost" @click="showAddTimeEntry = false" />
+                <UButton
+                  label="Log Time"
+                  size="sm"
+                  color="primary"
+                  :loading="submittingTimeEntry"
+                  @click="addTimeEntry"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Time Entries List -->
+          <div v-if="timeEntries.length > 0" class="space-y-2">
+            <div
+              v-for="entry in timeEntries.slice(0, 5)"
+              :key="entry.id"
+              class="flex items-center gap-3 text-sm p-2 hover:bg-neutral-50 dark:hover:bg-neutral-900 rounded-lg"
+            >
+              <UAvatar
+                v-if="entry.userAvatar"
+                :src="entry.userAvatar"
+                :alt="entry.userName"
+                size="xs"
+              />
+              <UAvatar v-else :alt="entry.userName" size="xs" />
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="font-medium truncate">{{ entry.userName }}</span>
+                  <span class="text-neutral-500 text-xs">{{ entry.date }}</span>
+                </div>
+                <p v-if="entry.description" class="text-neutral-500 text-xs truncate">{{ entry.description }}</p>
+              </div>
+              <div class="text-right">
+                <span class="font-medium">{{ entry.hours }}h</span>
+                <UBadge v-if="entry.billable" size="xs" color="success" class="ml-1">$</UBadge>
+              </div>
+            </div>
+            <div v-if="timeEntries.length > 5" class="text-center">
+              <UButton
+                :label="`View all ${timeEntries.length} entries`"
+                size="xs"
+                color="neutral"
+                variant="ghost"
+              />
+            </div>
+          </div>
+          <div v-else-if="!showAddTimeEntry" class="text-center py-4 text-neutral-500 text-sm">
+            No time logged yet
+          </div>
         </div>
 
         <!-- Activity Feed -->

@@ -12,7 +12,8 @@ const dashboard = computed(() => dashboardData.value || { stats: {} as Record<st
 
 // Calculate percentages for status breakdown
 const statusTotal = computed(() => {
-  return dashboard.value.statusBreakdown?.reduce((sum: number, s: any) => sum + s.count, 0) || 0
+  const breakdown = dashboard.value.statusBreakdown as Array<{ count: number }> | undefined
+  return breakdown?.reduce((sum, s) => sum + (s.count || 0), 0) || 0
 })
 
 const getStatusPercentage = (count: number) => {

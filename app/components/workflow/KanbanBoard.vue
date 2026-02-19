@@ -5,12 +5,15 @@ const props = defineProps<{
   departmentId?: string
   projectId?: string
   filters?: KanbanFilters
+  selectedTaskId?: string | null
 }>()
 
 const emit = defineEmits<{
   taskClick: [task: Task]
   taskMove: [taskId: string, newStatusId: string, newOrder: number]
   createTask: [statusId: string]
+  taskEdit: [task: Task]
+  taskDelete: [task: Task]
 }>()
 
 // Fetch statuses for this department
@@ -34,6 +37,13 @@ const { data: tasksData, pending: tasksPending, refresh: refreshTasks } = await 
 })
 
 const loading = computed(() => statusesPending.value || tasksPending.value)
+
+// Find the done status for mobile swipe-to-complete action
+const doneStatusId = computed(() => {
+  const statuses = (statusesData.value as TaskStatus[]) || []
+  const doneStatus = statuses.find(s => s.category === 'done')
+  return doneStatus?.id
+})
 
 // Group tasks by status
 const columns = computed(() => {
@@ -79,11 +89,16 @@ const handleDragOver = (statusId: string, index: number) => {
   dragOverIndex.value = index
 }
 
+// Optimistic update state for rollback
+const optimisticUpdates = ref<Map<string, { originalStatusId: string; originalSortOrder: number }>>(new Map())
+const toast = useToast()
+
 const handleDrop = async (targetStatusId: string, targetIndex: number) => {
   if (!draggedTask.value) return
 
   const task = draggedTask.value
   const currentStatusId = task.statusId
+  const originalSortOrder = task.sortOrder
 
   // Calculate new sort order
   const targetColumn = columns.value.find(c => c.status.id === targetStatusId)
@@ -107,29 +122,86 @@ const handleDrop = async (targetStatusId: string, targetIndex: number) => {
   // Emit move event
   emit('taskMove', task.id, targetStatusId, newSortOrder)
 
-  // Optimistic update - update status if changed
-  if (currentStatusId !== targetStatusId) {
-    try {
-      await $fetch(`/api/agency/tasks/${task.id}/status`, {
-        method: 'PATCH',
-        body: { statusId: targetStatusId }
-      })
+  // Store original state for rollback
+  optimisticUpdates.value.set(task.id, {
+    originalStatusId: currentStatusId,
+    originalSortOrder: originalSortOrder
+  })
 
-      // Also update sort order
-      await $fetch('/api/agency/tasks/reorder', {
-        method: 'PATCH',
-        body: {
-          tasks: [{ id: task.id, sortOrder: newSortOrder }]
-        }
-      })
-
-      refreshTasks()
-    } catch (error) {
-      console.error('Failed to move task:', error)
+  // OPTIMISTIC UPDATE: Update local state immediately
+  const tasksList = tasksData.value?.tasks as Task[]
+  if (tasksList) {
+    const taskIndex = tasksList.findIndex(t => t.id === task.id)
+    if (taskIndex !== -1) {
+      tasksList[taskIndex] = {
+        ...tasksList[taskIndex],
+        statusId: targetStatusId,
+        sortOrder: newSortOrder
+      }
     }
   }
 
   handleDragEnd()
+
+  // API call in background
+  try {
+    if (currentStatusId !== targetStatusId) {
+      await $fetch(`/api/agency/tasks/${task.id}/status`, {
+        method: 'PATCH',
+        body: {
+          statusId: targetStatusId,
+          expectedVersion: task.version // Pass version for conflict detection
+        }
+      })
+    }
+
+    // Update sort order
+    await $fetch('/api/agency/tasks/reorder', {
+      method: 'PATCH',
+      body: {
+        tasks: [{ id: task.id, sortOrder: newSortOrder }]
+      }
+    })
+
+    // Success - remove from optimistic updates
+    optimisticUpdates.value.delete(task.id)
+  } catch (error: any) {
+    console.error('Failed to move task:', error)
+
+    // ROLLBACK: Revert to original state on error
+    const original = optimisticUpdates.value.get(task.id)
+    if (original && tasksList) {
+      const taskIndex = tasksList.findIndex(t => t.id === task.id)
+      if (taskIndex !== -1) {
+        tasksList[taskIndex] = {
+          ...tasksList[taskIndex],
+          statusId: original.originalStatusId,
+          sortOrder: original.originalSortOrder
+        }
+      }
+    }
+    optimisticUpdates.value.delete(task.id)
+
+    // Handle version conflict specifically
+    const isConflict = error?.data?.statusCode === 409 || error?.statusCode === 409
+    if (isConflict) {
+      toast.add({
+        title: 'Update conflict',
+        description: 'This task was modified by another user. Refreshing to get latest version.',
+        color: 'warning',
+        icon: 'i-lucide-users'
+      })
+      // Refresh to get the latest data
+      await refreshTasks()
+    } else {
+      toast.add({
+        title: 'Failed to move task',
+        description: 'The task has been reverted to its original position.',
+        color: 'error',
+        icon: 'i-lucide-alert-circle'
+      })
+    }
+  }
 }
 
 const handleTaskClick = (task: Task) => {
@@ -140,29 +212,198 @@ const handleCreateTask = (statusId: string) => {
   emit('createTask', statusId)
 }
 
-// Expose refresh method
-defineExpose({ refreshTasks })
+// Mobile swipe action handlers
+const handleTaskStatusChange = async (task: Task, statusId: string) => {
+  try {
+    await $fetch(`/api/agency/tasks/${task.id}/status`, {
+      method: 'PATCH',
+      body: { statusId }
+    })
+    refreshTasks()
+  } catch (error) {
+    console.error('Failed to update task status:', error)
+  }
+}
+
+const handleTaskEdit = (task: Task) => {
+  emit('taskEdit', task)
+}
+
+const handleTaskDelete = async (task: Task) => {
+  emit('taskDelete', task)
+}
+
+// ============================================
+// Keyboard Navigation
+// ============================================
+const focusedColumnIndex = ref(0)
+const focusedTaskIndex = ref(0)
+
+// Get the currently focused task
+const focusedTask = computed(() => {
+  const column = columns.value[focusedColumnIndex.value]
+  if (!column) return null
+  return column.tasks[focusedTaskIndex.value] || null
+})
+
+// Navigate with arrow keys
+const handleKeyDown = (event: KeyboardEvent) => {
+  const totalColumns = columns.value.length
+  if (totalColumns === 0) return
+
+  switch (event.key) {
+    case 'ArrowRight':
+      event.preventDefault()
+      focusedColumnIndex.value = Math.min(focusedColumnIndex.value + 1, totalColumns - 1)
+      focusedTaskIndex.value = Math.min(focusedTaskIndex.value, (columns.value[focusedColumnIndex.value]?.tasks.length || 1) - 1)
+      break
+    case 'ArrowLeft':
+      event.preventDefault()
+      focusedColumnIndex.value = Math.max(focusedColumnIndex.value - 1, 0)
+      focusedTaskIndex.value = Math.min(focusedTaskIndex.value, (columns.value[focusedColumnIndex.value]?.tasks.length || 1) - 1)
+      break
+    case 'ArrowDown':
+      event.preventDefault()
+      const currentColumnTaskCount = columns.value[focusedColumnIndex.value]?.tasks.length || 0
+      focusedTaskIndex.value = Math.min(focusedTaskIndex.value + 1, currentColumnTaskCount - 1)
+      break
+    case 'ArrowUp':
+      event.preventDefault()
+      focusedTaskIndex.value = Math.max(focusedTaskIndex.value - 1, 0)
+      break
+    case 'Enter':
+    case ' ':
+      event.preventDefault()
+      if (focusedTask.value) {
+        emit('taskClick', focusedTask.value)
+      }
+      break
+    case 'n':
+    case 'N':
+      // Create new task in current column (only if not in an input field)
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
+      event.preventDefault()
+      const currentStatusId = columns.value[focusedColumnIndex.value]?.status.id
+      if (currentStatusId) {
+        emit('createTask', currentStatusId)
+      }
+      break
+    case 'e':
+    case 'E':
+      // Edit selected task
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
+      event.preventDefault()
+      if (focusedTask.value) {
+        emit('taskEdit', focusedTask.value)
+      }
+      break
+    case '1':
+    case '2':
+    case '3':
+    case '4':
+      // Set priority: 1=urgent, 2=high, 3=medium, 4=low
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
+      if (focusedTask.value) {
+        const priorityMap: Record<string, TaskPriority> = {
+          '1': 'urgent',
+          '2': 'high',
+          '3': 'medium',
+          '4': 'low'
+        }
+        const newPriority = priorityMap[event.key]
+        if (newPriority && newPriority !== focusedTask.value.priority) {
+          updateTaskPriority(focusedTask.value, newPriority)
+        }
+      }
+      break
+    case 'Escape':
+      // Blur focus
+      event.preventDefault()
+      ;(document.activeElement as HTMLElement)?.blur()
+      break
+  }
+}
+
+// Update task priority via API
+const updateTaskPriority = async (task: Task, newPriority: TaskPriority) => {
+  try {
+    await $fetch(`/api/agency/tasks/${task.id}`, {
+      method: 'PATCH',
+      body: { priority: newPriority }
+    })
+    await refreshTasks()
+    toast.add({
+      title: 'Priority updated',
+      description: `Task priority set to ${newPriority}`,
+      color: 'success',
+      icon: 'i-lucide-check'
+    })
+  } catch (error) {
+    console.error('Failed to update priority:', error)
+    toast.add({
+      title: 'Failed to update priority',
+      color: 'error',
+      icon: 'i-lucide-alert-circle'
+    })
+  }
+}
+
+// Expose methods and data for parent access (keyboard navigation)
+defineExpose({
+  refreshTasks,
+  columns,
+  focusedTask,
+  focusedColumnIndex,
+  focusedTaskIndex,
+  getTaskAtPosition: (columnIndex: number, taskIndex: number) => {
+    const column = columns.value[columnIndex]
+    return column?.tasks[taskIndex] || null
+  },
+  getColumnCount: () => columns.value.length,
+  getTaskCount: (columnIndex: number) => columns.value[columnIndex]?.tasks.length || 0
+})
 </script>
 
 <template>
-  <div class="h-full flex flex-col">
-    <!-- Loading state -->
+  <div
+    class="h-full flex flex-col"
+    @keydown="handleKeyDown"
+    tabindex="0"
+    role="application"
+    aria-label="Kanban board. Use arrow keys to navigate, Enter to open task, N to create, E to edit, 1-4 to set priority."
+  >
+    <!-- Keyboard shortcuts help (screen reader only) -->
+    <div class="sr-only" aria-live="polite">
+      <template v-if="focusedTask">
+        Currently focused: {{ focusedTask.title }}. Column {{ focusedColumnIndex + 1 }} of {{ columns.length }}.
+      </template>
+    </div>
+
+    <!-- Loading state with improved skeletons -->
     <template v-if="loading">
-      <div class="flex gap-4 p-4 overflow-x-auto">
-        <div v-for="i in 5" :key="i" class="flex-shrink-0 w-72">
-          <USkeleton class="h-10 w-full mb-3" />
-          <div class="space-y-3">
-            <USkeleton v-for="j in 3" :key="j" class="h-24 w-full" />
-          </div>
-        </div>
+      <div
+        class="flex gap-4 p-4 overflow-x-auto"
+        role="status"
+        aria-busy="true"
+        aria-label="Loading Kanban board"
+      >
+        <WorkflowSkeletonColumn
+          v-for="i in 5"
+          :key="i"
+          :card-count="i === 1 ? 4 : i === 2 ? 3 : 2"
+        />
       </div>
     </template>
 
     <!-- Board -->
     <template v-else>
-      <div class="flex-1 flex gap-4 p-4 overflow-x-auto overflow-y-hidden">
+      <div
+        class="flex-1 flex gap-4 p-4 overflow-x-auto overflow-y-hidden"
+        role="list"
+        aria-label="Task columns"
+      >
         <WorkflowKanbanColumn
-          v-for="column in columns"
+          v-for="(column, columnIndex) in columns"
           :key="column.status.id"
           :status="column.status"
           :tasks="column.tasks"
@@ -170,12 +411,20 @@ defineExpose({ refreshTasks })
           :is-drag-over="dragOverColumn === column.status.id"
           :drag-over-index="dragOverColumn === column.status.id ? dragOverIndex : null"
           :dragged-task-id="draggedTask?.id"
+          :done-status-id="doneStatusId"
+          :selected-task-id="selectedTaskId"
+          :focused-task-id="focusedColumnIndex === columnIndex ? focusedTask?.id : undefined"
+          :column-index="columnIndex"
+          :total-columns="columns.length"
           @task-click="handleTaskClick"
           @task-drag-start="handleDragStart"
           @task-drag-end="handleDragEnd"
           @drag-over="(index) => handleDragOver(column.status.id, index)"
           @drop="(index) => handleDrop(column.status.id, index)"
           @create-task="handleCreateTask(column.status.id)"
+          @task-status-change="handleTaskStatusChange"
+          @task-edit="handleTaskEdit"
+          @task-delete="handleTaskDelete"
         />
 
         <!-- Empty state if no columns -->
@@ -207,5 +456,39 @@ defineExpose({ refreshTasks })
 
 .overflow-x-auto::-webkit-scrollbar-thumb:hover {
   background: var(--ui-border-hover);
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  .flex-1.flex.gap-4 {
+    gap: 0.5rem;
+    padding: 0.5rem;
+  }
+
+  /* Enable snap scrolling on mobile for better UX */
+  .overflow-x-auto {
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .overflow-x-auto > :deep(.flex-shrink-0) {
+    scroll-snap-align: start;
+    /* Full width columns on mobile */
+    width: calc(100vw - 2rem) !important;
+    min-width: calc(100vw - 2rem) !important;
+  }
+}
+
+/* Small mobile (< 480px) */
+@media (max-width: 480px) {
+  .flex-1.flex.gap-4 {
+    gap: 0.25rem;
+    padding: 0.25rem;
+  }
+
+  .overflow-x-auto > :deep(.flex-shrink-0) {
+    width: calc(100vw - 1rem) !important;
+    min-width: calc(100vw - 1rem) !important;
+  }
 }
 </style>

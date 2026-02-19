@@ -13,7 +13,7 @@ export default eventHandler(async (event) => {
   const next = toStoredTokenSet({
     ...latest,
     refresh_token: latest.refresh_token || current.refresh_token
-  })
+  } as any)
 
   await setTokenForSession(event, next)
 

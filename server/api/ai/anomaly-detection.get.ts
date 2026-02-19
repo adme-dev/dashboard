@@ -72,7 +72,7 @@ export default eventHandler(async (event) => {
     const whereClause = `Type=="ACCPAY"&&Date>=${dtExpr(startDate)}&&Date<=${dtExpr(today)}`
     
     for (;;) {
-      const { body } = await client.accountingApi.getInvoices(
+      const { body } = await (client.accountingApi.getInvoices as any)(
         tenantId,
         undefined,
         whereClause,
@@ -171,7 +171,7 @@ export default eventHandler(async (event) => {
           // Find the specific transaction
           const transaction = expenses.find(exp => {
             const lines = exp?.lineItems || []
-            return lines.some(line => {
+            return lines.some((line: any) => {
               const accountKey = line?.accountCode || line?.accountID
               const catName = accountKey && accountsMap.has(accountKey) 
                 ? accountsMap.get(accountKey)! 
@@ -261,8 +261,8 @@ export default eventHandler(async (event) => {
 
   // Sort anomalies by severity and amount
   anomalies.sort((a, b) => {
-    const severityOrder = { high: 3, medium: 2, low: 1 }
-    const severityDiff = severityOrder[b.severity] - severityOrder[a.severity]
+    const severityOrder: Record<string, number> = { high: 3, medium: 2, low: 1 }
+    const severityDiff = (severityOrder[b.severity] || 0) - (severityOrder[a.severity] || 0)
     if (severityDiff !== 0) return severityDiff
     return b.amount - a.amount
   })

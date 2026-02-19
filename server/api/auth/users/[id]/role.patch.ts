@@ -55,9 +55,9 @@ export default defineEventHandler(async (event) => {
     }
 
     // Check role hierarchy - can't change role of someone at same level or higher
-    const currentUserLevel = ROLE_HIERARCHY[currentUser.userRole] || 0
+    const currentUserLevel = ROLE_HIERARCHY[currentUser.role] || 0
     const targetUserLevel = ROLE_HIERARCHY[targetUser.user_role] || 0
-    const newRoleLevel = ROLE_HIERARCHY[body.userRole]
+    const newRoleLevel = ROLE_HIERARCHY[body.userRole] || 0
 
     if (targetUserLevel >= currentUserLevel) {
       throw createError({
@@ -67,7 +67,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Can't assign a role equal to or higher than your own (except owner can assign owner)
-    if (newRoleLevel >= currentUserLevel && currentUser.userRole !== 'owner') {
+    if (newRoleLevel >= currentUserLevel && currentUser.role !== 'owner') {
       throw createError({
         statusCode: 403,
         statusMessage: 'Cannot assign a role equal to or higher than your own'

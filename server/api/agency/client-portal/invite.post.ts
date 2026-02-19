@@ -11,6 +11,7 @@
 
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { sendClientPortalInviteEmail } from '~~/server/utils/email'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -109,7 +110,29 @@ export default defineEventHandler(async (event) => {
       permissions.canUploadFiles ?? true
     ])
 
-    // TODO: Send invitation email
+    // Send invitation email
+    try {
+      await sendClientPortalInviteEmail({
+        to: email,
+        clientUserName: name,
+        clientName: client.name,
+        inviterName: user.name,
+        token: token,
+        expiresAt,
+        permissions: {
+          canViewProjects: permissions.canViewProjects ?? true,
+          canViewInvoices: permissions.canViewInvoices ?? true,
+          canApproveWork: permissions.canApproveWork ?? false,
+          canViewTimeEntries: permissions.canViewTimeEntries ?? false,
+          canViewBudgets: permissions.canViewBudgets ?? false,
+          canAddComments: permissions.canAddComments ?? true,
+          canUploadFiles: permissions.canUploadFiles ?? true
+        }
+      })
+    } catch (emailError) {
+      console.error('Failed to send invitation email:', emailError)
+      // Don't fail the request if email fails - invitation is still created
+    }
 
     return {
       invitation: {

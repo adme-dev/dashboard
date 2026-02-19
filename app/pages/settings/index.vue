@@ -67,8 +67,8 @@ const tenantsLoading = ref(false)
 async function loadTenants() {
   try {
     tenantsLoading.value = true
-    const list = await $fetch<any[]>('/api/xero/tenants')
-    tenantOptions.value = (list || []).map(t => ({ label: t.tenantName, value: t.tenantId }))
+    const list = await fetch('/api/xero/tenants').then(r => r.json()) as any[]
+    tenantOptions.value = (list || []).map((t: any) => ({ label: t.tenantName, value: t.tenantId }))
   } catch {
     tenantOptions.value = []
   } finally {

@@ -35,7 +35,7 @@ export default eventHandler(async (event) => {
   // Get current bank balance
   // For bank summary, we need a date range. Use today as toDate and 30 days before as fromDate
   const fromDate = addDays(today, -30)
-  const { body: bankReport } = await client.accountingApi.getReportBankSummary(
+  const { body: bankReport } = await (client.accountingApi.getReportBankSummary as any)(
     tenantId,
     ensureDateString(fromDate),
     ensureDateString(today),
@@ -71,7 +71,7 @@ export default eventHandler(async (event) => {
 
   // Get receivables and payables for the period
   const [receivables, payables] = await Promise.all([
-    client.accountingApi.getInvoices(
+    (client.accountingApi.getInvoices as any)(
       tenantId,
       undefined,
       `Type=="ACCREC"&&Status=="AUTHORISED"`,
@@ -86,7 +86,7 @@ export default eventHandler(async (event) => {
       undefined,
       200
     ),
-    client.accountingApi.getInvoices(
+    (client.accountingApi.getInvoices as any)(
       tenantId,
       undefined,
       `Type=="ACCPAY"&&Status=="AUTHORISED"`,
@@ -149,7 +149,7 @@ export default eventHandler(async (event) => {
 
   // Get estimated operating expenses for the period
   const pastDate = addDays(today, -90)
-  const { body: recentExpenses } = await client.accountingApi.getInvoices(
+  const { body: recentExpenses } = await (client.accountingApi.getInvoices as any)(
     tenantId,
     undefined,
     `Type=="ACCPAY"&&Status=="PAID"&&Date>=${toXeroDateTime(pastDate)}`,
@@ -166,7 +166,7 @@ export default eventHandler(async (event) => {
   )
 
   const totalHistoricalExpenses = (recentExpenses?.invoices || [])
-    .reduce((sum, inv) => sum + (Number(inv?.total) || 0), 0)
+    .reduce((sum: number, inv: any) => sum + (Number(inv?.total) || 0), 0)
   const avgDailyExpenses = totalHistoricalExpenses / 90
   const projectedOperatingExpenses = avgDailyExpenses * daysAhead
 

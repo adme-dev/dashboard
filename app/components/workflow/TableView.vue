@@ -16,6 +16,132 @@ const emit = defineEmits<{
 }>()
 
 const { user } = useAuth()
+const toast = useToast()
+
+// Bulk selection state
+const selectedTaskIds = ref<Set<string>>(new Set())
+const isAllSelected = computed(() => {
+  if (tasks.value.length === 0) return false
+  return tasks.value.every(task => selectedTaskIds.value.has(task.id))
+})
+const isSomeSelected = computed(() => {
+  return selectedTaskIds.value.size > 0 && !isAllSelected.value
+})
+const selectedCount = computed(() => selectedTaskIds.value.size)
+
+// Toggle single task selection
+const toggleTaskSelection = (taskId: string, event: Event) => {
+  event.stopPropagation()
+  const newSet = new Set(selectedTaskIds.value)
+  if (newSet.has(taskId)) {
+    newSet.delete(taskId)
+  } else {
+    newSet.add(taskId)
+  }
+  selectedTaskIds.value = newSet
+}
+
+// Toggle all tasks selection
+const toggleAllSelection = () => {
+  if (isAllSelected.value) {
+    selectedTaskIds.value = new Set()
+  } else {
+    selectedTaskIds.value = new Set(tasks.value.map(t => t.id))
+  }
+}
+
+// Clear selection
+const clearSelection = () => {
+  selectedTaskIds.value = new Set()
+}
+
+// Bulk actions
+const bulkActionLoading = ref(false)
+
+const bulkUpdateStatus = async (statusId: string) => {
+  if (selectedTaskIds.value.size === 0) return
+  bulkActionLoading.value = true
+  try {
+    await $fetch('/api/agency/tasks/bulk', {
+      method: 'PATCH',
+      body: {
+        taskIds: Array.from(selectedTaskIds.value),
+        updates: { statusId }
+      }
+    })
+    toast.add({ title: `Updated ${selectedTaskIds.value.size} tasks`, color: 'success' })
+    clearSelection()
+    refreshTasks()
+  } catch (err: any) {
+    toast.add({ title: 'Failed to update tasks', description: err.data?.message, color: 'error' })
+  } finally {
+    bulkActionLoading.value = false
+  }
+}
+
+const bulkUpdatePriority = async (priority: TaskPriority) => {
+  if (selectedTaskIds.value.size === 0) return
+  bulkActionLoading.value = true
+  try {
+    await $fetch('/api/agency/tasks/bulk', {
+      method: 'PATCH',
+      body: {
+        taskIds: Array.from(selectedTaskIds.value),
+        updates: { priority }
+      }
+    })
+    toast.add({ title: `Updated ${selectedTaskIds.value.size} tasks`, color: 'success' })
+    clearSelection()
+    refreshTasks()
+  } catch (err: any) {
+    toast.add({ title: 'Failed to update tasks', description: err.data?.message, color: 'error' })
+  } finally {
+    bulkActionLoading.value = false
+  }
+}
+
+const bulkUpdateAssignee = async (assigneeId: string | null) => {
+  if (selectedTaskIds.value.size === 0) return
+  bulkActionLoading.value = true
+  try {
+    await $fetch('/api/agency/tasks/bulk', {
+      method: 'PATCH',
+      body: {
+        taskIds: Array.from(selectedTaskIds.value),
+        updates: { assigneeId }
+      }
+    })
+    toast.add({ title: `Updated ${selectedTaskIds.value.size} tasks`, color: 'success' })
+    clearSelection()
+    refreshTasks()
+  } catch (err: any) {
+    toast.add({ title: 'Failed to update tasks', description: err.data?.message, color: 'error' })
+  } finally {
+    bulkActionLoading.value = false
+  }
+}
+
+const bulkDelete = async () => {
+  if (selectedTaskIds.value.size === 0) return
+  if (!confirm(`Are you sure you want to delete ${selectedTaskIds.value.size} tasks? This cannot be undone.`)) return
+
+  bulkActionLoading.value = true
+  try {
+    await $fetch('/api/agency/tasks/bulk', {
+      method: 'DELETE',
+      body: {
+        taskIds: Array.from(selectedTaskIds.value)
+      }
+    })
+    toast.add({ title: `Deleted ${selectedTaskIds.value.size} tasks`, color: 'success' })
+    clearSelection()
+    refreshTasks()
+  } catch (err: any) {
+    toast.add({ title: 'Failed to delete tasks', description: err.data?.message, color: 'error' })
+  } finally {
+    bulkActionLoading.value = false
+  }
+}
 
 // Fetch tasks
 const { data: tasksData, pending: tasksPending, refresh: refreshTasks } = await useFetch('/api/agency/tasks', {
@@ -50,9 +176,18 @@ const { data: tagsData } = await useFetch('/api/agency/tags', {
   query: { limit: 100 }
 })
 
+// Fetch team members for bulk assign
+const { data: membersData } = await useFetch('/api/agency/team-members', {
+  query: computed(() => ({
+    departmentId: props.departmentId,
+    limit: 50
+  }))
+})
+
 const tasks = computed(() => (tasksData.value?.tasks as Task[]) || [])
 const statuses = computed(() => (statusesData.value as TaskStatus[]) || [])
 const tags = computed(() => (tagsData.value as GlobalTag[]) || [])
+const members = computed(() => (membersData.value?.members || []) as any[])
 const canViewPricing = computed(() => {
   const data = pricingVisibility.value as { canViewPricing?: boolean; rules?: Record<string, unknown> } | null
   return data?.canViewPricing ?? false
@@ -181,6 +316,131 @@ defineExpose({ refreshTasks })
 
 <template>
   <div class="h-full flex flex-col">
+    <!-- Bulk Action Toolbar (shown when tasks selected) -->
+    <div
+      v-if="selectedCount > 0"
+      class="sticky top-0 z-20 bg-primary-50 dark:bg-primary-900/30 border-b border-primary-200 dark:border-primary-800 px-4 py-3"
+    >
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <UCheckbox
+            :checked="isAllSelected"
+            :indeterminate="isSomeSelected"
+            @change="toggleAllSelection"
+          />
+          <span class="font-medium text-primary-700 dark:text-primary-300">
+            {{ selectedCount }} task{{ selectedCount !== 1 ? 's' : '' }} selected
+          </span>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <!-- Bulk Status Change -->
+          <UDropdownMenu>
+            <UButton
+              variant="outline"
+              size="sm"
+              icon="i-lucide-circle"
+              :loading="bulkActionLoading"
+            >
+              Status
+            </UButton>
+            <template #content>
+              <UDropdownMenuItem
+                v-for="status in statuses"
+                :key="status.id"
+                @click="bulkUpdateStatus(status.id)"
+              >
+                <div class="flex items-center gap-2">
+                  <div
+                    class="w-3 h-3 rounded-full"
+                    :style="{ backgroundColor: status.color }"
+                  />
+                  {{ status.name }}
+                </div>
+              </UDropdownMenuItem>
+            </template>
+          </UDropdownMenu>
+
+          <!-- Bulk Priority Change -->
+          <UDropdownMenu>
+            <UButton
+              variant="outline"
+              size="sm"
+              icon="i-lucide-flag"
+              :loading="bulkActionLoading"
+            >
+              Priority
+            </UButton>
+            <template #content>
+              <UDropdownMenuItem @click="bulkUpdatePriority('urgent')">
+                <UBadge color="error" variant="subtle" size="sm">Urgent</UBadge>
+              </UDropdownMenuItem>
+              <UDropdownMenuItem @click="bulkUpdatePriority('high')">
+                <UBadge color="warning" variant="subtle" size="sm">High</UBadge>
+              </UDropdownMenuItem>
+              <UDropdownMenuItem @click="bulkUpdatePriority('medium')">
+                <UBadge color="info" variant="subtle" size="sm">Medium</UBadge>
+              </UDropdownMenuItem>
+              <UDropdownMenuItem @click="bulkUpdatePriority('low')">
+                <UBadge color="success" variant="subtle" size="sm">Low</UBadge>
+              </UDropdownMenuItem>
+            </template>
+          </UDropdownMenu>
+
+          <!-- Bulk Assignee Change -->
+          <UDropdownMenu>
+            <UButton
+              variant="outline"
+              size="sm"
+              icon="i-lucide-user"
+              :loading="bulkActionLoading"
+            >
+              Assign
+            </UButton>
+            <template #content>
+              <UDropdownMenuItem @click="bulkUpdateAssignee(null)">
+                <span class="text-muted">Unassigned</span>
+              </UDropdownMenuItem>
+              <UDropdownMenuItem
+                v-for="member in members"
+                :key="member.id"
+                @click="bulkUpdateAssignee(member.id)"
+              >
+                <div class="flex items-center gap-2">
+                  <UAvatar :alt="member.name" size="xs" />
+                  {{ member.name }}
+                </div>
+              </UDropdownMenuItem>
+            </template>
+          </UDropdownMenu>
+
+          <USeparator orientation="vertical" class="h-6" />
+
+          <!-- Delete -->
+          <UButton
+            variant="ghost"
+            color="error"
+            size="sm"
+            icon="i-lucide-trash-2"
+            :loading="bulkActionLoading"
+            @click="bulkDelete"
+          >
+            Delete
+          </UButton>
+
+          <!-- Clear Selection -->
+          <UButton
+            variant="ghost"
+            size="sm"
+            icon="i-lucide-x"
+            @click="clearSelection"
+          >
+            Clear
+          </UButton>
+        </div>
+      </div>
+    </div>
+
     <!-- Loading state -->
     <template v-if="tasksPending">
       <div class="p-4">
@@ -191,27 +451,47 @@ defineExpose({ refreshTasks })
 
     <!-- Table -->
     <template v-else>
-      <div class="flex-1 overflow-auto">
+      <div class="flex-1 overflow-auto" role="region" aria-label="Task list">
         <!-- Grouped sections -->
         <div v-for="group in groupedTasks" :key="group.key" class="mb-6">
           <!-- Group header -->
           <div v-if="groupBy" class="sticky top-0 bg-default px-4 py-2 border-b border-default z-10">
-            <h3 class="text-sm font-medium text-default">
+            <h3 class="text-sm font-medium text-default" :id="`group-${group.key}`">
               {{ group.label }}
               <span class="text-muted ml-2">({{ group.tasks.length }})</span>
             </h3>
           </div>
 
           <!-- Table -->
-          <table class="w-full text-sm">
+          <table
+            class="w-full text-sm"
+            role="grid"
+            :aria-label="groupBy ? `Tasks in ${group.label}` : 'All tasks'"
+            :aria-describedby="groupBy ? `group-${group.key}` : undefined"
+          >
             <thead class="bg-muted/50 sticky top-0">
               <tr>
+                <!-- Checkbox Column -->
+                <th scope="col" class="w-10 px-4 py-2">
+                  <UCheckbox
+                    :checked="isAllSelected"
+                    :indeterminate="isSomeSelected"
+                    @change="toggleAllSelection"
+                    aria-label="Select all tasks"
+                  />
+                </th>
                 <th
                   v-for="col in columns"
                   :key="col.key"
+                  scope="col"
                   class="text-left px-4 py-2 font-medium text-muted cursor-pointer hover:bg-muted/70 transition-colors"
                   :class="{ 'cursor-pointer': col.sortable }"
+                  :aria-sort="getSortDirection(col.key) === 'asc' ? 'ascending' : getSortDirection(col.key) === 'desc' ? 'descending' : undefined"
                   @click="col.sortable && handleSort(col.key)"
+                  @keydown.enter="col.sortable && handleSort(col.key)"
+                  @keydown.space.prevent="col.sortable && handleSort(col.key)"
+                  :tabindex="col.sortable ? 0 : -1"
+                  :role="col.sortable ? 'button' : undefined"
                 >
                   <div class="flex items-center gap-1">
                     {{ col.label }}
@@ -220,17 +500,23 @@ defineExpose({ refreshTasks })
                         v-if="getSortDirection(col.key) === 'asc'"
                         name="i-lucide-arrow-up"
                         class="size-3"
+                        aria-hidden="true"
                       />
                       <UIcon
                         v-else-if="getSortDirection(col.key) === 'desc'"
                         name="i-lucide-arrow-down"
                         class="size-3"
+                        aria-hidden="true"
                       />
                       <UIcon
                         v-else
                         name="i-lucide-arrow-up-down"
                         class="size-3 opacity-30"
+                        aria-hidden="true"
                       />
+                      <span class="sr-only">
+                        {{ getSortDirection(col.key) === 'asc' ? ', sorted ascending' : getSortDirection(col.key) === 'desc' ? ', sorted descending' : ', click to sort' }}
+                      </span>
                     </template>
                   </div>
                 </th>
@@ -241,8 +527,22 @@ defineExpose({ refreshTasks })
                 v-for="task in group.tasks"
                 :key="task.id"
                 class="border-b border-default hover:bg-muted/30 cursor-pointer transition-colors"
+                :class="{ 'bg-primary-50 dark:bg-primary-900/20': selectedTaskIds.has(task.id) }"
+                tabindex="0"
+                role="row"
+                :aria-label="`${task.title}, ${task.priority} priority${task.assignee ? `, assigned to ${task.assignee.name}` : ''}${task.dueDate ? `, due ${formatDate(task.dueDate)}` : ''}`"
                 @click="emit('taskClick', task)"
+                @keydown.enter="emit('taskClick', task)"
+                @keydown.space.prevent="emit('taskClick', task)"
               >
+                <!-- Checkbox -->
+                <td class="px-4 py-3" @click.stop>
+                  <UCheckbox
+                    :checked="selectedTaskIds.has(task.id)"
+                    @change="toggleTaskSelection(task.id, $event)"
+                    :aria-label="`Select ${task.title}`"
+                  />
+                </td>
                 <!-- Title -->
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-2">

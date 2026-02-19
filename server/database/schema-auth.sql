@@ -110,11 +110,13 @@ CREATE INDEX IF NOT EXISTS idx_email_tokens_hash ON email_verification_tokens(to
 CREATE TABLE IF NOT EXISTS notifications (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES team_members(id) ON DELETE CASCADE,
-  type VARCHAR(100) NOT NULL, -- 'task_assigned', 'comment_mention', 'approval_required', etc.
+  type VARCHAR(100) NOT NULL, -- 'task_assigned', 'task_mentioned', 'approval_requested', etc.
   title VARCHAR(255) NOT NULL,
-  body TEXT,
-  data JSONB, -- Additional context { taskId, projectId, etc. }
-  read BOOLEAN DEFAULT false,
+  message TEXT, -- The notification message body
+  link VARCHAR(500), -- URL to navigate to when clicked
+  actor_id UUID REFERENCES team_members(id), -- Who triggered the notification
+  metadata JSONB, -- Additional context { taskId, projectId, etc. }
+  is_read BOOLEAN DEFAULT false,
   read_at TIMESTAMPTZ,
   email_sent BOOLEAN DEFAULT false,
   email_sent_at TIMESTAMPTZ,
@@ -122,9 +124,10 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
-CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(user_id, read);
+CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(user_id, is_read);
 CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(type);
 CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_actor ON notifications(actor_id);
 
 -- ============================================
 -- Permissions Table (granular permissions)

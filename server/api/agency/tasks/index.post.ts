@@ -3,6 +3,7 @@
  */
 
 import { queryOne, queryRows, transaction } from '~~/server/utils/db'
+import { requireAuth } from '~~/server/utils/auth'
 import { notifyTaskAssigned } from '~~/server/utils/notifications'
 
 interface CreateTaskBody {
@@ -23,6 +24,7 @@ interface CreateTaskBody {
 }
 
 export default defineEventHandler(async (event) => {
+  const user = await requireAuth(event)
   const body = await readBody<CreateTaskBody>(event)
 
   if (!body.departmentId) {
@@ -138,11 +140,10 @@ export default defineEventHandler(async (event) => {
     // Send notification if task is assigned to someone
     if (task.assignee_id && task.assignee_id !== body.reporterId) {
       notifyTaskAssigned({
-        userId: task.assignee_id,
+        assigneeId: task.assignee_id,
         taskId: task.id,
         taskTitle: task.title,
-        assignedById: body.reporterId || null,
-        priority: task.priority,
+        assignerId: body.reporterId || '',
         dueDate: task.due_date
       }).catch(err => console.error('Failed to send task assignment notification:', err))
     }

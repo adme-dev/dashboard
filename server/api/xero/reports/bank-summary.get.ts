@@ -25,7 +25,7 @@ export default eventHandler(async (event) => {
     const fromDate = new Date(toDate)
     fromDate.setDate(fromDate.getDate() - 30)
     
-    const { body: report } = await client.accountingApi.getReportBankSummary(
+    const { body: report } = await (client.accountingApi.getReportBankSummary as any)(
       tenantId,
       ensureDateString(fromDate),
       ensureDateString(toDate),
@@ -71,7 +71,7 @@ export default eventHandler(async (event) => {
     return { date, totalBalance }
   } catch {
     // Fallback to Balance Sheet: sum bank/cash assets
-    const { body: report } = await client.accountingApi.getReportBalanceSheet(
+    const { body: report } = await (client.accountingApi.getReportBalanceSheet as any)(
       tenantId,
       date,
       undefined,

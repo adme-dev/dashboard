@@ -2,11 +2,13 @@
  * Update task status (quick status change for drag-drop)
  */
 
-import { queryOne, transaction } from '~~/server/utils/db'
+import { queryOne, queryRows, transaction } from '~~/server/utils/db'
+import { notifyTaskStatusChanged } from '~~/server/utils/notifications'
 
 interface UpdateStatusBody {
   statusId: string
   userId?: string
+  expectedVersion?: number  // For optimistic locking / conflict detection
 }
 
 export default defineEventHandler(async (event) => {
@@ -43,6 +45,20 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    // Check for version conflict (optimistic locking)
+    if (body.expectedVersion !== undefined && currentTask.version !== body.expectedVersion) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'Task was modified by another user',
+        data: {
+          currentVersion: currentTask.version,
+          expectedVersion: body.expectedVersion,
+          lastModifiedBy: currentTask.last_modified_by,
+          updatedAt: currentTask.updated_at
+        }
+      })
+    }
+
     // Get new status info
     const newStatus = await queryOne('SELECT * FROM task_statuses WHERE id = $1', [body.statusId])
     if (!newStatus) {
@@ -58,13 +74,13 @@ export default defineEventHandler(async (event) => {
     }
 
     await transaction(async (client) => {
-      // Update task status
+      // Update task status with last_modified_by tracking
       const completedAt = newStatus.is_final ? 'NOW()' : 'NULL'
       await client.query(`
         UPDATE tasks
-        SET status_id = $1, completed_at = ${completedAt}, updated_at = NOW()
+        SET status_id = $1, completed_at = ${completedAt}, updated_at = NOW(), last_modified_by = $3
         WHERE id = $2
-      `, [body.statusId, id])
+      `, [body.statusId, id, body.userId || null])
 
       // Log status change activity
       await client.query(`
@@ -92,11 +108,33 @@ export default defineEventHandler(async (event) => {
       WHERE t.id = $1
     `, [id])
 
+    // Notify watchers about status change (assignee, reporter, and anyone who has interacted)
+    const watcherIds = new Set<string>()
+    if (currentTask.assignee_id && currentTask.assignee_id !== body.userId) {
+      watcherIds.add(currentTask.assignee_id)
+    }
+    if (currentTask.reporter_id && currentTask.reporter_id !== body.userId) {
+      watcherIds.add(currentTask.reporter_id)
+    }
+
+    if (watcherIds.size > 0) {
+      notifyTaskStatusChanged(
+        id,
+        currentTask.title,
+        currentTask.old_status_name,
+        newStatus.name,
+        body.userId || '',
+        Array.from(watcherIds)
+      ).catch(err => console.error('Failed to send status change notification:', err))
+    }
+
     return {
       id: updatedTask.id,
       statusId: updatedTask.status_id,
       completedAt: updatedTask.completed_at,
       updatedAt: updatedTask.updated_at,
+      version: updatedTask.version,
+      lastModifiedBy: updatedTask.last_modified_by,
       status: {
         id: updatedTask.status_id,
         name: updatedTask.status_name,

@@ -26,7 +26,7 @@ export default defineEventHandler(async (event) => {
 
   // Users can update their own profile, admins/owners can update anyone
   const isOwnProfile = currentUser.id === userId
-  const isAdmin = ['admin', 'owner'].includes(currentUser.userRole)
+  const isAdmin = ['admin', 'owner'].includes(currentUser.role)
 
   if (!isOwnProfile && !isAdmin) {
     throw createError({

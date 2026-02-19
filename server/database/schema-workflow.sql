@@ -88,7 +88,9 @@ CREATE TABLE tasks (
   blocked_reason TEXT,
   completed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  version INTEGER DEFAULT 1,
+  last_modified_by UUID REFERENCES team_members(id)
 );
 
 CREATE INDEX idx_tasks_project ON tasks(project_id);
@@ -433,3 +435,22 @@ $$ LANGUAGE plpgsql;
 -- Note: This trigger would need time_entries to have a task_id column
 -- CREATE TRIGGER trigger_update_task_hours AFTER INSERT OR UPDATE ON time_entries
 --   FOR EACH ROW EXECUTE FUNCTION update_task_actual_hours();
+
+-- Auto-increment version on task update for optimistic locking
+CREATE OR REPLACE FUNCTION increment_task_version()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.version = COALESCE(OLD.version, 1) + 1;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_task_version BEFORE UPDATE ON tasks
+  FOR EACH ROW EXECUTE FUNCTION increment_task_version();
+
+-- ============================================
+-- Migration: Add version and last_modified_by columns
+-- Run this on existing databases
+-- ============================================
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_modified_by UUID REFERENCES team_members(id);

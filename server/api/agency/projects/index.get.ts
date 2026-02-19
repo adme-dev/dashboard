@@ -4,8 +4,11 @@
  */
 
 import { queryRows } from '~~/server/utils/db'
+import { requireAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
+  await requireAuth(event)
+
   const query = getQuery(event)
   const { status, clientId } = query
 

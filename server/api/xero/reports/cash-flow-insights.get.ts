@@ -63,7 +63,7 @@ async function safeApiCall<T>(label: string, fn: () => Promise<T>) {
 
 async function fetchInvoiceSummary(client: any, tenantId: string, status: string, type: 'ACCREC' | 'ACCPAY') {
   const response = await safeApiCall(`${type}-${status}`, () =>
-    client.accountingApi.getInvoices(
+    (client.accountingApi.getInvoices as any)(
       tenantId,
       undefined,
       `Type=="${type}"&&Status=="${status}"`,
@@ -80,7 +80,7 @@ async function fetchInvoiceSummary(client: any, tenantId: string, status: string
     )
   )
 
-  const invoices = response?.body?.invoices || []
+  const invoices = (response as any)?.body?.invoices || []
   const total = invoices.reduce((sum: number, inv: any) => sum + (Number(inv?.total) || 0), 0)
 
   return {
@@ -92,7 +92,7 @@ async function fetchInvoiceSummary(client: any, tenantId: string, status: string
 
 async function fetchOutstandingReceivables(client: any, tenantId: string) {
   const response = await safeApiCall('invoices-outstanding', () =>
-    client.accountingApi.getInvoices(
+    (client.accountingApi.getInvoices as any)(
       tenantId,
       undefined,
       'Type=="ACCREC"&&Status=="AUTHORISED"&&AmountDue>0',
@@ -109,7 +109,7 @@ async function fetchOutstandingReceivables(client: any, tenantId: string) {
     )
   )
 
-  const invoices = response?.body?.invoices || []
+  const invoices = (response as any)?.body?.invoices || []
   const today = new Date()
 
   const grouped = new Map<string, any>()
@@ -173,7 +173,7 @@ async function fetchOutstandingReceivables(client: any, tenantId: string) {
       earliestDueDate: entry.earliestDueDate ? entry.earliestDueDate.toISOString() : null,
       latestInvoiceDate: entry.latestInvoiceDate ? entry.latestInvoiceDate.toISOString() : null,
       invoices: entry.invoices
-        .sort((a, b) => {
+        .sort((a: any, b: any) => {
           const da = a.dueDate ? new Date(a.dueDate) : null
           const db = b.dueDate ? new Date(b.dueDate) : null
           if (da && db) return da.getTime() - db.getTime()
@@ -190,7 +190,7 @@ async function fetchOutstandingReceivables(client: any, tenantId: string) {
 
 async function fetchQuotesByStatus(client: any, tenantId: string, status: string) {
   const response = await safeApiCall(`quotes-${status}`, () =>
-    client.accountingApi.getQuotes(
+    (client.accountingApi.getQuotes as any)(
       tenantId,
       undefined,
       undefined,
@@ -205,7 +205,7 @@ async function fetchQuotesByStatus(client: any, tenantId: string, status: string
     )
   )
 
-  const quotes = response?.body?.quotes || []
+  const quotes = (response as any)?.body?.quotes || []
   const total = quotes.reduce((sum: number, quote: any) => sum + (Number(quote?.total) || 0), 0)
 
   return {
@@ -217,7 +217,7 @@ async function fetchQuotesByStatus(client: any, tenantId: string, status: string
 
 async function fetchPurchaseOrders(client: any, tenantId: string, status: 'DRAFT' | 'SUBMITTED' | 'AUTHORISED' | 'BILLED' | 'DELETED') {
   const response = await safeApiCall(`purchase-orders-${status}`, () =>
-    client.accountingApi.getPurchaseOrders(
+    (client.accountingApi.getPurchaseOrders as any)(
       tenantId,
       undefined,
       status,
@@ -229,7 +229,7 @@ async function fetchPurchaseOrders(client: any, tenantId: string, status: 'DRAFT
     )
   )
 
-  const purchaseOrders = response?.body?.purchaseOrders || []
+  const purchaseOrders = (response as any)?.body?.purchaseOrders || []
   const total = purchaseOrders.reduce((sum: number, po: any) => sum + (Number(po?.total) || 0), 0)
 
   return {
@@ -308,7 +308,7 @@ export default eventHandler(async (event) => {
   const contacts = contactsResponse?.body?.contacts || []
   const topOutstanding = outstandingClients
     .map((entry) => {
-      const contact = contacts.find((c: any) => c?.contactID === entry.contactId)
+      const contact = contacts.find((c: any) => c?.contactID === entry.contactId) as any
       const creditLimit = contact?.creditLimit ? Number(contact.creditLimit) : undefined
       return {
         id: entry.contactId,

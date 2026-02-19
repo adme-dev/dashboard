@@ -18,35 +18,35 @@ const emit = defineEmits<{
 }>()
 
 // Fetch department members for assignee filter
-const { data: membersData } = await useFetch('/api/agency/departments/members', {
-  query: computed(() => ({
-    departmentId: props.departmentId
-  })),
-  default: () => ({ members: [] })
-})
+const { data: membersData } = await useAsyncData(
+  `toolbar-members-${props.departmentId}`,
+  () => fetch(`/api/agency/departments/members?departmentId=${props.departmentId}`).then(r => r.json()) as Promise<{ members: any[] }>,
+  { default: () => ({ members: [] }), watch: [() => props.departmentId] }
+)
 
 // Fetch tags for tag filter
-const { data: tagsData } = await useFetch('/api/agency/tags', {
-  query: { limit: 50 }
-})
+const { data: tagsData } = await useAsyncData(
+  'toolbar-tags',
+  () => fetch('/api/agency/tags?limit=50').then(r => r.json()) as Promise<{ tags: any[] }>
+)
 
 // Fetch grouping options
-const { data: groupingOptions } = await useFetch('/api/agency/grouping/options', {
-  query: computed(() => ({
-    departmentId: props.departmentId
-  }))
-})
+const { data: groupingOptions } = await useAsyncData(
+  `toolbar-grouping-${props.departmentId}`,
+  () => fetch(`/api/agency/grouping/options?departmentId=${props.departmentId}`).then(r => r.json()) as Promise<{ options: any[] }>,
+  { watch: [() => props.departmentId] }
+)
 
 // Fetch sorting presets
-const { data: sortingPresets } = await useFetch('/api/agency/sorting/presets', {
-  query: computed(() => ({
-    departmentId: props.departmentId
-  }))
-})
+const { data: sortingPresets } = await useAsyncData(
+  `toolbar-sorting-${props.departmentId}`,
+  () => fetch(`/api/agency/sorting/presets?departmentId=${props.departmentId}`).then(r => r.json()) as Promise<any[]>,
+  { watch: [() => props.departmentId] }
+)
 
 const members = computed(() => membersData.value?.members || [])
-const tags = computed(() => (tagsData.value as GlobalTag[]) || [])
-const groupOptions = computed(() => (groupingOptions.value as BoardGroupingOption[]) || [])
+const tags = computed(() => (tagsData.value?.tags as GlobalTag[]) || [])
+const groupOptions = computed(() => (groupingOptions.value?.options as BoardGroupingOption[]) || [])
 const presets = computed(() => (sortingPresets.value as SortingPreset[]) || [])
 
 // Local filter state

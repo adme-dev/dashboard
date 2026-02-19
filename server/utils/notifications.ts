@@ -15,6 +15,7 @@ export type NotificationType =
   | 'task_overdue'
   | 'approval_requested'
   | 'approval_completed'
+  | 'approval_response'
   | 'invitation_received'
   | 'team_update'
   | 'system'
@@ -30,29 +31,32 @@ interface CreateNotificationParams {
   sendEmail?: boolean
 }
 
-interface NotifyTaskAssignedParams {
+export interface NotifyTaskAssignedParams {
   taskId: string
   taskTitle: string
   assigneeId: string
   assignerId: string
   projectName?: string
   dueDate?: Date
+  userId?: string // Legacy compat
 }
 
-interface NotifyMentionParams {
+export interface NotifyMentionParams {
   taskId: string
   taskTitle: string
   mentionedUserId: string
   mentionerId: string
   commentSnippet: string
+  userId?: string // Legacy compat
 }
 
-interface NotifyApprovalRequestParams {
+export interface NotifyApprovalRequestParams {
   taskId: string
   taskTitle: string
   approverId: string
   requesterId: string
   stepName: string
+  userId?: string // Legacy compat
 }
 
 interface NotifyDueReminderParams {
@@ -146,10 +150,55 @@ export async function notifyTaskAssigned(params: NotifyTaskAssignedParams) {
     to: assignee.email,
     assigneeName: assignee.name,
     taskTitle: params.taskTitle,
+    taskId: params.taskId,
     assignerName: assigner.name,
     projectName: params.projectName,
     dueDate: params.dueDate,
-    taskUrl: `${process.env.APP_URL || 'http://localhost:3000'}/agency/tasks/${params.taskId}`
+    priority: 'medium'
+  })
+}
+
+/**
+ * Notify task stakeholders when a comment is added
+ */
+export async function notifyTaskComment(params: {
+  taskId: string
+  taskTitle: string
+  commenterId: string
+  assigneeId?: string | null
+  reporterId?: string | null
+  commentSnippet: string
+}) {
+  // Get commenter details
+  const commenter = await queryOne(`
+    SELECT name FROM team_members WHERE id = $1
+  `, [params.commenterId])
+
+  if (!commenter) return
+
+  // Collect unique stakeholders to notify (exclude commenter)
+  const toNotify = new Set<string>()
+  if (params.assigneeId && params.assigneeId !== params.commenterId) {
+    toNotify.add(params.assigneeId)
+  }
+  if (params.reporterId && params.reporterId !== params.commenterId) {
+    toNotify.add(params.reporterId)
+  }
+
+  if (toNotify.size === 0) return
+
+  // Create notifications for each stakeholder
+  await createBulkNotifications(Array.from(toNotify), {
+    type: 'task_comment',
+    title: 'New Comment',
+    message: `${commenter.name} commented on "${params.taskTitle}"`,
+    link: `/agency/tasks/${params.taskId}`,
+    actorId: params.commenterId,
+    metadata: {
+      taskId: params.taskId,
+      taskTitle: params.taskTitle,
+      commentSnippet: params.commentSnippet.substring(0, 100)
+    }
   })
 }
 
@@ -190,8 +239,8 @@ export async function notifyMention(params: NotifyMentionParams) {
     mentionedName: mentioned.name,
     mentionerName: mentioner.name,
     taskTitle: params.taskTitle,
-    commentSnippet: params.commentSnippet,
-    taskUrl: `${process.env.APP_URL || 'http://localhost:3000'}/agency/tasks/${params.taskId}`
+    taskId: params.taskId,
+    comment: params.commentSnippet
   })
 }
 
@@ -232,8 +281,8 @@ export async function notifyApprovalRequest(params: NotifyApprovalRequestParams)
     approverName: approver.name,
     requesterName: requester.name,
     taskTitle: params.taskTitle,
-    stepName: params.stepName,
-    taskUrl: `${process.env.APP_URL || 'http://localhost:3000'}/agency/tasks/${params.taskId}`
+    taskId: params.taskId,
+    stepName: params.stepName
   })
 }
 
@@ -272,11 +321,12 @@ export async function notifyDueReminder(params: NotifyDueReminderParams) {
   // Send email notification
   await sendDueReminderEmail({
     to: assignee.email,
-    assigneeName: assignee.name,
-    taskTitle: params.taskTitle,
-    dueDate: params.dueDate,
-    isOverdue: params.isOverdue,
-    taskUrl: `${process.env.APP_URL || 'http://localhost:3000'}/agency/tasks/${params.taskId}`
+    userName: assignee.name,
+    tasks: [{
+      id: params.taskId,
+      title: params.taskTitle,
+      dueDate: params.dueDate
+    }]
   })
 }
 
@@ -309,6 +359,87 @@ export async function notifyTaskStatusChanged(
       oldStatus,
       newStatus
     }
+  })
+}
+
+/**
+ * Notify task owner when approval is completed
+ */
+export async function notifyApprovalCompleted(params: {
+  taskId: string
+  taskTitle: string
+  requesterId: string
+  responderId: string
+  stepName: string
+  status: 'approved' | 'rejected'
+}) {
+  // Get responder details
+  const responder = await queryOne(`
+    SELECT name FROM team_members WHERE id = $1
+  `, [params.responderId])
+
+  if (!responder) return
+
+  // Create in-app notification for the requester
+  const title = params.status === 'approved' ? 'Approval Granted' : 'Approval Rejected'
+  const message = params.status === 'approved'
+    ? `${responder.name} approved "${params.taskTitle}" at ${params.stepName}`
+    : `${responder.name} rejected "${params.taskTitle}" at ${params.stepName}`
+
+  await createNotification({
+    userId: params.requesterId,
+    type: 'approval_completed',
+    title,
+    message,
+    link: `/agency/tasks/${params.taskId}`,
+    actorId: params.responderId,
+    metadata: {
+      taskId: params.taskId,
+      taskTitle: params.taskTitle,
+      stepName: params.stepName,
+      status: params.status
+    }
+  })
+}
+
+/**
+ * Notify next approver when it's their turn
+ */
+export async function notifyNextApprover(params: {
+  taskId: string
+  taskTitle: string
+  approverId: string
+  stepName: string
+}) {
+  // Get approver details
+  const approver = await queryOne(`
+    SELECT name, email FROM team_members WHERE id = $1
+  `, [params.approverId])
+
+  if (!approver) return
+
+  // Create in-app notification
+  await createNotification({
+    userId: params.approverId,
+    type: 'approval_requested',
+    title: 'Your Approval Needed',
+    message: `"${params.taskTitle}" is waiting for your approval at "${params.stepName}"`,
+    link: `/agency/tasks/${params.taskId}`,
+    metadata: {
+      taskId: params.taskId,
+      taskTitle: params.taskTitle,
+      stepName: params.stepName
+    }
+  })
+
+  // Send email notification
+  await sendApprovalRequestEmail({
+    to: approver.email,
+    approverName: approver.name,
+    requesterName: 'System',
+    taskTitle: params.taskTitle,
+    taskId: params.taskId,
+    stepName: params.stepName
   })
 }
 

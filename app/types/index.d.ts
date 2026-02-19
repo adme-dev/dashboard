@@ -417,6 +417,8 @@ export interface Task {
   completedAt?: string
   createdAt: string
   updatedAt: string
+  version?: number
+  lastModifiedBy?: string
   // Related data (included in API responses)
   status?: {
     id: string

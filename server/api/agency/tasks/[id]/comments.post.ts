@@ -3,7 +3,7 @@
  */
 
 import { queryOne, queryRows } from '~~/server/utils/db'
-import { notifyMention } from '~~/server/utils/notifications'
+import { notifyMention, notifyTaskComment } from '~~/server/utils/notifications'
 
 interface AddCommentBody {
   content: string
@@ -29,8 +29,8 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    // Verify task exists and get title for notifications
-    const task = await queryOne('SELECT id, title FROM tasks WHERE id = $1', [id])
+    // Verify task exists and get details for notifications
+    const task = await queryOne('SELECT id, title, assignee_id, reporter_id FROM tasks WHERE id = $1', [id])
     if (!task) {
       throw createError({
         statusCode: 404,
@@ -51,7 +51,19 @@ export default defineEventHandler(async (event) => {
       user = await queryOne('SELECT id, name, email FROM team_members WHERE id = $1', [body.userId])
     }
 
-    // Extract @mentions from content and notify users
+    // Notify task stakeholders about the comment (assignee, reporter)
+    if (body.userId) {
+      notifyTaskComment({
+        taskId: id,
+        taskTitle: task.title || 'Task',
+        commenterId: body.userId,
+        assigneeId: task.assignee_id,
+        reporterId: task.reporter_id,
+        commentSnippet: body.content.substring(0, 100)
+      }).catch(err => console.error('Failed to send comment notification:', err))
+    }
+
+    // Extract @mentions from content and notify users (separately from general comment notifications)
     const mentionMatches = body.content.match(/@(\w+)/g)
     if (mentionMatches && body.userId) {
       // Find mentioned users by name pattern
@@ -62,15 +74,15 @@ export default defineEventHandler(async (event) => {
           OR LOWER(name) LIKE ANY($1::text[])
       `, [mentionNames.map(n => `%${n}%`)])
 
-      // Send notifications
+      // Send notifications for @mentions (higher priority than general comment)
       for (const mentionedUser of mentionedUsers) {
         if (mentionedUser.id !== body.userId) {
           notifyMention({
-            userId: mentionedUser.id,
+            mentionedUserId: mentionedUser.id,
             taskId: id,
             taskTitle: task.title || 'Task',
-            mentionedById: body.userId,
-            commentPreview: body.content.substring(0, 100)
+            mentionerId: body.userId,
+            commentSnippet: body.content.substring(0, 100)
           }).catch(err => console.error('Failed to send mention notification:', err))
         }
       }

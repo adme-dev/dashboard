@@ -34,7 +34,7 @@ export default eventHandler(async (event) => {
   // Get base forecast data (reuse logic from cash-flow-forecast)
   // For bank summary, we need a date range. Use today as toDate and 30 days before as fromDate
   const fromDate = addDays(today, -30)
-  const { body: bankReport } = await client.accountingApi.getReportBankSummary(
+  const { body: bankReport } = await (client.accountingApi.getReportBankSummary as any)(
     tenantId,
     ensureDateString(fromDate),
     ensureDateString(today),
@@ -70,7 +70,7 @@ export default eventHandler(async (event) => {
 
   // Get receivables and payables
   const [receivables, payables, recentExpenses] = await Promise.all([
-    client.accountingApi.getInvoices(
+    (client.accountingApi.getInvoices as any)(
       tenantId,
       undefined,
       'Type=="ACCREC"&&Status=="AUTHORISED"',
@@ -85,7 +85,7 @@ export default eventHandler(async (event) => {
       undefined,
       200
     ),
-    client.accountingApi.getInvoices(
+    (client.accountingApi.getInvoices as any)(
       tenantId,
       undefined,
       'Type=="ACCPAY"&&Status=="AUTHORISED"',
@@ -100,7 +100,7 @@ export default eventHandler(async (event) => {
       undefined,
       200
     ),
-    client.accountingApi.getInvoices(
+    (client.accountingApi.getInvoices as any)(
       tenantId,
       undefined,
       `Type=="ACCPAY"&&Status=="PAID"&&Date>=${toXeroDateTime(addDays(today, -90))}`,
@@ -118,7 +118,7 @@ export default eventHandler(async (event) => {
   ])
 
   const totalHistoricalExpenses = (recentExpenses?.body?.invoices || [])
-    .reduce((sum, inv) => sum + (Number(inv?.total) || 0), 0)
+    .reduce((sum: number, inv: any) => sum + (Number(inv?.total) || 0), 0)
   const avgDailyExpenses = totalHistoricalExpenses / 90
 
   // Create scenario multipliers
@@ -154,22 +154,22 @@ export default eventHandler(async (event) => {
       
       // Calculate receivables with scenario adjustments
       const receivablesForDate = (receivables?.body?.invoices || [])
-        .filter(inv => {
+        .filter((inv: any) => {
           const dueDate = inv?.dueDate ? new Date(inv.dueDate) : null
           if (!dueDate) return false
-          
+
           const adjustedDate = addDays(dueDate, -scenarioConfig.collectionSpeedup || scenarioConfig.collectionSlowdown || 0)
           return ensureDateString(adjustedDate) === dateStr
         })
-        .reduce((sum, inv) => sum + (Number(inv?.amountDue) || 0), 0) * scenarioConfig.receivableMultiplier
+        .reduce((sum: number, inv: any) => sum + (Number(inv?.amountDue) || 0), 0) * scenarioConfig.receivableMultiplier
 
       // Calculate payables with scenario adjustments
       const payablesForDate = (payables?.body?.invoices || [])
-        .filter(inv => {
+        .filter((inv: any) => {
           const dueDate = inv?.dueDate ? new Date(inv.dueDate) : null
           return dueDate && ensureDateString(dueDate) === dateStr
         })
-        .reduce((sum, inv) => sum + (Number(inv?.amountDue) || 0), 0) * scenarioConfig.payableMultiplier
+        .reduce((sum: number, inv: any) => sum + (Number(inv?.amountDue) || 0), 0) * scenarioConfig.payableMultiplier
 
       // Calculate daily expenses with scenario adjustments
       const isWeekday = forecastDate.getDay() >= 1 && forecastDate.getDay() <= 5

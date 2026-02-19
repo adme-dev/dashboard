@@ -1,16 +1,32 @@
 <script setup lang="ts">
 const { isNotificationsSlideoverOpen } = useDashboard()
-const { unreadCount, fetchNotifications } = useNotifications()
+const { unreadCount, fetchNotifications, connectToStream, disconnectFromStream } = useNotifications()
 const { isAuthenticated } = useAuth()
 
-// Fetch unread count on mount for authenticated users
+// Fetch unread count and connect to real-time stream for authenticated users
 onMounted(async () => {
   if (isAuthenticated.value) {
     try {
       await fetchNotifications({ unreadOnly: true })
+      // Connect to real-time notifications stream
+      connectToStream()
     } catch {
       // Silently fail - user might not be authenticated
     }
+  }
+})
+
+// Clean up SSE connection on unmount
+onUnmounted(() => {
+  disconnectFromStream()
+})
+
+// Watch for auth changes to connect/disconnect stream
+watch(isAuthenticated, (authenticated) => {
+  if (authenticated) {
+    connectToStream()
+  } else {
+    disconnectFromStream()
   }
 })
 </script>

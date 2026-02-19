@@ -68,7 +68,7 @@ export async function createXeroClient(options: CreateClientOptions = {}) {
     client.setTokenSet(toTokenSet(options.tokenSet))
   }
 
-  if (options.state) {
+  if (options.state && client.config) {
     client.config.state = options.state
   }
 
@@ -82,12 +82,12 @@ export function toStoredTokenSet(token: TokenSet): XeroTokenSet {
   return {
     ...token,
     expires_at: token.expires_at * 1000
-  }
+  } as XeroTokenSet
 }
 
 export function toTokenSet(stored: XeroTokenSet): TokenSet {
   return {
     ...stored,
     expires_at: Math.floor(stored.expires_at / 1000)
-  }
+  } as TokenSet
 }

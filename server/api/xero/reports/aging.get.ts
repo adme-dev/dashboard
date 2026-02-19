@@ -38,7 +38,7 @@ export default eventHandler(async (event) => {
   const statusFilter = 'AUTHORISED'
 
   // Fetch outstanding invoices
-  const { body: invoicesResponse } = await client.accountingApi.getInvoices(
+  const { body: invoicesResponse } = await (client.accountingApi.getInvoices as any)(
     tenantId,
     undefined,
     `Type=="${invoiceType}"&&Status=="${statusFilter}"`,
@@ -117,8 +117,8 @@ export default eventHandler(async (event) => {
   }))
 
   // Calculate key metrics
-  const averageDaysPastDue = invoices.length > 0 
-    ? invoices.reduce((sum, inv) => {
+  const averageDaysPastDue = invoices.length > 0
+    ? invoices.reduce((sum: number, inv: any) => {
         const dueDate = inv?.dueDate ? new Date(inv.dueDate) : null
         return sum + (dueDate ? daysBetween(dueDate, today) : 0)
       }, 0) / invoices.length

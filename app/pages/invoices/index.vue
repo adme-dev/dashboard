@@ -53,16 +53,16 @@ const filteredOverdue = computed(() => {
 })
 
 const filteredPaid = computed(() => {
-  const list = data.value?.paid ?? []
+  const list = (data.value as any)?.paid ?? []
   if (!search.value) return list
   return list.filter((inv: any) => inv.number?.toLowerCase().includes(search.value.toLowerCase()) || inv.contact?.toLowerCase().includes(search.value.toLowerCase()))
 })
 
 const filteredAll = computed(() => {
-  const combined = data.value?.all ?? [
+  const combined = (data.value as any)?.all ?? [
     ...(data.value?.outstanding ?? []),
     ...(data.value?.overdue ?? []),
-    ...(data.value?.paid ?? [])
+    ...((data.value as any)?.paid ?? [])
   ]
 
   const list = Array.isArray(combined) ? [...combined] : []

@@ -17,6 +17,7 @@ export async function hashPassword(password: string): Promise<string> {
 
 export async function verifyPassword(password: string, hash: string): Promise<boolean> {
   const [salt, key] = hash.split(':')
+  if (!salt || !key) return false
   const derivedKey = (await scryptAsync(password, salt, 64)) as Buffer
   const keyBuffer = Buffer.from(key, 'hex')
   return timingSafeEqual(derivedKey, keyBuffer)
@@ -59,6 +60,7 @@ export function createSessionToken(payload: Omit<SessionPayload, 'exp'>, expires
 export function verifySessionToken(token: string): SessionPayload | null {
   try {
     const [base64, signature] = token.split('.')
+    if (!base64 || !signature) return null
     const expectedSignature = createHash('sha256').update(`${base64}${JWT_SECRET}`).digest('hex')
 
     if (signature !== expectedSignature) {
@@ -87,6 +89,8 @@ export interface User {
   email: string
   name: string
   role: string
+  userRole?: string // Alias for role, used in some APIs
+  user_role?: string // snake_case version used in DB results
   avatarUrl?: string
   departmentId?: string
   email_verified_at?: string | null
@@ -360,6 +364,7 @@ export async function logActivity(params: {
   oldValues?: any
   newValues?: any
   event?: H3Event
+  metadata?: any
 }): Promise<void> {
   let ipAddress = null
   let userAgent = null

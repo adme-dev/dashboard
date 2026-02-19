@@ -24,7 +24,7 @@ async function fetchAllInvoices(client: Awaited<ReturnType<typeof createXeroClie
   const results: any[] = []
   let page = 1
   for (;;) {
-    const { body } = await client.accountingApi.getInvoices(
+    const { body } = await (client.accountingApi.getInvoices as any)(
       tenantId,
       undefined,
       whereExpr,

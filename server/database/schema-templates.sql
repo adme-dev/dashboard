@@ -28,10 +28,22 @@ CREATE TABLE IF NOT EXISTS project_templates (
   -- Visibility
   is_active BOOLEAN DEFAULT true,
   is_public BOOLEAN DEFAULT false, -- Visible to all team members
+  is_system BOOLEAN DEFAULT false, -- System templates can't be deleted
 
   -- Usage tracking
   times_used INTEGER DEFAULT 0,
   last_used_at TIMESTAMPTZ,
+
+  -- AI Generation Support
+  estimated_budget_min DECIMAL(12, 2),
+  estimated_budget_max DECIMAL(12, 2),
+  default_project_type VARCHAR(50),
+  phases JSONB DEFAULT '[]', -- High-level stages for AI generation
+  default_tasks JSONB DEFAULT '[]', -- Task templates for AI generation
+  required_skills JSONB DEFAULT '[]', -- Skills needed
+  recommended_team_size INTEGER,
+  discovery_questions JSONB DEFAULT '[]', -- Questions to ask client
+  ai_context TEXT, -- Additional context for AI when generating
 
   -- Ownership
   created_by UUID REFERENCES team_members(id),
@@ -369,41 +381,146 @@ CREATE TRIGGER update_template_tasks_updated_at BEFORE UPDATE ON template_tasks
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================
--- Seed Data - Common Templates
+-- Seed Data - Common Templates with AI Support
 -- ============================================
 
--- Web Development Template
-INSERT INTO project_templates (name, description, category, default_budget_type, estimated_duration_days, estimated_hours, is_public)
+-- Website Redesign Template (AI-ready)
+INSERT INTO project_templates (
+  name, description, category, default_budget_type, estimated_duration_days, estimated_hours,
+  estimated_budget_min, estimated_budget_max, default_project_type, is_public, is_system,
+  phases, default_tasks, required_skills, recommended_team_size, discovery_questions
+)
 VALUES (
-  'Website Development',
-  'Standard website development project with discovery, design, development, and launch phases',
+  'Website Redesign',
+  'Complete website redesign project including UX research, design, and development',
   'Web Development',
   'time_materials',
   60,
   200,
-  true
+  25000,
+  75000,
+  'fixed',
+  true,
+  true,
+  '[
+    {"name": "Discovery", "duration_days": 10, "deliverables": ["Project Brief", "Sitemap", "Content Audit"]},
+    {"name": "Design", "duration_days": 20, "deliverables": ["Wireframes", "UI Design", "Style Guide"]},
+    {"name": "Development", "duration_days": 25, "deliverables": ["Frontend", "CMS Integration", "Testing"]},
+    {"name": "Launch", "duration_days": 5, "deliverables": ["Deployment", "Training", "Documentation"]}
+  ]',
+  '[
+    {"name": "Project Kickoff", "phase": "Discovery", "hours": 2, "required_skills": ["project_management"]},
+    {"name": "Stakeholder Interviews", "phase": "Discovery", "hours": 8, "required_skills": ["strategy"]},
+    {"name": "Content Audit", "phase": "Discovery", "hours": 12, "required_skills": ["strategy", "copywriting"]},
+    {"name": "Wireframes", "phase": "Design", "hours": 24, "required_skills": ["design"]},
+    {"name": "UI Design - Homepage", "phase": "Design", "hours": 16, "required_skills": ["design"]},
+    {"name": "UI Design - Inner Pages", "phase": "Design", "hours": 32, "required_skills": ["design"]},
+    {"name": "Frontend Development", "phase": "Development", "hours": 80, "required_skills": ["development"]},
+    {"name": "CMS Integration", "phase": "Development", "hours": 24, "required_skills": ["development"]},
+    {"name": "QA Testing", "phase": "Development", "hours": 16, "required_skills": ["qa"]},
+    {"name": "Deployment", "phase": "Launch", "hours": 8, "required_skills": ["development"]}
+  ]',
+  '["design", "development", "strategy", "project_management"]',
+  4,
+  '[
+    {"question": "What is the primary goal of the new website?", "type": "text", "required": true},
+    {"question": "Who is your target audience?", "type": "text", "required": true},
+    {"question": "Do you have existing brand guidelines?", "type": "boolean", "required": true},
+    {"question": "How many pages do you need?", "type": "number", "required": true},
+    {"question": "Do you need a CMS?", "type": "boolean", "required": true},
+    {"question": "Any specific features or integrations needed?", "type": "text", "required": false}
+  ]'
 ) ON CONFLICT DO NOTHING;
 
--- Marketing Campaign Template
-INSERT INTO project_templates (name, description, category, default_budget_type, estimated_duration_days, estimated_hours, is_public)
+-- Marketing Campaign Template (AI-ready)
+INSERT INTO project_templates (
+  name, description, category, default_budget_type, estimated_duration_days, estimated_hours,
+  estimated_budget_min, estimated_budget_max, default_project_type, is_public, is_system,
+  phases, default_tasks, required_skills, recommended_team_size, discovery_questions
+)
 VALUES (
   'Marketing Campaign',
-  'End-to-end marketing campaign including strategy, creative, execution, and reporting',
+  'Multi-channel marketing campaign including strategy, creative, and execution',
   'Marketing',
   'fixed',
   45,
   120,
-  true
+  20000,
+  60000,
+  'retainer',
+  true,
+  true,
+  '[
+    {"name": "Strategy", "duration_days": 10, "deliverables": ["Campaign Strategy", "Media Plan", "Creative Brief"]},
+    {"name": "Creative Development", "duration_days": 15, "deliverables": ["Ad Creative", "Copy", "Landing Pages"]},
+    {"name": "Execution", "duration_days": 15, "deliverables": ["Campaign Launch", "Monitoring", "Optimization"]},
+    {"name": "Reporting", "duration_days": 5, "deliverables": ["Performance Report", "Recommendations"]}
+  ]',
+  '[
+    {"name": "Campaign Strategy Development", "phase": "Strategy", "hours": 16, "required_skills": ["strategy", "marketing"]},
+    {"name": "Audience Research", "phase": "Strategy", "hours": 12, "required_skills": ["marketing"]},
+    {"name": "Media Planning", "phase": "Strategy", "hours": 8, "required_skills": ["marketing"]},
+    {"name": "Creative Concepting", "phase": "Creative Development", "hours": 16, "required_skills": ["design", "copywriting"]},
+    {"name": "Ad Design", "phase": "Creative Development", "hours": 24, "required_skills": ["design"]},
+    {"name": "Copywriting", "phase": "Creative Development", "hours": 16, "required_skills": ["copywriting"]},
+    {"name": "Landing Page Design", "phase": "Creative Development", "hours": 16, "required_skills": ["design"]},
+    {"name": "Campaign Setup", "phase": "Execution", "hours": 8, "required_skills": ["marketing"]},
+    {"name": "Campaign Monitoring", "phase": "Execution", "hours": 20, "required_skills": ["marketing"]},
+    {"name": "Performance Reporting", "phase": "Reporting", "hours": 8, "required_skills": ["marketing"]}
+  ]',
+  '["marketing", "design", "copywriting", "strategy"]',
+  3,
+  '[
+    {"question": "What is the campaign objective?", "type": "text", "required": true},
+    {"question": "What is your target audience?", "type": "text", "required": true},
+    {"question": "What channels do you want to use?", "type": "text", "required": true},
+    {"question": "What is your campaign budget?", "type": "number", "required": true},
+    {"question": "When should the campaign launch?", "type": "date", "required": true}
+  ]'
 ) ON CONFLICT DO NOTHING;
 
--- Brand Identity Template
-INSERT INTO project_templates (name, description, category, default_budget_type, estimated_duration_days, estimated_hours, is_public)
+-- Brand Identity Template (AI-ready)
+INSERT INTO project_templates (
+  name, description, category, default_budget_type, estimated_duration_days, estimated_hours,
+  estimated_budget_min, estimated_budget_max, default_project_type, is_public, is_system,
+  phases, default_tasks, required_skills, recommended_team_size, discovery_questions
+)
 VALUES (
   'Brand Identity',
-  'Complete brand identity project including research, strategy, logo design, and brand guidelines',
+  'Complete brand identity development including logo, colors, typography, and brand guidelines',
   'Branding',
   'fixed',
   30,
   80,
-  true
+  15000,
+  40000,
+  'fixed',
+  true,
+  true,
+  '[
+    {"name": "Discovery", "duration_days": 5, "deliverables": ["Brand Brief", "Competitor Analysis"]},
+    {"name": "Concept", "duration_days": 10, "deliverables": ["Logo Concepts", "Moodboards"]},
+    {"name": "Refinement", "duration_days": 10, "deliverables": ["Final Logo", "Color Palette", "Typography"]},
+    {"name": "Delivery", "duration_days": 5, "deliverables": ["Brand Guidelines", "Asset Package"]}
+  ]',
+  '[
+    {"name": "Brand Discovery Workshop", "phase": "Discovery", "hours": 4, "required_skills": ["strategy", "design"]},
+    {"name": "Competitor Analysis", "phase": "Discovery", "hours": 8, "required_skills": ["strategy"]},
+    {"name": "Logo Concepts", "phase": "Concept", "hours": 24, "required_skills": ["design"]},
+    {"name": "Moodboard Creation", "phase": "Concept", "hours": 8, "required_skills": ["design"]},
+    {"name": "Logo Refinement", "phase": "Refinement", "hours": 16, "required_skills": ["design"]},
+    {"name": "Color Palette Development", "phase": "Refinement", "hours": 8, "required_skills": ["design"]},
+    {"name": "Typography Selection", "phase": "Refinement", "hours": 4, "required_skills": ["design"]},
+    {"name": "Brand Guidelines Document", "phase": "Delivery", "hours": 16, "required_skills": ["design"]},
+    {"name": "Asset Package Preparation", "phase": "Delivery", "hours": 8, "required_skills": ["design"]}
+  ]',
+  '["design", "strategy"]',
+  2,
+  '[
+    {"question": "Describe your company in 3 words", "type": "text", "required": true},
+    {"question": "Who are your main competitors?", "type": "text", "required": true},
+    {"question": "What emotions should your brand evoke?", "type": "text", "required": true},
+    {"question": "Any colors to avoid?", "type": "text", "required": false},
+    {"question": "Where will the logo be used most?", "type": "text", "required": true}
+  ]'
 ) ON CONFLICT DO NOTHING;

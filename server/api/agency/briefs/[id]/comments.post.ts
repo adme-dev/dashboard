@@ -3,6 +3,7 @@
  */
 
 import { queryOne, execute } from '~~/server/utils/db'
+import { getAuthUser } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
@@ -51,8 +52,8 @@ export default defineEventHandler(async (event) => {
     // Get current user
     let userId = null
     try {
-      const session = await getUserSession(event)
-      userId = session?.user?.id || null
+      const user = await getAuthUser(event)
+      userId = user?.id || null
     } catch {}
 
     // Create comment

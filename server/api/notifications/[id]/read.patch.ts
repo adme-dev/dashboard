@@ -21,8 +21,8 @@ export default defineEventHandler(async (event) => {
     // Mark as read (only if owned by user)
     const notification = await queryOne(`
       UPDATE notifications
-      SET read_at = NOW()
-      WHERE id = $1 AND user_id = $2 AND read_at IS NULL
+      SET is_read = true, read_at = NOW()
+      WHERE id = $1 AND user_id = $2 AND is_read = false
       RETURNING id, read_at
     `, [notificationId, user.id])
 

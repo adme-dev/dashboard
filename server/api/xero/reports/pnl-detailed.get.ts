@@ -113,7 +113,8 @@ function findRow(rows: ParsedRow[], matcher: RegExp): ParsedRow | undefined {
 function findSection(rows: ParsedRow[], matcher: RegExp): ParsedRow | undefined {
   const queue = [...rows]
   while (queue.length) {
-    const row = queue.shift()!
+    const row = queue.shift()
+    if (!row) continue
     if (row.type === 'section' && matcher.test(row.title)) {
       return row
     }
@@ -127,7 +128,7 @@ function sumValues(values: number[], upToIndex: number): number {
   const end = Math.min(upToIndex + 1, values.length)
   let total = 0
   for (let i = 0; i < end; i += 1) {
-    total += values[i]
+    total += values[i] ?? 0
   }
   return total
 }
@@ -408,7 +409,7 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode, statusMessage: 'Failed to fetch Profit & Loss report from Xero' })
   }
 
-  const reportTable = report?.reports?.[0] ?? report?.Reports?.[0]
+  const reportTable = (report as any)?.reports?.[0] ?? (report as any)?.Reports?.[0]
   const tableRows: XeroRow[] = reportTable ? reportTable.rows ?? reportTable.Rows ?? [] : []
 
   const parsedRows = tableRows

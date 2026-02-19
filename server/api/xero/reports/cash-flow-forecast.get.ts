@@ -34,7 +34,7 @@ export default eventHandler(async (event) => {
   // Get current bank balances
   // For bank summary, we need a date range. Use today as toDate and 30 days before as fromDate
   const fromDate = addDays(today, -30)
-  const { body: bankReport } = await client.accountingApi.getReportBankSummary(
+  const { body: bankReport } = await (client.accountingApi.getReportBankSummary as any)(
     tenantId,
     ensureDateString(fromDate),
     ensureDateString(today),
@@ -69,7 +69,7 @@ export default eventHandler(async (event) => {
   }
 
   // Get outstanding invoices (money coming in)
-  const { body: receivables } = await client.accountingApi.getInvoices(
+  const { body: receivables } = await (client.accountingApi.getInvoices as any)(
     tenantId,
     undefined,
     'Type=="ACCREC"&&Status=="AUTHORISED"',
@@ -86,7 +86,7 @@ export default eventHandler(async (event) => {
   )
 
   // Get outstanding bills (money going out)
-  const { body: payables } = await client.accountingApi.getInvoices(
+  const { body: payables } = await (client.accountingApi.getInvoices as any)(
     tenantId,
     undefined,
     'Type=="ACCPAY"&&Status=="AUTHORISED"',
@@ -104,7 +104,7 @@ export default eventHandler(async (event) => {
 
   // Calculate historical average daily expenses
   const pastDate = addDays(today, -90)
-  const { body: recentExpenses } = await client.accountingApi.getInvoices(
+  const { body: recentExpenses } = await (client.accountingApi.getInvoices as any)(
     tenantId,
     undefined,
     `Type=="ACCPAY"&&Status=="PAID"&&Date>=${toXeroDateTime(pastDate)}`,
@@ -121,7 +121,7 @@ export default eventHandler(async (event) => {
   )
 
   const totalHistoricalExpenses = (recentExpenses?.invoices || [])
-    .reduce((sum, inv) => sum + (Number(inv?.total) || 0), 0)
+    .reduce((sum: number, inv: any) => sum + (Number(inv?.total) || 0), 0)
   const avgDailyExpenses = totalHistoricalExpenses / 90
 
   // Build forecast data points
@@ -135,19 +135,19 @@ export default eventHandler(async (event) => {
     
     // Add expected receivables for this date
     const receivablesForDate = (receivables?.invoices || [])
-      .filter(inv => {
+      .filter((inv: any) => {
         const dueDate = inv?.dueDate ? new Date(inv.dueDate) : null
         return dueDate && ensureDateString(dueDate) === dateStr
       })
-      .reduce((sum, inv) => sum + (Number(inv?.amountDue) || 0), 0)
+      .reduce((sum: number, inv: any) => sum + (Number(inv?.amountDue) || 0), 0)
 
     // Add expected payables for this date
     const payablesForDate = (payables?.invoices || [])
-      .filter(inv => {
+      .filter((inv: any) => {
         const dueDate = inv?.dueDate ? new Date(inv.dueDate) : null
         return dueDate && ensureDateString(dueDate) === dateStr
       })
-      .reduce((sum, inv) => sum + (Number(inv?.amountDue) || 0), 0)
+      .reduce((sum: number, inv: any) => sum + (Number(inv?.amountDue) || 0), 0)
 
     // Subtract daily operating expenses (only on weekdays)
     const isWeekday = forecastDate.getDay() >= 1 && forecastDate.getDay() <= 5

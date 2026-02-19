@@ -3,8 +3,11 @@
  */
 
 import { queryRows, queryOne } from '~~/server/utils/db'
+import { requireAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
+  await requireAuth(event)
+
   const query = getQuery(event)
 
   // Build dynamic query with filters
@@ -82,9 +85,20 @@ export default defineEventHandler(async (event) => {
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
-  // Pagination
+  // Pagination - supports both offset and cursor-based
   const limit = Math.min(Number(query.limit) || 50, 100)
   const offset = Number(query.offset) || 0
+  const cursor = query.cursor as string | undefined // For cursor-based pagination
+
+  // Add cursor condition if provided (cursor is the last task's created_at + id)
+  if (cursor) {
+    const [cursorDate, cursorId] = cursor.split('_')
+    if (cursorDate && cursorId) {
+      conditions.push(`(t.created_at, t.id) < ($${idx}, $${idx + 1})`)
+      params.push(cursorDate, cursorId)
+      idx += 2
+    }
+  }
 
   try {
     // Get total count
@@ -219,6 +233,10 @@ export default defineEventHandler(async (event) => {
         limit,
         offset,
         hasMore: offset + tasks.length < Number(countResult?.total),
+        // Include next cursor for cursor-based pagination
+        nextCursor: tasks.length > 0 && tasks.length === limit
+          ? `${tasks[tasks.length - 1].created_at}_${tasks[tasks.length - 1].id}`
+          : null,
       }
     }
   } catch (error) {

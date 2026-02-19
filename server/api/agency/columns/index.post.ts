@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
 
   // Only admin/owner can create custom columns
-  if (!['admin', 'owner'].includes(user.user_role)) {
+  if (!['admin', 'owner'].includes(user.user_role || '')) {
     throw createError({
       statusCode: 403,
       statusMessage: 'Only administrators can create custom columns'

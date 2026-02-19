@@ -79,7 +79,7 @@ export default eventHandler(async (event) => {
     const results: any[] = []
     let page = 1
     for (;;) {
-      const { body } = await client.accountingApi.getInvoices(
+      const { body } = await (client.accountingApi.getInvoices as any)(
         tenantId,
         undefined,
         whereExpr,
@@ -142,7 +142,7 @@ export default eventHandler(async (event) => {
   ])
 
   for (const category of allCategories) {
-    const budgeted = DEFAULT_MONTHLY_BUDGETS[category] || 0
+    const budgeted = (DEFAULT_MONTHLY_BUDGETS as Record<string, number>)[category] || 0
     const actual = actualSpend.get(category) || 0
     const variance = actual - budgeted
     const variancePercent = budgeted > 0 ? (variance / budgeted) * 100 : (actual > 0 ? 100 : 0)

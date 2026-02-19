@@ -76,7 +76,7 @@ export default eventHandler(async (event) => {
 
   const invoiceResults = await Promise.all(invoicePromises)
   const allInvoices = invoiceResults.flatMap(result => 
-    result.invoices.map(inv => ({ ...inv, status: result.status }))
+    result.invoices.map((inv: any) => ({ ...inv, status: result.status }))
   )
 
   // Process pipeline stages
@@ -149,35 +149,35 @@ export default eventHandler(async (event) => {
 
     // Categorize into pipeline stages
     if (invoice.status === 'DRAFT') {
-      pipelineStages.draft.count++
-      pipelineStages.draft.value += amount
-      pipelineStages.draft.invoices.push(invoiceData)
+      pipelineStages.draft!.count++
+      pipelineStages.draft!.value += amount
+      pipelineStages.draft!.invoices.push(invoiceData)
     } else if (invoice.status === 'SUBMITTED') {
-      pipelineStages.submitted.count++
-      pipelineStages.submitted.value += amount
-      pipelineStages.submitted.invoices.push(invoiceData)
+      pipelineStages.submitted!.count++
+      pipelineStages.submitted!.value += amount
+      pipelineStages.submitted!.invoices.push(invoiceData)
     } else if (invoice.status === 'AUTHORISED') {
       if (daysPastDue > 0) {
-        pipelineStages.overdue.count++
-        pipelineStages.overdue.value += amountDue
-        pipelineStages.overdue.invoices.push(invoiceData)
+        pipelineStages.overdue!.count++
+        pipelineStages.overdue!.value += amountDue
+        pipelineStages.overdue!.invoices.push(invoiceData)
       } else {
-        pipelineStages.authorised.count++
-        pipelineStages.authorised.value += amountDue
-        pipelineStages.authorised.invoices.push(invoiceData)
+        pipelineStages.authorised!.count++
+        pipelineStages.authorised!.value += amountDue
+        pipelineStages.authorised!.invoices.push(invoiceData)
       }
     } else if (invoice.status === 'PAID') {
-      pipelineStages.paid.count++
-      pipelineStages.paid.value += amount
-      pipelineStages.paid.invoices.push(invoiceData)
+      pipelineStages.paid!.count++
+      pipelineStages.paid!.value += amount
+      pipelineStages.paid!.invoices.push(invoiceData)
     }
   }
 
   // Calculate average days in each stage
   Object.keys(pipelineStages).forEach(stageKey => {
-    const stage = pipelineStages[stageKey]
+    const stage = pipelineStages[stageKey]!
     if (stage.invoices.length > 0) {
-      const totalDays = stage.invoices.reduce((sum, inv) => {
+      const totalDays = stage.invoices.reduce((sum: number, inv: any) => {
         return sum + (stageKey === 'overdue' ? inv.daysPastDue : inv.daysOld)
       }, 0)
       stage.averageDaysInStage = Math.round(totalDays / stage.invoices.length)
@@ -185,23 +185,23 @@ export default eventHandler(async (event) => {
   })
 
   // Calculate conversion rates and pipeline health
-  const totalValue = Object.values(pipelineStages).reduce((sum, stage) => sum + stage.value, 0)
-  const paidRate = totalValue > 0 ? (pipelineStages.paid.value / totalValue) * 100 : 0
-  const overdueRate = totalValue > 0 ? (pipelineStages.overdue.value / totalValue) * 100 : 0
-  
+  const totalValue = Object.values(pipelineStages).reduce((sum, stage) => sum + stage!.value, 0)
+  const paidRate = totalValue > 0 ? (pipelineStages.paid!.value / totalValue) * 100 : 0
+  const overdueRate = totalValue > 0 ? (pipelineStages.overdue!.value / totalValue) * 100 : 0
+
   // Calculate average collection time (for paid invoices)
-  const paidInvoices = pipelineStages.paid.invoices
+  const paidInvoices = pipelineStages.paid!.invoices
   const averageCollectionTime = paidInvoices.length > 0 
     ? paidInvoices.reduce((sum, inv) => sum + inv.daysOld, 0) / paidInvoices.length
     : 0
 
   // Identify bottlenecks
-  const bottlenecks = []
-  if (pipelineStages.draft.count > 10) {
-    bottlenecks.push({ stage: 'draft', issue: 'Too many draft invoices', count: pipelineStages.draft.count })
+  const bottlenecks: any[] = []
+  if (pipelineStages.draft!.count > 10) {
+    bottlenecks.push({ stage: 'draft', issue: 'Too many draft invoices', count: pipelineStages.draft!.count })
   }
-  if (pipelineStages.authorised.averageDaysInStage > 30) {
-    bottlenecks.push({ stage: 'authorised', issue: 'Long payment cycles', days: pipelineStages.authorised.averageDaysInStage })
+  if (pipelineStages.authorised!.averageDaysInStage > 30) {
+    bottlenecks.push({ stage: 'authorised', issue: 'Long payment cycles', days: pipelineStages.authorised!.averageDaysInStage })
   }
   if (overdueRate > 15) {
     bottlenecks.push({ stage: 'overdue', issue: 'High overdue rate', rate: overdueRate })
@@ -209,11 +209,11 @@ export default eventHandler(async (event) => {
 
   // Generate pipeline flow data for visualization
   const flowData = [
-    { from: 'prospects', to: 'draft', value: pipelineStages.draft.count },
-    { from: 'draft', to: 'submitted', value: pipelineStages.submitted.count },
-    { from: 'submitted', to: 'authorised', value: pipelineStages.authorised.count },
-    { from: 'authorised', to: 'paid', value: pipelineStages.paid.count },
-    { from: 'authorised', to: 'overdue', value: pipelineStages.overdue.count }
+    { from: 'prospects', to: 'draft', value: pipelineStages.draft!.count },
+    { from: 'draft', to: 'submitted', value: pipelineStages.submitted!.count },
+    { from: 'submitted', to: 'authorised', value: pipelineStages.authorised!.count },
+    { from: 'authorised', to: 'paid', value: pipelineStages.paid!.count },
+    { from: 'authorised', to: 'overdue', value: pipelineStages.overdue!.count }
   ].filter(flow => flow.value > 0)
 
   // Calculate velocity metrics
@@ -226,10 +226,10 @@ export default eventHandler(async (event) => {
     .reduce((sum, inv) => sum + inv.amount, 0)
 
   // Risk assessment
-  const riskFactors = []
+  const riskFactors: string[] = []
   if (overdueRate > 20) riskFactors.push('High overdue rate')
   if (averageCollectionTime > 45) riskFactors.push('Slow collection cycle')
-  if (pipelineStages.draft.count > pipelineStages.paid.count) riskFactors.push('Pipeline backing up')
+  if (pipelineStages.draft!.count > pipelineStages.paid!.count) riskFactors.push('Pipeline backing up')
   
   const riskLevel = riskFactors.length >= 2 ? 'high' : riskFactors.length === 1 ? 'medium' : 'low'
 
@@ -245,8 +245,8 @@ export default eventHandler(async (event) => {
     summary: {
       totalInvoices: allInvoices.length,
       totalValue: Math.round(totalValue * 100) / 100,
-      paidValue: Math.round(pipelineStages.paid.value * 100) / 100,
-      outstandingValue: Math.round((pipelineStages.authorised.value + pipelineStages.overdue.value) * 100) / 100,
+      paidValue: Math.round(pipelineStages.paid!.value * 100) / 100,
+      outstandingValue: Math.round((pipelineStages.authorised!.value + pipelineStages.overdue!.value) * 100) / 100,
       paidRate: Math.round(paidRate * 100) / 100,
       overdueRate: Math.round(overdueRate * 100) / 100,
       averageCollectionTime: Math.round(averageCollectionTime),
@@ -287,15 +287,15 @@ export default eventHandler(async (event) => {
       ...(bottlenecks.length > 0 ? [`${bottlenecks.length} pipeline bottleneck(s) identified`] : []),
       ...(overdueRate > 10 ? [`${overdueRate.toFixed(1)}% of invoice value is overdue`] : []),
       ...(averageCollectionTime > 30 ? [`Average collection time is ${averageCollectionTime.toFixed(0)} days`] : []),
-      ...(pipelineStages.draft.count > 5 ? [`${pipelineStages.draft.count} invoices in draft status`] : [])
+      ...(pipelineStages.draft!.count > 5 ? [`${pipelineStages.draft!.count} invoices in draft status`] : [])
     ],
 
     // Recommendations
     recommendations: [
-      ...(pipelineStages.draft.count > 10 ? ['Review and send draft invoices'] : []),
+      ...(pipelineStages.draft!.count > 10 ? ['Review and send draft invoices'] : []),
       ...(overdueRate > 15 ? ['Implement automated payment reminders'] : []),
       ...(averageCollectionTime > 45 ? ['Review payment terms and collection processes'] : []),
-      ...(pipelineStages.overdue.count > 5 ? ['Focus on overdue invoice collection'] : []),
+      ...(pipelineStages.overdue!.count > 5 ? ['Focus on overdue invoice collection'] : []),
       ...(paidRate < 70 ? ['Analyze and improve invoice conversion rates'] : [])
     ]
   }

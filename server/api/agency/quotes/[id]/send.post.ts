@@ -1,13 +1,14 @@
 /**
- * Send a quote (mark as sent)
+ * Send a quote (mark as sent and email to client)
  */
 
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { requirePricingAccess } from '~~/server/utils/auth'
+import { sendQuoteEmail } from '~~/server/utils/email'
 
 export default defineEventHandler(async (event) => {
   // Check pricing access
-  await requirePricingAccess(event, 'quote', 'edit')
+  const user = await requirePricingAccess(event, 'quote', 'edit')
 
   const quoteId = getRouterParam(event, 'id')
   const body = await readBody(event)
@@ -19,11 +20,16 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // Get the quote
-  const quote = await queryOne(
-    'SELECT id, status, quote_number, total FROM quotes WHERE id = $1',
-    [quoteId]
-  )
+  // Get the quote with client info
+  const quote = await queryOne(`
+    SELECT
+      q.id, q.status, q.quote_number, q.total, q.currency, q.valid_until,
+      q.client_notes, q.contact_email, q.contact_name,
+      c.id as client_id, c.name as client_name
+    FROM quotes q
+    JOIN agency_clients c ON q.client_id = c.id
+    WHERE q.id = $1
+  `, [quoteId])
 
   if (!quote) {
     throw createError({
@@ -40,13 +46,15 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // Check if quote has line items
-  const items = await queryRows(
-    'SELECT id FROM quote_line_items WHERE quote_id = $1',
-    [quoteId]
-  )
+  // Get line items for the email
+  const lineItems = await queryRows(`
+    SELECT description, quantity, unit_price, total
+    FROM quote_line_items
+    WHERE quote_id = $1
+    ORDER BY sort_order, created_at
+  `, [quoteId])
 
-  if (items.length === 0) {
+  if (lineItems.length === 0) {
     throw createError({
       statusCode: 400,
       statusMessage: 'Cannot send a quote without line items'
@@ -54,6 +62,7 @@ export default defineEventHandler(async (event) => {
   }
 
   // Update quote status to sent
+  const clientNotes = body.clientNotes || body.client_notes || quote.client_notes
   const updated = await queryOne(`
     UPDATE quotes
     SET
@@ -63,16 +72,58 @@ export default defineEventHandler(async (event) => {
       updated_at = NOW()
     WHERE id = $2
     RETURNING *
-  `, [body.clientNotes || body.client_notes, quoteId])
+  `, [clientNotes, quoteId])
 
-  // TODO: In a real application, you would:
-  // 1. Generate a PDF of the quote
-  // 2. Send an email to the client with the PDF attached
-  // 3. Create a unique link for the client to view/accept the quote
+  // Determine email recipient
+  const recipientEmail = body.email || quote.contact_email
+  if (!recipientEmail) {
+    // Quote is marked as sent but no email could be sent
+    return {
+      success: true,
+      message: `Quote ${quote.quote_number} has been marked as sent (no email address provided)`,
+      emailSent: false,
+      quote: {
+        id: updated.id,
+        quoteNumber: updated.quote_number,
+        status: updated.status,
+        sentAt: updated.sent_at,
+        total: Number(updated.total)
+      }
+    }
+  }
+
+  // Send the quote email
+  let emailSent = false
+  try {
+    await sendQuoteEmail({
+      to: recipientEmail,
+      clientName: quote.client_name,
+      clientContactName: quote.contact_name,
+      quoteNumber: quote.quote_number,
+      quoteId: quote.id,
+      total: Number(quote.total),
+      currency: quote.currency || 'USD',
+      validUntil: quote.valid_until ? new Date(quote.valid_until) : undefined,
+      lineItems: lineItems.map(item => ({
+        description: item.description,
+        quantity: Number(item.quantity),
+        unitPrice: Number(item.unit_price),
+        total: Number(item.total)
+      })),
+      clientNotes,
+      senderName: user.name,
+      senderEmail: user.email
+    })
+    emailSent = true
+  } catch (emailError) {
+    console.error('Failed to send quote email:', emailError)
+    // Don't fail the request if email fails - quote is still marked as sent
+  }
 
   return {
     success: true,
-    message: `Quote ${quote.quote_number} has been marked as sent`,
+    message: `Quote ${quote.quote_number} has been ${emailSent ? 'sent to ' + recipientEmail : 'marked as sent'}`,
+    emailSent,
     quote: {
       id: updated.id,
       quoteNumber: updated.quote_number,

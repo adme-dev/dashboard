@@ -75,7 +75,7 @@ async function loadAIInsights() {
   error.value = null
   
   try {
-    const response = await $fetch<{ success: boolean; data: AIData }>('/api/ai/expense-insights')
+    const response = await fetch('/api/ai/expense-insights').then(r => r.json()) as { success: boolean; data: AIData }
     aiData.value = response
     hasLoaded.value = true
   } catch (err) {

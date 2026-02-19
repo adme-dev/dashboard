@@ -108,11 +108,10 @@ export default defineEventHandler(async (event) => {
 
       for (const approver of approvers) {
         notifyApprovalRequest({
-          userId: approver.id,
+          approverId: approver.id,
           taskId: id,
           taskTitle: task.title,
-          requestedById: body.requestedBy || null,
-          workflowName: workflow.name,
+          requesterId: body.requestedBy || '',
           stepName: firstStep.step_name
         }).catch(err => console.error('Failed to send approval request notification:', err))
       }

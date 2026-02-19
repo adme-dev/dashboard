@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Department, Task, BoardViewType, KanbanFilters, SortRule } from '~/types'
+import { useWorkflowKeyboardShortcuts } from '~/composables/useKeyboardShortcuts'
 
 definePageMeta({
   title: 'Workflow Board'
@@ -8,6 +9,9 @@ definePageMeta({
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+
+// Search input ref for keyboard shortcut
+const searchInputRef = ref<HTMLInputElement | null>(null)
 
 // Current view state
 const currentView = ref<BoardViewType>((route.query.view as BoardViewType) || 'kanban')
@@ -258,6 +262,109 @@ const boardRef = ref<any>(null)
 function refreshBoard() {
   boardRef.value?.refreshTasks?.()
 }
+
+// Keyboard navigation helper - get task at current position
+function getTaskAtNavPosition(colIndex: number, taskIndex: number): Task | null {
+  if (currentView.value !== 'kanban' || !boardRef.value) return null
+  return boardRef.value.getTaskAtPosition?.(colIndex, taskIndex) || null
+}
+
+// Keyboard shortcuts
+const { showHelp: showShortcutsHelp, shortcuts, formatShortcut, selectedTaskIndex, selectedColumnIndex } = useWorkflowKeyboardShortcuts({
+  onNewTask: () => openCreateTask(),
+  onSearch: () => {
+    const searchInput = document.querySelector('[data-search-input]') as HTMLInputElement
+    searchInput?.focus()
+  },
+  onNavigateUp: () => {
+    if (currentView.value !== 'kanban' || !boardRef.value) return
+    const taskCount = boardRef.value.getTaskCount?.(selectedColumnIndex.value) || 0
+    if (taskCount === 0) return
+
+    // Move up, wrap to bottom if at top
+    if (selectedTaskIndex.value <= 0) {
+      selectedTaskIndex.value = taskCount - 1
+    } else {
+      selectedTaskIndex.value--
+    }
+    selectedTask.value = getTaskAtNavPosition(selectedColumnIndex.value, selectedTaskIndex.value)
+  },
+  onNavigateDown: () => {
+    if (currentView.value !== 'kanban' || !boardRef.value) return
+    const taskCount = boardRef.value.getTaskCount?.(selectedColumnIndex.value) || 0
+    if (taskCount === 0) return
+
+    // Move down, wrap to top if at bottom
+    if (selectedTaskIndex.value >= taskCount - 1) {
+      selectedTaskIndex.value = 0
+    } else {
+      selectedTaskIndex.value++
+    }
+    selectedTask.value = getTaskAtNavPosition(selectedColumnIndex.value, selectedTaskIndex.value)
+  },
+  onNavigateLeft: () => {
+    if (currentView.value !== 'kanban' || !boardRef.value) return
+    const columnCount = boardRef.value.getColumnCount?.() || 0
+    if (columnCount === 0) return
+
+    // Move to previous column, wrap to last if at first
+    if (selectedColumnIndex.value <= 0) {
+      selectedColumnIndex.value = columnCount - 1
+    } else {
+      selectedColumnIndex.value--
+    }
+
+    // Clamp task index to new column's task count
+    const taskCount = boardRef.value.getTaskCount?.(selectedColumnIndex.value) || 0
+    if (taskCount > 0) {
+      selectedTaskIndex.value = Math.min(selectedTaskIndex.value, taskCount - 1)
+      selectedTask.value = getTaskAtNavPosition(selectedColumnIndex.value, selectedTaskIndex.value)
+    } else {
+      selectedTaskIndex.value = -1
+      selectedTask.value = null
+    }
+  },
+  onNavigateRight: () => {
+    if (currentView.value !== 'kanban' || !boardRef.value) return
+    const columnCount = boardRef.value.getColumnCount?.() || 0
+    if (columnCount === 0) return
+
+    // Move to next column, wrap to first if at last
+    if (selectedColumnIndex.value >= columnCount - 1) {
+      selectedColumnIndex.value = 0
+    } else {
+      selectedColumnIndex.value++
+    }
+
+    // Clamp task index to new column's task count
+    const taskCount = boardRef.value.getTaskCount?.(selectedColumnIndex.value) || 0
+    if (taskCount > 0) {
+      selectedTaskIndex.value = Math.min(selectedTaskIndex.value, taskCount - 1)
+      selectedTask.value = getTaskAtNavPosition(selectedColumnIndex.value, selectedTaskIndex.value)
+    } else {
+      selectedTaskIndex.value = -1
+      selectedTask.value = null
+    }
+  },
+  onOpenTask: () => {
+    if (selectedTask.value) {
+      showTaskModal.value = true
+    }
+  },
+  onCloseModal: () => {
+    if (showTaskModal.value) {
+      showTaskModal.value = false
+    } else if (showCreateModal.value) {
+      showCreateModal.value = false
+    } else if (showSaveViewModal.value) {
+      showSaveViewModal.value = false
+    }
+  },
+  onToggleView: (view: string) => {
+    changeView(view as BoardViewType)
+  },
+  onRefresh: () => refreshBoard()
+})
 </script>
 
 <template>
@@ -331,6 +438,7 @@ function refreshBoard() {
             ref="boardRef"
             :department-id="currentDepartmentId"
             :filters="currentFilters"
+            :selected-task-id="selectedTask?.id"
             @task-click="openTask"
             @create-task="openCreateTask"
           />
@@ -635,5 +743,25 @@ function refreshBoard() {
         </UCard>
       </template>
     </UModal>
+
+    <!-- Keyboard Shortcuts Help Modal -->
+    <WorkflowKeyboardShortcutsHelp
+      v-model:open="showShortcutsHelp"
+      :shortcuts="shortcuts"
+      :format-shortcut="formatShortcut"
+    />
+
+    <!-- Keyboard shortcuts button (fixed position) -->
+    <div class="fixed bottom-4 right-4 z-50">
+      <UTooltip text="Keyboard shortcuts (?)">
+        <UButton
+          icon="i-lucide-keyboard"
+          variant="soft"
+          size="sm"
+          aria-label="Show keyboard shortcuts"
+          @click="showShortcutsHelp = true"
+        />
+      </UTooltip>
+    </div>
   </UDashboardPage>
 </template>

@@ -144,7 +144,7 @@ export default defineEventHandler(async (event) => {
           ORDER BY step_number ASC, sort_order ASC
         `, [template.id])
 
-        template.fields = fields.map(f => ({
+        ;(template as any).fields = fields.map(f => ({
           id: f.id,
           templateId: template.id,
           fieldKey: f.field_key,

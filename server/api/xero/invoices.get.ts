@@ -13,7 +13,7 @@ export default eventHandler(async (event) => {
   const client = await createXeroClient({ tokenSet: token, event })
 
   const [authorised, paid] = await Promise.all([
-    client.accountingApi.getInvoices(
+    (client.accountingApi.getInvoices as any)(
       tenantId,
       undefined,
       'Type=="ACCREC"&&Status=="AUTHORISED"',
@@ -28,7 +28,7 @@ export default eventHandler(async (event) => {
       undefined,
       100
     ),
-    client.accountingApi.getInvoices(
+    (client.accountingApi.getInvoices as any)(
       tenantId,
       undefined,
       'Type=="ACCREC"&&Status=="PAID"',
@@ -126,7 +126,7 @@ export default eventHandler(async (event) => {
     }
   }
 
-  const paidDetailed = paidList.map((inv) => {
+  const paidDetailed = paidList.map((inv: any) => {
     const paidOn = iso(inv.fullyPaidOnDate)
     const issuedOn = iso(inv.date)
     let daysToPay: number | null = null
@@ -148,7 +148,7 @@ export default eventHandler(async (event) => {
   const overdueTotal = sumBy(overdue, () => true)
   const dueSoonTotal = sumBy(outstanding, (inv) => inv.agingBucket === 'dueSoon')
 
-  const paidLast30 = paidDetailed.filter((inv) => {
+  const paidLast30 = paidDetailed.filter((inv: any) => {
     if (!inv.fullyPaidOnDate) return false
     const paidDate = new Date(inv.fullyPaidOnDate)
     return (today.getTime() - paidDate.getTime()) <= 1000 * 60 * 60 * 24 * 30
@@ -156,10 +156,10 @@ export default eventHandler(async (event) => {
 
   const avgDaysToPay = (() => {
     const values = paidDetailed
-      .map((inv) => inv.daysToPay)
-      .filter((n): n is number => typeof n === 'number' && Number.isFinite(n))
+      .map((inv: any) => inv.daysToPay)
+      .filter((n: any): n is number => typeof n === 'number' && Number.isFinite(n))
     if (!values.length) return null
-    return Math.round(values.reduce((sum, n) => sum + n, 0) / values.length)
+    return Math.round(values.reduce((sum: number, n: number) => sum + n, 0) / values.length)
   })()
 
   const topCustomers = (() => {
@@ -224,7 +224,7 @@ export default eventHandler(async (event) => {
       overdueTotal,
       overdueCount: overdue.length,
       dueSoonTotal,
-      paidLast30Total: paidLast30.reduce((sum, inv) => sum + (inv.total || 0), 0),
+      paidLast30Total: paidLast30.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0),
       paidLast30Count: paidLast30.length,
       avgDaysToPay,
       topCustomers,

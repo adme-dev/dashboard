@@ -43,7 +43,7 @@ export default eventHandler(async (event) => {
   const { from, to } = (!fromDate || !toDate) ? getDefaultRange() : { from: fromDate, to: toDate }
 
   const client = await createXeroClient({ tokenSet: token, event })
-  const { body: report } = await client.accountingApi.getReportProfitAndLoss(
+  const { body: report } = await (client.accountingApi.getReportProfitAndLoss as any)(
     tenantId,
     from,
     to,
@@ -194,14 +194,15 @@ function findRowValues(rows: XeroRow[], matcher: RegExp, columnCount: number): n
     return Array.from({ length: columnCount }, () => 0)
   }
 
-  if (columnCount > 0 && match.length !== columnCount) {
+  const result: number[] = match
+  if (columnCount > 0 && result.length !== columnCount) {
     // pad or trim to expected column count to keep downstream code simple
-    const values = match.slice(0, columnCount)
+    const values = result.slice(0, columnCount)
     while (values.length < columnCount) values.push(0)
     return values
   }
 
-  return match
+  return result
 }
 
 function extractExpenseBreakdown(rows: XeroRow[], valueIndex: number) {

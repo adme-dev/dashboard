@@ -8,11 +8,10 @@ const props = defineProps<{
 }>()
 
 // Fetch activities
-const { data: activitiesData, pending: loading, refresh } = await useFetch(
-  () => `/api/agency/tasks/${props.taskId}/activities`,
-  {
-    query: { limit: props.limit || 50 }
-  }
+const { data: activitiesData, pending: loading, refresh } = await useAsyncData(
+  `task-activities-${props.taskId}`,
+  () => fetch(`/api/agency/tasks/${props.taskId}/activities?limit=${props.limit || 50}`).then(r => r.json()) as Promise<{ activities: TaskActivity[] }>,
+  { watch: [() => props.taskId] }
 )
 
 const activities = computed(() => {

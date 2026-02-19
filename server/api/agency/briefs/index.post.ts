@@ -3,6 +3,7 @@
  */
 
 import { queryOne, queryRows, execute } from '~~/server/utils/db'
+import { getAuthUser } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -72,8 +73,8 @@ export default defineEventHandler(async (event) => {
     // Get submitter info (try session user first)
     let submittedBy = null
     try {
-      const session = await getUserSession(event)
-      submittedBy = session?.user?.id || null
+      const user = await getAuthUser(event)
+      submittedBy = user?.id || null
     } catch {
       // No session - guest submission
     }

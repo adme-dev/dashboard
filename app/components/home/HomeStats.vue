@@ -50,9 +50,9 @@ const baseStats = [{
 
 const { data: stats } = await useAsyncData<Stat[]>('stats', async () => {
   try {
-    const kpis = await $fetch<any[]>('/api/kpis')
+    const kpis = await fetch('/api/kpis').then(r => r.json()) as any[]
     if (kpis?.length) {
-      return kpis.map((k) => ({
+      return kpis.map((k: any) => ({
         title: k.title,
         icon: k.icon,
         value: typeof k.value === 'number' && k.title.includes('Profit Margin') ? `${k.value}%` : (typeof k.value === 'number' ? formatCurrency(k.value) : k.value),

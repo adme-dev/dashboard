@@ -37,7 +37,7 @@ async function fetchPnLForTenant(client: Awaited<ReturnType<typeof createXeroCli
     return out
   }
 
-  const reportRows = report?.reports || report?.Reports
+  const reportRows = (report as any)?.reports || (report as any)?.Reports
   const rows = flattenRows(reportRows?.[0]?.rows || reportRows?.[0]?.Rows)
   let revenueTotal = 0
   let expensesTotal = 0

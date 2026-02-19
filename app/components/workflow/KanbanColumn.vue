@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Task, TaskStatus } from '~/types'
+import { RecycleScroller } from 'vue-virtual-scroller'
 
 const props = defineProps<{
   status: TaskStatus
@@ -8,7 +9,16 @@ const props = defineProps<{
   isDragOver?: boolean
   dragOverIndex?: number | null
   draggedTaskId?: string
+  doneStatusId?: string
+  selectedTaskId?: string | null
+  focusedTaskId?: string  // Keyboard navigation focus
+  columnIndex?: number
+  totalColumns?: number
 }>()
+
+// Use virtual scrolling when there are many tasks for performance
+const VIRTUAL_SCROLL_THRESHOLD = 20
+const useVirtualScroll = computed(() => props.tasks.length > VIRTUAL_SCROLL_THRESHOLD)
 
 const emit = defineEmits<{
   taskClick: [task: Task]
@@ -18,7 +28,16 @@ const emit = defineEmits<{
   drop: [index: number]
   createTask: []
   toggleCollapse: []
+  taskStatusChange: [task: Task, statusId: string]
+  taskDelete: [task: Task]
+  taskEdit: [task: Task]
 }>()
+
+// Detect if on mobile/touch device
+const isMobile = ref(false)
+onMounted(() => {
+  isMobile.value = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+})
 
 const columnRef = ref<HTMLElement | null>(null)
 
@@ -82,12 +101,15 @@ const handleDragLeave = (e: DragEvent) => {
 </script>
 
 <template>
-  <div
+  <section
     class="flex-shrink-0 w-72 flex flex-col max-h-full"
     :class="{ 'w-12': isCollapsed }"
+    :aria-label="`${status.name} column, ${tasks.length} tasks${columnIndex !== undefined ? `, column ${columnIndex + 1} of ${totalColumns}` : ''}`"
+    role="listitem"
+    aria-roledescription="kanban column"
   >
     <!-- Column Header -->
-    <div
+    <header
       class="flex items-center gap-2 p-3 rounded-t-lg border-b-2"
       :class="categoryStyles"
       :style="{ borderBottomColor: status.color }"
@@ -95,15 +117,17 @@ const handleDragLeave = (e: DragEvent) => {
       <div
         class="w-3 h-3 rounded-full flex-shrink-0"
         :style="{ backgroundColor: status.color }"
+        aria-hidden="true"
       />
 
       <template v-if="!isCollapsed">
-        <span class="font-medium text-sm truncate flex-1">{{ status.name }}</span>
+        <h3 class="font-medium text-sm truncate flex-1">{{ status.name }}</h3>
         <UBadge
           :label="String(tasks.length)"
           size="xs"
           color="neutral"
           variant="subtle"
+          :aria-label="`${tasks.length} tasks`"
         />
         <UButton
           icon="i-lucide-plus"
@@ -111,29 +135,33 @@ const handleDragLeave = (e: DragEvent) => {
           color="neutral"
           variant="ghost"
           class="opacity-0 group-hover:opacity-100 transition-opacity"
+          :aria-label="`Add task to ${status.name}`"
           @click="emit('createTask')"
         />
       </template>
 
       <template v-else>
         <div class="flex flex-col items-center gap-1 -rotate-90 origin-center whitespace-nowrap">
-          <span class="font-medium text-xs">{{ status.name }}</span>
+          <h3 class="font-medium text-xs">{{ status.name }}</h3>
           <UBadge
             :label="String(tasks.length)"
             size="xs"
             color="neutral"
             variant="subtle"
+            :aria-label="`${tasks.length} tasks`"
           />
         </div>
       </template>
-    </div>
+    </header>
 
     <!-- Task Cards Container -->
     <div
       v-if="!isCollapsed"
       ref="columnRef"
-      class="flex-1 overflow-y-auto p-2 space-y-2 bg-neutral-50/50 dark:bg-neutral-900/30 rounded-b-lg min-h-[200px] transition-colors"
-      :class="{ 'bg-primary/5 ring-2 ring-primary/20': isDragOver }"
+      class="flex-1 overflow-y-auto p-2 bg-neutral-50/50 dark:bg-neutral-900/30 rounded-b-lg min-h-[200px] transition-colors"
+      :class="{ 'bg-primary/5 ring-2 ring-primary/20': isDragOver, 'space-y-2': !useVirtualScroll }"
+      role="list"
+      :aria-label="`Tasks in ${status.name}`"
       @dragover="handleDragOver"
       @drop="handleDrop"
       @dragleave="handleDragLeave"
@@ -144,21 +172,85 @@ const handleDragLeave = (e: DragEvent) => {
         class="h-1 bg-primary rounded-full mx-1 transition-all"
       />
 
-      <template v-for="(task, index) in tasks" :key="task.id">
-        <WorkflowKanbanCard
-          :task="task"
-          :is-dragging="task.id === draggedTaskId"
-          data-task-card
-          @click="emit('taskClick', task)"
-          @drag-start="emit('taskDragStart', task)"
-          @drag-end="emit('taskDragEnd')"
-        />
+      <!-- Virtual scrolling for large task lists (> 20 items) -->
+      <RecycleScroller
+        v-if="useVirtualScroll && tasks.length > 0"
+        v-slot="{ item: task, index }"
+        :items="tasks"
+        :item-size="120"
+        key-field="id"
+        class="h-full"
+      >
+        <div class="pb-2">
+          <!-- Mobile: Use swipeable card -->
+          <WorkflowMobileTaskCard
+            v-if="isMobile"
+            :task="task"
+            :is-dragging="task.id === draggedTaskId"
+            :done-status-id="doneStatusId"
+            data-task-card
+            @click="emit('taskClick', task)"
+            @status-change="(statusId: string) => emit('taskStatusChange', task, statusId)"
+            @delete="emit('taskDelete', task)"
+            @edit="emit('taskEdit', task)"
+          />
 
-        <!-- Drop indicator after each card -->
-        <div
-          v-if="isDragOver && dragOverIndex === index + 1"
-          class="h-1 bg-primary rounded-full mx-1 transition-all"
-        />
+          <!-- Desktop: Use standard draggable card -->
+          <WorkflowKanbanCard
+            v-else
+            :task="task"
+            :is-dragging="task.id === draggedTaskId"
+            :is-selected="task.id === selectedTaskId || task.id === focusedTaskId"
+            :show-recently-updated="true"
+            data-task-card
+            @click="emit('taskClick', task)"
+            @drag-start="emit('taskDragStart', task)"
+            @drag-end="emit('taskDragEnd')"
+          />
+
+          <!-- Drop indicator after each card -->
+          <div
+            v-if="isDragOver && dragOverIndex === index + 1"
+            class="h-1 bg-primary rounded-full mx-1 mt-2 transition-all"
+          />
+        </div>
+      </RecycleScroller>
+
+      <!-- Standard rendering for smaller lists (better drag-drop UX) -->
+      <template v-else-if="tasks.length > 0">
+        <template v-for="(task, index) in tasks" :key="task.id">
+          <!-- Mobile: Use swipeable card -->
+          <WorkflowMobileTaskCard
+            v-if="isMobile"
+            :task="task"
+            :is-dragging="task.id === draggedTaskId"
+            :done-status-id="doneStatusId"
+            data-task-card
+            @click="emit('taskClick', task)"
+            @status-change="(statusId) => emit('taskStatusChange', task, statusId)"
+            @delete="emit('taskDelete', task)"
+            @edit="emit('taskEdit', task)"
+          />
+
+          <!-- Desktop: Use standard draggable card -->
+          <WorkflowKanbanCard
+            v-else
+            :task="task"
+            :is-dragging="task.id === draggedTaskId"
+            :is-selected="task.id === selectedTaskId || task.id === focusedTaskId"
+            :show-recently-updated="true"
+            data-task-card
+            @click="emit('taskClick', task)"
+            @drag-start="emit('taskDragStart', task)"
+            @drag-end="emit('taskDragEnd')"
+          />
+
+          <!-- Drop indicator after each card -->
+          <div
+            v-if="isDragOver && dragOverIndex === index + 1"
+            class="h-1 bg-primary rounded-full mx-1 transition-all"
+          />
+        </template>
       </template>
 
       <!-- Empty state -->
@@ -179,7 +271,7 @@ const handleDragLeave = (e: DragEvent) => {
         />
       </div>
     </div>
-  </div>
+  </section>
 </template>
 
 <style scoped>

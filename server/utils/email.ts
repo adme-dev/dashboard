@@ -445,3 +445,229 @@ export async function sendDueReminderEmail(params: {
     html
   })
 }
+
+// ============================================
+// Client Portal Invitation Email
+// ============================================
+export async function sendClientPortalInviteEmail(params: {
+  to: string
+  clientUserName: string
+  clientName: string
+  inviterName: string
+  token: string
+  expiresAt: Date
+  permissions: {
+    canViewProjects?: boolean
+    canViewInvoices?: boolean
+    canApproveWork?: boolean
+    canViewTimeEntries?: boolean
+    canViewBudgets?: boolean
+    canAddComments?: boolean
+    canUploadFiles?: boolean
+  }
+}) {
+  const inviteUrl = `${APP_URL}/client-portal/accept-invite?token=${params.token}`
+  const expiresIn = Math.round((params.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+
+  const permissionsList = []
+  if (params.permissions.canViewProjects) permissionsList.push('View projects')
+  if (params.permissions.canViewInvoices) permissionsList.push('View invoices')
+  if (params.permissions.canApproveWork) permissionsList.push('Approve work')
+  if (params.permissions.canViewTimeEntries) permissionsList.push('View time entries')
+  if (params.permissions.canViewBudgets) permissionsList.push('View budgets')
+  if (params.permissions.canAddComments) permissionsList.push('Add comments')
+  if (params.permissions.canUploadFiles) permissionsList.push('Upload files')
+
+  const permissionsHtml = permissionsList.length > 0
+    ? `
+      <div class="info-box">
+        <strong>Your access includes:</strong>
+        <ul style="margin: 8px 0; padding-left: 20px;">
+          ${permissionsList.map(p => `<li>${p}</li>`).join('')}
+        </ul>
+      </div>
+    `
+    : ''
+
+  const html = baseTemplate(`
+    <h1>You're Invited to the Client Portal</h1>
+    <p>Hi ${params.clientUserName},</p>
+    <p><strong>${params.inviterName}</strong> has invited you to access the client portal for <strong>${params.clientName}</strong>.</p>
+    <p>The client portal gives you visibility into your projects, invoices, and the ability to collaborate with the team.</p>
+    ${permissionsHtml}
+    <p>Click the button below to set up your account:</p>
+    <a href="${inviteUrl}" class="button">Accept Invitation</a>
+    <div class="warning-box">
+      <strong>⏰ This invitation expires in ${expiresIn} days.</strong>
+    </div>
+    <p style="font-size: 12px; color: #9ca3af;">
+      Or copy and paste this URL into your browser:<br/>
+      <a href="${inviteUrl}" style="color: #3b82f6; word-break: break-all;">${inviteUrl}</a>
+    </p>
+  `)
+
+  return sendEmail({
+    to: params.to,
+    subject: `You're invited to view ${params.clientName}'s projects`,
+    html
+  })
+}
+
+// ============================================
+// Client Approval Request Email (with public link)
+// ============================================
+export async function sendClientApprovalRequestEmail(params: {
+  to: string
+  clientName: string
+  approvalTitle: string
+  projectName: string
+  approvalType: string
+  requesterName: string
+  description?: string
+  dueDate?: Date
+  approvalUrl: string
+  expiresAt: Date
+}) {
+  const dueDateStr = params.dueDate
+    ? new Intl.DateTimeFormat('en-US', { dateStyle: 'long' }).format(params.dueDate)
+    : null
+
+  const expiresIn = Math.round((params.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+
+  const approvalTypeLabels: Record<string, string> = {
+    deliverable: 'Deliverable',
+    milestone: 'Milestone',
+    design: 'Design',
+    content: 'Content',
+    budget_change: 'Budget Change',
+    scope_change: 'Scope Change',
+    invoice: 'Invoice'
+  }
+
+  const html = baseTemplate(`
+    <h1>Approval Required</h1>
+    <p>Hi ${params.clientName},</p>
+    <p><strong>${params.requesterName}</strong> has requested your approval on a ${approvalTypeLabels[params.approvalType] || params.approvalType} for <strong>${params.projectName}</strong>.</p>
+
+    <div class="info-box">
+      <h2 style="margin: 0 0 8px; font-size: 18px;">${params.approvalTitle}</h2>
+      ${params.description ? `<p style="margin: 4px 0; color: #4b5563;">${params.description}</p>` : ''}
+      ${dueDateStr ? `<p style="margin: 4px 0;"><strong>Due by:</strong> ${dueDateStr}</p>` : ''}
+    </div>
+
+    <p>Click the button below to review and respond:</p>
+    <a href="${params.approvalUrl}" class="button">Review & Respond</a>
+
+    <div class="warning-box">
+      <strong>⏰ This approval link expires in ${expiresIn} days.</strong>
+      <br/>
+      <span style="font-size: 12px;">After expiration, you'll need to request a new link from the team.</span>
+    </div>
+
+    <p style="font-size: 12px; color: #9ca3af;">
+      Or copy and paste this URL into your browser:<br/>
+      <a href="${params.approvalUrl}" style="color: #3b82f6; word-break: break-all;">${params.approvalUrl}</a>
+    </p>
+  `)
+
+  return sendEmail({
+    to: params.to,
+    subject: `Approval Requested: ${params.approvalTitle} - ${params.projectName}`,
+    html
+  })
+}
+
+// ============================================
+// Quote Sent Email
+// ============================================
+export async function sendQuoteEmail(params: {
+  to: string | string[]
+  clientName: string
+  clientContactName?: string
+  quoteNumber: string
+  quoteId: string
+  total: number
+  currency?: string
+  validUntil?: Date
+  lineItems: Array<{
+    description: string
+    quantity: number
+    unitPrice: number
+    total: number
+  }>
+  clientNotes?: string
+  senderName: string
+  senderEmail?: string
+}) {
+  const quoteUrl = `${APP_URL}/client-portal/quotes/${params.quoteId}`
+  const currency = params.currency || 'USD'
+  const formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency })
+
+  const validUntilStr = params.validUntil
+    ? new Intl.DateTimeFormat('en-US', { dateStyle: 'long' }).format(params.validUntil)
+    : null
+
+  const lineItemsHtml = params.lineItems.map(item => `
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${item.description}</td>
+      <td style="padding: 8px; border-bottom: 1px solid #e5e7eb; text-align: center;">${item.quantity}</td>
+      <td style="padding: 8px; border-bottom: 1px solid #e5e7eb; text-align: right;">${formatter.format(item.unitPrice)}</td>
+      <td style="padding: 8px; border-bottom: 1px solid #e5e7eb; text-align: right;">${formatter.format(item.total)}</td>
+    </tr>
+  `).join('')
+
+  const notesSection = params.clientNotes
+    ? `
+      <div class="info-box">
+        <strong>Notes:</strong>
+        <p style="margin: 8px 0 0;">${params.clientNotes}</p>
+      </div>
+    `
+    : ''
+
+  const greeting = params.clientContactName
+    ? `Hi ${params.clientContactName},`
+    : `Dear ${params.clientName},`
+
+  const html = baseTemplate(`
+    <h1>Quote ${params.quoteNumber}</h1>
+    <p>${greeting}</p>
+    <p><strong>${params.senderName}</strong> has sent you a quote for your review.</p>
+
+    <table style="width: 100%; border-collapse: collapse; margin: 24px 0;">
+      <thead>
+        <tr style="background: #f3f4f6;">
+          <th style="padding: 12px 8px; text-align: left; border-bottom: 2px solid #e5e7eb;">Description</th>
+          <th style="padding: 12px 8px; text-align: center; border-bottom: 2px solid #e5e7eb;">Qty</th>
+          <th style="padding: 12px 8px; text-align: right; border-bottom: 2px solid #e5e7eb;">Unit Price</th>
+          <th style="padding: 12px 8px; text-align: right; border-bottom: 2px solid #e5e7eb;">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${lineItemsHtml}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="3" style="padding: 12px 8px; text-align: right; font-weight: bold;">Total:</td>
+          <td style="padding: 12px 8px; text-align: right; font-weight: bold; font-size: 18px; color: #3b82f6;">
+            ${formatter.format(params.total)}
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+
+    ${notesSection}
+
+    ${validUntilStr ? `<p><strong>Valid until:</strong> ${validUntilStr}</p>` : ''}
+
+    <a href="${quoteUrl}" class="button">View Quote Details</a>
+
+    <p style="margin-top: 24px;">If you have any questions about this quote, please reply to this email or contact ${params.senderName}${params.senderEmail ? ` at ${params.senderEmail}` : ''}.</p>
+  `)
+
+  return sendEmail({
+    to: params.to,
+    subject: `Quote ${params.quoteNumber} from ${APP_NAME}`,
+    html
+  })
+}

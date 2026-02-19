@@ -12,8 +12,8 @@ export default defineEventHandler(async (event) => {
   try {
     const result = await queryOne(`
       UPDATE notifications
-      SET read_at = NOW()
-      WHERE user_id = $1 AND read_at IS NULL
+      SET is_read = true, read_at = NOW()
+      WHERE user_id = $1 AND is_read = false
       RETURNING COUNT(*) as marked_count
     `, [user.id])
 
@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
     const countResult = await queryOne(`
       SELECT COUNT(*) as count
       FROM notifications
-      WHERE user_id = $1 AND read_at IS NOT NULL
+      WHERE user_id = $1 AND is_read = true
         AND read_at > NOW() - INTERVAL '1 minute'
     `, [user.id])
 

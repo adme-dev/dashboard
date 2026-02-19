@@ -52,15 +52,15 @@ const error = ref<any>(null)
 
 async function execute() {
   if (!props.cashflowData || !props.invoiceData) return
-  
+
   pending.value = true
   error.value = null
-  
+
   try {
     const outstanding = props.invoiceData.outstanding || []
     const overdue = props.invoiceData.overdue || []
-    
-    const requestBody = {
+
+    const requestBody: Record<string, unknown> = {
       currentCash: props.cashflowData.currentCash || 0,
       projectedEndBalance: props.cashflowData.projectedEndBalance || 0,
       minProjectedBalance: props.cashflowData.minProjectedBalance || 0,
@@ -75,11 +75,14 @@ async function execute() {
       forecastPeriod: props.cashflowData.forecastPeriod || 90,
       scenarios: props.scenarioData?.summaries
     }
-    
-    const result = await $fetch<AIInsights>('/api/ai/cashflow-insights', {
+
+    const response = await fetch('/api/ai/cashflow-insights', {
       method: 'POST',
-      body: requestBody
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
     })
+    if (!response.ok) throw new Error('Failed to fetch AI insights')
+    const result = await response.json() as AIInsights
     
     insights.value = result
   } catch (err: any) {

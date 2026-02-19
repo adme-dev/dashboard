@@ -10,7 +10,7 @@ export function getOrCreateSessionId(event: H3Event): string {
     const random = typeof crypto !== 'undefined' && 'randomUUID' in crypto
       ? (crypto as any).randomUUID()
       : Math.random().toString(36).slice(2)
-    sid = random
+    sid = random as string
     setCookie(event, 'sid', sid, {
       httpOnly: true,
       sameSite: 'lax',
@@ -18,7 +18,7 @@ export function getOrCreateSessionId(event: H3Event): string {
       path: '/'
     })
   }
-  return sid
+  return sid as string
 }
 
 const TENANT_COOKIE = 'xero_tenant_id'

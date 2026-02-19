@@ -69,8 +69,8 @@ export async function queryRows<T = any>(
   text: string,
   params?: any[]
 ): Promise<T[]> {
-  const result = await query<T>(text, params)
-  return result.rows
+  const result = await query(text, params)
+  return result.rows as T[]
 }
 
 /**
@@ -80,8 +80,8 @@ export async function queryOne<T = any>(
   text: string,
   params?: any[]
 ): Promise<T | null> {
-  const result = await query<T>(text, params)
-  return result.rows[0] || null
+  const result = await query(text, params)
+  return (result.rows[0] as T) || null
 }
 
 /**

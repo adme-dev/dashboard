@@ -136,6 +136,7 @@ export default eventHandler(async (event) => {
     let runningBalance = currentBalance
     for (let i = sortedTransactions.length - 1; i >= 0; i--) {
       const transaction = sortedTransactions[i]
+      if (!transaction) continue
       const amount = Number(transaction.total) || 0
       const date = ensureDateString(new Date(transaction.date || today))
 
@@ -222,7 +223,7 @@ export default eventHandler(async (event) => {
         recentTransactions: transactions.slice(0, 10).map(tx => ({
           id: tx.bankTransactionID,
           date: ensureDateString(new Date(tx.date || today)),
-          description: tx.reference || tx.description || 'Bank Transaction',
+          description: tx.reference || (tx as any).description || 'Bank Transaction',
           amount: Math.round((Number(tx.total) || 0) * 100) / 100,
           type: (Number(tx.total) || 0) > 0 ? 'credit' : 'debit',
           contact: tx.contact?.name

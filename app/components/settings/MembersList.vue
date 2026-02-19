@@ -31,9 +31,10 @@ async function changeRole(member: TeamMember, newRole: string) {
   if (member.userRole === newRole) return
 
   try {
-    await $fetch(`/api/auth/users/${member.id}/role`, {
+    await fetch(`/api/auth/users/${member.id}/role`, {
       method: 'PATCH',
-      body: { userRole: newRole }
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userRole: newRole })
     })
     toast.add({ title: `Role updated to ${newRole}`, color: 'success' })
     emit('refresh')
@@ -49,9 +50,10 @@ async function changeRole(member: TeamMember, newRole: string) {
 // Toggle active status
 async function toggleStatus(member: TeamMember) {
   try {
-    await $fetch(`/api/auth/users/${member.id}/status`, {
+    await fetch(`/api/auth/users/${member.id}/status`, {
       method: 'PATCH',
-      body: { isActive: !member.isActive }
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isActive: !member.isActive })
     })
     toast.add({
       title: member.isActive ? 'User deactivated' : 'User activated',

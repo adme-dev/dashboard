@@ -20,8 +20,14 @@ const endDate = ref(new Date(today.getFullYear(), today.getMonth() + 2, 0))
 type ZoomLevel = 'day' | 'week' | 'month'
 const zoomLevel = ref<ZoomLevel>('week')
 
+// Show dependencies toggle
+const showDependencies = ref(true)
+
+// Container ref for dependency line calculations
+const timelineContainer = ref<HTMLElement | null>(null)
+
 // Fetch tasks
-const { data: tasksData, pending: tasksPending } = await useFetch('/api/agency/tasks', {
+const { data: tasksData, pending: tasksPending, refresh: refreshTasks } = await useFetch('/api/agency/tasks', {
   query: computed(() => ({
     departmentId: props.departmentId,
     projectId: props.projectId,
@@ -34,6 +40,37 @@ const { data: tasksData, pending: tasksPending } = await useFetch('/api/agency/t
 })
 
 const tasks = computed(() => (tasksData.value?.tasks as Task[]) || [])
+
+// Group tasks by project for better visualization
+const groupBy = ref<'none' | 'project' | 'assignee'>('none')
+
+const groupedTasks = computed(() => {
+  if (groupBy.value === 'none') {
+    return [{ name: 'All Tasks', tasks: tasks.value }]
+  }
+
+  const groups: Record<string, { name: string; tasks: Task[] }> = {}
+
+  tasks.value.forEach(task => {
+    let key: string
+    let name: string
+
+    if (groupBy.value === 'project') {
+      key = task.projectId || 'no-project'
+      name = task.project?.name || 'No Project'
+    } else {
+      key = task.assigneeId || 'unassigned'
+      name = task.assignee?.name || 'Unassigned'
+    }
+
+    if (!groups[key]) {
+      groups[key] = { name, tasks: [] }
+    }
+    groups[key].tasks.push(task)
+  })
+
+  return Object.values(groups)
+})
 
 // Generate date columns based on zoom level
 const dateColumns = computed(() => {
@@ -98,9 +135,69 @@ function getTaskPosition(task: Task) {
 
   return {
     left: `${left}%`,
-    width: `${width}%`
+    width: `${width}%`,
+    leftPercent: left,
+    rightPercent: left + width
   }
 }
+
+// Extended task type with optional blockedBy for dependency tracking
+type TaskWithDependencies = Task & { blockedBy?: string[] }
+
+// Calculate dependency lines between tasks
+const dependencyLines = computed(() => {
+  if (!showDependencies.value) return []
+
+  const lines: {
+    from: string
+    to: string
+    fromX: number
+    fromY: number
+    toX: number
+    toY: number
+    color: string
+  }[] = []
+
+  // Build task index map for row positions
+  let rowIndex = 0
+  const taskRowMap: Record<string, number> = {}
+  groupedTasks.value.forEach(group => {
+    group.tasks.forEach(task => {
+      taskRowMap[task.id] = rowIndex++
+    })
+  })
+
+  // Find dependencies (tasks that block other tasks)
+  // Note: blockedBy is an extended property that may be provided by the API
+  const tasksWithDeps = tasks.value as TaskWithDependencies[]
+  tasksWithDeps.forEach(task => {
+    if (task.blockedBy && task.blockedBy.length > 0) {
+      task.blockedBy.forEach((blockingTaskId: string) => {
+        const blockingTask = tasks.value.find(t => t.id === blockingTaskId)
+        if (blockingTask) {
+          const fromPos = getTaskPosition(blockingTask)
+          const toPos = getTaskPosition(task)
+          const fromRow = taskRowMap[blockingTask.id]
+          const toRow = taskRowMap[task.id]
+
+          if (fromRow !== undefined && toRow !== undefined) {
+            lines.push({
+              from: blockingTask.id,
+              to: task.id,
+              fromX: fromPos.rightPercent,
+              fromY: fromRow,
+              toX: toPos.leftPercent,
+              toY: toRow,
+              color: task.isBlocked ? '#ef4444' : '#6b7280'
+            })
+          }
+        }
+      })
+    }
+  })
+
+  return lines
+})
 
 const priorityColors: Record<TaskPriority, string> = {
   urgent: '#ef4444',
@@ -154,10 +251,38 @@ const zoomOptions = [
   { value: 'week', label: 'Week' },
   { value: 'month', label: 'Month' }
 ]
+
+const groupOptions = [
+  { value: 'none', label: 'No grouping' },
+  { value: 'project', label: 'By Project' },
+  { value: 'assignee', label: 'By Assignee' }
+]
+
+// Get progress percentage for task
+function getTaskProgress(task: Task): number {
+  if (task.completedAt) return 100
+  if (!task.subtaskCount || task.subtaskCount === 0) return 0
+  return Math.round(((task.completedSubtasks || 0) / task.subtaskCount) * 100)
+}
+
+// Today indicator position
+const todayPosition = computed(() => {
+  const timelineStart = startDate.value.getTime()
+  const timelineEnd = endDate.value.getTime()
+  const todayTime = today.getTime()
+
+  if (todayTime < timelineStart || todayTime > timelineEnd) return null
+
+  const position = ((todayTime - timelineStart) / (timelineEnd - timelineStart)) * 100
+  return `${position}%`
+})
+
+// Expose refresh method
+defineExpose({ refreshTasks })
 </script>
 
 <template>
-  <div class="h-full flex flex-col">
+  <div class="h-full flex flex-col" role="application" aria-label="Timeline view">
     <!-- Timeline controls -->
     <div class="flex items-center justify-between p-4 border-b border-default">
       <div class="flex items-center gap-2">
@@ -165,11 +290,13 @@ const zoomOptions = [
           icon="i-lucide-chevron-left"
           variant="ghost"
           size="sm"
+          aria-label="Navigate to previous period"
           @click="navigatePrevious"
         />
         <UButton
           variant="outline"
           size="sm"
+          aria-label="Go to today"
           @click="goToToday"
         >
           Today
@@ -178,28 +305,54 @@ const zoomOptions = [
           icon="i-lucide-chevron-right"
           variant="ghost"
           size="sm"
+          aria-label="Navigate to next period"
           @click="navigateNext"
         />
       </div>
 
-      <div class="text-sm font-medium">
+      <div class="text-sm font-medium" aria-live="polite">
         {{ startDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) }}
         -
         {{ endDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) }}
       </div>
 
-      <USelectMenu
-        v-model="zoomLevel"
-        :items="zoomOptions"
-        value-key="value"
-        class="w-28"
-        size="sm"
-      />
+      <div class="flex items-center gap-3">
+        <!-- Dependencies toggle -->
+        <UTooltip text="Show task dependencies">
+          <UButton
+            :icon="showDependencies ? 'i-lucide-git-branch' : 'i-lucide-git-branch'"
+            :variant="showDependencies ? 'solid' : 'ghost'"
+            size="sm"
+            aria-label="Toggle dependency lines"
+            @click="showDependencies = !showDependencies"
+          />
+        </UTooltip>
+
+        <!-- Group by selector -->
+        <USelectMenu
+          v-model="groupBy"
+          :items="groupOptions"
+          value-key="value"
+          class="w-32"
+          size="sm"
+          aria-label="Group tasks by"
+        />
+
+        <!-- Zoom selector -->
+        <USelectMenu
+          v-model="zoomLevel"
+          :items="zoomOptions"
+          value-key="value"
+          class="w-28"
+          size="sm"
+          aria-label="Zoom level"
+        />
+      </div>
     </div>
 
     <!-- Loading state -->
     <template v-if="tasksPending">
-      <div class="p-4">
+      <div class="p-4" aria-busy="true" aria-label="Loading timeline">
         <USkeleton class="h-8 w-full mb-4" />
         <USkeleton v-for="i in 5" :key="i" class="h-12 w-full mb-2" />
       </div>
@@ -207,13 +360,22 @@ const zoomOptions = [
 
     <!-- Timeline -->
     <template v-else>
-      <div class="flex-1 overflow-auto">
+      <div ref="timelineContainer" class="flex-1 overflow-auto relative">
+        <!-- Today indicator line -->
+        <div
+          v-if="todayPosition"
+          class="absolute top-0 bottom-0 w-0.5 bg-red-500 z-20 pointer-events-none"
+          :style="{ left: `calc(256px + (100% - 256px) * ${parseFloat(todayPosition) / 100})` }"
+        >
+          <div class="absolute -top-1 -left-2 w-4 h-4 bg-red-500 rounded-full" />
+        </div>
+
         <!-- Header with dates -->
         <div class="sticky top-0 bg-default z-10 flex border-b border-default">
-          <div class="w-64 flex-shrink-0 p-2 border-r border-default font-medium text-sm">
+          <div class="w-64 flex-shrink-0 p-2 border-r border-default font-medium text-sm" role="columnheader">
             Task
           </div>
-          <div class="flex-1 flex">
+          <div class="flex-1 flex" role="row">
             <div
               v-for="col in dateColumns"
               :key="col.date.toISOString()"
@@ -222,56 +384,175 @@ const zoomOptions = [
                 'bg-primary/10': col.isToday,
                 'bg-muted/30': col.isWeekend
               }"
+              role="columnheader"
             >
               {{ col.label }}
             </div>
           </div>
         </div>
 
-        <!-- Task rows -->
-        <div v-for="task in tasks" :key="task.id" class="flex border-b border-default hover:bg-muted/20 min-h-[48px]">
-          <!-- Task info -->
+        <!-- Grouped task rows -->
+        <div v-for="(group, groupIndex) in groupedTasks" :key="groupIndex" role="rowgroup">
+          <!-- Group header -->
           <div
-            class="w-64 flex-shrink-0 p-2 border-r border-default cursor-pointer"
-            @click="emit('taskClick', task)"
+            v-if="groupBy !== 'none'"
+            class="flex border-b border-default bg-muted/20 sticky top-[41px] z-[5]"
           >
-            <div class="text-sm font-medium truncate">{{ task.title }}</div>
-            <div class="text-xs text-muted flex items-center gap-2">
-              <span v-if="task.assignee">{{ task.assignee.name }}</span>
-              <UBadge
-                :style="{ backgroundColor: priorityColors[task.priority] + '20', color: priorityColors[task.priority] }"
-                variant="subtle"
-                size="xs"
-              >
-                {{ task.priority }}
-              </UBadge>
+            <div class="w-64 flex-shrink-0 p-2 border-r border-default font-semibold text-sm flex items-center gap-2">
+              <UIcon
+                :name="groupBy === 'project' ? 'i-lucide-folder' : 'i-lucide-user'"
+                class="w-4 h-4 text-muted"
+              />
+              {{ group.name }}
+              <span class="text-xs text-muted font-normal">({{ group.tasks.length }})</span>
             </div>
+            <div class="flex-1" />
           </div>
 
-          <!-- Timeline bar -->
-          <div class="flex-1 relative py-2 px-1">
+          <!-- Task rows -->
+          <div
+            v-for="(task, taskIndex) in group.tasks"
+            :key="task.id"
+            class="flex border-b border-default hover:bg-muted/20 min-h-[48px] relative"
+            role="row"
+          >
+            <!-- Task info -->
             <div
-              class="absolute h-6 rounded cursor-pointer transition-all hover:brightness-110"
-              :style="{
-                ...getTaskPosition(task),
-                backgroundColor: task.status?.color || '#6B7280',
-                top: '50%',
-                transform: 'translateY(-50%)'
-              }"
+              class="w-64 flex-shrink-0 p-2 border-r border-default cursor-pointer"
+              role="gridcell"
               @click="emit('taskClick', task)"
             >
-              <div class="px-2 text-xs text-white truncate leading-6">
+              <div class="text-sm font-medium truncate flex items-center gap-1">
+                <UIcon
+                  v-if="task.isBlocked"
+                  name="i-lucide-ban"
+                  class="w-3.5 h-3.5 text-red-500 flex-shrink-0"
+                />
                 {{ task.title }}
+              </div>
+              <div class="text-xs text-muted flex items-center gap-2">
+                <span v-if="task.assignee">{{ task.assignee.name }}</span>
+                <UBadge
+                  :style="{ backgroundColor: priorityColors[task.priority] + '20', color: priorityColors[task.priority] }"
+                  variant="subtle"
+                  size="xs"
+                >
+                  {{ task.priority }}
+                </UBadge>
+              </div>
+            </div>
+
+            <!-- Timeline bar -->
+            <div class="flex-1 relative py-2 px-1" role="gridcell">
+              <!-- Task bar -->
+              <div
+                class="absolute h-6 rounded cursor-pointer transition-all hover:brightness-110 group"
+                :style="{
+                  left: getTaskPosition(task).left,
+                  width: getTaskPosition(task).width,
+                  backgroundColor: task.status?.color || '#6B7280',
+                  top: '50%',
+                  transform: 'translateY(-50%)'
+                }"
+                :aria-label="`Task: ${task.title}, ${task.startDate ? 'starts ' + new Date(task.startDate).toLocaleDateString() : ''} ${task.dueDate ? 'due ' + new Date(task.dueDate).toLocaleDateString() : ''}`"
+                @click="emit('taskClick', task)"
+              >
+                <!-- Progress indicator -->
+                <div
+                  v-if="getTaskProgress(task) > 0"
+                  class="absolute inset-y-0 left-0 bg-white/30 rounded-l"
+                  :style="{ width: `${getTaskProgress(task)}%` }"
+                />
+
+                <!-- Task title -->
+                <div class="px-2 text-xs text-white truncate leading-6 relative">
+                  {{ task.title }}
+                </div>
+
+                <!-- Resize handles (visual only for now) -->
+                <div class="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize opacity-0 group-hover:opacity-100 bg-white/50 rounded-l" />
+                <div class="absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize opacity-0 group-hover:opacity-100 bg-white/50 rounded-r" />
               </div>
             </div>
           </div>
         </div>
+
+        <!-- SVG layer for dependency lines -->
+        <svg
+          v-if="showDependencies && dependencyLines.length > 0"
+          class="absolute top-0 left-64 right-0 bottom-0 pointer-events-none z-[1]"
+          style="overflow: visible"
+        >
+          <defs>
+            <marker
+              id="arrowhead"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#6b7280" />
+            </marker>
+            <marker
+              id="arrowhead-blocked"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#ef4444" />
+            </marker>
+          </defs>
+
+          <g v-for="(line, index) in dependencyLines" :key="index">
+            <path
+              :d="`M ${line.fromX}% ${(line.fromY + 1) * 48 + 24}
+                   C ${line.fromX + 5}% ${(line.fromY + 1) * 48 + 24},
+                     ${line.toX - 5}% ${(line.toY + 1) * 48 + 24},
+                     ${line.toX}% ${(line.toY + 1) * 48 + 24}`"
+              fill="none"
+              :stroke="line.color"
+              stroke-width="2"
+              stroke-dasharray="4 2"
+              :marker-end="line.color === '#ef4444' ? 'url(#arrowhead-blocked)' : 'url(#arrowhead)'"
+            />
+          </g>
+        </svg>
 
         <!-- Empty state -->
         <div v-if="tasks.length === 0" class="flex items-center justify-center p-12">
           <div class="text-center">
             <UIcon name="i-lucide-gantt-chart" class="h-12 w-12 text-muted mx-auto mb-3" />
             <p class="text-muted">No tasks to display on timeline</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Legend -->
+      <div class="border-t border-default p-3 bg-muted/20">
+        <div class="flex items-center justify-between text-xs text-muted">
+          <div class="flex items-center gap-4">
+            <div class="flex items-center gap-1">
+              <div class="w-3 h-3 rounded bg-red-500" />
+              <span>Today</span>
+            </div>
+            <div v-if="showDependencies" class="flex items-center gap-1">
+              <svg class="w-6 h-3">
+                <line x1="0" y1="6" x2="24" y2="6" stroke="#6b7280" stroke-width="2" stroke-dasharray="4 2" />
+              </svg>
+              <span>Dependency</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <div class="w-6 h-3 rounded bg-gray-400 relative overflow-hidden">
+                <div class="absolute inset-y-0 left-0 w-1/2 bg-white/30" />
+              </div>
+              <span>Progress</span>
+            </div>
+          </div>
+          <div>
+            {{ tasks.length }} tasks
           </div>
         </div>
       </div>

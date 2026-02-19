@@ -10,7 +10,7 @@ function getGroqClient() {
     if (!apiKey) {
       throw createError({ statusCode: 500, statusMessage: 'AI service not configured - GROQ_API_KEY missing' })
     }
-    groq = new Groq({ apiKey })
+    groq = new Groq({ apiKey: apiKey as string })
   }
   return groq
 }

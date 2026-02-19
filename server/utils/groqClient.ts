@@ -163,9 +163,9 @@ export async function generateExpenseOptimization(
   }, {} as Record<string, number>)
 
   const topCategories = Object.entries(categoryTotals)
-    .sort(([,a], [,b]) => b - a)
+    .sort(([,a], [,b]) => (b as number) - (a as number))
     .slice(0, 5)
-    .map(([category, amount]) => ({ category, amount }))
+    .map(([category, amount]) => ({ category, amount: amount as number }))
 
   const totalSpend = expenseData.reduce((sum, item) => sum + (item.total || 0), 0)
 

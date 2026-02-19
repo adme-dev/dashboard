@@ -20,7 +20,7 @@ export default defineEventHandler(async (event) => {
     let paramIdx = 2
 
     if (unreadOnly) {
-      whereClause += ' AND n.read_at IS NULL'
+      whereClause += ' AND n.is_read = false'
     }
 
     const notifications = await queryRows(`
@@ -47,7 +47,7 @@ export default defineEventHandler(async (event) => {
     const countResult = await queryOne(`
       SELECT COUNT(*) as count
       FROM notifications
-      WHERE user_id = $1 AND read_at IS NULL
+      WHERE user_id = $1 AND is_read = false
     `, [user.id])
 
     return {
@@ -58,7 +58,7 @@ export default defineEventHandler(async (event) => {
         message: n.message,
         link: n.link,
         metadata: n.metadata,
-        isRead: !!n.read_at,
+        isRead: n.is_read,
         readAt: n.read_at,
         createdAt: n.created_at,
         actor: n.actor_id ? {

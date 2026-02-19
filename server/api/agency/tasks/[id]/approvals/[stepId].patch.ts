@@ -3,6 +3,7 @@
  */
 
 import { queryOne, queryRows, transaction } from '~~/server/utils/db'
+import { notifyApprovalCompleted, notifyNextApprover } from '~~/server/utils/notifications'
 
 interface ApprovalResponseBody {
   status: 'approved' | 'rejected'
@@ -152,6 +153,40 @@ export default defineEventHandler(async (event) => {
     let responder = null
     if (body.responderId) {
       responder = await queryOne('SELECT id, name, email FROM team_members WHERE id = $1', [body.responderId])
+    }
+
+    // Get task info for notifications
+    const task = await queryOne('SELECT title, reporter_id FROM tasks WHERE id = $1', [taskId])
+
+    // Send notifications (async, don't block response)
+    if (body.responderId && task?.reporter_id) {
+      // Notify task owner about the approval response
+      notifyApprovalCompleted({
+        taskId,
+        taskTitle: task.title || 'Task',
+        requesterId: task.reporter_id,
+        responderId: body.responderId,
+        stepName: step.step_name,
+        status: body.status
+      }).catch(err => console.error('Failed to send approval completion notification:', err))
+    }
+
+    // If approved and there's a next step, notify the next approver
+    if (body.status === 'approved' && updatedApproval.status === 'pending') {
+      const nextStep = await queryOne(`
+        SELECT aws.*, aws.approver_id
+        FROM approval_workflow_steps aws
+        WHERE aws.workflow_id = $1 AND aws.step_number = $2
+      `, [approval.workflow_id, updatedApproval.current_step_number])
+
+      if (nextStep?.approver_id) {
+        notifyNextApprover({
+          taskId,
+          taskTitle: task?.title || 'Task',
+          approverId: nextStep.approver_id,
+          stepName: nextStep.step_name
+        }).catch(err => console.error('Failed to send next approver notification:', err))
+      }
     }
 
     return {

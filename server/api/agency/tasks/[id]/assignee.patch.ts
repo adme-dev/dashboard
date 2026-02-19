@@ -3,6 +3,7 @@
  */
 
 import { queryOne, transaction } from '~~/server/utils/db'
+import { notifyTaskAssigned } from '~~/server/utils/notifications'
 
 interface UpdateAssigneeBody {
   assigneeId: string | null
@@ -88,6 +89,17 @@ export default defineEventHandler(async (event) => {
       LEFT JOIN team_members tm ON t.assignee_id = tm.id
       WHERE t.id = $1
     `, [id])
+
+    // Send notification if task is assigned to someone new
+    if (body.assigneeId && body.assigneeId !== body.userId) {
+      notifyTaskAssigned({
+        assigneeId: body.assigneeId,
+        taskId: id,
+        taskTitle: currentTask.title,
+        assignerId: body.userId || '',
+        dueDate: currentTask.due_date ? new Date(currentTask.due_date) : undefined
+      }).catch(err => console.error('Failed to send assignment notification:', err))
+    }
 
     return {
       id,
