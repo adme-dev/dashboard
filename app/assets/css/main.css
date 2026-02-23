@@ -1,8 +1,10 @@
 @import "tailwindcss" theme(static);
 @import "@nuxt/ui";
+@import "./neubrutalism.css";
 
 @theme static {
-  --font-sans: 'Public Sans', sans-serif;
+  --font-sans: 'Geist', 'Inter', 'Public Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
   --color-green-50: #EFFDF5;
   --color-green-100: #D9FBE8;

@@ -48,13 +48,18 @@ const { data: statusesData } = await useFetch('/api/agency/statuses', {
 })
 const statuses = computed(() => (statusesData.value as any[]) || [])
 
-// Fetch labels based on selected department
-const { data: labelsData } = await useFetch('/api/agency/labels', {
+// Fetch tags (labels) based on selected department
+const { data: tagsData, refresh: refreshTags } = await useFetch('/api/agency/tags', {
   query: computed(() => ({
-    departmentId: currentDepartmentId.value
+    limit: 100
   }))
 })
-const labels = computed(() => (labelsData.value as any[]) || [])
+const labels = computed(() => (tagsData.value as any[]) || [])
+
+// Refresh labels list
+function refreshLabels() {
+  refreshTags()
+}
 
 // Task detail modal
 const showTaskModal = ref(false)
@@ -439,8 +444,11 @@ const { showHelp: showShortcutsHelp, shortcuts, formatShortcut, selectedTaskInde
             :department-id="currentDepartmentId"
             :filters="currentFilters"
             :selected-task-id="selectedTask?.id"
+            :available-labels="labels"
             @task-click="openTask"
             @create-task="openCreateTask"
+            @task-labels-update="refreshBoard"
+            @refresh-labels="refreshLabels"
           />
 
           <!-- Table View -->

@@ -12,7 +12,6 @@ const emit = defineEmits<{
 const toast = useToast()
 
 // Fetch approval data
-// @ts-expect-error Complex type inference in useFetch causes TS2589
 const { data: approvalData, pending, refresh } = await useFetch(
   () => `/api/agency/tasks/${props.taskId}/approvals`
 )

@@ -1,0 +1,712 @@
+/**
+ * Textured Neubrutalism Design System
+ * A "Premium Dev Tool Aesthetic" inspired by Browserbase, Stagehand, and Director
+ * 
+ * Core principles:
+ * - BLACK backgrounds (not grey) - pure #000000
+ * - WHITE text with high contrast
+ * - VIBRANT accents (red, yellow, teal) - no muted tones
+ * - THINNER borders (1px not 2px) for elegance
+ * - RAW neubrutalism - less "designed", more direct
+ */
+
+/* ========================================
+   1. CSS CUSTOM PROPERTIES (Design Tokens)
+   ======================================== */
+
+:root {
+  /* Background Scale - PURE BLACK like Browserbase */
+  --nb-bg-primary: #000000;
+  --nb-bg-secondary: #0a0a0a;
+  --nb-bg-tertiary: #111111;
+  --nb-bg-elevated: #1a1a1a;
+  --nb-bg-overlay: rgba(0, 0, 0, 0.9);
+  
+  /* Text Scale - PURE WHITE */
+  --nb-text-primary: #ffffff;
+  --nb-text-secondary: rgba(255, 255, 255, 0.7);
+  --nb-text-tertiary: rgba(255, 255, 255, 0.5);
+  --nb-text-muted: rgba(255, 255, 255, 0.3);
+  
+  /* Accent Colors - VIBRANT like Browserbase */
+  --nb-accent-red: #FF6B6B;
+  --nb-accent-red-dark: #E85D5D;
+  --nb-accent-yellow: #FFE66D;
+  --nb-accent-teal: #4ECDC4;
+  --nb-accent-mint: #95E1D3;
+  --nb-accent-purple: #A78BFA;
+  --nb-accent-orange: #FFA07A;
+  
+  /* Border Scale - THINNER, sharper */
+  --nb-border: rgba(255, 255, 255, 0.1);
+  --nb-border-strong: rgba(255, 255, 255, 0.2);
+  --nb-border-accent: rgba(255, 107, 107, 0.5);
+  
+  /* Grid & Texture */
+  --nb-grid-color: rgba(255, 255, 255, 0.04);
+  --nb-grid-size: 24px;
+  --nb-noise-opacity: 0.02;
+  
+  /* Shadow Scale - SUBTLE, not heavy */
+  --nb-shadow-color: rgba(0, 0, 0, 0.5);
+  --nb-shadow-offset: 2px;
+  --nb-shadow-blur: 16px;
+  
+  /* Typography */
+  --nb-font-sans: 'Geist', 'Inter', system-ui, -apple-system, sans-serif;
+  --nb-font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+  
+  /* Spacing */
+  --nb-radius: 6px;
+  --nb-radius-lg: 12px;
+  --nb-radius-xl: 16px;
+}
+
+/* Light Mode Override */
+[data-theme="light"],
+.light {
+  --nb-bg-primary: #ffffff;
+  --nb-bg-secondary: #fafafa;
+  --nb-bg-tertiary: #f5f5f5;
+  --nb-bg-elevated: #eeeeee;
+  
+  --nb-text-primary: #000000;
+  --nb-text-secondary: rgba(0, 0, 0, 0.7);
+  --nb-text-tertiary: rgba(0, 0, 0, 0.5);
+  --nb-text-muted: rgba(0, 0, 0, 0.3);
+  
+  --nb-border: rgba(0, 0, 0, 0.1);
+  --nb-border-strong: rgba(0, 0, 0, 0.2);
+  
+  --nb-grid-color: rgba(0, 0, 0, 0.04);
+  --nb-noise-opacity: 0.015;
+  --nb-shadow-color: rgba(0, 0, 0, 0.1);
+}
+
+/* ========================================
+   2. BASE STYLES
+   ======================================== */
+
+.nb-root {
+  font-family: var(--nb-font-sans);
+  background-color: var(--nb-bg-primary);
+  color: var(--nb-text-primary);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ========================================
+   3. TEXTURE UTILITIES
+   ======================================== */
+
+/* Noise texture overlay - very subtle */
+.nb-texture {
+  position: relative;
+}
+
+.nb-texture::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  opacity: var(--nb-noise-opacity);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Grid backgrounds - more subtle */
+.nb-grid {
+  background-image: 
+    linear-gradient(var(--nb-grid-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--nb-grid-color) 1px, transparent 1px);
+  background-size: var(--nb-grid-size) var(--nb-grid-size);
+}
+
+.nb-grid-dots {
+  background-image: radial-gradient(circle, var(--nb-grid-color) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.nb-grid-graph {
+  background-image: 
+    linear-gradient(var(--nb-grid-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--nb-grid-color) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* ========================================
+   4. SHADOW UTILITIES - Sharper, more subtle
+   ======================================== */
+
+/* Hard offset shadow - THINNER */
+.nb-shadow {
+  box-shadow: 
+    var(--nb-shadow-offset) var(--nb-shadow-offset) 0 0 var(--nb-border-strong);
+}
+
+.nb-shadow-sm {
+  box-shadow: 
+    1px 1px 0 0 var(--nb-border-strong);
+}
+
+.nb-shadow-lg {
+  box-shadow: 
+    3px 3px 0 0 var(--nb-border-strong),
+    0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.nb-shadow-xl {
+  box-shadow: 
+    4px 4px 0 0 var(--nb-border-strong),
+    0 16px 32px -8px rgba(0, 0, 0, 0.5);
+}
+
+/* Accent colored shadows */
+.nb-shadow-red {
+  box-shadow: 2px 2px 0 0 var(--nb-accent-red);
+}
+
+.nb-shadow-yellow {
+  box-shadow: 2px 2px 0 0 var(--nb-accent-yellow);
+}
+
+.nb-shadow-teal {
+  box-shadow: 2px 2px 0 0 var(--nb-accent-teal);
+}
+
+/* Pressed state */
+.nb-pressed {
+  transform: translate(1px, 1px);
+  box-shadow: 0 0 0 0 var(--nb-border-strong);
+}
+
+/* ========================================
+   5. BORDER UTILITIES - Thinner
+   ======================================== */
+
+.nb-border {
+  border: 1px solid var(--nb-border-strong);
+  border-radius: var(--nb-radius);
+}
+
+.nb-border-thin {
+  border: 1px solid var(--nb-border);
+  border-radius: var(--nb-radius);
+}
+
+.nb-border-accent {
+  border: 1px solid var(--nb-border-accent);
+  border-radius: var(--nb-radius);
+}
+
+/* ========================================
+   6. CARD STYLES - Cleaner, less grey
+   ======================================== */
+
+.nb-card {
+  background: var(--nb-bg-secondary);
+  border: 1px solid var(--nb-border-strong);
+  border-radius: var(--nb-radius-lg);
+  position: relative;
+  box-shadow: 
+    2px 2px 0 0 var(--nb-border-strong);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nb-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  opacity: var(--nb-noise-opacity);
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 0;
+}
+
+.nb-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 
+    3px 3px 0 0 var(--nb-border-strong),
+    0 12px 24px -8px rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.nb-card-elevated {
+  background: var(--nb-bg-tertiary);
+  border-color: var(--nb-accent-red);
+  box-shadow: 2px 2px 0 0 var(--nb-accent-red);
+}
+
+.nb-card-elevated.nb-card-hover:hover {
+  box-shadow: 3px 3px 0 0 var(--nb-accent-red), 0 12px 24px -8px rgba(255, 107, 107, 0.15);
+}
+
+.nb-card-header {
+  padding: 1.25rem;
+  border-bottom: 1px solid var(--nb-border);
+  font-weight: 600;
+  position: relative;
+  z-index: 1;
+}
+
+.nb-card-body {
+  padding: 1.5rem;
+  position: relative;
+  z-index: 1;
+}
+
+.nb-card-footer {
+  padding: 1.25rem;
+  border-top: 1px solid var(--nb-border);
+  background: rgba(255, 255, 255, 0.02);
+  position: relative;
+  z-index: 1;
+}
+
+/* ========================================
+   7. BUTTON STYLES - Sharper, no grey
+   ======================================== */
+
+.nb-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  font-family: var(--nb-font-sans);
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  background: transparent;
+  border: 1px solid var(--nb-border-strong);
+  border-radius: var(--nb-radius);
+  color: var(--nb-text-primary);
+  box-shadow: 1px 1px 0 0 var(--nb-border-strong);
+  transform: translate(0, 0);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.nb-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.nb-button:active:not(:disabled) {
+  transform: translate(1px, 1px);
+  box-shadow: 0 0 0 0 transparent;
+}
+
+.nb-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Button Variants */
+.nb-button-primary {
+  background: var(--nb-accent-red);
+  border-color: var(--nb-accent-red);
+  color: #000000;
+  box-shadow: 2px 2px 0 0 rgba(255, 107, 107, 0.4);
+  font-weight: 600;
+}
+
+.nb-button-primary:hover:not(:disabled) {
+  background: #FF8585;
+  border-color: #FF8585;
+}
+
+.nb-button-secondary {
+  background: var(--nb-accent-yellow);
+  border-color: var(--nb-accent-yellow);
+  color: #000000;
+  box-shadow: 2px 2px 0 0 rgba(255, 230, 109, 0.4);
+  font-weight: 600;
+}
+
+.nb-button-secondary:hover:not(:disabled) {
+  background: #FFF0A3;
+  border-color: #FFF0A3;
+}
+
+.nb-button-ghost {
+  background: transparent;
+  box-shadow: none;
+  border-color: transparent;
+}
+
+.nb-button-ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--nb-border-strong);
+  box-shadow: 1px 1px 0 0 var(--nb-border-strong);
+}
+
+/* ========================================
+   8. BADGE STYLES - Sharper
+   ======================================== */
+
+.nb-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.625rem;
+  font-family: var(--nb-font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid;
+  border-radius: var(--nb-radius);
+}
+
+.nb-badge-success {
+  background: rgba(78, 205, 196, 0.1);
+  border-color: var(--nb-accent-teal);
+  color: var(--nb-accent-teal);
+}
+
+.nb-badge-warning {
+  background: rgba(255, 230, 109, 0.1);
+  border-color: var(--nb-accent-yellow);
+  color: var(--nb-accent-yellow);
+}
+
+.nb-badge-error {
+  background: rgba(255, 107, 107, 0.1);
+  border-color: var(--nb-accent-red);
+  color: var(--nb-accent-red);
+}
+
+.nb-badge-neutral {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--nb-border-strong);
+  color: var(--nb-text-secondary);
+}
+
+.nb-badge-primary {
+  background: var(--nb-accent-red);
+  border-color: var(--nb-accent-red);
+  color: #000000;
+}
+
+.nb-badge-secondary {
+  background: var(--nb-accent-yellow);
+  border-color: var(--nb-accent-yellow);
+  color: #000000;
+}
+
+/* ========================================
+   9. INPUT STYLES - Cleaner
+   ======================================== */
+
+.nb-input {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  font-family: var(--nb-font-sans);
+  font-size: 0.9375rem;
+  background: var(--nb-bg-secondary);
+  border: 1px solid var(--nb-border-strong);
+  border-radius: var(--nb-radius);
+  color: var(--nb-text-primary);
+  transition: all 0.15s ease;
+}
+
+.nb-input:focus {
+  outline: none;
+  border-color: var(--nb-accent-red);
+  box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.2);
+}
+
+.nb-input::placeholder {
+  color: var(--nb-text-tertiary);
+}
+
+/* ========================================
+   10. TABLE STYLES - Cleaner lines
+   ======================================== */
+
+.nb-table-container {
+  position: relative;
+  border: 1px solid var(--nb-border-strong);
+  border-radius: var(--nb-radius-lg);
+  overflow: hidden;
+  background: var(--nb-bg-secondary);
+}
+
+.nb-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+
+.nb-table th {
+  padding: 1rem;
+  text-align: left;
+  font-family: var(--nb-font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--nb-text-tertiary);
+  background: var(--nb-bg-tertiary);
+  border-bottom: 1px solid var(--nb-border-strong);
+}
+
+.nb-table td {
+  padding: 1rem;
+  border-bottom: 1px solid var(--nb-border);
+}
+
+.nb-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.nb-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.nb-table-mono {
+  font-family: var(--nb-font-mono);
+  font-feature-settings: 'tnum' 1;
+  font-size: 0.875rem;
+}
+
+/* ========================================
+   11. TYPOGRAPHY UTILITIES
+   ======================================== */
+
+.nb-text-display {
+  font-size: clamp(2.5rem, 6vw, 4rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--nb-text-primary);
+}
+
+.nb-text-title {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--nb-text-primary);
+}
+
+.nb-text-section {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  color: var(--nb-text-primary);
+}
+
+.nb-text-card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--nb-text-primary);
+}
+
+.nb-text-body {
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--nb-text-secondary);
+}
+
+.nb-text-small {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--nb-text-tertiary);
+}
+
+.nb-text-mono {
+  font-family: var(--nb-font-mono);
+  font-feature-settings: 'tnum' 1;
+}
+
+.nb-text-label {
+  font-family: var(--nb-font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--nb-text-tertiary);
+}
+
+/* ========================================
+   12. SIDEBAR STYLES
+   ======================================== */
+
+.nb-sidebar {
+  width: 280px;
+  height: 100vh;
+  background: var(--nb-bg-secondary);
+  border-right: 1px solid var(--nb-border-strong);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.nb-sidebar-grid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, var(--nb-grid-color) 1px, transparent 1px);
+  background-size: 20px 20px;
+  pointer-events: none;
+}
+
+.nb-sidebar-header {
+  padding: 1.25rem;
+  border-bottom: 1px solid var(--nb-border-strong);
+  position: relative;
+  z-index: 1;
+}
+
+.nb-sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem;
+  position: relative;
+  z-index: 1;
+}
+
+.nb-sidebar-footer {
+  padding: 1rem;
+  border-top: 1px solid var(--nb-border-strong);
+  background: var(--nb-bg-tertiary);
+  position: relative;
+  z-index: 1;
+}
+
+.nb-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--nb-text-secondary);
+  border-radius: var(--nb-radius);
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.nb-nav-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--nb-text-primary);
+}
+
+.nb-nav-item.active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--nb-text-primary);
+  border: 1px solid var(--nb-border-strong);
+}
+
+/* ========================================
+   13. ANIMATIONS
+   ======================================== */
+
+@keyframes nb-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes nb-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes nb-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.nb-animate-float {
+  animation: nb-float 5s ease-in-out infinite;
+}
+
+.nb-animate-pulse {
+  animation: nb-pulse 2s ease-in-out infinite;
+}
+
+.nb-animate-slide-up {
+  animation: nb-slide-up 0.5s ease forwards;
+}
+
+/* ========================================
+   14. PROGRESS BAR
+   ======================================== */
+
+.nb-progress {
+  width: 100%;
+  height: 6px;
+  background: var(--nb-bg-elevated);
+  border: 1px solid var(--nb-border-strong);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.nb-progress-bar {
+  height: 100%;
+  background: var(--nb-accent-red);
+  border-right: 1px solid rgba(0, 0, 0, 0.2);
+  transition: width 0.3s ease;
+}
+
+/* ========================================
+   15. DIVIDER
+   ======================================== */
+
+.nb-divider {
+  height: 1px;
+  background: var(--nb-border-strong);
+  margin: 2rem 0;
+}
+
+.nb-divider-dashed {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--nb-border-strong),
+    var(--nb-border-strong) 6px,
+    transparent 6px,
+    transparent 12px
+  );
+}
+
+/* ========================================
+   16. SCROLLBAR STYLING
+   ======================================== */
+
+.nb-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.nb-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.nb-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--nb-border-strong);
+  border-radius: 3px;
+}
+
+.nb-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--nb-text-tertiary);
+}

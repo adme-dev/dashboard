@@ -46,7 +46,7 @@ export default defineEventHandler(async (event) => {
 
     // Create new reset token
     const token = generateToken()
-    const tokenHash = hashToken(token)
+    const tokenHash = await hashToken(token)
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
 
     await queryOne(`

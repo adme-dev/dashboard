@@ -1,187 +1,86 @@
-import type { User } from '~/types'
+/**
+ * Customers API Endpoint
+ * Returns real agency clients from the database with Xero contact links
+ */
 
-const customers: User[] = [{
-  id: 1,
-  name: 'Alex Smith',
-  email: 'alex.smith@example.com',
-  avatar: {
-    src: 'https://i.pravatar.cc/128?u=1'
-  },
-  status: 'subscribed',
-  location: 'New York, USA'
-}, {
-  id: 2,
-  name: 'Jordan Brown',
-  email: 'jordan.brown@example.com',
-  avatar: {
-    src: 'https://i.pravatar.cc/128?u=2'
-  },
-  status: 'unsubscribed',
-  location: 'London, UK'
-}, {
-  id: 3,
-  name: 'Taylor Green',
-  email: 'taylor.green@example.com',
-  avatar: {
-    src: 'https://i.pravatar.cc/128?u=3'
-  },
-  status: 'bounced',
-  location: 'Paris, France'
-}, {
-  id: 4,
-  name: 'Morgan White',
-  email: 'morgan.white@example.com',
-  avatar: {
-    src: 'https://i.pravatar.cc/128?u=4'
-  },
-  status: 'subscribed',
-  location: 'Berlin, Germany'
-}, {
-  id: 5,
-  name: 'Casey Gray',
-  email: 'casey.gray@example.com',
-  avatar: {
-    src: 'https://i.pravatar.cc/128?u=5'
-  },
-  status: 'subscribed',
-  location: 'Tokyo, Japan'
-}, {
-  id: 6,
-  name: 'Jamie Johnson',
-  email: 'jamie.johnson@example.com',
-  avatar: {
-    src: 'https://i.pravatar.cc/128?u=6'
-  },
-  status: 'subscribed',
-  location: 'Sydney, Australia'
-}, {
-  id: 7,
-  name: 'Riley Davis',
-  email: 'riley.davis@example.com',
-  avatar: {
-    src: 'https://i.pravatar.cc/128?u=7'
-  },
-  status: 'subscribed',
-  location: 'New York, USA'
-}, {
-  id: 8,
-  name: 'Kelly Wilson',
-  email: 'kelly.wilson@example.com',
-  avatar: {
-    src: 'https://i.pravatar.cc/128?u=8'
-  },
-  status: 'subscribed',
-  location: 'London, UK'
-}, {
-  id: 9,
-  name: 'Drew Moore',
-  email: 'drew.moore@example.com',
-  avatar: {
-    src: 'https://i.pravatar.cc/128?u=9'
-  },
-  status: 'bounced',
-  location: 'Paris, France'
-}, {
-  id: 10,
-  name: 'Jordan Taylor',
-  email: 'jordan.taylor@example.com',
-  avatar: {
-    src: 'https://i.pravatar.cc/128?u=10'
-  },
-  status: 'subscribed',
-  location: 'Berlin, Germany'
-}, {
-  id: 11,
-  name: 'Morgan Anderson',
-  email: 'morgan.anderson@example.com',
-  avatar: {
-    src: 'https://i.pravatar.cc/128?u=11'
-  },
-  status: 'subscribed',
-  location: 'Tokyo, Japan'
-}, {
-  id: 12,
-  name: 'Casey Thomas',
-  email: 'casey.thomas@example.com',
-  avatar: {
-    src: 'https://i.pravatar.cc/128?u=12'
-  },
-  status: 'unsubscribed',
-  location: 'Sydney, Australia'
-}, {
-  id: 13,
-  name: 'Jamie Jackson',
-  email: 'jamie.jackson@example.com',
-  avatar: {
-    src: 'https://i.pravatar.cc/128?u=13'
-  },
-  status: 'unsubscribed',
-  location: 'New York, USA'
-}, {
-  id: 14,
-  name: 'Riley White',
-  email: 'riley.white@example.com',
-  avatar: {
-    src: 'https://i.pravatar.cc/128?u=14'
-  },
-  status: 'unsubscribed',
-  location: 'London, UK'
-}, {
-  id: 15,
-  name: 'Kelly Harris',
-  email: 'kelly.harris@example.com',
-  avatar: {
-    src: 'https://i.pravatar.cc/128?u=15'
-  },
-  status: 'subscribed',
-  location: 'Paris, France'
-}, {
-  id: 16,
-  name: 'Drew Martin',
-  email: 'drew.martin@example.com',
-  avatar: {
-    src: 'https://i.pravatar.cc/128?u=16'
-  },
-  status: 'subscribed',
-  location: 'Berlin, Germany'
-}, {
-  id: 17,
-  name: 'Alex Thompson',
-  email: 'alex.thompson@example.com',
-  avatar: {
-    src: 'https://i.pravatar.cc/128?u=17'
-  },
-  status: 'unsubscribed',
-  location: 'Tokyo, Japan'
-}, {
-  id: 18,
-  name: 'Jordan Garcia',
-  email: 'jordan.garcia@example.com',
-  avatar: {
-    src: 'https://i.pravatar.cc/128?u=18'
-  },
-  status: 'subscribed',
-  location: 'Sydney, Australia'
-}, {
-  id: 19,
-  name: 'Taylor Rodriguez',
-  email: 'taylor.rodriguez@example.com',
-  avatar: {
-    src: 'https://i.pravatar.cc/128?u=19'
-  },
-  status: 'bounced',
-  location: 'New York, USA'
-}, {
-  id: 20,
-  name: 'Morgan Lopez',
-  email: 'morgan.lopez@example.com',
-  avatar: {
-    src: 'https://i.pravatar.cc/128?u=20'
-  },
-  status: 'subscribed',
-  location: 'London, UK'
-}]
+import { queryRows } from '~~/server/utils/db'
 
-export default eventHandler(async () => {
-  return customers
+export interface Customer {
+  id: string
+  name: string
+  email: string
+  avatar?: {
+    src?: string
+    alt?: string
+  }
+  status: 'active' | 'inactive'
+  location?: string
+  billingType: string
+  totalRevenue: number
+  activeProjects: number
+  xeroContactId?: string
+}
+
+export default defineEventHandler(async (event) => {
+  const query = getQuery(event)
+  const activeOnly = query.active !== 'false'
+
+  try {
+    // Get clients from agency_clients table with profitability data
+    const clients = await queryRows(`
+      SELECT
+        c.id,
+        c.name,
+        c.xero_contact_id,
+        c.billing_type,
+        c.is_active,
+        c.created_at,
+        COALESCE(stats.total_revenue, 0) as total_revenue,
+        COALESCE(stats.active_projects, 0) as active_projects,
+        -- Get primary contact email if available
+        COALESCE(pc.email, '') as primary_email,
+        COALESCE(pc.first_name, '') as contact_first_name,
+        COALESCE(pc.last_name, '') as contact_last_name
+      FROM agency_clients c
+      LEFT JOIN (
+        SELECT
+          p.client_id,
+          SUM(p.budget_amount) as total_revenue,
+          COUNT(CASE WHEN p.status = 'active' THEN 1 END) as active_projects
+        FROM projects p
+        GROUP BY p.client_id
+      ) stats ON c.id = stats.client_id
+      -- Try to get a primary contact (in a real implementation, you might have a client_contacts table)
+      LEFT JOIN LATERAL (
+        SELECT '' as email, '' as first_name, '' as last_name
+      ) pc ON true
+      WHERE ($1 = false OR c.is_active = true)
+      ORDER BY c.name ASC
+    `, [!activeOnly])
+
+    // Transform to customer format
+    const customers: Customer[] = clients.map((c, index) => ({
+      id: c.id,
+      name: c.name,
+      email: c.primary_email || `accounts@${c.name.toLowerCase().replace(/[^a-z0-9]/g, '')}.com.au`,
+      avatar: {
+        src: `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name)}&background=random&color=fff&size=128`,
+        alt: c.name
+      },
+      status: c.is_active ? 'active' as const : 'inactive' as const,
+      location: 'Australia', // Default location - can be enhanced with address data
+      billingType: c.billing_type,
+      totalRevenue: Number(c.total_revenue) || 0,
+      activeProjects: Number(c.active_projects) || 0,
+      xeroContactId: c.xero_contact_id
+    }))
+
+    return customers
+  } catch (error) {
+    console.error('Failed to fetch customers:', error)
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Failed to fetch customers'
+    })
+  }
 })

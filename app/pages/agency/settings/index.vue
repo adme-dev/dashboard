@@ -360,9 +360,9 @@ const presetColors = [
                 </div>
                 <UDropdownMenu
                   :items="[[
-                    { label: 'Edit', icon: 'i-lucide-pencil', onClick: () => openDepartmentModal(dept) }
+                    { label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => openDepartmentModal(dept) }
                   ], [
-                    { label: 'Delete', icon: 'i-lucide-trash', color: 'error', onClick: () => deleteDepartment(dept.id) }
+                    { label: 'Delete', icon: 'i-lucide-trash', color: 'error', onSelect: () => deleteDepartment(dept.id) }
                   ]]"
                 >
                   <UButton variant="ghost" size="sm" icon="i-lucide-more-vertical" />
@@ -473,9 +473,9 @@ const presetColors = [
 
                   <UDropdownMenu
                     :items="[[
-                      { label: 'Edit', icon: 'i-lucide-pencil', onClick: () => openStatusModal(status) }
+                      { label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => openStatusModal(status) }
                     ], [
-                      { label: 'Delete', icon: 'i-lucide-trash', color: 'error', onClick: () => deleteStatus(status.id) }
+                      { label: 'Delete', icon: 'i-lucide-trash', color: 'error', onSelect: () => deleteStatus(status.id) }
                     ]]"
                   >
                     <UButton variant="ghost" size="sm" icon="i-lucide-more-vertical" />
@@ -523,9 +523,9 @@ const presetColors = [
               <span class="font-medium">{{ label.name }}</span>
               <UDropdownMenu
                 :items="[[
-                  { label: 'Edit', icon: 'i-lucide-pencil', onClick: () => openLabelModal(label) }
+                  { label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => openLabelModal(label) }
                 ], [
-                  { label: 'Delete', icon: 'i-lucide-trash', color: 'error', onClick: () => deleteLabel(label.id) }
+                  { label: 'Delete', icon: 'i-lucide-trash', color: 'error', onSelect: () => deleteLabel(label.id) }
                 ]]"
               >
                 <UButton variant="ghost" size="xs" icon="i-lucide-more-vertical" />

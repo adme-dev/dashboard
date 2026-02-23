@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const tokenHash = hashToken(body.token)
+    const tokenHash = await hashToken(body.token)
 
     // Find valid token
     const resetToken = await queryOne(`

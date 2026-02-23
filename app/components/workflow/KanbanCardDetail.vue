@@ -281,7 +281,7 @@ watch(task, (t) => {
         <!-- Status & Priority Row -->
         <div class="grid grid-cols-2 gap-4">
           <!-- Status -->
-          <UFormGroup label="Status">
+          <UFormField label="Status">
             <USelectMenu
               :model-value="task.statusId"
               :options="statuses.map(s => ({ label: s.name, value: s.id, color: s.color }))"
@@ -296,10 +296,10 @@ watch(task, (t) => {
                 />
               </template>
             </USelectMenu>
-          </UFormGroup>
+          </UFormField>
 
           <!-- Priority -->
-          <UFormGroup label="Priority">
+          <UFormField label="Priority">
             <USelectMenu
               :model-value="task.priority"
               :options="priorityOptions"
@@ -315,13 +315,13 @@ watch(task, (t) => {
                 />
               </template>
             </USelectMenu>
-          </UFormGroup>
+          </UFormField>
         </div>
 
         <!-- Assignee & Due Date -->
         <div class="grid grid-cols-2 gap-4">
           <!-- Assignee -->
-          <UFormGroup label="Assignee">
+          <UFormField label="Assignee">
             <div class="flex items-center gap-2">
               <UAvatar
                 v-if="task.assignee"
@@ -330,20 +330,20 @@ watch(task, (t) => {
               />
               <span class="text-sm">{{ task.assignee?.name || 'Unassigned' }}</span>
             </div>
-          </UFormGroup>
+          </UFormField>
 
           <!-- Due Date -->
-          <UFormGroup label="Due Date">
+          <UFormField label="Due Date">
             <UInput
               :model-value="task.dueDate ? format(new Date(task.dueDate), 'yyyy-MM-dd') : ''"
               type="date"
               @update:model-value="(v) => updateField('dueDate', v || null)"
             />
-          </UFormGroup>
+          </UFormField>
         </div>
 
         <!-- Task Type -->
-        <UFormGroup label="Type">
+        <UFormField label="Type">
           <USelectMenu
             :model-value="task.taskType"
             :options="taskTypeOptions"
@@ -358,10 +358,10 @@ watch(task, (t) => {
               />
             </template>
           </USelectMenu>
-        </UFormGroup>
+        </UFormField>
 
         <!-- Labels -->
-        <UFormGroup label="Labels">
+        <UFormField label="Labels">
           <div class="flex flex-wrap gap-2">
             <span
               v-for="label in task.labels"
@@ -382,10 +382,10 @@ watch(task, (t) => {
               label="Add"
             />
           </div>
-        </UFormGroup>
+        </UFormField>
 
         <!-- Description -->
-        <UFormGroup label="Description">
+        <UFormField label="Description">
           <div
             v-if="!isEditingDescription"
             class="min-h-[80px] p-3 bg-neutral-50 dark:bg-neutral-900 rounded-lg cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800"
@@ -406,7 +406,7 @@ watch(task, (t) => {
               <UButton label="Cancel" color="neutral" variant="ghost" size="sm" @click="isEditingDescription = false" />
             </div>
           </div>
-        </UFormGroup>
+        </UFormField>
 
         <!-- Blocked Status -->
         <div v-if="task.isBlocked" class="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">

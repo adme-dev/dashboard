@@ -1,647 +1,328 @@
-<script setup lang="ts">
-import { format, formatDistanceToNow } from 'date-fns'
+<template>
+  <div class="h-full flex flex-col bg-white">
+    <!-- Header -->
+    <div class="flex items-center justify-between px-6 py-4 border-b">
+      <div class="flex items-center gap-3">
+        <UButton 
+          icon="i-lucide-arrow-left" 
+          variant="ghost" 
+          @click="$router.back()" 
+        />
+        <UBreadcrumb :items="breadcrumbItems" />
+      </div>
+      <div class="flex items-center gap-2">
+        <UButton icon="i-lucide-share" variant="ghost" />
+        <UButton icon="i-lucide-more-horizontal" variant="ghost" />
+        <UButton icon="i-lucide-x" variant="ghost" @click="$router.back()" />
+      </div>
+    </div>
 
+    <!-- Loading -->
+    <div v-if="pending" class="flex-1 flex items-center justify-center">
+      <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary" />
+    </div>
+
+    <!-- Error -->
+    <div v-else-if="error" class="flex-1 flex items-center justify-center">
+      <div class="text-center">
+        <UIcon name="i-lucide-alert-circle" class="w-12 h-12 text-red-500 mx-auto mb-3" />
+        <h3 class="font-medium">Failed to load task</h3>
+        <UButton color="primary" class="mt-4" @click="refresh()">Try Again</UButton>
+      </div>
+    </div>
+
+    <!-- Task Content -->
+    <div v-else class="flex-1 flex overflow-hidden">
+      <!-- Main Content -->
+      <div class="flex-1 overflow-auto p-6">
+        <!-- Title Section -->
+        <div class="mb-6">
+          <div v-if="task?.groupName" class="flex items-center gap-2 mb-2">
+            <span 
+              class="w-2 h-2 rounded-sm" 
+              :style="{ backgroundColor: task.groupColor || '#579BFC' }" 
+            />
+            <span class="text-sm text-gray-500">{{ task.groupName }}</span>
+          </div>
+          
+          <h1 class="text-2xl font-semibold">{{ task?.title }}</h1>
+          
+          <!-- Quick Actions -->
+          <div class="flex items-center gap-2 mt-4">
+            <UButton icon="i-lucide-check" color="primary" size="sm">
+              Mark Complete
+            </UButton>
+            <UButton icon="i-lucide-user-plus" variant="outline" size="sm">
+              Assign
+            </UButton>
+            <UButton icon="i-lucide-calendar" variant="outline" size="sm">
+              Set Due Date
+            </UButton>
+          </div>
+        </div>
+
+        <!-- Columns/Fields -->
+        <div class="grid grid-cols-2 gap-4 mb-8 p-4 bg-gray-50 rounded-lg">
+          <div v-for="col in task?.columnValues" :key="col.column_id" class="flex flex-col">
+            <span class="text-xs text-gray-500 uppercase">{{ col.column_title }}</span>
+            <span class="font-medium">{{ col.text_value || '-' }}</span>
+          </div>
+        </div>
+
+        <!-- Description -->
+        <div class="mb-8">
+          <h3 class="font-medium mb-2">Description</h3>
+          <div class="prose max-w-none">
+            {{ task?.description || 'No description provided.' }}
+          </div>
+        </div>
+
+        <!-- Subitems -->
+        <div v-if="task?.subitems?.length" class="mb-8">
+          <h3 class="font-medium mb-2">Subitems</h3>
+          <div class="space-y-2">
+            <div 
+              v-for="sub in task.subitems" 
+              :key="sub.id"
+              class="flex items-center gap-3 p-3 border rounded-lg"
+            >
+              <UCheckbox />
+              <span>{{ sub.title }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Updates Section -->
+        <div class="border-t pt-6">
+          <h3 class="font-medium mb-4">Updates</h3>
+          
+          <!-- New Update -->
+          <div class="border rounded-lg p-3 mb-6">
+            <UTextarea 
+              v-model="newUpdate" 
+              placeholder="Write an update..." 
+              :rows="3"
+              variant="none"
+            />
+            <div class="flex justify-between items-center mt-2 pt-2 border-t">
+              <div class="flex gap-1">
+                <UButton icon="i-lucide-at-sign" variant="ghost" size="xs" />
+                <UButton icon="i-lucide-paperclip" variant="ghost" size="xs" />
+                <UButton icon="i-lucide-image" variant="ghost" size="xs" />
+              </div>
+              <UButton size="xs" color="primary" :disabled="!newUpdate.trim()" @click="postUpdate">
+                Post Update
+              </UButton>
+            </div>
+          </div>
+
+          <!-- Updates List -->
+          <div class="space-y-4">
+            <div v-for="update in updates" :key="update.id" class="flex gap-3">
+              <UAvatar :src="update.author.avatar" :alt="update.author.name" size="sm" />
+              <div class="flex-1">
+                <div class="flex items-center gap-2">
+                  <span class="font-medium text-sm">{{ update.author.name }}</span>
+                  <span class="text-xs text-gray-500">{{ formatRelativeTime(update.createdAt) }}</span>
+                </div>
+                <p class="text-sm text-gray-700 mt-1">{{ update.content }}</p>
+                <div class="flex items-center gap-4 mt-2">
+                  <button class="flex items-center gap-1 text-xs text-gray-500 hover:text-primary">
+                    <UIcon name="i-lucide-thumbs-up" class="w-3 h-3" />
+                    {{ update.likes }}
+                  </button>
+                  <button class="text-xs text-gray-500 hover:text-primary">Reply</button>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="!updates.length" class="text-center py-8 text-gray-400">
+              <UIcon name="i-lucide-message-square" class="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p class="text-sm">No updates yet</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Sidebar -->
+      <div class="w-80 border-l bg-gray-50 p-4 overflow-auto">
+        <h3 class="font-medium mb-4">Task Info</h3>
+        
+        <div class="space-y-4">
+          <div>
+            <span class="text-xs text-gray-500">Status</span>
+            <UBadge :color="getStatusColor(task?.status)" class="mt-1">
+              {{ task?.status || 'Unknown' }}
+            </UBadge>
+          </div>
+          
+          <div>
+            <span class="text-xs text-gray-500">Priority</span>
+            <p class="font-medium capitalize">{{ task?.priority }}</p>
+          </div>
+          
+          <div>
+            <span class="text-xs text-gray-500">Due Date</span>
+            <p class="font-medium">{{ task?.dueDate ? formatDate(task.dueDate) : '-' }}</p>
+          </div>
+          
+          <div>
+            <span class="text-xs text-gray-500">Assignees</span>
+            <div v-if="task?.assignees?.length" class="flex flex-wrap gap-1 mt-1">
+              <UAvatar 
+                v-for="person in task.assignees" 
+                :key="person.name"
+                :alt="person.name"
+                :fallback="person.name?.charAt(0)"
+                size="xs"
+              />
+            </div>
+            <p v-else class="text-gray-400">-</p>
+          </div>
+          
+          <div>
+            <span class="text-xs text-gray-500">Created</span>
+            <p class="font-medium">{{ task?.createdAt ? formatDate(task.createdAt) : '-' }}</p>
+          </div>
+          
+          <div>
+            <span class="text-xs text-gray-500">Last Updated</span>
+            <p class="font-medium">{{ task?.updatedAt ? formatRelativeTime(task.updatedAt) : '-' }}</p>
+          </div>
+        </div>
+
+        <!-- Activity Log -->
+        <div class="mt-8 pt-4 border-t">
+          <h3 class="font-medium mb-4">Activity</h3>
+          <div class="space-y-3">
+            <div v-for="activity in activityLog" :key="activity.id" class="flex gap-2 text-sm">
+              <UIcon :name="getActivityIcon(activity.type)" class="w-4 h-4 text-gray-400 mt-0.5" />
+              <div>
+                <p class="text-gray-700">
+                  <span class="font-medium">{{ activity.user }}</span>
+                  {{ activity.action }}
+                </p>
+                <p class="text-xs text-gray-500">{{ formatRelativeTime(activity.timestamp) }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+
+// Page meta
 definePageMeta({
-  title: 'Task Details',
-  middleware: ['auth']
+  layout: 'agency'
 })
 
+// Route
 const route = useRoute()
-const toast = useToast()
-const taskId = route.params.id as string
+const taskId = computed(() => route.params.id as string)
+
+// Types
+interface Task {
+  id: string
+  title: string
+  description?: string
+  dueDate?: string
+  priority: string
+  status: string
+  statusColor: string
+  createdAt: string
+  updatedAt: string
+  boardId: string
+  boardName: string
+  boardSlug: string
+  groupName?: string
+  groupColor?: string
+  assignee?: { id: string; name: string; avatar?: string } | null
+  assignees?: { name: string; avatar?: string }[]
+  clients?: string[]
+  columnValues?: any[]
+  subitems?: { id: string; title: string; status_name?: string }[]
+  mondayItemId?: string
+  mondayBoardId?: string
+}
 
 // Fetch task data
-const { data: taskData, pending, refresh } = await useFetch(`/api/agency/tasks/${taskId}`)
+const { data: task, pending, error, refresh } = await useFetch<Task>(() => `/api/agency/tasks/${taskId.value}`)
 
-const task = computed(() => taskData.value as any)
+// Breadcrumb
+const breadcrumbItems = computed(() => [
+  { label: 'Boards', icon: 'i-lucide-columns-3', to: '/agency/boards' },
+  { label: task.value?.boardName || 'Board', to: `/agency/boards/${task.value?.boardSlug}` },
+  { label: task.value?.title || 'Task' }
+])
 
-// Active tab
-const activeTab = ref('details')
-
-// Format helpers
-const formatDate = (date: string) => {
-  if (!date) return '—'
-  return format(new Date(date), 'MMM d, yyyy')
-}
-
-const formatDateTime = (date: string) => {
-  if (!date) return '—'
-  return format(new Date(date), 'MMM d, yyyy h:mm a')
-}
-
-const formatRelative = (date: string) => {
-  if (!date) return '—'
-  return formatDistanceToNow(new Date(date), { addSuffix: true })
-}
-
-const formatFileSize = (bytes: number) => {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-// Priority colors
-const getPriorityColor = (priority: string): 'error' | 'warning' | 'info' | 'neutral' => {
-  switch (priority) {
-    case 'urgent': return 'error'
-    case 'high': return 'warning'
-    case 'medium': return 'info'
-    default: return 'neutral'
+// Updates
+const newUpdate = ref('')
+const updates = ref([
+  {
+    id: '1',
+    author: { name: 'Paul Giurin', avatar: null },
+    content: 'Started working on this task. Will update progress soon.',
+    createdAt: new Date(Date.now() - 3600000).toISOString(),
+    likes: 2
   }
+])
+
+const activityLog = ref([
+  { id: '1', type: 'created', user: 'Paul Giurin', action: 'created this task', timestamp: new Date(Date.now() - 86400000).toISOString() },
+  { id: '2', type: 'assigned', user: 'Paul Giurin', action: 'assigned to Sarah Chen', timestamp: new Date(Date.now() - 43200000).toISOString() }
+])
+
+function postUpdate() {
+  if (!newUpdate.value.trim()) return
+  updates.value.unshift({
+    id: Date.now().toString(),
+    author: { name: 'You', avatar: null },
+    content: newUpdate.value,
+    createdAt: new Date().toISOString(),
+    likes: 0
+  })
+  newUpdate.value = ''
 }
 
-const getPriorityLabel = (priority: string) => {
-  return priority.charAt(0).toUpperCase() + priority.slice(1)
+function formatDate(date: string): string {
+  return new Date(date).toLocaleDateString('en-AU', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  })
 }
 
-// Activity type icons
-const getActivityIcon = (type: string) => {
-  switch (type) {
-    case 'created': return 'i-lucide-plus'
-    case 'status_changed': return 'i-lucide-arrow-right'
-    case 'assignee_changed': return 'i-lucide-user'
-    case 'comment': return 'i-lucide-message-circle'
-    case 'attachment': return 'i-lucide-paperclip'
-    case 'priority_changed': return 'i-lucide-flag'
-    default: return 'i-lucide-activity'
+function formatRelativeTime(date: string): string {
+  const diff = Date.now() - new Date(date).getTime()
+  const minutes = Math.floor(diff / 60000)
+  const hours = Math.floor(minutes / 60)
+  const days = Math.floor(hours / 24)
+  
+  if (minutes < 60) return `${minutes}m ago`
+  if (hours < 24) return `${hours}h ago`
+  return `${days}d ago`
+}
+
+function getStatusColor(status?: string): 'error' | 'warning' | 'neutral' | 'success' | 'primary' {
+  const colors: Record<string, 'error' | 'warning' | 'neutral' | 'success' | 'primary'> = {
+    'Done': 'success',
+    'In Progress': 'primary',
+    'To Do': 'neutral',
+    'Urgent': 'error'
   }
+  return colors[status || ''] || 'neutral'
 }
 
-// Comments
-const newComment = ref('')
-const submittingComment = ref(false)
-
-const submitComment = async () => {
-  if (!newComment.value.trim()) return
-
-  submittingComment.value = true
-  try {
-    await $fetch(`/api/agency/tasks/${taskId}/comments`, {
-      method: 'POST',
-      body: { content: newComment.value }
-    })
-    toast.add({ title: 'Comment added', color: 'success' })
-    newComment.value = ''
-    refresh()
-  } catch (err: any) {
-    toast.add({ title: 'Failed to add comment', description: err.data?.message || err.message, color: 'error' })
-  } finally {
-    submittingComment.value = false
+function getActivityIcon(type: string): string {
+  const icons: Record<string, string> = {
+    created: 'i-lucide-plus',
+    assigned: 'i-lucide-user-check',
+    updated: 'i-lucide-edit'
   }
+  return icons[type] || 'i-lucide-circle'
 }
-
-// Status change
-const changingStatus = ref(false)
-const { data: statusesData } = await useFetch('/api/agency/statuses')
-const statuses = computed(() => ((statusesData.value as any)?.statuses || []) as any[])
-
-const changeStatus = async (statusId: string) => {
-  changingStatus.value = true
-  try {
-    await $fetch(`/api/agency/tasks/${taskId}/status`, {
-      method: 'PATCH',
-      body: { statusId }
-    })
-    toast.add({ title: 'Status updated', color: 'success' })
-    refresh()
-  } catch (err: any) {
-    toast.add({ title: 'Failed to update status', description: err.data?.message || err.message, color: 'error' })
-  } finally {
-    changingStatus.value = false
-  }
-}
-
-// Assignee change
-const { data: teamData } = await useFetch('/api/agency/team-members')
-const teamMembers = computed(() => ((teamData.value as any)?.members || []) as any[])
-
-const changeAssignee = async (assigneeId: string | null) => {
-  try {
-    await $fetch(`/api/agency/tasks/${taskId}/assignee`, {
-      method: 'PATCH',
-      body: { assigneeId }
-    })
-    toast.add({ title: 'Assignee updated', color: 'success' })
-    refresh()
-  } catch (err: any) {
-    toast.add({ title: 'Failed to update assignee', description: err.data?.message || err.message, color: 'error' })
-  }
-}
-
-// Edit modal
-const showEditModal = ref(false)
-const editForm = ref({
-  title: '',
-  description: '',
-  priority: 'medium',
-  dueDate: '',
-  estimatedHours: null as number | null
-})
-
-const openEditModal = () => {
-  if (task.value) {
-    editForm.value = {
-      title: task.value.title,
-      description: task.value.description || '',
-      priority: task.value.priority,
-      dueDate: task.value.dueDate ? task.value.dueDate.split('T')[0] : '',
-      estimatedHours: task.value.estimatedHours
-    }
-    showEditModal.value = true
-  }
-}
-
-const saving = ref(false)
-const saveTask = async () => {
-  saving.value = true
-  try {
-    await $fetch(`/api/agency/tasks/${taskId}`, {
-      method: 'PUT',
-      body: editForm.value
-    })
-    toast.add({ title: 'Task updated', color: 'success' })
-    showEditModal.value = false
-    refresh()
-  } catch (err: any) {
-    toast.add({ title: 'Failed to update task', description: err.data?.message || err.message, color: 'error' })
-  } finally {
-    saving.value = false
-  }
-}
-
-const priorityOptions = [
-  { label: 'Low', value: 'low' },
-  { label: 'Medium', value: 'medium' },
-  { label: 'High', value: 'high' },
-  { label: 'Urgent', value: 'urgent' }
-]
 </script>
-
-<template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
-      <UDashboardNavbar>
-        <template #left>
-          <div class="flex items-center gap-3">
-            <UButton
-              variant="ghost"
-              icon="i-lucide-arrow-left"
-              to="/agency/workflow"
-            />
-            <div v-if="task">
-              <div class="flex items-center gap-2">
-                <h1 class="text-xl font-semibold">{{ task.title }}</h1>
-                <UBadge :color="getPriorityColor(task.priority)" variant="subtle" size="sm">
-                  {{ getPriorityLabel(task.priority) }}
-                </UBadge>
-              </div>
-              <div class="flex items-center gap-2 text-sm text-gray-500">
-                <span v-if="task.project">{{ task.project.clientName }} / {{ task.project.name }}</span>
-                <span v-else>{{ task.department?.name }}</span>
-                <span v-if="task.taskType">• {{ task.taskType }}</span>
-              </div>
-            </div>
-          </div>
-        </template>
-        <template #right>
-          <div class="flex gap-2">
-            <UButton
-              label="Edit"
-              icon="i-lucide-pencil"
-              variant="outline"
-              @click="openEditModal"
-            />
-          </div>
-        </template>
-      </UDashboardNavbar>
-
-      <UDashboardPanelContent>
-        <!-- Loading -->
-        <div v-if="pending" class="flex items-center justify-center py-12">
-          <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
-        </div>
-
-        <template v-else-if="task">
-          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <!-- Main Content -->
-            <div class="lg:col-span-2 space-y-6">
-              <!-- Status Bar -->
-              <UCard>
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-4">
-                    <div>
-                      <p class="text-xs text-gray-500 mb-1">Status</p>
-                      <USelectMenu
-                        :model-value="task.statusId"
-                        :items="statuses.map(s => ({ label: s.name, value: s.id, color: s.color }))"
-                        value-key="value"
-                        :loading="changingStatus"
-                        @update:model-value="changeStatus"
-                      >
-                        <template #default>
-                          <UBadge
-                            :style="{ backgroundColor: task.status?.color + '20', color: task.status?.color }"
-                            variant="subtle"
-                          >
-                            {{ task.status?.name }}
-                          </UBadge>
-                        </template>
-                      </USelectMenu>
-                    </div>
-                    <div>
-                      <p class="text-xs text-gray-500 mb-1">Assignee</p>
-                      <USelectMenu
-                        :model-value="task.assigneeId"
-                        :items="[{ label: 'Unassigned', value: null }, ...teamMembers.map(m => ({ label: m.name, value: m.id }))]"
-                        value-key="value"
-                        placeholder="Unassigned"
-                        @update:model-value="changeAssignee"
-                      >
-                        <template #default>
-                          <div class="flex items-center gap-2">
-                            <UAvatar
-                              v-if="task.assignee"
-                              :text="task.assignee.name.charAt(0)"
-                              size="xs"
-                            />
-                            <span>{{ task.assignee?.name || 'Unassigned' }}</span>
-                          </div>
-                        </template>
-                      </USelectMenu>
-                    </div>
-                  </div>
-                  <div class="flex items-center gap-4 text-sm text-gray-500">
-                    <div v-if="task.dueDate">
-                      <UIcon name="i-lucide-calendar" class="w-4 h-4 inline mr-1" />
-                      Due {{ formatDate(task.dueDate) }}
-                    </div>
-                    <div v-if="task.estimatedHours">
-                      <UIcon name="i-lucide-clock" class="w-4 h-4 inline mr-1" />
-                      {{ task.estimatedHours }}h estimated
-                    </div>
-                  </div>
-                </div>
-              </UCard>
-
-              <!-- Tabs -->
-              <UTabs
-                v-model="activeTab"
-                :items="[
-                  { label: 'Details', value: 'details', icon: 'i-lucide-file-text' },
-                  { label: 'Subtasks', value: 'subtasks', icon: 'i-lucide-list-checks', badge: task.subtasks?.length?.toString() },
-                  { label: 'Activity', value: 'activity', icon: 'i-lucide-activity' },
-                  { label: 'Attachments', value: 'attachments', icon: 'i-lucide-paperclip', badge: task.attachments?.length?.toString() }
-                ]"
-              />
-
-              <!-- Details Tab -->
-              <div v-if="activeTab === 'details'">
-                <UCard>
-                  <template #header>
-                    <h3 class="font-semibold">Description</h3>
-                  </template>
-                  <div v-if="task.description" class="prose prose-sm dark:prose-invert max-w-none">
-                    {{ task.description }}
-                  </div>
-                  <p v-else class="text-gray-500 italic">No description provided</p>
-                </UCard>
-
-                <!-- Labels -->
-                <UCard v-if="task.labels?.length" class="mt-4">
-                  <template #header>
-                    <h3 class="font-semibold">Labels</h3>
-                  </template>
-                  <div class="flex flex-wrap gap-2">
-                    <UBadge
-                      v-for="label in task.labels"
-                      :key="label.id"
-                      :style="{ backgroundColor: label.color + '20', color: label.color }"
-                      variant="subtle"
-                    >
-                      {{ label.name }}
-                    </UBadge>
-                  </div>
-                </UCard>
-
-                <!-- Dependencies -->
-                <UCard v-if="task.dependencies?.length || task.dependents?.length" class="mt-4">
-                  <template #header>
-                    <h3 class="font-semibold">Dependencies</h3>
-                  </template>
-                  <div class="space-y-4">
-                    <div v-if="task.dependencies?.length">
-                      <p class="text-sm text-gray-500 mb-2">Blocked by:</p>
-                      <div class="space-y-2">
-                        <div
-                          v-for="dep in task.dependencies"
-                          :key="dep.dependencyId"
-                          class="flex items-center justify-between p-2 rounded bg-gray-50 dark:bg-gray-800"
-                        >
-                          <NuxtLink :to="`/agency/tasks/${dep.task.id}`" class="hover:text-primary-500">
-                            {{ dep.task.title }}
-                          </NuxtLink>
-                          <UBadge
-                            :style="{ backgroundColor: dep.task.status.color + '20', color: dep.task.status.color }"
-                            variant="subtle"
-                            size="xs"
-                          >
-                            {{ dep.task.status.name }}
-                          </UBadge>
-                        </div>
-                      </div>
-                    </div>
-                    <div v-if="task.dependents?.length">
-                      <p class="text-sm text-gray-500 mb-2">Blocking:</p>
-                      <div class="space-y-2">
-                        <div
-                          v-for="dep in task.dependents"
-                          :key="dep.dependencyId"
-                          class="flex items-center justify-between p-2 rounded bg-gray-50 dark:bg-gray-800"
-                        >
-                          <NuxtLink :to="`/agency/tasks/${dep.task.id}`" class="hover:text-primary-500">
-                            {{ dep.task.title }}
-                          </NuxtLink>
-                          <UBadge
-                            :style="{ backgroundColor: dep.task.status.color + '20', color: dep.task.status.color }"
-                            variant="subtle"
-                            size="xs"
-                          >
-                            {{ dep.task.status.name }}
-                          </UBadge>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </UCard>
-              </div>
-
-              <!-- Subtasks Tab -->
-              <div v-if="activeTab === 'subtasks'">
-                <UCard>
-                  <div v-if="task.subtasks?.length" class="space-y-2">
-                    <div
-                      v-for="subtask in task.subtasks"
-                      :key="subtask.id"
-                      class="flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700"
-                    >
-                      <div class="flex items-center gap-3">
-                        <UCheckbox :model-value="!!subtask.completedAt" disabled />
-                        <div>
-                          <NuxtLink :to="`/agency/tasks/${subtask.id}`" class="font-medium hover:text-primary-500">
-                            {{ subtask.title }}
-                          </NuxtLink>
-                          <div class="flex items-center gap-2 mt-1">
-                            <UBadge :color="getPriorityColor(subtask.priority)" variant="subtle" size="xs">
-                              {{ subtask.priority }}
-                            </UBadge>
-                            <span v-if="subtask.dueDate" class="text-xs text-gray-500">
-                              Due {{ formatDate(subtask.dueDate) }}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div class="flex items-center gap-2">
-                        <span v-if="subtask.assigneeName" class="text-sm text-gray-500">
-                          {{ subtask.assigneeName }}
-                        </span>
-                        <UBadge
-                          :style="{ backgroundColor: subtask.status.color + '20', color: subtask.status.color }"
-                          variant="subtle"
-                          size="xs"
-                        >
-                          {{ subtask.status.name }}
-                        </UBadge>
-                      </div>
-                    </div>
-                  </div>
-                  <div v-else class="text-center text-gray-500 py-8">
-                    No subtasks yet
-                  </div>
-                </UCard>
-              </div>
-
-              <!-- Activity Tab -->
-              <div v-if="activeTab === 'activity'">
-                <!-- Comment Form -->
-                <UCard class="mb-4">
-                  <div class="flex gap-3">
-                    <UAvatar text="U" size="sm" />
-                    <div class="flex-1">
-                      <UTextarea
-                        v-model="newComment"
-                        placeholder="Add a comment..."
-                        :rows="2"
-                      />
-                      <div class="flex justify-end mt-2">
-                        <UButton
-                          label="Comment"
-                          size="sm"
-                          :loading="submittingComment"
-                          :disabled="!newComment.trim()"
-                          @click="submitComment"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </UCard>
-
-                <UCard>
-                  <div v-if="task.recentActivity?.length" class="space-y-4">
-                    <div
-                      v-for="activity in task.recentActivity"
-                      :key="activity.id"
-                      class="flex gap-3"
-                    >
-                      <div class="p-2 rounded-full bg-gray-100 dark:bg-gray-800 h-fit">
-                        <UIcon :name="getActivityIcon(activity.type)" class="w-4 h-4 text-gray-500" />
-                      </div>
-                      <div class="flex-1">
-                        <div class="flex items-center justify-between">
-                          <p class="text-sm">
-                            <span class="font-medium">{{ activity.userName || 'System' }}</span>
-                            <span class="text-gray-500">
-                              {{ activity.type === 'comment' ? 'commented' : activity.type.replace('_', ' ') }}
-                            </span>
-                          </p>
-                          <span class="text-xs text-gray-400">{{ formatRelative(activity.createdAt) }}</span>
-                        </div>
-                        <p v-if="activity.content" class="text-sm mt-1 text-gray-600 dark:text-gray-400">
-                          {{ activity.content }}
-                        </p>
-                        <p v-if="activity.oldValue && activity.newValue" class="text-xs text-gray-500 mt-1">
-                          {{ activity.oldValue }} → {{ activity.newValue }}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  <div v-else class="text-center text-gray-500 py-8">
-                    No activity yet
-                  </div>
-                </UCard>
-              </div>
-
-              <!-- Attachments Tab -->
-              <div v-if="activeTab === 'attachments'">
-                <UCard>
-                  <div v-if="task.attachments?.length" class="space-y-2">
-                    <div
-                      v-for="attachment in task.attachments"
-                      :key="attachment.id"
-                      class="flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700"
-                    >
-                      <div class="flex items-center gap-3">
-                        <UIcon name="i-lucide-file" class="w-5 h-5 text-gray-400" />
-                        <div>
-                          <p class="font-medium">{{ attachment.fileName }}</p>
-                          <p class="text-xs text-gray-500">
-                            {{ formatFileSize(attachment.fileSize) }} • {{ attachment.uploadedByName }} • {{ formatRelative(attachment.createdAt) }}
-                          </p>
-                        </div>
-                      </div>
-                      <UButton
-                        variant="ghost"
-                        icon="i-lucide-download"
-                        size="xs"
-                        :to="attachment.fileUrl"
-                        target="_blank"
-                      />
-                    </div>
-                  </div>
-                  <div v-else class="text-center text-gray-500 py-8">
-                    No attachments yet
-                  </div>
-                </UCard>
-              </div>
-            </div>
-
-            <!-- Sidebar -->
-            <div class="space-y-4">
-              <!-- Task Info -->
-              <UCard>
-                <template #header>
-                  <h3 class="font-semibold">Task Info</h3>
-                </template>
-                <dl class="space-y-3 text-sm">
-                  <div>
-                    <dt class="text-gray-500">Created</dt>
-                    <dd>{{ formatDateTime(task.createdAt) }}</dd>
-                  </div>
-                  <div v-if="task.reporter">
-                    <dt class="text-gray-500">Reporter</dt>
-                    <dd>{{ task.reporter.name }}</dd>
-                  </div>
-                  <div>
-                    <dt class="text-gray-500">Department</dt>
-                    <dd class="flex items-center gap-2">
-                      <span
-                        class="w-2 h-2 rounded-full"
-                        :style="{ backgroundColor: task.department?.color }"
-                      />
-                      {{ task.department?.name }}
-                    </dd>
-                  </div>
-                  <div v-if="task.project">
-                    <dt class="text-gray-500">Project</dt>
-                    <dd>
-                      <NuxtLink :to="`/agency/projects/${task.project.id}`" class="hover:text-primary-500">
-                        {{ task.project.name }}
-                      </NuxtLink>
-                    </dd>
-                  </div>
-                  <div v-if="task.parent">
-                    <dt class="text-gray-500">Parent Task</dt>
-                    <dd>
-                      <NuxtLink :to="`/agency/tasks/${task.parent.id}`" class="hover:text-primary-500">
-                        {{ task.parent.title }}
-                      </NuxtLink>
-                    </dd>
-                  </div>
-                  <div v-if="task.startDate">
-                    <dt class="text-gray-500">Start Date</dt>
-                    <dd>{{ formatDate(task.startDate) }}</dd>
-                  </div>
-                  <div v-if="task.dueDate">
-                    <dt class="text-gray-500">Due Date</dt>
-                    <dd>{{ formatDate(task.dueDate) }}</dd>
-                  </div>
-                  <div v-if="task.estimatedHours">
-                    <dt class="text-gray-500">Estimated</dt>
-                    <dd>{{ task.estimatedHours }} hours</dd>
-                  </div>
-                  <div v-if="task.actualHours">
-                    <dt class="text-gray-500">Actual</dt>
-                    <dd>{{ task.actualHours }} hours</dd>
-                  </div>
-                  <div v-if="task.completedAt">
-                    <dt class="text-gray-500">Completed</dt>
-                    <dd>{{ formatDateTime(task.completedAt) }}</dd>
-                  </div>
-                </dl>
-              </UCard>
-
-              <!-- Blocked Alert -->
-              <UCard v-if="task.isBlocked" class="border-red-200 dark:border-red-800">
-                <div class="flex items-start gap-3">
-                  <UIcon name="i-lucide-alert-triangle" class="w-5 h-5 text-red-500 flex-shrink-0" />
-                  <div>
-                    <p class="font-medium text-red-600 dark:text-red-400">Task is Blocked</p>
-                    <p v-if="task.blockedReason" class="text-sm text-gray-500 mt-1">
-                      {{ task.blockedReason }}
-                    </p>
-                  </div>
-                </div>
-              </UCard>
-            </div>
-          </div>
-        </template>
-      </UDashboardPanelContent>
-    </UDashboardPanel>
-
-    <!-- Edit Modal -->
-    <UModal v-model:open="showEditModal">
-      <template #header>
-        <h3 class="font-semibold">Edit Task</h3>
-      </template>
-      <template #body>
-        <div class="space-y-4">
-          <UFormField label="Title" required>
-            <UInput v-model="editForm.title" />
-          </UFormField>
-
-          <UFormField label="Description">
-            <UTextarea v-model="editForm.description" :rows="4" />
-          </UFormField>
-
-          <div class="grid grid-cols-2 gap-4">
-            <UFormField label="Priority">
-              <USelectMenu
-                v-model="editForm.priority"
-                :items="priorityOptions"
-                value-key="value"
-              />
-            </UFormField>
-
-            <UFormField label="Due Date">
-              <UInput v-model="editForm.dueDate" type="date" />
-            </UFormField>
-          </div>
-
-          <UFormField label="Estimated Hours">
-            <UInput v-model.number="editForm.estimatedHours" type="number" min="0" step="0.5" />
-          </UFormField>
-        </div>
-      </template>
-      <template #footer>
-        <div class="flex justify-end gap-2">
-          <UButton variant="ghost" label="Cancel" @click="showEditModal = false" />
-          <UButton
-            color="primary"
-            label="Save Changes"
-            :loading="saving"
-            @click="saveTask"
-          />
-        </div>
-      </template>
-    </UModal>
-  </UDashboardPage>
-</template>

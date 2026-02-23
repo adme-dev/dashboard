@@ -39,7 +39,7 @@ export async function createXeroClient(options: CreateClientOptions = {}) {
       redirectUri = `${url.protocol}//${url.host}${redirectUri}`
     } else {
       // Fallback for build time or when no event context is available
-      redirectUri = `https://adme-xero.netlify.app${redirectUri}`
+      redirectUri = `${process.env.APP_URL || 'https://agency-dashboard.pages.dev'}${redirectUri}`
     }
   }
 

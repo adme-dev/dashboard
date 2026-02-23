@@ -84,7 +84,7 @@ export default defineEventHandler(async (event) => {
       ) e ON p.id = e.project_id
       WHERE p.status = 'active'
       AND p.budget_amount > 0
-      HAVING ((COALESCE(t.labor_cost, 0) + COALESCE(e.expense_cost, 0)) / p.budget_amount * 100) >= 80
+      AND ((COALESCE(t.labor_cost, 0) + COALESCE(e.expense_cost, 0)) / p.budget_amount * 100) >= 80
       ORDER BY percent_used DESC
       LIMIT 5
     `)

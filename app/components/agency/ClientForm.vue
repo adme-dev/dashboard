@@ -107,25 +107,25 @@ const handleSubmit = async () => {
 <template>
   <form @submit.prevent="handleSubmit" class="space-y-6">
     <!-- Client Name -->
-    <UFormGroup label="Client Name" :error="errors.name" required>
+    <UFormField label="Client Name" :error="errors.name" required>
       <UInput
         v-model="form.name"
         placeholder="Enter client name"
         :disabled="loading"
       />
-    </UFormGroup>
+    </UFormField>
 
     <!-- Billing Type -->
-    <UFormGroup label="Billing Type" required>
+    <UFormField label="Billing Type" required>
       <URadioGroup
         v-model="form.billingType"
         :items="billingTypeOptions"
         :disabled="loading"
       />
-    </UFormGroup>
+    </UFormField>
 
     <!-- Retainer Amount (conditional) -->
-    <UFormGroup
+    <UFormField
       v-if="showRetainerFields"
       label="Monthly Retainer"
       :error="errors.retainerAmount"
@@ -146,10 +146,10 @@ const handleSubmit = async () => {
           <span class="text-gray-500">/month</span>
         </template>
       </UInput>
-    </UFormGroup>
+    </UFormField>
 
     <!-- Media Commission Rate (conditional) -->
-    <UFormGroup
+    <UFormField
       v-if="showCommissionFields"
       label="Media Commission Rate"
       :error="errors.mediaCommissionRate"
@@ -171,10 +171,10 @@ const handleSubmit = async () => {
       <template #hint>
         <span class="text-xs text-gray-500">Industry standard: 10-15%</span>
       </template>
-    </UFormGroup>
+    </UFormField>
 
     <!-- Default Hourly Rate -->
-    <UFormGroup label="Default Hourly Rate">
+    <UFormField label="Default Hourly Rate">
       <UInput
         v-model.number="form.hourlyRate"
         type="number"
@@ -193,26 +193,26 @@ const handleSubmit = async () => {
       <template #hint>
         <span class="text-xs text-gray-500">Used for time-based billing if not specified per project</span>
       </template>
-    </UFormGroup>
+    </UFormField>
 
     <!-- Payment Terms -->
-    <UFormGroup label="Payment Terms">
+    <UFormField label="Payment Terms">
       <USelectMenu
         v-model="form.paymentTerms"
         :options="paymentTermsOptions"
         :disabled="loading"
       />
-    </UFormGroup>
+    </UFormField>
 
     <!-- Notes -->
-    <UFormGroup label="Notes">
+    <UFormField label="Notes">
       <UTextarea
         v-model="form.notes"
         placeholder="Internal notes about this client..."
         :rows="3"
         :disabled="loading"
       />
-    </UFormGroup>
+    </UFormField>
 
     <!-- Actions -->
     <div class="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">

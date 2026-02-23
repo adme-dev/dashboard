@@ -228,6 +228,7 @@ CREATE TABLE xero_sessions (
   session_id VARCHAR(255) PRIMARY KEY,
   access_token TEXT NOT NULL,
   refresh_token TEXT,
+  id_token TEXT,
   expires_at BIGINT NOT NULL,
   scope TEXT,
   token_type VARCHAR(50),

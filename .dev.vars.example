@@ -1,0 +1,56 @@
+# ============================================
+# Local Development Environment Variables
+# ============================================
+# Copy this file to .dev.vars and fill in your actual values
+# These are loaded by `wrangler pages dev` automatically
+# DO NOT commit .dev.vars to git!
+
+# ============================================
+# Required Secrets
+# ============================================
+
+# Database (Neon PostgreSQL)
+# Format: postgresql://user:password@host:5432/database?sslmode=require
+DATABASE_URL=postgresql://username:password@ep-xxx.us-east-1.aws.neon.tech/database?sslmode=require
+
+# JWT Secret (generate with: openssl rand -base64 32)
+JWT_SECRET=your-jwt-secret-here
+
+# Session Secret (generate with: openssl rand -base64 32)
+SESSION_SECRET=your-session-secret-here
+
+# ============================================
+# Xero OAuth (Required for Xero integration)
+# ============================================
+# Get from: https://developer.xero.com/myapps
+XERO_CLIENT_ID=your-xero-client-id
+XERO_CLIENT_SECRET=your-xero-client-secret
+
+# ============================================
+# Email (Resend - Required for magic links)
+# ============================================
+# Get from: https://resend.com/api-keys
+RESEND_API_KEY=re_your_resend_api_key
+
+# ============================================
+# AI (Groq - Required for AI features)
+# ============================================
+# Get from: https://console.groq.com/keys
+GROQ_API_KEY=gsk_your_groq_api_key
+
+# ============================================
+# Optional: Monday.com Integration
+# ============================================
+MONDAY_API_TOKEN=your_monday_api_token
+
+# ============================================
+# Optional: Cron Job Security
+# ============================================
+CRON_SECRET=your_random_cron_secret
+
+# ============================================
+# Optional: Cloudflare R2 Storage
+# ============================================
+R2_ACCOUNT_ID=your_cloudflare_account_id
+R2_ACCESS_KEY_ID=your_r2_access_key_id
+R2_SECRET_ACCESS_KEY=your_r2_secret_access_key

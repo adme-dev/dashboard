@@ -72,22 +72,22 @@ const form = reactive({
 
 const isEditing = computed(() => !!props.task?.id)
 
-// Priority options
-const priorityOptions: { label: string; value: TaskPriority; icon: string; color: string }[] = [
-  { label: 'Urgent', value: 'urgent', icon: 'i-lucide-alert-circle', color: 'text-red-500' },
-  { label: 'High', value: 'high', icon: 'i-lucide-arrow-up', color: 'text-orange-500' },
-  { label: 'Medium', value: 'medium', icon: 'i-lucide-minus', color: 'text-yellow-500' },
-  { label: 'Low', value: 'low', icon: 'i-lucide-arrow-down', color: 'text-blue-500' }
+// Priority options - XeroFlow colors
+const priorityOptions: { label: string; value: TaskPriority; icon: string; color: string; bgColor: string }[] = [
+  { label: 'Urgent', value: 'urgent', icon: 'i-lucide-alert-circle', color: '#FF6B6B', bgColor: '#FFEBEE' },
+  { label: 'High', value: 'high', icon: 'i-lucide-arrow-up', color: '#F4B942', bgColor: '#FFF8E1' },
+  { label: 'Medium', value: 'medium', icon: 'i-lucide-minus', color: '#13B5EA', bgColor: '#E6F7FC' },
+  { label: 'Low', value: 'low', icon: 'i-lucide-arrow-down', color: '#7DD3A8', bgColor: '#E8F5E9' }
 ]
 
 // Task type options
-const taskTypeOptions: { label: string; value: TaskType; icon: string; description: string }[] = [
-  { label: 'Task', value: 'task', icon: 'i-lucide-check-square', description: 'Standard work item' },
-  { label: 'Milestone', value: 'milestone', icon: 'i-lucide-flag', description: 'Key deliverable or checkpoint' },
-  { label: 'Bug', value: 'bug', icon: 'i-lucide-bug', description: 'Issue or defect to fix' },
-  { label: 'Feature', value: 'feature', icon: 'i-lucide-sparkles', description: 'New functionality' },
-  { label: 'Review', value: 'review', icon: 'i-lucide-eye', description: 'Review or approval needed' },
-  { label: 'Meeting', value: 'meeting', icon: 'i-lucide-calendar', description: 'Scheduled meeting' }
+const taskTypeOptions: { label: string; value: TaskType; icon: string }[] = [
+  { label: 'Task', value: 'task', icon: 'i-lucide-check-square' },
+  { label: 'Milestone', value: 'milestone', icon: 'i-lucide-flag' },
+  { label: 'Bug', value: 'bug', icon: 'i-lucide-bug' },
+  { label: 'Feature', value: 'feature', icon: 'i-lucide-sparkles' },
+  { label: 'Review', value: 'review', icon: 'i-lucide-eye' },
+  { label: 'Meeting', value: 'meeting', icon: 'i-lucide-calendar' }
 ]
 
 // Validation
@@ -95,15 +95,12 @@ const errors = ref<Record<string, string>>({})
 
 const validate = () => {
   errors.value = {}
-
   if (!form.title.trim()) {
     errors.value.title = 'Title is required'
   }
-
   if (!form.statusId) {
     errors.value.statusId = 'Status is required'
   }
-
   return Object.keys(errors.value).length === 0
 }
 
@@ -112,15 +109,9 @@ const loading = ref(false)
 
 const handleSubmit = async () => {
   if (!validate()) return
-
   loading.value = true
-
   try {
-    const payload = {
-      ...form,
-      departmentId: props.departmentId
-    }
-
+    const payload = { ...form, departmentId: props.departmentId }
     emit('submit', payload as unknown as Partial<Task>)
   } catch (error) {
     console.error('Failed to save task:', error)
@@ -141,172 +132,198 @@ watch(statuses, (newStatuses) => {
 </script>
 
 <template>
-  <form @submit.prevent="handleSubmit" class="space-y-6">
+  <form @submit.prevent="handleSubmit" class="space-y-5">
     <!-- Title -->
-    <UFormGroup label="Title" :error="errors.title" required>
-      <UInput
+    <div>
+      <label class="block text-sm font-medium text-black mb-2">
+        Title <span class="text-[#FF6B6B]">*</span>
+      </label>
+      <input
         v-model="form.title"
+        type="text"
         placeholder="Enter task title"
+        class="w-full px-4 py-2.5 border border-black/20 rounded text-black placeholder:text-black/40 focus:outline-none focus:border-[#13B5EA] transition-colors"
+        :class="{ 'border-[#FF6B6B]': errors.title }"
         :disabled="loading"
         autofocus
       />
-    </UFormGroup>
+      <p v-if="errors.title" class="mt-1 text-sm text-[#FF6B6B]">{{ errors.title }}</p>
+    </div>
 
     <!-- Description -->
-    <UFormGroup label="Description">
-      <UTextarea
+    <div>
+      <label class="block text-sm font-medium text-black mb-2">Description</label>
+      <textarea
         v-model="form.description"
         placeholder="Describe the task..."
-        :rows="3"
+        rows="3"
+        class="w-full px-4 py-2.5 border border-black/20 rounded text-black placeholder:text-black/40 focus:outline-none focus:border-[#13B5EA] transition-colors resize-none"
         :disabled="loading"
-      />
-    </UFormGroup>
+      ></textarea>
+    </div>
 
     <!-- Status & Priority -->
     <div class="grid grid-cols-2 gap-4">
-      <UFormGroup label="Status" :error="errors.statusId" required>
-        <USelectMenu
+      <div>
+        <label class="block text-sm font-medium text-black mb-2">
+          Status <span class="text-[#FF6B6B]">*</span>
+        </label>
+        <select
           v-model="form.statusId"
-          :options="statuses.map(s => ({ label: s.name, value: s.id, color: s.color }))"
-          placeholder="Select status"
-          option-attribute="label"
-          value-attribute="value"
+          class="w-full px-4 py-2.5 border border-black/20 rounded text-black bg-white focus:outline-none focus:border-[#13B5EA] transition-colors"
+          :class="{ 'border-[#FF6B6B]': errors.statusId }"
           :disabled="loading"
         >
-          <template #leading="{ modelValue }">
-            <div
-              v-if="modelValue"
-              class="w-3 h-3 rounded-full"
-              :style="{ backgroundColor: statuses.find(s => s.id === modelValue)?.color }"
-            />
-          </template>
-        </USelectMenu>
-      </UFormGroup>
+          <option value="" disabled>Select status</option>
+          <option v-for="status in statuses" :key="status.id" :value="status.id">
+            {{ status.name }}
+          </option>
+        </select>
+        <p v-if="errors.statusId" class="mt-1 text-sm text-[#FF6B6B]">{{ errors.statusId }}</p>
+      </div>
 
-      <UFormGroup label="Priority" required>
-        <USelectMenu
+      <div>
+        <label class="block text-sm font-medium text-black mb-2">
+          Priority <span class="text-[#FF6B6B]">*</span>
+        </label>
+        <select
           v-model="form.priority"
-          :options="priorityOptions"
-          option-attribute="label"
-          value-attribute="value"
+          class="w-full px-4 py-2.5 border border-black/20 rounded text-black bg-white focus:outline-none focus:border-[#13B5EA] transition-colors"
           :disabled="loading"
         >
-          <template #leading="{ modelValue }">
-            <UIcon
-              :name="priorityOptions.find(p => p.value === modelValue)?.icon || ''"
-              :class="priorityOptions.find(p => p.value === modelValue)?.color"
-              class="h-4 w-4"
-            />
-          </template>
-        </USelectMenu>
-      </UFormGroup>
+          <option v-for="option in priorityOptions" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </option>
+        </select>
+      </div>
     </div>
 
     <!-- Task Type -->
-    <UFormGroup label="Type">
-      <URadioGroup
-        v-model="form.taskType"
-        :items="taskTypeOptions"
-        :disabled="loading"
-        :ui="{ fieldset: 'grid grid-cols-3 gap-2' }"
-      />
-    </UFormGroup>
+    <div>
+      <label class="block text-sm font-medium text-black mb-2">Type</label>
+      <div class="grid grid-cols-3 gap-2">
+        <button
+          v-for="type in taskTypeOptions"
+          :key="type.value"
+          type="button"
+          class="flex items-center gap-2 px-3 py-2 border rounded text-sm transition-colors"
+          :class="form.taskType === type.value ? 'border-black bg-black text-white' : 'border-black/20 text-black/60 hover:border-black hover:text-black'"
+          :disabled="loading"
+          @click="form.taskType = type.value"
+        >
+          <UIcon :name="type.icon" class="w-4 h-4" />
+          <span>{{ type.label }}</span>
+        </button>
+      </div>
+    </div>
 
     <!-- Assignee & Project -->
     <div class="grid grid-cols-2 gap-4">
-      <UFormGroup label="Assignee">
-        <USelectMenu
+      <div>
+        <label class="block text-sm font-medium text-black mb-2">Assignee</label>
+        <select
           v-model="form.assigneeId"
-          :options="[{ label: 'Unassigned', value: null }, ...members]"
-          placeholder="Select assignee"
-          option-attribute="label"
-          value-attribute="value"
+          class="w-full px-4 py-2.5 border border-black/20 rounded text-black bg-white focus:outline-none focus:border-[#13B5EA] transition-colors"
           :disabled="loading"
         >
-          <template #leading>
-            <UIcon name="i-lucide-user" class="h-4 w-4 text-muted" />
-          </template>
-        </USelectMenu>
-      </UFormGroup>
+          <option :value="null">Unassigned</option>
+          <option v-for="member in members" :key="member.value" :value="member.value">
+            {{ member.label }}
+          </option>
+        </select>
+      </div>
 
-      <UFormGroup label="Project">
-        <USelectMenu
+      <div>
+        <label class="block text-sm font-medium text-black mb-2">Project</label>
+        <select
           v-model="form.projectId"
-          :options="[{ label: 'No project', value: null }, ...projects]"
-          placeholder="Select project"
-          option-attribute="label"
-          value-attribute="value"
+          class="w-full px-4 py-2.5 border border-black/20 rounded text-black bg-white focus:outline-none focus:border-[#13B5EA] transition-colors"
           :disabled="loading"
         >
-          <template #leading>
-            <UIcon name="i-lucide-folder" class="h-4 w-4 text-muted" />
-          </template>
-        </USelectMenu>
-      </UFormGroup>
+          <option :value="null">No project</option>
+          <option v-for="project in projects" :key="project.value" :value="project.value">
+            {{ project.label }}
+          </option>
+        </select>
+      </div>
     </div>
 
     <!-- Dates -->
     <div class="grid grid-cols-2 gap-4">
-      <UFormGroup label="Start Date">
-        <UInput
+      <div>
+        <label class="block text-sm font-medium text-black mb-2">Start Date</label>
+        <input
           v-model="form.startDate"
           type="date"
+          class="w-full px-4 py-2.5 border border-black/20 rounded text-black focus:outline-none focus:border-[#13B5EA] transition-colors"
           :disabled="loading"
         />
-      </UFormGroup>
+      </div>
 
-      <UFormGroup label="Due Date">
-        <UInput
+      <div>
+        <label class="block text-sm font-medium text-black mb-2">Due Date</label>
+        <input
           v-model="form.dueDate"
           type="date"
+          class="w-full px-4 py-2.5 border border-black/20 rounded text-black focus:outline-none focus:border-[#13B5EA] transition-colors"
           :disabled="loading"
         />
-      </UFormGroup>
+      </div>
     </div>
 
     <!-- Estimated Hours -->
-    <UFormGroup label="Estimated Hours">
-      <UInput
-        v-model.number="form.estimatedHours"
-        type="number"
-        min="0"
-        step="0.5"
-        placeholder="0"
-        :disabled="loading"
-      >
-        <template #trailing>
-          <span class="text-muted text-sm">hours</span>
-        </template>
-      </UInput>
-    </UFormGroup>
+    <div>
+      <label class="block text-sm font-medium text-black mb-2">Estimated Hours</label>
+      <div class="relative">
+        <input
+          v-model.number="form.estimatedHours"
+          type="number"
+          min="0"
+          step="0.5"
+          placeholder="0"
+          class="w-full px-4 py-2.5 border border-black/20 rounded text-black placeholder:text-black/40 focus:outline-none focus:border-[#13B5EA] transition-colors"
+          :disabled="loading"
+        />
+        <span class="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-black/40">hours</span>
+      </div>
+    </div>
 
     <!-- Labels -->
-    <UFormGroup label="Labels">
-      <USelectMenu
-        v-model="form.labelIds"
-        :items="labels.map(l => ({ label: l.name, value: l.id, color: l.color }))"
-        placeholder="Select labels"
-        value-key="value"
-        multiple
-        :disabled="loading"
-      />
-    </UFormGroup>
+    <div>
+      <label class="block text-sm font-medium text-black mb-2">Labels</label>
+      <div class="flex flex-wrap gap-2">
+        <button
+          v-for="label in labels"
+          :key="label.id"
+          type="button"
+          class="px-3 py-1.5 text-sm rounded border transition-colors"
+          :class="form.labelIds.includes(label.id) ? 'border-black bg-black text-white' : 'border-black/20 text-black/60 hover:border-black'"
+          :style="!form.labelIds.includes(label.id) ? { borderColor: label.color + '40', color: label.color } : {}"
+          :disabled="loading"
+          @click="form.labelIds = form.labelIds.includes(label.id) ? form.labelIds.filter(id => id !== label.id) : [...form.labelIds, label.id]"
+        >
+          {{ label.name }}
+        </button>
+      </div>
+    </div>
 
     <!-- Actions -->
-    <div class="flex justify-end gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-700">
-      <UButton
-        label="Cancel"
-        color="neutral"
-        variant="ghost"
+    <div class="flex justify-end gap-3 pt-5 border-t border-black/10">
+      <button
+        type="button"
+        class="px-5 py-2.5 border border-black/20 text-black font-medium rounded hover:bg-black/5 transition-colors"
         :disabled="loading"
         @click="emit('cancel')"
-      />
-      <UButton
-        :label="isEditing ? 'Update Task' : 'Create Task'"
+      >
+        Cancel
+      </button>
+      <button
         type="submit"
-        color="primary"
-        :loading="loading"
-      />
+        class="px-5 py-2.5 bg-black text-white font-medium rounded hover:bg-black/80 transition-colors disabled:opacity-50"
+        :disabled="loading"
+      >
+        {{ loading ? 'Saving...' : (isEditing ? 'Update Task' : 'Create Task') }}
+      </button>
     </div>
   </form>
 </template>

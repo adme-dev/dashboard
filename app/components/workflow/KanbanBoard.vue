@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import type { Task, TaskStatus, KanbanFilters, TaskPriority } from '~/types'
+import type { Task, TaskStatus, KanbanFilters, TaskPriority, TaskLabel } from '~/types'
 
 const props = defineProps<{
   departmentId?: string
   projectId?: string
   filters?: KanbanFilters
   selectedTaskId?: string | null
+  availableLabels?: TaskLabel[]
 }>()
 
 const emit = defineEmits<{
@@ -14,6 +15,8 @@ const emit = defineEmits<{
   createTask: [statusId: string]
   taskEdit: [task: Task]
   taskDelete: [task: Task]
+  taskLabelsUpdate: [taskId: string, labelIds: string[]]
+  refreshLabels: []  // New event to tell parent to refresh labels
 }>()
 
 // Fetch statuses for this department
@@ -150,7 +153,7 @@ const handleDrop = async (targetStatusId: string, targetIndex: number) => {
         method: 'PATCH',
         body: {
           statusId: targetStatusId,
-          expectedVersion: task.version // Pass version for conflict detection
+          expectedVersion: task.version
         }
       })
     }
@@ -191,7 +194,6 @@ const handleDrop = async (targetStatusId: string, targetIndex: number) => {
         color: 'warning',
         icon: 'i-lucide-users'
       })
-      // Refresh to get the latest data
       await refreshTasks()
     } else {
       toast.add({
@@ -233,20 +235,75 @@ const handleTaskDelete = async (task: Task) => {
   emit('taskDelete', task)
 }
 
+const handleTaskLabelsUpdate = async (taskId: string, labelIds: string[]) => {
+  try {
+    // Use tags API - tags and labels are the same thing
+    await $fetch(`/api/agency/tasks/${taskId}/tags`, {
+      method: 'PUT',
+      body: { tagIds: labelIds }
+    })
+    // Refresh tasks to get updated labels
+    await refreshTasks()
+    // Emit event for parent
+    emit('taskLabelsUpdate', taskId, labelIds)
+    toast.add({
+      title: 'Labels updated',
+      color: 'success',
+      icon: 'i-lucide-check'
+    })
+  } catch (error) {
+    console.error('Failed to update labels:', error)
+    toast.add({
+      title: 'Failed to update labels',
+      color: 'error',
+      icon: 'i-lucide-alert-circle'
+    })
+  }
+}
+
+// Handle new label creation
+const handleCreateLabel = async (label: { name: string; color: string }) => {
+  try {
+    // Create the new tag/label
+    await $fetch('/api/agency/tags', {
+      method: 'POST',
+      body: {
+        name: label.name,
+        color: label.color
+      }
+    })
+    
+    // Notify parent to refresh labels list
+    emit('refreshLabels')
+    
+    toast.add({
+      title: 'Label created',
+      description: `"${label.name}" has been created`,
+      color: 'success',
+      icon: 'i-lucide-check'
+    })
+  } catch (error) {
+    console.error('Failed to create label:', error)
+    toast.add({
+      title: 'Failed to create label',
+      color: 'error',
+      icon: 'i-lucide-alert-circle'
+    })
+  }
+}
+
 // ============================================
 // Keyboard Navigation
 // ============================================
 const focusedColumnIndex = ref(0)
 const focusedTaskIndex = ref(0)
 
-// Get the currently focused task
 const focusedTask = computed(() => {
   const column = columns.value[focusedColumnIndex.value]
   if (!column) return null
   return column.tasks[focusedTaskIndex.value] || null
 })
 
-// Navigate with arrow keys
 const handleKeyDown = (event: KeyboardEvent) => {
   const totalColumns = columns.value.length
   if (totalColumns === 0) return
@@ -280,7 +337,6 @@ const handleKeyDown = (event: KeyboardEvent) => {
       break
     case 'n':
     case 'N':
-      // Create new task in current column (only if not in an input field)
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
       event.preventDefault()
       const currentStatusId = columns.value[focusedColumnIndex.value]?.status.id
@@ -290,7 +346,6 @@ const handleKeyDown = (event: KeyboardEvent) => {
       break
     case 'e':
     case 'E':
-      // Edit selected task
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
       event.preventDefault()
       if (focusedTask.value) {
@@ -301,7 +356,6 @@ const handleKeyDown = (event: KeyboardEvent) => {
     case '2':
     case '3':
     case '4':
-      // Set priority: 1=urgent, 2=high, 3=medium, 4=low
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
       if (focusedTask.value) {
         const priorityMap: Record<string, TaskPriority> = {
@@ -317,7 +371,6 @@ const handleKeyDown = (event: KeyboardEvent) => {
       }
       break
     case 'Escape':
-      // Blur focus
       event.preventDefault()
       ;(document.activeElement as HTMLElement)?.blur()
       break
@@ -348,7 +401,6 @@ const updateTaskPriority = async (task: Task, newPriority: TaskPriority) => {
   }
 }
 
-// Expose methods and data for parent access (keyboard navigation)
 defineExpose({
   refreshTasks,
   columns,
@@ -366,20 +418,13 @@ defineExpose({
 
 <template>
   <div
-    class="h-full flex flex-col"
+    class="h-full flex flex-col bg-white"
     @keydown="handleKeyDown"
     tabindex="0"
     role="application"
     aria-label="Kanban board. Use arrow keys to navigate, Enter to open task, N to create, E to edit, 1-4 to set priority."
   >
-    <!-- Keyboard shortcuts help (screen reader only) -->
-    <div class="sr-only" aria-live="polite">
-      <template v-if="focusedTask">
-        Currently focused: {{ focusedTask.title }}. Column {{ focusedColumnIndex + 1 }} of {{ columns.length }}.
-      </template>
-    </div>
-
-    <!-- Loading state with improved skeletons -->
+    <!-- Loading state -->
     <template v-if="loading">
       <div
         class="flex gap-4 p-4 overflow-x-auto"
@@ -416,6 +461,7 @@ defineExpose({
           :focused-task-id="focusedColumnIndex === columnIndex ? focusedTask?.id : undefined"
           :column-index="columnIndex"
           :total-columns="columns.length"
+          :available-labels="availableLabels"
           @task-click="handleTaskClick"
           @task-drag-start="handleDragStart"
           @task-drag-end="handleDragEnd"
@@ -425,13 +471,15 @@ defineExpose({
           @task-status-change="handleTaskStatusChange"
           @task-edit="handleTaskEdit"
           @task-delete="handleTaskDelete"
+          @task-labels-update="handleTaskLabelsUpdate"
+          @create-label="handleCreateLabel"
         />
 
         <!-- Empty state if no columns -->
         <div v-if="columns.length === 0" class="flex-1 flex items-center justify-center">
-          <div class="text-center">
-            <UIcon name="i-lucide-columns" class="h-12 w-12 text-muted mx-auto mb-3" />
-            <p class="text-muted">No statuses configured for this department</p>
+          <div class="text-center p-8 border border-black/20 rounded-lg">
+            <UIcon name="i-lucide-columns" class="h-12 w-12 text-black/30 mx-auto mb-3" />
+            <p class="text-black/60">No statuses configured for this department</p>
           </div>
         </div>
       </div>
@@ -440,9 +488,8 @@ defineExpose({
 </template>
 
 <style scoped>
-/* Custom scrollbar for horizontal scroll */
 .overflow-x-auto::-webkit-scrollbar {
-  height: 8px;
+  height: 6px;
 }
 
 .overflow-x-auto::-webkit-scrollbar-track {
@@ -450,22 +497,20 @@ defineExpose({
 }
 
 .overflow-x-auto::-webkit-scrollbar-thumb {
-  background: var(--ui-border);
-  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
 }
 
 .overflow-x-auto::-webkit-scrollbar-thumb:hover {
-  background: var(--ui-border-hover);
+  background: rgba(0, 0, 0, 0.3);
 }
 
-/* Mobile responsive adjustments */
 @media (max-width: 768px) {
   .flex-1.flex.gap-4 {
     gap: 0.5rem;
     padding: 0.5rem;
   }
 
-  /* Enable snap scrolling on mobile for better UX */
   .overflow-x-auto {
     scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
@@ -473,13 +518,11 @@ defineExpose({
 
   .overflow-x-auto > :deep(.flex-shrink-0) {
     scroll-snap-align: start;
-    /* Full width columns on mobile */
     width: calc(100vw - 2rem) !important;
     min-width: calc(100vw - 2rem) !important;
   }
 }
 
-/* Small mobile (< 480px) */
 @media (max-width: 480px) {
   .flex-1.flex.gap-4 {
     gap: 0.25rem;

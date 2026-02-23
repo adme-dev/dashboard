@@ -240,27 +240,27 @@ const showTemplates = ref(false)
               </template>
 
               <div class="space-y-4">
-                <UFormGroup label="Title" required>
+                <UFormField label="Title" required>
                   <UInput v-model="form.title" placeholder="Enter quote title" />
-                </UFormGroup>
+                </UFormField>
 
-                <UFormGroup label="Description">
+                <UFormField label="Description">
                   <UTextarea v-model="form.description" placeholder="Brief description of this quote" />
-                </UFormGroup>
+                </UFormField>
 
                 <div class="grid grid-cols-2 gap-4">
-                  <UFormGroup label="Client">
+                  <UFormField label="Client">
                     <USelectMenu
                       v-model="form.clientId"
                       :options="clients"
                       placeholder="Select client"
                       searchable
                     />
-                  </UFormGroup>
+                  </UFormField>
 
-                  <UFormGroup label="Valid Until">
+                  <UFormField label="Valid Until">
                     <UInput v-model="form.validUntil" type="date" />
-                  </UFormGroup>
+                  </UFormField>
                 </div>
               </div>
             </UCard>
@@ -304,61 +304,61 @@ const showTemplates = ref(false)
                   <div class="flex items-start gap-4">
                     <div class="flex-1 grid grid-cols-12 gap-4">
                       <div class="col-span-6">
-                        <UFormGroup label="Name" size="sm">
+                        <UFormField label="Name" size="sm">
                           <UInput v-model="item.name" placeholder="Item name" size="sm" />
-                        </UFormGroup>
+                        </UFormField>
                       </div>
 
                       <div class="col-span-3">
-                        <UFormGroup label="Type" size="sm">
+                        <UFormField label="Type" size="sm">
                           <USelectMenu
                             v-model="item.itemType"
                             :options="itemTypeOptions"
                             size="sm"
                           />
-                        </UFormGroup>
+                        </UFormField>
                       </div>
 
                       <div class="col-span-3">
-                        <UFormGroup label="Unit" size="sm">
+                        <UFormField label="Unit" size="sm">
                           <UInput v-model="item.unit" placeholder="unit" size="sm" />
-                        </UFormGroup>
+                        </UFormField>
                       </div>
 
                       <div class="col-span-12">
-                        <UFormGroup label="Description" size="sm">
+                        <UFormField label="Description" size="sm">
                           <UInput v-model="item.description" placeholder="Item description" size="sm" />
-                        </UFormGroup>
+                        </UFormField>
                       </div>
 
                       <div class="col-span-3">
-                        <UFormGroup label="Quantity" size="sm">
+                        <UFormField label="Quantity" size="sm">
                           <UInput v-model.number="item.quantity" type="number" min="0" step="0.01" size="sm" />
-                        </UFormGroup>
+                        </UFormField>
                       </div>
 
                       <div class="col-span-3">
-                        <UFormGroup label="Unit Price" size="sm">
+                        <UFormField label="Unit Price" size="sm">
                           <UInput v-model.number="item.unitPrice" type="number" min="0" step="0.01" size="sm">
                             <template #leading>
                               <span class="text-gray-400">$</span>
                             </template>
                           </UInput>
-                        </UFormGroup>
+                        </UFormField>
                       </div>
 
                       <div class="col-span-3">
-                        <UFormGroup label="Discount %" size="sm">
+                        <UFormField label="Discount %" size="sm">
                           <UInput v-model.number="item.discountPercent" type="number" min="0" max="100" size="sm" />
-                        </UFormGroup>
+                        </UFormField>
                       </div>
 
                       <div class="col-span-3">
-                        <UFormGroup label="Line Total" size="sm">
+                        <UFormField label="Line Total" size="sm">
                           <div class="h-8 flex items-center font-medium">
                             {{ formatCurrency(getLineTotal(item)) }}
                           </div>
-                        </UFormGroup>
+                        </UFormField>
                       </div>
 
                       <div class="col-span-12 flex items-center gap-4">
@@ -386,17 +386,17 @@ const showTemplates = ref(false)
               </template>
 
               <div class="space-y-4">
-                <UFormGroup label="Payment Terms">
+                <UFormField label="Payment Terms">
                   <UInput v-model="form.paymentTerms" placeholder="e.g., 50% upfront, 50% on completion" />
-                </UFormGroup>
+                </UFormField>
 
-                <UFormGroup label="Terms & Conditions">
+                <UFormField label="Terms & Conditions">
                   <UTextarea v-model="form.terms" placeholder="Terms and conditions" />
-                </UFormGroup>
+                </UFormField>
 
-                <UFormGroup label="Notes for Client">
+                <UFormField label="Notes for Client">
                   <UTextarea v-model="form.clientNotes" placeholder="Notes visible to the client" />
-                </UFormGroup>
+                </UFormField>
               </div>
             </UCard>
           </div>
@@ -410,9 +410,9 @@ const showTemplates = ref(false)
               </template>
 
               <div class="space-y-4">
-                <UFormGroup label="Currency">
+                <UFormField label="Currency">
                   <USelectMenu v-model="form.currency" :options="currencyOptions" />
-                </UFormGroup>
+                </UFormField>
 
                 <div class="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-2">
                   <div class="flex justify-between">

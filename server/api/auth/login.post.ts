@@ -1,128 +1,86 @@
-/**
- * User Login
- * POST /api/auth/login
- */
-
-import { queryOne } from '~~/server/utils/db'
-import { verifyPassword, createSession, logActivity } from '~~/server/utils/auth'
-
-interface LoginBody {
-  email: string
-  password: string
-  remember?: boolean
-}
+import { getUserByEmail, verifyPassword, createJwt } from '../../utils/auth'
+import { queryOne } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody<LoginBody>(event)
-
-  if (!body.email || !body.password) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Email and password are required'
-    })
-  }
-
-  const email = body.email.toLowerCase().trim()
-
   try {
-    // Get user
-    const user = await queryOne(`
-      SELECT id, email, name, password_hash, user_role, is_active, avatar_url, department_id
-      FROM team_members
-      WHERE email = $1
-    `, [email])
+    const body = await readBody(event)
+    const { email, password } = body
 
-    if (!user) {
-      // Use generic message to prevent email enumeration
+    // Validation
+    if (!email || !password) {
       throw createError({
-        statusCode: 401,
-        statusMessage: 'Invalid email or password'
+        statusCode: 400,
+        statusMessage: 'Email and password are required'
       })
     }
 
-    // Check if user is active
+    // Get user
+    const user = await getUserByEmail(email)
+    if (!user) {
+      throw createError({
+        statusCode: 401,
+        statusMessage: 'Invalid credentials'
+      })
+    }
+
     if (!user.is_active) {
       throw createError({
-        statusCode: 403,
-        statusMessage: 'Your account has been deactivated. Please contact an administrator.'
+        statusCode: 401,
+        statusMessage: 'Account is deactivated'
       })
     }
 
-    // Check if password is set (could be guest or oauth user)
-    if (!user.password_hash) {
+    // Get password hash
+    const userWithPassword = await queryOne<{ password_hash: string }>(
+      `SELECT password_hash FROM team_members WHERE id = $1`,
+      [user.id]
+    )
+
+    if (!userWithPassword?.password_hash) {
       throw createError({
         statusCode: 401,
-        statusMessage: 'Invalid email or password'
+        statusMessage: 'Invalid credentials'
       })
     }
 
     // Verify password
-    const isValid = await verifyPassword(body.password, user.password_hash)
-
+    const isValid = await verifyPassword(password, userWithPassword.password_hash)
     if (!isValid) {
-      // Log failed attempt
-      await logActivity({
-        userId: user.id,
-        action: 'login_failed',
-        resourceType: 'user',
-        resourceId: user.id,
-        event
-      })
-
       throw createError({
         statusCode: 401,
-        statusMessage: 'Invalid email or password'
+        statusMessage: 'Invalid credentials'
       })
     }
 
-    // Create session (longer expiry if "remember me")
-    const expiryHours = body.remember ? 24 * 30 : 24 * 7 // 30 days vs 7 days
-    const { token, expiresAt } = await createSession(user.id, event)
+    // Create JWT
+    const token = await createJwt({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      iat: Date.now()
+    })
 
-    // Update last login
-    await queryOne(`
-      UPDATE team_members
-      SET last_login_at = NOW(), last_active_at = NOW()
-      WHERE id = $1
-    `, [user.id])
-
-    // Set auth cookie
+    // Set HTTP-only cookie
     setCookie(event, 'auth_token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      expires: expiresAt,
-      path: '/'
-    })
-
-    // Log successful login
-    await logActivity({
-      userId: user.id,
-      action: 'login',
-      resourceType: 'user',
-      resourceId: user.id,
-      event
+      sameSite: 'strict',
+      maxAge: 60 * 60 * 24 * 7 // 7 days
     })
 
     return {
+      success: true,
       user: {
         id: user.id,
         email: user.email,
         name: user.name,
-        role: user.user_role,
-        avatarUrl: user.avatar_url,
-        departmentId: user.department_id
-      },
-      token,
-      expiresAt
+        role: user.role
+      }
     }
   } catch (error: any) {
-    if (error.statusCode) throw error
-
-    console.error('Login error:', error)
     throw createError({
-      statusCode: 500,
-      statusMessage: 'Login failed'
+      statusCode: error.statusCode || 500,
+      statusMessage: error.statusMessage || 'Login failed'
     })
   }
 })

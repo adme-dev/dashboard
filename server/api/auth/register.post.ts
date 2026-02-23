@@ -120,7 +120,7 @@ export default defineEventHandler(async (event) => {
     } else {
       // Send email verification for non-invite signups
       const verificationToken = generateToken()
-      const tokenHash = hashToken(verificationToken)
+      const tokenHash = await hashToken(verificationToken)
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
 
       await queryOne(`

@@ -194,6 +194,18 @@ const links = [[{
     onSelect: () => {
       open.value = false
     }
+  }, {
+    label: 'Monday Migration',
+    to: '/agency/monday',
+    onSelect: () => {
+      open.value = false
+    }
+  }, {
+    label: 'Boards',
+    to: '/agency/boards',
+    onSelect: () => {
+      open.value = false
+    }
   }]
 }, {
   label: 'Settings',
@@ -223,6 +235,18 @@ const links = [[{
   }, {
     label: 'Security',
     to: '/settings/security',
+    onSelect: () => {
+      open.value = false
+    }
+  }, {
+    label: 'Admin',
+    to: '/settings/admin',
+    onSelect: () => {
+      open.value = false
+    }
+  }, {
+    label: 'Integrations',
+    to: '/settings/integrations/monday',
     onSelect: () => {
       open.value = false
     }

@@ -1,0 +1,29 @@
+name = "agency-dashboard"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ============================================
+# Environment Variables (non-secret)
+# ============================================
+[vars]
+APP_NAME = "XeroFlow Agency"
+NODE_VERSION = "22"
+
+# Preview/Staging environment
+[env.preview]
+name = "agency-dashboard-preview"
+[env.preview.vars]
+APP_URL = "https://preview.agency-dashboard.pages.dev"
+EMAIL_FROM = "noreply@preview.agency-dashboard.pages.dev"
+XERO_REDIRECT_URI = "https://preview.agency-dashboard.pages.dev/api/xero/callback"
+NUXT_PUBLIC_ZERO_SERVER_URL = "https://zero-preview.agency-dashboard.pages.dev"
+
+# Production environment
+[env.production]
+name = "agency-dashboard"
+[env.production.vars]
+APP_URL = "https://agency-dashboard.pages.dev"
+EMAIL_FROM = "noreply@yourdomain.com"
+XERO_REDIRECT_URI = "https://agency-dashboard.pages.dev/api/xero/callback"
+NUXT_PUBLIC_ZERO_SERVER_URL = "https://zero.agency-dashboard.pages.dev"
