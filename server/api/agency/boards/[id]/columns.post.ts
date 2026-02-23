@@ -1,19 +1,20 @@
 /**
  * Add Column to Board
  * POST /api/agency/boards/:id/columns
+ *
+ * Creates a column in custom_columns (modern system).
  */
 
 import { createError, getRouterParam, readBody } from 'h3'
 import { requireAuth } from '../../../../utils/auth'
-import { queryOne, execute } from '../../../../utils/db'
+import { queryOne } from '../../../../utils/db'
 
-// Check if string is UUID
 function isUUID(str: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str)
 }
 
 export default eventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
   const boardId = getRouterParam(event, 'id')
   const body = await readBody(event)
 
@@ -27,51 +28,50 @@ export default eventHandler(async (event) => {
   }
 
   try {
-    // Get department ID - use proper type handling
-    let dept: any
-    if (isUUID(boardId)) {
-      dept = await queryOne(`
-        SELECT id FROM departments WHERE id = $1::uuid
-      `, [boardId])
-    } else {
-      dept = await queryOne(`
-        SELECT id FROM departments WHERE slug = $1
-      `, [boardId])
-    }
+    const dept = isUUID(boardId)
+      ? await queryOne('SELECT id FROM departments WHERE id = $1::uuid', [boardId])
+      : await queryOne('SELECT id FROM departments WHERE slug = $1', [boardId])
 
     if (!dept) {
       throw createError({ statusCode: 404, statusMessage: 'Board not found' })
     }
 
-    // Generate slug
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').substring(0, 50)
-    
-    // Get max sort order
-    const maxOrder = await queryOne(`
-      SELECT MAX(sort_order) as max FROM board_columns WHERE department_id = $1
-    `, [dept.id])
-    
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').substring(0, 100)
+
+    const maxOrder = await queryOne(
+      'SELECT MAX(sort_order) as max FROM custom_columns WHERE department_id = $1',
+      [dept.id]
+    )
     const sortOrder = (maxOrder?.max || 0) + 1
 
-    // Create column
     const column = await queryOne(`
-      INSERT INTO board_columns (department_id, name, slug, type, settings, sort_order)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO custom_columns (department_id, name, slug, column_type, settings, sort_order, created_by)
+      VALUES ($1, $2, $3, $4::column_type, $5, $6, $7)
       ON CONFLICT (department_id, slug) DO UPDATE SET
         name = EXCLUDED.name,
-        type = EXCLUDED.type,
+        column_type = EXCLUDED.column_type,
         settings = EXCLUDED.settings,
         is_visible = true,
         updated_at = NOW()
-      RETURNING *
-    `, [dept.id, name, slug, type, JSON.stringify(settings || {}), sortOrder])
+      RETURNING
+        id,
+        name,
+        slug,
+        column_type as "columnType",
+        column_type as type,
+        settings,
+        sort_order as "sortOrder",
+        is_visible as "isVisible",
+        width
+    `, [dept.id, name, slug, type, JSON.stringify(settings || {}), sortOrder, user.id])
 
     return { column }
-
   } catch (error: any) {
+    if (error.statusCode) throw error
+    console.error('Failed to add column:', error)
     throw createError({
       statusCode: 500,
-      statusMessage: `Failed to add column: ${error.message}`
+      statusMessage: `Failed to add column: ${error.message}`,
     })
   }
 })

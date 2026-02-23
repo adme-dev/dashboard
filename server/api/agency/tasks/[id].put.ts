@@ -3,6 +3,7 @@
  */
 
 import { queryOne, transaction } from '~~/server/utils/db'
+import { emitBoardEvent } from '~~/server/utils/boardEvents'
 
 interface UpdateTaskBody {
   title?: string
@@ -176,6 +177,16 @@ export default defineEventHandler(async (event) => {
 
       return updatedTask
     })
+
+    // Emit board event for real-time updates
+    if (currentTask.department_id && changes.length > 0) {
+      emitBoardEvent({
+        boardId: currentTask.department_id,
+        type: 'task_updated',
+        taskId: id,
+        changes: Object.fromEntries(changes.map(c => [c.field, c.newValue])),
+      })
+    }
 
     // Fetch complete updated task
     const task = await queryOne(`

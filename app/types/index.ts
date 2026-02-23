@@ -162,3 +162,82 @@ export interface TeamMemberWorkload {
   estimatedHoursRemaining: number
   overdueTasks: number
 }
+
+// ============================================
+// Board / Custom Column Types
+// ============================================
+export type CustomColumnType =
+  | 'text'
+  | 'number'
+  | 'currency'
+  | 'date'
+  | 'timeline'
+  | 'status'
+  | 'dropdown'
+  | 'people'
+  | 'checkbox'
+  | 'rating'
+  | 'link'
+  | 'email'
+  | 'phone'
+  | 'location'
+  | 'formula'
+  | 'tags'
+  | 'files'
+  | 'progress'
+  | 'color'
+  | 'dependency'
+
+export interface CustomColumn {
+  id: string
+  departmentId?: string
+  name: string
+  slug: string
+  columnType: CustomColumnType
+  description?: string
+  settings: {
+    defaultValue?: any
+    options?: ColumnDropdownOption[]
+    formula?: string
+    currencyCode?: string
+    decimalPlaces?: number
+    prefix?: string
+    suffix?: string
+    minValue?: number
+    maxValue?: number
+    dateFormat?: string
+    showTime?: boolean
+  }
+  isVisible: boolean
+  isRequired: boolean
+  allowedRoles?: string[]
+  editableRoles?: string[]
+  width: number
+  sortOrder: number
+  createdBy?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ColumnDropdownOption {
+  id: string
+  columnId: string
+  value: string
+  label: string
+  color: string
+  sortOrder: number
+  isDefault: boolean
+}
+
+export interface TaskColumnValue {
+  id: string
+  taskId: string
+  columnId: string
+  textValue?: string
+  numberValue?: number
+  dateValue?: string
+  dateEndValue?: string
+  jsonValue?: any
+  createdAt: string
+  updatedAt: string
+}

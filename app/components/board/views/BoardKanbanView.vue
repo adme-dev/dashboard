@@ -1,0 +1,201 @@
+<template>
+  <div class="flex-1 flex gap-4 p-4 overflow-x-auto overflow-y-hidden">
+    <!-- Pick which status/dropdown column to group by -->
+    <div v-if="!kanbanColumn && statusColumns.length > 1" class="flex-1 flex items-center justify-center">
+      <div class="text-center p-8 border rounded-lg bg-white">
+        <UIcon name="i-lucide-kanban" class="w-12 h-12 text-gray-300 mx-auto mb-3" />
+        <h3 class="font-medium mb-3">Choose a column for Kanban lanes</h3>
+        <div class="flex flex-wrap gap-2 justify-center">
+          <UButton
+            v-for="col in statusColumns"
+            :key="col.id"
+            variant="outline"
+            size="sm"
+            @click="selectedColumnId = col.id"
+          >
+            {{ col.name }}
+          </UButton>
+        </div>
+      </div>
+    </div>
+
+    <!-- Kanban lanes -->
+    <template v-else>
+      <div
+        v-for="lane in lanes"
+        :key="lane.id"
+        class="flex-shrink-0 w-72 flex flex-col bg-gray-50 rounded-lg border"
+      >
+        <!-- Lane header -->
+        <div class="p-3 border-b flex items-center gap-2">
+          <div
+            class="w-3 h-3 rounded-full"
+            :style="{ backgroundColor: lane.color }"
+          />
+          <span class="text-sm font-semibold flex-1 truncate">{{ lane.label }}</span>
+          <span class="text-xs text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded-full">{{ lane.items.length }}</span>
+        </div>
+
+        <!-- Lane items -->
+        <div class="flex-1 overflow-y-auto p-2 space-y-2">
+          <div
+            v-for="item in lane.items"
+            :key="item.id"
+            class="bg-white rounded-lg border p-3 cursor-pointer hover:shadow-sm transition-shadow"
+            :class="{ 'ring-2 ring-blue-500': selection.isSelected(item.id) }"
+            @click="$emit('openTask', item.id)"
+          >
+            <p class="text-sm font-medium mb-2">{{ item.title }}</p>
+            <!-- Show a few key column values -->
+            <div class="flex flex-wrap gap-1">
+              <template v-for="col in previewColumns" :key="col.id">
+                <div class="text-xs">
+                  <BoardCell
+                    :column="normalizeColumn(col)"
+                    :value="getCellValue(item, col)"
+                    :task-id="item.id"
+                    :readonly="true"
+                    @update="(columnId, payload) => $emit('cellUpdate', item.id, columnId, payload)"
+                  />
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Empty lane -->
+          <div v-if="lane.items.length === 0" class="text-center py-6 text-xs text-gray-400">
+            No items
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty state -->
+      <div v-if="lanes.length === 0" class="flex-1 flex items-center justify-center">
+        <div class="text-center p-8">
+          <UIcon name="i-lucide-kanban" class="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <p class="text-gray-500">No status column found for Kanban view</p>
+        </div>
+      </div>
+    </template>
+  </div>
+</template>
+
+<script setup lang="ts">
+import type { CustomColumn, TaskColumnValue } from '~/types'
+import type { BoardColumn, BoardItem, BoardGroup } from '~/composables/useBoardData'
+import BoardCell from '~/components/board/BoardCell.vue'
+
+const props = defineProps<{
+  groups: BoardGroup[]
+  columns: BoardColumn[]
+  normalizeColumn: (col: BoardColumn) => CustomColumn
+  getCellValue: (item: BoardItem, col: BoardColumn) => TaskColumnValue | null
+  selection: {
+    isSelected: (id: string) => boolean
+  }
+}>()
+
+defineEmits<{
+  openTask: [taskId: string]
+  cellUpdate: [taskId: string, columnId: string, payload: any]
+}>()
+
+const selectedColumnId = ref<string | null>(null)
+
+// Find status/dropdown columns suitable for kanban lanes
+const statusColumns = computed(() =>
+  props.columns.filter(c => {
+    const type = c.columnType || c.type
+    return type === 'status' || type === 'dropdown'
+  })
+)
+
+// Auto-select first status column if only one available
+const kanbanColumn = computed(() => {
+  if (selectedColumnId.value) {
+    return props.columns.find(c => c.id === selectedColumnId.value)
+  }
+  if (statusColumns.value.length === 1) {
+    return statusColumns.value[0]
+  }
+  // Auto-select first status column
+  const statusCol = statusColumns.value.find(c => (c.columnType || c.type) === 'status')
+  return statusCol || statusColumns.value[0] || null
+})
+
+// Preview columns: show a few non-kanban columns on cards
+const previewColumns = computed(() =>
+  props.columns
+    .filter(c => c.id !== kanbanColumn.value?.id)
+    .filter(c => {
+      const type = c.columnType || c.type
+      return type === 'people' || type === 'date' || type === 'priority' || type === 'progress'
+    })
+    .slice(0, 3)
+)
+
+// All items flat
+const allItems = computed<BoardItem[]>(() => {
+  const items: BoardItem[] = []
+  for (const g of props.groups) {
+    items.push(...g.items)
+  }
+  return items
+})
+
+// Build lanes from column options
+const lanes = computed(() => {
+  const col = kanbanColumn.value
+  if (!col) return []
+
+  const options: { id: string; label: string; color: string }[] =
+    col.settings?.options || []
+
+  // If no options, group by distinct values
+  if (options.length === 0) {
+    // Fallback: group by text value
+    const grouped = new Map<string, BoardItem[]>()
+    for (const item of allItems.value) {
+      const cv = props.getCellValue(item, col)
+      const key = cv?.textValue || cv?.jsonValue?.selectedIds?.[0] || 'Unset'
+      if (!grouped.has(key)) grouped.set(key, [])
+      grouped.get(key)!.push(item)
+    }
+    return Array.from(grouped.entries()).map(([label, items]) => ({
+      id: label,
+      label,
+      color: '#C4C4C4',
+      items,
+    }))
+  }
+
+  // Build lanes from options
+  const result = options.map(opt => ({
+    id: opt.id,
+    label: opt.label,
+    color: opt.color || '#C4C4C4',
+    items: [] as BoardItem[],
+  }))
+
+  // Add "Unset" lane
+  const unsetLane = { id: '__unset__', label: 'Unset', color: '#C4C4C4', items: [] as BoardItem[] }
+
+  for (const item of allItems.value) {
+    const cv = props.getCellValue(item, col)
+    const selectedId = cv?.jsonValue?.selectedIds?.[0] || cv?.jsonValue?.selected_id
+    const lane = result.find(l => l.id === selectedId)
+    if (lane) {
+      lane.items.push(item)
+    } else {
+      unsetLane.items.push(item)
+    }
+  }
+
+  // Only show unset lane if it has items
+  if (unsetLane.items.length > 0) {
+    result.push(unsetLane)
+  }
+
+  return result
+})
+</script>

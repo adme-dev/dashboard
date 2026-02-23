@@ -4,6 +4,7 @@
 
 import { queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { notifyTaskStatusChanged } from '~~/server/utils/notifications'
+import { emitBoardEvent } from '~~/server/utils/boardEvents'
 
 interface UpdateStatusBody {
   statusId: string
@@ -94,6 +95,22 @@ export default defineEventHandler(async (event) => {
         JSON.stringify({ statusId: newStatus.id, statusName: newStatus.name }),
       ])
     })
+
+    // Emit board event for real-time updates
+    if (currentTask.department_id) {
+      emitBoardEvent({
+        boardId: currentTask.department_id,
+        type: 'status_changed',
+        taskId: id,
+        userId: body.userId,
+        changes: {
+          oldStatusId: currentTask.status_id,
+          oldStatusName: currentTask.old_status_name,
+          newStatusId: newStatus.id,
+          newStatusName: newStatus.name,
+        },
+      })
+    }
 
     // Return updated task
     const updatedTask = await queryOne(`
