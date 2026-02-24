@@ -236,6 +236,5 @@ const groups = computed(() => [{
     </div>
 
     <NotificationsSlideover />
-    <CommandPalette />
   </UDashboardGroup>
 </template>
