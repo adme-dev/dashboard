@@ -144,7 +144,7 @@ const bulkDelete = async () => {
 }
 
 // Fetch tasks
-const { data: tasksData, pending: tasksPending, refresh: refreshTasks } = await useFetch('/api/agency/tasks', {
+const { data: tasksData, pending: tasksPending, refresh: refreshTasks } = useLazyFetch('/api/agency/tasks', {
   query: computed(() => ({
     departmentId: props.departmentId,
     projectId: props.projectId,
@@ -158,26 +158,26 @@ const { data: tasksData, pending: tasksPending, refresh: refreshTasks } = await 
 })
 
 // Fetch statuses for status column
-const { data: statusesData } = await useFetch('/api/agency/statuses', {
+const { data: statusesData } = useLazyFetch('/api/agency/statuses', {
   query: computed(() => ({
     departmentId: props.departmentId
   }))
 })
 
 // Fetch pricing visibility
-const { data: pricingVisibility } = await useFetch('/api/agency/pricing/visibility', {
+const { data: pricingVisibility } = useLazyFetch('/api/agency/pricing/visibility', {
   query: computed(() => ({
     departmentId: props.departmentId
   }))
 })
 
 // Fetch global tags
-const { data: tagsData } = await useFetch('/api/agency/tags', {
+const { data: tagsData } = useLazyFetch('/api/agency/tags', {
   query: { limit: 100 }
 })
 
 // Fetch team members for bulk assign
-const { data: membersData } = await useFetch('/api/agency/team-members', {
+const { data: membersData } = useLazyFetch('/api/agency/team-members', {
   query: computed(() => ({
     departmentId: props.departmentId,
     limit: 50

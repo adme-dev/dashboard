@@ -25,13 +25,13 @@ const dateRange = ref({
 })
 
 // --- Data fetching ---
-const { data: departmentsData } = await useFetch('/api/agency/departments')
+const { data: departmentsData } = useLazyFetch('/api/agency/departments')
 const departments = computed(() => (departmentsData.value as any[]) || [])
 
-const { data: projectsData } = await useFetch('/api/agency/projects')
+const { data: projectsData } = useLazyFetch('/api/agency/projects')
 const projects = computed(() => (projectsData.value as any[]) || [])
 
-const { data: timelineData, pending, refresh } = await useFetch('/api/agency/tasks/timeline', {
+const { data: timelineData, pending, refresh } = useLazyFetch('/api/agency/tasks/timeline', {
   query: computed(() => ({
     departmentId: departmentId.value !== 'all' ? departmentId.value : undefined,
     projectId: projectId.value !== 'all' ? projectId.value : undefined,

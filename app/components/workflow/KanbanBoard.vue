@@ -20,14 +20,14 @@ const emit = defineEmits<{
 }>()
 
 // Fetch statuses for this department
-const { data: statusesData, pending: statusesPending } = await useFetch('/api/agency/statuses', {
+const { data: statusesData, pending: statusesPending } = useLazyFetch('/api/agency/statuses', {
   query: computed(() => ({
     departmentId: props.departmentId
   }))
 })
 
 // Fetch tasks
-const { data: tasksData, pending: tasksPending, refresh: refreshTasks } = await useFetch('/api/agency/tasks', {
+const { data: tasksData, pending: tasksPending, refresh: refreshTasks } = useLazyFetch('/api/agency/tasks', {
   query: computed(() => ({
     departmentId: props.departmentId,
     projectId: props.projectId,
@@ -418,7 +418,7 @@ defineExpose({
 
 <template>
   <div
-    class="h-full flex flex-col bg-white"
+    class="h-full flex flex-col bg-default"
     @keydown="handleKeyDown"
     tabindex="0"
     role="application"
@@ -477,9 +477,9 @@ defineExpose({
 
         <!-- Empty state if no columns -->
         <div v-if="columns.length === 0" class="flex-1 flex items-center justify-center">
-          <div class="text-center p-8 border border-black/20 rounded-lg">
-            <UIcon name="i-lucide-columns" class="h-12 w-12 text-black/30 mx-auto mb-3" />
-            <p class="text-black/60">No statuses configured for this department</p>
+          <div class="text-center p-8 border border-default rounded-lg">
+            <UIcon name="i-lucide-columns" class="h-12 w-12 text-muted mx-auto mb-3" />
+            <p class="text-muted">No statuses configured for this department</p>
           </div>
         </div>
       </div>

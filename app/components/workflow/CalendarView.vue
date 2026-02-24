@@ -28,7 +28,7 @@ const draggedTask = ref<Task | null>(null)
 const dragOverDate = ref<string | null>(null)
 
 // Fetch tasks with reactive query
-const { data: tasksData, pending: tasksPending, refresh: refreshTasks } = await useFetch('/api/agency/tasks', {
+const { data: tasksData, pending: tasksPending, refresh: refreshTasks } = useLazyFetch('/api/agency/tasks', {
   query: computed(() => ({
     departmentId: props.departmentId,
     projectId: props.projectId,

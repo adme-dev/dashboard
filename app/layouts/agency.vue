@@ -8,7 +8,7 @@ const selectedWorkspace = ref<string | null>(null)
 const close = () => { open.value = false }
 
 // Fetch workspaces
-const { data: workspacesData } = await useFetch('/api/agency/workspaces')
+const { data: workspacesData } = useLazyFetch('/api/agency/workspaces')
 const workspaces = computed(() => workspacesData.value?.workspaces || [])
 
 // Build navigation from workspaces

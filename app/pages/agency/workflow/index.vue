@@ -21,7 +21,7 @@ const currentSortConfig = ref<SortRule[]>([])
 const groupBy = ref<string | undefined>(undefined)
 
 // Fetch departments for sidebar
-const { data: departmentsData } = await useFetch('/api/agency/departments')
+const { data: departmentsData } = useLazyFetch('/api/agency/departments')
 const departments = computed(() => (departmentsData.value as Department[]) || [])
 
 const selectedDepartment = computed(() =>
@@ -29,19 +29,19 @@ const selectedDepartment = computed(() =>
 )
 
 // Fetch team members for assignee dropdown
-const { data: teamMembersData } = await useFetch('/api/agency/team-members', {
+const { data: teamMembersData } = useLazyFetch('/api/agency/team-members', {
   query: { active: 'true' }
 })
 const teamMembers = computed(() => (teamMembersData.value as any)?.members || [])
 
 // Fetch projects for project dropdown
-const { data: projectsData } = await useFetch('/api/agency/projects', {
+const { data: projectsData } = useLazyFetch('/api/agency/projects', {
   query: { status: 'active' }
 })
 const projects = computed(() => (projectsData.value as any[]) || [])
 
 // Fetch statuses based on selected department
-const { data: statusesData } = await useFetch('/api/agency/statuses', {
+const { data: statusesData } = useLazyFetch('/api/agency/statuses', {
   query: computed(() => ({
     departmentId: currentDepartmentId.value
   }))
@@ -49,7 +49,7 @@ const { data: statusesData } = await useFetch('/api/agency/statuses', {
 const statuses = computed(() => (statusesData.value as any[]) || [])
 
 // Fetch tags (labels) based on selected department
-const { data: tagsData, refresh: refreshTags } = await useFetch('/api/agency/tags', {
+const { data: tagsData, refresh: refreshTags } = useLazyFetch('/api/agency/tags', {
   query: computed(() => ({
     limit: 100
   }))

@@ -27,7 +27,7 @@ const showDependencies = ref(true)
 const timelineContainer = ref<HTMLElement | null>(null)
 
 // Fetch tasks
-const { data: tasksData, pending: tasksPending, refresh: refreshTasks } = await useFetch('/api/agency/tasks', {
+const { data: tasksData, pending: tasksPending, refresh: refreshTasks } = useLazyFetch('/api/agency/tasks', {
   query: computed(() => ({
     departmentId: props.departmentId,
     projectId: props.projectId,

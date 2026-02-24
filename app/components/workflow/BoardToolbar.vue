@@ -18,34 +18,34 @@ const emit = defineEmits<{
 }>()
 
 // Fetch department members for assignee filter
-const { data: membersData } = await useAsyncData(
+const { data: membersData } = useLazyAsyncData(
   `toolbar-members-${props.departmentId}`,
-  () => fetch(`/api/agency/departments/members?departmentId=${props.departmentId}`).then(r => r.json()) as Promise<{ members: any[] }>,
+  () => $fetch('/api/agency/team-members', { query: { active: 'true' } }) as Promise<{ members: any[] }>,
   { default: () => ({ members: [] }), watch: [() => props.departmentId] }
 )
 
 // Fetch tags for tag filter
-const { data: tagsData } = await useAsyncData(
+const { data: tagsData } = useLazyAsyncData(
   'toolbar-tags',
-  () => fetch('/api/agency/tags?limit=50').then(r => r.json()) as Promise<{ tags: any[] }>
+  () => $fetch('/api/agency/tags', { query: { limit: 50 } }) as Promise<any[]>
 )
 
 // Fetch grouping options
-const { data: groupingOptions } = await useAsyncData(
+const { data: groupingOptions } = useLazyAsyncData(
   `toolbar-grouping-${props.departmentId}`,
-  () => fetch(`/api/agency/grouping/options?departmentId=${props.departmentId}`).then(r => r.json()) as Promise<{ options: any[] }>,
+  () => $fetch('/api/agency/grouping/options', { query: { departmentId: props.departmentId } }) as Promise<{ options: any[] }>,
   { watch: [() => props.departmentId] }
 )
 
 // Fetch sorting presets
-const { data: sortingPresets } = await useAsyncData(
+const { data: sortingPresets } = useLazyAsyncData(
   `toolbar-sorting-${props.departmentId}`,
-  () => fetch(`/api/agency/sorting/presets?departmentId=${props.departmentId}`).then(r => r.json()) as Promise<any[]>,
+  () => $fetch('/api/agency/sorting/presets', { query: { departmentId: props.departmentId } }) as Promise<any[]>,
   { watch: [() => props.departmentId] }
 )
 
 const members = computed(() => membersData.value?.members || [])
-const tags = computed(() => (tagsData.value?.tags as GlobalTag[]) || [])
+const tags = computed(() => (Array.isArray(tagsData.value) ? tagsData.value : (tagsData.value as any)?.tags || []) as GlobalTag[])
 const groupOptions = computed(() => (groupingOptions.value?.options as BoardGroupingOption[]) || [])
 const presets = computed(() => (sortingPresets.value as SortingPreset[]) || [])
 
@@ -137,12 +137,12 @@ const activeFiltersCount = computed(() => {
     <!-- Main Toolbar -->
     <div class="flex items-center gap-3 flex-wrap">
       <!-- View Switcher -->
-      <div class="flex items-center border border-black/20 rounded overflow-hidden">
+      <div class="flex items-center border border-default rounded overflow-hidden">
         <button
           v-for="view in viewOptions"
           :key="view.value"
           class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors"
-          :class="currentView === view.value ? 'bg-black text-white' : 'text-black/60 hover:text-black hover:bg-black/5'"
+          :class="currentView === view.value ? 'bg-inverted text-inverted' : 'text-muted hover:text-default hover:bg-elevated/50'"
           @click="emit('update:currentView', view.value as BoardViewType)"
         >
           <UIcon :name="view.icon" class="w-4 h-4" />
@@ -150,32 +150,31 @@ const activeFiltersCount = computed(() => {
         </button>
       </div>
 
-      <div class="w-px h-6 bg-black/10" />
+      <div class="w-px h-6 bg-default" />
 
       <!-- Search -->
       <div class="relative">
-        <UIcon name="i-lucide-search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-black/40" />
+        <UIcon name="i-lucide-search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
         <input
           :value="localFilters.search"
           type="text"
           placeholder="Search tasks..."
-          class="pl-9 pr-4 py-2 border border-black/20 rounded text-sm focus:outline-none focus:border-[#13B5EA] w-48"
+          class="pl-9 pr-4 py-2 border border-default rounded text-sm bg-default focus:outline-none focus:border-primary w-48"
           @input="updateSearch(($event.target as HTMLInputElement).value)"
         />
       </div>
 
       <!-- Toggle Filters -->
       <button
-        class="flex items-center gap-2 px-3 py-2 border border-black/20 rounded text-sm font-medium transition-colors"
-        :class="showFilters ? 'bg-black text-white' : 'text-black/60 hover:text-black hover:bg-black/5'"
+        class="flex items-center gap-2 px-3 py-2 border border-default rounded text-sm font-medium transition-colors"
+        :class="showFilters ? 'bg-inverted text-inverted' : 'text-muted hover:text-default hover:bg-elevated/50'"
         @click="showFilters = !showFilters"
       >
         <UIcon name="i-lucide-filter" class="w-4 h-4" />
         <span>Filters</span>
         <span
           v-if="activeFiltersCount > 0"
-          class="ml-1 px-1.5 py-0.5 text-xs rounded"
-          :class="showFilters ? 'bg-white text-black' : 'bg-[#13B5EA] text-white'"
+          class="ml-1 px-1.5 py-0.5 text-xs rounded bg-primary text-white"
         >
           {{ activeFiltersCount }}
         </span>
@@ -186,7 +185,7 @@ const activeFiltersCount = computed(() => {
       <!-- Show Completed Toggle -->
       <button
         class="flex items-center gap-2 px-3 py-2 border rounded text-sm font-medium transition-colors"
-        :class="localFilters.showCompleted ? 'bg-[#7DD3A8] border-[#7DD3A8] text-white' : 'border-black/20 text-black/60 hover:text-black'"
+        :class="localFilters.showCompleted ? 'bg-success border-success text-white' : 'border-default text-muted hover:text-default'"
         @click="toggleShowCompleted"
       >
         <UIcon :name="localFilters.showCompleted ? 'i-lucide-check-circle' : 'i-lucide-circle'" class="w-4 h-4" />
@@ -195,7 +194,7 @@ const activeFiltersCount = computed(() => {
 
       <!-- Save View -->
       <button
-        class="flex items-center gap-2 px-3 py-2 border border-black/20 rounded text-sm font-medium text-black/60 hover:text-black hover:bg-black/5 transition-colors"
+        class="flex items-center gap-2 px-3 py-2 border border-default rounded text-sm font-medium text-muted hover:text-default hover:bg-elevated/50 transition-colors"
         @click="emit('saveView')"
       >
         <UIcon name="i-lucide-save" class="w-4 h-4" />
@@ -204,13 +203,13 @@ const activeFiltersCount = computed(() => {
     </div>
 
     <!-- Expanded Filters -->
-    <div v-if="showFilters" class="flex items-center gap-3 flex-wrap p-4 border border-black/10 rounded-lg bg-[#FAFAFA]">
+    <div v-if="showFilters" class="flex items-center gap-3 flex-wrap p-4 border border-default rounded-lg bg-elevated/50">
       <!-- Assignee Filter -->
       <div class="flex flex-col gap-1">
-        <label class="text-xs text-black/50">Assignee</label>
+        <label class="text-xs text-muted">Assignee</label>
         <select
           :value="localFilters.assigneeId || ''"
-          class="px-3 py-2 border border-black/20 rounded text-sm bg-white focus:outline-none focus:border-[#13B5EA] min-w-[140px]"
+          class="px-3 py-2 border border-default rounded text-sm bg-default focus:outline-none focus:border-primary min-w-[140px]"
           @change="updateAssignee(($event.target as HTMLSelectElement).value || undefined)"
         >
           <option value="">All assignees</option>
@@ -222,10 +221,10 @@ const activeFiltersCount = computed(() => {
 
       <!-- Priority Filter -->
       <div class="flex flex-col gap-1">
-        <label class="text-xs text-black/50">Priority</label>
+        <label class="text-xs text-muted">Priority</label>
         <select
           :value="localFilters.priority || ''"
-          class="px-3 py-2 border border-black/20 rounded text-sm bg-white focus:outline-none focus:border-[#13B5EA] min-w-[120px]"
+          class="px-3 py-2 border border-default rounded text-sm bg-default focus:outline-none focus:border-primary min-w-[120px]"
           @change="updatePriority(($event.target as HTMLSelectElement).value as TaskPriority || undefined)"
         >
           <option value="">All priorities</option>
@@ -237,13 +236,13 @@ const activeFiltersCount = computed(() => {
 
       <!-- Tags Filter -->
       <div v-if="tags.length > 0" class="flex flex-col gap-1">
-        <label class="text-xs text-black/50">Tags</label>
+        <label class="text-xs text-muted">Tags</label>
         <div class="flex flex-wrap gap-1 max-w-[200px]">
           <button
             v-for="tag in tags.slice(0, 5)"
             :key="tag.id"
             class="px-2 py-1 text-xs rounded border transition-colors"
-            :class="(localFilters.tags || []).includes(tag.id) ? 'border-black bg-black text-white' : 'border-black/20 text-black/60 hover:border-black'"
+            :class="(localFilters.tags || []).includes(tag.id) ? 'bg-inverted text-inverted border-transparent' : 'border-default text-muted hover:border-muted'"
             :style="(localFilters.tags || []).includes(tag.id) ? {} : { borderColor: tag.color + '40', color: tag.color }"
             @click="updateTags((localFilters.tags || []).includes(tag.id) ? (localFilters.tags || []).filter(id => id !== tag.id) : [...(localFilters.tags || []), tag.id])"
           >
@@ -254,10 +253,10 @@ const activeFiltersCount = computed(() => {
 
       <!-- Group By -->
       <div v-if="groupOptions.length > 0" class="flex flex-col gap-1">
-        <label class="text-xs text-black/50">Group by</label>
+        <label class="text-xs text-muted">Group by</label>
         <select
           :value="groupBy || ''"
-          class="px-3 py-2 border border-black/20 rounded text-sm bg-white focus:outline-none focus:border-[#13B5EA] min-w-[140px]"
+          class="px-3 py-2 border border-default rounded text-sm bg-default focus:outline-none focus:border-primary min-w-[140px]"
           @change="emit('update:groupBy', ($event.target as HTMLSelectElement).value || undefined)"
         >
           <option value="">No grouping</option>
@@ -269,9 +268,9 @@ const activeFiltersCount = computed(() => {
 
       <!-- Sort Presets -->
       <div v-if="presets.length > 0" class="flex flex-col gap-1">
-        <label class="text-xs text-black/50">Sort</label>
+        <label class="text-xs text-muted">Sort</label>
         <select
-          class="px-3 py-2 border border-black/20 rounded text-sm bg-white focus:outline-none focus:border-[#13B5EA] min-w-[140px]"
+          class="px-3 py-2 border border-default rounded text-sm bg-default focus:outline-none focus:border-primary min-w-[140px]"
           @change="applyPreset(presets.find(p => p.id === ($event.target as HTMLSelectElement).value)!)"
         >
           <option value="">Default</option>
@@ -286,7 +285,7 @@ const activeFiltersCount = computed(() => {
       <!-- Clear Filters -->
       <button
         v-if="hasActiveFilters"
-        class="flex items-center gap-1.5 px-3 py-2 text-sm text-[#FF6B6B] hover:bg-[#FF6B6B]/5 rounded transition-colors"
+        class="flex items-center gap-1.5 px-3 py-2 text-sm text-error hover:bg-error/5 rounded transition-colors"
         @click="clearFilters"
       >
         <UIcon name="i-lucide-x" class="w-4 h-4" />
