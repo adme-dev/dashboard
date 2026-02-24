@@ -72,6 +72,7 @@
         :groups="filteredGroups"
         :columns="columns"
         :get-cell-value="getCellValue"
+        :handle-cell-update="handleCellUpdate"
         @open-task="$emit('openTask', $event)"
       />
 
