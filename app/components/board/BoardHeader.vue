@@ -35,6 +35,34 @@
           class="w-64"
           @update:model-value="$emit('update:searchQuery', $event)"
         />
+
+        <!-- Subscribe Button -->
+        <UPopover>
+          <UButton
+            :icon="isSubscribed ? 'i-lucide-bell-ring' : 'i-lucide-bell'"
+            :variant="isSubscribed ? 'soft' : 'ghost'"
+            :color="isSubscribed ? 'primary' : 'neutral'"
+            size="sm"
+          >
+            {{ isSubscribed ? 'Watching' : 'Watch' }}
+          </UButton>
+          <template #content>
+            <div class="p-3 w-64 space-y-2">
+              <p class="text-sm font-medium">Board Notifications</p>
+              <div
+                v-for="opt in subscribeOptions"
+                :key="opt.value"
+                class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-elevated/50 cursor-pointer text-sm"
+                @click="handleSubscribe(opt.value)"
+              >
+                <UIcon :name="opt.icon" class="w-4 h-4" />
+                <span>{{ opt.label }}</span>
+                <UIcon v-if="subscriptionLevel === opt.value" name="i-lucide-check" class="w-4 h-4 ml-auto text-primary" />
+              </div>
+            </div>
+          </template>
+        </UPopover>
+
         <UButton color="primary" icon="i-lucide-plus" @click="$emit('newItem')">
           New Item
         </UButton>
@@ -46,12 +74,13 @@
 <script setup lang="ts">
 import type { BoardViewType } from '~/composables/useBoardData'
 
-defineProps<{
+const props = defineProps<{
   boardName: string
   totalItems: number
   lastUpdated?: string
   activeView: BoardViewType
   searchQuery: string
+  boardId: string
 }>()
 
 defineEmits<{
@@ -68,6 +97,53 @@ const views: { id: BoardViewType; label: string; icon: string }[] = [
   { id: 'list', label: 'List', icon: 'i-lucide-list' },
   { id: 'gallery', label: 'Gallery', icon: 'i-lucide-layout-grid' },
 ]
+
+// Subscription state
+const isSubscribed = ref(false)
+const subscriptionLevel = ref<string | null>(null)
+
+const subscribeOptions = [
+  { value: 'all', label: 'All activity', icon: 'i-lucide-bell-ring' },
+  { value: 'mentions', label: 'Mentions only', icon: 'i-lucide-at-sign' },
+  { value: 'muted', label: 'Muted', icon: 'i-lucide-bell-off' },
+]
+
+// Check subscription status on mount
+onMounted(async () => {
+  try {
+    const { subscriptions } = await $fetch<{ subscriptions: any[] }>(`/api/agency/boards/${props.boardId}/subscriptions`)
+    const boardSub = subscriptions.find((s: any) => !s.itemId && !s.columnId)
+    if (boardSub) {
+      isSubscribed.value = true
+      subscriptionLevel.value = boardSub.isMuted ? 'muted' :
+        (boardSub.events?.length ? 'mentions' : 'all')
+    }
+  } catch {
+    // Silently fail — subscription check is non-critical
+  }
+})
+
+async function handleSubscribe(level: string) {
+  try {
+    if (level === subscriptionLevel.value) {
+      // Unsubscribe
+      await $fetch(`/api/agency/boards/${props.boardId}/unsubscribe`, { method: 'DELETE' })
+      isSubscribed.value = false
+      subscriptionLevel.value = null
+    } else {
+      const events = level === 'mentions' ? ['task_mentioned'] : []
+      const isMuted = level === 'muted'
+      await $fetch(`/api/agency/boards/${props.boardId}/subscribe`, {
+        method: 'POST',
+        body: { events, notifyInapp: !isMuted, notifyEmail: false },
+      })
+      isSubscribed.value = true
+      subscriptionLevel.value = level
+    }
+  } catch (err) {
+    console.error('Subscribe failed:', err)
+  }
+}
 
 function formatRelativeTime(date: string): string {
   const diff = Date.now() - new Date(date).getTime()

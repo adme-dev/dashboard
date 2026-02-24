@@ -3,6 +3,7 @@
     <!-- Header -->
     <BoardHeader
       :board-name="board?.name || 'Board'"
+      :board-id="props.boardId"
       :total-items="totalItems"
       :last-updated="board?.lastUpdated"
       v-model:active-view="activeView"

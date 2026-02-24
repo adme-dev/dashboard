@@ -165,7 +165,7 @@ describe('notifications utility', () => {
     it('should create notification and send email', async () => {
       mockQueryOne
         .mockResolvedValueOnce({ name: 'John', email: 'john@example.com' }) // assigner
-        .mockResolvedValueOnce({ name: 'Jane', email: 'jane@example.com' }) // assignee
+        .mockResolvedValueOnce({ name: 'Jane', email: 'jane@example.com', notification_preferences: {} }) // assignee
         .mockResolvedValueOnce({ id: 'notif-1', created_at: new Date().toISOString() }) // notification
 
       await notifyTaskAssigned({
@@ -187,17 +187,39 @@ describe('notifications utility', () => {
         ])
       )
 
-      // Check email sent
+      // Check email sent with corrected parameters
       expect(mockSendTaskAssignedEmail).toHaveBeenCalledWith({
         to: 'jane@example.com',
-        assigneeName: 'Jane',
+        name: 'Jane',
         taskTitle: 'Complete report',
-        taskId: 'task-123',
         assignerName: 'John',
         projectName: 'Project X',
         dueDate: undefined,
-        priority: 'medium'
+        taskUrl: 'http://localhost:3000/agency/tasks/task-123'
       })
+    })
+
+    it('should not send email if preference disabled', async () => {
+      mockQueryOne
+        .mockResolvedValueOnce({ name: 'John', email: 'john@example.com' })
+        .mockResolvedValueOnce({ name: 'Jane', email: 'jane@example.com', notification_preferences: { email_task_assigned: false } })
+        .mockResolvedValueOnce({ id: 'notif-1', created_at: new Date().toISOString() })
+
+      await notifyTaskAssigned({
+        taskId: 'task-123',
+        taskTitle: 'Complete report',
+        assigneeId: 'assignee-id',
+        assignerId: 'assigner-id'
+      })
+
+      // Notification should still be created
+      expect(mockQueryOne).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO notifications'),
+        expect.anything()
+      )
+
+      // Email should NOT be sent
+      expect(mockSendTaskAssignedEmail).not.toHaveBeenCalled()
     })
 
     it('should not notify if assigner not found', async () => {
@@ -233,7 +255,7 @@ describe('notifications utility', () => {
     it('should create notification and send email for mention', async () => {
       mockQueryOne
         .mockResolvedValueOnce({ name: 'Alice', email: 'alice@example.com' }) // mentioner
-        .mockResolvedValueOnce({ name: 'Bob', email: 'bob@example.com' }) // mentioned
+        .mockResolvedValueOnce({ name: 'Bob', email: 'bob@example.com', notification_preferences: {} }) // mentioned
         .mockResolvedValueOnce({ id: 'notif-1' }) // notification
 
       await notifyMention({
@@ -254,20 +276,21 @@ describe('notifications utility', () => {
         ])
       )
 
+      // Check email sent with corrected parameters
       expect(mockSendMentionEmail).toHaveBeenCalledWith({
         to: 'bob@example.com',
-        mentionedName: 'Bob',
+        name: 'Bob',
         mentionerName: 'Alice',
         taskTitle: 'Review design',
-        taskId: 'task-456',
-        comment: 'Hey @Bob, can you take a look at this?'
+        commentSnippet: 'Hey @Bob, can you take a look at this?',
+        taskUrl: 'http://localhost:3000/agency/tasks/task-456'
       })
     })
 
     it('should truncate long comment snippets in metadata', async () => {
       mockQueryOne
         .mockResolvedValueOnce({ name: 'Alice', email: 'alice@example.com' })
-        .mockResolvedValueOnce({ name: 'Bob', email: 'bob@example.com' })
+        .mockResolvedValueOnce({ name: 'Bob', email: 'bob@example.com', notification_preferences: {} })
         .mockResolvedValueOnce({ id: 'notif-1' })
 
       const longComment = 'A'.repeat(200)
@@ -293,7 +316,7 @@ describe('notifications utility', () => {
     it('should create notification and send email for approval', async () => {
       mockQueryOne
         .mockResolvedValueOnce({ name: 'Requester', email: 'req@example.com' })
-        .mockResolvedValueOnce({ name: 'Approver', email: 'appr@example.com' })
+        .mockResolvedValueOnce({ name: 'Approver', email: 'appr@example.com', notification_preferences: {} })
         .mockResolvedValueOnce({ id: 'notif-1' })
 
       await notifyApprovalRequest({
@@ -314,13 +337,14 @@ describe('notifications utility', () => {
         ])
       )
 
+      // Check email sent with corrected parameters
       expect(mockSendApprovalRequestEmail).toHaveBeenCalledWith({
         to: 'appr@example.com',
-        approverName: 'Approver',
-        requesterName: 'Requester',
+        name: 'Approver',
         taskTitle: 'Budget approval',
-        taskId: 'task-789',
-        stepName: 'Manager Review'
+        requesterName: 'Requester',
+        stepName: 'Manager Review',
+        taskUrl: 'http://localhost:3000/agency/tasks/task-789'
       })
     })
   })
@@ -328,7 +352,7 @@ describe('notifications utility', () => {
   describe('notifyDueReminder', () => {
     it('should create notification for upcoming task', async () => {
       mockQueryOne
-        .mockResolvedValueOnce({ name: 'User', email: 'user@example.com' })
+        .mockResolvedValueOnce({ name: 'User', email: 'user@example.com', notification_preferences: {} })
         .mockResolvedValueOnce({ id: 'notif-1' })
 
       const dueDate = new Date()
@@ -351,20 +375,20 @@ describe('notifications utility', () => {
         ])
       )
 
+      // Check email sent with corrected parameters
       expect(mockSendDueReminderEmail).toHaveBeenCalledWith({
         to: 'user@example.com',
-        userName: 'User',
-        tasks: [{
-          id: 'task-due',
-          title: 'Submit report',
-          dueDate: expect.any(Date)
-        }]
+        name: 'User',
+        taskTitle: 'Submit report',
+        dueDate: expect.any(Date),
+        daysRemaining: expect.any(Number),
+        taskUrl: 'http://localhost:3000/agency/tasks/task-due'
       })
     })
 
     it('should create notification for overdue task', async () => {
       mockQueryOne
-        .mockResolvedValueOnce({ name: 'User', email: 'user@example.com' })
+        .mockResolvedValueOnce({ name: 'User', email: 'user@example.com', notification_preferences: {} })
         .mockResolvedValueOnce({ id: 'notif-1' })
 
       const dueDate = new Date()

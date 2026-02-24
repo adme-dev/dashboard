@@ -5,6 +5,8 @@
 import { queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { notifyTaskStatusChanged } from '~~/server/utils/notifications'
 import { emitBoardEvent } from '~~/server/utils/boardEvents'
+import { notifyBoardSubscribers } from '~~/server/utils/boardNotifications'
+import { evaluateAutomations } from '~~/server/utils/automationEngine'
 
 interface UpdateStatusBody {
   statusId: string
@@ -98,18 +100,36 @@ export default defineEventHandler(async (event) => {
 
     // Emit board event for real-time updates
     if (currentTask.department_id) {
+      const statusChanges = {
+        oldStatusId: currentTask.status_id,
+        oldStatusName: currentTask.old_status_name,
+        newStatusId: newStatus.id,
+        newStatusName: newStatus.name,
+      }
+
       emitBoardEvent({
         boardId: currentTask.department_id,
         type: 'status_changed',
         taskId: id,
         userId: body.userId,
-        changes: {
-          oldStatusId: currentTask.status_id,
-          oldStatusName: currentTask.old_status_name,
-          newStatusId: newStatus.id,
-          newStatusName: newStatus.name,
-        },
+        changes: statusChanges,
       })
+
+      const boardEvent = {
+        boardId: currentTask.department_id,
+        type: 'status_changed',
+        taskId: id,
+        actorId: body.userId || '',
+        changes: statusChanges,
+      }
+
+      // Notify board subscribers (fire-and-forget)
+      notifyBoardSubscribers(boardEvent)
+        .catch(err => console.error('Board notification failed:', err))
+
+      // Evaluate board automations (fire-and-forget)
+      evaluateAutomations(currentTask.department_id, boardEvent)
+        .catch(err => console.error('Automation evaluation failed:', err))
     }
 
     // Return updated task

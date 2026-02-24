@@ -7,9 +7,11 @@ import { createError, getRouterParam, readBody } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { emitBoardEvent } from '~~/server/utils/boardEvents'
+import { notifyBoardSubscribers } from '~~/server/utils/boardNotifications'
+import { evaluateAutomations } from '~~/server/utils/automationEngine'
 
 export default eventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
 
   const taskId = getRouterParam(event, 'id')
   const columnId = getRouterParam(event, 'columnId')
@@ -109,13 +111,32 @@ export default eventHandler(async (event) => {
       // Look up the task's department_id for the board event
       const taskInfo = await queryOne('SELECT department_id FROM tasks WHERE id = $1', [taskId])
       if (taskInfo?.department_id) {
+        const cellChanges = { textValue, numberValue, dateValue, dateEndValue, jsonValue }
+
         emitBoardEvent({
           boardId: taskInfo.department_id,
           type: 'cell_updated',
           taskId: taskId!,
           columnId: columnId!,
-          changes: { textValue, numberValue, dateValue, dateEndValue, jsonValue },
+          changes: cellChanges,
         })
+
+        const boardEvent = {
+          boardId: taskInfo.department_id,
+          type: 'cell_updated',
+          taskId: taskId!,
+          columnId: columnId!,
+          actorId: user.id,
+          changes: cellChanges,
+        }
+
+        // Notify board subscribers (fire-and-forget)
+        notifyBoardSubscribers(boardEvent)
+          .catch(err => console.error('Board notification failed:', err))
+
+        // Evaluate board automations (fire-and-forget)
+        evaluateAutomations(taskInfo.department_id, boardEvent)
+          .catch(err => console.error('Automation evaluation failed:', err))
       }
     }
 

@@ -5,6 +5,7 @@
     @open-task="openTask"
     @export="showExport = true"
     @template="showTemplates = true"
+    @automations="showAutomations = true"
     @add-group="showAddGroup = true"
     @add-column="showAddColumn = true"
     @add-item="handleAddItem"
@@ -297,6 +298,13 @@
     @saved="() => {}"
   />
 
+  <!-- Automation Builder -->
+  <BoardAutomationBuilder
+    :board-id="boardId"
+    :open="showAutomations"
+    @update:open="showAutomations = $event"
+  />
+
   <!-- Task Slideover -->
   <USlideover
     v-model:open="showTaskPanel"
@@ -304,7 +312,7 @@
     :ui="{ content: 'w-[680px]' }"
   >
     <template #header>
-      <div v-if="selectedTask" class="flex items-center gap-3 w-full">
+      <div v-if="selectedTask" class="flex items-center justify-between w-full">
         <div class="flex items-center gap-2">
           <span
             v-if="selectedTask.groupName"
@@ -313,6 +321,15 @@
           />
           <span class="text-xs text-gray-500 uppercase tracking-wide">{{ selectedTask.groupName }}</span>
         </div>
+        <UButton
+          :icon="itemSubscribed ? 'i-lucide-bell-ring' : 'i-lucide-bell'"
+          :variant="itemSubscribed ? 'soft' : 'ghost'"
+          :color="itemSubscribed ? 'primary' : 'neutral'"
+          size="xs"
+          @click="toggleItemSubscription"
+        >
+          {{ itemSubscribed ? 'Watching' : 'Watch' }}
+        </UButton>
       </div>
     </template>
 
@@ -401,6 +418,7 @@ import BoardColumnConfig from '~/components/board/BoardColumnConfig.vue'
 import BoardColumnTypeSelector from '~/components/board/BoardColumnTypeSelector.vue'
 import BoardExportModal from '~/components/board/BoardExportModal.vue'
 import BoardTemplateChooser from '~/components/board/BoardTemplateChooser.vue'
+import BoardAutomationBuilder from '~/components/board/BoardAutomationBuilder.vue'
 import SubtaskList from '~/components/task/SubtaskList.vue'
 import TaskActivityFeed from '~/components/task/TaskActivityFeed.vue'
 
@@ -446,6 +464,7 @@ const newGroupName = ref('')
 const newGroupColor = ref('#579BFC')
 const showExport = ref(false)
 const showTemplates = ref(false)
+const showAutomations = ref(false)
 
 const groupColorOptions = [
   '#579BFC', '#00C875', '#FDAB3D', '#E2445C', '#A25DDC',
@@ -480,6 +499,41 @@ const tabs = [
   { id: 'info', label: 'Info', count: 0 },
 ]
 
+// --- Item Subscription ---
+
+const itemSubscribed = ref(false)
+
+async function checkItemSubscription(taskId: string) {
+  itemSubscribed.value = false
+  try {
+    const { subscriptions } = await $fetch<{ subscriptions: any[] }>(`/api/agency/boards/${boardId.value}/subscriptions`)
+    itemSubscribed.value = subscriptions.some((s: any) => s.itemId === taskId)
+  } catch {
+    // Non-critical
+  }
+}
+
+async function toggleItemSubscription() {
+  if (!selectedTaskId.value) return
+  try {
+    if (itemSubscribed.value) {
+      await $fetch(`/api/agency/boards/${boardId.value}/unsubscribe`, {
+        method: 'DELETE',
+        params: { itemId: selectedTaskId.value },
+      })
+      itemSubscribed.value = false
+    } else {
+      await $fetch(`/api/agency/boards/${boardId.value}/subscribe`, {
+        method: 'POST',
+        body: { itemId: selectedTaskId.value },
+      })
+      itemSubscribed.value = true
+    }
+  } catch (err) {
+    console.error('Item subscribe toggle failed:', err)
+  }
+}
+
 // --- Task Actions ---
 
 async function openTask(taskId: string) {
@@ -490,6 +544,7 @@ async function openTask(taskId: string) {
   activeTab.value = 'updates'
   showTaskPanel.value = true
   await fetchTask()
+  checkItemSubscription(taskId)
 }
 
 async function handleAddItem(payload: { groupId: string; title: string; date?: string }) {

@@ -1,46 +1,103 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
 import { breakpointsTailwind } from '@vueuse/core'
-import type { Mail } from '~/types'
 
-const tabItems = [{
-  label: 'All',
-  value: 'all'
-}, {
-  label: 'Unread',
-  value: 'unread'
-}]
+const {
+  notifications,
+  unreadCount,
+  loading,
+  hasMore,
+  fetchNotifications,
+  markAsRead,
+  deleteNotification,
+  getNotificationIcon,
+  getNotificationColor,
+  formatRelativeTime,
+  connectToStream,
+  disconnectFromStream
+} = useNotifications()
+
+const router = useRouter()
+
+const tabItems = [
+  { label: 'All', value: 'all' },
+  { label: 'Unread', value: 'unread' },
+  { label: 'Assigned', value: 'assigned' },
+  { label: 'Mentions', value: 'mentions' },
+  { label: 'Approvals', value: 'approvals' },
+  { label: 'System', value: 'system' }
+]
 const selectedTab = ref('all')
 
-const { data: mails } = await useFetch<Mail[]>('/api/mails', { default: () => [] })
+const typesByTab: Record<string, string[]> = {
+  assigned: ['task_assigned'],
+  mentions: ['task_mentioned'],
+  approvals: ['approval_requested', 'approval_completed'],
+  system: ['system', 'team_update']
+}
 
-// Filter mails based on the selected tab
-const filteredMails = computed(() => {
-  if (selectedTab.value === 'unread') {
-    return mails.value.filter(mail => !!mail.unread)
-  }
-
-  return mails.value
+const filteredNotifications = computed(() => {
+  if (selectedTab.value === 'all') return notifications.value
+  if (selectedTab.value === 'unread') return notifications.value.filter(n => !n.isRead)
+  const types = typesByTab[selectedTab.value]
+  if (types) return notifications.value.filter(n => types.includes(n.type))
+  return notifications.value
 })
 
-const selectedMail = ref<Mail | null>()
+const selectedNotification = ref<any>(null)
 
-const isMailPanelOpen = computed({
+const isNotificationPanelOpen = computed({
   get() {
-    return !!selectedMail.value
+    return !!selectedNotification.value
   },
   set(value: boolean) {
     if (!value) {
-      selectedMail.value = null
+      selectedNotification.value = null
     }
   }
 })
 
-// Reset selected mail if it's not in the filtered mails
-watch(filteredMails, () => {
-  if (!filteredMails.value.find(mail => mail.id === selectedMail.value?.id)) {
-    selectedMail.value = null
+// Reset selection if notification is no longer in filtered list
+watch(filteredNotifications, () => {
+  if (selectedNotification.value && !filteredNotifications.value.find(n => n.id === selectedNotification.value?.id)) {
+    selectedNotification.value = null
   }
+})
+
+// Handle notification selection — mark as read
+async function handleSelect(notification: any) {
+  selectedNotification.value = notification
+  if (!notification.isRead) {
+    await markAsRead(notification.id)
+  }
+}
+
+async function handleMarkRead(notification: any) {
+  if (!notification.isRead) {
+    await markAsRead(notification.id)
+  }
+}
+
+async function handleDelete(notification: any) {
+  await deleteNotification(notification.id)
+  if (selectedNotification.value?.id === notification.id) {
+    selectedNotification.value = null
+  }
+}
+
+function handleNavigate(notification: any) {
+  if (notification.link) {
+    router.push(notification.link)
+  }
+}
+
+// Fetch on mount + connect SSE
+onMounted(async () => {
+  await fetchNotifications()
+  connectToStream()
+})
+
+onBeforeUnmount(() => {
+  disconnectFromStream()
 })
 
 const breakpoints = useBreakpoints(breakpointsTailwind)
@@ -60,7 +117,7 @@ const isMobile = breakpoints.smaller('lg')
         <UDashboardSidebarCollapse />
       </template>
       <template #trailing>
-        <UBadge :label="filteredMails.length" variant="subtle" />
+        <UBadge :label="filteredNotifications.length" variant="subtle" />
       </template>
 
       <template #right>
@@ -72,18 +129,37 @@ const isMobile = breakpoints.smaller('lg')
         />
       </template>
     </UDashboardNavbar>
-    <InboxList v-model="selectedMail" :mails="filteredMails" />
+    <InboxList
+      v-model="selectedNotification"
+      :notifications="filteredNotifications"
+      :loading="loading"
+      @select="handleSelect"
+    />
   </UDashboardPanel>
 
-  <InboxMail v-if="selectedMail" :mail="selectedMail" @close="selectedMail = null" />
+  <InboxNotification
+    v-if="selectedNotification"
+    :notification="selectedNotification"
+    @close="selectedNotification = null"
+    @mark-read="handleMarkRead"
+    @delete="handleDelete"
+    @navigate="handleNavigate"
+  />
   <div v-else class="hidden lg:flex flex-1 items-center justify-center">
     <UIcon name="i-lucide-inbox" class="size-32 text-dimmed" />
   </div>
 
   <ClientOnly>
-    <USlideover v-if="isMobile" v-model:open="isMailPanelOpen">
+    <USlideover v-if="isMobile" v-model:open="isNotificationPanelOpen">
       <template #content>
-        <InboxMail v-if="selectedMail" :mail="selectedMail" @close="selectedMail = null" />
+        <InboxNotification
+          v-if="selectedNotification"
+          :notification="selectedNotification"
+          @close="selectedNotification = null"
+          @mark-read="handleMarkRead"
+          @delete="handleDelete"
+          @navigate="handleNavigate"
+        />
       </template>
     </USlideover>
   </ClientOnly>

@@ -4,6 +4,8 @@
 
 import { queryOne, transaction } from '~~/server/utils/db'
 import { emitBoardEvent } from '~~/server/utils/boardEvents'
+import { notifyBoardSubscribers } from '~~/server/utils/boardNotifications'
+import { evaluateAutomations } from '~~/server/utils/automationEngine'
 
 interface UpdateTaskBody {
   title?: string
@@ -26,6 +28,12 @@ interface UpdateTaskBody {
 }
 
 export default defineEventHandler(async (event) => {
+  let actorUserId = ''
+  try {
+    const user = await requireAuth(event)
+    actorUserId = user.id
+  } catch { /* auth optional for backwards compat */ }
+
   const id = getRouterParam(event, 'id')
   const body = await readBody<UpdateTaskBody>(event)
 
@@ -186,6 +194,29 @@ export default defineEventHandler(async (event) => {
         taskId: id,
         changes: Object.fromEntries(changes.map(c => [c.field, c.newValue])),
       })
+
+      const boardEvent = {
+        boardId: currentTask.department_id,
+        type: 'task_updated',
+        taskId: id,
+        actorId: actorUserId || currentTask.assignee_id || '',
+        changes: Object.fromEntries(changes.map(c => [c.field, c.newValue])),
+      }
+
+      // Notify board subscribers (fire-and-forget)
+      notifyBoardSubscribers(boardEvent)
+        .catch(err => console.error('Board notification failed:', err))
+
+      // Evaluate board automations (fire-and-forget)
+      evaluateAutomations(currentTask.department_id, boardEvent)
+        .catch(err => console.error('Automation evaluation failed:', err))
+    }
+
+    // Auto-subscribe assignee to board item
+    if (body.assigneeId && currentTask.department_id) {
+      const { autoSubscribe } = await import('~~/server/utils/subscriptions')
+      autoSubscribe(body.assigneeId, currentTask.department_id, id)
+        .catch(err => console.error('Auto-subscribe failed:', err))
     }
 
     // Fetch complete updated task

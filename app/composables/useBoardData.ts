@@ -24,6 +24,9 @@ export interface BoardItem {
   title: string
   description?: string
   dueDate?: string
+  startDate?: string
+  taskType?: string
+  progressPercentage?: number
   priority: string
   status: string
   statusColor: string
@@ -33,6 +36,7 @@ export interface BoardItem {
   updatedAt?: string
   columnValues?: Record<string, any>
   columnValuesArray?: any[]
+  dependencies?: { dependsOnTaskId: string; type: string }[]
 }
 
 export interface BoardGroup {

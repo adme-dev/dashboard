@@ -8,15 +8,84 @@ let resend: Resend | null = null
 
 function getResendClient(): Resend | null {
   if (resend) return resend
-  
+
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
     console.warn('[Email] RESEND_API_KEY not configured')
     return null
   }
-  
+
   resend = new Resend(apiKey)
   return resend
+}
+
+const APP_NAME = process.env.APP_NAME || 'XeroFlow Agency'
+const FROM_EMAIL = process.env.EMAIL_FROM || 'noreply@yourdomain.com'
+const BRAND_COLOR = '#13B5EA'
+const APP_URL = process.env.APP_URL || 'http://localhost:3000'
+
+/**
+ * Shared email template renderer — generates consistent branded HTML + plain text.
+ */
+function renderEmailTemplate(options: {
+  title: string
+  greeting?: string
+  bodyHtml: string
+  ctaText?: string
+  ctaUrl?: string
+  footerHtml?: string
+}): { html: string; text: string } {
+  const greeting = options.greeting ? `<p style="font-size: 16px; color: #333;">${options.greeting}</p>` : ''
+
+  const ctaButton = options.ctaText && options.ctaUrl
+    ? `<div style="margin: 24px 0;">
+        <a href="${options.ctaUrl}"
+           style="display: inline-block; background: ${BRAND_COLOR}; color: #ffffff; padding: 12px 28px;
+                  text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">
+          ${options.ctaText}
+        </a>
+      </div>`
+    : ''
+
+  const footer = options.footerHtml || ''
+
+  const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin: 0; padding: 0; background-color: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+    <div style="background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+      <div style="background: ${BRAND_COLOR}; padding: 20px 32px;">
+        <h1 style="margin: 0; color: #ffffff; font-size: 18px; font-weight: 600;">${APP_NAME}</h1>
+      </div>
+      <div style="padding: 32px;">
+        ${greeting}
+        <div style="font-size: 15px; line-height: 1.6; color: #374151;">
+          ${options.bodyHtml}
+        </div>
+        ${ctaButton}
+      </div>
+      <div style="padding: 20px 32px; background: #f9fafb; border-top: 1px solid #e5e7eb;">
+        ${footer}
+        <p style="margin: 8px 0 0; font-size: 12px; color: #9ca3af;">
+          <a href="${APP_URL}/settings/notifications" style="color: #9ca3af; text-decoration: underline;">Unsubscribe</a>
+          from these emails.
+        </p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`
+
+  // Generate plain text by stripping HTML
+  let text = options.greeting ? options.greeting.replace(/<[^>]*>/g, '') + '\n\n' : ''
+  text += options.bodyHtml.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&mdash;/g, '--').replace(/\n{3,}/g, '\n\n').trim()
+  if (options.ctaText && options.ctaUrl) {
+    text += `\n\n${options.ctaText}: ${options.ctaUrl}`
+  }
+  text += `\n\nManage notification preferences: ${APP_URL}/settings/notifications`
+
+  return { html, text }
 }
 
 export interface MagicLinkEmailData {
@@ -30,42 +99,39 @@ export interface MagicLinkEmailData {
  */
 export async function sendMagicLinkEmail(data: MagicLinkEmailData): Promise<void> {
   const client = getResendClient()
-  
+
   if (!client) {
     console.log('[Email] Magic link for', data.to, ':', data.magicLinkUrl)
     return
   }
-  
-  const fromEmail = process.env.EMAIL_FROM || 'noreply@yourdomain.com'
-  const appName = process.env.APP_NAME || 'XeroFlow Agency'
-  
+
   try {
     await client.emails.send({
-      from: `${appName} <${fromEmail}>`,
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
       to: data.to,
-      subject: `Sign in to ${appName}`,
+      subject: `Sign in to ${APP_NAME}`,
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-          <h1 style="color: #13B5EA;">Sign in to ${appName}</h1>
+          <h1 style="color: ${BRAND_COLOR};">Sign in to ${APP_NAME}</h1>
           <p>Hi ${data.name},</p>
           <p>Click the button below to sign in instantly. This link expires in 1 hour.</p>
-          <a href="${data.magicLinkUrl}" 
-             style="display: inline-block; background: #13B5EA; color: white; padding: 12px 24px; 
+          <a href="${data.magicLinkUrl}"
+             style="display: inline-block; background: ${BRAND_COLOR}; color: white; padding: 12px 24px;
                     text-decoration: none; border-radius: 6px; margin: 16px 0;">
             Sign In
           </a>
           <p style="color: #666; font-size: 14px;">
             Or copy and paste this link:<br>
-            <a href="${data.magicLinkUrl}" style="color: #13B5EA;">${data.magicLinkUrl}</a>
+            <a href="${data.magicLinkUrl}" style="color: ${BRAND_COLOR};">${data.magicLinkUrl}</a>
           </p>
           <p style="color: #666; font-size: 12px; margin-top: 32px;">
             If you didn't request this email, you can safely ignore it.
           </p>
         </div>
       `,
-      text: `Hi ${data.name},\n\nSign in to ${appName}: ${data.magicLinkUrl}\n\nThis link expires in 1 hour.\n\nIf you didn't request this email, you can safely ignore it.`
+      text: `Hi ${data.name},\n\nSign in to ${APP_NAME}: ${data.magicLinkUrl}\n\nThis link expires in 1 hour.\n\nIf you didn't request this email, you can safely ignore it.`
     })
-    
+
     console.log('[Email] Magic link sent to', data.to)
   } catch (error) {
     console.error('[Email] Failed to send magic link:', error)
@@ -73,7 +139,7 @@ export async function sendMagicLinkEmail(data: MagicLinkEmailData): Promise<void
   }
 }
 
-// Stub functions for notification emails (to be implemented)
+// --- Notification email templates ---
 
 export async function sendTaskAssignedEmail(data: {
   to: string
@@ -86,11 +152,44 @@ export async function sendTaskAssignedEmail(data: {
 }): Promise<void> {
   const client = getResendClient()
   if (!client) {
-    console.log('[Email] Task assigned email (stub) for', data.to)
+    console.log('[Email] Task assigned email (no client) for', data.to)
     return
   }
-  // TODO: Implement actual email template
-  console.log('[Email] Task assigned email sent to', data.to)
+
+  const dueLine = data.dueDate
+    ? `<p><strong>Due:</strong> ${data.dueDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>`
+    : ''
+  const projectLine = data.projectName
+    ? `<p><strong>Project:</strong> ${data.projectName}</p>`
+    : ''
+
+  const { html, text } = renderEmailTemplate({
+    title: `You've been assigned: ${data.taskTitle}`,
+    greeting: `Hi ${data.name},`,
+    bodyHtml: `
+      <p><strong>${data.assignerName}</strong> assigned you to a task:</p>
+      <div style="background: #f3f4f6; border-left: 4px solid ${BRAND_COLOR}; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;">
+        <p style="margin: 0; font-weight: 600; font-size: 16px;">${data.taskTitle}</p>
+      </div>
+      ${projectLine}
+      ${dueLine}
+    `,
+    ctaText: 'View Task',
+    ctaUrl: data.taskUrl
+  })
+
+  try {
+    await client.emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: data.to,
+      subject: `You've been assigned: ${data.taskTitle}`,
+      html,
+      text
+    })
+    console.log('[Email] Task assigned email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send task assigned email:', error)
+  }
 }
 
 export async function sendMentionEmail(data: {
@@ -103,11 +202,35 @@ export async function sendMentionEmail(data: {
 }): Promise<void> {
   const client = getResendClient()
   if (!client) {
-    console.log('[Email] Mention email (stub) for', data.to)
+    console.log('[Email] Mention email (no client) for', data.to)
     return
   }
-  // TODO: Implement actual email template
-  console.log('[Email] Mention email sent to', data.to)
+
+  const { html, text } = renderEmailTemplate({
+    title: `${data.mentionerName} mentioned you`,
+    greeting: `Hi ${data.name},`,
+    bodyHtml: `
+      <p><strong>${data.mentionerName}</strong> mentioned you in <strong>${data.taskTitle}</strong>:</p>
+      <div style="background: #f3f4f6; border-left: 4px solid ${BRAND_COLOR}; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;">
+        <p style="margin: 0; color: #4b5563; font-style: italic;">"${data.commentSnippet}"</p>
+      </div>
+    `,
+    ctaText: 'View Comment',
+    ctaUrl: data.taskUrl
+  })
+
+  try {
+    await client.emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: data.to,
+      subject: `${data.mentionerName} mentioned you`,
+      html,
+      text
+    })
+    console.log('[Email] Mention email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send mention email:', error)
+  }
 }
 
 export async function sendApprovalRequestEmail(data: {
@@ -115,15 +238,46 @@ export async function sendApprovalRequestEmail(data: {
   name: string
   taskTitle: string
   requesterName: string
+  stepName?: string
   taskUrl: string
 }): Promise<void> {
   const client = getResendClient()
   if (!client) {
-    console.log('[Email] Approval request email (stub) for', data.to)
+    console.log('[Email] Approval request email (no client) for', data.to)
     return
   }
-  // TODO: Implement actual email template
-  console.log('[Email] Approval request email sent to', data.to)
+
+  const stepLine = data.stepName
+    ? `<p><strong>Step:</strong> ${data.stepName}</p>`
+    : ''
+
+  const { html, text } = renderEmailTemplate({
+    title: `Approval needed: ${data.taskTitle}`,
+    greeting: `Hi ${data.name},`,
+    bodyHtml: `
+      <p><strong>${data.requesterName}</strong> has requested your approval:</p>
+      <div style="background: #f3f4f6; border-left: 4px solid ${BRAND_COLOR}; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;">
+        <p style="margin: 0; font-weight: 600; font-size: 16px;">${data.taskTitle}</p>
+      </div>
+      ${stepLine}
+      <p>Please review and approve or reject this item.</p>
+    `,
+    ctaText: 'Review & Approve',
+    ctaUrl: data.taskUrl
+  })
+
+  try {
+    await client.emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: data.to,
+      subject: `Approval needed: ${data.taskTitle}`,
+      html,
+      text
+    })
+    console.log('[Email] Approval request email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send approval request email:', error)
+  }
 }
 
 export async function sendDueReminderEmail(data: {
@@ -136,72 +290,484 @@ export async function sendDueReminderEmail(data: {
 }): Promise<void> {
   const client = getResendClient()
   if (!client) {
-    console.log('[Email] Due reminder email (stub) for', data.to)
+    console.log('[Email] Due reminder email (no client) for', data.to)
     return
   }
-  // TODO: Implement actual email template
-  console.log('[Email] Due reminder email sent to', data.to)
+
+  const isOverdue = data.daysRemaining < 0
+  const when = isOverdue
+    ? 'overdue'
+    : data.daysRemaining === 0 ? 'today' : data.daysRemaining === 1 ? 'tomorrow' : `in ${data.daysRemaining} days`
+
+  const urgencyColor = isOverdue ? '#dc2626' : data.daysRemaining <= 1 ? '#f59e0b' : BRAND_COLOR
+  const urgencyLabel = isOverdue ? 'OVERDUE' : data.daysRemaining <= 1 ? 'URGENT' : 'UPCOMING'
+
+  const { html, text } = renderEmailTemplate({
+    title: `Task due ${when}: ${data.taskTitle}`,
+    greeting: `Hi ${data.name},`,
+    bodyHtml: `
+      <p>You have a task that ${isOverdue ? 'is overdue' : 'is coming up'}:</p>
+      <div style="background: #f3f4f6; border-left: 4px solid ${urgencyColor}; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;">
+        <p style="margin: 0 0 4px; font-weight: 600; font-size: 16px;">${data.taskTitle}</p>
+        <p style="margin: 0; color: #6b7280; font-size: 14px;">
+          Due: ${data.dueDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          <span style="display: inline-block; margin-left: 8px; background: ${urgencyColor}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">${urgencyLabel}</span>
+        </p>
+      </div>
+    `,
+    ctaText: 'View Task',
+    ctaUrl: data.taskUrl
+  })
+
+  try {
+    await client.emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: data.to,
+      subject: `Task due ${when}: ${data.taskTitle}`,
+      html,
+      text
+    })
+    console.log('[Email] Due reminder email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send due reminder email:', error)
+  }
 }
 
-export async function sendInvitationEmail(data: { to: string; name: string; inviterName: string; teamName: string; inviteUrl: string }): Promise<void> {
+export async function sendInvitationEmail(data: {
+  to: string
+  name?: string
+  inviterName: string
+  inviterEmail?: string
+  teamName?: string
+  inviteUrl?: string
+  role?: string
+  departments?: string[]
+  message?: string
+  token?: string
+  expiresAt?: Date
+}): Promise<void> {
   const client = getResendClient()
   if (!client) {
-    console.log('[Email] Invitation email (stub) for', data.to)
+    console.log('[Email] Invitation email (no client) for', data.to)
     return
   }
-  console.log('[Email] Invitation email sent to', data.to)
+
+  const teamLabel = data.teamName || APP_NAME
+  const inviteLink = data.inviteUrl || (data.token ? `${APP_URL}/auth/accept-invite?token=${data.token}` : `${APP_URL}/auth/register`)
+
+  const roleLine = data.role ? `<p><strong>Role:</strong> ${data.role}</p>` : ''
+  const deptLine = data.departments?.length
+    ? `<p><strong>Teams:</strong> ${data.departments.join(', ')}</p>`
+    : ''
+  const messageLine = data.message
+    ? `<div style="background: #f3f4f6; border-left: 4px solid ${BRAND_COLOR}; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;"><p style="margin: 0; color: #4b5563; font-style: italic;">"${data.message}"</p></div>`
+    : ''
+
+  const { html, text } = renderEmailTemplate({
+    title: `You're invited to ${teamLabel}`,
+    greeting: data.name ? `Hi ${data.name},` : 'Hello,',
+    bodyHtml: `
+      <p><strong>${data.inviterName}</strong> has invited you to join <strong>${teamLabel}</strong> on ${APP_NAME}.</p>
+      ${roleLine}
+      ${deptLine}
+      ${messageLine}
+      <p>Accept the invitation below to get started.</p>
+    `,
+    ctaText: 'Accept Invitation',
+    ctaUrl: inviteLink
+  })
+
+  try {
+    await client.emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: data.to,
+      subject: `You're invited to ${teamLabel}`,
+      html,
+      text
+    })
+    console.log('[Email] Invitation email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send invitation email:', error)
+  }
 }
 
-export async function sendVerificationEmail(data: { to: string; name: string; verificationUrl: string }): Promise<void> {
+export async function sendVerificationEmail(data: {
+  to: string
+  name: string
+  verificationUrl?: string
+  token?: string
+}): Promise<void> {
   const client = getResendClient()
   if (!client) {
-    console.log('[Email] Verification email (stub) for', data.to)
+    console.log('[Email] Verification email (no client) for', data.to)
     return
   }
-  console.log('[Email] Verification email sent to', data.to)
+
+  const verifyLink = data.verificationUrl || (data.token ? `${APP_URL}/auth/verify?token=${data.token}` : `${APP_URL}/auth/verify`)
+
+  const { html, text } = renderEmailTemplate({
+    title: 'Verify your email',
+    greeting: `Hi ${data.name},`,
+    bodyHtml: `
+      <p>Please verify your email address to complete your account setup.</p>
+      <p style="color: #6b7280; font-size: 13px;">This link will expire in 24 hours.</p>
+    `,
+    ctaText: 'Verify Email',
+    ctaUrl: verifyLink
+  })
+
+  try {
+    await client.emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: data.to,
+      subject: 'Verify your email',
+      html,
+      text
+    })
+    console.log('[Email] Verification email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send verification email:', error)
+  }
 }
 
-export async function sendWelcomeEmail(data: { to: string; name: string }): Promise<void> {
+export async function sendWelcomeEmail(data: {
+  to: string
+  name: string
+}): Promise<void> {
   const client = getResendClient()
   if (!client) {
-    console.log('[Email] Welcome email (stub) for', data.to)
+    console.log('[Email] Welcome email (no client) for', data.to)
     return
   }
-  console.log('[Email] Welcome email sent to', data.to)
+
+  const { html, text } = renderEmailTemplate({
+    title: `Welcome to ${APP_NAME}!`,
+    greeting: `Hi ${data.name},`,
+    bodyHtml: `
+      <p>Welcome aboard! Your account is all set. Here are a few things to get started:</p>
+      <ul style="padding-left: 20px; color: #374151;">
+        <li style="margin-bottom: 8px;"><strong>Create your first project</strong> &mdash; organize your work into boards and tasks.</li>
+        <li style="margin-bottom: 8px;"><strong>Invite your team</strong> &mdash; collaborate in real time with assignments and approvals.</li>
+        <li style="margin-bottom: 8px;"><strong>Customize your workflow</strong> &mdash; set up columns, statuses, and automations that fit your process.</li>
+      </ul>
+    `,
+    ctaText: 'Go to Dashboard',
+    ctaUrl: `${APP_URL}/agency`
+  })
+
+  try {
+    await client.emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: data.to,
+      subject: `Welcome to ${APP_NAME}!`,
+      html,
+      text
+    })
+    console.log('[Email] Welcome email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send welcome email:', error)
+  }
 }
 
-export async function sendPasswordResetEmail(data: { to: string; name: string; resetUrl: string }): Promise<void> {
+export async function sendPasswordResetEmail(data: {
+  to: string
+  name: string
+  resetUrl?: string
+  token?: string
+  expiresAt?: Date
+}): Promise<void> {
   const client = getResendClient()
   if (!client) {
-    console.log('[Email] Password reset email (stub) for', data.to)
+    console.log('[Email] Password reset email (no client) for', data.to)
     return
   }
-  console.log('[Email] Password reset email sent to', data.to)
+
+  const resetLink = data.resetUrl || (data.token ? `${APP_URL}/auth/reset-password?token=${data.token}` : `${APP_URL}/auth/reset-password`)
+
+  const { html, text } = renderEmailTemplate({
+    title: 'Reset your password',
+    greeting: `Hi ${data.name},`,
+    bodyHtml: `
+      <p>We received a request to reset your password. Click the button below to choose a new one.</p>
+      <p style="color: #6b7280; font-size: 13px;">This link will expire in 1 hour. If you didn't request a password reset, you can safely ignore this email.</p>
+    `,
+    ctaText: 'Reset Password',
+    ctaUrl: resetLink
+  })
+
+  try {
+    await client.emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: data.to,
+      subject: 'Reset your password',
+      html,
+      text
+    })
+    console.log('[Email] Password reset email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send password reset email:', error)
+  }
 }
 
-export async function sendQuoteEmail(data: { to: string; quoteId: string; quoteUrl: string }): Promise<void> {
+export async function sendQuoteEmail(data: {
+  to: string
+  quoteId: string
+  quoteUrl?: string
+  clientName?: string
+  clientContactName?: string
+  quoteNumber?: string
+  total?: number
+  currency?: string
+  validUntil?: Date
+  lineItems?: Array<{ description: string; quantity: number; unitPrice: number; total: number }>
+  clientNotes?: string
+  senderName?: string
+  senderEmail?: string
+}): Promise<void> {
   const client = getResendClient()
   if (!client) {
-    console.log('[Email] Quote email (stub) for', data.to)
+    console.log('[Email] Quote email (no client) for', data.to)
     return
   }
-  console.log('[Email] Quote email sent to', data.to)
+
+  const quoteLink = data.quoteUrl || `${APP_URL}/quotes/${data.quoteId}`
+  const quoteLabel = data.quoteNumber || data.quoteId
+
+  let itemsHtml = ''
+  if (data.lineItems?.length) {
+    const rows = data.lineItems.map(item =>
+      `<tr>
+        <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb;">${item.description}</td>
+        <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">${item.quantity}</td>
+        <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">${formatCurrency(item.unitPrice, data.currency)}</td>
+        <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">${formatCurrency(item.total, data.currency)}</td>
+      </tr>`
+    ).join('')
+
+    itemsHtml = `
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+        <thead>
+          <tr style="background: #f3f4f6;">
+            <th style="padding: 8px 12px; text-align: left; font-weight: 600;">Item</th>
+            <th style="padding: 8px 12px; text-align: right; font-weight: 600;">Qty</th>
+            <th style="padding: 8px 12px; text-align: right; font-weight: 600;">Price</th>
+            <th style="padding: 8px 12px; text-align: right; font-weight: 600;">Total</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`
+  }
+
+  const totalLine = data.total != null
+    ? `<p style="font-size: 18px; font-weight: 700; text-align: right; margin: 8px 0;">Total: ${formatCurrency(data.total, data.currency)}</p>`
+    : ''
+
+  const validLine = data.validUntil
+    ? `<p style="color: #6b7280; font-size: 13px;">Valid until ${data.validUntil.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>`
+    : ''
+
+  const notesLine = data.clientNotes
+    ? `<div style="background: #f3f4f6; padding: 12px 16px; margin: 16px 0; border-radius: 4px;"><p style="margin: 0; color: #4b5563; font-size: 14px;">${data.clientNotes}</p></div>`
+    : ''
+
+  const greeting = data.clientContactName ? `Hi ${data.clientContactName},` : 'Hello,'
+
+  const { html, text } = renderEmailTemplate({
+    title: 'Your quote is ready',
+    greeting,
+    bodyHtml: `
+      <p>Your quote <strong>#${quoteLabel}</strong> has been prepared and is ready for your review.</p>
+      ${itemsHtml}
+      ${totalLine}
+      ${validLine}
+      ${notesLine}
+    `,
+    ctaText: 'View Quote',
+    ctaUrl: quoteLink,
+    footerHtml: data.senderName
+      ? `<p style="font-size: 12px; color: #9ca3af;">Sent by ${data.senderName}${data.senderEmail ? ` (${data.senderEmail})` : ''}</p>`
+      : ''
+  })
+
+  try {
+    await client.emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: data.to,
+      subject: `Your quote #${quoteLabel} is ready`,
+      html,
+      text
+    })
+    console.log('[Email] Quote email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send quote email:', error)
+  }
 }
 
-export async function sendClientPortalInviteEmail(data: { to: string; name: string; portalUrl: string }): Promise<void> {
+export async function sendClientPortalInviteEmail(data: {
+  to: string
+  name?: string
+  portalUrl?: string
+  clientUserName?: string
+  clientName?: string
+  inviterName?: string
+  token?: string
+  expiresAt?: Date
+  permissions?: Record<string, boolean>
+}): Promise<void> {
   const client = getResendClient()
   if (!client) {
-    console.log('[Email] Client portal invite email (stub) for', data.to)
+    console.log('[Email] Client portal invite email (no client) for', data.to)
     return
   }
-  console.log('[Email] Client portal invite email sent to', data.to)
+
+  const recipientName = data.name || data.clientUserName || 'there'
+  const portalLink = data.portalUrl || (data.token ? `${APP_URL}/client-portal/accept?token=${data.token}` : `${APP_URL}/client-portal`)
+  const orgName = data.clientName || APP_NAME
+
+  const { html, text } = renderEmailTemplate({
+    title: 'Access your client portal',
+    greeting: `Hi ${recipientName},`,
+    bodyHtml: `
+      <p>${data.inviterName ? `<strong>${data.inviterName}</strong> has invited you to` : 'You now have'} access to the <strong>${orgName}</strong> client portal where you can:</p>
+      <ul style="padding-left: 20px; color: #374151;">
+        <li style="margin-bottom: 8px;">Track project progress in real time</li>
+        <li style="margin-bottom: 8px;">Review and approve deliverables</li>
+        <li style="margin-bottom: 8px;">Communicate directly with the team</li>
+      </ul>
+    `,
+    ctaText: 'Open Portal',
+    ctaUrl: portalLink
+  })
+
+  try {
+    await client.emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: data.to,
+      subject: `Access your ${orgName} client portal`,
+      html,
+      text
+    })
+    console.log('[Email] Client portal invite email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send client portal invite email:', error)
+  }
 }
 
-export async function sendClientApprovalRequestEmail(data: { to: string; clientName: string; itemTitle: string; approvalUrl: string }): Promise<void> {
+export async function sendClientApprovalRequestEmail(data: {
+  to: string
+  clientName: string
+  itemTitle?: string
+  approvalUrl: string
+  approvalTitle?: string
+  projectName?: string
+  approvalType?: string
+  requesterName?: string
+  description?: string
+  dueDate?: Date
+  expiresAt?: Date
+}): Promise<void> {
   const client = getResendClient()
   if (!client) {
-    console.log('[Email] Client approval request email (stub) for', data.to)
+    console.log('[Email] Client approval request email (no client) for', data.to)
     return
   }
-  console.log('[Email] Client approval request email sent to', data.to)
+
+  const title = data.approvalTitle || data.itemTitle || 'Item'
+  const projectLine = data.projectName ? `<p><strong>Project:</strong> ${data.projectName}</p>` : ''
+  const typeLine = data.approvalType ? `<p><strong>Type:</strong> ${data.approvalType}</p>` : ''
+  const requesterLine = data.requesterName ? `<p>Requested by <strong>${data.requesterName}</strong></p>` : ''
+  const descLine = data.description ? `<p style="color: #4b5563;">${data.description}</p>` : ''
+  const dueLine = data.dueDate
+    ? `<p style="color: #6b7280; font-size: 13px;">Due by ${data.dueDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>`
+    : ''
+
+  const { html, text } = renderEmailTemplate({
+    title: `Approval needed from ${data.clientName}`,
+    greeting: `Hi ${data.clientName},`,
+    bodyHtml: `
+      <p>An item is ready for your review and approval:</p>
+      <div style="background: #f3f4f6; border-left: 4px solid ${BRAND_COLOR}; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;">
+        <p style="margin: 0; font-weight: 600; font-size: 16px;">${title}</p>
+      </div>
+      ${projectLine}
+      ${typeLine}
+      ${requesterLine}
+      ${descLine}
+      ${dueLine}
+      <p>Please review and let us know if it's approved or needs changes.</p>
+    `,
+    ctaText: 'Review & Approve',
+    ctaUrl: data.approvalUrl
+  })
+
+  try {
+    await client.emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: data.to,
+      subject: `Approval needed: ${title}`,
+      html,
+      text
+    })
+    console.log('[Email] Client approval request email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send client approval request email:', error)
+  }
+}
+
+/**
+ * Send board change notification email
+ */
+export async function sendBoardChangeEmail(data: {
+  to: string
+  name: string
+  boardName: string
+  actorName: string
+  action: string
+  itemTitle?: string
+  boardUrl: string
+  itemUrl?: string
+}): Promise<void> {
+  const client = getResendClient()
+  if (!client) {
+    console.log('[Email] Board change email (no client) for', data.to)
+    return
+  }
+
+  const itemLine = data.itemTitle
+    ? `<p style="margin: 12px 0; padding: 12px 16px; background: #f3f4f6; border-radius: 6px; font-weight: 600;">${data.itemTitle}</p>`
+    : ''
+
+  const { html, text } = renderEmailTemplate({
+    title: `Activity on ${data.boardName}`,
+    greeting: `Hi ${data.name},`,
+    bodyHtml: `
+      <p><strong>${data.actorName}</strong> ${data.action} on <strong>${data.boardName}</strong>.</p>
+      ${itemLine}
+    `,
+    ctaText: data.itemUrl ? 'View Item' : 'View Board',
+    ctaUrl: data.itemUrl || data.boardUrl,
+  })
+
+  try {
+    await client.emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: data.to,
+      subject: `[${data.boardName}] ${data.actorName} ${data.action}`,
+      html,
+      text,
+    })
+    console.log('[Email] Board change email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send board change email:', error)
+  }
+}
+
+/**
+ * Format a number as currency
+ */
+function formatCurrency(amount: number, currency?: string): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: currency || 'USD'
+  }).format(amount)
 }

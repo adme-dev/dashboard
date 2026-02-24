@@ -66,6 +66,9 @@ async function fetchBoardData(departmentId: string, boardName: string, search: s
       t.title,
       t.description,
       t.due_date,
+      t.start_date,
+      t.task_type,
+      COALESCE(t.progress_percentage, 0) as progress_percentage,
       t.priority,
       t.status_id,
       t.group_id,
@@ -96,6 +99,23 @@ async function fetchBoardData(departmentId: string, boardName: string, search: s
   `, params)
 
   const taskIds = items.map((i: any) => i.id)
+
+  // Load task dependencies for timeline view
+  const dependenciesMap = new Map<string, any[]>()
+  if (taskIds.length > 0) {
+    const deps = await queryRows(`
+      SELECT td.task_id, td.depends_on_task_id, td.dependency_type
+      FROM task_dependencies td
+      WHERE td.task_id = ANY($1) OR td.depends_on_task_id = ANY($1)
+    `, [taskIds])
+    for (const d of deps) {
+      if (!dependenciesMap.has(d.task_id)) dependenciesMap.set(d.task_id, [])
+      dependenciesMap.get(d.task_id)!.push({
+        dependsOnTaskId: d.depends_on_task_id,
+        type: d.dependency_type,
+      })
+    }
+  }
 
   // Load column values from custom_columns system (preferred)
   let columnValuesMap = new Map<string, any[]>()
@@ -161,8 +181,8 @@ async function fetchBoardData(departmentId: string, boardName: string, search: s
 
   // Use board_groups if they exist, otherwise fall back to legacy grouping
   const groups = boardGroups.length > 0
-    ? groupItemsByBoardGroups(items, columnValuesMap, boardGroups)
-    : groupItemsByLegacy(items, columnValuesMap)
+    ? groupItemsByBoardGroups(items, columnValuesMap, dependenciesMap, boardGroups)
+    : groupItemsByLegacy(items, columnValuesMap, dependenciesMap)
 
   const totalItems = items.length
   const lastUpdated = items.length > 0 ? items[0].updated_at : new Date()
@@ -177,7 +197,7 @@ async function fetchBoardData(departmentId: string, boardName: string, search: s
   }
 }
 
-function buildItemPayload(item: any, columnValuesMap: Map<string, any[]>) {
+function buildItemPayload(item: any, columnValuesMap: Map<string, any[]>, dependenciesMap: Map<string, any[]>) {
   const columnValues = columnValuesMap.get(item.id) || []
   const columnValuesObj: Record<string, any> = {}
   for (const cv of columnValues) {
@@ -192,6 +212,9 @@ function buildItemPayload(item: any, columnValuesMap: Map<string, any[]>) {
     title: item.title,
     description: item.description,
     dueDate: item.due_date,
+    startDate: item.start_date,
+    taskType: item.task_type || 'task',
+    progressPercentage: parseInt(item.progress_percentage) || 0,
     priority: item.priority,
     status: item.status_name || 'Unknown',
     statusColor: item.status_color || getStatusColor(item.status_category),
@@ -203,6 +226,7 @@ function buildItemPayload(item: any, columnValuesMap: Map<string, any[]>) {
     updatedAt: item.updated_at,
     columnValues: columnValuesObj,
     columnValuesArray: columnValues,
+    dependencies: dependenciesMap.get(item.id) || [],
   }
 }
 
@@ -211,7 +235,7 @@ function buildItemPayload(item: any, columnValuesMap: Map<string, any[]>) {
  * Tasks with group_id go into their assigned group.
  * Tasks without group_id go into an "Ungrouped" bucket.
  */
-function groupItemsByBoardGroups(items: any[], columnValuesMap: Map<string, any[]>, boardGroups: any[]) {
+function groupItemsByBoardGroups(items: any[], columnValuesMap: Map<string, any[]>, dependenciesMap: Map<string, any[]>, boardGroups: any[]) {
   const groupMap = new Map<string, { id: string; name: string; color: string; isCollapsed: boolean; sortOrder: number; items: any[] }>()
 
   // Initialize all board groups (even empty ones)
@@ -229,7 +253,7 @@ function groupItemsByBoardGroups(items: any[], columnValuesMap: Map<string, any[
   // Assign items to groups
   const ungroupedItems: any[] = []
   for (const item of items) {
-    const payload = buildItemPayload(item, columnValuesMap)
+    const payload = buildItemPayload(item, columnValuesMap, dependenciesMap)
     if (item.group_id && groupMap.has(item.group_id)) {
       groupMap.get(item.group_id)!.items.push(payload)
     } else {
@@ -258,7 +282,7 @@ function groupItemsByBoardGroups(items: any[], columnValuesMap: Map<string, any[
 /**
  * Legacy grouping: uses Monday migration data or status category fallback.
  */
-function groupItemsByLegacy(items: any[], columnValuesMap: Map<string, any[]>) {
+function groupItemsByLegacy(items: any[], columnValuesMap: Map<string, any[]>, dependenciesMap: Map<string, any[]>) {
   const groupMap = new Map<string, { id: string; name: string; color: string; items: any[] }>()
 
   const groupColors: Record<string, string> = {
@@ -302,7 +326,7 @@ function groupItemsByLegacy(items: any[], columnValuesMap: Map<string, any[]>) {
       item.status_color ||
       '#579BFC'
 
-    const payload = buildItemPayload(item, columnValuesMap)
+    const payload = buildItemPayload(item, columnValuesMap, dependenciesMap)
 
     if (!groupMap.has(groupId)) {
       groupMap.set(groupId, { id: groupId, name: groupName, color, items: [] })

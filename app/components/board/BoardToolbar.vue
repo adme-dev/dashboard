@@ -48,6 +48,7 @@
 
     <UButton variant="ghost" size="sm" icon="i-lucide-download" @click="$emit('export')">Export</UButton>
     <UButton variant="ghost" size="sm" icon="i-lucide-layout-template" @click="$emit('template')">Templates</UButton>
+    <UButton variant="ghost" size="sm" icon="i-lucide-zap" @click="$emit('automations')">Automations</UButton>
     <div class="w-px h-5 bg-gray-200" />
     <UButton variant="ghost" size="sm" icon="i-lucide-folder-plus" @click="$emit('addGroup')">Add Group</UButton>
     <UButton variant="ghost" size="sm" icon="i-lucide-plus" @click="$emit('addColumn')">Add Column</UButton>
@@ -70,6 +71,7 @@ const props = defineProps<{
 defineEmits<{
   export: []
   template: []
+  automations: []
   addGroup: []
   addColumn: []
   toggleColumnVisibility: [columnId: string, visible: boolean]

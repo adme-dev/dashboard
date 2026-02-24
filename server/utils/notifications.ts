@@ -6,6 +6,8 @@
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { sendTaskAssignedEmail, sendMentionEmail, sendApprovalRequestEmail, sendDueReminderEmail } from '~~/server/utils/email'
 
+const baseUrl = process.env.APP_URL || 'http://localhost:3000'
+
 export type NotificationType =
   | 'task_assigned'
   | 'task_mentioned'
@@ -125,7 +127,7 @@ export async function notifyTaskAssigned(params: NotifyTaskAssignedParams) {
 
   // Get assignee details
   const assignee = await queryOne(`
-    SELECT name, email FROM team_members WHERE id = $1
+    SELECT name, email, notification_preferences FROM team_members WHERE id = $1
   `, [params.assigneeId])
 
   if (!assigner || !assignee) return
@@ -145,17 +147,19 @@ export async function notifyTaskAssigned(params: NotifyTaskAssignedParams) {
     }
   })
 
-  // Send email notification
-  await sendTaskAssignedEmail({
-    to: assignee.email,
-    assigneeName: assignee.name,
-    taskTitle: params.taskTitle,
-    taskId: params.taskId,
-    assignerName: assigner.name,
-    projectName: params.projectName,
-    dueDate: params.dueDate,
-    priority: 'medium'
-  })
+  // Send email notification (check preference)
+  const prefs = assignee.notification_preferences || {}
+  if (prefs.email_task_assigned !== false) {
+    await sendTaskAssignedEmail({
+      to: assignee.email,
+      name: assignee.name,
+      taskTitle: params.taskTitle,
+      assignerName: assigner.name,
+      projectName: params.projectName,
+      dueDate: params.dueDate,
+      taskUrl: `${baseUrl}/agency/tasks/${params.taskId}`
+    })
+  }
 }
 
 /**
@@ -213,7 +217,7 @@ export async function notifyMention(params: NotifyMentionParams) {
 
   // Get mentioned user details
   const mentioned = await queryOne(`
-    SELECT name, email FROM team_members WHERE id = $1
+    SELECT name, email, notification_preferences FROM team_members WHERE id = $1
   `, [params.mentionedUserId])
 
   if (!mentioner || !mentioned) return
@@ -233,15 +237,18 @@ export async function notifyMention(params: NotifyMentionParams) {
     }
   })
 
-  // Send email notification
-  await sendMentionEmail({
-    to: mentioned.email,
-    mentionedName: mentioned.name,
-    mentionerName: mentioner.name,
-    taskTitle: params.taskTitle,
-    taskId: params.taskId,
-    comment: params.commentSnippet
-  })
+  // Send email notification (check preference)
+  const prefs = mentioned.notification_preferences || {}
+  if (prefs.email_task_mentioned !== false) {
+    await sendMentionEmail({
+      to: mentioned.email,
+      name: mentioned.name,
+      taskTitle: params.taskTitle,
+      mentionerName: mentioner.name,
+      commentSnippet: params.commentSnippet,
+      taskUrl: `${baseUrl}/agency/tasks/${params.taskId}`
+    })
+  }
 }
 
 /**
@@ -255,7 +262,7 @@ export async function notifyApprovalRequest(params: NotifyApprovalRequestParams)
 
   // Get approver details
   const approver = await queryOne(`
-    SELECT name, email FROM team_members WHERE id = $1
+    SELECT name, email, notification_preferences FROM team_members WHERE id = $1
   `, [params.approverId])
 
   if (!requester || !approver) return
@@ -275,15 +282,18 @@ export async function notifyApprovalRequest(params: NotifyApprovalRequestParams)
     }
   })
 
-  // Send email notification
-  await sendApprovalRequestEmail({
-    to: approver.email,
-    approverName: approver.name,
-    requesterName: requester.name,
-    taskTitle: params.taskTitle,
-    taskId: params.taskId,
-    stepName: params.stepName
-  })
+  // Send email notification (check preference)
+  const prefs = approver.notification_preferences || {}
+  if (prefs.email_approval_request !== false) {
+    await sendApprovalRequestEmail({
+      to: approver.email,
+      name: approver.name,
+      taskTitle: params.taskTitle,
+      requesterName: requester.name,
+      stepName: params.stepName,
+      taskUrl: `${baseUrl}/agency/tasks/${params.taskId}`
+    })
+  }
 }
 
 /**
@@ -292,7 +302,7 @@ export async function notifyApprovalRequest(params: NotifyApprovalRequestParams)
 export async function notifyDueReminder(params: NotifyDueReminderParams) {
   // Get assignee details
   const assignee = await queryOne(`
-    SELECT name, email FROM team_members WHERE id = $1
+    SELECT name, email, notification_preferences FROM team_members WHERE id = $1
   `, [params.assigneeId])
 
   if (!assignee) return
@@ -318,16 +328,18 @@ export async function notifyDueReminder(params: NotifyDueReminderParams) {
     }
   })
 
-  // Send email notification
-  await sendDueReminderEmail({
-    to: assignee.email,
-    userName: assignee.name,
-    tasks: [{
-      id: params.taskId,
-      title: params.taskTitle,
-      dueDate: params.dueDate
-    }]
-  })
+  // Send email notification (check preference)
+  const prefs = assignee.notification_preferences || {}
+  if (prefs.email_task_due !== false) {
+    await sendDueReminderEmail({
+      to: assignee.email,
+      name: assignee.name,
+      taskTitle: params.taskTitle,
+      dueDate: params.dueDate,
+      daysRemaining: Math.ceil((params.dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)),
+      taskUrl: `${baseUrl}/agency/tasks/${params.taskId}`
+    })
+  }
 }
 
 /**
@@ -413,7 +425,7 @@ export async function notifyNextApprover(params: {
 }) {
   // Get approver details
   const approver = await queryOne(`
-    SELECT name, email FROM team_members WHERE id = $1
+    SELECT name, email, notification_preferences FROM team_members WHERE id = $1
   `, [params.approverId])
 
   if (!approver) return
@@ -432,15 +444,18 @@ export async function notifyNextApprover(params: {
     }
   })
 
-  // Send email notification
-  await sendApprovalRequestEmail({
-    to: approver.email,
-    approverName: approver.name,
-    requesterName: 'System',
-    taskTitle: params.taskTitle,
-    taskId: params.taskId,
-    stepName: params.stepName
-  })
+  // Send email notification (check preference)
+  const prefs = approver.notification_preferences || {}
+  if (prefs.email_approval_request !== false) {
+    await sendApprovalRequestEmail({
+      to: approver.email,
+      name: approver.name,
+      taskTitle: params.taskTitle,
+      requesterName: 'System',
+      stepName: params.stepName,
+      taskUrl: `${baseUrl}/agency/tasks/${params.taskId}`
+    })
+  }
 }
 
 /**
