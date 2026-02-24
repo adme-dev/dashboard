@@ -34,6 +34,11 @@ export default defineNuxtConfig({
     
     // Monday.com
     mondayApiToken: process.env.MONDAY_API_TOKEN || '',
+
+    // Meta (Facebook/Instagram) Ads
+    metaAppId: process.env.META_APP_ID || '',
+    metaAppSecret: process.env.META_APP_SECRET || '',
+    metaRedirectUri: process.env.META_REDIRECT_URI || '/api/agency/social/meta/callback',
     
     // R2 Storage
     r2AccountId: process.env.R2_ACCOUNT_ID || '',

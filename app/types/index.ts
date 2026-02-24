@@ -241,3 +241,106 @@ export interface TaskColumnValue {
   createdAt: string
   updatedAt: string
 }
+
+// ============================================
+// EOM Invoicing Types
+// ============================================
+export type EomRunStatus = 'draft' | 'generating' | 'review' | 'pushed' | 'complete' | 'failed'
+export type EomLineItemSource = 'monday' | 'meta_ads' | 'google_ads' | 'manual'
+export type EomConfidence = 'high' | 'medium' | 'low'
+export type EomReviewStatus = 'auto' | 'reviewed' | 'flagged' | 'corrected'
+
+export interface EomRun {
+  id: string
+  month: number
+  year: number
+  status: EomRunStatus
+  totalExGst: number | null
+  totalGst: number | null
+  invoiceCount: number
+  lineItemCount: number
+  flaggedCount: number
+  firstInvoiceNumber: number | null
+  lastInvoiceNumber: number | null
+  xeroBatchId: string | null
+  notes: string | null
+  createdBy: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface EomLineItem {
+  id: string
+  runId: string
+  clientName: string
+  clientCode: string | null
+  mondayItemId: string | null
+  description: string
+  quantity: number
+  unitAmount: number
+  accountCode: string
+  taxType: string
+  trackingOption1: string | null
+  invoiceNumber: number | null
+  source: EomLineItemSource
+  confidence: EomConfidence
+  matchedKeyword: string | null
+  reviewStatus: EomReviewStatus
+  reviewNotes: string | null
+  originalValues: Record<string, any> | null
+  createdAt: string
+}
+
+// ============================================
+// Social Connections & Ad Spend Types
+// ============================================
+export type SocialPlatform = 'meta' | 'google' | 'linkedin' | 'tiktok'
+export type ConnectionStatus = 'active' | 'expired' | 'disconnected'
+
+export interface SocialConnection {
+  id: string
+  platform: SocialPlatform
+  accountId: string
+  accountName: string | null
+  status: ConnectionStatus
+  tokenExpiresAt: string | null
+  scopes: string[]
+  metadata: Record<string, any> | null
+  connectedBy: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AdAccountClientMap {
+  id: string
+  connectionId: string
+  campaignId: string | null
+  campaignNamePattern: string | null
+  xeroClientName: string
+  xeroClientCode: string | null
+  createdAt: string
+}
+
+export interface MetaSpendRecord {
+  id: string
+  clientId: string
+  clientName: string
+  platform: string
+  period: string
+  budgetAllocated: number
+  actualSpend: number
+  commissionRate: number
+  commissionAmount: number
+  campaignId: string | null
+  campaignName: string | null
+  impressions: number | null
+  clicks: number | null
+  conversions: number | null
+  syncedAt: string | null
+}
+
+export interface MetaSpendSync {
+  synced: number
+  accounts: number
+  totalSpend: number
+}
