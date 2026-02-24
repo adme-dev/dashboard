@@ -7,6 +7,7 @@ import { createError, readBody } from 'h3'
 import { createMondayClient } from '../../../../utils/mondayClient'
 import { createMigrationSession, MondayMigrationService, type MigrationConfig } from '../../../../utils/mondayMigration'
 import { requireAuth } from '../../../../utils/auth'
+import { execute } from '../../../../utils/db'
 
 export default eventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -23,6 +24,13 @@ export default eventHandler(async (event) => {
   }
 
   try {
+    // Mark any stuck "running" sessions as failed (prevents ghost sessions)
+    await execute(
+      `UPDATE monday_migration_sessions
+       SET status = 'failed', error_message = 'Superseded by new migration', updated_at = NOW()
+       WHERE status = 'running'`
+    )
+
     // Test connection first
     const client = await createMondayClient()
     const account = await client.testConnection()

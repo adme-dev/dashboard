@@ -1,41 +1,21 @@
 <template>
-  <div class="bg-white border-b px-4 py-3">
-    <div class="flex items-center justify-between">
-      <div>
-        <UBreadcrumb class="mb-2" :items="[
+  <div class="bg-white border-b">
+    <!-- Row 1: Breadcrumb + title + actions -->
+    <div class="flex items-center justify-between px-4 pt-3 pb-2">
+      <div class="min-w-0">
+        <UBreadcrumb :items="[
           { label: 'Boards', icon: 'i-lucide-layout-grid', to: '/agency/boards' },
           { label: boardName, icon: 'i-lucide-columns-3' }
         ]" />
-        <h1 class="text-xl font-semibold">{{ boardName }}</h1>
-        <p class="text-sm text-gray-500 mt-1">
-          {{ totalItems }} items
-          <span v-if="lastUpdated">· Last updated {{ formatRelativeTime(lastUpdated) }}</span>
-        </p>
-      </div>
-      <div class="flex items-center gap-2">
-        <!-- View Switcher -->
-        <div class="flex items-center bg-gray-100 rounded-lg p-0.5">
-          <button
-            v-for="v in views"
-            :key="v.id"
-            class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
-            :class="activeView === v.id
-              ? 'bg-white text-gray-900 shadow-sm'
-              : 'text-gray-500 hover:text-gray-700'"
-            @click="$emit('update:activeView', v.id)"
-          >
-            <UIcon :name="v.icon" class="w-4 h-4" />
-            <span class="hidden sm:inline">{{ v.label }}</span>
-          </button>
+        <div class="flex items-center gap-3 mt-1">
+          <h1 class="text-lg font-semibold truncate">{{ boardName }}</h1>
+          <span class="text-xs text-gray-400 whitespace-nowrap">
+            {{ totalItems }} items
+            <span v-if="lastUpdated">· {{ formatRelativeTime(lastUpdated) }}</span>
+          </span>
         </div>
-        <UInput
-          :model-value="searchQuery"
-          icon="i-lucide-search"
-          placeholder="Search items..."
-          class="w-64"
-          @update:model-value="$emit('update:searchQuery', $event)"
-        />
-
+      </div>
+      <div class="flex items-center gap-2 flex-shrink-0">
         <!-- Subscribe Button -->
         <UPopover>
           <UButton
@@ -63,10 +43,37 @@
           </template>
         </UPopover>
 
-        <UButton color="primary" icon="i-lucide-plus" @click="$emit('newItem')">
+        <UButton color="primary" icon="i-lucide-plus" size="sm" @click="$emit('newItem')">
           New Item
         </UButton>
       </div>
+    </div>
+
+    <!-- Row 2: View switcher + search -->
+    <div class="flex items-center justify-between px-4 pb-2">
+      <!-- View Switcher -->
+      <div class="flex items-center gap-0.5">
+        <button
+          v-for="v in views"
+          :key="v.id"
+          class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm font-medium transition-colors"
+          :class="activeView === v.id
+            ? 'bg-gray-100 text-gray-900'
+            : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'"
+          @click="$emit('update:activeView', v.id)"
+        >
+          <UIcon :name="v.icon" class="w-4 h-4" />
+          <span class="hidden sm:inline">{{ v.label }}</span>
+        </button>
+      </div>
+      <UInput
+        :model-value="searchQuery"
+        icon="i-lucide-search"
+        placeholder="Search Items..."
+        size="sm"
+        class="w-52"
+        @update:model-value="$emit('update:searchQuery', $event)"
+      />
     </div>
   </div>
 </template>

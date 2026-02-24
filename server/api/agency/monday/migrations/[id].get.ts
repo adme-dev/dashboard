@@ -3,7 +3,7 @@
  * GET /api/agency/monday/migrations/:id
  */
 
-import { createError, getRouterParam } from 'h3'
+import { createError, getRouterParam, getQuery } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne, queryRows } from '~~/server/utils/db'
 
@@ -14,6 +14,10 @@ export default eventHandler(async (event) => {
   if (!sessionId) {
     throw createError({ statusCode: 400, statusMessage: 'Session ID is required' })
   }
+
+  const query = getQuery(event)
+  const includeItems = query.items === 'true' || query.items === '1'
+  const itemStatus = query.itemStatus as string || 'failed'
 
   const session = await queryOne(
     `SELECT ms.*, tm.name as started_by_name
@@ -28,7 +32,7 @@ export default eventHandler(async (event) => {
   }
 
   const boardMappings = await queryRows(
-    `SELECT 
+    `SELECT
        bm.*,
        d.name as department_name,
        p.name as project_name
@@ -39,6 +43,19 @@ export default eventHandler(async (event) => {
      ORDER BY bm.monday_board_name`,
     [sessionId]
   )
+
+  // Optionally include item-level details (for debugging)
+  let failedItems: any[] = []
+  if (includeItems) {
+    failedItems = await queryRows(
+      `SELECT im.monday_item_id, im.monday_item_name, im.status, im.error_message, im.board_mapping_id
+       FROM monday_item_mappings im
+       WHERE im.migration_session_id = $1 AND im.status = $2
+       ORDER BY im.created_at
+       LIMIT 100`,
+      [sessionId, itemStatus]
+    )
+  }
 
   return {
     id: session.id,
@@ -81,5 +98,6 @@ export default eventHandler(async (event) => {
       completedAt: bm.completed_at,
       error: bm.error_message,
     })),
+    ...(includeItems ? { failedItems } : {}),
   }
 })

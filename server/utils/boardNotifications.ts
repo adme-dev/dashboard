@@ -225,10 +225,13 @@ function mapEventToNotificationType(eventType: string): string {
  */
 function getEmailPrefKey(eventType: string): string | null {
   const map: Record<string, string> = {
-    task_updated: 'email_task_assigned',
-    task_created: 'email_task_assigned',
-    status_changed: 'email_task_assigned',
-    cell_updated: 'email_task_assigned',
+    task_updated: 'email_board_changes',
+    task_created: 'email_board_changes',
+    task_deleted: 'email_board_changes',
+    status_changed: 'email_board_changes',
+    cell_updated: 'email_board_changes',
+    group_updated: 'email_board_changes',
+    column_updated: 'email_board_changes',
   }
   return map[eventType] || null
 }

@@ -9,6 +9,7 @@
     @add-group="showAddGroup = true"
     @add-column="showAddColumn = true"
     @add-item="handleAddItem"
+    @new-item="showNewItem = true"
   >
     <!-- Table View (default) -->
     <template #table="{ groups, columns, normalizeColumn, getCellValue, handleCellUpdate, selection }">
@@ -190,6 +191,38 @@
       </Transition>
     </template>
   </BoardContainer>
+
+  <!-- New Item Modal -->
+  <UModal v-model:open="showNewItem" title="New Item">
+    <template #body>
+      <div class="space-y-4">
+        <UFormField label="Title">
+          <UInput
+            v-model="newItemTitle"
+            placeholder="What needs to be done?"
+            class="w-full"
+            autofocus
+            @keydown.enter="submitNewItem"
+          />
+        </UFormField>
+        <UFormField v-if="availableGroups.length > 0" label="Group">
+          <select
+            v-model="newItemGroupId"
+            class="w-full text-sm border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="">No group</option>
+            <option v-for="g in availableGroups" :key="g.id" :value="g.id">{{ g.name }}</option>
+          </select>
+        </UFormField>
+      </div>
+    </template>
+    <template #footer>
+      <div class="flex justify-end gap-2">
+        <UButton variant="ghost" @click="showNewItem = false">Cancel</UButton>
+        <UButton color="primary" :disabled="!newItemTitle.trim()" @click="submitNewItem">Add Item</UButton>
+      </div>
+    </template>
+  </UModal>
 
   <!-- Delete Column Confirmation -->
   <UModal v-model:open="showDeleteModal" title="Delete Column">
@@ -465,6 +498,26 @@ const newGroupColor = ref('#579BFC')
 const showExport = ref(false)
 const showTemplates = ref(false)
 const showAutomations = ref(false)
+const showNewItem = ref(false)
+const newItemTitle = ref('')
+const newItemGroupId = ref('')
+
+const availableGroups = computed(() => {
+  const groups = containerRef.value?.groups || []
+  return groups.filter((g: any) => g.id !== '__ungrouped__' && !g.id.startsWith('grouped_'))
+})
+
+async function submitNewItem() {
+  const title = newItemTitle.value.trim()
+  if (!title) return
+  await handleAddItem({
+    groupId: newItemGroupId.value || '__ungrouped__',
+    title,
+  })
+  newItemTitle.value = ''
+  newItemGroupId.value = ''
+  showNewItem.value = false
+}
 
 const groupColorOptions = [
   '#579BFC', '#00C875', '#FDAB3D', '#E2445C', '#A25DDC',

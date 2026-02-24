@@ -5,9 +5,11 @@ import { queryOne, queryRows, execute } from '~~/server/utils/db'
  * Uses INSERT ... ON CONFLICT DO NOTHING so it's safe to call repeatedly.
  */
 export async function autoSubscribe(userId: string, boardId: string, itemId?: string): Promise<void> {
+  // The UNIQUE constraint uses COALESCE on both item_id and column_id.
+  // We must include column_id in the INSERT (as NULL) so the ON CONFLICT expression matches.
   await execute(`
-    INSERT INTO board_subscriptions (user_id, board_id, item_id, events, notify_inapp, notify_email)
-    VALUES ($1, $2, $3, '{}', true, false)
+    INSERT INTO board_subscriptions (user_id, board_id, item_id, column_id, events, notify_inapp, notify_email)
+    VALUES ($1, $2, $3, NULL, '{}', true, false)
     ON CONFLICT (user_id, board_id, COALESCE(item_id, '00000000-0000-0000-0000-000000000000'), COALESCE(column_id, '00000000-0000-0000-0000-000000000000'))
     DO NOTHING
   `, [userId, boardId, itemId || null])

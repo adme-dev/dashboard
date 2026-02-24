@@ -33,6 +33,23 @@ const notificationRefs = ref<Record<string, Element>>({})
 
 const selectedNotification = defineModel<Notification | null>()
 
+// Clean up stale refs and selected state when notifications list changes
+watch(() => props.notifications, (current) => {
+  const currentIds = new Set(current.map(n => n.id))
+
+  // Remove refs for notifications no longer in the list
+  for (const id of Object.keys(notificationRefs.value)) {
+    if (!currentIds.has(id)) {
+      delete notificationRefs.value[id]
+    }
+  }
+
+  // Clear selected notification if it's no longer in the list
+  if (selectedNotification.value && !currentIds.has(selectedNotification.value.id)) {
+    selectedNotification.value = null
+  }
+})
+
 watch(selectedNotification, () => {
   if (!selectedNotification.value) return
   const el = notificationRefs.value[selectedNotification.value.id]

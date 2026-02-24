@@ -50,27 +50,13 @@
 
     <!-- Timeline Grid -->
     <div ref="scrollContainer" class="flex-1 overflow-auto relative" @scroll="onScroll">
-      <!-- Today indicator -->
-      <div
-        v-if="todayLeft !== null"
-        class="absolute top-0 bottom-0 z-20 pointer-events-none"
-        :style="{ left: `calc(200px + ${todayLeft}%)` }"
-      >
-        <!-- Subtle background stripe in day view -->
-        <div
-          v-if="zoom === 'day'"
-          class="absolute top-0 bottom-0 bg-red-50/30"
-          :style="{ left: '-15px', width: '30px' }"
-        />
-        <div class="absolute top-0 bottom-0 w-0.5 bg-red-500 left-0" />
-        <div class="absolute -top-0.5 -left-1.5 w-3 h-3 bg-red-500 rounded-full" />
-        <span class="absolute top-3 left-2 text-[10px] font-semibold text-red-500 whitespace-nowrap">Today</span>
-      </div>
-
+      <!-- min-width: fit-content forces all rows to stretch to match the widest child (header with min-w columns) -->
+      <div style="min-width: fit-content;">
       <!-- SVG dependency arrows overlay -->
       <svg
         v-if="arrowPaths.length > 0"
-        class="absolute top-0 left-0 w-full h-full z-15 pointer-events-none"
+        class="absolute top-0 left-0 z-15 pointer-events-none"
+        style="width: 100%; height: 100%;"
         :style="{ minHeight: svgHeight + 'px' }"
       >
         <defs>
@@ -105,6 +91,31 @@
             }"
           >
             {{ col.label }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Today indicator (in-flow row so flex-1 matches scrollable content width) -->
+      <div
+        v-if="todayLeft !== null"
+        class="flex pointer-events-none relative z-20"
+        style="height: 0;"
+      >
+        <div class="w-[200px] flex-shrink-0" />
+        <div class="flex-1 relative" style="overflow: visible;">
+          <div
+            class="absolute"
+            :style="{ left: `${todayLeft}%`, top: '-37px', height: `${svgHeight}px` }"
+          >
+            <!-- Subtle background stripe in day view -->
+            <div
+              v-if="zoom === 'day'"
+              class="absolute top-0 bottom-0 bg-red-50/30"
+              :style="{ left: '-15px', width: '30px' }"
+            />
+            <div class="absolute top-0 bottom-0 w-0.5 bg-red-500 left-0" />
+            <div class="absolute -top-0.5 -left-1.5 w-3 h-3 bg-red-500 rounded-full" />
+            <span class="absolute top-3 left-2 text-[10px] font-semibold text-red-500 whitespace-nowrap">Today</span>
           </div>
         </div>
       </div>
@@ -234,6 +245,7 @@
           <p class="text-gray-500">No items to display on timeline</p>
         </div>
       </div>
+      </div><!-- end min-width: fit-content wrapper -->
     </div>
   </div>
 </template>
@@ -562,7 +574,7 @@ const arrowPaths = computed<ArrowPath[]>(() => {
       // Convert % to a large viewBox-relative X (use 1000 as reference width for the timeline area)
       // Actually, we'll use a 'calc' approach - but SVG doesn't support calc.
       // Instead, we'll use the scrollContainer width if available
-      const containerWidth = scrollContainer.value?.clientWidth || 1000
+      const containerWidth = scrollContainer.value?.scrollWidth || scrollContainer.value?.clientWidth || 1000
       const timelineWidth = containerWidth - leftPanelWidth
 
       const fromX = leftPanelWidth + (fromXPct / 100) * timelineWidth
@@ -634,7 +646,7 @@ function startDrag(item: BoardItem, edge: 'start' | 'end', event: MouseEvent) {
     const containerEl = scrollContainer.value
     if (!containerEl) return
 
-    const timelineWidth = containerEl.clientWidth - 200
+    const timelineWidth = (containerEl.scrollWidth || containerEl.clientWidth) - 200
     const range = rangeEnd.value.getTime() - rangeStart.value.getTime()
     const pxToMs = range / timelineWidth
     const deltaX = e.clientX - dragState.value.initialMouseX

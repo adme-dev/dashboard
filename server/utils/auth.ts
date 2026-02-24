@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs'
-import { queryOne } from './db'
+import { queryOne, queryRows } from './db'
 
 export interface User {
   id: string
@@ -153,6 +153,45 @@ export async function requireRole(event: any, roles: string[]): Promise<User> {
     throw createError({ statusCode: 403, statusMessage: 'Forbidden - Insufficient permissions' })
   }
   
+  return user
+}
+
+// Require board access - checks user is a member/manager of the department (board) or an admin
+export async function requireBoardAccess(event: any, boardId: string): Promise<User> {
+  const user = await requireAuth(event)
+
+  // Admins and super_admins bypass board membership checks
+  if (user.role === 'admin' || user.role === 'super_admin') {
+    return user
+  }
+
+  try {
+    const rows = await queryRows(
+      `SELECT 1 FROM department_members WHERE department_id = $1 AND team_member_id = $2
+       UNION
+       SELECT 1 FROM departments WHERE id = $1 AND manager_id = $2`,
+      [boardId, user.id]
+    )
+
+    if (rows.length === 0) {
+      throw createError({ statusCode: 403, statusMessage: 'Access denied to this board' })
+    }
+  } catch (error: any) {
+    // If error is already a 403 we threw, re-throw it
+    if (error.statusCode === 403) throw error
+
+    // Graceful degradation: if department_members table doesn't exist,
+    // fall back to checking if the department exists at all
+    if (error.message?.includes('does not exist') || error.message?.includes('relation')) {
+      const dept = await queryOne('SELECT id FROM departments WHERE id = $1', [boardId])
+      if (!dept) {
+        throw createError({ statusCode: 404, statusMessage: 'Board not found' })
+      }
+    } else {
+      throw error
+    }
+  }
+
   return user
 }
 

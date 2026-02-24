@@ -42,7 +42,7 @@
             color="primary"
             icon="i-lucide-play"
             :loading="startingMigration"
-            @click="showPreview = true"
+            @click="startDirectMigration"
           >
             Start Migration
           </UButton>
@@ -331,6 +331,32 @@ async function testConnection() {
   }
 }
 
+async function startDirectMigration() {
+  // Ensure a default department is set
+  const config = { ...migrationConfig.value }
+  if (!config.defaultDepartmentId && departments.value.length > 0) {
+    config.defaultDepartmentId = departments.value[0].id
+  }
+
+  startingMigration.value = true
+
+  try {
+    const response = await $fetch('/api/agency/monday/migrations', {
+      method: 'POST',
+      body: { config },
+    })
+
+    if (response.success) {
+      await fetchMigrations()
+      startRefreshInterval()
+    }
+  } catch (error: any) {
+    console.error('Failed to start migration:', error)
+  } finally {
+    startingMigration.value = false
+  }
+}
+
 async function handlePreviewStart(boardMappings: Record<string, { departmentId?: string; projectId?: string }>) {
   showPreview.value = false
   startingMigration.value = true
@@ -427,11 +453,11 @@ function formatDate(date: string) {
 }
 
 // Lifecycle
-onMounted(() => {
-  fetchMigrations()
+onMounted(async () => {
+  await fetchMigrations()
   fetchDepartments()
   fetchProjects()
-  
+
   // Check if there's an active migration on load
   const running = migrations.value.find(s => s.status === 'running')
   if (running) {

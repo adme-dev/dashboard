@@ -4,7 +4,6 @@
 import { execute, queryOne } from '~~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
   const boardId = getRouterParam(event, 'id')
   const autoId = getRouterParam(event, 'autoId')
 
@@ -12,16 +11,26 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Board ID and Automation ID are required' })
   }
 
-  const existing = await queryOne(
-    'SELECT id FROM board_automations WHERE id = $1 AND board_id = $2',
-    [autoId, boardId]
-  )
+  await requireBoardAccess(event, boardId)
 
-  if (!existing) {
-    throw createError({ statusCode: 404, statusMessage: 'Automation not found' })
+  try {
+    const existing = await queryOne(
+      'SELECT id FROM board_automations WHERE id = $1 AND board_id = $2',
+      [autoId, boardId]
+    )
+
+    if (!existing) {
+      throw createError({ statusCode: 404, statusMessage: 'Automation not found' })
+    }
+
+    await execute('DELETE FROM board_automations WHERE id = $1', [autoId])
+
+    return { success: true }
+  } catch (error: any) {
+    if (error.statusCode) throw error
+    if (error.message?.includes('does not exist')) {
+      throw createError({ statusCode: 404, statusMessage: 'Automation not found' })
+    }
+    throw error
   }
-
-  await execute('DELETE FROM board_automations WHERE id = $1', [autoId])
-
-  return { success: true }
 })

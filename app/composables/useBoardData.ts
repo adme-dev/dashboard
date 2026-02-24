@@ -375,7 +375,12 @@ export function useBoardData(boardId: Ref<string>) {
   })
 
   // --- Active View ---
-  const activeView = ref<BoardViewType>('table')
+  const route = useRoute()
+  const validViews: BoardViewType[] = ['table', 'kanban', 'timeline', 'calendar', 'list', 'gallery']
+  const initialView = validViews.includes(route.query.view as BoardViewType)
+    ? (route.query.view as BoardViewType)
+    : 'table'
+  const activeView = ref<BoardViewType>(initialView)
 
   // --- Search / Filter / Sort / Group ---
   const searchQuery = ref('')

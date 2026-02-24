@@ -349,8 +349,5 @@ onMounted(async () => {
     <slot />
 
     <NotificationsSlideover />
-    
-    <!-- Command Palette -->
-    <CommandPalette />
   </UDashboardGroup>
 </template>

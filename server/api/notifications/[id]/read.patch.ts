@@ -50,6 +50,11 @@ export default defineEventHandler(async (event) => {
   } catch (error: any) {
     if (error.statusCode) throw error
 
+    // Handle missing table gracefully — treat as success
+    if (error.message?.includes('does not exist')) {
+      return { success: true, alreadyRead: true }
+    }
+
     console.error('Failed to mark notification as read:', error)
     throw createError({
       statusCode: 500,

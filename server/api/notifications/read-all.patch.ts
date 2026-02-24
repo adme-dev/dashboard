@@ -3,31 +3,33 @@
  * PATCH /api/notifications/read-all
  */
 
-import { queryOne } from '~~/server/utils/db'
+import { queryOne, execute } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
 
   try {
-    const result = await queryOne(`
-      UPDATE notifications
-      SET is_read = true, read_at = NOW()
-      WHERE user_id = $1 AND is_read = false
-      RETURNING COUNT(*) as marked_count
-    `, [user.id])
-
-    // Get actual count since RETURNING with COUNT doesn't work as expected
+    // Count unread first, then update — PostgreSQL doesn't support COUNT() in RETURNING
     const countResult = await queryOne(`
       SELECT COUNT(*) as count
       FROM notifications
-      WHERE user_id = $1 AND is_read = true
-        AND read_at > NOW() - INTERVAL '1 minute'
+      WHERE user_id = $1 AND is_read = false
     `, [user.id])
+
+    const markedCount = parseInt(countResult?.count || '0')
+
+    if (markedCount > 0) {
+      await execute(`
+        UPDATE notifications
+        SET is_read = true, read_at = NOW()
+        WHERE user_id = $1 AND is_read = false
+      `, [user.id])
+    }
 
     return {
       success: true,
-      markedCount: parseInt(countResult?.count || '0')
+      markedCount
     }
   } catch (error) {
     console.error('Failed to mark all notifications as read:', error)

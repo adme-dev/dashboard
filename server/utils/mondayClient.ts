@@ -29,7 +29,7 @@ export interface MondayColumn {
   id: string
   title: string
   type: string
-  settings_str?: string
+  settings?: string
 }
 
 export interface MondayGroup {
@@ -57,12 +57,9 @@ export interface MondayItem {
 
 export interface MondayColumnValue {
   id: string
-  title?: string
   type: string
   value?: string
   text?: string
-  additional_info?: string
-  settings_str?: string
 }
 
 export interface MondayUpdate {
@@ -242,7 +239,7 @@ export class MondayClient {
             id
             title
             type
-            settings_str
+            settings
           }
           groups {
             id
@@ -267,12 +264,15 @@ export class MondayClient {
     excludeDeleted?: boolean
   }): Promise<{ items: MondayItem[]; cursor?: string }> {
     const limit = options?.limit || 100
-    const cursorParam = options?.cursor ? `, cursor: {\"id\":\"${options.cursor}\"}` : ''
 
-    const query = `
-      query {
-        boards(ids: ["${boardId}"]) {
-          items_page(limit: ${limit}${cursorParam}) {
+    let query: string
+    let parseResponse: (data: any) => { cursor?: string; items: any[] }
+
+    if (options?.cursor) {
+      // Use next_items_page for subsequent pages (top-level query)
+      query = `
+        query {
+          next_items_page(cursor: "${options.cursor}", limit: ${limit}) {
             cursor
             items {
               id
@@ -294,26 +294,57 @@ export class MondayClient {
             }
           }
         }
+      `
+      parseResponse = (data: any) => data.next_items_page || { cursor: undefined, items: [] }
+    } else {
+      // Use items_page on board for first page
+      query = `
+        query {
+          boards(ids: ["${boardId}"]) {
+            items_page(limit: ${limit}) {
+              cursor
+              items {
+                id
+                name
+                state
+                created_at
+                updated_at
+                creator_id
+                group {
+                  id
+                  title
+                }
+                column_values {
+                  id
+                  type
+                  value
+                  text
+                }
+              }
+            }
+          }
+        }
+      `
+      parseResponse = (data: any) => {
+        const board = data.boards?.[0]
+        return board?.items_page || { cursor: undefined, items: [] }
       }
-    `
-
-    const data = await this.request<{ boards: [{ items_page: { cursor?: string; items: any[] } }] }>(query)
-    const board = data.boards[0]
-
-    if (!board) {
-      return { items: [], cursor: undefined }
     }
 
-    // Transform group to group_id for compatibility
-    const items: MondayItem[] = board.items_page.items.map(item => ({
+    const data = await this.request<any>(query)
+    const result = parseResponse(data)
+
+    // Transform group to group_id for compatibility and add board_id
+    const items: MondayItem[] = (result.items || []).map((item: any) => ({
       ...item,
+      board_id: boardId,
       group_id: item.group?.id,
       group_title: item.group?.title,
     }))
 
     return {
       items,
-      cursor: board.items_page.cursor,
+      cursor: result.cursor || undefined,
     }
   }
 
@@ -334,7 +365,6 @@ export class MondayClient {
             board_id
             column_values {
               id
-              title
               type
               value
               text

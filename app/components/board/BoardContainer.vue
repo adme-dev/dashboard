@@ -8,7 +8,7 @@
       :last-updated="board?.lastUpdated"
       v-model:active-view="activeView"
       v-model:search-query="searchQuery"
-      @new-item="showAddItem = true"
+      @new-item="$emit('newItem')"
     />
 
     <!-- Toolbar -->
@@ -139,6 +139,7 @@ defineEmits<{
   addGroup: []
   addColumn: []
   addItem: [payload: { groupId: string; title: string; date: string }]
+  newItem: []
 }>()
 
 const showAddItem = ref(false)

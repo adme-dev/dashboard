@@ -36,6 +36,14 @@ export default defineEventHandler(async (event) => {
   } catch (error: any) {
     if (error.statusCode) throw error
 
+    // Handle missing table gracefully
+    if (error.message?.includes('does not exist')) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: 'Notification not found'
+      })
+    }
+
     console.error('Failed to delete notification:', error)
     throw createError({
       statusCode: 500,

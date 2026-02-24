@@ -102,8 +102,11 @@ export default defineEventHandler(async (event) => {
 
           const unreadCount = parseInt(countResult[0]?.count || '0', 10)
           sendEvent('unread_count', { count: unreadCount })
-        } catch (error) {
-          console.error('Error polling notifications:', error)
+        } catch (error: any) {
+          // Silently ignore if notifications table doesn't exist yet
+          if (!error?.message?.includes('does not exist')) {
+            console.error('Error polling notifications:', error)
+          }
         }
       }, POLL_INTERVAL)
 

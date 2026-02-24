@@ -114,6 +114,12 @@ async function executeAction(automation: BoardAutomation, event: BoardEvent): Pr
     `, [event.taskId])
   }
 
+  // If event references a task but it wasn't found, skip actions that need it
+  if (event.taskId && !task) {
+    console.warn(`[Automation] Task ${event.taskId} not found, skipping action "${action_type}"`)
+    return
+  }
+
   switch (action_type) {
     case 'send_email':
       await executeSendEmail(automation, event, task, action_config)
@@ -252,10 +258,15 @@ async function executeUpdateColumn(
 function resolveTemplateVars(template: string, task: any, event: BoardEvent): string {
   if (!template) return template
 
-  return template
-    .replace(/\{item_name\}/g, task?.title || 'Unknown Item')
-    .replace(/\{assignee\}/g, task?.assignee_name || 'Unassigned')
-    .replace(/\{status\}/g, task?.status_name || event.changes?.newStatusName || 'Unknown')
-    .replace(/\{board_name\}/g, event.boardId)
-    .replace(/\{due_date\}/g, task?.due_date ? new Date(task.due_date).toLocaleDateString() : 'No due date')
+  try {
+    return template
+      .replace(/\{item_name\}/g, task?.title || 'Unknown Item')
+      .replace(/\{assignee\}/g, task?.assignee_name || 'Unassigned')
+      .replace(/\{status\}/g, task?.status_name || event?.changes?.newStatusName || 'Unknown')
+      .replace(/\{board_name\}/g, event?.boardId || 'Unknown Board')
+      .replace(/\{due_date\}/g, task?.due_date ? new Date(task.due_date).toLocaleDateString() : 'No due date')
+  } catch (err) {
+    console.error('[Automation] Failed to resolve template variables:', err)
+    return template
+  }
 }

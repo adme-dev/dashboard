@@ -4,6 +4,18 @@
 
 import { Resend } from 'resend'
 
+/**
+ * Escape HTML special characters to prevent XSS in email templates.
+ */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 let resend: Resend | null = null
 
 function getResendClient(): Resend | null {
@@ -113,7 +125,7 @@ export async function sendMagicLinkEmail(data: MagicLinkEmailData): Promise<void
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
           <h1 style="color: ${BRAND_COLOR};">Sign in to ${APP_NAME}</h1>
-          <p>Hi ${data.name},</p>
+          <p>Hi ${escapeHtml(data.name)},</p>
           <p>Click the button below to sign in instantly. This link expires in 1 hour.</p>
           <a href="${data.magicLinkUrl}"
              style="display: inline-block; background: ${BRAND_COLOR}; color: white; padding: 12px 24px;
@@ -160,16 +172,16 @@ export async function sendTaskAssignedEmail(data: {
     ? `<p><strong>Due:</strong> ${data.dueDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>`
     : ''
   const projectLine = data.projectName
-    ? `<p><strong>Project:</strong> ${data.projectName}</p>`
+    ? `<p><strong>Project:</strong> ${escapeHtml(data.projectName)}</p>`
     : ''
 
   const { html, text } = renderEmailTemplate({
-    title: `You've been assigned: ${data.taskTitle}`,
-    greeting: `Hi ${data.name},`,
+    title: `You've been assigned: ${escapeHtml(data.taskTitle)}`,
+    greeting: `Hi ${escapeHtml(data.name)},`,
     bodyHtml: `
-      <p><strong>${data.assignerName}</strong> assigned you to a task:</p>
+      <p><strong>${escapeHtml(data.assignerName)}</strong> assigned you to a task:</p>
       <div style="background: #f3f4f6; border-left: 4px solid ${BRAND_COLOR}; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;">
-        <p style="margin: 0; font-weight: 600; font-size: 16px;">${data.taskTitle}</p>
+        <p style="margin: 0; font-weight: 600; font-size: 16px;">${escapeHtml(data.taskTitle)}</p>
       </div>
       ${projectLine}
       ${dueLine}
@@ -182,7 +194,7 @@ export async function sendTaskAssignedEmail(data: {
     await client.emails.send({
       from: `${APP_NAME} <${FROM_EMAIL}>`,
       to: data.to,
-      subject: `You've been assigned: ${data.taskTitle}`,
+      subject: `You've been assigned: ${data.taskTitle}`,  // plain text context, no escaping needed
       html,
       text
     })
@@ -207,12 +219,12 @@ export async function sendMentionEmail(data: {
   }
 
   const { html, text } = renderEmailTemplate({
-    title: `${data.mentionerName} mentioned you`,
-    greeting: `Hi ${data.name},`,
+    title: `${escapeHtml(data.mentionerName)} mentioned you`,
+    greeting: `Hi ${escapeHtml(data.name)},`,
     bodyHtml: `
-      <p><strong>${data.mentionerName}</strong> mentioned you in <strong>${data.taskTitle}</strong>:</p>
+      <p><strong>${escapeHtml(data.mentionerName)}</strong> mentioned you in <strong>${escapeHtml(data.taskTitle)}</strong>:</p>
       <div style="background: #f3f4f6; border-left: 4px solid ${BRAND_COLOR}; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;">
-        <p style="margin: 0; color: #4b5563; font-style: italic;">"${data.commentSnippet}"</p>
+        <p style="margin: 0; color: #4b5563; font-style: italic;">"${escapeHtml(data.commentSnippet)}"</p>
       </div>
     `,
     ctaText: 'View Comment',
@@ -248,16 +260,16 @@ export async function sendApprovalRequestEmail(data: {
   }
 
   const stepLine = data.stepName
-    ? `<p><strong>Step:</strong> ${data.stepName}</p>`
+    ? `<p><strong>Step:</strong> ${escapeHtml(data.stepName)}</p>`
     : ''
 
   const { html, text } = renderEmailTemplate({
-    title: `Approval needed: ${data.taskTitle}`,
-    greeting: `Hi ${data.name},`,
+    title: `Approval needed: ${escapeHtml(data.taskTitle)}`,
+    greeting: `Hi ${escapeHtml(data.name)},`,
     bodyHtml: `
-      <p><strong>${data.requesterName}</strong> has requested your approval:</p>
+      <p><strong>${escapeHtml(data.requesterName)}</strong> has requested your approval:</p>
       <div style="background: #f3f4f6; border-left: 4px solid ${BRAND_COLOR}; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;">
-        <p style="margin: 0; font-weight: 600; font-size: 16px;">${data.taskTitle}</p>
+        <p style="margin: 0; font-weight: 600; font-size: 16px;">${escapeHtml(data.taskTitle)}</p>
       </div>
       ${stepLine}
       <p>Please review and approve or reject this item.</p>
@@ -303,12 +315,12 @@ export async function sendDueReminderEmail(data: {
   const urgencyLabel = isOverdue ? 'OVERDUE' : data.daysRemaining <= 1 ? 'URGENT' : 'UPCOMING'
 
   const { html, text } = renderEmailTemplate({
-    title: `Task due ${when}: ${data.taskTitle}`,
-    greeting: `Hi ${data.name},`,
+    title: `Task due ${when}: ${escapeHtml(data.taskTitle)}`,
+    greeting: `Hi ${escapeHtml(data.name)},`,
     bodyHtml: `
       <p>You have a task that ${isOverdue ? 'is overdue' : 'is coming up'}:</p>
       <div style="background: #f3f4f6; border-left: 4px solid ${urgencyColor}; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;">
-        <p style="margin: 0 0 4px; font-weight: 600; font-size: 16px;">${data.taskTitle}</p>
+        <p style="margin: 0 0 4px; font-weight: 600; font-size: 16px;">${escapeHtml(data.taskTitle)}</p>
         <p style="margin: 0; color: #6b7280; font-size: 14px;">
           Due: ${data.dueDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           <span style="display: inline-block; margin-left: 8px; background: ${urgencyColor}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">${urgencyLabel}</span>
@@ -354,20 +366,21 @@ export async function sendInvitationEmail(data: {
 
   const teamLabel = data.teamName || APP_NAME
   const inviteLink = data.inviteUrl || (data.token ? `${APP_URL}/auth/accept-invite?token=${data.token}` : `${APP_URL}/auth/register`)
+  const safeTeamLabel = escapeHtml(teamLabel)
 
-  const roleLine = data.role ? `<p><strong>Role:</strong> ${data.role}</p>` : ''
+  const roleLine = data.role ? `<p><strong>Role:</strong> ${escapeHtml(data.role)}</p>` : ''
   const deptLine = data.departments?.length
-    ? `<p><strong>Teams:</strong> ${data.departments.join(', ')}</p>`
+    ? `<p><strong>Teams:</strong> ${data.departments.map(d => escapeHtml(d)).join(', ')}</p>`
     : ''
   const messageLine = data.message
-    ? `<div style="background: #f3f4f6; border-left: 4px solid ${BRAND_COLOR}; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;"><p style="margin: 0; color: #4b5563; font-style: italic;">"${data.message}"</p></div>`
+    ? `<div style="background: #f3f4f6; border-left: 4px solid ${BRAND_COLOR}; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;"><p style="margin: 0; color: #4b5563; font-style: italic;">"${escapeHtml(data.message)}"</p></div>`
     : ''
 
   const { html, text } = renderEmailTemplate({
-    title: `You're invited to ${teamLabel}`,
-    greeting: data.name ? `Hi ${data.name},` : 'Hello,',
+    title: `You're invited to ${safeTeamLabel}`,
+    greeting: data.name ? `Hi ${escapeHtml(data.name)},` : 'Hello,',
     bodyHtml: `
-      <p><strong>${data.inviterName}</strong> has invited you to join <strong>${teamLabel}</strong> on ${APP_NAME}.</p>
+      <p><strong>${escapeHtml(data.inviterName)}</strong> has invited you to join <strong>${safeTeamLabel}</strong> on ${APP_NAME}.</p>
       ${roleLine}
       ${deptLine}
       ${messageLine}
@@ -407,7 +420,7 @@ export async function sendVerificationEmail(data: {
 
   const { html, text } = renderEmailTemplate({
     title: 'Verify your email',
-    greeting: `Hi ${data.name},`,
+    greeting: `Hi ${escapeHtml(data.name)},`,
     bodyHtml: `
       <p>Please verify your email address to complete your account setup.</p>
       <p style="color: #6b7280; font-size: 13px;">This link will expire in 24 hours.</p>
@@ -442,7 +455,7 @@ export async function sendWelcomeEmail(data: {
 
   const { html, text } = renderEmailTemplate({
     title: `Welcome to ${APP_NAME}!`,
-    greeting: `Hi ${data.name},`,
+    greeting: `Hi ${escapeHtml(data.name)},`,
     bodyHtml: `
       <p>Welcome aboard! Your account is all set. Here are a few things to get started:</p>
       <ul style="padding-left: 20px; color: #374151;">
@@ -486,7 +499,7 @@ export async function sendPasswordResetEmail(data: {
 
   const { html, text } = renderEmailTemplate({
     title: 'Reset your password',
-    greeting: `Hi ${data.name},`,
+    greeting: `Hi ${escapeHtml(data.name)},`,
     bodyHtml: `
       <p>We received a request to reset your password. Click the button below to choose a new one.</p>
       <p style="color: #6b7280; font-size: 13px;">This link will expire in 1 hour. If you didn't request a password reset, you can safely ignore this email.</p>
@@ -537,7 +550,7 @@ export async function sendQuoteEmail(data: {
   if (data.lineItems?.length) {
     const rows = data.lineItems.map(item =>
       `<tr>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb;">${item.description}</td>
+        <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(item.description)}</td>
         <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">${item.quantity}</td>
         <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">${formatCurrency(item.unitPrice, data.currency)}</td>
         <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">${formatCurrency(item.total, data.currency)}</td>
@@ -567,16 +580,16 @@ export async function sendQuoteEmail(data: {
     : ''
 
   const notesLine = data.clientNotes
-    ? `<div style="background: #f3f4f6; padding: 12px 16px; margin: 16px 0; border-radius: 4px;"><p style="margin: 0; color: #4b5563; font-size: 14px;">${data.clientNotes}</p></div>`
+    ? `<div style="background: #f3f4f6; padding: 12px 16px; margin: 16px 0; border-radius: 4px;"><p style="margin: 0; color: #4b5563; font-size: 14px;">${escapeHtml(data.clientNotes)}</p></div>`
     : ''
 
-  const greeting = data.clientContactName ? `Hi ${data.clientContactName},` : 'Hello,'
+  const greeting = data.clientContactName ? `Hi ${escapeHtml(data.clientContactName)},` : 'Hello,'
 
   const { html, text } = renderEmailTemplate({
     title: 'Your quote is ready',
     greeting,
     bodyHtml: `
-      <p>Your quote <strong>#${quoteLabel}</strong> has been prepared and is ready for your review.</p>
+      <p>Your quote <strong>#${escapeHtml(quoteLabel)}</strong> has been prepared and is ready for your review.</p>
       ${itemsHtml}
       ${totalLine}
       ${validLine}
@@ -585,7 +598,7 @@ export async function sendQuoteEmail(data: {
     ctaText: 'View Quote',
     ctaUrl: quoteLink,
     footerHtml: data.senderName
-      ? `<p style="font-size: 12px; color: #9ca3af;">Sent by ${data.senderName}${data.senderEmail ? ` (${data.senderEmail})` : ''}</p>`
+      ? `<p style="font-size: 12px; color: #9ca3af;">Sent by ${escapeHtml(data.senderName)}${data.senderEmail ? ` (${escapeHtml(data.senderEmail)})` : ''}</p>`
       : ''
   })
 
@@ -626,9 +639,9 @@ export async function sendClientPortalInviteEmail(data: {
 
   const { html, text } = renderEmailTemplate({
     title: 'Access your client portal',
-    greeting: `Hi ${recipientName},`,
+    greeting: `Hi ${escapeHtml(recipientName)},`,
     bodyHtml: `
-      <p>${data.inviterName ? `<strong>${data.inviterName}</strong> has invited you to` : 'You now have'} access to the <strong>${orgName}</strong> client portal where you can:</p>
+      <p>${data.inviterName ? `<strong>${escapeHtml(data.inviterName)}</strong> has invited you to` : 'You now have'} access to the <strong>${escapeHtml(orgName)}</strong> client portal where you can:</p>
       <ul style="padding-left: 20px; color: #374151;">
         <li style="margin-bottom: 8px;">Track project progress in real time</li>
         <li style="margin-bottom: 8px;">Review and approve deliverables</li>
@@ -673,21 +686,22 @@ export async function sendClientApprovalRequestEmail(data: {
   }
 
   const title = data.approvalTitle || data.itemTitle || 'Item'
-  const projectLine = data.projectName ? `<p><strong>Project:</strong> ${data.projectName}</p>` : ''
-  const typeLine = data.approvalType ? `<p><strong>Type:</strong> ${data.approvalType}</p>` : ''
-  const requesterLine = data.requesterName ? `<p>Requested by <strong>${data.requesterName}</strong></p>` : ''
-  const descLine = data.description ? `<p style="color: #4b5563;">${data.description}</p>` : ''
+  const safeTitle = escapeHtml(title)
+  const projectLine = data.projectName ? `<p><strong>Project:</strong> ${escapeHtml(data.projectName)}</p>` : ''
+  const typeLine = data.approvalType ? `<p><strong>Type:</strong> ${escapeHtml(data.approvalType)}</p>` : ''
+  const requesterLine = data.requesterName ? `<p>Requested by <strong>${escapeHtml(data.requesterName)}</strong></p>` : ''
+  const descLine = data.description ? `<p style="color: #4b5563;">${escapeHtml(data.description)}</p>` : ''
   const dueLine = data.dueDate
     ? `<p style="color: #6b7280; font-size: 13px;">Due by ${data.dueDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>`
     : ''
 
   const { html, text } = renderEmailTemplate({
-    title: `Approval needed from ${data.clientName}`,
-    greeting: `Hi ${data.clientName},`,
+    title: `Approval needed from ${escapeHtml(data.clientName)}`,
+    greeting: `Hi ${escapeHtml(data.clientName)},`,
     bodyHtml: `
       <p>An item is ready for your review and approval:</p>
       <div style="background: #f3f4f6; border-left: 4px solid ${BRAND_COLOR}; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;">
-        <p style="margin: 0; font-weight: 600; font-size: 16px;">${title}</p>
+        <p style="margin: 0; font-weight: 600; font-size: 16px;">${safeTitle}</p>
       </div>
       ${projectLine}
       ${typeLine}
@@ -734,14 +748,14 @@ export async function sendBoardChangeEmail(data: {
   }
 
   const itemLine = data.itemTitle
-    ? `<p style="margin: 12px 0; padding: 12px 16px; background: #f3f4f6; border-radius: 6px; font-weight: 600;">${data.itemTitle}</p>`
+    ? `<p style="margin: 12px 0; padding: 12px 16px; background: #f3f4f6; border-radius: 6px; font-weight: 600;">${escapeHtml(data.itemTitle)}</p>`
     : ''
 
   const { html, text } = renderEmailTemplate({
-    title: `Activity on ${data.boardName}`,
-    greeting: `Hi ${data.name},`,
+    title: `Activity on ${escapeHtml(data.boardName)}`,
+    greeting: `Hi ${escapeHtml(data.name)},`,
     bodyHtml: `
-      <p><strong>${data.actorName}</strong> ${data.action} on <strong>${data.boardName}</strong>.</p>
+      <p><strong>${escapeHtml(data.actorName)}</strong> ${escapeHtml(data.action)} on <strong>${escapeHtml(data.boardName)}</strong>.</p>
       ${itemLine}
     `,
     ctaText: data.itemUrl ? 'View Item' : 'View Board',

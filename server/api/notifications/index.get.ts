@@ -23,25 +23,51 @@ export default defineEventHandler(async (event) => {
       whereClause += ' AND n.is_read = false'
     }
 
-    const notifications = await queryRows(`
-      SELECT
-        n.id,
-        n.type,
-        n.title,
-        n.message,
-        n.link,
-        n.metadata,
-        n.read_at,
-        n.created_at,
-        tm.id as actor_id,
-        tm.name as actor_name,
-        tm.avatar_url as actor_avatar
-      FROM notifications n
-      LEFT JOIN team_members tm ON n.actor_id = tm.id
-      WHERE ${whereClause}
-      ORDER BY n.created_at DESC
-      LIMIT $${paramIdx} OFFSET $${paramIdx + 1}
-    `, [...params, limit, offset])
+    // Try full schema first (with actor_id, link, metadata columns)
+    // Fall back to legacy schema if those columns don't exist
+    let notifications: any[]
+    let useLegacySchema = false
+
+    try {
+      notifications = await queryRows(`
+        SELECT
+          n.id,
+          n.type,
+          n.title,
+          n.message,
+          n.link,
+          n.metadata,
+          n.is_read,
+          n.read_at,
+          n.created_at,
+          tm.id as actor_id,
+          tm.name as actor_name,
+          tm.avatar_url as actor_avatar
+        FROM notifications n
+        LEFT JOIN team_members tm ON n.actor_id = tm.id
+        WHERE ${whereClause}
+        ORDER BY n.created_at DESC
+        LIMIT $${paramIdx} OFFSET $${paramIdx + 1}
+      `, [...params, limit, offset])
+    } catch {
+      // Legacy schema: no actor_id, link, or metadata columns
+      useLegacySchema = true
+      notifications = await queryRows(`
+        SELECT
+          n.id,
+          n.type,
+          n.title,
+          n.message,
+          n.action_url as link,
+          n.is_read,
+          n.read_at,
+          n.created_at
+        FROM notifications n
+        WHERE ${whereClause}
+        ORDER BY n.created_at DESC
+        LIMIT $${paramIdx} OFFSET $${paramIdx + 1}
+      `, [...params, limit, offset])
+    }
 
     // Get unread count
     const countResult = await queryOne(`
@@ -56,8 +82,8 @@ export default defineEventHandler(async (event) => {
         type: n.type,
         title: n.title,
         message: n.message,
-        link: n.link,
-        metadata: n.metadata,
+        link: n.link || null,
+        metadata: n.metadata || null,
         isRead: n.is_read,
         readAt: n.read_at,
         createdAt: n.created_at,
@@ -70,7 +96,15 @@ export default defineEventHandler(async (event) => {
       unreadCount: parseInt(countResult?.count || '0'),
       hasMore: notifications.length === limit
     }
-  } catch (error) {
+  } catch (error: any) {
+    // If the notifications table doesn't exist yet, return empty results
+    if (error?.message?.includes('does not exist')) {
+      return {
+        notifications: [],
+        unreadCount: 0,
+        hasMore: false
+      }
+    }
     console.error('Failed to fetch notifications:', error)
     throw createError({
       statusCode: 500,

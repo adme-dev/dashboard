@@ -7,16 +7,17 @@
  */
 
 import crypto from 'crypto'
-import { requireAuth } from '~~/server/utils/auth'
+import { requireBoardAccess } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
   const boardId = getRouterParam(event, 'id')
 
   if (!boardId) {
     throw createError({ statusCode: 400, statusMessage: 'Board ID is required' })
   }
+
+  await requireBoardAccess(event, boardId)
 
   let board = await queryOne(
     'SELECT id, board_email_token FROM departments WHERE id = $1',

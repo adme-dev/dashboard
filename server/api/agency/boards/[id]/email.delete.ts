@@ -5,16 +5,17 @@
  * Sets the board_email_token to NULL, disabling email-to-board.
  */
 
-import { requireAuth } from '~~/server/utils/auth'
+import { requireBoardAccess } from '~~/server/utils/auth'
 import { execute, queryOne } from '~~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
   const boardId = getRouterParam(event, 'id')
 
   if (!boardId) {
     throw createError({ statusCode: 400, statusMessage: 'Board ID is required' })
   }
+
+  await requireBoardAccess(event, boardId)
 
   const board = await queryOne('SELECT id FROM departments WHERE id = $1', [boardId])
   if (!board) {
