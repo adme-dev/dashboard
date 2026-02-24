@@ -8,8 +8,8 @@ import { addDays, differenceInDays, format, startOfWeek, endOfWeek, eachDayOfInt
 definePageMeta({})
 
 // Filters
-const departmentId = ref<string>('')
-const projectId = ref<string>('')
+const departmentId = ref<string>('all')
+const projectId = ref<string>('all')
 const zoomLevel = ref<'day' | 'week' | 'month'>('week')
 const showCompleted = ref(true)
 
@@ -30,8 +30,8 @@ const projects = computed(() => ((projectsData.value as any)?.projects as any[])
 // Fetch timeline data
 const { data: timelineData, pending, refresh } = await useFetch('/api/agency/tasks/timeline', {
   query: computed(() => ({
-    departmentId: departmentId.value || undefined,
-    projectId: projectId.value || undefined,
+    departmentId: departmentId.value !== 'all' ? departmentId.value : undefined,
+    projectId: projectId.value !== 'all' ? projectId.value : undefined,
     startDate: dateRange.value.start,
     endDate: dateRange.value.end,
     includeCompleted: showCompleted.value
@@ -172,7 +172,7 @@ onMounted(() => {
       <UFormField label="Department" class="w-48">
         <USelect
           v-model="departmentId"
-          :items="[{ value: '', label: 'All Departments' }, ...departments.map((d: any) => ({ value: d.id, label: d.name }))]"
+          :items="[{ value: 'all', label: 'All Departments' }, ...departments.map((d: any) => ({ value: d.id, label: d.name }))]"
           value-key="value"
           placeholder="All Departments"
         />
@@ -181,7 +181,7 @@ onMounted(() => {
       <UFormField label="Project" class="w-48">
         <USelect
           v-model="projectId"
-          :items="[{ value: '', label: 'All Projects' }, ...projects.map((p: any) => ({ value: p.id, label: p.name }))]"
+          :items="[{ value: 'all', label: 'All Projects' }, ...projects.map((p: any) => ({ value: p.id, label: p.name }))]"
           value-key="value"
           placeholder="All Projects"
         />

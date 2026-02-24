@@ -18,110 +18,160 @@ const commands: CommandItem[] = [
   {
     id: 'nav-dashboard',
     label: 'Go to Dashboard',
-    description: 'Executive dashboard with KPIs',
+    description: 'Agency overview and KPIs',
     icon: 'i-lucide-layout-dashboard',
-    action: () => navigateTo('/dashboard'),
+    action: () => navigateTo('/agency'),
     group: 'Navigation'
   },
   {
-    id: 'nav-expenses',
-    label: 'Go to Expenses',
-    description: 'Expense analytics and reports',
-    icon: 'i-lucide-credit-card',
-    action: () => navigateTo('/expenses'),
+    id: 'nav-boards',
+    label: 'Go to Boards',
+    description: 'All boards and workspaces',
+    icon: 'i-lucide-layout-grid',
+    action: () => navigateTo('/agency/boards'),
+    group: 'Navigation'
+  },
+  {
+    id: 'nav-projects',
+    label: 'Go to Projects',
+    description: 'Manage active projects',
+    icon: 'i-lucide-folder-kanban',
+    action: () => navigateTo('/agency/projects'),
+    group: 'Navigation'
+  },
+  {
+    id: 'nav-tasks',
+    label: 'Go to Tasks',
+    description: 'View and manage all tasks',
+    icon: 'i-lucide-check-square',
+    action: () => navigateTo('/agency/tasks'),
+    group: 'Navigation'
+  },
+  {
+    id: 'nav-clients',
+    label: 'Go to Clients',
+    description: 'Client management and details',
+    icon: 'i-lucide-building-2',
+    action: () => navigateTo('/agency/clients'),
+    group: 'Navigation'
+  },
+  {
+    id: 'nav-workflow',
+    label: 'Go to Workflow',
+    description: 'Kanban workflow board',
+    icon: 'i-lucide-git-branch',
+    action: () => navigateTo('/agency/workflow'),
+    group: 'Navigation'
+  },
+  {
+    id: 'nav-time',
+    label: 'Go to Time Tracking',
+    description: 'Track and manage time entries',
+    icon: 'i-lucide-clock',
+    action: () => navigateTo('/agency/time'),
+    group: 'Navigation'
+  },
+  {
+    id: 'nav-invoices',
+    label: 'Go to Invoices',
+    description: 'Invoice management',
+    icon: 'i-lucide-receipt',
+    action: () => navigateTo('/agency/invoices'),
     group: 'Navigation'
   },
   {
     id: 'nav-reports',
     label: 'Go to Reports',
-    description: 'Financial reports and analysis',
-    icon: 'i-lucide-bar-chart-3',
-    action: () => navigateTo('/reports'),
-    group: 'Navigation'
-  },
-  {
-    id: 'nav-profit-loss',
-    label: 'Go to Profit & Loss',
-    description: 'Detailed last month and YTD view',
+    description: 'Agency reports and analytics',
     icon: 'i-lucide-pie-chart',
-    action: () => navigateTo('/profit-loss'),
+    action: () => navigateTo('/agency/reports'),
     group: 'Navigation'
   },
   {
-    id: 'nav-cashflow',
-    label: 'Go to Cash Flow',
-    description: 'Cash flow analysis and forecasting',
-    icon: 'i-lucide-trending-up',
-    action: () => navigateTo('/cashflow'),
-    group: 'Navigation'
-  },
-  {
-    id: 'nav-anomalies',
-    label: 'Go to Anomaly Detection',
-    description: 'AI-powered expense anomaly detection',
-    icon: 'i-lucide-search',
-    action: () => navigateTo('/anomalies'),
+    id: 'nav-team',
+    label: 'Go to Team',
+    description: 'Team members and capacity',
+    icon: 'i-lucide-users',
+    action: () => navigateTo('/agency/team'),
     group: 'Navigation'
   },
   {
     id: 'nav-settings',
     label: 'Go to Settings',
-    description: 'Application settings and configuration',
+    description: 'Agency settings and configuration',
     icon: 'i-lucide-settings',
-    action: () => navigateTo('/settings'),
+    action: () => navigateTo('/agency/settings'),
     group: 'Navigation'
   },
-  
+
   // Actions
+  {
+    id: 'action-new-project',
+    label: 'New Project',
+    description: 'Create a new project',
+    icon: 'i-lucide-folder-plus',
+    action: () => navigateTo('/agency/projects/new'),
+    group: 'Actions'
+  },
+  {
+    id: 'action-new-brief',
+    label: 'New Brief',
+    description: 'Create a new brief',
+    icon: 'i-lucide-file-plus',
+    action: () => navigateTo('/agency/briefs/new'),
+    group: 'Actions'
+  },
+  {
+    id: 'action-new-quote',
+    label: 'New Quote',
+    description: 'Create a new sales quote',
+    icon: 'i-lucide-file-badge',
+    action: () => navigateTo('/agency/sales/quotes/new'),
+    group: 'Actions'
+  },
   {
     id: 'action-refresh',
     label: 'Refresh Data',
-    description: 'Refresh all dashboard data',
+    description: 'Refresh all page data',
     icon: 'i-lucide-refresh-cw',
     shortcut: 'Cmd+R',
     action: () => window.location.reload(),
     group: 'Actions'
   },
-  {
-    id: 'action-export-expenses',
-    label: 'Export Expenses',
-    description: 'Download expense data as CSV',
-    icon: 'i-lucide-download',
-    action: async () => {
-      // This would trigger an export
-      console.log('Exporting expenses...')
-    },
-    group: 'Actions'
-  },
-  {
-    id: 'action-new-invoice',
-    label: 'Create New Invoice',
-    description: 'Create a new invoice in Xero',
-    icon: 'i-lucide-file-plus',
-    action: () => {
-      // This would open invoice creation
-      console.log('Creating new invoice...')
-    },
-    group: 'Actions'
-  },
-  
+
   // Quick Links
   {
-    id: 'link-xero',
-    label: 'Open Xero',
-    description: 'Open Xero in new tab',
-    icon: 'i-lucide-external-link',
-    action: () => { window.open('https://xero.com', '_blank') },
+    id: 'link-ai',
+    label: 'AI Assistant',
+    description: 'Open AI tools',
+    icon: 'i-lucide-sparkles',
+    action: () => navigateTo('/agency/ai'),
     group: 'Quick Links'
   },
   {
-    id: 'link-help',
-    label: 'Help & Support',
-    description: 'Get help and support',
-    icon: 'i-lucide-help-circle',
-    action: () => navigateTo('/help'),
+    id: 'link-automation',
+    label: 'Automation',
+    description: 'Manage automations and workflows',
+    icon: 'i-lucide-zap',
+    action: () => navigateTo('/agency/automation'),
     group: 'Quick Links'
-  }
+  },
+  {
+    id: 'link-capacity',
+    label: 'Capacity Planner',
+    description: 'View team capacity and workload',
+    icon: 'i-lucide-gauge',
+    action: () => navigateTo('/agency/capacity'),
+    group: 'Quick Links'
+  },
+  {
+    id: 'link-health',
+    label: 'Project Health',
+    description: 'Monitor project health scores',
+    icon: 'i-lucide-activity',
+    action: () => navigateTo('/agency/health'),
+    group: 'Quick Links'
+  },
 ]
 
 // Filter commands based on search query
