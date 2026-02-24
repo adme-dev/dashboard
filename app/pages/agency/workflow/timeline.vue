@@ -5,7 +5,10 @@
  */
 import { addDays, differenceInDays, format, startOfWeek, endOfWeek, eachDayOfInterval, eachWeekOfInterval, startOfMonth, endOfMonth } from 'date-fns'
 
-definePageMeta({})
+definePageMeta({
+  layout: 'agency',
+  title: 'Timeline'
+})
 
 // Filters
 const departmentId = ref<string>('all')
@@ -24,8 +27,8 @@ const { data: departmentsData } = await useFetch('/api/agency/departments')
 const departments = computed(() => (departmentsData.value as any[]) || [])
 
 // Fetch projects for filter
-const { data: projectsData } = await useFetch('/api/agency/projects/summary')
-const projects = computed(() => ((projectsData.value as any)?.projects as any[]) || [])
+const { data: projectsData } = await useFetch('/api/agency/projects')
+const projects = computed(() => (projectsData.value as any[]) || [])
 
 // Fetch timeline data
 const { data: timelineData, pending, refresh } = await useFetch('/api/agency/tasks/timeline', {
@@ -103,7 +106,8 @@ const getTaskBarStyle = (task: any) => {
 
   return {
     left: `${leftPercent}%`,
-    width: `${Math.max(2, widthPercent)}%`
+    width: `${Math.max(2, widthPercent)}%`,
+    minWidth: '60px'
   }
 }
 
@@ -295,11 +299,13 @@ onMounted(() => {
             <div
               v-if="getTaskBarStyle(task)"
               class="absolute top-1.5 h-7 rounded-md flex items-center px-2 text-white text-xs truncate shadow-sm cursor-pointer transition-all hover:opacity-90"
-              :style="getTaskBarStyle(task)"
+              :style="{
+                ...getTaskBarStyle(task),
+                ...((!task.isCompleted && !task.isBlocked && task.status?.color) ? { backgroundColor: task.status.color } : {})
+              }"
               :class="[
                 task.isCompleted ? 'bg-success-500' : task.isBlocked ? 'bg-error-500' : task.status?.color ? '' : priorityColors[task.priority],
               ]"
-              :style-color="task.status?.color"
             >
               <!-- Progress bar inside -->
               <div

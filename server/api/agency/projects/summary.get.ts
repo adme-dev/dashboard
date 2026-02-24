@@ -30,7 +30,7 @@ export default defineEventHandler(async (event) => {
         COALESCE(SUM(p.budget_amount), 0) - (COALESCE(SUM(t.labor_cost), 0) + COALESCE(SUM(e.expense_cost), 0)) as total_profit,
         CASE
           WHEN COALESCE(SUM(p.budget_amount), 0) > 0
-          THEN ((COALESCE(SUM(p.budget_amount), 0) - (COALESCE(SUM(t.labor_cost), 0) + COALESCE(SUM(e.expense_cost), 0))) / SUM(p.budget_amount) * 100)
+          THEN ((COALESCE(SUM(p.budget_amount), 0) - (COALESCE(SUM(t.labor_cost), 0) + COALESCE(SUM(e.expense_cost), 0))) / COALESCE(SUM(p.budget_amount), 1) * 100)
           ELSE 0
         END as avg_margin
       FROM projects p
