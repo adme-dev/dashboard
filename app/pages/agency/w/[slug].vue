@@ -158,26 +158,21 @@
     </div>
 
     <!-- New Board Modal -->
-    <UModal v-model="showNewBoard">
-      <UCard>
-        <template #header>
-          <h3 class="font-semibold">Create New Board</h3>
-        </template>
+    <UModal v-model:open="showNewBoard" title="Create New Board">
+      <template #body>
         <div class="space-y-4">
           <UFormField label="Board Name">
-            <UInput v-model="newBoard.name" placeholder="e.g., Q1 Marketing Campaign" />
+            <UInput v-model="newBoard.name" placeholder="e.g., Q1 Marketing Campaign" class="w-full" />
           </UFormField>
           <UFormField label="Description">
-            <UTextarea v-model="newBoard.description" placeholder="What is this board for?" :rows="2" />
+            <UTextarea v-model="newBoard.description" placeholder="What is this board for?" :rows="2" class="w-full" />
           </UFormField>
         </div>
-        <template #footer>
-          <div class="flex justify-end gap-2">
-            <UButton variant="ghost" @click="showNewBoard = false">Cancel</UButton>
-            <UButton color="primary" @click="createBoard">Create Board</UButton>
-          </div>
-        </template>
-      </UCard>
+      </template>
+      <template #footer>
+        <UButton variant="ghost" color="neutral" @click="showNewBoard = false">Cancel</UButton>
+        <UButton color="primary" @click="createBoard">Create Board</UButton>
+      </template>
     </UModal>
 
     <!-- Template Selector -->
