@@ -60,6 +60,41 @@ const connectLabel = computed(() => {
   return xeroStatus.value?.connected ? 'Reconnect' : 'Connect Xero'
 })
 
+// Meta Ads connection
+const { data: metaAccounts, refresh: refreshMetaAccounts } = await useFetch<any[]>('/api/agency/social/meta/accounts', { server: false, default: () => [] })
+const { state: metaConnectState, connect: connectMeta } = useMetaConnect({ onConnected: refreshMetaAccounts })
+const metaSyncing = ref(false)
+
+const metaConnectLabel = computed(() => {
+  if (metaConnectState.status === 'loading') return 'Opening Meta...'
+  if (metaConnectState.status === 'completed') return 'Connected'
+  return metaAccounts.value?.length ? 'Add Account' : 'Connect Meta'
+})
+
+async function syncMetaSpend() {
+  try {
+    metaSyncing.value = true
+    const result = await $fetch<{ synced: number; totalSpend: number }>('/api/agency/social/meta/sync-spend', { method: 'POST' })
+    toast.add({ title: 'Spend synced', description: `${result.synced} campaigns, $${result.totalSpend} total`, icon: 'i-lucide-check', color: 'success' })
+    await refreshMetaAccounts()
+  } catch (err: any) {
+    toast.add({ title: 'Sync failed', description: err?.data?.statusMessage || 'Could not sync spend data.', icon: 'i-lucide-alert-triangle', color: 'error' })
+  } finally {
+    metaSyncing.value = false
+  }
+}
+
+async function disconnectMetaAccount(account: any) {
+  if (!confirm(`Disconnect "${account.accountName}"? Spend data will be preserved.`)) return
+  try {
+    await $fetch('/api/agency/social/meta/disconnect', { method: 'DELETE', query: { connectionId: account.id } })
+    toast.add({ title: 'Disconnected', description: `${account.accountName} removed.`, icon: 'i-lucide-check', color: 'success' })
+    await refreshMetaAccounts()
+  } catch (err: any) {
+    toast.add({ title: 'Error', description: err?.data?.statusMessage || 'Could not disconnect.', icon: 'i-lucide-alert-triangle', color: 'error' })
+  }
+}
+
 // Explicit client-side tenants fetch to avoid SSR/stale data issues
 const tenantOptions = ref<{ label: string, value: string }[]>([])
 const tenantsLoading = ref(false)
@@ -193,6 +228,96 @@ async function selectTenant(tenantId: string | any) {
             />
           </div>
           <div class="text-2xs text-dimmed mt-1">Debug: {{ tenantOptions }}</div>
+        </div>
+      </div>
+    </UPageCard>
+
+    <UPageCard
+      title="Meta Ads"
+      description="Connect Meta ad accounts to sync spend data."
+      variant="subtle"
+      class="mb-4"
+    >
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <UIcon :name="metaAccounts?.length ? 'i-lucide-badge-check' : 'i-lucide-plug'" />
+          <span>{{ metaAccounts?.length ? `${metaAccounts.length} account(s) connected` : 'Not connected' }}</span>
+        </div>
+        <UButton
+          :label="metaConnectLabel"
+          color="primary"
+          :loading="metaConnectState.status === 'loading'"
+          type="button"
+          @click="connectMeta"
+        />
+      </div>
+
+      <div v-if="metaConnectState.error" class="mt-4 text-sm text-danger bg-danger/10 rounded px-3 py-2">
+        {{ metaConnectState.error }}
+      </div>
+
+      <div v-if="metaConnectState.status === 'loading'" class="mt-4 text-sm text-muted">
+        Opening Meta login... if nothing happens, allow popups or <button type="button" class="underline" @click="connectMeta">try again</button>.
+      </div>
+
+      <div v-if="metaAccounts?.length" class="mt-4 space-y-3">
+        <div
+          v-for="account in metaAccounts"
+          :key="account.id"
+          class="flex items-center justify-between gap-4 rounded-lg border border-default p-3"
+        >
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <span class="font-medium truncate">{{ account.accountName }}</span>
+              <UBadge
+                :color="account.status === 'active' ? 'success' : 'warning'"
+                :label="account.status"
+                variant="subtle"
+                size="xs"
+              />
+            </div>
+            <div class="text-xs text-muted mt-1 flex flex-wrap gap-x-4 gap-y-1">
+              <span v-if="account.tokenExpiresAt">
+                Token expires {{ new Date(account.tokenExpiresAt).toLocaleDateString() }}
+              </span>
+              <span v-if="account.lastSyncedAt">
+                Last synced {{ new Date(account.lastSyncedAt).toLocaleDateString() }}
+              </span>
+              <span v-if="account.mappedClients > 0">
+                {{ account.mappedClients }} mapped client(s)
+              </span>
+              <span v-if="account.connectedByName">
+                Connected by {{ account.connectedByName }}
+              </span>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <UButton
+              label="Sync Now"
+              color="neutral"
+              variant="outline"
+              size="xs"
+              :loading="metaSyncing"
+              @click="syncMetaSpend"
+            />
+            <UButton
+              label="Disconnect"
+              color="error"
+              variant="ghost"
+              size="xs"
+              @click="disconnectMetaAccount(account)"
+            />
+          </div>
+        </div>
+
+        <div v-if="metaAccounts.length > 1" class="pt-1">
+          <UButton
+            label="Sync All Accounts"
+            color="neutral"
+            variant="outline"
+            :loading="metaSyncing"
+            @click="syncMetaSpend"
+          />
         </div>
       </div>
     </UPageCard>
