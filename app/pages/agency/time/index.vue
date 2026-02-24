@@ -231,8 +231,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="Time Tracking">
         <template #right>
           <UButton
@@ -244,7 +244,7 @@ onUnmounted(() => {
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Active Timer Banner -->
         <UCard v-if="activeTimer" class="mb-6 border-primary-500 bg-primary-50 dark:bg-primary-900/20">
           <div class="flex items-center justify-between">
@@ -446,7 +446,7 @@ onUnmounted(() => {
             @click="navigateTo('/agency/time/entries')"
           />
         </div>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
 
     <!-- New Entry Modal -->
@@ -497,5 +497,5 @@ onUnmounted(() => {
         </div>
       </template>
     </UModal>
-  </UDashboardPage>
+  </div>
 </template>

@@ -12,13 +12,13 @@
     <div v-if="activeTab === 'departments'" class="space-y-4">
       <div class="flex items-center justify-between">
         <h3 class="font-medium">Departments</h3>
-        <UButton icon="i-heroicons-plus" size="sm" @click="openDepartmentModal()">
+        <UButton icon="i-lucide-plus" size="sm" @click="openDepartmentModal()">
           Add Department
         </UButton>
       </div>
 
       <div v-if="departmentsPending" class="flex justify-center py-8">
-        <UIcon name="i-heroicons-arrow-path" class="w-6 h-6 animate-spin text-gray-400" />
+        <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-gray-400" />
       </div>
 
       <div v-else class="space-y-2">
@@ -39,9 +39,9 @@
           </div>
           <div class="flex items-center gap-2">
             <UBadge v-if="!dept.isActive" color="neutral" size="xs">Inactive</UBadge>
-            <UDropdown :items="getDepartmentActions(dept)">
-              <UButton variant="ghost" icon="i-heroicons-ellipsis-vertical" size="xs" />
-            </UDropdown>
+            <UDropdownMenu :items="getDepartmentActions(dept)">
+              <UButton variant="ghost" icon="i-lucide-more-vertical" size="xs" />
+            </UDropdownMenu>
           </div>
         </div>
 
@@ -55,13 +55,13 @@
     <div v-if="activeTab === 'statuses'" class="space-y-4">
       <div class="flex items-center justify-between">
         <h3 class="font-medium">Task Statuses</h3>
-        <UButton icon="i-heroicons-plus" size="sm" @click="openStatusModal()">
+        <UButton icon="i-lucide-plus" size="sm" @click="openStatusModal()">
           Add Status
         </UButton>
       </div>
 
       <div v-if="statusesPending" class="flex justify-center py-8">
-        <UIcon name="i-heroicons-arrow-path" class="w-6 h-6 animate-spin text-gray-400" />
+        <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-gray-400" />
       </div>
 
       <div v-else>
@@ -90,9 +90,9 @@
                   </p>
                 </div>
               </div>
-              <UDropdown :items="getStatusActions(status)">
-                <UButton variant="ghost" icon="i-heroicons-ellipsis-vertical" size="xs" />
-              </UDropdown>
+              <UDropdownMenu :items="getStatusActions(status)">
+                <UButton variant="ghost" icon="i-lucide-more-vertical" size="xs" />
+              </UDropdownMenu>
             </div>
           </div>
         </div>
@@ -107,13 +107,13 @@
     <div v-if="activeTab === 'tags'" class="space-y-4">
       <div class="flex items-center justify-between">
         <h3 class="font-medium">Global Tags</h3>
-        <UButton icon="i-heroicons-plus" size="sm" @click="openTagModal()">
+        <UButton icon="i-lucide-plus" size="sm" @click="openTagModal()">
           Add Tag
         </UButton>
       </div>
 
       <div v-if="tagsPending" class="flex justify-center py-8">
-        <UIcon name="i-heroicons-arrow-path" class="w-6 h-6 animate-spin text-gray-400" />
+        <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-gray-400" />
       </div>
 
       <div v-else class="flex flex-wrap gap-2">
@@ -128,14 +128,14 @@
           />
           <span class="text-sm font-medium">{{ tag.name }}</span>
           <span class="text-xs text-gray-400">({{ tag.usageCount }})</span>
-          <UDropdown :items="getTagActions(tag)">
+          <UDropdownMenu :items="getTagActions(tag)">
             <UButton
               variant="ghost"
-              icon="i-heroicons-ellipsis-vertical"
+              icon="i-lucide-more-vertical"
               size="xs"
               class="opacity-0 group-hover:opacity-100 transition-opacity"
             />
-          </UDropdown>
+          </UDropdownMenu>
         </div>
 
         <p v-if="!tags?.length" class="text-center text-gray-500 py-8 w-full">
@@ -148,13 +148,13 @@
     <div v-if="activeTab === 'expense-categories'" class="space-y-4">
       <div class="flex items-center justify-between">
         <h3 class="font-medium">Expense Categories</h3>
-        <UButton icon="i-heroicons-plus" size="sm" @click="openExpenseCategoryModal()">
+        <UButton icon="i-lucide-plus" size="sm" @click="openExpenseCategoryModal()">
           Add Category
         </UButton>
       </div>
 
       <div v-if="expenseCategoriesPending" class="flex justify-center py-8">
-        <UIcon name="i-heroicons-arrow-path" class="w-6 h-6 animate-spin text-gray-400" />
+        <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-gray-400" />
       </div>
 
       <div v-else class="space-y-2">
@@ -180,9 +180,9 @@
             <UBadge v-if="cat.isBillableDefault" color="primary" size="xs">Billable</UBadge>
             <UBadge v-if="cat.requiresReceipt" color="info" size="xs">Receipt Required</UBadge>
             <UBadge v-if="!cat.isActive" color="neutral" size="xs">Inactive</UBadge>
-            <UDropdown :items="getExpenseCategoryActions(cat)">
-              <UButton variant="ghost" icon="i-heroicons-ellipsis-vertical" size="xs" />
-            </UDropdown>
+            <UDropdownMenu :items="getExpenseCategoryActions(cat)">
+              <UButton variant="ghost" icon="i-lucide-more-vertical" size="xs" />
+            </UDropdownMenu>
           </div>
         </div>
 
@@ -626,12 +626,12 @@ const saveDepartment = async () => {
 const getDepartmentActions = (dept: Department) => [[
   {
     label: 'Edit',
-    icon: 'i-heroicons-pencil',
+    icon: 'i-lucide-pencil',
     click: () => openDepartmentModal(dept)
   },
   {
     label: dept.isActive ? 'Deactivate' : 'Activate',
-    icon: dept.isActive ? 'i-heroicons-eye-slash' : 'i-heroicons-eye',
+    icon: dept.isActive ? 'i-lucide-eye-off' : 'i-lucide-eye',
     click: async () => {
       try {
         await $fetch(`/api/agency/departments/${dept.id}`, {
@@ -725,7 +725,7 @@ const getStatusesByCategory = (category: string): Status[] => {
 const getStatusActions = (status: Status) => [[
   {
     label: 'Edit',
-    icon: 'i-heroicons-pencil',
+    icon: 'i-lucide-pencil',
     click: () => openStatusModal(status)
   }
 ]]
@@ -789,12 +789,12 @@ const saveTag = async () => {
 const getTagActions = (tag: Tag) => [[
   {
     label: 'Edit',
-    icon: 'i-heroicons-pencil',
+    icon: 'i-lucide-pencil',
     click: () => openTagModal(tag)
   },
   {
     label: 'Delete',
-    icon: 'i-heroicons-trash',
+    icon: 'i-lucide-trash-2',
     click: async () => {
       if (!confirm(`Delete tag "${tag.name}"?`)) return
       try {
@@ -912,12 +912,12 @@ const saveExpenseCategory = async () => {
 const getExpenseCategoryActions = (cat: ExpenseCategory) => [[
   {
     label: 'Edit',
-    icon: 'i-heroicons-pencil',
+    icon: 'i-lucide-pencil',
     click: () => openExpenseCategoryModal(cat)
   },
   {
     label: cat.isActive ? 'Deactivate' : 'Activate',
-    icon: cat.isActive ? 'i-heroicons-eye-slash' : 'i-heroicons-eye',
+    icon: cat.isActive ? 'i-lucide-eye-off' : 'i-lucide-eye',
     click: async () => {
       try {
         await $fetch(`/api/agency/expense-categories/${cat.id}`, {
@@ -933,7 +933,7 @@ const getExpenseCategoryActions = (cat: ExpenseCategory) => [[
   },
   {
     label: 'Delete',
-    icon: 'i-heroicons-trash',
+    icon: 'i-lucide-trash-2',
     click: async () => {
       if (!confirm(`Delete category "${cat.name}"? ${cat.expenseCount > 0 ? 'This category has expenses and will be deactivated instead.' : ''}`)) return
       try {

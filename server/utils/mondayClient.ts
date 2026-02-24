@@ -127,25 +127,38 @@ export class MondayClient {
   }
 
   /**
-   * Make a GraphQL request to Monday.com
+   * Make a GraphQL request to Monday.com with retry on 429
    */
-  private async request<T>(query: string, variables?: Record<string, any>): Promise<T> {
-    const response = await ofetch<{ data?: T; errors?: any[] }>(this.baseUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': this.apiToken,
-        'Content-Type': 'application/json',
-        'API-Version': '2024-01',
-      },
-      body: { query, variables },
-    })
+  private async request<T>(query: string, variables?: Record<string, any>, retries = 3): Promise<T> {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const response = await ofetch<{ data?: T; errors?: any[] }>(this.baseUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': this.apiToken,
+            'Content-Type': 'application/json',
+            'API-Version': '2024-01',
+          },
+          body: { query, variables },
+        })
 
-    if (response.errors && response.errors.length > 0) {
-      const error = response.errors[0]
-      throw new Error(`Monday API Error: ${error.message || JSON.stringify(error)}`)
+        if (response.errors && response.errors.length > 0) {
+          const error = response.errors[0]
+          throw new Error(`Monday API Error: ${error.message || JSON.stringify(error)}`)
+        }
+
+        return response.data as T
+      } catch (err: any) {
+        const is429 = err?.status === 429 || err?.statusCode === 429 || err?.message?.includes('429')
+        if (is429 && attempt < retries) {
+          const delay = Math.pow(2, attempt + 1) * 1000 // 2s, 4s, 8s
+          await new Promise(resolve => setTimeout(resolve, delay))
+          continue
+        }
+        throw err
+      }
     }
-
-    return response.data as T
+    throw new Error('Max retries exceeded')
   }
 
   /**
@@ -185,7 +198,7 @@ export class MondayClient {
     const page = options?.page || 1
     const state = options?.state || 'active'
 
-    // Use simpler query without where clause - filter by state in code if needed
+    // Lightweight query - fetch details per-board only when needed
     const query = `
       query {
         boards(limit: ${limit}, page: ${page}) {
@@ -194,23 +207,7 @@ export class MondayClient {
           type
           state
           workspace_id
-          owner {
-            id
-            name
-            email
-          }
-          columns {
-            id
-            title
-            type
-            settings_str
-          }
-          groups {
-            id
-            title
-            color
-            position
-          }
+          items_count
         }
       }
     `

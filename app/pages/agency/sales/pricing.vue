@@ -104,8 +104,8 @@ const getActions = (item: any) => [
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="Job Pricing">
         <template #right>
           <UButton
@@ -117,7 +117,7 @@ const getActions = (item: any) => [
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Error state -->
         <UCard v-if="error" class="mb-6 border-red-500/50">
           <div class="flex items-center gap-3 text-red-500">
@@ -242,18 +242,18 @@ const getActions = (item: any) => [
               </template>
 
               <template #actions-data="{ row: r }">
-                <UDropdown :items="getActions(r as any)">
+                <UDropdownMenu :items="getActions(r as any)">
                   <UButton
                     color="neutral"
                     variant="ghost"
                     icon="i-lucide-more-horizontal"
                   />
-                </UDropdown>
+                </UDropdownMenu>
               </template>
             </UTable>
           </UCard>
         </template>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
-  </UDashboardPage>
+  </div>
 </template>

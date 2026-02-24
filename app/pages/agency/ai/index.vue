@@ -182,8 +182,8 @@ const getSessionStatusColor = (status: string): 'neutral' | 'info' | 'success' |
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="AI Project Generator">
         <template #right>
           <UButton
@@ -196,7 +196,7 @@ const getSessionStatusColor = (status: string): 'neutral' | 'info' | 'success' |
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Step Indicator -->
         <div class="flex items-center justify-center gap-4 mb-8">
           <div
@@ -576,7 +576,7 @@ const getSessionStatusColor = (status: string): 'neutral' | 'info' | 'success' |
             </UCard>
           </div>
         </div>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
-  </UDashboardPage>
+  </div>
 </template>

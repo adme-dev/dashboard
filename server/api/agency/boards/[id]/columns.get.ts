@@ -6,7 +6,7 @@
  * Falls back to board_columns for legacy compatibility.
  */
 
-import { createError, getRouterParam } from 'h3'
+import { createError, getRouterParam, getQuery } from 'h3'
 import { requireAuth } from '../../../../utils/auth'
 import { queryRows, queryOne } from '../../../../utils/db'
 
@@ -17,6 +17,8 @@ function isUUID(str: string): boolean {
 export default eventHandler(async (event) => {
   await requireAuth(event)
   const boardId = getRouterParam(event, 'id')
+  const query = getQuery(event)
+  const includeHidden = query.includeHidden === 'true'
 
   if (!boardId) {
     throw createError({ statusCode: 400, statusMessage: 'Board ID required' })
@@ -49,7 +51,7 @@ export default eventHandler(async (event) => {
         cc.sort_order as "sortOrder"
       FROM custom_columns cc
       WHERE cc.department_id = $1
-        AND cc.is_visible = true
+        ${includeHidden ? '' : 'AND cc.is_visible = true'}
       ORDER BY cc.sort_order, cc.name
     `, [dept.id])
 
@@ -109,7 +111,15 @@ export default eventHandler(async (event) => {
       ORDER BY bc.sort_order, bc.name
     `, [dept.id])
 
-    return { columns: legacyColumns }
+    // Map legacy types to modern types for frontend compatibility
+    const typeMap: Record<string, string> = { label: 'status', numbers: 'number' }
+    const mappedColumns = legacyColumns.map((col: any) => ({
+      ...col,
+      type: typeMap[col.type] || col.type,
+      columnType: typeMap[col.columnType] || col.columnType,
+    }))
+
+    return { columns: mappedColumns }
 
   } catch (error: any) {
     throw createError({

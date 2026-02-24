@@ -143,8 +143,8 @@ const approvalColumns: any[] = [
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="Client Portal">
         <template #right>
           <UButton
@@ -156,7 +156,7 @@ const approvalColumns: any[] = [
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Summary Cards -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <UCard>
@@ -316,7 +316,7 @@ const approvalColumns: any[] = [
             </div>
           </UCard>
         </div>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
 
     <!-- Invite Modal -->
@@ -368,5 +368,5 @@ const approvalColumns: any[] = [
         </div>
       </template>
     </UModal>
-  </UDashboardPage>
+  </div>
 </template>

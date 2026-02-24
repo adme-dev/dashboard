@@ -148,8 +148,8 @@ const resetNewProof = () => {
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="Creative Proofs">
         <template #right>
           <UButton
@@ -161,7 +161,7 @@ const resetNewProof = () => {
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Summary Cards -->
         <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
           <UCard>
@@ -310,7 +310,7 @@ const resetNewProof = () => {
             No proofs found. Create one to get started!
           </div>
         </div>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
 
     <!-- New Proof Modal -->
@@ -364,5 +364,5 @@ const resetNewProof = () => {
         </div>
       </template>
     </UModal>
-  </UDashboardPage>
+  </div>
 </template>

@@ -9,7 +9,7 @@
       <div class="flex items-center gap-2">
         <UButton
           variant="outline"
-          icon="i-heroicons-funnel"
+          icon="i-lucide-filter"
           @click="showFilters = !showFilters"
         >
           Filters
@@ -19,7 +19,7 @@
         </UButton>
         <UButton
           color="primary"
-          icon="i-heroicons-plus"
+          icon="i-lucide-plus"
           @click="showCreateModal = true"
         >
           New Task
@@ -34,7 +34,7 @@
           <UInput
             v-model="filters.search"
             placeholder="Search tasks..."
-            icon="i-heroicons-magnifying-glass"
+            icon="i-lucide-search"
             class="w-full"
           />
         </UFormField>
@@ -115,7 +115,7 @@
       <UCard>
         <div class="flex items-center gap-3">
           <div class="p-2 bg-primary-50 rounded-lg">
-            <UIcon name="i-heroicons-clipboard-document-list" class="w-5 h-5 text-primary-500" />
+            <UIcon name="i-lucide-clipboard-list" class="w-5 h-5 text-primary-500" />
           </div>
           <div>
             <p class="text-2xl font-bold">{{ pagination?.total || 0 }}</p>
@@ -127,7 +127,7 @@
       <UCard>
         <div class="flex items-center gap-3">
           <div class="p-2 bg-warning-50 rounded-lg">
-            <UIcon name="i-heroicons-clock" class="w-5 h-5 text-warning-500" />
+            <UIcon name="i-lucide-clock" class="w-5 h-5 text-warning-500" />
           </div>
           <div>
             <p class="text-2xl font-bold">{{ overdueCount }}</p>
@@ -139,7 +139,7 @@
       <UCard>
         <div class="flex items-center gap-3">
           <div class="p-2 bg-info-50 rounded-lg">
-            <UIcon name="i-heroicons-arrow-path" class="w-5 h-5 text-info-500" />
+            <UIcon name="i-lucide-loader-2" class="w-5 h-5 text-info-500" />
           </div>
           <div>
             <p class="text-2xl font-bold">{{ inProgressCount }}</p>
@@ -151,7 +151,7 @@
       <UCard>
         <div class="flex items-center gap-3">
           <div class="p-2 bg-error-50 rounded-lg">
-            <UIcon name="i-heroicons-no-symbol" class="w-5 h-5 text-error-500" />
+            <UIcon name="i-lucide-ban" class="w-5 h-5 text-error-500" />
           </div>
           <div>
             <p class="text-2xl font-bold">{{ blockedCount }}</p>
@@ -164,11 +164,11 @@
     <!-- Tasks Table -->
     <UCard>
       <div v-if="pending" class="flex justify-center py-12">
-        <UIcon name="i-heroicons-arrow-path" class="w-8 h-8 animate-spin text-gray-400" />
+        <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-gray-400" />
       </div>
 
       <div v-else-if="!tasks?.length" class="text-center py-12">
-        <UIcon name="i-heroicons-clipboard-document-list" class="w-12 h-12 text-gray-300 mx-auto mb-3" />
+        <UIcon name="i-lucide-clipboard-list" class="w-12 h-12 text-gray-300 mx-auto mb-3" />
         <p class="text-gray-500">No tasks found</p>
         <p class="text-sm text-gray-400">Try adjusting your filters or create a new task</p>
       </div>
@@ -232,7 +232,7 @@
           <div v-if="(row as any).dueDate" class="flex items-center gap-1">
             <UIcon
               v-if="isOverdue((row as any).dueDate, (row as any).status?.isFinal)"
-              name="i-heroicons-exclamation-triangle"
+              name="i-lucide-triangle-alert"
               class="w-4 h-4 text-error-500"
             />
             <span :class="isOverdue((row as any).dueDate, (row as any).status?.isFinal) ? 'text-error-500' : ''">
@@ -259,13 +259,13 @@
         <template #actions-cell="{ row }">
           <div class="flex items-center gap-1">
             <UButton
-              icon="i-heroicons-eye"
+              icon="i-lucide-eye"
               variant="ghost"
               size="xs"
               :to="`/agency/tasks/${(row as any).id}`"
             />
             <UButton
-              icon="i-heroicons-pencil"
+              icon="i-lucide-pencil"
               variant="ghost"
               size="xs"
               @click="editTask(row as any)"
@@ -395,9 +395,7 @@
 </template>
 
 <script setup lang="ts">
-definePageMeta({
-  layout: 'default'
-})
+definePageMeta({})
 
 const toast = useToast()
 

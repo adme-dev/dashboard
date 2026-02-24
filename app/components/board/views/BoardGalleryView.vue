@@ -34,7 +34,6 @@
                       :column="normalizeColumn(col)"
                       :value="getCellValue(item, col)"
                       :task-id="item.id"
-                      :readonly="true"
                       @update="(columnId, payload) => $emit('cellUpdate', item.id, columnId, payload)"
                     />
                   </div>

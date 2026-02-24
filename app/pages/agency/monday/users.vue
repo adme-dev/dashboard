@@ -274,7 +274,7 @@ interface SyncData {
   }>
 }
 
-definePageMeta({ layout: 'agency' })
+definePageMeta({})
 
 const preview = ref<PreviewData | null>(null)
 const previewLoading = ref(false)

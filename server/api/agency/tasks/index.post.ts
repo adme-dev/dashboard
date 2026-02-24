@@ -6,12 +6,17 @@ import { queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { notifyTaskAssigned } from '~~/server/utils/notifications'
 
+function isUUID(str: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str)
+}
+
 interface CreateTaskBody {
   departmentId: string
   title: string
   description?: string
   projectId?: string
   parentTaskId?: string
+  groupId?: string
   statusId?: string
   priority?: 'urgent' | 'high' | 'medium' | 'low'
   taskType?: string
@@ -42,6 +47,16 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
+    // Resolve slug to UUID if needed
+    let departmentId = body.departmentId
+    if (!isUUID(departmentId)) {
+      const dept = await queryOne('SELECT id FROM departments WHERE slug = $1', [departmentId])
+      if (!dept) {
+        throw createError({ statusCode: 404, statusMessage: 'Department not found' })
+      }
+      departmentId = dept.id
+    }
+
     // Get default status if not provided
     let statusId = body.statusId
     if (!statusId) {
@@ -51,7 +66,7 @@ export default defineEventHandler(async (event) => {
           AND is_default = true
         ORDER BY department_id NULLS LAST
         LIMIT 1
-      `, [body.departmentId])
+      `, [departmentId])
       statusId = defaultStatus?.id
     }
 
@@ -66,16 +81,17 @@ export default defineEventHandler(async (event) => {
       // Create the task
       const taskResult = await client.query(`
         INSERT INTO tasks (
-          department_id, project_id, parent_task_id, status_id,
+          department_id, project_id, parent_task_id, group_id, status_id,
           title, description, priority, task_type,
           assignee_id, reporter_id, due_date, start_date, estimated_hours
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         RETURNING *
       `, [
-        body.departmentId,
+        departmentId,
         body.projectId || null,
         body.parentTaskId || null,
+        body.groupId || null,
         statusId,
         body.title.trim(),
         body.description?.trim() || null,
@@ -184,10 +200,10 @@ export default defineEventHandler(async (event) => {
     }
   } catch (error: any) {
     if (error.statusCode) throw error
-    console.error('Failed to create task:', error)
+    console.error('Failed to create task:', error.message, { departmentId: body.departmentId, title: body.title, groupId: body.groupId })
     throw createError({
       statusCode: 500,
-      statusMessage: 'Failed to create task'
+      statusMessage: `Failed to create task: ${error.message}`
     })
   }
 })

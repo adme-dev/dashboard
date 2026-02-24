@@ -172,8 +172,8 @@ const sendInvoice = async (invoice: any) => {
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="Invoices">
         <template #right>
           <UButton
@@ -185,7 +185,7 @@ const sendInvoice = async (invoice: any) => {
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Summary Cards -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <UCard>
@@ -334,7 +334,7 @@ const sendInvoice = async (invoice: any) => {
             No invoices found
           </div>
         </UCard>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
 
     <!-- New Invoice Modal -->
@@ -417,5 +417,5 @@ const sendInvoice = async (invoice: any) => {
         </div>
       </template>
     </UModal>
-  </UDashboardPage>
+  </div>
 </template>

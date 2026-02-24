@@ -234,8 +234,8 @@ async function updateStatus(status: BriefStatus) {
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar>
         <template #left>
           <div class="flex items-center gap-2">
@@ -260,7 +260,7 @@ async function updateStatus(status: BriefStatus) {
             </UBadge>
 
             <!-- Status Actions -->
-            <UDropdown
+            <UDropdownMenu
               v-if="availableStatuses.length > 0 && isAdmin"
               :items="[availableStatuses.map(s => ({
                 label: formatStatus(s),
@@ -274,10 +274,10 @@ async function updateStatus(status: BriefStatus) {
               >
                 Update Status
               </UButton>
-            </UDropdown>
+            </UDropdownMenu>
 
             <!-- More Actions -->
-            <UDropdown
+            <UDropdownMenu
               :items="[
                 [
                   { label: 'Edit Brief', icon: 'i-lucide-pencil', disabled: brief.status !== 'draft' },
@@ -294,12 +294,12 @@ async function updateStatus(status: BriefStatus) {
                 variant="ghost"
                 color="neutral"
               />
-            </UDropdown>
+            </UDropdownMenu>
           </div>
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Loading -->
         <div v-if="pending" class="flex items-center justify-center py-12">
           <UIcon name="i-lucide-loader-2" class="size-8 animate-spin text-primary" />
@@ -633,7 +633,7 @@ async function updateStatus(status: BriefStatus) {
             </UCard>
           </div>
         </div>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
-  </UDashboardPage>
+  </div>
 </template>

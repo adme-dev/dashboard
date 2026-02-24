@@ -137,8 +137,8 @@ const activeTab = ref('overview')
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar :title="project?.name || 'Project'">
         <template #left>
           <UButton
@@ -160,7 +160,7 @@ const activeTab = ref('overview')
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <div v-if="pending" class="flex items-center justify-center py-12">
           <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
         </div>
@@ -455,7 +455,7 @@ const activeTab = ref('overview')
             </div>
           </UCard>
         </template>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
 
     <!-- Edit Modal -->
@@ -513,5 +513,5 @@ const activeTab = ref('overview')
         </div>
       </template>
     </UModal>
-  </UDashboardPage>
+  </div>
 </template>

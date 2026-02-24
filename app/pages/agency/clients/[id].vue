@@ -164,25 +164,22 @@ const invoiceColumns = [
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
-      <UDashboardNavbar>
-        <template #left>
-          <div class="flex items-center gap-3">
-            <UButton
-              variant="ghost"
-              icon="i-lucide-arrow-left"
-              to="/agency/clients"
-            />
-            <div v-if="client">
-              <h1 class="text-xl font-semibold">{{ client.name }}</h1>
-              <div class="flex items-center gap-2 text-sm text-gray-500">
-                <UBadge variant="subtle" :color="client.isActive ? 'success' : 'neutral'">
-                  {{ client.isActive ? 'Active' : 'Inactive' }}
-                </UBadge>
-                <span>{{ billingTypeLabels[client.billingType] || client.billingType }}</span>
-              </div>
-            </div>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
+      <UDashboardNavbar :title="client?.name || 'Client Details'">
+        <template #leading>
+          <UButton
+            variant="ghost"
+            icon="i-lucide-arrow-left"
+            to="/agency/clients"
+          />
+        </template>
+        <template #trailing>
+          <div v-if="client" class="flex items-center gap-2">
+            <UBadge variant="subtle" :color="client.isActive ? 'success' : 'neutral'">
+              {{ client.isActive ? 'Active' : 'Inactive' }}
+            </UBadge>
+            <span class="text-sm text-gray-500">{{ billingTypeLabels[client.billingType] || client.billingType }}</span>
           </div>
         </template>
         <template #right>
@@ -203,7 +200,7 @@ const invoiceColumns = [
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Loading -->
         <div v-if="pending" class="flex items-center justify-center py-12">
           <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
@@ -487,7 +484,7 @@ const invoiceColumns = [
             </UCard>
           </div>
         </template>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
 
     <!-- Edit Modal -->
@@ -546,5 +543,5 @@ const invoiceColumns = [
         </div>
       </template>
     </UModal>
-  </UDashboardPage>
+  </div>
 </template>

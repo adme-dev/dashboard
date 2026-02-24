@@ -349,3 +349,66 @@ CREATE TRIGGER update_coa_updated_at BEFORE UPDATE ON chart_of_accounts
 
 CREATE TRIGGER update_xero_sessions_updated_at BEFORE UPDATE ON xero_sessions
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================
+-- Component Schemas (in dependency order)
+-- ============================================
+-- Run with: psql $DATABASE_URL -f server/database/schema.sql
+-- from the project root directory
+
+-- Auth extensions (extends team_members with auth columns)
+\i schema-auth.sql
+
+-- Teams and memberships
+\i schema-teams.sql
+
+-- Integration configs and sync logs
+\i schema-integrations.sql
+
+-- Financial: invoicing, expenses, pricing
+\i schema-invoicing.sql
+\i schema-expenses.sql
+\i schema-pricing.sql
+
+-- Storage, Xero flow, magic links
+\i schema-storage.sql
+\i schema-xeroflow.sql
+\i schema-magic-links.sql
+
+-- Workflow: departments, tasks, statuses (critical for Monday import)
+\i schema-workflow.sql
+
+-- Time tracking extensions
+\i schema-timetracking.sql
+
+-- Task collaboration: comments, mentions
+\i schema-task-comments.sql
+\i schema-task-mentions-enhanced.sql
+
+-- Briefs and brief fields
+\i schema-briefs.sql
+\i schema-briefs-fields.sql
+
+-- Creative proofs and budget alerts
+\i schema-creative-proofs.sql
+\i schema-budget-alerts.sql
+
+-- Automation, client portal, intake forms
+\i schema-automation-rules.sql
+\i schema-client-portal.sql
+\i schema-intake-forms.sql
+
+-- Project health and resource forecasting
+\i schema-project-health.sql
+\i schema-resource-forecasting.sql
+
+-- Templates
+\i schema-templates.sql
+
+-- Monday.com migration (depends on workflow tables)
+\i schema-monday-migration.sql
+\i schema-monday-complete.sql
+\i schema-monday-features.sql
+
+-- AI project generation
+\i schema-ai-project-generation.sql

@@ -18,7 +18,7 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "zero:dev": "npx @rocicorp/zero-cache serve",
-    "db:setup": "psql $DATABASE_URL -f server/database/schema.sql",
+    "db:setup": "cd server/database && psql $DATABASE_URL -f schema.sql",
     "db:seed": "psql $DATABASE_URL -f server/database/seed-coa.sql",
     "db:zero": "psql $DATABASE_URL -f server/database/setup-zero-replication.sql",
     "env:setup": "./scripts/setup-env.sh",

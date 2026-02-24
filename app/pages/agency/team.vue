@@ -1,7 +1,6 @@
 <script setup lang="ts">
 definePageMeta({
   title: 'Team Members',
-  layout: 'default',
   middleware: ['auth']
 })
 
@@ -223,8 +222,8 @@ const commonDepartments = [
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="Team Members">
         <template #right>
           <UButton
@@ -236,7 +235,7 @@ const commonDepartments = [
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Summary Cards -->
         <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
           <UCard>
@@ -403,7 +402,7 @@ const commonDepartments = [
             </template>
 
             <template #actions-cell="{ row: r }">
-              <UDropdown
+              <UDropdownMenu
                 :items="[
                   [{
                     label: 'Edit',
@@ -423,7 +422,7 @@ const commonDepartments = [
                   variant="ghost"
                   size="xs"
                 />
-              </UDropdown>
+              </UDropdownMenu>
             </template>
           </UTable>
 
@@ -431,7 +430,7 @@ const commonDepartments = [
             No team members found
           </div>
         </UCard>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
 
     <!-- Member Detail Modal -->
@@ -593,5 +592,5 @@ const commonDepartments = [
         </div>
       </template>
     </UModal>
-  </UDashboardPage>
+  </div>
 </template>

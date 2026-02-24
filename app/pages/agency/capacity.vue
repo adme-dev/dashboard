@@ -161,8 +161,8 @@ const projectColumns: any[] = [
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="Resource Planning">
         <template #right>
           <div class="flex items-center gap-3">
@@ -191,7 +191,7 @@ const projectColumns: any[] = [
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Loading -->
         <div v-if="pending" class="flex items-center justify-center py-12">
           <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
@@ -641,7 +641,7 @@ const projectColumns: any[] = [
           </div>
           </template>
         </template>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
-  </UDashboardPage>
+  </div>
 </template>

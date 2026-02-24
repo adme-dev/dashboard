@@ -148,8 +148,7 @@ const lanes = computed(() => {
   const col = kanbanColumn.value
   if (!col) return []
 
-  const options: { id: string; label: string; color: string }[] =
-    col.settings?.options || []
+  const options: any[] = col.settings?.options || []
 
   // If no options, group by distinct values
   if (options.length === 0) {
@@ -157,7 +156,7 @@ const lanes = computed(() => {
     const grouped = new Map<string, BoardItem[]>()
     for (const item of allItems.value) {
       const cv = props.getCellValue(item, col)
-      const key = cv?.textValue || cv?.jsonValue?.selectedIds?.[0] || 'Unset'
+      const key = cv?.textValue || cv?.jsonValue?.optionId || cv?.jsonValue?.selectedIds?.[0] || 'Unset'
       if (!grouped.has(key)) grouped.set(key, [])
       grouped.get(key)!.push(item)
     }
@@ -169,10 +168,10 @@ const lanes = computed(() => {
     }))
   }
 
-  // Build lanes from options
+  // Build lanes from options (use value || id since platform statuses use "value", custom options use "id")
   const result = options.map(opt => ({
-    id: opt.id,
-    label: opt.label,
+    id: opt.value || opt.id,
+    label: opt.label || opt.name,
     color: opt.color || '#C4C4C4',
     items: [] as BoardItem[],
   }))
@@ -182,8 +181,10 @@ const lanes = computed(() => {
 
   for (const item of allItems.value) {
     const cv = props.getCellValue(item, col)
-    const selectedId = cv?.jsonValue?.selectedIds?.[0] || cv?.jsonValue?.selected_id
-    const lane = result.find(l => l.id === selectedId)
+    const selectedId = cv?.jsonValue?.optionId || cv?.jsonValue?.selectedIds?.[0] || cv?.jsonValue?.selected_id
+    // Match by ID first, then by text value matching label (for platform status sync)
+    const lane = result.find(l => l.id === selectedId) ||
+      (cv?.textValue ? result.find(l => l.label === cv.textValue) : null)
     if (lane) {
       lane.items.push(item)
     } else {

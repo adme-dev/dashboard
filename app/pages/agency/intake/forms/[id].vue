@@ -223,8 +223,8 @@ const formatDate = (date: string) => {
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar :title="form?.name || 'Loading...'">
         <template #left>
           <UButton
@@ -259,7 +259,7 @@ const formatDate = (date: string) => {
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent v-if="!loading && editedForm">
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6" v-if="!loading && editedForm">
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <!-- Form Settings -->
           <div class="space-y-6">
@@ -509,14 +509,14 @@ const formatDate = (date: string) => {
             </UCard>
           </div>
         </div>
-      </UDashboardPanelContent>
+      </div>
 
       <!-- Loading -->
-      <UDashboardPanelContent v-else>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6" v-else>
         <div class="flex items-center justify-center py-12">
           <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
         </div>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
 
     <!-- Preview Modal -->
@@ -583,5 +583,5 @@ const formatDate = (date: string) => {
         <UButton variant="ghost" label="Close" @click="showPreview = false" />
       </template>
     </UModal>
-  </UDashboardPage>
+  </div>
 </template>

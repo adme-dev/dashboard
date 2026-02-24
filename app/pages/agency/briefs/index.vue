@@ -138,8 +138,8 @@ const getActions = (brief: any) => [
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="Project Briefs">
         <template #right>
           <UButton
@@ -151,7 +151,7 @@ const getActions = (brief: any) => [
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Summary Cards -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <UCard>
@@ -267,17 +267,17 @@ const getActions = (brief: any) => [
             </template>
 
             <template #actions-cell="{ row }">
-              <UDropdown :items="getActions(row.original)">
+              <UDropdownMenu :items="getActions(row.original)">
                 <UButton
                   color="neutral"
                   variant="ghost"
                   icon="i-lucide-more-horizontal"
                 />
-              </UDropdown>
+              </UDropdownMenu>
             </template>
           </UTable>
         </UCard>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
-  </UDashboardPage>
+  </div>
 </template>

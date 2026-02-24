@@ -5,9 +5,7 @@
  */
 import { addDays, differenceInDays, format, startOfWeek, endOfWeek, eachDayOfInterval, eachWeekOfInterval, startOfMonth, endOfMonth } from 'date-fns'
 
-definePageMeta({
-  layout: 'default'
-})
+definePageMeta({})
 
 // Filters
 const departmentId = ref<string>('')

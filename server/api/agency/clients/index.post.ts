@@ -8,7 +8,7 @@ import { requireAuth, requireRole } from '~~/server/utils/auth'
 
 interface CreateClientBody {
   name: string
-  billingType?: 'hourly' | 'retainer' | 'project' | 'mixed'
+  billingType?: 'retainer' | 'project' | 'hybrid' | 'commission'
   retainerAmount?: number
   paymentTerms?: number
   hourlyRate?: number
@@ -35,7 +35,7 @@ export default defineEventHandler(async (event) => {
   }
 
   // Validate billing type
-  const validBillingTypes = ['hourly', 'retainer', 'project', 'mixed']
+  const validBillingTypes = ['retainer', 'project', 'hybrid', 'commission']
   if (body.billingType && !validBillingTypes.includes(body.billingType)) {
     throw createError({
       statusCode: 400,
@@ -43,8 +43,8 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // Validate retainer amount if billing type is retainer
-  if (body.billingType === 'retainer' && (!body.retainerAmount || body.retainerAmount <= 0)) {
+  // Validate retainer amount if billing type is retainer or hybrid
+  if ((body.billingType === 'retainer' || body.billingType === 'hybrid') && (!body.retainerAmount || body.retainerAmount <= 0)) {
     throw createError({
       statusCode: 400,
       statusMessage: 'Retainer amount is required for retainer billing type'

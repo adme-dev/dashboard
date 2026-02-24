@@ -216,9 +216,7 @@
 import { ref, computed } from 'vue'
 
 // Page meta
-definePageMeta({
-  layout: 'agency'
-})
+definePageMeta({})
 
 // Route
 const route = useRoute()

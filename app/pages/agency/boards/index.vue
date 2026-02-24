@@ -113,9 +113,7 @@
 import { ref, computed } from 'vue'
 
 // Page meta
-definePageMeta({
-  layout: 'agency'
-})
+definePageMeta({})
 
 // Types
 interface Board {

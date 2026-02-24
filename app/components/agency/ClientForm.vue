@@ -15,9 +15,11 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  submit: [data: typeof form]
+  submit: []
   cancel: []
 }>()
+
+const toast = useToast()
 
 // Form state
 const form = reactive({
@@ -89,15 +91,27 @@ const handleSubmit = async () => {
   loading.value = true
 
   try {
-    // In production, call API to save
-    // await $fetch('/api/agency/clients', {
-    //   method: isEditing.value ? 'PUT' : 'POST',
-    //   body: form
-    // })
+    if (isEditing.value) {
+      await $fetch(`/api/agency/clients/${props.client!.id}`, {
+        method: 'PUT',
+        body: form
+      })
+      toast.add({ title: 'Client updated', color: 'success' })
+    } else {
+      await $fetch('/api/agency/clients', {
+        method: 'POST',
+        body: form
+      })
+      toast.add({ title: 'Client created', color: 'success' })
+    }
 
-    emit('submit', { ...form })
-  } catch (error) {
-    console.error('Failed to save client:', error)
+    emit('submit')
+  } catch (error: any) {
+    toast.add({
+      title: `Failed to ${isEditing.value ? 'update' : 'create'} client`,
+      description: error.data?.message || error.message,
+      color: 'error'
+    })
   } finally {
     loading.value = false
   }

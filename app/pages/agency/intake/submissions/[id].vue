@@ -167,8 +167,8 @@ const getActivityIcon = (type: string) => {
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar :title="submission?.submittedBy?.name || 'Loading...'">
         <template #left>
           <UButton
@@ -190,7 +190,7 @@ const getActivityIcon = (type: string) => {
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent v-if="!loading && submission">
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6" v-if="!loading && submission">
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <!-- Main Content -->
           <div class="lg:col-span-2 space-y-6">
@@ -459,14 +459,14 @@ const getActivityIcon = (type: string) => {
             </UCard>
           </div>
         </div>
-      </UDashboardPanelContent>
+      </div>
 
       <!-- Loading -->
-      <UDashboardPanelContent v-else>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6" v-else>
         <div class="flex items-center justify-center py-12">
           <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
         </div>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
 
     <!-- Convert to Project Modal -->
@@ -502,5 +502,5 @@ const getActivityIcon = (type: string) => {
         </div>
       </template>
     </UModal>
-  </UDashboardPage>
+  </div>
 </template>

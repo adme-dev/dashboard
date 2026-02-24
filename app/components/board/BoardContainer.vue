@@ -12,10 +12,13 @@
 
     <!-- Toolbar -->
     <BoardToolbar
-      @filter="$emit('filter')"
-      @sort="$emit('sort')"
-      @hide="$emit('hide')"
-      @group="$emit('group')"
+      v-model:filters="filters"
+      v-model:sort-rules="sortRules"
+      v-model:group-by-column-id="groupByColumnId"
+      :columns="columns"
+      :all-columns="allColumns"
+      :board-id="props.boardId"
+      @toggle-column-visibility="toggleColumnVisibility"
       @export="$emit('export')"
       @template="$emit('template')"
       @add-group="$emit('addGroup')"
@@ -77,7 +80,10 @@
         :groups="filteredGroups"
         :columns="columns"
         :get-cell-value="getCellValue"
+        :normalize-column="normalizeColumn"
         @open-task="$emit('openTask', $event)"
+        @cell-update="(taskId, colId, payload) => handleCellUpdate(taskId, colId, payload)"
+        @add-item="$emit('addItem', $event)"
       />
 
       <!-- List View -->
@@ -126,14 +132,11 @@ const props = defineProps<{
 
 defineEmits<{
   openTask: [taskId: string]
-  filter: []
-  sort: []
-  hide: []
-  group: []
   export: []
   template: []
   addGroup: []
   addColumn: []
+  addItem: [payload: { groupId: string; title: string; date: string }]
 }>()
 
 const showAddItem = ref(false)
@@ -145,13 +148,20 @@ const {
   groups,
   filteredGroups,
   columns,
+  allColumns,
   totalItems,
   pending,
   error,
   refresh,
   refreshColumns,
+  toggleColumnVisibility,
   activeView,
   searchQuery,
+  filters,
+  sortRules,
+  groupByColumnId,
+  toggleGroupExpanded,
+  statuses,
   normalizeColumn,
   getCellValue,
   handleCellUpdate,
@@ -174,13 +184,20 @@ defineExpose({
   groups,
   filteredGroups,
   columns,
+  allColumns,
   totalItems,
   pending,
   error,
   refresh,
   refreshColumns,
+  toggleColumnVisibility,
   activeView,
   searchQuery,
+  filters,
+  sortRules,
+  groupByColumnId,
+  toggleGroupExpanded,
+  statuses,
   normalizeColumn,
   getCellValue,
   handleCellUpdate,

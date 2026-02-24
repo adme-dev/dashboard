@@ -12,24 +12,54 @@
     <Teleport to="body">
       <div
         v-if="showPicker"
-        class="fixed z-[100] bg-white rounded-lg shadow-xl border w-[360px] p-3"
+        class="fixed z-[100] bg-white rounded-lg shadow-xl border w-[360px]"
         :style="popoverStyle"
         v-click-outside="closePicker"
       >
-        <div class="grid grid-cols-3 gap-2">
-          <button
-            v-for="opt in options"
-            :key="opt.value"
-            class="px-2 py-2 rounded text-xs font-medium text-center hover:opacity-90 transition-opacity"
-            :style="{ backgroundColor: opt.color, color: getContrastColor(opt.color) }"
-            @click="selectStatus(opt)"
-          >
-            {{ opt.label }}
-          </button>
+        <!-- Search (shown when > 6 options) -->
+        <div v-if="options.length > 6" class="p-3 border-b">
+          <div class="relative">
+            <UIcon name="i-lucide-search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              v-model="searchQuery"
+              type="text"
+              placeholder="Search..."
+              class="w-full pl-9 pr-3 py-1.5 text-sm border rounded outline-none focus:border-blue-500"
+            />
+          </div>
         </div>
-        <div class="mt-3 pt-3 border-t flex items-center gap-2">
-          <button class="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900">
-            <UIcon name="i-lucide-pencil" class="w-4 h-4" />
+
+        <div class="p-3">
+          <div class="grid grid-cols-3 gap-2">
+            <button
+              v-for="opt in filteredOptions"
+              :key="opt.value || opt.id"
+              class="px-2 py-2 rounded text-xs font-medium text-center hover:opacity-80 transition-opacity relative"
+              :class="{ 'ring-2 ring-offset-1 ring-blue-500': isSelected(opt) }"
+              :style="{ backgroundColor: opt.color, color: getContrastColor(opt.color) }"
+              @click="selectStatus(opt)"
+            >
+              {{ opt.label || opt.name }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Footer: Clear + Edit -->
+        <div class="px-3 pb-3 flex items-center justify-between">
+          <button
+            v-if="selectedValue"
+            class="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700"
+            @click="clearStatus"
+          >
+            <UIcon name="i-lucide-x-circle" class="w-3.5 h-3.5" />
+            <span>Clear</span>
+          </button>
+          <span v-else />
+          <button
+            class="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700"
+            @click="$emit('editColumn')"
+          >
+            <UIcon name="i-lucide-pencil" class="w-3.5 h-3.5" />
             <span>Edit Labels</span>
           </button>
         </div>
@@ -61,10 +91,14 @@ const props = defineProps<{
   readonly?: boolean
 }>()
 
-const emit = defineEmits<{ update: [payload: any] }>()
+const emit = defineEmits<{
+  update: [payload: any]
+  editColumn: []
+}>()
 
 const showPicker = ref(false)
 const pickerPosition = ref({ x: 0, y: 0 })
+const searchQuery = ref('')
 
 const options = computed(() => {
   const opts = props.column.settings?.options || []
@@ -78,13 +112,19 @@ const options = computed(() => {
   ]
 })
 
+const filteredOptions = computed(() => {
+  if (!searchQuery.value) return options.value
+  const q = searchQuery.value.toLowerCase()
+  return options.value.filter((o: any) => (o.label || o.name || '').toLowerCase().includes(q))
+})
+
 const selectedValue = computed(() => props.value?.jsonValue?.optionId || props.value?.textValue || '')
 
 const currentOption = computed(() =>
   options.value.find((o: any) => o.value === selectedValue.value || o.id === selectedValue.value)
 )
 
-const currentLabel = computed(() => currentOption.value?.label || selectedValue.value || '-')
+const currentLabel = computed(() => currentOption.value?.label || currentOption.value?.name || selectedValue.value || '-')
 const currentStyle = computed(() => {
   const color = currentOption.value?.color || '#E5E7EB'
   return {
@@ -107,11 +147,32 @@ function getContrastColor(hex: string): string {
   return luminance > 0.6 ? '#333333' : '#ffffff'
 }
 
+function isSelected(opt: any): boolean {
+  return (opt.value || opt.id) === selectedValue.value
+}
+
 function togglePicker(event: MouseEvent) {
   if (props.readonly) return
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  pickerPosition.value = { x: rect.left, y: rect.bottom + 8 }
+  const popoverWidth = 360
+  const viewportWidth = window.innerWidth
+  const viewportHeight = window.innerHeight
+  // Clamp horizontal: prefer left-aligned, but shift left if it overflows
+  let x = rect.left
+  if (x + popoverWidth > viewportWidth - 8) {
+    x = viewportWidth - popoverWidth - 8
+  }
+  if (x < 8) x = 8
+  // Clamp vertical: show below by default, above if not enough space
+  let y = rect.bottom + 8
+  const estimatedHeight = 300
+  if (y + estimatedHeight > viewportHeight - 8) {
+    y = rect.top - estimatedHeight - 8
+    if (y < 8) y = 8
+  }
+  pickerPosition.value = { x, y }
   showPicker.value = true
+  searchQuery.value = ''
 }
 
 function closePicker() {
@@ -119,7 +180,12 @@ function closePicker() {
 }
 
 function selectStatus(opt: any) {
-  emit('update', { jsonValue: { optionId: opt.value || opt.id }, textValue: opt.label })
+  emit('update', { jsonValue: { optionId: opt.value || opt.id }, textValue: opt.label || opt.name })
+  closePicker()
+}
+
+function clearStatus() {
+  emit('update', { jsonValue: { optionId: null }, textValue: null })
   closePicker()
 }
 </script>

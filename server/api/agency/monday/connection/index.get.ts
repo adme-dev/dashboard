@@ -24,7 +24,7 @@ export default eventHandler(async (event) => {
     }
 
     // Test the connection
-    const client = createMondayClient(config.access_token)
+    const client = await createMondayClient(config.access_token)
     const account = await client.testConnection()
 
     return {

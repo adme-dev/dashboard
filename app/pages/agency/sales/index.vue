@@ -54,8 +54,8 @@ const getStatusColor = (status: string): 'neutral' | 'warning' | 'info' | 'succe
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="Sales Dashboard">
         <template #right>
           <UButton
@@ -67,7 +67,7 @@ const getStatusColor = (status: string): 'neutral' | 'warning' | 'info' | 'succe
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Quick Stats -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <UCard>
@@ -237,7 +237,7 @@ const getStatusColor = (status: string): 'neutral' | 'warning' | 'info' | 'succe
             </div>
           </UCard>
         </div>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
-  </UDashboardPage>
+  </div>
 </template>

@@ -9,7 +9,7 @@
       <div class="flex items-center gap-2">
         <UButton
           variant="outline"
-          icon="i-heroicons-arrow-path"
+          icon="i-lucide-loader-2"
           :loading="refreshing"
           @click="refreshAll"
         >
@@ -23,7 +23,7 @@
       <UCard>
         <div class="flex items-center gap-4">
           <div class="p-3 bg-error-50 rounded-lg">
-            <UIcon name="i-heroicons-exclamation-triangle" class="w-6 h-6 text-error-500" />
+            <UIcon name="i-lucide-triangle-alert" class="w-6 h-6 text-error-500" />
           </div>
           <div>
             <p class="text-sm text-gray-500">Active Alerts</p>
@@ -36,7 +36,7 @@
       <UCard>
         <div class="flex items-center gap-4">
           <div class="p-3 bg-warning-50 rounded-lg">
-            <UIcon name="i-heroicons-exclamation-circle" class="w-6 h-6 text-warning-500" />
+            <UIcon name="i-lucide-alert-circle" class="w-6 h-6 text-warning-500" />
           </div>
           <div>
             <p class="text-sm text-gray-500">At Risk</p>
@@ -49,7 +49,7 @@
       <UCard>
         <div class="flex items-center gap-4">
           <div class="p-3 bg-success-50 rounded-lg">
-            <UIcon name="i-heroicons-check-circle" class="w-6 h-6 text-success-500" />
+            <UIcon name="i-lucide-check-circle" class="w-6 h-6 text-success-500" />
           </div>
           <div>
             <p class="text-sm text-gray-500">Healthy</p>
@@ -62,7 +62,7 @@
       <UCard>
         <div class="flex items-center gap-4">
           <div class="p-3 bg-primary-50 rounded-lg">
-            <UIcon name="i-heroicons-currency-dollar" class="w-6 h-6 text-primary-500" />
+            <UIcon name="i-lucide-dollar-sign" class="w-6 h-6 text-primary-500" />
           </div>
           <div>
             <p class="text-sm text-gray-500">Total Budget</p>
@@ -101,11 +101,11 @@
           </template>
 
           <div v-if="alertsPending" class="flex justify-center py-8">
-            <UIcon name="i-heroicons-arrow-path" class="w-6 h-6 animate-spin text-gray-400" />
+            <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-gray-400" />
           </div>
 
           <div v-else-if="!alerts?.alerts?.length" class="text-center py-8">
-            <UIcon name="i-heroicons-check-circle" class="w-12 h-12 text-success-400 mx-auto mb-2" />
+            <UIcon name="i-lucide-check-circle" class="w-12 h-12 text-success-400 mx-auto mb-2" />
             <p class="text-gray-500">No active alerts</p>
             <p class="text-sm text-gray-400">All projects are within budget</p>
           </div>
@@ -233,7 +233,7 @@
           </template>
 
           <div v-if="healthPending" class="flex justify-center py-4">
-            <UIcon name="i-heroicons-arrow-path" class="w-5 h-5 animate-spin text-gray-400" />
+            <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin text-gray-400" />
           </div>
 
           <div v-else-if="!health?.projects?.length" class="text-center py-4 text-gray-500">
@@ -255,7 +255,7 @@
                   {{ project.percentConsumed }}%
                 </UBadge>
                 <div v-if="project.activeAlerts > 0" class="relative">
-                  <UIcon name="i-heroicons-bell-alert" class="w-4 h-4 text-error-500" />
+                  <UIcon name="i-lucide-bell-ring" class="w-4 h-4 text-error-500" />
                   <span class="absolute -top-1 -right-1 w-3 h-3 bg-error-500 text-white text-[8px] rounded-full flex items-center justify-center">
                     {{ project.activeAlerts }}
                   </span>
@@ -477,9 +477,7 @@
 </template>
 
 <script setup lang="ts">
-definePageMeta({
-  layout: 'default'
-})
+definePageMeta({})
 
 const toast = useToast()
 
@@ -723,12 +721,12 @@ const getSeverityColor = (severity: string): 'error' | 'warning' | 'info' | 'neu
 
 const getSeverityIcon = (severity: string): string => {
   const icons: Record<string, string> = {
-    danger: 'i-heroicons-exclamation-triangle',
-    critical: 'i-heroicons-exclamation-circle',
-    warning: 'i-heroicons-exclamation-circle',
-    info: 'i-heroicons-information-circle'
+    danger: 'i-lucide-triangle-alert',
+    critical: 'i-lucide-alert-circle',
+    warning: 'i-lucide-alert-circle',
+    info: 'i-lucide-info'
   }
-  return icons[severity] || 'i-heroicons-bell'
+  return icons[severity] || 'i-lucide-bell'
 }
 
 const getSeverityBgClass = (severity: string): string => {

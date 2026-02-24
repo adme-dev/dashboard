@@ -1,7 +1,6 @@
 <script setup lang="ts">
 definePageMeta({
   title: 'Expense Details',
-  layout: 'default',
   middleware: ['auth']
 })
 
@@ -271,8 +270,8 @@ const paymentMethodOptions = [
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar :title="expense ? `Expense: ${expense.merchant || expense.categoryName}` : 'Loading...'">
         <template #left>
           <UButton
@@ -310,7 +309,7 @@ const paymentMethodOptions = [
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Loading -->
         <div v-if="pending" class="flex items-center justify-center py-12">
           <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
@@ -626,7 +625,7 @@ const paymentMethodOptions = [
           <p class="text-gray-500 mt-2">The expense you're looking for doesn't exist.</p>
           <UButton label="Back to Expenses" to="/agency/expenses" class="mt-4" />
         </div>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
 
     <!-- Edit Modal -->
@@ -733,5 +732,5 @@ const paymentMethodOptions = [
         </div>
       </template>
     </UModal>
-  </UDashboardPage>
+  </div>
 </template>

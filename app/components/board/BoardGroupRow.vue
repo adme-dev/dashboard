@@ -115,38 +115,33 @@ function cancelRename() {
   isRenaming.value = false
 }
 
-const menuItems = computed(() => [
-  [
-    {
-      label: 'Rename Group',
-      icon: 'i-lucide-pencil',
-      click: () => startRename(),
-    },
-    {
-      label: 'Add Group Above',
-      icon: 'i-lucide-arrow-up',
-      click: () => emit('addGroup', 'above'),
-    },
-    {
-      label: 'Add Group Below',
-      icon: 'i-lucide-arrow-down',
-      click: () => emit('addGroup', 'below'),
-    },
-  ],
-  [
-    {
-      label: props.isCollapsed ? 'Expand Group' : 'Collapse Group',
-      icon: props.isCollapsed ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up',
-      click: () => emit('toggle'),
-    },
-  ],
-  [
-    {
-      label: 'Delete Group',
-      icon: 'i-lucide-trash-2',
-      color: 'error' as const,
-      click: () => emit('delete'),
-    },
-  ],
-])
+const isDynamic = computed(() => props.groupId.startsWith('grouped_'))
+
+const menuItems = computed(() => {
+  const items: any[] = []
+
+  if (!isDynamic.value) {
+    items.push(
+      { label: 'Rename Group', icon: 'i-lucide-pencil', onSelect: () => startRename() },
+      { label: 'Add Group Above', icon: 'i-lucide-arrow-up', onSelect: () => emit('addGroup', 'above') },
+      { label: 'Add Group Below', icon: 'i-lucide-arrow-down', onSelect: () => emit('addGroup', 'below') },
+      { type: 'separator' as const },
+    )
+  }
+
+  items.push({
+    label: props.isCollapsed ? 'Expand Group' : 'Collapse Group',
+    icon: props.isCollapsed ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up',
+    onSelect: () => emit('toggle'),
+  })
+
+  if (!isDynamic.value) {
+    items.push(
+      { type: 'separator' as const },
+      { label: 'Delete Group', icon: 'i-lucide-trash-2', color: 'error' as const, onSelect: () => emit('delete') },
+    )
+  }
+
+  return items
+})
 </script>

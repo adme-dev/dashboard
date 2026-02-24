@@ -1,202 +1,175 @@
 <template>
-  <div class="h-full flex flex-col bg-gray-50">
-    <!-- Header -->
-    <div class="bg-white border-b px-6 py-4">
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="text-2xl font-semibold">Teams</h1>
-          <p class="text-gray-500 mt-1">
-            Organize your account users into teams and assign them to content.
-          </p>
+  <div class="flex-1 min-w-0 flex overflow-hidden">
+    <!-- Teams Sidebar -->
+    <div class="w-64 border-r border-default flex flex-col shrink-0">
+      <div class="p-4">
+        <UButton
+          color="primary"
+          variant="outline"
+          icon="i-lucide-plus"
+          class="w-full justify-center"
+          @click="showCreateModal = true"
+        >
+          New team
+        </UButton>
+      </div>
+
+      <div class="px-4 pb-2">
+        <UInput
+          v-model="sidebarSearch"
+          icon="i-lucide-search"
+          placeholder="Search teams"
+          size="sm"
+        />
+      </div>
+
+      <div class="flex-1 overflow-y-auto py-2">
+        <div v-if="pending" class="flex justify-center py-4">
+          <UIcon name="i-lucide-loader-2" class="size-5 animate-spin text-primary" />
+        </div>
+        <div
+          v-for="team in filteredSidebarTeams"
+          v-else
+          :key="team.id"
+          class="flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-elevated"
+          :class="{ 'bg-elevated': selectedTeam?.id === team.id }"
+          @click="selectTeam(team)"
+        >
+          <div
+            class="size-8 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0"
+            :style="{ backgroundColor: team.color }"
+          >
+            {{ team.name[0] }}
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium truncate">{{ team.name }}</div>
+          </div>
+          <span class="text-xs text-muted">{{ team.memberCount }}</span>
         </div>
       </div>
     </div>
 
-    <div class="flex-1 flex overflow-hidden">
-      <!-- Left Sidebar -->
-      <div class="w-64 bg-white border-r flex flex-col">
-        <div class="p-4">
-          <UButton
-            color="primary"
-            variant="outline"
-            icon="i-lucide-plus"
-            class="w-full justify-center"
-            @click="showCreateModal = true"
-          >
-            New team
-          </UButton>
-        </div>
+    <!-- Main Content Panel -->
+    <UDashboardPanel>
+      <!-- All Teams View -->
+      <template v-if="!selectedTeam">
+        <UDashboardNavbar title="All teams">
+          <template #right>
+            <UButton color="primary" icon="i-lucide-plus" @click="showCreateModal = true">
+              New team
+            </UButton>
+          </template>
+        </UDashboardNavbar>
 
-        <div class="px-4 pb-2">
-          <UInput
-            v-model="sidebarSearch"
-            icon="i-lucide-search"
-            placeholder="Search teams"
-            size="sm"
-          />
-        </div>
-
-        <div class="flex-1 overflow-auto py-2">
-          <div
-            v-for="team in filteredSidebarTeams"
-            :key="team.id"
-            class="flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-gray-100"
-            :class="{ 'bg-blue-50': selectedTeam?.id === team.id }"
-            @click="selectTeam(team)"
-          >
-            <div
-              class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white"
-              :style="{ backgroundColor: team.color }"
-            >
-              {{ team.name[0] }}
-            </div>
-            <div class="flex-1 min-w-0">
-              <div class="font-medium text-sm truncate">{{ team.name }}</div>
-            </div>
-            <span class="text-xs text-gray-500">{{ team.memberCount }}</span>
+        <div class="flex-1 overflow-y-auto p-4 sm:p-6">
+          <div v-if="pending" class="flex items-center justify-center min-h-64">
+            <UIcon name="i-lucide-loader-2" class="size-8 animate-spin text-primary" />
           </div>
-        </div>
-      </div>
 
-      <!-- Main Content -->
-      <div class="flex-1 flex flex-col overflow-hidden">
-        <!-- Loading State -->
-        <div v-if="pending" class="flex-1 flex items-center justify-center">
-          <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary" />
-        </div>
+          <div v-else-if="teamsError" class="flex items-center justify-center min-h-64">
+            <UEmpty
+              icon="i-lucide-alert-circle"
+              title="Failed to load teams"
+              :description="teamsError.message || 'An error occurred'"
+              :actions="[{ label: 'Retry', color: 'primary', onClick: () => refreshTeams() }]"
+            />
+          </div>
 
-        <!-- Error State -->
-        <div v-else-if="teamsError" class="flex-1 flex flex-col items-center justify-center p-6">
-          <UIcon name="i-lucide-alert-circle" class="w-12 h-12 text-red-500 mb-4" />
-          <h3 class="text-lg font-medium text-gray-900">Failed to load teams</h3>
-          <p class="text-gray-500 mt-1">{{ teamsError.message || 'An error occurred' }}</p>
-          <UButton class="mt-4" color="primary" @click="refreshTeams()">Retry</UButton>
-        </div>
+          <div v-else-if="teams.length === 0" class="flex items-center justify-center min-h-64">
+            <UEmpty
+              icon="i-lucide-users-round"
+              title="No teams yet"
+              description="Create your first team to get started"
+              :actions="[{ label: 'New team', icon: 'i-lucide-plus', color: 'primary', onClick: () => showCreateModal = true }]"
+            />
+          </div>
 
-        <!-- All Teams View -->
-        <div v-else-if="!selectedTeam" class="flex-1 overflow-auto p-6">
-          <UCard>
-            <template #header>
-              <h3 class="font-semibold">All teams</h3>
+          <UTable
+            v-else
+            :data="teams"
+            :columns="teamsColumns"
+            @select="(_e, row) => selectTeam(row.original)"
+          >
+            <template #name-cell="{ row }">
+              <div class="flex items-center gap-3">
+                <div
+                  class="size-8 rounded-full flex items-center justify-center text-sm font-bold text-white"
+                  :style="{ backgroundColor: row.original.color }"
+                >
+                  {{ row.original.name[0] }}
+                </div>
+                <span class="font-medium">{{ row.original.name }}</span>
+                <UBadge v-if="row.original.isSystem" size="xs" variant="subtle" color="primary">System</UBadge>
+              </div>
             </template>
 
-            <table class="w-full">
-              <thead class="bg-gray-50 border-b">
-                <tr>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-32">Members</th>
-                  <th class="w-8 px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody class="divide-y">
-                <tr
-                  v-for="team in teams"
-                  :key="team.id"
-                  class="hover:bg-gray-50 cursor-pointer"
-                  @click="selectTeam(team)"
-                >
-                  <td class="px-4 py-3">
-                    <div class="flex items-center gap-3">
-                      <div
-                        class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white"
-                        :style="{ backgroundColor: team.color }"
-                      >
-                        {{ team.name[0] }}
-                      </div>
-                      <span class="font-medium">{{ team.name }}</span>
-                      <UBadge v-if="team.isSystem" size="xs" variant="subtle" color="primary">System</UBadge>
-                    </div>
-                  </td>
-                  <td class="px-4 py-3 text-sm text-gray-600">{{ team.memberCount }}</td>
-                  <td class="px-4 py-3">
-                    <UDropdownMenu :items="teamActions(team)">
-                      <UButton
-                        variant="ghost"
-                        color="neutral"
-                        icon="i-lucide-more-horizontal"
-                        size="xs"
-                        @click.stop
-                      />
-                    </UDropdownMenu>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <template #memberCount-cell="{ row }">
+              <div class="flex items-center gap-1">
+                <UIcon name="i-lucide-users" class="size-4 text-muted" />
+                <span>{{ row.original.memberCount || 0 }}</span>
+              </div>
+            </template>
 
-            <div v-if="teams.length === 0" class="py-12 text-center text-gray-500">
-              <UIcon name="i-lucide-users-round" class="w-12 h-12 mx-auto mb-3" />
-              <p>No teams found</p>
-            </div>
-          </UCard>
-        </div>
-
-        <!-- Single Team View -->
-        <div v-else class="flex-1 flex flex-col overflow-hidden">
-          <!-- Team Header -->
-          <div class="bg-white border-b px-6 py-4">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-4">
+            <template #actions-cell="{ row }">
+              <UDropdownMenu :items="teamActions(row.original)">
                 <UButton
                   variant="ghost"
                   color="neutral"
-                  icon="i-lucide-arrow-left"
-                  size="sm"
-                  @click="selectedTeam = null"
+                  icon="i-lucide-more-horizontal"
+                  size="xs"
+                  @click.stop
                 />
-                <div
-                  class="w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold text-white"
-                  :style="{ backgroundColor: selectedTeam.color }"
-                >
-                  {{ selectedTeam.name[0] }}
-                </div>
-                <div>
-                  <h2 class="text-xl font-semibold">{{ selectedTeam.name }}</h2>
-                  <p class="text-sm text-gray-500">{{ selectedTeam.memberCount }} members</p>
-                </div>
-              </div>
-              <div class="flex items-center gap-2">
-                <UButton
-                  variant="ghost"
-                  color="neutral"
-                  icon="i-lucide-pencil"
-                  size="sm"
-                  @click="editTeam(selectedTeam)"
-                >
-                  Edit
-                </UButton>
-                <UDropdownMenu :items="teamActions(selectedTeam)">
-                  <UButton
-                    variant="ghost"
-                    color="neutral"
-                    icon="i-lucide-more-horizontal"
-                    size="sm"
-                  />
-                </UDropdownMenu>
-              </div>
-            </div>
+              </UDropdownMenu>
+            </template>
+          </UTable>
+        </div>
+      </template>
 
-            <!-- Tabs -->
-            <div class="flex gap-6 mt-4">
-              <button
-                class="pb-2 text-sm font-medium border-b-2 transition-colors"
-                :class="activeTab === 'users' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900'"
-                @click="activeTab = 'users'"
-              >
-                Users: {{ members.length }}
-              </button>
-              <button
-                class="pb-2 text-sm font-medium border-b-2 transition-colors"
-                :class="activeTab === 'content' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900'"
-                @click="activeTab = 'content'"
-              >
-                Content: 0
-              </button>
-            </div>
-          </div>
+      <!-- Single Team View -->
+      <template v-else>
+        <UDashboardNavbar :title="selectedTeam.name">
+          <template #leading>
+            <UButton
+              variant="ghost"
+              color="neutral"
+              icon="i-lucide-arrow-left"
+              size="sm"
+              @click="selectedTeam = null"
+            />
+          </template>
+          <template #right>
+            <UButton
+              variant="ghost"
+              color="neutral"
+              icon="i-lucide-pencil"
+              size="sm"
+              @click="editTeam(selectedTeam)"
+            >
+              Edit
+            </UButton>
+            <UDropdownMenu :items="teamActions(selectedTeam)">
+              <UButton
+                variant="ghost"
+                color="neutral"
+                icon="i-lucide-more-horizontal"
+                size="sm"
+              />
+            </UDropdownMenu>
+          </template>
+        </UDashboardNavbar>
 
-          <!-- Members List -->
-          <div v-if="activeTab === 'users'" class="flex-1 overflow-auto p-6">
-            <div class="flex items-center gap-3 mb-4">
+        <UTabs
+          v-model="activeTab"
+          :items="tabItems"
+          variant="link"
+          :content="false"
+          class="px-4 sm:px-6"
+        />
+
+        <!-- Users Tab -->
+        <template v-if="activeTab === 'users'">
+          <UDashboardToolbar>
+            <template #left>
               <UInput
                 v-model="memberSearch"
                 icon="i-lucide-search"
@@ -211,78 +184,80 @@
               >
                 Add users
               </UButton>
+            </template>
+            <template #right>
+              <span class="text-sm text-muted">{{ filteredMembers.length }} members</span>
+            </template>
+          </UDashboardToolbar>
+
+          <div class="flex-1 overflow-y-auto p-4 sm:p-6">
+            <div v-if="membersLoading" class="flex items-center justify-center min-h-64">
+              <UIcon name="i-lucide-loader-2" class="size-8 animate-spin text-primary" />
             </div>
 
-            <UCard>
-              <table class="w-full">
-                <thead class="bg-gray-50 border-b">
-                  <tr>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Title</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
-                    <th class="w-8 px-4 py-3"></th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y">
-                  <tr
-                    v-for="member in filteredMembers"
-                    :key="member.id"
-                    class="hover:bg-gray-50 group"
-                  >
-                    <td class="px-4 py-3">
-                      <div class="flex items-center gap-3">
-                        <UAvatar
-                          :src="member.avatarUrl"
-                          :alt="member.name"
-                          size="sm"
-                        />
-                        <span class="font-medium">{{ member.name }}</span>
-                        <UIcon
-                          v-if="member.isAdmin"
-                          name="i-lucide-crown"
-                          class="w-4 h-4 text-amber-500"
-                          title="Team Admin"
-                        />
-                      </div>
-                    </td>
-                    <td class="px-4 py-3 text-sm text-gray-600">{{ member.email }}</td>
-                    <td class="px-4 py-3 text-sm text-gray-600">{{ member.title || '-' }}</td>
-                    <td class="px-4 py-3">
-                      <UBadge size="xs" variant="subtle">
-                        {{ member.role || 'Member' }}
-                      </UBadge>
-                    </td>
-                    <td class="px-4 py-3">
-                      <UDropdownMenu :items="memberActions(member)">
-                        <UButton
-                          variant="ghost"
-                          color="neutral"
-                          icon="i-lucide-more-horizontal"
-                          size="xs"
-                        />
-                      </UDropdownMenu>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+            <UTable
+              v-else-if="filteredMembers.length"
+              :data="filteredMembers"
+              :columns="membersColumns"
+            >
+              <template #name-cell="{ row }">
+                <UUser
+                  :name="row.original.name"
+                  :avatar="{ src: row.original.avatarUrl, alt: row.original.name }"
+                  size="sm"
+                />
+              </template>
 
-              <div v-if="filteredMembers.length === 0" class="py-12 text-center text-gray-500">
-                <UIcon name="i-lucide-users" class="w-12 h-12 mx-auto mb-3" />
-                <p>No members found</p>
-              </div>
-            </UCard>
+              <template #role-cell="{ row }">
+                <UBadge size="xs" variant="subtle">
+                  {{ row.original.role || 'Member' }}
+                </UBadge>
+              </template>
+
+              <template #actions-cell="{ row }">
+                <UDropdownMenu :items="memberActions(row.original)">
+                  <UButton
+                    variant="ghost"
+                    color="neutral"
+                    icon="i-lucide-more-horizontal"
+                    size="xs"
+                  />
+                </UDropdownMenu>
+              </template>
+            </UTable>
+
+            <div v-else class="flex items-center justify-center min-h-64">
+              <UEmpty
+                icon="i-lucide-users"
+                :title="memberSearch ? 'No members match your search' : 'No members yet'"
+                :description="memberSearch ? undefined : 'Add users to this team'"
+                :actions="memberSearch ? undefined : [{ label: 'Add users', icon: 'i-lucide-user-plus', color: 'primary', onClick: () => showAddMembersModal = true }]"
+              />
+            </div>
           </div>
-        </div>
-      </div>
-    </div>
+        </template>
 
-    <!-- Create Team Modal -->
+        <!-- Content Tab -->
+        <template v-if="activeTab === 'content'">
+          <div class="flex-1 overflow-y-auto p-4 sm:p-6">
+            <div class="flex items-center justify-center min-h-64">
+              <UEmpty
+                icon="i-lucide-file-text"
+                title="No content assigned"
+                description="Assign content to this team"
+              />
+            </div>
+          </div>
+        </template>
+      </template>
+    </UDashboardPanel>
+
+    <!-- Create / Edit Team Modal -->
     <UModal v-model:open="showCreateModal" title="Create new team">
       <template #body>
         <div class="space-y-4">
           <UFormField label="Team name" required>
-            <UInput v-model="newTeam.name" placeholder="Enter team name" class="w-full" />
+            <UInput v-model="newTeam.name" placeholder="Enter team name" />
           </UFormField>
           <UFormField label="Description">
             <UTextarea v-model="newTeam.description" placeholder="Enter description" rows="3" />
@@ -292,8 +267,8 @@
               <button
                 v-for="color in teamColors"
                 :key="color"
-                class="w-8 h-8 rounded-full border-2 transition-all"
-                :class="newTeam.color === color ? 'border-gray-900 scale-110' : 'border-transparent hover:scale-105'"
+                class="size-8 rounded-full border-2 transition-all"
+                :class="newTeam.color === color ? 'border-highlighted scale-110' : 'border-transparent hover:scale-105'"
                 :style="{ backgroundColor: color }"
                 @click="newTeam.color = color"
               />
@@ -314,18 +289,18 @@
     <!-- Add Members Modal -->
     <UModal v-model:open="showAddMembersModal" title="Add users to team">
       <template #body>
-        <div class="space-y-2 max-h-80 overflow-auto">
-          <div class="text-sm text-gray-500 mb-2">Select users to add:</div>
+        <div class="space-y-2 max-h-80 overflow-y-auto">
+          <p class="text-sm text-muted mb-2">Select users to add:</p>
           <div
             v-for="user in availableUsers"
             :key="user.id"
-            class="flex items-center justify-between p-2 rounded hover:bg-gray-50"
+            class="flex items-center justify-between p-2 rounded hover:bg-elevated"
           >
             <div class="flex items-center gap-2">
               <UAvatar size="sm" :src="user.avatarUrl" :alt="user.name" />
               <div>
-                <div class="font-medium text-sm">{{ user.name }}</div>
-                <div class="text-xs text-gray-500">{{ user.email }}</div>
+                <div class="text-sm font-medium">{{ user.name }}</div>
+                <div class="text-xs text-muted">{{ user.email }}</div>
               </div>
             </div>
             <UCheckbox
@@ -333,7 +308,7 @@
               @update:model-value="toggleUserToAdd(user.id)"
             />
           </div>
-          <div v-if="availableUsers.length === 0" class="py-4 text-center text-gray-500">
+          <div v-if="availableUsers.length === 0" class="py-4 text-center text-muted">
             All users are already in this team
           </div>
         </div>
@@ -380,28 +355,16 @@ interface User {
 
 definePageMeta({ layout: 'admin' })
 
-// Fetch teams from API
-const { data: teamsData, pending, refresh: refreshTeams, error: teamsError } = await useFetch('/api/admin/teams')
+const { data: teamsData, pending, refresh: refreshTeams, error: teamsError } = useFetch('/api/admin/teams')
 const teams = computed(() => teamsData.value?.teams || [])
 
-// Fetch all users for add members modal
-const { data: usersData, error: usersError2 } = await useFetch('/api/admin/users')
+const { data: usersData } = useFetch('/api/admin/users')
 const allUsers = computed(() => usersData.value?.users || [])
-
-// Debug logging
-if (process.client) {
-  watch(teamsData, (val) => {
-    console.log('Teams data loaded:', val?.teams?.length || 0, 'teams')
-  }, { immediate: true })
-  watch(usersData, (val) => {
-    console.log('Users data loaded:', val?.users?.length || 0, 'users')
-  }, { immediate: true })
-}
 
 const sidebarSearch = ref('')
 const memberSearch = ref('')
 const selectedTeam = ref<Team | null>(null)
-const activeTab = ref<'users' | 'content'>('users')
+const activeTab = ref('users')
 const showCreateModal = ref(false)
 const showAddMembersModal = ref(false)
 const createLoading = ref(false)
@@ -416,6 +379,25 @@ const newTeam = ref({
 })
 
 const teamColors = ['#3B82F6', '#EC4899', '#F97316', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444', '#6366F1', '#14B8A6', '#84CC16']
+
+const tabItems = computed(() => [
+  { label: 'Users', value: 'users', badge: members.value.length },
+  { label: 'Content', value: 'content', badge: 0 },
+])
+
+const teamsColumns = [
+  { accessorKey: 'name', header: 'Team Name', meta: { class: { th: 'w-full', td: 'w-full' } } },
+  { accessorKey: 'memberCount', header: 'Members' },
+  { id: 'actions', header: '' },
+]
+
+const membersColumns = [
+  { accessorKey: 'name', header: 'Name', meta: { class: { th: 'w-full', td: 'w-full' } } },
+  { accessorKey: 'email', header: 'Email' },
+  { accessorKey: 'title', header: 'Title' },
+  { accessorKey: 'role', header: 'Role' },
+  { id: 'actions', header: '' },
+]
 
 const filteredSidebarTeams = computed(() => {
   if (!sidebarSearch.value) return teams.value
@@ -467,15 +449,14 @@ const memberActions = (member: TeamMember) => [
 const selectTeam = async (team: Team) => {
   selectedTeam.value = team
   memberSearch.value = ''
+  activeTab.value = 'users'
   await loadMembers(team.id)
 }
 
 const loadMembers = async (teamId: string) => {
   membersLoading.value = true
   try {
-    const data = await $fetch(`/api/admin/teams/${teamId}/members`, {
-      // Use the correct path - Nitro will match [teamId]
-    })
+    const data = await $fetch(`/api/admin/teams/${teamId}/members`)
     members.value = data.members || []
   } catch (err) {
     console.error('Failed to load members:', err)
@@ -495,14 +476,10 @@ const editTeam = (team: Team) => {
 }
 
 const deleteTeam = async (team: Team) => {
-  if (team.isSystem) {
-    alert('System teams cannot be deleted')
-    return
-  }
+  if (team.isSystem) return
   if (!confirm(`Are you sure you want to delete "${team.name}"?`)) return
-  
+
   try {
-    // TODO: Implement delete API
     await refreshTeams()
     if (selectedTeam.value?.id === team.id) {
       selectedTeam.value = null
@@ -514,7 +491,7 @@ const deleteTeam = async (team: Team) => {
 
 const createTeam = async () => {
   if (!newTeam.value.name) return
-  
+
   createLoading.value = true
   try {
     await $fetch('/api/admin/teams', {
@@ -546,7 +523,7 @@ const toggleUserToAdd = (userId: string) => {
 
 const addMembers = async () => {
   if (!selectedTeam.value || selectedUsersToAdd.value.length === 0) return
-  
+
   try {
     await $fetch('/api/admin/team-members', {
       method: 'POST',
@@ -556,12 +533,11 @@ const addMembers = async () => {
         role: 'member'
       }
     })
-    
-    // Refresh
+
     selectedTeam.value.memberCount += selectedUsersToAdd.value.length
     await loadMembers(selectedTeam.value.id)
     await refreshTeams()
-    
+
     selectedUsersToAdd.value = []
     showAddMembersModal.value = false
   } catch (err) {
@@ -570,14 +546,13 @@ const addMembers = async () => {
 }
 
 const toggleAdmin = async (member: TeamMember) => {
-  // TODO: Implement admin toggle API
   member.isAdmin = !member.isAdmin
 }
 
 const removeFromTeam = async (member: TeamMember) => {
   if (!selectedTeam.value) return
   if (!confirm(`Remove ${member.name} from ${selectedTeam.value.name}?`)) return
-  
+
   try {
     await $fetch('/api/admin/team-members', {
       method: 'DELETE',
@@ -586,7 +561,7 @@ const removeFromTeam = async (member: TeamMember) => {
         userId: member.id
       }
     })
-    
+
     selectedTeam.value.memberCount--
     await loadMembers(selectedTeam.value.id)
     await refreshTeams()

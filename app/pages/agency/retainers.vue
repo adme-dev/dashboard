@@ -112,8 +112,8 @@ const statusOptions = [
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="Retainer Management">
         <template #right>
           <div class="flex items-center gap-2">
@@ -136,7 +136,7 @@ const statusOptions = [
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Summary Cards -->
         <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
           <UCard>
@@ -368,7 +368,7 @@ const statusOptions = [
             </li>
           </ul>
         </UCard>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
-  </UDashboardPage>
+  </div>
 </template>

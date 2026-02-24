@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
       // Get labels for specific department (includes global labels)
       sql = `
         SELECT tl.*, d.name as department_name,
-          COUNT(tla.id) as usage_count
+          COUNT(tla.task_id) as usage_count
         FROM task_labels tl
         LEFT JOIN departments d ON tl.department_id = d.id
         LEFT JOIN task_label_assignments tla ON tl.id = tla.label_id
@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
       // Get all labels
       sql = `
         SELECT tl.*, d.name as department_name,
-          COUNT(tla.id) as usage_count
+          COUNT(tla.task_id) as usage_count
         FROM task_labels tl
         LEFT JOIN departments d ON tl.department_id = d.id
         LEFT JOIN task_label_assignments tla ON tl.id = tla.label_id

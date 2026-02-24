@@ -5,6 +5,8 @@ const route = useRoute()
 const open = ref(false)
 const selectedWorkspace = ref<string | null>(null)
 
+const close = () => { open.value = false }
+
 // Fetch workspaces
 const { data: workspacesData } = await useFetch('/api/agency/workspaces')
 const workspaces = computed(() => workspacesData.value?.workspaces || [])
@@ -16,65 +18,144 @@ const workspaceNav = computed(() => {
     icon: `i-lucide-${ws.icon || 'briefcase'}`,
     to: `/agency/w/${ws.slug}`,
     badge: ws.stats?.boards?.toString(),
-    onSelect: () => { 
-      open.value = false
+    onSelect: () => {
+      close()
       selectedWorkspace.value = ws.id
     },
-    // Children are the boards in this workspace
     children: ws.boards?.map((board: any) => ({
       label: board.name,
       to: `/agency/boards/${board.slug}`,
       badge: board.taskCount > 0 ? board.taskCount.toString() : undefined,
-      onSelect: () => { open.value = false }
+      onSelect: close
     })) || []
   })) as NavigationMenuItem[]
 })
 
-// Bottom links
-const bottomLinks = [{
-  label: 'All Boards',
-  icon: 'i-lucide-layout-grid',
-  to: '/agency/boards',
-  onSelect: () => { open.value = false }
+// Main navigation — organized by feature groups
+const mainNav: NavigationMenuItem[] = [
+  // Main
+  { type: 'label', label: 'Main' },
+  { label: 'Home', icon: 'i-lucide-house', to: '/', onSelect: close },
+  { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/agency', exact: true, onSelect: close },
+  { label: 'Inbox', icon: 'i-lucide-inbox', to: '/inbox', badge: '4', onSelect: close },
+  { label: 'All Boards', icon: 'i-lucide-layout-grid', to: '/agency/boards', onSelect: close },
+
+  // Work Management
+  { type: 'label', label: 'Work Management' },
+  { label: 'Workflow', icon: 'i-lucide-git-branch', to: '/agency/workflow', onSelect: close },
+  { label: 'Timeline', icon: 'i-lucide-gantt-chart', to: '/agency/workflow/timeline', onSelect: close },
+  { label: 'Tasks', icon: 'i-lucide-check-square', to: '/agency/tasks', onSelect: close },
+
+  // Projects
+  { type: 'label', label: 'Projects' },
+  { label: 'Projects', icon: 'i-lucide-folder-kanban', to: '/agency/projects', onSelect: close },
+  { label: 'Briefs', icon: 'i-lucide-file-text', to: '/agency/briefs', onSelect: close },
+  { label: 'Templates', icon: 'i-lucide-copy', to: '/agency/templates', onSelect: close },
+  { label: 'Proofs', icon: 'i-lucide-image', to: '/agency/proofs', onSelect: close },
+
+  // Clients
+  { type: 'label', label: 'Clients' },
+  { label: 'Clients', icon: 'i-lucide-building-2', to: '/agency/clients', onSelect: close },
+  { label: 'Intake', icon: 'i-lucide-inbox', to: '/agency/intake', onSelect: close },
+  { label: 'Client Portal', icon: 'i-lucide-globe', to: '/agency/client-portal', onSelect: close },
+
+  // Time & Capacity
+  { type: 'label', label: 'Time & Capacity' },
+  { label: 'Time Tracking', icon: 'i-lucide-clock', to: '/agency/time', onSelect: close },
+  { label: 'Time Reports', icon: 'i-lucide-bar-chart-3', to: '/agency/time/reports', onSelect: close },
+  { label: 'Capacity', icon: 'i-lucide-gauge', to: '/agency/capacity', onSelect: close },
+
+  // Finance
+  { type: 'label', label: 'Finance' },
+  { label: 'Invoices', icon: 'i-lucide-receipt', to: '/agency/invoices', onSelect: close },
+  { label: 'Expenses', icon: 'i-lucide-credit-card', to: '/agency/expenses', onSelect: close },
+  { label: 'Retainers', icon: 'i-lucide-repeat', to: '/agency/retainers', onSelect: close },
+  { label: 'Profitability', icon: 'i-lucide-trending-up', to: '/agency/profitability', onSelect: close },
+  { label: 'Budget Health', icon: 'i-lucide-heart-pulse', to: '/agency/budget-health', onSelect: close },
+  { label: 'Cash Flow', icon: 'i-lucide-arrow-left-right', to: '/cashflow', onSelect: close },
+
+  // Sales
+  { type: 'label', label: 'Sales' },
+  { label: 'Sales', icon: 'i-lucide-handshake', to: '/agency/sales', onSelect: close },
+  { label: 'Quotes', icon: 'i-lucide-file-badge', to: '/agency/sales/quotes', onSelect: close },
+  { label: 'Pricing', icon: 'i-lucide-tag', to: '/agency/sales/pricing', onSelect: close },
+  { label: 'Price Templates', icon: 'i-lucide-file-stack', to: '/agency/sales/templates', onSelect: close },
+
+  // Reports
+  { type: 'label', label: 'Reports' },
+  { label: 'Reports', icon: 'i-lucide-pie-chart', to: '/agency/reports', onSelect: close },
+  { label: 'Project Health', icon: 'i-lucide-activity', to: '/agency/health', onSelect: close },
+  { label: 'Alerts', icon: 'i-lucide-bell', to: '/agency/alerts', onSelect: close },
+  { label: 'Insights', icon: 'i-lucide-lightbulb', to: '/insights', onSelect: close },
+  { label: 'Anomalies', icon: 'i-lucide-alert-triangle', to: '/anomalies', onSelect: close },
+  { label: 'Recommendations', icon: 'i-lucide-clipboard-check', to: '/recommendations', onSelect: close },
+
+  // Team
+  { type: 'label', label: 'Team' },
+  { label: 'Team Members', icon: 'i-lucide-users', to: '/agency/team', onSelect: close },
+  { label: 'Teams', icon: 'i-lucide-users-round', to: '/agency/teams', onSelect: close },
+
+  // Tools
+  { type: 'label', label: 'Tools' },
+  { label: 'AI', icon: 'i-lucide-sparkles', to: '/agency/ai', onSelect: close },
+  { label: 'Automation', icon: 'i-lucide-zap', to: '/agency/automation', onSelect: close },
+  { label: 'Chat', icon: 'i-lucide-message-circle', to: '/chat', onSelect: close },
+]
+
+// Footer navigation — admin, integrations, settings
+const footerNav: NavigationMenuItem[] = [
+  {
+    label: 'Monday',
+    icon: 'i-lucide-cloud',
+    children: [
+      { label: 'Migration', icon: 'i-lucide-arrow-left-right', to: '/agency/monday', onSelect: close },
+      { label: 'Migrate Data', icon: 'i-lucide-database', to: '/agency/monday/migrate', onSelect: close },
+      { label: 'Items', icon: 'i-lucide-list', to: '/agency/monday/items', onSelect: close },
+      { label: 'User Sync', icon: 'i-lucide-users', to: '/agency/monday/users', onSelect: close },
+    ]
+  },
+  {
+    label: 'Admin',
+    icon: 'i-lucide-shield',
+    children: [
+      { label: 'User Management', icon: 'i-lucide-users', to: '/admin/users', onSelect: close },
+      { label: 'Teams', icon: 'i-lucide-users-round', to: '/admin/teams', onSelect: close },
+    ]
+  },
+  {
+    label: 'Settings',
+    icon: 'i-lucide-settings',
+    children: [
+      { label: 'Agency Settings', to: '/agency/settings', onSelect: close },
+      { label: 'General', to: '/settings', exact: true, onSelect: close },
+      { label: 'Members', to: '/settings/members', onSelect: close },
+      { label: 'Notifications', to: '/settings/notifications', onSelect: close },
+      { label: 'Security', to: '/settings/security', onSelect: close },
+      { label: 'Admin', to: '/settings/admin', onSelect: close },
+      { label: 'Integrations', to: '/settings/integrations/monday', onSelect: close },
+    ]
+  },
+]
+
+// Search groups for UDashboardSearch
+const groups = computed(() => [{
+  id: 'links',
+  label: 'Go to',
+  items: [
+    ...mainNav.filter(i => i.type !== 'label'),
+    ...footerNav,
+  ]
 }, {
-  label: 'Teams',
-  icon: 'i-lucide-users',
-  to: '/agency/teams',
-  onSelect: () => { open.value = false }
-}, {
-  label: 'Admin',
-  icon: 'i-lucide-shield',
-  children: [{
-    label: 'User Management',
-    icon: 'i-lucide-users',
-    to: '/admin/users',
-    onSelect: () => { open.value = false }
-  }, {
-    label: 'Teams',
-    icon: 'i-lucide-users-round',
-    to: '/admin/teams',
-    onSelect: () => { open.value = false }
+  id: 'code',
+  label: 'Code',
+  items: [{
+    id: 'source',
+    label: 'View page source',
+    icon: 'i-simple-icons-github',
+    to: `https://github.com/nuxt-ui-templates/dashboard/blob/main/app/pages${route.path === '/' ? '/index' : route.path}.vue`,
+    target: '_blank'
   }]
-}, {
-  label: 'Monday',
-  icon: 'i-lucide-cloud',
-  children: [{
-    label: 'Migration',
-    icon: 'i-lucide-arrow-left-right',
-    to: '/agency/monday',
-    onSelect: () => { open.value = false }
-  }, {
-    label: 'User Sync',
-    icon: 'i-lucide-users',
-    to: '/agency/monday/users',
-    onSelect: () => { open.value = false }
-  }]
-}, {
-  label: 'Settings',
-  to: '/settings',
-  icon: 'i-lucide-settings',
-  onSelect: () => { open.value = false }
-}]
+}])
 </script>
 
 <template>
@@ -101,7 +182,9 @@ const bottomLinks = [{
       </template>
 
       <template #default="{ collapsed }">
-        <!-- Workspace Selector -->
+        <UDashboardSearchButton :collapsed="collapsed" class="bg-transparent ring-default" />
+
+        <!-- New Board Button -->
         <div class="px-2 py-2">
           <UButton
             v-if="!collapsed"
@@ -123,10 +206,18 @@ const bottomLinks = [{
           popover
         />
 
-        <!-- Bottom Links -->
+        <!-- Main Navigation -->
         <UNavigationMenu
           :collapsed="collapsed"
-          :items="bottomLinks"
+          :items="mainNav"
+          orientation="vertical"
+          tooltip
+        />
+
+        <!-- Footer Navigation -->
+        <UNavigationMenu
+          :collapsed="collapsed"
+          :items="footerNav"
           orientation="vertical"
           tooltip
           class="mt-auto"
@@ -138,8 +229,13 @@ const bottomLinks = [{
       </template>
     </UDashboardSidebar>
 
+    <UDashboardSearch :groups="groups" />
+
     <div class="flex-1 min-w-0 flex flex-col overflow-hidden">
       <slot />
     </div>
+
+    <NotificationsSlideover />
+    <CommandPalette />
   </UDashboardGroup>
 </template>

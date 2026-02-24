@@ -97,8 +97,8 @@ const columns: any[] = [
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="Price Templates">
         <template #right>
           <UInput
@@ -110,7 +110,7 @@ const columns: any[] = [
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Filters -->
         <div class="flex gap-4 mb-6">
           <USelectMenu
@@ -209,7 +209,7 @@ const columns: any[] = [
             </div>
           </div>
         </UCard>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
-  </UDashboardPage>
+  </div>
 </template>

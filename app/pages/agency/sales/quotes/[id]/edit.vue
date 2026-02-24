@@ -4,7 +4,7 @@
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-4">
         <UButton
-          icon="i-heroicons-arrow-left"
+          icon="i-lucide-arrow-left"
           variant="ghost"
           :to="`/agency/sales/quotes/${route.params.id}`"
         />
@@ -31,7 +31,7 @@
     </div>
 
     <div v-if="pending" class="flex justify-center py-12">
-      <UIcon name="i-heroicons-arrow-path" class="w-8 h-8 animate-spin text-gray-400" />
+      <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-gray-400" />
     </div>
 
     <div v-else-if="quote" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -94,7 +94,7 @@
               <UButton
                 size="sm"
                 variant="outline"
-                icon="i-heroicons-plus"
+                icon="i-lucide-plus"
                 @click="addLineItem"
               >
                 Add Item
@@ -127,7 +127,7 @@
                   </UFormField>
                 </div>
                 <UButton
-                  icon="i-heroicons-trash"
+                  icon="i-lucide-trash-2"
                   color="error"
                   variant="ghost"
                   size="sm"
@@ -366,9 +366,7 @@
 </template>
 
 <script setup lang="ts">
-definePageMeta({
-  layout: 'default'
-})
+definePageMeta({})
 
 const route = useRoute()
 const toast = useToast()

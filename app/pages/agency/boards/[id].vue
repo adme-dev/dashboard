@@ -3,14 +3,11 @@
     ref="containerRef"
     :board-id="boardId"
     @open-task="openTask"
-    @filter="() => {}"
-    @sort="() => {}"
-    @hide="() => {}"
-    @group="() => {}"
     @export="showExport = true"
     @template="showTemplates = true"
     @add-group="showAddGroup = true"
     @add-column="showAddColumn = true"
+    @add-item="handleAddItem"
   >
     <!-- Table View (default) -->
     <template #table="{ groups, columns, normalizeColumn, getCellValue, handleCellUpdate, selection }">
@@ -76,6 +73,7 @@
                     :value="getCellValue(item, col)"
                     :task-id="item.id"
                     @update="(columnId, payload) => handleCellUpdate(item.id, columnId, payload)"
+                    @edit-column="(columnId) => openColumnConfig(columns.find(c => c.id === columnId) || columns[0])"
                   />
                 </div>
               </div>
@@ -293,7 +291,7 @@
   <!-- Template Chooser -->
   <BoardTemplateChooser
     v-model:open="showTemplates"
-    :source-board-id="boardId"
+    :source-board-id="containerRef?.board?.id || boardId"
     :source-board-name="containerRef?.board?.name"
     @apply="handleApplyTemplate"
     @saved="() => {}"
@@ -404,8 +402,9 @@ import BoardColumnTypeSelector from '~/components/board/BoardColumnTypeSelector.
 import BoardExportModal from '~/components/board/BoardExportModal.vue'
 import BoardTemplateChooser from '~/components/board/BoardTemplateChooser.vue'
 import SubtaskList from '~/components/task/SubtaskList.vue'
+import TaskActivityFeed from '~/components/task/TaskActivityFeed.vue'
 
-definePageMeta({ layout: 'agency' })
+definePageMeta({ title: 'Board' })
 
 // --- Types ---
 
@@ -459,7 +458,14 @@ const groupColorOptions = [
 // --- Container accessors ---
 
 const refresh = () => containerRef.value?.refresh()
-const refreshColumns = () => containerRef.value?.refreshColumns()
+const refreshColumns = async () => {
+  await containerRef.value?.refreshColumns()
+  // Keep editingColumn in sync with refreshed data
+  if (editingColumn.value) {
+    const updated = containerRef.value?.columns?.find((c: any) => c.id === editingColumn.value!.id)
+    if (updated) editingColumn.value = updated
+  }
+}
 
 // --- Task Detail ---
 
@@ -486,16 +492,30 @@ async function openTask(taskId: string) {
   await fetchTask()
 }
 
-async function handleAddItem(payload: { groupId: string; title: string }) {
+async function handleAddItem(payload: { groupId: string; title: string; date?: string }) {
   try {
-    await $fetch(`/api/agency/tasks`, {
+    // board exposed from container is the resolved department UUID
+    const boardData = containerRef.value?.board
+    const resolvedBoardId = (boardData as any)?.id || boardId.value
+    const isDynamicGroup = payload.groupId?.startsWith('grouped_') || false
+    const task = await $fetch<{ id: string }>(`/api/agency/tasks`, {
       method: 'POST',
       body: {
         title: payload.title,
-        departmentId: boardId.value,
-        groupId: payload.groupId === '__ungrouped__' ? null : payload.groupId,
+        departmentId: resolvedBoardId,
+        groupId: (payload.groupId === '__ungrouped__' || isDynamicGroup) ? null : payload.groupId,
       },
     })
+    // If a date was provided (e.g. from calendar view), set the date column value
+    if (payload.date && task?.id) {
+      const dateCol = containerRef.value?.columns?.find((c: any) => {
+        const t = c.columnType || c.type
+        return t === 'date' || t === 'timeline'
+      })
+      if (dateCol) {
+        await containerRef.value?.handleCellUpdate(task.id, dateCol.id, { dateValue: payload.date })
+      }
+    }
     await refresh()
   } catch (err: any) {
     toast.add({
@@ -521,26 +541,13 @@ async function addColumn() {
 
 function columnMenuItems(col: BoardColumn) {
   return [
-    [
-      {
-        label: 'Edit',
-        icon: 'i-lucide-pencil',
-        click: () => openColumnConfig(col),
-      },
-      { label: 'Sort', icon: 'i-lucide-arrow-up-down' },
-      { label: 'Filter', icon: 'i-lucide-filter' },
-    ],
-    [{
-      label: 'Hide',
-      icon: 'i-lucide-eye-off',
-      click: () => hideColumn(col.id),
-    }],
-    [{
-      label: 'Delete',
-      icon: 'i-lucide-trash-2',
-      color: 'error' as const,
-      click: () => { showDeleteConfirm.value = col.id },
-    }],
+    { label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => openColumnConfig(col) },
+    { label: 'Sort', icon: 'i-lucide-arrow-up-down' },
+    { label: 'Filter', icon: 'i-lucide-filter' },
+    { type: 'separator' as const },
+    { label: 'Hide', icon: 'i-lucide-eye-off', onSelect: () => hideColumn(col.id) },
+    { type: 'separator' as const },
+    { label: 'Delete', icon: 'i-lucide-trash-2', color: 'error' as const, onSelect: () => { showDeleteConfirm.value = col.id } },
   ]
 }
 
@@ -586,7 +593,7 @@ async function handleAddOption(columnId: string, payload: { label: string; color
       method: 'POST',
       body: payload,
     })
-    refreshColumns()
+    await refreshColumns()
   } catch (err: any) {
     toast.add({ title: 'Failed to add option', color: 'error' })
   }
@@ -620,6 +627,11 @@ async function confirmDeleteColumn() {
 // --- Group Actions ---
 
 function toggleGroup(group: BoardGroup) {
+  // Dynamic groups (from group-by) use local collapse tracking
+  if (group.id.startsWith('grouped_')) {
+    containerRef.value?.toggleGroupExpanded(group.id)
+    return
+  }
   group.isExpanded = !group.isExpanded
   if (group.id !== '__ungrouped__') {
     $fetch(`/api/agency/boards/${boardId.value}/groups/${group.id}`, {
@@ -630,7 +642,7 @@ function toggleGroup(group: BoardGroup) {
 }
 
 async function renameGroup(groupId: string, name: string) {
-  if (groupId === '__ungrouped__') return
+  if (groupId === '__ungrouped__' || groupId.startsWith('grouped_')) return
   try {
     await $fetch(`/api/agency/boards/${boardId.value}/groups/${groupId}`, {
       method: 'PATCH',
@@ -643,7 +655,7 @@ async function renameGroup(groupId: string, name: string) {
 }
 
 async function updateGroupColor(groupId: string, color: string) {
-  if (groupId === '__ungrouped__') return
+  if (groupId === '__ungrouped__' || groupId.startsWith('grouped_')) return
   try {
     await $fetch(`/api/agency/boards/${boardId.value}/groups/${groupId}`, {
       method: 'PATCH',
@@ -656,7 +668,7 @@ async function updateGroupColor(groupId: string, color: string) {
 }
 
 function deleteGroup(groupId: string) {
-  if (groupId === '__ungrouped__') return
+  if (groupId === '__ungrouped__' || groupId.startsWith('grouped_')) return
   deleteGroupId.value = groupId
 }
 
@@ -704,7 +716,7 @@ async function handleApplyTemplate(templateId: string) {
   try {
     const result = await $fetch<{ success: boolean; templateName: string; created: { columns: number; groups: number; views: number } }>(`/api/agency/boards/templates/${templateId}/apply`, {
       method: 'POST',
-      body: { departmentId: boardId.value },
+      body: { departmentId: containerRef.value?.board?.id || boardId.value },
     })
     toast.add({
       title: 'Template applied',

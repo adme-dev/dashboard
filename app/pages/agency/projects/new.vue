@@ -117,8 +117,8 @@ const applyTemplate = async () => {
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="New Project">
         <template #left>
           <UButton
@@ -138,7 +138,7 @@ const applyTemplate = async () => {
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <div class="max-w-2xl mx-auto">
           <UCard>
             <template #header>
@@ -269,7 +269,7 @@ const applyTemplate = async () => {
             </ul>
           </UCard>
         </div>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
 
     <!-- Template Selection Modal -->
@@ -327,5 +327,5 @@ const applyTemplate = async () => {
         </div>
       </template>
     </UModal>
-  </UDashboardPage>
+  </div>
 </template>

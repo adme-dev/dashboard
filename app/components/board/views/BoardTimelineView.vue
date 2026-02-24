@@ -96,6 +96,12 @@
             >
               <span class="px-2 text-xs text-white truncate leading-5 block">{{ item.title }}</span>
             </div>
+            <div
+              v-else
+              class="absolute top-1/2 -translate-y-1/2 left-2 text-xs text-gray-400 italic"
+            >
+              No date set
+            </div>
           </div>
         </div>
       </div>

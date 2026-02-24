@@ -208,8 +208,8 @@ const copyPublicLink = (slug: string) => {
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="Intake Forms">
         <template #right>
           <UButton
@@ -221,7 +221,7 @@ const copyPublicLink = (slug: string) => {
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Tab Navigation -->
         <div class="flex items-center gap-4 mb-6 border-b border-gray-200 dark:border-gray-700">
           <button
@@ -547,7 +547,7 @@ const copyPublicLink = (slug: string) => {
             </div>
           </div>
         </div>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
 
     <!-- New Form Modal -->
@@ -591,5 +591,5 @@ const copyPublicLink = (slug: string) => {
         </div>
       </template>
     </UModal>
-  </UDashboardPage>
+  </div>
 </template>

@@ -183,8 +183,8 @@ const resetNewRule = () => {
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="Automation Rules">
         <template #right>
           <UButton
@@ -196,7 +196,7 @@ const resetNewRule = () => {
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Summary Cards -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <UCard>
@@ -366,7 +366,7 @@ const resetNewRule = () => {
             <p>No automation rules found. Create one to get started!</p>
           </div>
         </div>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
 
     <!-- New Rule Modal -->
@@ -407,5 +407,5 @@ const resetNewRule = () => {
         </div>
       </template>
     </UModal>
-  </UDashboardPage>
+  </div>
 </template>

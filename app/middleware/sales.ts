@@ -4,10 +4,10 @@
  */
 
 export default defineNuxtRouteMiddleware(async (to, from) => {
-  const { user, fetchUser, initialized, canAccessPricing } = useAuth()
+  const { user, isAuthenticated, fetchUser, isLoading, hasRole } = useAuth()
 
-  // Fetch user if not initialized
-  if (!initialized.value) {
+  // Fetch user if not yet loaded
+  if (!isAuthenticated.value && !isLoading.value) {
     await fetchUser()
   }
 
@@ -20,8 +20,8 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
   }
 
   // Check if user can access pricing/sales pages
-  if (!canAccessPricing.value) {
-    // Redirect to main dashboard with error toast
+  const canAccessPricing = hasRole(['admin', 'owner', 'project_manager', 'sales'])
+  if (!canAccessPricing) {
     return navigateTo({
       path: '/agency',
       query: { error: 'no-sales-access' }

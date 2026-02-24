@@ -81,10 +81,9 @@
           </button>
 
           <!-- More Actions (if author) -->
-          <UDropdown
+          <UDropdownMenu
             v-if="isAuthor"
             :items="actionItems"
-            :popper="{ placement: 'bottom-end' }"
           >
             <UButton
               variant="ghost"
@@ -92,7 +91,7 @@
               size="xs"
               icon="i-lucide-more-horizontal"
             />
-          </UDropdown>
+          </UDropdownMenu>
         </div>
 
         <!-- Replies -->

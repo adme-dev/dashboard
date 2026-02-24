@@ -1,6 +1,6 @@
 /**
- * Guest Middleware
- * Redirects authenticated users away from auth pages
+ * Auth Middleware (named)
+ * Protects routes that explicitly require authentication
  */
 
 export default defineNuxtRouteMiddleware(async (to, from) => {
@@ -11,9 +11,11 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
     await fetchUser()
   }
 
-  // Redirect to home if already authenticated
-  if (user.value) {
-    const redirect = to.query.redirect as string
-    return navigateTo(redirect || '/')
+  // Redirect to login if not authenticated
+  if (!user.value) {
+    return navigateTo({
+      path: '/auth/login',
+      query: { redirect: to.fullPath }
+    })
   }
 })

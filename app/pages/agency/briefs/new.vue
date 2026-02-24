@@ -128,8 +128,8 @@ function getCategoryColorClass(category: any) {
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar>
         <template #left>
           <div class="flex items-center gap-2">
@@ -155,7 +155,7 @@ function getCategoryColorClass(category: any) {
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Loading State -->
         <div v-if="categoriesLoading" class="flex items-center justify-center py-12">
           <UIcon name="i-lucide-loader-2" class="size-8 animate-spin text-primary" />
@@ -323,7 +323,7 @@ function getCategoryColorClass(category: any) {
             />
           </UCard>
         </div>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
-  </UDashboardPage>
+  </div>
 </template>

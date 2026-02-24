@@ -1,7 +1,5 @@
 <script setup lang="ts">
-definePageMeta({
-  layout: 'default'
-})
+definePageMeta({})
 
 const route = useRoute()
 const router = useRouter()
@@ -103,8 +101,8 @@ const formatHours = (value: number) => `${value}h`
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="Reports & Analytics">
         <template #leading>
           <UIcon name="i-lucide-bar-chart-3" class="h-5 w-5" />
@@ -537,5 +535,5 @@ const formatHours = (value: number) => `${value}h`
         </div>
       </div>
     </UDashboardPanel>
-  </UDashboardPage>
+  </div>
 </template>

@@ -373,7 +373,7 @@ const { showHelp: showShortcutsHelp, shortcuts, formatShortcut, selectedTaskInde
 </script>
 
 <template>
-  <UDashboardPage>
+  <div class="flex-1 min-w-0 flex">
     <!-- Department Sidebar -->
     <UDashboardPanel
       :width="240"
@@ -403,7 +403,7 @@ const { showHelp: showShortcutsHelp, shortcuts, formatShortcut, selectedTaskInde
     </UDashboardPanel>
 
     <!-- Main Board Panel -->
-    <UDashboardPanel grow>
+    <UDashboardPanel>
       <UDashboardNavbar :title="selectedDepartment?.name || 'All Tasks'">
         <template #leading>
           <UDashboardSidebarCollapse />
@@ -771,5 +771,5 @@ const { showHelp: showShortcutsHelp, shortcuts, formatShortcut, selectedTaskInde
         />
       </UTooltip>
     </div>
-  </UDashboardPage>
+  </div>
 </template>

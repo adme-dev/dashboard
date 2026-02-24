@@ -4,7 +4,7 @@
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-4">
         <UButton
-          icon="i-heroicons-arrow-left"
+          icon="i-lucide-arrow-left"
           variant="ghost"
           to="/agency/templates"
         />
@@ -22,21 +22,21 @@
         <UButton
           variant="outline"
           color="error"
-          icon="i-heroicons-trash"
+          icon="i-lucide-trash-2"
           @click="showDeleteModal = true"
         >
           Delete
         </UButton>
         <UButton
           variant="outline"
-          icon="i-heroicons-pencil"
+          icon="i-lucide-pencil"
           @click="openEditModal"
         >
           Edit
         </UButton>
         <UButton
           color="primary"
-          icon="i-heroicons-play"
+          icon="i-lucide-play"
           @click="showUseModal = true"
         >
           Use Template
@@ -45,7 +45,7 @@
     </div>
 
     <div v-if="pending" class="flex justify-center py-12">
-      <UIcon name="i-heroicons-arrow-path" class="w-8 h-8 animate-spin text-gray-400" />
+      <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-gray-400" />
     </div>
 
     <div v-else-if="template" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -219,7 +219,7 @@
                   v-if="doc.fileUrl"
                   size="xs"
                   variant="ghost"
-                  icon="i-heroicons-arrow-down-tray"
+                  icon="i-lucide-download"
                   :href="doc.fileUrl"
                   target="_blank"
                 />
@@ -645,9 +645,7 @@
 </template>
 
 <script setup lang="ts">
-definePageMeta({
-  layout: 'default'
-})
+definePageMeta({})
 
 const route = useRoute()
 const router = useRouter()
@@ -977,14 +975,14 @@ const formatBillingMethod = (method: string): string => {
 
 const getTaskTypeIcon = (type: string): string => {
   const icons: Record<string, string> = {
-    task: 'i-heroicons-check-circle',
-    milestone: 'i-heroicons-flag',
-    epic: 'i-heroicons-rectangle-stack',
-    story: 'i-heroicons-bookmark',
-    bug: 'i-heroicons-bug-ant',
-    feature: 'i-heroicons-light-bulb'
+    task: 'i-lucide-check-circle',
+    milestone: 'i-lucide-flag',
+    epic: 'i-lucide-layers',
+    story: 'i-lucide-bookmark',
+    bug: 'i-lucide-bug',
+    feature: 'i-lucide-lightbulb'
   }
-  return icons[type] || 'i-heroicons-document'
+  return icons[type] || 'i-lucide-file'
 }
 
 const getPriorityColor = (priority: string): 'error' | 'warning' | 'info' | 'neutral' => {
@@ -999,13 +997,13 @@ const getPriorityColor = (priority: string): 'error' | 'warning' | 'info' | 'neu
 
 const getDocumentIcon = (type: string): string => {
   const icons: Record<string, string> = {
-    contract: 'i-heroicons-document-text',
-    brief: 'i-heroicons-clipboard-document',
-    scope: 'i-heroicons-document-check',
-    checklist: 'i-heroicons-clipboard-document-check',
-    template: 'i-heroicons-document-duplicate',
-    guide: 'i-heroicons-book-open'
+    contract: 'i-lucide-file-text',
+    brief: 'i-lucide-clipboard',
+    scope: 'i-lucide-file-check',
+    checklist: 'i-lucide-clipboard-check',
+    template: 'i-lucide-copy',
+    guide: 'i-lucide-book-open'
   }
-  return icons[type] || 'i-heroicons-document'
+  return icons[type] || 'i-lucide-file'
 }
 </script>

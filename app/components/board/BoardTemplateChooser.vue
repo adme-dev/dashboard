@@ -116,21 +116,12 @@ async function saveAsTemplate() {
 </script>
 
 <template>
-  <UModal v-model:open="isOpen" :ui="{ content: 'max-w-2xl' }">
-    <UCard>
-      <template #header>
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <div class="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center">
-              <UIcon name="i-lucide-layout-template" class="w-4 h-4 text-purple-600" />
-            </div>
-            <h3 class="text-lg font-semibold">Board Templates</h3>
-          </div>
-          <UButton color="neutral" variant="ghost" icon="i-lucide-x" @click="isOpen = false" />
-        </div>
-
+  <UModal v-model:open="isOpen" title="Board Templates">
+    <template #header>
+      <div>
+        <h3 class="text-lg font-semibold">Board Templates</h3>
         <!-- Tabs -->
-        <div v-if="sourceBoardId" class="flex gap-1 mt-4 -mb-1 border-b">
+        <div v-if="sourceBoardId" class="flex gap-1 mt-4 -mb-4 border-b">
           <button
             class="px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px"
             :class="activeTab === 'browse' ? 'border-purple-500 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
@@ -146,8 +137,10 @@ async function saveAsTemplate() {
             Save as Template
           </button>
         </div>
-      </template>
+      </div>
+    </template>
 
+    <template #body>
       <!-- Browse Tab -->
       <div v-if="activeTab === 'browse'" class="space-y-4">
         <!-- Search + Filter -->
@@ -241,22 +234,22 @@ async function saveAsTemplate() {
 
         <UCheckbox v-model="saveForm.isPublic" label="Make available to all team members" />
       </div>
+    </template>
 
-      <template #footer>
-        <div class="flex justify-end gap-2">
-          <UButton color="neutral" variant="ghost" @click="isOpen = false">Cancel</UButton>
-          <UButton
-            v-if="activeTab === 'save'"
-            color="primary"
-            icon="i-lucide-save"
-            :loading="isSaving"
-            :disabled="!saveForm.name.trim()"
-            @click="saveAsTemplate"
-          >
-            Save Template
-          </UButton>
-        </div>
-      </template>
-    </UCard>
+    <template #footer>
+      <div class="flex justify-end gap-2">
+        <UButton color="neutral" variant="ghost" @click="isOpen = false">Cancel</UButton>
+        <UButton
+          v-if="activeTab === 'save'"
+          color="primary"
+          icon="i-lucide-save"
+          :loading="isSaving"
+          :disabled="!saveForm.name.trim()"
+          @click="saveAsTemplate"
+        >
+          Save Template
+        </UButton>
+      </div>
+    </template>
   </UModal>
 </template>

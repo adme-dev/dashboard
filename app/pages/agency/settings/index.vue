@@ -278,11 +278,11 @@ const presetColors = [
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="Workflow Settings" />
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Tab Navigation -->
         <div class="flex items-center gap-4 mb-6 border-b border-gray-200 dark:border-gray-700">
           <button
@@ -538,7 +538,7 @@ const presetColors = [
             </div>
           </div>
         </div>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
 
     <!-- Department Modal -->
@@ -695,5 +695,5 @@ const presetColors = [
         </div>
       </template>
     </UModal>
-  </UDashboardPage>
+  </div>
 </template>

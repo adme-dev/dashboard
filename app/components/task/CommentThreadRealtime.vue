@@ -55,7 +55,7 @@
 
     <!-- Comments List -->
     <div v-if="loading && comments.length === 0" class="py-8 text-center">
-      <ULoadingIcon size="lg" />
+      <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-primary mx-auto" />
       <p class="text-gray-500 mt-2">Loading comments...</p>
     </div>
 

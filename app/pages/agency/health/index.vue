@@ -124,8 +124,8 @@ const calculateHealth = async (projectId: string) => {
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="Project Health Dashboard">
         <template #right>
           <UButton
@@ -137,7 +137,7 @@ const calculateHealth = async (projectId: string) => {
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Portfolio Health Summary -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <UCard>
@@ -424,7 +424,7 @@ const calculateHealth = async (projectId: string) => {
             <p>No projects found. Health data will appear here once projects are active.</p>
           </div>
         </div>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
-  </UDashboardPage>
+  </div>
 </template>

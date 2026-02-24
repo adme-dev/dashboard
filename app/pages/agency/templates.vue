@@ -154,8 +154,8 @@ const budgetTypeOptions = [
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="Project Templates">
         <template #right>
           <UButton
@@ -167,7 +167,7 @@ const budgetTypeOptions = [
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Filters -->
         <div class="flex flex-wrap items-center gap-4 mb-6">
           <UInput
@@ -258,7 +258,7 @@ const budgetTypeOptions = [
             No templates found. Create one to get started!
           </div>
         </div>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
 
     <!-- Use Template Modal -->
@@ -372,5 +372,5 @@ const budgetTypeOptions = [
         </div>
       </template>
     </UModal>
-  </UDashboardPage>
+  </div>
 </template>

@@ -202,7 +202,7 @@ interface TeamMember {
   role: 'admin' | 'member'
 }
 
-definePageMeta({ layout: 'agency' })
+definePageMeta({})
 
 const searchQuery = ref('')
 const selectedTeam = ref<Team | null>(null)

@@ -110,28 +110,33 @@ const columns = [
 ]
 
 // Actions
+const toast = useToast()
+
 const getActions = (client: any) => [
-  [
-    { label: 'View Details', icon: 'i-lucide-eye', click: () => navigateTo(`/agency/clients/${client.id}`) },
-    { label: 'Edit Client', icon: 'i-lucide-pencil', click: () => navigateTo(`/agency/clients/${client.id}/edit`) },
-    { label: 'New Project', icon: 'i-lucide-folder-plus', click: () => navigateTo(`/agency/projects/new?clientId=${client.id}`) }
-  ],
-  [
-    { label: 'View in Xero', icon: 'i-simple-icons-xero', disabled: !client.xeroContactId },
-    { label: 'Generate Invoice', icon: 'i-lucide-file-text' }
-  ],
-  [
-    {
-      label: client.isActive ? 'Deactivate' : 'Reactivate',
-      icon: client.isActive ? 'i-lucide-user-minus' : 'i-lucide-user-plus',
-      click: () => toggleClientStatus(client)
-    }
-  ]
+  { label: 'View Details', icon: 'i-lucide-eye', onSelect: () => navigateTo(`/agency/clients/${client.id}`) },
+  { label: 'New Project', icon: 'i-lucide-folder-plus', onSelect: () => navigateTo(`/agency/projects/new?clientId=${client.id}`) },
+  { type: 'separator' as const },
+  { label: 'View in Xero', icon: 'i-lucide-external-link', disabled: !client.xeroContactId },
+  { label: 'Generate Invoice', icon: 'i-lucide-file-text' },
+  { type: 'separator' as const },
+  {
+    label: client.isActive ? 'Deactivate' : 'Reactivate',
+    icon: client.isActive ? 'i-lucide-user-minus' : 'i-lucide-user-plus',
+    onSelect: () => toggleClientStatus(client)
+  }
 ]
 
 const toggleClientStatus = async (client: any) => {
-  // In production, call API to toggle status
-  console.log('Toggle status for:', client.name)
+  try {
+    await $fetch(`/api/agency/clients/${client.id}`, {
+      method: 'PUT',
+      body: { isActive: !client.isActive }
+    })
+    toast.add({ title: `Client ${client.isActive ? 'deactivated' : 'reactivated'}`, color: 'success' })
+    refresh()
+  } catch (err: any) {
+    toast.add({ title: 'Failed to update client', description: err.data?.message || err.message, color: 'error' })
+  }
 }
 
 // New client modal
@@ -139,8 +144,8 @@ const showNewClientModal = ref(false)
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="Clients">
         <template #right>
           <UButton
@@ -152,7 +157,7 @@ const showNewClientModal = ref(false)
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent>
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Summary Cards -->
         <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
           <UCard>
@@ -203,7 +208,8 @@ const showNewClientModal = ref(false)
 
           <USelectMenu
             v-model="activeFilter"
-            :options="activeOptions"
+            :items="activeOptions"
+            value-key="value"
             placeholder="Status"
             class="w-40"
           />
@@ -280,39 +286,31 @@ const showNewClientModal = ref(false)
             </template>
 
             <template #actions-cell="{ row }">
-              <UDropdown :items="getActions(row.original)">
+              <UDropdownMenu :items="getActions(row.original)">
                 <UButton
                   color="neutral"
                   variant="ghost"
                   icon="i-lucide-more-horizontal"
                 />
-              </UDropdown>
+              </UDropdownMenu>
             </template>
           </UTable>
         </UCard>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
 
     <!-- New Client Modal -->
-    <UModal v-model="showNewClientModal">
-      <UCard>
-        <template #header>
-          <div class="flex items-center justify-between">
-            <h3 class="text-lg font-semibold">New Client</h3>
-            <UButton
-              color="neutral"
-              variant="ghost"
-              icon="i-lucide-x"
-              @click="showNewClientModal = false"
-            />
-          </div>
-        </template>
+    <UModal v-model:open="showNewClientModal">
+      <template #header>
+        <h3 class="text-lg font-semibold">New Client</h3>
+      </template>
 
+      <template #body>
         <AgencyClientForm
           @submit="showNewClientModal = false; refresh()"
           @cancel="showNewClientModal = false"
         />
-      </UCard>
+      </template>
     </UModal>
-  </UDashboardPage>
+  </div>
 </template>

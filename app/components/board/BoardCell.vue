@@ -7,6 +7,7 @@
     :task-id="taskId"
     :readonly="readonly"
     @update="onUpdate"
+    @edit-column="onEditColumn"
   />
   <span v-else class="text-gray-400 text-sm">-</span>
 </template>
@@ -30,6 +31,7 @@ import CellProgress from './cells/CellProgress.vue'
 import CellTags from './cells/CellTags.vue'
 import CellColor from './cells/CellColor.vue'
 import CellDependency from './cells/CellDependency.vue'
+import CellLabel from './cells/CellLabel.vue'
 
 const cellComponents: Record<string, any> = {
   text: CellText,
@@ -49,8 +51,7 @@ const cellComponents: Record<string, any> = {
   tags: CellTags,
   color: CellColor,
   dependency: CellDependency,
-  // Aliases for legacy column types
-  label: CellStatus,
+  label: CellLabel,
   numbers: CellNumber,
 }
 
@@ -63,6 +64,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   update: [columnId: string, payload: any]
+  editColumn: [columnId: string]
 }>()
 
 const cellComponent = computed(() => {
@@ -72,5 +74,9 @@ const cellComponent = computed(() => {
 
 function onUpdate(payload: any) {
   emit('update', props.column.id, payload)
+}
+
+function onEditColumn() {
+  emit('editColumn', props.column.id)
 }
 </script>

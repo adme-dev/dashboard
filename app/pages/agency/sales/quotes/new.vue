@@ -192,8 +192,8 @@ const showTemplates = ref(false)
 </script>
 
 <template>
-  <UDashboardPage>
-    <UDashboardPanel grow>
+  <div class="flex-1 min-w-0">
+    <UDashboardPanel>
       <UDashboardNavbar title="New Quote">
         <template #left>
           <UButton
@@ -218,7 +218,7 @@ const showTemplates = ref(false)
         </template>
       </UDashboardNavbar>
 
-      <UDashboardPanelContent class="pb-24">
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6 pb-24">
         <!-- Error alert -->
         <UAlert
           v-if="error"
@@ -489,7 +489,7 @@ const showTemplates = ref(false)
             </UCard>
           </div>
         </div>
-      </UDashboardPanelContent>
+      </div>
     </UDashboardPanel>
 
     <!-- Templates Slideover -->
@@ -530,5 +530,5 @@ const showTemplates = ref(false)
         </div>
       </UCard>
     </USlideover>
-  </UDashboardPage>
+  </div>
 </template>

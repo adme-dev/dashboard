@@ -1,37 +1,28 @@
 <template>
-  <div class="h-full flex flex-col bg-gray-50">
-    <!-- Header -->
-    <div class="bg-white border-b px-6 py-4">
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="text-2xl font-semibold">User management</h1>
-          <p class="text-gray-500 mt-1">
-            Manage your team members, their roles, and permissions
-          </p>
-        </div>
-        <div class="flex items-center gap-3">
-          <UButton
-            variant="outline"
-            color="neutral"
-            icon="i-lucide-users-round"
-            to="/admin/teams"
-          >
-            Manage teams
-          </UButton>
-          <UButton
-            color="primary"
-            icon="i-lucide-user-plus"
-            @click="showInviteModal = true"
-          >
-            Invite
-          </UButton>
-        </div>
-      </div>
-    </div>
+  <div class="flex-1 min-w-0">
+  <UDashboardPanel>
+    <UDashboardNavbar title="User management">
+      <template #right>
+        <UButton
+          variant="outline"
+          color="neutral"
+          icon="i-lucide-users-round"
+          to="/admin/teams"
+        >
+          Manage teams
+        </UButton>
+        <UButton
+          color="primary"
+          icon="i-lucide-user-plus"
+          @click="showInviteModal = true"
+        >
+          Invite
+        </UButton>
+      </template>
+    </UDashboardNavbar>
 
-    <!-- Filters -->
-    <div class="bg-white border-b px-6 py-3">
-      <div class="flex items-center gap-3">
+    <UDashboardToolbar>
+      <template #left>
         <UInput
           v-model="searchQuery"
           icon="i-lucide-search"
@@ -47,139 +38,129 @@
         >
           Filter
         </UButton>
+      </template>
+
+      <template #right>
+        <span class="text-sm text-muted">
+          Showing: {{ filteredUsers.length }} results
+        </span>
+      </template>
+    </UDashboardToolbar>
+
+    <div class="flex-1 overflow-y-auto p-4 sm:p-6">
+      <!-- Loading State -->
+      <div v-if="pending" class="flex-1 flex items-center justify-center min-h-64">
+        <UIcon name="i-lucide-loader-2" class="size-8 animate-spin text-primary" />
       </div>
-      <div class="mt-2 text-sm text-gray-500">
-        Showing: {{ filteredUsers.length }} results
+
+      <!-- Error State -->
+      <div v-else-if="usersError" class="flex-1 flex items-center justify-center min-h-64">
+        <UEmpty
+          icon="i-lucide-alert-circle"
+          title="Failed to load users"
+          :description="usersError.message || 'An error occurred'"
+          :actions="[{ label: 'Retry', color: 'primary', onClick: () => refresh() }]"
+        />
       </div>
-    </div>
 
-    <!-- Loading State -->
-    <div v-if="pending" class="flex-1 flex items-center justify-center">
-      <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary" />
-    </div>
+      <!-- Empty State -->
+      <div v-else-if="users.length === 0" class="flex-1 flex items-center justify-center min-h-64">
+        <UEmpty
+          icon="i-lucide-users"
+          title="No users found"
+          description="Get started by inviting your team members"
+          :actions="[{ label: 'Invite users', icon: 'i-lucide-user-plus', color: 'primary', onClick: () => showInviteModal = true }]"
+        />
+      </div>
 
-    <!-- Error State -->
-    <div v-else-if="usersError" class="flex-1 flex flex-col items-center justify-center p-6">
-      <UIcon name="i-lucide-alert-circle" class="w-12 h-12 text-red-500 mb-4" />
-      <h3 class="text-lg font-medium text-gray-900">Failed to load users</h3>
-      <p class="text-gray-500 mt-1">{{ usersError.message || 'An error occurred' }}</p>
-      <UButton class="mt-4" color="primary" @click="refresh()">Retry</UButton>
-    </div>
+      <!-- Users Table -->
+      <UTable
+        v-else
+        :data="filteredUsers"
+        :columns="columns"
+        :loading="pending"
+      >
+        <template #name-cell="{ row }">
+          <UUser
+            :name="row.original.name"
+            :avatar="{ src: row.original.avatarUrl, alt: row.original.name }"
+            size="sm"
+          />
+        </template>
 
-    <!-- Empty State - No Users -->
-    <div v-else-if="users.length === 0" class="flex-1 flex flex-col items-center justify-center p-6">
-      <UIcon name="i-lucide-users" class="w-16 h-16 text-gray-300 mb-4" />
-      <h3 class="text-lg font-medium text-gray-900">No users found</h3>
-      <p class="text-gray-500 mt-1">Get started by inviting your team members</p>
-      <UButton class="mt-4" color="primary" icon="i-lucide-user-plus" @click="showInviteModal = true">
-        Invite users
-      </UButton>
-    </div>
+        <template #role-cell="{ row }">
+          <USelect
+            v-model="row.original.role"
+            :items="roleOptions"
+            size="xs"
+            class="w-28"
+            @update:model-value="updateUserRole(row.original.id, $event)"
+          />
+        </template>
 
-    <!-- Users Table -->
-    <div v-else class="flex-1 overflow-auto p-6">
-      <UCard class="overflow-hidden">
-        <table class="w-full">
-          <thead class="bg-gray-50 border-b">
-            <tr>
-              <th class="w-8 px-4 py-3">
-                <UCheckbox />
-              </th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">User role</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Teams</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Joined</th>
-              <th class="w-8 px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody class="divide-y">
-            <tr
-              v-for="user in filteredUsers"
-              :key="user.id"
-              class="hover:bg-gray-50 group"
-            >
-              <td class="px-4 py-3">
-                <UCheckbox />
-              </td>
-              <td class="px-4 py-3">
-                <div class="flex items-center gap-3">
-                  <UAvatar
-                    :src="user.avatarUrl"
-                    :alt="user.name"
-                    size="sm"
-                  />
-                  <span class="font-medium">{{ user.name }}</span>
-                </div>
-              </td>
-              <td class="px-4 py-3 text-sm text-gray-600">{{ user.email }}</td>
-              <td class="px-4 py-3">
-                <USelect
-                  v-model="user.role"
-                  :items="roleOptions"
-                  size="xs"
-                  class="w-28"
-                  @update:model-value="updateUserRole(user.id, $event)"
-                />
-              </td>
-              <td class="px-4 py-3">
-                <UBadge
-                  :color="user.status === 'active' ? 'success' : 'neutral'"
-                  variant="subtle"
-                  size="xs"
+        <template #status-cell="{ row }">
+          <UBadge
+            :color="row.original.status === 'active' ? 'success' : 'neutral'"
+            variant="subtle"
+            size="xs"
+          >
+            {{ row.original.status }}
+          </UBadge>
+        </template>
+
+        <template #teams-cell="{ row }">
+          <div class="flex items-center gap-1.5">
+            <template v-if="row.original.teams.length">
+              <UAvatarGroup size="xs" :max="3">
+                <UTooltip
+                  v-for="team in row.original.teams.slice(0, 3)"
+                  :key="team.id"
+                  :text="team.name"
                 >
-                  {{ user.status }}
-                </UBadge>
-              </td>
-              <td class="px-4 py-3">
-                <div class="flex items-center gap-1">
-                  <UAvatarGroup size="xs" :max="3">
-                    <UTooltip
-                      v-for="team in user.teams.slice(0, 3)"
-                      :key="team.id"
-                      :text="team.name"
-                    >
-                      <UAvatar
-                        :alt="team.name[0]"
-                        size="xs"
-                      />
-                    </UTooltip>
-                  </UAvatarGroup>
-                  <span v-if="user.teams.length > 3" class="text-xs text-gray-500">
-                    +{{ user.teams.length - 3 }}
-                  </span>
-                  <UButton
-                    variant="ghost"
-                    color="neutral"
-                    icon="i-lucide-plus"
-                    size="xs"
-                    class="opacity-0 group-hover:opacity-100"
-                    @click="openTeamsModal(user)"
-                  />
-                </div>
-              </td>
-              <td class="px-4 py-3 text-sm text-gray-600">{{ formatDate(user.joinedAt) }}</td>
-              <td class="px-4 py-3">
-                <UDropdownMenu :items="userActions(user)">
-                  <UButton
-                    variant="ghost"
-                    color="neutral"
-                    icon="i-lucide-more-horizontal"
+                  <UAvatar
+                    :alt="team.name[0]"
                     size="xs"
                   />
-                </UDropdownMenu>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                </UTooltip>
+              </UAvatarGroup>
+              <span v-if="row.original.teams.length > 3" class="text-xs text-muted">
+                +{{ row.original.teams.length - 3 }}
+              </span>
+            </template>
+            <UButton
+              variant="ghost"
+              color="neutral"
+              :icon="row.original.teams.length ? 'i-lucide-pencil' : 'i-lucide-plus'"
+              size="xs"
+              @click="openTeamsModal(row.original)"
+            />
+          </div>
+        </template>
 
-        <div v-if="filteredUsers.length === 0" class="py-12 text-center text-gray-500">
-          <UIcon name="i-lucide-users" class="w-12 h-12 mx-auto mb-3" />
-          <p>{{ searchQuery ? 'No users match your search' : 'No users found' }}</p>
-        </div>
-      </UCard>
+        <template #joinedAt-cell="{ row }">
+          {{ formatDate(row.original.joinedAt) }}
+        </template>
+
+        <template #actions-cell="{ row }">
+          <UDropdownMenu :items="userActions(row.original)">
+            <UButton
+              variant="ghost"
+              color="neutral"
+              icon="i-lucide-more-horizontal"
+              size="xs"
+            />
+          </UDropdownMenu>
+        </template>
+
+        <template #empty>
+          <UEmpty
+            icon="i-lucide-users"
+            :title="searchQuery ? 'No users match your search' : 'No users found'"
+          />
+        </template>
+      </UTable>
     </div>
+    </UDashboardPanel>
 
     <!-- Invite Modal -->
     <UModal v-model:open="showInviteModal" title="Invite users">
@@ -190,21 +171,18 @@
               v-model="inviteEmails"
               placeholder="john@example.com, jane@example.com"
               rows="4"
-              class="w-full"
             />
           </UFormField>
           <UFormField label="Title">
             <UInput
               v-model="inviteTitle"
               placeholder="e.g. Creative Director"
-              class="w-full"
             />
           </UFormField>
           <UFormField label="Role">
             <USelect
               v-model="inviteRole"
               :items="roleOptions"
-              class="w-full"
             />
           </UFormField>
           <UFormField label="Teams">
@@ -212,7 +190,6 @@
               v-model="inviteTeams"
               :items="availableTeams"
               multiple
-              class="w-full"
             />
           </UFormField>
         </div>
@@ -227,21 +204,46 @@
       </template>
     </UModal>
 
+    <!-- Edit User Modal -->
+    <UModal v-model:open="showEditModal" title="Edit user">
+      <template #body>
+        <div class="space-y-4">
+          <UFormField label="Name">
+            <UInput v-model="editForm.name" />
+          </UFormField>
+          <UFormField label="Email">
+            <UInput v-model="editForm.email" type="email" />
+          </UFormField>
+          <UFormField label="Role">
+            <USelect v-model="editForm.role" :items="roleOptions" />
+          </UFormField>
+        </div>
+      </template>
+      <template #footer>
+        <UButton variant="ghost" color="neutral" @click="showEditModal = false">
+          Cancel
+        </UButton>
+        <UButton color="primary" :loading="editLoading" @click="saveUser">
+          Save changes
+        </UButton>
+      </template>
+    </UModal>
+
     <!-- Assign Teams Modal -->
     <UModal v-model:open="showTeamsModal" title="Manage teams">
       <template #body>
         <div v-if="teamsLoading" class="py-8 text-center">
-          <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin mx-auto" />
+          <UIcon name="i-lucide-loader-2" class="size-6 animate-spin mx-auto" />
         </div>
         <div v-else class="space-y-2">
           <div
             v-for="team in availableTeams"
             :key="team.value"
-            class="flex items-center justify-between p-2 rounded hover:bg-gray-50"
+            class="flex items-center justify-between p-2 rounded hover:bg-elevated"
           >
             <div class="flex items-center gap-2">
               <div
-                class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                class="size-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
                 :style="{ backgroundColor: team.color }"
               >
                 {{ team.label[0] }}
@@ -268,6 +270,7 @@
 </template>
 
 <script setup lang="ts">
+import { h } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 
 interface User {
@@ -293,7 +296,6 @@ definePageMeta({ layout: 'admin' })
 
 const { isAuthenticated, fetchUser } = useAuth()
 
-// Wait for auth check before fetching
 const isAuthChecked = ref(false)
 
 onMounted(async () => {
@@ -301,13 +303,11 @@ onMounted(async () => {
   isAuthChecked.value = true
 })
 
-// Only fetch users after auth is confirmed
 const { data: usersData, pending, refresh, error: usersError } = useFetch('/api/admin/users', {
   immediate: false,
   server: false
 })
 
-// Watch for auth and then fetch
 watch(isAuthChecked, (checked) => {
   if (checked && isAuthenticated.value) {
     refresh()
@@ -315,19 +315,15 @@ watch(isAuthChecked, (checked) => {
 }, { immediate: true })
 
 const users = computed(() => usersData.value?.users || [])
-if (process.client) {
-  watch(usersData, (val) => {
-    console.log('Users data loaded:', val?.users?.length || 0, 'users')
-  }, { immediate: true })
-}
 
-// Fetch teams for dropdown
-const { data: teamsData } = await useFetch('/api/admin/teams')
+const { data: teamsData } = useFetch('/api/admin/teams')
 const teams = computed(() => teamsData.value?.teams || [])
 
 const searchQuery = ref('')
 const showInviteModal = ref(false)
+const showEditModal = ref(false)
 const showTeamsModal = ref(false)
+const editLoading = ref(false)
 const inviteLoading = ref(false)
 const saveTeamsLoading = ref(false)
 const teamsLoading = ref(false)
@@ -337,6 +333,7 @@ const inviteRole = ref('member')
 const inviteTeams = ref<string[]>([])
 const selectedUser = ref<User | null>(null)
 const selectedUserTeams = ref<string[]>([])
+const editForm = ref({ name: '', email: '', role: 'member' })
 
 const roleOptions = [
   { label: 'Admin', value: 'admin' },
@@ -361,11 +358,32 @@ const filteredUsers = computed(() => {
   )
 })
 
+const columns = [
+  {
+    id: 'select',
+    header: ({ table }: any) => h(resolveComponent('UCheckbox'), {
+      modelValue: table.getIsAllPageRowsSelected(),
+      'onUpdate:modelValue': (v: boolean) => table.toggleAllPageRowsSelected(!!v)
+    }),
+    cell: ({ row }: any) => h(resolveComponent('UCheckbox'), {
+      modelValue: row.getIsSelected(),
+      'onUpdate:modelValue': (v: boolean) => row.toggleSelected(!!v)
+    })
+  },
+  { accessorKey: 'name', header: 'Name', meta: { class: { th: 'w-full', td: 'w-full' } } },
+  { accessorKey: 'email', header: 'Email' },
+  { accessorKey: 'role', header: 'User role' },
+  { accessorKey: 'status', header: 'Status' },
+  { accessorKey: 'teams', header: 'Teams' },
+  { accessorKey: 'joinedAt', header: 'Joined' },
+  { id: 'actions', header: '' },
+]
+
 const userActions = (user: User) => [
   [{
     label: 'Edit user',
     icon: 'i-lucide-pencil',
-    to: `/admin/users/${user.id}`,
+    onSelect: () => openEditModal(user),
   }, {
     label: 'Manage teams',
     icon: 'i-lucide-users-round',
@@ -403,6 +421,30 @@ const updateUserRole = async (userId: string, role: string) => {
   }
 }
 
+const openEditModal = (user: User) => {
+  selectedUser.value = user
+  editForm.value = { name: user.name, email: user.email, role: user.role }
+  showEditModal.value = true
+}
+
+const saveUser = async () => {
+  if (!selectedUser.value) return
+
+  editLoading.value = true
+  try {
+    await $fetch(`/api/admin/users/${selectedUser.value.id}`, {
+      method: 'PATCH',
+      body: editForm.value
+    })
+    await refresh()
+    showEditModal.value = false
+  } catch (err) {
+    console.error('Failed to update user:', err)
+  } finally {
+    editLoading.value = false
+  }
+}
+
 const openTeamsModal = (user: User) => {
   selectedUser.value = user
   selectedUserTeams.value = user.teams.map(t => t.id)
@@ -420,15 +462,13 @@ const toggleTeam = (teamId: string) => {
 
 const saveTeams = async () => {
   if (!selectedUser.value) return
-  
+
   saveTeamsLoading.value = true
   try {
-    // Calculate teams to add and remove
     const currentTeamIds = selectedUser.value.teams.map(t => t.id)
     const teamsToAdd = selectedUserTeams.value.filter(id => !currentTeamIds.includes(id))
     const teamsToRemove = currentTeamIds.filter(id => !selectedUserTeams.value.includes(id))
 
-    // Add new memberships
     for (const teamId of teamsToAdd) {
       await $fetch('/api/admin/team-members', {
         method: 'POST',
@@ -436,7 +476,6 @@ const saveTeams = async () => {
       })
     }
 
-    // Remove memberships
     for (const teamId of teamsToRemove) {
       await $fetch('/api/admin/team-members', {
         method: 'DELETE',
@@ -444,7 +483,6 @@ const saveTeams = async () => {
       })
     }
 
-    // Refresh users data
     await refresh()
     showTeamsModal.value = false
   } catch (err) {
@@ -469,7 +507,7 @@ const toggleUserStatus = async (user: User) => {
 
 const removeUser = async (user: User) => {
   if (!confirm(`Are you sure you want to remove ${user.name}?`)) return
-  
+
   try {
     await $fetch(`/api/admin/users/${user.id}`, {
       method: 'PATCH',
@@ -484,7 +522,6 @@ const removeUser = async (user: User) => {
 const sendInvites = async () => {
   inviteLoading.value = true
   try {
-    // TODO: Implement invite API
     const emails = inviteEmails.value.split(',').map(e => e.trim()).filter(Boolean)
     console.log('Sending invites to:', emails, 'with title:', inviteTitle.value)
     showInviteModal.value = false

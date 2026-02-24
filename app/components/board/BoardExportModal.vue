@@ -65,20 +65,8 @@ async function exportCSV() {
 </script>
 
 <template>
-  <UModal v-model:open="isOpen">
-    <UCard>
-      <template #header>
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <div class="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-              <UIcon name="i-lucide-download" class="w-4 h-4 text-blue-600" />
-            </div>
-            <h3 class="text-lg font-semibold">Export Board</h3>
-          </div>
-          <UButton color="neutral" variant="ghost" icon="i-lucide-x" @click="isOpen = false" />
-        </div>
-      </template>
-
+  <UModal v-model:open="isOpen" title="Export Board">
+    <template #body>
       <div class="space-y-5">
         <!-- Format -->
         <div class="p-3 bg-gray-50 rounded-lg flex items-center gap-3">
@@ -128,17 +116,17 @@ async function exportCSV() {
           </p>
         </div>
       </div>
+    </template>
 
-      <template #footer>
-        <div class="flex justify-end gap-2">
-          <UButton color="neutral" variant="ghost" :disabled="isExporting" @click="isOpen = false">
-            Cancel
-          </UButton>
-          <UButton icon="i-lucide-download" :loading="isExporting" @click="exportCSV">
-            {{ isExporting ? 'Exporting...' : 'Export CSV' }}
-          </UButton>
-        </div>
-      </template>
-    </UCard>
+    <template #footer>
+      <div class="flex justify-end gap-2">
+        <UButton color="neutral" variant="ghost" :disabled="isExporting" @click="isOpen = false">
+          Cancel
+        </UButton>
+        <UButton icon="i-lucide-download" :loading="isExporting" @click="exportCSV">
+          {{ isExporting ? 'Exporting...' : 'Export CSV' }}
+        </UButton>
+      </div>
+    </template>
   </UModal>
 </template>

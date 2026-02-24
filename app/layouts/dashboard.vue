@@ -52,7 +52,7 @@
               <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
             </button>
             
-            <UDropdown :items="userMenuItems">
+            <UDropdownMenu :items="userMenuItems">
               <button class="flex items-center gap-2 text-sm text-gray-700">
                 <div class="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
                   <UIcon name="i-lucide-user" class="w-4 h-4" />
@@ -60,7 +60,7 @@
                 <span class="hidden sm:block">{{ user?.name }}</span>
                 <UIcon name="i-lucide-chevron-down" class="w-4 h-4" />
               </button>
-            </UDropdown>
+            </UDropdownMenu>
           </div>
         </div>
       </div>
