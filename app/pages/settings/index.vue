@@ -46,8 +46,8 @@ function onFileClick() {
   fileRef.value?.click()
 }
 
-// Load status on client
-const { data: xeroStatus, refresh: refreshStatus } = await useFetch('/api/xero/status', { server: false })
+// Load status on client (lazy to avoid blocking Suspense)
+const { data: xeroStatus, refresh: refreshStatus } = useLazyFetch('/api/xero/status', { server: false })
 const { state: connectState, connect: connectXero } = useXeroConnect({ onStatusRefresh: refreshStatus })
 
 const connectLabel = computed(() => {
@@ -60,8 +60,8 @@ const connectLabel = computed(() => {
   return xeroStatus.value?.connected ? 'Reconnect' : 'Connect Xero'
 })
 
-// Meta Ads connection
-const { data: metaAccounts, refresh: refreshMetaAccounts } = await useFetch<any[]>('/api/agency/social/meta/accounts', { server: false, default: () => [] })
+// Meta Ads connection (lazy to avoid blocking Suspense)
+const { data: metaAccounts, refresh: refreshMetaAccounts } = useLazyFetch<any[]>('/api/agency/social/meta/accounts', { server: false, default: () => [] })
 const { state: metaConnectState, connect: connectMeta } = useMetaConnect({ onConnected: refreshMetaAccounts })
 const metaSyncing = ref(false)
 
