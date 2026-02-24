@@ -1,0 +1,45 @@
+Hi Rob,
+
+per our discussion, please see attached the following files:
+
+* October invoicing workbook in excel format (copy of the live document in MS OneDrive) - orange highlights in descriptions are ongoing monthly charges. This also has the tracking categories that are required in the ‘Dropdown Menu’ tab. NOTE: some tabs may have 2-3 invoices on them.
+
+* Dropdown menu for Media Tracking column A, in an excel format - these are the ‘tracking/Option1’ categories for ‘Media/Option1’ in the Xero importing template.
+
+* SalesInvoiceTemplate for importing into Xero in csv format
+
+* Invoicing Descriptions in excel format (this is also in the October invoicing workbook)
+
+* Xero Client List with codes in csv format, these are the names the clients are invoiced to.
+
+
+
+Please see the list of chart of accounts and their codes.
+205 Printing
+210 Production
+215 Marketing
+216 Digital Advertising
+217 Social Media
+219 Video Production
+220 Media
+225 Website
+330 Other
+
+Other requirements:
+* Invoice numbering for importing into Xero - this will need to be updated by me at the end of the month before exporting from Monday (each charging line of the invoice requires this number). If I can add the first client number ie: Alan Mance Motor Group and the invoice numbers could automatically follow on to each client.
+
+* Provision for GST: ie Facebook PPC is GST free all other charges are GST.
+Names: GST on Income, GST Free Expenses, GST on Expenses - these apply to COA 330 Other for Facebook Ads & Google Ads PPC.
+
+
+
+Let me know if there is any clarification or further information you may need.
+
+
+
+Thank you & Kind Regards,
+
+
+
+Kellie White
+Administration & Accounts
