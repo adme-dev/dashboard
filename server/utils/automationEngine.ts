@@ -133,6 +133,14 @@ async function executeAction(automation: BoardAutomation, event: BoardEvent): Pr
       await executeUpdateColumn(event, task, action_config)
       break
 
+    case 'generate_ai_insight':
+      await executeGenerateAiInsight(automation, event, task, action_config)
+      break
+
+    case 'ai_summary':
+      await executeAiSummary(automation, event, action_config)
+      break
+
     default:
       console.warn(`[Automation] Unknown action type: ${action_type}`)
   }
@@ -249,6 +257,124 @@ async function executeUpdateColumn(
       updated_at = NOW()
     RETURNING id
   `, [event.taskId, config.columnId, config.textValue || null, config.numberValue || null])
+}
+
+/**
+ * Generate AI insight action — analyzes the triggering event context via Groq
+ * and delivers the insight as a notification to the configured recipient.
+ */
+async function executeGenerateAiInsight(
+  automation: BoardAutomation,
+  event: BoardEvent,
+  task: any,
+  config: Record<string, any>
+): Promise<void> {
+  try {
+    const { generateGroqInsight, GROQ_MODELS } = await import('~~/server/utils/groqClient')
+
+    // Build a concise context string about the event
+    const eventContext = [
+      `Event: ${event.type}`,
+      task ? `Task: "${task.title}" (status: ${task.status_name || 'unknown'})` : null,
+      task?.assignee_name ? `Assignee: ${task.assignee_name}` : null,
+      event.changes ? `Changes: ${JSON.stringify(event.changes)}` : null,
+    ].filter(Boolean).join('\n')
+
+    const prompt = config.prompt || 'Analyze this board event and provide a brief, actionable insight for the team.'
+
+    const result = await generateGroqInsight(
+      `${prompt}\n\nContext:\n${eventContext}`,
+      {
+        model: GROQ_MODELS.LLAMA_8B,
+        temperature: 0.3,
+        maxTokens: 500,
+        systemPrompt: 'You are an agency operations analyst. Provide brief, actionable insights based on board events.',
+      }
+    )
+
+    // Deliver insight as notification
+    const recipientId = config.to === 'creator' ? task?.creator_id : task?.assignee_id
+    if (recipientId && result) {
+      await createNotification({
+        userId: recipientId,
+        type: 'system',
+        title: `AI Insight: ${task?.title || 'Board Event'}`,
+        message: typeof result === 'string' ? result.slice(0, 500) : 'AI analysis complete.',
+        link: event.taskId
+          ? `/agency/boards/${event.boardId}?task=${event.taskId}`
+          : `/agency/boards/${event.boardId}`,
+        metadata: {
+          automationId: automation.id,
+          automationName: automation.name,
+          aiGenerated: true,
+        },
+      })
+    }
+  } catch (err) {
+    console.error(`[Automation] AI insight generation failed for "${automation.name}":`, err)
+  }
+}
+
+/**
+ * AI summary action — generates a board-level summary on demand
+ * and delivers it as a notification to the board owner or configured recipient.
+ */
+async function executeAiSummary(
+  automation: BoardAutomation,
+  event: BoardEvent,
+  config: Record<string, any>
+): Promise<void> {
+  try {
+    const { generateGroqInsight, GROQ_MODELS } = await import('~~/server/utils/groqClient')
+
+    // Fetch board summary stats
+    const board = await queryOne<any>(`
+      SELECT d.name,
+             COUNT(t.id) FILTER (WHERE t.parent_task_id IS NULL) as total_tasks,
+             COUNT(t.id) FILTER (WHERE t.status = 'done' AND t.parent_task_id IS NULL) as done_tasks,
+             COUNT(t.id) FILTER (WHERE t.due_date < NOW() AND t.status NOT IN ('done', 'complete', 'skipped') AND t.parent_task_id IS NULL) as overdue_tasks,
+             COUNT(t.id) FILTER (WHERE t.status = 'stuck' AND t.parent_task_id IS NULL) as blocked_tasks
+      FROM departments d
+      LEFT JOIN tasks t ON t.department_id = d.id
+      WHERE d.id = $1
+      GROUP BY d.id, d.name
+    `, [event.boardId])
+
+    if (!board) return
+
+    const context = `Board: "${board.name}" — ${board.total_tasks} tasks total, ${board.done_tasks} done, ${board.overdue_tasks} overdue, ${board.blocked_tasks} blocked.`
+    const prompt = config.prompt || 'Provide a concise board status summary with any recommendations for the team.'
+
+    const result = await generateGroqInsight(
+      `${prompt}\n\n${context}`,
+      {
+        model: GROQ_MODELS.LLAMA_8B,
+        temperature: 0.3,
+        maxTokens: 500,
+        systemPrompt: 'You are an agency operations analyst. Provide concise board summaries with actionable recommendations.',
+      }
+    )
+
+    // Deliver to configured recipient or board owner
+    const recipientId = config.recipientId || event.actorId
+    if (recipientId && result) {
+      await createNotification({
+        userId: recipientId,
+        type: 'system',
+        title: `Board Summary: ${board.name}`,
+        message: typeof result === 'string' ? result.slice(0, 500) : 'Summary generated.',
+        link: `/agency/boards/${event.boardId}`,
+        metadata: {
+          automationId: automation.id,
+          automationName: automation.name,
+          aiGenerated: true,
+          boardStats: { total: board.total_tasks, done: board.done_tasks, overdue: board.overdue_tasks },
+        },
+      })
+    }
+  } catch (err) {
+    console.error(`[Automation] AI summary generation failed for "${automation.name}":`, err)
+  }
 }
 
 /**

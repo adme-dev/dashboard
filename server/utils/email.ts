@@ -777,6 +777,55 @@ export async function sendBoardChangeEmail(data: {
 }
 
 /**
+ * Send AI agent digest email
+ */
+export async function sendAiDigestEmail(data: {
+  to: string
+  name: string
+  reportTitle: string
+  reportSummary: string
+  findingsCount: number
+  reportUrl: string
+}): Promise<void> {
+  const client = getResendClient()
+  if (!client) {
+    console.log('[Email] AI digest email (no client) for', data.to)
+    return
+  }
+
+  const findingsBadge = data.findingsCount > 0
+    ? `<span style="display: inline-block; background: #7c3aed; color: white; padding: 2px 10px; border-radius: 12px; font-size: 13px; font-weight: 600;">${data.findingsCount} finding${data.findingsCount === 1 ? '' : 's'}</span>`
+    : ''
+
+  const { html, text } = renderEmailTemplate({
+    title: escapeHtml(data.reportTitle),
+    greeting: `Hi ${escapeHtml(data.name)},`,
+    bodyHtml: `
+      <p>Your AI digest is ready. ${findingsBadge}</p>
+      <div style="background: #f3f4f6; border-left: 4px solid #7c3aed; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;">
+        <p style="margin: 0; color: #4b5563; font-size: 14px; white-space: pre-line;">${escapeHtml(data.reportSummary)}</p>
+      </div>
+      <p style="color: #6b7280; font-size: 13px;">View the full report for detailed findings and recommended actions.</p>
+    `,
+    ctaText: 'View Full Report',
+    ctaUrl: data.reportUrl
+  })
+
+  try {
+    await client.emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: data.to,
+      subject: `${data.reportTitle} - ${data.findingsCount} finding${data.findingsCount === 1 ? '' : 's'}`,
+      html,
+      text
+    })
+    console.log('[Email] AI digest email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send AI digest email:', error)
+  }
+}
+
+/**
  * Format a number as currency
  */
 function formatCurrency(amount: number, currency?: string): string {

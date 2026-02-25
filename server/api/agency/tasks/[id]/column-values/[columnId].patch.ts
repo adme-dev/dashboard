@@ -9,6 +9,7 @@ import { queryOne } from '~~/server/utils/db'
 import { emitBoardEvent } from '~~/server/utils/boardEvents'
 import { notifyBoardSubscribers } from '~~/server/utils/boardNotifications'
 import { evaluateAutomations } from '~~/server/utils/automationEngine'
+import { enqueue } from '~~/server/utils/queue'
 
 export default eventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -130,13 +131,11 @@ export default eventHandler(async (event) => {
           changes: cellChanges,
         }
 
-        // Notify board subscribers (fire-and-forget)
-        notifyBoardSubscribers(boardEvent)
-          .catch(err => console.error('Board notification failed:', err))
+        // Notify board subscribers (queued with retry, fallback to fire-and-forget)
+        enqueue(event, 'board.notify', boardEvent, () => notifyBoardSubscribers(boardEvent))
 
-        // Evaluate board automations (fire-and-forget)
-        evaluateAutomations(taskInfo.department_id, boardEvent)
-          .catch(err => console.error('Automation evaluation failed:', err))
+        // Evaluate board automations (queued with retry, fallback to fire-and-forget)
+        enqueue(event, 'board.automate', boardEvent, () => evaluateAutomations(taskInfo.department_id, boardEvent))
       }
     }
 

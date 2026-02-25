@@ -144,7 +144,8 @@ export function useNotifications() {
       approval_completed: 'i-lucide-check-circle-2',
       invitation_received: 'i-lucide-mail',
       team_update: 'i-lucide-users',
-      system: 'i-lucide-info'
+      system: 'i-lucide-info',
+      ai_digest: 'i-lucide-brain'
     }
     return icons[type] || 'i-lucide-bell'
   }
@@ -164,7 +165,8 @@ export function useNotifications() {
       approval_completed: 'text-emerald-500',
       invitation_received: 'text-blue-500',
       team_update: 'text-neutral-500',
-      system: 'text-neutral-500'
+      system: 'text-neutral-500',
+      ai_digest: 'text-violet-500'
     }
     return colors[type] || 'text-neutral-500'
   }

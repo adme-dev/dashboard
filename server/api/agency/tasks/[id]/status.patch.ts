@@ -7,6 +7,7 @@ import { notifyTaskStatusChanged } from '~~/server/utils/notifications'
 import { emitBoardEvent } from '~~/server/utils/boardEvents'
 import { notifyBoardSubscribers } from '~~/server/utils/boardNotifications'
 import { evaluateAutomations } from '~~/server/utils/automationEngine'
+import { enqueue } from '~~/server/utils/queue'
 
 interface UpdateStatusBody {
   statusId: string
@@ -123,13 +124,11 @@ export default defineEventHandler(async (event) => {
         changes: statusChanges,
       }
 
-      // Notify board subscribers (fire-and-forget)
-      notifyBoardSubscribers(boardEvent)
-        .catch(err => console.error('Board notification failed:', err))
+      // Notify board subscribers (queued with retry, fallback to fire-and-forget)
+      enqueue(event, 'board.notify', boardEvent, () => notifyBoardSubscribers(boardEvent))
 
-      // Evaluate board automations (fire-and-forget)
-      evaluateAutomations(currentTask.department_id, boardEvent)
-        .catch(err => console.error('Automation evaluation failed:', err))
+      // Evaluate board automations (queued with retry, fallback to fire-and-forget)
+      enqueue(event, 'board.automate', boardEvent, () => evaluateAutomations(currentTask.department_id, boardEvent))
     }
 
     // Return updated task

@@ -67,7 +67,10 @@ const mainNav: NavigationMenuItem[] = [
 
   // Finance
   { type: 'label', label: 'Finance' },
+  { label: 'EOM Invoicing', icon: 'i-lucide-file-spreadsheet', to: '/agency/eom', onSelect: close },
   { label: 'Invoices', icon: 'i-lucide-receipt', to: '/agency/invoices', onSelect: close },
+  { label: 'Ad Spend', icon: 'i-lucide-megaphone', to: '/agency/social/spend', onSelect: close },
+  { label: 'Connections', icon: 'i-lucide-plug', to: '/agency/social', onSelect: close },
   { label: 'Expenses', icon: 'i-lucide-credit-card', to: '/agency/expenses', onSelect: close },
   { label: 'Retainers', icon: 'i-lucide-repeat', to: '/agency/retainers', onSelect: close },
   { label: 'Profitability', icon: 'i-lucide-trending-up', to: '/agency/profitability', onSelect: close },
@@ -97,7 +100,10 @@ const mainNav: NavigationMenuItem[] = [
 
   // Tools
   { type: 'label', label: 'Tools' },
-  { label: 'AI', icon: 'i-lucide-sparkles', to: '/agency/ai', onSelect: close },
+  { label: 'AI Chat', icon: 'i-lucide-sparkles', to: '/agency/ai/chat', onSelect: close },
+  { label: 'AI Reports', icon: 'i-lucide-file-bar-chart', to: '/agency/ai/reports', onSelect: close },
+  { label: 'AI Settings', icon: 'i-lucide-settings-2', to: '/agency/ai/settings', onSelect: close },
+  { label: 'Knowledge Base', icon: 'i-lucide-book-open', to: '/agency/ai/knowledge', onSelect: close },
   { label: 'Automation', icon: 'i-lucide-zap', to: '/agency/automation', onSelect: close },
   { label: 'Chat', icon: 'i-lucide-message-circle', to: '/chat', onSelect: close },
 ]
@@ -236,5 +242,6 @@ const groups = computed(() => [{
     </div>
 
     <NotificationsSlideover />
+    <AiChatWidget />
   </UDashboardGroup>
 </template>

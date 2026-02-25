@@ -187,6 +187,7 @@ export type CustomColumnType =
   | 'progress'
   | 'color'
   | 'dependency'
+  | 'invoice_status'
 
 export interface CustomColumn {
   id: string
@@ -343,4 +344,237 @@ export interface MetaSpendSync {
   synced: number
   accounts: number
   totalSpend: number
+}
+
+// ============================================
+// Google Ads Types
+// ============================================
+export interface GoogleAdsAccount {
+  customerId: string
+  name: string
+  currencyCode: string
+  status: string
+}
+
+export interface GoogleAdsSpendRecord {
+  campaignId: string
+  campaignName: string
+  spend: number
+  impressions: number
+  clicks: number
+  conversions: number
+  date: string
+}
+
+export interface CampaignDailyPoint {
+  date: string; spend: number; impressions: number; clicks: number
+}
+export interface CampaignSeries {
+  campaignId: string; campaignName: string
+  campaignType: string | null; status: string | null
+  monthlySpend: number; monthlyBudget: number
+  color: string; daily: CampaignDailyPoint[]
+}
+export interface DailyTotal {
+  date: string; spend: number; budget: number; impressions: number; clicks: number
+}
+export interface CampaignDailySpendResponse {
+  campaigns: CampaignSeries[]; totals: DailyTotal[]; estimated?: boolean
+}
+
+// ============================================
+// AI Chat Types
+// ============================================
+export type AiIntent =
+  | 'task_query' | 'brief_query' | 'project_query' | 'financial_query'
+  | 'team_query' | 'process_query' | 'search' | 'action_request' | 'general'
+
+export interface AiConversation {
+  id: string
+  userId: string
+  title: string | null
+  model: string
+  systemContext: Record<string, any>
+  messageCount: number
+  lastMessageAt: string | null
+  isArchived: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AiContextSource {
+  type: string
+  id: string
+  title: string
+  snippet: string
+  url: string
+}
+
+export interface AiMessage {
+  id: string
+  conversationId: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  contextSources: AiContextSource[]
+  tokenCount: number | null
+  model: string | null
+  latencyMs: number | null
+  isError: boolean
+  feedback?: AiFeedback | null
+  createdAt: string
+}
+
+// ============================================
+// AI Agent Types
+// ============================================
+export type AgentRunType = 'daily_digest' | 'weekly_report' | 'anomaly_scan' | 'manual'
+export type AgentRunStatus = 'running' | 'completed' | 'failed'
+
+export interface AiAgentRun {
+  id: string
+  runType: AgentRunType
+  status: AgentRunStatus
+  startedAt: string
+  completedAt: string | null
+  durationMs: number | null
+  checksPerformed: number
+  findingsCount: number
+  notificationsSent: number
+  errors: any[]
+  summary: Record<string, any>
+  createdAt: string
+}
+
+export interface AiAgentReportSection {
+  title: string
+  content: string
+  type: 'summary' | 'findings' | 'recommendations' | 'metrics'
+  severity?: 'info' | 'warning' | 'critical'
+}
+
+export interface AiAgentReport {
+  id: string
+  runId: string
+  userId: string
+  reportType: string
+  title: string
+  content: string
+  sections: AiAgentReportSection[]
+  notificationId: string | null
+  isRead: boolean
+  createdAt: string
+}
+
+export interface AiAgentPreferences {
+  dailyDigest: boolean
+  weeklyReport: boolean
+  anomalyAlerts: boolean
+  digestTime: string
+  timezone: string
+  reportFocus: string[]
+}
+
+// ============================================
+// AI Knowledge Base Types
+// ============================================
+export type KnowledgeCategory = 'sop' | 'process' | 'faq' | 'client_preference' | 'best_practice'
+export type KnowledgeSource = 'manual' | 'learned' | 'imported'
+
+export interface AiKnowledgeArticle {
+  id: string
+  title: string
+  content: string
+  category: KnowledgeCategory | null
+  tags: string[]
+  embeddingId: string | null
+  source: KnowledgeSource | null
+  authorId: string | null
+  isPublished: boolean
+  viewCount: number
+  usefulnessScore: number
+  createdAt: string
+  updatedAt: string
+}
+
+// ============================================
+// AI Feedback Types
+// ============================================
+export interface AiFeedback {
+  id: string
+  messageId: string
+  userId: string
+  rating: -1 | 1
+  correction: string | null
+  category: string | null
+  createdAt: string
+}
+
+export interface AiLearnedPattern {
+  id: string
+  patternType: string
+  subject: string
+  content: string
+  confidence: number
+  sourceCount: number
+  sourceFeedbackIds: string[]
+  embeddingId: string | null
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+// ============================================
+// Chat Types
+// ============================================
+export interface ChatChannel {
+  id: string
+  name: string
+  slug: string
+  description?: string
+  type: 'channel' | 'dm' | 'group_dm'
+  is_private: boolean
+  created_by?: string
+  department_id?: string
+  task_id?: string
+  avatar_url?: string
+  archived_at?: string
+  created_at: string
+  updated_at: string
+  // Computed in queries
+  unread_count?: number
+  last_message?: ChatMessage
+  members?: ChatChannelMember[]
+}
+
+export interface ChatChannelMember {
+  channel_id: string
+  user_id: string
+  role: 'owner' | 'admin' | 'member'
+  muted_until?: string
+  last_read_message_id?: number
+  joined_at: string
+  // Joined
+  name?: string
+  avatar_url?: string
+}
+
+export interface ChatMessage {
+  id: number
+  channel_id: string
+  user_id: string
+  content: string
+  thread_parent_id?: number
+  edited_at?: string
+  deleted_at?: string
+  metadata?: {
+    attachments?: Array<{ url: string; name: string; type: string; size: number }>
+    mentions?: string[]
+    task_refs?: string[]
+  }
+  created_at: string
+  // Joined
+  user_name?: string
+  user_avatar?: string
+  reactions?: Array<{ emoji: string; user_ids: string[]; count: number }>
+  thread_count?: number
 }

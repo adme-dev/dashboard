@@ -21,6 +21,7 @@ export type NotificationType =
   | 'invitation_received'
   | 'team_update'
   | 'system'
+  | 'ai_digest'
 
 interface CreateNotificationParams {
   userId: string

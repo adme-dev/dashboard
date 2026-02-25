@@ -1,0 +1,12 @@
+name = "ai-agent-worker"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[triggers]
+crons = ["0 21 * * *", "0 22 * * 0"]
+
+[vars]
+API_URL = "https://your-app-url.com"
+
+# INTERNAL_API_KEY should be set as a secret:
+# wrangler secret put INTERNAL_API_KEY
