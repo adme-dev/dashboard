@@ -2,6 +2,7 @@ import { createError } from 'h3'
 import { createXeroClient } from '../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../utils/tokenStore'
 import { getSelectedTenant } from '../../utils/session'
+import { cachedFetch } from '../../utils/kv'
 
 function ensureDateString(d: Date) {
   return d.toISOString().slice(0, 10)
@@ -36,6 +37,9 @@ export default eventHandler(async (event) => {
   const daysBack = Number(query.days) || 90
   const includeDetails = query.details === 'true'
 
+  const cacheKey = `xero-report:${tenantId}:invoice-pipeline:${daysBack}:${includeDetails}`
+
+  return cachedFetch(event, cacheKey, 300, async () => {
   const today = new Date()
   const startDate = addDays(today, -daysBack)
 
@@ -299,4 +303,5 @@ export default eventHandler(async (event) => {
       ...(paidRate < 70 ? ['Analyze and improve invoice conversion rates'] : [])
     ]
   }
+  }) // end cachedFetch
 })

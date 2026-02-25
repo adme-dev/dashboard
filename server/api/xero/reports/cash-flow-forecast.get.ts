@@ -2,6 +2,7 @@ import { createError } from 'h3'
 import { createXeroClient } from '../../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
+import { cachedFetch } from '../../../utils/kv'
 
 function ensureDateString(d: Date) {
   return d.toISOString().slice(0, 10)
@@ -26,6 +27,10 @@ export default eventHandler(async (event) => {
 
   const query = getQuery(event)
   const daysAhead = Number(query.days) || 90
+
+  const cacheKey = `xero-report:${tenantId}:cash-flow-forecast:${daysAhead}`
+
+  return cachedFetch(event, cacheKey, 600, async () => {
   const today = new Date()
   const endDate = addDays(today, daysAhead)
 
@@ -189,4 +194,5 @@ export default eventHandler(async (event) => {
     forecast: forecast.filter((_, index) => index % 7 === 0), // Weekly data points for chart
     dailyForecast: forecast // Full daily data for detailed analysis
   }
+  }) // end cachedFetch
 })

@@ -7,6 +7,13 @@ compatibility_flags = ["nodejs_compat"]
 # Cloudflare Bindings
 # ============================================
 
+# KV — edge caching for tokens, sessions, and report responses
+# Create with: npx wrangler kv namespace create CACHE
+# Then paste the ID below
+[[kv_namespaces]]
+binding = "CACHE"
+id = "<your-kv-namespace-id>"
+
 # Hyperdrive — edge connection pooling for Neon Postgres
 # Create with: npx wrangler hyperdrive create agency-db --connection-string="$DATABASE_URL"
 # Then paste the ID below

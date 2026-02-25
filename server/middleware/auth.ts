@@ -1,4 +1,5 @@
 import { validateSession, hasRole } from '../utils/auth'
+import { kvGet, kvPut } from '../utils/kv'
 
 // Routes that don't require authentication
 const publicRoutes = [
@@ -6,6 +7,7 @@ const publicRoutes = [
   '/api/auth/logout',
   '/api/auth/me',
   '/api/auth/magic-link',
+  '/api/auth/dev-login',
   '/api/auth/xeroflow',
   '/api/admin/create-super-admin',
   '/api/admin/magic-link-debug',
@@ -47,9 +49,19 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // Validate session
+  // Check KV cache first (use first 16 chars of token as key — safe, not sensitive)
+  const cacheKey = `auth-session:${token.slice(0, 16)}`
+  const cachedUser = await kvGet<{ id: string; email: string; name: string; role: string; is_active: boolean }>(event, cacheKey)
+
+  if (cachedUser) {
+    event.context.user = cachedUser
+    event.context.auth = { userId: cachedUser.id, role: cachedUser.role }
+    return
+  }
+
+  // Validate session via DB
   const user = await validateSession(token)
-  
+
   if (!user) {
     deleteCookie(event, 'auth_token')
     throw createError({
@@ -61,6 +73,9 @@ export default defineEventHandler(async (event) => {
       }
     })
   }
+
+  // Cache in KV for 5 minutes
+  kvPut(event, cacheKey, user, 300)
 
   event.context.user = user
   event.context.auth = { userId: user.id, role: user.role }

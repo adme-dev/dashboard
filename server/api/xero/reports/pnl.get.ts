@@ -2,6 +2,7 @@ import { createError } from 'h3'
 import { createXeroClient } from '../../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
+import { cachedFetch } from '../../../utils/kv'
 
 type XeroRow = {
   RowType?: string
@@ -42,6 +43,9 @@ export default eventHandler(async (event) => {
   const toDate = String(query.toDate || '')
   const { from, to } = (!fromDate || !toDate) ? getDefaultRange() : { from: fromDate, to: toDate }
 
+  const cacheKey = `xero-report:${tenantId}:pnl:${from}:${to}`
+
+  return cachedFetch(event, cacheKey, 900, async () => {
   const client = await createXeroClient({ tokenSet: token, event })
   const { body: report } = await (client.accountingApi.getReportProfitAndLoss as any)(
     tenantId,
@@ -98,6 +102,7 @@ export default eventHandler(async (event) => {
     periods,
     expensesByCategory
   }
+  }) // end cachedFetch
 })
 
 function getRowType(row: XeroRow): string {

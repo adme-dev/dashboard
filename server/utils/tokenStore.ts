@@ -1,8 +1,12 @@
 import { createError, type H3Event } from 'h3'
 import { createXeroClient, toStoredTokenSet, type XeroTokenSet } from './xeroClient'
 import { queryOne, query } from './db'
+import { kvGet, kvPut, kvDelete } from './kv'
 
 const refreshLocks = new Map<string, Promise<XeroTokenSet>>()
+
+const TOKEN_TTL = 25 * 60   // 25 minutes (tokens expire at 30 min)
+const TENANT_TTL = 60 * 60  // 60 minutes
 
 /**
  * Store Xero tokens in Postgres for persistence across restarts
@@ -10,7 +14,10 @@ const refreshLocks = new Map<string, Promise<XeroTokenSet>>()
 export async function setTokenForSession(event: H3Event, token: XeroTokenSet) {
   const sid = getSessionId(event)
 
-  // Upsert the session - insert or update if exists
+  // Write to KV for fast reads
+  kvPut(event, `xero-token:${sid}`, token, TOKEN_TTL)
+
+  // Upsert the session in DB for persistence
   await query(`
     INSERT INTO xero_sessions (session_id, access_token, refresh_token, id_token, expires_at, scope, token_type)
     VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -28,7 +35,7 @@ export async function setTokenForSession(event: H3Event, token: XeroTokenSet) {
     token.access_token,
     token.refresh_token,
     token.id_token,
-    new Date(token.expires_at),
+    token.expires_at,
     token.scope,
     token.token_type
   ])
@@ -37,6 +44,11 @@ export async function setTokenForSession(event: H3Event, token: XeroTokenSet) {
 export async function getTokenForSession(event: H3Event): Promise<XeroTokenSet | undefined> {
   const sid = getSessionId(event)
 
+  // Check KV first
+  const cached = await kvGet<XeroTokenSet>(event, `xero-token:${sid}`)
+  if (cached) return cached
+
+  // Fall back to DB
   const row = await queryOne<{
     access_token: string
     refresh_token: string | null
@@ -52,7 +64,7 @@ export async function getTokenForSession(event: H3Event): Promise<XeroTokenSet |
 
   if (!row) return undefined
 
-  return {
+  const token = {
     access_token: row.access_token,
     refresh_token: row.refresh_token || undefined,
     id_token: row.id_token || undefined,
@@ -60,10 +72,17 @@ export async function getTokenForSession(event: H3Event): Promise<XeroTokenSet |
     scope: row.scope || undefined,
     token_type: row.token_type || 'Bearer'
   } as any
+
+  // Backfill KV on DB hit
+  kvPut(event, `xero-token:${sid}`, token, TOKEN_TTL)
+
+  return token
 }
 
 export async function clearTokenForSession(event: H3Event) {
   const sid = getSessionId(event)
+  kvDelete(event, `xero-token:${sid}`)
+  kvDelete(event, `xero-tenant:${sid}`)
   await query('DELETE FROM xero_sessions WHERE session_id = $1', [sid])
 }
 
@@ -72,6 +91,9 @@ export async function clearTokenForSession(event: H3Event) {
  */
 export async function setTenantForSession(event: H3Event, tenantId: string, tenantName: string) {
   const sid = getSessionId(event)
+
+  const tenant = { tenantId, tenantName }
+  kvPut(event, `xero-tenant:${sid}`, tenant, TENANT_TTL)
 
   await query(`
     INSERT INTO xero_tenants (session_id, tenant_id, tenant_name)
@@ -87,6 +109,11 @@ export async function setTenantForSession(event: H3Event, tenantId: string, tena
 export async function getTenantForSession(event: H3Event): Promise<{ tenantId: string; tenantName: string } | undefined> {
   const sid = getSessionId(event)
 
+  // Check KV first
+  const cached = await kvGet<{ tenantId: string; tenantName: string }>(event, `xero-tenant:${sid}`)
+  if (cached) return cached
+
+  // Fall back to DB
   const row = await queryOne<{ tenant_id: string; tenant_name: string }>(`
     SELECT tenant_id, tenant_name
     FROM xero_tenants
@@ -95,10 +122,15 @@ export async function getTenantForSession(event: H3Event): Promise<{ tenantId: s
 
   if (!row) return undefined
 
-  return {
+  const tenant = {
     tenantId: row.tenant_id,
     tenantName: row.tenant_name
   }
+
+  // Backfill KV on DB hit
+  kvPut(event, `xero-tenant:${sid}`, tenant, TENANT_TTL)
+
+  return tenant
 }
 
 export async function getActiveTokenForSession(event: H3Event, opts: { minTtlMs?: number } = {}): Promise<XeroTokenSet> {

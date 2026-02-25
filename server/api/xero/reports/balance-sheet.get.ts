@@ -2,6 +2,7 @@ import { createError } from 'h3'
 import { createXeroClient } from '../../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
+import { cachedFetch } from '../../../utils/kv'
 
 type XeroRow = {
   RowType?: string
@@ -38,6 +39,9 @@ export default eventHandler(async (event) => {
   const query = getQuery(event)
   const toDate = String(query.toDate || getDefaultToDate())
 
+  const cacheKey = `xero-report:${tenantId}:balance-sheet:${toDate}`
+
+  return cachedFetch(event, cacheKey, 900, async () => {
   const client = await createXeroClient({ tokenSet: token, event })
   const { body: report } = await (client.accountingApi.getReportBalanceSheet as any)(
     tenantId,
@@ -78,6 +82,7 @@ export default eventHandler(async (event) => {
     debtToEquity,
     equityRatio
   }
+  }) // end cachedFetch
 })
 
 function flattenRows(rows: XeroRow[] | undefined, out: XeroRow[] = []): XeroRow[] {
