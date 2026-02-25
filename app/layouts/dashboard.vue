@@ -1,45 +1,45 @@
 <template>
-  <div class="min-h-screen bg-gray-50">
+  <div class="min-h-screen bg-[var(--ui-bg)]">
     <!-- Dashboard Navigation -->
-    <nav class="bg-white border-b border-gray-200 sticky top-0 z-50">
+    <nav class="bg-[var(--ui-bg-elevated)] border-b border-[var(--ui-border)] sticky top-0 z-50">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex items-center justify-between h-16">
           <!-- Logo -->
           <div class="flex items-center gap-2">
-            <div class="w-8 h-8 bg-[#13B5EA] rounded flex items-center justify-center text-white font-bold">
+            <div class="w-8 h-8 bg-[var(--ui-primary)] rounded flex items-center justify-center text-white font-bold">
               X
             </div>
-            <span class="font-semibold text-gray-900">XeroFlow</span>
+            <span class="font-semibold text-[var(--ui-text-highlighted)]">XeroFlow</span>
           </div>
 
           <!-- Navigation Links -->
           <div class="hidden md:flex items-center gap-1">
-            <NuxtLink 
-              to="/dashboard" 
-              class="px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100"
-              :class="{ 'bg-gray-100 text-gray-900': $route.path === '/dashboard' }"
+            <NuxtLink
+              to="/dashboard"
+              class="px-3 py-2 rounded-md text-sm font-medium text-[var(--ui-text)] hover:text-[var(--ui-text-highlighted)] hover:bg-[var(--ui-bg-accented)]"
+              :class="{ 'bg-[var(--ui-bg-accented)] text-[var(--ui-text-highlighted)]': $route.path === '/dashboard' }"
             >
               Dashboard
             </NuxtLink>
-            <NuxtLink 
-              to="/dashboard/implementations" 
-              class="px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100"
-              :class="{ 'bg-gray-100 text-gray-900': $route.path.includes('/implementations') }"
+            <NuxtLink
+              to="/dashboard/implementations"
+              class="px-3 py-2 rounded-md text-sm font-medium text-[var(--ui-text)] hover:text-[var(--ui-text-highlighted)] hover:bg-[var(--ui-bg-accented)]"
+              :class="{ 'bg-[var(--ui-bg-accented)] text-[var(--ui-text-highlighted)]': $route.path.includes('/implementations') }"
             >
               Implementations
             </NuxtLink>
-            <NuxtLink 
-              to="/dashboard/templates" 
-              class="px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100"
-              :class="{ 'bg-gray-100 text-gray-900': $route.path.includes('/templates') }"
+            <NuxtLink
+              to="/dashboard/templates"
+              class="px-3 py-2 rounded-md text-sm font-medium text-[var(--ui-text)] hover:text-[var(--ui-text-highlighted)] hover:bg-[var(--ui-bg-accented)]"
+              :class="{ 'bg-[var(--ui-bg-accented)] text-[var(--ui-text-highlighted)]': $route.path.includes('/templates') }"
             >
               Templates
             </NuxtLink>
-            <NuxtLink 
+            <NuxtLink
               v-if="isProjectManager"
-              to="/dashboard/team" 
-              class="px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100"
-              :class="{ 'bg-gray-100 text-gray-900': $route.path.includes('/team') }"
+              to="/dashboard/team"
+              class="px-3 py-2 rounded-md text-sm font-medium text-[var(--ui-text)] hover:text-[var(--ui-text-highlighted)] hover:bg-[var(--ui-bg-accented)]"
+              :class="{ 'bg-[var(--ui-bg-accented)] text-[var(--ui-text-highlighted)]': $route.path.includes('/team') }"
             >
               Team
             </NuxtLink>
@@ -47,14 +47,14 @@
 
           <!-- User Menu -->
           <div class="flex items-center gap-4">
-            <button class="relative p-2 text-gray-400 hover:text-gray-500">
+            <button class="relative p-2 text-[var(--ui-text-muted)] hover:text-[var(--ui-text)]">
               <UIcon name="i-lucide-bell" class="w-5 h-5" />
               <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
             </button>
-            
+
             <UDropdownMenu :items="userMenuItems">
-              <button class="flex items-center gap-2 text-sm text-gray-700">
-                <div class="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
+              <button class="flex items-center gap-2 text-sm text-[var(--ui-text)]">
+                <div class="w-8 h-8 bg-[var(--ui-bg-accented)] rounded-full flex items-center justify-center">
                   <UIcon name="i-lucide-user" class="w-4 h-4" />
                 </div>
                 <span class="hidden sm:block">{{ user?.name }}</span>
@@ -97,7 +97,7 @@ const userMenuItems = [
 onMounted(async () => {
   const { fetchUser, isAuthenticated } = useAuth()
   await fetchUser()
-  
+
   if (!isAuthenticated.value) {
     navigateTo('/login')
   }

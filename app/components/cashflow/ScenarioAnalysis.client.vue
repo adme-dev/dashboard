@@ -72,12 +72,6 @@ const formatCurrency = (value: number) => {
   }).format(value)
 }
 
-// Chart configuration
-const xAccessor = (d: any) => d.index
-const bestCaseAccessor = (d: any) => d.bestCase
-const likelyCaseAccessor = (d: any) => d.likelyCase
-const worstCaseAccessor = (d: any) => d.worstCase
-
 // Color configuration
 const bestCaseColor = '#10b981'  // emerald-500
 const likelyCaseColor = '#3b82f6' // blue-500
@@ -140,31 +134,14 @@ const scenarioMetrics = computed(() => {
   }
 })
 
-// Tooltip configuration
-const tooltipTemplate = (d: any) => {
-  const data = d.data || d
-  return `
-    <div class="p-3 bg-white dark:bg-gray-800 rounded-lg shadow-lg border">
-      <div class="font-semibold text-sm mb-2">${data.dateFormatted}</div>
-      <div class="space-y-1 text-xs">
-        <div class="flex justify-between gap-4">
-          <span class="text-emerald-600">Best Case:</span>
-          <span class="font-medium">${formatCurrency(data.bestCase)}</span>
-        </div>
-        <div class="flex justify-between gap-4">
-          <span class="text-blue-600">Most Likely:</span>
-          <span class="font-medium">${formatCurrency(data.likelyCase)}</span>
-        </div>
-        <div class="flex justify-between gap-4">
-          <span class="text-red-600">Worst Case:</span>
-          <span class="font-medium">${formatCurrency(data.worstCase)}</span>
-        </div>
-      </div>
-    </div>
-  `
-}
-const chartWidth = 760
-const chartHeight = 280
+const marginLeft = 60
+const marginTop = 10
+const marginRight = 10
+const marginBottom = 25
+const chartWidth = 700
+const chartHeight = 260
+const viewBoxWidth = marginLeft + chartWidth + marginRight
+const viewBoxHeight = marginTop + chartHeight + marginBottom
 
 const maxIndex = computed(() => Math.max(1, chartData.value.length - 1))
 
@@ -202,18 +179,18 @@ const yPosition = (value: number) => {
 </script>
 
 <template>
-  <UCard class="h-full">
+  <UCard>
     <template #header>
-      <div class="flex items-center justify-between">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 class="text-lg font-semibold">Scenario Analysis</h3>
           <p class="text-sm text-muted">
             Best case, most likely, and worst case projections
           </p>
         </div>
-        
+
         <!-- Scenario Selector -->
-        <div class="flex gap-1">
+        <div class="flex flex-wrap gap-1">
           <UButton
             v-for="scenario in scenarios"
             :key="scenario.key"
@@ -229,11 +206,9 @@ const yPosition = (value: number) => {
     </template>
 
     <!-- Loading State -->
-    <div v-if="loading" class="flex items-center justify-center h-96">
-      <div class="text-center">
-        <USkeleton class="h-80 w-full mb-4" />
-        <USkeleton class="h-4 w-48 mx-auto" />
-      </div>
+    <div v-if="loading">
+      <USkeleton class="w-full aspect-[5/2] rounded-xl mb-4" />
+      <USkeleton class="h-4 w-48 mx-auto" />
     </div>
 
     <!-- Chart -->
@@ -284,84 +259,91 @@ const yPosition = (value: number) => {
       </div>
 
       <!-- Chart Container -->
-      <div class="h-80 w-full">
+      <div class="w-full">
         <ClientOnly>
-          <div class="w-full h-80 flex items-center justify-center">
-            <!-- Simple Line Chart using SVG -->
-            <svg width="100%" height="100%" viewBox="0 0 880 320" preserveAspectRatio="xMidYMid meet" class="border border-gray-200 dark:border-gray-700 rounded">
-              <!-- Grid lines -->
-              <defs>
-                <pattern id="grid" width="92" height="32" patternUnits="userSpaceOnUse">
-                  <path d="M 92 0 L 0 0 0 32" fill="none" stroke="#e5e7eb" stroke-width="1" opacity="0.3"/>
-                </pattern>
-              </defs>
-              <rect width="100%" height="100%" fill="url(#grid)" />
-              
-              <!-- Data visualization -->
-              <g v-if="chartData.length > 0" transform="translate(50, 20)">
-                <!-- Best Case Line -->
-                <polyline
-                  v-if="selectedScenario === 'all' || selectedScenario === 'best'"
-                  :points="chartData.map((d, i) => `${(i / maxIndex) * chartWidth},${yPosition(d.bestCase)}`).join(' ')"
-                  fill="none"
-                  :stroke="bestCaseColor"
-                  stroke-width="2"
-                  :stroke-dasharray="selectedScenario === 'best' ? 'none' : '5,5'"
-                  class="transition-all duration-300"
-                />
-                
-                <!-- Most Likely Line -->
-                <polyline
-                  v-if="selectedScenario === 'all' || selectedScenario === 'likely'"
-                  :points="chartData.map((d, i) => `${(i / maxIndex) * chartWidth},${yPosition(d.likelyCase)}`).join(' ')"
-                  fill="none"
-                  :stroke="likelyCaseColor"
-                  stroke-width="3"
-                  class="transition-all duration-300"
-                />
-                
-                <!-- Worst Case Line -->
-                <polyline
-                  v-if="selectedScenario === 'all' || selectedScenario === 'worst'"
-                  :points="chartData.map((d, i) => `${(i / maxIndex) * chartWidth},${yPosition(d.worstCase)}`).join(' ')"
-                  fill="none"
-                  :stroke="worstCaseColor"
-                  stroke-width="2"
-                  :stroke-dasharray="selectedScenario === 'worst' ? 'none' : '5,5'"
-                  class="transition-all duration-300"
-                />
-                
-                <!-- Zero line -->
-                <line x1="0" :y1="yPosition(0)" :x2="chartWidth" :y2="yPosition(0)" stroke="#6b7280" stroke-width="1" stroke-dasharray="4,4" opacity="0.5" />
-                
-                <!-- Data points -->
-                <g v-if="selectedScenario !== 'all'">
-                  <circle
-                    v-for="(point, index) in chartData"
-                    :key="index"
-                    :cx="(index / maxIndex) * chartWidth"
-                    :cy="yPosition(point[selectedScenario === 'best' ? 'bestCase' : selectedScenario === 'likely' ? 'likelyCase' : 'worstCase'])"
-                    r="3"
-                    :fill="selectedScenario === 'best' ? bestCaseColor : selectedScenario === 'likely' ? likelyCaseColor : worstCaseColor"
-                    class="cursor-pointer hover:r-4 transition-all"
-                    :title="`${point.dateFormatted}: ${formatCurrency(point[selectedScenario === 'best' ? 'bestCase' : selectedScenario === 'likely' ? 'likelyCase' : 'worstCase'])}`"
-                  />
-                </g>
+          <svg
+            class="w-full h-auto border border-gray-200 dark:border-gray-700 rounded-xl bg-white/60 dark:bg-gray-900/40"
+            :viewBox="`0 0 ${viewBoxWidth} ${viewBoxHeight}`"
+            preserveAspectRatio="xMidYMid meet"
+          >
+            <!-- Grid lines -->
+            <defs>
+              <pattern id="scenario-grid" width="80" height="32" patternUnits="userSpaceOnUse">
+                <path d="M 80 0 L 0 0 0 32" fill="none" stroke="currentColor" opacity="0.08" />
+              </pattern>
+            </defs>
+            <rect :width="viewBoxWidth" :height="viewBoxHeight" fill="url(#scenario-grid)" />
+
+            <!-- Data visualization -->
+            <g v-if="chartData.length > 0" :transform="`translate(${marginLeft}, ${marginTop})`">
+              <!-- Best Case Line -->
+              <polyline
+                v-if="selectedScenario === 'all' || selectedScenario === 'best'"
+                :points="chartData.map((d, i) => `${(i / maxIndex) * chartWidth},${yPosition(d.bestCase)}`).join(' ')"
+                fill="none"
+                :stroke="bestCaseColor"
+                stroke-width="2"
+                stroke-linejoin="round"
+                :stroke-dasharray="selectedScenario === 'best' ? 'none' : '5,5'"
+              />
+
+              <!-- Most Likely Line -->
+              <polyline
+                v-if="selectedScenario === 'all' || selectedScenario === 'likely'"
+                :points="chartData.map((d, i) => `${(i / maxIndex) * chartWidth},${yPosition(d.likelyCase)}`).join(' ')"
+                fill="none"
+                :stroke="likelyCaseColor"
+                stroke-width="2.5"
+                stroke-linejoin="round"
+              />
+
+              <!-- Worst Case Line -->
+              <polyline
+                v-if="selectedScenario === 'all' || selectedScenario === 'worst'"
+                :points="chartData.map((d, i) => `${(i / maxIndex) * chartWidth},${yPosition(d.worstCase)}`).join(' ')"
+                fill="none"
+                :stroke="worstCaseColor"
+                stroke-width="2"
+                stroke-linejoin="round"
+                :stroke-dasharray="selectedScenario === 'worst' ? 'none' : '5,5'"
+              />
+
+              <!-- Zero line -->
+              <line x1="0" :y1="yPosition(0)" :x2="chartWidth" :y2="yPosition(0)" stroke="#6b7280" stroke-width="1" stroke-dasharray="4,4" opacity="0.5" />
+
+              <!-- Data points (single scenario mode) -->
+              <g v-if="selectedScenario !== 'all'">
+                <circle
+                  v-for="(point, index) in chartData"
+                  :key="index"
+                  :cx="(index / maxIndex) * chartWidth"
+                  :cy="yPosition(point[selectedScenario === 'best' ? 'bestCase' : selectedScenario === 'likely' ? 'likelyCase' : 'worstCase'])"
+                  r="3"
+                  :fill="selectedScenario === 'best' ? bestCaseColor : selectedScenario === 'likely' ? likelyCaseColor : worstCaseColor"
+                  class="cursor-pointer"
+                >
+                  <title>{{ point.dateFormatted }}: {{ formatCurrency(point[selectedScenario === 'best' ? 'bestCase' : selectedScenario === 'likely' ? 'likelyCase' : 'worstCase']) }}</title>
+                </circle>
               </g>
-              
-              <!-- Axis labels -->
-              <g class="text-xs fill-gray-600">
-                <text x="35" y="15" text-anchor="end">{{ formatCurrency(yLabels.top) }}</text>
-                <text x="35" y="180" text-anchor="end">{{ formatCurrency(yLabels.mid) }}</text>
-                <text x="35" y="315" text-anchor="end">{{ formatCurrency(yLabels.bottom) }}</text>
-              </g>
-            </svg>
-          </div>
+            </g>
+
+            <!-- Y-axis labels -->
+            <g class="text-[11px] fill-gray-500 dark:fill-gray-400">
+              <text :x="marginLeft - 8" :y="marginTop + 4" text-anchor="end">{{ formatCurrency(yLabels.top) }}</text>
+              <text :x="marginLeft - 8" :y="marginTop + chartHeight / 2 + 4" text-anchor="end">{{ formatCurrency(yLabels.mid) }}</text>
+              <text :x="marginLeft - 8" :y="marginTop + chartHeight + 4" text-anchor="end">{{ formatCurrency(yLabels.bottom) }}</text>
+            </g>
+
+            <!-- X-axis labels -->
+            <g v-if="chartData.length > 0" class="text-[11px] fill-gray-500 dark:fill-gray-400">
+              <text :x="marginLeft" :y="viewBoxHeight - 4" text-anchor="start">{{ chartData[0]?.dateFormatted }}</text>
+              <text v-if="chartData.length > 2" :x="marginLeft + chartWidth / 2" :y="viewBoxHeight - 4" text-anchor="middle">{{ chartData[Math.floor(chartData.length / 2)]?.dateFormatted }}</text>
+              <text :x="marginLeft + chartWidth" :y="viewBoxHeight - 4" text-anchor="end">{{ chartData[chartData.length - 1]?.dateFormatted }}</text>
+            </g>
+          </svg>
 
           <template #fallback>
-            <div class="flex items-center justify-center h-80">
-              <USkeleton class="h-full w-full" />
-            </div>
+            <USkeleton class="w-full aspect-[5/2] rounded-xl" />
           </template>
         </ClientOnly>
       </div>
@@ -419,7 +401,7 @@ const yPosition = (value: number) => {
     </div>
 
     <!-- Empty State -->
-    <div v-else class="flex items-center justify-center h-96">
+    <div v-else class="flex items-center justify-center aspect-[5/2]">
       <div class="text-center">
         <UIcon name="i-lucide-git-branch" class="h-12 w-12 text-muted/50 mx-auto mb-4" />
         <p class="text-muted">No scenario data available</p>
@@ -428,11 +410,3 @@ const yPosition = (value: number) => {
     </div>
   </UCard>
 </template>
-
-<style scoped>
-/* Ensure chart container has proper dimensions */
-.vis-chart-container {
-  width: 100%;
-  height: 100%;
-}
-</style>

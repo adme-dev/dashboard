@@ -1,312 +1,810 @@
 <script setup lang="ts">
-import { format } from 'date-fns'
+import { format, isPast, isToday, isThisWeek, startOfDay, addDays, parseISO } from 'date-fns'
 
-definePageMeta({
-  title: 'Agency Dashboard'
-})
+definePageMeta({ title: 'Dashboard' })
 
-// Agency KPIs
-const { data: kpis, pending: kpisLoading } = await useFetch('/api/agency/kpis')
+const { user, isManager, isAdmin } = useAuth()
+const {
+  activeWidgets, pinnedItems, availableWidgets, widgetCategories, allWidgets,
+  isVisible, toggleWidget, pinItem, unpinItem,
+  loadPreferences, savePreferences, resetToDefaults, applyPersona, saving,
+  loaded: prefsLoaded, preferences,
+} = useDashboardWidgets()
 
-// Active projects summary
-const { data: projectsSummary } = await useFetch('/api/agency/projects/summary')
+// --- Load preferences (non-blocking) ---
+loadPreferences()
 
-// Recent time entries
-const { data: recentTime } = await useFetch('/api/agency/time/recent')
+// --- Data fetching (lazy — page renders immediately with skeletons) ---
+const { data: teamData, status: teamStatus } = useLazyFetch('/api/agency/team-members')
+const { data: kpis, status: kpisStatus } = useLazyFetch('/api/agency/kpis')
+const { data: workspacesData, status: wsStatus } = useLazyFetch('/api/agency/workspaces')
+const { data: boardsData, status: boardsStatus } = useLazyFetch('/api/agency/boards')
+const { data: recentTime, status: timeStatus } = useLazyFetch('/api/agency/time/recent')
 
-// Format currency
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(value)
+// --- Onboarding state ---
+const showOnboarding = computed(() => prefsLoaded.value && !preferences.value)
+
+async function handlePersonaSelect(role: string) {
+  applyPersona(role)
+  await savePreferences()
 }
 
-// Format percentage
-const formatPercent = (value: number) => {
-  return `${value.toFixed(1)}%`
+// --- Match current user to their team_member record ---
+const myMember = computed(() => {
+  const members = (teamData.value as any)?.members || []
+  return members.find((m: any) =>
+    m.email === user.value?.email || m.name === user.value?.name
+  )
+})
+
+// --- Fetch my assigned tasks ---
+const { data: myTasksData } = useLazyFetch('/api/agency/tasks', {
+  query: computed(() => ({
+    assigneeId: myMember.value?.id,
+    excludeCompleted: 'true',
+    limit: 30
+  })),
+  watch: [myMember]
+})
+
+// --- Helpers ---
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value)
+const formatPercent = (value: number) => `${value.toFixed(1)}%`
+const formatCompact = (value: number) => {
+  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`
+  if (value >= 1000) return `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}K`
+  return value.toString()
 }
 
-// KPI cards configuration
-const kpiCards = computed(() => {
-  const kpisData = kpis.value as any
-  const grossMargin = kpisData?.grossMargin ?? 0
-  const avgUtilizationRate = kpisData?.avgUtilizationRate ?? 0
-  const outstandingAR = kpisData?.outstandingAR ?? 0
-
-  return [
-    {
-      title: 'Monthly Revenue',
-      value: formatCurrency(kpisData?.totalRevenue || 0),
-      icon: 'i-lucide-dollar-sign',
-      change: kpisData?.revenueChange || 0,
-      color: '#13B5EA',
-      bgColor: '#E6F7FC'
-    },
-    {
-      title: 'Gross Margin',
-      value: formatPercent(grossMargin),
-      icon: 'i-lucide-trending-up',
-      change: kpisData?.marginChange || 0,
-      color: grossMargin >= 30 ? '#7DD3A8' : '#F4B942',
-      bgColor: grossMargin >= 30 ? '#E8F5E9' : '#FFF8E1'
-    },
-    {
-      title: 'Utilization Rate',
-      value: formatPercent(avgUtilizationRate),
-      icon: 'i-lucide-clock',
-      change: kpisData?.utilizationChange || 0,
-      color: avgUtilizationRate >= 70 ? '#7DD3A8' : '#F4B942',
-      bgColor: avgUtilizationRate >= 70 ? '#E8F5E9' : '#FFF8E1'
-    },
-    {
-      title: 'Active Projects',
-      value: kpisData?.activeProjects || 0,
-      icon: 'i-lucide-folder-kanban',
-      change: 0,
-      color: '#13B5EA',
-      bgColor: '#E6F7FC'
-    },
-    {
-      title: 'MRR (Retainers)',
-      value: formatCurrency(kpisData?.mrr || 0),
-      icon: 'i-lucide-repeat',
-      change: kpisData?.mrrChange || 0,
-      color: '#9B87F5',
-      bgColor: '#F0EEFC'
-    },
-    {
-      title: 'Outstanding AR',
-      value: formatCurrency(outstandingAR),
-      icon: 'i-lucide-receipt',
-      change: 0,
-      color: outstandingAR > 50000 ? '#FF6B6B' : '#666666',
-      bgColor: outstandingAR > 50000 ? '#FFEBEE' : '#F5F5F5'
-    }
-  ]
+const greeting = computed(() => {
+  const hour = new Date().getHours()
+  if (hour < 12) return 'Good morning'
+  if (hour < 17) return 'Good afternoon'
+  return 'Good evening'
 })
+const today = computed(() => format(new Date(), 'EEEE, d MMMM yyyy'))
+const firstName = computed(() => user.value?.name?.split(' ')[0] || '')
 
-// Project status distribution
-const projectStatusData = computed(() => {
-  if (!projectsSummary.value) return []
-  return [
-    { name: 'Active', value: projectsSummary.value.active || 0, color: '#13B5EA' },
-    { name: 'On Hold', value: projectsSummary.value.onHold || 0, color: '#F4B942' },
-    { name: 'Completed', value: projectsSummary.value.completed || 0, color: '#7DD3A8' },
-    { name: 'Draft', value: projectsSummary.value.draft || 0, color: '#9ca3af' }
-  ]
+// --- My Tasks grouped ---
+const myTasks = computed(() => (myTasksData.value as any)?.tasks || [])
+
+const overdueTasks = computed(() =>
+  myTasks.value.filter((t: any) =>
+    t.dueDate && isPast(startOfDay(addDays(parseISO(t.dueDate), 1))) && !t.completedAt
+  )
+)
+const dueTodayTasks = computed(() =>
+  myTasks.value.filter((t: any) =>
+    t.dueDate && isToday(parseISO(t.dueDate)) && !overdueTasks.value.includes(t)
+  )
+)
+const upcomingTasks = computed(() =>
+  myTasks.value.filter((t: any) =>
+    t.dueDate && !isPast(startOfDay(addDays(parseISO(t.dueDate), 1))) && !isToday(parseISO(t.dueDate))
+  ).slice(0, 5)
+)
+const noDueDateTasks = computed(() =>
+  myTasks.value.filter((t: any) => !t.dueDate).slice(0, 5)
+)
+
+const myTaskCount = computed(() => myTasks.value.length)
+const overdueCount = computed(() => overdueTasks.value.length)
+
+const priorityColors: Record<string, string> = {
+  urgent: 'text-red-600 dark:text-red-400',
+  high: 'text-orange-600 dark:text-orange-400',
+  medium: 'text-blue-600 dark:text-blue-400',
+  low: 'text-neutral-500 dark:text-neutral-400'
+}
+const priorityIcons: Record<string, string> = {
+  urgent: 'i-lucide-alert-circle',
+  high: 'i-lucide-arrow-up',
+  medium: 'i-lucide-minus',
+  low: 'i-lucide-arrow-down'
+}
+
+const formatDueDate = (date: string) => {
+  const d = parseISO(date)
+  if (isToday(d)) return 'Today'
+  if (isPast(startOfDay(addDays(d, 1)))) return format(d, 'MMM d') + ' (overdue)'
+  if (isThisWeek(d)) return format(d, 'EEEE')
+  return format(d, 'MMM d')
+}
+
+// --- Workspaces ---
+const workspaces = computed(() => (workspacesData.value as any)?.workspaces || [])
+const workspaceColors: Record<string, string> = {
+  blue: 'bg-blue-500', green: 'bg-emerald-500', purple: 'bg-violet-500',
+  red: 'bg-red-500', orange: 'bg-orange-500', yellow: 'bg-amber-500',
+  pink: 'bg-pink-500', cyan: 'bg-cyan-500',
+}
+const getWsColor = (c: string) => workspaceColors[c] || 'bg-neutral-500'
+const wsIcons: Record<string, string> = {
+  briefcase: 'i-lucide-briefcase', building: 'i-lucide-building-2',
+  megaphone: 'i-lucide-megaphone', film: 'i-lucide-film',
+  'shopping-bag': 'i-lucide-shopping-bag', users: 'i-lucide-users',
+}
+const getWsIcon = (i: string) => wsIcons[i] || 'i-lucide-briefcase'
+
+// --- Boards (sorted by activity) ---
+const boards = computed(() => {
+  const raw = (boardsData.value as any)?.boards || []
+  return [...raw]
+    .sort((a: any, b: any) => (b.stats?.total || 0) - (a.stats?.total || 0))
+    .slice(0, 6)
 })
+const cleanDescription = (desc: string | null) => {
+  if (!desc) return null
+  if (desc.startsWith('Imported from Monday')) return null
+  return desc
+}
+
+// --- Financial KPIs ---
+const kpiData = computed(() => kpis.value as any)
+const financialMetrics = computed(() => [
+  { label: 'Revenue', value: formatCurrency(kpiData.value?.totalRevenue || 0), icon: 'i-lucide-dollar-sign', color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-500/10' },
+  { label: 'Gross Margin', value: formatPercent(kpiData.value?.grossMargin || 0), icon: 'i-lucide-trending-up', color: (kpiData.value?.grossMargin || 0) >= 30 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400', bg: (kpiData.value?.grossMargin || 0) >= 30 ? 'bg-emerald-50 dark:bg-emerald-500/10' : 'bg-amber-50 dark:bg-amber-500/10' },
+  { label: 'MRR', value: formatCurrency(kpiData.value?.mrr || 0), icon: 'i-lucide-repeat', color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-500/10' },
+  { label: 'Active Projects', value: kpiData.value?.activeProjects || 0, icon: 'i-lucide-folder-kanban', color: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-50 dark:bg-violet-500/10' },
+])
+
+// --- Team utilization (top 6) ---
+const teamUtilization = computed(() => (kpiData.value?.teamUtilization || []).slice(0, 6))
+const avgUtilization = computed(() => kpiData.value?.avgUtilizationRate || 0)
+
+// --- Budget alerts ---
+const budgetAlerts = computed(() => kpiData.value?.budgetAlerts || [])
+
+// --- Time summary ---
+const timeSummary = computed(() => (recentTime.value as any)?.summary)
+
+// --- Quick actions ---
+const quickActions = [
+  { label: 'All Boards', icon: 'i-lucide-layout-grid', to: '/agency/boards' },
+  { label: 'Workflow', icon: 'i-lucide-git-branch', to: '/agency/workflow' },
+  { label: 'Time Log', icon: 'i-lucide-clock', to: '/agency/time' },
+  { label: 'EOM', icon: 'i-lucide-file-spreadsheet', to: '/agency/eom' },
+  { label: 'Ad Spend', icon: 'i-lucide-megaphone', to: '/agency/social/spend' },
+  { label: 'Clients', icon: 'i-lucide-building-2', to: '/agency/clients' },
+]
+
+// --- Customize modal ---
+const showCustomize = ref(false)
+
+async function handleSaveCustomize() {
+  await savePreferences()
+  showCustomize.value = false
+}
+
+// --- Pin board from boards list ---
+function handlePinBoard(board: any) {
+  pinItem({ type: 'board', id: board.id, label: board.name })
+}
+
+// --- Pinned item icons ---
+const pinnedTypeIcons: Record<string, string> = {
+  board: 'i-lucide-layout-grid',
+  task: 'i-lucide-check-square',
+  workspace: 'i-lucide-layers',
+}
+const pinnedTypeRoutes: Record<string, (item: any) => string> = {
+  board: (item) => `/agency/boards/${item.id}`,
+  task: (item) => `/agency/tasks/${item.id}`,
+  workspace: (item) => `/agency/w/${item.id}`,
+}
 </script>
 
 <template>
-  <div class="min-h-screen bg-white w-full">
+  <div class="min-h-screen bg-[var(--ui-bg)] w-full overflow-y-auto">
+    <!-- Onboarding for first-time users -->
+    <DashboardOnboarding v-if="showOnboarding" @select="handlePersonaSelect" />
+
+    <!-- Main Dashboard -->
+    <template v-else>
     <!-- Header -->
-    <div class="border-b border-black/10 w-full">
-      <div class="w-full px-6 py-6">
-        <div class="flex items-center justify-between">
+    <div class="border-b border-[var(--ui-border)]">
+      <div class="px-6 lg:px-8 py-5">
+        <div class="flex items-start justify-between">
           <div>
-            <h1 class="text-3xl font-normal text-black mb-1">Agency Dashboard</h1>
-            <p class="text-black/60">Track projects, tasks, and team performance</p>
+            <h1 class="text-2xl font-semibold text-[var(--ui-text-highlighted)]">
+              {{ greeting }}<span v-if="firstName">, {{ firstName }}</span>
+            </h1>
+            <p class="text-sm text-[var(--ui-text-muted)] mt-0.5">{{ today }}</p>
           </div>
-          <div class="flex items-center gap-3">
-            <NuxtLink
-              to="/agency/workflow"
-              class="px-4 py-2 border border-black text-black font-medium rounded hover:bg-black hover:text-white transition-colors"
-            >
-              View Board
-            </NuxtLink>
-            <NuxtLink
-              to="/agency/tasks/new"
-              class="px-4 py-2 bg-black text-white font-medium rounded hover:bg-black/80 transition-colors"
-            >
+          <div class="flex items-center gap-2">
+            <UButton color="neutral" variant="ghost" icon="i-lucide-settings-2" size="sm" @click="showCustomize = true">
+              Customize
+            </UButton>
+            <UButton to="/agency/workflow" color="neutral" variant="outline" icon="i-lucide-kanban" size="sm">
+              Workflow
+            </UButton>
+            <UButton to="/agency/tasks" color="primary" icon="i-lucide-plus" size="sm">
               New Task
-            </NuxtLink>
+            </UButton>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Main Content -->
-    <div class="w-full px-6 py-8">
-      <!-- KPI Grid - Responsive: 2 cols md, 3 cols lg, 6 cols xl -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8 w-full">
-        <div
-          v-for="card in kpiCards"
-          :key="card.title"
-          class="border border-black/20 rounded-lg overflow-hidden hover:border-black/40 transition-colors w-full"
+    <div class="px-6 lg:px-8 py-6 space-y-6">
+
+      <!-- Pinned Items Row -->
+      <div v-if="pinnedItems.length" class="flex items-center gap-3 flex-wrap">
+        <span class="text-xs font-medium text-[var(--ui-text-muted)] uppercase tracking-wide">Pinned</span>
+        <NuxtLink
+          v-for="pin in pinnedItems"
+          :key="pin.id"
+          :to="pinnedTypeRoutes[pin.type]?.(pin) || '#'"
+          class="group flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--ui-border)] hover:border-[var(--ui-border-accented)] hover:bg-[var(--ui-bg-elevated)] transition-all"
         >
-          <div class="h-1" :style="{ backgroundColor: card.color }"></div>
-          <div class="p-5">
-            <div class="flex items-start justify-between mb-4">
-              <div
-                class="w-10 h-10 rounded flex items-center justify-center"
-                :style="{ backgroundColor: card.bgColor }"
-              >
-                <UIcon :name="card.icon" class="w-5 h-5" :style="{ color: card.color }" />
-              </div>
-              <span
-                v-if="card.change !== 0"
-                class="text-sm font-medium"
-                :class="card.change > 0 ? 'text-[#7DD3A8]' : 'text-[#FF6B6B]'"
-              >
-                {{ card.change > 0 ? '+' : '' }}{{ card.change }}%
-              </span>
-            </div>
-            <h3 class="text-sm text-black/60 mb-1">{{ card.title }}</h3>
-            <p class="text-2xl font-semibold text-black">{{ card.value }}</p>
-          </div>
-        </div>
+          <UIcon :name="pinnedTypeIcons[pin.type] || 'i-lucide-pin'" class="w-3.5 h-3.5 text-[var(--ui-text-muted)]" />
+          <span class="text-sm text-[var(--ui-text-highlighted)]">{{ pin.label }}</span>
+          <button
+            class="ml-1 opacity-0 group-hover:opacity-100 transition-opacity"
+            @click.prevent.stop="unpinItem(pin.id)"
+          >
+            <UIcon name="i-lucide-x" class="w-3 h-3 text-[var(--ui-text-muted)] hover:text-[var(--ui-text)]" />
+          </button>
+        </NuxtLink>
       </div>
 
-      <!-- Charts Row - Full width -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 w-full">
-        <!-- Project Status Distribution -->
-        <div class="border border-black/20 rounded-lg overflow-hidden w-full">
-          <div class="h-1 bg-[#13B5EA]"></div>
-          <div class="p-6">
-            <h3 class="text-lg font-semibold text-black mb-6">Project Status</h3>
-            <div class="space-y-4">
-              <div
-                v-for="status in projectStatusData"
-                :key="status.name"
-                class="flex items-center justify-between"
-              >
-                <div class="flex items-center gap-3">
-                  <div
-                    class="w-3 h-3 rounded-sm"
-                    :style="{ backgroundColor: status.color }"
-                  ></div>
-                  <span class="text-black">{{ status.name }}</span>
-                </div>
-                <span class="text-black/60 font-medium">{{ status.value }}</span>
-              </div>
+      <!-- Personal Stats Row -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <UCard class="overflow-hidden">
+          <div class="flex items-center gap-3">
+            <div class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center bg-blue-50 dark:bg-blue-500/10">
+              <UIcon name="i-lucide-list-checks" class="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
-            <div class="mt-6 pt-6 border-t border-black/10">
-              <div class="flex items-center justify-between text-sm">
-                <span class="text-black/60">Total Projects</span>
-                <span class="font-semibold text-black">
-                  {{ projectStatusData.reduce((acc, s) => acc + s.value, 0) }}
-                </span>
-              </div>
+            <div class="min-w-0">
+              <p class="text-xs text-[var(--ui-text-muted)] uppercase tracking-wide">My Tasks</p>
+              <USkeleton v-if="teamStatus === 'pending'" class="h-7 w-10 rounded" />
+              <p v-else class="text-xl font-semibold text-[var(--ui-text-highlighted)]">{{ myTaskCount }}</p>
             </div>
           </div>
+        </UCard>
+        <UCard class="overflow-hidden">
+          <div class="flex items-center gap-3">
+            <div class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center" :class="overdueCount > 0 ? 'bg-red-50 dark:bg-red-500/10' : 'bg-emerald-50 dark:bg-emerald-500/10'">
+              <UIcon :name="overdueCount > 0 ? 'i-lucide-alert-triangle' : 'i-lucide-check-circle'" class="w-5 h-5" :class="overdueCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'" />
+            </div>
+            <div class="min-w-0">
+              <p class="text-xs text-[var(--ui-text-muted)] uppercase tracking-wide">Overdue</p>
+              <USkeleton v-if="teamStatus === 'pending'" class="h-7 w-10 rounded" />
+              <p v-else class="text-xl font-semibold" :class="overdueCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-[var(--ui-text-highlighted)]'">{{ overdueCount }}</p>
+            </div>
+          </div>
+        </UCard>
+        <UCard class="overflow-hidden">
+          <div class="flex items-center gap-3">
+            <div class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center bg-amber-50 dark:bg-amber-500/10">
+              <UIcon name="i-lucide-calendar-check" class="w-5 h-5 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div class="min-w-0">
+              <p class="text-xs text-[var(--ui-text-muted)] uppercase tracking-wide">Due Today</p>
+              <USkeleton v-if="teamStatus === 'pending'" class="h-7 w-10 rounded" />
+              <p v-else class="text-xl font-semibold text-[var(--ui-text-highlighted)]">{{ dueTodayTasks.length }}</p>
+            </div>
+          </div>
+        </UCard>
+        <UCard class="overflow-hidden">
+          <div class="flex items-center gap-3">
+            <div class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center bg-violet-50 dark:bg-violet-500/10">
+              <UIcon name="i-lucide-clock" class="w-5 h-5 text-violet-600 dark:text-violet-400" />
+            </div>
+            <div class="min-w-0">
+              <p class="text-xs text-[var(--ui-text-muted)] uppercase tracking-wide">Hours This Week</p>
+              <USkeleton v-if="timeStatus === 'pending'" class="h-7 w-10 rounded" />
+              <p v-else class="text-xl font-semibold text-[var(--ui-text-highlighted)]">{{ timeSummary?.week?.total?.toFixed(1) || '0' }}h</p>
+            </div>
+          </div>
+        </UCard>
+      </div>
+
+      <!-- Main Grid: 2/3 + 1/3 -->
+      <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+
+        <!-- Left Column (2/3) -->
+        <div class="xl:col-span-2 space-y-6">
+
+          <!-- My Work -->
+          <UCard v-if="isVisible('my-work')">
+            <template #header>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-lucide-user" class="w-4 h-4 text-[var(--ui-text-muted)]" />
+                  <h3 class="font-semibold text-[var(--ui-text-highlighted)]">My Work</h3>
+                </div>
+                <UButton to="/agency/tasks" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
+                  All Tasks
+                </UButton>
+              </div>
+            </template>
+
+            <div v-if="myTasks.length" class="space-y-5">
+              <!-- Overdue -->
+              <div v-if="overdueTasks.length">
+                <p class="text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400 mb-2 flex items-center gap-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full bg-red-500" />
+                  Overdue ({{ overdueTasks.length }})
+                </p>
+                <div class="space-y-1">
+                  <NuxtLink
+                    v-for="task in overdueTasks.slice(0, 5)"
+                    :key="task.id"
+                    :to="`/agency/boards/${task.department?.name?.toLowerCase().replace(/\s+/g, '-')}`"
+                    class="flex items-center gap-3 py-2 px-3 -mx-3 rounded-lg hover:bg-red-50/50 dark:hover:bg-red-500/5 transition-colors group"
+                  >
+                    <UIcon :name="priorityIcons[task.priority] || 'i-lucide-minus'" class="w-4 h-4 shrink-0" :class="priorityColors[task.priority]" />
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm text-[var(--ui-text-highlighted)] truncate">{{ task.title }}</p>
+                      <p class="text-xs text-[var(--ui-text-muted)]">
+                        {{ task.department?.name }}
+                        <span v-if="task.dueDate"> &middot; Due {{ format(parseISO(task.dueDate), 'MMM d') }}</span>
+                      </p>
+                    </div>
+                    <UBadge v-if="task.status" :style="{ backgroundColor: task.status.color + '20', color: task.status.color }" variant="subtle" size="xs">
+                      {{ task.status.name }}
+                    </UBadge>
+                  </NuxtLink>
+                </div>
+              </div>
+
+              <!-- Due Today -->
+              <div v-if="dueTodayTasks.length">
+                <p class="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400 mb-2 flex items-center gap-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  Due Today ({{ dueTodayTasks.length }})
+                </p>
+                <div class="space-y-1">
+                  <NuxtLink
+                    v-for="task in dueTodayTasks.slice(0, 5)"
+                    :key="task.id"
+                    :to="`/agency/boards/${task.department?.name?.toLowerCase().replace(/\s+/g, '-')}`"
+                    class="flex items-center gap-3 py-2 px-3 -mx-3 rounded-lg hover:bg-amber-50/50 dark:hover:bg-amber-500/5 transition-colors group"
+                  >
+                    <UIcon :name="priorityIcons[task.priority] || 'i-lucide-minus'" class="w-4 h-4 shrink-0" :class="priorityColors[task.priority]" />
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm text-[var(--ui-text-highlighted)] truncate">{{ task.title }}</p>
+                      <p class="text-xs text-[var(--ui-text-muted)]">{{ task.department?.name }}</p>
+                    </div>
+                    <UBadge v-if="task.status" :style="{ backgroundColor: task.status.color + '20', color: task.status.color }" variant="subtle" size="xs">
+                      {{ task.status.name }}
+                    </UBadge>
+                  </NuxtLink>
+                </div>
+              </div>
+
+              <!-- Upcoming -->
+              <div v-if="upcomingTasks.length">
+                <p class="text-xs font-semibold uppercase tracking-wide text-[var(--ui-text-muted)] mb-2 flex items-center gap-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                  Upcoming
+                </p>
+                <div class="space-y-1">
+                  <NuxtLink
+                    v-for="task in upcomingTasks"
+                    :key="task.id"
+                    :to="`/agency/boards/${task.department?.name?.toLowerCase().replace(/\s+/g, '-')}`"
+                    class="flex items-center gap-3 py-2 px-3 -mx-3 rounded-lg hover:bg-[var(--ui-bg-elevated)] transition-colors group"
+                  >
+                    <UIcon :name="priorityIcons[task.priority] || 'i-lucide-minus'" class="w-4 h-4 shrink-0" :class="priorityColors[task.priority]" />
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm text-[var(--ui-text-highlighted)] truncate">{{ task.title }}</p>
+                      <p class="text-xs text-[var(--ui-text-muted)]">
+                        {{ task.department?.name }}
+                        <span v-if="task.dueDate"> &middot; {{ formatDueDate(task.dueDate) }}</span>
+                      </p>
+                    </div>
+                    <UBadge v-if="task.status" :style="{ backgroundColor: task.status.color + '20', color: task.status.color }" variant="subtle" size="xs">
+                      {{ task.status.name }}
+                    </UBadge>
+                  </NuxtLink>
+                </div>
+              </div>
+
+              <!-- No Due Date -->
+              <div v-if="noDueDateTasks.length && !overdueTasks.length && !dueTodayTasks.length && !upcomingTasks.length">
+                <p class="text-xs font-semibold uppercase tracking-wide text-[var(--ui-text-muted)] mb-2 flex items-center gap-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full bg-neutral-400" />
+                  Assigned to You
+                </p>
+                <div class="space-y-1">
+                  <NuxtLink
+                    v-for="task in noDueDateTasks"
+                    :key="task.id"
+                    :to="`/agency/boards/${task.department?.name?.toLowerCase().replace(/\s+/g, '-')}`"
+                    class="flex items-center gap-3 py-2 px-3 -mx-3 rounded-lg hover:bg-[var(--ui-bg-elevated)] transition-colors group"
+                  >
+                    <UIcon :name="priorityIcons[task.priority] || 'i-lucide-minus'" class="w-4 h-4 shrink-0" :class="priorityColors[task.priority]" />
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm text-[var(--ui-text-highlighted)] truncate">{{ task.title }}</p>
+                      <p class="text-xs text-[var(--ui-text-muted)]">{{ task.department?.name }}</p>
+                    </div>
+                    <UBadge v-if="task.status" :style="{ backgroundColor: task.status.color + '20', color: task.status.color }" variant="subtle" size="xs">
+                      {{ task.status.name }}
+                    </UBadge>
+                  </NuxtLink>
+                </div>
+              </div>
+            </div>
+
+            <!-- Empty state -->
+            <div v-else class="text-center py-8">
+              <div class="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center mx-auto mb-3">
+                <UIcon name="i-lucide-check-circle" class="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <p class="text-sm font-medium text-[var(--ui-text-highlighted)]">You're all caught up</p>
+              <p class="text-xs text-[var(--ui-text-muted)] mt-1">No tasks assigned to you right now</p>
+            </div>
+          </UCard>
+
+          <!-- Boards -->
+          <UCard v-if="isVisible('boards')">
+            <template #header>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-lucide-layout-grid" class="w-4 h-4 text-[var(--ui-text-muted)]" />
+                  <h3 class="font-semibold text-[var(--ui-text-highlighted)]">Boards</h3>
+                </div>
+                <UButton to="/agency/boards" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
+                  All Boards
+                </UButton>
+              </div>
+            </template>
+            <div v-if="boards.length" class="divide-y divide-[var(--ui-border)]">
+              <div
+                v-for="board in boards"
+                :key="board.id"
+                class="group flex items-center gap-4 py-3 first:pt-0 last:pb-0"
+              >
+                <NuxtLink
+                  :to="`/agency/boards/${board.slug}`"
+                  class="flex items-center gap-4 flex-1 min-w-0 hover:opacity-80 transition-opacity"
+                >
+                  <div class="shrink-0 w-2 h-8 rounded-full" :style="{ backgroundColor: board.color || '#6366f1' }" />
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-[var(--ui-text-highlighted)] truncate">{{ board.name }}</p>
+                    <p v-if="cleanDescription(board.description)" class="text-xs text-[var(--ui-text-muted)] truncate">{{ cleanDescription(board.description) }}</p>
+                  </div>
+                  <div class="flex items-center gap-3 text-xs text-[var(--ui-text-muted)]">
+                    <span v-if="board.stats?.inProgress" class="flex items-center gap-1">
+                      <span class="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                      {{ board.stats.inProgress }} active
+                    </span>
+                    <UBadge variant="subtle" color="neutral" size="xs">{{ formatCompact(board.stats?.total || 0) }}</UBadge>
+                  </div>
+                </NuxtLink>
+                <UButton
+                  variant="ghost"
+                  color="neutral"
+                  size="xs"
+                  icon="i-lucide-pin"
+                  class="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                  :class="pinnedItems.some(p => p.id === board.id) ? '!opacity-100 text-[var(--ui-primary)]' : ''"
+                  @click="pinnedItems.some(p => p.id === board.id) ? unpinItem(board.id) : handlePinBoard(board)"
+                />
+              </div>
+            </div>
+            <div v-else class="text-center py-6 text-[var(--ui-text-muted)]">
+              <p class="text-sm">No boards yet</p>
+            </div>
+          </UCard>
+
+          <!-- Completion Trends Chart -->
+          <ClientOnly v-if="isVisible('completion-trends')">
+            <DashboardCompletionTrendsChart />
+            <template #fallback>
+              <UCard>
+                <USkeleton class="w-full h-[200px] rounded-lg" />
+              </UCard>
+            </template>
+          </ClientOnly>
+
+          <!-- Workload Overview Chart -->
+          <ClientOnly v-if="isVisible('workload-overview')">
+            <DashboardWorkloadChart />
+            <template #fallback>
+              <UCard>
+                <USkeleton class="w-full h-[200px] rounded-lg" />
+              </UCard>
+            </template>
+          </ClientOnly>
+
+          <!-- Job Types Chart -->
+          <ClientOnly v-if="isVisible('job-types')">
+            <DashboardJobTypesChart />
+            <template #fallback>
+              <UCard>
+                <USkeleton class="w-full h-[200px] rounded-lg" />
+              </UCard>
+            </template>
+          </ClientOnly>
+
+          <!-- Workspaces -->
+          <UCard v-if="isVisible('workspaces')">
+            <template #header>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-lucide-layers" class="w-4 h-4 text-[var(--ui-text-muted)]" />
+                  <h3 class="font-semibold text-[var(--ui-text-highlighted)]">Workspaces</h3>
+                </div>
+                <UButton to="/agency/boards" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
+                  View All
+                </UButton>
+              </div>
+            </template>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <NuxtLink
+                v-for="ws in workspaces"
+                :key="ws.id"
+                :to="`/agency/w/${ws.slug}`"
+                class="group flex items-center gap-3 p-3 rounded-lg border border-[var(--ui-border)] hover:border-[var(--ui-border-accented)] hover:bg-[var(--ui-bg-elevated)] transition-all"
+              >
+                <div class="shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-white" :class="getWsColor(ws.color || 'blue')">
+                  <UIcon :name="getWsIcon(ws.icon || 'briefcase')" class="w-4 h-4" />
+                </div>
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-medium text-[var(--ui-text-highlighted)] truncate group-hover:text-[var(--ui-primary)]">{{ ws.name }}</p>
+                  <p class="text-xs text-[var(--ui-text-muted)]">{{ ws.stats?.boards || 0 }} boards</p>
+                </div>
+                <UBadge variant="subtle" color="neutral" size="sm">{{ formatCompact(ws.stats?.tasks || 0) }}</UBadge>
+              </NuxtLink>
+            </div>
+          </UCard>
+
+          <!-- Financial KPIs -->
+          <UCard v-if="isVisible('financial-kpis')">
+            <template #header>
+              <div class="flex items-center gap-2">
+                <UIcon name="i-lucide-bar-chart-3" class="w-4 h-4 text-[var(--ui-text-muted)]" />
+                <h3 class="font-semibold text-[var(--ui-text-highlighted)]">Financial Overview</h3>
+              </div>
+            </template>
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div v-for="m in financialMetrics" :key="m.label" class="flex items-center gap-3 p-3 rounded-lg bg-[var(--ui-bg-elevated)]">
+                <div class="shrink-0 w-9 h-9 rounded-lg flex items-center justify-center" :class="m.bg">
+                  <UIcon :name="m.icon" class="w-4 h-4" :class="m.color" />
+                </div>
+                <div class="min-w-0">
+                  <p class="text-xs text-[var(--ui-text-muted)]">{{ m.label }}</p>
+                  <p class="text-lg font-semibold text-[var(--ui-text-highlighted)] truncate">{{ m.value }}</p>
+                </div>
+              </div>
+            </div>
+          </UCard>
+
+          <!-- Client Health (left) -->
+          <DashboardClientHealthWidget v-if="isVisible('client-health')" />
+
+          <!-- Briefs Pipeline (left) -->
+          <DashboardBriefsPipelineWidget v-if="isVisible('briefs-pipeline')" />
+
+          <!-- Spend Pacing (left) -->
+          <DashboardSpendPacingWidget v-if="isVisible('spend-pacing')" />
+
+          <!-- Platform Performance (left, client-only) -->
+          <ClientOnly v-if="isVisible('platform-performance')">
+            <DashboardPlatformPerformanceWidget />
+            <template #fallback>
+              <UCard>
+                <USkeleton class="w-full h-[200px] rounded-lg" />
+              </UCard>
+            </template>
+          </ClientOnly>
+
+          <!-- Team Capacity (left) -->
+          <DashboardTeamCapacityWidget v-if="isVisible('team-capacity')" />
+
+          <!-- Deliverables Due This Week (left) -->
+          <DashboardDeliverablesDueWidget v-if="isVisible('deliverables-due')" />
+
+          <!-- Revenue Snapshot (left) -->
+          <DashboardRevenueSnapshotWidget v-if="isVisible('revenue-snapshot')" />
+
+          <!-- Project Profitability (left) -->
+          <DashboardProjectProfitabilityWidget v-if="isVisible('project-profitability')" />
         </div>
 
-        <!-- Team Utilization -->
-        <div class="border border-black/20 rounded-lg overflow-hidden w-full">
-          <div class="h-1 bg-[#7DD3A8]"></div>
-          <div class="p-6">
-            <h3 class="text-lg font-semibold text-black mb-6">Team Utilization</h3>
-            <div class="space-y-4">
-              <div
-                v-for="member in (kpis as any)?.teamUtilization || []"
-                :key="member.name"
-                class="space-y-2"
+        <!-- Right Column (1/3) -->
+        <div class="space-y-6">
+
+          <!-- Notifications -->
+          <DashboardNotifications v-if="isVisible('notifications')" />
+
+          <!-- Quick Actions -->
+          <UCard v-if="isVisible('quick-actions')">
+            <template #header>
+              <div class="flex items-center gap-2">
+                <UIcon name="i-lucide-zap" class="w-4 h-4 text-[var(--ui-text-muted)]" />
+                <h3 class="font-semibold text-[var(--ui-text-highlighted)]">Quick Actions</h3>
+              </div>
+            </template>
+            <div class="grid grid-cols-3 gap-2">
+              <NuxtLink
+                v-for="action in quickActions"
+                :key="action.label"
+                :to="action.to"
+                class="flex flex-col items-center gap-1.5 p-2.5 rounded-lg border border-[var(--ui-border)] hover:border-[var(--ui-border-accented)] hover:bg-[var(--ui-bg-elevated)] transition-all text-center group"
               >
+                <UIcon :name="action.icon" class="w-5 h-5 text-[var(--ui-text-muted)] group-hover:text-[var(--ui-primary)]" />
+                <span class="text-[10px] font-medium text-[var(--ui-text-highlighted)] leading-tight">{{ action.label }}</span>
+              </NuxtLink>
+            </div>
+          </UCard>
+
+          <!-- Time This Week -->
+          <UCard v-if="isVisible('time-this-week')">
+            <template #header>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-lucide-clock" class="w-4 h-4 text-[var(--ui-text-muted)]" />
+                  <h3 class="font-semibold text-[var(--ui-text-highlighted)]">Time This Week</h3>
+                </div>
+                <UButton to="/agency/time" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
+                  Log
+                </UButton>
+              </div>
+            </template>
+            <div class="grid grid-cols-2 gap-3">
+              <div class="text-center p-3 rounded-lg bg-[var(--ui-bg-elevated)]">
+                <p class="text-2xl font-bold text-[var(--ui-text-highlighted)]">{{ timeSummary?.week?.total?.toFixed(1) || '0' }}h</p>
+                <p class="text-xs text-[var(--ui-text-muted)]">Total</p>
+              </div>
+              <div class="text-center p-3 rounded-lg bg-[var(--ui-bg-elevated)]">
+                <p class="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{{ timeSummary?.week?.billable?.toFixed(1) || '0' }}h</p>
+                <p class="text-xs text-[var(--ui-text-muted)]">Billable</p>
+              </div>
+            </div>
+          </UCard>
+
+          <!-- Team Utilization -->
+          <UCard v-if="isVisible('team-utilization')">
+            <template #header>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-lucide-users" class="w-4 h-4 text-[var(--ui-text-muted)]" />
+                  <h3 class="font-semibold text-[var(--ui-text-highlighted)]">Team Utilization</h3>
+                </div>
+                <UBadge :color="avgUtilization >= 70 ? 'success' : 'warning'" variant="subtle" size="sm">
+                  {{ formatPercent(avgUtilization) }}
+                </UBadge>
+              </div>
+            </template>
+            <div class="space-y-3">
+              <div v-for="member in teamUtilization" :key="member.name" class="space-y-1.5">
                 <div class="flex justify-between text-sm">
-                  <span class="text-black">{{ member.name }}</span>
-                  <span
-                    :class="member.rate >= member.target ? 'text-[#7DD3A8]' : 'text-[#F4B942]'"
-                    class="font-medium"
-                  >
+                  <span class="text-[var(--ui-text)] truncate">{{ member.name }}</span>
+                  <span class="font-medium shrink-0 ml-2" :class="member.rate >= (member.target || 75) ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'">
                     {{ formatPercent(member.rate) }}
                   </span>
                 </div>
-                <div class="h-2 bg-black/10 rounded-full overflow-hidden">
+                <div class="h-1.5 bg-[var(--ui-bg-elevated)] rounded-full overflow-hidden">
                   <div
-                    class="h-full rounded-full transition-all"
-                    :class="member.rate >= member.target ? 'bg-[#7DD3A8]' : 'bg-[#F4B942]'"
+                    class="h-full rounded-full transition-all duration-500"
+                    :class="member.rate >= (member.target || 75) ? 'bg-emerald-500' : 'bg-amber-500'"
                     :style="{ width: `${Math.min(member.rate, 100)}%` }"
-                  ></div>
+                  />
                 </div>
               </div>
+              <div v-if="teamUtilization.length" class="pt-3 border-t border-[var(--ui-border)]">
+                <UButton to="/agency/capacity" variant="link" color="neutral" size="xs" class="w-full justify-center" trailing-icon="i-lucide-arrow-right">
+                  View All Team
+                </UButton>
+              </div>
             </div>
-            <div class="mt-6 pt-6 border-t border-black/10">
-              <p class="text-sm text-black/60">Target: 75% billable utilization</p>
-            </div>
-          </div>
-        </div>
-      </div>
+          </UCard>
 
-      <!-- Recent Activity & Quick Actions - Full width -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
-        <!-- Recent Time Entries -->
-        <div class="border border-black/20 rounded-lg overflow-hidden w-full">
-          <div class="h-1 bg-[#9B87F5]"></div>
-          <div class="p-6">
-            <h3 class="text-lg font-semibold text-black mb-6">Recent Time Entries</h3>
+          <!-- Budget Alerts -->
+          <UCard v-if="isVisible('budget-alerts') && budgetAlerts.length">
+            <template #header>
+              <div class="flex items-center gap-2">
+                <UIcon name="i-lucide-shield-alert" class="w-4 h-4 text-amber-500" />
+                <h3 class="font-semibold text-[var(--ui-text-highlighted)]">Budget Alerts</h3>
+              </div>
+            </template>
             <div class="space-y-3">
               <div
-                v-for="entry in (recentTime as any)?.entries || []"
-                :key="entry.id"
-                class="flex items-center justify-between p-4 border border-black/10 rounded-lg hover:border-black/20 transition-colors"
-              >
-                <div>
-                  <p class="font-medium text-black">{{ entry.project }}</p>
-                  <p class="text-sm text-black/60">
-                    {{ entry.user }} - {{ entry.description }}
-                  </p>
-                </div>
-                <div class="text-right">
-                  <p class="font-semibold text-black">{{ entry.hours }}h</p>
-                  <p class="text-sm text-black/60">
-                    {{ format(new Date(entry.date), 'MMM d') }}
-                  </p>
-                </div>
-              </div>
-              <div v-if="!(recentTime as any)?.entries?.length" class="text-center py-8 text-black/40">
-                <UIcon name="i-lucide-clock" class="w-8 h-8 mx-auto mb-2" />
-                <p>No recent time entries</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Budget Alerts -->
-        <div class="border border-black/20 rounded-lg overflow-hidden w-full">
-          <div class="h-1 bg-[#F4B942]"></div>
-          <div class="p-6">
-            <div class="flex items-center gap-2 mb-6">
-              <UIcon name="i-lucide-alert-triangle" class="w-5 h-5 text-[#F4B942]" />
-              <h3 class="text-lg font-semibold text-black">Budget Alerts</h3>
-            </div>
-            <div class="space-y-3">
-              <div
-                v-for="alert in (kpis as any)?.budgetAlerts || []"
+                v-for="alert in budgetAlerts"
                 :key="alert.project"
-                class="p-4 border-l-4 rounded-r-lg"
-                :class="{
-                  'border-[#FF6B6B] bg-[#FF6B6B]/5': alert.severity === 'critical',
-                  'border-[#F4B942] bg-[#F4B942]/5': alert.severity === 'warning'
-                }"
+                class="p-3 rounded-lg border-l-3"
+                :class="alert.severity === 'critical' ? 'border-red-500 bg-red-50 dark:bg-red-500/10' : 'border-amber-500 bg-amber-50 dark:bg-amber-500/10'"
               >
-                <div class="flex justify-between items-start mb-2">
-                  <p class="font-medium text-black">{{ alert.project }}</p>
-                  <span
-                    class="px-2 py-1 text-xs font-medium rounded"
-                    :class="{
-                      'bg-[#FF6B6B] text-white': alert.severity === 'critical',
-                      'bg-[#F4B942] text-black': alert.severity === 'warning'
-                    }"
-                  >
-                    {{ alert.percentUsed }}% used
-                  </span>
+                <div class="flex items-start justify-between gap-2">
+                  <p class="text-sm font-medium text-[var(--ui-text-highlighted)]">{{ alert.project }}</p>
+                  <UBadge :color="alert.severity === 'critical' ? 'error' : 'warning'" variant="subtle" size="xs">
+                    {{ alert.percentUsed }}%
+                  </UBadge>
                 </div>
-                <p class="text-sm text-black/60">{{ alert.message }}</p>
-              </div>
-              <div
-                v-if="!(kpis as any)?.budgetAlerts?.length"
-                class="text-center py-8"
-              >
-                <UIcon name="i-lucide-check-circle" class="w-8 h-8 mx-auto mb-2 text-[#7DD3A8]" />
-                <p class="text-black/60">All projects within budget</p>
+                <p class="text-xs text-[var(--ui-text-muted)] mt-1">{{ alert.message }}</p>
               </div>
             </div>
-          </div>
+          </UCard>
+
+          <!-- Ad Spend Widget -->
+          <DashboardAdSpendWidget v-if="isVisible('ad-spend')" />
+
+          <!-- Proofs Pending (right) -->
+          <DashboardProofsPendingWidget v-if="isVisible('proofs-pending')" />
+
+          <!-- My Clients (right) -->
+          <DashboardMyClientsWidget v-if="isVisible('my-clients')" />
+
+          <!-- Campaign Alerts (right) -->
+          <DashboardCampaignAlertsWidget v-if="isVisible('campaign-alerts')" />
+
+          <!-- Unassigned Work (right) -->
+          <DashboardUnassignedWorkWidget v-if="isVisible('unassigned-work')" />
+
+          <!-- Blocked Tasks (right) -->
+          <DashboardBlockedTasksWidget v-if="isVisible('blocked-tasks')" />
+
+          <!-- Cash Position (right) -->
+          <DashboardCashPositionWidget v-if="isVisible('cash-position')" />
+
+          <!-- Receivables Aging (right) -->
+          <DashboardReceivablesAgingWidget v-if="isVisible('receivables-aging')" />
+
+          <!-- Recent Creatives (right) -->
+          <DashboardRecentCreativesWidget v-if="isVisible('recent-creatives')" />
+
+          <!-- AI Insights (right) -->
+          <DashboardAiInsightsWidget v-if="isVisible('ai-insights')" />
+
         </div>
       </div>
     </div>
+
+    </template>
+
+    <!-- Customize Dashboard Modal -->
+    <UModal v-model:open="showCustomize">
+      <template #content>
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <h2 class="text-lg font-semibold text-[var(--ui-text-highlighted)]">Customize Dashboard</h2>
+              <p class="text-sm text-[var(--ui-text-muted)] mt-0.5">Choose which widgets to show on your dashboard</p>
+            </div>
+            <UButton variant="ghost" color="neutral" size="xs" @click="resetToDefaults()">
+              Reset to defaults
+            </UButton>
+          </div>
+
+          <div class="space-y-5 max-h-[400px] overflow-y-auto">
+            <div v-for="category in widgetCategories" :key="category.label">
+              <p class="text-xs font-semibold uppercase tracking-wide text-[var(--ui-text-muted)] mb-2">{{ category.label }}</p>
+              <div class="space-y-1">
+                <div
+                  v-for="widget in category.widgets"
+                  :key="widget.id"
+                  class="flex items-center gap-3 p-2.5 rounded-lg border border-[var(--ui-border)] hover:bg-[var(--ui-bg-elevated)] transition-colors cursor-pointer"
+                  @click="toggleWidget(widget.id)"
+                >
+                  <UCheckbox :model-value="isVisible(widget.id)" @update:model-value="toggleWidget(widget.id)" />
+                  <div class="w-7 h-7 rounded-md bg-[var(--ui-bg-elevated)] flex items-center justify-center shrink-0">
+                    <UIcon :name="widget.icon" class="w-3.5 h-3.5 text-[var(--ui-text-muted)]" />
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-[var(--ui-text-highlighted)]">{{ widget.title }}</p>
+                    <p class="text-xs text-[var(--ui-text-muted)]">{{ widget.description }}</p>
+                  </div>
+                  <UBadge variant="subtle" color="neutral" size="xs">{{ widget.column }}</UBadge>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-end gap-2 mt-6 pt-4 border-t border-[var(--ui-border)]">
+            <UButton variant="ghost" color="neutral" @click="showCustomize = false">
+              Cancel
+            </UButton>
+            <UButton color="primary" :loading="saving" @click="handleSaveCustomize">
+              Save Layout
+            </UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

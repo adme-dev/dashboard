@@ -133,7 +133,7 @@
 
 <script setup>
 definePageMeta({
-  layout: 'dashboard'
+  layout: 'default'
 })
 
 const { implementations, isLoading, fetchImplementations, getStatusColor } = useImplementations()

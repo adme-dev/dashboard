@@ -53,6 +53,9 @@ importers:
       groq-sdk:
         specifier: ^0.32.0
         version: 0.32.0
+      marked:
+        specifier: ^17.0.3
+        version: 17.0.3
       nuxt:
         specifier: ^4.3.1
         version: 4.3.1(@netlify/blobs@9.1.2)(@parcel/watcher@2.5.1)(@types/node@24.0.3)(@vue/compiler-sfc@3.5.28)(cac@6.7.14)(db0@0.3.4)(eslint@9.39.2(jiti@2.6.1))(ioredis@5.9.3)(lightningcss@1.31.1)(magicast@0.5.1)(optionator@0.9.4)(rollup@4.57.1)(terser@5.44.1)(tsx@4.21.0)(typescript@5.9.2)(vite@7.3.1(@types/node@24.0.3)(jiti@2.6.1)(lightningcss@1.31.1)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))(vue-tsc@3.0.7(typescript@5.9.2))(yaml@2.8.2)

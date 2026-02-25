@@ -48,5 +48,6 @@ const columnTypes = [
   { id: 'tags', name: 'Tags', icon: 'i-lucide-tag', color: '#FFCC00', description: 'Multiple labels' },
   { id: 'color', name: 'Color', icon: 'i-lucide-palette', color: '#FF5AC4', description: 'Color picker' },
   { id: 'dependency', name: 'Dependency', icon: 'i-lucide-git-branch', color: '#784BD1', description: 'Link tasks' },
+  { id: 'invoice_status', name: 'Invoice Status', icon: 'i-lucide-receipt', color: '#00C875', description: 'Billing status' },
 ]
 </script>

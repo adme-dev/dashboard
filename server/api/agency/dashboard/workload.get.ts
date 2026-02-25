@@ -134,7 +134,15 @@ export default defineEventHandler(async (event) => {
         unassignedTasks: Number(d.unassigned_tasks) || 0,
       })),
     }
-  } catch (error) {
+  } catch (error: any) {
+    // Graceful degradation if tables don't exist yet
+    if (error.message?.includes('does not exist') || error.message?.includes('relation')) {
+      return {
+        summary: { totalMembers: 0, totalActiveTasks: 0, totalOverdue: 0, totalUnassigned: 0, totalEstimatedHours: 0, membersWithTasks: 0, averageTasksPerMember: 0 },
+        members: [],
+        departments: [],
+      }
+    }
     console.error('Failed to fetch workload data:', error)
     throw createError({
       statusCode: 500,

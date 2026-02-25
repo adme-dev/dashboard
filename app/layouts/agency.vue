@@ -31,8 +31,11 @@ const workspaceNav = computed(() => {
   })) as NavigationMenuItem[]
 })
 
+// Chat unread badge
+const { totalUnreadCount: chatUnreadCount } = useChat()
+
 // Main navigation — organized by feature groups
-const mainNav: NavigationMenuItem[] = [
+const mainNav = computed<NavigationMenuItem[]>(() => [
   // Main
   { type: 'label', label: 'Main' },
   { label: 'Home', icon: 'i-lucide-house', to: '/', onSelect: close },
@@ -105,8 +108,8 @@ const mainNav: NavigationMenuItem[] = [
   { label: 'AI Settings', icon: 'i-lucide-settings-2', to: '/agency/ai/settings', onSelect: close },
   { label: 'Knowledge Base', icon: 'i-lucide-book-open', to: '/agency/ai/knowledge', onSelect: close },
   { label: 'Automation', icon: 'i-lucide-zap', to: '/agency/automation', onSelect: close },
-  { label: 'Chat', icon: 'i-lucide-message-circle', to: '/chat', onSelect: close },
-]
+  { label: 'Chat', icon: 'i-lucide-message-circle', to: '/agency/chat', badge: chatUnreadCount.value > 0 ? chatUnreadCount.value.toString() : undefined, onSelect: close },
+])
 
 // Footer navigation — admin, integrations, settings
 const footerNav: NavigationMenuItem[] = [
@@ -148,7 +151,7 @@ const groups = computed(() => [{
   id: 'links',
   label: 'Go to',
   items: [
-    ...mainNav.filter(i => i.type !== 'label'),
+    ...mainNav.value.filter(i => i.type !== 'label'),
     ...footerNav,
   ]
 }, {

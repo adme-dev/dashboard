@@ -542,6 +542,7 @@ export interface ChatChannel {
   updated_at: string
   // Computed in queries
   unread_count?: number
+  last_read_message_id?: number
   last_message?: ChatMessage
   members?: ChatChannelMember[]
 }
@@ -564,6 +565,7 @@ export interface ChatMessage {
   user_id: string
   content: string
   thread_parent_id?: number
+  reply_to_id?: number
   edited_at?: string
   deleted_at?: string
   metadata?: {
@@ -577,4 +579,17 @@ export interface ChatMessage {
   user_avatar?: string
   reactions?: Array<{ emoji: string; user_ids: string[]; count: number }>
   thread_count?: number
+  pinned_at?: string
+  pinned_by?: string
+}
+
+export type ChatPresenceStatus = 'online' | 'away' | 'dnd' | 'offline'
+
+export interface UserChatStatus {
+  userId: string
+  status: ChatPresenceStatus
+  customText: string | null
+  lastSeenAt: string
+  userName?: string
+  userAvatar?: string
 }

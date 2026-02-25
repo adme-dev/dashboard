@@ -2,8 +2,8 @@
   <div>
     <!-- Page Header -->
     <div class="mb-8">
-      <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
-      <p class="text-gray-600">Welcome back, {{ user?.name }}. Here's what's happening with your Xero implementations.</p>
+      <h1 class="text-2xl font-bold text-[var(--ui-text-highlighted)]">Dashboard</h1>
+      <p class="text-[var(--ui-text-muted)]">Welcome back, {{ user?.name }}. Here's what's happening with your Xero implementations.</p>
     </div>
 
     <!-- Stats Grid -->
@@ -38,40 +38,40 @@
       <!-- Main Column -->
       <div class="lg:col-span-2 space-y-6">
         <!-- Active Implementations -->
-        <div class="bg-white rounded-lg border border-gray-200">
-          <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-gray-900">Active Implementations</h2>
-            <NuxtLink 
-              to="/dashboard/implementations" 
-              class="text-sm text-[#13B5EA] hover:underline"
+        <div class="bg-[var(--ui-bg-elevated)] rounded-lg border border-[var(--ui-border)]">
+          <div class="px-6 py-4 border-b border-[var(--ui-border)] flex items-center justify-between">
+            <h2 class="text-lg font-semibold text-[var(--ui-text-highlighted)]">Active Implementations</h2>
+            <NuxtLink
+              to="/dashboard/implementations"
+              class="text-sm text-[var(--ui-primary)] hover:underline"
             >
               View all
             </NuxtLink>
           </div>
-          
-          <div v-if="isLoading" class="p-8 text-center text-gray-500">
+
+          <div v-if="isLoading" class="p-8 text-center text-[var(--ui-text-muted)]">
             <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin mx-auto mb-2" />
             Loading...
           </div>
-          
-          <div v-else-if="implementations.length === 0" class="p-8 text-center text-gray-500">
+
+          <div v-else-if="implementations.length === 0" class="p-8 text-center text-[var(--ui-text-muted)]">
             No active implementations
           </div>
-          
-          <div v-else class="divide-y divide-gray-200">
-            <div 
-              v-for="impl in recentImplementations" 
+
+          <div v-else class="divide-y divide-[var(--ui-border)]">
+            <div
+              v-for="impl in recentImplementations"
               :key="impl.id"
-              class="px-6 py-4 hover:bg-gray-50 transition-colors"
+              class="px-6 py-4 hover:bg-[var(--ui-bg-accented)] transition-colors"
             >
               <div class="flex items-center justify-between mb-2">
-                <h3 class="font-medium text-gray-900">{{ impl.client_name }}</h3>
+                <h3 class="font-medium text-[var(--ui-text-highlighted)]">{{ impl.client_name }}</h3>
                 <Badge :color="getStatusColor(impl.status)">
                   {{ formatStatus(impl.status) }}
                 </Badge>
               </div>
-              
-              <div class="flex items-center gap-4 text-sm text-gray-500 mb-3">
+
+              <div class="flex items-center gap-4 text-sm text-[var(--ui-text-muted)] mb-3">
                 <span class="flex items-center gap-1">
                   <UIcon name="i-lucide-calendar" class="w-4 h-4" />
                   Target: {{ formatDate(impl.target_date) }}
@@ -81,16 +81,16 @@
                   {{ impl.project_manager_name }}
                 </span>
               </div>
-              
+
               <!-- Progress Bar -->
               <div class="flex items-center gap-3">
-                <div class="flex-1 bg-gray-200 rounded-full h-2">
-                  <div 
-                    class="bg-[#13B5EA] h-2 rounded-full transition-all"
+                <div class="flex-1 bg-[var(--ui-bg-accented)] rounded-full h-2">
+                  <div
+                    class="bg-[var(--ui-primary)] h-2 rounded-full transition-all"
                     :style="{ width: `${impl.progress_percent || 0}%` }"
                   />
                 </div>
-                <span class="text-sm text-gray-600 min-w-[3rem] text-right">
+                <span class="text-sm text-[var(--ui-text-muted)] min-w-[3rem] text-right">
                   {{ impl.progress_percent || 0 }}%
                 </span>
               </div>
@@ -99,37 +99,37 @@
         </div>
 
         <!-- Team Workload -->
-        <div class="bg-white rounded-lg border border-gray-200">
-          <div class="px-6 py-4 border-b border-gray-200">
-            <h2 class="text-lg font-semibold text-gray-900">Team Workload</h2>
+        <div class="bg-[var(--ui-bg-elevated)] rounded-lg border border-[var(--ui-border)]">
+          <div class="px-6 py-4 border-b border-[var(--ui-border)]">
+            <h2 class="text-lg font-semibold text-[var(--ui-text-highlighted)]">Team Workload</h2>
           </div>
           <div class="p-6">
             <div class="space-y-4">
-              <div 
-                v-for="member in teamWorkload" 
+              <div
+                v-for="member in teamWorkload"
                 :key="member.id"
                 class="flex items-center justify-between"
               >
                 <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
-                    <span class="text-sm font-medium text-gray-700">
+                  <div class="w-10 h-10 bg-[var(--ui-bg-accented)] rounded-full flex items-center justify-center">
+                    <span class="text-sm font-medium text-[var(--ui-text)]">
                       {{ getInitials(member.name) }}
                     </span>
                   </div>
                   <div>
-                    <p class="font-medium text-gray-900">{{ member.name }}</p>
-                    <p class="text-sm text-gray-500">
+                    <p class="font-medium text-[var(--ui-text-highlighted)]">{{ member.name }}</p>
+                    <p class="text-sm text-[var(--ui-text-muted)]">
                       {{ member.active_implementations }} implementations
                     </p>
                   </div>
                 </div>
                 <div class="flex items-center gap-4 text-sm">
-                  <span class="text-gray-600">
+                  <span class="text-[var(--ui-text-muted)]">
                     {{ member.pending_tasks }} tasks
                   </span>
-                  <span 
+                  <span
                     v-if="member.overdue_tasks > 0"
-                    class="text-red-600 font-medium"
+                    class="text-red-600 dark:text-red-400 font-medium"
                   >
                     {{ member.overdue_tasks }} overdue
                   </span>
@@ -143,10 +143,10 @@
       <!-- Sidebar -->
       <div class="space-y-6">
         <!-- Quick Actions -->
-        <div class="bg-white rounded-lg border border-gray-200 p-6">
-          <h2 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
+        <div class="bg-[var(--ui-bg-elevated)] rounded-lg border border-[var(--ui-border)] p-6">
+          <h2 class="text-lg font-semibold text-[var(--ui-text-highlighted)] mb-4">Quick Actions</h2>
           <div class="space-y-2">
-            <UButton 
+            <UButton
               to="/dashboard/implementations/new"
               color="primary"
               variant="solid"
@@ -155,9 +155,9 @@
             >
               New Implementation
             </UButton>
-            <UButton 
+            <UButton
               to="/dashboard/templates"
-              color="gray"
+              color="neutral"
               variant="soft"
               block
               icon="i-lucide-copy"
@@ -168,22 +168,22 @@
         </div>
 
         <!-- Overdue Tasks -->
-        <div class="bg-white rounded-lg border border-gray-200">
-          <div class="px-6 py-4 border-b border-gray-200">
-            <h2 class="text-lg font-semibold text-gray-900">Overdue Tasks</h2>
+        <div class="bg-[var(--ui-bg-elevated)] rounded-lg border border-[var(--ui-border)]">
+          <div class="px-6 py-4 border-b border-[var(--ui-border)]">
+            <h2 class="text-lg font-semibold text-[var(--ui-text-highlighted)]">Overdue Tasks</h2>
           </div>
-          <div v-if="overdueTasks.length === 0" class="p-6 text-center text-gray-500">
-            No overdue tasks 🎉
+          <div v-if="overdueTasks.length === 0" class="p-6 text-center text-[var(--ui-text-muted)]">
+            No overdue tasks
           </div>
-          <div v-else class="divide-y divide-gray-200">
-            <div 
-              v-for="task in overdueTasks.slice(0, 5)" 
+          <div v-else class="divide-y divide-[var(--ui-border)]">
+            <div
+              v-for="task in overdueTasks.slice(0, 5)"
               :key="task.id"
-              class="px-6 py-3 hover:bg-gray-50"
+              class="px-6 py-3 hover:bg-[var(--ui-bg-accented)]"
             >
-              <p class="font-medium text-gray-900 text-sm">{{ task.name }}</p>
-              <p class="text-xs text-gray-500">{{ task.client_name }}</p>
-              <p class="text-xs text-red-600 mt-1">
+              <p class="font-medium text-[var(--ui-text-highlighted)] text-sm">{{ task.name }}</p>
+              <p class="text-xs text-[var(--ui-text-muted)]">{{ task.client_name }}</p>
+              <p class="text-xs text-red-600 dark:text-red-400 mt-1">
                 Due {{ formatDate(task.due_date) }}
               </p>
             </div>
@@ -196,7 +196,7 @@
 
 <script setup>
 definePageMeta({
-  layout: 'dashboard'
+  layout: 'default'
 })
 
 const { user } = useAuth()
@@ -240,9 +240,9 @@ const formatStatus = (status) => {
 
 const formatDate = (date) => {
   if (!date) return 'Not set'
-  return new Date(date).toLocaleDateString('en-US', { 
-    month: 'short', 
-    day: 'numeric' 
+  return new Date(date).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric'
   })
 }
 

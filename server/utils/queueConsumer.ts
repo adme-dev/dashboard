@@ -36,6 +36,18 @@ export async function processJob(job: QueueJob): Promise<void> {
         await processGoogleSpendSync(job.payload)
         break
 
+      case 'embed.task':
+        await processEmbedTask(job.payload)
+        break
+
+      case 'embed.brief':
+        await processEmbedBrief(job.payload)
+        break
+
+      case 'embed.client':
+        await processEmbedClient(job.payload)
+        break
+
       default:
         console.warn(`[QueueConsumer] Unknown job type: ${(job as any).type}`)
     }
@@ -73,3 +85,19 @@ async function processGoogleSpendSync(payload: Record<string, any>): Promise<voi
   const { syncGoogleSpend } = await import('~~/server/utils/spendSync')
   await syncGoogleSpend(payload.month, payload.year)
 }
+
+async function processEmbedTask(payload: Record<string, any>): Promise<void> {
+  const { embedTask } = await import('~~/server/utils/aiEntityEmbedder')
+  await embedTask(payload._event as any, payload.taskId)
+}
+
+async function processEmbedBrief(payload: Record<string, any>): Promise<void> {
+  const { embedBrief } = await import('~~/server/utils/aiEntityEmbedder')
+  await embedBrief(payload._event as any, payload.briefId)
+}
+
+async function processEmbedClient(payload: Record<string, any>): Promise<void> {
+  const { embedClient } = await import('~~/server/utils/aiEntityEmbedder')
+  await embedClient(payload._event as any, payload.clientId)
+}
+

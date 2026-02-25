@@ -120,7 +120,7 @@ export default eventHandler(async (event) => {
           taskId: taskId!,
           columnId: columnId!,
           changes: cellChanges,
-        })
+        }, event)
 
         const boardEvent = {
           boardId: taskInfo.department_id,

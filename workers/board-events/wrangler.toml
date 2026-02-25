@@ -1,0 +1,11 @@
+name = "board-events-worker"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[durable_objects]
+bindings = [{ name = "BOARD_ROOMS", class_name = "BoardRoom" }]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["BoardRoom"]

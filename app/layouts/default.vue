@@ -153,6 +153,24 @@ const links = [[{
       open.value = false
     }
   }, {
+    label: 'EOM Invoicing',
+    to: '/agency/eom',
+    onSelect: () => {
+      open.value = false
+    }
+  }, {
+    label: 'Ad Spend',
+    to: '/agency/social/spend',
+    onSelect: () => {
+      open.value = false
+    }
+  }, {
+    label: 'Connections',
+    to: '/agency/social',
+    onSelect: () => {
+      open.value = false
+    }
+  }, {
     label: 'Capacity',
     to: '/agency/capacity',
     onSelect: () => {

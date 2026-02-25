@@ -1,37 +1,54 @@
 /**
  * Global authentication error handler plugin
- * Redirects to login on 401 errors instead of showing error messages
+ * Intercepts 401 responses from $fetch and redirects to login
  */
+import { ofetch } from 'ofetch'
 
 export default defineNuxtPlugin((nuxtApp) => {
-  // Add fetch interceptor for client-side
-  if (process.client) {
-    const router = useRouter()
-    
-    // Intercept fetch errors
-    nuxtApp.hook('app:error', (error: any) => {
-      // Check if it's a 401 error
-      if (error?.statusCode === 401 || error?.response?.status === 401) {
-        console.log('Auth error intercepted, redirecting to login...')
-        
-        // Get current path for redirect after login
-        const currentPath = window.location.pathname
-        const isAgency = currentPath.startsWith('/agency') || currentPath.startsWith('/admin')
-        const isXero = currentPath.startsWith('/dashboard') || currentPath.startsWith('/implementations')
-        
-        // Clear auth state
-        const { user } = useAuth()
-        user.value = null
-        
-        // Redirect to appropriate login based on current path
-        if (isAgency) {
-          router.push(`/auth/login?redirect=${encodeURIComponent(currentPath)}&expired=true`)
-        } else if (isXero) {
-          router.push(`/auth/xeroflow?redirect=${encodeURIComponent(currentPath)}&expired=true`)
-        } else {
-          router.push(`/login?redirect=${encodeURIComponent(currentPath)}&expired=true`)
-        }
-      }
-    })
+  if (!import.meta.client) return
+
+  const router = useRouter()
+
+  // Flag to prevent redirect loops
+  let isRedirecting = false
+
+  function redirectToLogin() {
+    if (isRedirecting) return
+    isRedirecting = true
+
+    const currentPath = window.location.pathname
+    const isAgency = currentPath.startsWith('/agency') || currentPath.startsWith('/admin')
+
+    // Clear auth cookies
+    document.cookie = 'auth_token=; path=/; max-age=0'
+    document.cookie = 'auth_token_client=; path=/; max-age=0'
+    document.cookie = 'auth_status=; path=/; max-age=0'
+
+    const redirect = encodeURIComponent(currentPath)
+    if (isAgency) {
+      router.push(`/auth/login?redirect=${redirect}&expired=true`)
+    } else {
+      router.push(`/login?redirect=${redirect}&expired=true`)
+    }
+
+    // Reset after navigation settles
+    setTimeout(() => { isRedirecting = false }, 2000)
   }
+
+  // Override globalThis.$fetch to intercept 401 responses
+  const originalFetch = globalThis.$fetch
+  globalThis.$fetch = ofetch.create({
+    onResponseError({ response }) {
+      if (response.status === 401) {
+        redirectToLogin()
+      }
+    },
+  })
+
+  // Also catch unhandled 401 errors via app:error
+  nuxtApp.hook('app:error', (error: any) => {
+    if (error?.statusCode === 401 || error?.response?.status === 401) {
+      redirectToLogin()
+    }
+  })
 })

@@ -177,13 +177,13 @@
 
     <!-- Template Selector -->
     <WorkspaceTemplateSelector
-      v-model:open="showTemplateSelector"
+      v-model="showTemplateSelector"
       @select="onTemplateSelect"
     />
 
     <!-- Invite Modal -->
     <WorkspaceInviteModal
-      v-model:open="showInviteModal"
+      v-model="showInviteModal"
       :workspace-id="workspace?.id || ''"
     />
   </div>

@@ -9,6 +9,9 @@ export type JobType =
   | 'eom.generate'
   | 'spend.sync.meta'
   | 'spend.sync.google'
+  | 'embed.task'
+  | 'embed.brief'
+  | 'embed.client'
 
 export interface QueueJob {
   type: JobType

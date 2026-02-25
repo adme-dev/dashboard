@@ -6,30 +6,33 @@
  * All calls are wrapped in try/catch since bindings may not be available in dev.
  */
 
-function getAiBinding(): any | null {
+import type { H3Event } from 'h3'
+
+function getAiBinding(event?: H3Event): any | null {
+  if (event) {
+    try {
+      return (event.context as any).cloudflare?.env?.AI ?? null
+    } catch { /* fall through */ }
+  }
+  // Legacy fallback for non-event contexts
   try {
-    // In Cloudflare Workers, bindings are on the global env
     const env = (globalThis as any).__env__
     if (env?.AI) return env.AI
-
-    // Fallback: check process.env bindings (Nitro/Cloudflare Pages)
-    const processEnv = (globalThis as any).process?.env
-    if (processEnv?.AI) return processEnv.AI
-
     return null
   } catch {
     return null
   }
 }
 
-function getVectorizeBinding(): any | null {
+function getVectorizeBinding(event?: H3Event): any | null {
+  if (event) {
+    try {
+      return (event.context as any).cloudflare?.env?.VECTORIZE ?? null
+    } catch { /* fall through */ }
+  }
   try {
     const env = (globalThis as any).__env__
     if (env?.VECTORIZE) return env.VECTORIZE
-
-    const processEnv = (globalThis as any).process?.env
-    if (processEnv?.VECTORIZE) return processEnv.VECTORIZE
-
     return null
   } catch {
     return null
@@ -39,9 +42,19 @@ function getVectorizeBinding(): any | null {
 /**
  * Generate a 768-dimension embedding using Workers AI bge-base-en-v1.5.
  * Returns an empty array if the AI binding is not available.
+ * Accepts (text) or (event, text) for backward compatibility.
  */
-export async function generateEmbedding(text: string): Promise<number[]> {
-  const ai = getAiBinding()
+export async function generateEmbedding(textOrEvent: string | H3Event, textArg?: string): Promise<number[]> {
+  let event: H3Event | undefined
+  let text: string
+  if (typeof textOrEvent === 'string') {
+    text = textOrEvent
+  } else {
+    event = textOrEvent
+    text = textArg!
+  }
+
+  const ai = getAiBinding(event)
   if (!ai) {
     console.warn('[aiVectorize] AI binding not available, skipping embedding generation')
     return []
@@ -68,13 +81,30 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 /**
  * Upsert a vector into the Vectorize index.
  * No-op if the Vectorize binding is not available.
+ * Accepts (id, values, metadata) or (event, id, values, metadata) for backward compatibility.
  */
 export async function upsertVector(
-  id: string,
-  values: number[],
-  metadata: Record<string, string>
+  eventOrId: H3Event | string,
+  idOrValues: string | number[],
+  valuesOrMetadata: number[] | Record<string, string>,
+  metadataArg?: Record<string, string>
 ): Promise<void> {
-  const vectorize = getVectorizeBinding()
+  let event: H3Event | undefined
+  let id: string
+  let values: number[]
+  let metadata: Record<string, string>
+  if (typeof eventOrId === 'string') {
+    id = eventOrId
+    values = idOrValues as number[]
+    metadata = valuesOrMetadata as Record<string, string>
+  } else {
+    event = eventOrId
+    id = idOrValues as string
+    values = valuesOrMetadata as number[]
+    metadata = metadataArg!
+  }
+
+  const vectorize = getVectorizeBinding(event)
   if (!vectorize) {
     console.warn('[aiVectorize] VECTORIZE binding not available, skipping upsert')
     return
@@ -99,18 +129,32 @@ export async function upsertVector(
 /**
  * Search for similar vectors in the Vectorize index.
  * Returns empty results if the binding or embedding generation is unavailable.
+ * Accepts (query, topK?) or (event, query, topK?) for backward compatibility.
  */
 export async function searchSimilar(
-  query: string,
-  topK: number = 5
+  eventOrQuery: H3Event | string,
+  queryOrTopK?: string | number,
+  topKArg?: number
 ): Promise<Array<{ id: string; score: number; metadata: Record<string, string> }>> {
-  const vectorize = getVectorizeBinding()
+  let event: H3Event | undefined
+  let query: string
+  let topK: number
+  if (typeof eventOrQuery === 'string') {
+    query = eventOrQuery
+    topK = (queryOrTopK as number) || 5
+  } else {
+    event = eventOrQuery
+    query = queryOrTopK as string
+    topK = topKArg || 5
+  }
+
+  const vectorize = getVectorizeBinding(event)
   if (!vectorize) {
     return []
   }
 
   try {
-    const queryEmbedding = await generateEmbedding(query)
+    const queryEmbedding = await generateEmbedding(event || query, event ? query : undefined)
     if (queryEmbedding.length === 0) {
       return []
     }
@@ -138,9 +182,19 @@ export async function searchSimilar(
 /**
  * Delete a vector from the Vectorize index.
  * No-op if the binding is not available.
+ * Accepts (id) or (event, id) for backward compatibility.
  */
-export async function deleteVector(id: string): Promise<void> {
-  const vectorize = getVectorizeBinding()
+export async function deleteVector(eventOrId: H3Event | string, idArg?: string): Promise<void> {
+  let event: H3Event | undefined
+  let id: string
+  if (typeof eventOrId === 'string') {
+    id = eventOrId
+  } else {
+    event = eventOrId
+    id = idArg!
+  }
+
+  const vectorize = getVectorizeBinding(event)
   if (!vectorize) {
     return
   }

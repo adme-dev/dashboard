@@ -6,7 +6,7 @@
 
 import { ofetch } from 'ofetch'
 
-const META_GRAPH_BASE = 'https://graph.facebook.com/v21.0'
+const META_GRAPH_BASE = 'https://graph.facebook.com/v22.0'
 
 // ============================================
 // Types
@@ -53,7 +53,7 @@ export function getMetaAuthUrl(appId: string, redirectUri: string, state: string
     scope: 'ads_read',
     response_type: 'code'
   })
-  return `https://www.facebook.com/v21.0/dialog/oauth?${params.toString()}`
+  return `https://www.facebook.com/v22.0/dialog/oauth?${params.toString()}`
 }
 
 /**
@@ -221,6 +221,40 @@ function getMonthRange(month: number, year: number): { since: string; until: str
   const lastDay = new Date(year, month, 0).getDate()
   const until = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
   return { since, until }
+}
+
+/**
+ * Get campaign-level daily insights for a specific month
+ * Same as getCampaignInsights() but with time_increment=1 for daily breakdown
+ */
+export async function getCampaignDailyInsights(
+  accountId: string,
+  token: string,
+  month: number,
+  year: number
+): Promise<MetaInsight[]> {
+  const { since, until } = getMonthRange(month, year)
+  const insights: MetaInsight[] = []
+  let url: string | null = `${META_GRAPH_BASE}/${accountId}/insights`
+  const query: Record<string, string> = {
+    fields: 'campaign_id,campaign_name,spend,impressions,clicks,actions',
+    time_range: JSON.stringify({ since, until }),
+    time_increment: '1',
+    level: 'campaign',
+    access_token: token,
+    limit: '500'
+  }
+
+  while (url) {
+    const res: { data: MetaInsight[]; paging?: { next?: string } } = await ofetch(url, {
+      method: 'GET',
+      query: url.includes('?') ? undefined : query
+    })
+    insights.push(...(res.data || []))
+    url = res.paging?.next || null
+  }
+
+  return insights
 }
 
 /**

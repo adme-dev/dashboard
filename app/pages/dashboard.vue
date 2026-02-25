@@ -7,26 +7,45 @@ const AsyncCashFlowChart = defineAsyncComponent(() => import('~/components/dashb
 const AsyncInvoicePipeline = defineAsyncComponent(() => import('~/components/dashboard/InvoicePipeline.vue'))
 const AsyncAnomalyAlerts = defineAsyncComponent(() => import('~/components/dashboard/AnomalyAlerts.vue'))
 
-// Check connection status - required for all dashboard data
-const { data: statusData, refresh: refreshStatus } = await useFetch('/api/xero/status')
+// Check connection status (no await — keeps component instance alive for lifecycle hooks)
+const { data: statusData, refresh: refreshStatus } = useFetch('/api/xero/status')
 const isConnected = computed(() => statusData.value?.connected || false)
 
-// Only fetch data when connected to Xero
-const { data: kpiData, pending: kpiPending, error: kpiError, refresh: refreshKPI } = await useFetch('/api/kpis-advanced', {
-  lazy: true
+// Data fetches — gated on Xero connection, default to null to prevent Vue prop warnings
+const { data: kpiData, pending: kpiPending, error: kpiError, refresh: refreshKPI } = useFetch('/api/kpis-advanced', {
+  immediate: false,
+  default: () => null
 })
 
-const { data: cashFlowData, pending: cashFlowPending, refresh: refreshCashFlow } = await useFetch('/api/xero/reports/cash-flow-forecast?days=90', {
-  lazy: true
+const { data: cashFlowData, pending: cashFlowPending, refresh: refreshCashFlow } = useFetch('/api/xero/reports/cash-flow-forecast?days=90', {
+  immediate: false,
+  default: () => null
 })
 
-const { data: pipelineData, pending: pipelinePending, refresh: refreshPipeline } = await useFetch('/api/xero/invoice-pipeline?days=90', {
-  lazy: true
+const { data: pipelineData, pending: pipelinePending, refresh: refreshPipeline } = useFetch('/api/xero/invoice-pipeline?days=90', {
+  immediate: false,
+  default: () => null
 })
 
-const { data: anomalyData, pending: anomalyPending, refresh: refreshAnomalies } = await useFetch('/api/ai/anomaly-detection?days=30&sensitivity=2', {
-  lazy: true
+const { data: anomalyData, pending: anomalyPending, refresh: refreshAnomalies } = useFetch('/api/ai/anomaly-detection?days=30&sensitivity=2', {
+  immediate: false,
+  default: () => null
 })
+
+// Only fetch data when Xero is connected
+watch(isConnected, (connected) => {
+  if (connected) {
+    refreshKPI()
+    refreshCashFlow()
+    refreshPipeline()
+    refreshAnomalies()
+  }
+}, { immediate: true })
+
+// Manual refresh all
+async function refreshAll() {
+  await Promise.all([refreshKPI(), refreshCashFlow(), refreshPipeline(), refreshAnomalies()])
+}
 
 // Auto-refresh every 5 minutes
 const refreshInterval = 5 * 60 * 1000
@@ -34,7 +53,7 @@ let refreshTimer: NodeJS.Timeout
 
 onMounted(() => {
   refreshTimer = setInterval(() => {
-    if (isConnected) {
+    if (isConnected.value) {
       Promise.all([refreshKPI(), refreshCashFlow(), refreshPipeline(), refreshAnomalies()])
     }
   }, refreshInterval)
@@ -44,14 +63,11 @@ onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer)
 })
 
-// Manual refresh all
-async function refreshAll() {
-  await Promise.all([refreshKPI(), refreshCashFlow(), refreshPipeline(), refreshAnomalies()])
-}
-
 // Keyboard shortcuts
+let keydownHandler: ((e: KeyboardEvent) => void) | null = null
+
 onMounted(() => {
-  const handleKeydown = (e: KeyboardEvent) => {
+  keydownHandler = (e: KeyboardEvent) => {
     if (e.metaKey || e.ctrlKey) {
       switch (e.key) {
         case 'r':
@@ -60,16 +76,16 @@ onMounted(() => {
           break
         case 'k':
           e.preventDefault()
-          // Open command palette (will implement later)
           break
       }
     }
   }
-  
-  document.addEventListener('keydown', handleKeydown)
-  
-  return () => {
-    document.removeEventListener('keydown', handleKeydown)
+  document.addEventListener('keydown', keydownHandler)
+})
+
+onUnmounted(() => {
+  if (keydownHandler) {
+    document.removeEventListener('keydown', keydownHandler)
   }
 })
 

@@ -1,3 +1,4 @@
+import type { H3Event } from 'h3'
 import { queryRows } from '~~/server/utils/db'
 import { classifyIntent, type AiIntent } from '~~/server/utils/aiIntentClassifier'
 import { searchSimilar } from '~~/server/utils/aiVectorize'
@@ -9,6 +10,8 @@ export interface ContextItem {
   snippet: string
   url: string
   relevanceScore?: number
+  updatedAt?: string
+  semanticScore?: number
 }
 
 export interface ContextBundle {
@@ -57,6 +60,39 @@ const INTENT_TO_SOURCES: Record<AiIntent, string[]> = {
   general: ['tasks', 'clients'],
 }
 
+// --- Composite Scoring Configuration ---
+
+interface ScoringProfile {
+  semantic: number
+  recency: number
+  importance: number
+  intent: number
+  entity: number
+  recencyHalfLifeDays: number
+}
+
+const SCORING_PROFILES: Record<AiIntent, ScoringProfile> = {
+  task_query:      { semantic: 0.25, recency: 0.25, importance: 0.15, intent: 0.20, entity: 0.15, recencyHalfLifeDays: 30 },
+  brief_query:     { semantic: 0.25, recency: 0.20, importance: 0.15, intent: 0.20, entity: 0.20, recencyHalfLifeDays: 45 },
+  project_query:   { semantic: 0.25, recency: 0.20, importance: 0.15, intent: 0.20, entity: 0.20, recencyHalfLifeDays: 30 },
+  financial_query: { semantic: 0.20, recency: 0.30, importance: 0.15, intent: 0.20, entity: 0.15, recencyHalfLifeDays: 7 },
+  team_query:      { semantic: 0.20, recency: 0.15, importance: 0.15, intent: 0.25, entity: 0.25, recencyHalfLifeDays: 60 },
+  process_query:   { semantic: 0.35, recency: 0.10, importance: 0.20, intent: 0.20, entity: 0.15, recencyHalfLifeDays: 90 },
+  search:          { semantic: 0.20, recency: 0.10, importance: 0.10, intent: 0.25, entity: 0.35, recencyHalfLifeDays: 30 },
+  action_request:  { semantic: 0.20, recency: 0.25, importance: 0.15, intent: 0.25, entity: 0.15, recencyHalfLifeDays: 14 },
+  general:         { semantic: 0.25, recency: 0.20, importance: 0.15, intent: 0.20, entity: 0.20, recencyHalfLifeDays: 30 },
+}
+
+const ENTITY_IMPORTANCE: Record<string, number> = {
+  spend: 0.85,
+  knowledge: 0.80,
+  client: 0.75,
+  task: 0.70,
+  brief: 0.65,
+  team: 0.60,
+  board: 0.55,
+}
+
 // Estimate token count (rough: ~4 chars per token)
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4)
@@ -82,6 +118,7 @@ async function searchTasks(userId: string, keywords: string[]): Promise<ContextI
       title: r.name,
       snippet: `Status: ${r.status} | Board: ${r.board_name}${r.due_date ? ` | Due: ${r.due_date}` : ''}`,
       url: `/agency/boards/${r.department_id}`,
+      updatedAt: r.updated_at,
     }))
   }
 
@@ -109,6 +146,7 @@ async function searchTasks(userId: string, keywords: string[]): Promise<ContextI
     title: r.name,
     snippet: `Status: ${r.status} | Board: ${r.board_name}${r.due_date ? ` | Due: ${r.due_date}` : ''}`,
     url: `/agency/boards/${r.department_id}`,
+    updatedAt: r.updated_at,
   }))
 }
 
@@ -131,6 +169,7 @@ async function searchBriefs(keywords: string[]): Promise<ContextItem[]> {
     title: r.title || 'Untitled Brief',
     snippet: `Client: ${r.client_name || 'Unknown'} | Status: ${r.status}`,
     url: `/agency/briefs/${r.id}`,
+    updatedAt: r.created_at,
   }))
 }
 
@@ -138,7 +177,8 @@ async function searchBoards(userId: string): Promise<ContextItem[]> {
   const rows = await queryRows(`
     SELECT d.id, d.name, d.description,
            COUNT(t.id) FILTER (WHERE t.parent_task_id IS NULL) as task_count,
-           COUNT(t.id) FILTER (WHERE t.status = 'done' AND t.parent_task_id IS NULL) as done_count
+           COUNT(t.id) FILTER (WHERE t.status = 'done' AND t.parent_task_id IS NULL) as done_count,
+           MAX(t.updated_at) as latest_activity
     FROM departments d
     LEFT JOIN tasks t ON t.department_id = d.id
     LEFT JOIN department_members dm ON dm.department_id = d.id AND dm.team_member_id = $1
@@ -154,18 +194,19 @@ async function searchBoards(userId: string): Promise<ContextItem[]> {
     title: r.name,
     snippet: `${r.task_count} tasks (${r.done_count} done)${r.description ? ` — ${r.description.slice(0, 80)}` : ''}`,
     url: `/agency/boards/${r.id}`,
+    updatedAt: r.latest_activity,
   }))
 }
 
 async function searchClients(keywords: string[]): Promise<ContextItem[]> {
   const pattern = keywords.length > 0 ? keywords.join('|') : '.*'
   const rows = await queryRows(`
-    SELECT c.id, c.name, c.status, c.industry,
+    SELECT c.id, c.name, c.status, c.industry, c.created_at,
            COUNT(DISTINCT b.id) as brief_count
     FROM agency_clients c
     LEFT JOIN briefs b ON b.client_id = c.id
     WHERE c.name ~* $1
-    GROUP BY c.id, c.name, c.status, c.industry
+    GROUP BY c.id, c.name, c.status, c.industry, c.created_at
     ORDER BY c.name ASC
     LIMIT 5
   `, [pattern])
@@ -176,6 +217,7 @@ async function searchClients(keywords: string[]): Promise<ContextItem[]> {
     title: r.name,
     snippet: `Status: ${r.status || 'active'}${r.industry ? ` | Industry: ${r.industry}` : ''} | ${r.brief_count} briefs`,
     url: `/agency/clients/${r.id}`,
+    updatedAt: r.created_at,
   }))
 }
 
@@ -198,6 +240,7 @@ async function searchFinancial(keywords: string[]): Promise<ContextItem[]> {
         title: `EOM Run ${r.year}-${String(r.month).padStart(2, '0')}`,
         snippet: `Status: ${r.status} | ${r.invoice_count} invoices | ${r.line_item_count} line items${r.total_ex_gst ? ` | $${Number(r.total_ex_gst).toLocaleString()} ex GST` : ''}`,
         url: `/agency/eom/${r.id}`,
+        updatedAt: new Date(r.year, r.month - 1).toISOString(),
       })
     }
   } catch {
@@ -223,6 +266,7 @@ async function searchFinancial(keywords: string[]): Promise<ContextItem[]> {
         title: `${r.platform} Ad Spend`,
         snippet: `$${Number(r.total_spend).toLocaleString()} total | ${r.client_count} clients | Latest: ${r.latest_period}`,
         url: `/agency/social/spend`,
+        updatedAt: r.latest_period ? new Date(r.latest_period).toISOString() : undefined,
       })
     }
   } catch {
@@ -235,13 +279,13 @@ async function searchFinancial(keywords: string[]): Promise<ContextItem[]> {
 async function searchTeam(keywords: string[]): Promise<ContextItem[]> {
   const pattern = keywords.length > 0 ? keywords.join('|') : '.*'
   const rows = await queryRows(`
-    SELECT tm.id, tm.name, tm.role, tm.email,
+    SELECT tm.id, tm.name, tm.role, tm.email, tm.created_at,
            COUNT(t.id) FILTER (WHERE t.status NOT IN ('done', 'complete', 'skipped')) as active_tasks
     FROM team_members tm
     LEFT JOIN tasks t ON t.assignee_id = tm.id AND t.parent_task_id IS NULL
     WHERE tm.is_active = true
       AND (tm.name ~* $1 OR tm.role ~* $1)
-    GROUP BY tm.id, tm.name, tm.role, tm.email
+    GROUP BY tm.id, tm.name, tm.role, tm.email, tm.created_at
     ORDER BY active_tasks DESC
     LIMIT 5
   `, [pattern])
@@ -252,11 +296,12 @@ async function searchTeam(keywords: string[]): Promise<ContextItem[]> {
     title: r.name,
     snippet: `Role: ${r.role} | ${r.active_tasks} active tasks`,
     url: `/agency/team`,
+    updatedAt: r.created_at,
   }))
 }
 
 // Search knowledge base articles for process/SOP queries
-async function searchKnowledge(keywords: string[], question: string): Promise<ContextItem[]> {
+async function searchKnowledge(keywords: string[], question: string, event?: H3Event): Promise<ContextItem[]> {
   const items: ContextItem[] = []
 
   // Text search
@@ -264,7 +309,7 @@ async function searchKnowledge(keywords: string[], question: string): Promise<Co
     const pattern = keywords.join('|')
     try {
       const rows = await queryRows(`
-        SELECT id, title, content, category, tags, view_count
+        SELECT id, title, content, category, tags, view_count, updated_at
         FROM ai_knowledge_articles
         WHERE is_published = true
           AND (title ~* $1 OR content ~* $1)
@@ -280,6 +325,7 @@ async function searchKnowledge(keywords: string[], question: string): Promise<Co
           snippet: r.content.length > 200 ? r.content.slice(0, 200) + '...' : r.content,
           url: `/agency/ai/knowledge`,
           relevanceScore: 0.7,
+          updatedAt: r.updated_at,
         })
       }
     } catch {
@@ -289,18 +335,21 @@ async function searchKnowledge(keywords: string[], question: string): Promise<Co
 
   // Semantic search via Vectorize (complements text search)
   try {
-    const semanticResults = await searchSimilar(question, 3)
+    const semanticResults = event ? await searchSimilar(event, question, 3) : await searchSimilar(question, 3)
     for (const match of semanticResults) {
       if (match.metadata?.type === 'knowledge_article' && match.score > 0.6) {
         // Avoid duplicates from text search
-        if (!items.some(i => i.id === match.metadata.id)) {
+        const existing = items.find(i => i.id === match.metadata.id)
+        if (existing) {
+          existing.semanticScore = match.score
+        } else {
           items.push({
             type: 'knowledge',
             id: match.metadata.id,
             title: match.metadata.title || 'Knowledge Article',
             snippet: `Category: ${match.metadata.category || 'General'} (semantic match: ${Math.round(match.score * 100)}%)`,
             url: `/agency/ai/knowledge`,
-            relevanceScore: match.score,
+            semanticScore: match.score,
           })
         }
       }
@@ -312,36 +361,100 @@ async function searchKnowledge(keywords: string[], question: string): Promise<Co
   return items.slice(0, 3)
 }
 
-// Score and sort items based on intent relevance and entity matches
-function scoreItems(items: ContextItem[], intent: AiIntent, entities: string[]): ContextItem[] {
+// Attach semantic scores from Vectorize to DB-sourced items (single query)
+async function semanticRerank(items: ContextItem[], question: string, event?: H3Event): Promise<ContextItem[]> {
+  if (items.length === 0) return items
+
+  try {
+    const topK = Math.min(items.length * 2, 20)
+    const results = event ? await searchSimilar(event, question, topK) : await searchSimilar(question, topK)
+    if (results.length === 0) return items
+
+    const scoreMap = new Map<string, number>()
+    for (const r of results) {
+      const type = r.metadata?.type === 'knowledge_article' ? 'knowledge' : (r.metadata?.type || '')
+      const id = r.metadata?.id || r.id
+      scoreMap.set(`${type}:${id}`, r.score)
+    }
+
+    return items.map(item => {
+      const key = `${item.type}:${item.id}`
+      const score = scoreMap.get(key)
+      return score !== undefined ? { ...item, semanticScore: Math.max(item.semanticScore || 0, score) } : item
+    })
+  } catch {
+    // Vectorize unavailable — return items unmodified
+    return items
+  }
+}
+
+// 5-signal composite scoring: semantic + recency + importance + intent + entity
+function compositeScore(items: ContextItem[], intent: AiIntent, entities: string[]): ContextItem[] {
+  const profile = SCORING_PROFILES[intent] || SCORING_PROFILES.general
   const primarySources = INTENT_TO_SOURCES[intent] || ['tasks', 'clients']
+  const lambda = Math.LN2 / profile.recencyHalfLifeDays
+  const now = Date.now()
+  const entitiesLower = entities.map(e => e.toLowerCase())
 
   return items.map(item => {
-    let score = item.relevanceScore || 0.5
+    // 1. Semantic signal
+    const semantic = item.semanticScore || 0
 
-    // Boost items from primary sources for this intent
-    if (primarySources.includes(item.type)) {
-      score += 0.2
+    // 2. Recency signal (exponential decay)
+    let recency = 0.5 // neutral default when no timestamp
+    if (item.updatedAt) {
+      const ageDays = Math.max(0, (now - new Date(item.updatedAt).getTime()) / (1000 * 60 * 60 * 24))
+      recency = Math.exp(-lambda * ageDays)
     }
 
-    // Boost items that match extracted entities
-    if (entities.length > 0) {
+    // 3. Importance signal (entity-type static weight)
+    const importance = ENTITY_IMPORTANCE[item.type] || 0.50
+
+    // 4. Intent match signal (binary: is this type a primary source for the intent?)
+    const intentMatch = primarySources.includes(item.type) ? 1.0 : 0.0
+
+    // 5. Entity overlap signal (fraction of entities found in item text)
+    let entityOverlap = 0
+    if (entitiesLower.length > 0) {
       const itemText = `${item.title} ${item.snippet}`.toLowerCase()
-      for (const entity of entities) {
-        if (itemText.includes(entity.toLowerCase())) {
-          score += 0.15
-        }
+      let matchCount = 0
+      for (const e of entitiesLower) {
+        if (itemText.includes(e)) matchCount++
       }
+      entityOverlap = matchCount / entitiesLower.length
     }
+
+    const score =
+      (profile.semantic * semantic) +
+      (profile.recency * recency) +
+      (profile.importance * importance) +
+      (profile.intent * intentMatch) +
+      (profile.entity * entityOverlap)
 
     return { ...item, relevanceScore: Math.min(score, 1.0) }
   }).sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
 }
 
+// Penalize over-representation of a single type in top results
+function applyDiversityPenalty(items: ContextItem[]): ContextItem[] {
+  const typeCounts = new Map<string, number>()
+  const penalized = items.map(item => {
+    const count = (typeCounts.get(item.type) || 0) + 1
+    typeCounts.set(item.type, count)
+    if (count > 3) {
+      const penalty = 0.08 * (count - 3)
+      return { ...item, relevanceScore: Math.max(0, (item.relevanceScore || 0) - penalty) }
+    }
+    return item
+  })
+  return penalized.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
+}
+
 export async function retrieveContext(
   userId: string,
   userRole: string,
-  question: string
+  question: string,
+  event?: H3Event
 ): Promise<ContextBundle> {
   const keywords = extractKeywords(question)
 
@@ -376,7 +489,7 @@ export async function retrieveContext(
     queryPromises.push(searchTeam(keywords).catch(() => []))
   }
   if (sources.has('knowledge')) {
-    queryPromises.push(searchKnowledge(keywords, question).catch(() => []))
+    queryPromises.push(searchKnowledge(keywords, question, event).catch(() => []))
   }
 
   const results = await Promise.all(queryPromises)
@@ -393,13 +506,15 @@ export async function retrieveContext(
     }
   }
 
-  // Score and rank items based on intent and entities
-  const scored = scoreItems(unique, intentResult.intent, intentResult.entities)
+  // Composite scoring pipeline
+  const reranked = await semanticRerank(unique, question, event)
+  const scored = compositeScore(reranked, intentResult.intent, intentResult.entities)
+  const diverse = applyDiversityPenalty(scored)
 
   // Token budget: ~3000 tokens for context
   let tokenCount = 0
   const budgetItems: ContextItem[] = []
-  for (const item of scored) {
+  for (const item of diverse) {
     const itemTokens = estimateTokens(`${item.type}: ${item.title} — ${item.snippet}`)
     if (tokenCount + itemTokens > 3000) break
     budgetItems.push(item)

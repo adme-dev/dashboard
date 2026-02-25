@@ -67,8 +67,8 @@ export async function validateSession(token: string): Promise<User | null> {
     if (!payload || !payload.userId) return null
     
     return await queryOne<User>(
-      `SELECT id, email, name, role, is_active 
-       FROM team_members 
+      `SELECT id, email, name, user_role as role, is_active
+       FROM team_members
        WHERE id = $1 AND is_active = true`,
       [payload.userId]
     )
@@ -327,7 +327,7 @@ export async function invalidateUserMagicLinks(userId: string): Promise<void> {
  */
 export async function getUserRoles(userId: string): Promise<string[]> {
   const user = await queryOne<{ role: string }>(
-    `SELECT role FROM team_members WHERE id = $1`,
+    `SELECT user_role as role FROM team_members WHERE id = $1`,
     [userId]
   )
   return user ? [user.role] : []

@@ -194,7 +194,7 @@ export default defineEventHandler(async (event) => {
         type: 'task_updated',
         taskId: id,
         changes: Object.fromEntries(changes.map(c => [c.field, c.newValue])),
-      })
+      }, event)
 
       const boardEvent = {
         boardId: currentTask.department_id,

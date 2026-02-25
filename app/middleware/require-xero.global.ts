@@ -1,6 +1,6 @@
 export default defineNuxtRouteMiddleware(async (to) => {
-  // All financial data pages now require Xero connection
-  const protectedPaths = ['/dashboard', '/expenses', '/reports', '/invoices', '/cashflow', '/insights', '/anomalies', '/recommendations', '/chat']
+  // Financial data pages that require Xero connection (dashboard excluded — it handles disconnected state with Demo Mode)
+  const protectedPaths = ['/expenses', '/reports', '/invoices', '/cashflow', '/insights', '/anomalies', '/recommendations', '/chat']
   const isProtected = protectedPaths.some(p => to.path === p || to.path.startsWith(`${p}/`))
   
   if (!isProtected) return

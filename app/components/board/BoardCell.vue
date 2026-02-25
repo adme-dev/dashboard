@@ -32,6 +32,7 @@ import CellTags from './cells/CellTags.vue'
 import CellColor from './cells/CellColor.vue'
 import CellDependency from './cells/CellDependency.vue'
 import CellLabel from './cells/CellLabel.vue'
+import CellInvoiceStatus from './cells/CellInvoiceStatus.vue'
 
 const cellComponents: Record<string, any> = {
   text: CellText,
@@ -53,6 +54,7 @@ const cellComponents: Record<string, any> = {
   dependency: CellDependency,
   label: CellLabel,
   numbers: CellNumber,
+  invoice_status: CellInvoiceStatus,
 }
 
 const props = defineProps<{

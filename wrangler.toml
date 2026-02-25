@@ -26,15 +26,15 @@ max_batch_size = 10
 max_retries = 3
 dead_letter_queue = "agency-jobs-dlq"
 
-# AI — Workers AI for embeddings (@cf/baai/bge-base-en-v1.5)
-# [ai]
-# binding = "AI"
+# AI — Workers AI for embeddings and edge inference
+[ai]
+binding = "AI"
 
-# Vectorize — semantic search index for knowledge base
-# Create with: npx wrangler vectorize create agency-knowledge --dimensions=768 --metric=cosine
-# [[vectorize]]
-# binding = "VECTORIZE"
-# index_name = "agency-knowledge"
+# Vectorize — semantic search index for tasks, briefs, clients, knowledge
+# Create with: npx wrangler vectorize create agency-search --dimensions=768 --metric=cosine
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "agency-search"
 
 # Hyperdrive — edge connection pooling for Neon Postgres
 # Create with: npx wrangler hyperdrive create agency-db --connection-string="$DATABASE_URL"
@@ -55,6 +55,12 @@ NODE_VERSION = "22"
 name = "CHAT_ROOMS"
 class_name = "ChatRoom"
 script_name = "chat-rooms-worker"
+
+# Board Events — Durable Objects (hosted in separate worker)
+[[durable_objects.bindings]]
+name = "BOARD_ROOMS"
+class_name = "BoardRoom"
+script_name = "board-events-worker"
 
 # Preview/Staging environment
 [env.preview]

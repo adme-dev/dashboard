@@ -83,7 +83,7 @@ export default defineEventHandler(async (event) => {
     type: 'task_created',
     taskId: task.id,
     changes: { title: subject, source: 'email', senderEmail: from }
-  })
+  }, event)
 
   // Notify board subscribers about the new item from email
   try {

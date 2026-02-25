@@ -114,7 +114,7 @@ export default defineEventHandler(async (event) => {
         taskId: id,
         userId: body.userId,
         changes: statusChanges,
-      })
+      }, event)
 
       const boardEvent = {
         boardId: currentTask.department_id,

@@ -1,6 +1,7 @@
 import { createError, getRequestURL, getCookie, deleteCookie } from 'h3'
 import { setTokenForSession } from '../../utils/tokenStore'
 import { createXeroClient, toStoredTokenSet } from '../../utils/xeroClient'
+import { setSelectedTenant } from '../../utils/session'
 
 export default eventHandler(async (event) => {
   const query = getQuery(event)
@@ -23,6 +24,16 @@ export default eventHandler(async (event) => {
   await client.apiCallback(requestUrl)
   const tokenSet = client.readTokenSet()
   await setTokenForSession(event, toStoredTokenSet(tokenSet))
+
+  // Auto-select tenant if there's exactly one
+  try {
+    const tenants = await client.updateTenants(false)
+    if (tenants.length === 1) {
+      await setSelectedTenant(event, tenants[0].tenantId, tenants[0].tenantName)
+    }
+  } catch {
+    // Non-fatal — user can select tenant manually on settings page
+  }
 
   if (mode === 'popup') {
     return sendRedirect(event, '/xero-popup-close', 302)

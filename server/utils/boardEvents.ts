@@ -3,6 +3,8 @@
  *
  * Stores recent board events per board ID and allows SSE endpoints to
  * subscribe and poll for new events. Works within a single server instance.
+ * In production, also forwards events to BoardRoom Durable Objects for
+ * cross-isolate WebSocket broadcasting.
  *
  * Event types:
  * - task_updated: Task fields changed (title, priority, etc.)
@@ -13,6 +15,8 @@
  * - group_updated: Board group changed
  * - column_updated: Column settings changed
  */
+
+import type { H3Event } from 'h3'
 
 export interface BoardEvent {
   id: number
@@ -39,6 +43,7 @@ let eventCounter = 0
 
 /**
  * Emit a board event. Stores in memory and notifies active subscribers.
+ * Optionally forwards to BoardRoom Durable Object for cross-isolate broadcasting.
  */
 export function emitBoardEvent(params: {
   boardId: string
@@ -47,7 +52,7 @@ export function emitBoardEvent(params: {
   columnId?: string
   userId?: string
   changes?: Record<string, any>
-}): BoardEvent {
+}, h3Event?: H3Event): BoardEvent {
   const event: BoardEvent = {
     id: ++eventCounter,
     boardId: params.boardId,
@@ -81,6 +86,24 @@ export function emitBoardEvent(params: {
       } catch {
         // Ignore listener errors
       }
+    }
+  }
+
+  // Forward to Durable Object for cross-isolate broadcasting (production only)
+  if (h3Event) {
+    try {
+      const env = (h3Event.context as any).cloudflare?.env
+      if (env?.BOARD_ROOMS) {
+        const doId = env.BOARD_ROOMS.idFromName(params.boardId)
+        const stub = env.BOARD_ROOMS.get(doId)
+        stub.fetch(new Request(`https://board-do/board/${params.boardId}/emit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(event),
+        })).catch(() => {})
+      }
+    } catch {
+      // DO unavailable — in-memory events still work
     }
   }
 

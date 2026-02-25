@@ -1,3 +1,5 @@
+import type { H3Event } from 'h3'
+import { edgeClassify } from '~~/server/utils/edgeAi'
 import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
 
 export type AiIntent =
@@ -124,7 +126,24 @@ function classifyByPatterns(message: string): IntentResult | null {
   }
 }
 
-async function classifyByLLM(message: string): Promise<IntentResult> {
+async function classifyByLLM(message: string, event?: H3Event): Promise<IntentResult> {
+  // Try Workers AI edge inference first (<50ms vs 1-3s Groq)
+  if (event) {
+    const validIntents: AiIntent[] = [
+      'task_query', 'brief_query', 'project_query', 'financial_query',
+      'team_query', 'process_query', 'search', 'action_request', 'general',
+    ]
+    const edgeResult = await edgeClassify(event, message, validIntents)
+    if (edgeResult && validIntents.includes(edgeResult.category as AiIntent)) {
+      return {
+        intent: edgeResult.category as AiIntent,
+        confidence: edgeResult.confidence,
+        entities: extractEntities(message),
+      }
+    }
+    // Edge AI unavailable or returned invalid result — fall through to Groq
+  }
+
   const prompt = `Classify this user message into exactly ONE intent category. Also extract any entity names (client names, project names, people names, etc).
 
 Message: "${message}"
@@ -183,7 +202,7 @@ Respond in this exact JSON format only, no other text:
  * Classify a user message into an intent category.
  * Uses fast keyword matching first, falls back to LLM if confidence is low.
  */
-export async function classifyIntent(message: string): Promise<IntentResult> {
+export async function classifyIntent(message: string, event?: H3Event): Promise<IntentResult> {
   // Fast path: keyword + regex matching
   const patternResult = classifyByPatterns(message)
 
@@ -192,7 +211,7 @@ export async function classifyIntent(message: string): Promise<IntentResult> {
   }
 
   // Slow path: use Groq LLAMA_8B for classification
-  const llmResult = await classifyByLLM(message)
+  const llmResult = await classifyByLLM(message, event)
 
   // If pattern matching gave a partial result, merge entities
   if (patternResult) {

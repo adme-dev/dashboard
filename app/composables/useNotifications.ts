@@ -145,7 +145,9 @@ export function useNotifications() {
       invitation_received: 'i-lucide-mail',
       team_update: 'i-lucide-users',
       system: 'i-lucide-info',
-      ai_digest: 'i-lucide-brain'
+      ai_digest: 'i-lucide-brain',
+      chat_mention: 'i-lucide-at-sign',
+      chat_dm: 'i-lucide-message-circle'
     }
     return icons[type] || 'i-lucide-bell'
   }
@@ -166,7 +168,9 @@ export function useNotifications() {
       invitation_received: 'text-blue-500',
       team_update: 'text-neutral-500',
       system: 'text-neutral-500',
-      ai_digest: 'text-violet-500'
+      ai_digest: 'text-violet-500',
+      chat_mention: 'text-cyan-500',
+      chat_dm: 'text-blue-500'
     }
     return colors[type] || 'text-neutral-500'
   }

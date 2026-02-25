@@ -202,6 +202,37 @@ export function useDashboardWidgets() {
     }
   }
 
+  // Apply persona defaults (for onboarding)
+  function applyPersona(role: string) {
+    const defaults = ROLE_DEFAULTS[role] || ROLE_DEFAULTS.member
+    preferences.value = {
+      widgets: [...defaults],
+      pinnedItems: [],
+    }
+  }
+
+  // Widget categories for grouped customize modal
+  const widgetCategories = computed(() => {
+    const widgets = availableWidgets.value
+    const categories = [
+      { label: 'Core', ids: ['my-work', 'notifications', 'boards', 'workspaces', 'quick-actions', 'time-this-week'] },
+      { label: 'Analytics', ids: ['completion-trends', 'workload-overview', 'job-types', 'team-utilization', 'financial-kpis'] },
+      { label: 'Account Management', ids: ['client-health', 'proofs-pending', 'briefs-pipeline', 'my-clients'] },
+      { label: 'Media Buying', ids: ['ad-spend', 'spend-pacing', 'campaign-alerts', 'platform-performance', 'budget-alerts'] },
+      { label: 'Production', ids: ['team-capacity', 'unassigned-work', 'blocked-tasks', 'deliverables-due'] },
+      { label: 'Finance', ids: ['cash-position', 'revenue-snapshot', 'receivables-aging', 'project-profitability'] },
+      { label: 'Creative & AI', ids: ['recent-creatives', 'ai-insights'] },
+    ]
+    return categories
+      .map(cat => ({
+        label: cat.label,
+        widgets: cat.ids
+          .map(id => widgets.find(w => w.id === id))
+          .filter((w): w is WidgetDefinition => !!w),
+      }))
+      .filter(cat => cat.widgets.length > 0)
+  })
+
   return {
     preferences,
     loaded,
@@ -209,6 +240,7 @@ export function useDashboardWidgets() {
     activeWidgets,
     pinnedItems,
     availableWidgets,
+    widgetCategories,
     leftWidgets,
     rightWidgets,
     allWidgets: ALL_WIDGETS,
@@ -220,5 +252,6 @@ export function useDashboardWidgets() {
     loadPreferences,
     savePreferences,
     resetToDefaults,
+    applyPersona,
   }
 }

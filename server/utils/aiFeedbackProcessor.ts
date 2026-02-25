@@ -1,3 +1,4 @@
+import type { H3Event } from 'h3'
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { embedAiQAPair } from '~~/server/utils/aiEmbeddingPipeline'
 import { searchSimilar } from '~~/server/utils/aiVectorize'
@@ -155,7 +156,8 @@ async function handleNegativeFeedback(
  */
 export async function getRelevantPatterns(
   question: string,
-  limit: number = 5
+  limit: number = 5,
+  event?: H3Event
 ): Promise<AiLearnedPattern[]> {
   // Extract keywords for ILIKE search
   const keywords = question
@@ -200,7 +202,7 @@ export async function getRelevantPatterns(
 
   // Semantic search fallback (if vectorize is available)
   try {
-    const semanticResults = await searchSimilar(question, limit)
+    const semanticResults = event ? await searchSimilar(event, question, limit) : await searchSimilar(question, limit)
     for (const match of semanticResults) {
       if (match.metadata?.type === 'qa_pair' && match.score > 0.7 && match.metadata?.id) {
         // Look up the pattern linked to this Q&A pair

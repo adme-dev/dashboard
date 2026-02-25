@@ -53,28 +53,15 @@ const formatCurrency = (value: number) => {
   }).format(value)
 }
 
-// Color configuration
-const balanceColor = '#3b82f6' // blue-500
-const inflowColor = '#10b981'  // emerald-500
-const outflowColor = '#ef4444' // red-500
-const warningColor = '#f59e0b' // amber-500
-const criticalColor = '#dc2626' // red-600
 
-const lineColor = (d: any) => {
-  if (d.balance < 0) return criticalColor
-  if (d.balance < 10000) return warningColor
-  return balanceColor
-}
-
-const areaColor = (d: any) => {
-  if (d.balance < 0) return `${criticalColor}20`
-  if (d.balance < 10000) return `${warningColor}20`
-  return `${balanceColor}20`
-}
-
-const chartWidth = 680
-const chartHeight = 280
-const innerHeight = 240
+const marginLeft = 60
+const marginTop = 15
+const marginRight = 15
+const marginBottom = 25
+const chartWidth = 800
+const chartHeight = 220
+const viewBoxWidth = marginLeft + chartWidth + marginRight
+const viewBoxHeight = marginTop + chartHeight + marginBottom
 
 const maxIndex = computed(() => Math.max(1, chartData.value.length - 1))
 
@@ -96,7 +83,7 @@ const chartBounds = computed(() => {
 const yScale = (value: number) => {
   const { min, max } = chartBounds.value
   const range = max - min || 1
-  return chartHeight - ((value - min) / range) * innerHeight
+  return chartHeight - ((value - min) / range) * chartHeight
 }
 
 const zeroLineY = computed(() => yScale(0))
@@ -117,34 +104,6 @@ const yLabels = computed(() => {
     bottom: min
   }
 })
-
-// Tooltip configuration
-const tooltipTemplate = (d: any) => {
-  const data = d.data || d
-  return `
-    <div class="p-3 bg-white dark:bg-gray-800 rounded-lg shadow-lg border">
-      <div class="font-semibold text-sm mb-2">${data.dateFormatted}</div>
-      <div class="space-y-1 text-xs">
-        <div class="flex justify-between gap-4">
-          <span class="text-gray-600 dark:text-gray-400">Balance:</span>
-          <span class="font-medium ${data.balance < 0 ? 'text-red-600' : data.balance < 10000 ? 'text-amber-600' : 'text-blue-600'}">${formatCurrency(data.balance)}</span>
-        </div>
-        <div class="flex justify-between gap-4">
-          <span class="text-gray-600 dark:text-gray-400">Inflows:</span>
-          <span class="font-medium text-emerald-600">+${formatCurrency(data.inflows)}</span>
-        </div>
-        <div class="flex justify-between gap-4">
-          <span class="text-gray-600 dark:text-gray-400">Outflows:</span>
-          <span class="font-medium text-red-600">-${formatCurrency(data.outflows)}</span>
-        </div>
-        <div class="flex justify-between gap-4 pt-1 border-t border-gray-200 dark:border-gray-700">
-          <span class="text-gray-600 dark:text-gray-400">Net Change:</span>
-          <span class="font-medium ${data.netChange >= 0 ? 'text-emerald-600' : 'text-red-600'}">${data.netChange >= 0 ? '+' : ''}${formatCurrency(data.netChange)}</span>
-        </div>
-      </div>
-    </div>
-  `
-}
 
 // Key insights
 const insights = computed(() => {
@@ -181,7 +140,7 @@ const insights = computed(() => {
 </script>
 
 <template>
-  <UCard class="h-full">
+  <UCard>
     <template #header>
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -195,9 +154,9 @@ const insights = computed(() => {
           <span class="text-xs uppercase tracking-wide text-muted">Projected End Balance</span>
           <span
             :class="{
-              'text-red-600': data.projectedEndBalance < 0,
-              'text-amber-600': data.projectedEndBalance > 0 && data.projectedEndBalance < 10000,
-              'text-emerald-600': data.projectedEndBalance >= 10000
+              'text-red-600 dark:text-red-400': data.projectedEndBalance < 0,
+              'text-amber-600 dark:text-amber-400': data.projectedEndBalance > 0 && data.projectedEndBalance < 10000,
+              'text-emerald-600 dark:text-emerald-400': data.projectedEndBalance >= 10000
             }"
             class="text-xl font-semibold"
           >
@@ -208,11 +167,9 @@ const insights = computed(() => {
     </template>
 
     <!-- Loading State -->
-    <div v-if="loading" class="flex items-center justify-center h-80">
-      <div class="text-center">
-        <USkeleton class="h-64 w-full mb-4" />
-        <USkeleton class="h-4 w-48 mx-auto" />
-      </div>
+    <div v-if="loading">
+      <USkeleton class="w-full aspect-[5/2] rounded-xl mb-4" />
+      <USkeleton class="h-4 w-48 mx-auto" />
     </div>
 
     <!-- Chart -->
@@ -231,76 +188,74 @@ const insights = computed(() => {
       </div>
 
       <!-- Chart Container -->
-      <div class="h-80 w-full">
+      <div class="w-full max-h-[360px]">
         <ClientOnly>
-          <div class="w-full h-80 flex items-center justify-center">
-            <!-- Simple Line Chart using SVG -->
-            <svg width="100%" height="100%" viewBox="0 0 800 320" class="border border-gray-200 dark:border-gray-700 rounded-xl bg-white/60 dark:bg-gray-900/40">
-              <!-- Grid lines -->
-              <defs>
-                <pattern id="cashflow-grid" width="80" height="32" patternUnits="userSpaceOnUse">
-                  <path d="M 80 0 L 0 0 0 32" fill="none" stroke="#e5e7eb" stroke-width="1" opacity="0.3"/>
-                </pattern>
-              </defs>
-              <rect width="100%" height="100%" fill="url(#cashflow-grid)" />
-              
-              <!-- Data visualization -->
-              <g v-if="chartData.length > 0" transform="translate(60, 20)">
-                <!-- Area fill -->
-                <path
-                  :d="areaPath"
-                  :fill="chartData.some(d => d.balance < 0) ? 'rgba(239, 68, 68, 0.1)' : 'rgba(59, 130, 246, 0.1)'"
-                  class="transition-all duration-300"
-                />
-                
-                <!-- Main balance line -->
-                <polyline
-                  :points="chartData.map((d, i) => `${(i / maxIndex) * chartWidth},${yScale(d.balance)}`).join(' ')"
-                  fill="none"
-                  :stroke="chartData.some(d => d.balance < 0) ? '#ef4444' : '#3b82f6'"
-                  stroke-width="3"
-                  class="transition-all duration-300"
-                />
-                
-                <!-- Zero line -->
-                <line x1="0" :y1="zeroLineY" :x2="chartWidth" :y2="zeroLineY" stroke="#6b7280" stroke-width="1" stroke-dasharray="4,4" opacity="0.5" />
-                
-                <!-- Data points with hover effects -->
-                <g>
-                  <circle
-                    v-for="(point, index) in chartData"
-                    :key="index"
-                    :cx="(index / maxIndex) * chartWidth"
-                    :cy="yScale(point.balance)"
-                    r="4"
-                    :fill="point.balance < 0 ? '#ef4444' : point.balance < 10000 ? '#f59e0b' : '#3b82f6'"
-                    stroke="white"
-                    stroke-width="2"
-                    class="cursor-pointer hover:r-6 transition-all"
-                    :title="`${point.dateFormatted}: ${formatCurrency(point.balance)}`"
-                  />
-                </g>
-              </g>
-              
-              <!-- Y-axis labels -->
-              <g class="text-[11px] fill-gray-500 dark:fill-gray-400">
-                <text x="50" y="25" text-anchor="end">{{ formatCurrency(yLabels.top) }}</text>
-                <text x="50" y="165" text-anchor="end">{{ formatCurrency(yLabels.mid) }}</text>
-                <text x="50" y="305" text-anchor="end">{{ formatCurrency(yLabels.bottom) }}</text>
-              </g>
-              
-              <!-- X-axis labels -->
-              <g class="text-[11px] fill-gray-500 dark:fill-gray-400">
-                <text v-if="chartData.length > 0" x="80" y="315" text-anchor="start">{{ chartData[0]?.dateFormatted }}</text>
-                <text v-if="chartData.length > 1" x="720" y="315" text-anchor="end">{{ chartData[chartData.length - 1]?.dateFormatted }}</text>
-              </g>
-            </svg>
-          </div>
+          <svg
+            class="w-full max-h-[360px] border border-[var(--ui-border)] rounded-xl bg-[var(--ui-bg-elevated)]/60"
+            :viewBox="`0 0 ${viewBoxWidth} ${viewBoxHeight}`"
+            preserveAspectRatio="xMidYMid meet"
+          >
+            <!-- Grid lines -->
+            <defs>
+              <pattern id="cashflow-grid" width="80" height="32" patternUnits="userSpaceOnUse">
+                <path d="M 80 0 L 0 0 0 32" fill="none" stroke="currentColor" opacity="0.08" />
+              </pattern>
+            </defs>
+            <rect :width="viewBoxWidth" :height="viewBoxHeight" fill="url(#cashflow-grid)" />
+
+            <!-- Data visualization -->
+            <g v-if="chartData.length > 0" :transform="`translate(${marginLeft}, ${marginTop})`">
+              <!-- Area fill -->
+              <path
+                :d="areaPath"
+                :fill="chartData.some(d => d.balance < 0) ? 'rgba(239, 68, 68, 0.1)' : 'rgba(59, 130, 246, 0.1)'"
+              />
+
+              <!-- Main balance line -->
+              <polyline
+                :points="chartData.map((d, i) => `${(i / maxIndex) * chartWidth},${yScale(d.balance)}`).join(' ')"
+                fill="none"
+                :stroke="chartData.some(d => d.balance < 0) ? '#ef4444' : '#3b82f6'"
+                stroke-width="2.5"
+                stroke-linejoin="round"
+              />
+
+              <!-- Zero line -->
+              <line x1="0" :y1="zeroLineY" :x2="chartWidth" :y2="zeroLineY" stroke="#6b7280" stroke-width="1" stroke-dasharray="4,4" opacity="0.5" />
+
+              <!-- Data points -->
+              <circle
+                v-for="(point, index) in chartData"
+                :key="index"
+                :cx="(index / maxIndex) * chartWidth"
+                :cy="yScale(point.balance)"
+                r="3.5"
+                :fill="point.balance < 0 ? '#ef4444' : point.balance < 10000 ? '#f59e0b' : '#3b82f6'"
+                stroke="white"
+                stroke-width="1.5"
+                class="cursor-pointer"
+              >
+                <title>{{ point.dateFormatted }}: {{ formatCurrency(point.balance) }}</title>
+              </circle>
+            </g>
+
+            <!-- Y-axis labels -->
+            <g class="text-[11px] fill-gray-500 dark:fill-gray-400">
+              <text :x="marginLeft - 8" :y="marginTop + 4" text-anchor="end">{{ formatCurrency(yLabels.top) }}</text>
+              <text :x="marginLeft - 8" :y="marginTop + chartHeight / 2 + 4" text-anchor="end">{{ formatCurrency(yLabels.mid) }}</text>
+              <text :x="marginLeft - 8" :y="marginTop + chartHeight + 4" text-anchor="end">{{ formatCurrency(yLabels.bottom) }}</text>
+            </g>
+
+            <!-- X-axis labels -->
+            <g v-if="chartData.length > 0" class="text-[11px] fill-gray-500 dark:fill-gray-400">
+              <text :x="marginLeft" :y="viewBoxHeight - 4" text-anchor="start">{{ chartData[0]?.dateFormatted }}</text>
+              <text v-if="chartData.length > 2" :x="marginLeft + chartWidth / 2" :y="viewBoxHeight - 4" text-anchor="middle">{{ chartData[Math.floor(chartData.length / 2)]?.dateFormatted }}</text>
+              <text :x="marginLeft + chartWidth" :y="viewBoxHeight - 4" text-anchor="end">{{ chartData[chartData.length - 1]?.dateFormatted }}</text>
+            </g>
+          </svg>
 
           <template #fallback>
-            <div class="flex items-center justify-center h-80">
-              <USkeleton class="h-full w-full" />
-            </div>
+            <USkeleton class="w-full aspect-[5/2] rounded-xl" />
           </template>
         </ClientOnly>
       </div>
@@ -323,7 +278,7 @@ const insights = computed(() => {
     </div>
 
     <!-- Empty State -->
-    <div v-else class="flex items-center justify-center h-80">
+    <div v-else class="flex items-center justify-center aspect-[5/2]">
       <div class="text-center">
         <UIcon name="i-lucide-trending-up" class="h-12 w-12 text-muted/50 mx-auto mb-4" />
         <p class="text-muted">No cash flow data available</p>
@@ -333,10 +288,3 @@ const insights = computed(() => {
   </UCard>
 </template>
 
-<style scoped>
-/* Ensure chart container has proper dimensions */
-.vis-chart-container {
-  width: 100%;
-  height: 100%;
-}
-</style>

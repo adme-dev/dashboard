@@ -22,6 +22,8 @@ export type NotificationType =
   | 'team_update'
   | 'system'
   | 'ai_digest'
+  | 'chat_mention'
+  | 'chat_dm'
 
 interface CreateNotificationParams {
   userId: string

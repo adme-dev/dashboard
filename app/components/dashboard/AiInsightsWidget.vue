@@ -1,43 +1,92 @@
 <script setup lang="ts">
 import { formatDistanceToNow } from 'date-fns'
 
-const { data, status } = await useFetch('/api/agency/ai/agent/reports', {
-  query: { limit: 1 }
+type ReportCategory = 'overdue' | 'stale_briefs' | 'blocked' | 'deadline_risks' | 'spend_anomalies' | 'eom' | 'workload' | 'unassigned'
+type ReportSeverity = 'info' | 'warning' | 'critical'
+
+interface AiReport {
+  id: string
+  title: string
+  summary?: string
+  category?: ReportCategory
+  severity?: ReportSeverity
+  reportType?: string
+  isRead?: boolean
+  createdAt: string
+  findingsCount?: number
+  metadata?: Record<string, unknown>
+}
+
+const { data, status } = await useFetch<{ reports: AiReport[] } | AiReport[]>('/api/agency/ai/agent/reports', {
+  query: { limit: 5 },
 })
 
-const latestReport = computed(() => {
-  const reports = (data.value as any)?.reports
-  return reports?.length ? reports[0] : null
+const reports = computed<AiReport[]>(() => {
+  if (!data.value) return []
+  // Handle both { reports: [...] } and flat array responses
+  const raw = Array.isArray(data.value) ? data.value : (data.value as any).reports || []
+  return raw.slice(0, 5)
 })
 
-function relativeDate(dateStr: string) {
+function resolveCategory(report: AiReport): ReportCategory {
+  if (report.category) return report.category
+  // Derive category from reportType if category not present
+  const type = (report.reportType || '').toLowerCase()
+  if (type.includes('overdue')) return 'overdue'
+  if (type.includes('brief') || type.includes('stale')) return 'stale_briefs'
+  if (type.includes('block')) return 'blocked'
+  if (type.includes('deadline') || type.includes('risk')) return 'deadline_risks'
+  if (type.includes('spend') || type.includes('anomal')) return 'spend_anomalies'
+  if (type.includes('eom') || type.includes('invoice')) return 'eom'
+  if (type.includes('workload') || type.includes('capacity')) return 'workload'
+  if (type.includes('unassign')) return 'unassigned'
+  return 'workload'
+}
+
+function resolveSeverity(report: AiReport): ReportSeverity {
+  if (report.severity) return report.severity
+  const count = report.findingsCount ?? 0
+  if (count >= 5) return 'critical'
+  if (count >= 2) return 'warning'
+  return 'info'
+}
+
+const severityConfig: Record<ReportSeverity, { icon: string; color: string; bgClass: string }> = {
+  info: {
+    icon: 'i-lucide-info',
+    color: 'text-blue-500',
+    bgClass: 'bg-blue-100 dark:bg-blue-500/10',
+  },
+  warning: {
+    icon: 'i-lucide-alert-triangle',
+    color: 'text-amber-500',
+    bgClass: 'bg-amber-100 dark:bg-amber-500/10',
+  },
+  critical: {
+    icon: 'i-lucide-alert-circle',
+    color: 'text-red-500',
+    bgClass: 'bg-red-100 dark:bg-red-500/10',
+  },
+}
+
+const categoryConfig: Record<ReportCategory, { label: string; color: string }> = {
+  overdue: { label: 'Overdue', color: 'error' },
+  stale_briefs: { label: 'Stale Briefs', color: 'warning' },
+  blocked: { label: 'Blocked', color: 'error' },
+  deadline_risks: { label: 'Deadline Risks', color: 'warning' },
+  spend_anomalies: { label: 'Spend Anomalies', color: 'neutral' },
+  eom: { label: 'EOM', color: 'info' },
+  workload: { label: 'Workload', color: 'info' },
+  unassigned: { label: 'Unassigned', color: 'neutral' },
+}
+
+function relativeTime(dateStr: string): string {
   try {
     return formatDistanceToNow(new Date(dateStr), { addSuffix: true })
   } catch {
     return dateStr
   }
 }
-
-// Extract quick stats from the report summary or sections
-const stats = computed(() => {
-  if (!latestReport.value) return null
-  const sections = latestReport.value.sections || []
-  let overdue = 0
-  let blocked = 0
-  let risks = 0
-
-  for (const section of sections) {
-    if (section.severity === 'critical') risks++
-    if (section.severity === 'warning') blocked++
-    // Try to extract numbers from content
-    const overdueMatch = section.content?.match(/(\d+)\s*overdue/i)
-    const blockedMatch = section.content?.match(/(\d+)\s*blocked/i)
-    if (overdueMatch) overdue = parseInt(overdueMatch[1])
-    if (blockedMatch) blocked = parseInt(blockedMatch[1])
-  }
-
-  return { overdue, blocked, risks }
-})
 </script>
 
 <template>
@@ -48,109 +97,98 @@ const stats = computed(() => {
           <UIcon name="i-lucide-brain" class="w-4 h-4 text-[var(--ui-text-muted)]" />
           <h3 class="font-semibold text-[var(--ui-text-highlighted)]">AI Insights</h3>
         </div>
-        <UButton to="/agency/ai/reports" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
-          All Reports
+        <UButton
+          to="/agency/ai/chat"
+          variant="link"
+          color="neutral"
+          size="xs"
+          trailing-icon="i-lucide-arrow-right"
+        >
+          View All
         </UButton>
       </div>
     </template>
 
     <!-- Loading -->
     <div v-if="status === 'pending'" class="space-y-3">
-      <USkeleton class="h-5 w-48 rounded" />
-      <USkeleton class="h-4 w-32 rounded" />
-      <USkeleton class="h-10 w-full rounded" />
+      <div v-for="i in 5" :key="i" class="flex items-start gap-3">
+        <USkeleton class="h-7 w-7 rounded-full shrink-0" />
+        <div class="flex-1 space-y-1.5">
+          <USkeleton class="h-4 w-3/4 rounded" />
+          <USkeleton class="h-3 w-full rounded" />
+          <USkeleton class="h-3 w-1/3 rounded" />
+        </div>
+      </div>
     </div>
 
-    <!-- Has report -->
-    <div v-else-if="latestReport" class="space-y-3">
-      <!-- Latest report -->
+    <!-- Empty state -->
+    <div v-else-if="!reports.length" class="text-center py-6">
+      <UIcon name="i-lucide-sparkles" class="w-8 h-8 text-[var(--ui-text-dimmed)] mx-auto mb-2" />
+      <p class="text-sm text-[var(--ui-text-muted)]">No AI insights yet</p>
+    </div>
+
+    <!-- Insights list -->
+    <div v-else class="space-y-1">
       <NuxtLink
-        :to="`/agency/ai/reports/${latestReport.id}`"
-        class="block p-3 rounded-lg bg-[var(--ui-bg-elevated)] hover:bg-[var(--ui-bg-accented)] transition-colors"
+        v-for="report in reports"
+        :key="report.id"
+        :to="`/agency/ai/reports/${report.id}`"
+        class="flex items-start gap-3 p-2.5 rounded-lg hover:bg-[var(--ui-bg-elevated)] transition-colors"
       >
-        <div class="flex items-start gap-2">
-          <div
-            v-if="!latestReport.isRead"
-            class="w-2 h-2 rounded-full bg-blue-500 mt-1.5 shrink-0"
+        <!-- Severity icon -->
+        <div
+          class="shrink-0 p-1.5 rounded-full mt-0.5"
+          :class="severityConfig[resolveSeverity(report)].bgClass"
+        >
+          <UIcon
+            :name="severityConfig[resolveSeverity(report)].icon"
+            class="w-3.5 h-3.5"
+            :class="severityConfig[resolveSeverity(report)].color"
           />
-          <div class="min-w-0">
-            <p class="font-medium text-sm text-[var(--ui-text-highlighted)] truncate">
-              {{ latestReport.title }}
-            </p>
-            <p class="text-xs text-[var(--ui-text-muted)] mt-0.5">
-              {{ relativeDate(latestReport.createdAt) }}
+        </div>
+
+        <!-- Content -->
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2">
+            <p class="text-sm font-medium text-[var(--ui-text-highlighted)] truncate">
+              {{ report.title }}
             </p>
           </div>
+          <p
+            v-if="report.summary"
+            class="text-xs text-[var(--ui-text-muted)] mt-0.5 line-clamp-2"
+          >
+            {{ report.summary }}
+          </p>
+          <div class="flex items-center gap-2 mt-1">
+            <UBadge
+              :color="(categoryConfig[resolveCategory(report)]?.color as any) || 'neutral'"
+              variant="subtle"
+              size="xs"
+            >
+              {{ categoryConfig[resolveCategory(report)]?.label || resolveCategory(report) }}
+            </UBadge>
+            <span class="text-[11px] text-[var(--ui-text-dimmed)]">
+              {{ relativeTime(report.createdAt) }}
+            </span>
+          </div>
         </div>
+
+        <!-- Unread dot -->
+        <div
+          v-if="report.isRead === false"
+          class="w-2 h-2 rounded-full bg-blue-500 shrink-0 mt-2"
+        />
       </NuxtLink>
-
-      <!-- Quick stats -->
-      <div v-if="stats" class="grid grid-cols-3 gap-2">
-        <div class="text-center p-2 rounded-lg bg-[var(--ui-bg-elevated)]">
-          <p class="text-lg font-bold" :class="stats.overdue > 0 ? 'text-red-500' : 'text-[var(--ui-text-highlighted)]'">
-            {{ stats.overdue }}
-          </p>
-          <p class="text-[10px] text-[var(--ui-text-muted)]">Overdue</p>
-        </div>
-        <div class="text-center p-2 rounded-lg bg-[var(--ui-bg-elevated)]">
-          <p class="text-lg font-bold" :class="stats.blocked > 0 ? 'text-amber-500' : 'text-[var(--ui-text-highlighted)]'">
-            {{ stats.blocked }}
-          </p>
-          <p class="text-[10px] text-[var(--ui-text-muted)]">Blocked</p>
-        </div>
-        <div class="text-center p-2 rounded-lg bg-[var(--ui-bg-elevated)]">
-          <p class="text-lg font-bold" :class="stats.risks > 0 ? 'text-red-500' : 'text-[var(--ui-text-highlighted)]'">
-            {{ stats.risks }}
-          </p>
-          <p class="text-[10px] text-[var(--ui-text-muted)]">Risks</p>
-        </div>
-      </div>
-
-      <!-- Actions -->
-      <div class="flex gap-2">
-        <UButton
-          to="/agency/ai/reports"
-          variant="soft"
-          color="primary"
-          size="xs"
-          icon="i-lucide-file-text"
-          label="View Reports"
-          class="flex-1 justify-center"
-        />
-        <UButton
-          to="/chat"
-          variant="soft"
-          color="neutral"
-          size="xs"
-          icon="i-lucide-message-circle"
-          label="Ask AI"
-          class="flex-1 justify-center"
-        />
-      </div>
-    </div>
-
-    <!-- No reports -->
-    <div v-else class="text-center py-4">
-      <UIcon name="i-lucide-sparkles" class="w-8 h-8 text-[var(--ui-text-dimmed)] mx-auto mb-2" />
-      <p class="text-sm text-[var(--ui-text-muted)] mb-3">No reports yet</p>
-      <div class="flex gap-2 justify-center">
-        <UButton
-          to="/agency/ai/settings"
-          variant="soft"
-          color="primary"
-          size="xs"
-          icon="i-lucide-settings-2"
-          label="Configure"
-        />
-        <UButton
-          to="/chat"
-          variant="soft"
-          color="neutral"
-          size="xs"
-          icon="i-lucide-message-circle"
-          label="Ask AI"
-        />
-      </div>
     </div>
   </UCard>
 </template>
+
+<style scoped>
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+</style>

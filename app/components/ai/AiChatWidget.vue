@@ -266,11 +266,11 @@ watch(() => messages.value.length, () => {
     </Transition>
 
     <!-- FAB Button -->
-    <UButton
-      :icon="isOpen ? 'i-lucide-x' : 'i-lucide-brain'"
-      size="lg"
-      class="rounded-full w-12 h-12 shadow-lg"
+    <button
+      class="rounded-full w-12 h-12 shadow-lg bg-primary text-white flex items-center justify-center hover:bg-primary/90 transition-colors cursor-pointer"
       @click="toggle"
-    />
+    >
+      <UIcon :name="isOpen ? 'i-lucide-x' : 'i-lucide-brain'" class="w-5 h-5" />
+    </button>
   </div>
 </template>

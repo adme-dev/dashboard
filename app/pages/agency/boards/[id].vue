@@ -434,6 +434,10 @@
               </div>
             </div>
           </div>
+
+          <div v-else-if="activeTab === 'billing'" class="space-y-4">
+            <TaskBillingPanel v-if="selectedTaskId" :task-id="selectedTaskId" />
+          </div>
         </div>
       </div>
     </template>
@@ -454,6 +458,7 @@ import BoardTemplateChooser from '~/components/board/BoardTemplateChooser.vue'
 import BoardAutomationBuilder from '~/components/board/BoardAutomationBuilder.vue'
 import SubtaskList from '~/components/task/SubtaskList.vue'
 import TaskActivityFeed from '~/components/task/TaskActivityFeed.vue'
+import TaskBillingPanel from '~/components/task/TaskBillingPanel.vue'
 
 definePageMeta({ title: 'Board' })
 
@@ -550,6 +555,7 @@ const tabs = [
   { id: 'files', label: 'Files', count: 0 },
   { id: 'activity', label: 'Activity Log', count: 0 },
   { id: 'info', label: 'Info', count: 0 },
+  { id: 'billing', label: 'Billing', count: 0 },
 ]
 
 // --- Item Subscription ---

@@ -78,43 +78,37 @@ const formatCurrency = (value: number) => {
   }).format(Math.abs(value))
 }
 
-// Chart configuration
-const xAccessor = (d: any) => d.category
-const yAccessor = (d: any) => d.type === 'start' || d.type === 'end' ? d.cumulative : d.value
-const colorAccessor = (d: any) => d.color
+// SVG chart dimensions
+const marginLeft = 70
+const marginTop = 15
+const marginRight = 15
+const marginBottom = 50
+const barAreaHeight = 260
+const viewBoxHeight = marginTop + barAreaHeight + marginBottom
 
-// Tooltip configuration
-const tooltipTemplate = (d: any) => {
-  const data = d.data || d
-  const isNegative = data.value < 0
-  const sign = data.type === 'increase' ? '+' : data.type === 'decrease' ? '-' : ''
-  
-  return `
-    <div class="p-3 bg-white dark:bg-gray-800 rounded-lg shadow-lg border">
-      <div class="font-semibold text-sm mb-2">${data.category}</div>
-      <div class="space-y-1 text-xs">
-        <div class="flex justify-between gap-4">
-          <span class="text-gray-600 dark:text-gray-400">Amount:</span>
-          <span class="font-medium" style="color: ${data.color}">${sign}${formatCurrency(data.value)}</span>
-        </div>
-        ${data.type !== 'start' && data.type !== 'end' ? `
-        <div class="flex justify-between gap-4">
-          <span class="text-gray-600 dark:text-gray-400">Running Total:</span>
-          <span class="font-medium">${formatCurrency(data.cumulative)}</span>
-        </div>
-        ` : ''}
-      </div>
-    </div>
-  `
+const barSpacing = computed(() => {
+  const count = chartData.value.length || 1
+  // Scale bar spacing so bars fill ~900px wide area regardless of count
+  return Math.max(50, Math.min(90, 900 / count))
+})
+const viewBoxWidth = computed(() => {
+  const count = chartData.value.length || 1
+  return marginLeft + count * barSpacing.value + marginRight
+})
+
+const maxAbsValue = computed(() => {
+  if (!chartData.value.length) return 1
+  return Math.max(...chartData.value.map(d => Math.abs(d.type === 'start' || d.type === 'end' ? d.cumulative : d.value)), 1)
+})
+
+const barHeight = (item: WaterfallData) => {
+  const val = item.type === 'start' || item.type === 'end' ? item.cumulative : Math.abs(item.value)
+  return Math.max(4, (val / maxAbsValue.value) * barAreaHeight)
 }
-
-// Chart dimensions and styling
-const chartHeight = 400
-const margin = { top: 20, right: 20, bottom: 60, left: 60 }
 </script>
 
 <template>
-  <UCard class="h-full">
+  <UCard>
     <template #header>
       <div class="flex items-center justify-between">
         <div>
@@ -127,58 +121,67 @@ const margin = { top: 20, right: 20, bottom: 60, left: 60 }
     </template>
 
     <!-- Loading State -->
-    <div v-if="loading" class="flex items-center justify-center h-96">
-      <div class="text-center">
-        <USkeleton class="h-80 w-full mb-4" />
-        <USkeleton class="h-4 w-48 mx-auto" />
-      </div>
+    <div v-if="loading">
+      <USkeleton class="w-full aspect-[5/2] rounded-xl mb-4" />
+      <USkeleton class="h-4 w-48 mx-auto" />
     </div>
 
     <!-- Chart -->
     <div v-else-if="chartData.length > 0" class="space-y-4">
       <!-- Chart Container -->
-      <div class="h-96 w-full">
+      <div class="w-full overflow-x-auto">
         <ClientOnly>
-          <div class="w-full h-96 flex items-center justify-center">
-            <!-- Simple Bar Chart using CSS -->
-            <div class="w-full h-80 flex items-end justify-center gap-2 px-4">
-              <div 
-                v-for="(item, index) in chartData" 
+          <svg
+            class="w-full h-auto border border-gray-200 dark:border-gray-700 rounded-xl bg-white/60 dark:bg-gray-900/40"
+            :viewBox="`0 0 ${viewBoxWidth} ${viewBoxHeight}`"
+            preserveAspectRatio="xMidYMid meet"
+          >
+            <!-- Bars -->
+            <g :transform="`translate(${marginLeft}, ${marginTop})`">
+              <g
+                v-for="(item, index) in chartData"
                 :key="index"
-                class="flex flex-col items-center gap-2"
-                :style="{ minWidth: `${Math.max(60, 100 / chartData.length)}px` }"
+                :transform="`translate(${index * barSpacing}, 0)`"
               >
                 <!-- Bar -->
-                <div class="relative flex flex-col items-center">
-                  <div 
-                    class="w-12 rounded-t transition-all duration-300 hover:opacity-80 cursor-pointer"
-                    :class="{
-                      'bg-emerald-500': item.type === 'increase',
-                      'bg-red-500': item.type === 'decrease',
-                      'bg-gray-500': item.type === 'start' || item.type === 'end'
-                    }"
-                    :style="{ 
-                      height: `${Math.max(20, Math.abs(item.value) / Math.max(...chartData.map(d => Math.abs(d.value))) * 200)}px` 
-                    }"
-                    :title="`${item.category}: ${formatCurrency(item.value)}`"
-                  ></div>
-                  <!-- Value Label -->
-                  <div class="text-xs font-medium mt-1 text-center">
-                    {{ formatCurrency(item.value) }}
-                  </div>
-                </div>
-                <!-- Category Label -->
-                <div class="text-xs text-muted text-center leading-tight max-w-16">
-                  {{ item.category.length > 10 ? item.category.substring(0, 10) + '...' : item.category }}
-                </div>
-              </div>
-            </div>
-          </div>
+                <rect
+                  :x="barSpacing * 0.12"
+                  :y="barAreaHeight - barHeight(item)"
+                  :width="barSpacing * 0.76"
+                  :height="barHeight(item)"
+                  :rx="3"
+                  :fill="item.type === 'increase' ? '#10b981' : item.type === 'decrease' ? '#ef4444' : '#6b7280'"
+                  class="cursor-pointer hover:opacity-80 transition-opacity"
+                >
+                  <title>{{ item.category }}: {{ item.type === 'increase' ? '+' : item.type === 'decrease' ? '-' : '' }}{{ formatCurrency(item.value) }}</title>
+                </rect>
+                <!-- Value label -->
+                <text
+                  :x="barSpacing / 2"
+                  :y="barAreaHeight - barHeight(item) - 6"
+                  text-anchor="middle"
+                  class="text-[10px] fill-gray-600 dark:fill-gray-400 font-medium"
+                >
+                  {{ formatCurrency(item.value) }}
+                </text>
+                <!-- Category label -->
+                <text
+                  :x="barSpacing / 2"
+                  :y="barAreaHeight + 16"
+                  text-anchor="middle"
+                  class="text-[10px] fill-gray-500 dark:fill-gray-400"
+                >
+                  {{ item.category.length > 12 ? item.category.substring(0, 11) + '…' : item.category }}
+                </text>
+              </g>
+
+              <!-- Baseline -->
+              <line x1="0" :y1="barAreaHeight" :x2="chartData.length * barSpacing" :y2="barAreaHeight" stroke="currentColor" stroke-width="1" opacity="0.15" />
+            </g>
+          </svg>
 
           <template #fallback>
-            <div class="flex items-center justify-center h-96">
-              <USkeleton class="h-full w-full" />
-            </div>
+            <USkeleton class="w-full aspect-[5/2] rounded-xl" />
           </template>
         </ClientOnly>
       </div>
@@ -227,7 +230,7 @@ const margin = { top: 20, right: 20, bottom: 60, left: 60 }
     </div>
 
     <!-- Empty State -->
-    <div v-else class="flex items-center justify-center h-96">
+    <div v-else class="flex items-center justify-center aspect-[5/2]">
       <div class="text-center">
         <UIcon name="i-lucide-bar-chart-3" class="h-12 w-12 text-muted/50 mx-auto mb-4" />
         <p class="text-muted">No cash flow data available</p>
@@ -236,11 +239,3 @@ const margin = { top: 20, right: 20, bottom: 60, left: 60 }
     </div>
   </UCard>
 </template>
-
-<style scoped>
-/* Ensure chart container has proper dimensions */
-.vis-chart-container {
-  width: 100%;
-  height: 100%;
-}
-</style>

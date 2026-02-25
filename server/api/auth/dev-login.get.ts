@@ -47,15 +47,26 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Create session
-    const { token, expiresAt } = await createSession(user.id, event)
+    // Create session (returns JWT string)
+    const token = await createSession(user.id, event)
 
-    // Set auth cookie
+    // Set auth cookie (expire in 7 days)
+    const expires = new Date()
+    expires.setDate(expires.getDate() + 7)
     setCookie(event, 'auth_token', token, {
       httpOnly: true,
-      secure: false, // Allow HTTP for local dev
+      secure: false,
       sameSite: 'lax',
-      expires: expiresAt,
+      expires,
+      path: '/'
+    })
+
+    // Client-accessible token for client-side auth middleware
+    setCookie(event, 'auth_token_client', token, {
+      httpOnly: false,
+      secure: false,
+      sameSite: 'lax',
+      expires,
       path: '/'
     })
 

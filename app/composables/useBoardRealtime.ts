@@ -1,8 +1,9 @@
 /**
  * Board real-time composable
  *
- * Connects to the board SSE stream for live updates.
- * Falls back to polling if SSE is not supported or fails.
+ * Connection strategy: WebSocket (DO) -> SSE -> Polling
+ * WebSocket provides full real-time + presence via Durable Objects.
+ * SSE/Polling fallbacks for local dev or when DO unavailable.
  */
 
 export interface BoardRealtimeEvent {
@@ -14,14 +15,16 @@ export interface BoardRealtimeEvent {
   timestamp: number
 }
 
+interface OnlineUser {
+  userId: string
+  userName: string
+  userAvatar?: string
+}
+
 interface UseBoardRealtimeOptions {
-  /** Called when any board update event arrives */
   onEvent?: (event: BoardRealtimeEvent) => void
-  /** Called to trigger a full board refresh */
   onRefresh?: () => void
-  /** Polling interval in ms (fallback when SSE fails). Default: 15000 */
   pollInterval?: number
-  /** Whether to auto-connect on creation. Default: true */
   autoConnect?: boolean
 }
 
@@ -36,7 +39,10 @@ export function useBoardRealtime(boardId: Ref<string>, options: UseBoardRealtime
   const connected = ref(false)
   const lastEventId = ref(0)
   const eventCount = ref(0)
+  const onlineUsers = ref<OnlineUser[]>([])
+  const connectionType = ref<'websocket' | 'sse' | 'polling'>('polling')
 
+  let ws: WebSocket | null = null
   let eventSource: EventSource | null = null
   let pollTimer: ReturnType<typeof setInterval> | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -46,14 +52,84 @@ export function useBoardRealtime(boardId: Ref<string>, options: UseBoardRealtime
   function connect() {
     if (import.meta.server) return
     disconnect()
+    reconnectAttempts = 0
+    connectWebSocket()
+  }
 
-    const url = `/api/agency/boards/${boardId.value}/events?lastEventId=${lastEventId.value}`
+  function connectWebSocket() {
+    if (import.meta.server) return
 
     try {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const wsUrl = `${protocol}//${window.location.host}/api/agency/boards/${boardId.value}/connect`
+
+      ws = new WebSocket(wsUrl)
+
+      ws.onopen = () => {
+        connected.value = true
+        connectionType.value = 'websocket'
+        reconnectAttempts = 0
+      }
+
+      ws.onmessage = (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data)
+
+          if (data.type === 'history') {
+            lastEventId.value = data.lastEventId || 0
+            // Process any missed events from history
+            if (data.events?.length) {
+              for (const evt of data.events) {
+                eventCount.value++
+                onEvent?.(evt)
+              }
+              onRefresh?.()
+            }
+          } else if (data.type === 'presence') {
+            onlineUsers.value = data.users || []
+          } else if (data.type === 'board_update') {
+            const evt = data.event as BoardRealtimeEvent
+            lastEventId.value = data.event?.id || lastEventId.value
+            eventCount.value++
+            onEvent?.(evt)
+            if (shouldRefresh(evt.type)) {
+              onRefresh?.()
+            }
+          }
+        } catch {
+          // Invalid message
+        }
+      }
+
+      ws.onerror = () => {
+        // WebSocket failed — fall back to SSE
+        cleanupWebSocket()
+        fallbackToSSE()
+      }
+
+      ws.onclose = (e) => {
+        cleanupWebSocket()
+        if (e.code !== 1000) {
+          // Abnormal close — try reconnect
+          scheduleReconnect()
+        }
+      }
+    } catch {
+      // WebSocket not available — fall back to SSE
+      fallbackToSSE()
+    }
+  }
+
+  function fallbackToSSE() {
+    if (import.meta.server) return
+
+    try {
+      const url = `/api/agency/boards/${boardId.value}/events?lastEventId=${lastEventId.value}`
       eventSource = new EventSource(url)
 
       eventSource.addEventListener('connected', (e: MessageEvent) => {
         connected.value = true
+        connectionType.value = 'sse'
         reconnectAttempts = 0
         if (e.lastEventId) {
           lastEventId.value = Number(e.lastEventId)
@@ -69,7 +145,6 @@ export function useBoardRealtime(boardId: Ref<string>, options: UseBoardRealtime
         try {
           const data: BoardRealtimeEvent = JSON.parse(e.data)
           onEvent?.(data)
-          // Trigger refresh on data-changing events
           if (shouldRefresh(data.type)) {
             onRefresh?.()
           }
@@ -86,24 +161,38 @@ export function useBoardRealtime(boardId: Ref<string>, options: UseBoardRealtime
         connected.value = false
         eventSource?.close()
         eventSource = null
-        scheduleReconnect()
+        // Fall back to polling
+        startPolling()
       }
     } catch {
-      // EventSource not supported or URL error — fall back to polling
       startPolling()
     }
   }
 
   function disconnect() {
+    cleanupWebSocket()
     if (eventSource) {
       eventSource.close()
       eventSource = null
     }
     connected.value = false
+    onlineUsers.value = []
+    connectionType.value = 'polling'
     stopPolling()
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
+    }
+  }
+
+  function cleanupWebSocket() {
+    if (ws) {
+      ws.onopen = null
+      ws.onmessage = null
+      ws.onerror = null
+      ws.onclose = null
+      try { ws.close() } catch {}
+      ws = null
     }
   }
 
@@ -113,12 +202,21 @@ export function useBoardRealtime(boardId: Ref<string>, options: UseBoardRealtime
     reconnectAttempts++
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null
-      connect()
+      // Try WebSocket first, then SSE, then polling
+      if (reconnectAttempts <= 3) {
+        connectWebSocket()
+      } else if (reconnectAttempts <= 6) {
+        fallbackToSSE()
+      } else {
+        startPolling()
+      }
     }, delay)
   }
 
   function startPolling() {
     stopPolling()
+    connectionType.value = 'polling'
+    connected.value = true // "connected" in a polling sense
     pollTimer = setInterval(() => {
       onRefresh?.()
     }, pollInterval)
@@ -148,6 +246,7 @@ export function useBoardRealtime(boardId: Ref<string>, options: UseBoardRealtime
     if (autoConnect) {
       lastEventId.value = 0
       eventCount.value = 0
+      onlineUsers.value = []
       reconnectAttempts = 0
       connect()
     }
@@ -165,6 +264,8 @@ export function useBoardRealtime(boardId: Ref<string>, options: UseBoardRealtime
     connected,
     lastEventId,
     eventCount,
+    onlineUsers,
+    connectionType,
     connect,
     disconnect,
   }

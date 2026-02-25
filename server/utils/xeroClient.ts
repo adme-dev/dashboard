@@ -8,6 +8,7 @@ const DEFAULT_SCOPES = [
   'accounting.reports.read',
   'accounting.settings.read',
   'accounting.transactions.read',
+  'accounting.transactions',
   'accounting.contacts.read'
 ]
 

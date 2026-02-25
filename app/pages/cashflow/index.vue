@@ -20,12 +20,12 @@ interface CashFlowForecast {
 }
 
 // Fetch comprehensive cash flow data
-const { data: cashflowData, pending: cashflowPending, error: cashflowError, refresh: refreshCashflow } = await useFetch<CashFlowForecast>('/api/xero/reports/cash-flow-forecast?days=90')
-const { data: scenarioData, pending: scenarioPending, error: scenarioError, refresh: refreshScenarios } = await useFetch('/api/xero/reports/cash-flow-scenarios?days=90')
-const { data: waterfallData, pending: waterfallPending, error: waterfallError, refresh: refreshWaterfall } = await useFetch('/api/xero/reports/cash-flow-waterfall?period=30')
-const { data: invoiceData, pending: invoicePending, error: invoiceError, refresh: refreshInvoices } = await useFetch('/api/xero/invoices')
-const { data: bankData, pending: bankPending, error: bankError, refresh: refreshBank } = await useFetch('/api/xero/reports/bank-summary')
-const { data: financialInsights, pending: insightsPending, error: insightsError, refresh: refreshInsights } = await useFetch('/api/xero/reports/cash-flow-insights')
+const { data: cashflowData, pending: cashflowPending, error: cashflowError, refresh: refreshCashflow } = await useFetch<CashFlowForecast>('/api/xero/reports/cash-flow-forecast?days=90', { lazy: true, server: false })
+const { data: scenarioData, pending: scenarioPending, error: scenarioError, refresh: refreshScenarios } = await useFetch('/api/xero/reports/cash-flow-scenarios?days=90', { lazy: true, server: false })
+const { data: waterfallData, pending: waterfallPending, error: waterfallError, refresh: refreshWaterfall } = await useFetch('/api/xero/reports/cash-flow-waterfall?period=30', { lazy: true, server: false })
+const { data: invoiceData, pending: invoicePending, error: invoiceError, refresh: refreshInvoices } = await useFetch('/api/xero/invoices', { lazy: true, server: false })
+const { data: bankData, pending: bankPending, error: bankError, refresh: refreshBank } = await useFetch('/api/xero/reports/bank-summary', { lazy: true, server: false })
+const { data: financialInsights, pending: insightsPending, error: insightsError, refresh: refreshInsights } = await useFetch('/api/xero/reports/cash-flow-insights', { lazy: true, server: false })
 
 const loading = computed(() => cashflowPending.value || scenarioPending.value || waterfallPending.value || invoicePending.value || bankPending.value || insightsPending.value)
 const error = computed(() => cashflowError.value || scenarioError.value || waterfallError.value || invoiceError.value || bankError.value || insightsError.value)
@@ -198,7 +198,7 @@ const breadcrumbs = computed(() => ([
 
       <UDashboardToolbar>
         <template #left>
-          <UDashboardBreadcrumb :items="breadcrumbs" />
+          <UBreadcrumb :items="breadcrumbs" />
         </template>
 
         <template #right>
@@ -456,35 +456,7 @@ const breadcrumbs = computed(() => ([
       </div>
 
       <!-- Main Forecast Chart -->
-      <UCard class="col-span-full">
-        <template #header>
-          <div class="flex items-center justify-between">
-            <div>
-              <h3 class="text-lg font-semibold">90-Day Cash Flow Forecast</h3>
-              <p class="text-sm text-muted">Projected daily cash position with inflows and outflows</p>
-            </div>
-            <div class="flex gap-2">
-              <UButton
-                icon="i-lucide-download"
-                size="sm"
-                color="neutral"
-                variant="ghost"
-                label="Export"
-                @click="showExportModal = true"
-              />
-              <UButton
-                icon="i-lucide-settings"
-                size="sm"
-                color="neutral"
-                variant="ghost"
-                label="Configure"
-              />
-            </div>
-          </div>
-        </template>
-
-        <CashFlowChart :data="forecastChartData?.data as any" :loading="forecastChartData?.loading || false" />
-      </UCard>
+      <CashFlowChart :data="forecastChartData?.data as any" :loading="forecastChartData?.loading || false" />
 
       <!-- Advanced Analysis -->
       <div class="space-y-6">

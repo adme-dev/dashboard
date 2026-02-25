@@ -1,3 +1,4 @@
+import type { H3Event } from 'h3'
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { generateEmbedding, upsertVector } from '~~/server/utils/aiVectorize'
 import { createHash } from 'uncrypto'
@@ -17,7 +18,12 @@ async function hashContent(content: string): Promise<string> {
  * Embed a knowledge article and store its vector in Vectorize.
  * Also logs the embedding in ai_embeddings_log.
  */
-export async function embedKnowledgeArticle(articleId: string): Promise<void> {
+export async function embedKnowledgeArticle(event?: H3Event, articleId?: string): Promise<void> {
+  // Backward compat: if first arg is a string, treat as articleId
+  if (typeof event === 'string') {
+    articleId = event
+    event = undefined
+  }
   const article = await queryOne<any>(`
     SELECT id, title, content, category, tags
     FROM ai_knowledge_articles
@@ -48,7 +54,7 @@ export async function embedKnowledgeArticle(articleId: string): Promise<void> {
     return // Content hasn't changed, skip re-embedding
   }
 
-  const embedding = await generateEmbedding(textToEmbed)
+  const embedding = event ? await generateEmbedding(event, textToEmbed) : await generateEmbedding(textToEmbed)
   if (embedding.length === 0) {
     console.warn(`[embeddingPipeline] Failed to generate embedding for article ${articleId}`)
     return
@@ -56,12 +62,21 @@ export async function embedKnowledgeArticle(articleId: string): Promise<void> {
 
   const vectorId = `kb-${articleId}`
 
-  await upsertVector(vectorId, embedding, {
-    type: 'knowledge_article',
-    id: articleId,
-    title: article.title,
-    category: article.category || '',
-  })
+  if (event) {
+    await upsertVector(event, vectorId, embedding, {
+      type: 'knowledge_article',
+      id: articleId!,
+      title: article.title,
+      category: article.category || '',
+    })
+  } else {
+    await upsertVector(vectorId, embedding, {
+      type: 'knowledge_article',
+      id: articleId!,
+      title: article.title,
+      category: article.category || '',
+    })
+  }
 
   // Log the embedding
   await execute(`
@@ -84,7 +99,15 @@ export async function embedKnowledgeArticle(articleId: string): Promise<void> {
  * Embed an AI Q&A pair (user question + assistant response) from ai_messages.
  * Used to build learned patterns from positive feedback.
  */
-export async function embedAiQAPair(messageId: string): Promise<void> {
+export async function embedAiQAPair(eventOrId: H3Event | string, messageIdArg?: string): Promise<void> {
+  let event: H3Event | undefined
+  let messageId: string
+  if (typeof eventOrId === 'string') {
+    messageId = eventOrId
+  } else {
+    event = eventOrId
+    messageId = messageIdArg!
+  }
   // The messageId is the assistant message; get the preceding user message
   const assistantMsg = await queryOne<any>(`
     SELECT id, conversation_id, content, created_at
@@ -125,19 +148,28 @@ export async function embedAiQAPair(messageId: string): Promise<void> {
     return
   }
 
-  const embedding = await generateEmbedding(textToEmbed)
+  const embedding = event ? await generateEmbedding(event, textToEmbed) : await generateEmbedding(textToEmbed)
   if (embedding.length === 0) {
     return
   }
 
   const vectorId = `qa-${messageId}`
 
-  await upsertVector(vectorId, embedding, {
-    type: 'qa_pair',
-    id: messageId,
-    title: userMsg.content.slice(0, 100),
-    category: 'learned',
-  })
+  if (event) {
+    await upsertVector(event, vectorId, embedding, {
+      type: 'qa_pair',
+      id: messageId,
+      title: userMsg.content.slice(0, 100),
+      category: 'learned',
+    })
+  } else {
+    await upsertVector(vectorId, embedding, {
+      type: 'qa_pair',
+      id: messageId,
+      title: userMsg.content.slice(0, 100),
+      category: 'learned',
+    })
+  }
 
   await execute(`
     INSERT INTO ai_embeddings_log (entity_type, entity_id, vector_id, content_hash)
@@ -153,7 +185,7 @@ export async function embedAiQAPair(messageId: string): Promise<void> {
  * Batch embed all knowledge articles that don't have embeddings yet.
  * Processes in batches of 10.
  */
-export async function batchEmbedArticles(): Promise<{ processed: number; errors: number }> {
+export async function batchEmbedArticles(event?: H3Event): Promise<{ processed: number; errors: number }> {
   const articles = await queryRows<any>(`
     SELECT a.id
     FROM ai_knowledge_articles a
@@ -171,7 +203,7 @@ export async function batchEmbedArticles(): Promise<{ processed: number; errors:
   for (let i = 0; i < articles.length; i += 10) {
     const batch = articles.slice(i, i + 10)
     const results = await Promise.allSettled(
-      batch.map(a => embedKnowledgeArticle(a.id))
+      batch.map(a => event ? embedKnowledgeArticle(event, a.id) : embedKnowledgeArticle(a.id))
     )
 
     for (const result of results) {
