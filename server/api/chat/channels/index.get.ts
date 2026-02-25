@@ -12,7 +12,10 @@ export default defineEventHandler(async (event) => {
       c.id, c.name, c.slug, c.description, c.type, c.is_private,
       c.department_id, c.task_id, c.avatar_url, c.archived_at,
       c.created_at, c.updated_at,
-      cm.role, cm.muted_until, cm.last_read_message_id,
+      cm.role, cm.last_read_message_id,
+      -- Use notification prefs muted_until if available, fallback to legacy
+      COALESCE(cnp.muted_until, cm.muted_until) AS muted_until,
+      COALESCE(cnp.notify_level, 'all') AS notify_level,
       -- Unread count
       COALESCE((
         SELECT COUNT(*) FROM chat_messages m
@@ -28,6 +31,8 @@ export default defineEventHandler(async (event) => {
       lm_user.name AS last_message_user_name
     FROM chat_channel_members cm
     JOIN chat_channels c ON c.id = cm.channel_id
+    LEFT JOIN chat_channel_notification_prefs cnp
+      ON cnp.channel_id = c.id AND cnp.user_id = cm.user_id
     LEFT JOIN LATERAL (
       SELECT m.id, m.content, m.user_id, m.created_at
       FROM chat_messages m
@@ -54,6 +59,7 @@ export default defineEventHandler(async (event) => {
     updated_at: ch.updated_at,
     role: ch.role,
     muted_until: ch.muted_until,
+    notify_level: ch.notify_level,
     last_read_message_id: ch.last_read_message_id,
     unread_count: ch.unread_count,
     last_message: ch.last_message_id ? {

@@ -23,8 +23,87 @@ const showLeaveConfirm = ref(false)
 const showArchiveConfirm = ref(false)
 const archiving = ref(false)
 
+// Notification preferences
+const notifyLevel = ref<'all' | 'mentions' | 'nothing'>('all')
+const isMuted = ref(false)
+const savingNotifs = ref(false)
+
+const notifyOptions = [
+  { value: 'all', label: 'All messages', description: 'Get notified for every new message', icon: 'i-lucide-bell' },
+  { value: 'mentions', label: 'Mentions only', description: 'Only when you\'re @mentioned', icon: 'i-lucide-at-sign' },
+  { value: 'nothing', label: 'Nothing', description: 'No notifications from this channel', icon: 'i-lucide-bell-off' }
+]
+
+const muteOptions = [
+  { label: '15 minutes', value: 15 },
+  { label: '1 hour', value: 60 },
+  { label: '8 hours', value: 480 },
+  { label: '24 hours', value: 1440 },
+  { label: 'Until I turn it back on', value: 525600 } // ~1 year
+]
+
+// Fetch current preferences
+async function fetchNotifPrefs() {
+  try {
+    const pref = await $fetch<{ notify_level: string; muted_until: string | null }>(
+      `/api/chat/channels/${props.channel.id}/notifications`
+    )
+    notifyLevel.value = (pref.notify_level as 'all' | 'mentions' | 'nothing') || 'all'
+    isMuted.value = pref.muted_until ? new Date(pref.muted_until) > new Date() : false
+  } catch {
+    // Default to all
+  }
+}
+
+async function handleNotifyChange(level: string) {
+  notifyLevel.value = level as 'all' | 'mentions' | 'nothing'
+  savingNotifs.value = true
+  try {
+    await $fetch(`/api/chat/channels/${props.channel.id}/mute`, {
+      method: 'PATCH',
+      body: { notifyLevel: level, muteDuration: isMuted.value ? undefined : 0 }
+    })
+    toast.add({ title: 'Notification preference updated', color: 'success' })
+  } catch {
+    toast.add({ title: 'Failed to update preferences', color: 'error' })
+  } finally {
+    savingNotifs.value = false
+  }
+}
+
+async function handleMute(minutes: number) {
+  savingNotifs.value = true
+  isMuted.value = true
+  try {
+    await $fetch(`/api/chat/channels/${props.channel.id}/mute`, {
+      method: 'PATCH',
+      body: { muteDuration: minutes }
+    })
+    toast.add({ title: 'Channel muted', color: 'success' })
+  } catch {
+    toast.add({ title: 'Failed to mute channel', color: 'error' })
+  } finally {
+    savingNotifs.value = false
+  }
+}
+
+async function handleUnmute() {
+  savingNotifs.value = true
+  isMuted.value = false
+  try {
+    await $fetch(`/api/chat/channels/${props.channel.id}/mute`, {
+      method: 'PATCH',
+      body: { muteDuration: 0 }
+    })
+    toast.add({ title: 'Channel unmuted', color: 'success' })
+  } catch {
+    toast.add({ title: 'Failed to unmute channel', color: 'error' })
+  } finally {
+    savingNotifs.value = false
+  }
+}
+
 const isOwnerOrAdmin = computed(() => {
-  // This would need to be passed in or fetched — for now default to true for simplicity
   return true
 })
 
@@ -84,6 +163,8 @@ async function handleArchive() {
     showArchiveConfirm.value = false
   }
 }
+
+onMounted(fetchNotifPrefs)
 </script>
 
 <template>
@@ -134,6 +215,73 @@ async function handleArchive() {
       <div class="text-sm">
         <span class="font-medium text-muted">Created:</span>
         <span class="ml-2">{{ new Date(channel.created_at).toLocaleDateString() }}</span>
+      </div>
+    </div>
+
+    <!-- Notification Preferences -->
+    <div class="border-t border-default pt-4">
+      <p class="text-sm font-medium mb-3">Notifications</p>
+
+      <div class="space-y-2">
+        <button
+          v-for="opt in notifyOptions"
+          :key="opt.value"
+          :class="[
+            'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors text-left',
+            notifyLevel === opt.value
+              ? 'border-primary/50 bg-primary/5'
+              : 'border-default hover:bg-elevated/50'
+          ]"
+          @click="handleNotifyChange(opt.value)"
+        >
+          <UIcon :name="opt.icon" :class="['w-4 h-4 shrink-0', notifyLevel === opt.value ? 'text-primary' : 'text-muted']" />
+          <div class="flex-1 min-w-0">
+            <span class="text-sm font-medium">{{ opt.label }}</span>
+            <p class="text-xs text-muted">{{ opt.description }}</p>
+          </div>
+          <UIcon
+            v-if="notifyLevel === opt.value"
+            name="i-lucide-check"
+            class="w-4 h-4 text-primary shrink-0"
+          />
+        </button>
+      </div>
+
+      <!-- Mute -->
+      <div class="mt-4">
+        <div v-if="isMuted" class="flex items-center justify-between px-3 py-2.5 rounded-lg bg-warning/10 border border-warning/20">
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-volume-x" class="w-4 h-4 text-warning" />
+            <span class="text-sm font-medium">Channel is muted</span>
+          </div>
+          <UButton
+            label="Unmute"
+            size="xs"
+            color="warning"
+            variant="soft"
+            :loading="savingNotifs"
+            @click="handleUnmute"
+          />
+        </div>
+
+        <UDropdownMenu
+          v-else
+          :items="[
+            muteOptions.map(opt => ({
+              label: opt.label,
+              click: () => handleMute(opt.value)
+            }))
+          ]"
+        >
+          <UButton
+            icon="i-lucide-volume-x"
+            label="Mute channel"
+            variant="soft"
+            color="neutral"
+            size="sm"
+            class="mt-2"
+          />
+        </UDropdownMenu>
       </div>
     </div>
 

@@ -13,6 +13,7 @@ const emit = defineEmits<{
   'select': [channel: ChatChannel]
   'create-channel': []
   'create-dm': []
+  'browse-channels': []
 }>()
 
 const searchFilter = ref('')
@@ -95,24 +96,26 @@ function getDmUserId(ch: ChatChannel): string | undefined {
 
       <template v-else>
         <!-- Channels Section -->
-        <div v-if="filtered.channels.length > 0">
-          <button
-            class="w-full flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-muted uppercase tracking-wide hover:text-default"
-            @click="expandedSections.channels = !expandedSections.channels"
-          >
-            <UIcon
-              :name="expandedSections.channels ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
-              class="w-3 h-3"
-            />
-            Channels
-            <UBadge
-              v-if="filtered.channels.reduce((s, c) => s + (c.unread_count || 0), 0) > 0"
-              :label="String(filtered.channels.reduce((s, c) => s + (c.unread_count || 0), 0))"
-              size="xs"
-              color="primary"
-              variant="subtle"
-            />
-          </button>
+        <div>
+          <div class="flex items-center">
+            <button
+              class="flex-1 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-muted uppercase tracking-wide hover:text-default"
+              @click="expandedSections.channels = !expandedSections.channels"
+            >
+              <UIcon
+                :name="expandedSections.channels ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                class="w-3 h-3"
+              />
+              Channels
+              <UBadge
+                v-if="filtered.channels.reduce((s, c) => s + (c.unread_count || 0), 0) > 0"
+                :label="String(filtered.channels.reduce((s, c) => s + (c.unread_count || 0), 0))"
+                size="xs"
+                color="primary"
+                variant="subtle"
+              />
+            </button>
+          </div>
 
           <div v-show="expandedSections.channels">
             <button
@@ -126,13 +129,17 @@ function getDmUserId(ch: ChatChannel): string | undefined {
             >
               <UIcon
                 :name="ch.is_private ? 'i-lucide-lock' : 'i-lucide-hash'"
-                class="w-4 h-4 text-muted shrink-0"
+                :class="['w-4 h-4 shrink-0', ch.muted_until ? 'text-muted/50' : 'text-muted']"
               />
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-1.5">
-                  <span class="text-sm truncate" :class="{ 'font-semibold': (ch.unread_count || 0) > 0 }">
+                  <span class="text-sm truncate" :class="[
+                    (ch.unread_count || 0) > 0 ? 'font-semibold' : '',
+                    ch.muted_until ? 'text-muted' : ''
+                  ]">
                     {{ ch.name }}
                   </span>
+                  <UIcon v-if="ch.muted_until" name="i-lucide-volume-x" class="w-3 h-3 text-muted/50 shrink-0" />
                 </div>
                 <p v-if="ch.last_message" class="text-xs text-muted truncate">
                   <span class="font-medium">{{ ch.last_message.user_name }}:</span>
@@ -150,6 +157,15 @@ function getDmUserId(ch: ChatChannel): string | undefined {
                   color="primary"
                 />
               </div>
+            </button>
+
+            <!-- Browse channels link -->
+            <button
+              class="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-muted hover:text-default hover:bg-elevated/50 transition-colors"
+              @click="emit('browse-channels')"
+            >
+              <UIcon name="i-lucide-compass" class="w-4 h-4" />
+              <span>Browse channels</span>
             </button>
           </div>
         </div>
@@ -199,9 +215,15 @@ function getDmUserId(ch: ChatChannel): string | undefined {
                 />
               </div>
               <div class="flex-1 min-w-0">
-                <span class="text-sm truncate block" :class="{ 'font-semibold': (ch.unread_count || 0) > 0 }">
-                  {{ ch.name }}
-                </span>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-sm truncate" :class="[
+                    (ch.unread_count || 0) > 0 ? 'font-semibold' : '',
+                    ch.muted_until ? 'text-muted' : ''
+                  ]">
+                    {{ ch.name }}
+                  </span>
+                  <UIcon v-if="ch.muted_until" name="i-lucide-volume-x" class="w-3 h-3 text-muted/50 shrink-0" />
+                </div>
                 <p v-if="ch.last_message" class="text-xs text-muted truncate">
                   {{ ch.last_message.content }}
                 </p>

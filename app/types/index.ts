@@ -543,6 +543,8 @@ export interface ChatChannel {
   // Computed in queries
   unread_count?: number
   last_read_message_id?: number
+  muted_until?: string
+  notify_level?: 'all' | 'mentions' | 'nothing'
   last_message?: ChatMessage
   members?: ChatChannelMember[]
 }

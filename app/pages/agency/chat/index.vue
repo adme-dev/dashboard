@@ -9,7 +9,7 @@ const { user } = useAuth()
 
 const {
   channels, activeChannel, messages, loadingChannels, loadingMessages, hasMoreMessages,
-  fetchChannels, createChannel, openDM, selectChannel, loadMoreMessages,
+  fetchChannels, createChannel, selectChannel, loadMoreMessages,
   applyWsMessage, updateChannelPreview, markChannelAsRead
 } = useChat()
 
@@ -22,6 +22,7 @@ const showSearch = ref(false)
 const showSettings = ref(false)
 const showPins = ref(false)
 const showSaved = ref(false)
+const showBrowseChannels = ref(false)
 const threadMessage = ref<ChatMessage | null>(null)
 const editingMessage = ref<{ id: number; content: string } | null>(null)
 const replyingTo = ref<ChatMessage | null>(null)
@@ -72,18 +73,6 @@ const newChannelName = ref('')
 const newChannelDescription = ref('')
 const newChannelPrivate = ref(false)
 const creatingChannel = ref(false)
-
-// ── New DM form ──
-const dmSearch = ref('')
-const { data: teamMembersData } = useFetch('/api/agency/team-members')
-const teamMembers = computed(() => (teamMembersData.value as any[]) || [])
-const filteredMembers = computed(() => {
-  if (!dmSearch.value) return teamMembers.value
-  const q = dmSearch.value.toLowerCase()
-  return teamMembers.value.filter((m: any) =>
-    m.name?.toLowerCase().includes(q) || m.email?.toLowerCase().includes(q)
-  )
-})
 
 // ── Channel details (for member list) ──
 const channelDetails = ref<any>(null)
@@ -316,16 +305,24 @@ async function handleCreateChannel() {
   }
 }
 
-// ── Start DM ──
-async function handleStartDM(memberId: string) {
-  try {
-    const ch = await openDM(memberId)
-    showNewDM.value = false
-    dmSearch.value = ''
-    await handleSelectChannel(ch)
-  } catch {
-    toast.add({ title: 'Error', description: 'Failed to create DM', color: 'error' })
+// ── New Message (DM or Group DM) ──
+async function handleNewMessageCreated(channel: ChatChannel) {
+  showNewDM.value = false
+  // Add to channels list if not present
+  if (!channels.value.find(c => c.id === channel.id)) {
+    channels.value.unshift(channel)
   }
+  await handleSelectChannel(channel)
+}
+
+// ── Browse Channels — join ──
+async function handleChannelJoined(channel: any) {
+  // Add to channels list
+  if (!channels.value.find(c => c.id === channel.id)) {
+    channels.value.unshift(channel as ChatChannel)
+  }
+  showBrowseChannels.value = false
+  await handleSelectChannel(channel as ChatChannel)
 }
 
 // ── Search ──
@@ -424,6 +421,7 @@ onUnmounted(() => {
         @select="handleSelectChannel"
         @create-channel="showCreateChannel = true"
         @create-dm="showNewDM = true"
+        @browse-channels="showBrowseChannels = true"
       />
     </div>
 
@@ -451,7 +449,7 @@ onUnmounted(() => {
           <p class="text-sm text-muted mb-4 max-w-sm">
             Select a channel or start a conversation to begin messaging your team.
           </p>
-          <div class="flex gap-2 justify-center">
+          <div class="flex gap-2 justify-center flex-wrap">
             <UButton
               icon="i-lucide-hash"
               label="New Channel"
@@ -465,6 +463,13 @@ onUnmounted(() => {
               variant="soft"
               color="neutral"
               @click="showNewDM = true"
+            />
+            <UButton
+              icon="i-lucide-compass"
+              label="Browse Channels"
+              variant="soft"
+              color="neutral"
+              @click="showBrowseChannels = true"
             />
           </div>
         </div>
@@ -613,49 +618,23 @@ onUnmounted(() => {
       </template>
     </UModal>
 
-    <!-- New DM Modal -->
+    <!-- New Message Modal (DM / Group DM) -->
     <UModal v-model:open="showNewDM">
       <template #content>
-        <div class="p-6">
-          <h3 class="text-lg font-semibold mb-4">New Direct Message</h3>
+        <ChatNewMessage
+          @close="showNewDM = false"
+          @created="handleNewMessageCreated"
+        />
+      </template>
+    </UModal>
 
-          <UInput
-            v-model="dmSearch"
-            placeholder="Search team members..."
-            icon="i-lucide-search"
-            class="mb-3"
-          />
-
-          <div class="max-h-64 overflow-y-auto space-y-1">
-            <button
-              v-for="member in filteredMembers"
-              :key="member.id"
-              class="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-elevated/80 transition-colors text-left"
-              @click="handleStartDM(member.id)"
-            >
-              <div class="relative">
-                <UAvatar :src="member.avatar_url" :alt="member.name" size="sm" />
-                <span
-                  v-if="userStatuses.get(member.id)"
-                  :class="[
-                    'absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-elevated',
-                    userStatuses.get(member.id) === 'online' ? 'bg-green-500' :
-                    userStatuses.get(member.id) === 'away' ? 'bg-amber-500' :
-                    userStatuses.get(member.id) === 'dnd' ? 'bg-red-500' : 'bg-gray-400'
-                  ]"
-                />
-              </div>
-              <div class="min-w-0">
-                <div class="text-sm font-medium truncate">{{ member.name }}</div>
-                <div class="text-xs text-muted truncate">{{ member.email }}</div>
-              </div>
-            </button>
-
-            <div v-if="filteredMembers.length === 0" class="text-center text-sm text-muted py-4">
-              No matching team members
-            </div>
-          </div>
-        </div>
+    <!-- Browse Channels Modal -->
+    <UModal v-model:open="showBrowseChannels">
+      <template #content>
+        <ChatBrowseChannels
+          @close="showBrowseChannels = false"
+          @joined="handleChannelJoined"
+        />
       </template>
     </UModal>
 
