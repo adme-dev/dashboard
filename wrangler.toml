@@ -4,6 +4,17 @@ compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 
 # ============================================
+# Cloudflare Bindings
+# ============================================
+
+# Hyperdrive — edge connection pooling for Neon Postgres
+# Create with: npx wrangler hyperdrive create agency-db --connection-string="$DATABASE_URL"
+# Then paste the ID below
+# [[hyperdrive]]
+# binding = "HYPERDRIVE"
+# id = "<your-hyperdrive-config-id>"
+
+# ============================================
 # Environment Variables (non-secret)
 # ============================================
 [vars]

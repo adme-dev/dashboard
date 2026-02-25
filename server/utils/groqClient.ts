@@ -5,11 +5,17 @@ let groq: Groq | null = null
 
 function getGroqClient() {
   if (!groq) {
-    const apiKey = process.env.GROQ_API_KEY || process.env.GROQ_API
+    const config = useRuntimeConfig()
+    const apiKey = config.groqApiKey || process.env.GROQ_API_KEY || process.env.GROQ_API
     if (!apiKey) {
       throw new Error('GROQ_API_KEY environment variable is required')
     }
-    groq = new Groq({ apiKey })
+    // Route through Cloudflare AI Gateway when configured (provides caching, rate limiting, analytics)
+    const aiGatewayUrl = config.aiGatewayUrl || process.env.AI_GATEWAY_URL
+    groq = new Groq({
+      apiKey,
+      ...(aiGatewayUrl ? { baseURL: aiGatewayUrl } : {})
+    })
   }
   return groq
 }

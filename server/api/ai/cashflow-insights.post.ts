@@ -1,19 +1,5 @@
 import { createError } from 'h3'
-import Groq from 'groq-sdk'
-
-// Lazy initialization to avoid startup errors
-let groq: Groq | null = null
-
-function getGroqClient() {
-  if (!groq) {
-    const apiKey = useRuntimeConfig().groqApiKey || process.env.GROQ_API_KEY
-    if (!apiKey) {
-      throw createError({ statusCode: 500, statusMessage: 'AI service not configured - GROQ_API_KEY missing' })
-    }
-    groq = new Groq({ apiKey: apiKey as string })
-  }
-  return groq
-}
+import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
 
 interface CashFlowInsightsRequest {
   currentCash: number
@@ -39,7 +25,6 @@ export default eventHandler(async (event) => {
   const body = await readBody<CashFlowInsightsRequest>(event)
 
   try {
-    const groqClient = getGroqClient()
     const prompt = `
 You are a senior financial advisor analyzing a business's cash flow. Based on the following data, provide actionable insights and recommendations:
 
@@ -105,26 +90,12 @@ Format your response as a JSON object with the following structure:
 Keep recommendations specific and actionable. Focus on the most impactful suggestions based on the data provided.
 `
 
-    const completion = await groqClient.chat.completions.create({
-      messages: [
-        {
-          role: "system",
-          content: "You are an expert financial advisor specializing in cash flow management. Provide clear, actionable insights based on financial data. Always respond with valid JSON."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      model: "llama-3.1-8b-instant",
+    const responseContent = await generateGroqInsight(prompt, {
+      model: GROQ_MODELS.LLAMA_8B,
       temperature: 0.3,
-      max_tokens: 2000
+      maxTokens: 2000,
+      systemPrompt: 'You are an expert financial advisor specializing in cash flow management. Provide clear, actionable insights based on financial data. Always respond with valid JSON.'
     })
-
-    const responseContent = completion.choices[0]?.message?.content
-    if (!responseContent) {
-      throw createError({ statusCode: 500, statusMessage: 'No response from AI service' })
-    }
 
     // Parse the JSON response
     let insights
@@ -143,7 +114,7 @@ Keep recommendations specific and actionable. Focus on the most impactful sugges
     // Add metadata
     insights.metadata = {
       generatedAt: new Date().toISOString(),
-      model: "llama-3.1-8b-instant",
+      model: GROQ_MODELS.LLAMA_8B,
       dataPoints: {
         currentCash: body.currentCash,
         projectedEndBalance: body.projectedEndBalance,
@@ -156,14 +127,14 @@ Keep recommendations specific and actionable. Focus on the most impactful sugges
 
   } catch (error: any) {
     console.error('AI Insights Error:', error)
-    
+
     // Fallback to rule-based insights if AI fails
     return {
       healthAssessment: {
         status: body.shortfallCount > 0 ? 'critical' : body.runway < 30 ? 'concerning' : 'healthy',
-        summary: body.shortfallCount > 0 
+        summary: body.shortfallCount > 0
           ? 'Critical cash flow issues detected requiring immediate attention.'
-          : body.runway < 30 
+          : body.runway < 30
             ? 'Cash flow concerns identified that need monitoring.'
             : 'Cash flow appears stable with room for optimization.',
         score: Math.max(10, Math.min(100, 100 - (body.shortfallCount * 20) - (Math.max(0, 60 - body.runway))))

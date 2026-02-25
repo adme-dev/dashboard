@@ -5,7 +5,10 @@ let pool: Pool | null = null
 
 export function getDb() {
   if (!pool) {
-    const connectionString = process.env.DATABASE_URL
+    // Prefer Hyperdrive binding (edge-optimized connection pooling) over direct DATABASE_URL
+    const hyperdrive = (globalThis as any).process?.env?.HYPERDRIVE_URL
+      || (process.env as any).HYPERDRIVE?.connectionString
+    const connectionString = hyperdrive || process.env.DATABASE_URL
     if (!connectionString) {
       throw new Error('DATABASE_URL is not defined')
     }

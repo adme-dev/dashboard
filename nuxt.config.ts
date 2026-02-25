@@ -29,8 +29,9 @@ export default defineNuxtConfig({
     resendApiKey: process.env.RESEND_API_KEY || '',
     emailFrom: process.env.EMAIL_FROM || 'noreply@localhost',
     
-    // AI (Groq)
+    // AI (Groq) — routed through Cloudflare AI Gateway when AI_GATEWAY_URL is set
     groqApiKey: process.env.GROQ_API_KEY || '',
+    aiGatewayUrl: process.env.AI_GATEWAY_URL || '',
     
     // Monday.com
     mondayApiToken: process.env.MONDAY_API_TOKEN || '',
@@ -39,7 +40,13 @@ export default defineNuxtConfig({
     metaAppId: process.env.META_APP_ID || '',
     metaAppSecret: process.env.META_APP_SECRET || '',
     metaRedirectUri: process.env.META_REDIRECT_URI || '/api/agency/social/meta/callback',
-    
+
+    // Google Ads
+    googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+    googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+    googleRedirectUri: process.env.GOOGLE_REDIRECT_URI || '/api/agency/social/google/callback',
+    googleDeveloperToken: process.env.GOOGLE_DEVELOPER_TOKEN || '',
+
     // R2 Storage
     r2AccountId: process.env.R2_ACCOUNT_ID || '',
     r2AccessKeyId: process.env.R2_ACCESS_KEY_ID || '',
