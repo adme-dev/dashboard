@@ -345,7 +345,7 @@ async function searchKnowledge(keywords: string[], question: string, event?: H3E
         } else {
           items.push({
             type: 'knowledge',
-            id: match.metadata.id,
+            id: match.metadata.id || '',
             title: match.metadata.title || 'Knowledge Article',
             snippet: `Category: ${match.metadata.category || 'General'} (semantic match: ${Math.round(match.score * 100)}%)`,
             url: `/agency/ai/knowledge`,

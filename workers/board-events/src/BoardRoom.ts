@@ -6,6 +6,8 @@
  * Much simpler than ChatRoom: events flow server->client only.
  */
 
+import { DurableObject } from 'cloudflare:workers'
+
 interface ConnectionMeta {
   userId: string
   userName: string
