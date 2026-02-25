@@ -94,6 +94,61 @@ export async function edgeClassify(
 }
 
 /**
+ * Generate text using Workers AI with an optional LoRA adapter.
+ * Tries the fast model with LoRA first, falls back to base model on failure.
+ * Returns null if binding unavailable.
+ */
+export async function edgeGenerateWithLoRA(
+  event: H3Event,
+  prompt: string,
+  options: {
+    systemPrompt?: string
+    maxTokens?: number
+    temperature?: number
+    loraAdapter?: { id: string; name: string } | null
+  } = {}
+): Promise<{ response: string | null; usedLora: boolean; adapterId: string | null }> {
+  const ai = getAI(event)
+  if (!ai) return { response: null, usedLora: false, adapterId: null }
+
+  const messages: Array<{ role: string; content: string }> = []
+  if (options.systemPrompt) {
+    messages.push({ role: 'system', content: options.systemPrompt })
+  }
+  messages.push({ role: 'user', content: prompt })
+
+  const baseParams = {
+    messages,
+    max_tokens: options.maxTokens ?? 256,
+    temperature: options.temperature ?? 0.3,
+  }
+
+  // Try LoRA adapter first if provided
+  if (options.loraAdapter) {
+    try {
+      const result = await ai.run('@cf/meta/llama-3.1-8b-instruct-fast', {
+        ...baseParams,
+        lora: options.loraAdapter.name,
+      })
+      if (result?.response) {
+        return { response: result.response, usedLora: true, adapterId: options.loraAdapter.id }
+      }
+    } catch (err) {
+      console.warn('[edgeAi] LoRA generation failed, falling back to base model:', err)
+    }
+  }
+
+  // Fall back to base model
+  try {
+    const result = await ai.run('@cf/meta/llama-3.1-8b-instruct', baseParams)
+    return { response: result?.response ?? null, usedLora: false, adapterId: null }
+  } catch (err) {
+    console.error('[edgeAi] Base generation failed:', err)
+    return { response: null, usedLora: false, adapterId: null }
+  }
+}
+
+/**
  * Summarize text using Workers AI at the edge.
  * Returns null if binding unavailable or on error.
  */

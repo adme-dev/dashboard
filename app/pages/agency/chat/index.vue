@@ -23,6 +23,8 @@ const showSettings = ref(false)
 const showPins = ref(false)
 const showSaved = ref(false)
 const showBrowseChannels = ref(false)
+const showChannelSwitcher = ref(false)
+const forwardingMessage = ref<ChatMessage | null>(null)
 const threadMessage = ref<ChatMessage | null>(null)
 const editingMessage = ref<{ id: number; content: string } | null>(null)
 const replyingTo = ref<ChatMessage | null>(null)
@@ -273,8 +275,26 @@ function handleOpenThread(msg: ChatMessage) {
   threadMessage.value = msg
 }
 
+// ── Forward ──
+function handleForwardMessage(msg: ChatMessage) {
+  forwardingMessage.value = msg
+}
+
+function handleForwarded(_channelId: string) {
+  forwardingMessage.value = null
+}
+
+// ── Cmd+K Channel Switcher ──
+function handleGlobalKeydown(e: KeyboardEvent) {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault()
+    showChannelSwitcher.value = !showChannelSwitcher.value
+  }
+}
+
 // Listen for thread replies from the thread panel
 onMounted(() => {
+  window.addEventListener('keydown', handleGlobalKeydown)
   window.addEventListener('chat-thread-reply', ((e: CustomEvent) => {
     const { threadParentId, content } = e.detail
     wsComposable?.sendMessage(content, threadParentId)
@@ -400,6 +420,7 @@ onUnmounted(() => {
   wsComposable?.disconnect()
   clearInterval(presenceInterval)
   setOwnPresence('offline')
+  window.removeEventListener('keydown', handleGlobalKeydown)
 })
 </script>
 
@@ -495,6 +516,7 @@ onUnmounted(() => {
               @pin="handlePinMessage"
               @save="handleSaveMessage"
               @reply="handleReplyTo"
+              @forward="handleForwardMessage"
             />
 
             <ChatMentionInput
@@ -705,6 +727,31 @@ onUnmounted(() => {
             </UButton>
           </div>
         </div>
+      </template>
+    </UModal>
+
+    <!-- Channel Switcher (Cmd+K) -->
+    <UModal v-model:open="showChannelSwitcher">
+      <template #content>
+        <ChatChannelSwitcher
+          :channels="channels"
+          :active-channel-id="activeChannel?.id"
+          @select="(ch: ChatChannel) => { handleSelectChannel(ch); showChannelSwitcher = false }"
+          @close="showChannelSwitcher = false"
+        />
+      </template>
+    </UModal>
+
+    <!-- Forward Message Modal -->
+    <UModal :open="!!forwardingMessage" @update:open="(v: boolean) => { if (!v) forwardingMessage = null }">
+      <template #content>
+        <ChatForwardModal
+          v-if="forwardingMessage"
+          :message="forwardingMessage"
+          :channels="channels"
+          @forward="handleForwarded"
+          @close="forwardingMessage = null"
+        />
       </template>
     </UModal>
   </div>

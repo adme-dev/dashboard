@@ -6,6 +6,7 @@
     @export="showExport = true"
     @template="showTemplates = true"
     @automations="showAutomations = true"
+    @chat-feed="showChatFeed = true"
     @add-group="showAddGroup = true"
     @add-column="showAddColumn = true"
     @add-item="handleAddItem"
@@ -338,6 +339,13 @@
     @update:open="showAutomations = $event"
   />
 
+  <!-- Chat Feed Settings -->
+  <BoardChatFeedSettings
+    :board-id="boardId"
+    :open="showChatFeed"
+    @update:open="showChatFeed = $event"
+  />
+
   <!-- Task Slideover -->
   <USlideover
     v-model:open="showTaskPanel"
@@ -394,6 +402,10 @@
             <TaskActivityFeed v-if="selectedTaskId" :task-id="selectedTaskId" />
           </template>
 
+          <div v-else-if="activeTab === 'chat'" class="h-[400px]">
+            <TaskChatPanel v-if="selectedTaskId" :task-id="selectedTaskId" />
+          </div>
+
           <div v-else-if="activeTab === 'subtasks'" class="px-1">
             <SubtaskList v-if="selectedTaskId" :task-id="selectedTaskId" />
           </div>
@@ -435,6 +447,10 @@
             </div>
           </div>
 
+          <div v-else-if="activeTab === 'time'" class="space-y-4">
+            <TaskTimePanel v-if="selectedTaskId" :task-id="selectedTaskId" />
+          </div>
+
           <div v-else-if="activeTab === 'billing'" class="space-y-4">
             <TaskBillingPanel v-if="selectedTaskId" :task-id="selectedTaskId" />
           </div>
@@ -456,9 +472,12 @@ import BoardColumnTypeSelector from '~/components/board/BoardColumnTypeSelector.
 import BoardExportModal from '~/components/board/BoardExportModal.vue'
 import BoardTemplateChooser from '~/components/board/BoardTemplateChooser.vue'
 import BoardAutomationBuilder from '~/components/board/BoardAutomationBuilder.vue'
+import BoardChatFeedSettings from '~/components/board/BoardChatFeedSettings.vue'
 import SubtaskList from '~/components/task/SubtaskList.vue'
 import TaskActivityFeed from '~/components/task/TaskActivityFeed.vue'
 import TaskBillingPanel from '~/components/task/TaskBillingPanel.vue'
+import TaskChatPanel from '~/components/task/TaskChatPanel.vue'
+import TaskTimePanel from '~/components/task/TaskTimePanel.vue'
 
 definePageMeta({ title: 'Board' })
 
@@ -503,6 +522,7 @@ const newGroupColor = ref('#579BFC')
 const showExport = ref(false)
 const showTemplates = ref(false)
 const showAutomations = ref(false)
+const showChatFeed = ref(false)
 const showNewItem = ref(false)
 const newItemTitle = ref('')
 const newItemGroupId = ref('')
@@ -551,10 +571,12 @@ const selectedTask = computed(() => taskData.value || null)
 
 const tabs = [
   { id: 'updates', label: 'Updates', count: 0 },
+  { id: 'chat', label: 'Chat', count: 0 },
   { id: 'subtasks', label: 'Subtasks', count: 0 },
   { id: 'files', label: 'Files', count: 0 },
   { id: 'activity', label: 'Activity Log', count: 0 },
   { id: 'info', label: 'Info', count: 0 },
+  { id: 'time', label: 'Time', count: 0 },
   { id: 'billing', label: 'Billing', count: 0 },
 ]
 

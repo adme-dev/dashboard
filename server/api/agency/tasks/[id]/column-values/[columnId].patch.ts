@@ -10,6 +10,7 @@ import { emitBoardEvent } from '~~/server/utils/boardEvents'
 import { notifyBoardSubscribers } from '~~/server/utils/boardNotifications'
 import { evaluateAutomations } from '~~/server/utils/automationEngine'
 import { enqueue } from '~~/server/utils/queue'
+import { postBoardEventToChat } from '~~/server/utils/boardChatBridge'
 
 export default eventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -136,6 +137,11 @@ export default eventHandler(async (event) => {
 
         // Evaluate board automations (queued with retry, fallback to fire-and-forget)
         enqueue(event, 'board.automate', boardEvent, () => evaluateAutomations(taskInfo.department_id, boardEvent))
+
+        // Post to linked chat channels (fire-and-forget)
+        postBoardEventToChat({
+          ...boardEvent,
+        }).catch(() => {})
       }
     }
 

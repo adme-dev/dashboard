@@ -21,13 +21,27 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Conversation not found' })
   }
 
-  const messageRows = await queryRows(`
+  const query = getQuery(event)
+  const limit = Math.min(Math.max(parseInt(query.limit as string) || 50, 1), 200)
+  const before = query.before as string | undefined
+
+  const messageParams: any[] = [id, limit]
+  let messageQuery = `
     SELECT id, conversation_id, role, content, context_sources,
            token_count, model, latency_ms, is_error, created_at
     FROM ai_messages
-    WHERE conversation_id = $1
-    ORDER BY created_at ASC
-  `, [id])
+    WHERE conversation_id = $1`
+
+  if (before) {
+    messageQuery += ` AND created_at < $3`
+    messageParams.push(before)
+  }
+
+  // Fetch in DESC order so we get the most recent, then reverse for display
+  messageQuery += ` ORDER BY created_at DESC LIMIT $2`
+
+  const messageRows = await queryRows(messageQuery, messageParams)
+  messageRows.reverse()
 
   const messages = messageRows.map(r => ({
     id: r.id,
@@ -56,5 +70,6 @@ export default defineEventHandler(async (event) => {
       updatedAt: conv.updated_at,
     },
     messages,
+    hasMore: messages.length === limit,
   }
 })

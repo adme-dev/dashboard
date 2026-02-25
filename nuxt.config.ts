@@ -56,6 +56,10 @@ export default defineNuxtConfig({
     // Durable Objects
     taskRooms: process.env.TASK_ROOMS || '',
 
+    // Cloudflare API (for LoRA adapter management)
+    cfAccountId: process.env.CF_ACCOUNT_ID || '',
+    cfApiToken: process.env.CF_API_TOKEN || '',
+
     // Public keys (exposed to client-side)
     public: {
       appName: process.env.APP_NAME || 'XeroFlow Agency',

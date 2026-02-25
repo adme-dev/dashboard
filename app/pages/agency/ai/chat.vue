@@ -4,10 +4,22 @@ import type { AiConversation } from '~/types'
 
 definePageMeta({ layout: 'agency' })
 
+const route = useRoute()
+const router = useRouter()
 const toast = useToast()
-const { conversations, activeConversation, messages, loading, sending, fetchConversations, createConversation, loadConversation, sendMessage, archiveConversation, submitFeedback } = useAiChat()
+const { user } = useAuth()
 
+const {
+  conversations, activeConversation, messages, loading, sending,
+  hasMoreConversations, hasMoreMessages, totalConversations,
+  fetchConversations, loadMoreConversations, createConversation,
+  loadConversation, loadMoreMessages, renameConversation,
+  sendMessage, archiveConversation, cleanupOldConversations, submitFeedback,
+} = useAiChat()
+
+// --- Feedback ---
 const feedbackMessageId = ref<string | null>(null)
+const feedbackModalOpen = ref(false)
 const feedbackCorrection = ref('')
 
 function handleFeedback(messageId: string, rating: -1 | 1) {
@@ -17,6 +29,7 @@ function handleFeedback(messageId: string, rating: -1 | 1) {
   } else {
     feedbackMessageId.value = messageId
     feedbackCorrection.value = ''
+    feedbackModalOpen.value = true
   }
 }
 
@@ -25,10 +38,62 @@ function submitCorrectionFeedback() {
     submitFeedback(feedbackMessageId.value, -1, feedbackCorrection.value || undefined)
     feedbackMessageId.value = null
     feedbackCorrection.value = ''
+    feedbackModalOpen.value = false
     toast.add({ title: 'Feedback submitted', color: 'success' })
   }
 }
 
+// --- Rename ---
+const renamingId = ref<string | null>(null)
+const renameInput = ref('')
+
+function startRename(conv: AiConversation) {
+  renamingId.value = conv.id
+  renameInput.value = conv.title || ''
+}
+
+async function confirmRename() {
+  if (!renamingId.value || !renameInput.value.trim()) {
+    renamingId.value = null
+    return
+  }
+  try {
+    await renameConversation(renamingId.value, renameInput.value.trim())
+  } catch {
+    toast.add({ title: 'Error', description: 'Failed to rename conversation', color: 'error' })
+  }
+  renamingId.value = null
+}
+
+function handleRenameKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter') { e.preventDefault(); confirmRename() }
+  if (e.key === 'Escape') { renamingId.value = null }
+}
+
+// --- Cleanup ---
+const cleanupModalOpen = ref(false)
+const cleanupDays = ref(90)
+const cleanupLoading = ref(false)
+
+async function handleCleanup() {
+  cleanupLoading.value = true
+  try {
+    const result = await cleanupOldConversations(cleanupDays.value)
+    cleanupModalOpen.value = false
+    toast.add({
+      title: result.archivedCount > 0
+        ? `Archived ${result.archivedCount} old conversation${result.archivedCount === 1 ? '' : 's'}`
+        : 'No old conversations to clean up',
+      color: result.archivedCount > 0 ? 'success' : 'neutral',
+    })
+  } catch {
+    toast.add({ title: 'Error', description: 'Failed to clean up conversations', color: 'error' })
+  } finally {
+    cleanupLoading.value = false
+  }
+}
+
+// --- State ---
 const messageInput = ref('')
 const searchFilter = ref('')
 const sidebarOpen = ref(true)
@@ -37,7 +102,13 @@ const messagesContainer = ref<HTMLElement | null>(null)
 // Fetch conversations on mount
 await fetchConversations()
 
-// Filtered conversations
+// If navigated from widget with a conversation ID, load it
+const conversationParam = route.query.conversation as string | undefined
+if (conversationParam && activeConversation.value?.id !== conversationParam) {
+  await loadConversation(conversationParam)
+}
+
+// Filtered conversations (client-side filter on loaded set)
 const filteredConversations = computed(() => {
   if (!searchFilter.value) return conversations.value
   const q = searchFilter.value.toLowerCase()
@@ -46,7 +117,13 @@ const filteredConversations = computed(() => {
   )
 })
 
-// Scroll to bottom of messages
+// --- URL Sync ---
+function updateUrl(convId: string | null) {
+  const query = convId ? { conversation: convId } : {}
+  router.replace({ query })
+}
+
+// --- Scroll ---
 function scrollToBottom() {
   nextTick(() => {
     if (messagesContainer.value) {
@@ -55,12 +132,14 @@ function scrollToBottom() {
   })
 }
 
-watch(messages, () => scrollToBottom(), { deep: true })
+// Watch message count (not deep) for auto-scroll
+watch(() => messages.value.length, () => scrollToBottom())
 
 // Create new chat
 async function handleNewChat() {
   try {
-    await createConversation()
+    const conv = await createConversation()
+    updateUrl(conv.id)
   } catch {
     toast.add({ title: 'Error', description: 'Failed to create conversation', color: 'error' })
   }
@@ -70,7 +149,7 @@ async function handleNewChat() {
 async function selectConversation(conv: AiConversation) {
   if (activeConversation.value?.id === conv.id) return
   await loadConversation(conv.id)
-  // Collapse sidebar on mobile
+  updateUrl(conv.id)
   if (window.innerWidth < 768) {
     sidebarOpen.value = false
   }
@@ -81,10 +160,10 @@ async function handleSend() {
   const content = messageInput.value.trim()
   if (!content || sending.value) return
 
-  // If no active conversation, create one first
   if (!activeConversation.value) {
     try {
-      await createConversation()
+      const conv = await createConversation()
+      updateUrl(conv.id)
     } catch {
       toast.add({ title: 'Error', description: 'Failed to create conversation', color: 'error' })
       return
@@ -95,12 +174,16 @@ async function handleSend() {
 
   try {
     await sendMessage(content)
-  } catch {
-    toast.add({ title: 'Error', description: 'Failed to send message', color: 'error' })
+  } catch (err: any) {
+    const status = err?.response?.status || err?.statusCode
+    if (status === 429) {
+      toast.add({ title: 'Slow down', description: 'Too many messages. Please wait a moment.', color: 'warning' })
+    } else {
+      toast.add({ title: 'Error', description: 'Failed to send message', color: 'error' })
+    }
   }
 }
 
-// Handle Enter key (send on Enter, newline on Shift+Enter)
 function handleKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
@@ -111,17 +194,50 @@ function handleKeydown(e: KeyboardEvent) {
 // Delete conversation
 async function handleDelete(conv: AiConversation) {
   try {
+    const wasActive = activeConversation.value?.id === conv.id
     await archiveConversation(conv.id)
+    if (wasActive) updateUrl(null)
     toast.add({ title: 'Conversation deleted', color: 'success' })
   } catch {
     toast.add({ title: 'Error', description: 'Failed to delete conversation', color: 'error' })
   }
 }
 
-// Format relative time
+// Load older messages on scroll to top
+function handleMessagesScroll() {
+  if (!messagesContainer.value || !hasMoreMessages.value || loading.value) return
+  if (messagesContainer.value.scrollTop < 80) {
+    const prevHeight = messagesContainer.value.scrollHeight
+    loadMoreMessages().then(() => {
+      // Preserve scroll position after prepending older messages
+      nextTick(() => {
+        if (messagesContainer.value) {
+          messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight - prevHeight
+        }
+      })
+    })
+  }
+}
+
 function relativeTime(date: string | null) {
   if (!date) return ''
   return formatDistanceToNow(new Date(date), { addSuffix: true })
+}
+
+// Memoized markdown cache
+const markdownCache = new Map<string, string>()
+
+function getRenderedMarkdown(content: string): string {
+  const cached = markdownCache.get(content)
+  if (cached) return cached
+  const rendered = renderMarkdown(content)
+  markdownCache.set(content, rendered)
+  // Keep cache bounded
+  if (markdownCache.size > 200) {
+    const firstKey = markdownCache.keys().next().value
+    if (firstKey) markdownCache.delete(firstKey)
+  }
+  return rendered
 }
 </script>
 
@@ -147,6 +263,20 @@ function relativeTime(date: string | null) {
         >
           New Chat
         </UButton>
+        <UDropdownMenu
+          :items="[
+            [
+              { label: 'Clean up old chats', icon: 'i-lucide-archive', onSelect: () => { cleanupModalOpen = true } },
+            ],
+          ]"
+        >
+          <UButton
+            icon="i-lucide-more-horizontal"
+            variant="ghost"
+            color="neutral"
+            size="sm"
+          />
+        </UDropdownMenu>
       </div>
 
       <!-- Search -->
@@ -157,6 +287,11 @@ function relativeTime(date: string | null) {
           icon="i-lucide-search"
           size="sm"
         />
+      </div>
+
+      <!-- Conversation count -->
+      <div v-if="totalConversations > 0" class="px-3 pb-1">
+        <span class="text-[10px] text-muted">{{ totalConversations }} conversation{{ totalConversations === 1 ? '' : 's' }}</span>
       </div>
 
       <!-- Conversation List -->
@@ -179,7 +314,17 @@ function relativeTime(date: string | null) {
           >
             <div class="flex items-start justify-between gap-2">
               <div class="min-w-0 flex-1">
-                <div class="text-sm font-medium truncate">
+                <!-- Inline rename -->
+                <input
+                  v-if="renamingId === conv.id"
+                  v-model="renameInput"
+                  class="text-sm font-medium w-full bg-default border border-default rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-primary"
+                  @keydown="handleRenameKeydown"
+                  @blur="confirmRename"
+                  @click.stop
+                  autofocus
+                />
+                <div v-else class="text-sm font-medium truncate">
                   {{ conv.title || 'New conversation' }}
                 </div>
                 <div class="flex items-center gap-1.5 mt-0.5">
@@ -195,16 +340,37 @@ function relativeTime(date: string | null) {
                   />
                 </div>
               </div>
-              <UButton
-                icon="i-lucide-trash-2"
-                variant="ghost"
-                color="neutral"
-                size="xs"
-                class="opacity-0 group-hover:opacity-100 shrink-0"
-                @click.stop="handleDelete(conv)"
-              />
+              <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 shrink-0">
+                <UButton
+                  icon="i-lucide-pencil"
+                  variant="ghost"
+                  color="neutral"
+                  size="xs"
+                  @click.stop="startRename(conv)"
+                />
+                <UButton
+                  icon="i-lucide-trash-2"
+                  variant="ghost"
+                  color="neutral"
+                  size="xs"
+                  @click.stop="handleDelete(conv)"
+                />
+              </div>
             </div>
           </button>
+
+          <!-- Load more conversations -->
+          <div v-if="hasMoreConversations" class="p-3 text-center">
+            <UButton
+              variant="ghost"
+              color="neutral"
+              size="xs"
+              :loading="loading"
+              @click="loadMoreConversations"
+            >
+              Load older conversations
+            </UButton>
+          </div>
         </div>
       </div>
     </div>
@@ -227,7 +393,9 @@ function relativeTime(date: string | null) {
 
       <!-- Chat Header (desktop) -->
       <div class="hidden md:flex items-center gap-3 px-4 py-3 border-b border-default">
-        <UIcon name="i-lucide-sparkles" class="text-primary w-5 h-5" />
+        <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+          <UIcon name="i-lucide-sparkles" class="text-primary w-4 h-4" />
+        </div>
         <div class="flex-1 min-w-0">
           <h2 class="text-sm font-semibold truncate">
             {{ activeConversation?.title || 'AI Chat' }}
@@ -242,6 +410,7 @@ function relativeTime(date: string | null) {
       <div
         ref="messagesContainer"
         class="flex-1 overflow-y-auto px-4 py-4"
+        @scroll="handleMessagesScroll"
       >
         <!-- Empty state -->
         <div
@@ -289,17 +458,39 @@ function relativeTime(date: string | null) {
 
         <!-- Message Thread -->
         <div v-else class="max-w-3xl mx-auto space-y-4">
+          <!-- Load more messages indicator -->
+          <div v-if="hasMoreMessages" class="text-center py-2">
+            <UButton
+              variant="ghost"
+              color="neutral"
+              size="xs"
+              icon="i-lucide-chevron-up"
+              :loading="loading"
+              @click="loadMoreMessages"
+            >
+              Load earlier messages
+            </UButton>
+          </div>
+
           <div
             v-for="msg in messages"
             :key="msg.id"
             :class="[
-              'flex',
+              'flex gap-2.5',
               msg.role === 'user' ? 'justify-end' : 'justify-start'
             ]"
           >
+            <!-- AI Avatar -->
+            <div
+              v-if="msg.role === 'assistant'"
+              class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5"
+            >
+              <UIcon name="i-lucide-sparkles" class="text-primary w-3.5 h-3.5" />
+            </div>
+
             <div
               :class="[
-                'max-w-[85%] rounded-xl px-4 py-2.5',
+                'max-w-[80%] rounded-xl px-4 py-2.5',
                 msg.role === 'user'
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-elevated border border-default',
@@ -310,7 +501,7 @@ function relativeTime(date: string | null) {
               <div
                 v-if="msg.role === 'assistant'"
                 class="prose prose-sm dark:prose-invert max-w-none"
-                v-html="renderMarkdown(msg.content)"
+                v-html="getRenderedMarkdown(msg.content)"
               />
               <div v-else class="text-sm whitespace-pre-wrap">
                 {{ msg.content }}
@@ -367,10 +558,22 @@ function relativeTime(date: string | null) {
                 </template>
               </div>
             </div>
+
+            <!-- User Avatar -->
+            <UAvatar
+              v-if="msg.role === 'user'"
+              :src="user?.avatar_url || undefined"
+              :alt="user?.name || 'You'"
+              size="xs"
+              class="shrink-0 mt-0.5"
+            />
           </div>
 
           <!-- Typing indicator -->
-          <div v-if="sending" class="flex justify-start">
+          <div v-if="sending" class="flex gap-2.5 justify-start">
+            <div class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <UIcon name="i-lucide-sparkles" class="text-primary w-3.5 h-3.5" />
+            </div>
             <div class="bg-elevated border border-default rounded-xl px-4 py-3">
               <div class="flex items-center gap-1.5">
                 <span class="w-2 h-2 rounded-full bg-muted animate-pulse" />
@@ -411,7 +614,7 @@ function relativeTime(date: string | null) {
     </div>
 
     <!-- Feedback correction modal -->
-    <UModal v-model:open="feedbackMessageId">
+    <UModal v-model:open="feedbackModalOpen">
       <template #content>
         <div class="p-6">
           <h3 class="text-lg font-semibold mb-3">How should I have responded?</h3>
@@ -423,11 +626,46 @@ function relativeTime(date: string | null) {
             class="mb-4"
           />
           <div class="flex justify-end gap-2">
-            <UButton variant="ghost" color="neutral" @click="feedbackMessageId = null">
+            <UButton variant="ghost" color="neutral" @click="feedbackModalOpen = false">
               Skip
             </UButton>
             <UButton color="primary" @click="submitCorrectionFeedback">
               Submit Feedback
+            </UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Cleanup modal -->
+    <UModal v-model:open="cleanupModalOpen">
+      <template #content>
+        <div class="p-6">
+          <h3 class="text-lg font-semibold mb-3">Clean Up Old Conversations</h3>
+          <p class="text-sm text-muted mb-4">
+            Archive conversations with no activity in the selected period.
+            This helps keep your chat list tidy.
+          </p>
+          <div class="flex items-center gap-3 mb-4">
+            <span class="text-sm">Older than</span>
+            <USelect
+              v-model="cleanupDays"
+              :items="[
+                { label: '30 days', value: 30 },
+                { label: '60 days', value: 60 },
+                { label: '90 days', value: 90 },
+                { label: '180 days', value: 180 },
+              ]"
+              size="sm"
+              class="w-32"
+            />
+          </div>
+          <div class="flex justify-end gap-2">
+            <UButton variant="ghost" color="neutral" @click="cleanupModalOpen = false">
+              Cancel
+            </UButton>
+            <UButton color="primary" :loading="cleanupLoading" @click="handleCleanup">
+              Clean Up
             </UButton>
           </div>
         </div>

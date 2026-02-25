@@ -1,8 +1,7 @@
 /**
  * Global authentication error handler plugin
- * Intercepts 401 responses from $fetch and redirects to login
+ * Intercepts 401 responses and redirects to login
  */
-import { ofetch } from 'ofetch'
 
 export default defineNuxtPlugin((nuxtApp) => {
   if (!import.meta.client) return
@@ -35,19 +34,17 @@ export default defineNuxtPlugin((nuxtApp) => {
     setTimeout(() => { isRedirecting = false }, 2000)
   }
 
-  // Override globalThis.$fetch to intercept 401 responses
-  const originalFetch = globalThis.$fetch
-  globalThis.$fetch = ofetch.create({
-    onResponseError({ response }) {
-      if (response.status === 401) {
-        redirectToLogin()
-      }
-    },
-  })
-
-  // Also catch unhandled 401 errors via app:error
+  // Catch unhandled 401 errors via app:error hook
+  // This avoids replacing $fetch which breaks Nuxt's built-in cookie handling
   nuxtApp.hook('app:error', (error: any) => {
     if (error?.statusCode === 401 || error?.response?.status === 401) {
+      redirectToLogin()
+    }
+  })
+
+  // Also hook into Vue's global error handler for uncaught 401s
+  nuxtApp.hook('vue:error', (error: any) => {
+    if (error?.statusCode === 401 || error?.data?.statusCode === 401) {
       redirectToLogin()
     }
   })

@@ -1,3 +1,4 @@
+import type { H3Event } from 'h3'
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
 import { retrieveContext } from '~~/server/utils/aiContextRetriever'
@@ -147,7 +148,8 @@ export async function processUserMessage(
   conversationId: string,
   userId: string,
   userRole: string,
-  content: string
+  content: string,
+  event?: H3Event
 ): Promise<ChatResponse> {
   const startTime = Date.now()
 
@@ -213,21 +215,50 @@ export async function processUserMessage(
   // 7. Multi-model routing: select the best model based on intent
   const selectedModel = selectModel(contextBundle.intent, content.length)
 
-  // 8. Call Groq LLM
-  let aiContent: string
+  // 8. Try LoRA-enhanced generation for simpler queries, then fall back to Groq
+  let aiContent: string = ''
   let isError = false
+  let usedLora = false
+  let loraAdapterId: string | null = null
 
-  try {
-    aiContent = await generateGroqInsight(fullPrompt, {
-      model: selectedModel,
-      temperature: 0.3,
-      maxTokens: 2000,
-      systemPrompt,
-    })
-  } catch (err: any) {
-    console.error('AI generation error:', err)
-    aiContent = 'I apologize, but I encountered an error processing your request. Please try again in a moment.'
-    isError = true
+  // For 8B-eligible queries, try LoRA-enhanced edge inference first
+  if (selectedModel === GROQ_MODELS.LLAMA_8B) {
+    try {
+      const { getActiveAdapter } = await import('~~/server/utils/aiLoraManager')
+      const { edgeGenerateWithLoRA } = await import('~~/server/utils/edgeAi')
+      const adapter = await getActiveAdapter('chat')
+      if (adapter && event) {
+        const result = await edgeGenerateWithLoRA(event, fullPrompt, {
+          systemPrompt,
+          maxTokens: 2000,
+          temperature: 0.3,
+          loraAdapter: adapter,
+        })
+        if (result.response) {
+          aiContent = result.response
+          usedLora = result.usedLora
+          loraAdapterId = result.adapterId
+        }
+      }
+    } catch {
+      // LoRA unavailable — fall through to Groq
+    }
+  }
+
+  // Fall back to Groq if LoRA didn't produce a response
+  if (!aiContent) {
+    try {
+      aiContent = await generateGroqInsight(fullPrompt, {
+        model: selectedModel,
+        temperature: 0.3,
+        maxTokens: 2000,
+        systemPrompt,
+      })
+    } catch (err: any) {
+      console.error('AI generation error:', err)
+      aiContent = 'I apologize, but I encountered an error processing your request. Please try again in a moment.'
+      isError = true
+    }
   }
 
   // 9. Post-process: auto-link entity references in the response
@@ -238,10 +269,10 @@ export async function processUserMessage(
   const latencyMs = Date.now() - startTime
   const tokenEstimate = Math.ceil((systemPrompt.length + fullPrompt.length + aiContent.length) / 4)
 
-  // 10. Save the assistant reply
+  // 10. Save the assistant reply (with LoRA tracking)
   const assistantMsg = await queryOne<any>(`
-    INSERT INTO ai_messages (conversation_id, role, content, context_sources, token_count, model, latency_ms, is_error)
-    VALUES ($1, 'assistant', $2, $3::jsonb, $4, $5, $6, $7)
+    INSERT INTO ai_messages (conversation_id, role, content, context_sources, token_count, model, latency_ms, is_error, is_lora, lora_adapter_id)
+    VALUES ($1, 'assistant', $2, $3::jsonb, $4, $5, $6, $7, $8, $9)
     RETURNING *
   `, [
     conversationId,
@@ -251,6 +282,8 @@ export async function processUserMessage(
     selectedModel,
     latencyMs,
     isError,
+    usedLora,
+    loraAdapterId,
   ])
 
   // 11. Update conversation metadata

@@ -7,6 +7,7 @@ import { emitBoardEvent } from '~~/server/utils/boardEvents'
 import { notifyBoardSubscribers } from '~~/server/utils/boardNotifications'
 import { evaluateAutomations } from '~~/server/utils/automationEngine'
 import { enqueue } from '~~/server/utils/queue'
+import { postBoardEventToChat } from '~~/server/utils/boardChatBridge'
 
 interface UpdateTaskBody {
   title?: string
@@ -209,6 +210,12 @@ export default defineEventHandler(async (event) => {
 
       // Evaluate board automations (queued with retry, fallback to fire-and-forget)
       enqueue(event, 'board.automate', boardEvent, () => evaluateAutomations(currentTask.department_id, boardEvent))
+
+      // Post to linked chat channels (fire-and-forget)
+      postBoardEventToChat({
+        ...boardEvent,
+        taskTitle: currentTask.title,
+      }).catch(() => {})
     }
 
     // Auto-subscribe assignee to board item

@@ -524,6 +524,91 @@ export interface AiLearnedPattern {
 }
 
 // ============================================
+// AI Training Pipeline Types
+// ============================================
+export type TrainingDatasetType = 'chat_qa' | 'intent' | 'rag' | 'knowledge' | 'combined'
+export type TrainingDatasetStatus = 'pending' | 'extracting' | 'uploading' | 'ready' | 'failed' | 'archived'
+export type LoraAdapterType = 'chat' | 'intent' | 'rag'
+export type LoraAdapterStatus = 'pending' | 'uploading' | 'active' | 'testing' | 'retired' | 'failed'
+export type TrainingKnowledgeType = 'sop' | 'client_context' | 'qa_pair' | 'workflow' | 'glossary'
+
+export interface AiTrainingDataset {
+  id: string
+  datasetType: TrainingDatasetType
+  version: number
+  status: TrainingDatasetStatus
+  format: string
+  rowCount: number
+  filteredCount: number
+  fileSizeBytes: number
+  r2Path: string | null
+  extractionOptions: Record<string, any>
+  qualityMetrics: Record<string, any>
+  errorMessage: string | null
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AiLoraAdapter {
+  id: string
+  name: string
+  displayName: string | null
+  modelBase: string
+  version: number
+  datasetId: string | null
+  r2Path: string | null
+  cfFinetuneId: string | null
+  status: LoraAdapterStatus
+  adapterType: LoraAdapterType
+  rank: number
+  trafficPct: number
+  metrics: Record<string, any>
+  errorMessage: string | null
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AiTrainingKnowledge {
+  id: string
+  knowledgeType: TrainingKnowledgeType
+  title: string
+  content: string
+  answer: string | null
+  category: string | null
+  tags: string[]
+  clientId: string | null
+  source: string | null
+  sourceFile: string | null
+  isApproved: boolean
+  approvedBy: string | null
+  approvedAt: string | null
+  embeddingId: string | null
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TrainingPipelineStats {
+  totalDatasets: number
+  totalKnowledgeEntries: number
+  approvedKnowledgeEntries: number
+  totalAdapters: number
+  activeAdapters: number
+  newDataSince: {
+    chat_qa: { count: number; since: string | null }
+    intent: { count: number; since: string | null }
+    knowledge: { count: number; since: string | null }
+  }
+}
+
+export interface LoraMetricsComparison {
+  lora: { avgLatencyMs: number; avgRating: number; errorRate: number; sampleCount: number }
+  base: { avgLatencyMs: number; avgRating: number; errorRate: number; sampleCount: number }
+}
+
+// ============================================
 // Chat Types
 // ============================================
 export interface ChatChannel {
@@ -570,10 +655,22 @@ export interface ChatMessage {
   reply_to_id?: number
   edited_at?: string
   deleted_at?: string
+  forwarded_from_channel_id?: string
+  forwarded_from_message_id?: number
+  link_previews?: Array<{
+    url: string
+    title?: string
+    description?: string
+    image?: string
+    favicon?: string
+    siteName?: string
+  }>
   metadata?: {
     attachments?: Array<{ url: string; name: string; type: string; size: number }>
     mentions?: string[]
     task_refs?: string[]
+    forwarded?: boolean
+    forwardedFrom?: { channelId?: string; messageId?: number; userName?: string }
   }
   created_at: string
   // Joined
@@ -594,4 +691,35 @@ export interface UserChatStatus {
   lastSeenAt: string
   userName?: string
   userAvatar?: string
+}
+
+// ============================================
+// Client Portal Types
+// ============================================
+export interface ClientUser {
+  id: string
+  email: string
+  name: string
+  title?: string
+  phone?: string
+  avatarUrl?: string
+  role: 'admin' | 'manager' | 'viewer' | 'guest'
+  isPrimaryContact: boolean
+  clientId: string
+  clientName: string
+  clientLogo?: string
+  permissions: ClientPermissions
+  notificationPreferences: Record<string, boolean>
+  timezone: string
+}
+
+export interface ClientPermissions {
+  canViewProjects: boolean
+  canViewInvoices: boolean
+  canApproveWork: boolean
+  canViewTimeEntries: boolean
+  canViewBudgets: boolean
+  canAddComments: boolean
+  canUploadFiles: boolean
+  canInviteUsers: boolean
 }

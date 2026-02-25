@@ -48,6 +48,10 @@ export async function processJob(job: QueueJob): Promise<void> {
         await processEmbedClient(job.payload)
         break
 
+      case 'training.extract':
+        await processTrainingExtract(job.payload)
+        break
+
       default:
         console.warn(`[QueueConsumer] Unknown job type: ${(job as any).type}`)
     }
@@ -99,5 +103,10 @@ async function processEmbedBrief(payload: Record<string, any>): Promise<void> {
 async function processEmbedClient(payload: Record<string, any>): Promise<void> {
   const { embedClient } = await import('~~/server/utils/aiEntityEmbedder')
   await embedClient(payload._event as any, payload.clientId)
+}
+
+async function processTrainingExtract(payload: Record<string, any>): Promise<void> {
+  const { extractAndUpload } = await import('~~/server/utils/aiTrainingDataExtractor')
+  await extractAndUpload(payload.datasetType, payload.options || {}, payload.userId)
 }
 

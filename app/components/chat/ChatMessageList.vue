@@ -19,6 +19,7 @@ const emit = defineEmits<{
   'pin': [messageId: number]
   'save': [messageId: number]
   'reply': [message: ChatMessage]
+  'forward': [message: ChatMessage]
 }>()
 
 // Emoji picker state
@@ -141,6 +142,48 @@ function formatTime(date: string) {
   return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
+// Extract first URL from message for link preview
+const urlRegex = /https?:\/\/[^\s<>)"']+/
+function extractFirstUrl(content: string): string | null {
+  // Skip if the content is just a code block
+  if (content.startsWith('```')) return null
+  const match = content.match(urlRegex)
+  return match ? match[0] : null
+}
+
+// Read receipts — track which of the current user's messages are the last in the list
+const lastOwnMessageId = computed(() => {
+  for (let i = props.messages.length - 1; i >= 0; i--) {
+    if (props.messages[i].user_id === props.currentUserId) {
+      return props.messages[i].id
+    }
+  }
+  return null
+})
+
+// Lazy-load read receipt readers for the last own message
+const readReceipts = ref<Array<{ userId: string; userName: string; userAvatar?: string }>>([])
+const readReceiptsFetched = ref(false)
+
+watch(lastOwnMessageId, async (msgId) => {
+  readReceipts.value = []
+  readReceiptsFetched.value = false
+  if (!msgId) return
+
+  const channelId = props.messages.find(m => m.id === msgId)?.channel_id
+  if (!channelId) return
+
+  try {
+    const data = await $fetch<Array<{ userId: string; userName: string; userAvatar?: string }>>(
+      `/api/chat/channels/${channelId}/messages/${msgId}/readers`
+    )
+    readReceipts.value = data.filter(r => r.userId !== props.currentUserId)
+    readReceiptsFetched.value = true
+  } catch {
+    // Silent — read receipts are non-critical
+  }
+}, { immediate: true })
+
 // Expose scrollToBottom for parent
 defineExpose({ scrollToBottom, scrollToUnread })
 </script>
@@ -235,6 +278,12 @@ defineExpose({ scrollToBottom, scrollToUnread })
                 <!-- Message text (markdown) -->
                 <ChatMarkdown :content="msg.content" />
 
+                <!-- Link preview -->
+                <ChatLinkPreview
+                  v-if="extractFirstUrl(msg.content)"
+                  :url="extractFirstUrl(msg.content)!"
+                />
+
                 <!-- Attachments -->
                 <ChatAttachment v-if="msg.metadata?.attachments?.length" :attachments="msg.metadata.attachments" />
 
@@ -256,6 +305,12 @@ defineExpose({ scrollToBottom, scrollToUnread })
                   </button>
                 </div>
 
+                <!-- Forwarded indicator -->
+                <div v-if="(msg.metadata as any)?.forwarded" class="flex items-center gap-1 mt-1 text-[11px] text-muted">
+                  <UIcon name="i-lucide-forward" class="w-3 h-3" />
+                  <span>Forwarded</span>
+                </div>
+
                 <!-- Thread indicator -->
                 <button
                   v-if="(msg.thread_count || 0) > 0"
@@ -265,6 +320,31 @@ defineExpose({ scrollToBottom, scrollToUnread })
                   <UIcon name="i-lucide-message-square" class="w-3.5 h-3.5" />
                   {{ msg.thread_count }} {{ msg.thread_count === 1 ? 'reply' : 'replies' }}
                 </button>
+
+                <!-- Read receipts (on last own message) -->
+                <div
+                  v-if="msg.id === lastOwnMessageId && readReceiptsFetched && readReceipts.length > 0"
+                  class="flex items-center gap-1 mt-1"
+                >
+                  <UIcon name="i-lucide-check-check" class="w-3 h-3 text-primary" />
+                  <UTooltip
+                    :text="readReceipts.map(r => r.userName).join(', ')"
+                  >
+                    <div class="flex -space-x-1">
+                      <UAvatar
+                        v-for="reader in readReceipts.slice(0, 3)"
+                        :key="reader.userId"
+                        :src="reader.userAvatar"
+                        :alt="reader.userName"
+                        size="3xs"
+                        class="ring-1 ring-elevated"
+                      />
+                      <span v-if="readReceipts.length > 3" class="text-[10px] text-muted ml-1">
+                        +{{ readReceipts.length - 3 }}
+                      </span>
+                    </div>
+                  </UTooltip>
+                </div>
               </div>
 
               <!-- Hover actions -->
@@ -311,6 +391,7 @@ defineExpose({ scrollToBottom, scrollToUnread })
                   :items="[
                     [
                       { label: 'Reply', icon: 'i-lucide-reply', click: () => emit('reply', msg) },
+                      { label: 'Forward', icon: 'i-lucide-forward', click: () => emit('forward', msg) },
                       { label: 'Save message', icon: 'i-lucide-bookmark', click: () => emit('save', msg.id) },
                       { label: 'Pin message', icon: 'i-lucide-pin', click: () => emit('pin', msg.id) },
                       ...(msg.user_id === currentUserId ? [

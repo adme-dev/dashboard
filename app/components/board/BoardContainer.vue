@@ -22,6 +22,8 @@
       @toggle-column-visibility="toggleColumnVisibility"
       @export="$emit('export')"
       @template="$emit('template')"
+      @automations="$emit('automations')"
+      @chat-feed="$emit('chatFeed')"
       @add-group="$emit('addGroup')"
       @add-column="$emit('addColumn')"
     />
@@ -136,6 +138,8 @@ defineEmits<{
   openTask: [taskId: string]
   export: []
   template: []
+  automations: []
+  chatFeed: []
   addGroup: []
   addColumn: []
   addItem: [payload: { groupId: string; title: string; date: string }]

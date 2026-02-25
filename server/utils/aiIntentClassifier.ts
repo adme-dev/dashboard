@@ -1,5 +1,5 @@
 import type { H3Event } from 'h3'
-import { edgeClassify } from '~~/server/utils/edgeAi'
+import { edgeClassify, edgeGenerateWithLoRA } from '~~/server/utils/edgeAi'
 import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
 
 export type AiIntent =
@@ -127,12 +127,43 @@ function classifyByPatterns(message: string): IntentResult | null {
 }
 
 async function classifyByLLM(message: string, event?: H3Event): Promise<IntentResult> {
-  // Try Workers AI edge inference first (<50ms vs 1-3s Groq)
+  const validIntents: AiIntent[] = [
+    'task_query', 'brief_query', 'project_query', 'financial_query',
+    'team_query', 'process_query', 'search', 'action_request', 'general',
+  ]
+
+  // Try LoRA-enhanced intent classification first
   if (event) {
-    const validIntents: AiIntent[] = [
-      'task_query', 'brief_query', 'project_query', 'financial_query',
-      'team_query', 'process_query', 'search', 'action_request', 'general',
-    ]
+    try {
+      const { getActiveAdapter } = await import('~~/server/utils/aiLoraManager')
+      const adapter = await getActiveAdapter('intent')
+      if (adapter) {
+        const classifyPrompt = `Classify this message into exactly ONE category. Respond with ONLY valid JSON: {"intent":"<category>","confidence":<0.0-1.0>}\n\nCategories: ${validIntents.join(', ')}\n\nMessage: "${message}"`
+        const result = await edgeGenerateWithLoRA(event, classifyPrompt, {
+          systemPrompt: 'You are a message classifier. Respond only with valid JSON.',
+          maxTokens: 100,
+          temperature: 0.1,
+          loraAdapter: adapter,
+        })
+        if (result.response) {
+          const cleaned = result.response.replace(/```json\n?|\n?```/g, '').trim()
+          const parsed = JSON.parse(cleaned)
+          if (parsed.intent && validIntents.includes(parsed.intent)) {
+            return {
+              intent: parsed.intent,
+              confidence: typeof parsed.confidence === 'number' ? Math.max(0, Math.min(1, parsed.confidence)) : 0.7,
+              entities: extractEntities(message),
+            }
+          }
+        }
+      }
+    } catch {
+      // LoRA unavailable or failed — fall through to standard edge AI
+    }
+  }
+
+  // Try Workers AI edge inference (<50ms vs 1-3s Groq)
+  if (event) {
     const edgeResult = await edgeClassify(event, message, validIntents)
     if (edgeResult && validIntents.includes(edgeResult.category as AiIntent)) {
       return {
@@ -173,11 +204,6 @@ Respond in this exact JSON format only, no other text:
     // Parse the JSON response, handling potential markdown code blocks
     const cleaned = response.replace(/```json\n?|\n?```/g, '').trim()
     const parsed = JSON.parse(cleaned)
-
-    const validIntents: AiIntent[] = [
-      'task_query', 'brief_query', 'project_query', 'financial_query',
-      'team_query', 'process_query', 'search', 'action_request', 'general',
-    ]
 
     const intent = validIntents.includes(parsed.intent) ? parsed.intent : 'general'
     const confidence = typeof parsed.confidence === 'number'

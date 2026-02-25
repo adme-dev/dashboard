@@ -38,6 +38,71 @@ function insertEmoji(emoji: string) {
 
 const content = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const showFormatBar = ref(false)
+
+// ── Formatting helpers ──
+function getTextarea(): HTMLTextAreaElement | null {
+  // UTextarea wraps a native textarea — access via $el or ref
+  const el = (textareaRef.value as any)?.$el || textareaRef.value
+  return el?.querySelector?.('textarea') || el
+}
+
+function wrapSelection(prefix: string, suffix?: string) {
+  const ta = getTextarea()
+  if (!ta) return
+  const start = ta.selectionStart
+  const end = ta.selectionEnd
+  const text = content.value
+  const selected = text.substring(start, end)
+  const suf = suffix ?? prefix
+
+  if (selected) {
+    content.value = text.substring(0, start) + prefix + selected + suf + text.substring(end)
+    nextTick(() => {
+      ta.focus()
+      ta.setSelectionRange(start + prefix.length, end + prefix.length)
+    })
+  } else {
+    // Insert placeholder
+    const placeholder = prefix === '```\n' ? 'code' : 'text'
+    content.value = text.substring(0, start) + prefix + placeholder + suf + text.substring(end)
+    nextTick(() => {
+      ta.focus()
+      ta.setSelectionRange(start + prefix.length, start + prefix.length + placeholder.length)
+    })
+  }
+}
+
+function insertLink() {
+  const ta = getTextarea()
+  if (!ta) return
+  const start = ta.selectionStart
+  const end = ta.selectionEnd
+  const text = content.value
+  const selected = text.substring(start, end)
+
+  if (selected) {
+    content.value = text.substring(0, start) + `[${selected}](url)` + text.substring(end)
+    nextTick(() => {
+      ta.focus()
+      // Select "url" for replacement
+      const urlStart = start + selected.length + 3
+      ta.setSelectionRange(urlStart, urlStart + 3)
+    })
+  } else {
+    content.value = text.substring(0, start) + '[text](url)' + text.substring(end)
+    nextTick(() => {
+      ta.focus()
+      ta.setSelectionRange(start + 1, start + 5)
+    })
+  }
+}
+
+function formatBold() { wrapSelection('**') }
+function formatItalic() { wrapSelection('*') }
+function formatStrikethrough() { wrapSelection('~~') }
+function formatCode() { wrapSelection('`') }
+function formatCodeBlock() { wrapSelection('```\n', '\n```') }
 
 // Mention state
 const showMentions = ref(false)
@@ -131,6 +196,13 @@ function handleKeydown(e: KeyboardEvent) {
       showMentions.value = false
       return
     }
+  }
+
+  // Formatting shortcuts
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+    if (e.key === 'b') { e.preventDefault(); formatBold(); return }
+    if (e.key === 'i') { e.preventDefault(); formatItalic(); return }
+    if (e.key === 'k') { e.preventDefault(); insertLink(); return }
   }
 
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -246,6 +318,30 @@ function handleSend() {
       </div>
     </div>
 
+    <!-- Formatting toolbar -->
+    <div v-if="showFormatBar" class="flex items-center gap-0.5 mb-1.5 px-1">
+      <UTooltip text="Bold (Ctrl+B)">
+        <UButton icon="i-lucide-bold" variant="ghost" color="neutral" size="xs" @click="formatBold" />
+      </UTooltip>
+      <UTooltip text="Italic (Ctrl+I)">
+        <UButton icon="i-lucide-italic" variant="ghost" color="neutral" size="xs" @click="formatItalic" />
+      </UTooltip>
+      <UTooltip text="Strikethrough">
+        <UButton icon="i-lucide-strikethrough" variant="ghost" color="neutral" size="xs" @click="formatStrikethrough" />
+      </UTooltip>
+      <div class="w-px h-4 bg-default mx-0.5" />
+      <UTooltip text="Inline code">
+        <UButton icon="i-lucide-code" variant="ghost" color="neutral" size="xs" @click="formatCode" />
+      </UTooltip>
+      <UTooltip text="Code block">
+        <UButton icon="i-lucide-square-code" variant="ghost" color="neutral" size="xs" @click="formatCodeBlock" />
+      </UTooltip>
+      <div class="w-px h-4 bg-default mx-0.5" />
+      <UTooltip text="Link (Ctrl+K)">
+        <UButton icon="i-lucide-link" variant="ghost" color="neutral" size="xs" @click="insertLink" />
+      </UTooltip>
+    </div>
+
     <!-- Input row with mention dropdown -->
     <div class="relative">
       <!-- Mention autocomplete dropdown -->
@@ -284,6 +380,18 @@ function handleSend() {
           :disabled="disabled"
           @uploaded="handleFileUploaded"
         />
+
+        <!-- Formatting toggle -->
+        <UTooltip :text="showFormatBar ? 'Hide formatting' : 'Show formatting'">
+          <UButton
+            icon="i-lucide-a-large-small"
+            variant="ghost"
+            :color="showFormatBar ? 'primary' : 'neutral'"
+            size="sm"
+            :disabled="disabled"
+            @click="showFormatBar = !showFormatBar"
+          />
+        </UTooltip>
 
         <!-- Emoji picker -->
         <UPopover v-model:open="showEmojiPicker">
@@ -326,7 +434,15 @@ function handleSend() {
     </div>
 
     <p class="text-[10px] text-muted mt-1 px-1">
-      <kbd class="font-mono">Enter</kbd> to send, <kbd class="font-mono">Shift+Enter</kbd> for new line, <kbd class="font-mono">@</kbd> to mention
+      <kbd class="font-mono">Enter</kbd> send
+      <span class="mx-1">·</span>
+      <kbd class="font-mono">Shift+Enter</kbd> new line
+      <span class="mx-1">·</span>
+      <kbd class="font-mono">@</kbd> mention
+      <span class="mx-1">·</span>
+      <kbd class="font-mono">Ctrl+B</kbd> bold
+      <span class="mx-1">·</span>
+      <kbd class="font-mono">Ctrl+I</kbd> italic
     </p>
   </div>
 </template>

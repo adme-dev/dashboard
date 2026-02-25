@@ -61,6 +61,7 @@ const ALL_WIDGETS: WidgetDefinition[] = [
   { id: 'recent-creatives', title: 'Recent Creatives', icon: 'i-lucide-image', description: 'Visual assets from proofs and deliverables', defaultRoles: ['admin', 'owner', 'project_manager', 'member'], column: 'right' },
   // --- AI ---
   { id: 'ai-insights', title: 'AI Insights', icon: 'i-lucide-brain', description: 'AI-generated insights and alerts', defaultRoles: ['admin', 'owner', 'project_manager'], column: 'right' },
+  { id: 'ai-training', title: 'AI Training', icon: 'i-lucide-graduation-cap', description: 'Training pipeline status, datasets, and LoRA adapters', defaultRoles: ['admin', 'owner'], column: 'right' },
 ]
 
 const ROLE_DEFAULTS: Record<string, string[]> = {
@@ -221,7 +222,7 @@ export function useDashboardWidgets() {
       { label: 'Media Buying', ids: ['ad-spend', 'spend-pacing', 'campaign-alerts', 'platform-performance', 'budget-alerts'] },
       { label: 'Production', ids: ['team-capacity', 'unassigned-work', 'blocked-tasks', 'deliverables-due'] },
       { label: 'Finance', ids: ['cash-position', 'revenue-snapshot', 'receivables-aging', 'project-profitability'] },
-      { label: 'Creative & AI', ids: ['recent-creatives', 'ai-insights'] },
+      { label: 'Creative & AI', ids: ['recent-creatives', 'ai-insights', 'ai-training'] },
     ]
     return categories
       .map(cat => ({

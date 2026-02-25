@@ -65,6 +65,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
   // Time & Capacity
   { type: 'label', label: 'Time & Capacity' },
   { label: 'Time Tracking', icon: 'i-lucide-clock', to: '/agency/time', onSelect: close },
+  { label: 'Approvals', icon: 'i-lucide-check-check', to: '/agency/time/approvals', onSelect: close },
   { label: 'Time Reports', icon: 'i-lucide-bar-chart-3', to: '/agency/time/reports', onSelect: close },
   { label: 'Capacity', icon: 'i-lucide-gauge', to: '/agency/capacity', onSelect: close },
 
@@ -107,6 +108,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
   { label: 'AI Reports', icon: 'i-lucide-file-bar-chart', to: '/agency/ai/reports', onSelect: close },
   { label: 'AI Settings', icon: 'i-lucide-settings-2', to: '/agency/ai/settings', onSelect: close },
   { label: 'Knowledge Base', icon: 'i-lucide-book-open', to: '/agency/ai/knowledge', onSelect: close },
+  { label: 'AI Training', icon: 'i-lucide-graduation-cap', to: '/agency/ai/training', onSelect: close },
   { label: 'Automation', icon: 'i-lucide-zap', to: '/agency/automation', onSelect: close },
   { label: 'Chat', icon: 'i-lucide-message-circle', to: '/agency/chat', badge: chatUnreadCount.value > 0 ? chatUnreadCount.value.toString() : undefined, onSelect: close },
 ])

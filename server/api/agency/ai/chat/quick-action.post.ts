@@ -60,7 +60,7 @@ export default defineEventHandler(async (event) => {
     enrichedContent += `\n\n[Context: The user is currently on page ${context.pageRoute}]`
   }
 
-  const result = await processUserMessage(conversation.id, user.id, user.role, enrichedContent)
+  const result = await processUserMessage(conversation.id, user.id, user.role, enrichedContent, event)
 
   // Return a synthetic user message for the widget UI
   const userMessage = {

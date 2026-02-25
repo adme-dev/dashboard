@@ -1,8 +1,15 @@
 import type { AiConversation, AiMessage, AiContextSource } from '~/types'
 
+interface ConversationListResponse {
+  conversations: AiConversation[]
+  total: number
+  hasMore: boolean
+}
+
 interface ConversationDetail {
   conversation: AiConversation
   messages: AiMessage[]
+  hasMore: boolean
 }
 
 interface ChatMessageResponse {
@@ -11,21 +18,39 @@ interface ChatMessageResponse {
 }
 
 export function useAiChat() {
-  const conversations = ref<AiConversation[]>([])
-  const activeConversation = ref<AiConversation | null>(null)
-  const messages = ref<AiMessage[]>([])
+  const conversations = useState<AiConversation[]>('ai-chat-conversations', () => [])
+  const activeConversation = useState<AiConversation | null>('ai-chat-active', () => null)
+  const messages = useState<AiMessage[]>('ai-chat-messages', () => [])
   const loading = ref(false)
   const sending = ref(false)
+  const hasMoreConversations = ref(false)
+  const hasMoreMessages = ref(false)
+  const totalConversations = ref(0)
 
-  async function fetchConversations() {
+  async function fetchConversations(reset = true) {
     loading.value = true
     try {
-      conversations.value = await $fetch<AiConversation[]>('/api/agency/ai/chat/conversations')
+      const offset = reset ? 0 : conversations.value.length
+      const data = await $fetch<ConversationListResponse>('/api/agency/ai/chat/conversations', {
+        params: { offset },
+      })
+      if (reset) {
+        conversations.value = data.conversations
+      } else {
+        conversations.value.push(...data.conversations)
+      }
+      hasMoreConversations.value = data.hasMore
+      totalConversations.value = data.total
     } catch (err) {
       console.error('Failed to fetch conversations:', err)
     } finally {
       loading.value = false
     }
+  }
+
+  async function loadMoreConversations() {
+    if (!hasMoreConversations.value || loading.value) return
+    await fetchConversations(false)
   }
 
   async function createConversation(title?: string): Promise<AiConversation> {
@@ -36,6 +61,8 @@ export function useAiChat() {
     conversations.value.unshift(conv)
     activeConversation.value = conv
     messages.value = []
+    hasMoreMessages.value = false
+    totalConversations.value++
     return conv
   }
 
@@ -45,10 +72,48 @@ export function useAiChat() {
       const data = await $fetch<ConversationDetail>(`/api/agency/ai/chat/conversations/${id}`)
       activeConversation.value = data.conversation
       messages.value = data.messages
+      hasMoreMessages.value = data.hasMore
     } catch (err) {
       console.error('Failed to load conversation:', err)
     } finally {
       loading.value = false
+    }
+  }
+
+  async function loadMoreMessages() {
+    if (!activeConversation.value || !hasMoreMessages.value || loading.value) return
+    const oldest = messages.value[0]
+    if (!oldest) return
+
+    loading.value = true
+    try {
+      const data = await $fetch<ConversationDetail>(
+        `/api/agency/ai/chat/conversations/${activeConversation.value.id}`,
+        { params: { before: oldest.createdAt, limit: 50 } }
+      )
+      messages.value.unshift(...data.messages)
+      hasMoreMessages.value = data.hasMore
+    } catch (err) {
+      console.error('Failed to load more messages:', err)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function renameConversation(id: string, title: string) {
+    const result = await $fetch<{ id: string; title: string; updatedAt: string }>(
+      `/api/agency/ai/chat/conversations/${id}`,
+      { method: 'PATCH', body: { title } }
+    )
+    // Update in list
+    const conv = conversations.value.find(c => c.id === id)
+    if (conv) {
+      conv.title = result.title
+      conv.updatedAt = result.updatedAt
+    }
+    // Update active conversation
+    if (activeConversation.value?.id === id) {
+      activeConversation.value.title = result.title
     }
   }
 
@@ -81,7 +146,6 @@ export function useAiChat() {
         }
       )
 
-      // Replace temp user message with real one (the server saved it)
       // The server returns the assistant message; the user message was already added optimistically
       messages.value.push(result.message)
 
@@ -117,10 +181,23 @@ export function useAiChat() {
   async function archiveConversation(id: string) {
     await $fetch(`/api/agency/ai/chat/conversations/${id}`, { method: 'DELETE' })
     conversations.value = conversations.value.filter(c => c.id !== id)
+    totalConversations.value--
     if (activeConversation.value?.id === id) {
       activeConversation.value = null
       messages.value = []
     }
+  }
+
+  async function cleanupOldConversations(olderThanDays = 90) {
+    const result = await $fetch<{ archivedCount: number; olderThanDays: number }>(
+      '/api/agency/ai/chat/conversations/cleanup',
+      { method: 'POST', body: { olderThanDays } }
+    )
+    // Re-fetch the list after cleanup
+    if (result.archivedCount > 0) {
+      await fetchConversations()
+    }
+    return result
   }
 
   async function submitFeedback(messageId: string, rating: -1 | 1, correction?: string, category?: string) {
@@ -144,11 +221,18 @@ export function useAiChat() {
     messages,
     loading,
     sending,
+    hasMoreConversations,
+    hasMoreMessages,
+    totalConversations,
     fetchConversations,
+    loadMoreConversations,
     createConversation,
     loadConversation,
+    loadMoreMessages,
+    renameConversation,
     sendMessage,
     archiveConversation,
+    cleanupOldConversations,
     submitFeedback,
   }
 }

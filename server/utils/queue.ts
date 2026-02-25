@@ -12,6 +12,7 @@ export type JobType =
   | 'embed.task'
   | 'embed.brief'
   | 'embed.client'
+  | 'training.extract'
 
 export interface QueueJob {
   type: JobType

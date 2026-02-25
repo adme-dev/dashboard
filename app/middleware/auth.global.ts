@@ -25,6 +25,11 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
   if (isPublicRoute) {
     return
   }
+
+  // Portal routes have their own auth middleware
+  if (to.path.startsWith('/portal')) {
+    return
+  }
   
   // Check for auth token
   const authToken = useCookie('auth_token').value

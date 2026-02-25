@@ -2,6 +2,7 @@
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const { user } = useAuth()
 
 const isOpen = ref(false)
 const inputText = ref('')
@@ -29,7 +30,8 @@ function close() {
 
 function openFullChat() {
   close()
-  router.push('/agency/ai/chat')
+  const convId = activeConversation.value?.id
+  router.push(convId ? `/agency/ai/chat?conversation=${convId}` : '/agency/ai/chat')
 }
 
 async function ensureConversation() {
@@ -178,13 +180,21 @@ watch(() => messages.value.length, () => {
             v-for="msg in visibleMessages"
             :key="msg.id"
             :class="[
-              'flex',
+              'flex gap-2',
               msg.role === 'user' ? 'justify-end' : 'justify-start',
             ]"
           >
+            <!-- AI Avatar -->
+            <div
+              v-if="msg.role === 'assistant'"
+              class="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5"
+            >
+              <UIcon name="i-lucide-sparkles" class="text-primary w-3 h-3" />
+            </div>
+
             <div
               :class="[
-                'max-w-[85%] rounded-lg px-3 py-2 text-sm',
+                'max-w-[80%] rounded-lg px-3 py-2 text-sm',
                 msg.role === 'user'
                   ? 'bg-primary text-white'
                   : 'bg-elevated border border-default',
@@ -221,10 +231,22 @@ watch(() => messages.value.length, () => {
                 </button>
               </div>
             </div>
+
+            <!-- User Avatar -->
+            <UAvatar
+              v-if="msg.role === 'user'"
+              :src="user?.avatar_url || undefined"
+              :alt="user?.name || 'You'"
+              size="2xs"
+              class="shrink-0 mt-0.5"
+            />
           </div>
 
           <!-- Sending indicator -->
-          <div v-if="sending" class="flex justify-start">
+          <div v-if="sending" class="flex gap-2 justify-start">
+            <div class="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <UIcon name="i-lucide-sparkles" class="text-primary w-3 h-3" />
+            </div>
             <div class="bg-elevated border border-default rounded-lg px-3 py-2">
               <div class="flex items-center gap-2 text-sm text-muted">
                 <UIcon name="i-lucide-loader-2" class="w-3.5 h-3.5 animate-spin" />

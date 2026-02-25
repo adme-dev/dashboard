@@ -751,6 +751,9 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
           <!-- AI Insights (right) -->
           <DashboardAiInsightsWidget v-if="isVisible('ai-insights')" />
 
+          <!-- AI Training (right) -->
+          <DashboardAiTrainingWidget v-if="isVisible('ai-training')" />
+
         </div>
       </div>
     </div>
