@@ -1,0 +1,75 @@
+/**
+ * Queue Consumer — processes jobs dispatched via Cloudflare Queues.
+ *
+ * This module is imported by the queue handler endpoint and routes
+ * each job to the appropriate processor based on its type.
+ */
+
+import type { QueueJob } from './queue'
+
+/**
+ * Process a single queue job. Called by the queue consumer handler.
+ * Throws on failure so the queue runtime can retry.
+ */
+export async function processJob(job: QueueJob): Promise<void> {
+  const startTime = Date.now()
+
+  try {
+    switch (job.type) {
+      case 'board.notify':
+        await processBoardNotify(job.payload)
+        break
+
+      case 'board.automate':
+        await processBoardAutomate(job.payload)
+        break
+
+      case 'eom.generate':
+        await processEomGenerate(job.payload)
+        break
+
+      case 'spend.sync.meta':
+        await processMetaSpendSync(job.payload)
+        break
+
+      case 'spend.sync.google':
+        await processGoogleSpendSync(job.payload)
+        break
+
+      default:
+        console.warn(`[QueueConsumer] Unknown job type: ${(job as any).type}`)
+    }
+
+    const duration = Date.now() - startTime
+    console.log(`[QueueConsumer] ${job.type} completed in ${duration}ms`)
+  } catch (err) {
+    const duration = Date.now() - startTime
+    console.error(`[QueueConsumer] ${job.type} failed after ${duration}ms:`, err)
+    throw err // Let the queue retry
+  }
+}
+
+async function processBoardNotify(payload: Record<string, any>): Promise<void> {
+  const { notifyBoardSubscribers } = await import('~~/server/utils/boardNotifications')
+  await notifyBoardSubscribers(payload as any)
+}
+
+async function processBoardAutomate(payload: Record<string, any>): Promise<void> {
+  const { evaluateAutomations } = await import('~~/server/utils/automationEngine')
+  await evaluateAutomations(payload.boardId, payload as any)
+}
+
+async function processEomGenerate(payload: Record<string, any>): Promise<void> {
+  const { generateEomInvoices } = await import('~~/server/utils/eomEngine')
+  await generateEomInvoices(payload.userId, payload.month, payload.year, null as any)
+}
+
+async function processMetaSpendSync(payload: Record<string, any>): Promise<void> {
+  const { syncMetaSpend } = await import('~~/server/utils/spendSync')
+  await syncMetaSpend(payload.month, payload.year)
+}
+
+async function processGoogleSpendSync(payload: Record<string, any>): Promise<void> {
+  const { syncGoogleSpend } = await import('~~/server/utils/spendSync')
+  await syncGoogleSpend(payload.month, payload.year)
+}

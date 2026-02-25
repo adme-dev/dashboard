@@ -1,10 +1,10 @@
 import { requireAuth } from '~~/server/utils/auth'
-import { syncMetaSpend } from '~~/server/utils/spendSync'
+import { syncGoogleSpend } from '~~/server/utils/spendSync'
 import { enqueue } from '~~/server/utils/queue'
 
 /**
- * POST /api/agency/social/meta/sync-spend
- * Pulls campaign-level spend from Meta API and upserts into media_spend.
+ * POST /api/agency/social/google/sync-spend
+ * Pulls campaign-level spend from Google Ads API and upserts into media_spend.
  * Body: { month?: number, year?: number, async?: boolean }
  *
  * With async=true, enqueues the sync and returns immediately.
@@ -20,14 +20,14 @@ export default eventHandler(async (event) => {
 
   // Async mode: enqueue and return immediately
   if (async) {
-    const enqueued = await enqueue(event, 'spend.sync.meta', { month, year })
+    const enqueued = await enqueue(event, 'spend.sync.google', { month, year })
     if (enqueued) {
-      return { status: 'queued', message: `Meta spend sync for ${month}/${year} has been queued` }
+      return { status: 'queued', message: `Google spend sync for ${month}/${year} has been queued` }
     }
   }
 
   // Synchronous mode (default or queue fallback)
-  const result = await syncMetaSpend(month, year)
+  const result = await syncGoogleSpend(month, year)
 
   return {
     synced: result.synced,
