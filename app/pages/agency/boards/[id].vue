@@ -350,7 +350,7 @@
   <USlideover
     v-model:open="showTaskPanel"
     side="right"
-    :ui="{ content: 'w-[680px]' }"
+    :ui="{ content: 'w-[90vw] sm:w-[70vw] md:w-[50vw] lg:w-[33vw] min-w-[400px] max-w-[800px]' }"
   >
     <template #header>
       <div v-if="selectedTask" class="flex items-center justify-between w-full">
@@ -362,15 +362,24 @@
           />
           <span class="text-xs text-gray-500 uppercase tracking-wide">{{ selectedTask.groupName }}</span>
         </div>
-        <UButton
-          :icon="itemSubscribed ? 'i-lucide-bell-ring' : 'i-lucide-bell'"
-          :variant="itemSubscribed ? 'soft' : 'ghost'"
-          :color="itemSubscribed ? 'primary' : 'neutral'"
-          size="xs"
-          @click="toggleItemSubscription"
-        >
-          {{ itemSubscribed ? 'Watching' : 'Watch' }}
-        </UButton>
+        <div class="flex items-center gap-1">
+          <UButton
+            icon="i-lucide-message-circle"
+            :variant="showChat ? 'soft' : 'ghost'"
+            :color="showChat ? 'primary' : 'neutral'"
+            size="xs"
+            @click="showChat = !showChat"
+          />
+          <UButton
+            :icon="itemSubscribed ? 'i-lucide-bell-ring' : 'i-lucide-bell'"
+            :variant="itemSubscribed ? 'soft' : 'ghost'"
+            :color="itemSubscribed ? 'primary' : 'neutral'"
+            size="xs"
+            @click="toggleItemSubscription"
+          >
+            {{ itemSubscribed ? 'Watching' : 'Watch' }}
+          </UButton>
+        </div>
       </div>
     </template>
 
@@ -380,81 +389,51 @@
           <h2 class="text-lg font-semibold text-gray-900 leading-tight">{{ selectedTask.title }}</h2>
         </div>
 
-        <!-- Tabs -->
-        <div class="flex items-center border-b -mx-4 px-4 mb-4">
-          <button
-            v-for="tab in tabs"
-            :key="tab.id"
-            class="px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px"
-            :class="activeTab === tab.id ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900'"
-            @click="activeTab = tab.id"
-          >
-            {{ tab.label }}
-            <span v-if="tab.count" class="ml-1 text-xs text-gray-400">{{ tab.count }}</span>
-          </button>
-          <div class="flex-1" />
-          <UButton icon="i-lucide-plus" variant="ghost" size="sm" color="neutral" class="mb-2" />
+        <!-- Chat Overlay (replaces tabs when active) -->
+        <div v-if="showChat" class="flex-1 overflow-hidden">
+          <TaskChatPanel v-if="selectedTaskId" :task-id="selectedTaskId" />
         </div>
 
-        <!-- Tab Content -->
-        <div class="flex-1 overflow-auto">
-          <template v-if="activeTab === 'updates'">
-            <TaskActivityFeed v-if="selectedTaskId" :task-id="selectedTaskId" />
-          </template>
-
-          <div v-else-if="activeTab === 'chat'" class="h-[400px]">
-            <TaskChatPanel v-if="selectedTaskId" :task-id="selectedTaskId" />
+        <!-- Tab Interface -->
+        <template v-else>
+          <!-- Tabs -->
+          <div class="flex items-center border-b -mx-4 px-4 mb-4">
+            <button
+              v-for="tab in tabs"
+              :key="tab.id"
+              class="px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px"
+              :class="activeTab === tab.id ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900'"
+              @click="activeTab = tab.id"
+            >
+              {{ tab.label }}
+            </button>
           </div>
 
-          <div v-else-if="activeTab === 'subtasks'" class="px-1">
-            <SubtaskList v-if="selectedTaskId" :task-id="selectedTaskId" />
-          </div>
+          <!-- Tab Content -->
+          <div class="flex-1 overflow-auto">
+            <template v-if="activeTab === 'updates'">
+              <TaskCommentThread
+                v-if="selectedTaskId"
+                :task-id="selectedTaskId"
+                placeholder="Write an update and mention others with @"
+              />
+            </template>
 
-          <div v-else-if="activeTab === 'files'" class="space-y-4">
-            <div class="flex items-center gap-3">
-              <UButton icon="i-lucide-plus" variant="outline" size="sm">Add file</UButton>
-              <div class="flex-1 relative">
-                <UIcon name="i-lucide-search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input type="text" placeholder="Search for files" class="w-full pl-9 pr-3 py-1.5 text-sm border rounded-md outline-none focus:border-blue-500" />
-              </div>
+            <div v-else-if="activeTab === 'subtasks'" class="px-1">
+              <SubtaskList v-if="selectedTaskId" :task-id="selectedTaskId" />
             </div>
-            <p class="text-sm text-gray-500">No files attached yet.</p>
-          </div>
 
-          <div v-else-if="activeTab === 'activity'" class="space-y-4">
-            <div class="flex items-center justify-between border-b pb-3">
-              <span class="text-sm font-medium text-gray-700">Other activities</span>
-              <button class="text-sm text-blue-600 hover:text-blue-700">Automation activity</button>
+            <div v-else-if="activeTab === 'details'">
+              <TaskDetailsPanel v-if="selectedTaskId" :task-id="selectedTaskId" />
             </div>
-            <p class="text-sm text-gray-400 text-center py-8">No activity yet.</p>
-          </div>
 
-          <div v-else-if="activeTab === 'info'" class="space-y-4">
-            <div class="flex items-center justify-between py-2 border-b">
-              <span class="text-sm text-gray-500">Status</span>
-              <UBadge color="primary" variant="soft">{{ selectedTask.status || 'Unknown' }}</UBadge>
-            </div>
-            <div class="flex items-center justify-between py-2 border-b">
-              <span class="text-sm text-gray-500">Due Date</span>
-              <span class="text-sm">{{ formatDate(selectedTask?.dueDate) || 'Not set' }}</span>
-            </div>
-            <div class="flex items-center justify-between py-2 border-b">
-              <span class="text-sm text-gray-500">Assignee</span>
-              <div class="flex items-center gap-2">
-                <UAvatar size="xs" fallback="?" />
-                <span class="text-sm">Unassigned</span>
-              </div>
+            <div v-else-if="activeTab === 'time-billing'" class="space-y-6">
+              <TaskTimePanel v-if="selectedTaskId" :task-id="selectedTaskId" />
+              <hr class="border-gray-200" />
+              <TaskBillingPanel v-if="selectedTaskId" :task-id="selectedTaskId" />
             </div>
           </div>
-
-          <div v-else-if="activeTab === 'time'" class="space-y-4">
-            <TaskTimePanel v-if="selectedTaskId" :task-id="selectedTaskId" />
-          </div>
-
-          <div v-else-if="activeTab === 'billing'" class="space-y-4">
-            <TaskBillingPanel v-if="selectedTaskId" :task-id="selectedTaskId" />
-          </div>
-        </div>
+        </template>
       </div>
     </template>
   </USlideover>
@@ -474,9 +453,10 @@ import BoardTemplateChooser from '~/components/board/BoardTemplateChooser.vue'
 import BoardAutomationBuilder from '~/components/board/BoardAutomationBuilder.vue'
 import BoardChatFeedSettings from '~/components/board/BoardChatFeedSettings.vue'
 import SubtaskList from '~/components/task/SubtaskList.vue'
-import TaskActivityFeed from '~/components/task/TaskActivityFeed.vue'
+import TaskCommentThread from '~/components/task/CommentThread.vue'
 import TaskBillingPanel from '~/components/task/TaskBillingPanel.vue'
 import TaskChatPanel from '~/components/task/TaskChatPanel.vue'
+import TaskDetailsPanel from '~/components/task/TaskDetailsPanel.vue'
 import TaskTimePanel from '~/components/task/TaskTimePanel.vue'
 
 definePageMeta({ title: 'Board' })
@@ -569,15 +549,13 @@ const refreshColumns = async () => {
 const { data: taskData, execute: fetchTask } = useFetch<TaskDetail>(() => `/api/agency/tasks/${selectedTaskId.value!}`, { immediate: false })
 const selectedTask = computed(() => taskData.value || null)
 
+const showChat = ref(false)
+
 const tabs = [
-  { id: 'updates', label: 'Updates', count: 0 },
-  { id: 'chat', label: 'Chat', count: 0 },
-  { id: 'subtasks', label: 'Subtasks', count: 0 },
-  { id: 'files', label: 'Files', count: 0 },
-  { id: 'activity', label: 'Activity Log', count: 0 },
-  { id: 'info', label: 'Info', count: 0 },
-  { id: 'time', label: 'Time', count: 0 },
-  { id: 'billing', label: 'Billing', count: 0 },
+  { id: 'updates', label: 'Updates' },
+  { id: 'subtasks', label: 'Subtasks' },
+  { id: 'details', label: 'Details' },
+  { id: 'time-billing', label: 'Time & Billing' },
 ]
 
 // --- Item Subscription ---
@@ -623,6 +601,7 @@ async function openTask(taskId: string) {
   await nextTick()
   selectedTaskId.value = taskId
   activeTab.value = 'updates'
+  showChat.value = false
   showTaskPanel.value = true
   await fetchTask()
   checkItemSubscription(taskId)
