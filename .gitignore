@@ -35,3 +35,6 @@ logs
 
 # Netlify build output
 .netlify/
+
+# npm lockfiles in worker dirs (project uses pnpm)
+workers/*/package-lock.json
