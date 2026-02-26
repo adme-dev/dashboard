@@ -16,7 +16,7 @@ const groupName = ref('')
 
 const { data: teamMembersData } = useFetch('/api/agency/team-members')
 const teamMembers = computed(() =>
-  ((teamMembersData.value as any[]) || []).filter((m: any) => m.id !== user.value?.id)
+  (((teamMembersData.value as any)?.members as any[]) || []).filter((m: any) => m.id !== user.value?.id)
 )
 
 const filteredMembers = computed(() => {
@@ -104,7 +104,7 @@ async function handleCreate() {
         :key="member.id"
         class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium"
       >
-        <UAvatar :src="member.avatar_url" :alt="member.name" size="3xs" />
+        <UAvatar :src="member.avatarUrl || member.avatar_url" :alt="member.name" size="3xs" />
         {{ member.name?.split(' ')[0] }}
         <button class="hover:text-primary/70" @click="removeMember(member.id)">
           <UIcon name="i-lucide-x" class="w-3 h-3" />
@@ -147,7 +147,7 @@ async function handleCreate() {
         ]"
         @click="toggleMember(member.id)"
       >
-        <UAvatar :src="member.avatar_url" :alt="member.name" size="sm" />
+        <UAvatar :src="member.avatarUrl || member.avatar_url" :alt="member.name" size="sm" />
         <div class="flex-1 min-w-0">
           <div class="text-sm font-medium truncate">{{ member.name }}</div>
           <div class="text-xs text-muted truncate">{{ member.email }}</div>

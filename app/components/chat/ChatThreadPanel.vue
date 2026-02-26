@@ -307,10 +307,9 @@ defineExpose({ addReply, applyEdit, applyDelete, applyReaction })
     </div>
 
     <!-- Delete confirmation -->
-    <UModal :open="showDeleteConfirm !== null" @update:open="v => { if (!v) showDeleteConfirm = null }">
+    <UModal :open="showDeleteConfirm !== null" title="Delete Reply" description="Confirm reply deletion" @update:open="v => { if (!v) showDeleteConfirm = null }">
       <template #content>
         <div class="p-6">
-          <h3 class="text-lg font-semibold mb-2">Delete Reply</h3>
           <p class="text-sm text-muted mb-4">
             Are you sure you want to delete this reply? This action cannot be undone.
           </p>

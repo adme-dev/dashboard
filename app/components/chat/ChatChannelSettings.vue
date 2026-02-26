@@ -321,10 +321,9 @@ onMounted(fetchNotifPrefs)
     </div>
 
     <!-- Leave Confirmation -->
-    <UModal v-model:open="showLeaveConfirm">
+    <UModal v-model:open="showLeaveConfirm" title="Leave Channel" description="Confirm leaving this channel">
       <template #content>
         <div class="p-6">
-          <h3 class="text-lg font-semibold mb-2">Leave Channel</h3>
           <p class="text-sm text-muted mb-4">
             Are you sure you want to leave <strong>#{{ channel.name }}</strong>? You can rejoin later if the channel is public.
           </p>
@@ -337,10 +336,9 @@ onMounted(fetchNotifPrefs)
     </UModal>
 
     <!-- Archive Confirmation -->
-    <UModal v-model:open="showArchiveConfirm">
+    <UModal v-model:open="showArchiveConfirm" :title="channel.archived_at ? 'Unarchive Channel' : 'Archive Channel'" description="Confirm channel archive status change">
       <template #content>
         <div class="p-6">
-          <h3 class="text-lg font-semibold mb-2">{{ channel.archived_at ? 'Unarchive' : 'Archive' }} Channel</h3>
           <p class="text-sm text-muted mb-4">
             {{ channel.archived_at
               ? `Unarchive #${channel.name}? It will appear in the sidebar again.`
