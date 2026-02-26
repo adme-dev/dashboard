@@ -247,6 +247,32 @@ export function useChat() {
   /**
    * Update channel list when a new message arrives (for sidebar preview).
    */
+  /** Silent channel refresh for background unread polling (no toast on error) */
+  async function refreshUnreadCounts() {
+    try {
+      const data = await $fetch<ChatChannel[]>('/api/chat/channels')
+      // Preserve activeChannel reference — only update unread counts and last_message
+      for (const fresh of data) {
+        const existing = channels.value.find(c => c.id === fresh.id)
+        if (existing) {
+          existing.unread_count = fresh.unread_count
+          existing.last_message = fresh.last_message
+          existing.last_read_message_id = fresh.last_read_message_id
+        }
+      }
+      // Add any new channels the user joined elsewhere
+      for (const fresh of data) {
+        if (!channels.value.find(c => c.id === fresh.id)) {
+          channels.value.push(fresh)
+        }
+      }
+      // Remove channels the user left
+      channels.value = channels.value.filter(c => data.find(d => d.id === c.id))
+    } catch {
+      // Silent — background poll
+    }
+  }
+
   function updateChannelPreview(channelId: string, content: string, userName: string) {
     const ch = channels.value.find(c => c.id === channelId)
     if (ch) {
@@ -294,6 +320,7 @@ export function useChat() {
     removeMember,
     selectChannel,
     applyWsMessage,
-    updateChannelPreview
+    updateChannelPreview,
+    refreshUnreadCounts
   }
 }

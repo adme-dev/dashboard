@@ -409,6 +409,15 @@ async function setOwnPresence(status: 'online' | 'offline') {
 
 // ── Init ──
 await fetchChannels()
+
+// Handle ?channel= query param for deep linking (from Activity Hub, TaskChatPanel, etc.)
+const route = useRoute()
+const channelParam = route.query.channel as string | undefined
+if (channelParam) {
+  const target = channels.value.find(c => c.id === channelParam)
+  if (target) await handleSelectChannel(target)
+}
+
 fetchPresenceStatuses()
 setOwnPresence('online')
 
@@ -590,11 +599,9 @@ onUnmounted(() => {
     </div>
 
     <!-- Create Channel Modal -->
-    <UModal v-model:open="showCreateChannel">
+    <UModal v-model:open="showCreateChannel" title="Create a Channel" description="Add a new channel for your team">
       <template #content>
         <div class="p-6">
-          <h3 class="text-lg font-semibold mb-4">Create a Channel</h3>
-
           <div class="space-y-4">
             <div>
               <label class="text-sm font-medium mb-1 block">Channel name</label>
@@ -641,7 +648,7 @@ onUnmounted(() => {
     </UModal>
 
     <!-- New Message Modal (DM / Group DM) -->
-    <UModal v-model:open="showNewDM">
+    <UModal v-model:open="showNewDM" title="New Message" description="Start a conversation with a team member">
       <template #content>
         <ChatNewMessage
           @close="showNewDM = false"
@@ -651,7 +658,7 @@ onUnmounted(() => {
     </UModal>
 
     <!-- Browse Channels Modal -->
-    <UModal v-model:open="showBrowseChannels">
+    <UModal v-model:open="showBrowseChannels" title="Browse Channels" description="Discover and join channels">
       <template #content>
         <ChatBrowseChannels
           @close="showBrowseChannels = false"
@@ -697,7 +704,7 @@ onUnmounted(() => {
     </USlideover>
 
     <!-- Channel Settings Modal -->
-    <UModal v-model:open="showSettings">
+    <UModal v-model:open="showSettings" title="Channel Settings" description="Manage channel configuration">
       <template #content>
         <ChatChannelSettings
           v-if="activeChannel"
@@ -711,10 +718,9 @@ onUnmounted(() => {
     </UModal>
 
     <!-- Delete confirmation Modal -->
-    <UModal v-model:open="isDeleteModalOpen">
+    <UModal v-model:open="isDeleteModalOpen" title="Delete Message" description="Confirm message deletion">
       <template #content>
         <div class="p-6">
-          <h3 class="text-lg font-semibold mb-2">Delete Message</h3>
           <p class="text-sm text-muted mb-4">
             Are you sure you want to delete this message? This action cannot be undone.
           </p>
@@ -731,7 +737,7 @@ onUnmounted(() => {
     </UModal>
 
     <!-- Channel Switcher (Cmd+K) -->
-    <UModal v-model:open="showChannelSwitcher">
+    <UModal v-model:open="showChannelSwitcher" title="Switch Channel" description="Quick channel switcher">
       <template #content>
         <ChatChannelSwitcher
           :channels="channels"
@@ -743,7 +749,7 @@ onUnmounted(() => {
     </UModal>
 
     <!-- Forward Message Modal -->
-    <UModal :open="!!forwardingMessage" @update:open="(v: boolean) => { if (!v) forwardingMessage = null }">
+    <UModal :open="!!forwardingMessage" title="Forward Message" description="Forward to another channel" @update:open="(v: boolean) => { if (!v) forwardingMessage = null }">
       <template #content>
         <ChatForwardModal
           v-if="forwardingMessage"

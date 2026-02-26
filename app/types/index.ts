@@ -387,7 +387,8 @@ export interface CampaignDailySpendResponse {
 // ============================================
 export type AiIntent =
   | 'task_query' | 'brief_query' | 'project_query' | 'financial_query'
-  | 'team_query' | 'process_query' | 'search' | 'action_request' | 'general'
+  | 'team_query' | 'process_query' | 'time_tracking_query'
+  | 'search' | 'action_request' | 'general'
 
 export interface AiConversation {
   id: string
@@ -398,6 +399,8 @@ export interface AiConversation {
   messageCount: number
   lastMessageAt: string | null
   isArchived: boolean
+  isPinned: boolean
+  pinnedAt: string | null
   createdAt: string
   updatedAt: string
 }
@@ -680,6 +683,22 @@ export interface ChatMessage {
   thread_count?: number
   pinned_at?: string
   pinned_by?: string
+}
+
+export interface FeedMessage {
+  id: number
+  channelId: string
+  userId: string
+  content: string
+  metadata: ChatMessage['metadata'] | null
+  createdAt: string
+  userName: string
+  userAvatar: string | null
+  channelName: string
+  channelSlug: string
+  channelType: 'channel' | 'dm' | 'group_dm'
+  channelIsPrivate: boolean
+  threadCount: number
 }
 
 export type ChatPresenceStatus = 'online' | 'away' | 'dnd' | 'offline'
