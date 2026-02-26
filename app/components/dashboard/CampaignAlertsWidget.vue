@@ -1,5 +1,13 @@
 <script setup lang="ts">
-const { data, status } = await useFetch('/api/agency/social/campaign-daily-spend')
+const { data: metaData, status: metaStatus } = await useFetch('/api/agency/social/campaign-daily-spend', { query: { platform: 'meta' } })
+const { data: googleData, status: googleStatus } = await useFetch('/api/agency/social/campaign-daily-spend', { query: { platform: 'google' } })
+
+const status = computed(() => metaStatus.value === 'pending' || googleStatus.value === 'pending' ? 'pending' : 'success')
+const data = computed(() => {
+  const metaCampaigns = ((metaData.value as any)?.campaigns || []).map((c: any) => ({ ...c, platform: 'meta' }))
+  const googleCampaigns = ((googleData.value as any)?.campaigns || []).map((c: any) => ({ ...c, platform: 'google' }))
+  return { campaigns: [...metaCampaigns, ...googleCampaigns] }
+})
 
 const alerts = computed(() => {
   const campaigns = (data.value as any)?.campaigns || []

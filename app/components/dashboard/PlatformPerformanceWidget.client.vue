@@ -1,5 +1,22 @@
 <script setup lang="ts">
-const { data, status } = await useFetch('/api/agency/social/daily-spend')
+const { data: metaData, status: metaStatus } = await useFetch('/api/agency/social/daily-spend', { query: { platform: 'meta' } })
+const { data: googleData, status: googleStatus } = await useFetch('/api/agency/social/daily-spend', { query: { platform: 'google' } })
+
+const status = computed(() => metaStatus.value === 'pending' || googleStatus.value === 'pending' ? 'pending' : 'success')
+
+// Merge both platforms by date
+const data = computed(() => {
+  const metaDays = (metaData.value as any) || []
+  const googleDays = (googleData.value as any) || []
+  const byDate: Record<string, any> = {}
+  for (const d of [...metaDays, ...googleDays]) {
+    if (!byDate[d.date]) byDate[d.date] = { date: d.date, spend: 0, impressions: 0, clicks: 0 }
+    byDate[d.date].spend += d.spend || 0
+    byDate[d.date].impressions += d.impressions || 0
+    byDate[d.date].clicks += d.clicks || 0
+  }
+  return { days: Object.values(byDate).sort((a: any, b: any) => a.date.localeCompare(b.date)) }
+})
 
 const dailyData = computed(() => (data.value as any)?.data || (data.value as any)?.days || [])
 
