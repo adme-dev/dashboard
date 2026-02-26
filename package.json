@@ -40,6 +40,7 @@
     "@unovis/ts": "^1.6.1",
     "@unovis/vue": "^1.6.1",
     "@vueuse/nuxt": "^13.9.0",
+    "aws4fetch": "^1.0.20",
     "bcryptjs": "^3.0.3",
     "date-fns": "^4.1.0",
     "groq-sdk": "^0.32.0",
@@ -61,7 +62,7 @@
     "typescript": "^5.9.2",
     "vitest": "^4.0.15",
     "vue-tsc": "^3.0.7",
-    "wrangler": "^4.67.0"
+    "wrangler": "^4.68.1"
   },
   "resolutions": {
     "unimport": "4.1.1"

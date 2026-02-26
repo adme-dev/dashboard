@@ -12,19 +12,14 @@ compatibility_flags = ["nodejs_compat"]
 # Then paste the ID below
 [[kv_namespaces]]
 binding = "CACHE"
-id = "<your-kv-namespace-id>"
+id = "7d5db1c489cb40f4b809d611e1408acd"
 
 # Queues — reliable background job processing with retry and dead-letter
 # Create with: npx wrangler queues create agency-jobs
+# NOTE: consumers must be configured on a separate Worker, not on Pages
 [[queues.producers]]
 binding = "JOBS_QUEUE"
 queue = "agency-jobs"
-
-[[queues.consumers]]
-queue = "agency-jobs"
-max_batch_size = 10
-max_retries = 3
-dead_letter_queue = "agency-jobs-dlq"
 
 # AI — Workers AI for embeddings and edge inference
 [ai]
@@ -62,20 +57,5 @@ name = "BOARD_ROOMS"
 class_name = "BoardRoom"
 script_name = "board-events-worker"
 
-# Preview/Staging environment
-[env.preview]
-name = "agency-dashboard-preview"
-[env.preview.vars]
-APP_URL = "https://preview.agency-dashboard.pages.dev"
-EMAIL_FROM = "noreply@preview.agency-dashboard.pages.dev"
-XERO_REDIRECT_URI = "https://preview.agency-dashboard.pages.dev/api/xero/callback"
-NUXT_PUBLIC_ZERO_SERVER_URL = "https://zero-preview.agency-dashboard.pages.dev"
-
-# Production environment
-[env.production]
-name = "agency-dashboard"
-[env.production.vars]
-APP_URL = "https://agency-dashboard.pages.dev"
-EMAIL_FROM = "noreply@yourdomain.com"
-XERO_REDIRECT_URI = "https://agency-dashboard.pages.dev/api/xero/callback"
-NUXT_PUBLIC_ZERO_SERVER_URL = "https://zero.agency-dashboard.pages.dev"
+# Environment-specific variables are managed in the Cloudflare Pages dashboard
+# (Settings > Variables and Secrets) for preview and production environments.

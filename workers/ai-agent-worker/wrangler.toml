@@ -3,10 +3,10 @@ main = "src/index.ts"
 compatibility_date = "2024-12-01"
 
 [triggers]
-crons = ["0 21 * * *", "0 22 * * 0"]
+crons = ["0 21 * * *", "0 22 * * sun"]
 
 [vars]
-API_URL = "https://your-app-url.com"
+API_URL = "https://agency-dashboard-6cm.pages.dev"
 
 # INTERNAL_API_KEY should be set as a secret:
 # wrangler secret put INTERNAL_API_KEY

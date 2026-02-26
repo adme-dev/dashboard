@@ -5,6 +5,8 @@
  * Messages are periodically archived to Neon Postgres via alarm().
  */
 
+import { DurableObject } from 'cloudflare:workers'
+
 interface ConnectionMeta {
   userId: string
   userName: string

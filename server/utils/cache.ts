@@ -14,9 +14,8 @@ class MemoryCache {
 
   constructor(defaultTTLMs: number = 60000) {
     this.defaultTTL = defaultTTLMs
-    
-    // Clean up expired entries every 5 minutes
-    setInterval(() => this.cleanup(), 5 * 60 * 1000)
+    // Note: No setInterval in constructor — Cloudflare Workers disallow
+    // timers in global scope. Expired entries are cleaned up on read instead.
   }
 
   get<T>(key: string): T | undefined {
@@ -32,6 +31,10 @@ class MemoryCache {
   }
 
   set<T>(key: string, data: T, ttlMs?: number): void {
+    // Opportunistic cleanup every 100 writes to prevent unbounded growth
+    if (this.cache.size > 100) {
+      this.cleanup()
+    }
     this.cache.set(key, {
       data,
       expiresAt: Date.now() + (ttlMs ?? this.defaultTTL)
