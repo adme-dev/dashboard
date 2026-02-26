@@ -12,10 +12,11 @@ export default defineEventHandler(async (event) => {
     queryRows(`
       SELECT id, user_id, title, model, system_context,
              message_count, last_message_at, is_archived,
+             is_pinned, pinned_at,
              created_at, updated_at
       FROM ai_conversations
       WHERE user_id = $1 AND is_archived = false
-      ORDER BY last_message_at DESC NULLS LAST
+      ORDER BY is_pinned DESC, pinned_at DESC NULLS LAST, last_message_at DESC NULLS LAST
       LIMIT $2 OFFSET $3
     `, [user.id, PAGE_SIZE, offset]),
     queryOne(`
@@ -37,6 +38,8 @@ export default defineEventHandler(async (event) => {
       messageCount: r.message_count,
       lastMessageAt: r.last_message_at,
       isArchived: r.is_archived,
+      isPinned: r.is_pinned || false,
+      pinnedAt: r.pinned_at,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     })),

@@ -26,6 +26,8 @@ export default defineEventHandler(async (event) => {
     messageCount: row.message_count,
     lastMessageAt: row.last_message_at,
     isArchived: row.is_archived,
+    isPinned: row.is_pinned || false,
+    pinnedAt: row.pinned_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }

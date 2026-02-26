@@ -13,7 +13,7 @@ export interface ChatResponse {
 // Multi-model routing: pick the best model based on intent complexity
 function selectModel(intent: AiIntent, contentLength: number): string {
   // Financial queries and complex analysis benefit from the larger model
-  if (intent === 'financial_query' || intent === 'process_query') {
+  if (intent === 'financial_query' || intent === 'process_query' || intent === 'time_tracking_query') {
     return GROQ_MODELS.LLAMA_70B
   }
   // Simple queries (search, general, brief status checks) can use the faster model
@@ -33,6 +33,7 @@ function buildSystemPrompt(
   contextItems: AiContextSource[],
   learnedPatterns?: string[],
   intent?: AiIntent,
+  pinnedEntityIds?: Set<string>,
 ): string {
   let roleGuidance = ''
 
@@ -60,9 +61,10 @@ Help them be productive. Only share information relevant to their work.`
   if (contextItems.length > 0) {
     contextBlock = `\n\n## Relevant Agency Data\nHere is live data from the agency's systems that may be relevant to the user's question:\n\n`
     for (const item of contextItems) {
-      contextBlock += `- **[${item.type}] ${item.title}**: ${item.snippet}\n`
+      const pinMarker = pinnedEntityIds?.has(item.id) ? ' ⭐ (user referenced this directly)' : ''
+      contextBlock += `- **[${item.type}] ${item.title}**${pinMarker}: ${item.snippet}\n`
     }
-    contextBlock += `\nUse this data to give specific, accurate answers. Reference concrete names, numbers, and statuses when available. If the data doesn't answer the question, say so honestly rather than guessing.`
+    contextBlock += `\nUse this data to give specific, accurate answers. Reference concrete names, numbers, and statuses when available. Items marked with ⭐ were explicitly referenced by the user — prioritize answering about those. If the data doesn't answer the question, say so honestly rather than guessing.`
   }
 
   // Inject learned patterns from feedback as additional guidance
@@ -88,6 +90,9 @@ Help them be productive. Only share information relevant to their work.`
       case 'team_query':
         formatGuidance = `\n\n## Formatting\nFor team data, summarize capacity and workload clearly. Use a list format with active task counts.`
         break
+      case 'time_tracking_query':
+        formatGuidance = `\n\n## Formatting\nFor time tracking data, use structured lists or tables with hours and dates. Highlight totals in **bold**. Show utilization as percentage when relevant.`
+        break
     }
   }
 
@@ -97,7 +102,7 @@ You help agency staff with their day-to-day work, providing insights about tasks
 ## Your Role
 - Be professional, concise, and helpful
 - Use markdown formatting for readability (headings, lists, bold for emphasis)
-- When referencing specific items, link them: mention the item name and its location (board, client, etc.)
+- When referencing specific items from the data, always use their **exact name** in bold (e.g. **Campaign Launch**, **Acme Corp**). This allows the system to auto-link them for the user.
 - If you don't have enough information to answer accurately, say so
 - Never fabricate data — only reference what's provided in the context
 - When listing items from the data, include all relevant details (status, assignee, dates)
@@ -111,18 +116,26 @@ ${contextBlock}${patternsBlock}${formatGuidance}`
 function autoLinkEntities(content: string, contextSources: AiContextSource[]): string {
   let result = content
 
-  // Build a lookup of entity titles to their URLs
-  for (const source of contextSources) {
+  // Sort sources by title length descending so longer titles match first
+  // (prevents "Campaign" matching before "Campaign Launch")
+  const sortedSources = [...contextSources].sort((a, b) => (b.title?.length || 0) - (a.title?.length || 0))
+
+  for (const source of sortedSources) {
     if (!source.url || !source.title) continue
-    // Only link if the title appears in the response and isn't already in a markdown link
     const escapedTitle = source.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const regex = new RegExp(`(?<!\\[)\\b(${escapedTitle})\\b(?!\\])`, 'g')
-    // Only replace the first occurrence to avoid over-linking
+
+    // Match the title plain or wrapped in **bold**, but not already inside a markdown link [...](...)
+    // Use negative lookbehind for [** and negative lookahead for **]( to skip already-linked text
+    const regex = new RegExp(
+      `(?<!\\[\\*{0,2})\\*{0,2}(${escapedTitle})\\*{0,2}(?!\\*{0,2}\\]\\()`,
+      'g'
+    )
+
     let replaced = false
-    result = result.replace(regex, (match) => {
-      if (replaced) return match
+    result = result.replace(regex, (fullMatch, titleText) => {
+      if (replaced) return fullMatch
       replaced = true
-      return `[${match}](${source.url})`
+      return `[**${titleText}**](${source.url})`
     })
   }
 
@@ -144,12 +157,142 @@ function mapMessageRow(row: any): AiMessage {
   }
 }
 
+/**
+ * Fetch full details for explicitly @mentioned entities.
+ * These get pinned to the top of context so the AI has precise data
+ * about what the user is referencing.
+ */
+async function fetchMentionedEntities(
+  entities: Array<{ type: string; id: string }>
+): Promise<AiContextSource[]> {
+  const results: AiContextSource[] = []
+
+  for (const entity of entities) {
+    try {
+      let row: any = null
+
+      switch (entity.type) {
+        case 'task':
+          row = await queryOne(`
+            SELECT t.id, t.title, t.status, t.description, t.due_date,
+                   p.name as project_name,
+                   tm.name as assignee_name
+            FROM tasks t
+            LEFT JOIN projects p ON p.id = t.project_id
+            LEFT JOIN team_members tm ON tm.id = t.assignee_id
+            WHERE t.id = $1
+          `, [entity.id])
+          if (row) {
+            const parts = [
+              `Status: ${row.status || 'todo'}`,
+              row.project_name ? `Project: ${row.project_name}` : null,
+              row.assignee_name ? `Assignee: ${row.assignee_name}` : null,
+              row.due_date ? `Due: ${new Date(row.due_date).toLocaleDateString()}` : null,
+              row.description ? row.description.slice(0, 150) : null,
+            ].filter(Boolean)
+            results.push({
+              type: 'task',
+              id: row.id,
+              title: row.title,
+              snippet: parts.join(' | '),
+              url: `/agency/tasks/${row.id}`,
+            })
+          }
+          break
+
+        case 'client':
+          row = await queryOne(`
+            SELECT ac.id, ac.name, ac.is_active, ac.billing_type,
+                   COUNT(DISTINCT br.id)::int as brief_count
+            FROM agency_clients ac
+            LEFT JOIN briefs br ON br.client_id = ac.id
+            WHERE ac.id = $1
+            GROUP BY ac.id
+          `, [entity.id])
+          if (row) {
+            const parts = [
+              `Status: ${row.is_active ? 'active' : 'inactive'}`,
+              row.billing_type ? `Billing: ${row.billing_type}` : null,
+              `${row.brief_count} brief${row.brief_count === 1 ? '' : 's'}`,
+            ].filter(Boolean)
+            results.push({
+              type: 'client',
+              id: row.id,
+              title: row.name,
+              snippet: parts.join(' | '),
+              url: `/agency/clients/${row.id}`,
+            })
+          }
+          break
+
+        case 'project':
+          row = await queryOne(`
+            SELECT p.id, p.name, p.status, p.description, p.budget_amount,
+                   ac.name as client_name,
+                   COUNT(t.id)::int as task_count
+            FROM projects p
+            LEFT JOIN agency_clients ac ON ac.id = p.client_id
+            LEFT JOIN tasks t ON t.project_id = p.id
+            WHERE p.id = $1
+            GROUP BY p.id, ac.name
+          `, [entity.id])
+          if (row) {
+            const parts = [
+              `Status: ${row.status || 'draft'}`,
+              row.client_name ? `Client: ${row.client_name}` : null,
+              `${row.task_count} tasks`,
+              row.budget_amount ? `Budget: $${Number(row.budget_amount).toLocaleString()}` : null,
+              row.description ? row.description.slice(0, 100) : null,
+            ].filter(Boolean)
+            results.push({
+              type: 'project',
+              id: row.id,
+              title: row.name,
+              snippet: parts.join(' | '),
+              url: `/agency/projects/${row.id}`,
+            })
+          }
+          break
+
+        case 'brief':
+          row = await queryOne(`
+            SELECT br.id, br.title, br.status, br.description,
+                   ac.name as client_name
+            FROM briefs br
+            LEFT JOIN agency_clients ac ON ac.id = br.client_id
+            WHERE br.id = $1
+          `, [entity.id])
+          if (row) {
+            const parts = [
+              `Status: ${row.status || 'draft'}`,
+              row.client_name ? `Client: ${row.client_name}` : null,
+              row.description ? row.description.slice(0, 100) : null,
+            ].filter(Boolean)
+            results.push({
+              type: 'brief',
+              id: row.id,
+              title: row.title,
+              snippet: parts.join(' | '),
+              url: `/agency/briefs/${row.id}`,
+            })
+          }
+          break
+      }
+    } catch (err) {
+      console.error(`Failed to fetch mentioned entity ${entity.type}:${entity.id}`, err)
+    }
+  }
+
+  return results
+}
+
 export async function processUserMessage(
   conversationId: string,
   userId: string,
   userRole: string,
   content: string,
-  event?: H3Event
+  event?: H3Event,
+  mentionedEntities?: Array<{ type: string; id: string }>,
 ): Promise<ChatResponse> {
   const startTime = Date.now()
 
@@ -177,6 +320,17 @@ export async function processUserMessage(
     url: item.url,
   }))
 
+  // 2b. Fetch explicitly mentioned entities and pin them to top of context
+  if (mentionedEntities && mentionedEntities.length > 0) {
+    const pinnedSources = await fetchMentionedEntities(mentionedEntities)
+    // Deduplicate: remove any auto-retrieved items that match pinned ones
+    const pinnedIds = new Set(pinnedSources.map(s => s.id))
+    const dedupedContext = contextSources.filter(s => !pinnedIds.has(s.id))
+    // Pinned entities go first so the AI sees them prominently
+    contextSources.length = 0
+    contextSources.push(...pinnedSources, ...dedupedContext)
+  }
+
   // 3. Fetch learned patterns from feedback for system prompt enrichment
   let learnedPatternStrings: string[] = []
   try {
@@ -192,11 +346,15 @@ export async function processUserMessage(
   }
 
   // 4. Build system prompt with role, context, learned patterns, and intent-specific formatting
+  const pinnedIds = mentionedEntities?.length
+    ? new Set(mentionedEntities.map(e => e.id))
+    : undefined
   const systemPrompt = buildSystemPrompt(
     userRole,
     contextSources,
     learnedPatternStrings,
     contextBundle.intent,
+    pinnedIds,
   )
 
   // 5. Build the messages array for the LLM

@@ -117,7 +117,37 @@ export function useAiChat() {
     }
   }
 
-  async function sendMessage(content: string) {
+  async function togglePin(id: string) {
+    const conv = conversations.value.find(c => c.id === id)
+    if (!conv) return
+
+    const newPinned = !conv.isPinned
+    const result = await $fetch<{ id: string; isPinned: boolean; pinnedAt: string | null; updatedAt: string }>(
+      `/api/agency/ai/chat/conversations/${id}`,
+      { method: 'PATCH', body: { isPinned: newPinned } }
+    )
+
+    // Update in list
+    conv.isPinned = result.isPinned
+    conv.pinnedAt = result.pinnedAt
+    conv.updatedAt = result.updatedAt
+
+    // Update active conversation
+    if (activeConversation.value?.id === id) {
+      activeConversation.value.isPinned = result.isPinned
+      activeConversation.value.pinnedAt = result.pinnedAt
+    }
+
+    // Re-sort: pinned first, then by last message
+    conversations.value.sort((a, b) => {
+      if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1
+      const aDate = a.lastMessageAt || a.createdAt
+      const bDate = b.lastMessageAt || b.createdAt
+      return new Date(bDate).getTime() - new Date(aDate).getTime()
+    })
+  }
+
+  async function sendMessage(content: string, mentionedEntities?: Array<{ type: string; id: string }>) {
     if (!activeConversation.value || sending.value) return
 
     sending.value = true
@@ -138,11 +168,16 @@ export function useAiChat() {
     messages.value.push(tempUserMsg)
 
     try {
+      const body: Record<string, any> = { content }
+      if (mentionedEntities && mentionedEntities.length > 0) {
+        body.mentionedEntities = mentionedEntities
+      }
+
       const result = await $fetch<ChatMessageResponse>(
         `/api/agency/ai/chat/conversations/${activeConversation.value.id}/messages`,
         {
           method: 'POST',
-          body: { content },
+          body,
         }
       )
 
@@ -230,6 +265,7 @@ export function useAiChat() {
     loadConversation,
     loadMoreMessages,
     renameConversation,
+    togglePin,
     sendMessage,
     archiveConversation,
     cleanupOldConversations,

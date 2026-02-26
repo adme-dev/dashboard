@@ -13,7 +13,7 @@ const {
   conversations, activeConversation, messages, loading, sending,
   hasMoreConversations, hasMoreMessages, totalConversations,
   fetchConversations, loadMoreConversations, createConversation,
-  loadConversation, loadMoreMessages, renameConversation,
+  loadConversation, loadMoreMessages, renameConversation, togglePin,
   sendMessage, archiveConversation, cleanupOldConversations, submitFeedback,
 } = useAiChat()
 
@@ -93,11 +93,219 @@ async function handleCleanup() {
   }
 }
 
+// --- Context Panel (right sidebar) ---
+const contextPanelOpen = ref(false)
+
+interface ContextEntity {
+  type: string
+  id: string
+  title: string
+  snippet: string
+  url: string
+}
+
+// Collect unique referenced entities from all assistant messages in current conversation
+const referencedEntities = computed(() => {
+  const seen = new Set<string>()
+  const entities: ContextEntity[] = []
+  for (const msg of messages.value) {
+    if (msg.role !== 'assistant' || !msg.contextSources) continue
+    for (const source of msg.contextSources) {
+      if (seen.has(source.id)) continue
+      seen.add(source.id)
+      entities.push({
+        type: source.type,
+        id: source.id,
+        title: source.title,
+        snippet: source.snippet,
+        url: source.url,
+      })
+    }
+  }
+  return entities
+})
+
+// Group referenced entities by type
+const groupedEntities = computed(() => {
+  const groups: Record<string, ContextEntity[]> = {}
+  for (const entity of referencedEntities.value) {
+    if (!groups[entity.type]) groups[entity.type] = []
+    groups[entity.type].push(entity)
+  }
+  return groups
+})
+
+const entityTypeLabels: Record<string, string> = {
+  task: 'Tasks',
+  client: 'Clients',
+  project: 'Projects',
+  brief: 'Briefs',
+  board: 'Boards',
+  spend: 'Ad Spend',
+  team: 'Team',
+  knowledge: 'Knowledge',
+  time_tracking: 'Time Tracking',
+}
+
+// Fetch user's own tasks (overdue + upcoming)
+const { data: myTasksData } = useFetch<{ tasks: any[] }>('/api/agency/tasks', {
+  params: { assigneeId: user.value?.id, limit: 20, excludeCompleted: 'true' },
+  default: () => ({ tasks: [] }),
+})
+
+const overdueTasks = computed(() =>
+  (myTasksData.value?.tasks || []).filter((t: any) => t.dueDate && new Date(t.dueDate) < new Date())
+)
+
+const upcomingTasks = computed(() =>
+  (myTasksData.value?.tasks || []).filter((t: any) => t.dueDate && new Date(t.dueDate) >= new Date()).slice(0, 5)
+)
+
+function getStatusColor(status: string): string {
+  const map: Record<string, string> = {
+    done: 'success', completed: 'success',
+    'in_progress': 'warning', active: 'warning',
+    overdue: 'error', blocked: 'error',
+    todo: 'neutral', draft: 'neutral',
+  }
+  return map[status] || 'neutral'
+}
+
 // --- State ---
 const messageInput = ref('')
 const searchFilter = ref('')
 const sidebarOpen = ref(true)
 const messagesContainer = ref<HTMLElement | null>(null)
+const inputRef = ref<HTMLTextAreaElement | null>(null)
+
+// --- @Mention entity references ---
+interface MentionEntity {
+  id: string
+  type: string
+  title: string
+  subtitle: string | null
+}
+
+const mentionedEntities = ref<MentionEntity[]>([])
+const mentionQuery = ref('')
+const mentionResults = ref<MentionEntity[]>([])
+const mentionDropdownOpen = ref(false)
+const mentionSelectedIndex = ref(0)
+const mentionAtPosition = ref(-1) // cursor position of the @ trigger
+let mentionDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+const ENTITY_ICONS: Record<string, string> = {
+  task: 'i-lucide-check-square',
+  client: 'i-lucide-building-2',
+  project: 'i-lucide-folder-kanban',
+  brief: 'i-lucide-file-text',
+  knowledge: 'i-lucide-book-open',
+  time_tracking: 'i-lucide-clock',
+  spend: 'i-lucide-wallet',
+  team: 'i-lucide-users',
+  board: 'i-lucide-layout-dashboard',
+}
+
+async function searchEntities(q: string) {
+  if (q.length < 2) {
+    mentionResults.value = []
+    return
+  }
+  try {
+    const data = await $fetch<{ results: MentionEntity[] }>('/api/agency/ai/chat/entity-search', {
+      params: { q, limit: 8 },
+    })
+    mentionResults.value = data.results
+    mentionSelectedIndex.value = 0
+  } catch {
+    mentionResults.value = []
+  }
+}
+
+function handleMentionInput() {
+  const el = inputRef.value
+  if (!el) return
+
+  const cursorPos = el.selectionStart
+  const textBeforeCursor = messageInput.value.slice(0, cursorPos)
+
+  // Find the last @ that isn't part of an email
+  const atMatch = textBeforeCursor.match(/@([^\s@]*)$/)
+  if (atMatch) {
+    mentionAtPosition.value = cursorPos - atMatch[0].length
+    mentionQuery.value = atMatch[1]
+    mentionDropdownOpen.value = true
+
+    // Debounce the search
+    if (mentionDebounceTimer) clearTimeout(mentionDebounceTimer)
+    mentionDebounceTimer = setTimeout(() => searchEntities(atMatch[1]), 200)
+  } else {
+    closeMentionDropdown()
+  }
+}
+
+function selectMention(entity: MentionEntity) {
+  // Already added?
+  if (mentionedEntities.value.some(e => e.id === entity.id)) {
+    closeMentionDropdown()
+    return
+  }
+
+  // Replace the @query text with the entity name
+  const before = messageInput.value.slice(0, mentionAtPosition.value)
+  const afterPos = mentionAtPosition.value + 1 + mentionQuery.value.length // @ + query length
+  const after = messageInput.value.slice(afterPos)
+  messageInput.value = `${before}@${entity.title} ${after}`
+
+  mentionedEntities.value.push(entity)
+  closeMentionDropdown()
+
+  // Refocus the textarea
+  nextTick(() => {
+    if (inputRef.value) {
+      const newPos = before.length + entity.title.length + 2 // @ + title + space
+      inputRef.value.setSelectionRange(newPos, newPos)
+      inputRef.value.focus()
+    }
+  })
+}
+
+function removeMention(entityId: string) {
+  mentionedEntities.value = mentionedEntities.value.filter(e => e.id !== entityId)
+}
+
+function closeMentionDropdown() {
+  mentionDropdownOpen.value = false
+  mentionQuery.value = ''
+  mentionResults.value = []
+  mentionAtPosition.value = -1
+}
+
+function handleMentionKeydown(e: KeyboardEvent) {
+  if (!mentionDropdownOpen.value || mentionResults.value.length === 0) return
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    mentionSelectedIndex.value = (mentionSelectedIndex.value + 1) % mentionResults.value.length
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    mentionSelectedIndex.value = (mentionSelectedIndex.value - 1 + mentionResults.value.length) % mentionResults.value.length
+  } else if (e.key === 'Enter' || e.key === 'Tab') {
+    e.preventDefault()
+    selectMention(mentionResults.value[mentionSelectedIndex.value])
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    closeMentionDropdown()
+  }
+}
+
+// Auto-resize textarea to fit content
+function autoResizeInput() {
+  const el = inputRef.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = Math.min(el.scrollHeight, 200) + 'px'
+}
 
 // Fetch conversations on mount
 await fetchConversations()
@@ -117,6 +325,10 @@ const filteredConversations = computed(() => {
   )
 })
 
+// Split pinned vs unpinned for section headers
+const pinnedConversations = computed(() => filteredConversations.value.filter(c => c.isPinned))
+const unpinnedConversations = computed(() => filteredConversations.value.filter(c => !c.isPinned))
+
 // --- URL Sync ---
 function updateUrl(convId: string | null) {
   const query = convId ? { conversation: convId } : {}
@@ -134,6 +346,31 @@ function scrollToBottom() {
 
 // Watch message count (not deep) for auto-scroll
 watch(() => messages.value.length, () => scrollToBottom())
+
+// Auto-open context panel when AI references entities for the first time
+watch(() => referencedEntities.value.length, (newLen, oldLen) => {
+  if (newLen > 0 && oldLen === 0 && !contextPanelOpen.value) {
+    contextPanelOpen.value = true
+  }
+})
+
+// Cleanup debounce timer on unmount
+onUnmounted(() => {
+  if (mentionDebounceTimer) clearTimeout(mentionDebounceTimer)
+})
+
+// Close mention dropdown on outside click
+function handleDocumentClick(e: MouseEvent) {
+  if (!mentionDropdownOpen.value) return
+  const target = e.target as HTMLElement
+  // Keep open if clicking inside the textarea or dropdown
+  if (inputRef.value?.contains(target)) return
+  const dropdown = document.querySelector('[data-mention-dropdown]')
+  if (dropdown?.contains(target)) return
+  closeMentionDropdown()
+}
+onMounted(() => document.addEventListener('click', handleDocumentClick))
+onUnmounted(() => document.removeEventListener('click', handleDocumentClick))
 
 // Create new chat
 async function handleNewChat() {
@@ -171,9 +408,19 @@ async function handleSend() {
   }
 
   messageInput.value = ''
+  // Reset textarea height after clearing
+  nextTick(() => {
+    if (inputRef.value) {
+      inputRef.value.style.height = 'auto'
+    }
+  })
+
+  // Collect entity references to send with the message
+  const entities = mentionedEntities.value.map(e => ({ type: e.type, id: e.id }))
+  mentionedEntities.value = []
 
   try {
-    await sendMessage(content)
+    await sendMessage(content, entities)
   } catch (err: any) {
     const status = err?.response?.status || err?.statusCode
     if (status === 429) {
@@ -185,9 +432,33 @@ async function handleSend() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+  // Mention dropdown navigation takes priority
+  if (mentionDropdownOpen.value && ['ArrowDown', 'ArrowUp', 'Tab', 'Escape'].includes(e.key)) {
+    handleMentionKeydown(e)
+    return
+  }
+  if (mentionDropdownOpen.value && e.key === 'Enter') {
+    handleMentionKeydown(e)
+    return
+  }
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
     handleSend()
+  }
+}
+
+// Pin/unpin conversation
+async function handleTogglePin(conv: AiConversation) {
+  const wasPinned = conv.isPinned
+  try {
+    await togglePin(conv.id)
+    toast.add({
+      title: wasPinned ? 'Unpinned conversation' : 'Pinned conversation',
+      color: 'success',
+    })
+  } catch (err: any) {
+    const msg = err?.data?.statusMessage || err?.statusMessage || 'Failed to update pin'
+    toast.add({ title: 'Error', description: msg, color: 'error' })
   }
 }
 
@@ -303,8 +574,84 @@ function getRenderedMarkdown(content: string): string {
           {{ searchFilter ? 'No matching conversations' : 'No conversations yet' }}
         </div>
         <div v-else>
+          <!-- Pinned Section -->
+          <template v-if="pinnedConversations.length > 0">
+            <div class="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted flex items-center gap-1">
+              <UIcon name="i-lucide-pin" class="w-3 h-3" />
+              Pinned
+            </div>
+            <button
+              v-for="conv in pinnedConversations"
+              :key="conv.id"
+              :class="[
+                'w-full text-left px-3 py-2.5 border-b border-default hover:bg-elevated/80 transition-colors group',
+                activeConversation?.id === conv.id ? 'bg-elevated' : ''
+              ]"
+              @click="selectConversation(conv)"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0 flex-1">
+                  <input
+                    v-if="renamingId === conv.id"
+                    v-model="renameInput"
+                    class="text-sm font-medium w-full bg-default border border-default rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-primary"
+                    @keydown="handleRenameKeydown"
+                    @blur="confirmRename"
+                    @click.stop
+                    autofocus
+                  />
+                  <div v-else class="flex items-center gap-1 text-sm font-medium truncate">
+                    <UIcon name="i-lucide-pin" class="w-3 h-3 text-primary shrink-0" />
+                    <span class="truncate">{{ conv.title || 'New conversation' }}</span>
+                  </div>
+                  <div class="flex items-center gap-1.5 mt-0.5">
+                    <span class="text-xs text-muted">
+                      {{ relativeTime(conv.lastMessageAt || conv.createdAt) }}
+                    </span>
+                    <UBadge
+                      v-if="conv.messageCount > 0"
+                      :label="String(conv.messageCount)"
+                      size="xs"
+                      color="neutral"
+                      variant="subtle"
+                    />
+                  </div>
+                </div>
+                <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 shrink-0">
+                  <UButton
+                    icon="i-lucide-pin-off"
+                    variant="ghost"
+                    color="neutral"
+                    size="xs"
+                    @click.stop="handleTogglePin(conv)"
+                  />
+                  <UButton
+                    icon="i-lucide-pencil"
+                    variant="ghost"
+                    color="neutral"
+                    size="xs"
+                    @click.stop="startRename(conv)"
+                  />
+                  <UButton
+                    icon="i-lucide-trash-2"
+                    variant="ghost"
+                    color="neutral"
+                    size="xs"
+                    @click.stop="handleDelete(conv)"
+                  />
+                </div>
+              </div>
+            </button>
+
+            <!-- Separator between pinned and recent -->
+            <div v-if="unpinnedConversations.length > 0" class="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Recent
+            </div>
+          </template>
+
+          <!-- Unpinned (Recent) Conversations -->
           <button
-            v-for="conv in filteredConversations"
+            v-for="conv in unpinnedConversations"
             :key="conv.id"
             :class="[
               'w-full text-left px-3 py-2.5 border-b border-default hover:bg-elevated/80 transition-colors group',
@@ -314,7 +661,6 @@ function getRenderedMarkdown(content: string): string {
           >
             <div class="flex items-start justify-between gap-2">
               <div class="min-w-0 flex-1">
-                <!-- Inline rename -->
                 <input
                   v-if="renamingId === conv.id"
                   v-model="renameInput"
@@ -341,6 +687,13 @@ function getRenderedMarkdown(content: string): string {
                 </div>
               </div>
               <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 shrink-0">
+                <UButton
+                  icon="i-lucide-pin"
+                  variant="ghost"
+                  color="neutral"
+                  size="xs"
+                  @click.stop="handleTogglePin(conv)"
+                />
                 <UButton
                   icon="i-lucide-pencil"
                   variant="ghost"
@@ -386,9 +739,16 @@ function getRenderedMarkdown(content: string): string {
           size="sm"
           @click="sidebarOpen = !sidebarOpen"
         />
-        <span class="text-sm font-medium truncate">
+        <span class="text-sm font-medium truncate flex-1">
           {{ activeConversation?.title || 'AI Chat' }}
         </span>
+        <UButton
+          :icon="contextPanelOpen ? 'i-lucide-panel-right-close' : 'i-lucide-panel-right-open'"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          @click="contextPanelOpen = !contextPanelOpen"
+        />
       </div>
 
       <!-- Chat Header (desktop) -->
@@ -404,212 +764,431 @@ function getRenderedMarkdown(content: string): string {
             {{ activeConversation.messageCount }} messages
           </p>
         </div>
+        <UButton
+          :icon="contextPanelOpen ? 'i-lucide-panel-right-close' : 'i-lucide-panel-right-open'"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          @click="contextPanelOpen = !contextPanelOpen"
+        >
+          <template v-if="referencedEntities.length > 0" #trailing>
+            <UBadge :label="String(referencedEntities.length)" size="xs" color="primary" variant="subtle" class="ml-0.5" />
+          </template>
+        </UButton>
       </div>
 
-      <!-- Messages -->
-      <div
-        ref="messagesContainer"
-        class="flex-1 overflow-y-auto px-4 py-4"
-        @scroll="handleMessagesScroll"
-      >
-        <!-- Empty state -->
+      <!-- Messages + Floating Input wrapper -->
+      <div class="flex-1 flex flex-col min-h-0 relative">
+        <!-- Messages scroll area -->
         <div
-          v-if="!activeConversation || messages.length === 0"
-          class="flex flex-col items-center justify-center h-full text-center"
+          ref="messagesContainer"
+          class="flex-1 overflow-y-auto px-4 pt-4 pb-48"
+          @scroll="handleMessagesScroll"
         >
-          <div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-            <UIcon name="i-lucide-sparkles" class="w-8 h-8 text-primary" />
-          </div>
-          <h3 class="text-lg font-semibold mb-1">XeroFlow AI Assistant</h3>
-          <p class="text-muted text-sm max-w-md mb-6">
-            Ask me about your tasks, clients, boards, budgets, or anything about your agency operations.
-          </p>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-lg w-full">
-            <button
-              class="text-left px-3 py-2 rounded-lg border border-default hover:bg-elevated/80 transition-colors text-sm"
-              @click="messageInput = 'What tasks are assigned to me?'"
-            >
-              <span class="font-medium">My tasks</span>
-              <p class="text-xs text-muted mt-0.5">See what's on your plate</p>
-            </button>
-            <button
-              class="text-left px-3 py-2 rounded-lg border border-default hover:bg-elevated/80 transition-colors text-sm"
-              @click="messageInput = 'Show me overdue items across all boards'"
-            >
-              <span class="font-medium">Overdue items</span>
-              <p class="text-xs text-muted mt-0.5">Find what needs attention</p>
-            </button>
-            <button
-              class="text-left px-3 py-2 rounded-lg border border-default hover:bg-elevated/80 transition-colors text-sm"
-              @click="messageInput = 'How is our ad spend looking this month?'"
-            >
-              <span class="font-medium">Ad spend summary</span>
-              <p class="text-xs text-muted mt-0.5">Check budget pacing</p>
-            </button>
-            <button
-              class="text-left px-3 py-2 rounded-lg border border-default hover:bg-elevated/80 transition-colors text-sm"
-              @click="messageInput = 'Give me a status update on all active clients'"
-            >
-              <span class="font-medium">Client status</span>
-              <p class="text-xs text-muted mt-0.5">Overview of active clients</p>
-            </button>
-          </div>
-        </div>
-
-        <!-- Message Thread -->
-        <div v-else class="max-w-3xl mx-auto space-y-4">
-          <!-- Load more messages indicator -->
-          <div v-if="hasMoreMessages" class="text-center py-2">
-            <UButton
-              variant="ghost"
-              color="neutral"
-              size="xs"
-              icon="i-lucide-chevron-up"
-              :loading="loading"
-              @click="loadMoreMessages"
-            >
-              Load earlier messages
-            </UButton>
-          </div>
-
+          <!-- Empty state -->
           <div
-            v-for="msg in messages"
-            :key="msg.id"
-            :class="[
-              'flex gap-2.5',
-              msg.role === 'user' ? 'justify-end' : 'justify-start'
-            ]"
+            v-if="!activeConversation || messages.length === 0"
+            class="flex flex-col items-center justify-center h-full text-center"
           >
-            <!-- AI Avatar -->
-            <div
-              v-if="msg.role === 'assistant'"
-              class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5"
-            >
-              <UIcon name="i-lucide-sparkles" class="text-primary w-3.5 h-3.5" />
+            <div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+              <UIcon name="i-lucide-sparkles" class="w-8 h-8 text-primary" />
+            </div>
+            <h3 class="text-lg font-semibold mb-1">XeroFlow AI Assistant</h3>
+            <p class="text-muted text-sm max-w-md mb-6">
+              Ask me about your tasks, clients, boards, budgets, or anything about your agency operations.
+            </p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-lg w-full">
+              <button
+                class="text-left px-3 py-2 rounded-lg border border-default hover:bg-elevated/80 transition-colors text-sm"
+                @click="messageInput = 'What tasks are assigned to me?'"
+              >
+                <span class="font-medium">My tasks</span>
+                <p class="text-xs text-muted mt-0.5">See what's on your plate</p>
+              </button>
+              <button
+                class="text-left px-3 py-2 rounded-lg border border-default hover:bg-elevated/80 transition-colors text-sm"
+                @click="messageInput = 'Show me overdue items across all boards'"
+              >
+                <span class="font-medium">Overdue items</span>
+                <p class="text-xs text-muted mt-0.5">Find what needs attention</p>
+              </button>
+              <button
+                class="text-left px-3 py-2 rounded-lg border border-default hover:bg-elevated/80 transition-colors text-sm"
+                @click="messageInput = 'How is our ad spend looking this month?'"
+              >
+                <span class="font-medium">Ad spend summary</span>
+                <p class="text-xs text-muted mt-0.5">Check budget pacing</p>
+              </button>
+              <button
+                class="text-left px-3 py-2 rounded-lg border border-default hover:bg-elevated/80 transition-colors text-sm"
+                @click="messageInput = 'Give me a status update on all active clients'"
+              >
+                <span class="font-medium">Client status</span>
+                <p class="text-xs text-muted mt-0.5">Overview of active clients</p>
+              </button>
+            </div>
+          </div>
+
+          <!-- Message Thread -->
+          <div v-else class="max-w-3xl mx-auto space-y-4">
+            <!-- Load more messages indicator -->
+            <div v-if="hasMoreMessages" class="text-center py-2">
+              <UButton
+                variant="ghost"
+                color="neutral"
+                size="xs"
+                icon="i-lucide-chevron-up"
+                :loading="loading"
+                @click="loadMoreMessages"
+              >
+                Load earlier messages
+              </UButton>
             </div>
 
             <div
+              v-for="msg in messages"
+              :key="msg.id"
               :class="[
-                'max-w-[80%] rounded-xl px-4 py-2.5',
-                msg.role === 'user'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-elevated border border-default',
-                msg.isError ? 'border-red-500/50' : ''
+                'flex gap-2.5',
+                msg.role === 'user' ? 'justify-end' : 'justify-start'
               ]"
             >
-              <!-- Message content -->
+              <!-- AI Avatar -->
               <div
                 v-if="msg.role === 'assistant'"
-                class="prose prose-sm dark:prose-invert max-w-none"
-                v-html="getRenderedMarkdown(msg.content)"
-              />
-              <div v-else class="text-sm whitespace-pre-wrap">
-                {{ msg.content }}
-              </div>
-
-              <!-- Context sources (assistant messages only) -->
-              <div
-                v-if="msg.role === 'assistant' && msg.contextSources && msg.contextSources.length > 0"
-                class="flex flex-wrap gap-1 mt-2 pt-2 border-t border-default/50"
+                class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5"
               >
-                <NuxtLink
-                  v-for="source in msg.contextSources"
-                  :key="`${source.type}-${source.id}`"
-                  :to="source.url"
-                >
-                  <UBadge
-                    :label="source.title"
-                    size="xs"
-                    color="neutral"
-                    variant="subtle"
-                    class="cursor-pointer hover:bg-elevated"
-                  />
-                </NuxtLink>
+                <UIcon name="i-lucide-sparkles" class="text-primary w-3.5 h-3.5" />
               </div>
 
-              <!-- Timestamp + Feedback -->
               <div
                 :class="[
-                  'flex items-center gap-2 text-[10px] mt-1',
-                  msg.role === 'user' ? 'text-primary-foreground/60' : 'text-muted'
+                  'max-w-[80%] rounded-xl px-4 py-2.5',
+                  msg.role === 'user'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-elevated border border-default',
+                  msg.isError ? 'border-red-500/50' : ''
                 ]"
               >
-                <span>
-                  {{ new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
-                  <span v-if="msg.latencyMs && msg.role === 'assistant'" class="ml-1">
-                    ({{ (msg.latencyMs / 1000).toFixed(1) }}s)
+                <!-- Message content -->
+                <div
+                  v-if="msg.role === 'assistant'"
+                  class="prose prose-sm dark:prose-invert max-w-none"
+                  v-html="getRenderedMarkdown(msg.content)"
+                />
+                <div v-else class="text-sm whitespace-pre-wrap">
+                  {{ msg.content }}
+                </div>
+
+                <!-- Context sources (assistant messages only) -->
+                <div
+                  v-if="msg.role === 'assistant' && msg.contextSources && msg.contextSources.length > 0"
+                  class="flex flex-wrap gap-1 mt-2 pt-2 border-t border-default/50"
+                >
+                  <NuxtLink
+                    v-for="source in msg.contextSources"
+                    :key="`${source.type}-${source.id}`"
+                    :to="source.url"
+                  >
+                    <UBadge
+                      :label="source.title"
+                      size="xs"
+                      color="neutral"
+                      variant="subtle"
+                      class="cursor-pointer hover:bg-elevated"
+                    />
+                  </NuxtLink>
+                </div>
+
+                <!-- Timestamp + Feedback -->
+                <div
+                  :class="[
+                    'flex items-center gap-2 text-[10px] mt-1',
+                    msg.role === 'user' ? 'text-primary-foreground/60' : 'text-muted'
+                  ]"
+                >
+                  <span>
+                    {{ new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
+                    <span v-if="msg.latencyMs && msg.role === 'assistant'" class="ml-1">
+                      ({{ (msg.latencyMs / 1000).toFixed(1) }}s)
+                    </span>
                   </span>
-                </span>
-                <template v-if="msg.role === 'assistant' && !msg.id.startsWith('temp-')">
-                  <UButton
-                    icon="i-lucide-thumbs-up"
-                    size="xs"
-                    variant="ghost"
-                    :color="msg.feedback?.rating === 1 ? 'success' : 'neutral'"
-                    @click="handleFeedback(msg.id, 1)"
-                  />
-                  <UButton
-                    icon="i-lucide-thumbs-down"
-                    size="xs"
-                    variant="ghost"
-                    :color="msg.feedback?.rating === -1 ? 'error' : 'neutral'"
-                    @click="handleFeedback(msg.id, -1)"
-                  />
-                </template>
+                  <template v-if="msg.role === 'assistant' && !msg.id.startsWith('temp-')">
+                    <UButton
+                      icon="i-lucide-thumbs-up"
+                      size="xs"
+                      variant="ghost"
+                      :color="msg.feedback?.rating === 1 ? 'success' : 'neutral'"
+                      @click="handleFeedback(msg.id, 1)"
+                    />
+                    <UButton
+                      icon="i-lucide-thumbs-down"
+                      size="xs"
+                      variant="ghost"
+                      :color="msg.feedback?.rating === -1 ? 'error' : 'neutral'"
+                      @click="handleFeedback(msg.id, -1)"
+                    />
+                  </template>
+                </div>
               </div>
+
+              <!-- User Avatar -->
+              <UAvatar
+                v-if="msg.role === 'user'"
+                :src="user?.avatar_url || undefined"
+                :alt="user?.name || 'You'"
+                size="xs"
+                class="shrink-0 mt-0.5"
+              />
             </div>
 
-            <!-- User Avatar -->
-            <UAvatar
-              v-if="msg.role === 'user'"
-              :src="user?.avatar_url || undefined"
-              :alt="user?.name || 'You'"
-              size="xs"
-              class="shrink-0 mt-0.5"
-            />
+            <!-- Typing indicator -->
+            <div v-if="sending" class="flex gap-2.5 justify-start">
+              <div class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                <UIcon name="i-lucide-sparkles" class="text-primary w-3.5 h-3.5" />
+              </div>
+              <div class="bg-elevated border border-default rounded-xl px-4 py-3">
+                <div class="flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-muted animate-pulse" />
+                  <span class="w-2 h-2 rounded-full bg-muted animate-pulse [animation-delay:200ms]" />
+                  <span class="w-2 h-2 rounded-full bg-muted animate-pulse [animation-delay:400ms]" />
+                </div>
+              </div>
+            </div>
           </div>
+        </div>
 
-          <!-- Typing indicator -->
-          <div v-if="sending" class="flex gap-2.5 justify-start">
-            <div class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-              <UIcon name="i-lucide-sparkles" class="text-primary w-3.5 h-3.5" />
-            </div>
-            <div class="bg-elevated border border-default rounded-xl px-4 py-3">
-              <div class="flex items-center gap-1.5">
-                <span class="w-2 h-2 rounded-full bg-muted animate-pulse" />
-                <span class="w-2 h-2 rounded-full bg-muted animate-pulse [animation-delay:200ms]" />
-                <span class="w-2 h-2 rounded-full bg-muted animate-pulse [animation-delay:400ms]" />
+        <!-- Gradient fade behind input -->
+        <div class="absolute bottom-0 left-0 right-0 pointer-events-none h-40 bg-gradient-to-t from-[var(--ui-bg)] via-[var(--ui-bg)]/80 to-transparent" />
+
+        <!-- Floating Input Area (Claude/ChatGPT style) -->
+        <div class="absolute bottom-0 left-0 right-0 px-4 pb-4 pt-2">
+          <div class="max-w-3xl mx-auto relative">
+            <!-- @Mention Autocomplete Dropdown -->
+            <Transition
+              enter-active-class="transition duration-100 ease-out"
+              enter-from-class="opacity-0 translate-y-1"
+              enter-to-class="opacity-100 translate-y-0"
+              leave-active-class="transition duration-75 ease-in"
+              leave-from-class="opacity-100 translate-y-0"
+              leave-to-class="opacity-0 translate-y-1"
+            >
+              <div
+                v-if="mentionDropdownOpen && mentionResults.length > 0"
+                id="mention-listbox"
+                data-mention-dropdown
+                role="listbox"
+                class="absolute bottom-full mb-2 left-0 right-0 bg-elevated border border-default rounded-xl shadow-xl z-20 overflow-hidden max-h-64 overflow-y-auto"
+              >
+                <div class="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted border-b border-default">
+                  Reference an entity
+                </div>
+                <button
+                  v-for="(result, i) in mentionResults"
+                  :key="result.id"
+                  role="option"
+                  :aria-selected="i === mentionSelectedIndex"
+                  :class="[
+                    'w-full text-left px-3 py-2 flex items-center gap-2.5 transition-colors',
+                    i === mentionSelectedIndex ? 'bg-primary/10' : 'hover:bg-elevated/80',
+                    mentionedEntities.some(e => e.id === result.id) ? 'opacity-40' : '',
+                  ]"
+                  @click="selectMention(result)"
+                  @mouseenter="mentionSelectedIndex = i"
+                >
+                  <div class="w-7 h-7 rounded-lg bg-default flex items-center justify-center shrink-0">
+                    <UIcon :name="ENTITY_ICONS[result.type] || 'i-lucide-hash'" class="w-3.5 h-3.5 text-muted" />
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <div class="text-sm font-medium truncate">{{ result.title }}</div>
+                    <div v-if="result.subtitle" class="text-xs text-muted truncate">{{ result.subtitle }}</div>
+                  </div>
+                  <UBadge :label="result.type" size="xs" color="neutral" variant="subtle" />
+                </button>
+              </div>
+            </Transition>
+
+            <div class="bg-elevated border border-default rounded-2xl shadow-lg ring-1 ring-black/[0.03] dark:ring-white/[0.03] overflow-hidden">
+              <!-- Entity chips (referenced items) -->
+              <div v-if="mentionedEntities.length > 0" class="flex flex-wrap gap-1.5 px-4 pt-3 pb-1">
+                <span
+                  v-for="entity in mentionedEntities"
+                  :key="entity.id"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-primary/10 text-primary border border-primary/20"
+                >
+                  <UIcon :name="ENTITY_ICONS[entity.type] || 'i-lucide-hash'" class="w-3 h-3" />
+                  <span class="max-w-[150px] truncate">{{ entity.title }}</span>
+                  <button
+                    class="ml-0.5 hover:text-primary/80 shrink-0"
+                    @click="removeMention(entity.id)"
+                  >
+                    <UIcon name="i-lucide-x" class="w-3 h-3" />
+                  </button>
+                </span>
+              </div>
+
+              <!-- Textarea -->
+              <div class="px-4 pt-3">
+                <textarea
+                  ref="inputRef"
+                  v-model="messageInput"
+                  placeholder="Ask about your tasks, clients, boards... Type @ to reference"
+                  class="w-full resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted min-h-[72px] max-h-[200px]"
+                  :rows="3"
+                  :disabled="sending"
+                  :aria-expanded="mentionDropdownOpen && mentionResults.length > 0"
+                  aria-controls="mention-listbox"
+                  @keydown="handleKeydown"
+                  @input="autoResizeInput(); handleMentionInput()"
+                />
+              </div>
+              <!-- Bottom bar inside the card -->
+              <div class="flex items-center justify-between px-3 py-2">
+                <div class="flex items-center gap-1">
+                  <span class="text-[10px] text-muted px-1">
+                    <kbd class="font-mono text-[10px] px-1 py-0.5 rounded bg-default border border-default">@</kbd>
+                    to reference
+                    <span class="mx-1 text-muted/40">&middot;</span>
+                    <kbd class="font-mono text-[10px] px-1 py-0.5 rounded bg-default border border-default">Enter</kbd>
+                    to send
+                  </span>
+                </div>
+                <UButton
+                  icon="i-lucide-arrow-up"
+                  color="primary"
+                  size="sm"
+                  :class="[
+                    'rounded-lg transition-all duration-150',
+                    (!messageInput.trim() || sending) ? 'opacity-40' : 'opacity-100 shadow-sm'
+                  ]"
+                  :loading="sending"
+                  :disabled="!messageInput.trim() || sending"
+                  @click="handleSend"
+                />
               </div>
             </div>
+            <p class="text-[10px] text-muted text-center mt-2">
+              AI responses are generated using agency data. Always verify critical information.
+            </p>
           </div>
         </div>
       </div>
+    </div>
 
-      <!-- Input Bar -->
-      <div class="border-t border-default px-4 py-3">
-        <div class="max-w-3xl mx-auto flex items-end gap-2">
-          <UTextarea
-            v-model="messageInput"
-            placeholder="Ask about your tasks, clients, boards..."
-            :rows="1"
-            autoresize
-            :maxrows="4"
-            class="flex-1"
-            :disabled="sending"
-            @keydown="handleKeydown"
-          />
-          <UButton
-            icon="i-lucide-send"
-            color="primary"
-            size="md"
-            :loading="sending"
-            :disabled="!messageInput.trim() || sending"
-            @click="handleSend"
-          />
+    <!-- Right Context Panel -->
+    <div
+      :class="[
+        'flex flex-col border-l border-default bg-elevated/50 transition-all duration-200 overflow-hidden',
+        contextPanelOpen ? 'w-80 min-w-80' : 'w-0 min-w-0',
+      ]"
+    >
+      <!-- Panel Header -->
+      <div class="flex items-center justify-between px-4 py-3 border-b border-default shrink-0">
+        <h3 class="text-sm font-semibold">Context</h3>
+        <UButton
+          icon="i-lucide-x"
+          variant="ghost"
+          color="neutral"
+          size="xs"
+          @click="contextPanelOpen = false"
+        />
+      </div>
+
+      <div class="flex-1 overflow-y-auto">
+        <!-- Overdue Tasks -->
+        <div v-if="overdueTasks.length > 0" class="px-3 py-3 border-b border-default">
+          <div class="flex items-center gap-1.5 mb-2">
+            <UIcon name="i-lucide-alert-circle" class="w-3.5 h-3.5 text-error" />
+            <span class="text-xs font-semibold uppercase tracking-wider text-error">Overdue</span>
+            <UBadge :label="String(overdueTasks.length)" size="xs" color="error" variant="subtle" />
+          </div>
+          <div class="space-y-1.5">
+            <NuxtLink
+              v-for="task in overdueTasks"
+              :key="task.id"
+              :to="`/agency/tasks/${task.id}`"
+              class="flex items-start gap-2 px-2.5 py-2 rounded-lg hover:bg-elevated transition-colors group"
+            >
+              <UIcon name="i-lucide-check-square" class="w-3.5 h-3.5 text-error shrink-0 mt-0.5" />
+              <div class="min-w-0 flex-1">
+                <div class="text-xs font-medium truncate group-hover:text-primary transition-colors">{{ task.title }}</div>
+                <div class="text-[10px] text-muted flex items-center gap-1 mt-0.5">
+                  <span>Due {{ relativeTime(task.dueDate) }}</span>
+                  <span v-if="task.project?.name" class="truncate">&middot; {{ task.project.name }}</span>
+                </div>
+              </div>
+            </NuxtLink>
+          </div>
         </div>
-        <p class="max-w-3xl mx-auto text-[10px] text-muted mt-1.5 px-1">
-          AI responses are generated using agency data. Always verify critical information.
-        </p>
+
+        <!-- Upcoming Tasks -->
+        <div v-if="upcomingTasks.length > 0" class="px-3 py-3 border-b border-default">
+          <div class="flex items-center gap-1.5 mb-2">
+            <UIcon name="i-lucide-calendar-clock" class="w-3.5 h-3.5 text-muted" />
+            <span class="text-xs font-semibold uppercase tracking-wider text-muted">Upcoming</span>
+          </div>
+          <div class="space-y-1.5">
+            <NuxtLink
+              v-for="task in upcomingTasks"
+              :key="task.id"
+              :to="`/agency/tasks/${task.id}`"
+              class="flex items-start gap-2 px-2.5 py-2 rounded-lg hover:bg-elevated transition-colors group"
+            >
+              <UIcon name="i-lucide-check-square" class="w-3.5 h-3.5 text-muted shrink-0 mt-0.5" />
+              <div class="min-w-0 flex-1">
+                <div class="text-xs font-medium truncate group-hover:text-primary transition-colors">{{ task.title }}</div>
+                <div class="text-[10px] text-muted flex items-center gap-1 mt-0.5">
+                  <span>Due {{ relativeTime(task.dueDate) }}</span>
+                  <UBadge v-if="task.status?.name" :label="task.status.name" size="xs" :color="getStatusColor(task.status.category || task.status.name)" variant="subtle" />
+                </div>
+              </div>
+            </NuxtLink>
+          </div>
+        </div>
+
+        <!-- Referenced Entities (from AI responses in this conversation) -->
+        <div v-if="referencedEntities.length > 0" class="px-3 py-3">
+          <div class="flex items-center gap-1.5 mb-2">
+            <UIcon name="i-lucide-link" class="w-3.5 h-3.5 text-muted" />
+            <span class="text-xs font-semibold uppercase tracking-wider text-muted">Referenced</span>
+            <UBadge :label="String(referencedEntities.length)" size="xs" color="neutral" variant="subtle" />
+          </div>
+
+          <template v-for="(entities, entityType) in groupedEntities" :key="entityType">
+            <div class="mb-3">
+              <div class="text-[10px] font-semibold text-muted uppercase tracking-wider mb-1 px-1">
+                {{ entityTypeLabels[entityType] || entityType }}
+              </div>
+              <div class="space-y-1">
+                <NuxtLink
+                  v-for="entity in entities"
+                  :key="entity.id"
+                  :to="entity.url"
+                  class="flex items-start gap-2 px-2.5 py-2 rounded-lg hover:bg-elevated transition-colors group"
+                >
+                  <div class="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <UIcon :name="ENTITY_ICONS[entity.type] || 'i-lucide-hash'" class="w-3 h-3 text-primary" />
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <div class="text-xs font-medium truncate group-hover:text-primary transition-colors">{{ entity.title }}</div>
+                    <div class="text-[10px] text-muted line-clamp-2 mt-0.5">{{ entity.snippet }}</div>
+                  </div>
+                  <UIcon name="i-lucide-arrow-up-right" class="w-3 h-3 text-muted opacity-0 group-hover:opacity-100 shrink-0 mt-1" />
+                </NuxtLink>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- Empty state when no entities and no tasks -->
+        <div v-if="referencedEntities.length === 0 && overdueTasks.length === 0 && upcomingTasks.length === 0" class="flex flex-col items-center justify-center h-full text-center px-6 py-12">
+          <div class="w-10 h-10 rounded-full bg-muted/10 flex items-center justify-center mb-3">
+            <UIcon name="i-lucide-layout-panel-left" class="w-5 h-5 text-muted" />
+          </div>
+          <p class="text-xs text-muted">
+            As you chat, referenced tasks, clients, and projects will appear here.
+          </p>
+        </div>
       </div>
     </div>
 
@@ -649,15 +1228,16 @@ function getRenderedMarkdown(content: string): string {
           <div class="flex items-center gap-3 mb-4">
             <span class="text-sm">Older than</span>
             <USelect
-              v-model="cleanupDays"
+              :model-value="String(cleanupDays)"
               :items="[
-                { label: '30 days', value: 30 },
-                { label: '60 days', value: 60 },
-                { label: '90 days', value: 90 },
-                { label: '180 days', value: 180 },
+                { label: '30 days', value: '30' },
+                { label: '60 days', value: '60' },
+                { label: '90 days', value: '90' },
+                { label: '180 days', value: '180' },
               ]"
               size="sm"
               class="w-32"
+              @update:model-value="(v: string) => cleanupDays = Number(v)"
             />
           </div>
           <div class="flex justify-end gap-2">
@@ -711,8 +1291,11 @@ function renderMarkdown(text: string): string {
   // Ordered lists
   html = html.replace(/^\d+\. (.+)$/gm, '<li class="ml-4 list-decimal">$1</li>')
 
-  // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-primary underline">$1</a>')
+  // Links (sanitize javascript: URLs)
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, text, url) => {
+    if (/^javascript:/i.test(url.trim())) return text
+    return `<a href="${url}" class="text-primary underline">${text}</a>`
+  })
 
   // Line breaks (double newline = paragraph)
   html = html.replace(/\n\n/g, '</p><p class="my-2">')

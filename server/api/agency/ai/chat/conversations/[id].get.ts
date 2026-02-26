@@ -12,6 +12,7 @@ export default defineEventHandler(async (event) => {
   const conv = await queryOne(`
     SELECT id, user_id, title, model, system_context,
            message_count, last_message_at, is_archived,
+           is_pinned, pinned_at,
            created_at, updated_at
     FROM ai_conversations
     WHERE id = $1 AND user_id = $2
@@ -66,6 +67,8 @@ export default defineEventHandler(async (event) => {
       messageCount: conv.message_count,
       lastMessageAt: conv.last_message_at,
       isArchived: conv.is_archived,
+      isPinned: conv.is_pinned || false,
+      pinnedAt: conv.pinned_at,
       createdAt: conv.created_at,
       updatedAt: conv.updated_at,
     },

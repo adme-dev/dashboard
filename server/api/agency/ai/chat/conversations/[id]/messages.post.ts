@@ -2,8 +2,8 @@ import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { processUserMessage } from '~~/server/utils/aiChatEngine'
 
-const RATE_LIMIT_WINDOW_SECONDS = 60
 const RATE_LIMIT_MAX_MESSAGES = 12
+const ALLOWED_ENTITY_TYPES = new Set(['task', 'client', 'project', 'brief'])
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -31,7 +31,7 @@ export default defineEventHandler(async (event) => {
     JOIN ai_conversations c ON c.id = m.conversation_id
     WHERE c.user_id = $1
       AND m.role = 'user'
-      AND m.created_at > NOW() - INTERVAL '${RATE_LIMIT_WINDOW_SECONDS} seconds'
+      AND m.created_at > NOW() - INTERVAL '60 seconds'
   `, [user.id])
 
   if (rateCheck && rateCheck.cnt >= RATE_LIMIT_MAX_MESSAGES) {
@@ -51,8 +51,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Conversation not found' })
   }
 
+  // Optional: explicit entity references from @mention
+  const mentionedEntities: Array<{ type: string; id: string }> = Array.isArray(body?.mentionedEntities)
+    ? body.mentionedEntities.filter((e: any) => e?.type && e?.id && ALLOWED_ENTITY_TYPES.has(e.type)).slice(0, 10)
+    : []
+
   try {
-    const result = await processUserMessage(id, user.id, user.role, content, event)
+    const result = await processUserMessage(id, user.id, user.role, content, event, mentionedEntities)
     return result
   } catch (err: any) {
     console.error('Failed to process AI message:', err)
