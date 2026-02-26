@@ -10,7 +10,7 @@ const _useDashboard = () => {
     'g-i': () => router.push('/inbox'),
     'g-c': () => router.push('/customers'),
     'g-s': () => router.push('/settings'),
-    'n': () => isNotificationsSlideoverOpen.value = !isNotificationsSlideoverOpen.value
+    // 'n' shortcut moved to useActivityHub
   })
 
   watch(() => route.fullPath, () => {

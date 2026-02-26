@@ -246,7 +246,6 @@ const groups = computed(() => [{
       <slot />
     </div>
 
-    <NotificationsSlideover />
-    <AiChatWidget />
+    <ActivityHub />
   </UDashboardGroup>
 </template>
