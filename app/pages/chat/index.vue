@@ -1,4 +1,6 @@
 <script setup lang="ts">
+definePageMeta({ layout: 'agency' })
+
 const messages = ref<{ role: 'user' | 'assistant', content: string }[]>([])
 const input = ref('')
 const sending = ref(false)

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+definePageMeta({ layout: 'agency' })
+
 const { data: pnl, pending: pnlPending, error: pnlError } = await useFetch('/api/xero/reports/pnl')
 const { data: bs, pending: bsPending, error: bsError } = await useFetch('/api/xero/reports/balance-sheet')
 

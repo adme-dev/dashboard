@@ -1,4 +1,6 @@
 <script setup lang="ts">
+definePageMeta({ layout: 'agency' })
+
 import type { TableColumn } from '@nuxt/ui'
 import { upperFirst } from 'scule'
 import { getPaginationRowModel } from '@tanstack/table-core'

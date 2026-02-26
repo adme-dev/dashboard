@@ -1,4 +1,6 @@
 <script setup lang="ts">
+definePageMeta({ layout: 'agency' })
+
 type AnomalySeverity = 'critical' | 'warning' | 'info'
 type AnomalyType = 'profitability' | 'revenue' | 'expenses'
 

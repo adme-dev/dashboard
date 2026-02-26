@@ -1,4 +1,6 @@
 <script setup lang="ts">
+definePageMeta({ layout: 'agency' })
+
 type TrendSeries = {
   labels: string[]
   revenue: number[]

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+definePageMeta({ layout: 'agency' })
+
 import { defineAsyncComponent } from 'vue'
 
 const AsyncCategoryDonut = defineAsyncComponent(() => import('~/components/expenses/CategoryDonut.client.vue'))

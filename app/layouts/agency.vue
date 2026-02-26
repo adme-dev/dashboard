@@ -34,11 +34,14 @@ const workspaceNav = computed(() => {
 // Chat unread badge
 const { totalUnreadCount: chatUnreadCount } = useChat()
 
+// Xero connection status — drives XeroFlow section visibility
+const { data: xeroStatus } = useLazyFetch('/api/xero/status')
+const xeroConnected = computed(() => xeroStatus.value?.connected ?? false)
+
 // Main navigation — organized by feature groups
 const mainNav = computed<NavigationMenuItem[]>(() => [
   // Main
   { type: 'label', label: 'Main' },
-  { label: 'Home', icon: 'i-lucide-house', to: '/', onSelect: close },
   { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/agency', exact: true, onSelect: close },
   { label: 'Inbox', icon: 'i-lucide-inbox', to: '/inbox', badge: '4', onSelect: close },
   { label: 'All Boards', icon: 'i-lucide-layout-grid', to: '/agency/boards', onSelect: close },
@@ -79,7 +82,6 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
   { label: 'Retainers', icon: 'i-lucide-repeat', to: '/agency/retainers', onSelect: close },
   { label: 'Profitability', icon: 'i-lucide-trending-up', to: '/agency/profitability', onSelect: close },
   { label: 'Budget Health', icon: 'i-lucide-heart-pulse', to: '/agency/budget-health', onSelect: close },
-  { label: 'Cash Flow', icon: 'i-lucide-arrow-left-right', to: '/cashflow', onSelect: close },
 
   // Sales
   { type: 'label', label: 'Sales' },
@@ -93,9 +95,22 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
   { label: 'Reports', icon: 'i-lucide-pie-chart', to: '/agency/reports', onSelect: close },
   { label: 'Project Health', icon: 'i-lucide-activity', to: '/agency/health', onSelect: close },
   { label: 'Alerts', icon: 'i-lucide-bell', to: '/agency/alerts', onSelect: close },
-  { label: 'Insights', icon: 'i-lucide-lightbulb', to: '/insights', onSelect: close },
-  { label: 'Anomalies', icon: 'i-lucide-alert-triangle', to: '/anomalies', onSelect: close },
-  { label: 'Recommendations', icon: 'i-lucide-clipboard-check', to: '/recommendations', onSelect: close },
+
+  // XeroFlow (Xero-connected accounting features)
+  ...(xeroConnected.value ? [
+    { type: 'label' as const, label: 'XeroFlow' },
+    { label: 'Xero Dashboard', icon: 'i-lucide-layout-dashboard', to: '/dashboard', onSelect: close },
+    { label: 'Customers', icon: 'i-lucide-users', to: '/customers', onSelect: close },
+    { label: 'Xero Invoices', icon: 'i-lucide-receipt', to: '/invoices', onSelect: close },
+    { label: 'Xero Expenses', icon: 'i-lucide-wallet', to: '/expenses', onSelect: close },
+    { label: 'Cash Flow', icon: 'i-lucide-trending-up', to: '/cashflow', onSelect: close },
+    { label: 'Profit & Loss', icon: 'i-lucide-pie-chart', to: '/profit-loss', onSelect: close },
+    { label: 'Financial Reports', icon: 'i-lucide-file-text', to: '/reports', onSelect: close },
+    { label: 'Insights', icon: 'i-lucide-lightbulb', to: '/insights', onSelect: close },
+    { label: 'Anomalies', icon: 'i-lucide-alert-triangle', to: '/anomalies', onSelect: close },
+    { label: 'Recommendations', icon: 'i-lucide-clipboard-check', to: '/recommendations', onSelect: close },
+    { label: 'AI Chat', icon: 'i-lucide-message-circle', to: '/chat', onSelect: close },
+  ] : []),
 
   // Team
   { type: 'label', label: 'Team' },

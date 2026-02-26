@@ -774,6 +774,29 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
             </UButton>
           </div>
 
+          <!-- Persona Presets -->
+          <div class="mb-5">
+            <p class="text-xs font-semibold uppercase tracking-wide text-[var(--ui-text-muted)] mb-2">Quick Presets</p>
+            <div class="grid grid-cols-3 gap-2">
+              <button
+                v-for="preset in [
+                  { key: 'member', label: 'Designer', icon: 'i-lucide-palette', color: 'text-blue-500' },
+                  { key: 'project_manager', label: 'Producer', icon: 'i-lucide-gantt-chart', color: 'text-violet-500' },
+                  { key: 'sales', label: 'Account Mgr', icon: 'i-lucide-handshake', color: 'text-emerald-500' },
+                  { key: 'marketing', label: 'Media Buyer', icon: 'i-lucide-megaphone', color: 'text-orange-500' },
+                  { key: 'consultant', label: 'Finance', icon: 'i-lucide-calculator', color: 'text-cyan-500' },
+                  { key: 'owner', label: 'Owner', icon: 'i-lucide-crown', color: 'text-amber-500' },
+                ]"
+                :key="preset.key"
+                class="flex items-center gap-2 p-2 rounded-lg border border-[var(--ui-border)] hover:bg-[var(--ui-bg-elevated)] transition-colors cursor-pointer text-left"
+                @click="applyPersona(preset.key)"
+              >
+                <UIcon :name="preset.icon" class="w-4 h-4 shrink-0" :class="preset.color" />
+                <span class="text-xs font-medium text-[var(--ui-text-highlighted)] truncate">{{ preset.label }}</span>
+              </button>
+            </div>
+          </div>
+
           <div class="space-y-5 max-h-[400px] overflow-y-auto">
             <div v-for="category in widgetCategories" :key="category.label">
               <p class="text-xs font-semibold uppercase tracking-wide text-[var(--ui-text-muted)] mb-2">{{ category.label }}</p>

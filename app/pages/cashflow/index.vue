@@ -1,4 +1,6 @@
 <script setup lang="ts">
+definePageMeta({ layout: 'agency' })
+
 // Import cashflow components
 import CashFlowChart from '~/components/dashboard/CashFlowChart.client.vue'
 import WaterfallChart from '~/components/cashflow/WaterfallChart.client.vue'

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+definePageMeta({ layout: 'agency' })
+
 const { data, pending, error, refresh } = await useFetch('/api/ai/insights')
 </script>
 
