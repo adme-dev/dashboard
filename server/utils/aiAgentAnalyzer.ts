@@ -282,7 +282,36 @@ export async function analyzeUnassignedWork(orgId?: string): Promise<AnalysisRes
 }
 
 /**
- * Run all 8 analyzers in parallel with error resilience
+ * Active team members who haven't submitted a timesheet for the most recent completed week
+ */
+export async function analyzeTimesheetGaps(orgId?: string): Promise<AnalysisResult> {
+  const rows = await queryRows(`
+    SELECT tm.id, tm.name, tm.role
+    FROM team_members tm
+    WHERE tm.is_active = true
+      AND NOT EXISTS (
+        SELECT 1 FROM timesheet_periods tp
+        WHERE tp.user_id = tm.id
+          AND tp.period_start >= date_trunc('week', NOW() - INTERVAL '7 days')
+          AND tp.status IN ('submitted', 'approved')
+      )
+    ORDER BY tm.name
+    LIMIT 20
+  `)
+
+  const findings: AnalysisFinding[] = rows.map(row => ({
+    severity: 'warning' as const,
+    title: `${row.name} has not submitted last week's timesheet`,
+    description: `Role: ${row.role || 'member'}. No submitted or approved timesheet for the most recent week.`,
+    entityId: row.id,
+    entityUrl: '/agency/time/approvals',
+  }))
+
+  return { type: 'timesheet_gaps', findings, count: findings.length }
+}
+
+/**
+ * Run all 9 analyzers in parallel with error resilience
  */
 export async function runAllAnalyzers(orgId?: string): Promise<AnalysisResult[]> {
   const results = await Promise.allSettled([
@@ -293,7 +322,8 @@ export async function runAllAnalyzers(orgId?: string): Promise<AnalysisResult[]>
     analyzeAdSpendAnomalies(orgId),
     analyzeEomStatus(orgId),
     analyzeTeamWorkload(orgId),
-    analyzeUnassignedWork(orgId)
+    analyzeUnassignedWork(orgId),
+    analyzeTimesheetGaps(orgId)
   ])
 
   const analysisResults: AnalysisResult[] = []

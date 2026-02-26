@@ -331,7 +331,7 @@ describe('aiContextRetriever — composite scoring', () => {
     // Each intent should produce scores in [0, 1] range
     const intents = [
       'task_query', 'brief_query', 'project_query', 'financial_query',
-      'team_query', 'process_query', 'search', 'action_request', 'general',
+      'team_query', 'process_query', 'time_tracking_query', 'search', 'action_request', 'general',
     ] as const
 
     for (const intent of intents) {

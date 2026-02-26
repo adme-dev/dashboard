@@ -53,8 +53,9 @@ const INTENT_TO_SOURCES: Record<AiIntent, string[]> = {
   brief_query: ['briefs', 'clients'],
   project_query: ['boards', 'tasks'],
   financial_query: ['financial'],
-  team_query: ['team'],
+  team_query: ['team', 'time_tracking'],
   process_query: ['knowledge'],
+  time_tracking_query: ['time_tracking', 'team'],
   search: ['tasks', 'clients', 'briefs'],
   action_request: ['tasks', 'boards'],
   general: ['tasks', 'clients'],
@@ -79,6 +80,7 @@ const SCORING_PROFILES: Record<AiIntent, ScoringProfile> = {
   team_query:      { semantic: 0.20, recency: 0.15, importance: 0.15, intent: 0.25, entity: 0.25, recencyHalfLifeDays: 60 },
   process_query:   { semantic: 0.35, recency: 0.10, importance: 0.20, intent: 0.20, entity: 0.15, recencyHalfLifeDays: 90 },
   search:          { semantic: 0.20, recency: 0.10, importance: 0.10, intent: 0.25, entity: 0.35, recencyHalfLifeDays: 30 },
+  time_tracking_query: { semantic: 0.15, recency: 0.30, importance: 0.15, intent: 0.25, entity: 0.15, recencyHalfLifeDays: 7 },
   action_request:  { semantic: 0.20, recency: 0.25, importance: 0.15, intent: 0.25, entity: 0.15, recencyHalfLifeDays: 14 },
   general:         { semantic: 0.25, recency: 0.20, importance: 0.15, intent: 0.20, entity: 0.20, recencyHalfLifeDays: 30 },
 }
@@ -89,6 +91,7 @@ const ENTITY_IMPORTANCE: Record<string, number> = {
   client: 0.75,
   task: 0.70,
   brief: 0.65,
+  time_tracking: 0.75,
   team: 0.60,
   board: 0.55,
 }
@@ -361,6 +364,89 @@ async function searchKnowledge(keywords: string[], question: string, event?: H3E
   return items.slice(0, 3)
 }
 
+async function searchTimeTracking(userId: string, keywords: string[]): Promise<ContextItem[]> {
+  const items: ContextItem[] = []
+
+  // 1. Recent time entries (last 14 days)
+  const entryRows = await queryRows(`
+    SELECT te.id, te.date, te.hours, te.billable, te.description, te.status,
+           p.name AS project_name, t.title AS task_title,
+           tm.name AS user_name
+    FROM time_entries te
+    LEFT JOIN projects p ON te.project_id = p.id
+    LEFT JOIN tasks t ON te.task_id = t.id
+    LEFT JOIN team_members tm ON te.user_id = tm.id
+    WHERE te.user_id = $1
+      AND te.date >= NOW() - INTERVAL '14 days'
+    ORDER BY te.date DESC
+    LIMIT 10
+  `, [userId])
+
+  if (entryRows.length > 0) {
+    const totalHours = entryRows.reduce((sum, r) => sum + Number(r.hours), 0)
+    const billableHours = entryRows.filter(r => r.billable).reduce((sum, r) => sum + Number(r.hours), 0)
+    items.push({
+      type: 'time_tracking',
+      id: 'recent-entries',
+      title: 'Recent Time Entries (Last 14 Days)',
+      snippet: `${totalHours.toFixed(1)}h total (${billableHours.toFixed(1)}h billable) across ${entryRows.length} entries. Latest: ${entryRows.slice(0, 3).map(r => `${r.project_name || 'No project'} — ${r.hours}h on ${r.date}`).join('; ')}`,
+      url: '/agency/time',
+      updatedAt: entryRows[0]?.date,
+    })
+  }
+
+  // 2. Timesheet status for current/recent periods
+  const tsRows = await queryRows(`
+    SELECT tp.id, tp.period_start, tp.period_end, tp.status,
+           tp.total_hours, tp.billable_hours,
+           tm.name AS user_name
+    FROM timesheet_periods tp
+    LEFT JOIN team_members tm ON tp.user_id = tm.id
+    WHERE tp.user_id = $1
+    ORDER BY tp.period_start DESC
+    LIMIT 3
+  `, [userId])
+
+  for (const r of tsRows) {
+    items.push({
+      type: 'time_tracking',
+      id: r.id,
+      title: `Timesheet ${r.period_start} to ${r.period_end}`,
+      snippet: `Status: ${r.status} | ${Number(r.total_hours || 0).toFixed(1)}h total (${Number(r.billable_hours || 0).toFixed(1)}h billable)`,
+      url: '/agency/time',
+      updatedAt: r.period_start,
+    })
+  }
+
+  // 3. Active timers
+  try {
+    const timerRows = await queryRows(`
+      SELECT at.id, at.started_at, at.description,
+             p.name AS project_name, t.title AS task_title
+      FROM active_timers at
+      LEFT JOIN projects p ON at.project_id = p.id
+      LEFT JOIN tasks t ON at.task_id = t.id
+      WHERE at.user_id = $1
+    `, [userId])
+
+    for (const r of timerRows) {
+      const elapsed = Math.floor((Date.now() - new Date(r.started_at).getTime()) / (1000 * 60 * 60))
+      items.push({
+        type: 'time_tracking',
+        id: r.id,
+        title: 'Active Timer',
+        snippet: `Running for ${elapsed}h on ${r.project_name || 'No project'}${r.task_title ? ` — ${r.task_title}` : ''}. ${r.description || ''}`,
+        url: '/agency/time',
+        updatedAt: r.started_at,
+      })
+    }
+  } catch {
+    // active_timers table may not exist
+  }
+
+  return items.slice(0, 5)
+}
+
 // Attach semantic scores from Vectorize to DB-sourced items (single query)
 async function semanticRerank(items: ContextItem[], question: string, event?: H3Event): Promise<ContextItem[]> {
   if (items.length === 0) return items
@@ -490,6 +576,9 @@ export async function retrieveContext(
   }
   if (sources.has('knowledge')) {
     queryPromises.push(searchKnowledge(keywords, question, event).catch(() => []))
+  }
+  if (sources.has('time_tracking')) {
+    queryPromises.push(searchTimeTracking(userId, keywords).catch(() => []))
   }
 
   const results = await Promise.all(queryPromises)
