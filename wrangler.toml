@@ -44,7 +44,7 @@ index_name = "agency-search"
 [vars]
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "22"
-EMAIL_FROM = "noreply@xeroflow.com.au"
+EMAIL_FROM = "notification@adme.net.au"
 APP_URL = "https://xeroflow.com.au"
 
 # Chat — Durable Objects (hosted in separate worker)
