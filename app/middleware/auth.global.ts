@@ -6,7 +6,6 @@
 export default defineNuxtRouteMiddleware(async (to, from) => {
   // Public routes that don't require authentication
   const publicRoutes = [
-    '/login',
     '/auth/login',
     '/auth/xeroflow',
     '/auth/magic-link',
@@ -15,6 +14,14 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
     '/auth/reset-password',
     '/auth/verify-email',
     '/landing',
+    '/features',
+    '/pricing',
+    '/resources',
+    '/platform',
+    '/privacy',
+    '/terms',
+    '/support',
+    '/about',
     '/'
   ]
   
@@ -47,7 +54,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
   if (!hasAuth) {
     console.log('[Auth Middleware] No auth found, redirecting')
     return navigateTo({
-      path: '/login',
+      path: '/',
       query: { 
         redirect: encodeURIComponent(to.fullPath)
       }

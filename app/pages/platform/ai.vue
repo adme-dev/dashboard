@@ -1,0 +1,346 @@
+<template>
+  <div class="min-h-screen bg-white dark:bg-[#0a0b0e]">
+    <MarketingNav active="features" />
+
+    <!-- Hero -->
+    <section class="pt-[52px]">
+      <div class="max-w-[1200px] mx-auto px-6 pt-32 pb-16 md:pt-44 md:pb-24 text-center">
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/[0.08] mb-8">
+          <div class="w-1.5 h-1.5 rounded-full bg-amber-500" />
+          <span class="text-[13px] text-amber-700 font-medium">AI & Intelligence</span>
+        </div>
+        <h1 class="text-[clamp(36px,6vw,64px)] font-[450] text-[#121317] dark:text-white leading-[1.1] tracking-[-0.03em] mb-6 max-w-[800px] mx-auto">
+          AI that knows<br class="hidden sm:block">your agency
+        </h1>
+        <p class="text-lg md:text-xl text-[#45474D] dark:text-white/60 max-w-[560px] mx-auto leading-relaxed">
+          Groq-powered conversational AI, 8 anomaly analyzers, semantic search, and fine-tuned models -- all trained on your agency data.
+        </p>
+      </div>
+    </section>
+
+    <!-- AI Chat Section -->
+    <section class="pb-20 md:pb-32">
+      <div class="max-w-[1200px] mx-auto px-6">
+        <div class="grid md:grid-cols-2 gap-12 md:gap-16 items-start">
+          <!-- Left: Text -->
+          <div>
+            <div class="flex items-center gap-3 mb-6">
+              <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                <UIcon name="i-lucide-bot" class="w-5 h-5 text-amber-600" />
+              </div>
+              <h2 class="text-[clamp(24px,3vw,32px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">Conversational AI</h2>
+            </div>
+            <p class="text-[16px] text-[#45474D] dark:text-white/60 leading-relaxed mb-6">
+              Ask questions about your clients, campaigns, budgets, and workflows in plain language.
+              Mention any entity with <span class="font-medium text-[#121317] dark:text-white">@client</span>, <span class="font-medium text-[#121317] dark:text-white">@task</span>, or <span class="font-medium text-[#121317] dark:text-white">@project</span> to pin context directly into the conversation.
+            </p>
+            <p class="text-[15px] text-[#45474D]/70 dark:text-white/40 leading-relaxed">
+              The AI understands your agency's structure -- it retrieves relevant tasks, briefs, spend data, and timesheets to give you answers grounded in real data, not hallucinations.
+            </p>
+          </div>
+
+          <!-- Right: Feature list -->
+          <div class="space-y-4">
+            <div
+              v-for="item in chatFeatures"
+              :key="item.title"
+              class="rounded-2xl bg-[#f4f5f7] dark:bg-white/[0.03] p-5 flex items-start gap-4 hover:bg-[#eef0f3] dark:hover:bg-white/[0.05] transition-colors"
+            >
+              <div class="w-10 h-10 rounded-xl bg-white dark:bg-white/[0.06] flex items-center justify-center shadow-[0_1px_3px_rgba(0,0,0,0.04)] shrink-0">
+                <UIcon :name="item.icon" class="w-5 h-5 text-[#121317] dark:text-white" />
+              </div>
+              <div>
+                <h3 class="text-[15px] font-medium text-[#121317] dark:text-white mb-1">{{ item.title }}</h3>
+                <p class="text-[14px] text-[#45474D]/70 dark:text-white/40 leading-relaxed">{{ item.description }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Anomaly Detection Section -->
+    <section class="pb-20 md:pb-32">
+      <div class="max-w-[1200px] mx-auto px-6">
+        <div class="text-center mb-12">
+          <div class="flex items-center justify-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+              <UIcon name="i-lucide-alert-triangle" class="w-5 h-5 text-amber-600" />
+            </div>
+          </div>
+          <h2 class="text-[clamp(24px,3vw,36px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-3">8 specialized analyzers</h2>
+          <p class="text-[16px] text-[#45474D] dark:text-white/60 max-w-[520px] mx-auto leading-relaxed">
+            A proactive agent that continuously scans your agency data and flags issues before they become problems.
+          </p>
+        </div>
+
+        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div
+            v-for="analyzer in analyzers"
+            :key="analyzer.title"
+            class="bg-[#f4f5f7] dark:bg-white/[0.03] rounded-2xl p-5 hover:bg-[#eef0f3] dark:hover:bg-white/[0.05] transition-colors"
+          >
+            <div class="w-10 h-10 rounded-xl bg-white dark:bg-white/[0.06] flex items-center justify-center shadow-[0_1px_3px_rgba(0,0,0,0.04)] mb-4">
+              <UIcon :name="analyzer.icon" class="w-5 h-5 text-[#121317] dark:text-white" />
+            </div>
+            <h3 class="text-[15px] font-medium text-[#121317] dark:text-white mb-1.5">{{ analyzer.title }}</h3>
+            <p class="text-[13px] text-[#45474D]/70 dark:text-white/40 leading-relaxed">{{ analyzer.description }}</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Semantic Search Section -->
+    <section class="pb-20 md:pb-32">
+      <div class="max-w-[1200px] mx-auto px-6">
+        <div class="grid md:grid-cols-2 gap-12 md:gap-16 items-start">
+          <!-- Left: Text -->
+          <div>
+            <div class="flex items-center gap-3 mb-6">
+              <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                <UIcon name="i-lucide-search" class="w-5 h-5 text-amber-600" />
+              </div>
+              <h2 class="text-[clamp(24px,3vw,32px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">Semantic Search</h2>
+            </div>
+            <p class="text-[16px] text-[#45474D] dark:text-white/60 leading-relaxed mb-6">
+              Powered by Cloudflare Vectorize, search goes beyond keyword matching. Find tasks, clients, briefs, and knowledge base entries by meaning -- not just exact text.
+            </p>
+            <p class="text-[15px] text-[#45474D]/70 dark:text-white/40 leading-relaxed">
+              Every result is ranked by a 5-signal composite score that combines semantic similarity, recency, entity importance, intent match, and entity overlap. The system automatically diversifies results so you see the full picture, not just one type of match.
+            </p>
+          </div>
+
+          <!-- Right: Scoring signals -->
+          <div class="space-y-4">
+            <div
+              v-for="signal in scoringSignals"
+              :key="signal.title"
+              class="rounded-2xl bg-[#f4f5f7] dark:bg-white/[0.03] p-5 flex items-start gap-4 hover:bg-[#eef0f3] dark:hover:bg-white/[0.05] transition-colors"
+            >
+              <div class="w-10 h-10 rounded-xl bg-white dark:bg-white/[0.06] flex items-center justify-center shadow-[0_1px_3px_rgba(0,0,0,0.04)] shrink-0">
+                <UIcon :name="signal.icon" class="w-5 h-5 text-[#121317] dark:text-white" />
+              </div>
+              <div>
+                <h3 class="text-[15px] font-medium text-[#121317] dark:text-white mb-1">{{ signal.title }}</h3>
+                <p class="text-[14px] text-[#45474D]/70 dark:text-white/40 leading-relaxed">{{ signal.description }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- LoRA Section -->
+    <section class="pb-20 md:pb-32">
+      <div class="max-w-[1200px] mx-auto px-6">
+        <div class="text-center mb-12">
+          <div class="flex items-center justify-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+              <UIcon name="i-lucide-cpu" class="w-5 h-5 text-amber-600" />
+            </div>
+          </div>
+          <h2 class="text-[clamp(24px,3vw,36px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-3">Fine-tune with your data</h2>
+          <p class="text-[16px] text-[#45474D] dark:text-white/60 max-w-[560px] mx-auto leading-relaxed">
+            Train custom LoRA adapters on your agency's chat history, knowledge base, and workflows. Route traffic between adapters with weighted A/B testing.
+          </p>
+        </div>
+
+        <div class="grid sm:grid-cols-3 gap-5">
+          <div
+            v-for="card in loraCards"
+            :key="card.title"
+            class="bg-[#f4f5f7] dark:bg-white/[0.03] rounded-2xl p-6 flex flex-col gap-4 hover:bg-[#eef0f3] dark:hover:bg-white/[0.05] transition-colors"
+          >
+            <div class="w-11 h-11 rounded-xl bg-white dark:bg-white/[0.06] flex items-center justify-center shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <UIcon :name="card.icon" class="w-5 h-5 text-[#121317] dark:text-white" />
+            </div>
+            <div>
+              <h3 class="text-[16px] font-medium text-[#121317] dark:text-white mb-1.5">{{ card.title }}</h3>
+              <p class="text-[14px] text-[#45474D]/70 dark:text-white/40 leading-relaxed">{{ card.description }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Dark CTA -->
+    <section class="py-10 md:py-16">
+      <div class="max-w-[1200px] mx-auto px-6">
+        <div class="rounded-[2rem] bg-[#0a0b0e] py-24 md:py-32 text-center px-6">
+          <h2 class="text-[clamp(28px,4vw,48px)] font-[450] text-white leading-[1.15] tracking-[-0.02em] mb-4">
+            Intelligence built for agencies
+          </h2>
+          <p class="text-[16px] text-white/50 max-w-[440px] mx-auto leading-relaxed mb-10">
+            Stop digging through dashboards. Ask the AI, and it finds the answer.
+          </p>
+          <NuxtLink
+            to="/auth/login"
+            class="inline-flex items-center gap-2 px-7 py-3.5 bg-white text-[#121317] text-[17.5px] font-medium rounded-full hover:bg-white/90 transition-colors"
+          >
+            Get Started
+          </NuxtLink>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="pt-20 pb-10">
+      <div class="max-w-[1200px] mx-auto px-6">
+        <div class="flex flex-col md:flex-row gap-12 md:gap-0 md:justify-between mb-20">
+          <div>
+            <h3 class="text-[clamp(22px,3vw,32px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">Experience XeroFlow</h3>
+          </div>
+          <div class="flex gap-20 md:gap-28">
+            <div class="flex flex-col gap-3.5 text-[15px]">
+              <NuxtLink to="/auth/login" class="text-[#45474D] dark:text-white/50 hover:text-[#121317] dark:hover:text-white transition-colors">Sign In</NuxtLink>
+              <NuxtLink to="/auth/xeroflow" class="text-[#45474D] dark:text-white/50 hover:text-[#121317] dark:hover:text-white transition-colors">XeroFlow</NuxtLink>
+              <NuxtLink to="/portal/login" class="text-[#45474D] dark:text-white/50 hover:text-[#121317] dark:hover:text-white transition-colors">Client Portal</NuxtLink>
+              <NuxtLink to="/features" class="text-[#45474D] dark:text-white/50 hover:text-[#121317] dark:hover:text-white transition-colors">Features</NuxtLink>
+            </div>
+            <div class="flex flex-col gap-3.5 text-[15px]">
+              <NuxtLink to="/privacy" class="text-[#45474D] dark:text-white/50 hover:text-[#121317] dark:hover:text-white transition-colors">Privacy</NuxtLink>
+              <NuxtLink to="/terms" class="text-[#45474D] dark:text-white/50 hover:text-[#121317] dark:hover:text-white transition-colors">Terms</NuxtLink>
+              <NuxtLink to="/support" class="text-[#45474D] dark:text-white/50 hover:text-[#121317] dark:hover:text-white transition-colors">Support</NuxtLink>
+            </div>
+          </div>
+        </div>
+        <div class="overflow-hidden mb-10">
+          <div class="text-[clamp(80px,18vw,220px)] font-[450] text-[#121317] dark:text-white leading-[0.9] tracking-[-0.04em] select-none">XeroFlow</div>
+        </div>
+        <div class="pt-6 border-t border-black/[0.06] dark:border-white/[0.06] flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div class="flex items-center gap-2.5">
+            <div class="w-5 h-5 bg-[#121317] dark:bg-white rounded flex items-center justify-center">
+              <span class="text-white dark:text-[#121317] text-[8px] font-semibold">XF</span>
+            </div>
+            <span class="text-[13px] text-[#45474D] dark:text-white/50">ADME Digital</span>
+          </div>
+          <div class="flex items-center gap-6 text-[13px] text-[#45474D]/60 dark:text-white/40">
+            <NuxtLink to="/about" class="hover:text-[#45474D] dark:hover:text-white/60 transition-colors">About</NuxtLink>
+            <NuxtLink to="/privacy" class="hover:text-[#45474D] dark:hover:text-white/60 transition-colors">Privacy</NuxtLink>
+            <NuxtLink to="/terms" class="hover:text-[#45474D] dark:hover:text-white/60 transition-colors">Terms</NuxtLink>
+            <span>&copy; {{ new Date().getFullYear() }}</span>
+          </div>
+        </div>
+      </div>
+    </footer>
+  </div>
+</template>
+
+<script setup lang="ts">
+definePageMeta({
+  layout: false,
+  public: true
+})
+
+const chatFeatures = [
+  {
+    title: 'Groq LLM',
+    icon: 'i-lucide-zap',
+    description: 'Ultra-fast inference powered by Groq. Sub-second responses for real-time conversational workflows.'
+  },
+  {
+    title: '@Entity Mentions',
+    icon: 'i-lucide-at-sign',
+    description: 'Type @client, @task, or @project to pin entities into context. The AI fetches their full data automatically.'
+  },
+  {
+    title: 'Context Awareness',
+    icon: 'i-lucide-brain',
+    description: 'Intent classification routes queries to the right data sources -- spend, timesheets, tasks, briefs, or knowledge base.'
+  },
+  {
+    title: 'Conversation Pinning',
+    icon: 'i-lucide-pin',
+    description: 'Pin important conversations for quick access. Up to 25 pinned threads per user with dedicated sidebar section.'
+  }
+]
+
+const analyzers = [
+  {
+    title: 'Spend Anomaly',
+    icon: 'i-lucide-trending-up',
+    description: 'Detects unusual spikes or drops in ad spend across Meta and Google campaigns.'
+  },
+  {
+    title: 'Budget Overrun',
+    icon: 'i-lucide-wallet',
+    description: 'Flags campaigns approaching or exceeding their monthly budget limits.'
+  },
+  {
+    title: 'Deadline Risk',
+    icon: 'i-lucide-alarm-clock',
+    description: 'Identifies tasks and projects at risk of missing their due dates.'
+  },
+  {
+    title: 'Client Health',
+    icon: 'i-lucide-heart-pulse',
+    description: 'Monitors client engagement signals and flags accounts needing attention.'
+  },
+  {
+    title: 'Revenue Trend',
+    icon: 'i-lucide-bar-chart-3',
+    description: 'Tracks revenue patterns and alerts on declining or stagnant client revenue.'
+  },
+  {
+    title: 'Utilization',
+    icon: 'i-lucide-gauge',
+    description: 'Analyzes team capacity and flags over- or under-utilized team members.'
+  },
+  {
+    title: 'Campaign Performance',
+    icon: 'i-lucide-megaphone',
+    description: 'Evaluates campaign KPIs against benchmarks and flags underperformers.'
+  },
+  {
+    title: 'Billing Gap',
+    icon: 'i-lucide-receipt',
+    description: 'Finds unbilled work, missing invoices, and revenue leakage across clients.'
+  }
+]
+
+const scoringSignals = [
+  {
+    title: 'Semantic Similarity',
+    icon: 'i-lucide-sparkles',
+    description: 'Vectorize cosine similarity matches results by meaning, not just keywords.'
+  },
+  {
+    title: 'Recency',
+    icon: 'i-lucide-clock',
+    description: 'Exponential decay scoring with configurable half-life per intent type.'
+  },
+  {
+    title: 'Entity Importance',
+    icon: 'i-lucide-star',
+    description: 'Weighted scoring by entity type -- spend data ranks higher than board metadata.'
+  },
+  {
+    title: 'Intent Match',
+    icon: 'i-lucide-target',
+    description: 'Edge-classified intent aligns results to what you are actually asking about.'
+  },
+  {
+    title: 'Entity Overlap',
+    icon: 'i-lucide-layers',
+    description: 'Results mentioning the same clients, projects, or tasks as your query rank higher.'
+  }
+]
+
+const loraCards = [
+  {
+    title: 'Training Data Extraction',
+    icon: 'i-lucide-database',
+    description: 'Five extractors pull chat Q&A pairs, intent examples, RAG documents, knowledge entries, and combined datasets. Automatic anonymization and JSONL export to R2.'
+  },
+  {
+    title: 'Adapter Management',
+    icon: 'i-lucide-settings',
+    description: 'Upload, activate, and retire LoRA adapters. Weighted traffic routing lets you A/B test new models against the baseline with gradual rollout.'
+  },
+  {
+    title: 'Metrics Dashboard',
+    icon: 'i-lucide-activity',
+    description: 'Track adapter performance across response quality, latency, and user satisfaction. Compare adapters side-by-side and promote winners automatically.'
+  }
+]
+</script>

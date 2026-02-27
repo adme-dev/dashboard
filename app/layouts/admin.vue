@@ -63,7 +63,7 @@ onMounted(async () => {
   if (!userData) {
     // Not authenticated, redirect to login
     router.push({
-      path: '/login',
+      path: '/',
       query: { 
         redirect: encodeURIComponent(router.currentRoute.value.fullPath)
       }

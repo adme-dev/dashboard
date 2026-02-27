@@ -99,7 +99,7 @@ onMounted(async () => {
   await fetchUser()
 
   if (!isAuthenticated.value) {
-    navigateTo('/login')
+    navigateTo('/')
   }
 })
 </script>

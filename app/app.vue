@@ -17,16 +17,16 @@ useHead({
   }
 })
 
-const title = 'Nuxt Dashboard Template'
-const description = 'A professional dashboard template built with Nuxt UI, featuring multiple pages, data visualization, and comprehensive management capabilities for creating powerful admin interfaces.'
+const title = 'XeroFlow — Agency Operations Platform'
+const description = 'The all-in-one operations platform for digital marketing agencies. Boards, invoicing, chat, AI insights, time tracking, client portal, and ad spend management — all in one place.'
 
 useSeoMeta({
   title,
   description,
   ogTitle: title,
   ogDescription: description,
-  ogImage: 'https://ui4.nuxt.com/assets/templates/nuxt/dashboard-light.png',
-  twitterImage: 'https://ui4.nuxt.com/assets/templates/nuxt/dashboard-light.png',
+  ogImage: '/images/platform/boards.jpg',
+  twitterImage: '/images/platform/boards.jpg',
   twitterCard: 'summary_large_image'
 })
 </script>
