@@ -37,8 +37,8 @@ export function generateToken(): string {
 // Get user by email (team member)
 export async function getUserByEmail(email: string): Promise<User | null> {
   const user = await queryOne<User>(
-    `SELECT id, email, name, role, is_active 
-     FROM team_members 
+    `SELECT id, email, name, user_role as role, is_active
+     FROM team_members
      WHERE email = $1`,
     [email.toLowerCase()]
   )
@@ -300,8 +300,8 @@ export async function verifyMagicLink(token: string): Promise<User | null> {
   
   // Get the user
   const user = await queryOne<User>(
-    `SELECT id, email, name, role, is_active 
-     FROM team_members 
+    `SELECT id, email, name, user_role as role, is_active
+     FROM team_members
      WHERE id = $1 AND is_active = true`,
     [magicLink.user_id]
   )

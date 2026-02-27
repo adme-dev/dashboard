@@ -38,17 +38,12 @@ export default defineEventHandler(async (event) => {
       role: user.role
     })
 
-    // Get request info
-    const headers = getRequestHeaders(event)
-    console.log('[Magic Link Verify] Host:', headers.host)
-
-    // Set auth cookie - FOR LOCALHOST: httpOnly=false, secure=false
     const isProd = process.env.NODE_ENV === 'production'
-    
+
     // Main auth token (httpOnly for security)
     setCookie(event, 'auth_token', jwtToken, {
       httpOnly: true,
-      secure: false, // localhost doesn't need secure
+      secure: isProd,
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 7,
       path: '/',
@@ -57,22 +52,20 @@ export default defineEventHandler(async (event) => {
     // Client-visible cookie for detection
     setCookie(event, 'auth_status', 'logged_in', {
       httpOnly: false,
-      secure: false,
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7,
-      path: '/',
-    })
-    
-    // Client-accessible token for fallback (NOT httpOnly)
-    setCookie(event, 'auth_token_client', jwtToken, {
-      httpOnly: false,
-      secure: false,
+      secure: isProd,
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 7,
       path: '/',
     })
 
-    console.log('[Magic Link Verify] Cookies set')
+    // Client-accessible token for fallback (NOT httpOnly)
+    setCookie(event, 'auth_token_client', jwtToken, {
+      httpOnly: false,
+      secure: isProd,
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7,
+      path: '/',
+    })
 
     return {
       success: true,

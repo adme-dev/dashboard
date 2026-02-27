@@ -152,6 +152,26 @@
           </NuxtLink>
         </div>
 
+        <!-- Dev Login (development only) -->
+        <div v-if="isDev" class="mt-6">
+          <div class="relative mb-4">
+            <div class="absolute inset-0 flex items-center">
+              <div class="w-full border-t border-dashed border-amber-400/40" />
+            </div>
+            <div class="relative flex justify-center">
+              <span class="bg-white dark:bg-[#0a0b0e] px-3 text-[11px] text-amber-500 uppercase tracking-wider font-medium">dev mode</span>
+            </div>
+          </div>
+          <button
+            class="w-full py-3 px-4 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[14px] font-medium rounded-full hover:bg-amber-500/20 transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+            :disabled="devLoading"
+            @click="devLogin"
+          >
+            <UIcon name="i-lucide-zap" class="w-4 h-4" />
+            {{ devLoading ? 'Logging in...' : 'Quick Dev Login (auto-admin)' }}
+          </button>
+        </div>
+
         <!-- Help -->
         <div class="mt-10 text-center">
           <p class="text-[13px] text-[#45474D]/60 dark:text-white/40">
@@ -180,6 +200,8 @@ const email = ref('')
 const loading = ref(false)
 const linkSent = ref(false)
 const devLink = ref('')
+const devLoading = ref(false)
+const isDev = import.meta.dev
 
 const isValidEmail = computed(() => {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)
@@ -208,6 +230,17 @@ async function requestMagicLink() {
     linkSent.value = true
   } finally {
     loading.value = false
+  }
+}
+
+async function devLogin() {
+  devLoading.value = true
+  try {
+    await $fetch('/api/auth/dev-login', { credentials: 'include' })
+    navigateTo('/agency')
+  } catch (error: any) {
+    console.error('Dev login failed:', error)
+    devLoading.value = false
   }
 }
 </script>

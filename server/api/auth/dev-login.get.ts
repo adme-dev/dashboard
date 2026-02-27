@@ -61,6 +61,15 @@ export default defineEventHandler(async (event) => {
       path: '/'
     })
 
+    // Client-visible cookie for detection
+    setCookie(event, 'auth_status', 'logged_in', {
+      httpOnly: false,
+      secure: false,
+      sameSite: 'lax',
+      expires,
+      path: '/'
+    })
+
     // Client-accessible token for client-side auth middleware
     setCookie(event, 'auth_token_client', token, {
       httpOnly: false,
