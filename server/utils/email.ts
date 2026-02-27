@@ -17,24 +17,40 @@ function escapeHtml(str: string): string {
 }
 
 let resend: Resend | null = null
+let cachedApiKey: string | null = null
 
 function getResendClient(): Resend | null {
-  if (resend) return resend
+  const config = useRuntimeConfig()
+  const apiKey = config.resendApiKey || process.env.RESEND_API_KEY
 
-  const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
     console.warn('[Email] RESEND_API_KEY not configured')
     return null
   }
 
+  // Re-create client if API key changed (e.g. config reload)
+  if (resend && cachedApiKey === apiKey) return resend
+
+  cachedApiKey = apiKey
   resend = new Resend(apiKey)
   return resend
 }
 
-const APP_NAME = process.env.APP_NAME || 'XeroFlow Agency'
-const FROM_EMAIL = process.env.EMAIL_FROM || 'noreply@yourdomain.com'
+function getEmailConfig() {
+  const config = useRuntimeConfig()
+  return {
+    appName: config.public?.appName || process.env.APP_NAME || 'XeroFlow Agency',
+    fromEmail: config.emailFrom || process.env.EMAIL_FROM || 'noreply@yourdomain.com',
+    appUrl: config.public?.appUrl || process.env.APP_URL || 'http://localhost:3000'
+  }
+}
+
 const BRAND_COLOR = '#13B5EA'
-const APP_URL = process.env.APP_URL || 'http://localhost:3000'
+
+function getFromHeader(): string {
+  const { appName, fromEmail } = getEmailConfig()
+  return `${appName} <${fromEmail}>`
+}
 
 /**
  * Shared email template renderer — generates consistent branded HTML + plain text.
@@ -47,6 +63,7 @@ function renderEmailTemplate(options: {
   ctaUrl?: string
   footerHtml?: string
 }): { html: string; text: string } {
+  const { appName, appUrl } = getEmailConfig()
   const greeting = options.greeting ? `<p style="font-size: 16px; color: #333;">${options.greeting}</p>` : ''
 
   const ctaButton = options.ctaText && options.ctaUrl
@@ -68,7 +85,7 @@ function renderEmailTemplate(options: {
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
     <div style="background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
       <div style="background: ${BRAND_COLOR}; padding: 20px 32px;">
-        <h1 style="margin: 0; color: #ffffff; font-size: 18px; font-weight: 600;">${APP_NAME}</h1>
+        <h1 style="margin: 0; color: #ffffff; font-size: 18px; font-weight: 600;">${appName}</h1>
       </div>
       <div style="padding: 32px;">
         ${greeting}
@@ -80,7 +97,7 @@ function renderEmailTemplate(options: {
       <div style="padding: 20px 32px; background: #f9fafb; border-top: 1px solid #e5e7eb;">
         ${footer}
         <p style="margin: 8px 0 0; font-size: 12px; color: #9ca3af;">
-          <a href="${APP_URL}/settings/notifications" style="color: #9ca3af; text-decoration: underline;">Unsubscribe</a>
+          <a href="${appUrl}/settings/notifications" style="color: #9ca3af; text-decoration: underline;">Unsubscribe</a>
           from these emails.
         </p>
       </div>
@@ -95,7 +112,7 @@ function renderEmailTemplate(options: {
   if (options.ctaText && options.ctaUrl) {
     text += `\n\n${options.ctaText}: ${options.ctaUrl}`
   }
-  text += `\n\nManage notification preferences: ${APP_URL}/settings/notifications`
+  text += `\n\nManage notification preferences: ${appUrl}/settings/notifications`
 
   return { html, text }
 }
@@ -111,6 +128,7 @@ export interface MagicLinkEmailData {
  */
 export async function sendMagicLinkEmail(data: MagicLinkEmailData): Promise<void> {
   const client = getResendClient()
+  const { appName } = getEmailConfig()
 
   if (!client) {
     console.log('[Email] Magic link for', data.to, ':', data.magicLinkUrl)
@@ -119,12 +137,12 @@ export async function sendMagicLinkEmail(data: MagicLinkEmailData): Promise<void
 
   try {
     await client.emails.send({
-      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      from: getFromHeader(),
       to: data.to,
-      subject: `Sign in to ${APP_NAME}`,
+      subject: `Sign in to ${appName}`,
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-          <h1 style="color: ${BRAND_COLOR};">Sign in to ${APP_NAME}</h1>
+          <h1 style="color: ${BRAND_COLOR};">Sign in to ${appName}</h1>
           <p>Hi ${escapeHtml(data.name)},</p>
           <p>Click the button below to sign in instantly. This link expires in 1 hour.</p>
           <a href="${data.magicLinkUrl}"
@@ -141,7 +159,7 @@ export async function sendMagicLinkEmail(data: MagicLinkEmailData): Promise<void
           </p>
         </div>
       `,
-      text: `Hi ${data.name},\n\nSign in to ${APP_NAME}: ${data.magicLinkUrl}\n\nThis link expires in 1 hour.\n\nIf you didn't request this email, you can safely ignore it.`
+      text: `Hi ${data.name},\n\nSign in to ${appName}: ${data.magicLinkUrl}\n\nThis link expires in 1 hour.\n\nIf you didn't request this email, you can safely ignore it.`
     })
 
     console.log('[Email] Magic link sent to', data.to)
@@ -192,7 +210,7 @@ export async function sendTaskAssignedEmail(data: {
 
   try {
     await client.emails.send({
-      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      from: getFromHeader(),
       to: data.to,
       subject: `You've been assigned: ${data.taskTitle}`,  // plain text context, no escaping needed
       html,
@@ -233,7 +251,7 @@ export async function sendMentionEmail(data: {
 
   try {
     await client.emails.send({
-      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      from: getFromHeader(),
       to: data.to,
       subject: `${data.mentionerName} mentioned you`,
       html,
@@ -280,7 +298,7 @@ export async function sendApprovalRequestEmail(data: {
 
   try {
     await client.emails.send({
-      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      from: getFromHeader(),
       to: data.to,
       subject: `Approval needed: ${data.taskTitle}`,
       html,
@@ -333,7 +351,7 @@ export async function sendDueReminderEmail(data: {
 
   try {
     await client.emails.send({
-      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      from: getFromHeader(),
       to: data.to,
       subject: `Task due ${when}: ${data.taskTitle}`,
       html,
@@ -359,13 +377,14 @@ export async function sendInvitationEmail(data: {
   expiresAt?: Date
 }): Promise<void> {
   const client = getResendClient()
+  const { appName, appUrl } = getEmailConfig()
   if (!client) {
     console.log('[Email] Invitation email (no client) for', data.to)
     return
   }
 
-  const teamLabel = data.teamName || APP_NAME
-  const inviteLink = data.inviteUrl || (data.token ? `${APP_URL}/auth/accept-invite?token=${data.token}` : `${APP_URL}/auth/register`)
+  const teamLabel = data.teamName || appName
+  const inviteLink = data.inviteUrl || (data.token ? `${appUrl}/auth/accept-invite?token=${data.token}` : `${appUrl}/auth/register`)
   const safeTeamLabel = escapeHtml(teamLabel)
 
   const roleLine = data.role ? `<p><strong>Role:</strong> ${escapeHtml(data.role)}</p>` : ''
@@ -380,7 +399,7 @@ export async function sendInvitationEmail(data: {
     title: `You're invited to ${safeTeamLabel}`,
     greeting: data.name ? `Hi ${escapeHtml(data.name)},` : 'Hello,',
     bodyHtml: `
-      <p><strong>${escapeHtml(data.inviterName)}</strong> has invited you to join <strong>${safeTeamLabel}</strong> on ${APP_NAME}.</p>
+      <p><strong>${escapeHtml(data.inviterName)}</strong> has invited you to join <strong>${safeTeamLabel}</strong> on ${appName}.</p>
       ${roleLine}
       ${deptLine}
       ${messageLine}
@@ -392,7 +411,7 @@ export async function sendInvitationEmail(data: {
 
   try {
     await client.emails.send({
-      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      from: getFromHeader(),
       to: data.to,
       subject: `You're invited to ${teamLabel}`,
       html,
@@ -411,12 +430,13 @@ export async function sendVerificationEmail(data: {
   token?: string
 }): Promise<void> {
   const client = getResendClient()
+  const { appUrl } = getEmailConfig()
   if (!client) {
     console.log('[Email] Verification email (no client) for', data.to)
     return
   }
 
-  const verifyLink = data.verificationUrl || (data.token ? `${APP_URL}/auth/verify?token=${data.token}` : `${APP_URL}/auth/verify`)
+  const verifyLink = data.verificationUrl || (data.token ? `${appUrl}/auth/verify?token=${data.token}` : `${appUrl}/auth/verify`)
 
   const { html, text } = renderEmailTemplate({
     title: 'Verify your email',
@@ -431,7 +451,7 @@ export async function sendVerificationEmail(data: {
 
   try {
     await client.emails.send({
-      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      from: getFromHeader(),
       to: data.to,
       subject: 'Verify your email',
       html,
@@ -448,13 +468,14 @@ export async function sendWelcomeEmail(data: {
   name: string
 }): Promise<void> {
   const client = getResendClient()
+  const { appName, appUrl } = getEmailConfig()
   if (!client) {
     console.log('[Email] Welcome email (no client) for', data.to)
     return
   }
 
   const { html, text } = renderEmailTemplate({
-    title: `Welcome to ${APP_NAME}!`,
+    title: `Welcome to ${appName}!`,
     greeting: `Hi ${escapeHtml(data.name)},`,
     bodyHtml: `
       <p>Welcome aboard! Your account is all set. Here are a few things to get started:</p>
@@ -465,14 +486,14 @@ export async function sendWelcomeEmail(data: {
       </ul>
     `,
     ctaText: 'Go to Dashboard',
-    ctaUrl: `${APP_URL}/agency`
+    ctaUrl: `${appUrl}/agency`
   })
 
   try {
     await client.emails.send({
-      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      from: getFromHeader(),
       to: data.to,
-      subject: `Welcome to ${APP_NAME}!`,
+      subject: `Welcome to ${appName}!`,
       html,
       text
     })
@@ -490,12 +511,13 @@ export async function sendPasswordResetEmail(data: {
   expiresAt?: Date
 }): Promise<void> {
   const client = getResendClient()
+  const { appUrl } = getEmailConfig()
   if (!client) {
     console.log('[Email] Password reset email (no client) for', data.to)
     return
   }
 
-  const resetLink = data.resetUrl || (data.token ? `${APP_URL}/auth/reset-password?token=${data.token}` : `${APP_URL}/auth/reset-password`)
+  const resetLink = data.resetUrl || (data.token ? `${appUrl}/auth/reset-password?token=${data.token}` : `${appUrl}/auth/reset-password`)
 
   const { html, text } = renderEmailTemplate({
     title: 'Reset your password',
@@ -510,7 +532,7 @@ export async function sendPasswordResetEmail(data: {
 
   try {
     await client.emails.send({
-      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      from: getFromHeader(),
       to: data.to,
       subject: 'Reset your password',
       html,
@@ -538,12 +560,13 @@ export async function sendQuoteEmail(data: {
   senderEmail?: string
 }): Promise<void> {
   const client = getResendClient()
+  const { appUrl } = getEmailConfig()
   if (!client) {
     console.log('[Email] Quote email (no client) for', data.to)
     return
   }
 
-  const quoteLink = data.quoteUrl || `${APP_URL}/quotes/${data.quoteId}`
+  const quoteLink = data.quoteUrl || `${appUrl}/quotes/${data.quoteId}`
   const quoteLabel = data.quoteNumber || data.quoteId
 
   let itemsHtml = ''
@@ -604,7 +627,7 @@ export async function sendQuoteEmail(data: {
 
   try {
     await client.emails.send({
-      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      from: getFromHeader(),
       to: data.to,
       subject: `Your quote #${quoteLabel} is ready`,
       html,
@@ -628,14 +651,15 @@ export async function sendClientPortalInviteEmail(data: {
   permissions?: Record<string, boolean>
 }): Promise<void> {
   const client = getResendClient()
+  const { appName, appUrl } = getEmailConfig()
   if (!client) {
     console.log('[Email] Client portal invite email (no client) for', data.to)
     return
   }
 
   const recipientName = data.name || data.clientUserName || 'there'
-  const portalLink = data.portalUrl || (data.token ? `${APP_URL}/client-portal/accept?token=${data.token}` : `${APP_URL}/client-portal`)
-  const orgName = data.clientName || APP_NAME
+  const portalLink = data.portalUrl || (data.token ? `${appUrl}/client-portal/accept?token=${data.token}` : `${appUrl}/client-portal`)
+  const orgName = data.clientName || appName
 
   const { html, text } = renderEmailTemplate({
     title: 'Access your client portal',
@@ -654,7 +678,7 @@ export async function sendClientPortalInviteEmail(data: {
 
   try {
     await client.emails.send({
-      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      from: getFromHeader(),
       to: data.to,
       subject: `Access your ${orgName} client portal`,
       html,
@@ -716,7 +740,7 @@ export async function sendClientApprovalRequestEmail(data: {
 
   try {
     await client.emails.send({
-      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      from: getFromHeader(),
       to: data.to,
       subject: `Approval needed: ${title}`,
       html,
@@ -764,7 +788,7 @@ export async function sendBoardChangeEmail(data: {
 
   try {
     await client.emails.send({
-      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      from: getFromHeader(),
       to: data.to,
       subject: `[${data.boardName}] ${data.actorName} ${data.action}`,
       html,
@@ -813,7 +837,7 @@ export async function sendAiDigestEmail(data: {
 
   try {
     await client.emails.send({
-      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      from: getFromHeader(),
       to: data.to,
       subject: `${data.reportTitle} - ${data.findingsCount} finding${data.findingsCount === 1 ? '' : 's'}`,
       html,
