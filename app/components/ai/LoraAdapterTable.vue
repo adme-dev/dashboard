@@ -18,13 +18,13 @@ const readyDatasets = computed(() => {
 
 // Table columns
 const columns = [
-  { key: 'name', label: 'Name' },
-  { key: 'adapterType', label: 'Type' },
-  { key: 'status', label: 'Status' },
-  { key: 'trafficPct', label: 'Traffic %' },
-  { key: 'version', label: 'Version' },
-  { key: 'createdAt', label: 'Created' },
-  { key: 'actions', label: '' },
+  { accessorKey: 'name', header: 'Name' },
+  { accessorKey: 'adapterType', header: 'Type' },
+  { accessorKey: 'status', header: 'Status' },
+  { accessorKey: 'trafficPct', header: 'Traffic %' },
+  { accessorKey: 'version', header: 'Version' },
+  { accessorKey: 'createdAt', header: 'Created' },
+  { accessorKey: 'actions', header: '' },
 ]
 
 const typeBadgeColor = (type: string): 'primary' | 'success' | 'warning' | 'error' | 'neutral' => {
@@ -56,7 +56,7 @@ const form = ref({
   displayName: '',
   adapterType: 'chat' as LoraAdapterType,
   rank: 16,
-  datasetId: '',
+  datasetId: 'none',
 })
 
 const adapterTypeOptions = [
@@ -66,7 +66,7 @@ const adapterTypeOptions = [
 ]
 
 const openRegisterModal = () => {
-  form.value = { name: '', displayName: '', adapterType: 'chat', rank: 16, datasetId: '' }
+  form.value = { name: '', displayName: '', adapterType: 'chat', rank: 16, datasetId: 'none' }
   showRegisterModal.value = true
 }
 
@@ -77,9 +77,13 @@ const registerAdapter = async () => {
   }
   saving.value = true
   try {
+    const body = {
+      ...form.value,
+      datasetId: form.value.datasetId === 'none' ? '' : form.value.datasetId,
+    }
     await $fetch('/api/agency/ai/training/adapters', {
       method: 'POST',
-      body: form.value,
+      body,
     })
     toast.add({ title: 'Adapter registered', color: 'success' })
     showRegisterModal.value = false
@@ -216,26 +220,26 @@ const metrics = computed(() => metricsData.value as LoraMetricsComparison | null
       <UTable :data="adapters" :columns="columns">
         <template #name-cell="{ row }">
           <div>
-            <p class="font-medium">{{ (row as any).displayName || (row as any).name }}</p>
-            <p v-if="(row as any).displayName" class="text-xs text-[var(--ui-text-muted)]">{{ (row as any).name }}</p>
+            <p class="font-medium">{{ row.original.displayName || row.original.name }}</p>
+            <p v-if="row.original.displayName" class="text-xs text-[var(--ui-text-muted)]">{{ row.original.name }}</p>
           </div>
         </template>
 
         <template #adapterType-cell="{ row }">
-          <UBadge :color="typeBadgeColor((row as any).adapterType)" variant="subtle">
-            {{ (row as any).adapterType }}
+          <UBadge :color="typeBadgeColor(row.original.adapterType)" variant="subtle">
+            {{ row.original.adapterType }}
           </UBadge>
         </template>
 
         <template #status-cell="{ row }">
-          <UBadge :color="statusBadgeColor((row as any).status)" variant="subtle">
-            {{ (row as any).status }}
+          <UBadge :color="statusBadgeColor(row.original.status)" variant="subtle">
+            {{ row.original.status }}
           </UBadge>
         </template>
 
         <template #trafficPct-cell="{ row }">
           <div class="flex items-center gap-1">
-            <template v-if="editingTraffic === (row as any).id">
+            <template v-if="editingTraffic === row.original.id">
               <UInput
                 v-model.number="trafficValue"
                 type="number"
@@ -243,31 +247,31 @@ const metrics = computed(() => metricsData.value as LoraMetricsComparison | null
                 :max="100"
                 size="xs"
                 class="w-16"
-                @keyup.enter="saveTraffic(row as any)"
+                @keyup.enter="saveTraffic(row.original)"
               />
-              <UButton icon="i-lucide-check" variant="ghost" color="success" size="xs" @click="saveTraffic(row as any)" />
+              <UButton icon="i-lucide-check" variant="ghost" color="success" size="xs" @click="saveTraffic(row.original)" />
               <UButton icon="i-lucide-x" variant="ghost" color="neutral" size="xs" @click="editingTraffic = null" />
             </template>
             <template v-else>
-              <span class="font-medium">{{ (row as any).trafficPct }}%</span>
+              <span class="font-medium">{{ row.original.trafficPct }}%</span>
               <UButton
                 icon="i-lucide-edit"
                 variant="ghost"
                 color="neutral"
                 size="xs"
-                @click="startTrafficEdit(row as any)"
+                @click="startTrafficEdit(row.original)"
               />
             </template>
           </div>
         </template>
 
         <template #version-cell="{ row }">
-          <span class="font-mono text-sm">v{{ (row as any).version }}</span>
+          <span class="font-mono text-sm">v{{ row.original.version }}</span>
         </template>
 
         <template #createdAt-cell="{ row }">
           <span class="text-sm text-[var(--ui-text-muted)]">
-            {{ new Date((row as any).createdAt).toLocaleDateString() }}
+            {{ new Date(row.original.createdAt).toLocaleDateString() }}
           </span>
         </template>
 
@@ -277,24 +281,24 @@ const metrics = computed(() => metricsData.value as LoraMetricsComparison | null
               [{
                 label: 'View Metrics',
                 icon: 'i-lucide-bar-chart-3',
-                click: () => viewMetrics(row as any),
+                click: () => viewMetrics(row.original),
               }],
               [{
                 label: 'Upload Weights',
                 icon: 'i-lucide-upload',
-                click: () => triggerUpload((row as any).id),
+                click: () => triggerUpload(row.original.id),
               }],
               [{
                 label: 'Activate',
                 icon: 'i-lucide-play',
-                disabled: (row as any).status === 'active',
-                click: () => updateStatus(row as any, 'active'),
+                disabled: row.original.status === 'active',
+                click: () => updateStatus(row.original, 'active'),
               },
               {
                 label: 'Retire',
                 icon: 'i-lucide-archive',
-                disabled: (row as any).status === 'retired',
-                click: () => updateStatus(row as any, 'retired'),
+                disabled: row.original.status === 'retired',
+                click: () => updateStatus(row.original, 'retired'),
               }],
             ]"
           >
@@ -339,7 +343,7 @@ const metrics = computed(() => metricsData.value as LoraMetricsComparison | null
             <label class="block text-sm font-medium text-[var(--ui-text)] mb-1.5">Dataset</label>
             <USelectMenu
               v-model="form.datasetId"
-              :items="[{ label: 'None', value: '' }, ...readyDatasets]"
+              :items="[{ label: 'None', value: 'none' }, ...readyDatasets]"
               value-key="value"
               class="w-full"
             />

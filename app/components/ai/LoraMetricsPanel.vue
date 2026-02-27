@@ -111,7 +111,7 @@ const formatDate = (dateStr: string | null) => {
           <h3 class="text-lg font-semibold text-[var(--ui-text-highlighted)]">A/B Metrics Comparison</h3>
           <USelectMenu
             v-model="selectedAdapterId"
-            :items="[{ label: 'Select an adapter...', value: '' }, ...adapters]"
+            :items="adapters"
             value-key="value"
             placeholder="Select adapter"
             class="w-64"

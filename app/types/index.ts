@@ -45,9 +45,9 @@ export interface Implementation {
 }
 
 // ============================================
-// Task Types
+// Implementation Task Types (legacy — used by useImplementations.ts)
 // ============================================
-export interface Task {
+export interface ImplementationTask {
   id: string
   implementation_id: string
   name: string
@@ -70,6 +70,223 @@ export interface Task {
   blocked_reason: string | null
   created_at: string
   updated_at: string
+}
+
+// ============================================
+// Workflow Enums & Primitives
+// ============================================
+export type TaskPriority = 'urgent' | 'high' | 'medium' | 'low'
+export type TaskType = 'task' | 'milestone' | 'bug' | 'feature' | 'review' | 'meeting'
+export type StatusCategory = 'not_started' | 'in_progress' | 'review' | 'done' | 'cancelled'
+export type DepartmentRole = 'lead' | 'senior' | 'member' | 'junior'
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'skipped'
+export type BoardViewType = 'kanban' | 'table' | 'timeline' | 'calendar' | 'list' | 'gallery'
+
+// ============================================
+// Department Types
+// ============================================
+export interface Department {
+  id: string
+  name: string
+  slug: string
+  description?: string
+  color: string
+  icon: string
+  managerId?: string
+  managerName?: string
+  isActive: boolean
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+  memberCount?: number
+  activeTasks?: number
+  overdueTasks?: number
+  completedThisWeek?: number
+}
+
+// ============================================
+// Task Status & Label Types
+// ============================================
+export interface TaskStatus {
+  id: string
+  departmentId?: string
+  departmentName?: string
+  name: string
+  slug: string
+  color: string
+  icon?: string
+  category: StatusCategory
+  isDefault: boolean
+  isFinal: boolean
+  sortOrder: number
+  createdAt: string
+}
+
+export interface TaskLabel {
+  id: string
+  departmentId?: string
+  departmentName?: string
+  name: string
+  color: string
+  description?: string
+  createdAt: string
+  usageCount?: number
+}
+
+// ============================================
+// Workflow Task Types
+// ============================================
+export interface Task {
+  id: string
+  projectId?: string
+  departmentId: string
+  parentTaskId?: string
+  statusId: string
+  title: string
+  description?: string
+  priority: TaskPriority
+  taskType: TaskType
+  assigneeId?: string
+  reporterId?: string
+  dueDate?: string
+  startDate?: string
+  estimatedHours?: number
+  actualHours?: number
+  sortOrder: number
+  isBlocked: boolean
+  blockedReason?: string
+  completedAt?: string
+  createdAt: string
+  updatedAt: string
+  version?: number
+  lastModifiedBy?: string
+  status?: {
+    id: string
+    name: string
+    color: string
+    category: StatusCategory
+    isFinal: boolean
+  }
+  department?: {
+    id: string
+    name: string
+    color: string
+    slug?: string
+  }
+  project?: {
+    id: string
+    name: string
+    clientId?: string
+    clientName?: string
+  } | null
+  assignee?: {
+    id: string
+    name: string
+    email: string
+  } | null
+  reporter?: {
+    id: string
+    name: string
+    email?: string
+  } | null
+  parent?: {
+    id: string
+    title: string
+  } | null
+  labels?: TaskLabel[]
+  subtaskCount?: number
+  completedSubtasks?: number
+  commentCount?: number
+}
+
+// ============================================
+// Kanban & Board Types
+// ============================================
+export interface KanbanColumn {
+  status: TaskStatus
+  tasks: Task[]
+  isCollapsed?: boolean
+}
+
+export interface KanbanFilters {
+  assigneeId?: string
+  priority?: TaskPriority
+  labels?: string[]
+  tags?: string[]
+  search?: string
+  showCompleted?: boolean
+  projectId?: string
+  dateRange?: {
+    start?: string
+    end?: string
+  }
+}
+
+export interface SortRule {
+  column: string
+  direction: 'asc' | 'desc'
+  nullsLast?: boolean
+}
+
+export interface SortingPreset {
+  id: string
+  departmentId?: string
+  name: string
+  sortRules: SortRule[]
+  isDefault: boolean
+  isSystem: boolean
+  createdBy?: string
+  createdAt: string
+}
+
+export interface BoardGroupingOption {
+  id: string
+  departmentId?: string
+  groupBy: string
+  displayName: string
+  sortOrder: number
+  isEnabled: boolean
+  config?: Record<string, any>
+  createdAt: string
+}
+
+export interface GlobalTag {
+  id: string
+  name: string
+  slug: string
+  color: string
+  description?: string
+  usageCount: number
+  createdBy?: string
+  createdAt: string
+  updatedAt: string
+}
+
+// ============================================
+// Task Activity & Attachment Types
+// ============================================
+export interface TaskActivity {
+  id: string
+  type: string
+  content: string
+  oldValue?: any
+  newValue?: any
+  createdAt: string
+  user?: {
+    id: string
+    name: string
+    email: string
+  } | null
+}
+
+export interface TaskAttachment {
+  id: string
+  fileName: string
+  fileType: string
+  fileSize: number
+  fileUrl: string
+  uploadedByName?: string
+  createdAt: string
 }
 
 export interface ChecklistItem {

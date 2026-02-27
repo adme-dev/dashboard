@@ -116,7 +116,7 @@ const getActions = (client: any) => [
   { label: 'View Details', icon: 'i-lucide-eye', onSelect: () => navigateTo(`/agency/clients/${client.id}`) },
   { label: 'New Project', icon: 'i-lucide-folder-plus', onSelect: () => navigateTo(`/agency/projects/new?clientId=${client.id}`) },
   { type: 'separator' as const },
-  { label: 'View in Xero', icon: 'i-lucide-external-link', disabled: !client.xeroContactId },
+  { label: 'View in Xero', icon: 'i-lucide-external-link', disabled: !client.xeroContactId, onSelect: () => client.xeroContactId && window.open(`https://go.xero.com/Contacts/View/${client.xeroContactId}`, '_blank') },
   { label: 'Generate Invoice', icon: 'i-lucide-file-text' },
   { type: 'separator' as const },
   {
@@ -139,6 +139,29 @@ const toggleClientStatus = async (client: any) => {
   }
 }
 
+// Xero bulk match
+const { isAdmin } = useAuth()
+const matchingXero = ref(false)
+const bulkMatchXero = async () => {
+  matchingXero.value = true
+  try {
+    const result = await $fetch('/api/agency/clients/xero-match', { method: 'POST' }) as any
+    const desc = result.unmatched.length > 0
+      ? `${result.unmatched.length} unmatched: ${result.unmatched.slice(0, 5).join(', ')}${result.unmatched.length > 5 ? '...' : ''}`
+      : 'All clients matched!'
+    toast.add({
+      title: `Matched ${result.matched} clients`,
+      description: desc,
+      color: result.matched > 0 ? 'success' : 'info'
+    })
+    if (result.matched > 0) refresh()
+  } catch (err: any) {
+    toast.add({ title: 'Failed to match clients', description: err.data?.message || err.message, color: 'error' })
+  } finally {
+    matchingXero.value = false
+  }
+}
+
 // New client modal
 const showNewClientModal = ref(false)
 </script>
@@ -148,12 +171,22 @@ const showNewClientModal = ref(false)
     <UDashboardPanel>
       <UDashboardNavbar title="Clients">
         <template #right>
-          <UButton
-            label="New Client"
-            icon="i-lucide-plus"
-            color="primary"
-            @click="showNewClientModal = true"
-          />
+          <div class="flex items-center gap-2">
+            <UButton
+              v-if="isAdmin"
+              label="Link Xero"
+              icon="i-lucide-link"
+              variant="outline"
+              :loading="matchingXero"
+              @click="bulkMatchXero"
+            />
+            <UButton
+              label="New Client"
+              icon="i-lucide-plus"
+              color="primary"
+              @click="showNewClientModal = true"
+            />
+          </div>
         </template>
       </UDashboardNavbar>
 
@@ -229,12 +262,17 @@ const showNewClientModal = ref(false)
                   size="sm"
                 />
                 <div>
-                  <NuxtLink
-                    :to="`/agency/clients/${row.original.id}`"
-                    class="font-medium hover:text-primary-500"
-                  >
-                    {{ row.original.name }}
-                  </NuxtLink>
+                  <div class="flex items-center gap-1.5">
+                    <NuxtLink
+                      :to="`/agency/clients/${row.original.id}`"
+                      class="font-medium hover:text-primary-500"
+                    >
+                      {{ row.original.name }}
+                    </NuxtLink>
+                    <UTooltip v-if="row.original.xeroContactId" text="Linked to Xero">
+                      <UIcon name="i-lucide-link" class="w-3.5 h-3.5 text-blue-500" />
+                    </UTooltip>
+                  </div>
                   <p class="text-xs text-gray-500">
                     Since {{ format(new Date(row.original.createdAt), 'MMM yyyy') }}
                   </p>

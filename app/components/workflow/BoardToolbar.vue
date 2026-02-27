@@ -153,16 +153,13 @@ const activeFiltersCount = computed(() => {
       <div class="w-px h-6 bg-default" />
 
       <!-- Search -->
-      <div class="relative">
-        <UIcon name="i-lucide-search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
-        <input
-          :value="localFilters.search"
-          type="text"
-          placeholder="Search tasks..."
-          class="pl-9 pr-4 py-2 border border-default rounded text-sm bg-default focus:outline-none focus:border-primary w-48"
-          @input="updateSearch(($event.target as HTMLInputElement).value)"
-        />
-      </div>
+      <UInput
+        :model-value="localFilters.search"
+        placeholder="Search tasks..."
+        icon="i-lucide-search"
+        class="w-48"
+        @update:model-value="updateSearch($event)"
+      />
 
       <!-- Toggle Filters -->
       <button
@@ -205,34 +202,26 @@ const activeFiltersCount = computed(() => {
     <!-- Expanded Filters -->
     <div v-if="showFilters" class="flex items-center gap-3 flex-wrap p-4 border border-default rounded-lg bg-elevated/50">
       <!-- Assignee Filter -->
-      <div class="flex flex-col gap-1">
-        <label class="text-xs text-muted">Assignee</label>
-        <select
-          :value="localFilters.assigneeId || ''"
-          class="px-3 py-2 border border-default rounded text-sm bg-default focus:outline-none focus:border-primary min-w-[140px]"
-          @change="updateAssignee(($event.target as HTMLSelectElement).value || undefined)"
-        >
-          <option value="">All assignees</option>
-          <option v-for="member in members" :key="member.id" :value="member.id">
-            {{ member.name }}
-          </option>
-        </select>
-      </div>
+      <UFormField label="Assignee">
+        <USelectMenu
+          :model-value="localFilters.assigneeId || 'all'"
+          :items="[{ label: 'All assignees', value: 'all' }, ...members.map((m: any) => ({ label: m.name, value: m.id }))]"
+          value-key="value"
+          class="min-w-[140px]"
+          @update:model-value="updateAssignee($event === 'all' ? undefined : $event)"
+        />
+      </UFormField>
 
       <!-- Priority Filter -->
-      <div class="flex flex-col gap-1">
-        <label class="text-xs text-muted">Priority</label>
-        <select
-          :value="localFilters.priority || ''"
-          class="px-3 py-2 border border-default rounded text-sm bg-default focus:outline-none focus:border-primary min-w-[120px]"
-          @change="updatePriority(($event.target as HTMLSelectElement).value as TaskPriority || undefined)"
-        >
-          <option value="">All priorities</option>
-          <option v-for="option in priorityOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </option>
-        </select>
-      </div>
+      <UFormField label="Priority">
+        <USelectMenu
+          :model-value="localFilters.priority || 'all'"
+          :items="[{ label: 'All priorities', value: 'all' }, ...priorityOptions]"
+          value-key="value"
+          class="min-w-[120px]"
+          @update:model-value="updatePriority($event === 'all' ? undefined : $event as TaskPriority)"
+        />
+      </UFormField>
 
       <!-- Tags Filter -->
       <div v-if="tags.length > 0" class="flex flex-col gap-1">
@@ -252,33 +241,26 @@ const activeFiltersCount = computed(() => {
       </div>
 
       <!-- Group By -->
-      <div v-if="groupOptions.length > 0" class="flex flex-col gap-1">
-        <label class="text-xs text-muted">Group by</label>
-        <select
-          :value="groupBy || ''"
-          class="px-3 py-2 border border-default rounded text-sm bg-default focus:outline-none focus:border-primary min-w-[140px]"
-          @change="emit('update:groupBy', ($event.target as HTMLSelectElement).value || undefined)"
-        >
-          <option value="">No grouping</option>
-          <option v-for="option in groupOptions" :key="option.groupBy" :value="option.groupBy">
-            {{ option.displayName }}
-          </option>
-        </select>
-      </div>
+      <UFormField v-if="groupOptions.length > 0" label="Group by">
+        <USelectMenu
+          :model-value="groupBy || 'none'"
+          :items="[{ label: 'No grouping', value: 'none' }, ...groupOptions.map(o => ({ label: o.displayName, value: o.groupBy }))]"
+          value-key="value"
+          class="min-w-[140px]"
+          @update:model-value="emit('update:groupBy', $event === 'none' ? undefined : $event)"
+        />
+      </UFormField>
 
       <!-- Sort Presets -->
-      <div v-if="presets.length > 0" class="flex flex-col gap-1">
-        <label class="text-xs text-muted">Sort</label>
-        <select
-          class="px-3 py-2 border border-default rounded text-sm bg-default focus:outline-none focus:border-primary min-w-[140px]"
-          @change="applyPreset(presets.find(p => p.id === ($event.target as HTMLSelectElement).value)!)"
-        >
-          <option value="">Default</option>
-          <option v-for="preset in presets" :key="preset.id" :value="preset.id">
-            {{ preset.name }}
-          </option>
-        </select>
-      </div>
+      <UFormField v-if="presets.length > 0" label="Sort">
+        <USelectMenu
+          model-value="default"
+          :items="[{ label: 'Default', value: 'default' }, ...presets.map(p => ({ label: p.name, value: p.id }))]"
+          value-key="value"
+          class="min-w-[140px]"
+          @update:model-value="(val: string) => { const preset = presets.find(p => p.id === val); if (preset) applyPreset(preset) }"
+        />
+      </UFormField>
 
       <div class="flex-1" />
 

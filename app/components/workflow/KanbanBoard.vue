@@ -3,6 +3,7 @@ import type { Task, TaskStatus, KanbanFilters, TaskPriority, TaskLabel } from '~
 
 const props = defineProps<{
   departmentId?: string
+  workspaceId?: string
   projectId?: string
   filters?: KanbanFilters
   selectedTaskId?: string | null
@@ -19,10 +20,11 @@ const emit = defineEmits<{
   refreshLabels: []  // New event to tell parent to refresh labels
 }>()
 
-// Fetch statuses for this department
+// Fetch statuses for this department/workspace
 const { data: statusesData, pending: statusesPending } = useLazyFetch('/api/agency/statuses', {
   query: computed(() => ({
-    departmentId: props.departmentId
+    departmentId: props.departmentId,
+    workspaceId: !props.departmentId ? props.workspaceId : undefined
   }))
 })
 
@@ -30,6 +32,7 @@ const { data: statusesData, pending: statusesPending } = useLazyFetch('/api/agen
 const { data: tasksData, pending: tasksPending, refresh: refreshTasks } = useLazyFetch('/api/agency/tasks', {
   query: computed(() => ({
     departmentId: props.departmentId,
+    workspaceId: !props.departmentId ? props.workspaceId : undefined,
     projectId: props.projectId,
     assigneeId: props.filters?.assigneeId,
     priority: props.filters?.priority,
@@ -48,25 +51,55 @@ const doneStatusId = computed(() => {
   return doneStatus?.id
 })
 
-// Group tasks by status
+// Group tasks by status — deduplicate same-named statuses in "All Tasks" mode
 const columns = computed(() => {
   const statuses = (statusesData.value as TaskStatus[]) || []
   const tasks = (tasksData.value?.tasks as Task[]) || []
+
+  // Apply label/tag filter
+  const filterIds = props.filters?.labels?.length ? props.filters.labels
+    : props.filters?.tags?.length ? props.filters.tags
+    : null
+  const filteredTasks = filterIds
+    ? tasks.filter(task => {
+        const taskLabelIds = task.labels?.map(l => l.id) || []
+        return filterIds.some(id => taskLabelIds.includes(id))
+      })
+    : tasks
+
+  // When viewing all tasks or a workspace (multiple boards), merge statuses with the same name
+  if (!props.departmentId) {
+    const merged = new Map<string, { status: TaskStatus; statusIds: string[]; tasks: Task[] }>()
+    for (const status of statuses.sort((a, b) => a.sortOrder - b.sortOrder)) {
+      const key = status.name.toLowerCase()
+      if (merged.has(key)) {
+        merged.get(key)!.statusIds.push(status.id)
+      } else {
+        merged.set(key, { status, statusIds: [status.id], tasks: [] })
+      }
+    }
+    // Assign tasks to merged columns
+    for (const task of filteredTasks) {
+      for (const col of merged.values()) {
+        if (col.statusIds.includes(task.statusId)) {
+          col.tasks.push(task)
+          break
+        }
+      }
+    }
+    return Array.from(merged.values()).map(col => ({
+      status: col.status,
+      tasks: col.tasks.sort((a, b) => a.sortOrder - b.sortOrder),
+      isCollapsed: false
+    }))
+  }
 
   return statuses
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map(status => ({
       status,
-      tasks: tasks
+      tasks: filteredTasks
         .filter(task => task.statusId === status.id)
-        .filter(task => {
-          // Apply label filter if set
-          if (props.filters?.labels?.length) {
-            const taskLabelIds = task.labels?.map(l => l.id) || []
-            return props.filters.labels.some(labelId => taskLabelIds.includes(labelId))
-          }
-          return true
-        })
         .sort((a, b) => a.sortOrder - b.sortOrder),
       isCollapsed: false
     }))

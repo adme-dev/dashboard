@@ -1,4 +1,4 @@
-import type { Implementation, Task, Comment, Document } from '~/types'
+import type { Implementation, ImplementationTask, Comment, Document } from '~/types'
 
 interface ImplementationFilters {
   status?: string
@@ -9,7 +9,7 @@ interface ImplementationFilters {
 export const useImplementations = () => {
   const implementations = ref<Implementation[]>([])
   const currentImplementation = ref<Implementation | null>(null)
-  const tasks = ref<Task[]>([])
+  const tasks = ref<ImplementationTask[]>([])
   const isLoading = ref(false)
   const error = ref<string | null>(null)
 
@@ -54,7 +54,7 @@ export const useImplementations = () => {
   }
 
   // Update task status
-  const updateTaskStatus = async (taskId: string, status: Task['status']) => {
+  const updateTaskStatus = async (taskId: string, status: ImplementationTask['status']) => {
     const { data } = await $fetch(`/api/tasks/${taskId}/status`, {
       method: 'PATCH',
       body: { status }

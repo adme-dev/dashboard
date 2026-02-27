@@ -29,11 +29,9 @@ export default defineEventHandler(async (event) => {
       SELECT
         ta.*,
         aw.name as workflow_name,
-        aw.description as workflow_description,
-        requestor.name as requestor_name
+        aw.description as workflow_description
       FROM task_approvals ta
       JOIN approval_workflows aw ON ta.workflow_id = aw.id
-      LEFT JOIN team_members requestor ON ta.requested_by = requestor.id
       WHERE ta.task_id = $1
       ORDER BY ta.created_at DESC
       LIMIT 1
@@ -47,21 +45,21 @@ export default defineEventHandler(async (event) => {
     const steps = await queryRows(`
       SELECT
         aws.id as step_id,
-        aws.step_number,
-        aws.step_name,
+        aws.step_order as step_number,
+        aws.name as step_name,
         aws.approver_role,
-        aws.is_required,
+        NOT aws.can_skip as is_required,
         tar.id as response_id,
-        tar.status as response_status,
-        tar.comment as response_comment,
+        tar.response as response_status,
+        tar.comments as response_comment,
         tar.responded_at,
         responder.id as responder_id,
         responder.name as responder_name
       FROM approval_workflow_steps aws
-      LEFT JOIN task_approval_responses tar ON aws.id = tar.step_id AND tar.approval_id = $1
-      LEFT JOIN team_members responder ON tar.responder_id = responder.id
+      LEFT JOIN task_approval_responses tar ON aws.id = tar.workflow_step_id AND tar.task_approval_id = $1
+      LEFT JOIN team_members responder ON tar.responded_by = responder.id
       WHERE aws.workflow_id = $2
-      ORDER BY aws.step_number
+      ORDER BY aws.step_order
     `, [approval.id, approval.workflow_id])
 
     // Calculate overall progress
@@ -77,11 +75,7 @@ export default defineEventHandler(async (event) => {
         workflowName: approval.workflow_name,
         workflowDescription: approval.workflow_description,
         status: approval.status,
-        currentStepNumber: approval.current_step_number,
-        requestedBy: approval.requested_by ? {
-          id: approval.requested_by,
-          name: approval.requestor_name,
-        } : null,
+        currentStepId: approval.current_step_id,
         createdAt: approval.created_at,
         completedAt: approval.completed_at,
         steps: steps.map(s => ({

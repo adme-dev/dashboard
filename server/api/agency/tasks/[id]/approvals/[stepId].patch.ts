@@ -69,17 +69,17 @@ export default defineEventHandler(async (event) => {
     }
 
     // Check if step is the current step
-    if (step.step_number !== approval.current_step_number) {
+    if (step.id !== approval.current_step_id) {
       throw createError({
         statusCode: 400,
-        statusMessage: `This step is not ready for approval. Current step is ${approval.current_step_number}`
+        statusMessage: 'This step is not ready for approval yet'
       })
     }
 
     // Check if already responded to this step
     const existingResponse = await queryOne(`
       SELECT id FROM task_approval_responses
-      WHERE approval_id = $1 AND step_id = $2
+      WHERE task_approval_id = $1 AND workflow_step_id = $2
     `, [approval.id, stepId])
 
     if (existingResponse) {
@@ -92,7 +92,7 @@ export default defineEventHandler(async (event) => {
     const result = await transaction(async (client) => {
       // Create the response
       const responseResult = await client.query(`
-        INSERT INTO task_approval_responses (approval_id, step_id, responder_id, status, comment, responded_at)
+        INSERT INTO task_approval_responses (task_approval_id, workflow_step_id, responded_by, response, comments, responded_at)
         VALUES ($1, $2, $3, $4, $5, NOW())
         RETURNING *
       `, [approval.id, stepId, body.responderId || null, body.status, body.comment?.trim() || null])
@@ -106,7 +106,7 @@ export default defineEventHandler(async (event) => {
       `, [
         taskId,
         body.responderId || null,
-        `${body.status === 'approved' ? 'Approved' : 'Rejected'} at "${step.step_name}" step${body.comment ? `: ${body.comment}` : ''}`,
+        `${body.status === 'approved' ? 'Approved' : 'Rejected'} at "${step.name}" step${body.comment ? `: ${body.comment}` : ''}`,
       ])
 
       // Update approval status based on response
@@ -121,18 +121,18 @@ export default defineEventHandler(async (event) => {
         // Approved - check if there are more steps
         const nextStepResult = await client.query(`
           SELECT * FROM approval_workflow_steps
-          WHERE workflow_id = $1 AND step_number > $2
-          ORDER BY step_number
+          WHERE workflow_id = $1 AND step_order > $2
+          ORDER BY step_order
           LIMIT 1
-        `, [approval.workflow_id, step.step_number])
+        `, [approval.workflow_id, step.step_order])
 
         if (nextStepResult.rows.length > 0) {
           // Move to next step
           await client.query(`
             UPDATE task_approvals
-            SET current_step_number = $1
+            SET current_step_id = $1
             WHERE id = $2
-          `, [nextStepResult.rows[0].step_number, approval.id])
+          `, [nextStepResult.rows[0].id, approval.id])
         } else {
           // All steps complete - mark as approved
           await client.query(`
@@ -174,17 +174,17 @@ export default defineEventHandler(async (event) => {
     // If approved and there's a next step, notify the next approver
     if (body.status === 'approved' && updatedApproval.status === 'pending') {
       const nextStep = await queryOne(`
-        SELECT aws.*, aws.approver_id
+        SELECT aws.*
         FROM approval_workflow_steps aws
-        WHERE aws.workflow_id = $1 AND aws.step_number = $2
-      `, [approval.workflow_id, updatedApproval.current_step_number])
+        WHERE aws.id = $1
+      `, [updatedApproval.current_step_id])
 
       if (nextStep?.approver_id) {
         notifyNextApprover({
           taskId,
           taskTitle: task?.title || 'Task',
           approverId: nextStep.approver_id,
-          stepName: nextStep.step_name
+          stepName: nextStep.name
         }).catch(err => console.error('Failed to send next approver notification:', err))
       }
     }
@@ -192,11 +192,11 @@ export default defineEventHandler(async (event) => {
     return {
       response: {
         id: result.id,
-        approvalId: result.approval_id,
-        stepId: result.step_id,
-        stepName: step.step_name,
-        status: result.status,
-        comment: result.comment,
+        approvalId: result.task_approval_id,
+        stepId: result.workflow_step_id,
+        stepName: step.name,
+        status: result.response,
+        comment: result.comments,
         respondedAt: result.responded_at,
         responder: responder ? {
           id: responder.id,
@@ -207,7 +207,7 @@ export default defineEventHandler(async (event) => {
       approval: {
         id: updatedApproval.id,
         status: updatedApproval.status,
-        currentStepNumber: updatedApproval.current_step_number,
+        currentStepId: updatedApproval.current_step_id,
         completedAt: updatedApproval.completed_at,
       },
     }

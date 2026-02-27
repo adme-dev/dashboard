@@ -33,6 +33,12 @@ export default defineEventHandler(async (event) => {
       params.push(query.departmentId)
     }
 
+    // Workspace filter (all departments in workspace)
+    if (query.workspaceId && !query.departmentId) {
+      conditions.push(`t.department_id IN (SELECT id FROM departments WHERE workspace_id = $${paramIndex++})`)
+      params.push(query.workspaceId)
+    }
+
     // Project filter
     if (query.projectId) {
       conditions.push(`t.project_id = $${paramIndex++}`)

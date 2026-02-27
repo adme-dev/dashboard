@@ -89,6 +89,7 @@ const editForm = ref({
   hourlyRate: null as number | null,
   retainerAmount: null as number | null,
   mediaCommissionRate: null as number | null,
+  xeroContactId: null as string | null,
   notes: '',
   isActive: true
 })
@@ -102,6 +103,7 @@ const openEditModal = () => {
       hourlyRate: client.value.hourlyRate,
       retainerAmount: client.value.retainerAmount,
       mediaCommissionRate: client.value.mediaCommissionRate,
+      xeroContactId: client.value.xeroContactId || null,
       notes: client.value.notes || '',
       isActive: client.value.isActive
     }
@@ -124,6 +126,19 @@ const saveClient = async () => {
     toast.add({ title: 'Failed to update client', description: err.data?.message || err.message, color: 'error' })
   } finally {
     saving.value = false
+  }
+}
+
+const unlinkXero = async () => {
+  try {
+    await $fetch(`/api/agency/clients/${clientId}`, {
+      method: 'PUT',
+      body: { xeroContactId: null }
+    })
+    toast.add({ title: 'Xero contact unlinked', color: 'success' })
+    refresh()
+  } catch (err: any) {
+    toast.add({ title: 'Failed to unlink', description: err.data?.message || err.message, color: 'error' })
   }
 }
 
@@ -344,6 +359,53 @@ const invoiceColumns = [
                 </div>
               </div>
             </UCard>
+
+            <!-- Xero Link -->
+            <UCard class="lg:col-span-3">
+              <template #header>
+                <div class="flex items-center justify-between">
+                  <h3 class="font-semibold">Xero Integration</h3>
+                  <UIcon name="i-lucide-link" class="w-5 h-5 text-gray-400" />
+                </div>
+              </template>
+              <div v-if="client.xeroContactId" class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <UBadge color="success" variant="subtle">
+                    <UIcon name="i-lucide-check" class="w-3 h-3 mr-1" />
+                    Linked
+                  </UBadge>
+                  <span class="text-sm text-gray-500">Contact ID: {{ client.xeroContactId }}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <UButton
+                    label="View in Xero"
+                    icon="i-lucide-external-link"
+                    variant="outline"
+                    size="sm"
+                    :to="`https://go.xero.com/Contacts/View/${client.xeroContactId}`"
+                    target="_blank"
+                  />
+                  <UButton
+                    label="Unlink"
+                    icon="i-lucide-unlink"
+                    variant="ghost"
+                    size="sm"
+                    color="error"
+                    @click="unlinkXero"
+                  />
+                </div>
+              </div>
+              <div v-else class="flex items-center justify-between">
+                <p class="text-sm text-gray-500">Not linked to a Xero contact</p>
+                <UButton
+                  label="Link to Xero Contact"
+                  icon="i-lucide-link"
+                  variant="outline"
+                  size="sm"
+                  @click="openEditModal"
+                />
+              </div>
+            </UCard>
           </div>
 
           <!-- Projects Tab -->
@@ -522,6 +584,10 @@ const invoiceColumns = [
 
           <UFormField label="Media Commission Rate (%)">
             <UInput v-model.number="editForm.mediaCommissionRate" type="number" min="0" max="100" />
+          </UFormField>
+
+          <UFormField label="Xero Contact">
+            <XeroContactSearch v-model="editForm.xeroContactId" />
           </UFormField>
 
           <UFormField label="Notes">

@@ -3,6 +3,7 @@ import type { Task, KanbanFilters, TaskPriority } from '~/types'
 
 const props = defineProps<{
   departmentId?: string
+  workspaceId?: string
   projectId?: string
   filters?: KanbanFilters
 }>()
@@ -31,6 +32,7 @@ const dragOverDate = ref<string | null>(null)
 const { data: tasksData, pending: tasksPending, refresh: refreshTasks } = useLazyFetch('/api/agency/tasks', {
   query: computed(() => ({
     departmentId: props.departmentId,
+    workspaceId: !props.departmentId ? props.workspaceId : undefined,
     projectId: props.projectId,
     assigneeId: props.filters?.assigneeId,
     priority: props.filters?.priority,

@@ -51,12 +51,12 @@ const extractDataset = async (type: TrainingDatasetType) => {
 
 // Table columns
 const columns = [
-  { key: 'datasetType', label: 'Type' },
-  { key: 'version', label: 'Version' },
-  { key: 'status', label: 'Status' },
-  { key: 'rowCount', label: 'Rows' },
-  { key: 'fileSizeBytes', label: 'Size' },
-  { key: 'createdAt', label: 'Created' },
+  { accessorKey: 'datasetType', header: 'Type' },
+  { accessorKey: 'version', header: 'Version' },
+  { accessorKey: 'status', header: 'Status' },
+  { accessorKey: 'rowCount', header: 'Rows' },
+  { accessorKey: 'fileSizeBytes', header: 'Size' },
+  { accessorKey: 'createdAt', header: 'Created' },
 ]
 
 const typeBadgeColor = (type: string): 'primary' | 'success' | 'warning' | 'error' | 'neutral' => {
@@ -144,46 +144,46 @@ const toggleExpand = (id: string) => {
     <UCard v-else>
       <UTable :data="datasets" :columns="columns">
         <template #datasetType-cell="{ row }">
-          <UBadge :color="typeBadgeColor((row as any).datasetType)" variant="subtle">
-            {{ typeLabel((row as any).datasetType) }}
+          <UBadge :color="typeBadgeColor(row.original.datasetType)" variant="subtle">
+            {{ typeLabel(row.original.datasetType) }}
           </UBadge>
         </template>
 
         <template #version-cell="{ row }">
-          <span class="font-mono text-sm">v{{ (row as any).version }}</span>
+          <span class="font-mono text-sm">v{{ row.original.version }}</span>
         </template>
 
         <template #status-cell="{ row }">
-          <UBadge :color="statusBadgeColor((row as any).status)" variant="subtle">
-            {{ (row as any).status }}
+          <UBadge :color="statusBadgeColor(row.original.status)" variant="subtle">
+            {{ row.original.status }}
           </UBadge>
         </template>
 
         <template #rowCount-cell="{ row }">
           <div>
-            <span class="font-medium">{{ (row as any).rowCount?.toLocaleString() || '—' }}</span>
-            <span v-if="(row as any).filteredCount && (row as any).filteredCount !== (row as any).rowCount" class="text-xs text-[var(--ui-text-muted)] ml-1">
-              ({{ (row as any).filteredCount?.toLocaleString() }} filtered)
+            <span class="font-medium">{{ row.original.rowCount?.toLocaleString() || '—' }}</span>
+            <span v-if="row.original.filteredCount && row.original.filteredCount !== row.original.rowCount" class="text-xs text-[var(--ui-text-muted)] ml-1">
+              ({{ row.original.filteredCount?.toLocaleString() }} filtered)
             </span>
           </div>
         </template>
 
         <template #fileSizeBytes-cell="{ row }">
-          <span class="text-sm">{{ formatFileSize((row as any).fileSizeBytes) }}</span>
+          <span class="text-sm">{{ formatFileSize(row.original.fileSizeBytes) }}</span>
         </template>
 
         <template #createdAt-cell="{ row }">
           <div class="flex items-center gap-2">
             <span class="text-sm text-[var(--ui-text-muted)]">
-              {{ new Date((row as any).createdAt).toLocaleDateString() }}
+              {{ new Date(row.original.createdAt).toLocaleDateString() }}
             </span>
             <UButton
               icon="i-lucide-chevron-down"
               variant="ghost"
               color="neutral"
               size="xs"
-              :class="{ 'rotate-180': expandedRow === (row as any).id }"
-              @click="toggleExpand((row as any).id)"
+              :class="{ 'rotate-180': expandedRow === row.original.id }"
+              @click="toggleExpand(row.original.id)"
             />
           </div>
         </template>

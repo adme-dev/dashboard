@@ -4,20 +4,23 @@ import type { AiTrainingKnowledge, TrainingKnowledgeType } from '~/types'
 const toast = useToast()
 
 // Filters
-const selectedType = ref<string>('')
+const selectedType = ref<string>('all')
 const selectedCategory = ref('')
-const approvedFilter = ref<string>('')
+const approvedFilter = ref<string>('all')
 
 // Pagination
 const page = ref(1)
 const pageSize = 20
 
 // Data fetching
+const queryType = computed(() => selectedType.value === 'all' ? '' : selectedType.value)
+const queryApproved = computed(() => approvedFilter.value === 'all' ? '' : approvedFilter.value)
+
 const { data, pending, refresh } = useFetch('/api/agency/ai/training/knowledge', {
   query: {
-    type: selectedType,
+    type: queryType,
     category: selectedCategory,
-    approved: approvedFilter,
+    approved: queryApproved,
     page,
     limit: pageSize,
   },
@@ -34,16 +37,16 @@ watch([selectedType, selectedCategory, approvedFilter], () => {
 
 // Table columns
 const columns = [
-  { key: 'title', label: 'Title' },
-  { key: 'knowledgeType', label: 'Type' },
-  { key: 'category', label: 'Category' },
-  { key: 'isApproved', label: 'Approved' },
-  { key: 'createdAt', label: 'Created' },
-  { key: 'actions', label: '' },
+  { accessorKey: 'title', header: 'Title' },
+  { accessorKey: 'knowledgeType', header: 'Type' },
+  { accessorKey: 'category', header: 'Category' },
+  { accessorKey: 'isApproved', header: 'Approved' },
+  { accessorKey: 'createdAt', header: 'Created' },
+  { accessorKey: 'actions', header: '' },
 ]
 
 const typeOptions = [
-  { label: 'All Types', value: '' },
+  { label: 'All Types', value: 'all' },
   { label: 'SOP', value: 'sop' },
   { label: 'Client Context', value: 'client_context' },
   { label: 'Q&A Pair', value: 'qa_pair' },
@@ -60,7 +63,7 @@ const typeFormOptions = [
 ]
 
 const approvedOptions = [
-  { label: 'All', value: '' },
+  { label: 'All', value: 'all' },
   { label: 'Approved', value: 'true' },
   { label: 'Pending', value: 'false' },
 ]
@@ -296,58 +299,58 @@ const submitUpload = async () => {
       <UTable :data="entries" :columns="columns">
         <template #title-cell="{ row }">
           <div class="max-w-xs">
-            <p class="font-medium truncate">{{ (row as any).title }}</p>
+            <p class="font-medium truncate">{{ row.original.title }}</p>
           </div>
         </template>
 
         <template #knowledgeType-cell="{ row }">
-          <UBadge :color="typeBadgeColor((row as any).knowledgeType)" variant="subtle">
-            {{ typeLabel((row as any).knowledgeType) }}
+          <UBadge :color="typeBadgeColor(row.original.knowledgeType)" variant="subtle">
+            {{ typeLabel(row.original.knowledgeType) }}
           </UBadge>
         </template>
 
         <template #category-cell="{ row }">
-          <span class="text-[var(--ui-text-muted)]">{{ (row as any).category || '—' }}</span>
+          <span class="text-[var(--ui-text-muted)]">{{ row.original.category || '—' }}</span>
         </template>
 
         <template #isApproved-cell="{ row }">
           <UBadge
-            :color="(row as any).isApproved ? 'success' : 'neutral'"
+            :color="row.original.isApproved ? 'success' : 'neutral'"
             variant="subtle"
           >
-            {{ (row as any).isApproved ? 'Approved' : 'Pending' }}
+            {{ row.original.isApproved ? 'Approved' : 'Pending' }}
           </UBadge>
         </template>
 
         <template #createdAt-cell="{ row }">
           <span class="text-sm text-[var(--ui-text-muted)]">
-            {{ new Date((row as any).createdAt).toLocaleDateString() }}
+            {{ new Date(row.original.createdAt).toLocaleDateString() }}
           </span>
         </template>
 
         <template #actions-cell="{ row }">
           <div class="flex items-center gap-1">
             <UButton
-              v-if="!(row as any).isApproved"
+              v-if="!row.original.isApproved"
               icon="i-lucide-check"
               variant="ghost"
               color="success"
               size="xs"
-              @click="approveEntry(row as any)"
+              @click="approveEntry(row.original)"
             />
             <UButton
               icon="i-lucide-edit"
               variant="ghost"
               color="neutral"
               size="xs"
-              @click="openEditModal(row as any)"
+              @click="openEditModal(row.original)"
             />
             <UButton
               icon="i-lucide-trash-2"
               variant="ghost"
               color="error"
               size="xs"
-              @click="confirmDelete(row as any)"
+              @click="confirmDelete(row.original)"
             />
           </div>
         </template>
@@ -379,27 +382,27 @@ const submitUpload = async () => {
 
           <div>
             <label class="block text-sm font-medium text-[var(--ui-text)] mb-1.5">Title</label>
-            <UInput v-model="form.title" placeholder="Entry title" />
+            <UInput v-model="form.title" placeholder="Entry title" class="w-full" />
           </div>
 
           <div>
             <label class="block text-sm font-medium text-[var(--ui-text)] mb-1.5">Content</label>
-            <UTextarea v-model="form.content" placeholder="Knowledge content..." :rows="4" />
+            <UTextarea v-model="form.content" placeholder="Knowledge content..." :rows="6" class="w-full" />
           </div>
 
           <div v-if="form.knowledgeType === 'qa_pair'">
             <label class="block text-sm font-medium text-[var(--ui-text)] mb-1.5">Answer</label>
-            <UTextarea v-model="form.answer" placeholder="Answer for Q&A pair..." :rows="3" />
+            <UTextarea v-model="form.answer" placeholder="Answer for Q&A pair..." :rows="5" class="w-full" />
           </div>
 
           <div>
             <label class="block text-sm font-medium text-[var(--ui-text)] mb-1.5">Category</label>
-            <UInput v-model="form.category" placeholder="e.g. onboarding, billing" />
+            <UInput v-model="form.category" placeholder="e.g. onboarding, billing" class="w-full" />
           </div>
 
           <div>
             <label class="block text-sm font-medium text-[var(--ui-text)] mb-1.5">Tags</label>
-            <UInput v-model="form.tags" placeholder="Comma-separated tags" />
+            <UInput v-model="form.tags" placeholder="Comma-separated tags" class="w-full" />
           </div>
 
           <div class="flex justify-end gap-2 pt-2">

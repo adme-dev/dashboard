@@ -1,6 +1,12 @@
 <script setup lang="ts">
-import type { Department, Task, BoardViewType, KanbanFilters, SortRule } from '~/types'
+import type { Task, BoardViewType, KanbanFilters, SortRule } from '~/types'
 import { useWorkflowKeyboardShortcuts } from '~/composables/useKeyboardShortcuts'
+import SubtaskList from '~/components/task/SubtaskList.vue'
+import TaskCommentThread from '~/components/task/CommentThread.vue'
+import TaskBillingPanel from '~/components/task/TaskBillingPanel.vue'
+import TaskChatPanel from '~/components/task/TaskChatPanel.vue'
+import TaskDetailsPanel from '~/components/task/TaskDetailsPanel.vue'
+import TaskTimePanel from '~/components/task/TaskTimePanel.vue'
 
 definePageMeta({
   title: 'Workflow Board'
@@ -15,18 +21,31 @@ const searchInputRef = ref<HTMLInputElement | null>(null)
 
 // Current view state
 const currentView = ref<BoardViewType>((route.query.view as BoardViewType) || 'kanban')
+const currentWorkspaceId = ref<string | undefined>(route.query.workspace as string)
 const currentDepartmentId = ref<string | undefined>(route.query.department as string)
 const currentFilters = ref<KanbanFilters>({})
 const currentSortConfig = ref<SortRule[]>([])
 const groupBy = ref<string | undefined>(undefined)
 
-// Fetch departments for sidebar
-const { data: departmentsData } = useLazyFetch('/api/agency/departments')
-const departments = computed(() => (departmentsData.value as Department[]) || [])
+// Fetch workspaces for sidebar
+const { data: workspacesData } = useLazyFetch('/api/agency/workspaces')
+const workspaces = computed(() => (workspacesData.value as any)?.workspaces || [])
 
-const selectedDepartment = computed(() =>
-  departments.value.find(d => d.id === currentDepartmentId.value)
+const selectedWorkspace = computed(() =>
+  workspaces.value.find((w: any) => w.id === currentWorkspaceId.value)
 )
+
+const sidebarTitle = computed(() => {
+  if (currentDepartmentId.value) {
+    // Find the board name within workspaces
+    for (const ws of workspaces.value) {
+      const board = ws.boards?.find((b: any) => b.id === currentDepartmentId.value)
+      if (board) return board.name
+    }
+  }
+  if (currentWorkspaceId.value) return selectedWorkspace.value?.name || 'Workspace'
+  return 'All Tasks'
+})
 
 // Fetch team members for assignee dropdown
 const { data: teamMembersData } = useLazyFetch('/api/agency/team-members', {
@@ -40,10 +59,11 @@ const { data: projectsData } = useLazyFetch('/api/agency/projects', {
 })
 const projects = computed(() => (projectsData.value as any[]) || [])
 
-// Fetch statuses based on selected department
+// Fetch statuses based on selected workspace/department
 const { data: statusesData } = useLazyFetch('/api/agency/statuses', {
   query: computed(() => ({
-    departmentId: currentDepartmentId.value
+    departmentId: currentDepartmentId.value,
+    workspaceId: !currentDepartmentId.value ? currentWorkspaceId.value : undefined
   }))
 })
 const statuses = computed(() => (statusesData.value as any[]) || [])
@@ -61,134 +81,80 @@ function refreshLabels() {
   refreshTags()
 }
 
-// Task detail modal
-const showTaskModal = ref(false)
-const selectedTask = ref<Task | null>(null)
+// Task detail slideover
+const showTaskPanel = ref(false)
+const selectedTaskId = ref<string | null>(null)
+const activeTab = ref('updates')
+const showChat = ref(false)
+
+const taskPanelTabs = [
+  { id: 'updates', label: 'Updates' },
+  { id: 'subtasks', label: 'Subtasks' },
+  { id: 'details', label: 'Details' },
+  { id: 'time-billing', label: 'Time & Billing' },
+  { id: 'ai', label: 'AI', icon: 'i-lucide-sparkles' },
+]
+
+const { data: taskData, execute: fetchTask } = useFetch<Task>(() => `/api/agency/tasks/${selectedTaskId.value!}`, { immediate: false, watch: false })
+const selectedTask = computed(() => taskData.value || null)
+
+// Keyboard nav highlighted task (separate from detail panel selectedTask)
+const navTask = ref<Task | null>(null)
+
+// AI assistant panel
+const showAiPanel = ref(false)
+
+// Derive context names for AI panel
+const currentBoardName = computed(() => {
+  if (!currentDepartmentId.value) return undefined
+  for (const ws of workspaces.value) {
+    const board = ws.boards?.find((b: any) => b.id === currentDepartmentId.value)
+    if (board) return board.name
+  }
+  return undefined
+})
 
 // Create task modal
 const showCreateModal = ref(false)
 const createTaskStatusId = ref<string | undefined>()
 const createTaskDate = ref<string | undefined>()
-const creatingTask = ref(false)
 
-// Create task form state
-const newTask = ref({
-  title: '',
-  description: '',
-  projectId: undefined as string | undefined,
-  statusId: undefined as string | undefined,
-  priority: 'medium' as 'urgent' | 'high' | 'medium' | 'low',
-  assigneeId: undefined as string | undefined,
-  dueDate: '',
-  startDate: '',
-  estimatedHours: undefined as number | undefined,
-  labels: [] as string[]
-})
+// Derive departmentId for create dialog
+const createDialogDepartmentId = computed(() =>
+  currentDepartmentId.value
+  || selectedWorkspace.value?.boards?.[0]?.id
+  || workspaces.value[0]?.boards?.[0]?.id
+)
 
-// Reset form when modal opens
-watch(showCreateModal, (isOpen) => {
-  if (isOpen) {
-    newTask.value = {
-      title: '',
-      description: '',
-      projectId: undefined,
-      statusId: createTaskStatusId.value,
-      priority: 'medium',
-      assigneeId: undefined,
-      dueDate: createTaskDate.value || '',
-      startDate: '',
-      estimatedHours: undefined,
-      labels: []
-    }
-  }
-})
-
-// Priority options
-const priorityOptions = [
-  { label: 'Urgent', value: 'urgent' },
-  { label: 'High', value: 'high' },
-  { label: 'Medium', value: 'medium' },
-  { label: 'Low', value: 'low' }
-]
-
-// Toggle label selection
-function toggleLabel(labelId: string) {
-  const index = newTask.value.labels.indexOf(labelId)
-  if (index === -1) {
-    newTask.value.labels.push(labelId)
-  } else {
-    newTask.value.labels.splice(index, 1)
-  }
-}
-
-// Create task handler
-async function createTask() {
-  if (!newTask.value.title.trim()) {
-    toast.add({
-      title: 'Task title is required',
-      color: 'error'
-    })
-    return
-  }
-
-  // Must have a department selected or use first available
-  const departmentId = currentDepartmentId.value || departments.value[0]?.id
-  if (!departmentId) {
-    toast.add({
-      title: 'Please select a department',
-      color: 'error'
-    })
-    return
-  }
-
-  creatingTask.value = true
-
-  try {
-    await $fetch('/api/agency/tasks', {
-      method: 'POST',
-      body: {
-        departmentId,
-        title: newTask.value.title.trim(),
-        description: newTask.value.description?.trim() || undefined,
-        projectId: newTask.value.projectId || undefined,
-        statusId: newTask.value.statusId || undefined,
-        priority: newTask.value.priority,
-        assigneeId: newTask.value.assigneeId || undefined,
-        dueDate: newTask.value.dueDate || undefined,
-        startDate: newTask.value.startDate || undefined,
-        estimatedHours: newTask.value.estimatedHours || undefined,
-        labels: newTask.value.labels.length > 0 ? newTask.value.labels : undefined
-      }
-    })
-
-    toast.add({
-      title: 'Task created successfully',
-      color: 'success'
-    })
-
-    showCreateModal.value = false
-    refreshBoard()
-  } catch (error: any) {
-    toast.add({
-      title: error?.data?.statusMessage || 'Failed to create task',
-      color: 'error'
-    })
-  } finally {
-    creatingTask.value = false
-  }
+function onTaskCreated() {
+  refreshBoard()
 }
 
 // Save view modal
 const showSaveViewModal = ref(false)
 const saveViewName = ref('')
 
-// Handle department selection
-function selectDepartment(departmentId: string | undefined) {
-  currentDepartmentId.value = departmentId
+// Handle workspace/board selection
+function selectWorkspace(workspaceId: string | undefined) {
+  currentWorkspaceId.value = workspaceId
+  currentDepartmentId.value = undefined
   router.push({
     query: {
       ...route.query,
-      department: departmentId || undefined
+      workspace: workspaceId || undefined,
+      department: undefined
+    }
+  })
+}
+
+function selectBoard(boardId: string, workspaceId: string) {
+  currentWorkspaceId.value = undefined
+  currentDepartmentId.value = boardId
+  router.push({
+    query: {
+      ...route.query,
+      workspace: undefined,
+      department: boardId
     }
   })
 }
@@ -205,9 +171,15 @@ function changeView(view: BoardViewType) {
 }
 
 // Handle task click
-function openTask(task: Task) {
-  selectedTask.value = task
-  showTaskModal.value = true
+async function openTask(task: Task) {
+  showTaskPanel.value = false
+  selectedTaskId.value = null
+  await nextTick()
+  selectedTaskId.value = task.id
+  activeTab.value = 'updates'
+  showChat.value = false
+  showTaskPanel.value = true
+  await fetchTask()
 }
 
 // Handle create task
@@ -292,7 +264,7 @@ const { showHelp: showShortcutsHelp, shortcuts, formatShortcut, selectedTaskInde
     } else {
       selectedTaskIndex.value--
     }
-    selectedTask.value = getTaskAtNavPosition(selectedColumnIndex.value, selectedTaskIndex.value)
+    navTask.value = getTaskAtNavPosition(selectedColumnIndex.value, selectedTaskIndex.value)
   },
   onNavigateDown: () => {
     if (currentView.value !== 'kanban' || !boardRef.value) return
@@ -305,7 +277,7 @@ const { showHelp: showShortcutsHelp, shortcuts, formatShortcut, selectedTaskInde
     } else {
       selectedTaskIndex.value++
     }
-    selectedTask.value = getTaskAtNavPosition(selectedColumnIndex.value, selectedTaskIndex.value)
+    navTask.value = getTaskAtNavPosition(selectedColumnIndex.value, selectedTaskIndex.value)
   },
   onNavigateLeft: () => {
     if (currentView.value !== 'kanban' || !boardRef.value) return
@@ -323,10 +295,10 @@ const { showHelp: showShortcutsHelp, shortcuts, formatShortcut, selectedTaskInde
     const taskCount = boardRef.value.getTaskCount?.(selectedColumnIndex.value) || 0
     if (taskCount > 0) {
       selectedTaskIndex.value = Math.min(selectedTaskIndex.value, taskCount - 1)
-      selectedTask.value = getTaskAtNavPosition(selectedColumnIndex.value, selectedTaskIndex.value)
+      navTask.value = getTaskAtNavPosition(selectedColumnIndex.value, selectedTaskIndex.value)
     } else {
       selectedTaskIndex.value = -1
-      selectedTask.value = null
+      navTask.value = null
     }
   },
   onNavigateRight: () => {
@@ -345,20 +317,20 @@ const { showHelp: showShortcutsHelp, shortcuts, formatShortcut, selectedTaskInde
     const taskCount = boardRef.value.getTaskCount?.(selectedColumnIndex.value) || 0
     if (taskCount > 0) {
       selectedTaskIndex.value = Math.min(selectedTaskIndex.value, taskCount - 1)
-      selectedTask.value = getTaskAtNavPosition(selectedColumnIndex.value, selectedTaskIndex.value)
+      navTask.value = getTaskAtNavPosition(selectedColumnIndex.value, selectedTaskIndex.value)
     } else {
       selectedTaskIndex.value = -1
-      selectedTask.value = null
+      navTask.value = null
     }
   },
   onOpenTask: () => {
-    if (selectedTask.value) {
-      showTaskModal.value = true
+    if (navTask.value) {
+      openTask(navTask.value)
     }
   },
   onCloseModal: () => {
-    if (showTaskModal.value) {
-      showTaskModal.value = false
+    if (showTaskPanel.value) {
+      showTaskPanel.value = false
     } else if (showCreateModal.value) {
       showCreateModal.value = false
     } else if (showSaveViewModal.value) {
@@ -373,48 +345,84 @@ const { showHelp: showShortcutsHelp, shortcuts, formatShortcut, selectedTaskInde
 </script>
 
 <template>
-  <div class="flex-1 min-w-0 flex">
-    <!-- Department Sidebar -->
+  <div class="flex-1 min-w-0 flex h-svh max-h-svh overflow-hidden">
+    <!-- Workspace Sidebar -->
     <UDashboardPanel
-      :width="240"
       collapsible
+      class="!flex-none !w-52 !max-h-svh overflow-hidden"
     >
-      <UDashboardNavbar title="Departments" />
+      <UDashboardNavbar title="Workspaces" />
 
-      <UNavigationMenu
-        :items="[
-          [{
-            label: 'All Tasks',
-            icon: 'i-lucide-layout-grid',
-            active: !currentDepartmentId,
-            click: () => selectDepartment(undefined)
-          }],
-          departments.map(dept => ({
-            label: dept.name,
-            icon: 'i-lucide-' + (dept.icon || 'folder'),
-            active: currentDepartmentId === dept.id,
-            click: () => selectDepartment(dept.id),
-            badge: dept.activeTasks ? String(dept.activeTasks) : undefined
-          }))
-        ]"
-        orientation="vertical"
-        class="p-2"
-      />
+      <div class="flex-1 overflow-y-auto">
+        <nav class="p-2 space-y-1">
+          <!-- All Tasks -->
+          <button
+            class="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors"
+            :class="!currentWorkspaceId && !currentDepartmentId ? 'bg-primary/10 text-primary font-medium' : 'text-muted hover:text-default hover:bg-elevated/50'"
+            @click="selectWorkspace(undefined)"
+          >
+            <UIcon name="i-lucide-layout-grid" class="w-4 h-4 flex-shrink-0" />
+            <span class="truncate">All Tasks</span>
+          </button>
+
+          <!-- Workspace groups -->
+          <div v-for="ws in workspaces" :key="ws.id" class="mt-2">
+            <button
+              class="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors"
+              :class="currentWorkspaceId === ws.id ? 'bg-primary/10 text-primary font-medium' : 'text-default hover:bg-elevated/50'"
+              @click="selectWorkspace(ws.id)"
+            >
+              <UIcon :name="'i-lucide-' + (ws.icon || 'briefcase')" class="w-4 h-4 flex-shrink-0" />
+              <span class="truncate flex-1 text-left">{{ ws.name }}</span>
+              <span v-if="ws.stats?.tasks" class="text-xs text-muted">{{ ws.stats.tasks }}</span>
+            </button>
+
+            <!-- Boards under workspace (shown when workspace is selected) -->
+            <div v-if="currentWorkspaceId === ws.id && ws.boards?.length" class="ml-4 mt-1 space-y-0.5">
+              <button
+                v-for="board in ws.boards"
+                :key="board.id"
+                class="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded transition-colors"
+                :class="currentDepartmentId === board.id ? 'bg-primary/10 text-primary font-medium' : 'text-muted hover:text-default hover:bg-elevated/50'"
+                @click="selectBoard(board.id, ws.id)"
+              >
+                <span
+                  class="w-2 h-2 rounded-sm flex-shrink-0"
+                  :style="{ backgroundColor: board.color || ws.color || '#579BFC' }"
+                />
+                <span class="truncate flex-1 text-left">{{ board.name }}</span>
+                <span v-if="board.taskCount" class="text-xs text-muted">{{ board.taskCount }}</span>
+              </button>
+            </div>
+          </div>
+        </nav>
+      </div>
     </UDashboardPanel>
 
     <!-- Main Board Panel -->
-    <UDashboardPanel>
-      <UDashboardNavbar :title="selectedDepartment?.name || 'All Tasks'">
+    <UDashboardPanel class="!max-h-svh overflow-hidden">
+      <UDashboardNavbar :title="sidebarTitle">
         <template #leading>
           <UDashboardSidebarCollapse />
         </template>
 
         <template #right>
-          <UButton
-            icon="i-lucide-plus"
-            label="New Task"
-            @click="openCreateTask()"
-          />
+          <div class="flex items-center gap-2">
+            <UTooltip text="AI Assistant">
+              <UButton
+                icon="i-lucide-brain"
+                :variant="showAiPanel ? 'soft' : 'ghost'"
+                :color="showAiPanel ? 'primary' : 'neutral'"
+                size="sm"
+                @click="showAiPanel = !showAiPanel"
+              />
+            </UTooltip>
+            <UButton
+              icon="i-lucide-plus"
+              label="New Task"
+              @click="openCreateTask()"
+            />
+          </div>
         </template>
       </UDashboardNavbar>
 
@@ -435,284 +443,194 @@ const { showHelp: showShortcutsHelp, shortcuts, formatShortcut, selectedTaskInde
       </UDashboardToolbar>
 
       <!-- Board Content -->
-      <template #body>
-        <div class="h-full">
-          <!-- Kanban View -->
-          <WorkflowKanbanBoard
-            v-if="currentView === 'kanban'"
-            ref="boardRef"
-            :department-id="currentDepartmentId"
-            :filters="currentFilters"
-            :selected-task-id="selectedTask?.id"
-            :available-labels="labels"
-            @task-click="openTask"
-            @create-task="openCreateTask"
-            @task-labels-update="refreshBoard"
-            @refresh-labels="refreshLabels"
-          />
+      <div class="flex-1 overflow-y-auto">
+        <!-- Kanban View -->
+        <WorkflowKanbanBoard
+          v-if="currentView === 'kanban'"
+          ref="boardRef"
+          :department-id="currentDepartmentId"
+          :workspace-id="currentWorkspaceId"
+          :filters="currentFilters"
+          :selected-task-id="navTask?.id || selectedTaskId"
+          :available-labels="labels"
+          @task-click="openTask"
+          @create-task="openCreateTask"
+          @task-labels-update="refreshBoard"
+          @refresh-labels="refreshLabels"
+        />
 
-          <!-- Table View -->
-          <WorkflowTableView
-            v-else-if="currentView === 'table'"
-            ref="boardRef"
-            :department-id="currentDepartmentId"
-            :filters="currentFilters"
-            :sort-config="currentSortConfig"
-            :group-by="groupBy"
-            @task-click="openTask"
-            @create-task="openCreateTask()"
-            @sort-change="currentSortConfig = $event"
-          />
+        <!-- Table View -->
+        <WorkflowTableView
+          v-else-if="currentView === 'table'"
+          ref="boardRef"
+          :department-id="currentDepartmentId"
+          :workspace-id="currentWorkspaceId"
+          :filters="currentFilters"
+          :sort-config="currentSortConfig"
+          :group-by="groupBy"
+          @task-click="openTask"
+          @create-task="openCreateTask()"
+          @sort-change="currentSortConfig = $event"
+        />
 
-          <!-- Timeline View -->
-          <WorkflowTimelineView
-            v-else-if="currentView === 'timeline'"
-            :department-id="currentDepartmentId"
-            :filters="currentFilters"
-            @task-click="openTask"
-          />
+        <!-- Timeline View -->
+        <WorkflowTimelineView
+          v-else-if="currentView === 'timeline'"
+          :department-id="currentDepartmentId"
+          :workspace-id="currentWorkspaceId"
+          :filters="currentFilters"
+          @task-click="openTask"
+        />
 
-          <!-- Calendar View -->
-          <WorkflowCalendarView
-            v-else-if="currentView === 'calendar'"
-            :department-id="currentDepartmentId"
-            :filters="currentFilters"
-            @task-click="openTask"
-            @create-task="openCreateTaskWithDate"
-          />
-        </div>
-      </template>
+        <!-- Calendar View -->
+        <WorkflowCalendarView
+          v-else-if="currentView === 'calendar'"
+          :department-id="currentDepartmentId"
+          :workspace-id="currentWorkspaceId"
+          :filters="currentFilters"
+          @task-click="openTask"
+          @create-task="openCreateTaskWithDate"
+        />
+      </div>
     </UDashboardPanel>
 
-    <!-- Task Detail Modal -->
-    <UModal v-model:open="showTaskModal">
-      <template #content>
-        <UCard v-if="selectedTask" class="w-full max-w-2xl">
-          <template #header>
-            <div class="flex items-center justify-between">
-              <h3 class="text-lg font-semibold">{{ selectedTask.title }}</h3>
-              <UButton
-                icon="i-lucide-x"
-                variant="ghost"
-                size="sm"
-                @click="showTaskModal = false"
-              />
-            </div>
-          </template>
+    <!-- AI Assistant Panel -->
+    <Transition
+      enter-active-class="transition-all duration-200 ease-out"
+      enter-from-class="opacity-0 translate-x-4"
+      enter-to-class="opacity-100 translate-x-0"
+      leave-active-class="transition-all duration-150 ease-in"
+      leave-from-class="opacity-100 translate-x-0"
+      leave-to-class="opacity-0 translate-x-4"
+    >
+      <div v-if="showAiPanel" class="w-[340px] flex-shrink-0 max-h-svh overflow-hidden">
+        <WorkflowAiPanel
+          :workspace-id="currentWorkspaceId"
+          :workspace-name="selectedWorkspace?.name"
+          :department-id="currentDepartmentId"
+          :department-name="currentBoardName"
+          @close="showAiPanel = false"
+        />
+      </div>
+    </Transition>
 
-          <div class="space-y-4">
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <label class="text-sm text-muted">Status</label>
-                <UBadge
-                  v-if="selectedTask.status"
-                  :style="{ backgroundColor: selectedTask.status.color + '20', color: selectedTask.status.color }"
-                  variant="subtle"
-                >
-                  {{ selectedTask.status.name }}
-                </UBadge>
-              </div>
-              <div>
-                <label class="text-sm text-muted">Priority</label>
-                <UBadge :color="selectedTask.priority === 'urgent' ? 'error' : selectedTask.priority === 'high' ? 'warning' : 'neutral'">
-                  {{ selectedTask.priority }}
-                </UBadge>
-              </div>
-              <div>
-                <label class="text-sm text-muted">Assignee</label>
-                <p>{{ selectedTask.assignee?.name || 'Unassigned' }}</p>
-              </div>
-              <div>
-                <label class="text-sm text-muted">Due Date</label>
-                <p>{{ selectedTask.dueDate ? new Date(selectedTask.dueDate).toLocaleDateString() : 'Not set' }}</p>
-              </div>
-            </div>
+    <!-- Task Slideover -->
+    <USlideover
+      v-model:open="showTaskPanel"
+      side="right"
+      :ui="{ content: 'w-[90vw] sm:w-[70vw] md:w-[50vw] lg:w-[33vw] min-w-[400px] max-w-[800px]' }"
+    >
+      <template #header>
+        <div v-if="selectedTask" class="flex items-center justify-between w-full">
+          <div class="flex items-center gap-2">
+            <UBadge
+              v-if="selectedTask.status"
+              :style="{ backgroundColor: selectedTask.status.color + '20', color: selectedTask.status.color }"
+              variant="subtle"
+              size="sm"
+            >
+              {{ selectedTask.status.name }}
+            </UBadge>
+            <UBadge
+              v-if="selectedTask.priority"
+              :color="selectedTask.priority === 'urgent' ? 'error' : selectedTask.priority === 'high' ? 'warning' : 'neutral'"
+              size="sm"
+            >
+              {{ selectedTask.priority }}
+            </UBadge>
+          </div>
+          <div class="flex items-center gap-1">
+            <UButton
+              icon="i-lucide-message-circle"
+              :variant="showChat ? 'soft' : 'ghost'"
+              :color="showChat ? 'primary' : 'neutral'"
+              size="xs"
+              @click="showChat = !showChat"
+            />
+          </div>
+        </div>
+      </template>
 
-            <div v-if="selectedTask.description">
-              <label class="text-sm text-muted">Description</label>
-              <p class="mt-1">{{ selectedTask.description }}</p>
-            </div>
-
-            <div v-if="selectedTask.labels?.length">
-              <label class="text-sm text-muted">Labels</label>
-              <div class="flex flex-wrap gap-1 mt-1">
-                <UBadge
-                  v-for="label in selectedTask.labels"
-                  :key="label.id"
-                  :style="{ backgroundColor: label.color + '20', color: label.color }"
-                  variant="subtle"
-                  size="sm"
-                >
-                  {{ label.name }}
-                </UBadge>
-              </div>
-            </div>
+      <template #body>
+        <div v-if="selectedTask" class="h-full flex flex-col">
+          <div class="mb-4">
+            <h2 class="text-lg font-semibold leading-tight">{{ selectedTask.title }}</h2>
+            <p v-if="selectedTask.assignee" class="text-sm text-muted mt-1">
+              Assigned to {{ selectedTask.assignee.name }}
+            </p>
           </div>
 
-          <template #footer>
-            <div class="flex justify-end gap-2">
-              <UButton variant="ghost" @click="showTaskModal = false">
-                Close
-              </UButton>
-              <UButton :to="`/agency/tasks/${selectedTask.id}`">
-                View Details
-              </UButton>
-            </div>
-          </template>
-        </UCard>
-      </template>
-    </UModal>
+          <!-- Chat Overlay (replaces tabs when active) -->
+          <div v-if="showChat" class="flex-1 overflow-hidden">
+            <TaskChatPanel v-if="selectedTaskId" :task-id="selectedTaskId" />
+          </div>
 
-    <!-- Create Task Modal -->
-    <UModal v-model:open="showCreateModal">
-      <template #content>
-        <UCard class="w-full max-w-lg">
-          <template #header>
-            <div class="flex items-center justify-between">
-              <h3 class="text-lg font-semibold">Create Task</h3>
-              <UButton
-                icon="i-lucide-x"
-                variant="ghost"
-                size="sm"
-                @click="showCreateModal = false"
-              />
-            </div>
-          </template>
-
-          <form class="space-y-4" @submit.prevent="createTask">
-            <!-- Title (Required) -->
-            <UFormField label="Title" required>
-              <UInput
-                v-model="newTask.title"
-                placeholder="Enter task title..."
-                autofocus
-              />
-            </UFormField>
-
-            <!-- Description -->
-            <UFormField label="Description">
-              <UTextarea
-                v-model="newTask.description"
-                placeholder="Task description..."
-                :rows="3"
-              />
-            </UFormField>
-
-            <!-- Status & Priority (Row) -->
-            <div class="grid grid-cols-2 gap-4">
-              <UFormField label="Status">
-                <USelectMenu
-                  v-model="newTask.statusId"
-                  :items="statuses.map(s => ({ label: s.name, value: s.id, color: s.color }))"
-                  placeholder="Select status..."
-                  value-key="value"
-                >
-                  <template #item="{ item }">
-                    <span
-                      class="w-2 h-2 rounded-full mr-2"
-                      :style="{ backgroundColor: item.color }"
-                    />
-                    {{ item.label }}
-                  </template>
-                </USelectMenu>
-              </UFormField>
-
-              <UFormField label="Priority">
-                <USelectMenu
-                  v-model="newTask.priority"
-                  :items="priorityOptions"
-                  value-key="value"
-                />
-              </UFormField>
-            </div>
-
-            <!-- Assignee & Project (Row) -->
-            <div class="grid grid-cols-2 gap-4">
-              <UFormField label="Assignee">
-                <USelectMenu
-                  v-model="newTask.assigneeId"
-                  :items="teamMembers.map((m: any) => ({ label: m.name, value: m.id }))"
-                  placeholder="Unassigned"
-                  value-key="value"
-                />
-              </UFormField>
-
-              <UFormField label="Project">
-                <USelectMenu
-                  v-model="newTask.projectId"
-                  :items="projects.map(p => ({ label: p.name, value: p.id }))"
-                  placeholder="No project"
-                  value-key="value"
-                />
-              </UFormField>
-            </div>
-
-            <!-- Due Date & Start Date (Row) -->
-            <div class="grid grid-cols-2 gap-4">
-              <UFormField label="Due Date">
-                <UInput
-                  v-model="newTask.dueDate"
-                  type="date"
-                />
-              </UFormField>
-
-              <UFormField label="Start Date">
-                <UInput
-                  v-model="newTask.startDate"
-                  type="date"
-                />
-              </UFormField>
-            </div>
-
-            <!-- Estimated Hours -->
-            <UFormField label="Estimated Hours">
-              <UInput
-                v-model.number="newTask.estimatedHours"
-                type="number"
-                placeholder="0"
-                :min="0"
-                :step="0.5"
-              />
-            </UFormField>
-
-            <!-- Labels -->
-            <UFormField v-if="labels.length > 0" label="Labels">
-              <div class="flex flex-wrap gap-2">
-                <button
-                  v-for="label in labels"
-                  :key="label.id"
-                  type="button"
-                  class="px-2 py-1 text-xs rounded-full border transition-all"
-                  :class="newTask.labels.includes(label.id)
-                    ? 'border-transparent'
-                    : 'border-gray-200 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800'"
-                  :style="newTask.labels.includes(label.id)
-                    ? { backgroundColor: label.color + '30', color: label.color, borderColor: label.color }
-                    : {}"
-                  @click="toggleLabel(label.id)"
-                >
-                  {{ label.name }}
-                </button>
-              </div>
-            </UFormField>
-          </form>
-
-          <template #footer>
-            <div class="flex justify-end gap-2">
-              <UButton variant="ghost" @click="showCreateModal = false">
-                Cancel
-              </UButton>
-              <UButton
-                :loading="creatingTask"
-                @click="createTask"
+          <!-- Tab Interface -->
+          <template v-else>
+            <div class="flex items-center border-b -mx-4 px-4 mb-4">
+              <button
+                v-for="tab in taskPanelTabs"
+                :key="tab.id"
+                class="px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px flex items-center gap-1"
+                :class="activeTab === tab.id ? 'border-primary text-primary' : 'border-transparent text-muted hover:text-default'"
+                @click="activeTab = tab.id"
               >
-                Create Task
-              </UButton>
+                <UIcon v-if="tab.icon" :name="tab.icon" class="w-3.5 h-3.5" />
+                {{ tab.label }}
+              </button>
+            </div>
+
+            <div class="flex-1 overflow-auto">
+              <template v-if="activeTab === 'updates'">
+                <TaskCommentThread
+                  v-if="selectedTaskId"
+                  :task-id="selectedTaskId"
+                  placeholder="Write an update and mention others with @"
+                />
+              </template>
+
+              <div v-else-if="activeTab === 'subtasks'" class="px-1">
+                <SubtaskList v-if="selectedTaskId" :task-id="selectedTaskId" />
+              </div>
+
+              <div v-else-if="activeTab === 'details'">
+                <TaskDetailsPanel v-if="selectedTaskId" :task-id="selectedTaskId" />
+              </div>
+
+              <div v-else-if="activeTab === 'time-billing'" class="space-y-6">
+                <TaskTimePanel v-if="selectedTaskId" :task-id="selectedTaskId" />
+                <hr class="border-default" />
+                <TaskBillingPanel v-if="selectedTaskId" :task-id="selectedTaskId" />
+              </div>
+
+              <div v-else-if="activeTab === 'ai'">
+                <WorkflowTaskAiAssistant
+                  v-if="selectedTaskId"
+                  :task-id="selectedTaskId"
+                  :task="selectedTask"
+                  @task-updated="fetchTask()"
+                />
+              </div>
             </div>
           </template>
-        </UCard>
+        </div>
       </template>
-    </UModal>
+    </USlideover>
+
+    <!-- Create Task Dialog -->
+    <WorkflowTaskCreateDialog
+      v-model:open="showCreateModal"
+      :statuses="statuses"
+      :team-members="teamMembers"
+      :projects="projects"
+      :labels="labels"
+      :department-id="createDialogDepartmentId"
+      :workspace-id="currentWorkspaceId"
+      :board-name="currentBoardName"
+      :initial-status-id="createTaskStatusId"
+      :initial-date="createTaskDate"
+      @created="onTaskCreated"
+    />
 
     <!-- Save View Modal -->
     <UModal v-model:open="showSaveViewModal">

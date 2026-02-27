@@ -46,7 +46,7 @@ export default defineEventHandler(async (event) => {
       // Update approval status to cancelled
       await client.query(`
         UPDATE task_approvals
-        SET status = 'cancelled', updated_at = NOW()
+        SET status = 'cancelled', completed_at = NOW()
         WHERE id = $1
       `, [approval.id])
 

@@ -64,7 +64,7 @@ export default defineEventHandler(async (event) => {
     const steps = await queryRows(`
       SELECT * FROM approval_workflow_steps
       WHERE workflow_id = $1
-      ORDER BY step_number
+      ORDER BY step_order
     `, [body.workflowId])
 
     if (steps.length === 0) {
@@ -75,12 +75,12 @@ export default defineEventHandler(async (event) => {
     }
 
     const result = await transaction(async (client) => {
-      // Create approval request
+      // Create approval request — set current_step_id to first step
       const approvalResult = await client.query(`
-        INSERT INTO task_approvals (task_id, workflow_id, requested_by, current_step_number, status)
-        VALUES ($1, $2, $3, 1, 'pending')
+        INSERT INTO task_approvals (task_id, workflow_id, current_step_id, status)
+        VALUES ($1, $2, $3, 'pending')
         RETURNING *
-      `, [id, body.workflowId, body.requestedBy || null])
+      `, [id, body.workflowId, steps[0].id])
 
       const approval = approvalResult.rows[0]
 
@@ -103,7 +103,7 @@ export default defineEventHandler(async (event) => {
       // Find all users with the required role
       const approvers = await queryRows(`
         SELECT id FROM team_members
-        WHERE role = $1 AND status = 'active'
+        WHERE role = $1 AND is_active = true
       `, [firstStep.approver_role])
 
       for (const approver of approvers) {
@@ -112,7 +112,7 @@ export default defineEventHandler(async (event) => {
           taskId: id,
           taskTitle: task.title,
           requesterId: body.requestedBy || '',
-          stepName: firstStep.step_name
+          stepName: firstStep.name
         }).catch(err => console.error('Failed to send approval request notification:', err))
       }
     }
@@ -123,14 +123,14 @@ export default defineEventHandler(async (event) => {
       workflowId: result.workflow_id,
       workflowName: workflow.name,
       status: result.status,
-      currentStepNumber: result.current_step_number,
+      currentStepId: result.current_step_id,
       createdAt: result.created_at,
       steps: steps.map(s => ({
         stepId: s.id,
-        stepNumber: s.step_number,
-        stepName: s.step_name,
+        stepNumber: s.step_order,
+        stepName: s.name,
         approverRole: s.approver_role,
-        isRequired: s.is_required,
+        isRequired: !s.can_skip,
       })),
     }
   } catch (error: any) {

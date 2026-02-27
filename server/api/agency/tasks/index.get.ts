@@ -21,6 +21,12 @@ export default defineEventHandler(async (event) => {
     idx++
   }
 
+  if (query.workspaceId) {
+    conditions.push(`t.department_id IN (SELECT id FROM departments WHERE workspace_id = $${idx})`)
+    params.push(query.workspaceId)
+    idx++
+  }
+
   if (query.projectId) {
     conditions.push(`t.project_id = $${idx}`)
     params.push(query.projectId)

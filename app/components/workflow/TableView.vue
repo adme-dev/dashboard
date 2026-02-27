@@ -3,6 +3,7 @@ import type { Task, TaskStatus, KanbanFilters, TaskPriority, SortRule, GlobalTag
 
 const props = defineProps<{
   departmentId?: string
+  workspaceId?: string
   projectId?: string
   filters?: KanbanFilters
   sortConfig?: SortRule[]
@@ -121,10 +122,15 @@ const bulkUpdateAssignee = async (assigneeId: string | null) => {
   }
 }
 
+const showDeleteConfirm = ref(false)
+
 const bulkDelete = async () => {
   if (selectedTaskIds.value.size === 0) return
-  if (!confirm(`Are you sure you want to delete ${selectedTaskIds.value.size} tasks? This cannot be undone.`)) return
+  showDeleteConfirm.value = true
+}
 
+const confirmBulkDelete = async () => {
+  showDeleteConfirm.value = false
   bulkActionLoading.value = true
   try {
     await $fetch('/api/agency/tasks/bulk', {
@@ -147,6 +153,7 @@ const bulkDelete = async () => {
 const { data: tasksData, pending: tasksPending, refresh: refreshTasks } = useLazyFetch('/api/agency/tasks', {
   query: computed(() => ({
     departmentId: props.departmentId,
+    workspaceId: !props.departmentId ? props.workspaceId : undefined,
     projectId: props.projectId,
     assigneeId: props.filters?.assigneeId,
     priority: props.filters?.priority,
@@ -160,7 +167,8 @@ const { data: tasksData, pending: tasksPending, refresh: refreshTasks } = useLaz
 // Fetch statuses for status column
 const { data: statusesData } = useLazyFetch('/api/agency/statuses', {
   query: computed(() => ({
-    departmentId: props.departmentId
+    departmentId: props.departmentId,
+    workspaceId: !props.departmentId ? props.workspaceId : undefined
   }))
 })
 
@@ -652,5 +660,20 @@ defineExpose({ refreshTasks })
         </div>
       </div>
     </template>
+    <!-- Delete Confirmation Modal -->
+    <UModal v-model:open="showDeleteConfirm">
+      <template #content>
+        <div class="p-6">
+          <h3 class="text-lg font-semibold mb-2">Delete Tasks</h3>
+          <p class="text-muted mb-6">
+            Are you sure you want to delete {{ selectedCount }} task{{ selectedCount !== 1 ? 's' : '' }}? This cannot be undone.
+          </p>
+          <div class="flex justify-end gap-3">
+            <UButton variant="outline" @click="showDeleteConfirm = false">Cancel</UButton>
+            <UButton color="error" @click="confirmBulkDelete">Delete</UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

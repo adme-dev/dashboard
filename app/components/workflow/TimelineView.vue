@@ -3,6 +3,7 @@ import type { Task, KanbanFilters, TaskPriority } from '~/types'
 
 const props = defineProps<{
   departmentId?: string
+  workspaceId?: string
   projectId?: string
   filters?: KanbanFilters
 }>()
@@ -27,15 +28,14 @@ const showDependencies = ref(true)
 const timelineContainer = ref<HTMLElement | null>(null)
 
 // Fetch tasks
-const { data: tasksData, pending: tasksPending, refresh: refreshTasks } = useLazyFetch('/api/agency/tasks', {
+const { data: tasksData, pending: tasksPending, refresh: refreshTasks } = useLazyFetch('/api/agency/tasks/timeline', {
   query: computed(() => ({
     departmentId: props.departmentId,
+    workspaceId: !props.departmentId ? props.workspaceId : undefined,
     projectId: props.projectId,
-    assigneeId: props.filters?.assigneeId,
-    priority: props.filters?.priority,
-    search: props.filters?.search,
-    includeCompleted: props.filters?.showCompleted ?? false,
-    limit: 200
+    startDate: startDate.value.toISOString().split('T')[0],
+    endDate: endDate.value.toISOString().split('T')[0],
+    includeCompleted: props.filters?.showCompleted ? 'true' : 'false'
   }))
 })
 
