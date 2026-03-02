@@ -87,7 +87,7 @@ export default defineNuxtConfig({
       nodeCompat: true
     },
     rollupConfig: {
-      external: ['@react-email/render']
+      external: ['@react-email/render', '@cloudflare/puppeteer', 'puppeteer', 'gifenc', 'pngjs']
     }
   },
 
@@ -105,6 +105,10 @@ export default defineNuxtConfig({
 
   typescript: {
     strict: false
+  },
+
+  colorMode: {
+    preference: 'dark'
   },
 
   compatibilityDate: '2024-07-11',

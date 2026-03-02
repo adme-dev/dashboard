@@ -50,7 +50,7 @@ binding = "BROWSER"
 APP_NAME = "XeroFlow Agency"
 NODE_VERSION = "22"
 EMAIL_FROM = "notification@adme.net.au"
-APP_URL = "https://xeroflow.com.au"
+# APP_URL is set in CF Pages dashboard to avoid binding conflict
 
 # Chat — Durable Objects (hosted in separate worker)
 [[durable_objects.bindings]]
