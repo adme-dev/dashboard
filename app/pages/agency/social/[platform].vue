@@ -5,13 +5,18 @@ const route = useRoute()
 const toast = useToast()
 const platform = computed(() => route.params.platform as string)
 
-const validPlatforms = ['meta', 'google', 'tiktok']
+const validPlatforms = ['meta', 'google', 'tiktok', 'linkedin', 'pinterest', 'snapchat', 'twitter', 'microsoft_ads']
 
 const platformConfig = computed(() => {
   const configs: Record<string, { displayName: string; icon: string; bgColor: string; iconColor: string }> = {
     meta: { displayName: 'Meta Ads', icon: 'i-lucide-facebook', bgColor: 'bg-blue-100 dark:bg-blue-900/30', iconColor: 'text-blue-600' },
     google: { displayName: 'Google Ads', icon: 'i-lucide-chrome', bgColor: 'bg-red-100 dark:bg-red-900/30', iconColor: 'text-red-500' },
     tiktok: { displayName: 'TikTok Ads', icon: 'i-lucide-music', bgColor: 'bg-gray-100 dark:bg-gray-900/30', iconColor: 'text-gray-700' },
+    linkedin: { displayName: 'LinkedIn Ads', icon: 'i-lucide-linkedin', bgColor: 'bg-blue-50 dark:bg-blue-950', iconColor: 'text-blue-600' },
+    pinterest: { displayName: 'Pinterest Ads', icon: 'i-lucide-pin', bgColor: 'bg-red-50 dark:bg-red-950', iconColor: 'text-red-600' },
+    snapchat: { displayName: 'Snapchat Ads', icon: 'i-lucide-ghost', bgColor: 'bg-yellow-50 dark:bg-yellow-950', iconColor: 'text-yellow-600' },
+    twitter: { displayName: 'X (Twitter) Ads', icon: 'i-lucide-at-sign', bgColor: 'bg-gray-50 dark:bg-gray-950', iconColor: 'text-gray-800' },
+    microsoft_ads: { displayName: 'Microsoft Ads', icon: 'i-lucide-search', bgColor: 'bg-cyan-50 dark:bg-cyan-950', iconColor: 'text-cyan-600' },
   }
   return configs[platform.value] || configs.meta
 })

@@ -1,18 +1,19 @@
 <template>
-  <div class="min-h-screen bg-white">
+  <div class="min-h-screen bg-white dark:bg-[#0a0b0e]">
     <MarketingNav />
 
     <!-- Hero -->
-    <div class="pt-[52px]">
-      <div class="max-w-[1200px] mx-auto px-6 pt-32 md:pt-44 pb-16 md:pb-24 text-center">
-        <h1 class="text-[clamp(36px,6vw,56px)] font-[450] text-[#121317] leading-[1.1] tracking-[-0.03em] mb-6 max-w-[700px] mx-auto">
+    <section class="relative bg-[#0a0b0e] pt-[52px]">
+      <MarketingHeroBackground theme="about" />
+      <div class="relative max-w-[1200px] mx-auto px-6 pt-32 md:pt-44 pb-16 md:pb-24 text-center">
+        <h1 class="text-[clamp(36px,6vw,56px)] font-[450] text-white leading-[1.1] tracking-[-0.03em] mb-6 max-w-[700px] mx-auto">
           Built for agencies<br class="hidden sm:block">that move fast
         </h1>
-        <p class="text-lg md:text-xl text-[#45474D] max-w-[560px] mx-auto leading-relaxed">
+        <p class="text-lg md:text-xl text-white/50 max-w-[560px] mx-auto leading-relaxed">
           XeroFlow is the operations platform for digital marketing agencies who want everything in one place.
         </p>
       </div>
-    </div>
+    </section>
 
     <!-- Story -->
     <section class="pb-20 md:pb-32">

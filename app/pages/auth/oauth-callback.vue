@@ -16,13 +16,18 @@ const result = computed(() => ({
   error: route.query.error as string || null,
 }))
 
-const platformName = computed(() => {
-  const p = result.value.platform
-  if (p === 'meta') return 'Meta Ads'
-  if (p === 'google') return 'Google Ads'
-  if (p === 'tiktok') return 'TikTok Ads'
-  return p
-})
+const platformNames: Record<string, string> = {
+  meta: 'Meta Ads',
+  google: 'Google Ads',
+  tiktok: 'TikTok Ads',
+  linkedin: 'LinkedIn Ads',
+  pinterest: 'Pinterest Ads',
+  snapchat: 'Snapchat Ads',
+  twitter: 'X (Twitter) Ads',
+  microsoft_ads: 'Microsoft Ads',
+}
+
+const platformName = computed(() => platformNames[result.value.platform] || result.value.platform)
 
 onMounted(() => {
   hasOpener.value = !!window.opener

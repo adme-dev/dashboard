@@ -3,16 +3,17 @@
     <MarketingNav active="features" />
 
     <!-- Hero -->
-    <section class="pt-[52px]">
-      <div class="max-w-[1200px] mx-auto px-6 pt-32 pb-16 md:pt-44 md:pb-24 text-center">
-        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#121317]/[0.04] dark:bg-white/[0.06] mb-8">
-          <div class="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-          <span class="text-[13px] text-[#45474D] dark:text-white/60 font-medium">Everything you need</span>
+    <section class="relative bg-[#0a0b0e] pt-[52px]">
+      <MarketingHeroBackground theme="features" />
+      <div class="relative max-w-[1200px] mx-auto px-6 pt-32 pb-16 md:pt-44 md:pb-24 text-center">
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.06] mb-8">
+          <div class="w-1.5 h-1.5 rounded-full bg-blue-400" />
+          <span class="text-[13px] text-white/60 font-medium">Everything you need</span>
         </div>
-        <h1 class="text-[clamp(36px,6vw,64px)] font-[450] text-[#121317] dark:text-white leading-[1.1] tracking-[-0.03em] mb-6 max-w-[800px] mx-auto">
+        <h1 class="text-[clamp(36px,6vw,64px)] font-[450] text-white leading-[1.1] tracking-[-0.03em] mb-6 max-w-[800px] mx-auto">
           One platform for<br class="hidden sm:block">your entire agency
         </h1>
-        <p class="text-lg md:text-xl text-[#45474D] dark:text-white/60 max-w-[560px] mx-auto leading-relaxed">
+        <p class="text-lg md:text-xl text-white/50 max-w-[560px] mx-auto leading-relaxed">
           From boards and briefs to invoices and AI — every tool your team needs, connected.
         </p>
       </div>

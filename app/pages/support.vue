@@ -1,22 +1,23 @@
 <template>
-  <div class="min-h-screen bg-white">
+  <div class="min-h-screen bg-white dark:bg-[#0a0b0e]">
     <MarketingNav />
 
     <!-- Hero -->
-    <div class="pt-[52px]">
-      <div class="max-w-[1200px] mx-auto px-6 pt-32 md:pt-44 pb-16 md:pb-24 text-center">
-        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#121317]/[0.04] mb-8">
-          <div class="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-          <span class="text-[13px] text-[#45474D] font-medium">We're here to help</span>
+    <section class="relative bg-[#0a0b0e] pt-[52px]">
+      <MarketingHeroBackground theme="support" />
+      <div class="relative max-w-[1200px] mx-auto px-6 pt-32 md:pt-44 pb-16 md:pb-24 text-center">
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.06] mb-8">
+          <div class="w-1.5 h-1.5 rounded-full bg-teal-400" />
+          <span class="text-[13px] text-white/60 font-medium">We're here to help</span>
         </div>
-        <h1 class="text-[clamp(36px,6vw,56px)] font-[450] text-[#121317] leading-[1.1] tracking-[-0.03em] mb-6 max-w-[700px] mx-auto">
+        <h1 class="text-[clamp(36px,6vw,56px)] font-[450] text-white leading-[1.1] tracking-[-0.03em] mb-6 max-w-[700px] mx-auto">
           Support Centre
         </h1>
-        <p class="text-lg md:text-xl text-[#45474D] max-w-[520px] mx-auto leading-relaxed">
+        <p class="text-lg md:text-xl text-white/50 max-w-[520px] mx-auto leading-relaxed">
           Get help with XeroFlow. Find answers, contact our team, or browse common topics.
         </p>
       </div>
-    </div>
+    </section>
 
     <!-- Support Options -->
     <section class="pb-20 md:pb-32">

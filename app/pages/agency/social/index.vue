@@ -9,7 +9,7 @@ const connecting = ref<string | null>(null)
 
 // Manual token modal state
 const tokenModal = ref(false)
-const tokenPlatform = ref<'meta' | 'google' | 'tiktok'>('meta')
+const tokenPlatform = ref<string>('meta')
 const tokenInput = ref('')
 const tokenSubmitting = ref(false)
 
@@ -20,8 +20,12 @@ onMounted(() => {
 const platforms = [
   { key: 'meta', displayName: 'Meta Ads', icon: 'i-lucide-facebook', bgColor: 'bg-blue-100 dark:bg-blue-900/30', iconColor: 'text-blue-600', description: 'Facebook & Instagram advertising' },
   { key: 'google', displayName: 'Google Ads', icon: 'i-lucide-chrome', bgColor: 'bg-red-100 dark:bg-red-900/30', iconColor: 'text-red-500', description: 'Google search & display ads' },
-  { key: 'linkedin', displayName: 'LinkedIn Ads', icon: 'i-lucide-linkedin', bgColor: 'bg-blue-50 dark:bg-blue-950', iconColor: 'text-blue-600', description: 'B2B advertising on LinkedIn', comingSoon: true },
   { key: 'tiktok', displayName: 'TikTok Ads', icon: 'i-lucide-music', bgColor: 'bg-gray-100 dark:bg-gray-900/30', iconColor: 'text-gray-700', description: 'Short-form video advertising' },
+  { key: 'linkedin', displayName: 'LinkedIn Ads', icon: 'i-lucide-linkedin', bgColor: 'bg-blue-50 dark:bg-blue-950', iconColor: 'text-blue-600', description: 'B2B advertising on LinkedIn' },
+  { key: 'pinterest', displayName: 'Pinterest Ads', icon: 'i-lucide-pin', bgColor: 'bg-red-50 dark:bg-red-950', iconColor: 'text-red-600', description: 'Visual discovery advertising' },
+  { key: 'snapchat', displayName: 'Snapchat Ads', icon: 'i-lucide-ghost', bgColor: 'bg-yellow-50 dark:bg-yellow-950', iconColor: 'text-yellow-600', description: 'Snap and story advertising' },
+  { key: 'twitter', displayName: 'X (Twitter) Ads', icon: 'i-lucide-at-sign', bgColor: 'bg-gray-50 dark:bg-gray-950', iconColor: 'text-gray-800', description: 'Promoted posts and trends' },
+  { key: 'microsoft_ads', displayName: 'Microsoft Ads', icon: 'i-lucide-search', bgColor: 'bg-cyan-50 dark:bg-cyan-950', iconColor: 'text-cyan-600', description: 'Bing search and display ads' },
 ]
 
 const platformSummaries = computed(() => {
@@ -42,13 +46,22 @@ const platformSummaries = computed(() => {
   return map
 })
 
+const platformDisplayNames: Record<string, string> = {
+  meta: 'Meta', google: 'Google', tiktok: 'TikTok', linkedin: 'LinkedIn',
+  pinterest: 'Pinterest', snapchat: 'Snapchat', twitter: 'X (Twitter)', microsoft_ads: 'Microsoft',
+}
+
+function getPlatformName(key: string) {
+  return platformDisplayNames[key] || key
+}
+
 async function handleConnect(platform: string) {
   connecting.value = platform
   clearOAuthResult()
   try {
-    const result = await connectPlatform(platform as 'meta' | 'google' | 'tiktok')
+    const result = await connectPlatform(platform as any)
     if (result.success) {
-      const name = platform === 'meta' ? 'Meta' : platform === 'google' ? 'Google' : 'TikTok'
+      const name = getPlatformName(platform)
       toast.add({
         title: 'Connected',
         description: `${result.accounts} ${name} ad account${result.accounts !== 1 ? 's' : ''} linked successfully`,
@@ -60,7 +73,7 @@ async function handleConnect(platform: string) {
   } catch (e: any) {
     const msg = e.data?.statusMessage || e.data?.message || e.message || 'Unknown error'
     const isNotConfigured = msg.includes('not configured')
-    const name = platform === 'meta' ? 'Meta' : platform === 'google' ? 'Google' : 'TikTok'
+    const name = getPlatformName(platform)
     toast.add({
       title: isNotConfigured ? 'Not configured' : 'Connection failed',
       description: isNotConfigured
@@ -74,7 +87,7 @@ async function handleConnect(platform: string) {
 }
 
 function handleManualToken(platform: string) {
-  tokenPlatform.value = platform as 'meta' | 'google' | 'tiktok'
+  tokenPlatform.value = platform
   tokenInput.value = ''
   tokenModal.value = true
 }
@@ -84,10 +97,10 @@ async function submitManualToken() {
   tokenSubmitting.value = true
   clearOAuthResult()
   try {
-    const result = await connectWithToken(tokenPlatform.value, tokenInput.value.trim())
+    const result = await connectWithToken(tokenPlatform.value as any, tokenInput.value.trim())
     tokenModal.value = false
     if (result.success) {
-      const name = tokenPlatform.value === 'meta' ? 'Meta' : tokenPlatform.value === 'google' ? 'Google' : 'TikTok'
+      const name = getPlatformName(tokenPlatform.value)
       toast.add({
         title: 'Connected',
         description: `${result.accounts} ${name} ad account${result.accounts !== 1 ? 's' : ''} linked`,
@@ -114,7 +127,7 @@ const showDisconnectModal = computed({
 function handleDisconnect(platform: string) {
   const summary = platformSummaries.value[platform]
   if (!summary?.connected) return
-  const displayName = platform === 'meta' ? 'Meta' : platform === 'google' ? 'Google' : 'TikTok'
+  const displayName = getPlatformName(platform)
   disconnectTarget.value = { platform, displayName, accountCount: summary.accountCount }
 }
 
@@ -135,7 +148,7 @@ async function confirmDisconnect() {
 async function handleSync(platform: string) {
   syncing.value = platform
   try {
-    const result = await syncSpend(platform as 'meta' | 'google' | 'tiktok')
+    const result = await syncSpend(platform as any)
     toast.add({ title: 'Sync complete', description: `Synced ${result.synced || 0} records`, color: 'success' })
     await fetchConnections()
   } catch (e: any) {
@@ -150,13 +163,31 @@ function handleViewAccounts(platform: string) {
 }
 
 const graphExplorerUrl = computed(() => {
-  if (tokenPlatform.value === 'meta') {
-    return 'https://developers.facebook.com/tools/explorer/'
+  const urls: Record<string, string> = {
+    meta: 'https://developers.facebook.com/tools/explorer/',
+    google: 'https://developers.google.com/oauthplayground/',
+    tiktok: 'https://business-api.tiktok.com/portal/docs',
+    linkedin: 'https://www.linkedin.com/developers/tools/oauth',
+    pinterest: 'https://developers.pinterest.com/tools/api-explorer/',
+    snapchat: 'https://businesshelp.snapchat.com/s/article/api-access',
+    twitter: 'https://developer.x.com/en/portal/dashboard',
+    microsoft_ads: 'https://learn.microsoft.com/en-us/advertising/guides/get-started',
   }
-  if (tokenPlatform.value === 'tiktok') {
-    return 'https://business-api.tiktok.com/portal/docs'
+  return urls[tokenPlatform.value] || urls.meta
+})
+
+const graphExplorerLabel = computed(() => {
+  const labels: Record<string, string> = {
+    meta: 'Graph API Explorer',
+    google: 'OAuth Playground',
+    tiktok: 'TikTok Business API portal',
+    linkedin: 'LinkedIn Developer Tools',
+    pinterest: 'Pinterest API Explorer',
+    snapchat: 'Snapchat Business Help',
+    twitter: 'X Developer Portal',
+    microsoft_ads: 'Microsoft Ads Docs',
   }
-  return 'https://developers.google.com/oauthplayground/'
+  return labels[tokenPlatform.value] || 'API Documentation'
 })
 </script>
 
@@ -194,8 +225,8 @@ const graphExplorerUrl = computed(() => {
         <div class="flex-1 min-w-0">
           <p class="text-sm font-medium">
             {{ lastOAuthResult.success
-              ? `${lastOAuthResult.platform === 'meta' ? 'Meta' : lastOAuthResult.platform === 'google' ? 'Google' : 'TikTok'} connected — ${lastOAuthResult.accounts} account${lastOAuthResult.accounts !== 1 ? 's' : ''} linked`
-              : `${lastOAuthResult.platform === 'meta' ? 'Meta' : lastOAuthResult.platform === 'google' ? 'Google' : 'TikTok'} connection failed`
+              ? `${getPlatformName(lastOAuthResult.platform)} connected — ${lastOAuthResult.accounts} account${lastOAuthResult.accounts !== 1 ? 's' : ''} linked`
+              : `${getPlatformName(lastOAuthResult.platform)} connection failed`
             }}
           </p>
           <p v-if="!lastOAuthResult.success && lastOAuthResult.error" class="text-xs text-muted mt-0.5">
@@ -295,7 +326,7 @@ const graphExplorerUrl = computed(() => {
             <p class="text-sm text-muted mt-1">
               Get a token from the
               <a :href="graphExplorerUrl" target="_blank" class="text-primary underline">
-                {{ tokenPlatform === 'meta' ? 'Graph API Explorer' : tokenPlatform === 'tiktok' ? 'TikTok Business API portal' : 'OAuth Playground' }}
+                {{ graphExplorerLabel }}
               </a>
               and paste it below.
             </p>
@@ -303,34 +334,13 @@ const graphExplorerUrl = computed(() => {
 
           <!-- Instructions -->
           <div class="bg-default/50 rounded-lg px-4 py-3 text-xs text-muted space-y-1.5">
-            <template v-if="tokenPlatform === 'meta'">
-              <p class="font-medium text-default">Steps:</p>
-              <ol class="list-decimal list-inside space-y-1">
-                <li>Go to <a href="https://developers.facebook.com/tools/explorer/" target="_blank" class="text-primary underline">Graph API Explorer</a></li>
-                <li>Select your app from the dropdown</li>
-                <li>Click "Generate Access Token"</li>
-                <li>Check the <strong>ads_read</strong> permission</li>
-                <li>Copy the token and paste it below</li>
-              </ol>
-            </template>
-            <template v-else-if="tokenPlatform === 'tiktok'">
-              <p class="font-medium text-default">Steps:</p>
-              <ol class="list-decimal list-inside space-y-1">
-                <li>Go to <a href="https://business-api.tiktok.com/portal/docs" target="_blank" class="text-primary underline">TikTok Business API portal</a></li>
-                <li>Open your app and go to "Tools" → "Access Token"</li>
-                <li>Generate a long-lived access token</li>
-                <li>Copy the token and paste it below</li>
-              </ol>
-            </template>
-            <template v-else>
-              <p class="font-medium text-default">Steps:</p>
-              <ol class="list-decimal list-inside space-y-1">
-                <li>Go to <a href="https://developers.google.com/oauthplayground/" target="_blank" class="text-primary underline">OAuth Playground</a></li>
-                <li>Find "Google Ads API" and select the scope</li>
-                <li>Authorize and exchange for tokens</li>
-                <li>Copy the access token and paste it below</li>
-              </ol>
-            </template>
+            <p class="font-medium text-default">Steps:</p>
+            <ol class="list-decimal list-inside space-y-1">
+              <li>Go to the <a :href="graphExplorerUrl" target="_blank" class="text-primary underline">{{ graphExplorerLabel }}</a></li>
+              <li>Authenticate with your {{ getPlatformName(tokenPlatform) }} account</li>
+              <li>Generate an access token with ad read permissions</li>
+              <li>Copy the token and paste it below</li>
+            </ol>
           </div>
 
           <div>

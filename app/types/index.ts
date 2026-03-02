@@ -512,7 +512,7 @@ export interface EomLineItem {
 // ============================================
 // Social Connections & Ad Spend Types
 // ============================================
-export type SocialPlatform = 'meta' | 'google' | 'linkedin' | 'tiktok'
+export type SocialPlatform = 'meta' | 'google' | 'linkedin' | 'tiktok' | 'pinterest' | 'snapchat' | 'twitter' | 'microsoft_ads'
 export type ConnectionStatus = 'active' | 'expired' | 'disconnected'
 
 export interface SocialConnection {

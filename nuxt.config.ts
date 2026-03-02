@@ -52,6 +52,32 @@ export default defineNuxtConfig({
     tiktokAppSecret: process.env.TIKTOK_APP_SECRET || '',
     tiktokRedirectUri: process.env.TIKTOK_REDIRECT_URI || '/api/agency/social/tiktok/callback',
 
+    // LinkedIn Ads
+    linkedinClientId: process.env.LINKEDIN_CLIENT_ID || '',
+    linkedinClientSecret: process.env.LINKEDIN_CLIENT_SECRET || '',
+    linkedinRedirectUri: process.env.LINKEDIN_REDIRECT_URI || '/api/agency/social/linkedin/callback',
+
+    // Pinterest Ads
+    pinterestAppId: process.env.PINTEREST_APP_ID || '',
+    pinterestAppSecret: process.env.PINTEREST_APP_SECRET || '',
+    pinterestRedirectUri: process.env.PINTEREST_REDIRECT_URI || '/api/agency/social/pinterest/callback',
+
+    // Snapchat Ads
+    snapchatClientId: process.env.SNAPCHAT_CLIENT_ID || '',
+    snapchatClientSecret: process.env.SNAPCHAT_CLIENT_SECRET || '',
+    snapchatRedirectUri: process.env.SNAPCHAT_REDIRECT_URI || '/api/agency/social/snapchat/callback',
+
+    // X (Twitter) Ads
+    twitterClientId: process.env.TWITTER_CLIENT_ID || '',
+    twitterClientSecret: process.env.TWITTER_CLIENT_SECRET || '',
+    twitterRedirectUri: process.env.TWITTER_REDIRECT_URI || '/api/agency/social/twitter/callback',
+
+    // Microsoft Ads (Bing)
+    microsoftAdsClientId: process.env.MICROSOFT_ADS_CLIENT_ID || '',
+    microsoftAdsClientSecret: process.env.MICROSOFT_ADS_CLIENT_SECRET || '',
+    microsoftAdsRedirectUri: process.env.MICROSOFT_ADS_REDIRECT_URI || '/api/agency/social/microsoft_ads/callback',
+    microsoftAdsDeveloperToken: process.env.MICROSOFT_ADS_DEVELOPER_TOKEN || '',
+
     // R2 Storage
     r2AccountId: process.env.R2_ACCOUNT_ID || '',
     r2AccessKeyId: process.env.R2_ACCESS_KEY_ID || '',

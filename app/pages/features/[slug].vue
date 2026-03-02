@@ -4,36 +4,38 @@
 
     <!-- Feature Found -->
     <template v-if="feature">
-      <!-- Breadcrumb -->
-      <div class="pt-[52px]">
-        <div class="max-w-[1200px] mx-auto px-6 pt-8">
-          <NuxtLink to="/features" class="inline-flex items-center gap-1.5 text-[14px] text-[#45474D] dark:text-white/60 hover:text-[#121317] dark:hover:text-white transition-colors">
-            <UIcon name="i-lucide-arrow-left" class="w-3.5 h-3.5" />
-            All Features
-          </NuxtLink>
-        </div>
-      </div>
+      <!-- Hero with background -->
+      <section class="relative bg-[#0a0b0e] pt-[52px]">
+        <MarketingHeroBackground theme="feature-detail" />
+        <div class="relative">
+          <!-- Breadcrumb -->
+          <div class="max-w-[1200px] mx-auto px-6 pt-8">
+            <NuxtLink to="/features" class="inline-flex items-center gap-1.5 text-[14px] text-white/60 hover:text-white transition-colors">
+              <UIcon name="i-lucide-arrow-left" class="w-3.5 h-3.5" />
+              All Features
+            </NuxtLink>
+          </div>
 
-      <!-- Hero -->
-      <section>
-        <div class="max-w-[720px] mx-auto px-6 pt-16 pb-16 md:pt-24 md:pb-20">
-          <div class="flex items-center gap-3 mb-6">
-            <div class="w-10 h-10 rounded-xl flex items-center justify-center" :class="feature.categoryIconBg">
-              <UIcon :name="feature.categoryIcon" class="w-5 h-5" :class="feature.categoryIconColor" />
+          <!-- Hero -->
+          <div class="max-w-[720px] mx-auto px-6 pt-16 pb-16 md:pt-24 md:pb-20">
+            <div class="flex items-center gap-3 mb-6">
+              <div class="w-10 h-10 rounded-xl flex items-center justify-center bg-white/[0.06]">
+                <UIcon :name="feature.categoryIcon" class="w-5 h-5 text-white/80" />
+              </div>
+              <span class="text-[14px] text-white/60 font-medium">{{ feature.category }}</span>
             </div>
-            <span class="text-[14px] text-[#45474D] dark:text-white/60 font-medium">{{ feature.category }}</span>
-          </div>
-          <div class="flex items-start gap-5 mb-6">
-            <div class="w-14 h-14 rounded-2xl bg-[#f4f5f7] dark:bg-white/[0.06] flex items-center justify-center flex-shrink-0">
-              <UIcon :name="feature.icon" class="w-7 h-7 text-[#121317] dark:text-white" />
+            <div class="flex items-start gap-5 mb-6">
+              <div class="w-14 h-14 rounded-2xl bg-white/[0.06] flex items-center justify-center flex-shrink-0">
+                <UIcon :name="feature.icon" class="w-7 h-7 text-white" />
+              </div>
+              <h1 class="text-[clamp(32px,5vw,48px)] font-[450] text-white leading-[1.1] tracking-[-0.02em]">
+                {{ feature.title }}
+              </h1>
             </div>
-            <h1 class="text-[clamp(32px,5vw,48px)] font-[450] text-[#121317] dark:text-white leading-[1.1] tracking-[-0.02em]">
-              {{ feature.title }}
-            </h1>
+            <p class="text-lg md:text-xl text-white/50 leading-relaxed">
+              {{ feature.description }}
+            </p>
           </div>
-          <p class="text-lg md:text-xl text-[#45474D] dark:text-white/60 leading-relaxed">
-            {{ feature.description }}
-          </p>
         </div>
       </section>
 

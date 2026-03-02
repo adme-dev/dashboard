@@ -20,7 +20,14 @@ const platformOptions = [
   { label: 'Meta', value: 'meta' },
   { label: 'Google', value: 'google' },
   { label: 'TikTok', value: 'tiktok' },
+  { label: 'LinkedIn', value: 'linkedin' },
+  { label: 'Pinterest', value: 'pinterest' },
+  { label: 'Snapchat', value: 'snapchat' },
+  { label: 'X (Twitter)', value: 'twitter' },
+  { label: 'Microsoft', value: 'microsoft_ads' },
 ]
+
+const showImportModal = ref(false)
 
 function formatCurrency(val: number) {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0 }).format(val)
@@ -37,14 +44,14 @@ async function loadSpend() {
   }
 }
 
+const syncablePlatforms = ['meta', 'google', 'tiktok', 'linkedin', 'pinterest', 'snapchat', 'twitter', 'microsoft_ads'] as const
+
 async function handleSyncAll() {
   syncing.value = true
   try {
-    await Promise.allSettled([
-      syncSpend('meta', selectedMonth.value, selectedYear.value),
-      syncSpend('google', selectedMonth.value, selectedYear.value),
-      syncSpend('tiktok', selectedMonth.value, selectedYear.value),
-    ])
+    await Promise.allSettled(
+      syncablePlatforms.map(p => syncSpend(p as any, selectedMonth.value, selectedYear.value))
+    )
     toast.add({ title: 'Sync complete', description: 'Spend data updated', color: 'success' })
     await loadSpend()
   } catch (e: any) {
@@ -114,7 +121,7 @@ const overallPacing = computed(() => {
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 class="text-2xl font-bold tracking-tight">Ad Spend</h1>
-          <p class="text-sm text-muted mt-1">Track monthly spend across Meta, Google, and TikTok Ads</p>
+          <p class="text-sm text-muted mt-1">Track monthly spend across all connected ad platforms</p>
         </div>
         <div class="flex items-center gap-2">
           <!-- Platform Segmented Control -->
@@ -133,6 +140,9 @@ const overallPacing = computed(() => {
           <div class="w-px h-6 bg-default hidden sm:block" />
           <UButton variant="ghost" icon="i-lucide-download" size="sm" @click="exportCSV" :disabled="!spendData?.items?.length">
             Export
+          </UButton>
+          <UButton variant="ghost" icon="i-lucide-upload" size="sm" @click="showImportModal = true">
+            Import
           </UButton>
           <UButton to="/agency/social" variant="ghost" icon="i-lucide-plug" size="sm">
             Connections
@@ -277,5 +287,8 @@ const overallPacing = computed(() => {
       </div>
 
     </div>
+
+    <!-- Import Modal -->
+    <SocialSpendImportModal v-model:open="showImportModal" @imported="loadSpend" />
   </div>
 </template>

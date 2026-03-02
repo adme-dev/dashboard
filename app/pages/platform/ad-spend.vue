@@ -13,20 +13,20 @@
           Track every dollar<br class="hidden sm:block">across platforms
         </h1>
         <p class="text-lg md:text-xl text-[#45474D] dark:text-white/60 max-w-[560px] mx-auto leading-relaxed">
-          Meta and Google Ads in one place. OAuth connections, automated spend syncing, campaign breakdowns, and budget management with full audit trails.
+          Meta, Google, TikTok and more — all in one place. OAuth connections, automated spend syncing, campaign breakdowns, and budget management with full audit trails.
         </p>
       </div>
     </section>
 
     <!-- Platform Cards -->
-    <section class="pb-20 md:pb-28">
+    <section class="pb-12 md:pb-16">
       <div class="max-w-[1200px] mx-auto px-6">
-        <div class="grid md:grid-cols-2 gap-6">
+        <div class="grid md:grid-cols-3 gap-6">
           <!-- Meta Ads -->
           <div class="bg-[#f4f5f7] dark:bg-white/[0.03] rounded-2xl p-6 md:p-8">
             <div class="flex items-center gap-3 mb-6">
-              <div class="w-11 h-11 rounded-xl bg-blue-100 flex items-center justify-center">
-                <UIcon name="i-lucide-megaphone" class="w-5 h-5 text-blue-600" />
+              <div class="w-11 h-11 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                <UIcon name="i-lucide-facebook" class="w-5 h-5 text-blue-600" />
               </div>
               <div>
                 <h3 class="text-[18px] font-medium text-[#121317] dark:text-white">Meta Ads</h3>
@@ -49,8 +49,8 @@
           <!-- Google Ads -->
           <div class="bg-[#f4f5f7] dark:bg-white/[0.03] rounded-2xl p-6 md:p-8">
             <div class="flex items-center gap-3 mb-6">
-              <div class="w-11 h-11 rounded-xl bg-emerald-100 flex items-center justify-center">
-                <UIcon name="i-lucide-bar-chart-3" class="w-5 h-5 text-emerald-600" />
+              <div class="w-11 h-11 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                <UIcon name="i-lucide-chrome" class="w-5 h-5 text-red-500" />
               </div>
               <div>
                 <h3 class="text-[18px] font-medium text-[#121317] dark:text-white">Google Ads</h3>
@@ -62,10 +62,89 @@
             </p>
             <div class="flex flex-col gap-3">
               <div v-for="feature in googleFeatures" :key="feature" class="flex items-center gap-3">
-                <div class="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                  <UIcon name="i-lucide-check" class="w-3 h-3 text-emerald-600" />
+                <div class="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                  <UIcon name="i-lucide-check" class="w-3 h-3 text-red-500" />
                 </div>
                 <span class="text-[14px] text-[#121317] dark:text-white">{{ feature }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- TikTok Ads -->
+          <div class="bg-[#f4f5f7] dark:bg-white/[0.03] rounded-2xl p-6 md:p-8">
+            <div class="flex items-center gap-3 mb-6">
+              <div class="w-11 h-11 rounded-xl bg-gray-100 dark:bg-gray-900/30 flex items-center justify-center">
+                <UIcon name="i-lucide-music" class="w-5 h-5 text-gray-700 dark:text-gray-300" />
+              </div>
+              <div>
+                <h3 class="text-[18px] font-medium text-[#121317] dark:text-white">TikTok Ads</h3>
+                <p class="text-[13px] text-[#45474D]/60 dark:text-white/40">Short-form video</p>
+              </div>
+            </div>
+            <p class="text-[14px] text-[#45474D]/70 dark:text-white/40 leading-relaxed mb-6">
+              TikTok Business API integration for advertiser-level spend tracking. Campaign breakdowns with video-first performance metrics.
+            </p>
+            <div class="flex flex-col gap-3">
+              <div v-for="feature in tiktokFeatures" :key="feature" class="flex items-center gap-3">
+                <div class="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+                  <UIcon name="i-lucide-check" class="w-3 h-3 text-gray-600" />
+                </div>
+                <span class="text-[14px] text-[#121317] dark:text-white">{{ feature }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- More Platforms -->
+    <section class="pb-20 md:pb-28">
+      <div class="max-w-[1200px] mx-auto px-6">
+        <div class="text-center mb-10">
+          <h2 class="text-[clamp(22px,3vw,32px)] font-[450] text-[#121317] dark:text-white leading-[1.15] tracking-[-0.02em] mb-3">
+            More integrations
+          </h2>
+          <p class="text-[15px] text-[#45474D] dark:text-white/60 max-w-[480px] mx-auto leading-relaxed">
+            Expanding platform coverage so every dollar is tracked. Native OAuth integrations with automated syncing.
+          </p>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+          <div
+            v-for="p in upcomingPlatforms"
+            :key="p.name"
+            class="flex flex-col items-center gap-3 rounded-2xl bg-[#f4f5f7] dark:bg-white/[0.03] p-5 text-center"
+          >
+            <div class="w-11 h-11 rounded-xl flex items-center justify-center" :class="p.bg">
+              <UIcon :name="p.icon" class="w-5 h-5" :class="p.color" />
+            </div>
+            <div>
+              <p class="text-[14px] font-medium text-[#121317] dark:text-white">{{ p.name }}</p>
+              <p class="text-[12px] text-[#45474D]/60 dark:text-white/40 mt-0.5">{{ p.sub }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Universal Import Card -->
+        <div class="bg-[#f4f5f7] dark:bg-white/[0.03] rounded-2xl p-6 md:p-8">
+          <div class="flex flex-col md:flex-row md:items-center gap-6">
+            <div class="flex items-center gap-3">
+              <div class="w-11 h-11 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
+                <UIcon name="i-lucide-file-spreadsheet" class="w-5 h-5 text-violet-600" />
+              </div>
+              <div>
+                <h3 class="text-[18px] font-medium text-[#121317] dark:text-white">Universal Import</h3>
+                <p class="text-[13px] text-[#45474D]/60 dark:text-white/40">CSV upload & manual entry</p>
+              </div>
+            </div>
+            <p class="text-[14px] text-[#45474D]/70 dark:text-white/40 leading-relaxed flex-1">
+              Import spend data from any platform via CSV bulk upload or manual single-entry form. Download a template, map columns, and track spend for platforms without a native integration.
+            </p>
+            <div class="flex flex-wrap gap-3">
+              <div v-for="feat in importFeatures" :key="feat" class="flex items-center gap-2">
+                <div class="w-5 h-5 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0">
+                  <UIcon name="i-lucide-check" class="w-3 h-3 text-violet-600" />
+                </div>
+                <span class="text-[13px] text-[#121317] dark:text-white">{{ feat }}</span>
               </div>
             </div>
           </div>
@@ -81,7 +160,7 @@
             Unified spend dashboard
           </h2>
           <p class="text-[16px] text-[#45474D] dark:text-white/60 max-w-[520px] mx-auto leading-relaxed">
-            Cross-platform aggregation so you see the full picture. Compare Meta and Google side by side, spot trends, and catch overruns before they happen.
+            Cross-platform aggregation so you see the full picture. Compare all platforms side by side, spot trends, and catch overruns before they happen.
           </p>
         </div>
         <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -257,16 +336,39 @@ const googleFeatures = [
   'Search, Display, and YouTube support',
 ]
 
+const tiktokFeatures = [
+  'OAuth connection via TikTok Business API',
+  'Advertiser-level spend syncing',
+  'Campaign-level breakdowns',
+  'Video view and engagement metrics',
+  'Campaign objective tracking',
+]
+
+const upcomingPlatforms = [
+  { name: 'LinkedIn', sub: 'B2B advertising', icon: 'i-lucide-linkedin', bg: 'bg-blue-50 dark:bg-blue-950', color: 'text-blue-600' },
+  { name: 'Pinterest', sub: 'Visual discovery', icon: 'i-lucide-pin', bg: 'bg-red-50 dark:bg-red-950', color: 'text-red-600' },
+  { name: 'Snapchat', sub: 'Snap & story ads', icon: 'i-lucide-ghost', bg: 'bg-yellow-50 dark:bg-yellow-950', color: 'text-yellow-600' },
+  { name: 'X (Twitter)', sub: 'Promoted posts', icon: 'i-lucide-at-sign', bg: 'bg-gray-50 dark:bg-gray-950', color: 'text-gray-800 dark:text-gray-200' },
+  { name: 'Microsoft', sub: 'Bing search ads', icon: 'i-lucide-search', bg: 'bg-cyan-50 dark:bg-cyan-950', color: 'text-cyan-600' },
+]
+
+const importFeatures = [
+  'CSV bulk import',
+  'Manual single entry',
+  'Any platform',
+  'Template download',
+]
+
 const dashboardFeatures = [
   {
     title: 'Daily Breakdowns',
     icon: 'i-lucide-calendar-days',
-    description: 'See spend by day across both platforms. Spot trends, dips, and spikes at a glance.'
+    description: 'See spend by day across all platforms. Spot trends, dips, and spikes at a glance.'
   },
   {
     title: 'Campaign Comparison',
     icon: 'i-lucide-columns-3',
-    description: 'Compare Meta and Google campaigns side by side with unified metrics and terminology.'
+    description: 'Compare campaigns across all platforms side by side with unified metrics and terminology.'
   },
   {
     title: 'Budget vs Actual',
@@ -286,14 +388,14 @@ const dashboardFeatures = [
   {
     title: 'Platform Performance',
     icon: 'i-lucide-bar-chart-3',
-    description: 'Split performance by Meta and Google. See which platform delivers better CPC, CPM, and ROAS.'
+    description: 'Split performance by platform. See which delivers better CPC, CPM, and ROAS across Meta, Google, TikTok and more.'
   },
 ]
 
 const budgetAlerts = [
   {
     title: 'Per-client monthly budgets',
-    description: 'Set a single budget cap per client that covers all their campaigns across both platforms.',
+    description: 'Set a single budget cap per client that covers all their campaigns across every connected platform.',
     icon: 'i-lucide-wallet',
     bg: 'bg-blue-100',
     color: 'text-blue-600'
@@ -362,7 +464,7 @@ const anomalyTypes = [
     icon: 'i-lucide-scale',
     bg: 'bg-emerald-50',
     color: 'text-emerald-600',
-    description: 'Detects when spend allocation between Meta and Google shifts significantly from the planned split.'
+    description: 'Detects when spend allocation across platforms shifts significantly from the planned split.'
   },
   {
     title: 'Conversion Drop-off',

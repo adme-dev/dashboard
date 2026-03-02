@@ -1,14 +1,21 @@
 <template>
-  <div class="min-h-screen bg-white">
+  <div class="min-h-screen bg-white dark:bg-[#0a0b0e]">
     <MarketingNav />
 
-    <!-- Content -->
-    <div class="pt-[52px]">
-      <div class="max-w-[720px] mx-auto px-6 pt-32 md:pt-44 pb-20 md:pb-32">
-        <h1 class="text-[clamp(36px,6vw,56px)] font-[450] text-[#121317] leading-[1.1] tracking-[-0.03em] mb-10">
+    <!-- Hero -->
+    <section class="relative bg-[#0a0b0e] pt-[52px]">
+      <MarketingHeroBackground theme="legal" />
+      <div class="relative max-w-[720px] mx-auto px-6 pt-32 md:pt-44 pb-16 md:pb-20">
+        <h1 class="text-[clamp(36px,6vw,56px)] font-[450] text-white leading-[1.1] tracking-[-0.03em] mb-6">
           Privacy Policy
         </h1>
-        <p class="text-[15px] text-[#45474D]/60 mb-12">Last updated: February 2026</p>
+        <p class="text-[15px] text-white/40">Last updated: February 2026</p>
+      </div>
+    </section>
+
+    <!-- Content -->
+    <div>
+      <div class="max-w-[720px] mx-auto px-6 pt-12 pb-20 md:pb-32">
 
         <div class="prose-legal flex flex-col gap-10">
           <section>

@@ -4,63 +4,7 @@
 
     <!-- 1. Hero Section — dark dramatic opening -->
     <section class="relative bg-[#0a0b0e] pt-[52px]">
-      <!-- Abstract generative background -->
-      <div class="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
-        <!-- Ambient glow orbs -->
-        <div class="absolute top-1/3 left-1/4 w-[600px] h-[600px] rounded-full bg-violet-500/[0.08] blur-[140px]" />
-        <div class="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] rounded-full bg-emerald-500/[0.06] blur-[120px]" />
-        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full bg-amber-500/[0.05] blur-[100px]" />
-        <div class="absolute top-[15%] right-[10%] w-[350px] h-[350px] rounded-full bg-blue-500/[0.05] blur-[120px]" />
-        <div class="absolute bottom-[10%] left-[15%] w-[300px] h-[300px] rounded-full bg-rose-500/[0.04] blur-[100px]" />
-
-        <!-- Abstract SVG mesh -->
-        <svg class="absolute inset-0 w-full h-full opacity-[0.12]" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
-          <defs>
-            <linearGradient id="grad-v" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#8b5cf6" />
-              <stop offset="100%" stop-color="#6366f1" />
-            </linearGradient>
-            <linearGradient id="grad-e" x1="100%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stop-color="#10b981" />
-              <stop offset="100%" stop-color="#14b8a6" />
-            </linearGradient>
-            <linearGradient id="grad-a" x1="50%" y1="0%" x2="50%" y2="100%">
-              <stop offset="0%" stop-color="#f59e0b" />
-              <stop offset="100%" stop-color="#f97316" />
-            </linearGradient>
-          </defs>
-          <!-- Flowing curves -->
-          <path d="M0,300 Q200,100 500,250 T1000,200 T1500,350 T2000,150" fill="none" stroke="url(#grad-v)" stroke-width="1.5" opacity="0.6">
-            <animate attributeName="d" dur="20s" repeatCount="indefinite" values="M0,300 Q200,100 500,250 T1000,200 T1500,350 T2000,150;M0,250 Q300,350 600,200 T1100,300 T1600,180 T2000,280;M0,300 Q200,100 500,250 T1000,200 T1500,350 T2000,150" />
-          </path>
-          <path d="M0,500 Q350,350 700,480 T1300,380 T1800,500" fill="none" stroke="url(#grad-e)" stroke-width="1" opacity="0.5">
-            <animate attributeName="d" dur="25s" repeatCount="indefinite" values="M0,500 Q350,350 700,480 T1300,380 T1800,500;M0,450 Q250,550 650,400 T1200,520 T1800,420;M0,500 Q350,350 700,480 T1300,380 T1800,500" />
-          </path>
-          <path d="M0,650 Q400,500 800,620 T1400,550 T2000,680" fill="none" stroke="url(#grad-a)" stroke-width="0.8" opacity="0.4">
-            <animate attributeName="d" dur="30s" repeatCount="indefinite" values="M0,650 Q400,500 800,620 T1400,550 T2000,680;M0,700 Q300,600 750,700 T1350,600 T2000,620;M0,650 Q400,500 800,620 T1400,550 T2000,680" />
-          </path>
-          <!-- Geometric accents -->
-          <circle cx="15%" cy="25%" r="80" fill="none" stroke="url(#grad-v)" stroke-width="0.5" opacity="0.3">
-            <animate attributeName="r" dur="12s" repeatCount="indefinite" values="80;95;80" />
-          </circle>
-          <circle cx="80%" cy="35%" r="60" fill="none" stroke="url(#grad-e)" stroke-width="0.5" opacity="0.25">
-            <animate attributeName="r" dur="15s" repeatCount="indefinite" values="60;75;60" />
-          </circle>
-          <circle cx="60%" cy="70%" r="100" fill="none" stroke="url(#grad-a)" stroke-width="0.5" opacity="0.2">
-            <animate attributeName="r" dur="18s" repeatCount="indefinite" values="100;120;100" />
-          </circle>
-          <!-- Dot grid -->
-          <g opacity="0.15">
-            <circle v-for="dot in heroDots" :key="`${dot.cx}-${dot.cy}`" :cx="dot.cx" :cy="dot.cy" r="1.5" fill="white" />
-          </g>
-        </svg>
-
-        <!-- Noise texture overlay -->
-        <div class="absolute inset-0 opacity-[0.03]" :style="{ backgroundImage: 'url(data:image/svg+xml,' + encodeURIComponent('<svg xmlns=&quot;http://www.w3.org/2000/svg&quot; width=&quot;200&quot; height=&quot;200&quot;><filter id=&quot;n&quot;><feTurbulence type=&quot;fractalNoise&quot; baseFrequency=&quot;0.9&quot; numOctaves=&quot;4&quot; stitchTiles=&quot;stitch&quot;/></filter><rect width=&quot;200&quot; height=&quot;200&quot; filter=&quot;url(#n)&quot; opacity=&quot;1&quot;/></svg>') + ')' }" />
-
-        <!-- Gradient fade at bottom -->
-        <div class="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[#0a0b0e] to-transparent" />
-      </div>
+      <MarketingHeroBackground theme="creativity" />
 
       <div class="relative max-w-[1200px] mx-auto px-6 pt-28 pb-24 md:pt-40 md:pb-36 text-center">
         <!-- Badge pill -->
@@ -462,19 +406,6 @@ useSeoMeta({
 function scrollToCapabilities() {
   document.getElementById('capabilities')?.scrollIntoView({ behavior: 'smooth' })
 }
-
-// Generate dot grid for hero background
-const heroDots = computed(() => {
-  const dots: { cx: string; cy: string }[] = []
-  for (let x = 5; x <= 95; x += 5) {
-    for (let y = 10; y <= 90; y += 8) {
-      // Offset every other row for a hex pattern
-      const offsetX = y % 16 === 0 ? 2.5 : 0
-      dots.push({ cx: `${x + offsetX}%`, cy: `${y}%` })
-    }
-  }
-  return dots
-})
 
 // Section 2: Capability cards
 const capabilityCards = [
