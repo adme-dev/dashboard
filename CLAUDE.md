@@ -125,6 +125,20 @@ We are fully on the Cloudflare network. These products are available and should 
 - **Turnstile** — CAPTCHA alternative
 - **Zero Trust / Access** — identity-aware proxy and SSO
 
+## Pre-Commit Quality Rules
+
+**Before committing any feature or multi-file change, always run a deep-dive review / battle test:**
+1. Re-read every modified and new file end-to-end
+2. Check for import alias mismatches (`~/` vs `~~/` for server code)
+3. Verify USelectMenu values are never empty strings (use sentinels like `'all'` or `'__custom__'`)
+4. Confirm computed/ref reactivity — e.g. dropdown "Custom" selections actually trigger the custom input to appear
+5. Look for duplicate UI sections introduced by edits (e.g. align buttons rendered twice)
+6. Validate CSS value construction — hex colors appended with alpha need 6-char base (`#abc` → `#aabbcc` first)
+7. Check for SSRF vectors in any server-side URL fetching (block localhost, private IPs)
+8. Ensure server endpoints don't import frontend-only modules (`~/utils/*` won't resolve in Nitro — use `~~/` or inline)
+
+This review must happen **before** any commit, not after. Catching bugs post-commit wastes cycles.
+
 ## Known Issues
 - `nuxi build` crashes with OOM (even at 4GB) — pre-existing, use `NODE_OPTIONS='--max-old-space-size=8192'`
 - ~60+ pre-existing TS errors from types only in `index.d.ts` not `index.ts`

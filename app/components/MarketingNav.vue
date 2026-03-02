@@ -166,7 +166,7 @@
                     </NuxtLink>
                   </div>
 
-                  <h4 class="text-[14px] font-semibold text-white/40 tracking-wide mb-5 mt-8">Communication</h4>
+                  <h4 class="text-[14px] font-semibold text-white/40 tracking-wide mb-5 mt-8">Communication & Creative</h4>
                   <div class="flex flex-col gap-1">
                     <NuxtLink
                       v-for="item in featuresCol3"
@@ -569,10 +569,12 @@ const featuresCol2 = [
 const featuresCol3 = [
   { title: 'Real-Time Chat', subtitle: 'Channels, threads, and DMs', icon: 'i-lucide-message-circle', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400', to: '/platform/chat' },
   { title: 'Automations', subtitle: 'Trigger-action workflows', icon: 'i-lucide-zap', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400', to: '/platform/automations' },
+  { title: 'Banner Studio', subtitle: 'HTML5 ad design & animation', icon: 'i-lucide-palette', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/banner-studio' },
 ]
 
 const featuresCol4 = [
   { title: 'AI Assistant', subtitle: 'Chat, anomaly detection, search', icon: 'i-lucide-sparkles', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/platform/ai' },
+  { title: 'AI Training', subtitle: 'Your data trains your AI, privately', icon: 'i-lucide-brain', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/ai-training' },
   { title: 'Semantic Search', subtitle: 'Vectorize-powered discovery', icon: 'i-lucide-search', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/platform/ai' },
 ]
 
@@ -608,7 +610,7 @@ const resourcesCol3 = [
 const mobileFeatureSections = [
   { label: 'Work Management', items: featuresCol1 },
   { label: 'Financial Operations', items: featuresCol2 },
-  { label: 'Communication', items: featuresCol3 },
+  { label: 'Communication & Creative', items: featuresCol3 },
   { label: 'AI & Intelligence', items: featuresCol4 },
   { label: 'Portal & Time', items: featuresCol5 },
 ]

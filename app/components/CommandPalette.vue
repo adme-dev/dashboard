@@ -76,7 +76,7 @@ const commands: CommandItem[] = [
     label: 'Go to Invoices',
     description: 'Invoice management',
     icon: 'i-lucide-receipt',
-    action: () => navigateTo('/agency/invoices'),
+    action: () => navigateTo('/agency/billing'),
     group: 'Navigation'
   },
   {

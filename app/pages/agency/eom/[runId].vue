@@ -13,6 +13,37 @@ const run = ref<EomRun | null>(null)
 const loading = ref(true)
 const editingItem = ref<EomLineItem | null>(null)
 
+// Confirmation modal state
+const confirmModal = ref(false)
+const confirmTitle = ref('')
+const confirmDescription = ref('')
+const confirmColor = ref<'primary' | 'error' | 'warning'>('primary')
+const confirmLabel = ref('Confirm')
+let confirmAction: (() => Promise<void>) | null = null
+
+function showConfirm(opts: { title: string; description: string; label: string; color?: 'primary' | 'error' | 'warning'; action: () => Promise<void> }) {
+  confirmTitle.value = opts.title
+  confirmDescription.value = opts.description
+  confirmLabel.value = opts.label
+  confirmColor.value = opts.color || 'primary'
+  confirmAction = opts.action
+  confirmModal.value = true
+}
+
+async function executeConfirm() {
+  confirmModal.value = false
+  if (confirmAction) await confirmAction()
+  confirmAction = null
+}
+
+// Tabs
+const tabs = [
+  { label: 'Line Items', value: 'items', icon: 'i-lucide-list' },
+  { label: 'Validation', value: 'validation', icon: 'i-lucide-shield-check' },
+  { label: 'Summary', value: 'summary', icon: 'i-lucide-pie-chart' },
+  { label: 'Push to Xero', value: 'push', icon: 'i-lucide-upload' },
+]
+
 // Line items state
 const items = ref<EomLineItem[]>([])
 const itemsTotal = ref(0)
@@ -47,11 +78,28 @@ const statusConfig: Record<string, { color: string; label: string }> = {
   failed: { color: 'error', label: 'Failed' },
 }
 
-const confidenceColor: Record<string, string> = {
-  high: 'success',
-  medium: 'warning',
-  low: 'error',
-}
+const confidenceOptions = [
+  { label: 'All confidence', value: '' },
+  { label: 'High', value: 'high' },
+  { label: 'Medium', value: 'medium' },
+  { label: 'Low', value: 'low' },
+]
+
+const reviewStatusOptions = [
+  { label: 'All status', value: '' },
+  { label: 'Auto', value: 'auto' },
+  { label: 'Reviewed', value: 'reviewed' },
+  { label: 'Flagged', value: 'flagged' },
+  { label: 'Corrected', value: 'corrected' },
+]
+
+const sourceOptions = [
+  { label: 'All sources', value: '' },
+  { label: 'Monday.com', value: 'monday' },
+  { label: 'Meta Ads', value: 'meta_ads' },
+  { label: 'Google Ads', value: 'google_ads' },
+  { label: 'Manual', value: 'manual' },
+]
 
 async function loadRun() {
   loading.value = true
@@ -83,14 +131,21 @@ async function loadSummary() {
 }
 
 async function handleRegenerate() {
-  if (!confirm('Regenerate all line items? Edits will be lost.')) return
-  try {
-    run.value = await regenerateRun(runId)
-    toast.add({ title: 'Regenerated', color: 'success' })
-    await loadItems()
-  } catch (e: any) {
-    toast.add({ title: 'Error', description: e.message, color: 'error' })
-  }
+  showConfirm({
+    title: 'Regenerate all line items?',
+    description: 'All manual edits will be lost. This will re-run the EOM generation engine for this period.',
+    label: 'Regenerate',
+    color: 'warning',
+    action: async () => {
+      try {
+        run.value = await regenerateRun(runId)
+        toast.add({ title: 'Regenerated', color: 'success' })
+        await loadItems()
+      } catch (e: any) {
+        toast.add({ title: 'Error', description: e.message, color: 'error' })
+      }
+    }
+  })
 }
 
 async function handleValidateContacts() {
@@ -102,14 +157,21 @@ async function handleValidateContacts() {
 }
 
 async function handlePush() {
-  if (!confirm('Push all invoices to Xero as DRAFT? This requires all contacts to be matched.')) return
-  try {
-    const result = await pushToXero(runId)
-    toast.add({ title: `Pushed ${result.created} invoices`, description: result.failed > 0 ? `${result.failed} failed` : undefined, color: result.failed > 0 ? 'warning' : 'success' })
-    await loadRun()
-  } catch (e: any) {
-    toast.add({ title: 'Push failed', description: e.data?.statusMessage || e.message, color: 'error' })
-  }
+  showConfirm({
+    title: 'Push to Xero as DRAFT?',
+    description: 'All invoices will be created as DRAFT invoices in Xero. This requires all contacts to be matched.',
+    label: 'Push to Xero',
+    color: 'primary',
+    action: async () => {
+      try {
+        const result = await pushToXero(runId)
+        toast.add({ title: `Pushed ${result.created} invoices`, description: result.failed > 0 ? `${result.failed} failed` : undefined, color: result.failed > 0 ? 'warning' : 'success' })
+        await loadRun()
+      } catch (e: any) {
+        toast.add({ title: 'Push failed', description: e.data?.statusMessage || e.message, color: 'error' })
+      }
+    }
+  })
 }
 
 async function handleCheckXeroStatus() {
@@ -121,14 +183,21 @@ async function handleCheckXeroStatus() {
 }
 
 async function handleArchive() {
-  if (!confirm('Archive this run and mark as complete?')) return
-  try {
-    await archiveRun(runId)
-    toast.add({ title: 'Archived', color: 'success' })
-    await loadRun()
-  } catch (e: any) {
-    toast.add({ title: 'Error', description: e.message, color: 'error' })
-  }
+  showConfirm({
+    title: 'Archive this run?',
+    description: 'This will mark the run as complete. You can still view it but cannot make further changes.',
+    label: 'Archive',
+    color: 'primary',
+    action: async () => {
+      try {
+        await archiveRun(runId)
+        toast.add({ title: 'Archived', color: 'success' })
+        await loadRun()
+      } catch (e: any) {
+        toast.add({ title: 'Error', description: e.message, color: 'error' })
+      }
+    }
+  })
 }
 
 // Watch tab changes to lazy-load data
@@ -148,122 +217,134 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="p-6 max-w-7xl mx-auto space-y-4">
-    <!-- Header -->
-    <div v-if="run" class="flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <UButton to="/agency/eom" variant="ghost" icon="i-lucide-arrow-left" size="sm" />
-        <div>
-          <h1 class="text-xl font-bold">{{ months[run.month - 1] }} {{ run.year }}</h1>
-          <div class="flex items-center gap-2 mt-1">
-            <UBadge :color="(statusConfig[run.status]?.color as any) || 'neutral'" variant="subtle" size="xs">
-              {{ statusConfig[run.status]?.label || run.status }}
-            </UBadge>
-            <span class="text-sm text-muted">{{ formatCurrency(run.totalExGst) }} ex-GST</span>
-            <span class="text-sm text-muted">{{ run.invoiceCount }} invoices</span>
-          </div>
+  <div class="h-full overflow-y-auto">
+    <div class="p-6 lg:p-8 space-y-6">
+
+      <!-- Loading -->
+      <div v-if="loading" class="flex items-center justify-center py-24">
+        <div class="flex flex-col items-center gap-3">
+          <UIcon name="i-lucide-loader-2" class="size-6 animate-spin text-muted" />
+          <span class="text-sm text-muted">Loading EOM run...</span>
         </div>
       </div>
-      <div class="flex gap-2">
-        <UButton v-if="run.status === 'review'" variant="soft" size="sm" icon="i-lucide-refresh-cw" @click="handleRegenerate">
-          Regenerate
-        </UButton>
-        <UButton variant="soft" size="sm" icon="i-lucide-download" @click="exportCSV(runId)">
-          Export CSV
-        </UButton>
-        <UButton v-if="run.status === 'pushed'" variant="soft" size="sm" color="success" icon="i-lucide-archive" @click="handleArchive">
-          Archive
-        </UButton>
-      </div>
-    </div>
 
-    <!-- Tabs -->
-    <div class="flex gap-1 border-b border-default">
-      <button
-        v-for="tab in [
-          { id: 'items', label: 'Line Items', icon: 'i-lucide-list' },
-          { id: 'validation', label: 'Validation', icon: 'i-lucide-shield-check' },
-          { id: 'summary', label: 'Summary', icon: 'i-lucide-pie-chart' },
-          { id: 'push', label: 'Push to Xero', icon: 'i-lucide-upload' },
-        ]"
-        :key="tab.id"
-        class="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
-        :class="activeTab === tab.id ? 'border-primary text-primary' : 'border-transparent text-muted hover:text-default'"
-        @click="activeTab = tab.id"
-      >
-        <UIcon :name="tab.icon" class="w-4 h-4 mr-1 inline" />
-        {{ tab.label }}
-      </button>
-    </div>
+      <template v-else-if="run">
+        <!-- Header -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div class="flex items-center gap-3">
+            <UButton to="/agency/billing?tab=eom" variant="ghost" icon="i-lucide-arrow-left" size="sm" />
+            <div>
+              <h1 class="text-2xl font-bold tracking-tight">{{ months[run.month - 1] }} {{ run.year }}</h1>
+              <div class="flex items-center gap-2 mt-1">
+                <UBadge :color="(statusConfig[run.status]?.color as any) || 'neutral'" variant="subtle" size="xs">
+                  {{ statusConfig[run.status]?.label || run.status }}
+                </UBadge>
+                <span class="text-sm text-muted">{{ formatCurrency(run.totalExGst) }} ex-GST</span>
+                <span class="text-sm text-muted">{{ run.invoiceCount }} invoices</span>
+              </div>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <UButton v-if="run.status === 'review'" variant="soft" size="sm" icon="i-lucide-refresh-cw" @click="handleRegenerate">
+              Regenerate
+            </UButton>
+            <UButton variant="soft" size="sm" icon="i-lucide-download" @click="exportCSV(runId)">
+              Export CSV
+            </UButton>
+            <UButton v-if="run.status === 'pushed'" variant="soft" size="sm" color="success" icon="i-lucide-archive" @click="handleArchive">
+              Archive
+            </UButton>
+          </div>
+        </div>
 
-    <!-- Line Items Tab -->
-    <div v-if="activeTab === 'items'" class="space-y-4">
-      <!-- Filters -->
-      <div class="flex gap-3 flex-wrap">
-        <input v-model="filters.client" placeholder="Filter client..." class="border border-default rounded-md px-3 py-1.5 text-sm bg-default w-48" />
-        <select v-model="filters.confidence" class="border border-default rounded-md px-3 py-1.5 text-sm bg-default">
-          <option value="">All confidence</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-        </select>
-        <select v-model="filters.reviewStatus" class="border border-default rounded-md px-3 py-1.5 text-sm bg-default">
-          <option value="">All status</option>
-          <option value="auto">Auto</option>
-          <option value="reviewed">Reviewed</option>
-          <option value="flagged">Flagged</option>
-          <option value="corrected">Corrected</option>
-        </select>
-        <select v-model="filters.source" class="border border-default rounded-md px-3 py-1.5 text-sm bg-default">
-          <option value="">All sources</option>
-          <option value="monday">Monday.com</option>
-          <option value="meta_ads">Meta Ads</option>
-          <option value="google_ads">Google Ads</option>
-          <option value="manual">Manual</option>
-        </select>
-      </div>
+        <!-- Tabs -->
+        <UTabs v-model="activeTab" :items="tabs" />
 
-      <!-- Items Table -->
-      <EomLineItemTable :items="items" :total="itemsTotal" :page="itemsPage" @update:page="itemsPage = $event" @edit="editingItem = $event" />
-    </div>
+        <!-- Line Items Tab -->
+        <div v-if="activeTab === 'items'" class="space-y-4">
+          <!-- Filters -->
+          <div class="flex gap-3 flex-wrap">
+            <UInput v-model="filters.client" placeholder="Filter client..." icon="i-lucide-search" class="w-48" />
+            <USelect v-model="filters.confidence" :items="confidenceOptions" value-key="value" class="w-40" />
+            <USelect v-model="filters.reviewStatus" :items="reviewStatusOptions" value-key="value" class="w-40" />
+            <USelect v-model="filters.source" :items="sourceOptions" value-key="value" class="w-44" />
+          </div>
 
-    <!-- Validation Tab -->
-    <div v-if="activeTab === 'validation'">
-      <EomValidation v-if="validation" :validation="validation" />
-      <div v-else class="flex justify-center py-12">
-        <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin" />
-      </div>
-    </div>
+          <!-- Items Table -->
+          <EomLineItemTable :items="items" :total="itemsTotal" :page="itemsPage" @update:page="itemsPage = $event" @edit="editingItem = $event" />
+        </div>
 
-    <!-- Summary Tab -->
-    <div v-if="activeTab === 'summary'">
-      <EomGSTAudit v-if="summary" :summary="summary" />
-      <div v-else class="flex justify-center py-12">
-        <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin" />
-      </div>
-    </div>
+        <!-- Validation Tab -->
+        <div v-if="activeTab === 'validation'">
+          <EomValidation v-if="validation" :validation="validation" />
+          <div v-else class="flex items-center justify-center py-16">
+            <div class="flex flex-col items-center gap-3">
+              <UIcon name="i-lucide-loader-2" class="size-6 animate-spin text-muted" />
+              <span class="text-sm text-muted">Running validation checks...</span>
+            </div>
+          </div>
+        </div>
 
-    <!-- Push to Xero Tab -->
-    <div v-if="activeTab === 'push'">
-      <EomPushToXero
-        v-if="run"
-        :run="run"
-        :contacts="contacts"
-        :xero-status="xeroStatus"
-        @validate="handleValidateContacts"
-        @push="handlePush"
-        @check-status="handleCheckXeroStatus"
-        @archive="handleArchive"
+        <!-- Summary Tab -->
+        <div v-if="activeTab === 'summary'">
+          <EomGSTAudit v-if="summary" :summary="summary" />
+          <div v-else class="flex items-center justify-center py-16">
+            <div class="flex flex-col items-center gap-3">
+              <UIcon name="i-lucide-loader-2" class="size-6 animate-spin text-muted" />
+              <span class="text-sm text-muted">Loading summary...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Push to Xero Tab -->
+        <div v-if="activeTab === 'push'">
+          <EomPushToXero
+            v-if="run"
+            :run="run"
+            :contacts="contacts"
+            :xero-status="xeroStatus"
+            @validate="handleValidateContacts"
+            @push="handlePush"
+            @check-status="handleCheckXeroStatus"
+            @archive="handleArchive"
+          />
+        </div>
+      </template>
+
+      <!-- Item Editor Slideover -->
+      <EomItemEditor
+        v-if="editingItem"
+        :item="editingItem"
+        :run-id="runId"
+        @close="editingItem = null"
+        @saved="loadItems(); editingItem = null"
       />
-    </div>
 
-    <!-- Item Editor Slideover -->
-    <EomItemEditor
-      v-if="editingItem"
-      :item="editingItem"
-      :run-id="runId"
-      @close="editingItem = null"
-      @saved="loadItems(); editingItem = null"
-    />
+      <!-- Confirmation Modal -->
+      <UModal v-model:open="confirmModal">
+        <template #content>
+          <div class="p-6 space-y-4">
+            <div class="flex items-start gap-3">
+              <div class="rounded-full p-2" :class="confirmColor === 'error' ? 'bg-red-100 dark:bg-red-950/40' : confirmColor === 'warning' ? 'bg-amber-100 dark:bg-amber-950/40' : 'bg-blue-100 dark:bg-blue-950/40'">
+                <UIcon
+                  :name="confirmColor === 'error' ? 'i-lucide-alert-triangle' : confirmColor === 'warning' ? 'i-lucide-alert-circle' : 'i-lucide-info'"
+                  class="size-5"
+                  :class="confirmColor === 'error' ? 'text-red-500' : confirmColor === 'warning' ? 'text-amber-500' : 'text-blue-500'"
+                />
+              </div>
+              <div>
+                <h3 class="font-semibold">{{ confirmTitle }}</h3>
+                <p class="text-sm text-muted mt-1">{{ confirmDescription }}</p>
+              </div>
+            </div>
+            <div class="flex justify-end gap-2">
+              <UButton variant="ghost" label="Cancel" @click="confirmModal = false" />
+              <UButton :color="confirmColor === 'error' ? 'error' : 'primary'" :label="confirmLabel" @click="executeConfirm" />
+            </div>
+          </div>
+        </template>
+      </UModal>
+
+    </div>
   </div>
 </template>

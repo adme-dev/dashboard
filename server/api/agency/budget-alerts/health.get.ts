@@ -1,180 +1,139 @@
 /**
- * Get Budget Health Dashboard
+ * Budget Health Dashboard
  * GET /api/agency/budget-alerts/health
  *
- * Returns overall budget health metrics and project-level status
+ * Shows media spend budget health per client/platform with pacing and burn rate.
+ * Query params: month, year
  */
 
-import { queryRows, queryOne } from '~~/server/utils/db'
+import { queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
+  const query = getQuery(event)
+
+  const now = new Date()
+  const month = parseInt(String(query.month || now.getMonth() + 1), 10)
+  const year = parseInt(String(query.year || now.getFullYear()), 10)
+  const period = `${year}-${String(month).padStart(2, '0')}`
+
+  const emptyResult = {
+    period, month, year, monthProgress: 0,
+    summary: { totalBudget: 0, totalSpent: 0, totalRemaining: 0, overallUtilization: 0, clientCount: 0, overBudgetCount: 0, atRiskCount: 0, underspendCount: 0, healthyCount: 0, noBudgetCount: 0 },
+    clients: [],
+    burnRateTrends: []
+  }
 
   try {
-    // Get active projects with budget status
-    const projects = await queryRows(`
+    // Per-client/platform budget health
+    const rows = await queryRows<any>(`
       SELECT
-        p.id,
-        p.name as project_name,
-        c.name as client_name,
-        p.status as project_status,
-        p.budget_amount,
-        p.budget_type,
-        p.start_date,
-        p.end_date,
-        COALESCE(labor.total_labor, 0) as labor_cost,
-        COALESCE(exp.total_expenses, 0) as expense_cost,
-        COALESCE(labor.total_labor, 0) + COALESCE(exp.total_expenses, 0) as total_spent,
-        CASE
-          WHEN p.budget_amount > 0
-          THEN ROUND(((COALESCE(labor.total_labor, 0) + COALESCE(exp.total_expenses, 0)) / p.budget_amount * 100)::numeric, 1)
-          ELSE 0
-        END as percent_consumed,
-        p.budget_amount - (COALESCE(labor.total_labor, 0) + COALESCE(exp.total_expenses, 0)) as remaining_budget,
-        COALESCE(alerts.alert_count, 0) as active_alerts,
-        alerts.max_severity
-      FROM projects p
-      JOIN agency_clients c ON p.client_id = c.id
-      LEFT JOIN (
-        SELECT project_id, SUM(hours * hourly_rate) as total_labor
-        FROM time_entries
-        GROUP BY project_id
-      ) labor ON p.id = labor.project_id
-      LEFT JOIN (
-        SELECT project_id, SUM(total_amount) as total_expenses
-        FROM expenses
-        WHERE status = 'approved'
-        GROUP BY project_id
-      ) exp ON p.id = exp.project_id
-      LEFT JOIN (
-        SELECT
-          project_id,
-          COUNT(*) as alert_count,
-          MAX(CASE severity
-            WHEN 'danger' THEN 'danger'
-            WHEN 'critical' THEN 'critical'
-            WHEN 'warning' THEN 'warning'
-            ELSE 'info'
-          END) as max_severity
-        FROM budget_alerts
-        WHERE status = 'active'
-        GROUP BY project_id
-      ) alerts ON p.id = alerts.project_id
-      WHERE p.status = 'active'
-      ORDER BY percent_consumed DESC NULLS LAST
-    `)
+        COALESCE(ac.id::text, 'unmapped') as client_id,
+        COALESCE(ac.name, 'Unmapped') as client_name,
+        ms.platform,
+        SUM(ms.budget_allocated) as total_budget,
+        SUM(ms.actual_spend) as total_spend,
+        SUM(ms.commission_amount) as total_commission,
+        COUNT(*)::int as campaign_count,
+        bool_or(COALESCE(ms.budget_rolling, false)) as is_rolling
+      FROM media_spend ms
+      LEFT JOIN agency_clients ac ON ms.client_id = ac.id
+      WHERE ms.period = $1
+      GROUP BY ac.id, ac.name, ms.platform
+      ORDER BY total_spend DESC
+    `, [period])
 
-    // Calculate overall health metrics
-    const totalBudget = projects.reduce((sum, p) => sum + Number(p.budget_amount || 0), 0)
-    const totalSpent = projects.reduce((sum, p) => sum + Number(p.total_spent || 0), 0)
-    const overBudgetCount = projects.filter(p => Number(p.percent_consumed || 0) > 100).length
-    const atRiskCount = projects.filter(p => {
-      const pct = Number(p.percent_consumed || 0)
-      return pct > 75 && pct <= 100
-    }).length
+    // Calculate month progress for pacing
+    const daysInMonth = new Date(year, month, 0).getDate()
+    const isCurrentMonth = now.getFullYear() === year && (now.getMonth() + 1) === month
+    const isPastMonth = year < now.getFullYear() || (year === now.getFullYear() && month < (now.getMonth() + 1))
+    const currentDay = isCurrentMonth ? now.getDate() : isPastMonth ? daysInMonth : 0
+    const monthProgress = daysInMonth > 0 ? (currentDay / daysInMonth) * 100 : 0
 
-    // Get recent alerts
-    const recentAlerts = await queryRows(`
+    const clients = rows.map((r: any) => {
+      const budget = parseFloat(r.total_budget) || 0
+      const spend = parseFloat(r.total_spend) || 0
+      const remaining = budget - spend
+      const percentConsumed = budget > 0 ? (spend / budget) * 100 : 0
+      const pacingRatio = monthProgress > 0 && budget > 0 ? (percentConsumed / monthProgress) : 0
+
+      let healthStatus: string
+      if (budget === 0) healthStatus = 'no_budget'
+      else if (percentConsumed > 100) healthStatus = 'over_budget'
+      else if (pacingRatio > 1.15) healthStatus = 'critical'
+      else if (pacingRatio > 1.05) healthStatus = 'at_risk'
+      else if (pacingRatio < 0.8 && currentDay > 7) healthStatus = 'underspend'
+      else healthStatus = 'healthy'
+
+      return {
+        clientId: r.client_id,
+        clientName: r.client_name,
+        platform: r.platform,
+        budget,
+        spend,
+        commission: parseFloat(r.total_commission) || 0,
+        remaining,
+        percentConsumed: Math.round(percentConsumed * 10) / 10,
+        pacingRatio: Math.round(pacingRatio * 100) / 100,
+        campaignCount: r.campaign_count,
+        rolling: r.is_rolling || false,
+        healthStatus
+      }
+    })
+
+    // Summary calculations
+    const withBudget = clients.filter(c => c.budget > 0)
+    const totalBudget = clients.reduce((s, c) => s + c.budget, 0)
+    const totalSpent = clients.reduce((s, c) => s + c.spend, 0)
+
+    // Weekly burn rate from daily_spend
+    const dailyTrends = await queryRows<any>(`
       SELECT
-        ba.id,
-        ba.alert_type,
-        ba.severity,
-        ba.title,
-        ba.message,
-        ba.percent_consumed,
-        ba.created_at,
-        p.name as project_name
-      FROM budget_alerts ba
-      LEFT JOIN projects p ON ba.project_id = p.id
-      WHERE ba.status = 'active'
-      ORDER BY
-        CASE ba.severity
-          WHEN 'danger' THEN 1
-          WHEN 'critical' THEN 2
-          WHEN 'warning' THEN 3
-          ELSE 4
-        END,
-        ba.created_at DESC
-      LIMIT 10
-    `)
-
-    // Get burn rate trends (last 4 weeks)
-    const burnRateTrends = await queryRows(`
-      SELECT
-        DATE_TRUNC('week', te.date)::DATE as week_start,
-        SUM(te.hours * te.hourly_rate) as labor_spend,
-        COALESCE(exp.expense_spend, 0) as expense_spend,
-        SUM(te.hours * te.hourly_rate) + COALESCE(exp.expense_spend, 0) as total_spend
-      FROM time_entries te
-      LEFT JOIN (
-        SELECT
-          DATE_TRUNC('week', expense_date)::DATE as week_start,
-          SUM(total_amount) as expense_spend
-        FROM expenses
-        WHERE status = 'approved'
-          AND expense_date >= CURRENT_DATE - INTERVAL '4 weeks'
-        GROUP BY DATE_TRUNC('week', expense_date)
-      ) exp ON DATE_TRUNC('week', te.date)::DATE = exp.week_start
-      WHERE te.date >= CURRENT_DATE - INTERVAL '4 weeks'
-      GROUP BY DATE_TRUNC('week', te.date), exp.expense_spend
+        DATE_TRUNC('week', ds.spend_date)::DATE as week_start,
+        SUM(ds.spend) as total_spend,
+        SUM(COALESCE(ds.impressions, 0)) as total_impressions,
+        SUM(COALESCE(ds.clicks, 0)) as total_clicks,
+        COUNT(DISTINCT ds.media_spend_id)::int as campaign_count
+      FROM daily_spend ds
+      JOIN media_spend ms ON ds.media_spend_id = ms.id
+      WHERE ms.period = $1
+      GROUP BY DATE_TRUNC('week', ds.spend_date)
       ORDER BY week_start
-    `)
+    `, [period])
 
     return {
+      period,
+      month,
+      year,
+      monthProgress: Math.round(monthProgress),
       summary: {
         totalBudget,
         totalSpent,
         totalRemaining: totalBudget - totalSpent,
         overallUtilization: totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0,
-        projectCount: projects.length,
-        overBudgetCount,
-        atRiskCount,
-        healthyCount: projects.length - overBudgetCount - atRiskCount
+        clientCount: withBudget.length,
+        overBudgetCount: withBudget.filter(c => c.healthStatus === 'over_budget').length,
+        atRiskCount: withBudget.filter(c => c.healthStatus === 'at_risk' || c.healthStatus === 'critical').length,
+        underspendCount: withBudget.filter(c => c.healthStatus === 'underspend').length,
+        healthyCount: withBudget.filter(c => c.healthStatus === 'healthy').length,
+        noBudgetCount: clients.filter(c => c.budget === 0).length
       },
-      projects: projects.map(p => ({
-        id: p.id,
-        projectName: p.project_name,
-        clientName: p.client_name,
-        status: p.project_status,
-        budgetAmount: Number(p.budget_amount || 0),
-        budgetType: p.budget_type,
-        laborCost: Number(p.labor_cost || 0),
-        expenseCost: Number(p.expense_cost || 0),
-        totalSpent: Number(p.total_spent || 0),
-        percentConsumed: Number(p.percent_consumed || 0),
-        remainingBudget: Number(p.remaining_budget || 0),
-        activeAlerts: Number(p.active_alerts || 0),
-        maxSeverity: p.max_severity,
-        healthStatus: Number(p.percent_consumed || 0) > 100 ? 'over_budget'
-          : Number(p.percent_consumed || 0) > 90 ? 'critical'
-          : Number(p.percent_consumed || 0) > 75 ? 'at_risk'
-          : 'healthy',
-        startDate: p.start_date,
-        endDate: p.end_date
-      })),
-      recentAlerts: recentAlerts.map(a => ({
-        id: a.id,
-        alertType: a.alert_type,
-        severity: a.severity,
-        title: a.title,
-        message: a.message,
-        percentConsumed: Number(a.percent_consumed || 0),
-        projectName: a.project_name,
-        createdAt: a.created_at
-      })),
-      burnRateTrends: burnRateTrends.map(t => ({
+      clients,
+      burnRateTrends: dailyTrends.map((t: any) => ({
         weekStart: t.week_start,
-        laborSpend: Number(t.labor_spend || 0),
-        expenseSpend: Number(t.expense_spend || 0),
-        totalSpend: Number(t.total_spend || 0)
+        totalSpend: parseFloat(t.total_spend) || 0,
+        impressions: parseInt(t.total_impressions) || 0,
+        clicks: parseInt(t.total_clicks) || 0,
+        campaignCount: t.campaign_count
       }))
     }
-  } catch (error) {
+  } catch (error: any) {
+    // Only swallow table-not-found (42P01), not column errors
+    if (error.code === '42P01') {
+      return emptyResult
+    }
     console.error('Failed to fetch budget health:', error)
-    throw createError({
-      statusCode: 500,
-      statusMessage: 'Failed to fetch budget health'
-    })
+    throw createError({ statusCode: 500, statusMessage: 'Failed to fetch budget health' })
   }
 })

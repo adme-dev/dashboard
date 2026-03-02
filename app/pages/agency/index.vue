@@ -164,7 +164,7 @@ const quickActions = [
   { label: 'All Boards', icon: 'i-lucide-layout-grid', to: '/agency/boards' },
   { label: 'Workflow', icon: 'i-lucide-git-branch', to: '/agency/workflow' },
   { label: 'Time Log', icon: 'i-lucide-clock', to: '/agency/time' },
-  { label: 'EOM', icon: 'i-lucide-file-spreadsheet', to: '/agency/eom' },
+  { label: 'Billing', icon: 'i-lucide-receipt', to: '/agency/billing' },
   { label: 'Ad Spend', icon: 'i-lucide-megaphone', to: '/agency/social/spend' },
   { label: 'Clients', icon: 'i-lucide-building-2', to: '/agency/clients' },
 ]
@@ -251,54 +251,54 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
 
       <!-- Personal Stats Row -->
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <UCard class="overflow-hidden">
+        <NbCard hoverable>
           <div class="flex items-center gap-3">
             <div class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center bg-blue-50 dark:bg-blue-500/10">
               <UIcon name="i-lucide-list-checks" class="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div class="min-w-0">
-              <p class="text-xs text-[var(--ui-text-muted)] uppercase tracking-wide">My Tasks</p>
+              <p class="text-[11px] font-semibold uppercase tracking-wider text-[var(--ui-text-muted)]">My Tasks</p>
               <USkeleton v-if="teamStatus === 'pending'" class="h-7 w-10 rounded" />
-              <p v-else class="text-xl font-semibold text-[var(--ui-text-highlighted)]">{{ myTaskCount }}</p>
+              <p v-else class="text-2xl font-bold text-[var(--ui-text-highlighted)]">{{ myTaskCount }}</p>
             </div>
           </div>
-        </UCard>
-        <UCard class="overflow-hidden">
+        </NbCard>
+        <NbCard hoverable>
           <div class="flex items-center gap-3">
             <div class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center" :class="overdueCount > 0 ? 'bg-red-50 dark:bg-red-500/10' : 'bg-emerald-50 dark:bg-emerald-500/10'">
               <UIcon :name="overdueCount > 0 ? 'i-lucide-alert-triangle' : 'i-lucide-check-circle'" class="w-5 h-5" :class="overdueCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'" />
             </div>
             <div class="min-w-0">
-              <p class="text-xs text-[var(--ui-text-muted)] uppercase tracking-wide">Overdue</p>
+              <p class="text-[11px] font-semibold uppercase tracking-wider text-[var(--ui-text-muted)]">Overdue</p>
               <USkeleton v-if="teamStatus === 'pending'" class="h-7 w-10 rounded" />
-              <p v-else class="text-xl font-semibold" :class="overdueCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-[var(--ui-text-highlighted)]'">{{ overdueCount }}</p>
+              <p v-else class="text-2xl font-bold" :class="overdueCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-[var(--ui-text-highlighted)]'">{{ overdueCount }}</p>
             </div>
           </div>
-        </UCard>
-        <UCard class="overflow-hidden">
+        </NbCard>
+        <NbCard hoverable>
           <div class="flex items-center gap-3">
             <div class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center bg-amber-50 dark:bg-amber-500/10">
               <UIcon name="i-lucide-calendar-check" class="w-5 h-5 text-amber-600 dark:text-amber-400" />
             </div>
             <div class="min-w-0">
-              <p class="text-xs text-[var(--ui-text-muted)] uppercase tracking-wide">Due Today</p>
+              <p class="text-[11px] font-semibold uppercase tracking-wider text-[var(--ui-text-muted)]">Due Today</p>
               <USkeleton v-if="teamStatus === 'pending'" class="h-7 w-10 rounded" />
-              <p v-else class="text-xl font-semibold text-[var(--ui-text-highlighted)]">{{ dueTodayTasks.length }}</p>
+              <p v-else class="text-2xl font-bold text-[var(--ui-text-highlighted)]">{{ dueTodayTasks.length }}</p>
             </div>
           </div>
-        </UCard>
-        <UCard class="overflow-hidden">
+        </NbCard>
+        <NbCard hoverable>
           <div class="flex items-center gap-3">
             <div class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center bg-violet-50 dark:bg-violet-500/10">
               <UIcon name="i-lucide-clock" class="w-5 h-5 text-violet-600 dark:text-violet-400" />
             </div>
             <div class="min-w-0">
-              <p class="text-xs text-[var(--ui-text-muted)] uppercase tracking-wide">Hours This Week</p>
+              <p class="text-[11px] font-semibold uppercase tracking-wider text-[var(--ui-text-muted)]">Hours This Week</p>
               <USkeleton v-if="timeStatus === 'pending'" class="h-7 w-10 rounded" />
-              <p v-else class="text-xl font-semibold text-[var(--ui-text-highlighted)]">{{ timeSummary?.week?.total?.toFixed(1) || '0' }}h</p>
+              <p v-else class="text-2xl font-bold text-[var(--ui-text-highlighted)]">{{ timeSummary?.week?.total?.toFixed(1) || '0' }}h</p>
             </div>
           </div>
-        </UCard>
+        </NbCard>
       </div>
 
       <!-- Main Grid: 2/3 + 1/3 -->

@@ -20,6 +20,7 @@ const platformName = computed(() => {
   const p = result.value.platform
   if (p === 'meta') return 'Meta Ads'
   if (p === 'google') return 'Google Ads'
+  if (p === 'tiktok') return 'TikTok Ads'
   return p
 })
 

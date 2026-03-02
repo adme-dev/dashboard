@@ -9,10 +9,12 @@ export type JobType =
   | 'eom.generate'
   | 'spend.sync.meta'
   | 'spend.sync.google'
+  | 'spend.sync.tiktok'
   | 'embed.task'
   | 'embed.brief'
   | 'embed.client'
   | 'training.extract'
+  | 'dissect.analyze'
 
 export interface QueueJob {
   type: JobType

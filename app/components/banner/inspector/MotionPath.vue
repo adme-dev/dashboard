@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const { selectedLayer, toggleMotionPath, addPathPoint, updatePathPoint, removePathPoint, updateLayer } = useBannerStudio()
+const { state, selectedLayer, toggleMotionPath, addPathPoint, updatePathPoint, removePathPoint, updateLayer, getMotionPathTweens, addMotionPathTween, updateMotionPathTween, removeMotionPathTween } = useBannerStudio()
 
 const PATHABLE_TYPES = new Set(['text', 'image', 'video', 'button', 'rect'])
 
@@ -49,6 +49,43 @@ function onRemovePoint(index: number) {
   if (!selectedLayer.value) return
   removePathPoint(selectedLayer.value.id, index)
 }
+
+const tweens = computed(() => {
+  if (!selectedLayer.value) return []
+  return getMotionPathTweens(selectedLayer.value)
+})
+
+const EASE_OPTIONS = [
+  { label: 'Ease In/Out', value: 'power2.inOut' },
+  { label: 'Ease Out', value: 'power2.out' },
+  { label: 'Ease In', value: 'power2.in' },
+  { label: 'Linear', value: 'none' },
+  { label: 'Elastic', value: 'elastic.out(1, 0.3)' },
+  { label: 'Bounce', value: 'bounce.out' },
+  { label: 'Back', value: 'back.inOut(1.7)' },
+  { label: 'Slow Mo', value: 'slow(0.7, 0.7, false)' },
+]
+
+function onTweenFieldChange(index: number, field: 'pathStart' | 'pathEnd', val: string | number) {
+  if (!selectedLayer.value) return
+  const num = Math.max(0, Math.min(1, Number(val) || 0))
+  updateMotionPathTween(selectedLayer.value.id, index, { [field]: num })
+}
+
+function onTweenEaseChange(index: number, val: string) {
+  if (!selectedLayer.value) return
+  updateMotionPathTween(selectedLayer.value.id, index, { ease: val })
+}
+
+function onAddTween() {
+  if (!selectedLayer.value) return
+  addMotionPathTween(selectedLayer.value.id)
+}
+
+function onRemoveTween(index: number) {
+  if (!selectedLayer.value) return
+  removeMotionPathTween(selectedLayer.value.id, index)
+}
 </script>
 
 <template>
@@ -92,6 +129,16 @@ function onRemovePoint(index: number) {
               @update:model-value="onAutoRotateChange"
             />
             <label class="text-[11px] text-(--ui-text-muted)">Auto-Rotate</label>
+          </div>
+
+          <!-- Solo preview toggle -->
+          <div class="flex items-center gap-2">
+            <UCheckbox
+              :model-value="state.soloMotionPath"
+              @update:model-value="v => state.soloMotionPath = v"
+            />
+            <label class="text-[11px] text-(--ui-text-muted)">Solo Preview</label>
+            <span class="text-[9px] text-(--ui-text-dimmed)">(path only, no entrance/exit)</span>
           </div>
 
           <!-- Waypoints list -->
@@ -139,6 +186,72 @@ function onRemovePoint(index: number) {
               @click="onAddPoint"
             >
               Add Point
+            </UButton>
+          </div>
+
+          <!-- Tweens list -->
+          <div>
+            <label class="text-[10px] text-(--ui-text-muted) block mb-1">Tweens</label>
+            <div class="space-y-1.5 max-h-48 overflow-y-auto">
+              <div
+                v-for="(tw, i) in tweens"
+                :key="i"
+                class="flex items-center gap-1 bg-white/[0.03] rounded px-1.5 py-1"
+              >
+                <span class="text-[8px] text-[#4af0a2] font-mono shrink-0 w-3">{{ i + 1 }}</span>
+                <div class="flex-1 space-y-1">
+                  <div class="flex items-center gap-1">
+                    <span class="text-[8px] text-(--ui-text-dimmed) w-8">Path</span>
+                    <UInput
+                      type="number"
+                      :model-value="tw.pathStart"
+                      size="xs"
+                      class="w-14"
+                      step="0.05"
+                      min="0" max="1"
+                      @update:model-value="v => onTweenFieldChange(i, 'pathStart', v)"
+                    />
+                    <span class="text-[8px] text-(--ui-text-dimmed)">→</span>
+                    <UInput
+                      type="number"
+                      :model-value="tw.pathEnd"
+                      size="xs"
+                      class="w-14"
+                      step="0.05"
+                      min="0" max="1"
+                      @update:model-value="v => onTweenFieldChange(i, 'pathEnd', v)"
+                    />
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <span class="text-[8px] text-(--ui-text-dimmed) w-8">Ease</span>
+                    <USelect
+                      :model-value="tw.ease || 'power2.inOut'"
+                      :items="EASE_OPTIONS"
+                      value-key="value"
+                      size="xs"
+                      class="flex-1"
+                      @update:model-value="v => onTweenEaseChange(i, v)"
+                    />
+                  </div>
+                </div>
+                <UButton
+                  icon="i-lucide-x"
+                  variant="ghost"
+                  size="xs"
+                  color="neutral"
+                  :disabled="tweens.length <= 1"
+                  @click="onRemoveTween(i)"
+                />
+              </div>
+            </div>
+            <UButton
+              icon="i-lucide-plus"
+              variant="ghost"
+              size="xs"
+              class="mt-1"
+              @click="onAddTween"
+            >
+              Add Tween
             </UButton>
           </div>
         </template>

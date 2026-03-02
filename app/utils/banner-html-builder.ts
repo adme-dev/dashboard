@@ -113,14 +113,24 @@ function buildKeyframeAnimLines(l: Layer): string[] {
     }
   }
 
-  // Motion path tween
+  // Motion path tweens (chained)
   if (l.motionPath && l.motionPath.length >= 2) {
     const startTime = l.startTime || 0
     const endTime = l.endTime || (startTime + 3)
     const pathJson = JSON.stringify(l.motionPath.map(p => ({ x: p.x, y: p.y })))
     const curviness = l.motionPathCurviness ?? 1
     const autoRotate = l.motionPathAutoRotate ? ', autoRotate: true' : ''
-    lines.push(`  tl.to(${sel}, { motionPath: { path: ${pathJson}, curviness: ${curviness}${autoRotate} }, duration: ${(endTime - startTime).toFixed(3)}, ease: '${l.ease || 'none'}' }, ${startTime});`)
+    const tweens = l.motionPathTweens?.length
+      ? l.motionPathTweens
+      : [{ startTime, endTime, pathStart: 0, pathEnd: 1, ease: l.ease || 'power2.inOut' }]
+    for (const tw of tweens) {
+      const dur = tw.endTime - tw.startTime
+      if (dur <= 0) continue
+      const startEnd = tw.pathStart !== 0 || tw.pathEnd !== 1
+        ? `, start: ${tw.pathStart}, end: ${tw.pathEnd}`
+        : ''
+      lines.push(`  tl.to(${sel}, { motionPath: { path: ${pathJson}, curviness: ${curviness}${autoRotate}${startEnd} }, duration: ${dur.toFixed(3)}, ease: '${tw.ease || 'power2.inOut'}' }, ${tw.startTime});`)
+    }
   }
 
   return lines
@@ -252,6 +262,7 @@ export function buildBannerHTML(
       const outDur = l.outDur || (isBg ? 0.5 : 0.25)
       const ease = l.ease || 'power2.out'
       const preset = ANIM_IN.find((a: any) => a.id === l.animIn)
+      const hasMP = (l.motionPath?.length ?? 0) >= 2
 
       // Initial hidden state
       if (isBg) {
@@ -268,15 +279,26 @@ export function buildBannerHTML(
         } else {
           lines.push(`  tl.to(${sel}, { opacity: ${l.opacity}, duration: 0.4, ease: 'power1.out' }, ${startTime});`)
         }
-        lines.push(`  tl.to(${sel}, { scale: 1.08, x: '-2%', y: '-1%', duration: ${presenceDur}, ease: 'none' }, ${startTime});`)
-      } else if (preset && Object.keys(preset.from).length > 0) {
-        const fromProps = Object.entries(preset.from)
-          .map(([k, v]) => `${k}: ${v}`)
-          .join(', ')
-        if (isBg) {
-          lines.push(`  tl.from(${sel}, { ${fromProps}, autoAlpha: 0, duration: ${animDur}, ease: '${ease}' }, ${startTime});`)
+        if (hasMP) {
+          lines.push(`  tl.to(${sel}, { scale: 1.08, duration: ${presenceDur}, ease: 'none' }, ${startTime});`)
         } else {
-          lines.push(`  tl.from(${sel}, { ${fromProps}, duration: ${animDur}, ease: '${ease}' }, ${startTime});`)
+          lines.push(`  tl.to(${sel}, { scale: 1.08, x: '-2%', y: '-1%', duration: ${presenceDur}, ease: 'none' }, ${startTime});`)
+        }
+      } else if (preset && Object.keys(preset.from).length > 0) {
+        // Strip x/y from preset when motion path drives position
+        const fromEntries = Object.entries(preset.from)
+          .filter(([k]) => !hasMP || (k !== 'x' && k !== 'y'))
+        if (fromEntries.length > 0) {
+          const fromProps = fromEntries.map(([k, v]) => `${k}: ${v}`).join(', ')
+          if (isBg) {
+            lines.push(`  tl.from(${sel}, { ${fromProps}, autoAlpha: 0, duration: ${animDur}, ease: '${ease}' }, ${startTime});`)
+          } else {
+            lines.push(`  tl.from(${sel}, { ${fromProps}, duration: ${animDur}, ease: '${ease}' }, ${startTime});`)
+          }
+        } else {
+          // Preset only had x/y (e.g. slideL) — do simple opacity reveal
+          const opReveal = isBg ? 'autoAlpha' : 'opacity'
+          lines.push(`  tl.to(${sel}, { ${opReveal}: ${l.opacity}, duration: 0.1 }, ${startTime});`)
         }
       } else if (l.animIn === 'none' || !l.animIn) {
         // Just appear
@@ -298,6 +320,7 @@ export function buildBannerHTML(
           lines.push(`  tl.to(${sel}, { ${opKey}: 0, duration: 0.05 }, ${endTime - 0.05});`)
         } else {
           const toEntries = Object.entries(outPreset.to)
+            .filter(([k]) => !hasMP || (k !== 'x' && k !== 'y'))
             .map(([k, v]) => {
               if (isBg && k === 'opacity') return `autoAlpha: ${v}`
               return `${k}: ${v}`
@@ -313,12 +336,22 @@ export function buildBannerHTML(
         lines.push(`  (function() { var vid = document.querySelector('[data-id="${l.id}"] video'); if (vid) { vid.pause(); var p = { t: 0 }; tl.to(p, { t: ${presenceDur.toFixed(2)}, duration: ${presenceDur.toFixed(2)}, ease: 'none', onUpdate: function() { vid.currentTime = p.t; } }, ${startTime}); } })();`)
       }
 
-      // Motion path for preset-based layers
+      // Motion path tweens (chained) for preset-based layers
       if (l.motionPath && l.motionPath.length >= 2) {
         const pathJson = JSON.stringify(l.motionPath.map(p => ({ x: p.x, y: p.y })))
         const curviness = l.motionPathCurviness ?? 1
         const autoRotate = l.motionPathAutoRotate ? ', autoRotate: true' : ''
-        lines.push(`  tl.to(${sel}, { motionPath: { path: ${pathJson}, curviness: ${curviness}${autoRotate} }, duration: ${(endTime - startTime).toFixed(3)}, ease: '${ease}' }, ${startTime});`)
+        const tweens = l.motionPathTweens?.length
+          ? l.motionPathTweens
+          : [{ startTime, endTime, pathStart: 0, pathEnd: 1, ease: ease || 'power2.inOut' }]
+        for (const tw of tweens) {
+          const dur = tw.endTime - tw.startTime
+          if (dur <= 0) continue
+          const startEnd = tw.pathStart !== 0 || tw.pathEnd !== 1
+            ? `, start: ${tw.pathStart}, end: ${tw.pathEnd}`
+            : ''
+          lines.push(`  tl.to(${sel}, { motionPath: { path: ${pathJson}, curviness: ${curviness}${autoRotate}${startEnd} }, duration: ${dur.toFixed(3)}, ease: '${tw.ease || 'power2.inOut'}' }, ${tw.startTime});`)
+        }
       }
 
     })

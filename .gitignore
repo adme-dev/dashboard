@@ -38,3 +38,6 @@ logs
 
 # npm lockfiles in worker dirs (project uses pnpm)
 workers/*/package-lock.json
+
+# Local dev uploads (R2 fallback)
+server/uploads/

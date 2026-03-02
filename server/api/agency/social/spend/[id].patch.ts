@@ -1,5 +1,6 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
+import { kvDelete } from '~~/server/utils/kv'
 
 /**
  * PATCH /api/agency/social/spend/:id
@@ -20,9 +21,9 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'budgetAllocated must be a non-negative number' })
   }
 
-  // Get current budget before update
-  const current = await queryOne<{ id: string; budget_allocated: string }>(
-    `SELECT id, budget_allocated::text FROM media_spend WHERE id = $1`,
+  // Get current budget and period before update
+  const current = await queryOne<{ id: string; budget_allocated: string; period: string; platform: string }>(
+    `SELECT id, budget_allocated::text, period, platform FROM media_spend WHERE id = $1`,
     [id]
   )
 
@@ -32,9 +33,10 @@ export default eventHandler(async (event) => {
 
   const previousBudget = parseFloat(current.budget_allocated || '0')
 
-  // Update the budget
+  // Update the budget (and rolling flag if provided)
+  const rollingClause = typeof body.rolling === 'boolean' ? `, budget_rolling = ${body.rolling}` : ''
   const row = await queryOne<{ id: string; budget_allocated: number }>(
-    `UPDATE media_spend SET budget_allocated = $1 WHERE id = $2 RETURNING id, budget_allocated`,
+    `UPDATE media_spend SET budget_allocated = $1${rollingClause} WHERE id = $2 RETURNING id, budget_allocated`,
     [budgetAllocated, id]
   )
 
@@ -48,6 +50,16 @@ export default eventHandler(async (event) => {
       console.error('[BudgetAudit] Failed to log change:', err.message)
     })
   }
+
+  // Bust KV cache for this period (fire-and-forget)
+  const period = current.period
+  const kvPlatform = current.platform === 'google_ads' ? 'google' : current.platform
+  Promise.all([
+    kvDelete(event, `spend:summary:${period}:all`),
+    kvDelete(event, `spend:summary:${period}:${current.platform}`),
+    kvDelete(event, `spend:${kvPlatform}:accounts:${period}`),
+    kvDelete(event, `spend:daily:${kvPlatform}:${period}`),
+  ]).catch(() => {})
 
   return { updated: true, id: row!.id, budgetAllocated: row!.budget_allocated }
 })

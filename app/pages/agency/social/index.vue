@@ -9,7 +9,7 @@ const connecting = ref<string | null>(null)
 
 // Manual token modal state
 const tokenModal = ref(false)
-const tokenPlatform = ref<'meta' | 'google'>('meta')
+const tokenPlatform = ref<'meta' | 'google' | 'tiktok'>('meta')
 const tokenInput = ref('')
 const tokenSubmitting = ref(false)
 
@@ -21,7 +21,7 @@ const platforms = [
   { key: 'meta', displayName: 'Meta Ads', icon: 'i-lucide-facebook', bgColor: 'bg-blue-100 dark:bg-blue-900/30', iconColor: 'text-blue-600', description: 'Facebook & Instagram advertising' },
   { key: 'google', displayName: 'Google Ads', icon: 'i-lucide-chrome', bgColor: 'bg-red-100 dark:bg-red-900/30', iconColor: 'text-red-500', description: 'Google search & display ads' },
   { key: 'linkedin', displayName: 'LinkedIn Ads', icon: 'i-lucide-linkedin', bgColor: 'bg-blue-50 dark:bg-blue-950', iconColor: 'text-blue-600', description: 'B2B advertising on LinkedIn', comingSoon: true },
-  { key: 'tiktok', displayName: 'TikTok Ads', icon: 'i-lucide-music', bgColor: 'bg-gray-50 dark:bg-gray-950', iconColor: 'text-gray-600', description: 'Short-form video advertising', comingSoon: true },
+  { key: 'tiktok', displayName: 'TikTok Ads', icon: 'i-lucide-music', bgColor: 'bg-gray-100 dark:bg-gray-900/30', iconColor: 'text-gray-700', description: 'Short-form video advertising' },
 ]
 
 const platformSummaries = computed(() => {
@@ -46,11 +46,12 @@ async function handleConnect(platform: string) {
   connecting.value = platform
   clearOAuthResult()
   try {
-    const result = await connectPlatform(platform as 'meta' | 'google')
+    const result = await connectPlatform(platform as 'meta' | 'google' | 'tiktok')
     if (result.success) {
+      const name = platform === 'meta' ? 'Meta' : platform === 'google' ? 'Google' : 'TikTok'
       toast.add({
         title: 'Connected',
-        description: `${result.accounts} ${platform === 'meta' ? 'Meta' : 'Google'} ad account${result.accounts !== 1 ? 's' : ''} linked successfully`,
+        description: `${result.accounts} ${name} ad account${result.accounts !== 1 ? 's' : ''} linked successfully`,
         color: 'success',
       })
     } else if (result.error) {
@@ -59,10 +60,11 @@ async function handleConnect(platform: string) {
   } catch (e: any) {
     const msg = e.data?.statusMessage || e.data?.message || e.message || 'Unknown error'
     const isNotConfigured = msg.includes('not configured')
+    const name = platform === 'meta' ? 'Meta' : platform === 'google' ? 'Google' : 'TikTok'
     toast.add({
       title: isNotConfigured ? 'Not configured' : 'Connection failed',
       description: isNotConfigured
-        ? `${platform === 'meta' ? 'Meta' : 'Google'} API credentials are not set. Add them to your environment variables.`
+        ? `${name} API credentials are not set. Add them to your environment variables.`
         : msg,
       color: isNotConfigured ? 'warning' : 'error',
     })
@@ -72,7 +74,7 @@ async function handleConnect(platform: string) {
 }
 
 function handleManualToken(platform: string) {
-  tokenPlatform.value = platform as 'meta' | 'google'
+  tokenPlatform.value = platform as 'meta' | 'google' | 'tiktok'
   tokenInput.value = ''
   tokenModal.value = true
 }
@@ -85,9 +87,10 @@ async function submitManualToken() {
     const result = await connectWithToken(tokenPlatform.value, tokenInput.value.trim())
     tokenModal.value = false
     if (result.success) {
+      const name = tokenPlatform.value === 'meta' ? 'Meta' : tokenPlatform.value === 'google' ? 'Google' : 'TikTok'
       toast.add({
         title: 'Connected',
-        description: `${result.accounts} ${tokenPlatform.value === 'meta' ? 'Meta' : 'Google'} ad account${result.accounts !== 1 ? 's' : ''} linked`,
+        description: `${result.accounts} ${name} ad account${result.accounts !== 1 ? 's' : ''} linked`,
         color: 'success',
       })
     } else {
@@ -111,7 +114,7 @@ const showDisconnectModal = computed({
 function handleDisconnect(platform: string) {
   const summary = platformSummaries.value[platform]
   if (!summary?.connected) return
-  const displayName = platform === 'meta' ? 'Meta' : 'Google'
+  const displayName = platform === 'meta' ? 'Meta' : platform === 'google' ? 'Google' : 'TikTok'
   disconnectTarget.value = { platform, displayName, accountCount: summary.accountCount }
 }
 
@@ -132,7 +135,7 @@ async function confirmDisconnect() {
 async function handleSync(platform: string) {
   syncing.value = platform
   try {
-    const result = await syncSpend(platform as 'meta' | 'google')
+    const result = await syncSpend(platform as 'meta' | 'google' | 'tiktok')
     toast.add({ title: 'Sync complete', description: `Synced ${result.synced || 0} records`, color: 'success' })
     await fetchConnections()
   } catch (e: any) {
@@ -149,6 +152,9 @@ function handleViewAccounts(platform: string) {
 const graphExplorerUrl = computed(() => {
   if (tokenPlatform.value === 'meta') {
     return 'https://developers.facebook.com/tools/explorer/'
+  }
+  if (tokenPlatform.value === 'tiktok') {
+    return 'https://business-api.tiktok.com/portal/docs'
   }
   return 'https://developers.google.com/oauthplayground/'
 })
@@ -188,8 +194,8 @@ const graphExplorerUrl = computed(() => {
         <div class="flex-1 min-w-0">
           <p class="text-sm font-medium">
             {{ lastOAuthResult.success
-              ? `${lastOAuthResult.platform === 'meta' ? 'Meta' : 'Google'} connected — ${lastOAuthResult.accounts} account${lastOAuthResult.accounts !== 1 ? 's' : ''} linked`
-              : `${lastOAuthResult.platform === 'meta' ? 'Meta' : 'Google'} connection failed`
+              ? `${lastOAuthResult.platform === 'meta' ? 'Meta' : lastOAuthResult.platform === 'google' ? 'Google' : 'TikTok'} connected — ${lastOAuthResult.accounts} account${lastOAuthResult.accounts !== 1 ? 's' : ''} linked`
+              : `${lastOAuthResult.platform === 'meta' ? 'Meta' : lastOAuthResult.platform === 'google' ? 'Google' : 'TikTok'} connection failed`
             }}
           </p>
           <p v-if="!lastOAuthResult.success && lastOAuthResult.error" class="text-xs text-muted mt-0.5">
@@ -289,7 +295,7 @@ const graphExplorerUrl = computed(() => {
             <p class="text-sm text-muted mt-1">
               Get a token from the
               <a :href="graphExplorerUrl" target="_blank" class="text-primary underline">
-                {{ tokenPlatform === 'meta' ? 'Graph API Explorer' : 'OAuth Playground' }}
+                {{ tokenPlatform === 'meta' ? 'Graph API Explorer' : tokenPlatform === 'tiktok' ? 'TikTok Business API portal' : 'OAuth Playground' }}
               </a>
               and paste it below.
             </p>
@@ -304,6 +310,15 @@ const graphExplorerUrl = computed(() => {
                 <li>Select your app from the dropdown</li>
                 <li>Click "Generate Access Token"</li>
                 <li>Check the <strong>ads_read</strong> permission</li>
+                <li>Copy the token and paste it below</li>
+              </ol>
+            </template>
+            <template v-else-if="tokenPlatform === 'tiktok'">
+              <p class="font-medium text-default">Steps:</p>
+              <ol class="list-decimal list-inside space-y-1">
+                <li>Go to <a href="https://business-api.tiktok.com/portal/docs" target="_blank" class="text-primary underline">TikTok Business API portal</a></li>
+                <li>Open your app and go to "Tools" → "Access Token"</li>
+                <li>Generate a long-lived access token</li>
                 <li>Copy the token and paste it below</li>
               </ol>
             </template>

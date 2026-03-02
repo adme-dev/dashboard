@@ -79,38 +79,27 @@ function handleFlag() {
     </template>
     <template #body>
       <div class="space-y-4 p-4">
-        <div>
-          <label class="text-sm font-medium">Client Name</label>
-          <input v-model="form.clientName" class="w-full mt-1 border border-default rounded-md px-3 py-2 text-sm bg-default" />
-        </div>
-        <div>
-          <label class="text-sm font-medium">Description</label>
-          <textarea v-model="form.description" rows="2" class="w-full mt-1 border border-default rounded-md px-3 py-2 text-sm bg-default" />
-        </div>
-        <div>
-          <label class="text-sm font-medium">Amount (ex-GST)</label>
-          <input v-model.number="form.unitAmount" type="number" step="0.01" class="w-full mt-1 border border-default rounded-md px-3 py-2 text-sm bg-default" />
-        </div>
-        <div>
-          <label class="text-sm font-medium">Account Code (COA)</label>
-          <select v-model="form.accountCode" class="w-full mt-1 border border-default rounded-md px-3 py-2 text-sm bg-default">
-            <option v-for="opt in coaOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-          </select>
-        </div>
-        <div>
-          <label class="text-sm font-medium">GST Type</label>
-          <select v-model="form.taxType" class="w-full mt-1 border border-default rounded-md px-3 py-2 text-sm bg-default">
-            <option v-for="opt in gstOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-          </select>
-        </div>
-        <div>
-          <label class="text-sm font-medium">Tracking Category</label>
-          <input v-model="form.trackingOption1" class="w-full mt-1 border border-default rounded-md px-3 py-2 text-sm bg-default" />
-        </div>
-        <div>
-          <label class="text-sm font-medium">Review Notes</label>
-          <textarea v-model="form.reviewNotes" rows="2" class="w-full mt-1 border border-default rounded-md px-3 py-2 text-sm bg-default" placeholder="Optional notes..." />
-        </div>
+        <UFormField label="Client Name">
+          <UInput v-model="form.clientName" />
+        </UFormField>
+        <UFormField label="Description">
+          <UTextarea v-model="form.description" :rows="3" />
+        </UFormField>
+        <UFormField label="Amount (ex-GST)">
+          <UInput v-model.number="form.unitAmount" type="number" step="0.01" />
+        </UFormField>
+        <UFormField label="Account Code (COA)">
+          <USelect v-model="form.accountCode" :items="coaOptions" value-key="value" />
+        </UFormField>
+        <UFormField label="GST Type">
+          <USelect v-model="form.taxType" :items="gstOptions" value-key="value" />
+        </UFormField>
+        <UFormField label="Tracking Category">
+          <UInput v-model="form.trackingOption1" />
+        </UFormField>
+        <UFormField label="Review Notes">
+          <UTextarea v-model="form.reviewNotes" :rows="3" placeholder="Optional notes..." />
+        </UFormField>
 
         <!-- Original values if corrected -->
         <div v-if="item.originalValues" class="border border-default rounded-lg p-3 bg-elevated/50">

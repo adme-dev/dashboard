@@ -60,13 +60,15 @@ export async function syncMetaSpend(month: number, year: number): Promise<{ sync
       totalSpend += spend
 
       let clientId: string | null = null
+      let commissionRate = 0
       const mapping = findMapping(mappings, conn.id, campaign.campaign_id, campaign.campaign_name)
       if (mapping) {
-        const client = await queryOne<{ id: string }>(
-          `SELECT id FROM agency_clients WHERE name = $1 OR code = $2 LIMIT 1`,
+        const client = await queryOne<{ id: string; media_commission_rate: string | null }>(
+          `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR code = $2 LIMIT 1`,
           [mapping.xero_client_name, mapping.xero_client_code]
         )
         clientId = client?.id || null
+        commissionRate = parseFloat(client?.media_commission_rate || '0') || 0
       }
 
       const conversions = extractConversions(campaign.actions)
@@ -84,19 +86,25 @@ export async function syncMetaSpend(month: number, year: number): Promise<{ sync
           `UPDATE media_spend SET
              actual_spend = $1, campaign_name = $2, impressions = $3, clicks = $4,
              conversions = $5, client_id = COALESCE($6, media_spend.client_id),
+             commission_rate = CASE WHEN $8 > 0 THEN $8 ELSE media_spend.commission_rate END,
              synced_at = NOW(), updated_at = NOW()
            WHERE id = $7`,
-          [spend, campaign.campaign_name || null, impressions, clicks, conversions, clientId, existing.id]
+          [spend, campaign.campaign_name || null, impressions, clicks, conversions, clientId, existing.id, commissionRate]
         )
       } else {
+        // Check for rolling budget from previous month
+        const rolled = await getRollingBudget(clientId, 'meta', period)
+        const budgetVal = rolled ? rolled.budget : 0
+        const rollingVal = rolled ? rolled.rolling : false
+
         await queryOne(
           `INSERT INTO media_spend (
              client_id, platform, period, budget_allocated, actual_spend,
              commission_rate, connection_id, campaign_id, campaign_name,
-             impressions, clicks, conversions, synced_at
-           ) VALUES ($1, 'meta', $2, 0, $3, 0, $4, $5, $6, $7, $8, $9, NOW())
+             impressions, clicks, conversions, budget_rolling, synced_at
+           ) VALUES ($1, 'meta', $2, $11, $3, $4, $5, $6, $7, $8, $9, $10, $12, NOW())
            RETURNING id`,
-          [clientId, period, spend, conn.id, campaign.campaign_id || null, campaign.campaign_name || null, impressions, clicks, conversions]
+          [clientId, period, spend, commissionRate, conn.id, campaign.campaign_id || null, campaign.campaign_name || null, impressions, clicks, conversions, budgetVal, rollingVal]
         )
       }
 
@@ -216,13 +224,15 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
       totalSpend += campaign.spend
 
       let clientId: string | null = null
+      let commissionRate = 0
       const mapping = findMapping(mappings, conn.id, campaign.campaignId, campaign.campaignName)
       if (mapping) {
-        const client = await queryOne<{ id: string }>(
-          `SELECT id FROM agency_clients WHERE name = $1 OR code = $2 LIMIT 1`,
+        const client = await queryOne<{ id: string; media_commission_rate: string | null }>(
+          `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR code = $2 LIMIT 1`,
           [mapping.xero_client_name, mapping.xero_client_code]
         )
         clientId = client?.id || null
+        commissionRate = parseFloat(client?.media_commission_rate || '0') || 0
       }
 
       const existing = await queryOne<{ id: string }>(
@@ -237,19 +247,25 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
              actual_spend = $1, campaign_name = $2, impressions = $3, clicks = $4,
              conversions = $5, client_id = COALESCE($6, media_spend.client_id),
              campaign_type = $7, campaign_status = $8,
+             commission_rate = CASE WHEN $10 > 0 THEN $10 ELSE media_spend.commission_rate END,
              synced_at = NOW(), updated_at = NOW()
            WHERE id = $9`,
-          [campaign.spend, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, clientId, campaign.channelType || null, campaign.status || null, existing.id]
+          [campaign.spend, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, clientId, campaign.channelType || null, campaign.status || null, existing.id, commissionRate]
         )
       } else {
+        // Check for rolling budget from previous month
+        const rolled = await getRollingBudget(clientId, 'google_ads', period)
+        const budgetVal = rolled ? rolled.budget : 0
+        const rollingVal = rolled ? rolled.rolling : false
+
         await queryOne(
           `INSERT INTO media_spend (
              client_id, platform, period, budget_allocated, actual_spend,
              commission_rate, connection_id, campaign_id, campaign_name,
-             impressions, clicks, conversions, campaign_type, campaign_status, synced_at
-           ) VALUES ($1, 'google_ads', $2, 0, $3, 0, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+             impressions, clicks, conversions, campaign_type, campaign_status, budget_rolling, synced_at
+           ) VALUES ($1, 'google_ads', $2, $13, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $14, NOW())
            RETURNING id`,
-          [clientId, period, campaign.spend, conn.id, campaign.campaignId || null, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, campaign.channelType || null, campaign.status || null]
+          [clientId, period, campaign.spend, commissionRate, conn.id, campaign.campaignId || null, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, campaign.channelType || null, campaign.status || null, budgetVal, rollingVal]
         )
       }
 
@@ -282,6 +298,141 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
       }
     } catch (err: any) {
       console.error(`[GoogleSync] Daily spend failed for ${conn.account_name}:`, err.message)
+    }
+  }
+
+  return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100 }
+}
+
+// ─── TikTok Spend Sync ──────────────────────────────────────────
+
+export async function syncTikTokSpend(month: number, year: number): Promise<{ synced: number; totalSpend: number }> {
+  const { getCampaignInsights, getCampaignDailyInsights } = await import('~~/server/utils/tiktokClient')
+
+  const period = `${year}-${String(month).padStart(2, '0')}`
+
+  const connections = await queryRows<{
+    id: string
+    account_id: string
+    account_name: string
+    access_token: string
+    metadata: any
+  }>(
+    `SELECT id, account_id, account_name, access_token, metadata
+     FROM social_connections
+     WHERE platform = 'tiktok' AND status = 'active'`
+  )
+
+  if (connections.length === 0) return { synced: 0, totalSpend: 0 }
+
+  const mappings = await queryRows<{
+    connection_id: string
+    campaign_id: string | null
+    campaign_name_pattern: string | null
+    xero_client_name: string
+    xero_client_code: string | null
+  }>(
+    `SELECT connection_id, campaign_id, campaign_name_pattern, xero_client_name, xero_client_code
+     FROM ad_account_client_map`
+  )
+
+  let totalSynced = 0
+  let totalSpend = 0
+
+  for (const conn of connections) {
+    const advertiserId = conn.account_id
+
+    let campaigns
+    try {
+      campaigns = await getCampaignInsights(advertiserId, conn.access_token, month, year)
+    } catch (err: any) {
+      console.error(`[TikTokSync] Failed to fetch insights for ${conn.account_name}:`, err.message)
+      continue
+    }
+
+    for (const campaign of campaigns) {
+      const spend = parseFloat(campaign.spend || '0')
+      if (spend === 0) continue
+
+      totalSpend += spend
+
+      let clientId: string | null = null
+      let commissionRate = 0
+      const mapping = findMapping(mappings, conn.id, campaign.campaign_id, campaign.campaign_name)
+      if (mapping) {
+        const client = await queryOne<{ id: string; media_commission_rate: string | null }>(
+          `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR code = $2 LIMIT 1`,
+          [mapping.xero_client_name, mapping.xero_client_code]
+        )
+        clientId = client?.id || null
+        commissionRate = parseFloat(client?.media_commission_rate || '0') || 0
+      }
+
+      const impressions = parseInt(campaign.impressions || '0', 10)
+      const clicks = parseInt(campaign.clicks || '0', 10)
+      const conversions = parseInt(campaign.conversions || '0', 10)
+
+      const existing = await queryOne<{ id: string }>(
+        `SELECT id FROM media_spend
+         WHERE connection_id = $1 AND platform = 'tiktok' AND period = $2 AND campaign_id = $3`,
+        [conn.id, period, campaign.campaign_id]
+      )
+
+      if (existing) {
+        await queryOne(
+          `UPDATE media_spend SET
+             actual_spend = $1, campaign_name = $2, impressions = $3, clicks = $4,
+             conversions = $5, client_id = COALESCE($6, media_spend.client_id),
+             commission_rate = CASE WHEN $8 > 0 THEN $8 ELSE media_spend.commission_rate END,
+             synced_at = NOW(), updated_at = NOW()
+           WHERE id = $7`,
+          [spend, campaign.campaign_name || null, impressions, clicks, conversions, clientId, existing.id, commissionRate]
+        )
+      } else {
+        const rolled = await getRollingBudget(clientId, 'tiktok', period)
+        const budgetVal = rolled ? rolled.budget : 0
+        const rollingVal = rolled ? rolled.rolling : false
+
+        await queryOne(
+          `INSERT INTO media_spend (
+             client_id, platform, period, budget_allocated, actual_spend,
+             commission_rate, connection_id, campaign_id, campaign_name,
+             impressions, clicks, conversions, budget_rolling, synced_at
+           ) VALUES ($1, 'tiktok', $2, $11, $3, $4, $5, $6, $7, $8, $9, $10, $12, NOW())
+           RETURNING id`,
+          [clientId, period, spend, commissionRate, conn.id, campaign.campaign_id || null, campaign.campaign_name || null, impressions, clicks, conversions, budgetVal, rollingVal]
+        )
+      }
+
+      totalSynced++
+    }
+
+    // Daily spend pass
+    try {
+      const dailyInsights = await getCampaignDailyInsights(advertiserId, conn.access_token, month, year)
+      if (dailyInsights.length > 0) {
+        const spendRows = await queryRows<{ id: string; campaign_id: string }>(
+          `SELECT id, campaign_id FROM media_spend
+           WHERE connection_id = $1 AND platform = 'tiktok' AND period = $2 AND campaign_id IS NOT NULL`,
+          [conn.id, period]
+        )
+        const campaignToSpendId = new Map(spendRows.map(r => [r.campaign_id, r.id]))
+
+        for (const day of dailyInsights) {
+          const mediaSpendId = campaignToSpendId.get(day.campaign_id || '')
+          if (!mediaSpendId) continue
+
+          await queryOne(
+            `INSERT INTO daily_spend (media_spend_id, spend_date, spend, impressions, clicks, conversions)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (media_spend_id, spend_date)
+             DO UPDATE SET spend = $3, impressions = $4, clicks = $5, conversions = $6`,
+            [mediaSpendId, day.date, parseFloat(day.spend || '0'), parseInt(day.impressions || '0', 10), parseInt(day.clicks || '0', 10), parseInt(day.conversions || '0', 10)]
+          )
+        }
+      }
+    } catch (err: any) {
+      console.error(`[TikTokSync] Daily spend failed for ${conn.account_name}:`, err.message)
     }
   }
 
@@ -323,4 +474,30 @@ function findMapping(
     m => m.connection_id === connectionId && !m.campaign_id && !m.campaign_name_pattern
   )
   return accountMatch || null
+}
+
+/**
+ * Look up rolling budget from the previous month for the same client+platform.
+ * Returns { budget, rolling } if found, null otherwise.
+ */
+async function getRollingBudget(
+  clientId: string | null,
+  platform: string,
+  currentPeriod: string
+): Promise<{ budget: number; rolling: boolean } | null> {
+  if (!clientId) return null
+  // Calculate previous period
+  const [y, m] = currentPeriod.split('-').map(Number) as [number, number]
+  const prevMonth = m === 1 ? 12 : m - 1
+  const prevYear = m === 1 ? y - 1 : y
+  const prevPeriod = `${prevYear}-${String(prevMonth).padStart(2, '0')}`
+
+  const prev = await queryOne<{ budget_allocated: string; budget_rolling: boolean }>(
+    `SELECT budget_allocated, budget_rolling FROM media_spend
+     WHERE client_id = $1 AND platform = $2 AND period = $3 AND budget_rolling = true AND budget_allocated > 0
+     ORDER BY budget_allocated DESC LIMIT 1`,
+    [clientId, platform, prevPeriod]
+  )
+  if (!prev) return null
+  return { budget: parseFloat(prev.budget_allocated) || 0, rolling: true }
 }

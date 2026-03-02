@@ -5,12 +5,13 @@ const route = useRoute()
 const toast = useToast()
 const platform = computed(() => route.params.platform as string)
 
-const validPlatforms = ['meta', 'google']
+const validPlatforms = ['meta', 'google', 'tiktok']
 
 const platformConfig = computed(() => {
   const configs: Record<string, { displayName: string; icon: string; bgColor: string; iconColor: string }> = {
     meta: { displayName: 'Meta Ads', icon: 'i-lucide-facebook', bgColor: 'bg-blue-100 dark:bg-blue-900/30', iconColor: 'text-blue-600' },
     google: { displayName: 'Google Ads', icon: 'i-lucide-chrome', bgColor: 'bg-red-100 dark:bg-red-900/30', iconColor: 'text-red-500' },
+    tiktok: { displayName: 'TikTok Ads', icon: 'i-lucide-music', bgColor: 'bg-gray-100 dark:bg-gray-900/30', iconColor: 'text-gray-700' },
   }
   return configs[platform.value] || configs.meta
 })
@@ -108,7 +109,7 @@ async function saveBudget(camp: any) {
     )
     if (acctId) {
       campaignData.value[acctId] = await fetchAccountCampaigns(
-        platform.value as 'meta' | 'google', acctId, selectedMonth.value, selectedYear.value
+        platform.value as 'meta' | 'google' | 'tiktok', acctId, selectedMonth.value, selectedYear.value
       )
     }
   }
@@ -166,8 +167,8 @@ async function loadSpendData() {
   chartLoading.value = true
   try {
     const [accounts, chartData] = await Promise.all([
-      fetchAccountSpend(platform.value as 'meta' | 'google', selectedMonth.value, selectedYear.value),
-      fetchCampaignDailySpend(platform.value as 'meta' | 'google', selectedMonth.value, selectedYear.value).catch((err) => {
+      fetchAccountSpend(platform.value as 'meta' | 'google' | 'tiktok', selectedMonth.value, selectedYear.value),
+      fetchCampaignDailySpend(platform.value as 'meta' | 'google' | 'tiktok', selectedMonth.value, selectedYear.value).catch((err) => {
         console.error('[CampaignDailySpend] fetch failed:', err)
         return { campaigns: [], totals: [] }
       }),
@@ -185,7 +186,7 @@ async function loadSpendData() {
 async function handleSyncAll() {
   syncing.value = true
   try {
-    const result = await syncSpend(platform.value as 'meta' | 'google', selectedMonth.value, selectedYear.value)
+    const result = await syncSpend(platform.value as 'meta' | 'google' | 'tiktok', selectedMonth.value, selectedYear.value)
     toast.add({
       title: 'Sync complete',
       description: `${result.synced} campaigns synced across ${result.accounts} accounts — $${result.totalSpend.toLocaleString()}`,
@@ -223,7 +224,7 @@ async function toggleExpand(accountId: string) {
     campaignLoading.value[accountId] = true
     try {
       campaignData.value[accountId] = await fetchAccountCampaigns(
-        platform.value as 'meta' | 'google', accountId, selectedMonth.value, selectedYear.value
+        platform.value as 'meta' | 'google' | 'tiktok', accountId, selectedMonth.value, selectedYear.value
       )
     } catch (e: any) {
       toast.add({ title: 'Error', description: e.data?.statusMessage || e.message, color: 'error' })
@@ -238,7 +239,7 @@ async function loadChartData(connectionId?: string) {
   chartLoading.value = true
   try {
     campaignDailyData.value = await fetchCampaignDailySpend(
-      platform.value as 'meta' | 'google', selectedMonth.value, selectedYear.value, connectionId
+      platform.value as 'meta' | 'google' | 'tiktok', selectedMonth.value, selectedYear.value, connectionId
     )
   } catch (err) {
     console.error('[CampaignDailySpend] fetch failed:', err)
@@ -286,8 +287,8 @@ function formatSyncTime(syncedAt: string | null) {
 }
 
 function channelTypeBadge(type: string | null) {
-  // Google Ads campaign types
-  const googleMap: Record<string, { label: string; color: string }> = {
+  const map: Record<string, { label: string; color: string }> = {
+    // Google Ads campaign types
     SEARCH: { label: 'Search', color: 'info' },
     PERFORMANCE_MAX: { label: 'PMax', color: 'primary' },
     VIDEO: { label: 'Video', color: 'error' },
@@ -295,10 +296,18 @@ function channelTypeBadge(type: string | null) {
     SHOPPING: { label: 'Shopping', color: 'warning' },
     DISCOVERY: { label: 'Discovery', color: 'neutral' },
     DEMAND_GEN: { label: 'Demand Gen', color: 'neutral' },
+    // TikTok campaign types (objective-based)
+    TRAFFIC: { label: 'Traffic', color: 'info' },
+    CONVERSIONS: { label: 'Conversions', color: 'primary' },
+    APP_INSTALL: { label: 'App Install', color: 'success' },
+    REACH: { label: 'Reach', color: 'neutral' },
+    VIDEO_VIEWS: { label: 'Video Views', color: 'error' },
+    LEAD_GENERATION: { label: 'Lead Gen', color: 'warning' },
+    CATALOG_SALES: { label: 'Catalog', color: 'warning' },
+    ENGAGEMENT: { label: 'Engagement', color: 'success' },
   }
-  // Meta doesn't store campaign_type yet — but handle gracefully
   if (!type) return null
-  return googleMap[type] || { label: type, color: 'neutral' }
+  return map[type] || { label: type, color: 'neutral' }
 }
 
 function campaignStatusBadge(status: string | null) {
@@ -307,9 +316,15 @@ function campaignStatusBadge(status: string | null) {
     ENABLED: { label: 'Enabled', color: 'success' },
     PAUSED: { label: 'Paused', color: 'warning' },
     REMOVED: { label: 'Removed', color: 'error' },
-    // Meta statuses (if stored in future)
+    // Meta statuses
     ACTIVE: { label: 'Active', color: 'success' },
     ARCHIVED: { label: 'Archived', color: 'neutral' },
+    // TikTok statuses
+    CAMPAIGN_STATUS_ENABLE: { label: 'Enabled', color: 'success' },
+    CAMPAIGN_STATUS_DISABLE: { label: 'Disabled', color: 'warning' },
+    CAMPAIGN_STATUS_DELETE: { label: 'Deleted', color: 'error' },
+    CAMPAIGN_STATUS_ADVERTISER_AUDIT_DENY: { label: 'Audit Denied', color: 'error' },
+    CAMPAIGN_STATUS_ADVERTISER_AUDIT: { label: 'In Review', color: 'warning' },
   }
   if (!status) return null
   return map[status] || { label: status, color: 'neutral' }
@@ -492,8 +507,8 @@ onMounted(async () => {
                           <tr class="border-b border-default/50">
                             <th class="w-8"></th>
                             <th class="text-left px-4 py-2 font-medium text-muted text-xs">Campaign</th>
-                            <th v-if="platform === 'google'" class="text-left px-4 py-2 font-medium text-muted text-xs">Type</th>
-                            <th v-if="platform === 'google'" class="text-left px-4 py-2 font-medium text-muted text-xs">Status</th>
+                            <th v-if="platform === 'google' || platform === 'tiktok'" class="text-left px-4 py-2 font-medium text-muted text-xs">Type</th>
+                            <th v-if="platform === 'google' || platform === 'tiktok'" class="text-left px-4 py-2 font-medium text-muted text-xs">Status</th>
                             <th class="text-right px-4 py-2 font-medium text-muted text-xs">Spend</th>
                             <th class="text-right px-4 py-2 font-medium text-muted text-xs">Budget</th>
                             <th class="text-right px-4 py-2 font-medium text-muted text-xs">Variance</th>
@@ -513,7 +528,7 @@ onMounted(async () => {
                               <p class="font-medium text-sm">{{ camp.campaignName }}</p>
                               <p class="text-xs text-muted">{{ camp.campaignId }}</p>
                             </td>
-                            <td v-if="platform === 'google'" class="px-4 py-2">
+                            <td v-if="platform === 'google' || platform === 'tiktok'" class="px-4 py-2">
                               <UBadge
                                 v-if="channelTypeBadge(camp.campaignType)"
                                 :color="channelTypeBadge(camp.campaignType)!.color as any"
@@ -524,7 +539,7 @@ onMounted(async () => {
                               </UBadge>
                               <span v-else class="text-xs text-muted">-</span>
                             </td>
-                            <td v-if="platform === 'google'" class="px-4 py-2">
+                            <td v-if="platform === 'google' || platform === 'tiktok'" class="px-4 py-2">
                               <UBadge
                                 v-if="campaignStatusBadge(camp.campaignStatus)"
                                 :color="campaignStatusBadge(camp.campaignStatus)!.color as any"

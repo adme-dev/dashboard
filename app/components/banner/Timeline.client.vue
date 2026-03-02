@@ -3,7 +3,7 @@ import { LAYER_COLORS, LAYER_TYPE_COLORS } from '~/utils/banner-constants'
 import type { KeyframeProperty, Keyframe } from '~/types/banner-studio'
 import { hasKeyframes } from '~/composables/useBannerTimeline'
 
-const { state, activeLayers, selectLayer, updateLayer } = useBannerStudio()
+const { state, activeLayers, selectLayer, updateLayer, getMotionPathTweens, updateMotionPathTween, addMotionPathTween, removeMotionPathTween } = useBannerStudio()
 const { togglePlay, seekTo, restartTimeline, buildTimeline } = useBannerTimeline()
 
 // ── Waveform cache for audio layers ──
@@ -543,6 +543,104 @@ function onKeyframeDragEnd(e: MouseEvent) {
   window.removeEventListener('mouseup', onKeyframeDragEnd)
 }
 
+// ── Motion path tween drag ──────────
+const tweenDrag = ref<{
+  layerId: number
+  tweenIndex: number
+  mode: 'start' | 'end' | 'move'
+  origStart: number
+  origEnd: number
+  startX: number
+  barEl: HTMLElement | null
+} | null>(null)
+
+const selectedTween = ref<{ layerId: number; tweenIndex: number } | null>(null)
+
+function onTweenDragStart(e: MouseEvent, layerId: number, tweenIndex: number, mode: 'start' | 'end' | 'move') {
+  e.stopPropagation()
+  e.preventDefault()
+  const layer = activeLayers.value.find(l => l.id === layerId)
+  if (!layer) return
+  const tweens = getMotionPathTweens(layer)
+  const tw = tweens[tweenIndex]
+  if (!tw) return
+
+  tweenDrag.value = {
+    layerId,
+    tweenIndex,
+    mode,
+    origStart: tw.startTime,
+    origEnd: tw.endTime,
+    startX: e.clientX,
+    barEl: (e.currentTarget as HTMLElement).closest('.tween-bar') as HTMLElement,
+  }
+  selectedTween.value = { layerId, tweenIndex }
+  selectLayer(layerId)
+
+  window.addEventListener('mousemove', onTweenDragMove)
+  window.addEventListener('mouseup', onTweenDragEnd)
+}
+
+function onTweenDragMove(e: MouseEvent) {
+  const d = tweenDrag.value
+  if (!d || !d.barEl) return
+  const dx = e.clientX - d.startX
+  const dt = dx / pxPerSec.value
+
+  let newStart = d.origStart
+  let newEnd = d.origEnd
+
+  if (d.mode === 'start') {
+    newStart = snapTime(Math.max(0, d.origStart + dt))
+    if (newStart > newEnd - 0.05) newStart = newEnd - 0.05
+  } else if (d.mode === 'end') {
+    newEnd = snapTime(Math.max(d.origStart + 0.05, d.origEnd + dt))
+  } else {
+    const dur = d.origEnd - d.origStart
+    newStart = snapTime(Math.max(0, d.origStart + dt))
+    newEnd = newStart + dur
+  }
+
+  d.barEl.style.left = `${newStart * pxPerSec.value}px`
+  d.barEl.style.width = `${(newEnd - newStart) * pxPerSec.value}px`
+}
+
+function onTweenDragEnd(e: MouseEvent) {
+  const d = tweenDrag.value
+  if (d) {
+    const dx = e.clientX - d.startX
+    const dt = dx / pxPerSec.value
+
+    let newStart = d.origStart
+    let newEnd = d.origEnd
+
+    if (d.mode === 'start') {
+      newStart = snapTime(Math.max(0, d.origStart + dt))
+      if (newStart > newEnd - 0.05) newStart = newEnd - 0.05
+    } else if (d.mode === 'end') {
+      newEnd = snapTime(Math.max(d.origStart + 0.05, d.origEnd + dt))
+    } else {
+      const dur = d.origEnd - d.origStart
+      newStart = snapTime(Math.max(0, d.origStart + dt))
+      newEnd = newStart + dur
+    }
+
+    newStart = Math.round(newStart * 100) / 100
+    newEnd = Math.round(newEnd * 100) / 100
+
+    updateMotionPathTween(d.layerId, d.tweenIndex, { startTime: newStart, endTime: newEnd })
+
+    if (d.barEl) {
+      d.barEl.style.left = ''
+      d.barEl.style.width = ''
+    }
+    justFinishedDrag = true
+  }
+  tweenDrag.value = null
+  window.removeEventListener('mousemove', onTweenDragMove)
+  window.removeEventListener('mouseup', onTweenDragEnd)
+}
+
 // ── Delete selected keyframe ──────────
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -575,6 +673,8 @@ onUnmounted(() => {
   window.removeEventListener('mouseup', onKeyframeDragEnd)
   window.removeEventListener('mousemove', onLoopDragMove)
   window.removeEventListener('mouseup', onLoopDragUp)
+  window.removeEventListener('mousemove', onTweenDragMove)
+  window.removeEventListener('mouseup', onTweenDragEnd)
 })
 </script>
 
@@ -690,7 +790,7 @@ onUnmounted(() => {
               >
                 <UIcon name="i-lucide-spline" class="w-3 h-3 shrink-0" />
                 <span class="truncate">Path</span>
-                <span class="ml-auto text-[8px] font-mono">{{ layer.motionPath.length }}pt</span>
+                <span class="ml-auto text-[8px] font-mono">{{ getMotionPathTweens(layer).length }}tw</span>
               </div>
               <div
                 v-for="prop in getVisibleKfProperties(layer)"
@@ -826,7 +926,7 @@ onUnmounted(() => {
 
             <!-- Keyframe property sub-tracks (when expanded) -->
             <template v-if="state.expandedKeyframeLayers.has(layer.id)">
-              <!-- Path sub-track (waypoint markers evenly spaced) -->
+              <!-- Path sub-track (tween bars with draggable edges) -->
               <div
                 v-if="layer.motionPath?.length >= 2"
                 class="relative border-b border-(--ui-border)/20"
@@ -835,29 +935,65 @@ onUnmounted(() => {
                 <div class="absolute inset-0 bg-[#4af0a2]/5" />
                 <!-- Presence range background -->
                 <div
-                  class="absolute top-0 h-full bg-[#4af0a2]/10 rounded-sm"
+                  class="absolute top-0 h-full bg-[#4af0a2]/8 rounded-sm"
                   :style="{
                     left: `${(layer.startTime || 0) * pxPerSec}px`,
                     width: `${((layer.endTime || 3) - (layer.startTime || 0)) * pxPerSec}px`,
                   }"
                 />
-                <!-- Waypoint markers evenly spaced across presence -->
+                <!-- Tween bars -->
                 <div
-                  v-for="(pt, pi) in layer.motionPath"
-                  :key="`mp-${pi}`"
-                  class="absolute cursor-pointer"
+                  v-for="(tw, ti) in getMotionPathTweens(layer)"
+                  :key="`tw-${ti}`"
+                  class="tween-bar absolute rounded-sm"
                   :style="{
-                    left: `${((layer.startTime || 0) + ((layer.endTime || 3) - (layer.startTime || 0)) * pi / Math.max(1, layer.motionPath!.length - 1)) * pxPerSec - 4}px`,
-                    top: `${KF_TRACK_H / 2 - 4}px`,
-                    width: '8px',
-                    height: '8px',
+                    left: `${tw.startTime * pxPerSec}px`,
+                    width: `${(tw.endTime - tw.startTime) * pxPerSec}px`,
+                    top: '2px',
+                    height: `${KF_TRACK_H - 4}px`,
                   }"
-                  @click.stop="selectLayer(layer.id)"
                 >
+                  <!-- Tween fill -->
                   <div
-                    class="w-full h-full rounded-full border border-[#4af0a2]"
-                    :class="pi === 0 ? 'bg-[#4af0a2]' : (pi === layer.motionPath!.length - 1 ? 'bg-[#f04a4a] border-[#f04a4a]' : 'bg-white/30')"
+                    class="absolute inset-0 rounded-sm cursor-grab active:cursor-grabbing transition-colors"
+                    :class="selectedTween?.layerId === layer.id && selectedTween?.tweenIndex === ti
+                      ? 'bg-[#4af0a2]/50 ring-1 ring-[#4af0a2]'
+                      : 'bg-[#4af0a2]/25 hover:bg-[#4af0a2]/35'"
+                    @mousedown="onTweenDragStart($event, layer.id, ti, 'move')"
+                    @click.stop="selectedTween = { layerId: layer.id, tweenIndex: ti }; selectLayer(layer.id)"
+                  >
+                    <!-- Path range label -->
+                    <span
+                      v-if="(tw.endTime - tw.startTime) * pxPerSec > 40"
+                      class="absolute inset-0 flex items-center justify-center text-[7px] font-mono text-[#4af0a2] pointer-events-none select-none"
+                    >{{ Math.round(tw.pathStart * 100) }}–{{ Math.round(tw.pathEnd * 100) }}%</span>
+                  </div>
+                  <!-- Left edge handle -->
+                  <div
+                    class="absolute top-0 left-0 w-[5px] h-full cursor-col-resize hover:bg-[#4af0a2]/40 rounded-l-sm z-10"
+                    @mousedown="onTweenDragStart($event, layer.id, ti, 'start')"
                   />
+                  <!-- Right edge handle -->
+                  <div
+                    class="absolute top-0 right-0 w-[5px] h-full cursor-col-resize hover:bg-[#4af0a2]/40 rounded-r-sm z-10"
+                    @mousedown="onTweenDragStart($event, layer.id, ti, 'end')"
+                  />
+                </div>
+                <!-- Add tween button (shown at end of last tween) -->
+                <div
+                  v-if="getMotionPathTweens(layer).length > 0"
+                  class="absolute cursor-pointer group"
+                  :style="{
+                    left: `${getMotionPathTweens(layer)[getMotionPathTweens(layer).length - 1].endTime * pxPerSec + 2}px`,
+                    top: `${KF_TRACK_H / 2 - 5}px`,
+                    width: '10px',
+                    height: '10px',
+                  }"
+                  @click.stop="addMotionPathTween(layer.id)"
+                >
+                  <div class="w-full h-full rounded-full bg-[#4af0a2]/20 border border-[#4af0a2]/40 flex items-center justify-center group-hover:bg-[#4af0a2]/40 transition-colors">
+                    <span class="text-[7px] text-[#4af0a2] font-bold leading-none">+</span>
+                  </div>
                 </div>
               </div>
               <div

@@ -8,6 +8,11 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { randomUUID } from 'crypto'
+import { promises as fs } from 'fs'
+import { join, dirname } from 'path'
+
+// Local upload directory for dev without R2
+const LOCAL_UPLOAD_DIR = join(process.cwd(), 'server', 'uploads')
 
 // R2 Configuration
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || ''
@@ -119,7 +124,7 @@ export function generateStorageKey(category: FileCategory, originalFileName: str
 }
 
 /**
- * Upload a file to R2
+ * Upload a file to R2, or to local filesystem if R2 is not configured
  */
 export async function uploadFile(
   buffer: Buffer,
@@ -127,6 +132,18 @@ export async function uploadFile(
   contentType: string,
   metadata?: Record<string, string>
 ): Promise<{ key: string; url: string; size: number }> {
+  // Local filesystem fallback for dev without R2
+  if (!isStorageConfigured()) {
+    const filePath = join(LOCAL_UPLOAD_DIR, key)
+    await fs.mkdir(dirname(filePath), { recursive: true })
+    await fs.writeFile(filePath, buffer)
+    return {
+      key,
+      url: `/api/_uploads/${key}`,
+      size: buffer.length,
+    }
+  }
+
   const client = getR2Client()
 
   await client.send(new PutObjectCommand({
@@ -150,9 +167,19 @@ export async function uploadFile(
 }
 
 /**
- * Delete a file from R2
+ * Delete a file from R2, or from local filesystem if R2 is not configured
  */
 export async function deleteFile(key: string): Promise<void> {
+  if (!isStorageConfigured()) {
+    const filePath = join(LOCAL_UPLOAD_DIR, key)
+    try {
+      await fs.unlink(filePath)
+    } catch {
+      // File may not exist — ignore
+    }
+    return
+  }
+
   const client = getR2Client()
 
   await client.send(new DeleteObjectCommand({

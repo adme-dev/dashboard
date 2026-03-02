@@ -1,5 +1,6 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
+import { cachedFetch } from '~~/server/utils/kv'
 
 /**
  * GET /api/agency/social/google/account-spend?month=X&year=Y
@@ -14,6 +15,9 @@ export default eventHandler(async (event) => {
   const year = parseInt(String(query.year)) || now.getFullYear()
   const period = `${year}-${String(month).padStart(2, '0')}`
 
+  const cacheKey = `spend:google:accounts:${period}`
+
+  return cachedFetch(event, cacheKey, 300, async () => {
   const rows = await queryRows<{
     id: string
     account_id: string
@@ -58,4 +62,5 @@ export default eventHandler(async (event) => {
     campaignCount: r.campaign_count,
     lastSyncedAt: r.last_synced_at,
   }))
+  }) // end cachedFetch
 })

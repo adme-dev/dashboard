@@ -1,5 +1,6 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRows, queryOne } from '~~/server/utils/db'
+import { cachedFetch } from '~~/server/utils/kv'
 
 const PALETTE = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
@@ -29,6 +30,12 @@ export default eventHandler(async (event) => {
   const dbPlatform = platform === 'google' ? 'google_ads' : 'meta'
   const connectionId = query.connectionId as string | undefined
 
+  // Cache global requests (no connectionId) for 5 minutes
+  const cacheKey = connectionId
+    ? null
+    : `spend:daily:${platform}:${period}`
+
+  const fetcher = async () => {
   // 1. Get campaigns — scoped to connection or global top 10
   const topCampaigns = connectionId
     ? await queryRows<{
@@ -289,4 +296,10 @@ export default eventHandler(async (event) => {
   })
 
   return { campaigns, totals, estimated }
+  } // end fetcher
+
+  if (cacheKey) {
+    return cachedFetch(event, cacheKey, 300, fetcher)
+  }
+  return fetcher()
 })

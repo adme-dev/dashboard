@@ -49,6 +49,14 @@ export interface MotionPathPoint {
   y: number   // offset from layer.y
 }
 
+export interface MotionPathTween {
+  startTime: number    // absolute time on timeline
+  endTime: number      // absolute time on timeline
+  pathStart: number    // 0-1, start progress on path
+  pathEnd: number      // 0-1, end progress on path
+  ease?: string
+}
+
 export interface Layer {
   id: number
   type: LayerType
@@ -120,6 +128,7 @@ export interface Layer {
   motionPath?: MotionPathPoint[]
   motionPathCurviness?: number     // 0 = sharp, 1 = smooth, 2 = very curvy (default 1)
   motionPathAutoRotate?: boolean   // orient layer to follow path direction
+  motionPathTweens?: MotionPathTween[]  // chained tweens along the path
   // Legacy aliases (kept for compatibility)
   delay?: number
   dur?: number
@@ -397,4 +406,58 @@ export interface DCOGenerateResult {
   generated: number
   errors: number
   variants: BannerVariant[]
+}
+
+// ── Banner Dissector Types ──
+
+export type TokenType =
+  | 'price' | 'price_label' | 'model_name' | 'brand'
+  | 'campaign_label' | 'color' | 'font_size' | 'disclaimer'
+  | 'cta_label' | 'image_asset'
+
+export interface DesignToken {
+  id: string
+  type: TokenType
+  value: string
+  label: string
+  editable: boolean
+  required: boolean
+  validation?: {
+    maxLength?: number
+    pattern?: string
+    allowedValues?: string[]
+  }
+  affects_layers: string[]
+}
+
+export type DissectorLayerType = 'graphic_text' | 'live_text' | 'vehicle' | 'logo' | 'background'
+
+export interface DissectorLayer {
+  id: string
+  type: DissectorLayerType
+  description: string
+  z_index: number
+  editable: boolean
+  export_as_png: boolean
+  region: { x: number; y: number; width: number; height: number }
+  asset_path?: string
+  r2_url?: string
+  render_as?: 'html'
+  token_bindings?: string[]
+  typography?: Record<string, { font_weight: string; font_size: string; color: string }>
+  font_notes?: string
+  mask?: string // Gemini segmentation mask (base64 PNG)
+}
+
+export interface DissectorManifest {
+  jobId: string
+  version: '2.0'
+  brand: string
+  campaign_type: string
+  banner_size: string
+  processed_at: string
+  status: 'analyzing' | 'segmenting' | 'complete' | 'failed'
+  error?: string
+  tokens: Record<string, DesignToken>
+  layers: DissectorLayer[]
 }

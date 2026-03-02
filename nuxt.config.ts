@@ -47,6 +47,11 @@ export default defineNuxtConfig({
     googleRedirectUri: process.env.GOOGLE_REDIRECT_URI || '/api/agency/social/google/callback',
     googleDeveloperToken: process.env.GOOGLE_DEVELOPER_TOKEN || '',
 
+    // TikTok Ads
+    tiktokAppId: process.env.TIKTOK_APP_ID || '',
+    tiktokAppSecret: process.env.TIKTOK_APP_SECRET || '',
+    tiktokRedirectUri: process.env.TIKTOK_REDIRECT_URI || '/api/agency/social/tiktok/callback',
+
     // R2 Storage
     r2AccountId: process.env.R2_ACCOUNT_ID || '',
     r2AccessKeyId: process.env.R2_ACCESS_KEY_ID || '',
@@ -59,6 +64,12 @@ export default defineNuxtConfig({
     // Cloudflare API (for LoRA adapter management)
     cfAccountId: process.env.CF_ACCOUNT_ID || '',
     cfApiToken: process.env.CF_API_TOKEN || '',
+
+    // HuggingFace API (for SAM2 segmentation in Banner Dissector)
+    hfApiToken: process.env.HF_API_TOKEN || '',
+
+    // Gemini API (for high-quality vision analysis in Banner Dissector)
+    geminiApiKey: process.env.GEMINI_API_KEY || '',
 
     // Public keys (exposed to client-side)
     public: {

@@ -123,7 +123,7 @@ const paymentMethods = [
           <UButton
             variant="ghost"
             icon="i-lucide-arrow-left"
-            @click="navigateTo('/agency/invoices')"
+            @click="navigateTo('/agency/billing')"
           />
         </template>
         <template #right>

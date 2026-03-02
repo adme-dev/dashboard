@@ -233,55 +233,63 @@ function buildLayerKeyframes(tl: gsap.core.Timeline, el: HTMLElement, layer: Lay
 /** Add preset-based animation for a layer to a GSAP timeline (existing logic) */
 function buildPresetLayer(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
   const isBg = layer.type === 'bg'
+  const hasMP = (layer.motionPath?.length ?? 0) >= 2
   const preset = ANIM_IN.find(a => a.id === layer.animIn)
   const startTime = layer.startTime || 0
   const endTime = layer.endTime || (startTime + 3)
   const animDur = layer.animInDur || 0.6
   const ease = layer.ease || 'power2.out'
   const outDur = layer.outDur || (isBg ? 0.5 : 0.25)
+  const opKey = isBg ? 'autoAlpha' : 'opacity'
 
-  // Initial hidden state
-  if (isBg) {
-    tl.set(el, { autoAlpha: 0, x: 0, y: 0, scale: 1, rotation: 0, immediateRender: false }, 0)
-  } else {
-    tl.set(el, { opacity: 0, x: 0, y: 0, scale: 1, rotation: 0, immediateRender: false }, 0)
-  }
+  // Initial hidden state — skip x/y when motion path drives position
+  const init: Record<string, any> = { [opKey]: 0, scale: 1, rotation: 0, immediateRender: false }
+  if (!hasMP) { init.x = 0; init.y = 0 }
+  tl.set(el, init, 0)
 
   if (preset?.special === 'kenBurns') {
     const presenceDur = endTime - startTime
-    const inProp = isBg ? 'autoAlpha' : 'opacity'
+    const kbFrom: Record<string, any> = { [opKey]: 0, scale: 1 }
+    if (!hasMP) { kbFrom.x = 0; kbFrom.y = 0 }
     tl.fromTo(el,
-      { [inProp]: 0, scale: 1, x: 0, y: 0 },
-      { [inProp]: layer.opacity, duration: 0.4, ease: 'power1.out', immediateRender: false },
+      kbFrom,
+      { [opKey]: layer.opacity, duration: 0.4, ease: 'power1.out', immediateRender: false },
       startTime,
     )
-    tl.to(el,
-      { scale: 1.08, x: '-2%', y: '-1%', duration: presenceDur, ease: 'none' },
-      startTime,
-    )
+    const kbTo: Record<string, any> = { scale: 1.08, duration: presenceDur, ease: 'none' }
+    if (!hasMP) { kbTo.x = '-2%'; kbTo.y = '-1%' }
+    tl.to(el, kbTo, startTime)
   } else if (preset && Object.keys(preset.from).length > 0) {
-    const toProp = isBg
-      ? { autoAlpha: layer.opacity, x: 0, y: 0, scale: 1, rotation: 0, duration: animDur, ease, immediateRender: false }
-      : { opacity: layer.opacity, x: 0, y: 0, scale: 1, rotation: 0, duration: animDur, ease, immediateRender: false }
-    tl.fromTo(el, { ...preset.from }, toProp, startTime)
+    // Strip x/y from preset when motion path drives position
+    const fromProps = hasMP
+      ? Object.fromEntries(Object.entries(preset.from).filter(([k]) => k !== 'x' && k !== 'y'))
+      : { ...preset.from }
+    if (Object.keys(fromProps).length > 0) {
+      const toProp: Record<string, any> = { [opKey]: layer.opacity, scale: 1, rotation: 0, duration: animDur, ease, immediateRender: false }
+      if (!hasMP) { toProp.x = 0; toProp.y = 0 }
+      tl.fromTo(el, fromProps, toProp, startTime)
+    } else {
+      // Preset only had x/y (e.g. slideL) — do simple opacity reveal
+      tl.to(el, { [opKey]: layer.opacity, duration: 0.1 }, startTime)
+    }
   } else {
     tl.to(el,
-      isBg ? { autoAlpha: layer.opacity, duration: 0.1 } : { opacity: layer.opacity, duration: 0.1 },
+      { [opKey]: layer.opacity, duration: 0.1 },
       startTime,
     )
   }
 
-  // Exit animation
+  // Exit animation — strip x/y from exit preset when motion path active
   const outStart = Math.max(startTime + animDur, endTime - outDur)
   if (outStart < endTime) {
     const outPreset = ANIM_OUT.find(a => a.id === layer.animOut) || ANIM_OUT.find(a => a.id === 'fadeOut')!
     const outEase = layer.animOutEase || 'power1.in'
-    const opKey = isBg ? 'autoAlpha' : 'opacity'
 
     if (outPreset.id === 'none' || !Object.keys(outPreset.to).length) {
       tl.to(el, { [opKey]: 0, duration: 0.05 }, endTime - 0.05)
     } else {
       const toProps: Record<string, any> = { ...outPreset.to, duration: outDur, ease: outEase }
+      if (hasMP) { delete toProps.x; delete toProps.y }
       if (isBg && 'opacity' in toProps) {
         toProps.autoAlpha = toProps.opacity
         delete toProps.opacity
@@ -397,13 +405,22 @@ function addMaskAnimation(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer)
 }
 
 /** Add a layer's animation to a GSAP timeline (keyframes or preset) */
-function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
+function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer, soloPathLayerId?: number | null) {
   if (layer.type === 'audio') {
     // Audio layers skip visual animation — only sync playback
     addAudioSync(tl, el, layer)
     return
   }
-  if (hasKeyframes(layer)) {
+
+  const isSoloPath = soloPathLayerId === layer.id && (layer.motionPath?.length ?? 0) >= 2
+
+  if (isSoloPath) {
+    // Solo motion path preview — show at full opacity, skip entrance/exit
+    const isBg = layer.type === 'bg'
+    const opKey = isBg ? 'autoAlpha' : 'opacity'
+    tl.set(el, { [opKey]: layer.opacity }, layer.startTime || 0)
+    tl.set(el, { [opKey]: 0 }, layer.endTime || ((layer.startTime || 0) + 3))
+  } else if (hasKeyframes(layer)) {
     buildLayerKeyframes(tl, el, layer)
   } else {
     buildPresetLayer(tl, el, layer)
@@ -413,16 +430,25 @@ function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Laye
   if (layer.motionPath && layer.motionPath.length >= 2) {
     const startTime = layer.startTime || 0
     const endTime = layer.endTime || (startTime + 3)
-    tl.to(el, {
-      motionPath: {
-        path: layer.motionPath.map(p => ({ x: p.x, y: p.y })),
-        curviness: layer.motionPathCurviness ?? 1,
-        autoRotate: layer.motionPathAutoRotate || false,
-      },
-      duration: endTime - startTime,
-      ease: layer.ease || 'none',
-      immediateRender: false,
-    }, startTime)
+    const tweens = layer.motionPathTweens?.length
+      ? layer.motionPathTweens
+      : [{ startTime, endTime, pathStart: 0, pathEnd: 1, ease: layer.ease || 'power2.inOut' }]
+    for (const tw of tweens) {
+      const dur = tw.endTime - tw.startTime
+      if (dur <= 0) continue
+      tl.to(el, {
+        motionPath: {
+          path: layer.motionPath.map(p => ({ x: p.x, y: p.y })),
+          curviness: layer.motionPathCurviness ?? 1,
+          autoRotate: layer.motionPathAutoRotate || false,
+          start: tw.pathStart,
+          end: tw.pathEnd,
+        },
+        duration: dur,
+        ease: tw.ease || 'power2.inOut',
+        immediateRender: false,
+      }, tw.startTime)
+    }
   }
 
   addVideoSync(tl, el, layer)
@@ -452,6 +478,8 @@ export function useBannerTimeline() {
       const el = artboardEl.querySelector(`#lyr-${layer.id}`) as HTMLElement
       if (el) {
         gsap.killTweensOf(el)
+        // Reset GSAP's internal transform cache so next timeline starts clean
+        gsap.set(el, { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, clearProps: 'transform' })
         el.style.removeProperty('opacity')
         el.style.removeProperty('visibility')
         el.style.removeProperty('transform')
@@ -522,7 +550,8 @@ export function useBannerTimeline() {
         : (layer.endTime || (layer.startTime || 0) + 3)
       naturalEnd = Math.max(naturalEnd, endTime)
 
-      addLayerToTimeline(masterTl!, el, layer)
+      const soloId = state.soloMotionPath ? state.selectedLayerId : null
+      addLayerToTimeline(masterTl!, el, layer, soloId)
     })
 
     state.duration = naturalEnd || 5

@@ -36,6 +36,10 @@ export async function processJob(job: QueueJob): Promise<void> {
         await processGoogleSpendSync(job.payload)
         break
 
+      case 'spend.sync.tiktok':
+        await processTikTokSpendSync(job.payload)
+        break
+
       case 'embed.task':
         await processEmbedTask(job.payload)
         break
@@ -50,6 +54,10 @@ export async function processJob(job: QueueJob): Promise<void> {
 
       case 'training.extract':
         await processTrainingExtract(job.payload)
+        break
+
+      case 'dissect.analyze':
+        await processDissectAnalyze(job.payload)
         break
 
       default:
@@ -90,6 +98,11 @@ async function processGoogleSpendSync(payload: Record<string, any>): Promise<voi
   await syncGoogleSpend(payload.month, payload.year)
 }
 
+async function processTikTokSpendSync(payload: Record<string, any>): Promise<void> {
+  const { syncTikTokSpend } = await import('~~/server/utils/spendSync')
+  await syncTikTokSpend(payload.month, payload.year)
+}
+
 async function processEmbedTask(payload: Record<string, any>): Promise<void> {
   const { embedTask } = await import('~~/server/utils/aiEntityEmbedder')
   await embedTask(payload._event as any, payload.taskId)
@@ -108,5 +121,11 @@ async function processEmbedClient(payload: Record<string, any>): Promise<void> {
 async function processTrainingExtract(payload: Record<string, any>): Promise<void> {
   const { extractAndUpload } = await import('~~/server/utils/aiTrainingDataExtractor')
   await extractAndUpload(payload.datasetType, payload.options || {}, payload.userId)
+}
+
+async function processDissectAnalyze(payload: Record<string, any>): Promise<void> {
+  const { runDissectionPipeline } = await import('./bannerDissectorPipeline')
+  // event is null in queue context — pipeline will skip Workers AI and use Groq directly
+  await runDissectionPipeline(null, payload.jobId)
 }
 

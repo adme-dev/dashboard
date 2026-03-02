@@ -72,16 +72,21 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
   { label: 'Time Reports', icon: 'i-lucide-bar-chart-3', to: '/agency/time/reports', onSelect: close },
   { label: 'Capacity', icon: 'i-lucide-gauge', to: '/agency/capacity', onSelect: close },
 
+  // Budget Tracker
+  { type: 'label', label: 'Budget Tracker' },
+  { label: 'Ad Spend', icon: 'i-lucide-wallet', to: '/agency/social/spend', onSelect: close },
+  { label: 'Meta Ads', icon: 'i-lucide-facebook', to: '/agency/social/meta', onSelect: close },
+  { label: 'Google Ads', icon: 'i-lucide-chrome', to: '/agency/social/google', onSelect: close },
+  { label: 'TikTok Ads', icon: 'i-lucide-music', to: '/agency/social/tiktok', onSelect: close },
+  { label: 'Connections', icon: 'i-lucide-plug', to: '/agency/social', onSelect: close },
+  { label: 'Budget Health', icon: 'i-lucide-gauge', to: '/agency/budget-health', onSelect: close },
+
   // Finance
   { type: 'label', label: 'Finance' },
-  { label: 'EOM Invoicing', icon: 'i-lucide-file-spreadsheet', to: '/agency/eom', onSelect: close },
-  { label: 'Invoices', icon: 'i-lucide-receipt', to: '/agency/invoices', onSelect: close },
-  { label: 'Ad Spend', icon: 'i-lucide-megaphone', to: '/agency/social/spend', onSelect: close },
-  { label: 'Connections', icon: 'i-lucide-plug', to: '/agency/social', onSelect: close },
+  { label: 'Billing', icon: 'i-lucide-receipt', to: '/agency/billing', onSelect: close },
   { label: 'Expenses', icon: 'i-lucide-credit-card', to: '/agency/expenses', onSelect: close },
   { label: 'Retainers', icon: 'i-lucide-repeat', to: '/agency/retainers', onSelect: close },
-  { label: 'Profitability', icon: 'i-lucide-trending-up', to: '/agency/profitability', onSelect: close },
-  { label: 'Budget Health', icon: 'i-lucide-heart-pulse', to: '/agency/budget-health', onSelect: close },
+  { label: 'Financial Health', icon: 'i-lucide-activity', to: '/agency/financial-health', onSelect: close },
 
   // Sales
   { type: 'label', label: 'Sales' },
@@ -125,6 +130,10 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
   { label: 'Knowledge Base', icon: 'i-lucide-book-open', to: '/agency/ai/knowledge', onSelect: close },
   { label: 'AI Training', icon: 'i-lucide-graduation-cap', to: '/agency/ai/training', onSelect: close },
   { label: 'Automation', icon: 'i-lucide-zap', to: '/agency/automation', onSelect: close },
+
+  // Creative
+  { type: 'label', label: 'Creative' },
+  { label: 'Banner Studio', icon: 'i-lucide-palette', to: '/agency/banner-studio', onSelect: close },
   { label: 'Chat', icon: 'i-lucide-message-circle', to: '/agency/chat', badge: chatUnreadCount.value > 0 ? chatUnreadCount.value.toString() : undefined, onSelect: close },
 ])
 

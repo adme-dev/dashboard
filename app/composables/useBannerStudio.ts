@@ -1,4 +1,4 @@
-import type { Layer, ArtboardState, BannerProject, UndoAction, BannerBrandKit, AnimInType, AnimOutType, MotionPathPoint } from '~/types/banner-studio'
+import type { Layer, ArtboardState, BannerProject, UndoAction, BannerBrandKit, AnimInType, AnimOutType, MotionPathPoint, MotionPathTween } from '~/types/banner-studio'
 import { FORMATS, TEMPLATES, migrateLayer, DEFAULT_BG } from '~/utils/banner-constants'
 
 // Module-scope singleton state
@@ -45,6 +45,8 @@ const state = reactive({
   // Keyframe editing (Phase 4b)
   expandedKeyframeLayers: new Set<number>() as Set<number>,
   selectedKeyframe: null as { layerId: number; property: string; index: number } | null,
+  // Motion path solo preview — plays only the path tween at full opacity
+  soloMotionPath: false,
 })
 
 // Undo/redo stacks
@@ -480,6 +482,13 @@ export function useBannerStudio() {
     state.activeKey = state.setKeys[0] || ''
     state.selectedLayerId = null
     state.isDirty = false
+    // Debug: check what came from DB
+    state.setKeys.forEach(key => {
+      state.sets[key].layers?.forEach((l: any) => {
+        if (l.motionPathTweens?.length) console.log('[load] layer', l.id, l.name, 'motionPathTweens:', JSON.stringify(l.motionPathTweens))
+        if (l.motionPath?.length) console.log('[load] layer', l.id, l.name, 'motionPath:', l.motionPath.length, 'points')
+      })
+    })
     // Migrate all layers
     state.setKeys.forEach(key => {
       state.sets[key].layers = state.sets[key].layers.map(l => migrateLayer(l))
@@ -518,10 +527,22 @@ export function useBannerStudio() {
     if (!state.project?.id) return
     state.isSaving = true
     try {
+      const cd = getCanvasData()
+      // Debug: verify motion path tweens are in the save payload
+      Object.values(cd).forEach((s: any) => {
+        s.layers?.forEach((l: any) => {
+          if (l.motionPathTweens?.length) {
+            console.log('[save] layer', l.id, l.name, 'motionPathTweens:', JSON.stringify(l.motionPathTweens))
+          }
+          if (l.motionPath?.length) {
+            console.log('[save] layer', l.id, l.name, 'motionPath:', l.motionPath.length, 'points')
+          }
+        })
+      })
       await $fetch(`/api/agency/banner-studio/projects/${state.project.id}`, {
         method: 'PATCH',
         body: {
-          canvasData: getCanvasData(),
+          canvasData: cd,
           name: state.project.name,
         },
       })
@@ -610,10 +631,11 @@ export function useBannerStudio() {
         motionPath: undefined,
         motionPathCurviness: undefined,
         motionPathAutoRotate: undefined,
+        motionPathTweens: undefined,
       } as any)
     } else {
       // Enable — convert existing x/y keyframes to path points if available
-      let points: MotionPathPoint[] = [{ x: 0, y: 0 }, { x: 0, y: 0 }]
+      let points: MotionPathPoint[] = [{ x: 0, y: 0 }, { x: 100, y: 0 }]
       if (layer.keyframes?.x?.length && layer.keyframes?.y?.length) {
         const xKfs = [...layer.keyframes.x].sort((a, b) => a.time - b.time)
         const yKfs = [...layer.keyframes.y].sort((a, b) => a.time - b.time)
@@ -660,6 +682,47 @@ export function useBannerStudio() {
     const path = [...layer.motionPath]
     path.splice(pointIndex, 1)
     updateLayer(layerId, { motionPath: path })
+  }
+
+  // ── Motion path tween operations ──────
+
+  /** Get resolved tweens — returns existing tweens or a default spanning the full presence */
+  function getMotionPathTweens(layer: Layer): MotionPathTween[] {
+    if (layer.motionPathTweens?.length) return layer.motionPathTweens
+    const start = layer.startTime || 0
+    const end = layer.endTime || (start + 3)
+    return [{ startTime: start, endTime: end, pathStart: 0, pathEnd: 1, ease: 'power2.inOut' }]
+  }
+
+  function addMotionPathTween(layerId: number) {
+    const layer = activeLayers.value.find(l => l.id === layerId)
+    if (!layer?.motionPath?.length) return
+    const tweens = [...getMotionPathTweens(layer)]
+    const last = tweens[tweens.length - 1]
+    const end = layer.endTime || ((layer.startTime || 0) + 3)
+    // Place new tween after the last one, take remaining path
+    const newStart = Math.min(last.endTime + 0.1, end)
+    const newEnd = Math.min(newStart + 1, end)
+    if (newEnd <= newStart) return // no room
+    tweens.push({ startTime: newStart, endTime: newEnd, pathStart: last.pathEnd, pathEnd: 1, ease: 'power2.inOut' })
+    updateLayer(layerId, { motionPathTweens: tweens } as any)
+  }
+
+  function updateMotionPathTween(layerId: number, tweenIndex: number, updates: Partial<MotionPathTween>) {
+    const layer = activeLayers.value.find(l => l.id === layerId)
+    if (!layer?.motionPath?.length) return
+    const tweens = [...getMotionPathTweens(layer)]
+    if (!tweens[tweenIndex]) return
+    tweens[tweenIndex] = { ...tweens[tweenIndex], ...updates }
+    updateLayer(layerId, { motionPathTweens: tweens } as any)
+  }
+
+  function removeMotionPathTween(layerId: number, tweenIndex: number) {
+    const layer = activeLayers.value.find(l => l.id === layerId)
+    if (!layer?.motionPathTweens || layer.motionPathTweens.length <= 1) return
+    const tweens = [...layer.motionPathTweens]
+    tweens.splice(tweenIndex, 1)
+    updateLayer(layerId, { motionPathTweens: tweens } as any)
   }
 
   // ── Alignment operations ─────────────
@@ -802,5 +865,10 @@ export function useBannerStudio() {
     addPathPoint,
     updatePathPoint,
     removePathPoint,
+    // Motion path tweens
+    getMotionPathTweens,
+    addMotionPathTween,
+    updateMotionPathTween,
+    removeMotionPathTween,
   }
 }

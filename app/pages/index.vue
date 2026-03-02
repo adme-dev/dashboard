@@ -1,43 +1,5 @@
 <template>
   <div class="min-h-screen bg-white dark:bg-[#0a0b0e] overflow-x-hidden">
-    <!-- SVG clip path definitions for organic card shapes -->
-    <svg class="absolute w-0 h-0 overflow-hidden" aria-hidden="true">
-      <defs>
-        <!-- 0: Squircle (iOS icon) -->
-        <clipPath id="cs-0" clipPathUnits="objectBoundingBox">
-          <path d="M0.5,0.04 C0.82,0.04 0.96,0.18 0.96,0.5 C0.96,0.82 0.82,0.96 0.5,0.96 C0.18,0.96 0.04,0.82 0.04,0.5 C0.04,0.18 0.18,0.04 0.5,0.04Z"/>
-        </clipPath>
-        <!-- 1: Organic blob -->
-        <clipPath id="cs-1" clipPathUnits="objectBoundingBox">
-          <path d="M0.45,0.04 C0.72,0.02 0.95,0.22 0.96,0.48 C0.97,0.74 0.78,0.96 0.52,0.97 C0.26,0.98 0.04,0.78 0.04,0.52 C0.04,0.26 0.18,0.06 0.45,0.04Z"/>
-        </clipPath>
-        <!-- 2: Arch / doorway -->
-        <clipPath id="cs-2" clipPathUnits="objectBoundingBox">
-          <path d="M0.1,0.97 L0.1,0.36 C0.1,0.1 0.28,0.03 0.5,0.03 C0.72,0.03 0.9,0.1 0.9,0.36 L0.9,0.97Z"/>
-        </clipPath>
-        <!-- 3: Asymmetric blob -->
-        <clipPath id="cs-3" clipPathUnits="objectBoundingBox">
-          <path d="M0.7,0.1 C0.92,0.22 0.96,0.5 0.86,0.72 C0.76,0.94 0.5,0.98 0.3,0.9 C0.1,0.82 0.04,0.54 0.1,0.32 C0.16,0.1 0.48,0.02 0.7,0.1Z"/>
-        </clipPath>
-        <!-- 4: Rounded diamond -->
-        <clipPath id="cs-4" clipPathUnits="objectBoundingBox">
-          <path d="M0.5,0.04 C0.62,0.04 0.96,0.38 0.96,0.5 C0.96,0.62 0.62,0.96 0.5,0.96 C0.38,0.96 0.04,0.62 0.04,0.5 C0.04,0.38 0.38,0.04 0.5,0.04Z"/>
-        </clipPath>
-        <!-- 5: Wide blob -->
-        <clipPath id="cs-5" clipPathUnits="objectBoundingBox">
-          <path d="M0.5,0.06 C0.76,0.02 0.96,0.22 0.96,0.48 C0.96,0.74 0.78,0.96 0.52,0.96 C0.26,0.96 0.04,0.76 0.04,0.5 C0.04,0.24 0.24,0.1 0.5,0.06Z"/>
-        </clipPath>
-        <!-- 6: Egg -->
-        <clipPath id="cs-6" clipPathUnits="objectBoundingBox">
-          <path d="M0.5,0.03 C0.78,0.03 0.96,0.26 0.96,0.54 C0.96,0.8 0.78,0.97 0.5,0.97 C0.22,0.97 0.04,0.8 0.04,0.54 C0.04,0.26 0.22,0.03 0.5,0.03Z"/>
-        </clipPath>
-        <!-- 7: Cloud blob -->
-        <clipPath id="cs-7" clipPathUnits="objectBoundingBox">
-          <path d="M0.5,0.05 C0.68,0.02 0.9,0.14 0.95,0.35 C0.98,0.56 0.88,0.78 0.7,0.9 C0.52,0.98 0.3,0.96 0.15,0.82 C0.03,0.68 0.02,0.44 0.1,0.28 C0.18,0.12 0.32,0.08 0.5,0.05Z"/>
-        </clipPath>
-      </defs>
-    </svg>
-
     <MarketingNav />
 
     <!-- Hero Section -->
@@ -104,42 +66,40 @@
       </div>
     </section>
 
-    <!-- Scrolling platform cards -->
-    <section class="py-12 overflow-hidden border-t border-black/[0.04] dark:border-white/[0.06]">
-      <div class="flex gap-6 animate-marquee-cards">
-        <NuxtLink
-          v-for="(card, i) in [...platformCards, ...platformCards]"
-          :key="i"
-          :to="card.to"
-          class="flex-shrink-0 w-[300px] sm:w-[340px] rounded-[28px] overflow-hidden group hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-400"
-          :class="card.bg"
+    <!-- Scrolling platform card grid (2 rows, opposite directions) -->
+    <section class="py-8 overflow-hidden border-t border-black/[0.04] dark:border-white/[0.06]">
+      <div class="flex flex-col gap-4">
+        <div
+          v-for="(row, ri) in marqueeRows"
+          :key="ri"
+          class="flex gap-4"
+          :class="ri === 0 ? 'marquee-row-left' : 'marquee-row-right'"
         >
-          <!-- Colored area with organic shape cutout -->
-          <div class="relative h-[310px] flex items-center justify-center">
-            <!-- Organic shaped image -->
-            <div
-              class="w-[82%] aspect-square group-hover:scale-[1.06] transition-transform duration-500"
-              :style="{ clipPath: `url(#cs-${card.shape})` }"
-            >
-              <img
-                :src="card.image"
-                :alt="card.title"
-                class="w-full h-full object-cover"
-                loading="lazy"
-              />
+          <NuxtLink
+            v-for="(card, ci) in row"
+            :key="ci"
+            :to="card.to"
+            class="flex-shrink-0 w-[250px] sm:w-[280px] rounded-[22px] overflow-hidden group hover:shadow-2xl hover:-translate-y-1 transition-all duration-400"
+            :class="card.bg"
+          >
+            <div class="relative h-[220px] flex items-center justify-center">
+              <MorphBlob
+                :seed="(ci % platformCards.length) + ri * 50"
+                class="w-[80%] aspect-square group-hover:scale-[1.06] transition-transform duration-500"
+              >
+                <img
+                  :src="card.image"
+                  :alt="card.title"
+                  class="w-full h-full object-cover"
+                />
+              </MorphBlob>
             </div>
-          </div>
-          <!-- Text content -->
-          <div class="px-6 pb-6 pt-5 flex flex-col gap-1.5">
-            <div class="text-[18px] font-bold text-[#121317] dark:text-white tracking-[-0.01em]">{{ card.title }}</div>
-            <div class="text-[14px] text-[#121317]/60 dark:text-white/40 leading-relaxed line-clamp-2">{{ card.subtitle }}</div>
-            <div class="mt-3">
-              <span class="inline-flex items-center px-5 py-2 text-[13px] font-medium text-[#121317] dark:text-white border border-[#121317]/20 dark:border-white/20 rounded-full group-hover:bg-[#121317] dark:group-hover:bg-white group-hover:text-white dark:group-hover:text-[#121317] transition-all duration-300">
-                Learn More
-              </span>
+            <div class="px-4 pb-4 pt-3">
+              <div class="text-[15px] font-bold text-[#121317] dark:text-white tracking-[-0.01em]">{{ card.title }}</div>
+              <div class="text-[12px] text-[#121317]/50 dark:text-white/40 leading-relaxed line-clamp-1">{{ card.subtitle }}</div>
             </div>
-          </div>
-        </NuxtLink>
+          </NuxtLink>
+        </div>
       </div>
     </section>
 
@@ -834,16 +794,34 @@ const personas = [
 ]
 
 const platformCards = [
-  { title: 'Boards', subtitle: 'Kanban, timeline & calendar views for managing all your tasks across projects.', to: '/platform/boards', bg: 'bg-pink-300', shape: 0, image: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=600&h=600&fit=crop&crop=center' },
-  { title: 'Financials', subtitle: 'End-of-month invoicing engine with Xero integration and P&L tracking.', to: '/platform/financials', bg: 'bg-emerald-300', shape: 1, image: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=600&h=600&fit=crop&crop=center' },
-  { title: 'Chat', subtitle: 'Real-time channels, threads, file sharing, and team messaging.', to: '/platform/chat', bg: 'bg-violet-400', shape: 2, image: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=600&h=600&fit=crop&crop=faces' },
-  { title: 'AI Insights', subtitle: 'Smart project generation, anomaly detection, and AI recommendations.', to: '/platform/ai', bg: 'bg-yellow-300', shape: 3, image: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=600&h=600&fit=crop&crop=center' },
-  { title: 'Time Tracking', subtitle: 'Weekly timesheets, timer, approvals, and utilization reports.', to: '/platform/time-tracking', bg: 'bg-rose-300', shape: 4, image: 'https://images.unsplash.com/photo-1501139083538-0139583c060f?w=600&h=600&fit=crop&crop=center' },
-  { title: 'Client Portal', subtitle: 'Client-facing approvals, invoices, deliverables, and project updates.', to: '/platform/client-portal', bg: 'bg-blue-400', shape: 5, image: 'https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=600&h=600&fit=crop&crop=faces' },
-  { title: 'Ad Spend', subtitle: 'Meta & Google Ads connections with spend syncing and budget management.', to: '/platform/ad-spend', bg: 'bg-teal-300', shape: 6, image: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=600&h=600&fit=crop&crop=center' },
-  { title: 'Automations', subtitle: 'Dashboard with quick actions, boards overview, and team activity.', to: '/platform/automations', bg: 'bg-orange-300', shape: 7, image: 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=600&h=600&fit=crop&crop=center' }
+  { title: 'Boards', subtitle: 'Kanban, timeline & calendar views for managing all your tasks across projects.', to: '/platform/boards', bg: 'bg-pink-300', image: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=600&h=600&fit=crop&crop=center' },
+  { title: 'Financials', subtitle: 'End-of-month invoicing engine with Xero integration and P&L tracking.', to: '/platform/financials', bg: 'bg-emerald-300', image: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=600&h=600&fit=crop&crop=center' },
+  { title: 'Chat', subtitle: 'Real-time channels, threads, file sharing, and team messaging.', to: '/platform/chat', bg: 'bg-violet-400', image: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=600&h=600&fit=crop&crop=faces' },
+  { title: 'AI Insights', subtitle: 'Smart project generation, anomaly detection, and AI recommendations.', to: '/platform/ai', bg: 'bg-yellow-300', image: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=600&h=600&fit=crop&crop=center' },
+  { title: 'Time Tracking', subtitle: 'Weekly timesheets, timer, approvals, and utilization reports.', to: '/platform/time-tracking', bg: 'bg-rose-300', image: 'https://images.unsplash.com/photo-1501139083538-0139583c060f?w=600&h=600&fit=crop&crop=center' },
+  { title: 'Client Portal', subtitle: 'Client-facing approvals, invoices, deliverables, and project updates.', to: '/platform/client-portal', bg: 'bg-blue-400', image: 'https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=600&h=600&fit=crop&crop=faces' },
+  { title: 'Ad Spend', subtitle: 'Meta & Google Ads connections with spend syncing and budget management.', to: '/platform/ad-spend', bg: 'bg-teal-300', image: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=600&h=600&fit=crop&crop=center' },
+  { title: 'Automations', subtitle: 'Trigger-action recipes, board event hooks, and workflow automation.', to: '/platform/automations', bg: 'bg-orange-300', image: 'https://images.unsplash.com/photo-1518432031352-d6fc5c10da5a?w=600&h=600&fit=crop&crop=center' },
+  { title: 'Banner Studio', subtitle: 'Design, animate, and publish HTML5 display ads at scale from one editor.', to: '/banner-studio', bg: 'bg-rose-400', image: 'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=600&h=600&fit=crop&crop=center' }
 ]
 
+// Bottom row — different images, mixed routes, benefit-focused copy
+const platformCardsRow2 = [
+  { title: 'Collaboration', subtitle: 'Cross-functional teams working in sync across every project.', to: '/creativity', bg: 'bg-indigo-300', image: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=600&h=600&fit=crop&crop=faces' },
+  { title: 'Reporting', subtitle: 'Real-time dashboards and KPIs across clients and campaigns.', to: '/platform/ai', bg: 'bg-sky-300', image: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600&h=600&fit=crop&crop=center' },
+  { title: 'Creative Production', subtitle: 'Brief to delivery — assets, proofs, and approvals in one place.', to: '/creativity', bg: 'bg-fuchsia-300', image: 'https://images.unsplash.com/photo-1558655146-9f40138edfeb?w=600&h=600&fit=crop&crop=center' },
+  { title: 'Invoicing', subtitle: 'End-of-month automation with Xero sync and audit trails.', to: '/platform/financials', bg: 'bg-lime-300', image: 'https://images.unsplash.com/photo-1450101499163-c8848c66ca85?w=600&h=600&fit=crop&crop=center' },
+  { title: 'Presentations', subtitle: 'Client-ready reports and campaign performance decks.', to: '/platform/client-portal', bg: 'bg-amber-300', image: 'https://images.unsplash.com/photo-1553877522-43269d4ea984?w=600&h=600&fit=crop&crop=center' },
+  { title: 'Campaign Strategy', subtitle: 'Plan, launch, and optimise paid media from one hub.', to: '/platform/ad-spend', bg: 'bg-red-300', image: 'https://images.unsplash.com/photo-1533750349088-cd871a92f312?w=600&h=600&fit=crop&crop=center' },
+  { title: 'Data Insights', subtitle: 'Visualise spend, revenue, and utilisation at a glance.', to: '/platform/ai', bg: 'bg-cyan-300', image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&h=600&fit=crop&crop=center' },
+  { title: 'Team Culture', subtitle: 'Chat, kudos, and real-time presence to keep teams connected.', to: '/platform/chat', bg: 'bg-violet-300', image: 'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?w=600&h=600&fit=crop&crop=faces' },
+  { title: 'Scale', subtitle: 'From boutique to enterprise — infrastructure that grows with you.', to: '/pricing', bg: 'bg-emerald-400', image: 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=600&h=600&fit=crop&crop=center' }
+]
+
+// Two marquee rows — each has its own card set, duplicated for seamless loop
+const marqueeRow1 = [...platformCards, ...platformCards]
+const marqueeRow2 = [...platformCardsRow2, ...platformCardsRow2]
+const marqueeRows = [marqueeRow1, marqueeRow2]
 
 // Green particle colors (shared between hero + CTA)
 const greenColors = ['#34d399', '#6ee7b7', '#10b981', '#a7f3d0', '#059669']
@@ -921,15 +899,26 @@ function scrollToFeatures() {
 </script>
 
 <style scoped>
-@keyframes marquee-cards {
+/* Two-row marquee grid — opposite directions, pre-filled via negative delay */
+@keyframes marquee-left {
   0% { transform: translateX(0); }
   100% { transform: translateX(-50%); }
 }
-
-.animate-marquee-cards {
-  animation: marquee-cards 30s linear infinite;
+@keyframes marquee-right {
+  0% { transform: translateX(-50%); }
+  100% { transform: translateX(0); }
 }
-.animate-marquee-cards:hover {
+
+.marquee-row-left {
+  animation: marquee-left 45s linear infinite;
+  animation-delay: -15s;
+}
+.marquee-row-right {
+  animation: marquee-right 50s linear infinite;
+  animation-delay: -10s;
+}
+.marquee-row-left:hover,
+.marquee-row-right:hover {
   animation-play-state: paused;
 }
 

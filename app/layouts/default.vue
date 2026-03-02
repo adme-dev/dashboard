@@ -141,20 +141,20 @@ const links = [[{
       open.value = false
     }
   }, {
-    label: 'Profitability',
-    to: '/agency/profitability',
+    label: 'Financial Health',
+    to: '/agency/financial-health',
     onSelect: () => {
       open.value = false
     }
   }, {
-    label: 'Invoices',
-    to: '/agency/invoices',
+    label: 'Billing',
+    to: '/agency/billing',
     onSelect: () => {
       open.value = false
     }
   }, {
     label: 'EOM Invoicing',
-    to: '/agency/eom',
+    to: '/agency/billing?tab=eom',
     onSelect: () => {
       open.value = false
     }
@@ -184,7 +184,7 @@ const links = [[{
     }
   }, {
     label: 'Budget Health',
-    to: '/agency/budget-health',
+    to: '/agency/financial-health?tab=budget',
     onSelect: () => {
       open.value = false
     }

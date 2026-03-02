@@ -260,24 +260,23 @@ const syncLabel = computed(() => {
     </div>
 
     <!-- Week filter pills -->
-    <div class="hidden lg:flex items-center gap-1 border-l border-default pl-3">
-      <button
-        class="px-2 py-1 rounded-md text-xs transition-colors"
-        :class="!weekFilter ? 'bg-primary/10 text-primary font-medium' : 'text-muted hover:bg-elevated/50'"
+    <div class="hidden lg:flex items-center gap-0.5 border-l border-default pl-3">
+      <UButton
+        size="xs"
+        :variant="!weekFilter ? 'soft' : 'ghost'"
+        :color="!weekFilter ? 'primary' : 'neutral'"
+        label="All"
         @click="$emit('update:weekFilter', null)"
-      >
-        All
-      </button>
-      <button
+      />
+      <UButton
         v-for="w in weeksInMonth"
         :key="w.start"
-        class="px-2 py-1 rounded-md text-xs transition-colors"
-        :class="isActiveWeek(w) ? 'bg-primary/10 text-primary font-medium' : 'text-muted hover:bg-elevated/50'"
-        :title="w.tooltip"
+        size="xs"
+        :variant="isActiveWeek(w) ? 'soft' : 'ghost'"
+        :color="isActiveWeek(w) ? 'primary' : 'neutral'"
+        :label="w.label"
         @click="selectWeek(w)"
-      >
-        {{ w.label }}
-      </button>
+      />
     </div>
 
     <!-- Spacer -->

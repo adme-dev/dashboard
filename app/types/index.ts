@@ -959,3 +959,55 @@ export interface ClientPermissions {
   canUploadFiles: boolean
   canInviteUsers: boolean
 }
+
+// ============================================
+// Banner Studio Types
+// ============================================
+export interface BannerProject {
+  id: string
+  name: string
+  clientId: string | null
+  clientName?: string
+  canvasData: Record<string, any>
+  thumbnailUrl: string | null
+  status: 'draft' | 'published'
+  tags: string[]
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface BannerAsset {
+  id: string
+  name: string
+  mimeType: string
+  fileSize: number
+  r2Key: string
+  url: string
+  thumbnailUrl: string | null
+  tags: string[]
+  uploadedBy: string
+  createdAt: string
+}
+
+export interface BannerTemplate {
+  id: string
+  name: string
+  category: string
+  canvasData: Record<string, any>
+  thumbnailUrl: string | null
+  isSystem: boolean
+  createdBy: string | null
+  createdAt: string
+}
+
+export interface BannerExport {
+  id: string
+  projectId: string
+  formatKey: string
+  r2Key: string
+  url: string
+  fileSize: number | null
+  exportedBy: string
+  exportedAt: string
+}

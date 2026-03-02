@@ -49,7 +49,7 @@ export function useSocialConnections() {
 
   const lastOAuthResult = ref<OAuthResult | null>(null)
 
-  async function connectPlatform(platform: 'meta' | 'google'): Promise<OAuthResult> {
+  async function connectPlatform(platform: 'meta' | 'google' | 'tiktok'): Promise<OAuthResult> {
     const { url } = await $fetch<{ url: string }>(`/api/agency/social/${platform}/connect`)
     // Open OAuth popup
     const popup = window.open(url, `${platform}_connect`, 'width=600,height=700,scrollbars=yes')
@@ -119,7 +119,7 @@ export function useSocialConnections() {
     lastOAuthResult.value = null
   }
 
-  async function connectWithToken(platform: 'meta' | 'google', accessToken: string): Promise<OAuthResult> {
+  async function connectWithToken(platform: 'meta' | 'google' | 'tiktok', accessToken: string): Promise<OAuthResult> {
     try {
       const result = await $fetch<{ success: boolean; accounts: number; message: string }>(
         `/api/agency/social/${platform}/connect-token`,
@@ -147,7 +147,7 @@ export function useSocialConnections() {
     await fetchConnections()
   }
 
-  async function syncSpend(platform: 'meta' | 'google', month?: number, year?: number) {
+  async function syncSpend(platform: 'meta' | 'google' | 'tiktok', month?: number, year?: number) {
     const body: any = {}
     if (month) body.month = month
     if (year) body.year = year
@@ -179,13 +179,13 @@ export function useSocialConnections() {
     await fetchConnections()
   }
 
-  async function fetchAccountSpend(platform: 'meta' | 'google', month: number, year: number) {
+  async function fetchAccountSpend(platform: 'meta' | 'google' | 'tiktok', month: number, year: number) {
     return await $fetch<any[]>(`/api/agency/social/${platform}/account-spend`, {
       params: { month, year },
     })
   }
 
-  async function fetchAccountCampaigns(platform: 'meta' | 'google', connectionId: string, month: number, year: number) {
+  async function fetchAccountCampaigns(platform: 'meta' | 'google' | 'tiktok', connectionId: string, month: number, year: number) {
     return await $fetch<any[]>(`/api/agency/social/${platform}/account-campaigns`, {
       params: { connectionId, month, year },
     })
@@ -198,14 +198,14 @@ export function useSocialConnections() {
     )
   }
 
-  async function fetchDailySpend(platform: 'meta' | 'google', month: number, year: number) {
+  async function fetchDailySpend(platform: 'meta' | 'google' | 'tiktok', month: number, year: number) {
     return await $fetch<{ date: string; spend: number; budget: number; impressions: number; clicks: number }[]>(
       `/api/agency/social/daily-spend`,
       { params: { platform, month, year } }
     )
   }
 
-  async function fetchCampaignDailySpend(platform: 'meta' | 'google', month: number, year: number, connectionId?: string) {
+  async function fetchCampaignDailySpend(platform: 'meta' | 'google' | 'tiktok', month: number, year: number, connectionId?: string) {
     const params: Record<string, any> = { platform, month, year }
     if (connectionId) params.connectionId = connectionId
     return await $fetch<CampaignDailySpendResponse>(

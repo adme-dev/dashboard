@@ -335,7 +335,7 @@ const activeTab = ref('overview')
                     label="View All"
                     variant="ghost"
                     size="xs"
-                    to="/agency/invoices"
+                    to="/agency/billing"
                   />
                 </div>
               </template>
@@ -428,7 +428,7 @@ const activeTab = ref('overview')
                   label="Create Invoice"
                   icon="i-lucide-plus"
                   size="sm"
-                  to="/agency/invoices"
+                  to="/agency/billing"
                 />
               </div>
             </template>

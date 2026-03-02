@@ -1,6 +1,7 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { syncGoogleSpend } from '~~/server/utils/spendSync'
 import { enqueue } from '~~/server/utils/queue'
+import { kvDelete } from '~~/server/utils/kv'
 
 /**
  * POST /api/agency/social/google/sync-spend
@@ -17,6 +18,7 @@ export default eventHandler(async (event) => {
   const month = body?.month || now.getMonth() + 1
   const year = body?.year || now.getFullYear()
   const async = body?.async === true
+  const period = `${year}-${String(month).padStart(2, '0')}`
 
   // Async mode: enqueue and return immediately
   if (async) {
@@ -28,6 +30,14 @@ export default eventHandler(async (event) => {
 
   // Synchronous mode (default or queue fallback)
   const result = await syncGoogleSpend(month, year)
+
+  // Bust KV cache for this period
+  await Promise.all([
+    kvDelete(event, `spend:summary:${period}:all`),
+    kvDelete(event, `spend:summary:${period}:google_ads`),
+    kvDelete(event, `spend:google:accounts:${period}`),
+    kvDelete(event, `spend:daily:google:${period}`),
+  ])
 
   return {
     synced: result.synced,
