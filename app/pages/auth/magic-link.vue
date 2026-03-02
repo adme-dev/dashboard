@@ -42,12 +42,12 @@
           <p class="text-[15px] text-[#45474D] dark:text-white/60 leading-relaxed mb-6">
             Redirecting you to the dashboard...
           </p>
-          <NuxtLink
-            to="/agency"
+          <a
+            href="/agency"
             class="inline-flex items-center justify-center gap-2 w-full py-3 px-4 bg-[#121317] dark:bg-white text-white dark:text-[#121317] text-[15px] font-medium rounded-full hover:bg-[#2a2b30] dark:hover:bg-white/90 transition-colors"
           >
             Go to Dashboard
-          </NuxtLink>
+          </a>
         </div>
 
         <!-- Error State -->
@@ -130,9 +130,10 @@ onMounted(async () => {
     if (response.success) {
       status.value = 'success'
 
-      // Auto-redirect after brief success message
+      // Full page reload — forces browser to send all cookies (including httpOnly)
+      // with a fresh server request, bypassing stale useCookie() refs from SSR
       setTimeout(() => {
-        navigateTo('/agency')
+        window.location.href = '/agency'
       }, 1500)
     } else {
       status.value = 'error'
