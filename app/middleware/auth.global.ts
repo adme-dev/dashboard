@@ -22,6 +22,8 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
     '/terms',
     '/support',
     '/about',
+    '/ai-training',
+    '/banner-studio',
     '/'
   ]
   
