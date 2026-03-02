@@ -1,4 +1,4 @@
-import { setCookie } from 'h3'
+import { setCookie, getRequestURL } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { getMetaAuthUrl } from '~~/server/utils/metaClient'
 
@@ -26,8 +26,9 @@ export default eventHandler(async (event) => {
     maxAge: 60 * 10
   })
 
-  // Build absolute redirect URI
-  const publicUrl = config.public.appUrl || 'http://localhost:3000'
+  // Build absolute redirect URI from incoming request
+  const reqUrl = getRequestURL(event)
+  const publicUrl = `${reqUrl.protocol}//${reqUrl.host}`
   const redirectUri = config.metaRedirectUri.startsWith('http')
     ? config.metaRedirectUri
     : `${publicUrl}${config.metaRedirectUri}`

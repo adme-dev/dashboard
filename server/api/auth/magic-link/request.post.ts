@@ -4,7 +4,7 @@
  * Body: { email: string }
  */
 
-import { readBody, createError } from 'h3'
+import { readBody, createError, getRequestURL } from 'h3'
 import { getUserByEmail, generateMagicLink } from '../../../utils/auth'
 import { sendMagicLinkEmail, isEmailConfigured } from '../../../utils/email'
 
@@ -61,9 +61,9 @@ export default defineEventHandler(async (event) => {
     const token = await generateMagicLink(user.id, user.email)
     console.log('[Magic Link] Step 3 — token generated')
 
-    // Get the app URL
-    const config = useRuntimeConfig()
-    const appUrl = config.public.appUrl || 'http://localhost:3000'
+    // Derive the app URL from the incoming request (works for any deployment)
+    const reqUrl = getRequestURL(event)
+    const appUrl = `${reqUrl.protocol}//${reqUrl.host}`
 
     // Build magic link URL
     const magicLinkUrl = `${appUrl}/auth/magic-link?token=${token}`

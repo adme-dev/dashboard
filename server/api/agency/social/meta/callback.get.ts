@@ -1,4 +1,4 @@
-import { getCookie, deleteCookie, sendRedirect } from 'h3'
+import { getCookie, deleteCookie, sendRedirect, getRequestURL } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import {
@@ -36,7 +36,8 @@ export default eventHandler(async (event) => {
     deleteCookie(event, 'meta_oauth_state', { path: '/' })
 
     const config = useRuntimeConfig()
-    const publicUrl = config.public.appUrl || 'http://localhost:3000'
+    const reqUrl = getRequestURL(event)
+    const publicUrl = `${reqUrl.protocol}//${reqUrl.host}`
     const redirectUri = config.metaRedirectUri.startsWith('http')
       ? config.metaRedirectUri
       : `${publicUrl}${config.metaRedirectUri}`
