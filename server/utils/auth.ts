@@ -171,7 +171,7 @@ export async function requireAuth(event: any): Promise<User> {
   const authHeader = getHeader(event, 'authorization')
   const token = authHeader?.startsWith('Bearer ')
     ? authHeader.slice(7)
-    : getCookie(event, 'auth_token')
+    : getCookie(event, 'auth_token') || getCookie(event, 'auth_token_client')
 
   if (!token) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized - No token' })

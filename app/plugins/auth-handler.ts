@@ -21,14 +21,19 @@ export default defineNuxtPlugin((nuxtApp) => {
     try {
       // Double-check: is the session actually dead?
       // /api/auth/me is a public route — it reads the httpOnly cookie server-side.
-      const me: any = await $fetch('/api/auth/me').catch(() => null)
-      if (me?.user) {
-        // Session is still valid — the 401 was from a specific endpoint, not auth
-        console.log('[Auth Handler] Session still valid, ignoring spurious 401')
+      const me: any = await $fetch('/api/auth/me').catch((err: any) => {
+        // 503 = transient error (DB down, cold start) — don't treat as dead session
+        if (err?.statusCode === 503 || err?.status === 503) {
+          return { _transient: true }
+        }
+        return null
+      })
+      if (me?.user || me?._transient) {
+        console.log('[Auth Handler] Session valid or transient error, ignoring 401')
         return
       }
     } catch {
-      // If /api/auth/me itself fails, the session is dead
+      // If /api/auth/me itself fails unexpectedly, the session is dead
     } finally {
       isVerifyingSession = false
     }

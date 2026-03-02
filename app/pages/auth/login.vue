@@ -201,6 +201,7 @@ definePageMeta({
   public: true
 })
 
+const route = useRoute()
 const email = ref('')
 const loading = ref(false)
 const linkSent = ref(false)
@@ -209,6 +210,16 @@ const devLoading = ref(false)
 const errorMsg = ref('')
 const isDev = import.meta.dev
 const toast = useToast()
+
+// Show message for magic link errors or expired sessions
+onMounted(() => {
+  const error = route.query.error as string
+  if (error === 'magic-link-expired') {
+    toast.add({ title: 'Link expired', description: 'That magic link has expired or was already used. Please request a new one.', color: 'warning' })
+  } else if (route.query.expired === 'true') {
+    toast.add({ title: 'Session expired', description: 'Your session has expired. Please sign in again.', color: 'warning' })
+  }
+})
 
 const isValidEmail = computed(() => {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)

@@ -1,8 +1,8 @@
 import { validateSession, TransientAuthError } from '../../utils/auth'
 
 export default defineEventHandler(async (event) => {
-  // Get token from cookie
-  const token = getCookie(event, 'auth_token')
+  // Get token from cookie (httpOnly primary, client-visible fallback)
+  const token = getCookie(event, 'auth_token') || getCookie(event, 'auth_token_client')
 
   if (!token) {
     throw createError({

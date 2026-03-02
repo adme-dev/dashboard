@@ -111,38 +111,27 @@ const route = useRoute()
 const status = ref<'verifying' | 'success' | 'error' | 'no-token'>('no-token')
 const errorMessage = ref('')
 
-onMounted(async () => {
+onMounted(() => {
   const token = route.query.token as string
   if (!token) {
-    status.value = 'no-token'
+    // Check if we were redirected back with an error from the callback
+    const error = route.query.error as string
+    if (error === 'magic-link-expired') {
+      status.value = 'error'
+      errorMessage.value = 'This magic link has expired or has already been used.'
+    } else if (error === 'missing-token') {
+      status.value = 'no-token'
+    } else {
+      status.value = 'no-token'
+    }
     return
   }
 
   status.value = 'verifying'
 
-  try {
-    const response = await $fetch('/api/auth/magic-link/verify', {
-      method: 'GET',
-      params: { token },
-      credentials: 'include'
-    }) as any
-
-    if (response.success) {
-      status.value = 'success'
-
-      // Full page reload — forces browser to send all cookies (including httpOnly)
-      // with a fresh server request, bypassing stale useCookie() refs from SSR
-      setTimeout(() => {
-        window.location.href = '/agency'
-      }, 1500)
-    } else {
-      status.value = 'error'
-      errorMessage.value = 'Verification failed'
-    }
-  } catch (error: any) {
-    console.error('[Magic Link] Verification error:', error)
-    status.value = 'error'
-    errorMessage.value = error.data?.statusMessage || error.message || 'Something went wrong'
-  }
+  // Redirect to server-side callback that verifies, sets cookies, and redirects
+  // in a single HTTP response. This guarantees cookies are stored before the
+  // browser navigates to the dashboard (eliminates XHR Set-Cookie race condition).
+  window.location.href = `/api/auth/magic-link/callback?token=${encodeURIComponent(token)}`
 })
 </script>
