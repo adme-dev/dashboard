@@ -2,19 +2,18 @@
  * Debug magic link flow
  * POST /api/admin/magic-link-debug
  * Body: { email: string }
+ *
+ * In dev: unrestricted. In production: requires admin auth.
  */
 
 import { readBody, createError } from 'h3'
-import { getUserByEmail, generateMagicLink } from '../../utils/auth'
-import { sendMagicLinkEmail } from '../../utils/email'
+import { getUserByEmail, generateMagicLink, requireRole } from '../../utils/auth'
+import { sendMagicLinkEmail, isEmailConfigured } from '../../utils/email'
 
 export default defineEventHandler(async (event) => {
-  // Only allow in development
-  if (process.env.NODE_ENV === 'production') {
-    throw createError({
-      statusCode: 403,
-      statusMessage: 'Not allowed in production'
-    })
+  // In production, require admin role
+  if (!import.meta.dev) {
+    await requireRole(event, ['admin', 'owner'])
   }
 
   const body = await readBody(event)
@@ -28,13 +27,21 @@ export default defineEventHandler(async (event) => {
   }
 
   const normalizedEmail = email.toLowerCase().trim()
+  const config = useRuntimeConfig()
+  const cfEnv = (event.context as any).cloudflare?.env
   const debug: any = {
     email: normalizedEmail,
     env: {
       nodeEnv: process.env.NODE_ENV,
-      appUrl: process.env.APP_URL || useRuntimeConfig().public.appUrl,
-      hasResendKey: !!process.env.RESEND_API_KEY,
-      emailFrom: process.env.EMAIL_FROM
+      appUrl: config.public.appUrl,
+      emailConfigured: isEmailConfigured(event),
+      hasResendKeyInCfBindings: !!cfEnv?.RESEND_API_KEY,
+      hasResendKeyInConfig: !!config.resendApiKey,
+      hasResendKeyInProcessEnv: !!process.env.RESEND_API_KEY,
+      emailFromCfBindings: cfEnv?.EMAIL_FROM || '(not set)',
+      emailFromConfig: config.emailFrom || '(not set)',
+      emailFromProcessEnv: process.env.EMAIL_FROM || '(not set)',
+      hasCfBindings: !!cfEnv,
     },
     steps: []
   }
@@ -59,7 +66,6 @@ export default defineEventHandler(async (event) => {
     debug.steps.push({ step: 'Generate token', token: token.substring(0, 10) + '...' })
 
     // Step 3: Build URL
-    const config = useRuntimeConfig()
     const appUrl = config.public.appUrl || 'http://localhost:3000'
     const magicLinkUrl = `${appUrl}/auth/magic-link?token=${token}`
     debug.steps.push({ step: 'Build URL', url: magicLinkUrl })
@@ -69,7 +75,8 @@ export default defineEventHandler(async (event) => {
       await sendMagicLinkEmail({
         to: user.email,
         name: user.name,
-        magicLinkUrl
+        magicLinkUrl,
+        event
       })
       debug.steps.push({ step: 'Send email', status: 'success' })
     } catch (emailError: any) {

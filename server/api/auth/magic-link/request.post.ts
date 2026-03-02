@@ -6,7 +6,7 @@
 
 import { readBody, createError } from 'h3'
 import { getUserByEmail, generateMagicLink } from '../../../utils/auth'
-import { sendMagicLinkEmail } from '../../../utils/email'
+import { sendMagicLinkEmail, isEmailConfigured } from '../../../utils/email'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -22,13 +22,25 @@ export default defineEventHandler(async (event) => {
   // Normalize email
   const normalizedEmail = email.toLowerCase().trim()
 
+  // Check email service availability upfront (doesn't reveal user existence)
+  const emailReady = isEmailConfigured(event)
+  console.log('[Magic Link] Step 1 — email configured:', emailReady)
+
+  if (!emailReady && !import.meta.dev) {
+    console.error('[Magic Link] Email service not configured — RESEND_API_KEY missing')
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Email service is not configured. Please contact your administrator.'
+    })
+  }
+
   // Find user by email
   const user = await getUserByEmail(normalizedEmail)
+  console.log('[Magic Link] Step 2 — user lookup for', normalizedEmail, '→', user ? `found (id=${user.id}, active=${user.is_active})` : 'NOT FOUND')
 
   // Always return success to prevent email enumeration
   // But only actually send if user exists
   if (!user) {
-    console.log(`Magic link requested for non-existent email: ${normalizedEmail}`)
     return {
       success: true,
       message: 'If an account exists with this email, a magic link has been sent.'
@@ -37,7 +49,7 @@ export default defineEventHandler(async (event) => {
 
   // Check if user is active
   if (!user.is_active) {
-    console.log(`Magic link requested for inactive user: ${normalizedEmail}`)
+    console.log('[Magic Link] User is inactive, skipping email')
     return {
       success: true,
       message: 'If an account exists with this email, a magic link has been sent.'
@@ -47,6 +59,7 @@ export default defineEventHandler(async (event) => {
   try {
     // Generate magic link token
     const token = await generateMagicLink(user.id, user.email)
+    console.log('[Magic Link] Step 3 — token generated')
 
     // Get the app URL
     const config = useRuntimeConfig()
@@ -54,35 +67,32 @@ export default defineEventHandler(async (event) => {
 
     // Build magic link URL
     const magicLinkUrl = `${appUrl}/auth/magic-link?token=${token}`
+    console.log('[Magic Link] Step 4 — URL:', magicLinkUrl)
 
-    // Log for development
-    console.log('[Magic Link]', user.email, magicLinkUrl)
-
-    // Send email
-    try {
-      await sendMagicLinkEmail({
-        to: user.email,
-        name: user.name,
-        magicLinkUrl
-      })
-    } catch (emailError) {
-      console.error('[Magic Link] Email failed:', emailError)
-      // Continue - still return success but log error
-    }
+    // Send email — let errors propagate so user knows something went wrong
+    console.log('[Magic Link] Step 5 — sending email to', user.email)
+    await sendMagicLinkEmail({
+      to: user.email,
+      name: user.name,
+      magicLinkUrl,
+      event
+    })
+    console.log('[Magic Link] Step 6 — email sent successfully')
 
     return {
       success: true,
       message: 'If an account exists with this email, a magic link has been sent.',
       // In development only, return the link
-      ...(process.env.NODE_ENV === 'development' && {
+      ...(import.meta.dev && {
         devLink: magicLinkUrl
       })
     }
-  } catch (error) {
-    console.error('Failed to generate magic link:', error)
+  } catch (error: any) {
+    console.error('[Magic Link] Failed at step 5/6:', error)
+    // Don't expose internal details but signal that email delivery failed
     throw createError({
-      statusCode: 500,
-      statusMessage: 'Failed to generate magic link'
+      statusCode: 502,
+      statusMessage: 'Unable to send magic link email. Please try again or contact your administrator.'
     })
   }
 })

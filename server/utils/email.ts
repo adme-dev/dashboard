@@ -2,6 +2,7 @@
  * Email service using Resend
  */
 
+import type { H3Event } from 'h3'
 import { Resend } from 'resend'
 
 /**
@@ -19,12 +20,52 @@ function escapeHtml(str: string): string {
 let resend: Resend | null = null
 let cachedApiKey: string | null = null
 
-function getResendClient(): Resend | null {
+/**
+ * Read a Cloudflare Pages binding from the event context.
+ */
+function getCfBinding(event: H3Event | undefined, key: string): string | undefined {
+  if (!event) return undefined
+  try {
+    return (event.context as any).cloudflare?.env?.[key] ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Resolve the Resend API key from all possible sources:
+ * 1. Cloudflare Pages bindings (event.context.cloudflare.env)
+ * 2. Nuxt runtimeConfig (supports NUXT_RESEND_API_KEY override)
+ * 3. process.env fallback
+ */
+function resolveApiKey(event?: H3Event): string | null {
+  // CF Pages bindings (most reliable in production)
+  const cfKey = getCfBinding(event, 'RESEND_API_KEY')
+  if (cfKey) return cfKey
+
+  // runtimeConfig (supports NUXT_ prefix override)
   const config = useRuntimeConfig()
-  const apiKey = config.resendApiKey || process.env.RESEND_API_KEY
+  if (config.resendApiKey) return config.resendApiKey
+
+  // Fallback: direct process.env
+  if (process.env.RESEND_API_KEY) return process.env.RESEND_API_KEY
+
+  return null
+}
+
+/**
+ * Check if the email service is configured (Resend API key present).
+ * Pass the H3Event for accurate detection in Cloudflare Pages.
+ */
+export function isEmailConfigured(event?: H3Event): boolean {
+  return !!resolveApiKey(event)
+}
+
+function getResendClient(event?: H3Event): Resend | null {
+  const apiKey = resolveApiKey(event)
 
   if (!apiKey) {
-    console.warn('[Email] RESEND_API_KEY not configured')
+    console.warn('[Email] RESEND_API_KEY not found in CF bindings, runtimeConfig, or process.env')
     return null
   }
 
@@ -36,19 +77,19 @@ function getResendClient(): Resend | null {
   return resend
 }
 
-function getEmailConfig() {
+function getEmailConfig(event?: H3Event) {
   const config = useRuntimeConfig()
   return {
-    appName: config.public?.appName || process.env.APP_NAME || 'XeroFlow Agency',
-    fromEmail: config.emailFrom || process.env.EMAIL_FROM || 'noreply@yourdomain.com',
-    appUrl: config.public?.appUrl || process.env.APP_URL || 'http://localhost:3000'
+    appName: getCfBinding(event, 'APP_NAME') || config.public?.appName || process.env.APP_NAME || 'XeroFlow Agency',
+    fromEmail: getCfBinding(event, 'EMAIL_FROM') || config.emailFrom || process.env.EMAIL_FROM || 'noreply@yourdomain.com',
+    appUrl: getCfBinding(event, 'APP_URL') || config.public?.appUrl || process.env.APP_URL || 'http://localhost:3000'
   }
 }
 
 const BRAND_COLOR = '#13B5EA'
 
-function getFromHeader(): string {
-  const { appName, fromEmail } = getEmailConfig()
+function getFromHeader(event?: H3Event): string {
+  const { appName, fromEmail } = getEmailConfig(event)
   return `${appName} <${fromEmail}>`
 }
 
@@ -121,23 +162,28 @@ export interface MagicLinkEmailData {
   to: string
   name: string
   magicLinkUrl: string
+  event?: H3Event
 }
 
 /**
  * Send magic link email
  */
 export async function sendMagicLinkEmail(data: MagicLinkEmailData): Promise<void> {
-  const client = getResendClient()
-  const { appName } = getEmailConfig()
+  const client = getResendClient(data.event)
+  const { appName } = getEmailConfig(data.event)
 
   if (!client) {
-    console.log('[Email] Magic link for', data.to, ':', data.magicLinkUrl)
-    return
+    console.error('[Email] Cannot send magic link — Resend client not configured. Recipient:', data.to)
+    if (import.meta.dev) {
+      console.log('[Email] Dev fallback — magic link URL:', data.magicLinkUrl)
+      return
+    }
+    throw new Error('Email service not configured')
   }
 
   try {
     await client.emails.send({
-      from: getFromHeader(),
+      from: getFromHeader(data.event),
       to: data.to,
       subject: `Sign in to ${appName}`,
       html: `

@@ -63,6 +63,11 @@
             </button>
           </form>
 
+          <!-- Error message -->
+          <div v-if="errorMsg" class="mt-4 p-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20">
+            <p class="text-[13px] text-red-600 dark:text-red-400">{{ errorMsg }}</p>
+          </div>
+
           <p class="mt-6 text-center text-[13px] text-[#45474D]/70 dark:text-white/40">
             We'll send you a secure link to sign in instantly — no password needed.
           </p>
@@ -201,7 +206,9 @@ const loading = ref(false)
 const linkSent = ref(false)
 const devLink = ref('')
 const devLoading = ref(false)
+const errorMsg = ref('')
 const isDev = import.meta.dev
+const toast = useToast()
 
 const isValidEmail = computed(() => {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)
@@ -211,6 +218,7 @@ async function requestMagicLink() {
   if (!isValidEmail.value) return
 
   loading.value = true
+  errorMsg.value = ''
 
   try {
     const response = await $fetch('/api/auth/magic-link/request', {
@@ -226,8 +234,16 @@ async function requestMagicLink() {
     }
   } catch (error: any) {
     console.error('Failed to request magic link:', error)
-    // Still show success to prevent email enumeration
-    linkSent.value = true
+    const msg = error.data?.statusMessage || error.message || 'Something went wrong'
+    // Show error for service issues (502/503), hide for others (security)
+    const status = error.statusCode || error.data?.statusCode
+    if (status === 502 || status === 503) {
+      errorMsg.value = msg
+      toast.add({ title: 'Email service error', description: msg, color: 'error' })
+    } else {
+      // Still show success to prevent email enumeration
+      linkSent.value = true
+    }
   } finally {
     loading.value = false
   }
