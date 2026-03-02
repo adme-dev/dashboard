@@ -182,30 +182,68 @@ export async function sendMagicLinkEmail(data: MagicLinkEmailData): Promise<void
   }
 
   try {
+    const safeName = escapeHtml(data.name.split(' ')[0])
+
     await client.emails.send({
       from: getFromHeader(data.event),
       to: data.to,
-      subject: `Sign in to ${appName}`,
-      html: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-          <h1 style="color: ${BRAND_COLOR};">Sign in to ${appName}</h1>
-          <p>Hi ${escapeHtml(data.name)},</p>
-          <p>Click the button below to sign in instantly. This link expires in 1 hour.</p>
-          <a href="${data.magicLinkUrl}"
-             style="display: inline-block; background: ${BRAND_COLOR}; color: white; padding: 12px 24px;
-                    text-decoration: none; border-radius: 6px; margin: 16px 0;">
-            Sign In
-          </a>
-          <p style="color: #666; font-size: 14px;">
-            Or copy and paste this link:<br>
-            <a href="${data.magicLinkUrl}" style="color: ${BRAND_COLOR};">${data.magicLinkUrl}</a>
-          </p>
-          <p style="color: #666; font-size: 12px; margin-top: 32px;">
-            If you didn't request this email, you can safely ignore it.
-          </p>
-        </div>
-      `,
-      text: `Hi ${data.name},\n\nSign in to ${appName}: ${data.magicLinkUrl}\n\nThis link expires in 1 hour.\n\nIf you didn't request this email, you can safely ignore it.`
+      subject: `Your sign-in link for ${appName}`,
+      html: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"></head>
+<body style="margin:0;padding:0;background-color:#0a0b0e;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:48px 24px;">
+
+    <!-- Logo -->
+    <div style="text-align:center;margin-bottom:48px;">
+      <div style="display:inline-block;width:40px;height:40px;background:#ffffff;border-radius:10px;line-height:40px;text-align:center;">
+        <span style="color:#0a0b0e;font-size:14px;font-weight:700;letter-spacing:-0.02em;">XF</span>
+      </div>
+    </div>
+
+    <!-- Card -->
+    <div style="background:#121317;border:1px solid rgba(255,255,255,0.06);border-radius:20px;padding:48px 40px;text-align:center;">
+
+      <h1 style="margin:0 0 8px;color:#ffffff;font-size:28px;font-weight:500;letter-spacing:-0.03em;line-height:1.2;">
+        Welcome back, ${safeName}
+      </h1>
+
+      <p style="margin:0 0 36px;color:rgba(255,255,255,0.5);font-size:16px;line-height:1.6;">
+        Tap the button below to sign in to your account. This link is valid for one hour.
+      </p>
+
+      <!-- CTA Button -->
+      <div style="margin:0 0 36px;">
+        <a href="${data.magicLinkUrl}"
+           style="display:inline-block;background:#ffffff;color:#0a0b0e;padding:14px 36px;text-decoration:none;border-radius:100px;font-size:16px;font-weight:600;letter-spacing:-0.01em;">
+          Sign in to ${escapeHtml(appName)}
+        </a>
+      </div>
+
+      <!-- Divider -->
+      <div style="height:1px;background:rgba(255,255,255,0.06);margin:0 0 24px;"></div>
+
+      <!-- Fallback link -->
+      <p style="margin:0;color:rgba(255,255,255,0.3);font-size:13px;line-height:1.6;">
+        Or copy this link into your browser:<br>
+        <a href="${data.magicLinkUrl}" style="color:rgba(255,255,255,0.5);text-decoration:underline;word-break:break-all;">${data.magicLinkUrl}</a>
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <div style="text-align:center;margin-top:32px;">
+      <p style="margin:0 0 4px;color:rgba(255,255,255,0.25);font-size:12px;">
+        You received this because a sign-in was requested for ${escapeHtml(data.to)}.
+      </p>
+      <p style="margin:0;color:rgba(255,255,255,0.15);font-size:12px;">
+        If you didn&rsquo;t request this, you can safely ignore this email.
+      </p>
+    </div>
+
+  </div>
+</body>
+</html>`,
+      text: `Hi ${data.name},\n\nSign in to ${appName}: ${data.magicLinkUrl}\n\nThis link is valid for one hour.\n\nIf you didn't request this, you can safely ignore this email.`
     })
 
     console.log('[Email] Magic link sent to', data.to)
