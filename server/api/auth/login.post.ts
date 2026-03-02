@@ -52,21 +52,27 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Create JWT
+    // Create JWT (iat/exp are added automatically by createJwt)
     const token = await createJwt({
       userId: user.id,
       email: user.email,
       role: user.role,
-      iat: Date.now()
     })
 
-    // Set HTTP-only cookie
-    setCookie(event, 'auth_token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 60 * 60 * 24 * 7 // 7 days
-    })
+    const isSecure = getRequestURL(event).protocol === 'https:'
+    const cookieOpts = {
+      secure: isSecure,
+      sameSite: 'lax' as const,
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: '/',
+    }
+
+    // Main auth token (httpOnly for security)
+    setCookie(event, 'auth_token', token, { ...cookieOpts, httpOnly: true })
+    // Client-visible flag for auth detection
+    setCookie(event, 'auth_status', 'logged_in', { ...cookieOpts, httpOnly: false })
+    // Client-accessible token fallback
+    setCookie(event, 'auth_token_client', token, { ...cookieOpts, httpOnly: false })
 
     return {
       success: true,

@@ -6,22 +6,6 @@ export interface AuthState {
   isLoading: boolean
 }
 
-// Global auth error handler for API calls
-export const setupAuthErrorHandler = () => {
-  const router = useRouter()
-  
-  // Add response interceptor for all $fetch calls
-  globalThis.$fetch = globalThis.$fetch.create?.({
-    onResponseError({ response }) {
-      if (response.status === 401) {
-        // Redirect to login instead of showing error
-        const currentPath = window.location.pathname
-        router.push(`/login?redirect=${encodeURIComponent(currentPath)}&expired=true`)
-      }
-    }
-  }) || globalThis.$fetch
-}
-
 export const useAuth = () => {
   const user = useState<User | null>('auth-user', () => null)
   const isLoading = useState('auth-loading', () => false)
@@ -43,28 +27,28 @@ export const useAuth = () => {
   const fetchUser = async () => {
     try {
       isLoading.value = true
-      const data = await $fetch('/api/auth/me', {
-        // Don't throw on 401, handle gracefully
-        ignoreResponseError: true
+      const data: any = await $fetch('/api/auth/me').catch((err: any) => {
+        // 503 = transient error (DB down) — don't clear user state
+        if (err?.statusCode === 503 || err?.status === 503) {
+          console.warn('[useAuth] Service temporarily unavailable, keeping session')
+          return null // keep existing user state
+        }
+        // 401 = session expired — clear user
+        if (err?.statusCode === 401 || err?.status === 401) {
+          user.value = null
+          return null
+        }
+        // Other errors — log but keep session
+        console.error('Auth check failed:', err)
+        return null
       })
-      
+
       if (data?.user) {
         user.value = data.user
         return data.user
-      } else {
-        user.value = null
-        return null
       }
-    } catch (error: any) {
-      // If 401, user is not authenticated - this is expected
-      if (error.statusCode === 401) {
-        user.value = null
-        return null
-      }
-      // For other errors, log but still return null
-      console.error('Auth check failed:', error)
-      user.value = null
-      return null
+      // Only clear user on explicit failure, not on null (transient)
+      return user.value
     } finally {
       isLoading.value = false
     }

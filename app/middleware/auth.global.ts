@@ -1,18 +1,20 @@
 /**
  * Global Auth Middleware
- * Protects all routes except public ones
+ * Protects all routes except public ones.
+ *
+ * Auth detection uses three cookies set at login:
+ *   auth_token        — httpOnly (server-readable only)
+ *   auth_status       — non-httpOnly ("logged_in" flag for client detection)
+ *   auth_token_client — non-httpOnly (fallback for client-side middleware)
+ *
+ * During SSR, useCookie can read httpOnly cookies from the request.
+ * During client-side navigation, only non-httpOnly cookies are visible.
  */
 
-export default defineNuxtRouteMiddleware(async (to, from) => {
+export default defineNuxtRouteMiddleware(async (to, _from) => {
   // Public routes that don't require authentication
-  const publicRoutes = [
-    '/auth/login',
-    '/auth/xeroflow',
-    '/auth/magic-link',
-    '/auth/register',
-    '/auth/forgot-password',
-    '/auth/reset-password',
-    '/auth/verify-email',
+  const publicPrefixes = [
+    '/auth/',
     '/landing',
     '/features',
     '/pricing',
@@ -25,45 +27,26 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
     '/ai-training',
     '/banner-studio',
     '/creativity',
-    '/landing',
-    '/'
+    '/portal',
   ]
-  
-  const isPublicRoute = publicRoutes.some(route => 
-    to.path === route || to.path.startsWith(route + '/')
-  )
-  
-  if (isPublicRoute) {
+
+  if (to.path === '/' || publicPrefixes.some(p => to.path.startsWith(p))) {
     return
   }
 
-  // Portal routes have their own auth middleware
-  if (to.path.startsWith('/portal')) {
-    return
-  }
-  
-  // Check for auth token
-  const authToken = useCookie('auth_token').value
-  const authStatus = useCookie('auth_status').value
-  const clientToken = useCookie('auth_token_client').value
-  
-  console.log('[Auth Middleware] Path:', to.path)
-  console.log('[Auth Middleware] auth_token exists:', !!authToken)
-  console.log('[Auth Middleware] auth_status:', authStatus)
-  console.log('[Auth Middleware] auth_token_client exists:', !!clientToken)
-  
-  // If we have any form of auth, allow access
+  // Check all three auth signals — any one is sufficient
+  const authToken = useCookie('auth_token').value      // readable during SSR
+  const authStatus = useCookie('auth_status').value     // readable always
+  const clientToken = useCookie('auth_token_client').value // readable always
+
   const hasAuth = authToken || clientToken || authStatus === 'logged_in'
-  
+
   if (!hasAuth) {
-    console.log('[Auth Middleware] No auth found, redirecting')
     return navigateTo({
-      path: '/',
-      query: { 
+      path: '/auth/login',
+      query: {
         redirect: to.fullPath
       }
     })
   }
-  
-  console.log('[Auth Middleware] Auth found, allowing access')
 })

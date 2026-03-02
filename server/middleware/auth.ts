@@ -1,4 +1,4 @@
-import { validateSession, hasRole } from '../utils/auth'
+import { validateSession, TransientAuthError } from '../utils/auth'
 import { kvGet, kvPut } from '../utils/kv'
 
 // Routes that don't require authentication
@@ -21,12 +21,12 @@ const publicRoutes = [
 
 export default defineEventHandler(async (event) => {
   const { pathname } = getRequestURL(event)
-  
+
   // Skip auth for public API routes
   if (publicRoutes.some(route => pathname.startsWith(route))) {
     return
   }
-  
+
   // Skip auth for non-API routes (pages handled by middleware in app)
   if (!pathname.startsWith('/api/')) {
     return
@@ -34,10 +34,10 @@ export default defineEventHandler(async (event) => {
 
   // Get token from cookie or Authorization header
   const authHeader = getHeader(event, 'authorization')
-  const token = authHeader?.startsWith('Bearer ') 
-    ? authHeader.slice(7) 
+  const token = authHeader?.startsWith('Bearer ')
+    ? authHeader.slice(7)
     : getCookie(event, 'auth_token')
-  
+
   if (!token) {
     throw createError({
       statusCode: 401,
@@ -60,23 +60,47 @@ export default defineEventHandler(async (event) => {
   }
 
   // Validate session via DB
-  const user = await validateSession(token)
+  try {
+    const user = await validateSession(token)
 
-  if (!user) {
-    deleteCookie(event, 'auth_token')
+    if (!user) {
+      // Token is genuinely invalid or user deactivated — clear cookies
+      deleteCookie(event, 'auth_token')
+      deleteCookie(event, 'auth_token_client')
+      deleteCookie(event, 'auth_status')
+      throw createError({
+        statusCode: 401,
+        statusMessage: 'Invalid or expired session',
+        data: {
+          redirect: '/login',
+          message: 'Your session has expired. Please sign in again.'
+        }
+      })
+    }
+
+    // Cache in KV for 5 minutes
+    kvPut(event, cacheKey, user, 300)
+
+    event.context.user = user
+    event.context.auth = { userId: user.id, role: user.role }
+  } catch (error: any) {
+    // Re-throw HTTP errors (our own 401 above)
+    if (error.statusCode) throw error
+
+    // Transient DB errors — return 503, do NOT delete cookies
+    if (error instanceof TransientAuthError || error.name === 'TransientAuthError') {
+      console.error('[Auth Middleware] Transient DB error, returning 503:', error.message)
+      throw createError({
+        statusCode: 503,
+        statusMessage: 'Service temporarily unavailable — please retry'
+      })
+    }
+
+    // Unknown errors — also 503, don't nuke the session
+    console.error('[Auth Middleware] Unexpected error during auth:', error)
     throw createError({
-      statusCode: 401,
-      statusMessage: 'Invalid or expired session',
-      data: {
-        redirect: '/login',
-        message: 'Your session has expired. Please sign in again.'
-      }
+      statusCode: 503,
+      statusMessage: 'Service temporarily unavailable'
     })
   }
-
-  // Cache in KV for 5 minutes
-  kvPut(event, cacheKey, user, 300)
-
-  event.context.user = user
-  event.context.auth = { userId: user.id, role: user.role }
 })

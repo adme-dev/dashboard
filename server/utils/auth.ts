@@ -58,31 +58,46 @@ export async function getClientUserByEmail(email: string): Promise<ClientUser | 
   return user
 }
 
+// Custom error class for transient failures (DB down, network issues)
+export class TransientAuthError extends Error {
+  constructor(message: string, public readonly cause?: unknown) {
+    super(message)
+    this.name = 'TransientAuthError'
+  }
+}
+
 // Validate session token
+// Returns User if valid, null if token is invalid/expired.
+// Throws TransientAuthError if DB is unreachable (caller should NOT treat as logout).
 export async function validateSession(token: string): Promise<User | null> {
-  // In a real implementation, you'd check a sessions table
-  // For now, we'll use JWT or similar
+  const payload = await verifyJwt(token)
+  if (!payload || !payload.userId) return null
+
+  // DB lookup — let connection errors propagate as TransientAuthError
   try {
-    const payload = await verifyJwt(token)
-    if (!payload || !payload.userId) return null
-    
     return await queryOne<User>(
       `SELECT id, email, name, user_role as role, is_active
        FROM team_members
        WHERE id = $1 AND is_active = true`,
       [payload.userId]
     )
-  } catch {
-    return null
+  } catch (dbError) {
+    throw new TransientAuthError('Database unreachable during session validation', dbError)
   }
 }
 
 // JWT helpers (simplified - consider using a proper JWT library)
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production'
+const JWT_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
 export async function createJwt(payload: object): Promise<string> {
+  const fullPayload = {
+    ...payload,
+    iat: Date.now(),
+    exp: Date.now() + JWT_EXPIRY_MS,
+  }
   const encoder = new TextEncoder()
-  const data = encoder.encode(JSON.stringify(payload))
+  const data = encoder.encode(JSON.stringify(fullPayload))
   const key = await crypto.subtle.importKey(
     'raw',
     encoder.encode(JWT_SECRET),
@@ -100,11 +115,28 @@ export async function verifyJwt(token: string): Promise<any | null> {
   try {
     const [dataB64, sigB64] = token.split('.')
     if (!dataB64 || !sigB64) return null
-    
+
     const encoder = new TextEncoder()
     const data = new Uint8Array([...atob(dataB64)].map(c => c.charCodeAt(0)))
-    
-    return JSON.parse(new TextDecoder().decode(data))
+    const sigBytes = new Uint8Array([...atob(sigB64)].map(c => c.charCodeAt(0)))
+
+    // Verify HMAC signature
+    const key = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(JWT_SECRET),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify']
+    )
+    const isValid = await crypto.subtle.verify('HMAC', key, sigBytes, data)
+    if (!isValid) return null
+
+    const payload = JSON.parse(new TextDecoder().decode(data))
+
+    // Check expiry (old tokens without exp are allowed for backward compat)
+    if (payload.exp && Date.now() > payload.exp) return null
+
+    return payload
   } catch {
     return null
   }
@@ -127,22 +159,38 @@ export async function canAccessImplementation(userId: string, implementationId: 
 }
 
 // Require authentication helper for API routes
+// Note: Most API routes already pass through server/middleware/auth.ts which
+// validates the token and sets event.context.user. This function is a fallback
+// for routes that bypass the middleware or need re-validation.
 export async function requireAuth(event: any): Promise<User> {
+  // Fast path: middleware already validated
+  if (event.context.user) {
+    return event.context.user as User
+  }
+
   const authHeader = getHeader(event, 'authorization')
-  const token = authHeader?.startsWith('Bearer ') 
-    ? authHeader.slice(7) 
+  const token = authHeader?.startsWith('Bearer ')
+    ? authHeader.slice(7)
     : getCookie(event, 'auth_token')
-    
+
   if (!token) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized - No token' })
   }
-  
-  const user = await validateSession(token)
-  if (!user) {
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized - Invalid session' })
+
+  try {
+    const user = await validateSession(token)
+    if (!user) {
+      throw createError({ statusCode: 401, statusMessage: 'Unauthorized - Invalid session' })
+    }
+    return user
+  } catch (error: any) {
+    if (error.statusCode) throw error
+    // TransientAuthError from validateSession — return 503, not 401
+    if (error instanceof TransientAuthError || error.name === 'TransientAuthError') {
+      throw createError({ statusCode: 503, statusMessage: 'Service temporarily unavailable' })
+    }
+    throw createError({ statusCode: 503, statusMessage: 'Service temporarily unavailable' })
   }
-  
-  return user
 }
 
 // Require role helper for API routes
