@@ -20,15 +20,21 @@ export default defineEventHandler(async (event) => {
   const safeRedirect = redirect.startsWith('/') ? redirect : '/agency'
 
   if (!token) {
+    console.error('[Magic Link Callback] No token in query string')
     return sendRedirect(event, '/auth/login?error=missing-token', 302)
   }
+
+  console.log(`[Magic Link Callback] Verifying token=${String(token).substring(0, 10)}...`)
 
   try {
     const user = await verifyMagicLink(token)
 
     if (!user) {
+      console.error('[Magic Link Callback] verifyMagicLink returned null — see diagnostic log above')
       return sendRedirect(event, '/auth/login?error=magic-link-expired', 302)
     }
+
+    console.log(`[Magic Link Callback] Success — user=${user.id} (${user.email})`)
 
     // Create JWT
     const jwtToken = await createJwt({

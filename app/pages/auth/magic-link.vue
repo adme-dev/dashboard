@@ -111,10 +111,17 @@ const route = useRoute()
 const status = ref<'verifying' | 'success' | 'error' | 'no-token'>('no-token')
 const errorMessage = ref('')
 
-onMounted(() => {
+function setClientCookies(jwt: string) {
+  const expires = new Date()
+  expires.setDate(expires.getDate() + 7)
+  const secure = location.protocol === 'https:' ? '; Secure' : ''
+  document.cookie = `auth_token_client=${jwt}; path=/; expires=${expires.toUTCString()}; SameSite=Lax${secure}`
+  document.cookie = `auth_status=logged_in; path=/; expires=${expires.toUTCString()}; SameSite=Lax${secure}`
+}
+
+onMounted(async () => {
   const token = route.query.token as string
   if (!token) {
-    // Check if we were redirected back with an error from the callback
     const error = route.query.error as string
     if (error === 'magic-link-expired') {
       status.value = 'error'
@@ -129,9 +136,25 @@ onMounted(() => {
 
   status.value = 'verifying'
 
-  // Redirect to server-side callback that verifies, sets cookies, and redirects
-  // in a single HTTP response. This guarantees cookies are stored before the
-  // browser navigates to the dashboard (eliminates XHR Set-Cookie race condition).
-  window.location.href = `/api/auth/magic-link/callback?token=${encodeURIComponent(token)}`
+  try {
+    // Verify the token via the API. The server response sets httpOnly cookies
+    // via Set-Cookie headers. We also set client-readable cookies manually as
+    // a fallback to guarantee the auth middleware detects the session.
+    const result = await $fetch<{ success: boolean; token: string; user: any }>('/api/auth/magic-link/verify', {
+      params: { token }
+    })
+
+    if (result.success && result.token) {
+      setClientCookies(result.token)
+      status.value = 'success'
+      // Full page navigation ensures fresh cookie read by auth middleware
+      setTimeout(() => { window.location.href = '/agency' }, 500)
+    } else {
+      status.value = 'error'
+    }
+  } catch (err: any) {
+    status.value = 'error'
+    errorMessage.value = err?.data?.statusMessage || err?.message || 'Verification failed'
+  }
 })
 </script>

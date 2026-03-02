@@ -306,62 +306,77 @@ export interface MagicLinkToken {
 export async function generateMagicLink(userId: string, email: string): Promise<string> {
   const token = generateToken()
   const tokenHash = hashToken(token)
-  
+
   // Token expires in 1 hour
   const expiresAt = new Date()
   expiresAt.setHours(expiresAt.getHours() + 1)
-  
-  await queryOne(
+
+  const inserted = await queryOne<{ id: string }>(
     `INSERT INTO magic_link_tokens (user_id, token_hash, email, expires_at)
-     VALUES ($1, $2, $3, $4)`,
+     VALUES ($1, $2, $3, $4)
+     RETURNING id`,
     [userId, tokenHash, email.toLowerCase(), expiresAt]
   )
-  
+
+  console.log(`[Magic Link Generate] Stored token=${tokenHash.substring(0, 10)}... id=${inserted?.id} user=${userId} expires=${expiresAt.toISOString()}`)
+
   return token
 }
 
 /**
- * Verify a magic link token and return the associated user
+ * Verify a magic link token and return the associated user.
+ * Uses atomic UPDATE...RETURNING to prevent race conditions.
  */
 export async function verifyMagicLink(token: string): Promise<User | null> {
   const tokenHash = hashToken(token)
-  
-  // Find the token
-  const magicLink = await queryOne<{ user_id: string; email: string; expires_at: string; used: boolean }>(
-    `SELECT user_id, email, expires_at, used 
-     FROM magic_link_tokens 
-     WHERE token_hash = $1`,
+  const prefix = `[Magic Link Verify] token=${tokenHash.substring(0, 10)}...`
+
+  // Atomic: claim the token in a single statement (prevents double-use race)
+  const claimed = await queryOne<{ user_id: string; email: string }>(
+    `UPDATE magic_link_tokens
+     SET used = true, used_at = NOW()
+     WHERE token_hash = $1 AND used = false AND expires_at > NOW()
+     RETURNING user_id, email`,
     [tokenHash]
   )
-  
-  if (!magicLink) return null
-  if (magicLink.used) return null
-  if (new Date(magicLink.expires_at) < new Date()) return null
-  
-  // Mark token as used
-  await queryOne(
-    `UPDATE magic_link_tokens 
-     SET used = true, used_at = NOW() 
-     WHERE token_hash = $1`,
-    [tokenHash]
-  )
-  
+
+  if (!claimed) {
+    // Token wasn't claimed — diagnose why for logging
+    const existing = await queryOne<{ used: boolean; expires_at: string; created_at: string }>(
+      `SELECT used, expires_at, created_at FROM magic_link_tokens WHERE token_hash = $1`,
+      [tokenHash]
+    )
+    if (!existing) {
+      console.error(`${prefix} FAIL: token not found in DB`)
+    } else if (existing.used) {
+      console.error(`${prefix} FAIL: token already used`)
+    } else {
+      console.error(`${prefix} FAIL: token expired (expires_at=${existing.expires_at}, now=${new Date().toISOString()}, created=${existing.created_at})`)
+    }
+    return null
+  }
+
+  console.log(`${prefix} OK — claimed for user_id=${claimed.user_id}`)
+
   // Get the user
   const user = await queryOne<User>(
     `SELECT id, email, name, user_role as role, is_active
      FROM team_members
      WHERE id = $1 AND is_active = true`,
-    [magicLink.user_id]
+    [claimed.user_id]
   )
-  
-  if (user) {
-    // Update last login
-    await queryOne(
-      `UPDATE team_members SET last_login_at = NOW() WHERE id = $1`,
-      [user.id]
-    )
+
+  if (!user) {
+    console.error(`${prefix} FAIL: user ${claimed.user_id} not found or inactive`)
+    return null
   }
-  
+
+  // Update last login
+  await queryOne(
+    `UPDATE team_members SET last_login_at = NOW() WHERE id = $1`,
+    [user.id]
+  )
+
   return user
 }
 
