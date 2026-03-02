@@ -3,30 +3,31 @@
     <MarketingNav active="features" />
 
     <!-- Hero Section -->
-    <section class="relative pt-[52px]">
+    <section class="relative bg-[#0a0b0e] pt-[52px]">
+      <MarketingHeroBackground theme="financials" />
       <div class="relative max-w-[1200px] mx-auto px-6 pt-32 pb-20 md:pt-44 md:pb-28 text-center">
-        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/[0.08] mb-8">
-          <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          <span class="text-[13px] text-emerald-700 font-medium">Financial Operations</span>
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/[0.12] mb-8">
+          <div class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span class="text-[13px] text-emerald-400 font-medium">Financial Operations</span>
         </div>
 
-        <h1 class="text-[clamp(36px,6vw,72px)] font-[450] text-[#121317] dark:text-white leading-[1.1] tracking-[-0.03em] mb-6 max-w-[800px] mx-auto">
+        <h1 class="text-[clamp(36px,6vw,72px)] font-[450] text-white leading-[1.1] tracking-[-0.03em] mb-6 max-w-[800px] mx-auto">
           Your agency finances,<br class="hidden sm:block">unified
         </h1>
 
-        <p class="text-lg md:text-xl text-[#45474D] dark:text-white/60 max-w-[560px] mx-auto mb-10 leading-relaxed">
+        <p class="text-lg md:text-xl text-white/50 max-w-[560px] mx-auto mb-10 leading-relaxed">
           Two-way Xero integration, automated end-of-month invoicing, real-time P&amp;L dashboards, and budget management with full audit trails.
         </p>
 
         <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
           <NuxtLink
             to="/auth/login"
-            class="inline-flex items-center gap-2.5 px-6 py-3 bg-[#121317] text-white text-[17.5px] font-medium rounded-full hover:bg-[#2a2b30] transition-colors"
+            class="inline-flex items-center gap-2.5 px-6 py-3 bg-white text-[#121317] text-[17.5px] font-medium rounded-full hover:bg-white/90 transition-colors"
           >
             Get Started
           </NuxtLink>
           <button
-            class="inline-flex items-center gap-2 px-6 py-3 bg-emerald-500/10 text-emerald-700 text-[17.5px] font-medium rounded-full hover:bg-emerald-500/15 transition-colors"
+            class="inline-flex items-center gap-2 px-6 py-3 bg-white/10 text-white text-[17.5px] font-medium rounded-full hover:bg-white/20 transition-colors"
             @click="document.getElementById('xero-integration')?.scrollIntoView({ behavior: 'smooth' })"
           >
             See how it works

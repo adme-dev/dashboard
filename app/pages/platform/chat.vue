@@ -3,21 +3,22 @@
     <MarketingNav active="features" />
 
     <!-- Hero Section -->
-    <section class="pt-[120px] pb-20 px-6">
-      <div class="max-w-[1200px] mx-auto text-center">
-        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-violet-50 border border-violet-100 mb-8">
-          <div class="w-1.5 h-1.5 rounded-full bg-violet-500" />
-          <span class="text-[13px] font-medium text-violet-700 tracking-[-0.01em]">Communication</span>
+    <section class="relative bg-[#0a0b0e] pt-[120px] pb-20 px-6">
+      <MarketingHeroBackground theme="chat" />
+      <div class="relative max-w-[1200px] mx-auto text-center">
+        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-violet-500/[0.12] border border-violet-500/20 mb-8">
+          <div class="w-1.5 h-1.5 rounded-full bg-violet-400" />
+          <span class="text-[13px] font-medium text-violet-400 tracking-[-0.01em]">Communication</span>
         </div>
         <h1
-          class="font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-5 leading-[1.08]"
+          class="font-[450] text-white tracking-[-0.02em] mb-5 leading-[1.08]"
           :style="{ fontSize: 'clamp(2.25rem, 5vw, 3.75rem)' }"
         >
           Real-time chat<br class="hidden sm:block" />
           built for agencies
         </h1>
         <p
-          class="max-w-[560px] mx-auto text-[#45474D] dark:text-white/60 leading-relaxed"
+          class="max-w-[560px] mx-auto text-white/50 leading-relaxed"
           :style="{ fontSize: 'clamp(1rem, 1.5vw, 1.175rem)' }"
         >
           Channels, direct messages, threads, and file sharing — all woven into your project workflow. No more context switching between tools.

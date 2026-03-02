@@ -3,16 +3,17 @@
     <MarketingNav active="features" />
 
     <!-- Hero -->
-    <section class="pt-[52px]">
-      <div class="max-w-[1200px] mx-auto px-6 pt-32 pb-16 md:pt-44 md:pb-24 text-center">
-        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-rose-500/[0.08] mb-8">
-          <div class="w-1.5 h-1.5 rounded-full bg-rose-500" />
-          <span class="text-[13px] text-rose-600 dark:text-rose-400 font-medium">Client Portal</span>
+    <section class="relative bg-[#0a0b0e] pt-[52px]">
+      <MarketingHeroBackground theme="client-portal" />
+      <div class="relative max-w-[1200px] mx-auto px-6 pt-32 pb-16 md:pt-44 md:pb-24 text-center">
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-rose-500/[0.12] mb-8">
+          <div class="w-1.5 h-1.5 rounded-full bg-rose-400" />
+          <span class="text-[13px] text-rose-400 font-medium">Client Portal</span>
         </div>
-        <h1 class="text-[clamp(36px,6vw,64px)] font-[450] text-[#121317] dark:text-white leading-[1.1] tracking-[-0.03em] mb-6 max-w-[800px] mx-auto">
+        <h1 class="text-[clamp(36px,6vw,64px)] font-[450] text-white leading-[1.1] tracking-[-0.03em] mb-6 max-w-[800px] mx-auto">
           A dedicated space<br class="hidden sm:block">for your clients
         </h1>
-        <p class="text-lg md:text-xl text-[#45474D] dark:text-white/60 max-w-[560px] mx-auto leading-relaxed">
+        <p class="text-lg md:text-xl text-white/50 max-w-[560px] mx-auto leading-relaxed">
           Project visibility, approval workflows, invoices, and a creative gallery — all behind a secure, client-scoped login.
         </p>
       </div>

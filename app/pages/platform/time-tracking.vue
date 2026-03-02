@@ -3,23 +3,24 @@
     <MarketingNav active="features" />
 
     <!-- Main Content -->
-    <main class="flex-1 pt-[52px]">
+    <main class="flex-1">
 
       <!-- Hero Section -->
-      <section class="px-6 pt-28 pb-16 sm:pt-40 sm:pb-24">
-        <div class="max-w-[1200px] mx-auto text-center">
-          <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-50 border border-indigo-100 mb-6">
-            <UIcon name="i-lucide-clock" class="w-3.5 h-3.5 text-indigo-600" />
-            <span class="text-[13px] font-medium text-indigo-700 tracking-[-0.01em]">Time & Capacity</span>
+      <section class="relative bg-[#0a0b0e] pt-[52px]">
+        <MarketingHeroBackground theme="time-tracking" />
+        <div class="relative max-w-[1200px] mx-auto px-6 text-center pt-28 pb-16 sm:pt-40 sm:pb-24">
+          <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-500/[0.12] border border-indigo-500/20 mb-6">
+            <UIcon name="i-lucide-clock" class="w-3.5 h-3.5 text-indigo-400" />
+            <span class="text-[13px] font-medium text-indigo-400 tracking-[-0.01em]">Time & Capacity</span>
           </div>
           <h1
-            class="font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-5"
+            class="font-[450] text-white tracking-[-0.02em] mb-5"
             style="font-size: clamp(2rem, 5vw, 3.25rem); line-height: 1.1"
           >
             Track every billable minute
           </h1>
           <p
-            class="max-w-[580px] mx-auto text-[#45474D] dark:text-white/60 leading-relaxed"
+            class="max-w-[580px] mx-auto text-white/50 leading-relaxed"
             style="font-size: clamp(1rem, 2vw, 1.125rem)"
           >
             From start/stop timers to weekly timesheets and manager approvals, XeroFlow gives your team a complete time tracking

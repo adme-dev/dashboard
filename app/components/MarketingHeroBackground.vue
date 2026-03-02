@@ -61,7 +61,7 @@
 
 <script setup lang="ts">
 const props = defineProps<{
-  theme: 'creativity' | 'pricing' | 'features' | 'feature-detail' | 'about' | 'support' | 'legal'
+  theme: 'creativity' | 'pricing' | 'features' | 'feature-detail' | 'about' | 'support' | 'legal' | 'boards' | 'financials' | 'ai' | 'automations' | 'chat' | 'time-tracking' | 'client-portal' | 'calendar' | 'templates' | 'ad-spend'
 }>()
 
 interface ThemeColors {
@@ -113,6 +113,66 @@ const THEMES: Record<string, ThemeColors> = {
     grad2: ['#9ca3af', '#64748b'], // gray → slate
     grad3: ['#71717a', '#a3a3a3'], // zinc → neutral
     orbs: ['bg-slate-500/[0.06]', 'bg-gray-500/[0.04]', 'bg-zinc-500/[0.03]', 'bg-slate-400/[0.03]', 'bg-gray-400/[0.02]']
+  },
+  boards: {
+    grad1: ['#10b981', '#14b8a6'], // emerald → teal
+    grad2: ['#3b82f6', '#6366f1'], // blue → indigo
+    grad3: ['#06b6d4', '#0ea5e9'], // cyan → sky
+    orbs: ['bg-emerald-500/[0.08]', 'bg-blue-500/[0.06]', 'bg-cyan-500/[0.05]', 'bg-teal-500/[0.05]', 'bg-indigo-500/[0.04]']
+  },
+  financials: {
+    grad1: ['#10b981', '#22c55e'], // emerald → green
+    grad2: ['#f59e0b', '#eab308'], // amber → yellow
+    grad3: ['#14b8a6', '#06b6d4'], // teal → cyan
+    orbs: ['bg-emerald-500/[0.08]', 'bg-amber-500/[0.06]', 'bg-teal-500/[0.05]', 'bg-green-500/[0.05]', 'bg-yellow-500/[0.04]']
+  },
+  ai: {
+    grad1: ['#f59e0b', '#f97316'], // amber → orange
+    grad2: ['#8b5cf6', '#a855f7'], // violet → purple
+    grad3: ['#f43f5e', '#ec4899'], // rose → pink
+    orbs: ['bg-amber-500/[0.08]', 'bg-violet-500/[0.06]', 'bg-rose-500/[0.05]', 'bg-orange-500/[0.05]', 'bg-purple-500/[0.04]']
+  },
+  automations: {
+    grad1: ['#f97316', '#f59e0b'], // orange → amber
+    grad2: ['#d946ef', '#a855f7'], // fuchsia → purple
+    grad3: ['#f43f5e', '#ef4444'], // rose → red
+    orbs: ['bg-orange-500/[0.08]', 'bg-fuchsia-500/[0.06]', 'bg-rose-500/[0.05]', 'bg-amber-500/[0.05]', 'bg-purple-500/[0.04]']
+  },
+  chat: {
+    grad1: ['#8b5cf6', '#a855f7'], // violet → purple
+    grad2: ['#d946ef', '#ec4899'], // fuchsia → pink
+    grad3: ['#6366f1', '#3b82f6'], // indigo → blue
+    orbs: ['bg-violet-500/[0.08]', 'bg-fuchsia-500/[0.06]', 'bg-indigo-500/[0.05]', 'bg-purple-500/[0.05]', 'bg-pink-500/[0.04]']
+  },
+  'time-tracking': {
+    grad1: ['#6366f1', '#8b5cf6'], // indigo → violet
+    grad2: ['#3b82f6', '#0ea5e9'], // blue → sky
+    grad3: ['#a855f7', '#d946ef'], // purple → fuchsia
+    orbs: ['bg-indigo-500/[0.08]', 'bg-blue-500/[0.06]', 'bg-purple-500/[0.05]', 'bg-violet-500/[0.05]', 'bg-sky-500/[0.04]']
+  },
+  'client-portal': {
+    grad1: ['#f43f5e', '#ec4899'], // rose → pink
+    grad2: ['#d946ef', '#a855f7'], // fuchsia → purple
+    grad3: ['#ef4444', '#f43f5e'], // red → rose
+    orbs: ['bg-rose-500/[0.08]', 'bg-fuchsia-500/[0.06]', 'bg-pink-500/[0.05]', 'bg-red-500/[0.05]', 'bg-purple-500/[0.04]']
+  },
+  calendar: {
+    grad1: ['#3b82f6', '#06b6d4'], // blue → cyan
+    grad2: ['#0ea5e9', '#6366f1'], // sky → indigo
+    grad3: ['#14b8a6', '#10b981'], // teal → emerald
+    orbs: ['bg-blue-500/[0.08]', 'bg-sky-500/[0.06]', 'bg-teal-500/[0.05]', 'bg-cyan-500/[0.05]', 'bg-indigo-500/[0.04]']
+  },
+  templates: {
+    grad1: ['#0ea5e9', '#3b82f6'], // sky → blue
+    grad2: ['#8b5cf6', '#6366f1'], // violet → indigo
+    grad3: ['#10b981', '#14b8a6'], // emerald → teal
+    orbs: ['bg-sky-500/[0.08]', 'bg-violet-500/[0.06]', 'bg-emerald-500/[0.05]', 'bg-blue-500/[0.05]', 'bg-indigo-500/[0.04]']
+  },
+  'ad-spend': {
+    grad1: ['#06b6d4', '#3b82f6'], // cyan → blue
+    grad2: ['#10b981', '#14b8a6'], // emerald → teal
+    grad3: ['#0ea5e9', '#6366f1'], // sky → indigo
+    orbs: ['bg-cyan-500/[0.08]', 'bg-emerald-500/[0.06]', 'bg-sky-500/[0.05]', 'bg-blue-500/[0.05]', 'bg-teal-500/[0.04]']
   }
 }
 
