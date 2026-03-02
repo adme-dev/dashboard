@@ -3,7 +3,7 @@
  * GET /api/auth/magic-link/verify?token=xxx
  */
 
-import { getQuery, createError, setCookie, getRequestHeaders } from 'h3'
+import { getQuery, createError, setCookie, getRequestURL } from 'h3'
 import { verifyMagicLink, createJwt } from '../../../utils/auth'
 
 export default defineEventHandler(async (event) => {
@@ -38,34 +38,23 @@ export default defineEventHandler(async (event) => {
       role: user.role
     })
 
-    const isProd = process.env.NODE_ENV === 'production'
+    // Secure cookies on HTTPS (CF Pages is always HTTPS; localhost is HTTP)
+    const isSecure = getRequestURL(event).protocol === 'https:'
+    const cookieOpts = {
+      secure: isSecure,
+      sameSite: 'lax' as const,
+      maxAge: 60 * 60 * 24 * 7,
+      path: '/',
+    }
 
     // Main auth token (httpOnly for security)
-    setCookie(event, 'auth_token', jwtToken, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7,
-      path: '/',
-    })
+    setCookie(event, 'auth_token', jwtToken, { ...cookieOpts, httpOnly: true })
 
     // Client-visible cookie for detection
-    setCookie(event, 'auth_status', 'logged_in', {
-      httpOnly: false,
-      secure: isProd,
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7,
-      path: '/',
-    })
+    setCookie(event, 'auth_status', 'logged_in', { ...cookieOpts, httpOnly: false })
 
     // Client-accessible token for fallback (NOT httpOnly)
-    setCookie(event, 'auth_token_client', jwtToken, {
-      httpOnly: false,
-      secure: isProd,
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7,
-      path: '/',
-    })
+    setCookie(event, 'auth_token_client', jwtToken, { ...cookieOpts, httpOnly: false })
 
     return {
       success: true,

@@ -24,8 +24,8 @@
       <div class="w-full max-w-[400px]">
         <!-- Header -->
         <div class="text-center mb-10">
-          <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#b7bfd9]/[0.09] dark:bg-white/[0.06] mb-6">
-            <UIcon name="i-lucide-kanban" class="w-7 h-7 text-[#121317] dark:text-white" />
+          <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#121317] dark:bg-white mb-6">
+            <span class="text-white dark:text-[#0a0b0e] text-lg font-bold tracking-tight">XF</span>
           </div>
           <h1 class="text-[28px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-2">
             Sign in to XeroFlow

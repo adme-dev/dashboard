@@ -13,9 +13,13 @@ export default defineNuxtPlugin((nuxtApp) => {
 
   function redirectToLogin() {
     if (isRedirecting) return
-    isRedirecting = true
 
     const currentPath = window.location.pathname
+
+    // Don't intercept 401s on auth pages — they handle their own errors
+    if (currentPath.startsWith('/auth/')) return
+
+    isRedirecting = true
     const isAgency = currentPath.startsWith('/agency') || currentPath.startsWith('/admin')
 
     // Clear auth cookies
