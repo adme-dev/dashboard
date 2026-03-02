@@ -114,7 +114,7 @@
           <section id="resend" class="rounded-2xl border border-[#121317]/[0.06] dark:border-white/[0.06] p-6 md:p-8 scroll-mt-24">
             <div class="flex items-start gap-4 mb-5">
               <div class="w-12 h-12 rounded-xl bg-violet-500/10 flex items-center justify-center flex-shrink-0">
-                <UIcon name="i-lucide-mail" class="w-6 h-6 text-violet-600" />
+                <UIcon name="i-lucide-mail" class="w-6 h-6 text-violet-600 dark:text-violet-400" />
               </div>
               <div>
                 <h2 class="text-[20px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">Resend</h2>
@@ -136,7 +136,7 @@
           <section id="cloudflare" class="rounded-2xl border border-[#121317]/[0.06] dark:border-white/[0.06] p-6 md:p-8 scroll-mt-24">
             <div class="flex items-start gap-4 mb-5">
               <div class="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center flex-shrink-0">
-                <UIcon name="i-lucide-cloud" class="w-6 h-6 text-orange-600" />
+                <UIcon name="i-lucide-cloud" class="w-6 h-6 text-orange-600 dark:text-orange-400" />
               </div>
               <div>
                 <h2 class="text-[20px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">Cloudflare</h2>
@@ -162,7 +162,7 @@
           <section id="monday" class="rounded-2xl border border-[#121317]/[0.06] dark:border-white/[0.06] p-6 md:p-8 scroll-mt-24">
             <div class="flex items-start gap-4 mb-5">
               <div class="w-12 h-12 rounded-xl bg-rose-500/10 flex items-center justify-center flex-shrink-0">
-                <UIcon name="i-lucide-kanban" class="w-6 h-6 text-rose-600" />
+                <UIcon name="i-lucide-kanban" class="w-6 h-6 text-rose-600 dark:text-rose-400" />
               </div>
               <div>
                 <h2 class="text-[20px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">Monday.com</h2>
@@ -184,7 +184,7 @@
           <section id="groq" class="rounded-2xl border border-[#121317]/[0.06] dark:border-white/[0.06] p-6 md:p-8 scroll-mt-24">
             <div class="flex items-start gap-4 mb-5">
               <div class="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center flex-shrink-0">
-                <UIcon name="i-lucide-brain" class="w-6 h-6 text-amber-600" />
+                <UIcon name="i-lucide-brain" class="w-6 h-6 text-amber-600 dark:text-amber-400" />
               </div>
               <div>
                 <h2 class="text-[20px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">Groq</h2>
@@ -207,7 +207,7 @@
           <section id="vectorize" class="rounded-2xl border border-[#121317]/[0.06] dark:border-white/[0.06] p-6 md:p-8 scroll-mt-24">
             <div class="flex items-start gap-4 mb-5">
               <div class="w-12 h-12 rounded-xl bg-teal-500/10 flex items-center justify-center flex-shrink-0">
-                <UIcon name="i-lucide-search" class="w-6 h-6 text-teal-600" />
+                <UIcon name="i-lucide-search" class="w-6 h-6 text-teal-600 dark:text-teal-400" />
               </div>
               <div>
                 <h2 class="text-[20px] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">Vectorize</h2>
@@ -227,10 +227,10 @@
           </section>
 
           <!-- Highlight Callout -->
-          <div class="rounded-2xl bg-gradient-to-br from-blue-50 to-sky-50/50 border border-blue-100/50 p-6">
+          <div class="rounded-2xl bg-gradient-to-br from-blue-50 to-sky-50/50 dark:from-blue-500/10 dark:to-sky-500/5 border border-blue-100/50 dark:border-blue-500/20 p-6">
             <div class="flex items-start gap-4">
-              <div class="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
-                <UIcon name="i-lucide-plug" class="w-5 h-5 text-blue-600" />
+              <div class="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                <UIcon name="i-lucide-plug" class="w-5 h-5 text-blue-600 dark:text-blue-400" />
               </div>
               <div>
                 <p class="text-[15px] font-medium text-[#121317] dark:text-white mb-1">One Connected Platform</p>

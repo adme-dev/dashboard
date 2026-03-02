@@ -59,22 +59,22 @@
           <section>
             <div class="grid sm:grid-cols-3 gap-4">
               <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
-                <div class="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center mb-3">
-                  <UIcon name="i-lucide-refresh-cw" class="w-4 h-4 text-blue-600" />
+                <div class="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center mb-3">
+                  <UIcon name="i-lucide-refresh-cw" class="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 </div>
                 <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Xero Sync</p>
                 <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Two-way sync for contacts, invoices, expenses, and chart of accounts.</p>
               </div>
               <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
-                <div class="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center mb-3">
-                  <UIcon name="i-lucide-file-text" class="w-4 h-4 text-amber-600" />
+                <div class="w-9 h-9 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center mb-3">
+                  <UIcon name="i-lucide-file-text" class="w-4 h-4 text-amber-600 dark:text-amber-400" />
                 </div>
                 <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">EOM Engine</p>
                 <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Auto-generate monthly invoices from retainers, hours, and ad spend.</p>
               </div>
               <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
-                <div class="w-9 h-9 rounded-lg bg-rose-50 flex items-center justify-center mb-3">
-                  <UIcon name="i-lucide-trending-up" class="w-4 h-4 text-rose-600" />
+                <div class="w-9 h-9 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center mb-3">
+                  <UIcon name="i-lucide-trending-up" class="w-4 h-4 text-rose-600 dark:text-rose-400" />
                 </div>
                 <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Ad Spend Tracking</p>
                 <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Daily Meta and Google Ads spend with budget alerts and audit trails.</p>

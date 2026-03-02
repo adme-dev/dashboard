@@ -180,48 +180,48 @@ const gettingStarted = [
     title: 'Quick Start Guide',
     description: 'Get your agency up and running in under 10 minutes. Create your first board, invite your team, and connect Xero.',
     icon: 'i-lucide-rocket',
-    bg: 'bg-emerald-50',
-    color: 'text-emerald-600',
+    bg: 'bg-emerald-50 dark:bg-emerald-500/10',
+    color: 'text-emerald-600 dark:text-emerald-400',
     to: '/resources/quick-start'
   },
   {
     title: 'Board Basics',
     description: 'Learn how to create boards, add columns, group tasks, and switch between Kanban, timeline, and calendar views.',
     icon: 'i-lucide-kanban',
-    bg: 'bg-blue-50',
-    color: 'text-blue-600',
+    bg: 'bg-blue-50 dark:bg-blue-500/10',
+    color: 'text-blue-600 dark:text-blue-400',
     to: '/resources/board-basics'
   },
   {
     title: 'Inviting Your Team',
     description: 'Add team members, set roles and permissions, and configure workspace access levels.',
     icon: 'i-lucide-users',
-    bg: 'bg-violet-50',
-    color: 'text-violet-600',
+    bg: 'bg-violet-50 dark:bg-violet-500/10',
+    color: 'text-violet-600 dark:text-violet-400',
     to: '/resources/inviting-team'
   },
   {
     title: 'Setting Up Clients',
     description: 'Create client records, link Xero contacts, configure portal access, and set up billing.',
     icon: 'i-lucide-building-2',
-    bg: 'bg-amber-50',
-    color: 'text-amber-600',
+    bg: 'bg-amber-50 dark:bg-amber-500/10',
+    color: 'text-amber-600 dark:text-amber-400',
     to: '/resources/setting-up-clients'
   },
   {
     title: 'Connecting Xero',
     description: 'OAuth setup, chart of accounts sync, invoice import, and two-way data flow configuration.',
     icon: 'i-lucide-link',
-    bg: 'bg-teal-50',
-    color: 'text-teal-600',
+    bg: 'bg-teal-50 dark:bg-teal-500/10',
+    color: 'text-teal-600 dark:text-teal-400',
     to: '/resources/connecting-xero'
   },
   {
     title: 'Your First Automation',
     description: 'Create trigger-action recipes to auto-notify on status changes, due dates, and assignments.',
     icon: 'i-lucide-zap',
-    bg: 'bg-rose-50',
-    color: 'text-rose-600',
+    bg: 'bg-rose-50 dark:bg-rose-500/10',
+    color: 'text-rose-600 dark:text-rose-400',
     to: '/resources/first-automation'
   },
 ]
@@ -231,8 +231,8 @@ const platformGuides = [
     title: 'Work Management Deep Dive',
     description: 'Master boards, columns, formulas, subtasks, templates, and real-time collaboration features.',
     icon: 'i-lucide-kanban',
-    bg: 'bg-blue-100',
-    color: 'text-blue-700',
+    bg: 'bg-blue-100 dark:bg-blue-500/15',
+    color: 'text-blue-700 dark:text-blue-400',
     tags: ['Boards', 'Views', 'Columns'],
     to: '/resources/work-management'
   },
@@ -240,8 +240,8 @@ const platformGuides = [
     title: 'Financial Operations',
     description: 'Complete guide to Xero sync, EOM invoicing, ad spend tracking, P&L dashboards, and budget management.',
     icon: 'i-lucide-calculator',
-    bg: 'bg-emerald-100',
-    color: 'text-emerald-700',
+    bg: 'bg-emerald-100 dark:bg-emerald-500/15',
+    color: 'text-emerald-700 dark:text-emerald-400',
     tags: ['Xero', 'Invoicing', 'Ad Spend'],
     to: '/resources/financial-operations'
   },
@@ -249,8 +249,8 @@ const platformGuides = [
     title: 'AI & Automation',
     description: 'Using AI chat, @mentions, anomaly detection, semantic search, and building automation recipes.',
     icon: 'i-lucide-brain',
-    bg: 'bg-amber-100',
-    color: 'text-amber-700',
+    bg: 'bg-amber-100 dark:bg-amber-500/15',
+    color: 'text-amber-700 dark:text-amber-400',
     tags: ['AI Chat', 'Search', 'Automations'],
     to: '/resources/ai-automation'
   },
@@ -258,8 +258,8 @@ const platformGuides = [
     title: 'Client Portal Administration',
     description: 'Setting up client logins, configuring permissions, managing approvals, and customizing the portal experience.',
     icon: 'i-lucide-briefcase',
-    bg: 'bg-rose-100',
-    color: 'text-rose-700',
+    bg: 'bg-rose-100 dark:bg-rose-500/15',
+    color: 'text-rose-700 dark:text-rose-400',
     tags: ['Portal', 'Approvals', 'Permissions'],
     to: '/resources/client-portal-admin'
   },

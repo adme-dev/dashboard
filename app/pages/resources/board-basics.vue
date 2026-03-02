@@ -15,8 +15,8 @@
         <!-- Hero -->
         <div class="mb-16">
           <div class="flex items-center gap-3 mb-6">
-            <div class="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
-              <UIcon name="i-lucide-kanban" class="w-5 h-5 text-blue-600" />
+            <div class="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
+              <UIcon name="i-lucide-kanban" class="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
             <span class="text-[13px] text-[#45474D]/60 dark:text-white/40 font-medium">10 min read</span>
           </div>
@@ -31,22 +31,22 @@
         <!-- Feature Grid: Board Views -->
         <div class="grid sm:grid-cols-3 gap-4 mb-16">
           <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
-            <div class="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center mb-3">
-              <UIcon name="i-lucide-table" class="w-4 h-4 text-blue-600" />
+            <div class="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center mb-3">
+              <UIcon name="i-lucide-table" class="w-4 h-4 text-blue-600 dark:text-blue-400" />
             </div>
             <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Table View</p>
             <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Spreadsheet-style editing with inline cells, sorting, and bulk actions.</p>
           </div>
           <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
-            <div class="w-9 h-9 rounded-lg bg-violet-50 flex items-center justify-center mb-3">
-              <UIcon name="i-lucide-kanban" class="w-4 h-4 text-violet-600" />
+            <div class="w-9 h-9 rounded-lg bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center mb-3">
+              <UIcon name="i-lucide-kanban" class="w-4 h-4 text-violet-600 dark:text-violet-400" />
             </div>
             <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Kanban Board</p>
             <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Drag-and-drop cards grouped by status for visual workflow tracking.</p>
           </div>
           <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
-            <div class="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center mb-3">
-              <UIcon name="i-lucide-gantt-chart" class="w-4 h-4 text-emerald-600" />
+            <div class="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center mb-3">
+              <UIcon name="i-lucide-gantt-chart" class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             </div>
             <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Timeline</p>
             <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Gantt-style horizontal timeline for scheduling and overlap detection.</p>
@@ -123,10 +123,10 @@
           </section>
 
           <!-- Highlight Callout -->
-          <div class="rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50/50 border border-blue-100/50 p-6">
+          <div class="rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50/50 dark:from-blue-500/10 dark:to-indigo-500/5 border border-blue-100/50 dark:border-blue-500/20 p-6">
             <div class="flex items-start gap-4">
-              <div class="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
-                <UIcon name="i-lucide-lightbulb" class="w-5 h-5 text-blue-600" />
+              <div class="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                <UIcon name="i-lucide-lightbulb" class="w-5 h-5 text-blue-600 dark:text-blue-400" />
               </div>
               <div>
                 <p class="text-[15px] font-medium text-[#121317] dark:text-white mb-1">Over 20 Column Types</p>
@@ -212,8 +212,8 @@
                 class="flex items-center justify-between p-4 rounded-xl border border-[#121317]/[0.06] dark:border-white/[0.06] hover:border-[#121317]/15 dark:hover:border-white/15 hover:bg-[#f4f5f7]/50 dark:hover:bg-white/[0.03] transition-all group"
               >
                 <div class="flex items-center gap-3">
-                  <div class="w-9 h-9 rounded-lg bg-violet-50 flex items-center justify-center">
-                    <UIcon name="i-lucide-users" class="w-4 h-4 text-violet-600" />
+                  <div class="w-9 h-9 rounded-lg bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center">
+                    <UIcon name="i-lucide-users" class="w-4 h-4 text-violet-600 dark:text-violet-400" />
                   </div>
                   <div>
                     <span class="text-[15px] font-medium text-[#121317] dark:text-white">Inviting Your Team</span>
@@ -227,8 +227,8 @@
                 class="flex items-center justify-between p-4 rounded-xl border border-[#121317]/[0.06] dark:border-white/[0.06] hover:border-[#121317]/15 dark:hover:border-white/15 hover:bg-[#f4f5f7]/50 dark:hover:bg-white/[0.03] transition-all group"
               >
                 <div class="flex items-center gap-3">
-                  <div class="w-9 h-9 rounded-lg bg-rose-50 flex items-center justify-center">
-                    <UIcon name="i-lucide-zap" class="w-4 h-4 text-rose-600" />
+                  <div class="w-9 h-9 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center">
+                    <UIcon name="i-lucide-zap" class="w-4 h-4 text-rose-600 dark:text-rose-400" />
                   </div>
                   <div>
                     <span class="text-[15px] font-medium text-[#121317] dark:text-white">Your First Automation</span>
@@ -242,8 +242,8 @@
                 class="flex items-center justify-between p-4 rounded-xl border border-[#121317]/[0.06] dark:border-white/[0.06] hover:border-[#121317]/15 dark:hover:border-white/15 hover:bg-[#f4f5f7]/50 dark:hover:bg-white/[0.03] transition-all group"
               >
                 <div class="flex items-center gap-3">
-                  <div class="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center">
-                    <UIcon name="i-lucide-building-2" class="w-4 h-4 text-amber-600" />
+                  <div class="w-9 h-9 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
+                    <UIcon name="i-lucide-building-2" class="w-4 h-4 text-amber-600 dark:text-amber-400" />
                   </div>
                   <div>
                     <span class="text-[15px] font-medium text-[#121317] dark:text-white">Setting Up Clients</span>

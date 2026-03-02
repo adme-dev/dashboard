@@ -15,8 +15,8 @@
         <!-- Hero -->
         <div class="mb-16">
           <div class="flex items-center gap-3 mb-6">
-            <div class="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
-              <UIcon name="i-lucide-rocket" class="w-5 h-5 text-emerald-600" />
+            <div class="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center">
+              <UIcon name="i-lucide-rocket" class="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
             </div>
             <span class="text-[13px] text-[#45474D]/60 dark:text-white/40 font-medium">8 min read</span>
           </div>
@@ -73,10 +73,10 @@
           </section>
 
           <!-- Highlight Callout -->
-          <div class="rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50/50 border border-emerald-100/50 p-6">
+          <div class="rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50/50 dark:from-emerald-500/10 dark:to-teal-500/5 border border-emerald-100/50 dark:border-emerald-500/20 p-6">
             <div class="flex items-start gap-4">
-              <div class="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                <UIcon name="i-lucide-lightbulb" class="w-5 h-5 text-emerald-600" />
+              <div class="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                <UIcon name="i-lucide-lightbulb" class="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               </div>
               <div>
                 <p class="text-[15px] font-medium text-[#121317] dark:text-white mb-1">Pro Tip</p>
@@ -142,8 +142,8 @@
                 class="flex items-center justify-between p-4 rounded-xl border border-[#121317]/[0.06] dark:border-white/[0.06] hover:border-[#121317]/15 dark:hover:border-white/15 hover:bg-[#f4f5f7]/50 dark:hover:bg-white/[0.03] transition-all group"
               >
                 <div class="flex items-center gap-3">
-                  <div class="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
-                    <UIcon name="i-lucide-kanban" class="w-4 h-4 text-blue-600" />
+                  <div class="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
+                    <UIcon name="i-lucide-kanban" class="w-4 h-4 text-blue-600 dark:text-blue-400" />
                   </div>
                   <div>
                     <span class="text-[15px] font-medium text-[#121317] dark:text-white">Board Basics</span>
@@ -157,8 +157,8 @@
                 class="flex items-center justify-between p-4 rounded-xl border border-[#121317]/[0.06] dark:border-white/[0.06] hover:border-[#121317]/15 dark:hover:border-white/15 hover:bg-[#f4f5f7]/50 dark:hover:bg-white/[0.03] transition-all group"
               >
                 <div class="flex items-center gap-3">
-                  <div class="w-9 h-9 rounded-lg bg-violet-50 flex items-center justify-center">
-                    <UIcon name="i-lucide-users" class="w-4 h-4 text-violet-600" />
+                  <div class="w-9 h-9 rounded-lg bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center">
+                    <UIcon name="i-lucide-users" class="w-4 h-4 text-violet-600 dark:text-violet-400" />
                   </div>
                   <div>
                     <span class="text-[15px] font-medium text-[#121317] dark:text-white">Inviting Your Team</span>
@@ -172,8 +172,8 @@
                 class="flex items-center justify-between p-4 rounded-xl border border-[#121317]/[0.06] dark:border-white/[0.06] hover:border-[#121317]/15 dark:hover:border-white/15 hover:bg-[#f4f5f7]/50 dark:hover:bg-white/[0.03] transition-all group"
               >
                 <div class="flex items-center gap-3">
-                  <div class="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center">
-                    <UIcon name="i-lucide-link" class="w-4 h-4 text-teal-600" />
+                  <div class="w-9 h-9 rounded-lg bg-teal-50 dark:bg-teal-500/10 flex items-center justify-center">
+                    <UIcon name="i-lucide-link" class="w-4 h-4 text-teal-600 dark:text-teal-400" />
                   </div>
                   <div>
                     <span class="text-[15px] font-medium text-[#121317] dark:text-white">Connecting Xero</span>

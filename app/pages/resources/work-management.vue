@@ -79,36 +79,36 @@
             <!-- View Feature Grid -->
             <div class="flex flex-wrap gap-4 my-8">
               <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4 flex-1 min-w-[140px]">
-                <div class="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center mb-3">
-                  <UIcon name="i-lucide-table" class="w-4 h-4 text-emerald-600" />
+                <div class="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center mb-3">
+                  <UIcon name="i-lucide-table" class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                 </div>
                 <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Table</p>
                 <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Spreadsheet layout with inline editing and bulk selection.</p>
               </div>
               <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4 flex-1 min-w-[140px]">
-                <div class="w-9 h-9 rounded-lg bg-violet-50 flex items-center justify-center mb-3">
-                  <UIcon name="i-lucide-kanban" class="w-4 h-4 text-violet-600" />
+                <div class="w-9 h-9 rounded-lg bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center mb-3">
+                  <UIcon name="i-lucide-kanban" class="w-4 h-4 text-violet-600 dark:text-violet-400" />
                 </div>
                 <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Kanban</p>
                 <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Drag-and-drop swim lanes grouped by status.</p>
               </div>
               <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4 flex-1 min-w-[140px]">
-                <div class="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center mb-3">
-                  <UIcon name="i-lucide-gantt-chart" class="w-4 h-4 text-amber-600" />
+                <div class="w-9 h-9 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center mb-3">
+                  <UIcon name="i-lucide-gantt-chart" class="w-4 h-4 text-amber-600 dark:text-amber-400" />
                 </div>
                 <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Timeline</p>
                 <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Gantt-style chart with drag-to-reschedule.</p>
               </div>
               <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4 flex-1 min-w-[140px]">
-                <div class="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center mb-3">
-                  <UIcon name="i-lucide-calendar" class="w-4 h-4 text-blue-600" />
+                <div class="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center mb-3">
+                  <UIcon name="i-lucide-calendar" class="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 </div>
                 <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Calendar</p>
                 <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Monthly grid for deadlines and content planning.</p>
               </div>
               <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4 flex-1 min-w-[140px]">
-                <div class="w-9 h-9 rounded-lg bg-rose-50 flex items-center justify-center mb-3">
-                  <UIcon name="i-lucide-image" class="w-4 h-4 text-rose-600" />
+                <div class="w-9 h-9 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center mb-3">
+                  <UIcon name="i-lucide-image" class="w-4 h-4 text-rose-600 dark:text-rose-400" />
                 </div>
                 <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Gallery</p>
                 <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Visual card grid for creative asset review.</p>
@@ -165,10 +165,10 @@
             </p>
 
             <!-- Highlight Callout -->
-            <div class="rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50/50 border border-emerald-100/50 p-6">
+            <div class="rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50/50 dark:from-emerald-500/10 dark:to-teal-500/5 border border-emerald-100/50 dark:border-emerald-500/20 p-6">
               <div class="flex items-start gap-4">
-                <div class="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                  <UIcon name="i-lucide-radio" class="w-5 h-5 text-emerald-600" />
+                <div class="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                  <UIcon name="i-lucide-radio" class="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 </div>
                 <div>
                   <p class="text-[15px] font-medium text-[#121317] dark:text-white mb-1">Zero-Refresh Collaboration</p>

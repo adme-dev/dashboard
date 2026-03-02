@@ -15,8 +15,8 @@
         <!-- Hero -->
         <div class="mb-16">
           <div class="flex items-center gap-3 mb-6">
-            <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
-              <UIcon name="i-lucide-building-2" class="w-5 h-5 text-amber-600" />
+            <div class="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
+              <UIcon name="i-lucide-building-2" class="w-5 h-5 text-amber-600 dark:text-amber-400" />
             </div>
             <span class="text-[13px] text-[#45474D]/60 dark:text-white/40 font-medium">7 min read</span>
           </div>
@@ -31,22 +31,22 @@
         <!-- Feature Grid: Client Features -->
         <div class="grid sm:grid-cols-3 gap-4 mb-16">
           <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
-            <div class="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center mb-3">
-              <UIcon name="i-lucide-globe" class="w-4 h-4 text-amber-600" />
+            <div class="w-9 h-9 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center mb-3">
+              <UIcon name="i-lucide-globe" class="w-4 h-4 text-amber-600 dark:text-amber-400" />
             </div>
             <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Client Portal</p>
             <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Give clients their own login to view projects, approve work, and check invoices.</p>
           </div>
           <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
-            <div class="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center mb-3">
-              <UIcon name="i-lucide-file-text" class="w-4 h-4 text-teal-600" />
+            <div class="w-9 h-9 rounded-lg bg-teal-50 dark:bg-teal-500/10 flex items-center justify-center mb-3">
+              <UIcon name="i-lucide-file-text" class="w-4 h-4 text-teal-600 dark:text-teal-400" />
             </div>
             <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Briefs & Projects</p>
             <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Organize work with structured briefs that link directly to board tasks.</p>
           </div>
           <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
-            <div class="w-9 h-9 rounded-lg bg-rose-50 flex items-center justify-center mb-3">
-              <UIcon name="i-lucide-receipt" class="w-4 h-4 text-rose-600" />
+            <div class="w-9 h-9 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center mb-3">
+              <UIcon name="i-lucide-receipt" class="w-4 h-4 text-rose-600 dark:text-rose-400" />
             </div>
             <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Billing & Invoices</p>
             <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Link Xero contacts for auto-synced invoices and profitability tracking.</p>
@@ -123,10 +123,10 @@
           </section>
 
           <!-- Highlight Callout -->
-          <div class="rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50/50 border border-amber-100/50 p-6">
+          <div class="rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50/50 dark:from-amber-500/10 dark:to-orange-500/5 border border-amber-100/50 dark:border-amber-500/20 p-6">
             <div class="flex items-start gap-4">
-              <div class="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
-                <UIcon name="i-lucide-lightbulb" class="w-5 h-5 text-amber-600" />
+              <div class="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                <UIcon name="i-lucide-lightbulb" class="w-5 h-5 text-amber-600 dark:text-amber-400" />
               </div>
               <div>
                 <p class="text-[15px] font-medium text-[#121317] dark:text-white mb-1">Portal Permissions Are Per-Contact</p>
@@ -181,8 +181,8 @@
                 class="flex items-center justify-between p-4 rounded-xl border border-[#121317]/[0.06] dark:border-white/[0.06] hover:border-[#121317]/15 dark:hover:border-white/15 hover:bg-[#f4f5f7]/50 dark:hover:bg-white/[0.03] transition-all group"
               >
                 <div class="flex items-center gap-3">
-                  <div class="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center">
-                    <UIcon name="i-lucide-link" class="w-4 h-4 text-teal-600" />
+                  <div class="w-9 h-9 rounded-lg bg-teal-50 dark:bg-teal-500/10 flex items-center justify-center">
+                    <UIcon name="i-lucide-link" class="w-4 h-4 text-teal-600 dark:text-teal-400" />
                   </div>
                   <div>
                     <span class="text-[15px] font-medium text-[#121317] dark:text-white">Connecting Xero</span>
@@ -196,8 +196,8 @@
                 class="flex items-center justify-between p-4 rounded-xl border border-[#121317]/[0.06] dark:border-white/[0.06] hover:border-[#121317]/15 dark:hover:border-white/15 hover:bg-[#f4f5f7]/50 dark:hover:bg-white/[0.03] transition-all group"
               >
                 <div class="flex items-center gap-3">
-                  <div class="w-9 h-9 rounded-lg bg-rose-50 flex items-center justify-center">
-                    <UIcon name="i-lucide-zap" class="w-4 h-4 text-rose-600" />
+                  <div class="w-9 h-9 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center">
+                    <UIcon name="i-lucide-zap" class="w-4 h-4 text-rose-600 dark:text-rose-400" />
                   </div>
                   <div>
                     <span class="text-[15px] font-medium text-[#121317] dark:text-white">Your First Automation</span>
@@ -211,8 +211,8 @@
                 class="flex items-center justify-between p-4 rounded-xl border border-[#121317]/[0.06] dark:border-white/[0.06] hover:border-[#121317]/15 dark:hover:border-white/15 hover:bg-[#f4f5f7]/50 dark:hover:bg-white/[0.03] transition-all group"
               >
                 <div class="flex items-center gap-3">
-                  <div class="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
-                    <UIcon name="i-lucide-kanban" class="w-4 h-4 text-blue-600" />
+                  <div class="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
+                    <UIcon name="i-lucide-kanban" class="w-4 h-4 text-blue-600 dark:text-blue-400" />
                   </div>
                   <div>
                     <span class="text-[15px] font-medium text-[#121317] dark:text-white">Board Basics</span>

@@ -24,29 +24,29 @@
         <!-- Feature Grid -->
         <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-14">
           <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
-            <div class="w-9 h-9 rounded-lg bg-rose-50 flex items-center justify-center mb-3">
-              <UIcon name="i-lucide-check-circle" class="w-4 h-4 text-rose-600" />
+            <div class="w-9 h-9 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center mb-3">
+              <UIcon name="i-lucide-check-circle" class="w-4 h-4 text-rose-600 dark:text-rose-400" />
             </div>
             <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Approvals</p>
             <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Submit deliverables for client review with tracked status.</p>
           </div>
           <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
-            <div class="w-9 h-9 rounded-lg bg-rose-50 flex items-center justify-center mb-3">
-              <UIcon name="i-lucide-receipt" class="w-4 h-4 text-rose-600" />
+            <div class="w-9 h-9 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center mb-3">
+              <UIcon name="i-lucide-receipt" class="w-4 h-4 text-rose-600 dark:text-rose-400" />
             </div>
             <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Invoices</p>
             <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Clients view billing history and outstanding invoices.</p>
           </div>
           <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
-            <div class="w-9 h-9 rounded-lg bg-rose-50 flex items-center justify-center mb-3">
-              <UIcon name="i-lucide-image" class="w-4 h-4 text-rose-600" />
+            <div class="w-9 h-9 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center mb-3">
+              <UIcon name="i-lucide-image" class="w-4 h-4 text-rose-600 dark:text-rose-400" />
             </div>
             <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Gallery</p>
             <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Visual grid of delivered assets with download and preview.</p>
           </div>
           <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
-            <div class="w-9 h-9 rounded-lg bg-rose-50 flex items-center justify-center mb-3">
-              <UIcon name="i-lucide-bell" class="w-4 h-4 text-rose-600" />
+            <div class="w-9 h-9 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center mb-3">
+              <UIcon name="i-lucide-bell" class="w-4 h-4 text-rose-600 dark:text-rose-400" />
             </div>
             <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Notifications</p>
             <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Alerts for new deliverables, invoices, and project updates.</p>
@@ -76,7 +76,7 @@
             <ul class="list-none flex flex-col gap-3 mb-4">
               <li class="flex items-start gap-3">
                 <div class="w-6 h-6 rounded-md bg-[#f4f5f7] dark:bg-white/[0.06] flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <UIcon name="i-lucide-receipt" class="w-3.5 h-3.5 text-[#121317]" />
+                  <UIcon name="i-lucide-receipt" class="w-3.5 h-3.5 text-[#121317] dark:text-white" />
                 </div>
                 <div>
                   <p class="text-[15px] text-[#121317] dark:text-white font-medium">canViewInvoices</p>
@@ -85,7 +85,7 @@
               </li>
               <li class="flex items-start gap-3">
                 <div class="w-6 h-6 rounded-md bg-[#f4f5f7] dark:bg-white/[0.06] flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <UIcon name="i-lucide-check-circle" class="w-3.5 h-3.5 text-[#121317]" />
+                  <UIcon name="i-lucide-check-circle" class="w-3.5 h-3.5 text-[#121317] dark:text-white" />
                 </div>
                 <div>
                   <p class="text-[15px] text-[#121317] dark:text-white font-medium">canApproveWork</p>
@@ -94,7 +94,7 @@
               </li>
               <li class="flex items-start gap-3">
                 <div class="w-6 h-6 rounded-md bg-[#f4f5f7] dark:bg-white/[0.06] flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <UIcon name="i-lucide-message-square" class="w-3.5 h-3.5 text-[#121317]" />
+                  <UIcon name="i-lucide-message-square" class="w-3.5 h-3.5 text-[#121317] dark:text-white" />
                 </div>
                 <div>
                   <p class="text-[15px] text-[#121317] dark:text-white font-medium">canAddComments</p>
@@ -107,10 +107,10 @@
             </p>
 
             <!-- Highlight Callout -->
-            <div class="rounded-2xl bg-gradient-to-br from-rose-50 to-pink-50/50 border border-rose-100/50 p-6">
+            <div class="rounded-2xl bg-gradient-to-br from-rose-50 to-pink-50/50 dark:from-rose-500/10 dark:to-pink-500/5 border border-rose-100/50 dark:border-rose-500/20 p-6">
               <div class="flex items-start gap-4">
-                <div class="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center flex-shrink-0">
-                  <UIcon name="i-lucide-shield" class="w-5 h-5 text-rose-600" />
+                <div class="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-500/20 flex items-center justify-center flex-shrink-0">
+                  <UIcon name="i-lucide-shield" class="w-5 h-5 text-rose-600 dark:text-rose-400" />
                 </div>
                 <div>
                   <p class="text-[15px] font-medium text-[#121317] dark:text-white mb-1">Per-User Permission Control</p>

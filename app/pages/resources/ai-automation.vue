@@ -48,22 +48,22 @@
           <section>
             <div class="grid sm:grid-cols-3 gap-4">
               <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
-                <div class="w-9 h-9 rounded-lg bg-violet-50 flex items-center justify-center mb-3">
-                  <UIcon name="i-lucide-message-square" class="w-4 h-4 text-violet-600" />
+                <div class="w-9 h-9 rounded-lg bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center mb-3">
+                  <UIcon name="i-lucide-message-square" class="w-4 h-4 text-violet-600 dark:text-violet-400" />
                 </div>
                 <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">AI Chat</p>
                 <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Natural language queries grounded in your agency data.</p>
               </div>
               <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
-                <div class="w-9 h-9 rounded-lg bg-violet-50 flex items-center justify-center mb-3">
-                  <UIcon name="i-lucide-shield-alert" class="w-4 h-4 text-violet-600" />
+                <div class="w-9 h-9 rounded-lg bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center mb-3">
+                  <UIcon name="i-lucide-shield-alert" class="w-4 h-4 text-violet-600 dark:text-violet-400" />
                 </div>
                 <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Anomaly Detection</p>
                 <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">8 analyzers surface spend spikes, deadline risks, and bottlenecks.</p>
               </div>
               <div class="rounded-xl bg-[#f4f5f7] dark:bg-white/[0.03] p-4">
-                <div class="w-9 h-9 rounded-lg bg-violet-50 flex items-center justify-center mb-3">
-                  <UIcon name="i-lucide-search" class="w-4 h-4 text-violet-600" />
+                <div class="w-9 h-9 rounded-lg bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center mb-3">
+                  <UIcon name="i-lucide-search" class="w-4 h-4 text-violet-600 dark:text-violet-400" />
                 </div>
                 <p class="text-[14px] font-medium text-[#121317] dark:text-white mb-1">Semantic Search</p>
                 <p class="text-[13px] text-[#45474D]/70 dark:text-white/40">Meaning-based search powered by Cloudflare Vectorize.</p>
@@ -82,10 +82,10 @@
             </p>
 
             <!-- Highlight Callout -->
-            <div class="rounded-2xl bg-gradient-to-br from-violet-50 to-purple-50/50 border border-violet-100/50 p-6">
+            <div class="rounded-2xl bg-gradient-to-br from-violet-50 to-purple-50/50 dark:from-violet-500/10 dark:to-purple-500/5 border border-violet-100/50 dark:border-violet-500/20 p-6">
               <div class="flex items-start gap-4">
-                <div class="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center flex-shrink-0">
-                  <UIcon name="i-lucide-at-sign" class="w-5 h-5 text-violet-600" />
+                <div class="w-10 h-10 rounded-xl bg-violet-100 dark:bg-violet-500/20 flex items-center justify-center flex-shrink-0">
+                  <UIcon name="i-lucide-at-sign" class="w-5 h-5 text-violet-600 dark:text-violet-400" />
                 </div>
                 <div>
                   <p class="text-[15px] font-medium text-[#121317] dark:text-white mb-1">@Mentions Ground Every Response</p>
