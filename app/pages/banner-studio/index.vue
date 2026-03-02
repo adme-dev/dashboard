@@ -21,7 +21,6 @@
               class="flex gap-1 mb-1"
               :style="{ marginLeft: row.offset + 'px' }"
             >
-              <!-- Double full tile set for seamless infinite loop -->
               <div
                 v-for="(tile, ti) in [...row.tiles, ...row.tiles]"
                 :key="`${ri}-${ti}`"
@@ -31,7 +30,7 @@
                 <div class="w-full h-full flex flex-col items-center justify-center p-3 text-center relative" :class="tile.bg">
                   <!-- Background image with gradient overlay -->
                   <template v-if="tile.bgImage">
-                    <img :src="tile.bgImage" alt="" class="absolute inset-0 w-full h-full object-cover">
+                    <img :src="tile.bgImage" alt="" loading="lazy" decoding="async" class="absolute inset-0 w-full h-full object-cover">
                     <div class="absolute inset-0 bg-black/40" />
                   </template>
                   <div v-if="tile.type === 'ad'" class="flex flex-col items-center gap-1.5 relative z-10">
@@ -734,6 +733,78 @@ function setTileRowRef(el: HTMLElement | null, index: number) {
 }
 
 let gsapInstance: typeof import('gsap').default | null = null
+let tileLoops: any[] = []
+
+/**
+ * GSAP horizontalLoop helper — official GreenSock pattern for seamless infinite loops.
+ * Each item wraps individually via xPercent, so no content doubling is needed.
+ * Simplified: no draggable, center, snap, or toIndex (decorative background only).
+ */
+function horizontalLoop(items: Element[], config: { speed?: number; reversed?: boolean }, gsap: any) {
+  items = gsap.utils.toArray(items)
+  const tl = gsap.timeline({
+    repeat: -1,
+    defaults: { ease: 'none' },
+    onReverseComplete: () => tl.totalTime(tl.rawTime() + tl.duration() * 100),
+  })
+
+  const length = items.length
+  if (!length) return tl
+
+  const startX = (items[0] as HTMLElement).offsetLeft
+  const widths: number[] = []
+  const xPercents: number[] = []
+  const spaceBefore: number[] = []
+  const pixelsPerSecond = (config.speed || 1) * 100
+  const container = items[0].parentNode as HTMLElement
+
+  // Measure widths, positions, and spacing
+  let b1 = container.getBoundingClientRect()
+  items.forEach((el, i) => {
+    widths[i] = parseFloat(gsap.getProperty(el, 'width', 'px'))
+    xPercents[i] = parseFloat(gsap.getProperty(el, 'x', 'px')) / widths[i] * 100 + gsap.getProperty(el, 'xPercent')
+    const b2 = el.getBoundingClientRect()
+    spaceBefore[i] = b2.left - (i ? b1.right : b1.left)
+    b1 = b2
+  })
+
+  // Convert x to xPercent for responsive positioning
+  gsap.set(items, { xPercent: (i: number) => xPercents[i] })
+
+  const totalWidth = (items[length - 1] as HTMLElement).offsetLeft
+    + xPercents[length - 1] / 100 * widths[length - 1]
+    - startX + spaceBefore[0]
+    + (items[length - 1] as HTMLElement).offsetWidth * gsap.getProperty(items[length - 1], 'scaleX')
+
+  // Build timeline: each item gets two tweens — move off-screen, reappear from other side
+  for (let i = 0; i < length; i++) {
+    const item = items[i] as HTMLElement
+    const curX = xPercents[i] / 100 * widths[i]
+    const distanceToStart = item.offsetLeft + curX - startX + spaceBefore[0]
+    const distanceToLoop = distanceToStart + widths[i] * gsap.getProperty(item, 'scaleX')
+
+    tl.to(item, {
+      xPercent: (curX - distanceToLoop) / widths[i] * 100,
+      duration: distanceToLoop / pixelsPerSecond,
+    }, 0)
+    .fromTo(item, {
+      xPercent: (curX - distanceToLoop + totalWidth) / widths[i] * 100,
+    }, {
+      xPercent: xPercents[i],
+      duration: (curX - distanceToLoop + totalWidth - curX) / pixelsPerSecond,
+      immediateRender: false,
+    }, distanceToLoop / pixelsPerSecond)
+  }
+
+  tl.progress(1, true).progress(0, true) // pre-render for performance
+
+  if (config.reversed) {
+    tl.vars.onReverseComplete()
+    tl.reverse()
+  }
+
+  return tl
+}
 
 onMounted(async () => {
   // Dynamically import GSAP on client only — prevents SSR breakage on hard refresh
@@ -743,30 +814,23 @@ onMounted(async () => {
   await nextTick()
   if (!tileGridRef.value) return
 
-  // Animate each row as an infinite horizontal scroll
+  // Animate each row as a seamless infinite loop using per-item wrapping
   tileRowRefs.forEach((rowEl, i) => {
     const row = tileRows[i]
     if (!rowEl) return
 
-    // Calculate the width of one tile set (first half of doubled row)
-    const children = Array.from(rowEl.children) as HTMLElement[]
-    const half = children.length / 2
-    let setWidth = 0
-    for (let j = 0; j < half; j++) {
-      setWidth += children[j].offsetWidth + 4 // gap-1 = 4px
-    }
+    const tiles = gsap.utils.toArray(rowEl.children) as HTMLElement[]
+    if (!tiles.length) return
 
-    // Start right-moving rows offset so the seam is hidden
-    if (row.direction === 1) {
-      gsap.set(rowEl, { x: -setWidth })
-    }
+    gsap.set(tiles, { x: 0 })
 
-    gsap.to(rowEl, {
-      x: row.direction === -1 ? -setWidth : 0,
-      duration: row.speed,
-      ease: 'none',
-      repeat: -1,
-    })
+    // Convert duration (seconds) to speed factor: speed 1.0 ≈ 100px/s
+    const loop = horizontalLoop(tiles, {
+      speed: 37 / row.speed,
+      reversed: row.direction === 1,
+    }, gsap)
+
+    tileLoops.push(loop)
   })
 
   // Set up poster intersection observer
@@ -791,9 +855,9 @@ onMounted(async () => {
 let posterObserver: IntersectionObserver | null = null
 
 onUnmounted(() => {
-  // Kill all GSAP tweens on the row elements to prevent leaks
+  tileLoops.forEach(loop => loop.kill())
+  tileLoops = []
   if (gsapInstance) {
-    tileRowRefs.forEach((el) => { if (el) gsapInstance!.killTweensOf(el) })
     posterRefs.forEach((el) => { if (el) gsapInstance!.killTweensOf(el) })
   }
   posterObserver?.disconnect()
@@ -1047,7 +1111,7 @@ const dcoCardColors = [
 }
 
 .tile-card {
-  transition: opacity 0.3s ease;
+  will-change: transform;
 }
 
 /* CSS fade-in so grid appears immediately — no waiting for GSAP import */
