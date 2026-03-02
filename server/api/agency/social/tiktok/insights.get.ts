@@ -1,6 +1,6 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
-import { getCampaignInsights } from '~~/server/utils/tiktokClient'
+import { getTiktokCampaignInsights } from '~~/server/utils/tiktokClient'
 
 /**
  * GET /api/agency/social/tiktok/insights?accountId=X&month=Y&year=Z
@@ -42,7 +42,7 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: `Connection is ${conn.status}. Please reconnect.` })
   }
 
-  const campaigns = await getCampaignInsights(conn.account_id, conn.access_token, month, year)
+  const campaigns = await getTiktokCampaignInsights(conn.account_id, conn.access_token, month, year)
 
   return {
     accountId: conn.account_id,

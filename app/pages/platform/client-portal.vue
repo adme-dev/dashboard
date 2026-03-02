@@ -7,7 +7,7 @@
       <div class="max-w-[1200px] mx-auto px-6 pt-32 pb-16 md:pt-44 md:pb-24 text-center">
         <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-rose-500/[0.08] mb-8">
           <div class="w-1.5 h-1.5 rounded-full bg-rose-500" />
-          <span class="text-[13px] text-rose-600 font-medium">Client Portal</span>
+          <span class="text-[13px] text-rose-600 dark:text-rose-400 font-medium">Client Portal</span>
         </div>
         <h1 class="text-[clamp(36px,6vw,64px)] font-[450] text-[#121317] dark:text-white leading-[1.1] tracking-[-0.03em] mb-6 max-w-[800px] mx-auto">
           A dedicated space<br class="hidden sm:block">for your clients
@@ -25,8 +25,8 @@
           <!-- Left: Description -->
           <div>
             <div class="flex items-center gap-3 mb-6">
-              <div class="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center">
-                <UIcon name="i-lucide-shield" class="w-5 h-5 text-rose-600" />
+              <div class="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-500/15 flex items-center justify-center">
+                <UIcon name="i-lucide-shield" class="w-5 h-5 text-rose-600 dark:text-rose-400" />
               </div>
               <h2 class="text-[clamp(24px,3vw,32px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">Separate, secure auth</h2>
             </div>
@@ -48,7 +48,7 @@
               :key="item.title"
               class="flex items-start gap-4 p-5 rounded-2xl bg-[#f4f5f7] dark:bg-white/[0.03] group hover:bg-[#eef0f3] dark:hover:bg-white/[0.05] transition-colors"
             >
-              <div class="w-10 h-10 rounded-xl bg-white dark:bg-white/[0.06] flex items-center justify-center shadow-[0_1px_3px_rgba(0,0,0,0.04)] shrink-0 mt-0.5">
+              <div class="w-10 h-10 rounded-xl bg-white dark:bg-white/[0.06] flex items-center justify-center shadow-[0_1px_3px_rgba(0,0,0,0.04)] dark:shadow-none shrink-0 mt-0.5">
                 <UIcon :name="item.icon" class="w-5 h-5 text-[#121317] dark:text-white" />
               </div>
               <div>
@@ -77,7 +77,7 @@
           <div
             v-for="page in portalPages"
             :key="page.title"
-            class="rounded-2xl bg-white dark:bg-white/[0.03] p-5 flex flex-col items-center text-center gap-3 border border-[#121317]/[0.04] dark:border-white/[0.06] hover:border-[#121317]/[0.08] hover:shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all"
+            class="rounded-2xl bg-white dark:bg-white/[0.03] p-5 flex flex-col items-center text-center gap-3 border border-[#121317]/[0.04] dark:border-white/[0.06] hover:border-[#121317]/[0.08] dark:hover:border-white/[0.10] hover:shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all"
           >
             <div class="w-11 h-11 rounded-xl flex items-center justify-center" :class="page.bgClass">
               <UIcon :name="page.icon" class="w-5 h-5" :class="page.iconClass" />
@@ -95,8 +95,8 @@
           <!-- Left: Description -->
           <div>
             <div class="flex items-center gap-3 mb-6">
-              <div class="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
-                <UIcon name="i-lucide-check-circle" class="w-5 h-5 text-emerald-600" />
+              <div class="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 flex items-center justify-center">
+                <UIcon name="i-lucide-check-circle" class="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               </div>
               <h2 class="text-[clamp(24px,3vw,32px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">Approval workflows</h2>
             </div>
@@ -115,7 +115,7 @@
               :key="item.title"
               class="flex items-start gap-4 p-5 rounded-2xl bg-[#f4f5f7] dark:bg-white/[0.03] group hover:bg-[#eef0f3] dark:hover:bg-white/[0.05] transition-colors"
             >
-              <div class="w-10 h-10 rounded-xl bg-white dark:bg-white/[0.06] flex items-center justify-center shadow-[0_1px_3px_rgba(0,0,0,0.04)] shrink-0 mt-0.5">
+              <div class="w-10 h-10 rounded-xl bg-white dark:bg-white/[0.06] flex items-center justify-center shadow-[0_1px_3px_rgba(0,0,0,0.04)] dark:shadow-none shrink-0 mt-0.5">
                 <UIcon :name="item.icon" class="w-5 h-5 text-[#121317] dark:text-white" />
               </div>
               <div>
@@ -133,8 +133,8 @@
       <div class="max-w-[1200px] mx-auto px-6">
         <div class="max-w-[640px] mx-auto text-center mb-14">
           <div class="flex items-center justify-center gap-3 mb-6">
-            <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
-              <UIcon name="i-lucide-key-round" class="w-5 h-5 text-amber-600" />
+            <div class="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-500/15 flex items-center justify-center">
+              <UIcon name="i-lucide-key-round" class="w-5 h-5 text-amber-600 dark:text-amber-400" />
             </div>
           </div>
           <h2 class="text-[clamp(28px,4vw,44px)] font-[450] text-[#121317] dark:text-white leading-[1.15] tracking-[-0.02em] mb-4">
@@ -254,17 +254,17 @@ const authFeatures = [
 ]
 
 const portalPages = [
-  { title: 'Dashboard', icon: 'i-lucide-layout-dashboard', bgClass: 'bg-blue-50', iconClass: 'text-blue-600' },
-  { title: 'Projects List', icon: 'i-lucide-folder-open', bgClass: 'bg-violet-50', iconClass: 'text-violet-600' },
-  { title: 'Project Detail', icon: 'i-lucide-file-text', bgClass: 'bg-violet-50', iconClass: 'text-violet-600' },
-  { title: 'Approvals List', icon: 'i-lucide-list-checks', bgClass: 'bg-emerald-50', iconClass: 'text-emerald-600' },
-  { title: 'Approval Detail', icon: 'i-lucide-file-check', bgClass: 'bg-emerald-50', iconClass: 'text-emerald-600' },
-  { title: 'Approval Respond', icon: 'i-lucide-message-square-reply', bgClass: 'bg-emerald-50', iconClass: 'text-emerald-600' },
-  { title: 'Invoices', icon: 'i-lucide-receipt', bgClass: 'bg-amber-50', iconClass: 'text-amber-600' },
-  { title: 'Gallery', icon: 'i-lucide-image', bgClass: 'bg-rose-50', iconClass: 'text-rose-600' },
-  { title: 'Notifications', icon: 'i-lucide-bell', bgClass: 'bg-sky-50', iconClass: 'text-sky-600' },
-  { title: 'Settings', icon: 'i-lucide-settings', bgClass: 'bg-[#b7bfd9]/[0.09]', iconClass: 'text-[#45474D]' },
-  { title: 'Accept Invite', icon: 'i-lucide-mail-open', bgClass: 'bg-pink-50', iconClass: 'text-pink-600' }
+  { title: 'Dashboard', icon: 'i-lucide-layout-dashboard', bgClass: 'bg-blue-50 dark:bg-blue-500/15', iconClass: 'text-blue-600 dark:text-blue-400' },
+  { title: 'Projects List', icon: 'i-lucide-folder-open', bgClass: 'bg-violet-50 dark:bg-violet-500/15', iconClass: 'text-violet-600 dark:text-violet-400' },
+  { title: 'Project Detail', icon: 'i-lucide-file-text', bgClass: 'bg-violet-50 dark:bg-violet-500/15', iconClass: 'text-violet-600 dark:text-violet-400' },
+  { title: 'Approvals List', icon: 'i-lucide-list-checks', bgClass: 'bg-emerald-50 dark:bg-emerald-500/15', iconClass: 'text-emerald-600 dark:text-emerald-400' },
+  { title: 'Approval Detail', icon: 'i-lucide-file-check', bgClass: 'bg-emerald-50 dark:bg-emerald-500/15', iconClass: 'text-emerald-600 dark:text-emerald-400' },
+  { title: 'Approval Respond', icon: 'i-lucide-message-square-reply', bgClass: 'bg-emerald-50 dark:bg-emerald-500/15', iconClass: 'text-emerald-600 dark:text-emerald-400' },
+  { title: 'Invoices', icon: 'i-lucide-receipt', bgClass: 'bg-amber-50 dark:bg-amber-500/15', iconClass: 'text-amber-600 dark:text-amber-400' },
+  { title: 'Gallery', icon: 'i-lucide-image', bgClass: 'bg-rose-50 dark:bg-rose-500/15', iconClass: 'text-rose-600 dark:text-rose-400' },
+  { title: 'Notifications', icon: 'i-lucide-bell', bgClass: 'bg-sky-50 dark:bg-sky-500/15', iconClass: 'text-sky-600 dark:text-sky-400' },
+  { title: 'Settings', icon: 'i-lucide-settings', bgClass: 'bg-[#b7bfd9]/[0.09] dark:bg-white/[0.06]', iconClass: 'text-[#45474D] dark:text-white/60' },
+  { title: 'Accept Invite', icon: 'i-lucide-mail-open', bgClass: 'bg-pink-50 dark:bg-pink-500/15', iconClass: 'text-pink-600 dark:text-pink-400' }
 ]
 
 const approvalFeatures = [
@@ -295,22 +295,22 @@ const permissions = [
     key: 'canViewInvoices',
     icon: 'i-lucide-receipt',
     description: 'Controls whether the client can see their billing history and download invoices.',
-    badgeBg: 'bg-amber-50',
-    badgeColor: 'text-amber-700'
+    badgeBg: 'bg-amber-50 dark:bg-amber-500/15',
+    badgeColor: 'text-amber-700 dark:text-amber-400'
   },
   {
     key: 'canApproveWork',
     icon: 'i-lucide-check-circle',
     description: 'Determines if the client can submit approval responses — approve, revise, or comment.',
-    badgeBg: 'bg-emerald-50',
-    badgeColor: 'text-emerald-700'
+    badgeBg: 'bg-emerald-50 dark:bg-emerald-500/15',
+    badgeColor: 'text-emerald-700 dark:text-emerald-400'
   },
   {
     key: 'canAddComments',
     icon: 'i-lucide-message-square',
     description: 'Allows the client to leave comments on projects and deliverables.',
-    badgeBg: 'bg-blue-50',
-    badgeColor: 'text-blue-700'
+    badgeBg: 'bg-blue-50 dark:bg-blue-500/15',
+    badgeColor: 'text-blue-700 dark:text-blue-400'
   }
 ]
 </script>

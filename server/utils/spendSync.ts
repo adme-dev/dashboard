@@ -307,7 +307,7 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
 // ─── TikTok Spend Sync ──────────────────────────────────────────
 
 export async function syncTikTokSpend(month: number, year: number): Promise<{ synced: number; totalSpend: number }> {
-  const { getCampaignInsights, getCampaignDailyInsights } = await import('~~/server/utils/tiktokClient')
+  const { getTiktokCampaignInsights, getTiktokCampaignDailyInsights } = await import('~~/server/utils/tiktokClient')
 
   const period = `${year}-${String(month).padStart(2, '0')}`
 
@@ -344,7 +344,7 @@ export async function syncTikTokSpend(month: number, year: number): Promise<{ sy
 
     let campaigns
     try {
-      campaigns = await getCampaignInsights(advertiserId, conn.access_token, month, year)
+      campaigns = await getTiktokCampaignInsights(advertiserId, conn.access_token, month, year)
     } catch (err: any) {
       console.error(`[TikTokSync] Failed to fetch insights for ${conn.account_name}:`, err.message)
       continue
@@ -409,7 +409,7 @@ export async function syncTikTokSpend(month: number, year: number): Promise<{ sy
 
     // Daily spend pass
     try {
-      const dailyInsights = await getCampaignDailyInsights(advertiserId, conn.access_token, month, year)
+      const dailyInsights = await getTiktokCampaignDailyInsights(advertiserId, conn.access_token, month, year)
       if (dailyInsights.length > 0) {
         const spendRows = await queryRows<{ id: string; campaign_id: string }>(
           `SELECT id, campaign_id FROM media_spend

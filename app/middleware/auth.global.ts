@@ -24,6 +24,8 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
     '/about',
     '/ai-training',
     '/banner-studio',
+    '/creativity',
+    '/landing',
     '/'
   ]
   
@@ -58,7 +60,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
     return navigateTo({
       path: '/',
       query: { 
-        redirect: encodeURIComponent(to.fullPath)
+        redirect: to.fullPath
       }
     })
   }

@@ -84,7 +84,7 @@ function init() {
   cubeGroup = new THREE.Group()
   scene.add(cubeGroup)
 
-  const geometry = new THREE.BoxGeometry(2, 2, 2, 4, 4, 4)
+  const geometry = new THREE.ConeGeometry(1.8, 2.8, 4, 4)
 
   uniforms = {
     iTime: { value: 0 },
@@ -141,8 +141,8 @@ function init() {
       mainImage(fragColor, cubeUV);
       float depthFactor = abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
       fragColor.rgb *= 0.7 + 0.3 * depthFactor;
-      float edge = 1.0 - max(abs(vUv.x - 0.5), abs(vUv.y - 0.5)) * 2.0;
-      edge = pow(edge, 4.0);
+      float edge = 1.0 - length(vUv - 0.5) * 2.0;
+      edge = pow(clamp(edge, 0.0, 1.0), 3.0);
       fragColor.rgb += edge * vec3(0.1, 0.2, 0.8) * (0.6 + scrollProgress * 0.4);
       fragColor.rgb *= 2.0;
       gl_FragColor = fragColor;
@@ -452,7 +452,8 @@ function onClick() {
   })
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await nextTick()
   init()
   window.addEventListener('resize', onResize)
   window.addEventListener('mousemove', onMouseMove)

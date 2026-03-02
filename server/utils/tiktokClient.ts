@@ -136,7 +136,7 @@ export async function getAdvertiserAccounts(
  * Get campaign-level insights for a specific month (aggregated).
  * TikTok Reporting API uses GET to /report/integrated/get/
  */
-export async function getCampaignInsights(
+export async function getTiktokCampaignInsights(
   advertiserId: string,
   token: string,
   month: number,
@@ -187,9 +187,9 @@ export async function getCampaignInsights(
 
 /**
  * Get campaign-level daily insights for a specific month.
- * Same as getCampaignInsights() but with stat_time_day dimension for daily breakdown.
+ * Same as getTiktokCampaignInsights() but with stat_time_day dimension for daily breakdown.
  */
-export async function getCampaignDailyInsights(
+export async function getTiktokCampaignDailyInsights(
   advertiserId: string,
   token: string,
   month: number,

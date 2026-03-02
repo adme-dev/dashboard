@@ -556,8 +556,8 @@ onUnmounted(() => {
 
 const featuresCol1 = [
   { title: 'Boards', subtitle: 'Kanban, table, and timeline views', icon: 'i-lucide-kanban', iconBg: 'bg-blue-500/15', iconColor: 'text-blue-400', to: '/platform/boards' },
-  { title: 'Calendar', subtitle: 'Schedule and deadline tracking', icon: 'i-lucide-calendar-days', iconBg: 'bg-blue-500/15', iconColor: 'text-blue-400', to: '/platform/boards' },
-  { title: 'Templates', subtitle: 'Pre-built board configurations', icon: 'i-lucide-copy', iconBg: 'bg-blue-500/15', iconColor: 'text-blue-400', to: '/platform/boards' },
+  { title: 'Calendar', subtitle: 'Schedule and deadline tracking', icon: 'i-lucide-calendar-days', iconBg: 'bg-blue-500/15', iconColor: 'text-blue-400', to: '/platform/calendar' },
+  { title: 'Templates', subtitle: 'Pre-built board configurations', icon: 'i-lucide-copy', iconBg: 'bg-blue-500/15', iconColor: 'text-blue-400', to: '/platform/templates' },
 ]
 
 const featuresCol2 = [

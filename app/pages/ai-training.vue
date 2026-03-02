@@ -14,7 +14,7 @@
           <h1 class="font-display text-[clamp(4rem,12vw,10rem)] leading-[1.05] mb-8 font-bold text-white tracking-[-0.02em] uppercase hero-entrance hero-delay-1">
             Your AI,<br>Trained<br>On You
           </h1>
-          <p class="text-[clamp(1.1rem,2vw,1.5rem)] max-w-[600px] mb-10 text-white/70 font-light leading-relaxed hero-entrance hero-delay-2">
+          <p class="text-[clamp(1.1rem,2vw,1.5rem)] max-w-[600px] mb-10 text-white/80 font-light leading-relaxed hero-entrance hero-delay-2">
             XeroFlow's intelligence learns from your agency's unique patterns — your workflows, your clients, your language. Never from anyone else's. Your personal IP stays personal.
           </p>
           <div class="hero-entrance hero-delay-3">
@@ -31,37 +31,38 @@
 
       <!-- Section 2: Your IP Stays Yours -->
       <section class="ai-training-section min-h-screen w-full flex items-center relative">
-        <div class="w-full max-w-[1600px] mx-auto px-[5%]">
+        <div class="section-backdrop" />
+        <div class="w-full max-w-[1600px] mx-auto px-[5%] relative">
           <div class="max-w-[800px]">
             <h2 class="font-display text-[clamp(3rem,10vw,8rem)] leading-[1.1] mb-8 font-bold text-white tracking-[-0.02em] uppercase reveal">
               Your IP<br>Stays Yours
             </h2>
-            <p class="text-[clamp(1rem,1.8vw,1.35rem)] max-w-[560px] mb-12 text-white/70 font-light leading-relaxed reveal reveal-d1">
+            <p class="text-[clamp(1rem,1.8vw,1.35rem)] max-w-[560px] mb-12 text-white/80 font-light leading-relaxed reveal reveal-d1">
               Every piece of training data lives within your instance. No cross-pollination between accounts, no shared models, no data leaving your boundaries. Your competitive intelligence remains exactly that — yours.
             </p>
 
             <!-- Privacy cards -->
             <div class="grid sm:grid-cols-3 gap-4">
-              <div class="rounded-2xl border border-white/[0.06] bg-white/[0.03] backdrop-blur-sm p-6 reveal reveal-d2">
+              <div class="rounded-2xl border border-white/[0.08] bg-black/50 backdrop-blur-lg p-6 reveal reveal-d2">
                 <div class="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center mb-4">
                   <UIcon name="i-lucide-shield-check" class="w-5 h-5 text-blue-400" />
                 </div>
                 <div class="text-[15px] font-medium text-white mb-1">Isolated Models</div>
-                <div class="text-[13px] text-white/40 leading-relaxed">Your AI model is trained exclusively on your data. Zero bleed between tenants.</div>
+                <div class="text-[13px] text-white/50 leading-relaxed">Your AI model is trained exclusively on your data. Zero bleed between tenants.</div>
               </div>
-              <div class="rounded-2xl border border-white/[0.06] bg-white/[0.03] backdrop-blur-sm p-6 reveal reveal-d3">
+              <div class="rounded-2xl border border-white/[0.08] bg-black/50 backdrop-blur-lg p-6 reveal reveal-d3">
                 <div class="w-10 h-10 rounded-xl bg-violet-500/15 flex items-center justify-center mb-4">
                   <UIcon name="i-lucide-lock" class="w-5 h-5 text-violet-400" />
                 </div>
                 <div class="text-[15px] font-medium text-white mb-1">Edge Processing</div>
-                <div class="text-[13px] text-white/40 leading-relaxed">Inference runs on Cloudflare's edge network. Data never leaves the wire.</div>
+                <div class="text-[13px] text-white/50 leading-relaxed">Inference runs on Cloudflare's edge network. Data never leaves the wire.</div>
               </div>
-              <div class="rounded-2xl border border-white/[0.06] bg-white/[0.03] backdrop-blur-sm p-6 reveal reveal-d4">
+              <div class="rounded-2xl border border-white/[0.08] bg-black/50 backdrop-blur-lg p-6 reveal reveal-d4">
                 <div class="w-10 h-10 rounded-xl bg-emerald-500/15 flex items-center justify-center mb-4">
                   <UIcon name="i-lucide-eye-off" class="w-5 h-5 text-emerald-400" />
                 </div>
                 <div class="text-[15px] font-medium text-white mb-1">Auto-Anonymisation</div>
-                <div class="text-[13px] text-white/40 leading-relaxed">PII is stripped from training data before it ever touches the model.</div>
+                <div class="text-[13px] text-white/50 leading-relaxed">PII is stripped from training data before it ever touches the model.</div>
               </div>
             </div>
           </div>
@@ -70,12 +71,13 @@
 
       <!-- Section 3: Learns While You Work -->
       <section class="ai-training-section min-h-screen w-full flex items-center relative">
-        <div class="w-full max-w-[1600px] mx-auto px-[5%]">
+        <div class="section-backdrop" />
+        <div class="w-full max-w-[1600px] mx-auto px-[5%] relative">
           <div class="max-w-[800px]">
             <h2 class="font-display text-[clamp(3rem,10vw,8rem)] leading-[1.1] mb-8 font-bold text-white tracking-[-0.02em] uppercase reveal">
               Learns<br>While You<br>Work
             </h2>
-            <p class="text-[clamp(1rem,1.8vw,1.35rem)] max-w-[560px] mb-12 text-white/70 font-light leading-relaxed reveal reveal-d1">
+            <p class="text-[clamp(1rem,1.8vw,1.35rem)] max-w-[560px] mb-12 text-white/80 font-light leading-relaxed reveal reveal-d1">
               Every chat, every decision, every workflow pattern makes your AI smarter. Knowledge extraction, intent classification, and semantic search — all trained on your real operations, continuously.
             </p>
 
@@ -84,7 +86,7 @@
               <div
                 v-for="(step, i) in pipelineSteps"
                 :key="step.label"
-                class="flex items-center gap-5 rounded-2xl border border-white/[0.06] bg-white/[0.03] backdrop-blur-sm px-6 py-5 reveal"
+                class="flex items-center gap-5 rounded-2xl border border-white/[0.08] bg-black/50 backdrop-blur-lg px-6 py-5 reveal"
                 :class="'reveal-d' + (i + 2)"
               >
                 <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" :class="step.bg">
@@ -92,7 +94,7 @@
                 </div>
                 <div class="flex-1 min-w-0">
                   <div class="text-[15px] font-medium text-white">{{ step.label }}</div>
-                  <div class="text-[13px] text-white/40 leading-relaxed">{{ step.desc }}</div>
+                  <div class="text-[13px] text-white/50 leading-relaxed">{{ step.desc }}</div>
                 </div>
                 <div class="text-[11px] font-mono text-white/20 flex-shrink-0 hidden sm:block">{{ String(i + 1).padStart(2, '0') }}</div>
               </div>
@@ -103,12 +105,13 @@
 
       <!-- Section 4: Full Control -->
       <section class="ai-training-section min-h-screen w-full flex items-center relative">
-        <div class="w-full max-w-[1600px] mx-auto px-[5%]">
+        <div class="section-backdrop" />
+        <div class="w-full max-w-[1600px] mx-auto px-[5%] relative">
           <div class="max-w-[800px]">
             <h2 class="font-display text-[clamp(3rem,10vw,8rem)] leading-[1.1] mb-8 font-bold text-white tracking-[-0.02em] uppercase reveal">
               Full<br>Control
             </h2>
-            <p class="text-[clamp(1rem,1.8vw,1.35rem)] max-w-[560px] mb-12 text-white/70 font-light leading-relaxed reveal reveal-d1">
+            <p class="text-[clamp(1rem,1.8vw,1.35rem)] max-w-[560px] mb-12 text-white/80 font-light leading-relaxed reveal reveal-d1">
               Review what the AI knows, approve training data, manage adapters, and export everything. You decide what your AI learns — and when it forgets.
             </p>
 
@@ -117,7 +120,7 @@
               <div
                 v-for="(feature, i) in controlFeatures"
                 :key="feature.label"
-                class="rounded-2xl border border-white/[0.06] bg-white/[0.03] backdrop-blur-sm p-6 reveal"
+                class="rounded-2xl border border-white/[0.08] bg-black/50 backdrop-blur-lg p-6 reveal"
                 :class="'reveal-d' + (i + 2)"
               >
                 <div class="flex items-center gap-3 mb-3">
@@ -126,7 +129,7 @@
                   </div>
                   <div class="text-[15px] font-medium text-white">{{ feature.label }}</div>
                 </div>
-                <div class="text-[13px] text-white/40 leading-relaxed">{{ feature.desc }}</div>
+                <div class="text-[13px] text-white/50 leading-relaxed">{{ feature.desc }}</div>
               </div>
             </div>
           </div>
@@ -135,7 +138,8 @@
 
       <!-- CTA Section -->
       <section class="min-h-[60vh] w-full flex items-center justify-center relative">
-        <div class="text-center px-6 reveal">
+        <div class="section-backdrop" />
+        <div class="text-center px-6 reveal relative">
           <div class="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center mx-auto mb-8">
             <span class="text-white text-sm font-semibold tracking-tight">XF</span>
           </div>
@@ -350,4 +354,12 @@ const controlFeatures = [
 .reveal-d4 { transition-delay: 0.4s; }
 .reveal-d5 { transition-delay: 0.5s; }
 .reveal-d6 { transition-delay: 0.6s; }
+
+/* Semi-transparent dark gradient behind each section's content for readability */
+.section-backdrop {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 80% 70% at 30% 50%, rgba(0, 0, 0, 0.7) 0%, transparent 70%);
+  pointer-events: none;
+}
 </style>
