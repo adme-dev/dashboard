@@ -76,7 +76,7 @@ export default defineEventHandler(async (event) => {
         SUM(ms.impressions) as impressions,
         SUM(ms.clicks) as clicks,
         SUM(ms.conversions) as conversions,
-        SUM(ms.revenue) as revenue
+        0 as revenue
       FROM media_spend ms
       WHERE ${where}
       GROUP BY ms.campaign_id, ms.campaign_name, ms.platform, ms.campaign_type, ms.campaign_status

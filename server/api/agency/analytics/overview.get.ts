@@ -58,7 +58,7 @@ export default defineEventHandler(async (event) => {
         SUM(ms.impressions) as impressions,
         SUM(ms.clicks) as clicks,
         SUM(ms.conversions) as conversions,
-        SUM(ms.revenue) as revenue,
+        0 as revenue,
         COUNT(DISTINCT ms.campaign_id) as campaign_count
       FROM media_spend ms
       WHERE ${where}
@@ -75,7 +75,7 @@ export default defineEventHandler(async (event) => {
         SUM(ms.impressions) as impressions,
         SUM(ms.clicks) as clicks,
         SUM(ms.conversions) as conversions,
-        SUM(ms.revenue) as revenue,
+        0 as revenue,
         ARRAY_AGG(DISTINCT ms.platform) as platforms,
         COUNT(DISTINCT ms.campaign_id) as campaign_count
       FROM media_spend ms
@@ -108,7 +108,7 @@ export default defineEventHandler(async (event) => {
         SUM(ms.impressions) as impressions,
         SUM(ms.clicks) as clicks,
         SUM(ms.conversions) as conversions,
-        SUM(ms.revenue) as revenue
+        0 as revenue
       FROM media_spend ms
       WHERE ${prevWhere}
     `, prevParams)

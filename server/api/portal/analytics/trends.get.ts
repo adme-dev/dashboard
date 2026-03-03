@@ -59,7 +59,7 @@ export default defineEventHandler(async (event) => {
           SUM(ds.impressions) as impressions,
           SUM(ds.clicks) as clicks,
           SUM(ds.conversions) as conversions,
-          SUM(ds.revenue) as revenue
+          0 as revenue
         FROM daily_spend ds
         JOIN media_spend ms ON ds.media_spend_id = ms.id
         WHERE ${conditions.join(' AND ')}
@@ -84,7 +84,7 @@ export default defineEventHandler(async (event) => {
           SUM(ms.impressions) as impressions,
           SUM(ms.clicks) as clicks,
           SUM(ms.conversions) as conversions,
-          SUM(ms.revenue) as revenue
+          0 as revenue
         FROM media_spend ms
         WHERE ${conditions.join(' AND ')}
         GROUP BY ms.period, ms.platform

@@ -82,7 +82,7 @@ export default defineEventHandler(async (event) => {
         SUM(ms.impressions) as impressions,
         SUM(ms.clicks) as clicks,
         SUM(ms.conversions) as conversions,
-        SUM(ms.revenue) as revenue,
+        0 as revenue,
         MAX(ms.synced_at) as last_synced
       FROM media_spend ms
       LEFT JOIN agency_clients c ON ms.client_id = c.id
