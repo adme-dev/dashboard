@@ -35,6 +35,7 @@ export interface GoogleAdsCampaignSpend {
   impressions: number
   clicks: number
   conversions: number
+  conversionsValue: number
   status: string
   channelType: string
 }
@@ -296,7 +297,8 @@ export async function getMonthlySpend(
       metrics.cost_micros,
       metrics.impressions,
       metrics.clicks,
-      metrics.conversions
+      metrics.conversions,
+      metrics.conversions_value
     FROM campaign
     WHERE segments.date BETWEEN '${since}' AND '${until}'
     ORDER BY campaign.name
@@ -313,6 +315,7 @@ export async function getMonthlySpend(
       impressions: parseInt(r.metrics?.impressions || '0', 10),
       clicks: parseInt(r.metrics?.clicks || '0', 10),
       conversions: parseFloat(r.metrics?.conversions || '0'),
+      conversionsValue: parseFloat(r.metrics?.conversionsValue || '0'),
       status: r.campaign.status || 'UNKNOWN',
       channelType: r.campaign.advertisingChannelType || 'UNKNOWN'
     }
@@ -331,6 +334,7 @@ export interface GoogleAdsDailySpend {
   impressions: number
   clicks: number
   conversions: number
+  conversionsValue: number
 }
 
 /**
@@ -354,7 +358,8 @@ export async function getDailySpend(
       metrics.cost_micros,
       metrics.impressions,
       metrics.clicks,
-      metrics.conversions
+      metrics.conversions,
+      metrics.conversions_value
     FROM campaign
     WHERE segments.date BETWEEN '${since}' AND '${until}'
     ORDER BY segments.date
@@ -370,7 +375,8 @@ export async function getDailySpend(
       spend: parseInt(costMicros, 10) / 1_000_000,
       impressions: parseInt(r.metrics?.impressions || '0', 10),
       clicks: parseInt(r.metrics?.clicks || '0', 10),
-      conversions: parseFloat(r.metrics?.conversions || '0')
+      conversions: parseFloat(r.metrics?.conversions || '0'),
+      conversionsValue: parseFloat(r.metrics?.conversionsValue || '0')
     }
   })
 }

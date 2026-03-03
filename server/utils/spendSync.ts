@@ -10,7 +10,7 @@ import { queryRows, queryOne } from '~~/server/utils/db'
 // ─── Meta Spend Sync ────────────────────────────────────────────
 
 export async function syncMetaSpend(month: number, year: number): Promise<{ synced: number; totalSpend: number }> {
-  const { getCampaignInsights, getCampaignDailyInsights, extractConversions } = await import('~~/server/utils/metaClient')
+  const { getCampaignInsights, getCampaignDailyInsights, extractConversions, extractRevenue } = await import('~~/server/utils/metaClient')
 
   const period = `${year}-${String(month).padStart(2, '0')}`
 
@@ -72,6 +72,7 @@ export async function syncMetaSpend(month: number, year: number): Promise<{ sync
       }
 
       const conversions = extractConversions(campaign.actions)
+      const revenue = extractRevenue(campaign.action_values)
       const impressions = parseInt(campaign.impressions || '0', 10)
       const clicks = parseInt(campaign.clicks || '0', 10)
 
@@ -87,9 +88,10 @@ export async function syncMetaSpend(month: number, year: number): Promise<{ sync
              actual_spend = $1, campaign_name = $2, impressions = $3, clicks = $4,
              conversions = $5, client_id = COALESCE($6, media_spend.client_id),
              commission_rate = CASE WHEN $8 > 0 THEN $8 ELSE media_spend.commission_rate END,
+             revenue = $9,
              synced_at = NOW(), updated_at = NOW()
            WHERE id = $7`,
-          [spend, campaign.campaign_name || null, impressions, clicks, conversions, clientId, existing.id, commissionRate]
+          [spend, campaign.campaign_name || null, impressions, clicks, conversions, clientId, existing.id, commissionRate, revenue]
         )
       } else {
         // Check for rolling budget from previous month
@@ -101,10 +103,10 @@ export async function syncMetaSpend(month: number, year: number): Promise<{ sync
           `INSERT INTO media_spend (
              client_id, platform, period, budget_allocated, actual_spend,
              commission_rate, connection_id, campaign_id, campaign_name,
-             impressions, clicks, conversions, budget_rolling, synced_at
-           ) VALUES ($1, 'meta', $2, $11, $3, $4, $5, $6, $7, $8, $9, $10, $12, NOW())
+             impressions, clicks, conversions, budget_rolling, revenue, synced_at
+           ) VALUES ($1, 'meta', $2, $11, $3, $4, $5, $6, $7, $8, $9, $10, $12, $13, NOW())
            RETURNING id`,
-          [clientId, period, spend, commissionRate, conn.id, campaign.campaign_id || null, campaign.campaign_name || null, impressions, clicks, conversions, budgetVal, rollingVal]
+          [clientId, period, spend, commissionRate, conn.id, campaign.campaign_id || null, campaign.campaign_name || null, impressions, clicks, conversions, budgetVal, rollingVal, revenue]
         )
       }
 
@@ -127,11 +129,11 @@ export async function syncMetaSpend(month: number, year: number): Promise<{ sync
           if (!mediaSpendId) continue
 
           await queryOne(
-            `INSERT INTO daily_spend (media_spend_id, spend_date, spend, impressions, clicks, conversions)
-             VALUES ($1, $2, $3, $4, $5, $6)
+            `INSERT INTO daily_spend (media_spend_id, spend_date, spend, impressions, clicks, conversions, revenue)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
              ON CONFLICT (media_spend_id, spend_date)
-             DO UPDATE SET spend = $3, impressions = $4, clicks = $5, conversions = $6`,
-            [mediaSpendId, day.date_start, parseFloat(day.spend || '0'), parseInt(day.impressions || '0', 10), parseInt(day.clicks || '0', 10), extractConversions(day.actions)]
+             DO UPDATE SET spend = $3, impressions = $4, clicks = $5, conversions = $6, revenue = $7`,
+            [mediaSpendId, day.date_start, parseFloat(day.spend || '0'), parseInt(day.impressions || '0', 10), parseInt(day.clicks || '0', 10), extractConversions(day.actions), extractRevenue(day.action_values)]
           )
         }
       }
@@ -248,9 +250,10 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
              conversions = $5, client_id = COALESCE($6, media_spend.client_id),
              campaign_type = $7, campaign_status = $8,
              commission_rate = CASE WHEN $10 > 0 THEN $10 ELSE media_spend.commission_rate END,
+             revenue = $11,
              synced_at = NOW(), updated_at = NOW()
            WHERE id = $9`,
-          [campaign.spend, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, clientId, campaign.channelType || null, campaign.status || null, existing.id, commissionRate]
+          [campaign.spend, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, clientId, campaign.channelType || null, campaign.status || null, existing.id, commissionRate, campaign.conversionsValue || 0]
         )
       } else {
         // Check for rolling budget from previous month
@@ -262,10 +265,10 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
           `INSERT INTO media_spend (
              client_id, platform, period, budget_allocated, actual_spend,
              commission_rate, connection_id, campaign_id, campaign_name,
-             impressions, clicks, conversions, campaign_type, campaign_status, budget_rolling, synced_at
-           ) VALUES ($1, 'google_ads', $2, $13, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $14, NOW())
+             impressions, clicks, conversions, campaign_type, campaign_status, budget_rolling, revenue, synced_at
+           ) VALUES ($1, 'google_ads', $2, $13, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $14, $15, NOW())
            RETURNING id`,
-          [clientId, period, campaign.spend, commissionRate, conn.id, campaign.campaignId || null, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, campaign.channelType || null, campaign.status || null, budgetVal, rollingVal]
+          [clientId, period, campaign.spend, commissionRate, conn.id, campaign.campaignId || null, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, campaign.channelType || null, campaign.status || null, budgetVal, rollingVal, campaign.conversionsValue || 0]
         )
       }
 
@@ -288,11 +291,11 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
           if (!mediaSpendId) continue
 
           await queryOne(
-            `INSERT INTO daily_spend (media_spend_id, spend_date, spend, impressions, clicks, conversions)
-             VALUES ($1, $2, $3, $4, $5, $6)
+            `INSERT INTO daily_spend (media_spend_id, spend_date, spend, impressions, clicks, conversions, revenue)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
              ON CONFLICT (media_spend_id, spend_date)
-             DO UPDATE SET spend = $3, impressions = $4, clicks = $5, conversions = $6`,
-            [mediaSpendId, day.date, day.spend, day.impressions, day.clicks, day.conversions]
+             DO UPDATE SET spend = $3, impressions = $4, clicks = $5, conversions = $6, revenue = $7`,
+            [mediaSpendId, day.date, day.spend, day.impressions, day.clicks, day.conversions, day.conversionsValue || 0]
           )
         }
       }
@@ -1156,6 +1159,8 @@ export async function syncMicrosoftSpend(month: number, year: number): Promise<{
       const clicks = parseInt(campaign.clicks || '0', 10)
       const conversions = parseInt(campaign.conversions || '0', 10)
 
+      const msRevenue = parseFloat(campaign.revenue || '0')
+
       const existing = await queryOne<{ id: string }>(
         `SELECT id FROM media_spend
          WHERE connection_id = $1 AND platform = 'microsoft_ads' AND period = $2 AND campaign_id = $3`,
@@ -1168,9 +1173,10 @@ export async function syncMicrosoftSpend(month: number, year: number): Promise<{
              actual_spend = $1, campaign_name = $2, impressions = $3, clicks = $4,
              conversions = $5, client_id = COALESCE($6, media_spend.client_id),
              commission_rate = CASE WHEN $8 > 0 THEN $8 ELSE media_spend.commission_rate END,
+             revenue = $9,
              synced_at = NOW(), updated_at = NOW()
            WHERE id = $7`,
-          [spend, campaign.campaign_name || null, impressions, clicks, conversions, clientId, existing.id, commissionRate]
+          [spend, campaign.campaign_name || null, impressions, clicks, conversions, clientId, existing.id, commissionRate, msRevenue]
         )
       } else {
         const rolled = await getRollingBudget(clientId, 'microsoft_ads', period)
@@ -1181,10 +1187,10 @@ export async function syncMicrosoftSpend(month: number, year: number): Promise<{
           `INSERT INTO media_spend (
              client_id, platform, period, budget_allocated, actual_spend,
              commission_rate, connection_id, campaign_id, campaign_name,
-             impressions, clicks, conversions, budget_rolling, synced_at
-           ) VALUES ($1, 'microsoft_ads', $2, $11, $3, $4, $5, $6, $7, $8, $9, $10, $12, NOW())
+             impressions, clicks, conversions, budget_rolling, revenue, synced_at
+           ) VALUES ($1, 'microsoft_ads', $2, $11, $3, $4, $5, $6, $7, $8, $9, $10, $12, $13, NOW())
            RETURNING id`,
-          [clientId, period, spend, commissionRate, conn.id, campaign.campaign_id || null, campaign.campaign_name || null, impressions, clicks, conversions, budgetVal, rollingVal]
+          [clientId, period, spend, commissionRate, conn.id, campaign.campaign_id || null, campaign.campaign_name || null, impressions, clicks, conversions, budgetVal, rollingVal, msRevenue]
         )
       }
 
@@ -1207,11 +1213,11 @@ export async function syncMicrosoftSpend(month: number, year: number): Promise<{
           if (!mediaSpendId) continue
 
           await queryOne(
-            `INSERT INTO daily_spend (media_spend_id, spend_date, spend, impressions, clicks, conversions)
-             VALUES ($1, $2, $3, $4, $5, $6)
+            `INSERT INTO daily_spend (media_spend_id, spend_date, spend, impressions, clicks, conversions, revenue)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
              ON CONFLICT (media_spend_id, spend_date)
-             DO UPDATE SET spend = $3, impressions = $4, clicks = $5, conversions = $6`,
-            [mediaSpendId, day.date, parseFloat(day.spend || '0'), parseInt(day.impressions || '0', 10), parseInt(day.clicks || '0', 10), parseInt(day.conversions || '0', 10)]
+             DO UPDATE SET spend = $3, impressions = $4, clicks = $5, conversions = $6, revenue = $7`,
+            [mediaSpendId, day.date, parseFloat(day.spend || '0'), parseInt(day.impressions || '0', 10), parseInt(day.clicks || '0', 10), parseInt(day.conversions || '0', 10), parseFloat(day.revenue || '0')]
           )
         }
       }

@@ -958,6 +958,7 @@ export interface ClientPermissions {
   canAddComments: boolean
   canUploadFiles: boolean
   canInviteUsers: boolean
+  canViewAnalytics: boolean
 }
 
 // ============================================

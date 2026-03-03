@@ -31,6 +31,7 @@ export interface MicrosoftCampaignReport {
   impressions: string
   clicks: string
   conversions: string
+  revenue: string
   date: string
 }
 
@@ -251,6 +252,7 @@ export async function submitCampaignReport(
           <CampaignPerformanceReportColumn>Impressions</CampaignPerformanceReportColumn>
           <CampaignPerformanceReportColumn>Clicks</CampaignPerformanceReportColumn>
           <CampaignPerformanceReportColumn>Conversions</CampaignPerformanceReportColumn>
+          <CampaignPerformanceReportColumn>Revenue</CampaignPerformanceReportColumn>
         </Columns>
         <Scope>
           <AccountIds xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
@@ -323,6 +325,7 @@ export async function submitDailyReport(
           <CampaignPerformanceReportColumn>Impressions</CampaignPerformanceReportColumn>
           <CampaignPerformanceReportColumn>Clicks</CampaignPerformanceReportColumn>
           <CampaignPerformanceReportColumn>Conversions</CampaignPerformanceReportColumn>
+          <CampaignPerformanceReportColumn>Revenue</CampaignPerformanceReportColumn>
         </Columns>
         <Scope>
           <AccountIds xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
@@ -533,6 +536,7 @@ function parseCsvReport(csv: string): MicrosoftCampaignReport[] {
       impressions: row['Impressions'] || '0',
       clicks: row['Clicks'] || '0',
       conversions: row['Conversions'] || '0',
+      revenue: row['Revenue'] || '0',
       date: row['TimePeriod'] || row['GregorianDate'] || '',
     })
   }

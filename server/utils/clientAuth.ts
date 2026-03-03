@@ -28,6 +28,7 @@ export interface ServerClientUser {
     canAddComments: boolean
     canUploadFiles: boolean
     canInviteUsers: boolean
+    canViewAnalytics: boolean
   }
 }
 
@@ -93,6 +94,7 @@ export async function requireClientAuth(event: H3Event): Promise<ServerClientUse
       cu.can_add_comments,
       cu.can_upload_files,
       cu.can_invite_users,
+      cu.can_view_analytics,
       cu.status,
       c.id as client_id,
       c.name as client_name,
@@ -129,7 +131,8 @@ export async function requireClientAuth(event: H3Event): Promise<ServerClientUse
       canViewBudgets: user.can_view_budgets,
       canAddComments: user.can_add_comments,
       canUploadFiles: user.can_upload_files,
-      canInviteUsers: user.can_invite_users
+      canInviteUsers: user.can_invite_users,
+      canViewAnalytics: user.can_view_analytics ?? false
     }
   }
 }

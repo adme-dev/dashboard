@@ -1,11 +1,34 @@
 <script setup lang="ts">
+// Fetch from the new analytics daily-spend endpoint which supports all 8 platforms
+const now = new Date()
+const sevenDaysAgo = new Date(now)
+sevenDaysAgo.setDate(now.getDate() - 7)
+const startDate = `${sevenDaysAgo.getFullYear()}-${String(sevenDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(sevenDaysAgo.getDate()).padStart(2, '0')}`
+const endDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+
+const { data: analyticsData, status: analyticsStatus } = await useFetch('/api/agency/analytics/daily-spend', {
+  query: { startDate, endDate },
+})
+
+// Fallback to the old per-platform fetch if the new endpoint isn't available
 const { data: metaData, status: metaStatus } = await useFetch('/api/agency/social/daily-spend', { query: { platform: 'meta' } })
 const { data: googleData, status: googleStatus } = await useFetch('/api/agency/social/daily-spend', { query: { platform: 'google' } })
 
-const status = computed(() => metaStatus.value === 'pending' || googleStatus.value === 'pending' ? 'pending' : 'success')
+const status = computed(() => {
+  if (analyticsStatus.value === 'pending') return 'pending'
+  if (metaStatus.value === 'pending' || googleStatus.value === 'pending') return 'pending'
+  return 'success'
+})
 
-// Merge both platforms by date
+// Merge all platforms by date
 const data = computed(() => {
+  // Try the new endpoint first
+  const analyticsResult = analyticsData.value as any
+  if (analyticsResult?.days?.length) {
+    return { days: analyticsResult.days }
+  }
+
+  // Fallback: merge Meta + Google
   const metaDays = (metaData.value as any) || []
   const googleDays = (googleData.value as any) || []
   const byDate: Record<string, any> = {}
@@ -45,7 +68,7 @@ const maxSpend = computed(() => Math.max(...last7Days.value.map((d: any) => d.sp
           <UIcon name="i-lucide-bar-chart-2" class="w-4 h-4 text-[var(--ui-text-muted)]" />
           <h3 class="font-semibold text-[var(--ui-text-highlighted)]">Platform Performance</h3>
         </div>
-        <UButton to="/agency/social/spend" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
+        <UButton to="/agency/analytics" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
           Details
         </UButton>
       </div>
@@ -87,7 +110,7 @@ const maxSpend = computed(() => Math.max(...last7Days.value.map((d: any) => d.sp
       </div>
 
       <p class="text-xs text-[var(--ui-text-muted)] mt-2 text-center">
-        Last 7 days &middot; {{ formatCurrency(totalSpend) }} total spend
+        Last 7 days &middot; {{ formatCurrency(totalSpend) }} total spend &middot; All platforms
       </p>
     </div>
   </UCard>

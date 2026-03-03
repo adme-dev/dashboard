@@ -74,6 +74,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
 
   // Budget Tracker
   { type: 'label', label: 'Budget Tracker' },
+  { label: 'Analytics', icon: 'i-lucide-bar-chart-4', to: '/agency/analytics', onSelect: close },
   { label: 'Ad Spend', icon: 'i-lucide-wallet', to: '/agency/social/spend', onSelect: close },
   { label: 'Meta Ads', icon: 'i-lucide-facebook', to: '/agency/social/meta', onSelect: close },
   { label: 'Google Ads', icon: 'i-lucide-chrome', to: '/agency/social/google', onSelect: close },

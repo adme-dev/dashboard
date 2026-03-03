@@ -28,6 +28,7 @@ export interface MetaInsight {
   impressions: string
   clicks: string
   actions?: Array<{ action_type: string; value: string }>
+  action_values?: Array<{ action_type: string; value: string }>
   date_start: string
   date_stop: string
 }
@@ -165,7 +166,7 @@ export async function getCampaignInsights(
   const insights: MetaInsight[] = []
   let url: string | null = `${META_GRAPH_BASE}/${accountId}/insights`
   const query: Record<string, string> = {
-    fields: 'campaign_id,campaign_name,spend,impressions,clicks,actions',
+    fields: 'campaign_id,campaign_name,spend,impressions,clicks,actions,action_values',
     time_range: JSON.stringify({ since, until }),
     level: 'campaign',
     access_token: token,
@@ -237,7 +238,7 @@ export async function getCampaignDailyInsights(
   const insights: MetaInsight[] = []
   let url: string | null = `${META_GRAPH_BASE}/${accountId}/insights`
   const query: Record<string, string> = {
-    fields: 'campaign_id,campaign_name,spend,impressions,clicks,actions',
+    fields: 'campaign_id,campaign_name,spend,impressions,clicks,actions,action_values',
     time_range: JSON.stringify({ since, until }),
     time_increment: '1',
     level: 'campaign',
@@ -266,6 +267,18 @@ export function extractConversions(actions?: Array<{ action_type: string; value:
   return actions
     .filter(a => conversionTypes.some(t => a.action_type.includes(t)))
     .reduce((sum, a) => sum + parseInt(a.value, 10), 0)
+}
+
+/**
+ * Extract revenue from Meta's action_values array.
+ * Looks for 'omni_purchase' or 'purchase' action values.
+ */
+export function extractRevenue(actionValues?: Array<{ action_type: string; value: string }>): number {
+  if (!actionValues) return 0
+  const revenueTypes = ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase']
+  return actionValues
+    .filter(a => revenueTypes.some(t => a.action_type.includes(t)))
+    .reduce((sum, a) => sum + parseFloat(a.value || '0'), 0)
 }
 
 // ============================================

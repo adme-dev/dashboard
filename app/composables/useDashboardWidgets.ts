@@ -44,6 +44,7 @@ const ALL_WIDGETS: WidgetDefinition[] = [
   { id: 'briefs-pipeline', title: 'Briefs Pipeline', icon: 'i-lucide-file-text', description: 'Brief status pipeline overview', defaultRoles: ['admin', 'owner', 'project_manager', 'sales'], column: 'left' },
   { id: 'my-clients', title: 'My Clients', icon: 'i-lucide-building-2', description: 'Your assigned clients', defaultRoles: ['admin', 'owner', 'sales'], column: 'right' },
   // --- Media Buyer widgets ---
+  { id: 'analytics-overview', title: 'Analytics Overview', icon: 'i-lucide-bar-chart-4', description: 'Cross-platform spend, clicks, CTR across all 8 ad platforms', defaultRoles: ['admin', 'owner', 'marketing'], column: 'left' },
   { id: 'spend-pacing', title: 'Spend Pacing', icon: 'i-lucide-gauge', description: 'Ad spend pacing vs budget', defaultRoles: ['admin', 'owner', 'marketing'], column: 'left' },
   { id: 'campaign-alerts', title: 'Campaign Alerts', icon: 'i-lucide-alert-triangle', description: 'Campaigns over/under budget', defaultRoles: ['admin', 'owner', 'marketing'], column: 'right' },
   { id: 'platform-performance', title: 'Platform Performance', icon: 'i-lucide-bar-chart-2', description: 'Daily spend chart with CTR, CPC, CPM', defaultRoles: ['admin', 'owner', 'marketing'], column: 'left' },
@@ -71,7 +72,7 @@ const ROLE_DEFAULTS: Record<string, string[]> = {
   owner: ALL_WIDGETS.map(w => w.id),
   consultant: ['financial-kpis', 'budget-alerts', 'boards', 'notifications', 'cash-position', 'revenue-snapshot', 'receivables-aging', 'project-profitability'],
   sales: ['my-work', 'notifications', 'boards', 'quick-actions', 'client-health', 'my-clients', 'briefs-pipeline'],
-  marketing: ['my-work', 'notifications', 'boards', 'quick-actions', 'ad-spend', 'budget-alerts', 'spend-pacing', 'campaign-alerts', 'platform-performance'],
+  marketing: ['my-work', 'notifications', 'boards', 'quick-actions', 'analytics-overview', 'ad-spend', 'budget-alerts', 'spend-pacing', 'campaign-alerts', 'platform-performance'],
 }
 
 export function useDashboardWidgets() {
@@ -219,7 +220,7 @@ export function useDashboardWidgets() {
       { label: 'Core', ids: ['my-work', 'notifications', 'boards', 'workspaces', 'quick-actions', 'time-this-week'] },
       { label: 'Analytics', ids: ['completion-trends', 'workload-overview', 'job-types', 'team-utilization', 'financial-kpis'] },
       { label: 'Account Management', ids: ['client-health', 'proofs-pending', 'briefs-pipeline', 'my-clients'] },
-      { label: 'Media Buying', ids: ['ad-spend', 'spend-pacing', 'campaign-alerts', 'platform-performance', 'budget-alerts'] },
+      { label: 'Media Buying', ids: ['analytics-overview', 'ad-spend', 'spend-pacing', 'campaign-alerts', 'platform-performance', 'budget-alerts'] },
       { label: 'Production', ids: ['team-capacity', 'unassigned-work', 'blocked-tasks', 'deliverables-due'] },
       { label: 'Finance', ids: ['cash-position', 'revenue-snapshot', 'receivables-aging', 'project-profitability'] },
       { label: 'Creative & AI', ids: ['recent-creatives', 'ai-insights', 'ai-training'] },

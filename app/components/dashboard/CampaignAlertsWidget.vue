@@ -1,20 +1,48 @@
 <script setup lang="ts">
+// Fetch campaigns from all 8 platforms using the new analytics endpoint
+const now = new Date()
+const sevenDaysAgo = new Date(now)
+sevenDaysAgo.setDate(now.getDate() - 7)
+const startDate = `${sevenDaysAgo.getFullYear()}-${String(sevenDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(sevenDaysAgo.getDate()).padStart(2, '0')}`
+const endDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+
+const { data: campaignData, status: campaignStatus } = await useFetch('/api/agency/analytics/campaigns', {
+  query: { startDate, endDate, limit: '100', sortBy: 'spend', sortDir: 'desc' },
+})
+
+// Fallback to old per-platform fetch
 const { data: metaData, status: metaStatus } = await useFetch('/api/agency/social/campaign-daily-spend', { query: { platform: 'meta' } })
 const { data: googleData, status: googleStatus } = await useFetch('/api/agency/social/campaign-daily-spend', { query: { platform: 'google' } })
 
-const status = computed(() => metaStatus.value === 'pending' || googleStatus.value === 'pending' ? 'pending' : 'success')
-const data = computed(() => {
+const status = computed(() => {
+  if (campaignStatus.value === 'pending') return 'pending'
+  if (metaStatus.value === 'pending' || googleStatus.value === 'pending') return 'pending'
+  return 'success'
+})
+
+const campaigns = computed(() => {
+  // Try the new analytics endpoint first
+  const analyticsResult = campaignData.value as any
+  if (analyticsResult?.campaigns?.length) {
+    return analyticsResult.campaigns.map((c: any) => ({
+      ...c,
+      name: c.campaignName,
+      dailySpend: c.spend,
+      dailyBudget: c.budget,
+    }))
+  }
+
+  // Fallback: merge Meta + Google
   const metaCampaigns = ((metaData.value as any)?.campaigns || []).map((c: any) => ({ ...c, platform: 'meta' }))
   const googleCampaigns = ((googleData.value as any)?.campaigns || []).map((c: any) => ({ ...c, platform: 'google' }))
-  return { campaigns: [...metaCampaigns, ...googleCampaigns] }
+  return [...metaCampaigns, ...googleCampaigns]
 })
 
 const alerts = computed(() => {
-  const campaigns = (data.value as any)?.campaigns || []
   const result: any[] = []
 
-  for (const c of campaigns) {
-    const dailyBudget = c.dailyBudget || 0
+  for (const c of campaigns.value) {
+    const dailyBudget = c.dailyBudget || c.budget || 0
     const dailySpend = c.dailySpend || c.spend || 0
     const zeroDays = c.zeroDays || 0
 
@@ -49,7 +77,14 @@ const alertIcons: Record<string, string> = {
 const platformIcons: Record<string, string> = {
   meta: 'i-lucide-facebook',
   google: 'i-lucide-chrome',
+  google_ads: 'i-lucide-chrome',
   facebook: 'i-lucide-facebook',
+  tiktok: 'i-lucide-music',
+  linkedin: 'i-lucide-linkedin',
+  pinterest: 'i-lucide-pin',
+  snapchat: 'i-lucide-ghost',
+  twitter: 'i-lucide-twitter',
+  microsoft_ads: 'i-lucide-monitor',
 }
 
 const formatCurrency = (v: number) =>
@@ -65,7 +100,7 @@ const formatCurrency = (v: number) =>
           <h3 class="font-semibold text-[var(--ui-text-highlighted)]">Campaign Alerts</h3>
           <UBadge v-if="alerts.length" color="error" variant="subtle" size="xs">{{ alerts.length }}</UBadge>
         </div>
-        <UButton to="/agency/social/spend" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
+        <UButton to="/agency/analytics" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
           Details
         </UButton>
       </div>

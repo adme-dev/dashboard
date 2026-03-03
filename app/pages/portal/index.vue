@@ -172,6 +172,23 @@ function timeAgo(date: string) {
         </template>
       </UCard>
 
+      <!-- Ad Performance Summary -->
+      <UCard v-if="user?.permissions?.canViewAnalytics">
+        <template #header>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-bar-chart-4" class="text-primary" />
+              <span class="font-semibold">Ad Performance</span>
+            </div>
+            <UButton to="/portal/analytics" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
+              Details
+            </UButton>
+          </div>
+        </template>
+
+        <PortalAdPerformanceCard />
+      </UCard>
+
       <!-- Outstanding Invoices -->
       <UCard v-if="user?.permissions?.canViewInvoices">
         <template #header>
