@@ -14,7 +14,7 @@
           Track every dollar<br class="hidden sm:block">across platforms
         </h1>
         <p class="text-lg md:text-xl text-white/50 max-w-[560px] mx-auto leading-relaxed">
-          Meta, Google, TikTok and more — all in one place. OAuth connections, automated spend syncing, campaign breakdowns, and budget management with full audit trails.
+          Meta, Google, TikTok, LinkedIn, Pinterest, Snapchat, X, and Microsoft — all in one place. OAuth connections, automated spend syncing, campaign breakdowns, and budget management with full audit trails.
         </p>
       </div>
     </section>
@@ -39,8 +39,8 @@
             </p>
             <div class="flex flex-col gap-3">
               <div v-for="feature in metaFeatures" :key="feature" class="flex items-center gap-3">
-                <div class="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                  <UIcon name="i-lucide-check" class="w-3 h-3 text-blue-600" />
+                <div class="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0">
+                  <UIcon name="i-lucide-check" class="w-3 h-3 text-blue-600 dark:text-blue-400" />
                 </div>
                 <span class="text-[14px] text-[#121317] dark:text-white">{{ feature }}</span>
               </div>
@@ -63,8 +63,8 @@
             </p>
             <div class="flex flex-col gap-3">
               <div v-for="feature in googleFeatures" :key="feature" class="flex items-center gap-3">
-                <div class="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-                  <UIcon name="i-lucide-check" class="w-3 h-3 text-red-500" />
+                <div class="w-5 h-5 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center flex-shrink-0">
+                  <UIcon name="i-lucide-check" class="w-3 h-3 text-red-500 dark:text-red-400" />
                 </div>
                 <span class="text-[14px] text-[#121317] dark:text-white">{{ feature }}</span>
               </div>
@@ -87,8 +87,8 @@
             </p>
             <div class="flex flex-col gap-3">
               <div v-for="feature in tiktokFeatures" :key="feature" class="flex items-center gap-3">
-                <div class="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
-                  <UIcon name="i-lucide-check" class="w-3 h-3 text-gray-600" />
+                <div class="w-5 h-5 rounded-full bg-gray-100 dark:bg-gray-800/40 flex items-center justify-center flex-shrink-0">
+                  <UIcon name="i-lucide-check" class="w-3 h-3 text-gray-600 dark:text-gray-400" />
                 </div>
                 <span class="text-[14px] text-[#121317] dark:text-white">{{ feature }}</span>
               </div>
@@ -103,15 +103,15 @@
       <div class="max-w-[1200px] mx-auto px-6">
         <div class="text-center mb-10">
           <h2 class="text-[clamp(22px,3vw,32px)] font-[450] text-[#121317] dark:text-white leading-[1.15] tracking-[-0.02em] mb-3">
-            More integrations
+            5 more platforms, fully integrated
           </h2>
           <p class="text-[15px] text-[#45474D] dark:text-white/60 max-w-[480px] mx-auto leading-relaxed">
-            Expanding platform coverage so every dollar is tracked. Native OAuth integrations with automated syncing.
+            Every major ad platform connected with native OAuth integrations and automated daily syncing.
           </p>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
           <div
-            v-for="p in upcomingPlatforms"
+            v-for="p in morePlatforms"
             :key="p.name"
             class="flex flex-col items-center gap-3 rounded-2xl bg-[#f4f5f7] dark:bg-white/[0.03] p-5 text-center"
           >
@@ -130,7 +130,7 @@
           <div class="flex flex-col md:flex-row md:items-center gap-6">
             <div class="flex items-center gap-3">
               <div class="w-11 h-11 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
-                <UIcon name="i-lucide-file-spreadsheet" class="w-5 h-5 text-violet-600" />
+                <UIcon name="i-lucide-file-spreadsheet" class="w-5 h-5 text-violet-600 dark:text-violet-400" />
               </div>
               <div>
                 <h3 class="text-[18px] font-medium text-[#121317] dark:text-white">Universal Import</h3>
@@ -142,8 +142,8 @@
             </p>
             <div class="flex flex-wrap gap-3">
               <div v-for="feat in importFeatures" :key="feat" class="flex items-center gap-2">
-                <div class="w-5 h-5 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0">
-                  <UIcon name="i-lucide-check" class="w-3 h-3 text-violet-600" />
+                <div class="w-5 h-5 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center flex-shrink-0">
+                  <UIcon name="i-lucide-check" class="w-3 h-3 text-violet-600 dark:text-violet-400" />
                 </div>
                 <span class="text-[13px] text-[#121317] dark:text-white">{{ feat }}</span>
               </div>
@@ -168,7 +168,7 @@
           <div
             v-for="feature in dashboardFeatures"
             :key="feature.title"
-            class="rounded-2xl bg-white dark:bg-white/[0.03] p-6 flex flex-col gap-4 group hover:shadow-[0_2px_12px_rgba(0,0,0,0.04)] transition-shadow"
+            class="rounded-2xl bg-white dark:bg-white/[0.03] p-6 flex flex-col gap-4 group hover:shadow-[0_2px_12px_rgba(0,0,0,0.04)] dark:hover:shadow-[0_2px_12px_rgba(255,255,255,0.03)] transition-shadow"
           >
             <div class="w-11 h-11 rounded-xl bg-[#f4f5f7] dark:bg-white/[0.06] flex items-center justify-center">
               <UIcon :name="feature.icon" class="w-5 h-5 text-[#121317] dark:text-white" />
@@ -212,7 +212,7 @@
               </div>
               <div>
                 <h3 class="text-[15px] font-medium text-[#121317] dark:text-white mb-1">{{ alert.title }}</h3>
-                <p class="text-[13px] text-[#45474D]/60 dark:text-white/40 dark:text-white/40 leading-relaxed">{{ alert.description }}</p>
+                <p class="text-[13px] text-[#45474D]/60 dark:text-white/40 leading-relaxed">{{ alert.description }}</p>
               </div>
             </div>
           </div>
@@ -301,7 +301,7 @@
             </div>
             <span class="text-[13px] text-[#45474D] dark:text-white/50">ADME Digital</span>
           </div>
-          <div class="flex items-center gap-6 text-[13px] text-[#45474D]/60 dark:text-white/40 dark:text-white/40">
+          <div class="flex items-center gap-6 text-[13px] text-[#45474D]/60 dark:text-white/40">
             <NuxtLink to="/about" class="hover:text-[#45474D] dark:hover:text-white/60 transition-colors">About</NuxtLink>
             <NuxtLink to="/privacy" class="hover:text-[#45474D] dark:hover:text-white/60 transition-colors">Privacy</NuxtLink>
             <NuxtLink to="/terms" class="hover:text-[#45474D] dark:hover:text-white/60 transition-colors">Terms</NuxtLink>
@@ -345,7 +345,7 @@ const tiktokFeatures = [
   'Campaign objective tracking',
 ]
 
-const upcomingPlatforms = [
+const morePlatforms = [
   { name: 'LinkedIn', sub: 'B2B advertising', icon: 'i-lucide-linkedin', bg: 'bg-blue-50 dark:bg-blue-950', color: 'text-blue-600' },
   { name: 'Pinterest', sub: 'Visual discovery', icon: 'i-lucide-pin', bg: 'bg-red-50 dark:bg-red-950', color: 'text-red-600' },
   { name: 'Snapchat', sub: 'Snap & story ads', icon: 'i-lucide-ghost', bg: 'bg-yellow-50 dark:bg-yellow-950', color: 'text-yellow-600' },
@@ -398,36 +398,36 @@ const budgetAlerts = [
     title: 'Per-client monthly budgets',
     description: 'Set a single budget cap per client that covers all their campaigns across every connected platform.',
     icon: 'i-lucide-wallet',
-    bg: 'bg-blue-100',
-    color: 'text-blue-600'
+    bg: 'bg-blue-100 dark:bg-blue-900/40',
+    color: 'text-blue-600 dark:text-blue-400'
   },
   {
     title: 'Per-campaign limits',
     description: 'Granular budget controls at the campaign level with automatic threshold monitoring.',
     icon: 'i-lucide-sliders-horizontal',
-    bg: 'bg-emerald-100',
-    color: 'text-emerald-600'
+    bg: 'bg-emerald-100 dark:bg-emerald-900/40',
+    color: 'text-emerald-600 dark:text-emerald-400'
   },
   {
     title: 'Threshold alerts (75 / 90 / 100%)',
     description: 'Get notified as spend approaches the limit. Configurable thresholds per client.',
     icon: 'i-lucide-bell-ring',
-    bg: 'bg-amber-100',
-    color: 'text-amber-600'
+    bg: 'bg-amber-100 dark:bg-amber-900/40',
+    color: 'text-amber-600 dark:text-amber-400'
   },
   {
     title: 'Immutable audit trail',
     description: 'Every budget change, alert, and adjustment is logged with timestamps and user attribution.',
     icon: 'i-lucide-shield-check',
-    bg: 'bg-violet-100',
-    color: 'text-violet-600'
+    bg: 'bg-violet-100 dark:bg-violet-900/40',
+    color: 'text-violet-600 dark:text-violet-400'
   },
   {
     title: 'EOM reconciliation',
     description: 'End-of-month reports show budget vs actual with variance analysis per client and campaign.',
     icon: 'i-lucide-file-spreadsheet',
-    bg: 'bg-rose-100',
-    color: 'text-rose-600'
+    bg: 'bg-rose-100 dark:bg-rose-900/40',
+    color: 'text-rose-600 dark:text-rose-400'
   },
 ]
 
@@ -435,43 +435,43 @@ const anomalyTypes = [
   {
     title: 'CPC Spike Detection',
     icon: 'i-lucide-trending-up',
-    bg: 'bg-rose-50',
-    color: 'text-rose-600',
+    bg: 'bg-rose-50 dark:bg-rose-900/30',
+    color: 'text-rose-600 dark:text-rose-400',
     description: 'Flags campaigns where cost-per-click jumps significantly above the rolling average. Catch bidding wars early.'
   },
   {
     title: 'Budget Overrun Alerts',
     icon: 'i-lucide-alert-triangle',
-    bg: 'bg-amber-50',
-    color: 'text-amber-600',
+    bg: 'bg-amber-50 dark:bg-amber-900/30',
+    color: 'text-amber-600 dark:text-amber-400',
     description: 'Detects campaigns on track to exceed monthly budgets based on current daily spend velocity.'
   },
   {
     title: 'Unusual Spend Patterns',
     icon: 'i-lucide-activity',
-    bg: 'bg-violet-50',
-    color: 'text-violet-600',
+    bg: 'bg-violet-50 dark:bg-violet-900/30',
+    color: 'text-violet-600 dark:text-violet-400',
     description: 'Identifies spend anomalies — sudden drops, weekend spikes, or erratic daily fluctuations.'
   },
   {
     title: 'ROAS Degradation',
     icon: 'i-lucide-arrow-down-right',
-    bg: 'bg-blue-50',
-    color: 'text-blue-600',
+    bg: 'bg-blue-50 dark:bg-blue-900/30',
+    color: 'text-blue-600 dark:text-blue-400',
     description: 'Monitors return on ad spend across campaigns. Alerts when ROAS drops below profitable thresholds.'
   },
   {
     title: 'Platform Imbalance',
     icon: 'i-lucide-scale',
-    bg: 'bg-emerald-50',
-    color: 'text-emerald-600',
+    bg: 'bg-emerald-50 dark:bg-emerald-900/30',
+    color: 'text-emerald-600 dark:text-emerald-400',
     description: 'Detects when spend allocation across platforms shifts significantly from the planned split.'
   },
   {
     title: 'Conversion Drop-off',
     icon: 'i-lucide-mouse-pointer-click',
-    bg: 'bg-indigo-50',
-    color: 'text-indigo-600',
+    bg: 'bg-indigo-50 dark:bg-indigo-900/30',
+    color: 'text-indigo-600 dark:text-indigo-400',
     description: 'Flags campaigns where conversion rates decline while spend remains constant or increases.'
   },
 ]
