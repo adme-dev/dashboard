@@ -217,7 +217,7 @@ async function metaFetch<T>(url: string, token: string, params: Record<string, s
 /**
  * Get first and last day of a month as YYYY-MM-DD strings
  */
-function getMonthRange(month: number, year: number): { since: string; until: string } {
+export function getMonthRange(month: number, year: number): { since: string; until: string } {
   const since = `${year}-${String(month).padStart(2, '0')}-01`
   const lastDay = new Date(year, month, 0).getDate()
   const until = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
@@ -366,6 +366,12 @@ export async function getCampaignCreatives(
         creative?: {
           thumbnail_url?: string
           image_url?: string
+          effective_image_url?: string
+          object_story_spec?: {
+            link_data?: { picture?: string; image_url?: string }
+            video_data?: { image_url?: string }
+            photo_data?: { url?: string }
+          }
           title?: string
           body?: string
           object_type?: string
@@ -374,7 +380,7 @@ export async function getCampaignCreatives(
     }>(`${META_GRAPH_BASE}/${campaignId}/ads`, {
       method: 'GET',
       query: {
-        fields: 'id,creative{thumbnail_url,image_url,title,body,object_type}',
+        fields: 'id,creative{thumbnail_url,image_url,effective_image_url,object_story_spec,title,body,object_type}',
         limit: '5',
         access_token: token
       }
@@ -383,7 +389,7 @@ export async function getCampaignCreatives(
     return (res.data || []).map(ad => ({
       creativeId: ad.id,
       type: ad.creative?.object_type || 'image',
-      thumbnailUrl: ad.creative?.thumbnail_url || ad.creative?.image_url || null,
+      thumbnailUrl: getBestCreativeImage(ad.creative),
       title: ad.creative?.title || null,
       body: ad.creative?.body || null,
     }))
@@ -391,6 +397,32 @@ export async function getCampaignCreatives(
     console.warn(`[MetaClient] Failed to fetch creatives for campaign ${campaignId}:`, err.message)
     return []
   }
+}
+
+/**
+ * Extract the highest resolution image from a Meta creative.
+ * Priority order (highest res first):
+ *   1. effective_image_url — the actual displayed image (most reliable, high-res)
+ *   2. image_url — the originally uploaded image
+ *   3. object_story_spec link_data.image_url — full-res link ad image
+ *   4. video_data.image_url — video poster image
+ *   5. photo_data.url — photo ad image
+ *   6. thumbnail_url — last resort (~64x64, very small)
+ * Note: link_data.picture is just the OG preview thumbnail — skip it.
+ */
+function getBestCreativeImage(creative: any): string | null {
+  if (!creative) return null
+  // Best: the effective image actually displayed in the ad
+  if (creative.effective_image_url) return creative.effective_image_url
+  // Original upload
+  if (creative.image_url) return creative.image_url
+  // Story spec images (full-res versions)
+  const spec = creative.object_story_spec
+  if (spec?.link_data?.image_url) return spec.link_data.image_url
+  if (spec?.video_data?.image_url) return spec.video_data.image_url
+  if (spec?.photo_data?.url) return spec.photo_data.url
+  // Last resort: thumbnail (small but at least shows something)
+  return creative.thumbnail_url || null
 }
 
 // ============================================

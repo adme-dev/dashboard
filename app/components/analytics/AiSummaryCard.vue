@@ -3,14 +3,23 @@
  * AI-generated performance summary card.
  * Fetches lazily on mount, shows loading skeleton then bullet points.
  */
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   mediaSpendId: string
   campaignName: string
   platform: string
   breakdowns: any
+  apiBase?: string
+  initialSummary?: string | null
+}>(), {
+  apiBase: '/api/agency/analytics',
+  initialSummary: undefined,
+})
+
+const emit = defineEmits<{
+  loaded: [summary: string | null]
 }>()
 
-const summary = ref<string | null>(null)
+const summary = ref<string | null>(props.initialSummary ?? null)
 const loading = ref(false)
 const error = ref(false)
 
@@ -18,7 +27,7 @@ const error = ref(false)
 const hasBreakdownData = computed(() => {
   const b = props.breakdowns
   if (!b) return false
-  return (b.age?.length > 0 || b.gender?.length > 0 || b.device?.length > 0 || b.geo?.length > 0)
+  return (b.age?.length > 0 || b.gender?.length > 0 || b.device?.length > 0 || b.geo?.length > 0 || b.placement?.length > 0 || b.hourly?.length > 0 || b.city?.length > 0 || b.region?.length > 0 || b.story_type?.length > 0)
 })
 
 async function fetchSummary() {
@@ -27,7 +36,7 @@ async function fetchSummary() {
   error.value = false
 
   try {
-    const res = await $fetch<{ summary: string | null }>('/api/agency/analytics/ai-summary', {
+    const res = await $fetch<{ summary: string | null }>(`${props.apiBase}/ai-summary`, {
       method: 'POST',
       body: {
         campaignId: props.mediaSpendId,
@@ -37,6 +46,7 @@ async function fetchSummary() {
       },
     })
     summary.value = res.summary
+    emit('loaded', res.summary)
   } catch {
     error.value = true
   } finally {

@@ -3,6 +3,7 @@
  * GET /api/agency/analytics/export
  *
  * Query params: same as campaigns (startDate, endDate, clientId?, platform?, search?)
+ * Optional: includeBreakdowns=true to append breakdown rows
  * Returns CSV file.
  */
 import { queryRows } from '~~/server/utils/db'
@@ -22,6 +23,7 @@ export default defineEventHandler(async (event) => {
   const clientId = q.clientId as string | undefined
   const platforms = q.platform ? String(q.platform).split(',').map(p => p.trim()).filter(Boolean) : null
   const search = q.search as string | undefined
+  const includeBreakdowns = q.includeBreakdowns === 'true'
 
   const conditions: string[] = ['ms.period >= $1', 'ms.period <= $2']
   const params: any[] = [startDate.slice(0, 7), endDate.slice(0, 7)]
@@ -51,6 +53,7 @@ export default defineEventHandler(async (event) => {
       SELECT
         ms.campaign_name,
         ms.platform,
+        ms.campaign_id,
         ms.client_id,
         c.name as client_name,
         SUM(ms.actual_spend) as spend,
@@ -58,14 +61,16 @@ export default defineEventHandler(async (event) => {
         SUM(ms.impressions) as impressions,
         SUM(ms.clicks) as clicks,
         SUM(ms.conversions) as conversions,
-        0 as revenue
+        COALESCE(SUM(ms.revenue), 0) as revenue,
+        (array_agg(ms.id ORDER BY ms.synced_at DESC NULLS LAST))[1] as media_spend_id
       FROM media_spend ms
       LEFT JOIN agency_clients c ON ms.client_id = c.id
       WHERE ${where}
-      GROUP BY ms.campaign_name, ms.platform, ms.client_id, c.name
+      GROUP BY ms.campaign_name, ms.platform, ms.campaign_id, ms.client_id, c.name
       ORDER BY SUM(ms.actual_spend) DESC
     `, params)
 
+    // Campaign-level CSV
     const headers = ['Platform', 'Campaign', 'Client', 'Spend', 'Budget', 'Impressions', 'Clicks', 'Conversions', 'Revenue', 'CPC', 'CPM', 'CTR', 'ROAS']
 
     const csvRows = rows.map(r => {
@@ -94,7 +99,62 @@ export default defineEventHandler(async (event) => {
       ].join(',')
     })
 
-    const csv = [headers.join(','), ...csvRows].join('\n')
+    const sections = [headers.join(','), ...csvRows]
+
+    // Breakdown data (optional)
+    if (includeBreakdowns) {
+      const spendIds = rows.map(r => r.media_spend_id).filter(Boolean)
+      if (spendIds.length > 0) {
+        const breakdownRows = await queryRows(`
+          SELECT
+            sb.media_spend_id,
+            sb.dimension_type,
+            sb.dimension_value,
+            sb.spend,
+            sb.impressions,
+            sb.clicks,
+            sb.conversions,
+            sb.revenue
+          FROM spend_breakdowns sb
+          WHERE sb.media_spend_id = ANY($1)
+          ORDER BY sb.media_spend_id, sb.dimension_type, sb.spend DESC
+        `, [spendIds])
+
+        if (breakdownRows.length > 0) {
+          // Build lookup: media_spend_id → campaign name + platform
+          const spendLookup = new Map(rows.map(r => [r.media_spend_id, { name: r.campaign_name, platform: r.platform }]))
+
+          sections.push('')
+          sections.push('--- Demographic & Device Breakdowns ---')
+          sections.push('Platform,Campaign,Dimension,Value,Spend,Impressions,Clicks,Conversions,Revenue,CTR,CPC')
+
+          for (const b of breakdownRows) {
+            const campaign = spendLookup.get(b.media_spend_id)
+            const spend = toNum(b.spend)
+            const impressions = toNum(b.impressions)
+            const clicks = toNum(b.clicks)
+            const ctr = impressions > 0 ? (clicks / impressions) * 100 : null
+            const cpc = clicks > 0 ? spend / clicks : null
+
+            sections.push([
+              PLATFORM_LABELS[campaign?.platform || ''] || campaign?.platform || '',
+              escapeCsv(campaign?.name || ''),
+              b.dimension_type,
+              escapeCsv(b.dimension_value),
+              spend.toFixed(2),
+              impressions,
+              clicks,
+              toNum(b.conversions),
+              toNum(b.revenue).toFixed(2),
+              ctr !== null ? ctr.toFixed(2) : '',
+              cpc !== null ? cpc.toFixed(2) : '',
+            ].join(','))
+          }
+        }
+      }
+    }
+
+    const csv = sections.join('\n')
 
     setResponseHeader(event, 'Content-Type', 'text/csv; charset=utf-8')
     setResponseHeader(event, 'Content-Disposition', `attachment; filename="analytics-export-${startDate}-${endDate}.csv"`)

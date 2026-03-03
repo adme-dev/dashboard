@@ -14,9 +14,10 @@ export function buildCampaignDeepLink(
 
   switch (platform) {
     case 'meta': {
-      const actId = metadata?.actId || `act_${accountId}`
-      if (!campaignId) return `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${encodeURIComponent(actId)}`
-      return `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${encodeURIComponent(actId)}&selected_campaign_ids=${encodeURIComponent(campaignId)}`
+      // Ads Manager URLs use just the numeric account ID (no act_ prefix)
+      const rawActId = (metadata?.actId || accountId).replace(/^act_/, '')
+      if (!campaignId) return `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${encodeURIComponent(rawActId)}`
+      return `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${encodeURIComponent(rawActId)}&selected_campaign_ids=${encodeURIComponent(campaignId)}`
     }
 
     case 'google_ads': {

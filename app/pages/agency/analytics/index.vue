@@ -12,7 +12,7 @@ if (filters.value.clientId !== urlClientId) {
 }
 
 // Overview data
-const { data: overviewData, status: overviewStatus } = useFetch('/api/agency/analytics/overview', {
+const { data: overviewData, status: overviewStatus, refresh: refreshOverview } = useFetch('/api/agency/analytics/overview', {
   query: apiQuery,
   watch: [apiQuery],
 })
@@ -33,7 +33,7 @@ const trendQuery = computed(() => ({
   groupBy: trendGroupBy.value,
 }))
 
-const { data: trendData, status: trendStatus } = useFetch('/api/agency/analytics/trends', {
+const { data: trendData, status: trendStatus, refresh: refreshTrends } = useFetch('/api/agency/analytics/trends', {
   query: trendQuery,
   watch: [trendQuery],
 })
@@ -63,46 +63,51 @@ const loading = computed(() => overviewStatus.value === 'pending')
 const toast = useToast()
 const syncing = ref(false)
 
-const SYNC_PLATFORMS = [
-  { key: 'meta', label: 'Meta', endpoint: '/api/agency/social/meta/sync-spend' },
-  { key: 'google', label: 'Google', endpoint: '/api/agency/social/google/sync-spend' },
-  { key: 'microsoft_ads', label: 'Microsoft', endpoint: '/api/agency/social/microsoft_ads/sync-spend' },
-  { key: 'pinterest', label: 'Pinterest', endpoint: '/api/agency/social/pinterest/sync-spend' },
-  { key: 'tiktok', label: 'TikTok', endpoint: '/api/agency/social/tiktok/sync-spend' },
-  { key: 'linkedin', label: 'LinkedIn', endpoint: '/api/agency/social/linkedin/sync-spend' },
-  { key: 'snapchat', label: 'Snapchat', endpoint: '/api/agency/social/snapchat/sync-spend' },
-  { key: 'twitter', label: 'X/Twitter', endpoint: '/api/agency/social/twitter/sync-spend' },
-]
-
 async function syncAll() {
   syncing.value = true
-  const now = new Date()
-  const month = now.getMonth() + 1
-  const year = now.getFullYear()
-  let successCount = 0
-  let errorCount = 0
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 5 * 60 * 1000) // 5 min total
+    const res = await $fetch<{ results: Record<string, any> }>('/api/agency/analytics/sync', {
+      method: 'POST',
+      signal: controller.signal,
+    })
+    clearTimeout(timeout)
 
-  for (const platform of SYNC_PLATFORMS) {
-    try {
-      await $fetch(platform.endpoint, { method: 'POST', body: { month, year } })
-      successCount++
-    } catch {
-      errorCount++
+    // Refresh dashboard data after sync
+    refreshOverview()
+    refreshTrends()
+
+    // Check if any platforms had errors
+    const errors = Object.entries(res.results || {}).filter(([, v]) => 'error' in v)
+    if (errors.length > 0 && errors.length < 8) {
+      toast.add({
+        title: 'Sync partially complete',
+        description: `${8 - errors.length} platforms synced. ${errors.length} had errors.`,
+        color: 'warning',
+      })
+    } else if (errors.length === 0) {
+      toast.add({ title: 'Sync complete', description: 'All platforms synced successfully', color: 'success' })
+    } else {
+      toast.add({ title: 'Sync failed', description: 'All platforms had errors. Check your connections in Social Hub.', color: 'error' })
     }
-  }
-
-  syncing.value = false
-
-  if (successCount > 0) {
-    toast.add({ title: 'Sync complete', description: `${successCount} platform${successCount > 1 ? 's' : ''} synced${errorCount > 0 ? `, ${errorCount} failed` : ''}`, color: errorCount > 0 ? 'warning' : 'success' })
-  } else {
-    toast.add({ title: 'Sync failed', description: 'No platforms could be synced. Check your connections in Social Hub.', color: 'error' })
+  } catch (err: any) {
+    const isTimeout = err?.name === 'AbortError'
+    toast.add({
+      title: isTimeout ? 'Sync timed out' : 'Sync failed',
+      description: isTimeout
+        ? 'The sync took too long. Some platforms may have synced — try refreshing.'
+        : 'Could not sync platforms. Check your connections in Social Hub.',
+      color: 'error',
+    })
+  } finally {
+    syncing.value = false
   }
 }
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto p-6 space-y-6 max-w-[1400px] mx-auto">
+  <div class="h-full overflow-y-auto p-6 space-y-6">
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div>

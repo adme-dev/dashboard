@@ -142,11 +142,8 @@ export async function syncMetaSpend(month: number, year: number): Promise<{ sync
     }
   }
 
-  // Sync breakdowns + creatives after main campaign sync
-  for (const conn of connections) {
-    try { await syncBreakdowns('meta', conn.id, month, year) } catch (err: any) { console.error(`[MetaSync] Breakdowns failed for ${conn.account_name}:`, err.message) }
-    try { await syncCreatives('meta', conn.id, month, year) } catch (err: any) { console.error(`[MetaSync] Creatives failed for ${conn.account_name}:`, err.message) }
-  }
+  // Breakdowns + creatives are now fetched on-demand when a user expands a campaign row
+  // (see server/utils/onDemandSync.ts). Removed from bulk sync to keep it fast.
 
   return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100 }
 }
@@ -310,11 +307,7 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
     }
   }
 
-  // Sync breakdowns + creatives after main campaign sync
-  for (const conn of connections) {
-    try { await syncBreakdowns('google_ads', conn.id, month, year) } catch (err: any) { console.error(`[GoogleSync] Breakdowns failed for ${conn.account_name}:`, err.message) }
-    try { await syncCreatives('google_ads', conn.id, month, year) } catch (err: any) { console.error(`[GoogleSync] Creatives failed for ${conn.account_name}:`, err.message) }
-  }
+  // Breakdowns + creatives are now fetched on-demand (see onDemandSync.ts)
 
   return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100 }
 }
@@ -766,10 +759,7 @@ export async function syncPinterestSpend(month: number, year: number): Promise<{
     }
   }
 
-  // Sync breakdowns after main campaign sync
-  for (const conn of connections) {
-    try { await syncBreakdowns('pinterest', conn.id, month, year) } catch (err: any) { console.error(`[PinterestSync] Breakdowns failed for ${conn.account_name}:`, err.message) }
-  }
+  // Breakdowns are now fetched on-demand (see onDemandSync.ts)
 
   return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100 }
 }
@@ -1243,10 +1233,7 @@ export async function syncMicrosoftSpend(month: number, year: number): Promise<{
     }
   }
 
-  // Sync breakdowns after main campaign sync
-  for (const conn of connections) {
-    try { await syncBreakdowns('microsoft_ads', conn.id, month, year) } catch (err: any) { console.error(`[MicrosoftSync] Breakdowns failed for ${conn.account_name}:`, err.message) }
-  }
+  // Breakdowns are now fetched on-demand (see onDemandSync.ts)
 
   return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100 }
 }

@@ -1,10 +1,15 @@
 <script setup lang="ts">
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   startDate: string
   endDate: string
   platforms?: string[]
   clientId?: string | null
-}>()
+  apiBase?: string
+  hideColumns?: string[]
+}>(), {
+  apiBase: '/api/agency/analytics',
+  hideColumns: () => [],
+})
 
 const { fmtCurrency, fmtCompact, fmtPercent, getPlatformIcon, getPlatformLabel } = useAnalytics()
 
@@ -14,14 +19,34 @@ const sortDir = ref<'desc' | 'asc'>('desc')
 const page = ref(1)
 const pageSize = 20
 const expandedId = ref<string | null>(null)
-const expandedBreakdowns = ref<Record<string, any>>({})
+
+// Client-side cache to avoid re-fetching on collapse/re-expand
+const cache = reactive<Map<string, {
+  breakdowns?: Record<string, any[]>
+  creatives?: any[]
+  aiSummary?: string | null
+  extraMetrics?: Record<string, any> | null
+}>>(new Map())
 
 function toggleExpand(id: string) {
   expandedId.value = expandedId.value === id ? null : id
 }
 
-function onBreakdownsLoaded(campaignId: string, breakdowns: any) {
-  expandedBreakdowns.value[campaignId] = breakdowns
+function getCacheEntry(mediaSpendId: string) {
+  return cache.get(mediaSpendId)
+}
+
+function onBreakdownsLoaded(mediaSpendId: string, payload: { breakdowns: any; extraMetrics: any }) {
+  // Spread into new object so reactive Map detects the change
+  cache.set(mediaSpendId, { ...(cache.get(mediaSpendId) || {}), breakdowns: payload.breakdowns, extraMetrics: payload.extraMetrics })
+}
+
+function onCreativesLoaded(mediaSpendId: string, creatives: any[]) {
+  cache.set(mediaSpendId, { ...(cache.get(mediaSpendId) || {}), creatives })
+}
+
+function onAiSummaryLoaded(mediaSpendId: string, summary: string | null) {
+  cache.set(mediaSpendId, { ...(cache.get(mediaSpendId) || {}), aiSummary: summary })
 }
 
 function statusColor(status: string | null): 'success' | 'warning' | 'error' | 'info' | 'neutral' {
@@ -55,7 +80,7 @@ const apiQuery = computed(() => {
   return q
 })
 
-const { data, status } = useFetch('/api/agency/analytics/campaigns', {
+const { data, status } = useFetch(() => `${props.apiBase}/campaigns`, {
   query: apiQuery,
   watch: [apiQuery],
 })
@@ -74,7 +99,7 @@ function toggleSort(key: string) {
   page.value = 1
 }
 
-const columns = [
+const allColumns = [
   { key: 'campaignName', label: 'Campaign' },
   { key: 'spend', label: 'Spend' },
   { key: 'budget', label: 'Budget' },
@@ -85,6 +110,16 @@ const columns = [
   { key: 'cpc', label: 'CPC' },
   { key: 'conversions', label: 'Conv.' },
 ]
+
+const columns = computed(() =>
+  props.hideColumns.length > 0
+    ? allColumns.filter(c => !props.hideColumns.includes(c.key))
+    : allColumns
+)
+
+function showColumn(key: string): boolean {
+  return !props.hideColumns.includes(key)
+}
 
 // Reset page on search change
 watch(search, () => { page.value = 1 })
@@ -151,13 +186,13 @@ watch(search, () => { page.value = 1 })
                 <p v-if="row.clientName" class="text-xs text-muted mt-0.5 pl-[3.25rem]">{{ row.clientName }}</p>
               </td>
               <td class="px-3 py-2.5 text-right tabular-nums font-medium">{{ fmtCurrency(row.spend) }}</td>
-              <td class="px-3 py-2.5 text-right tabular-nums text-muted">
+              <td v-if="showColumn('budget')" class="px-3 py-2.5 text-right tabular-nums text-muted">
                 <div class="flex items-center gap-1 justify-end">
                   <UIcon v-if="row.budgetRolling" name="i-lucide-repeat" class="w-3 h-3 text-primary shrink-0" title="Rolling budget" />
                   {{ (row.budget ?? 0) > 0 ? fmtCurrency(row.budget) : '-' }}
                 </div>
               </td>
-              <td class="px-3 py-2.5 text-right tabular-nums">
+              <td v-if="showColumn('variance')" class="px-3 py-2.5 text-right tabular-nums">
                 <template v-if="(row.budget ?? 0) > 0">
                   <span :class="(row.budget - row.spend) >= 0 ? 'text-green-500' : 'text-red-500'">
                     {{ fmtCurrency(row.budget - row.spend) }}
@@ -180,9 +215,9 @@ watch(search, () => { page.value = 1 })
                   <UIcon :name="getPlatformIcon(row.platform)" class="w-5 h-5 text-muted shrink-0" />
                   <h3 class="text-sm font-semibold text-default truncate">{{ row.campaignName }}</h3>
                   <div v-if="row.deepLinkUrl" class="shrink-0 ml-auto flex items-center gap-2">
-                    <span v-if="!isActiveCampaign(row.campaignStatus)" class="text-[10px] text-warning flex items-center gap-1">
+                    <span v-if="row.campaignStatus && ['DRAFT', 'PENDING_REVIEW', 'IN_PROCESS'].includes(row.campaignStatus.toUpperCase())" class="text-[10px] text-warning flex items-center gap-1">
                       <UIcon name="i-lucide-triangle-alert" class="w-3 h-3" />
-                      Campaign may not be fully set up
+                      Campaign pending setup
                     </span>
                     <a
                       :href="row.deepLinkUrl"
@@ -227,12 +262,24 @@ watch(search, () => { page.value = 1 })
                   </div>
                 </div>
 
+                <!-- Extra Metrics Row -->
+                <AnalyticsExtraMetricsRow
+                  v-if="getCacheEntry(row.mediaSpendId)?.extraMetrics"
+                  :metrics="getCacheEntry(row.mediaSpendId)!.extraMetrics!"
+                  :platform="row.platform"
+                  :clicks="row.clicks"
+                  class="mb-4"
+                />
+
                 <!-- Breakdowns section -->
                 <div v-if="row.mediaSpendId" class="mb-4">
                   <AnalyticsBreakdownSection
                     :media-spend-id="row.mediaSpendId"
                     :platform="row.platform"
-                    @loaded="(b: any) => onBreakdownsLoaded(row.campaignId, b)"
+                    :api-base="apiBase"
+                    :initial-data="getCacheEntry(row.mediaSpendId)?.breakdowns"
+                    :initial-extra-metrics="getCacheEntry(row.mediaSpendId)?.extraMetrics"
+                    @loaded="(p: any) => onBreakdownsLoaded(row.mediaSpendId, p)"
                   />
                 </div>
 
@@ -241,6 +288,9 @@ watch(search, () => { page.value = 1 })
                   <AnalyticsCampaignCreatives
                     :media-spend-id="row.mediaSpendId"
                     :platform="row.platform"
+                    :api-base="apiBase"
+                    :initial-data="getCacheEntry(row.mediaSpendId)?.creatives"
+                    @loaded="(c: any[]) => onCreativesLoaded(row.mediaSpendId, c)"
                   />
                 </div>
 
@@ -250,7 +300,10 @@ watch(search, () => { page.value = 1 })
                     :media-spend-id="row.mediaSpendId"
                     :campaign-name="row.campaignName"
                     :platform="getPlatformLabel(row.platform)"
-                    :breakdowns="expandedBreakdowns[row.campaignId]"
+                    :breakdowns="getCacheEntry(row.mediaSpendId)?.breakdowns"
+                    :api-base="apiBase"
+                    :initial-summary="getCacheEntry(row.mediaSpendId)?.aiSummary"
+                    @loaded="(s: string | null) => onAiSummaryLoaded(row.mediaSpendId, s)"
                   />
                 </div>
 

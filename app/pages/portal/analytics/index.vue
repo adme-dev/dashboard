@@ -2,7 +2,7 @@
 definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
 const { user } = usePortalAuth()
-const { fmtCurrency, fmtCompact, fmtPercent, getPlatformIcon, getPlatformColor, PLATFORM_ICONS } = useAnalytics()
+const { fmtCurrency, fmtCompact, fmtPercent, getPlatformIcon } = useAnalytics()
 
 // Date range state
 const now = new Date()
@@ -47,20 +47,6 @@ const { data: trendData, status: trendStatus } = useFetch('/api/portal/analytics
   watch: [trendQuery],
 })
 const trendPoints = computed(() => (trendData.value as any)?.dataPoints || [])
-
-// Campaigns
-const campaignQuery = computed(() => ({
-  ...apiQuery.value,
-  limit: '20',
-  sortBy: 'spend',
-  sortDir: 'desc',
-}))
-
-const { data: campaignData, status: campaignStatus } = useFetch('/api/portal/analytics/campaigns', {
-  query: campaignQuery,
-  watch: [campaignQuery],
-})
-const campaigns = computed(() => (campaignData.value as any)?.campaigns || [])
 
 function pctChange(current: number | null, prev: number | null): number | null {
   if (current == null || prev == null || prev === 0) return null
@@ -179,49 +165,14 @@ const metricOptions = [
           />
         </div>
 
-        <!-- Campaign Table -->
-        <div>
-          <h3 class="text-sm font-semibold text-default mb-3">Top Campaigns</h3>
-          <div class="border border-default rounded-lg overflow-hidden">
-            <div v-if="campaignStatus === 'pending'" class="p-4 space-y-3">
-              <USkeleton v-for="i in 5" :key="i" class="h-10 w-full rounded" />
-            </div>
-            <table v-else class="w-full text-sm">
-              <thead>
-                <tr class="border-b border-default bg-elevated/30">
-                  <th class="px-3 py-2.5 text-left text-xs font-medium text-muted">Campaign</th>
-                  <th class="px-3 py-2.5 text-right text-xs font-medium text-muted">Spend</th>
-                  <th class="px-3 py-2.5 text-right text-xs font-medium text-muted">Impr.</th>
-                  <th class="px-3 py-2.5 text-right text-xs font-medium text-muted">Clicks</th>
-                  <th class="px-3 py-2.5 text-right text-xs font-medium text-muted">CTR</th>
-                  <th class="px-3 py-2.5 text-right text-xs font-medium text-muted">CPC</th>
-                  <th class="px-3 py-2.5 text-right text-xs font-medium text-muted">Conv.</th>
-                  <th class="px-3 py-2.5 text-right text-xs font-medium text-muted">Cost/Conv.</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="c in campaigns" :key="c.campaignId" class="border-b border-default/50 hover:bg-elevated/30">
-                  <td class="px-3 py-2.5">
-                    <div class="flex items-center gap-2">
-                      <UIcon :name="PLATFORM_ICONS[c.platform] || 'i-lucide-globe'" class="w-3.5 h-3.5 text-muted shrink-0" />
-                      <span class="truncate max-w-[200px]" :title="c.campaignName">{{ c.campaignName }}</span>
-                    </div>
-                  </td>
-                  <td class="px-3 py-2.5 text-right tabular-nums font-medium">{{ fmtCurrency(c.spend) }}</td>
-                  <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtCompact(c.impressions) }}</td>
-                  <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtCompact(c.clicks) }}</td>
-                  <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtPercent(c.ctr) }}</td>
-                  <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtCurrency(c.cpc, 2) }}</td>
-                  <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtCompact(c.conversions) }}</td>
-                  <td class="px-3 py-2.5 text-right tabular-nums">{{ c.costPerConversion != null ? fmtCurrency(c.costPerConversion, 2) : '-' }}</td>
-                </tr>
-                <tr v-if="!campaigns.length">
-                  <td colspan="8" class="px-3 py-8 text-center text-muted">No campaign data for selected period</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <!-- Campaign Table (with expand for breakdowns, creatives, AI) -->
+        <AnalyticsCampaignTable
+          :start-date="startDate"
+          :end-date="endDate"
+          :platforms="selectedPlatforms"
+          api-base="/api/portal/analytics"
+          :hide-columns="['budget', 'variance']"
+        />
       </div>
 
       <!-- Right: Performance Insights sidebar (1/3) -->

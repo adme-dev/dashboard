@@ -115,7 +115,7 @@ export async function refreshGoogleToken(
 /**
  * Execute a Google Ads Query Language (GAQL) query via searchStream
  */
-async function gaqlQuery(
+export async function gaqlQuery(
   customerId: string,
   token: string,
   developerToken: string,
@@ -157,6 +157,15 @@ async function gaqlQuery(
       return results
     } catch (err: any) {
       const status = err?.status || err?.statusCode
+      // Log detailed GAQL error info for debugging 400s
+      if (status === 400 && err.data) {
+        const details = err.data?.error?.details?.[0]?.errors?.[0]
+        if (details) {
+          console.error(`[GoogleAds] GAQL 400 detail:`, JSON.stringify(details))
+        } else {
+          console.error(`[GoogleAds] GAQL 400 body:`, JSON.stringify(err.data).slice(0, 500))
+        }
+      }
       if ((status === 429 || status === 500 || status === 503) && attempt < retries) {
         const delay = Math.pow(2, attempt + 1) * 1000
         await new Promise(resolve => setTimeout(resolve, delay))
@@ -395,15 +404,9 @@ export interface GoogleBreakdownRow {
   revenue: number
 }
 
-const GOOGLE_SEGMENT_MAP: Record<string, string> = {
-  age: 'segments.age_range_type',
-  gender: 'segments.gender_type',
-  device: 'segments.device',
-  geo: 'segments.geo_target_constant',
-}
-
 /**
  * Get breakdown data for campaigns by a specific segment.
+ * v23: age/gender use dedicated view resources; device/geo use campaign resource.
  */
 export async function getBreakdownData(
   customerId: string,
@@ -415,36 +418,35 @@ export async function getBreakdownData(
   loginCustomerId?: string
 ): Promise<GoogleBreakdownRow[]> {
   const { since, until } = getMonthRange(month, year)
-  const segmentField = GOOGLE_SEGMENT_MAP[segment]
-  if (!segmentField) return []
+  const dateFilter = `segments.date BETWEEN '${since}' AND '${until}'`
+  const metricsFields = 'metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value'
 
-  const query = `
-    SELECT
-      campaign.id,
-      ${segmentField},
-      metrics.cost_micros,
-      metrics.impressions,
-      metrics.clicks,
-      metrics.conversions,
-      metrics.conversions_value
-    FROM campaign
-    WHERE segments.date BETWEEN '${since}' AND '${until}'
-  `
+  let query: string
+  let extractDv: (r: any) => string
+
+  if (segment === 'age') {
+    query = `SELECT campaign.id, ad_group_criterion.age_range.type, ${metricsFields} FROM age_range_view WHERE ${dateFilter}`
+    extractDv = (r) => normalizeGoogleAge(r.adGroupCriterion?.ageRange?.type)
+  } else if (segment === 'gender') {
+    query = `SELECT campaign.id, ad_group_criterion.gender.type, ${metricsFields} FROM gender_view WHERE ${dateFilter}`
+    extractDv = (r) => normalizeGoogleGender(r.adGroupCriterion?.gender?.type)
+  } else if (segment === 'device') {
+    query = `SELECT campaign.id, segments.device, ${metricsFields} FROM campaign WHERE ${dateFilter}`
+    extractDv = (r) => normalizeGoogleDevice(r.segments?.device)
+  } else if (segment === 'geo') {
+    query = `SELECT campaign.id, geographic_view.country_criterion_id, ${metricsFields} FROM geographic_view WHERE ${dateFilter}`
+    extractDv = (r) => String(r.geographicView?.countryCriterionId || 'unknown')
+  } else {
+    return []
+  }
 
   const results = await gaqlQuery(customerId, token, developerToken, query, loginCustomerId)
 
   return results.map((r: any) => {
     const costMicros = r.metrics?.costMicros || '0'
-    let dimensionValue = 'unknown'
-
-    if (segment === 'age') dimensionValue = normalizeGoogleAge(r.segments?.ageRangeType)
-    else if (segment === 'gender') dimensionValue = normalizeGoogleGender(r.segments?.genderType)
-    else if (segment === 'device') dimensionValue = normalizeGoogleDevice(r.segments?.device)
-    else if (segment === 'geo') dimensionValue = r.segments?.geoTargetConstant || 'unknown'
-
     return {
       campaignId: String(r.campaign?.id || ''),
-      dimensionValue,
+      dimensionValue: extractDv(r),
       spend: parseInt(costMicros, 10) / 1_000_000,
       impressions: parseInt(r.metrics?.impressions || '0', 10),
       clicks: parseInt(r.metrics?.clicks || '0', 10),
@@ -492,7 +494,9 @@ export interface GoogleAdAsset {
 }
 
 /**
- * Get ad assets for a campaign (top 5 responsive display ads).
+ * Get ad assets for a campaign.
+ * Step 1: Fetch ads with headlines/descriptions via ad_group_ad.
+ * Step 2: Resolve image URLs via ad_group_ad_asset_view (asset.image_asset.full_size.url).
  */
 export async function getCampaignAdAssets(
   customerId: string,
@@ -501,32 +505,64 @@ export async function getCampaignAdAssets(
   campaignId: string,
   loginCustomerId?: string
 ): Promise<GoogleAdAsset[]> {
+  const cleanCampaignId = String(campaignId).replace(/[^0-9]/g, '')
   try {
-    const query = `
+    // Step 1: Get ads with text content
+    const adQuery = `
       SELECT
         ad_group_ad.ad.id,
         ad_group_ad.ad.name,
         ad_group_ad.ad.type,
-        ad_group_ad.ad.responsive_display_ad.marketing_images,
+        ad_group_ad.ad.image_ad.image_url,
         ad_group_ad.ad.responsive_display_ad.headlines,
-        ad_group_ad.ad.responsive_display_ad.descriptions
+        ad_group_ad.ad.responsive_display_ad.descriptions,
+        ad_group_ad.ad.responsive_search_ad.headlines,
+        ad_group_ad.ad.responsive_search_ad.descriptions
       FROM ad_group_ad
-      WHERE campaign.id = '${String(campaignId).replace(/[^0-9]/g, '')}'
+      WHERE campaign.id = '${cleanCampaignId}'
       LIMIT 5
     `
-    const results = await gaqlQuery(customerId, token, developerToken, query, loginCustomerId)
+    const adResults = await gaqlQuery(customerId, token, developerToken, adQuery, loginCustomerId)
 
-    return results.map((r: any) => {
+    // Step 2: Resolve image asset URLs for this campaign
+    const imageMap = new Map<string, string>() // adId → imageUrl
+    try {
+      const assetQuery = `
+        SELECT
+          ad_group_ad.ad.id,
+          asset.image_asset.full_size.url
+        FROM ad_group_ad_asset_view
+        WHERE campaign.id = '${cleanCampaignId}'
+          AND asset.type = 'IMAGE'
+        LIMIT 10
+      `
+      const assetResults = await gaqlQuery(customerId, token, developerToken, assetQuery, loginCustomerId)
+      for (const r of assetResults) {
+        const adId = String(r.adGroupAd?.ad?.id || '')
+        const url = r.asset?.imageAsset?.fullSize?.url
+        if (adId && url && !imageMap.has(adId)) {
+          imageMap.set(adId, url)
+        }
+      }
+    } catch {
+      // Asset view query may fail for some campaign types — continue without images
+    }
+
+    return adResults.map((r: any) => {
       const ad = r.adGroupAd?.ad || {}
       const rda = ad.responsiveDisplayAd || {}
-      const images = rda.marketingImages || []
-      const headlines = rda.headlines || []
-      const descriptions = rda.descriptions || []
+      const rsa = ad.responsiveSearchAd || {}
+      const headlines = rda.headlines || rsa.headlines || []
+      const descriptions = rda.descriptions || rsa.descriptions || []
+      const adId = String(ad.id || '')
+
+      // Image priority: image_ad URL > asset view URL > null
+      const imageUrl = ad.imageAd?.imageUrl || imageMap.get(adId) || null
 
       return {
-        creativeId: String(ad.id || ''),
+        creativeId: adId,
         type: (ad.type || 'UNKNOWN').toLowerCase().replace(/_/g, ' '),
-        thumbnailUrl: images[0]?.asset ? null : null, // Google doesn't return direct URLs in GAQL
+        thumbnailUrl: imageUrl,
         title: headlines[0]?.text || ad.name || null,
         body: descriptions[0]?.text || null,
       }
@@ -572,9 +608,7 @@ async function googleAdsFetch<T>(
   throw new Error('Google Ads API: max retries exceeded')
 }
 
-/**
- * Get first and last day of a month as YYYY-MM-DD strings
- */
+// Local helper (not exported — avoids Nitro duplicate import warning with metaClient.ts)
 function getMonthRange(month: number, year: number): { since: string; until: string } {
   const since = `${year}-${String(month).padStart(2, '0')}-01`
   const lastDay = new Date(year, month, 0).getDate()
