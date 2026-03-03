@@ -247,6 +247,69 @@ export async function getPinterestDailyInsights(
 }
 
 // ============================================
+// Breakdown Analytics (Gender, Age, Device, Geo)
+// ============================================
+
+export interface PinterestBreakdownRow {
+  campaignId: string
+  dimensionValue: string
+  spend: number
+  impressions: number
+  clicks: number
+  conversions: number
+}
+
+/**
+ * Get breakdown analytics for campaigns by a specific dimension.
+ * Pinterest supports: GENDER, AGE_BUCKET, TARGETING_TYPE (device proxy), GEO_TARGETING
+ */
+export async function getBreakdownAnalytics(
+  accountId: string,
+  accessToken: string,
+  month: number,
+  year: number,
+  breakdown: 'GENDER' | 'AGE_BUCKET' | 'TARGETING_TYPE' | 'GEO_TARGETING'
+): Promise<PinterestBreakdownRow[]> {
+  const { since, until } = getMonthRange(month, year)
+
+  const campaignsRes = await pinterestFetch<{
+    items: Array<{ id: string; name: string; status: string }>
+  }>(`${PINTEREST_API_BASE}/ad_accounts/${accountId}/campaigns`, accessToken)
+
+  const campaigns = campaignsRes.items || []
+  if (campaigns.length === 0) return []
+
+  const campaignIds = campaigns.map(c => c.id)
+
+  try {
+    const analyticsRes = await pinterestFetch<any[]>(
+      `${PINTEREST_API_BASE}/ad_accounts/${accountId}/campaigns/analytics`,
+      accessToken,
+      {
+        start_date: since,
+        end_date: until,
+        campaign_ids: campaignIds.join(','),
+        columns: `SPEND_IN_DOLLAR,IMPRESSION_1,CLICKTHROUGH_1,TOTAL_CONVERSIONS,${breakdown}`,
+        granularity: 'MONTH',
+      }
+    )
+
+    const rows = Array.isArray(analyticsRes) ? analyticsRes : []
+    return rows.map(item => ({
+      campaignId: String(item.CAMPAIGN_ID || ''),
+      dimensionValue: String(item[breakdown] || 'unknown').toLowerCase(),
+      spend: parseFloat(item.SPEND_IN_DOLLAR || '0'),
+      impressions: parseInt(item.IMPRESSION_1 || '0', 10),
+      clicks: parseInt(item.CLICKTHROUGH_1 || '0', 10),
+      conversions: parseInt(item.TOTAL_CONVERSIONS || '0', 10),
+    }))
+  } catch (err: any) {
+    console.warn(`[Pinterest] Breakdown ${breakdown} failed:`, err.message)
+    return []
+  }
+}
+
+// ============================================
 // Helpers
 // ============================================
 

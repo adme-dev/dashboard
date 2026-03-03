@@ -7,7 +7,7 @@
  */
 import { queryRows } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
-import { computeMetrics, toNum, PLATFORM_LABELS, PLATFORM_COLORS } from '~~/server/utils/analyticsMetrics'
+import { computeMetrics, toNum, PLATFORM_LABELS, PLATFORM_COLORS, buildClientCondition } from '~~/server/utils/analyticsMetrics'
 
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
@@ -27,8 +27,8 @@ export default defineEventHandler(async (event) => {
 
   const platforms = q.platform ? String(q.platform).split(',').map(p => p.trim()).filter(Boolean) : null
 
-  // Build WHERE
-  const conditions: string[] = ['ms.period >= $1', 'ms.period <= $2', 'ms.client_id = $3']
+  // Build WHERE — match via direct client_id, social_connections.client_id, or ad_account_client_map
+  const conditions: string[] = ['ms.period >= $1', 'ms.period <= $2', buildClientCondition(3)]
   const params: any[] = [startDate.slice(0, 7), endDate.slice(0, 7), clientId]
   let idx = 4
 
@@ -65,7 +65,7 @@ export default defineEventHandler(async (event) => {
     `, params)
 
     // Previous period
-    const prevConditions: string[] = ['ms.period >= $1', 'ms.period <= $2', 'ms.client_id = $3']
+    const prevConditions: string[] = ['ms.period >= $1', 'ms.period <= $2', buildClientCondition(3)]
     const prevParams: any[] = [prevStart.toISOString().slice(0, 7), prevEnd.toISOString().slice(0, 7), clientId]
     let prevIdx = 4
     if (platforms && platforms.length > 0) {

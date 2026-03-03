@@ -11,9 +11,11 @@ const props = defineProps<{
     ctr: number | null
     roas: number | null
     budget?: number
+    rollingCount?: number
   } | null
   previousPeriod?: {
     spend: number
+    budget?: number
     impressions: number
     clicks: number
     conversions: number
@@ -31,6 +33,7 @@ const { fmtCurrency, fmtCompact, fmtPercent } = useAnalytics()
 interface KPI {
   label: string
   value: string
+  subtitle?: string
   change: number | null
   icon: string
   invertColor?: boolean // true = lower is better (e.g. CPC)
@@ -46,12 +49,31 @@ const kpis = computed<KPI[]>(() => {
     return ((current - prev) / prev) * 100
   }
 
-  return [
+  const budget = t.budget ?? 0
+  const utilisation = budget > 0 ? (t.spend / budget) * 100 : null
+  const prevBudget = p?.budget ?? 0
+  const prevUtilisation = prevBudget > 0 && p ? (p.spend / prevBudget) * 100 : null
+
+  const cards: KPI[] = [
     {
       label: 'Total Spend',
       value: fmtCurrency(t.spend),
       change: pctChange(t.spend, p?.spend ?? null),
       icon: 'i-lucide-wallet',
+    },
+    {
+      label: 'Budget',
+      value: budget > 0 ? fmtCurrency(budget) : '-',
+      subtitle: (t.rollingCount ?? 0) > 0 ? `${t.rollingCount} rolling` : undefined,
+      change: pctChange(budget, prevBudget),
+      icon: 'i-lucide-piggy-bank',
+    },
+    {
+      label: 'Utilisation',
+      value: utilisation != null ? `${utilisation.toFixed(1)}%` : '-',
+      change: pctChange(utilisation, prevUtilisation),
+      icon: 'i-lucide-gauge',
+      invertColor: true,
     },
     {
       label: 'Impressions',
@@ -85,13 +107,14 @@ const kpis = computed<KPI[]>(() => {
       icon: 'i-lucide-target',
     },
   ]
+  return cards
 })
 </script>
 
 <template>
-  <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+  <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
     <template v-if="loading">
-      <USkeleton v-for="i in 6" :key="i" class="h-24 rounded-lg" />
+      <USkeleton v-for="i in 8" :key="i" class="h-24 rounded-lg" />
     </template>
     <template v-else>
       <div
@@ -104,6 +127,10 @@ const kpis = computed<KPI[]>(() => {
           <span class="text-xs text-muted font-medium">{{ kpi.label }}</span>
         </div>
         <p class="text-xl font-bold tabular-nums text-default">{{ kpi.value }}</p>
+        <p v-if="kpi.subtitle" class="text-xs text-muted flex items-center gap-1 mt-0.5">
+          <UIcon name="i-lucide-repeat" class="w-3 h-3" />
+          {{ kpi.subtitle }}
+        </p>
         <div v-if="kpi.change !== null" class="flex items-center gap-1 mt-1">
           <UIcon
             :name="kpi.change > 0 ? 'i-lucide-trending-up' : 'i-lucide-trending-down'"

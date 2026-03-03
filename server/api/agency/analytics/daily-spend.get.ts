@@ -7,7 +7,7 @@
  */
 import { queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
-import { toNum } from '~~/server/utils/analyticsMetrics'
+import { toNum, buildClientCondition } from '~~/server/utils/analyticsMetrics'
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
   let idx = 3
 
   if (clientId) {
-    conditions.push(`ms.client_id = $${idx}`)
+    conditions.push(buildClientCondition(idx))
     params.push(clientId)
     idx++
   }

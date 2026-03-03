@@ -7,7 +7,7 @@
  */
 import { queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
-import { computeMetrics, toNum } from '~~/server/utils/analyticsMetrics'
+import { computeMetrics, toNum, buildClientCondition } from '~~/server/utils/analyticsMetrics'
 
 const VALID_METRICS = ['spend', 'impressions', 'clicks', 'cpc', 'cpm', 'ctr', 'roas'] as const
 const RAW_METRICS = ['spend', 'impressions', 'clicks'] as const
@@ -44,7 +44,7 @@ export default defineEventHandler(async (event) => {
       let idx = 3
 
       if (clientId) {
-        conditions.push(`ms.client_id = $${idx}`)
+        conditions.push(buildClientCondition(idx))
         params.push(clientId)
         idx++
       }
@@ -80,7 +80,7 @@ export default defineEventHandler(async (event) => {
       let idx = 3
 
       if (clientId) {
-        conditions.push(`ms.client_id = $${idx}`)
+        conditions.push(buildClientCondition(idx))
         params.push(clientId)
         idx++
       }

@@ -282,6 +282,118 @@ export function extractRevenue(actionValues?: Array<{ action_type: string; value
 }
 
 // ============================================
+// Breakdown Insights (Age, Gender, Device, Geo)
+// ============================================
+
+export interface MetaBreakdownRow {
+  campaignId: string
+  dimensionValue: string
+  spend: number
+  impressions: number
+  clicks: number
+  conversions: number
+  revenue: number
+}
+
+/**
+ * Get breakdown insights for campaigns by a specific dimension.
+ * @param breakdown - 'age' | 'gender' | 'country' | 'impression_device'
+ */
+export async function getBreakdownInsights(
+  accountId: string,
+  token: string,
+  month: number,
+  year: number,
+  breakdown: 'age' | 'gender' | 'country' | 'impression_device'
+): Promise<MetaBreakdownRow[]> {
+  const { since, until } = getMonthRange(month, year)
+  const rows: MetaBreakdownRow[] = []
+  let url: string | null = `${META_GRAPH_BASE}/${accountId}/insights`
+  const query: Record<string, string> = {
+    fields: 'campaign_id,spend,impressions,clicks,actions,action_values',
+    time_range: JSON.stringify({ since, until }),
+    level: 'campaign',
+    breakdowns: breakdown,
+    access_token: token,
+    limit: '500'
+  }
+
+  while (url) {
+    const res: { data: any[]; paging?: { next?: string } } = await ofetch(url, {
+      method: 'GET',
+      query: url.includes('?') ? undefined : query
+    })
+    for (const item of res.data || []) {
+      rows.push({
+        campaignId: item.campaign_id || '',
+        dimensionValue: item[breakdown] || 'unknown',
+        spend: parseFloat(item.spend || '0'),
+        impressions: parseInt(item.impressions || '0', 10),
+        clicks: parseInt(item.clicks || '0', 10),
+        conversions: extractConversions(item.actions),
+        revenue: extractRevenue(item.action_values),
+      })
+    }
+    url = res.paging?.next || null
+  }
+
+  return rows
+}
+
+// ============================================
+// Campaign Creatives
+// ============================================
+
+export interface MetaCreative {
+  creativeId: string
+  type: string
+  thumbnailUrl: string | null
+  title: string | null
+  body: string | null
+}
+
+/**
+ * Get ad creatives for a campaign (top 5).
+ */
+export async function getCampaignCreatives(
+  campaignId: string,
+  token: string
+): Promise<MetaCreative[]> {
+  try {
+    const res = await ofetch<{
+      data: Array<{
+        id: string
+        creative?: {
+          thumbnail_url?: string
+          image_url?: string
+          title?: string
+          body?: string
+          object_type?: string
+        }
+      }>
+    }>(`${META_GRAPH_BASE}/${campaignId}/ads`, {
+      method: 'GET',
+      query: {
+        fields: 'id,creative{thumbnail_url,image_url,title,body,object_type}',
+        limit: '5',
+        access_token: token
+      }
+    })
+
+    return (res.data || []).map(ad => ({
+      creativeId: ad.id,
+      type: ad.creative?.object_type || 'image',
+      thumbnailUrl: ad.creative?.thumbnail_url || ad.creative?.image_url || null,
+      title: ad.creative?.title || null,
+      body: ad.creative?.body || null,
+    }))
+  } catch (err: any) {
+    console.warn(`[MetaClient] Failed to fetch creatives for campaign ${campaignId}:`, err.message)
+    return []
+  }
+}
+
+// ============================================
 // Billing / Spend Totals
 // ============================================
 

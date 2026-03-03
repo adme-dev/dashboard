@@ -7,9 +7,10 @@
  */
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
-import { computeMetrics, toNum, PLATFORM_LABELS, PLATFORM_COLORS } from '~~/server/utils/analyticsMetrics'
+import { computeMetrics, toNum, PLATFORM_LABELS, PLATFORM_COLORS, buildClientCondition } from '~~/server/utils/analyticsMetrics'
+import { buildCampaignDeepLink } from '~~/server/utils/platformDeepLinks'
 
-const ALLOWED_SORT = ['spend', 'impressions', 'clicks', 'conversions', 'revenue', 'campaign_name', 'platform'] as const
+const ALLOWED_SORT = ['spend', 'budget', 'impressions', 'clicks', 'conversions', 'revenue', 'campaign_name', 'platform'] as const
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
@@ -29,12 +30,14 @@ export default defineEventHandler(async (event) => {
   const offset = Math.max(Number(q.offset) || 0, 0)
   const search = q.search as string | undefined
 
+  const showInactive = q.showInactive === 'true'
+
   const conditions: string[] = ['ms.period >= $1', 'ms.period <= $2']
   const params: any[] = [startDate.slice(0, 7), endDate.slice(0, 7)]
   let idx = 3
 
   if (clientId) {
-    conditions.push(`ms.client_id = $${idx}`)
+    conditions.push(buildClientCondition(idx))
     params.push(clientId)
     idx++
   }
@@ -48,6 +51,10 @@ export default defineEventHandler(async (event) => {
     conditions.push(`ms.campaign_name ILIKE $${idx}`)
     params.push(`%${escaped}%`)
     idx++
+  }
+  if (!showInactive) {
+    // Exclude deleted/archived/removed campaigns
+    conditions.push(`(ms.campaign_status IS NULL OR ms.campaign_status NOT IN ('DELETED', 'ARCHIVED', 'REMOVED', 'deleted', 'archived', 'removed'))`)
   }
 
   const where = conditions.join(' AND ')
@@ -79,13 +86,19 @@ export default defineEventHandler(async (event) => {
         c.name as client_name,
         SUM(ms.actual_spend) as spend,
         SUM(ms.budget_allocated) as budget,
+        BOOL_OR(ms.budget_rolling) as budget_rolling,
         SUM(ms.impressions) as impressions,
         SUM(ms.clicks) as clicks,
         SUM(ms.conversions) as conversions,
-        0 as revenue,
-        MAX(ms.synced_at) as last_synced
+        COALESCE(SUM(ms.revenue), 0) as revenue,
+        MAX(ms.synced_at) as last_synced,
+        (array_agg(ms.id ORDER BY ms.synced_at DESC NULLS LAST))[1] as media_spend_id,
+        (array_agg(ms.connection_id ORDER BY ms.synced_at DESC NULLS LAST))[1] as connection_id,
+        (array_agg(sc.account_id ORDER BY ms.synced_at DESC NULLS LAST))[1] as connection_account_id,
+        (array_agg(sc.metadata::text ORDER BY ms.synced_at DESC NULLS LAST))[1] as connection_metadata
       FROM media_spend ms
       LEFT JOIN agency_clients c ON ms.client_id = c.id
+      LEFT JOIN social_connections sc ON ms.connection_id = sc.id
       WHERE ${where}
       GROUP BY ms.campaign_id, ms.campaign_name, ms.platform, ms.campaign_type, ms.campaign_status, ms.client_id, c.name
       ORDER BY ${sortBy} ${sortDir}
@@ -100,6 +113,15 @@ export default defineEventHandler(async (event) => {
       const revenue = toNum(r.revenue)
       const metrics = computeMetrics(spend, impressions, clicks, conversions, revenue)
 
+      // Build deep link URL
+      let connectionData: { accountId: string; metadata: any } | null = null
+      if (r.connection_account_id) {
+        let metadata: any = null
+        try { metadata = typeof r.connection_metadata === 'string' ? JSON.parse(r.connection_metadata) : r.connection_metadata } catch { /* ignore */ }
+        connectionData = { accountId: r.connection_account_id, metadata }
+      }
+      const deepLinkUrl = buildCampaignDeepLink(r.platform, r.campaign_id, connectionData)
+
       return {
         campaignId: r.campaign_id,
         campaignName: r.campaign_name,
@@ -109,15 +131,18 @@ export default defineEventHandler(async (event) => {
         campaignType: r.campaign_type,
         campaignStatus: r.campaign_status,
         clientId: r.client_id,
-        clientName: r.client_name || 'Unknown',
+        clientName: r.client_name || 'Unassigned',
         spend,
         budget: toNum(r.budget),
+        budgetRolling: r.budget_rolling === true,
         impressions,
         clicks,
         conversions,
         revenue,
         ...metrics,
         lastSynced: r.last_synced,
+        mediaSpendId: r.media_spend_id,
+        deepLinkUrl,
       }
     })
 

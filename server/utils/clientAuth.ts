@@ -132,7 +132,7 @@ export async function requireClientAuth(event: H3Event): Promise<ServerClientUse
       canAddComments: user.can_add_comments,
       canUploadFiles: user.can_upload_files,
       canInviteUsers: user.can_invite_users,
-      canViewAnalytics: user.can_view_analytics ?? false
+      canViewAnalytics: user.can_view_analytics ?? true
     }
   }
 }

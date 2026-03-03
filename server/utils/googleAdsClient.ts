@@ -382,6 +382,162 @@ export async function getDailySpend(
 }
 
 // ============================================
+// Breakdown Data (Age, Gender, Device, Geo)
+// ============================================
+
+export interface GoogleBreakdownRow {
+  campaignId: string
+  dimensionValue: string
+  spend: number
+  impressions: number
+  clicks: number
+  conversions: number
+  revenue: number
+}
+
+const GOOGLE_SEGMENT_MAP: Record<string, string> = {
+  age: 'segments.age_range_type',
+  gender: 'segments.gender_type',
+  device: 'segments.device',
+  geo: 'segments.geo_target_constant',
+}
+
+/**
+ * Get breakdown data for campaigns by a specific segment.
+ */
+export async function getBreakdownData(
+  customerId: string,
+  token: string,
+  developerToken: string,
+  month: number,
+  year: number,
+  segment: 'age' | 'gender' | 'device' | 'geo',
+  loginCustomerId?: string
+): Promise<GoogleBreakdownRow[]> {
+  const { since, until } = getMonthRange(month, year)
+  const segmentField = GOOGLE_SEGMENT_MAP[segment]
+  if (!segmentField) return []
+
+  const query = `
+    SELECT
+      campaign.id,
+      ${segmentField},
+      metrics.cost_micros,
+      metrics.impressions,
+      metrics.clicks,
+      metrics.conversions,
+      metrics.conversions_value
+    FROM campaign
+    WHERE segments.date BETWEEN '${since}' AND '${until}'
+  `
+
+  const results = await gaqlQuery(customerId, token, developerToken, query, loginCustomerId)
+
+  return results.map((r: any) => {
+    const costMicros = r.metrics?.costMicros || '0'
+    let dimensionValue = 'unknown'
+
+    if (segment === 'age') dimensionValue = normalizeGoogleAge(r.segments?.ageRangeType)
+    else if (segment === 'gender') dimensionValue = normalizeGoogleGender(r.segments?.genderType)
+    else if (segment === 'device') dimensionValue = normalizeGoogleDevice(r.segments?.device)
+    else if (segment === 'geo') dimensionValue = r.segments?.geoTargetConstant || 'unknown'
+
+    return {
+      campaignId: String(r.campaign?.id || ''),
+      dimensionValue,
+      spend: parseInt(costMicros, 10) / 1_000_000,
+      impressions: parseInt(r.metrics?.impressions || '0', 10),
+      clicks: parseInt(r.metrics?.clicks || '0', 10),
+      conversions: parseFloat(r.metrics?.conversions || '0'),
+      revenue: parseFloat(r.metrics?.conversionsValue || '0'),
+    }
+  })
+}
+
+function normalizeGoogleAge(val: string | undefined): string {
+  if (!val) return 'unknown'
+  const map: Record<string, string> = {
+    AGE_RANGE_18_24: '18-24', AGE_RANGE_25_34: '25-34', AGE_RANGE_35_44: '35-44',
+    AGE_RANGE_45_54: '45-54', AGE_RANGE_55_64: '55-64', AGE_RANGE_65_UP: '65+',
+    AGE_RANGE_UNDETERMINED: 'unknown',
+  }
+  return map[val] || 'unknown'
+}
+
+function normalizeGoogleGender(val: string | undefined): string {
+  if (!val) return 'unknown'
+  const map: Record<string, string> = { MALE: 'male', FEMALE: 'female', UNDETERMINED: 'unknown' }
+  return map[val] || 'unknown'
+}
+
+function normalizeGoogleDevice(val: string | undefined): string {
+  if (!val) return 'unknown'
+  const map: Record<string, string> = {
+    MOBILE: 'mobile', DESKTOP: 'desktop', TABLET: 'tablet',
+    CONNECTED_TV: 'connected_tv', OTHER: 'other',
+  }
+  return map[val] || 'other'
+}
+
+// ============================================
+// Campaign Ad Assets (Creatives)
+// ============================================
+
+export interface GoogleAdAsset {
+  creativeId: string
+  type: string
+  thumbnailUrl: string | null
+  title: string | null
+  body: string | null
+}
+
+/**
+ * Get ad assets for a campaign (top 5 responsive display ads).
+ */
+export async function getCampaignAdAssets(
+  customerId: string,
+  token: string,
+  developerToken: string,
+  campaignId: string,
+  loginCustomerId?: string
+): Promise<GoogleAdAsset[]> {
+  try {
+    const query = `
+      SELECT
+        ad_group_ad.ad.id,
+        ad_group_ad.ad.name,
+        ad_group_ad.ad.type,
+        ad_group_ad.ad.responsive_display_ad.marketing_images,
+        ad_group_ad.ad.responsive_display_ad.headlines,
+        ad_group_ad.ad.responsive_display_ad.descriptions
+      FROM ad_group_ad
+      WHERE campaign.id = '${String(campaignId).replace(/[^0-9]/g, '')}'
+      LIMIT 5
+    `
+    const results = await gaqlQuery(customerId, token, developerToken, query, loginCustomerId)
+
+    return results.map((r: any) => {
+      const ad = r.adGroupAd?.ad || {}
+      const rda = ad.responsiveDisplayAd || {}
+      const images = rda.marketingImages || []
+      const headlines = rda.headlines || []
+      const descriptions = rda.descriptions || []
+
+      return {
+        creativeId: String(ad.id || ''),
+        type: (ad.type || 'UNKNOWN').toLowerCase().replace(/_/g, ' '),
+        thumbnailUrl: images[0]?.asset ? null : null, // Google doesn't return direct URLs in GAQL
+        title: headlines[0]?.text || ad.name || null,
+        body: descriptions[0]?.text || null,
+      }
+    })
+  } catch (err: any) {
+    console.warn(`[GoogleAds] Failed to fetch ad assets for campaign ${campaignId}:`, err.message)
+    return []
+  }
+}
+
+// ============================================
 // Helpers
 // ============================================
 

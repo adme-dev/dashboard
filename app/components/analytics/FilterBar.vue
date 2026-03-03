@@ -1,12 +1,12 @@
 <script setup lang="ts">
 const { filters, updateFilters, setDatePreset, ALL_PLATFORM_KEYS, getPlatformLabel } = useAnalytics()
 
-const { data: clientsData } = useLazyFetch('/api/agency/clients', { query: { limit: 200 } })
+const { data: clientsData } = useLazyFetch('/api/agency/clients')
 const clientOptions = computed(() => {
-  const clients = (clientsData.value as any)?.clients || clientsData.value || []
+  const clients = (clientsData.value as any) || []
   return [
     { label: 'All Clients', value: 'all' },
-    ...clients.map((c: any) => ({ label: c.name, value: c.id }))
+    ...clients.map((c: any) => ({ label: c.name, value: c.id })),
   ]
 })
 
@@ -101,6 +101,7 @@ const selectedPlatforms = computed({
         variant="soft"
         color="neutral"
         :to="`/api/agency/analytics/export?startDate=${filters.startDate}&endDate=${filters.endDate}${filters.platforms.length ? '&platform=' + filters.platforms.join(',') : ''}${filters.clientId ? '&clientId=' + filters.clientId : ''}`"
+        external
         target="_blank"
       />
     </div>

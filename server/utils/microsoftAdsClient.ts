@@ -472,6 +472,176 @@ export async function getMicrosoftDailyInsights(
 }
 
 // ============================================
+// Breakdown Reports (Age/Gender, Device, Geo)
+// ============================================
+
+export interface MicrosoftBreakdownRow {
+  campaignId: string
+  dimensionType: string
+  dimensionValue: string
+  spend: number
+  impressions: number
+  clicks: number
+  conversions: number
+  revenue: number
+}
+
+/**
+ * Submit, poll, and parse a breakdown report.
+ * @param reportType 'AgeGender' | 'Device' | 'Geographic'
+ */
+export async function getBreakdownReport(
+  accountId: string,
+  accessToken: string,
+  developerToken: string,
+  month: number,
+  year: number,
+  reportType: 'AgeGender' | 'Device' | 'Geographic'
+): Promise<MicrosoftBreakdownRow[]> {
+  const reportConfig = getBreakdownReportConfig(reportType, accountId, month, year)
+
+  const soapBody = `<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+  <s:Header>
+    <h:AuthenticationToken xmlns:h="https://bingads.microsoft.com/Reporting/v13">${escapeXml(accessToken)}</h:AuthenticationToken>
+    <h:DeveloperToken xmlns:h="https://bingads.microsoft.com/Reporting/v13">${escapeXml(developerToken)}</h:DeveloperToken>
+  </s:Header>
+  <s:Body>
+    <SubmitGenerateReportRequest xmlns="https://bingads.microsoft.com/Reporting/v13">
+      <ReportRequest xmlns:i="http://www.w3.org/2001/XMLSchema-instance" i:type="${reportConfig.requestType}">
+        <ExcludeColumnHeaders>false</ExcludeColumnHeaders>
+        <ExcludeReportFooter>true</ExcludeReportFooter>
+        <ExcludeReportHeader>true</ExcludeReportHeader>
+        <Format>Csv</Format>
+        <ReturnOnlyCompleteData>false</ReturnOnlyCompleteData>
+        <Aggregation>Summary</Aggregation>
+        <Columns>${reportConfig.columns}</Columns>
+        <Scope>
+          <AccountIds xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
+            <a:long>${escapeXml(accountId)}</a:long>
+          </AccountIds>
+        </Scope>
+        <Time>
+          <CustomDateRangeStart>
+            <Day>1</Day>
+            <Month>${month}</Month>
+            <Year>${year}</Year>
+          </CustomDateRangeStart>
+          <CustomDateRangeEnd>
+            <Day>${new Date(year, month, 0).getDate()}</Day>
+            <Month>${month}</Month>
+            <Year>${year}</Year>
+          </CustomDateRangeEnd>
+        </Time>
+      </ReportRequest>
+    </SubmitGenerateReportRequest>
+  </s:Body>
+</s:Envelope>`
+
+  try {
+    const res = await microsoftFetch(
+      'https://reporting.api.bingads.microsoft.com/Api/Advertiser/v13/ReportingService.svc',
+      accessToken, developerToken, soapBody, 'SubmitGenerateReport'
+    )
+    const requestId = extractXmlValue(res, 'ReportRequestId')
+    if (!requestId) return []
+
+    const downloadUrl = await pollReportStatus(requestId, accessToken, developerToken, 30000)
+    const csvText = await ofetch<string>(downloadUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      responseType: 'text',
+    })
+
+    return parseBreakdownCsv(csvText, reportType)
+  } catch (err: any) {
+    console.warn(`[MicrosoftAds] Breakdown report ${reportType} failed:`, err.message)
+    return []
+  }
+}
+
+function getBreakdownReportConfig(type: 'AgeGender' | 'Device' | 'Geographic', _accountId: string, _month: number, _year: number) {
+  const colTag = (rt: string, col: string) => `<${rt}ReportColumn>${col}</${rt}ReportColumn>`
+
+  switch (type) {
+    case 'AgeGender':
+      return {
+        requestType: 'AgeGenderAudienceReportRequest',
+        columns: ['CampaignId', 'AgeGroup', 'Gender', 'Spend', 'Impressions', 'Clicks', 'Conversions', 'Revenue']
+          .map(c => colTag('AgeGenderAudienceReport', c)).join('\n          ')
+      }
+    case 'Device':
+      return {
+        requestType: 'DeviceOSPerformanceReportRequest' as const,
+        columns: ['CampaignId', 'DeviceType', 'Spend', 'Impressions', 'Clicks', 'Conversions', 'Revenue']
+          .map(c => colTag('DeviceOSPerformanceReport', c)).join('\n          ')
+      }
+    case 'Geographic':
+      return {
+        requestType: 'GeographicPerformanceReportRequest' as const,
+        columns: ['CampaignId', 'Country', 'Spend', 'Impressions', 'Clicks', 'Conversions', 'Revenue']
+          .map(c => colTag('GeographicPerformanceReport', c)).join('\n          ')
+      }
+  }
+}
+
+function parseBreakdownCsv(csv: string, reportType: 'AgeGender' | 'Device' | 'Geographic'): MicrosoftBreakdownRow[] {
+  const lines = csv.trim().split('\n').filter(line => line.trim())
+  if (lines.length < 2) return []
+
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"/, '').replace(/"$/, ''))
+  const results: MicrosoftBreakdownRow[] = []
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCsvLine(lines[i])
+    const row: Record<string, string> = {}
+    headers.forEach((h, idx) => { row[h] = values[idx] || '' })
+
+    const campaignId = row['CampaignId'] || ''
+    const spend = parseFloat(row['Spend'] || '0')
+    const impressions = parseInt(row['Impressions'] || '0', 10)
+    const clicks = parseInt(row['Clicks'] || '0', 10)
+    const conversions = parseFloat(row['Conversions'] || '0')
+    const revenue = parseFloat(row['Revenue'] || '0')
+
+    if (reportType === 'AgeGender') {
+      if (row['AgeGroup']) {
+        results.push({ campaignId, dimensionType: 'age', dimensionValue: normalizeMsAge(row['AgeGroup']), spend, impressions, clicks, conversions, revenue })
+      }
+      if (row['Gender']) {
+        results.push({ campaignId, dimensionType: 'gender', dimensionValue: normalizeMsGender(row['Gender']), spend, impressions, clicks, conversions, revenue })
+      }
+    } else if (reportType === 'Device') {
+      results.push({ campaignId, dimensionType: 'device', dimensionValue: normalizeMsDevice(row['DeviceType'] || ''), spend, impressions, clicks, conversions, revenue })
+    } else if (reportType === 'Geographic') {
+      results.push({ campaignId, dimensionType: 'geo', dimensionValue: row['Country'] || 'unknown', spend, impressions, clicks, conversions, revenue })
+    }
+  }
+
+  return results
+}
+
+function normalizeMsAge(val: string): string {
+  const map: Record<string, string> = {
+    'EighteenToTwentyFour': '18-24', 'TwentyFiveToThirtyFour': '25-34',
+    'ThirtyFiveToFortyNine': '35-49', 'FiftyToSixtyFour': '50-64',
+    'SixtyFiveAndAbove': '65+', 'Unknown': 'unknown',
+  }
+  return map[val] || 'unknown'
+}
+
+function normalizeMsGender(val: string): string {
+  return val.toLowerCase() === 'male' ? 'male' : val.toLowerCase() === 'female' ? 'female' : 'unknown'
+}
+
+function normalizeMsDevice(val: string): string {
+  const v = val.toLowerCase()
+  if (v.includes('mobile') || v.includes('smartphone')) return 'mobile'
+  if (v.includes('tablet')) return 'tablet'
+  if (v.includes('computer') || v.includes('desktop')) return 'desktop'
+  return 'other'
+}
+
+// ============================================
 // Helpers
 // ============================================
 

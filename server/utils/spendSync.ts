@@ -142,6 +142,12 @@ export async function syncMetaSpend(month: number, year: number): Promise<{ sync
     }
   }
 
+  // Sync breakdowns + creatives after main campaign sync
+  for (const conn of connections) {
+    try { await syncBreakdowns('meta', conn.id, month, year) } catch (err: any) { console.error(`[MetaSync] Breakdowns failed for ${conn.account_name}:`, err.message) }
+    try { await syncCreatives('meta', conn.id, month, year) } catch (err: any) { console.error(`[MetaSync] Creatives failed for ${conn.account_name}:`, err.message) }
+  }
+
   return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100 }
 }
 
@@ -302,6 +308,12 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
     } catch (err: any) {
       console.error(`[GoogleSync] Daily spend failed for ${conn.account_name}:`, err.message)
     }
+  }
+
+  // Sync breakdowns + creatives after main campaign sync
+  for (const conn of connections) {
+    try { await syncBreakdowns('google_ads', conn.id, month, year) } catch (err: any) { console.error(`[GoogleSync] Breakdowns failed for ${conn.account_name}:`, err.message) }
+    try { await syncCreatives('google_ads', conn.id, month, year) } catch (err: any) { console.error(`[GoogleSync] Creatives failed for ${conn.account_name}:`, err.message) }
   }
 
   return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100 }
@@ -752,6 +764,11 @@ export async function syncPinterestSpend(month: number, year: number): Promise<{
     } catch (err: any) {
       console.error(`[PinterestSync] Daily spend failed for ${conn.account_name}:`, err.message)
     }
+  }
+
+  // Sync breakdowns after main campaign sync
+  for (const conn of connections) {
+    try { await syncBreakdowns('pinterest', conn.id, month, year) } catch (err: any) { console.error(`[PinterestSync] Breakdowns failed for ${conn.account_name}:`, err.message) }
   }
 
   return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100 }
@@ -1226,7 +1243,266 @@ export async function syncMicrosoftSpend(month: number, year: number): Promise<{
     }
   }
 
+  // Sync breakdowns after main campaign sync
+  for (const conn of connections) {
+    try { await syncBreakdowns('microsoft_ads', conn.id, month, year) } catch (err: any) { console.error(`[MicrosoftSync] Breakdowns failed for ${conn.account_name}:`, err.message) }
+  }
+
   return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100 }
+}
+
+// ─── Breakdown Sync (Meta, Google, Microsoft, Pinterest) ────────
+
+interface BreakdownRow {
+  campaignId: string
+  dimensionType: string
+  dimensionValue: string
+  spend: number
+  impressions: number
+  clicks: number
+  conversions: number
+  revenue: number
+}
+
+/** Normalize dimension values across platforms to consistent labels */
+function normalizeAge(val: string): string {
+  const v = val.toLowerCase().replace(/[^0-9+-]/g, '')
+  const map: Record<string, string> = {
+    '1824': '18-24', '2534': '25-34', '3544': '35-44',
+    '4554': '45-54', '5564': '55-64', '65+': '65+',
+  }
+  return map[v] || val
+}
+
+function normalizeGender(val: string): string {
+  const v = val.toLowerCase()
+  if (v === 'male' || v === 'm') return 'male'
+  if (v === 'female' || v === 'f') return 'female'
+  return 'unknown'
+}
+
+function normalizeDevice(val: string): string {
+  const v = val.toLowerCase()
+  if (v.includes('mobile') || v === 'smartphone' || v === 'iphone' || v === 'android') return 'mobile'
+  if (v.includes('tablet') || v === 'ipad') return 'tablet'
+  if (v.includes('desktop') || v === 'computer') return 'desktop'
+  return v || 'other'
+}
+
+const BREAKDOWN_PLATFORMS = ['meta', 'google_ads', 'microsoft_ads', 'pinterest'] as const
+
+/**
+ * Sync demographic/geographic/device breakdowns for all supported platforms.
+ * Called after main campaign sync completes.
+ */
+export async function syncBreakdowns(platform: string, connectionId: string, month: number, year: number): Promise<number> {
+  if (!BREAKDOWN_PLATFORMS.includes(platform as any)) return 0
+
+  const period = `${year}-${String(month).padStart(2, '0')}`
+
+  // Get all media_spend IDs for this connection/period
+  const spendRows = await queryRows<{ id: string; campaign_id: string }>(
+    `SELECT id, campaign_id FROM media_spend
+     WHERE connection_id = $1 AND platform = $2 AND period = $3 AND campaign_id IS NOT NULL`,
+    [connectionId, platform, period]
+  )
+  if (spendRows.length === 0) return 0
+
+  const campaignToSpendId = new Map(spendRows.map(r => [r.campaign_id, r.id]))
+
+  // Get connection info
+  const conn = await queryOne<{ access_token: string; account_id: string; metadata: any; refresh_token: string | null; token_expires_at: string | null }>(
+    `SELECT access_token, account_id, metadata, refresh_token, token_expires_at FROM social_connections WHERE id = $1`,
+    [connectionId]
+  )
+  if (!conn) return 0
+
+  let allRows: BreakdownRow[] = []
+
+  try {
+    if (platform === 'meta') {
+      const { getBreakdownInsights } = await import('~~/server/utils/metaClient')
+      const actId = conn.metadata?.actId || `act_${conn.account_id}`
+      const dimensionMap = { age: 'age', gender: 'gender', device: 'impression_device', geo: 'country' } as const
+
+      for (const [dimType, metaBreakdown] of Object.entries(dimensionMap)) {
+        try {
+          const rows = await getBreakdownInsights(actId, conn.access_token, month, year, metaBreakdown as any)
+          for (const r of rows) {
+            let dv = r.dimensionValue
+            if (dimType === 'age') dv = normalizeAge(dv)
+            else if (dimType === 'gender') dv = normalizeGender(dv)
+            else if (dimType === 'device') dv = normalizeDevice(dv)
+            allRows.push({ ...r, dimensionType: dimType, dimensionValue: dv })
+          }
+        } catch (err: any) {
+          console.warn(`[BreakdownSync] Meta ${dimType} failed:`, err.message)
+        }
+      }
+    } else if (platform === 'google_ads') {
+      const { getBreakdownData } = await import('~~/server/utils/googleAdsClient')
+      const config = useRuntimeConfig()
+      const segments = ['age', 'gender', 'device', 'geo'] as const
+
+      // Detect MCC for login-customer-id
+      let mccId: string | undefined
+      try {
+        const { listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
+        const accessibleIds = await listAccessibleCustomers(conn.access_token, config.googleDeveloperToken)
+        const cleanAccountId = conn.account_id.replace(/-/g, '')
+        mccId = accessibleIds.find(id => id !== cleanAccountId) || undefined
+      } catch { /* ignore */ }
+
+      for (const seg of segments) {
+        try {
+          const rows = await getBreakdownData(conn.account_id, conn.access_token, config.googleDeveloperToken, month, year, seg, mccId)
+          allRows.push(...rows.map(r => ({ ...r, dimensionType: seg })))
+        } catch (err: any) {
+          console.warn(`[BreakdownSync] Google ${seg} failed:`, err.message)
+        }
+      }
+    } else if (platform === 'microsoft_ads') {
+      const { getBreakdownReport } = await import('~~/server/utils/microsoftAdsClient')
+      const config = useRuntimeConfig()
+
+      // AgeGender report produces both age and gender rows
+      try {
+        const ageGenderRows = await getBreakdownReport(conn.account_id, conn.access_token, config.microsoftAdsDeveloperToken, month, year, 'AgeGender')
+        allRows.push(...ageGenderRows.map(r => ({ campaignId: r.campaignId, dimensionType: r.dimensionType, dimensionValue: r.dimensionValue, spend: r.spend, impressions: r.impressions, clicks: r.clicks, conversions: r.conversions, revenue: r.revenue })))
+      } catch (err: any) { console.warn('[BreakdownSync] Microsoft AgeGender failed:', err.message) }
+
+      try {
+        const deviceRows = await getBreakdownReport(conn.account_id, conn.access_token, config.microsoftAdsDeveloperToken, month, year, 'Device')
+        allRows.push(...deviceRows.map(r => ({ campaignId: r.campaignId, dimensionType: 'device', dimensionValue: r.dimensionValue, spend: r.spend, impressions: r.impressions, clicks: r.clicks, conversions: r.conversions, revenue: r.revenue })))
+      } catch (err: any) { console.warn('[BreakdownSync] Microsoft Device failed:', err.message) }
+
+      try {
+        const geoRows = await getBreakdownReport(conn.account_id, conn.access_token, config.microsoftAdsDeveloperToken, month, year, 'Geographic')
+        allRows.push(...geoRows.map(r => ({ campaignId: r.campaignId, dimensionType: 'geo', dimensionValue: r.dimensionValue, spend: r.spend, impressions: r.impressions, clicks: r.clicks, conversions: r.conversions, revenue: r.revenue })))
+      } catch (err: any) { console.warn('[BreakdownSync] Microsoft Geo failed:', err.message) }
+    } else if (platform === 'pinterest') {
+      const { getBreakdownAnalytics } = await import('~~/server/utils/pinterestClient')
+      const dimensionMap = { age: 'AGE_BUCKET', gender: 'GENDER', device: 'TARGETING_TYPE', geo: 'GEO_TARGETING' } as const
+
+      for (const [dimType, pinBreakdown] of Object.entries(dimensionMap)) {
+        try {
+          const rows = await getBreakdownAnalytics(conn.account_id, conn.access_token, month, year, pinBreakdown as any)
+          allRows.push(...rows.map(r => ({
+            campaignId: r.campaignId,
+            dimensionType: dimType,
+            dimensionValue: dimType === 'age' ? normalizeAge(r.dimensionValue) : dimType === 'gender' ? normalizeGender(r.dimensionValue) : dimType === 'device' ? normalizeDevice(r.dimensionValue) : r.dimensionValue,
+            spend: r.spend, impressions: r.impressions, clicks: r.clicks, conversions: r.conversions, revenue: 0,
+          })))
+        } catch (err: any) {
+          console.warn(`[BreakdownSync] Pinterest ${dimType} failed:`, err.message)
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error(`[BreakdownSync] ${platform} breakdown sync failed:`, err.message)
+    return 0
+  }
+
+  // Upsert all breakdown rows
+  let upserted = 0
+  for (const row of allRows) {
+    const mediaSpendId = campaignToSpendId.get(row.campaignId)
+    if (!mediaSpendId) continue
+
+    try {
+      await queryOne(
+        `INSERT INTO spend_breakdowns (media_spend_id, dimension_type, dimension_value, spend, impressions, clicks, conversions, revenue)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (media_spend_id, dimension_type, dimension_value)
+         DO UPDATE SET spend = $4, impressions = $5, clicks = $6, conversions = $7, revenue = $8`,
+        [mediaSpendId, row.dimensionType, row.dimensionValue, row.spend, row.impressions, row.clicks, row.conversions, row.revenue]
+      )
+      upserted++
+    } catch (err: any) {
+      console.warn(`[BreakdownSync] Upsert failed for ${row.dimensionType}/${row.dimensionValue}:`, err.message)
+    }
+  }
+
+  return upserted
+}
+
+// ─── Creative Sync (Meta, Google) ───────────────────────────────
+
+/**
+ * Sync ad creatives for campaigns. Only Meta and Google support this.
+ */
+export async function syncCreatives(platform: string, connectionId: string, month: number, year: number): Promise<number> {
+  if (platform !== 'meta' && platform !== 'google_ads') return 0
+
+  const period = `${year}-${String(month).padStart(2, '0')}`
+
+  const spendRows = await queryRows<{ id: string; campaign_id: string }>(
+    `SELECT id, campaign_id FROM media_spend
+     WHERE connection_id = $1 AND platform = $2 AND period = $3 AND campaign_id IS NOT NULL`,
+    [connectionId, platform, period]
+  )
+  if (spendRows.length === 0) return 0
+
+  const conn = await queryOne<{ access_token: string; account_id: string; metadata: any }>(
+    `SELECT access_token, account_id, metadata FROM social_connections WHERE id = $1`,
+    [connectionId]
+  )
+  if (!conn) return 0
+
+  let upserted = 0
+
+  if (platform === 'meta') {
+    const { getCampaignCreatives } = await import('~~/server/utils/metaClient')
+
+    for (const row of spendRows) {
+      try {
+        const creatives = await getCampaignCreatives(row.campaign_id, conn.access_token)
+        for (const c of creatives) {
+          await queryOne(
+            `INSERT INTO campaign_creatives (media_spend_id, creative_id, creative_type, thumbnail_url, title, body, synced_at)
+             VALUES ($1, $2, $3, $4, $5, $6, NOW())
+             ON CONFLICT (media_spend_id, creative_id)
+             DO UPDATE SET creative_type = $3, thumbnail_url = $4, title = $5, body = $6, synced_at = NOW()`,
+            [row.id, c.creativeId, c.type, c.thumbnailUrl, c.title, c.body]
+          )
+          upserted++
+        }
+      } catch (err: any) {
+        console.warn(`[CreativeSync] Meta campaign ${row.campaign_id}:`, err.message)
+      }
+    }
+  } else if (platform === 'google_ads') {
+    const { getCampaignAdAssets } = await import('~~/server/utils/googleAdsClient')
+    const config = useRuntimeConfig()
+
+    let mccId: string | undefined
+    try {
+      const { listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
+      const accessibleIds = await listAccessibleCustomers(conn.access_token, config.googleDeveloperToken)
+      const cleanAccountId = conn.account_id.replace(/-/g, '')
+      mccId = accessibleIds.find(id => id !== cleanAccountId) || undefined
+    } catch { /* ignore */ }
+
+    for (const row of spendRows) {
+      try {
+        const assets = await getCampaignAdAssets(conn.account_id, conn.access_token, config.googleDeveloperToken, row.campaign_id, mccId)
+        for (const a of assets) {
+          await queryOne(
+            `INSERT INTO campaign_creatives (media_spend_id, creative_id, creative_type, thumbnail_url, title, body, synced_at)
+             VALUES ($1, $2, $3, $4, $5, $6, NOW())
+             ON CONFLICT (media_spend_id, creative_id)
+             DO UPDATE SET creative_type = $3, thumbnail_url = $4, title = $5, body = $6, synced_at = NOW()`,
+            [row.id, a.creativeId, a.type, a.thumbnailUrl, a.title, a.body]
+          )
+          upserted++
+        }
+      } catch (err: any) {
+        console.warn(`[CreativeSync] Google campaign ${row.campaign_id}:`, err.message)
+      }
+    }
+  }
+
+  return upserted
 }
 
 // ─── Shared Helpers ─────────────────────────────────────────────

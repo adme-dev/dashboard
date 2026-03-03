@@ -3,7 +3,7 @@ main = "src/index.ts"
 compatibility_date = "2024-12-01"
 
 [triggers]
-crons = ["0 21 * * *", "0 22 * * sun"]
+crons = ["0 6 * * *", "0 21 * * *", "0 22 * * sun"]
 
 [vars]
 API_URL = "https://agency-dashboard-6cm.pages.dev"

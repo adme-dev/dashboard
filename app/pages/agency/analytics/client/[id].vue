@@ -2,7 +2,15 @@
 definePageMeta({ layout: 'agency' })
 
 const route = useRoute()
+const router = useRouter()
 const clientId = computed(() => route.params.id as string)
+
+// Guard against invalid clientId (e.g. "null")
+const validId = computed(() => clientId.value && clientId.value !== 'null' && clientId.value !== 'undefined')
+
+if (!validId.value) {
+  navigateTo('/agency/analytics')
+}
 
 const { filters, fmtCurrency, fmtCompact, fmtPercent, getPlatformIcon, getPlatformColor, getPlatformLabel } = useAnalytics()
 
@@ -21,6 +29,7 @@ const apiQuery = computed(() => {
 const { data: overviewData, status: overviewStatus } = useFetch('/api/agency/analytics/overview', {
   query: apiQuery,
   watch: [apiQuery],
+  immediate: validId.value,
 })
 
 const overview = computed(() => overviewData.value as any)
@@ -39,6 +48,7 @@ const trendQuery = computed(() => ({
 const { data: trendData, status: trendStatus } = useFetch('/api/agency/analytics/trends', {
   query: trendQuery,
   watch: [trendQuery],
+  immediate: validId.value,
 })
 const trendPoints = computed(() => (trendData.value as any)?.dataPoints || [])
 

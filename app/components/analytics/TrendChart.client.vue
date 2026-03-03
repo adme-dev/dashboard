@@ -169,7 +169,7 @@ const hoveredPoint = computed(() => {
           :x="marginLeft - 6"
           :y="yPos(tick) + 3"
           text-anchor="end"
-          class="fill-muted"
+          fill="currentColor" class="text-muted"
           font-size="9"
         >
           {{ fmtMetric(tick, metric) }}
@@ -231,7 +231,7 @@ const hoveredPoint = computed(() => {
               :cy="yPos(dp.byPlatform[p] ?? 0)"
               r="3"
               :fill="getPlatformColor(p)"
-              stroke="white"
+              class="stroke-[var(--ui-bg)]"
               stroke-width="1"
             />
           </template>
@@ -244,7 +244,7 @@ const hoveredPoint = computed(() => {
           :x="xPos(lbl.index)"
           :y="marginTop + chartHeight + 15"
           text-anchor="middle"
-          class="fill-muted"
+          fill="currentColor" class="text-muted"
           font-size="8"
         >
           {{ lbl.label }}

@@ -7,9 +7,11 @@ export default eventHandler(async (event) => {
 
   const conn = await queryOne<any>(
     `SELECT sc.*,
-            u.name as connected_by_name
+            u.name as connected_by_name,
+            ac.name as client_name
      FROM social_connections sc
      LEFT JOIN users u ON sc.connected_by = u.id::text
+     LEFT JOIN agency_clients ac ON sc.client_id = ac.id
      WHERE sc.id = $1`,
     [id]
   )
@@ -31,6 +33,8 @@ export default eventHandler(async (event) => {
     metadata: conn.metadata ? (typeof conn.metadata === 'string' ? JSON.parse(conn.metadata) : conn.metadata) : null,
     connectedBy: conn.connected_by,
     connectedByName: conn.connected_by_name,
+    clientId: conn.client_id,
+    clientName: conn.client_name,
     createdAt: conn.created_at,
     updatedAt: conn.updated_at,
     clientMappings: mappings.map((m: any) => ({

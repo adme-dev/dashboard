@@ -6,7 +6,7 @@
  */
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
-import { computeMetrics, toNum, PLATFORM_LABELS, PLATFORM_COLORS } from '~~/server/utils/analyticsMetrics'
+import { computeMetrics, toNum, PLATFORM_LABELS, PLATFORM_COLORS, buildClientCondition } from '~~/server/utils/analyticsMetrics'
 
 const ALLOWED_SORT = ['spend', 'impressions', 'clicks', 'conversions', 'revenue', 'campaign_name', 'platform'] as const
 
@@ -33,7 +33,7 @@ export default defineEventHandler(async (event) => {
   const offset = Math.max(Number(q.offset) || 0, 0)
   const search = q.search as string | undefined
 
-  const conditions: string[] = ['ms.period >= $1', 'ms.period <= $2', 'ms.client_id = $3']
+  const conditions: string[] = ['ms.period >= $1', 'ms.period <= $2', buildClientCondition(3)]
   const params: any[] = [startDate.slice(0, 7), endDate.slice(0, 7), clientId]
   let idx = 4
 
@@ -76,7 +76,8 @@ export default defineEventHandler(async (event) => {
         SUM(ms.impressions) as impressions,
         SUM(ms.clicks) as clicks,
         SUM(ms.conversions) as conversions,
-        0 as revenue
+        COALESCE(SUM(ms.revenue), 0) as revenue,
+        (array_agg(ms.id ORDER BY ms.synced_at DESC NULLS LAST))[1] as media_spend_id
       FROM media_spend ms
       WHERE ${where}
       GROUP BY ms.campaign_id, ms.campaign_name, ms.platform, ms.campaign_type, ms.campaign_status
@@ -106,6 +107,7 @@ export default defineEventHandler(async (event) => {
         conversions,
         revenue,
         ...metrics,
+        mediaSpendId: r.media_spend_id,
       }
     })
 

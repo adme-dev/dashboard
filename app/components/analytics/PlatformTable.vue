@@ -5,6 +5,8 @@ const props = defineProps<{
     displayName: string
     color: string
     spend: number
+    budget?: number
+    rollingCount?: number
     impressions: number
     clicks: number
     conversions: number
@@ -45,12 +47,13 @@ function toggleSort(key: string) {
 const columns = [
   { key: 'platform', label: 'Platform' },
   { key: 'spend', label: 'Spend' },
+  { key: 'budget', label: 'Budget' },
+  { key: 'variance', label: 'Variance' },
   { key: 'impressions', label: 'Impressions' },
   { key: 'clicks', label: 'Clicks' },
   { key: 'ctr', label: 'CTR' },
   { key: 'cpc', label: 'CPC' },
   { key: 'conversions', label: 'Conv.' },
-  { key: 'roas', label: 'ROAS' },
   { key: 'pctOfTotal', label: '% of Total' },
 ]
 </script>
@@ -96,12 +99,25 @@ const columns = [
             </div>
           </td>
           <td class="px-3 py-2.5 text-right tabular-nums font-medium">{{ fmtCurrency(row.spend) }}</td>
+          <td class="px-3 py-2.5 text-right tabular-nums text-muted">
+            <div class="flex items-center gap-1 justify-end">
+              <UIcon v-if="(row.rollingCount ?? 0) > 0" name="i-lucide-repeat" class="w-3 h-3 text-primary shrink-0" :title="`${row.rollingCount} rolling`" />
+              {{ (row.budget ?? 0) > 0 ? fmtCurrency(row.budget!) : '-' }}
+            </div>
+          </td>
+          <td class="px-3 py-2.5 text-right tabular-nums">
+            <template v-if="(row.budget ?? 0) > 0">
+              <span :class="(row.budget! - row.spend) >= 0 ? 'text-green-500' : 'text-red-500'">
+                {{ fmtCurrency(row.budget! - row.spend) }}
+              </span>
+            </template>
+            <span v-else class="text-muted">-</span>
+          </td>
           <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtCompact(row.impressions) }}</td>
           <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtCompact(row.clicks) }}</td>
           <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtPercent(row.ctr) }}</td>
           <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtCurrency(row.cpc, 2) }}</td>
           <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtCompact(row.conversions) }}</td>
-          <td class="px-3 py-2.5 text-right tabular-nums">{{ row.roas != null ? row.roas.toFixed(2) + 'x' : '-' }}</td>
           <td class="px-3 py-2.5 text-right">
             <div class="flex items-center gap-2 justify-end">
               <div class="w-16 h-1.5 bg-default rounded-full overflow-hidden">

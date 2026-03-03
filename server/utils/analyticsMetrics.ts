@@ -9,6 +9,7 @@ export interface ComputedMetrics {
   ctr: number | null
   roas: number | null
   costPerConversion: number | null
+  conversionRate: number | null
 }
 
 export interface PeriodChange {
@@ -39,6 +40,7 @@ export function computeMetrics(
     ctr: impressions > 0 ? (clicks / impressions) * 100 : null,
     roas: spend > 0 && revenue > 0 ? revenue / spend : null,
     costPerConversion: conversions > 0 ? spend / conversions : null,
+    conversionRate: clicks > 0 ? (conversions / clicks) * 100 : null,
   }
 }
 
@@ -87,14 +89,14 @@ export const PLATFORM_LABELS: Record<string, string> = {
   microsoft_ads: 'Microsoft Ads',
 }
 
-/** Consistent platform colors for charts */
+/** Consistent platform colors for charts (dark-mode safe) */
 export const PLATFORM_COLORS: Record<string, string> = {
   meta: '#1877F2',
   google_ads: '#4285F4',
-  tiktok: '#010101',
+  tiktok: '#69C9D0',
   linkedin: '#0A66C2',
   pinterest: '#E60023',
-  snapchat: '#FFFC00',
+  snapchat: '#F7D731',
   twitter: '#1DA1F2',
   microsoft_ads: '#00A4EF',
 }
@@ -123,6 +125,37 @@ export function formatCompact(value: number): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`
   return value.toFixed(0)
+}
+
+/**
+ * Build a SQL WHERE condition to match media_spend rows for a given client.
+ * Checks 3 paths:
+ *  1. Direct ms.client_id match
+ *  2. social_connections.client_id (ad account → client link)
+ *  3. ad_account_client_map (campaign-level mapping, if configured)
+ *
+ * @param paramIdx - The $N placeholder index for the clientId parameter
+ * @returns SQL condition string (caller must push clientId into params at paramIdx)
+ */
+export function buildClientCondition(paramIdx: number): string {
+  return `(
+    ms.client_id = $${paramIdx}
+    OR EXISTS (
+      SELECT 1 FROM social_connections sc
+      WHERE sc.id = ms.connection_id AND sc.client_id = $${paramIdx}
+    )
+    OR EXISTS (
+      SELECT 1 FROM ad_account_client_map acm
+      JOIN agency_clients ac ON ac.name = acm.xero_client_name
+      WHERE ac.id = $${paramIdx}
+        AND acm.connection_id = ms.connection_id
+        AND (
+          acm.campaign_id = ms.campaign_id
+          OR (acm.campaign_name_pattern IS NOT NULL AND ms.campaign_name ILIKE '%' || acm.campaign_name_pattern || '%')
+          OR (acm.campaign_id IS NULL AND acm.campaign_name_pattern IS NULL)
+        )
+    )
+  )`
 }
 
 /**

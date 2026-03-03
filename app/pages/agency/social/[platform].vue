@@ -31,6 +31,35 @@ const {
   updateCampaignBudget, fetchCampaignDailySpend, fetchBudgetHistory,
 } = useSocialConnections()
 
+// Client assignment — for linking ad accounts to agency clients
+const { data: clientsList } = useLazyFetch('/api/agency/clients')
+const clientOptions = computed(() => {
+  const clients = (clientsList.value as any) || []
+  return [
+    { label: 'No client assigned', value: 'none' },
+    ...clients.map((c: any) => ({ label: c.name, value: c.id })),
+  ]
+})
+
+async function assignClient(connectionId: string, clientId: string) {
+  try {
+    await $fetch(`/api/agency/social/connections/${connectionId}`, {
+      method: 'PATCH',
+      body: { clientId: clientId === 'none' ? null : clientId },
+    })
+    // Update local data
+    const acct = accountSpend.value.find(a => a.id === connectionId)
+    if (acct) {
+      acct.clientId = clientId === 'none' ? null : clientId
+      const client = (clientsList.value as any)?.find((c: any) => c.id === clientId)
+      acct.clientName = client?.name || null
+    }
+    toast.add({ title: 'Client assigned', color: 'success' })
+  } catch (e: any) {
+    toast.add({ title: 'Failed to assign client', description: e.data?.statusMessage || e.message, color: 'error' })
+  }
+}
+
 // Month/year selector
 const now = new Date()
 const selectedMonth = ref(now.getMonth() + 1)
@@ -518,6 +547,7 @@ onMounted(async () => {
                 <th class="text-right px-4 py-3 font-medium text-muted">Impressions</th>
                 <th class="text-right px-4 py-3 font-medium text-muted">Clicks</th>
                 <th class="text-right px-4 py-3 font-medium text-muted">Conv.</th>
+                <th class="text-left px-4 py-3 font-medium text-muted">Client</th>
                 <th class="text-left px-4 py-3 font-medium text-muted">Last Synced</th>
                 <th class="text-right px-4 py-3 font-medium text-muted">Actions</th>
               </tr>
@@ -553,6 +583,16 @@ onMounted(async () => {
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(acct.totalImpressions) }}</td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(acct.totalClicks) }}</td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(acct.totalConversions) }}</td>
+                  <td class="px-4 py-3" @click.stop>
+                    <USelectMenu
+                      :model-value="acct.clientId || 'none'"
+                      :items="clientOptions"
+                      value-key="value"
+                      class="w-44"
+                      size="xs"
+                      @update:model-value="(val: string) => assignClient(acct.id, val)"
+                    />
+                  </td>
                   <td class="px-4 py-3 text-muted">{{ formatSyncTime(acct.lastSyncedAt) }}</td>
                   <td class="px-4 py-3 text-right" @click.stop>
                     <UButton
@@ -567,7 +607,7 @@ onMounted(async () => {
 
                 <!-- Expanded campaigns sub-rows -->
                 <tr v-if="expandedAccounts.has(acct.id)" :key="acct.id + '-campaigns'">
-                  <td colspan="11" class="p-0">
+                  <td colspan="12" class="p-0">
                     <div class="bg-elevated/20 border-b border-default">
                       <div v-if="campaignLoading[acct.id]" class="flex justify-center py-6">
                         <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin text-muted" />

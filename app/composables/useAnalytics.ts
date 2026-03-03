@@ -28,10 +28,10 @@ const PLATFORM_LABELS: Record<string, string> = {
 const PLATFORM_COLORS: Record<string, string> = {
   meta: '#1877F2',
   google_ads: '#4285F4',
-  tiktok: '#010101',
+  tiktok: '#69C9D0',
   linkedin: '#0A66C2',
   pinterest: '#E60023',
-  snapchat: '#FFFC00',
+  snapchat: '#F7D731',
   twitter: '#1DA1F2',
   microsoft_ads: '#00A4EF',
 }
@@ -131,6 +131,7 @@ export function useAnalytics() {
       case 'costPerConversion':
         return fmtCurrency(value, 2)
       case 'ctr':
+      case 'conversionRate':
         return fmtPercent(value)
       case 'roas':
         return value.toFixed(2) + 'x'

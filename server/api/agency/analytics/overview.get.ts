@@ -6,7 +6,7 @@
  */
 import { queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
-import { computeMetrics, toNum, PLATFORM_LABELS, PLATFORM_COLORS } from '~~/server/utils/analyticsMetrics'
+import { computeMetrics, toNum, PLATFORM_LABELS, PLATFORM_COLORS, buildClientCondition } from '~~/server/utils/analyticsMetrics'
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
   let idx = 3
 
   if (clientId) {
-    conditions.push(`ms.client_id = $${idx}`)
+    conditions.push(buildClientCondition(idx))
     params.push(clientId)
     idx++
   }
@@ -59,25 +59,28 @@ export default defineEventHandler(async (event) => {
         SUM(ms.clicks) as clicks,
         SUM(ms.conversions) as conversions,
         0 as revenue,
-        COUNT(DISTINCT ms.campaign_id) as campaign_count
+        COUNT(DISTINCT ms.campaign_id) as campaign_count,
+        COUNT(DISTINCT CASE WHEN ms.budget_rolling THEN ms.campaign_id END) as rolling_count
       FROM media_spend ms
       WHERE ${where}
       GROUP BY ms.platform
       ORDER BY spend DESC
     `, params)
 
-    // By client
+    // By client (group unlinked campaigns under "Unassigned")
     const byClientRows = await queryRows(`
       SELECT
         ms.client_id,
-        c.name as client_name,
+        COALESCE(c.name, 'Unassigned') as client_name,
         SUM(ms.actual_spend) as spend,
+        SUM(ms.budget_allocated) as budget,
         SUM(ms.impressions) as impressions,
         SUM(ms.clicks) as clicks,
         SUM(ms.conversions) as conversions,
         0 as revenue,
         ARRAY_AGG(DISTINCT ms.platform) as platforms,
-        COUNT(DISTINCT ms.campaign_id) as campaign_count
+        COUNT(DISTINCT ms.campaign_id) as campaign_count,
+        COUNT(DISTINCT CASE WHEN ms.budget_rolling THEN ms.campaign_id END) as rolling_count
       FROM media_spend ms
       LEFT JOIN agency_clients c ON ms.client_id = c.id
       WHERE ${where}
@@ -90,7 +93,7 @@ export default defineEventHandler(async (event) => {
     const prevParams: any[] = [prevStartPeriod, prevEndPeriod]
     let prevIdx = 3
     if (clientId) {
-      prevConditions.push(`ms.client_id = $${prevIdx}`)
+      prevConditions.push(buildClientCondition(prevIdx))
       prevParams.push(clientId)
       prevIdx++
     }
@@ -114,7 +117,7 @@ export default defineEventHandler(async (event) => {
     `, prevParams)
 
     // Compute totals
-    let totalSpend = 0, totalBudget = 0, totalImpressions = 0, totalClicks = 0, totalConversions = 0, totalRevenue = 0
+    let totalSpend = 0, totalBudget = 0, totalImpressions = 0, totalClicks = 0, totalConversions = 0, totalRevenue = 0, totalRollingCount = 0
     for (const r of byPlatformRows) {
       totalSpend += toNum(r.spend)
       totalBudget += toNum(r.budget)
@@ -122,12 +125,14 @@ export default defineEventHandler(async (event) => {
       totalClicks += toNum(r.clicks)
       totalConversions += toNum(r.conversions)
       totalRevenue += toNum(r.revenue)
+      totalRollingCount += Number(r.rolling_count || 0)
     }
 
     const totalsMetrics = computeMetrics(totalSpend, totalImpressions, totalClicks, totalConversions, totalRevenue)
 
     const byPlatform = byPlatformRows.map(r => {
       const spend = toNum(r.spend)
+      const budget = toNum(r.budget)
       const impressions = toNum(r.impressions)
       const clicks = toNum(r.clicks)
       const conversions = toNum(r.conversions)
@@ -138,18 +143,21 @@ export default defineEventHandler(async (event) => {
         displayName: PLATFORM_LABELS[r.platform] || r.platform,
         color: PLATFORM_COLORS[r.platform] || '#888888',
         spend,
+        budget,
         impressions,
         clicks,
         conversions,
         revenue,
         ...metrics,
         campaignCount: Number(r.campaign_count || 0),
+        rollingCount: Number(r.rolling_count || 0),
         pctOfTotal: totalSpend > 0 ? Math.round((spend / totalSpend) * 10000) / 100 : 0,
       }
     })
 
     const byClient = byClientRows.map(r => {
       const spend = toNum(r.spend)
+      const budget = toNum(r.budget)
       const impressions = toNum(r.impressions)
       const clicks = toNum(r.clicks)
       const conversions = toNum(r.conversions)
@@ -159,8 +167,10 @@ export default defineEventHandler(async (event) => {
         clientId: r.client_id,
         clientName: r.client_name || 'Unknown',
         spend,
+        budget,
         platforms: r.platforms || [],
         campaignCount: Number(r.campaign_count || 0),
+        rollingCount: Number(r.rolling_count || 0),
         cpc: metrics.cpc,
         ctr: metrics.ctr,
       }
@@ -179,6 +189,7 @@ export default defineEventHandler(async (event) => {
       totals: {
         spend: totalSpend,
         budget: totalBudget,
+        rollingCount: totalRollingCount,
         impressions: totalImpressions,
         clicks: totalClicks,
         conversions: totalConversions,

@@ -1,7 +1,15 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'agency' })
 
+const route = useRoute()
 const { filters, apiQuery, updateFilters } = useAnalytics()
+
+// Sync clientId with URL — clear it if not in current query params
+// (prevents stale filter from client detail page persisting)
+const urlClientId = (route.query.clientId as string) || null
+if (filters.value.clientId !== urlClientId) {
+  filters.value.clientId = urlClientId
+}
 
 // Overview data
 const { data: overviewData, status: overviewStatus } = useFetch('/api/agency/analytics/overview', {
@@ -50,6 +58,47 @@ const groupByOptions = [
 ]
 
 const loading = computed(() => overviewStatus.value === 'pending')
+
+// ─── Sync ───────────────────────────────────────────
+const toast = useToast()
+const syncing = ref(false)
+
+const SYNC_PLATFORMS = [
+  { key: 'meta', label: 'Meta', endpoint: '/api/agency/social/meta/sync-spend' },
+  { key: 'google', label: 'Google', endpoint: '/api/agency/social/google/sync-spend' },
+  { key: 'microsoft_ads', label: 'Microsoft', endpoint: '/api/agency/social/microsoft_ads/sync-spend' },
+  { key: 'pinterest', label: 'Pinterest', endpoint: '/api/agency/social/pinterest/sync-spend' },
+  { key: 'tiktok', label: 'TikTok', endpoint: '/api/agency/social/tiktok/sync-spend' },
+  { key: 'linkedin', label: 'LinkedIn', endpoint: '/api/agency/social/linkedin/sync-spend' },
+  { key: 'snapchat', label: 'Snapchat', endpoint: '/api/agency/social/snapchat/sync-spend' },
+  { key: 'twitter', label: 'X/Twitter', endpoint: '/api/agency/social/twitter/sync-spend' },
+]
+
+async function syncAll() {
+  syncing.value = true
+  const now = new Date()
+  const month = now.getMonth() + 1
+  const year = now.getFullYear()
+  let successCount = 0
+  let errorCount = 0
+
+  for (const platform of SYNC_PLATFORMS) {
+    try {
+      await $fetch(platform.endpoint, { method: 'POST', body: { month, year } })
+      successCount++
+    } catch {
+      errorCount++
+    }
+  }
+
+  syncing.value = false
+
+  if (successCount > 0) {
+    toast.add({ title: 'Sync complete', description: `${successCount} platform${successCount > 1 ? 's' : ''} synced${errorCount > 0 ? `, ${errorCount} failed` : ''}`, color: errorCount > 0 ? 'warning' : 'success' })
+  } else {
+    toast.add({ title: 'Sync failed', description: 'No platforms could be synced. Check your connections in Social Hub.', color: 'error' })
+  }
+}
 </script>
 
 <template>
@@ -60,6 +109,14 @@ const loading = computed(() => overviewStatus.value === 'pending')
         <h1 class="text-2xl font-bold text-default">Analytics</h1>
         <p class="text-sm text-muted mt-1">Cross-platform marketing performance</p>
       </div>
+      <UButton
+        icon="i-lucide-refresh-cw"
+        label="Sync All Platforms"
+        size="sm"
+        variant="outline"
+        :loading="syncing"
+        @click="syncAll"
+      />
     </div>
 
     <!-- Filter Bar -->
@@ -72,25 +129,22 @@ const loading = computed(() => overviewStatus.value === 'pending')
       :loading="loading"
     />
 
-    <!-- Platform Mix + Platform Table -->
-    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
-      <!-- Platform Chart (3/5) -->
-      <div class="lg:col-span-3 border border-default rounded-lg p-4">
-        <h3 class="text-sm font-semibold text-default mb-3">Spend by Platform</h3>
-        <AnalyticsPlatformChart
-          :data="trendPoints"
-          :loading="trendStatus === 'pending'"
-        />
-      </div>
+    <!-- Platform Chart -->
+    <div class="border border-default rounded-lg p-4">
+      <h3 class="text-sm font-semibold text-default mb-3">Spend by Platform</h3>
+      <AnalyticsPlatformChart
+        :data="trendPoints"
+        :loading="trendStatus === 'pending'"
+      />
+    </div>
 
-      <!-- Platform Table (2/5) -->
-      <div class="lg:col-span-2">
-        <h3 class="text-sm font-semibold text-default mb-3">Platform Breakdown</h3>
-        <AnalyticsPlatformTable
-          :platforms="byPlatform"
-          :loading="loading"
-        />
-      </div>
+    <!-- Platform Table -->
+    <div>
+      <h3 class="text-sm font-semibold text-default mb-3">Platform Breakdown</h3>
+      <AnalyticsPlatformTable
+        :platforms="byPlatform"
+        :loading="loading"
+      />
     </div>
 
     <!-- Trend Chart -->
@@ -135,6 +189,8 @@ const loading = computed(() => overviewStatus.value === 'pending')
       <AnalyticsClientBreakdown
         :clients="byClient"
         :loading="loading"
+        :start-date="filters.startDate"
+        :end-date="filters.endDate"
       />
     </div>
   </div>

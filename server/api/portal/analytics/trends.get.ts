@@ -6,7 +6,7 @@
  */
 import { queryRows } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
-import { computeMetrics, toNum } from '~~/server/utils/analyticsMetrics'
+import { computeMetrics, toNum, buildClientCondition } from '~~/server/utils/analyticsMetrics'
 
 const VALID_METRICS = ['spend', 'impressions', 'clicks', 'cpc', 'cpm', 'ctr', 'roas'] as const
 
@@ -41,7 +41,7 @@ export default defineEventHandler(async (event) => {
     let rows: any[]
 
     if (groupBy === 'day' || groupBy === 'week') {
-      const conditions: string[] = ['ds.spend_date >= $1', 'ds.spend_date <= $2', 'ms.client_id = $3']
+      const conditions: string[] = ['ds.spend_date >= $1', 'ds.spend_date <= $2', buildClientCondition(3)]
       const params: any[] = [startDate, endDate, clientId]
       let idx = 4
       if (platforms && platforms.length > 0) {
@@ -67,7 +67,7 @@ export default defineEventHandler(async (event) => {
         ORDER BY date
       `, params)
     } else {
-      const conditions: string[] = ['ms.period >= $1', 'ms.period <= $2', 'ms.client_id = $3']
+      const conditions: string[] = ['ms.period >= $1', 'ms.period <= $2', buildClientCondition(3)]
       const params: any[] = [startDate.slice(0, 7), endDate.slice(0, 7), clientId]
       let idx = 4
       if (platforms && platforms.length > 0) {
