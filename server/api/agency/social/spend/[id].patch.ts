@@ -33,11 +33,11 @@ export default eventHandler(async (event) => {
 
   const previousBudget = parseFloat(current.budget_allocated || '0')
 
-  // Update the budget (and rolling flag if provided)
-  const rollingClause = typeof body.rolling === 'boolean' ? `, budget_rolling = ${body.rolling}` : ''
-  const row = await queryOne<{ id: string; budget_allocated: number }>(
-    `UPDATE media_spend SET budget_allocated = $1${rollingClause} WHERE id = $2 RETURNING id, budget_allocated`,
-    [budgetAllocated, id]
+  // Update the budget and rolling flag
+  const rollingBool = body.rolling === true || body.rolling === 'true'
+  const row = await queryOne<{ id: string; budget_allocated: number; budget_rolling: boolean }>(
+    `UPDATE media_spend SET budget_allocated = $1, budget_rolling = $3 WHERE id = $2 RETURNING id, budget_allocated, budget_rolling`,
+    [budgetAllocated, id, rollingBool]
   )
 
   // Log the change (fire-and-forget — don't block response)
@@ -61,5 +61,5 @@ export default eventHandler(async (event) => {
     kvDelete(event, `spend:daily:${kvPlatform}:${period}`),
   ]).catch(() => {})
 
-  return { updated: true, id: row!.id, budgetAllocated: row!.budget_allocated }
+  return { updated: true, id: row!.id, budgetAllocated: row!.budget_allocated, rolling: row!.budget_rolling }
 })

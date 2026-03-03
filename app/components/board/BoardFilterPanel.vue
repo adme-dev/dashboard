@@ -1,7 +1,7 @@
 <template>
   <div class="w-80 p-3">
     <div class="flex items-center justify-between mb-3">
-      <span class="text-sm font-medium text-gray-700">Filters</span>
+      <span class="text-sm font-medium text-gray-700 dark:text-neutral-200">Filters</span>
       <button v-if="modelValue.length" class="text-xs text-blue-600 hover:text-blue-700" @click="$emit('update:modelValue', [])">
         Clear all
       </button>
@@ -12,12 +12,12 @@
       <div
         v-for="rule in modelValue"
         :key="rule.id"
-        class="flex items-center gap-2 bg-gray-50 rounded-md px-2 py-1.5 text-sm"
+        class="flex items-center gap-2 bg-gray-50 dark:bg-neutral-800 rounded-md px-2 py-1.5 text-sm"
       >
-        <span class="font-medium text-gray-700 truncate max-w-[80px]">{{ columnName(rule.columnId) }}</span>
-        <span class="text-gray-500">{{ operatorLabel(rule) }}</span>
-        <span v-if="showsValue(rule.operator, ruleColumnType(rule))" class="text-gray-900 truncate max-w-[80px]">{{ displayValue(rule) }}</span>
-        <button class="ml-auto text-gray-400 hover:text-gray-600 shrink-0" @click="removeFilter(rule.id)">
+        <span class="font-medium text-gray-700 dark:text-neutral-200 truncate max-w-[80px]">{{ columnName(rule.columnId) }}</span>
+        <span class="text-gray-500 dark:text-neutral-400">{{ operatorLabel(rule) }}</span>
+        <span v-if="showsValue(rule.operator, ruleColumnType(rule))" class="text-gray-900 dark:text-neutral-100 truncate max-w-[80px]">{{ displayValue(rule) }}</span>
+        <button class="ml-auto text-gray-400 dark:text-neutral-500 hover:text-gray-600 shrink-0" @click="removeFilter(rule.id)">
           <UIcon name="i-lucide-x" class="w-3.5 h-3.5" />
         </button>
       </div>
@@ -25,7 +25,7 @@
 
     <!-- Add filter row -->
     <div class="space-y-2 border-t pt-3">
-      <select v-model="newRule.columnId" class="w-full text-sm border rounded-md px-2 py-1.5 bg-white">
+      <select v-model="newRule.columnId" class="w-full text-sm border rounded-md px-2 py-1.5 bg-white dark:bg-neutral-900">
         <option value="">Select column...</option>
         <option v-for="col in columns" :key="col.id" :value="col.id">{{ col.name }}</option>
       </select>
@@ -33,7 +33,7 @@
       <select
         v-if="newRule.columnId"
         v-model="newRule.operator"
-        class="w-full text-sm border rounded-md px-2 py-1.5 bg-white"
+        class="w-full text-sm border rounded-md px-2 py-1.5 bg-white dark:bg-neutral-900"
       >
         <option v-for="op in availableOperators" :key="op.value" :value="op.value">{{ op.label }}</option>
       </select>
@@ -44,7 +44,7 @@
         <select
           v-if="selectedColumnType === 'status' || selectedColumnType === 'dropdown'"
           v-model="newRule.value"
-          class="w-full text-sm border rounded-md px-2 py-1.5 bg-white"
+          class="w-full text-sm border rounded-md px-2 py-1.5 bg-white dark:bg-neutral-900"
         >
           <option value="">Select value...</option>
           <option v-for="opt in selectedColumnOptions" :key="opt.value || opt.id" :value="opt.value || opt.id">

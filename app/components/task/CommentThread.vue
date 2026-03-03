@@ -1,7 +1,7 @@
 <template>
   <div class="comment-thread">
     <!-- New Comment Input (Top Level) -->
-    <div class="mb-6 pb-6 border-b border-gray-200">
+    <div class="mb-6 pb-6 border-b border-gray-200 dark:border-neutral-700">
       <TaskCommentInput
         :task-id="taskId"
         :placeholder="placeholder"
@@ -13,11 +13,11 @@
     <!-- Comments List -->
     <div v-if="loading && comments.length === 0" class="py-8 text-center">
       <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-primary mx-auto" />
-      <p class="text-gray-500 mt-2">Loading comments...</p>
+      <p class="text-gray-500 dark:text-neutral-400 mt-2">Loading comments...</p>
     </div>
 
-    <div v-else-if="comments.length === 0" class="py-8 text-center text-gray-500">
-      <UIcon name="i-lucide-message-circle" class="w-12 h-12 mx-auto mb-3 text-gray-300" />
+    <div v-else-if="comments.length === 0" class="py-8 text-center text-gray-500 dark:text-neutral-400">
+      <UIcon name="i-lucide-message-circle" class="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-neutral-600" />
       <p>No updates yet</p>
       <p class="text-sm">Be the first to share an update!</p>
     </div>

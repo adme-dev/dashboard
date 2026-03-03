@@ -6,7 +6,7 @@
         v-model="localValue"
         type="email"
         placeholder="email@example.com"
-        class="w-full px-1 py-0.5 text-sm border rounded outline-none focus:border-blue-500 bg-white"
+        class="w-full px-1 py-0.5 text-sm border border-gray-200 dark:border-neutral-700 rounded outline-none focus:border-blue-500 bg-white dark:bg-neutral-800 dark:text-neutral-100"
         @blur="save"
         @keydown.enter="save"
         @keydown.escape="cancel"
@@ -23,7 +23,7 @@
         <UIcon name="i-lucide-mail" class="w-3.5 h-3.5 flex-shrink-0" />
         <span class="truncate">{{ displayValue }}</span>
       </a>
-      <span v-else class="text-sm text-gray-400 cursor-text hover:bg-gray-100 px-1 py-0.5 rounded">-</span>
+      <span v-else class="text-sm text-gray-400 dark:text-neutral-500 cursor-text hover:bg-gray-100 dark:hover:bg-neutral-800 px-1 py-0.5 rounded">-</span>
     </template>
   </div>
 </template>

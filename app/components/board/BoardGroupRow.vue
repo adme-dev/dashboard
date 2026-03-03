@@ -1,13 +1,13 @@
 <template>
-  <div class="flex items-center gap-2 px-4 py-3 hover:bg-gray-50 transition-colors group/header">
+  <div class="flex items-center gap-2 px-4 py-3 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors group/header">
     <!-- Expand/Collapse -->
     <button
-      class="p-0.5 rounded hover:bg-gray-200 transition-colors"
+      class="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-neutral-700 transition-colors"
       @click="$emit('toggle')"
     >
       <UIcon
         :name="isCollapsed ? 'i-lucide-chevron-right' : 'i-lucide-chevron-down'"
-        class="w-4 h-4 text-gray-500"
+        class="w-4 h-4 text-gray-500 dark:text-neutral-400"
       />
     </button>
 
@@ -24,7 +24,7 @@
         ref="renameInput"
         v-model="editName"
         type="text"
-        class="text-sm font-medium bg-white border rounded px-2 py-0.5 outline-none focus:border-blue-500 w-48"
+        class="text-sm font-medium bg-white dark:bg-neutral-800 border border-gray-300 dark:border-neutral-600 rounded px-2 py-0.5 outline-none focus:border-blue-500 w-48"
         @keydown.enter="saveRename"
         @keydown.escape="cancelRename"
         @blur="saveRename"
@@ -38,8 +38,8 @@
     <!-- Actions (visible on hover) -->
     <div class="flex items-center gap-0.5 ml-auto opacity-0 group-hover/header:opacity-100 transition-opacity">
       <UDropdownMenu :items="menuItems">
-        <button class="p-1 hover:bg-gray-200 rounded transition-colors">
-          <UIcon name="i-lucide-more-horizontal" class="w-4 h-4 text-gray-500" />
+        <button class="p-1 hover:bg-gray-200 dark:hover:bg-neutral-700 rounded transition-colors">
+          <UIcon name="i-lucide-more-horizontal" class="w-4 h-4 text-gray-500 dark:text-neutral-400" />
         </button>
       </UDropdownMenu>
     </div>
@@ -47,7 +47,7 @@
     <!-- Color Picker Popover -->
     <div
       v-if="showColorPicker"
-      class="absolute z-20 mt-1 top-full left-12 bg-white border rounded-lg shadow-lg p-3"
+      class="absolute z-20 mt-1 top-full left-12 bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-600 rounded-lg shadow-lg p-3"
       @click.stop
     >
       <div class="grid grid-cols-7 gap-1.5">

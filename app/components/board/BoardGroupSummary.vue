@@ -1,13 +1,13 @@
 <template>
-  <div class="flex items-center bg-gray-50/30 text-xs text-gray-500 border-t">
-    <div class="w-10 px-2 py-2 border-r"></div>
-    <div class="flex-1 min-w-[250px] px-4 py-2 border-r font-medium">
+  <div class="flex items-center bg-gray-50/30 dark:bg-neutral-800/30 text-xs text-gray-500 dark:text-neutral-400 border-t border-gray-200 dark:border-neutral-700">
+    <div class="w-10 px-2 py-2 border-r border-gray-200 dark:border-neutral-700"></div>
+    <div class="flex-1 min-w-[250px] px-4 py-2 border-r border-gray-200 dark:border-neutral-700 font-medium">
       {{ itemCount }} item{{ itemCount !== 1 ? 's' : '' }}
     </div>
     <div
       v-for="col in columns"
       :key="col.id"
-      class="px-4 py-2 border-r"
+      class="px-4 py-2 border-r border-gray-200 dark:border-neutral-700"
       :style="{ width: (col.width || 150) + 'px' }"
     >
       <span v-if="aggregations[col.id]" class="font-medium">

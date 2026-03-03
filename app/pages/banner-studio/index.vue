@@ -695,7 +695,7 @@ const adTiles: TileData[] = [
   { w: 145, h: 120, bg: 'bg-gradient-to-br from-lime-500 to-green-600', type: 'ad', tag: 'Fitness', headline: 'Train\nHarder', cta: 'Join Free', ctaBg: 'bg-white text-lime-700', bgImage: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=290&h=240&fit=crop' },
   { w: 120, h: 120, bg: 'bg-gradient-to-br from-neutral-700 to-neutral-900', type: 'icon', headline: '160x600', icon: 'i-lucide-smartphone' },
   { w: 155, h: 120, bg: 'bg-gradient-to-br from-sky-500 to-cyan-600', type: 'ad', tag: 'SaaS', headline: 'Start\nFree', cta: 'Sign Up', ctaBg: 'bg-white text-sky-600' },
-  { w: 165, h: 120, bg: 'bg-gradient-to-br from-pink-500 to-rose-600', type: 'ad', tag: 'Fashion', headline: 'New\nSeason', cta: 'Shop', ctaBg: 'bg-white text-pink-600', bgImage: 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=330&h=240&fit=crop' },
+  { w: 165, h: 120, bg: 'bg-gradient-to-br from-pink-500 to-rose-600', type: 'ad', tag: 'Fashion', headline: 'New\nSeason', cta: 'Shop', ctaBg: 'bg-white text-pink-600', bgImage: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=330&h=240&fit=crop' },
   { w: 140, h: 120, bg: 'bg-gradient-to-br from-yellow-500 to-amber-600', type: 'ad', tag: 'Finance', headline: 'Save\nMore', cta: 'Open Acct', ctaBg: 'bg-white text-yellow-700' },
   { w: 120, h: 120, bg: 'bg-gradient-to-br from-stone-700 to-stone-900', type: 'icon', headline: '1080x1080', icon: 'i-lucide-square' },
   { w: 155, h: 120, bg: 'bg-gradient-to-br from-teal-500 to-emerald-600', type: 'ad', tag: 'Health', headline: 'Feel\nGreat', cta: 'Learn More', ctaBg: 'bg-white text-teal-600', bgImage: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=310&h=240&fit=crop' },

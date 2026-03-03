@@ -5,13 +5,13 @@
         <input
           v-model="startDate"
           type="date"
-          class="px-1 py-0.5 text-xs border rounded outline-none focus:border-blue-500 bg-white w-28"
+          class="px-1 py-0.5 text-xs border border-gray-200 dark:border-neutral-700 rounded outline-none focus:border-blue-500 bg-white dark:bg-neutral-800 dark:text-neutral-100 w-28"
         />
-        <span class="text-gray-400">-</span>
+        <span class="text-gray-400 dark:text-neutral-500">-</span>
         <input
           v-model="endDate"
           type="date"
-          class="px-1 py-0.5 text-xs border rounded outline-none focus:border-blue-500 bg-white w-28"
+          class="px-1 py-0.5 text-xs border border-gray-200 dark:border-neutral-700 rounded outline-none focus:border-blue-500 bg-white dark:bg-neutral-800 dark:text-neutral-100 w-28"
         />
         <UButton size="xs" color="primary" @click="save">OK</UButton>
         <UButton size="xs" variant="ghost" @click="cancel">
@@ -22,12 +22,12 @@
     <template v-else>
       <div
         v-if="hasRange"
-        class="flex items-center gap-1.5 px-2 py-1 rounded text-xs cursor-pointer hover:bg-gray-100"
+        class="flex items-center gap-1.5 px-2 py-1 rounded text-xs cursor-pointer hover:bg-gray-100 dark:hover:bg-neutral-800"
       >
         <UIcon name="i-lucide-gantt-chart" class="w-3.5 h-3.5 text-blue-500" />
-        <span class="text-gray-700">{{ formatShort(value?.dateValue) }} - {{ formatShort(value?.dateEndValue) }}</span>
+        <span class="text-gray-700 dark:text-neutral-300">{{ formatShort(value?.dateValue) }} - {{ formatShort(value?.dateEndValue) }}</span>
       </div>
-      <span v-else class="text-sm text-gray-400 cursor-pointer hover:bg-gray-100 px-1 py-0.5 rounded">-</span>
+      <span v-else class="text-sm text-gray-400 dark:text-neutral-500 cursor-pointer hover:bg-gray-100 dark:hover:bg-neutral-800 px-1 py-0.5 rounded">-</span>
     </template>
   </div>
 </template>

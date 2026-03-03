@@ -11,6 +11,14 @@ export default eventHandler(async (event) => {
   await requireAuth(event)
 
   try {
+    if (!process.env.MONDAY_API_TOKEN) {
+      return {
+        workspaces: [],
+        totalWorkspaces: 0,
+        totalBoards: 0,
+        totalItems: 0
+      }
+    }
     const client = createMondayClient(process.env.MONDAY_API_TOKEN)
     
     // Get workspaces

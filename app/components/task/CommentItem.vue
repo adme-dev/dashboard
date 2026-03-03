@@ -13,16 +13,16 @@
       <div class="flex-1 min-w-0">
         <!-- Header -->
         <div class="flex items-center gap-2 mb-1">
-          <span class="font-semibold text-gray-900">
+          <span class="font-semibold text-gray-900 dark:text-neutral-100">
             {{ comment.author_name }}
           </span>
-          <span class="text-gray-400 text-sm">
+          <span class="text-gray-400 dark:text-neutral-500 text-sm">
             {{ formatTime(comment.created_at) }}
           </span>
-          <span v-if="isEdited" class="text-gray-400 text-xs">
+          <span v-if="isEdited" class="text-gray-400 dark:text-neutral-500 text-xs">
             (edited)
           </span>
-          <span v-if="comment.is_internal" class="text-amber-600 text-xs bg-amber-50 px-1.5 py-0.5 rounded">
+          <span v-if="comment.is_internal" class="text-amber-600 text-xs bg-amber-50 dark:bg-amber-950 px-1.5 py-0.5 rounded">
             Internal
           </span>
         </div>
@@ -45,7 +45,7 @@
         </div>
 
         <!-- Display Content (with highlighted mentions) -->
-        <div v-else class="text-gray-700 whitespace-pre-wrap break-words">
+        <div v-else class="text-gray-700 dark:text-neutral-200 whitespace-pre-wrap break-words">
           <span v-html="highlightedContent" />
         </div>
 
@@ -54,7 +54,7 @@
           <!-- Like Button -->
           <button
             class="flex items-center gap-1 text-sm transition-colors"
-            :class="comment.user_has_liked ? 'text-red-500' : 'text-gray-500 hover:text-red-500'"
+            :class="comment.user_has_liked ? 'text-red-500' : 'text-gray-500 dark:text-neutral-400 hover:text-red-500'"
             @click="toggleLike"
           >
             <UIcon 
@@ -71,7 +71,7 @@
           <!-- Reply Button (only for top-level comments) -->
           <button
             v-if="!isReply"
-            class="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+            class="text-sm text-gray-500 dark:text-neutral-400 hover:text-gray-700 dark:hover:text-neutral-200 transition-colors"
             @click="$emit('reply', comment)"
           >
             Reply

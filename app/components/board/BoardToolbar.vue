@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-white border-b px-4 py-2 flex items-center gap-2">
+  <div class="bg-white dark:bg-neutral-900 border-b border-gray-200 dark:border-neutral-700 px-4 py-2 flex items-center gap-2">
     <!-- Filter -->
     <UPopover>
       <UButton variant="ghost" size="sm" icon="i-lucide-filter">
@@ -50,7 +50,7 @@
     <UButton variant="ghost" size="sm" icon="i-lucide-layout-template" @click="$emit('template')">Templates</UButton>
     <UButton variant="ghost" size="sm" icon="i-lucide-zap" @click="$emit('automations')">Automations</UButton>
     <UButton variant="ghost" size="sm" icon="i-lucide-radio" @click="$emit('chatFeed')">Chat Feed</UButton>
-    <div class="w-px h-5 bg-gray-200" />
+    <div class="w-px h-5 bg-gray-200 dark:bg-neutral-700" />
     <UButton variant="ghost" size="sm" icon="i-lucide-folder-plus" @click="$emit('addGroup')">Add Group</UButton>
     <UButton variant="ghost" size="sm" icon="i-lucide-plus" @click="$emit('addColumn')">Add Column</UButton>
   </div>

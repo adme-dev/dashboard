@@ -210,8 +210,20 @@ export async function requireRole(event: any, roles: string[]): Promise<User> {
 }
 
 // Require board access - checks user is a member/manager of the department (board) or an admin
+// Accepts both UUID and slug for boardId
 export async function requireBoardAccess(event: any, boardId: string): Promise<User> {
   const user = await requireAuth(event)
+
+  // Resolve slug to UUID if needed
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(boardId)
+  let resolvedId = boardId
+  if (!isUUID) {
+    const dept = await queryOne<{ id: string }>('SELECT id FROM departments WHERE slug = $1', [boardId])
+    if (!dept) {
+      throw createError({ statusCode: 404, statusMessage: 'Board not found' })
+    }
+    resolvedId = dept.id
+  }
 
   // Admins and super_admins bypass board membership checks
   if (user.role === 'admin' || user.role === 'super_admin') {
@@ -223,7 +235,7 @@ export async function requireBoardAccess(event: any, boardId: string): Promise<U
       `SELECT 1 FROM department_members WHERE department_id = $1 AND team_member_id = $2
        UNION
        SELECT 1 FROM departments WHERE id = $1 AND manager_id = $2`,
-      [boardId, user.id]
+      [resolvedId, user.id]
     )
 
     if (rows.length === 0) {
@@ -236,7 +248,7 @@ export async function requireBoardAccess(event: any, boardId: string): Promise<U
     // Graceful degradation: if department_members table doesn't exist,
     // fall back to checking if the department exists at all
     if (error.message?.includes('does not exist') || error.message?.includes('relation')) {
-      const dept = await queryOne('SELECT id FROM departments WHERE id = $1', [boardId])
+      const dept = await queryOne('SELECT id FROM departments WHERE id = $1', [resolvedId])
       if (!dept) {
         throw createError({ statusCode: 404, statusMessage: 'Board not found' })
       }

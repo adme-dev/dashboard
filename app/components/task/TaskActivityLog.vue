@@ -4,8 +4,8 @@
       <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-primary mx-auto" />
     </div>
     
-    <div v-else-if="activities.length === 0" class="py-8 text-center text-gray-500">
-      <UIcon name="i-lucide-activity" class="w-12 h-12 mx-auto mb-3 text-gray-300" />
+    <div v-else-if="activities.length === 0" class="py-8 text-center text-gray-500 dark:text-neutral-400">
+      <UIcon name="i-lucide-activity" class="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-neutral-600" />
       <p>No activity yet</p>
     </div>
 
@@ -15,16 +15,16 @@
         :key="activity.id"
         class="flex items-start gap-3 py-2"
       >
-        <div class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
-          <UIcon :name="getActivityIcon(activity.activity_type)" class="w-4 h-4 text-gray-500" />
+        <div class="w-8 h-8 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center flex-shrink-0">
+          <UIcon :name="getActivityIcon(activity.activity_type)" class="w-4 h-4 text-gray-500 dark:text-neutral-400" />
         </div>
         
         <div class="flex-1 min-w-0">
-          <p class="text-sm text-gray-700">
+          <p class="text-sm text-gray-700 dark:text-neutral-200">
             <span class="font-medium">{{ activity.user_name || 'Someone' }}</span>
             {{ getActivityText(activity) }}
           </p>
-          <p class="text-xs text-gray-400 mt-0.5">
+          <p class="text-xs text-gray-400 dark:text-neutral-500 mt-0.5">
             {{ formatTime(activity.created_at) }}
           </p>
         </div>

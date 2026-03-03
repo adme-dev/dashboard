@@ -1,47 +1,47 @@
 <template>
   <div class="min-h-[28px] flex items-center" @click.stop>
     <div
-      class="flex items-center gap-1 min-h-[28px] px-1 rounded hover:bg-gray-100 cursor-pointer w-full"
+      class="flex items-center gap-1 min-h-[28px] px-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-800 cursor-pointer w-full"
       @click="togglePicker"
     >
       <div v-if="dependencyCount" class="flex items-center gap-1.5">
         <UIcon name="i-lucide-git-branch" class="w-3.5 h-3.5 text-purple-500" />
-        <span class="text-xs text-gray-700">{{ dependencyCount }} dep{{ dependencyCount > 1 ? 's' : '' }}</span>
+        <span class="text-xs text-gray-700 dark:text-neutral-300">{{ dependencyCount }} dep{{ dependencyCount > 1 ? 's' : '' }}</span>
       </div>
-      <span v-else class="text-sm text-gray-400">-</span>
+      <span v-else class="text-sm text-gray-400 dark:text-neutral-500">-</span>
     </div>
 
     <!-- Dependency Popover -->
     <Teleport to="body">
       <div
         v-if="showPicker"
-        class="fixed z-[100] bg-white rounded-lg shadow-xl border w-72"
+        class="fixed z-[100] bg-white dark:bg-neutral-900 rounded-lg shadow-xl border border-gray-200 dark:border-neutral-700 w-72"
         :style="popoverStyle"
         v-click-outside="closePicker"
       >
-        <div class="p-3 border-b">
-          <h4 class="text-sm font-medium text-gray-900">Dependencies</h4>
+        <div class="p-3 border-b border-gray-200 dark:border-neutral-700">
+          <h4 class="text-sm font-medium text-gray-900 dark:text-neutral-100">Dependencies</h4>
         </div>
         <div v-if="currentDeps.length" class="max-h-48 overflow-y-auto py-2">
           <div
             v-for="dep in currentDeps"
             :key="dep"
-            class="flex items-center justify-between px-3 py-1.5 hover:bg-gray-50"
+            class="flex items-center justify-between px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-neutral-800"
           >
-            <span class="text-sm text-gray-700 truncate">{{ dep }}</span>
-            <button @click="removeDep(dep)" class="text-gray-400 hover:text-red-500">
+            <span class="text-sm text-gray-700 dark:text-neutral-300 truncate">{{ dep }}</span>
+            <button @click="removeDep(dep)" class="text-gray-400 dark:text-neutral-500 hover:text-red-500">
               <UIcon name="i-lucide-x" class="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
-        <p v-else class="px-3 py-4 text-sm text-gray-400 text-center">No dependencies</p>
-        <div class="p-2 border-t">
+        <p v-else class="px-3 py-4 text-sm text-gray-400 dark:text-neutral-500 text-center">No dependencies</p>
+        <div class="p-2 border-t border-gray-200 dark:border-neutral-700">
           <div class="flex items-center gap-1">
             <input
               v-model="newDepId"
               type="text"
               placeholder="Task ID..."
-              class="flex-1 px-2 py-1.5 text-sm border rounded outline-none focus:border-blue-500"
+              class="flex-1 px-2 py-1.5 text-sm border border-gray-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 rounded outline-none focus:border-blue-500"
               @keydown.enter="addDep"
             />
             <UButton size="xs" color="primary" @click="addDep" :disabled="!newDepId.trim()">Add</UButton>

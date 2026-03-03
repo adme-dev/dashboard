@@ -1,5 +1,5 @@
 import { requireAuth } from '~~/server/utils/auth'
-import { queryOne, execute } from '~~/server/utils/db'
+import { queryOne, queryRows } from '~~/server/utils/db'
 import { kvDelete } from '~~/server/utils/kv'
 
 /**
@@ -10,11 +10,12 @@ export default eventHandler(async (event) => {
   const user = await requireAuth(event)
   const body = await readBody(event)
 
-  const { spendIds, budgetAllocated, rolling, note } = body as {
+  const { spendIds, budgetAllocated, rolling, note, commissionRate } = body as {
     spendIds: string[]
     budgetAllocated: number
     rolling?: boolean
     note?: string
+    commissionRate?: number
   }
 
   if (!Array.isArray(spendIds) || spendIds.length === 0) {
@@ -34,13 +35,29 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Spend records not found' })
   }
 
-  // Build parameterized IN clause
-  const placeholders = spendIds.map((_, i) => `$${i + 2}`).join(', ')
+  // Coerce rolling to a strict boolean (handles string "true"/"false" from body parsing)
+  const rollingBool = rolling === true || rolling === 'true'
 
-  const rollingClause = typeof rolling === 'boolean' ? `, budget_rolling = ${rolling}` : ''
-  await execute(
-    `UPDATE media_spend SET budget_allocated = $1${rollingClause} WHERE id IN (${placeholders})`,
-    [budget, ...spendIds]
+  // Validate commission rate if provided
+  const commRate = commissionRate != null ? parseFloat(String(commissionRate)) : null
+  if (commRate != null && (isNaN(commRate) || commRate < 0 || commRate > 100)) {
+    throw createError({ statusCode: 400, statusMessage: 'commissionRate must be between 0 and 100' })
+  }
+
+  // Build parameterized query
+  const setClauses = ['budget_allocated = $1', 'budget_rolling = $2']
+  const params: any[] = [budget, rollingBool]
+
+  if (commRate != null) {
+    params.push(commRate)
+    setClauses.push(`commission_rate = $${params.length}`)
+  }
+
+  const placeholders = spendIds.map((_, i) => `$${i + params.length + 1}`).join(', ')
+
+  const updatedRows = await queryRows<{ id: string; budget_allocated: number; budget_rolling: boolean }>(
+    `UPDATE media_spend SET ${setClauses.join(', ')} WHERE id IN (${placeholders}) RETURNING id, budget_allocated, budget_rolling`,
+    [...params, ...spendIds]
   )
 
   // Audit log for each row (fire-and-forget)
@@ -61,5 +78,5 @@ export default eventHandler(async (event) => {
     kvDelete(event, `spend:${kvPlatform}:accounts:${period}`),
   ]).catch(() => {})
 
-  return { updated: true, count: spendIds.length }
+  return { updated: true, count: spendIds.length, rollingSet: rollingBool, updatedRows: updatedRows.length }
 })

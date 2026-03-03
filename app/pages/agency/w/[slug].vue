@@ -1,7 +1,7 @@
 <template>
-  <div class="h-full flex flex-col bg-gray-50">
+  <div class="h-full flex flex-col bg-gray-50 dark:bg-neutral-950">
     <!-- Header -->
-    <div class="bg-white border-b px-6 py-4">
+    <div class="bg-white dark:bg-neutral-900 border-b px-6 py-4">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
           <div 
@@ -19,7 +19,7 @@
               <h1 class="text-xl font-semibold">{{ workspace?.name }}</h1>
               <UButton variant="ghost" color="neutral" icon="i-lucide-chevron-down" size="xs" />
             </div>
-            <p class="text-sm text-gray-500">
+            <p class="text-sm text-gray-500 dark:text-neutral-400">
               {{ workspace?.boards?.length || 0 }} boards · {{ workspace?.stats?.tasks || 0 }} tasks
             </p>
           </div>
@@ -42,7 +42,7 @@
       <div class="flex gap-6 mt-4 border-b">
         <button
           class="pb-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2"
-          :class="activeTab === 'recents' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900'"
+          :class="activeTab === 'recents' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-600 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-neutral-100'"
           @click="activeTab = 'recents'"
         >
           <UIcon name="i-lucide-clock" class="w-4 h-4" />
@@ -50,7 +50,7 @@
         </button>
         <button
           class="pb-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2"
-          :class="activeTab === 'content' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900'"
+          :class="activeTab === 'content' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-600 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-neutral-100'"
           @click="activeTab = 'content'"
         >
           <UIcon name="i-lucide-layout-grid" class="w-4 h-4" />
@@ -58,7 +58,7 @@
         </button>
         <button
           class="pb-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2"
-          :class="activeTab === 'permissions' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900'"
+          :class="activeTab === 'permissions' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-600 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-neutral-100'"
           @click="activeTab = 'permissions'"
         >
           <UIcon name="i-lucide-lock" class="w-4 h-4" />
@@ -80,7 +80,7 @@
           v-for="board in workspace?.boards"
           :key="board.id"
           :to="`/agency/boards/${board.slug}`"
-          class="group bg-white rounded-lg border p-5 hover:shadow-md hover:border-primary transition-all"
+          class="group bg-white dark:bg-neutral-900 rounded-lg border p-5 hover:shadow-md hover:border-primary transition-all"
         >
           <div class="flex items-start justify-between mb-4">
             <div 
@@ -102,10 +102,10 @@
             </UBadge>
           </div>
 
-          <h3 class="font-semibold text-gray-900 group-hover:text-primary transition-colors">
+          <h3 class="font-semibold text-gray-900 dark:text-neutral-100 group-hover:text-primary transition-colors">
             {{ board.name }}
           </h3>
-          <p v-if="board.description" class="text-sm text-gray-500 mt-1 line-clamp-2">
+          <p v-if="board.description" class="text-sm text-gray-500 dark:text-neutral-400 mt-1 line-clamp-2">
             {{ board.description }}
           </p>
         </NuxtLink>
@@ -118,38 +118,38 @@
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
               <!-- Add new board -->
               <button
-                class="group flex flex-col items-center p-8 rounded-xl border-2 border-dashed border-gray-200 hover:border-primary hover:bg-primary/5 transition-all text-center"
+                class="group flex flex-col items-center p-8 rounded-xl border-2 border-dashed border-gray-200 dark:border-neutral-700 hover:border-primary hover:bg-primary/5 transition-all text-center"
                 @click="showNewBoard = true"
               >
-                <div class="w-16 h-16 rounded-xl border-2 border-dashed border-gray-300 group-hover:border-primary flex items-center justify-center mb-4 transition-colors">
-                  <UIcon name="i-lucide-plus" class="w-8 h-8 text-gray-400 group-hover:text-primary transition-colors" />
+                <div class="w-16 h-16 rounded-xl border-2 border-dashed border-gray-300 dark:border-neutral-600 group-hover:border-primary flex items-center justify-center mb-4 transition-colors">
+                  <UIcon name="i-lucide-plus" class="w-8 h-8 text-gray-400 dark:text-neutral-500 group-hover:text-primary transition-colors" />
                 </div>
-                <h3 class="font-medium text-gray-900">Add new board</h3>
-                <p class="text-sm text-gray-500 mt-1">Start from scratch</p>
+                <h3 class="font-medium text-gray-900 dark:text-neutral-100">Add new board</h3>
+                <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1">Start from scratch</p>
               </button>
 
               <!-- Start with a template -->
               <button
-                class="group flex flex-col items-center p-8 rounded-xl border-2 border-gray-200 hover:border-primary hover:shadow-md transition-all text-center"
+                class="group flex flex-col items-center p-8 rounded-xl border-2 border-gray-200 dark:border-neutral-700 hover:border-primary hover:shadow-md transition-all text-center"
                 @click="showTemplateSelector = true"
               >
-                <div class="w-16 h-16 rounded-xl bg-blue-50 flex items-center justify-center mb-4">
+                <div class="w-16 h-16 rounded-xl bg-blue-50 dark:bg-blue-950 flex items-center justify-center mb-4">
                   <UIcon name="i-lucide-layout-template" class="w-8 h-8 text-blue-500" />
                 </div>
-                <h3 class="font-medium text-gray-900">Start with a template</h3>
-                <p class="text-sm text-gray-500 mt-1">Choose from our library</p>
+                <h3 class="font-medium text-gray-900 dark:text-neutral-100">Start with a template</h3>
+                <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1">Choose from our library</p>
               </button>
 
               <!-- Start with AI -->
               <button
-                class="group flex flex-col items-center p-8 rounded-xl border-2 border-gray-200 hover:border-purple-500 hover:shadow-md transition-all text-center bg-gradient-to-br from-purple-50 to-pink-50"
+                class="group flex flex-col items-center p-8 rounded-xl border-2 border-gray-200 dark:border-neutral-700 hover:border-purple-500 hover:shadow-md transition-all text-center bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950"
                 @click="startWithAI"
               >
                 <div class="w-16 h-16 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mb-4 shadow-lg">
                   <UIcon name="i-lucide-sparkles" class="w-8 h-8 text-white" />
                 </div>
-                <h3 class="font-medium text-gray-900">Start with magic AI</h3>
-                <p class="text-sm text-gray-500 mt-1">Let AI build it for you</p>
+                <h3 class="font-medium text-gray-900 dark:text-neutral-100">Start with magic AI</h3>
+                <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1">Let AI build it for you</p>
               </button>
             </div>
           </div>

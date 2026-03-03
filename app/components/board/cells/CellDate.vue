@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-[28px] flex items-center relative" @click.stop>
     <div
-      class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-sm cursor-pointer hover:bg-gray-100 transition-colors"
+      class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
       :class="dateColorClass"
       @click="togglePicker"
     >
@@ -13,25 +13,25 @@
     <Teleport to="body">
       <div
         v-if="showPicker"
-        class="fixed z-[100] bg-white rounded-lg shadow-xl border w-[280px] p-3"
+        class="fixed z-[100] bg-white dark:bg-neutral-900 rounded-lg shadow-xl border border-gray-200 dark:border-neutral-700 w-[280px] p-3"
         :style="popoverStyle"
         v-click-outside="closePicker"
       >
         <!-- Quick Select -->
         <div class="grid grid-cols-2 gap-2 mb-3">
-          <button class="px-3 py-2 text-sm border rounded-lg hover:bg-gray-50 text-left" @click="setQuick('today')">Today</button>
-          <button class="px-3 py-2 text-sm border rounded-lg hover:bg-gray-50 text-left" @click="setQuick('tomorrow')">Tomorrow</button>
-          <button class="px-3 py-2 text-sm border rounded-lg hover:bg-gray-50 text-left" @click="setQuick('next_week')">Next week</button>
-          <button class="px-3 py-2 text-sm border rounded-lg hover:bg-gray-50 text-left text-gray-400" @click="setQuick('none')">No Date</button>
+          <button class="px-3 py-2 text-sm border border-gray-200 dark:border-neutral-700 rounded-lg hover:bg-gray-50 dark:hover:bg-neutral-800 text-left dark:text-neutral-100" @click="setQuick('today')">Today</button>
+          <button class="px-3 py-2 text-sm border border-gray-200 dark:border-neutral-700 rounded-lg hover:bg-gray-50 dark:hover:bg-neutral-800 text-left dark:text-neutral-100" @click="setQuick('tomorrow')">Tomorrow</button>
+          <button class="px-3 py-2 text-sm border border-gray-200 dark:border-neutral-700 rounded-lg hover:bg-gray-50 dark:hover:bg-neutral-800 text-left dark:text-neutral-100" @click="setQuick('next_week')">Next week</button>
+          <button class="px-3 py-2 text-sm border border-gray-200 dark:border-neutral-700 rounded-lg hover:bg-gray-50 dark:hover:bg-neutral-800 text-left text-gray-400 dark:text-neutral-500" @click="setQuick('none')">No Date</button>
         </div>
 
         <!-- Calendar -->
-        <div class="border rounded-lg overflow-hidden">
+        <div class="border border-gray-200 dark:border-neutral-700 rounded-lg overflow-hidden">
           <UCalendar v-model="calendarModel" />
         </div>
 
         <!-- Footer -->
-        <div class="mt-3 pt-3 border-t flex items-center justify-between">
+        <div class="mt-3 pt-3 border-t border-gray-200 dark:border-neutral-700 flex items-center justify-between">
           <button class="text-sm text-red-600 hover:text-red-700" @click="clearDate">Clear</button>
           <div class="flex items-center gap-2">
             <UButton size="xs" variant="ghost" @click="closePicker">Cancel</UButton>
@@ -95,7 +95,7 @@ const dateColorClass = computed(() => {
   now.setHours(0, 0, 0, 0)
   if (date < now) return 'text-red-600'
   if (date.toDateString() === now.toDateString()) return 'text-orange-600'
-  return 'text-gray-700'
+  return 'text-gray-700 dark:text-neutral-300'
 })
 
 const popoverStyle = computed(() => ({

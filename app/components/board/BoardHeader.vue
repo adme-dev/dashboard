@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-white border-b">
+  <div class="bg-white dark:bg-neutral-900 border-b border-gray-200 dark:border-neutral-700">
     <!-- Row 1: Breadcrumb + title + actions -->
     <div class="flex items-center justify-between px-4 pt-3 pb-2">
       <div class="min-w-0">
@@ -9,7 +9,7 @@
         ]" />
         <div class="flex items-center gap-3 mt-1">
           <h1 class="text-lg font-semibold truncate">{{ boardName }}</h1>
-          <span class="text-xs text-gray-400 whitespace-nowrap">
+          <span class="text-xs text-gray-400 dark:text-neutral-500 whitespace-nowrap">
             {{ totalItems }} items
             <span v-if="lastUpdated">· {{ formatRelativeTime(lastUpdated) }}</span>
           </span>
@@ -58,8 +58,8 @@
           :key="v.id"
           class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm font-medium transition-colors"
           :class="activeView === v.id
-            ? 'bg-gray-100 text-gray-900'
-            : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'"
+            ? 'bg-gray-100 dark:bg-neutral-800 text-gray-900 dark:text-neutral-100'
+            : 'text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-800'"
           @click="$emit('update:activeView', v.id)"
         >
           <UIcon :name="v.icon" class="w-4 h-4" />

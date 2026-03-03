@@ -25,6 +25,8 @@ export default eventHandler(async (event) => {
     campaign_name: string
     actual_spend: number
     budget_allocated: number
+    budget_rolling: boolean
+    commission_rate: number | null
     impressions: number
     clicks: number
     conversions: number
@@ -32,7 +34,8 @@ export default eventHandler(async (event) => {
     campaign_status: string | null
     synced_at: string | null
   }>(
-    `SELECT id, campaign_id, campaign_name, actual_spend, budget_allocated, impressions, clicks,
+    `SELECT id, campaign_id, campaign_name, actual_spend, budget_allocated, COALESCE(budget_rolling, false) as budget_rolling,
+       commission_rate, impressions, clicks,
        conversions, campaign_type, campaign_status, synced_at
      FROM media_spend
      WHERE connection_id = $1 AND period = $2 AND platform = 'snapchat'
@@ -46,6 +49,8 @@ export default eventHandler(async (event) => {
     campaignName: r.campaign_name,
     spend: r.actual_spend,
     budget: r.budget_allocated,
+    rolling: r.budget_rolling,
+    commissionRate: r.commission_rate || 0,
     impressions: r.impressions,
     clicks: r.clicks,
     conversions: r.conversions,

@@ -9,7 +9,7 @@
 
         <!-- Column Type (read-only) -->
         <UFormField label="Column Type">
-          <div class="flex items-center gap-3 p-3 rounded-lg border bg-gray-50">
+          <div class="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800">
             <div
               class="w-8 h-8 rounded-lg flex items-center justify-center"
               :style="{ backgroundColor: typeInfo.color + '20' }"
@@ -17,8 +17,8 @@
               <UIcon :name="typeInfo.icon" class="w-4 h-4" :style="{ color: typeInfo.color }" />
             </div>
             <div>
-              <span class="text-sm font-medium">{{ typeInfo.name }}</span>
-              <span class="text-xs text-gray-500 ml-2">{{ typeInfo.description }}</span>
+              <span class="text-sm font-medium text-gray-900 dark:text-neutral-100">{{ typeInfo.name }}</span>
+              <span class="text-xs text-gray-500 dark:text-neutral-400 ml-2">{{ typeInfo.description }}</span>
             </div>
           </div>
         </UFormField>
@@ -39,7 +39,7 @@
               step="10"
               class="flex-1"
             />
-            <span class="text-sm text-gray-500 w-12 text-right">{{ form.width }}px</span>
+            <span class="text-sm text-gray-500 dark:text-neutral-400 w-12 text-right">{{ form.width }}px</span>
           </div>
         </UFormField>
 
@@ -81,12 +81,12 @@
                 <input
                   v-model="opt.label"
                   type="text"
-                  class="flex-1 text-sm border rounded px-2 py-1 outline-none focus:border-blue-500"
+                  class="flex-1 text-sm border border-gray-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 rounded px-2 py-1 outline-none focus:border-blue-500"
                   @blur="saveOptionLabel(opt)"
                 />
                 <UBadge v-if="opt.isDefault" color="primary" variant="subtle" size="xs">Default</UBadge>
                 <button
-                  class="p-1 hover:bg-gray-200 rounded opacity-0 group-hover/opt:opacity-100 transition-opacity"
+                  class="p-1 hover:bg-gray-200 dark:hover:bg-neutral-700 rounded opacity-0 group-hover/opt:opacity-100 transition-opacity"
                   @click="removeOption(opt)"
                 >
                   <UIcon name="i-lucide-x" class="w-3.5 h-3.5 text-gray-400" />
@@ -95,7 +95,7 @@
                 <!-- Color picker for this option -->
                 <div
                   v-if="editingOptionColor === opt.id"
-                  class="absolute z-30 mt-8 bg-white border rounded-lg shadow-lg p-2"
+                  class="absolute z-30 mt-8 bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 rounded-lg shadow-lg p-2"
                 >
                   <div class="grid grid-cols-7 gap-1.5">
                     <button
@@ -117,7 +117,7 @@
                   v-model="newOptionLabel"
                   type="text"
                   placeholder="Add new option..."
-                  class="flex-1 text-sm border rounded px-2 py-1 outline-none focus:border-blue-500"
+                  class="flex-1 text-sm border border-gray-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 rounded px-2 py-1 outline-none focus:border-blue-500"
                   @keydown.enter="addNewOption"
                 />
                 <UButton
@@ -134,18 +134,18 @@
         </template>
 
         <!-- Visibility & Permissions -->
-        <div class="border-t pt-4 space-y-3">
+        <div class="border-t border-gray-200 dark:border-neutral-700 pt-4 space-y-3">
           <div class="flex items-center justify-between">
             <div>
-              <span class="text-sm font-medium">Visible</span>
-              <p class="text-xs text-gray-500">Show this column on the board</p>
+              <span class="text-sm font-medium text-gray-900 dark:text-neutral-100">Visible</span>
+              <p class="text-xs text-gray-500 dark:text-neutral-400">Show this column on the board</p>
             </div>
             <UCheckbox v-model="form.isVisible" />
           </div>
           <div class="flex items-center justify-between">
             <div>
-              <span class="text-sm font-medium">Required</span>
-              <p class="text-xs text-gray-500">Require a value for this column</p>
+              <span class="text-sm font-medium text-gray-900 dark:text-neutral-100">Required</span>
+              <p class="text-xs text-gray-500 dark:text-neutral-400">Require a value for this column</p>
             </div>
             <UCheckbox v-model="form.isRequired" />
           </div>

@@ -9,7 +9,7 @@
     @update="onUpdate"
     @edit-column="onEditColumn"
   />
-  <span v-else class="text-gray-400 text-sm">-</span>
+  <span v-else class="text-gray-400 dark:text-neutral-500 text-sm">-</span>
 </template>
 
 <script setup lang="ts">

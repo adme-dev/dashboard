@@ -29,6 +29,8 @@ export default eventHandler(async (event) => {
       total_impressions: string
       total_clicks: string
       total_conversions: string
+      total_commission: string
+      max_commission_rate: string | null
       campaign_count: number
       last_synced_at: string | null
     }>(
@@ -38,6 +40,8 @@ export default eventHandler(async (event) => {
          COALESCE(SUM(ms.impressions), 0) as total_impressions,
          COALESCE(SUM(ms.clicks), 0) as total_clicks,
          COALESCE(SUM(ms.conversions), 0) as total_conversions,
+         COALESCE(SUM(ms.commission_amount), 0) as total_commission,
+         MAX(ms.commission_rate) as max_commission_rate,
          COUNT(ms.id)::int as campaign_count,
          MAX(ms.synced_at) as last_synced_at
        FROM social_connections sc
@@ -59,6 +63,8 @@ export default eventHandler(async (event) => {
       totalImpressions: parseInt(r.total_impressions) || 0,
       totalClicks: parseInt(r.total_clicks) || 0,
       totalConversions: parseFloat(r.total_conversions) || 0,
+      totalCommission: parseFloat(r.total_commission) || 0,
+      commissionRate: parseFloat(r.max_commission_rate || '0') || 0,
       campaignCount: r.campaign_count,
       lastSyncedAt: r.last_synced_at,
     }))

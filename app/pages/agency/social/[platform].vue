@@ -44,6 +44,10 @@ const accountSpend = ref<any[]>([])
 const spendLoading = ref(false)
 const syncing = ref(false)
 
+// Bank charges data
+const bankCharges = ref<any>(null)
+const bankLoading = ref(false)
+
 // Campaign daily spend chart data
 const campaignDailyData = ref<{ campaigns: any[]; totals: any[] }>({ campaigns: [], totals: [] })
 const chartLoading = ref(false)
@@ -58,6 +62,8 @@ const campaignLoading = ref<Record<string, boolean>>({})
 // Inline budget editing
 const editingBudget = ref<string | null>(null) // media_spend id currently editing
 const editingBudgetValue = ref('')
+const editingCommissionRate = ref('')
+const editingRolling = ref(false)
 
 // Budget history
 const budgetHistoryId = ref<string | null>(null)
@@ -90,6 +96,8 @@ function startBudgetEdit(camp: any, e: MouseEvent) {
   e.stopPropagation()
   editingBudget.value = camp.id
   editingBudgetValue.value = camp.budget > 0 ? String(camp.budget) : ''
+  editingCommissionRate.value = camp.commissionRate > 0 ? String(camp.commissionRate) : ''
+  editingRolling.value = camp.rolling || false
   nextTick(() => {
     const input = document.querySelector(`[data-budget-id="${camp.id}"]`) as HTMLInputElement
     input?.focus()
@@ -100,12 +108,22 @@ function startBudgetEdit(camp: any, e: MouseEvent) {
 async function saveBudget(camp: any) {
   const val = parseFloat(editingBudgetValue.value)
   const budget = isNaN(val) || val < 0 ? 0 : val
+  const commRate = editingCommissionRate.value ? parseFloat(editingCommissionRate.value) : null
+  if (commRate != null && (isNaN(commRate) || commRate < 0 || commRate > 100)) {
+    toast.add({ title: 'Invalid commission', description: 'Enter a percentage between 0 and 100', color: 'error' })
+    return
+  }
   editingBudget.value = null
 
   // Optimistic update
+  const rolling = editingRolling.value
   camp.budget = budget
+  camp.rolling = rolling
+  if (commRate != null) camp.commissionRate = commRate
   try {
-    await updateCampaignBudget(camp.id, budget)
+    const body: any = { spendIds: [camp.id], budgetAllocated: budget, rolling }
+    if (commRate != null) body.commissionRate = commRate
+    await $fetch('/api/agency/social/spend/bulk-budget', { method: 'PATCH', body })
   } catch (e: any) {
     toast.add({ title: 'Error saving budget', description: e.data?.statusMessage || e.message, color: 'error' })
     // Reload to revert
@@ -122,6 +140,8 @@ async function saveBudget(camp: any) {
 
 function cancelBudgetEdit() {
   editingBudget.value = null
+  editingCommissionRate.value = ''
+  editingRolling.value = false
 }
 
 // Summary stats
@@ -130,10 +150,24 @@ const summaryStats = computed(() => {
   return {
     totalSpend: data.reduce((s, a) => s + a.totalSpend, 0),
     totalBudget: data.reduce((s, a) => s + (a.totalBudget || 0), 0),
+    totalCommission: data.reduce((s, a) => s + (a.totalCommission || 0), 0),
     totalImpressions: data.reduce((s, a) => s + a.totalImpressions, 0),
     totalClicks: data.reduce((s, a) => s + a.totalClicks, 0),
     totalConversions: data.reduce((s, a) => s + a.totalConversions, 0),
   }
+})
+
+// Bank charge for this platform
+const platformBankTotal = computed(() => {
+  if (!bankCharges.value?.connected) return null
+  const key = platform.value === 'google' ? 'google_ads' : platform.value
+  const xeroTotal = bankCharges.value.byPlatform?.[key]?.total ?? 0
+  if (xeroTotal > 0) return xeroTotal
+  // Meta billing fallback
+  if (key === 'meta' && bankCharges.value.metaBilling?.total) {
+    return bankCharges.value.metaBilling.total
+  }
+  return xeroTotal > 0 ? xeroTotal : null
 })
 
 // Latest sync time across all accounts
@@ -166,6 +200,19 @@ const sortedAccounts = computed(() => {
   const noSpend = accountSpend.value.filter(a => a.totalSpend <= 0)
   return [...withSpend, ...noSpend]
 })
+
+async function loadBankCharges() {
+  bankLoading.value = true
+  try {
+    bankCharges.value = await $fetch('/api/agency/social/spend/bank-charges', {
+      query: { month: selectedMonth.value, year: selectedYear.value },
+    })
+  } catch {
+    bankCharges.value = null
+  } finally {
+    bankLoading.value = false
+  }
+}
 
 async function loadSpendData() {
   spendLoading.value = true
@@ -262,6 +309,7 @@ watch([selectedMonth, selectedYear], () => {
   chartAccountName.value = null
   weekFilter.value = null
   loadSpendData()
+  loadBankCharges()
 })
 
 function formatCurrency(val: number) {
@@ -366,6 +414,7 @@ async function confirmDisconnect() {
 onMounted(async () => {
   await fetchConnections()
   loadSpendData()
+  loadBankCharges()
 })
 </script>
 
@@ -421,7 +470,7 @@ onMounted(async () => {
         </div>
 
         <!-- Summary Stats -->
-        <div class="grid grid-cols-5 gap-4 mb-6">
+        <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-4 mb-6">
           <div class="border border-default rounded-xl p-4 bg-elevated/30">
             <p class="text-xs text-muted uppercase tracking-wide">Total Spend</p>
             <p class="text-2xl font-semibold mt-1">{{ formatCurrency(summaryStats.totalSpend) }}</p>
@@ -429,6 +478,17 @@ onMounted(async () => {
           <div class="border border-default rounded-xl p-4 bg-elevated/30">
             <p class="text-xs text-muted uppercase tracking-wide">Total Budget</p>
             <p class="text-2xl font-semibold mt-1">{{ summaryStats.totalBudget > 0 ? formatCurrency(summaryStats.totalBudget) : '-' }}</p>
+          </div>
+          <div v-if="platformBankTotal != null" class="border border-default rounded-xl p-4 bg-elevated/30">
+            <p class="text-xs text-muted uppercase tracking-wide">Bank Charged</p>
+            <p class="text-2xl font-semibold mt-1">{{ formatCurrency(platformBankTotal) }}</p>
+            <p v-if="summaryStats.totalSpend > 0" class="text-xs mt-1" :class="Math.abs(platformBankTotal - summaryStats.totalSpend) > summaryStats.totalSpend * 0.05 ? 'text-amber-500' : 'text-green-500'">
+              {{ platformBankTotal > summaryStats.totalSpend ? '+' : '' }}{{ formatCurrency(platformBankTotal - summaryStats.totalSpend) }} vs reported
+            </p>
+          </div>
+          <div v-if="summaryStats.totalCommission > 0" class="border border-default rounded-xl p-4 bg-elevated/30">
+            <p class="text-xs text-muted uppercase tracking-wide">Commission</p>
+            <p class="text-2xl font-semibold mt-1">{{ formatCurrency(summaryStats.totalCommission) }}</p>
           </div>
           <div class="border border-default rounded-xl p-4 bg-elevated/30">
             <p class="text-xs text-muted uppercase tracking-wide">Impressions</p>
@@ -454,6 +514,7 @@ onMounted(async () => {
                 <th class="text-right px-4 py-3 font-medium text-muted">Campaigns</th>
                 <th class="text-right px-4 py-3 font-medium text-muted">Spend</th>
                 <th class="text-right px-4 py-3 font-medium text-muted">Budget</th>
+                <th class="text-right px-4 py-3 font-medium text-muted">Commission</th>
                 <th class="text-right px-4 py-3 font-medium text-muted">Impressions</th>
                 <th class="text-right px-4 py-3 font-medium text-muted">Clicks</th>
                 <th class="text-right px-4 py-3 font-medium text-muted">Conv.</th>
@@ -482,6 +543,13 @@ onMounted(async () => {
                   <td class="px-4 py-3 text-right tabular-nums">{{ acct.campaignCount }}</td>
                   <td class="px-4 py-3 text-right tabular-nums font-medium">{{ formatCurrency(acct.totalSpend) }}</td>
                   <td class="px-4 py-3 text-right tabular-nums text-muted">{{ acct.totalBudget > 0 ? formatCurrency(acct.totalBudget) : '-' }}</td>
+                  <td class="px-4 py-3 text-right tabular-nums text-muted">
+                    <template v-if="acct.totalCommission > 0">
+                      {{ formatCurrency(acct.totalCommission) }}
+                      <span v-if="acct.commissionRate" class="text-xs block">{{ acct.commissionRate }}%</span>
+                    </template>
+                    <span v-else>-</span>
+                  </td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(acct.totalImpressions) }}</td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(acct.totalClicks) }}</td>
                   <td class="px-4 py-3 text-right tabular-nums">{{ formatNumber(acct.totalConversions) }}</td>
@@ -499,7 +567,7 @@ onMounted(async () => {
 
                 <!-- Expanded campaigns sub-rows -->
                 <tr v-if="expandedAccounts.has(acct.id)" :key="acct.id + '-campaigns'">
-                  <td colspan="10" class="p-0">
+                  <td colspan="11" class="p-0">
                     <div class="bg-elevated/20 border-b border-default">
                       <div v-if="campaignLoading[acct.id]" class="flex justify-center py-6">
                         <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin text-muted" />
@@ -517,6 +585,7 @@ onMounted(async () => {
                             <th class="text-right px-4 py-2 font-medium text-muted text-xs">Spend</th>
                             <th class="text-right px-4 py-2 font-medium text-muted text-xs">Budget</th>
                             <th class="text-right px-4 py-2 font-medium text-muted text-xs">Variance</th>
+                            <th class="text-right px-4 py-2 font-medium text-muted text-xs">Commission</th>
                             <th class="text-right px-4 py-2 font-medium text-muted text-xs">Impressions</th>
                             <th class="text-right px-4 py-2 font-medium text-muted text-xs">Clicks</th>
                             <th class="text-right px-4 py-2 font-medium text-muted text-xs">Conv.</th>
@@ -558,20 +627,43 @@ onMounted(async () => {
                             <td class="px-4 py-2 text-right tabular-nums">{{ formatCurrency(camp.spend) }}</td>
                             <!-- Budget (inline-editable) -->
                             <td class="px-4 py-2 text-right tabular-nums relative" @click.stop>
-                              <div class="flex items-center justify-end gap-1">
-                                <input
-                                  v-if="editingBudget === camp.id"
-                                  :data-budget-id="camp.id"
-                                  v-model="editingBudgetValue"
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  class="w-24 text-right text-sm border border-primary rounded px-2 py-0.5 bg-default tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
-                                  @blur="saveBudget(camp)"
-                                  @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
-                                  @keydown.escape.prevent="cancelBudgetEdit()"
-                                />
-                                <template v-else>
+                              <div v-if="editingBudget === camp.id" class="flex flex-col items-end gap-1">
+                                <div class="flex items-center gap-1">
+                                  <input
+                                    :data-budget-id="camp.id"
+                                    v-model="editingBudgetValue"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    class="w-24 text-right text-sm border border-primary rounded px-2 py-0.5 bg-default tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
+                                    @keydown.enter.prevent="saveBudget(camp)"
+                                    @keydown.escape.prevent="cancelBudgetEdit()"
+                                  />
+                                  <UButton size="xs" variant="soft" color="primary" icon="i-lucide-check" @click="saveBudget(camp)" />
+                                  <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-x" @click="cancelBudgetEdit()" />
+                                </div>
+                                <div class="flex items-center gap-1">
+                                  <span class="text-xs text-muted">Comm.</span>
+                                  <input
+                                    v-model="editingCommissionRate"
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="0.5"
+                                    placeholder="0"
+                                    class="w-16 text-right text-sm rounded border border-default bg-default px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary"
+                                    @keydown.enter.prevent="saveBudget(camp)"
+                                    @keydown.escape.prevent="cancelBudgetEdit()"
+                                  />
+                                  <span class="text-xs text-muted">%</span>
+                                </div>
+                                <label class="flex items-center gap-1.5 text-xs text-muted cursor-pointer select-none">
+                                  <UCheckbox v-model="editingRolling" />
+                                  <span>Rolling</span>
+                                </label>
+                              </div>
+                              <div v-else class="flex flex-col items-end gap-0.5">
+                                <div class="flex items-center gap-1">
                                   <span
                                     class="cursor-pointer hover:text-primary transition-colors"
                                     :class="camp.budget > 0 ? '' : 'text-muted italic'"
@@ -587,7 +679,11 @@ onMounted(async () => {
                                   >
                                     <UIcon name="i-lucide-history" class="w-3.5 h-3.5" />
                                   </button>
-                                </template>
+                                </div>
+                                <UBadge v-if="camp.rolling" size="xs" color="info" variant="subtle" class="gap-0.5">
+                                  <UIcon name="i-lucide-repeat" class="size-3" />
+                                  Rolling
+                                </UBadge>
                               </div>
                               <!-- Budget history dropdown -->
                               <div
@@ -627,6 +723,14 @@ onMounted(async () => {
                                 >
                                   {{ camp.spend - camp.budget > 0 ? '+' : '' }}{{ formatCurrency(camp.spend - camp.budget) }}
                                 </span>
+                              </template>
+                              <span v-else class="text-muted">-</span>
+                            </td>
+                            <!-- Commission -->
+                            <td class="px-4 py-2 text-right tabular-nums">
+                              <template v-if="camp.commissionRate > 0">
+                                <span class="font-medium">{{ formatCurrency(camp.spend * camp.commissionRate / 100) }}</span>
+                                <span class="text-xs text-muted block">{{ camp.commissionRate }}%</span>
                               </template>
                               <span v-else class="text-muted">-</span>
                             </td>

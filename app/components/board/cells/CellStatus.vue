@@ -12,19 +12,19 @@
     <Teleport to="body">
       <div
         v-if="showPicker"
-        class="fixed z-[100] bg-white rounded-lg shadow-xl border w-[360px]"
+        class="fixed z-[100] bg-white dark:bg-neutral-900 rounded-lg shadow-xl border border-gray-200 dark:border-neutral-700 w-[360px]"
         :style="popoverStyle"
         v-click-outside="closePicker"
       >
         <!-- Search (shown when > 6 options) -->
-        <div v-if="options.length > 6" class="p-3 border-b">
+        <div v-if="options.length > 6" class="p-3 border-b border-gray-200 dark:border-neutral-700">
           <div class="relative">
-            <UIcon name="i-lucide-search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <UIcon name="i-lucide-search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-neutral-500" />
             <input
               v-model="searchQuery"
               type="text"
               placeholder="Search..."
-              class="w-full pl-9 pr-3 py-1.5 text-sm border rounded outline-none focus:border-blue-500"
+              class="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 rounded outline-none focus:border-blue-500"
             />
           </div>
         </div>
@@ -48,7 +48,7 @@
         <div class="px-3 pb-3 flex items-center justify-between">
           <button
             v-if="selectedValue"
-            class="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700"
+            class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-neutral-400 hover:text-gray-700 dark:hover:text-neutral-200"
             @click="clearStatus"
           >
             <UIcon name="i-lucide-x-circle" class="w-3.5 h-3.5" />
@@ -56,7 +56,7 @@
           </button>
           <span v-else />
           <button
-            class="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700"
+            class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-neutral-400 hover:text-gray-700 dark:hover:text-neutral-200"
             @click="$emit('editColumn')"
           >
             <UIcon name="i-lucide-pencil" class="w-3.5 h-3.5" />

@@ -1,6 +1,6 @@
 <template>
   <div
-    class="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 rounded-md group/subtask transition-colors"
+    class="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-neutral-800 rounded-md group/subtask transition-colors"
     :class="{ 'opacity-60': isCompleted }"
   >
     <!-- Checkbox -->
@@ -16,7 +16,7 @@
           ref="editInput"
           v-model="editTitle"
           type="text"
-          class="flex-1 text-sm bg-white border rounded px-2 py-0.5 outline-none focus:border-blue-500"
+          class="flex-1 text-sm bg-white dark:bg-neutral-800 border rounded px-2 py-0.5 outline-none focus:border-blue-500"
           @keydown.enter="saveEdit"
           @keydown.escape="cancelEdit"
           @blur="saveEdit"
@@ -25,7 +25,7 @@
       <p
         v-else
         class="text-sm truncate cursor-pointer"
-        :class="isCompleted ? 'line-through text-gray-400' : 'text-gray-700'"
+        :class="isCompleted ? 'line-through text-gray-400 dark:text-neutral-500' : 'text-gray-700 dark:text-neutral-200'"
         @dblclick="startEdit"
       >
         {{ subtask.title }}
@@ -53,7 +53,7 @@
     <!-- Due Date -->
     <span
       v-if="subtask.dueDate"
-      class="text-xs text-gray-500 flex-shrink-0"
+      class="text-xs text-gray-500 dark:text-neutral-400 flex-shrink-0"
       :class="{ 'text-red-500': isOverdue }"
     >
       {{ formatDate(subtask.dueDate) }}
@@ -73,10 +73,10 @@
 
     <!-- Actions -->
     <button
-      class="p-1 hover:bg-gray-200 rounded opacity-0 group-hover/subtask:opacity-100 transition-opacity flex-shrink-0"
+      class="p-1 hover:bg-gray-200 dark:hover:bg-neutral-700 rounded opacity-0 group-hover/subtask:opacity-100 transition-opacity flex-shrink-0"
       @click.stop="$emit('delete', subtask.id)"
     >
-      <UIcon name="i-lucide-trash-2" class="w-3.5 h-3.5 text-gray-400" />
+      <UIcon name="i-lucide-trash-2" class="w-3.5 h-3.5 text-gray-400 dark:text-neutral-500" />
     </button>
   </div>
 </template>

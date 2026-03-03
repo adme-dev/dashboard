@@ -32,7 +32,16 @@ function getDefaultRange() {
 }
 
 export default eventHandler(async (event) => {
-  const token = await getActiveTokenForSession(event)
+  let token
+  try {
+    token = await getActiveTokenForSession(event)
+  } catch (error: any) {
+    // If Xero is not connected or tables don't exist, return empty
+    if (error?.message?.includes('does not exist') || error?.message?.includes('relation') || error?.statusCode === 401) {
+      throw createError({ statusCode: 401, statusMessage: 'Xero not connected' })
+    }
+    throw error
+  }
   const tenantId = getSelectedTenant(event)
   if (!tenantId) {
     throw createError({ statusCode: 400, statusMessage: 'No organization selected' })

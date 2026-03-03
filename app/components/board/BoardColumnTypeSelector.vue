@@ -3,7 +3,7 @@
     <button
       v-for="ct in columnTypes"
       :key="ct.id"
-      class="flex items-center gap-3 p-3 rounded-lg border hover:border-primary hover:bg-primary/5 transition-colors text-left"
+      class="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-neutral-700 hover:border-primary hover:bg-primary/5 transition-colors text-left"
       :class="modelValue === ct.id ? 'border-primary bg-primary/5' : ''"
       @click="$emit('update:modelValue', ct.id)"
     >
@@ -14,8 +14,8 @@
         <UIcon :name="ct.icon" class="w-4 h-4" :style="{ color: ct.color }" />
       </div>
       <div>
-        <span class="text-sm font-medium block">{{ ct.name }}</span>
-        <span class="text-xs text-gray-500">{{ ct.description }}</span>
+        <span class="text-sm font-medium block text-gray-900 dark:text-neutral-100">{{ ct.name }}</span>
+        <span class="text-xs text-gray-500 dark:text-neutral-400">{{ ct.description }}</span>
       </div>
     </button>
   </div>

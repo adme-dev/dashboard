@@ -2,43 +2,43 @@
   <div class="space-y-6">
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-12">
-      <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin text-gray-400" />
-      <span class="ml-2 text-sm text-gray-500">Loading billing info...</span>
+      <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin text-gray-400 dark:text-neutral-500" />
+      <span class="ml-2 text-sm text-gray-500 dark:text-neutral-400">Loading billing info...</span>
     </div>
 
     <!-- No billing data -->
     <div v-else-if="!billing || (!billing.lineItems?.length && !billing.invoiceStatus)" class="text-center py-12">
-      <UIcon name="i-lucide-receipt" class="w-8 h-8 text-gray-300 mx-auto mb-3" />
-      <p class="text-sm text-gray-500">No billing data for this task.</p>
-      <p class="text-xs text-gray-400 mt-1">This task hasn't been included in any EOM run yet.</p>
+      <UIcon name="i-lucide-receipt" class="w-8 h-8 text-gray-300 dark:text-neutral-600 mx-auto mb-3" />
+      <p class="text-sm text-gray-500 dark:text-neutral-400">No billing data for this task.</p>
+      <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">This task hasn't been included in any EOM run yet.</p>
     </div>
 
     <!-- Billing content -->
     <template v-else>
       <!-- Invoice Status -->
       <div class="flex items-center justify-between">
-        <span class="text-sm font-medium text-gray-700">Invoice Status</span>
+        <span class="text-sm font-medium text-gray-700 dark:text-neutral-200">Invoice Status</span>
         <InvoiceStatusBadge :status="billing.invoiceStatus" />
       </div>
 
       <!-- Summary -->
       <div v-if="billing.lineItems.length > 0" class="grid grid-cols-3 gap-3">
-        <div class="bg-gray-50 rounded-lg p-3 text-center">
-          <p class="text-xs text-gray-500 mb-1">Ex-GST</p>
+        <div class="bg-gray-50 dark:bg-neutral-800 rounded-lg p-3 text-center">
+          <p class="text-xs text-gray-500 dark:text-neutral-400 mb-1">Ex-GST</p>
           <p class="text-sm font-semibold">${{ formatCurrency(billing.totals.exGst) }}</p>
         </div>
-        <div class="bg-gray-50 rounded-lg p-3 text-center">
-          <p class="text-xs text-gray-500 mb-1">GST</p>
+        <div class="bg-gray-50 dark:bg-neutral-800 rounded-lg p-3 text-center">
+          <p class="text-xs text-gray-500 dark:text-neutral-400 mb-1">GST</p>
           <p class="text-sm font-semibold">${{ formatCurrency(billing.totals.gst) }}</p>
         </div>
-        <div class="bg-gray-50 rounded-lg p-3 text-center">
-          <p class="text-xs text-gray-500 mb-1">Inc-GST</p>
+        <div class="bg-gray-50 dark:bg-neutral-800 rounded-lg p-3 text-center">
+          <p class="text-xs text-gray-500 dark:text-neutral-400 mb-1">Inc-GST</p>
           <p class="text-sm font-semibold">${{ formatCurrency(billing.totals.incGst) }}</p>
         </div>
       </div>
 
       <!-- Latest Run Info -->
-      <div v-if="billing.latestRun" class="bg-blue-50 border border-blue-100 rounded-lg p-3">
+      <div v-if="billing.latestRun" class="bg-blue-50 dark:bg-blue-950 border border-blue-100 dark:border-blue-900 rounded-lg p-3">
         <div class="flex items-center justify-between">
           <span class="text-xs font-medium text-blue-700">
             EOM Run: {{ monthName(billing.latestRun.month) }} {{ billing.latestRun.year }}
@@ -54,24 +54,24 @@
 
       <!-- Line Items -->
       <div v-if="billing.lineItems.length > 0">
-        <h4 class="text-sm font-medium text-gray-700 mb-3">Line Items</h4>
+        <h4 class="text-sm font-medium text-gray-700 dark:text-neutral-200 mb-3">Line Items</h4>
         <div class="space-y-2">
           <div
             v-for="item in billing.lineItems"
             :key="item.id"
-            class="border rounded-lg p-3 hover:bg-gray-50 transition-colors"
+            class="border rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors"
           >
             <div class="flex items-start justify-between mb-2">
               <div class="flex-1 min-w-0">
-                <p class="text-sm font-medium text-gray-900 truncate">{{ item.description }}</p>
-                <p class="text-xs text-gray-500">{{ item.clientName }}</p>
+                <p class="text-sm font-medium text-gray-900 dark:text-neutral-100 truncate">{{ item.description }}</p>
+                <p class="text-xs text-gray-500 dark:text-neutral-400">{{ item.clientName }}</p>
               </div>
               <span class="text-sm font-semibold ml-3">${{ formatCurrency(item.unitAmount * item.quantity) }}</span>
             </div>
             <div class="flex items-center gap-2 flex-wrap">
-              <span class="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">COA {{ item.accountCode }}</span>
-              <span class="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{{ item.taxType }}</span>
-              <span v-if="item.invoiceNumber" class="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+              <span class="text-xs bg-gray-100 dark:bg-neutral-700 text-gray-600 dark:text-neutral-300 px-1.5 py-0.5 rounded">COA {{ item.accountCode }}</span>
+              <span class="text-xs bg-gray-100 dark:bg-neutral-700 text-gray-600 dark:text-neutral-300 px-1.5 py-0.5 rounded">{{ item.taxType }}</span>
+              <span v-if="item.invoiceNumber" class="text-xs bg-gray-100 dark:bg-neutral-700 text-gray-600 dark:text-neutral-300 px-1.5 py-0.5 rounded">
                 INV-{{ item.invoiceNumber }}
               </span>
               <span v-if="item.trackingCategory" class="text-xs bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded">
@@ -121,7 +121,7 @@
             <!-- Override form -->
             <div v-if="overrideItemId === item.id" class="mt-3 border-t pt-3 space-y-3">
               <div>
-                <label class="text-xs font-medium text-gray-600 block mb-1">Account Code (COA)</label>
+                <label class="text-xs font-medium text-gray-600 dark:text-neutral-300 block mb-1">Account Code (COA)</label>
                 <select
                   v-model="overrideForm.accountCode"
                   class="w-full text-sm border rounded-md px-2 py-1.5 outline-none focus:border-blue-500"
@@ -139,7 +139,7 @@
                 </select>
               </div>
               <div>
-                <label class="text-xs font-medium text-gray-600 block mb-1">GST Type</label>
+                <label class="text-xs font-medium text-gray-600 dark:text-neutral-300 block mb-1">GST Type</label>
                 <select
                   v-model="overrideForm.taxType"
                   class="w-full text-sm border rounded-md px-2 py-1.5 outline-none focus:border-blue-500"
@@ -151,7 +151,7 @@
                 </select>
               </div>
               <div>
-                <label class="text-xs font-medium text-gray-600 block mb-1">Reason for Override</label>
+                <label class="text-xs font-medium text-gray-600 dark:text-neutral-300 block mb-1">Reason for Override</label>
                 <textarea
                   v-model="overrideForm.reviewNotes"
                   rows="2"

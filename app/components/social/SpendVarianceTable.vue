@@ -7,6 +7,7 @@ const props = defineProps<{
     budget: number
     spend: number
     commission: number
+    commissionRate?: number
     variance: number
     variancePercent: number
     impressions: number
@@ -19,6 +20,12 @@ const props = defineProps<{
   totals: { budget: number; spend: number; commission: number; variance: number }
   search?: string
   monthProgress?: number
+  bankCharges?: {
+    byPlatform: Record<string, { total: number }>
+    total: number
+    connected: boolean
+    metaBilling?: { total: number; accounts: Array<{ accountId: string; accountName: string; total: number }> } | null
+  } | null
 }>()
 
 const emit = defineEmits<{
@@ -32,8 +39,72 @@ const sortDir = ref<'asc' | 'desc'>('desc')
 // Inline budget editing
 const editingKey = ref<string | null>(null)
 const editBudget = ref('')
+const editCommissionRate = ref('')
 const editRolling = ref(false)
 const saving = ref(false)
+
+const hasBankData = computed(() => {
+  if (!props.bankCharges?.connected) return false
+  return props.bankCharges.total > 0 || (props.bankCharges.metaBilling?.total ?? 0) > 0
+})
+
+// Pre-compute platform spend totals for proportional bank charge calculation
+const platformSpendTotals = computed(() => {
+  const totals: Record<string, number> = {}
+  for (const item of props.items) {
+    const key = normalizePlatform(item.platform)
+    totals[key] = (totals[key] || 0) + item.spend
+  }
+  return totals
+})
+
+function normalizePlatform(p: string): string {
+  if (p === 'google') return 'google_ads'
+  return p
+}
+
+/**
+ * Calculate proportional bank charge for a row.
+ * Sources: Xero bank/CC transactions (pattern-matched) + Meta Billing API (fallback for meta).
+ * Bank charges are platform-level lump sums — distributed proportionally by client spend share.
+ */
+function bankChargeForItem(item: { platform: string; spend: number }): number | null {
+  if (!props.bankCharges?.connected) return null
+  const key = normalizePlatform(item.platform)
+
+  // Try Xero bank/CC data first
+  let platformBankTotal = props.bankCharges.byPlatform[key]?.total ?? 0
+
+  // For Meta: if no Xero bank data, use Meta Billing API as fallback
+  if (platformBankTotal <= 0 && key === 'meta' && props.bankCharges.metaBilling?.total) {
+    platformBankTotal = props.bankCharges.metaBilling.total
+  }
+
+  if (platformBankTotal <= 0) return null
+  const platformTotal = platformSpendTotals.value[key]
+  if (!platformTotal || platformTotal <= 0) return null
+  return Math.round(platformBankTotal * (item.spend / platformTotal) * 100) / 100
+}
+
+/** Returns 'xero' | 'meta_billing' | null to indicate charge data source */
+function bankChargeSource(item: { platform: string }): string | null {
+  if (!props.bankCharges?.connected) return null
+  const key = normalizePlatform(item.platform)
+  if ((props.bankCharges.byPlatform[key]?.total ?? 0) > 0) return 'xero'
+  if (key === 'meta' && (props.bankCharges.metaBilling?.total ?? 0) > 0) return 'meta_billing'
+  return null
+}
+
+function bankDiff(item: { platform: string; spend: number }): number | null {
+  const bank = bankChargeForItem(item)
+  if (bank == null) return null
+  return Math.round((bank - item.spend) * 100) / 100
+}
+
+function bankDiffClass(diff: number): string {
+  if (Math.abs(diff) < 1) return 'text-muted'
+  return diff > 0 ? 'text-amber-500' : 'text-emerald-500'
+}
 
 function toggleSort(key: string) {
   if (sortKey.value === key) {
@@ -70,6 +141,7 @@ function itemKey(item: { platform: string; clientName: string }) {
 function startEdit(item: typeof props.items[0]) {
   editingKey.value = itemKey(item)
   editBudget.value = item.budget > 0 ? String(item.budget) : ''
+  editCommissionRate.value = (item.commissionRate ?? 0) > 0 ? String(item.commissionRate) : ''
   editRolling.value = item.rolling || false
   nextTick(() => {
     const el = document.querySelector(`input[data-budget-edit="${editingKey.value}"]`) as HTMLInputElement
@@ -80,6 +152,7 @@ function startEdit(item: typeof props.items[0]) {
 function cancelEdit() {
   editingKey.value = null
   editBudget.value = ''
+  editCommissionRate.value = ''
   editRolling.value = false
 }
 
@@ -87,6 +160,12 @@ async function saveBudget(item: typeof props.items[0]) {
   const budget = parseFloat(editBudget.value)
   if (isNaN(budget) || budget < 0) {
     toast.add({ title: 'Invalid budget', description: 'Enter a valid non-negative number', color: 'error' })
+    return
+  }
+
+  const commRate = editCommissionRate.value ? parseFloat(editCommissionRate.value) : null
+  if (commRate != null && (isNaN(commRate) || commRate < 0 || commRate > 100)) {
+    toast.add({ title: 'Invalid commission rate', description: 'Enter a percentage between 0 and 100', color: 'error' })
     return
   }
 
@@ -98,10 +177,9 @@ async function saveBudget(item: typeof props.items[0]) {
 
   saving.value = true
   try {
-    await $fetch('/api/agency/social/spend/bulk-budget', {
-      method: 'PATCH',
-      body: { spendIds: ids, budgetAllocated: budget, rolling: editRolling.value },
-    })
+    const body: any = { spendIds: ids, budgetAllocated: budget, rolling: editRolling.value }
+    if (commRate != null) body.commissionRate = commRate
+    await $fetch('/api/agency/social/spend/bulk-budget', { method: 'PATCH', body })
     toast.add({ title: 'Budget updated', description: `${item.clientName} budget set to ${formatCurrency(budget)}`, color: 'success' })
     editingKey.value = null
     emit('budget-updated')
@@ -154,6 +232,20 @@ function pacingTextColor(ratio: number) {
   if (ratio < 0.8) return 'text-blue-500'
   return 'text-emerald-500'
 }
+
+/** Combined bank total: Xero bank/CC + Meta billing (for platforms not already in Xero) */
+const combinedBankTotal = computed(() => {
+  if (!props.bankCharges) return 0
+  let total = props.bankCharges.total // Xero-matched total
+  // Add Meta billing only if Meta wasn't already matched in Xero
+  const metaXero = props.bankCharges.byPlatform['meta']?.total ?? 0
+  if (metaXero <= 0 && props.bankCharges.metaBilling?.total) {
+    total += props.bankCharges.metaBilling.total
+  }
+  return Math.round(total * 100) / 100
+})
+
+const totalColSpan = computed(() => hasBankData.value ? 9 : 8)
 </script>
 
 <template>
@@ -173,6 +265,12 @@ function pacingTextColor(ratio: number) {
           <th class="py-2 px-3 font-medium text-muted text-right cursor-pointer" @click="toggleSort('spend')">
             Spend
             <UIcon v-if="sortKey === 'spend'" :name="sortDir === 'asc' ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-3 ml-0.5 inline" />
+          </th>
+          <!-- Bank Charged column -->
+          <th v-if="hasBankData" class="py-2 px-3 font-medium text-muted text-right">
+            <UTooltip text="Actual charges from Xero bank/CC transactions + Meta Billing API, proportionally split by client spend share">
+              <span class="border-b border-dashed border-current cursor-help">Bank Charged</span>
+            </UTooltip>
           </th>
           <th class="py-2 px-3 font-medium text-muted text-center w-28">Pacing</th>
           <th class="py-2 px-3 font-medium text-muted text-right cursor-pointer" @click="toggleSort('commission')">
@@ -197,14 +295,16 @@ function pacingTextColor(ratio: number) {
           </td>
           <!-- Budget cell — click to edit -->
           <td class="py-2 px-3 text-right">
-            <div v-if="editingKey === itemKey(item)" class="flex flex-col items-end gap-1">
+            <div v-if="editingKey === itemKey(item)" class="flex flex-col items-end gap-1.5">
               <div class="flex items-center gap-1">
+                <span class="text-xs text-muted">$</span>
                 <input
                   v-model="editBudget"
                   :data-budget-edit="itemKey(item)"
                   type="number"
                   min="0"
                   step="100"
+                  placeholder="Budget"
                   class="w-24 text-right text-sm rounded border border-default bg-default px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary"
                   @keydown.enter="saveBudget(item)"
                   @keydown.escape="cancelEdit"
@@ -212,22 +312,69 @@ function pacingTextColor(ratio: number) {
                 <UButton size="xs" variant="soft" color="primary" icon="i-lucide-check" :loading="saving" @click="saveBudget(item)" />
                 <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-x" @click="cancelEdit" />
               </div>
-              <label class="flex items-center gap-1 text-[10px] text-muted cursor-pointer">
-                <input type="checkbox" v-model="editRolling" class="rounded border-default size-3" />
-                Rolling
+              <div class="flex items-center gap-1">
+                <span class="text-xs text-muted">Commission</span>
+                <input
+                  v-model="editCommissionRate"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  placeholder="0"
+                  class="w-16 text-right text-sm rounded border border-default bg-default px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary"
+                  @keydown.enter="saveBudget(item)"
+                  @keydown.escape="cancelEdit"
+                />
+                <span class="text-xs text-muted">%</span>
+              </div>
+              <label class="flex items-center gap-1.5 text-xs text-muted cursor-pointer select-none">
+                <UCheckbox v-model="editRolling" />
+                <span>Rolling budget</span>
+                <UTooltip text="When enabled, this budget carries forward to future months automatically">
+                  <UIcon name="i-lucide-info" class="size-3 text-muted" />
+                </UTooltip>
               </label>
             </div>
-            <button
-              v-else
-              class="inline-flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
-              @click="startEdit(item)"
-            >
-              <UIcon v-if="item.rolling" name="i-lucide-repeat" class="size-3 text-primary" />
-              <span>{{ item.budget > 0 ? formatCurrency(item.budget) : '-' }}</span>
-              <UIcon name="i-lucide-pencil" class="size-3 opacity-0 group-hover:opacity-50" />
-            </button>
+            <div v-else class="flex flex-col items-end gap-0.5">
+              <button
+                class="inline-flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
+                @click="startEdit(item)"
+              >
+                <span v-if="item.budget > 0">{{ formatCurrency(item.budget) }}</span>
+                <span v-else class="text-muted/50 text-xs">Set budget</span>
+                <UIcon name="i-lucide-pencil" class="size-3 opacity-0 group-hover:opacity-50" />
+              </button>
+              <UBadge v-if="item.rolling" size="xs" color="info" variant="subtle" class="gap-0.5">
+                <UIcon name="i-lucide-repeat" class="size-3" />
+                Rolling
+              </UBadge>
+            </div>
           </td>
           <td class="py-2 px-3 text-right font-medium">{{ formatCurrency(item.spend) }}</td>
+          <!-- Bank Charged cell -->
+          <td v-if="hasBankData" class="py-2 px-3 text-right">
+            <template v-if="bankChargeForItem(item) != null">
+              <div class="flex flex-col items-end gap-0.5">
+                <div class="flex items-center gap-1 justify-end">
+                  <span class="font-medium">{{ formatCurrency(bankChargeForItem(item)!) }}</span>
+                  <UTooltip :text="bankChargeSource(item) === 'meta_billing' ? 'Source: Meta Billing API' : 'Source: Xero bank/CC'">
+                    <UIcon
+                      :name="bankChargeSource(item) === 'meta_billing' ? 'i-lucide-facebook' : 'i-lucide-landmark'"
+                      class="size-3 text-muted"
+                    />
+                  </UTooltip>
+                </div>
+                <span
+                  v-if="bankDiff(item) != null && Math.abs(bankDiff(item)!) >= 1"
+                  class="text-[10px] font-medium"
+                  :class="bankDiffClass(bankDiff(item)!)"
+                >
+                  {{ bankDiff(item)! > 0 ? '+' : '' }}{{ formatCurrency(bankDiff(item)!) }}
+                </span>
+              </div>
+            </template>
+            <span v-else class="text-muted">-</span>
+          </td>
           <!-- Pacing cell -->
           <td class="py-2 px-3">
             <template v-if="pacingInfo(item)">
@@ -247,7 +394,13 @@ function pacingTextColor(ratio: number) {
             </template>
             <span v-else class="text-muted text-center block">-</span>
           </td>
-          <td class="py-2 px-3 text-right">{{ formatCurrency(item.commission) }}</td>
+          <td class="py-2 px-3 text-right">
+            <div class="flex flex-col items-end gap-0.5">
+              <span v-if="item.commission > 0">{{ formatCurrency(item.commission) }}</span>
+              <span v-else class="text-muted">-</span>
+              <span v-if="(item.commissionRate ?? 0) > 0" class="text-[10px] text-muted">{{ item.commissionRate }}%</span>
+            </div>
+          </td>
           <td class="py-2 px-3 text-right" :class="varianceClass(item.variancePercent)">
             {{ item.budget > 0 ? formatCurrency(item.variance) : '-' }}
           </td>
@@ -256,7 +409,7 @@ function pacingTextColor(ratio: number) {
           </td>
         </tr>
         <tr v-if="filtered.length === 0">
-          <td colspan="8" class="py-6 text-center text-muted text-sm">No matching results</td>
+          <td :colspan="totalColSpan" class="py-6 text-center text-muted text-sm">No matching results</td>
         </tr>
       </tbody>
       <tfoot>
@@ -264,6 +417,18 @@ function pacingTextColor(ratio: number) {
           <td class="py-2 px-3" colspan="2">Totals</td>
           <td class="py-2 px-3 text-right">{{ formatCurrency(totals.budget) }}</td>
           <td class="py-2 px-3 text-right">{{ formatCurrency(totals.spend) }}</td>
+          <td v-if="hasBankData" class="py-2 px-3 text-right">
+            <div class="flex flex-col items-end gap-0.5">
+              <span>{{ formatCurrency(combinedBankTotal) }}</span>
+              <span
+                v-if="Math.abs(combinedBankTotal - totals.spend) >= 1"
+                class="text-[10px] font-medium"
+                :class="bankDiffClass(combinedBankTotal - totals.spend)"
+              >
+                {{ combinedBankTotal - totals.spend > 0 ? '+' : '' }}{{ formatCurrency(combinedBankTotal - totals.spend) }}
+              </span>
+            </div>
+          </td>
           <td class="py-2 px-3"></td>
           <td class="py-2 px-3 text-right">{{ formatCurrency(totals.commission) }}</td>
           <td class="py-2 px-3 text-right" :class="varianceClass(totals.budget > 0 ? ((totals.spend - totals.budget) / totals.budget) * 100 : 0)">

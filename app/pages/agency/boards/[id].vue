@@ -17,7 +17,7 @@
       <div class="flex-1 overflow-auto p-4">
         <div class="min-w-max">
           <!-- Groups -->
-          <div v-for="group in groups" :key="group.id" class="mb-4 bg-white rounded-lg border relative">
+          <div v-for="group in groups" :key="group.id" class="mb-4 bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-700 relative">
             <!-- Group Header -->
             <BoardGroupRow
               :group-id="group.id"
@@ -33,21 +33,21 @@
             />
 
             <!-- Items Table -->
-            <div v-if="group.isExpanded" class="border-t">
+            <div v-if="group.isExpanded" class="border-t border-gray-200 dark:border-neutral-700">
               <!-- Headers -->
-              <div class="flex items-center bg-gray-50 text-xs font-medium text-gray-500 uppercase border-b">
-                <div class="w-10 px-2 py-2 border-r">
+              <div class="flex items-center bg-gray-50 dark:bg-neutral-800 text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase border-b border-gray-200 dark:border-neutral-700">
+                <div class="w-10 px-2 py-2 border-r border-gray-200 dark:border-neutral-700">
                   <UCheckbox
                     :model-value="selection.isGroupSelected(group.items)"
                     @update:model-value="selection.selectGroup(group.items, !!$event)"
                   />
                 </div>
-                <div class="flex-1 min-w-[250px] px-4 py-2 border-r">Item</div>
-                <div v-for="col in columns" :key="col.id" class="px-4 py-2 border-r flex items-center justify-between group" :style="{ width: (col.width || 150) + 'px' }">
+                <div class="flex-1 min-w-[250px] px-4 py-2 border-r border-gray-200 dark:border-neutral-700">Item</div>
+                <div v-for="col in columns" :key="col.id" class="px-4 py-2 border-r border-gray-200 dark:border-neutral-700 flex items-center justify-between group" :style="{ width: (col.width || 150) + 'px' }">
                   <span>{{ col.name }}</span>
                   <UDropdownMenu :items="columnMenuItems(col)">
-                    <button class="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded transition-opacity">
-                      <UIcon name="i-lucide-more-vertical" class="w-3.5 h-3.5 text-gray-500" />
+                    <button class="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 dark:hover:bg-neutral-700 rounded transition-opacity">
+                      <UIcon name="i-lucide-more-vertical" class="w-3.5 h-3.5 text-gray-500 dark:text-neutral-400" />
                     </button>
                   </UDropdownMenu>
                 </div>
@@ -57,20 +57,20 @@
               <div
                 v-for="item in group.items"
                 :key="item.id"
-                class="flex items-center border-b hover:bg-gray-50 cursor-pointer"
-                :class="{ 'bg-blue-50': selectedTaskId === item.id, 'bg-blue-50/50': selection.isSelected(item.id) }"
+                class="flex items-center border-b border-gray-200 dark:border-neutral-700 hover:bg-gray-50 dark:hover:bg-neutral-800 cursor-pointer"
+                :class="{ 'bg-blue-50 dark:bg-blue-950': selectedTaskId === item.id, 'bg-blue-50/50 dark:bg-blue-950/50': selection.isSelected(item.id) }"
                 @click="openTask(item.id)"
               >
-                <div class="w-10 px-2 py-3 border-r" @click.stop>
+                <div class="w-10 px-2 py-3 border-r border-gray-200 dark:border-neutral-700" @click.stop>
                   <UCheckbox
                     :model-value="selection.isSelected(item.id)"
                     @update:model-value="selection.toggle(item.id)"
                   />
                 </div>
-                <div class="flex-1 min-w-[250px] px-4 py-3 border-r">
+                <div class="flex-1 min-w-[250px] px-4 py-3 border-r border-gray-200 dark:border-neutral-700">
                   <p class="text-sm font-medium">{{ item.title }}</p>
                 </div>
-                <div v-for="col in columns" :key="col.id" class="px-2 py-1 border-r" :style="{ width: (col.width || 150) + 'px' }" @click.stop>
+                <div v-for="col in columns" :key="col.id" class="px-2 py-1 border-r border-gray-200 dark:border-neutral-700" :style="{ width: (col.width || 150) + 'px' }" @click.stop>
                   <BoardCell
                     :column="normalizeColumn(col)"
                     :value="getCellValue(item, col)"
@@ -98,10 +98,10 @@
           </div>
 
           <!-- Empty -->
-          <div v-if="!groups?.length" class="text-center py-12 bg-white rounded-lg border">
-            <UIcon name="i-lucide-columns-3" class="w-12 h-12 mx-auto mb-3 text-gray-300" />
+          <div v-if="!groups?.length" class="text-center py-12 bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-700">
+            <UIcon name="i-lucide-columns-3" class="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-neutral-600" />
             <h3 class="font-medium">No items yet</h3>
-            <p class="text-sm text-gray-500 mt-1">Create a group and start adding items</p>
+            <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1">Create a group and start adding items</p>
             <UButton color="primary" class="mt-4" icon="i-lucide-folder-plus" @click="showAddGroup = true">
               Add Group
             </UButton>
@@ -151,12 +151,12 @@
           </Transition>
 
           <!-- Toolbar -->
-          <div class="bg-white rounded-lg shadow-xl border flex items-center px-2 py-2">
+          <div class="bg-white dark:bg-neutral-900 rounded-lg shadow-xl border flex items-center px-2 py-2">
             <div class="flex items-center gap-2 px-4 border-r mr-2">
               <div class="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-semibold">
                 {{ selection.selectedCount.value }}
               </div>
-              <span class="text-sm font-medium text-gray-700">Item{{ selection.selectedCount.value > 1 ? 's' : '' }} selected</span>
+              <span class="text-sm font-medium text-gray-700 dark:text-neutral-200">Item{{ selection.selectedCount.value > 1 ? 's' : '' }} selected</span>
             </div>
             <div class="flex items-center gap-1">
               <UButton variant="ghost" size="sm" icon="i-lucide-copy" class="flex-col gap-0.5 h-auto py-1.5">
@@ -207,13 +207,12 @@
           />
         </UFormField>
         <UFormField v-if="availableGroups.length > 0" label="Group">
-          <select
+          <USelectMenu
             v-model="newItemGroupId"
-            class="w-full text-sm border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-primary"
-          >
-            <option value="">No group</option>
-            <option v-for="g in availableGroups" :key="g.id" :value="g.id">{{ g.name }}</option>
-          </select>
+            :items="[{ label: 'No group', value: '__none__' }, ...availableGroups.map(g => ({ label: g.name, value: g.id }))]"
+            placeholder="Select group"
+            class="w-full"
+          />
         </UFormField>
       </div>
     </template>
@@ -228,7 +227,7 @@
   <!-- Delete Column Confirmation -->
   <UModal v-model:open="showDeleteModal" title="Delete Column">
     <template #body>
-      <p class="text-gray-600">
+      <p class="text-gray-600 dark:text-neutral-300">
         Are you sure you want to delete this column? This will also delete all data in this column and cannot be undone.
       </p>
     </template>
@@ -303,7 +302,7 @@
   <!-- Delete Group Confirmation -->
   <UModal v-model:open="showDeleteGroupModal" title="Delete Group">
     <template #body>
-      <p class="text-gray-600">
+      <p class="text-gray-600 dark:text-neutral-300">
         Are you sure you want to delete this group? Tasks in the group will become ungrouped, not deleted.
       </p>
     </template>
@@ -360,7 +359,7 @@
             class="w-2 h-2 rounded-sm"
             :style="{ backgroundColor: selectedTask.groupColor || '#579BFC' }"
           />
-          <span class="text-xs text-gray-500 uppercase tracking-wide">{{ selectedTask.groupName }}</span>
+          <span class="text-xs text-gray-500 dark:text-neutral-400 uppercase tracking-wide">{{ selectedTask.groupName }}</span>
         </div>
         <div class="flex items-center gap-1">
           <UButton
@@ -386,7 +385,7 @@
     <template #body>
       <div v-if="selectedTask" class="h-full flex flex-col">
         <div class="mb-4">
-          <h2 class="text-lg font-semibold text-gray-900 leading-tight">{{ selectedTask.title }}</h2>
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-neutral-100 leading-tight">{{ selectedTask.title }}</h2>
         </div>
 
         <!-- Chat Overlay (replaces tabs when active) -->
@@ -397,12 +396,12 @@
         <!-- Tab Interface -->
         <template v-else>
           <!-- Tabs -->
-          <div class="flex items-center border-b -mx-4 px-4 mb-4">
+          <div class="flex items-center border-b border-gray-200 dark:border-neutral-700 -mx-4 px-4 mb-4">
             <button
               v-for="tab in tabs"
               :key="tab.id"
               class="px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px"
-              :class="activeTab === tab.id ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900'"
+              :class="activeTab === tab.id ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-600 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-neutral-100'"
               @click="activeTab = tab.id"
             >
               {{ tab.label }}
@@ -429,7 +428,7 @@
 
             <div v-else-if="activeTab === 'time-billing'" class="space-y-6">
               <TaskTimePanel v-if="selectedTaskId" :task-id="selectedTaskId" />
-              <hr class="border-gray-200" />
+              <hr class="border-gray-200 dark:border-neutral-700" />
               <TaskBillingPanel v-if="selectedTaskId" :task-id="selectedTaskId" />
             </div>
           </div>
@@ -505,7 +504,7 @@ const showAutomations = ref(false)
 const showChatFeed = ref(false)
 const showNewItem = ref(false)
 const newItemTitle = ref('')
-const newItemGroupId = ref('')
+const newItemGroupId = ref('__none__')
 
 const availableGroups = computed(() => {
   const groups = containerRef.value?.groups || []
@@ -516,11 +515,11 @@ async function submitNewItem() {
   const title = newItemTitle.value.trim()
   if (!title) return
   await handleAddItem({
-    groupId: newItemGroupId.value || '__ungrouped__',
+    groupId: newItemGroupId.value === '__none__' ? '__ungrouped__' : newItemGroupId.value,
     title,
   })
   newItemTitle.value = ''
-  newItemGroupId.value = ''
+  newItemGroupId.value = '__none__'
   showNewItem.value = false
 }
 

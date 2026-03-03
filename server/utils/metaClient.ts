@@ -267,3 +267,47 @@ export function extractConversions(actions?: Array<{ action_type: string; value:
     .filter(a => conversionTypes.some(t => a.action_type.includes(t)))
     .reduce((sum, a) => sum + parseInt(a.value, 10), 0)
 }
+
+// ============================================
+// Billing / Spend Totals
+// ============================================
+
+export interface MetaAccountSpendSummary {
+  accountId: string
+  spend: number
+  currency: string
+}
+
+/**
+ * Get total spend for an ad account in a given month.
+ * Uses the insights endpoint (reliable, same source as campaign-level data).
+ * Returns the total amount Meta charged for the period.
+ */
+export async function getAccountMonthlySpend(
+  accountId: string,
+  token: string,
+  month: number,
+  year: number
+): Promise<MetaAccountSpendSummary> {
+  const { since, until } = getMonthRange(month, year)
+
+  try {
+    const res = await ofetch<{ data: Array<{ spend: string; date_start: string; date_stop: string }> }>(
+      `${META_GRAPH_BASE}/${accountId}/insights`,
+      {
+        method: 'GET',
+        query: {
+          fields: 'spend',
+          time_range: JSON.stringify({ since, until }),
+          access_token: token,
+        },
+      }
+    )
+
+    const spend = parseFloat(res.data?.[0]?.spend || '0')
+    return { accountId, spend, currency: 'AUD' }
+  } catch (err: any) {
+    console.warn(`[MetaBilling] Failed to fetch spend for ${accountId}:`, err.message)
+    return { accountId, spend: 0, currency: 'AUD' }
+  }
+}

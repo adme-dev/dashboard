@@ -2,18 +2,22 @@
 definePageMeta({ layout: 'agency' })
 
 const toast = useToast()
+const route = useRoute()
+const router = useRouter()
 const { fetchSpendSummary, syncSpend } = useSocialConnections()
 
 const now = new Date()
-const selectedMonth = ref(now.getMonth() + 1) // 1-indexed for SpendPeriodPicker
-const selectedYear = ref(now.getFullYear())
-const selectedPlatform = ref('all')
+const selectedMonth = ref(parseInt(String(route.query.month || now.getMonth() + 1), 10))
+const selectedYear = ref(parseInt(String(route.query.year || now.getFullYear()), 10))
+const selectedPlatform = ref(String(route.query.platform || 'all'))
 const weekFilter = ref<{ start: string; end: string } | null>(null)
 const loading = ref(false)
 const syncing = ref(false)
 const searchQuery = ref('')
 
 const spendData = ref<any>(null)
+const bankCharges = ref<any>(null)
+const bankLoading = ref(false)
 
 const platformOptions = [
   { label: 'All', value: 'all' },
@@ -44,6 +48,20 @@ async function loadSpend() {
   }
 }
 
+async function loadBankCharges() {
+  bankLoading.value = true
+  try {
+    bankCharges.value = await $fetch('/api/agency/social/spend/bank-charges', {
+      query: { month: selectedMonth.value, year: selectedYear.value },
+    })
+  } catch {
+    // Xero not connected or error — silently degrade
+    bankCharges.value = null
+  } finally {
+    bankLoading.value = false
+  }
+}
+
 const syncablePlatforms = ['meta', 'google', 'tiktok', 'linkedin', 'pinterest', 'snapchat', 'twitter', 'microsoft_ads'] as const
 
 async function handleSyncAll() {
@@ -63,10 +81,27 @@ async function handleSyncAll() {
 
 function exportCSV() {
   if (!spendData.value?.items?.length) return
-  const headers = ['Client', 'Platform', 'Budget', 'Spend', 'Commission', 'Variance', 'Variance %']
-  const rows = spendData.value.items.map((i: any) => [
-    i.clientName, i.platform, i.budget, i.spend, i.commission, i.variance, `${i.variancePercent}%`
-  ])
+  const hasBankCol = hasBankData.value
+  const headers = ['Client', 'Platform', 'Budget', 'Spend', ...(hasBankCol ? ['Bank Charged', 'Source'] : []), 'Commission', 'Variance', 'Variance %']
+  const rows = spendData.value.items.map((i: any) => {
+    const base = [i.clientName, i.platform, i.budget, i.spend]
+    if (hasBankCol) {
+      const key = i.platform === 'google' ? 'google_ads' : i.platform
+      let platformBankTotal = bankCharges.value?.byPlatform?.[key]?.total || 0
+      let source = 'xero'
+      // Fallback to Meta billing for meta platform
+      if (platformBankTotal <= 0 && key === 'meta' && bankCharges.value?.metaBilling?.total) {
+        platformBankTotal = bankCharges.value.metaBilling.total
+        source = 'meta_billing'
+      }
+      const platformTotal = spendData.value.items
+        .filter((x: any) => (x.platform === 'google' ? 'google_ads' : x.platform) === key)
+        .reduce((s: number, x: any) => s + x.spend, 0)
+      const bankAmt = platformTotal > 0 ? Math.round(platformBankTotal * (i.spend / platformTotal) * 100) / 100 : 0
+      base.push(bankAmt, bankAmt > 0 ? source : '')
+    }
+    return [...base, i.commission, i.variance, `${i.variancePercent}%`]
+  })
   const csv = [headers.join(','), ...rows.map((r: any[]) => r.join(','))].join('\n')
   const blob = new Blob([csv], { type: 'text/csv' })
   const url = URL.createObjectURL(blob)
@@ -77,8 +112,23 @@ function exportCSV() {
   URL.revokeObjectURL(url)
 }
 
-watch([selectedMonth, selectedYear, selectedPlatform], () => loadSpend())
-onMounted(() => loadSpend())
+watch([selectedMonth, selectedYear, selectedPlatform], () => {
+  loadSpend()
+  loadBankCharges()
+
+  // Sync URL query string so the current view is linkable
+  const q: Record<string, string> = {
+    month: String(selectedMonth.value),
+    year: String(selectedYear.value),
+  }
+  if (selectedPlatform.value !== 'all') q.platform = selectedPlatform.value
+  router.replace({ query: q })
+})
+
+onMounted(() => {
+  loadSpend()
+  loadBankCharges()
+})
 
 const lastSyncedAt = computed(() => spendData.value?.lastSyncedAt || null)
 
@@ -110,6 +160,31 @@ const overallPacing = computed(() => {
   // Pacing ratio: >1 means overspending, <1 means underspending
   const ratio = progress > 0 ? spentPct / progress : 0
   return { spentPct: Math.round(spentPct), progress, ratio: Math.round(ratio * 100) / 100 }
+})
+
+const hasBankData = computed(() => {
+  if (!bankCharges.value?.connected) return false
+  return bankCharges.value.total > 0 || (bankCharges.value.metaBilling?.total ?? 0) > 0
+})
+
+/** Combined: Xero bank/CC + Meta billing (for platforms not matched in Xero) */
+const combinedBankTotal = computed(() => {
+  if (!bankCharges.value) return 0
+  let total = bankCharges.value.total
+  const metaXero = bankCharges.value.byPlatform?.['meta']?.total ?? 0
+  if (metaXero <= 0 && bankCharges.value.metaBilling?.total) {
+    total += bankCharges.value.metaBilling.total
+  }
+  return Math.round(total * 100) / 100
+})
+
+const bankDiscrepancy = computed(() => {
+  if (!hasBankData.value || !spendData.value?.totals) return null
+  const diff = combinedBankTotal.value - spendData.value.totals.spend
+  const pct = spendData.value.totals.spend > 0
+    ? Math.round((diff / spendData.value.totals.spend) * 1000) / 10
+    : 0
+  return { diff: Math.round(diff * 100) / 100, pct }
 })
 </script>
 
@@ -164,7 +239,7 @@ const overallPacing = computed(() => {
       />
 
       <!-- Summary Cards -->
-      <div v-if="spendData" class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div v-if="spendData" class="grid grid-cols-2 lg:grid-cols-6 gap-4">
         <!-- Total Spend -->
         <div class="rounded-xl border border-default p-4 space-y-3">
           <div class="flex items-center justify-between">
@@ -174,6 +249,37 @@ const overallPacing = computed(() => {
             </div>
           </div>
           <p class="text-2xl font-bold tracking-tight">{{ formatCurrency(spendData.totals.spend) }}</p>
+        </div>
+
+        <!-- Bank Charged -->
+        <div
+          class="rounded-xl border border-default p-4 space-y-3"
+          :class="bankDiscrepancy && Math.abs(bankDiscrepancy.pct) > 2 ? 'ring-1 ring-amber-500/20' : ''"
+        >
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-medium text-muted uppercase tracking-wide">Bank Charged</span>
+            <div class="rounded-lg p-1.5" :class="hasBankData ? 'bg-orange-100 dark:bg-orange-950/40' : 'bg-elevated'">
+              <UIcon name="i-lucide-landmark" class="size-4" :class="hasBankData ? 'text-orange-500' : 'text-muted'" />
+            </div>
+          </div>
+          <template v-if="hasBankData">
+            <p class="text-2xl font-bold tracking-tight">{{ formatCurrency(combinedBankTotal) }}</p>
+            <div v-if="bankDiscrepancy && Math.abs(bankDiscrepancy.diff) >= 1" class="text-[10px] font-medium" :class="bankDiscrepancy.diff > 0 ? 'text-amber-500' : 'text-emerald-500'">
+              {{ bankDiscrepancy.diff > 0 ? '+' : '' }}{{ formatCurrency(bankDiscrepancy.diff) }}
+              ({{ bankDiscrepancy.pct > 0 ? '+' : '' }}{{ bankDiscrepancy.pct }}%)
+              vs platform
+            </div>
+          </template>
+          <template v-else-if="bankLoading">
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-loader-2" class="size-4 animate-spin text-muted" />
+              <span class="text-sm text-muted">Loading...</span>
+            </div>
+          </template>
+          <template v-else>
+            <p class="text-2xl font-bold tracking-tight text-muted">-</p>
+            <p class="text-[10px] text-muted">Connect Xero to see bank charges</p>
+          </template>
         </div>
 
         <!-- Total Budget -->
@@ -268,6 +374,7 @@ const overallPacing = computed(() => {
           :totals="spendData.totals"
           :search="searchQuery"
           :month-progress="monthProgress"
+          :bank-charges="bankCharges"
           @budget-updated="loadSpend"
         />
       </div>

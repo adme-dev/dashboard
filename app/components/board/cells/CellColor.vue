@@ -1,21 +1,21 @@
 <template>
   <div class="min-h-[28px] flex items-center" @click.stop>
     <div
-      class="flex items-center gap-2 px-1 py-0.5 rounded hover:bg-gray-100 cursor-pointer"
+      class="flex items-center gap-2 px-1 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-neutral-800 cursor-pointer"
       @click="togglePicker"
     >
       <span
         class="w-6 h-6 rounded border"
         :style="{ backgroundColor: currentColor || '#E5E7EB' }"
       />
-      <span class="text-xs text-gray-500">{{ currentColor || '-' }}</span>
+      <span class="text-xs text-gray-500 dark:text-neutral-400">{{ currentColor || '-' }}</span>
     </div>
 
     <!-- Color Picker Popover -->
     <Teleport to="body">
       <div
         v-if="showPicker"
-        class="fixed z-[100] bg-white rounded-lg shadow-xl border w-56 p-3"
+        class="fixed z-[100] bg-white dark:bg-neutral-900 rounded-lg shadow-xl border border-gray-200 dark:border-neutral-700 w-56 p-3"
         :style="popoverStyle"
         v-click-outside="closePicker"
       >
@@ -33,13 +33,13 @@
           <input
             v-model="customColor"
             type="color"
-            class="w-8 h-8 rounded border cursor-pointer"
+            class="w-8 h-8 rounded border border-gray-200 dark:border-neutral-700 cursor-pointer"
           />
           <input
             v-model="customColor"
             type="text"
             placeholder="#000000"
-            class="flex-1 px-2 py-1 text-sm border rounded outline-none focus:border-blue-500"
+            class="flex-1 px-2 py-1 text-sm border border-gray-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 rounded outline-none focus:border-blue-500"
             @keydown.enter="selectColor(customColor)"
           />
         </div>

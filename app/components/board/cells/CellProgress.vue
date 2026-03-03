@@ -7,23 +7,23 @@
         type="number"
         min="0"
         max="100"
-        class="w-16 px-1 py-0.5 text-sm border rounded outline-none focus:border-blue-500 bg-white text-right"
+        class="w-16 px-1 py-0.5 text-sm border border-gray-200 dark:border-neutral-700 rounded outline-none focus:border-blue-500 bg-white dark:bg-neutral-800 dark:text-neutral-100 text-right"
         @blur="save"
         @keydown.enter="save"
         @keydown.escape="cancel"
         @click.stop
       />
-      <span class="text-xs text-gray-500">%</span>
+      <span class="text-xs text-gray-500 dark:text-neutral-400">%</span>
     </template>
     <template v-else>
-      <div class="flex-1 bg-gray-200 rounded-full h-2 cursor-pointer">
+      <div class="flex-1 bg-gray-200 dark:bg-neutral-800 rounded-full h-2 cursor-pointer">
         <div
           class="h-2 rounded-full transition-all"
           :class="progressColor"
           :style="{ width: `${percent}%` }"
         />
       </div>
-      <span class="text-xs text-gray-500 w-8 text-right">{{ percent }}%</span>
+      <span class="text-xs text-gray-500 dark:text-neutral-400 w-8 text-right">{{ percent }}%</span>
     </template>
   </div>
 </template>

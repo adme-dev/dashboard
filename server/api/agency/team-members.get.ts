@@ -17,7 +17,7 @@ export default eventHandler(async (event) => {
     const params: any[] = []
 
     if (search) {
-      searchCondition = 'AND (name ILIKE $1 OR email ILIKE $1 OR role ILIKE $1)'
+      searchCondition = 'AND (name ILIKE $1 OR email ILIKE $1 OR user_role ILIKE $1)'
       params.push(`%${search}%`)
     }
 
@@ -26,7 +26,7 @@ export default eventHandler(async (event) => {
         id,
         name,
         email,
-        role,
+        user_role as role,
         avatar_url as "avatarUrl",
         is_active as "isActive"
       FROM team_members

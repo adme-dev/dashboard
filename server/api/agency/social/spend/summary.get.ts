@@ -32,7 +32,8 @@ export default eventHandler(async (event) => {
         COUNT(*)::int as campaign_count,
         MAX(ms.synced_at) as last_synced_at,
         array_agg(ms.id ORDER BY ms.actual_spend DESC) as spend_ids,
-        bool_or(COALESCE(ms.budget_rolling, false)) as is_rolling
+        bool_or(COALESCE(ms.budget_rolling, false)) as is_rolling,
+        MAX(ms.commission_rate) as commission_rate
       FROM media_spend ms
       LEFT JOIN agency_clients ac ON ms.client_id = ac.id
       WHERE ms.period = $1
@@ -69,6 +70,7 @@ export default eventHandler(async (event) => {
         campaignCount: r.campaign_count,
         spendIds: r.spend_ids || [],
         rolling: r.is_rolling || false,
+        commissionRate: parseFloat(r.commission_rate) || 0,
       }
     })
 

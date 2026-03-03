@@ -83,7 +83,17 @@ export default defineEventHandler(async (event) => {
         }
       }
     }
-  } catch (error) {
+  } catch (error: any) {
+    // If time_entries table doesn't exist yet, return empty results
+    if (error?.message?.includes('does not exist') || error?.message?.includes('relation')) {
+      return {
+        entries: [],
+        summary: {
+          today: { total: 0, billable: 0, utilization: 0 },
+          week: { total: 0, billable: 0, utilization: 0, revenue: 0 }
+        }
+      }
+    }
     console.error('Failed to fetch recent time entries:', error)
     throw createError({
       statusCode: 500,

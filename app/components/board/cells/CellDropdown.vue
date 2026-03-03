@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-[28px] flex items-center" @click.stop>
     <div
-      class="flex items-center gap-1 min-h-[28px] px-1 rounded hover:bg-gray-100 cursor-pointer w-full"
+      class="flex items-center gap-1 min-h-[28px] px-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-800 cursor-pointer w-full"
       @click="togglePicker"
     >
       <div v-if="selectedOptions.length" class="flex flex-wrap gap-1">
@@ -13,35 +13,35 @@
         >
           {{ opt.label }}
         </span>
-        <span v-if="selectedOptions.length > 2" class="text-xs text-gray-500">
+        <span v-if="selectedOptions.length > 2" class="text-xs text-gray-500 dark:text-neutral-400">
           +{{ selectedOptions.length - 2 }}
         </span>
       </div>
-      <span v-else class="text-sm text-gray-400">-</span>
+      <span v-else class="text-sm text-gray-400 dark:text-neutral-500">-</span>
     </div>
 
     <!-- Dropdown Picker -->
     <Teleport to="body">
       <div
         v-if="showPicker"
-        class="fixed z-[100] bg-white rounded-lg shadow-xl border w-64 max-h-80"
+        class="fixed z-[100] bg-white dark:bg-neutral-900 rounded-lg shadow-xl border border-gray-200 dark:border-neutral-700 w-64 max-h-80"
         :style="popoverStyle"
         v-click-outside="closePicker"
       >
-        <div class="p-2 border-b">
+        <div class="p-2 border-b border-gray-200 dark:border-neutral-700">
           <input
             v-model="search"
             type="text"
             placeholder="Search..."
-            class="w-full px-2 py-1.5 text-sm border rounded outline-none focus:border-blue-500"
+            class="w-full px-2 py-1.5 text-sm border border-gray-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 rounded outline-none focus:border-blue-500"
           />
         </div>
         <div class="max-h-52 overflow-y-auto py-1">
           <button
             v-for="opt in filteredOptions"
             :key="opt.value"
-            class="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-sm text-left"
-            :class="{ 'bg-blue-50': isSelected(opt) }"
+            class="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-neutral-800 text-sm text-left dark:text-neutral-100"
+            :class="{ 'bg-blue-50 dark:bg-blue-900/30': isSelected(opt) }"
             @click="toggleOption(opt)"
           >
             <span
@@ -51,7 +51,7 @@
             <span class="flex-1 truncate">{{ opt.label }}</span>
             <UIcon v-if="isSelected(opt)" name="i-lucide-check" class="w-4 h-4 text-blue-600" />
           </button>
-          <p v-if="!filteredOptions.length" class="px-3 py-2 text-sm text-gray-400">No options</p>
+          <p v-if="!filteredOptions.length" class="px-3 py-2 text-sm text-gray-400 dark:text-neutral-500">No options</p>
         </div>
       </div>
     </Teleport>

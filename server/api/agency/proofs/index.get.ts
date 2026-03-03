@@ -141,7 +141,14 @@ export default defineEventHandler(async (event) => {
         byStatus: Object.fromEntries(byStatus)
       }
     }
-  } catch (error) {
+  } catch (error: any) {
+    // If tables don't exist yet, return empty results
+    if (error?.message?.includes('does not exist') || error?.message?.includes('relation')) {
+      return {
+        proofs: [],
+        summary: { total: 0, byStatus: {} }
+      }
+    }
     console.error('Failed to fetch proofs:', error)
     throw createError({
       statusCode: 500,

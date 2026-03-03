@@ -23,6 +23,7 @@ export default eventHandler(async (event) => {
   // Map platform param to media_spend.platform value
   const dbPlatform = platform === 'google' ? 'google_ads' : 'meta'
 
+  try {
   // Get aggregated daily spend (cast date to text to avoid timezone conversion)
   const dailyRows = await queryRows<{
     spend_date: string
@@ -63,4 +64,15 @@ export default eventHandler(async (event) => {
     impressions: parseInt(row.total_impressions, 10),
     clicks: parseInt(row.total_clicks, 10),
   }))
+  } catch (error: any) {
+    // If spend tables don't exist yet, return empty array
+    if (error?.message?.includes('does not exist') || error?.message?.includes('relation')) {
+      return []
+    }
+    console.error('Failed to fetch daily spend:', error)
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Failed to fetch daily spend'
+    })
+  }
 })

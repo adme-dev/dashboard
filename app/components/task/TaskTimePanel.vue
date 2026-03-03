@@ -2,34 +2,34 @@
   <div class="space-y-6">
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-12">
-      <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin text-gray-400" />
-      <span class="ml-2 text-sm text-gray-500">Loading time data...</span>
+      <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin text-gray-400 dark:text-neutral-500" />
+      <span class="ml-2 text-sm text-gray-500 dark:text-neutral-400">Loading time data...</span>
     </div>
 
     <template v-else>
       <!-- Summary Cards -->
       <div class="grid grid-cols-3 gap-3">
-        <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 text-center">
-          <p class="text-xs text-gray-500 mb-1">Logged</p>
+        <div class="bg-gray-50 dark:bg-neutral-800 rounded-lg p-3 text-center">
+          <p class="text-xs text-gray-500 dark:text-neutral-400 mb-1">Logged</p>
           <p class="text-sm font-semibold">{{ totalHours.toFixed(1) }}h</p>
         </div>
-        <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 text-center">
-          <p class="text-xs text-gray-500 mb-1">Billable</p>
+        <div class="bg-gray-50 dark:bg-neutral-800 rounded-lg p-3 text-center">
+          <p class="text-xs text-gray-500 dark:text-neutral-400 mb-1">Billable</p>
           <p class="text-sm font-semibold">{{ billableHours.toFixed(1) }}h</p>
         </div>
-        <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 text-center">
-          <p class="text-xs text-gray-500 mb-1">Estimated</p>
+        <div class="bg-gray-50 dark:bg-neutral-800 rounded-lg p-3 text-center">
+          <p class="text-xs text-gray-500 dark:text-neutral-400 mb-1">Estimated</p>
           <p class="text-sm font-semibold">{{ estimatedHours > 0 ? `${estimatedHours}h` : '—' }}</p>
         </div>
       </div>
 
       <!-- Progress Bar (estimated vs actual) -->
       <div v-if="estimatedHours > 0" class="space-y-1">
-        <div class="flex items-center justify-between text-xs text-gray-500">
+        <div class="flex items-center justify-between text-xs text-gray-500 dark:text-neutral-400">
           <span>Progress</span>
           <span :class="progressColor">{{ progressPercent }}%</span>
         </div>
-        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+        <div class="w-full bg-gray-200 dark:bg-neutral-700 rounded-full h-2">
           <div
             class="h-2 rounded-full transition-all"
             :class="progressBarColor"
@@ -63,7 +63,7 @@
       </div>
 
       <!-- Inline Log Time Form -->
-      <div v-if="showLogForm" class="border rounded-lg p-4 space-y-3 bg-gray-50 dark:bg-gray-800">
+      <div v-if="showLogForm" class="border rounded-lg p-4 space-y-3 bg-gray-50 dark:bg-neutral-800">
         <div class="grid grid-cols-2 gap-3">
           <UFormField label="Hours" required>
             <UInput
@@ -105,33 +105,33 @@
 
       <!-- Entries List -->
       <div v-if="timeEntries.length > 0">
-        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+        <h4 class="text-sm font-medium text-gray-700 dark:text-neutral-200 mb-3">
           Time Entries ({{ timeEntries.length }})
         </h4>
         <div class="space-y-2">
           <div
             v-for="entry in timeEntries"
             :key="entry.id"
-            class="border rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            class="border rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors"
           >
             <div class="flex items-center justify-between mb-1">
               <div class="flex items-center gap-2">
                 <span class="text-sm font-semibold">{{ entry.hours }}h</span>
                 <UBadge v-if="entry.billable" color="success" variant="soft" size="xs">Billable</UBadge>
               </div>
-              <span class="text-xs text-gray-400">{{ formatEntryDate(entry.date) }}</span>
+              <span class="text-xs text-gray-400 dark:text-neutral-500">{{ formatEntryDate(entry.date) }}</span>
             </div>
-            <p v-if="entry.user?.name" class="text-xs text-gray-500">{{ entry.user.name }}</p>
-            <p v-if="entry.description" class="text-xs text-gray-500 mt-1">{{ entry.description }}</p>
+            <p v-if="entry.user?.name" class="text-xs text-gray-500 dark:text-neutral-400">{{ entry.user.name }}</p>
+            <p v-if="entry.description" class="text-xs text-gray-500 dark:text-neutral-400 mt-1">{{ entry.description }}</p>
           </div>
         </div>
       </div>
 
       <!-- Empty State -->
       <div v-else-if="!showLogForm" class="text-center py-8">
-        <UIcon name="i-lucide-clock" class="w-8 h-8 text-gray-300 mx-auto mb-3" />
-        <p class="text-sm text-gray-500">No time logged yet.</p>
-        <p class="text-xs text-gray-400 mt-1">Use "Log Time" or "Start Timer" above.</p>
+        <UIcon name="i-lucide-clock" class="w-8 h-8 text-gray-300 dark:text-neutral-600 mx-auto mb-3" />
+        <p class="text-sm text-gray-500 dark:text-neutral-400">No time logged yet.</p>
+        <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">Use "Log Time" or "Start Timer" above.</p>
       </div>
     </template>
   </div>

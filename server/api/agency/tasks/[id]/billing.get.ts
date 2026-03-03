@@ -23,70 +23,83 @@ export default eventHandler(async (event) => {
   )
   if (!task) throw createError({ statusCode: 404, statusMessage: 'Task not found' })
 
-  // Get invoice_status column value
-  const invoiceStatusCol = await queryOne<{ id: string }>(
-    `SELECT id FROM custom_columns
-     WHERE department_id = $1 AND column_type = 'invoice_status'
-     LIMIT 1`,
-    [task.department_id]
-  )
-
+  // Get invoice_status column value (use text cast to avoid enum validation error)
   let invoiceStatus: string | null = null
-  if (invoiceStatusCol) {
-    const cv = await queryOne<{ text_value: string; json_value: any }>(
-      `SELECT text_value, json_value FROM task_column_values
-       WHERE task_id = $1 AND column_id = $2`,
-      [taskId, invoiceStatusCol.id]
+  try {
+    const invoiceStatusCol = await queryOne<{ id: string }>(
+      `SELECT id FROM custom_columns
+       WHERE department_id = $1 AND column_type::text = 'invoice_status'
+       LIMIT 1`,
+      [task.department_id]
     )
-    invoiceStatus = cv?.text_value || null
+
+    if (invoiceStatusCol) {
+      const cv = await queryOne<{ text_value: string; json_value: any }>(
+        `SELECT text_value, json_value FROM task_column_values
+         WHERE task_id = $1 AND column_id = $2`,
+        [taskId, invoiceStatusCol.id]
+      )
+      invoiceStatus = cv?.text_value || null
+    }
+  } catch (_e) {
+    // invoice_status may not exist in column_type enum — skip gracefully
   }
 
-  // Get EOM line items linked to this task
+  // Get EOM line items linked to this task (table may not exist)
   let lineItems: any[] = []
-  if (task.monday_item_id) {
-    lineItems = await queryRows<{
-      id: string
-      run_id: string
-      client_name: string
-      description: string
-      quantity: number
-      unit_amount: number
-      account_code: string
-      tax_type: string
-      tracking_option1: string | null
-      invoice_number: number | null
-      source: string
-      confidence: string
-      review_status: string
-      review_notes: string | null
-      original_values: any
-      created_at: string
-    }>(
-      `SELECT li.id, li.run_id, li.client_name, li.description,
-              li.quantity, li.unit_amount, li.account_code, li.tax_type,
-              li.tracking_option1, li.invoice_number, li.source, li.confidence,
-              li.review_status, li.review_notes, li.original_values, li.created_at
-       FROM eom_line_items li
-       WHERE li.monday_item_id = $1
-       ORDER BY li.created_at DESC`,
-      [task.monday_item_id]
-    )
+  try {
+    if (task.monday_item_id) {
+      lineItems = await queryRows<{
+        id: string
+        run_id: string
+        client_name: string
+        description: string
+        quantity: number
+        unit_amount: number
+        account_code: string
+        tax_type: string
+        tracking_option1: string | null
+        invoice_number: number | null
+        source: string
+        confidence: string
+        review_status: string
+        review_notes: string | null
+        original_values: any
+        created_at: string
+      }>(
+        `SELECT li.id, li.run_id, li.client_name, li.description,
+                li.quantity, li.unit_amount, li.account_code, li.tax_type,
+                li.tracking_option1, li.invoice_number, li.source, li.confidence,
+                li.review_status, li.review_notes, li.original_values, li.created_at
+         FROM eom_line_items li
+         WHERE li.monday_item_id = $1
+         ORDER BY li.created_at DESC`,
+        [task.monday_item_id]
+      )
+    }
+  } catch (_e) {
+    // eom_line_items table may not exist
+    lineItems = []
   }
 
   // Get run details for the most recent line item
   let latestRun: any = null
-  if (lineItems.length > 0) {
-    latestRun = await queryOne<{
-      id: string
-      month: number
-      year: number
-      status: string
-      xero_batch_id: string | null
-    }>(
-      `SELECT id, month, year, status, xero_batch_id
-       FROM eom_runs WHERE id = $1`,
-      [lineItems[0].run_id]
-    )
+  try {
+    if (lineItems.length > 0) {
+      latestRun = await queryOne<{
+        id: string
+        month: number
+        year: number
+        status: string
+        xero_batch_id: string | null
+      }>(
+        `SELECT id, month, year, status, xero_batch_id
+         FROM eom_runs WHERE id = $1`,
+        [lineItems[0].run_id]
+      )
+    }
+  } catch (_e) {
+    // eom_runs table may not exist
   }
 
   // Calculate totals

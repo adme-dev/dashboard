@@ -45,13 +45,6 @@ export default defineEventHandler(async (event) => {
     idx++
   }
 
-  // Filter by task
-  if (query.taskId) {
-    conditions.push(`te.task_id = $${idx}`)
-    params.push(query.taskId)
-    idx++
-  }
-
   // Filter by date range
   if (query.startDate) {
     conditions.push(`te.date >= $${idx}`)
@@ -72,13 +65,6 @@ export default defineEventHandler(async (event) => {
     idx++
   }
 
-  // Filter by status
-  if (query.status) {
-    conditions.push(`te.status = $${idx}`)
-    params.push(query.status)
-    idx++
-  }
-
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
   const limit = Math.min(Number(query.limit) || 100, 500)
   const offset = Number(query.offset) || 0
@@ -89,31 +75,22 @@ export default defineEventHandler(async (event) => {
       te.id,
       te.user_id,
       te.project_id,
-      te.task_id,
       te.date,
       te.hours,
       te.billable,
       te.hourly_rate,
       te.description,
-      te.notes,
-      te.status,
       te.approved,
       te.invoiced,
-      te.submitted_at,
-      te.approved_at,
-      te.approved_by,
-      te.rejection_reason,
       te.created_at,
       tm.name AS user_name,
       tm.email AS user_email,
       p.name AS project_name,
-      c.name AS client_name,
-      t.title AS task_title
+      c.name AS client_name
     FROM time_entries te
     LEFT JOIN team_members tm ON te.user_id = tm.id
     LEFT JOIN projects p ON te.project_id = p.id
     LEFT JOIN agency_clients c ON p.client_id = c.id
-    LEFT JOIN tasks t ON te.task_id = t.id
     ${whereClause}
     ORDER BY te.date DESC, te.created_at DESC
     LIMIT $${idx} OFFSET $${idx + 1}
@@ -142,20 +119,13 @@ export default defineEventHandler(async (event) => {
       id: e.id,
       userId: e.user_id,
       projectId: e.project_id,
-      taskId: e.task_id,
       date: e.date,
       hours: Number(e.hours),
       billable: e.billable,
       hourlyRate: Number(e.hourly_rate),
       description: e.description,
-      notes: e.notes,
-      status: e.status || 'draft',
       approved: e.approved,
       invoiced: e.invoiced,
-      submittedAt: e.submitted_at,
-      approvedAt: e.approved_at,
-      approvedBy: e.approved_by,
-      rejectionReason: e.rejection_reason,
       createdAt: e.created_at,
       value: Number(e.hours) * Number(e.hourly_rate),
       user: {
@@ -167,10 +137,6 @@ export default defineEventHandler(async (event) => {
         id: e.project_id,
         name: e.project_name,
         clientName: e.client_name
-      } : null,
-      task: e.task_id ? {
-        id: e.task_id,
-        title: e.task_title
       } : null
     })),
     summary: {

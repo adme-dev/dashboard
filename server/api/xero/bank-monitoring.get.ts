@@ -88,7 +88,7 @@ export default eventHandler(async (event) => {
       const { body } = await client.accountingApi.getBankTransactions(
         tenantId,
         undefined,
-        `BankAccount.AccountID=="${account.accountID}"&&Date>=${dtExpr(startDate)}&&Date<=${dtExpr(today)}`,
+        `BankAccount.AccountID==Guid("${account.accountID}")&&Date>=${dtExpr(startDate)}&&Date<=${dtExpr(today)}`,
         'Date DESC',
         1,
         undefined,

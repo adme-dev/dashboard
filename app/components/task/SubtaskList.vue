@@ -3,7 +3,7 @@
     <!-- Header -->
     <div class="flex items-center justify-between mb-2">
       <div class="flex items-center gap-2">
-        <h4 class="text-sm font-medium text-gray-700">Subtasks</h4>
+        <h4 class="text-sm font-medium text-gray-700 dark:text-neutral-200">Subtasks</h4>
         <UBadge v-if="subtasks.length > 0" color="neutral" variant="subtle" size="xs">
           {{ completedCount }}/{{ subtasks.length }}
         </UBadge>
@@ -19,7 +19,7 @@
     </div>
 
     <!-- Progress Bar -->
-    <div v-if="subtasks.length > 0" class="w-full bg-gray-200 rounded-full h-1.5 mb-3">
+    <div v-if="subtasks.length > 0" class="w-full bg-gray-200 dark:bg-neutral-700 rounded-full h-1.5 mb-3">
       <div
         class="h-1.5 rounded-full transition-all duration-300"
         :class="progressPercent === 100 ? 'bg-green-500' : 'bg-blue-500'"
@@ -29,7 +29,7 @@
 
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-4">
-      <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin text-gray-400" />
+      <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin text-gray-400 dark:text-neutral-500" />
     </div>
 
     <!-- Subtask List -->
@@ -44,7 +44,7 @@
     </div>
 
     <!-- Empty State -->
-    <p v-else-if="!showAddForm" class="text-sm text-gray-400 py-2">
+    <p v-else-if="!showAddForm" class="text-sm text-gray-400 dark:text-neutral-500 py-2">
       No subtasks yet
     </p>
 
@@ -55,7 +55,7 @@
         v-model="newTitle"
         type="text"
         placeholder="Subtask title..."
-        class="flex-1 text-sm border rounded-md px-3 py-1.5 outline-none focus:border-blue-500"
+        class="flex-1 text-sm border rounded-md px-3 py-1.5 outline-none focus:border-blue-500 bg-white dark:bg-neutral-800"
         :disabled="adding"
         @keydown.enter="addSubtask"
         @keydown.escape="cancelAdd"

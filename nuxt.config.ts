@@ -106,6 +106,11 @@ export default defineNuxtConfig({
     }
   },
 
+  components: [
+    { path: '~/components/neubrutalism', pathPrefix: false },
+    '~/components'
+  ],
+
   nitro: {
     preset: 'cloudflare_pages',
     cloudflare: {

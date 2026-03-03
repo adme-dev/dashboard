@@ -5,7 +5,7 @@
         ref="inputRef"
         v-model="localValue"
         type="text"
-        class="w-full px-1 py-0.5 text-sm border rounded outline-none focus:border-blue-500 bg-white"
+        class="w-full px-1 py-0.5 text-sm border border-gray-200 dark:border-neutral-700 rounded outline-none focus:border-blue-500 bg-white dark:bg-neutral-800 dark:text-neutral-100"
         @blur="save"
         @keydown.enter="save"
         @keydown.escape="cancel"
@@ -13,7 +13,7 @@
       />
     </template>
     <template v-else>
-      <span class="text-sm text-gray-700 truncate cursor-text hover:bg-gray-100 px-1 py-0.5 rounded w-full">
+      <span class="text-sm text-gray-700 dark:text-neutral-300 truncate cursor-text hover:bg-gray-100 dark:hover:bg-neutral-800 px-1 py-0.5 rounded w-full">
         {{ displayValue || '-' }}
       </span>
     </template>

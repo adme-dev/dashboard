@@ -191,10 +191,10 @@ export function useSocialConnections() {
     })
   }
 
-  async function updateCampaignBudget(spendId: string, budgetAllocated: number) {
-    return await $fetch<{ updated: boolean; id: string; budgetAllocated: number }>(
+  async function updateCampaignBudget(spendId: string, budgetAllocated: number, rolling?: boolean) {
+    return await $fetch<{ updated: boolean; id: string; budgetAllocated: number; rolling: boolean }>(
       `/api/agency/social/spend/${spendId}`,
-      { method: 'PATCH', body: { budgetAllocated } }
+      { method: 'PATCH', body: { budgetAllocated, rolling: rolling ?? false } }
     )
   }
 

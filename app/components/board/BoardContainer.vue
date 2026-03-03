@@ -1,5 +1,5 @@
 <template>
-  <div class="h-full flex flex-col bg-gray-50">
+  <div class="h-full flex flex-col bg-gray-50 dark:bg-neutral-950">
     <!-- Header -->
     <BoardHeader
       :board-name="board?.name || 'Board'"

@@ -1,14 +1,14 @@
 <template>
   <div class="min-h-[28px] flex items-center" @click.stop>
     <div
-      class="flex items-center gap-1 min-h-[28px] px-1 rounded hover:bg-gray-100 cursor-pointer w-full"
+      class="flex items-center gap-1 min-h-[28px] px-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-800 cursor-pointer w-full"
       @click="togglePicker"
     >
       <div v-if="assignedPeople.length" class="flex items-center gap-1 flex-wrap">
         <div
           v-for="person in assignedPeople"
           :key="person.id"
-          class="flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-xs"
+          class="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/30 text-blue-700 px-2 py-0.5 rounded-full text-xs"
         >
           <UAvatar :alt="person.name" :fallback="getInitials(person.name)" size="2xs" class="bg-blue-500 text-white" />
           <span class="truncate max-w-[60px]">{{ person.name.split(' ')[0] }}</span>
@@ -17,24 +17,24 @@
           </button>
         </div>
       </div>
-      <span v-else class="text-gray-400 text-sm">-</span>
+      <span v-else class="text-gray-400 dark:text-neutral-500 text-sm">-</span>
     </div>
 
     <!-- People Selector Popover -->
     <Teleport to="body">
       <div
         v-if="showPicker"
-        class="fixed z-[100] bg-white rounded-lg shadow-xl border w-80"
+        class="fixed z-[100] bg-white dark:bg-neutral-900 rounded-lg shadow-xl border border-gray-200 dark:border-neutral-700 w-80"
         :style="popoverStyle"
         v-click-outside="closePicker"
       >
         <!-- Selected -->
-        <div v-if="assignedPeople.length" class="p-3 border-b">
+        <div v-if="assignedPeople.length" class="p-3 border-b border-gray-200 dark:border-neutral-700">
           <div class="flex flex-wrap gap-2">
             <div
               v-for="person in assignedPeople"
               :key="person.id"
-              class="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-2 py-1 rounded-full text-sm"
+              class="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-700 px-2 py-1 rounded-full text-sm"
             >
               <UAvatar :alt="person.name" :fallback="getInitials(person.name)" size="2xs" class="bg-blue-500 text-white" />
               <span>{{ person.name }}</span>
@@ -46,41 +46,41 @@
         </div>
 
         <!-- Search -->
-        <div class="p-3 border-b">
+        <div class="p-3 border-b border-gray-200 dark:border-neutral-700">
           <div class="relative">
-            <UIcon name="i-lucide-search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <UIcon name="i-lucide-search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-neutral-500" />
             <input
               v-model="searchQuery"
               type="text"
               placeholder="Search names, roles or teams"
-              class="w-full pl-9 pr-3 py-2 text-sm border rounded-md outline-none focus:border-blue-500"
+              class="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 rounded-md outline-none focus:border-blue-500"
             />
           </div>
         </div>
 
         <!-- People List -->
         <div class="max-h-64 overflow-y-auto py-2">
-          <div class="px-3 pb-2 text-xs font-medium text-gray-500 uppercase">Suggested people</div>
+          <div class="px-3 pb-2 text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase">Suggested people</div>
           <button
             v-for="person in filteredPeople"
             :key="person.id"
-            class="w-full flex items-center gap-3 px-3 py-2 hover:bg-gray-50 transition-colors"
-            :class="{ 'bg-blue-50': isSelected(person.id) }"
+            class="w-full flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors"
+            :class="{ 'bg-blue-50 dark:bg-blue-900/30': isSelected(person.id) }"
             @click="togglePerson(person.id)"
           >
             <UAvatar :alt="person.name" :fallback="person.initials || getInitials(person.name)" size="sm" class="bg-gray-700 text-white" />
             <div class="text-left flex-1">
-              <div class="text-sm font-medium text-gray-900">{{ person.name }}</div>
-              <div v-if="person.role" class="text-xs text-gray-500">{{ person.role }}</div>
+              <div class="text-sm font-medium text-gray-900 dark:text-neutral-100">{{ person.name }}</div>
+              <div v-if="person.role" class="text-xs text-gray-500 dark:text-neutral-400">{{ person.role }}</div>
             </div>
             <UIcon v-if="isSelected(person.id)" name="i-lucide-check" class="w-4 h-4 text-blue-600" />
           </button>
-          <p v-if="!filteredPeople.length && searchQuery" class="px-3 py-2 text-sm text-gray-400">No matching people</p>
+          <p v-if="!filteredPeople.length && searchQuery" class="px-3 py-2 text-sm text-gray-400 dark:text-neutral-500">No matching people</p>
         </div>
 
         <!-- Footer -->
-        <div class="p-3 border-t bg-blue-50/50 flex items-center justify-between">
-          <div class="flex items-center gap-2 text-sm text-gray-600">
+        <div class="p-3 border-t border-gray-200 dark:border-neutral-700 bg-blue-50/50 dark:bg-blue-900/20 flex items-center justify-between">
+          <div class="flex items-center gap-2 text-sm text-gray-600 dark:text-neutral-400">
             <UIcon name="i-lucide-bell" class="w-4 h-4" />
             <span>Assignees will be notified</span>
           </div>

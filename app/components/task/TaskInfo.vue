@@ -2,11 +2,11 @@
   <div class="task-info space-y-6">
     <!-- Task Details -->
     <div class="space-y-4">
-      <h4 class="font-medium text-gray-900">Details</h4>
+      <h4 class="font-medium text-gray-900 dark:text-neutral-100">Details</h4>
       
       <div class="grid grid-cols-2 gap-4 text-sm">
         <div>
-          <span class="text-gray-500">Status</span>
+          <span class="text-gray-500 dark:text-neutral-400">Status</span>
           <div class="mt-1">
             <UBadge
               v-if="task?.status_name"
@@ -15,12 +15,12 @@
             >
               {{ task.status_name }}
             </UBadge>
-            <span v-else class="text-gray-700">Not set</span>
+            <span v-else class="text-gray-700 dark:text-neutral-200">Not set</span>
           </div>
         </div>
 
         <div>
-          <span class="text-gray-500">Priority</span>
+          <span class="text-gray-500 dark:text-neutral-400">Priority</span>
           <div class="mt-1">
             <UBadge
               v-if="task?.priority"
@@ -29,12 +29,12 @@
             >
               {{ task.priority }}
             </UBadge>
-            <span v-else class="text-gray-700">Not set</span>
+            <span v-else class="text-gray-700 dark:text-neutral-200">Not set</span>
           </div>
         </div>
 
         <div>
-          <span class="text-gray-500">Assignee</span>
+          <span class="text-gray-500 dark:text-neutral-400">Assignee</span>
           <div class="mt-1 flex items-center gap-2">
             <UAvatar
               v-if="task?.assignee_name"
@@ -42,15 +42,15 @@
               :alt="task.assignee_name"
               size="xs"
             />
-            <span class="text-gray-700">
+            <span class="text-gray-700 dark:text-neutral-200">
               {{ task?.assignee_name || 'Unassigned' }}
             </span>
           </div>
         </div>
 
         <div>
-          <span class="text-gray-500">Due Date</span>
-          <div class="mt-1 text-gray-700">
+          <span class="text-gray-500 dark:text-neutral-400">Due Date</span>
+          <div class="mt-1 text-gray-700 dark:text-neutral-200">
             {{ task?.due_date ? formatDate(task.due_date) : 'No due date' }}
           </div>
         </div>
@@ -59,7 +59,7 @@
 
     <!-- Project Info -->
     <div v-if="task?.project_name" class="space-y-2">
-      <h4 class="font-medium text-gray-900">Project</h4>
+      <h4 class="font-medium text-gray-900 dark:text-neutral-100">Project</h4>
       <NuxtLink
         :to="`/agency/projects/${task.project_id}`"
         class="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
@@ -71,7 +71,7 @@
 
     <!-- Department Info -->
     <div v-if="task?.department_name" class="space-y-2">
-      <h4 class="font-medium text-gray-900">Board</h4>
+      <h4 class="font-medium text-gray-900 dark:text-neutral-100">Board</h4>
       <NuxtLink
         :to="`/agency/boards/${task.department_slug || task.department_id}`"
         class="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
@@ -85,18 +85,18 @@
     </div>
 
     <!-- Created Info -->
-    <div class="pt-4 border-t border-gray-200 space-y-2">
+    <div class="pt-4 border-t border-gray-200 dark:border-neutral-700 space-y-2">
       <div class="flex justify-between text-sm">
-        <span class="text-gray-500">Created</span>
-        <span class="text-gray-700">{{ formatDate(task?.created_at) }}</span>
+        <span class="text-gray-500 dark:text-neutral-400">Created</span>
+        <span class="text-gray-700 dark:text-neutral-200">{{ formatDate(task?.created_at) }}</span>
       </div>
       <div class="flex justify-between text-sm">
-        <span class="text-gray-500">Updated</span>
-        <span class="text-gray-700">{{ formatDate(task?.updated_at) }}</span>
+        <span class="text-gray-500 dark:text-neutral-400">Updated</span>
+        <span class="text-gray-700 dark:text-neutral-200">{{ formatDate(task?.updated_at) }}</span>
       </div>
       <div v-if="task?.reporter_name" class="flex justify-between text-sm">
-        <span class="text-gray-500">Created by</span>
-        <span class="text-gray-700">{{ task.reporter_name }}</span>
+        <span class="text-gray-500 dark:text-neutral-400">Created by</span>
+        <span class="text-gray-700 dark:text-neutral-200">{{ task.reporter_name }}</span>
       </div>
     </div>
   </div>
@@ -115,7 +115,7 @@ const loading = ref(false)
 const fetchTask = async () => {
   loading.value = true
   try {
-    const response = await $fetch(`/api/tasks/${props.taskId}`)
+    const response = await $fetch(`/api/agency/tasks/${props.taskId}`)
     task.value = response
   } catch (error) {
     console.error('Failed to fetch task:', error)
