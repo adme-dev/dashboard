@@ -272,6 +272,15 @@ const platformGuides = [
     tags: ['Meta Ads', 'Creatives', 'Bulk Upload'],
     to: '/resources/bulk-ad-launch'
   },
+  {
+    title: 'Ad Platform Export Guide',
+    description: 'Export HTML5 banners for 14 ad platforms with automatic clickTag injection, file size validation, and compliant ZIP download.',
+    icon: 'i-lucide-download',
+    bg: 'bg-violet-100 dark:bg-violet-500/15',
+    color: 'text-violet-700 dark:text-violet-400',
+    tags: ['HTML5', 'ClickTag', '14 Platforms'],
+    to: '/resources/ad-platform-export'
+  },
 ]
 
 const integrations = [

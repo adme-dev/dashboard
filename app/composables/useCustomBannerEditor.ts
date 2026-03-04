@@ -1,5 +1,7 @@
 import type { CustomTemplateVariable } from '~/types/banner-studio'
 import { buildCustomBannerPreviewHTML } from '~/utils/custom-banner-builder'
+// @ts-expect-error Vite ?raw import for inlining GSAP in sandboxed iframe preview
+import gsapMinSource from 'gsap/dist/gsap.min.js?raw'
 
 interface InstanceData {
   id: string
@@ -72,6 +74,10 @@ export function useCustomBannerEditor(instanceId: string) {
     return map
   })
 
+  // Preview options (toggled by consuming page)
+  const includeGsap = ref(true)
+  const enableConsoleRelay = ref(true)
+
   // Preview HTML (debounced by consumer)
   const previewHtml = computed(() => {
     return buildCustomBannerPreviewHTML({
@@ -84,6 +90,9 @@ export function useCustomBannerEditor(instanceId: string) {
       variableDefaults: variableDefaults.value,
       externalScripts: externalScripts.value,
       externalStyles: externalStyles.value,
+      includeGsap: includeGsap.value,
+      gsapSource: gsapMinSource,
+      enableConsoleRelay: enableConsoleRelay.value,
     })
   })
 
@@ -239,6 +248,8 @@ export function useCustomBannerEditor(instanceId: string) {
     effectiveCss,
     effectiveJs,
     variableDefaults,
+    includeGsap,
+    enableConsoleRelay,
     previewHtml,
     isDirty,
     load,

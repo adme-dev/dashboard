@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useDraggable, useWindowSize } from '@vueuse/core'
 
-const { isOpen, activeTab, sizeMode, savedPosition, totalUnreadBadge, toggle } = useActivityHub()
+const { isOpen, hidden, activeTab, sizeMode, savedPosition, totalUnreadBadge, toggle } = useActivityHub()
 
 const panelEl = ref<HTMLElement | null>(null)
 const headerRef = ref<InstanceType<any> | null>(null)
@@ -72,7 +72,7 @@ watch(isOpen, (open) => {
     leave-to-class="opacity-0 translate-y-4 scale-95"
   >
     <div
-      v-show="isOpen"
+      v-show="isOpen && !hidden"
       ref="panelEl"
       class="fixed z-50 rounded-xl shadow-xl border border-default bg-default flex flex-col overflow-hidden"
       :style="{
@@ -115,7 +115,7 @@ watch(isOpen, (open) => {
     leave-to-class="opacity-0 scale-75"
   >
     <button
-      v-show="!isOpen"
+      v-show="!isOpen && !hidden"
       class="fixed bottom-6 right-6 z-50 rounded-full w-12 h-12 shadow-lg bg-primary text-white flex items-center justify-center hover:bg-primary/90 transition-colors cursor-pointer"
       @click="toggle"
     >

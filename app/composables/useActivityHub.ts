@@ -3,9 +3,11 @@ import { useLocalStorage } from '@vueuse/core'
 export type ActivityHubTab = 'feed' | 'for-you' | 'incoming' | 'ai'
 
 const _isOpen = ref(false)
+const _hidden = ref(false)
 
 export function useActivityHub() {
   const isOpen = _isOpen
+  const hidden = _hidden
   const activeTab = useLocalStorage<ActivityHubTab>('activity-hub-tab', 'for-you')
   const sizeMode = useLocalStorage<'compact' | 'expanded'>('activity-hub-size', 'compact')
   const savedPosition = useLocalStorage('activity-hub-position', { x: -1, y: -1 })
@@ -43,6 +45,7 @@ export function useActivityHub() {
 
   return {
     isOpen,
+    hidden,
     activeTab,
     sizeMode,
     savedPosition,

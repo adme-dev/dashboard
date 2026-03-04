@@ -1247,6 +1247,35 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+
+  'ad-platform-export': {
+    title: 'Ad Platform Export',
+    slug: 'ad-platform-export',
+    icon: 'i-lucide-download',
+    category: 'Communication & Creative',
+    categoryIcon: 'i-lucide-palette',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Export HTML5 banners for 14 ad platforms with automatic clickTag injection, file size validation, and compliant ZIP download — ready to upload to any ad server.',
+    details: [
+      {
+        title: 'Platform-Aware ClickTag Injection',
+        content: 'Each ad platform has its own click tracking mechanism. Google Ads uses var clickTag, The Trade Desk requires var clickTAG (uppercase TAG — case-sensitive), Xandr needs the AppNexus HTML5 library loaded before calling APPNEXUS.getClickTag(), and Yahoo DSP uses adkit.onReady() with adkit.clicktag(). XeroFlow injects the correct script for the selected platform, including any required external libraries in the head. No manual HTML editing needed.'
+      },
+      {
+        title: 'Automatic Compliance Validation',
+        content: 'Before download, your banner is validated against the platform\'s rules. File size is measured in bytes and compared against limits (150KB for Google Ads/AdSense/AdRoll, 200KB for most others). External scripts and stylesheets are flagged for platforms that block third-party calls. GSAP repeat:-1 and CSS infinite animations are detected for platforms that prohibit looping. Animation time limits (15s or 30s) trigger advisory warnings. Results display with clear error vs. warning severity.'
+      },
+      {
+        title: 'One-Click ZIP Download',
+        content: 'The export builds a complete HTML5 document with all variables substituted, CSS and JS inlined, the ad.size meta tag set, and the clickTag script injected. External resources are stripped for platforms that block them. Everything is compressed into a ZIP with index.html at the root — the standard format accepted by all ad servers. The filename includes your banner name, dimensions, and platform for easy identification.'
+      },
+      {
+        title: '14 Supported Platforms',
+        content: 'Export for Google Ads, Display & Video 360, Google Ad Manager, Campaign Manager 360, Google AdSense, Amazon DSP, The Trade Desk, Xandr (AppNexus), Sizmek, Flashtalking, AdRoll, Criteo, Yahoo DSP, or Generic IAB Standard. Each platform definition includes file size limits, animation constraints, external resource policies, looping rules, and required libraries — all maintained in a single specification file for easy updates.'
+      }
+    ]
+  },
 }
 
 const feature = computed(() => features[slug] || null)
