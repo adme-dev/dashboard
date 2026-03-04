@@ -135,6 +135,9 @@ function clearFilters() {
             <p class="text-sm text-[var(--ui-text-muted)] mt-0.5">Create and manage HTML5 banner ads</p>
           </div>
           <div class="flex items-center gap-2">
+            <UButton to="/agency/banner-studio/custom-templates" color="neutral" variant="outline" icon="i-lucide-code" size="sm">
+              Custom HTML
+            </UButton>
             <UButton to="/agency/banner-studio/templates" color="neutral" variant="outline" icon="i-lucide-layout-template" size="sm">
               Templates
             </UButton>

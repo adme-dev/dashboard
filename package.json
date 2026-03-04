@@ -31,6 +31,10 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.952.0",
     "@aws-sdk/s3-request-presigner": "^3.952.0",
+    "@codemirror/lang-css": "^6.3.1",
+    "@codemirror/lang-html": "^6.4.9",
+    "@codemirror/lang-javascript": "^6.2.2",
+    "@codemirror/theme-one-dark": "^6.1.2",
     "@iconify-json/lucide": "^1.2.92",
     "@iconify-json/simple-icons": "^1.2.71",
     "@internationalized/date": "^3.11.0",
@@ -42,6 +46,7 @@
     "@vueuse/nuxt": "^13.9.0",
     "aws4fetch": "^1.0.20",
     "bcryptjs": "^3.0.3",
+    "codemirror": "^6.0.1",
     "date-fns": "^4.1.0",
     "gifenc": "^1.0.3",
     "groq-sdk": "^0.32.0",

@@ -64,5 +64,11 @@ name = "BOARD_ROOMS"
 class_name = "BoardRoom"
 script_name = "board-events-worker"
 
+# Banner Rooms — Durable Objects for real-time banner collaboration
+[[durable_objects.bindings]]
+name = "BANNER_ROOMS"
+class_name = "BannerRoom"
+script_name = "banner-rooms-worker"
+
 # Environment-specific variables are managed in the Cloudflare Pages dashboard
 # (Settings > Variables and Secrets) for preview and production environments.

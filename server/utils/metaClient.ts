@@ -1,7 +1,7 @@
 /**
  * Meta (Facebook/Instagram) Marketing API Client
  * Lightweight client using ofetch (matches mondayClient.ts pattern)
- * API v21.0 — https://developers.facebook.com/docs/marketing-apis
+ * API v22.0 — https://developers.facebook.com/docs/marketing-apis
  */
 
 import { ofetch } from 'ofetch'
@@ -39,6 +39,41 @@ export interface MetaTokenResponse {
   expires_in?: number
 }
 
+export interface MetaCampaign {
+  id: string
+  name: string
+  status: string
+  objective: string
+  daily_budget?: string
+  lifetime_budget?: string
+}
+
+export interface MetaAdSet {
+  id: string
+  name: string
+  status: string
+  optimization_goal: string
+  daily_budget?: string
+}
+
+export interface CreateCreativeParams {
+  name: string
+  imageHash: string
+  pageId: string
+  primaryTexts: string[]
+  headlines: string[]
+  descriptions: string[]
+  callToAction: string
+  linkUrl: string
+}
+
+export interface CreateAdParams {
+  name: string
+  adsetId: string
+  creativeId: string
+  status: string
+}
+
 // ============================================
 // OAuth Helpers
 // ============================================
@@ -51,7 +86,7 @@ export function getMetaAuthUrl(appId: string, redirectUri: string, state: string
     client_id: appId,
     redirect_uri: redirectUri,
     state,
-    scope: 'ads_read',
+    scope: 'ads_management,pages_read_engagement',
     response_type: 'code'
   })
   return `https://www.facebook.com/v22.0/dialog/oauth?${params.toString()}`
@@ -192,13 +227,34 @@ export async function getCampaignInsights(
 /**
  * Meta API fetch wrapper with rate-limit awareness
  */
-async function metaFetch<T>(url: string, token: string, params: Record<string, string>, retries = 3): Promise<T> {
+async function metaFetch<T>(
+  url: string,
+  token: string,
+  params: Record<string, any>,
+  retries = 3,
+  method: 'GET' | 'POST' = 'GET',
+  body?: Record<string, any> | FormData
+): Promise<T> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const response = await ofetch<T>(url, {
-        method: 'GET',
-        query: { ...params, access_token: token }
-      })
+      const options: any = { method }
+      if (method === 'GET') {
+        options.query = { ...params, access_token: token }
+      } else {
+        // POST: if body is FormData, send directly; otherwise send as form-urlencoded via query
+        if (body instanceof FormData) {
+          body.set('access_token', token)
+          options.body = body
+        } else {
+          options.body = new URLSearchParams({
+            ...params,
+            ...(body || {}),
+            access_token: token
+          } as Record<string, string>)
+          options.headers = { 'Content-Type': 'application/x-www-form-urlencoded' }
+        }
+      }
+      const response = await ofetch<T>(url, options)
       return response
     } catch (err: any) {
       const status = err?.status || err?.statusCode
@@ -467,4 +523,219 @@ export async function getAccountMonthlySpend(
     console.warn(`[MetaBilling] Failed to fetch spend for ${accountId}:`, err.message)
     return { accountId, spend: 0, currency: 'AUD' }
   }
+}
+
+// ============================================
+// Campaign & Ad Set Browsing
+// ============================================
+
+/**
+ * Get campaigns for an ad account.
+ * @param accountId - act_XXXX format
+ */
+export async function getCampaigns(
+  accountId: string,
+  token: string,
+  statusFilter?: string
+): Promise<MetaCampaign[]> {
+  const params: Record<string, string> = {
+    fields: 'id,name,status,objective,daily_budget,lifetime_budget',
+    limit: '100'
+  }
+  if (statusFilter) {
+    params.filtering = JSON.stringify([{ field: 'effective_status', operator: 'IN', value: [statusFilter] }])
+  }
+  const res = await metaFetch<{ data: MetaCampaign[] }>(
+    `${META_GRAPH_BASE}/${accountId}/campaigns`,
+    token,
+    params
+  )
+  return res.data || []
+}
+
+/**
+ * Get ad sets for a campaign.
+ */
+export async function getAdSets(
+  campaignId: string,
+  token: string,
+  statusFilter?: string
+): Promise<MetaAdSet[]> {
+  const params: Record<string, string> = {
+    fields: 'id,name,status,optimization_goal,daily_budget',
+    limit: '100'
+  }
+  if (statusFilter) {
+    params.filtering = JSON.stringify([{ field: 'effective_status', operator: 'IN', value: [statusFilter] }])
+  }
+  const res = await metaFetch<{ data: MetaAdSet[] }>(
+    `${META_GRAPH_BASE}/${campaignId}/adsets`,
+    token,
+    params
+  )
+  return res.data || []
+}
+
+/**
+ * Get Facebook Pages accessible by the user token.
+ * Required for ad creative creation (page_id in object_story_spec).
+ */
+export async function getPages(
+  token: string
+): Promise<Array<{ id: string; name: string }>> {
+  const res = await metaFetch<{ data: Array<{ id: string; name: string }> }>(
+    `${META_GRAPH_BASE}/me/accounts`,
+    token,
+    { fields: 'id,name', limit: '100' }
+  )
+  return res.data || []
+}
+
+// ============================================
+// Ad Creation (Write Operations)
+// ============================================
+
+/**
+ * Upload an ad image from a Buffer.
+ * Returns the image hash used to reference it in ad creatives.
+ */
+export async function uploadAdImage(
+  accountId: string,
+  token: string,
+  imageBuffer: Buffer
+): Promise<{ hash: string; url: string }> {
+  const formData = new FormData()
+  const blob = new Blob([imageBuffer], { type: 'image/png' })
+  formData.set('bytes', blob, 'banner.png')
+
+  const res = await metaFetch<{ images: Record<string, { hash: string; url: string }> }>(
+    `${META_GRAPH_BASE}/${accountId}/adimages`,
+    token,
+    {},
+    3,
+    'POST',
+    formData
+  )
+
+  // Response: { images: { "banner.png": { hash: "...", url: "..." } } }
+  const imageData = Object.values(res.images || {})[0]
+  if (!imageData?.hash) {
+    throw new Error('Meta API: Image upload did not return a hash')
+  }
+  return { hash: imageData.hash, url: imageData.url || '' }
+}
+
+/**
+ * Upload an ad image from a public URL.
+ * Meta fetches the image from the URL and returns the hash.
+ */
+export async function uploadAdImageByUrl(
+  accountId: string,
+  token: string,
+  imageUrl: string
+): Promise<{ hash: string; url: string }> {
+  const res = await metaFetch<{ images: Record<string, { hash: string; url: string }> }>(
+    `${META_GRAPH_BASE}/${accountId}/adimages`,
+    token,
+    {},
+    3,
+    'POST',
+    { url: imageUrl }
+  )
+
+  const imageData = Object.values(res.images || {})[0]
+  if (!imageData?.hash) {
+    throw new Error('Meta API: Image upload by URL did not return a hash')
+  }
+  return { hash: imageData.hash, url: imageData.url || '' }
+}
+
+/**
+ * Create an ad creative with text variations.
+ * Uses asset_feed_spec for multiple text/headline/description variants.
+ */
+export async function createAdCreative(
+  accountId: string,
+  token: string,
+  params: CreateCreativeParams
+): Promise<{ id: string }> {
+  // Build asset_feed_spec for text variations
+  const assetFeedSpec: Record<string, any> = {
+    bodies: params.primaryTexts.map(text => ({ text })),
+    titles: params.headlines.map(text => ({ text })),
+    descriptions: params.descriptions.map(text => ({ text })),
+    ad_formats: ['SINGLE_IMAGE'],
+    images: [{ hash: params.imageHash }],
+    link_urls: [{ website_url: params.linkUrl }],
+    call_to_action_types: [params.callToAction]
+  }
+
+  const objectStorySpec: Record<string, any> = {
+    page_id: params.pageId,
+    link_data: {
+      image_hash: params.imageHash,
+      link: params.linkUrl,
+      call_to_action: { type: params.callToAction }
+    }
+  }
+
+  // For single text variant, use simple object_story_spec; for multiple, use asset_feed_spec
+  const useAssetFeed = params.primaryTexts.length > 1 || params.headlines.length > 1 || params.descriptions.length > 1
+
+  const postBody: Record<string, string> = {
+    name: params.name
+  }
+
+  if (useAssetFeed) {
+    postBody.asset_feed_spec = JSON.stringify(assetFeedSpec)
+    postBody.object_story_spec = JSON.stringify({ page_id: params.pageId })
+  } else {
+    // Single variant: use object_story_spec directly
+    objectStorySpec.link_data.message = params.primaryTexts[0] || ''
+    objectStorySpec.link_data.name = params.headlines[0] || ''
+    objectStorySpec.link_data.description = params.descriptions[0] || ''
+    postBody.object_story_spec = JSON.stringify(objectStorySpec)
+  }
+
+  const res = await metaFetch<{ id: string }>(
+    `${META_GRAPH_BASE}/${accountId}/adcreatives`,
+    token,
+    {},
+    3,
+    'POST',
+    postBody
+  )
+
+  if (!res.id) {
+    throw new Error('Meta API: Ad creative creation did not return an ID')
+  }
+  return { id: res.id }
+}
+
+/**
+ * Create an ad within an ad set using a creative.
+ */
+export async function createAd(
+  accountId: string,
+  token: string,
+  params: CreateAdParams
+): Promise<{ id: string }> {
+  const res = await metaFetch<{ id: string }>(
+    `${META_GRAPH_BASE}/${accountId}/ads`,
+    token,
+    {},
+    3,
+    'POST',
+    {
+      name: params.name,
+      adset_id: params.adsetId,
+      creative: JSON.stringify({ creative_id: params.creativeId }),
+      status: params.status
+    }
+  )
+
+  if (!res.id) {
+    throw new Error('Meta API: Ad creation did not return an ID')
+  }
+  return { id: res.id }
 }

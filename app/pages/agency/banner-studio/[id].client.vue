@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { FORMAT_SAFE_ZONE_MAP } from '~/utils/banner-safe-zones'
+
 definePageMeta({ layout: 'agency' })
 
 const route = useRoute()
@@ -37,6 +39,9 @@ const {
 // Timeline integration
 const { togglePlay, restartTimeline, buildTimeline } = useBannerTimeline()
 const canvasRef = ref<any>(null)
+
+// Realtime collaboration
+const { connect: connectRealtime, disconnect: disconnectRealtime, remoteUsers } = useBannerRealtime()
 
 // Timeline resize
 const timelineHeight = ref(200)
@@ -135,6 +140,10 @@ const showDCOModal = ref(false)
 const showAnalytics = ref(false)
 const showABTests = ref(false)
 const showAdPublish = ref(false)
+const showPreview = ref(false)
+const showSaveVersion = ref(false)
+const versionLabel = ref('')
+const isSavingVersion = ref(false)
 const commentMode = computed({
   get: () => state.activeTool === 'comment',
   set: (v: boolean) => { state.activeTool = v ? 'comment' : 'select' },
@@ -154,6 +163,22 @@ const hasFeedBindings = computed(() => {
   return false
 })
 
+// Safe zone zones for the current active format
+const safeZoneKeys = computed(() => FORMAT_SAFE_ZONE_MAP[state.activeKey] || [])
+
+function toggleSafeZone() {
+  const keys = safeZoneKeys.value
+  if (keys.length === 0) return
+  // Single zone — toggle directly
+  if (state.showSafeZones && state.activeSafeZone === keys[0]) {
+    state.showSafeZones = false
+    state.activeSafeZone = null
+  } else {
+    state.activeSafeZone = keys[0]
+    state.showSafeZones = true
+  }
+}
+
 // Provide showSizePicker for BannerSetsPanel
 provide('showSizePicker', showSizePicker)
 
@@ -171,6 +196,15 @@ onMounted(() => {
   } else {
     loadProject(projectData.value as any)
   }
+
+  // Connect realtime collaboration for existing projects
+  if (projectId.value !== 'new') {
+    connectRealtime(projectId.value)
+  }
+})
+
+onBeforeUnmount(() => {
+  disconnectRealtime()
 })
 
 // Auto-save indicator
@@ -227,6 +261,29 @@ async function handleSave() {
   }
 }
 
+// Save version
+async function handleSaveVersion() {
+  if (!state.project?.id) return
+  isSavingVersion.value = true
+  try {
+    const result = await $fetch('/api/agency/banner-studio/versions', {
+      method: 'POST',
+      body: {
+        projectId: state.project.id,
+        label: versionLabel.value || undefined,
+        canvasData: state.sets,
+      },
+    }) as any
+    toast.add({ title: 'Version Saved', description: `Version ${result.versionNumber}: ${result.label}`, color: 'success' })
+    showSaveVersion.value = false
+    versionLabel.value = ''
+  } catch {
+    toast.add({ title: 'Error', description: 'Failed to save version', color: 'error' })
+  } finally {
+    isSavingVersion.value = false
+  }
+}
+
 // Zoom controls
 function zoomIn() {
   state.wsScale = Math.min(2, state.wsScale * 1.2)
@@ -260,6 +317,9 @@ const { activeSize } = useBannerFileSize()
         <UBadge :color="state.isDirty ? 'warning' : 'success'" variant="subtle" size="xs">
           {{ saveStatus }}
         </UBadge>
+        <!-- Collaboration presence -->
+        <BannerCollaborationPresence />
+
         <UBadge
           v-if="reviewStatus !== 'draft'"
           :color="REVIEW_STATUS_COLORS[reviewStatus] || 'neutral'"
@@ -335,6 +395,28 @@ const { activeSize } = useBannerFileSize()
           title="Snap to grid"
           @click="state.snapToGrid = !state.snapToGrid"
         />
+        <UPopover v-if="safeZoneKeys.length > 1">
+          <UButton
+            icon="i-lucide-shield"
+            variant="ghost"
+            size="xs"
+            :class="state.showSafeZones && safeZoneKeys.includes(state.activeSafeZone) ? 'text-(--ui-primary)' : ''"
+            title="Safe zones"
+          />
+          <template #content>
+            <BannerSafeZoneSelector :zone-keys="safeZoneKeys" />
+          </template>
+        </UPopover>
+        <UButton
+          v-else
+          icon="i-lucide-shield"
+          variant="ghost"
+          size="xs"
+          :class="state.showSafeZones && safeZoneKeys.includes(state.activeSafeZone) ? 'text-(--ui-primary)' : ''"
+          :disabled="safeZoneKeys.length === 0"
+          :title="safeZoneKeys.length === 0 ? 'No safe zones for this format' : 'Toggle safe zone'"
+          @click="toggleSafeZone"
+        />
       </div>
 
       <!-- Zoom -->
@@ -368,9 +450,11 @@ const { activeSize } = useBannerFileSize()
 
       <!-- Actions -->
       <UButton icon="i-lucide-save" variant="ghost" size="xs" @click="handleSave" />
+      <UButton icon="i-lucide-bookmark-plus" variant="ghost" size="xs" title="Save Version" @click="showSaveVersion = true" />
       <UButton icon="i-lucide-bookmark" variant="ghost" size="xs" title="Save as Template" @click="showSaveTemplate = true" />
       <UButton icon="i-lucide-bar-chart-3" variant="ghost" size="xs" title="Analytics" @click="showAnalytics = true" />
       <UButton icon="i-lucide-split" variant="ghost" size="xs" title="A/B Tests" @click="showABTests = true" />
+      <UButton icon="i-lucide-eye" variant="ghost" size="xs" title="Ad Preview" @click="showPreview = true" />
       <UButton icon="i-lucide-megaphone" variant="ghost" size="xs" title="Publish to Ad Platforms" @click="showAdPublish = true" />
       <UButton label="Publish" icon="i-lucide-globe" variant="soft" size="xs" @click="showPublishModal = true" />
       <UButton v-if="hasFeedBindings" label="DCO" icon="i-lucide-layers" variant="soft" color="warning" size="xs" @click="showDCOModal = true" />
@@ -458,6 +542,100 @@ const { activeSize } = useBannerFileSize()
 
     <!-- Ad Platform Publish Modal -->
     <BannerAdPublishModal v-if="showAdPublish" v-model:open="showAdPublish" :project-id="projectId" />
+
+    <!-- Ad Preview Slideover -->
+    <USlideover v-model:open="showPreview" side="right" :ui="{ width: 'max-w-5xl' }">
+      <template #content>
+        <div class="p-5 h-full overflow-y-auto bg-[#111114]">
+          <div class="flex items-center justify-between mb-5">
+            <h2 class="text-lg font-bold">Ad Preview</h2>
+            <div class="flex items-center gap-2">
+              <NuxtLink to="/agency/ad-preview" target="_blank">
+                <UButton label="Open Full Page" icon="i-lucide-external-link" variant="ghost" size="xs" />
+              </NuxtLink>
+              <UButton icon="i-lucide-x" variant="ghost" size="xs" @click="showPreview = false" />
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-6 items-start justify-center">
+            <div class="flex flex-col items-center">
+              <div class="text-xs text-[#888] mb-2 font-medium">Meta Feed</div>
+              <AdPreviewMetaFeedPreview
+                :image="state.sets[state.activeKey]?.layers?.find(l => l.type === 'bg')?.src"
+                :page-name="state.project?.name"
+              />
+            </div>
+            <AdPreviewMetaStoryPreview
+              :image="state.sets[state.activeKey]?.layers?.find(l => l.type === 'bg')?.src"
+              :page-name="state.project?.name"
+            />
+            <AdPreviewTikTokPreview
+              :image="state.sets[state.activeKey]?.layers?.find(l => l.type === 'bg')?.src"
+              :page-name="state.project?.name"
+            />
+            <AdPreviewYouTubePreview
+              :image="state.sets[state.activeKey]?.layers?.find(l => l.type === 'bg')?.src"
+              :page-name="state.project?.name"
+            />
+            <div class="flex flex-col items-center">
+              <div class="text-xs text-[#888] mb-2 font-medium">LinkedIn</div>
+              <AdPreviewLinkedInPreview
+                :image="state.sets[state.activeKey]?.layers?.find(l => l.type === 'bg')?.src"
+                :page-name="state.project?.name"
+              />
+            </div>
+            <AdPreviewSnapchatPreview
+              :image="state.sets[state.activeKey]?.layers?.find(l => l.type === 'bg')?.src"
+              :page-name="state.project?.name"
+            />
+            <div class="flex flex-col items-center">
+              <div class="text-xs text-[#888] mb-2 font-medium">Pinterest</div>
+              <AdPreviewPinterestPreview
+                :image="state.sets[state.activeKey]?.layers?.find(l => l.type === 'bg')?.src"
+                :page-name="state.project?.name"
+              />
+            </div>
+            <div class="flex flex-col items-center">
+              <div class="text-xs text-[#888] mb-2 font-medium">X (Twitter)</div>
+              <AdPreviewXPreview
+                :image="state.sets[state.activeKey]?.layers?.find(l => l.type === 'bg')?.src"
+                :page-name="state.project?.name"
+              />
+            </div>
+          </div>
+        </div>
+      </template>
+    </USlideover>
+
+    <!-- Save Version Modal -->
+    <UModal v-model:open="showSaveVersion">
+      <template #content>
+        <div class="p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-bold">Save Version</h2>
+            <UButton icon="i-lucide-x" variant="ghost" size="xs" @click="showSaveVersion = false" />
+          </div>
+          <p class="text-sm text-(--ui-text-muted) mb-4">
+            Create a named snapshot of the current canvas state. You can restore it later from the History panel.
+          </p>
+          <UInput
+            v-model="versionLabel"
+            placeholder="Version label (optional)"
+            class="mb-4"
+            @keydown.enter="handleSaveVersion"
+          />
+          <div class="flex justify-end gap-2">
+            <UButton label="Cancel" variant="ghost" size="sm" @click="showSaveVersion = false" />
+            <UButton
+              label="Save Version"
+              icon="i-lucide-bookmark-plus"
+              size="sm"
+              :loading="isSavingVersion"
+              @click="handleSaveVersion"
+            />
+          </div>
+        </div>
+      </template>
+    </UModal>
 
     <!-- Analytics Modal -->
     <UModal v-model:open="showAnalytics" :ui="{ width: 'max-w-3xl' }">

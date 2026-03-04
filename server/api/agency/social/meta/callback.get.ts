@@ -85,7 +85,7 @@ export default eventHandler(async (event) => {
           account.name,
           longToken.access_token,
           expiresAt,
-          ['ads_read'],
+          ['ads_management', 'pages_read_engagement'],
           'active',
           JSON.stringify({
             actId: account.id,

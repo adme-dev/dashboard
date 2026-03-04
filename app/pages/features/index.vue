@@ -167,8 +167,8 @@ const categories = [
     ]
   },
   {
-    title: 'Communication',
-    subtitle: 'Chat, notifications, and email',
+    title: 'Communication & Creative',
+    subtitle: 'Chat, notifications, email, and ad production',
     icon: 'i-lucide-message-circle',
     iconBg: 'bg-violet-50 dark:bg-violet-500/10',
     iconColor: 'text-violet-600',
@@ -179,6 +179,7 @@ const categories = [
       { title: 'Read Receipts', slug: 'read-receipts', icon: 'i-lucide-check-check', description: 'See who has read your messages with avatar indicators and reader lists.' },
       { title: 'Email Templates', slug: 'email-templates', icon: 'i-lucide-mail', description: 'Resend-powered email templates for notifications, invites, and client communications.' },
       { title: 'Automations', slug: 'automations', icon: 'i-lucide-zap', description: 'Trigger → action recipes. Auto-notify on status changes, assignments, and due dates.' },
+      { title: 'Bulk Ad Launch', slug: 'bulk-ad-launch', icon: 'i-lucide-rocket', description: 'Select creatives from Banner Studio and launch dozens of ads to Meta in one click.' },
     ]
   },
   {

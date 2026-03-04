@@ -103,6 +103,14 @@ const showModal = ref(false)
 - Dark mode supported — always use semantic colors (`text-muted`, `bg-elevated`, `border-default`) over hardcoded colors
 - Responsive: mobile-first, use `sm:`, `md:`, `lg:` breakpoints
 
+### Dark Mode on Marketing / Public Pages
+- `colorMode.preference` is `'dark'` — dark mode is the **default** for all users
+- Marketing pages (`layout: false`, `public: true`) use hardcoded hex colors (e.g. `text-[#121317]`, `bg-[#f4f5f7]`) — every such color **must** have a `dark:` variant (e.g. `text-[#121317] dark:text-white`, `bg-[#f4f5f7] dark:bg-white/[0.03]`)
+- Always-dark sections (hero, CTA, showcase) use `bg-[#0a0b0e]` with white text — no `dark:` variant needed since they look the same in both modes
+- Ad preview components (`MetaFeedPreview`, `LinkedInPreview`, etc.) intentionally use hardcoded `bg-white text-black` — they are platform mockups and must NOT change in dark mode
+- Common dark-mode color pairs: `text-[#121317]` → `dark:text-white`, `text-[#45474D]` → `dark:text-white/50`, `bg-[#f4f5f7]` → `dark:bg-white/[0.03]`, `border-[#121317]/[0.06]` → `dark:border-white/[0.06]`
+- Status colors need `dark:` variants for contrast: `text-emerald-600` → `dark:text-emerald-400`, `text-blue-600` → `dark:text-blue-400`
+
 ## Cloudflare Products Available
 
 We are fully on the Cloudflare network. These products are available and should be considered when relevant:
@@ -138,6 +146,17 @@ We are fully on the Cloudflare network. These products are available and should 
 8. Ensure server endpoints don't import frontend-only modules (`~/utils/*` won't resolve in Nitro — use `~~/` or inline)
 
 This review must happen **before** any commit, not after. Catching bugs post-commit wastes cycles.
+
+## Database Migrations
+
+When creating or modifying SQL migration files in `server/database/migrations/`, **always run them automatically** against the database. Load the connection string from `.env`:
+
+```bash
+export DATABASE_URL=$(grep DATABASE_URL .env | cut -d= -f2-)
+psql "$DATABASE_URL" -f server/database/migrations/<migration-file>.sql
+```
+
+Do not wait for the user to run migrations manually — execute them as part of the implementation workflow.
 
 ## Known Issues
 - `nuxi build` crashes with OOM (even at 4GB) — pre-existing, use `NODE_OPTIONS='--max-old-space-size=8192'`

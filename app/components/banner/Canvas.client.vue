@@ -4,6 +4,7 @@ import { FORMATS, PLATFORM_META } from '~/utils/banner-constants'
 const props = defineProps<{ projectId?: string }>()
 
 const { state, setActiveArtboard, selectLayer } = useBannerStudio()
+const { sendCursorMove } = useBannerRealtime()
 const commentMode = inject<Ref<boolean>>('commentMode', ref(false))
 
 const artboardRefs = ref<Record<string, any>>({})
@@ -49,6 +50,23 @@ function onCanvasMouseMove(e: MouseEvent) {
 function onCanvasMouseUp() {
   isPanning.value = false
 }
+
+// Collaboration: track cursor position over active artboard
+function onCanvasCursorMove(e: MouseEvent) {
+  if (isPanning.value || state.activeTool === 'hand') return
+  // Find the active artboard element to compute relative coords
+  const comp = artboardRefs.value[state.activeKey]
+  const artboardEl = comp?.artboardEl as HTMLElement | null
+  if (!artboardEl) return
+  const rect = artboardEl.getBoundingClientRect()
+  // Convert screen coords to artboard coords (accounting for scale)
+  const x = (e.clientX - rect.left) / state.wsScale
+  const y = (e.clientY - rect.top) / state.wsScale
+  // Only send if within artboard bounds
+  if (x >= 0 && y >= 0) {
+    sendCursorMove(x, y, state.activeKey)
+  }
+}
 </script>
 
 <template>
@@ -62,7 +80,7 @@ function onCanvasMouseUp() {
     }"
     @click.self="onCanvasClick"
     @mousedown="onCanvasMouseDown"
-    @mousemove="onCanvasMouseMove"
+    @mousemove="onCanvasMouseMove($event); onCanvasCursorMove($event)"
     @mouseup="onCanvasMouseUp"
     @mouseleave="onCanvasMouseUp"
   >
@@ -125,6 +143,12 @@ function onCanvasMouseUp() {
               :is-active="state.activeKey === key"
             />
           </div>
+
+          <!-- Collaboration cursors overlay -->
+          <BannerCollaborationCursors
+            :scale="state.wsScale"
+            :active-format-key="key"
+          />
 
           <!-- Comment overlay (on top of artboard) -->
           <BannerCommentOverlay

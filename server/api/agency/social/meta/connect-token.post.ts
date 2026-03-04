@@ -79,7 +79,7 @@ export default eventHandler(async (event) => {
         me.name,
         longLivedToken,
         expiresAt,
-        ['ads_read'],
+        ['ads_management', 'pages_read_engagement'],
         'active',
         JSON.stringify({ userId: me.id, userName: me.name, manualToken: true }),
         user.id
@@ -109,7 +109,7 @@ export default eventHandler(async (event) => {
         account.name,
         longLivedToken,
         expiresAt,
-        ['ads_read'],
+        ['ads_management', 'pages_read_engagement'],
         'active',
         JSON.stringify({
           actId: account.id,

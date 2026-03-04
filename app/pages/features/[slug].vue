@@ -1217,6 +1217,36 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+
+  // ─── Creative & Ad Operations ──────────────────────────────────
+  'bulk-ad-launch': {
+    title: 'Bulk Ad Launch',
+    slug: 'bulk-ad-launch',
+    icon: 'i-lucide-rocket',
+    category: 'Communication & Creative',
+    categoryIcon: 'i-lucide-palette',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Launch dozens of ads across platforms in minutes. Select creatives from Banner Studio, configure campaigns, and publish to Meta Ads — all from one page.',
+    details: [
+      {
+        title: 'Cross-Project Creative Selection',
+        content: 'Browse every published banner across all your Banner Studio projects in one unified picker. Creatives are grouped by project with thumbnails, format names, and dimensions visible at a glance. Use the search bar to filter by project name or ad format, then select individual banners or entire projects with a single click. The picker supports hundreds of published banners without performance issues, so even agencies running 50+ client accounts can see everything in one view.'
+      },
+      {
+        title: 'Campaign & Ad Set Targeting',
+        content: 'Connect your Meta Ads account via OAuth, then browse existing campaigns and ad sets directly inside XeroFlow. No need to switch to Ads Manager to find campaign IDs or create new ad sets. The wizard pulls your campaigns in real time, showing names and statuses. Select a campaign and ad set, and all creatives you launch will be placed there — matching your existing targeting, budget, and schedule settings without reconfiguration.'
+      },
+      {
+        title: 'Multi-Creative Ad Copy',
+        content: 'Write up to five primary text variations, five headlines, and five descriptions — Meta will automatically test combinations to find the best performers. Set a call-to-action button, link URL, and Facebook Page. Save your copy as a preset so you can reuse winning text across future launches. The copy section includes character counters and validation to ensure your ads meet platform requirements before you hit publish.'
+      },
+      {
+        title: 'One-Click Bulk Publish',
+        content: 'Hit the launch button and watch each creative upload to Meta in sequence — image upload, creative creation, and ad creation happen automatically for every selected banner. A real-time progress tracker shows the status of each creative as it moves through the pipeline. Ads are created in PAUSED status by default so you can review them in Ads Manager before spending. Failed uploads show error details so you can fix and retry without starting over.'
+      }
+    ]
+  },
 }
 
 const feature = computed(() => features[slug] || null)

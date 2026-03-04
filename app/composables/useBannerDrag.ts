@@ -22,6 +22,18 @@ export function useBannerDrag(artboardEl: Ref<HTMLElement | null>) {
     const layer = activeLayers.value.find(l => l.id === layerId)
     if (!layer || layer.locked) return
 
+    // Check if layer is locked by another collaborator
+    try {
+      const rt = useBannerRealtime()
+      if (rt.isLayerLockedByOther(layerId)) {
+        const lock = rt.getLayerLockOwner(layerId)
+        if (lock) {
+          useToast().add({ title: 'Layer Locked', description: `${lock.userName} is editing this layer`, color: 'warning' })
+        }
+        return
+      }
+    } catch {}
+
     dragState.value = {
       type: 'move',
       layerId,
@@ -44,6 +56,18 @@ export function useBannerDrag(artboardEl: Ref<HTMLElement | null>) {
 
     const layer = activeLayers.value.find(l => l.id === layerId)
     if (!layer || layer.locked) return
+
+    // Check if layer is locked by another collaborator
+    try {
+      const rt = useBannerRealtime()
+      if (rt.isLayerLockedByOther(layerId)) {
+        const lock = rt.getLayerLockOwner(layerId)
+        if (lock) {
+          useToast().add({ title: 'Layer Locked', description: `${lock.userName} is editing this layer`, color: 'warning' })
+        }
+        return
+      }
+    } catch {}
 
     dragState.value = {
       type: 'resize',

@@ -408,6 +408,63 @@ export interface DCOGenerateResult {
   variants: BannerVariant[]
 }
 
+// ── Custom HTML Templates ──
+
+export interface CustomTemplateVariable {
+  name: string
+  label: string
+  type: 'text' | 'color' | 'url' | 'number'
+  default: string
+  group?: string
+}
+
+export interface CustomTemplate {
+  id: string
+  name: string
+  category: string
+  description: string | null
+  tags: string[]
+  html: string
+  css: string
+  js: string
+  variables: CustomTemplateVariable[]
+  width: number
+  height: number
+  thumbnailUrl: string | null
+  previewUrl: string | null
+  externalScripts: string[]
+  externalStyles: string[]
+  isSystem: boolean
+  usageCount: number
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CustomTemplateInstance {
+  id: string
+  templateId: string
+  templateName?: string
+  templateCategory?: string
+  name: string
+  htmlOverride: string | null
+  cssOverride: string | null
+  jsOverride: string | null
+  variableValues: Record<string, string>
+  width: number | null
+  height: number | null
+  publishedUrl: string | null
+  r2Key: string | null
+  isPublished: boolean
+  clickUrl: string | null
+  impressionPixel: string | null
+  clickPixel: string | null
+  clientId: string | null
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
 // ── Banner Dissector Types ──
 
 export type TokenType =

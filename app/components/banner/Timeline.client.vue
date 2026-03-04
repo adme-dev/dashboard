@@ -4,6 +4,7 @@ import type { KeyframeProperty, Keyframe } from '~/types/banner-studio'
 import { hasKeyframes } from '~/composables/useBannerTimeline'
 
 const { state, activeLayers, selectLayer, updateLayer, getMotionPathTweens, updateMotionPathTween, addMotionPathTween, removeMotionPathTween } = useBannerStudio()
+const { remoteLocks } = useBannerRealtime()
 const { togglePlay, seekTo, restartTimeline, buildTimeline } = useBannerTimeline()
 
 // ── Waveform cache for audio layers ──
@@ -774,6 +775,13 @@ onUnmounted(() => {
               <UIcon v-if="layer.isMask" name="i-lucide-scan" class="w-3 h-3 text-[#e84aff] shrink-0" />
               <!-- Motion path indicator -->
               <UIcon v-if="layer.motionPath?.length" name="i-lucide-spline" class="w-3 h-3 text-[#4af0a2] shrink-0" />
+              <!-- Remote lock indicator -->
+              <template v-if="remoteLocks.get(layer.id)">
+                <UIcon name="i-lucide-lock" class="w-3 h-3 shrink-0" :style="{ color: remoteLocks.get(layer.id)!.color }" />
+                <span class="text-[8px] shrink-0 font-medium" :style="{ color: remoteLocks.get(layer.id)!.color }">
+                  {{ remoteLocks.get(layer.id)!.userName.split(' ')[0] }}
+                </span>
+              </template>
               <!-- Keyframe indicator -->
               <span
                 v-if="hasKeyframes(layer)"

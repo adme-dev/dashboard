@@ -40,6 +40,9 @@ const state = reactive({
   showGrid: false,
   gridSize: 10,
   snapToGrid: false,
+  // Safe zones
+  showSafeZones: false,
+  activeSafeZone: null as string | null,
   // Tool strip
   activeTool: 'select' as 'select' | 'hand' | 'comment',
   // Keyframe editing (Phase 4b)
@@ -107,6 +110,10 @@ export function useBannerStudio() {
     state.selectedLayerId = layer.id
     state.isDirty = true
     pushUndo({ type: 'addLayer', before: null, after: { ...layer } })
+
+    // Broadcast to collaborators
+    try { useBannerRealtime().sendLayerAdd(layer, state.activeKey) } catch {}
+
     return layer
   }
 
@@ -120,6 +127,9 @@ export function useBannerStudio() {
     layers.splice(idx, 1)
     if (state.selectedLayerId === id) state.selectedLayerId = null
     state.isDirty = true
+
+    // Broadcast to collaborators
+    try { useBannerRealtime().sendLayerRemove(id, state.activeKey) } catch {}
   }
 
   function duplicateLayer(id: number): Layer | null {
@@ -150,6 +160,9 @@ export function useBannerStudio() {
     Object.assign(layer, props)
     pushUndo({ type: 'updateLayer', before, after: { ...layer } })
     state.isDirty = true
+
+    // Broadcast to collaborators
+    try { useBannerRealtime().sendLayerUpdate(id, state.activeKey, props) } catch {}
   }
 
   function reorderLayer(id: number, newZIndex: number) {
@@ -158,6 +171,9 @@ export function useBannerStudio() {
     pushUndo({ type: 'reorderLayer', before: { id, zIndex: layer.zIndex }, after: { id, zIndex: newZIndex } })
     layer.zIndex = newZIndex
     state.isDirty = true
+
+    // Broadcast to collaborators
+    try { useBannerRealtime().sendLayerReorder(id, state.activeKey, newZIndex) } catch {}
   }
 
   function bringToFront(id: number) {
@@ -177,6 +193,9 @@ export function useBannerStudio() {
 
   function selectLayer(id: number | null) {
     state.selectedLayerId = id
+
+    // Broadcast selection (acquires/releases soft lock)
+    try { useBannerRealtime().sendLayerSelect(id, state.activeKey) } catch {}
   }
 
   // ── Artboard operations ───────────────

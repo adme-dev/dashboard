@@ -263,6 +263,15 @@ const platformGuides = [
     tags: ['Portal', 'Approvals', 'Permissions'],
     to: '/resources/client-portal-admin'
   },
+  {
+    title: 'Bulk Ad Launch Guide',
+    description: 'Launch ads at scale — select creatives from Banner Studio, configure campaigns, write ad copy, and publish to Meta in bulk.',
+    icon: 'i-lucide-rocket',
+    bg: 'bg-rose-100 dark:bg-rose-500/15',
+    color: 'text-rose-700 dark:text-rose-400',
+    tags: ['Meta Ads', 'Creatives', 'Bulk Upload'],
+    to: '/resources/bulk-ad-launch'
+  },
 ]
 
 const integrations = [

@@ -142,6 +142,22 @@ async function applyDbTemplate(tpl: BannerTemplateDB) {
       </div>
     </template>
 
+    <!-- Custom HTML Templates -->
+    <div class="mt-5">
+      <h4 class="text-xs font-bold uppercase tracking-wider text-(--ui-text-muted) mb-3">Custom HTML</h4>
+      <p class="text-xs text-(--ui-text-muted) mb-2">
+        Import raw HTML+CSS+JS banners with GSAP animations
+      </p>
+      <UButton
+        label="Browse Custom Templates"
+        icon="i-lucide-code"
+        variant="soft"
+        size="xs"
+        block
+        @click="router.push('/agency/banner-studio/custom-templates')"
+      />
+    </div>
+
     <!-- View All Link -->
     <div class="mt-4 pt-3 border-t border-(--ui-border)">
       <UButton

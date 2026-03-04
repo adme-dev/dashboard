@@ -570,6 +570,7 @@ const featuresCol3 = [
   { title: 'Real-Time Chat', subtitle: 'Channels, threads, and DMs', icon: 'i-lucide-message-circle', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400', to: '/platform/chat' },
   { title: 'Automations', subtitle: 'Trigger-action workflows', icon: 'i-lucide-zap', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400', to: '/platform/automations' },
   { title: 'Banner Studio', subtitle: 'HTML5 ad design & animation', icon: 'i-lucide-palette', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/banner-studio' },
+  { title: 'Bulk Ad Launch', subtitle: 'Publish ads across platforms', icon: 'i-lucide-rocket', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/bulk-ad-launch' },
 ]
 
 const featuresCol4 = [
@@ -602,6 +603,7 @@ const resourcesCol2 = [
 const resourcesCol3 = [
   { title: 'AI & Automation', subtitle: 'Chat, anomaly detection, intent', icon: 'i-lucide-sparkles', to: '/resources/ai-automation' },
   { title: 'Client Portal Admin', subtitle: 'Permissions and portal setup', icon: 'i-lucide-building-2', to: '/resources/client-portal-admin' },
+  { title: 'Bulk Ad Launch', subtitle: 'Publish ads at scale', icon: 'i-lucide-rocket', to: '/resources/bulk-ad-launch' },
   { title: 'Integrations', subtitle: 'Connect your tools and services', icon: 'i-lucide-puzzle', to: '/resources/integrations' },
 ]
 

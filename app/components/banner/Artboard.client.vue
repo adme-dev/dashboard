@@ -3,6 +3,7 @@ import type { Layer } from '~/types/banner-studio'
 import { FORMATS } from '~/utils/banner-constants'
 import { computeClipPath } from '~/utils/banner-mask'
 import { catmullRomToSvgPath, motionPathToAbsolute } from '~/utils/banner-motion-path'
+import { SAFE_ZONE_MAP, FORMAT_SAFE_ZONE_MAP } from '~/utils/banner-safe-zones'
 
 const props = defineProps<{
   formatKey: string
@@ -10,6 +11,7 @@ const props = defineProps<{
 }>()
 
 const { state, selectLayer, activeLayers, updatePathPoint, addPathPoint } = useBannerStudio()
+const { remoteLocks } = useBannerRealtime()
 const artboardEl = ref<HTMLElement | null>(null)
 const { dragState, guides, onLayerMouseDown, onResizeHandleMouseDown } = useBannerDrag(artboardEl)
 
@@ -119,6 +121,10 @@ function isSelected(layer: Layer): boolean {
   return props.isActive && state.selectedLayerId === layer.id
 }
 
+function getRemoteLock(layerId: number) {
+  return remoteLocks.value.get(layerId) || null
+}
+
 const RESIZE_HANDLES = ['tl', 'tc', 'tr', 'ml', 'mr', 'bl', 'bc', 'br'] as const
 
 function handleStyle(handle: string) {
@@ -147,6 +153,25 @@ function handleStyle(handle: string) {
   base.cursor = cursorMap[handle] || 'pointer'
   return base
 }
+
+// Safe zone overlay
+const safeZoneInsets = computed(() => {
+  if (!state.showSafeZones || !state.activeSafeZone || !format.value) return null
+  const zone = SAFE_ZONE_MAP[state.activeSafeZone]
+  if (!zone) return null
+  // Check this format has the selected safe zone in its mapping
+  const applicable = FORMAT_SAFE_ZONE_MAP[props.formatKey]
+  if (!applicable?.includes(state.activeSafeZone)) return null
+  // Scale insets proportionally from native zone dimensions to this format's dimensions
+  const sx = format.value.w / zone.nativeWidth
+  const sy = format.value.h / zone.nativeHeight
+  return {
+    top: Math.round(zone.insets.top * sy),
+    bottom: Math.round(zone.insets.bottom * sy),
+    left: Math.round(zone.insets.left * sx),
+    right: Math.round(zone.insets.right * sx),
+  }
+})
 
 // Expose artboard element for GSAP
 defineExpose({ artboardEl })
@@ -229,6 +254,35 @@ defineExpose({ artboardEl })
       >E</text>
     </svg>
 
+    <!-- Safe zone overlay -->
+    <svg
+      v-if="safeZoneInsets"
+      class="absolute inset-0 pointer-events-none"
+      :width="format?.w || 300"
+      :height="format?.h || 250"
+      style="z-index: 9992;"
+    >
+      <!-- Top danger zone -->
+      <rect x="0" y="0" :width="format.w" :height="safeZoneInsets.top" fill="rgba(255,0,0,0.15)" />
+      <!-- Bottom danger zone -->
+      <rect x="0" :y="format.h - safeZoneInsets.bottom" :width="format.w" :height="safeZoneInsets.bottom" fill="rgba(255,0,0,0.15)" />
+      <!-- Left danger zone -->
+      <rect x="0" :y="safeZoneInsets.top" :width="safeZoneInsets.left" :height="format.h - safeZoneInsets.top - safeZoneInsets.bottom" fill="rgba(255,0,0,0.15)" />
+      <!-- Right danger zone -->
+      <rect :x="format.w - safeZoneInsets.right" :y="safeZoneInsets.top" :width="safeZoneInsets.right" :height="format.h - safeZoneInsets.top - safeZoneInsets.bottom" fill="rgba(255,0,0,0.15)" />
+      <!-- Safe area border -->
+      <rect
+        :x="safeZoneInsets.left"
+        :y="safeZoneInsets.top"
+        :width="format.w - safeZoneInsets.left - safeZoneInsets.right"
+        :height="format.h - safeZoneInsets.top - safeZoneInsets.bottom"
+        fill="none"
+        stroke="rgba(0,255,0,0.5)"
+        stroke-width="1"
+        stroke-dasharray="4 2"
+      />
+    </svg>
+
     <!-- Layers -->
     <div
       v-for="layer in layers"
@@ -270,6 +324,24 @@ defineExpose({ artboardEl })
           :style="handleStyle(handle)"
           @mousedown="onResizeHandleMouseDown($event, layer.id, handle)"
         />
+      </template>
+
+      <!-- Remote lock indicator -->
+      <template v-if="getRemoteLock(layer.id) && !isSelected(layer)">
+        <div
+          class="absolute inset-0 pointer-events-none"
+          :style="{
+            border: `2px dashed ${getRemoteLock(layer.id)!.color}`,
+            zIndex: 9997,
+          }"
+        />
+        <!-- Name badge -->
+        <div
+          class="absolute -top-5 left-0 px-1.5 py-0.5 rounded text-[8px] font-medium text-white pointer-events-none whitespace-nowrap"
+          :style="{ backgroundColor: getRemoteLock(layer.id)!.color, zIndex: 9998 }"
+        >
+          {{ getRemoteLock(layer.id)!.userName }}
+        </div>
       </template>
     </div>
 
