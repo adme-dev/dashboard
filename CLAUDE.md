@@ -168,6 +168,23 @@ psql "$DATABASE_URL" -f server/database/migrations/<migration-file>.sql
 
 Do not wait for the user to run migrations manually — execute them as part of the implementation workflow.
 
+## Deployment
+
+Deploy to Cloudflare Pages via Wrangler:
+
+```bash
+# Production (branch: main)
+NODE_OPTIONS='--max-old-space-size=8192' pnpm deploy:production
+
+# Preview (branch: preview)
+NODE_OPTIONS='--max-old-space-size=8192' pnpm deploy:preview
+
+# Default (no branch specified)
+NODE_OPTIONS='--max-old-space-size=8192' pnpm deploy
+```
+
+The `NODE_OPTIONS` flag is required to avoid OOM during the Nuxt build step. The deploy scripts run `pnpm build` then `wrangler pages deploy` from the `dist/` directory to the `agency-dashboard` project. Cloudflare Pages uses `--branch` (not `--env`) to target environments.
+
 ## Known Issues
 - `nuxi build` crashes with OOM (even at 4GB) — pre-existing, use `NODE_OPTIONS='--max-old-space-size=8192'`
 - ~60+ pre-existing TS errors from types only in `index.d.ts` not `index.ts`
