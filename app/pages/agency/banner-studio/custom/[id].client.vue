@@ -15,6 +15,7 @@ const {
   includeGsap, enableConsoleRelay,
   previewHtml, isDirty,
   load, save, publish,
+  savingAsTemplate, saveAsTemplate,
   resetCodeToTemplate, resetVariablesToDefaults,
 } = useCustomBannerEditor(instanceId)
 
@@ -52,7 +53,7 @@ const fitScale = computed(() => {
   const ch = containerRect.value.height
   const sx = cw / width.value
   const sy = ch / height.value
-  return Math.min(sx, sy, 1)
+  return Math.min(sx, sy, 3) * 0.85
 })
 
 const previewScale = computed(() => {
@@ -80,6 +81,7 @@ function zoomFit() {
 watch(fitScale, (val) => {
   if (zoomMode.value === 'fit') manualZoom.value = val
 })
+
 
 let resizeObserver: ResizeObserver | null = null
 onMounted(() => {
@@ -321,6 +323,14 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
           size="sm"
           :loading="saving"
           @click="save"
+        />
+        <UButton
+          label="Save as Template"
+          icon="i-lucide-layout-template"
+          variant="outline"
+          size="sm"
+          :loading="savingAsTemplate"
+          @click="saveAsTemplate()"
         />
         <UButton
           label="Export"

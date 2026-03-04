@@ -21,10 +21,11 @@ const categories = [
   { label: 'Lifestyle', value: 'lifestyle' },
   { label: 'Minimal', value: 'minimal' },
   { label: 'Custom', value: 'custom' },
+  { label: 'Custom HTML', value: 'custom-html' },
 ]
 
 const fetchParams = computed(() => ({
-  category: activeCategory.value !== 'all' ? activeCategory.value : undefined,
+  category: activeCategory.value !== 'all' && activeCategory.value !== 'custom-html' ? activeCategory.value : undefined,
   search: searchQuery.value || undefined,
 }))
 
@@ -33,7 +34,45 @@ const { data: templates, refresh, status } = useFetch<BannerTemplateDB[]>('/api/
   default: () => [],
 })
 
-function useTemplate(tpl: BannerTemplateDB) {
+// Also fetch custom HTML templates
+const customFetchParams = computed(() => ({
+  search: searchQuery.value || undefined,
+}))
+
+const { data: customTemplates, refresh: refreshCustom } = useFetch<any[]>('/api/agency/banner-studio/custom-templates', {
+  query: customFetchParams,
+  default: () => [],
+})
+
+// Merge both lists based on active category
+const allTemplates = computed(() => {
+  if (activeCategory.value === 'custom-html') {
+    return customTemplates.value.map((t: any) => ({ ...t, _isCustomHtml: true }))
+  }
+  const visual = activeCategory.value === 'all' ? templates.value : templates.value
+  const custom = activeCategory.value === 'all'
+    ? customTemplates.value.map((t: any) => ({ ...t, _isCustomHtml: true }))
+    : []
+  return [...visual, ...custom]
+})
+
+async function useTemplate(tpl: any) {
+  if (tpl._isCustomHtml) {
+    // Create a new instance from the custom HTML template
+    try {
+      // Increment usage count
+      $fetch(`/api/agency/banner-studio/custom-templates/${tpl.id}/use`, { method: 'POST' }).catch(() => {})
+      // Create instance
+      const inst = await $fetch<{ id: string }>('/api/agency/banner-studio/custom-instances', {
+        method: 'POST',
+        body: { templateId: tpl.id },
+      })
+      router.push(`/agency/banner-studio/custom/${inst.id}`)
+    } catch (err: any) {
+      toast.add({ title: 'Error', description: err?.data?.statusMessage || 'Failed to create instance', color: 'error' })
+    }
+    return
+  }
   $fetch(`/api/agency/banner-studio/templates/${tpl.id}/use`, { method: 'POST' }).catch(() => {})
   router.push({ path: '/agency/banner-studio/new', query: { template: tpl.id } })
 }
@@ -45,12 +84,17 @@ function confirmDelete(tpl: BannerTemplateDB) {
 
 async function doDelete() {
   if (!deleteTarget.value) return
+  const tpl = deleteTarget.value as any
+  const endpoint = tpl._isCustomHtml
+    ? `/api/agency/banner-studio/custom-templates/${tpl.id}`
+    : `/api/agency/banner-studio/templates/${tpl.id}`
   try {
-    await $fetch(`/api/agency/banner-studio/templates/${deleteTarget.value.id}`, { method: 'DELETE' })
-    toast.add({ title: 'Deleted', description: `"${deleteTarget.value.name}" has been removed`, color: 'success' })
+    await $fetch(endpoint, { method: 'DELETE' })
+    toast.add({ title: 'Deleted', description: `"${tpl.name}" has been removed`, color: 'success' })
     showDeleteModal.value = false
     deleteTarget.value = null
     await refresh()
+    await refreshCustom()
   } catch (err: any) {
     toast.add({ title: 'Error', description: err?.data?.statusMessage || 'Failed to delete template', color: 'error' })
   }
@@ -84,7 +128,7 @@ const dropdownItems = (tpl: BannerTemplateDB) => {
         <p class="text-xs text-muted">Browse and use banner templates</p>
       </div>
       <span class="text-xs text-muted">
-        {{ templates.length }} template{{ templates.length !== 1 ? 's' : '' }}
+        {{ allTemplates.length }} template{{ allTemplates.length !== 1 ? 's' : '' }}
       </span>
     </div>
 
@@ -118,9 +162,9 @@ const dropdownItems = (tpl: BannerTemplateDB) => {
       </div>
 
       <!-- Grid -->
-      <div v-else-if="templates.length" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+      <div v-else-if="allTemplates.length" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
         <div
-          v-for="tpl in templates"
+          v-for="tpl in allTemplates"
           :key="tpl.id"
           class="group rounded-lg border border-default bg-default overflow-hidden hover:border-primary transition-colors"
         >
@@ -137,7 +181,15 @@ const dropdownItems = (tpl: BannerTemplateDB) => {
             >
             <UIcon v-else name="i-lucide-layout-template" class="text-3xl text-muted" />
             <UBadge
-              v-if="tpl.isSystem"
+              v-if="tpl._isCustomHtml"
+              label="Custom HTML"
+              variant="solid"
+              color="warning"
+              size="xs"
+              class="absolute top-2 left-2"
+            />
+            <UBadge
+              v-else-if="tpl.isSystem"
               label="System"
               variant="solid"
               color="primary"

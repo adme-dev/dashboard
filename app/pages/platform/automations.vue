@@ -35,8 +35,8 @@
             class="relative rounded-2xl bg-[#f4f5f7] dark:bg-white/[0.03] p-6 md:p-8 flex flex-col gap-5"
           >
             <div class="flex items-center gap-4">
-              <div class="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
-                <span class="text-[15px] font-semibold text-amber-700">{{ step.number }}</span>
+              <div class="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-500/[0.12] flex items-center justify-center flex-shrink-0">
+                <span class="text-[15px] font-semibold text-amber-700 dark:text-amber-400">{{ step.number }}</span>
               </div>
               <div class="w-11 h-11 rounded-xl bg-white dark:bg-white/[0.06] flex items-center justify-center shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
                 <UIcon :name="step.icon" class="w-5 h-5 text-[#121317] dark:text-white" />
@@ -48,7 +48,7 @@
             </div>
             <!-- Connector arrow (visible on md+ between cards) -->
             <div v-if="step.number < 3" class="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10">
-              <UIcon name="i-lucide-chevron-right" class="w-5 h-5 text-[#45474D]/30" />
+              <UIcon name="i-lucide-chevron-right" class="w-5 h-5 text-[#45474D]/30 dark:text-white/30" />
             </div>
           </div>
         </div>
@@ -59,8 +59,8 @@
     <section class="py-20 md:py-32 bg-[#f4f5f7] dark:bg-[#121317]">
       <div class="max-w-[1200px] mx-auto px-6">
         <div class="flex items-center gap-3 mb-10">
-          <div class="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
-            <UIcon name="i-lucide-play" class="w-5 h-5 text-amber-700" />
+          <div class="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-500/[0.12] flex items-center justify-center">
+            <UIcon name="i-lucide-play" class="w-5 h-5 text-amber-700 dark:text-amber-400" />
           </div>
           <div>
             <h2 class="text-[clamp(24px,3vw,32px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">Trigger Types</h2>
@@ -89,8 +89,8 @@
     <section class="py-20 md:py-32">
       <div class="max-w-[1200px] mx-auto px-6">
         <div class="flex items-center gap-3 mb-10">
-          <div class="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
-            <UIcon name="i-lucide-sparkles" class="w-5 h-5 text-amber-700" />
+          <div class="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-500/[0.12] flex items-center justify-center">
+            <UIcon name="i-lucide-sparkles" class="w-5 h-5 text-amber-700 dark:text-amber-400" />
           </div>
           <div>
             <h2 class="text-[clamp(24px,3vw,32px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">Action Types</h2>
@@ -101,7 +101,7 @@
           <div
             v-for="action in actions"
             :key="action.title"
-            class="rounded-2xl bg-[#f4f5f7] dark:bg-white/[0.03] p-5 flex flex-col gap-4 group hover:bg-[#eef0f3] transition-colors"
+            class="rounded-2xl bg-[#f4f5f7] dark:bg-white/[0.03] p-5 flex flex-col gap-4 group hover:bg-[#eef0f3] dark:hover:bg-white/[0.05] transition-colors"
           >
             <div class="w-11 h-11 rounded-xl bg-white dark:bg-white/[0.06] flex items-center justify-center shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <UIcon :name="action.icon" class="w-5 h-5 text-[#121317] dark:text-white" />
@@ -120,9 +120,9 @@
       <div class="max-w-[1200px] mx-auto px-6">
         <div class="grid md:grid-cols-2 gap-12 md:gap-16 items-center">
           <div>
-            <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-100 mb-6">
-              <UIcon name="i-lucide-mail" class="w-3.5 h-3.5 text-amber-700" />
-              <span class="text-[13px] text-amber-700 font-medium">Email Engine</span>
+            <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-100 dark:bg-amber-500/[0.12] mb-6">
+              <UIcon name="i-lucide-mail" class="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
+              <span class="text-[13px] text-amber-700 dark:text-amber-400 font-medium">Email Engine</span>
             </div>
             <h2 class="text-[clamp(24px,3vw,36px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-4 leading-[1.15]">
               Resend-powered transactional email
@@ -140,8 +140,8 @@
               :key="feature.title"
               class="rounded-2xl bg-white dark:bg-white/[0.03] p-5 flex items-center gap-4"
             >
-              <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
-                <UIcon :name="feature.icon" class="w-5 h-5 text-amber-600" />
+              <div class="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-500/[0.1] flex items-center justify-center flex-shrink-0">
+                <UIcon :name="feature.icon" class="w-5 h-5 text-amber-600 dark:text-amber-400" />
               </div>
               <div>
                 <h3 class="text-[15px] font-medium text-[#121317] dark:text-white">{{ feature.title }}</h3>
@@ -157,9 +157,9 @@
     <section class="py-20 md:py-32">
       <div class="max-w-[1200px] mx-auto px-6">
         <div class="max-w-[720px] mx-auto text-center">
-          <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-100 mb-6">
-            <UIcon name="i-lucide-radio" class="w-3.5 h-3.5 text-amber-700" />
-            <span class="text-[13px] text-amber-700 font-medium">Board Event Bridge</span>
+          <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-100 dark:bg-amber-500/[0.12] mb-6">
+            <UIcon name="i-lucide-radio" class="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
+            <span class="text-[13px] text-amber-700 dark:text-amber-400 font-medium">Board Event Bridge</span>
           </div>
           <h2 class="text-[clamp(24px,3vw,36px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-4 leading-[1.15]">
             Real-time board events fire automations automatically

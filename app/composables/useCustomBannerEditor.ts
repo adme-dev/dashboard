@@ -209,6 +209,32 @@ export function useCustomBannerEditor(instanceId: string) {
     }
   }
 
+  const savingAsTemplate = ref(false)
+
+  async function saveAsTemplate(opts?: { name?: string; category?: string; description?: string }) {
+    savingAsTemplate.value = true
+    try {
+      const result = await $fetch<{ id: string; name: string; category: string }>(
+        `/api/agency/banner-studio/custom-instances/${instanceId}/save-as-template`,
+        {
+          method: 'POST',
+          body: {
+            name: opts?.name || instanceName.value,
+            category: opts?.category || instance.value?.templateCategory,
+            description: opts?.description || null,
+          },
+        },
+      )
+      toast.add({ title: 'Template saved', description: `"${result.name}" added to template library`, color: 'success' })
+      return result
+    } catch (err: any) {
+      toast.add({ title: 'Save as template failed', description: err.data?.statusMessage || 'Error', color: 'error' })
+      return null
+    } finally {
+      savingAsTemplate.value = false
+    }
+  }
+
   function resetCodeToTemplate() {
     htmlOverride.value = null
     cssOverride.value = null
@@ -255,6 +281,8 @@ export function useCustomBannerEditor(instanceId: string) {
     load,
     save,
     publish,
+    savingAsTemplate,
+    saveAsTemplate,
     resetCodeToTemplate,
     resetVariablesToDefaults,
   }

@@ -1223,8 +1223,8 @@ const features: Record<string, Feature> = {
     title: 'Bulk Ad Launch',
     slug: 'bulk-ad-launch',
     icon: 'i-lucide-rocket',
-    category: 'Communication & Creative',
-    categoryIcon: 'i-lucide-palette',
+    category: 'Creative Production',
+    categoryIcon: 'i-lucide-rocket',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
     description: 'Launch dozens of ads across platforms in minutes. Select creatives from Banner Studio, configure campaigns, and publish to Meta Ads — all from one page.',
@@ -1252,8 +1252,8 @@ const features: Record<string, Feature> = {
     title: 'Ad Platform Export',
     slug: 'ad-platform-export',
     icon: 'i-lucide-download',
-    category: 'Communication & Creative',
-    categoryIcon: 'i-lucide-palette',
+    category: 'Creative Production',
+    categoryIcon: 'i-lucide-rocket',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
     description: 'Export HTML5 banners for 14 ad platforms with automatic clickTag injection, file size validation, and compliant ZIP download — ready to upload to any ad server.',
@@ -1273,6 +1273,772 @@ const features: Record<string, Feature> = {
       {
         title: '14 Supported Platforms',
         content: 'Export for Google Ads, Display & Video 360, Google Ad Manager, Campaign Manager 360, Google AdSense, Amazon DSP, The Trade Desk, Xandr (AppNexus), Sizmek, Flashtalking, AdRoll, Criteo, Yahoo DSP, or Generic IAB Standard. Each platform definition includes file size limits, animation constraints, external resource policies, looping rules, and required libraries — all maintained in a single specification file for easy updates.'
+      }
+    ]
+  },
+
+  // ─── Banner Studio ──────────────────────────────────────────────
+  'banner-editor': {
+    title: 'Visual Editor',
+    slug: 'banner-editor',
+    icon: 'i-lucide-pen-tool',
+    category: 'Banner Studio',
+    categoryIcon: 'i-lucide-palette',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'A full WYSIWYG artboard editor with layers, properties panel, drag-to-position, and multi-format support — purpose-built for HTML5 banner production.',
+    details: [
+      {
+        title: 'Layer-Based Design',
+        content: 'Build banners by stacking layers — text, images, buttons, rectangles, and background elements. Each layer has its own position, size, rotation, opacity, and animation properties. Reorder layers by drag-and-drop in the sidebar, lock layers to prevent accidental edits, and toggle visibility to focus on specific elements. The layer system mirrors what designers expect from tools like Figma or Photoshop, but outputs production-ready HTML5.'
+      },
+      {
+        title: 'Multi-Format Artboards',
+        content: 'Define multiple ad sizes in a single project — 300x250, 728x90, 160x600, 320x50, and any custom dimensions. Each format gets its own artboard with independent layer positioning, so you can fine-tune layouts per size while keeping shared assets and animations consistent. Add new formats at any time, and optionally use AI auto-resize to adapt layouts intelligently.'
+      },
+      {
+        title: 'Properties Panel',
+        content: 'Select any layer to reveal a context-sensitive properties panel on the right. Text layers show font family, size, weight, colour, line height, and letter spacing. Images show source URL, object fit, and border radius. All layers expose position (x, y), dimensions (width, height), rotation, opacity, and animation controls. Changes apply instantly on the artboard with no render delay.'
+      },
+      {
+        title: 'Keyboard Shortcuts',
+        content: 'Full keyboard shortcut support for professional workflows — arrow keys for pixel nudging, Shift+arrow for 10px jumps, Delete to remove layers, Cmd+D to duplicate, Cmd+Z/Shift+Cmd+Z for undo/redo, and bracket keys for layer reordering. Shortcuts are discoverable in the editor and match conventions from popular design tools so there is no learning curve.'
+      }
+    ]
+  },
+  'banner-animation': {
+    title: 'Animation & Timeline',
+    slug: 'banner-animation',
+    icon: 'i-lucide-clapperboard',
+    category: 'Banner Studio',
+    categoryIcon: 'i-lucide-palette',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'GSAP-powered keyframe timeline with entry and exit animations, easing curves, and frame-accurate playback for rich HTML5 ad production.',
+    details: [
+      {
+        title: 'Keyframe Timeline',
+        content: 'A visual timeline at the bottom of the editor shows every layer as a row with diamond-shaped keyframe markers. Drag keyframes to adjust timing, click between them to add new property changes, and use the playhead to scrub through the animation in real time. Each keyframe can animate position, scale, rotation, opacity, colour, and more — all rendered by GSAP for buttery smooth playback.'
+      },
+      {
+        title: 'Entry & Exit Animations',
+        content: 'Choose from 9 entry presets (fade in, slide from left/right/top/bottom, scale up, bounce, blur in, rotate in) and 9 matching exit presets. Each preset is configurable — adjust duration, delay, and easing independently. Entry animations fire on timeline start, exit animations fire before the banner loops or ends. This makes building "intro → hold → outro" sequences fast and intuitive.'
+      },
+      {
+        title: 'Easing Library',
+        content: 'Select from 30+ easing functions — linear, ease-in, ease-out, ease-in-out, plus GSAP-specific curves like back, elastic, bounce, and power curves (power1 through power4). Preview each curve visually before applying. The right easing choice transforms a mechanical-feeling animation into one that feels natural and polished, critical for ad creative that needs to catch attention in the first half-second.'
+      },
+      {
+        title: 'PlayAll Modal',
+        content: 'Preview all formats simultaneously in a single modal. Each artboard animates in sync so you can verify that your 300x250, 728x90, and 160x600 all look correct before exporting. Pause, rewind, and step frame-by-frame. This eliminates the tedious process of previewing each format individually and catching timing mismatches late in production.'
+      }
+    ]
+  },
+  'motion-paths': {
+    title: 'Motion Paths',
+    slug: 'motion-paths',
+    icon: 'i-lucide-spline',
+    category: 'Banner Studio',
+    categoryIcon: 'i-lucide-palette',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'SVG-based motion path editor with draggable waypoints, curviness control, and auto-rotate — animate elements along custom curves.',
+    details: [
+      {
+        title: 'Visual Waypoint Editor',
+        content: 'Click on the artboard to place waypoints that define a curved path. Each waypoint appears as a draggable handle overlaid on the canvas, connected by a smooth SVG Catmull-Rom spline. Drag waypoints to reshape the curve in real time — the layer follows the path as you scrub the timeline, giving instant visual feedback on the motion trajectory.'
+      },
+      {
+        title: 'Curviness & Auto-Rotate',
+        content: 'Adjust the curviness parameter to control how tightly the path follows the waypoints — low values create angular paths, high values create sweeping arcs. Enable auto-rotate so the layer rotates to face the direction of travel, perfect for animating icons, arrows, or character illustrations that need to orient along the curve.'
+      },
+      {
+        title: 'GSAP MotionPath Integration',
+        content: 'Motion paths are powered by GSAP MotionPathPlugin, ensuring pixel-accurate rendering across all browsers. The path data is serialised into the banner HTML so animations work identically in the editor, in preview, and in the published ad tag. When a motion path is active, it replaces manual x/y keyframes — the timeline UI hides position tracks to avoid conflicts.'
+      },
+      {
+        title: 'Export-Ready',
+        content: 'Published banners include the MotionPathPlugin CDN script automatically. The SVG path data is embedded as a JSON attribute so the animation runs independently with no server dependency. The exported HTML is self-contained and works on all major ad platforms that support GSAP animations.'
+      }
+    ]
+  },
+  'banner-export': {
+    title: 'Static & GIF Export',
+    slug: 'banner-export',
+    icon: 'i-lucide-image',
+    category: 'Banner Studio',
+    categoryIcon: 'i-lucide-palette',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Export banners to PNG or JPG at 1x/2x resolution via headless Chromium, or as animated GIFs with configurable frame rate.',
+    details: [
+      {
+        title: 'Static Image Export',
+        content: 'Generate pixel-perfect PNG or JPG screenshots of any banner format using Cloudflare Browser Rendering — a headless Chromium instance running at the edge. Choose 1x or 2x resolution for retina displays. JavaScript is disabled during capture for security, and the rendered HTML is identical to what appears in the editor. Images are uploaded to R2 for CDN delivery.'
+      },
+      {
+        title: 'GIF Export',
+        content: 'Capture animated banners as GIF files by rendering frame-by-frame with GSAP timeline seeking. Configure the frame rate between 5 and 15 FPS — lower for smaller files, higher for smoother animation. Each frame is captured as PNG, quantised to an optimised palette, and assembled into a GIF using gifenc. The export modal shows estimated frame count and file size before rendering begins.'
+      },
+      {
+        title: 'File Size Meter',
+        content: 'A real-time file size indicator appears in the editor toolbar and export modal, colour-coded green (<100KB), yellow (100-150KB), or red (>150KB). Asset sizes are tracked per-format so you can identify which images or fonts are pushing the banner over ad platform limits. This prevents the common workflow of building a beautiful banner only to discover at export time that it exceeds the 150KB Google Ads limit.'
+      },
+      {
+        title: 'Per-Format Export',
+        content: 'Export individual formats or all formats at once. Each format generates its own file with the correct dimensions and format-specific layer positioning. Batch export creates a ZIP containing one file per format, named with the project, dimensions, and format key for easy identification when uploading to ad servers.'
+      }
+    ]
+  },
+  'video-export': {
+    title: 'Video Export',
+    slug: 'video-export',
+    icon: 'i-lucide-film',
+    category: 'Banner Studio',
+    categoryIcon: 'i-lucide-palette',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Export banner animations as MP4 video with frame-by-frame GSAP capture and ffmpeg encoding.',
+    details: [
+      {
+        title: 'Frame-by-Frame Capture',
+        content: 'The video export pipeline uses headless Chromium to render each frame individually. GSAP timeline.seek() positions the animation at precise timestamps, and a full-page screenshot captures the result. This approach guarantees frame-accurate output that matches exactly what you see in the editor preview — no dropped frames or timing drift.'
+      },
+      {
+        title: 'ffmpeg Encoding',
+        content: 'Captured frames are piped into ffmpeg for MP4 encoding with H.264 compression. The output is optimised for web delivery with a small file size and broad compatibility. Configurable frame rate and quality settings let you balance file size against visual fidelity depending on whether the video is for social media, email, or client presentation.'
+      },
+      {
+        title: 'Social Media Ready',
+        content: 'MP4 exports are formatted for direct upload to social platforms. The container format, codec, and pixel format are chosen for maximum compatibility with Meta, LinkedIn, Twitter, and YouTube upload requirements. This extends Banner Studio beyond traditional display ads into short-form video content for social campaigns.'
+      },
+      {
+        title: 'R2 Storage',
+        content: 'Exported videos are uploaded to Cloudflare R2 with a stable URL so they can be shared with clients or embedded in presentations. Each export includes metadata about the source project, format dimensions, duration, and frame rate for easy reference.'
+      }
+    ]
+  },
+  'ad-tags': {
+    title: 'Ad Tags & Publishing',
+    slug: 'ad-tags',
+    icon: 'i-lucide-code',
+    category: 'Banner Studio',
+    categoryIcon: 'i-lucide-palette',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Publish banners with stable CDN URLs. Generate iframe, JavaScript, and AMPHTML embed tags with click-through wrapping and tracking pixels.',
+    details: [
+      {
+        title: 'Stable CDN URLs',
+        content: 'Published banners are hosted on Cloudflare R2 at a stable path that never changes — banner-hosted/{projectId}/{formatKey}/index.html. When you re-publish with updates, the URL stays the same so any live ad tags automatically serve the latest version. No need to swap URLs in your ad server when you make creative revisions.'
+      },
+      {
+        title: 'Embed Tag Generation',
+        content: 'Generate ready-to-paste embed code in three formats: iframe (simplest — works everywhere), JavaScript (loads async with a fallback image), and AMPHTML (for AMP pages and Google Ads). Each tag includes the correct dimensions, sandbox attributes, and loading strategy. Copy to clipboard with one click.'
+      },
+      {
+        title: 'Click-Through & Tracking',
+        content: 'Set a click-through URL per format. The published banner wraps all click events to route through your destination URL. Add impression and click tracking pixels — up to 5 of each — that fire alongside the primary click. Tracking URLs are validated (http/https only) to prevent injection attacks.'
+      },
+      {
+        title: 'Version History',
+        content: 'Each publish creates a version record with a timestamp, publishing user, and snapshot of the banner configuration. Roll back to any previous version if a live ad needs to revert. Up to 50 versions are stored per project, with the oldest auto-pruned to manage storage.'
+      }
+    ]
+  },
+  'brand-kits': {
+    title: 'Brand Kits',
+    slug: 'brand-kits',
+    icon: 'i-lucide-swatch-book',
+    category: 'Banner Studio',
+    categoryIcon: 'i-lucide-palette',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Define brand colours, fonts, and logos. Apply across banner projects with one click and full undo support.',
+    details: [
+      {
+        title: 'Brand Definition',
+        content: 'Create brand kits with primary, secondary, and accent colours, plus typography settings for headings and body text. Upload logos and brand marks that can be applied to any banner project. Each brand kit lives at the organisation level so it is available across all projects and team members.'
+      },
+      {
+        title: 'One-Click Apply',
+        content: 'Select a brand kit and apply it to the current project. Colour tokens are mapped to layer properties — primary colour goes to headings and buttons, secondary to body text, accent to highlights. Font families are swapped across all text layers. The mapping is intelligent — it identifies which layers serve which purpose based on their names and properties.'
+      },
+      {
+        title: 'Undo Support',
+        content: 'Applying a brand kit captures the previous state of all affected layers. A single undo action reverts every change, restoring the exact colours, fonts, and styles that were in place before. This makes it safe to experiment with different brand kits without fear of losing your current design.'
+      },
+      {
+        title: 'CRUD Management',
+        content: 'Full create, read, update, and delete operations for brand kits via the Brand Kit Manager UI. Edit colours with a colour picker, swap fonts from the font library, and update logos by uploading new assets. Changes to a brand kit do not retroactively update projects that already applied it — each application is a snapshot, not a live link.'
+      }
+    ]
+  },
+  'template-marketplace': {
+    title: 'Template Marketplace',
+    slug: 'template-marketplace',
+    icon: 'i-lucide-store',
+    category: 'Banner Studio',
+    categoryIcon: 'i-lucide-palette',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Save designs as reusable templates. Browse a categorised gallery with search, tags, and usage tracking.',
+    details: [
+      {
+        title: 'Save from Project',
+        content: 'Turn any banner project into a template with one click. The template captures all layers, animations, formats, and brand settings as a snapshot. Add a description, tags, and category to make it discoverable. Saving a template does not affect the original project — it creates an independent copy that can be instantiated into new projects.'
+      },
+      {
+        title: 'Category Gallery',
+        content: 'Browse templates in a visual gallery organised by category — social media ads, display banners, email headers, promotional, and more. Each template card shows a preview thumbnail, format count, and usage statistics. Filter by category, search by name or tag, and sort by newest or most used.'
+      },
+      {
+        title: 'Usage Tracking',
+        content: 'Every time a template is used to create a new project, the usage counter increments. This helps your team identify which templates are most popular and which might need updating. Template creators can see how widely their designs are being adopted across the organisation.'
+      },
+      {
+        title: 'Custom HTML Templates',
+        content: 'Beyond the visual editor templates, support for custom HTML templates lets developers create advanced banner layouts with custom code. Upload HTML files that integrate with the Banner Studio layer system, enabling effects and interactions that go beyond the standard editor capabilities.'
+      }
+    ]
+  },
+  'data-feeds-dco': {
+    title: 'Data Feeds & DCO',
+    slug: 'data-feeds-dco',
+    icon: 'i-lucide-database',
+    category: 'Banner Studio',
+    categoryIcon: 'i-lucide-palette',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Upload CSV or JSON data feeds, bind columns to layer properties, and auto-generate per-row banner variants for dynamic creative at scale.',
+    details: [
+      {
+        title: 'Feed Upload & Column Detection',
+        content: 'Upload a CSV or JSON file and XeroFlow automatically detects column types — text, number, URL, and colour. The feed data is stored as JSON on R2 with a reference in the database. Column types determine which layer properties each column can bind to, preventing mismatches like binding a text column to a colour property.'
+      },
+      {
+        title: 'Layer Property Bindings',
+        content: 'Bind feed columns to layer properties with a visual picker. Text columns bind to text content, URL columns to image sources, colour columns to fill and background colours, number columns to font sizes. When a binding is set, the editor shows a feed icon on the bound layer. Bindings are per-layer and per-property, giving precise control over what is dynamic and what stays static.'
+      },
+      {
+        title: 'Editor Preview Mode',
+        content: 'Toggle feed preview mode to see your banner populated with actual feed data. Navigate between rows with arrow buttons to preview each variant. The preview updates instantly — every bound property swaps to the current row values. This lets designers verify that product names fit, images load correctly, and colours look right before generating variants.'
+      },
+      {
+        title: 'DCO Variant Generation',
+        content: 'Generate pre-baked HTML banners for every combination of feed row and ad format. Unlike runtime data feeds that require JavaScript, DCO variants embed the data directly into the HTML — making them compatible with any ad platform including those that block external scripts. Variants are hosted on R2 with stable URLs and can be exported as ad tags or ZIP files.'
+      }
+    ]
+  },
+  'design-precision': {
+    title: 'Design Precision',
+    slug: 'design-precision',
+    icon: 'i-lucide-grid-3x3',
+    category: 'Banner Studio',
+    categoryIcon: 'i-lucide-palette',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Google Fonts library, custom font upload, pixel grid, snap-to-grid, smart guides, and six-direction layer alignment tools.',
+    details: [
+      {
+        title: 'Google Fonts Library',
+        content: 'Access 120+ curated Google Fonts directly in the editor. Fonts load on-demand via a link tag so only the fonts you actually use are included in the published banner. Search by name or browse by category (sans-serif, serif, display, monospace). Recent fonts are tracked so your favourites appear at the top. Published banners include the Google Fonts link tag so text renders correctly everywhere.'
+      },
+      {
+        title: 'Custom Font Upload',
+        content: 'Upload WOFF2, WOFF, TTF, or OTF font files for brands that use proprietary typefaces. Uploaded fonts are stored on R2 and injected into the editor and published HTML via @font-face rules. The font picker shows a Custom tab with all uploaded fonts alongside the Google Fonts library. URL validation prevents injection of malicious font sources.'
+      },
+      {
+        title: 'Grid & Snap',
+        content: 'Toggle a pixel grid overlay on the artboard with configurable size (8px, 10px, 16px, etc.). When snap-to-grid is enabled, layer positions and sizes round to the nearest grid increment during drag operations. This ensures precise alignment without manual coordinate entry — essential for banner production where pixel-level accuracy matters.'
+      },
+      {
+        title: 'Smart Guides & Alignment',
+        content: 'As you drag a layer, magenta guide lines appear when it aligns with artboard edges, artboard centre, or other layer edges. Smart guides snap at configurable thresholds so you get alignment assistance without fighting the cursor. Six-direction alignment buttons (left, centre, right, top, middle, bottom) align selected layers to the artboard. Distribute and match-size operations help create evenly spaced, consistently sized element groups.'
+      }
+    ]
+  },
+  'ai-creative-assistant': {
+    title: 'AI Creative Assistant',
+    slug: 'ai-creative-assistant',
+    icon: 'i-lucide-sparkles',
+    category: 'Banner Studio',
+    categoryIcon: 'i-lucide-palette',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'AI-powered copy suggestions, URL-to-banner generation, smart auto-resize, and image recommendations — built into the editor.',
+    details: [
+      {
+        title: 'AI Copy Suggest',
+        content: 'Select any text layer and click the AI icon to generate copy variations. The AI analyses the banner context — other text layers, brand name, and ad format — to suggest headlines, CTAs, and body copy that fit the available space. Powered by Workers AI with Groq fallback for fast response times. Suggestions appear in a popover and apply with one click.'
+      },
+      {
+        title: 'URL-to-Banner',
+        content: 'Paste a URL and XeroFlow scrapes the page to extract brand colours, images, headlines, and body copy. The AI then generates a complete banner layout with appropriate layers, typography, and composition. The result is a fully editable banner project — not a static screenshot — so you can tweak every element. Ideal for quickly mocking up ad concepts from a client landing page.'
+      },
+      {
+        title: 'Smart Auto-Resize',
+        content: 'When adding new ad formats to a project, AI auto-resize analyses the aspect ratio change and intelligently reflows layers. Wide-to-tall conversions stack elements vertically, tall-to-wide conversions arrange them horizontally. Text that does not fit is automatically trimmed by AI to preserve meaning while fitting the space. Toggle smart resize on or off per format.'
+      },
+      {
+        title: 'Image Suggestions',
+        content: 'The AI analyses text layers in your banner to suggest relevant image keywords and style directions. If your headline mentions "summer sale," suggestions include beach, sunshine, warm tones, and lifestyle imagery. Suggestions appear in the assets panel so you can search stock libraries or your uploaded assets with contextually relevant terms.'
+      }
+    ]
+  },
+  'banner-collaboration': {
+    title: 'Real-Time Collaboration',
+    slug: 'banner-collaboration',
+    icon: 'i-lucide-users',
+    category: 'Banner Studio',
+    categoryIcon: 'i-lucide-palette',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Multi-user editing with live cursors, soft layer locking, presence indicators, and version history — powered by Durable Objects.',
+    details: [
+      {
+        title: 'Live Cursors',
+        content: 'See other editors\' cursors moving across the artboard in real time. Each collaborator gets a unique colour with their name displayed next to their cursor. Cursor positions are relayed via a Durable Object WebSocket at 12fps (83ms throttle) for smooth movement without excessive bandwidth. Stale cursors from disconnected users are cleaned up after 5 seconds.'
+      },
+      {
+        title: 'Soft Layer Locking',
+        content: 'When you select a layer, it is soft-locked to prevent conflicting edits. Other collaborators see a coloured dashed border around the locked layer with the editor\'s name badge. Attempting to select a locked layer shows a toast warning rather than blocking — the lock is advisory, not hard. This prevents frustrating edit conflicts while keeping the workflow flexible.'
+      },
+      {
+        title: 'Live Layer Sync',
+        content: 'Layer additions, removals, property changes, and reorderings are broadcast to all connected editors instantly. When your colleague adds a new text layer, it appears on your artboard within milliseconds. Echo prevention ensures you do not see your own changes reflected back. The sync protocol handles concurrent edits gracefully — last-write-wins with visual indicators of who changed what.'
+      },
+      {
+        title: 'Presence & Version History',
+        content: 'A presence bar shows stacked avatars of everyone currently editing the project, with an online count. Version history captures snapshots on save, with up to 50 versions per project and automatic pruning of the oldest. Roll back to any previous version if needed. Graceful degradation means the editor works perfectly in single-user mode when the Durable Object is unavailable.'
+      }
+    ]
+  },
+
+  // ─── Creative Production (additional) ───────────────────────────
+  'ad-previews': {
+    title: 'Ad Previews',
+    slug: 'ad-previews',
+    icon: 'i-lucide-monitor-smartphone',
+    category: 'Creative Production',
+    categoryIcon: 'i-lucide-rocket',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Preview banners in 8 platform mockups — see exactly how your ads will look on Meta Feed, Stories, Reels, LinkedIn, and more.',
+    details: [
+      {
+        title: 'Platform Mockup Components',
+        content: 'Eight built-in mockup components render your banner inside realistic platform frames — Meta Feed (mobile and desktop), Meta Stories, Meta Reels, Instagram Feed, LinkedIn Feed, Google Display Network, and a generic display mockup. Each frame replicates the actual platform UI around your ad — profile headers, like buttons, comment sections — so you see the full context.'
+      },
+      {
+        title: 'Editor Integration',
+        content: 'Open the Preview slideover directly from the editor toolbar. Your current banner renders live inside each mockup with real-time animation playback. Switch between platforms instantly to verify your design works across contexts. The preview uses the same HTML build pipeline as export, so what you see is exactly what gets published.'
+      },
+      {
+        title: 'Standalone Preview Page',
+        content: 'A dedicated /agency/ad-preview page lets you preview any published banner by URL. Share the preview link with clients or stakeholders who want to see how ads look in context without accessing the editor. The page loads the published banner from R2 and renders it inside the selected platform mockup.'
+      },
+      {
+        title: 'Responsive Frames',
+        content: 'Mockup frames adapt to the banner dimensions. A 300x250 medium rectangle renders in a feed context, while a 728x90 leaderboard shows in a desktop header context. Stories mockups enforce 9:16 aspect ratio framing. The system automatically selects the most appropriate mockup layout based on your banner dimensions.'
+      }
+    ]
+  },
+  'safe-zones': {
+    title: 'Safe Zone Overlays',
+    slug: 'safe-zones',
+    icon: 'i-lucide-scan',
+    category: 'Creative Production',
+    categoryIcon: 'i-lucide-rocket',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Platform-specific safe zone guides for 11 ad platforms — ensure text and logos stay visible across placements.',
+    details: [
+      {
+        title: '11 Platform Definitions',
+        content: 'Safe zone definitions for Meta Feed, Meta Stories, Meta Reels, Instagram Feed, Google Display, YouTube, LinkedIn, Twitter/X, Snapchat, TikTok, and Pinterest. Each definition specifies the percentage-based safe area where text and logos will not be obscured by platform UI elements like profile headers, engagement buttons, or swipe-up indicators.'
+      },
+      {
+        title: 'SVG Overlay',
+        content: 'Safe zones render as a semi-transparent SVG overlay on the artboard at z-index 9992 — above all layers but below the UI controls. The danger zone is shaded while the safe area is clear, giving an instant visual indication of where to keep important content. Toggle the overlay on and off from the editor toolbar.'
+      },
+      {
+        title: 'Active Zone Selection',
+        content: 'Select the active safe zone from a dropdown in the toolbar. When designing for Meta Stories, select the Stories safe zone to see exactly where the profile header and CTA button will overlap your creative. Switch zones as you work across different placements to verify each one.'
+      },
+      {
+        title: 'Design Confidence',
+        content: 'Safe zones eliminate the guesswork of "will my headline be cut off on Stories?" or "does the logo overlap with the YouTube skip button?" By making platform constraints visible during design, you catch placement issues before export rather than discovering them after launch when budget has already been spent.'
+      }
+    ]
+  },
+  'meta-upload-wizard': {
+    title: 'Meta Upload Wizard',
+    slug: 'meta-upload-wizard',
+    icon: 'i-lucide-upload',
+    category: 'Creative Production',
+    categoryIcon: 'i-lucide-rocket',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'A five-step slideover wizard to publish banner creatives directly to Meta Ads — account, campaign, ad set, creatives, and go live.',
+    details: [
+      {
+        title: 'Account Selection',
+        content: 'Connect your Meta Ads account via OAuth and select which ad account to publish to. The wizard shows all accessible accounts with names, IDs, and status. For agencies managing multiple client accounts, switch between them without re-authenticating. The OAuth scope includes ads_management for full read/write access.'
+      },
+      {
+        title: 'Campaign & Ad Set Picker',
+        content: 'Browse existing campaigns and ad sets within the selected account. Campaigns show name, status, objective, and daily budget. Ad sets show targeting summary and schedule. Select where your new ads will live in your existing campaign structure — no need to recreate targeting or budgets that are already configured in Ads Manager.'
+      },
+      {
+        title: 'Creative Selection',
+        content: 'Pick published banners from any Banner Studio project. Thumbnails show the banner preview with format dimensions. Multi-select to launch several creatives at once. The wizard validates that selected formats are compatible with the chosen placement — flagging mismatches before you attempt to upload.'
+      },
+      {
+        title: 'Text & Publish',
+        content: 'Enter primary text, headline, description, call-to-action, and destination URL. Save text presets for reuse across launches. Hit publish and watch the progress tracker as each creative uploads, creates an ad creative object, and creates an ad in PAUSED status. Review in Ads Manager before activating.'
+      }
+    ]
+  },
+
+  // ─── Analytics & Reporting ──────────────────────────────────────
+  'cross-platform-dashboard': {
+    title: 'Cross-Platform Dashboard',
+    slug: 'cross-platform-dashboard',
+    icon: 'i-lucide-layout-dashboard',
+    category: 'Analytics & Reporting',
+    categoryIcon: 'i-lucide-chart-area',
+    categoryIconBg: 'bg-cyan-50',
+    categoryIconColor: 'text-cyan-600',
+    description: 'Aggregated ad performance across Meta, Google, and other platforms in a single unified dashboard.',
+    details: [
+      {
+        title: 'Unified Metrics',
+        content: 'See spend, impressions, clicks, CTR, CPC, conversions, and ROAS from every connected ad platform in one view. Metrics are normalised so you can compare Meta CPC against Google CPC without switching between platform dashboards. Date range selection applies globally, and all charts update simultaneously.'
+      },
+      {
+        title: 'Multi-Platform Aggregation',
+        content: 'Data from Meta Ads, Google Ads, and any other connected platforms is fetched, transformed, and merged on the server. Each platform has its own API client and data normalisation layer so metrics map consistently regardless of how each platform reports them. The dashboard handles API rate limits and partial data gracefully.'
+      },
+      {
+        title: 'Client-Level Filtering',
+        content: 'Filter the dashboard by client to see only their campaigns across all platforms. This gives account managers a single view of their client\'s entire paid media performance. Combine with date range filtering to prepare monthly reports or investigate specific time periods.'
+      },
+      {
+        title: 'Campaign Drill-Down',
+        content: 'Click any metric to drill down into campaign-level detail. See individual campaigns ranked by spend, ROAS, or any other metric. Deep links take you directly to the campaign in the original ad platform dashboard for further investigation or optimisation.'
+      }
+    ]
+  },
+  'hourly-breakdowns': {
+    title: 'Hourly Breakdowns',
+    slug: 'hourly-breakdowns',
+    icon: 'i-lucide-clock-4',
+    category: 'Analytics & Reporting',
+    categoryIcon: 'i-lucide-chart-area',
+    categoryIconBg: 'bg-cyan-50',
+    categoryIconColor: 'text-cyan-600',
+    description: 'Granular hourly performance data with spend, impressions, and conversion trends throughout the day.',
+    details: [
+      {
+        title: 'Hourly Granularity',
+        content: 'See how ad performance varies hour by hour. Identify peak conversion windows, spot wasteful overnight spend, and discover when your audience is most engaged. Daily totals hide these patterns — hourly data reveals them. Charts show spend, impressions, clicks, and conversions for each hour of the selected day.'
+      },
+      {
+        title: 'Day-Part Analysis',
+        content: 'Compare morning, afternoon, evening, and night performance automatically. The dashboard highlights which day-parts deliver the best ROAS and which are underperforming. This data directly informs ad scheduling decisions — shift budget to high-performing hours and pause during low-conversion periods.'
+      },
+      {
+        title: 'Heatmap Visualisation',
+        content: 'A heatmap view shows days of the week on one axis and hours on the other, with colour intensity representing performance. Patterns emerge quickly — maybe your client\'s audience converts heavily on Tuesday afternoons but barely at all on weekends. The heatmap makes these patterns visible at a glance.'
+      },
+      {
+        title: 'Cross-Platform Timing',
+        content: 'Compare hourly patterns across platforms to discover if your audience behaves differently on Meta versus Google. Maybe they browse social media in the morning but search Google in the afternoon. These insights drive platform-specific scheduling strategies that maximise budget efficiency.'
+      }
+    ]
+  },
+  'campaign-alerts': {
+    title: 'Campaign Alerts',
+    slug: 'campaign-alerts',
+    icon: 'i-lucide-bell-ring',
+    category: 'Analytics & Reporting',
+    categoryIcon: 'i-lucide-chart-area',
+    categoryIconBg: 'bg-cyan-50',
+    categoryIconColor: 'text-cyan-600',
+    description: 'Automated alerts for spend anomalies, pacing issues, and budget thresholds across all connected ad platforms.',
+    details: [
+      {
+        title: 'Spend Anomaly Detection',
+        content: 'The alerting engine compares current spend against historical averages and flags significant deviations. A campaign that suddenly spends 3x its daily average triggers an alert before it burns through the monthly budget. Sensitivity is configurable — set tighter thresholds for high-spend accounts and looser ones for experimental campaigns.'
+      },
+      {
+        title: 'Budget Pacing',
+        content: 'Track how campaigns are pacing against their monthly budget. Alerts fire when a campaign is projected to overspend or significantly underspend by month-end. Early warnings give media buyers time to adjust bids, budgets, or targeting before the situation becomes critical.'
+      },
+      {
+        title: 'Performance Degradation',
+        content: 'Alerts trigger when key metrics decline beyond thresholds — CTR drops below 1%, CPC rises above target, conversion rate falls significantly. Each alert includes the metric, current value, threshold, and trend direction so the media buyer has immediate context to investigate.'
+      },
+      {
+        title: 'Dashboard Widget',
+        content: 'Active alerts appear in a dashboard widget with severity indicators. Critical alerts (budget exceeded, account paused) surface at the top, while informational alerts (minor pacing deviation, slight CTR decline) sit below. Click any alert to jump to the relevant campaign detail for investigation.'
+      }
+    ]
+  },
+  'platform-comparison': {
+    title: 'Platform Comparison',
+    slug: 'platform-comparison',
+    icon: 'i-lucide-git-compare',
+    category: 'Analytics & Reporting',
+    categoryIcon: 'i-lucide-chart-area',
+    categoryIconBg: 'bg-cyan-50',
+    categoryIconColor: 'text-cyan-600',
+    description: 'Side-by-side platform performance with unified metrics, normalised for cross-channel analysis.',
+    details: [
+      {
+        title: 'Normalised Metrics',
+        content: 'Each ad platform reports metrics differently — Meta calls it "cost per result" while Google uses "cost per conversion." The comparison view normalises everything into consistent definitions so you can legitimately compare cost-per-acquisition across platforms. Attribution models are noted so you understand the comparison context.'
+      },
+      {
+        title: 'Side-by-Side Charts',
+        content: 'Dual-axis charts overlay performance from multiple platforms on the same timeline. See how a Google Ads spend increase correlates with Meta performance changes. Identify which platform is delivering better results for the same audience segment during the same time period.'
+      },
+      {
+        title: 'Budget Allocation Insights',
+        content: 'The comparison surface suggests optimal budget allocation based on historical performance data. If Meta consistently delivers 30% lower CPA than Google for a specific client, the dashboard highlights the opportunity to shift budget. These insights are data-driven recommendations, not automated changes.'
+      },
+      {
+        title: 'Client Reporting',
+        content: 'Export the comparison view as part of client reports. The unified format means clients see a clear story across platforms without needing to understand each platform\'s reporting quirks. AI-generated summaries provide natural-language explanations of cross-platform trends.'
+      }
+    ]
+  },
+  'on-demand-sync': {
+    title: 'On-Demand Sync',
+    slug: 'on-demand-sync',
+    icon: 'i-lucide-refresh-cw',
+    category: 'Analytics & Reporting',
+    categoryIcon: 'i-lucide-chart-area',
+    categoryIconBg: 'bg-cyan-50',
+    categoryIconColor: 'text-cyan-600',
+    description: 'Pull the latest data from ad platforms instantly — no waiting for scheduled syncs.',
+    details: [
+      {
+        title: 'Instant Data Refresh',
+        content: 'Click the sync button to pull the latest data from all connected ad platforms immediately. Scheduled syncs run periodically, but when you are in a client meeting or preparing a report, you want the numbers as of right now. On-demand sync queries the platform APIs in real time and updates the dashboard within seconds.'
+      },
+      {
+        title: 'Per-Platform Control',
+        content: 'Sync individual platforms independently. If you only need fresh Meta data, sync just Meta without waiting for Google to respond. Each platform shows its last sync timestamp so you know how fresh the data is. Failed syncs show error details with retry options.'
+      },
+      {
+        title: 'Rate Limit Awareness',
+        content: 'The sync engine respects platform API rate limits to avoid account throttling. If you have hit the limit recently, the sync button shows a cooldown indicator with the estimated time until the next sync is available. This prevents accidental rate limit violations that could temporarily block API access.'
+      },
+      {
+        title: 'Incremental Updates',
+        content: 'On-demand sync only fetches data that has changed since the last sync, minimising API calls and response time. For date ranges that have already been fully synced, cached data is used. Only the current day and any recently modified historical data are refreshed.'
+      }
+    ]
+  },
+  'export-reporting': {
+    title: 'Export & Reporting',
+    slug: 'export-reporting',
+    icon: 'i-lucide-file-down',
+    category: 'Analytics & Reporting',
+    categoryIcon: 'i-lucide-chart-area',
+    categoryIconBg: 'bg-cyan-50',
+    categoryIconColor: 'text-cyan-600',
+    description: 'Export analytics to CSV with date ranges, metric breakdowns, and AI-generated performance summaries.',
+    details: [
+      {
+        title: 'CSV Export',
+        content: 'Export any analytics view to CSV with all visible columns, filters, and date ranges preserved. The export includes raw metric values for spreadsheet analysis, along with calculated fields like CTR and ROAS. Column headers match the dashboard labels so the export is immediately understandable without a data dictionary.'
+      },
+      {
+        title: 'Date Range Selection',
+        content: 'Choose custom date ranges, or use presets like last 7 days, last 30 days, this month, last month, or quarter-to-date. Date ranges apply to all charts and tables simultaneously. Compare two date ranges side-by-side to show period-over-period performance changes.'
+      },
+      {
+        title: 'AI Summaries',
+        content: 'Each analytics view includes an AI-generated summary that highlights the most important trends in natural language. Instead of scanning 20 metrics to find the story, the summary tells you "Meta spend increased 15% week-over-week with a corresponding 8% improvement in ROAS, driven primarily by the retargeting campaign." The summaries are generated on-demand and can be included in exports.'
+      },
+      {
+        title: 'Breakdown Dimensions',
+        content: 'Break down performance by campaign, ad set, ad creative, placement, device, age, gender, and geography. Each breakdown adds a row dimension to the table and a series to the charts. Multiple breakdowns can be combined for detailed cross-tabulation analysis.'
+      }
+    ]
+  },
+
+  // ─── Communication (additional) ─────────────────────────────────
+  'link-previews': {
+    title: 'Link Previews',
+    slug: 'link-previews',
+    icon: 'i-lucide-external-link',
+    category: 'Communication',
+    categoryIcon: 'i-lucide-message-circle',
+    categoryIconBg: 'bg-violet-50',
+    categoryIconColor: 'text-violet-600',
+    description: 'Automatic OG unfurl for shared URLs — rich preview cards with title, image, and description appear inline in chat.',
+    details: [
+      {
+        title: 'Server-Side OG Unfurl',
+        content: 'When a message contains a URL, the server fetches the page and extracts Open Graph metadata — title, description, image, and site name. The unfurl happens server-side so users do not need to click the link to see what it contains. Results are cached to avoid repeated fetches for the same URL.'
+      },
+      {
+        title: 'Rich Preview Cards',
+        content: 'Link previews render as cards below the message with the page title, description, thumbnail image, and domain name. Cards are styled to fit naturally within the chat interface without dominating the conversation. Click the card to open the link in a new tab.'
+      },
+      {
+        title: 'Security',
+        content: 'The unfurl service validates URLs to prevent SSRF attacks — localhost, private IP ranges, and non-HTTP protocols are blocked. Image URLs from the OG metadata are proxied rather than loaded directly to prevent tracking pixels from firing in the chat context.'
+      },
+      {
+        title: 'Supported Sources',
+        content: 'Link previews work with any publicly accessible URL that includes Open Graph or Twitter Card metadata. This covers most websites, blog posts, documentation pages, and social media profiles. Internal XeroFlow links (tasks, boards, projects) render with custom preview cards that show entity-specific details.'
+      }
+    ]
+  },
+  'message-forwarding': {
+    title: 'Message Forwarding',
+    slug: 'message-forwarding',
+    icon: 'i-lucide-forward',
+    category: 'Communication',
+    categoryIcon: 'i-lucide-message-circle',
+    categoryIconBg: 'bg-violet-50',
+    categoryIconColor: 'text-violet-600',
+    description: 'Forward messages to any channel or DM with full attribution and context preserved.',
+    details: [
+      {
+        title: 'Forward to Any Channel',
+        content: 'Right-click any message or use the forward action to send it to another channel or DM. A modal lets you search and select the destination. The forwarded message appears with clear attribution — showing the original sender, channel, and timestamp. Add an optional note to provide context for why you are sharing it.'
+      },
+      {
+        title: 'Preserved Context',
+        content: 'Forwarded messages retain their original formatting, attachments, and emoji reactions. File attachments are linked rather than re-uploaded so they do not consume additional storage. Thread context is noted so recipients know if the message was part of a longer conversation.'
+      },
+      {
+        title: 'Multi-Channel Forwarding',
+        content: 'Forward a single message to multiple destinations at once. Select several channels or DMs in the forward modal and the message is sent to all of them simultaneously. Each destination receives an independent copy so reactions and replies in one channel do not affect others.'
+      },
+      {
+        title: 'API Endpoint',
+        content: 'Message forwarding is backed by a dedicated API endpoint that handles permission checks, message duplication, and notification delivery. Only users with access to the source message can forward it, and forwarding respects channel membership — you cannot forward to a channel you are not a member of.'
+      }
+    ]
+  },
+  'activity-hub': {
+    title: 'Activity Hub',
+    slug: 'activity-hub',
+    icon: 'i-lucide-activity',
+    category: 'Communication',
+    categoryIcon: 'i-lucide-message-circle',
+    categoryIconBg: 'bg-violet-50',
+    categoryIconColor: 'text-violet-600',
+    description: 'A unified notification centre with live chat feed, For You tab, incoming items, and AI recommendations — accessible via keyboard shortcuts.',
+    details: [
+      {
+        title: 'Live Feed Tab',
+        content: 'The Feed tab shows a real-time stream of chat messages across all your channels. Messages arrive instantly via WebSocket — no polling or page refresh needed. Cursor-based pagination loads older messages as you scroll. Muted channels are filtered out so you only see conversations you care about. Click any message to jump directly to that channel.'
+      },
+      {
+        title: 'For You Tab',
+        content: 'The For You tab surfaces notifications personalised to your role and activity — task assignments, @mentions, approval requests, deadline reminders, and board events that affect your work. Notifications are grouped by time and priority so the most urgent items appear first.'
+      },
+      {
+        title: 'Draggable Panel',
+        content: 'The Activity Hub renders as a floating panel that can be dragged to any position on screen. Toggle between compact and expanded modes depending on how much screen real estate you want to dedicate. Position is persisted via localStorage so it stays where you put it across page navigations and sessions.'
+      },
+      {
+        title: 'Keyboard Shortcuts',
+        content: 'Press the period key (.) to toggle the Activity Hub open or closed. Press N to jump directly to the For You tab. These shortcuts work globally across all agency pages, making it fast to check notifications without reaching for the mouse. The hub replaces the old notification slideover and AI chat widget with a unified, more accessible interface.'
+      }
+    ]
+  },
+
+  // ─── AI & Intelligence (additional) ─────────────────────────────
+  'composite-scoring': {
+    title: 'Composite Scoring',
+    slug: 'composite-scoring',
+    icon: 'i-lucide-blend',
+    category: 'AI & Intelligence',
+    categoryIcon: 'i-lucide-brain',
+    categoryIconBg: 'bg-amber-50',
+    categoryIconColor: 'text-amber-600',
+    description: 'Five-signal retrieval formula that blends semantic similarity, recency, importance, intent match, and entity overlap for optimal AI context.',
+    details: [
+      {
+        title: 'Five-Signal Formula',
+        content: 'Every piece of context retrieved for the AI is scored using five signals: semantic similarity (Vectorize cosine distance), recency (exponential decay from last update), importance (type-weighted — spend data scores 0.85, board data 0.55), intent match (how well the item matches the classified intent), and entity overlap (shared clients, projects, or tasks with the query). The signals are combined using per-intent weighting profiles.'
+      },
+      {
+        title: 'Per-Intent Scoring Profiles',
+        content: 'Different query types weight the signals differently. Financial queries emphasise recency (0.30 weight, 7-day half-life) because spend data becomes stale quickly. Process queries emphasise semantic similarity (0.35 weight, 90-day half-life) because documentation stays relevant longer. Search queries emphasise entity overlap (0.35 weight) to surface exact matches. All profile weights sum to 1.0.'
+      },
+      {
+        title: 'Diversity Penalty',
+        content: 'To prevent the AI context from being dominated by a single type of information, a diversity penalty applies -0.08 per item beyond 3 of the same type. If the top results are all "spend" items, the fourth and fifth spend items get progressively penalised, letting other types (tasks, briefs, clients) surface. This produces more balanced and useful AI responses.'
+      },
+      {
+        title: 'Semantic Reranking',
+        content: 'Items sourced from the database are reranked by Vectorize cosine similarity to the user query. A single Vectorize query generates embeddings and attaches a semanticScore to each item. This hybrid approach — database retrieval plus vector reranking — delivers better results than either approach alone, with graceful degradation if Vectorize is unavailable.'
+      }
+    ]
+  },
+  'ai-training-pipeline': {
+    title: 'AI Training Pipeline',
+    slug: 'ai-training-pipeline',
+    icon: 'i-lucide-graduation-cap',
+    category: 'AI & Intelligence',
+    categoryIcon: 'i-lucide-brain',
+    categoryIconBg: 'bg-amber-50',
+    categoryIconColor: 'text-amber-600',
+    description: 'Extract training data from conversations, upload knowledge entries, manage datasets, and monitor training quality.',
+    details: [
+      {
+        title: 'Five Extractors',
+        content: 'Training data is extracted from real conversations using five specialised extractors: chat Q&A pairs, intent classification examples, RAG retrieval pairs, knowledge base entries, and combined multi-format output. Each extractor produces JSONL output with anonymisation applied — PII is stripped before any data enters the training pipeline.'
+      },
+      {
+        title: 'Dataset Management',
+        content: 'View, filter, and manage training datasets from the admin UI. Each dataset shows its source, extraction type, entry count, and creation date. Download datasets as JSONL for external use or delete datasets that are no longer needed. Statistics show the total volume of training data across all dataset types.'
+      },
+      {
+        title: 'R2 Storage',
+        content: 'Extracted training data is stored on Cloudflare R2 as JSONL files. Each dataset has a unique key and metadata record in the database. The R2 storage model keeps training data separate from the production database, making it easy to manage lifecycle, access control, and compliance requirements independently.'
+      },
+      {
+        title: 'Queue Integration',
+        content: 'Training data extraction runs as async jobs via the queue system. Submit an extraction job from the admin UI, and it processes in the background without blocking the main application. The training.extract job type handles scheduling, progress tracking, and error handling for large extraction operations.'
+      }
+    ]
+  },
+  'knowledge-base': {
+    title: 'Knowledge Base',
+    slug: 'knowledge-base',
+    icon: 'i-lucide-book-open',
+    category: 'AI & Intelligence',
+    categoryIcon: 'i-lucide-brain',
+    categoryIconBg: 'bg-amber-50',
+    categoryIconColor: 'text-amber-600',
+    description: 'Curate and approve knowledge entries that enhance AI responses with agency-specific context and domain expertise.',
+    details: [
+      {
+        title: 'Knowledge Upload',
+        content: 'Upload knowledge entries individually or in bulk via CSV/JSONL. Each entry has a title, content, category, and source reference. The upload process validates format and content length, then queues entries for Vectorize embedding so they become searchable by the AI system immediately.'
+      },
+      {
+        title: 'Approval Workflow',
+        content: 'Knowledge entries go through an approval workflow before they influence AI responses. New entries start as pending, reviewers can approve or reject with comments, and only approved entries are included in the AI context retrieval pipeline. This prevents inaccurate or outdated information from degrading AI quality.'
+      },
+      {
+        title: 'Vectorize Deduplication',
+        content: 'When new entries are uploaded, the system checks for semantic duplicates using Vectorize cosine similarity. Entries that are too similar to existing ones are flagged for review rather than auto-approved. This prevents the knowledge base from accumulating redundant information that wastes context window space.'
+      },
+      {
+        title: 'CRUD API',
+        content: 'Six API endpoints handle the full knowledge lifecycle — list with search and filters, create single entries, bulk create from file, read individual entries with full content, update entries and re-embed, and delete entries with Vectorize cleanup. The admin UI provides a searchable, filterable interface for managing hundreds of knowledge entries.'
       }
     ]
   },

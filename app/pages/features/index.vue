@@ -127,9 +127,9 @@ definePageMeta({
 
 useSeoMeta({
   title: 'Features — XeroFlow',
-  description: 'Explore 37+ features across work management, financial operations, communication, AI intelligence, client portal, and time tracking.',
+  description: 'Explore 60+ features across work management, banner studio, creative production, financial operations, analytics, communication, AI intelligence, client portal, and time tracking.',
   ogTitle: 'Features — XeroFlow',
-  ogDescription: 'Explore 37+ features across work management, financial operations, communication, AI intelligence, client portal, and time tracking.',
+  ogDescription: 'Explore 60+ features across work management, banner studio, creative production, financial operations, analytics, communication, AI intelligence, client portal, and time tracking.',
 })
 
 const categories = [
@@ -145,10 +145,45 @@ const categories = [
       { title: 'Timeline View', slug: 'timeline-view', icon: 'i-lucide-gantt-chart', description: 'Gantt-style timeline with date range bars, drag-to-reschedule, and dependency tracking.' },
       { title: 'Calendar View', slug: 'calendar-view', icon: 'i-lucide-calendar', description: 'Monthly calendar with task cards, drag-to-reschedule, and date-based filtering.' },
       { title: 'Gallery View', slug: 'gallery-view', icon: 'i-lucide-layout-grid', description: 'Visual grid of tasks with file previews — perfect for creative review workflows.' },
+      { title: 'Table View', slug: 'table-view', icon: 'i-lucide-table', description: 'Spreadsheet-style table with sortable columns, inline editing, and bulk actions.' },
       { title: 'Groups & Subtasks', slug: 'groups-subtasks', icon: 'i-lucide-list-tree', description: 'Organize tasks into collapsible groups with nested subtasks for complex projects.' },
       { title: 'Templates', slug: 'templates', icon: 'i-lucide-copy', description: 'Save board configurations as templates. Spin up new projects in seconds.' },
-      { title: 'Real-Time SSE', slug: 'real-time-sse', icon: 'i-lucide-radio', description: 'Live updates via Server-Sent Events — see changes from teammates instantly.' },
-      { title: 'Table View', slug: 'table-view', icon: 'i-lucide-table', description: 'Spreadsheet-style table with sortable columns, inline editing, and bulk actions.' },
+      { title: 'Real-Time Updates', slug: 'real-time-sse', icon: 'i-lucide-radio', description: 'Live updates via SSE and Durable Objects — see changes from teammates instantly.' },
+    ]
+  },
+  {
+    title: 'Banner Studio',
+    subtitle: 'HTML5 ad design, animation, and production',
+    icon: 'i-lucide-palette',
+    iconBg: 'bg-rose-50 dark:bg-rose-500/10',
+    iconColor: 'text-rose-600',
+    features: [
+      { title: 'Visual Editor', slug: 'banner-editor', icon: 'i-lucide-pen-tool', description: 'WYSIWYG artboard editor with layers, properties panel, drag-to-position, and multi-format support.' },
+      { title: 'Animation & Timeline', slug: 'banner-animation', icon: 'i-lucide-clapperboard', description: 'GSAP-powered keyframe timeline with entry/exit animations, easing curves, and motion paths.' },
+      { title: 'Motion Paths', slug: 'motion-paths', icon: 'i-lucide-spline', description: 'SVG-based motion path editor with draggable waypoints, curviness control, and auto-rotate.' },
+      { title: 'Static & GIF Export', slug: 'banner-export', icon: 'i-lucide-image', description: 'Export to PNG/JPG at 1x/2x via headless Chromium, or animated GIF with configurable FPS.' },
+      { title: 'Video Export', slug: 'video-export', icon: 'i-lucide-film', description: 'MP4 video export with frame-by-frame GSAP capture and ffmpeg encoding.' },
+      { title: 'Ad Tags & Publishing', slug: 'ad-tags', icon: 'i-lucide-code', description: 'Publish with stable CDN URLs. Generate iframe, JavaScript, and AMPHTML tags with tracking pixels.' },
+      { title: 'Brand Kits', slug: 'brand-kits', icon: 'i-lucide-swatch-book', description: 'Define brand colours, fonts, and logos. Apply across projects with one click and undo support.' },
+      { title: 'Template Marketplace', slug: 'template-marketplace', icon: 'i-lucide-store', description: 'Save designs as templates. Browse a categorised gallery with search, tags, and usage tracking.' },
+      { title: 'Data Feeds & DCO', slug: 'data-feeds-dco', icon: 'i-lucide-database', description: 'Upload CSV/JSON feeds, bind columns to layers, and auto-generate per-row banner variants at scale.' },
+      { title: 'Design Precision', slug: 'design-precision', icon: 'i-lucide-grid-3x3', description: 'Google Fonts, custom font upload, pixel grid, snap-to-grid, smart guides, and layer alignment tools.' },
+      { title: 'AI Creative Assistant', slug: 'ai-creative-assistant', icon: 'i-lucide-sparkles', description: 'AI-powered copy suggestions, URL-to-banner generation, smart auto-resize, and image recommendations.' },
+      { title: 'Real-Time Collaboration', slug: 'banner-collaboration', icon: 'i-lucide-users', description: 'Multi-user editing with live cursors, soft layer locking, presence indicators, and version history.' },
+    ]
+  },
+  {
+    title: 'Creative Production',
+    subtitle: 'Ad previews, export, and publishing at scale',
+    icon: 'i-lucide-rocket',
+    iconBg: 'bg-rose-50 dark:bg-rose-500/10',
+    iconColor: 'text-rose-600',
+    features: [
+      { title: 'Bulk Ad Launch', slug: 'bulk-ad-launch', icon: 'i-lucide-rocket', description: 'Select creatives from Banner Studio and launch dozens of ads to Meta in one click.' },
+      { title: 'Ad Platform Export', slug: 'ad-platform-export', icon: 'i-lucide-download', description: 'Export HTML5 banners for 14 ad platforms with automatic clickTag injection and compliance validation.' },
+      { title: 'Ad Previews', slug: 'ad-previews', icon: 'i-lucide-monitor-smartphone', description: 'Preview banners in 8 platform mockups — Meta Feed, Stories, Reels, LinkedIn, and more.' },
+      { title: 'Safe Zone Overlays', slug: 'safe-zones', icon: 'i-lucide-scan', description: 'Platform-specific safe zone guides for 11 ad platforms to ensure text and logos stay visible.' },
+      { title: 'Meta Upload Wizard', slug: 'meta-upload-wizard', icon: 'i-lucide-upload', description: 'Five-step wizard to publish directly to Meta — select account, campaign, ad set, creatives, and go live.' },
     ]
   },
   {
@@ -167,8 +202,23 @@ const categories = [
     ]
   },
   {
-    title: 'Communication & Creative',
-    subtitle: 'Chat, notifications, email, and ad production',
+    title: 'Analytics & Reporting',
+    subtitle: 'Cross-platform insights and performance data',
+    icon: 'i-lucide-chart-area',
+    iconBg: 'bg-cyan-50 dark:bg-cyan-500/10',
+    iconColor: 'text-cyan-600',
+    features: [
+      { title: 'Cross-Platform Dashboard', slug: 'cross-platform-dashboard', icon: 'i-lucide-layout-dashboard', description: 'Aggregated performance across Meta, Google, and other ad platforms in a unified view.' },
+      { title: 'Hourly Breakdowns', slug: 'hourly-breakdowns', icon: 'i-lucide-clock-4', description: 'Granular hourly performance data with spend, impressions, and conversion trends throughout the day.' },
+      { title: 'Campaign Alerts', slug: 'campaign-alerts', icon: 'i-lucide-bell-ring', description: 'Automated alerts for spend anomalies, pacing issues, and budget thresholds across platforms.' },
+      { title: 'Platform Comparison', slug: 'platform-comparison', icon: 'i-lucide-git-compare', description: 'Side-by-side platform performance with unified metrics, normalised for cross-channel analysis.' },
+      { title: 'On-Demand Sync', slug: 'on-demand-sync', icon: 'i-lucide-refresh-cw', description: 'Pull the latest data from ad platforms on demand — no waiting for scheduled syncs.' },
+      { title: 'Export & Reporting', slug: 'export-reporting', icon: 'i-lucide-file-down', description: 'Export analytics to CSV with date ranges, breakdowns, and AI-generated summaries.' },
+    ]
+  },
+  {
+    title: 'Communication',
+    subtitle: 'Chat, notifications, email, and automations',
     icon: 'i-lucide-message-circle',
     iconBg: 'bg-violet-50 dark:bg-violet-500/10',
     iconColor: 'text-violet-600',
@@ -177,24 +227,28 @@ const categories = [
       { title: 'Board-Linked Channels', slug: 'board-linked-channels', icon: 'i-lucide-link-2', description: 'Auto-created channels for boards and tasks. Board events post directly to chat.' },
       { title: 'Rich Messages', slug: 'rich-messages', icon: 'i-lucide-image', description: 'File attachments, emoji reactions, message pinning, quoting, and forwarding.' },
       { title: 'Read Receipts', slug: 'read-receipts', icon: 'i-lucide-check-check', description: 'See who has read your messages with avatar indicators and reader lists.' },
+      { title: 'Link Previews', slug: 'link-previews', icon: 'i-lucide-external-link', description: 'Automatic OG unfurl for shared URLs — rich preview cards with title, image, and description.' },
+      { title: 'Message Forwarding', slug: 'message-forwarding', icon: 'i-lucide-forward', description: 'Forward messages to any channel or DM with full attribution and context.' },
+      { title: 'Activity Hub', slug: 'activity-hub', icon: 'i-lucide-activity', description: 'Unified notification centre with live feed, For You tab, and keyboard shortcuts for quick access.' },
       { title: 'Email Templates', slug: 'email-templates', icon: 'i-lucide-mail', description: 'Resend-powered email templates for notifications, invites, and client communications.' },
       { title: 'Automations', slug: 'automations', icon: 'i-lucide-zap', description: 'Trigger → action recipes. Auto-notify on status changes, assignments, and due dates.' },
-      { title: 'Bulk Ad Launch', slug: 'bulk-ad-launch', icon: 'i-lucide-rocket', description: 'Select creatives from Banner Studio and launch dozens of ads to Meta in one click.' },
-      { title: 'Ad Platform Export', slug: 'ad-platform-export', icon: 'i-lucide-download', description: 'Export HTML5 banners for 14 ad platforms with automatic clickTag injection and compliance validation.' },
     ]
   },
   {
     title: 'AI & Intelligence',
-    subtitle: 'Chat, analysis, and recommendations',
+    subtitle: 'Chat, analysis, training, and recommendations',
     icon: 'i-lucide-brain',
     iconBg: 'bg-amber-50 dark:bg-amber-500/10',
     iconColor: 'text-amber-600',
     features: [
       { title: 'AI Chat', slug: 'ai-chat', icon: 'i-lucide-bot', description: 'Groq-powered conversational AI with @entity mentions for clients, tasks, and projects.' },
-      { title: 'Anomaly Detection', slug: 'anomaly-detection', icon: 'i-lucide-alert-triangle', description: '8 specialized analyzers that proactively flag spend anomalies, deadline risks, and budget issues.' },
+      { title: 'Anomaly Detection', slug: 'anomaly-detection', icon: 'i-lucide-alert-triangle', description: '8 specialised analysers that proactively flag spend anomalies, deadline risks, and budget issues.' },
       { title: 'Semantic Search', slug: 'semantic-search', icon: 'i-lucide-search', description: 'Vectorize-powered search across tasks, clients, briefs, and knowledge base entries.' },
       { title: 'Intent Classification', slug: 'intent-classification', icon: 'i-lucide-target', description: 'Edge-first intent classifier routes queries to the right data sources automatically.' },
+      { title: 'Composite Scoring', slug: 'composite-scoring', icon: 'i-lucide-blend', description: 'Five-signal retrieval formula — semantic, recency, importance, intent match, and entity overlap.' },
       { title: 'AI Reports', slug: 'ai-reports', icon: 'i-lucide-file-text', description: 'Auto-generated reports with insights, trends, and recommendations for your agency.' },
+      { title: 'AI Training Pipeline', slug: 'ai-training-pipeline', icon: 'i-lucide-graduation-cap', description: 'Extract training data from conversations, upload knowledge entries, and manage training datasets.' },
+      { title: 'Knowledge Base', slug: 'knowledge-base', icon: 'i-lucide-book-open', description: 'Curate and approve knowledge entries that enhance AI responses with agency-specific context.' },
       { title: 'LoRA Adapters', slug: 'lora-adapters', icon: 'i-lucide-cpu', description: 'Fine-tune AI models with your agency data. Custom adapters with traffic routing and A/B testing.' },
     ]
   },
@@ -202,8 +256,8 @@ const categories = [
     title: 'Client Portal',
     subtitle: 'External access for your clients',
     icon: 'i-lucide-briefcase',
-    iconBg: 'bg-rose-50 dark:bg-rose-500/10',
-    iconColor: 'text-rose-600',
+    iconBg: 'bg-pink-50 dark:bg-pink-500/10',
+    iconColor: 'text-pink-600',
     features: [
       { title: 'Dedicated Login', slug: 'dedicated-login', icon: 'i-lucide-lock', description: 'Separate cookie-based auth system. Clients get their own login, scoped to their data.' },
       { title: 'Project Visibility', slug: 'project-visibility', icon: 'i-lucide-folder-open', description: 'Clients see their projects, tasks, and progress — no internal data leaks.' },
@@ -215,7 +269,7 @@ const categories = [
   },
   {
     title: 'Time & Capacity',
-    subtitle: 'Tracking, timesheets, and utilization',
+    subtitle: 'Tracking, timesheets, and utilisation',
     icon: 'i-lucide-timer',
     iconBg: 'bg-indigo-50 dark:bg-indigo-500/10',
     iconColor: 'text-indigo-600',

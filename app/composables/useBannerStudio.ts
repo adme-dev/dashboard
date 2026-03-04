@@ -205,7 +205,7 @@ export function useBannerStudio() {
     if (typeof window === 'undefined' || !fmt) return
     const availW = Math.max(400, window.innerWidth - 64 - 256 - 40 - 288)
     const availH = Math.max(300, window.innerHeight - 64 - 40 - 200)
-    const scale = Math.min(availW / fmt.w, availH / fmt.h) * 0.85
+    const scale = Math.min(availW / fmt.w, availH / fmt.h) * 0.95
     state.wsScale = Math.max(0.1, Math.min(2.0, scale))
   }
 

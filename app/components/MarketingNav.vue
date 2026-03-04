@@ -143,6 +143,25 @@
                       </div>
                     </NuxtLink>
                   </div>
+
+                  <h4 class="text-[14px] font-semibold text-white/40 tracking-wide mb-5 mt-8">Creative</h4>
+                  <div class="flex flex-col gap-1">
+                    <NuxtLink
+                      v-for="item in featuresCol3b"
+                      :key="item.title"
+                      :to="item.to"
+                      class="flex items-center gap-3.5 px-3 py-2.5 -mx-3 rounded-xl hover:bg-white/[0.04] transition-colors group"
+                      @click="openDropdown = null"
+                    >
+                      <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" :class="item.iconBg">
+                        <UIcon :name="item.icon" class="w-[18px] h-[18px]" :class="item.iconColor" />
+                      </div>
+                      <div>
+                        <div class="text-[14px] font-medium text-white group-hover:text-white">{{ item.title }}</div>
+                        <div class="text-[12px] text-white/35 leading-snug">{{ item.subtitle }}</div>
+                      </div>
+                    </NuxtLink>
+                  </div>
                 </div>
 
                 <!-- Financial & Communication Column -->
@@ -166,10 +185,10 @@
                     </NuxtLink>
                   </div>
 
-                  <h4 class="text-[14px] font-semibold text-white/40 tracking-wide mb-5 mt-8">Communication & Creative</h4>
+                  <h4 class="text-[14px] font-semibold text-white/40 tracking-wide mb-5 mt-8">Communication</h4>
                   <div class="flex flex-col gap-1">
                     <NuxtLink
-                      v-for="item in featuresCol3"
+                      v-for="item in featuresCol3a"
                       :key="item.title"
                       :to="item.to"
                       class="flex items-center gap-3.5 px-3 py-2.5 -mx-3 rounded-xl hover:bg-white/[0.04] transition-colors group"
@@ -184,6 +203,7 @@
                       </div>
                     </NuxtLink>
                   </div>
+
                 </div>
 
                 <!-- AI & Portal Column -->
@@ -566,9 +586,12 @@ const featuresCol2 = [
   { title: 'EOM Engine', subtitle: 'Automated invoice generation', icon: 'i-lucide-receipt', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/platform/financials' },
 ]
 
-const featuresCol3 = [
+const featuresCol3a = [
   { title: 'Real-Time Chat', subtitle: 'Channels, threads, and DMs', icon: 'i-lucide-message-circle', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400', to: '/platform/chat' },
   { title: 'Automations', subtitle: 'Trigger-action workflows', icon: 'i-lucide-zap', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400', to: '/platform/automations' },
+]
+
+const featuresCol3b = [
   { title: 'Banner Studio', subtitle: 'HTML5 ad design & animation', icon: 'i-lucide-palette', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/banner-studio' },
   { title: 'Bulk Ad Launch', subtitle: 'Publish ads across platforms', icon: 'i-lucide-rocket', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/bulk-ad-launch' },
   { title: 'Ad Export', subtitle: 'Platform-compliant ZIP export', icon: 'i-lucide-download', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/ad-platform-export' },
@@ -613,8 +636,9 @@ const resourcesCol3 = [
 
 const mobileFeatureSections = [
   { label: 'Work Management', items: featuresCol1 },
+  { label: 'Creative', items: featuresCol3b },
   { label: 'Financial Operations', items: featuresCol2 },
-  { label: 'Communication & Creative', items: featuresCol3 },
+  { label: 'Communication', items: featuresCol3a },
   { label: 'AI & Intelligence', items: featuresCol4 },
   { label: 'Portal & Time', items: featuresCol5 },
 ]

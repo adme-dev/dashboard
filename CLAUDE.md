@@ -133,6 +133,16 @@ We are fully on the Cloudflare network. These products are available and should 
 - **Turnstile** — CAPTCHA alternative
 - **Zero Trust / Access** — identity-aware proxy and SSO
 
+## Front-Facing Page Sync
+
+**When adding or updating features in the platform, always update the relevant public/marketing pages:**
+1. `app/pages/features/index.vue` — add the feature to the correct category (or create a new one)
+2. `app/pages/features/[slug].vue` — add a detailed feature entry with 3-4 content sections
+3. `app/components/MarketingNav.vue` — update the mega menu if the feature belongs in a top-level nav category
+4. Any other marketing pages that reference feature lists or counts (e.g. SEO descriptions, pricing page comparisons)
+
+These pages are the public face of the product. Features that exist in the codebase but not on the marketing site are invisible to potential users. Keep them in sync as part of the implementation workflow, not as an afterthought.
+
 ## Pre-Commit Quality Rules
 
 **Before committing any feature or multi-file change, always run a deep-dive review / battle test:**
