@@ -1,35 +1,29 @@
-import { Pool } from '@neondatabase/serverless'
+import { neon, Pool } from '@neondatabase/serverless'
 
-// Database connection pool
-let pool: Pool | null = null
-
-export function getDb() {
-  if (!pool) {
-    // Prefer Hyperdrive binding (edge-optimized connection pooling) over direct DATABASE_URL
-    const hyperdrive = (globalThis as any).process?.env?.HYPERDRIVE_URL
-      || (process.env as any).HYPERDRIVE?.connectionString
-    const connectionString = hyperdrive || process.env.DATABASE_URL
-    if (!connectionString) {
-      throw new Error('DATABASE_URL is not defined')
-    }
-    pool = new Pool({
-      connectionString,
-      connectionTimeoutMillis: 10000,  // 10s — enough for Neon cold start wake-up
-      max: 1,                          // Single connection — avoids cross-request promise issues on CF Workers
-      idleTimeoutMillis: 10000,        // Close idle connections quickly (before Neon/CF resets them)
-      allowExitOnIdle: true,           // Let pool shrink to 0 when all connections idle
-    })
-    // Catch background connection resets so they don't become unhandled rejections
-    pool.on('error', (err) => {
-      console.warn('[DB Pool] Background connection error:', err.message)
-      try { pool?.end() } catch {}
-      pool = null
-    })
+// --- Connection string resolution ---
+function getConnectionString(): string {
+  const hyperdrive = (globalThis as any).process?.env?.HYPERDRIVE_URL
+    || (process.env as any).HYPERDRIVE?.connectionString
+  const connectionString = hyperdrive || process.env.DATABASE_URL
+  if (!connectionString) {
+    throw new Error('DATABASE_URL is not defined')
   }
-  return pool
+  return connectionString
 }
 
-// Retry a DB operation with exponential backoff (handles Neon cold start)
+// --- HTTP driver (stateless, perfect for CF Workers) ---
+// neon() uses fetch() under the hood — no WebSocket, no persistent connection,
+// no cross-request promise issues. Each query is an independent HTTP request.
+let _sql: ReturnType<typeof neon> | null = null
+
+function getSql() {
+  if (!_sql) {
+    _sql = neon(getConnectionString(), { fullResults: true })
+  }
+  return _sql
+}
+
+// --- Retry logic for transient errors (Neon cold start, network blips) ---
 const MAX_RETRIES = 3
 const BASE_DELAY_MS = 300
 
@@ -64,11 +58,8 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
       if (attempt < MAX_RETRIES && isRetryable(error)) {
         const delay = BASE_DELAY_MS * Math.pow(2, attempt) // 300, 600, 1200ms
         await new Promise(resolve => setTimeout(resolve, delay))
-        // Reset pool on connection errors so next attempt gets a fresh connection
-        if (pool) {
-          try { pool.end() } catch {}
-          pool = null
-        }
+        // Reset HTTP driver on connection errors
+        _sql = null
         continue
       }
       throw error
@@ -77,12 +68,14 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   throw lastError
 }
 
-// Query helper
+// --- Query helpers (HTTP driver — stateless) ---
+
+// Query helper — returns rows
 export async function query<T = any>(sql: string, params?: any[]): Promise<T[]> {
   return withRetry(async () => {
-    const db = getDb()
-    const result = await db.query(sql, params)
-    return result.rows
+    const sqlFn = getSql()
+    const result = await sqlFn.query(sql, params ?? []) as any
+    return result.rows ?? []
   })
 }
 
@@ -104,38 +97,60 @@ export async function queryCount(sql: string, params?: any[]): Promise<number> {
 // Execute helper for INSERT/UPDATE/DELETE (returns row count)
 export async function execute(sql: string, params?: any[]): Promise<number> {
   return withRetry(async () => {
-    const db = getDb()
-    const result = await db.query(sql, params)
-    return result.rowCount || 0
+    const sqlFn = getSql()
+    const result = await sqlFn.query(sql, params ?? []) as any
+    return result.rowCount ?? 0
   })
 }
 
-// Transaction helper
+// --- Transaction helper (uses fresh Pool, created and destroyed per-transaction) ---
+// Interactive transactions need BEGIN/COMMIT/ROLLBACK which require a persistent
+// connection. We create a short-lived Pool for this — it's slower but correct
+// on CF Workers where WebSocket connections can't outlive a single request.
 export async function transaction<T>(callback: (db: Pool) => Promise<T>): Promise<T> {
   return withRetry(async () => {
-    const db = getDb()
-    const client = await db.connect()
+    const pool = new Pool({
+      connectionString: getConnectionString(),
+      max: 1,
+    })
 
     try {
-      await client.query('BEGIN')
-      const result = await callback(client as any)
-      await client.query('COMMIT')
-      return result
-    } catch (error) {
-      await client.query('ROLLBACK')
-      throw error
+      const client = await pool.connect()
+      try {
+        await client.query('BEGIN')
+        const result = await callback(client as any)
+        await client.query('COMMIT')
+        return result
+      } catch (error) {
+        await client.query('ROLLBACK')
+        throw error
+      } finally {
+        client.release()
+      }
     } finally {
-      client.release()
+      // CRITICAL: always close the pool — don't hold WebSocket connections across requests
+      await pool.end()
     }
   })
+}
+
+// --- Legacy getDb() — returns a Pool-like object backed by HTTP driver ---
+// Some code may call getDb().query() directly. This shim routes through the HTTP driver.
+export function getDb() {
+  return {
+    query: async (sql: string, params?: any[]) => {
+      const sqlFn = getSql()
+      return sqlFn.query(sql, params ?? []) as any
+    }
+  }
 }
 
 // Export pool wrapper for compatibility with existing code
 export const db = {
   query: async (sql: string, params?: any[]) => {
     return withRetry(async () => {
-      const db = getDb()
-      return db.query(sql, params)
+      const sqlFn = getSql()
+      return sqlFn.query(sql, params ?? []) as any
     })
   }
 }
