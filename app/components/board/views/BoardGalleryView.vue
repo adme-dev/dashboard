@@ -5,7 +5,7 @@
       <div class="flex items-center gap-2 mb-3">
         <span class="w-2.5 h-2.5 rounded-sm" :style="{ backgroundColor: group.color }" />
         <h3 class="text-sm font-semibold">{{ group.name }}</h3>
-        <span class="text-xs text-gray-400">({{ group.totalCount ?? group.items.length }})</span>
+        <span class="text-xs text-gray-400 dark:text-neutral-500">({{ group.totalCount ?? group.items.length }})</span>
       </div>
 
       <!-- Cards grid -->
@@ -13,7 +13,7 @@
         <div
           v-for="item in group.items"
           :key="item.id"
-          class="bg-white rounded-lg border hover:shadow-md transition-shadow cursor-pointer"
+          class="bg-white dark:bg-neutral-900 rounded-lg border dark:border-neutral-700 hover:shadow-md transition-shadow cursor-pointer"
           :class="{ 'ring-2 ring-blue-500': selection.isSelected(item.id) }"
           @click="$emit('openTask', item.id)"
         >
@@ -28,7 +28,7 @@
             <div class="space-y-2">
               <template v-for="col in cardColumns" :key="col.id">
                 <div class="flex items-center gap-2">
-                  <span class="text-xs text-gray-400 w-16 truncate">{{ col.name }}</span>
+                  <span class="text-xs text-gray-400 dark:text-neutral-500 w-16 truncate">{{ col.name }}</span>
                   <div class="flex-1 text-xs" @click.stop>
                     <BoardCell
                       :column="normalizeColumn(col)"
@@ -42,25 +42,26 @@
             </div>
 
             <!-- Footer -->
-            <div class="flex items-center justify-between mt-3 pt-2 border-t">
+            <div class="flex items-center justify-between mt-3 pt-2 border-t dark:border-neutral-700">
               <div class="flex -space-x-1">
                 <template v-if="item.assignees?.length">
                   <UAvatar
                     v-for="a in item.assignees.slice(0, 3)"
                     :key="a.id"
                     size="xs"
+                    :src="a.avatar"
                     :alt="a.name"
-                    class="ring-2 ring-white"
+                    class="ring-2 ring-white dark:ring-neutral-900"
                   />
                   <span
                     v-if="item.assignees.length > 3"
-                    class="w-5 h-5 rounded-full bg-gray-200 text-xs flex items-center justify-center ring-2 ring-white"
+                    class="w-5 h-5 rounded-full bg-gray-200 dark:bg-neutral-700 text-xs flex items-center justify-center ring-2 ring-white dark:ring-neutral-900"
                   >
                     +{{ item.assignees.length - 3 }}
                   </span>
                 </template>
               </div>
-              <span v-if="item.dueDate" class="text-xs text-gray-400">
+              <span v-if="item.dueDate" class="text-xs text-gray-400 dark:text-neutral-500">
                 {{ formatDate(item.dueDate) }}
               </span>
             </div>
@@ -69,7 +70,7 @@
       </div>
 
       <!-- Empty group -->
-      <div v-if="group.items.length === 0" class="text-center py-6 text-xs text-gray-400 bg-white rounded-lg border border-dashed">
+      <div v-if="group.items.length === 0" class="text-center py-6 text-xs text-gray-400 dark:text-neutral-500 bg-white dark:bg-neutral-900 rounded-lg border dark:border-neutral-700 border-dashed">
         No items in this group
       </div>
     </div>
@@ -77,8 +78,8 @@
     <!-- Empty -->
     <div v-if="groups.length === 0" class="flex items-center justify-center p-12">
       <div class="text-center">
-        <UIcon name="i-lucide-layout-grid" class="w-12 h-12 text-gray-300 mx-auto mb-3" />
-        <p class="text-gray-500">No items to display</p>
+        <UIcon name="i-lucide-layout-grid" class="w-12 h-12 text-gray-300 dark:text-neutral-600 mx-auto mb-3" />
+        <p class="text-gray-500 dark:text-neutral-400">No items to display</p>
       </div>
     </div>
   </div>

@@ -2,9 +2,9 @@
   <div class="flex-1 flex gap-4 p-4 overflow-x-auto overflow-y-hidden">
     <!-- Pick which status/dropdown column to group by -->
     <div v-if="!kanbanColumn && statusColumns.length > 1" class="flex-1 flex items-center justify-center">
-      <div class="text-center p-8 border rounded-lg bg-white">
-        <UIcon name="i-lucide-kanban" class="w-12 h-12 text-gray-300 mx-auto mb-3" />
-        <h3 class="font-medium mb-3">Choose a column for Kanban lanes</h3>
+      <div class="text-center p-8 border rounded-lg bg-white dark:bg-neutral-900 dark:border-neutral-700">
+        <UIcon name="i-lucide-kanban" class="w-12 h-12 text-gray-300 dark:text-neutral-600 mx-auto mb-3" />
+        <h3 class="font-medium">Choose a column for Kanban lanes</h3>
         <div class="flex flex-wrap gap-2 justify-center">
           <UButton
             v-for="col in statusColumns"
@@ -24,16 +24,16 @@
       <div
         v-for="lane in lanes"
         :key="lane.id"
-        class="flex-shrink-0 w-72 flex flex-col bg-gray-50 rounded-lg border"
+        class="flex-shrink-0 w-72 flex flex-col bg-gray-50 dark:bg-neutral-900 rounded-lg border dark:border-neutral-700"
       >
         <!-- Lane header -->
-        <div class="p-3 border-b flex items-center gap-2">
+        <div class="p-3 border-b dark:border-neutral-700 flex items-center gap-2">
           <div
             class="w-3 h-3 rounded-full"
             :style="{ backgroundColor: lane.color }"
           />
           <span class="text-sm font-semibold flex-1 truncate">{{ lane.label }}</span>
-          <span class="text-xs text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded-full">{{ lane.items.length }}</span>
+          <span class="text-xs text-gray-500 dark:text-neutral-400 bg-gray-200 dark:bg-neutral-700 px-1.5 py-0.5 rounded-full">{{ lane.items.length }}</span>
         </div>
 
         <!-- Lane items -->
@@ -41,7 +41,7 @@
           <div
             v-for="item in lane.items"
             :key="item.id"
-            class="bg-white rounded-lg border p-3 cursor-pointer hover:shadow-sm transition-shadow"
+            class="bg-white dark:bg-neutral-800 rounded-lg border dark:border-neutral-700 p-3 cursor-pointer hover:shadow-sm transition-shadow"
             :class="{ 'ring-2 ring-blue-500': selection.isSelected(item.id) }"
             @click="$emit('openTask', item.id)"
           >
@@ -63,7 +63,7 @@
           </div>
 
           <!-- Empty lane -->
-          <div v-if="lane.items.length === 0" class="text-center py-6 text-xs text-gray-400">
+          <div v-if="lane.items.length === 0" class="text-center py-6 text-xs text-gray-400 dark:text-neutral-500">
             No items
           </div>
         </div>
@@ -72,8 +72,8 @@
       <!-- Empty state -->
       <div v-if="lanes.length === 0" class="flex-1 flex items-center justify-center">
         <div class="text-center p-8">
-          <UIcon name="i-lucide-kanban" class="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p class="text-gray-500">No status column found for Kanban view</p>
+          <UIcon name="i-lucide-kanban" class="w-12 h-12 text-gray-300 dark:text-neutral-600 mx-auto mb-3" />
+          <p class="text-gray-500 dark:text-neutral-400">No status column found for Kanban view</p>
         </div>
       </div>
     </template>

@@ -4,18 +4,58 @@
  *
  * Reads from custom_columns + column_dropdown_options.
  * Falls back to board_columns for legacy compatibility.
+ * Auto-seeds default columns (Status, Assignee, Priority) if none exist.
  */
 
 import { createError, getRouterParam, getQuery } from 'h3'
 import { requireAuth } from '../../../../utils/auth'
-import { queryRows, queryOne } from '../../../../utils/db'
+import { queryRows, queryOne, execute } from '../../../../utils/db'
 
 function isUUID(str: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str)
 }
 
+/**
+ * Seed default columns for a board that has none.
+ * Creates: Status, Assignee (people), Priority (dropdown with options).
+ */
+async function seedDefaultColumns(departmentId: string, userId: string) {
+  const defaults = [
+    { name: 'Status', slug: 'status', type: 'status', sortOrder: 1, settings: {} },
+    { name: 'Assignee', slug: 'assignee', type: 'people', sortOrder: 2, settings: {} },
+    { name: 'Priority', slug: 'priority', type: 'dropdown', sortOrder: 3, settings: {} },
+    { name: 'Due Date', slug: 'due_date', type: 'date', sortOrder: 4, settings: {} },
+  ]
+
+  for (const col of defaults) {
+    const created = await queryOne(`
+      INSERT INTO custom_columns (department_id, name, slug, column_type, settings, sort_order, created_by)
+      VALUES ($1, $2, $3, $4::column_type, $5, $6, $7)
+      ON CONFLICT (department_id, slug) DO NOTHING
+      RETURNING id
+    `, [departmentId, col.name, col.slug, col.type, JSON.stringify(col.settings), col.sortOrder, userId])
+
+    // Seed priority dropdown options
+    if (col.slug === 'priority' && created?.id) {
+      const priorityOptions = [
+        { value: 'critical', label: 'Critical', color: '#E2445C', sortOrder: 1 },
+        { value: 'high', label: 'High', color: '#FDAB3D', sortOrder: 2 },
+        { value: 'medium', label: 'Medium', color: '#579BFC', sortOrder: 3 },
+        { value: 'low', label: 'Low', color: '#C4C4C4', sortOrder: 4 },
+      ]
+      for (const opt of priorityOptions) {
+        await execute(`
+          INSERT INTO column_dropdown_options (column_id, value, label, color, sort_order)
+          VALUES ($1, $2, $3, $4, $5)
+          ON CONFLICT (column_id, value) DO NOTHING
+        `, [created.id, opt.value, opt.label, opt.color, opt.sortOrder])
+      }
+    }
+  }
+}
+
 export default eventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
   const boardId = getRouterParam(event, 'id')
   const query = getQuery(event)
   const includeHidden = query.includeHidden === 'true'
@@ -35,7 +75,7 @@ export default eventHandler(async (event) => {
     }
 
     // Try custom_columns first (modern system)
-    const customColumns = await queryRows(`
+    let customColumns = await queryRows(`
       SELECT
         cc.id,
         cc.name,
@@ -54,6 +94,49 @@ export default eventHandler(async (event) => {
         ${includeHidden ? '' : 'AND cc.is_visible = true'}
       ORDER BY cc.sort_order, cc.name
     `, [dept.id])
+
+    // Auto-seed default columns if board is missing any defaults
+    // Uses ON CONFLICT DO NOTHING so it's safe to run every time
+    const defaultSlugs = ['status', 'assignee', 'priority', 'due_date']
+    const existingSlugs = new Set(customColumns.map((c: any) => c.slug))
+    const missingDefaults = defaultSlugs.some(s => !existingSlugs.has(s))
+
+    if (missingDefaults) {
+      let hasLegacy = false
+      if (customColumns.length === 0) {
+        try {
+          const legacyCount = await queryOne(
+            'SELECT COUNT(*)::int as count FROM board_columns WHERE department_id = $1',
+            [dept.id]
+          )
+          hasLegacy = (legacyCount?.count || 0) > 0
+        } catch {
+          // board_columns table may not exist — treat as no legacy columns
+        }
+      }
+      if (!hasLegacy) {
+        await seedDefaultColumns(dept.id, user.id)
+        // Re-fetch after seeding
+        customColumns = await queryRows(`
+          SELECT
+            cc.id,
+            cc.name,
+            cc.slug,
+            cc.column_type as "columnType",
+            cc.description,
+            cc.settings,
+            cc.is_visible as "isVisible",
+            cc.is_required as "isRequired",
+            cc.allowed_roles as "allowedRoles",
+            cc.editable_roles as "editableRoles",
+            cc.width,
+            cc.sort_order as "sortOrder"
+          FROM custom_columns cc
+          WHERE cc.department_id = $1
+          ORDER BY cc.sort_order, cc.name
+        `, [dept.id])
+      }
+    }
 
     if (customColumns.length > 0) {
       // Fetch dropdown options for all columns

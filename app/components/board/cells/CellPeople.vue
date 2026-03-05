@@ -4,18 +4,22 @@
       class="flex items-center gap-1 min-h-[28px] px-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-800 cursor-pointer w-full"
       @click="togglePicker"
     >
-      <div v-if="assignedPeople.length" class="flex items-center gap-1 flex-wrap">
-        <div
-          v-for="person in assignedPeople"
+      <div v-if="assignedPeople.length" class="flex items-center -space-x-2">
+        <UAvatar
+          v-for="person in assignedPeople.slice(0, 4)"
           :key="person.id"
-          class="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/30 text-blue-700 px-2 py-0.5 rounded-full text-xs"
+          :src="person.avatarUrl"
+          :alt="person.name"
+          :fallback="getInitials(person.name)"
+          size="sm"
+          class="ring-2 ring-white dark:ring-neutral-900"
+        />
+        <span
+          v-if="assignedPeople.length > 4"
+          class="w-8 h-8 rounded-full bg-gray-200 dark:bg-neutral-700 text-xs font-medium flex items-center justify-center ring-2 ring-white dark:ring-neutral-900 text-gray-600 dark:text-neutral-300"
         >
-          <UAvatar :alt="person.name" :fallback="getInitials(person.name)" size="2xs" class="bg-blue-500 text-white" />
-          <span class="truncate max-w-[60px]">{{ person.name.split(' ')[0] }}</span>
-          <button v-if="!readonly" @click.stop="removePerson(person.id)" class="ml-0.5 hover:text-blue-900">
-            <UIcon name="i-lucide-x" class="w-3 h-3" />
-          </button>
-        </div>
+          +{{ assignedPeople.length - 4 }}
+        </span>
       </div>
       <span v-else class="text-gray-400 dark:text-neutral-500 text-sm">-</span>
     </div>
@@ -36,7 +40,7 @@
               :key="person.id"
               class="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-700 px-2 py-1 rounded-full text-sm"
             >
-              <UAvatar :alt="person.name" :fallback="getInitials(person.name)" size="2xs" class="bg-blue-500 text-white" />
+              <UAvatar :src="person.avatarUrl" :alt="person.name" :fallback="getInitials(person.name)" size="2xs" class="bg-blue-500 text-white" />
               <span>{{ person.name }}</span>
               <button @click="togglePerson(person.id)" class="hover:text-blue-900 ml-0.5">
                 <UIcon name="i-lucide-x" class="w-3.5 h-3.5" />
@@ -68,7 +72,7 @@
             :class="{ 'bg-blue-50 dark:bg-blue-900/30': isSelected(person.id) }"
             @click="togglePerson(person.id)"
           >
-            <UAvatar :alt="person.name" :fallback="person.initials || getInitials(person.name)" size="sm" class="bg-gray-700 text-white" />
+            <UAvatar :src="person.avatarUrl" :alt="person.name" :fallback="person.initials || getInitials(person.name)" size="sm" class="bg-gray-700 text-white" />
             <div class="text-left flex-1">
               <div class="text-sm font-medium text-gray-900 dark:text-neutral-100">{{ person.name }}</div>
               <div v-if="person.role" class="text-xs text-gray-500 dark:text-neutral-400">{{ person.role }}</div>

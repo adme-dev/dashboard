@@ -1,7 +1,7 @@
 <template>
   <div class="flex-1 flex flex-col overflow-hidden">
     <!-- Controls -->
-    <div class="flex items-center justify-between p-3 border-b bg-white">
+    <div class="flex items-center justify-between p-3 border-b dark:border-neutral-700 bg-white dark:bg-neutral-900">
       <div class="flex items-center gap-2">
         <UButton icon="i-lucide-chevron-left" variant="ghost" size="sm" @click="navigatePrev" />
         <UButton variant="outline" size="sm" @click="goToToday">Today</UButton>
@@ -15,7 +15,7 @@
         <select
           v-if="dateColumns.length > 1"
           v-model="selectedDateColumnId"
-          class="text-xs border border-gray-300 rounded px-2 py-1 bg-white text-gray-700 outline-none focus:border-blue-500"
+          class="text-xs border border-gray-300 dark:border-neutral-600 rounded px-2 py-1 bg-white dark:bg-neutral-800 text-gray-700 dark:text-neutral-200 outline-none focus:border-blue-500"
         >
           <option v-for="col in dateColumns" :key="col.id" :value="col.id">{{ col.name }}</option>
         </select>
@@ -25,7 +25,7 @@
             v-for="m in modes"
             :key="m"
             class="px-2.5 py-1 text-xs font-medium rounded transition-colors"
-            :class="viewMode === m ? 'bg-gray-200 text-gray-900' : 'text-gray-500 hover:text-gray-700'"
+            :class="viewMode === m ? 'bg-gray-200 dark:bg-neutral-700 text-gray-900 dark:text-neutral-100' : 'text-gray-500 dark:text-neutral-400 hover:text-gray-700 dark:hover:text-neutral-200'"
             @click="viewMode = m"
           >
             {{ m.charAt(0).toUpperCase() + m.slice(1) }}
@@ -35,11 +35,11 @@
     </div>
 
     <!-- Scheduling banner -->
-    <div v-if="schedulingItem" class="mx-4 mt-3 p-2 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
-      <span class="text-xs text-blue-700">
+    <div v-if="schedulingItem" class="mx-4 mt-3 p-2 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg flex items-center justify-between">
+      <span class="text-xs text-blue-700 dark:text-blue-300">
         Click a day to schedule "<span class="font-medium">{{ schedulingItem.title }}</span>"
       </span>
-      <button class="text-xs text-blue-500 hover:text-blue-700 font-medium" @click="schedulingItemId = null">Cancel</button>
+      <button class="text-xs text-blue-500 hover:text-blue-700 dark:hover:text-blue-300 font-medium" @click="schedulingItemId = null">Cancel</button>
     </div>
 
     <!-- Calendar -->
@@ -49,7 +49,7 @@
         <div
           v-for="d in dayNames"
           :key="d"
-          class="text-center text-xs font-semibold text-gray-500 py-1"
+          class="text-center text-xs font-semibold text-gray-500 dark:text-neutral-400 py-1"
         >
           {{ d }}
         </div>
@@ -65,15 +65,15 @@
           <div
             v-for="day in week"
             :key="day.dateStr"
-            class="min-h-[100px] border rounded-lg p-1.5 transition-colors flex flex-col"
+            class="min-h-[100px] border dark:border-neutral-700 rounded-lg p-1.5 transition-colors flex flex-col"
             :class="{
-              'bg-blue-50 border-blue-300': day.isToday,
+              'bg-blue-50 dark:bg-blue-950 border-blue-300 dark:border-blue-800': day.isToday,
               'opacity-40': !day.isCurrentMonth,
-              'hover:bg-gray-50': day.isCurrentMonth && !schedulingItemId,
-              'hover:bg-blue-50 cursor-pointer': !!schedulingItemId && day.isCurrentMonth,
+              'hover:bg-gray-50 dark:hover:bg-neutral-800': day.isCurrentMonth && !schedulingItemId,
+              'hover:bg-blue-50 dark:hover:bg-blue-950 cursor-pointer': !!schedulingItemId && day.isCurrentMonth,
             }"
           >
-            <div class="text-xs font-medium mb-1" :class="day.isToday ? 'text-blue-700' : 'text-gray-600'">
+            <div class="text-xs font-medium mb-1" :class="day.isToday ? 'text-blue-700 dark:text-blue-400' : 'text-gray-600 dark:text-neutral-300'">
               {{ day.date.getDate() }}
             </div>
             <div class="space-y-0.5">
@@ -86,7 +86,7 @@
               >
                 {{ item.title }}
               </div>
-              <div v-if="day.items.length > 3" class="text-xs text-gray-400 px-1">
+              <div v-if="day.items.length > 3" class="text-xs text-gray-400 dark:text-neutral-500 px-1">
                 +{{ day.items.length - 3 }} more
               </div>
             </div>
@@ -96,7 +96,7 @@
                 ref="addInputRef"
                 v-model="addingTitle"
                 placeholder="New item..."
-                class="w-full text-xs px-1.5 py-1 border rounded outline-none focus:border-blue-500"
+                class="w-full text-xs px-1.5 py-1 border dark:border-neutral-600 rounded outline-none bg-white dark:bg-neutral-800 dark:text-neutral-200 focus:border-blue-500"
                 @keydown.enter="handleAddSubmit"
                 @keydown.escape="cancelAdd"
                 @blur="cancelAdd"
@@ -113,18 +113,18 @@
         <div
           v-for="day in weekDays"
           :key="day.dateStr"
-          class="min-h-[300px] border rounded-lg p-2 transition-colors flex flex-col"
+          class="min-h-[300px] border dark:border-neutral-700 rounded-lg p-2 transition-colors flex flex-col"
           :class="{
-            'bg-blue-50 border-blue-300': day.isToday,
-            'hover:bg-gray-50': !schedulingItemId,
-            'hover:bg-blue-50 cursor-pointer': !!schedulingItemId,
+            'bg-blue-50 dark:bg-blue-950 border-blue-300 dark:border-blue-800': day.isToday,
+            'hover:bg-gray-50 dark:hover:bg-neutral-800': !schedulingItemId,
+            'hover:bg-blue-50 dark:hover:bg-blue-950 cursor-pointer': !!schedulingItemId,
           }"
         >
           <div class="flex items-center justify-between mb-2">
-            <span class="text-sm font-medium" :class="day.isToday ? 'text-blue-700' : ''">
+            <span class="text-sm font-medium" :class="day.isToday ? 'text-blue-700 dark:text-blue-400' : ''">
               {{ day.date.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' }) }}
             </span>
-            <span v-if="day.items.length" class="text-xs text-gray-400">{{ day.items.length }}</span>
+            <span v-if="day.items.length" class="text-xs text-gray-400 dark:text-neutral-500">{{ day.items.length }}</span>
           </div>
           <div class="space-y-1">
             <div
@@ -143,7 +143,7 @@
               ref="addInputRef"
               v-model="addingTitle"
               placeholder="New item..."
-              class="w-full text-xs px-1.5 py-1 border rounded outline-none focus:border-blue-500"
+              class="w-full text-xs px-1.5 py-1 border dark:border-neutral-600 rounded outline-none bg-white dark:bg-neutral-800 dark:text-neutral-200 focus:border-blue-500"
               @keydown.enter="handleAddSubmit"
               @keydown.escape="cancelAdd"
               @blur="cancelAdd"
@@ -155,16 +155,16 @@
       </div>
 
       <!-- Unscheduled items -->
-      <div v-if="unscheduledItems.length > 0" class="mt-4 border rounded-lg bg-gray-50 p-3">
-        <h4 class="text-xs font-semibold text-gray-500 mb-2">Unscheduled ({{ unscheduledItems.length }})</h4>
+      <div v-if="unscheduledItems.length > 0" class="mt-4 border dark:border-neutral-700 rounded-lg bg-gray-50 dark:bg-neutral-800 p-3">
+        <h4 class="text-xs font-semibold text-gray-500 dark:text-neutral-400 mb-2">Unscheduled ({{ unscheduledItems.length }})</h4>
         <div class="flex flex-wrap gap-2">
           <div
             v-for="item in unscheduledItems"
             :key="item.id"
             class="text-xs px-2.5 py-1.5 rounded cursor-pointer hover:shadow-sm border transition-all"
             :class="schedulingItemId === item.id
-              ? 'ring-2 ring-blue-500 bg-blue-50 text-blue-700 border-blue-300'
-              : 'bg-white text-gray-700 border-gray-200'"
+              ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700'
+              : 'bg-white dark:bg-neutral-900 text-gray-700 dark:text-neutral-200 border-gray-200 dark:border-neutral-600'"
             @click="toggleScheduling(item.id)"
           >
             {{ item.title }}

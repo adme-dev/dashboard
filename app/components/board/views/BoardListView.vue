@@ -3,16 +3,16 @@
     <div v-for="group in groups" :key="group.id" class="mb-2">
       <!-- Group header -->
       <div
-        class="flex items-center gap-2 px-4 py-2 bg-gray-50 border-b cursor-pointer select-none"
+        class="flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-neutral-800 border-b dark:border-neutral-700 cursor-pointer select-none"
         @click="toggleGroup(group.id)"
       >
         <UIcon
           :name="expanded.has(group.id) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
-          class="w-4 h-4 text-gray-500"
+          class="w-4 h-4 text-gray-500 dark:text-neutral-400"
         />
         <span class="w-2.5 h-2.5 rounded-sm" :style="{ backgroundColor: group.color }" />
         <span class="text-sm font-semibold">{{ group.name }}</span>
-        <span class="text-xs text-gray-400">({{ group.totalCount ?? group.items.length }})</span>
+        <span class="text-xs text-gray-400 dark:text-neutral-500">({{ group.totalCount ?? group.items.length }})</span>
       </div>
 
       <!-- Items -->
@@ -20,8 +20,8 @@
         <div
           v-for="item in group.items"
           :key="item.id"
-          class="flex items-center px-4 py-2.5 border-b hover:bg-gray-50 cursor-pointer"
-          :class="{ 'bg-blue-50/50': selection.isSelected(item.id) }"
+          class="flex items-center px-4 py-2.5 border-b dark:border-neutral-700 hover:bg-gray-50 dark:hover:bg-neutral-800 cursor-pointer"
+          :class="{ 'bg-blue-50/50 dark:bg-blue-950/50': selection.isSelected(item.id) }"
           @click="$emit('openTask', item.id)"
         >
           <!-- Checkbox -->
@@ -43,7 +43,7 @@
           <!-- Inline column values -->
           <div class="flex items-center gap-4">
             <template v-for="col in inlineColumns" :key="col.id">
-              <div class="text-xs text-gray-600 w-28 truncate" @click.stop>
+              <div class="text-xs text-gray-600 dark:text-neutral-300 w-28 truncate" @click.stop>
                 <BoardCell
                   :column="normalizeColumn(col)"
                   :value="getCellValue(item, col)"
@@ -57,7 +57,7 @@
         </div>
 
         <!-- Empty group -->
-        <div v-if="group.items.length === 0 && !(group.totalCount > 0)" class="px-4 py-6 text-center text-xs text-gray-400">
+        <div v-if="group.items.length === 0 && !(group.totalCount > 0)" class="px-4 py-6 text-center text-xs text-gray-400 dark:text-neutral-500">
           No items in this group
         </div>
       </div>
@@ -66,8 +66,8 @@
     <!-- Empty -->
     <div v-if="groups.length === 0" class="flex items-center justify-center p-12">
       <div class="text-center">
-        <UIcon name="i-lucide-list" class="w-12 h-12 text-gray-300 mx-auto mb-3" />
-        <p class="text-gray-500">No items to display</p>
+        <UIcon name="i-lucide-list" class="w-12 h-12 text-gray-300 dark:text-neutral-600 mx-auto mb-3" />
+        <p class="text-gray-500 dark:text-neutral-400">No items to display</p>
       </div>
     </div>
   </div>

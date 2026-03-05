@@ -558,20 +558,43 @@ export function useBoardData(boardId: Ref<string>) {
     if (composableVal) return composableVal
 
     const cv = item.columnValues?.[col.slug]
-    if (!cv) return null
-
-    return {
-      id: cv.id || '',
-      taskId: item.id,
-      columnId: col.id,
-      textValue: cv.textValue || cv.text_value,
-      numberValue: cv.numberValue ?? cv.number_value,
-      dateValue: cv.dateValue || cv.date_value,
-      dateEndValue: cv.dateEndValue || cv.date_end_value,
-      jsonValue: cv.jsonValue || cv.value_json,
-      createdAt: cv.createdAt || '',
-      updatedAt: cv.updatedAt || '',
+    if (cv) {
+      return {
+        id: cv.id || '',
+        taskId: item.id,
+        columnId: col.id,
+        textValue: cv.textValue || cv.text_value,
+        numberValue: cv.numberValue ?? cv.number_value,
+        dateValue: cv.dateValue || cv.date_value,
+        dateEndValue: cv.dateEndValue || cv.date_end_value,
+        jsonValue: cv.jsonValue || cv.value_json,
+        createdAt: cv.createdAt || '',
+        updatedAt: cv.updatedAt || '',
+      }
     }
+
+    // Fallback: synthesize values from native task fields for default columns
+    const slug = col.slug
+    const type = col.columnType || col.type
+
+    if (slug === 'due_date' && type === 'date' && item.dueDate) {
+      return { id: '', taskId: item.id, columnId: col.id, dateValue: item.dueDate, createdAt: '', updatedAt: '' }
+    }
+    if (slug === 'status' && type === 'status' && item.status) {
+      const matchedStatus = statuses.value.find((s: any) => s.name === item.status)
+      if (matchedStatus) {
+        return { id: '', taskId: item.id, columnId: col.id, textValue: item.status, jsonValue: { optionId: matchedStatus.id, label: item.status }, createdAt: '', updatedAt: '' }
+      }
+    }
+    if (slug === 'assignee' && type === 'people' && item.assignees?.length) {
+      return { id: '', taskId: item.id, columnId: col.id, jsonValue: { userIds: item.assignees.map(a => a.id), names: item.assignees.map(a => a.name) }, createdAt: '', updatedAt: '' }
+    }
+    if (slug === 'priority' && type === 'dropdown' && item.priority) {
+      const pVal = item.priority.toLowerCase()
+      return { id: '', taskId: item.id, columnId: col.id, textValue: item.priority, jsonValue: { optionId: pVal, label: item.priority.charAt(0).toUpperCase() + item.priority.slice(1) }, createdAt: '', updatedAt: '' }
+    }
+
+    return null
   }
 
   /**

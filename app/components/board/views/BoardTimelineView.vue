@@ -1,7 +1,7 @@
 <template>
   <div class="flex-1 flex flex-col overflow-hidden">
     <!-- Controls -->
-    <div class="flex items-center justify-between p-3 border-b bg-white">
+    <div class="flex items-center justify-between p-3 border-b dark:border-neutral-700 bg-white dark:bg-neutral-900">
       <div class="flex items-center gap-2">
         <UButton icon="i-lucide-chevron-left" variant="ghost" size="sm" @click="navigatePrev" />
         <UButton variant="outline" size="sm" @click="goToToday">Today</UButton>
@@ -15,10 +15,10 @@
       <div class="flex items-center gap-3">
         <!-- Color-by dropdown -->
         <div class="flex items-center gap-1.5">
-          <span class="text-xs text-gray-500">Color by</span>
+          <span class="text-xs text-gray-500 dark:text-neutral-400">Color by</span>
           <select
             v-model="colorBy"
-            class="text-xs border rounded px-1.5 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary"
+            class="text-xs border rounded px-1.5 py-1 bg-white dark:bg-neutral-800 text-gray-700 dark:text-neutral-200 dark:border-neutral-600 focus:outline-none focus:ring-1 focus:ring-primary"
           >
             <option value="status">Status</option>
             <option value="priority">Priority</option>
@@ -28,8 +28,8 @@
         </div>
 
         <!-- Weekend toggle (day view only) -->
-        <label v-if="zoom === 'day'" class="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
-          <input type="checkbox" v-model="showWeekends" class="rounded border-gray-300 text-primary focus:ring-primary w-3.5 h-3.5" />
+        <label v-if="zoom === 'day'" class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-neutral-400 cursor-pointer">
+          <input type="checkbox" v-model="showWeekends" class="rounded border-gray-300 dark:border-neutral-600 text-primary focus:ring-primary w-3.5 h-3.5" />
           Weekends
         </label>
 
@@ -39,7 +39,7 @@
             v-for="z in zoomLevels"
             :key="z.value"
             class="px-2.5 py-1 text-xs font-medium rounded transition-colors"
-            :class="zoom === z.value ? 'bg-gray-200 text-gray-900' : 'text-gray-500 hover:text-gray-700'"
+            :class="zoom === z.value ? 'bg-gray-200 dark:bg-neutral-700 text-gray-900 dark:text-neutral-100' : 'text-gray-500 dark:text-neutral-400 hover:text-gray-700 dark:hover:text-neutral-200'"
             @click="zoom = z.value"
           >
             {{ z.label }}
@@ -76,18 +76,18 @@
       </svg>
 
       <!-- Date header -->
-      <div class="sticky top-0 z-10 flex border-b bg-white">
-        <div class="w-[200px] flex-shrink-0 p-2 border-r text-xs font-semibold text-gray-500 uppercase">
+      <div class="sticky top-0 z-10 flex border-b dark:border-neutral-700 bg-white dark:bg-neutral-900">
+        <div class="w-[200px] flex-shrink-0 p-2 border-r dark:border-neutral-700 text-xs font-semibold text-gray-500 dark:text-neutral-400 uppercase">
           Item
         </div>
         <div class="flex-1 flex">
           <div
             v-for="col in visibleDateColumns"
             :key="col.label"
-            class="flex-1 min-w-[50px] p-2 text-center text-xs border-r last:border-r-0"
+            class="flex-1 min-w-[50px] p-2 text-center text-xs border-r dark:border-neutral-700 last:border-r-0"
             :class="{
-              'bg-blue-50 font-semibold text-blue-700': col.isToday,
-              'bg-gray-100/50': col.isWeekend && !col.isToday,
+              'bg-blue-50 dark:bg-blue-950 font-semibold text-blue-700 dark:text-blue-400': col.isToday,
+              'bg-gray-100/50 dark:bg-neutral-800/50': col.isWeekend && !col.isToday,
             }"
           >
             {{ col.label }}
@@ -110,7 +110,7 @@
             <!-- Subtle background stripe in day view -->
             <div
               v-if="zoom === 'day'"
-              class="absolute top-0 bottom-0 bg-red-50/30"
+              class="absolute top-0 bottom-0 bg-red-50/30 dark:bg-red-950/20"
               :style="{ left: '-15px', width: '30px' }"
             />
             <div class="absolute top-0 bottom-0 w-0.5 bg-red-500 left-0" />
@@ -123,11 +123,11 @@
       <!-- Task rows -->
       <div v-for="group in groups" :key="group.id">
         <!-- Group header if multiple -->
-        <div v-if="groups.length > 1" class="flex border-b bg-gray-50 sticky top-[37px] z-[5]">
-          <div class="w-[200px] flex-shrink-0 p-2 border-r text-sm font-semibold flex items-center gap-2">
+        <div v-if="groups.length > 1" class="flex border-b dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800 sticky top-[37px] z-[5]">
+          <div class="w-[200px] flex-shrink-0 p-2 border-r dark:border-neutral-700 text-sm font-semibold flex items-center gap-2">
             <span class="w-2 h-2 rounded-sm" :style="{ backgroundColor: group.color }" />
             {{ group.name }}
-            <span class="text-xs text-gray-400 font-normal">({{ group.totalCount ?? group.items.length }})</span>
+            <span class="text-xs text-gray-400 dark:text-neutral-500 font-normal">({{ group.totalCount ?? group.items.length }})</span>
           </div>
           <div class="flex-1" />
         </div>
@@ -136,11 +136,11 @@
           v-for="item in group.items"
           :key="item.id"
           :ref="el => setItemRowRef(item.id, el)"
-          class="flex border-b hover:bg-gray-50/50 min-h-[40px] relative"
+          class="flex border-b dark:border-neutral-700 hover:bg-gray-50/50 dark:hover:bg-neutral-800/50 min-h-[40px] relative"
         >
           <!-- Item name -->
           <div
-            class="w-[200px] flex-shrink-0 p-2 border-r text-sm truncate cursor-pointer hover:text-blue-600 flex items-center gap-1.5"
+            class="w-[200px] flex-shrink-0 p-2 border-r dark:border-neutral-700 text-sm truncate cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1.5"
             @click="$emit('openTask', item.id)"
           >
             <!-- Milestone icon -->
@@ -154,7 +154,7 @@
               <div
                 v-for="wCol in weekendColumnPositions"
                 :key="'wknd-' + wCol.index"
-                class="absolute top-0 bottom-0 bg-gray-100/50"
+                class="absolute top-0 bottom-0 bg-gray-100/50 dark:bg-neutral-800/50"
                 :style="{ left: wCol.left, width: wCol.width }"
               />
             </template>
@@ -230,7 +230,7 @@
             <!-- No date -->
             <div
               v-if="!isMilestone(item) && !getBar(item)"
-              class="absolute top-1/2 -translate-y-1/2 left-2 text-xs text-gray-400 italic"
+              class="absolute top-1/2 -translate-y-1/2 left-2 text-xs text-gray-400 dark:text-neutral-500 italic"
             >
               No date set
             </div>
@@ -241,8 +241,8 @@
       <!-- Empty -->
       <div v-if="allItems.length === 0" class="flex items-center justify-center p-12">
         <div class="text-center">
-          <UIcon name="i-lucide-gantt-chart" class="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p class="text-gray-500">No items to display on timeline</p>
+          <UIcon name="i-lucide-gantt-chart" class="w-12 h-12 text-gray-300 dark:text-neutral-600 mx-auto mb-3" />
+          <p class="text-gray-500 dark:text-neutral-400">No items to display on timeline</p>
         </div>
       </div>
       </div><!-- end min-width: fit-content wrapper -->
