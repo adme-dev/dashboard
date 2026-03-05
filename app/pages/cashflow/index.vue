@@ -36,7 +36,7 @@ const { isNotificationsSlideoverOpen } = useDashboard()
 
 function formatCurrency(value?: number) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '-'
-  return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+  return value.toLocaleString('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
 }
 
 function formatPercent(value?: number) {
@@ -200,7 +200,7 @@ const breadcrumbs = computed(() => ([
 
       <UDashboardToolbar>
         <template #left>
-          <UBreadcrumb :items="breadcrumbs" />
+          <UBreadcrumb :links="breadcrumbs" />
         </template>
 
         <template #right>
@@ -268,9 +268,9 @@ const breadcrumbs = computed(() => ([
             <div>
               <p class="text-sm text-muted">90-Day Projection</p>
               <p class="text-2xl font-bold" :class="{
-                'text-red-600': (metrics?.changePercent || 0) < -10,
-                'text-amber-600': (metrics?.changePercent || 0) < 0,
-                'text-emerald-600': (metrics?.changePercent || 0) > 0
+                'text-red-600 dark:text-red-400': (metrics?.changePercent || 0) < -10,
+                'text-amber-600 dark:text-amber-400': (metrics?.changePercent || 0) < 0,
+                'text-emerald-600 dark:text-emerald-400': (metrics?.changePercent || 0) > 0
               }">
                 {{ formatCurrency(metrics?.projectedEndBalance) }}
               </p>
@@ -280,8 +280,8 @@ const breadcrumbs = computed(() => ([
                    class="h-8 w-8" />
           </div>
           <div class="mt-2 text-xs" :class="{
-            'text-red-600': (metrics?.changePercent || 0) < 0,
-            'text-emerald-600': (metrics?.changePercent || 0) > 0,
+            'text-red-600 dark:text-red-400': (metrics?.changePercent || 0) < 0,
+            'text-emerald-600 dark:text-emerald-400': (metrics?.changePercent || 0) > 0,
             'text-muted': (metrics?.changePercent || 0) === 0
           }">
             {{ (metrics?.changePercent || 0) >= 0 ? '+' : '' }}{{ formatPercent((metrics?.changePercent || 0) / 100) }} change
@@ -294,9 +294,9 @@ const breadcrumbs = computed(() => ([
             <div>
               <p class="text-sm text-muted">Cash Runway</p>
               <p class="text-2xl font-bold" :class="{
-                'text-red-600': (metrics?.runway || 0) < 30,
-                'text-amber-600': (metrics?.runway || 0) < 60,
-                'text-emerald-600': (metrics?.runway || 0) >= 60
+                'text-red-600 dark:text-red-400': (metrics?.runway || 0) < 30,
+                'text-amber-600 dark:text-amber-400': (metrics?.runway || 0) < 60,
+                'text-emerald-600 dark:text-emerald-400': (metrics?.runway || 0) >= 60
               }">
                 {{ formatDays(metrics?.runway) }}
               </p>
@@ -313,7 +313,7 @@ const breadcrumbs = computed(() => ([
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm text-muted">Outstanding Receivables</p>
-              <p class="text-2xl font-bold text-emerald-600">
+              <p class="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
                 {{ formatCurrency(outstandingSummary?.totalReceivables) }}
               </p>
             </div>
@@ -349,7 +349,7 @@ const breadcrumbs = computed(() => ([
             </div>
             <div class="flex items-center justify-between pt-2 border-t border-default">
               <span class="text-muted">Working Capital</span>
-              <span :class="workingCapitalMetrics.workingCapital >= 0 ? 'text-emerald-600 font-semibold' : 'text-red-600 font-semibold'">
+              <span :class="workingCapitalMetrics.workingCapital >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-red-600 dark:text-red-400 font-semibold'">
                 {{ formatCurrency(workingCapitalMetrics.workingCapital) }}
               </span>
             </div>
@@ -412,7 +412,7 @@ const breadcrumbs = computed(() => ([
             </div>
             <div class="pt-2 border-t border-default text-xs flex items-center justify-between">
               <span class="text-muted">Total Revenue Pipeline</span>
-              <span class="font-semibold text-emerald-600">{{ formatCurrency(receivableInsights.totalPipeline) }}</span>
+              <span class="font-semibold text-emerald-600 dark:text-emerald-400">{{ formatCurrency(receivableInsights.totalPipeline) }}</span>
             </div>
           </div>
         </UCard>
@@ -451,7 +451,7 @@ const breadcrumbs = computed(() => ([
             </div>
             <div class="pt-2 border-t border-default text-xs flex items-center justify-between">
               <span class="text-muted">Total Cash Obligations</span>
-              <span class="font-semibold text-red-600">{{ formatCurrency(payableInsights.totalPipeline) }}</span>
+              <span class="font-semibold text-red-600 dark:text-red-400">{{ formatCurrency(payableInsights.totalPipeline) }}</span>
             </div>
           </div>
         </UCard>
@@ -480,7 +480,7 @@ const breadcrumbs = computed(() => ([
         />
 
         <!-- Outstanding Invoices Summary -->
-        <UCard class="border-none shadow-none ring-1 ring-black/5 dark:ring-white/5 bg-gradient-to-r from-emerald-50/90 via-white to-white dark:from-emerald-950/30 dark:via-transparent">
+        <UCard class="border-none shadow-none ring-1 ring-black/5 dark:ring-white/5 bg-gradient-to-r from-emerald-50/90 via-white to-white dark:from-emerald-950/30 dark:via-neutral-900 dark:to-neutral-900">
           <template #header>
             <h3 class="text-lg font-semibold flex items-center gap-2">
               <UIcon name="i-lucide-file-text" class="h-5 w-5" />
@@ -521,7 +521,7 @@ const breadcrumbs = computed(() => ([
             </div>
 
             <!-- Quick Actions -->
-            <div class="pt-2 border-t border-gray-200 dark:border-gray-800">
+            <div class="pt-2 border-t border-default">
               <div class="flex gap-2">
                 <UButton
                   label="View Invoices"
@@ -569,7 +569,7 @@ const breadcrumbs = computed(() => ([
                 <div class="flex flex-col items-end gap-1 text-xs">
                   <span v-if="client.creditLimit" class="text-muted">Credit Limit: {{ formatCurrency(client.creditLimit) }}</span>
                   <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full"
-                    :class="client.overdue ? 'bg-red-50 text-red-600 dark:bg-red-950/20' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20'">
+                    :class="client.overdue ? 'bg-red-50 text-red-600 dark:bg-red-950/20 dark:text-red-400' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'">
                     <UIcon :name="client.overdue ? 'i-lucide-alert-triangle' : 'i-lucide-badge-check'" class="h-4 w-4" />
                     {{ client.overdue ? 'Follow up' : 'On track' }}
                   </span>
@@ -636,7 +636,7 @@ const breadcrumbs = computed(() => ([
             <div class="space-y-2">
               <div class="flex justify-between text-sm">
                 <span class="text-muted">Maximum:</span>
-                <span class="font-medium text-emerald-600">
+                <span class="font-medium text-emerald-600 dark:text-emerald-400">
                   {{ formatCurrency(metrics?.maxProjectedBalance) }}
                 </span>
               </div>
@@ -649,8 +649,8 @@ const breadcrumbs = computed(() => ([
               <div class="flex justify-between text-sm">
                 <span class="text-muted">Minimum:</span>
                 <span class="font-medium" :class="{
-                  'text-red-600': (metrics?.minProjectedBalance || 0) < 0,
-                  'text-amber-600': (metrics?.minProjectedBalance || 0) < 10000 && (metrics?.minProjectedBalance || 0) >= 0
+                  'text-red-600 dark:text-red-400': (metrics?.minProjectedBalance || 0) < 0,
+                  'text-amber-600 dark:text-amber-400': (metrics?.minProjectedBalance || 0) < 10000 && (metrics?.minProjectedBalance || 0) >= 0
                 }">
                   {{ formatCurrency(metrics?.minProjectedBalance) }}
                 </span>

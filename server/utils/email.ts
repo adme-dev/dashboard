@@ -214,10 +214,17 @@ export async function sendMagicLinkEmail(data: MagicLinkEmailData): Promise<void
 
       <!-- CTA Button -->
       <div style="margin:0 0 36px;">
+        <!--[if mso]>
+        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="${data.magicLinkUrl}" style="height:48px;v-text-anchor:middle;width:240px;" arcsize="50%" fillcolor="#ffffff">
+          <center style="color:#0a0b0e;font-family:sans-serif;font-size:16px;font-weight:bold;">Sign in to ${escapeHtml(appName)}</center>
+        </v:roundrect>
+        <![endif]-->
+        <!--[if !mso]><!-->
         <a href="${data.magicLinkUrl}"
-           style="display:inline-block;background:#ffffff;color:#0a0b0e;padding:14px 36px;text-decoration:none;border-radius:100px;font-size:16px;font-weight:600;letter-spacing:-0.01em;">
+           style="display:inline-block;background-color:#ffffff;color:#0a0b0e !important;padding:14px 36px;text-decoration:none;border-radius:100px;font-size:16px;font-weight:600;letter-spacing:-0.01em;border:2px solid #ffffff;mso-padding-alt:0;">
           Sign in to ${escapeHtml(appName)}
         </a>
+        <!--<![endif]-->
       </div>
 
       <!-- Divider -->

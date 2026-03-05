@@ -2,6 +2,8 @@ import { createError } from 'h3'
 import { createXeroClient } from '../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../utils/tokenStore'
 import { getSelectedTenant } from '../../utils/session'
+import { cachedFetch } from '~~/server/utils/kv'
+import { dedupedXeroCall } from '~~/server/utils/xeroRateLimit'
 
 function ensureDateString(d: Date) {
   return d.toISOString().slice(0, 10)
@@ -34,25 +36,41 @@ export default eventHandler(async (event) => {
   const today = new Date()
   const startDate = addDays(today, -daysBack)
 
+  const cacheKey = `xero:bank-monitoring:${tenantId}:${daysBack}:${includeTransactions}`
+
+  return cachedFetch(event, cacheKey, 300, async () => {
   const client = await createXeroClient({ tokenSet: token, event })
 
   // Get all bank accounts
-  const { body: accountsResponse } = await client.accountingApi.getAccounts(
-    tenantId,
-    undefined,
-    'Type=="BANK"',
-    'Name ASC'
+  const accountsBody = await dedupedXeroCall(
+    `bank-accounts:${tenantId}`,
+    'bank-accounts',
+    async () => {
+      const { body } = await client.accountingApi.getAccounts(
+        tenantId,
+        undefined,
+        'Type=="BANK"',
+        'Name ASC'
+      )
+      return body
+    }
   )
 
-  const bankAccounts = accountsResponse?.accounts || []
+  const bankAccounts = accountsBody?.accounts || []
 
   // Get current bank balances
-  // For bank summary, we need a date range. Use today as toDate and 30 days before as fromDate
   const fromDate = addDays(today, -30)
-  const { body: bankSummary } = await client.accountingApi.getReportBankSummary(
-    tenantId,
-    ensureDateString(fromDate),
-    ensureDateString(today)
+  const bankSummary = await dedupedXeroCall(
+    `bank-summary:${tenantId}`,
+    'bank-summary',
+    async () => {
+      const { body } = await client.accountingApi.getReportBankSummary(
+        tenantId,
+        ensureDateString(fromDate),
+        ensureDateString(today)
+      )
+      return body
+    }
   )
 
   // Parse bank summary for current balances
@@ -68,8 +86,9 @@ export default eventHandler(async (event) => {
     return out
   }
 
-  if (bankSummary?.reports?.[0]?.rows) {
-    const allRows = flattenRows(bankSummary.reports[0].rows)
+  if (bankSummary?.reports?.[0]?.rows || bankSummary?.Reports?.[0]?.Rows) {
+    const reportRows = bankSummary.reports?.[0]?.rows || bankSummary.Reports?.[0]?.Rows || []
+    const allRows = flattenRows(reportRows)
     for (const row of allRows) {
       const cells = row?.Cells || row?.cells || []
       const accountName = cells?.[0]?.Value || cells?.[0]?.value || ''
@@ -82,34 +101,40 @@ export default eventHandler(async (event) => {
     }
   }
 
-  // Get bank transactions for trend analysis
-  const bankTransactionsPromises = bankAccounts.map(async (account) => {
+  // Get bank transactions for trend analysis — sequential to avoid concurrent rate limits
+  const bankTransactionResults: Array<{ accountId: string, accountName: string, transactions: any[] }> = []
+  for (const account of bankAccounts) {
     try {
-      const { body } = await client.accountingApi.getBankTransactions(
-        tenantId,
-        undefined,
-        `BankAccount.AccountID==Guid("${account.accountID}")&&Date>=${dtExpr(startDate)}&&Date<=${dtExpr(today)}`,
-        'Date DESC',
-        1,
-        undefined,
-        100
+      const body = await dedupedXeroCall(
+        `bank-tx:${tenantId}:${account.accountID}`,
+        'bank-tx',
+        async () => {
+          const { body } = await client.accountingApi.getBankTransactions(
+            tenantId,
+            undefined,
+            `BankAccount.AccountID==Guid("${account.accountID}")&&Date>=${dtExpr(startDate)}&&Date<=${dtExpr(today)}`,
+            'Date DESC',
+            1,
+            undefined,
+            100
+          )
+          return body
+        }
       )
-      return {
-        accountId: account.accountID,
-        accountName: account.name,
+      bankTransactionResults.push({
+        accountId: account.accountID!,
+        accountName: account.name!,
         transactions: body?.bankTransactions || []
-      }
+      })
     } catch (err) {
       console.warn(`Failed to fetch transactions for ${account.name}:`, err)
-      return {
-        accountId: account.accountID,
-        accountName: account.name,
+      bankTransactionResults.push({
+        accountId: account.accountID!,
+        accountName: account.name!,
         transactions: []
-      }
+      })
     }
-  })
-
-  const bankTransactionResults = await Promise.all(bankTransactionsPromises)
+  }
 
   // Process account data
   const accountSummaries = []
@@ -317,4 +342,5 @@ export default eventHandler(async (event) => {
       ...(volatileAccounts.length > 0 ? ['Monitor volatile accounts for unusual activity'] : [])
     ]
   }
+  }) // end cachedFetch
 })

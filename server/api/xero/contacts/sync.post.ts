@@ -8,6 +8,7 @@ import { createXeroClient } from '../../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
 import { transaction } from '../../../utils/db'
+import { dedupedXeroCall } from '~~/server/utils/xeroRateLimit'
 
 export default defineEventHandler(async (event) => {
   const token = await getActiveTokenForSession(event)
@@ -38,14 +39,18 @@ export default defineEventHandler(async (event) => {
   try {
     while (hasMore) {
       // Fetch contacts from Xero
-      const response = await (client.accountingApi.getContacts as any)(
-        tenantId,
-        undefined,
-        'ContactStatus=="ACTIVE"',
-        'Name ASC',
-        undefined,
-        page,
-        false
+      const response = await dedupedXeroCall(
+        `sync-contacts:${tenantId}:p${page}`,
+        'sync-contacts',
+        () => (client.accountingApi.getContacts as any)(
+          tenantId,
+          undefined,
+          'ContactStatus=="ACTIVE"',
+          'Name ASC',
+          undefined,
+          page,
+          false
+        )
       )
 
       const contacts = response?.body?.contacts || []

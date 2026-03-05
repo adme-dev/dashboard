@@ -9,7 +9,6 @@ import { requireAuth } from '~~/server/utils/auth'
 interface ApproveBody {
   decision: 'approved' | 'rejected' | 'changes_requested'
   comment?: string
-  approverId?: string // If acting as a specific approver
 }
 
 export default defineEventHandler(async (event) => {
@@ -46,18 +45,10 @@ export default defineEventHandler(async (event) => {
     }
 
     // Find the approver record for this user
-    let approver
-    if (body.approverId) {
-      approver = await queryOne(`
-        SELECT * FROM proof_approvers
-        WHERE id = $1 AND proof_id = $2
-      `, [body.approverId, proofId])
-    } else {
-      approver = await queryOne(`
-        SELECT * FROM proof_approvers
-        WHERE proof_id = $1 AND team_member_id = $2
-      `, [proofId, user.id])
-    }
+    const approver = await queryOne(`
+      SELECT * FROM proof_approvers
+      WHERE proof_id = $1 AND team_member_id = $2
+    `, [proofId, user.id])
 
     if (!approver) {
       throw createError({

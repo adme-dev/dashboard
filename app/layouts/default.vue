@@ -14,9 +14,9 @@ const links = [[{
     open.value = false
   }
 }, {
-  label: 'Dashboard',
+  label: 'XeroFlow',
   icon: 'i-lucide-layout-dashboard',
-  to: '/dashboard',
+  to: '/xeroflow',
   onSelect: () => {
     open.value = false
   }

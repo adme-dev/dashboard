@@ -2,6 +2,8 @@ import { createError } from 'h3'
 import { createXeroClient } from '../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../utils/tokenStore'
 import { getSelectedTenant } from '../../utils/session'
+import { cachedFetch } from '~~/server/utils/kv'
+import { dedupedXeroCall } from '~~/server/utils/xeroRateLimit'
 
 function ensureDateString(d: Date) {
   return d.toISOString().slice(0, 10)
@@ -46,13 +48,23 @@ export default eventHandler(async (event) => {
   const today = new Date()
   const startDate = addDays(today, -daysBack)
 
+  const cacheKey = `xero:anomaly-detection:${tenantId}:${daysBack}:${sensitivity}`
+
+  return cachedFetch(event, cacheKey, 600, async () => {
   const client = await createXeroClient({ tokenSet: token, event })
 
   // Get chart of accounts
   let accountsMap = new Map<string, string>()
   try {
-    const { body } = await client.accountingApi.getAccounts(tenantId)
-    const accounts = body?.accounts || []
+    const acctBody = await dedupedXeroCall(
+      `anomaly-accounts:${tenantId}`,
+      'anomaly-accounts',
+      async () => {
+        const { body } = await client.accountingApi.getAccounts(tenantId)
+        return body
+      }
+    )
+    const accounts = acctBody?.accounts || []
     for (const account of accounts) {
       if (account.accountID && account.name) {
         accountsMap.set(account.accountID, account.name)
@@ -70,22 +82,29 @@ export default eventHandler(async (event) => {
     const results: any[] = []
     let page = 1
     const whereClause = `Type=="ACCPAY"&&Date>=${dtExpr(startDate)}&&Date<=${dtExpr(today)}`
-    
+
     for (;;) {
-      const { body } = await (client.accountingApi.getInvoices as any)(
-        tenantId,
-        undefined,
-        whereClause,
-        'Date DESC',
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        page,
-        undefined,
-        undefined,
-        undefined,
-        100
+      const body = await dedupedXeroCall(
+        `anomaly-inv:${tenantId}:p${page}`,
+        'anomaly-inv',
+        async () => {
+          const { body } = await (client.accountingApi.getInvoices as any)(
+            tenantId,
+            undefined,
+            whereClause,
+            'Date DESC',
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            page,
+            undefined,
+            undefined,
+            undefined,
+            100
+          )
+          return body
+        }
       )
       const list = body?.invoices || []
       if (!list.length) break
@@ -292,4 +311,5 @@ export default eventHandler(async (event) => {
       weekendExpenses.length > 0 ? `${weekendExpenses.length} transactions occurred on weekends.` : null
     ].filter(Boolean)
   }
+  }) // end cachedFetch
 })

@@ -3,6 +3,7 @@ import { createXeroClient } from '../../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
 import { cachedFetch } from '../../../utils/kv'
+import { dedupedXeroCall } from '~~/server/utils/xeroRateLimit'
 
 type XeroRow = {
   RowType?: string
@@ -56,17 +57,21 @@ export default eventHandler(async (event) => {
 
   return cachedFetch(event, cacheKey, 900, async () => {
   const client = await createXeroClient({ tokenSet: token, event })
-  const { body: report } = await (client.accountingApi.getReportProfitAndLoss as any)(
-    tenantId,
-    from,
-    to,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    false
+  const { body: report } = await dedupedXeroCall(
+    `pnl:${tenantId}:${from}:${to}`,
+    'pnl',
+    () => (client.accountingApi.getReportProfitAndLoss as any)(
+      tenantId,
+      from,
+      to,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      false
+    )
   )
 
   const reportTable = report?.reports?.[0] ?? report?.Reports?.[0]

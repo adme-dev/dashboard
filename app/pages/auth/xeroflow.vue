@@ -187,7 +187,7 @@ const isValidEmail = computed(() => {
 async function connectXero() {
   connecting.value = true
   try {
-    const redirect = route.query.redirect as string || '/dashboard'
+    const redirect = route.query.redirect as string || '/xeroflow'
     window.location.href = `/api/xero/login?redirect=${encodeURIComponent(redirect)}`
   } catch (error) {
     console.error('Xero connection failed:', error)

@@ -39,7 +39,7 @@ const bucketWidths = computed(() => {
           <UIcon name="i-lucide-hourglass" class="w-4 h-4 text-[var(--ui-text-muted)]" />
           <h3 class="font-semibold text-[var(--ui-text-highlighted)]">Receivables Aging</h3>
         </div>
-        <UButton to="/dashboard" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
+        <UButton to="/invoices" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
           Details
         </UButton>
       </div>

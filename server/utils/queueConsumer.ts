@@ -60,6 +60,26 @@ export async function processJob(job: QueueJob): Promise<void> {
         await processDissectAnalyze(job.payload)
         break
 
+      case 'embed.financial.expenses':
+        await processFinancialEmbed(job.payload, 'expenses')
+        break
+
+      case 'embed.financial.invoices':
+        await processFinancialEmbed(job.payload, 'invoices')
+        break
+
+      case 'embed.financial.clients':
+        await processFinancialEmbed(job.payload, 'clients')
+        break
+
+      case 'embed.financial.pnl':
+        await processFinancialEmbed(job.payload, 'pnl')
+        break
+
+      case 'embed.financial.cash':
+        await processFinancialEmbed(job.payload, 'cash')
+        break
+
       default:
         console.warn(`[QueueConsumer] Unknown job type: ${(job as any).type}`)
     }
@@ -127,5 +147,22 @@ async function processDissectAnalyze(payload: Record<string, any>): Promise<void
   const { runDissectionPipeline } = await import('./bannerDissectorPipeline')
   // event is null in queue context — pipeline will skip Workers AI and use Groq directly
   await runDissectionPipeline(null, payload.jobId)
+}
+
+async function processFinancialEmbed(payload: Record<string, any>, type: string): Promise<void> {
+  const event = payload._event as any
+  if (!event) {
+    console.warn(`[QueueConsumer] embed.financial.${type}: event not available in queue context — financial embeds require authenticated event. Use the /api/ai/finance/embed endpoint instead.`)
+    return
+  }
+  const mod = await import('~~/server/utils/financialEmbedder')
+  const period = payload.period as string | undefined
+  switch (type) {
+    case 'expenses': await mod.embedExpenseSnapshot(event, period); break
+    case 'invoices': await mod.embedInvoiceSnapshot(event, period); break
+    case 'clients': await mod.embedAllFinancialSnapshots(event, period, ['clients']); break
+    case 'pnl': await mod.embedPnlSnapshot(event, period); break
+    case 'cash': await mod.embedCashPosition(event); break
+  }
 }
 

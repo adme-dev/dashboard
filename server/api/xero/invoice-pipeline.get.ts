@@ -3,6 +3,7 @@ import { createXeroClient } from '../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../utils/tokenStore'
 import { getSelectedTenant } from '../../utils/session'
 import { cachedFetch } from '../../utils/kv'
+import { dedupedXeroCall } from '../../utils/xeroRateLimit'
 
 function ensureDateString(d: Date) {
   return d.toISOString().slice(0, 10)
@@ -48,22 +49,30 @@ export default eventHandler(async (event) => {
   // Fetch invoices across all statuses
   const invoiceStatuses = ['DRAFT', 'SUBMITTED', 'AUTHORISED', 'PAID', 'VOIDED']
   
+  const dateKey = ensureDateString(startDate)
   const invoicePromises = invoiceStatuses.map(async (status) => {
     try {
-      const { body } = await (client.accountingApi.getInvoices as any)(
-        tenantId,
-        undefined,
-        `Type=="ACCREC"&&Status=="${status}"&&Date>=${dtExpr(startDate)}`,
-        'Date DESC',
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        1,
-        undefined,
-        undefined,
-        undefined,
-        500
+      const body = await dedupedXeroCall(
+        `invoices-pipeline-${status.toLowerCase()}:${tenantId}:${dateKey}`,
+        `pipeline-${status.toLowerCase()}`,
+        async () => {
+          const { body } = await (client.accountingApi.getInvoices as any)(
+            tenantId,
+            undefined,
+            `Type=="ACCREC"&&Status=="${status}"&&Date>=${dtExpr(startDate)}`,
+            'Date DESC',
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            1,
+            undefined,
+            undefined,
+            undefined,
+            500
+          )
+          return body
+        }
       )
       return {
         status,

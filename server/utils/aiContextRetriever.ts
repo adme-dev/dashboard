@@ -76,7 +76,7 @@ const SCORING_PROFILES: Record<AiIntent, ScoringProfile> = {
   task_query:      { semantic: 0.25, recency: 0.25, importance: 0.15, intent: 0.20, entity: 0.15, recencyHalfLifeDays: 30 },
   brief_query:     { semantic: 0.25, recency: 0.20, importance: 0.15, intent: 0.20, entity: 0.20, recencyHalfLifeDays: 45 },
   project_query:   { semantic: 0.25, recency: 0.20, importance: 0.15, intent: 0.20, entity: 0.20, recencyHalfLifeDays: 30 },
-  financial_query: { semantic: 0.20, recency: 0.30, importance: 0.15, intent: 0.20, entity: 0.15, recencyHalfLifeDays: 7 },
+  financial_query: { semantic: 0.35, recency: 0.25, importance: 0.10, intent: 0.20, entity: 0.10, recencyHalfLifeDays: 14 },
   team_query:      { semantic: 0.20, recency: 0.15, importance: 0.15, intent: 0.25, entity: 0.25, recencyHalfLifeDays: 60 },
   process_query:   { semantic: 0.35, recency: 0.10, importance: 0.20, intent: 0.20, entity: 0.15, recencyHalfLifeDays: 90 },
   search:          { semantic: 0.20, recency: 0.10, importance: 0.10, intent: 0.25, entity: 0.35, recencyHalfLifeDays: 30 },
@@ -87,6 +87,7 @@ const SCORING_PROFILES: Record<AiIntent, ScoringProfile> = {
 
 const ENTITY_IMPORTANCE: Record<string, number> = {
   spend: 0.85,
+  financial: 0.85,
   knowledge: 0.80,
   client: 0.75,
   task: 0.70,
@@ -224,8 +225,122 @@ async function searchClients(keywords: string[]): Promise<ContextItem[]> {
   }))
 }
 
-async function searchFinancial(keywords: string[]): Promise<ContextItem[]> {
+async function searchFinancial(keywords: string[], question?: string, event?: H3Event): Promise<ContextItem[]> {
   const items: ContextItem[] = []
+
+  // ─── Live Xero data (primary source for financial queries) ───
+  // Use Nitro's auto-imported $fetch with event.headers — this uses localFetch for
+  // internal routes (no HTTP roundtrip), matching the working pattern in chat.post.ts.
+  if (event) {
+    const fetchOpts = { headers: event.headers }
+
+    // Fetch 4 Xero endpoints in parallel — each is independent
+    const [bankRes, invoiceRes, expenseRes, pnlRes] = await Promise.allSettled([
+      $fetch<any>('/api/xero/bank-monitoring', fetchOpts),
+      $fetch<any>('/api/xero/invoices', fetchOpts),
+      $fetch<any>('/api/xero/expenses', fetchOpts),
+      $fetch<any>('/api/xero/reports/pnl', fetchOpts),
+    ])
+
+    // Cash position — response shape: { portfolio: { totalBalance, riskLevel, ... }, accounts: [...], alerts: [...] }
+    const bank = bankRes.status === 'fulfilled' ? bankRes.value : null
+    if (bank?.portfolio) {
+      const p = bank.portfolio
+      const accounts = (bank.accounts || []).map((a: any) => `${a.accountName}: $${Math.round(a.currentBalance || 0).toLocaleString()} (${a.healthStatus})`).join(', ')
+      const alertList = (bank.alerts || []).map((a: any) => a.message).slice(0, 3).join('; ')
+      items.push({
+        type: 'financial',
+        id: 'xero-cash-position',
+        title: 'Cash Position',
+        snippet: `Total balance: $${Math.round(p.totalBalance || 0).toLocaleString()} | Risk: ${p.riskLevel || 'unknown'} | Net cash flow (${bank.period?.days || 30}d): $${Math.round(p.netCashFlow || 0).toLocaleString()} | Velocity: ${(p.cashVelocity || 0).toFixed(1)}x | ${bank.accounts?.length || 0} accounts: ${accounts}${alertList ? ` | Alerts: ${alertList}` : ''}`,
+        url: '/cashflow',
+        updatedAt: bank.asOfDate || new Date().toISOString(),
+      })
+    }
+
+    // Invoices — response shape: { summary: { outstandingTotal, overdueTotal, ... }, outstanding: [...], overdue: [...], paid: [...] }
+    const inv = invoiceRes.status === 'fulfilled' ? invoiceRes.value : null
+    if (inv?.summary) {
+      const s = inv.summary
+      const topCustomers = (s.topCustomers || []).slice(0, 3).map((c: any) => `${c.name}: $${Math.round(c.outstanding || 0).toLocaleString()}`).join(', ')
+      items.push({
+        type: 'financial',
+        id: 'xero-invoices',
+        title: 'Invoice Summary',
+        snippet: `Outstanding: ${s.outstandingCount || 0} invoices ($${Math.round(s.outstandingTotal || 0).toLocaleString()}) | Overdue: ${s.overdueCount || 0} ($${Math.round(s.overdueTotal || 0).toLocaleString()}) | Due soon: $${Math.round(s.dueSoonTotal || 0).toLocaleString()} | Paid last 30d: ${s.paidLast30Count || 0} ($${Math.round(s.paidLast30Total || 0).toLocaleString()}) | Avg days to pay: ${s.avgDaysToPay ?? 'N/A'}${topCustomers ? ` | Top outstanding: ${topCustomers}` : ''}`,
+        url: '/invoices',
+        updatedAt: new Date().toISOString(),
+      })
+
+      // Individual overdue invoices for detail
+      const overdueList = (inv.overdue || []).slice(0, 5)
+      if (overdueList.length > 0) {
+        const lines = overdueList.map((o: any) => `${o.contact} #${o.number}: $${Math.round(o.amountDue || 0).toLocaleString()} (${o.daysOverdue}d overdue)`)
+        items.push({
+          type: 'financial',
+          id: 'xero-invoices-overdue',
+          title: 'Overdue Invoice Details',
+          snippet: lines.join(' | '),
+          url: '/invoices',
+          updatedAt: new Date().toISOString(),
+        })
+      }
+    }
+
+    // Expenses — response shape: { categories: [...], vendors: [...], taxSummary, monthOverMonth, fixedVsVariable, subscriptions }
+    const exp = expenseRes.status === 'fulfilled' ? expenseRes.value : null
+    if (exp) {
+      const cats = exp.categories || []
+      const totalNet = exp.taxSummary?.totalNet || cats.reduce((s: number, c: any) => s + (c.amount || 0), 0)
+      const mom = exp.monthOverMonth || {}
+      const topCats = cats.slice(0, 5).map((c: any) => `${c.name}: $${Math.round(c.amount || 0).toLocaleString()}`).join(', ')
+      const topVendors = (exp.vendors || []).slice(0, 5).map((v: any) => `${v.name}: $${Math.round(v.amount || 0).toLocaleString()}`).join(', ')
+      const fv = exp.fixedVsVariable || {}
+      const subs = exp.subscriptions || {}
+      items.push({
+        type: 'financial',
+        id: 'xero-expenses',
+        title: 'Expense Summary',
+        snippet: `Total: $${Math.round(totalNet).toLocaleString()} (ex GST) | MoM change: ${mom.change ?? 0}% ($${Math.round(mom.changeAmount || 0).toLocaleString()}) | Top categories: ${topCats || 'N/A'} | Top vendors: ${topVendors || 'N/A'} | Fixed: $${Math.round(fv.fixed?.total || 0).toLocaleString()} Variable: $${Math.round(fv.variable?.total || 0).toLocaleString()} | Subscriptions: ${subs.items?.length || 0} vendors ($${Math.round(subs.total || 0).toLocaleString()}/mo)`,
+        url: '/expenses',
+        updatedAt: new Date().toISOString(),
+      })
+
+      // Subscription detail
+      if (subs.items?.length > 0) {
+        const subLines = subs.items.slice(0, 8).map((s: any) => `${s.vendor}: $${Math.round(s.amount || 0).toLocaleString()}/${s.frequency || 'mo'}`)
+        items.push({
+          type: 'financial',
+          id: 'xero-subscriptions',
+          title: 'Subscription Costs',
+          snippet: subLines.join(' | '),
+          url: '/expenses',
+          updatedAt: new Date().toISOString(),
+        })
+      }
+    }
+
+    // P&L — response shape: { revenueTotal, expensesTotal, netProfit, profitMargin, periods: [...], expensesByCategory: [...] }
+    const pnl = pnlRes.status === 'fulfilled' ? pnlRes.value : null
+    if (pnl && (pnl.revenueTotal || pnl.expensesTotal)) {
+      const revenue = pnl.revenueTotal || 0
+      const expenses = pnl.expensesTotal || 0
+      const net = pnl.netProfit ?? (revenue - expenses)
+      const margin = pnl.profitMargin != null ? (pnl.profitMargin * 100).toFixed(1) : (revenue > 0 ? ((net / revenue) * 100).toFixed(1) : '0')
+      const expCats = (pnl.expensesByCategory || []).slice(0, 5).map((c: any) => `${c.name}: $${Math.round(c.value || 0).toLocaleString()}`).join(', ')
+      const periods = (pnl.periods || []).map((p: any) => `${p.label}: Rev $${Math.round(p.revenue || 0).toLocaleString()} / Exp $${Math.round(p.expenses || 0).toLocaleString()} / Net $${Math.round(p.netProfit || 0).toLocaleString()}`).join(' | ')
+      items.push({
+        type: 'financial',
+        id: 'xero-pnl',
+        title: 'Profit & Loss',
+        snippet: `Revenue: $${Math.round(revenue).toLocaleString()} | Expenses: $${Math.round(expenses).toLocaleString()} | Net profit: $${Math.round(net).toLocaleString()} | Margin: ${margin}% | Period: ${pnl.fromDate} to ${pnl.toDate}${expCats ? ` | Expense breakdown: ${expCats}` : ''}${periods ? ` | Periods: ${periods}` : ''}`,
+        url: '/profit-loss',
+        updatedAt: new Date().toISOString(),
+      })
+    }
+  }
+
+  // ─── DB sources (EOM runs + ad spend) ───
 
   // Recent EOM runs
   try {
@@ -276,7 +391,48 @@ async function searchFinancial(keywords: string[]): Promise<ContextItem[]> {
     // media_spend table may not exist yet
   }
 
-  return items.slice(0, 5)
+  // ─── Vectorize embeddings (richer historical data if available) ───
+  if (question) {
+    try {
+      const finResults = await searchFinancialEmbeddings(question, event)
+      items.push(...finResults)
+    } catch {
+      // Vectorize not available — continue with live + DB results
+    }
+  }
+
+  return items.slice(0, 12)
+}
+
+// Search Vectorize for financial embedding vectors (type prefix 'fin-')
+async function searchFinancialEmbeddings(question: string, event?: H3Event): Promise<ContextItem[]> {
+  const results = event ? await searchSimilar(event, question, 8) : await searchSimilar(question, 8)
+  const items: ContextItem[] = []
+
+  for (const match of results) {
+    const type = match.metadata?.type || ''
+    if (!type.startsWith('fin-')) continue
+    if (match.score < 0.5) continue
+
+    // Map financial types to URLs
+    let url = '/expenses'
+    if (type === 'fin-invoices') url = '/invoices'
+    else if (type === 'fin-pnl') url = '/profit-loss'
+    else if (type === 'fin-cash') url = '/cashflow'
+    else if (type === 'fin-client' && match.metadata?.clientId) url = `/agency/clients/${match.metadata.clientId}`
+
+    items.push({
+      type: 'financial',
+      id: match.id,
+      title: match.metadata?.title || `Financial Data (${type})`,
+      snippet: `Period: ${match.metadata?.period || 'current'} | Semantic match: ${Math.round(match.score * 100)}%`,
+      url,
+      semanticScore: match.score,
+      updatedAt: match.metadata?.period ? new Date(match.metadata.period).toISOString() : undefined,
+    })
+  }
+
+  return items
 }
 
 async function searchTeam(keywords: string[]): Promise<ContextItem[]> {
@@ -569,7 +725,7 @@ export async function retrieveContext(
     queryPromises.push(searchClients(keywords).catch(() => []))
   }
   if (sources.has('financial')) {
-    queryPromises.push(searchFinancial(keywords).catch(() => []))
+    queryPromises.push(searchFinancial(keywords, question, event).catch(() => []))
   }
   if (sources.has('team')) {
     queryPromises.push(searchTeam(keywords).catch(() => []))

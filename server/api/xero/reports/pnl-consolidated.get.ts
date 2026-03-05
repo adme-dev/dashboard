@@ -1,5 +1,7 @@
 import { createXeroClient } from '../../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../../utils/tokenStore'
+import { cachedFetch } from '~~/server/utils/kv'
+import { dedupedXeroCall } from '~~/server/utils/xeroRateLimit'
 
 function ensureDateString(d: Date) { return d.toISOString().slice(0, 10) }
 function getDefaultRange() {
@@ -13,18 +15,34 @@ async function fetchTenants(client: Awaited<ReturnType<typeof createXeroClient>>
   return await client.updateTenants(false)
 }
 
+// Match the broader patterns from pnl-detailed.get.ts to support all Xero report formats
+const REVENUE_RE = /total\s+(revenue|income|trading\s+income|sales|turnover)/i
+const EXPENSES_RE = /total\s+(operating\s+expenses?|expenses?|overheads?|administration\s+expenses?)/i
+const NET_PROFIT_RE = /net\s+profit|net\s+income|net\s+loss|profit\s+for\s+the\s+(period|year)|profit\s+\(loss\)|operating\s+profit/i
+
+function parseNumeric(valueStr: any): number {
+  if (typeof valueStr === 'number') return Number.isFinite(valueStr) ? valueStr : 0
+  if (typeof valueStr === 'string') {
+    const trimmed = valueStr.trim()
+    if (!trimmed) return 0
+    const isNeg = /^\(.*\)$/.test(trimmed)
+    const normalized = trimmed.replace(/[(),]/g, '').replace(/[^0-9.-]/g, '')
+    const num = Number(normalized)
+    if (Number.isNaN(num)) return 0
+    return isNeg ? -num : num
+  }
+  return 0
+}
+
 async function fetchPnLForTenant(client: Awaited<ReturnType<typeof createXeroClient>>, tenantId: string, from: string, to: string) {
-  const { body: report } = await client.accountingApi.getReportProfitAndLoss(
-    tenantId,
-    from,
-    to,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    false
+  const { body: report } = await dedupedXeroCall(
+    `pnlConsolidated:${tenantId}:${from}:${to}`,
+    'pnl-consolidated',
+    () => client.accountingApi.getReportProfitAndLoss(
+      tenantId, from, to,
+      undefined, undefined, undefined,
+      undefined, undefined, undefined, false
+    )
   )
 
   function flattenRows(rows: any[] | undefined, out: any[] = []): any[] {
@@ -47,13 +65,15 @@ async function fetchPnLForTenant(client: Awaited<ReturnType<typeof createXeroCli
     const cells = row?.Cells || row?.cells || []
     const title = cells?.[0]?.Value || cells?.[0]?.value || row?.Title || row?.title || ''
     const lastCell = cells?.[cells.length - 1]
-    const valueStr = lastCell?.Value ?? lastCell?.value
-    const numeric = typeof valueStr === 'string' ? Number(valueStr) : (typeof valueStr === 'number' ? valueStr : 0)
+    const numeric = parseNumeric(lastCell?.Value ?? lastCell?.value)
 
-    if (/total\s+revenue/i.test(title)) revenueTotal = numeric
-    if (/total\s+expense/i.test(title) || /total\s+expenses/i.test(title)) expensesTotal = numeric
-    if (/net\s+profit/i.test(title) || /profit\s+for\s+the\s+period/i.test(title)) netProfit = numeric
+    if (REVENUE_RE.test(title)) revenueTotal = numeric
+    if (EXPENSES_RE.test(title)) expensesTotal = numeric
+    if (NET_PROFIT_RE.test(title)) netProfit = numeric
   }
+
+  // Normalize expenses to positive (Xero may report as negative debits)
+  expensesTotal = Math.abs(expensesTotal)
 
   const profitMargin = revenueTotal !== 0 ? (netProfit / revenueTotal) : 0
   return { revenueTotal, expensesTotal, netProfit, profitMargin }
@@ -69,27 +89,42 @@ export default eventHandler(async (event) => {
   const { from, to } = (!fromDate || !toDate) ? getDefaultRange() : { from: fromDate, to: toDate }
 
   const tenants = await fetchTenants(client)
+  const tenantIds = tenants.filter(t => t.tenantId && t.tenantName).map(t => t.tenantId)
+  const cacheKey = `xero-report:consolidated:${tenantIds.sort().join(',')}:${from}:${to}`
 
-  const results = [] as Array<{ tenantId: string, tenantName: string, revenueTotal: number, expensesTotal: number, netProfit: number, profitMargin: number }>
+  return cachedFetch(event, cacheKey, 600, async () => {
+    const results = [] as Array<{ tenantId: string, tenantName: string, revenueTotal: number, expensesTotal: number, netProfit: number, profitMargin: number }>
+    const warnings = [] as string[]
 
-  for (const t of tenants) {
-    if (!t.tenantId || !t.tenantName) continue
-    try {
-      const pnl = await fetchPnLForTenant(client, t.tenantId, from, to)
-      results.push({ tenantId: t.tenantId, tenantName: t.tenantName, ...pnl })
-    } catch {
-      // Skip tenant on error
+    // Fetch all tenants in parallel (rate limiter handles concurrency)
+    const settled = await Promise.allSettled(
+      tenants
+        .filter(t => t.tenantId && t.tenantName)
+        .map(async (t) => {
+          const pnl = await fetchPnLForTenant(client, t.tenantId!, from, to)
+          return { tenantId: t.tenantId!, tenantName: t.tenantName!, ...pnl }
+        })
+    )
+
+    for (const result of settled) {
+      if (result.status === 'fulfilled') {
+        results.push(result.value)
+      } else {
+        const msg = result.reason?.message || 'Unknown error'
+        console.warn('[pnl-consolidated] Tenant fetch failed:', msg)
+        warnings.push(`One entity could not be loaded: ${msg}`)
+      }
     }
-  }
 
-  const totals = results.reduce((acc, r) => {
-    acc.revenueTotal += r.revenueTotal
-    acc.expensesTotal += r.expensesTotal
-    acc.netProfit += r.netProfit
-    return acc
-  }, { revenueTotal: 0, expensesTotal: 0, netProfit: 0 })
+    const totals = results.reduce((acc, r) => {
+      acc.revenueTotal += r.revenueTotal
+      acc.expensesTotal += r.expensesTotal
+      acc.netProfit += r.netProfit
+      return acc
+    }, { revenueTotal: 0, expensesTotal: 0, netProfit: 0 })
 
-  const profitMargin = totals.revenueTotal !== 0 ? (totals.netProfit / totals.revenueTotal) : 0
+    const profitMargin = totals.revenueTotal !== 0 ? (totals.netProfit / totals.revenueTotal) : 0
 
-  return { fromDate: from, toDate: to, tenants: results, totals: { ...totals, profitMargin } }
+    return { fromDate: from, toDate: to, tenants: results, totals: { ...totals, profitMargin }, warnings }
+  })
 })

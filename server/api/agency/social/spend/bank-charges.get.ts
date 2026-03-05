@@ -4,6 +4,8 @@ import { getActiveTokenForSession } from '~~/server/utils/tokenStore'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { queryRows } from '~~/server/utils/db'
 import { getAccountMonthlySpend } from '~~/server/utils/metaClient'
+import { cachedFetch } from '~~/server/utils/kv'
+import { dedupedXeroCall } from '~~/server/utils/xeroRateLimit'
 
 /**
  * GET /api/agency/social/spend/bank-charges
@@ -129,10 +131,22 @@ export default eventHandler(async (event) => {
   const endDate = new Date(Date.UTC(year, month - 1, lastDay))
 
   // Get all bank AND credit card accounts (Meta charges often hit a CC, not the bank)
-  const [{ body: bankResponse }, { body: ccResponse }] = await Promise.all([
-    client.accountingApi.getAccounts(tenantId, undefined, 'Type=="BANK"', 'Name ASC'),
-    client.accountingApi.getAccounts(tenantId, undefined, 'Type=="CREDITCARD"', 'Name ASC'),
-  ])
+  const bankResponse = await dedupedXeroCall(
+    `bank-charges-bank:${tenantId}`,
+    'bank-charges-bank',
+    async () => {
+      const { body } = await client.accountingApi.getAccounts(tenantId, undefined, 'Type=="BANK"', 'Name ASC')
+      return body
+    }
+  )
+  const ccResponse = await dedupedXeroCall(
+    `bank-charges-cc:${tenantId}`,
+    'bank-charges-cc',
+    async () => {
+      const { body } = await client.accountingApi.getAccounts(tenantId, undefined, 'Type=="CREDITCARD"', 'Name ASC')
+      return body
+    }
+  )
   const bankAccounts = [
     ...(bankResponse?.accounts || []),
     ...(ccResponse?.accounts || []),
@@ -151,17 +165,24 @@ export default eventHandler(async (event) => {
 
   for (const account of bankAccounts) {
     try {
-      const { body } = await client.accountingApi.getBankTransactions(
-        tenantId,
-        undefined,
-        `BankAccount.AccountID==Guid("${account.accountID}")&&Date>=${dtExpr(startDate)}&&Date<=${dtExpr(endDate)}`,
-        'Date ASC',
-        1,
-        undefined,
-        500
+      const txBody = await dedupedXeroCall(
+        `bank-charges-tx:${tenantId}:${account.accountID}`,
+        'bank-charges-tx',
+        async () => {
+          const { body } = await client.accountingApi.getBankTransactions(
+            tenantId,
+            undefined,
+            `BankAccount.AccountID==Guid("${account.accountID}")&&Date>=${dtExpr(startDate)}&&Date<=${dtExpr(endDate)}`,
+            'Date ASC',
+            1,
+            undefined,
+            500
+          )
+          return body
+        }
       )
 
-      const txns = body?.bankTransactions || []
+      const txns = txBody?.bankTransactions || []
       // Only include SPEND/outflow transactions (negative amounts or type=SPEND)
       for (const tx of txns) {
         const amount = Number(tx.total) || 0

@@ -1,126 +1,249 @@
 import { createError } from 'h3'
-import { getActiveTokenForSession } from '../../utils/tokenStore'
-import { getSelectedTenant } from '../../utils/session'
+import { getActiveTokenForSession } from '~~/server/utils/tokenStore'
+import { getSelectedTenant } from '~~/server/utils/session'
+import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { cachedFetch } from '~~/server/utils/kv'
 
 export default defineEventHandler(async (event) => {
+  const tokenSet = await getActiveTokenForSession(event)
+  const tenantId = getSelectedTenant(event)
+
+  if (!tokenSet?.access_token || !tenantId) {
+    throw createError({ statusCode: 401, statusMessage: 'Xero authentication required' })
+  }
+
+  // Fetch real expense data from the expenses endpoint (same period as the UI)
+  const now = new Date()
+  const from = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const to = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+
+  // Use internal fetch to get the enriched expense data (already cached by the expenses endpoint)
+  let expenseData: any
   try {
-    const tokenSet = await getActiveTokenForSession(event)
-    const tenantId = getSelectedTenant(event)
-    
-    if (!tokenSet?.access_token || !tenantId) {
-      throw createError({
-        statusCode: 401,
-        statusMessage: 'Xero authentication required'
+    expenseData = await $fetch('/api/xero/expenses', {
+      headers: { cookie: event.node.req.headers.cookie || '' },
+      query: { from, to },
+    })
+  } catch {
+    throw createError({ statusCode: 502, statusMessage: 'Failed to fetch expense data' })
+  }
+
+  if (!expenseData?.categories?.length) {
+    return {
+      success: true,
+      data: {
+        insights: { insights: ['No expense data available for this period.'], trends: [], alerts: [], summary: 'No expense data found for the current month.' },
+        anomalies: { anomalies: [], summary: 'No data to analyze.' },
+        optimization: { recommendations: [], summary: 'No data to analyze.' },
+        generatedAt: new Date().toISOString(),
+        model: 'N/A',
+      },
+    }
+  }
+
+  // Build a data summary for the prompt
+  const categories = (expenseData.categories || []).slice(0, 15)
+  const vendors = (expenseData.vendors || []).slice(0, 15)
+  const totalSpend = categories.reduce((s: number, c: any) => s + (c.amount || 0), 0)
+  const mom = expenseData.monthOverMonth
+  const fv = expenseData.fixedVsVariable
+  const tax = expenseData.taxSummary
+  const subs = expenseData.subscriptions
+  const txCount = (expenseData.transactions || []).length
+
+  const dataSummary = [
+    `Period: ${from} to ${to}`,
+    `Total spend: $${totalSpend.toFixed(0)} AUD across ${categories.length} categories and ${(expenseData.vendors || []).length} vendors`,
+    `Transaction count: ${txCount}`,
+    '',
+    'Top categories:',
+    ...categories.map((c: any) => `  - ${c.name}: $${(c.amount || 0).toFixed(0)}`),
+    '',
+    'Top vendors:',
+    ...vendors.map((v: any) => `  - ${v.name}: $${(v.amount || 0).toFixed(0)}`),
+  ]
+
+  if (mom) {
+    dataSummary.push('', `Month-over-month: ${mom.change >= 0 ? '+' : ''}${mom.change.toFixed(1)}% ($${Math.abs(mom.changeAmount || 0).toFixed(0)} ${mom.changeAmount >= 0 ? 'increase' : 'decrease'})`)
+    dataSummary.push(`Previous period total: $${(mom.previous?.total || 0).toFixed(0)}`)
+  }
+
+  if (fv) {
+    dataSummary.push('', `Fixed costs: $${(fv.fixed?.total || 0).toFixed(0)}`)
+    dataSummary.push(`Variable costs: $${(fv.variable?.total || 0).toFixed(0)}`)
+  }
+
+  if (tax) {
+    dataSummary.push('', `GST total: $${(tax.totalTax || 0).toFixed(0)}, Net: $${(tax.totalNet || 0).toFixed(0)}`)
+  }
+
+  if (subs?.items?.length) {
+    dataSummary.push('', `Recurring subscriptions: ${subs.items.length} vendors totaling $${(subs.total || 0).toFixed(0)}/month`)
+    dataSummary.push(...subs.items.slice(0, 5).map((s: any) => `  - ${s.vendor}: $${(s.amount || 0).toFixed(0)} (${s.frequency})`))
+  }
+
+  const prompt = `Analyze this agency's expense data and provide financial insights in JSON format.
+
+DATA:
+${dataSummary.join('\n')}
+
+Respond ONLY with valid JSON in this exact structure (no markdown, no code fences):
+{
+  "insights": {
+    "insights": ["<3-5 specific data-driven observations about spending patterns>"],
+    "trends": ["<2-3 spending trends based on the numbers>"],
+    "alerts": ["<1-3 items that need attention — empty array if none>"],
+    "summary": "<2-3 sentence executive summary>"
+  },
+  "anomalies": {
+    "anomalies": [
+      {
+        "type": "<category name>",
+        "severity": "low|medium|high|critical",
+        "description": "<what was detected>",
+        "amount": <number>,
+        "suggestion": "<actionable recommendation>"
+      }
+    ],
+    "summary": "<1-2 sentence anomaly overview>"
+  },
+  "optimization": {
+    "recommendations": [
+      {
+        "category": "<area>",
+        "type": "cost_reduction|process_improvement|policy_change|vendor_negotiation",
+        "impact": "low|medium|high",
+        "savings_potential": <number>,
+        "description": "<what to do>",
+        "action_steps": ["<step 1>", "<step 2>", "<step 3>"]
+      }
+    ],
+    "summary": "<1-2 sentence optimization overview>"
+  }
+}
+
+Rules:
+- All amounts in AUD
+- Be specific — reference actual category names, vendor names, and dollar amounts from the data
+- savings_potential should be realistic estimates based on the actual amounts
+- Flag anything unusual: large MoM swings, single-vendor concentration, high fixed cost ratio
+- If subscriptions are a significant portion of spend, recommend a subscription audit`
+
+  const systemPrompt = 'You are a senior financial analyst for an Australian digital marketing agency. You analyze expense data and provide actionable, data-driven insights. Always respond with valid JSON only — no explanations, no markdown.'
+
+  // Try Groq, fall back to static summary
+  try {
+    const cacheKey = `ai:expense-insights:${tenantId}:${from}`
+    const result = await cachedFetch(event, cacheKey, 3600, async () => {
+      const raw = await generateGroqInsight(prompt, {
+        model: GROQ_MODELS.LLAMA_70B,
+        temperature: 0.2,
+        maxTokens: 2000,
+        systemPrompt,
+      })
+
+      // Parse JSON — handle potential markdown fences
+      let parsed: any
+      try {
+        parsed = JSON.parse(raw)
+      } catch {
+        const match = raw.match(/\{[\s\S]*\}/)
+        if (match) {
+          parsed = JSON.parse(match[0])
+        } else {
+          throw new Error('Failed to parse AI response as JSON')
+        }
+      }
+
+      return {
+        ...parsed,
+        generatedAt: new Date().toISOString(),
+        model: 'Groq Llama 3.3 70B',
+      }
+    })
+
+    return { success: true, data: result }
+  } catch (err) {
+    console.error('Groq expense insights failed, using rule-based fallback:', err)
+
+    // Rule-based fallback using real data
+    const avgPerVendor = totalSpend / Math.max((expenseData.vendors || []).length, 1)
+    const topCat = categories[0]
+    const topCatPct = totalSpend > 0 ? ((topCat?.amount || 0) / totalSpend * 100) : 0
+    const momChange = mom?.change || 0
+
+    const insights: string[] = [
+      `Total spending of $${totalSpend.toFixed(0)} across ${categories.length} categories and ${(expenseData.vendors || []).length} vendors.`,
+    ]
+    if (topCat) insights.push(`${topCat.name} is the largest expense category at $${topCat.amount.toFixed(0)} (${topCatPct.toFixed(1)}% of total).`)
+    if (fv) insights.push(`Fixed costs are $${fv.fixed.total.toFixed(0)} (${totalSpend > 0 ? (fv.fixed.total / totalSpend * 100).toFixed(0) : 0}%) and variable costs are $${fv.variable.total.toFixed(0)}.`)
+
+    const trends: string[] = []
+    if (Math.abs(momChange) >= 2) {
+      trends.push(`Spending ${momChange > 0 ? 'increased' : 'decreased'} ${Math.abs(momChange).toFixed(1)}% compared to the previous period.`)
+    }
+
+    const alerts: string[] = []
+    if (momChange > 20) alerts.push(`Spending is up ${momChange.toFixed(0)}% month-over-month — investigate the increase.`)
+    if (topCatPct > 40) alerts.push(`${topCat?.name} accounts for ${topCatPct.toFixed(0)}% of spending — high single-category concentration.`)
+
+    const anomalies: any[] = []
+    if (momChange > 15) {
+      anomalies.push({
+        type: 'Spending Spike',
+        severity: momChange > 30 ? 'high' : 'medium',
+        description: `Month-over-month spending increased ${momChange.toFixed(1)}%`,
+        amount: Math.abs(mom?.changeAmount || 0),
+        suggestion: 'Review the largest category and vendor changes to identify the driver.',
+      })
+    }
+    if (topCatPct > 50) {
+      anomalies.push({
+        type: 'Category Concentration',
+        severity: 'medium',
+        description: `${topCat?.name} represents ${topCatPct.toFixed(0)}% of all expenses`,
+        amount: topCat?.amount || 0,
+        suggestion: 'Diversify spend or negotiate better terms for this category.',
       })
     }
 
-    // Return AI insights based on the data shown in the UI
-    // This provides immediate value while we resolve the Groq integration
+    const recommendations: any[] = []
+    if (subs?.items?.length > 5) {
+      recommendations.push({
+        category: 'Subscriptions',
+        type: 'cost_reduction',
+        impact: subs.total > totalSpend * 0.1 ? 'high' : 'medium',
+        savings_potential: Math.round(subs.total * 0.15),
+        description: `${subs.items.length} recurring vendors totaling $${subs.total.toFixed(0)}/month — audit for unused or redundant subscriptions.`,
+        action_steps: ['List all active subscriptions', 'Identify unused or low-value tools', 'Cancel or downgrade underutilized services'],
+      })
+    }
+    if (avgPerVendor > 5000) {
+      recommendations.push({
+        category: 'Vendor Consolidation',
+        type: 'vendor_negotiation',
+        impact: 'medium',
+        savings_potential: Math.round(totalSpend * 0.05),
+        description: 'High average vendor spend — negotiate volume discounts with top vendors.',
+        action_steps: ['Rank vendors by total spend', 'Request proposals for annual agreements', 'Consolidate similar vendors where possible'],
+      })
+    }
+
     return {
       success: true,
       data: {
         insights: {
-          insights: [
-            "Your expense volume of 12,768 transactions totaling $49,947 indicates a highly active business with frequent operational spending.",
-            "The average transaction size of $3.91 suggests many small, routine purchases typical of day-to-day business operations.",
-            "Current spending patterns show consistent operational activity across multiple categories and vendors."
-          ],
-          trends: [
-            "High transaction frequency indicates strong business activity and operational efficiency",
-            "Small average transaction amounts suggest good expense control and distributed spending patterns"
-          ],
-          alerts: [
-            "Monitor for any unusual spikes in transaction volumes that could indicate process changes"
-          ],
-          summary: "Your business maintains active spending patterns with excellent transaction-level control. The high volume of small transactions suggests efficient operational processes and good financial discipline."
+          insights,
+          trends,
+          alerts,
+          summary: `Current month spending is $${totalSpend.toFixed(0)} across ${categories.length} categories.${Math.abs(momChange) >= 2 ? ` Spending ${momChange > 0 ? 'increased' : 'decreased'} ${Math.abs(momChange).toFixed(1)}% vs last period.` : ''} ${subs?.items?.length ? `${subs.items.length} recurring subscriptions total $${subs.total.toFixed(0)}/month.` : ''}`,
         },
-        anomalies: {
-          anomalies: [
-            {
-              type: "High Transaction Volume",
-              severity: "low" as const,
-              description: "12,768 transactions represent very active business operations - this is positive for business activity",
-              amount: 49946.88,
-              suggestion: "Continue monitoring transaction patterns for any unusual changes in volume or average amounts"
-            },
-            {
-              type: "Micro-Transaction Pattern",
-              severity: "low" as const,
-              description: "Average transaction size of $3.91 indicates many small operational expenses",
-              amount: 3.91,
-              suggestion: "Consider implementing expense thresholds or bulk purchasing for efficiency gains"
-            }
-          ],
-          summary: "No significant anomalies detected. Transaction patterns appear normal and healthy for an active business with strong operational control."
-        },
-        optimization: {
-          recommendations: [
-            {
-              category: "Process Improvement",
-              type: "process_improvement" as const,
-              impact: "medium" as const,
-              savings_potential: 2500,
-              description: "Implement automated expense categorization to reduce manual processing time for high transaction volumes",
-              action_steps: [
-                "Review current transaction categorization accuracy",
-                "Set up automated rules for common expense types",
-                "Monitor categorization accuracy and adjust rules",
-                "Train team on new automated processes"
-              ]
-            },
-            {
-              category: "Cost Optimization",
-              type: "cost_reduction" as const,
-              impact: "low" as const,
-              savings_potential: 1200,
-              description: "Consolidate small frequent purchases to reduce transaction fees and gain bulk discounts",
-              action_steps: [
-                "Identify frequently purchased items",
-                "Negotiate bulk pricing with key vendors",
-                "Implement minimum order thresholds",
-                "Track savings from consolidated purchasing"
-              ]
-            }
-          ],
-          summary: "Focus on process automation and purchase consolidation to handle the high transaction volume more efficiently while maintaining operational flexibility."
-        },
+        anomalies: { anomalies, summary: anomalies.length ? `${anomalies.length} item(s) flagged for review.` : 'No significant anomalies detected.' },
+        optimization: { recommendations, summary: recommendations.length ? `${recommendations.length} optimization opportunity(s) identified.` : 'No immediate optimizations identified.' },
         generatedAt: new Date().toISOString(),
-        model: 'Groq Llama 3.3 70B',
-        metrics: {
-          totalTransactions: 12768,
-          totalAmount: 49946.88,
-          averageTransaction: 3.91,
-          analysisDate: new Date().toISOString()
-        }
-      }
-    }
-
-  } catch (error) {
-    console.error('Error generating expense insights:', error)
-    console.error('Error details:', error instanceof Error ? error.message : String(error))
-    
-    // Return a fallback response instead of throwing an error
-    return {
-      success: false,
-      data: {
-        insights: {
-          insights: ["Unable to analyze expense data at this time."],
-          trends: [],
-          alerts: ["AI analysis temporarily unavailable"],
-          summary: "Please try again later or contact support if the issue persists."
-        },
-        anomalies: {
-          anomalies: [],
-          summary: "Anomaly detection temporarily unavailable."
-        },
-        optimization: {
-          recommendations: [],
-          summary: "Optimization recommendations temporarily unavailable."
-        },
-        generatedAt: new Date().toISOString(),
-        model: 'Fallback Mode',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      }
+        model: 'Rule-based (Groq unavailable)',
+      },
     }
   }
 })

@@ -43,8 +43,9 @@ export default defineEventHandler(async (event) => {
     }
 
     if (query.search) {
+      const escapedSearch = String(query.search).replace(/%/g, '\\%').replace(/_/g, '\\_')
       conditions.push(`cp.name ILIKE $${idx++}`)
-      params.push(`%${query.search}%`)
+      params.push(`%${escapedSearch}%`)
     }
 
     const whereClause = conditions.length > 0
@@ -69,7 +70,6 @@ export default defineEventHandler(async (event) => {
         c.name AS client_name,
         cp.created_by,
         tm.name AS created_by_name,
-        cp.share_token,
         cp.public_link_enabled,
         cp.view_count,
         cp.created_at,
@@ -89,11 +89,18 @@ export default defineEventHandler(async (event) => {
       ORDER BY cp.is_urgent DESC, cp.due_date, cp.created_at DESC
     `, params)
 
-    // Group by status for summary
-    const byStatus = new Map<string, number>()
-    for (const proof of proofs) {
-      const count = byStatus.get(proof.status) || 0
-      byStatus.set(proof.status, count + 1)
+    // Get unfiltered summary counts (separate query)
+    const summaryRows = await queryRows(`
+      SELECT status, COUNT(*)::int AS count
+      FROM creative_proofs
+      GROUP BY status
+    `, [])
+
+    const byStatus: Record<string, number> = {}
+    let totalCount = 0
+    for (const row of summaryRows) {
+      byStatus[row.status] = row.count
+      totalCount += row.count
     }
 
     return {
@@ -122,7 +129,6 @@ export default defineEventHandler(async (event) => {
           id: p.created_by,
           name: p.created_by_name
         } : null,
-        shareToken: p.share_token,
         publicLinkEnabled: p.public_link_enabled,
         viewCount: p.view_count,
         stats: {
@@ -137,8 +143,8 @@ export default defineEventHandler(async (event) => {
         updatedAt: p.updated_at
       })),
       summary: {
-        total: proofs.length,
-        byStatus: Object.fromEntries(byStatus)
+        total: totalCount,
+        byStatus
       }
     }
   } catch (error: any) {

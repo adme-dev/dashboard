@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { CalendarDate, today, getLocalTimeZone } from '@internationalized/date'
+
 definePageMeta({ layout: 'agency' })
 
 type TrendSeries = {
@@ -79,16 +81,136 @@ type ProfitAndLossReport = {
 
 import ProfitTrendChart from '~/components/reports/ProfitTrendChart.client.vue'
 
-const { data, pending, error, refresh } = await useFetch<ProfitAndLossReport>('/api/xero/reports/pnl-detailed')
+// ── URL query string sync ──
+const route = useRoute()
+const router = useRouter()
+
+const now = new Date()
+const defaultMonth = now.getMonth() + 1
+const defaultYear = now.getFullYear()
+
+// Seed from URL query params (with validation)
+const qMonth = Number(route.query.month)
+const qYear = Number(route.query.year)
+const qBasis = String(route.query.basis || '')
+
+// ── Month picker state ──
+const tz = getLocalTimeZone()
+const nowCal = today(tz)
+const selectedMonth = ref(qMonth >= 1 && qMonth <= 12 ? qMonth : defaultMonth)
+const selectedYear = ref(qYear >= 2000 && qYear <= 2100 ? qYear : defaultYear)
+const basis = ref<'accrual' | 'cash'>(qBasis === 'cash' ? 'cash' : 'accrual')
+const popoverOpen = ref(false)
+
+// Push state back to URL for shareable links
+watch([selectedMonth, selectedYear, basis], () => {
+  const query: Record<string, string> = {}
+  const isDefaultPeriod = selectedMonth.value === defaultMonth && selectedYear.value === defaultYear
+  if (!isDefaultPeriod) {
+    query.month = String(selectedMonth.value)
+    query.year = String(selectedYear.value)
+  }
+  if (basis.value !== 'accrual') {
+    query.basis = basis.value
+  }
+  router.replace({ query })
+}, { flush: 'post' })
+
+const toDate = computed(() => {
+  const d = new Date(selectedYear.value, selectedMonth.value, 0)
+  return d.toISOString().slice(0, 10)
+})
+
+function monthName(m: number, y: number) {
+  return new Date(y, m - 1, 1).toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })
+}
+
+const displayLabel = computed(() => monthName(selectedMonth.value, selectedYear.value))
+
+// Calendar model
+const calendarValue = computed({
+  get: () => new CalendarDate(selectedYear.value, selectedMonth.value, 1),
+  set: (val: CalendarDate) => {
+    selectedMonth.value = val.month
+    selectedYear.value = val.year
+    popoverOpen.value = false
+  }
+})
+
+// Shortcuts
+const shortcuts = computed(() => {
+  const m = nowCal.month
+  const y = nowCal.year
+  const prev = m === 1 ? { month: 12, year: y - 1 } : { month: m - 1, year: y }
+  const prev2 = prev.month === 1 ? { month: 12, year: prev.year - 1 } : { month: prev.month - 1, year: prev.year }
+  return [
+    { label: 'This Month', month: m, year: y },
+    { label: 'Last Month', month: prev.month, year: prev.year },
+    { label: monthName(prev2.month, prev2.year), month: prev2.month, year: prev2.year },
+  ]
+})
+
+function selectShortcut(s: { month: number; year: number }) {
+  selectedMonth.value = s.month
+  selectedYear.value = s.year
+  popoverOpen.value = false
+}
+
+function isActiveShortcut(s: { month: number; year: number }) {
+  return s.month === selectedMonth.value && s.year === selectedYear.value
+}
+
+function prevMonth() {
+  if (selectedMonth.value === 1) {
+    selectedMonth.value = 12
+    selectedYear.value--
+  } else {
+    selectedMonth.value--
+  }
+}
+
+function nextMonth() {
+  if (selectedMonth.value === 12) {
+    selectedMonth.value = 1
+    selectedYear.value++
+  } else {
+    selectedMonth.value++
+  }
+}
+
+const isCurrentMonth = computed(() =>
+  selectedMonth.value === nowCal.month && selectedYear.value === nowCal.year
+)
+
+// ── P&L data fetch ──
+const { data, pending, error, refresh } = await useFetch<ProfitAndLossReport>(
+  '/api/xero/reports/pnl-detailed',
+  { query: computed(() => ({ toDate: toDate.value, basis: basis.value })) }
+)
+
+// ── Client profitability fetch ──
+const { data: profitability, pending: profitPending } = await useFetch<{
+  summary: { clientCount: number; totalCommission: number }
+  clients: Array<{ name: string; commission: number; commissionRate: number }>
+}>('/api/agency/projects/profitability', {
+  query: computed(() => ({ month: selectedMonth.value, year: selectedYear.value }))
+})
+
+// ── KPIs fetch ──
+const { data: kpis } = await useFetch<{
+  revenuePerEmployee: number
+  teamUtilization: Array<{ name: string; rate: number; target: number }>
+}>('/api/agency/kpis')
 
 const report = computed(() => data.value ?? null)
 
 const loading = computed(() => pending.value)
+const profitLoading = computed(() => profitPending.value)
 const hasError = computed(() => Boolean(error.value))
 
 function formatCurrency(value?: number | null) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '-'
-  return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+  return value.toLocaleString('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
 }
 
 function formatPercent(value?: number | null) {
@@ -137,23 +259,123 @@ const summaryRows = computed<SummaryRow[]>(() => {
   }))
 })
 
+// ── Ratio metrics with benchmarks ──
+type BenchmarkLevel = 'green' | 'yellow' | 'red'
+
+function grossMarginBenchmark(value: number): { level: BenchmarkLevel; label: string } {
+  const pct = value * 100
+  if (pct >= 60) return { level: 'green', label: 'Strong' }
+  if (pct >= 40) return { level: 'yellow', label: 'Average' }
+  return { level: 'red', label: 'Below target' }
+}
+
+function netMarginBenchmark(value: number): { level: BenchmarkLevel; label: string } {
+  const pct = value * 100
+  if (pct >= 15) return { level: 'green', label: 'Healthy' }
+  if (pct >= 5) return { level: 'yellow', label: 'Tight' }
+  return { level: 'red', label: 'Unprofitable' }
+}
+
+function opexRatioBenchmark(value: number): { level: BenchmarkLevel; label: string } {
+  const pct = value * 100
+  if (pct <= 60) return { level: 'green', label: 'Efficient' }
+  if (pct <= 75) return { level: 'yellow', label: 'High' }
+  return { level: 'red', label: 'Excessive' }
+}
+
+const benchmarkDotColor: Record<BenchmarkLevel, string> = {
+  green: 'bg-green-500',
+  yellow: 'bg-yellow-500',
+  red: 'bg-red-500'
+}
+
+const hasRevenueData = computed(() => {
+  if (!report.value) return false
+  const { summary } = report.value
+  return summary.revenue.month !== 0 || summary.revenue.ytd !== 0
+})
+
 const ratioMetrics = computed(() => {
   if (!report.value) return []
   const { summary } = report.value
+
+  // Guard only the denominator (revenue) — numerator of 0 is valid (0/revenue = 0%)
+  const grossMargin = summary.revenue.month !== 0 ? summary.grossProfit.month / summary.revenue.month : 0
+  const opexRatio = summary.revenue.month !== 0 ? summary.operatingExpenses.month / summary.revenue.month : 0
+  const netMargin = summary.netMargin.month
+
   return [{
     label: 'Gross Margin',
-    month: summary.grossProfit.month && summary.revenue.month ? summary.grossProfit.month / summary.revenue.month : 0,
-    ytd: summary.grossProfit.ytd && summary.revenue.ytd ? summary.grossProfit.ytd / summary.revenue.ytd : 0
+    month: grossMargin,
+    ytd: summary.revenue.ytd !== 0 ? summary.grossProfit.ytd / summary.revenue.ytd : 0,
+    benchmark: hasRevenueData.value ? grossMarginBenchmark(grossMargin) : { level: 'yellow' as BenchmarkLevel, label: 'No data' }
   }, {
     label: 'Operating Expense Ratio',
-    month: summary.operatingExpenses.month && summary.revenue.month ? summary.operatingExpenses.month / summary.revenue.month : 0,
-    ytd: summary.operatingExpenses.ytd && summary.revenue.ytd ? summary.operatingExpenses.ytd / summary.revenue.ytd : 0
+    month: opexRatio,
+    ytd: summary.revenue.ytd !== 0 ? summary.operatingExpenses.ytd / summary.revenue.ytd : 0,
+    benchmark: hasRevenueData.value ? opexRatioBenchmark(opexRatio) : { level: 'yellow' as BenchmarkLevel, label: 'No data' }
   }, {
     label: 'Net Margin',
-    month: summary.netMargin.month,
-    ytd: summary.netMargin.ytd
+    month: netMargin,
+    ytd: summary.netMargin.ytd,
+    benchmark: hasRevenueData.value ? netMarginBenchmark(netMargin) : { level: 'yellow' as BenchmarkLevel, label: 'No data' }
   }]
 })
+
+const revenueBreakdown = computed(() => report.value?.breakdown.revenue ?? [])
+
+// ── Revenue concentration (client data → P&L category fallback) ──
+type ConcentrationItem = { label: string; value: number }
+
+const hasClientData = computed(() => {
+  const clients = profitability.value?.clients
+  return clients && clients.length > 0 && clients.some(c => (c.commission ?? 0) > 0)
+})
+
+const concentrationSource = computed<'client' | 'category'>(() =>
+  hasClientData.value ? 'client' : 'category'
+)
+
+const concentrationItems = computed<ConcentrationItem[]>(() => {
+  // Prefer client-level commission data from media_spend
+  if (hasClientData.value) {
+    const sorted = [...profitability.value!.clients].sort((a, b) => b.commission - a.commission)
+    return sorted.slice(0, 5).map(c => ({ label: c.name, value: c.commission }))
+  }
+  // Fallback: revenue categories from P&L breakdown
+  if (revenueBreakdown.value.length) {
+    const sorted = [...revenueBreakdown.value].sort((a, b) => b.month - a.month)
+    return sorted.slice(0, 5).map(item => ({ label: item.name, value: item.month }))
+  }
+  return []
+})
+
+const concentrationTotal = computed(() => {
+  if (hasClientData.value) return profitability.value?.summary?.totalCommission ?? 0
+  return revenueBreakdown.value.reduce((sum, item) => sum + item.month, 0)
+})
+
+const concentrationRisk = computed<{ level: BenchmarkLevel; label: string }>(() => {
+  const items = concentrationItems.value
+  const total = concentrationTotal.value
+  if (!items.length || total <= 0) return { level: 'green', label: 'N/A' }
+  const top1Share = items[0].value / total
+  const top3 = items.slice(0, 3)
+  const top3Share = top3.reduce((sum, c) => sum + c.value, 0) / total
+  if (top1Share > 0.4) return { level: 'red', label: 'High Risk' }
+  if (top3Share > 0.7) return { level: 'yellow', label: 'Moderate' }
+  return { level: 'green', label: 'Diversified' }
+})
+
+// ── Revenue per head ──
+const teamSize = computed(() => kpis.value?.teamUtilization?.length ?? 0)
+const revenuePerEmployee = computed(() => kpis.value?.revenuePerEmployee ?? 0)
+
+function revenuePerHeadBenchmark(value: number): { level: BenchmarkLevel; label: string } {
+  if (value >= 150000) return { level: 'green', label: 'Above benchmark' }
+  if (value >= 100000) return { level: 'yellow', label: 'Average' }
+  return { level: 'red', label: 'Below benchmark' }
+}
 
 const trendData = computed(() => {
   if (!report.value) return []
@@ -173,7 +395,6 @@ const trendData = computed(() => {
   })
 })
 
-const revenueBreakdown = computed(() => report.value?.breakdown.revenue ?? [])
 const directCostBreakdown = computed(() => report.value?.breakdown.directCosts ?? [])
 const expenseBreakdown = computed(() => report.value?.breakdown.expenses ?? [])
 const insights = computed(() => report.value?.insights ?? [])
@@ -223,11 +444,11 @@ function signedCurrency(value: number) {
 }
 
 const periodColumns = computed(() => ([
-  { key: 'label', label: 'Period', id: 'period-label' },
-  { key: 'revenue', label: 'Revenue', id: 'period-revenue', class: 'text-right' },
-  { key: 'directCosts', label: 'Direct Costs', id: 'period-direct-costs', class: 'text-right' },
-  { key: 'operatingExpenses', label: 'Operating Expenses', id: 'period-op-ex', class: 'text-right' },
-  { key: 'netProfit', label: 'Net Profit', id: 'period-net', class: 'text-right' }
+  { accessorKey: 'label', header: 'Period', id: 'period-label' },
+  { accessorKey: 'revenue', header: 'Revenue', id: 'period-revenue', class: 'text-right' },
+  { accessorKey: 'directCosts', header: 'Direct Costs', id: 'period-direct-costs', class: 'text-right' },
+  { accessorKey: 'operatingExpenses', header: 'Operating Expenses', id: 'period-op-ex', class: 'text-right' },
+  { accessorKey: 'netProfit', header: 'Net Profit', id: 'period-net', class: 'text-right' }
 ]))
 
 const periodRows = computed(() => recentPeriods.value.map(period => ({
@@ -239,27 +460,27 @@ const periodRows = computed(() => recentPeriods.value.map(period => ({
 })))
 
 const revenueColumns = computed(() => ([
-  { key: 'name', label: 'Category', id: 'revenue-category' },
-  { key: 'month', label: monthLabel.value, id: 'revenue-month', class: 'text-right' },
-  { key: 'share', label: 'Mix', id: 'revenue-share', class: 'text-right' },
-  { key: 'ytd', label: ytdLabel.value, id: 'revenue-ytd', class: 'text-right' }
+  { accessorKey: 'name', header: 'Category', id: 'revenue-category' },
+  { accessorKey: 'month', header: monthLabel.value, id: 'revenue-month', class: 'text-right' },
+  { accessorKey: 'share', header: 'Mix', id: 'revenue-share', class: 'text-right' },
+  { accessorKey: 'ytd', header: ytdLabel.value, id: 'revenue-ytd', class: 'text-right' }
 ]))
 
 const expenseColumns = computed(() => ([
-  { key: 'name', label: 'Category', id: 'expense-category' },
-  { key: 'month', label: monthLabel.value, id: 'expense-month', class: 'text-right' },
-  { key: 'share', label: 'Mix', id: 'expense-share', class: 'text-right' },
-  { key: 'ytd', label: ytdLabel.value, id: 'expense-ytd', class: 'text-right' }
+  { accessorKey: 'name', header: 'Category', id: 'expense-category' },
+  { accessorKey: 'month', header: monthLabel.value, id: 'expense-month', class: 'text-right' },
+  { accessorKey: 'share', header: 'Mix', id: 'expense-share', class: 'text-right' },
+  { accessorKey: 'ytd', header: ytdLabel.value, id: 'expense-ytd', class: 'text-right' }
 ]))
 
 const directCostColumns = computed(() => ([
-  { key: 'name', label: 'Category', id: 'direct-cost-category' },
-  { key: 'month', label: monthLabel.value, id: 'direct-cost-month', class: 'text-right' },
-  { key: 'share', label: 'Mix', id: 'direct-cost-share', class: 'text-right' },
-  { key: 'ytd', label: ytdLabel.value, id: 'direct-cost-ytd', class: 'text-right' }
+  { accessorKey: 'name', header: 'Category', id: 'direct-cost-category' },
+  { accessorKey: 'month', header: monthLabel.value, id: 'direct-cost-month', class: 'text-right' },
+  { accessorKey: 'share', header: 'Mix', id: 'direct-cost-share', class: 'text-right' },
+  { accessorKey: 'ytd', header: ytdLabel.value, id: 'direct-cost-ytd', class: 'text-right' }
 ]))
 
-const basisLabel = computed(() => report.value?.meta.basis ?? 'Accrual')
+const basisLabel = computed(() => report.value?.meta.basis ?? (basis.value === 'cash' ? 'Cash' : 'Accrual'))
 const generatedAt = computed(() => {
   const raw = report.value?.meta.generatedAt
   if (!raw) return '-'
@@ -284,7 +505,7 @@ const refreshAll = async () => {
 <template>
   <UDashboardPanel id="profit-loss">
     <template #header>
-      <UDashboardNavbar title="Profit &amp; Loss" description="Accrual-based performance with last month and YTD detail">
+      <UDashboardNavbar title="Profit &amp; Loss" :description="`${basisLabel}-basis performance — ${displayLabel}`">
         <template #leading>
           <UDashboardSidebarCollapse />
         </template>
@@ -298,6 +519,82 @@ const refreshAll = async () => {
       <UDashboardToolbar>
         <template #left>
           <UBreadcrumb :links="breadcrumbs" />
+
+          <!-- Month picker -->
+          <div class="flex items-center gap-1 ml-4">
+            <UButton
+              icon="i-lucide-chevron-left"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              @click="prevMonth"
+            />
+
+            <UPopover v-model:open="popoverOpen" :content="{ align: 'start' }">
+              <UButton
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-calendar"
+                class="data-[state=open]:bg-elevated group min-w-[170px] justify-between"
+              >
+                <span class="font-medium text-sm">{{ displayLabel }}</span>
+                <template #trailing>
+                  <UIcon
+                    name="i-lucide-chevron-down"
+                    class="shrink-0 text-dimmed size-4 group-data-[state=open]:rotate-180 transition-transform duration-200"
+                  />
+                </template>
+              </UButton>
+
+              <template #content>
+                <div class="flex items-stretch sm:divide-x divide-default">
+                  <div class="flex flex-col py-1">
+                    <div class="px-3 py-1.5 text-[10px] font-semibold text-muted uppercase tracking-wider">Quick Select</div>
+                    <UButton
+                      v-for="s in shortcuts"
+                      :key="s.label"
+                      :label="s.label"
+                      color="neutral"
+                      variant="ghost"
+                      class="rounded-none px-4 text-sm"
+                      :class="[isActiveShortcut(s) ? 'bg-elevated font-medium' : 'hover:bg-elevated/50']"
+                      @click="selectShortcut(s)"
+                    />
+                  </div>
+                  <div class="p-2">
+                    <UCalendar v-model="calendarValue" class="rounded-lg" />
+                  </div>
+                </div>
+              </template>
+            </UPopover>
+
+            <UButton
+              icon="i-lucide-chevron-right"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              :disabled="isCurrentMonth"
+              @click="nextMonth"
+            />
+          </div>
+
+          <!-- Cash / Accrual toggle -->
+          <div class="flex items-center gap-0.5 ml-3 border-l border-default pl-3">
+            <UButton
+              label="Accrual"
+              size="xs"
+              :variant="basis === 'accrual' ? 'soft' : 'ghost'"
+              :color="basis === 'accrual' ? 'primary' : 'neutral'"
+              @click="basis = 'accrual'"
+            />
+            <UButton
+              label="Cash"
+              size="xs"
+              :variant="basis === 'cash' ? 'soft' : 'ghost'"
+              :color="basis === 'cash' ? 'primary' : 'neutral'"
+              @click="basis = 'cash'"
+            />
+          </div>
         </template>
 
         <template #right>
@@ -334,6 +631,7 @@ const refreshAll = async () => {
       </div>
 
       <div v-else class="space-y-6">
+        <!-- Summary + Margins row -->
         <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
           <UCard class="xl:col-span-2" :ui="{ body: '!p-6 space-y-6' }">
             <header class="flex items-start justify-between gap-4">
@@ -376,24 +674,100 @@ const refreshAll = async () => {
             </div>
           </UCard>
 
-          <UCard :ui="{ body: '!p-6' }">
-            <p class="text-xs text-muted uppercase mb-2">Margins</p>
-            <div class="space-y-4">
-              <div v-for="metric in ratioMetrics" :key="metric.label">
-                <div class="flex items-center justify-between text-xs text-muted mb-1">
-                  <span>{{ metric.label }}</span>
-                  <span>{{ ytdLabel }}</span>
+          <!-- Margins with benchmark indicators -->
+          <div class="space-y-4">
+            <UCard :ui="{ body: '!p-6' }">
+              <p class="text-xs text-muted uppercase mb-2">Margins</p>
+              <div class="space-y-4">
+                <div v-for="metric in ratioMetrics" :key="metric.label">
+                  <div class="flex items-center justify-between text-xs text-muted mb-1">
+                    <span>{{ metric.label }}</span>
+                    <span>{{ ytdLabel }}</span>
+                  </div>
+                  <div class="flex items-baseline justify-between">
+                    <div class="flex items-center gap-2">
+                      <p class="text-lg font-semibold">{{ formatPercent(metric.month) }}</p>
+                      <span class="flex items-center gap-1">
+                        <span :class="['inline-block size-2 rounded-full', benchmarkDotColor[metric.benchmark.level]]" />
+                        <span class="text-[10px] text-muted">{{ metric.benchmark.label }}</span>
+                      </span>
+                    </div>
+                    <p class="text-sm font-medium">{{ formatPercent(metric.ytd) }}</p>
+                  </div>
+                  <p class="text-xs text-muted">{{ monthLabel }}</p>
                 </div>
-                <div class="flex items-baseline justify-between">
-                  <p class="text-lg font-semibold">{{ formatPercent(metric.month) }}</p>
-                  <p class="text-sm font-medium">{{ formatPercent(metric.ytd) }}</p>
-                </div>
-                <p class="text-xs text-muted">{{ monthLabel }}</p>
               </div>
-            </div>
-          </UCard>
+            </UCard>
+
+            <!-- Revenue per head widget -->
+            <UCard :ui="{ body: '!p-6' }">
+              <div class="flex items-center justify-between mb-2">
+                <p class="text-xs text-muted uppercase">Revenue per Head</p>
+                <UBadge variant="subtle" color="neutral" size="xs">All time</UBadge>
+              </div>
+              <div class="flex items-baseline gap-2">
+                <p class="text-lg font-semibold">{{ formatCurrency(revenuePerEmployee) }}</p>
+                <span v-if="teamSize > 0" class="flex items-center gap-1">
+                  <span :class="['inline-block size-2 rounded-full', benchmarkDotColor[revenuePerHeadBenchmark(revenuePerEmployee).level]]" />
+                  <span class="text-[10px] text-muted">{{ revenuePerHeadBenchmark(revenuePerEmployee).label }}</span>
+                </span>
+              </div>
+              <p class="text-xs text-muted mt-1">{{ teamSize }} team member{{ teamSize !== 1 ? 's' : '' }}</p>
+            </UCard>
+          </div>
         </div>
 
+        <!-- Revenue concentration -->
+        <UCard :ui="{ body: '!p-6 space-y-4' }">
+          <header class="flex items-center justify-between">
+            <div>
+              <p class="text-xs uppercase text-muted">Revenue Concentration</p>
+              <h3 class="text-lg font-semibold">
+                {{ concentrationSource === 'client' ? 'Top 5 Clients by Commission' : 'Top 5 Revenue Categories' }}
+              </h3>
+            </div>
+            <div v-if="concentrationItems.length" class="flex items-center gap-2">
+              <UBadge
+                :color="concentrationRisk.level === 'green' ? 'success' : concentrationRisk.level === 'yellow' ? 'warning' : 'error'"
+                variant="subtle"
+              >
+                {{ concentrationRisk.label }}
+              </UBadge>
+              <span class="text-xs text-muted">
+                {{ formatCurrency(concentrationTotal) }} total
+              </span>
+            </div>
+          </header>
+
+          <div v-if="profitLoading && !concentrationItems.length" class="space-y-3">
+            <USkeleton v-for="n in 3" :key="`conc-${n}`" class="h-10" />
+          </div>
+          <div v-else-if="concentrationItems.length" class="space-y-3">
+            <div v-for="item in concentrationItems" :key="item.label" class="space-y-1">
+              <div class="flex items-center justify-between text-sm">
+                <span class="font-medium truncate max-w-[240px]">{{ item.label }}</span>
+                <div class="flex items-center gap-2 text-xs text-muted">
+                  <span>{{ formatCurrency(item.value) }}</span>
+                  <span>{{ concentrationTotal > 0 ? ((item.value / concentrationTotal) * 100).toFixed(1) : '0' }}%</span>
+                </div>
+              </div>
+              <div class="h-2 bg-muted/20 rounded-full overflow-hidden">
+                <div
+                  class="h-full bg-primary rounded-full transition-all duration-300"
+                  :style="{ width: concentrationTotal > 0 ? `${(item.value / concentrationTotal) * 100}%` : '0%' }"
+                />
+              </div>
+            </div>
+            <p v-if="concentrationSource === 'category'" class="text-xs text-muted pt-1">
+              Showing revenue categories from P&amp;L. Client-level data will appear when media spend is synced for this period.
+            </p>
+          </div>
+          <p v-else class="text-sm text-muted">
+            No revenue data available for {{ displayLabel }}.
+          </p>
+        </UCard>
+
+        <!-- Trailing performance -->
         <UCard v-if="trailingSummary.periods >= 2" :ui="{ body: '!p-6 space-y-6' }">
           <header class="flex items-center justify-between">
             <div>
@@ -475,7 +849,7 @@ const refreshAll = async () => {
 
             <UCard title="Recent Period Performance" variant="subtle">
               <template v-if="periodRows.length">
-                <UTable :columns="periodColumns" :rows="periodRows" />
+                <UTable :columns="periodColumns" :data="periodRows" />
                 <p class="text-xs text-muted mt-3">
                   Use this to reconcile management reporting. Net profit is shown with signs to highlight months driving cumulative losses.
                 </p>
@@ -492,7 +866,7 @@ const refreshAll = async () => {
             <template v-if="directCostBreakdown.length">
               <UTable
                 :columns="directCostColumns"
-                :rows="directCostBreakdown.map(item => ({
+                :data="directCostBreakdown.map(item => ({
                   name: item.name,
                   month: formatCurrency(item.month),
                   share: formatPercent(item.monthShare),
@@ -512,7 +886,7 @@ const refreshAll = async () => {
             <template v-if="revenueBreakdown.length">
               <UTable
                 :columns="revenueColumns"
-                :rows="revenueBreakdown.map(item => ({
+                :data="revenueBreakdown.map(item => ({
                   name: item.name,
                   month: formatCurrency(item.month),
                   share: formatPercent(item.monthShare),
@@ -529,7 +903,7 @@ const refreshAll = async () => {
             <template v-if="expenseBreakdown.length">
               <UTable
                 :columns="expenseColumns"
-                :rows="expenseBreakdown.map(item => ({
+                :data="expenseBreakdown.map(item => ({
                   name: item.name,
                   month: formatCurrency(item.month),
                   share: formatPercent(item.monthShare),

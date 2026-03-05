@@ -105,7 +105,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
   // XeroFlow (Xero-connected accounting features)
   ...(xeroConnected.value ? [
     { type: 'label' as const, label: 'XeroFlow' },
-    { label: 'Xero Dashboard', icon: 'i-lucide-layout-dashboard', to: '/dashboard', onSelect: close },
+    { label: 'Xero Dashboard', icon: 'i-lucide-layout-dashboard', to: '/xeroflow', onSelect: close },
     { label: 'Customers', icon: 'i-lucide-users', to: '/customers', onSelect: close },
     { label: 'Xero Invoices', icon: 'i-lucide-receipt', to: '/invoices', onSelect: close },
     { label: 'Xero Expenses', icon: 'i-lucide-wallet', to: '/expenses', onSelect: close },
@@ -115,7 +115,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
     { label: 'Insights', icon: 'i-lucide-lightbulb', to: '/insights', onSelect: close },
     { label: 'Anomalies', icon: 'i-lucide-alert-triangle', to: '/anomalies', onSelect: close },
     { label: 'Recommendations', icon: 'i-lucide-clipboard-check', to: '/recommendations', onSelect: close },
-    { label: 'AI Chat', icon: 'i-lucide-message-circle', to: '/chat', onSelect: close },
+    { label: 'Finance AI', icon: 'i-lucide-brain', to: '/agency/ai/finance', onSelect: close },
   ] : []),
 
   // Team

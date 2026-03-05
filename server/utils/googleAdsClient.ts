@@ -261,7 +261,7 @@ export async function listClientAccounts(
 /**
  * Get all campaigns for a customer
  */
-export async function getCampaigns(
+export async function getGoogleCampaigns(
   customerId: string,
   token: string,
   developerToken: string

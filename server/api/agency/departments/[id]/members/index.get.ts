@@ -28,8 +28,7 @@ export default defineEventHandler(async (event) => {
       SELECT
         dm.id as membership_id,
         dm.role as department_role,
-        dm.is_primary,
-        dm.created_at as joined_at,
+        dm.joined_at,
         tm.id,
         tm.name,
         tm.email,
@@ -41,7 +40,7 @@ export default defineEventHandler(async (event) => {
         COALESCE(stats.overdue_task_count, 0) as overdue_task_count,
         COALESCE(stats.estimated_hours, 0) as estimated_hours
       FROM department_members dm
-      JOIN team_members tm ON dm.team_member_id = tm.id
+      JOIN team_members tm ON dm.user_id = tm.id
       LEFT JOIN (
         SELECT
           t.assignee_id,
@@ -54,13 +53,12 @@ export default defineEventHandler(async (event) => {
         GROUP BY t.assignee_id
       ) stats ON tm.id = stats.assignee_id
       WHERE dm.department_id = $1
-      ORDER BY dm.is_primary DESC, tm.name
+      ORDER BY tm.name
     `, [id])
 
     return members.map(m => ({
       membershipId: m.membership_id,
       departmentRole: m.department_role,
-      isPrimary: m.is_primary,
       joinedAt: m.joined_at,
       id: m.id,
       name: m.name,

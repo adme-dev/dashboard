@@ -58,6 +58,7 @@ const ALL_WIDGETS: WidgetDefinition[] = [
   { id: 'revenue-snapshot', title: 'Revenue Snapshot', icon: 'i-lucide-trending-up', description: 'Revenue, expenses, profit & margin', defaultRoles: ['admin', 'owner', 'consultant'], column: 'left' },
   { id: 'receivables-aging', title: 'Receivables Aging', icon: 'i-lucide-hourglass', description: 'Outstanding invoices by age', defaultRoles: ['admin', 'owner', 'consultant'], column: 'right' },
   { id: 'project-profitability', title: 'Project Profitability', icon: 'i-lucide-calculator', description: 'Project margins and revenue breakdown', defaultRoles: ['admin', 'owner', 'consultant'], column: 'left' },
+  { id: 'overhead-burn', title: 'Overheads', icon: 'i-lucide-building', description: 'Fixed costs, subscriptions, and overhead ratio', defaultRoles: ['admin', 'owner', 'consultant'], column: 'right' },
   // --- Creative gallery ---
   { id: 'recent-creatives', title: 'Recent Creatives', icon: 'i-lucide-image', description: 'Visual assets from proofs and deliverables', defaultRoles: ['admin', 'owner', 'project_manager', 'member'], column: 'right' },
   // --- AI ---
@@ -70,7 +71,7 @@ const ROLE_DEFAULTS: Record<string, string[]> = {
   project_manager: ['my-work', 'notifications', 'completion-trends', 'workload-overview', 'boards', 'team-utilization', 'budget-alerts', 'team-capacity', 'unassigned-work', 'blocked-tasks', 'deliverables-due', 'briefs-pipeline', 'proofs-pending', 'recent-creatives'],
   admin: ALL_WIDGETS.map(w => w.id),
   owner: ALL_WIDGETS.map(w => w.id),
-  consultant: ['financial-kpis', 'budget-alerts', 'boards', 'notifications', 'cash-position', 'revenue-snapshot', 'receivables-aging', 'project-profitability'],
+  consultant: ['financial-kpis', 'budget-alerts', 'boards', 'notifications', 'cash-position', 'revenue-snapshot', 'receivables-aging', 'project-profitability', 'overhead-burn'],
   sales: ['my-work', 'notifications', 'boards', 'quick-actions', 'client-health', 'my-clients', 'briefs-pipeline'],
   marketing: ['my-work', 'notifications', 'boards', 'quick-actions', 'analytics-overview', 'ad-spend', 'budget-alerts', 'spend-pacing', 'campaign-alerts', 'platform-performance'],
 }
@@ -222,7 +223,7 @@ export function useDashboardWidgets() {
       { label: 'Account Management', ids: ['client-health', 'proofs-pending', 'briefs-pipeline', 'my-clients'] },
       { label: 'Media Buying', ids: ['analytics-overview', 'ad-spend', 'spend-pacing', 'campaign-alerts', 'platform-performance', 'budget-alerts'] },
       { label: 'Production', ids: ['team-capacity', 'unassigned-work', 'blocked-tasks', 'deliverables-due'] },
-      { label: 'Finance', ids: ['cash-position', 'revenue-snapshot', 'receivables-aging', 'project-profitability'] },
+      { label: 'Finance', ids: ['cash-position', 'revenue-snapshot', 'receivables-aging', 'project-profitability', 'overhead-burn'] },
       { label: 'Creative & AI', ids: ['recent-creatives', 'ai-insights', 'ai-training'] },
     ]
     return categories

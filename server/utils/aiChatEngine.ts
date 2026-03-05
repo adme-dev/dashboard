@@ -81,7 +81,39 @@ Help them be productive. Only share information relevant to their work.`
   if (intent) {
     switch (intent) {
       case 'financial_query':
-        formatGuidance = `\n\n## Formatting\nFor financial data, use tables or structured lists with dollar amounts. Highlight key numbers in **bold**.`
+        formatGuidance = `\n\n## Formatting\nFor financial data:
+- Use AUD formatting (e.g. **$12,500**). Highlight key numbers in **bold**.
+- Use tables or structured lists with dollar amounts.
+- When comparing periods, show both absolute change and percentage (e.g. "+$5,200 (+12.3%)").
+- For client financials, always mention payment patterns and outstanding amounts.
+- For cash position, always mention the risk level.
+- Reference invoice numbers with INV- prefix when available.
+
+## Charts
+When presenting breakdowns, comparisons, or trends, include a chart block. The block MUST be valid JSON — no dollar signs, no commas in numbers, no formatting. Only raw numbers.
+
+CORRECT example:
+\`\`\`chart
+{"type":"bar","title":"Expense Categories","data":[{"label":"Advertising","value":42500},{"label":"Software","value":18200},{"label":"Rent","value":12000}]}
+\`\`\`
+
+WRONG — these will break the chart:
+- {"value":$42,500} — NO dollar signs or commas in numbers
+- {"value":"42500"} — NO strings for numeric values
+- {"value":0} when real data exists — use actual numbers from the context
+
+RULES for chart data:
+1. Values MUST be plain numbers: 42500 not $42,500 not "42500"
+2. Every data item MUST have real values from the financial context provided — never use 0 as a placeholder
+3. Include at least 3 data items for bar/donut charts when data is available
+4. If you only have data for one category, do NOT generate a chart — use text instead
+
+Chart types: "bar" (category comparison), "donut" (share/proportion), "line" (trends over time), "stacked-bar" (multi-series comparison).
+- donut/bar: use "label" and "value" keys
+- line: use "label" for x-axis, numeric keys for y-axis (e.g. "revenue", "expenses")
+- stacked-bar: use "label" and multiple numeric keys, add "yKeys" and "labels" arrays
+
+Always include a "title" field. Max 8 items. Charts are IN ADDITION to text, not replacements.`
         break
       case 'task_query':
       case 'project_query':
@@ -422,6 +454,11 @@ export async function processUserMessage(
   // 9. Post-process: auto-link entity references in the response
   if (!isError && contextSources.length > 0) {
     aiContent = autoLinkEntities(aiContent, contextSources)
+  }
+
+  // 9b. Auto-link invoice number patterns (INV-XXXX) — avoid double-linking inside existing markdown links
+  if (!isError) {
+    aiContent = aiContent.replace(/(?<!\[)\b(INV-\d{3,})(?!\*{0,2}\])/g, '[$1](/invoices)')
   }
 
   const latencyMs = Date.now() - startTime

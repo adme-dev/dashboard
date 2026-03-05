@@ -4,10 +4,12 @@
  */
 
 import { queryOne, queryRows } from '~~/server/utils/db'
+import { cachedFetch } from '~~/server/utils/kv'
 
 export default defineEventHandler(async (event) => {
   const currentPeriod = new Date().toISOString().slice(0, 7) // YYYY-MM
 
+  return cachedFetch(event, `agency:kpis:${currentPeriod}`, 60, async () => {
   try {
     // Get financial summary
     const financials = await queryOne(`
@@ -164,4 +166,5 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Failed to fetch KPIs'
     })
   }
+  })
 })

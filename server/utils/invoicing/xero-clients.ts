@@ -13,6 +13,7 @@ import { createXeroClient } from '../xeroClient'
 import { getActiveTokenForSession } from '../tokenStore'
 import { getSelectedTenant } from '../session'
 import { queryRows } from '../db'
+import { dedupedXeroCall } from '../xeroRateLimit'
 
 export interface XeroContact {
   name: string       // exact Xero contact name
@@ -85,14 +86,18 @@ export async function fetchXeroContacts(event: H3Event): Promise<XeroContact[]> 
   const maxPages = 10
 
   while (page <= maxPages) {
-    const response = await (client.accountingApi.getContacts as any)(
-      tenantId,
-      undefined,                          // ifModifiedSince
-      'ContactStatus=="ACTIVE"&&IsCustomer==true',  // WHERE
-      'Name ASC',                         // order
-      undefined,                          // IDs
-      page,                               // page (1-based)
-      false                               // includeArchived
+    const response = await dedupedXeroCall(
+      `xero-clients:${tenantId}:p${page}`,
+      'xero-clients',
+      () => (client.accountingApi.getContacts as any)(
+        tenantId,
+        undefined,                          // ifModifiedSince
+        'ContactStatus=="ACTIVE"&&IsCustomer==true',  // WHERE
+        'Name ASC',                         // order
+        undefined,                          // IDs
+        page,                               // page (1-based)
+        false                               // includeArchived
+      )
     )
 
     const batch = response?.body?.contacts || []

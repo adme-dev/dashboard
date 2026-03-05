@@ -75,7 +75,7 @@ onMounted(async () => {
   if (!['admin', 'owner'].includes(userData.role)) {
     // Not an admin, redirect to appropriate home
     if (['consultant'].includes(userData.role)) {
-      router.push('/dashboard')
+      router.push('/xeroflow')
     } else {
       router.push('/agency')
     }

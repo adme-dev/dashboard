@@ -1,12 +1,13 @@
 /**
  * Xero Contacts API Endpoint
- * Fetches contacts (customers) directly from Xero
+ * Fetches contacts (customers) directly from Xero — all pages
  */
 
 import { createError } from 'h3'
 import { createXeroClient } from '../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../utils/tokenStore'
 import { getSelectedTenant } from '../../utils/session'
+import { cachedFetch } from '~~/server/utils/kv'
 
 export interface XeroContact {
   contactID: string
@@ -98,69 +99,83 @@ export default defineEventHandler(async (event) => {
   const client = await createXeroClient({ tokenSet: token, event })
 
   try {
-    // Fetch all contacts from Xero
-    // Parameters: tenantId, ifModifiedSince, where, order, iDs, page, includeArchived
-    const response = await (client.accountingApi.getContacts as any)(
-      tenantId,
-      undefined, // ifModifiedSince
-      'ContactStatus=="ACTIVE"', // where - only active contacts
-      'Name ASC', // order
-      undefined, // iDs
-      1, // page
-      false // includeArchived
-    )
+    return await cachedFetch(event, `xero:contacts:${tenantId}`, 300, async () => {
+      // Fetch all pages of active contacts from Xero (100 per page)
+      const allContacts: XeroContact[] = []
+      let page = 1
+      const MAX_PAGES = 10 // Safety cap: 1000 contacts max
 
-    const contacts: XeroContact[] = response?.body?.contacts || []
+      while (page <= MAX_PAGES) {
+        const response = await (client.accountingApi.getContacts as any)(
+          tenantId,
+          undefined, // ifModifiedSince
+          'ContactStatus=="ACTIVE"', // where - only active contacts
+          'Name ASC', // order
+          undefined, // iDs
+          page, // page
+          false // includeArchived
+        )
 
-    // Transform to a cleaner format
-    const formattedContacts = contacts.map((contact: XeroContact) => {
-      const primaryAddress = contact.addresses?.find((a: any) => a.addressType === 'STREET') || contact.addresses?.[0]
-      const primaryPhone = contact.phones?.find((p: any) => p.phoneType === 'DEFAULT') || contact.phones?.[0]
-      const primaryPerson = contact.contactPersons?.find((p: any) => p.includeInEmails) || contact.contactPersons?.[0]
+        const pageContacts: XeroContact[] = response?.body?.contacts || []
+        allContacts.push(...pageContacts)
+
+        // Xero returns up to 100 per page — if fewer, we've reached the last page
+        if (pageContacts.length < 100) break
+        page++
+      }
+
+      const contacts = allContacts
+
+      // Transform to a cleaner format
+      const formattedContacts = contacts.map((contact: XeroContact) => {
+        const primaryAddress = contact.addresses?.find((a: any) => a.addressType === 'STREET') || contact.addresses?.[0]
+        const primaryPhone = contact.phones?.find((p: any) => p.phoneType === 'DEFAULT') || contact.phones?.[0]
+        const primaryPerson = contact.contactPersons?.find((p: any) => p.includeInEmails) || contact.contactPersons?.[0]
+
+        return {
+          id: contact.contactID,
+          contactNumber: contact.contactNumber,
+          accountNumber: contact.accountNumber,
+          name: contact.name,
+          firstName: contact.firstName,
+          lastName: contact.lastName,
+          email: contact.emailAddress || primaryPerson?.emailAddress,
+          phone: primaryPhone ? `${primaryPhone.phoneCountryCode || ''} ${primaryPhone.phoneAreaCode || ''} ${primaryPhone.phoneNumber || ''}`.trim() : undefined,
+          isCustomer: contact.isCustomer,
+          isSupplier: contact.isSupplier,
+          status: contact.contactStatus,
+          defaultCurrency: contact.defaultCurrency,
+          website: contact.website,
+          taxNumber: contact.taxNumber,
+          address: primaryAddress ? {
+            line1: primaryAddress.addressLine1,
+            line2: primaryAddress.addressLine2,
+            city: primaryAddress.city,
+            region: primaryAddress.region,
+            postalCode: primaryAddress.postalCode,
+            country: primaryAddress.country
+          } : undefined,
+          balances: contact.balances ? {
+            receivableOutstanding: contact.balances.accountsReceivable?.outstanding,
+            receivableOverdue: contact.balances.accountsReceivable?.overdue,
+            payableOutstanding: contact.balances.accountsPayable?.outstanding,
+            payableOverdue: contact.balances.accountsPayable?.overdue
+          } : undefined,
+          paymentTerms: contact.paymentTerms?.sales ? {
+            days: contact.paymentTerms.sales.day,
+            type: contact.paymentTerms.sales.type
+          } : undefined,
+          updatedAt: contact.updatedDateUTC
+        }
+      })
 
       return {
-        id: contact.contactID,
-        contactNumber: contact.contactNumber,
-        accountNumber: contact.accountNumber,
-        name: contact.name,
-        firstName: contact.firstName,
-        lastName: contact.lastName,
-        email: contact.emailAddress || primaryPerson?.emailAddress,
-        phone: primaryPhone ? `${primaryPhone.phoneCountryCode || ''} ${primaryPhone.phoneAreaCode || ''} ${primaryPhone.phoneNumber || ''}`.trim() : undefined,
-        isCustomer: contact.isCustomer,
-        isSupplier: contact.isSupplier,
-        status: contact.contactStatus,
-        defaultCurrency: contact.defaultCurrency,
-        website: contact.website,
-        taxNumber: contact.taxNumber,
-        address: primaryAddress ? {
-          line1: primaryAddress.addressLine1,
-          line2: primaryAddress.addressLine2,
-          city: primaryAddress.city,
-          region: primaryAddress.region,
-          postalCode: primaryAddress.postalCode,
-          country: primaryAddress.country
-        } : undefined,
-        balances: contact.balances ? {
-          receivableOutstanding: contact.balances.accountsReceivable?.outstanding,
-          receivableOverdue: contact.balances.accountsReceivable?.overdue,
-          payableOutstanding: contact.balances.accountsPayable?.outstanding,
-          payableOverdue: contact.balances.accountsPayable?.overdue
-        } : undefined,
-        paymentTerms: contact.paymentTerms?.sales ? {
-          days: contact.paymentTerms.sales.day,
-          type: contact.paymentTerms.sales.type
-        } : undefined,
-        updatedAt: contact.updatedDateUTC
+        contacts: formattedContacts,
+        count: formattedContacts.length,
+        customerCount: formattedContacts.filter((c: any) => c.isCustomer).length,
+        supplierCount: formattedContacts.filter((c: any) => c.isSupplier).length
       }
     })
-
-    return {
-      contacts: formattedContacts,
-      count: formattedContacts.length,
-      customerCount: formattedContacts.filter((c: any) => c.isCustomer).length,
-      supplierCount: formattedContacts.filter((c: any) => c.isSupplier).length
-    }
   } catch (error: any) {
     console.error('Xero contacts fetch error:', error)
     throw createError({

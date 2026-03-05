@@ -1,0 +1,58 @@
+<div style="
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #0f1012;
+  z-index: 99999;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+">
+  <!-- XF Icon -->
+  <div style="
+    width: 56px;
+    height: 56px;
+    background: #fff;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 24px;
+    animation: xf-pulse 2s ease-in-out infinite;
+  ">
+    <span style="
+      color: #121317;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    ">XF</span>
+  </div>
+
+  <!-- Spinner dots -->
+  <div style="display: flex; gap: 6px;">
+    <div style="
+      width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.3);
+      animation: xf-dot 1.2s ease-in-out infinite;
+    "></div>
+    <div style="
+      width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.3);
+      animation: xf-dot 1.2s ease-in-out 0.2s infinite;
+    "></div>
+    <div style="
+      width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.3);
+      animation: xf-dot 1.2s ease-in-out 0.4s infinite;
+    "></div>
+  </div>
+</div>
+
+<style>
+  @keyframes xf-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.05); opacity: 0.85; }
+  }
+  @keyframes xf-dot {
+    0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+    40% { opacity: 1; transform: scale(1); }
+  }
+</style>

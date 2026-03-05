@@ -7,7 +7,7 @@ import { queryOne, queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
   const proofId = getRouterParam(event, 'id')
 
   if (!proofId) {
@@ -104,17 +104,21 @@ export default defineEventHandler(async (event) => {
         (SELECT COUNT(*) FROM proof_comments WHERE proof_id = cp.id) AS comment_count
       FROM creative_proofs cp
       LEFT JOIN team_members tm ON cp.created_by = tm.id
-      WHERE cp.id = $1 OR cp.parent_proof_id = $1
-         OR cp.parent_proof_id = (SELECT parent_proof_id FROM creative_proofs WHERE id = $1)
+      WHERE cp.id = $1
+         OR cp.parent_proof_id = $1
+         OR (cp.parent_proof_id = (SELECT parent_proof_id FROM creative_proofs WHERE id = $1)
+             AND (SELECT parent_proof_id FROM creative_proofs WHERE id = $1) IS NOT NULL)
       ORDER BY cp.version DESC
     `, [proofId])
 
-    // Update view count
-    await queryOne(`
-      UPDATE creative_proofs
-      SET view_count = view_count + 1, last_viewed_at = NOW()
-      WHERE id = $1
-    `, [proofId])
+    // Update view count (skip for the proof creator)
+    if (proof.created_by !== user.id) {
+      await queryOne(`
+        UPDATE creative_proofs
+        SET view_count = view_count + 1, last_viewed_at = NOW()
+        WHERE id = $1
+      `, [proofId])
+    }
 
     return {
       proof: {

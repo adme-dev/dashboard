@@ -8,6 +8,7 @@
 
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { cachedFetch } from '~~/server/utils/kv'
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
@@ -26,6 +27,7 @@ export default defineEventHandler(async (event) => {
     commissionDistribution: []
   }
 
+  return cachedFetch(event, `agency:profitability:${period}:${clientId || 'all'}`, 120, async () => {
   try {
     // Build filters
     const conditions = ['ms.period = $1']
@@ -159,4 +161,5 @@ export default defineEventHandler(async (event) => {
     console.error('Failed to fetch profitability report:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to fetch profitability report' })
   }
+  })
 })

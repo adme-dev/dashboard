@@ -2,6 +2,8 @@ import { createError } from 'h3'
 import { createXeroClient } from '../../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
+import { cachedFetch } from '~~/server/utils/kv'
+import { dedupedXeroCall } from '~~/server/utils/xeroRateLimit'
 
 function ensureDateString(d: Date) {
   return d.toISOString().slice(0, 10)
@@ -29,6 +31,8 @@ export default eventHandler(async (event) => {
 
   const query = getQuery(event)
   const reportType = String(query.type || 'receivables') // 'receivables' or 'payables'
+
+  return cachedFetch(event, `xero:aging:${tenantId}:${reportType}`, 300, async () => {
   const today = new Date()
 
   const client = await createXeroClient({ tokenSet: token, event })
@@ -37,21 +41,28 @@ export default eventHandler(async (event) => {
   const invoiceType = reportType === 'receivables' ? 'ACCREC' : 'ACCPAY'
   const statusFilter = 'AUTHORISED'
 
-  // Fetch outstanding invoices
-  const { body: invoicesResponse } = await (client.accountingApi.getInvoices as any)(
-    tenantId,
-    undefined,
-    `Type=="${invoiceType}"&&Status=="${statusFilter}"`,
-    'DueDate ASC',
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    1,
-    undefined,
-    undefined,
-    undefined,
-    500
+  // Fetch outstanding invoices with rate limiting
+  const invoicesResponse = await dedupedXeroCall(
+    `aging-${invoiceType}:${tenantId}`,
+    `aging-${reportType}`,
+    async () => {
+      const { body } = await (client.accountingApi.getInvoices as any)(
+        tenantId,
+        undefined,
+        `Type=="${invoiceType}"&&Status=="${statusFilter}"`,
+        'DueDate ASC',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        1,
+        undefined,
+        undefined,
+        undefined,
+        500
+      )
+      return body
+    }
   )
 
   const invoices = invoicesResponse?.invoices || []
@@ -144,4 +155,5 @@ export default eventHandler(async (event) => {
       monthOverMonth: null
     }
   }
+  })
 })

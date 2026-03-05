@@ -2,6 +2,8 @@ import { createError } from 'h3'
 import { createXeroClient } from '../../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
+import { cachedFetch } from '~~/server/utils/kv'
+import { dedupedXeroCall } from '~~/server/utils/xeroRateLimit'
 
 function ensureDateString(d: Date) {
   return d.toISOString().slice(0, 10)
@@ -55,13 +57,23 @@ export default eventHandler(async (event) => {
   const monthStart = getMonthStart(new Date(targetYear, targetMonth))
   const monthEnd = getMonthEnd(new Date(targetYear, targetMonth))
 
+  const cacheKey = `xero-report:${tenantId}:budget-variance:${targetMonth}:${targetYear}`
+
+  return cachedFetch(event, cacheKey, 600, async () => {
   const client = await createXeroClient({ tokenSet: token, event })
 
   // Get chart of accounts for proper category names
   let accountsMap = new Map<string, string>()
   try {
-    const { body } = await client.accountingApi.getAccounts(tenantId)
-    const accounts = body?.accounts || []
+    const acctBody = await dedupedXeroCall(
+      `budget-accounts:${tenantId}`,
+      'budget-accounts',
+      async () => {
+        const { body } = await client.accountingApi.getAccounts(tenantId)
+        return body
+      }
+    )
+    const accounts = acctBody?.accounts || []
     for (const account of accounts) {
       if (account.accountID && account.name) {
         accountsMap.set(account.accountID, account.name)
@@ -79,20 +91,27 @@ export default eventHandler(async (event) => {
     const results: any[] = []
     let page = 1
     for (;;) {
-      const { body } = await (client.accountingApi.getInvoices as any)(
-        tenantId,
-        undefined,
-        whereExpr,
-        'Date DESC',
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        page,
-        undefined,
-        undefined,
-        undefined,
-        100
+      const body = await dedupedXeroCall(
+        `budget-inv:${tenantId}:p${page}`,
+        'budget-inv',
+        async () => {
+          const { body } = await (client.accountingApi.getInvoices as any)(
+            tenantId,
+            undefined,
+            whereExpr,
+            'Date DESC',
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            page,
+            undefined,
+            undefined,
+            undefined,
+            100
+          )
+          return body
+        }
       )
       const list = body?.invoices || []
       if (!list.length) break
@@ -217,4 +236,5 @@ export default eventHandler(async (event) => {
       }] : [])
     ]
   }
+  }) // end cachedFetch
 })

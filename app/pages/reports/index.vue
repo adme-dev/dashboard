@@ -1,231 +1,869 @@
 <script setup lang="ts">
+import { CalendarDate, today, getLocalTimeZone } from '@internationalized/date'
+
 definePageMeta({ layout: 'agency' })
 
-const { data: pnl, pending: pnlPending, error: pnlError } = await useFetch('/api/xero/reports/pnl')
-const { data: bs, pending: bsPending, error: bsError } = await useFetch('/api/xero/reports/balance-sheet')
+// ── Types ──
+type SummaryMetric = { month: number; previousMonth: number; ytd: number }
 
-const pnlData = computed(() => pnl.value ?? null)
-
-const latestPeriod = computed(() => {
-  const periods = pnlData.value?.periods ?? []
-  return periods[periods.length - 1]
-})
-
-const previousPeriod = computed(() => {
-  const periods = pnlData.value?.periods ?? []
-  return periods.length > 1 ? periods[periods.length - 2] : undefined
-})
-
-const netProfitChange = computed(() => {
-  if (!latestPeriod.value || !previousPeriod.value) return null
-  return latestPeriod.value.netProfit - previousPeriod.value.netProfit
-})
-
-const profitMarginChange = computed(() => {
-  if (!latestPeriod.value || !previousPeriod.value) return null
-  return (latestPeriod.value.profitMargin - previousPeriod.value.profitMargin) * 100
-})
-
-function formatCurrency(value?: number) {
-  if (typeof value !== 'number' || Number.isNaN(value)) return '-'
-  return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+type PnlReport = {
+  meta: { basis: string; monthLabel: string; ytdLabel: string; periodLabels: string[] }
+  summary: {
+    revenue: SummaryMetric
+    costOfSales: SummaryMetric
+    grossProfit: SummaryMetric
+    operatingExpenses: SummaryMetric
+    netProfit: SummaryMetric
+    netMargin: SummaryMetric
+  }
+  trend: { labels: string[]; revenue: number[]; expenses: number[]; netProfit: number[] }
+  breakdown: {
+    revenue: Array<{ name: string; month: number; ytd: number; monthShare: number }>
+    directCosts: Array<{ name: string; month: number; ytd: number; monthShare: number }>
+    expenses: Array<{ name: string; month: number; ytd: number; monthShare: number }>
+  }
+  insights: string[]
 }
 
-function formatPercent(value?: number) {
+type BalanceSheet = {
+  date: string
+  totalAssets: number
+  totalLiabilities: number
+  totalEquity: number
+  workingCapital: number
+  debtToEquity: number
+  equityRatio: number
+}
+
+type AgingBucket = { bucket: string; amount: number; count: number; percentage: number }
+type AgingContact = { name: string; amount: number; count: number; oldestDays: number }
+type AgingReport = {
+  reportType: string
+  totalOutstanding: number
+  totalInvoices: number
+  averageDaysPastDue: number
+  criticalCount: number
+  criticalAmount: number
+  agingSummary: AgingBucket[]
+  topContacts: AgingContact[]
+}
+
+type BudgetCategory = {
+  category: string
+  budgeted: number
+  actual: number
+  variance: number
+  variancePercent: number
+  status: string
+}
+type BudgetReport = {
+  period: { monthName: string; year: number; isCurrentMonth: boolean; daysPassed: number; daysRemaining: number }
+  summary: {
+    totalBudget: number
+    totalActual: number
+    totalVariance: number
+    totalVariancePercent: number
+    projectedMonthEnd: number
+    overBudgetCount: number
+    underBudgetCount: number
+  }
+  categoryAnalysis: BudgetCategory[]
+  alerts: Array<{ type: string; category: string; message: string; severity: string }>
+}
+
+type PipelineReport = {
+  summary: {
+    totalInvoices: number
+    totalValue: number
+    paidValue: number
+    outstandingValue: number
+    paidRate: number
+    overdueRate: number
+    averageCollectionTime: number
+    riskLevel: string
+  }
+  stages: Record<string, { name: string; count: number; value: number; percentage: number; averageDaysInStage: number; color: string }>
+  bottlenecks: Array<{ stage: string; issue: string }>
+  recommendations: string[]
+}
+
+// ── Period selector state ──
+const route = useRoute()
+const router = useRouter()
+const tz = getLocalTimeZone()
+const nowCal = today(tz)
+
+const now = new Date()
+const defaultMonth = now.getMonth() + 1
+const defaultYear = now.getFullYear()
+
+const qMonth = Number(route.query.month)
+const qYear = Number(route.query.year)
+const selectedMonth = ref(qMonth >= 1 && qMonth <= 12 ? qMonth : defaultMonth)
+const selectedYear = ref(qYear >= 2000 && qYear <= 2100 ? qYear : defaultYear)
+const popoverOpen = ref(false)
+
+watch([selectedMonth, selectedYear], () => {
+  const query: Record<string, string> = {}
+  const isDefault = selectedMonth.value === defaultMonth && selectedYear.value === defaultYear
+  if (!isDefault) {
+    query.month = String(selectedMonth.value)
+    query.year = String(selectedYear.value)
+  }
+  router.replace({ query })
+}, { flush: 'post' })
+
+const toDate = computed(() => {
+  const d = new Date(selectedYear.value, selectedMonth.value, 0)
+  return d.toISOString().slice(0, 10)
+})
+
+function monthName(m: number, y: number) {
+  return new Date(y, m - 1, 1).toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })
+}
+
+const displayLabel = computed(() => monthName(selectedMonth.value, selectedYear.value))
+
+const calendarValue = computed({
+  get: () => new CalendarDate(selectedYear.value, selectedMonth.value, 1),
+  set: (val: CalendarDate) => {
+    selectedMonth.value = val.month
+    selectedYear.value = val.year
+    popoverOpen.value = false
+  }
+})
+
+const shortcuts = computed(() => {
+  const m = nowCal.month
+  const y = nowCal.year
+  const prev = m === 1 ? { month: 12, year: y - 1 } : { month: m - 1, year: y }
+  const prev2 = prev.month === 1 ? { month: 12, year: prev.year - 1 } : { month: prev.month - 1, year: prev.year }
+  return [
+    { label: 'This Month', month: m, year: y },
+    { label: 'Last Month', month: prev.month, year: prev.year },
+    { label: monthName(prev2.month, prev2.year), month: prev2.month, year: prev2.year },
+  ]
+})
+
+function selectShortcut(s: { month: number; year: number }) {
+  selectedMonth.value = s.month
+  selectedYear.value = s.year
+  popoverOpen.value = false
+}
+
+function isActiveShortcut(s: { month: number; year: number }) {
+  return s.month === selectedMonth.value && s.year === selectedYear.value
+}
+
+function prevMonth() {
+  if (selectedMonth.value === 1) { selectedMonth.value = 12; selectedYear.value-- }
+  else { selectedMonth.value-- }
+}
+
+function nextMonth() {
+  if (selectedMonth.value === 12) { selectedMonth.value = 1; selectedYear.value++ }
+  else { selectedMonth.value++ }
+}
+
+const isCurrentMonth = computed(() =>
+  selectedMonth.value === nowCal.month && selectedYear.value === nowCal.year
+)
+
+// ── Data fetches ──
+const { data: pnl, pending: pnlPending, refresh: refreshPnl } = await useFetch<PnlReport>(
+  '/api/xero/reports/pnl-detailed',
+  { query: computed(() => ({ toDate: toDate.value })) }
+)
+
+const { data: balanceSheet, pending: bsPending, refresh: refreshBs } = await useFetch<BalanceSheet>(
+  '/api/xero/reports/balance-sheet',
+  { query: computed(() => ({ toDate: toDate.value })) }
+)
+
+const { data: aging, pending: agingPending, refresh: refreshAging } = await useFetch<AgingReport>(
+  '/api/xero/reports/aging',
+  { lazy: true, server: false }
+)
+
+const { data: agingPayables, pending: agingPayPending } = await useFetch<AgingReport>(
+  '/api/xero/reports/aging',
+  { query: { type: 'payables' }, lazy: true, server: false }
+)
+
+const { data: budget, pending: budgetPending, refresh: refreshBudget } = await useFetch<BudgetReport>(
+  '/api/xero/reports/budget-variance',
+  { query: computed(() => ({ month: selectedMonth.value, year: selectedYear.value })), lazy: true, server: false }
+)
+
+const { data: pipeline, pending: pipelinePending, refresh: refreshPipeline } = await useFetch<PipelineReport>(
+  '/api/xero/invoice-pipeline',
+  { lazy: true, server: false }
+)
+
+const { data: bankSummary, pending: bankPending } = await useFetch<{ totalBalance: number }>(
+  '/api/xero/reports/bank-summary',
+  { lazy: true, server: false }
+)
+
+const loading = computed(() => pnlPending.value && bsPending.value)
+
+async function refreshAll() {
+  await Promise.all([refreshPnl(), refreshBs(), refreshAging(), refreshBudget(), refreshPipeline()])
+}
+
+// ── Formatters ──
+function fmt(value?: number | null) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '-'
+  return value.toLocaleString('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
+}
+
+function fmtPct(value?: number | null) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '-'
+  return `${(value * 100).toFixed(1)}%`
+}
+
+function fmtPctRaw(value?: number | null) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '-'
   return `${value.toFixed(1)}%`
 }
 
-function trendBadgeColor(value: number | null) {
-  if (value === null) return 'neutral'
-  if (value > 0) return 'success'
-  if (value < 0) return 'error'
-  return 'neutral'
-}
-
-function formatMultiple(value?: number) {
+function fmtMultiple(value?: number | null) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '-'
   return `${value.toFixed(2)}x`
 }
+
+function fmtDelta(current: number, previous: number): { label: string; sign: 'positive' | 'negative' | 'neutral' } {
+  if (previous === 0) {
+    if (current === 0) return { label: 'No change', sign: 'neutral' }
+    return { label: current > 0 ? 'New' : 'Loss', sign: current > 0 ? 'positive' : 'negative' }
+  }
+  const delta = current - previous
+  const ratio = delta / Math.abs(previous)
+  return {
+    label: `${delta >= 0 ? '+' : ''}${(ratio * 100).toFixed(1)}% MoM`,
+    sign: delta > 0 ? 'positive' : delta < 0 ? 'negative' : 'neutral'
+  }
+}
+
+// ── Computed metrics ──
+const summary = computed(() => pnl.value?.summary ?? null)
+const monthLabel = computed(() => pnl.value?.meta.monthLabel ?? displayLabel.value)
+
+// Scorecard
+const scorecard = computed(() => {
+  const s = summary.value
+  if (!s) return []
+
+  const cashPosition = bankSummary.value?.totalBalance ?? 0
+  const grossMargin = s.revenue.month !== 0 ? s.grossProfit.month / s.revenue.month : 0
+  const netMargin = s.netMargin.month
+
+  return [
+    {
+      label: 'Cash Position',
+      value: fmt(cashPosition),
+      icon: 'i-lucide-wallet',
+      color: 'text-blue-500',
+      sub: 'Bank accounts total'
+    },
+    {
+      label: 'Monthly Revenue',
+      value: fmt(s.revenue.month),
+      icon: 'i-lucide-trending-up',
+      color: 'text-emerald-500',
+      delta: fmtDelta(s.revenue.month, s.revenue.previousMonth),
+      sub: `YTD ${fmt(s.revenue.ytd)}`
+    },
+    {
+      label: 'Gross Profit',
+      value: fmt(s.grossProfit.month),
+      icon: 'i-lucide-bar-chart-3',
+      color: 'text-violet-500',
+      delta: fmtDelta(s.grossProfit.month, s.grossProfit.previousMonth),
+      sub: `Margin ${fmtPct(grossMargin)}`
+    },
+    {
+      label: 'Net Profit',
+      value: fmt(s.netProfit.month),
+      icon: 'i-lucide-target',
+      color: s.netProfit.month >= 0 ? 'text-emerald-500' : 'text-red-500',
+      delta: fmtDelta(s.netProfit.month, s.netProfit.previousMonth),
+      sub: `Margin ${fmtPct(netMargin)}`
+    },
+    {
+      label: 'Receivables',
+      value: fmt(aging.value?.totalOutstanding),
+      icon: 'i-lucide-receipt',
+      color: 'text-amber-500',
+      sub: `${aging.value?.totalInvoices ?? 0} invoices outstanding`
+    },
+    {
+      label: 'Overdue',
+      value: fmt(aging.value?.criticalAmount),
+      icon: 'i-lucide-alert-triangle',
+      color: (aging.value?.criticalCount ?? 0) > 0 ? 'text-red-500' : 'text-green-500',
+      sub: aging.value?.criticalCount ? `${aging.value.criticalCount} invoices 90+ days` : 'None past 90 days'
+    }
+  ]
+})
+
+// Aging buckets (for bar chart)
+const agingBuckets = computed(() => aging.value?.agingSummary ?? [])
+const agingTotal = computed(() => aging.value?.totalOutstanding ?? 0)
+const topDebtors = computed(() => aging.value?.topContacts?.slice(0, 5) ?? [])
+
+// Balance sheet ratios
+type BenchmarkLevel = 'green' | 'yellow' | 'red'
+const bsRatios = computed(() => {
+  const bs = balanceSheet.value
+  if (!bs) return []
+  return [
+    {
+      label: 'Working Capital',
+      value: fmt(bs.workingCapital),
+      benchmark: bs.workingCapital > 0
+        ? { level: 'green' as BenchmarkLevel, label: 'Positive' }
+        : { level: 'red' as BenchmarkLevel, label: 'Negative' }
+    },
+    {
+      label: 'Debt-to-Equity',
+      value: fmtMultiple(bs.debtToEquity),
+      benchmark: bs.debtToEquity <= 1.5
+        ? { level: 'green' as BenchmarkLevel, label: 'Conservative' }
+        : bs.debtToEquity <= 3
+          ? { level: 'yellow' as BenchmarkLevel, label: 'Moderate' }
+          : { level: 'red' as BenchmarkLevel, label: 'High leverage' }
+    },
+    {
+      label: 'Equity Ratio',
+      value: fmtPct(bs.equityRatio),
+      benchmark: bs.equityRatio >= 0.5
+        ? { level: 'green' as BenchmarkLevel, label: 'Strong' }
+        : bs.equityRatio >= 0.3
+          ? { level: 'yellow' as BenchmarkLevel, label: 'Average' }
+          : { level: 'red' as BenchmarkLevel, label: 'Low' }
+    }
+  ]
+})
+
+const benchmarkDotColor: Record<BenchmarkLevel, string> = {
+  green: 'bg-green-500',
+  yellow: 'bg-yellow-500',
+  red: 'bg-red-500'
+}
+
+// Budget table
+const budgetColumns = [
+  { accessorKey: 'category', header: 'Category', id: 'bv-cat' },
+  { accessorKey: 'budgeted', header: 'Budget', id: 'bv-budget', class: 'text-right' },
+  { accessorKey: 'actual', header: 'Actual', id: 'bv-actual', class: 'text-right' },
+  { accessorKey: 'variance', header: 'Variance', id: 'bv-var', class: 'text-right' },
+  { accessorKey: 'status', header: 'Status', id: 'bv-status' }
+]
+
+const budgetRows = computed(() =>
+  (budget.value?.categoryAnalysis ?? [])
+    .filter(c => c.actual > 0 || c.budgeted > 0)
+    .map(c => ({
+      category: c.category,
+      budgeted: fmt(c.budgeted),
+      actual: fmt(c.actual),
+      variance: `${c.variance >= 0 ? '+' : ''}${fmt(c.variance)} (${c.variancePercent >= 0 ? '+' : ''}${c.variancePercent.toFixed(1)}%)`,
+      status: c.status
+    }))
+)
+
+// Pipeline metrics
+const pipelineStages = computed(() => {
+  if (!pipeline.value?.stages) return []
+  const order = ['draft', 'submitted', 'authorised', 'overdue', 'paid']
+  return order
+    .filter(key => pipeline.value!.stages[key])
+    .map(key => {
+      const stage = pipeline.value!.stages[key]
+      return { key, ...stage }
+    })
+})
+
+// Aging bar color
+function agingBarColor(bucket: string) {
+  if (bucket === 'current') return 'bg-green-500'
+  if (bucket === '1-30') return 'bg-blue-500'
+  if (bucket === '31-60') return 'bg-yellow-500'
+  if (bucket === '61-90') return 'bg-orange-500'
+  return 'bg-red-500'
+}
+
+function agingBarLabel(bucket: string) {
+  if (bucket === 'current') return 'Current'
+  if (bucket === '90+') return '90+ days'
+  return `${bucket} days`
+}
+
+// Pipeline stage color
+function stageColor(key: string) {
+  const map: Record<string, string> = {
+    draft: 'neutral', submitted: 'info', authorised: 'warning', overdue: 'error', paid: 'success'
+  }
+  return map[key] ?? 'neutral'
+}
+
+// Quick nav links
+const quickLinks = [
+  { label: 'Profit & Loss', description: 'Detailed P&L with breakdowns, benchmarks, and client concentration', icon: 'i-lucide-pie-chart', to: '/profit-loss', color: 'text-violet-500' },
+  { label: 'Cash Flow', description: 'Forecast, scenarios, waterfall, and working capital analysis', icon: 'i-lucide-trending-up', to: '/cashflow', color: 'text-blue-500' },
+  { label: 'Invoices', description: 'Invoice pipeline, aging, and collection tracking', icon: 'i-lucide-receipt', to: '/invoices', color: 'text-emerald-500' },
+  { label: 'Expenses', description: 'Expense tracking and budget management', icon: 'i-lucide-credit-card', to: '/expenses', color: 'text-amber-500' },
+  { label: 'Consolidated P&L', description: 'Aggregated performance across all connected organizations', icon: 'i-lucide-layers', to: '/reports/consolidated', color: 'text-pink-500' },
+  { label: 'Customers', description: 'Client accounts, balances, and payment history', icon: 'i-lucide-users', to: '/customers', color: 'text-cyan-500' },
+]
+
+const breadcrumbs = computed(() => ([
+  { label: 'XeroFlow', to: '/xeroflow' },
+  { label: 'Financial Reports', to: '/reports' }
+]))
 </script>
 
 <template>
-  <UPage>
-    <UPageHeader
-      title="Financial Reports"
-      description="Visualize profit trends and balance sheet health"
-    />
-
-    <UPageGrid class="gap-4 sm:gap-6">
-      <UPageCard title="Profit & Loss Snapshot" variant="subtle">
-        <div v-if="pnlPending" class="space-y-3">
-          <USkeleton class="h-4 w-32" />
-          <USkeleton
-            v-for="n in 3"
-            :key="n"
-            class="h-4 w-full"
+  <UDashboardPanel id="financial-reports">
+    <template #header>
+      <UDashboardNavbar title="Financial Reports" :description="`Agency financial command center — ${displayLabel}`">
+        <template #leading>
+          <UDashboardSidebarCollapse />
+        </template>
+        <template #right>
+          <UButton
+            label="Refresh"
+            color="neutral"
+            icon="i-lucide-refresh-cw"
+            :loading="loading"
+            @click="refreshAll"
           />
-        </div>
-        <div v-else-if="pnlError" class="text-sm text-negative">
-          Failed to load Profit &amp; Loss data.
-        </div>
-        <div v-else class="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div>
-            <p class="text-xs text-muted uppercase mb-1">
-              Revenue
-            </p>
-            <p class="text-xl font-semibold">
-              {{ formatCurrency(pnl?.revenueTotal) }}
-            </p>
-            <p class="text-xs text-muted">
-              {{ latestPeriod?.label || 'Current period' }}
-            </p>
+        </template>
+      </UDashboardNavbar>
+
+      <UDashboardToolbar>
+        <template #left>
+          <UBreadcrumb :links="breadcrumbs" />
+
+          <!-- Month picker -->
+          <div class="flex items-center gap-1 ml-4">
+            <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="xs" @click="prevMonth" />
+
+            <UPopover v-model:open="popoverOpen" :content="{ align: 'start' }">
+              <UButton
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-calendar"
+                class="data-[state=open]:bg-elevated group min-w-[170px] justify-between"
+              >
+                <span class="font-medium text-sm">{{ displayLabel }}</span>
+                <template #trailing>
+                  <UIcon
+                    name="i-lucide-chevron-down"
+                    class="shrink-0 text-dimmed size-4 group-data-[state=open]:rotate-180 transition-transform duration-200"
+                  />
+                </template>
+              </UButton>
+
+              <template #content>
+                <div class="flex items-stretch sm:divide-x divide-default">
+                  <div class="flex flex-col py-1">
+                    <div class="px-3 py-1.5 text-[10px] font-semibold text-muted uppercase tracking-wider">Quick Select</div>
+                    <UButton
+                      v-for="s in shortcuts"
+                      :key="s.label"
+                      :label="s.label"
+                      color="neutral"
+                      variant="ghost"
+                      class="rounded-none px-4 text-sm"
+                      :class="[isActiveShortcut(s) ? 'bg-elevated font-medium' : 'hover:bg-elevated/50']"
+                      @click="selectShortcut(s)"
+                    />
+                  </div>
+                  <div class="p-2">
+                    <UCalendar v-model="calendarValue" class="rounded-lg" />
+                  </div>
+                </div>
+              </template>
+            </UPopover>
+
+            <UButton
+              icon="i-lucide-chevron-right"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              :disabled="isCurrentMonth"
+              @click="nextMonth"
+            />
           </div>
-          <div>
-            <p class="text-xs text-muted uppercase mb-1">
-              Expenses
-            </p>
-            <p class="text-xl font-semibold">
-              {{ formatCurrency(pnl?.expensesTotal) }}
-            </p>
-            <p class="text-xs text-muted">
-              Including operating costs &amp; overhead
-            </p>
-          </div>
-          <div>
-            <p class="text-xs text-muted uppercase mb-1">
-              Net Profit
-            </p>
-            <div class="flex items-baseline gap-2">
-              <p class="text-xl font-semibold">
-                {{ formatCurrency(pnl?.netProfit) }}
-              </p>
-              <UBadge v-if="netProfitChange !== null" :color="trendBadgeColor(netProfitChange)">
-                {{ netProfitChange > 0 ? '+' : '' }}{{ formatCurrency(netProfitChange) }} vs previous
-              </UBadge>
+        </template>
+      </UDashboardToolbar>
+    </template>
+
+    <template #body>
+      <!-- Loading -->
+      <div v-if="loading" class="space-y-6">
+        <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          <USkeleton v-for="n in 6" :key="`sc-${n}`" class="h-28" />
+        </div>
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <USkeleton class="h-64" />
+          <USkeleton class="h-64" />
+        </div>
+        <USkeleton class="h-80" />
+      </div>
+
+      <div v-else class="space-y-6">
+        <!-- ═══ Financial Health Scorecard ═══ -->
+        <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          <UCard v-for="card in scorecard" :key="card.label" :ui="{ body: '!p-4' }">
+            <div class="flex items-start justify-between mb-2">
+              <p class="text-xs text-muted uppercase tracking-wide">{{ card.label }}</p>
+              <UIcon :name="card.icon" :class="['size-5', card.color]" />
             </div>
-            <p class="text-xs text-muted">
-              {{ previousPeriod?.label || 'No prior period' }}
-            </p>
-          </div>
-          <div>
-            <p class="text-xs text-muted uppercase mb-1">
-              Profit Margin
-            </p>
-            <div class="flex items-baseline gap-2">
-              <p class="text-xl font-semibold">
-                {{ formatPercent((pnl?.profitMargin || 0) * 100) }}
-              </p>
-              <UBadge v-if="profitMarginChange !== null" :color="trendBadgeColor(profitMarginChange)">
-                {{ profitMarginChange > 0 ? '+' : '' }}{{ profitMarginChange.toFixed(1) }} pts
-              </UBadge>
+            <p class="text-xl font-bold">{{ card.value }}</p>
+            <div v-if="card.delta" class="mt-1">
+              <span
+                :class="[
+                  'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
+                  card.delta.sign === 'positive' && 'bg-positive/10 text-positive',
+                  card.delta.sign === 'negative' && 'bg-negative/10 text-negative',
+                  card.delta.sign === 'neutral' && 'bg-muted/30 text-muted'
+                ]"
+              >
+                {{ card.delta.label }}
+              </span>
             </div>
-            <p class="text-xs text-muted">
-              Change period-over-period
-            </p>
-          </div>
+            <p class="text-[11px] text-muted mt-1">{{ card.sub }}</p>
+          </UCard>
         </div>
-      </UPageCard>
 
-      <template v-if="!pnlPending && !pnlError">
-        <ProfitTrendChart
-          v-if="(pnl?.periods?.length || 0) > 1"
-          :periods="pnl?.periods || []"
-        />
-        <UPageCard v-else variant="subtle">
-          <p class="text-sm text-muted">
-            More than one reporting period is needed to show the profit trend.
-          </p>
-        </UPageCard>
+        <!-- ═══ P&L Summary + Balance Sheet ═══ -->
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <!-- P&L Summary -->
+          <UCard :ui="{ body: '!p-6 space-y-5' }">
+            <header class="flex items-center justify-between">
+              <div>
+                <p class="text-xs uppercase text-muted">Profit &amp; Loss</p>
+                <h3 class="text-lg font-semibold">{{ monthLabel }}</h3>
+              </div>
+              <UButton label="Deep Dive" variant="ghost" color="primary" size="xs" to="/profit-loss" icon="i-lucide-arrow-right" trailing />
+            </header>
 
-        <ExpenseBreakdownChart
-          v-if="(pnl?.expensesByCategory?.length || 0) > 0"
-          :items="pnl?.expensesByCategory || []"
-        />
-        <UPageCard v-else variant="subtle">
-          <p class="text-sm text-muted">
-            Expense categories will appear once Xero returns a detailed breakdown.
-          </p>
-        </UPageCard>
-      </template>
+            <div v-if="summary" class="space-y-3">
+              <div v-for="item in [
+                { label: 'Revenue', val: summary.revenue },
+                { label: 'Cost of Sales', val: summary.costOfSales },
+                { label: 'Gross Profit', val: summary.grossProfit },
+                { label: 'Operating Expenses', val: summary.operatingExpenses },
+                { label: 'Net Profit', val: summary.netProfit }
+              ]" :key="item.label" class="flex items-center justify-between text-sm">
+                <span class="text-muted">{{ item.label }}</span>
+                <div class="flex items-center gap-3">
+                  <span class="font-medium">{{ fmt(item.val.month) }}</span>
+                  <span class="text-xs text-muted w-20 text-right">{{ fmt(item.val.ytd) }} YTD</span>
+                </div>
+              </div>
 
-      <UPageCard title="Balance Sheet" variant="subtle" class="md:col-span-2">
-        <div v-if="bsPending" class="space-y-3">
-          <USkeleton class="h-4 w-32" />
-          <USkeleton
-            v-for="n in 3"
-            :key="n"
-            class="h-4 w-full"
-          />
+              <div class="pt-3 border-t border-default flex items-center justify-between text-sm">
+                <span class="text-muted">Net Margin</span>
+                <div class="flex items-center gap-3">
+                  <span class="font-semibold">{{ fmtPct(summary.netMargin.month) }}</span>
+                  <span class="text-xs text-muted w-20 text-right">{{ fmtPct(summary.netMargin.ytd) }} YTD</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Top insights -->
+            <div v-if="pnl?.insights?.length" class="pt-3 border-t border-default space-y-2">
+              <p class="text-[10px] uppercase text-muted font-semibold tracking-wider">Insights</p>
+              <div v-for="(insight, i) in pnl.insights.slice(0, 3)" :key="i" class="flex gap-2 items-start">
+                <UIcon name="i-lucide-sparkles" class="size-3.5 text-primary mt-0.5 shrink-0" />
+                <span class="text-xs text-muted leading-relaxed">{{ insight }}</span>
+              </div>
+            </div>
+          </UCard>
+
+          <!-- Balance Sheet -->
+          <UCard :ui="{ body: '!p-6 space-y-5' }">
+            <header class="flex items-center justify-between">
+              <div>
+                <p class="text-xs uppercase text-muted">Balance Sheet</p>
+                <h3 class="text-lg font-semibold">Position as at {{ balanceSheet?.date ?? toDate }}</h3>
+              </div>
+            </header>
+
+            <div v-if="bsPending" class="space-y-3">
+              <USkeleton v-for="n in 3" :key="`bs-sk-${n}`" class="h-5" />
+            </div>
+            <template v-else-if="balanceSheet">
+              <div class="grid grid-cols-3 gap-4">
+                <div>
+                  <p class="text-xs text-muted uppercase mb-1">Total Assets</p>
+                  <p class="text-xl font-semibold">{{ fmt(balanceSheet.totalAssets) }}</p>
+                </div>
+                <div>
+                  <p class="text-xs text-muted uppercase mb-1">Total Liabilities</p>
+                  <p class="text-xl font-semibold">{{ fmt(balanceSheet.totalLiabilities) }}</p>
+                </div>
+                <div>
+                  <p class="text-xs text-muted uppercase mb-1">Total Equity</p>
+                  <p class="text-xl font-semibold">{{ fmt(balanceSheet.totalEquity) }}</p>
+                </div>
+              </div>
+
+              <div class="space-y-3 pt-3 border-t border-default">
+                <div v-for="ratio in bsRatios" :key="ratio.label" class="flex items-center justify-between">
+                  <span class="text-sm text-muted">{{ ratio.label }}</span>
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium">{{ ratio.value }}</span>
+                    <span class="flex items-center gap-1">
+                      <span :class="['inline-block size-2 rounded-full', benchmarkDotColor[ratio.benchmark.level]]" />
+                      <span class="text-[10px] text-muted">{{ ratio.benchmark.label }}</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <p v-else class="text-sm text-muted">Balance sheet data unavailable.</p>
+          </UCard>
         </div>
-        <div v-else-if="bsError" class="text-sm text-negative">
-          Failed to load Balance Sheet data.
-        </div>
-        <div v-else>
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+
+        <!-- ═══ Receivables Aging ═══ -->
+        <UCard :ui="{ body: '!p-6 space-y-5' }">
+          <header class="flex items-center justify-between">
             <div>
-              <p class="text-xs text-muted uppercase mb-1">
-                Total Assets
-              </p>
-              <p class="text-xl font-semibold">
-                {{ formatCurrency(bs?.totalAssets) }}
-              </p>
+              <p class="text-xs uppercase text-muted">Receivables Aging</p>
+              <h3 class="text-lg font-semibold">{{ fmt(agingTotal) }} Outstanding</h3>
             </div>
-            <div>
-              <p class="text-xs text-muted uppercase mb-1">
-                Total Liabilities
-              </p>
-              <p class="text-xl font-semibold">
-                {{ formatCurrency(bs?.totalLiabilities) }}
-              </p>
+            <div v-if="aging" class="flex items-center gap-3 text-xs text-muted">
+              <span>{{ aging.totalInvoices }} invoices</span>
+              <span>Avg {{ Math.round(aging.averageDaysPastDue) }} days</span>
             </div>
+          </header>
+
+          <div v-if="agingPending" class="space-y-3">
+            <USkeleton v-for="n in 5" :key="`ag-sk-${n}`" class="h-8" />
+          </div>
+          <template v-else-if="agingBuckets.length">
+            <!-- Aging bars -->
+            <div class="space-y-2">
+              <div v-for="bucket in agingBuckets" :key="bucket.bucket" class="flex items-center gap-3">
+                <span class="text-xs text-muted w-20 text-right shrink-0">{{ agingBarLabel(bucket.bucket) }}</span>
+                <div class="flex-1 h-6 bg-muted/10 rounded-full overflow-hidden relative">
+                  <div
+                    :class="['h-full rounded-full transition-all duration-500', agingBarColor(bucket.bucket)]"
+                    :style="{ width: agingTotal > 0 ? `${Math.max(2, (bucket.amount / agingTotal) * 100)}%` : '0%' }"
+                  />
+                </div>
+                <div class="text-xs text-right shrink-0 w-28">
+                  <span class="font-medium">{{ fmt(bucket.amount) }}</span>
+                  <span class="text-muted ml-1">({{ bucket.count }})</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Top debtors -->
+            <div v-if="topDebtors.length" class="pt-4 border-t border-default">
+              <p class="text-[10px] uppercase text-muted font-semibold tracking-wider mb-3">Top Outstanding Contacts</p>
+              <div class="space-y-2">
+                <div v-for="contact in topDebtors" :key="contact.name" class="flex items-center justify-between text-sm">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <UAvatar :label="contact.name.charAt(0)" size="xs" />
+                    <span class="font-medium truncate">{{ contact.name }}</span>
+                    <UBadge v-if="contact.oldestDays > 60" color="error" variant="subtle" size="xs">
+                      {{ contact.oldestDays }}d
+                    </UBadge>
+                  </div>
+                  <div class="flex items-center gap-2 text-xs shrink-0">
+                    <span class="font-medium">{{ fmt(contact.amount) }}</span>
+                    <span class="text-muted">({{ contact.count }})</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+          <p v-else class="text-sm text-muted">No aging data available. Connect to Xero to view receivables.</p>
+        </UCard>
+
+        <!-- ═══ Budget Variance + Invoice Pipeline ═══ -->
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <!-- Budget Variance -->
+          <UCard :ui="{ body: '!p-6 space-y-4' }">
+            <header class="flex items-center justify-between">
+              <div>
+                <p class="text-xs uppercase text-muted">Budget vs Actual</p>
+                <h3 class="text-lg font-semibold">{{ budget?.period?.monthName ?? displayLabel }} {{ budget?.period?.year ?? selectedYear }}</h3>
+              </div>
+              <div v-if="budget?.summary" class="text-right">
+                <p class="text-sm font-semibold" :class="(budget.summary.totalVariance ?? 0) > 0 ? 'text-red-500' : 'text-green-500'">
+                  {{ budget.summary.totalVariance >= 0 ? '+' : '' }}{{ fmt(budget.summary.totalVariance) }}
+                </p>
+                <p class="text-[10px] text-muted">{{ fmtPctRaw(budget.summary.totalVariancePercent) }} variance</p>
+              </div>
+            </header>
+
+            <div v-if="budgetPending" class="space-y-3">
+              <USkeleton v-for="n in 4" :key="`bud-sk-${n}`" class="h-8" />
+            </div>
+            <template v-else-if="budgetRows.length">
+              <div class="flex gap-3 text-xs">
+                <UBadge v-if="budget?.summary?.overBudgetCount" color="error" variant="subtle">
+                  {{ budget.summary.overBudgetCount }} over budget
+                </UBadge>
+                <UBadge v-if="budget?.summary?.underBudgetCount" color="success" variant="subtle">
+                  {{ budget.summary.underBudgetCount }} under budget
+                </UBadge>
+                <UBadge v-if="budget?.period?.isCurrentMonth" color="info" variant="subtle">
+                  Projected: {{ fmt(budget?.summary?.projectedMonthEnd) }}
+                </UBadge>
+              </div>
+
+              <UTable :columns="budgetColumns" :data="budgetRows">
+                <template #status-cell="{ row }">
+                  <UBadge
+                    :color="row.original.status === 'over' ? 'error' : row.original.status === 'under' ? 'success' : 'neutral'"
+                    variant="subtle"
+                    size="xs"
+                  >
+                    {{ row.original.status === 'over' ? 'Over' : row.original.status === 'under' ? 'Under' : 'On Track' }}
+                  </UBadge>
+                </template>
+              </UTable>
+
+              <!-- Budget alerts -->
+              <div v-if="budget?.alerts?.length" class="space-y-1 pt-2 border-t border-default">
+                <div v-for="(alert, i) in budget.alerts.slice(0, 3)" :key="i" class="flex gap-2 items-start">
+                  <UIcon
+                    :name="alert.severity === 'high' ? 'i-lucide-alert-triangle' : 'i-lucide-info'"
+                    :class="alert.severity === 'high' ? 'text-red-500' : 'text-amber-500'"
+                    class="size-3.5 mt-0.5 shrink-0"
+                  />
+                  <span class="text-xs text-muted">{{ alert.message }}</span>
+                </div>
+              </div>
+            </template>
+            <p v-else class="text-sm text-muted">No budget data available for this period.</p>
+          </UCard>
+
+          <!-- Invoice Pipeline -->
+          <UCard :ui="{ body: '!p-6 space-y-4' }">
+            <header class="flex items-center justify-between">
+              <div>
+                <p class="text-xs uppercase text-muted">Invoice Pipeline</p>
+                <h3 class="text-lg font-semibold">{{ fmt(pipeline?.summary?.totalValue) }} Total</h3>
+              </div>
+              <div v-if="pipeline?.summary" class="flex items-center gap-2">
+                <UBadge
+                  :color="pipeline.summary.riskLevel === 'low' ? 'success' : pipeline.summary.riskLevel === 'medium' ? 'warning' : 'error'"
+                  variant="subtle"
+                >
+                  {{ pipeline.summary.riskLevel === 'low' ? 'Healthy' : pipeline.summary.riskLevel === 'medium' ? 'Watch' : 'At Risk' }}
+                </UBadge>
+              </div>
+            </header>
+
+            <div v-if="pipelinePending" class="space-y-3">
+              <USkeleton v-for="n in 5" :key="`pipe-sk-${n}`" class="h-10" />
+            </div>
+            <template v-else-if="pipelineStages.length">
+              <!-- Stage bars -->
+              <div class="space-y-2">
+                <div v-for="stage in pipelineStages" :key="stage.key" class="flex items-center gap-3">
+                  <span class="text-xs text-muted w-20 text-right shrink-0">{{ stage.name }}</span>
+                  <div class="flex-1 h-7 bg-muted/10 rounded overflow-hidden flex items-center px-2 relative">
+                    <div
+                      class="absolute inset-y-0 left-0 rounded transition-all duration-500 opacity-20"
+                      :class="{
+                        'bg-neutral-400': stage.key === 'draft',
+                        'bg-blue-500': stage.key === 'submitted',
+                        'bg-amber-500': stage.key === 'authorised',
+                        'bg-red-500': stage.key === 'overdue',
+                        'bg-emerald-500': stage.key === 'paid'
+                      }"
+                      :style="{ width: (pipeline?.summary?.totalValue ?? 0) > 0 ? `${Math.max(3, stage.percentage)}%` : '0%' }"
+                    />
+                    <span class="relative text-xs font-medium">{{ stage.count }}</span>
+                  </div>
+                  <span class="text-xs font-medium shrink-0 w-24 text-right">{{ fmt(stage.value) }}</span>
+                </div>
+              </div>
+
+              <!-- Key metrics -->
+              <div class="grid grid-cols-3 gap-3 pt-3 border-t border-default">
+                <div>
+                  <p class="text-[10px] text-muted uppercase">Avg Collection</p>
+                  <p class="text-sm font-semibold">{{ pipeline?.summary?.averageCollectionTime ?? 0 }} days</p>
+                </div>
+                <div>
+                  <p class="text-[10px] text-muted uppercase">Overdue Rate</p>
+                  <p class="text-sm font-semibold" :class="(pipeline?.summary?.overdueRate ?? 0) > 15 ? 'text-red-500' : ''">
+                    {{ fmtPctRaw(pipeline?.summary?.overdueRate) }}
+                  </p>
+                </div>
+                <div>
+                  <p class="text-[10px] text-muted uppercase">Outstanding</p>
+                  <p class="text-sm font-semibold">{{ fmt(pipeline?.summary?.outstandingValue) }}</p>
+                </div>
+              </div>
+
+              <!-- Recommendations -->
+              <div v-if="pipeline?.recommendations?.length" class="space-y-1 pt-2 border-t border-default">
+                <div v-for="(rec, i) in pipeline.recommendations.slice(0, 3)" :key="i" class="flex gap-2 items-start">
+                  <UIcon name="i-lucide-lightbulb" class="size-3.5 text-amber-500 mt-0.5 shrink-0" />
+                  <span class="text-xs text-muted">{{ rec }}</span>
+                </div>
+              </div>
+            </template>
+            <p v-else class="text-sm text-muted">No pipeline data available.</p>
+          </UCard>
+        </div>
+
+        <!-- ═══ Payables Summary (compact) ═══ -->
+        <UCard v-if="agingPayables && !agingPayPending" :ui="{ body: '!p-6' }">
+          <header class="flex items-center justify-between mb-4">
             <div>
-              <p class="text-xs text-muted uppercase mb-1">
-                Total Equity
-              </p>
-              <p class="text-xl font-semibold">
-                {{ formatCurrency(bs?.totalEquity) }}
-              </p>
+              <p class="text-xs uppercase text-muted">Payables Aging</p>
+              <h3 class="text-lg font-semibold">{{ fmt(agingPayables.totalOutstanding) }} Owed to Vendors</h3>
+            </div>
+            <div class="flex items-center gap-3 text-xs text-muted">
+              <span>{{ agingPayables.totalInvoices }} bills</span>
+              <span>Avg {{ Math.round(agingPayables.averageDaysPastDue) }} days</span>
+            </div>
+          </header>
+
+          <div class="flex gap-3 flex-wrap">
+            <div
+              v-for="bucket in agingPayables.agingSummary"
+              :key="bucket.bucket"
+              class="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/5 border border-default"
+            >
+              <span :class="['inline-block size-2.5 rounded-full', agingBarColor(bucket.bucket)]" />
+              <span class="text-xs text-muted">{{ agingBarLabel(bucket.bucket) }}</span>
+              <span class="text-xs font-medium">{{ fmt(bucket.amount) }}</span>
+              <span class="text-[10px] text-muted">({{ bucket.count }})</span>
             </div>
           </div>
+        </UCard>
 
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div class="rounded-lg border border-border/60 p-4">
-              <p class="text-xs text-muted uppercase mb-1">
-                Working Capital
-              </p>
-              <p class="text-lg font-semibold">
-                {{ formatCurrency(bs?.workingCapital) }}
-              </p>
-              <p class="text-xs text-muted">
-                Liquidity to cover short-term obligations
-              </p>
-            </div>
-            <div class="rounded-lg border border-border/60 p-4">
-              <p class="text-xs text-muted uppercase mb-1">
-                Debt-to-Equity
-              </p>
-              <p class="text-lg font-semibold">
-                {{ formatMultiple(bs?.debtToEquity) }}
-              </p>
-              <p class="text-xs text-muted">
-                Leverage compared to shareholder equity
-              </p>
-            </div>
-            <div class="rounded-lg border border-border/60 p-4">
-              <p class="text-xs text-muted uppercase mb-1">
-                Equity Ratio
-              </p>
-              <p class="text-lg font-semibold">
-                {{ formatPercent((bs?.equityRatio || 0) * 100) }}
-              </p>
-              <p class="text-xs text-muted">
-                Share of assets financed by equity
-              </p>
-            </div>
+        <!-- ═══ Quick Navigation ═══ -->
+        <div>
+          <p class="text-xs uppercase text-muted font-semibold tracking-wider mb-3">Deep Dive Reports</p>
+          <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+            <NuxtLink
+              v-for="link in quickLinks"
+              :key="link.to"
+              :to="link.to"
+              class="group flex flex-col gap-2 p-4 rounded-xl border border-default bg-default hover:bg-elevated transition-colors"
+            >
+              <UIcon :name="link.icon" :class="['size-6', link.color]" />
+              <p class="text-sm font-medium group-hover:text-primary transition-colors">{{ link.label }}</p>
+              <p class="text-[11px] text-muted leading-relaxed">{{ link.description }}</p>
+            </NuxtLink>
           </div>
         </div>
-      </UPageCard>
-    </UPageGrid>
-  </UPage>
+      </div>
+    </template>
+  </UDashboardPanel>
 </template>

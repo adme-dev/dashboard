@@ -2,15 +2,19 @@ import { createError } from 'h3'
 import { createXeroClient } from '../../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
-
-function ensureDateString(d: Date) {
-  return d.toISOString().slice(0, 10)
-}
+import { cachedFetch } from '../../../utils/kv'
+import {
+  flattenRows,
+  fetchBalanceSheet,
+  fetchContacts,
+  fetchInvoiceSummary,
+  fetchOutstandingReceivables,
+  fetchQuotesByStatus,
+  fetchPurchaseOrders
+} from '../../../utils/xeroDataFetcher'
 
 function parseNumeric(value: unknown): number {
-  if (typeof value === 'number') {
-    return value
-  }
+  if (typeof value === 'number') return value
   if (typeof value === 'string') {
     const isNegative = value.includes('(') && value.includes(')')
     const cleaned = value.replace(/[^0-9.\-]/g, '')
@@ -26,92 +30,35 @@ function extractValueFromRow(row: any): number {
   return parseNumeric(cells[cells.length - 1]?.Value ?? cells[cells.length - 1]?.value)
 }
 
-function flattenRows(rows: any[], out: any[] = []): any[] {
-  for (const row of rows || []) {
-    out.push(row)
-    const childRows = row?.Rows || row?.rows
-    if (childRows?.length) {
-      flattenRows(childRows, out)
-    }
-  }
-  return out
+function computeWorkingCapital(report: any) {
+  const rows = report?.reports?.[0]?.rows || report?.Reports?.[0]?.Rows || []
+  const flatRows = flattenRows(rows)
+
+  const totalCurrentAssets = flatRows.find((row) => {
+    const title = row?.Title || row?.title || row?.Cells?.[0]?.Value || row?.cells?.[0]?.value
+    return typeof title === 'string' && title.toLowerCase().includes('total current assets')
+  })
+  const totalCurrentLiabilities = flatRows.find((row) => {
+    const title = row?.Title || row?.title || row?.Cells?.[0]?.Value || row?.cells?.[0]?.value
+    return typeof title === 'string' && title.toLowerCase().includes('total current liabilities')
+  })
+  const cashRow = flatRows.find((row) => {
+    const title = row?.Title || row?.title || row?.Cells?.[0]?.Value || row?.cells?.[0]?.value
+    return typeof title === 'string' && title.toLowerCase().includes('bank')
+  })
+
+  const currentAssets = extractValueFromRow(totalCurrentAssets)
+  const currentLiabilities = extractValueFromRow(totalCurrentLiabilities)
+  const cashBalance = extractValueFromRow(cashRow)
+  const workingCapital = currentAssets - currentLiabilities
+  const quickRatio = currentLiabilities !== 0 ? currentAssets / currentLiabilities : null
+
+  return { currentAssets, currentLiabilities, workingCapital, quickRatio, cashBalance }
 }
 
-async function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-async function safeApiCall<T>(label: string, fn: () => Promise<T>) {
-  try {
-    return await fn()
-  } catch (err: any) {
-    const status = err?.response?.statusCode || err?.response?.status || err?.statusCode
-    if (status === 429) {
-      console.warn(`[cash-flow-insights] Rate limited on ${label}, retrying once...`)
-      await sleep(300)
-      try {
-        return await fn()
-      } catch (retryErr: any) {
-        console.error(`[cash-flow-insights] Retry failed for ${label}:`, retryErr)
-        return null
-      }
-    }
-    console.error(`[cash-flow-insights] Failed to fetch ${label}:`, err)
-    return null
-  }
-}
-
-async function fetchInvoiceSummary(client: any, tenantId: string, status: string, type: 'ACCREC' | 'ACCPAY') {
-  const response = await safeApiCall(`${type}-${status}`, () =>
-    (client.accountingApi.getInvoices as any)(
-      tenantId,
-      undefined,
-      `Type=="${type}"&&Status=="${status}"`,
-      'Date DESC',
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      1,
-      undefined,
-      undefined,
-      undefined,
-      500
-    )
-  )
-
-  const invoices = (response as any)?.body?.invoices || []
-  const total = invoices.reduce((sum: number, inv: any) => sum + (Number(inv?.total) || 0), 0)
-
-  return {
-    status,
-    count: invoices.length,
-    total
-  }
-}
-
-async function fetchOutstandingReceivables(client: any, tenantId: string) {
-  const response = await safeApiCall('invoices-outstanding', () =>
-    (client.accountingApi.getInvoices as any)(
-      tenantId,
-      undefined,
-      'Type=="ACCREC"&&Status=="AUTHORISED"&&AmountDue>0',
-      'DueDate ASC',
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      1,
-      undefined,
-      undefined,
-      undefined,
-      500
-    )
-  )
-
-  const invoices = (response as any)?.body?.invoices || []
+function processOutstandingClients(invoicesBody: any) {
+  const invoices = invoicesBody?.invoices || []
   const today = new Date()
-
   const grouped = new Map<string, any>()
 
   for (const invoice of invoices) {
@@ -166,7 +113,7 @@ async function fetchOutstandingReceivables(client: any, tenantId: string) {
     })
   }
 
-  const summary = Array.from(grouped.values())
+  return Array.from(grouped.values())
     .map((entry) => ({
       ...entry,
       overdueRatio: entry.totalOutstanding > 0 ? entry.overdueAmount / entry.totalOutstanding : 0,
@@ -184,91 +131,24 @@ async function fetchOutstandingReceivables(client: any, tenantId: string) {
         .slice(0, 3)
     }))
     .sort((a, b) => b.totalOutstanding - a.totalOutstanding)
-
-  return summary
 }
 
-async function fetchQuotesByStatus(client: any, tenantId: string, status: string) {
-  const response = await safeApiCall(`quotes-${status}`, () =>
-    (client.accountingApi.getQuotes as any)(
-      tenantId,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      status,
-      undefined,
-      undefined,
-      undefined
-    )
-  )
-
-  const quotes = (response as any)?.body?.quotes || []
-  const total = quotes.reduce((sum: number, quote: any) => sum + (Number(quote?.total) || 0), 0)
-
-  return {
-    status,
-    count: quotes.length,
-    total
-  }
+function summarizeInvoices(body: any, status: string) {
+  const invoices = body?.invoices || []
+  const total = invoices.reduce((sum: number, inv: any) => sum + (Number(inv?.total) || 0), 0)
+  return { status, count: invoices.length, total }
 }
 
-async function fetchPurchaseOrders(client: any, tenantId: string, status: 'DRAFT' | 'SUBMITTED' | 'AUTHORISED' | 'BILLED' | 'DELETED') {
-  const response = await safeApiCall(`purchase-orders-${status}`, () =>
-    (client.accountingApi.getPurchaseOrders as any)(
-      tenantId,
-      undefined,
-      status,
-      undefined,
-      undefined,
-      undefined,
-      1,
-      200
-    )
-  )
+function summarizeQuotes(body: any, status: string) {
+  const quotes = body?.quotes || []
+  const total = quotes.reduce((sum: number, q: any) => sum + (Number(q?.total) || 0), 0)
+  return { status, count: quotes.length, total }
+}
 
-  const purchaseOrders = (response as any)?.body?.purchaseOrders || []
+function summarizePurchaseOrders(body: any, status: string) {
+  const purchaseOrders = body?.purchaseOrders || []
   const total = purchaseOrders.reduce((sum: number, po: any) => sum + (Number(po?.total) || 0), 0)
-
-  return {
-    status,
-    count: purchaseOrders.length,
-    total
-  }
-}
-
-function computeWorkingCapital(report: any) {
-  const rows = report?.reports?.[0]?.rows || report?.Reports?.[0]?.Rows || []
-  const flatRows = flattenRows(rows)
-
-  const totalCurrentAssets = flatRows.find((row) => {
-    const title = row?.Title || row?.title || row?.Cells?.[0]?.Value || row?.cells?.[0]?.value
-    return typeof title === 'string' && title.toLowerCase().includes('total current assets')
-  })
-  const totalCurrentLiabilities = flatRows.find((row) => {
-    const title = row?.Title || row?.title || row?.Cells?.[0]?.Value || row?.cells?.[0]?.value
-    return typeof title === 'string' && title.toLowerCase().includes('total current liabilities')
-  })
-  const cashRow = flatRows.find((row) => {
-    const title = row?.Title || row?.title || row?.Cells?.[0]?.Value || row?.cells?.[0]?.value
-    return typeof title === 'string' && title.toLowerCase().includes('bank')
-  })
-
-  const currentAssets = extractValueFromRow(totalCurrentAssets)
-  const currentLiabilities = extractValueFromRow(totalCurrentLiabilities)
-  const cashBalance = extractValueFromRow(cashRow)
-  const workingCapital = currentAssets - currentLiabilities
-  const quickRatio = currentLiabilities !== 0 ? currentAssets / currentLiabilities : null
-
-  return {
-    currentAssets,
-    currentLiabilities,
-    workingCapital,
-    quickRatio,
-    cashBalance
-  }
+  return { status, count: purchaseOrders.length, total }
 }
 
 export default eventHandler(async (event) => {
@@ -278,78 +158,103 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'No organization selected' })
   }
 
-  const client = await createXeroClient({ tokenSet: token, event })
-  const today = new Date()
+  const cacheKey = `xero-report:${tenantId}:cash-flow-insights`
 
-  const balanceSheetResponse = await safeApiCall('balance-sheet', () =>
-    client.accountingApi.getReportBalanceSheet(tenantId, ensureDateString(today))
-  )
+  return cachedFetch(event, cacheKey, 600, async () => {
+    const client = await createXeroClient({ tokenSet: token, event })
+    const today = new Date()
 
-  const draftInvoices = await fetchInvoiceSummary(client, tenantId, 'DRAFT', 'ACCREC')
-  const submittedInvoices = await fetchInvoiceSummary(client, tenantId, 'SUBMITTED', 'ACCREC')
-  const draftBills = await fetchInvoiceSummary(client, tenantId, 'DRAFT', 'ACCPAY')
-  const submittedBills = await fetchInvoiceSummary(client, tenantId, 'SUBMITTED', 'ACCPAY')
+    // All calls go through dedupedXeroCall (rate-limited + deduped)
+    const [
+      balanceSheetBody,
+      draftInvoicesBody,
+      submittedInvoicesBody,
+      draftBillsBody,
+      submittedBillsBody,
+      draftQuotesBody,
+      sentQuotesBody,
+      acceptedQuotesBody,
+      draftPOsBody,
+      submittedPOsBody,
+      outstandingBody,
+      contactsBody
+    ] = await Promise.all([
+      fetchBalanceSheet(client, tenantId),
+      fetchInvoiceSummary(client, tenantId, 'ACCREC', 'DRAFT'),
+      fetchInvoiceSummary(client, tenantId, 'ACCREC', 'SUBMITTED'),
+      fetchInvoiceSummary(client, tenantId, 'ACCPAY', 'DRAFT'),
+      fetchInvoiceSummary(client, tenantId, 'ACCPAY', 'SUBMITTED'),
+      fetchQuotesByStatus(client, tenantId, 'DRAFT'),
+      fetchQuotesByStatus(client, tenantId, 'SENT'),
+      fetchQuotesByStatus(client, tenantId, 'ACCEPTED'),
+      fetchPurchaseOrders(client, tenantId, 'DRAFT'),
+      fetchPurchaseOrders(client, tenantId, 'SUBMITTED'),
+      fetchOutstandingReceivables(client, tenantId),
+      fetchContacts(client, tenantId)
+    ])
 
-  const draftQuotes = await fetchQuotesByStatus(client, tenantId, 'DRAFT')
-  const sentQuotes = await fetchQuotesByStatus(client, tenantId, 'SENT')
-  const acceptedQuotes = await fetchQuotesByStatus(client, tenantId, 'ACCEPTED')
+    const workingCapital = computeWorkingCapital(balanceSheetBody)
 
-  const draftPurchaseOrders = await fetchPurchaseOrders(client, tenantId, 'DRAFT')
-  const submittedPurchaseOrders = await fetchPurchaseOrders(client, tenantId, 'SUBMITTED')
+    const draftInvoices = summarizeInvoices(draftInvoicesBody, 'DRAFT')
+    const submittedInvoices = summarizeInvoices(submittedInvoicesBody, 'SUBMITTED')
+    const draftBills = summarizeInvoices(draftBillsBody, 'DRAFT')
+    const submittedBills = summarizeInvoices(submittedBillsBody, 'SUBMITTED')
 
-  const outstandingClients = await fetchOutstandingReceivables(client, tenantId)
+    const draftQuotes = summarizeQuotes(draftQuotesBody, 'DRAFT')
+    const sentQuotes = summarizeQuotes(sentQuotesBody, 'SENT')
+    const acceptedQuotes = summarizeQuotes(acceptedQuotesBody, 'ACCEPTED')
 
-  const contactsResponse = await safeApiCall('contacts', () =>
-    client.accountingApi.getContacts(tenantId, undefined, undefined, 'Name ASC', undefined, 1, false, false, undefined, 200)
-  )
+    const draftPurchaseOrders = summarizePurchaseOrders(draftPOsBody, 'DRAFT')
+    const submittedPurchaseOrders = summarizePurchaseOrders(submittedPOsBody, 'SUBMITTED')
 
-  const workingCapital = computeWorkingCapital(balanceSheetResponse?.body)
+    const outstandingClients = processOutstandingClients(outstandingBody)
 
-  const contacts = contactsResponse?.body?.contacts || []
-  const topOutstanding = outstandingClients
-    .map((entry) => {
-      const contact = contacts.find((c: any) => c?.contactID === entry.contactId) as any
-      const creditLimit = contact?.creditLimit ? Number(contact.creditLimit) : undefined
-      return {
-        id: entry.contactId,
-        name: entry.name,
-        outstanding: entry.totalOutstanding,
-        overdue: entry.overdueAmount,
-        overdueRatio: entry.overdueRatio,
-        creditLimit,
-        invoiceCount: entry.totalInvoices,
-        overdueCount: entry.overdueCount,
-        earliestDueDate: entry.earliestDueDate,
-        latestInvoiceDate: entry.latestInvoiceDate,
-        sampleInvoices: entry.invoices
+    const contacts = contactsBody?.contacts || []
+    const topOutstanding = outstandingClients
+      .map((entry) => {
+        const contact = contacts.find((c: any) => c?.contactID === entry.contactId) as any
+        const creditLimit = contact?.creditLimit ? Number(contact.creditLimit) : undefined
+        return {
+          id: entry.contactId,
+          name: entry.name,
+          outstanding: entry.totalOutstanding,
+          overdue: entry.overdueAmount,
+          overdueRatio: entry.overdueRatio,
+          creditLimit,
+          invoiceCount: entry.totalInvoices,
+          overdueCount: entry.overdueCount,
+          earliestDueDate: entry.earliestDueDate,
+          latestInvoiceDate: entry.latestInvoiceDate,
+          sampleInvoices: entry.invoices
+        }
+      })
+      .slice(0, 8)
+
+    return {
+      generatedAt: today.toISOString(),
+      workingCapital,
+      receivables: {
+        draftInvoices,
+        submittedInvoices,
+        quotes: {
+          draft: draftQuotes,
+          sent: sentQuotes,
+          accepted: acceptedQuotes,
+          totalPipeline: (draftQuotes?.total || 0) + (sentQuotes?.total || 0) + (acceptedQuotes?.total || 0)
+        }
+      },
+      payables: {
+        draftBills,
+        submittedBills,
+        purchaseOrders: {
+          draft: draftPurchaseOrders,
+          submitted: submittedPurchaseOrders,
+          totalPipeline: (draftPurchaseOrders?.total || 0) + (submittedPurchaseOrders?.total || 0)
+        }
+      },
+      clients: {
+        topOutstanding
       }
-    })
-    .slice(0, 8)
-
-  return {
-    generatedAt: today.toISOString(),
-    workingCapital,
-    receivables: {
-      draftInvoices,
-      submittedInvoices,
-      quotes: {
-        draft: draftQuotes,
-        sent: sentQuotes,
-        accepted: acceptedQuotes,
-        totalPipeline: (draftQuotes?.total || 0) + (sentQuotes?.total || 0) + (acceptedQuotes?.total || 0)
-      }
-    },
-    payables: {
-      draftBills,
-      submittedBills,
-      purchaseOrders: {
-        draft: draftPurchaseOrders,
-        submitted: submittedPurchaseOrders,
-        totalPipeline: (draftPurchaseOrders?.total || 0) + (submittedPurchaseOrders?.total || 0)
-      }
-    },
-    clients: {
-      topOutstanding
     }
-  }
+  })
 })

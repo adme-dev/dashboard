@@ -15,6 +15,11 @@ export type JobType =
   | 'embed.client'
   | 'training.extract'
   | 'dissect.analyze'
+  | 'embed.financial.expenses'
+  | 'embed.financial.invoices'
+  | 'embed.financial.clients'
+  | 'embed.financial.pnl'
+  | 'embed.financial.cash'
 
 export interface QueueJob {
   type: JobType

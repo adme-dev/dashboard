@@ -6,10 +6,12 @@
 import { createError } from 'h3'
 import { requireAuth } from '../../../utils/auth'
 import { queryRows } from '../../../utils/db'
+import { cachedFetch } from '~~/server/utils/kv'
 
 export default eventHandler(async (event) => {
   await requireAuth(event)
 
+  return cachedFetch(event, 'agency:boards', 120, async () => {
   try {
     // Get all departments with task counts
     const boards = await queryRows(`
@@ -55,4 +57,5 @@ export default eventHandler(async (event) => {
       statusMessage: `Failed to fetch boards: ${error.message}`
     })
   }
+  })
 })

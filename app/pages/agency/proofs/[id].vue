@@ -264,6 +264,183 @@ const createVersion = async () => {
   }
 }
 
+// Edit proof modal
+const showEditModal = ref(false)
+const editForm = ref({
+  name: '',
+  description: '',
+  dueDate: '',
+  isUrgent: false,
+  proofType: ''
+})
+const savingEdit = ref(false)
+
+const openEditModal = () => {
+  if (!proof.value) return
+  editForm.value = {
+    name: proof.value.name || '',
+    description: proof.value.description || '',
+    dueDate: proof.value.dueDate ? proof.value.dueDate.split('T')[0] : '',
+    isUrgent: proof.value.isUrgent || false,
+    proofType: proof.value.proofType || 'design'
+  }
+  showEditModal.value = true
+}
+
+const saveEdit = async () => {
+  if (!editForm.value.name.trim()) {
+    toast.add({ title: 'Name is required', color: 'error' })
+    return
+  }
+  savingEdit.value = true
+  try {
+    await $fetch(`/api/agency/proofs/${proofId}`, {
+      method: 'PATCH',
+      body: editForm.value
+    })
+    toast.add({ title: 'Proof updated', color: 'success' })
+    showEditModal.value = false
+    refresh()
+  } catch (err: any) {
+    toast.add({ title: 'Failed to update proof', description: err.data?.message || err.message, color: 'error' })
+  } finally {
+    savingEdit.value = false
+  }
+}
+
+// Upload assets
+const fileInput = ref<HTMLInputElement | null>(null)
+const uploadingAssets = ref(false)
+
+const triggerFileUpload = () => {
+  fileInput.value?.click()
+}
+
+const handleFileUpload = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  if (!input.files || input.files.length === 0) return
+
+  uploadingAssets.value = true
+  try {
+    // Upload files to R2 first, then register as proof assets
+    const assets: Array<{ fileName: string; fileType: string; fileSize: number; fileUrl: string }> = []
+
+    for (const file of Array.from(input.files)) {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const uploadResult = await $fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      }) as any
+
+      assets.push({
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+        fileUrl: uploadResult.url || uploadResult.fileUrl
+      })
+    }
+
+    await $fetch(`/api/agency/proofs/${proofId}/assets`, {
+      method: 'POST',
+      body: { assets }
+    })
+
+    toast.add({ title: `${assets.length} asset(s) uploaded`, color: 'success' })
+    input.value = ''
+    refresh()
+  } catch (err: any) {
+    toast.add({ title: 'Failed to upload assets', description: err.data?.message || err.message, color: 'error' })
+  } finally {
+    uploadingAssets.value = false
+  }
+}
+
+// Add approvers modal
+const showApproverModal = ref(false)
+const approverSearch = ref('')
+const addingApprovers = ref(false)
+
+const { data: teamData } = await useFetch('/api/agency/team-members', { query: { limit: 100 } })
+const teamMembers = computed(() => ((teamData.value as any)?.members || (teamData.value as any) || []) as any[])
+
+const filteredTeamMembers = computed(() => {
+  const search = approverSearch.value.toLowerCase()
+  if (!search) return teamMembers.value
+  return teamMembers.value.filter((m: any) =>
+    m.name?.toLowerCase().includes(search) || m.email?.toLowerCase().includes(search)
+  )
+})
+
+const existingApproverIds = computed(() =>
+  approvers.value.map((a: any) => a.teamMember?.id).filter(Boolean)
+)
+
+const addApprover = async (member: any) => {
+  addingApprovers.value = true
+  try {
+    await $fetch(`/api/agency/proofs/${proofId}/approvers`, {
+      method: 'POST',
+      body: {
+        approvers: [{ type: 'team_member', id: member.id }]
+      }
+    })
+    toast.add({ title: `${member.name} added as approver`, color: 'success' })
+    refresh()
+  } catch (err: any) {
+    toast.add({ title: 'Failed to add approver', description: err.data?.message || err.message, color: 'error' })
+  } finally {
+    addingApprovers.value = false
+  }
+}
+
+const removeApprover = async (approver: any) => {
+  try {
+    await $fetch(`/api/agency/proofs/${proofId}/approvers/${approver.id}`, { method: 'DELETE' })
+    toast.add({ title: 'Approver removed', color: 'success' })
+    refresh()
+  } catch (err: any) {
+    toast.add({ title: 'Failed to remove approver', description: err.data?.message || err.message, color: 'error' })
+  }
+}
+
+// Inline comments
+const inlineComment = ref('')
+const addingInlineComment = ref(false)
+
+const submitInlineComment = async () => {
+  if (!inlineComment.value.trim()) return
+  addingInlineComment.value = true
+  try {
+    await $fetch('/api/agency/proofs/comments', {
+      method: 'POST',
+      body: {
+        proofId,
+        content: inlineComment.value
+      }
+    })
+    toast.add({ title: 'Comment added', color: 'success' })
+    inlineComment.value = ''
+    refresh()
+  } catch (err: any) {
+    toast.add({ title: 'Failed to add comment', description: err.data?.message || err.message, color: 'error' })
+  } finally {
+    addingInlineComment.value = false
+  }
+}
+
+// Type options for edit modal
+const proofTypeOptions = [
+  { label: 'Design', value: 'design' },
+  { label: 'Video', value: 'video' },
+  { label: 'Document', value: 'document' },
+  { label: 'Website', value: 'website' },
+  { label: 'Email', value: 'email' },
+  { label: 'Social', value: 'social' },
+  { label: 'Print', value: 'print' }
+]
+
 // Copy share link
 const copyShareLink = async () => {
   if (!proof.value?.sharing?.shareToken) return
@@ -274,13 +451,13 @@ const copyShareLink = async () => {
 
 // Active tab
 const activeTab = ref('assets')
-const tabs = [
+const tabs = computed(() => [
   { label: 'Assets', value: 'assets', icon: 'i-lucide-image' },
   { label: 'Comments', value: 'comments', icon: 'i-lucide-message-circle', badge: comments.value?.filter((c: any) => !c.isResolved).length },
   { label: 'Approvers', value: 'approvers', icon: 'i-lucide-users' },
   { label: 'Activity', value: 'activity', icon: 'i-lucide-activity' },
   { label: 'Versions', value: 'versions', icon: 'i-lucide-git-branch' }
-]
+])
 </script>
 
 <template>
@@ -295,12 +472,12 @@ const tabs = [
           />
           <div v-if="proof" class="ml-2">
             <div class="flex items-center gap-2">
-              <UIcon :name="getTypeIcon(proof.proofType)" class="w-5 h-5 text-gray-500" />
+              <UIcon :name="getTypeIcon(proof.proofType)" class="w-5 h-5 text-muted" />
               <h1 class="font-semibold text-lg">{{ proof.name }}</h1>
               <UBadge variant="subtle" color="neutral">v{{ proof.version }}</UBadge>
               <UBadge v-if="proof.isUrgent" color="error" variant="subtle">Urgent</UBadge>
             </div>
-            <p class="text-sm text-gray-500">
+            <p class="text-sm text-muted">
               {{ proof.project?.name }}
               <span v-if="proof.client"> · {{ proof.client.name }}</span>
             </p>
@@ -313,11 +490,12 @@ const tabs = [
           <UDropdownMenu
             v-if="proof"
             :items="[[
-              { label: 'Send for Internal Review', icon: 'i-lucide-users', onClick: () => sendForReview('internal'), disabled: proof.status !== 'draft' },
-              { label: 'Send to Client', icon: 'i-lucide-send', onClick: () => sendForReview('client'), disabled: !['draft', 'internal_review'].includes(proof.status) }
+              { label: 'Send for Internal Review', icon: 'i-lucide-users', onSelect: () => sendForReview('internal'), disabled: proof.status !== 'draft' },
+              { label: 'Send to Client', icon: 'i-lucide-send', onSelect: () => sendForReview('client'), disabled: !['draft', 'internal_review'].includes(proof.status) }
             ], [
-              { label: 'Create New Version', icon: 'i-lucide-git-branch', onClick: createVersion },
-              { label: 'Copy Share Link', icon: 'i-lucide-link', onClick: copyShareLink, disabled: !proof.sharing?.shareToken }
+              { label: 'Create New Version', icon: 'i-lucide-git-branch', onSelect: createVersion },
+              { label: 'Copy Share Link', icon: 'i-lucide-link', onSelect: copyShareLink, disabled: !proof.sharing?.shareToken },
+              { label: 'Edit Proof', icon: 'i-lucide-pencil', onSelect: openEditModal }
             ]]"
           >
             <UButton label="Actions" icon="i-lucide-chevron-down" trailing variant="outline" />
@@ -337,13 +515,13 @@ const tabs = [
             <UCard>
               <div class="text-center">
                 <p class="text-2xl font-bold">{{ assets.length }}</p>
-                <p class="text-sm text-gray-500">Assets</p>
+                <p class="text-sm text-muted">Assets</p>
               </div>
             </UCard>
             <UCard>
               <div class="text-center">
                 <p class="text-2xl font-bold">{{ approvers.length }}</p>
-                <p class="text-sm text-gray-500">Approvers</p>
+                <p class="text-sm text-muted">Approvers</p>
               </div>
             </UCard>
             <UCard>
@@ -351,25 +529,25 @@ const tabs = [
                 <p class="text-2xl font-bold text-emerald-500">
                   {{ approvers.filter((a: any) => a.status === 'approved').length }}
                 </p>
-                <p class="text-sm text-gray-500">Approved</p>
+                <p class="text-sm text-muted">Approved</p>
               </div>
             </UCard>
             <UCard>
               <div class="text-center">
                 <p class="text-2xl font-bold">{{ comments.length }}</p>
-                <p class="text-sm text-gray-500">Comments</p>
+                <p class="text-sm text-muted">Comments</p>
               </div>
             </UCard>
             <UCard>
               <div class="text-center">
                 <p class="text-2xl font-bold">{{ proof.viewCount || 0 }}</p>
-                <p class="text-sm text-gray-500">Views</p>
+                <p class="text-sm text-muted">Views</p>
               </div>
             </UCard>
           </div>
 
           <!-- Tabs -->
-          <div class="flex gap-2 mb-6 border-b border-gray-200 dark:border-gray-800 pb-2">
+          <div class="flex gap-2 mb-6 border-b border-default pb-2">
             <UButton
               v-for="tab in tabs"
               :key="tab.value"
@@ -382,10 +560,27 @@ const tabs = [
 
           <!-- Assets Tab -->
           <div v-if="activeTab === 'assets'">
-            <div v-if="assets.length === 0" class="text-center py-12 text-gray-500">
+            <input
+              ref="fileInput"
+              type="file"
+              multiple
+              accept="image/*,video/*,application/pdf"
+              class="hidden"
+              @change="handleFileUpload"
+            />
+            <div class="flex justify-end mb-4">
+              <UButton
+                label="Upload Assets"
+                icon="i-lucide-upload"
+                variant="outline"
+                :loading="uploadingAssets"
+                @click="triggerFileUpload"
+              />
+            </div>
+            <div v-if="assets.length === 0" class="text-center py-12 text-muted">
               <UIcon name="i-lucide-image" class="w-12 h-12 mx-auto mb-4 opacity-50" />
               <p>No assets uploaded yet</p>
-              <UButton variant="outline" label="Upload Assets" icon="i-lucide-upload" class="mt-4" />
+              <UButton variant="outline" label="Upload Assets" icon="i-lucide-upload" class="mt-4" @click="triggerFileUpload" />
             </div>
             <div v-else class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               <UCard
@@ -394,14 +589,14 @@ const tabs = [
                 class="overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary-500 transition-all"
                 @click="openAnnotationViewer(asset)"
               >
-                <div class="aspect-video bg-gray-100 dark:bg-gray-800 flex items-center justify-center relative">
+                <div class="aspect-video bg-elevated flex items-center justify-center relative">
                   <img
                     v-if="asset.thumbnailUrl || asset.fileUrl"
                     :src="asset.thumbnailUrl || asset.fileUrl"
                     :alt="asset.fileName"
                     class="w-full h-full object-cover"
                   />
-                  <UIcon v-else name="i-lucide-file" class="w-12 h-12 text-gray-400" />
+                  <UIcon v-else name="i-lucide-file" class="w-12 h-12 text-dimmed" />
                   <!-- Comment count badge -->
                   <div
                     v-if="comments.filter((c: any) => c.assetId === asset.id).length > 0"
@@ -413,8 +608,8 @@ const tabs = [
                 <div class="p-3">
                   <p class="font-medium text-sm truncate">{{ asset.fileName }}</p>
                   <div class="flex items-center justify-between mt-1">
-                    <p class="text-xs text-gray-500">{{ formatFileSize(asset.fileSize) }}</p>
-                    <UButton variant="ghost" size="xs" icon="i-lucide-message-circle" class="text-gray-400" />
+                    <p class="text-xs text-muted">{{ formatFileSize(asset.fileSize) }}</p>
+                    <UButton variant="ghost" size="xs" icon="i-lucide-message-circle" class="text-dimmed" />
                   </div>
                 </div>
               </UCard>
@@ -425,7 +620,7 @@ const tabs = [
               <template #content>
                 <div v-if="selectedAsset" class="flex flex-col h-[80vh]">
                   <!-- Viewer Header -->
-                  <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+                  <div class="flex items-center justify-between p-4 border-b border-default">
                     <div class="flex items-center gap-4">
                       <h3 class="font-semibold">{{ selectedAsset.fileName }}</h3>
                       <UBadge variant="subtle" color="neutral">
@@ -469,7 +664,7 @@ const tabs = [
                   <!-- Main Content -->
                   <div class="flex-1 flex overflow-hidden">
                     <!-- Image Viewer -->
-                    <div class="flex-1 relative overflow-auto bg-gray-100 dark:bg-gray-900 p-4">
+                    <div class="flex-1 relative overflow-auto bg-elevated p-4">
                       <div
                         class="relative inline-block max-w-full"
                         :class="{
@@ -545,7 +740,7 @@ const tabs = [
                       <!-- Annotation input (shown when a position is selected) -->
                       <div
                         v-if="(newAnnotationPosition || (newAnnotationRect && newAnnotationRect.width > 1)) && !isDrawingRect"
-                        class="absolute bottom-4 left-4 right-4 bg-white dark:bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-200 dark:border-gray-700"
+                        class="absolute bottom-4 left-4 right-4 bg-default rounded-lg shadow-xl p-4 border border-default"
                       >
                         <div class="flex items-start gap-3">
                           <UTextarea
@@ -573,16 +768,16 @@ const tabs = [
                     </div>
 
                     <!-- Comments Sidebar -->
-                    <div class="w-80 border-l border-gray-200 dark:border-gray-700 flex flex-col bg-white dark:bg-gray-800">
-                      <div class="p-4 border-b border-gray-200 dark:border-gray-700">
+                    <div class="w-80 border-l border-default flex flex-col bg-default">
+                      <div class="p-4 border-b border-default">
                         <h4 class="font-semibold">Comments</h4>
-                        <p class="text-xs text-gray-500 mt-1">
+                        <p class="text-xs text-muted mt-1">
                           {{ assetComments.filter((c: any) => !c.isResolved).length }} unresolved
                         </p>
                       </div>
 
                       <div class="flex-1 overflow-auto p-4 space-y-4">
-                        <div v-if="assetComments.length === 0" class="text-center py-8 text-gray-500">
+                        <div v-if="assetComments.length === 0" class="text-center py-8 text-muted">
                           <UIcon name="i-lucide-message-circle" class="w-8 h-8 mx-auto mb-2 opacity-50" />
                           <p class="text-sm">No comments on this asset</p>
                           <p class="text-xs mt-1">Click on the image to add one</p>
@@ -591,7 +786,7 @@ const tabs = [
                         <div
                           v-for="(comment, idx) in assetComments"
                           :key="comment.id"
-                          class="p-3 rounded-lg bg-gray-50 dark:bg-gray-900"
+                          class="p-3 rounded-lg bg-elevated/50"
                           :class="{ 'opacity-60': comment.isResolved }"
                         >
                           <div class="flex items-start gap-2">
@@ -621,7 +816,7 @@ const tabs = [
                                 </div>
                               </div>
                               <p class="text-sm mt-1">{{ comment.content }}</p>
-                              <p class="text-xs text-gray-500 mt-2">{{ formatDateTime(comment.createdAt) }}</p>
+                              <p class="text-xs text-muted mt-2">{{ formatDateTime(comment.createdAt) }}</p>
                             </div>
                           </div>
                         </div>
@@ -635,14 +830,17 @@ const tabs = [
 
           <!-- Comments Tab -->
           <div v-if="activeTab === 'comments'">
-            <div v-if="comments.length === 0" class="text-center py-12 text-gray-500">
+            <!-- Empty state -->
+            <div v-if="comments.length === 0" class="text-center py-8 text-muted mb-4">
               <UIcon name="i-lucide-message-circle" class="w-12 h-12 mx-auto mb-4 opacity-50" />
               <p>No comments yet</p>
             </div>
+
+            <!-- Comments list -->
             <div v-else class="space-y-4">
               <UCard v-for="comment in comments" :key="comment.id">
                 <div class="flex items-start gap-3">
-                  <div class="p-2 rounded-full bg-gray-100 dark:bg-gray-800">
+                  <div class="p-2 rounded-full bg-elevated">
                     <UIcon name="i-lucide-user" class="w-4 h-4" />
                   </div>
                   <div class="flex-1">
@@ -654,7 +852,7 @@ const tabs = [
                         <UBadge v-if="comment.isResolved" color="success" variant="subtle" size="xs">
                           Resolved
                         </UBadge>
-                        <span class="text-xs text-gray-500">{{ formatDateTime(comment.createdAt) }}</span>
+                        <span class="text-xs text-muted">{{ formatDateTime(comment.createdAt) }}</span>
                       </div>
                     </div>
                     <p class="text-sm mt-1">{{ comment.content }}</p>
@@ -668,20 +866,51 @@ const tabs = [
                 </div>
               </UCard>
             </div>
+
+            <!-- Inline comment form (always shown) -->
+            <div class="flex items-start gap-3 pt-4 mt-4 border-t border-default">
+              <div class="p-2 rounded-full bg-elevated">
+                <UIcon name="i-lucide-message-circle-plus" class="w-4 h-4" />
+              </div>
+              <div class="flex-1 flex gap-2">
+                <UTextarea
+                  v-model="inlineComment"
+                  :placeholder="comments.length === 0 ? 'Be the first to comment...' : 'Add a comment...'"
+                  :rows="2"
+                  class="flex-1"
+                  @keydown.meta.enter="submitInlineComment"
+                />
+                <UButton
+                  icon="i-lucide-send"
+                  color="primary"
+                  :loading="addingInlineComment"
+                  :disabled="!inlineComment.trim()"
+                  @click="submitInlineComment"
+                />
+              </div>
+            </div>
           </div>
 
           <!-- Approvers Tab -->
           <div v-if="activeTab === 'approvers'">
-            <div v-if="approvers.length === 0" class="text-center py-12 text-gray-500">
+            <div class="flex justify-end mb-4">
+              <UButton
+                label="Add Approvers"
+                icon="i-lucide-user-plus"
+                variant="outline"
+                @click="showApproverModal = true"
+              />
+            </div>
+            <div v-if="approvers.length === 0" class="text-center py-12 text-muted">
               <UIcon name="i-lucide-users" class="w-12 h-12 mx-auto mb-4 opacity-50" />
               <p>No approvers assigned yet</p>
-              <UButton variant="outline" label="Add Approvers" icon="i-lucide-user-plus" class="mt-4" />
+              <UButton variant="outline" label="Add Approvers" icon="i-lucide-user-plus" class="mt-4" @click="showApproverModal = true" />
             </div>
             <div v-else class="space-y-3">
               <UCard v-for="approver in approvers" :key="approver.id">
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-3">
-                    <div class="p-2 rounded-full bg-gray-100 dark:bg-gray-800">
+                    <div class="p-2 rounded-full bg-elevated">
                       <UIcon
                         :name="approver.type === 'team_member' ? 'i-lucide-user' : 'i-lucide-building'"
                         class="w-4 h-4"
@@ -689,19 +918,28 @@ const tabs = [
                     </div>
                     <div>
                       <p class="font-medium">{{ getApproverName(approver) }}</p>
-                      <p v-if="approver.role" class="text-xs text-gray-500">{{ approver.role }}</p>
+                      <p v-if="approver.role" class="text-xs text-muted">{{ approver.role }}</p>
                     </div>
                   </div>
                   <div class="flex items-center gap-3">
                     <div v-if="approver.status !== 'pending'" class="text-right">
-                      <p class="text-xs text-gray-500">{{ formatDateTime(approver.decisionAt) }}</p>
-                      <p v-if="approver.decisionComment" class="text-xs text-gray-400 max-w-xs truncate">
+                      <p class="text-xs text-muted">{{ formatDateTime(approver.decisionAt) }}</p>
+                      <p v-if="approver.decisionComment" class="text-xs text-dimmed max-w-xs truncate">
                         "{{ approver.decisionComment }}"
                       </p>
                     </div>
                     <UBadge :color="getStatusColor(approver.status)" variant="subtle">
                       {{ formatStatus(approver.status) }}
                     </UBadge>
+                    <UButton
+                      v-if="approver.status === 'pending'"
+                      variant="ghost"
+                      color="error"
+                      size="xs"
+                      icon="i-lucide-x"
+                      title="Remove approver"
+                      @click="removeApprover(approver)"
+                    />
                   </div>
                 </div>
               </UCard>
@@ -710,7 +948,7 @@ const tabs = [
 
           <!-- Activity Tab -->
           <div v-if="activeTab === 'activity'">
-            <div v-if="activities.length === 0" class="text-center py-12 text-gray-500">
+            <div v-if="activities.length === 0" class="text-center py-12 text-muted">
               <UIcon name="i-lucide-activity" class="w-12 h-12 mx-auto mb-4 opacity-50" />
               <p>No activity yet</p>
             </div>
@@ -718,10 +956,10 @@ const tabs = [
               <div
                 v-for="activity in activities"
                 :key="activity.id"
-                class="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50"
+                class="flex items-start gap-3 p-3 rounded-lg bg-elevated/50"
               >
-                <div class="p-2 rounded-full bg-white dark:bg-gray-800 shadow-sm">
-                  <UIcon :name="getActivityIcon(activity.activityType)" class="w-4 h-4 text-gray-600" />
+                <div class="p-2 rounded-full bg-default shadow-sm">
+                  <UIcon :name="getActivityIcon(activity.activityType)" class="w-4 h-4 text-muted" />
                 </div>
                 <div class="flex-1">
                   <p class="text-sm">
@@ -730,7 +968,7 @@ const tabs = [
                     </span>
                     {{ activity.description || activity.activityType.replace(/_/g, ' ') }}
                   </p>
-                  <p class="text-xs text-gray-500 mt-1">{{ formatDateTime(activity.createdAt) }}</p>
+                  <p class="text-xs text-muted mt-1">{{ formatDateTime(activity.createdAt) }}</p>
                 </div>
               </div>
             </div>
@@ -756,7 +994,7 @@ const tabs = [
                       <p class="font-medium">
                         {{ version.isCurrent ? 'Current Version' : `Version ${version.version}` }}
                       </p>
-                      <p class="text-xs text-gray-500">
+                      <p class="text-xs text-muted">
                         Created by {{ version.createdByName }} · {{ formatDate(version.createdAt) }}
                       </p>
                     </div>
@@ -765,7 +1003,7 @@ const tabs = [
                     <UBadge :color="getStatusColor(version.status)" variant="subtle">
                       {{ formatStatus(version.status) }}
                     </UBadge>
-                    <span class="text-sm text-gray-500">{{ version.commentCount }} comments</span>
+                    <span class="text-sm text-muted">{{ version.commentCount }} comments</span>
                     <UButton
                       v-if="!version.isCurrent"
                       variant="ghost"
@@ -787,19 +1025,19 @@ const tabs = [
               </template>
               <dl class="space-y-3">
                 <div>
-                  <dt class="text-xs text-gray-500">Type</dt>
+                  <dt class="text-xs text-muted">Type</dt>
                   <dd class="font-medium capitalize">{{ proof.proofType }}</dd>
                 </div>
                 <div>
-                  <dt class="text-xs text-gray-500">Due Date</dt>
+                  <dt class="text-xs text-muted">Due Date</dt>
                   <dd class="font-medium">{{ formatDate(proof.dueDate) }}</dd>
                 </div>
                 <div>
-                  <dt class="text-xs text-gray-500">Created By</dt>
+                  <dt class="text-xs text-muted">Created By</dt>
                   <dd class="font-medium">{{ proof.createdBy?.name || '—' }}</dd>
                 </div>
                 <div>
-                  <dt class="text-xs text-gray-500">Created</dt>
+                  <dt class="text-xs text-muted">Created</dt>
                   <dd class="font-medium">{{ formatDate(proof.createdAt) }}</dd>
                 </div>
               </dl>
@@ -814,28 +1052,28 @@ const tabs = [
                   <span class="text-sm">All approvers required</span>
                   <UIcon
                     :name="proof.settings.requiresAllApprovers ? 'i-lucide-check' : 'i-lucide-x'"
-                    :class="proof.settings.requiresAllApprovers ? 'text-emerald-500' : 'text-gray-400'"
+                    :class="proof.settings.requiresAllApprovers ? 'text-emerald-500' : 'text-dimmed'"
                   />
                 </div>
                 <div class="flex items-center justify-between">
                   <span class="text-sm">Comments enabled</span>
                   <UIcon
                     :name="proof.settings.allowComments ? 'i-lucide-check' : 'i-lucide-x'"
-                    :class="proof.settings.allowComments ? 'text-emerald-500' : 'text-gray-400'"
+                    :class="proof.settings.allowComments ? 'text-emerald-500' : 'text-dimmed'"
                   />
                 </div>
                 <div class="flex items-center justify-between">
                   <span class="text-sm">Annotations enabled</span>
                   <UIcon
                     :name="proof.settings.allowAnnotations ? 'i-lucide-check' : 'i-lucide-x'"
-                    :class="proof.settings.allowAnnotations ? 'text-emerald-500' : 'text-gray-400'"
+                    :class="proof.settings.allowAnnotations ? 'text-emerald-500' : 'text-dimmed'"
                   />
                 </div>
                 <div class="flex items-center justify-between">
                   <span class="text-sm">Password protected</span>
                   <UIcon
                     :name="proof.settings.passwordProtected ? 'i-lucide-check' : 'i-lucide-x'"
-                    :class="proof.settings.passwordProtected ? 'text-emerald-500' : 'text-gray-400'"
+                    :class="proof.settings.passwordProtected ? 'text-emerald-500' : 'text-dimmed'"
                   />
                 </div>
               </div>
@@ -865,7 +1103,7 @@ const tabs = [
                     @click="copyShareLink"
                   />
                 </div>
-                <div v-if="proof.sharing.shareExpiresAt" class="text-xs text-gray-500">
+                <div v-if="proof.sharing.shareExpiresAt" class="text-xs text-muted">
                   Expires: {{ formatDate(proof.sharing.shareExpiresAt) }}
                 </div>
               </div>
@@ -874,5 +1112,96 @@ const tabs = [
         </template>
       </div>
     </UDashboardPanel>
+
+    <!-- Edit Proof Modal -->
+    <UModal v-model:open="showEditModal">
+      <template #header>
+        <h3 class="font-semibold">Edit Proof</h3>
+      </template>
+      <template #body>
+        <div class="space-y-4">
+          <UFormField label="Proof Name" required>
+            <UInput v-model="editForm.name" placeholder="Proof name" />
+          </UFormField>
+          <UFormField label="Type">
+            <USelectMenu
+              v-model="editForm.proofType"
+              :items="proofTypeOptions"
+              value-key="value"
+            />
+          </UFormField>
+          <UFormField label="Description">
+            <UTextarea v-model="editForm.description" placeholder="Description..." :rows="4" />
+          </UFormField>
+          <UFormField label="Due Date">
+            <UInput v-model="editForm.dueDate" type="date" />
+          </UFormField>
+          <UCheckbox v-model="editForm.isUrgent" label="Mark as urgent" />
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <UButton variant="ghost" label="Cancel" @click="showEditModal = false" />
+          <UButton color="primary" label="Save Changes" :loading="savingEdit" @click="saveEdit" />
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Add Approvers Modal -->
+    <UModal v-model:open="showApproverModal">
+      <template #header>
+        <h3 class="font-semibold">Add Approvers</h3>
+      </template>
+      <template #body>
+        <div class="space-y-4">
+          <UInput
+            v-model="approverSearch"
+            placeholder="Search team members..."
+            icon="i-lucide-search"
+          />
+          <div class="max-h-80 overflow-y-auto space-y-2">
+            <div
+              v-for="member in filteredTeamMembers"
+              :key="member.id"
+              class="flex items-center justify-between p-3 rounded-lg hover:bg-elevated/50 transition-colors"
+            >
+              <div class="flex items-center gap-3">
+                <UAvatar :alt="member.name" size="sm" />
+                <div>
+                  <p class="font-medium text-sm">{{ member.name }}</p>
+                  <p class="text-xs text-muted">{{ member.email }}</p>
+                </div>
+              </div>
+              <UButton
+                v-if="existingApproverIds.includes(member.id)"
+                variant="ghost"
+                size="xs"
+                label="Added"
+                disabled
+                color="success"
+                icon="i-lucide-check"
+              />
+              <UButton
+                v-else
+                variant="outline"
+                size="xs"
+                label="Add"
+                icon="i-lucide-plus"
+                :loading="addingApprovers"
+                @click="addApprover(member)"
+              />
+            </div>
+            <p v-if="filteredTeamMembers.length === 0" class="text-center py-4 text-muted text-sm">
+              No team members found
+            </p>
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex justify-end">
+          <UButton variant="ghost" label="Done" @click="showApproverModal = false" />
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

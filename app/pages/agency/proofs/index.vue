@@ -166,13 +166,13 @@ const resetNewProof = () => {
         <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
           <UCard>
             <div class="text-center">
-              <p class="text-sm text-gray-500">Total Proofs</p>
+              <p class="text-sm text-muted">Total Proofs</p>
               <p class="text-2xl font-bold">{{ summary.total }}</p>
             </div>
           </UCard>
           <UCard>
             <div class="text-center">
-              <p class="text-sm text-gray-500">In Review</p>
+              <p class="text-sm text-muted">In Review</p>
               <p class="text-2xl font-bold text-blue-500">
                 {{ (summary.byStatus?.internal_review || 0) + (summary.byStatus?.client_review || 0) }}
               </p>
@@ -180,20 +180,20 @@ const resetNewProof = () => {
           </UCard>
           <UCard>
             <div class="text-center">
-              <p class="text-sm text-gray-500">Changes Requested</p>
+              <p class="text-sm text-muted">Changes Requested</p>
               <p class="text-2xl font-bold text-amber-500">{{ summary.byStatus?.changes_requested || 0 }}</p>
             </div>
           </UCard>
           <UCard>
             <div class="text-center">
-              <p class="text-sm text-gray-500">Approved</p>
+              <p class="text-sm text-muted">Approved</p>
               <p class="text-2xl font-bold text-emerald-500">{{ summary.byStatus?.approved || 0 }}</p>
             </div>
           </UCard>
           <UCard>
             <div class="text-center">
-              <p class="text-sm text-gray-500">Drafts</p>
-              <p class="text-2xl font-bold text-gray-400">{{ summary.byStatus?.draft || 0 }}</p>
+              <p class="text-sm text-muted">Drafts</p>
+              <p class="text-2xl font-bold text-dimmed">{{ summary.byStatus?.draft || 0 }}</p>
             </div>
           </UCard>
         </div>
@@ -239,12 +239,12 @@ const resetNewProof = () => {
               <!-- Header -->
               <div class="flex items-start justify-between mb-3">
                 <div class="flex items-center gap-2">
-                  <div class="p-2 rounded-lg bg-gray-100 dark:bg-gray-800">
-                    <UIcon :name="getTypeIcon(proof.proofType)" class="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                  <div class="p-2 rounded-lg bg-elevated">
+                    <UIcon :name="getTypeIcon(proof.proofType)" class="w-5 h-5 text-muted" />
                   </div>
                   <div>
                     <h3 class="font-semibold line-clamp-1">{{ proof.name }}</h3>
-                    <p class="text-xs text-gray-500">v{{ proof.version }}</p>
+                    <p class="text-xs text-muted">v{{ proof.version }}</p>
                   </div>
                 </div>
                 <UBadge v-if="proof.isUrgent" color="error" variant="subtle" size="xs">
@@ -254,10 +254,10 @@ const resetNewProof = () => {
 
               <!-- Project/Client -->
               <div class="mb-3">
-                <p class="text-sm text-gray-600 dark:text-gray-400 line-clamp-1">
+                <p class="text-sm text-muted line-clamp-1">
                   {{ proof.project?.name || 'No project' }}
                 </p>
-                <p v-if="proof.client" class="text-xs text-gray-500">
+                <p v-if="proof.client" class="text-xs text-muted">
                   {{ proof.client.name }}
                 </p>
               </div>
@@ -268,37 +268,37 @@ const resetNewProof = () => {
                   {{ formatStatus(proof.status) }}
                 </UBadge>
                 <div v-if="proof.stats.approvers > 0" class="flex items-center gap-2">
-                  <div class="h-2 w-16 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div class="h-2 w-16 bg-elevated rounded-full overflow-hidden">
                     <div
                       class="h-full bg-emerald-500 rounded-full transition-all"
                       :style="{ width: `${getApprovalProgress(proof)}%` }"
                     />
                   </div>
-                  <span class="text-xs text-gray-500">
+                  <span class="text-xs text-muted">
                     {{ proof.stats.approved }}/{{ proof.stats.approvers }}
                   </span>
                 </div>
               </div>
 
               <!-- Stats Row -->
-              <div class="grid grid-cols-3 gap-2 mt-auto pt-3 border-t border-gray-100 dark:border-gray-800">
+              <div class="grid grid-cols-3 gap-2 mt-auto pt-3 border-t border-default">
                 <div class="text-center">
                   <p class="text-lg font-semibold">{{ proof.stats.assets }}</p>
-                  <p class="text-xs text-gray-500">Assets</p>
+                  <p class="text-xs text-muted">Assets</p>
                 </div>
                 <div class="text-center">
                   <p class="text-lg font-semibold">{{ proof.stats.comments }}</p>
-                  <p class="text-xs text-gray-500">Comments</p>
+                  <p class="text-xs text-muted">Comments</p>
                 </div>
                 <div class="text-center">
                   <p class="text-lg font-semibold">{{ proof.viewCount || 0 }}</p>
-                  <p class="text-xs text-gray-500">Views</p>
+                  <p class="text-xs text-muted">Views</p>
                 </div>
               </div>
 
               <!-- Due Date -->
-              <div v-if="proof.dueDate" class="flex items-center justify-between mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
-                <span class="text-xs text-gray-500">Due {{ formatDate(proof.dueDate) }}</span>
+              <div v-if="proof.dueDate" class="flex items-center justify-between mt-3 pt-3 border-t border-default">
+                <span class="text-xs text-muted">Due {{ formatDate(proof.dueDate) }}</span>
                 <span v-if="proof.stats.unresolvedComments > 0" class="text-xs text-amber-500">
                   {{ proof.stats.unresolvedComments }} unresolved
                 </span>
@@ -306,7 +306,7 @@ const resetNewProof = () => {
             </div>
           </UCard>
 
-          <div v-if="proofs.length === 0" class="col-span-full text-center text-gray-500 py-12">
+          <div v-if="proofs.length === 0" class="col-span-full text-center text-muted py-12">
             No proofs found. Create one to get started!
           </div>
         </div>

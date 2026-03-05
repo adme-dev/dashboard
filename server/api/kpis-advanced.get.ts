@@ -2,6 +2,8 @@ import { createError } from 'h3'
 import { createXeroClient } from '../utils/xeroClient'
 import { getActiveTokenForSession } from '../utils/tokenStore'
 import { getSelectedTenant } from '../utils/session'
+import { cachedFetch } from '~~/server/utils/kv'
+import { dedupedXeroCall } from '~~/server/utils/xeroRateLimit'
 
 function ensureDateString(d: Date) {
   return d.toISOString().slice(0, 10)
@@ -37,9 +39,12 @@ export default eventHandler(async (event) => {
   const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
   const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
   
+  const cacheKey = `xero:kpis-advanced:${tenantId}`
+
+  return cachedFetch(event, cacheKey, 300, async () => {
   const client = await createXeroClient({ tokenSet: token, event })
 
-  // Parallel data fetching for better performance
+  // Parallel data fetching — dedupedXeroCall queue limits to 3 concurrent
   const [
     currentCashResponse,
     currentMonthInvoicesResponse,
@@ -50,53 +55,61 @@ export default eventHandler(async (event) => {
     overdueInvoicesResponse,
     balanceSheetResponse
   ] = await Promise.allSettled([
-    // Current cash position - need date range for bank summary
-    client.accountingApi.getReportBankSummary(tenantId, ensureDateString(addDays(today, -30)), ensureDateString(today)),
-    
-    // Current month revenue
-    (client.accountingApi.getInvoices as any)(
-      tenantId, undefined,
-      `Type=="ACCREC"&&Status=="PAID"&&Date>=${dtExpr(monthStart)}&&Date<=${dtExpr(today)}`,
-      'Date DESC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 500
+    dedupedXeroCall(`kpi-bank-summary:${tenantId}`, 'kpi-bank-summary', () =>
+      client.accountingApi.getReportBankSummary(tenantId, ensureDateString(addDays(today, -30)), ensureDateString(today))
     ),
 
-    // Last month revenue (for comparison)
-    (client.accountingApi.getInvoices as any)(
-      tenantId, undefined,
-      `Type=="ACCREC"&&Status=="PAID"&&Date>=${dtExpr(lastMonth)}&&Date<=${dtExpr(lastMonthEnd)}`,
-      'Date DESC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 500
+    dedupedXeroCall(`kpi-rev-current:${tenantId}`, 'kpi-rev-current', () =>
+      (client.accountingApi.getInvoices as any)(
+        tenantId, undefined,
+        `Type=="ACCREC"&&Status=="PAID"&&Date>=${dtExpr(monthStart)}&&Date<=${dtExpr(today)}`,
+        'Date DESC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 500
+      )
     ),
 
-    // Current month expenses
-    (client.accountingApi.getInvoices as any)(
-      tenantId, undefined,
-      `Type=="ACCPAY"&&Status=="PAID"&&Date>=${dtExpr(monthStart)}&&Date<=${dtExpr(today)}`,
-      'Date DESC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 500
+    dedupedXeroCall(`kpi-rev-last:${tenantId}`, 'kpi-rev-last', () =>
+      (client.accountingApi.getInvoices as any)(
+        tenantId, undefined,
+        `Type=="ACCREC"&&Status=="PAID"&&Date>=${dtExpr(lastMonth)}&&Date<=${dtExpr(lastMonthEnd)}`,
+        'Date DESC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 500
+      )
     ),
 
-    // Last month expenses (for comparison)
-    (client.accountingApi.getInvoices as any)(
-      tenantId, undefined,
-      `Type=="ACCPAY"&&Status=="PAID"&&Date>=${dtExpr(lastMonth)}&&Date<=${dtExpr(lastMonthEnd)}`,
-      'Date DESC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 500
+    dedupedXeroCall(`kpi-exp-current:${tenantId}`, 'kpi-exp-current', () =>
+      (client.accountingApi.getInvoices as any)(
+        tenantId, undefined,
+        `Type=="ACCPAY"&&Status=="PAID"&&Date>=${dtExpr(monthStart)}&&Date<=${dtExpr(today)}`,
+        'Date DESC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 500
+      )
     ),
 
-    // Outstanding receivables
-    (client.accountingApi.getInvoices as any)(
-      tenantId, undefined,
-      'Type=="ACCREC"&&Status=="AUTHORISED"',
-      'DueDate ASC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 200
+    dedupedXeroCall(`kpi-exp-last:${tenantId}`, 'kpi-exp-last', () =>
+      (client.accountingApi.getInvoices as any)(
+        tenantId, undefined,
+        `Type=="ACCPAY"&&Status=="PAID"&&Date>=${dtExpr(lastMonth)}&&Date<=${dtExpr(lastMonthEnd)}`,
+        'Date DESC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 500
+      )
     ),
 
-    // Overdue receivables
-    (client.accountingApi.getInvoices as any)(
-      tenantId, undefined,
-      `Type=="ACCREC"&&Status=="AUTHORISED"&&DueDate<${dtExpr(today)}`,
-      'DueDate ASC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 200
+    dedupedXeroCall(`kpi-outstanding:${tenantId}`, 'kpi-outstanding', () =>
+      (client.accountingApi.getInvoices as any)(
+        tenantId, undefined,
+        'Type=="ACCREC"&&Status=="AUTHORISED"',
+        'DueDate ASC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 200
+      )
     ),
-    
-    // Balance sheet for financial ratios
-    client.accountingApi.getReportBalanceSheet(tenantId, ensureDateString(today))
+
+    dedupedXeroCall(`kpi-overdue:${tenantId}`, 'kpi-overdue', () =>
+      (client.accountingApi.getInvoices as any)(
+        tenantId, undefined,
+        `Type=="ACCREC"&&Status=="AUTHORISED"&&DueDate<${dtExpr(today)}`,
+        'DueDate ASC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 200
+      )
+    ),
+
+    dedupedXeroCall(`kpi-balance-sheet:${tenantId}`, 'kpi-balance-sheet', () =>
+      client.accountingApi.getReportBalanceSheet(tenantId, ensureDateString(today))
+    )
   ])
 
   // Helper function to safely extract data from settled promises
@@ -307,4 +320,5 @@ export default eventHandler(async (event) => {
       collectionEfficiency: 100 - overdueRate
     }
   }
+  }) // end cachedFetch
 })

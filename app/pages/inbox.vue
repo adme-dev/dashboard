@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { breakpointsTailwind } from '@vueuse/core'
+import { breakpointsTailwind, useIntersectionObserver } from '@vueuse/core'
 import InboxNotification from '~/components/inbox/InboxNotification.vue'
 
 const {
@@ -27,14 +27,16 @@ const tabItems = [
   { label: 'Assigned', value: 'assigned' },
   { label: 'Mentions', value: 'mentions' },
   { label: 'Approvals', value: 'approvals' },
+  { label: 'Chat', value: 'chat' },
   { label: 'System', value: 'system' }
 ]
 const selectedTab = ref('all')
 
 const typesByTab: Record<string, string[]> = {
   assigned: ['task_assigned'],
-  mentions: ['task_mentioned'],
+  mentions: ['task_mentioned', 'chat_mention'],
   approvals: ['approval_requested', 'approval_completed'],
+  chat: ['chat_mention', 'chat_dm'],
   system: ['system', 'team_update']
 }
 
@@ -105,6 +107,26 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   disconnectFromStream()
+})
+
+// Infinite scroll sentinel
+const loadMoreSentinel = ref<HTMLElement | null>(null)
+const loadingMore = ref(false)
+
+async function loadMore() {
+  if (loadingMore.value || !hasMore.value) return
+  loadingMore.value = true
+  try {
+    await fetchNotifications({ append: true })
+  } catch {
+    // Silently fail — user can click the button manually
+  } finally {
+    loadingMore.value = false
+  }
+}
+
+useIntersectionObserver(loadMoreSentinel, ([{ isIntersecting }]) => {
+  if (isIntersecting) loadMore()
 })
 
 const breakpoints = useBreakpoints(breakpointsTailwind)
@@ -181,7 +203,7 @@ const isMobile = breakpoints.smaller('lg')
         <div
           v-for="notification in notifications"
           :key="notification.id"
-          class="px-6 py-4 hover:bg-elevated/50 cursor-pointer transition-colors relative"
+          class="group px-6 py-4 hover:bg-elevated/50 cursor-pointer transition-colors relative"
           :class="{ 'bg-primary/5': !notification.isRead }"
           @click="handleSelect(notification)"
         >
@@ -253,8 +275,22 @@ const isMobile = breakpoints.smaller('lg')
         </div>
       </div>
 
+      <!-- Load more -->
+      <div v-if="notifications.length > 0 && hasMore" class="px-6 py-3 flex justify-center">
+        <div ref="loadMoreSentinel" class="w-full">
+          <UButton
+            label="Load more"
+            variant="ghost"
+            color="neutral"
+            block
+            :loading="loadingMore"
+            @click="loadMore"
+          />
+        </div>
+      </div>
+
       <!-- Empty state -->
-      <div v-else class="flex flex-col items-center justify-center h-full text-center px-6">
+      <div v-else-if="notifications.length === 0" class="flex flex-col items-center justify-center h-full text-center px-6">
         <div class="w-16 h-16 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center mb-4">
           <UIcon name="i-lucide-bell-off" class="h-8 w-8 text-muted" />
         </div>

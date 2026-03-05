@@ -75,7 +75,7 @@ async function loadAIInsights() {
   error.value = null
   
   try {
-    const response = await fetch('/api/ai/expense-insights').then(r => r.json()) as { success: boolean; data: AIData }
+    const response = await $fetch('/api/ai/expense-insights') as { success: boolean; data: AIData }
     aiData.value = response
     hasLoaded.value = true
   } catch (err) {
@@ -86,9 +86,9 @@ async function loadAIInsights() {
   }
 }
 
-const formatCurrency = new Intl.NumberFormat('en-US', {
+const formatCurrency = new Intl.NumberFormat('en-AU', {
   style: 'currency',
-  currency: 'USD',
+  currency: 'AUD',
   maximumFractionDigits: 0
 }).format
 

@@ -232,6 +232,7 @@ export function useNotifications() {
           const exists = notifications.value.some(n => n.id === newNotification.id)
           if (!exists) {
             notifications.value = [newNotification, ...notifications.value]
+            unreadCount.value++
           }
         } catch (error) {
           console.error('[Notifications] Failed to parse notification:', error)

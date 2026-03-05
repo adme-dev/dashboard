@@ -745,6 +745,9 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
           <!-- Receivables Aging (right) -->
           <DashboardReceivablesAgingWidget v-if="isVisible('receivables-aging')" />
 
+          <!-- Overhead Burn (right) -->
+          <DashboardOverheadBurnWidget v-if="isVisible('overhead-burn')" />
+
           <!-- Recent Creatives (right) -->
           <DashboardRecentCreativesWidget v-if="isVisible('recent-creatives')" />
 

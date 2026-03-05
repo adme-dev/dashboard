@@ -6,6 +6,43 @@
 import { createError, getQuery } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
+import { cachedFetch } from '~~/server/utils/kv'
+
+function formatMembers(members: any[]) {
+  return members.map((m: any) => ({
+    ...m,
+    initials: m.name
+      .split(' ')
+      .map((n: string) => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2),
+  }))
+}
+
+async function fetchMembers(search: string) {
+  let searchCondition = ''
+  const params: any[] = []
+
+  if (search) {
+    searchCondition = 'AND (name ILIKE $1 OR email ILIKE $1 OR user_role ILIKE $1)'
+    params.push(`%${search}%`)
+  }
+
+  return queryRows(`
+    SELECT
+      id,
+      name,
+      email,
+      user_role as role,
+      avatar_url as "avatarUrl",
+      is_active as "isActive"
+    FROM team_members
+    WHERE is_active = true
+    ${searchCondition}
+    ORDER BY name ASC
+  `, params)
+}
 
 export default eventHandler(async (event) => {
   await requireAuth(event)
@@ -13,39 +50,16 @@ export default eventHandler(async (event) => {
   const search = (query.search as string) || ''
 
   try {
-    let searchCondition = ''
-    const params: any[] = []
-
+    // Only cache no-search requests — search combos are too varied
     if (search) {
-      searchCondition = 'AND (name ILIKE $1 OR email ILIKE $1 OR user_role ILIKE $1)'
-      params.push(`%${search}%`)
+      const members = await fetchMembers(search)
+      return { members: formatMembers(members) }
     }
 
-    const members = await queryRows(`
-      SELECT
-        id,
-        name,
-        email,
-        user_role as role,
-        avatar_url as "avatarUrl",
-        is_active as "isActive"
-      FROM team_members
-      WHERE is_active = true
-      ${searchCondition}
-      ORDER BY name ASC
-    `, params)
-
-    return {
-      members: members.map((m: any) => ({
-        ...m,
-        initials: m.name
-          .split(' ')
-          .map((n: string) => n[0])
-          .join('')
-          .toUpperCase()
-          .slice(0, 2),
-      })),
-    }
+    return cachedFetch(event, 'agency:team-members', 300, async () => {
+      const members = await fetchMembers('')
+      return { members: formatMembers(members) }
+    })
   } catch (error: any) {
     console.error('Failed to fetch team members:', error)
     throw createError({

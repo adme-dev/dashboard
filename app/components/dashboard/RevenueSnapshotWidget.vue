@@ -29,7 +29,7 @@ const metrics = computed(() => {
           <UIcon name="i-lucide-trending-up" class="w-4 h-4 text-[var(--ui-text-muted)]" />
           <h3 class="font-semibold text-[var(--ui-text-highlighted)]">Revenue Snapshot</h3>
         </div>
-        <UButton to="/dashboard" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
+        <UButton to="/profit-loss" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
           Full P&L
         </UButton>
       </div>

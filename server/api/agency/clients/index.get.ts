@@ -5,6 +5,7 @@
 
 import { db, queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { cachedFetch } from '~~/server/utils/kv'
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
@@ -12,6 +13,7 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const activeOnly = query.active !== 'false'
 
+  return cachedFetch(event, `agency:clients:${activeOnly}`, 120, async () => {
   try {
     // Get clients with aggregated profitability data
     const clients = await queryRows(`
@@ -82,4 +84,5 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Failed to fetch clients'
     })
   }
+  })
 })

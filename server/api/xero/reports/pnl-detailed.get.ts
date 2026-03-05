@@ -2,6 +2,8 @@ import { createError } from 'h3'
 import { createXeroClient } from '../../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
+import { cachedFetch } from '../../../utils/kv'
+import { dedupedXeroCall } from '../../../utils/xeroRateLimit'
 
 type XeroRow = {
   RowType?: string
@@ -165,7 +167,8 @@ type BreakdownOptions = {
 }
 
 function shouldIgnoreBreakdownRow(title: string) {
-  return /total|gross|net|margin|operating\s+expense|operating\s+expenses|income\s+tax/i.test(title)
+  // Word-boundary check for "net" to avoid filtering "Internet", "Network", etc.
+  return /\btotal\b|gross\s+profit|^net\s|^net$|\bnet\s+profit|\bnet\s+income|\bnet\s+loss|\bmargin\b|operating\s+expenses?|income\s+tax/i.test(title)
 }
 
 function collectBreakdownItems(section: ParsedRow | undefined, options: BreakdownOptions): BreakdownItemData[] {
@@ -351,9 +354,9 @@ function buildInsights({
   return insights
 }
 
-const currencyFormatter = new Intl.NumberFormat('en-US', {
+const currencyFormatter = new Intl.NumberFormat('en-AU', {
   style: 'currency',
-  currency: 'USD',
+  currency: 'AUD',
   maximumFractionDigits: 0
 })
 
@@ -372,6 +375,9 @@ export default eventHandler(async (event) => {
   const query = getQuery(event)
   const requestedToDate = parseDateInput(typeof query.toDate === 'string' ? query.toDate : undefined)
   const basis = typeof query.basis === 'string' && query.basis.toLowerCase() === 'cash' ? 'Cash' : 'Accrual'
+  const trackingCategoryID = typeof query.trackingCategoryID === 'string' ? query.trackingCategoryID : undefined
+  const trackingOptionID = typeof query.trackingOptionID === 'string' ? query.trackingOptionID : undefined
+  const trackingOptionID2 = typeof query.trackingOptionID2 === 'string' ? query.trackingOptionID2 : undefined
 
   const monthEnd = requestedToDate ?? getDefaultMonthEnd()
   const monthStart = new Date(monthEnd.getFullYear(), monthEnd.getMonth(), 1)
@@ -385,21 +391,29 @@ export default eventHandler(async (event) => {
   const toDateStr = ensureDateString(monthEnd)
   const fromDateStr = ensureDateString(ytdStart)
 
+  const trackingSuffix = [trackingCategoryID, trackingOptionID, trackingOptionID2].filter(Boolean).join(':')
+  const cacheKey = `xero-report:${tenantId}:pnl-detailed:${fromDateStr}:${toDateStr}:${basis}${trackingSuffix ? ':' + trackingSuffix : ''}`
+
+  return cachedFetch(event, cacheKey, 900, async () => {
   const client = await createXeroClient({ tokenSet: token, event })
   let report
   try {
-    const response = await client.accountingApi.getReportProfitAndLoss(
-      tenantId,
-      fromDateStr,
-      toDateStr,
-      periodCount,
-      'MONTH',
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      basis === 'Cash'
+    const response = await dedupedXeroCall(
+      `pnlDetailed:${tenantId}:${fromDateStr}:${toDateStr}:${basis}:${trackingSuffix}`,
+      'pnl-detailed',
+      () => client.accountingApi.getReportProfitAndLoss(
+        tenantId,
+        fromDateStr,
+        toDateStr,
+        periodCount,
+        'MONTH',
+        trackingCategoryID,
+        trackingOptionID,
+        trackingOptionID2,
+        undefined,
+        undefined,
+        basis === 'Cash'
+      )
     )
     report = response.body
   } catch (err: any) {
@@ -425,15 +439,15 @@ export default eventHandler(async (event) => {
   const previousIndex = lastIndex > 0 ? lastIndex - 1 : -1
   const ytdIndex = lastIndex
 
-  const revenueRow = findRow(flattened, /total\s+(revenue|income)/i)
-  const expenseRow = findRow(flattened, /total\s+operating\s+expenses|total\s+expense/i)
-  const cogsRow = findRow(flattened, /total\s+(cost\s+of\s+sales|direct\s+costs)/i)
-  const grossProfitRow = findRow(flattened, /gross\s+profit/i)
-  const netProfitRow = findRow(flattened, /net\s+profit|net\s+income|profit\s+for\s+the\s+period|profit\s+\(loss\)/i)
+  const revenueRow = findRow(flattened, /total\s+(revenue|income|trading\s+income|sales|turnover)/i)
+  const expenseRow = findRow(flattened, /total\s+(operating\s+expenses?|expenses?|overheads?|administration\s+expenses?)/i)
+  const cogsRow = findRow(flattened, /total\s+(cost\s+of\s+sales|direct\s+costs?|cost\s+of\s+goods\s+sold|purchases)/i)
+  const grossProfitRow = findRow(flattened, /gross\s+profit|gross\s+margin|trading\s+profit/i)
+  const netProfitRow = findRow(flattened, /net\s+profit|net\s+income|net\s+loss|profit\s+for\s+the\s+(period|year)|profit\s+\(loss\)|operating\s+profit/i)
 
-  const revenueSection = findSection(parsedRows, /revenue|income/i)
-  const costOfSalesSection = findSection(parsedRows, /(cost\s+of\s+sales|direct\s+cost)/i)
-  const expenseSection = findSection(parsedRows, /expense/i)
+  const revenueSection = findSection(parsedRows, /revenue|income|sales|turnover/i)
+  const costOfSalesSection = findSection(parsedRows, /(cost\s+of\s+sales|direct\s+cost|cost\s+of\s+goods|purchases|less\s+cost)/i)
+  const expenseSection = findSection(parsedRows, /expense|overhead|administration|less\s+operating/i)
 
   const revenueMonth = revenueRow?.values[lastIndex] ?? 0
   const revenuePrev = previousIndex >= 0 ? revenueRow?.values[previousIndex] ?? 0 : 0
@@ -471,22 +485,38 @@ export default eventHandler(async (event) => {
       return value > 0
     }
   })
+
+  // When inside a matched section, don't filter by sign or keywords — section context is sufficient.
+  // Only apply strict filters in fallback mode (scanning all flattened rows).
+  const nonZeroFilter = (row: ParsedRow) => {
+    const value = row.values[lastIndex] ?? 0
+    return value !== 0
+  }
+
   const breakdownDirectCosts = createBreakdown(costOfSalesSection, lastIndex, previousIndex, ytdIndex, {
     normalizeSign: true,
     fallbackRows: flattened,
-    filter: row => {
-      const value = row.values[lastIndex] ?? 0
-      const title = row.title || ''
-      return value < 0 && /(cost|cogs|direct|ppc|media|ad|production)/i.test(title)
-    }
+    filter: costOfSalesSection
+      ? nonZeroFilter
+      : (row => {
+          // Fallback: require keyword match + non-zero (either sign — Xero varies)
+          const value = row.values[lastIndex] ?? 0
+          const title = row.title || ''
+          return value !== 0 && /(cost|cogs|direct|ppc|media|ad|production|freelanc|subcontract|purchas)/i.test(title)
+        })
   })
+
   const breakdownExpenses = createBreakdown(expenseSection, lastIndex, previousIndex, ytdIndex, {
     normalizeSign: true,
     fallbackRows: flattened,
-    filter: row => {
-      const value = row.values[lastIndex] ?? 0
-      return value < 0
-    }
+    filter: expenseSection
+      ? nonZeroFilter
+      : (row => {
+          // Fallback: non-zero rows not already captured by revenue or direct costs
+          const value = row.values[lastIndex] ?? 0
+          const title = row.title || ''
+          return value !== 0 && !/(revenue|income|sales|turnover)/i.test(title)
+        })
   })
 
   const summary = {
@@ -599,4 +629,5 @@ export default eventHandler(async (event) => {
     },
     insights
   }
+  }) // end cachedFetch
 })

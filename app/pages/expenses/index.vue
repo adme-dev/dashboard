@@ -11,9 +11,48 @@ const AsyncCategoryTreemap = defineAsyncComponent(() => import('~/components/exp
 const { data: statusData, refresh: refreshStatus } = await useFetch('/api/xero/status')
 const isConnected = computed(() => statusData.value?.connected || false)
 
+// Period selection
+const now = new Date()
+const selectedMonth = ref(now.getMonth() + 1) // 1-indexed
+const selectedYear = ref(now.getFullYear())
+
+const periodFrom = computed(() => {
+  const d = new Date(selectedYear.value, selectedMonth.value - 1, 1)
+  return d.toISOString().slice(0, 10)
+})
+const periodTo = computed(() => {
+  const d = new Date(selectedYear.value, selectedMonth.value, 0) // last day of month
+  return d.toISOString().slice(0, 10)
+})
+
+const periodLabel = computed(() => {
+  const d = new Date(selectedYear.value, selectedMonth.value - 1)
+  return d.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })
+})
+
+function prevMonth() {
+  if (selectedMonth.value === 1) {
+    selectedMonth.value = 12
+    selectedYear.value--
+  } else {
+    selectedMonth.value--
+  }
+}
+function nextMonth() {
+  if (isCurrentMonth.value) return
+  if (selectedMonth.value === 12) {
+    selectedMonth.value = 1
+    selectedYear.value++
+  } else {
+    selectedMonth.value++
+  }
+}
+const isCurrentMonth = computed(() => selectedMonth.value === now.getMonth() + 1 && selectedYear.value === now.getFullYear())
+
 // Only fetch data if connected to Xero
 const { data, pending, error, refresh } = await useFetch('/api/xero/expenses', {
-  lazy: true
+  lazy: true,
+  query: computed(() => ({ from: periodFrom.value, to: periodTo.value }))
 })
 
 // Refresh data when connection status changes
@@ -28,7 +67,7 @@ const expensesData = computed(() => data.value ?? null)
 const daySpan = computed(() => {
   const from = expensesData.value?.range?.from
   const to = expensesData.value?.range?.to
-  if (!from || !to) return 90
+  if (!from || !to) return 30
   const fromDate = new Date(from)
   const toDate = new Date(to)
   const diffMs = toDate.valueOf() - fromDate.valueOf()
@@ -63,17 +102,12 @@ const rangeDescription = computed(() => {
   if (!isConnected.value) {
     return 'Connect to Xero to view expense data'
   }
-  const from = expensesData.value?.range?.from
-  const to = expensesData.value?.range?.to
-  if (!from || !to) {
-    return 'Trailing 90 days'
-  }
-  return `Last ${daySpan.value} days (${from} → ${to})`
+  return periodLabel.value
 })
 
 function formatCurrency(value?: number) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '-'
-  return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+  return value.toLocaleString('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
 }
 
 const categoryColumns = [
@@ -93,6 +127,95 @@ const vendorColumns = [
     cell: ({ row }: { row: { getValue: (key: string) => number } }) => formatCurrency(row.getValue('amount'))
   }
 ]
+
+// Transaction table
+const transactionColumns = [
+  { accessorKey: 'date', header: 'Date' },
+  { accessorKey: 'vendor', header: 'Vendor' },
+  { accessorKey: 'category', header: 'Category' },
+  {
+    accessorKey: 'amount',
+    header: 'Amount',
+    cell: ({ row }: { row: { getValue: (key: string) => number } }) => formatCurrency(row.getValue('amount'))
+  },
+  {
+    accessorKey: 'taxAmount',
+    header: 'GST',
+    cell: ({ row }: { row: { getValue: (key: string) => number } }) => formatCurrency(row.getValue('taxAmount'))
+  },
+  { accessorKey: 'status', header: 'Status' },
+]
+
+const txPage = ref(1)
+const txPerPage = 10
+const txSearch = ref('')
+const txSortField = ref<'amount' | 'date'>('date')
+const txSortDir = ref<'asc' | 'desc'>('desc')
+
+const filteredTransactions = computed(() => {
+  const items = [...(expensesData.value?.transactions || [])]
+  const q = txSearch.value.toLowerCase().trim()
+  if (!q) return items
+  return items.filter((tx: any) =>
+    (tx.vendor || '').toLowerCase().includes(q) ||
+    (tx.category || '').toLowerCase().includes(q) ||
+    (tx.description || '').toLowerCase().includes(q) ||
+    (tx.invoiceNumber || '').toLowerCase().includes(q) ||
+    (tx.status || '').toLowerCase().includes(q)
+  )
+})
+
+const sortedTransactions = computed(() => {
+  const items = [...filteredTransactions.value]
+  items.sort((a: any, b: any) => {
+    const field = txSortField.value
+    const dir = txSortDir.value === 'asc' ? 1 : -1
+    if (field === 'amount') return (a.amount - b.amount) * dir
+    return (a.date || '').localeCompare(b.date || '') * dir
+  })
+  return items
+})
+
+const paginatedTransactions = computed(() => {
+  const start = (txPage.value - 1) * txPerPage
+  return sortedTransactions.value.slice(start, start + txPerPage)
+})
+
+const txTotalPages = computed(() => Math.ceil(sortedTransactions.value.length / txPerPage))
+
+function toggleTxSort(field: 'amount' | 'date') {
+  if (txSortField.value === field) {
+    txSortDir.value = txSortDir.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    txSortField.value = field
+    txSortDir.value = 'desc'
+  }
+  txPage.value = 1
+}
+
+watch(txSearch, () => { txPage.value = 1 })
+
+// MoM helpers
+const momData = computed(() => expensesData.value?.monthOverMonth)
+const momDirection = computed(() => {
+  if (!momData.value) return 'neutral'
+  const c = momData.value.change
+  if (Math.abs(c) < 2) return 'neutral'
+  return c > 0 ? 'up' : 'down'
+})
+
+// Daily trend max
+const dailyMax = computed(() => {
+  const totals = expensesData.value?.dailyTotals || []
+  return Math.max(...totals.map((d: any) => d.amount), 1)
+})
+
+// Fixed vs variable percentage
+const fvTotal = computed(() => {
+  const fv = expensesData.value?.fixedVsVariable
+  if (!fv) return 0
+  return fv.fixed.total + fv.variable.total
+})
 
 // Export functionality
 async function exportData(format: 'csv' | 'json') {
@@ -213,7 +336,23 @@ async function exportData(format: 'csv' | 'json') {
           <UBreadcrumb :links="breadcrumbs" />
         </template>
         <template #right>
-          <span class="text-sm text-muted">{{ rangeDescription }}</span>
+          <div class="flex items-center gap-2">
+            <!-- Month Picker -->
+            <div class="flex items-center gap-1">
+              <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" @click="prevMonth" />
+              <span class="text-sm font-medium min-w-[140px] text-center">{{ periodLabel }}</span>
+              <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" :disabled="isCurrentMonth" @click="nextMonth" />
+            </div>
+
+            <!-- Period shortcuts -->
+            <UDropdownMenu :items="[[
+              { label: 'This Month', icon: 'i-lucide-calendar', onSelect: () => { selectedMonth = now.getMonth() + 1; selectedYear = now.getFullYear() } },
+              { label: 'Last Month', icon: 'i-lucide-calendar-minus', onSelect: () => { const d = new Date(now.getFullYear(), now.getMonth() - 1, 1); selectedMonth = d.getMonth() + 1; selectedYear = d.getFullYear() } },
+              { label: '2 Months Ago', icon: 'i-lucide-calendar-clock', onSelect: () => { const d = new Date(now.getFullYear(), now.getMonth() - 2, 1); selectedMonth = d.getMonth() + 1; selectedYear = d.getFullYear() } },
+            ]]">
+              <UButton icon="i-lucide-calendar" size="xs" variant="ghost" color="neutral" />
+            </UDropdownMenu>
+          </div>
         </template>
       </UDashboardToolbar>
     </template>
@@ -303,7 +442,7 @@ async function exportData(format: 'csv' | 'json') {
                 {{ formatCurrency(metrics.averagePerDay) }}
               </p>
               <p class="text-xs text-muted">
-                Over {{ daySpan }} days
+                {{ periodLabel }}
               </p>
             </div>
 
@@ -335,6 +474,62 @@ async function exportData(format: 'csv' | 'json') {
           </div>
         </div>
 
+        <!-- Month-over-Month Banner -->
+        <div
+          v-if="momData && momData.previous.total > 0"
+          class="rounded-lg px-4 py-3 flex items-center gap-3 mb-5"
+          :class="{
+            'bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50': momDirection === 'up',
+            'bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50': momDirection === 'down',
+            'bg-gray-50 dark:bg-gray-800/30 border border-gray-200 dark:border-gray-700/50': momDirection === 'neutral',
+          }"
+        >
+          <UIcon
+            :name="momDirection === 'up' ? 'i-lucide-trending-up' : momDirection === 'down' ? 'i-lucide-trending-down' : 'i-lucide-minus'"
+            class="h-5 w-5 shrink-0"
+            :class="{
+              'text-red-600 dark:text-red-400': momDirection === 'up',
+              'text-emerald-600 dark:text-emerald-400': momDirection === 'down',
+              'text-gray-600 dark:text-gray-400': momDirection === 'neutral',
+            }"
+          />
+          <p class="text-sm font-medium"
+            :class="{
+              'text-red-800 dark:text-red-200': momDirection === 'up',
+              'text-emerald-800 dark:text-emerald-200': momDirection === 'down',
+              'text-gray-700 dark:text-gray-300': momDirection === 'neutral',
+            }"
+          >
+            Spending is {{ Math.abs(momData.change) }}%
+            {{ momDirection === 'up' ? 'higher' : momDirection === 'down' ? 'lower' : 'about the same as' }}
+            {{ momDirection !== 'neutral' ? 'than' : '' }} last period
+            <span class="text-xs font-normal ml-1">({{ formatCurrency(Math.abs(momData.changeAmount)) }} {{ momData.changeAmount >= 0 ? 'more' : 'less' }})</span>
+          </p>
+        </div>
+
+        <!-- Daily Spend Trend -->
+        <div v-if="(expensesData?.dailyTotals || []).length > 1" class="mb-5">
+          <div class="bg-gray-50/50 dark:bg-gray-800/20 rounded-xl p-4 border border-gray-200 dark:border-gray-700/50">
+            <div class="flex items-center gap-2 mb-3">
+              <UIcon name="i-lucide-bar-chart" class="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Daily Spend</h3>
+            </div>
+            <div class="flex items-end gap-[2px] h-16">
+              <div
+                v-for="day in (expensesData?.dailyTotals || [])"
+                :key="day.date"
+                class="flex-1 bg-blue-500/80 dark:bg-blue-400/60 rounded-t-sm hover:bg-blue-600 dark:hover:bg-blue-400 transition-colors cursor-default min-w-[2px]"
+                :style="{ height: `${Math.max((day.amount / dailyMax) * 100, 4)}%` }"
+                :title="`${day.date}: ${formatCurrency(day.amount)}`"
+              />
+            </div>
+            <div class="flex justify-between mt-1">
+              <span class="text-[10px] text-muted">{{ (expensesData?.dailyTotals || [])[0]?.date?.slice(8) }}</span>
+              <span class="text-[10px] text-muted">{{ (expensesData?.dailyTotals || []).at(-1)?.date?.slice(8) }}</span>
+            </div>
+          </div>
+        </div>
+
         <!-- Analytics Dashboard -->
         <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
           <!-- Main Chart Area -->
@@ -354,7 +549,7 @@ async function exportData(format: 'csv' | 'json') {
                   </div>
                 </div>
               </template>
-              
+
               <ClientOnly>
                 <AsyncCategoryDonut :categories="data?.categories || []" />
               </ClientOnly>
@@ -378,10 +573,103 @@ async function exportData(format: 'csv' | 'json') {
                   </UBadge>
                 </div>
               </template>
-              
+
               <ClientOnly>
                 <AsyncCategoryTreemap :categories="data?.categories || []" />
               </ClientOnly>
+            </UCard>
+
+            <!-- Fixed vs Variable Split (left column) -->
+            <UCard v-if="expensesData?.fixedVsVariable" class="shadow-sm border-0 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm">
+              <template #header>
+                <div class="flex items-center gap-3">
+                  <div class="p-2 bg-cyan-50 dark:bg-cyan-900/50 rounded-lg">
+                    <UIcon name="i-lucide-split" class="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+                  </div>
+                  <div>
+                    <h3 class="text-lg font-semibold">Fixed vs Variable</h3>
+                    <p class="text-sm text-muted">Cost structure breakdown</p>
+                  </div>
+                </div>
+              </template>
+
+              <div class="space-y-4">
+                <!-- Stacked bar -->
+                <div class="h-4 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden flex">
+                  <div
+                    class="h-full bg-blue-500 transition-all duration-500"
+                    :style="{ width: fvTotal > 0 ? `${(expensesData.fixedVsVariable.fixed.total / fvTotal) * 100}%` : '0%' }"
+                  />
+                  <div
+                    class="h-full bg-emerald-500 transition-all duration-500"
+                    :style="{ width: fvTotal > 0 ? `${(expensesData.fixedVsVariable.variable.total / fvTotal) * 100}%` : '0%' }"
+                  />
+                </div>
+
+                <!-- Legend -->
+                <div class="grid grid-cols-2 gap-3">
+                  <div class="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+                    <div class="flex items-center gap-2 mb-1">
+                      <div class="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                      <span class="text-xs font-medium text-muted">Fixed</span>
+                    </div>
+                    <p class="text-sm font-bold tabular-nums">{{ formatCurrency(expensesData.fixedVsVariable.fixed.total) }}</p>
+                    <p class="text-[10px] text-muted">{{ fvTotal > 0 ? ((expensesData.fixedVsVariable.fixed.total / fvTotal) * 100).toFixed(0) : 0 }}%</p>
+                  </div>
+                  <div class="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+                    <div class="flex items-center gap-2 mb-1">
+                      <div class="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                      <span class="text-xs font-medium text-muted">Variable</span>
+                    </div>
+                    <p class="text-sm font-bold tabular-nums">{{ formatCurrency(expensesData.fixedVsVariable.variable.total) }}</p>
+                    <p class="text-[10px] text-muted">{{ fvTotal > 0 ? ((expensesData.fixedVsVariable.variable.total / fvTotal) * 100).toFixed(0) : 0 }}%</p>
+                  </div>
+                </div>
+              </div>
+            </UCard>
+
+            <!-- GST Summary (left column) -->
+            <UCard v-if="expensesData?.taxSummary" class="shadow-sm border-0 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm">
+              <template #header>
+                <div class="flex items-center gap-3">
+                  <div class="p-2 bg-amber-50 dark:bg-amber-900/50 rounded-lg">
+                    <UIcon name="i-lucide-receipt" class="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div>
+                    <h3 class="text-lg font-semibold">GST Summary</h3>
+                    <p class="text-sm text-muted">Tax breakdown</p>
+                  </div>
+                </div>
+              </template>
+
+              <div class="space-y-3">
+                <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+                  <span class="text-sm text-muted">Gross Total</span>
+                  <span class="text-sm font-bold tabular-nums">{{ formatCurrency(expensesData.taxSummary.totalGross) }}</span>
+                </div>
+                <div class="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+                  <span class="text-sm font-medium text-amber-800 dark:text-amber-200">GST Component</span>
+                  <span class="text-sm font-bold text-amber-700 dark:text-amber-300 tabular-nums">{{ formatCurrency(expensesData.taxSummary.totalTax) }}</span>
+                </div>
+                <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+                  <span class="text-sm text-muted">Net Total</span>
+                  <span class="text-sm font-bold tabular-nums">{{ formatCurrency(expensesData.taxSummary.totalNet) }}</span>
+                </div>
+
+                <div v-if="expensesData.taxSummary.byTaxType.length" class="border-t border-gray-100 dark:border-gray-800 pt-3 mt-3">
+                  <h4 class="text-xs font-semibold text-muted uppercase tracking-wide mb-2">By Tax Type</h4>
+                  <div class="space-y-2">
+                    <div
+                      v-for="tt in expensesData.taxSummary.byTaxType.slice(0, 5)"
+                      :key="tt.taxType"
+                      class="flex items-center justify-between text-sm"
+                    >
+                      <span class="text-muted truncate">{{ tt.taxType }}</span>
+                      <span class="font-medium tabular-nums ml-2">{{ formatCurrency(tt.tax) }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </UCard>
           </div>
 
@@ -523,30 +811,145 @@ async function exportData(format: 'csv' | 'json') {
                 <div class="border-t border-gray-100 dark:border-gray-800 pt-4">
                   <h4 class="text-sm font-semibold mb-3 text-muted">Quick Actions</h4>
                   <div class="grid grid-cols-2 gap-2">
-                    <UButton size="sm" variant="ghost" class="justify-start text-xs">
-                      <UIcon name="i-lucide-filter" class="h-3 w-3" />
-                      Filter
+                    <UButton size="sm" variant="ghost" class="justify-start text-xs" @click="prevMonth">
+                      <UIcon name="i-lucide-chevron-left" class="h-3 w-3" />
+                      Prev Month
                     </UButton>
-                    <UButton size="sm" variant="ghost" class="justify-start text-xs">
-                      <UIcon name="i-lucide-search" class="h-3 w-3" />
-                      Search
+                    <UButton size="sm" variant="ghost" class="justify-start text-xs" :disabled="isCurrentMonth" @click="nextMonth">
+                      <UIcon name="i-lucide-chevron-right" class="h-3 w-3" />
+                      Next Month
                     </UButton>
-                    <UButton size="sm" variant="ghost" class="justify-start text-xs">
-                      <UIcon name="i-lucide-calendar" class="h-3 w-3" />
-                      Period
+                    <UButton size="sm" variant="ghost" class="justify-start text-xs" @click="exportData('csv')">
+                      <UIcon name="i-lucide-download" class="h-3 w-3" />
+                      Export CSV
                     </UButton>
-                    <UButton size="sm" variant="ghost" class="justify-start text-xs">
-                      <UIcon name="i-lucide-share" class="h-3 w-3" />
-                      Export
+                    <UButton size="sm" variant="ghost" class="justify-start text-xs" @click="refresh()">
+                      <UIcon name="i-lucide-refresh-cw" class="h-3 w-3" />
+                      Refresh
                     </UButton>
                   </div>
                 </div>
               </div>
             </UCard>
+
+            <!-- Subscriptions -->
+            <UCard v-if="expensesData?.subscriptions?.items?.length" class="shadow-sm border-0 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm">
+              <template #header>
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-3">
+                    <div class="p-2 bg-violet-50 dark:bg-violet-900/50 rounded-lg">
+                      <UIcon name="i-lucide-repeat" class="h-5 w-5 text-violet-600 dark:text-violet-400" />
+                    </div>
+                    <div>
+                      <h3 class="text-lg font-semibold">Subscriptions</h3>
+                      <p class="text-sm text-muted">Recurring vendors</p>
+                    </div>
+                  </div>
+                  <UBadge color="secondary" variant="subtle">
+                    {{ expensesData.subscriptions.items.length }} recurring
+                  </UBadge>
+                </div>
+              </template>
+
+              <div class="space-y-2">
+                <div
+                  v-for="sub in expensesData.subscriptions.items.slice(0, 8)"
+                  :key="sub.vendor"
+                  class="flex items-center gap-3 py-2 border-b border-gray-100 dark:border-gray-800 last:border-0"
+                >
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium truncate">{{ sub.vendor }}</p>
+                    <div class="flex items-center gap-2 mt-0.5">
+                      <UBadge v-if="sub.department" color="info" variant="subtle" size="xs">{{ sub.department }}</UBadge>
+                      <span class="text-[10px] text-muted capitalize">{{ sub.frequency }}</span>
+                    </div>
+                  </div>
+                  <span class="text-sm font-bold tabular-nums shrink-0">{{ formatCurrency(sub.amount) }}</span>
+                </div>
+
+                <div v-if="expensesData.subscriptions.total > 0" class="pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-between">
+                  <span class="text-sm font-medium text-muted">Total Recurring</span>
+                  <span class="text-sm font-bold text-violet-600 dark:text-violet-400 tabular-nums">{{ formatCurrency(expensesData.subscriptions.total) }}</span>
+                </div>
+              </div>
+            </UCard>
           </div>
         </div>
+
+        <!-- Transaction Drill-Down Table -->
+        <div v-if="(expensesData?.transactions || []).length">
+          <UCard class="shadow-sm border-0 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm">
+            <template #header>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                    <UIcon name="i-lucide-list" class="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                  </div>
+                  <div>
+                    <h3 class="text-lg font-semibold">Recent Transactions</h3>
+                    <p class="text-sm text-muted">Top {{ sortedTransactions.length }} expense items</p>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <UInput
+                    v-model="txSearch"
+                    icon="i-lucide-search"
+                    placeholder="Search vendor, category..."
+                    size="xs"
+                    class="w-48"
+                  />
+                  <UButton
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    @click="toggleTxSort('date')"
+                    :class="txSortField === 'date' ? 'font-bold' : ''"
+                  >
+                    Date {{ txSortField === 'date' ? (txSortDir === 'asc' ? '↑' : '↓') : '' }}
+                  </UButton>
+                  <UButton
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    @click="toggleTxSort('amount')"
+                    :class="txSortField === 'amount' ? 'font-bold' : ''"
+                  >
+                    Amount {{ txSortField === 'amount' ? (txSortDir === 'asc' ? '↑' : '↓') : '' }}
+                  </UButton>
+                </div>
+              </div>
+            </template>
+
+            <UTable :data="paginatedTransactions" :columns="transactionColumns" />
+
+            <template v-if="txTotalPages > 1" #footer>
+              <div class="flex items-center justify-between px-2">
+                <span class="text-xs text-muted">
+                  Page {{ txPage }} of {{ txTotalPages }}
+                </span>
+                <div class="flex items-center gap-1">
+                  <UButton
+                    icon="i-lucide-chevron-left"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    :disabled="txPage <= 1"
+                    @click="txPage--"
+                  />
+                  <UButton
+                    icon="i-lucide-chevron-right"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    :disabled="txPage >= txTotalPages"
+                    @click="txPage++"
+                  />
+                </div>
+              </div>
+            </template>
+          </UCard>
         </div>
-        
+
         <!-- AI-Powered Insights - Full Width at Bottom -->
         <div class="mt-8">
           <ClientOnly>
@@ -563,7 +966,8 @@ async function exportData(format: 'csv' | 'json') {
             </template>
           </ClientOnly>
         </div>
-        
+        </div>
+
         <!-- End Dashboard Content -->
       </div>
     </template>
