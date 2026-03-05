@@ -48,9 +48,10 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    console.error('[Auth /me] Unexpected error:', error?.name, error?.message, error?.code, typeof error)
     throw createError({
       statusCode: 500,
-      statusMessage: 'Failed to get user'
+      statusMessage: `Failed to get user: ${error?.message || 'unknown'}`
     })
   }
 })

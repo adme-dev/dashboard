@@ -15,7 +15,15 @@ export function getDb() {
     pool = new Pool({
       connectionString,
       connectionTimeoutMillis: 10000,  // 10s — enough for Neon cold start wake-up
-      max: 10,
+      max: 1,                          // Single connection — avoids cross-request promise issues on CF Workers
+      idleTimeoutMillis: 10000,        // Close idle connections quickly (before Neon/CF resets them)
+      allowExitOnIdle: true,           // Let pool shrink to 0 when all connections idle
+    })
+    // Catch background connection resets so they don't become unhandled rejections
+    pool.on('error', (err) => {
+      console.warn('[DB Pool] Background connection error:', err.message)
+      try { pool?.end() } catch {}
+      pool = null
     })
   }
   return pool

@@ -292,7 +292,7 @@ watch(() => props.open, (isOpen) => {
               </p>
             </div>
 
-            <UToggle
+            <USwitch
               :model-value="automation.isActive"
               size="sm"
               @update:model-value="toggleActive(automation)"
