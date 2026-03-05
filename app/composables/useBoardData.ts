@@ -45,6 +45,9 @@ export interface BoardGroup {
   color: string
   items: BoardItem[]
   isExpanded: boolean
+  totalCount?: number
+  hasMore?: boolean
+  isCollapsed?: boolean
 }
 
 export interface Board {

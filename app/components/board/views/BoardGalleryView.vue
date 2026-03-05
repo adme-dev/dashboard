@@ -5,7 +5,7 @@
       <div class="flex items-center gap-2 mb-3">
         <span class="w-2.5 h-2.5 rounded-sm" :style="{ backgroundColor: group.color }" />
         <h3 class="text-sm font-semibold">{{ group.name }}</h3>
-        <span class="text-xs text-gray-400">({{ group.items.length }})</span>
+        <span class="text-xs text-gray-400">({{ group.totalCount ?? group.items.length }})</span>
       </div>
 
       <!-- Cards grid -->

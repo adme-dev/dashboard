@@ -12,7 +12,7 @@
         />
         <span class="w-2.5 h-2.5 rounded-sm" :style="{ backgroundColor: group.color }" />
         <span class="text-sm font-semibold">{{ group.name }}</span>
-        <span class="text-xs text-gray-400">({{ group.items.length }})</span>
+        <span class="text-xs text-gray-400">({{ group.totalCount ?? group.items.length }})</span>
       </div>
 
       <!-- Items -->
@@ -57,7 +57,7 @@
         </div>
 
         <!-- Empty group -->
-        <div v-if="group.items.length === 0" class="px-4 py-6 text-center text-xs text-gray-400">
+        <div v-if="group.items.length === 0 && !(group.totalCount > 0)" class="px-4 py-6 text-center text-xs text-gray-400">
           No items in this group
         </div>
       </div>

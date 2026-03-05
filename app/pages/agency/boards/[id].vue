@@ -23,7 +23,7 @@
               :group-id="group.id"
               :name="group.name"
               :color="group.color"
-              :task-count="group.items.length"
+              :task-count="group.totalCount ?? group.items.length"
               :is-collapsed="!group.isExpanded"
               @toggle="toggleGroup(group)"
               @rename="(name) => renameGroup(group.id, name)"
@@ -34,8 +34,14 @@
 
             <!-- Items Table -->
             <div v-if="group.isExpanded" class="border-t border-gray-200 dark:border-neutral-700">
+              <!-- Loading indicator for lazy-loaded groups -->
+              <div v-if="group.items.length === 0 && loadingGroups.has(`${group.id}:0`)" class="flex items-center justify-center py-8">
+                <UIcon name="i-lucide-loader-2" class="w-5 h-5 text-gray-400 animate-spin mr-2" />
+                <span class="text-sm text-gray-500 dark:text-neutral-400">Loading items...</span>
+              </div>
+
               <!-- Headers -->
-              <div class="flex items-center bg-gray-50 dark:bg-neutral-800 text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase border-b border-gray-200 dark:border-neutral-700">
+              <div v-if="group.items.length > 0" class="flex items-center bg-gray-50 dark:bg-neutral-800 text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase border-b border-gray-200 dark:border-neutral-700">
                 <div class="w-10 px-2 py-2 border-r border-gray-200 dark:border-neutral-700">
                   <UCheckbox
                     :model-value="selection.isGroupSelected(group.items)"
@@ -87,6 +93,19 @@
                 :columns="columns"
                 @add="handleAddItem"
               />
+
+              <!-- Load More -->
+              <div v-if="group.hasMore" class="px-4 py-2 border-t border-gray-200 dark:border-neutral-700">
+                <UButton
+                  variant="ghost"
+                  size="xs"
+                  icon="i-lucide-chevrons-down"
+                  :loading="loadingGroups.has(`${group.id}:${group.items.length}`)"
+                  @click="loadGroupItems(group, group.items.length)"
+                >
+                  Load more ({{ (group.totalCount ?? 0) - group.items.length }} remaining)
+                </UButton>
+              </div>
 
               <!-- Group Summary -->
               <BoardGroupSummary
@@ -745,7 +764,9 @@ function isUUID(str: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str)
 }
 
-function toggleGroup(group: BoardGroup) {
+const loadingGroups = ref<Set<string>>(new Set())
+
+async function toggleGroup(group: BoardGroup) {
   // Dynamic groups (from group-by) use local collapse tracking
   if (group.id.startsWith('grouped_')) {
     containerRef.value?.toggleGroupExpanded(group.id)
@@ -758,6 +779,35 @@ function toggleGroup(group: BoardGroup) {
       method: 'PATCH',
       body: { isCollapsed: !group.isExpanded },
     }).catch(() => {})
+  }
+  // Load items on expand if group was server-collapsed (items empty but totalCount > 0)
+  if (group.isExpanded && group.items.length === 0 && (group.totalCount ?? 0) > 0) {
+    await loadGroupItems(group)
+  }
+}
+
+async function loadGroupItems(group: BoardGroup, offset = 0, limit = 50) {
+  const key = `${group.id}:${offset}`
+  if (loadingGroups.value.has(key)) return
+  loadingGroups.value = new Set([...loadingGroups.value, key])
+  try {
+    const result = await $fetch<{ items: any[]; totalCount: number; hasMore: boolean }>(
+      `/api/agency/boards/${boardId.value}/groups/${group.id}/items`,
+      { params: { offset, limit } }
+    )
+    if (offset === 0) {
+      group.items = result.items
+    } else {
+      group.items.push(...result.items)
+    }
+    group.totalCount = result.totalCount
+    group.hasMore = result.hasMore
+  } catch (err) {
+    console.error('Failed to load group items:', err)
+  } finally {
+    const next = new Set(loadingGroups.value)
+    next.delete(key)
+    loadingGroups.value = next
   }
 }
 

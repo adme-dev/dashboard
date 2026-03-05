@@ -127,7 +127,7 @@
           <div class="w-[200px] flex-shrink-0 p-2 border-r text-sm font-semibold flex items-center gap-2">
             <span class="w-2 h-2 rounded-sm" :style="{ backgroundColor: group.color }" />
             {{ group.name }}
-            <span class="text-xs text-gray-400 font-normal">({{ group.items.length }})</span>
+            <span class="text-xs text-gray-400 font-normal">({{ group.totalCount ?? group.items.length }})</span>
           </div>
           <div class="flex-1" />
         </div>
