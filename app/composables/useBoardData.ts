@@ -391,20 +391,46 @@ export function useBoardData(boardId: Ref<string>) {
   const sortRules = ref<SortRule[]>([])
   const groupByColumnId = ref<string | null>(null)
   const collapsedGroupIds = ref<Set<string>>(new Set())
+  // User overrides for expand/collapse — survives server data refreshes
+  const userExpandOverrides = ref<Map<string, boolean>>(new Map())
+  // Cache for lazily-loaded group items (for groups that were server-collapsed)
+  const groupItemsCache = ref<Map<string, { items: any[]; totalCount: number; hasMore: boolean }>>(new Map())
 
   // Reset collapsed state when groupBy column changes
   watch(groupByColumnId, () => {
     collapsedGroupIds.value = new Set()
+    userExpandOverrides.value = new Map()
   })
 
-  function toggleGroupExpanded(groupId: string) {
-    const next = new Set(collapsedGroupIds.value)
-    if (next.has(groupId)) {
-      next.delete(groupId)
+  function updateGroupItemsCache(groupId: string, items: any[], totalCount: number, hasMore: boolean, append = false) {
+    const next = new Map(groupItemsCache.value)
+    const existing = next.get(groupId)
+    if (append && existing) {
+      next.set(groupId, { items: [...existing.items, ...items], totalCount, hasMore })
     } else {
-      next.add(groupId)
+      next.set(groupId, { items, totalCount, hasMore })
     }
-    collapsedGroupIds.value = next
+    groupItemsCache.value = next
+  }
+
+  function toggleGroupExpanded(groupId: string, expanded?: boolean) {
+    // For dynamic groups (group-by column), use collapsedGroupIds
+    if (groupByColumnId.value) {
+      const next = new Set(collapsedGroupIds.value)
+      if (next.has(groupId)) {
+        next.delete(groupId)
+      } else {
+        next.add(groupId)
+      }
+      collapsedGroupIds.value = next
+    } else {
+      // For regular groups, use user override map
+      const next = new Map(userExpandOverrides.value)
+      const currentGroup = groups.value.find(g => g.id === groupId)
+      const currentState = next.has(groupId) ? next.get(groupId)! : (currentGroup?.isExpanded ?? true)
+      next.set(groupId, expanded !== undefined ? expanded : !currentState)
+      userExpandOverrides.value = next
+    }
   }
 
   const filteredGroups = computed<BoardGroup[]>(() => {
@@ -445,8 +471,29 @@ export function useBoardData(boardId: Ref<string>) {
         .map(g => ({
           ...g,
           items: items.filter(i => g.items.some(gi => gi.id === i.id)),
+          isExpanded: userExpandOverrides.value.has(g.id)
+            ? userExpandOverrides.value.get(g.id)!
+            : g.isExpanded,
         }))
         .filter(g => g.items.length > 0 || (!searchQuery.value.trim() && filters.value.length === 0))
+    }
+
+    // Apply user overrides (expand/collapse + cached items) to server data
+    const hasOverrides = userExpandOverrides.value.size > 0 || groupItemsCache.value.size > 0
+    if (hasOverrides) {
+      return groups.value.map(g => {
+        const cached = groupItemsCache.value.get(g.id)
+        return {
+          ...g,
+          isExpanded: userExpandOverrides.value.has(g.id)
+            ? userExpandOverrides.value.get(g.id)!
+            : g.isExpanded,
+          // Use cached items if server sent empty (collapsed) but user has expanded
+          items: (g.items.length === 0 && cached) ? cached.items : g.items,
+          totalCount: cached?.totalCount ?? g.totalCount,
+          hasMore: cached?.hasMore ?? g.hasMore,
+        }
+      })
     }
 
     return groups.value
@@ -597,6 +644,7 @@ export function useBoardData(boardId: Ref<string>) {
     sortRules,
     groupByColumnId,
     toggleGroupExpanded,
+    updateGroupItemsCache,
 
     // Cell values
     normalizeColumn,

@@ -772,16 +772,18 @@ async function toggleGroup(group: BoardGroup) {
     containerRef.value?.toggleGroupExpanded(group.id)
     return
   }
-  group.isExpanded = !group.isExpanded
-  // Only persist collapse state for real board_groups (UUID IDs)
+  // Use composable's toggleGroupExpanded to persist state across refreshes
+  const willExpand = !group.isExpanded
+  containerRef.value?.toggleGroupExpanded(group.id, willExpand)
+  // Persist collapse state to server for real board_groups (UUID IDs)
   if (group.id !== '__ungrouped__' && isUUID(group.id)) {
     $fetch(`/api/agency/boards/${boardId.value}/groups/${group.id}`, {
       method: 'PATCH',
-      body: { isCollapsed: !group.isExpanded },
+      body: { isCollapsed: !willExpand },
     }).catch(() => {})
   }
   // Load items on expand if group was server-collapsed (items empty but totalCount > 0)
-  if (group.isExpanded && group.items.length === 0 && (group.totalCount ?? 0) > 0) {
+  if (willExpand && group.items.length === 0 && (group.totalCount ?? 0) > 0) {
     await loadGroupItems(group)
   }
 }
@@ -795,13 +797,14 @@ async function loadGroupItems(group: BoardGroup, offset = 0, limit = 50) {
       `/api/agency/boards/${boardId.value}/groups/${group.id}/items`,
       { params: { offset, limit } }
     )
-    if (offset === 0) {
-      group.items = result.items
-    } else {
-      group.items.push(...result.items)
-    }
-    group.totalCount = result.totalCount
-    group.hasMore = result.hasMore
+    // Store in cache (persists across data refreshes)
+    containerRef.value?.updateGroupItemsCache(
+      group.id,
+      result.items,
+      result.totalCount,
+      result.hasMore,
+      offset > 0, // append for "load more"
+    )
   } catch (err) {
     console.error('Failed to load group items:', err)
   } finally {
