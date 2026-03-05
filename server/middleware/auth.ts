@@ -53,7 +53,7 @@ export default defineEventHandler(async (event) => {
 
   // Check KV cache first (use first 16 chars of token as key — safe, not sensitive)
   const cacheKey = `auth-session:${token.slice(0, 16)}`
-  const cachedUser = await kvGet<{ id: string; email: string; name: string; role: string; is_active: boolean }>(event, cacheKey)
+  const cachedUser = await kvGet<{ id: string; email: string; name: string; role: string; is_active: boolean; avatar_url?: string }>(event, cacheKey)
 
   if (cachedUser) {
     event.context.user = cachedUser

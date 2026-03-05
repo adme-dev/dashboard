@@ -23,7 +23,7 @@ const links = [[{
 }, {
   label: 'Inbox',
   icon: 'i-lucide-inbox',
-  to: '/inbox',
+  to: '/agency/inbox',
   badge: '4',
   onSelect: () => {
     open.value = false

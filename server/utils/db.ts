@@ -37,6 +37,8 @@ function isRetryable(error: any): boolean {
     msg.includes('sorry, too many clients already') ||
     msg.includes('remaining connection slots are reserved') ||
     msg.includes('the database system is starting up') ||
+    msg.includes('Client has encountered a connection error') ||
+    msg.includes('Network request failed') ||
     error?.code === 'ECONNREFUSED' ||
     error?.code === 'ECONNRESET' ||
     error?.code === 'ETIMEDOUT' ||

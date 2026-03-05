@@ -2,6 +2,8 @@
 import { breakpointsTailwind, useIntersectionObserver } from '@vueuse/core'
 import InboxNotification from '~/components/inbox/InboxNotification.vue'
 
+definePageMeta({ title: 'Inbox' })
+
 const {
   notifications,
   unreadCount,

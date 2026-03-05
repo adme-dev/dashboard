@@ -7,6 +7,7 @@ export interface User {
   name: string
   role: 'admin' | 'project_manager' | 'consultant' | 'client'
   is_active: boolean
+  avatar_url?: string
 }
 
 export interface ClientUser {
@@ -76,7 +77,7 @@ export async function validateSession(token: string): Promise<User | null> {
   // DB lookup — let connection errors propagate as TransientAuthError
   try {
     return await queryOne<User>(
-      `SELECT id, email, name, user_role as role, is_active
+      `SELECT id, email, name, user_role as role, is_active, avatar_url
        FROM team_members
        WHERE id = $1 AND is_active = true`,
       [payload.userId]

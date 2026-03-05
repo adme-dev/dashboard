@@ -38,17 +38,14 @@ export default defineEventHandler(async (event) => {
     url.searchParams.set('userAvatar', user.avatar_url)
   }
 
-  const upgradeRequest = new Request(url.toString(), {
-    headers: {
-      Upgrade: 'websocket',
-      ...Object.fromEntries(
-        Array.from(event.node.req.headers as any).filter(([k]: [string]) =>
-          ['sec-websocket-key', 'sec-websocket-version', 'sec-websocket-extensions', 'sec-websocket-protocol']
-            .includes(k.toLowerCase())
-        )
-      ),
-    },
-  })
+  const wsHeaders: Record<string, string> = { Upgrade: 'websocket' }
+  const rawHeaders = event.node.req.headers || {}
+  for (const key of ['sec-websocket-key', 'sec-websocket-version', 'sec-websocket-extensions', 'sec-websocket-protocol']) {
+    const val = rawHeaders[key]
+    if (typeof val === 'string') wsHeaders[key] = val
+  }
+
+  const upgradeRequest = new Request(url.toString(), { headers: wsHeaders })
 
   return stub.fetch(upgradeRequest)
 })

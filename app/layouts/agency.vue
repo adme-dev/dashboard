@@ -43,7 +43,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
   // Main
   { type: 'label', label: 'Main' },
   { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/agency', exact: true, onSelect: close },
-  { label: 'Inbox', icon: 'i-lucide-inbox', to: '/inbox', badge: '4', onSelect: close },
+  { label: 'Inbox', icon: 'i-lucide-inbox', to: '/agency/inbox', badge: '4', onSelect: close },
   { label: 'All Boards', icon: 'i-lucide-layout-grid', to: '/agency/boards', onSelect: close },
 
   // Work Management

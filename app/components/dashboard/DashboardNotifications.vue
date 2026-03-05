@@ -31,7 +31,7 @@ const recent = computed(() => notifications.value.slice(0, 5))
           <UButton v-if="unreadCount > 0" variant="ghost" color="neutral" size="xs" @click="markAllAsRead()">
             Mark all read
           </UButton>
-          <UButton to="/inbox" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
+          <UButton to="/agency/inbox" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
             Inbox
           </UButton>
         </div>

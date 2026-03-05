@@ -209,45 +209,7 @@
     </div>
 
     <!-- Footer -->
-    <footer class="pt-20 pb-10">
-      <div class="max-w-[1200px] mx-auto px-6">
-        <div class="flex flex-col md:flex-row gap-12 md:gap-0 md:justify-between mb-20">
-          <div>
-            <h3 class="text-[clamp(22px,3vw,32px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">Experience XeroFlow</h3>
-          </div>
-          <div class="flex gap-20 md:gap-28">
-            <div class="flex flex-col gap-3.5 text-[15px]">
-              <NuxtLink to="/auth/login" class="text-[#45474D] dark:text-white/50 hover:text-[#121317] dark:hover:text-white transition-colors">Sign In</NuxtLink>
-              <NuxtLink to="/auth/xeroflow" class="text-[#45474D] dark:text-white/50 hover:text-[#121317] dark:hover:text-white transition-colors">XeroFlow</NuxtLink>
-              <NuxtLink to="/portal/login" class="text-[#45474D] dark:text-white/50 hover:text-[#121317] dark:hover:text-white transition-colors">Client Portal</NuxtLink>
-              <NuxtLink to="/features" class="text-[#45474D] dark:text-white/50 hover:text-[#121317] dark:hover:text-white transition-colors">Features</NuxtLink>
-            </div>
-            <div class="flex flex-col gap-3.5 text-[15px]">
-              <NuxtLink to="/privacy" class="text-[#45474D] dark:text-white/50 hover:text-[#121317] dark:hover:text-white transition-colors">Privacy</NuxtLink>
-              <NuxtLink to="/terms" class="text-[#45474D] dark:text-white/50 hover:text-[#121317] dark:hover:text-white transition-colors">Terms</NuxtLink>
-              <NuxtLink to="/support" class="text-[#45474D] dark:text-white/50 hover:text-[#121317] dark:hover:text-white transition-colors">Support</NuxtLink>
-            </div>
-          </div>
-        </div>
-        <div class="overflow-hidden mb-10">
-          <div class="text-[clamp(80px,18vw,220px)] font-[450] text-[#121317] dark:text-white leading-[0.9] tracking-[-0.04em] select-none">XeroFlow</div>
-        </div>
-        <div class="pt-6 border-t border-black/[0.06] dark:border-white/[0.06] flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div class="flex items-center gap-2.5">
-            <div class="w-5 h-5 bg-[#121317] dark:bg-white rounded flex items-center justify-center">
-              <span class="text-white dark:text-[#121317] text-[8px] font-semibold">XF</span>
-            </div>
-            <span class="text-[13px] text-[#45474D] dark:text-white/50">ADME Digital</span>
-          </div>
-          <div class="flex items-center gap-6 text-[13px] text-[#45474D]/60 dark:text-white/40">
-            <NuxtLink to="/about" class="hover:text-[#45474D] dark:hover:text-white transition-colors">About</NuxtLink>
-            <NuxtLink to="/privacy" class="hover:text-[#45474D] dark:hover:text-white transition-colors">Privacy</NuxtLink>
-            <NuxtLink to="/terms" class="hover:text-[#45474D] dark:hover:text-white transition-colors">Terms</NuxtLink>
-            <span>&copy; {{ new Date().getFullYear() }}</span>
-          </div>
-        </div>
-      </div>
-    </footer>
+    <MarketingFooter />
   </div>
 </template>
 

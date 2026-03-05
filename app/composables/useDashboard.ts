@@ -7,7 +7,7 @@ const _useDashboard = () => {
 
   defineShortcuts({
     'g-h': () => router.push('/'),
-    'g-i': () => router.push('/inbox'),
+    'g-i': () => router.push('/agency/inbox'),
     'g-c': () => router.push('/customers'),
     'g-s': () => router.push('/settings'),
     // 'n' shortcut moved to useActivityHub
