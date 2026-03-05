@@ -19,6 +19,7 @@ export default eventHandler(async (event) => {
   const boardId = getRouterParam(event, 'id')
   const query = getQuery(event)
   const search = (query.search as string) || ''
+  const groupLimit = Math.min(Number(query.groupLimit) || 50, 500) // max items per group
 
   if (!boardId) {
     throw createError({ statusCode: 400, statusMessage: 'Board ID is required' })
@@ -33,7 +34,7 @@ export default eventHandler(async (event) => {
       return { id: boardId, name: 'Board Not Found', groups: [], totalItems: 0 }
     }
 
-    return await fetchBoardData(boardInfo.id, boardInfo.name, search)
+    return await fetchBoardData(boardInfo.id, boardInfo.name, search, groupLimit)
   } catch (error: any) {
     console.error('Failed to fetch board:', error)
     throw createError({
@@ -43,7 +44,7 @@ export default eventHandler(async (event) => {
   }
 })
 
-async function fetchBoardData(departmentId: string, boardName: string, search: string) {
+async function fetchBoardData(departmentId: string, boardName: string, search: string, groupLimit: number) {
   const params: any[] = [departmentId]
   let searchCondition = ''
   if (search) {
@@ -181,8 +182,8 @@ async function fetchBoardData(departmentId: string, boardName: string, search: s
 
   // Use board_groups if they exist, otherwise fall back to legacy grouping
   const groups = boardGroups.length > 0
-    ? groupItemsByBoardGroups(items, columnValuesMap, dependenciesMap, boardGroups)
-    : groupItemsByLegacy(items, columnValuesMap, dependenciesMap)
+    ? groupItemsByBoardGroups(items, columnValuesMap, dependenciesMap, boardGroups, groupLimit)
+    : groupItemsByLegacy(items, columnValuesMap, dependenciesMap, groupLimit)
 
   const totalItems = items.length
   const lastUpdated = items.length > 0 ? items[0].updated_at : new Date()
@@ -235,7 +236,7 @@ function buildItemPayload(item: any, columnValuesMap: Map<string, any[]>, depend
  * Tasks with group_id go into their assigned group.
  * Tasks without group_id go into an "Ungrouped" bucket.
  */
-function groupItemsByBoardGroups(items: any[], columnValuesMap: Map<string, any[]>, dependenciesMap: Map<string, any[]>, boardGroups: any[]) {
+function groupItemsByBoardGroups(items: any[], columnValuesMap: Map<string, any[]>, dependenciesMap: Map<string, any[]>, boardGroups: any[], groupLimit: number) {
   const groupMap = new Map<string, { id: string; name: string; color: string; isCollapsed: boolean; sortOrder: number; items: any[] }>()
 
   // Initialize all board groups (even empty ones)
@@ -276,13 +277,28 @@ function groupItemsByBoardGroups(items: any[], columnValuesMap: Map<string, any[
     })
   }
 
-  return sorted.map((g) => ({ ...g, isExpanded: !g.isCollapsed }))
+  return sorted.map((g) => {
+    const totalCount = g.items.length
+    const truncated = totalCount > groupLimit
+    return {
+      ...g,
+      isExpanded: !g.isCollapsed,
+      totalCount,
+      hasMore: truncated,
+      items: truncated ? g.items.slice(0, groupLimit) : g.items,
+    }
+  })
 }
 
 /**
  * Legacy grouping: uses Monday migration data or status category fallback.
  */
-function groupItemsByLegacy(items: any[], columnValuesMap: Map<string, any[]>, dependenciesMap: Map<string, any[]>) {
+// Group names that should auto-collapse (completed/done/archived)
+const COMPLETED_GROUP_NAMES = new Set([
+  'completed & closed', 'completed', 'done', 'cancelled', 'archived', 'closed',
+])
+
+function groupItemsByLegacy(items: any[], columnValuesMap: Map<string, any[]>, dependenciesMap: Map<string, any[]>, groupLimit: number) {
   const groupMap = new Map<string, { id: string; name: string; color: string; items: any[] }>()
 
   const groupColors: Record<string, string> = {
@@ -349,7 +365,22 @@ function groupItemsByLegacy(items: any[], columnValuesMap: Map<string, any[]>, d
     return aIndex - bIndex
   })
 
-  return sortedGroups.map((g) => ({ ...g, isExpanded: true }))
+  return sortedGroups.map((g) => {
+    const totalCount = g.items.length
+    const isCompletedGroup = COMPLETED_GROUP_NAMES.has(g.name.toLowerCase())
+    // Auto-collapse completed groups and those with many items
+    const isCollapsed = isCompletedGroup || totalCount > 200
+    const truncated = totalCount > groupLimit
+    return {
+      ...g,
+      isExpanded: !isCollapsed,
+      isCollapsed,
+      totalCount,
+      hasMore: truncated,
+      // For collapsed groups, don't send items at all (just the count)
+      items: isCollapsed ? [] : (truncated ? g.items.slice(0, groupLimit) : g.items),
+    }
+  })
 }
 
 function getStatusColor(category: string | null): string {

@@ -7,6 +7,10 @@ import { createError, getRouterParam, readBody } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 
+function isUUID(str: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str)
+}
+
 export default eventHandler(async (event) => {
   await requireAuth(event)
   const groupId = getRouterParam(event, 'groupId')
@@ -14,6 +18,11 @@ export default eventHandler(async (event) => {
 
   if (!groupId) {
     throw createError({ statusCode: 400, statusMessage: 'Group ID required' })
+  }
+
+  // Legacy groups (Monday-imported) have non-UUID IDs — can't be stored in board_groups
+  if (!isUUID(groupId)) {
+    return { group: { id: groupId, ...body } }
   }
 
   try {

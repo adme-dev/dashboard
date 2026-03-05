@@ -545,7 +545,7 @@ const refreshColumns = async () => {
 
 // --- Task Detail ---
 
-const { data: taskData, execute: fetchTask } = useFetch<TaskDetail>(() => `/api/agency/tasks/${selectedTaskId.value!}`, { immediate: false })
+const { data: taskData, execute: fetchTask } = useFetch<TaskDetail>(() => `/api/agency/tasks/${selectedTaskId.value}`, { immediate: false, watch: false })
 const selectedTask = computed(() => taskData.value || null)
 
 const showChat = ref(false)
@@ -595,6 +595,7 @@ async function toggleItemSubscription() {
 // --- Task Actions ---
 
 async function openTask(taskId: string) {
+  if (!taskId) return
   showTaskPanel.value = false
   selectedTaskId.value = null
   await nextTick()
@@ -740,6 +741,10 @@ async function confirmDeleteColumn() {
 
 // --- Group Actions ---
 
+function isUUID(str: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str)
+}
+
 function toggleGroup(group: BoardGroup) {
   // Dynamic groups (from group-by) use local collapse tracking
   if (group.id.startsWith('grouped_')) {
@@ -747,7 +752,8 @@ function toggleGroup(group: BoardGroup) {
     return
   }
   group.isExpanded = !group.isExpanded
-  if (group.id !== '__ungrouped__') {
+  // Only persist collapse state for real board_groups (UUID IDs)
+  if (group.id !== '__ungrouped__' && isUUID(group.id)) {
     $fetch(`/api/agency/boards/${boardId.value}/groups/${group.id}`, {
       method: 'PATCH',
       body: { isCollapsed: !group.isExpanded },
@@ -756,7 +762,7 @@ function toggleGroup(group: BoardGroup) {
 }
 
 async function renameGroup(groupId: string, name: string) {
-  if (groupId === '__ungrouped__' || groupId.startsWith('grouped_')) return
+  if (groupId === '__ungrouped__' || groupId.startsWith('grouped_') || !isUUID(groupId)) return
   try {
     await $fetch(`/api/agency/boards/${boardId.value}/groups/${groupId}`, {
       method: 'PATCH',
@@ -769,7 +775,7 @@ async function renameGroup(groupId: string, name: string) {
 }
 
 async function updateGroupColor(groupId: string, color: string) {
-  if (groupId === '__ungrouped__' || groupId.startsWith('grouped_')) return
+  if (groupId === '__ungrouped__' || groupId.startsWith('grouped_') || !isUUID(groupId)) return
   try {
     await $fetch(`/api/agency/boards/${boardId.value}/groups/${groupId}`, {
       method: 'PATCH',

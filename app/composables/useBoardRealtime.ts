@@ -56,6 +56,8 @@ export function useBoardRealtime(boardId: Ref<string>, options: UseBoardRealtime
     connectWebSocket()
   }
 
+  let wsFailed = false // Track if WS has already failed this session
+
   function connectWebSocket() {
     if (import.meta.server) return
 
@@ -69,6 +71,7 @@ export function useBoardRealtime(boardId: Ref<string>, options: UseBoardRealtime
         connected.value = true
         connectionType.value = 'websocket'
         reconnectAttempts = 0
+        wsFailed = false
       }
 
       ws.onmessage = (e: MessageEvent) => {
@@ -102,26 +105,36 @@ export function useBoardRealtime(boardId: Ref<string>, options: UseBoardRealtime
       }
 
       ws.onerror = () => {
-        // WebSocket failed — fall back to SSE
+        // WebSocket failed — clean up and let onclose handle fallback
+        wsFailed = true
         cleanupWebSocket()
-        fallbackToSSE()
       }
 
       ws.onclose = (e) => {
         cleanupWebSocket()
-        if (e.code !== 1000) {
-          // Abnormal close — try reconnect
+        if (wsFailed) {
+          // WS never connected — fall back to SSE (once), then polling
+          wsFailed = false
+          fallbackToSSE()
+        } else if (e.code !== 1000) {
+          // Was connected but lost — try reconnect
           scheduleReconnect()
         }
       }
     } catch {
-      // WebSocket not available — fall back to SSE
-      fallbackToSSE()
+      // WebSocket not available — fall back to polling directly
+      startPolling()
     }
   }
 
   function fallbackToSSE() {
     if (import.meta.server) return
+
+    // Clean up any existing SSE connection first
+    if (eventSource) {
+      eventSource.close()
+      eventSource = null
+    }
 
     try {
       const url = `/api/agency/boards/${boardId.value}/events?lastEventId=${lastEventId.value}`
@@ -161,7 +174,7 @@ export function useBoardRealtime(boardId: Ref<string>, options: UseBoardRealtime
         connected.value = false
         eventSource?.close()
         eventSource = null
-        // Fall back to polling
+        // SSE also failed — settle into polling
         startPolling()
       }
     } catch {
@@ -198,18 +211,18 @@ export function useBoardRealtime(boardId: Ref<string>, options: UseBoardRealtime
 
   function scheduleReconnect() {
     if (reconnectTimer) return
-    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY)
     reconnectAttempts++
+
+    // After 2 failed reconnects, just settle into polling
+    if (reconnectAttempts > 2) {
+      startPolling()
+      return
+    }
+
+    const delay = Math.min(2000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY)
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null
-      // Try WebSocket first, then SSE, then polling
-      if (reconnectAttempts <= 3) {
-        connectWebSocket()
-      } else if (reconnectAttempts <= 6) {
-        fallbackToSSE()
-      } else {
-        startPolling()
-      }
+      connectWebSocket()
     }, delay)
   }
 
