@@ -94,6 +94,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
   { label: 'Sales', icon: 'i-lucide-handshake', to: '/agency/sales', onSelect: close },
   { label: 'Quotes', icon: 'i-lucide-file-badge', to: '/agency/sales/quotes', onSelect: close },
   { label: 'Pricing', icon: 'i-lucide-tag', to: '/agency/sales/pricing', onSelect: close },
+  { label: 'Rate Card', icon: 'i-lucide-list-ordered', to: '/agency/rate-cards', onSelect: close },
   { label: 'Price Templates', icon: 'i-lucide-file-stack', to: '/agency/sales/templates', onSelect: close },
 
   // Reports

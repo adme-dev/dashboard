@@ -52,6 +52,10 @@ export async function processJob(job: QueueJob): Promise<void> {
         await processEmbedClient(job.payload)
         break
 
+      case 'embed.rate_card':
+        await processEmbedRateCard(job.payload)
+        break
+
       case 'training.extract':
         await processTrainingExtract(job.payload)
         break
@@ -136,6 +140,11 @@ async function processEmbedBrief(payload: Record<string, any>): Promise<void> {
 async function processEmbedClient(payload: Record<string, any>): Promise<void> {
   const { embedClient } = await import('~~/server/utils/aiEntityEmbedder')
   await embedClient(payload._event as any, payload.clientId)
+}
+
+async function processEmbedRateCard(payload: Record<string, any>): Promise<void> {
+  const { embedRateCard } = await import('~~/server/utils/aiEntityEmbedder')
+  await embedRateCard(payload._event as any, payload.rateCardId)
 }
 
 async function processTrainingExtract(payload: Record<string, any>): Promise<void> {

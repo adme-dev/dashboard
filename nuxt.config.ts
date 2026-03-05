@@ -97,6 +97,9 @@ export default defineNuxtConfig({
     // Gemini API (for high-quality vision analysis in Banner Dissector)
     geminiApiKey: process.env.GEMINI_API_KEY || '',
 
+    // Perplexity API (for AI web research in action plans)
+    perplexityApiKey: process.env.PERPLEXITY_API_KEY || '',
+
     // Public keys (exposed to client-side)
     public: {
       appName: process.env.APP_NAME || 'XeroFlow Agency',

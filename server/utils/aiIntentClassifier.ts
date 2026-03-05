@@ -11,6 +11,7 @@ export type AiIntent =
   | 'process_query'
   | 'search'
   | 'time_tracking_query'
+  | 'pricing_query'
   | 'action_request'
   | 'general'
 
@@ -35,6 +36,7 @@ const INTENT_PATTERNS: PatternRule[] = [
   { intent: 'process_query', pattern: /\b(how\s+(do|does|to|can)|process|procedure|steps?|guide|documentation|sop)\b/i, weight: 0.7 },
   { intent: 'search', pattern: /\b(find|search|look\s*(for|up)|where\s+(is|are)|list\s+(all|my|the))\b/i, weight: 0.7 },
   { intent: 'time_tracking_query', pattern: /\b(hours?|time\s*(logged|tracking|entries|sheets?)|timesheets?|timer|utilization|billable|logged\s*time|capacity|overtime)\b/i, weight: 0.85 },
+  { intent: 'pricing_query', pattern: /\b(rate\s*card|pricing|how\s+much|cost\s+of|service\s+price|setup?\s*fee|price\s+list|rates?|charge\s+for)\b/i, weight: 0.85 },
   { intent: 'action_request', pattern: /\b(create|add|update|change|move|assign|delete|remove|set|mark|complete)\b/i, weight: 0.65 },
 ]
 
@@ -131,7 +133,7 @@ function classifyByPatterns(message: string): IntentResult | null {
 async function classifyByLLM(message: string, event?: H3Event): Promise<IntentResult> {
   const validIntents: AiIntent[] = [
     'task_query', 'brief_query', 'project_query', 'financial_query',
-    'team_query', 'process_query', 'time_tracking_query', 'search', 'action_request', 'general',
+    'team_query', 'process_query', 'time_tracking_query', 'pricing_query', 'search', 'action_request', 'general',
   ]
 
   // Try LoRA-enhanced intent classification first
@@ -189,6 +191,7 @@ Intent categories:
 - team_query: questions about team members, capacity, workload, availability
 - time_tracking_query: questions about hours logged, timesheets, timers, utilization, billable hours
 - process_query: questions about how to do something, procedures, documentation
+- pricing_query: questions about rate card, pricing, service costs, setup fees, how much something costs
 - search: requests to find or list specific items
 - action_request: requests to create, update, delete, or modify something
 - general: anything that doesn't fit the above categories

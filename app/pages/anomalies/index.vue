@@ -2,7 +2,7 @@
 definePageMeta({ layout: 'agency' })
 
 type AnomalySeverity = 'critical' | 'warning' | 'info'
-type AnomalyType = 'profitability' | 'revenue' | 'expenses'
+type AnomalyType = 'profitability' | 'revenue' | 'expenses' | 'cashflow' | 'receivables' | 'budget'
 
 type MetricFormat = 'currency' | 'percent' | 'number'
 
@@ -35,6 +35,7 @@ type Anomaly = {
 type AnomalySummary = {
   total: number
   bySeverity: Record<AnomalySeverity, number>
+  byType?: Record<AnomalyType, number>
   generatedAt: string
 }
 
@@ -64,8 +65,23 @@ const typeMeta: Record<AnomalyType, { label: string, description: string, icon: 
   },
   expenses: {
     label: 'Expenses',
-    description: 'Spend concentration and vendor exposure.',
+    description: 'Spend concentration, vendor exposure, and statistical outliers.',
     icon: 'i-lucide-credit-card'
+  },
+  cashflow: {
+    label: 'Cash Flow',
+    description: 'Bank balances, burn rate, and cash runway.',
+    icon: 'i-lucide-wallet'
+  },
+  receivables: {
+    label: 'Receivables',
+    description: 'Aging, overdue invoices, and collection risks.',
+    icon: 'i-lucide-receipt'
+  },
+  budget: {
+    label: 'Budget',
+    description: 'Budget variance, overruns, and projected spending.',
+    icon: 'i-lucide-calculator'
   }
 }
 
@@ -80,7 +96,10 @@ const typeFilterOptions = [
   { value: 'all', label: 'All Categories' },
   { value: 'profitability', label: typeMeta.profitability.label },
   { value: 'revenue', label: typeMeta.revenue.label },
-  { value: 'expenses', label: typeMeta.expenses.label }
+  { value: 'expenses', label: typeMeta.expenses.label },
+  { value: 'cashflow', label: typeMeta.cashflow.label },
+  { value: 'receivables', label: typeMeta.receivables.label },
+  { value: 'budget', label: typeMeta.budget.label }
 ] as const
 
 type SeverityFilterValue = typeof severityFilterOptions[number]['value']
@@ -101,7 +120,10 @@ const groupedAnomalies = computed(() => {
   const groups: Record<AnomalyType, Anomaly[]> = {
     profitability: [],
     revenue: [],
-    expenses: []
+    expenses: [],
+    cashflow: [],
+    receivables: [],
+    budget: []
   }
 
   for (const anomaly of filteredAnomalies.value) {
@@ -137,22 +159,22 @@ function formatMetric(metric?: AnomalyMetric | null) {
 }
 
 function formatCurrency(value: number) {
-  return Number(value).toLocaleString('en-US', {
+  return Number(value).toLocaleString('en-AU', {
     style: 'currency',
-    currency: 'USD',
+    currency: 'AUD',
     maximumFractionDigits: Math.abs(value) < 1 ? 2 : 0
   })
 }
 
 function formatPercent(value: number) {
-  return Number(value).toLocaleString('en-US', {
+  return Number(value).toLocaleString('en-AU', {
     style: 'percent',
     maximumFractionDigits: 1
   })
 }
 
 function formatNumber(value: number) {
-  return Number(value).toLocaleString('en-US', {
+  return Number(value).toLocaleString('en-AU', {
     maximumFractionDigits: 1
   })
 }
@@ -190,6 +212,33 @@ const severitySummary = computed(() => ({
 }))
 
 const totalAnomalies = computed(() => summary.value?.total ?? anomalies.value.length)
+
+// ── Action Plan Slideover ──
+const actionPlanOpen = ref(false)
+const actionPlanItem = ref<{
+  type: 'anomaly'
+  title: string
+  description: string
+  severity?: string
+  category?: string
+  metric?: { label: string, value: string | number }
+  recommendation?: string
+  tags?: string[]
+} | null>(null)
+
+function openActionPlan(anomaly: Anomaly) {
+  actionPlanItem.value = {
+    type: 'anomaly',
+    title: anomaly.title,
+    description: anomaly.description,
+    severity: anomaly.severity,
+    category: typeMeta[anomaly.type]?.label || anomaly.type,
+    metric: anomaly.metric ? { label: anomaly.metric.label, value: formatMetric(anomaly.metric) } : undefined,
+    recommendation: anomaly.recommendation || undefined,
+    tags: anomaly.tags?.filter(Boolean) as string[] | undefined,
+  }
+  actionPlanOpen.value = true
+}
 </script>
 
 <template>
@@ -197,7 +246,7 @@ const totalAnomalies = computed(() => summary.value?.total ?? anomalies.value.le
     <template #header>
       <UDashboardNavbar
         title="Anomaly Detection"
-        description="Automated monitoring for revenue, expense, and profitability outliers"
+        description="Automated monitoring across revenue, expenses, cash flow, receivables, and budget"
       >
         <template #leading>
           <UDashboardSidebarCollapse />
@@ -216,7 +265,7 @@ const totalAnomalies = computed(() => summary.value?.total ?? anomalies.value.le
 
       <UDashboardToolbar>
         <template #left>
-          <UDashboardBreadcrumb :items="breadcrumbs" />
+          <UBreadcrumb :items="breadcrumbs" />
         </template>
 
         <template #right>
@@ -336,7 +385,7 @@ const totalAnomalies = computed(() => summary.value?.total ?? anomalies.value.le
             All clear for now
           </p>
           <p class="mt-2 max-w-md text-sm text-muted">
-            We did not detect any anomalies in the latest Profit &amp; Loss and expense data. We will alert you as soon as new signals appear.
+            We did not detect any anomalies across Profit &amp; Loss, expenses, cash flow, receivables, or budget data. We will alert you as soon as new signals appear.
           </p>
           <UButton
             class="mt-6"
@@ -369,16 +418,6 @@ const totalAnomalies = computed(() => summary.value?.total ?? anomalies.value.le
                   {{ typeMeta[section.type].description }}
                 </p>
               </div>
-              <UButton
-                v-if="section.type === 'profitability'"
-                label="View Xero reference"
-                icon="i-lucide-external-link"
-                color="neutral"
-                variant="ghost"
-                size="xs"
-                to="https://xeroapi.github.io/xero-node/accounting/index.html"
-                target="_blank"
-              />
             </div>
 
             <div class="space-y-4">
@@ -494,16 +533,27 @@ const totalAnomalies = computed(() => summary.value?.total ?? anomalies.value.le
                   </p>
                 </div>
 
-                <div v-if="anomaly.tags?.length" class="flex flex-wrap gap-2">
-                  <UTooltip
-                    v-for="tag in anomaly.tags"
-                    :key="tag"
-                    :text="`Tag: ${tag}`"
-                  >
-                    <UBadge color="primary" variant="soft">
-                      {{ tag }}
-                    </UBadge>
-                  </UTooltip>
+                <div class="flex flex-wrap items-center gap-3">
+                  <UButton
+                    label="Get AI Action Plan"
+                    icon="i-lucide-sparkles"
+                    color="primary"
+                    variant="soft"
+                    size="sm"
+                    @click="openActionPlan(anomaly)"
+                  />
+
+                  <div v-if="anomaly.tags?.length" class="flex flex-wrap gap-2">
+                    <UTooltip
+                      v-for="tag in anomaly.tags"
+                      :key="tag"
+                      :text="`Tag: ${tag}`"
+                    >
+                      <UBadge color="primary" variant="soft">
+                        {{ tag }}
+                      </UBadge>
+                    </UTooltip>
+                  </div>
                 </div>
               </UCard>
             </div>
@@ -512,4 +562,9 @@ const totalAnomalies = computed(() => summary.value?.total ?? anomalies.value.le
       </div>
     </template>
   </UDashboardPanel>
+
+  <ActionPlanSlideover
+    v-model:open="actionPlanOpen"
+    :item="actionPlanItem"
+  />
 </template>

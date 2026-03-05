@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
   let expenseData: any
   try {
     expenseData = await $fetch('/api/xero/expenses', {
-      headers: { cookie: event.node.req.headers.cookie || '' },
+      headers: event.headers,
       query: { from, to },
     })
   } catch {
@@ -158,6 +158,11 @@ Rules:
 
       return {
         ...parsed,
+        period: {
+          current: { start: from, end: to, total: totalSpend, transactionCount: txCount },
+          previous: { start: mom?.previous?.from || null, end: mom?.previous?.to || null, total: mom?.previous?.total || 0, transactionCount: 0 },
+          change: { amount: mom?.changeAmount || 0, percentage: mom?.change || 0 }
+        },
         generatedAt: new Date().toISOString(),
         model: 'Groq Llama 3.3 70B',
       }
@@ -241,6 +246,11 @@ Rules:
         },
         anomalies: { anomalies, summary: anomalies.length ? `${anomalies.length} item(s) flagged for review.` : 'No significant anomalies detected.' },
         optimization: { recommendations, summary: recommendations.length ? `${recommendations.length} optimization opportunity(s) identified.` : 'No immediate optimizations identified.' },
+        period: {
+          current: { start: from, end: to, total: totalSpend, transactionCount: txCount },
+          previous: { start: mom?.previous?.from || null, end: mom?.previous?.to || null, total: mom?.previous?.total || 0, transactionCount: 0 },
+          change: { amount: mom?.changeAmount || 0, percentage: mom?.change || 0 }
+        },
         generatedAt: new Date().toISOString(),
         model: 'Rule-based (Groq unavailable)',
       },

@@ -118,6 +118,43 @@ export async function embedBrief(event: H3Event, briefId: string): Promise<void>
 }
 
 /**
+ * Embed a rate card item with category and pricing context.
+ */
+export async function embedRateCard(event: H3Event, itemId: string): Promise<void> {
+  const item = await queryOne<any>(`
+    SELECT i.id, i.service_name, i.price, i.price_unit, i.setup_fee, i.notes,
+           c.name AS category_name
+    FROM rate_card_items i
+    JOIN rate_card_categories c ON c.id = i.category_id
+    WHERE i.id = $1
+  `, [itemId])
+
+  if (!item) return
+
+  const textParts = [
+    `Rate Card: ${item.category_name} — ${item.service_name}`,
+    `Price: $${Number(item.price).toFixed(2)} ${item.price_unit}`,
+    item.setup_fee > 0 ? `Setup Fee: $${Number(item.setup_fee).toFixed(2)}` : '',
+    item.notes ? `Notes: ${item.notes}` : '',
+  ].filter(Boolean).join('\n')
+
+  const contentHash = await hashContent(textParts)
+  if (!(await shouldReembed('rate_card', itemId, contentHash))) return
+
+  const embedding = await generateEmbedding(event, textParts)
+  if (embedding.length === 0) return
+
+  const vectorId = `rate_card-${itemId}`
+  await upsertVector(event, vectorId, embedding, {
+    type: 'rate_card',
+    id: itemId,
+    title: item.service_name,
+    category: item.category_name,
+  })
+  await logEmbedding('rate_card', itemId, vectorId, contentHash)
+}
+
+/**
  * Embed a client with their industry and notes context.
  */
 export async function embedClient(event: H3Event, clientId: string): Promise<void> {

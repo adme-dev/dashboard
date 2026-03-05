@@ -52,11 +52,12 @@ const INTENT_TO_SOURCES: Record<AiIntent, string[]> = {
   task_query: ['tasks', 'boards'],
   brief_query: ['briefs', 'clients'],
   project_query: ['boards', 'tasks'],
-  financial_query: ['financial'],
+  financial_query: ['financial', 'rate_card', 'saved_plans'],
   team_query: ['team', 'time_tracking'],
   process_query: ['knowledge'],
   time_tracking_query: ['time_tracking', 'team'],
-  search: ['tasks', 'clients', 'briefs'],
+  pricing_query: ['rate_card', 'financial', 'saved_plans'],
+  search: ['tasks', 'clients', 'briefs', 'rate_card'],
   action_request: ['tasks', 'boards'],
   general: ['tasks', 'clients'],
 }
@@ -81,6 +82,7 @@ const SCORING_PROFILES: Record<AiIntent, ScoringProfile> = {
   process_query:   { semantic: 0.35, recency: 0.10, importance: 0.20, intent: 0.20, entity: 0.15, recencyHalfLifeDays: 90 },
   search:          { semantic: 0.20, recency: 0.10, importance: 0.10, intent: 0.25, entity: 0.35, recencyHalfLifeDays: 30 },
   time_tracking_query: { semantic: 0.15, recency: 0.30, importance: 0.15, intent: 0.25, entity: 0.15, recencyHalfLifeDays: 7 },
+  pricing_query:   { semantic: 0.30, recency: 0.10, importance: 0.20, intent: 0.25, entity: 0.15, recencyHalfLifeDays: 180 },
   action_request:  { semantic: 0.20, recency: 0.25, importance: 0.15, intent: 0.25, entity: 0.15, recencyHalfLifeDays: 14 },
   general:         { semantic: 0.25, recency: 0.20, importance: 0.15, intent: 0.20, entity: 0.20, recencyHalfLifeDays: 30 },
 }
@@ -92,6 +94,8 @@ const ENTITY_IMPORTANCE: Record<string, number> = {
   client: 0.75,
   task: 0.70,
   brief: 0.65,
+  rate_card: 0.70,
+  action_plan: 0.90,
   time_tracking: 0.75,
   team: 0.60,
   board: 0.55,
@@ -520,6 +524,66 @@ async function searchKnowledge(keywords: string[], question: string, event?: H3E
   return items.slice(0, 3)
 }
 
+async function searchRateCards(keywords: string[]): Promise<ContextItem[]> {
+  const items: ContextItem[] = []
+
+  try {
+    if (keywords.length === 0) {
+      // No keywords — return top categories summary
+      const rows = await queryRows(`
+        SELECT c.name AS category_name, COUNT(i.id) AS item_count,
+               MIN(i.price) AS min_price, MAX(i.price) AS max_price
+        FROM rate_card_categories c
+        JOIN rate_card_items i ON i.category_id = c.id AND i.is_active = true
+        WHERE c.is_active = true
+        GROUP BY c.name
+        ORDER BY c.name ASC
+        LIMIT 5
+      `)
+      for (const r of rows) {
+        items.push({
+          type: 'rate_card',
+          id: `cat-${r.category_name}`,
+          title: `Rate Card: ${r.category_name}`,
+          snippet: `${r.item_count} services, $${Number(r.min_price).toFixed(0)}–$${Number(r.max_price).toFixed(0)}`,
+          url: '/agency/rate-cards',
+        })
+      }
+      return items
+    }
+
+    const pattern = keywords.join('|')
+
+    const rows = await queryRows(`
+      SELECT i.id, i.service_name, i.price, i.price_unit, i.setup_fee, i.notes,
+             c.name AS category_name, i.updated_at
+      FROM rate_card_items i
+      JOIN rate_card_categories c ON c.id = i.category_id
+      WHERE i.is_active = true
+        AND (i.service_name ~* $1 OR c.name ~* $1)
+      ORDER BY i.service_name ASC
+      LIMIT 5
+    `, [pattern])
+
+    for (const r of rows) {
+      const priceStr = r.price_unit === 'POA' ? 'POA' : `$${Number(r.price).toFixed(2)} ${r.price_unit}`
+      const setupStr = r.setup_fee > 0 ? ` + $${Number(r.setup_fee).toFixed(2)} setup` : ''
+      items.push({
+        type: 'rate_card',
+        id: r.id,
+        title: `${r.category_name}: ${r.service_name}`,
+        snippet: `${priceStr}${setupStr}${r.notes ? ` | ${r.notes}` : ''}`,
+        url: '/agency/rate-cards',
+        updatedAt: r.updated_at,
+      })
+    }
+  } catch {
+    // rate_card tables may not exist yet
+  }
+
+  return items
+}
+
 async function searchTimeTracking(userId: string, keywords: string[]): Promise<ContextItem[]> {
   const items: ContextItem[] = []
 
@@ -601,6 +665,43 @@ async function searchTimeTracking(userId: string, keywords: string[]): Promise<C
   }
 
   return items.slice(0, 5)
+}
+
+async function searchSavedActionPlans(userId: string, keywords: string[]): Promise<ContextItem[]> {
+  const items: ContextItem[] = []
+
+  try {
+    const rows = await queryRows(`
+      SELECT id, source_type, source_title, source_category, source_severity,
+             plan_data, note, status, created_at, updated_at
+      FROM saved_action_plans
+      WHERE user_id = $1
+        AND status IN ('active', 'in_progress')
+      ORDER BY updated_at DESC
+      LIMIT 10
+    `, [userId])
+
+    for (const r of rows) {
+      const plan = typeof r.plan_data === 'string' ? JSON.parse(r.plan_data) : r.plan_data
+      const summary = plan?.summary || ''
+      const stepCount = plan?.actionSteps?.length || 0
+      const impact = plan?.estimatedImpact || ''
+      const statusLabel = r.status === 'in_progress' ? 'In Progress' : 'Active'
+
+      items.push({
+        type: 'action_plan',
+        id: r.id,
+        title: `Saved Plan: ${r.source_title}`,
+        snippet: `[${statusLabel}] ${r.source_category ? `Category: ${r.source_category}. ` : ''}${summary} (${stepCount} action steps)${impact ? `. Impact: ${impact}` : ''}${r.note ? `. Note: ${r.note}` : ''}`,
+        url: '/insights',
+        updatedAt: r.updated_at || r.created_at,
+      })
+    }
+  } catch {
+    // saved_action_plans table may not exist yet
+  }
+
+  return items
 }
 
 // Attach semantic scores from Vectorize to DB-sourced items (single query)
@@ -735,6 +836,12 @@ export async function retrieveContext(
   }
   if (sources.has('time_tracking')) {
     queryPromises.push(searchTimeTracking(userId, keywords).catch(() => []))
+  }
+  if (sources.has('rate_card')) {
+    queryPromises.push(searchRateCards(keywords).catch(() => []))
+  }
+  if (sources.has('saved_plans')) {
+    queryPromises.push(searchSavedActionPlans(userId, keywords).catch(() => []))
   }
 
   const results = await Promise.all(queryPromises)
