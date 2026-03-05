@@ -47,6 +47,7 @@ const columnTypes = [
   { id: 'currency', name: 'Currency', icon: 'i-lucide-dollar-sign', color: '#00C875', description: 'Money amount' },
   { id: 'tags', name: 'Tags', icon: 'i-lucide-tag', color: '#FFCC00', description: 'Multiple labels' },
   { id: 'color', name: 'Color', icon: 'i-lucide-palette', color: '#FF5AC4', description: 'Color picker' },
+  { id: 'client', name: 'Client', icon: 'i-lucide-building-2', color: '#579BFC', description: 'Select a client' },
   { id: 'dependency', name: 'Dependency', icon: 'i-lucide-git-branch', color: '#784BD1', description: 'Link tasks' },
   { id: 'invoice_status', name: 'Invoice Status', icon: 'i-lucide-receipt', color: '#00C875', description: 'Billing status' },
 ]

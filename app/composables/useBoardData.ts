@@ -589,6 +589,9 @@ export function useBoardData(boardId: Ref<string>) {
     if (slug === 'assignee' && type === 'people' && item.assignees?.length) {
       return { id: '', taskId: item.id, columnId: col.id, jsonValue: { userIds: item.assignees.map(a => a.id), names: item.assignees.map(a => a.name) }, createdAt: '', updatedAt: '' }
     }
+    if (slug === 'client' && (type === 'client' || type === 'text') && item.clients?.length) {
+      return { id: '', taskId: item.id, columnId: col.id, textValue: item.clients[0], jsonValue: { clientName: item.clients[0] }, createdAt: '', updatedAt: '' }
+    }
     if (slug === 'priority' && type === 'dropdown' && item.priority) {
       const pVal = item.priority.toLowerCase()
       return { id: '', taskId: item.id, columnId: col.id, textValue: item.priority, jsonValue: { optionId: pVal, label: item.priority.charAt(0).toUpperCase() + item.priority.slice(1) }, createdAt: '', updatedAt: '' }
