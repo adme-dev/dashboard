@@ -37,6 +37,9 @@ export interface BoardItem {
   columnValues?: Record<string, any>
   columnValuesArray?: any[]
   dependencies?: { dependsOnTaskId: string; type: string }[]
+  subtaskCount?: number
+  completedSubtaskCount?: number
+  linkedItemCount?: number
 }
 
 export interface BoardGroup {

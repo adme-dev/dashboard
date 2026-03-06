@@ -25,9 +25,9 @@ export default eventHandler(async (event) => {
   }
 
   try {
-    // Get parent task to inherit department and project
+    // Get parent task to inherit department, project, and group
     const parent = await queryOne(
-      'SELECT id, department_id, project_id FROM tasks WHERE id = $1',
+      'SELECT id, department_id, project_id, group_id FROM tasks WHERE id = $1',
       [parentId]
     )
     if (!parent) {
@@ -56,11 +56,11 @@ export default eventHandler(async (event) => {
 
     const subtask = await queryOne(`
       INSERT INTO tasks (
-        department_id, project_id, parent_task_id,
+        department_id, project_id, parent_task_id, group_id,
         status_id, title, priority, assignee_id, due_date,
         reporter_id, sort_order
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING
         id,
         title,
@@ -74,6 +74,7 @@ export default eventHandler(async (event) => {
       parent.department_id,
       parent.project_id || null,
       parentId,
+      parent.group_id || null,
       defaultStatus.id,
       title.trim(),
       priority || 'medium',

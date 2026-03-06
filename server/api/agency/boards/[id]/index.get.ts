@@ -86,7 +86,9 @@ async function fetchBoardData(departmentId: string, boardName: string, search: s
       p.name as project_name,
       ac.name as client_name,
       mim.source_data->'group'->>'title' as monday_group_title,
-      mim.source_data->'group'->>'id' as monday_group_id
+      mim.source_data->'group'->>'id' as monday_group_id,
+      (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id) AS subtask_count,
+      (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.completed_at IS NOT NULL) AS completed_subtask_count
     FROM tasks t
     LEFT JOIN monday_item_mappings mim ON mim.task_id = t.id
     LEFT JOIN task_statuses ts ON t.status_id = ts.id
@@ -115,6 +117,21 @@ async function fetchBoardData(departmentId: string, boardName: string, search: s
         dependsOnTaskId: d.depends_on_task_id,
         type: d.dependency_type,
       })
+    }
+  }
+
+  // Batch linked item counts
+  const linkedItemCountMap = new Map<string, number>()
+  if (taskIds.length > 0) {
+    const linkedCounts = await queryRows(`
+      SELECT t_id, COUNT(*)::int as cnt FROM (
+        SELECT task_id AS t_id FROM task_linked_items WHERE task_id = ANY($1)
+        UNION ALL
+        SELECT linked_task_id AS t_id FROM task_linked_items WHERE linked_task_id = ANY($1)
+      ) sub GROUP BY t_id
+    `, [taskIds])
+    for (const row of linkedCounts) {
+      linkedItemCountMap.set(row.t_id, row.cnt)
     }
   }
 
@@ -182,8 +199,8 @@ async function fetchBoardData(departmentId: string, boardName: string, search: s
 
   // Use board_groups if they exist, otherwise fall back to legacy grouping
   const groups = boardGroups.length > 0
-    ? groupItemsByBoardGroups(items, columnValuesMap, dependenciesMap, boardGroups, groupLimit)
-    : groupItemsByLegacy(items, columnValuesMap, dependenciesMap, groupLimit)
+    ? groupItemsByBoardGroups(items, columnValuesMap, dependenciesMap, linkedItemCountMap, boardGroups, groupLimit)
+    : groupItemsByLegacy(items, columnValuesMap, dependenciesMap, linkedItemCountMap, groupLimit)
 
   const totalItems = items.length
   const lastUpdated = items.length > 0 ? items[0].updated_at : new Date()
@@ -198,7 +215,7 @@ async function fetchBoardData(departmentId: string, boardName: string, search: s
   }
 }
 
-function buildItemPayload(item: any, columnValuesMap: Map<string, any[]>, dependenciesMap: Map<string, any[]>) {
+function buildItemPayload(item: any, columnValuesMap: Map<string, any[]>, dependenciesMap: Map<string, any[]>, linkedItemCountMap: Map<string, number>) {
   const columnValues = columnValuesMap.get(item.id) || []
   const columnValuesObj: Record<string, any> = {}
   for (const cv of columnValues) {
@@ -228,6 +245,9 @@ function buildItemPayload(item: any, columnValuesMap: Map<string, any[]>, depend
     columnValues: columnValuesObj,
     columnValuesArray: columnValues,
     dependencies: dependenciesMap.get(item.id) || [],
+    subtaskCount: parseInt(item.subtask_count) || 0,
+    completedSubtaskCount: parseInt(item.completed_subtask_count) || 0,
+    linkedItemCount: linkedItemCountMap.get(item.id) || 0,
   }
 }
 
@@ -236,7 +256,7 @@ function buildItemPayload(item: any, columnValuesMap: Map<string, any[]>, depend
  * Tasks with group_id go into their assigned group.
  * Tasks without group_id go into an "Ungrouped" bucket.
  */
-function groupItemsByBoardGroups(items: any[], columnValuesMap: Map<string, any[]>, dependenciesMap: Map<string, any[]>, boardGroups: any[], groupLimit: number) {
+function groupItemsByBoardGroups(items: any[], columnValuesMap: Map<string, any[]>, dependenciesMap: Map<string, any[]>, linkedItemCountMap: Map<string, number>, boardGroups: any[], groupLimit: number) {
   const groupMap = new Map<string, { id: string; name: string; color: string; isCollapsed: boolean; sortOrder: number; items: any[] }>()
 
   // Initialize all board groups (even empty ones)
@@ -254,7 +274,7 @@ function groupItemsByBoardGroups(items: any[], columnValuesMap: Map<string, any[
   // Assign items to groups
   const ungroupedItems: any[] = []
   for (const item of items) {
-    const payload = buildItemPayload(item, columnValuesMap, dependenciesMap)
+    const payload = buildItemPayload(item, columnValuesMap, dependenciesMap, linkedItemCountMap)
     if (item.group_id && groupMap.has(item.group_id)) {
       groupMap.get(item.group_id)!.items.push(payload)
     } else {
@@ -298,7 +318,7 @@ const COMPLETED_GROUP_NAMES = new Set([
   'completed & closed', 'completed', 'done', 'cancelled', 'archived', 'closed',
 ])
 
-function groupItemsByLegacy(items: any[], columnValuesMap: Map<string, any[]>, dependenciesMap: Map<string, any[]>, groupLimit: number) {
+function groupItemsByLegacy(items: any[], columnValuesMap: Map<string, any[]>, dependenciesMap: Map<string, any[]>, linkedItemCountMap: Map<string, number>, groupLimit: number) {
   const groupMap = new Map<string, { id: string; name: string; color: string; items: any[] }>()
 
   const groupColors: Record<string, string> = {
@@ -342,7 +362,7 @@ function groupItemsByLegacy(items: any[], columnValuesMap: Map<string, any[]>, d
       item.status_color ||
       '#579BFC'
 
-    const payload = buildItemPayload(item, columnValuesMap, dependenciesMap)
+    const payload = buildItemPayload(item, columnValuesMap, dependenciesMap, linkedItemCountMap)
 
     if (!groupMap.has(groupId)) {
       groupMap.set(groupId, { id: groupId, name: groupName, color, items: [] })

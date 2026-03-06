@@ -50,5 +50,6 @@ const columnTypes = [
   { id: 'client', name: 'Client', icon: 'i-lucide-building-2', color: '#579BFC', description: 'Select a client' },
   { id: 'dependency', name: 'Dependency', icon: 'i-lucide-git-branch', color: '#784BD1', description: 'Link tasks' },
   { id: 'invoice_status', name: 'Invoice Status', icon: 'i-lucide-receipt', color: '#00C875', description: 'Billing status' },
+  { id: 'linked_items', name: 'Linked Items', icon: 'i-lucide-link-2', color: '#579BFC', description: 'Link tasks across boards' },
 ]
 </script>

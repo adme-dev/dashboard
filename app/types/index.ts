@@ -405,6 +405,7 @@ export type CustomColumnType =
   | 'color'
   | 'dependency'
   | 'invoice_status'
+  | 'linked_items'
 
 export interface CustomColumn {
   id: string

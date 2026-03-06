@@ -74,32 +74,61 @@
               </div>
 
               <!-- Item Rows -->
-              <div
-                v-for="item in group.items"
-                :key="item.id"
-                class="flex items-center border-b border-gray-200 dark:border-neutral-700 hover:bg-gray-50 dark:hover:bg-neutral-800 cursor-pointer"
-                :class="{ 'bg-blue-50 dark:bg-blue-950': selectedTaskId === item.id, 'bg-blue-50/50 dark:bg-blue-950/50': selection.isSelected(item.id) }"
-                @click="openTask(item.id)"
-              >
-                <div class="w-10 px-2 py-3 border-r border-gray-200 dark:border-neutral-700" @click.stop>
-                  <UCheckbox
-                    :model-value="selection.isSelected(item.id)"
-                    @update:model-value="selection.toggle(item.id)"
-                  />
+              <template v-for="item in group.items" :key="item.id">
+                <div
+                  class="flex items-center border-b border-gray-200 dark:border-neutral-700 hover:bg-gray-50 dark:hover:bg-neutral-800 cursor-pointer"
+                  :class="{ 'bg-blue-50 dark:bg-blue-950': selectedTaskId === item.id, 'bg-blue-50/50 dark:bg-blue-950/50': selection.isSelected(item.id) }"
+                  @click="openTask(item.id)"
+                >
+                  <div class="w-10 px-2 py-3 border-r border-gray-200 dark:border-neutral-700" @click.stop>
+                    <UCheckbox
+                      :model-value="selection.isSelected(item.id)"
+                      @update:model-value="selection.toggle(item.id)"
+                    />
+                  </div>
+                  <div class="flex-1 min-w-[250px] px-4 py-3 border-r border-gray-200 dark:border-neutral-700">
+                    <div class="flex items-center gap-1.5">
+                      <!-- Subitem expand/collapse toggle -->
+                      <button
+                        v-if="subitemHelper.getCount(item.id)"
+                        class="p-0.5 -ml-1 rounded hover:bg-gray-200 dark:hover:bg-neutral-700 transition-transform"
+                        :class="{ 'rotate-90': subitemHelper.isExpanded(item.id) }"
+                        @click.stop="subitemHelper.toggleExpand(item.id, resolvedBoardId)"
+                      >
+                        <UIcon name="i-lucide-chevron-right" class="w-3.5 h-3.5 text-gray-500 dark:text-neutral-400" />
+                      </button>
+                      <p class="text-sm font-medium truncate">{{ item.title }}</p>
+                      <!-- Subitem count badge -->
+                      <span
+                        v-if="subitemHelper.getCount(item.id)"
+                        class="inline-flex items-center gap-0.5 text-[10px] font-medium text-gray-500 dark:text-neutral-400 bg-gray-100 dark:bg-neutral-800 rounded px-1.5 py-0.5 flex-shrink-0"
+                      >
+                        {{ subitemHelper.getCount(item.id)!.completed }}/{{ subitemHelper.getCount(item.id)!.total }}
+                      </span>
+                    </div>
+                  </div>
+                  <div v-for="col in columns" :key="col.id" class="px-2 py-1 border-r border-gray-200 dark:border-neutral-700" :style="{ width: (col.width || 150) + 'px' }" @click.stop>
+                    <BoardCell
+                      :column="normalizeColumn(col)"
+                      :value="getCellValue(item, col)"
+                      :task-id="item.id"
+                      @update="(columnId, payload) => handleCellUpdate(item.id, columnId, payload)"
+                      @edit-column="(columnId) => openColumnConfig(columns.find(c => c.id === columnId) || columns[0])"
+                    />
+                  </div>
                 </div>
-                <div class="flex-1 min-w-[250px] px-4 py-3 border-r border-gray-200 dark:border-neutral-700">
-                  <p class="text-sm font-medium">{{ item.title }}</p>
-                </div>
-                <div v-for="col in columns" :key="col.id" class="px-2 py-1 border-r border-gray-200 dark:border-neutral-700" :style="{ width: (col.width || 150) + 'px' }" @click.stop>
-                  <BoardCell
-                    :column="normalizeColumn(col)"
-                    :value="getCellValue(item, col)"
-                    :task-id="item.id"
-                    @update="(columnId, payload) => handleCellUpdate(item.id, columnId, payload)"
-                    @edit-column="(columnId) => openColumnConfig(columns.find(c => c.id === columnId) || columns[0])"
-                  />
-                </div>
-              </div>
+
+                <!-- Inline Subitems -->
+                <BoardSubitemRows
+                  v-if="subitemHelper.isExpanded(item.id)"
+                  :parent-task-id="item.id"
+                  :board-id="resolvedBoardId"
+                  :columns="columns"
+                  :normalize-column="normalizeColumn"
+                  :get-cell-value="getCellValue"
+                  :handle-cell-update="handleCellUpdate"
+                />
+              </template>
 
               <!-- Add Item Row -->
               <BoardAddItemRow
@@ -500,6 +529,7 @@ import BoardExportModal from '~/components/board/BoardExportModal.vue'
 import BoardTemplateChooser from '~/components/board/BoardTemplateChooser.vue'
 import BoardAutomationBuilder from '~/components/board/BoardAutomationBuilder.vue'
 import BoardChatFeedSettings from '~/components/board/BoardChatFeedSettings.vue'
+import BoardSubitemRows from '~/components/board/BoardSubitemRows.vue'
 import SubtaskList from '~/components/task/SubtaskList.vue'
 import TaskCommentThread from '~/components/task/CommentThread.vue'
 import TaskBillingPanel from '~/components/task/TaskBillingPanel.vue'
@@ -526,6 +556,8 @@ const route = useRoute()
 const toast = useToast()
 const boardId = computed(() => route.params.id as string)
 const containerRef = ref<InstanceType<typeof BoardContainer> | null>(null)
+const subitemHelper = useBoardSubitems()
+const resolvedBoardId = computed(() => (containerRef.value?.board as any)?.id || boardId.value)
 
 const showAddColumn = ref(false)
 const showAddGroup = ref(false)
@@ -579,6 +611,20 @@ const groupColorOptions = [
   '#225091', '#4ECCC6', '#C4C4C4', '#808080', '#333333',
   '#7F5347',
 ]
+
+// --- Subitem counts ---
+
+// Init subitem counts from board data when it loads
+watch(() => containerRef.value?.filteredGroups, (groups) => {
+  if (groups?.length) {
+    subitemHelper.initCounts(groups as any[])
+  }
+}, { deep: false })
+
+// Reset subitems state on board change
+watch(boardId, () => {
+  subitemHelper.reset()
+})
 
 // --- Container accessors ---
 
