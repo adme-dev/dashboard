@@ -190,59 +190,59 @@ export async function sendMagicLinkEmail(data: MagicLinkEmailData): Promise<void
       subject: `Your sign-in link for ${appName}`,
       html: `<!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"></head>
-<body style="margin:0;padding:0;background-color:#0a0b0e;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light only"></head>
+<body style="margin:0;padding:0;background-color:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#111111;">
   <div style="max-width:560px;margin:0 auto;padding:48px 24px;">
 
     <!-- Logo -->
     <div style="text-align:center;margin-bottom:48px;">
-      <div style="display:inline-block;width:40px;height:40px;background:#ffffff;border-radius:10px;line-height:40px;text-align:center;">
-        <span style="color:#0a0b0e;font-size:14px;font-weight:700;letter-spacing:-0.02em;">XF</span>
+      <div style="display:inline-block;width:40px;height:40px;background:#111111;border-radius:10px;line-height:40px;text-align:center;">
+        <span style="color:#ffffff;font-size:14px;font-weight:700;letter-spacing:-0.02em;">XF</span>
       </div>
     </div>
 
     <!-- Card -->
-    <div style="background:#121317;border:1px solid rgba(255,255,255,0.06);border-radius:20px;padding:48px 40px;text-align:center;">
+    <div style="background:#ffffff;border:1px solid #e0e0e0;border-radius:20px;padding:48px 40px;text-align:center;">
 
-      <h1 style="margin:0 0 8px;color:#ffffff;font-size:28px;font-weight:500;letter-spacing:-0.03em;line-height:1.2;">
+      <h1 style="margin:0 0 8px;color:#111111;font-size:28px;font-weight:500;letter-spacing:-0.03em;line-height:1.2;">
         Welcome back, ${safeName}
       </h1>
 
-      <p style="margin:0 0 36px;color:rgba(255,255,255,0.5);font-size:16px;line-height:1.6;">
+      <p style="margin:0 0 36px;color:#666666;font-size:16px;line-height:1.6;">
         Tap the button below to sign in to your account. This link is valid for one hour.
       </p>
 
       <!-- CTA Button -->
       <div style="margin:0 0 36px;">
         <!--[if mso]>
-        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="${data.magicLinkUrl}" style="height:48px;v-text-anchor:middle;width:240px;" arcsize="50%" fillcolor="#ffffff">
-          <center style="color:#0a0b0e;font-family:sans-serif;font-size:16px;font-weight:bold;">Sign in to ${escapeHtml(appName)}</center>
+        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="${data.magicLinkUrl}" style="height:48px;v-text-anchor:middle;width:240px;" arcsize="50%" fillcolor="#111111">
+          <center style="color:#ffffff;font-family:sans-serif;font-size:16px;font-weight:bold;">Sign in to ${escapeHtml(appName)}</center>
         </v:roundrect>
         <![endif]-->
         <!--[if !mso]><!-->
         <a href="${data.magicLinkUrl}"
-           style="display:inline-block;background-color:#ffffff;color:#0a0b0e !important;padding:14px 36px;text-decoration:none;border-radius:100px;font-size:16px;font-weight:600;letter-spacing:-0.01em;border:2px solid #ffffff;mso-padding-alt:0;">
+           style="display:inline-block;background-color:#111111;color:#ffffff !important;padding:14px 36px;text-decoration:none;border-radius:100px;font-size:16px;font-weight:600;letter-spacing:-0.01em;border:2px solid #111111;mso-padding-alt:0;">
           Sign in to ${escapeHtml(appName)}
         </a>
         <!--<![endif]-->
       </div>
 
       <!-- Divider -->
-      <div style="height:1px;background:rgba(255,255,255,0.06);margin:0 0 24px;"></div>
+      <div style="height:1px;background:#e0e0e0;margin:0 0 24px;"></div>
 
       <!-- Fallback link -->
-      <p style="margin:0;color:rgba(255,255,255,0.3);font-size:13px;line-height:1.6;">
+      <p style="margin:0;color:#999999;font-size:13px;line-height:1.6;">
         Or copy this link into your browser:<br>
-        <a href="${data.magicLinkUrl}" style="color:rgba(255,255,255,0.5);text-decoration:underline;word-break:break-all;">${data.magicLinkUrl}</a>
+        <a href="${data.magicLinkUrl}" style="color:#666666;text-decoration:underline;word-break:break-all;">${data.magicLinkUrl}</a>
       </p>
     </div>
 
     <!-- Footer -->
     <div style="text-align:center;margin-top:32px;">
-      <p style="margin:0 0 4px;color:rgba(255,255,255,0.25);font-size:12px;">
+      <p style="margin:0 0 4px;color:#999999;font-size:12px;">
         You received this because a sign-in was requested for ${escapeHtml(data.to)}.
       </p>
-      <p style="margin:0;color:rgba(255,255,255,0.15);font-size:12px;">
+      <p style="margin:0;color:#bbbbbb;font-size:12px;">
         If you didn&rsquo;t request this, you can safely ignore this email.
       </p>
     </div>
