@@ -348,7 +348,7 @@ async function handleConfirmDelete() {
       <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Loading -->
         <div v-if="pending && viewMode !== 'adjustments'" class="flex items-center justify-center py-12">
-          <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary" />
+          <XfLoader />
         </div>
 
         <template v-else>
@@ -464,7 +464,7 @@ async function handleConfirmDelete() {
 
             <!-- Loading heatmap -->
             <div v-else class="flex items-center justify-center py-12">
-              <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary" />
+              <XfLoader />
             </div>
 
             <!-- Quick Stats -->

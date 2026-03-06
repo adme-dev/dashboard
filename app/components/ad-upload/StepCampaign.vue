@@ -78,7 +78,7 @@ function statusColor(status: string): 'success' | 'warning' | 'neutral' {
       />
 
       <div v-if="isLoadingCampaigns" class="py-6 text-center">
-        <UIcon name="i-lucide-loader-2" class="w-5 h-5 text-(--ui-text-muted) animate-spin mx-auto" />
+        <XfLoader size="sm" />
         <p class="text-xs text-(--ui-text-muted) mt-2">Loading campaigns...</p>
       </div>
 
@@ -121,7 +121,7 @@ function statusColor(status: string): 'success' | 'warning' | 'neutral' {
       />
 
       <div v-if="isLoadingAdSets" class="py-6 text-center">
-        <UIcon name="i-lucide-loader-2" class="w-5 h-5 text-(--ui-text-muted) animate-spin mx-auto" />
+        <XfLoader size="sm" />
         <p class="text-xs text-(--ui-text-muted) mt-2">Loading ad sets...</p>
       </div>
 

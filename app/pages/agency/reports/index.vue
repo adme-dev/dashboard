@@ -254,7 +254,7 @@ const formatHours = (value: number) => `${value}h`
             </template>
 
             <div v-if="trendsPending" class="h-64 flex items-center justify-center">
-              <UIcon name="i-lucide-loader-2" class="h-8 w-8 animate-spin text-neutral-400" />
+              <XfLoader />
             </div>
             <div v-else-if="trends?.trends?.length" class="space-y-2">
               <div
@@ -287,7 +287,7 @@ const formatHours = (value: number) => `${value}h`
             </template>
 
             <div v-if="completionPending" class="h-64 flex items-center justify-center">
-              <UIcon name="i-lucide-loader-2" class="h-8 w-8 animate-spin text-neutral-400" />
+              <XfLoader />
             </div>
             <div v-else-if="completion?.byDepartment?.length" class="space-y-3">
               <div
@@ -323,7 +323,7 @@ const formatHours = (value: number) => `${value}h`
           </template>
 
           <div v-if="workloadPending" class="h-48 flex items-center justify-center">
-            <UIcon name="i-lucide-loader-2" class="h-8 w-8 animate-spin text-neutral-400" />
+            <XfLoader />
           </div>
           <div v-else-if="workload?.members?.length" class="overflow-x-auto">
             <table class="w-full text-sm">
@@ -401,7 +401,7 @@ const formatHours = (value: number) => `${value}h`
           </template>
 
           <div v-if="progressPending" class="h-48 flex items-center justify-center">
-            <UIcon name="i-lucide-loader-2" class="h-8 w-8 animate-spin text-neutral-400" />
+            <XfLoader />
           </div>
           <div v-else-if="projectProgress?.projects?.length" class="overflow-x-auto">
             <table class="w-full text-sm">

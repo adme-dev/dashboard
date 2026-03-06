@@ -270,7 +270,7 @@ watch(() => props.open, (isOpen) => {
 
         <!-- Loading -->
         <div v-if="loading" class="flex items-center justify-center py-8">
-          <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin text-muted" />
+          <XfLoader size="sm" />
         </div>
 
         <!-- Automations list -->

@@ -1,7 +1,7 @@
 <template>
   <div class="activity-log">
     <div v-if="loading" class="py-8 text-center">
-      <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-primary mx-auto" />
+      <XfLoader size="sm" class="mx-auto" />
     </div>
     
     <div v-else-if="activities.length === 0" class="py-8 text-center text-gray-500 dark:text-neutral-400">

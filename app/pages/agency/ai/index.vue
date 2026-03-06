@@ -236,7 +236,7 @@ const getSessionStatusColor = (status: string): 'neutral' | 'info' | 'success' |
           </p>
 
           <div v-if="loadingTemplates" class="flex items-center justify-center py-12">
-            <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
+            <XfLoader />
           </div>
 
           <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

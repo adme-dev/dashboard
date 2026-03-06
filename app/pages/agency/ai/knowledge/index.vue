@@ -176,7 +176,7 @@ onMounted(() => {
 
     <!-- Loading -->
     <div v-if="loading" class="flex justify-center py-12">
-      <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-muted" />
+      <XfLoader size="sm" />
     </div>
 
     <!-- Articles Grid -->

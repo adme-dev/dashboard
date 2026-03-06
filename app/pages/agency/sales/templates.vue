@@ -131,7 +131,7 @@ const columns: any[] = [
 
         <!-- Loading state -->
         <div v-if="pending" class="flex items-center justify-center py-12">
-          <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
+          <XfLoader />
         </div>
 
         <!-- Templates grouped by category -->

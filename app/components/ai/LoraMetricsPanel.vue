@@ -34,7 +34,7 @@ const formatDate = (dateStr: string | null) => {
   <div class="space-y-6">
     <!-- Loading -->
     <div v-if="statsPending" class="flex items-center justify-center py-12">
-      <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
+      <XfLoader />
     </div>
 
     <template v-else-if="stats">
@@ -124,7 +124,7 @@ const formatDate = (dateStr: string | null) => {
         </div>
 
         <div v-else-if="metricsPending" class="flex items-center justify-center py-8">
-          <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-primary-500" />
+          <XfLoader size="sm" />
         </div>
 
         <div v-else-if="metrics" class="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -117,6 +117,24 @@ async function submitComment() {
           </div>
         </div>
 
+        <!-- Team Members -->
+        <div v-if="data.teamMembers?.length">
+          <h3 class="font-semibold mb-3">Team Members</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div
+              v-for="member in data.teamMembers"
+              :key="member.id"
+              class="flex items-center gap-3 p-3 rounded-lg bg-elevated"
+            >
+              <UAvatar :src="member.avatarUrl || undefined" :alt="member.name" size="sm" />
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-medium truncate">{{ member.name }}</p>
+                <p class="text-xs text-muted truncate">{{ member.role || member.department || 'Team Member' }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div v-if="data.upcomingTasks.length">
           <h3 class="font-semibold mb-3">Upcoming Tasks</h3>
           <div class="space-y-2">

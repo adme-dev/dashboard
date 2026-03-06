@@ -279,7 +279,7 @@ const showMissingSubmitters = ref(true)
 
         <!-- Loading -->
         <div v-if="pending" class="flex items-center justify-center py-12">
-          <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin text-neutral-400" />
+          <XfLoader size="sm" />
           <span class="ml-2 text-sm text-neutral-500 dark:text-neutral-400">Loading timesheets...</span>
         </div>
 

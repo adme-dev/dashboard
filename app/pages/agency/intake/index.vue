@@ -312,7 +312,7 @@ const copyPublicLink = (slug: string) => {
 
           <!-- Loading -->
           <div v-if="loadingForms" class="flex items-center justify-center py-12">
-            <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
+            <XfLoader />
           </div>
 
           <!-- Forms Grid -->
@@ -463,7 +463,7 @@ const copyPublicLink = (slug: string) => {
 
           <!-- Loading -->
           <div v-if="loadingSubmissions" class="flex items-center justify-center py-12">
-            <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
+            <XfLoader />
           </div>
 
           <!-- Submissions List -->

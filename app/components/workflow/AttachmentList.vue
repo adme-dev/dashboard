@@ -140,7 +140,7 @@ defineExpose({ refresh })
       />
 
       <template v-if="uploading">
-        <UIcon name="i-lucide-loader-2" class="h-8 w-8 text-primary mx-auto mb-2 animate-spin" />
+        <XfLoader />
         <p class="text-sm text-muted">Uploading... {{ Math.round(uploadProgress) }}%</p>
       </template>
 

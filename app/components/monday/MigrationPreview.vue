@@ -26,7 +26,7 @@
 
         <!-- Loading State -->
         <div v-if="loading" class="py-12 text-center">
-          <UIcon name="i-lucide-loader-2" class="mx-auto mb-4 w-8 h-8 animate-spin" />
+          <XfLoader class="mx-auto mb-4" />
           <p class="text-gray-600 dark:text-gray-400">Analyzing your Monday.com data...</p>
           <p class="text-sm text-gray-500 mt-2">
             This may take a minute for large workspaces

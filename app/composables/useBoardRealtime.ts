@@ -53,7 +53,12 @@ export function useBoardRealtime(boardId: Ref<string>, options: UseBoardRealtime
     if (import.meta.server) return
     disconnect()
     reconnectAttempts = 0
-    connectWebSocket()
+    // Skip WebSocket in dev — Durable Objects aren't available locally
+    if (import.meta.dev) {
+      fallbackToSSE()
+    } else {
+      connectWebSocket()
+    }
   }
 
   let wsFailed = false // Track if WS has already failed this session

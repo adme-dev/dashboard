@@ -25,7 +25,7 @@
 
       <div class="flex-1 overflow-y-auto py-2">
         <div v-if="pending" class="flex justify-center py-4">
-          <UIcon name="i-lucide-loader-2" class="size-5 animate-spin text-primary" />
+          <XfLoader size="sm" />
         </div>
         <div
           v-for="team in filteredSidebarTeams"
@@ -63,7 +63,7 @@
 
         <div class="flex-1 overflow-y-auto p-4 sm:p-6">
           <div v-if="pending" class="flex items-center justify-center min-h-64">
-            <UIcon name="i-lucide-loader-2" class="size-8 animate-spin text-primary" />
+            <XfLoader />
           </div>
 
           <div v-else-if="teamsError" class="flex items-center justify-center min-h-64">
@@ -192,7 +192,7 @@
 
           <div class="flex-1 overflow-y-auto p-4 sm:p-6">
             <div v-if="membersLoading" class="flex items-center justify-center min-h-64">
-              <UIcon name="i-lucide-loader-2" class="size-8 animate-spin text-primary" />
+              <XfLoader />
             </div>
 
             <UTable

@@ -481,7 +481,7 @@ onMounted(async () => {
 
     <div class="p-6">
       <div v-if="loading || spendLoading" class="flex justify-center py-16">
-        <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-muted" />
+        <XfLoader size="sm" />
       </div>
 
       <div v-else-if="accountSpend.length === 0" class="text-center py-16">

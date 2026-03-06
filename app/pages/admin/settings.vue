@@ -151,7 +151,7 @@
           </template>
 
           <div v-if="fetchingBoards" class="flex justify-center py-8">
-            <UIcon name="i-lucide-loader-2" class="size-6 animate-spin text-primary" />
+            <XfLoader size="sm" />
           </div>
 
           <div v-else-if="mondayBoards.length === 0" class="py-8">

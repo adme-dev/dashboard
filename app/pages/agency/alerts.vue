@@ -101,7 +101,7 @@
           </template>
 
           <div v-if="alertsPending" class="flex justify-center py-8">
-            <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-gray-400" />
+            <XfLoader size="sm" />
           </div>
 
           <div v-else-if="!alerts?.alerts?.length" class="text-center py-8">

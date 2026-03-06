@@ -134,6 +134,60 @@ function timeAgo(date: string) {
         </template>
       </UCard>
 
+      <!-- Open Requests -->
+      <UCard>
+        <template #header>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-message-square-plus" class="text-primary" />
+              <span class="font-semibold">Open Requests</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <UBadge v-if="dashboard.requests.stats.submitted > 0" color="warning" variant="subtle">
+                {{ dashboard.requests.stats.submitted }} new
+              </UBadge>
+              <UBadge v-if="dashboard.requests.stats.inProgress > 0" color="primary" variant="subtle">
+                {{ dashboard.requests.stats.inProgress }} active
+              </UBadge>
+            </div>
+          </div>
+        </template>
+
+        <div class="space-y-3">
+          <NuxtLink
+            v-for="req in dashboard.requests.recent"
+            :key="req.id"
+            :to="`/portal/requests/${req.id}`"
+            class="block p-3 rounded-lg hover:bg-elevated transition-colors"
+          >
+            <div class="flex items-center justify-between">
+              <span class="font-medium text-sm">{{ req.title }}</span>
+              <UBadge
+                size="xs"
+                variant="subtle"
+                :color="req.priority === 'urgent' ? 'error' : req.priority === 'high' ? 'warning' : 'neutral'"
+              >
+                {{ req.priority }}
+              </UBadge>
+            </div>
+            <div class="flex items-center gap-2 mt-1 text-xs text-muted">
+              <span>{{ req.requestType === 'job_request' ? 'Job' : 'Support' }}</span>
+              <span v-if="req.assignedName">· {{ req.assignedName }}</span>
+            </div>
+          </NuxtLink>
+
+          <p v-if="!dashboard.requests.recent.length" class="text-sm text-muted text-center py-4">
+            No open requests
+          </p>
+        </div>
+
+        <template #footer>
+          <NuxtLink to="/portal/requests" class="text-sm text-primary hover:underline">
+            View all requests
+          </NuxtLink>
+        </template>
+      </UCard>
+
       <!-- Recent Deliverables -->
       <UCard>
         <template #header>
@@ -236,6 +290,48 @@ function timeAgo(date: string) {
             View all invoices
           </NuxtLink>
         </template>
+      </UCard>
+
+      <!-- Your Team -->
+      <UCard v-if="dashboard.team.members.length">
+        <template #header>
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-users" class="text-primary" />
+            <span class="font-semibold">Your Team</span>
+          </div>
+        </template>
+
+        <div class="space-y-3">
+          <div
+            v-for="member in dashboard.team.members"
+            :key="member.id"
+            class="flex items-center gap-3 p-2"
+          >
+            <UAvatar :src="member.avatarUrl || undefined" :alt="member.name" size="sm" />
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium truncate">{{ member.name }}</p>
+              <p class="text-xs text-muted truncate">{{ member.role || member.department || 'Team Member' }}</p>
+            </div>
+            <div class="flex items-center gap-1 shrink-0">
+              <UButton
+                v-if="member.email"
+                :to="`mailto:${member.email}`"
+                icon="i-lucide-mail"
+                variant="ghost"
+                color="neutral"
+                size="xs"
+              />
+              <UButton
+                v-if="member.phone"
+                :to="`tel:${member.phone}`"
+                icon="i-lucide-phone"
+                variant="ghost"
+                color="neutral"
+                size="xs"
+              />
+            </div>
+          </div>
+        </div>
       </UCard>
 
       <!-- Upcoming Deadlines -->

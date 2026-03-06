@@ -212,7 +212,7 @@ const metrics = computed(() => metricsData.value as LoraMetricsComparison | null
 
     <!-- Loading -->
     <div v-if="pending" class="flex items-center justify-center py-12">
-      <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
+      <XfLoader />
     </div>
 
     <!-- Table -->
@@ -421,7 +421,7 @@ const metrics = computed(() => metricsData.value as LoraMetricsComparison | null
           </div>
 
           <div v-else class="flex items-center justify-center py-8">
-            <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-primary-500" />
+            <XfLoader size="sm" />
           </div>
 
           <div class="flex justify-end pt-2">

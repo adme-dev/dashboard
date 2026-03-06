@@ -959,6 +959,7 @@ export interface ClientPermissions {
   canUploadFiles: boolean
   canInviteUsers: boolean
   canViewAnalytics: boolean
+  canSubmitRequests: boolean
 }
 
 // ============================================
@@ -1011,4 +1012,50 @@ export interface BannerExport {
   fileSize: number | null
   exportedBy: string
   exportedAt: string
+}
+
+// Client Portal: Job Requests + Support Tickets
+export type ClientRequestType = 'job_request' | 'support_ticket'
+export type ClientRequestPriority = 'low' | 'normal' | 'high' | 'urgent'
+export type ClientRequestStatus = 'submitted' | 'in_review' | 'approved' | 'in_progress' | 'completed' | 'closed' | 'cancelled'
+
+export interface ClientRequest {
+  id: string
+  clientId: string
+  clientUserId: string
+  requestType: ClientRequestType
+  category: string | null
+  title: string
+  description: string
+  priority: ClientRequestPriority
+  status: ClientRequestStatus
+  assignedTo: string | null
+  assignedName: string | null
+  assignedAvatar: string | null
+  assignedRole: string | null
+  projectId: string | null
+  projectName: string | null
+  taskId: string | null
+  attachments: any[]
+  estimatedBudget: number | null
+  desiredDeadline: string | null
+  responseNotes: string | null
+  respondedBy: string | null
+  respondedAt: string | null
+  resolvedAt: string | null
+  submittedByName: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ClientRequestMessage {
+  id: string
+  requestId: string
+  content: string
+  attachments: any[]
+  isInternal: boolean
+  authorName: string | null
+  authorAvatar: string | null
+  authorType: 'client' | 'team'
+  createdAt: string
 }

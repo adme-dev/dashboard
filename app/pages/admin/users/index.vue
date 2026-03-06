@@ -50,7 +50,7 @@
     <div class="flex-1 overflow-y-auto p-4 sm:p-6">
       <!-- Loading State -->
       <div v-if="pending" class="flex-1 flex items-center justify-center min-h-64">
-        <UIcon name="i-lucide-loader-2" class="size-8 animate-spin text-primary" />
+        <XfLoader />
       </div>
 
       <!-- Error State -->

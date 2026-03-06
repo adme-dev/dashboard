@@ -178,7 +178,7 @@ const canRespondToStep = (step: any): boolean => {
 
     <!-- Loading -->
     <div v-if="pending" class="flex items-center justify-center py-8">
-      <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-primary-500" />
+      <XfLoader size="sm" />
     </div>
 
     <!-- No Approval -->

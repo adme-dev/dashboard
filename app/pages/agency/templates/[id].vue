@@ -45,7 +45,7 @@
     </div>
 
     <div v-if="pending" class="flex justify-center py-12">
-      <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-gray-400" />
+      <XfLoader />
     </div>
 
     <div v-else-if="template" class="grid grid-cols-1 lg:grid-cols-3 gap-6">

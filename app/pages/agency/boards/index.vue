@@ -19,7 +19,7 @@
     <div class="flex-1 overflow-auto p-6">
       <!-- Loading -->
       <div v-if="pending" class="flex items-center justify-center h-full">
-        <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary" />
+        <XfLoader />
       </div>
 
       <!-- Workspaces Grid -->

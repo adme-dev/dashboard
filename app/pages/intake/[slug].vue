@@ -187,7 +187,7 @@ const getWidthClass = (width: string) => {
   <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center min-h-screen">
-      <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
+      <XfLoader />
     </div>
 
     <!-- Error -->

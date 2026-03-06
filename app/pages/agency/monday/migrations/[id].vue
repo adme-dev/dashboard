@@ -85,7 +85,7 @@
       </template>
 
       <div v-if="loading" class="py-8 text-center">
-        <UIcon name="i-lucide-loader-2" class="mx-auto mb-2 w-6 h-6 animate-spin" />
+        <XfLoader size="sm" class="mx-auto mb-2" />
         <p class="text-gray-600 dark:text-gray-400">Loading board mappings...</p>
       </div>
 

@@ -197,7 +197,7 @@ defineExpose({ scrollToBottom, scrollToUnread })
     >
       <!-- Loading more indicator -->
       <div v-if="loading && hasMore" class="text-center py-3">
-        <UIcon name="i-lucide-loader-2" class="w-5 h-5 text-muted animate-spin" />
+        <XfLoader size="sm" />
       </div>
 
       <!-- Empty state -->

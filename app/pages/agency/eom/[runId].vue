@@ -223,7 +223,7 @@ onMounted(async () => {
       <!-- Loading -->
       <div v-if="loading" class="flex items-center justify-center py-24">
         <div class="flex flex-col items-center gap-3">
-          <UIcon name="i-lucide-loader-2" class="size-6 animate-spin text-muted" />
+          <XfLoader size="sm" />
           <span class="text-sm text-muted">Loading EOM run...</span>
         </div>
       </div>
@@ -279,7 +279,7 @@ onMounted(async () => {
           <EomValidation v-if="validation" :validation="validation" />
           <div v-else class="flex items-center justify-center py-16">
             <div class="flex flex-col items-center gap-3">
-              <UIcon name="i-lucide-loader-2" class="size-6 animate-spin text-muted" />
+              <XfLoader size="sm" />
               <span class="text-sm text-muted">Running validation checks...</span>
             </div>
           </div>
@@ -290,7 +290,7 @@ onMounted(async () => {
           <EomGSTAudit v-if="summary" :summary="summary" />
           <div v-else class="flex items-center justify-center py-16">
             <div class="flex flex-col items-center gap-3">
-              <UIcon name="i-lucide-loader-2" class="size-6 animate-spin text-muted" />
+              <XfLoader size="sm" />
               <span class="text-sm text-muted">Loading summary...</span>
             </div>
           </div>

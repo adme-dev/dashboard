@@ -90,6 +90,20 @@ export default defineEventHandler(async (event) => {
       WHERE project_id = $1
     `, [projectId])
 
+    // Team members assigned to tasks on this project (when settings allow)
+    let teamMembers: any[] = []
+    if (settings?.show_team_members !== false) {
+      teamMembers = await queryRows(`
+        SELECT DISTINCT ON (tm.id)
+          tm.id, tm.name, tm.email, tm.avatar_url, tm.role, tm.department
+        FROM team_members tm
+        JOIN tasks t ON t.assigned_to = tm.id
+        WHERE t.project_id = $1
+        ORDER BY tm.id
+        LIMIT 10
+      `, [projectId])
+    }
+
     const totalTasks = Number(taskStats?.total || 0)
     const completedTasks = Number(taskStats?.completed || 0)
 
@@ -137,6 +151,14 @@ export default defineEventHandler(async (event) => {
         dueDate: a.due_date,
         requestedAt: a.requested_at,
         requestedByName: a.requested_by_name
+      })),
+      teamMembers: teamMembers.map(m => ({
+        id: m.id,
+        name: m.name,
+        email: m.email,
+        avatarUrl: m.avatar_url,
+        role: m.role,
+        department: m.department
       })),
       settings: settings || {
         show_budget: false,

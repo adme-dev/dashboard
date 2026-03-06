@@ -302,7 +302,7 @@ function auditActionColor(action: string) {
     <!-- Services Tab -->
     <div v-if="activeTab === 'items'" class="flex-1 overflow-auto px-6 py-4">
       <div v-if="status === 'pending'" class="flex justify-center py-12">
-        <UIcon name="i-lucide-loader-2" class="size-6 animate-spin text-muted" />
+        <XfLoader size="sm" />
       </div>
 
       <div v-else-if="categories.length === 0" class="text-center py-12 text-muted">

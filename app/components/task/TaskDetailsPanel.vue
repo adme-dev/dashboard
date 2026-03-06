@@ -52,7 +52,7 @@
 
         <!-- Loading State -->
         <div v-if="loadingFiles" class="flex items-center justify-center py-4">
-          <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin text-gray-400" />
+          <XfLoader size="sm" />
         </div>
 
         <!-- File List -->

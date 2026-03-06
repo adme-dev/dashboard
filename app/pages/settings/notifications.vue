@@ -118,7 +118,7 @@ async function onChange(field: string, value: boolean) {
   <div class="space-y-8">
     <!-- Loading state -->
     <div v-if="loading" class="flex items-center justify-center py-12">
-      <UIcon name="i-lucide-loader-2" class="size-6 animate-spin text-gray-400" />
+      <XfLoader size="sm" />
     </div>
 
     <div v-else v-for="(section, index) in sections" :key="index">

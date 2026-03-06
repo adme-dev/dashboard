@@ -105,7 +105,7 @@ function fmtNumber(n: number): string {
     <!-- Time-series chart -->
     <div ref="chartRef" class="bg-(--ui-bg-elevated) border border-(--ui-border) rounded-lg p-4">
       <div v-if="status === 'pending'" class="h-48 flex items-center justify-center">
-        <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin text-(--ui-text-muted)" />
+        <XfLoader size="sm" />
       </div>
       <div v-else-if="!chartData.length" class="h-48 flex items-center justify-center">
         <p class="text-xs text-(--ui-text-muted)">No data for this period</p>

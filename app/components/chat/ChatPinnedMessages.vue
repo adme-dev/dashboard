@@ -54,7 +54,7 @@ function formatTime(date: string) {
     <!-- Content -->
     <div class="flex-1 overflow-y-auto">
       <div v-if="loading" class="flex justify-center py-8">
-        <UIcon name="i-lucide-loader-2" class="w-5 h-5 text-muted animate-spin" />
+        <XfLoader size="sm" />
       </div>
 
       <div v-else-if="pins.length === 0" class="text-center text-sm text-muted py-8 px-4">

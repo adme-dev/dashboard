@@ -225,7 +225,7 @@ const approvalColumns = [
         <!-- Users Tab -->
         <div v-if="activeTab === 'users'">
           <div v-if="usersPending" class="flex items-center justify-center py-12">
-            <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
+            <XfLoader />
           </div>
 
           <UCard v-else>
@@ -277,7 +277,7 @@ const approvalColumns = [
         <!-- Approvals Tab -->
         <div v-if="activeTab === 'approvals'">
           <div v-if="approvalsPending" class="flex items-center justify-center py-12">
-            <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
+            <XfLoader />
           </div>
 
           <UCard v-else>

@@ -94,7 +94,7 @@ function varianceColor(variance: number) {
       <!-- Loading -->
       <div v-if="status === 'pending'" class="flex justify-center py-12">
         <div class="text-center">
-          <UIcon name="i-lucide-loader-2" class="size-8 animate-spin text-muted mb-3" />
+          <XfLoader class="mb-3" />
           <p class="text-sm text-muted">Scanning Xero invoices against rate card...</p>
         </div>
       </div>

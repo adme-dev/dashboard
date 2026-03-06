@@ -349,7 +349,7 @@ const bankDiscrepancy = computed(() => {
       <!-- Loading -->
       <div v-if="loading" class="flex items-center justify-center py-16">
         <div class="flex flex-col items-center gap-3">
-          <UIcon name="i-lucide-loader-2" class="size-6 animate-spin text-muted" />
+          <XfLoader size="sm" />
           <span class="text-sm text-muted">Loading spend data...</span>
         </div>
       </div>

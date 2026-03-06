@@ -164,7 +164,7 @@
     <!-- Tasks Table -->
     <UCard>
       <div v-if="pending" class="flex justify-center py-12">
-        <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-gray-400" />
+        <XfLoader />
       </div>
 
       <div v-else-if="!tasks?.length" class="text-center py-12">

@@ -270,7 +270,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
   <div class="h-full flex flex-col overflow-hidden">
     <!-- Loading -->
     <div v-if="loading" class="flex-1 flex items-center justify-center">
-      <UIcon name="i-lucide-loader-2" class="animate-spin text-3xl text-muted" />
+      <XfLoader />
     </div>
 
     <template v-else-if="instance">

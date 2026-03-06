@@ -61,7 +61,7 @@
     <div class="flex-1 overflow-auto p-6">
       <!-- Loading -->
       <div v-if="pending" class="flex items-center justify-center h-full">
-        <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary" />
+        <XfLoader />
       </div>
 
       <template v-else>
@@ -246,7 +246,7 @@
 
             <!-- Members loading -->
             <div v-if="membersPending" class="flex items-center justify-center py-12">
-              <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-primary" />
+              <XfLoader size="sm" />
             </div>
 
             <div v-else-if="members?.length" class="bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-800 divide-y divide-gray-100 dark:divide-neutral-800">

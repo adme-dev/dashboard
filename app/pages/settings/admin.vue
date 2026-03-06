@@ -18,7 +18,7 @@
       </div>
 
       <div v-if="departmentsPending" class="flex justify-center py-8">
-        <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-gray-400" />
+        <XfLoader size="sm" />
       </div>
 
       <div v-else class="space-y-2">
@@ -61,7 +61,7 @@
       </div>
 
       <div v-if="statusesPending" class="flex justify-center py-8">
-        <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-gray-400" />
+        <XfLoader size="sm" />
       </div>
 
       <div v-else>
@@ -113,7 +113,7 @@
       </div>
 
       <div v-if="tagsPending" class="flex justify-center py-8">
-        <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-gray-400" />
+        <XfLoader size="sm" />
       </div>
 
       <div v-else class="flex flex-wrap gap-2">
@@ -154,7 +154,7 @@
       </div>
 
       <div v-if="expenseCategoriesPending" class="flex justify-center py-8">
-        <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-gray-400" />
+        <XfLoader size="sm" />
       </div>
 
       <div v-else class="space-y-2">

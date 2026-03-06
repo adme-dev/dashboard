@@ -62,7 +62,7 @@
     <!-- Items Table -->
     <UCard>
       <div v-if="loading" class="flex justify-center py-12">
-        <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary" />
+        <XfLoader />
       </div>
 
       <div v-else-if="filteredItems.length === 0" class="text-center py-12 text-gray-500">

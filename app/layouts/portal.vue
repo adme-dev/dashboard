@@ -17,6 +17,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
   { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/portal', exact: true, onSelect: close },
   { label: 'Projects', icon: 'i-lucide-folder-kanban', to: '/portal/projects', onSelect: close },
   { label: 'Approvals', icon: 'i-lucide-check-circle', to: '/portal/approvals', onSelect: close },
+  { label: 'Requests', icon: 'i-lucide-message-square-plus', to: '/portal/requests', onSelect: close },
   { label: 'Gallery', icon: 'i-lucide-image', to: '/portal/gallery', onSelect: close },
   { label: 'Features', icon: 'i-lucide-sparkles', to: '/portal/features', onSelect: close },
   ...(user.value?.permissions?.canViewAnalytics ? [

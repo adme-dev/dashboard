@@ -247,7 +247,7 @@ const graphExplorerLabel = computed(() => {
       </div>
 
       <div v-if="loading" class="flex justify-center py-16">
-        <UIcon name="i-lucide-loader-2" class="w-6 h-6 animate-spin text-muted" />
+        <XfLoader size="sm" />
       </div>
 
       <template v-else>

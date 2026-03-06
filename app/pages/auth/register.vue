@@ -85,7 +85,7 @@ async function handleSubmit() {
     <template v-if="inviteToken && loadingInvitation">
       <UCard>
         <div class="flex items-center justify-center py-8">
-          <UIcon name="i-lucide-loader-2" class="h-8 w-8 animate-spin text-primary" />
+          <XfLoader />
         </div>
       </UCard>
     </template>

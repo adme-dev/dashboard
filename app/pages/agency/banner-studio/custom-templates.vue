@@ -124,7 +124,7 @@ const categoryLabel = (cat: string) => categories.find(c => c.value === cat)?.la
     <div class="flex-1 p-6">
       <!-- Loading -->
       <div v-if="status === 'pending'" class="flex items-center justify-center py-20">
-        <UIcon name="i-lucide-loader-2" class="animate-spin text-2xl text-muted" />
+        <XfLoader size="md" />
       </div>
 
       <!-- Empty State -->

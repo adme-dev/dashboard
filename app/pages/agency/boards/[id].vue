@@ -391,6 +391,8 @@
   <USlideover
     v-model:open="showTaskPanel"
     side="right"
+    :title="selectedTask?.title || 'Task Details'"
+    description="Task detail panel"
     :ui="{ content: 'w-[90vw] sm:w-[70vw] md:w-[50vw] lg:w-[33vw] min-w-[400px] max-w-[800px]' }"
   >
     <template #header>
@@ -425,7 +427,12 @@
     </template>
 
     <template #body>
-      <div v-if="selectedTask" class="h-full flex flex-col">
+      <!-- Loading state -->
+      <div v-if="taskLoading && !selectedTask" class="flex items-center justify-center py-24">
+        <XfLoader size="sm" />
+      </div>
+
+      <div v-else-if="selectedTask" class="h-full flex flex-col">
         <div class="mb-4">
           <h2 class="text-lg font-semibold text-gray-900 dark:text-neutral-100 leading-tight">{{ selectedTask.title }}</h2>
         </div>
@@ -587,7 +594,8 @@ const refreshColumns = async () => {
 
 // --- Task Detail ---
 
-const { data: taskData, execute: fetchTask } = useFetch<TaskDetail>(() => `/api/agency/tasks/${selectedTaskId.value}`, { immediate: false, watch: false })
+const { data: taskData, status: taskFetchStatus, execute: fetchTask } = useFetch<TaskDetail>(() => `/api/agency/tasks/${selectedTaskId.value}`, { immediate: false, watch: false })
+const taskLoading = computed(() => taskFetchStatus.value === 'pending')
 const selectedTask = computed(() => taskData.value || null)
 
 const showChat = ref(false)

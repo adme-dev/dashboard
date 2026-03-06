@@ -336,7 +336,7 @@ const presetColors = [
           </div>
 
           <div v-if="loadingDepartments" class="flex items-center justify-center py-12">
-            <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
+            <XfLoader />
           </div>
 
           <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -414,7 +414,7 @@ const presetColors = [
           </div>
 
           <div v-if="loadingStatuses" class="flex items-center justify-center py-12">
-            <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
+            <XfLoader />
           </div>
 
           <div v-else-if="!selectedDepartmentId" class="text-center py-12 text-gray-500">
@@ -507,7 +507,7 @@ const presetColors = [
           </div>
 
           <div v-if="loadingLabels" class="flex items-center justify-center py-12">
-            <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
+            <XfLoader />
           </div>
 
           <div v-else class="flex flex-wrap gap-3">

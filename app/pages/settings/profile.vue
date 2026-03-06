@@ -219,7 +219,7 @@ async function removeAvatar() {
 
     <!-- Loading state -->
     <div v-if="loading" class="flex items-center justify-center py-12">
-      <UIcon name="i-lucide-loader-2" class="size-6 animate-spin text-gray-400" />
+      <XfLoader size="sm" />
     </div>
 
     <!-- Avatar Section -->

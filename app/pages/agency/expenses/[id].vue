@@ -312,7 +312,7 @@ const paymentMethodOptions = [
       <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Loading -->
         <div v-if="pending" class="flex items-center justify-center py-12">
-          <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
+          <XfLoader />
         </div>
 
         <div v-else-if="expense" class="grid grid-cols-1 lg:grid-cols-3 gap-6">

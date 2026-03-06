@@ -120,7 +120,7 @@ const platformIcon = (p: string) => {
 
     <!-- Loading -->
     <div v-if="pending" class="flex items-center justify-center py-12">
-      <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary" />
+      <XfLoader />
     </div>
 
     <template v-else>

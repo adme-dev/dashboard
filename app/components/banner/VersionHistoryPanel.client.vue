@@ -77,7 +77,7 @@ function formatTime(d: string) {
 
     <!-- Loading -->
     <div v-if="status === 'pending' && !versions?.length" class="py-8 text-center">
-      <UIcon name="i-lucide-loader-2" class="w-5 h-5 text-(--ui-text-muted) animate-spin mx-auto" />
+      <XfLoader size="sm" class="mx-auto" />
     </div>
 
     <!-- Empty state -->

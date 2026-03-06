@@ -1,32 +1,32 @@
 <template>
   <div
     v-if="show"
-    class="mention-dropdown absolute z-50 bg-white rounded-lg shadow-xl border border-gray-200 py-2 min-w-[280px] max-h-[320px] overflow-y-auto"
+    class="mention-dropdown absolute z-50 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-gray-200 dark:border-neutral-700 py-2 min-w-[280px] max-h-[320px] overflow-y-auto"
     :style="position"
   >
     <!-- Loading State -->
-    <div v-if="loading" class="px-4 py-3 text-sm text-gray-500 flex items-center gap-2">
+    <div v-if="loading" class="px-4 py-3 text-sm text-gray-500 dark:text-neutral-400 flex items-center gap-2">
       <UIcon name="i-lucide-loader-2" class="w-4 h-4 animate-spin" />
       Searching...
     </div>
 
     <!-- Empty State -->
-    <div v-else-if="suggestions.length === 0" class="px-4 py-3 text-sm text-gray-500">
+    <div v-else-if="suggestions.length === 0" class="px-4 py-3 text-sm text-gray-500 dark:text-neutral-400">
       No matches found
     </div>
 
     <template v-else>
       <!-- Group by category -->
       <template v-for="(group, category) in groupedSuggestions" :key="category">
-        <div class="px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50/50">
+        <div class="px-3 py-1.5 text-xs font-semibold text-gray-500 dark:text-neutral-400 uppercase tracking-wide bg-gray-50/50 dark:bg-neutral-700/50">
           {{ formatCategory(category) }}
         </div>
         
         <div
           v-for="(item, index) in group"
           :key="item.id + item.type"
-          class="mention-item px-3 py-2 hover:bg-blue-50 cursor-pointer flex items-center gap-3 transition-colors"
-          :class="{ 'bg-blue-50': isSelected(item) }"
+          class="mention-item px-3 py-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 cursor-pointer flex items-center gap-3 transition-colors"
+          :class="{ 'bg-blue-50 dark:bg-blue-900/30': isSelected(item) }"
           @click="selectItem(item)"
           @mouseenter="selectedIndex = getGlobalIndex(category as string, index)"
         >
@@ -53,10 +53,10 @@
           />
           
           <div class="flex-1 min-w-0">
-            <div class="text-sm font-medium text-gray-900 truncate">
+            <div class="text-sm font-medium text-gray-900 dark:text-neutral-100 truncate">
               {{ item.name }}
             </div>
-            <div class="text-xs text-gray-500 truncate">
+            <div class="text-xs text-gray-500 dark:text-neutral-400 truncate">
               {{ item.subtitle || getSubtitle(item) }}
             </div>
           </div>
@@ -75,9 +75,9 @@
       </template>
       
       <!-- Invite Option -->
-      <div class="border-t border-gray-100 mt-1 pt-1">
+      <div class="border-t border-gray-100 dark:border-neutral-700 mt-1 pt-1">
         <button
-          class="w-full px-3 py-2 flex items-center gap-2 text-sm text-blue-600 hover:bg-blue-50 transition-colors"
+          class="w-full px-3 py-2 flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
           @click="$emit('invite')"
         >
           <UIcon name="i-lucide-mail" class="w-4 h-4" />

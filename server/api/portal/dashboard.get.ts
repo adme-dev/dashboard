@@ -120,6 +120,45 @@ export default defineEventHandler(async (event) => {
       LIMIT 10
     `, [clientId])
 
+    // Open client requests
+    const requestStats = await queryOne(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(CASE WHEN status = 'submitted' THEN 1 END) as submitted,
+        COUNT(CASE WHEN status IN ('in_review', 'approved', 'in_progress') THEN 1 END) as in_progress
+      FROM client_requests
+      WHERE client_id = $1
+    `, [clientId])
+
+    const recentRequests = await queryRows(`
+      SELECT
+        cr.id,
+        cr.request_type,
+        cr.title,
+        cr.priority,
+        cr.status,
+        cr.created_at,
+        tm.name as assigned_name
+      FROM client_requests cr
+      LEFT JOIN team_members tm ON cr.assigned_to = tm.id
+      WHERE cr.client_id = $1 AND cr.status NOT IN ('completed', 'closed', 'cancelled')
+      ORDER BY
+        CASE cr.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
+        cr.created_at DESC
+      LIMIT 5
+    `, [clientId])
+
+    // Team members (project managers on active projects)
+    const teamMembers = await queryRows(`
+      SELECT DISTINCT ON (tm.id)
+        tm.id, tm.name, tm.email, tm.phone, tm.avatar_url, tm.role, tm.department
+      FROM team_members tm
+      JOIN projects p ON p.project_manager_id = tm.id
+      WHERE p.client_id = $1 AND p.status = 'active'
+      ORDER BY tm.id
+      LIMIT 5
+    `, [clientId])
+
     const upcomingDeadlines = await queryRows(`
       SELECT
         t.id,
@@ -205,6 +244,33 @@ export default defineEventHandler(async (event) => {
           amountDue: Number(i.total_amount || 0) - Number(i.amount_paid || 0),
           dueDate: i.due_date,
           status: i.status
+        }))
+      },
+      requests: {
+        stats: {
+          total: Number(requestStats?.total || 0),
+          submitted: Number(requestStats?.submitted || 0),
+          inProgress: Number(requestStats?.in_progress || 0)
+        },
+        recent: recentRequests.map(r => ({
+          id: r.id,
+          requestType: r.request_type,
+          title: r.title,
+          priority: r.priority,
+          status: r.status,
+          assignedName: r.assigned_name,
+          createdAt: r.created_at
+        }))
+      },
+      team: {
+        members: teamMembers.map(m => ({
+          id: m.id,
+          name: m.name,
+          email: m.email,
+          phone: m.phone,
+          avatarUrl: m.avatar_url,
+          role: m.role,
+          department: m.department
         }))
       },
       upcomingDeadlines: upcomingDeadlines.map(t => ({

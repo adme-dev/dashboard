@@ -128,7 +128,7 @@ function formatDateTime(date: string | null) {
 
     <!-- Loading -->
     <div v-if="pending" class="flex justify-center py-12">
-      <UIcon name="i-lucide-loader-2" class="h-8 w-8 animate-spin text-primary" />
+      <XfLoader />
     </div>
 
     <!-- Error -->

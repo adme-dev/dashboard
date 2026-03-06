@@ -69,7 +69,7 @@ function copyTag(code: string, label: string) {
         </div>
 
         <div v-if="loadingTags" class="flex items-center justify-center py-6">
-          <UIcon name="i-lucide-loader-2" class="animate-spin text-lg text-muted" />
+          <XfLoader size="sm" />
         </div>
 
         <div v-else-if="tags.length" class="space-y-4">
