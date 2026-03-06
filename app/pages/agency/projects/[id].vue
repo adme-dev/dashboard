@@ -116,20 +116,20 @@ const saveProject = async () => {
   }
 }
 
-// Time entry columns
-const timeColumns: any[] = [
-  { key: 'date', label: 'Date' },
-  { key: 'userName', label: 'Team Member' },
-  { key: 'hours', label: 'Hours' },
-  { key: 'description', label: 'Description' }
+// Time entry columns (Nuxt UI v4 format)
+const timeColumns = [
+  { accessorKey: 'date', header: 'Date' },
+  { accessorKey: 'userName', header: 'Team Member' },
+  { accessorKey: 'hours', header: 'Hours' },
+  { accessorKey: 'description', header: 'Description' }
 ]
 
-// Expense columns
-const expenseColumns: any[] = [
-  { key: 'date', label: 'Date' },
-  { key: 'category', label: 'Category' },
-  { key: 'amount', label: 'Amount' },
-  { key: 'description', label: 'Description' }
+// Expense columns (Nuxt UI v4 format)
+const expenseColumns = [
+  { accessorKey: 'date', header: 'Date' },
+  { accessorKey: 'category', header: 'Category' },
+  { accessorKey: 'amount', header: 'Amount' },
+  { accessorKey: 'description', header: 'Description' }
 ]
 
 // Active tab
@@ -137,7 +137,7 @@ const activeTab = ref('overview')
 </script>
 
 <template>
-  <div class="flex-1 min-w-0">
+  <div class="flex-1 min-w-0 min-h-0 flex flex-col">
     <UDashboardPanel>
       <UDashboardNavbar :title="project?.name || 'Project'">
         <template #left>
@@ -375,12 +375,12 @@ const activeTab = ref('overview')
             </template>
 
             <UTable :data="timeEntries" :columns="timeColumns">
-              <template #date-cell="{ row: r }">
-                {{ formatDate((r as any).date) }}
+              <template #date-cell="{ row }">
+                {{ formatDate((row.original as any).date) }}
               </template>
-              <template #hours-cell="{ row: r }">
-                <span class="font-medium">{{ (r as any).hours.toFixed(1) }}h</span>
-                <UBadge v-if="(r as any).billable" size="xs" color="success" variant="subtle" class="ml-2">
+              <template #hours-cell="{ row }">
+                <span class="font-medium">{{ ((row.original as any).hours || 0).toFixed(1) }}h</span>
+                <UBadge v-if="(row.original as any).billable" size="xs" color="success" variant="subtle" class="ml-2">
                   Billable
                 </UBadge>
               </template>
@@ -406,11 +406,11 @@ const activeTab = ref('overview')
             </template>
 
             <UTable :data="expenses" :columns="expenseColumns">
-              <template #date-cell="{ row: r }">
-                {{ formatDate((r as any).date) }}
+              <template #date-cell="{ row }">
+                {{ formatDate((row.original as any).date) }}
               </template>
-              <template #amount-cell="{ row: r }">
-                <span class="font-medium">{{ formatCurrency((r as any).amount) }}</span>
+              <template #amount-cell="{ row }">
+                <span class="font-medium">{{ formatCurrency((row.original as any).amount) }}</span>
               </template>
             </UTable>
 

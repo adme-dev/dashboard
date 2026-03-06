@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { format, parseISO } from 'date-fns'
+import { format, parseISO, startOfWeek, endOfWeek, subWeeks } from 'date-fns'
 
 definePageMeta({
   title: 'Timesheet Approvals',
@@ -26,6 +26,34 @@ const { data: timesheetsData, pending, refresh } = await useFetch('/api/agency/t
 })
 
 const timesheets = computed(() => (timesheetsData.value?.timesheets || []) as any[])
+
+// Fetch gaps & warnings
+const { data: gapsData } = await useFetch('/api/agency/time/timesheets/gaps')
+
+const missingSubmitters = computed(() => (gapsData.value?.missingSubmitters || []) as any[])
+const timesheetWarnings = computed(() => (gapsData.value?.timesheetWarnings || {}) as Record<string, { type: string; message: string }[]>)
+const gapsPeriod = computed(() => {
+  if (!gapsData.value?.periodStart) return ''
+  try {
+    return formatPeriod(gapsData.value.periodStart as string, gapsData.value.periodEnd as string)
+  } catch {
+    return ''
+  }
+})
+
+function getWarnings(tsId: string) {
+  return timesheetWarnings.value[tsId] || []
+}
+
+function warningIcon(type: string) {
+  switch (type) {
+    case 'missing_days': return 'i-lucide-calendar-off'
+    case 'low_hours': return 'i-lucide-clock'
+    case 'no_project': return 'i-lucide-folder-open'
+    case 'low_total': return 'i-lucide-trending-down'
+    default: return 'i-lucide-alert-triangle'
+  }
+}
 
 // Selection for bulk actions
 const selectedIds = ref<Set<string>>(new Set())
@@ -174,6 +202,9 @@ const entriesByDate = computed(() => {
   }
   return grouped
 })
+
+// Collapse missing submitters section
+const showMissingSubmitters = ref(true)
 </script>
 
 <template>
@@ -194,13 +225,52 @@ const entriesByDate = computed(() => {
       </UDashboardNavbar>
 
       <div class="flex-1 overflow-y-auto p-4 sm:p-6">
+        <!-- Missing Submitters Alert -->
+        <div v-if="missingSubmitters.length > 0" class="mb-6">
+          <div class="border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+            <button
+              class="w-full flex items-center justify-between p-4 text-left"
+              @click="showMissingSubmitters = !showMissingSubmitters"
+            >
+              <div class="flex items-center gap-3">
+                <div class="flex-shrink-0 w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-800 flex items-center justify-center">
+                  <UIcon name="i-lucide-user-x" class="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <p class="text-sm font-medium text-amber-800 dark:text-amber-300">
+                    {{ missingSubmitters.length }} team member{{ missingSubmitters.length > 1 ? 's' : '' }} haven't submitted
+                  </p>
+                  <p class="text-xs text-amber-600 dark:text-amber-400">{{ gapsPeriod }}</p>
+                </div>
+              </div>
+              <UIcon
+                :name="showMissingSubmitters ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+                class="w-4 h-4 text-amber-500"
+              />
+            </button>
+            <div v-if="showMissingSubmitters" class="px-4 pb-4">
+              <div class="flex flex-wrap gap-2">
+                <div
+                  v-for="person in missingSubmitters"
+                  :key="person.id"
+                  class="flex items-center gap-2 bg-white dark:bg-neutral-800 rounded-md px-3 py-1.5 border border-amber-100 dark:border-amber-800/50"
+                >
+                  <UAvatar :alt="person.name" size="2xs" />
+                  <span class="text-sm text-neutral-700 dark:text-neutral-300">{{ person.name }}</span>
+                  <UBadge v-if="person.role" color="neutral" variant="soft" size="xs">{{ person.role }}</UBadge>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Filter Tabs -->
-        <div class="flex items-center gap-1 mb-6 border-b">
+        <div class="flex items-center gap-1 mb-6 border-b border-default">
           <button
             v-for="opt in filterOptions"
             :key="opt.value"
             class="px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px"
-            :class="activeFilter === opt.value ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+            :class="activeFilter === opt.value ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200'"
             @click="activeFilter = opt.value"
           >
             {{ opt.label }}
@@ -209,15 +279,15 @@ const entriesByDate = computed(() => {
 
         <!-- Loading -->
         <div v-if="pending" class="flex items-center justify-center py-12">
-          <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin text-gray-400" />
-          <span class="ml-2 text-sm text-gray-500">Loading timesheets...</span>
+          <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin text-neutral-400" />
+          <span class="ml-2 text-sm text-neutral-500 dark:text-neutral-400">Loading timesheets...</span>
         </div>
 
         <!-- Empty State -->
         <div v-else-if="timesheets.length === 0" class="text-center py-12">
-          <UIcon name="i-lucide-check-check" class="w-12 h-12 mx-auto mb-3 text-gray-300" />
-          <h3 class="font-medium text-gray-700">No timesheets</h3>
-          <p class="text-sm text-gray-500 mt-1">
+          <UIcon name="i-lucide-check-check" class="w-12 h-12 mx-auto mb-3 text-neutral-300 dark:text-neutral-600" />
+          <h3 class="font-medium text-neutral-700 dark:text-neutral-200">No timesheets</h3>
+          <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
             {{ activeFilter === 'submitted' ? 'No timesheets waiting for approval.' : 'No timesheets match this filter.' }}
           </p>
         </div>
@@ -227,7 +297,7 @@ const entriesByDate = computed(() => {
           <div class="overflow-x-auto">
             <table class="w-full">
               <thead>
-                <tr class="border-b text-left text-xs font-medium text-gray-500 uppercase">
+                <tr class="border-b border-default text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">
                   <th v-if="activeFilter === 'submitted'" class="p-3 w-10">
                     <UCheckbox :model-value="allSelected" @update:model-value="toggleSelectAll" />
                   </th>
@@ -243,7 +313,7 @@ const entriesByDate = computed(() => {
               <tbody>
                 <template v-for="ts in timesheets" :key="ts.id">
                   <tr
-                    class="border-b hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+                    class="border-b border-default hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer"
                     :class="{ 'bg-blue-50/50 dark:bg-blue-900/10': expandedId === ts.id }"
                     @click="toggleExpand(ts.id)"
                   >
@@ -254,13 +324,24 @@ const entriesByDate = computed(() => {
                       <div class="flex items-center gap-2">
                         <UAvatar :alt="ts.user?.name || '?'" size="xs" />
                         <span class="text-sm font-medium">{{ ts.user?.name || 'Unknown' }}</span>
+                        <!-- Warning indicator -->
+                        <UTooltip v-if="getWarnings(ts.id).length > 0">
+                          <UIcon name="i-lucide-alert-triangle" class="w-4 h-4 text-amber-500" />
+                          <template #text>
+                            <div class="space-y-1">
+                              <div v-for="w in getWarnings(ts.id)" :key="w.type" class="text-xs">
+                                {{ w.message }}
+                              </div>
+                            </div>
+                          </template>
+                        </UTooltip>
                       </div>
                     </td>
                     <td class="p-3 text-sm">{{ formatPeriod(ts.periodStart, ts.periodEnd) }}</td>
                     <td class="p-3 text-sm text-right font-medium">{{ ts.totalHours.toFixed(1) }}h</td>
                     <td class="p-3 text-sm text-right">{{ ts.billableHours.toFixed(1) }}h</td>
                     <td class="p-3 text-sm text-right">
-                      <span :class="utilization(ts) >= 70 ? 'text-emerald-600' : 'text-amber-600'">
+                      <span :class="utilization(ts) >= 70 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'">
                         {{ utilization(ts) }}%
                       </span>
                     </td>
@@ -287,7 +368,7 @@ const entriesByDate = computed(() => {
                           @click="openRejectModal(ts.id)"
                         />
                       </div>
-                      <div v-else-if="ts.status === 'approved'" class="text-xs text-gray-400">
+                      <div v-else-if="ts.status === 'approved'" class="text-xs text-neutral-400 dark:text-neutral-500">
                         {{ ts.approver?.name || '' }}
                       </div>
                     </td>
@@ -296,7 +377,22 @@ const entriesByDate = computed(() => {
                   <!-- Expanded Detail -->
                   <tr v-if="expandedId === ts.id">
                     <td :colspan="activeFilter === 'submitted' ? 8 : 7" class="p-0">
-                      <div class="bg-gray-50 dark:bg-gray-800 p-4 border-b">
+                      <div class="bg-neutral-50 dark:bg-neutral-800 p-4 border-b border-default">
+                        <!-- Warnings Banner -->
+                        <div v-if="getWarnings(ts.id).length > 0" class="mb-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                          <p class="text-sm font-medium text-amber-700 dark:text-amber-400 mb-2">Warnings</p>
+                          <div class="flex flex-wrap gap-2">
+                            <div
+                              v-for="w in getWarnings(ts.id)"
+                              :key="w.type"
+                              class="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-800/40 rounded-md px-2 py-1"
+                            >
+                              <UIcon :name="warningIcon(w.type)" class="w-3.5 h-3.5" />
+                              {{ w.message }}
+                            </div>
+                          </div>
+                        </div>
+
                         <!-- Rejection Reason -->
                         <div v-if="ts.status === 'rejected' && ts.rejectionReason" class="mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
                           <p class="text-sm font-medium text-red-700 dark:text-red-400">Rejection Reason</p>
@@ -305,15 +401,15 @@ const entriesByDate = computed(() => {
 
                         <!-- Loading entries -->
                         <div v-if="loadingDetail" class="flex items-center justify-center py-6">
-                          <UIcon name="i-lucide-loader-2" class="w-4 h-4 animate-spin text-gray-400" />
-                          <span class="ml-2 text-sm text-gray-500">Loading entries...</span>
+                          <UIcon name="i-lucide-loader-2" class="w-4 h-4 animate-spin text-neutral-400" />
+                          <span class="ml-2 text-sm text-neutral-500 dark:text-neutral-400">Loading entries...</span>
                         </div>
 
                         <!-- Daily Breakdown -->
                         <div v-else>
-                          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Daily Breakdown</h4>
+                          <h4 class="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">Daily Breakdown</h4>
                           <div v-for="(dayEntries, date) in entriesByDate" :key="date" class="mb-3">
-                            <div class="text-xs font-medium text-gray-500 mb-1">
+                            <div class="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
                               {{ format(parseISO(date), 'EEE, MMM d') }} —
                               {{ dayEntries.reduce((s, e) => s + e.hours, 0).toFixed(1) }}h
                             </div>
@@ -324,16 +420,16 @@ const entriesByDate = computed(() => {
                                 class="flex items-center gap-3 text-xs py-1"
                               >
                                 <span class="font-medium w-10">{{ entry.hours }}h</span>
-                                <span class="text-gray-600 dark:text-gray-400">
+                                <span class="text-neutral-600 dark:text-neutral-400">
                                   {{ entry.project?.name || 'No project' }}
-                                  <span v-if="entry.task?.title" class="text-gray-400"> / {{ entry.task.title }}</span>
+                                  <span v-if="entry.task?.title" class="text-neutral-400 dark:text-neutral-500"> / {{ entry.task.title }}</span>
                                 </span>
                                 <UBadge v-if="entry.billable" color="success" variant="soft" size="xs">B</UBadge>
-                                <span v-if="entry.description" class="text-gray-400 truncate max-w-[200px]">{{ entry.description }}</span>
+                                <span v-if="entry.description" class="text-neutral-400 dark:text-neutral-500 truncate max-w-[200px]">{{ entry.description }}</span>
                               </div>
                             </div>
                           </div>
-                          <div v-if="expandedEntries.length === 0" class="text-sm text-gray-400 py-4 text-center">
+                          <div v-if="expandedEntries.length === 0" class="text-sm text-neutral-400 dark:text-neutral-500 py-4 text-center">
                             No entries for this period.
                           </div>
                         </div>
@@ -355,7 +451,7 @@ const entriesByDate = computed(() => {
       </template>
       <template #body>
         <div class="space-y-4">
-          <p class="text-sm text-gray-600">Please provide a reason for rejecting this timesheet. The team member will be able to edit and resubmit.</p>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400">Please provide a reason for rejecting this timesheet. The team member will be able to edit and resubmit.</p>
           <UFormField label="Reason" required>
             <UTextarea
               v-model="rejectionReason"

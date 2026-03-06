@@ -14,25 +14,13 @@ const { data: xeroData, pending } = useLazyFetch('/api/xero/contacts', {
 
 const contacts = computed(() => (xeroData.value as any)?.contacts || [])
 
-// Build items for USelectMenu
+// Build items for USelectMenu — let searchable handle filtering
 const contactItems = computed(() => {
   return contacts.value.map((c: any) => ({
     label: c.name,
     value: c.id,
     description: c.email || ''
   }))
-})
-
-// Search filter
-const searchQuery = ref('')
-
-const filteredItems = computed(() => {
-  if (!searchQuery.value) return contactItems.value
-  const q = searchQuery.value.toLowerCase()
-  return contactItems.value.filter((item: any) =>
-    item.label.toLowerCase().includes(q) ||
-    item.description?.toLowerCase().includes(q)
-  )
 })
 
 // Current selection label
@@ -51,22 +39,15 @@ const handleSelect = (value: string | null) => {
   <div class="space-y-2">
     <USelectMenu
       :model-value="modelValue"
-      :items="filteredItems"
+      :items="contactItems"
       value-key="value"
       placeholder="Search Xero contacts..."
       searchable
-      :search-input="searchQuery"
       :loading="pending"
+      class="w-full"
+      size="xl"
       @update:model-value="handleSelect"
-      @update:search-input="searchQuery = $event"
-    >
-      <template #item="{ item }">
-        <div>
-          <p class="font-medium">{{ item.label }}</p>
-          <p v-if="item.description" class="text-xs text-gray-500">{{ item.description }}</p>
-        </div>
-      </template>
-    </USelectMenu>
+    />
 
     <div v-if="modelValue" class="flex items-center gap-2">
       <UBadge color="info" variant="subtle" size="sm">
@@ -81,5 +62,9 @@ const handleSelect = (value: string | null) => {
         @click="handleSelect(null)"
       />
     </div>
+
+    <p v-if="!pending && contacts.length === 0" class="text-[12px] text-[var(--ui-text-muted)]">
+      No Xero contacts found. Ensure Xero is connected.
+    </p>
   </div>
 </template>

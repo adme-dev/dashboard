@@ -167,7 +167,7 @@ const showNewClientModal = ref(false)
 </script>
 
 <template>
-  <div class="flex-1 min-w-0">
+  <div class="flex-1 min-w-0 min-h-0 flex flex-col">
     <UDashboardPanel>
       <UDashboardNavbar title="Clients">
         <template #right>

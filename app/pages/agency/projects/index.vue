@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { format } from 'date-fns'
-import type { Project, ProjectProfitability, ProjectStatus } from '~/types'
+import type { ProjectStatus } from '~/types'
 
 definePageMeta({
   title: 'Projects'
 })
+
+const router = useRouter()
+const toast = useToast()
 
 // Filters
 const statusFilter = ref<ProjectStatus | 'all'>('all')
@@ -33,13 +36,19 @@ const statusOptions = [
 
 // Client options for dropdown
 const clientOptions = computed(() => {
-  const options: { label: string; value: string | null }[] = [{ label: 'All Clients', value: null }]
+  const options: { label: string; value: string }[] = [{ label: 'All Clients', value: 'none' }]
   if (clients.value) {
     (clients.value as any[]).forEach(c => {
       options.push({ label: c.name, value: c.id })
     })
   }
   return options
+})
+
+// Client filter uses sentinel 'none' to avoid empty string crash
+const clientFilterDisplay = computed({
+  get: () => clientFilter.value || 'none',
+  set: (v: string) => { clientFilter.value = v === 'none' ? null : v }
 })
 
 // Filtered projects
@@ -87,7 +96,7 @@ const formatCurrency = (value: number) => {
   }).format(value)
 }
 
-const formatPercent = (value: number) => `${value.toFixed(1)}%`
+const formatPercent = (value: number) => `${(value || 0).toFixed(1)}%`
 
 // Status badge color
 const getStatusColor = (status: string) => {
@@ -120,31 +129,28 @@ const columns = [
   { accessorKey: 'actions', header: '' }
 ]
 
-// Actions dropdown items
+// Actions dropdown items — Nuxt UI v4 uses onSelect, not click
 const getActions = (project: any) => [
   [
-    { label: 'View Details', icon: 'i-lucide-eye', click: () => navigateTo(`/agency/projects/${project.id}`) },
-    { label: 'Edit Project', icon: 'i-lucide-pencil', click: () => navigateTo(`/agency/projects/${project.id}/edit`) },
-    { label: 'Log Time', icon: 'i-lucide-clock', click: () => openTimeModal(project) }
+    { label: 'View Details', icon: 'i-lucide-eye', onSelect: () => navigateTo(`/agency/projects/${project.id}`) },
+    { label: 'Edit Project', icon: 'i-lucide-pencil', onSelect: () => navigateTo(`/agency/projects/${project.id}`) },
+    { label: 'Log Time', icon: 'i-lucide-clock', onSelect: () => navigateTo('/agency/time') }
   ],
   [
-    { label: 'View in Xero', icon: 'i-simple-icons-xero', disabled: !project.xeroInvoiceId },
-    { label: 'Generate Invoice', icon: 'i-lucide-file-text' }
+    { label: 'View in Xero', icon: 'i-lucide-external-link', disabled: !project.xeroInvoiceId, onSelect: () => {} },
+    { label: 'Generate Invoice', icon: 'i-lucide-file-text', onSelect: () => navigateTo('/agency/billing') }
   ]
 ]
 
-// Time entry modal
-const showTimeModal = ref(false)
-const selectedProject = ref<any>(null)
-
-const openTimeModal = (project: any) => {
-  selectedProject.value = project
-  showTimeModal.value = true
+// Budget progress helper — avoids NaN when budget is 0
+const budgetProgress = (totalCost: number, budgetAmount: number) => {
+  if (!budgetAmount || budgetAmount <= 0) return 0
+  return Math.min(200, (totalCost / budgetAmount) * 100)
 }
 </script>
 
 <template>
-  <div class="flex-1 min-w-0">
+  <div class="flex-1 min-w-0 min-h-0 flex flex-col">
     <UDashboardPanel>
       <UDashboardNavbar title="Projects">
         <template #right>
@@ -202,14 +208,16 @@ const openTimeModal = (project: any) => {
 
           <USelectMenu
             v-model="statusFilter"
-            :options="statusOptions"
+            :items="statusOptions"
+            value-key="value"
             placeholder="Status"
             class="w-40"
           />
 
           <USelectMenu
-            v-model="clientFilter"
-            :options="clientOptions"
+            v-model="clientFilterDisplay"
+            :items="clientOptions"
+            value-key="value"
             placeholder="Client"
             class="w-48"
           />
@@ -251,13 +259,14 @@ const openTimeModal = (project: any) => {
 
             <template #totalCost-cell="{ row }">
               <div class="flex items-center gap-2">
-                <span :class="(row.original as any).totalCost > (row.original as any).budgetAmount ? 'text-red-500 font-semibold' : ''">
+                <span :class="(row.original as any).totalCost > (row.original as any).budgetAmount && (row.original as any).budgetAmount > 0 ? 'text-red-500 font-semibold' : ''">
                   {{ formatCurrency((row.original as any).totalCost || 0) }}
                 </span>
                 <UProgress
-                  :value="(((row.original as any).totalCost || 0) / (row.original as any).budgetAmount) * 100"
+                  v-if="(row.original as any).budgetAmount > 0"
+                  :value="budgetProgress((row.original as any).totalCost || 0, (row.original as any).budgetAmount)"
                   :max="100"
-                  :color="(row.original as any).totalCost > (row.original as any).budgetAmount ? 'error' : (row.original as any).totalCost > (row.original as any).budgetAmount * 0.8 ? 'warning' : 'success'"
+                  :color="budgetProgress((row.original as any).totalCost || 0, (row.original as any).budgetAmount) > 100 ? 'error' : budgetProgress((row.original as any).totalCost || 0, (row.original as any).budgetAmount) > 80 ? 'warning' : 'success'"
                   size="xs"
                   class="w-16"
                 />

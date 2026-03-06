@@ -40,7 +40,7 @@ export default defineEventHandler(async (event) => {
         COALESCE(stats.overdue_task_count, 0) as overdue_task_count,
         COALESCE(stats.estimated_hours, 0) as estimated_hours
       FROM department_members dm
-      JOIN team_members tm ON dm.user_id = tm.id
+      JOIN team_members tm ON dm.team_member_id = tm.id
       LEFT JOIN (
         SELECT
           t.assignee_id,

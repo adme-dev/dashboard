@@ -38,12 +38,12 @@ const labelColors = [
   '#1ABC9C', // Teal
 ]
 
-// Priority styles - XeroFlow colors
+// Priority styles - opacity-based bgColor works in both light and dark modes
 const priorityConfig: Record<TaskPriority, { color: string; bgColor: string; icon: string; label: string }> = {
-  urgent: { color: '#FF6B6B', bgColor: '#FFEBEE', icon: 'i-lucide-alert-circle', label: 'Urgent' },
-  high: { color: '#F4B942', bgColor: '#FFF8E1', icon: 'i-lucide-arrow-up', label: 'High' },
-  medium: { color: '#13B5EA', bgColor: '#E6F7FC', icon: 'i-lucide-minus', label: 'Medium' },
-  low: { color: '#7DD3A8', bgColor: '#E8F5E9', icon: 'i-lucide-arrow-down', label: 'Low' }
+  urgent: { color: '#FF6B6B', bgColor: '#FF6B6B20', icon: 'i-lucide-alert-circle', label: 'Urgent' },
+  high: { color: '#F4B942', bgColor: '#F4B94220', icon: 'i-lucide-arrow-up', label: 'High' },
+  medium: { color: '#13B5EA', bgColor: '#13B5EA20', icon: 'i-lucide-minus', label: 'Medium' },
+  low: { color: '#7DD3A8', bgColor: '#7DD3A820', icon: 'i-lucide-arrow-down', label: 'Low' }
 }
 
 const priorityStyle = computed(() => priorityConfig[props.task.priority])
@@ -86,10 +86,10 @@ const dueDateInfo = computed(() => {
     const daysUntil = differenceInDays(dueDate, today)
     if (daysUntil <= 7) {
       label = format(dueDate, 'EEE')
-      color = '#666666'
+      color = ''
     } else {
       label = format(dueDate, 'MMM d')
-      color = '#666666'
+      color = ''
     }
   }
 
@@ -126,25 +126,25 @@ const currentLabelIds = computed(() => props.task.labels?.map(l => l.id) || [])
 function toggleLabel(labelId: string) {
   const currentIds = currentLabelIds.value
   let newIds: string[]
-  
+
   if (currentIds.includes(labelId)) {
     newIds = currentIds.filter(id => id !== labelId)
   } else {
     newIds = [...currentIds, labelId]
   }
-  
+
   emit('updateLabels', newIds)
 }
 
 // Create new label
 async function createNewLabel() {
   if (!newLabelName.value.trim()) return
-  
+
   const nameToCreate = newLabelName.value.trim()
   const colorToCreate = newLabelColor.value
-  
+
   creatingLabel.value = true
-  
+
   try {
     // Call API to create new label
     const response = await $fetch('/api/agency/tags', {
@@ -154,19 +154,19 @@ async function createNewLabel() {
         color: colorToCreate
       }
     })
-    
+
     // Add the new label to the task
     const newLabelId = (response as any).id
     if (newLabelId) {
       emit('updateLabels', [...currentLabelIds.value, newLabelId])
     }
-    
+
     // Reset form
     newLabelName.value = ''
     newLabelColor.value = '#13B5EA'
     showCreateLabelForm.value = false
     showLabelMenu.value = false
-    
+
     // Emit event to parent to refresh available labels
     emit('createLabel', { name: nameToCreate, color: colorToCreate })
   } catch (error) {
@@ -191,7 +191,7 @@ onClickOutside(labelMenuRef, () => {
 
 <template>
   <article
-    class="bg-white border border-black/20 rounded p-3 cursor-pointer transition-all hover:border-black hover:shadow-sm group"
+    class="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded p-3 cursor-pointer transition-all hover:border-neutral-400 dark:hover:border-neutral-500 hover:shadow-sm group"
     :class="{
       'opacity-50 scale-95 rotate-1': isDragging,
       'border-[#FF6B6B] ring-1 ring-[#FF6B6B]/30': task.isBlocked,
@@ -222,7 +222,7 @@ onClickOutside(labelMenuRef, () => {
 
       <UIcon
         :name="taskTypeIcon"
-        class="h-4 w-4 text-black/40"
+        class="h-4 w-4 text-neutral-400 dark:text-neutral-500"
         :title="task.taskType"
       />
 
@@ -243,7 +243,7 @@ onClickOutside(labelMenuRef, () => {
         :class="{
           'text-[#FF6B6B]': task.estimatedHours && task.actualHours && task.actualHours > task.estimatedHours,
           'text-[#7DD3A8]': task.estimatedHours && task.actualHours && task.actualHours <= task.estimatedHours,
-          'text-black/50': !task.estimatedHours || !task.actualHours
+          'text-neutral-500 dark:text-neutral-400': !task.estimatedHours || !task.actualHours
         }"
         :title="`${task.actualHours || 0}h / ${task.estimatedHours || 0}h`"
       >
@@ -252,14 +252,14 @@ onClickOutside(labelMenuRef, () => {
       </div>
 
       <!-- Comments count -->
-      <div v-if="task.commentCount" class="flex items-center gap-1 text-black/50 text-xs">
+      <div v-if="task.commentCount" class="flex items-center gap-1 text-neutral-500 dark:text-neutral-400 text-xs">
         <UIcon name="i-lucide-message-square" class="h-3.5 w-3.5" />
         <span>{{ task.commentCount }}</span>
       </div>
     </div>
 
     <!-- Title -->
-    <h4 class="font-medium text-sm text-black line-clamp-2 mb-2">
+    <h4 class="font-medium text-sm text-neutral-900 dark:text-neutral-100 line-clamp-2 mb-2">
       {{ task.title }}
     </h4>
 
@@ -279,30 +279,30 @@ onClickOutside(labelMenuRef, () => {
       </span>
       <span
         v-if="(task.labels?.length || 0) > 3"
-        class="px-1.5 py-0.5 text-xs rounded bg-black/5 text-black/60"
+        class="px-1.5 py-0.5 text-xs rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400"
       >
         +{{ (task.labels?.length || 0) - 3 }}
       </span>
-      
+
       <!-- Add Label Button -->
       <div v-if="availableLabels?.length" class="relative" ref="labelMenuRef">
         <button
-          class="w-5 h-5 rounded-full border border-dashed border-black/30 flex items-center justify-center text-black/40 hover:border-black/60 hover:text-black/60 transition-colors"
+          class="w-5 h-5 rounded-full border border-dashed border-neutral-300 dark:border-neutral-600 flex items-center justify-center text-neutral-400 dark:text-neutral-500 hover:border-neutral-500 dark:hover:border-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
           title="Add/Edit Labels"
           @click.stop="showLabelMenu = !showLabelMenu"
         >
           <UIcon name="i-lucide-plus" class="w-3 h-3" />
         </button>
-        
+
         <!-- Label Menu -->
         <div
           v-if="showLabelMenu"
-          class="absolute left-0 top-full mt-1 z-50 w-56 bg-white border border-black/20 rounded-lg shadow-lg p-3"
+          class="absolute left-0 top-full mt-1 z-50 w-56 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg p-3"
           @click.stop
         >
           <!-- Existing Labels List -->
           <div v-if="!showCreateLabelForm">
-            <div class="text-xs font-medium text-black/60 mb-2 px-1">Select Labels</div>
+            <div class="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-2 px-1">Select Labels</div>
             <div class="flex flex-wrap gap-1 mb-3 max-h-32 overflow-y-auto">
               <button
                 v-for="label in availableLabels"
@@ -310,7 +310,7 @@ onClickOutside(labelMenuRef, () => {
                 class="px-2 py-1 text-xs rounded border transition-all"
                 :class="currentLabelIds.includes(label.id)
                   ? 'border-transparent'
-                  : 'border-black/20 bg-transparent hover:bg-black/5'"
+                  : 'border-neutral-200 dark:border-neutral-600 bg-transparent hover:bg-neutral-100 dark:hover:bg-neutral-700'"
                 :style="currentLabelIds.includes(label.id)
                   ? { backgroundColor: label.color + '30', color: label.color, borderColor: label.color }
                   : {}"
@@ -319,47 +319,47 @@ onClickOutside(labelMenuRef, () => {
                 {{ label.name }}
               </button>
             </div>
-            
+
             <!-- Create New Label Button -->
             <button
-              class="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium text-black/70 border border-dashed border-black/30 rounded hover:border-black/50 hover:bg-black/5 transition-colors"
+              class="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium text-neutral-600 dark:text-neutral-300 border border-dashed border-neutral-300 dark:border-neutral-600 rounded hover:border-neutral-500 dark:hover:border-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
               @click.stop="showCreateLabelForm = true"
             >
               <UIcon name="i-lucide-plus" class="w-3.5 h-3.5" />
               Create New Label
             </button>
           </div>
-          
+
           <!-- Create New Label Form -->
           <div v-else>
-            <div class="text-xs font-medium text-black/60 mb-2">Create New Label</div>
-            
+            <div class="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-2">Create New Label</div>
+
             <!-- Label Name Input -->
             <input
               v-model="newLabelName"
               type="text"
               placeholder="Label name..."
-              class="w-full px-2 py-1.5 text-sm border border-black/20 rounded mb-2 focus:outline-none focus:border-[#13B5EA]"
+              class="w-full px-2 py-1.5 text-sm border border-neutral-200 dark:border-neutral-600 bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 rounded mb-2 focus:outline-none focus:border-[#13B5EA] placeholder:text-neutral-400 dark:placeholder:text-neutral-500"
               @click.stop
               @keydown.enter="createNewLabel"
             />
-            
+
             <!-- Color Picker -->
             <div class="flex flex-wrap gap-1.5 mb-3">
               <button
                 v-for="color in labelColors"
                 :key="color"
                 class="w-6 h-6 rounded-full border-2 transition-all"
-                :class="newLabelColor === color ? 'border-black scale-110' : 'border-transparent hover:scale-105'"
+                :class="newLabelColor === color ? 'border-neutral-900 dark:border-white scale-110' : 'border-transparent hover:scale-105'"
                 :style="{ backgroundColor: color }"
                 @click.stop="newLabelColor = color"
               />
             </div>
-            
+
             <!-- Action Buttons -->
             <div class="flex gap-2">
               <button
-                class="flex-1 px-3 py-1.5 text-xs font-medium text-black/60 border border-black/20 rounded hover:bg-black/5 transition-colors"
+                class="flex-1 px-3 py-1.5 text-xs font-medium text-neutral-500 dark:text-neutral-400 border border-neutral-200 dark:border-neutral-600 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
                 @click.stop="cancelCreateLabel"
               >
                 Cancel
@@ -380,11 +380,11 @@ onClickOutside(labelMenuRef, () => {
 
     <!-- Subtask Progress -->
     <div v-if="subtaskProgress" class="mb-2">
-      <div class="flex items-center justify-between text-xs text-black/50 mb-1">
+      <div class="flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400 mb-1">
         <span>Subtasks</span>
         <span>{{ subtaskProgress.completed }}/{{ subtaskProgress.total }}</span>
       </div>
-      <div class="h-1.5 bg-black/10 rounded-full overflow-hidden">
+      <div class="h-1.5 bg-neutral-200 dark:bg-neutral-600 rounded-full overflow-hidden">
         <div
           class="h-full bg-[#13B5EA] rounded-full transition-all"
           :style="{ width: `${subtaskProgress.percentage}%` }"
@@ -393,30 +393,35 @@ onClickOutside(labelMenuRef, () => {
     </div>
 
     <!-- Footer: Due Date & Assignee -->
-    <div class="flex items-center justify-between mt-2 pt-2 border-t border-black/10">
+    <div class="flex items-center justify-between mt-2 pt-2 border-t border-neutral-100 dark:border-neutral-700">
       <!-- Due date -->
       <div v-if="dueDateInfo" class="flex items-center gap-1 text-xs">
         <UIcon
           :name="dueDateInfo.isOverdue ? 'i-lucide-alert-triangle' : 'i-lucide-calendar'"
           class="h-3.5 w-3.5"
-          :style="{ color: dueDateInfo.color }"
+          :class="{ 'text-muted': !dueDateInfo.color }"
+          :style="dueDateInfo.color ? { color: dueDateInfo.color } : undefined"
         />
-        <span class="font-medium" :style="{ color: dueDateInfo.color }">{{ dueDateInfo.label }}</span>
+        <span
+          class="font-medium"
+          :class="{ 'text-muted': !dueDateInfo.color }"
+          :style="dueDateInfo.color ? { color: dueDateInfo.color } : undefined"
+        >{{ dueDateInfo.label }}</span>
       </div>
       <div v-else class="flex-1" />
 
       <!-- Assignee -->
       <div v-if="task.assignee" class="flex items-center gap-1.5">
         <div
-          class="w-5 h-5 rounded-full bg-black/10 flex items-center justify-center text-xs font-medium text-black"
+          class="w-5 h-5 rounded-full bg-neutral-200 dark:bg-neutral-600 flex items-center justify-center text-xs font-medium text-neutral-700 dark:text-neutral-200"
         >
           {{ task.assignee.name.charAt(0).toUpperCase() }}
         </div>
-        <span class="text-xs text-black/60 truncate max-w-[80px]">
+        <span class="text-xs text-neutral-500 dark:text-neutral-400 truncate max-w-[80px]">
           {{ task.assignee.name.split(' ')[0] }}
         </span>
       </div>
-      <div v-else class="flex items-center gap-1 text-black/40 text-xs">
+      <div v-else class="flex items-center gap-1 text-neutral-400 dark:text-neutral-500 text-xs">
         <UIcon name="i-lucide-user" class="h-3.5 w-3.5" />
         <span>Unassigned</span>
       </div>
@@ -425,7 +430,7 @@ onClickOutside(labelMenuRef, () => {
     <!-- Project info (if available) -->
     <div
       v-if="task.project"
-      class="mt-2 pt-2 border-t border-black/10 text-xs text-black/50 truncate"
+      class="mt-2 pt-2 border-t border-neutral-100 dark:border-neutral-700 text-xs text-neutral-500 dark:text-neutral-400 truncate"
     >
       <UIcon name="i-lucide-folder" class="h-3 w-3 inline mr-1" aria-hidden="true" />
       <span class="sr-only">Project: </span>

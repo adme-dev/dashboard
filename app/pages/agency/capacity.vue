@@ -6,9 +6,11 @@ definePageMeta({
   middleware: ['auth']
 })
 
-// View mode - list or heatmap
-type ViewMode = 'list' | 'heatmap'
-const viewMode = ref<ViewMode>('list')
+const toast = useToast()
+
+// View mode
+type ViewMode = 'list' | 'heatmap' | 'adjustments'
+const viewMode = ref<ViewMode>('heatmap')
 
 // Date range (default 4 weeks from current week)
 const weeksAhead = ref(4)
@@ -21,21 +23,34 @@ const endDate = computed(() => {
   return format(addWeeks(startOfWeek(now, { weekStartsOn: 1 }), weeksAhead.value), 'yyyy-MM-dd')
 })
 
-// Fetch capacity data
+// Fetch capacity data (list view)
 const { data: capacityData, pending, refresh } = await useFetch('/api/agency/capacity', {
-  query: {
-    startDate,
-    endDate
-  }
+  query: { startDate, endDate }
 })
 
 // Fetch heatmap data
-const { data: heatmapData, pending: heatmapPending } = await useFetch('/api/agency/capacity/heatmap', {
-  query: computed(() => ({
-    weeks: weeksAhead.value
-  }))
+const { data: heatmapData, pending: heatmapPending, refresh: refreshHeatmap } = await useFetch('/api/agency/capacity/heatmap', {
+  query: computed(() => ({ weeks: weeksAhead.value }))
 })
 
+// Fetch adjustments
+const { data: adjustmentsData, refresh: refreshAdjustments } = await useFetch('/api/agency/capacity/adjustments', {
+  query: { includeExpired: 'false' }
+})
+
+// Fetch team members for adjustment creation
+const { data: teamMembersRaw } = await useFetch('/api/agency/team-members')
+
+const teamMemberOptions = computed(() => {
+  const raw = teamMembersRaw.value as any
+  const members = (raw?.members || raw || []) as any[]
+  return [
+    { label: 'Company-wide', value: 'none' },
+    ...members.map((m: any) => ({ label: m.name, value: m.id }))
+  ]
+})
+
+// Computed data
 const heatmapRows = computed(() => (heatmapData.value?.rows || []) as any[])
 const heatmapWeeks = computed(() => (heatmapData.value?.weeks || []) as any[])
 const columnSummaries = computed(() => (heatmapData.value?.columnSummaries || []) as any[])
@@ -47,22 +62,17 @@ const heatmapLegend = computed(() => heatmapData.value?.legend || {
 })
 
 const summary = computed(() => (capacityData.value?.summary || {
-  totalCapacity: 0,
-  totalBooked: 0,
-  totalLogged: 0,
-  availableHours: 0,
-  utilizationPercent: 0,
-  teamSize: 0,
-  overallocatedCount: 0,
-  underutilizedCount: 0
+  totalCapacity: 0, totalBooked: 0, totalLogged: 0, availableHours: 0,
+  utilizationPercent: 0, teamSize: 0, overallocatedCount: 0, underutilizedCount: 0
 }) as any)
 
 const teamMembers = computed(() => (capacityData.value?.teamMembers || []) as any[])
 const projectAllocations = computed(() => (capacityData.value?.projectAllocations || []) as any[])
 const weeklyBreakdown = computed(() => (capacityData.value?.weeklyBreakdown || []) as any[])
 const alerts = computed(() => (capacityData.value?.alerts || { overallocated: [], underutilized: [] }) as any)
+const adjustments = computed(() => (adjustmentsData.value?.adjustments || []) as any[])
 
-// Get heatmap cell background color based on status
+// Heatmap cell styling
 const getCellColor = (status: string): string => {
   switch (status) {
     case 'available': return 'bg-emerald-500'
@@ -73,7 +83,6 @@ const getCellColor = (status: string): string => {
   }
 }
 
-// Get cell opacity based on utilization
 const getCellOpacity = (utilization: number | null): string => {
   if (utilization === null) return 'opacity-20'
   if (utilization < 30) return 'opacity-40'
@@ -82,7 +91,7 @@ const getCellOpacity = (utilization: number | null): string => {
   return 'opacity-100'
 }
 
-// Selected cell for detail view
+// Selected cell for detail modal
 const selectedCell = ref<{ member: any; week: any; cell: any } | null>(null)
 const showCellModal = computed({
   get: () => !!selectedCell.value,
@@ -90,19 +99,11 @@ const showCellModal = computed({
 })
 
 // Format helpers
-const formatHours = (hours: number) => {
-  return `${hours.toFixed(0)}h`
-}
+const formatHours = (hours: number | string | null | undefined) => `${Number(hours || 0).toFixed(0)}h`
+const formatPercent = (value: number | string | null | undefined) => `${Number(value || 0).toFixed(0)}%`
+const formatWeek = (date: string) => format(new Date(date), 'MMM d')
 
-const formatPercent = (value: number) => {
-  return `${value.toFixed(0)}%`
-}
-
-const formatWeek = (date: string) => {
-  return format(new Date(date), 'MMM d')
-}
-
-// Status colors
+// Status helpers
 const getStatusColor = (status: string): 'error' | 'warning' | 'success' | 'neutral' => {
   switch (status) {
     case 'overallocated': return 'error'
@@ -123,16 +124,13 @@ const getStatusLabel = (status: string): string => {
   }
 }
 
-// Allocation bar width
-const getAllocationWidth = (percent: number) => {
-  return `${Math.min(percent, 100)}%`
-}
-
+// Allocation bar helpers
+const getAllocationWidth = (percent: number) => `${Math.min(percent, 100)}%`
 const getAllocationColor = (percent: number): string => {
   if (percent > 110) return 'bg-red-500'
   if (percent > 90) return 'bg-amber-500'
   if (percent > 50) return 'bg-emerald-500'
-  return 'bg-gray-300'
+  return 'bg-gray-300 dark:bg-gray-600'
 }
 
 // Period options
@@ -143,30 +141,176 @@ const periodOptions = [
   { label: '8 Weeks', value: 8 }
 ]
 
-// Table columns
-const teamColumns: any[] = [
-  { key: 'name', label: 'Team Member' },
-  { key: 'allocation', label: 'Allocation' },
-  { key: 'bookedHours', label: 'Booked' },
-  { key: 'availableHours', label: 'Available' },
-  { key: 'status', label: 'Status' }
+// Project table columns (Nuxt UI v4 format)
+const projectColumns = [
+  { accessorKey: 'projectName', header: 'Project' },
+  { accessorKey: 'clientName', header: 'Client' },
+  { accessorKey: 'remainingHours', header: 'Hours Left' },
+  { accessorKey: 'assignedMembers', header: 'Team' }
 ]
 
-const projectColumns: any[] = [
-  { key: 'projectName', label: 'Project' },
-  { key: 'clientName', label: 'Client' },
-  { key: 'remainingHours', label: 'Hours Left' },
-  { key: 'assignedMembers', label: 'Team' }
+// Adjustments table columns
+const adjustmentColumns = [
+  { accessorKey: 'teamMemberName', header: 'Team Member' },
+  { accessorKey: 'type', header: 'Type' },
+  { accessorKey: 'dates', header: 'Dates' },
+  { accessorKey: 'hoursImpact', header: 'Hours Impact' },
+  { accessorKey: 'status', header: 'Status' },
+  { accessorKey: 'actions', header: '' }
 ]
+
+// Adjustment table data with flat fields for accessorKey
+const adjustmentTableData = computed(() => adjustments.value.map((a: any) => ({
+  ...a,
+  teamMemberName: a.teamMember?.name || 'Company-wide',
+  dates: `${format(new Date(a.startDate), 'MMM d')} - ${format(new Date(a.endDate), 'MMM d, yyyy')}`,
+})))
+
+// Adjustment type label
+const getAdjustmentTypeLabel = (type: string): string => {
+  const labels: Record<string, string> = {
+    pto: 'PTO', sick_leave: 'Sick Leave', holiday: 'Holiday',
+    training: 'Training', conference: 'Conference',
+    reduced_hours: 'Reduced Hours', increased_hours: 'Increased Hours',
+    leave_of_absence: 'Leave', other: 'Other'
+  }
+  return labels[type] || type
+}
+
+const getAdjustmentTypeColor = (type: string) => {
+  switch (type) {
+    case 'pto': case 'sick_leave': case 'leave_of_absence': return 'warning'
+    case 'holiday': return 'success'
+    case 'training': case 'conference': return 'info'
+    case 'reduced_hours': return 'neutral'
+    case 'increased_hours': return 'success'
+    default: return 'neutral'
+  }
+}
+
+// Recalculate forecasts
+const recalculating = ref(false)
+async function recalculateForecasts() {
+  recalculating.value = true
+  try {
+    const result = await $fetch('/api/agency/capacity/recalculate', {
+      method: 'POST',
+      body: { weeksAhead: weeksAhead.value }
+    })
+    toast.add({
+      title: 'Forecasts Updated',
+      description: `Generated ${(result as any).recalculated?.forecastsGenerated || 0} forecasts for ${(result as any).recalculated?.teamMembersProcessed || 0} team members`,
+      color: 'success'
+    })
+    await Promise.all([refresh(), refreshHeatmap()])
+  } catch {
+    toast.add({ title: 'Error', description: 'Failed to recalculate forecasts', color: 'error' })
+  } finally {
+    recalculating.value = false
+  }
+}
+
+// Add adjustment modal
+const showAddAdjustment = ref(false)
+const adjustmentForm = ref({
+  teamMemberId: 'none',
+  adjustmentType: 'pto',
+  startDate: '',
+  endDate: '',
+  title: '',
+  description: '',
+  hoursPerDay: 8,
+  adjustedHoursPerDay: 0
+})
+
+const adjustmentTypes = [
+  { label: 'PTO', value: 'pto' },
+  { label: 'Sick Leave', value: 'sick_leave' },
+  { label: 'Holiday', value: 'holiday' },
+  { label: 'Training', value: 'training' },
+  { label: 'Conference', value: 'conference' },
+  { label: 'Reduced Hours', value: 'reduced_hours' },
+  { label: 'Increased Hours', value: 'increased_hours' },
+  { label: 'Leave of Absence', value: 'leave_of_absence' },
+  { label: 'Other', value: 'other' }
+]
+
+const savingAdjustment = ref(false)
+async function createAdjustment() {
+  if (!adjustmentForm.value.startDate || !adjustmentForm.value.endDate) {
+    toast.add({ title: 'Error', description: 'Start and end dates are required', color: 'error' })
+    return
+  }
+  savingAdjustment.value = true
+  try {
+    await $fetch('/api/agency/capacity/adjustments', {
+      method: 'POST',
+      body: {
+        teamMemberId: adjustmentForm.value.teamMemberId === 'none' ? null : adjustmentForm.value.teamMemberId,
+        adjustmentType: adjustmentForm.value.adjustmentType,
+        startDate: adjustmentForm.value.startDate,
+        endDate: adjustmentForm.value.endDate,
+        title: adjustmentForm.value.title || null,
+        description: adjustmentForm.value.description || null,
+        hoursPerDay: adjustmentForm.value.hoursPerDay,
+        adjustedHoursPerDay: adjustmentForm.value.adjustedHoursPerDay
+      }
+    })
+    toast.add({ title: 'Adjustment Created', description: 'Capacity adjustment has been saved', color: 'success' })
+    showAddAdjustment.value = false
+    adjustmentForm.value = {
+      teamMemberId: 'none', adjustmentType: 'pto',
+      startDate: '', endDate: '', title: '', description: '',
+      hoursPerDay: 8, adjustedHoursPerDay: 0
+    }
+    await refreshAdjustments()
+  } catch {
+    toast.add({ title: 'Error', description: 'Failed to create adjustment', color: 'error' })
+  } finally {
+    savingAdjustment.value = false
+  }
+}
+
+// Delete adjustment
+async function deleteAdjustment(id: string) {
+  try {
+    await $fetch(`/api/agency/capacity/adjustments/${id}`, { method: 'DELETE' })
+    toast.add({ title: 'Deleted', description: 'Adjustment removed', color: 'success' })
+    await refreshAdjustments()
+  } catch {
+    toast.add({ title: 'Error', description: 'Failed to delete adjustment', color: 'error' })
+  }
+}
+
+// Delete confirmation
+const deletingId = ref<string | null>(null)
+const showDeleteConfirm = ref(false)
+function confirmDelete(id: string) {
+  deletingId.value = id
+  showDeleteConfirm.value = true
+}
+async function handleConfirmDelete() {
+  if (deletingId.value) {
+    await deleteAdjustment(deletingId.value)
+  }
+  showDeleteConfirm.value = false
+  deletingId.value = null
+}
 </script>
 
 <template>
-  <div class="flex-1 min-w-0">
+  <div class="flex-1 min-w-0 min-h-0 flex flex-col">
     <UDashboardPanel>
       <UDashboardNavbar title="Resource Planning">
         <template #right>
           <div class="flex items-center gap-3">
-            <UButtonGroup>
+            <div class="inline-flex rounded-md shadow-sm">
+              <UButton
+                :variant="viewMode === 'heatmap' ? 'solid' : 'ghost'"
+                icon="i-lucide-grid-3x3"
+                size="sm"
+                @click="viewMode = 'heatmap'"
+              />
               <UButton
                 :variant="viewMode === 'list' ? 'solid' : 'ghost'"
                 icon="i-lucide-list"
@@ -174,12 +318,13 @@ const projectColumns: any[] = [
                 @click="viewMode = 'list'"
               />
               <UButton
-                :variant="viewMode === 'heatmap' ? 'solid' : 'ghost'"
-                icon="i-lucide-grid-3x3"
+                :variant="viewMode === 'adjustments' ? 'solid' : 'ghost'"
+                icon="i-lucide-calendar-off"
                 size="sm"
-                @click="viewMode = 'heatmap'"
+                @click="viewMode = 'adjustments'"
               />
-            </UButtonGroup>
+            </div>
+
             <USelectMenu
               v-model="weeksAhead"
               :items="periodOptions"
@@ -187,44 +332,49 @@ const projectColumns: any[] = [
               value-key="value"
               class="w-32"
             />
+
+            <UButton
+              variant="outline"
+              icon="i-lucide-refresh-cw"
+              label="Recalculate"
+              size="sm"
+              :loading="recalculating"
+              @click="recalculateForecasts"
+            />
           </div>
         </template>
       </UDashboardNavbar>
 
       <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Loading -->
-        <div v-if="pending" class="flex items-center justify-center py-12">
-          <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
+        <div v-if="pending && viewMode !== 'adjustments'" class="flex items-center justify-center py-12">
+          <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary" />
         </div>
 
         <template v-else>
-          <!-- Heatmap View -->
+          <!-- ==================== HEATMAP VIEW ==================== -->
           <template v-if="viewMode === 'heatmap'">
             <!-- Legend -->
-            <div class="flex items-center gap-6 mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <span class="text-sm font-medium text-gray-500">Utilization:</span>
+            <div class="flex items-center gap-6 mb-6 p-4 bg-(--ui-bg-elevated) rounded-lg">
+              <span class="text-sm font-medium text-(--ui-text-muted)">Utilization:</span>
               <div
                 v-for="(item, key) in heatmapLegend"
                 :key="key"
                 class="flex items-center gap-2"
               >
-                <div
-                  class="w-4 h-4 rounded"
-                  :style="{ backgroundColor: item.color }"
-                />
+                <div class="w-4 h-4 rounded" :style="{ backgroundColor: item.color }" />
                 <span class="text-sm">{{ item.label }}</span>
-                <span class="text-xs text-gray-400">({{ item.range }})</span>
+                <span class="text-xs text-(--ui-text-dimmed)">({{ item.range }})</span>
               </div>
             </div>
 
             <!-- Heatmap Grid -->
-            <UCard v-if="!heatmapPending">
+            <UCard v-if="!heatmapPending && heatmapRows.length > 0">
               <div class="overflow-x-auto">
                 <table class="w-full min-w-max">
-                  <!-- Header row with weeks -->
                   <thead>
                     <tr>
-                      <th class="text-left p-3 sticky left-0 bg-white dark:bg-gray-900 z-10 min-w-[200px]">
+                      <th class="text-left p-3 sticky left-0 bg-(--ui-bg) z-10 min-w-[200px]">
                         Team Member
                       </th>
                       <th
@@ -233,21 +383,20 @@ const projectColumns: any[] = [
                         class="p-2 text-center min-w-[80px]"
                       >
                         <div class="text-xs font-medium">{{ week.label }}</div>
-                        <div class="text-xs text-gray-400">{{ formatWeek(week.weekStart) }}</div>
+                        <div class="text-xs text-(--ui-text-dimmed)">{{ formatWeek(week.weekStart) }}</div>
                       </th>
                     </tr>
                   </thead>
 
-                  <!-- Team member rows -->
                   <tbody>
                     <tr
                       v-for="row in heatmapRows"
                       :key="row.teamMember.id"
-                      class="border-t border-gray-100 dark:border-gray-800"
+                      class="border-t border-(--ui-border)"
                     >
-                      <td class="p-3 sticky left-0 bg-white dark:bg-gray-900 z-10">
+                      <td class="p-3 sticky left-0 bg-(--ui-bg) z-10">
                         <div class="font-medium">{{ row.teamMember.name }}</div>
-                        <div v-if="row.teamMember.department" class="text-xs text-gray-500">
+                        <div v-if="row.teamMember.department" class="text-xs text-(--ui-text-muted)">
                           {{ row.teamMember.department.name }}
                         </div>
                       </td>
@@ -270,32 +419,24 @@ const projectColumns: any[] = [
                         </button>
                       </td>
                     </tr>
-
-                    <!-- Empty state -->
-                    <tr v-if="heatmapRows.length === 0">
-                      <td :colspan="heatmapWeeks.length + 1" class="text-center py-8 text-gray-500">
-                        No team members with resource forecasts
-                      </td>
-                    </tr>
                   </tbody>
 
-                  <!-- Summary row -->
                   <tfoot v-if="columnSummaries.length > 0">
-                    <tr class="border-t-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-                      <td class="p-3 sticky left-0 bg-gray-50 dark:bg-gray-800 z-10 font-semibold">
+                    <tr class="border-t-2 border-(--ui-border-accented) bg-(--ui-bg-elevated)">
+                      <td class="p-3 sticky left-0 bg-(--ui-bg-elevated) z-10 font-semibold">
                         Weekly Summary
                       </td>
                       <td
-                        v-for="summary in columnSummaries"
-                        :key="summary.weekStart"
+                        v-for="colSummary in columnSummaries"
+                        :key="colSummary.weekStart"
                         class="p-2 text-center"
                       >
                         <div class="text-xs">
-                          <span class="font-semibold">{{ formatHours(summary.totalCommitted) }}</span>
-                          <span class="text-gray-400"> / {{ formatHours(summary.totalAvailable) }}</span>
+                          <span class="font-semibold">{{ formatHours(colSummary.totalCommitted) }}</span>
+                          <span class="text-(--ui-text-dimmed)"> / {{ formatHours(colSummary.totalAvailable) }}</span>
                         </div>
-                        <div class="text-xs text-gray-500">
-                          {{ summary.avgUtilization }}% avg
+                        <div class="text-xs text-(--ui-text-muted)">
+                          {{ colSummary.avgUtilization }}% avg
                         </div>
                       </td>
                     </tr>
@@ -304,93 +445,27 @@ const projectColumns: any[] = [
               </div>
             </UCard>
 
+            <!-- Empty state for heatmap -->
+            <UCard v-else-if="!heatmapPending && heatmapRows.length === 0">
+              <div class="text-center py-12">
+                <UIcon name="i-lucide-grid-3x3" class="w-12 h-12 mx-auto text-(--ui-text-dimmed) mb-4" />
+                <h3 class="text-lg font-semibold mb-2">No Forecast Data</h3>
+                <p class="text-(--ui-text-muted) mb-4">
+                  Resource forecasts need to be generated before the heatmap can display.
+                </p>
+                <UButton
+                  label="Generate Forecasts"
+                  icon="i-lucide-refresh-cw"
+                  :loading="recalculating"
+                  @click="recalculateForecasts"
+                />
+              </div>
+            </UCard>
+
             <!-- Loading heatmap -->
             <div v-else class="flex items-center justify-center py-12">
-              <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary-500" />
+              <UIcon name="i-lucide-loader-2" class="w-8 h-8 animate-spin text-primary" />
             </div>
-
-            <!-- Cell Detail Modal -->
-            <UModal v-model:open="showCellModal">
-              <template #content>
-                <UCard v-if="selectedCell">
-                  <template #header>
-                    <div class="flex items-center justify-between">
-                      <h3 class="font-semibold">{{ selectedCell.member.name }}</h3>
-                      <UButton
-                        variant="ghost"
-                        icon="i-lucide-x"
-                        size="sm"
-                        @click="selectedCell = null"
-                      />
-                    </div>
-                  </template>
-
-                  <div class="space-y-4">
-                    <div>
-                      <p class="text-sm text-gray-500 mb-1">Week</p>
-                      <p class="font-medium">{{ formatWeek(selectedCell.week.weekStart) }} - {{ formatWeek(selectedCell.week.weekEnd) }}</p>
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-4">
-                      <div>
-                        <p class="text-sm text-gray-500 mb-1">Utilization</p>
-                        <p class="text-2xl font-bold" :class="{
-                          'text-emerald-500': selectedCell.cell.status === 'available',
-                          'text-blue-500': selectedCell.cell.status === 'balanced',
-                          'text-amber-500': selectedCell.cell.status === 'busy',
-                          'text-red-500': selectedCell.cell.status === 'overloaded'
-                        }">
-                          {{ selectedCell.cell.utilization !== null ? Math.round(selectedCell.cell.utilization) + '%' : 'N/A' }}
-                        </p>
-                      </div>
-                      <div>
-                        <p class="text-sm text-gray-500 mb-1">Status</p>
-                        <UBadge
-                          :color="selectedCell.cell.status === 'available' ? 'success' : selectedCell.cell.status === 'balanced' ? 'info' : selectedCell.cell.status === 'busy' ? 'warning' : 'error'"
-                          variant="subtle"
-                          size="lg"
-                          class="capitalize"
-                        >
-                          {{ selectedCell.cell.status }}
-                        </UBadge>
-                      </div>
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-4">
-                      <div>
-                        <p class="text-sm text-gray-500 mb-1">Committed Hours</p>
-                        <p class="font-semibold">{{ selectedCell.cell.committed !== null ? formatHours(selectedCell.cell.committed) : 'N/A' }}</p>
-                      </div>
-                      <div>
-                        <p class="text-sm text-gray-500 mb-1">Available Hours</p>
-                        <p class="font-semibold text-emerald-500">{{ selectedCell.cell.available !== null ? formatHours(selectedCell.cell.available) : 'N/A' }}</p>
-                      </div>
-                    </div>
-
-                    <div v-if="selectedCell.member.department" class="pt-2 border-t">
-                      <p class="text-sm text-gray-500 mb-1">Department</p>
-                      <p class="font-medium">{{ selectedCell.member.department.name }}</p>
-                    </div>
-                  </div>
-
-                  <template #footer>
-                    <div class="flex justify-end gap-2">
-                      <UButton
-                        variant="outline"
-                        label="View Schedule"
-                        icon="i-lucide-calendar"
-                        @click="navigateTo(`/agency/team/${selectedCell?.member.id}`)"
-                      />
-                      <UButton
-                        label="Adjust Allocation"
-                        icon="i-lucide-settings"
-                        @click="navigateTo(`/agency/team/${selectedCell?.member.id}/schedule`)"
-                      />
-                    </div>
-                  </template>
-                </UCard>
-              </template>
-            </UModal>
 
             <!-- Quick Stats -->
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
@@ -400,7 +475,7 @@ const projectColumns: any[] = [
                     <UIcon name="i-lucide-user-check" class="w-5 h-5 text-emerald-500" />
                   </div>
                   <div>
-                    <p class="text-sm text-gray-500">Available</p>
+                    <p class="text-sm text-(--ui-text-muted)">Available</p>
                     <p class="text-xl font-bold">{{ heatmapRows.filter(r => r.cells.some((c: any) => c.status === 'available')).length }}</p>
                   </div>
                 </div>
@@ -412,7 +487,7 @@ const projectColumns: any[] = [
                     <UIcon name="i-lucide-scale" class="w-5 h-5 text-blue-500" />
                   </div>
                   <div>
-                    <p class="text-sm text-gray-500">Balanced</p>
+                    <p class="text-sm text-(--ui-text-muted)">Balanced</p>
                     <p class="text-xl font-bold">{{ heatmapRows.filter(r => r.cells.some((c: any) => c.status === 'balanced')).length }}</p>
                   </div>
                 </div>
@@ -424,7 +499,7 @@ const projectColumns: any[] = [
                     <UIcon name="i-lucide-flame" class="w-5 h-5 text-amber-500" />
                   </div>
                   <div>
-                    <p class="text-sm text-gray-500">Busy</p>
+                    <p class="text-sm text-(--ui-text-muted)">Busy</p>
                     <p class="text-xl font-bold">{{ heatmapRows.filter(r => r.cells.some((c: any) => c.status === 'busy')).length }}</p>
                   </div>
                 </div>
@@ -436,7 +511,7 @@ const projectColumns: any[] = [
                     <UIcon name="i-lucide-alert-triangle" class="w-5 h-5 text-red-500" />
                   </div>
                   <div>
-                    <p class="text-sm text-gray-500">Overloaded</p>
+                    <p class="text-sm text-(--ui-text-muted)">Overloaded</p>
                     <p class="text-xl font-bold text-red-500">{{ heatmapRows.filter(r => r.cells.some((c: any) => c.status === 'overloaded')).length }}</p>
                   </div>
                 </div>
@@ -444,204 +519,446 @@ const projectColumns: any[] = [
             </div>
           </template>
 
-          <!-- List View (original content) -->
-          <template v-else>
-          <!-- Summary Cards -->
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <UCard>
-              <div class="text-center">
-                <p class="text-sm text-gray-500 mb-1">Team Capacity</p>
-                <p class="text-2xl font-bold">{{ formatHours(summary.totalCapacity) }}</p>
-                <p class="text-xs text-gray-400">{{ summary.teamSize }} members</p>
-              </div>
-            </UCard>
+          <!-- ==================== LIST VIEW ==================== -->
+          <template v-else-if="viewMode === 'list'">
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <UCard>
+                <div class="text-center">
+                  <p class="text-sm text-(--ui-text-muted) mb-1">Team Capacity</p>
+                  <p class="text-2xl font-bold">{{ formatHours(summary.totalCapacity) }}</p>
+                  <p class="text-xs text-(--ui-text-dimmed)">{{ summary.teamSize }} members</p>
+                </div>
+              </UCard>
 
-            <UCard>
-              <div class="text-center">
-                <p class="text-sm text-gray-500 mb-1">Booked Hours</p>
-                <p class="text-2xl font-bold text-blue-500">{{ formatHours(summary.totalBooked) }}</p>
-                <p class="text-xs text-gray-400">{{ formatPercent(summary.utilizationPercent) }} utilization</p>
-              </div>
-            </UCard>
+              <UCard>
+                <div class="text-center">
+                  <p class="text-sm text-(--ui-text-muted) mb-1">Booked Hours</p>
+                  <p class="text-2xl font-bold text-blue-500">{{ formatHours(summary.totalBooked) }}</p>
+                  <p class="text-xs text-(--ui-text-dimmed)">{{ formatPercent(summary.utilizationPercent) }} utilization</p>
+                </div>
+              </UCard>
 
-            <UCard>
-              <div class="text-center">
-                <p class="text-sm text-gray-500 mb-1">Available Hours</p>
-                <p class="text-2xl font-bold text-emerald-500">{{ formatHours(summary.availableHours) }}</p>
-                <p class="text-xs text-gray-400">Ready to allocate</p>
-              </div>
-            </UCard>
+              <UCard>
+                <div class="text-center">
+                  <p class="text-sm text-(--ui-text-muted) mb-1">Available Hours</p>
+                  <p class="text-2xl font-bold text-emerald-500">{{ formatHours(summary.availableHours) }}</p>
+                  <p class="text-xs text-(--ui-text-dimmed)">Ready to allocate</p>
+                </div>
+              </UCard>
 
-            <UCard>
-              <div class="text-center">
-                <p class="text-sm text-gray-500 mb-1">Alerts</p>
-                <div class="flex justify-center gap-4 mt-1">
-                  <div>
-                    <p class="text-xl font-bold text-red-500">{{ summary.overallocatedCount }}</p>
-                    <p class="text-xs text-gray-400">Over</p>
-                  </div>
-                  <div>
-                    <p class="text-xl font-bold text-gray-400">{{ summary.underutilizedCount }}</p>
-                    <p class="text-xs text-gray-400">Under</p>
+              <UCard>
+                <div class="text-center">
+                  <p class="text-sm text-(--ui-text-muted) mb-1">Alerts</p>
+                  <div class="flex justify-center gap-4 mt-1">
+                    <div>
+                      <p class="text-xl font-bold text-red-500">{{ summary.overallocatedCount }}</p>
+                      <p class="text-xs text-(--ui-text-dimmed)">Over</p>
+                    </div>
+                    <div>
+                      <p class="text-xl font-bold text-(--ui-text-dimmed)">{{ summary.underutilizedCount }}</p>
+                      <p class="text-xs text-(--ui-text-dimmed)">Under</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </UCard>
-          </div>
+              </UCard>
+            </div>
 
-          <!-- Alerts Section -->
-          <div v-if="alerts.overallocated.length > 0" class="mb-6">
-            <UCard class="border-red-500/50 bg-red-50 dark:bg-red-900/20">
-              <div class="flex items-start gap-3">
-                <UIcon name="i-lucide-alert-triangle" class="w-5 h-5 text-red-500 mt-0.5" />
-                <div>
-                  <p class="font-semibold text-red-700 dark:text-red-400">Overallocated Team Members</p>
-                  <p class="text-sm text-red-600 dark:text-red-300 mt-1">
-                    {{ alerts.overallocated.map((a: any) => a.name).join(', ') }}
-                    - Consider reassigning tasks or extending deadlines.
-                  </p>
-                </div>
-              </div>
-            </UCard>
-          </div>
+            <!-- Alerts Section -->
+            <div v-if="alerts.overallocated.length > 0" class="mb-6">
+              <UAlert
+                color="error"
+                variant="subtle"
+                icon="i-lucide-alert-triangle"
+                title="Overallocated Team Members"
+                :description="`${alerts.overallocated.map((a: any) => a.name).join(', ')} — Consider reassigning tasks or extending deadlines.`"
+              />
+            </div>
 
-          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-            <!-- Team Capacity -->
-            <div class="lg:col-span-2">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+              <!-- Team Capacity -->
+              <div class="lg:col-span-2">
+                <UCard>
+                  <template #header>
+                    <h3 class="font-semibold">Team Allocation</h3>
+                  </template>
+
+                  <div class="space-y-4">
+                    <div
+                      v-for="member in teamMembers"
+                      :key="member.id"
+                      class="p-3 rounded-lg bg-(--ui-bg-elevated)"
+                    >
+                      <div class="flex items-center justify-between mb-2">
+                        <div>
+                          <p class="font-medium">{{ member.name }}</p>
+                          <p class="text-xs text-(--ui-text-muted)">{{ member.role || member.departmentName || 'Team Member' }}</p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                          <div class="text-right">
+                            <p class="text-sm font-semibold">{{ formatHours(member.bookedHours) }} / {{ formatHours(member.periodCapacity) }}</p>
+                            <p class="text-xs text-(--ui-text-muted)">{{ formatHours(member.availableHours) }} available</p>
+                          </div>
+                          <UBadge :color="getStatusColor(member.status)" variant="subtle">
+                            {{ getStatusLabel(member.status) }}
+                          </UBadge>
+                        </div>
+                      </div>
+                      <div class="h-2 bg-(--ui-bg-accented) rounded-full overflow-hidden">
+                        <div
+                          :class="getAllocationColor(member.allocationPercent)"
+                          class="h-full rounded-full transition-all"
+                          :style="{ width: getAllocationWidth(member.allocationPercent) }"
+                        />
+                      </div>
+                      <div class="flex justify-between mt-1 text-xs text-(--ui-text-dimmed)">
+                        <span>0%</span>
+                        <span>{{ formatPercent(member.allocationPercent) }}</span>
+                        <span>100%</span>
+                      </div>
+                    </div>
+
+                    <p v-if="teamMembers.length === 0" class="text-center text-(--ui-text-muted) py-4">
+                      No team members found
+                    </p>
+                  </div>
+                </UCard>
+              </div>
+
+              <!-- Weekly Breakdown -->
               <UCard>
                 <template #header>
-                  <h3 class="font-semibold">Team Allocation</h3>
+                  <h3 class="font-semibold">Weekly Overview</h3>
                 </template>
 
                 <div class="space-y-4">
                   <div
-                    v-for="member in teamMembers"
-                    :key="member.id"
-                    class="p-3 rounded-lg bg-gray-50 dark:bg-gray-800"
+                    v-for="week in weeklyBreakdown"
+                    :key="week.weekStart"
+                    class="p-3 rounded-lg bg-(--ui-bg-elevated)"
                   >
                     <div class="flex items-center justify-between mb-2">
+                      <p class="font-medium text-sm">{{ formatWeek(week.weekStart) }}</p>
+                      <span class="text-xs text-(--ui-text-muted)">{{ week.activeUsers }} active</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-sm">
                       <div>
-                        <p class="font-medium">{{ member.name }}</p>
-                        <p class="text-xs text-gray-500">{{ member.role || member.departmentName || 'Team Member' }}</p>
+                        <p class="text-(--ui-text-muted) text-xs">Booked</p>
+                        <p class="font-semibold text-blue-500">{{ formatHours(week.bookedHours) }}</p>
                       </div>
-                      <div class="flex items-center gap-3">
-                        <div class="text-right">
-                          <p class="text-sm font-semibold">{{ formatHours(member.bookedHours) }} / {{ formatHours(member.periodCapacity) }}</p>
-                          <p class="text-xs text-gray-500">{{ formatHours(member.availableHours) }} available</p>
-                        </div>
-                        <UBadge :color="getStatusColor(member.status)" variant="subtle">
-                          {{ getStatusLabel(member.status) }}
-                        </UBadge>
+                      <div>
+                        <p class="text-(--ui-text-muted) text-xs">Logged</p>
+                        <p class="font-semibold text-emerald-500">{{ formatHours(week.loggedHours) }}</p>
                       </div>
-                    </div>
-                    <div class="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                      <div
-                        :class="getAllocationColor(member.allocationPercent)"
-                        class="h-full rounded-full transition-all"
-                        :style="{ width: getAllocationWidth(member.allocationPercent) }"
-                      />
-                    </div>
-                    <div class="flex justify-between mt-1 text-xs text-gray-500">
-                      <span>0%</span>
-                      <span>{{ formatPercent(member.allocationPercent) }}</span>
-                      <span>100%</span>
                     </div>
                   </div>
 
-                  <p v-if="teamMembers.length === 0" class="text-center text-gray-500 py-4">
-                    No team members found
+                  <p v-if="weeklyBreakdown.length === 0" class="text-center text-(--ui-text-muted) py-4">
+                    No data for this period
                   </p>
                 </div>
               </UCard>
             </div>
 
-            <!-- Weekly Breakdown -->
+            <!-- Project Allocations -->
             <UCard>
               <template #header>
-                <h3 class="font-semibold">Weekly Overview</h3>
+                <h3 class="font-semibold">Active Project Workload</h3>
               </template>
 
-              <div class="space-y-4">
-                <div
-                  v-for="week in weeklyBreakdown"
-                  :key="week.weekStart"
-                  class="p-3 rounded-lg bg-gray-50 dark:bg-gray-800"
-                >
-                  <div class="flex items-center justify-between mb-2">
-                    <p class="font-medium text-sm">{{ formatWeek(week.weekStart) }}</p>
-                    <span class="text-xs text-gray-500">{{ week.activeUsers }} active</span>
-                  </div>
-                  <div class="grid grid-cols-2 gap-2 text-sm">
-                    <div>
-                      <p class="text-gray-500 text-xs">Booked</p>
-                      <p class="font-semibold text-blue-500">{{ formatHours(week.bookedHours) }}</p>
-                    </div>
-                    <div>
-                      <p class="text-gray-500 text-xs">Logged</p>
-                      <p class="font-semibold text-emerald-500">{{ formatHours(week.loggedHours) }}</p>
-                    </div>
-                  </div>
-                </div>
+              <UTable v-if="projectAllocations.length > 0" :data="projectAllocations" :columns="projectColumns">
+                <template #projectName-cell="{ row }">
+                  <NuxtLink :to="`/agency/projects/${(row.original as any).projectId}`" class="font-medium text-primary hover:underline">
+                    {{ (row.original as any).projectName }}
+                  </NuxtLink>
+                </template>
 
-                <p v-if="weeklyBreakdown.length === 0" class="text-center text-gray-500 py-4">
-                  No data for this period
-                </p>
+                <template #clientName-cell="{ row }">
+                  <span class="text-(--ui-text-muted)">{{ (row.original as any).clientName }}</span>
+                </template>
+
+                <template #remainingHours-cell="{ row }">
+                  <span class="font-semibold">{{ formatHours((row.original as any).remainingHours) }}</span>
+                </template>
+
+                <template #assignedMembers-cell="{ row }">
+                  <div class="flex items-center gap-1">
+                    <UIcon name="i-lucide-users" class="w-4 h-4 text-(--ui-text-dimmed)" />
+                    <span>{{ (row.original as any).assignedMembers }}</span>
+                  </div>
+                </template>
+              </UTable>
+
+              <div v-else class="text-center text-(--ui-text-muted) py-8">
+                No active projects with scheduled work
               </div>
             </UCard>
-          </div>
 
-          <!-- Project Allocations -->
-          <UCard>
-            <template #header>
-              <h3 class="font-semibold">Active Project Workload</h3>
-            </template>
-
-            <UTable :data="projectAllocations" :columns="projectColumns">
-              <template #projectName-cell="{ row: r }">
-                <NuxtLink :to="`/agency/projects/${(r as any).projectId}`" class="font-medium text-primary-500 hover:underline">
-                  {{ (r as any).projectName }}
-                </NuxtLink>
-              </template>
-
-              <template #clientName-cell="{ row: r }">
-                <span class="text-gray-500">{{ (r as any).clientName }}</span>
-              </template>
-
-              <template #remainingHours-cell="{ row: r }">
-                <span class="font-semibold">{{ formatHours((r as any).remainingHours) }}</span>
-              </template>
-
-              <template #assignedMembers-cell="{ row: r }">
-                <div class="flex items-center gap-1">
-                  <UIcon name="i-lucide-users" class="w-4 h-4 text-gray-400" />
-                  <span>{{ (r as any).assignedMembers }}</span>
-                </div>
-              </template>
-            </UTable>
-
-            <div v-if="projectAllocations.length === 0" class="text-center text-gray-500 py-8">
-              No active projects with scheduled work
+            <!-- Navigation -->
+            <div class="flex gap-4 mt-6">
+              <UButton variant="outline" label="Time Tracking" icon="i-lucide-clock" to="/agency/time" />
+              <UButton variant="outline" label="Projects" icon="i-lucide-folder" to="/agency/projects" />
             </div>
-          </UCard>
+          </template>
 
-          <!-- Navigation -->
-          <div class="flex gap-4 mt-6">
-            <UButton
-              variant="outline"
-              label="Time Tracking"
-              icon="i-lucide-clock"
-              @click="navigateTo('/agency/time')"
-            />
-            <UButton
-              variant="outline"
-              label="Projects"
-              icon="i-lucide-folder"
-              @click="navigateTo('/agency/projects')"
-            />
-          </div>
+          <!-- ==================== ADJUSTMENTS VIEW ==================== -->
+          <template v-else-if="viewMode === 'adjustments'">
+            <div class="flex items-center justify-between mb-6">
+              <div>
+                <h2 class="text-lg font-semibold">Time Off & Capacity Adjustments</h2>
+                <p class="text-sm text-(--ui-text-muted)">Manage PTO, holidays, and schedule changes that affect team capacity</p>
+              </div>
+              <UButton
+                label="Add Adjustment"
+                icon="i-lucide-plus"
+                @click="showAddAdjustment = true"
+              />
+            </div>
+
+            <!-- Adjustment summary cards -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <UCard>
+                <div class="flex items-center gap-3">
+                  <div class="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/30">
+                    <UIcon name="i-lucide-calendar-off" class="w-5 h-5 text-amber-500" />
+                  </div>
+                  <div>
+                    <p class="text-sm text-(--ui-text-muted)">Active Adjustments</p>
+                    <p class="text-xl font-bold">{{ adjustments.length }}</p>
+                  </div>
+                </div>
+              </UCard>
+
+              <UCard>
+                <div class="flex items-center gap-3">
+                  <div class="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
+                    <UIcon name="i-lucide-clock" class="w-5 h-5 text-blue-500" />
+                  </div>
+                  <div>
+                    <p class="text-sm text-(--ui-text-muted)">Hours Impact</p>
+                    <p class="text-xl font-bold">{{ formatHours(adjustmentsData?.summary?.totalHoursImpact || 0) }}</p>
+                  </div>
+                </div>
+              </UCard>
+
+              <UCard>
+                <div class="flex items-center gap-3">
+                  <div class="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
+                    <UIcon name="i-lucide-check-circle" class="w-5 h-5 text-emerald-500" />
+                  </div>
+                  <div>
+                    <p class="text-sm text-(--ui-text-muted)">Approved</p>
+                    <p class="text-xl font-bold">{{ adjustments.filter((a: any) => a.isApproved).length }}</p>
+                  </div>
+                </div>
+              </UCard>
+            </div>
+
+            <!-- Adjustments table -->
+            <UCard>
+              <UTable v-if="adjustmentTableData.length > 0" :data="adjustmentTableData" :columns="adjustmentColumns">
+                <template #teamMemberName-cell="{ row }">
+                  <span class="font-medium">{{ (row.original as any).teamMemberName }}</span>
+                </template>
+
+                <template #type-cell="{ row }">
+                  <UBadge :color="getAdjustmentTypeColor((row.original as any).type)" variant="subtle">
+                    {{ getAdjustmentTypeLabel((row.original as any).type) }}
+                  </UBadge>
+                </template>
+
+                <template #dates-cell="{ row }">
+                  <span class="text-sm">{{ (row.original as any).dates }}</span>
+                </template>
+
+                <template #hoursImpact-cell="{ row }">
+                  <span class="font-semibold text-amber-500">-{{ formatHours((row.original as any).hoursImpact) }}</span>
+                </template>
+
+                <template #status-cell="{ row }">
+                  <UBadge :color="(row.original as any).isApproved ? 'success' : 'warning'" variant="subtle">
+                    {{ (row.original as any).isApproved ? 'Approved' : 'Pending' }}
+                  </UBadge>
+                </template>
+
+                <template #actions-cell="{ row }">
+                  <UButton
+                    variant="ghost"
+                    color="error"
+                    icon="i-lucide-trash-2"
+                    size="xs"
+                    @click="confirmDelete((row.original as any).id)"
+                  />
+                </template>
+              </UTable>
+
+              <div v-else class="text-center py-12">
+                <UIcon name="i-lucide-calendar-check" class="w-12 h-12 mx-auto text-(--ui-text-dimmed) mb-4" />
+                <h3 class="text-lg font-semibold mb-2">No Adjustments</h3>
+                <p class="text-(--ui-text-muted) mb-4">
+                  Add PTO, holidays, or schedule changes to adjust team capacity.
+                </p>
+                <UButton
+                  label="Add Adjustment"
+                  icon="i-lucide-plus"
+                  @click="showAddAdjustment = true"
+                />
+              </div>
+            </UCard>
+
           </template>
         </template>
       </div>
     </UDashboardPanel>
+
+    <!-- Cell Detail Modal -->
+    <UModal v-model:open="showCellModal">
+      <template #content>
+        <div v-if="selectedCell" class="p-6">
+          <div class="flex items-center justify-between mb-6">
+            <h3 class="text-lg font-semibold">{{ selectedCell.member.name }}</h3>
+            <UButton variant="ghost" icon="i-lucide-x" size="sm" @click="selectedCell = null" />
+          </div>
+
+          <div class="space-y-4">
+            <div>
+              <p class="text-sm text-(--ui-text-muted) mb-1">Week</p>
+              <p class="font-medium">{{ formatWeek(selectedCell.week.weekStart) }} - {{ formatWeek(selectedCell.week.weekEnd) }}</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <p class="text-sm text-(--ui-text-muted) mb-1">Utilization</p>
+                <p class="text-2xl font-bold" :class="{
+                  'text-emerald-500': selectedCell.cell.status === 'available',
+                  'text-blue-500': selectedCell.cell.status === 'balanced',
+                  'text-amber-500': selectedCell.cell.status === 'busy',
+                  'text-red-500': selectedCell.cell.status === 'overloaded'
+                }">
+                  {{ selectedCell.cell.utilization !== null ? Math.round(selectedCell.cell.utilization) + '%' : 'N/A' }}
+                </p>
+              </div>
+              <div>
+                <p class="text-sm text-(--ui-text-muted) mb-1">Status</p>
+                <UBadge
+                  :color="selectedCell.cell.status === 'available' ? 'success' : selectedCell.cell.status === 'balanced' ? 'info' : selectedCell.cell.status === 'busy' ? 'warning' : 'error'"
+                  variant="subtle"
+                  class="capitalize"
+                >
+                  {{ selectedCell.cell.status }}
+                </UBadge>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <p class="text-sm text-(--ui-text-muted) mb-1">Committed</p>
+                <p class="font-semibold">{{ selectedCell.cell.committed !== null ? formatHours(selectedCell.cell.committed) : 'N/A' }}</p>
+              </div>
+              <div>
+                <p class="text-sm text-(--ui-text-muted) mb-1">Available</p>
+                <p class="font-semibold text-emerald-500">{{ selectedCell.cell.available !== null ? formatHours(selectedCell.cell.available) : 'N/A' }}</p>
+              </div>
+            </div>
+
+            <div v-if="selectedCell.member.department" class="pt-4 border-t border-(--ui-border)">
+              <p class="text-sm text-(--ui-text-muted) mb-1">Department</p>
+              <p class="font-medium">{{ selectedCell.member.department.name }}</p>
+            </div>
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Add Adjustment Modal -->
+    <UModal v-model:open="showAddAdjustment">
+      <template #content>
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-6">
+            <h3 class="text-lg font-semibold">Add Capacity Adjustment</h3>
+            <UButton variant="ghost" icon="i-lucide-x" size="sm" @click="showAddAdjustment = false" />
+          </div>
+
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium mb-1">Team Member</label>
+              <USelectMenu
+                v-model="adjustmentForm.teamMemberId"
+                :items="teamMemberOptions"
+                value-key="value"
+                class="w-full"
+              />
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium mb-1">Type</label>
+              <USelectMenu
+                v-model="adjustmentForm.adjustmentType"
+                :items="adjustmentTypes"
+                value-key="value"
+                class="w-full"
+              />
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium mb-1">Start Date</label>
+                <UInput v-model="adjustmentForm.startDate" type="date" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium mb-1">End Date</label>
+                <UInput v-model="adjustmentForm.endDate" type="date" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium mb-1">Title</label>
+              <UInput v-model="adjustmentForm.title" placeholder="e.g. Annual Leave" />
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium mb-1">Normal Hours/Day</label>
+                <UInput v-model.number="adjustmentForm.hoursPerDay" type="number" :min="0" :max="24" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium mb-1">Adjusted Hours/Day</label>
+                <UInput v-model.number="adjustmentForm.adjustedHoursPerDay" type="number" :min="0" :max="24" />
+                <p class="text-xs text-(--ui-text-dimmed) mt-1">0 for full day off</p>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium mb-1">Notes</label>
+              <UTextarea v-model="adjustmentForm.description" :rows="3" placeholder="Optional notes..." />
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2 mt-6">
+            <UButton variant="outline" label="Cancel" @click="showAddAdjustment = false" />
+            <UButton
+              label="Create Adjustment"
+              icon="i-lucide-plus"
+              :loading="savingAdjustment"
+              @click="createAdjustment"
+            />
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Delete Confirmation Modal -->
+    <UModal v-model:open="showDeleteConfirm">
+      <template #content>
+        <div class="p-6">
+          <h3 class="text-lg font-semibold mb-2">Delete Adjustment</h3>
+          <p class="text-(--ui-text-muted) mb-6">Are you sure you want to delete this capacity adjustment? This cannot be undone.</p>
+          <div class="flex justify-end gap-2">
+            <UButton variant="outline" label="Cancel" @click="showDeleteConfirm = false" />
+            <UButton color="error" label="Delete" icon="i-lucide-trash-2" @click="handleConfirmDelete" />
+          </div>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

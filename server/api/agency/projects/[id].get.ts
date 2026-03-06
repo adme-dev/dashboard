@@ -96,10 +96,8 @@ export default defineEventHandler(async (event) => {
     // Get project expenses
     const expenses = await queryRows(`
       SELECT
-        pe.id, pe.date, pe.amount, pe.description, pe.category,
-        tm.name as submitted_by_name
+        pe.id, pe.date, pe.amount, pe.description, pe.category, pe.vendor_name
       FROM project_expenses pe
-      LEFT JOIN team_members tm ON pe.submitted_by = tm.id
       WHERE pe.project_id = $1
       ORDER BY pe.date DESC
       LIMIT 10
@@ -167,7 +165,7 @@ export default defineEventHandler(async (event) => {
         amount: Number(e.amount),
         description: e.description,
         category: e.category,
-        submittedByName: e.submitted_by_name
+        vendorName: e.vendor_name
       })),
       taskStats: {
         total: Number(taskStats?.total || 0),

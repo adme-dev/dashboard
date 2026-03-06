@@ -37,7 +37,7 @@ const formatCurrency = (value: number) => {
   }).format(value)
 }
 
-const formatPercent = (value: number) => `${value.toFixed(1)}%`
+const formatPercent = (value: number | null | undefined) => `${(value ?? 0).toFixed(1)}%`
 
 const formatDate = (date: string) => {
   if (!date) return '—'
@@ -179,7 +179,7 @@ const invoiceColumns = [
 </script>
 
 <template>
-  <div class="flex-1 min-w-0">
+  <div class="flex-1 min-w-0 min-h-0 flex flex-col">
     <UDashboardPanel>
       <UDashboardNavbar :title="client?.name || 'Client Details'">
         <template #leading>
@@ -259,7 +259,7 @@ const invoiceColumns = [
             <UCard>
               <div class="text-center">
                 <p class="text-sm text-gray-500">Total Hours</p>
-                <p class="text-xl font-bold">{{ summary.totalHours.toFixed(1) }}h</p>
+                <p class="text-xl font-bold">{{ (summary.totalHours ?? 0).toFixed(1) }}h</p>
               </div>
             </UCard>
 
@@ -550,64 +550,118 @@ const invoiceColumns = [
     </UDashboardPanel>
 
     <!-- Edit Modal -->
-    <UModal v-model:open="showEditModal">
+    <USlideover v-model:open="showEditModal">
       <template #header>
-        <h3 class="font-semibold">Edit Client</h3>
+        <h3 class="text-[16px] font-[500]">Edit Client</h3>
       </template>
       <template #body>
-        <div class="space-y-4">
-          <UFormField label="Client Name" required>
-            <UInput v-model="editForm.name" />
-          </UFormField>
+        <form @submit.prevent="saveClient" class="px-1">
+          <!-- Section: General -->
+          <fieldset class="space-y-5 pb-6 mb-6 border-b border-[var(--ui-border)]">
+            <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">General</legend>
 
-          <UFormField label="Billing Type">
-            <USelectMenu
-              v-model="editForm.billingType"
-              :items="billingTypeOptions"
-              value-key="value"
-            />
-          </UFormField>
+            <div>
+              <label class="block text-[13px] font-medium mb-2">Client Name <span class="text-red-500">*</span></label>
+              <UInput v-model="editForm.name" size="xl" class="w-full" placeholder="Client name" />
+            </div>
 
-          <UFormField label="Payment Terms (days)">
-            <UInput v-model.number="editForm.paymentTerms" type="number" min="0" />
-          </UFormField>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-[13px] font-medium mb-2">Billing Type</label>
+                <USelectMenu
+                  v-model="editForm.billingType"
+                  :items="billingTypeOptions"
+                  value-key="value"
+                  size="xl"
+                  class="w-full"
+                />
+              </div>
 
-          <div class="grid grid-cols-2 gap-4">
-            <UFormField label="Hourly Rate">
-              <UInput v-model.number="editForm.hourlyRate" type="number" min="0" />
-            </UFormField>
+              <div>
+                <label class="block text-[13px] font-medium mb-2">Payment Terms</label>
+                <UInput v-model.number="editForm.paymentTerms" type="number" min="0" size="xl" class="w-full" placeholder="30">
+                  <template #trailing>
+                    <span class="text-[var(--ui-text-muted)] text-xs">days</span>
+                  </template>
+                </UInput>
+              </div>
+            </div>
+          </fieldset>
 
-            <UFormField label="Retainer Amount">
-              <UInput v-model.number="editForm.retainerAmount" type="number" min="0" />
-            </UFormField>
-          </div>
+          <!-- Section: Rates -->
+          <fieldset class="space-y-5 pb-6 mb-6 border-b border-[var(--ui-border)]">
+            <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">Rates</legend>
 
-          <UFormField label="Media Commission Rate (%)">
-            <UInput v-model.number="editForm.mediaCommissionRate" type="number" min="0" max="100" />
-          </UFormField>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-[13px] font-medium mb-2">Hourly Rate</label>
+                <UInput v-model.number="editForm.hourlyRate" type="number" min="0" size="xl" class="w-full" placeholder="0">
+                  <template #leading>
+                    <span class="text-[var(--ui-text-muted)]">$</span>
+                  </template>
+                </UInput>
+              </div>
 
-          <UFormField label="Xero Contact">
-            <XeroContactSearch v-model="editForm.xeroContactId" />
-          </UFormField>
+              <div>
+                <label class="block text-[13px] font-medium mb-2">Retainer Amount</label>
+                <UInput v-model.number="editForm.retainerAmount" type="number" min="0" size="xl" class="w-full" placeholder="0">
+                  <template #leading>
+                    <span class="text-[var(--ui-text-muted)]">$</span>
+                  </template>
+                </UInput>
+                <p class="text-[12px] text-[var(--ui-text-muted)] mt-1.5">Monthly retainer fee.</p>
+              </div>
+            </div>
 
-          <UFormField label="Notes">
-            <UTextarea v-model="editForm.notes" :rows="3" />
-          </UFormField>
+            <div>
+              <label class="block text-[13px] font-medium mb-2">Media Commission</label>
+              <UInput v-model.number="editForm.mediaCommissionRate" type="number" min="0" max="100" size="xl" class="w-full" placeholder="0">
+                <template #trailing>
+                  <span class="text-[var(--ui-text-muted)]">%</span>
+                </template>
+              </UInput>
+              <p class="text-[12px] text-[var(--ui-text-muted)] mt-1.5">Commission on ad spend.</p>
+            </div>
+          </fieldset>
 
-          <UCheckbox v-model="editForm.isActive" label="Client is active" />
-        </div>
+          <!-- Section: Integrations -->
+          <fieldset class="space-y-5 pb-6 mb-6 border-b border-[var(--ui-border)]">
+            <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">Integrations</legend>
+
+            <div>
+              <label class="block text-[13px] font-medium mb-2">Xero Contact</label>
+              <XeroContactSearch v-model="editForm.xeroContactId" />
+            </div>
+          </fieldset>
+
+          <!-- Section: Notes & Status -->
+          <fieldset class="space-y-5 pb-4">
+            <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">Notes & Status</legend>
+
+            <div>
+              <label class="block text-[13px] font-medium mb-2">Notes</label>
+              <UTextarea v-model="editForm.notes" :rows="4" size="xl" class="w-full" placeholder="Internal notes about this client..." />
+            </div>
+
+            <div class="flex items-center gap-3 pt-1">
+              <UCheckbox v-model="editForm.isActive" />
+              <label class="text-[13px] font-medium cursor-pointer" @click="editForm.isActive = !editForm.isActive">Client is active</label>
+            </div>
+          </fieldset>
+        </form>
       </template>
       <template #footer>
-        <div class="flex justify-end gap-2">
-          <UButton variant="ghost" label="Cancel" @click="showEditModal = false" />
+        <div class="flex items-center justify-end gap-3">
+          <UButton variant="ghost" color="neutral" label="Cancel" size="lg" @click="showEditModal = false" />
           <UButton
             color="primary"
             label="Save Changes"
+            size="lg"
             :loading="saving"
             @click="saveClient"
           />
         </div>
       </template>
-    </UModal>
+    </USlideover>
   </div>
 </template>

@@ -208,7 +208,7 @@ const copyPublicLink = (slug: string) => {
 </script>
 
 <template>
-  <div class="flex-1 min-w-0">
+  <div class="flex-1 min-w-0 min-h-0 flex flex-col">
     <UDashboardPanel>
       <UDashboardNavbar title="Intake Forms">
         <template #right>
@@ -550,46 +550,64 @@ const copyPublicLink = (slug: string) => {
       </div>
     </UDashboardPanel>
 
-    <!-- New Form Modal -->
-    <UModal v-model:open="showNewFormModal">
+    <!-- New Form Slideover -->
+    <USlideover v-model:open="showNewFormModal">
       <template #header>
-        <h3 class="font-semibold">Create Intake Form</h3>
+        <h3 class="text-[16px] font-[500]">Create Intake Form</h3>
       </template>
       <template #body>
-        <div class="space-y-4">
-          <UFormField label="Form Name" required>
-            <UInput v-model="newForm.name" placeholder="e.g., Project Request Form" />
-          </UFormField>
+        <form @submit.prevent="createForm" class="px-1">
+          <!-- Section: Details -->
+          <fieldset class="space-y-5 pb-6 mb-6 border-b border-[var(--ui-border)]">
+            <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">Details</legend>
 
-          <UFormField label="URL Slug">
-            <UInput
-              v-model="newForm.slug"
-              placeholder="Auto-generated from name"
-              :hint="`Will be accessible at /intake/${newForm.slug || 'your-slug'}`"
-            />
-          </UFormField>
+            <div>
+              <label class="block text-[13px] font-medium mb-2">Form Name <span class="text-red-500">*</span></label>
+              <UInput v-model="newForm.name" placeholder="e.g., Project Request Form" size="xl" class="w-full" />
+            </div>
 
-          <UFormField label="Description">
-            <UTextarea v-model="newForm.description" placeholder="Describe what this form is for..." :rows="2" />
-          </UFormField>
+            <div>
+              <label class="block text-[13px] font-medium mb-2">URL Slug</label>
+              <UInput v-model="newForm.slug" placeholder="Auto-generated from name" size="xl" class="w-full" />
+              <p class="text-[12px] text-[var(--ui-text-muted)] mt-1.5">Will be accessible at /intake/{{ newForm.slug || 'your-slug' }}</p>
+            </div>
 
-          <div class="flex items-center gap-6">
-            <UCheckbox v-model="newForm.isActive" label="Active" />
-            <UCheckbox v-model="newForm.isPublic" label="Public (no login required)" />
-          </div>
-        </div>
+            <div>
+              <label class="block text-[13px] font-medium mb-2">Description</label>
+              <UTextarea v-model="newForm.description" placeholder="Describe what this form is for..." :rows="4" size="xl" class="w-full" />
+            </div>
+          </fieldset>
+
+          <!-- Section: Settings -->
+          <fieldset class="space-y-4 pb-4">
+            <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">Settings</legend>
+
+            <div class="flex items-center gap-3">
+              <UCheckbox v-model="newForm.isActive" />
+              <label class="text-[13px] font-medium cursor-pointer" @click="newForm.isActive = !newForm.isActive">Active</label>
+              <p class="text-[12px] text-[var(--ui-text-muted)]">Form accepts new submissions.</p>
+            </div>
+
+            <div class="flex items-center gap-3">
+              <UCheckbox v-model="newForm.isPublic" />
+              <label class="text-[13px] font-medium cursor-pointer" @click="newForm.isPublic = !newForm.isPublic">Public</label>
+              <p class="text-[12px] text-[var(--ui-text-muted)]">No login required to submit.</p>
+            </div>
+          </fieldset>
+        </form>
       </template>
       <template #footer>
-        <div class="flex justify-end gap-2">
-          <UButton variant="ghost" label="Cancel" @click="showNewFormModal = false" />
+        <div class="flex items-center justify-end gap-3">
+          <UButton variant="ghost" color="neutral" label="Cancel" size="lg" @click="showNewFormModal = false" />
           <UButton
             color="primary"
             label="Create Form"
+            size="lg"
             :loading="creatingForm"
             @click="createForm"
           />
         </div>
       </template>
-    </UModal>
+    </USlideover>
   </div>
 </template>

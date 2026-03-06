@@ -101,7 +101,7 @@ const handleDragLeave = (e: DragEvent) => {
   >
     <!-- Column Header -->
     <header
-      class="flex items-center gap-3 p-4 border border-black/20 rounded-t-lg bg-white"
+      class="flex items-center gap-3 p-4 border border-neutral-200 dark:border-neutral-700 rounded-t-lg bg-white dark:bg-neutral-800"
       :style="{ borderTopWidth: '3px', borderTopColor: status.color || categoryColor }"
     >
       <div
@@ -111,15 +111,15 @@ const handleDragLeave = (e: DragEvent) => {
       />
 
       <template v-if="!isCollapsed">
-        <h3 class="font-semibold text-sm text-black truncate flex-1">{{ status.name }}</h3>
+        <h3 class="font-semibold text-sm text-neutral-900 dark:text-neutral-100 truncate flex-1">{{ status.name }}</h3>
         <span
-          class="px-2 py-0.5 bg-black/5 text-black/60 text-xs font-medium rounded"
+          class="px-2 py-0.5 bg-neutral-100 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400 text-xs font-medium rounded"
           :aria-label="`${tasks.length} tasks`"
         >
           {{ tasks.length }}
         </span>
         <button
-          class="p-1.5 text-black/40 hover:text-black hover:bg-black/5 rounded transition-colors opacity-0 group-hover:opacity-100"
+          class="p-1.5 text-neutral-400 dark:text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded transition-colors opacity-0 group-hover:opacity-100"
           :aria-label="`Add task to ${status.name}`"
           @click="emit('createTask')"
         >
@@ -129,8 +129,8 @@ const handleDragLeave = (e: DragEvent) => {
 
       <template v-else>
         <div class="flex flex-col items-center gap-1 -rotate-90 origin-center whitespace-nowrap">
-          <h3 class="font-semibold text-xs text-black">{{ status.name }}</h3>
-          <span class="text-xs text-black/60">{{ tasks.length }}</span>
+          <h3 class="font-semibold text-xs text-neutral-900 dark:text-neutral-100">{{ status.name }}</h3>
+          <span class="text-xs text-neutral-500 dark:text-neutral-400">{{ tasks.length }}</span>
         </div>
       </template>
     </header>
@@ -139,7 +139,7 @@ const handleDragLeave = (e: DragEvent) => {
     <div
       v-if="!isCollapsed"
       ref="columnRef"
-      class="flex-1 overflow-y-auto p-3 bg-white border border-t-0 border-black/20 rounded-b-lg min-h-[200px] transition-colors"
+      class="flex-1 overflow-y-auto p-3 bg-white dark:bg-neutral-800/50 border border-t-0 border-neutral-200 dark:border-neutral-700 rounded-b-lg min-h-[200px] transition-colors"
       :class="{ 'bg-[#13B5EA]/5 ring-2 ring-[#13B5EA]/20': isDragOver }"
       role="list"
       :aria-label="`Tasks in ${status.name}`"
@@ -196,10 +196,10 @@ const handleDragLeave = (e: DragEvent) => {
         v-if="tasks.length === 0"
         class="flex flex-col items-center justify-center py-12 text-center"
       >
-        <UIcon name="i-lucide-inbox" class="h-10 w-10 text-black/20 mb-3" />
-        <p class="text-sm text-black/50 mb-3">No tasks</p>
+        <UIcon name="i-lucide-inbox" class="h-10 w-10 text-neutral-300 dark:text-neutral-600 mb-3" />
+        <p class="text-sm text-neutral-500 dark:text-neutral-400 mb-3">No tasks</p>
         <button
-          class="px-3 py-1.5 border border-black/20 text-black/60 text-xs font-medium rounded hover:border-black hover:text-black transition-colors"
+          class="px-3 py-1.5 border border-neutral-200 dark:border-neutral-600 text-neutral-500 dark:text-neutral-400 text-xs font-medium rounded hover:border-neutral-400 dark:hover:border-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
           @click="emit('createTask')"
         >
           Add task
@@ -220,11 +220,11 @@ const handleDragLeave = (e: DragEvent) => {
 }
 
 .overflow-y-auto::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.15);
+  background: rgba(128, 128, 128, 0.25);
   border-radius: 2px;
 }
 
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(128, 128, 128, 0.4);
 }
 </style>

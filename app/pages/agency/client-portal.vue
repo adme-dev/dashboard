@@ -31,7 +31,11 @@ const approvalsSummary = computed(() => ((approvalsData.value as any)?.summary |
 const { data: clientsData } = await useFetch('/api/agency/clients', {
   query: { limit: 100 }
 })
-const clients = computed(() => ((clientsData.value as any)?.clients || []) as any[])
+const clients = computed(() => {
+  const raw = clientsData.value
+  if (Array.isArray(raw)) return raw as any[]
+  return ((raw as any)?.clients || []) as any[]
+})
 
 // Format helpers
 const formatDate = (date: string) => {
@@ -64,7 +68,7 @@ const getApprovalStatusColor = (status: string): 'success' | 'warning' | 'error'
   }
 }
 
-// Invite modal
+// Invite slideover
 const showInviteModal = ref(false)
 const inviteForm = ref({
   clientId: null as string | null,
@@ -123,27 +127,27 @@ const resetInviteForm = () => {
   }
 }
 
-// User columns
-const userColumns: any[] = [
-  { key: 'name', label: 'User' },
-  { key: 'client', label: 'Client' },
-  { key: 'permissions', label: 'Permissions' },
-  { key: 'lastLogin', label: 'Last Login' },
-  { key: 'status', label: 'Status' }
+// User columns (v4 format)
+const userColumns = [
+  { accessorKey: 'name', header: 'User' },
+  { accessorKey: 'client', header: 'Client' },
+  { accessorKey: 'permissions', header: 'Permissions' },
+  { accessorKey: 'lastLogin', header: 'Last Login' },
+  { accessorKey: 'status', header: 'Status' }
 ]
 
-// Approval columns
-const approvalColumns: any[] = [
-  { key: 'title', label: 'Item' },
-  { key: 'project', label: 'Project' },
-  { key: 'requestedAt', label: 'Requested' },
-  { key: 'dueDate', label: 'Due' },
-  { key: 'status', label: 'Status' }
+// Approval columns (v4 format)
+const approvalColumns = [
+  { accessorKey: 'title', header: 'Item' },
+  { accessorKey: 'project', header: 'Project' },
+  { accessorKey: 'requestedAt', header: 'Requested' },
+  { accessorKey: 'dueDate', header: 'Due' },
+  { accessorKey: 'status', header: 'Status' }
 ]
 </script>
 
 <template>
-  <div class="flex-1 min-w-0">
+  <div class="flex-1 min-w-0 min-h-0 flex flex-col">
     <UDashboardPanel>
       <UDashboardNavbar title="Client Portal">
         <template #right>
@@ -165,7 +169,7 @@ const approvalColumns: any[] = [
                 <UIcon name="i-lucide-users" class="w-5 h-5 text-blue-500" />
               </div>
               <div>
-                <p class="text-sm text-gray-500">Portal Users</p>
+                <p class="text-sm text-[var(--ui-text-muted)]">Portal Users</p>
                 <p class="text-xl font-bold">{{ usersSummary.total }}</p>
               </div>
             </div>
@@ -177,7 +181,7 @@ const approvalColumns: any[] = [
                 <UIcon name="i-lucide-check-circle" class="w-5 h-5 text-emerald-500" />
               </div>
               <div>
-                <p class="text-sm text-gray-500">Active Users</p>
+                <p class="text-sm text-[var(--ui-text-muted)]">Active Users</p>
                 <p class="text-xl font-bold text-emerald-500">{{ usersSummary.active }}</p>
               </div>
             </div>
@@ -189,7 +193,7 @@ const approvalColumns: any[] = [
                 <UIcon name="i-lucide-clock" class="w-5 h-5 text-amber-500" />
               </div>
               <div>
-                <p class="text-sm text-gray-500">Pending Approvals</p>
+                <p class="text-sm text-[var(--ui-text-muted)]">Pending Approvals</p>
                 <p class="text-xl font-bold text-amber-500">{{ approvalsSummary.pending }}</p>
               </div>
             </div>
@@ -201,7 +205,7 @@ const approvalColumns: any[] = [
                 <UIcon name="i-lucide-mail" class="w-5 h-5 text-purple-500" />
               </div>
               <div>
-                <p class="text-sm text-gray-500">Pending Invites</p>
+                <p class="text-sm text-[var(--ui-text-muted)]">Pending Invites</p>
                 <p class="text-xl font-bold text-purple-500">{{ usersSummary.pending }}</p>
               </div>
             </div>
@@ -226,45 +230,45 @@ const approvalColumns: any[] = [
 
           <UCard v-else>
             <UTable :data="users" :columns="userColumns">
-              <template #name-cell="{ row: r }">
+              <template #name-cell="{ row }">
                 <div>
-                  <p class="font-medium">{{ (r as any).name }}</p>
-                  <p class="text-xs text-gray-500">{{ (r as any).email }}</p>
+                  <p class="font-medium">{{ row.original.name }}</p>
+                  <p class="text-xs text-[var(--ui-text-muted)]">{{ row.original.email }}</p>
                 </div>
               </template>
 
-              <template #client-cell="{ row: r }">
-                <span class="text-gray-600">{{ (r as any).clientName }}</span>
+              <template #client-cell="{ row }">
+                <span class="text-[var(--ui-text-dimmed)]">{{ row.original.clientName }}</span>
               </template>
 
-              <template #permissions-cell="{ row: r }">
+              <template #permissions-cell="{ row }">
                 <div class="flex flex-wrap gap-1">
-                  <UBadge v-if="(r as any).permissions.canApproveWork" size="xs" variant="subtle" color="success">
+                  <UBadge v-if="row.original.permissions?.canApproveWork" size="xs" variant="subtle" color="success">
                     Approve
                   </UBadge>
-                  <UBadge v-if="(r as any).permissions.canViewBudgets" size="xs" variant="subtle" color="info">
+                  <UBadge v-if="row.original.permissions?.canViewBudgets" size="xs" variant="subtle" color="info">
                     Budgets
                   </UBadge>
-                  <UBadge v-if="(r as any).permissions.canViewTimeEntries" size="xs" variant="subtle" color="neutral">
+                  <UBadge v-if="row.original.permissions?.canViewTimeEntries" size="xs" variant="subtle" color="neutral">
                     Time
                   </UBadge>
                 </div>
               </template>
 
-              <template #lastLogin-cell="{ row: r }">
-                <span class="text-sm text-gray-500">
-                  {{ formatDateTime((r as any).lastLoginAt) }}
+              <template #lastLogin-cell="{ row }">
+                <span class="text-sm text-[var(--ui-text-muted)]">
+                  {{ formatDateTime(row.original.lastLoginAt) }}
                 </span>
               </template>
 
-              <template #status-cell="{ row: r }">
-                <UBadge :color="getUserStatusColor((r as any).status)" variant="subtle">
-                  {{ (r as any).status }}
+              <template #status-cell="{ row }">
+                <UBadge :color="getUserStatusColor(row.original.status)" variant="subtle">
+                  {{ row.original.status }}
                 </UBadge>
               </template>
             </UTable>
 
-            <div v-if="users.length === 0" class="text-center text-gray-500 py-8">
+            <div v-if="users.length === 0" class="text-center text-[var(--ui-text-muted)] py-8">
               No portal users yet. Invite a client to get started!
             </div>
           </UCard>
@@ -278,40 +282,40 @@ const approvalColumns: any[] = [
 
           <UCard v-else>
             <UTable :data="approvals" :columns="approvalColumns">
-              <template #title-cell="{ row: r }">
+              <template #title-cell="{ row }">
                 <div>
-                  <p class="font-medium">{{ (r as any).title }}</p>
+                  <p class="font-medium">{{ row.original.title }}</p>
                   <UBadge size="xs" variant="subtle" color="neutral">
-                    {{ (r as any).approvalType }}
+                    {{ row.original.approvalType }}
                   </UBadge>
                 </div>
               </template>
 
-              <template #project-cell="{ row: r }">
+              <template #project-cell="{ row }">
                 <div>
-                  <p class="text-gray-600">{{ (r as any).projectName }}</p>
-                  <p class="text-xs text-gray-400">{{ (r as any).clientName }}</p>
+                  <p class="text-[var(--ui-text-dimmed)]">{{ row.original.projectName }}</p>
+                  <p class="text-xs text-[var(--ui-text-muted)]">{{ row.original.clientName }}</p>
                 </div>
               </template>
 
-              <template #requestedAt-cell="{ row: r }">
-                <span class="text-sm">{{ formatDate((r as any).requestedAt) }}</span>
+              <template #requestedAt-cell="{ row }">
+                <span class="text-sm">{{ formatDate(row.original.requestedAt) }}</span>
               </template>
 
-              <template #dueDate-cell="{ row: r }">
-                <span class="text-sm" :class="{ 'text-red-500': (r as any).dueDate && new Date((r as any).dueDate) < new Date() }">
-                  {{ formatDate((r as any).dueDate) }}
+              <template #dueDate-cell="{ row }">
+                <span class="text-sm" :class="{ 'text-red-500': row.original.dueDate && new Date(row.original.dueDate) < new Date() }">
+                  {{ formatDate(row.original.dueDate) }}
                 </span>
               </template>
 
-              <template #status-cell="{ row: r }">
-                <UBadge :color="getApprovalStatusColor((r as any).status)" variant="subtle">
-                  {{ (r as any).status }}
+              <template #status-cell="{ row }">
+                <UBadge :color="getApprovalStatusColor(row.original.status)" variant="subtle">
+                  {{ row.original.status }}
                 </UBadge>
               </template>
             </UTable>
 
-            <div v-if="approvals.length === 0" class="text-center text-gray-500 py-8">
+            <div v-if="approvals.length === 0" class="text-center text-[var(--ui-text-muted)] py-8">
               No approval requests yet
             </div>
           </UCard>
@@ -319,54 +323,122 @@ const approvalColumns: any[] = [
       </div>
     </UDashboardPanel>
 
-    <!-- Invite Modal -->
-    <UModal v-model:open="showInviteModal">
+    <!-- Invite Slideover -->
+    <USlideover v-model:open="showInviteModal">
       <template #header>
-        <h3 class="font-semibold">Invite Client User</h3>
+        <h3 class="text-[18px] font-[600]">Invite Client User</h3>
       </template>
       <template #body>
-        <div class="space-y-4">
-          <UFormField label="Client" required>
-            <USelectMenu
-              v-model="inviteForm.clientId"
-              :items="clients.map(c => ({ label: c.name, value: c.id }))"
-              placeholder="Select client"
-              value-key="value"
-            />
-          </UFormField>
+        <form class="space-y-0" @submit.prevent="sendInvite">
+          <!-- Section: Client & Contact -->
+          <fieldset class="space-y-5 pb-6 mb-6 border-b border-[var(--ui-border)]">
+            <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">Client & Contact</legend>
 
-          <UFormField label="Email" required>
-            <UInput v-model="inviteForm.email" type="email" placeholder="client@example.com" />
-          </UFormField>
-
-          <UFormField label="Name" required>
-            <UInput v-model="inviteForm.name" placeholder="Full name" />
-          </UFormField>
-
-          <div class="space-y-2">
-            <p class="text-sm font-medium">Permissions</p>
-            <div class="space-y-2">
-              <UCheckbox v-model="inviteForm.permissions.canViewProjects" label="View projects" />
-              <UCheckbox v-model="inviteForm.permissions.canViewInvoices" label="View invoices" />
-              <UCheckbox v-model="inviteForm.permissions.canApproveWork" label="Approve deliverables" />
-              <UCheckbox v-model="inviteForm.permissions.canViewTimeEntries" label="View time entries" />
-              <UCheckbox v-model="inviteForm.permissions.canViewBudgets" label="View budget details" />
+            <div>
+              <label class="block text-[13px] font-medium mb-2">Client <span class="text-red-500">*</span></label>
+              <USelectMenu
+                v-model="inviteForm.clientId"
+                :items="clients.map((c: any) => ({ label: c.name, value: c.id }))"
+                placeholder="Select client"
+                value-key="value"
+                searchable
+                size="xl"
+                class="w-full"
+              />
+              <p class="text-[12px] text-[var(--ui-text-muted)] mt-1.5">The client account this user belongs to.</p>
             </div>
-          </div>
-        </div>
+
+            <div>
+              <label class="block text-[13px] font-medium mb-2">Full Name <span class="text-red-500">*</span></label>
+              <UInput
+                v-model="inviteForm.name"
+                placeholder="e.g., Jane Smith"
+                size="xl"
+                class="w-full"
+              />
+            </div>
+
+            <div>
+              <label class="block text-[13px] font-medium mb-2">Email Address <span class="text-red-500">*</span></label>
+              <UInput
+                v-model="inviteForm.email"
+                type="email"
+                placeholder="client@example.com"
+                size="xl"
+                class="w-full"
+              />
+              <p class="text-[12px] text-[var(--ui-text-muted)] mt-1.5">An invitation email with a sign-up link will be sent here.</p>
+            </div>
+          </fieldset>
+
+          <!-- Section: Permissions -->
+          <fieldset class="space-y-4">
+            <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">Permissions</legend>
+            <p class="text-[12px] text-[var(--ui-text-muted)]">Control what the invited user can see and do in the client portal.</p>
+
+            <div class="space-y-3 pt-1">
+              <label class="flex items-center gap-3 cursor-pointer">
+                <UCheckbox v-model="inviteForm.permissions.canViewProjects" />
+                <div>
+                  <span class="text-[13px] font-medium">View projects</span>
+                  <p class="text-[12px] text-[var(--ui-text-muted)]">See project details, status, and deliverables.</p>
+                </div>
+              </label>
+
+              <label class="flex items-center gap-3 cursor-pointer">
+                <UCheckbox v-model="inviteForm.permissions.canViewInvoices" />
+                <div>
+                  <span class="text-[13px] font-medium">View invoices</span>
+                  <p class="text-[12px] text-[var(--ui-text-muted)]">Access invoices and payment history.</p>
+                </div>
+              </label>
+
+              <label class="flex items-center gap-3 cursor-pointer">
+                <UCheckbox v-model="inviteForm.permissions.canApproveWork" />
+                <div>
+                  <span class="text-[13px] font-medium">Approve deliverables</span>
+                  <p class="text-[12px] text-[var(--ui-text-muted)]">Approve or request revisions on submitted work.</p>
+                </div>
+              </label>
+
+              <label class="flex items-center gap-3 cursor-pointer">
+                <UCheckbox v-model="inviteForm.permissions.canViewTimeEntries" />
+                <div>
+                  <span class="text-[13px] font-medium">View time entries</span>
+                  <p class="text-[12px] text-[var(--ui-text-muted)]">See time tracked against their projects.</p>
+                </div>
+              </label>
+
+              <label class="flex items-center gap-3 cursor-pointer">
+                <UCheckbox v-model="inviteForm.permissions.canViewBudgets" />
+                <div>
+                  <span class="text-[13px] font-medium">View budget details</span>
+                  <p class="text-[12px] text-[var(--ui-text-muted)]">See budget allocation and spend breakdowns.</p>
+                </div>
+              </label>
+            </div>
+          </fieldset>
+        </form>
       </template>
       <template #footer>
-        <div class="flex justify-end gap-2">
-          <UButton variant="ghost" label="Cancel" @click="showInviteModal = false" />
+        <div class="flex justify-end gap-3">
+          <UButton
+            variant="ghost"
+            color="neutral"
+            label="Cancel"
+            size="lg"
+            @click="showInviteModal = false"
+          />
           <UButton
             color="primary"
             label="Send Invitation"
             icon="i-lucide-send"
+            size="lg"
             :loading="inviting"
             @click="sendInvite"
           />
         </div>
       </template>
-    </UModal>
+    </USlideover>
   </div>
 </template>

@@ -117,7 +117,7 @@ const applyTemplate = async () => {
 </script>
 
 <template>
-  <div class="flex-1 min-w-0">
+  <div class="flex-1 min-w-0 min-h-0 flex flex-col">
     <UDashboardPanel>
       <UDashboardNavbar title="New Project">
         <template #left>
@@ -138,136 +138,149 @@ const applyTemplate = async () => {
         </template>
       </UDashboardNavbar>
 
-      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
-        <div class="max-w-2xl mx-auto">
-          <UCard>
-            <template #header>
-              <h3 class="text-lg font-semibold">Project Details</h3>
-              <p class="text-sm text-gray-500">Create a new project for a client</p>
-            </template>
+      <div class="flex-1 overflow-y-auto">
+        <div class="max-w-2xl mx-auto px-6 sm:px-8 py-10">
+          <!-- Header -->
+          <div class="mb-10">
+            <h1 class="text-[22px] font-[500] tracking-[-0.01em]">New Project</h1>
+            <p class="text-[14px] text-[var(--ui-text-muted)] mt-1">Fill in the details to create a new project.</p>
+          </div>
 
-            <div class="space-y-6">
-              <!-- Client Selection -->
-              <UFormField label="Client" required>
-                <USelectMenu
-                  v-model="form.clientId"
-                  :items="clients.map(c => ({ label: c.name, value: c.id }))"
-                  placeholder="Select a client"
-                  value-key="value"
-                  searchable
-                />
-              </UFormField>
+          <form @submit.prevent="createProject">
+            <!-- Section: Project Info -->
+            <fieldset class="space-y-5 pb-8 mb-8 border-b border-[var(--ui-border)]">
+              <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">Project Info</legend>
 
-              <!-- Project Name -->
-              <UFormField label="Project Name" required>
-                <UInput
-                  v-model="form.name"
-                  placeholder="e.g., Website Redesign Q1 2024"
-                />
-              </UFormField>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div>
+                  <label class="block text-[13px] font-medium mb-2">Client <span class="text-red-500">*</span></label>
+                  <USelectMenu
+                    v-model="form.clientId"
+                    :items="clients.map(c => ({ label: c.name, value: c.id }))"
+                    placeholder="Select a client"
+                    value-key="value"
+                    searchable
+                    size="xl"
+                    class="w-full"
+                  />
+                </div>
 
-              <!-- Description -->
-              <UFormField label="Description">
+                <div>
+                  <label class="block text-[13px] font-medium mb-2">Project Name <span class="text-red-500">*</span></label>
+                  <UInput
+                    v-model="form.name"
+                    placeholder="e.g., Website Redesign Q1 2024"
+                    size="xl"
+                    class="w-full"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-[13px] font-medium mb-2">Description</label>
                 <UTextarea
                   v-model="form.description"
-                  placeholder="Brief description of the project scope and objectives..."
-                  :rows="3"
+                  placeholder="Describe the project scope, deliverables, and key objectives..."
+                  :rows="4"
+                  size="xl"
+                  class="w-full"
                 />
-              </UFormField>
+                <p class="text-[12px] text-[var(--ui-text-muted)] mt-1.5">Brief scope and objectives for the project.</p>
+              </div>
+            </fieldset>
 
-              <!-- Budget Section -->
-              <div class="grid grid-cols-2 gap-4">
-                <UFormField label="Budget Amount" required>
+            <!-- Section: Budget & Timeline -->
+            <fieldset class="space-y-5 pb-8 mb-8 border-b border-[var(--ui-border)]">
+              <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">Budget & Timeline</legend>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div>
+                  <label class="block text-[13px] font-medium mb-2">Budget Amount <span class="text-red-500">*</span></label>
                   <UInput
                     v-model.number="form.budgetAmount"
                     type="number"
                     min="0"
                     step="100"
                     placeholder="0"
+                    size="xl"
+                    class="w-full"
                   >
                     <template #leading>
-                      <span class="text-gray-500">$</span>
+                      <span class="text-[var(--ui-text-muted)]">$</span>
                     </template>
                   </UInput>
-                </UFormField>
+                </div>
 
-                <UFormField label="Budget Type">
+                <div>
+                  <label class="block text-[13px] font-medium mb-2">Budget Type</label>
                   <USelectMenu
                     v-model="form.budgetType"
                     :items="budgetTypeOptions"
                     value-key="value"
+                    size="xl"
+                    class="w-full"
                   />
-                </UFormField>
+                  <p class="text-[12px] text-[var(--ui-text-muted)] mt-1.5">How the client is billed.</p>
+                </div>
               </div>
 
-              <!-- Dates -->
-              <div class="grid grid-cols-2 gap-4">
-                <UFormField label="Start Date" required>
-                  <UInput v-model="form.startDate" type="date" />
-                </UFormField>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div>
+                  <label class="block text-[13px] font-medium mb-2">Start Date <span class="text-red-500">*</span></label>
+                  <UInput v-model="form.startDate" type="date" size="xl" class="w-full" />
+                </div>
 
-                <UFormField label="End Date">
-                  <UInput v-model="form.endDate" type="date" />
-                </UFormField>
+                <div>
+                  <label class="block text-[13px] font-medium mb-2">End Date</label>
+                  <UInput v-model="form.endDate" type="date" size="xl" class="w-full" />
+                  <p class="text-[12px] text-[var(--ui-text-muted)] mt-1.5">Leave blank for ongoing projects.</p>
+                </div>
               </div>
+            </fieldset>
 
-              <!-- Project Manager -->
-              <UFormField label="Project Manager">
-                <USelectMenu
-                  v-model="form.projectManagerId"
-                  :items="[
-                    { label: 'Not assigned', value: null },
-                    ...teamMembers.map(m => ({ label: m.name, value: m.id }))
-                  ]"
-                  placeholder="Select project manager"
-                  value-key="value"
-                />
-              </UFormField>
+            <!-- Section: Assignment -->
+            <fieldset class="space-y-5 pb-8 mb-8">
+              <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">Assignment</legend>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div>
+                  <label class="block text-[13px] font-medium mb-2">Project Manager</label>
+                  <USelectMenu
+                    v-model="form.projectManagerId"
+                    :items="[
+                      { label: 'Not assigned', value: null },
+                      ...teamMembers.map(m => ({ label: m.name, value: m.id }))
+                    ]"
+                    placeholder="Select project manager"
+                    value-key="value"
+                    size="xl"
+                    class="w-full"
+                  />
+                  <p class="text-[12px] text-[var(--ui-text-muted)] mt-1.5">Responsible for delivery and client communication.</p>
+                </div>
+              </div>
+            </fieldset>
+
+            <!-- Actions -->
+            <div class="flex items-center justify-end gap-3 pt-2 pb-8">
+              <UButton
+                variant="ghost"
+                color="neutral"
+                label="Cancel"
+                size="lg"
+                to="/agency/projects"
+              />
+              <UButton
+                type="submit"
+                color="primary"
+                label="Create Project"
+                icon="i-lucide-plus"
+                size="lg"
+                :loading="creating"
+                :disabled="!isValid"
+              />
             </div>
-
-            <template #footer>
-              <div class="flex justify-between">
-                <UButton
-                  variant="ghost"
-                  label="Cancel"
-                  to="/agency/projects"
-                />
-                <UButton
-                  color="primary"
-                  label="Create Project"
-                  icon="i-lucide-plus"
-                  :loading="creating"
-                  :disabled="!isValid"
-                  @click="createProject"
-                />
-              </div>
-            </template>
-          </UCard>
-
-          <!-- Quick Tips -->
-          <UCard class="mt-6">
-            <template #header>
-              <div class="flex items-center gap-2">
-                <UIcon name="i-lucide-lightbulb" class="w-5 h-5 text-amber-500" />
-                <h4 class="font-medium">Quick Tips</h4>
-              </div>
-            </template>
-
-            <ul class="space-y-2 text-sm text-gray-600">
-              <li class="flex items-start gap-2">
-                <UIcon name="i-lucide-check" class="w-4 h-4 text-emerald-500 mt-0.5" />
-                <span>Set a realistic budget that includes a buffer for unexpected work</span>
-              </li>
-              <li class="flex items-start gap-2">
-                <UIcon name="i-lucide-check" class="w-4 h-4 text-emerald-500 mt-0.5" />
-                <span>Use templates for recurring project types to save time</span>
-              </li>
-              <li class="flex items-start gap-2">
-                <UIcon name="i-lucide-check" class="w-4 h-4 text-emerald-500 mt-0.5" />
-                <span>Assign a project manager early to ensure accountability</span>
-              </li>
-            </ul>
-          </UCard>
+          </form>
         </div>
       </div>
     </UDashboardPanel>
