@@ -36,14 +36,12 @@ index_name = "agency-search"
 [browser]
 binding = "BROWSER"
 
-# Hyperdrive — edge connection pooling for Neon Postgres
-# DISABLED: neon() HTTP driver is incompatible with Hyperdrive (it rewrites hostname
-# to a TCP proxy, but neon() makes HTTP requests to the hostname). Hyperdrive only
-# works with Pool/Client (Postgres wire protocol). To re-enable, db.ts needs split
-# connection strings: DATABASE_URL for neon(), HYPERDRIVE for Pool/transaction().
-# [[hyperdrive]]
-# binding = "HYPERDRIVE"
-# id = "900b4b74ec41462cbbabebd0aa8775aa"
+# Hyperdrive — edge TCP connection pooling for Neon Postgres (~9x faster queries)
+# db.ts uses pg.Client (TCP) with this binding; falls back to neon() HTTP in local dev.
+# Config points to direct Neon host (not -pooler) — Hyperdrive handles pooling.
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "900b4b74ec41462cbbabebd0aa8775aa"
 
 # ============================================
 # Environment Variables (non-secret)
