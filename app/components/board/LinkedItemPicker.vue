@@ -1,7 +1,7 @@
 <template>
-  <div class="bg-white dark:bg-neutral-900 rounded-lg shadow-xl border border-gray-200 dark:border-neutral-700 w-80">
-    <!-- Header -->
-    <div class="p-3 border-b border-gray-200 dark:border-neutral-700 flex items-center justify-between">
+  <div :class="headless ? 'w-full' : 'bg-white dark:bg-neutral-900 rounded-lg shadow-xl border border-gray-200 dark:border-neutral-700 w-80'">
+    <!-- Header (hidden in headless mode) -->
+    <div v-if="!headless" class="p-3 border-b border-gray-200 dark:border-neutral-700 flex items-center justify-between">
       <h4 class="text-sm font-medium text-gray-900 dark:text-neutral-100">Linked Items</h4>
       <button @click="$emit('close')" class="text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300">
         <UIcon name="i-lucide-x" class="w-4 h-4" />
@@ -41,39 +41,123 @@
       <p v-else class="px-3 py-4 text-sm text-gray-400 dark:text-neutral-500 text-center">No linked items</p>
     </template>
 
-    <!-- Search section -->
-    <div class="p-2 border-t border-gray-200 dark:border-neutral-700">
-      <UInput
-        v-model="searchQuery"
-        placeholder="Search tasks to link..."
-        icon="i-lucide-search"
-        size="sm"
-        autofocus
-      />
-    </div>
-
-    <!-- Search results -->
-    <div v-if="searchResults.length" class="max-h-48 overflow-y-auto border-t border-gray-200 dark:border-neutral-700 py-1">
+    <!-- Mode toggle: Search existing / Create new -->
+    <div class="flex border-t border-gray-200 dark:border-neutral-700">
       <button
-        v-for="task in searchResults"
-        :key="task.id"
-        class="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-neutral-800 w-full text-left"
-        @click="linkItem(task.id)"
+        class="flex-1 py-2 text-xs font-medium text-center transition-colors"
+        :class="mode === 'search' ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-500 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-800'"
+        @click="mode = 'search'"
       >
-        <UIcon name="i-lucide-plus" class="w-3.5 h-3.5 text-green-500 shrink-0" />
-        <span class="text-sm text-gray-700 dark:text-neutral-300 truncate flex-1">{{ task.title }}</span>
-        <UBadge size="xs" variant="subtle" color="neutral" class="shrink-0">{{ task.boardName }}</UBadge>
+        <UIcon name="i-lucide-search" class="w-3.5 h-3.5 inline-block mr-1 align-text-bottom" />
+        Link existing
+      </button>
+      <button
+        class="flex-1 py-2 text-xs font-medium text-center transition-colors border-l border-gray-200 dark:border-neutral-700"
+        :class="mode === 'create' ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-500 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-800'"
+        @click="switchToCreate"
+      >
+        <UIcon name="i-lucide-plus" class="w-3.5 h-3.5 inline-block mr-1 align-text-bottom" />
+        Create &amp; link
       </button>
     </div>
-    <div v-else-if="searchQuery.length >= 2 && !searching" class="px-3 py-3 border-t border-gray-200 dark:border-neutral-700 text-center">
-      <span class="text-xs text-gray-400 dark:text-neutral-500">No tasks found</span>
-    </div>
+
+    <!-- Search mode -->
+    <template v-if="mode === 'search'">
+      <div class="p-2">
+        <UInput
+          v-model="searchQuery"
+          placeholder="Search tasks to link..."
+          icon="i-lucide-search"
+          size="sm"
+          autofocus
+        />
+      </div>
+
+      <!-- Search results -->
+      <div v-if="searchResults.length" class="max-h-48 overflow-y-auto border-t border-gray-200 dark:border-neutral-700 py-1">
+        <button
+          v-for="task in searchResults"
+          :key="task.id"
+          class="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-neutral-800 w-full text-left"
+          @click="linkItem(task.id)"
+        >
+          <UIcon name="i-lucide-plus" class="w-3.5 h-3.5 text-green-500 shrink-0" />
+          <span class="text-sm text-gray-700 dark:text-neutral-300 truncate flex-1">{{ task.title }}</span>
+          <UBadge size="xs" variant="subtle" color="neutral" class="shrink-0">{{ task.boardName }}</UBadge>
+        </button>
+      </div>
+      <div v-else-if="searchQuery.length >= 2 && !searching" class="px-3 py-3 border-t border-gray-200 dark:border-neutral-700 text-center">
+        <span class="text-xs text-gray-400 dark:text-neutral-500">No tasks found</span>
+      </div>
+    </template>
+
+    <!-- Create mode -->
+    <template v-if="mode === 'create'">
+      <div class="p-3 space-y-3">
+        <!-- Task title -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 dark:text-neutral-400 mb-1">Task title</label>
+          <UInput
+            v-model="newTask.title"
+            placeholder="Enter task title..."
+            size="sm"
+            autofocus
+          />
+        </div>
+
+        <!-- Board/Department -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 dark:text-neutral-400 mb-1">Board</label>
+          <USelectMenu
+            v-model="newTask.departmentId"
+            :items="boardOptions"
+            placeholder="Select board..."
+            size="sm"
+          />
+        </div>
+
+        <!-- Assignee -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 dark:text-neutral-400 mb-1">Assignee</label>
+          <USelectMenu
+            v-model="newTask.assigneeId"
+            :items="memberOptions"
+            placeholder="Unassigned"
+            size="sm"
+          />
+        </div>
+
+        <!-- Priority -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 dark:text-neutral-400 mb-1">Priority</label>
+          <USelectMenu
+            v-model="newTask.priority"
+            :items="priorityOptions"
+            size="sm"
+          />
+        </div>
+
+        <!-- Create button -->
+        <UButton
+          block
+          size="sm"
+          icon="i-lucide-plus"
+          :loading="creating"
+          :disabled="!newTask.title.trim() || !newTask.departmentId"
+          @click="createAndLink"
+        >
+          Create &amp; Link Task
+        </UButton>
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 const props = defineProps<{
   taskId: string
+  headless?: boolean
+  initialMode?: 'search' | 'create'
 }>()
 
 const emit = defineEmits<{
@@ -104,12 +188,44 @@ interface SearchResult {
 
 const links = ref<LinkedItem[]>([])
 const loading = ref(true)
+const mode = ref<'search' | 'create'>(props.initialMode || 'search')
+
+// --- Search mode state ---
 const searchQuery = ref('')
 const searchResults = ref<SearchResult[]>([])
 const searching = ref(false)
-
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
 
+// --- Create mode state ---
+const newTask = reactive({
+  title: '',
+  departmentId: '',
+  assigneeId: '_none',
+  priority: 'medium',
+})
+const creating = ref(false)
+const boards = ref<{ id: string; name: string }[]>([])
+const members = ref<{ id: string; name: string }[]>([])
+const sourceProjectId = ref<string | null>(null)
+const createDataLoaded = ref(false)
+
+const boardOptions = computed(() =>
+  boards.value.map(b => ({ label: b.name, value: b.id }))
+)
+
+const memberOptions = computed(() => [
+  { label: 'Unassigned', value: '_none' },
+  ...members.value.map(m => ({ label: m.name, value: m.id })),
+])
+
+const priorityOptions = [
+  { label: 'Urgent', value: 'urgent' },
+  { label: 'High', value: 'high' },
+  { label: 'Medium', value: 'medium' },
+  { label: 'Low', value: 'low' },
+]
+
+// --- Fetch linked items ---
 async function fetchLinks() {
   try {
     const data = await $fetch<{ linkedItems: LinkedItem[] }>(`/api/agency/tasks/${props.taskId}/linked-items`)
@@ -121,6 +237,7 @@ async function fetchLinks() {
   }
 }
 
+// --- Search mode ---
 async function searchTasks(q: string) {
   if (q.length < 2) {
     searchResults.value = []
@@ -151,7 +268,13 @@ async function linkItem(linkedTaskId: string) {
     await fetchLinks()
     emit('updated', links.value.length)
   } catch (e: any) {
-    toast.add({ title: 'Error', description: e.data?.statusMessage || 'Failed to link item', color: 'error' })
+    if (e.statusCode === 409 || e.data?.statusCode === 409) {
+      searchResults.value = searchResults.value.filter(t => t.id !== linkedTaskId)
+      await fetchLinks()
+      emit('updated', links.value.length)
+    } else {
+      toast.add({ title: 'Error', description: e.data?.statusMessage || 'Failed to link item', color: 'error' })
+    }
   }
 }
 
@@ -167,10 +290,92 @@ async function unlinkItem(linkId: string) {
   }
 }
 
+// --- Create mode ---
+async function switchToCreate() {
+  mode.value = 'create'
+  if (!createDataLoaded.value) {
+    await loadCreateData()
+  }
+}
+
+async function loadCreateData() {
+  try {
+    const [boardsData, membersData, taskData] = await Promise.all([
+      $fetch<any[]>('/api/agency/boards'),
+      $fetch<any>('/api/agency/team-members'),
+      $fetch<any>(`/api/agency/tasks/${props.taskId}`),
+    ])
+    boards.value = (boardsData || []).map((b: any) => ({ id: b.id, name: b.name }))
+    members.value = ((membersData?.members ?? membersData) || [])
+      .filter((m: any) => m.isActive !== false)
+      .map((m: any) => ({ id: m.id, name: m.name }))
+    sourceProjectId.value = taskData?.projectId || taskData?.project_id || null
+    createDataLoaded.value = true
+  } catch (err) {
+    console.error('Failed to load create form data:', err)
+    toast.add({ title: 'Error', description: 'Failed to load boards/members', color: 'error' })
+  }
+}
+
+async function createAndLink() {
+  if (!newTask.title.trim() || !newTask.departmentId) return
+  creating.value = true
+  try {
+    // Create the task on the selected board, inheriting the source task's project
+    const created = await $fetch<{ id: string }>('/api/agency/tasks', {
+      method: 'POST',
+      body: {
+        departmentId: newTask.departmentId,
+        title: newTask.title.trim(),
+        priority: newTask.priority,
+        assigneeId: newTask.assigneeId && newTask.assigneeId !== '_none' ? newTask.assigneeId : undefined,
+        projectId: sourceProjectId.value || undefined,
+      },
+    })
+
+    // Link the new task to the source task
+    await $fetch(`/api/agency/tasks/${props.taskId}/linked-items`, {
+      method: 'POST',
+      body: { linkedTaskId: created.id },
+    })
+
+    // Reset form
+    newTask.title = ''
+    newTask.assigneeId = '_none'
+    newTask.priority = 'medium'
+    mode.value = 'search'
+
+    // Refresh links
+    await fetchLinks()
+    emit('updated', links.value.length)
+    toast.add({ title: 'Task created & linked', color: 'success' })
+  } catch (err: any) {
+    toast.add({ title: 'Failed to create task', description: err.data?.statusMessage || 'Unknown error', color: 'error' })
+  } finally {
+    creating.value = false
+  }
+}
+
+// --- Watchers ---
 watch(searchQuery, (val) => {
   if (searchTimeout) clearTimeout(searchTimeout)
   searchTimeout = setTimeout(() => searchTasks(val), 300)
 })
 
-onMounted(fetchLinks)
+watch(() => props.taskId, () => {
+  links.value = []
+  searchQuery.value = ''
+  searchResults.value = []
+  loading.value = true
+  mode.value = 'search'
+  createDataLoaded.value = false
+  fetchLinks()
+})
+
+onMounted(() => {
+  fetchLinks()
+  if (props.initialMode === 'create') {
+    loadCreateData()
+  }
+})
 </script>

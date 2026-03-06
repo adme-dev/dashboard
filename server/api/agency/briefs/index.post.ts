@@ -4,6 +4,7 @@
 
 import { queryOne, queryRows, execute } from '~~/server/utils/db'
 import { getAuthUser } from '~~/server/utils/auth'
+import { notifyBriefSubmitted, notifyBriefAssigned } from '~~/server/utils/briefNotifications'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -46,6 +47,7 @@ export default defineEventHandler(async (event) => {
     const template = await queryOne(`
       SELECT
         bt.id,
+        bt.name,
         bt.default_priority,
         bt.requires_approval,
         bt.auto_assign_to,
@@ -204,6 +206,29 @@ export default defineEventHandler(async (event) => {
         INSERT INTO brief_activities (brief_id, user_id, activity_type, new_value, content)
         VALUES ($1, $2, 'assigned', $3, 'Auto-assigned based on template settings')
       `, [brief.id, submittedBy, JSON.stringify({ assigneeId: assignedTo })])
+    }
+
+    // Notify on submission (fire-and-forget)
+    if (!isDraft && submittedBy) {
+      const templateName = template.name || 'Brief'
+      notifyBriefSubmitted({
+        briefId: brief.id,
+        briefTitle: title.trim(),
+        referenceNumber: brief.reference_number,
+        submitterId: submittedBy,
+        templateName
+      }).catch(err => console.error('[Brief] Submit notification error:', err))
+    }
+
+    // Notify assignee (fire-and-forget)
+    if (assignedTo && submittedBy) {
+      notifyBriefAssigned({
+        briefId: brief.id,
+        briefTitle: title.trim(),
+        referenceNumber: brief.reference_number,
+        assigneeId: assignedTo,
+        assignerId: submittedBy
+      }).catch(err => console.error('[Brief] Assign notification error:', err))
     }
 
     return {

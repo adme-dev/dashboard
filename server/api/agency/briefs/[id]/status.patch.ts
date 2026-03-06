@@ -4,6 +4,8 @@
 
 import { queryOne, execute } from '~~/server/utils/db'
 import { getAuthUser } from '~~/server/utils/auth'
+import { notifyBriefStatusChanged } from '~~/server/utils/briefNotifications'
+import { convertBriefToProject } from '~~/server/utils/briefConversion'
 
 const VALID_STATUSES = [
   'draft', 'submitted', 'under_review', 'needs_info',
@@ -103,10 +105,55 @@ export default defineEventHandler(async (event) => {
       notes || `Status changed from ${oldStatus} to ${status}`
     ])
 
+    // Notify watchers (fire-and-forget)
+    const briefForNotif = await queryOne('SELECT title, reference_number FROM briefs WHERE id = $1', [id])
+    if (briefForNotif && userId) {
+      notifyBriefStatusChanged({
+        briefId: id,
+        briefTitle: briefForNotif.title,
+        referenceNumber: briefForNotif.reference_number,
+        oldStatus,
+        newStatus: status,
+        actorId: userId
+      }).catch(err => console.error('[Brief] Notification error:', err))
+    }
+
+    // Auto-convert to project on approval
+    let autoConvertResult = null
+    if (status === 'approved' && userId) {
+      try {
+        const templateInfo = await queryOne(`
+          SELECT bt.project_template_id, bt.auto_convert_on_approval, bt.field_mapping
+          FROM brief_templates bt
+          WHERE bt.id = (SELECT template_id FROM briefs WHERE id = $1)
+        `, [id])
+
+        if (templateInfo?.auto_convert_on_approval && templateInfo.project_template_id) {
+          const briefData = await queryOne('SELECT title, client_id FROM briefs WHERE id = $1', [id])
+          if (briefData) {
+            autoConvertResult = await convertBriefToProject({
+              briefId: id,
+              userId,
+              projectTemplateId: templateInfo.project_template_id,
+              projectName: briefData.title || 'Untitled Project'
+            })
+          }
+        }
+      } catch (convertError) {
+        console.error('[Brief] Auto-convert failed:', convertError)
+        // Don't throw — status change already succeeded
+      }
+    }
+
     return {
       id,
       status,
-      message: `Brief status updated to ${status}`
+      message: `Brief status updated to ${status}`,
+      autoConvert: autoConvertResult ? {
+        projectId: autoConvertResult.project.id,
+        projectName: autoConvertResult.project.name,
+        tasksCreated: autoConvertResult.tasksCreated
+      } : null
     }
   } catch (error: any) {
     if (error.statusCode) throw error

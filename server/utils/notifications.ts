@@ -24,6 +24,10 @@ export type NotificationType =
   | 'ai_digest'
   | 'chat_mention'
   | 'chat_dm'
+  | 'brief_status_changed'
+  | 'brief_commented'
+  | 'brief_assigned'
+  | 'brief_submitted'
 
 interface CreateNotificationParams {
   userId: string

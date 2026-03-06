@@ -4,6 +4,7 @@
 
 import { queryOne, execute } from '~~/server/utils/db'
 import { getAuthUser } from '~~/server/utils/auth'
+import { notifyBriefCommented } from '~~/server/utils/briefNotifications'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
@@ -68,6 +69,19 @@ export default defineEventHandler(async (event) => {
       INSERT INTO brief_activities (brief_id, user_id, activity_type, content)
       VALUES ($1, $2, 'commented', $3)
     `, [id, userId, isInternal ? 'Internal comment added' : 'Comment added'])
+
+    // Notify watchers (fire-and-forget)
+    const briefForNotif = await queryOne('SELECT title, reference_number FROM briefs WHERE id = $1', [id])
+    if (briefForNotif && userId) {
+      notifyBriefCommented({
+        briefId: id,
+        briefTitle: briefForNotif.title,
+        referenceNumber: briefForNotif.reference_number,
+        commenterId: userId,
+        commentSnippet: content.trim().substring(0, 100),
+        isInternal
+      }).catch(err => console.error('[Brief] Comment notification error:', err))
+    }
 
     // Get user info
     let user = null

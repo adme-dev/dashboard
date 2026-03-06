@@ -161,24 +161,58 @@ async function searchTasks(userId: string, keywords: string[]): Promise<ContextI
 async function searchBriefs(keywords: string[]): Promise<ContextItem[]> {
   const pattern = keywords.length > 0 ? keywords.join('|') : '.*'
   const rows = await queryRows(`
-    SELECT b.id, b.title, b.status, c.name as client_name,
-           b.created_at
+    SELECT b.id, b.title, b.status, b.reference_number, b.priority,
+           b.updated_at, b.created_at,
+           c.name as client_name,
+           bt.name as template_name,
+           bc.name as category_name,
+           u.name as assignee_name,
+           (
+             SELECT string_agg(bfv.value, ' | ' ORDER BY btf.sort_order)
+             FROM brief_field_values bfv
+             JOIN brief_template_fields btf ON btf.id = bfv.field_id
+             WHERE bfv.brief_id = b.id
+               AND btf.field_type IN ('text', 'textarea', 'richtext')
+               AND bfv.value IS NOT NULL AND bfv.value != ''
+             LIMIT 3
+           ) as field_preview
     FROM briefs b
     LEFT JOIN agency_clients c ON b.client_id = c.id
+    LEFT JOIN brief_templates bt ON b.template_id = bt.id
+    LEFT JOIN brief_categories bc ON bt.category_id = bc.id
+    LEFT JOIN users u ON b.assigned_to = u.id
     WHERE b.title ~* $1
        OR c.name ~* $1
-    ORDER BY b.created_at DESC
-    LIMIT 5
+       OR b.reference_number ~* $1
+       OR EXISTS (
+         SELECT 1 FROM brief_field_values bfv
+         WHERE bfv.brief_id = b.id AND bfv.value ~* $1
+       )
+    ORDER BY b.updated_at DESC NULLS LAST
+    LIMIT 8
   `, [pattern])
 
-  return rows.map(r => ({
-    type: 'brief',
-    id: r.id,
-    title: r.title || 'Untitled Brief',
-    snippet: `Client: ${r.client_name || 'Unknown'} | Status: ${r.status}`,
-    url: `/agency/briefs/${r.id}`,
-    updatedAt: r.created_at,
-  }))
+  return rows.map(r => {
+    const parts = [
+      r.client_name ? `Client: ${r.client_name}` : null,
+      `Status: ${r.status}`,
+      r.template_name ? `Type: ${r.template_name}` : null,
+      r.category_name ? `Category: ${r.category_name}` : null,
+      r.assignee_name ? `Assignee: ${r.assignee_name}` : null,
+      r.reference_number ? `Ref: ${r.reference_number}` : null,
+    ].filter(Boolean).join(' | ')
+
+    const preview = r.field_preview ? ` — ${String(r.field_preview).slice(0, 200)}` : ''
+
+    return {
+      type: 'brief' as const,
+      id: r.id,
+      title: r.title || 'Untitled Brief',
+      snippet: parts + preview,
+      url: `/agency/briefs/${r.id}`,
+      updatedAt: r.updated_at || r.created_at,
+    }
+  })
 }
 
 async function searchBoards(userId: string): Promise<ContextItem[]> {

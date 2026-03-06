@@ -6,12 +6,19 @@ definePageMeta({
   title: 'Project Briefs'
 })
 
+const toast = useToast()
 const { user } = useAuth()
 
 // Filters
 const statusFilter = ref<BriefStatus | 'all'>('all')
 const categoryFilter = ref<string | null>(null)
 const searchQuery = ref('')
+
+// Bulk selection
+const selectedBriefs = ref<Set<string>>(new Set())
+const bulkStatusValue = ref<string>('none')
+const bulkAssignValue = ref<string>('none')
+const isBulkUpdating = ref(false)
 
 // Fetch briefs
 const { data: briefs, pending, refresh } = await useFetch('/api/agency/briefs', {
@@ -23,6 +30,9 @@ const { data: briefs, pending, refresh } = await useFetch('/api/agency/briefs', 
 
 // Fetch categories for filter
 const { data: categories } = await useFetch('/api/agency/briefs/categories')
+
+// Fetch team members for bulk assign
+const { data: teamMembers } = await useFetch('/api/agency/team')
 
 // Status options
 const statusOptions = [
@@ -36,6 +46,29 @@ const statusOptions = [
   { label: 'In Progress', value: 'in_progress' },
   { label: 'Completed', value: 'completed' }
 ]
+
+// Bulk status options (sentinel 'none' instead of empty string)
+const bulkStatusOptions = [
+  { label: 'Change Status...', value: 'none' },
+  { label: 'Draft', value: 'draft' },
+  { label: 'Submitted', value: 'submitted' },
+  { label: 'Under Review', value: 'under_review' },
+  { label: 'Needs Info', value: 'needs_info' },
+  { label: 'Approved', value: 'approved' },
+  { label: 'Rejected', value: 'rejected' },
+  { label: 'In Progress', value: 'in_progress' },
+  { label: 'Completed', value: 'completed' }
+]
+
+// Bulk assign options
+const bulkAssignOptions = computed(() => {
+  const options = [{ label: 'Assign To...', value: 'none' }]
+  const members = (teamMembers.value as any)?.members || teamMembers.value || []
+  for (const m of members) {
+    options.push({ label: m.name || m.email, value: m.id })
+  }
+  return options
+})
 
 // Category options for dropdown
 const categoryOptions = computed(() => {
@@ -115,6 +148,7 @@ const formatStatus = (status: string) => {
 
 // Table columns
 const columns = [
+  { accessorKey: 'select', header: '', size: 40 },
   { accessorKey: 'reference', header: 'Reference', enableSorting: true },
   { accessorKey: 'title', header: 'Title', enableSorting: true },
   { accessorKey: 'templateName', header: 'Type', enableSorting: true },
@@ -123,6 +157,84 @@ const columns = [
   { accessorKey: 'submittedAt', header: 'Submitted', enableSorting: true },
   { accessorKey: 'actions', header: '' }
 ]
+
+// Bulk selection helpers
+const allSelected = computed(() =>
+  filteredBriefs.value.length > 0 && selectedBriefs.value.size === filteredBriefs.value.length
+)
+
+function toggleSelectAll() {
+  if (allSelected.value) {
+    selectedBriefs.value = new Set()
+  } else {
+    selectedBriefs.value = new Set(filteredBriefs.value.map((b: any) => b.id))
+  }
+}
+
+function toggleSelect(id: string) {
+  const next = new Set(selectedBriefs.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selectedBriefs.value = next
+}
+
+function clearSelection() {
+  selectedBriefs.value = new Set()
+  bulkStatusValue.value = 'none'
+  bulkAssignValue.value = 'none'
+}
+
+// Bulk status update
+async function applyBulkStatus() {
+  if (bulkStatusValue.value === 'none' || selectedBriefs.value.size === 0) return
+  isBulkUpdating.value = true
+  try {
+    await $fetch('/api/agency/briefs/bulk/status', {
+      method: 'PATCH',
+      body: {
+        briefIds: Array.from(selectedBriefs.value),
+        status: bulkStatusValue.value
+      }
+    })
+    toast.add({ title: 'Status Updated', description: `${selectedBriefs.value.size} brief(s) updated`, color: 'success' })
+    clearSelection()
+    refresh()
+  } catch (err: any) {
+    toast.add({ title: 'Error', description: err.data?.statusMessage || 'Failed to update status', color: 'error' })
+  } finally {
+    isBulkUpdating.value = false
+  }
+}
+
+// Bulk assign
+async function applyBulkAssign() {
+  if (bulkAssignValue.value === 'none' || selectedBriefs.value.size === 0) return
+  isBulkUpdating.value = true
+  try {
+    await $fetch('/api/agency/briefs/bulk/assign', {
+      method: 'PATCH',
+      body: {
+        briefIds: Array.from(selectedBriefs.value),
+        assigneeId: bulkAssignValue.value
+      }
+    })
+    toast.add({ title: 'Briefs Assigned', description: `${selectedBriefs.value.size} brief(s) assigned`, color: 'success' })
+    clearSelection()
+    refresh()
+  } catch (err: any) {
+    toast.add({ title: 'Error', description: err.data?.statusMessage || 'Failed to assign briefs', color: 'error' })
+  } finally {
+    isBulkUpdating.value = false
+  }
+}
+
+// Watch bulk dropdowns to auto-apply
+watch(bulkStatusValue, (val) => {
+  if (val !== 'none') applyBulkStatus()
+})
+watch(bulkAssignValue, (val) => {
+  if (val !== 'none') applyBulkAssign()
+})
 
 // Actions dropdown items
 const getActions = (brief: any) => [
@@ -142,6 +254,13 @@ const getActions = (brief: any) => [
     <UDashboardPanel>
       <UDashboardNavbar title="Project Briefs">
         <template #right>
+          <UButton
+            label="Analytics"
+            icon="i-lucide-bar-chart-3"
+            variant="outline"
+            color="neutral"
+            to="/agency/briefs/analytics"
+          />
           <UButton
             label="Submit New Brief"
             icon="i-lucide-plus"
@@ -181,7 +300,7 @@ const getActions = (brief: any) => [
         </div>
 
         <!-- Filters -->
-        <div class="flex flex-wrap gap-4 mb-6">
+        <div class="flex flex-wrap items-center gap-4 mb-6">
           <UInput
             v-model="searchQuery"
             icon="i-lucide-search"
@@ -191,14 +310,14 @@ const getActions = (brief: any) => [
 
           <USelectMenu
             v-model="statusFilter"
-            :options="statusOptions"
+            :items="statusOptions"
             placeholder="Status"
             class="w-40"
           />
 
           <USelectMenu
             v-model="categoryFilter"
-            :options="categoryOptions"
+            :items="categoryOptions"
             placeholder="Category"
             class="w-48"
           />
@@ -219,6 +338,20 @@ const getActions = (brief: any) => [
             :data="filteredBriefs"
             :loading="pending"
           >
+            <template #select-cell="{ row }">
+              <UCheckbox
+                :model-value="selectedBriefs.has((row.original as any).id)"
+                @update:model-value="toggleSelect((row.original as any).id)"
+              />
+            </template>
+
+            <template #select-header>
+              <UCheckbox
+                :model-value="allSelected"
+                @update:model-value="toggleSelectAll"
+              />
+            </template>
+
             <template #reference-cell="{ row }">
               <NuxtLink
                 :to="`/agency/briefs/${(row.original as any).id}`"
@@ -279,5 +412,49 @@ const getActions = (brief: any) => [
         </UCard>
       </div>
     </UDashboardPanel>
+
+    <!-- Floating Bulk Action Bar -->
+    <Transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="translate-y-full opacity-0"
+      enter-to-class="translate-y-0 opacity-100"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="translate-y-0 opacity-100"
+      leave-to-class="translate-y-full opacity-0"
+    >
+      <div
+        v-if="selectedBriefs.size > 0"
+        class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-elevated border border-default rounded-xl shadow-lg px-4 py-3 flex items-center gap-4"
+      >
+        <span class="text-sm font-medium whitespace-nowrap">
+          {{ selectedBriefs.size }} selected
+        </span>
+
+        <USelectMenu
+          v-model="bulkStatusValue"
+          :items="bulkStatusOptions"
+          placeholder="Change Status..."
+          :disabled="isBulkUpdating"
+          class="w-44"
+        />
+
+        <USelectMenu
+          v-model="bulkAssignValue"
+          :items="bulkAssignOptions"
+          placeholder="Assign To..."
+          :disabled="isBulkUpdating"
+          class="w-44"
+        />
+
+        <UButton
+          label="Clear"
+          variant="ghost"
+          size="sm"
+          icon="i-lucide-x"
+          :disabled="isBulkUpdating"
+          @click="clearSelection"
+        />
+      </div>
+    </Transition>
   </div>
 </template>

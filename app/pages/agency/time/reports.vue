@@ -118,31 +118,34 @@ const periodLabel = computed(() => {
 </script>
 
 <template>
-  <div class="flex-1 min-w-0">
-    <UDashboardPanel>
+  <div class="flex-1 min-w-0 min-h-0">
+    <UDashboardPanel :ui="{ root: 'max-h-svh' }">
       <UDashboardNavbar title="Utilization Reports">
         <template #right>
-          <UButtonGroup>
+          <div class="inline-flex rounded-md shadow-xs">
             <UButton
               :variant="dateRange === 'month' ? 'solid' : 'outline'"
               label="Month"
+              class="rounded-r-none"
               @click="dateRange = 'month'"
             />
             <UButton
               :variant="dateRange === 'quarter' ? 'solid' : 'outline'"
               label="Quarter"
+              class="rounded-none -ml-px"
               @click="dateRange = 'quarter'"
             />
             <UButton
               :variant="dateRange === 'year' ? 'solid' : 'outline'"
               label="Year"
+              class="rounded-l-none -ml-px"
               @click="dateRange = 'year'"
             />
-          </UButtonGroup>
+          </div>
         </template>
       </UDashboardNavbar>
 
-      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
+      <div class="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6">
         <!-- Period Navigation -->
         <div class="flex items-center justify-center gap-4 mb-6">
           <UButton variant="ghost" icon="i-lucide-chevron-left" @click="prevPeriod" />

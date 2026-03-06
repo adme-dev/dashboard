@@ -99,7 +99,7 @@
                       >
                         <UIcon name="i-lucide-chevron-right" class="w-3.5 h-3.5 text-gray-500 dark:text-neutral-400" />
                       </button>
-                      <p class="text-sm font-medium truncate">{{ item.title }}</p>
+                      <p class="text-sm font-medium truncate min-w-0 flex-1">{{ item.title }}</p>
                       <!-- Subitem count badge -->
                       <span
                         v-if="subitemHelper.getCount(item.id)"
@@ -107,6 +107,14 @@
                       >
                         {{ subitemHelper.getCount(item.id)!.completed }}/{{ subitemHelper.getCount(item.id)!.total }}
                       </span>
+                      <!-- Task context menu -->
+                      <div class="ml-auto flex-shrink-0" @click.stop>
+                        <UDropdownMenu :items="taskMenuItems(item, group)">
+                          <button class="opacity-0 group-hover/row:opacity-100 p-1 hover:bg-gray-200 dark:hover:bg-neutral-700 rounded transition-opacity">
+                            <UIcon name="i-lucide-more-horizontal" class="w-3.5 h-3.5 text-gray-500 dark:text-neutral-400" />
+                          </button>
+                        </UDropdownMenu>
+                      </div>
                     </div>
                   </div>
                   <div v-for="col in columns" :key="col.id" class="px-2 py-1 border-r border-gray-200 dark:border-neutral-700" :style="{ width: (col.width || 150) + 'px' }" @click.stop>
@@ -123,6 +131,7 @@
                 <!-- Inline Subitems -->
                 <BoardSubitemRows
                   v-if="subitemHelper.isExpanded(item.id)"
+                  :ref="(el: any) => { if (el) subitemRowRefs.set(item.id, el) }"
                   :parent-task-id="item.id"
                   :board-id="resolvedBoardId"
                   :columns="columns"
@@ -130,6 +139,9 @@
                   :get-cell-value="getCellValue"
                   :handle-cell-update="handleCellUpdate"
                   :open-task="openTask"
+                  @delete-subitem="(id: string) => { taskToDelete = id }"
+                  @link-subitem="(id: string) => { linkPickerTaskId = id }"
+                  @create-cross-board="(parentId: string) => openCrossBoardCreate(parentId)"
                 />
               </template>
 
@@ -419,6 +431,41 @@
     @update:open="showChatFeed = $event"
   />
 
+  <!-- Delete Task Confirmation -->
+  <UModal v-model:open="showDeleteTaskModal">
+    <template #header>
+      <h3 class="font-semibold">Delete Task</h3>
+    </template>
+    <template #body>
+      <p class="text-gray-600 dark:text-neutral-300">
+        Are you sure? This will also delete all subtasks and linked items.
+      </p>
+    </template>
+    <template #footer>
+      <div class="flex justify-end gap-2">
+        <UButton variant="ghost" label="Cancel" @click="taskToDelete = null" />
+        <UButton color="error" label="Delete" @click="executeDeleteTask" />
+      </div>
+    </template>
+  </UModal>
+
+  <!-- Link Picker Modal -->
+  <UModal v-model:open="showLinkPickerModal">
+    <template #header>
+      <h3 class="font-semibold">Link to Task</h3>
+    </template>
+    <template #body>
+      <LinkedItemPicker
+        v-if="linkPickerTaskId"
+        :task-id="linkPickerTaskId"
+        :initial-mode="crossBoardParentId ? 'create' : 'search'"
+        headless
+        @updated="onLinkPickerUpdated"
+        @close="closeLinkPicker"
+      />
+    </template>
+  </UModal>
+
   <!-- Task Slideover -->
   <USlideover
     v-model:open="showTaskPanel"
@@ -533,6 +580,7 @@ import BoardTemplateChooser from '~/components/board/BoardTemplateChooser.vue'
 import BoardAutomationBuilder from '~/components/board/BoardAutomationBuilder.vue'
 import BoardChatFeedSettings from '~/components/board/BoardChatFeedSettings.vue'
 import BoardSubitemRows from '~/components/board/BoardSubitemRows.vue'
+import LinkedItemPicker from '~/components/board/LinkedItemPicker.vue'
 import SubtaskList from '~/components/task/SubtaskList.vue'
 import TaskCommentThread from '~/components/task/CommentThread.vue'
 import TaskBillingPanel from '~/components/task/TaskBillingPanel.vue'
@@ -751,6 +799,118 @@ async function addColumn() {
   newColumn.value = { name: '', type: '' }
   showAddColumn.value = false
   refreshColumns()
+}
+
+// --- Task Context Menu ---
+
+const subitemRowRefs = new Map<string, any>()
+const crossBoardParentId = ref<string | null>(null)
+
+function openCrossBoardCreate(parentTaskId: string) {
+  crossBoardParentId.value = parentTaskId
+  linkPickerTaskId.value = parentTaskId
+}
+
+const taskToDelete = ref<string | null>(null)
+const showDeleteTaskModal = computed({
+  get: () => taskToDelete.value !== null,
+  set: (val: boolean) => { if (!val) taskToDelete.value = null },
+})
+const linkPickerTaskId = ref<string | null>(null)
+const showLinkPickerModal = computed({
+  get: () => linkPickerTaskId.value !== null,
+  set: (val: boolean) => { if (!val) { linkPickerTaskId.value = null; crossBoardParentId.value = null } },
+})
+
+function onLinkPickerUpdated() {
+  // Refresh the board data
+  refresh()
+  // If this was triggered from a cross-board create within subitems, refresh that row's linked tasks
+  const parentId = crossBoardParentId.value || linkPickerTaskId.value
+  if (parentId) {
+    const rowRef = subitemRowRefs.get(parentId)
+    if (rowRef?.refreshLinked) {
+      rowRef.refreshLinked()
+    }
+  }
+}
+
+function closeLinkPicker() {
+  linkPickerTaskId.value = null
+  crossBoardParentId.value = null
+}
+
+function taskMenuItems(item: { id: string; title: string }, group: BoardGroup) {
+  const groups = containerRef.value?.groups || []
+  const moveToGroupItems = (groups as BoardGroup[])
+    .filter((g) => isRealGroup(g.id) && g.id !== group.id)
+    .map((g) => ({
+      label: g.name,
+      icon: 'i-lucide-folder' as const,
+      onSelect: () => moveTaskToGroup(item.id, g.id),
+    }))
+
+  return [
+    [
+      { label: 'Open', icon: 'i-lucide-external-link' as const, onSelect: () => openTask(item.id) },
+      { label: 'Add subtask', icon: 'i-lucide-list-plus' as const, onSelect: () => startAddSubitem(item.id) },
+      { label: 'Link to task...', icon: 'i-lucide-link-2' as const, onSelect: () => { linkPickerTaskId.value = item.id } },
+    ],
+    [
+      { label: 'Duplicate', icon: 'i-lucide-copy' as const, onSelect: () => duplicateTask(item.id) },
+      ...(moveToGroupItems.length > 0 ? [{
+        label: 'Move to group',
+        icon: 'i-lucide-arrow-right' as const,
+        children: moveToGroupItems,
+      }] : []),
+    ],
+    [
+      { label: 'Delete', icon: 'i-lucide-trash-2' as const, color: 'error' as const, onSelect: () => { taskToDelete.value = item.id } },
+    ],
+  ]
+}
+
+function startAddSubitem(taskId: string) {
+  if (!subitemHelper.isExpanded(taskId)) {
+    subitemHelper.toggleExpand(taskId, resolvedBoardId.value)
+  }
+}
+
+async function duplicateTask(taskId: string) {
+  try {
+    await $fetch(`/api/agency/tasks/${taskId}/duplicate`, { method: 'POST' })
+    await refresh()
+    toast.add({ title: 'Task duplicated', color: 'success' })
+  } catch (err: any) {
+    toast.add({ title: 'Failed to duplicate', description: err.data?.statusMessage, color: 'error' })
+  }
+}
+
+async function moveTaskToGroup(taskId: string, groupId: string) {
+  try {
+    await $fetch(`/api/agency/tasks/${taskId}`, {
+      method: 'PUT',
+      body: { groupId },
+    })
+    await refresh()
+    toast.add({ title: 'Task moved', color: 'success' })
+  } catch (err: any) {
+    toast.add({ title: 'Failed to move task', color: 'error' })
+  }
+}
+
+async function executeDeleteTask() {
+  if (!taskToDelete.value) return
+  try {
+    await $fetch(`/api/agency/tasks/${taskToDelete.value}`, { method: 'DELETE' })
+    taskToDelete.value = null
+    // Reset subitems cache so counts and lists refresh
+    subitemHelper.reset()
+    await refresh()
+    toast.add({ title: 'Task deleted', color: 'success' })
+  } catch (err: any) {
+    toast.add({ title: 'Failed to delete task', color: 'error' })
+  }
 }
 
 function columnMenuItems(col: BoardColumn) {

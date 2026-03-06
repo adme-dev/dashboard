@@ -113,6 +113,32 @@
       </div>
     </div>
 
+    <!-- Linked Items Section -->
+    <div class="border border-gray-200 dark:border-neutral-700 rounded-lg">
+      <button
+        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-900 dark:text-neutral-100 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors"
+        @click="toggleLinkedItems"
+      >
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-link-2" class="w-4 h-4 text-gray-500 dark:text-neutral-400" />
+          <span>Linked Items</span>
+          <span v-if="linkedItemCount > 0" class="text-xs text-gray-400 dark:text-neutral-500">({{ linkedItemCount }})</span>
+        </div>
+        <UIcon
+          :name="showLinkedItems ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+          class="w-4 h-4 text-gray-400 dark:text-neutral-500"
+        />
+      </button>
+      <div v-if="showLinkedItems" class="border-t border-gray-200 dark:border-neutral-700">
+        <LinkedItemPicker
+          :task-id="taskId"
+          headless
+          @updated="(count: number) => linkedItemCount = count"
+          @close="showLinkedItems = false"
+        />
+      </div>
+    </div>
+
     <!-- Activity Log Section -->
     <div class="border border-gray-200 dark:border-neutral-700 rounded-lg">
       <button
@@ -136,6 +162,8 @@
 </template>
 
 <script setup lang="ts">
+import LinkedItemPicker from '~/components/board/LinkedItemPicker.vue'
+
 interface Props {
   taskId: string
 }
@@ -158,7 +186,13 @@ const toast = useToast()
 
 const showInfo = ref(true)
 const showFiles = ref(false)
+const showLinkedItems = ref(false)
+const linkedItemCount = ref(0)
 const showActivity = ref(false)
+
+function toggleLinkedItems() {
+  showLinkedItems.value = !showLinkedItems.value
+}
 
 // Files state
 const attachments = ref<Attachment[]>([])
@@ -277,6 +311,7 @@ function fileIconBg(type: string | null): string {
 watch(() => props.taskId, () => {
   attachments.value = []
   fileSearch.value = ''
+  linkedItemCount.value = 0
   if (showFiles.value) {
     fetchAttachments()
   }

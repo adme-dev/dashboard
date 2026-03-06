@@ -645,7 +645,10 @@
 </template>
 
 <script setup lang="ts">
-definePageMeta({})
+definePageMeta({
+  title: 'Template Details',
+  middleware: ['auth']
+})
 
 const route = useRoute()
 const router = useRouter()

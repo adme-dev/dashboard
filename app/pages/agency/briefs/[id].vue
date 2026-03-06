@@ -38,6 +38,18 @@ const isSubmittingComment = ref(false)
 const isUpdatingStatus = ref(false)
 const selectedStatus = ref<BriefStatus | null>(null)
 
+// Convert to project state
+const showConvertModal = ref(false)
+const convertProjectName = ref('')
+const convertStartDate = ref(new Date().toISOString().split('T')[0])
+const isConverting = ref(false)
+
+// Can convert: approved and not yet converted
+const canConvert = computed(() => {
+  if (!brief.value) return false
+  return brief.value.status === 'approved' && !brief.value.convertedToProjectId
+})
+
 // Available status transitions based on current status
 const availableStatuses = computed(() => {
   if (!brief.value) return []
@@ -206,7 +218,7 @@ async function updateStatus(status: BriefStatus) {
   isUpdatingStatus.value = true
 
   try {
-    await $fetch(`/api/agency/briefs/${briefId.value}/status`, {
+    const result = await $fetch<any>(`/api/agency/briefs/${briefId.value}/status`, {
       method: 'PATCH',
       body: { status }
     })
@@ -220,6 +232,16 @@ async function updateStatus(status: BriefStatus) {
       color: 'success',
       duration: 3000
     })
+
+    // Show auto-convert notification if it happened
+    if (result?.autoConvert?.projectId) {
+      toast.add({
+        title: 'Project Created',
+        description: `Auto-created project "${result.autoConvert.projectName}" with ${result.autoConvert.tasksCreated} tasks`,
+        color: 'success',
+        duration: 5000
+      })
+    }
   } catch (error: any) {
     toast.add({
       title: 'Error',
@@ -229,6 +251,79 @@ async function updateStatus(status: BriefStatus) {
     })
   } finally {
     isUpdatingStatus.value = false
+  }
+}
+
+// Open convert modal
+function openConvertModal() {
+  convertProjectName.value = brief.value?.title || ''
+  convertStartDate.value = new Date().toISOString().split('T')[0]
+  showConvertModal.value = true
+}
+
+// Handle conversion
+async function handleConvert() {
+  if (!convertProjectName.value.trim()) return
+
+  isConverting.value = true
+
+  try {
+    const result = await $fetch<any>(`/api/agency/briefs/${briefId.value}/convert`, {
+      method: 'POST',
+      body: {
+        projectName: convertProjectName.value.trim(),
+        startDate: convertStartDate.value || undefined
+      }
+    })
+
+    showConvertModal.value = false
+    await refresh()
+    await refreshActivities()
+
+    toast.add({
+      title: 'Project Created',
+      description: `Created "${result.project.name}" with ${result.tasksCreated} tasks`,
+      color: 'success',
+      duration: 5000
+    })
+  } catch (error: any) {
+    toast.add({
+      title: 'Error',
+      description: error.data?.statusMessage || 'Failed to convert brief to project',
+      color: 'error',
+      duration: 5000
+    })
+  } finally {
+    isConverting.value = false
+  }
+}
+
+// Duplicate brief (uses dedicated endpoint that copies field values)
+const isDuplicating = ref(false)
+async function duplicateBrief() {
+  isDuplicating.value = true
+  try {
+    const result = await $fetch<any>(`/api/agency/briefs/${briefId.value}/duplicate`, {
+      method: 'POST'
+    })
+
+    toast.add({
+      title: 'Brief Duplicated',
+      description: `New draft created: ${result.referenceNumber}`,
+      color: 'success',
+      duration: 3000
+    })
+
+    navigateTo(`/agency/briefs/${result.id}`)
+  } catch (error: any) {
+    toast.add({
+      title: 'Error',
+      description: error.data?.statusMessage || 'Failed to duplicate brief',
+      color: 'error',
+      duration: 5000
+    })
+  } finally {
+    isDuplicating.value = false
   }
 }
 </script>
@@ -259,6 +354,15 @@ async function updateStatus(status: BriefStatus) {
               {{ formatStatus(brief.status) }}
             </UBadge>
 
+            <!-- Convert to Project Button -->
+            <UButton
+              v-if="canConvert"
+              icon="i-lucide-folder-plus"
+              @click="openConvertModal"
+            >
+              Convert to Project
+            </UButton>
+
             <!-- Status Actions -->
             <UDropdownMenu
               v-if="availableStatuses.length > 0 && isAdmin"
@@ -281,11 +385,9 @@ async function updateStatus(status: BriefStatus) {
               :items="[
                 [
                   { label: 'Edit Brief', icon: 'i-lucide-pencil', disabled: brief.status !== 'draft' },
+                  { label: 'Duplicate', icon: 'i-lucide-copy', click: duplicateBrief },
                   { label: 'Download PDF', icon: 'i-lucide-download' },
                   { label: 'Print', icon: 'i-lucide-printer' }
-                ],
-                [
-                  { label: 'Convert to Project', icon: 'i-lucide-folder-plus', disabled: brief.status !== 'approved' }
                 ]
               ]"
             >
@@ -614,6 +716,32 @@ async function updateStatus(status: BriefStatus) {
               </div>
             </UCard>
 
+            <!-- Converted Project -->
+            <UCard v-if="brief.convertedToProjectId">
+              <template #header>
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-lucide-folder-check" class="size-4 text-success" />
+                  <h3 class="font-semibold">Linked Project</h3>
+                </div>
+              </template>
+
+              <div class="space-y-2">
+                <NuxtLink
+                  :to="`/agency/projects/${brief.convertedToProjectId}`"
+                  class="flex items-center gap-2 text-primary hover:underline font-medium"
+                >
+                  <UIcon name="i-lucide-external-link" class="size-4" />
+                  {{ brief.project?.name || 'View Project' }}
+                </NuxtLink>
+                <p v-if="brief.convertedAt" class="text-xs text-muted">
+                  Converted {{ formatDistanceToNow(new Date(brief.convertedAt), { addSuffix: true }) }}
+                </p>
+              </div>
+            </UCard>
+
+            <!-- Completeness Score -->
+            <BriefsBriefCompletenessScore :brief-id="briefId" />
+
             <!-- Dates -->
             <UCard>
               <template #header>
@@ -635,5 +763,40 @@ async function updateStatus(status: BriefStatus) {
         </div>
       </div>
     </UDashboardPanel>
+
+    <!-- Convert to Project Modal -->
+    <UModal v-model:open="showConvertModal">
+      <template #content>
+        <div class="p-6 space-y-4">
+          <h3 class="text-lg font-semibold">Convert Brief to Project</h3>
+          <p class="text-sm text-muted">
+            This will create a new project from this brief. If the brief template has a linked project template, tasks will be auto-generated.
+          </p>
+
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium mb-1">Project Name</label>
+              <UInput v-model="convertProjectName" class="w-full" placeholder="Enter project name" />
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium mb-1">Start Date</label>
+              <UInput v-model="convertStartDate" type="date" class="w-full" />
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2 pt-4">
+            <UButton variant="ghost" @click="showConvertModal = false">Cancel</UButton>
+            <UButton
+              :loading="isConverting"
+              :disabled="!convertProjectName.trim()"
+              @click="handleConvert"
+            >
+              Create Project
+            </UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

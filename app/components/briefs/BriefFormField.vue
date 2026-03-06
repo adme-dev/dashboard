@@ -5,6 +5,9 @@ const props = defineProps<{
   field: BriefTemplateField
   modelValue: any
   disabled?: boolean
+  templateId?: string
+  clientId?: string
+  existingValues?: Record<string, any>
   clients?: { id: string; name: string }[]
   projects?: { id: string; name: string }[]
   departments?: { id: string; name: string; color: string }[]
@@ -164,7 +167,22 @@ const acceptedFileTypes = computed(() => {
 
     <!-- Text Input -->
     <template v-else-if="field.fieldType === 'text'">
-      <UFormField :name="field.fieldKey" :label="field.fieldLabel" :required="field.isRequired">
+      <UFormField :name="field.fieldKey" :required="field.isRequired">
+        <template #label>
+          <div class="flex items-center gap-1">
+            <span>{{ field.fieldLabel }}</span>
+            <BriefsAiFieldSuggestions
+              v-if="templateId && !disabled"
+              :template-id="templateId"
+              :field-key="field.fieldKey"
+              :field-type="field.fieldType"
+              :field-label="field.fieldLabel"
+              :client-id="clientId"
+              :existing-values="existingValues || {}"
+              @apply="(v: string) => value = v"
+            />
+          </div>
+        </template>
         <UInput
           v-model="value"
           :placeholder="field.placeholder"
@@ -227,7 +245,22 @@ const acceptedFileTypes = computed(() => {
 
     <!-- Textarea -->
     <template v-else-if="field.fieldType === 'textarea'">
-      <UFormField :name="field.fieldKey" :label="field.fieldLabel" :required="field.isRequired">
+      <UFormField :name="field.fieldKey" :required="field.isRequired">
+        <template #label>
+          <div class="flex items-center gap-1">
+            <span>{{ field.fieldLabel }}</span>
+            <BriefsAiFieldSuggestions
+              v-if="templateId && !disabled"
+              :template-id="templateId"
+              :field-key="field.fieldKey"
+              :field-type="field.fieldType"
+              :field-label="field.fieldLabel"
+              :client-id="clientId"
+              :existing-values="existingValues || {}"
+              @apply="(v: string) => value = v"
+            />
+          </div>
+        </template>
         <UTextarea
           v-model="value"
           :placeholder="field.placeholder"
@@ -243,7 +276,22 @@ const acceptedFileTypes = computed(() => {
 
     <!-- Rich Text -->
     <template v-else-if="field.fieldType === 'richtext'">
-      <UFormField :name="field.fieldKey" :label="field.fieldLabel" :required="field.isRequired">
+      <UFormField :name="field.fieldKey" :required="field.isRequired">
+        <template #label>
+          <div class="flex items-center gap-1">
+            <span>{{ field.fieldLabel }}</span>
+            <BriefsAiFieldSuggestions
+              v-if="templateId && !disabled"
+              :template-id="templateId"
+              :field-key="field.fieldKey"
+              :field-type="field.fieldType"
+              :field-label="field.fieldLabel"
+              :client-id="clientId"
+              :existing-values="existingValues || {}"
+              @apply="(v: string) => value = v"
+            />
+          </div>
+        </template>
         <UTextarea
           v-model="value"
           :placeholder="field.placeholder"

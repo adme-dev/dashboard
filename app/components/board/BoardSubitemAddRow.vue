@@ -14,6 +14,15 @@
           class="flex-1 text-sm bg-transparent border-none outline-none text-gray-600 dark:text-neutral-400 placeholder-gray-400 dark:placeholder-neutral-500"
           @keydown.enter="handleAdd"
         />
+        <!-- Cross-board task button -->
+        <UTooltip text="Create task on another board">
+          <button
+            class="p-1 rounded hover:bg-gray-200 dark:hover:bg-neutral-700 text-gray-400 dark:text-neutral-500 hover:text-blue-500 transition-colors flex-shrink-0"
+            @click.stop="$emit('createCrossBoard')"
+          >
+            <UIcon name="i-lucide-git-branch" class="w-3.5 h-3.5" />
+          </button>
+        </UTooltip>
       </div>
     </div>
   </div>
@@ -23,6 +32,10 @@
 const props = defineProps<{
   parentTaskId: string
   boardId: string
+}>()
+
+defineEmits<{
+  createCrossBoard: []
 }>()
 
 const newTitle = ref('')

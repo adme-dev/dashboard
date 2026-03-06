@@ -26,6 +26,7 @@ interface UpdateTaskBody {
   sortOrder?: number
   isBlocked?: boolean
   blockedReason?: string | null
+  groupId?: string | null
   labels?: string[]
 }
 
@@ -133,6 +134,10 @@ export default defineEventHandler(async (event) => {
 
     if (body.blockedReason !== undefined) {
       trackChange('blocked_reason', 'blocked_reason', body.blockedReason || null, currentTask.blocked_reason)
+    }
+
+    if (body.groupId !== undefined) {
+      trackChange('group', 'group_id', body.groupId || null, currentTask.group_id)
     }
 
     if (fields.length === 0 && body.labels === undefined) {

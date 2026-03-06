@@ -940,6 +940,143 @@ export async function sendAiDigestEmail(data: {
   }
 }
 
+// --- Brief notification email templates ---
+
+export async function sendBriefStatusEmail(data: {
+  to: string
+  name: string
+  briefTitle: string
+  referenceNumber: string
+  actorName: string
+  oldStatus: string
+  newStatus: string
+  briefUrl: string
+}): Promise<void> {
+  const client = getResendClient()
+  if (!client) {
+    console.log('[Email] Brief status email (no client) for', data.to)
+    return
+  }
+
+  const formatStatus = (s: string) =>
+    s.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+
+  const { html, text } = renderEmailTemplate({
+    title: `Brief status updated: ${escapeHtml(data.briefTitle)}`,
+    greeting: `Hi ${escapeHtml(data.name)},`,
+    bodyHtml: `
+      <p><strong>${escapeHtml(data.actorName)}</strong> updated the status of a brief:</p>
+      <div style="background: #f3f4f6; border-left: 4px solid ${BRAND_COLOR}; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;">
+        <p style="margin: 0 0 4px; font-weight: 600; font-size: 16px;">${escapeHtml(data.briefTitle)}</p>
+        <p style="margin: 0; color: #6b7280; font-size: 14px;">Ref: ${escapeHtml(data.referenceNumber)}</p>
+      </div>
+      <p><strong>Status:</strong> ${formatStatus(data.oldStatus)} &rarr; ${formatStatus(data.newStatus)}</p>
+    `,
+    ctaText: 'View Brief',
+    ctaUrl: data.briefUrl
+  })
+
+  try {
+    await client.emails.send({
+      from: getFromHeader(),
+      to: data.to,
+      subject: `Brief "${data.briefTitle}" status: ${formatStatus(data.newStatus)}`,
+      html,
+      text
+    })
+    console.log('[Email] Brief status email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send brief status email:', error)
+  }
+}
+
+export async function sendBriefCommentEmail(data: {
+  to: string
+  name: string
+  briefTitle: string
+  referenceNumber: string
+  commenterName: string
+  commentSnippet: string
+  isInternal: boolean
+  briefUrl: string
+}): Promise<void> {
+  const client = getResendClient()
+  if (!client) {
+    console.log('[Email] Brief comment email (no client) for', data.to)
+    return
+  }
+
+  const prefix = data.isInternal ? '[Internal] ' : ''
+
+  const { html, text } = renderEmailTemplate({
+    title: `${prefix}New comment on ${escapeHtml(data.briefTitle)}`,
+    greeting: `Hi ${escapeHtml(data.name)},`,
+    bodyHtml: `
+      <p><strong>${escapeHtml(data.commenterName)}</strong> commented on brief <strong>${escapeHtml(data.briefTitle)}</strong> (${escapeHtml(data.referenceNumber)}):</p>
+      <div style="background: #f3f4f6; border-left: 4px solid ${BRAND_COLOR}; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;">
+        <p style="margin: 0; color: #4b5563; font-style: italic;">"${escapeHtml(data.commentSnippet)}"</p>
+      </div>
+    `,
+    ctaText: 'View Brief',
+    ctaUrl: data.briefUrl
+  })
+
+  try {
+    await client.emails.send({
+      from: getFromHeader(),
+      to: data.to,
+      subject: `${prefix}${data.commenterName} commented on "${data.briefTitle}"`,
+      html,
+      text
+    })
+    console.log('[Email] Brief comment email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send brief comment email:', error)
+  }
+}
+
+export async function sendBriefAssignedEmail(data: {
+  to: string
+  name: string
+  briefTitle: string
+  referenceNumber: string
+  assignerName: string
+  briefUrl: string
+}): Promise<void> {
+  const client = getResendClient()
+  if (!client) {
+    console.log('[Email] Brief assigned email (no client) for', data.to)
+    return
+  }
+
+  const { html, text } = renderEmailTemplate({
+    title: `Brief assigned: ${escapeHtml(data.briefTitle)}`,
+    greeting: `Hi ${escapeHtml(data.name)},`,
+    bodyHtml: `
+      <p><strong>${escapeHtml(data.assignerName)}</strong> assigned you to a brief:</p>
+      <div style="background: #f3f4f6; border-left: 4px solid ${BRAND_COLOR}; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;">
+        <p style="margin: 0 0 4px; font-weight: 600; font-size: 16px;">${escapeHtml(data.briefTitle)}</p>
+        <p style="margin: 0; color: #6b7280; font-size: 14px;">Ref: ${escapeHtml(data.referenceNumber)}</p>
+      </div>
+    `,
+    ctaText: 'View Brief',
+    ctaUrl: data.briefUrl
+  })
+
+  try {
+    await client.emails.send({
+      from: getFromHeader(),
+      to: data.to,
+      subject: `You've been assigned: ${data.briefTitle}`,
+      html,
+      text
+    })
+    console.log('[Email] Brief assigned email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send brief assigned email:', error)
+  }
+}
+
 /**
  * Format a number as currency
  */

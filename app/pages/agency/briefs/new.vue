@@ -12,6 +12,8 @@ const { user } = useAuth()
 const selectedCategory = ref<BriefCategory | null>(null)
 const selectedTemplate = ref<BriefTemplate | null>(null)
 const isSubmitting = ref(false)
+const showAiGenerator = ref(false)
+const formRef = ref<any>(null)
 
 // Fetch categories with templates
 const { data: categories, pending: categoriesLoading } = await useFetch('/api/agency/briefs/categories')
@@ -113,6 +115,15 @@ function getCategoryIcon(category: any) {
   return category.icon || 'i-lucide-folder'
 }
 
+// Handle AI-generated values
+function handleAiApply(values: Record<string, any>) {
+  showAiGenerator.value = false
+  // BriefFormRenderer exposes an applyValues method or we can emit to it
+  if (formRef.value?.applyValues) {
+    formRef.value.applyValues(values)
+  }
+}
+
 // Get category color class
 function getCategoryColorClass(category: any) {
   const colors: Record<string, string> = {
@@ -148,9 +159,18 @@ function getCategoryColorClass(category: any) {
         </template>
 
         <template #right>
-          <div v-if="selectedTemplate" class="flex items-center gap-2 text-sm text-muted">
-            <UIcon name="i-lucide-info" class="size-4" />
-            <span>All fields marked with * are required</span>
+          <div v-if="selectedTemplate" class="flex items-center gap-3">
+            <UButton
+              icon="i-lucide-sparkles"
+              label="Generate with AI"
+              variant="outline"
+              size="sm"
+              @click="showAiGenerator = true"
+            />
+            <div class="flex items-center gap-2 text-sm text-muted">
+              <UIcon name="i-lucide-info" class="size-4" />
+              <span>All fields marked with * are required</span>
+            </div>
           </div>
         </template>
       </UDashboardNavbar>
@@ -316,6 +336,7 @@ function getCategoryColorClass(category: any) {
           <!-- Form -->
           <UCard v-else-if="templateData">
             <BriefsBriefFormRenderer
+              ref="formRef"
               :template="templateData as any"
               :disabled="isSubmitting"
               @submit="handleSubmit"
@@ -325,5 +346,14 @@ function getCategoryColorClass(category: any) {
         </div>
       </div>
     </UDashboardPanel>
+
+    <!-- AI Brief Generator Slideover -->
+    <BriefsAiBriefGenerator
+      v-if="showAiGenerator && selectedTemplate && templateData"
+      :template-id="(templateData as any).id"
+      :template-name="selectedTemplate.name"
+      @apply="handleAiApply"
+      @close="showAiGenerator = false"
+    />
   </div>
 </template>

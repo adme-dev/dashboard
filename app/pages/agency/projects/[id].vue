@@ -134,6 +134,29 @@ const expenseColumns = [
 
 // Active tab
 const activeTab = ref('overview')
+
+// Project Tasks (lazy-loaded on tab switch)
+const projectTasksByBoard = ref<Record<string, { boardName: string; boardSlug: string; tasks: any[] }>>({})
+const loadingTasks = ref(false)
+const tasksLoaded = ref(false)
+
+async function loadProjectTasks() {
+  if (tasksLoaded.value) return
+  loadingTasks.value = true
+  try {
+    const data = await $fetch<{ tasks: any[]; byBoard: Record<string, any> }>(`/api/agency/projects/${projectId}/tasks`)
+    projectTasksByBoard.value = data.byBoard
+    tasksLoaded.value = true
+  } catch (err) {
+    console.error('Failed to fetch project tasks:', err)
+  } finally {
+    loadingTasks.value = false
+  }
+}
+
+watch(activeTab, (tab) => {
+  if (tab === 'tasks') loadProjectTasks()
+})
 </script>
 
 <template>
@@ -227,6 +250,7 @@ const activeTab = ref('overview')
             v-model="activeTab"
             :items="[
               { label: 'Overview', value: 'overview', icon: 'i-lucide-layout-dashboard' },
+              { label: 'Tasks', value: 'tasks', icon: 'i-lucide-check-square' },
               { label: 'Time Entries', value: 'time', icon: 'i-lucide-clock' },
               { label: 'Expenses', value: 'expenses', icon: 'i-lucide-receipt' },
               { label: 'Invoices', value: 'invoices', icon: 'i-lucide-file-text' }
@@ -358,6 +382,60 @@ const activeTab = ref('overview')
                 </div>
               </div>
             </UCard>
+          </div>
+
+          <!-- Tasks Tab -->
+          <div v-if="activeTab === 'tasks'">
+            <div v-if="loadingTasks" class="flex items-center justify-center py-12">
+              <XfLoader />
+            </div>
+
+            <div v-else-if="Object.keys(projectTasksByBoard).length === 0" class="text-center py-12">
+              <UIcon name="i-lucide-check-square" class="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-neutral-600" />
+              <h3 class="font-medium">No tasks assigned to this project</h3>
+              <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1">Tasks linked to this project will appear here</p>
+            </div>
+
+            <div v-else class="space-y-6">
+              <UCard v-for="(boardGroup, boardId) in projectTasksByBoard" :key="boardId">
+                <template #header>
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                      <UIcon name="i-lucide-layout-grid" class="w-4 h-4 text-gray-500" />
+                      <h3 class="font-semibold">{{ boardGroup.boardName }}</h3>
+                      <UBadge size="xs" variant="subtle" color="neutral">{{ boardGroup.tasks.length }}</UBadge>
+                    </div>
+                    <UButton
+                      size="xs"
+                      variant="ghost"
+                      icon="i-lucide-external-link"
+                      :to="`/agency/boards/${boardGroup.boardSlug}`"
+                      label="Open Board"
+                    />
+                  </div>
+                </template>
+
+                <div class="divide-y divide-gray-100 dark:divide-neutral-800">
+                  <div
+                    v-for="task in boardGroup.tasks"
+                    :key="task.id"
+                    class="flex items-center gap-3 py-2.5 px-1 hover:bg-gray-50 dark:hover:bg-neutral-800 rounded cursor-pointer"
+                    @click="navigateTo(`/agency/boards/${boardGroup.boardSlug}?task=${task.id}`)"
+                  >
+                    <div class="w-2 h-2 rounded-full flex-shrink-0" :style="{ backgroundColor: task.statusColor }" />
+                    <p class="text-sm flex-1 truncate">{{ task.title }}</p>
+                    <UBadge size="xs" :color="task.statusCategory === 'done' ? 'success' : task.statusCategory === 'active' ? 'info' : 'neutral'" variant="subtle">
+                      {{ task.statusName }}
+                    </UBadge>
+                    <UAvatar v-if="task.assigneeName" :alt="task.assigneeName" :src="task.assigneeAvatar" size="2xs" />
+                    <span v-if="task.subtaskCount > 0" class="text-xs text-gray-400">
+                      {{ task.completedSubtaskCount }}/{{ task.subtaskCount }}
+                    </span>
+                    <span v-if="task.dueDate" class="text-xs text-gray-500">{{ formatDate(task.dueDate) }}</span>
+                  </div>
+                </div>
+              </UCard>
+            </div>
           </div>
 
           <!-- Time Entries Tab -->
