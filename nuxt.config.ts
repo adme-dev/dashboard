@@ -126,7 +126,7 @@ export default defineNuxtConfig({
       ignore: ['/agency', '/portal', '/admin', '/settings', '/api', '/chat', '/invoices', '/customers', '/insights', '/profit-loss', '/expenses', '/cashflow', '/reports', '/anomalies', '/recommendations', '/xeroflow', '/review', '/approve', '/intake'],
     },
     rollupConfig: {
-      external: ['@react-email/render', '@cloudflare/puppeteer', 'puppeteer', 'gifenc', 'pngjs']
+      external: ['@react-email/render', '@cloudflare/puppeteer', 'puppeteer', 'gifenc', 'pngjs', 'pg-native']
     }
   },
 
