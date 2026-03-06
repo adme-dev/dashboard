@@ -99,7 +99,7 @@ function togglePicker(event: MouseEvent) {
   if (props.readonly) return
   customColor.value = currentColor.value || '#000000'
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  pickerPosition.value = { x: rect.left, y: rect.bottom + 8 }
+  pickerPosition.value = computePopoverPosition(rect, 224, 300)
   showPicker.value = true
 }
 

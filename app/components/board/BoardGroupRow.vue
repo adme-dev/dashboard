@@ -1,5 +1,16 @@
 <template>
   <div class="flex items-center gap-2 px-4 py-3 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors group/header">
+    <!-- Drag Handle -->
+    <div
+      v-if="draggable"
+      class="cursor-grab active:cursor-grabbing p-0.5 rounded hover:bg-gray-200 dark:hover:bg-neutral-700 transition-colors opacity-0 group-hover/header:opacity-100"
+      :draggable="true"
+      @dragstart="$emit('dragstart', $event)"
+      @dragend="$emit('dragend', $event)"
+    >
+      <UIcon name="i-lucide-grip-vertical" class="w-4 h-4 text-gray-400 dark:text-neutral-500" />
+    </div>
+
     <!-- Expand/Collapse -->
     <button
       class="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-neutral-700 transition-colors"
@@ -71,6 +82,7 @@ const props = defineProps<{
   color: string
   taskCount: number
   isCollapsed: boolean
+  draggable?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -79,6 +91,8 @@ const emit = defineEmits<{
   updateColor: [color: string]
   delete: []
   addGroup: [position: 'above' | 'below']
+  dragstart: [event: DragEvent]
+  dragend: [event: DragEvent]
 }>()
 
 const showColorPicker = ref(false)

@@ -154,23 +154,7 @@ function isSelected(opt: any): boolean {
 function togglePicker(event: MouseEvent) {
   if (props.readonly) return
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  const popoverWidth = 360
-  const viewportWidth = window.innerWidth
-  const viewportHeight = window.innerHeight
-  // Clamp horizontal: prefer left-aligned, but shift left if it overflows
-  let x = rect.left
-  if (x + popoverWidth > viewportWidth - 8) {
-    x = viewportWidth - popoverWidth - 8
-  }
-  if (x < 8) x = 8
-  // Clamp vertical: show below by default, above if not enough space
-  let y = rect.bottom + 8
-  const estimatedHeight = 300
-  if (y + estimatedHeight > viewportHeight - 8) {
-    y = rect.top - estimatedHeight - 8
-    if (y < 8) y = 8
-  }
-  pickerPosition.value = { x, y }
+  pickerPosition.value = computePopoverPosition(rect, 360, 300)
   showPicker.value = true
   searchQuery.value = ''
 }

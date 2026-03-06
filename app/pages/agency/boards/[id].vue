@@ -17,7 +17,18 @@
       <div class="flex-1 overflow-auto p-4">
         <div class="min-w-max">
           <!-- Groups -->
-          <div v-for="group in groups" :key="group.id" class="mb-4 bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-700 relative">
+          <div
+            v-for="(group, groupIndex) in groups"
+            :key="group.id"
+            class="mb-4 bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-700 relative transition-all duration-150"
+            :class="{
+              'opacity-50': dragState.dragGroupId === group.id,
+              'border-t-2 border-t-blue-500': dragState.dropTargetIndex === groupIndex && dragState.dragGroupId !== group.id,
+            }"
+            @dragover.prevent="onGroupDragOver($event, groupIndex)"
+            @dragleave="onGroupDragLeave"
+            @drop.prevent="onGroupDrop(groups)"
+          >
             <!-- Group Header -->
             <BoardGroupRow
               :group-id="group.id"
@@ -25,11 +36,14 @@
               :color="group.color"
               :task-count="group.totalCount ?? group.items.length"
               :is-collapsed="!group.isExpanded"
+              :draggable="isRealGroup(group.id)"
               @toggle="toggleGroup(group)"
               @rename="(name) => renameGroup(group.id, name)"
               @update-color="(color) => updateGroupColor(group.id, color)"
               @delete="deleteGroup(group.id)"
               @add-group="(pos) => addGroupNear(group.id, pos)"
+              @dragstart="(e) => onGroupDragStart(e, group.id, groupIndex)"
+              @dragend="onGroupDragEnd"
             />
 
             <!-- Items Table -->
@@ -115,6 +129,15 @@
               />
             </div>
           </div>
+
+          <!-- Bottom drop zone -->
+          <div
+            v-if="dragState.dragGroupId"
+            class="h-4 rounded transition-all duration-150"
+            :class="{ 'bg-blue-100 dark:bg-blue-900/30': dragState.dropTargetIndex === groups.length }"
+            @dragover.prevent="dragState.dropTargetIndex = groups.length"
+            @drop.prevent="onGroupDrop(groups)"
+          />
 
           <!-- Empty -->
           <div v-if="!groups?.length" class="text-center py-12 bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-700">
@@ -755,6 +778,78 @@ async function confirmDeleteColumn() {
     refreshColumns()
   } catch (err) {
     console.error('Failed to delete column:', err)
+  }
+}
+
+// --- Group Drag & Drop ---
+
+const dragState = reactive({
+  dragGroupId: null as string | null,
+  dragGroupIndex: -1,
+  dropTargetIndex: -1,
+})
+
+function isRealGroup(groupId: string): boolean {
+  return groupId !== '__ungrouped__' && !groupId.startsWith('grouped_') && isUUID(groupId)
+}
+
+function onGroupDragStart(event: DragEvent, groupId: string, index: number) {
+  dragState.dragGroupId = groupId
+  dragState.dragGroupIndex = index
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', groupId)
+  }
+}
+
+function onGroupDragOver(event: DragEvent, targetIndex: number) {
+  if (!dragState.dragGroupId) return
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+  dragState.dropTargetIndex = targetIndex
+}
+
+function onGroupDragLeave() {
+  // Only clear if we leave the group area entirely (not entering a child)
+  // The dropTargetIndex will be updated by the next dragover
+}
+
+function onGroupDragEnd() {
+  dragState.dragGroupId = null
+  dragState.dragGroupIndex = -1
+  dragState.dropTargetIndex = -1
+}
+
+async function onGroupDrop(groups: any[]) {
+  const { dragGroupId, dragGroupIndex, dropTargetIndex } = dragState
+  onGroupDragEnd()
+
+  if (!dragGroupId || dragGroupIndex === dropTargetIndex || dropTargetIndex === -1) return
+
+  // Build reordered group IDs (only real groups)
+  const realGroups = groups.filter((g: any) => isRealGroup(g.id))
+  const currentIds = realGroups.map((g: any) => g.id)
+
+  const fromIndex = currentIds.indexOf(dragGroupId)
+  if (fromIndex === -1) return
+
+  // Calculate target index in the real groups array
+  const targetGroup = groups[dropTargetIndex]
+  let toIndex = currentIds.indexOf(targetGroup?.id)
+  if (toIndex === -1) toIndex = currentIds.length - 1
+
+  // Move the group
+  const newIds = [...currentIds]
+  newIds.splice(fromIndex, 1)
+  newIds.splice(toIndex, 0, dragGroupId)
+
+  try {
+    await $fetch(`/api/agency/boards/${boardId.value}/groups/reorder`, {
+      method: 'PATCH',
+      body: { groupIds: newIds },
+    })
+    await refresh()
+  } catch (err: any) {
+    toast.add({ title: 'Failed to reorder groups', color: 'error' })
   }
 }
 

@@ -30,6 +30,33 @@
           <UCalendar v-model="calendarModel" />
         </div>
 
+        <!-- Time Picker -->
+        <div class="mt-3 pt-3 border-t border-gray-200 dark:border-neutral-700">
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-clock" class="w-3.5 h-3.5 text-gray-400 dark:text-neutral-500 flex-shrink-0" />
+            <div class="flex items-center gap-1 flex-1">
+              <select
+                v-model="localHour"
+                class="w-16 px-2 py-1 text-sm border border-gray-200 dark:border-neutral-700 rounded-md bg-white dark:bg-neutral-800 text-gray-900 dark:text-neutral-100 outline-none focus:border-primary"
+              >
+                <option v-for="h in hours" :key="h" :value="h">{{ h }}</option>
+              </select>
+              <span class="text-gray-400 dark:text-neutral-500 font-medium">:</span>
+              <select
+                v-model="localMinute"
+                class="w-16 px-2 py-1 text-sm border border-gray-200 dark:border-neutral-700 rounded-md bg-white dark:bg-neutral-800 text-gray-900 dark:text-neutral-100 outline-none focus:border-primary"
+              >
+                <option v-for="m in minutes" :key="m" :value="m">{{ m }}</option>
+              </select>
+            </div>
+            <button
+              v-if="localHour !== '09' || localMinute !== '00'"
+              class="text-xs text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300"
+              @click="localHour = '09'; localMinute = '00'"
+            >Reset</button>
+          </div>
+        </div>
+
         <!-- Footer -->
         <div class="mt-3 pt-3 border-t border-gray-200 dark:border-neutral-700 flex items-center justify-between">
           <button class="text-sm text-red-600 hover:text-red-700" @click="clearDate">Clear</button>
@@ -71,7 +98,12 @@ const emit = defineEmits<{ update: [payload: any] }>()
 
 const showPicker = ref(false)
 const localDate = ref('')
+const localHour = ref('09')
+const localMinute = ref('00')
 const pickerPosition = ref({ x: 0, y: 0 })
+
+const hours = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
+const minutes = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0'))
 
 const currentDateStr = computed(() => props.value?.dateValue || '')
 
@@ -82,9 +114,14 @@ const formattedDate = computed(() => {
   const now = new Date()
   const tomorrow = new Date(now)
   tomorrow.setDate(tomorrow.getDate() + 1)
-  if (date.toDateString() === now.toDateString()) return 'Today'
-  if (date.toDateString() === tomorrow.toDateString()) return 'Tomorrow'
-  return date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
+
+  // Check if value includes time (has T or contains hours)
+  const hasTime = d.includes('T') && !d.endsWith('T00:00:00') && !d.endsWith('T00:00')
+  const timeSuffix = hasTime ? ` ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}` : ''
+
+  if (date.toDateString() === now.toDateString()) return 'Today' + timeSuffix
+  if (date.toDateString() === tomorrow.toDateString()) return 'Tomorrow' + timeSuffix
+  return date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) + timeSuffix
 })
 
 const dateColorClass = computed(() => {
@@ -116,9 +153,20 @@ const calendarModel = computed({
 
 function togglePicker(event: MouseEvent) {
   if (props.readonly) return
-  localDate.value = currentDateStr.value
+  const d = currentDateStr.value
+  if (d && d.includes('T')) {
+    localDate.value = d.split('T')[0]
+    const timePart = d.split('T')[1] || ''
+    const [h, m] = timePart.split(':')
+    localHour.value = (h || '09').padStart(2, '0')
+    localMinute.value = (m || '00').padStart(2, '0')
+  } else {
+    localDate.value = d
+    localHour.value = '09'
+    localMinute.value = '00'
+  }
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  pickerPosition.value = { x: rect.left, y: rect.bottom + 8 }
+  pickerPosition.value = computePopoverPosition(rect, 280, 480)
   showPicker.value = true
 }
 
@@ -132,6 +180,9 @@ function setQuick(type: string) {
   else if (type === 'tomorrow') { d.setDate(d.getDate() + 1); localDate.value = d.toISOString().split('T')[0] }
   else if (type === 'next_week') { d.setDate(d.getDate() + 7); localDate.value = d.toISOString().split('T')[0] }
   else if (type === 'none') { clearDate(); return }
+  // Quick dates use 9am default
+  localHour.value = '09'
+  localMinute.value = '00'
   confirmDate()
 }
 
@@ -142,7 +193,8 @@ function clearDate() {
 
 function confirmDate() {
   if (!localDate.value) return
-  emit('update', { dateValue: localDate.value })
+  const dateWithTime = `${localDate.value}T${localHour.value}:${localMinute.value}:00`
+  emit('update', { dateValue: dateWithTime })
   closePicker()
 }
 </script>

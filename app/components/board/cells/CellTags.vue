@@ -98,7 +98,7 @@ const popoverStyle = computed(() => ({
 function togglePicker(event: MouseEvent) {
   if (props.readonly) return
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  pickerPosition.value = { x: rect.left, y: rect.bottom + 8 }
+  pickerPosition.value = computePopoverPosition(rect, 256, 300)
   showPicker.value = true
 }
 

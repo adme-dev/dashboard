@@ -112,7 +112,7 @@ function isSelected(opt: any): boolean {
 function togglePicker(event: MouseEvent) {
   if (props.readonly) return
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  pickerPosition.value = { x: rect.left, y: rect.bottom + 8 }
+  pickerPosition.value = computePopoverPosition(rect, 256, 320)
   showPicker.value = true
 }
 
