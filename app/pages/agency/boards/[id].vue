@@ -76,7 +76,7 @@
               <!-- Item Rows -->
               <template v-for="item in group.items" :key="item.id">
                 <div
-                  class="flex items-center border-b border-gray-200 dark:border-neutral-700 hover:bg-gray-50 dark:hover:bg-neutral-800 cursor-pointer"
+                  class="flex items-center border-b border-gray-200 dark:border-neutral-700 hover:bg-gray-50 dark:hover:bg-neutral-800 cursor-pointer group/row"
                   :class="{ 'bg-blue-50 dark:bg-blue-950': selectedTaskId === item.id, 'bg-blue-50/50 dark:bg-blue-950/50': selection.isSelected(item.id) }"
                   @click="openTask(item.id)"
                 >
@@ -88,11 +88,13 @@
                   </div>
                   <div class="flex-1 min-w-[250px] px-4 py-3 border-r border-gray-200 dark:border-neutral-700">
                     <div class="flex items-center gap-1.5">
-                      <!-- Subitem expand/collapse toggle -->
+                      <!-- Subitem expand/collapse toggle — always visible when has subtasks, shown on hover otherwise -->
                       <button
-                        v-if="subitemHelper.getCount(item.id)"
-                        class="p-0.5 -ml-1 rounded hover:bg-gray-200 dark:hover:bg-neutral-700 transition-transform"
-                        :class="{ 'rotate-90': subitemHelper.isExpanded(item.id) }"
+                        class="p-0.5 -ml-1 rounded hover:bg-gray-200 dark:hover:bg-neutral-700 transition-all"
+                        :class="[
+                          subitemHelper.isExpanded(item.id) ? 'rotate-90' : '',
+                          subitemHelper.getCount(item.id) ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-60',
+                        ]"
                         @click.stop="subitemHelper.toggleExpand(item.id, resolvedBoardId)"
                       >
                         <UIcon name="i-lucide-chevron-right" class="w-3.5 h-3.5 text-gray-500 dark:text-neutral-400" />
@@ -127,6 +129,7 @@
                   :normalize-column="normalizeColumn"
                   :get-cell-value="getCellValue"
                   :handle-cell-update="handleCellUpdate"
+                  :open-task="openTask"
                 />
               </template>
 

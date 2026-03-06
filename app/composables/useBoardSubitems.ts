@@ -61,8 +61,9 @@ export function useBoardSubitems() {
         { params: { taskIds: parentIds.join(',') } },
       )
       const next = new Map(subitemsByParent.value)
-      for (const [parentId, items] of Object.entries(data.subitems)) {
-        next.set(parentId, items)
+      // Set entries for all requested parents (empty array if none returned)
+      for (const id of parentIds) {
+        next.set(id, data.subitems[id] || [])
       }
       subitemsByParent.value = next
     } catch (err) {

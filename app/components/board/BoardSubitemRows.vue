@@ -9,6 +9,7 @@
       v-for="subitem in subitems"
       :key="subitem.id"
       class="flex items-center border-b border-gray-100 dark:border-neutral-700/50 bg-gray-50/50 dark:bg-neutral-800/50 hover:bg-gray-100/70 dark:hover:bg-neutral-700/50 cursor-pointer border-l-2 border-l-blue-400/40"
+      @click="props.openTask?.(subitem.id)"
     >
       <!-- Checkbox -->
       <div class="w-10 px-2 py-2.5 border-r border-gray-200 dark:border-neutral-700">
@@ -61,6 +62,7 @@ const props = defineProps<{
   normalizeColumn: (col: BoardColumn) => CustomColumn
   getCellValue: (item: BoardItem, col: BoardColumn) => TaskColumnValue | null
   handleCellUpdate: (taskId: string, columnId: string, payload: any) => void
+  openTask?: (taskId: string) => void
 }>()
 
 const { getSubitems, isLoading: isLoadingFn } = useBoardSubitems()
