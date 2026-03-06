@@ -3,9 +3,14 @@
  */
 
 import { queryRows } from '~~/server/utils/db'
+import { cachedFetch } from '~~/server/utils/kv'
+import { setCacheHeaders } from '~~/server/utils/cacheHeaders'
 
-export default defineEventHandler(async () => {
+export default defineEventHandler(async (event) => {
+  setCacheHeaders(event, 300, 600)
+
   try {
+    return await cachedFetch(event, 'brief:categories', 300, async () => {
     const categories = await queryRows(`
       SELECT
         bc.id,
@@ -42,6 +47,7 @@ export default defineEventHandler(async () => {
       templateCount: Number(c.template_count) || 0,
       briefCount: Number(c.brief_count) || 0
     }))
+    }) // end cachedFetch
   } catch (error: any) {
     console.error('Failed to fetch brief categories:', error)
     throw createError({

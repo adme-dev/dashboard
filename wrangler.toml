@@ -38,10 +38,9 @@ binding = "BROWSER"
 
 # Hyperdrive — edge connection pooling for Neon Postgres
 # Create with: npx wrangler hyperdrive create agency-db --connection-string="$DATABASE_URL"
-# Then paste the ID below
-# [[hyperdrive]]
-# binding = "HYPERDRIVE"
-# id = "<your-hyperdrive-config-id>"
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "900b4b74ec41462cbbabebd0aa8775aa"
 
 # ============================================
 # Environment Variables (non-secret)

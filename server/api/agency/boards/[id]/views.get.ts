@@ -8,6 +8,7 @@
 import { createError, getRouterParam } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRows, queryOne } from '~~/server/utils/db'
+import { setCacheHeaders } from '~~/server/utils/cacheHeaders'
 
 function isUUID(str: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str)
@@ -20,6 +21,8 @@ export default eventHandler(async (event) => {
   if (!boardId) {
     throw createError({ statusCode: 400, statusMessage: 'Board ID required' })
   }
+
+  setCacheHeaders(event, 120, 300)
 
   try {
     const dept = isUUID(boardId)

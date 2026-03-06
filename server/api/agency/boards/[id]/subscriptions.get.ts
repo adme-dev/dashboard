@@ -2,6 +2,7 @@
  * Get current user's subscriptions for a board
  */
 import { queryRows } from '~~/server/utils/db'
+import { setCacheHeaders } from '~~/server/utils/cacheHeaders'
 
 export default defineEventHandler(async (event) => {
   const boardId = getRouterParam(event, 'id')
@@ -11,6 +12,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const user = await requireBoardAccess(event, boardId)
+
+  setCacheHeaders(event, 120, 300)
 
   try {
     const subs = await queryRows(`

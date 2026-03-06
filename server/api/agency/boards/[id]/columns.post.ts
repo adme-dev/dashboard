@@ -8,6 +8,7 @@
 import { createError, getRouterParam, readBody } from 'h3'
 import { requireAuth } from '../../../../utils/auth'
 import { queryOne } from '../../../../utils/db'
+import { kvDelete } from '~~/server/utils/kv'
 
 function isUUID(str: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str)
@@ -64,6 +65,10 @@ export default eventHandler(async (event) => {
         is_visible as "isVisible",
         width
     `, [dept.id, name, slug, type, JSON.stringify(settings || {}), sortOrder, user.id])
+
+    // Invalidate columns cache for this board
+    kvDelete(event, `board:${boardId}:columns`)
+    kvDelete(event, `board:${boardId}:columns:all`)
 
     return { column }
   } catch (error: any) {

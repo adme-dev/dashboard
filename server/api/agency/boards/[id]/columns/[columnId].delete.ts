@@ -1,4 +1,5 @@
 import { queryOne, query } from '../../../../../utils/db'
+import { kvDelete } from '~~/server/utils/kv'
 
 export default defineEventHandler(async (event) => {
   const boardId = getRouterParam(event, 'id')
@@ -32,6 +33,12 @@ export default defineEventHandler(async (event) => {
     DELETE FROM board_columns 
     WHERE id = $1::uuid
   `, [columnId])
+
+  // Invalidate columns cache
+  if (boardId) {
+    kvDelete(event, `board:${boardId}:columns`)
+    kvDelete(event, `board:${boardId}:columns:all`)
+  }
 
   return { success: true }
 })

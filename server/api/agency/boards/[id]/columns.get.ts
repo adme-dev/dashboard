@@ -10,6 +10,8 @@
 import { createError, getRouterParam, getQuery } from 'h3'
 import { requireAuth } from '../../../../utils/auth'
 import { queryRows, queryOne, execute } from '../../../../utils/db'
+import { cachedFetch } from '~~/server/utils/kv'
+import { setCacheHeaders } from '~~/server/utils/cacheHeaders'
 
 function isUUID(str: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str)
@@ -65,7 +67,12 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Board ID required' })
   }
 
+  setCacheHeaders(event, 120, 300)
+
+  const cacheKey = `board:${boardId}:columns${includeHidden ? ':all' : ''}`
+
   try {
+    return await cachedFetch(event, cacheKey, 120, async () => {
     // Resolve department
     const dept = isUUID(boardId)
       ? await queryOne('SELECT id FROM departments WHERE id = $1::uuid', [boardId])
@@ -204,6 +211,7 @@ export default eventHandler(async (event) => {
     }))
 
     return { columns: mappedColumns }
+    }) // end cachedFetch
 
   } catch (error: any) {
     throw createError({

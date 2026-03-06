@@ -6,6 +6,7 @@
 import { createError, getRouterParam, readBody } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
+import { kvDelete } from '~~/server/utils/kv'
 
 function isUUID(str: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str)
@@ -53,6 +54,9 @@ export default eventHandler(async (event) => {
         created_at as "createdAt",
         updated_at as "updatedAt"
     `, [dept.id, name.trim(), color || '#579BFC', sortOrder])
+
+    // Invalidate groups cache
+    kvDelete(event, `board:${boardId}:groups`)
 
     return { group }
   } catch (error: any) {

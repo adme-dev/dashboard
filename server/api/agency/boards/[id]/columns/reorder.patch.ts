@@ -5,9 +5,10 @@
  * Body: { columnIds: string[] } — ordered array of column IDs
  */
 
-import { createError, readBody } from 'h3'
+import { createError, getRouterParam, readBody } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { execute } from '~~/server/utils/db'
+import { kvDelete } from '~~/server/utils/kv'
 
 export default eventHandler(async (event) => {
   await requireAuth(event)
@@ -24,6 +25,13 @@ export default eventHandler(async (event) => {
         'UPDATE custom_columns SET sort_order = $1, updated_at = NOW() WHERE id = $2',
         [i, columnIds[i]]
       )
+    }
+
+    // Invalidate columns cache
+    const boardId = getRouterParam(event, 'id')
+    if (boardId) {
+      kvDelete(event, `board:${boardId}:columns`)
+      kvDelete(event, `board:${boardId}:columns:all`)
     }
 
     return { success: true }

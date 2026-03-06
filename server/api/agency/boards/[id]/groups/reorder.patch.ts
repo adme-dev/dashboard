@@ -5,9 +5,10 @@
  * Body: { groupIds: string[] } — ordered array of group IDs
  */
 
-import { createError, readBody } from 'h3'
+import { createError, getRouterParam, readBody } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { execute } from '~~/server/utils/db'
+import { kvDelete } from '~~/server/utils/kv'
 
 export default eventHandler(async (event) => {
   await requireAuth(event)
@@ -25,6 +26,12 @@ export default eventHandler(async (event) => {
         'UPDATE board_groups SET sort_order = $1 WHERE id = $2',
         [i, groupIds[i]]
       )
+    }
+
+    // Invalidate groups cache
+    const boardId = getRouterParam(event, 'id')
+    if (boardId) {
+      kvDelete(event, `board:${boardId}:groups`)
     }
 
     return { success: true }

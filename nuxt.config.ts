@@ -1,6 +1,6 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
-  ssr: false,
+  ssr: true,
 
   modules: [
     '@nuxt/eslint',
@@ -120,6 +120,11 @@ export default defineNuxtConfig({
       deployConfig: true,
       nodeCompat: true
     },
+    prerender: {
+      crawlLinks: true,
+      // Ignore auth-gated routes and API endpoints during prerendering
+      ignore: ['/agency', '/portal', '/admin', '/settings', '/api', '/chat', '/invoices', '/customers', '/insights', '/profit-loss', '/expenses', '/cashflow', '/reports', '/anomalies', '/recommendations', '/xeroflow', '/review', '/approve', '/intake'],
+    },
     rollupConfig: {
       external: ['@react-email/render', '@cloudflare/puppeteer', 'puppeteer', 'gifenc', 'pngjs']
     }
@@ -132,9 +137,46 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
 
   routeRules: {
-    '/api/**': {
-      cors: true
-    }
+    '/api/**': { cors: true },
+
+    // Prerender static marketing pages at build time
+    '/': { prerender: true },
+    '/pricing': { prerender: true },
+    '/features': { prerender: true },
+    '/features/**': { prerender: true },
+    '/terms': { prerender: true },
+    '/privacy': { prerender: true },
+    '/support': { prerender: true },
+    '/about': { prerender: true },
+    '/landing': { prerender: true },
+    '/creativity': { prerender: true },
+    '/ai-training': { prerender: true },
+    '/resources': { prerender: true },
+    '/resources/**': { prerender: true },
+    '/platform/**': { prerender: true },
+    '/banner-studio': { prerender: true },
+    '/auth/**': { prerender: true },
+    '/sign-in': { prerender: true },
+
+    // Keep all auth-gated routes as client-only SPA
+    '/agency/**': { ssr: false },
+    '/portal/**': { ssr: false },
+    '/admin/**': { ssr: false },
+    '/settings/**': { ssr: false },
+    '/chat/**': { ssr: false },
+    '/invoices/**': { ssr: false },
+    '/customers/**': { ssr: false },
+    '/insights/**': { ssr: false },
+    '/profit-loss/**': { ssr: false },
+    '/expenses/**': { ssr: false },
+    '/cashflow/**': { ssr: false },
+    '/reports/**': { ssr: false },
+    '/anomalies/**': { ssr: false },
+    '/recommendations/**': { ssr: false },
+    '/xeroflow/**': { ssr: false },
+    '/review/**': { ssr: false },
+    '/approve/**': { ssr: false },
+    '/intake/**': { ssr: false },
   },
 
   typescript: {

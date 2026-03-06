@@ -6,6 +6,8 @@
 import { createError, getRouterParam } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRows, queryOne } from '~~/server/utils/db'
+import { cachedFetch } from '~~/server/utils/kv'
+import { setCacheHeaders } from '~~/server/utils/cacheHeaders'
 
 function isUUID(str: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str)
@@ -19,7 +21,10 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Board ID required' })
   }
 
+  setCacheHeaders(event, 60, 120)
+
   try {
+    return await cachedFetch(event, `board:${boardId}:groups`, 60, async () => {
     const dept = isUUID(boardId)
       ? await queryOne('SELECT id FROM departments WHERE id = $1::uuid', [boardId])
       : await queryOne('SELECT id FROM departments WHERE slug = $1', [boardId])
@@ -46,6 +51,7 @@ export default eventHandler(async (event) => {
     `, [dept.id])
 
     return { groups }
+    }) // end cachedFetch
   } catch (error: any) {
     console.error('Failed to fetch board groups:', error)
     throw createError({

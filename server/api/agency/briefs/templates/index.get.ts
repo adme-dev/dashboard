@@ -3,6 +3,8 @@
  */
 
 import { queryRows } from '~~/server/utils/db'
+import { cachedFetch } from '~~/server/utils/kv'
+import { setCacheHeaders } from '~~/server/utils/cacheHeaders'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
@@ -14,7 +16,14 @@ export default defineEventHandler(async (event) => {
   const isPublic = query.isPublic === 'true' ? true : undefined
   const isActive = query.isActive !== 'false' // Default to true
 
+  setCacheHeaders(event, 300, 600)
+
+  // Build a cache key from query params — only cache when no filters applied
+  const hasFilters = categoryId || categorySlug || departmentId || isPublic !== undefined || !isActive || includeFields
+  const cacheKey = hasFilters ? null : 'brief:templates'
+
   try {
+    const fetcher = async () => {
     let whereClause = 'WHERE 1=1'
     const params: any[] = []
     let paramIdx = 1
@@ -170,6 +179,12 @@ export default defineEventHandler(async (event) => {
     }
 
     return result
+    } // end fetcher
+
+    if (cacheKey) {
+      return await cachedFetch(event, cacheKey, 300, fetcher)
+    }
+    return await fetcher()
   } catch (error: any) {
     console.error('Failed to fetch brief templates:', error)
     throw createError({

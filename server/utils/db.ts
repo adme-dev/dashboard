@@ -114,6 +114,9 @@ export async function transaction<T>(callback: (db: Pool) => Promise<T>): Promis
       max: 1,
     })
 
+    // Catch pool-level errors to prevent unhandled rejections (Neon cold start / ECONNRESET)
+    pool.on('error', () => {})
+
     try {
       const client = await pool.connect()
       try {

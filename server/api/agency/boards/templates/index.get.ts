@@ -10,6 +10,8 @@
 
 import { queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { cachedFetch } from '~~/server/utils/kv'
+import { setCacheHeaders } from '~~/server/utils/cacheHeaders'
 
 export default eventHandler(async (event) => {
   await requireAuth(event)
@@ -19,7 +21,14 @@ export default eventHandler(async (event) => {
   const search = query.search as string | undefined
   const limit = Math.min(Number(query.limit) || 50, 100)
 
+  setCacheHeaders(event, 300, 600)
+
+  // Only KV-cache the default unfiltered request
+  const hasFilters = (category && category !== 'all') || search
+  const cacheKey = hasFilters ? null : 'board:templates'
+
   try {
+    const fetcher = async () => {
     const conditions: string[] = []
     const params: any[] = []
     let idx = 1
@@ -94,6 +103,12 @@ export default eventHandler(async (event) => {
       })),
       categories: categories.map((c: any) => c.category),
     }
+    } // end fetcher
+
+    if (cacheKey) {
+      return await cachedFetch(event, cacheKey, 300, fetcher)
+    }
+    return await fetcher()
   } catch (error) {
     console.error('Failed to fetch board templates:', error)
     throw createError({

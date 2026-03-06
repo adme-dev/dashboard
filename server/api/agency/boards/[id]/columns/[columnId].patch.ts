@@ -8,6 +8,7 @@
 import { createError, getRouterParam, readBody } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
+import { kvDelete } from '~~/server/utils/kv'
 
 export default eventHandler(async (event) => {
   await requireAuth(event)
@@ -91,6 +92,13 @@ export default eventHandler(async (event) => {
 
     if (!column) {
       throw createError({ statusCode: 404, statusMessage: 'Column not found' })
+    }
+
+    // Invalidate columns cache
+    const boardId = getRouterParam(event, 'id')
+    if (boardId) {
+      kvDelete(event, `board:${boardId}:columns`)
+      kvDelete(event, `board:${boardId}:columns:all`)
     }
 
     return { column }

@@ -8,6 +8,7 @@
 import { createError, getRouterParam } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { execute, queryOne } from '~~/server/utils/db'
+import { kvDelete } from '~~/server/utils/kv'
 
 function isUUID(str: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str)
@@ -33,6 +34,12 @@ export default eventHandler(async (event) => {
     }
 
     await execute('DELETE FROM board_groups WHERE id = $1', [groupId])
+
+    // Invalidate groups cache
+    const boardId = getRouterParam(event, 'id')
+    if (boardId) {
+      kvDelete(event, `board:${boardId}:groups`)
+    }
 
     return { success: true }
   } catch (error: any) {
