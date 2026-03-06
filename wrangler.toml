@@ -37,10 +37,13 @@ index_name = "agency-search"
 binding = "BROWSER"
 
 # Hyperdrive — edge connection pooling for Neon Postgres
-# Create with: npx wrangler hyperdrive create agency-db --connection-string="$DATABASE_URL"
-[[hyperdrive]]
-binding = "HYPERDRIVE"
-id = "900b4b74ec41462cbbabebd0aa8775aa"
+# DISABLED: neon() HTTP driver is incompatible with Hyperdrive (it rewrites hostname
+# to a TCP proxy, but neon() makes HTTP requests to the hostname). Hyperdrive only
+# works with Pool/Client (Postgres wire protocol). To re-enable, db.ts needs split
+# connection strings: DATABASE_URL for neon(), HYPERDRIVE for Pool/transaction().
+# [[hyperdrive]]
+# binding = "HYPERDRIVE"
+# id = "900b4b74ec41462cbbabebd0aa8775aa"
 
 # ============================================
 # Environment Variables (non-secret)
