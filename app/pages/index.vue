@@ -486,10 +486,10 @@
             <span class="text-[13px] text-[#45474D] dark:text-white/60 font-medium">And so much more</span>
           </div>
           <h2 class="text-[clamp(32px,5vw,56px)] font-[450] text-[#121317] dark:text-white leading-[1.1] tracking-[-0.03em] mb-4">
-            Creative, time &amp;<br class="hidden sm:block"><span class="text-[#45474D]/50 dark:text-white/40">automation tools</span>
+            Creative, briefs &amp;<br class="hidden sm:block"><span class="text-[#45474D]/50 dark:text-white/40">automation tools</span>
           </h2>
           <p class="text-[#45474D] dark:text-white/60 text-lg max-w-[520px] leading-relaxed">
-            A full creative suite, resource management, and workflow automation — built into the same platform.
+            A full creative suite, brief-to-quote pipeline, resource management, and workflow automation — built into the same platform.
           </p>
         </div>
 
@@ -564,6 +564,51 @@
                     <span class="text-[8px] text-[#45474D]/40 dark:text-white/30">1.2s</span>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Briefs & Proposals -->
+          <div class="rounded-3xl bento-gradient-briefs overflow-hidden hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 p-6 md:p-8">
+            <div class="flex items-center gap-2 mb-3">
+              <UIcon name="i-lucide-file-text" class="w-5 h-5 text-orange-600 dark:text-orange-400" />
+              <span class="text-[13px] font-semibold text-orange-600 dark:text-orange-400 uppercase tracking-wider">Briefs &amp; Proposals</span>
+            </div>
+            <h3 class="text-[20px] font-[450] text-[#121317] dark:text-white tracking-[-0.01em] mb-2">
+              Brief to quote pipeline
+            </h3>
+            <p class="text-[14px] text-[#45474D] dark:text-white/60 leading-relaxed mb-5">
+              Template builder, AI scoring, field suggestions, and automatic Xero quote generation on approval.
+            </p>
+            <!-- Brief mockup -->
+            <div class="rounded-2xl bg-white/80 dark:bg-white/[0.08] backdrop-blur-sm shadow-sm dark:shadow-none overflow-hidden p-4">
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-[10px] font-medium text-[#121317] dark:text-white">Website Redesign Brief</span>
+                <div class="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-500/20 text-[8px] text-blue-700 dark:text-blue-400 font-medium">In Review</div>
+              </div>
+              <div class="flex flex-col gap-2 mb-3">
+                <div class="flex items-center gap-2">
+                  <div class="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <div class="h-1 flex-1 rounded-full bg-[#121317]/10 dark:bg-white/15" />
+                  <span class="text-[8px] text-emerald-600 dark:text-emerald-400">Complete</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <div class="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <div class="h-1 flex-1 rounded-full bg-[#121317]/10 dark:bg-white/15" />
+                  <span class="text-[8px] text-emerald-600 dark:text-emerald-400">Complete</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <div class="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                  <div class="h-1 w-2/3 rounded-full bg-[#121317]/10 dark:bg-white/15" />
+                  <span class="text-[8px] text-amber-600 dark:text-amber-400">Partial</span>
+                </div>
+              </div>
+              <div class="flex items-center justify-between pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
+                <div class="flex items-center gap-1">
+                  <UIcon name="i-lucide-sparkles" class="w-3 h-3 text-orange-400" />
+                  <span class="text-[8px] text-orange-600 dark:text-orange-400 font-medium">AI Score: 82%</span>
+                </div>
+                <span class="text-[8px] text-[#45474D]/40 dark:text-white/30">5 of 6 fields</span>
               </div>
             </div>
           </div>
@@ -648,6 +693,56 @@
                   <div class="text-[8px] text-[#45474D]/50 dark:text-white/40">Escalate to manager + flag overdue</div>
                 </div>
                 <div class="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Roles & Admin -->
+          <div class="md:col-span-2 rounded-3xl bento-gradient-roles overflow-hidden hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
+            <div class="flex flex-col md:flex-row gap-6 p-6 md:p-10">
+              <div class="flex-1 flex flex-col justify-center">
+                <div class="flex items-center gap-2 mb-3">
+                  <UIcon name="i-lucide-shield-check" class="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                  <span class="text-[13px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Admin &amp; Roles</span>
+                </div>
+                <h3 class="text-[clamp(22px,3vw,28px)] font-[450] text-[#121317] dark:text-white leading-[1.2] tracking-[-0.02em] mb-3">
+                  Granular permissions &amp;<br>custom roles
+                </h3>
+                <p class="text-[#45474D] dark:text-white/60 text-[15px] leading-relaxed max-w-[400px]">
+                  15 built-in roles, custom role builder, and 3-layer enforcement across server middleware, route middleware, and sidebar gating.
+                </p>
+              </div>
+              <div class="flex-1">
+                <div class="rounded-2xl bg-white/80 dark:bg-white/[0.08] backdrop-blur-sm shadow-sm dark:shadow-none overflow-hidden p-4">
+                  <!-- Roles mockup -->
+                  <div class="flex items-center justify-between mb-3">
+                    <span class="text-[10px] font-medium text-[#121317] dark:text-white">Role Matrix</span>
+                    <div class="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-500/20 text-[8px] text-slate-700 dark:text-slate-400 font-medium">15 roles</div>
+                  </div>
+                  <div class="flex flex-col gap-2">
+                    <div class="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-emerald-50/80 dark:bg-emerald-500/[0.08]">
+                      <div class="w-5 h-5 rounded-full bg-emerald-200 dark:bg-emerald-500/30 flex items-center justify-center">
+                        <UIcon name="i-lucide-crown" class="w-3 h-3 text-emerald-700 dark:text-emerald-400" />
+                      </div>
+                      <span class="text-[9px] font-medium text-[#121317] dark:text-white flex-1">Owner</span>
+                      <span class="text-[7px] text-emerald-600 dark:text-emerald-400">All access</span>
+                    </div>
+                    <div class="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-blue-50/80 dark:bg-blue-500/[0.08]">
+                      <div class="w-5 h-5 rounded-full bg-blue-200 dark:bg-blue-500/30 flex items-center justify-center">
+                        <UIcon name="i-lucide-settings" class="w-3 h-3 text-blue-700 dark:text-blue-400" />
+                      </div>
+                      <span class="text-[9px] font-medium text-[#121317] dark:text-white flex-1">Admin</span>
+                      <span class="text-[7px] text-blue-600 dark:text-blue-400">Manage users</span>
+                    </div>
+                    <div class="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-violet-50/80 dark:bg-violet-500/[0.08]">
+                      <div class="w-5 h-5 rounded-full bg-violet-200 dark:bg-violet-500/30 flex items-center justify-center">
+                        <UIcon name="i-lucide-palette" class="w-3 h-3 text-violet-700 dark:text-violet-400" />
+                      </div>
+                      <span class="text-[9px] font-medium text-[#121317] dark:text-white flex-1">Creative Lead</span>
+                      <span class="text-[7px] text-violet-600 dark:text-violet-400">Briefs + studio</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -976,7 +1071,9 @@ const platformCards = [
   { title: 'Client Portal', subtitle: 'Client-facing approvals, invoices, deliverables, and project updates.', to: '/platform/client-portal', bg: 'bg-blue-400', image: 'https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=600&h=600&fit=crop&crop=faces' },
   { title: 'Ad Spend', subtitle: 'Meta & Google Ads connections with spend syncing and budget management.', to: '/platform/ad-spend', bg: 'bg-teal-300', image: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=600&h=600&fit=crop&crop=center' },
   { title: 'Automations', subtitle: 'Trigger-action recipes, board event hooks, and workflow automation.', to: '/platform/automations', bg: 'bg-orange-300', image: 'https://images.unsplash.com/photo-1518432031352-d6fc5c10da5a?w=600&h=600&fit=crop&crop=center' },
-  { title: 'Banner Studio', subtitle: 'Design, animate, and publish HTML5 display ads at scale from one editor.', to: '/banner-studio', bg: 'bg-rose-400', image: 'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=600&h=600&fit=crop&crop=center' }
+  { title: 'Banner Studio', subtitle: 'Design, animate, and publish HTML5 display ads at scale from one editor.', to: '/banner-studio', bg: 'bg-rose-400', image: 'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=600&h=600&fit=crop&crop=center' },
+  { title: 'Briefs', subtitle: 'Template builder with 30+ field types, AI scoring, and automatic quote generation.', to: '/features/brief-templates', bg: 'bg-orange-300', image: 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=600&h=600&fit=crop&crop=center' },
+  { title: 'Admin & Roles', subtitle: 'Custom roles, granular permissions, and 3-layer RBAC enforcement.', to: '/features/custom-roles', bg: 'bg-slate-300', image: 'https://images.unsplash.com/photo-1633265486064-086b219458ec?w=600&h=600&fit=crop&crop=center' }
 ]
 
 // Bottom row — different images, mixed routes, benefit-focused copy
@@ -989,7 +1086,9 @@ const platformCardsRow2 = [
   { title: 'Campaign Strategy', subtitle: 'Plan, launch, and optimise paid media from one hub.', to: '/platform/ad-spend', bg: 'bg-red-300', image: 'https://images.unsplash.com/photo-1533750349088-cd871a92f312?w=600&h=600&fit=crop&crop=center' },
   { title: 'Data Insights', subtitle: 'Visualise spend, revenue, and utilisation at a glance.', to: '/platform/ai', bg: 'bg-cyan-300', image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&h=600&fit=crop&crop=center' },
   { title: 'Team Culture', subtitle: 'Chat, kudos, and real-time presence to keep teams connected.', to: '/platform/chat', bg: 'bg-violet-300', image: 'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?w=600&h=600&fit=crop&crop=faces' },
-  { title: 'Scale', subtitle: 'From boutique to enterprise — infrastructure that grows with you.', to: '/pricing', bg: 'bg-emerald-400', image: 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=600&h=600&fit=crop&crop=center' }
+  { title: 'Scale', subtitle: 'From boutique to enterprise — infrastructure that grows with you.', to: '/pricing', bg: 'bg-emerald-400', image: 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=600&h=600&fit=crop&crop=center' },
+  { title: 'AI Training', subtitle: 'Train your AI on your agency data — knowledge extraction, LoRA adapters, and edge inference.', to: '/ai-training', bg: 'bg-amber-300', image: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?w=600&h=600&fit=crop&crop=center' },
+  { title: 'Rate Cards', subtitle: 'Manage service pricing, fuzzy-match to Xero invoices, and power AI pricing queries.', to: '/features/rate-cards', bg: 'bg-teal-300', image: 'https://images.unsplash.com/photo-1554224155-1696413dd7a1?w=600&h=600&fit=crop&crop=center' }
 ]
 
 // Two marquee rows — each has its own card set, duplicated for seamless loop
@@ -1262,6 +1361,12 @@ function scrollToFeatures() {
 .bento-gradient-auto {
   background: linear-gradient(135deg, #fef3c7 0%, #fed7aa 30%, #fce7f3 60%, #d1fae5 100%);
 }
+.bento-gradient-briefs {
+  background: linear-gradient(135deg, #ffedd5 0%, #fed7aa 30%, #fef3c7 60%, #ffedd5 100%);
+}
+.bento-gradient-roles {
+  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 30%, #e0e7ff 60%, #f1f5f9 100%);
+}
 
 /* Bento grid gradients — dark */
 :root.dark .bento-gradient-banner {
@@ -1272,6 +1377,12 @@ function scrollToFeatures() {
 }
 :root.dark .bento-gradient-auto {
   background: linear-gradient(135deg, #451a03 0%, #7c2d12 30%, #831843 60%, #064e3b 100%);
+}
+:root.dark .bento-gradient-briefs {
+  background: linear-gradient(135deg, #7c2d12 0%, #451a03 30%, #451a03 60%, #7c2d12 100%);
+}
+:root.dark .bento-gradient-roles {
+  background: linear-gradient(135deg, #1e293b 0%, #334155 30%, #1e1b4b 60%, #1e293b 100%);
 }
 
 /* Mobile horizontal scroll for persona carousel */
