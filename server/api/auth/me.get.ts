@@ -37,8 +37,11 @@ export default defineEventHandler(async (event) => {
         email: user.email,
         name: user.name,
         role: user.role,
+        avatar_url: user.avatar_url || null,
+        is_active: user.is_active,
         custom_role_id: user.custom_role_id || null,
-        permissionGroups: resolved.groups
+        permissionGroups: resolved.groups,
+        isCustomReadOnly: resolved.isReadOnly && !['viewer', 'guest'].includes(user.role)
       }
     }
   } catch (error: any) {

@@ -10,6 +10,7 @@ export interface User {
   avatar_url?: string
   custom_role_id?: string | null
   permissionGroups?: string[]
+  isCustomReadOnly?: boolean
 }
 
 // ============================================

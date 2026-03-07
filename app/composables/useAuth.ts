@@ -31,8 +31,8 @@ export const useAuth = () => {
   const isAdmin = computed(() => hasRole(PERMISSIONS.ADMIN))
   const isManager = computed(() => hasRole(PERMISSIONS.MANAGEMENT))
   const isLead = computed(() => hasRole(['owner', 'admin', 'lead']))
-  const isReadOnly = computed(() => !!user.value && isReadOnlyRole(user.value.role))
-  const canWrite = computed(() => !!user.value && !isReadOnlyRole(user.value.role))
+  const isReadOnly = computed(() => !!user.value && (isReadOnlyRole(user.value.role) || user.value.isCustomReadOnly === true))
+  const canWrite = computed(() => !!user.value && !isReadOnlyRole(user.value.role) && user.value.isCustomReadOnly !== true)
   const canAccessFinance = computed(() => hasRole(PERMISSIONS.FINANCE))
   const canAccessSales = computed(() => hasRole(PERMISSIONS.SALES))
   const canAccessClients = computed(() => hasRole(PERMISSIONS.CLIENTS))
@@ -40,6 +40,7 @@ export const useAuth = () => {
   const canAccessMediaBuying = computed(() => hasRole(PERMISSIONS.MEDIA_BUYING))
   const canAccessAdmin = computed(() => hasRole(PERMISSIONS.ADMIN))
   const canAccessAiTraining = computed(() => hasRole(PERMISSIONS.ADMIN))
+  const canAccessTimeApprovals = computed(() => hasRole(PERMISSIONS.TIME_APPROVALS))
   const canAccessAutomation = computed(() => hasRole(PERMISSIONS.AUTOMATION))
   const canAccessReports = computed(() => hasRole(PERMISSIONS.MANAGEMENT))
   const userPermissionGroups = computed(() => user.value?.permissionGroups || [])
@@ -126,6 +127,7 @@ export const useAuth = () => {
     canAccessMediaBuying,
     canAccessAdmin,
     canAccessAiTraining,
+    canAccessTimeApprovals,
     canAccessAutomation,
     canAccessReports,
     userPermissionGroups,

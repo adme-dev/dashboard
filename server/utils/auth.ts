@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs'
 import { queryOne, queryRows } from './db'
 import { isReadOnlyRole, PERMISSIONS, permissionGroupForRoles } from './permissions'
+import { resolveUserPermissions } from './roleResolver'
 
 export interface User {
   id: string
@@ -193,6 +194,12 @@ export async function requireAuth(event: any): Promise<User> {
     if (!user) {
       throw createError({ statusCode: 401, statusMessage: 'Unauthorized - Invalid session' })
     }
+    // Resolve permission groups for the slow path (middleware normally does this)
+    if (!user.permissionGroups) {
+      const resolved = await resolveUserPermissions(event, user.id, user.role, user.custom_role_id)
+      user.permissionGroups = resolved.groups
+      ;(user as any).isCustomReadOnly = resolved.isReadOnly && !isReadOnlyRole(user.role)
+    }
     return user
   } catch (error: any) {
     if (error.statusCode) throw error
@@ -220,10 +227,10 @@ export async function requireRole(event: any, roles: string[]): Promise<User> {
   return user
 }
 
-// Require write access - blocks viewer/guest roles from mutations
+// Require write access - blocks viewer/guest roles and custom read-only roles from mutations
 export async function requireWriteAccess(event: any): Promise<User> {
   const user = await requireAuth(event)
-  if (isReadOnlyRole(user.role)) {
+  if (isReadOnlyRole(user.role) || (user as any).isCustomReadOnly) {
     throw createError({ statusCode: 403, statusMessage: 'Forbidden - Read-only access' })
   }
   return user

@@ -1,6 +1,9 @@
-import { queryOne, queryRows, execute } from '~~/server/utils/db'
+import { queryOne, queryRows, execute, transaction } from '~~/server/utils/db'
 import { requireRole } from '~~/server/utils/auth'
 import { invalidateUserPermissionCache } from '~~/server/utils/roleResolver'
+import { PERMISSION_GROUPS } from '~~/server/utils/permissions'
+
+const VALID_GROUPS = new Set(PERMISSION_GROUPS)
 
 export default defineEventHandler(async (event) => {
   await requireRole(event, ['owner'])
@@ -18,6 +21,14 @@ export default defineEventHandler(async (event) => {
     permissionGroups?: string[]
     isReadOnly?: boolean
   }>(event)
+
+  // Validate permission groups if provided
+  if (body.permissionGroups !== undefined) {
+    const invalid = body.permissionGroups.filter(g => !VALID_GROUPS.has(g as any))
+    if (invalid.length) {
+      throw createError({ statusCode: 400, statusMessage: `Invalid permission groups: ${invalid.join(', ')}` })
+    }
+  }
 
   // Fetch existing role
   const role = await queryOne<{ id: string; is_system: boolean; slug: string }>(
@@ -65,23 +76,26 @@ export default defineEventHandler(async (event) => {
     paramIdx++
   }
 
-  // Update role
-  params.push(roleId)
-  await execute(
-    `UPDATE custom_roles SET ${updates.join(', ')} WHERE id = $${paramIdx}`,
-    params
-  )
+  // Update role + permission groups in a transaction
+  await transaction(async (client) => {
+    // Update role fields
+    params.push(roleId)
+    await client.query(
+      `UPDATE custom_roles SET ${updates.join(', ')} WHERE id = $${paramIdx}`,
+      params
+    )
 
-  // Update permission groups if provided
-  if (body.permissionGroups !== undefined) {
-    await execute('DELETE FROM role_permission_groups WHERE role_id = $1', [roleId])
-    for (const group of body.permissionGroups) {
-      await execute(
-        'INSERT INTO role_permission_groups (role_id, permission_group) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-        [roleId, group]
-      )
+    // Replace permission groups if provided
+    if (body.permissionGroups !== undefined) {
+      await client.query('DELETE FROM role_permission_groups WHERE role_id = $1', [roleId])
+      for (const group of body.permissionGroups) {
+        await client.query(
+          'INSERT INTO role_permission_groups (role_id, permission_group) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [roleId, group]
+        )
+      }
     }
-  }
+  })
 
   // Invalidate KV cache for all affected users
   const affectedUsers = await queryRows<{ id: string }>(
@@ -90,8 +104,6 @@ export default defineEventHandler(async (event) => {
   )
   for (const u of affectedUsers) {
     await invalidateUserPermissionCache(event, u.id)
-    // Also invalidate auth session cache entries (we can't know the token prefix,
-    // but the role-perms cache will be refreshed on next request)
   }
 
   return { success: true }

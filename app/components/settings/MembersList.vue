@@ -168,7 +168,6 @@ function canEditRole(member: TeamMember) {
           :model-value="member.userRole"
           :items="roleOptions"
           value-key="value"
-          option-key="value"
           color="neutral"
           @update:model-value="(val) => changeRole(member, val)"
         />

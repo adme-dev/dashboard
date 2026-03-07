@@ -96,8 +96,9 @@
           <USelect
             v-model="row.original.role"
             :items="roleOptions"
+            value-key="value"
             size="xs"
-            class="w-28"
+            class="w-36"
             @update:model-value="updateUserRole(row.original.id, $event)"
           />
         </template>
@@ -166,69 +167,91 @@
     </div>
 
     <!-- Invite Modal -->
-    <UModal v-model:open="showInviteModal" title="Invite users">
-      <template #body>
-        <div class="space-y-4">
-          <UFormField label="Email addresses" description="Separate multiple emails with commas">
-            <UTextarea
-              v-model="inviteEmails"
-              placeholder="john@example.com, jane@example.com"
-              rows="4"
-            />
-          </UFormField>
-          <UFormField label="Title">
-            <UInput
-              v-model="inviteTitle"
-              placeholder="e.g. Creative Director"
-            />
-          </UFormField>
-          <UFormField label="Role">
-            <USelect
-              v-model="inviteRole"
-              :items="roleOptions"
-            />
-          </UFormField>
-          <UFormField label="Teams">
-            <USelect
-              v-model="inviteTeams"
-              :items="availableTeams"
-              multiple
-            />
-          </UFormField>
-        </div>
-      </template>
-      <template #footer>
-        <UButton variant="ghost" color="neutral" @click="showInviteModal = false">
-          Cancel
-        </UButton>
-        <UButton color="primary" :loading="inviteLoading" @click="sendInvites">
-          Send invites
-        </UButton>
+    <UModal v-model:open="showInviteModal">
+      <template #content>
+        <UCard>
+          <template #header>
+            <div class="flex items-center justify-between">
+              <h3 class="font-semibold text-lg">Invite users</h3>
+              <UButton icon="i-lucide-x" color="neutral" variant="ghost" @click="showInviteModal = false" />
+            </div>
+          </template>
+          <div class="space-y-4">
+            <UFormField label="Email addresses" description="Separate multiple emails with commas">
+              <UTextarea
+                v-model="inviteEmails"
+                placeholder="john@example.com, jane@example.com"
+                :rows="4"
+              />
+            </UFormField>
+            <UFormField label="Title">
+              <UInput
+                v-model="inviteTitle"
+                placeholder="e.g. Creative Director"
+              />
+            </UFormField>
+            <UFormField label="Role">
+              <USelect
+                v-model="inviteRole"
+                :items="roleOptions"
+                value-key="value"
+                option-key="value"
+              />
+            </UFormField>
+            <UFormField label="Teams">
+              <USelect
+                v-model="inviteTeams"
+                :items="availableTeams"
+                multiple
+              />
+            </UFormField>
+          </div>
+          <template #footer>
+            <div class="flex justify-end gap-2">
+              <UButton variant="ghost" color="neutral" @click="showInviteModal = false">
+                Cancel
+              </UButton>
+              <UButton color="primary" :loading="inviteLoading" @click="sendInvites">
+                Send invites
+              </UButton>
+            </div>
+          </template>
+        </UCard>
       </template>
     </UModal>
 
     <!-- Edit User Modal -->
-    <UModal v-model:open="showEditModal" title="Edit user">
-      <template #body>
-        <div class="space-y-4">
-          <UFormField label="Name">
-            <UInput v-model="editForm.name" />
-          </UFormField>
-          <UFormField label="Email">
-            <UInput v-model="editForm.email" type="email" />
-          </UFormField>
-          <UFormField label="Role">
-            <USelect v-model="editForm.role" :items="roleOptions" />
-          </UFormField>
-        </div>
-      </template>
-      <template #footer>
-        <UButton variant="ghost" color="neutral" @click="showEditModal = false">
-          Cancel
-        </UButton>
-        <UButton color="primary" :loading="editLoading" @click="saveUser">
-          Save changes
-        </UButton>
+    <UModal v-model:open="showEditModal">
+      <template #content>
+        <UCard>
+          <template #header>
+            <div class="flex items-center justify-between">
+              <h3 class="font-semibold text-lg">Edit user</h3>
+              <UButton icon="i-lucide-x" color="neutral" variant="ghost" @click="showEditModal = false" />
+            </div>
+          </template>
+          <div class="space-y-4">
+            <UFormField label="Name">
+              <UInput v-model="editForm.name" />
+            </UFormField>
+            <UFormField label="Email">
+              <UInput v-model="editForm.email" type="email" />
+            </UFormField>
+            <UFormField label="Role">
+              <USelect v-model="editForm.role" :items="roleOptions" value-key="value" option-key="value" />
+            </UFormField>
+          </div>
+          <template #footer>
+            <div class="flex justify-end gap-2">
+              <UButton variant="ghost" color="neutral" @click="showEditModal = false">
+                Cancel
+              </UButton>
+              <UButton color="primary" :loading="editLoading" @click="saveUser">
+                Save changes
+              </UButton>
+            </div>
+          </template>
+        </UCard>
       </template>
     </UModal>
 
@@ -268,40 +291,78 @@
     </USlideover>
 
     <!-- Assign Teams Modal -->
-    <UModal v-model:open="showTeamsModal" title="Manage teams">
-      <template #body>
-        <div v-if="teamsLoading" class="py-8 text-center">
-          <UIcon name="i-lucide-loader-2" class="size-6 animate-spin mx-auto" />
-        </div>
-        <div v-else class="space-y-2">
-          <div
-            v-for="team in availableTeams"
-            :key="team.value"
-            class="flex items-center justify-between p-2 rounded hover:bg-elevated"
-          >
-            <div class="flex items-center gap-2">
-              <div
-                class="size-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                :style="{ backgroundColor: team.color }"
-              >
-                {{ team.label[0] }}
-              </div>
-              <span>{{ team.label }}</span>
+    <UModal v-model:open="showTeamsModal">
+      <template #content>
+        <UCard>
+          <template #header>
+            <div class="flex items-center justify-between">
+              <h3 class="font-semibold text-lg">Manage teams</h3>
+              <UButton icon="i-lucide-x" color="neutral" variant="ghost" @click="showTeamsModal = false" />
             </div>
-            <UCheckbox
-              :model-value="selectedUserTeams.includes(team.value)"
-              @update:model-value="toggleTeam(team.value)"
-            />
+          </template>
+          <div v-if="teamsLoading" class="py-8 text-center">
+            <UIcon name="i-lucide-loader-2" class="size-6 animate-spin mx-auto" />
           </div>
-        </div>
+          <div v-else class="space-y-2">
+            <div
+              v-for="team in availableTeams"
+              :key="team.value"
+              class="flex items-center justify-between p-2 rounded hover:bg-elevated"
+            >
+              <div class="flex items-center gap-2">
+                <div
+                  class="size-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                  :style="{ backgroundColor: team.color }"
+                >
+                  {{ team.label[0] }}
+                </div>
+                <span>{{ team.label }}</span>
+              </div>
+              <UCheckbox
+                :model-value="selectedUserTeams.includes(team.value)"
+                @update:model-value="toggleTeam(team.value)"
+              />
+            </div>
+          </div>
+          <template #footer>
+            <div class="flex justify-end gap-2">
+              <UButton variant="ghost" color="neutral" @click="showTeamsModal = false">
+                Cancel
+              </UButton>
+              <UButton color="primary" :loading="saveTeamsLoading" @click="saveTeams">
+                Save
+              </UButton>
+            </div>
+          </template>
+        </UCard>
       </template>
-      <template #footer>
-        <UButton variant="ghost" color="neutral" @click="showTeamsModal = false">
-          Cancel
-        </UButton>
-        <UButton color="primary" :loading="saveTeamsLoading" @click="saveTeams">
-          Save
-        </UButton>
+    </UModal>
+
+    <!-- Remove User Confirmation Modal -->
+    <UModal v-model:open="showRemoveModal">
+      <template #content>
+        <UCard>
+          <template #header>
+            <div class="flex items-center justify-between">
+              <h3 class="font-semibold text-lg">Deactivate user</h3>
+              <UButton icon="i-lucide-x" color="neutral" variant="ghost" @click="showRemoveModal = false" />
+            </div>
+          </template>
+          <p class="text-sm text-muted">
+            Are you sure you want to deactivate <strong class="text-highlighted">{{ userToRemove?.name }}</strong>?
+            They will lose access to the platform but their data will be preserved.
+          </p>
+          <template #footer>
+            <div class="flex justify-end gap-2">
+              <UButton variant="ghost" color="neutral" @click="showRemoveModal = false">
+                Cancel
+              </UButton>
+              <UButton color="error" @click="removeUser">
+                Deactivate
+              </UButton>
+            </div>
+          </template>
+        </UCard>
       </template>
     </UModal>
   </div>
@@ -461,7 +522,7 @@ const userActions = (user: User) => [
     label: 'Remove',
     icon: 'i-lucide-trash',
     color: 'error' as const,
-    onSelect: () => removeUser(user),
+    onSelect: () => confirmRemoveUser(user),
   }],
 ]
 
@@ -474,14 +535,17 @@ const formatDate = (date: string) => {
   })
 }
 
+const toast = useToast()
+
 const updateUserRole = async (userId: string, role: string) => {
   try {
-    await $fetch(`/api/admin/users/${userId}`, {
+    await $fetch(`/api/auth/users/${userId}/role`, {
       method: 'PATCH',
-      body: { role }
+      body: { userRole: role }
     })
-  } catch (err) {
-    console.error('Failed to update role:', err)
+    toast.add({ title: `Role updated to ${role}`, color: 'success' })
+  } catch (err: any) {
+    toast.add({ title: 'Failed to update role', description: err.data?.statusMessage || 'Please try again', color: 'error' })
   }
 }
 
@@ -496,14 +560,23 @@ const saveUser = async () => {
 
   editLoading.value = true
   try {
+    // Update user details
     await $fetch(`/api/admin/users/${selectedUser.value.id}`, {
       method: 'PATCH',
-      body: editForm.value
+      body: { name: editForm.value.name, email: editForm.value.email }
     })
+    // Update role separately via the correct endpoint
+    if (editForm.value.role !== selectedUser.value.role) {
+      await $fetch(`/api/auth/users/${selectedUser.value.id}/role`, {
+        method: 'PATCH',
+        body: { userRole: editForm.value.role }
+      })
+    }
+    toast.add({ title: 'User updated', color: 'success' })
     await refresh()
     showEditModal.value = false
-  } catch (err) {
-    console.error('Failed to update user:', err)
+  } catch (err: any) {
+    toast.add({ title: 'Failed to update user', description: err.data?.statusMessage || 'Please try again', color: 'error' })
   } finally {
     editLoading.value = false
   }
@@ -569,17 +642,28 @@ const toggleUserStatus = async (user: User) => {
   }
 }
 
-const removeUser = async (user: User) => {
-  if (!confirm(`Are you sure you want to remove ${user.name}?`)) return
+const showRemoveModal = ref(false)
+const userToRemove = ref<User | null>(null)
+
+const confirmRemoveUser = (u: User) => {
+  userToRemove.value = u
+  showRemoveModal.value = true
+}
+
+const removeUser = async () => {
+  if (!userToRemove.value) return
 
   try {
-    await $fetch(`/api/admin/users/${user.id}`, {
+    await $fetch(`/api/admin/users/${userToRemove.value.id}`, {
       method: 'PATCH',
       body: { isActive: false }
     })
+    toast.add({ title: `${userToRemove.value.name} has been deactivated`, color: 'success' })
+    showRemoveModal.value = false
+    userToRemove.value = null
     await refresh()
-  } catch (err) {
-    console.error('Failed to remove user:', err)
+  } catch (err: any) {
+    toast.add({ title: 'Failed to remove user', description: err.data?.statusMessage || 'Please try again', color: 'error' })
   }
 }
 
