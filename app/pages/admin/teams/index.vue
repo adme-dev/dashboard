@@ -353,8 +353,6 @@ interface User {
   avatarUrl?: string
 }
 
-definePageMeta({ layout: 'admin' })
-
 const { data: teamsData, pending, refresh: refreshTeams, error: teamsError } = useFetch('/api/admin/teams')
 const teams = computed(() => teamsData.value?.teams || [])
 

@@ -1,13 +1,6 @@
 <template>
-  <div class="flex-1 min-w-0 flex flex-col max-h-svh">
-    <UDashboardPanel class="!min-h-0 flex-1 flex flex-col">
-      <UDashboardNavbar title="Settings">
-        <template #trailing>
-          <span class="text-sm text-muted font-normal">Monday.com integration and sync configuration</span>
-        </template>
-      </UDashboardNavbar>
-
-      <div class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 max-w-4xl">
+  <div>
+      <div class="space-y-6">
         <!-- Monday.com Connection -->
         <UCard>
           <div class="flex items-center justify-between">
@@ -165,7 +158,7 @@
 
           <div v-else class="divide-y divide-default">
             <div
-              v-for="board in mondayBoards"
+              v-for="board in paginatedBoards"
               :key="board.id"
               class="py-4 flex items-center gap-3"
             >
@@ -197,6 +190,16 @@
                 </UBadge>
               </div>
             </div>
+          </div>
+          <div v-if="mondayBoards.length > boardsPerPage" class="pt-4 flex items-center justify-between border-t border-default">
+            <span class="text-sm text-muted">
+              Showing {{ Math.min(boardsPage * boardsPerPage, mondayBoards.length) }} of {{ mondayBoards.length }} boards
+            </span>
+            <UPagination
+              v-model="boardsPage"
+              :total="mondayBoards.length"
+              :items-per-page="boardsPerPage"
+            />
           </div>
         </UCard>
 
@@ -287,13 +290,10 @@
           </div>
         </UCard>
       </div>
-    </UDashboardPanel>
   </div>
 </template>
 
 <script setup lang="ts">
-definePageMeta({ layout: 'admin' })
-
 const toast = useToast()
 
 const connectionStatus = ref<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected')
@@ -320,6 +320,13 @@ const mondayBoards = ref<Array<{
 
 const connectedBoards = ref<string[]>([])
 const boardMappings = ref<Record<string, { departmentId?: string; lastSyncAt?: string }>>({})
+const boardsPage = ref(1)
+const boardsPerPage = 20
+
+const paginatedBoards = computed(() => {
+  const start = (boardsPage.value - 1) * boardsPerPage
+  return mondayBoards.value.slice(start, start + boardsPerPage)
+})
 
 const syncLogs = ref<Array<{
   id: string

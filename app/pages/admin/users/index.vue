@@ -1,28 +1,7 @@
 <template>
-  <div class="flex-1 min-w-0">
-  <UDashboardPanel>
-    <UDashboardNavbar title="User management">
-      <template #right>
-        <UButton
-          variant="outline"
-          color="neutral"
-          icon="i-lucide-users-round"
-          to="/admin/teams"
-        >
-          Manage teams
-        </UButton>
-        <UButton
-          color="primary"
-          icon="i-lucide-user-plus"
-          @click="showInviteModal = true"
-        >
-          Invite
-        </UButton>
-      </template>
-    </UDashboardNavbar>
-
-    <UDashboardToolbar>
-      <template #left>
+  <div>
+    <div class="flex items-center justify-between mb-4">
+      <div class="flex items-center gap-3">
         <UInput
           v-model="searchQuery"
           icon="i-lucide-search"
@@ -38,16 +17,32 @@
         >
           Filter
         </UButton>
-      </template>
-
-      <template #right>
+      </div>
+      <div class="flex items-center gap-2">
         <span class="text-sm text-muted">
           Showing: {{ filteredUsers.length }} results
         </span>
-      </template>
-    </UDashboardToolbar>
+        <UButton
+          variant="outline"
+          color="neutral"
+          icon="i-lucide-users-round"
+          to="/admin/teams"
+          size="sm"
+        >
+          Manage teams
+        </UButton>
+        <UButton
+          color="primary"
+          icon="i-lucide-user-plus"
+          size="sm"
+          @click="showInviteModal = true"
+        >
+          Invite
+        </UButton>
+      </div>
+    </div>
 
-    <div class="flex-1 overflow-y-auto p-4 sm:p-6">
+    <div>
       <!-- Loading State -->
       <div v-if="pending" class="flex-1 flex items-center justify-center min-h-64">
         <XfLoader />
@@ -160,7 +155,6 @@
         </template>
       </UTable>
     </div>
-    </UDashboardPanel>
 
     <!-- Invite Modal -->
     <UModal v-model:open="showInviteModal" title="Invite users">
@@ -291,8 +285,6 @@ interface Team {
   icon: string
   memberCount: number
 }
-
-definePageMeta({ layout: 'admin' })
 
 const { isAuthenticated, fetchUser } = useAuth()
 
