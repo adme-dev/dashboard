@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
 
+definePageMeta({ layout: 'agency' })
+
 const links = [[{
   label: 'General',
   icon: 'i-lucide-settings',

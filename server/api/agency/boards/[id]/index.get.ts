@@ -88,7 +88,17 @@ async function fetchBoardData(departmentId: string, boardName: string, search: s
       mim.source_data->'group'->>'title' as monday_group_title,
       mim.source_data->'group'->>'id' as monday_group_id,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id) AS subtask_count,
-      (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.completed_at IS NOT NULL) AS completed_subtask_count
+      (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.completed_at IS NOT NULL) AS completed_subtask_count,
+      t.estimated_cost,
+      t.actual_cost,
+      t.billing_rate,
+      t.currency,
+      t.is_billable,
+      t.estimated_hours,
+      t.actual_hours,
+      t.quote_line_item_id,
+      t.brief_id,
+      t.budget_source
     FROM tasks t
     LEFT JOIN monday_item_mappings mim ON mim.task_id = t.id
     LEFT JOIN task_statuses ts ON t.status_id = ts.id
@@ -248,6 +258,16 @@ function buildItemPayload(item: any, columnValuesMap: Map<string, any[]>, depend
     subtaskCount: parseInt(item.subtask_count) || 0,
     completedSubtaskCount: parseInt(item.completed_subtask_count) || 0,
     linkedItemCount: linkedItemCountMap.get(item.id) || 0,
+    estimatedCost: item.estimated_cost != null ? Number(item.estimated_cost) : null,
+    actualCost: item.actual_cost != null ? Number(item.actual_cost) : null,
+    billingRate: item.billing_rate != null ? Number(item.billing_rate) : null,
+    estimatedHours: item.estimated_hours != null ? Number(item.estimated_hours) : null,
+    actualHours: item.actual_hours != null ? Number(item.actual_hours) : null,
+    currency: item.currency || 'AUD',
+    isBillable: item.is_billable ?? true,
+    quoteLineItemId: item.quote_line_item_id || null,
+    briefId: item.brief_id || null,
+    budgetSource: item.budget_source || 'manual',
   }
 }
 

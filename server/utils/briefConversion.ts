@@ -4,6 +4,7 @@
  */
 
 import { queryOne, queryRows, execute, transaction } from '~~/server/utils/db'
+import { findBestMatch } from '~~/server/utils/rateCardMatcher'
 
 interface ConvertBriefOptions {
   briefId: string
@@ -27,6 +28,7 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
     SELECT
       b.id, b.title, b.client_id, b.status, b.converted_to_project_id,
       b.requested_deadline, b.budget_min, b.budget_max, b.budget_currency,
+      b.quote_id,
       bt.project_template_id AS template_project_template_id,
       bt.field_mapping, bt.auto_convert_on_approval
     FROM briefs b
@@ -118,17 +120,57 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
       `, [projectTemplateId])
       const templateTasks = tasksResult.rows
 
+      // Fetch quote line items for auto-matching (if brief has a linked quote)
+      let quoteLineItems: any[] = []
+      if (brief.quote_id) {
+        try {
+          const qliResult = await txClient.query(`
+            SELECT id, name, line_total, hourly_rate, estimated_hours
+            FROM quote_line_items WHERE quote_id = $1
+            ORDER BY sort_order
+          `, [brief.quote_id])
+          quoteLineItems = qliResult.rows.map((r: any) => ({
+            id: r.id,
+            serviceName: r.name,
+            price: Number(r.line_total || 0),
+            priceUnit: 'fixed',
+            categoryName: '',
+            hourlyRate: r.hourly_rate ? Number(r.hourly_rate) : null,
+            estimatedHours: r.estimated_hours ? Number(r.estimated_hours) : null,
+          }))
+        } catch { /* non-critical */ }
+      }
+
       // Create tasks from template
       let tasksCreated = 0
       for (const tt of templateTasks) {
         const dueDate = new Date(projectStartDate)
         dueDate.setDate(dueDate.getDate() + (tt.start_day_offset || 0) + (tt.duration_days || 1))
 
+        // Try to match this template task to a quote line item
+        let matchedLineItemId: string | null = null
+        let budgetSource = 'brief'
+        let estimatedCost: number | null = null
+        let billingRate: number | null = null
+
+        if (quoteLineItems.length > 0) {
+          const match = findBestMatch(tt.title, quoteLineItems, 0.3)
+          if (match) {
+            matchedLineItemId = match.itemId
+            budgetSource = 'quote'
+            estimatedCost = match.price
+            const matched = quoteLineItems.find(q => q.id === match.itemId)
+            if (matched?.hourlyRate) billingRate = matched.hourlyRate
+          }
+        }
+
         await txClient.query(`
           INSERT INTO tasks (
             project_id, title, description, priority,
-            task_type, estimated_hours, due_date, reporter_id
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            task_type, estimated_hours, due_date, reporter_id,
+            brief_id, budget_source, quote_line_item_id,
+            estimated_cost, billing_rate
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         `, [
           project.id,
           tt.title,
@@ -137,7 +179,12 @@ export async function convertBriefToProject(opts: ConvertBriefOptions): Promise<
           tt.task_type || 'task',
           tt.estimated_hours,
           dueDate.toISOString().split('T')[0],
-          userId
+          userId,
+          briefId,
+          budgetSource,
+          matchedLineItemId,
+          estimatedCost,
+          billingRate
         ])
         tasksCreated++
       }

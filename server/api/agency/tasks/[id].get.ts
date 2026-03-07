@@ -3,6 +3,7 @@
  */
 
 import { queryOne, queryRows } from '~~/server/utils/db'
+import { resolveEffectiveRate } from '~~/server/utils/taskPricing'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
@@ -51,6 +52,26 @@ export default defineEventHandler(async (event) => {
         statusMessage: 'Task not found'
       })
     }
+
+    // Compute actual cost from billable time entries if not explicitly set
+    let computedActualCost: number | null = null
+    try {
+      const timeResult = await queryOne(`
+        SELECT COALESCE(SUM(hours), 0)::numeric as billable_hours
+        FROM time_entries WHERE task_id = $1 AND billable = true AND status != 'rejected'
+      `, [id])
+      const billableHours = Number(timeResult?.billable_hours || 0)
+      if (task.actual_cost != null) {
+        computedActualCost = Number(task.actual_cost)
+      } else if (billableHours > 0 && task.billing_rate != null) {
+        computedActualCost = billableHours * Number(task.billing_rate)
+      }
+    } catch {
+      // time_entries table may not exist
+    }
+
+    // Resolve effective rate from hierarchy
+    const effectiveRate = await resolveEffectiveRate(task)
 
     // Get labels
     const labels = await queryRows(`
@@ -125,6 +146,37 @@ export default defineEventHandler(async (event) => {
       LIMIT 10
     `, [id])
 
+    // Linked quote line item (budget source)
+    let linkedQuoteLineItem: any = null
+    let sharedTaskCount = 0
+    if (task.quote_line_item_id) {
+      try {
+        linkedQuoteLineItem = await queryOne(`
+          SELECT qli.id, qli.name, qli.line_total, qli.quantity, qli.unit, qli.unit_price,
+                 qli.estimated_hours, qli.hourly_rate,
+                 q.id AS quote_id, q.quote_number, q.title AS quote_title
+          FROM quote_line_items qli
+          JOIN quotes q ON qli.quote_id = q.id
+          WHERE qli.id = $1
+        `, [task.quote_line_item_id])
+
+        const sharedResult = await queryOne(`
+          SELECT COUNT(*)::int AS count FROM tasks WHERE quote_line_item_id = $1 AND id != $2
+        `, [task.quote_line_item_id, id])
+        sharedTaskCount = sharedResult?.count || 0
+      } catch { /* graceful degradation */ }
+    }
+
+    // Linked brief (budget source)
+    let linkedBrief: any = null
+    if (task.brief_id) {
+      try {
+        linkedBrief = await queryOne(`
+          SELECT id, title, reference_number FROM briefs WHERE id = $1
+        `, [task.brief_id])
+      } catch { /* graceful degradation */ }
+    }
+
     return {
       id: task.id,
       projectId: task.project_id,
@@ -141,6 +193,38 @@ export default defineEventHandler(async (event) => {
       startDate: task.start_date,
       estimatedHours: task.estimated_hours ? Number(task.estimated_hours) : null,
       actualHours: task.actual_hours ? Number(task.actual_hours) : null,
+      estimatedCost: task.estimated_cost != null ? Number(task.estimated_cost) : null,
+      actualCost: task.actual_cost != null ? Number(task.actual_cost) : null,
+      billingRate: task.billing_rate != null ? Number(task.billing_rate) : null,
+      currency: task.currency || 'AUD',
+      isBillable: task.is_billable ?? true,
+      xeroInvoiceId: task.xero_invoice_id || null,
+      invoicedAt: task.invoiced_at || null,
+      computedActualCost,
+      effectiveRate: effectiveRate.rate,
+      effectiveRateSource: effectiveRate.source,
+      quoteLineItemId: task.quote_line_item_id || null,
+      briefId: task.brief_id || null,
+      budgetSource: task.budget_source || 'manual',
+      linkedQuoteLineItem: linkedQuoteLineItem ? {
+        id: linkedQuoteLineItem.id,
+        name: linkedQuoteLineItem.name,
+        lineTotal: Number(linkedQuoteLineItem.line_total),
+        quantity: Number(linkedQuoteLineItem.quantity),
+        unit: linkedQuoteLineItem.unit,
+        unitPrice: Number(linkedQuoteLineItem.unit_price),
+        estimatedHours: linkedQuoteLineItem.estimated_hours ? Number(linkedQuoteLineItem.estimated_hours) : null,
+        hourlyRate: linkedQuoteLineItem.hourly_rate ? Number(linkedQuoteLineItem.hourly_rate) : null,
+        quoteId: linkedQuoteLineItem.quote_id,
+        quoteNumber: linkedQuoteLineItem.quote_number,
+        quoteTitle: linkedQuoteLineItem.quote_title,
+      } : null,
+      linkedBrief: linkedBrief ? {
+        id: linkedBrief.id,
+        title: linkedBrief.title,
+        referenceNumber: linkedBrief.reference_number,
+      } : null,
+      sharedTaskCount,
       sortOrder: task.sort_order,
       isBlocked: task.is_blocked,
       blockedReason: task.blocked_reason,

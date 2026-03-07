@@ -23,6 +23,100 @@
         </div>
       </div>
 
+      <!-- Budget Source Card -->
+      <div v-if="budgetSource && budgetSource !== 'manual'" class="space-y-2">
+        <h4 class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Budget Source</h4>
+        <div class="border rounded-lg p-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <UIcon :name="budgetSourceIcon" class="size-4 text-gray-500" />
+              <UBadge :color="budgetSourceColor" variant="subtle" size="xs">{{ budgetSourceLabel }}</UBadge>
+            </div>
+            <UButton
+              size="xs"
+              variant="ghost"
+              color="error"
+              icon="i-lucide-unlink"
+              @click="detachBudgetSource"
+            >
+              Override
+            </UButton>
+          </div>
+          <!-- Quote link -->
+          <NuxtLink
+            v-if="linkedQuoteLineItem"
+            :to="`/agency/sales/quotes/${linkedQuoteLineItem.quoteId}`"
+            class="block text-sm text-primary-500 hover:underline"
+          >
+            {{ linkedQuoteLineItem.quoteNumber }} — {{ linkedQuoteLineItem.name }}
+          </NuxtLink>
+          <!-- Brief link -->
+          <NuxtLink
+            v-if="linkedBrief"
+            :to="`/agency/briefs/${linkedBrief.id}`"
+            class="block text-sm text-primary-500 hover:underline"
+          >
+            {{ linkedBrief.referenceNumber }} — {{ linkedBrief.title }}
+          </NuxtLink>
+          <p v-if="sharedTaskCount > 0" class="text-xs text-amber-500">
+            Shared by {{ sharedTaskCount + 1 }} tasks
+          </p>
+        </div>
+      </div>
+
+      <!-- Budget Section -->
+      <div v-if="estimatedCost > 0 || billingRate > 0" class="space-y-2">
+        <h4 class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Budget</h4>
+        <div class="grid grid-cols-3 gap-3">
+          <div class="bg-gray-50 dark:bg-neutral-800 rounded-lg p-3 text-center">
+            <p class="text-xs text-gray-500 dark:text-neutral-400 mb-1">Estimated</p>
+            <p class="text-sm font-semibold">{{ estimatedCost > 0 ? formatBudget(estimatedCost) : '—' }}</p>
+          </div>
+          <div class="bg-gray-50 dark:bg-neutral-800 rounded-lg p-3 text-center">
+            <p class="text-xs text-gray-500 dark:text-neutral-400 mb-1">Spent</p>
+            <p class="text-sm font-semibold">{{ spentCost > 0 ? formatBudget(spentCost) : '—' }}</p>
+          </div>
+          <div class="bg-gray-50 dark:bg-neutral-800 rounded-lg p-3 text-center">
+            <p class="text-xs text-gray-500 dark:text-neutral-400 mb-1">Remaining</p>
+            <p class="text-sm font-semibold" :class="budgetRemaining !== null && budgetRemaining < 0 ? 'text-red-500' : ''">
+              {{ budgetRemaining !== null ? formatBudget(budgetRemaining) : '—' }}
+            </p>
+          </div>
+        </div>
+        <!-- Budget Progress Bar -->
+        <div v-if="estimatedCost > 0" class="space-y-1">
+          <div class="flex items-center justify-between text-xs text-gray-500 dark:text-neutral-400">
+            <span>Budget Usage</span>
+            <span :class="budgetProgressColor">{{ budgetPercent }}%</span>
+          </div>
+          <div class="w-full bg-gray-200 dark:bg-neutral-700 rounded-full h-2">
+            <div
+              class="h-2 rounded-full transition-all"
+              :class="budgetBarColor"
+              :style="{ width: Math.min(budgetPercent, 100) + '%' }"
+            />
+          </div>
+          <p v-if="budgetPercent > 100" class="text-xs text-red-500">
+            {{ formatBudget(spentCost - estimatedCost) }} over budget
+          </p>
+        </div>
+        <!-- Rate & Billable -->
+        <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-neutral-400">
+          <span v-if="billingRate > 0">Rate: {{ formatBudget(billingRate) }}/hr</span>
+          <UBadge v-if="!isBillable" color="neutral" variant="soft" size="xs">Non-billable</UBadge>
+        </div>
+        <!-- Link to Quote button when manual -->
+        <UButton
+          v-if="budgetSource === 'manual' || !budgetSource"
+          size="xs"
+          variant="soft"
+          icon="i-lucide-link"
+          @click="showBudgetLinker = true"
+        >
+          Link to Quote
+        </UButton>
+      </div>
+
       <!-- Progress Bar (estimated vs actual) -->
       <div v-if="estimatedHours > 0" class="space-y-1">
         <div class="flex items-center justify-between text-xs text-gray-500 dark:text-neutral-400">
@@ -134,6 +228,9 @@
         <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">Use "Log Time" or "Start Timer" above.</p>
       </div>
     </template>
+
+    <!-- Budget Linker Modal -->
+    <TaskBudgetLinker v-model:open="showBudgetLinker" :task-id="taskId" @linked="fetchTimeEntries" />
   </div>
 </template>
 
@@ -152,6 +249,31 @@ const estimatedHours = ref(0)
 const showLogForm = ref(false)
 const submittingLog = ref(false)
 const startingTimer = ref(false)
+
+// Budget data
+const estimatedCost = ref(0)
+const billingRate = ref(0)
+const currency = ref('AUD')
+const isBillable = ref(true)
+const computedActualCost = ref<number | null>(null)
+
+// Budget source data
+const budgetSource = ref<string | null>(null)
+const linkedQuoteLineItem = ref<any>(null)
+const linkedBrief = ref<any>(null)
+const sharedTaskCount = ref(0)
+const showBudgetLinker = ref(false)
+
+const SOURCE_CONFIG: Record<string, { icon: string; label: string; color: 'primary' | 'info' | 'success' | 'warning' | 'neutral' }> = {
+  quote: { icon: 'i-lucide-receipt', label: 'Quote', color: 'primary' },
+  brief: { icon: 'i-lucide-file-text', label: 'Brief', color: 'info' },
+  invoice: { icon: 'i-lucide-file-check', label: 'Invoice', color: 'success' },
+  rate_card: { icon: 'i-lucide-credit-card', label: 'Rate Card', color: 'warning' },
+  manual: { icon: 'i-lucide-pencil', label: 'Manual', color: 'neutral' },
+}
+const budgetSourceIcon = computed(() => SOURCE_CONFIG[budgetSource.value || 'manual']?.icon || 'i-lucide-pencil')
+const budgetSourceLabel = computed(() => SOURCE_CONFIG[budgetSource.value || 'manual']?.label || 'Manual')
+const budgetSourceColor = computed(() => SOURCE_CONFIG[budgetSource.value || 'manual']?.color || 'neutral')
 
 const logForm = ref({
   hours: 1,
@@ -181,6 +303,48 @@ const progressBarColor = computed(() => {
   return 'bg-emerald-500'
 })
 
+// Budget computed
+const spentCost = computed(() => {
+  if (computedActualCost.value != null) return computedActualCost.value
+  if (billingRate.value > 0) return billableHours.value * billingRate.value
+  return 0
+})
+
+const budgetRemaining = computed(() => {
+  if (estimatedCost.value <= 0) return null
+  return estimatedCost.value - spentCost.value
+})
+
+const budgetPercent = computed(() => {
+  if (estimatedCost.value <= 0) return 0
+  return Math.round((spentCost.value / estimatedCost.value) * 100)
+})
+
+const budgetProgressColor = computed(() => {
+  if (budgetPercent.value > 100) return 'text-red-500 font-semibold'
+  if (budgetPercent.value > 80) return 'text-amber-500'
+  return 'text-emerald-500'
+})
+
+const budgetBarColor = computed(() => {
+  if (budgetPercent.value > 100) return 'bg-red-500'
+  if (budgetPercent.value > 80) return 'bg-amber-500'
+  return 'bg-emerald-500'
+})
+
+function formatBudget(amount: number): string {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: currency.value,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount)
+  } catch {
+    return `$${amount.toFixed(0)}`
+  }
+}
+
 // Fetch
 async function fetchTimeEntries() {
   loading.value = true
@@ -193,15 +357,37 @@ async function fetchTimeEntries() {
     timeEntries.value = []
   }
 
-  // Fetch task details for estimated hours
+  // Fetch task details for estimated hours and budget
   try {
     const task = await $fetch<any>(`/api/agency/tasks/${props.taskId}`)
     estimatedHours.value = Number(task.estimatedHours || task.estimated_hours || 0)
+    estimatedCost.value = Number(task.estimatedCost || 0)
+    billingRate.value = Number(task.billingRate || task.effectiveRate || 0)
+    currency.value = task.currency || 'AUD'
+    isBillable.value = task.isBillable ?? true
+    computedActualCost.value = task.computedActualCost ?? null
+    budgetSource.value = task.budgetSource || null
+    linkedQuoteLineItem.value = task.linkedQuoteLineItem || null
+    linkedBrief.value = task.linkedBrief || null
+    sharedTaskCount.value = task.sharedTaskCount || 0
   } catch {
     // Non-critical
   }
 
   loading.value = false
+}
+
+async function detachBudgetSource() {
+  try {
+    await $fetch(`/api/agency/tasks/${props.taskId}`, {
+      method: 'PUT',
+      body: { budgetSource: 'manual', quoteLineItemId: null, briefId: null }
+    })
+    toast.add({ title: 'Budget source detached', color: 'success' })
+    await fetchTimeEntries()
+  } catch (err: any) {
+    toast.add({ title: 'Failed to detach', description: err.message, color: 'error' })
+  }
 }
 
 async function submitLogTime() {

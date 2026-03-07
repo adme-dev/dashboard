@@ -32,7 +32,7 @@ const { data: briefs, pending, refresh } = await useFetch('/api/agency/briefs', 
 const { data: categories } = await useFetch('/api/agency/briefs/categories')
 
 // Fetch team members for bulk assign
-const { data: teamMembers } = await useFetch('/api/agency/team')
+const { data: teamMembers } = await useFetch('/api/agency/team-members')
 
 // Status options
 const statusOptions = [

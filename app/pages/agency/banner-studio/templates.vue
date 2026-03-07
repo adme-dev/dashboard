@@ -179,6 +179,10 @@ const dropdownItems = (tpl: BannerTemplateDB) => {
               :alt="tpl.name"
               class="w-full h-full object-cover"
             >
+            <BannerThumbnail
+              v-else-if="!tpl._isCustomHtml && tpl.canvasData"
+              :canvas-data="tpl.canvasData"
+            />
             <UIcon v-else name="i-lucide-layout-template" class="text-3xl text-muted" />
             <UBadge
               v-if="tpl._isCustomHtml"

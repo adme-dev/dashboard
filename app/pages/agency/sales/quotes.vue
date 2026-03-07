@@ -73,6 +73,20 @@ const getStatusColor = (status: string): 'neutral' | 'warning' | 'primary' | 'in
   }
 }
 
+// Xero status badge color
+const getXeroStatusColor = (status: string): 'neutral' | 'primary' | 'success' | 'error' | 'info' => {
+  switch (status) {
+    case 'DRAFT': return 'neutral'
+    case 'SENT': return 'primary'
+    case 'ACCEPTED': return 'success'
+    case 'DECLINED': return 'error'
+    case 'INVOICED': return 'info'
+    default: return 'neutral'
+  }
+}
+
+const toast = useToast()
+
 // Table columns
 const columns: any[] = [
   { key: 'quoteNumber', label: 'Quote #', sortable: true },
@@ -80,6 +94,7 @@ const columns: any[] = [
   { key: 'client', label: 'Client' },
   { key: 'total', label: 'Total', sortable: true },
   { key: 'status', label: 'Status' },
+  { key: 'xero', label: 'Xero' },
   { key: 'validUntil', label: 'Valid Until' },
   { key: 'createdAt', label: 'Created', sortable: true },
   { key: 'actions', label: '' }
@@ -98,6 +113,7 @@ const getActions = (quote: any) => [
     { label: 'Mark as Rejected', icon: 'i-lucide-x-circle', click: () => rejectQuote(quote), disabled: quote.status === 'rejected' }
   ],
   [
+    { label: 'Push to Xero', icon: 'i-lucide-upload-cloud', click: () => pushToXero(quote), disabled: !!quote.xeroQuoteId },
     { label: 'Download PDF', icon: 'i-lucide-download' }
   ]
 ]
@@ -128,6 +144,16 @@ const acceptQuote = async (quote: any) => {
     refresh()
   } catch (err) {
     console.error('Failed to accept quote:', err)
+  }
+}
+
+const pushToXero = async (quote: any) => {
+  try {
+    await $fetch(`/api/agency/quotes/${quote.id}/push-to-xero`, { method: 'POST' })
+    toast.add({ title: 'Quote pushed to Xero', color: 'success' })
+    refresh()
+  } catch (err: any) {
+    toast.add({ title: 'Failed to push to Xero', description: err.data?.statusMessage || err.message, color: 'error' })
   }
 }
 
@@ -264,6 +290,18 @@ const showNewQuoteModal = ref(false)
                 <UBadge :color="getStatusColor((r as any).status)" variant="subtle">
                   {{ (r as any).status }}
                 </UBadge>
+              </template>
+
+              <template #xero-data="{ row: r }">
+                <UBadge
+                  v-if="(r as any).xeroStatus"
+                  :color="getXeroStatusColor((r as any).xeroStatus)"
+                  variant="subtle"
+                  size="xs"
+                >
+                  {{ (r as any).xeroStatus }}
+                </UBadge>
+                <span v-else class="text-gray-400">&mdash;</span>
               </template>
 
               <template #validUntil-data="{ row: r }">

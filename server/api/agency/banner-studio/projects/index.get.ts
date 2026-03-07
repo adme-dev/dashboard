@@ -13,6 +13,7 @@ export default defineEventHandler(async (event) => {
         p.id, p.name,
         p.client_id AS "clientId",
         c.name AS "clientName",
+        p.canvas_data AS "canvasData",
         p.thumbnail_url AS "thumbnailUrl",
         p.status,
         p.tags,

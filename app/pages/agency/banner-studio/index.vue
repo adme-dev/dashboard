@@ -251,6 +251,10 @@ function clearFilters() {
               :alt="p.name"
               class="w-full h-full object-cover"
             >
+            <BannerThumbnail
+              v-else-if="p.canvasData && Object.keys(p.canvasData).length"
+              :canvas-data="p.canvasData"
+            />
             <UIcon v-else name="i-lucide-image" class="w-10 h-10 text-[var(--ui-text-muted)] opacity-20" />
             <!-- Hover overlay -->
             <div class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none">

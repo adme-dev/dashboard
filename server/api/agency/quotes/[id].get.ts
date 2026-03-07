@@ -62,6 +62,35 @@ export default defineEventHandler(async (event) => {
       ORDER BY sort_order, created_at
     `, [quoteId])
 
+    // Get tasks linked to line items
+    const lineItemIds = lineItems.map((li: any) => li.id)
+    let linkedTasksMap = new Map<string, any[]>()
+    if (lineItemIds.length > 0) {
+      try {
+        const linkedTasks = await queryRows(`
+          SELECT t.id, t.title, t.quote_line_item_id,
+                 ts.name AS status_name, ts.color AS status_color,
+                 t.actual_hours, t.estimated_hours
+          FROM tasks t
+          JOIN task_statuses ts ON t.status_id = ts.id
+          WHERE t.quote_line_item_id = ANY($1::uuid[])
+          ORDER BY t.created_at
+        `, [lineItemIds])
+        for (const lt of linkedTasks) {
+          const key = lt.quote_line_item_id
+          if (!linkedTasksMap.has(key)) linkedTasksMap.set(key, [])
+          linkedTasksMap.get(key)!.push({
+            id: lt.id,
+            title: lt.title,
+            statusName: lt.status_name,
+            statusColor: lt.status_color,
+            actualHours: lt.actual_hours ? Number(lt.actual_hours) : null,
+            estimatedHours: lt.estimated_hours ? Number(lt.estimated_hours) : null,
+          })
+        }
+      } catch { /* graceful degradation */ }
+    }
+
     return {
       quote: {
         id: quote.id,
@@ -132,6 +161,13 @@ export default defineEventHandler(async (event) => {
           id: quote.parent_quote_id,
           quoteNumber: quote.parent_quote_number,
         } : null,
+        xero: quote.xero_quote_id ? {
+          quoteId: quote.xero_quote_id,
+          quoteNumber: quote.xero_quote_number,
+          status: quote.xero_status,
+          syncedAt: quote.xero_synced_at,
+          invoiceId: quote.xero_invoice_id,
+        } : null,
         lineItems: lineItems.map(item => ({
           id: item.id,
           quoteId: item.quote_id,
@@ -154,6 +190,7 @@ export default defineEventHandler(async (event) => {
           isIncluded: item.is_included,
           createdAt: item.created_at,
           updatedAt: item.updated_at,
+          linkedTasks: linkedTasksMap.get(item.id) || [],
         })),
       }
     }

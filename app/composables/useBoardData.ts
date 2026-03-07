@@ -40,6 +40,16 @@ export interface BoardItem {
   subtaskCount?: number
   completedSubtaskCount?: number
   linkedItemCount?: number
+  estimatedCost?: number | null
+  actualCost?: number | null
+  billingRate?: number | null
+  estimatedHours?: number | null
+  actualHours?: number | null
+  currency?: string
+  isBillable?: boolean
+  quoteLineItemId?: string | null
+  briefId?: string | null
+  budgetSource?: string | null
 }
 
 export interface BoardGroup {
@@ -110,7 +120,7 @@ function matchesFilter(
   }
 
   // Type-specific matching
-  if (type === 'number') {
+  if (type === 'number' || type === 'currency' || type === 'budget') {
     const num = numVal != null ? Number(numVal) : null
     const ruleNum = Number(rule.value)
     if (num == null) return false
@@ -195,7 +205,7 @@ function compareItems(
     const dir = rule.direction === 'desc' ? -1 : 1
     let cmp = 0
 
-    if (type === 'number') {
+    if (type === 'number' || type === 'currency' || type === 'budget') {
       const na = cvA?.numberValue != null ? Number(cvA.numberValue) : -Infinity
       const nb = cvB?.numberValue != null ? Number(cvB.numberValue) : -Infinity
       cmp = na - nb
@@ -600,6 +610,26 @@ export function useBoardData(boardId: Ref<string>) {
       return { id: '', taskId: item.id, columnId: col.id, textValue: item.priority, jsonValue: { optionId: pVal, label: item.priority.charAt(0).toUpperCase() + item.priority.slice(1) }, createdAt: '', updatedAt: '' }
     }
 
+    // Budget column: combines estimated + actual cost into a progress-style cell
+    if (slug === 'budget' && type === 'budget' && item.estimatedCost != null) {
+      return {
+        id: '', taskId: item.id, columnId: col.id,
+        numberValue: item.estimatedCost,
+        jsonValue: {
+          actualCost: item.actualCost || 0,
+          currency: item.currency || 'AUD',
+          budgetSource: item.budgetSource || 'manual',
+        },
+        createdAt: '', updatedAt: '',
+      }
+    }
+    if (slug === 'billing_rate' && type === 'currency' && item.billingRate != null) {
+      return { id: '', taskId: item.id, columnId: col.id, numberValue: item.billingRate, createdAt: '', updatedAt: '' }
+    }
+    if (slug === 'is_billable' && type === 'checkbox') {
+      return { id: '', taskId: item.id, columnId: col.id, numberValue: item.isBillable !== false ? 1 : 0, createdAt: '', updatedAt: '' }
+    }
+
     return null
   }
 
@@ -640,6 +670,17 @@ export function useBoardData(boardId: Ref<string>) {
         method: 'PUT',
         body: { labels: payload.jsonValue.labelIds },
       }).catch((err: any) => console.error('Failed to sync task labels:', err))
+    }
+
+    // Route pricing column updates directly to the task API (stored on tasks table, not column values)
+    const pricingSlugs = ['budget', 'billing_rate', 'is_billable']
+    if (col && pricingSlugs.includes(col.slug)) {
+      const taskBody: Record<string, any> = {}
+      if (col.slug === 'budget') taskBody.estimatedCost = payload.numberValue
+      if (col.slug === 'billing_rate') taskBody.billingRate = payload.numberValue
+      if (col.slug === 'is_billable') taskBody.isBillable = payload.numberValue === 1
+      await $fetch(`/api/agency/tasks/${taskId}`, { method: 'PUT', body: taskBody })
+      return
     }
 
     // Always update the cell value (custom column storage)

@@ -35,6 +35,7 @@ import CellLabel from './cells/CellLabel.vue'
 import CellInvoiceStatus from './cells/CellInvoiceStatus.vue'
 import CellClient from './cells/CellClient.vue'
 import CellLinkedItems from './cells/CellLinkedItems.vue'
+import CellBudget from './cells/CellBudget.vue'
 
 const cellComponents: Record<string, any> = {
   text: CellText,
@@ -59,6 +60,7 @@ const cellComponents: Record<string, any> = {
   invoice_status: CellInvoiceStatus,
   client: CellClient,
   linked_items: CellLinkedItems,
+  budget: CellBudget,
 }
 
 const props = defineProps<{

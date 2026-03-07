@@ -156,6 +156,10 @@ export default defineEventHandler(async (event) => {
           name: q.approver_name,
         } : null,
         lineItemCount: Number(q.line_item_count),
+        xeroQuoteId: q.xero_quote_id || null,
+        xeroQuoteNumber: q.xero_quote_number || null,
+        xeroStatus: q.xero_status || null,
+        xeroInvoiceId: q.xero_invoice_id || null,
       })),
       pagination: {
         total: Number(countResult?.total) || 0,

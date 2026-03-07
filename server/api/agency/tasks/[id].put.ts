@@ -28,6 +28,14 @@ interface UpdateTaskBody {
   blockedReason?: string | null
   groupId?: string | null
   labels?: string[]
+  estimatedCost?: number | null
+  actualCost?: number | null
+  billingRate?: number | null
+  currency?: string
+  isBillable?: boolean
+  quoteLineItemId?: string | null
+  briefId?: string | null
+  budgetSource?: string | null
 }
 
 export default defineEventHandler(async (event) => {
@@ -138,6 +146,72 @@ export default defineEventHandler(async (event) => {
 
     if (body.groupId !== undefined) {
       trackChange('group', 'group_id', body.groupId || null, currentTask.group_id)
+    }
+
+    if (body.estimatedCost !== undefined) {
+      trackChange('estimated_cost', 'estimated_cost', body.estimatedCost, currentTask.estimated_cost)
+    }
+    if (body.actualCost !== undefined) {
+      trackChange('actual_cost', 'actual_cost', body.actualCost, currentTask.actual_cost)
+    }
+    if (body.billingRate !== undefined) {
+      trackChange('billing_rate', 'billing_rate', body.billingRate, currentTask.billing_rate)
+    }
+    if (body.currency !== undefined) {
+      trackChange('currency', 'currency', body.currency, currentTask.currency)
+    }
+    if (body.isBillable !== undefined) {
+      trackChange('is_billable', 'is_billable', body.isBillable, currentTask.is_billable)
+    }
+    if (body.quoteLineItemId !== undefined) {
+      trackChange('quote_line_item', 'quote_line_item_id', body.quoteLineItemId || null, currentTask.quote_line_item_id)
+    }
+    if (body.briefId !== undefined) {
+      trackChange('brief', 'brief_id', body.briefId || null, currentTask.brief_id)
+    }
+    if (body.budgetSource !== undefined) {
+      trackChange('budget_source', 'budget_source', body.budgetSource || 'manual', currentTask.budget_source)
+    }
+
+    // Auto-populate from quote line item when linking
+    if (body.quoteLineItemId) {
+      try {
+        const qli = await queryOne(`
+          SELECT line_total, hourly_rate, estimated_hours
+          FROM quote_line_items WHERE id = $1
+        `, [body.quoteLineItemId])
+        if (qli) {
+          // Count how many tasks share this line item (including this one)
+          const shared = await queryOne(`
+            SELECT COUNT(*)::int AS count FROM tasks WHERE quote_line_item_id = $1 AND id != $2
+          `, [body.quoteLineItemId, id])
+          const sharedCount = (shared?.count || 0) + 1
+
+          const lineTotal = Number(qli.line_total || 0)
+          if (lineTotal > 0 && body.estimatedCost === undefined) {
+            trackChange('estimated_cost', 'estimated_cost', lineTotal / sharedCount, currentTask.estimated_cost)
+          }
+          if (qli.hourly_rate && body.billingRate === undefined) {
+            trackChange('billing_rate', 'billing_rate', Number(qli.hourly_rate), currentTask.billing_rate)
+          }
+          if (qli.estimated_hours && body.estimatedHours === undefined) {
+            trackChange('estimated_hours', 'estimated_hours', Number(qli.estimated_hours) / sharedCount, currentTask.estimated_hours)
+          }
+          if (body.budgetSource === undefined) {
+            trackChange('budget_source', 'budget_source', 'quote', currentTask.budget_source)
+          }
+        }
+      } catch { /* non-critical */ }
+    }
+
+    // Auto-calculate estimated_cost when hours AND rate are both available
+    if (body.estimatedHours !== undefined || body.billingRate !== undefined) {
+      const hrs = body.estimatedHours !== undefined ? body.estimatedHours : currentTask.estimated_hours
+      const rate = body.billingRate !== undefined ? body.billingRate : currentTask.billing_rate
+      if (hrs != null && rate != null && body.estimatedCost === undefined) {
+        const autoEstCost = Number(hrs) * Number(rate)
+        trackChange('estimated_cost', 'estimated_cost', autoEstCost, currentTask.estimated_cost)
+      }
     }
 
     if (fields.length === 0 && body.labels === undefined) {
@@ -262,6 +336,14 @@ export default defineEventHandler(async (event) => {
       startDate: task.start_date,
       estimatedHours: task.estimated_hours ? Number(task.estimated_hours) : null,
       actualHours: task.actual_hours ? Number(task.actual_hours) : null,
+      estimatedCost: task.estimated_cost != null ? Number(task.estimated_cost) : null,
+      actualCost: task.actual_cost != null ? Number(task.actual_cost) : null,
+      billingRate: task.billing_rate != null ? Number(task.billing_rate) : null,
+      currency: task.currency || 'AUD',
+      isBillable: task.is_billable ?? true,
+      quoteLineItemId: task.quote_line_item_id || null,
+      briefId: task.brief_id || null,
+      budgetSource: task.budget_source || 'manual',
       sortOrder: task.sort_order,
       isBlocked: task.is_blocked,
       blockedReason: task.blocked_reason,

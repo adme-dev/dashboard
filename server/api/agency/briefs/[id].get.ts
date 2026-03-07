@@ -86,6 +86,43 @@ export default defineEventHandler(async (event) => {
       ORDER BY btf.step_number ASC, btf.sort_order ASC
     `, [id])
 
+    // Get linked quote (if any)
+    let quoteData = null
+    if (brief.quote_id) {
+      const q = await queryOne(`
+        SELECT id, quote_number, status, total, currency,
+               xero_quote_number, xero_status
+        FROM quotes WHERE id = $1
+      `, [brief.quote_id])
+      if (q) {
+        quoteData = {
+          id: q.id,
+          quoteNumber: q.quote_number,
+          status: q.status,
+          total: Number(q.total),
+          currency: q.currency,
+          xeroQuoteNumber: q.xero_quote_number,
+          xeroStatus: q.xero_status,
+        }
+      }
+    }
+
+    // Get tasks linked to this brief
+    let briefLinkedTasks: any[] = []
+    try {
+      briefLinkedTasks = await queryRows(`
+        SELECT t.id, t.title,
+               ts.name AS status_name, ts.color AS status_color,
+               d.name AS board_name,
+               t.actual_hours, t.estimated_hours, t.budget_source
+        FROM tasks t
+        JOIN task_statuses ts ON t.status_id = ts.id
+        JOIN departments d ON t.department_id = d.id
+        WHERE t.brief_id = $1
+        ORDER BY t.created_at
+      `, [id])
+    } catch { /* graceful degradation */ }
+
     // Get attachments
     const attachments = await queryRows(`
       SELECT
@@ -173,6 +210,17 @@ export default defineEventHandler(async (event) => {
         name: brief.department_name,
         color: brief.department_color
       } : null,
+      quote: quoteData,
+      linkedTasks: briefLinkedTasks.map(t => ({
+        id: t.id,
+        title: t.title,
+        statusName: t.status_name,
+        statusColor: t.status_color,
+        boardName: t.board_name,
+        actualHours: t.actual_hours ? Number(t.actual_hours) : null,
+        estimatedHours: t.estimated_hours ? Number(t.estimated_hours) : null,
+        budgetSource: t.budget_source || 'manual',
+      })),
       fieldValues: fieldValues.map(fv => ({
         id: fv.id,
         briefId: fv.brief_id,

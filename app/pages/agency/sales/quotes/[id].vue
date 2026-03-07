@@ -20,11 +20,27 @@ const accepting = ref(false)
 const rejecting = ref(false)
 const deleting = ref(false)
 const deletingItemId = ref<string | null>(null)
+const pushingToXero = ref(false)
+const syncingXero = ref(false)
+const convertingToInvoice = ref(false)
 
 // Modals
 const showRejectModal = ref(false)
 const showDeleteModal = ref(false)
 const rejectReason = ref('')
+
+// Create task from line item
+const showCreateTask = ref(false)
+const createTaskLineItem = ref<any>(null)
+
+function openCreateTask(item: any) {
+  createTaskLineItem.value = item
+  showCreateTask.value = true
+}
+
+function onTaskCreatedFromQuote() {
+  refresh()
+}
 
 const quote = computed(() => quoteData.value?.quote as any)
 
@@ -129,6 +145,58 @@ const deleteLineItem = async (itemId: string) => {
     toast.add({ title: 'Failed to delete line item', description: err.message, color: 'error' })
   } finally {
     deletingItemId.value = null
+  }
+}
+
+// Xero actions
+const pushToXero = async () => {
+  pushingToXero.value = true
+  try {
+    await $fetch(`/api/agency/quotes/${quoteId}/push-to-xero`, { method: 'POST' })
+    toast.add({ title: 'Quote pushed to Xero as DRAFT', color: 'success' })
+    refresh()
+  } catch (err: any) {
+    toast.add({ title: 'Failed to push to Xero', description: err.data?.statusMessage || err.message, color: 'error' })
+  } finally {
+    pushingToXero.value = false
+  }
+}
+
+const syncXeroStatus = async () => {
+  syncingXero.value = true
+  try {
+    const result = await $fetch<any>(`/api/agency/quotes/${quoteId}/xero-status`)
+    toast.add({ title: `Xero status: ${result.xeroStatus}`, color: 'success' })
+    refresh()
+  } catch (err: any) {
+    toast.add({ title: 'Failed to sync Xero status', description: err.data?.statusMessage || err.message, color: 'error' })
+  } finally {
+    syncingXero.value = false
+  }
+}
+
+const convertToInvoice = async () => {
+  convertingToInvoice.value = true
+  try {
+    const result = await $fetch<any>(`/api/agency/quotes/${quoteId}/xero-to-invoice`, { method: 'POST' })
+    toast.add({ title: 'Invoice created in Xero', description: `Invoice: ${result.xeroInvoiceNumber}`, color: 'success' })
+    refresh()
+  } catch (err: any) {
+    toast.add({ title: 'Failed to convert to invoice', description: err.data?.statusMessage || err.message, color: 'error' })
+  } finally {
+    convertingToInvoice.value = false
+  }
+}
+
+// Xero status badge color
+const getXeroStatusColor = (status: string): 'neutral' | 'primary' | 'success' | 'error' | 'info' => {
+  switch (status) {
+    case 'DRAFT': return 'neutral'
+    case 'SENT': return 'primary'
+    case 'ACCEPTED': return 'success'
+    case 'DECLINED': return 'error'
+    case 'INVOICED': return 'info'
+    default: return 'neutral'
   }
 }
 
@@ -280,13 +348,15 @@ const getItemTypeColor = (type: string): 'primary' | 'success' | 'warning' | 'se
                         <th class="text-right py-2 px-2 font-medium text-sm text-gray-500">Unit Price</th>
                         <th class="text-right py-2 px-2 font-medium text-sm text-gray-500">Discount</th>
                         <th class="text-right py-2 px-2 font-medium text-sm text-gray-500">Total</th>
-                        <th v-if="!['accepted', 'rejected'].includes(quote.status)" class="w-10"></th>
+                        <th v-if="quote.status !== 'rejected'" class="w-10"></th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr
+                      <template
                         v-for="item in quote.lineItems"
                         :key="item.id"
+                      >
+                      <tr
                         class="border-b border-gray-100 dark:border-gray-800"
                         :class="{ 'opacity-50': !item.isIncluded }"
                       >
@@ -318,33 +388,68 @@ const getItemTypeColor = (type: string): 'primary' | 'success' | 'warning' | 'se
                         <td class="py-3 px-2 text-right font-medium">
                           {{ formatCurrency(item.lineTotal, quote.currency) }}
                         </td>
-                        <td v-if="!['accepted', 'rejected'].includes(quote.status)" class="py-3 px-2">
-                          <UButton
-                            variant="ghost"
-                            color="error"
-                            icon="i-lucide-trash-2"
-                            size="xs"
-                            :loading="deletingItemId === item.id"
-                            @click="deleteLineItem(item.id)"
-                          />
+                        <td v-if="quote.status !== 'rejected'" class="py-3 px-2">
+                          <div class="flex items-center gap-1">
+                            <UButton
+                              variant="ghost"
+                              icon="i-lucide-plus-circle"
+                              size="xs"
+                              title="Create task from this line item"
+                              @click="openCreateTask(item)"
+                            />
+                            <UButton
+                              v-if="!['accepted', 'rejected'].includes(quote.status)"
+                              variant="ghost"
+                              color="error"
+                              icon="i-lucide-trash-2"
+                              size="xs"
+                              :loading="deletingItemId === item.id"
+                              @click="deleteLineItem(item.id)"
+                            />
+                          </div>
                         </td>
                       </tr>
+                      <!-- Linked tasks row -->
+                      <tr v-if="item.linkedTasks?.length" class="bg-gray-50/50 dark:bg-neutral-800/30">
+                        <td :colspan="quote.status === 'rejected' ? 6 : 7" class="py-2 px-4">
+                          <div class="flex items-center gap-1.5 flex-wrap">
+                            <UIcon name="i-lucide-link" class="size-3 text-gray-400" />
+                            <span class="text-xs text-gray-500 mr-1">Linked tasks:</span>
+                            <NuxtLink
+                              v-for="lt in item.linkedTasks"
+                              :key="lt.id"
+                              :to="`/agency/boards/tasks/${lt.id}`"
+                              class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 dark:bg-neutral-700 text-xs hover:bg-gray-200 dark:hover:bg-neutral-600 transition-colors"
+                            >
+                              <span
+                                class="size-1.5 rounded-full shrink-0"
+                                :style="{ backgroundColor: lt.statusColor || '#6B7280' }"
+                              />
+                              <span class="truncate max-w-[150px]">{{ lt.title }}</span>
+                              <span v-if="lt.actualHours || lt.estimatedHours" class="text-gray-400">
+                                {{ lt.actualHours || 0 }}/{{ lt.estimatedHours || '?' }}h
+                              </span>
+                            </NuxtLink>
+                          </div>
+                        </td>
+                      </tr>
+                      </template>
                     </tbody>
                     <tfoot>
                       <tr class="border-t-2 border-gray-200 dark:border-gray-700">
-                        <td colspan="5" class="py-2 px-2 text-right font-medium">Subtotal</td>
+                        <td :colspan="quote.status === 'rejected' ? 5 : 6" class="py-2 px-2 text-right font-medium">Subtotal</td>
                         <td class="py-2 px-2 text-right font-medium">{{ formatCurrency(quote.subtotal, quote.currency) }}</td>
                       </tr>
                       <tr v-if="quote.discountPercent > 0">
-                        <td colspan="5" class="py-2 px-2 text-right text-gray-500">Discount ({{ quote.discountPercent }}%)</td>
+                        <td :colspan="quote.status === 'rejected' ? 5 : 6" class="py-2 px-2 text-right text-gray-500">Discount ({{ quote.discountPercent }}%)</td>
                         <td class="py-2 px-2 text-right text-red-500">-{{ formatCurrency(quote.discountAmount, quote.currency) }}</td>
                       </tr>
                       <tr v-if="quote.taxPercent > 0">
-                        <td colspan="5" class="py-2 px-2 text-right text-gray-500">Tax ({{ quote.taxPercent }}%)</td>
+                        <td :colspan="quote.status === 'rejected' ? 5 : 6" class="py-2 px-2 text-right text-gray-500">Tax ({{ quote.taxPercent }}%)</td>
                         <td class="py-2 px-2 text-right">+{{ formatCurrency(quote.taxAmount, quote.currency) }}</td>
                       </tr>
                       <tr class="border-t border-gray-200 dark:border-gray-700">
-                        <td colspan="5" class="py-3 px-2 text-right font-semibold text-lg">Total</td>
+                        <td :colspan="quote.status === 'rejected' ? 5 : 6" class="py-3 px-2 text-right font-semibold text-lg">Total</td>
                         <td class="py-3 px-2 text-right font-semibold text-lg text-primary-500">{{ formatCurrency(quote.total, quote.currency) }}</td>
                       </tr>
                     </tfoot>
@@ -471,6 +576,81 @@ const getItemTypeColor = (type: string): 'primary' | 'success' | 'warning' | 'se
                   </div>
                 </div>
               </UCard>
+
+              <!-- Xero Integration -->
+              <UCard>
+                <template #header>
+                  <div class="flex items-center gap-2">
+                    <UIcon name="i-lucide-cloud" class="size-4" />
+                    <h3 class="font-semibold">Xero Integration</h3>
+                  </div>
+                </template>
+
+                <!-- Not pushed yet -->
+                <div v-if="!quote.xero" class="space-y-3">
+                  <p class="text-sm text-muted">Push this quote to Xero to track it externally.</p>
+                  <UButton
+                    label="Push to Xero"
+                    icon="i-lucide-upload-cloud"
+                    block
+                    :loading="pushingToXero"
+                    :disabled="!quote.lineItems?.length || !quote.client"
+                    @click="pushToXero"
+                  />
+                  <p v-if="!quote.lineItems?.length" class="text-xs text-amber-500">
+                    Add line items before pushing to Xero.
+                  </p>
+                  <p v-else-if="!quote.client" class="text-xs text-amber-500">
+                    Assign a client before pushing to Xero.
+                  </p>
+                </div>
+
+                <!-- Pushed to Xero -->
+                <div v-else class="space-y-3">
+                  <div class="flex items-center justify-between">
+                    <span class="text-sm text-muted">Xero Quote</span>
+                    <span class="font-mono text-sm">{{ quote.xero.quoteNumber || quote.xero.quoteId?.slice(0, 8) }}</span>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <span class="text-sm text-muted">Status</span>
+                    <UBadge :color="getXeroStatusColor(quote.xero.status)" variant="subtle">
+                      {{ quote.xero.status }}
+                    </UBadge>
+                  </div>
+                  <div v-if="quote.xero.syncedAt" class="flex items-center justify-between">
+                    <span class="text-sm text-muted">Last Synced</span>
+                    <span class="text-xs">{{ format(new Date(quote.xero.syncedAt), 'MMM dd, yyyy HH:mm') }}</span>
+                  </div>
+
+                  <!-- Sync button -->
+                  <UButton
+                    v-if="quote.xero.status !== 'INVOICED'"
+                    label="Sync Status"
+                    icon="i-lucide-refresh-cw"
+                    variant="outline"
+                    block
+                    :loading="syncingXero"
+                    @click="syncXeroStatus"
+                  />
+
+                  <!-- Convert to Invoice button (only when ACCEPTED) -->
+                  <UButton
+                    v-if="quote.xero.status === 'ACCEPTED'"
+                    label="Convert to Invoice"
+                    icon="i-lucide-file-text"
+                    color="primary"
+                    block
+                    :loading="convertingToInvoice"
+                    @click="convertToInvoice"
+                  />
+
+                  <!-- Invoiced success -->
+                  <div v-if="quote.xero.status === 'INVOICED'" class="flex items-center gap-2 text-sm text-emerald-500">
+                    <UIcon name="i-lucide-check-circle" class="size-4" />
+                    <span>Invoice created in Xero</span>
+                  </div>
+                </div>
+              </UCard>
             </div>
           </div>
         </template>
@@ -510,6 +690,19 @@ const getItemTypeColor = (type: string): 'primary' | 'success' | 'warning' | 'se
         </div>
       </template>
     </UModal>
+
+    <!-- Create Task from Line Item -->
+    <TaskQuickTaskCreate
+      v-model:open="showCreateTask"
+      source-type="quote-line-item"
+      :prefill-title="createTaskLineItem?.name"
+      :prefill-description="createTaskLineItem?.description"
+      :prefill-estimated-hours="createTaskLineItem?.estimatedHours"
+      :prefill-project-id="quote?.projectId"
+      :quote-line-item-id="createTaskLineItem?.id"
+      :source-label="`${createTaskLineItem?.name} — ${quote?.quoteNumber}`"
+      @created="onTaskCreatedFromQuote"
+    />
 
     <!-- Delete Modal -->
     <UModal v-model:open="showDeleteModal">

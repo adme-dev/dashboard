@@ -242,6 +242,19 @@ async function updateStatus(status: BriefStatus) {
         duration: 5000
       })
     }
+
+    // Show auto-quote notification if it happened
+    if (result?.autoQuote?.quoteId) {
+      const autoTasksMsg = result.autoQuote.tasksLinked > 0
+        ? ` — ${result.autoQuote.tasksLinked} task${result.autoQuote.tasksLinked > 1 ? 's' : ''} auto-linked`
+        : ''
+      toast.add({
+        title: 'Quote Generated',
+        description: `Auto-created ${result.autoQuote.quoteNumber} with ${result.autoQuote.lineItemCount} line items${autoTasksMsg}`,
+        color: 'success',
+        duration: 5000
+      })
+    }
   } catch (error: any) {
     toast.add({
       title: 'Error',
@@ -296,6 +309,52 @@ async function handleConvert() {
   } finally {
     isConverting.value = false
   }
+}
+
+// Generate quote state
+const isGeneratingQuote = ref(false)
+
+async function generateQuote() {
+  isGeneratingQuote.value = true
+  try {
+    const result = await $fetch<any>(`/api/agency/briefs/${briefId.value}/generate-quote`, {
+      method: 'POST'
+    })
+
+    await refresh()
+
+    const tasksMsg = result.tasksLinked > 0
+      ? ` — ${result.tasksLinked} task${result.tasksLinked > 1 ? 's' : ''} auto-linked`
+      : ''
+    toast.add({
+      title: 'Quote Generated',
+      description: `Created ${result.quoteNumber} with ${result.lineItemCount} line items${tasksMsg}`,
+      color: 'success',
+      duration: 5000
+    })
+  } catch (error: any) {
+    toast.add({
+      title: 'Error',
+      description: error.data?.statusMessage || 'Failed to generate quote',
+      color: 'error',
+      duration: 5000
+    })
+  } finally {
+    isGeneratingQuote.value = false
+  }
+}
+
+// Can generate quote: approved, no existing quote, admin
+const canGenerateQuote = computed(() => {
+  if (!brief.value) return false
+  return brief.value.status === 'approved' && !brief.value.quote && isAdmin.value
+})
+
+// Create task from brief
+const showCreateTask = ref(false)
+
+function onTaskCreatedFromBrief() {
+  refresh()
 }
 
 // Duplicate brief (uses dedicated endpoint that copies field values)
@@ -353,6 +412,17 @@ async function duplicateBrief() {
             <UBadge :color="getStatusColor(brief.status)" size="lg">
               {{ formatStatus(brief.status) }}
             </UBadge>
+
+            <!-- Generate Quote Button -->
+            <UButton
+              v-if="canGenerateQuote"
+              icon="i-lucide-receipt"
+              variant="outline"
+              :loading="isGeneratingQuote"
+              @click="generateQuote"
+            >
+              Generate Quote
+            </UButton>
 
             <!-- Convert to Project Button -->
             <UButton
@@ -739,6 +809,93 @@ async function duplicateBrief() {
               </div>
             </UCard>
 
+            <!-- Linked Quote -->
+            <UCard v-if="brief.quote">
+              <template #header>
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-lucide-receipt" class="size-4 text-primary" />
+                  <h3 class="font-semibold">Linked Quote</h3>
+                </div>
+              </template>
+
+              <div class="space-y-3">
+                <NuxtLink
+                  :to="`/agency/sales/quotes/${brief.quote.id}`"
+                  class="flex items-center gap-2 text-primary hover:underline font-medium"
+                >
+                  <UIcon name="i-lucide-external-link" class="size-4" />
+                  {{ brief.quote.quoteNumber }}
+                </NuxtLink>
+
+                <div class="flex items-center justify-between text-sm">
+                  <span class="text-muted">Status</span>
+                  <UBadge :color="getStatusColor(brief.quote.status)" variant="subtle" size="xs">
+                    {{ formatStatus(brief.quote.status) }}
+                  </UBadge>
+                </div>
+
+                <div class="flex items-center justify-between text-sm">
+                  <span class="text-muted">Total</span>
+                  <span class="font-medium">
+                    {{ new Intl.NumberFormat('en-AU', { style: 'currency', currency: brief.quote.currency || 'AUD' }).format(brief.quote.total) }}
+                  </span>
+                </div>
+
+                <div v-if="brief.quote.xeroStatus" class="flex items-center justify-between text-sm">
+                  <span class="text-muted">Xero</span>
+                  <UBadge
+                    :color="brief.quote.xeroStatus === 'ACCEPTED' ? 'success' : brief.quote.xeroStatus === 'DECLINED' ? 'error' : brief.quote.xeroStatus === 'INVOICED' ? 'info' : 'neutral'"
+                    variant="subtle"
+                    size="xs"
+                  >
+                    {{ brief.quote.xeroStatus }}
+                  </UBadge>
+                </div>
+              </div>
+            </UCard>
+
+            <!-- Linked Tasks -->
+            <UCard>
+              <template #header>
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <UIcon name="i-lucide-list-checks" class="size-4 text-primary" />
+                    <h3 class="font-semibold">Linked Tasks ({{ brief.linkedTasks?.length || 0 }})</h3>
+                  </div>
+                  <UButton
+                    size="xs"
+                    variant="ghost"
+                    icon="i-lucide-plus"
+                    label="Add Task"
+                    @click="showCreateTask = true"
+                  />
+                </div>
+              </template>
+
+              <div v-if="!brief.linkedTasks?.length" class="text-center py-4">
+                <p class="text-sm text-muted">No tasks linked yet.</p>
+              </div>
+              <div v-else class="space-y-2">
+                <div
+                  v-for="lt in brief.linkedTasks"
+                  :key="lt.id"
+                  class="flex items-center gap-2 text-sm"
+                >
+                  <span
+                    class="size-2 rounded-full shrink-0"
+                    :style="{ backgroundColor: lt.statusColor || '#6B7280' }"
+                  />
+                  <span class="truncate flex-1">{{ lt.title }}</span>
+                  <UBadge v-if="lt.boardName" color="neutral" variant="subtle" size="xs">
+                    {{ lt.boardName }}
+                  </UBadge>
+                  <span v-if="lt.actualHours || lt.estimatedHours" class="text-xs text-gray-400 whitespace-nowrap">
+                    {{ lt.actualHours || 0 }}/{{ lt.estimatedHours || '?' }}h
+                  </span>
+                </div>
+              </div>
+            </UCard>
+
             <!-- Completeness Score -->
             <BriefsBriefCompletenessScore :brief-id="briefId" />
 
@@ -763,6 +920,17 @@ async function duplicateBrief() {
         </div>
       </div>
     </UDashboardPanel>
+
+    <!-- Create Task from Brief -->
+    <TaskQuickTaskCreate
+      v-model:open="showCreateTask"
+      source-type="brief"
+      :prefill-title="brief?.title"
+      :prefill-project-id="brief?.convertedToProjectId || brief?.projectId"
+      :brief-id="brief?.id"
+      :source-label="`Brief ${brief?.referenceNumber || ''} — ${brief?.title}`"
+      @created="onTaskCreatedFromBrief"
+    />
 
     <!-- Convert to Project Modal -->
     <UModal v-model:open="showConvertModal">

@@ -28,6 +28,7 @@ async function seedDefaultColumns(departmentId: string, userId: string) {
     { name: 'Client', slug: 'client', type: 'client', sortOrder: 3, settings: {} },
     { name: 'Priority', slug: 'priority', type: 'dropdown', sortOrder: 4, settings: {} },
     { name: 'Due Date', slug: 'due_date', type: 'date', sortOrder: 5, settings: {} },
+    { name: 'Budget', slug: 'budget', type: 'budget', sortOrder: 6, settings: {} },
   ]
 
   for (const col of defaults) {
@@ -105,7 +106,7 @@ export default eventHandler(async (event) => {
 
     // Auto-seed default columns if board is missing any defaults
     // Uses ON CONFLICT DO NOTHING so it's safe to run every time
-    const defaultSlugs = ['status', 'assignee', 'client', 'priority', 'due_date']
+    const defaultSlugs = ['status', 'assignee', 'client', 'priority', 'due_date', 'budget']
     const existingSlugs = new Set(customColumns.map((c: any) => c.slug))
     const missingDefaults = defaultSlugs.some(s => !existingSlugs.has(s))
 

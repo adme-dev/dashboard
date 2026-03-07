@@ -26,6 +26,11 @@ interface CreateTaskBody {
   startDate?: string
   estimatedHours?: number
   labels?: string[]
+  quoteLineItemId?: string | null
+  briefId?: string | null
+  budgetSource?: string | null
+  estimatedCost?: number | null
+  billingRate?: number | null
 }
 
 export default defineEventHandler(async (event) => {
@@ -77,15 +82,52 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    // Auto-populate from quote line item when linking
+    let estimatedCost = body.estimatedCost ?? null
+    let billingRate = body.billingRate ?? null
+    let estimatedHours = body.estimatedHours ?? null
+    let budgetSource = body.budgetSource || 'manual'
+
+    if (body.quoteLineItemId) {
+      try {
+        const qli = await queryOne(`
+          SELECT line_total, hourly_rate, estimated_hours
+          FROM quote_line_items WHERE id = $1
+        `, [body.quoteLineItemId])
+        if (qli) {
+          // Count existing tasks sharing this line item + 1 for the new task
+          const shared = await queryOne(`
+            SELECT COUNT(*)::int AS count FROM tasks WHERE quote_line_item_id = $1
+          `, [body.quoteLineItemId])
+          const sharedCount = (shared?.count || 0) + 1
+
+          const lineTotal = Number(qli.line_total || 0)
+          if (lineTotal > 0 && body.estimatedCost == null) {
+            estimatedCost = lineTotal / sharedCount
+          }
+          if (qli.hourly_rate && body.billingRate == null) {
+            billingRate = Number(qli.hourly_rate)
+          }
+          if (qli.estimated_hours && body.estimatedHours == null) {
+            estimatedHours = Number(qli.estimated_hours) / sharedCount
+          }
+          if (!body.budgetSource) {
+            budgetSource = 'quote'
+          }
+        }
+      } catch { /* non-critical */ }
+    }
+
     const result = await transaction(async (client) => {
       // Create the task
       const taskResult = await client.query(`
         INSERT INTO tasks (
           department_id, project_id, parent_task_id, group_id, status_id,
           title, description, priority, task_type,
-          assignee_id, reporter_id, due_date, start_date, estimated_hours
+          assignee_id, reporter_id, due_date, start_date, estimated_hours,
+          quote_line_item_id, brief_id, budget_source, estimated_cost, billing_rate
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
         RETURNING *
       `, [
         departmentId,
@@ -101,7 +143,12 @@ export default defineEventHandler(async (event) => {
         body.reporterId || null,
         body.dueDate || null,
         body.startDate || null,
-        body.estimatedHours || null,
+        estimatedHours ?? null,
+        body.quoteLineItemId || null,
+        body.briefId || null,
+        budgetSource,
+        estimatedCost,
+        billingRate,
       ])
 
       const task = taskResult.rows[0]
@@ -179,6 +226,11 @@ export default defineEventHandler(async (event) => {
       dueDate: task.due_date,
       startDate: task.start_date,
       estimatedHours: task.estimated_hours ? Number(task.estimated_hours) : null,
+      estimatedCost: task.estimated_cost != null ? Number(task.estimated_cost) : null,
+      billingRate: task.billing_rate != null ? Number(task.billing_rate) : null,
+      quoteLineItemId: task.quote_line_item_id || null,
+      briefId: task.brief_id || null,
+      budgetSource: task.budget_source || 'manual',
       sortOrder: task.sort_order,
       isBlocked: task.is_blocked,
       createdAt: task.created_at,

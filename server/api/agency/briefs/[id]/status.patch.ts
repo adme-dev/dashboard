@@ -6,6 +6,7 @@ import { queryOne, execute } from '~~/server/utils/db'
 import { getAuthUser } from '~~/server/utils/auth'
 import { notifyBriefStatusChanged } from '~~/server/utils/briefNotifications'
 import { convertBriefToProject } from '~~/server/utils/briefConversion'
+import { generateQuoteFromBrief } from '~~/server/utils/briefQuoteGenerator'
 
 const VALID_STATUSES = [
   'draft', 'submitted', 'under_review', 'needs_info',
@@ -145,6 +146,28 @@ export default defineEventHandler(async (event) => {
       }
     }
 
+    // Auto-generate quote on approval if template requires it
+    let autoQuoteResult = null
+    if (status === 'approved' && userId) {
+      try {
+        const tplInfo = await queryOne(`
+          SELECT requires_quote
+          FROM brief_templates
+          WHERE id = (SELECT template_id FROM briefs WHERE id = $1)
+        `, [id])
+
+        if (tplInfo?.requires_quote) {
+          const briefCheck = await queryOne('SELECT quote_id FROM briefs WHERE id = $1', [id])
+          if (!briefCheck?.quote_id) {
+            autoQuoteResult = await generateQuoteFromBrief(id, userId)
+          }
+        }
+      } catch (quoteError) {
+        console.error('[Brief] Auto-quote generation failed:', quoteError)
+        // Don't throw — status change already succeeded
+      }
+    }
+
     return {
       id,
       status,
@@ -153,6 +176,13 @@ export default defineEventHandler(async (event) => {
         projectId: autoConvertResult.project.id,
         projectName: autoConvertResult.project.name,
         tasksCreated: autoConvertResult.tasksCreated
+      } : null,
+      autoQuote: autoQuoteResult ? {
+        quoteId: autoQuoteResult.quoteId,
+        quoteNumber: autoQuoteResult.quoteNumber,
+        total: autoQuoteResult.total,
+        lineItemCount: autoQuoteResult.lineItemCount,
+        tasksLinked: autoQuoteResult.tasksLinked
       } : null
     }
   } catch (error: any) {

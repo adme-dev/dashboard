@@ -120,8 +120,9 @@
                   <div v-for="col in columns" :key="col.id" class="px-2 py-1 border-r border-gray-200 dark:border-neutral-700" :style="{ width: (col.width || 150) + 'px' }" @click.stop>
                     <BoardCell
                       :column="normalizeColumn(col)"
-                      :value="getCellValue(item, col)"
+                      :value="getPricingCellValue(item, col, getCellValue)"
                       :task-id="item.id"
+                      :readonly="isPricingReadonly(col)"
                       @update="(columnId, payload) => handleCellUpdate(item.id, columnId, payload)"
                       @edit-column="(columnId) => openColumnConfig(columns.find(c => c.id === columnId) || columns[0])"
                     />
@@ -609,6 +610,23 @@ const boardId = computed(() => route.params.id as string)
 const containerRef = ref<InstanceType<typeof BoardContainer> | null>(null)
 const subitemHelper = useBoardSubitems()
 const resolvedBoardId = computed(() => (containerRef.value?.board as any)?.id || boardId.value)
+
+// Pricing visibility gating — columns always shown, values blanked for non-privileged users
+const { data: pricingVisibility } = useLazyFetch('/api/agency/pricing/visibility')
+const canViewPricing = computed(() => (pricingVisibility.value as any)?.canViewPricing ?? true)
+const canEditPricing = computed(() => (pricingVisibility.value as any)?.canEditPricing ?? false)
+
+const PRICING_SLUGS = new Set(['budget', 'billing_rate', 'is_billable'])
+function isPricingColumn(col: any) {
+  return PRICING_SLUGS.has(col.slug)
+}
+function getPricingCellValue(item: any, col: any, getCellValue: Function) {
+  if (isPricingColumn(col) && !canViewPricing.value) return null
+  return getCellValue(item, col)
+}
+function isPricingReadonly(col: any) {
+  return isPricingColumn(col) && !canEditPricing.value
+}
 
 const showAddColumn = ref(false)
 const showAddGroup = ref(false)
