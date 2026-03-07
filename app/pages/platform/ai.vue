@@ -131,6 +131,77 @@
       </div>
     </section>
 
+    <!-- AI Briefs Section -->
+    <section class="pb-20 md:pb-32">
+      <div class="max-w-[1200px] mx-auto px-6">
+        <div class="grid md:grid-cols-2 gap-12 md:gap-16 items-start">
+          <div>
+            <div class="flex items-center gap-3 mb-6">
+              <div class="w-10 h-10 rounded-xl bg-orange-50 dark:bg-orange-500/10 flex items-center justify-center">
+                <UIcon name="i-lucide-file-text" class="w-5 h-5 text-orange-600 dark:text-orange-400" />
+              </div>
+              <h2 class="text-[clamp(24px,3vw,32px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em]">AI-Powered Briefs</h2>
+            </div>
+            <p class="text-[16px] text-[#45474D] dark:text-white/60 leading-relaxed mb-6">
+              AI assists at every stage of brief creation — from suggesting field values as you type, to scoring brief quality in real time, to generating complete briefs from a single paragraph.
+            </p>
+            <p class="text-[15px] text-[#45474D]/70 dark:text-white/40 leading-relaxed">
+              The quality scoring engine rates each brief across three dimensions: required field completion (40%), optional fields (20%), and content quality (40%). Issues like vague language, conflicting requirements, and unrealistic timelines are flagged with specific improvement suggestions.
+            </p>
+          </div>
+
+          <div class="space-y-4">
+            <div
+              v-for="item in briefAiFeatures"
+              :key="item.title"
+              class="rounded-2xl bg-[#f4f5f7] dark:bg-white/[0.03] p-5 flex items-start gap-4 hover:bg-[#eef0f3] dark:hover:bg-white/[0.05] transition-colors"
+            >
+              <div class="w-10 h-10 rounded-xl bg-white dark:bg-white/[0.06] flex items-center justify-center shadow-[0_1px_3px_rgba(0,0,0,0.04)] shrink-0">
+                <UIcon :name="item.icon" class="w-5 h-5 text-[#121317] dark:text-white" />
+              </div>
+              <div>
+                <h3 class="text-[15px] font-medium text-[#121317] dark:text-white mb-1">{{ item.title }}</h3>
+                <p class="text-[14px] text-[#45474D]/70 dark:text-white/40 leading-relaxed">{{ item.description }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Edge AI Section -->
+    <section class="pb-20 md:pb-32">
+      <div class="max-w-[1200px] mx-auto px-6">
+        <div class="text-center mb-12">
+          <div class="flex items-center justify-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
+              <UIcon name="i-lucide-cloud-lightning" class="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            </div>
+          </div>
+          <h2 class="text-[clamp(24px,3vw,36px)] font-[450] text-[#121317] dark:text-white tracking-[-0.02em] mb-3">Edge AI inference</h2>
+          <p class="text-[16px] text-[#45474D] dark:text-white/60 max-w-[520px] mx-auto leading-relaxed">
+            Powered by Cloudflare Workers AI, intent classification and summarization run at the edge for sub-50ms latency with Groq fallback.
+          </p>
+        </div>
+
+        <div class="grid sm:grid-cols-3 gap-5">
+          <div
+            v-for="card in edgeAiCards"
+            :key="card.title"
+            class="bg-[#f4f5f7] dark:bg-white/[0.03] rounded-2xl p-6 flex flex-col gap-4 hover:bg-[#eef0f3] dark:hover:bg-white/[0.05] transition-colors"
+          >
+            <div class="w-11 h-11 rounded-xl bg-white dark:bg-white/[0.06] flex items-center justify-center shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <UIcon :name="card.icon" class="w-5 h-5 text-[#121317] dark:text-white" />
+            </div>
+            <div>
+              <h3 class="text-[16px] font-medium text-[#121317] dark:text-white mb-1.5">{{ card.title }}</h3>
+              <p class="text-[14px] text-[#45474D]/70 dark:text-white/40 leading-relaxed">{{ card.description }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- LoRA Section -->
     <section class="pb-20 md:pb-32">
       <div class="max-w-[1200px] mx-auto px-6">
@@ -215,6 +286,16 @@ const chatFeatures = [
     title: 'Conversation Pinning',
     icon: 'i-lucide-pin',
     description: 'Pin important conversations for quick access. Up to 25 pinned threads per user with dedicated sidebar section.'
+  },
+  {
+    title: 'Rate Card Queries',
+    icon: 'i-lucide-credit-card',
+    description: 'Ask pricing questions in plain language. Rate card entries are embedded in the vector database so the AI knows your exact service rates.'
+  },
+  {
+    title: 'Time Tracking Queries',
+    icon: 'i-lucide-timer',
+    description: 'Ask "How many hours on Client X last month?" and get instant answers. Timesheet gap analysis spots missing entries automatically.'
   }
 ]
 
@@ -286,6 +367,42 @@ const scoringSignals = [
     title: 'Entity Overlap',
     icon: 'i-lucide-layers',
     description: 'Results mentioning the same clients, projects, or tasks as your query rank higher.'
+  }
+]
+
+const briefAiFeatures = [
+  {
+    title: 'Field Suggestions',
+    icon: 'i-lucide-sparkles',
+    description: 'AI suggests values for empty fields as you type — target audiences, platforms, timelines — based on context and past briefs.'
+  },
+  {
+    title: 'Brief Generator',
+    icon: 'i-lucide-wand-2',
+    description: 'Provide a one-paragraph description and AI populates every template field. Accept, edit, or reject each suggestion individually.'
+  },
+  {
+    title: 'Quality Assessment',
+    icon: 'i-lucide-check-circle',
+    description: 'AI reviews completed briefs for vague language, conflicting requirements, and unrealistic timelines with specific fix suggestions.'
+  }
+]
+
+const edgeAiCards = [
+  {
+    title: 'Intent Classification',
+    icon: 'i-lucide-route',
+    description: 'Queries are classified at the edge into financial, process, search, time tracking, pricing, and other intents — routing to the right data sources in under 50ms.'
+  },
+  {
+    title: 'Edge Summarization',
+    icon: 'i-lucide-text',
+    description: 'Long documents and thread summaries are generated at the edge via Llama 3.1 8B. No round-trip to external APIs — everything stays on Cloudflare\'s network.'
+  },
+  {
+    title: 'Graceful Fallback',
+    icon: 'i-lucide-shield',
+    description: 'If Workers AI is unavailable, requests automatically fall back to Groq for classification and generation. Zero downtime for AI features.'
   }
 ]
 

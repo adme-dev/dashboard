@@ -230,6 +230,20 @@ const pipelineSteps = [
     color: 'text-emerald-400'
   },
   {
+    label: 'Brief & Pricing Signals',
+    desc: 'Brief field patterns, quality scores, rate card pricing, and quote outcomes feed domain-specific context into the model.',
+    icon: 'i-lucide-file-text',
+    bg: 'bg-orange-500/15',
+    color: 'text-orange-400'
+  },
+  {
+    label: 'Time & Utilisation Data',
+    desc: 'Logged hours, timesheet patterns, and utilisation rates are indexed so the AI answers capacity and billing questions accurately.',
+    icon: 'i-lucide-timer',
+    bg: 'bg-cyan-500/15',
+    color: 'text-cyan-400'
+  },
+  {
     label: 'Continuous Feedback',
     desc: 'Every thumbs up, correction, and override feeds back into the training loop to improve accuracy.',
     icon: 'i-lucide-refresh-cw',
@@ -259,6 +273,13 @@ const controlFeatures = [
     icon: 'i-lucide-git-branch',
     bg: 'bg-amber-500/15',
     color: 'text-amber-400'
+  },
+  {
+    label: 'Edge AI Classification',
+    desc: 'Intent classification runs on Workers AI at the edge. Sub-50ms routing with automatic Groq fallback when needed.',
+    icon: 'i-lucide-cloud-lightning',
+    bg: 'bg-sky-500/15',
+    color: 'text-sky-400'
   },
   {
     label: 'Export & Delete',
