@@ -19,10 +19,12 @@ export const useAuth = () => {
     if (!user.value) return false
     // Legacy: direct role name match
     if (roles.includes(user.value.role)) return true
-    // Dynamic: check if roles correspond to a permission group the user has
+    // Dynamic: check if roles correspond to any permission group the user has.
+    // Multiple groups can share the same role array (e.g. MANAGEMENT, TIME_APPROVALS, AUTOMATION),
+    // so we must check ALL matches.
     if (user.value.permissionGroups?.length) {
-      const group = permissionGroupForRoles(roles)
-      if (group && user.value.permissionGroups.includes(group)) return true
+      const groups = permissionGroupsForRoles(roles)
+      if (groups.some(g => user.value!.permissionGroups!.includes(g))) return true
     }
     return false
   }

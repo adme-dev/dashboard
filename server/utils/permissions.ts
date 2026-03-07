@@ -45,11 +45,22 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<string, PermissionGroup[]> = {
   guest: [],
 }
 
-// Reverse-lookup: given a PERMISSIONS array, find the group name
+// Reverse-lookup: given a PERMISSIONS array, find the first matching group name
 export function permissionGroupForRoles(roles: readonly string[]): PermissionGroup | null {
   const key = roles.join(',')
   for (const [group, groupRoles] of Object.entries(PERMISSIONS)) {
     if ((groupRoles as readonly string[]).join(',') === key) return group as PermissionGroup
   }
   return null
+}
+
+// Reverse-lookup: given a PERMISSIONS array, find ALL matching group names.
+// Multiple groups can share the same role array (e.g. MANAGEMENT, TIME_APPROVALS, AUTOMATION).
+export function permissionGroupsForRoles(roles: readonly string[]): PermissionGroup[] {
+  const key = roles.join(',')
+  const matches: PermissionGroup[] = []
+  for (const [group, groupRoles] of Object.entries(PERMISSIONS)) {
+    if ((groupRoles as readonly string[]).join(',') === key) matches.push(group as PermissionGroup)
+  }
+  return matches
 }

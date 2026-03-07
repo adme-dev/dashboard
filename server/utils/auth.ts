@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs'
 import { queryOne, queryRows } from './db'
-import { isReadOnlyRole, PERMISSIONS, permissionGroupForRoles } from './permissions'
+import { isReadOnlyRole, PERMISSIONS, permissionGroupsForRoles } from './permissions'
 import { resolveUserPermissions } from './roleResolver'
 
 export interface User {
@@ -151,10 +151,12 @@ export async function verifyJwt(token: string): Promise<any | null> {
 export function hasRole(user: User, allowedRoles: string[]): boolean {
   // Legacy: direct role name match
   if (allowedRoles.includes(user.role)) return true
-  // Dynamic: check if allowedRoles correspond to a permission group the user has
+  // Dynamic: check if allowedRoles correspond to any permission group the user has.
+  // Multiple groups can share the same role array (e.g. MANAGEMENT, TIME_APPROVALS, AUTOMATION
+  // all have ['owner','admin','lead','project_manager']), so we must check ALL matches.
   if (user.permissionGroups?.length) {
-    const group = permissionGroupForRoles(allowedRoles)
-    if (group && user.permissionGroups.includes(group)) return true
+    const groups = permissionGroupsForRoles(allowedRoles)
+    if (groups.some(g => user.permissionGroups!.includes(g))) return true
   }
   return false
 }
