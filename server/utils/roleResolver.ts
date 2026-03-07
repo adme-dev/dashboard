@@ -26,10 +26,10 @@ export async function resolveUserPermissions(
 
   let resolved: ResolvedPermissions
 
-  if (customRoleId) {
-    try {
-      const role = await queryOne<{ name: string; is_read_only: boolean; permission_groups: string[] }>(
-        `SELECT cr.name, cr.is_read_only,
+  try {
+    // Query by custom_role_id if set, otherwise look up the system role by slug
+    const query = customRoleId
+      ? `SELECT cr.name, cr.is_read_only,
            COALESCE(
              array_agg(rpg.permission_group) FILTER (WHERE rpg.permission_group IS NOT NULL),
              '{}'
@@ -37,24 +37,31 @@ export async function resolveUserPermissions(
          FROM custom_roles cr
          LEFT JOIN role_permission_groups rpg ON rpg.role_id = cr.id
          WHERE cr.id = $1
-         GROUP BY cr.id`,
-        [customRoleId]
-      )
+         GROUP BY cr.id`
+      : `SELECT cr.name, cr.is_read_only,
+           COALESCE(
+             array_agg(rpg.permission_group) FILTER (WHERE rpg.permission_group IS NOT NULL),
+             '{}'
+           ) AS permission_groups
+         FROM custom_roles cr
+         LEFT JOIN role_permission_groups rpg ON rpg.role_id = cr.id
+         WHERE cr.slug = $1 AND cr.is_system = true
+         GROUP BY cr.id`
 
-      if (role) {
-        resolved = {
-          groups: role.permission_groups as PermissionGroup[],
-          customRoleId,
-          roleName: role.name,
-          isReadOnly: role.is_read_only
-        }
-      } else {
-        resolved = staticFallback(userRole)
+    const param = customRoleId || userRole
+    const role = await queryOne<{ name: string; is_read_only: boolean; permission_groups: string[] }>(query, [param])
+
+    if (role) {
+      resolved = {
+        groups: role.permission_groups as PermissionGroup[],
+        customRoleId: customRoleId || null,
+        roleName: role.name,
+        isReadOnly: role.is_read_only
       }
-    } catch {
+    } else {
       resolved = staticFallback(userRole)
     }
-  } else {
+  } catch {
     resolved = staticFallback(userRole)
   }
 

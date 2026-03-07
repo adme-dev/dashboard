@@ -79,12 +79,18 @@ export default defineEventHandler(async (event) => {
     // Determine role (from invitation or default)
     const role = invitation?.user_role || 'member'
 
+    // Look up matching system role for custom_role_id
+    const systemRole = await queryOne<{ id: string }>(
+      'SELECT id FROM custom_roles WHERE slug = $1 AND is_system = true',
+      [role]
+    )
+
     // Create user
     const user = await queryOne(`
-      INSERT INTO team_members (name, email, password_hash, user_role, is_active, email_verified)
-      VALUES ($1, $2, $3, $4, true, $5)
+      INSERT INTO team_members (name, email, password_hash, user_role, custom_role_id, is_active, email_verified)
+      VALUES ($1, $2, $3, $4, $5, true, $6)
       RETURNING id, email, name, user_role
-    `, [name, email, passwordHash, role, !!invitation]) // Auto-verify if from invitation
+    `, [name, email, passwordHash, role, systemRole?.id || null, !!invitation]) // Auto-verify if from invitation
 
     if (!user) {
       throw createError({

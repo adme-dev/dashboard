@@ -97,9 +97,14 @@ export default defineEventHandler(async (event) => {
     }
   })
 
-  // Invalidate KV cache for all affected users
+  // Invalidate KV cache for all affected users (includes users with custom_role_id set
+  // AND users with matching user_role slug who may not have custom_role_id backfilled)
   const affectedUsers = await queryRows<{ id: string }>(
-    'SELECT id FROM team_members WHERE custom_role_id = $1',
+    `SELECT id FROM team_members WHERE custom_role_id = $1
+     UNION
+     SELECT tm.id FROM team_members tm
+       JOIN custom_roles cr ON cr.slug = tm.user_role::text AND cr.is_system = true
+       WHERE cr.id = $1 AND tm.custom_role_id IS NULL`,
     [roleId]
   )
   for (const u of affectedUsers) {

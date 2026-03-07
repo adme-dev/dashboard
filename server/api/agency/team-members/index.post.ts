@@ -43,6 +43,13 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    // Look up matching system role for custom_role_id
+    const userRole = role || 'member'
+    const systemRole = await queryOne<{ id: string }>(
+      'SELECT id FROM custom_roles WHERE slug = $1 AND is_system = true',
+      [userRole]
+    )
+
     const result = await queryOne(`
       INSERT INTO team_members (
         name,
@@ -54,9 +61,10 @@ export default defineEventHandler(async (event) => {
         target_utilization,
         avatar_url,
         is_active,
+        custom_role_id,
         created_at,
         updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
       RETURNING *
     `, [
       name,
@@ -67,7 +75,8 @@ export default defineEventHandler(async (event) => {
       hourlyCost || null,
       targetUtilization || null,
       avatarUrl || null,
-      isActive
+      isActive,
+      systemRole?.id || null
     ])
 
     return {
