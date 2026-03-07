@@ -17,3 +17,20 @@ export const PERMISSIONS = {
 export function isReadOnlyRole(role: string): boolean {
   return role === 'viewer' || role === 'guest'
 }
+
+// Permission groups for dynamic role resolution
+export const PERMISSION_GROUPS = [
+  'ADMIN', 'MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS',
+  'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION'
+] as const
+
+export type PermissionGroup = typeof PERMISSION_GROUPS[number]
+
+// Reverse-lookup: given a PERMISSIONS array, find the group name
+export function permissionGroupForRoles(roles: readonly string[]): PermissionGroup | null {
+  const key = roles.join(',')
+  for (const [group, groupRoles] of Object.entries(PERMISSIONS)) {
+    if ((groupRoles as readonly string[]).join(',') === key) return group as PermissionGroup
+  }
+  return null
+}

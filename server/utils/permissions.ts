@@ -17,3 +17,39 @@ export const PERMISSIONS = {
 export function isReadOnlyRole(role: string): boolean {
   return role === 'viewer' || role === 'guest'
 }
+
+// Permission groups for dynamic role resolution
+export const PERMISSION_GROUPS = [
+  'ADMIN', 'MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS',
+  'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION'
+] as const
+
+export type PermissionGroup = typeof PERMISSION_GROUPS[number]
+
+// Static fallback: maps system role slugs to their default permission groups
+export const SYSTEM_ROLE_PERMISSIONS: Record<string, PermissionGroup[]> = {
+  owner: ['ADMIN', 'MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS', 'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION'],
+  admin: ['ADMIN', 'MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS', 'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION'],
+  lead: ['MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS', 'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION'],
+  project_manager: ['MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS', 'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION'],
+  account_manager: ['CLIENTS', 'MEDIA_BUYING'],
+  creative: ['CREATIVE'],
+  media_buyer: ['MEDIA_BUYING'],
+  producer: ['CREATIVE'],
+  finance: ['FINANCE'],
+  accounts: ['FINANCE'],
+  developer: [],
+  sales: ['SALES', 'CLIENTS'],
+  member: [],
+  viewer: [],
+  guest: [],
+}
+
+// Reverse-lookup: given a PERMISSIONS array, find the group name
+export function permissionGroupForRoles(roles: readonly string[]): PermissionGroup | null {
+  const key = roles.join(',')
+  for (const [group, groupRoles] of Object.entries(PERMISSIONS)) {
+    if ((groupRoles as readonly string[]).join(',') === key) return group as PermissionGroup
+  }
+  return null
+}

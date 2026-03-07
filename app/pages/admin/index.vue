@@ -30,6 +30,6 @@ const adminSections = [
   { label: 'Security', to: '/admin/security/auth', icon: 'i-lucide-shield', description: 'Authentication and audit logs' },
   { label: 'Billing', to: '/admin/billing/plans', icon: 'i-lucide-credit-card', description: 'Plans and invoices' },
   { label: 'Connections', to: '/admin/connections/integrations', icon: 'i-lucide-plug', description: 'Integrations and API settings' },
-  { label: 'Permissions', to: '/admin/permissions', icon: 'i-lucide-lock', description: 'Access control settings' },
+  { label: 'Roles & Permissions', to: '/admin/permissions', icon: 'i-lucide-shield-check', description: 'Create custom roles and manage permission groups' },
 ]
 </script>

@@ -17,7 +17,14 @@ export const useAuth = () => {
   
   const hasRole = (roles: string[]) => {
     if (!user.value) return false
-    return roles.includes(user.value.role)
+    // Legacy: direct role name match
+    if (roles.includes(user.value.role)) return true
+    // Dynamic: check if roles correspond to a permission group the user has
+    if (user.value.permissionGroups?.length) {
+      const group = permissionGroupForRoles(roles)
+      if (group && user.value.permissionGroups.includes(group)) return true
+    }
+    return false
   }
   
   const isOwner = computed(() => user.value?.role === 'owner')
@@ -35,7 +42,9 @@ export const useAuth = () => {
   const canAccessAiTraining = computed(() => hasRole(PERMISSIONS.ADMIN))
   const canAccessAutomation = computed(() => hasRole(PERMISSIONS.AUTOMATION))
   const canAccessReports = computed(() => hasRole(PERMISSIONS.MANAGEMENT))
-  
+  const userPermissionGroups = computed(() => user.value?.permissionGroups || [])
+  const hasPermission = (group: string) => userPermissionGroups.value.includes(group)
+
   // Fetch current user
   const fetchUser = async () => {
     try {
@@ -119,6 +128,8 @@ export const useAuth = () => {
     canAccessAiTraining,
     canAccessAutomation,
     canAccessReports,
+    userPermissionGroups,
+    hasPermission,
     hasRole,
     fetchUser,
     logout,

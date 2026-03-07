@@ -38,10 +38,11 @@ export default defineEventHandler((event) => {
   const user = event.context.user
   if (!user) return // auth middleware will handle unauthenticated
 
-  if (isReadOnlyRole(user.role)) {
+  // Check system read-only roles (viewer/guest) or custom roles with is_read_only flag
+  if (isReadOnlyRole(user.role) || user.isCustomReadOnly) {
     throw createError({
       statusCode: 403,
-      statusMessage: 'Forbidden - Read-only access. Viewers and guests cannot perform mutations.',
+      statusMessage: 'Forbidden - Read-only access.',
     })
   }
 })

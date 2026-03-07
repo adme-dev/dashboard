@@ -69,24 +69,12 @@ async function sendInvite() {
   }
 }
 
-// Role options
-const roleOptions = [
-  { value: 'owner', label: 'Owner' },
-  { value: 'admin', label: 'Admin' },
-  { value: 'lead', label: 'Lead' },
-  { value: 'project_manager', label: 'Project Manager' },
-  { value: 'account_manager', label: 'Account Manager' },
-  { value: 'creative', label: 'Creative' },
-  { value: 'media_buyer', label: 'Media Buyer' },
-  { value: 'producer', label: 'Producer' },
-  { value: 'finance', label: 'Finance' },
-  { value: 'accounts', label: 'Accounts' },
-  { value: 'developer', label: 'Developer' },
-  { value: 'sales', label: 'Sales' },
-  { value: 'member', label: 'Member' },
-  { value: 'viewer', label: 'Viewer' },
-  { value: 'guest', label: 'Guest' }
-]
+// Role options (dynamic from API)
+const { data: rolesApiData } = useFetch<{ roles: Array<{ name: string; slug: string }> }>('/api/admin/roles')
+const roleOptions = computed(() => {
+  if (!rolesApiData.value?.roles) return [{ value: 'member', label: 'Member' }]
+  return rolesApiData.value.roles.map(r => ({ value: r.slug, label: r.name }))
+})
 
 // Resend invitation
 async function resendInvitation(inviteId: string) {

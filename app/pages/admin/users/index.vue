@@ -374,146 +374,36 @@ const selectedUser = ref<User | null>(null)
 const selectedUserTeams = ref<string[]>([])
 const editForm = ref({ name: '', email: '', role: 'member' })
 
-const roleOptions = [
-  { label: 'Owner', value: 'owner' },
-  { label: 'Admin', value: 'admin' },
-  { label: 'Lead', value: 'lead' },
-  { label: 'Project Manager', value: 'project_manager' },
-  { label: 'Account Manager', value: 'account_manager' },
-  { label: 'Creative', value: 'creative' },
-  { label: 'Media Buyer', value: 'media_buyer' },
-  { label: 'Producer', value: 'producer' },
-  { label: 'Finance', value: 'finance' },
-  { label: 'Accounts', value: 'accounts' },
-  { label: 'Developer', value: 'developer' },
-  { label: 'Sales', value: 'sales' },
-  { label: 'Member', value: 'member' },
-  { label: 'Viewer', value: 'viewer' },
-  { label: 'Guest', value: 'guest' },
-]
+const { data: rolesApiData } = useFetch<{ roles: Array<{ name: string; slug: string; isSystem: boolean; color: string; icon: string; description: string; permissionGroups: string[] }> }>('/api/admin/roles')
 
-const rolesPermissions = [
-  {
-    value: 'owner',
-    label: 'Owner',
-    icon: 'i-lucide-crown',
-    description: 'Full platform control. Cannot be removed.',
-    canDo: ['Full admin access', 'Manage billing & plans', 'Delete projects & clients', 'Manage all user roles', 'Access all financial data'],
-    cantDo: []
-  },
-  {
-    value: 'admin',
-    label: 'Admin',
-    icon: 'i-lucide-shield',
-    description: 'Full operational access without billing control.',
-    canDo: ['Manage users, teams & invitations', 'Create & delete projects, clients, boards', 'Manage briefs, templates & automations', 'Access EOM invoicing & Xero sync', 'AI training, knowledge & adapters', 'Approve timesheets'],
-    cantDo: ['Manage billing & subscription plans', 'Remove or demote owners']
-  },
-  {
-    value: 'lead',
-    label: 'Lead',
-    icon: 'i-lucide-star',
-    description: 'Team leads with approval authority.',
-    canDo: ['Everything a Member can do', 'Approve & reject timesheets', 'View timesheet gaps & reports', 'Bypass board membership checks'],
-    cantDo: ['Manage users or invitations', 'Delete projects or clients', 'Access admin settings']
-  },
-  {
-    value: 'project_manager',
-    label: 'Project Manager',
-    icon: 'i-lucide-folder-kanban',
-    description: 'Project oversight with pricing and brief template access.',
-    canDo: ['Everything a Member can do', 'Access rate cards & pricing', 'Manage brief templates & field mappings', 'Manage AI knowledge entries'],
-    cantDo: ['Manage users or invitations', 'Approve timesheets', 'Access admin settings']
-  },
-  {
-    value: 'account_manager',
-    label: 'Account Manager',
-    icon: 'i-lucide-handshake',
-    description: 'Client-facing role with project and brief access.',
-    canDo: ['View & manage assigned projects', 'Create & manage briefs', 'View client details & contacts', 'Access boards, tasks & chat', 'Log time entries'],
-    cantDo: ['Access pricing or rate cards', 'Manage templates or automations', 'Access admin or financial settings']
-  },
-  {
-    value: 'creative',
-    label: 'Creative',
-    icon: 'i-lucide-palette',
-    description: 'Designers, art directors and copywriters.',
-    canDo: ['Access boards, tasks & subtasks', 'Use Banner Studio', 'Upload files & manage proofs', 'Access chat & notifications', 'Log time entries'],
-    cantDo: ['View financial data or invoices', 'Manage clients or projects', 'Access admin settings']
-  },
-  {
-    value: 'media_buyer',
-    label: 'Media Buyer',
-    icon: 'i-lucide-megaphone',
-    description: 'Ad platform management and spend tracking.',
-    canDo: ['Access boards, tasks & subtasks', 'View ad spend dashboards (Meta & Google)', 'Manage ad uploads & campaigns', 'Access chat & notifications', 'Log time entries'],
-    cantDo: ['View invoices or financial settings', 'Manage clients or projects', 'Access admin settings']
-  },
-  {
-    value: 'producer',
-    label: 'Producer',
-    icon: 'i-lucide-clapperboard',
-    description: 'Production coordination and task management.',
-    canDo: ['Access boards, tasks & subtasks', 'Manage task assignments & deadlines', 'Access chat & notifications', 'Upload files & manage proofs', 'Log time entries'],
-    cantDo: ['View financial data or invoices', 'Manage clients or projects', 'Access admin settings']
-  },
-  {
-    value: 'finance',
-    label: 'Finance',
-    icon: 'i-lucide-calculator',
-    description: 'Financial operations and reporting.',
-    canDo: ['Access boards, tasks & subtasks', 'View invoices, quotes & financial reports', 'Access EOM dashboards', 'View ad spend & budgets', 'Log time entries'],
-    cantDo: ['Manage users or invitations', 'Delete projects or clients', 'Access admin settings']
-  },
-  {
-    value: 'accounts',
-    label: 'Accounts',
-    icon: 'i-lucide-receipt',
-    description: 'Bookkeeping, accounts payable and receivable.',
-    canDo: ['Access boards, tasks & subtasks', 'View & manage invoices and expenses', 'Access EOM dashboards & reconciliation', 'View client billing details', 'Log time entries'],
-    cantDo: ['Manage users or invitations', 'Delete projects or clients', 'Access admin settings']
-  },
-  {
-    value: 'developer',
-    label: 'Developer',
-    icon: 'i-lucide-code',
-    description: 'R&D and technical team members.',
-    canDo: ['Access boards, tasks & subtasks', 'Access chat & notifications', 'View API connections & integrations', 'Upload files & manage proofs', 'Log time entries'],
-    cantDo: ['View financial data or invoices', 'Manage clients or projects', 'Access admin settings']
-  },
-  {
-    value: 'sales',
-    label: 'Sales',
-    icon: 'i-lucide-badge-dollar-sign',
-    description: 'Business development with client and invoice access.',
-    canDo: ['Create & manage clients', 'Manage retainers & line items', 'Edit invoice line items', 'Access boards, tasks & chat', 'Log time entries'],
-    cantDo: ['Manage users or invitations', 'Access admin settings', 'Delete projects']
-  },
-  {
-    value: 'member',
-    label: 'Member',
-    icon: 'i-lucide-user',
-    description: 'Standard team member with day-to-day access.',
-    canDo: ['Access assigned boards & tasks', 'Use chat, notifications & AI assistant', 'Log time entries', 'Upload files & add comments', 'View assigned projects & briefs'],
-    cantDo: ['Manage users, clients or projects', 'View financial data or invoices', 'Access admin or pricing settings']
-  },
-  {
-    value: 'viewer',
-    label: 'Viewer',
-    icon: 'i-lucide-eye',
-    description: 'Read-only access to boards and projects.',
-    canDo: ['View boards, tasks & comments', 'View project details', 'View chat messages'],
-    cantDo: ['Edit tasks or boards', 'Log time or upload files', 'Access any admin features', 'Create or modify content']
-  },
-  {
-    value: 'guest',
-    label: 'Guest',
-    icon: 'i-lucide-user-round',
-    description: 'Limited external collaborator access.',
-    canDo: ['View specifically shared boards', 'View shared project details'],
-    cantDo: ['Access unshared content', 'Edit tasks or boards', 'Log time or upload files', 'Access any admin features', 'Use chat or AI assistant']
-  },
-]
+const roleOptions = computed(() => {
+  if (!rolesApiData.value?.roles) return [{ label: 'Member', value: 'member' }]
+  return rolesApiData.value.roles.map(r => ({ label: r.name, value: r.slug }))
+})
+
+const PERMISSION_GROUP_LABELS: Record<string, string> = {
+  ADMIN: 'Admin access',
+  MANAGEMENT: 'Management & reports',
+  FINANCE: 'Finance & invoicing',
+  SALES: 'Sales & pricing',
+  CLIENTS: 'Client management',
+  CREATIVE: 'Creative tools',
+  MEDIA_BUYING: 'Media buying & ads',
+  TIME_APPROVALS: 'Time approvals',
+  AUTOMATION: 'Automations',
+}
+
+const rolesPermissions = computed(() => {
+  if (!rolesApiData.value?.roles) return []
+  return rolesApiData.value.roles.map(r => ({
+    value: r.slug,
+    label: r.name,
+    icon: r.icon || 'i-lucide-user',
+    description: r.description || '',
+    canDo: r.permissionGroups.map((g: string) => PERMISSION_GROUP_LABELS[g] || g),
+    cantDo: [] as string[],
+  }))
+})
 
 const availableTeams = computed(() => {
   return teams.value.map(team => ({

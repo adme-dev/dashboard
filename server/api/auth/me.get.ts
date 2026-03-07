@@ -1,4 +1,5 @@
 import { validateSession, TransientAuthError } from '../../utils/auth'
+import { resolveUserPermissions } from '../../utils/roleResolver'
 
 export default defineEventHandler(async (event) => {
   // Get token from cookie (httpOnly primary, client-visible fallback)
@@ -26,13 +27,18 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    // Resolve permission groups
+    const resolved = await resolveUserPermissions(event, user.id, user.role, user.custom_role_id)
+
     return {
       success: true,
       user: {
         id: user.id,
         email: user.email,
         name: user.name,
-        role: user.role
+        role: user.role,
+        custom_role_id: user.custom_role_id || null,
+        permissionGroups: resolved.groups
       }
     }
   } catch (error: any) {

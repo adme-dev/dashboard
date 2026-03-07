@@ -89,9 +89,9 @@ definePageMeta({
 
 useSeoMeta({
   title: 'Features — XeroFlow',
-  description: 'Explore 60+ features across work management, banner studio, creative production, financial operations, analytics, communication, AI intelligence, client portal, and time tracking.',
+  description: 'Explore 80+ features across work management, banner studio, creative production, financial operations, analytics, communication, AI intelligence, client portal, time tracking, briefs & proposals, and administration.',
   ogTitle: 'Features — XeroFlow',
-  ogDescription: 'Explore 60+ features across work management, banner studio, creative production, financial operations, analytics, communication, AI intelligence, client portal, and time tracking.',
+  ogDescription: 'Explore 80+ features across work management, banner studio, creative production, financial operations, analytics, communication, AI intelligence, client portal, time tracking, briefs & proposals, and administration.',
 })
 
 const categories = [
@@ -161,6 +161,8 @@ const categories = [
       { title: 'Google Ads Tracking', slug: 'google-ads-tracking', icon: 'i-lucide-bar-chart-3', description: 'Google Ads performance data with spend tracking, budget alerts, and audit trails.' },
       { title: 'Profit & Loss', slug: 'profit-loss', icon: 'i-lucide-trending-up', description: 'Real-time P&L dashboards with revenue, expenses, and margin analysis per client.' },
       { title: 'Budget Management', slug: 'budget-management', icon: 'i-lucide-wallet', description: 'Set monthly budgets per client and campaign. Get alerts when spend approaches limits.' },
+      { title: 'Rate Cards', slug: 'rate-cards', icon: 'i-lucide-credit-card', description: 'Define service pricing with rate cards. Fuzzy match to Xero accounts, variance dashboards, and AI integration.' },
+      { title: 'Quotes & Proposals', slug: 'quotes-proposals', icon: 'i-lucide-file-check', description: 'Generate quotes from briefs with rate card pricing. Push to Xero, sync status, and convert to invoices.' },
     ]
   },
   {
@@ -240,6 +242,33 @@ const categories = [
       { title: 'Weekly Timesheets', slug: 'weekly-timesheets', icon: 'i-lucide-calendar-days', description: 'Weekly grid view with submit, approval, and rejection workflows.' },
       { title: 'Manager Approvals', slug: 'manager-approvals', icon: 'i-lucide-shield-check', description: 'Review and approve team timesheets. Bulk approve, reject with reason, and lock entries.' },
       { title: 'Task-Level Logging', slug: 'task-level-logging', icon: 'i-lucide-list-checks', description: 'Link time entries to specific tasks. See time spent per task with progress bars.' },
+    ]
+  },
+  {
+    title: 'Briefs & Proposals',
+    subtitle: 'Templates, approvals, and AI-powered briefs',
+    icon: 'i-lucide-file-text',
+    iconBg: 'bg-orange-50 dark:bg-orange-500/10',
+    iconColor: 'text-orange-600',
+    features: [
+      { title: 'Brief Templates', slug: 'brief-templates', icon: 'i-lucide-file-plus', description: 'Build templates with 30+ field types — text, dropdown, file upload, date, budget, and more. Drag-and-drop field ordering.' },
+      { title: 'Template Builder', slug: 'template-builder', icon: 'i-lucide-blocks', description: 'Visual template editor with field configuration, required/optional toggles, section grouping, and default values.' },
+      { title: 'AI Brief Tools', slug: 'ai-brief-tools', icon: 'i-lucide-sparkles', description: 'AI-powered field suggestions, brief scoring (completeness + quality), and full brief generation from minimal input.' },
+      { title: 'Brief-to-Quote', slug: 'brief-to-quote', icon: 'i-lucide-receipt', description: 'Auto-generate quotes from approved briefs. Rate card matching, Xero push, and quote-to-invoice conversion.' },
+      { title: 'Bulk Operations', slug: 'bulk-brief-operations', icon: 'i-lucide-layers', description: 'Multi-select briefs for bulk status changes, assignment, duplication, and export. Floating action bar for fast ops.' },
+      { title: 'Brief Analytics', slug: 'brief-analytics', icon: 'i-lucide-bar-chart-2', description: 'Cycle time funnels, completion rates, and aggregate analytics across all briefs and templates.' },
+    ]
+  },
+  {
+    title: 'Administration',
+    subtitle: 'Roles, permissions, and team management',
+    icon: 'i-lucide-shield',
+    iconBg: 'bg-slate-50 dark:bg-slate-500/10',
+    iconColor: 'text-slate-600',
+    features: [
+      { title: 'Custom Roles', slug: 'custom-roles', icon: 'i-lucide-user-cog', description: 'Create custom roles beyond the 15 built-in levels. Define granular permissions for each role to match your org structure.' },
+      { title: 'Permission System', slug: 'permission-system', icon: 'i-lucide-lock', description: 'Fine-grained RBAC with 15+ permission areas — finance, creative, media, clients, admin, and more. Server-enforced.' },
+      { title: 'Admin Dashboard', slug: 'admin-dashboard', icon: 'i-lucide-settings', description: 'Central admin panel with user management, role assignment, permission matrix, and audit controls.' },
     ]
   },
 ]

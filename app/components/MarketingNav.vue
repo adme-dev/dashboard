@@ -606,6 +606,8 @@ const featuresCol4 = [
 const featuresCol5 = [
   { title: 'Client Portal', subtitle: 'Approvals, invoices, gallery', icon: 'i-lucide-building-2', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/platform/client-portal' },
   { title: 'Time Tracking', subtitle: 'Timesheets and approvals', icon: 'i-lucide-timer', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/platform/time-tracking' },
+  { title: 'Briefs', subtitle: 'Templates, AI tools, and quotes', icon: 'i-lucide-file-text', iconBg: 'bg-orange-500/15', iconColor: 'text-orange-400', to: '/features/brief-templates' },
+  { title: 'Roles & Admin', subtitle: 'Custom roles and permissions', icon: 'i-lucide-shield', iconBg: 'bg-slate-500/15', iconColor: 'text-slate-400', to: '/features/custom-roles' },
 ]
 
 // ---- Resources data ----
@@ -630,6 +632,9 @@ const resourcesCol3 = [
   { title: 'Bulk Ad Launch', subtitle: 'Publish ads at scale', icon: 'i-lucide-rocket', to: '/resources/bulk-ad-launch' },
   { title: 'Ad Platform Export', subtitle: 'Export banners for ad servers', icon: 'i-lucide-download', to: '/resources/ad-platform-export' },
   { title: 'Integrations', subtitle: 'Connect your tools and services', icon: 'i-lucide-puzzle', to: '/resources/integrations' },
+  { title: 'Roles & Permissions', subtitle: 'Custom roles and RBAC setup', icon: 'i-lucide-shield', to: '/resources/roles-permissions' },
+  { title: 'Briefs & Proposals', subtitle: 'Templates, AI tools, and quotes', icon: 'i-lucide-file-text', to: '/resources/briefs-proposals' },
+  { title: 'Time Tracking', subtitle: 'Timesheets and approvals', icon: 'i-lucide-timer', to: '/resources/time-tracking' },
 ]
 
 // ---- Mobile sections (for accordion) ----

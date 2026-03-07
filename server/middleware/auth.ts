@@ -1,5 +1,7 @@
 import { validateSession, TransientAuthError } from '../utils/auth'
 import { kvGet, kvPut } from '../utils/kv'
+import { resolveUserPermissions } from '../utils/roleResolver'
+import { isReadOnlyRole } from '../utils/permissions'
 
 // Routes that don't require authentication
 const publicRoutes = [
@@ -53,7 +55,7 @@ export default defineEventHandler(async (event) => {
 
   // Check KV cache first (use first 16 chars of token as key — safe, not sensitive)
   const cacheKey = `auth-session:${token.slice(0, 16)}`
-  const cachedUser = await kvGet<{ id: string; email: string; name: string; role: string; is_active: boolean; avatar_url?: string }>(event, cacheKey)
+  const cachedUser = await kvGet<{ id: string; email: string; name: string; role: string; is_active: boolean; avatar_url?: string; custom_role_id?: string | null; permissionGroups?: string[] }>(event, cacheKey)
 
   if (cachedUser) {
     event.context.user = cachedUser
@@ -80,7 +82,12 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Cache in KV for 5 minutes
+    // Resolve permission groups
+    const resolved = await resolveUserPermissions(event, user.id, user.role, user.custom_role_id)
+    user.permissionGroups = resolved.groups
+    ;(user as any).isCustomReadOnly = resolved.isReadOnly && !isReadOnlyRole(user.role)
+
+    // Cache in KV for 5 minutes (includes permissionGroups + custom_role_id)
     kvPut(event, cacheKey, user, 300)
 
     event.context.user = user

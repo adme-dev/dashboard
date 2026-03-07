@@ -23,18 +23,21 @@ const emit = defineEmits<{
 const toast = useToast()
 const { user, isAdmin, isOwner } = useAuth()
 
-// Role options
-const roleOptions = ['owner', 'admin', 'lead', 'project_manager', 'account_manager', 'creative', 'media_buyer', 'producer', 'finance', 'accounts', 'developer', 'sales', 'member', 'viewer', 'guest']
+// Role options (dynamic from API)
+const { data: rolesApiData } = useFetch<{ roles: Array<{ name: string; slug: string }> }>('/api/admin/roles')
+const roleOptions = computed(() => {
+  if (!rolesApiData.value?.roles) return [{ label: 'Member', value: 'member' }]
+  return rolesApiData.value.roles.map(r => ({ label: r.name, value: r.slug }))
+})
 
 // Change user role
 async function changeRole(member: TeamMember, newRole: string) {
   if (member.userRole === newRole) return
 
   try {
-    await fetch(`/api/auth/users/${member.id}/role`, {
+    await $fetch(`/api/auth/users/${member.id}/role`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userRole: newRole })
+      body: { userRole: newRole }
     })
     toast.add({ title: `Role updated to ${newRole}`, color: 'success' })
     emit('refresh')
@@ -50,10 +53,9 @@ async function changeRole(member: TeamMember, newRole: string) {
 // Toggle active status
 async function toggleStatus(member: TeamMember) {
   try {
-    await fetch(`/api/auth/users/${member.id}/status`, {
+    await $fetch(`/api/auth/users/${member.id}/status`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isActive: !member.isActive })
+      body: { isActive: !member.isActive }
     })
     toast.add({
       title: member.isActive ? 'User deactivated' : 'User activated',
@@ -165,8 +167,9 @@ function canEditRole(member: TeamMember) {
           v-if="canEditRole(member)"
           :model-value="member.userRole"
           :items="roleOptions"
+          value-key="value"
+          option-key="value"
           color="neutral"
-          :ui="{ value: 'capitalize', item: 'capitalize' }"
           @update:model-value="(val) => changeRole(member, val)"
         />
         <UBadge

@@ -1,14 +1,16 @@
 import bcrypt from 'bcryptjs'
 import { queryOne, queryRows } from './db'
-import { isReadOnlyRole } from './permissions'
+import { isReadOnlyRole, PERMISSIONS, permissionGroupForRoles } from './permissions'
 
 export interface User {
   id: string
   email: string
   name: string
-  role: 'owner' | 'admin' | 'lead' | 'project_manager' | 'account_manager' | 'creative' | 'media_buyer' | 'producer' | 'finance' | 'accounts' | 'developer' | 'sales' | 'member' | 'viewer' | 'guest'
+  role: string
   is_active: boolean
   avatar_url?: string
+  custom_role_id?: string | null
+  permissionGroups?: string[]
 }
 
 export interface ClientUser {
@@ -39,7 +41,7 @@ export function generateToken(): string {
 // Get user by email (team member)
 export async function getUserByEmail(email: string): Promise<User | null> {
   const user = await queryOne<User>(
-    `SELECT id, email, name, user_role as role, is_active
+    `SELECT id, email, name, user_role as role, is_active, custom_role_id
      FROM team_members
      WHERE email = $1`,
     [email.toLowerCase()]
@@ -78,7 +80,7 @@ export async function validateSession(token: string): Promise<User | null> {
   // DB lookup — let connection errors propagate as TransientAuthError
   try {
     return await queryOne<User>(
-      `SELECT id, email, name, user_role as role, is_active, avatar_url
+      `SELECT id, email, name, user_role as role, is_active, avatar_url, custom_role_id
        FROM team_members
        WHERE id = $1 AND is_active = true`,
       [payload.userId]
@@ -144,9 +146,16 @@ export async function verifyJwt(token: string): Promise<any | null> {
   }
 }
 
-// Role-based access control
+// Role-based access control — checks legacy role name + dynamic permission groups
 export function hasRole(user: User, allowedRoles: string[]): boolean {
-  return allowedRoles.includes(user.role)
+  // Legacy: direct role name match
+  if (allowedRoles.includes(user.role)) return true
+  // Dynamic: check if allowedRoles correspond to a permission group the user has
+  if (user.permissionGroups?.length) {
+    const group = permissionGroupForRoles(allowedRoles)
+    if (group && user.permissionGroups.includes(group)) return true
+  }
+  return false
 }
 
 // Check if user can access implementation
@@ -383,7 +392,7 @@ export async function verifyMagicLink(token: string): Promise<User | null> {
 
   // Get the user
   const user = await queryOne<User>(
-    `SELECT id, email, name, user_role as role, is_active
+    `SELECT id, email, name, user_role as role, is_active, custom_role_id
      FROM team_members
      WHERE id = $1 AND is_active = true`,
     [claimed.user_id]
