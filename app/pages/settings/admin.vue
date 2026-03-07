@@ -2,7 +2,7 @@
   <div class="space-y-6">
     <div>
       <h2 class="text-lg font-semibold">Admin Settings</h2>
-      <p class="text-gray-500 text-sm">Manage departments, task statuses, and tags for your agency.</p>
+      <p class="text-muted text-sm">Manage departments, task statuses, and tags for your agency.</p>
     </div>
 
     <!-- Tabs -->
@@ -25,7 +25,7 @@
         <div
           v-for="dept in departments"
           :key="dept.id"
-          class="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
+          class="flex items-center justify-between p-3 border border-default rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50"
         >
           <div class="flex items-center gap-3">
             <div
@@ -34,7 +34,7 @@
             />
             <div>
               <p class="font-medium">{{ dept.name }}</p>
-              <p class="text-sm text-gray-500">{{ dept.memberCount }} members | {{ dept.activeTasks }} active tasks</p>
+              <p class="text-sm text-muted">{{ dept.memberCount }} members | {{ dept.activeTasks }} active tasks</p>
             </div>
           </div>
           <div class="flex items-center gap-2">
@@ -45,7 +45,7 @@
           </div>
         </div>
 
-        <p v-if="!departments?.length" class="text-center text-gray-500 py-8">
+        <p v-if="!departments?.length" class="text-center text-muted py-8">
           No departments found. Create one to get started.
         </p>
       </div>
@@ -67,12 +67,12 @@
       <div v-else>
         <!-- Group by category -->
         <div v-for="category in statusCategories" :key="category.value" class="mb-6">
-          <h4 class="text-sm font-medium text-gray-600 mb-2">{{ category.label }}</h4>
+          <h4 class="text-sm font-medium text-muted mb-2">{{ category.label }}</h4>
           <div class="space-y-2">
             <div
               v-for="status in getStatusesByCategory(category.value)"
               :key="status.id"
-              class="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
+              class="flex items-center justify-between p-3 border border-default rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50"
             >
               <div class="flex items-center gap-3">
                 <div
@@ -85,7 +85,7 @@
                     <UBadge v-if="status.isDefault" color="primary" size="xs">Default</UBadge>
                     <UBadge v-if="status.isFinal" color="success" size="xs">Final</UBadge>
                   </div>
-                  <p class="text-sm text-gray-500">
+                  <p class="text-sm text-muted">
                     {{ status.departmentName || 'Global' }}
                   </p>
                 </div>
@@ -97,7 +97,7 @@
           </div>
         </div>
 
-        <p v-if="!statuses?.length" class="text-center text-gray-500 py-8">
+        <p v-if="!statuses?.length" class="text-center text-muted py-8">
           No statuses found. Create one to get started.
         </p>
       </div>
@@ -120,14 +120,14 @@
         <div
           v-for="tag in tags"
           :key="tag.id"
-          class="inline-flex items-center gap-2 px-3 py-1.5 border rounded-full hover:bg-gray-50 group"
+          class="inline-flex items-center gap-2 px-3 py-1.5 border border-default rounded-full hover:bg-gray-50 dark:hover:bg-gray-800/50 group"
         >
           <div
             class="w-3 h-3 rounded-full"
             :style="{ backgroundColor: tag.color }"
           />
           <span class="text-sm font-medium">{{ tag.name }}</span>
-          <span class="text-xs text-gray-400">({{ tag.usageCount }})</span>
+          <span class="text-xs text-dimmed">({{ tag.usageCount }})</span>
           <UDropdownMenu :items="getTagActions(tag)">
             <UButton
               variant="ghost"
@@ -138,7 +138,7 @@
           </UDropdownMenu>
         </div>
 
-        <p v-if="!tags?.length" class="text-center text-gray-500 py-8 w-full">
+        <p v-if="!tags?.length" class="text-center text-muted py-8 w-full">
           No tags found. Create one to get started.
         </p>
       </div>
@@ -161,18 +161,18 @@
         <div
           v-for="cat in expenseCategories"
           :key="cat.id"
-          class="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
+          class="flex items-center justify-between p-3 border border-default rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50"
         >
           <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-xs font-mono font-medium text-gray-600">
+            <div class="shrink-0 px-2 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-[10px] font-mono font-medium text-muted uppercase">
               {{ cat.code }}
             </div>
             <div>
               <p class="font-medium">{{ cat.name }}</p>
-              <div class="flex items-center gap-2 text-sm text-gray-500">
+              <div class="flex items-center gap-2 text-sm text-muted">
                 <span>{{ cat.expenseCount }} expenses</span>
-                <span v-if="cat.parentName">• Parent: {{ cat.parentName }}</span>
-                <span v-if="cat.requiresApprovalAbove">• Approval above ${{ cat.requiresApprovalAbove }}</span>
+                <span v-if="cat.parentName">&bull; Parent: {{ cat.parentName }}</span>
+                <span v-if="cat.requiresApprovalAbove">&bull; Approval above ${{ cat.requiresApprovalAbove }}</span>
               </div>
             </div>
           </div>
@@ -186,7 +186,7 @@
           </div>
         </div>
 
-        <p v-if="!expenseCategories?.length" class="text-center text-gray-500 py-8">
+        <p v-if="!expenseCategories?.length" class="text-center text-muted py-8">
           No expense categories found. Create one to get started.
         </p>
       </div>
@@ -213,22 +213,13 @@
               <input
                 v-model="departmentForm.color"
                 type="color"
-                class="w-10 h-10 rounded cursor-pointer"
+                class="w-10 h-10 rounded cursor-pointer border border-default"
               />
               <UInput v-model="departmentForm.color" placeholder="#6B7280" class="flex-1" />
             </div>
           </UFormField>
 
-          <UFormField v-if="editingDepartment">
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input
-                v-model="departmentForm.isActive"
-                type="checkbox"
-                class="rounded border-gray-300"
-              />
-              <span class="text-sm">Active</span>
-            </label>
-          </UFormField>
+          <UCheckbox v-if="editingDepartment" v-model="departmentForm.isActive" label="Active" />
         </div>
       </template>
 
@@ -269,7 +260,7 @@
               <input
                 v-model="statusForm.color"
                 type="color"
-                class="w-10 h-10 rounded cursor-pointer"
+                class="w-10 h-10 rounded cursor-pointer border border-default"
               />
               <UInput v-model="statusForm.color" placeholder="#6B7280" class="flex-1" />
             </div>
@@ -286,27 +277,8 @@
           </UFormField>
 
           <div class="grid grid-cols-2 gap-4">
-            <UFormField>
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input
-                  v-model="statusForm.isDefault"
-                  type="checkbox"
-                  class="rounded border-gray-300"
-                />
-                <span class="text-sm">Default status</span>
-              </label>
-            </UFormField>
-
-            <UFormField>
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input
-                  v-model="statusForm.isFinal"
-                  type="checkbox"
-                  class="rounded border-gray-300"
-                />
-                <span class="text-sm">Final status</span>
-              </label>
-            </UFormField>
+            <UCheckbox v-model="statusForm.isDefault" label="Default status" />
+            <UCheckbox v-model="statusForm.isFinal" label="Final status" />
           </div>
         </div>
       </template>
@@ -342,7 +314,7 @@
               <input
                 v-model="tagForm.color"
                 type="color"
-                class="w-10 h-10 rounded cursor-pointer"
+                class="w-10 h-10 rounded cursor-pointer border border-default"
               />
               <UInput v-model="tagForm.color" placeholder="#6B7280" class="flex-1" />
             </div>
@@ -375,7 +347,7 @@
 
             <UFormField label="Code">
               <UInput v-model="expenseCategoryForm.code" placeholder="AUTO" class="w-full font-mono uppercase" />
-              <p class="text-xs text-gray-400 mt-1">Auto-generated if empty</p>
+              <p class="text-xs text-dimmed mt-1">Auto-generated if empty</p>
             </UFormField>
           </div>
 
@@ -413,39 +385,10 @@
             </UFormField>
           </div>
 
-          <div class="grid grid-cols-3 gap-4">
-            <UFormField>
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input
-                  v-model="expenseCategoryForm.isBillableDefault"
-                  type="checkbox"
-                  class="rounded border-gray-300"
-                />
-                <span class="text-sm">Billable by default</span>
-              </label>
-            </UFormField>
-
-            <UFormField>
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input
-                  v-model="expenseCategoryForm.requiresReceipt"
-                  type="checkbox"
-                  class="rounded border-gray-300"
-                />
-                <span class="text-sm">Requires receipt</span>
-              </label>
-            </UFormField>
-
-            <UFormField v-if="editingExpenseCategory">
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input
-                  v-model="expenseCategoryForm.isActive"
-                  type="checkbox"
-                  class="rounded border-gray-300"
-                />
-                <span class="text-sm">Active</span>
-              </label>
-            </UFormField>
+          <div class="flex flex-wrap gap-x-6 gap-y-3">
+            <UCheckbox v-model="expenseCategoryForm.isBillableDefault" label="Billable by default" />
+            <UCheckbox v-model="expenseCategoryForm.requiresReceipt" label="Requires receipt" />
+            <UCheckbox v-if="editingExpenseCategory" v-model="expenseCategoryForm.isActive" label="Active" />
           </div>
         </div>
       </template>
@@ -459,14 +402,24 @@
         </div>
       </template>
     </UModal>
+
+    <!-- Delete Confirmation Modal -->
+    <UModal v-model:open="showDeleteConfirm">
+      <template #content>
+        <div class="p-6 space-y-4">
+          <h3 class="font-semibold text-lg">{{ deleteConfirmTitle }}</h3>
+          <p class="text-muted">{{ deleteConfirmMessage }}</p>
+          <div class="flex justify-end gap-2">
+            <UButton variant="outline" @click="showDeleteConfirm = false">Cancel</UButton>
+            <UButton color="error" :loading="deletingItem" @click="confirmDelete">Delete</UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>
 
 <script setup lang="ts">
-definePageMeta({
-  layout: 'default'
-})
-
 const toast = useToast()
 const activeTab = ref('departments')
 
@@ -555,9 +508,11 @@ const { data: expenseCategories, pending: expenseCategoriesPending, refresh: ref
   query: { active: 'false', hierarchy: 'true' }
 })
 
-// Department options for status form
+// Department options for status form — use sentinel for "no selection"
+const NONE_SENTINEL = '__none__'
+
 const departmentOptions = computed(() => {
-  const opts = [{ label: 'Global (all departments)', value: '' }]
+  const opts = [{ label: 'Global (all departments)', value: NONE_SENTINEL }]
   if (departments.value) {
     opts.push(...departments.value.map(d => ({ label: d.name, value: d.id })))
   }
@@ -655,7 +610,7 @@ const statusForm = ref({
   name: '',
   category: '',
   color: '#6B7280',
-  departmentId: '',
+  departmentId: NONE_SENTINEL,
   isDefault: false,
   isFinal: false
 })
@@ -667,7 +622,7 @@ const openStatusModal = (status?: Status) => {
       name: status.name,
       category: status.category,
       color: status.color,
-      departmentId: status.departmentId || '',
+      departmentId: status.departmentId || NONE_SENTINEL,
       isDefault: status.isDefault,
       isFinal: status.isFinal
     }
@@ -677,7 +632,7 @@ const openStatusModal = (status?: Status) => {
       name: '',
       category: '',
       color: '#6B7280',
-      departmentId: '',
+      departmentId: NONE_SENTINEL,
       isDefault: false,
       isFinal: false
     }
@@ -692,7 +647,7 @@ const saveStatus = async () => {
   try {
     const body = {
       ...statusForm.value,
-      departmentId: statusForm.value.departmentId || null
+      departmentId: statusForm.value.departmentId === NONE_SENTINEL ? null : statusForm.value.departmentId
     }
 
     if (editingStatus.value) {
@@ -795,16 +750,15 @@ const getTagActions = (tag: Tag) => [[
   {
     label: 'Delete',
     icon: 'i-lucide-trash-2',
-    click: async () => {
-      if (!confirm(`Delete tag "${tag.name}"?`)) return
-      try {
+    click: () => requestDelete(
+      `Delete tag "${tag.name}"?`,
+      'This action cannot be undone.',
+      async () => {
         await $fetch(`/api/agency/tags/${tag.id}`, { method: 'DELETE' })
         toast.add({ title: 'Tag deleted', color: 'success' })
         await refreshTags()
-      } catch (error: any) {
-        toast.add({ title: 'Error', description: error.data?.message || 'Failed to delete tag', color: 'error' })
       }
-    }
+    )
   }
 ]]
 
@@ -816,7 +770,7 @@ const expenseCategoryForm = ref({
   name: '',
   code: '',
   description: '',
-  parentId: '',
+  parentId: NONE_SENTINEL,
   glAccount: '',
   isBillableDefault: false,
   requiresReceipt: true,
@@ -827,7 +781,7 @@ const expenseCategoryForm = ref({
 })
 
 const parentCategoryOptions = computed(() => {
-  const opts = [{ label: 'None (top-level)', value: '' }]
+  const opts = [{ label: 'None (top-level)', value: NONE_SENTINEL }]
   if (expenseCategories.value) {
     // Exclude current category and its children from parent options
     const currentId = editingExpenseCategory.value?.id
@@ -846,7 +800,7 @@ const openExpenseCategoryModal = (cat?: ExpenseCategory) => {
       name: cat.name,
       code: cat.code,
       description: cat.description || '',
-      parentId: cat.parentId || '',
+      parentId: cat.parentId || NONE_SENTINEL,
       glAccount: cat.glAccount || '',
       isBillableDefault: cat.isBillableDefault,
       requiresReceipt: cat.requiresReceipt,
@@ -861,7 +815,7 @@ const openExpenseCategoryModal = (cat?: ExpenseCategory) => {
       name: '',
       code: '',
       description: '',
-      parentId: '',
+      parentId: NONE_SENTINEL,
       glAccount: '',
       isBillableDefault: false,
       requiresReceipt: true,
@@ -882,7 +836,7 @@ const saveExpenseCategory = async () => {
     const body = {
       ...expenseCategoryForm.value,
       code: expenseCategoryForm.value.code || undefined,
-      parentId: expenseCategoryForm.value.parentId || null,
+      parentId: expenseCategoryForm.value.parentId === NONE_SENTINEL ? null : expenseCategoryForm.value.parentId,
       glAccount: expenseCategoryForm.value.glAccount || null,
       description: expenseCategoryForm.value.description || null
     }
@@ -934,9 +888,12 @@ const getExpenseCategoryActions = (cat: ExpenseCategory) => [[
   {
     label: 'Delete',
     icon: 'i-lucide-trash-2',
-    click: async () => {
-      if (!confirm(`Delete category "${cat.name}"? ${cat.expenseCount > 0 ? 'This category has expenses and will be deactivated instead.' : ''}`)) return
-      try {
+    click: () => requestDelete(
+      `Delete category "${cat.name}"?`,
+      cat.expenseCount > 0
+        ? 'This category has expenses and will be deactivated instead of deleted.'
+        : 'This action cannot be undone.',
+      async () => {
         const result = await $fetch<{ deactivated?: boolean }>(`/api/agency/expense-categories/${cat.id}`, { method: 'DELETE' })
         if (result.deactivated) {
           toast.add({ title: 'Category deactivated', description: 'Category has expenses and was deactivated instead of deleted', color: 'info' })
@@ -944,10 +901,35 @@ const getExpenseCategoryActions = (cat: ExpenseCategory) => [[
           toast.add({ title: 'Category deleted', color: 'success' })
         }
         await refreshExpenseCategories()
-      } catch (error: any) {
-        toast.add({ title: 'Error', description: error.data?.message || 'Failed to delete category', color: 'error' })
       }
-    }
+    )
   }
 ]]
+
+// Delete confirmation modal (replaces native confirm())
+const showDeleteConfirm = ref(false)
+const deleteConfirmTitle = ref('')
+const deleteConfirmMessage = ref('')
+const deletingItem = ref(false)
+let deleteAction: (() => Promise<void>) | null = null
+
+const requestDelete = (title: string, message: string, action: () => Promise<void>) => {
+  deleteConfirmTitle.value = title
+  deleteConfirmMessage.value = message
+  deleteAction = action
+  showDeleteConfirm.value = true
+}
+
+const confirmDelete = async () => {
+  if (!deleteAction) return
+  deletingItem.value = true
+  try {
+    await deleteAction()
+    showDeleteConfirm.value = false
+  } catch (error: any) {
+    toast.add({ title: 'Error', description: error.data?.message || 'Operation failed', color: 'error' })
+  } finally {
+    deletingItem.value = false
+  }
+}
 </script>
