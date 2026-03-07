@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'agency' })
+definePageMeta({ layout: 'agency', middleware: ['role-media'] })
 
 const toast = useToast()
 const route = useRoute()

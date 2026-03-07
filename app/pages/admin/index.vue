@@ -22,6 +22,8 @@
 </template>
 
 <script setup lang="ts">
+definePageMeta({ middleware: ['role-admin'] })
+
 const adminSections = [
   { label: 'Users', to: '/admin/users', icon: 'i-lucide-users', description: 'Manage team members and their roles' },
   { label: 'Teams', to: '/admin/teams', icon: 'i-lucide-users-round', description: 'Organize users into teams' },

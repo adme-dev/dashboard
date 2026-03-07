@@ -3,7 +3,7 @@ import { format, subMonths, addMonths } from 'date-fns'
 
 definePageMeta({
   title: 'Retainer Management',
-  middleware: ['auth']
+  middleware: ['role-finance']
 })
 
 const toast = useToast()

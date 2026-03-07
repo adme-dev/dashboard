@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'agency' })
+definePageMeta({ layout: 'agency', middleware: ['role-finance'] })
 
 const route = useRoute()
 const activeTab = ref(route.query.tab === 'eom' ? 'eom' : 'invoices')

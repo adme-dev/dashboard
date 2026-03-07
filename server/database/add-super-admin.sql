@@ -4,20 +4,20 @@
 INSERT INTO team_members (
   name,
   email,
-  role,
+  user_role,
   is_active,
   created_at,
   updated_at
 ) VALUES (
   'Paul (Super Admin)',
   'paul@adme.net.au',
-  'admin',
+  'owner',
   true,
   NOW(),
   NOW()
 )
 ON CONFLICT (email) DO UPDATE SET
-  role = 'admin',
+  user_role = 'owner',
   is_active = true,
   updated_at = NOW();
 

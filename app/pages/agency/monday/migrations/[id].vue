@@ -167,6 +167,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 
+definePageMeta({ middleware: ['role-admin'] })
+
 // Types
 interface BoardMapping {
   id: string

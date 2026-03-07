@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { BannerBrandKit } from '~/types/banner-studio'
 
-definePageMeta({ layout: 'agency' })
+definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
 const toast = useToast()
 

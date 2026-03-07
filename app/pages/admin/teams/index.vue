@@ -326,6 +326,8 @@
 </template>
 
 <script setup lang="ts">
+definePageMeta({ middleware: ['role-admin'] })
+
 interface Team {
   id: string
   name: string

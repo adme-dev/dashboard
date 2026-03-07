@@ -3,7 +3,7 @@ import { format } from 'date-fns'
 
 definePageMeta({
   title: 'Invoice Details',
-  middleware: ['auth']
+  middleware: ['role-finance']
 })
 
 const route = useRoute()

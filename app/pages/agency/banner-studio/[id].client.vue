@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { FORMAT_SAFE_ZONE_MAP } from '~/utils/banner-safe-zones'
 
-definePageMeta({ layout: 'agency' })
+definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
 const route = useRoute()
 const toast = useToast()

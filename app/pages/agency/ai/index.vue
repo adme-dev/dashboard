@@ -3,7 +3,7 @@ import { format } from 'date-fns'
 
 definePageMeta({
   title: 'AI Project Generator',
-  middleware: ['auth']
+  middleware: ['role-management']
 })
 
 const toast = useToast()

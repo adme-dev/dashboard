@@ -1,3 +1,7 @@
+<script setup lang="ts">
+definePageMeta({ middleware: ['role-admin'] })
+</script>
+
 <template>
   <div class="h-full flex flex-col bg-gray-50">
     <div class="bg-white border-b px-6 py-4">

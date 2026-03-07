@@ -20,27 +20,27 @@ async function addSuperAdmin() {
     if (checkResult.rows.length > 0) {
       console.log('User already exists:', checkResult.rows[0])
       
-      // Update to admin
+      // Update to owner
       const updateResult = await pool.query(
-        `UPDATE team_members 
-         SET role = 'admin', 
+        `UPDATE team_members
+         SET user_role = 'owner',
              is_active = true,
              name = 'Paul (Super Admin)',
              updated_at = NOW()
          WHERE email = $1
-         RETURNING id, name, email, role, is_active`,
+         RETURNING id, name, email, user_role as role, is_active`,
         ['paul@adme.net.au']
       )
-      console.log('✅ Updated to super admin:', updateResult.rows[0])
+      console.log('✅ Updated to owner:', updateResult.rows[0])
     } else {
       // Create new admin user
       const insertResult = await pool.query(
-        `INSERT INTO team_members (name, email, role, is_active, created_at, updated_at)
-         VALUES ($1, $2, 'admin', true, NOW(), NOW())
-         RETURNING id, name, email, role, is_active`,
+        `INSERT INTO team_members (name, email, user_role, is_active, created_at, updated_at)
+         VALUES ($1, $2, 'owner', true, NOW(), NOW())
+         RETURNING id, name, email, user_role as role, is_active`,
         ['Paul (Super Admin)', 'paul@adme.net.au']
       )
-      console.log('✅ Created super admin:', insertResult.rows[0])
+      console.log('✅ Created owner:', insertResult.rows[0])
     }
     
     // Verify

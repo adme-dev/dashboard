@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'agency' })
+definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
 
 const { preferences, fetchPreferences, savePreferences } = useAiAgent()
 const saving = ref(false)

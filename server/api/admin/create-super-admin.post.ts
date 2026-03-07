@@ -38,10 +38,10 @@ export default defineEventHandler(async (event) => {
     let userId: string
 
     if (existingUser) {
-      // Update existing user to admin
+      // Update existing user to owner
       const result = await queryOne(
-        `UPDATE team_members 
-         SET role = 'admin', 
+        `UPDATE team_members
+         SET user_role = 'owner',
              is_active = true,
              name = $2,
              updated_at = NOW()
@@ -50,17 +50,17 @@ export default defineEventHandler(async (event) => {
         [normalizedEmail, name]
       )
       userId = result?.id
-      console.log('[Super Admin] Updated existing user:', normalizedEmail)
+      console.log('[Super Admin] Updated existing user to owner:', normalizedEmail)
     } else {
-      // Create new admin user
+      // Create new owner user
       const result = await queryOne(
-        `INSERT INTO team_members (name, email, role, is_active, created_at, updated_at)
-         VALUES ($1, $2, 'admin', true, NOW(), NOW())
+        `INSERT INTO team_members (name, email, user_role, is_active, created_at, updated_at)
+         VALUES ($1, $2, 'owner', true, NOW(), NOW())
          RETURNING id`,
         [name, normalizedEmail]
       )
       userId = result?.id
-      console.log('[Super Admin] Created new user:', normalizedEmail)
+      console.log('[Super Admin] Created new owner:', normalizedEmail)
     }
 
     return {
@@ -68,7 +68,7 @@ export default defineEventHandler(async (event) => {
       message: 'Super admin created/updated',
       userId,
       email: normalizedEmail,
-      role: 'admin'
+      role: 'owner'
     }
   } catch (error) {
     console.error('Failed to create super admin:', error)

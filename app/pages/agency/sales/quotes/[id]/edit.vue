@@ -366,7 +366,7 @@
 </template>
 
 <script setup lang="ts">
-definePageMeta({})
+definePageMeta({ middleware: ['sales'] })
 
 const route = useRoute()
 const toast = useToast()

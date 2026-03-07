@@ -3,7 +3,7 @@ import { format } from 'date-fns'
 
 definePageMeta({
   title: 'Edit Automation Rule',
-  middleware: ['auth']
+  middleware: ['role-management']
 })
 
 const route = useRoute()

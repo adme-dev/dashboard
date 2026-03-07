@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'agency' })
+definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
 const { state, CTA_OPTIONS, PLATFORM_LIST } = useAdPreview()
 

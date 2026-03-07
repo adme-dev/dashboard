@@ -2,7 +2,7 @@
 import { FORMATS } from '~/utils/banner-constants'
 import type { BannerVariant, BannerFeed } from '~/types/banner-studio'
 
-definePageMeta({ layout: 'agency' })
+definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
 const route = useRoute()
 const toast = useToast()

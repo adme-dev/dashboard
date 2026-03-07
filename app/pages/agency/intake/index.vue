@@ -3,7 +3,7 @@ import { format } from 'date-fns'
 
 definePageMeta({
   title: 'Intake Forms',
-  middleware: ['auth']
+  middleware: ['role-clients']
 })
 
 const toast = useToast()

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { EomRun, EomLineItem } from '~/types'
 
-definePageMeta({ layout: 'agency' })
+definePageMeta({ layout: 'agency', middleware: ['role-finance'] })
 
 const route = useRoute()
 const toast = useToast()

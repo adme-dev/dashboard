@@ -20,8 +20,21 @@ export const useAuth = () => {
     return roles.includes(user.value.role)
   }
   
-  const isAdmin = computed(() => hasRole(['admin', 'owner']))
-  const isManager = computed(() => hasRole(['admin', 'owner', 'project_manager']))
+  const isOwner = computed(() => user.value?.role === 'owner')
+  const isAdmin = computed(() => hasRole(PERMISSIONS.ADMIN))
+  const isManager = computed(() => hasRole(PERMISSIONS.MANAGEMENT))
+  const isLead = computed(() => hasRole(['owner', 'admin', 'lead']))
+  const isReadOnly = computed(() => !!user.value && isReadOnlyRole(user.value.role))
+  const canWrite = computed(() => !!user.value && !isReadOnlyRole(user.value.role))
+  const canAccessFinance = computed(() => hasRole(PERMISSIONS.FINANCE))
+  const canAccessSales = computed(() => hasRole(PERMISSIONS.SALES))
+  const canAccessClients = computed(() => hasRole(PERMISSIONS.CLIENTS))
+  const canAccessCreative = computed(() => hasRole(PERMISSIONS.CREATIVE))
+  const canAccessMediaBuying = computed(() => hasRole(PERMISSIONS.MEDIA_BUYING))
+  const canAccessAdmin = computed(() => hasRole(PERMISSIONS.ADMIN))
+  const canAccessAiTraining = computed(() => hasRole(PERMISSIONS.ADMIN))
+  const canAccessAutomation = computed(() => hasRole(PERMISSIONS.AUTOMATION))
+  const canAccessReports = computed(() => hasRole(PERMISSIONS.MANAGEMENT))
   
   // Fetch current user
   const fetchUser = async () => {
@@ -91,8 +104,21 @@ export const useAuth = () => {
     isAuthenticated: readonly(isAuthenticated),
     isLoading: readonly(isLoading),
     userRole,
+    isOwner,
     isAdmin,
     isManager,
+    isLead,
+    isReadOnly,
+    canWrite,
+    canAccessFinance,
+    canAccessSales,
+    canAccessClients,
+    canAccessCreative,
+    canAccessMediaBuying,
+    canAccessAdmin,
+    canAccessAiTraining,
+    canAccessAutomation,
+    canAccessReports,
     hasRole,
     fetchUser,
     logout,

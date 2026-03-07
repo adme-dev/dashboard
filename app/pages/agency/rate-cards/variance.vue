@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'agency' })
+definePageMeta({ layout: 'agency', middleware: ['role-finance'] })
 
 const { data, status } = useFetch('/api/agency/rate-cards/variance')
 

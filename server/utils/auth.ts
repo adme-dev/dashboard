@@ -1,11 +1,12 @@
 import bcrypt from 'bcryptjs'
 import { queryOne, queryRows } from './db'
+import { isReadOnlyRole } from './permissions'
 
 export interface User {
   id: string
   email: string
   name: string
-  role: 'admin' | 'project_manager' | 'consultant' | 'client'
+  role: 'owner' | 'admin' | 'lead' | 'project_manager' | 'account_manager' | 'creative' | 'media_buyer' | 'producer' | 'finance' | 'accounts' | 'developer' | 'sales' | 'member' | 'viewer' | 'guest'
   is_active: boolean
   avatar_url?: string
 }
@@ -210,6 +211,15 @@ export async function requireRole(event: any, roles: string[]): Promise<User> {
   return user
 }
 
+// Require write access - blocks viewer/guest roles from mutations
+export async function requireWriteAccess(event: any): Promise<User> {
+  const user = await requireAuth(event)
+  if (isReadOnlyRole(user.role)) {
+    throw createError({ statusCode: 403, statusMessage: 'Forbidden - Read-only access' })
+  }
+  return user
+}
+
 // Require board access - checks user is a member/manager of the department (board) or an admin
 // Accepts both UUID and slug for boardId
 export async function requireBoardAccess(event: any, boardId: string): Promise<User> {
@@ -226,8 +236,8 @@ export async function requireBoardAccess(event: any, boardId: string): Promise<U
     resolvedId = dept.id
   }
 
-  // Admins and super_admins bypass board membership checks
-  if (user.role === 'admin' || user.role === 'super_admin') {
+  // Admins and owners bypass board membership checks
+  if (user.role === 'admin' || user.role === 'owner') {
     return user
   }
 

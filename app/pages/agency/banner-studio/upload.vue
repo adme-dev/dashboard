@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { matchImageToFormat, type FormatMatch } from '~/utils/banner-format-matcher'
 
-definePageMeta({ layout: 'agency' })
+definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
 const toast = useToast()
 

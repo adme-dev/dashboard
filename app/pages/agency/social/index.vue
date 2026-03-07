@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'agency' })
+definePageMeta({ layout: 'agency', middleware: ['role-media'] })
 
 const toast = useToast()
 const { connections, loading, lastOAuthResult, fetchConnections, connectPlatform, connectWithToken, clearOAuthResult, disconnectPlatform, syncSpend } = useSocialConnections()

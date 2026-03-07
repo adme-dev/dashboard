@@ -3,7 +3,7 @@ import { format } from 'date-fns'
 
 definePageMeta({
   title: 'Proof Details',
-  middleware: ['auth']
+  middleware: ['role-creative']
 })
 
 const route = useRoute()

@@ -3,7 +3,7 @@ import { format } from 'date-fns'
 
 definePageMeta({
   title: 'Automation Rules',
-  middleware: ['auth']
+  middleware: ['role-management']
 })
 
 const toast = useToast()

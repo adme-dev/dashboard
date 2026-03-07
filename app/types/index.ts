@@ -5,7 +5,7 @@ export interface User {
   id: string
   email: string
   name: string
-  role: 'admin' | 'project_manager' | 'consultant' | 'client' | 'owner' | 'sales' | 'member' | 'viewer' | 'guest'
+  role: 'owner' | 'admin' | 'lead' | 'project_manager' | 'account_manager' | 'creative' | 'media_buyer' | 'producer' | 'finance' | 'accounts' | 'developer' | 'sales' | 'member' | 'viewer' | 'guest'
   is_active?: boolean
   avatar_url?: string
 }

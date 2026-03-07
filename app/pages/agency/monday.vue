@@ -237,6 +237,8 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import MondayMigrationPreview from '../../components/monday/MigrationPreview.vue'
 
+definePageMeta({ middleware: ['role-admin'] })
+
 // Types
 interface MigrationSession {
   id: string

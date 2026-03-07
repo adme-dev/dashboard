@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'agency' })
+definePageMeta({ layout: 'agency', middleware: ['role-media'] })
 
 const route = useRoute()
 const { filters, apiQuery, updateFilters } = useAnalytics()

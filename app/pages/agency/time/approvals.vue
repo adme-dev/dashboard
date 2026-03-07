@@ -3,7 +3,7 @@ import { format, parseISO, startOfWeek, endOfWeek, subWeeks } from 'date-fns'
 
 definePageMeta({
   title: 'Timesheet Approvals',
-  middleware: ['auth']
+  middleware: ['role-management']
 })
 
 const toast = useToast()

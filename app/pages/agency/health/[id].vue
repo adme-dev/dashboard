@@ -3,7 +3,7 @@ import { format } from 'date-fns'
 
 definePageMeta({
   title: 'Project Health Details',
-  middleware: ['auth']
+  middleware: ['role-management']
 })
 
 const route = useRoute()

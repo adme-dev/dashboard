@@ -1,7 +1,7 @@
 <script setup lang="ts">
 definePageMeta({
   title: 'Expense Details',
-  middleware: ['auth']
+  middleware: ['role-finance']
 })
 
 const route = useRoute()

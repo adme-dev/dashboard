@@ -3,7 +3,7 @@ import { format } from 'date-fns'
 
 definePageMeta({
   title: 'Expenses',
-  middleware: ['auth']
+  middleware: ['role-finance']
 })
 
 const toast = useToast()

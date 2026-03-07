@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { FORMATS } from '~/utils/banner-constants'
 
-definePageMeta({ layout: 'agency' })
+definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
 const toast = useToast()
 

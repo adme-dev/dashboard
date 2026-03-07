@@ -3,7 +3,7 @@ import { format, addWeeks, startOfWeek } from 'date-fns'
 
 definePageMeta({
   title: 'Resource Planning',
-  middleware: ['auth']
+  middleware: ['role-management']
 })
 
 const toast = useToast()

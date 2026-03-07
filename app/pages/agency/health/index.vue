@@ -3,7 +3,7 @@ import { format } from 'date-fns'
 
 definePageMeta({
   title: 'Project Health Dashboard',
-  middleware: ['auth']
+  middleware: ['role-management']
 })
 
 const toast = useToast()

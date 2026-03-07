@@ -3,7 +3,8 @@ import { format } from 'date-fns'
 import type { AgencyClient, BillingType } from '~/types'
 
 definePageMeta({
-  title: 'Clients'
+  title: 'Clients',
+  middleware: ['role-clients']
 })
 
 // Filters

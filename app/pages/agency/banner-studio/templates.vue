@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { BannerTemplateDB } from '~/types/banner-studio'
 
-definePageMeta({ layout: 'agency' })
+definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
 const router = useRouter()
 const toast = useToast()

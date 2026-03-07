@@ -274,7 +274,7 @@ interface SyncData {
   }>
 }
 
-definePageMeta({})
+definePageMeta({ middleware: ['role-admin'] })
 
 const preview = ref<PreviewData | null>(null)
 const previewLoading = ref(false)

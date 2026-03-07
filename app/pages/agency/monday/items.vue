@@ -210,6 +210,8 @@
 </template>
 
 <script setup lang="ts">
+definePageMeta({ middleware: ['role-admin'] })
+
 const toast = useToast()
 
 // State

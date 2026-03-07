@@ -20,8 +20,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
   }
 
   // Check if user can access pricing/sales pages
-  const canAccessPricing = hasRole(['admin', 'owner', 'project_manager', 'sales'])
-  if (!canAccessPricing) {
+  if (!hasRole(PERMISSIONS.SALES)) {
     return navigateTo({
       path: '/agency',
       query: { error: 'no-sales-access' }
