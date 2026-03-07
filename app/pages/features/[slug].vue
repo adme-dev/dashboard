@@ -2004,6 +2004,320 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+
+  // ─── Briefs & Proposals ─────────────────────────────────────
+  'brief-templates': {
+    title: 'Brief Templates',
+    slug: 'brief-templates',
+    icon: 'i-lucide-file-plus',
+    category: 'Briefs & Proposals',
+    categoryIcon: 'i-lucide-file-text',
+    categoryIconBg: 'bg-orange-50',
+    categoryIconColor: 'text-orange-600',
+    description: 'Build structured intake templates with 30+ field types — text, dropdown, file upload, date pickers, budgets, and more. Define required fields, set defaults, and organize sections with drag-and-drop.',
+    details: [
+      {
+        title: '30+ Field Types',
+        content: 'Go far beyond simple text fields. Brief templates support rich text, dropdowns, multi-select, file uploads, date pickers, number inputs, currency fields, URL inputs, email fields, checkboxes, radio groups, sliders, color pickers, and many more. Each field type has validation rules, placeholder text, and help descriptions that guide clients and team members through the brief creation process.'
+      },
+      {
+        title: 'Drag-and-Drop Organization',
+        content: 'Arrange fields in the exact order that makes sense for your workflow. Group related fields into collapsible sections — creative requirements, budget details, timeline, target audience. Reorder entire sections or individual fields with drag-and-drop. Templates stay organized even as you add dozens of fields across multiple categories.'
+      },
+      {
+        title: 'Required vs Optional Fields',
+        content: 'Mark fields as required to ensure you always capture critical information, or leave them optional for nice-to-have details. The brief submission form enforces required fields before allowing submission, preventing incomplete briefs from entering your workflow. Optional fields expand on hover to keep the form clean.'
+      },
+      {
+        title: 'Template Library',
+        content: 'Save templates for different brief types — campaign briefs, social content requests, video production briefs, website projects. Each template captures the unique information that workflow needs. Duplicate existing templates to create variations without starting from scratch. Templates are versioned so in-progress briefs continue using the version they started with.'
+      }
+    ]
+  },
+  'template-builder': {
+    title: 'Template Builder',
+    slug: 'template-builder',
+    icon: 'i-lucide-blocks',
+    category: 'Briefs & Proposals',
+    categoryIcon: 'i-lucide-file-text',
+    categoryIconBg: 'bg-orange-50',
+    categoryIconColor: 'text-orange-600',
+    description: 'Visual template editor with live preview, field configuration panels, section grouping, and default value management. Design professional intake forms without code.',
+    details: [
+      {
+        title: 'Visual Field Editor',
+        content: 'Each field has a configuration panel where you set the label, placeholder text, help description, validation rules, and default value. Preview how the field will look to brief creators in real time. Toggle between edit mode and preview mode to see the full template as your team and clients will experience it.'
+      },
+      {
+        title: 'Section Grouping',
+        content: 'Organize fields into logical sections with custom headers and descriptions. Sections can be collapsed by default to keep long templates scannable. Add section-level instructions that appear above the fields — perfect for explaining what information you need and why you need it for each part of the brief.'
+      },
+      {
+        title: 'Field Validation Rules',
+        content: 'Set minimum and maximum character counts for text fields, restrict file uploads to specific formats and sizes, define number ranges for budget fields, and require specific date ranges for timeline fields. Validation errors appear inline as users fill out the brief, catching issues before submission rather than during review.'
+      },
+      {
+        title: 'Default Values & Prefills',
+        content: 'Set sensible defaults for fields that commonly have the same value — default currency, standard deliverable sizes, typical timeline lengths. When team members or clients start a new brief from this template, defaults are pre-filled so they only need to change what is different from the norm.'
+      }
+    ]
+  },
+  'ai-brief-tools': {
+    title: 'AI Brief Tools',
+    slug: 'ai-brief-tools',
+    icon: 'i-lucide-sparkles',
+    category: 'Briefs & Proposals',
+    categoryIcon: 'i-lucide-file-text',
+    categoryIconBg: 'bg-orange-50',
+    categoryIconColor: 'text-orange-600',
+    description: 'AI-powered brief assistance — field suggestions as you type, completeness scoring, quality assessment, and full brief generation from minimal input.',
+    details: [
+      {
+        title: 'Field Suggestions',
+        content: 'As you fill out a brief, AI analyzes the context and suggests values for empty fields. Start typing a campaign objective and get suggested target audiences, recommended platforms, and estimated timelines. Suggestions appear as popover cards that you can accept, modify, or dismiss with a single click.'
+      },
+      {
+        title: 'Brief Scoring',
+        content: 'Every brief is scored on three dimensions: required field completion (40% weight), optional field completion (20% weight), and content quality (40% weight). Quality scoring evaluates field value length, specificity, and relevance. Scores update in real time as you edit, with a visual progress indicator showing what is needed to reach a strong brief.'
+      },
+      {
+        title: 'AI Brief Generator',
+        content: 'Provide a one-paragraph project description and AI generates a complete brief with all template fields populated. Review each field individually — accept the AI suggestion, edit it, or reject it and write your own. The generator uses your agency knowledge base and past briefs to produce contextually relevant content rather than generic placeholders.'
+      },
+      {
+        title: 'Quality Assessment',
+        content: 'AI reviews completed briefs for vague language, missing context, conflicting requirements, and unrealistic timelines. Issues are flagged with specific improvement suggestions. This catches problems that template validation cannot — like a brief that requests a TV campaign on a social media budget, or a launch date that falls on a public holiday.'
+      }
+    ]
+  },
+  'brief-to-quote': {
+    title: 'Brief-to-Quote',
+    slug: 'brief-to-quote',
+    icon: 'i-lucide-receipt',
+    category: 'Briefs & Proposals',
+    categoryIcon: 'i-lucide-file-text',
+    categoryIconBg: 'bg-orange-50',
+    categoryIconColor: 'text-orange-600',
+    description: 'Auto-generate quotes from approved briefs. Rate card matching, line item extraction, Xero push, status sync, and quote-to-invoice conversion.',
+    details: [
+      {
+        title: 'Auto-Generation on Approval',
+        content: 'When a brief is approved and its template has quoting enabled, a quote is automatically generated. The system extracts deliverables from brief field values and matches each to your rate card using fuzzy matching with a configurable similarity threshold. Line items are created with quantities, rates, and descriptions pulled directly from the brief.'
+      },
+      {
+        title: 'Rate Card Matching',
+        content: 'Deliverables from the brief are matched to your rate card entries using fuzzy string matching. The system finds the best match above a 40% similarity threshold, pulling in the correct pricing, account codes, and descriptions. When no match is found, line items are flagged for manual pricing so nothing falls through the cracks.'
+      },
+      {
+        title: 'Xero Integration',
+        content: 'Push quotes to Xero as DRAFT quotes with a single click. The system matches the client to their Xero contact, maps line items to chart of accounts codes, and creates the quote in Xero. Sync status back to see when clients view, accept, or decline the quote. All changes flow bidirectionally between XeroFlow and Xero.'
+      },
+      {
+        title: 'Quote-to-Invoice Conversion',
+        content: 'When a client accepts a Xero quote, convert it to a DRAFT invoice with one click. The invoice inherits all line items, pricing, and contact details from the quote. This completes the full cycle: brief submission, approval, quote, client acceptance, invoice — all tracked and auditable within XeroFlow.'
+      }
+    ]
+  },
+  'bulk-brief-operations': {
+    title: 'Bulk Operations',
+    slug: 'bulk-brief-operations',
+    icon: 'i-lucide-layers',
+    category: 'Briefs & Proposals',
+    categoryIcon: 'i-lucide-file-text',
+    categoryIconBg: 'bg-orange-50',
+    categoryIconColor: 'text-orange-600',
+    description: 'Multi-select briefs for bulk status changes, assignment, duplication, and export. Floating action bar appears when briefs are selected.',
+    details: [
+      {
+        title: 'Multi-Select Interface',
+        content: 'Checkbox selection on the briefs list allows you to select multiple briefs at once. Select all, select by filter criteria, or pick individual items. A floating action bar appears at the bottom of the screen showing the selection count and available bulk actions. Selection persists across page navigation so you can work with large sets.'
+      },
+      {
+        title: 'Bulk Status Changes',
+        content: 'Move multiple briefs through workflow stages in one action. Change 20 briefs from Draft to In Review, or archive a batch of completed briefs. Status changes trigger the same notifications and automations as individual changes, so your team stays informed without extra effort.'
+      },
+      {
+        title: 'Bulk Assignment & Duplication',
+        content: 'Reassign multiple briefs to a different team member during handoffs or team changes. Duplicate a set of briefs to create a new campaign batch with the same structure but fresh status tracking. Duplicated briefs preserve all field values and attachments while resetting workflow state.'
+      },
+      {
+        title: 'Export & Analytics',
+        content: 'Export selected briefs to CSV for reporting or external sharing. The export includes all field values, metadata, status history, and timeline data. Combined with the brief analytics dashboard, you can track cycle times, completion rates, and bottleneck patterns across your entire brief pipeline.'
+      }
+    ]
+  },
+  'brief-analytics': {
+    title: 'Brief Analytics',
+    slug: 'brief-analytics',
+    icon: 'i-lucide-bar-chart-2',
+    category: 'Briefs & Proposals',
+    categoryIcon: 'i-lucide-file-text',
+    categoryIconBg: 'bg-orange-50',
+    categoryIconColor: 'text-orange-600',
+    description: 'Cycle time funnels, completion rates, aggregate analytics, and template performance — understand how briefs flow through your agency.',
+    details: [
+      {
+        title: 'Cycle Time Funnel',
+        content: 'Visualize how long briefs spend in each workflow stage — from submission to review to approval to production. Identify bottlenecks where briefs stall and take action to speed up your pipeline. Filter by template, client, or team member to drill into specific workflow patterns.'
+      },
+      {
+        title: 'Completion Rates',
+        content: 'Track what percentage of briefs reach completion versus those that are abandoned, rejected, or stuck in review. Break down by template type to see which brief formats have the highest success rate. Low completion rates signal template complexity issues or unclear requirements.'
+      },
+      {
+        title: 'Template Performance',
+        content: 'Compare templates against each other — which ones produce the highest quality briefs, which have the fastest turnaround, and which generate the most revisions. Use these insights to refine your templates over time, removing friction from your best-performing workflows.'
+      },
+      {
+        title: 'Aggregate Metrics',
+        content: 'Dashboard widgets show total briefs in progress, average time to approval, briefs awaiting review, and briefs converted to quotes. Eight aggregate queries power the analytics dashboard, giving you a real-time pulse on your agency\'s brief pipeline across all clients and projects.'
+      }
+    ]
+  },
+
+  // ─── Administration ─────────────────────────────────────────
+  'custom-roles': {
+    title: 'Custom Roles',
+    slug: 'custom-roles',
+    icon: 'i-lucide-user-cog',
+    category: 'Administration',
+    categoryIcon: 'i-lucide-shield',
+    categoryIconBg: 'bg-slate-50',
+    categoryIconColor: 'text-slate-600',
+    description: 'Create custom roles beyond the 15 built-in levels. Define granular permissions for each role to match your agency\'s unique organizational structure.',
+    details: [
+      {
+        title: 'Beyond Built-In Roles',
+        content: 'XeroFlow ships with 15 roles from owner to guest, but every agency is different. Create custom roles like \'Junior Media Buyer\' with ad spend visibility but no budget editing, or \'External Contractor\' with board access but no financial data. Custom roles inherit a base permission set that you can expand or restrict.'
+      },
+      {
+        title: 'Granular Permission Matrix',
+        content: 'Each role is defined by a matrix of 15+ permission areas — finance, creative, media buying, client management, admin, board access, chat, time tracking, and more. Toggle permissions on or off for each area. The permission matrix is visual, showing exactly what each role can and cannot do at a glance.'
+      },
+      {
+        title: 'Server-Enforced Security',
+        content: 'Permissions are not just a frontend concept. Every API endpoint checks the user\'s resolved permissions via server middleware. Even if someone manipulates the frontend, the server blocks unauthorized actions. Role resolution happens on every request, so permission changes take effect immediately without requiring users to log out.'
+      },
+      {
+        title: 'Role Assignment',
+        content: 'Assign roles from the admin user management panel. Change a user\'s role and their sidebar, available pages, and API access update instantly. Bulk role changes are supported for team restructuring. An audit trail tracks who changed what role and when, so you always know who authorized access changes.'
+      }
+    ]
+  },
+  'permission-system': {
+    title: 'Permission System',
+    slug: 'permission-system',
+    icon: 'i-lucide-lock',
+    category: 'Administration',
+    categoryIcon: 'i-lucide-shield',
+    categoryIconBg: 'bg-slate-50',
+    categoryIconColor: 'text-slate-600',
+    description: 'Fine-grained role-based access control with server-enforced middleware. 15+ permission areas cover every part of the platform.',
+    details: [
+      {
+        title: 'RBAC Architecture',
+        content: 'The permission system is built on role-based access control with permissions defined at both server and frontend levels. Server middleware blocks unauthorized mutations globally — viewers and guests cannot create, update, or delete any resources. Frontend middleware prevents navigation to unauthorized pages, and sidebar items are conditionally hidden based on permissions.'
+      },
+      {
+        title: '15+ Permission Areas',
+        content: 'Permissions cover finance (invoices, expenses, P&L), creative (banner studio, briefs), media (ad accounts, spend), client management (portal, contacts), admin (users, roles, settings), boards (create, edit, archive), chat (channels, DMs), time tracking (entries, approvals), AI (chat, training), and more. Each area can be independently granted or restricted per role.'
+      },
+      {
+        title: 'Route Protection',
+        content: '87 page files are protected by 7 route middleware files — role-admin, role-finance, role-creative, role-media, role-management, role-clients, and sales. Users who navigate to a page they cannot access are redirected to the dashboard. Direct URL access is blocked server-side, not just hidden in the UI.'
+      },
+      {
+        title: 'Mutation Guards',
+        content: 'Every POST, PUT, PATCH, and DELETE request passes through the RBAC middleware. External callers like Xero webhooks and Cloudflare Workers are exempt. Internal API routes are scoped correctly. The system enforces write access restrictions at the API layer, making permission bypass impossible regardless of how the request originates.'
+      }
+    ]
+  },
+  'admin-dashboard': {
+    title: 'Admin Dashboard',
+    slug: 'admin-dashboard',
+    icon: 'i-lucide-settings',
+    category: 'Administration',
+    categoryIcon: 'i-lucide-shield',
+    categoryIconBg: 'bg-slate-50',
+    categoryIconColor: 'text-slate-600',
+    description: 'Central admin panel with horizontal tab navigation — manage users, configure permissions, assign roles, and monitor access controls.',
+    details: [
+      {
+        title: 'User Management',
+        content: 'View all team members with their current roles, last login, and status. Search and filter by role, department, or activity. Invite new users, deactivate accounts, and change roles from a single interface. User cards show role badges and permission summaries so administrators can quickly audit who has access to what.'
+      },
+      {
+        title: 'Role Configuration',
+        content: 'The permissions tab displays the full role-permission matrix. See every built-in and custom role alongside their granted permissions. Create new custom roles, edit existing ones, and compare roles side by side. Changes are applied immediately and enforced on the next API request — no deployment or restart needed.'
+      },
+      {
+        title: 'Horizontal Tab Navigation',
+        content: 'The admin panel uses horizontal tabs within the agency layout — Users, Permissions, and Settings are all accessible without leaving the main navigation. This matches the platform\'s existing tab-based design patterns and keeps admin tasks integrated with the daily workflow rather than hidden in a separate settings area.'
+      },
+      {
+        title: 'Audit & Compliance',
+        content: 'Track role changes, permission modifications, and user access patterns. Know when a role was created, who assigned it, and what permissions were granted. This audit trail is essential for agencies handling client data, financial information, or regulated advertising — demonstrating who had access to what and when.'
+      }
+    ]
+  },
+
+  // ─── Financial Operations (additional) ──────────────────────
+  'rate-cards': {
+    title: 'Rate Cards',
+    slug: 'rate-cards',
+    icon: 'i-lucide-credit-card',
+    category: 'Financial Operations',
+    categoryIcon: 'i-lucide-calculator',
+    categoryIconBg: 'bg-emerald-50',
+    categoryIconColor: 'text-emerald-600',
+    description: 'Define service pricing with rate cards. Fuzzy match to Xero chart of accounts, variance dashboards, and AI integration for pricing queries.',
+    details: [
+      {
+        title: 'Service Pricing Database',
+        content: 'Create rate card entries for every service your agency offers — hourly rates for strategy, fixed prices for deliverables, platform fees, production costs, and retainer components. Each entry includes a description, unit price, tax treatment, and mapping to your Xero chart of accounts. Rate cards serve as your single source of truth for pricing.'
+      },
+      {
+        title: 'Xero Account Matching',
+        content: 'Rate card entries are fuzzy-matched to your Xero chart of accounts so invoices generated from rate cards automatically use the correct revenue accounts. The variance dashboard highlights discrepancies between your rate card pricing and what is actually invoiced in Xero, catching pricing drift before it becomes a revenue issue.'
+      },
+      {
+        title: 'Variance Dashboard',
+        content: 'Compare rate card pricing against actual invoiced amounts across clients and time periods. See which services are consistently quoted at rates above or below the rate card. Identify clients with special pricing arrangements and track whether those arrangements are being applied correctly by your accounts team.'
+      },
+      {
+        title: 'AI Pricing Integration',
+        content: 'Ask the AI assistant pricing questions — \'What do we charge for social media management?\' or \'What is our hourly rate for video production?\' — and get instant answers from your rate card data. Rate card entries are embedded in the vector database so pricing information is part of the AI\'s knowledge base.'
+      }
+    ]
+  },
+  'quotes-proposals': {
+    title: 'Quotes & Proposals',
+    slug: 'quotes-proposals',
+    icon: 'i-lucide-file-check',
+    category: 'Financial Operations',
+    categoryIcon: 'i-lucide-calculator',
+    categoryIconBg: 'bg-emerald-50',
+    categoryIconColor: 'text-emerald-600',
+    description: 'Generate quotes from briefs with rate card pricing. Push to Xero, sync acceptance status, and convert accepted quotes directly into invoices.',
+    details: [
+      {
+        title: 'Brief-Driven Quotes',
+        content: 'Quotes are generated directly from approved briefs. The system extracts deliverables and quantities from brief field values, matches each to your rate card, and creates a structured quote with line items, totals, and tax calculations. This eliminates the manual step of re-entering brief requirements into a quoting tool.'
+      },
+      {
+        title: 'Xero Quote Sync',
+        content: 'Push quotes to Xero as DRAFT quotes with one click. Client contact matching, chart of accounts mapping, and tax treatment are handled automatically based on your rate card configuration. Once in Xero, quotes can be sent to clients for review. Status changes in Xero sync back to XeroFlow automatically.'
+      },
+      {
+        title: 'Acceptance Tracking',
+        content: 'Monitor quote status from within XeroFlow — Draft, Sent, Viewed, Accepted, Declined. When a client accepts a quote in Xero, the status updates in XeroFlow and the brief is marked as commercially approved. Declined quotes can be revised and resubmitted without creating duplicate records.'
+      },
+      {
+        title: 'Invoice Conversion',
+        content: 'Convert accepted quotes to DRAFT invoices with a single action. All line items, pricing, contact details, and account codes transfer from the quote to the invoice. This completes the brief-to-cash pipeline: intake, approval, quote, acceptance, invoice, payment tracking.'
+      }
+    ]
+  },
 }
 
 const feature = computed(() => features[slug] || null)

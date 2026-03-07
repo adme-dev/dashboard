@@ -243,6 +243,33 @@ const platformGuides = [
     tags: ['HTML5', 'ClickTag', '14 Platforms'],
     to: '/resources/ad-platform-export'
   },
+  {
+    title: 'Roles & Permissions',
+    description: 'Configure team access levels with 15 built-in roles, create custom roles, and understand 3-layer RBAC enforcement.',
+    icon: 'i-lucide-shield',
+    bg: 'bg-slate-100 dark:bg-slate-500/15',
+    color: 'text-slate-700 dark:text-slate-400',
+    tags: ['RBAC', 'Roles', 'Security'],
+    to: '/resources/roles-permissions'
+  },
+  {
+    title: 'Briefs & Proposals',
+    description: 'Templates with 30+ field types, AI-powered scoring and generation, brief-to-quote pipeline, and analytics.',
+    icon: 'i-lucide-file-text',
+    bg: 'bg-orange-100 dark:bg-orange-500/15',
+    color: 'text-orange-700 dark:text-orange-400',
+    tags: ['Templates', 'AI Tools', 'Quotes'],
+    to: '/resources/briefs-proposals'
+  },
+  {
+    title: 'Time Tracking & Timesheets',
+    description: 'Log time against tasks and projects, submit weekly timesheets for approval, and manage team utilisation.',
+    icon: 'i-lucide-timer',
+    bg: 'bg-cyan-100 dark:bg-cyan-500/15',
+    color: 'text-cyan-700 dark:text-cyan-400',
+    tags: ['Timesheets', 'Approvals', 'Tasks'],
+    to: '/resources/time-tracking'
+  },
 ]
 
 const integrations = [
