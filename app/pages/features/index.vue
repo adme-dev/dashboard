@@ -206,6 +206,7 @@ const categories = [
     iconColor: 'text-amber-600',
     features: [
       { title: 'AI Chat', slug: 'ai-chat', icon: 'i-lucide-bot', description: 'Groq-powered conversational AI with @entity mentions for clients, tasks, and projects.' },
+      { title: 'Voice AI', slug: 'voice-ai', icon: 'i-lucide-mic', description: 'Talk to your AI assistant. Speech-to-text transcription and text-to-speech responses powered by Workers AI.' },
       { title: 'Anomaly Detection', slug: 'anomaly-detection', icon: 'i-lucide-alert-triangle', description: '8 specialised analysers that proactively flag spend anomalies, deadline risks, and budget issues.' },
       { title: 'Semantic Search', slug: 'semantic-search', icon: 'i-lucide-search', description: 'Vectorize-powered search across tasks, clients, briefs, and knowledge base entries.' },
       { title: 'Intent Classification', slug: 'intent-classification', icon: 'i-lucide-target', description: 'Edge-first intent classifier routes queries to the right data sources automatically.' },

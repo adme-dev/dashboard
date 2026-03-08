@@ -346,3 +346,120 @@ const groups = computed(() => [{
     <ActivityHub />
   </UDashboardGroup>
 </template>
+
+<style scoped>
+/* ── Sidebar icon hover animations ── */
+/* Note: Iconify renders classes as i-lucide:name (colon) in the DOM */
+
+/* Base transition for smooth animation start/end */
+:deep(a [class*="i-lucide"]),
+:deep(button [class*="i-lucide"]) {
+  transition: transform 0.2s ease;
+}
+
+/* Default: subtle pop on hover */
+:deep(a:hover [class*="i-lucide"]),
+:deep(button:hover [class*="i-lucide"]) {
+  animation: nav-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Rotate — settings/gear icons */
+:deep(a:hover [class*="i-lucide:settings"]),
+:deep(button:hover [class*="i-lucide:settings"]) {
+  animation: nav-rotate 0.5s ease-in-out;
+}
+
+/* Wiggle — bell, alert, shield */
+:deep(a:hover [class*="i-lucide:bell"]),
+:deep(button:hover [class*="i-lucide:bell"]),
+:deep(a:hover [class*="i-lucide:alert-triangle"]),
+:deep(a:hover [class*="i-lucide:shield"]),
+:deep(button:hover [class*="i-lucide:shield"]) {
+  animation: nav-wiggle 0.5s ease-in-out;
+}
+
+/* Bounce — inbox, check icons, rocket, trending-up, upload */
+:deep(a:hover [class*="i-lucide:inbox"]),
+:deep(a:hover [class*="i-lucide:check-square"]),
+:deep(a:hover [class*="i-lucide:check-check"]),
+:deep(a:hover [class*="i-lucide:clipboard-check"]),
+:deep(a:hover [class*="i-lucide:rocket"]),
+:deep(a:hover [class*="i-lucide:trending-up"]),
+:deep(a:hover [class*="i-lucide:upload"]) {
+  animation: nav-bounce 0.4s ease;
+}
+
+/* Pulse — AI/energy/activity icons */
+:deep(a:hover [class*="i-lucide:sparkles"]),
+:deep(a:hover [class*="i-lucide:brain"]),
+:deep(a:hover [class*="i-lucide:zap"]),
+:deep(a:hover [class*="i-lucide:lightbulb"]),
+:deep(a:hover [class*="i-lucide:activity"]),
+:deep(a:hover [class*="i-lucide:graduation-cap"]) {
+  animation: nav-pulse 0.5s ease;
+}
+
+/* Swing — clock, gauge */
+:deep(a:hover [class*="i-lucide:clock"]),
+:deep(a:hover [class*="i-lucide:gauge"]) {
+  animation: nav-swing 0.5s ease-in-out;
+}
+
+/* Spin — repeat/sync icons */
+:deep(a:hover [class*="i-lucide:repeat"]) {
+  animation: nav-spin 0.6s ease-in-out;
+}
+
+/* Slide — message/chat icons */
+:deep(a:hover [class*="i-lucide:message-circle"]) {
+  animation: nav-slide 0.4s ease;
+}
+
+@keyframes nav-pop {
+  0%, 100% { transform: scale(1); }
+  40% { transform: scale(1.2); }
+  70% { transform: scale(0.95); }
+}
+
+@keyframes nav-rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(90deg); }
+}
+
+@keyframes nav-wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  15% { transform: rotate(-12deg); }
+  30% { transform: rotate(10deg); }
+  50% { transform: rotate(-6deg); }
+  70% { transform: rotate(3deg); }
+}
+
+@keyframes nav-bounce {
+  0%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-3px); }
+  55% { transform: translateY(0); }
+  75% { transform: translateY(-1.5px); }
+}
+
+@keyframes nav-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.25); }
+}
+
+@keyframes nav-swing {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(12deg); }
+  75% { transform: rotate(-12deg); }
+}
+
+@keyframes nav-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes nav-slide {
+  0%, 100% { transform: translateX(0); }
+  40% { transform: translateX(2px); }
+  70% { transform: translateX(-1px); }
+}
+</style>

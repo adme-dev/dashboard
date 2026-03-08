@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { formatDistanceToNow } from 'date-fns'
-import type { AiConversation } from '~/types'
+import type { AiConversation, AiMessage } from '~/types'
 
 definePageMeta({ layout: 'agency' })
 
@@ -16,6 +16,115 @@ const {
   loadConversation, loadMoreMessages, renameConversation, togglePin,
   sendMessage, archiveConversation, cleanupOldConversations, submitFeedback,
 } = useAiChat()
+
+// --- Voice Chat ---
+const {
+  isAvailable: voiceAvailable,
+  isRecording, isProcessing: voiceProcessing,
+  isPlaying: voicePlaying,
+  volumeLevel,
+  error: voiceError,
+  startRecording, stopRecording, cancelRecording,
+  sendVoiceMessage, playAudio, stopAudio,
+} = useVoiceChat()
+
+watch(voiceError, (err) => {
+  if (err) toast.add({ title: 'Voice', description: err, color: 'warning' })
+})
+
+async function handleVoiceRecord() {
+  // If currently playing audio, stop it
+  if (voicePlaying.value) {
+    stopAudio()
+    return
+  }
+
+  // If currently recording, stop
+  if (isRecording.value) {
+    stopRecording()
+    return
+  }
+
+  // Ensure we have an active conversation
+  if (!activeConversation.value) {
+    try {
+      const conv = await createConversation()
+      updateUrl(conv.id)
+    } catch {
+      toast.add({ title: 'Error', description: 'Failed to create conversation', color: 'error' })
+      return
+    }
+  }
+
+  // Start recording — returns blob when stopped
+  const blob = await startRecording()
+  if (!blob || !activeConversation.value) return
+
+  // Add temporary "Listening..." user message
+  const tempId = `voice-${Date.now()}`
+  const tempUserMsg: AiMessage = {
+    id: tempId,
+    conversationId: activeConversation.value.id,
+    role: 'user',
+    content: 'Transcribing voice...',
+    contextSources: [],
+    tokenCount: null,
+    model: null,
+    latencyMs: null,
+    isError: false,
+    createdAt: new Date().toISOString(),
+  }
+  messages.value.push(tempUserMsg)
+
+  // Collect entity references
+  const entities = mentionedEntities.value.map(e => ({ type: e.type, id: e.id }))
+  mentionedEntities.value = []
+
+  try {
+    const result = await sendVoiceMessage(
+      activeConversation.value.id,
+      blob,
+      entities.length > 0 ? entities : undefined
+    )
+
+    // Replace temp message with actual transcribed text
+    const idx = messages.value.findIndex(m => m.id === tempId)
+    if (idx >= 0) {
+      messages.value[idx] = {
+        ...messages.value[idx],
+        content: result.transcribedText,
+      }
+    }
+
+    // Add assistant message
+    messages.value.push(result.message)
+
+    // Update conversation metadata
+    if (activeConversation.value) {
+      activeConversation.value.messageCount += 2
+      activeConversation.value.lastMessageAt = new Date().toISOString()
+      if (!activeConversation.value.title) {
+        activeConversation.value.title = result.transcribedText.length > 60
+          ? result.transcribedText.slice(0, 57) + '...'
+          : result.transcribedText
+      }
+      const convIdx = conversations.value.findIndex(c => c.id === activeConversation.value!.id)
+      if (convIdx >= 0) {
+        conversations.value[convIdx] = { ...activeConversation.value }
+        const [moved] = conversations.value.splice(convIdx, 1)
+        conversations.value.unshift(moved)
+      }
+    }
+
+    // Auto-play audio response
+    if (result.audioBase64 && result.audioFormat) {
+      playAudio(result.audioBase64, result.audioFormat)
+    }
+  } catch {
+    // Remove temp message on failure
+    messages.value = messages.value.filter(m => m.id !== tempId)
+  }
+}
 
 // --- Feedback ---
 const feedbackMessageId = ref<string | null>(null)
@@ -1045,26 +1154,70 @@ function getRenderedMarkdown(content: string): string {
               <!-- Bottom bar inside the card -->
               <div class="flex items-center justify-between px-3 py-2">
                 <div class="flex items-center gap-1">
-                  <span class="text-[10px] text-muted px-1">
-                    <kbd class="font-mono text-[10px] px-1 py-0.5 rounded bg-default border border-default">@</kbd>
-                    to reference
-                    <span class="mx-1 text-muted/40">&middot;</span>
-                    <kbd class="font-mono text-[10px] px-1 py-0.5 rounded bg-default border border-default">Enter</kbd>
-                    to send
-                  </span>
+                  <!-- Recording indicator -->
+                  <template v-if="isRecording">
+                    <span class="flex items-center gap-1.5 px-1">
+                      <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                      <span class="text-[10px] text-red-500 font-medium">Listening...</span>
+                      <span class="h-3 w-12 flex items-end gap-px">
+                        <span
+                          v-for="i in 6"
+                          :key="i"
+                          class="flex-1 bg-red-400 rounded-t transition-all duration-75"
+                          :style="{ height: Math.max(2, Math.min(12, volumeLevel * 80 * (0.5 + Math.random() * 0.5))) + 'px' }"
+                        />
+                      </span>
+                      <button
+                        class="ml-1 text-muted hover:text-default transition-colors"
+                        @click.stop="cancelRecording"
+                      >
+                        <UIcon name="i-lucide-x" class="w-3.5 h-3.5" />
+                      </button>
+                    </span>
+                  </template>
+                  <template v-else-if="voiceProcessing">
+                    <span class="flex items-center gap-1.5 px-1">
+                      <span class="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                      <span class="text-[10px] text-primary font-medium">Processing voice...</span>
+                    </span>
+                  </template>
+                  <template v-else>
+                    <span class="text-[10px] text-muted px-1">
+                      <kbd class="font-mono text-[10px] px-1 py-0.5 rounded bg-default border border-default">@</kbd>
+                      to reference
+                      <span class="mx-1 text-muted/40">&middot;</span>
+                      <kbd class="font-mono text-[10px] px-1 py-0.5 rounded bg-default border border-default">Enter</kbd>
+                      to send
+                    </span>
+                  </template>
                 </div>
-                <UButton
-                  icon="i-lucide-arrow-up"
-                  color="primary"
-                  size="sm"
-                  :class="[
-                    'rounded-lg transition-all duration-150',
-                    (!messageInput.trim() || sending) ? 'opacity-40' : 'opacity-100 shadow-sm'
-                  ]"
-                  :loading="sending"
-                  :disabled="!messageInput.trim() || sending"
-                  @click="handleSend"
-                />
+                <div class="flex items-center gap-1.5">
+                  <!-- Voice button -->
+                  <UButton
+                    v-if="voiceAvailable"
+                    :icon="voicePlaying ? 'i-lucide-volume-x' : isRecording ? 'i-lucide-square' : 'i-lucide-mic'"
+                    :color="isRecording ? 'error' : voicePlaying ? 'warning' : 'neutral'"
+                    :variant="isRecording || voicePlaying ? 'solid' : 'ghost'"
+                    size="sm"
+                    class="rounded-lg"
+                    :loading="voiceProcessing"
+                    :disabled="sending || voiceProcessing"
+                    @click="handleVoiceRecord"
+                  />
+                  <!-- Send button -->
+                  <UButton
+                    icon="i-lucide-arrow-up"
+                    color="primary"
+                    size="sm"
+                    :class="[
+                      'rounded-lg transition-all duration-150',
+                      (!messageInput.trim() || sending || isRecording) ? 'opacity-40' : 'opacity-100 shadow-sm'
+                    ]"
+                    :loading="sending"
+                    :disabled="!messageInput.trim() || sending || isRecording"
+                    @click="handleSend"
+                  />
+                </div>
               </div>
             </div>
             <p class="text-[10px] text-muted text-center mt-2">

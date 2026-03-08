@@ -755,6 +755,34 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  'voice-ai': {
+    title: 'Voice AI',
+    slug: 'voice-ai',
+    icon: 'i-lucide-mic',
+    category: 'AI & Intelligence',
+    categoryIcon: 'i-lucide-brain',
+    categoryIconBg: 'bg-amber-50',
+    categoryIconColor: 'text-amber-600',
+    description: 'Talk to your AI assistant with voice. Speech-to-text transcription and text-to-speech responses powered by Cloudflare Workers AI.',
+    details: [
+      {
+        title: 'Voice Input with Live Feedback',
+        content: 'Click the mic button and speak naturally. The recorder captures audio with echo cancellation, noise suppression, and automatic gain control. A live volume visualiser shows real-time audio levels while recording, and silence detection automatically stops the recording after 1.5 seconds of quiet — so you never have to remember to press stop.'
+      },
+      {
+        title: 'Speech-to-Text Transcription',
+        content: 'Your voice is transcribed using Cloudflare Workers AI at the edge. The transcribed text feeds into the same AI pipeline as typed messages — intent classification, entity context retrieval, and Groq-powered response generation all work identically. Voice messages appear as regular text in your conversation history, so you can reference them later.'
+      },
+      {
+        title: 'Text-to-Speech Responses',
+        content: 'AI responses are automatically read back to you using Workers AI text-to-speech. Markdown formatting is stripped before synthesis for natural-sounding audio. Click the volume button to stop playback at any time. If TTS is unavailable, the text response still appears — voice is additive, never blocking.'
+      },
+      {
+        title: 'Zero Setup, Graceful Degradation',
+        content: 'Voice AI requires no additional configuration or dependencies — it uses the same Workers AI binding as other AI features. In local development or when the AI binding is unavailable, the mic button simply does not appear. The feature degrades gracefully at every step: if transcription fails you get a helpful error; if TTS fails the text response still shows.'
+      }
+    ]
+  },
   'anomaly-detection': {
     title: 'Anomaly Detection',
     slug: 'anomaly-detection',
