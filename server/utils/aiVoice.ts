@@ -1,7 +1,7 @@
 import type { H3Event } from 'h3'
 
 /**
- * Voice AI utilities — STT (Deepgram Nova-3) and TTS (Deepgram Aura-2)
+ * Voice AI utilities — STT (OpenAI Whisper) and TTS (MyShell MeloTTS)
  * via Cloudflare Workers AI binding.
  * All functions return null when the AI binding is unavailable (local dev).
  */
@@ -20,7 +20,8 @@ export function isVoiceAvailable(event: H3Event): boolean {
 }
 
 /**
- * Speech-to-text using Deepgram Nova-3 via Workers AI.
+ * Speech-to-text using OpenAI Whisper Large V3 Turbo via Workers AI.
+ * Input audio is base64-encoded for the model.
  * Returns transcribed text or null on failure.
  */
 export async function speechToText(
@@ -30,13 +31,19 @@ export async function speechToText(
   const ai = getAI(event)
   if (!ai) return null
 
+  if (!audioBuffer || (audioBuffer instanceof ArrayBuffer ? audioBuffer.byteLength : audioBuffer.length) === 0) {
+    return null
+  }
+
   try {
     const start = Date.now()
     const bytes = audioBuffer instanceof ArrayBuffer
       ? new Uint8Array(audioBuffer)
       : audioBuffer
-    const result = await ai.run('@cf/deepgram/whisper-large-v3-turbo', {
-      audio: Array.from(bytes),
+    // Whisper Large V3 Turbo accepts base64-encoded audio
+    const base64Audio = Buffer.from(bytes).toString('base64')
+    const result = await ai.run('@cf/openai/whisper-large-v3-turbo', {
+      audio: base64Audio,
     })
     const durationMs = Date.now() - start
 
@@ -51,14 +58,14 @@ export async function speechToText(
 }
 
 /**
- * Text-to-speech using a Workers AI TTS model.
+ * Text-to-speech using MyShell MeloTTS via Workers AI.
  * Strips markdown formatting before synthesis.
  * Returns mp3 audio buffer or null on failure.
  */
 export async function textToSpeech(
   event: H3Event,
   text: string,
-  options: { speaker?: string } = {}
+  options: { lang?: string } = {}
 ): Promise<{ audioBuffer: ArrayBuffer; format: string } | null> {
   const ai = getAI(event)
   if (!ai) return null
@@ -73,11 +80,13 @@ export async function textToSpeech(
       ? cleanText.slice(0, 1997) + '...'
       : cleanText
 
-    const result = await ai.run('@cf/myshell/melotts-v2-en', {
-      text: truncated,
+    // MeloTTS uses `prompt` (not `text`) and `lang` parameters
+    const result = await ai.run('@cf/myshell-ai/melotts', {
+      prompt: truncated,
+      lang: options.lang || 'en',
     })
 
-    if (!result || !(result instanceof ReadableStream) && !result.byteLength) return null
+    if (!result || (!(result instanceof ReadableStream) && !result.byteLength)) return null
 
     // Handle ReadableStream response
     if (result instanceof ReadableStream) {
@@ -96,14 +105,13 @@ export async function textToSpeech(
           merged.set(chunk, offset)
           offset += chunk.length
         }
-        // Slice to exact size to avoid extra bytes from backing buffer
-        return { audioBuffer: merged.buffer.slice(0, totalLength), format: 'wav' }
+        return { audioBuffer: merged.buffer.slice(0, totalLength), format: 'mp3' }
       } finally {
         reader.releaseLock()
       }
     }
 
-    return { audioBuffer: result, format: 'wav' }
+    return { audioBuffer: result, format: 'mp3' }
   } catch (err) {
     console.error('[aiVoice] TTS failed:', err)
     return null

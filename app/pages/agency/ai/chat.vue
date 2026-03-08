@@ -116,9 +116,9 @@ async function handleVoiceRecord() {
       }
     }
 
-    // Auto-play audio response
+    // Auto-play audio response (fire-and-forget with error suppression)
     if (result.audioBase64 && result.audioFormat) {
-      playAudio(result.audioBase64, result.audioFormat)
+      playAudio(result.audioBase64, result.audioFormat).catch(() => {})
     }
   } catch {
     // Remove temp message on failure

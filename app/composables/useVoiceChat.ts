@@ -33,9 +33,13 @@ export function useVoiceChat() {
 
   const SILENCE_THRESHOLD = 0.015
   const SILENCE_TIMEOUT = 1500 // ms
+  const SILENCE_GRACE_PERIOD = 2500 // ms — ignore silence for the first 2.5s after recording starts
 
   /** Start recording from microphone. Returns a promise that resolves with the audio blob when stopped. */
   async function startRecording(): Promise<Blob | null> {
+    // Guard against double-click / concurrent recordings
+    if (isRecording.value) return null
+
     error.value = null
     cancelled = false
 
@@ -193,27 +197,34 @@ export function useVoiceChat() {
   }
 
   /** Play audio from base64 */
-  async function playAudio(base64: string, format: string = 'wav'): Promise<void> {
+  async function playAudio(base64: string, format: string = 'mp3'): Promise<void> {
     stopAudio()
 
-    return new Promise<void>((resolve) => {
-      const mimeMap: Record<string, string> = {
-        mp3: 'audio/mpeg',
-        wav: 'audio/wav',
-        ogg: 'audio/ogg',
-      }
-      const mimeType = mimeMap[format] || `audio/${format}`
+    const mimeMap: Record<string, string> = {
+      mp3: 'audio/mpeg',
+      wav: 'audio/wav',
+      ogg: 'audio/ogg',
+    }
+    const mimeType = mimeMap[format] || `audio/${format}`
 
-      // Use Blob URL instead of data URL for better memory efficiency
+    // Decode base64 — guard against invalid data
+    let byteArray: Uint8Array
+    try {
       const byteChars = atob(base64)
-      const byteArray = new Uint8Array(byteChars.length)
+      byteArray = new Uint8Array(byteChars.length)
       for (let i = 0; i < byteChars.length; i++) {
         byteArray[i] = byteChars.charCodeAt(i)
       }
-      const blob = new Blob([byteArray], { type: mimeType })
-      currentAudioUrl = URL.createObjectURL(blob)
+    } catch {
+      console.warn('[useVoiceChat] Invalid base64 audio data')
+      return
+    }
 
-      currentAudio = new Audio(currentAudioUrl)
+    const blob = new Blob([byteArray], { type: mimeType })
+    currentAudioUrl = URL.createObjectURL(blob)
+
+    return new Promise<void>((resolve) => {
+      currentAudio = new Audio(currentAudioUrl!)
       isPlaying.value = true
 
       const done = () => {
@@ -257,6 +268,7 @@ export function useVoiceChat() {
 
     const dataArray = new Uint8Array(analyser.frequencyBinCount)
     let silenceStart: number | null = null
+    const recordingStartedAt = Date.now()
 
     function tick() {
       if (!analyser || !isRecording.value) {
@@ -275,16 +287,19 @@ export function useVoiceChat() {
       const rms = Math.sqrt(sum / dataArray.length)
       volumeLevel.value = rms
 
-      // Silence detection
-      if (rms < SILENCE_THRESHOLD) {
-        if (silenceStart === null) {
-          silenceStart = Date.now()
-        } else if (Date.now() - silenceStart > SILENCE_TIMEOUT) {
-          stopRecording()
-          return
+      // Silence detection — skip during grace period so users have time to start speaking
+      const elapsed = Date.now() - recordingStartedAt
+      if (elapsed > SILENCE_GRACE_PERIOD) {
+        if (rms < SILENCE_THRESHOLD) {
+          if (silenceStart === null) {
+            silenceStart = Date.now()
+          } else if (Date.now() - silenceStart > SILENCE_TIMEOUT) {
+            stopRecording()
+            return
+          }
+        } else {
+          silenceStart = null
         }
-      } else {
-        silenceStart = null
       }
 
       animFrameId = requestAnimationFrame(tick)

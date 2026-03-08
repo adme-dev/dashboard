@@ -55,9 +55,9 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Audio file required' })
   }
 
-  // Validate MIME type
+  // Validate MIME type — reject if missing or not in allowed list
   const allowedAudioTypes = ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav', 'audio/mpeg', 'audio/x-m4a']
-  if (audioPart.type && !allowedAudioTypes.some(t => audioPart.type!.startsWith(t))) {
+  if (!audioPart.type || !allowedAudioTypes.some(t => audioPart.type!.startsWith(t))) {
     throw createError({ statusCode: 400, statusMessage: 'Invalid audio format' })
   }
 
