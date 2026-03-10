@@ -1,11 +1,89 @@
 <script setup lang="ts">
 import { LAYER_COLORS, LAYER_TYPE_COLORS } from '~/utils/banner-constants'
-import type { KeyframeProperty, Keyframe } from '~/types/banner-studio'
+import type { KeyframeProperty, Keyframe, Layer } from '~/types/banner-studio'
 import { hasKeyframes } from '~/composables/useBannerTimeline'
 
-const { state, activeLayers, selectLayer, updateLayer, getMotionPathTweens, updateMotionPathTween, addMotionPathTween, removeMotionPathTween } = useBannerStudio()
+const { state, activeLayers, selectLayer, updateLayer, duplicateLayer, removeLayer, bringToFront, sendToBack, getMotionPathTweens, updateMotionPathTween, addMotionPathTween, removeMotionPathTween } = useBannerStudio()
 const { remoteLocks } = useBannerRealtime()
 const { togglePlay, seekTo, restartTimeline, buildTimeline } = useBannerTimeline()
+const { decomposingLayerId, decomposeFromUrl } = useDecompose()
+const { isEditing: isAiEditing, openEdit: openAiEdit } = useAiLayerEdit()
+const { isMerging, mergeLayers } = useMergeLayers()
+
+// ── Layer context menu ──
+const contextMenuLayer = ref<Layer | null>(null)
+const contextMenuPos = ref({ x: 0, y: 0 })
+
+function onLayerContextMenu(e: MouseEvent, layer: Layer) {
+  e.preventDefault()
+  contextMenuLayer.value = layer
+  contextMenuPos.value = { x: e.clientX, y: e.clientY }
+}
+
+function handleContextDecompose(layer: Layer) {
+  if (layer.src) {
+    decomposeFromUrl(layer.src, layer.name, layer.id, 'layer')
+  }
+  contextMenuLayer.value = null
+}
+
+function handleContextDuplicate(layer: Layer) {
+  duplicateLayer(layer.id)
+  contextMenuLayer.value = null
+}
+
+function handleContextRemove(layer: Layer) {
+  removeLayer(layer.id)
+  contextMenuLayer.value = null
+}
+
+function handleContextBringToFront(layer: Layer) {
+  bringToFront(layer.id)
+  contextMenuLayer.value = null
+}
+
+function handleContextSendToBack(layer: Layer) {
+  sendToBack(layer.id)
+  contextMenuLayer.value = null
+}
+
+function handleContextEditWithAi(layer: Layer) {
+  openAiEdit(layer)
+  contextMenuLayer.value = null
+}
+
+function handleContextMergeLayers() {
+  contextMenuLayer.value = null
+  if (multiSelectedLayers.value.length >= 2) {
+    mergeLayers(multiSelectedLayers.value)
+    multiSelectedLayers.value = []
+  }
+}
+
+// ── Multi-select ──
+const multiSelectedLayers = ref<number[]>([])
+
+function onLayerLabelClick(e: MouseEvent, layer: Layer) {
+  if (e.shiftKey) {
+    // Toggle in multi-select
+    const idx = multiSelectedLayers.value.indexOf(layer.id)
+    if (idx >= 0) {
+      multiSelectedLayers.value.splice(idx, 1)
+    } else {
+      multiSelectedLayers.value.push(layer.id)
+    }
+    // Also select the layer normally
+    selectLayer(layer.id)
+  } else {
+    // Normal click — clear multi-select
+    multiSelectedLayers.value = []
+    selectLayer(layer.id)
+  }
+}
+
+function isMultiSelected(layerId: number): boolean {
+  return multiSelectedLayers.value.includes(layerId)
+}
 
 // ── Waveform cache for audio layers ──
 const waveformCache = new Map<string, Float32Array>()
@@ -740,9 +818,11 @@ onUnmounted(() => {
               :class="[
                 state.selectedLayerId === layer.id ? 'bg-(--ui-bg-accented)' : '',
                 isMaskedLayer(layer.id) ? 'border-l-2 border-l-[#e84aff]/40' : '',
+                isMultiSelected(layer.id) ? 'ring-1 ring-inset ring-(--ui-primary)/50' : '',
               ]"
               :style="{ height: `${LANE_H}px` }"
-              @click="selectLayer(layer.id)"
+              @click="onLayerLabelClick($event, layer)"
+              @contextmenu.prevent="onLayerContextMenu($event, layer)"
             >
               <!-- Expand chevron -->
               <button
@@ -770,6 +850,7 @@ onUnmounted(() => {
               >
                 <UIcon :name="layer.locked ? 'i-lucide-lock' : 'i-lucide-unlock'" class="w-3 h-3" />
               </button>
+              <UIcon v-if="decomposingLayerId === layer.id" name="i-lucide-loader-2" class="w-3 h-3 animate-spin text-(--ui-primary) shrink-0" />
               <span class="text-[10px] truncate text-(--ui-text-muted)">{{ layer.name }}</span>
               <!-- Mask indicator -->
               <UIcon v-if="layer.isMask" name="i-lucide-scan" class="w-3 h-3 text-[#e84aff] shrink-0" />
@@ -1077,5 +1158,23 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- Layer context menu -->
+    <BannerLayerContextMenu
+      :layer="contextMenuLayer"
+      :x="contextMenuPos.x"
+      :y="contextMenuPos.y"
+      :is-decomposing="decomposingLayerId === contextMenuLayer?.id"
+      :is-ai-editing="isAiEditing"
+      :multi-select-count="multiSelectedLayers.length"
+      @close="contextMenuLayer = null"
+      @decompose="handleContextDecompose"
+      @edit-with-ai="handleContextEditWithAi"
+      @merge-layers="handleContextMergeLayers"
+      @duplicate="handleContextDuplicate"
+      @remove="handleContextRemove"
+      @bring-to-front="handleContextBringToFront"
+      @send-to-back="handleContextSendToBack"
+    />
   </div>
 </template>

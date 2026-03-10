@@ -518,3 +518,24 @@ export interface DissectorManifest {
   tokens: Record<string, DesignToken>
   layers: DissectorLayer[]
 }
+
+// ── AI Layer Edit Types ──
+
+export interface EditLayerResult {
+  url: string
+  r2Key: string
+}
+
+// ── Layer Decomposition Types ──
+
+export interface DecomposeResultLayer {
+  name: string
+  url: string
+  r2Key: string
+  width: number
+  height: number
+}
+
+export interface DecomposeResult {
+  layers: DecomposeResultLayer[]
+}

@@ -2,6 +2,7 @@
 import type { BannerAsset } from '~/types/banner-studio'
 
 const { addLayer, nextId, activeLayers } = useBannerStudio()
+const { decomposingAssetId, decomposeFromUrl } = useDecompose()
 const toast = useToast()
 
 const searchQuery = ref('')
@@ -203,6 +204,21 @@ async function deleteAsset(asset: BannerAsset) {
         <div class="px-1.5 py-1 bg-(--ui-bg-elevated)">
           <div class="text-[10px] font-medium truncate text-(--ui-text)">{{ asset.name }}</div>
           <div class="text-[9px] text-(--ui-text-muted)">{{ formatSize(asset.fileSize) }}</div>
+        </div>
+        <!-- Decompose overlay (image assets only) -->
+        <div
+          v-if="asset.mimeType?.startsWith('image')"
+          class="absolute top-1 left-1 opacity-0 group-hover:opacity-100 transition-opacity"
+        >
+          <UButton
+            :icon="decomposingAssetId === asset.id ? 'i-lucide-loader-2' : 'i-lucide-layers'"
+            variant="solid"
+            color="neutral"
+            size="xs"
+            :loading="decomposingAssetId === asset.id"
+            :disabled="!!decomposingAssetId"
+            @click.stop="decomposeFromUrl(asset.url, asset.name, asset.id, 'asset')"
+          />
         </div>
         <!-- Delete overlay -->
         <div class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
