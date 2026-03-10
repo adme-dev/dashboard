@@ -8,10 +8,20 @@ const {
   editError,
   editGuidance,
   editSteps,
+  editUseSeed,
+  editSeedInput,
+  lastSeed,
   submitEdit,
   applyEdit,
   cancelEdit,
 } = useAiLayerEdit()
+
+function reuseSeed() {
+  if (lastSeed.value != null) {
+    editUseSeed.value = true
+    editSeedInput.value = lastSeed.value
+  }
+}
 
 const { activeLayers } = useBannerStudio()
 
@@ -110,6 +120,23 @@ function handleSubmit() {
               />
               <span class="text-[10px] text-(--ui-text-dimmed)">1–50</span>
             </div>
+            <!-- Seed control -->
+            <div class="space-y-1.5">
+              <div class="flex items-center gap-2">
+                <UCheckbox v-model="editUseSeed" />
+                <label class="text-xs text-(--ui-text-muted)">Use specific seed (for reproducibility)</label>
+              </div>
+              <div v-if="editUseSeed" class="flex items-center gap-3 pl-6">
+                <UInput
+                  v-model.number="editSeedInput"
+                  type="number"
+                  :min="0"
+                  :max="2147483647"
+                  size="xs"
+                  class="w-32"
+                />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -162,6 +189,17 @@ function handleSubmit() {
                 />
               </div>
             </div>
+          </div>
+
+          <!-- Seed display -->
+          <div v-if="lastSeed != null" class="flex items-center gap-2">
+            <span class="text-[10px] text-(--ui-text-dimmed)">Seed: {{ lastSeed }}</span>
+            <UButton
+              label="Reuse"
+              variant="link"
+              size="xs"
+              @click="reuseSeed"
+            />
           </div>
 
           <div class="flex gap-2">

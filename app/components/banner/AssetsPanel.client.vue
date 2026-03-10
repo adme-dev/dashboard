@@ -3,6 +3,7 @@ import type { BannerAsset } from '~/types/banner-studio'
 
 const { addLayer, nextId, activeLayers } = useBannerStudio()
 const { decomposingAssetId, decomposeFromUrl } = useDecompose()
+const { openGenerate } = useAiImageGenerate()
 const toast = useToast()
 
 const searchQuery = ref('')
@@ -154,6 +155,19 @@ async function deleteAsset(asset: BannerAsset) {
         class="hidden"
         @change="onFileSelect"
       >
+    </div>
+
+    <!-- AI Actions -->
+    <div class="flex gap-1.5">
+      <UButton
+        label="Generate with AI"
+        icon="i-lucide-sparkles"
+        variant="soft"
+        color="primary"
+        size="xs"
+        class="flex-1"
+        @click="openGenerate()"
+      />
     </div>
 
     <!-- AI Image Suggestions -->

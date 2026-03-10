@@ -19,13 +19,22 @@ export default defineEventHandler(async (event) => {
   if (activeDecompositions >= MAX_CONCURRENT) {
     throw createError({ statusCode: 429, statusMessage: 'Too many decomposition requests in progress — try again shortly' })
   }
-  const body = await readBody<{ imageUrl: string; numLayers?: number }>(event)
+  const body = await readBody<{
+    imageUrl: string
+    numLayers?: number
+    prompt?: string
+    negPrompt?: string
+    guidanceScale?: number
+    steps?: number
+  }>(event)
 
   if (!body?.imageUrl || typeof body.imageUrl !== 'string') {
     throw createError({ statusCode: 400, statusMessage: 'imageUrl is required' })
   }
 
   const numLayers = Math.min(Math.max(body.numLayers ?? 4, 2), 8)
+  const prompt = body.prompt?.trim().slice(0, 500) || ''
+  const negPrompt = body.negPrompt?.trim().slice(0, 500) || ' '
 
   // SSRF check: only allow known domains
   let parsedUrl: URL
@@ -70,17 +79,21 @@ export default defineEventHandler(async (event) => {
     const config = useRuntimeConfig()
     const result = await decomposeImageLayers(imageBuffer, {
       numLayers,
+      prompt,
+      negPrompt,
+      guidanceScale: body.guidanceScale,
+      steps: body.steps,
       hfToken: config.hfApiToken || undefined,
     })
 
-    if (!result || result.length === 0) {
+    if (!result?.layers || result.layers.length === 0) {
       throw createError({ statusCode: 502, statusMessage: 'Layer decomposition failed — the AI service may be unavailable' })
     }
 
     // Upload each layer to R2 and insert banner_assets rows
     const layers: { name: string; url: string; r2Key: string; width: number; height: number }[] = []
 
-    for (const layer of result) {
+    for (const layer of result.layers) {
       const fileName = `decomposed-layer-${layer.index + 1}.png`
 
       try {
@@ -122,7 +135,11 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 502, statusMessage: 'Failed to save decomposed layers' })
     }
 
-    return { layers }
+    return {
+      layers,
+      pptxUrl: result.pptxUrl || null,
+      zipUrl: result.zipUrl || null,
+    }
   } finally {
     activeDecompositions--
   }

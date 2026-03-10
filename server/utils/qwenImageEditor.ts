@@ -4,10 +4,15 @@ const API_PREFIX = '/gradio_api'
 // Trusted domains for output image URLs returned by the Space
 const TRUSTED_HOSTS = ['.hf.space', '.huggingface.co']
 
+export interface EditResult {
+  buffer: Buffer
+  seed: number | null
+}
+
 /**
  * Edit an image using the Qwen/Qwen-Image-Edit-2511 HuggingFace Space (Gradio API).
  *
- * Returns a single PNG/WebP buffer of the edited image, or null on failure.
+ * Returns the edited image buffer + the seed used, or null on failure.
  */
 export async function editImageWithAI(
   imageBuffer: Buffer,
@@ -17,13 +22,17 @@ export async function editImageWithAI(
     height?: number
     guidanceScale?: number
     steps?: number
+    seed?: number
+    randomizeSeed?: boolean
     hfToken?: string
   }
-): Promise<Buffer | null> {
+): Promise<EditResult | null> {
   const width = Math.min(Math.max(options?.width ?? 512, 256), 2048)
   const height = Math.min(Math.max(options?.height ?? 512, 256), 2048)
   const guidanceScale = Math.min(Math.max(options?.guidanceScale ?? 4.0, 1.0), 10.0)
   const steps = Math.min(Math.max(options?.steps ?? 40, 1), 50)
+  const seed = options?.seed ?? 0
+  const randomizeSeed = options?.randomizeSeed ?? true
 
   const headers: Record<string, string> = {}
   if (options?.hfToken) {
@@ -40,16 +49,16 @@ export async function editImageWithAI(
 
     // Step 2: Submit edit request
     const eventId = await submitEdit(uploadPath, prompt, {
-      width, height, guidanceScale, steps,
+      width, height, guidanceScale, steps, seed, randomizeSeed,
     }, headers, controller.signal)
     if (!eventId) return null
 
     // Step 3: Stream SSE result
-    const imageUrl = await streamResult(eventId, headers, controller.signal)
-    if (!imageUrl) return null
+    const streamOutput = await streamResult(eventId, headers, controller.signal)
+    if (!streamOutput?.imageUrl) return null
 
     // Step 4: Download the edited image
-    const resp = await fetch(imageUrl, { headers, signal: controller.signal })
+    const resp = await fetch(streamOutput.imageUrl, { headers, signal: controller.signal })
     if (!resp.ok) {
       console.warn(`[ImageEditor] Download failed: ${resp.status}`)
       return null
@@ -61,8 +70,8 @@ export async function editImageWithAI(
       return null
     }
 
-    console.log(`[ImageEditor] Edit complete, ${buf.length} bytes`)
-    return buf
+    console.log(`[ImageEditor] Edit complete, ${buf.length} bytes, seed=${streamOutput.seed}`)
+    return { buffer: buf, seed: streamOutput.seed }
   } catch (err: any) {
     if (err.name === 'AbortError') {
       console.warn('[ImageEditor] Request timed out after 180s')
@@ -120,7 +129,7 @@ async function uploadToSpace(
 async function submitEdit(
   uploadPath: string,
   prompt: string,
-  params: { width: number; height: number; guidanceScale: number; steps: number },
+  params: { width: number; height: number; guidanceScale: number; steps: number; seed: number; randomizeSeed: boolean },
   headers: Record<string, string>,
   signal: AbortSignal
 ): Promise<string | null> {
@@ -136,8 +145,8 @@ async function submitEdit(
         data: [
           [{ path: uploadPath }],  // images — Gallery format
           prompt,                   // prompt
-          0,                        // seed
-          true,                     // randomize_seed
+          params.seed,              // seed
+          params.randomizeSeed,     // randomize_seed
           params.guidanceScale,     // true_guidance_scale
           params.steps,             // num_inference_steps
           params.height,            // height
@@ -166,11 +175,16 @@ async function submitEdit(
   }
 }
 
+interface EditStreamOutput {
+  imageUrl: string | null
+  seed: number | null
+}
+
 async function streamResult(
   eventId: string,
   headers: Record<string, string>,
   signal: AbortSignal
-): Promise<string | null> {
+): Promise<EditStreamOutput | null> {
   try {
     const resp = await fetch(`${SPACE_BASE}${API_PREFIX}/call/infer/${eventId}`, {
       headers,
@@ -195,7 +209,10 @@ async function streamResult(
       if (line.startsWith('data: ') && currentEvent === 'complete') {
         try {
           const data = JSON.parse(line.slice(6))
-          return extractFirstImageUrl(data)
+          // Response format: [Gallery (images), seed_number]
+          const imageUrl = extractFirstImageUrl(data)
+          const seed = extractSeed(data)
+          return { imageUrl, seed }
         } catch (parseErr) {
           console.warn('[ImageEditor] Failed to parse complete event data:', line.slice(6))
           return null
@@ -250,4 +267,17 @@ function extractFirstImageUrl(data: any): string | null {
   }
 
   return walk(data)
+}
+
+/**
+ * Extract the seed number from the response data.
+ * Response format: [Gallery, seed_number]
+ */
+function extractSeed(data: any): number | null {
+  if (!Array.isArray(data)) return null
+  // The seed is typically the second element in the top-level array
+  for (const item of data) {
+    if (typeof item === 'number') return item
+  }
+  return null
 }

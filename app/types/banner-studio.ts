@@ -524,6 +524,15 @@ export interface DissectorManifest {
 export interface EditLayerResult {
   url: string
   r2Key: string
+  seed: number | null
+}
+
+// ── AI Image Generation Types ──
+
+export interface GenerateImageResult {
+  url: string
+  r2Key: string
+  seed: number | null
 }
 
 // ── Layer Decomposition Types ──
@@ -538,4 +547,6 @@ export interface DecomposeResultLayer {
 
 export interface DecomposeResult {
   layers: DecomposeResultLayer[]
+  pptxUrl: string | null
+  zipUrl: string | null
 }

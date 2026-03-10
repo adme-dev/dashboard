@@ -14,6 +14,7 @@ const emit = defineEmits<{
   close: []
   decompose: [layer: Layer]
   editWithAi: [layer: Layer]
+  generateImage: []
   mergeLayers: []
   duplicate: [layer: Layer]
   remove: [layer: Layer]
@@ -59,6 +60,13 @@ const items = computed(() => {
       onSelect: () => emit('mergeLayers'),
     })
   }
+
+  // Generate Image with AI (always available)
+  group1.push({
+    label: 'Generate Image',
+    icon: 'i-lucide-sparkles',
+    onSelect: () => emit('generateImage'),
+  })
 
   group1.push(
     {

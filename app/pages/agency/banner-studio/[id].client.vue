@@ -609,6 +609,9 @@ const { activeSize } = useBannerFileSize()
     <!-- AI Edit Layer Slideover -->
     <BannerAiEditSlideover />
 
+    <!-- AI Generate Image Slideover -->
+    <BannerAiGenerateSlideover />
+
     <!-- Save Version Modal -->
     <UModal v-model:open="showSaveVersion">
       <template #content>

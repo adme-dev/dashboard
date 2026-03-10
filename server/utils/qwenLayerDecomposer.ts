@@ -9,17 +9,36 @@ interface DecomposeLayerResult {
   pngBuffer: Buffer
 }
 
+export interface DecomposeOutput {
+  layers: DecomposeLayerResult[]
+  pptxUrl?: string
+  zipUrl?: string
+}
+
+export interface DecomposeOptions {
+  numLayers?: number
+  prompt?: string
+  negPrompt?: string
+  guidanceScale?: number
+  steps?: number
+  hfToken?: string
+}
+
 /**
  * Decompose an image into multiple RGBA PNG layers using the
  * Qwen/Qwen-Image-Layered HuggingFace Space (Gradio API).
  *
- * Returns an array of PNG buffers (one per layer), or null on failure.
+ * Returns layers + optional PPTX/ZIP download URLs, or null on failure.
  */
 export async function decomposeImageLayers(
   imageBuffer: Buffer,
-  options?: { numLayers?: number; hfToken?: string }
-): Promise<DecomposeLayerResult[] | null> {
+  options?: DecomposeOptions
+): Promise<DecomposeOutput | null> {
   const numLayers = Math.min(Math.max(options?.numLayers ?? 4, 2), 8)
+  const prompt = options?.prompt?.trim() || ''
+  const negPrompt = options?.negPrompt?.trim() || ' '
+  const guidanceScale = Math.min(Math.max(options?.guidanceScale ?? 4.0, 1.0), 10.0)
+  const steps = Math.min(Math.max(options?.steps ?? 50, 1), 50)
   const headers: Record<string, string> = {}
   if (options?.hfToken) {
     headers['Authorization'] = `Bearer ${options.hfToken}`
@@ -33,18 +52,20 @@ export async function decomposeImageLayers(
     const uploadPath = await uploadToSpace(imageBuffer, headers, controller.signal)
     if (!uploadPath) return null
 
-    // Step 2: Submit prediction
-    const eventId = await submitPrediction(uploadPath, numLayers, headers, controller.signal)
+    // Step 2: Submit prediction with all 10 params
+    const eventId = await submitPrediction(uploadPath, {
+      numLayers, prompt, negPrompt, guidanceScale, steps,
+    }, headers, controller.signal)
     if (!eventId) return null
 
     // Step 3: Stream SSE result
-    const layerUrls = await streamResult(eventId, headers, controller.signal)
-    if (!layerUrls || layerUrls.length === 0) return null
+    const result = await streamResult(eventId, headers, controller.signal)
+    if (!result?.layerUrls || result.layerUrls.length === 0) return null
 
     // Step 4: Download each layer PNG
     const layers: DecomposeLayerResult[] = []
-    for (let i = 0; i < layerUrls.length; i++) {
-      const url = layerUrls[i]
+    for (let i = 0; i < result.layerUrls.length; i++) {
+      const url = result.layerUrls[i]
       try {
         const resp = await fetch(url, { headers, signal: controller.signal })
         if (!resp.ok) {
@@ -70,7 +91,11 @@ export async function decomposeImageLayers(
     }
 
     console.log(`[Decomposer] Decomposed into ${layers.length} layers`)
-    return layers
+    return {
+      layers,
+      pptxUrl: result.pptxUrl,
+      zipUrl: result.zipUrl,
+    }
   } catch (err: any) {
     if (err.name === 'AbortError') {
       console.warn('[Decomposer] Request timed out after 120s')
@@ -128,11 +153,14 @@ async function uploadToSpace(
 
 async function submitPrediction(
   uploadPath: string,
-  numLayers: number,
+  params: { numLayers: number; prompt: string; negPrompt: string; guidanceScale: number; steps: number },
   headers: Record<string, string>,
   signal: AbortSignal
 ): Promise<string | null> {
   try {
+    // 10 params in order matching the Space's infer_1 endpoint:
+    // input_image, seed, randomize_seed, prompt, neg_prompt,
+    // true_guidance_scale, num_inference_steps, layer, cfg_norm, use_en_prompt
     const resp = await fetch(`${SPACE_BASE}/gradio_api/call/infer_1`, {
       method: 'POST',
       headers: {
@@ -141,9 +169,16 @@ async function submitPrediction(
       },
       body: JSON.stringify({
         data: [
-          // Gradio 4.x+ file reference — both formats are tried for compatibility
-          { path: uploadPath },
-          numLayers,
+          { path: uploadPath },  // input_image
+          0,                     // seed
+          true,                  // randomize_seed
+          params.prompt,         // prompt (guides layer separation)
+          params.negPrompt,      // neg_prompt
+          params.guidanceScale,  // true_guidance_scale
+          params.steps,          // num_inference_steps
+          params.numLayers,      // layer (number of output layers)
+          true,                  // cfg_norm
+          true,                  // use_en_prompt
         ],
       }),
       signal,
@@ -167,11 +202,17 @@ async function submitPrediction(
   }
 }
 
+interface StreamOutput {
+  layerUrls: string[]
+  pptxUrl?: string
+  zipUrl?: string
+}
+
 async function streamResult(
   eventId: string,
   headers: Record<string, string>,
   signal: AbortSignal
-): Promise<string[] | null> {
+): Promise<StreamOutput | null> {
   try {
     const resp = await fetch(`${SPACE_BASE}/gradio_api/call/infer_1/${eventId}`, {
       headers,
@@ -196,7 +237,7 @@ async function streamResult(
       if (line.startsWith('data: ') && currentEvent === 'complete') {
         try {
           const data = JSON.parse(line.slice(6))
-          return extractLayerUrls(data)
+          return extractAllOutputs(data)
         } catch (parseErr) {
           console.warn('[Decomposer] Failed to parse complete event data:', line.slice(6))
           return null
@@ -218,39 +259,68 @@ async function streamResult(
   }
 }
 
-function extractLayerUrls(data: any): string[] {
-  const urls: string[] = []
+/**
+ * Extract all outputs from the Space response.
+ * The Space returns 3 outputs: [Gallery (layers), PPTX file, ZIP file]
+ */
+function extractAllOutputs(data: any): StreamOutput {
+  const layerUrls: string[] = []
+  let pptxUrl: string | undefined
+  let zipUrl: string | undefined
 
-  // Gradio returns data as nested arrays with file objects
-  // Format: [[{url: "..."}, {url: "..."}]] or [{url: "..."}] etc.
-  function walk(node: any) {
-    if (!node) return
-    if (typeof node === 'object' && node.url && typeof node.url === 'string') {
-      const rawUrl = node.url
-      if (rawUrl.startsWith('http')) {
-        // Validate the URL origin to prevent laundering through our R2
-        try {
-          const parsed = new URL(rawUrl)
-          const isTrusted = TRUSTED_HOSTS.some(h => parsed.hostname.endsWith(h))
-          if (!isTrusted) {
-            console.warn('[Decomposer] Skipping untrusted layer URL:', rawUrl)
-            return
-          }
-        } catch {
-          return
-        }
-        urls.push(rawUrl)
-      } else {
-        // Relative path — resolve against Space base
-        urls.push(`${SPACE_BASE}/gradio_api/file=${rawUrl}`)
-      }
-      return
+  // data is the top-level array of outputs
+  // data[0] = Gallery (array of image objects)
+  // data[1] = PPTX file object { path/url, ... }
+  // data[2] = ZIP file object { path/url, ... }
+  if (Array.isArray(data)) {
+    // Extract layer image URLs from gallery (first output)
+    if (data[0]) {
+      walkImages(data[0], layerUrls)
     }
-    if (Array.isArray(node)) {
-      for (const item of node) walk(item)
-    }
+    // Extract PPTX URL (second output)
+    pptxUrl = resolveFileUrl(data[1])
+    // Extract ZIP URL (third output)
+    zipUrl = resolveFileUrl(data[2])
   }
 
-  walk(data)
-  return urls
+  return { layerUrls, pptxUrl, zipUrl }
+}
+
+function resolveFileUrl(node: any): string | undefined {
+  if (!node) return undefined
+  const rawUrl = node.url || node.path
+  if (!rawUrl || typeof rawUrl !== 'string') return undefined
+  if (rawUrl.startsWith('http')) {
+    try {
+      const parsed = new URL(rawUrl)
+      const isTrusted = TRUSTED_HOSTS.some(h => parsed.hostname.endsWith(h))
+      if (!isTrusted) return undefined
+    } catch { return undefined }
+    return rawUrl
+  }
+  return `${SPACE_BASE}/gradio_api/file=${rawUrl}`
+}
+
+function walkImages(node: any, urls: string[]) {
+  if (!node) return
+  if (typeof node === 'object' && !Array.isArray(node) && node.url && typeof node.url === 'string') {
+    const rawUrl = node.url
+    if (rawUrl.startsWith('http')) {
+      try {
+        const parsed = new URL(rawUrl)
+        const isTrusted = TRUSTED_HOSTS.some(h => parsed.hostname.endsWith(h))
+        if (!isTrusted) {
+          console.warn('[Decomposer] Skipping untrusted layer URL:', rawUrl)
+          return
+        }
+      } catch { return }
+      urls.push(rawUrl)
+    } else {
+      urls.push(`${SPACE_BASE}/gradio_api/file=${rawUrl}`)
+    }
+    return
+  }
+  if (Array.isArray(node)) {
+    for (const item of node) walkImages(item, urls)
+  }
 }

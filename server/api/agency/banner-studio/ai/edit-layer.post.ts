@@ -27,6 +27,8 @@ export default defineEventHandler(async (event) => {
     height?: number
     guidanceScale?: number
     steps?: number
+    seed?: number
+    randomizeSeed?: boolean
   }>(event)
 
   if (!body?.imageUrl || typeof body.imageUrl !== 'string') {
@@ -86,6 +88,8 @@ export default defineEventHandler(async (event) => {
       height: body.height,
       guidanceScale: body.guidanceScale,
       steps: body.steps,
+      seed: body.seed,
+      randomizeSeed: body.randomizeSeed,
       hfToken: config.hfApiToken || undefined,
     })
 
@@ -96,7 +100,7 @@ export default defineEventHandler(async (event) => {
     // Upload to R2
     const fileName = `ai-edited-${Date.now()}.webp`
     const { key, url, size } = await uploadBannerAsset(
-      result,
+      result.buffer,
       fileName,
       'image/webp',
       user.id
@@ -117,7 +121,7 @@ export default defineEventHandler(async (event) => {
       user.id,
     ])
 
-    return { url, r2Key: key }
+    return { url, r2Key: key, seed: result.seed }
   } finally {
     activeEdits--
   }

@@ -9,6 +9,10 @@ const _editPreviewUrl = ref<string | null>(null)
 const _editError = ref<string | null>(null)
 const _editGuidance = ref(4.0)
 const _editSteps = ref(40)
+const _editSeed = ref<number | null>(null)
+const _editUseSeed = ref(false)
+const _editSeedInput = ref(0)
+const _lastSeed = ref<number | null>(null)
 
 export function useAiLayerEdit() {
   const { activeLayers, updateLayer } = useBannerStudio()
@@ -21,6 +25,10 @@ export function useAiLayerEdit() {
     _editError.value = null
     _editGuidance.value = 4.0
     _editSteps.value = 40
+    _editSeed.value = null
+    _editUseSeed.value = false
+    _editSeedInput.value = 0
+    _lastSeed.value = null
     _showEditSlideover.value = true
   }
 
@@ -48,6 +56,8 @@ export function useAiLayerEdit() {
           height: layer.h,
           guidanceScale: _editGuidance.value,
           steps: _editSteps.value,
+          seed: _editUseSeed.value ? _editSeedInput.value : undefined,
+          randomizeSeed: !_editUseSeed.value,
         },
       })
 
@@ -57,6 +67,7 @@ export function useAiLayerEdit() {
       }
 
       _editPreviewUrl.value = result.url
+      _lastSeed.value = result.seed ?? null
     } catch (err: any) {
       _editError.value = err?.data?.statusMessage || err?.message || 'AI edit failed'
     } finally {
@@ -102,6 +113,9 @@ export function useAiLayerEdit() {
     editError: _editError,
     editGuidance: _editGuidance,
     editSteps: _editSteps,
+    editUseSeed: _editUseSeed,
+    editSeedInput: _editSeedInput,
+    lastSeed: _lastSeed,
     openEdit,
     submitEdit,
     applyEdit,

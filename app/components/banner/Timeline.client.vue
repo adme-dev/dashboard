@@ -9,6 +9,7 @@ const { togglePlay, seekTo, restartTimeline, buildTimeline } = useBannerTimeline
 const { decomposingLayerId, decomposeFromUrl } = useDecompose()
 const { isEditing: isAiEditing, openEdit: openAiEdit } = useAiLayerEdit()
 const { isMerging, mergeLayers } = useMergeLayers()
+const { openGenerate: openAiGenerate } = useAiImageGenerate()
 
 // ── Layer context menu ──
 const contextMenuLayer = ref<Layer | null>(null)
@@ -58,6 +59,11 @@ function handleContextMergeLayers() {
     mergeLayers(multiSelectedLayers.value)
     multiSelectedLayers.value = []
   }
+}
+
+function handleContextGenerateImage() {
+  contextMenuLayer.value = null
+  openAiGenerate()
 }
 
 // ── Multi-select ──
@@ -1170,6 +1176,7 @@ onUnmounted(() => {
       @close="contextMenuLayer = null"
       @decompose="handleContextDecompose"
       @edit-with-ai="handleContextEditWithAi"
+      @generate-image="handleContextGenerateImage"
       @merge-layers="handleContextMergeLayers"
       @duplicate="handleContextDuplicate"
       @remove="handleContextRemove"

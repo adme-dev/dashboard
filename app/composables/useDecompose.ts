@@ -5,6 +5,8 @@ import type { DecomposeResult } from '~/types/banner-studio'
 const _isDecomposing = ref(false)
 const _decomposingAssetId = ref<string | null>(null)
 const _decomposingLayerId = ref<number | null>(null)
+const _lastPptxUrl = ref<string | null>(null)
+const _lastZipUrl = ref<string | null>(null)
 
 export function useDecompose() {
   const { addLayer } = useBannerStudio()
@@ -15,18 +17,21 @@ export function useDecompose() {
     sourceName: string,
     sourceId: string | number,
     sourceType: 'asset' | 'layer',
-    numLayers?: number
+    numLayers?: number,
+    prompt?: string
   ): Promise<boolean> {
     if (_isDecomposing.value) return false
 
     _isDecomposing.value = true
+    _lastPptxUrl.value = null
+    _lastZipUrl.value = null
     if (sourceType === 'asset') _decomposingAssetId.value = String(sourceId)
     else _decomposingLayerId.value = typeof sourceId === 'number' ? sourceId : Number(sourceId)
 
     try {
       const result = await $fetch<DecomposeResult>('/api/agency/banner-studio/ai/decompose', {
         method: 'POST',
-        body: { imageUrl, numLayers },
+        body: { imageUrl, numLayers, prompt: prompt || undefined },
       })
 
       if (!result?.layers?.length) {
@@ -67,9 +72,16 @@ export function useDecompose() {
         })
       }
 
+      // Store export URLs if available
+      _lastPptxUrl.value = result.pptxUrl || null
+      _lastZipUrl.value = result.zipUrl || null
+
+      const extras = [result.pptxUrl && 'PPTX', result.zipUrl && 'ZIP'].filter(Boolean)
+      const extraMsg = extras.length > 0 ? ` (${extras.join(' + ')} available)` : ''
+
       toast.add({
         title: 'Layers extracted',
-        description: `${result.layers.length} layers from "${sourceName}"`,
+        description: `${result.layers.length} layers from "${sourceName}"${extraMsg}`,
         color: 'success',
       })
       return true
@@ -88,6 +100,8 @@ export function useDecompose() {
     isDecomposing: _isDecomposing,
     decomposingAssetId: _decomposingAssetId,
     decomposingLayerId: _decomposingLayerId,
+    lastPptxUrl: _lastPptxUrl,
+    lastZipUrl: _lastZipUrl,
     decomposeFromUrl,
   }
 }
