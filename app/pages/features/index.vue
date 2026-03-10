@@ -130,7 +130,7 @@ const categories = [
       { title: 'Template Marketplace', slug: 'template-marketplace', icon: 'i-lucide-store', description: 'Save designs as templates. Browse a categorised gallery with search, tags, and usage tracking.' },
       { title: 'Data Feeds & DCO', slug: 'data-feeds-dco', icon: 'i-lucide-database', description: 'Upload CSV/JSON feeds, bind columns to layers, and auto-generate per-row banner variants at scale.' },
       { title: 'Design Precision', slug: 'design-precision', icon: 'i-lucide-grid-3x3', description: 'Google Fonts, custom font upload, pixel grid, snap-to-grid, smart guides, and layer alignment tools.' },
-      { title: 'AI Creative Assistant', slug: 'ai-creative-assistant', icon: 'i-lucide-sparkles', description: 'AI-powered copy suggestions, URL-to-banner generation, smart auto-resize, and image recommendations.' },
+      { title: 'AI Creative Assistant', slug: 'ai-creative-assistant', icon: 'i-lucide-sparkles', description: 'AI text-to-image generation, layer editing & decomposition, copy suggestions, URL-to-banner, auto-resize, and image recommendations.' },
       { title: 'Real-Time Collaboration', slug: 'banner-collaboration', icon: 'i-lucide-users', description: 'Multi-user editing with live cursors, soft layer locking, presence indicators, and version history.' },
     ]
   },

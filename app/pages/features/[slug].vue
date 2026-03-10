@@ -1556,8 +1556,24 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-palette',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'AI-powered copy suggestions, URL-to-banner generation, smart auto-resize, and image recommendations — built into the editor.',
+    description: 'AI text-to-image generation, layer editing & decomposition, copy suggestions, URL-to-banner, auto-resize, and image recommendations — built into the editor.',
     details: [
+      {
+        title: 'AI Text-to-Image Generation',
+        content: 'Describe an image and AI generates it directly in the editor. Powered by Qwen-Image-2512, the generator supports five aspect ratios (1:1, 16:9, 9:16, 4:3, 3:4), adjustable guidance and inference steps, optional prompt enhancement, and reproducible seed control. Generated images upload to your asset library and drop onto the canvas with one click. Use the "Reuse Seed" button to create variations of a result you like.'
+      },
+      {
+        title: 'AI Layer Editing',
+        content: 'Right-click any image layer and select "Edit with AI" to open a prompt-based editor. Describe the change — "make the background blue," "remove the text," "add a sunset sky" — and the AI generates a modified version using Qwen-Image-Edit. Preview before and after side by side, adjust guidance scale and inference steps, lock a seed for reproducibility, then apply or try again. The original layer is preserved until you confirm.'
+      },
+      {
+        title: 'AI Layer Decomposition',
+        content: 'Break a flat image into individual editable layers with one click. The AI identifies distinct visual elements — foreground objects, backgrounds, text, logos — and extracts each as a transparent PNG layer on the canvas. Supports prompt-guided decomposition for targeted extraction, and exports PPTX and ZIP bundles of the decomposed layers for use outside the editor.'
+      },
+      {
+        title: 'Merge Layers',
+        content: 'Select multiple image layers with Shift+click in the timeline, then right-click to merge them into a single composited layer. The merge uses client-side canvas rendering that respects each layer\'s position, size, opacity, and rotation. The merged result uploads to your asset library as a new image, replacing the originals on the canvas. Useful for flattening complex compositions before export or further AI editing.'
+      },
       {
         title: 'AI Copy Suggest',
         content: 'Select any text layer and click the AI icon to generate copy variations. The AI analyses the banner context — other text layers, brand name, and ad format — to suggest headlines, CTAs, and body copy that fit the available space. Powered by Workers AI with Groq fallback for fast response times. Suggestions appear in a popover and apply with one click.'
