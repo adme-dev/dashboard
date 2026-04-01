@@ -1,3 +1,2 @@
-# SPA fallback — serve index.html for all non-file routes
-# (Cloudflare Pages serves static assets first, then falls back to this)
-/*  /index.html  200
+# No SPA fallback needed — Nitro Worker handles all routing via _routes.json
+# The _worker.js handles API routes, SSR pages, and static assets

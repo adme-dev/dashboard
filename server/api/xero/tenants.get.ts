@@ -1,9 +1,7 @@
-import { createXeroClient } from '../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../utils/tokenStore'
+import { fetchXeroTenants } from '../../utils/xeroClient'
 
 export default eventHandler(async (event) => {
   const token = await getActiveTokenForSession(event)
-  const client = await createXeroClient({ tokenSet: token, event })
-  const tenants = await client.updateTenants(false)
-  return tenants
+  return await fetchXeroTenants(token.access_token)
 })

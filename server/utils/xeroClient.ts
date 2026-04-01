@@ -12,6 +12,21 @@ const DEFAULT_SCOPES = [
   'accounting.contacts.read'
 ]
 
+const XERO_OIDC_DISCOVERY_URL = 'https://identity.xero.com/.well-known/openid-configuration'
+
+// Cache the OIDC metadata in-memory to avoid re-fetching on every request
+let cachedOidcMetadata: OidcMetadata | null = null
+let cachedOidcMetadataExpiry = 0
+const METADATA_CACHE_TTL = 60 * 60 * 1000 // 1 hour
+
+interface OidcMetadata {
+  issuer: string
+  authorization_endpoint: string
+  token_endpoint: string
+  userinfo_endpoint: string
+  [key: string]: any
+}
+
 export type XeroTokenSet = TokenSet & {
   expires_at: number
 }
@@ -22,26 +37,206 @@ type CreateClientOptions = {
   event?: H3Event
 }
 
+/**
+ * Fetch Xero OIDC discovery metadata using fetch() (Cloudflare Workers compatible).
+ * openid-client's Issuer.discover() uses Node.js http/https which fails on CF Workers.
+ */
+async function fetchOidcMetadata(): Promise<OidcMetadata> {
+  const now = Date.now()
+  if (cachedOidcMetadata && now < cachedOidcMetadataExpiry) {
+    return cachedOidcMetadata
+  }
+
+  const response = await fetch(XERO_OIDC_DISCOVERY_URL)
+  if (!response.ok) {
+    throw createError({
+      statusCode: 502,
+      statusMessage: `Xero OIDC discovery failed: ${response.status} ${response.statusText}`
+    })
+  }
+
+  const metadata = await response.json() as OidcMetadata
+  cachedOidcMetadata = metadata
+  cachedOidcMetadataExpiry = now + METADATA_CACHE_TTL
+  return metadata
+}
+
+function resolveRedirectUri(config: any, event?: H3Event): string {
+  // Extract just the path portion — ignore any baked-in localhost or wrong host
+  let redirectUri = config.xeroRedirectUri as string
+  try {
+    const parsed = new URL(redirectUri, 'https://placeholder')
+    redirectUri = parsed.pathname // e.g. '/api/xero/callback'
+  } catch {
+    // Already a relative path
+  }
+
+  if (event) {
+    const host = getRequestHeader(event, 'x-forwarded-host')
+      || getRequestHeader(event, 'host')
+      || 'agency-dashboard-6cm.pages.dev'
+    const proto = getRequestHeader(event, 'x-forwarded-proto') || 'https'
+    return `${proto}://${host}${redirectUri}`
+  }
+
+  return `${process.env.APP_URL || 'https://agency-dashboard-6cm.pages.dev'}${redirectUri}`
+}
+
+/**
+ * Build the Xero OAuth consent URL using fetch-based OIDC discovery.
+ * Replaces XeroClient.buildConsentUrl() which uses openid-client (Node.js HTTP).
+ */
+export async function buildXeroConsentUrl(options: { state: string; event?: H3Event }): Promise<string> {
+  const config = useRuntimeConfig()
+  const clientId = config.xeroClientId as string
+  if (!clientId) {
+    throw createError({ statusCode: 500, statusMessage: 'Xero OAuth not configured' })
+  }
+
+  const redirectUri = resolveRedirectUri(config, options.event)
+  const metadata = await fetchOidcMetadata()
+
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    scope: DEFAULT_SCOPES.join(' '),
+    state: options.state,
+  })
+
+  return `${metadata.authorization_endpoint}?${params.toString()}`
+}
+
+/**
+ * Exchange an authorization code for tokens using fetch (CF Workers compatible).
+ * Replaces XeroClient.apiCallback() which uses openid-client (Node.js HTTP).
+ */
+export async function exchangeXeroCode(options: {
+  code: string
+  event: H3Event
+}): Promise<XeroTokenSet> {
+  const config = useRuntimeConfig()
+  const clientId = config.xeroClientId as string
+  const clientSecret = config.xeroClientSecret as string
+  const redirectUri = resolveRedirectUri(config, options.event)
+  const metadata = await fetchOidcMetadata()
+
+  const response = await fetch(metadata.token_endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+    },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: options.code,
+      redirect_uri: redirectUri,
+    }).toString(),
+  })
+
+  if (!response.ok) {
+    const errorBody = await response.text()
+    throw createError({
+      statusCode: 502,
+      statusMessage: `Xero token exchange failed: ${response.status} — ${errorBody.substring(0, 200)}`
+    })
+  }
+
+  const tokenData = await response.json() as any
+  const expiresAt = Date.now() + (tokenData.expires_in || 1800) * 1000
+
+  return {
+    access_token: tokenData.access_token,
+    refresh_token: tokenData.refresh_token,
+    id_token: tokenData.id_token,
+    token_type: tokenData.token_type || 'Bearer',
+    scope: tokenData.scope,
+    expires_at: expiresAt,
+  } as XeroTokenSet
+}
+
+/**
+ * Refresh a Xero access token using fetch (CF Workers compatible).
+ * Replaces XeroClient.refreshToken() which uses openid-client (Node.js HTTP).
+ */
+export async function refreshXeroToken(options: {
+  refreshToken: string
+  event?: H3Event
+}): Promise<XeroTokenSet> {
+  const config = useRuntimeConfig()
+  const clientId = config.xeroClientId as string
+  const clientSecret = config.xeroClientSecret as string
+  const metadata = await fetchOidcMetadata()
+
+  const response = await fetch(metadata.token_endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+    },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: options.refreshToken,
+    }).toString(),
+  })
+
+  if (!response.ok) {
+    const errorBody = await response.text()
+    throw createError({
+      statusCode: 401,
+      statusMessage: `Xero token refresh failed: ${response.status} — ${errorBody.substring(0, 200)}`
+    })
+  }
+
+  const tokenData = await response.json() as any
+  const expiresAt = Date.now() + (tokenData.expires_in || 1800) * 1000
+
+  return {
+    access_token: tokenData.access_token,
+    refresh_token: tokenData.refresh_token || options.refreshToken,
+    id_token: tokenData.id_token,
+    token_type: tokenData.token_type || 'Bearer',
+    scope: tokenData.scope,
+    expires_at: expiresAt,
+  } as XeroTokenSet
+}
+
+/**
+ * Fetch Xero tenant connections using fetch (CF Workers compatible).
+ * Replaces XeroClient.updateTenants() which uses axios (Node.js HTTP).
+ */
+export async function fetchXeroTenants(accessToken: string): Promise<Array<{ tenantId: string; tenantName: string; tenantType: string }>> {
+  const response = await fetch('https://api.xero.com/connections', {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  })
+
+  if (!response.ok) {
+    throw createError({
+      statusCode: response.status === 401 ? 401 : 502,
+      statusMessage: `Xero tenants fetch failed: ${response.status}`
+    })
+  }
+
+  return await response.json() as any[]
+}
+
+/**
+ * Create a XeroClient instance for API calls (invoices, contacts, etc.).
+ * Uses fetch-based OIDC init instead of openid-client's Node.js HTTP.
+ * The accountingApi uses axios internally which works on CF Workers.
+ */
 export async function createXeroClient(options: CreateClientOptions = {}) {
   const config = useRuntimeConfig()
   const clientId = config.xeroClientId
   const clientSecret = config.xeroClientSecret
-  let redirectUri = config.xeroRedirectUri
+  const redirectUri = resolveRedirectUri(config, options.event)
   const httpTimeout = Number(config.xeroHttpTimeout ?? 15000)
 
   if (!clientId || !clientSecret || !redirectUri) {
     throw createError({ statusCode: 500, statusMessage: 'Xero OAuth not configured' })
-  }
-
-  // If redirect URI is relative, make it absolute using the current host
-  if (redirectUri.startsWith('/')) {
-    if (options.event) {
-      const url = getRequestURL(options.event)
-      redirectUri = `${url.protocol}//${url.host}${redirectUri}`
-    } else {
-      // Fallback for build time or when no event context is available
-      redirectUri = `${process.env.APP_URL || 'https://agency-dashboard.pages.dev'}${redirectUri}`
-    }
   }
 
   const client = new XeroClient({
@@ -53,18 +248,8 @@ export async function createXeroClient(options: CreateClientOptions = {}) {
     httpTimeout
   })
 
-  try {
-    await client.initialize()
-  } catch (err: any) {
-    if (err?.message?.includes('timeout')) {
-      throw createError({
-        statusCode: 504,
-        statusMessage: 'Xero authorization discovery timed out. Please try again or check network access.'
-      })
-    }
-    throw err
-  }
-
+  // Skip openid-client initialization entirely — we use fetch-based auth instead.
+  // Just set the tokenSet so accountingApi calls work.
   if (options.tokenSet) {
     client.setTokenSet(toTokenSet(options.tokenSet))
   }

@@ -1,5 +1,5 @@
-import { sendRedirect, setCookie, getQuery } from 'h3'
-import { createXeroClient } from '../../utils/xeroClient'
+import { sendRedirect, setCookie } from 'h3'
+import { buildXeroConsentUrl } from '../../utils/xeroClient'
 
 export default eventHandler(async (event) => {
   const query = getQuery(event)
@@ -7,8 +7,7 @@ export default eventHandler(async (event) => {
     ? (crypto as any).randomUUID()
     : Math.random().toString(36).slice(2)
 
-  const client = await createXeroClient({ state, event })
-  const authorizeUrl = await client.buildConsentUrl()
+  const authorizeUrl = await buildXeroConsentUrl({ state, event })
 
   // Save state for CSRF protection
   setCookie(event, 'xero_oauth_state', state, {
@@ -27,10 +26,6 @@ export default eventHandler(async (event) => {
       path: '/',
       maxAge: 60 * 10
     })
-
-    const popupUrl = new URL(authorizeUrl)
-    popupUrl.searchParams.set('state', state)
-    return sendRedirect(event, popupUrl.toString(), 302)
   }
 
   return sendRedirect(event, authorizeUrl, 302)

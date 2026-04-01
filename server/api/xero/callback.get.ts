@@ -1,9 +1,7 @@
-import { createError, getRequestURL, getCookie, deleteCookie } from 'h3'
-import { setTokenForSession } from '../../utils/tokenStore'
-import { createXeroClient, toStoredTokenSet } from '../../utils/xeroClient'
-import { setSelectedTenant } from '../../utils/session'
+import { exchangeXeroCode, fetchXeroTenants } from '~~/server/utils/xeroClient'
+import { setOrgToken, setOrgTenant } from '~~/server/utils/tokenStore'
 
-export default eventHandler(async (event) => {
+export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const code = String(query.code || '')
   const state = String(query.state || '')
@@ -19,25 +17,27 @@ export default eventHandler(async (event) => {
     deleteCookie(event, 'xero_oauth_mode', { path: '/' })
   }
 
-  const client = await createXeroClient({ state: expectedState, event })
-  const requestUrl = getRequestURL(event).href
-  await client.apiCallback(requestUrl)
-  const tokenSet = client.readTokenSet()
-  await setTokenForSession(event, toStoredTokenSet(tokenSet))
+  const tokenSet = await exchangeXeroCode({ code, event })
 
-  // Auto-select tenant if there's exactly one
+  // Fetch tenants and store at org level
+  let tenants: Array<{ tenantId: string; tenantName: string }> = []
   try {
-    const tenants = await client.updateTenants(false)
-    if (tenants.length === 1) {
-      await setSelectedTenant(event, tenants[0].tenantId, tenants[0].tenantName)
-    }
+    tenants = await fetchXeroTenants(tokenSet.access_token)
   } catch {
-    // Non-fatal — user can select tenant manually on settings page
+    // Non-fatal
   }
 
-  if (mode === 'popup') {
-    return sendRedirect(event, '/xero-popup-close', 302)
+  if (tenants.length === 1) {
+    // Auto-select the only tenant
+    await setOrgToken(event, tokenSet, {
+      tenantId: tenants[0].tenantId,
+      tenantName: tenants[0].tenantName
+    })
+    await setOrgTenant(event, tenants[0].tenantId, tenants[0].tenantName)
+  } else {
+    // Store token, user will select tenant on settings page
+    await setOrgToken(event, tokenSet)
   }
 
-  return sendRedirect(event, '/settings', 302)
+  return sendRedirect(event, mode === 'popup' ? '/xero-popup-close' : '/settings', 302)
 })

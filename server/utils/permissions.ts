@@ -29,16 +29,16 @@ export type PermissionGroup = typeof PERMISSION_GROUPS[number]
 
 // Static fallback: maps system role slugs to their default permission groups
 export const SYSTEM_ROLE_PERMISSIONS: Record<string, PermissionGroup[]> = {
-  owner: ['ADMIN', 'MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS', 'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION'],
-  admin: ['ADMIN', 'MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS', 'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION'],
-  lead: ['MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS', 'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION'],
-  project_manager: ['MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS', 'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION'],
+  owner: ['ADMIN', 'MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS', 'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION', 'INVOICE_OWN_CLIENTS'],
+  admin: ['ADMIN', 'MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS', 'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION', 'INVOICE_OWN_CLIENTS'],
+  lead: ['MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS', 'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION', 'INVOICE_OWN_CLIENTS'],
+  project_manager: ['MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS', 'CREATIVE', 'MEDIA_BUYING', 'TIME_APPROVALS', 'AUTOMATION', 'INVOICE_OWN_CLIENTS'],
   account_manager: ['CLIENTS', 'MEDIA_BUYING', 'INVOICE_OWN_CLIENTS'],
   creative: ['CREATIVE'],
   media_buyer: ['MEDIA_BUYING'],
   producer: ['CREATIVE'],
-  finance: ['FINANCE'],
-  accounts: ['FINANCE'],
+  finance: ['FINANCE', 'INVOICE_OWN_CLIENTS'],
+  accounts: ['FINANCE', 'INVOICE_OWN_CLIENTS'],
   developer: [],
   sales: ['SALES', 'CLIENTS'],
   member: [],

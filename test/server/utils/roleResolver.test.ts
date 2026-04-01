@@ -336,15 +336,15 @@ describe('isReadOnlyRole', () => {
 })
 
 describe('SYSTEM_ROLE_PERMISSIONS static map', () => {
-  it('should give owner all 9 permission groups', () => {
-    expect(SYSTEM_ROLE_PERMISSIONS['owner']).toHaveLength(9)
+  it('should give owner all 10 permission groups', () => {
+    expect(SYSTEM_ROLE_PERMISSIONS['owner']).toHaveLength(10)
     for (const group of PERMISSION_GROUPS) {
       expect(SYSTEM_ROLE_PERMISSIONS['owner']).toContain(group)
     }
   })
 
-  it('should give admin all 9 permission groups', () => {
-    expect(SYSTEM_ROLE_PERMISSIONS['admin']).toHaveLength(9)
+  it('should give admin all 10 permission groups', () => {
+    expect(SYSTEM_ROLE_PERMISSIONS['admin']).toHaveLength(10)
   })
 
   it('should give viewer zero permission groups', () => {
@@ -367,16 +367,16 @@ describe('SYSTEM_ROLE_PERMISSIONS static map', () => {
     expect(SYSTEM_ROLE_PERMISSIONS['media_buyer']).toEqual(['MEDIA_BUYING'])
   })
 
-  it('should give finance only FINANCE', () => {
-    expect(SYSTEM_ROLE_PERMISSIONS['finance']).toEqual(['FINANCE'])
+  it('should give finance FINANCE and INVOICE_OWN_CLIENTS', () => {
+    expect(SYSTEM_ROLE_PERMISSIONS['finance']).toEqual(['FINANCE', 'INVOICE_OWN_CLIENTS'])
   })
 
   it('should give sales SALES and CLIENTS', () => {
     expect(SYSTEM_ROLE_PERMISSIONS['sales']).toEqual(['SALES', 'CLIENTS'])
   })
 
-  it('should give account_manager CLIENTS and MEDIA_BUYING', () => {
-    expect(SYSTEM_ROLE_PERMISSIONS['account_manager']).toEqual(['CLIENTS', 'MEDIA_BUYING'])
+  it('should give account_manager CLIENTS, MEDIA_BUYING, and INVOICE_OWN_CLIENTS', () => {
+    expect(SYSTEM_ROLE_PERMISSIONS['account_manager']).toEqual(['CLIENTS', 'MEDIA_BUYING', 'INVOICE_OWN_CLIENTS'])
   })
 })
 

@@ -1,4 +1,4 @@
-import { createXeroClient } from '../../../utils/xeroClient'
+import { createXeroClient, fetchXeroTenants } from '../../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { cachedFetch } from '~~/server/utils/kv'
 import { dedupedXeroCall } from '~~/server/utils/xeroRateLimit'
@@ -11,8 +11,8 @@ function getDefaultRange() {
   return { from: ensureDateString(from), to: ensureDateString(to) }
 }
 
-async function fetchTenants(client: Awaited<ReturnType<typeof createXeroClient>>) {
-  return await client.updateTenants(false)
+async function fetchTenants(token: { access_token: string }) {
+  return await fetchXeroTenants(token.access_token)
 }
 
 // Match the broader patterns from pnl-detailed.get.ts to support all Xero report formats
@@ -88,7 +88,7 @@ export default eventHandler(async (event) => {
   const toDate = String(query.toDate || '')
   const { from, to } = (!fromDate || !toDate) ? getDefaultRange() : { from: fromDate, to: toDate }
 
-  const tenants = await fetchTenants(client)
+  const tenants = await fetchTenants(token)
   const tenantIds = tenants.filter(t => t.tenantId && t.tenantName).map(t => t.tenantId)
   const cacheKey = `xero-report:consolidated:${tenantIds.sort().join(',')}:${from}:${to}`
 

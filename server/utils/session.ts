@@ -1,8 +1,5 @@
 import type { H3Event } from 'h3'
-import { queryOne, query } from './db'
-
-// XeroTokenSet is imported from xeroClient.ts to avoid duplication
-import type { XeroTokenSet } from './xeroClient'
+import { getOrgTenant, setOrgTenant } from './tokenStore'
 
 export function getOrCreateSessionId(event: H3Event): string {
   let sid = getCookie(event, 'sid')
@@ -14,74 +11,49 @@ export function getOrCreateSessionId(event: H3Event): string {
     setCookie(event, 'sid', sid, {
       httpOnly: true,
       sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      secure: true,
       path: '/'
     })
   }
   return sid as string
 }
 
-const TENANT_COOKIE = 'xero_tenant_id'
-
 /**
- * Set selected tenant - stores in both cookie (for quick access) and Postgres (for persistence)
+ * Set selected tenant — now stores at org level so all team members share it.
  */
 export async function setSelectedTenant(event: H3Event, tenantId: string, tenantName?: string) {
-  // Set cookie for quick access
-  setCookie(event, TENANT_COOKIE, tenantId, {
+  // Also set cookie for quick access (backward compat)
+  setCookie(event, 'xero_tenant_id', tenantId, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: true,
     path: '/',
     maxAge: 60 * 60 * 24 * 365
   })
 
-  // Also persist to Postgres if tenant name is provided
-  if (tenantName) {
-    const sid = getOrCreateSessionId(event)
-    await query(`
-      INSERT INTO xero_tenants (session_id, tenant_id, tenant_name)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (session_id)
-      DO UPDATE SET
-        tenant_id = EXCLUDED.tenant_id,
-        tenant_name = EXCLUDED.tenant_name,
-        updated_at = NOW()
-    `, [sid, tenantId, tenantName])
-  }
+  await setOrgTenant(event, tenantId, tenantName || '')
 }
 
 export function getSelectedTenant(event: H3Event): string | undefined {
-  return getCookie(event, TENANT_COOKIE)
+  return getCookie(event, 'xero_tenant_id')
 }
 
 /**
- * Get selected tenant with name from Postgres
+ * Get selected tenant with name — reads from org-level storage.
  */
 export async function getSelectedTenantWithName(event: H3Event): Promise<{ tenantId: string; tenantName: string } | undefined> {
-  const sid = getOrCreateSessionId(event)
+  // Try org-level storage first
+  const orgTenant = await getOrgTenant(event)
+  if (orgTenant) return orgTenant
 
-  const row = await queryOne<{ tenant_id: string; tenant_name: string }>(`
-    SELECT tenant_id, tenant_name
-    FROM xero_tenants
-    WHERE session_id = $1
-  `, [sid])
-
-  if (!row) {
-    // Fallback to cookie
-    const tenantId = getCookie(event, TENANT_COOKIE)
-    if (tenantId) {
-      return { tenantId, tenantName: 'Unknown' }
-    }
-    return undefined
+  // Fallback to cookie
+  const tenantId = getCookie(event, 'xero_tenant_id')
+  if (tenantId) {
+    return { tenantId, tenantName: 'Unknown' }
   }
-
-  return {
-    tenantId: row.tenant_id,
-    tenantName: row.tenant_name
-  }
+  return undefined
 }
 
 export function clearSelectedTenant(event: H3Event) {
-  deleteCookie(event, TENANT_COOKIE, { path: '/' })
+  deleteCookie(event, 'xero_tenant_id', { path: '/' })
 }

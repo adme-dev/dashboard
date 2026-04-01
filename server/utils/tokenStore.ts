@@ -1,28 +1,34 @@
 import { createError, type H3Event } from 'h3'
-import { createXeroClient, toStoredTokenSet, type XeroTokenSet } from './xeroClient'
+import { refreshXeroToken, type XeroTokenSet } from './xeroClient'
 import { queryOne, query } from './db'
 import { kvGet, kvPut, kvDelete } from './kv'
 
 const refreshLocks = new Map<string, Promise<XeroTokenSet>>()
 
 const TOKEN_TTL = 25 * 60   // 25 minutes (tokens expire at 30 min)
-const TENANT_TTL = 60 * 60  // 60 minutes
+
+const ORG_TOKEN_KV_KEY = 'xero-org-token'
+const ORG_TENANT_KV_KEY = 'xero-org-tenant'
+
+// ─── Org-level token storage ─────────────────────────────────────────
 
 /**
- * Store Xero tokens in Postgres for persistence across restarts
+ * Store Xero tokens at org level — one connection shared by all team members.
+ * The person who connects Xero (bookkeeper/owner) sets the token once.
  */
-export async function setTokenForSession(event: H3Event, token: XeroTokenSet) {
-  const sid = getSessionId(event)
-
+export async function setOrgToken(event: H3Event, token: XeroTokenSet, opts?: { tenantId?: string; tenantName?: string; connectedBy?: string }) {
   // Write to KV for fast reads
-  kvPut(event, `xero-token:${sid}`, token, TOKEN_TTL)
+  kvPut(event, ORG_TOKEN_KV_KEY, token, TOKEN_TTL)
 
-  // Upsert the session in DB for persistence
+  const tenantId = opts?.tenantId || ''
+  const tenantName = opts?.tenantName || ''
+
   await query(`
-    INSERT INTO xero_sessions (session_id, access_token, refresh_token, id_token, expires_at, scope, token_type)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
-    ON CONFLICT (session_id)
+    INSERT INTO xero_org_connection (tenant_id, tenant_name, access_token, refresh_token, id_token, expires_at, scope, token_type, connected_by)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    ON CONFLICT (tenant_id)
     DO UPDATE SET
+      tenant_name = EXCLUDED.tenant_name,
       access_token = EXCLUDED.access_token,
       refresh_token = EXCLUDED.refresh_token,
       id_token = EXCLUDED.id_token,
@@ -31,7 +37,8 @@ export async function setTokenForSession(event: H3Event, token: XeroTokenSet) {
       token_type = EXCLUDED.token_type,
       updated_at = NOW()
   `, [
-    sid,
+    tenantId || '__default__',
+    tenantName,
     token.access_token,
     token.refresh_token,
     token.id_token,
@@ -41,26 +48,25 @@ export async function setTokenForSession(event: H3Event, token: XeroTokenSet) {
   ])
 }
 
-export async function getTokenForSession(event: H3Event): Promise<XeroTokenSet | undefined> {
-  const sid = getSessionId(event)
-
+export async function getOrgToken(event: H3Event): Promise<XeroTokenSet | undefined> {
   // Check KV first
-  const cached = await kvGet<XeroTokenSet>(event, `xero-token:${sid}`)
+  const cached = await kvGet<XeroTokenSet>(event, ORG_TOKEN_KV_KEY)
   if (cached) return cached
 
-  // Fall back to DB
+  // Fall back to DB — get the most recently updated connection
   const row = await queryOne<{
     access_token: string
     refresh_token: string | null
     id_token: string | null
-    expires_at: Date
+    expires_at: string | number
     scope: string | null
     token_type: string | null
   }>(`
     SELECT access_token, refresh_token, id_token, expires_at, scope, token_type
-    FROM xero_sessions
-    WHERE session_id = $1
-  `, [sid])
+    FROM xero_org_connection
+    ORDER BY updated_at DESC
+    LIMIT 1
+  `)
 
   if (!row) return undefined
 
@@ -68,75 +74,64 @@ export async function getTokenForSession(event: H3Event): Promise<XeroTokenSet |
     access_token: row.access_token,
     refresh_token: row.refresh_token || undefined,
     id_token: row.id_token || undefined,
-    expires_at: new Date(row.expires_at).getTime(),
+    expires_at: typeof row.expires_at === 'number' ? row.expires_at : Number(row.expires_at),
     scope: row.scope || undefined,
     token_type: row.token_type || 'Bearer'
-  } as any
+  } as XeroTokenSet
 
-  // Backfill KV on DB hit
-  kvPut(event, `xero-token:${sid}`, token, TOKEN_TTL)
+  // Backfill KV
+  kvPut(event, ORG_TOKEN_KV_KEY, token, TOKEN_TTL)
 
   return token
 }
 
-export async function clearTokenForSession(event: H3Event) {
-  const sid = getSessionId(event)
-  kvDelete(event, `xero-token:${sid}`)
-  kvDelete(event, `xero-tenant:${sid}`)
-  await query('DELETE FROM xero_sessions WHERE session_id = $1', [sid])
+export async function clearOrgToken(event: H3Event) {
+  kvDelete(event, ORG_TOKEN_KV_KEY)
+  kvDelete(event, ORG_TENANT_KV_KEY)
+  await query('DELETE FROM xero_org_connection')
 }
 
-/**
- * Store the selected tenant for a session
- */
-export async function setTenantForSession(event: H3Event, tenantId: string, tenantName: string) {
-  const sid = getSessionId(event)
-
-  const tenant = { tenantId, tenantName }
-  kvPut(event, `xero-tenant:${sid}`, tenant, TENANT_TTL)
-
-  await query(`
-    INSERT INTO xero_tenants (session_id, tenant_id, tenant_name)
-    VALUES ($1, $2, $3)
-    ON CONFLICT (session_id)
-    DO UPDATE SET
-      tenant_id = EXCLUDED.tenant_id,
-      tenant_name = EXCLUDED.tenant_name,
-      updated_at = NOW()
-  `, [sid, tenantId, tenantName])
-}
-
-export async function getTenantForSession(event: H3Event): Promise<{ tenantId: string; tenantName: string } | undefined> {
-  const sid = getSessionId(event)
-
-  // Check KV first
-  const cached = await kvGet<{ tenantId: string; tenantName: string }>(event, `xero-tenant:${sid}`)
+export async function getOrgTenant(event: H3Event): Promise<{ tenantId: string; tenantName: string } | undefined> {
+  const cached = await kvGet<{ tenantId: string; tenantName: string }>(event, ORG_TENANT_KV_KEY)
   if (cached) return cached
 
-  // Fall back to DB
   const row = await queryOne<{ tenant_id: string; tenant_name: string }>(`
     SELECT tenant_id, tenant_name
-    FROM xero_tenants
-    WHERE session_id = $1
-  `, [sid])
+    FROM xero_org_connection
+    WHERE tenant_id != '__default__'
+    ORDER BY updated_at DESC
+    LIMIT 1
+  `)
 
   if (!row) return undefined
 
-  const tenant = {
-    tenantId: row.tenant_id,
-    tenantName: row.tenant_name
-  }
-
-  // Backfill KV on DB hit
-  kvPut(event, `xero-tenant:${sid}`, tenant, TENANT_TTL)
-
+  const tenant = { tenantId: row.tenant_id, tenantName: row.tenant_name }
+  kvPut(event, ORG_TENANT_KV_KEY, tenant, 60 * 60)
   return tenant
 }
 
-export async function getActiveTokenForSession(event: H3Event, opts: { minTtlMs?: number } = {}): Promise<XeroTokenSet> {
+export async function setOrgTenant(event: H3Event, tenantId: string, tenantName: string) {
+  kvPut(event, ORG_TENANT_KV_KEY, { tenantId, tenantName }, 60 * 60)
+
+  // Update existing connection row or insert
+  await query(`
+    INSERT INTO xero_org_connection (tenant_id, tenant_name, access_token, refresh_token, expires_at)
+    SELECT $1, $2, access_token, refresh_token, expires_at
+    FROM xero_org_connection
+    ORDER BY updated_at DESC LIMIT 1
+    ON CONFLICT (tenant_id)
+    DO UPDATE SET tenant_name = EXCLUDED.tenant_name, updated_at = NOW()
+  `, [tenantId, tenantName])
+}
+
+/**
+ * Get an active (non-expired) org token, auto-refreshing if needed.
+ * This is the main entry point for all Xero API calls.
+ */
+export async function getActiveOrgToken(event: H3Event, opts: { minTtlMs?: number } = {}): Promise<XeroTokenSet> {
   const windowMs = typeof opts.minTtlMs === 'number' ? opts.minTtlMs : 300_000
-  const sid = getSessionId(event)
-  const token = await getTokenForSession(event)
+  const lockKey = 'org'
+  const token = await getOrgToken(event)
   if (!token?.access_token) {
     throw createError({ statusCode: 401, statusMessage: 'Not connected to Xero' })
   }
@@ -147,39 +142,47 @@ export async function getActiveTokenForSession(event: H3Event, opts: { minTtlMs?
   }
 
   if (!token.refresh_token) {
-    await clearTokenForSession(event)
+    await clearOrgToken(event)
     throw createError({ statusCode: 401, statusMessage: 'Xero session expired, please reconnect' })
   }
-  if (refreshLocks.has(sid)) {
-    return await refreshLocks.get(sid)!
+  if (refreshLocks.has(lockKey)) {
+    return await refreshLocks.get(lockKey)!
   }
 
   const refreshPromise = (async () => {
     try {
-      const client = await createXeroClient({ tokenSet: token, event })
-      await client.refreshToken()
-      const latest = client.readTokenSet()
-      const next = toStoredTokenSet({
-        ...latest,
-        refresh_token: latest.refresh_token || token.refresh_token
-      } as any)
-      await setTokenForSession(event, next)
+      const next = await refreshXeroToken({
+        refreshToken: token.refresh_token!,
+        event
+      })
+      await setOrgToken(event, next)
       return next
     } catch (err) {
-      await clearTokenForSession(event)
+      await clearOrgToken(event)
       throw createError({
         statusCode: 401,
         statusMessage: 'Failed to refresh Xero session'
       })
     } finally {
-      refreshLocks.delete(sid)
+      refreshLocks.delete(lockKey)
     }
   })()
 
-  refreshLocks.set(sid, refreshPromise)
+  refreshLocks.set(lockKey, refreshPromise)
   return await refreshPromise
 }
 
+// ─── Backward-compatible aliases ─────────────────────────────────────
+// These map the old session-based API to the new org-level API.
+// All existing endpoints (invoices, expenses, reports, etc.) that call
+// getActiveTokenForSession() will now use the shared org token.
+
+export const setTokenForSession = (event: H3Event, token: XeroTokenSet) => setOrgToken(event, token)
+export const getTokenForSession = (event: H3Event) => getOrgToken(event)
+export const clearTokenForSession = (event: H3Event) => clearOrgToken(event)
+export const getActiveTokenForSession = (event: H3Event, opts?: { minTtlMs?: number }) => getActiveOrgToken(event, opts)
+
+// Legacy session ID helpers — kept for any code that still references them
 export function getSessionId(event: H3Event): string {
   let sid = getCookie(event, 'sid')
   if (!sid) {
@@ -190,7 +193,7 @@ export function getSessionId(event: H3Event): string {
     setCookie(event, 'sid', sid!, {
       httpOnly: true,
       sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      secure: true,
       path: '/'
     })
   }
