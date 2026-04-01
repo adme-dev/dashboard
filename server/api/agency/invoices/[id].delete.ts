@@ -7,12 +7,10 @@
 
 import { queryOne, transaction } from '~~/server/utils/db'
 import { requireAuth, requireRole } from '~~/server/utils/auth'
+import { requireInvoiceAccess } from '~~/server/utils/clientScoping'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
-
-  // Only admins and owners can delete invoices
-  await requireRole(event, ['owner', 'admin'])
+  const { user, clientIds } = await requireInvoiceAccess(event)
 
   const invoiceId = getRouterParam(event, 'id')
 
@@ -29,7 +27,7 @@ export default defineEventHandler(async (event) => {
   try {
     // Check if invoice exists
     const invoice = await queryOne(
-      `SELECT id, invoice_number, status, amount_paid FROM invoices WHERE id = $1`,
+      `SELECT id, invoice_number, status, amount_paid, client_id, created_by FROM invoices WHERE id = $1`,
       [invoiceId]
     )
 
@@ -38,6 +36,18 @@ export default defineEventHandler(async (event) => {
         statusCode: 404,
         statusMessage: 'Invoice not found'
       })
+    }
+
+    if (clientIds !== 'all') {
+      if (!clientIds.includes(invoice.client_id)) {
+        throw createError({ statusCode: 403, statusMessage: 'Not authorized to delete this invoice' })
+      }
+      if (invoice.status !== 'draft') {
+        throw createError({ statusCode: 403, statusMessage: 'Account managers can only delete draft invoices' })
+      }
+      if (invoice.created_by !== user.id) {
+        throw createError({ statusCode: 403, statusMessage: 'Can only delete invoices you created' })
+      }
     }
 
     // Don't allow deleting paid invoices

@@ -5,9 +5,10 @@
 
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { requireInvoiceAccess } from '~~/server/utils/clientScoping'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const { user, clientIds } = await requireInvoiceAccess(event)
   const query = getQuery(event)
 
   const {
@@ -64,6 +65,12 @@ export default defineEventHandler(async (event) => {
       idx++
     }
 
+    if (clientIds !== 'all') {
+      conditions.push(`i.client_id = ANY($${idx}::uuid[])`)
+      params.push(clientIds)
+      idx++
+    }
+
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
     // Validate sort column
@@ -97,6 +104,7 @@ export default defineEventHandler(async (event) => {
         i.sent_at,
         i.viewed_at,
         i.created_at,
+        i.created_by,
         CASE
           WHEN i.status = 'paid' THEN 0
           WHEN i.due_date < CURRENT_DATE AND i.status NOT IN ('paid', 'cancelled') THEN CURRENT_DATE - i.due_date
@@ -159,6 +167,7 @@ export default defineEventHandler(async (event) => {
         sentAt: inv.sent_at,
         viewedAt: inv.viewed_at,
         createdAt: inv.created_at,
+        createdBy: inv.created_by,
         daysOverdue: Number(inv.days_overdue || 0),
         lineItemCount: Number(inv.line_item_count || 0)
       })),

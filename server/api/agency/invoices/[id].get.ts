@@ -5,9 +5,10 @@
 
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { requireInvoiceAccess } from '~~/server/utils/clientScoping'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const { user, clientIds } = await requireInvoiceAccess(event)
   const id = getRouterParam(event, 'id')
 
   if (!id) {
@@ -40,6 +41,10 @@ export default defineEventHandler(async (event) => {
         statusCode: 404,
         statusMessage: 'Invoice not found'
       })
+    }
+
+    if (clientIds !== 'all' && !clientIds.includes(invoice.client_id)) {
+      throw createError({ statusCode: 403, statusMessage: 'Not authorized to view this invoice' })
     }
 
     // Get line items

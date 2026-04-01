@@ -5,9 +5,10 @@
 
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { requireInvoiceAccess } from '~~/server/utils/clientScoping'
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
+  const { user, clientIds } = await requireInvoiceAccess(event)
   const body = await readBody(event)
 
   const {
@@ -27,6 +28,12 @@ export default defineEventHandler(async (event) => {
       statusCode: 400,
       statusMessage: 'Client ID is required'
     })
+  }
+
+  if (clientIds !== 'all') {
+    if (!clientIds.includes(clientId)) {
+      throw createError({ statusCode: 403, statusMessage: 'Not assigned to this client' })
+    }
   }
 
   try {
