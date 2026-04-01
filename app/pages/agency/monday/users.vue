@@ -167,6 +167,20 @@
       </UCard>
     </div>
 
+    <!-- Sync Confirm Modal -->
+    <UModal v-model:open="showSyncConfirm">
+      <template #content>
+        <div class="p-6">
+          <h3 class="text-lg font-semibold mb-2">Sync users</h3>
+          <p class="text-sm text-muted mb-4">Are you sure you want to sync users from Monday.com?</p>
+          <div class="flex justify-end gap-2">
+            <UButton variant="ghost" @click="showSyncConfirm = false">Cancel</UButton>
+            <UButton color="primary" @click="onConfirmSync">Sync</UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
+
     <!-- Sync Result Modal -->
     <UModal v-model:open="showResultModal" title="Sync Complete">
       <template #body>
@@ -276,10 +290,13 @@ interface SyncData {
 
 definePageMeta({ middleware: ['role-admin'] })
 
+const toast = useToast()
+
 const preview = ref<PreviewData | null>(null)
 const previewLoading = ref(false)
 const syncLoading = ref(false)
 const showResultModal = ref(false)
+const showSyncConfirm = ref(false)
 const syncResult = ref<SyncData | null>(null)
 const filterQuery = ref('')
 
@@ -328,9 +345,12 @@ const loadPreview = async () => {
   }
 }
 
-const startSync = async () => {
-  if (!confirm('Are you sure you want to sync users from Monday.com?')) return
-  
+const startSync = () => {
+  showSyncConfirm.value = true
+}
+
+const onConfirmSync = async () => {
+  showSyncConfirm.value = false
   syncLoading.value = true
   try {
     const result = await $fetch<SyncData>('/api/monday/users/sync', {
@@ -340,7 +360,7 @@ const startSync = async () => {
     showResultModal.value = true
   } catch (err) {
     console.error('Sync failed:', err)
-    alert('Sync failed. Check console for details.')
+    toast.add({ title: 'Sync failed', description: 'Check console for details.', color: 'error' })
   } finally {
     syncLoading.value = false
   }

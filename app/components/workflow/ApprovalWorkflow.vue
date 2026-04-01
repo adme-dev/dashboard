@@ -26,6 +26,7 @@ const availableWorkflows = computed(() => (workflowsData.value?.workflows || [])
 // Modal states
 const showStartModal = ref(false)
 const showResponseModal = ref(false)
+const showCancelConfirm = ref(false)
 const selectedWorkflow = ref<string | null>(null)
 const selectedStep = ref<any>(null)
 const responseType = ref<'approved' | 'rejected'>('approved')
@@ -129,9 +130,12 @@ const submitResponse = async () => {
 }
 
 // Cancel approval workflow
-const cancelApproval = async () => {
-  if (!confirm('Are you sure you want to cancel this approval workflow?')) return
+const cancelApproval = () => {
+  showCancelConfirm.value = true
+}
 
+const onConfirmCancelApproval = async () => {
+  showCancelConfirm.value = false
   submitting.value = true
   try {
     await ($fetch as any)(`/api/agency/tasks/${props.taskId}/approvals`, {
@@ -410,6 +414,20 @@ const canRespondToStep = (step: any): boolean => {
             </div>
           </template>
         </UCard>
+      </template>
+    </UModal>
+
+    <!-- Cancel Approval Confirm Modal -->
+    <UModal v-model:open="showCancelConfirm">
+      <template #content>
+        <div class="p-6">
+          <h3 class="text-lg font-semibold mb-2">Cancel approval workflow</h3>
+          <p class="text-sm text-muted mb-4">Are you sure you want to cancel this approval workflow?</p>
+          <div class="flex justify-end gap-2">
+            <UButton variant="ghost" @click="showCancelConfirm = false">Cancel</UButton>
+            <UButton color="error" @click="onConfirmCancelApproval">Confirm</UButton>
+          </div>
+        </div>
       </template>
     </UModal>
 

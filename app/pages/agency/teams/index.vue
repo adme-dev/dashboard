@@ -146,6 +146,34 @@
       </div>
     </div>
 
+    <!-- Delete Team Confirm Modal -->
+    <UModal v-model:open="showDeleteTeamConfirm">
+      <template #content>
+        <div class="p-6">
+          <h3 class="text-lg font-semibold mb-2">Delete team</h3>
+          <p class="text-sm text-muted mb-4">Are you sure you want to delete "{{ teamToDelete?.name }}"?</p>
+          <div class="flex justify-end gap-2">
+            <UButton variant="ghost" @click="showDeleteTeamConfirm = false">Cancel</UButton>
+            <UButton color="error" @click="onConfirmDeleteTeam">Delete</UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Remove Member Confirm Modal -->
+    <UModal v-model:open="showRemoveMemberConfirm">
+      <template #content>
+        <div class="p-6">
+          <h3 class="text-lg font-semibold mb-2">Remove member</h3>
+          <p class="text-sm text-muted mb-4">Remove {{ memberToRemove?.name }} from this team?</p>
+          <div class="flex justify-end gap-2">
+            <UButton variant="ghost" @click="showRemoveMemberConfirm = false">Cancel</UButton>
+            <UButton color="error" @click="onConfirmRemoveMember">Remove</UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
+
     <!-- Create Team Modal -->
     <UModal v-model:open="showCreateModal" title="Create New Team">
       <template #body>
@@ -207,6 +235,10 @@ definePageMeta({})
 const searchQuery = ref('')
 const selectedTeam = ref<Team | null>(null)
 const showCreateModal = ref(false)
+const showDeleteTeamConfirm = ref(false)
+const showRemoveMemberConfirm = ref(false)
+const teamToDelete = ref<Team | null>(null)
+const memberToRemove = ref<TeamMember | null>(null)
 
 const { data: teams, refresh } = await useFetch<{ teams: Team[] }>('/api/teams')
 
@@ -265,29 +297,43 @@ const createTeam = async () => {
 
 const editTeam = (team: Team) => {
   // TODO: Implement edit
-  console.log('Edit team:', team)
 }
 
-const deleteTeam = async (team: Team) => {
-  if (!confirm(`Are you sure you want to delete "${team.name}"?`)) return
-  
+const deleteTeam = (team: Team) => {
+  teamToDelete.value = team
+  showDeleteTeamConfirm.value = true
+}
+
+const onConfirmDeleteTeam = async () => {
+  const team = teamToDelete.value
+  if (!team) return
+  showDeleteTeamConfirm.value = false
+
   try {
     await $fetch(`/api/teams/${team.id}`, { method: 'DELETE' })
     selectedTeam.value = null
     refresh()
   } catch (err) {
     console.error('Failed to delete team:', err)
+  } finally {
+    teamToDelete.value = null
   }
 }
 
 const addMember = () => {
   // TODO: Open member selection modal
-  console.log('Add member to:', selectedTeam.value)
 }
 
-const removeMember = async (member: TeamMember) => {
-  if (!confirm(`Remove ${member.name} from this team?`)) return
-  
+const removeMember = (member: TeamMember) => {
+  memberToRemove.value = member
+  showRemoveMemberConfirm.value = true
+}
+
+const onConfirmRemoveMember = async () => {
+  const member = memberToRemove.value
+  if (!member) return
+  showRemoveMemberConfirm.value = false
+
   try {
     await $fetch(`/api/teams/${selectedTeam.value?.id}/members/${member.id}`, {
       method: 'DELETE'
@@ -297,6 +343,8 @@ const removeMember = async (member: TeamMember) => {
     teamMembers.value = data.value?.members || []
   } catch (err) {
     console.error('Failed to remove member:', err)
+  } finally {
+    memberToRemove.value = null
   }
 }
 </script>

@@ -29,7 +29,6 @@ async function onSubmit(event: FormSubmitEvent<ProfileSchema>) {
     icon: 'i-lucide-check',
     color: 'success'
   })
-  console.log(event.data)
 }
 
 function onFileChange(e: Event) {
@@ -64,6 +63,8 @@ const connectLabel = computed(() => {
 const { data: metaAccounts, refresh: refreshMetaAccounts } = useLazyFetch<any[]>('/api/agency/social/meta/accounts', { server: false, default: () => [] })
 const { state: metaConnectState, connect: connectMeta } = useMetaConnect({ onConnected: refreshMetaAccounts })
 const metaSyncing = ref(false)
+const showDisconnectMetaConfirm = ref(false)
+const metaAccountToDisconnect = ref<any>(null)
 
 const metaConnectLabel = computed(() => {
   if (metaConnectState.status === 'loading') return 'Opening Meta...'
@@ -84,14 +85,24 @@ async function syncMetaSpend() {
   }
 }
 
-async function disconnectMetaAccount(account: any) {
-  if (!confirm(`Disconnect "${account.accountName}"? Spend data will be preserved.`)) return
+function disconnectMetaAccount(account: any) {
+  metaAccountToDisconnect.value = account
+  showDisconnectMetaConfirm.value = true
+}
+
+async function onConfirmDisconnectMeta() {
+  const account = metaAccountToDisconnect.value
+  if (!account) return
+  showDisconnectMetaConfirm.value = false
+
   try {
     await $fetch('/api/agency/social/meta/disconnect', { method: 'DELETE', query: { connectionId: account.id } })
     toast.add({ title: 'Disconnected', description: `${account.accountName} removed.`, icon: 'i-lucide-check', color: 'success' })
     await refreshMetaAccounts()
   } catch (err: any) {
     toast.add({ title: 'Error', description: err?.data?.statusMessage || 'Could not disconnect.', icon: 'i-lucide-alert-triangle', color: 'error' })
+  } finally {
+    metaAccountToDisconnect.value = null
   }
 }
 
@@ -406,5 +417,19 @@ async function selectTenant(tenantId: string | any) {
         />
       </UFormField>
     </UPageCard>
+
+    <!-- Disconnect Meta Account Confirm Modal -->
+    <UModal v-model:open="showDisconnectMetaConfirm">
+      <template #content>
+        <div class="p-6">
+          <h3 class="text-lg font-semibold mb-2">Disconnect account</h3>
+          <p class="text-sm text-muted mb-4">Disconnect "{{ metaAccountToDisconnect?.accountName }}"? Spend data will be preserved.</p>
+          <div class="flex justify-end gap-2">
+            <UButton variant="ghost" @click="showDisconnectMetaConfirm = false">Cancel</UButton>
+            <UButton color="error" @click="onConfirmDisconnectMeta">Disconnect</UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
   </UForm>
 </template>

@@ -321,6 +321,5 @@ function updateOptionColor(opt: ColumnOption, color: string) {
 function removeOption(opt: ColumnOption) {
   // For now, options can't be deleted via API - would need a DELETE endpoint
   // This is handled as hiding via sortOrder=-1 or by removing from frontend
-  console.log('Remove option:', opt.id)
 }
 </script>

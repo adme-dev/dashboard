@@ -24,8 +24,6 @@ export default defineEventHandler(async (event) => {
     return sendRedirect(event, '/auth/login?error=missing-token', 302)
   }
 
-  console.log(`[Magic Link Callback] Verifying token=${String(token).substring(0, 10)}...`)
-
   try {
     const user = await verifyMagicLink(token)
 
@@ -33,8 +31,6 @@ export default defineEventHandler(async (event) => {
       console.error('[Magic Link Callback] verifyMagicLink returned null — see diagnostic log above')
       return sendRedirect(event, '/auth/login?error=magic-link-expired', 302)
     }
-
-    console.log(`[Magic Link Callback] Success — user=${user.id} (${user.email})`)
 
     // Create JWT
     const jwtToken = await createJwt({

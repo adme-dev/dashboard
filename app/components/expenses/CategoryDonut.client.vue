@@ -68,9 +68,7 @@ const chartData = computed(() => {
       color: colorAccessor(item)
     }
   })
-  
-  // Debug logging
-  console.log('Chart data generated:', result.length, 'segments')
+
   return result
 })
 

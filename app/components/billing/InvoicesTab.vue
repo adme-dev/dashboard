@@ -45,7 +45,15 @@ const summary = computed(() => (invoicesData.value?.summary || {
   totalCollected: 0,
   totalOutstanding: 0
 }) as any)
-const clients = computed(() => ((clientsData.value as any)?.clients || []) as any[])
+const clients = computed(() => {
+  const data = clientsData.value as any
+  if (!data) return []
+  // Scoped endpoint returns flat array, full endpoint returns { clients: [...] }
+  if (Array.isArray(data)) {
+    return data.map((c: any) => ({ id: c.client_id, name: c.client_name }))
+  }
+  return (data.clients || []) as any[]
+})
 
 // Format helpers
 const formatCurrency = (value: number) => {

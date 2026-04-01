@@ -25,32 +25,33 @@
 
     <!-- Add filter row -->
     <div class="space-y-2 border-t pt-3">
-      <select v-model="newRule.columnId" class="w-full text-sm border rounded-md px-2 py-1.5 bg-white dark:bg-neutral-900">
-        <option value="">Select column...</option>
-        <option v-for="col in columns" :key="col.id" :value="col.id">{{ col.name }}</option>
-      </select>
+      <USelect
+        v-model="newRule.columnId"
+        :items="columns.map(col => ({ label: col.name, value: col.id }))"
+        placeholder="Select column..."
+        size="sm"
+        class="w-full"
+      />
 
-      <select
+      <USelect
         v-if="newRule.columnId"
         v-model="newRule.operator"
-        class="w-full text-sm border rounded-md px-2 py-1.5 bg-white dark:bg-neutral-900"
-      >
-        <option v-for="op in availableOperators" :key="op.value" :value="op.value">{{ op.label }}</option>
-      </select>
+        :items="availableOperators"
+        size="sm"
+        class="w-full"
+      />
 
       <!-- Value input -->
       <template v-if="newRule.columnId && newRule.operator && showsValue(newRule.operator)">
         <!-- Status/Dropdown: select from options -->
-        <select
+        <USelect
           v-if="selectedColumnType === 'status' || selectedColumnType === 'dropdown'"
           v-model="newRule.value"
-          class="w-full text-sm border rounded-md px-2 py-1.5 bg-white dark:bg-neutral-900"
-        >
-          <option value="">Select value...</option>
-          <option v-for="opt in selectedColumnOptions" :key="opt.value || opt.id" :value="opt.value || opt.id">
-            {{ opt.label || opt.name }}
-          </option>
-        </select>
+          :items="selectedColumnOptions.map((opt: any) => ({ label: opt.label || opt.name, value: opt.value || opt.id }))"
+          placeholder="Select value..."
+          size="sm"
+          class="w-full"
+        />
 
         <!-- Number -->
         <UInput

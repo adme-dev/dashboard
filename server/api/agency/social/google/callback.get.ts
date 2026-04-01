@@ -61,8 +61,6 @@ export default eventHandler(async (event) => {
       config.googleDeveloperToken
     )
 
-    console.log(`[GoogleAds] Found ${customerIds.length} accessible customers:`, customerIds)
-
     let storedCount = 0
 
     // Collect all ad accounts: try each accessible customer as MCC first, then as direct account
@@ -74,7 +72,6 @@ export default eventHandler(async (event) => {
       try {
         const children = await listClientAccounts(customerId, tokens.access_token, config.googleDeveloperToken)
         if (children.length > 0) {
-          console.log(`[GoogleAds] MCC ${customerId} has ${children.length} child accounts`)
           for (const child of children) {
             if (!seen.has(child.customerId)) {
               seen.add(child.customerId)
@@ -98,8 +95,6 @@ export default eventHandler(async (event) => {
         console.error(`[GoogleAds] Failed to get info for customer ${customerId}:`, err.message)
       }
     }
-
-    console.log(`[GoogleAds] Total unique ad accounts found: ${allAccounts.length}`)
 
     // Store all accounts
     for (const account of allAccounts) {

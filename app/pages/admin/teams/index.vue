@@ -286,6 +286,34 @@
       </template>
     </UModal>
 
+    <!-- Delete Team Confirm Modal -->
+    <UModal v-model:open="showDeleteTeamConfirm">
+      <template #content>
+        <div class="p-6">
+          <h3 class="text-lg font-semibold mb-2">Delete team</h3>
+          <p class="text-sm text-muted mb-4">Are you sure you want to delete "{{ teamToDelete?.name }}"?</p>
+          <div class="flex justify-end gap-2">
+            <UButton variant="ghost" @click="showDeleteTeamConfirm = false">Cancel</UButton>
+            <UButton color="error" @click="onConfirmDeleteTeam">Delete</UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Remove Member Confirm Modal -->
+    <UModal v-model:open="showRemoveMemberConfirm">
+      <template #content>
+        <div class="p-6">
+          <h3 class="text-lg font-semibold mb-2">Remove member</h3>
+          <p class="text-sm text-muted mb-4">Remove {{ memberToRemove?.name }} from {{ selectedTeam?.name }}?</p>
+          <div class="flex justify-end gap-2">
+            <UButton variant="ghost" @click="showRemoveMemberConfirm = false">Cancel</UButton>
+            <UButton color="error" @click="onConfirmRemoveMember">Remove</UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
+
     <!-- Add Members Modal -->
     <UModal v-model:open="showAddMembersModal" title="Add users to team">
       <template #body>
@@ -367,6 +395,10 @@ const selectedTeam = ref<Team | null>(null)
 const activeTab = ref('users')
 const showCreateModal = ref(false)
 const showAddMembersModal = ref(false)
+const showDeleteTeamConfirm = ref(false)
+const showRemoveMemberConfirm = ref(false)
+const teamToDelete = ref<Team | null>(null)
+const memberToRemove = ref<TeamMember | null>(null)
 const createLoading = ref(false)
 const members = ref<TeamMember[]>([])
 const membersLoading = ref(false)
@@ -475,17 +507,25 @@ const editTeam = (team: Team) => {
   showCreateModal.value = true
 }
 
-const deleteTeam = async (team: Team) => {
+const deleteTeam = (team: Team) => {
   if (team.isSystem) return
-  if (!confirm(`Are you sure you want to delete "${team.name}"?`)) return
+  teamToDelete.value = team
+  showDeleteTeamConfirm.value = true
+}
+
+const onConfirmDeleteTeam = async () => {
+  if (!teamToDelete.value) return
+  showDeleteTeamConfirm.value = false
 
   try {
     await refreshTeams()
-    if (selectedTeam.value?.id === team.id) {
+    if (selectedTeam.value?.id === teamToDelete.value.id) {
       selectedTeam.value = null
     }
   } catch (err) {
     console.error('Failed to delete team:', err)
+  } finally {
+    teamToDelete.value = null
   }
 }
 
@@ -549,16 +589,22 @@ const toggleAdmin = async (member: TeamMember) => {
   member.isAdmin = !member.isAdmin
 }
 
-const removeFromTeam = async (member: TeamMember) => {
+const removeFromTeam = (member: TeamMember) => {
   if (!selectedTeam.value) return
-  if (!confirm(`Remove ${member.name} from ${selectedTeam.value.name}?`)) return
+  memberToRemove.value = member
+  showRemoveMemberConfirm.value = true
+}
+
+const onConfirmRemoveMember = async () => {
+  if (!selectedTeam.value || !memberToRemove.value) return
+  showRemoveMemberConfirm.value = false
 
   try {
     await $fetch('/api/admin/team-members', {
       method: 'DELETE',
       body: {
         teamId: selectedTeam.value.id,
-        userId: member.id
+        userId: memberToRemove.value.id
       }
     })
 
@@ -567,6 +613,8 @@ const removeFromTeam = async (member: TeamMember) => {
     await refreshTeams()
   } catch (err) {
     console.error('Failed to remove member:', err)
+  } finally {
+    memberToRemove.value = null
   }
 }
 </script>

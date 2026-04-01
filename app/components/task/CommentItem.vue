@@ -124,9 +124,24 @@
       </div>
     </div>
   </div>
+
+  <!-- Delete confirmation modal -->
+  <UModal v-model:open="showDeleteConfirm">
+    <template #content>
+      <div class="p-6">
+        <h3 class="text-lg font-semibold mb-2">Delete comment</h3>
+        <p class="text-sm text-muted mb-4">Are you sure you want to delete this comment? This action cannot be undone.</p>
+        <div class="flex justify-end gap-2">
+          <UButton variant="ghost" @click="showDeleteConfirm = false">Cancel</UButton>
+          <UButton color="error" @click="confirmDelete">Delete</UButton>
+        </div>
+      </div>
+    </template>
+  </UModal>
 </template>
 
 <script setup lang="ts">
+import DOMPurify from 'dompurify'
 import type { Comment } from '~/composables/useTaskComments'
 
 interface Props {
@@ -159,25 +174,30 @@ const isEdited = computed(() => {
   return !!props.comment.edited_at
 })
 
-// Highlight @mentions in content
+// Highlight @mentions in content (sanitized to prevent XSS)
 const highlightedContent = computed(() => {
-  let content = props.comment.content
-  
-  // Highlight @mentions
+  // Escape HTML in user content first
+  let content = DOMPurify.sanitize(props.comment.content, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })
+
+  // Highlight @mentions (safe because content is already sanitized)
   if (props.comment.mentions) {
     props.comment.mentions.forEach(mention => {
+      const escapedName = DOMPurify.sanitize(mention.name, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })
       const regex = new RegExp(`@${mention.mentionText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g')
-      content = content.replace(regex, `<span class="text-blue-600 font-medium">@${mention.name}</span>`)
+      content = content.replace(regex, `<span class="text-blue-600 font-medium">@${escapedName}</span>`)
     })
   }
-  
+
   // Also highlight any @username pattern
   content = content.replace(
     /@([A-Za-z0-9_\s]+)/g,
     '<span class="text-blue-600 font-medium">@$1</span>'
   )
-  
-  return content
+
+  return DOMPurify.sanitize(content, {
+    ALLOWED_TAGS: ['span'],
+    ALLOWED_ATTR: ['class']
+  })
 })
 
 // Format time
@@ -197,6 +217,8 @@ const formatTime = (date: string): string => {
 }
 
 // Actions
+const showDeleteConfirm = ref(false)
+
 const actionItems = computed(() => [
   [{
     label: 'Edit',
@@ -209,12 +231,15 @@ const actionItems = computed(() => [
     label: 'Delete',
     icon: 'i-lucide-trash-2',
     click: () => {
-      if (confirm('Are you sure you want to delete this comment?')) {
-        emit('delete', props.comment)
-      }
+      showDeleteConfirm.value = true
     }
   }]
 ])
+
+const confirmDelete = () => {
+  showDeleteConfirm.value = false
+  emit('delete', props.comment)
+}
 
 const toggleLike = () => {
   emit('like', props.comment)

@@ -671,7 +671,6 @@ const sendInvites = async () => {
   inviteLoading.value = true
   try {
     const emails = inviteEmails.value.split(',').map(e => e.trim()).filter(Boolean)
-    console.log('Sending invites to:', emails, 'with title:', inviteTitle.value)
     showInviteModal.value = false
     inviteEmails.value = ''
     inviteTitle.value = ''

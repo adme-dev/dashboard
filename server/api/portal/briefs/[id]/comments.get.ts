@@ -26,7 +26,8 @@ export default defineEventHandler(async (event) => {
     }
 
     // CRITICAL: Only non-internal comments — never leak internal comments to clients
-    const comments = await queryRows(`
+    // Fetch all comments (top-level + replies) in a single query
+    const allComments = await queryRows(`
       SELECT
         bc.id,
         bc.brief_id,
@@ -40,58 +41,41 @@ export default defineEventHandler(async (event) => {
         tm.avatar_url AS user_avatar
       FROM brief_comments bc
       LEFT JOIN team_members tm ON bc.user_id = tm.id
-      WHERE bc.brief_id = $1 AND bc.is_internal = false AND bc.parent_id IS NULL
+      WHERE bc.brief_id = $1 AND bc.is_internal = false
       ORDER BY bc.created_at ASC
     `, [id])
 
-    // Get replies for each comment (also non-internal only)
-    for (const comment of comments) {
-      const replies = await queryRows(`
-        SELECT
-          bc.id,
-          bc.brief_id,
-          bc.parent_id,
-          bc.user_id,
-          bc.content,
-          bc.is_resolution,
-          bc.created_at,
-          bc.updated_at,
-          tm.name AS user_name,
-          tm.avatar_url AS user_avatar
-        FROM brief_comments bc
-        LEFT JOIN team_members tm ON bc.user_id = tm.id
-        WHERE bc.parent_id = $1 AND bc.is_internal = false
-        ORDER BY bc.created_at ASC
-      `, [comment.id])
+    // Group replies under their parent comments
+    const topLevel: any[] = []
+    const repliesByParent = new Map<string, any[]>()
 
-      comment.replies = replies.map(r => ({
-        id: r.id,
-        briefId: r.brief_id,
-        parentId: r.parent_id,
-        content: r.content,
-        isResolution: r.is_resolution,
-        createdAt: r.created_at,
-        updatedAt: r.updated_at,
+    for (const c of allComments) {
+      const mapped = {
+        id: c.id,
+        briefId: c.brief_id,
+        parentId: c.parent_id,
+        content: c.content,
+        isResolution: c.is_resolution,
+        createdAt: c.created_at,
+        updatedAt: c.updated_at,
         user: {
-          name: r.user_name || 'Team Member',
-          avatarUrl: r.user_avatar
+          name: c.user_name || 'Team Member',
+          avatarUrl: c.user_avatar
         }
-      }))
+      }
+
+      if (!c.parent_id) {
+        topLevel.push(mapped)
+      } else {
+        const arr = repliesByParent.get(c.parent_id) || []
+        arr.push(mapped)
+        repliesByParent.set(c.parent_id, arr)
+      }
     }
 
-    return comments.map(c => ({
-      id: c.id,
-      briefId: c.brief_id,
-      parentId: c.parent_id,
-      content: c.content,
-      isResolution: c.is_resolution,
-      createdAt: c.created_at,
-      updatedAt: c.updated_at,
-      user: {
-        name: c.user_name || 'Team Member',
-        avatarUrl: c.user_avatar
-      },
-      replies: c.replies || []
+    return topLevel.map(c => ({
+      ...c,
+      replies: repliesByParent.get(c.id) || []
     }))
   } catch (error: any) {
     if (error.statusCode) throw error

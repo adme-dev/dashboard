@@ -5,9 +5,13 @@
  */
 
 import { readBody, createError } from 'h3'
-import { queryOne } from '../../utils/db'
+import { queryOne } from '~~/server/utils/db'
+import { requireRole } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
+  // Require authenticated owner
+  await requireRole(event, ['owner'])
+
   // Only allow in development
   if (process.env.NODE_ENV === 'production') {
     throw createError({
@@ -50,7 +54,6 @@ export default defineEventHandler(async (event) => {
         [normalizedEmail, name]
       )
       userId = result?.id
-      console.log('[Super Admin] Updated existing user to owner:', normalizedEmail)
     } else {
       // Create new owner user
       const result = await queryOne(
@@ -60,7 +63,6 @@ export default defineEventHandler(async (event) => {
         [name, normalizedEmail]
       )
       userId = result?.id
-      console.log('[Super Admin] Created new owner:', normalizedEmail)
     }
 
     return {

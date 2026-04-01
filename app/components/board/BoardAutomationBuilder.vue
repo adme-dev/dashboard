@@ -212,12 +212,12 @@ watch(() => props.open, (isOpen) => {
           <div v-if="newActionType === 'send_email'" class="space-y-2">
             <div class="flex items-center gap-2">
               <span class="text-sm text-muted w-12">To:</span>
-              <select
+              <USelect
                 v-model="newActionConfig.to"
-                class="flex-1 text-sm border rounded px-2 py-1.5 bg-white dark:bg-neutral-900"
-              >
-                <option v-for="r in recipientOptions" :key="r.value" :value="r.value">{{ r.label }}</option>
-              </select>
+                :items="recipientOptions"
+                size="sm"
+                class="flex-1"
+              />
             </div>
             <UInput
               v-if="newActionConfig.to === 'custom'"
@@ -236,12 +236,12 @@ watch(() => props.open, (isOpen) => {
           <div v-if="newActionType === 'create_notification'" class="space-y-2">
             <div class="flex items-center gap-2">
               <span class="text-sm text-muted w-12">To:</span>
-              <select
+              <USelect
                 v-model="newActionConfig.to"
-                class="flex-1 text-sm border rounded px-2 py-1.5 bg-white dark:bg-neutral-900"
-              >
-                <option v-for="r in recipientOptions.filter(r => r.value !== 'custom')" :key="r.value" :value="r.value">{{ r.label }}</option>
-              </select>
+                :items="recipientOptions.filter(r => r.value !== 'custom')"
+                size="sm"
+                class="flex-1"
+              />
             </div>
             <UInput
               v-model="newActionConfig.title"

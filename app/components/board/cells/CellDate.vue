@@ -35,19 +35,19 @@
           <div class="flex items-center gap-2">
             <UIcon name="i-lucide-clock" class="w-3.5 h-3.5 text-gray-400 dark:text-neutral-500 flex-shrink-0" />
             <div class="flex items-center gap-1 flex-1">
-              <select
+              <USelect
                 v-model="localHour"
-                class="w-16 px-2 py-1 text-sm border border-gray-200 dark:border-neutral-700 rounded-md bg-white dark:bg-neutral-800 text-gray-900 dark:text-neutral-100 outline-none focus:border-primary"
-              >
-                <option v-for="h in hours" :key="h" :value="h">{{ h }}</option>
-              </select>
+                :items="hours"
+                size="sm"
+                class="w-16"
+              />
               <span class="text-gray-400 dark:text-neutral-500 font-medium">:</span>
-              <select
+              <USelect
                 v-model="localMinute"
-                class="w-16 px-2 py-1 text-sm border border-gray-200 dark:border-neutral-700 rounded-md bg-white dark:bg-neutral-800 text-gray-900 dark:text-neutral-100 outline-none focus:border-primary"
-              >
-                <option v-for="m in minutes" :key="m" :value="m">{{ m }}</option>
-              </select>
+                :items="minutes"
+                size="sm"
+                class="w-16"
+              />
             </div>
             <button
               v-if="localHour !== '09' || localMinute !== '00'"

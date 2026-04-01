@@ -44,7 +44,8 @@ export async function setOrgToken(event: H3Event, token: XeroTokenSet, opts?: { 
     token.id_token,
     token.expires_at,
     token.scope,
-    token.token_type
+    token.token_type,
+    opts?.connectedBy || null
   ])
 }
 
@@ -85,10 +86,14 @@ export async function getOrgToken(event: H3Event): Promise<XeroTokenSet | undefi
   return token
 }
 
-export async function clearOrgToken(event: H3Event) {
+export async function clearOrgToken(event: H3Event, tenantId?: string) {
   kvDelete(event, ORG_TOKEN_KV_KEY)
   kvDelete(event, ORG_TENANT_KV_KEY)
-  await query('DELETE FROM xero_org_connection')
+  if (tenantId) {
+    await query('DELETE FROM xero_org_connection WHERE tenant_id = $1', [tenantId])
+  } else {
+    await query('DELETE FROM xero_org_connection')
+  }
 }
 
 export async function getOrgTenant(event: H3Event): Promise<{ tenantId: string; tenantName: string } | undefined> {

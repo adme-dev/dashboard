@@ -32,10 +32,13 @@
     <!-- Add sort -->
     <div v-if="availableColumns.length" class="border-t pt-3">
       <div class="flex items-center gap-2">
-        <select v-model="newColumnId" class="flex-1 text-sm border rounded-md px-2 py-1.5 bg-white dark:bg-neutral-900">
-          <option value="">Add sort...</option>
-          <option v-for="col in availableColumns" :key="col.id" :value="col.id">{{ col.name }}</option>
-        </select>
+        <USelect
+          v-model="newColumnId"
+          :items="availableColumns.map(col => ({ label: col.name, value: col.id }))"
+          placeholder="Add sort..."
+          size="sm"
+          class="flex-1"
+        />
         <UButton
           v-if="newColumnId"
           size="sm"

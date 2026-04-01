@@ -24,7 +24,6 @@ export default defineEventHandler(async (event) => {
 
   // Check email service availability upfront (doesn't reveal user existence)
   const emailReady = isEmailConfigured(event)
-  console.log('[Magic Link] Step 1 — email configured:', emailReady)
 
   if (!emailReady && !import.meta.dev) {
     console.error('[Magic Link] Email service not configured — RESEND_API_KEY missing')
@@ -36,7 +35,6 @@ export default defineEventHandler(async (event) => {
 
   // Find user by email
   const user = await getUserByEmail(normalizedEmail)
-  console.log('[Magic Link] Step 2 — user lookup for', normalizedEmail, '→', user ? `found (id=${user.id}, active=${user.is_active})` : 'NOT FOUND')
 
   // Always return success to prevent email enumeration
   // But only actually send if user exists
@@ -49,7 +47,6 @@ export default defineEventHandler(async (event) => {
 
   // Check if user is active
   if (!user.is_active) {
-    console.log('[Magic Link] User is inactive, skipping email')
     return {
       success: true,
       message: 'If an account exists with this email, a magic link has been sent.'
@@ -59,7 +56,6 @@ export default defineEventHandler(async (event) => {
   try {
     // Generate magic link token
     const token = await generateMagicLink(user.id, user.email)
-    console.log('[Magic Link] Step 3 — token generated')
 
     // Derive the app URL from the incoming request (works for any deployment)
     const reqUrl = getRequestURL(event)
@@ -67,17 +63,14 @@ export default defineEventHandler(async (event) => {
 
     // Build magic link URL
     const magicLinkUrl = `${appUrl}/auth/magic-link?token=${token}`
-    console.log('[Magic Link] Step 4 — URL:', magicLinkUrl)
 
     // Send email — let errors propagate so user knows something went wrong
-    console.log('[Magic Link] Step 5 — sending email to', user.email)
     await sendMagicLinkEmail({
       to: user.email,
       name: user.name,
       magicLinkUrl,
       event
     })
-    console.log('[Magic Link] Step 6 — email sent successfully')
 
     return {
       success: true,

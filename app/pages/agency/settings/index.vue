@@ -68,8 +68,18 @@ const saveDepartment = async () => {
   }
 }
 
-const deleteDepartment = async (id: string) => {
-  if (!confirm('Are you sure you want to delete this department? All tasks in this department will need to be reassigned.')) return
+const showDeleteDepartmentConfirm = ref(false)
+const departmentToDelete = ref<string | null>(null)
+
+const deleteDepartment = (id: string) => {
+  departmentToDelete.value = id
+  showDeleteDepartmentConfirm.value = true
+}
+
+const onConfirmDeleteDepartment = async () => {
+  const id = departmentToDelete.value
+  if (!id) return
+  showDeleteDepartmentConfirm.value = false
 
   try {
     await $fetch(`/api/agency/departments/${id}`, { method: 'DELETE' })
@@ -77,6 +87,8 @@ const deleteDepartment = async (id: string) => {
     refreshDepartments()
   } catch (err: any) {
     toast.add({ title: 'Failed to delete department', description: err.data?.message, color: 'error' })
+  } finally {
+    departmentToDelete.value = null
   }
 }
 
@@ -161,8 +173,18 @@ const saveStatus = async () => {
   }
 }
 
-const deleteStatus = async (id: string) => {
-  if (!confirm('Are you sure you want to delete this status? Tasks with this status will need to be reassigned.')) return
+const showDeleteStatusConfirm = ref(false)
+const statusToDelete = ref<string | null>(null)
+
+const deleteStatus = (id: string) => {
+  statusToDelete.value = id
+  showDeleteStatusConfirm.value = true
+}
+
+const onConfirmDeleteStatus = async () => {
+  const id = statusToDelete.value
+  if (!id) return
+  showDeleteStatusConfirm.value = false
 
   try {
     await $fetch(`/api/agency/statuses/${id}`, { method: 'DELETE' })
@@ -170,6 +192,8 @@ const deleteStatus = async (id: string) => {
     refreshStatuses()
   } catch (err: any) {
     toast.add({ title: 'Failed to delete status', description: err.data?.message, color: 'error' })
+  } finally {
+    statusToDelete.value = null
   }
 }
 
@@ -256,8 +280,18 @@ const saveLabel = async () => {
   }
 }
 
-const deleteLabel = async (id: string) => {
-  if (!confirm('Are you sure you want to delete this label?')) return
+const showDeleteLabelConfirm = ref(false)
+const labelToDelete = ref<string | null>(null)
+
+const deleteLabel = (id: string) => {
+  labelToDelete.value = id
+  showDeleteLabelConfirm.value = true
+}
+
+const onConfirmDeleteLabel = async () => {
+  const id = labelToDelete.value
+  if (!id) return
+  showDeleteLabelConfirm.value = false
 
   try {
     await $fetch(`/api/agency/labels/${id}`, { method: 'DELETE' })
@@ -265,6 +299,8 @@ const deleteLabel = async (id: string) => {
     refreshLabels()
   } catch (err: any) {
     toast.add({ title: 'Failed to delete label', description: err.data?.message, color: 'error' })
+  } finally {
+    labelToDelete.value = null
   }
 }
 
@@ -643,6 +679,48 @@ const presetColors = [
             :loading="savingStatus"
             @click="saveStatus"
           />
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Delete Department Confirm Modal -->
+    <UModal v-model:open="showDeleteDepartmentConfirm">
+      <template #content>
+        <div class="p-6">
+          <h3 class="text-lg font-semibold mb-2">Delete department</h3>
+          <p class="text-sm text-muted mb-4">Are you sure you want to delete this department? All tasks in this department will need to be reassigned.</p>
+          <div class="flex justify-end gap-2">
+            <UButton variant="ghost" @click="showDeleteDepartmentConfirm = false">Cancel</UButton>
+            <UButton color="error" @click="onConfirmDeleteDepartment">Delete</UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Delete Status Confirm Modal -->
+    <UModal v-model:open="showDeleteStatusConfirm">
+      <template #content>
+        <div class="p-6">
+          <h3 class="text-lg font-semibold mb-2">Delete status</h3>
+          <p class="text-sm text-muted mb-4">Are you sure you want to delete this status? Tasks with this status will need to be reassigned.</p>
+          <div class="flex justify-end gap-2">
+            <UButton variant="ghost" @click="showDeleteStatusConfirm = false">Cancel</UButton>
+            <UButton color="error" @click="onConfirmDeleteStatus">Delete</UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Delete Label Confirm Modal -->
+    <UModal v-model:open="showDeleteLabelConfirm">
+      <template #content>
+        <div class="p-6">
+          <h3 class="text-lg font-semibold mb-2">Delete label</h3>
+          <p class="text-sm text-muted mb-4">Are you sure you want to delete this label?</p>
+          <div class="flex justify-end gap-2">
+            <UButton variant="ghost" @click="showDeleteLabelConfirm = false">Cancel</UButton>
+            <UButton color="error" @click="onConfirmDeleteLabel">Delete</UButton>
+          </div>
         </div>
       </template>
     </UModal>

@@ -39,41 +39,55 @@ export default eventHandler(async (event) => {
   if (run.status === 'pushed') invoiceStatus = 'draft_in_xero'
   else if (run.status === 'complete') invoiceStatus = 'paid'
 
-  let synced = 0
+  // Batch-fetch all tasks by monday_item_id
+  const mondayIds = lineItems.map(li => li.monday_item_id)
+  const tasks = await queryRows<{ id: string; department_id: string; monday_item_id: string }>(
+    `SELECT id, department_id, monday_item_id FROM tasks WHERE monday_item_id = ANY($1)`,
+    [mondayIds]
+  )
+  const tasksByMondayId = new Map(tasks.map(t => [t.monday_item_id, t]))
+
+  // Batch-fetch all invoice_status columns for relevant departments
+  const departmentIds = [...new Set(tasks.map(t => t.department_id))]
+  const columns = departmentIds.length > 0
+    ? await queryRows<{ id: string; department_id: string }>(
+        `SELECT id, department_id FROM custom_columns
+         WHERE department_id = ANY($1) AND column_type = 'invoice_status'`,
+        [departmentIds]
+      )
+    : []
+  const columnByDept = new Map(columns.map(c => [c.department_id, c]))
+
+  // Build batch upsert values
+  const jsonValue = JSON.stringify({ status: invoiceStatus, runId, syncedAt: new Date().toISOString() })
+  const upsertRows: [string, string, string, string][] = []
 
   for (const item of lineItems) {
-    // Find the task by monday_item_id
-    const task = await queryOne<{ id: string; department_id: string }>(
-      `SELECT id, department_id FROM tasks WHERE monday_item_id = $1`,
-      [item.monday_item_id]
-    )
+    const task = tasksByMondayId.get(item.monday_item_id)
     if (!task) continue
-
-    // Find invoice_status column for this board
-    const column = await queryOne<{ id: string }>(
-      `SELECT id FROM custom_columns
-       WHERE department_id = $1 AND column_type = 'invoice_status'
-       LIMIT 1`,
-      [task.department_id]
-    )
+    const column = columnByDept.get(task.department_id)
     if (!column) continue
+    upsertRows.push([task.id, column.id, invoiceStatus, jsonValue])
+  }
 
-    // Upsert the column value
-    await execute(
+  // Single batch upsert
+  let synced = 0
+  if (upsertRows.length > 0) {
+    const taskIds = upsertRows.map(r => r[0])
+    const columnIds = upsertRows.map(r => r[1])
+    const textValues = upsertRows.map(r => r[2])
+    const jsonValues = upsertRows.map(r => r[3])
+
+    const result = await execute(
       `INSERT INTO task_column_values (task_id, column_id, text_value, json_value)
-       VALUES ($1, $2, $3, $4)
+       SELECT * FROM UNNEST($1::uuid[], $2::uuid[], $3::text[], $4::jsonb[])
        ON CONFLICT (task_id, column_id) DO UPDATE SET
-         text_value = $3,
-         json_value = $4,
+         text_value = EXCLUDED.text_value,
+         json_value = EXCLUDED.json_value,
          updated_at = NOW()`,
-      [
-        task.id,
-        column.id,
-        invoiceStatus,
-        JSON.stringify({ status: invoiceStatus, runId, syncedAt: new Date().toISOString() })
-      ]
+      [taskIds, columnIds, textValues, jsonValues]
     )
-    synced++
+    synced = upsertRows.length
   }
 
   return { synced, status: invoiceStatus }

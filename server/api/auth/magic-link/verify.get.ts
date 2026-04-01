@@ -17,8 +17,6 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  console.log(`[Magic Link Verify] Verifying token=${token.substring(0, 10)}...`)
-
   try {
     const user = await verifyMagicLink(token)
 
@@ -28,8 +26,6 @@ export default defineEventHandler(async (event) => {
         statusMessage: 'Invalid or expired magic link'
       })
     }
-
-    console.log(`[Magic Link Verify] Success — user=${user.id} (${user.email})`)
 
     // Create JWT session
     const jwtToken = await createJwt({

@@ -14,7 +14,6 @@ import { requireAuth } from '~~/server/utils/auth'
 // Notification function stub
 async function sendApprovalResponseNotification(_params: any) {
   // TODO: Integrate with notification system
-  console.log('Would send approval response notification')
 }
 
 interface RespondBody {

@@ -170,8 +170,18 @@ const resetNewForm = () => {
 
 // Delete form
 const deletingForm = ref<string | null>(null)
-const deleteForm = async (formId: string) => {
-  if (!confirm('Are you sure you want to delete this form? This will also delete all submissions.')) return
+const showDeleteFormConfirm = ref(false)
+const formToDelete = ref<string | null>(null)
+
+const deleteForm = (formId: string) => {
+  formToDelete.value = formId
+  showDeleteFormConfirm.value = true
+}
+
+const onConfirmDeleteForm = async () => {
+  const formId = formToDelete.value
+  if (!formId) return
+  showDeleteFormConfirm.value = false
 
   deletingForm.value = formId
   try {
@@ -182,6 +192,7 @@ const deleteForm = async (formId: string) => {
     toast.add({ title: 'Failed to delete form', description: err.data?.message, color: 'error' })
   } finally {
     deletingForm.value = null
+    formToDelete.value = null
   }
 }
 
@@ -549,6 +560,20 @@ const copyPublicLink = (slug: string) => {
         </div>
       </div>
     </UDashboardPanel>
+
+    <!-- Delete Form Confirm Modal -->
+    <UModal v-model:open="showDeleteFormConfirm">
+      <template #content>
+        <div class="p-6">
+          <h3 class="text-lg font-semibold mb-2">Delete form</h3>
+          <p class="text-sm text-muted mb-4">Are you sure you want to delete this form? This will also delete all submissions.</p>
+          <div class="flex justify-end gap-2">
+            <UButton variant="ghost" @click="showDeleteFormConfirm = false">Cancel</UButton>
+            <UButton color="error" @click="onConfirmDeleteForm">Delete</UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
 
     <!-- New Form Slideover -->
     <USlideover v-model:open="showNewFormModal">

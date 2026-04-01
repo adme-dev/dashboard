@@ -139,23 +139,26 @@ export default defineEventHandler(async (event) => {
       briefCount: Number(t.brief_count) || 0
     }))
 
-    // Optionally include fields
-    if (includeFields) {
-      for (const template of result) {
-        const fields = await queryRows(`
-          SELECT
-            id, field_key, field_label, field_type, placeholder, help_text,
-            default_value, is_required, validation_rules, options, conditional_logic,
-            step_number, step_title, section, width, sort_order,
-            show_in_preview, show_in_list, created_at
-          FROM brief_template_fields
-          WHERE template_id = $1
-          ORDER BY step_number ASC, sort_order ASC
-        `, [template.id])
+    // Optionally include fields — batch fetch for all templates
+    if (includeFields && result.length > 0) {
+      const templateIds = result.map(t => t.id)
+      const allFields = await queryRows(`
+        SELECT
+          id, template_id, field_key, field_label, field_type, placeholder, help_text,
+          default_value, is_required, validation_rules, options, conditional_logic,
+          step_number, step_title, section, width, sort_order,
+          show_in_preview, show_in_list, created_at
+        FROM brief_template_fields
+        WHERE template_id = ANY($1)
+        ORDER BY step_number ASC, sort_order ASC
+      `, [templateIds])
 
-        ;(template as any).fields = fields.map(f => ({
+      // Group fields by template_id
+      const fieldsByTemplate = new Map<string, any[]>()
+      for (const f of allFields) {
+        const mapped = {
           id: f.id,
-          templateId: template.id,
+          templateId: f.template_id,
           fieldKey: f.field_key,
           fieldLabel: f.field_label,
           fieldType: f.field_type,
@@ -174,7 +177,14 @@ export default defineEventHandler(async (event) => {
           showInPreview: f.show_in_preview,
           showInList: f.show_in_list,
           createdAt: f.created_at
-        }))
+        }
+        const arr = fieldsByTemplate.get(f.template_id) || []
+        arr.push(mapped)
+        fieldsByTemplate.set(f.template_id, arr)
+      }
+
+      for (const template of result) {
+        ;(template as any).fields = fieldsByTemplate.get(template.id) || []
       }
     }
 

@@ -51,7 +51,6 @@ export default eventHandler(async (event) => {
     // If template was selected, create initial boards from template
     if (templateId) {
       // TODO: Implement template-based board creation
-      console.log(`Creating boards from template: ${templateId}`)
     }
 
     return {

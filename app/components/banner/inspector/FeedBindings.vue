@@ -115,15 +115,13 @@ watch(addProp, () => { addCol.value = '' })
             {{ bindableProperties.find(p => p.value === binding.property)?.label || binding.property }}
           </span>
           <UIcon name="i-lucide-arrow-left" class="w-3 h-3 text-(--ui-text-muted) shrink-0" />
-          <select
-            :value="binding.column"
-            class="flex-1 text-[11px] bg-transparent border-none outline-none text-(--ui-text) min-w-0"
-            @change="updateBindingColumn(idx, ($event.target as HTMLSelectElement).value)"
-          >
-            <option v-for="col in compatibleColumns(binding.property)" :key="col.name" :value="col.name">
-              {{ col.name }}
-            </option>
-          </select>
+          <USelect
+            :model-value="binding.column"
+            :items="compatibleColumns(binding.property).map(col => ({ label: col.name, value: col.name }))"
+            size="xs"
+            class="flex-1 min-w-0"
+            @update:model-value="updateBindingColumn(idx, $event)"
+          />
           <UButton
             icon="i-lucide-x"
             variant="ghost"
@@ -136,23 +134,21 @@ watch(addProp, () => { addCol.value = '' })
 
       <!-- Add binding -->
       <div v-if="availableProperties.length" class="flex items-center gap-1.5">
-        <select
+        <USelect
           v-model="addProp"
-          class="text-[11px] bg-(--ui-bg) border border-(--ui-border) rounded px-1.5 py-1 flex-1 min-w-0"
-        >
-          <option value="">Property...</option>
-          <option v-for="p in availableProperties" :key="p.value" :value="p.value">{{ p.label }}</option>
-        </select>
-        <select
+          :items="availableProperties"
+          placeholder="Property..."
+          size="xs"
+          class="flex-1 min-w-0"
+        />
+        <USelect
           v-model="addCol"
-          class="text-[11px] bg-(--ui-bg) border border-(--ui-border) rounded px-1.5 py-1 flex-1 min-w-0"
+          :items="compatibleColumns(addProp).map(col => ({ label: `${col.name} (${col.type})`, value: col.name }))"
+          placeholder="Column..."
+          size="xs"
           :disabled="!addProp"
-        >
-          <option value="">Column...</option>
-          <option v-for="col in compatibleColumns(addProp)" :key="col.name" :value="col.name">
-            {{ col.name }} ({{ col.type }})
-          </option>
-        </select>
+          class="flex-1 min-w-0"
+        />
         <UButton
           icon="i-lucide-plus"
           variant="soft"

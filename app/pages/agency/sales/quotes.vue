@@ -121,7 +121,6 @@ const getActions = (quote: any) => [
 // Quote actions
 const duplicateQuote = async (quote: any) => {
   // TODO: Implement duplicate
-  console.log('Duplicate quote:', quote.quoteNumber)
 }
 
 const sendQuote = async (quote: any) => {

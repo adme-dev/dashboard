@@ -168,17 +168,13 @@ watch(statuses, (newStatuses) => {
         <label class="block text-sm font-medium text-black mb-2">
           Status <span class="text-[#FF6B6B]">*</span>
         </label>
-        <select
+        <USelect
           v-model="form.statusId"
-          class="w-full px-4 py-2.5 border border-black/20 rounded text-black bg-white focus:outline-none focus:border-[#13B5EA] transition-colors"
-          :class="{ 'border-[#FF6B6B]': errors.statusId }"
+          :items="statuses.map(s => ({ label: s.name, value: s.id }))"
+          placeholder="Select status"
           :disabled="loading"
-        >
-          <option value="" disabled>Select status</option>
-          <option v-for="status in statuses" :key="status.id" :value="status.id">
-            {{ status.name }}
-          </option>
-        </select>
+          class="w-full"
+        />
         <p v-if="errors.statusId" class="mt-1 text-sm text-[#FF6B6B]">{{ errors.statusId }}</p>
       </div>
 
@@ -186,15 +182,12 @@ watch(statuses, (newStatuses) => {
         <label class="block text-sm font-medium text-black mb-2">
           Priority <span class="text-[#FF6B6B]">*</span>
         </label>
-        <select
+        <USelect
           v-model="form.priority"
-          class="w-full px-4 py-2.5 border border-black/20 rounded text-black bg-white focus:outline-none focus:border-[#13B5EA] transition-colors"
+          :items="priorityOptions"
           :disabled="loading"
-        >
-          <option v-for="option in priorityOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </option>
-        </select>
+          class="w-full"
+        />
       </div>
     </div>
 
@@ -221,30 +214,22 @@ watch(statuses, (newStatuses) => {
     <div class="grid grid-cols-2 gap-4">
       <div>
         <label class="block text-sm font-medium text-black mb-2">Assignee</label>
-        <select
+        <USelect
           v-model="form.assigneeId"
-          class="w-full px-4 py-2.5 border border-black/20 rounded text-black bg-white focus:outline-none focus:border-[#13B5EA] transition-colors"
+          :items="[{ label: 'Unassigned', value: null }, ...members]"
           :disabled="loading"
-        >
-          <option :value="null">Unassigned</option>
-          <option v-for="member in members" :key="member.value" :value="member.value">
-            {{ member.label }}
-          </option>
-        </select>
+          class="w-full"
+        />
       </div>
 
       <div>
         <label class="block text-sm font-medium text-black mb-2">Project</label>
-        <select
+        <USelect
           v-model="form.projectId"
-          class="w-full px-4 py-2.5 border border-black/20 rounded text-black bg-white focus:outline-none focus:border-[#13B5EA] transition-colors"
+          :items="[{ label: 'No project', value: null }, ...projects]"
           :disabled="loading"
-        >
-          <option :value="null">No project</option>
-          <option v-for="project in projects" :key="project.value" :value="project.value">
-            {{ project.label }}
-          </option>
-        </select>
+          class="w-full"
+        />
       </div>
     </div>
 

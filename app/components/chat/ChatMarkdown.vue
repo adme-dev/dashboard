@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 const props = defineProps<{
   content: string
@@ -27,18 +28,14 @@ marked.setOptions({
 
 // Sanitize and render markdown
 const rendered = computed(() => {
-  let text = props.content
+  // Parse with marked first, then sanitize with DOMPurify
+  const html = marked.parse(props.content, { async: false }) as string
 
-  // Basic XSS prevention — strip script tags and event handlers
-  text = text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-  text = text.replace(/on\w+\s*=\s*["'][^"']*["']/gi, '')
-  text = text.replace(/javascript:/gi, '')
-
-  // Parse with marked
-  const html = marked.parse(text, { async: false }) as string
-
-  // Wrap code blocks with styling
-  return html
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'a', 'code', 'pre', 'blockquote', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'del', 'span', 'div', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
+    ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
+    ALLOW_DATA_ATTR: false
+  })
 })
 </script>
 
