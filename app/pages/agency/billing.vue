@@ -1,13 +1,20 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'agency', middleware: ['role-finance'] })
+definePageMeta({ layout: 'agency', middleware: ['role-invoice'] })
 
 const route = useRoute()
-const activeTab = ref(route.query.tab === 'eom' ? 'eom' : 'invoices')
+const { canAccessFinance } = useAuth()
 
-const tabs = [
-  { label: 'Invoices', value: 'invoices', icon: 'i-lucide-receipt' },
-  { label: 'EOM Generation', value: 'eom', icon: 'i-lucide-file-spreadsheet' },
-]
+const activeTab = ref(route.query.tab === 'eom' && canAccessFinance.value ? 'eom' : 'invoices')
+
+const tabs = computed(() => {
+  const items = [
+    { label: 'Invoices', value: 'invoices', icon: 'i-lucide-receipt' },
+  ]
+  if (canAccessFinance.value) {
+    items.push({ label: 'EOM Generation', value: 'eom', icon: 'i-lucide-file-spreadsheet' })
+  }
+  return items
+})
 
 watch(activeTab, (val) => {
   navigateTo({ path: '/agency/billing', query: { tab: val } }, { replace: true })
@@ -29,7 +36,7 @@ watch(activeTab, (val) => {
 
       <!-- Tab Content -->
       <BillingInvoicesTab v-if="activeTab === 'invoices'" />
-      <BillingEomTab v-if="activeTab === 'eom'" />
+      <BillingEomTab v-if="activeTab === 'eom' && canAccessFinance" />
 
     </div>
   </div>

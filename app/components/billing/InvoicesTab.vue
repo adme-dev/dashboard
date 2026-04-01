@@ -3,6 +3,11 @@ import { format } from 'date-fns'
 
 const toast = useToast()
 
+// RBAC — scoped vs full finance access
+const { canAccessFinance, canAccessInvoices, user } = useAuth()
+const isFullFinance = canAccessFinance
+const isScopedAccess = computed(() => canAccessInvoices.value && !canAccessFinance.value)
+
 // Filters
 const statusFilter = ref('all')
 const clientFilter = ref<string | null>(null)
@@ -18,8 +23,14 @@ const { data: invoicesData, pending, refresh } = useFetch('/api/agency/invoices'
   }
 })
 
-// Fetch clients for filter
-const { data: clientsData } = useFetch('/api/agency/clients', {
+// Fetch clients for filter — scoped users only see their assigned clients
+const clientsUrl = computed(() => {
+  if (isScopedAccess.value && user.value) {
+    return `/api/agency/team-members/${user.value.id}/clients`
+  }
+  return '/api/agency/clients'
+})
+const { data: clientsData } = useFetch(clientsUrl, {
   query: { limit: 100 }
 })
 
@@ -171,7 +182,7 @@ const sendInvoice = async (invoice: any) => {
     <!-- Header with New Invoice button -->
     <div class="flex items-center justify-between mb-6">
       <div><!-- filter info --></div>
-      <UButton label="New Invoice" icon="i-lucide-plus" color="primary" @click="showNewInvoiceModal = true" />
+      <UButton :label="isScopedAccess ? 'New Draft Invoice' : 'New Invoice'" icon="i-lucide-plus" color="primary" @click="showNewInvoiceModal = true" />
     </div>
 
     <!-- Summary Cards -->
@@ -302,7 +313,7 @@ const sendInvoice = async (invoice: any) => {
         <template #actions-cell="{ row }">
           <div class="flex items-center gap-1">
             <UButton
-              v-if="(row.original as any).status === 'draft'"
+              v-if="isFullFinance && (row.original as any).status === 'draft'"
               variant="ghost"
               icon="i-lucide-send"
               size="xs"

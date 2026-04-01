@@ -6,7 +6,7 @@ const open = ref(false)
 const selectedWorkspace = ref<string | null>(null)
 
 // RBAC: permission-gated navigation
-const { canAccessClients, canAccessMediaBuying, canAccessFinance, canAccessSales, canAccessReports, canAccessCreative, canAccessAdmin, canAccessAiTraining, canAccessAutomation, canWrite } = useAuth()
+const { canAccessClients, canAccessMediaBuying, canAccessFinance, canAccessInvoices, canAccessSales, canAccessReports, canAccessCreative, canAccessAdmin, canAccessAiTraining, canAccessAutomation, canWrite } = useAuth()
 
 const close = () => { open.value = false }
 
@@ -94,6 +94,14 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { label: 'TikTok Ads', icon: 'i-lucide-music', to: '/agency/social/tiktok', onSelect: close },
       { label: 'Connections', icon: 'i-lucide-plug', to: '/agency/social', onSelect: close },
       { label: 'Budget Health', icon: 'i-lucide-gauge', to: '/agency/budget-health', onSelect: close },
+    )
+  }
+
+  // Billing (scoped) — canAccessInvoices but NOT canAccessFinance (e.g. account managers)
+  if (canAccessInvoices.value && !canAccessFinance.value) {
+    items.push(
+      { type: 'label', label: 'Billing' },
+      { label: 'Invoices', icon: 'i-lucide-receipt', to: '/agency/billing', onSelect: close },
     )
   }
 
