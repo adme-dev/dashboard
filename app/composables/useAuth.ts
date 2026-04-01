@@ -36,6 +36,7 @@ export const useAuth = () => {
   const isReadOnly = computed(() => !!user.value && (isReadOnlyRole(user.value.role) || user.value.isCustomReadOnly === true))
   const canWrite = computed(() => !!user.value && !isReadOnlyRole(user.value.role) && user.value.isCustomReadOnly !== true)
   const canAccessFinance = computed(() => hasRole(PERMISSIONS.FINANCE))
+  const canAccessInvoices = computed(() => hasRole(PERMISSIONS.INVOICE_OWN_CLIENTS))
   const canAccessSales = computed(() => hasRole(PERMISSIONS.SALES))
   const canAccessClients = computed(() => hasRole(PERMISSIONS.CLIENTS))
   const canAccessCreative = computed(() => hasRole(PERMISSIONS.CREATIVE))
@@ -123,6 +124,7 @@ export const useAuth = () => {
     isReadOnly,
     canWrite,
     canAccessFinance,
+    canAccessInvoices,
     canAccessSales,
     canAccessClients,
     canAccessCreative,
