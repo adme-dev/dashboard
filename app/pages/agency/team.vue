@@ -209,6 +209,15 @@ const commonRoles = [
   'Video Producer'
 ]
 
+// Client book slideover
+const showClientBook = ref(false)
+const clientBookMember = ref<any>(null)
+
+const openClientBook = (member: any) => {
+  clientBookMember.value = member
+  showClientBook.value = true
+}
+
 const commonDepartments = [
   'Design',
   'Development',
@@ -405,6 +414,11 @@ const commonDepartments = [
               <UDropdownMenu
                 :items="[
                   [{
+                    label: 'View Clients',
+                    icon: 'i-lucide-briefcase',
+                    click: () => openClientBook(r)
+                  },
+                  {
                     label: 'Edit',
                     icon: 'i-lucide-edit',
                     click: () => openEditModal(r)
@@ -592,5 +606,13 @@ const commonDepartments = [
         </div>
       </template>
     </UModal>
+
+    <!-- Client Book Slideover -->
+    <TeamMemberClientsSlideover
+      v-if="clientBookMember"
+      v-model:open="showClientBook"
+      :member-id="String(clientBookMember.id)"
+      :member-name="clientBookMember.name"
+    />
   </div>
 </template>

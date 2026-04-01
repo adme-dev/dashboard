@@ -360,6 +360,9 @@ const invoiceColumns = [
               </div>
             </UCard>
 
+            <!-- Account Team -->
+            <ClientsClientTeamCard :client-id="clientId" />
+
             <!-- Xero Link -->
             <UCard class="lg:col-span-3">
               <template #header>
