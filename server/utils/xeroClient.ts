@@ -271,6 +271,23 @@ function lowerFirst(key: string): string {
   return key.charAt(0).toLowerCase() + key.slice(1)
 }
 
+// Xero returns dates as Microsoft-JSON strings: "/Date(1490313600000+0000)/".
+// Passing those to `new Date(...)` produces Invalid Date and any downstream
+// .toISOString() throws "Invalid time value". Convert them to ISO up front
+// so every endpoint can treat date fields as plain date strings.
+const MS_DATE_RE = /^\/Date\((-?\d+)(?:[+-]\d{4})?\)\/$/
+
+function normalizeValue(value: any): any {
+  if (typeof value === 'string') {
+    const m = MS_DATE_RE.exec(value)
+    if (m) {
+      const ms = Number(m[1])
+      if (Number.isFinite(ms)) return new Date(ms).toISOString()
+    }
+  }
+  return value
+}
+
 function camelCaseKeysDeep(value: any): any {
   if (Array.isArray(value)) return value.map(camelCaseKeysDeep)
   if (value && typeof value === 'object' && value.constructor === Object) {
@@ -280,7 +297,7 @@ function camelCaseKeysDeep(value: any): any {
     }
     return out
   }
-  return value
+  return normalizeValue(value)
 }
 
 /**
