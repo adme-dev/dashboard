@@ -1,4 +1,4 @@
-import { createXeroClient } from '../../../utils/xeroClient'
+import { xeroFetch } from '../../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
 import { cachedFetch } from '../../../utils/kv'
@@ -18,7 +18,7 @@ export default eventHandler(async (event) => {
   const cacheKey = `xero-report:${tenantId}:bank-summary:${date}`
 
   return cachedFetch(event, cacheKey, 600, async () => {
-    const client = await createXeroClient({ tokenSet: token, event })
+    const accessToken = token.access_token!
 
     // Try Bank Summary first
     try {
@@ -29,16 +29,11 @@ export default eventHandler(async (event) => {
       const report = await dedupedXeroCall(
         `bankSummaryDirect:${tenantId}:${date}`,
         'bank-summary-direct',
-        async () => {
-          const { body } = await (client.accountingApi.getReportBankSummary as any)(
-            tenantId,
-            ensureDateString(fromDate),
-            ensureDateString(toDate),
-            undefined,
-            false
-          )
-          return body
-        }
+        () => xeroFetch<any>({
+          accessToken,
+          tenantId,
+          path: `Reports/BankSummary?fromDate=${ensureDateString(fromDate)}&toDate=${ensureDateString(toDate)}`,
+        })
       )
 
       const reportRows = report?.reports || report?.Reports

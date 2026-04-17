@@ -1,5 +1,5 @@
 import { createError } from 'h3'
-import { createXeroClient } from '../../utils/xeroClient'
+import { xeroFetch } from '../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../utils/tokenStore'
 import { getSelectedTenant } from '../../utils/session'
 import { cachedFetch } from '~~/server/utils/kv'
@@ -40,33 +40,22 @@ interface AccountInfo {
   classType: string // EXPENSE, OVERHEADS, DIRECTCOSTS, REVENUE, etc.
 }
 
-async function fetchAllInvoices(client: Awaited<ReturnType<typeof createXeroClient>>, tenantId: string, whereExpr: string, dedupPrefix: string) {
+async function fetchAllInvoices(accessToken: string, tenantId: string, whereExpr: string, dedupPrefix: string) {
   const results: any[] = []
   let page = 1
   for (;;) {
+    const params = new URLSearchParams({
+      where: whereExpr,
+      order: 'Date DESC',
+      page: String(page),
+      pageSize: '100',
+    })
     const body = await dedupedXeroCall(
       `${dedupPrefix}:${tenantId}:p${page}`,
       dedupPrefix,
-      async () => {
-        const { body } = await (client.accountingApi.getInvoices as any)(
-          tenantId,
-          undefined,
-          whereExpr,
-          'Date DESC',
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          page,
-          undefined,
-          undefined,
-          undefined,
-          100
-        )
-        return body
-      }
+      () => xeroFetch<any>({ accessToken, tenantId, path: `Invoices?${params.toString()}` })
     )
-    const list = body?.invoices || []
+    const list = body?.invoices || body?.Invoices || []
     if (!list.length) break
     results.push(...list)
     if (list.length < 100) break
@@ -76,27 +65,21 @@ async function fetchAllInvoices(client: Awaited<ReturnType<typeof createXeroClie
   return results
 }
 
-async function fetchAllBankTransactions(client: Awaited<ReturnType<typeof createXeroClient>>, tenantId: string, whereExpr: string) {
+async function fetchAllBankTransactions(accessToken: string, tenantId: string, whereExpr: string) {
   const results: any[] = []
   let page = 1
   for (;;) {
+    const params = new URLSearchParams({
+      where: whereExpr,
+      order: 'Date DESC',
+      page: String(page),
+    })
     const body = await dedupedXeroCall(
       `expenses-banktx:${tenantId}:p${page}`,
       'expenses-banktx',
-      async () => {
-        const { body } = await client.accountingApi.getBankTransactions(
-          tenantId,
-          undefined,
-          whereExpr,
-          'Date DESC',
-          page,
-          undefined,
-          100
-        )
-        return body
-      }
+      () => xeroFetch<any>({ accessToken, tenantId, path: `BankTransactions?${params.toString()}` })
     )
-    const list = body?.bankTransactions || []
+    const list = body?.bankTransactions || body?.BankTransactions || []
     if (!list.length) break
     results.push(...list)
     if (list.length < 100) break
@@ -161,7 +144,7 @@ export default eventHandler(async (event) => {
   const cacheKey = `xero:expenses:v2:${tenantId}:${from.getTime()}:${today.getTime()}`
 
   return cachedFetch(event, cacheKey, 300, async () => {
-  const client = await createXeroClient({ tokenSet: token, event })
+  const accessToken = token.access_token!
 
   // Fetch chart of accounts — extended to include class type
   const accountsMap = new Map<string, string>()
@@ -171,7 +154,7 @@ export default eventHandler(async (event) => {
       `expenses-accounts:${tenantId}`,
       'expenses-accounts',
       async () => {
-        const { body } = await client.accountingApi.getAccounts(tenantId)
+        const body = await xeroFetch<any>({ accessToken, tenantId, path: 'Accounts' })
         return body
       }
     )
@@ -201,8 +184,8 @@ export default eventHandler(async (event) => {
   try {
     const whereAuth = `Type=="ACCPAY"&&Status=="AUTHORISED"&&Date>=${dtExpr(from)}&&Date<=${dtExpr(today)}`
     const wherePaid = `Type=="ACCPAY"&&Status=="PAID"&&Date>=${dtExpr(from)}&&Date<=${dtExpr(today)}`
-    const authList = await fetchAllInvoices(client, tenantId, whereAuth, 'expenses-inv-auth')
-    const paidList = await fetchAllInvoices(client, tenantId, wherePaid, 'expenses-inv-paid')
+    const authList = await fetchAllInvoices(accessToken, tenantId, whereAuth, 'expenses-inv-auth')
+    const paidList = await fetchAllInvoices(accessToken, tenantId, wherePaid, 'expenses-inv-paid')
     all = ([] as any[]).concat(authList, paidList)
   } catch (err) {
     lastError = err
@@ -211,7 +194,7 @@ export default eventHandler(async (event) => {
   if (!all.length) {
     const whereAny = `Type=="ACCPAY"&&Date>=${dtExpr(from)}&&Date<=${dtExpr(today)}`
     try {
-      all = await fetchAllInvoices(client, tenantId, whereAny, 'expenses-inv-any')
+      all = await fetchAllInvoices(accessToken, tenantId, whereAny, 'expenses-inv-any')
     } catch (err) {
       lastError = err
     }
@@ -222,7 +205,7 @@ export default eventHandler(async (event) => {
   if (!all.length) {
     const whereSpend = `Type=="SPEND"&&Date>=${dtExpr(from)}&&Date<=${dtExpr(today)}`
     try {
-      bankTx = await fetchAllBankTransactions(client, tenantId, whereSpend)
+      bankTx = await fetchAllBankTransactions(accessToken, tenantId, whereSpend)
     } catch (err) {
       lastError = err
     }
@@ -239,8 +222,8 @@ export default eventHandler(async (event) => {
   try {
     const wherePrevAuth = `Type=="ACCPAY"&&Status=="AUTHORISED"&&Date>=${dtExpr(prevFrom)}&&Date<=${dtExpr(prevTo)}`
     const wherePrevPaid = `Type=="ACCPAY"&&Status=="PAID"&&Date>=${dtExpr(prevFrom)}&&Date<=${dtExpr(prevTo)}`
-    const prevAuth = await fetchAllInvoices(client, tenantId, wherePrevAuth, 'expenses-prev-auth')
-    const prevPaid = await fetchAllInvoices(client, tenantId, wherePrevPaid, 'expenses-prev-paid')
+    const prevAuth = await fetchAllInvoices(accessToken, tenantId, wherePrevAuth, 'expenses-prev-auth')
+    const prevPaid = await fetchAllInvoices(accessToken, tenantId, wherePrevPaid, 'expenses-prev-paid')
     prevAll = ([] as any[]).concat(prevAuth, prevPaid)
   } catch {
     // Previous period is best-effort
