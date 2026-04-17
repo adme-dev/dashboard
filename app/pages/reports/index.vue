@@ -246,10 +246,59 @@ const { data: clientPnl, pending: clientPnlPending, refresh: refreshClientPnl } 
   }) }
 )
 
+// Xero-managed Budgets (BudgetSummary) — replaces our computed budget inference.
+type XeroBudgets = {
+  budgets: Array<{ id: string; description: string; type: string; updatedAt: string | null }>
+  selected: { id: string; description: string } | null
+  periodLabels: string[]
+  rows: Array<{ label: string; values: number[] }>
+}
+const { data: xeroBudgets, pending: xeroBudgetsPending } = useLazyFetch<XeroBudgets>(
+  '/api/xero/budgets',
+  { ...fetchOpts, query: { periods: 6 } }
+)
+
+// Credit notes issued YTD / this month — impacts true revenue figure.
+type CreditNotes = {
+  summary: { issuedYtdTotal: number; issuedYtdCount: number; issuedMonthTotal: number; issuedMonthCount: number; receivedYtdTotal: number; receivedYtdCount: number }
+  topContacts: Array<{ name: string; total: number; count: number }>
+}
+const { data: creditNotes, pending: creditNotesPending } = useLazyFetch<CreditNotes>(
+  '/api/xero/credit-notes',
+  fetchOpts
+)
+
+// Unearned revenue — deposits / overpayments sitting on the balance sheet.
+type Prepayments = {
+  summary: { totalUnearned: number; prepayRemaining: number; overpayRemaining: number; prepayCount: number; overpayCount: number; contactCount: number }
+  topContacts: Array<{ name: string; prepay: number; overpay: number; total: number; count: number }>
+}
+const { data: unearned, pending: unearnedPending } = useLazyFetch<Prepayments>(
+  '/api/xero/prepayments-overpayments',
+  fetchOpts
+)
+
+// Client revenue concentration — YTD % of revenue per client + HHI risk.
+type ClientConcentration = {
+  summary: { clientCount: number; grandTotal: number; top1Share: number; top3Share: number; top10Share: number; hhi: number; risk: 'low' | 'medium' | 'high' }
+  clients: Array<{ id: string; name: string; total: number; paid: number; outstanding: number; invoiceCount: number; sharePct: number }>
+}
+const { data: concentration, pending: concentrationPending } = useLazyFetch<ClientConcentration>(
+  '/api/xero/client-concentration',
+  fetchOpts
+)
+
 const loading = computed(() => pnlPending.value && bsPending.value)
 
 async function refreshAll() {
   await Promise.all([refreshPnl(), refreshBs(), refreshAging(), refreshBudget(), refreshPipeline(), refreshClientPnl()])
+}
+
+// Concentration risk color
+function concentrationRiskColor(risk: 'low' | 'medium' | 'high'): string {
+  if (risk === 'high') return 'text-red-500'
+  if (risk === 'medium') return 'text-amber-500'
+  return 'text-emerald-500'
 }
 
 // Executive Summary tiles. Xero's ExecutiveSummary report doesn't publish a
@@ -686,6 +735,132 @@ const breadcrumbs = computed(() => ([
           </UCard>
         </div>
 
+        <!-- ═══ Unearned Revenue + Credits Issued + Client Concentration ═══ -->
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <!-- Unearned revenue (prepayments + overpayments) -->
+          <UCard :ui="{ body: '!p-6 space-y-4' }">
+            <header class="flex items-center justify-between">
+              <div>
+                <p class="text-xs uppercase text-muted">Unearned Revenue</p>
+                <h3 class="text-lg font-semibold">Deposits &amp; credits held</h3>
+              </div>
+              <UIcon name="i-lucide-wallet-cards" class="size-4 text-amber-500" />
+            </header>
+            <div v-if="unearnedPending" class="space-y-3">
+              <USkeleton class="h-14" /><USkeleton class="h-10" />
+            </div>
+            <template v-else-if="unearned">
+              <div class="rounded-lg border border-default px-3 py-3 bg-elevated/30">
+                <p class="text-[10px] uppercase text-muted tracking-wide">Total held</p>
+                <p class="text-2xl font-semibold">{{ fmt(unearned.summary.totalUnearned) }}</p>
+                <p class="text-[11px] text-muted mt-1">
+                  {{ fmt(unearned.summary.prepayRemaining) }} prepay · {{ fmt(unearned.summary.overpayRemaining) }} overpay
+                </p>
+              </div>
+              <div class="text-xs text-muted">
+                {{ unearned.summary.prepayCount + unearned.summary.overpayCount }} records across {{ unearned.summary.contactCount }} client{{ unearned.summary.contactCount === 1 ? '' : 's' }}
+              </div>
+              <div v-if="unearned.topContacts?.length" class="pt-3 border-t border-default space-y-2">
+                <p class="text-[10px] uppercase text-muted font-semibold tracking-wider">Top balances</p>
+                <div v-for="c in unearned.topContacts.slice(0, 4)" :key="c.name" class="flex items-center justify-between text-xs">
+                  <span class="truncate pr-2">{{ c.name }}</span>
+                  <span class="font-medium text-muted">{{ fmt(c.total) }}</span>
+                </div>
+              </div>
+            </template>
+            <p v-else class="text-sm text-muted">No unearned revenue — no open prepayments or overpayments.</p>
+          </UCard>
+
+          <!-- Credit notes issued -->
+          <UCard :ui="{ body: '!p-6 space-y-4' }">
+            <header class="flex items-center justify-between">
+              <div>
+                <p class="text-xs uppercase text-muted">Credits Issued</p>
+                <h3 class="text-lg font-semibold">Client credit notes</h3>
+              </div>
+              <UIcon name="i-lucide-file-minus" class="size-4 text-red-500" />
+            </header>
+            <div v-if="creditNotesPending" class="space-y-3">
+              <USkeleton class="h-14" /><USkeleton class="h-10" />
+            </div>
+            <template v-else-if="creditNotes">
+              <div class="grid grid-cols-2 gap-3">
+                <div class="rounded-lg border border-default px-3 py-3 bg-elevated/30">
+                  <p class="text-[10px] uppercase text-muted tracking-wide">This month</p>
+                  <p class="text-xl font-semibold">{{ fmt(creditNotes.summary.issuedMonthTotal) }}</p>
+                  <p class="text-[11px] text-muted">{{ creditNotes.summary.issuedMonthCount }} issued</p>
+                </div>
+                <div class="rounded-lg border border-default px-3 py-3 bg-elevated/30">
+                  <p class="text-[10px] uppercase text-muted tracking-wide">YTD</p>
+                  <p class="text-xl font-semibold">{{ fmt(creditNotes.summary.issuedYtdTotal) }}</p>
+                  <p class="text-[11px] text-muted">{{ creditNotes.summary.issuedYtdCount }} issued</p>
+                </div>
+              </div>
+              <div v-if="creditNotes.summary.receivedYtdTotal > 0" class="text-xs text-muted">
+                Received YTD: {{ fmt(creditNotes.summary.receivedYtdTotal) }} ({{ creditNotes.summary.receivedYtdCount }} from suppliers)
+              </div>
+              <div v-if="creditNotes.topContacts?.length" class="pt-3 border-t border-default space-y-2">
+                <p class="text-[10px] uppercase text-muted font-semibold tracking-wider">Most credited YTD</p>
+                <div v-for="c in creditNotes.topContacts.slice(0, 4)" :key="c.name" class="flex items-center justify-between text-xs">
+                  <span class="truncate pr-2">{{ c.name }}</span>
+                  <span class="font-medium text-muted">{{ fmt(c.total) }}</span>
+                </div>
+              </div>
+            </template>
+            <p v-else class="text-sm text-muted">No credit notes in the period.</p>
+          </UCard>
+
+          <!-- Client concentration -->
+          <UCard :ui="{ body: '!p-6 space-y-4' }">
+            <header class="flex items-center justify-between">
+              <div>
+                <p class="text-xs uppercase text-muted">Client Concentration</p>
+                <h3 class="text-lg font-semibold">Revenue mix (YTD)</h3>
+              </div>
+              <UBadge v-if="concentration" :color="concentration.summary.risk === 'high' ? 'error' : concentration.summary.risk === 'medium' ? 'warning' : 'success'" variant="subtle" size="xs">
+                {{ concentration.summary.risk }} risk
+              </UBadge>
+            </header>
+            <div v-if="concentrationPending" class="space-y-3">
+              <USkeleton class="h-14" /><USkeleton class="h-10" />
+            </div>
+            <template v-else-if="concentration && concentration.clients.length">
+              <div class="grid grid-cols-3 gap-2">
+                <div class="rounded-lg border border-default px-2 py-2 bg-elevated/30">
+                  <p class="text-[10px] uppercase text-muted tracking-wide">Top 1</p>
+                  <p :class="['text-lg font-semibold', concentrationRiskColor(concentration.summary.top1Share > 35 ? 'high' : concentration.summary.top1Share > 20 ? 'medium' : 'low')]">
+                    {{ concentration.summary.top1Share.toFixed(1) }}%
+                  </p>
+                </div>
+                <div class="rounded-lg border border-default px-2 py-2 bg-elevated/30">
+                  <p class="text-[10px] uppercase text-muted tracking-wide">Top 3</p>
+                  <p class="text-lg font-semibold">{{ concentration.summary.top3Share.toFixed(1) }}%</p>
+                </div>
+                <div class="rounded-lg border border-default px-2 py-2 bg-elevated/30">
+                  <p class="text-[10px] uppercase text-muted tracking-wide">Top 10</p>
+                  <p class="text-lg font-semibold">{{ concentration.summary.top10Share.toFixed(1) }}%</p>
+                </div>
+              </div>
+              <div class="text-xs text-muted">
+                {{ concentration.summary.clientCount }} clients · {{ fmt(concentration.summary.grandTotal) }} YTD
+              </div>
+              <div class="pt-3 border-t border-default space-y-2">
+                <p class="text-[10px] uppercase text-muted font-semibold tracking-wider">Top clients</p>
+                <div v-for="c in concentration.clients.slice(0, 5)" :key="c.id || c.name" class="flex items-center justify-between text-xs gap-2">
+                  <span class="truncate">{{ c.name }}</span>
+                  <div class="flex items-center gap-2 shrink-0">
+                    <div class="h-1 w-16 rounded-full bg-elevated overflow-hidden">
+                      <div class="h-full bg-primary" :style="{ width: Math.min(100, c.sharePct * 2) + '%' }" />
+                    </div>
+                    <span class="font-medium text-muted w-12 text-right">{{ c.sharePct.toFixed(1) }}%</span>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <p v-else class="text-sm text-muted">No YTD revenue found yet.</p>
+          </UCard>
+        </div>
+
         <!-- ═══ Client / Project P&L (via tracking categories) ═══ -->
         <UCard :ui="{ body: '!p-6 space-y-5' }">
           <header class="flex items-center justify-between">
@@ -879,6 +1054,40 @@ const breadcrumbs = computed(() => ([
             </div>
           </template>
           <p v-else class="text-sm text-muted">No aging data available. Connect to Xero to view receivables.</p>
+        </UCard>
+
+        <!-- ═══ Xero Budgets (native) ═══ -->
+        <UCard v-if="xeroBudgetsPending || xeroBudgets?.selected" :ui="{ body: '!p-6 space-y-5' }">
+          <header class="flex items-center justify-between">
+            <div>
+              <p class="text-xs uppercase text-muted">Xero Budget</p>
+              <h3 class="text-lg font-semibold">{{ xeroBudgets?.selected?.description || 'Primary budget' }}</h3>
+            </div>
+            <span class="text-[10px] text-muted">Source: Xero BudgetSummary</span>
+          </header>
+          <div v-if="xeroBudgetsPending" class="space-y-2">
+            <USkeleton v-for="n in 6" :key="`xb-sk-${n}`" class="h-7" />
+          </div>
+          <template v-else-if="xeroBudgets && xeroBudgets.rows.length">
+            <div class="max-h-80 overflow-y-auto border border-default/40 rounded-md">
+              <table class="w-full text-sm">
+                <thead class="sticky top-0 bg-default border-b border-default">
+                  <tr class="text-left text-xs uppercase text-muted">
+                    <th class="py-2 pl-3 pr-2 font-medium">Account</th>
+                    <th v-for="label in xeroBudgets.periodLabels" :key="label" class="py-2 px-2 font-medium text-right">{{ label }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in xeroBudgets.rows" :key="row.label" class="border-b border-default/30 hover:bg-elevated/40">
+                    <td class="py-1.5 pl-3 pr-2 truncate max-w-[200px]">{{ row.label }}</td>
+                    <td v-for="(v, i) in row.values" :key="i" class="py-1.5 px-2 text-right font-medium" :class="v === 0 ? 'text-muted' : ''">{{ v === 0 ? '—' : fmt(v) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="text-[11px] text-muted">{{ xeroBudgets.rows.length }} accounts across {{ xeroBudgets.periodLabels.length }} periods</p>
+          </template>
+          <p v-else class="text-sm text-muted">No budget configured in Xero, or the selected budget has no entries.</p>
         </UCard>
 
         <!-- ═══ Budget Variance + Invoice Pipeline ═══ -->
