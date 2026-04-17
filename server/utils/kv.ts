@@ -140,6 +140,19 @@ export async function cachedFetch<T>(
   ttlSeconds: number,
   fetcher: () => Promise<T>,
 ): Promise<T> {
+  // Honour an explicit cache-bust flag (?bust=1 or ?refresh=1) so a
+  // user-clicked "Refresh" button always rebuilds from live Xero
+  // instead of serving the cached value.
+  const q = getQuery(event) as Record<string, string | undefined>
+  const busted = q.bust === '1' || q.refresh === '1'
+
+  if (busted) {
+    const data = await fetcher()
+    const entry: CacheEntry<T> = { v: data, exp: Date.now() + ttlSeconds * 1000 }
+    kvPut(event, key, entry, Math.max(60, ttlSeconds * 4))
+    return data
+  }
+
   const cached = await kvGet<CacheEntry<T> | T>(event, key)
   const now = Date.now()
   const ttlMs = ttlSeconds * 1000

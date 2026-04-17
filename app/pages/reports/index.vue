@@ -291,7 +291,32 @@ const { data: concentration, pending: concentrationPending } = useLazyFetch<Clie
 const loading = computed(() => pnlPending.value && bsPending.value)
 
 async function refreshAll() {
-  await Promise.all([refreshPnl(), refreshBs(), refreshAging(), refreshBudget(), refreshPipeline(), refreshClientPnl()])
+  // Server caches with SWR by default; hit each endpoint once with
+  // ?bust=1 so the KV entry is rewritten from live Xero, then refresh
+  // the reactive data hooks to pick up the fresh values.
+  const bustUrls = [
+    ['/api/xero/reports/pnl-detailed', { toDate: toDate.value }],
+    ['/api/xero/reports/balance-sheet', { toDate: toDate.value }],
+    ['/api/xero/reports/aging', {}],
+    ['/api/xero/reports/aging', { type: 'payables' }],
+    ['/api/xero/reports/budget-variance', { month: selectedMonth.value, year: selectedYear.value }],
+    ['/api/xero/invoice-pipeline', {}],
+    ['/api/xero/reports/bank-summary', {}],
+    ['/api/xero/reports/executive-summary', { date: toDate.value }],
+    ['/api/xero/repeating-invoices', {}],
+    ['/api/xero/reports/client-pnl', {}],
+    ['/api/xero/budgets', { periods: 6 }],
+    ['/api/xero/credit-notes', {}],
+    ['/api/xero/prepayments-overpayments', {}],
+    ['/api/xero/client-concentration', {}],
+  ] as const
+  await Promise.allSettled(
+    bustUrls.map(([url, q]) => $fetch(url, { query: { ...q, bust: 1 } }).catch(() => null))
+  )
+  // Reload the page so every useLazyFetch call rehydrates from the now-
+  // fresh KV. Easier than wiring `refresh()` for all 14 fetches, and
+  // matches what a user expects from a Refresh button.
+  if (typeof window !== 'undefined') window.location.reload()
 }
 
 // Concentration risk color
