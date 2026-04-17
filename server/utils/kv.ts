@@ -92,11 +92,20 @@ function scheduleRefresh<T>(
 ): void {
   if (refreshLocks.has(key)) return
 
+  // Capture the env binding and waitUntil synchronously so the background
+  // task never touches `event.context` after the originating request has
+  // ended — that's what "Cannot perform I/O on behalf of a different
+  // request" complains about on Cloudflare Pages.
+  const cf = (event.context as any).cloudflare
+  const kv = cf?.env?.CACHE as KV | undefined
+  const ctx = cf?.ctx
+  if (!kv) return // No KV binding — SWR is a no-op in dev.
+
   const task = (async () => {
     try {
       const data = await fetcher()
       const entry: CacheEntry<T> = { v: data, exp: Date.now() + ttlSeconds * 1000 }
-      await kvPut(event, key, entry, Math.max(60, ttlSeconds * 4))
+      await kv.put(key, JSON.stringify(entry), { expirationTtl: Math.max(60, ttlSeconds * 4) })
     } catch (err) {
       console.warn(`[cachedFetch] background refresh failed for "${key}":`, (err as any)?.message ?? err)
     } finally {
@@ -106,9 +115,6 @@ function scheduleRefresh<T>(
 
   refreshLocks.set(key, task)
 
-  // Tell Cloudflare Workers to keep the isolate alive until the refresh
-  // resolves (CF Pages Functions expose `waitUntil` on the context).
-  const ctx = (event.context as any).cloudflare?.ctx
   if (ctx && typeof ctx.waitUntil === 'function') {
     ctx.waitUntil(task)
   }

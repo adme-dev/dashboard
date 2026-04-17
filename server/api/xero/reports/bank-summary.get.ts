@@ -67,16 +67,11 @@ export default eventHandler(async (event) => {
       const report = await dedupedXeroCall(
         `balanceSheetFallback:${tenantId}:${date}`,
         'balance-sheet-fallback',
-        async () => {
-          const { body } = await (client.accountingApi.getReportBalanceSheet as any)(
-            tenantId,
-            date,
-            undefined,
-            undefined,
-            false
-          )
-          return body
-        }
+        () => xeroFetch<any>({
+          accessToken,
+          tenantId,
+          path: `Reports/BalanceSheet?date=${date}`,
+        })
       )
 
       const reportRows = report?.reports || report?.Reports
