@@ -6,8 +6,11 @@
 import { requireAuth } from '../../../utils/auth'
 import { queryRows } from '../../../utils/db'
 
+// Roles an `owner` viewer is allowed to see in the users list.
+const OWNER_VISIBLE_ROLES = ['owner', 'account_manager']
+
 export default eventHandler(async (event) => {
-  await requireAuth(event)
+  const viewer = await requireAuth(event)
 
   try {
     const users = await queryRows<{
@@ -16,17 +19,19 @@ export default eventHandler(async (event) => {
       email: string
       avatar_url: string
       role: string
+      title: string | null
       is_active: boolean
       monday_user_id: string
       created_at: string
       updated_at: string
     }>(`
-      SELECT 
+      SELECT
         tm.id,
         tm.name,
         tm.email,
         tm.avatar_url,
-        tm.role,
+        tm.user_role::text AS role,
+        tm.role AS title,
         tm.is_active,
         tm.monday_user_id,
         tm.created_at,
@@ -36,8 +41,13 @@ export default eventHandler(async (event) => {
       ORDER BY tm.name ASC
     `)
 
+    // Owners only see other owners and account managers in the list.
+    const visibleUsers = viewer.role === 'owner'
+      ? users.filter(u => OWNER_VISIBLE_ROLES.includes(u.role))
+      : users
+
     // Get teams for each user
-    const userIds = users.map(u => u.id)
+    const userIds = visibleUsers.map(u => u.id)
     const memberships = userIds.length > 0 ? await queryRows<{
       user_id: string
       team_id: string
@@ -59,12 +69,13 @@ export default eventHandler(async (event) => {
     }, {} as Record<string, Array<{ id: string; name: string }>>)
 
     return {
-      users: users.map(user => ({
+      users: visibleUsers.map(user => ({
         id: user.id,
         name: user.name,
         email: user.email,
         avatarUrl: user.avatar_url,
         role: user.role || 'member',
+        title: user.title,
         status: user.is_active ? 'active' : 'inactive',
         mondayUserId: user.monday_user_id,
         joinedAt: user.created_at,

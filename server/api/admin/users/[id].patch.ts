@@ -31,7 +31,7 @@ export default eventHandler(async (event) => {
       values.push(email)
     }
     if (role !== undefined) {
-      updates.push(`role = $${paramIndex++}`)
+      updates.push(`user_role = $${paramIndex++}`)
       values.push(role)
     }
     if (isActive !== undefined) {
