@@ -28,13 +28,13 @@ export default eventHandler(async (event) => {
   return cachedFetch(event, cacheKey, 600, async () => {
     const today = new Date()
 
-    const client = await createXeroClient({ tokenSet: token, event })
+    const accessToken = token.access_token!
 
     const [bankReportBody, receivablesBody, payablesBody, expensesBody] = await Promise.all([
-      fetchBankSummary(client, tenantId),
-      fetchReceivables(client, tenantId),
-      fetchPayables(client, tenantId),
-      fetchRecentPaidExpenses(client, tenantId)
+      fetchBankSummary(accessToken, tenantId),
+      fetchReceivables(accessToken, tenantId),
+      fetchPayables(accessToken, tenantId),
+      fetchRecentPaidExpenses(accessToken, tenantId)
     ])
 
     const currentCash = extractCurrentCash(bankReportBody)

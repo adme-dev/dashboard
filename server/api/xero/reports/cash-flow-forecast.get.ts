@@ -1,5 +1,4 @@
 import { createError } from 'h3'
-import { createXeroClient } from '../../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
 import { cachedFetch } from '../../../utils/kv'
@@ -27,15 +26,14 @@ export default eventHandler(async (event) => {
 
   return cachedFetch(event, cacheKey, 600, async () => {
     const today = new Date()
-
-    const client = await createXeroClient({ tokenSet: token, event })
+    const accessToken = token.access_token!
 
     // Fetch all data via shared fetcher (deduped + rate-limited)
     const [bankReportBody, receivablesBody, payablesBody, expensesBody] = await Promise.all([
-      fetchBankSummary(client, tenantId),
-      fetchReceivables(client, tenantId),
-      fetchPayables(client, tenantId),
-      fetchRecentPaidExpenses(client, tenantId)
+      fetchBankSummary(accessToken, tenantId),
+      fetchReceivables(accessToken, tenantId),
+      fetchPayables(accessToken, tenantId),
+      fetchRecentPaidExpenses(accessToken, tenantId)
     ])
 
     const currentCash = extractCurrentCash(bankReportBody)

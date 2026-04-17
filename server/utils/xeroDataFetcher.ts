@@ -7,6 +7,17 @@
  */
 
 import { dedupedXeroCall } from './xeroRateLimit'
+import { xeroFetch } from './xeroClient'
+
+// Accept either the old XeroClient-style object or a raw access token string
+// so in-flight call sites can migrate incrementally without breaking.
+function resolveAccessToken(clientOrToken: any): string {
+  if (typeof clientOrToken === 'string') return clientOrToken
+  // Legacy XeroClient: tokenSet is set on the client instance
+  const ts = clientOrToken?._tokenSet ?? clientOrToken?.tokenSet
+  if (ts?.access_token) return ts.access_token
+  throw new Error('xeroDataFetcher: expected access token string or XeroClient with tokenSet')
+}
 
 // ---------------------------------------------------------------------------
 // Shared helpers (consolidated from 4+ endpoint files)
@@ -65,7 +76,8 @@ export function extractCurrentCash(bankReportBody: any): number {
 /**
  * Fetch bank summary report. Deduped per tenant + date.
  */
-export function fetchBankSummary(client: any, tenantId: string) {
+export function fetchBankSummary(clientOrToken: any, tenantId: string) {
+  const accessToken = resolveAccessToken(clientOrToken)
   const today = new Date()
   const dateKey = ensureDateString(today)
   const fromDate = addDays(today, -30)
@@ -73,87 +85,70 @@ export function fetchBankSummary(client: any, tenantId: string) {
   return dedupedXeroCall(
     `bankSummary:${tenantId}:${dateKey}`,
     'bank-summary',
-    async () => {
-      const { body } = await (client.accountingApi.getReportBankSummary as any)(
-        tenantId,
-        ensureDateString(fromDate),
-        ensureDateString(today),
-        undefined,
-        false
-      )
-      return body
-    }
+    () => xeroFetch<any>({
+      accessToken,
+      tenantId,
+      path: `Reports/BankSummary?fromDate=${ensureDateString(fromDate)}&toDate=${ensureDateString(today)}`,
+    })
   )
 }
 
 /**
  * Fetch outstanding receivables (ACCREC + AUTHORISED). Deduped per tenant + date.
  */
-export function fetchReceivables(client: any, tenantId: string) {
+export function fetchReceivables(clientOrToken: any, tenantId: string) {
+  const accessToken = resolveAccessToken(clientOrToken)
   const dateKey = ensureDateString(new Date())
+  const params = new URLSearchParams({
+    where: 'Type=="ACCREC"&&Status=="AUTHORISED"',
+    order: 'DueDate ASC',
+    page: '1',
+    pageSize: '200',
+  })
   return dedupedXeroCall(
     `receivables:${tenantId}:${dateKey}`,
     'receivables',
-    async () => {
-      const { body } = await (client.accountingApi.getInvoices as any)(
-        tenantId,
-        undefined,
-        'Type=="ACCREC"&&Status=="AUTHORISED"',
-        'DueDate ASC',
-        undefined, undefined, undefined, undefined,
-        1, undefined, undefined, undefined,
-        200
-      )
-      return body
-    }
+    () => xeroFetch<any>({ accessToken, tenantId, path: `Invoices?${params.toString()}` })
   )
 }
 
 /**
  * Fetch outstanding payables (ACCPAY + AUTHORISED). Deduped per tenant + date.
  */
-export function fetchPayables(client: any, tenantId: string) {
+export function fetchPayables(clientOrToken: any, tenantId: string) {
+  const accessToken = resolveAccessToken(clientOrToken)
   const dateKey = ensureDateString(new Date())
+  const params = new URLSearchParams({
+    where: 'Type=="ACCPAY"&&Status=="AUTHORISED"',
+    order: 'DueDate ASC',
+    page: '1',
+    pageSize: '200',
+  })
   return dedupedXeroCall(
     `payables:${tenantId}:${dateKey}`,
     'payables',
-    async () => {
-      const { body } = await (client.accountingApi.getInvoices as any)(
-        tenantId,
-        undefined,
-        'Type=="ACCPAY"&&Status=="AUTHORISED"',
-        'DueDate ASC',
-        undefined, undefined, undefined, undefined,
-        1, undefined, undefined, undefined,
-        200
-      )
-      return body
-    }
+    () => xeroFetch<any>({ accessToken, tenantId, path: `Invoices?${params.toString()}` })
   )
 }
 
 /**
  * Fetch recent paid expenses (last 90 days). Deduped per tenant + date.
  */
-export function fetchRecentPaidExpenses(client: any, tenantId: string) {
+export function fetchRecentPaidExpenses(clientOrToken: any, tenantId: string) {
+  const accessToken = resolveAccessToken(clientOrToken)
   const today = new Date()
   const dateKey = ensureDateString(today)
   const pastDate = addDays(today, -90)
+  const params = new URLSearchParams({
+    where: `Type=="ACCPAY"&&Status=="PAID"&&Date>=${toXeroDateTime(pastDate)}`,
+    order: 'Date DESC',
+    page: '1',
+    pageSize: '500',
+  })
   return dedupedXeroCall(
     `paidExpenses:${tenantId}:${dateKey}`,
     'paid-expenses',
-    async () => {
-      const { body } = await (client.accountingApi.getInvoices as any)(
-        tenantId,
-        undefined,
-        `Type=="ACCPAY"&&Status=="PAID"&&Date>=${toXeroDateTime(pastDate)}`,
-        'Date DESC',
-        undefined, undefined, undefined, undefined,
-        1, undefined, undefined, undefined,
-        500
-      )
-      return body
-    }
+    () => xeroFetch<any>({ accessToken, tenantId, path: `Invoices?${params.toString()}` })
   )
 }
 

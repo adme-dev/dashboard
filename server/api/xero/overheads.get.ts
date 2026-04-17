@@ -1,5 +1,5 @@
 import { createError } from 'h3'
-import { createXeroClient } from '../../utils/xeroClient'
+import { xeroFetch } from '../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../utils/tokenStore'
 import { getSelectedTenant } from '../../utils/session'
 import { cachedFetch } from '~~/server/utils/kv'
@@ -57,7 +57,7 @@ const FIXED_CLASSES = new Set(['EXPENSE', 'OVERHEADS'])
 /* ------------------------------------------------------------------ */
 
 async function fetchAllInvoices(
-  client: Awaited<ReturnType<typeof createXeroClient>>,
+  accessToken: string,
   tenantId: string,
   whereExpr: string,
   dedupPrefix: string,
@@ -65,27 +65,20 @@ async function fetchAllInvoices(
   const results: any[] = []
   let page = 1
   for (;;) {
+    const params = new URLSearchParams({
+      where: whereExpr,
+      order: 'Date DESC',
+      page: String(page),
+      pageSize: '100',
+    })
     const body = await dedupedXeroCall(
       `${dedupPrefix}:${tenantId}:p${page}`,
       dedupPrefix,
-      async () => {
-        const { body } = await (client.accountingApi.getInvoices as any)(
-          tenantId,
-          undefined,
-          whereExpr,
-          'Date DESC',
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          page,
-          undefined,
-          undefined,
-          undefined,
-          100,
-        )
-        return body
-      },
+      () => xeroFetch<any>({
+        accessToken,
+        tenantId,
+        path: `Invoices?${params.toString()}`,
+      }),
     )
     const list = body?.invoices || []
     if (!list.length) break
@@ -104,7 +97,7 @@ interface AccountInfo {
 }
 
 async function fetchAccountsMap(
-  client: Awaited<ReturnType<typeof createXeroClient>>,
+  accessToken: string,
   tenantId: string,
 ): Promise<Map<string, AccountInfo>> {
   const map = new Map<string, AccountInfo>()
@@ -112,10 +105,7 @@ async function fetchAccountsMap(
     const acctBody = await dedupedXeroCall(
       `overheads-accounts:${tenantId}`,
       'overheads-accounts',
-      async () => {
-        const { body } = await client.accountingApi.getAccounts(tenantId)
-        return body
-      },
+      () => xeroFetch<any>({ accessToken, tenantId, path: 'Accounts' }),
     )
     const accounts = acctBody?.accounts || []
     for (const account of accounts) {
@@ -307,10 +297,10 @@ export default eventHandler(async (event) => {
   const cacheKey = `xero:overheads:${tenantId}:${year}:${month}`
 
   return cachedFetch(event, cacheKey, 300, async () => {
-    const client = await createXeroClient({ tokenSet: token, event })
+    const accessToken = token.access_token!
 
     // Fetch chart of accounts for classification
-    const accountsMap = await fetchAccountsMap(client, tenantId)
+    const accountsMap = await fetchAccountsMap(accessToken, tenantId)
 
     // Build date ranges for trend (current month + 5 previous)
     const trendMonths: { year: number; month: number }[] = []
@@ -335,14 +325,14 @@ export default eventHandler(async (event) => {
 
       let invoices: any[] = []
       try {
-        const authList = await fetchAllInvoices(client, tenantId, whereAuth, `overheads-auth-${key}`)
-        const paidList = await fetchAllInvoices(client, tenantId, wherePaid, `overheads-paid-${key}`)
+        const authList = await fetchAllInvoices(accessToken, tenantId, whereAuth, `overheads-auth-${key}`)
+        const paidList = await fetchAllInvoices(accessToken, tenantId, wherePaid, `overheads-paid-${key}`)
         invoices = ([] as any[]).concat(authList, paidList)
       } catch (err) {
         // If a specific month fails, try without status filter
         try {
           const whereAny = `Type=="ACCPAY"&&Date>=${dtExpr(from)}&&Date<=${dtExpr(to)}`
-          invoices = await fetchAllInvoices(client, tenantId, whereAny, `overheads-any-${key}`)
+          invoices = await fetchAllInvoices(accessToken, tenantId, whereAny, `overheads-any-${key}`)
         } catch {
           // Skip this month in the trend if it fails entirely
           console.warn(`[overheads] Failed to fetch invoices for ${key}`)
