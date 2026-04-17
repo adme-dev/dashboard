@@ -127,8 +127,10 @@ export class BoardRoom extends DurableObject<Env> {
     }
   }
 
-  async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
-    ws.close(code, reason)
+  async webSocketClose(_ws: WebSocket, _code: number, _reason: string, _wasClean: boolean): Promise<void> {
+    // Hibernatable WebSocket is already closed when this fires — do NOT call ws.close() again.
+    // Reflecting abnormal codes (e.g. 1006 from a network drop) back via ws.close() throws
+    // InvalidAccessError and crashes the DO, which Cloudflare surfaces as 503 on subsequent requests.
     this.broadcastPresence()
   }
 
