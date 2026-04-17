@@ -418,10 +418,12 @@ export default eventHandler(async (event) => {
       })
     )
   } catch (err: any) {
-    const statusCode = err?.response?.status || 500
-    const detail = err?.response?.data || err?.message
-    console.error('[pnl-detailed] Failed to fetch Profit & Loss report', detail)
-    throw createError({ statusCode, statusMessage: 'Failed to fetch Profit & Loss report from Xero' })
+    if (err?.statusCode) {
+      console.error('[pnl-detailed] Xero fetch failed', err.statusCode, err.statusMessage)
+      throw err
+    }
+    console.error('[pnl-detailed] Failed to fetch Profit & Loss report', err?.message ?? err)
+    throw createError({ statusCode: 500, statusMessage: 'Failed to fetch Profit & Loss report from Xero' })
   }
 
   const reportTable = (report as any)?.reports?.[0] ?? (report as any)?.Reports?.[0]
