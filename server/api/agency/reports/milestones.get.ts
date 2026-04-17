@@ -95,7 +95,7 @@ export default defineEventHandler(async (event) => {
         c.name AS client_name,
         t.due_date,
         t.updated_at AS completed_at,
-        ts.is_final AS is_completed,
+        t.status_is_final AS is_completed,
         ts.name AS status_name,
         tm.name AS assignee_name,
         (
@@ -108,7 +108,7 @@ export default defineEventHandler(async (event) => {
           FROM task_dependencies td
           JOIN tasks dt ON td.task_id = dt.id
           JOIN task_statuses dts ON dt.status_id = dts.id
-          WHERE td.depends_on_task_id = t.id AND dts.is_final = true
+          WHERE td.depends_on_task_id = t.id AND dt.status_is_final = true
         ) AS dependent_tasks_completed
       FROM tasks t
       LEFT JOIN projects p ON t.project_id = p.id
@@ -117,7 +117,7 @@ export default defineEventHandler(async (event) => {
       LEFT JOIN team_members tm ON t.assignee_id = tm.id
       ${whereClause}
       ORDER BY
-        CASE WHEN ts.is_final = true THEN 1 ELSE 0 END,
+        CASE WHEN t.status_is_final = true THEN 1 ELSE 0 END,
         t.due_date NULLS LAST
     `
 
@@ -133,7 +133,7 @@ export default defineEventHandler(async (event) => {
       JOIN tasks bt ON td.task_id = bt.id
       JOIN task_statuses bts ON bt.status_id = bts.id
       ${whereClause}
-      AND bts.is_final = false
+      AND bt.status_is_final = false
       AND bt.is_blocked = true
     `
 
@@ -225,9 +225,9 @@ export default defineEventHandler(async (event) => {
       SELECT
         DATE_TRUNC('month', t.due_date)::date AS month,
         COUNT(*) AS planned,
-        COUNT(*) FILTER (WHERE ts.is_final = true) AS completed,
+        COUNT(*) FILTER (WHERE t.status_is_final = true) AS completed,
         COUNT(*) FILTER (
-          WHERE ts.is_final = false
+          WHERE t.status_is_final = false
           AND t.due_date < CURRENT_DATE
         ) AS overdue
       FROM tasks t

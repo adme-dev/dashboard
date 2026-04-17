@@ -90,7 +90,7 @@ export default defineEventHandler(async (event) => {
       JOIN task_statuses ts ON t.status_id = ts.id
       LEFT JOIN projects p ON t.project_id = p.id
       WHERE t.assignee_id = $1
-        AND ts.is_final = false
+        AND t.status_is_final = false
         AND (
           t.due_date >= $2
           OR t.start_date >= $2

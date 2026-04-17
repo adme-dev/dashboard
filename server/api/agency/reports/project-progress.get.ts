@@ -97,7 +97,7 @@ export default defineEventHandler(async (event) => {
         p.start_date,
         p.due_date,
         COUNT(t.id) AS total_tasks,
-        COUNT(t.id) FILTER (WHERE ts.is_final = true) AS completed_tasks,
+        COUNT(t.id) FILTER (WHERE t.status_is_final = true) AS completed_tasks,
         COUNT(t.id) FILTER (
           WHERE ts.category = 'in_progress' OR ts.category = 'review'
         ) AS in_progress_tasks,
@@ -107,7 +107,7 @@ export default defineEventHandler(async (event) => {
         CASE
           WHEN COUNT(t.id) > 0
           THEN ROUND(
-            COUNT(t.id) FILTER (WHERE ts.is_final = true)::numeric /
+            COUNT(t.id) FILTER (WHERE t.status_is_final = true)::numeric /
             COUNT(t.id)::numeric * 100, 0
           )
           ELSE 0

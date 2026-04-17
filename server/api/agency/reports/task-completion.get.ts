@@ -80,21 +80,21 @@ export default defineEventHandler(async (event) => {
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
     const completedWhereClause = conditions.length > 0
-      ? `WHERE ${conditions.join(' AND ')} AND ts.is_final = true`
-      : 'WHERE ts.is_final = true'
+      ? `WHERE ${conditions.join(' AND ')} AND t.status_is_final = true`
+      : 'WHERE t.status_is_final = true'
 
     // Overall metrics
     const overallQuery = `
       SELECT
-        COUNT(*) FILTER (WHERE ts.is_final = true) AS total_completed,
+        COUNT(*) FILTER (WHERE t.status_is_final = true) AS total_completed,
         COUNT(*) AS total_tasks,
         ROUND(
-          COUNT(*) FILTER (WHERE ts.is_final = true)::numeric /
+          COUNT(*) FILTER (WHERE t.status_is_final = true)::numeric /
           NULLIF(COUNT(*)::numeric, 0) * 100, 1
         ) AS completion_rate,
         ROUND(
           AVG(
-            CASE WHEN ts.is_final = true
+            CASE WHEN t.status_is_final = true
             THEN EXTRACT(EPOCH FROM (t.updated_at - t.created_at)) / 86400
             END
           )::numeric, 1
@@ -117,7 +117,7 @@ export default defineEventHandler(async (event) => {
     const byPeriodQuery = `
       SELECT
         DATE_TRUNC('${periodTrunc}', t.updated_at)::date AS period,
-        COUNT(*) FILTER (WHERE ts.is_final = true) AS completed,
+        COUNT(*) FILTER (WHERE t.status_is_final = true) AS completed,
         COUNT(*) FILTER (WHERE t.created_at >= DATE_TRUNC('${periodTrunc}', t.updated_at)) AS created
       FROM tasks t
       LEFT JOIN task_statuses ts ON t.status_id = ts.id
@@ -134,13 +134,13 @@ export default defineEventHandler(async (event) => {
       SELECT
         tm.id AS assignee_id,
         tm.name AS assignee_name,
-        COUNT(*) FILTER (WHERE ts.is_final = true) AS completed,
+        COUNT(*) FILTER (WHERE t.status_is_final = true) AS completed,
         COUNT(*) FILTER (
-          WHERE ts.is_final = true
+          WHERE t.status_is_final = true
           AND (t.due_date IS NULL OR t.updated_at <= t.due_date::timestamp)
         ) AS on_time,
         COUNT(*) FILTER (
-          WHERE ts.is_final = true
+          WHERE t.status_is_final = true
           AND t.due_date IS NOT NULL
           AND t.updated_at > t.due_date::timestamp
         ) AS late
@@ -149,7 +149,7 @@ export default defineEventHandler(async (event) => {
       LEFT JOIN team_members tm ON t.assignee_id = tm.id
       ${whereClause}
       GROUP BY tm.id, tm.name
-      HAVING COUNT(*) FILTER (WHERE ts.is_final = true) > 0
+      HAVING COUNT(*) FILTER (WHERE t.status_is_final = true) > 0
       ORDER BY completed DESC
       LIMIT 20
     `
@@ -161,9 +161,9 @@ export default defineEventHandler(async (event) => {
       SELECT
         d.id AS department_id,
         d.name AS department_name,
-        COUNT(*) FILTER (WHERE ts.is_final = true) AS completed,
+        COUNT(*) FILTER (WHERE t.status_is_final = true) AS completed,
         ROUND(
-          COUNT(*) FILTER (WHERE ts.is_final = true)::numeric /
+          COUNT(*) FILTER (WHERE t.status_is_final = true)::numeric /
           NULLIF(COUNT(*)::numeric, 0) * 100, 1
         ) AS completion_rate
       FROM tasks t
@@ -180,10 +180,10 @@ export default defineEventHandler(async (event) => {
     const byPriorityQuery = `
       SELECT
         t.priority,
-        COUNT(*) FILTER (WHERE ts.is_final = true) AS completed,
+        COUNT(*) FILTER (WHERE t.status_is_final = true) AS completed,
         ROUND(
           AVG(
-            CASE WHEN ts.is_final = true
+            CASE WHEN t.status_is_final = true
             THEN EXTRACT(EPOCH FROM (t.updated_at - t.created_at)) / 86400
             END
           )::numeric, 1

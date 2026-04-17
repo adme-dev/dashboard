@@ -44,9 +44,9 @@ export default defineEventHandler(async (event) => {
       LEFT JOIN (
         SELECT
           t.assignee_id,
-          COUNT(*) FILTER (WHERE ts.is_final = false) as active_task_count,
-          COUNT(*) FILTER (WHERE t.due_date < CURRENT_DATE AND ts.is_final = false) as overdue_task_count,
-          SUM(t.estimated_hours) FILTER (WHERE ts.is_final = false) as estimated_hours
+          COUNT(*) FILTER (WHERE t.status_is_final = false) as active_task_count,
+          COUNT(*) FILTER (WHERE t.due_date < CURRENT_DATE AND t.status_is_final = false) as overdue_task_count,
+          SUM(t.estimated_hours) FILTER (WHERE t.status_is_final = false) as estimated_hours
         FROM tasks t
         JOIN task_statuses ts ON t.status_id = ts.id
         WHERE t.department_id = $1

@@ -25,8 +25,8 @@ export default defineEventHandler(async (event) => {
       LEFT JOIN (
         SELECT
           t.department_id,
-          COUNT(*) FILTER (WHERE ts.is_final = false) as active_tasks,
-          COUNT(*) FILTER (WHERE t.due_date < CURRENT_DATE AND ts.is_final = false) as overdue_tasks,
+          COUNT(*) FILTER (WHERE t.status_is_final = false) as active_tasks,
+          COUNT(*) FILTER (WHERE t.due_date < CURRENT_DATE AND t.status_is_final = false) as overdue_tasks,
           COUNT(*) FILTER (WHERE t.completed_at >= CURRENT_DATE - INTERVAL '7 days') as completed_this_week
         FROM tasks t
         JOIN task_statuses ts ON t.status_id = ts.id

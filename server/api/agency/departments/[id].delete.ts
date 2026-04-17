@@ -42,7 +42,7 @@ export default defineEventHandler(async (event) => {
       SELECT t.id, t.title
       FROM tasks t
       JOIN task_statuses ts ON t.status_id = ts.id
-      WHERE t.department_id = $1 AND ts.is_final = false
+      WHERE t.department_id = $1 AND t.status_is_final = false
       LIMIT 5
     `, [departmentId])
 

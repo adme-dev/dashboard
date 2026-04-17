@@ -50,11 +50,11 @@ export default defineEventHandler(async (event) => {
     const overallStats = await queryOne(`
       SELECT
         COUNT(*) as total_tasks,
-        COUNT(*) FILTER (WHERE ts.is_final = false) as active_tasks,
-        COUNT(*) FILTER (WHERE t.due_date < CURRENT_DATE AND ts.is_final = false) as overdue_tasks,
+        COUNT(*) FILTER (WHERE t.status_is_final = false) as active_tasks,
+        COUNT(*) FILTER (WHERE t.due_date < CURRENT_DATE AND t.status_is_final = false) as overdue_tasks,
         COUNT(*) FILTER (WHERE t.completed_at >= CURRENT_DATE - INTERVAL '7 days') as completed_this_week,
         COUNT(*) FILTER (WHERE ts.category = 'review') as in_review,
-        COUNT(*) FILTER (WHERE t.is_blocked = true AND ts.is_final = false) as blocked_tasks,
+        COUNT(*) FILTER (WHERE t.is_blocked = true AND t.status_is_final = false) as blocked_tasks,
         ROUND(AVG(EXTRACT(EPOCH FROM (t.completed_at - t.created_at)) / 3600)::numeric, 1) as avg_completion_hours
       FROM tasks t
       JOIN task_statuses ts ON t.status_id = ts.id
@@ -68,7 +68,7 @@ export default defineEventHandler(async (event) => {
         COUNT(*) as count
       FROM tasks t
       JOIN task_statuses ts ON t.status_id = ts.id
-      WHERE t.department_id = $1 AND ts.is_final = false
+      WHERE t.department_id = $1 AND t.status_is_final = false
       GROUP BY t.priority
     `, [id])
 
@@ -79,9 +79,9 @@ export default defineEventHandler(async (event) => {
         tm.name,
         tm.email,
         tm.target_utilization,
-        COUNT(t.id) FILTER (WHERE ts.is_final = false) as active_tasks,
-        COALESCE(SUM(t.estimated_hours) FILTER (WHERE ts.is_final = false), 0) as estimated_hours,
-        COUNT(t.id) FILTER (WHERE t.due_date < CURRENT_DATE AND ts.is_final = false) as overdue_tasks
+        COUNT(t.id) FILTER (WHERE t.status_is_final = false) as active_tasks,
+        COALESCE(SUM(t.estimated_hours) FILTER (WHERE t.status_is_final = false), 0) as estimated_hours,
+        COUNT(t.id) FILTER (WHERE t.due_date < CURRENT_DATE AND t.status_is_final = false) as overdue_tasks
       FROM department_members dm
       JOIN team_members tm ON dm.team_member_id = tm.id
       LEFT JOIN tasks t ON t.assignee_id = tm.id AND t.department_id = $1
@@ -121,7 +121,7 @@ export default defineEventHandler(async (event) => {
       WHERE t.department_id = $1
         AND t.due_date IS NOT NULL
         AND t.due_date >= CURRENT_DATE
-        AND ts.is_final = false
+        AND t.status_is_final = false
       ORDER BY t.due_date ASC
       LIMIT 10
     `, [id])

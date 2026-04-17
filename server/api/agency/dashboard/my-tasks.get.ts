@@ -33,7 +33,7 @@ export default defineEventHandler(async (event) => {
         ts.name as status_name,
         ts.color as status_color,
         ts.category as status_category,
-        ts.is_final as status_is_final,
+        t.status_is_final as status_is_final,
         d.name as department_name,
         d.color as department_color,
         p.name as project_name,
@@ -43,7 +43,7 @@ export default defineEventHandler(async (event) => {
       JOIN departments d ON t.department_id = d.id
       LEFT JOIN projects p ON t.project_id = p.id
       LEFT JOIN agency_clients c ON p.client_id = c.id
-      WHERE t.assignee_id = $1 AND ts.is_final = false
+      WHERE t.assignee_id = $1 AND t.status_is_final = false
       ORDER BY
         CASE t.priority
           WHEN 'urgent' THEN 1
@@ -67,7 +67,7 @@ export default defineEventHandler(async (event) => {
         COUNT(*) FILTER (WHERE t.is_blocked = true) as blocked
       FROM tasks t
       JOIN task_statuses ts ON t.status_id = ts.id
-      WHERE t.assignee_id = $1 AND ts.is_final = false
+      WHERE t.assignee_id = $1 AND t.status_is_final = false
     `, [userId])
 
     // Group tasks by category

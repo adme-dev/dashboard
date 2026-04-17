@@ -62,8 +62,8 @@ export default defineEventHandler(async (event) => {
         SELECT
           project_id,
           COUNT(*) as total,
-          COUNT(CASE WHEN ts.is_final THEN 1 END) as completed,
-          COUNT(CASE WHEN NOT ts.is_final AND ts.name != 'Backlog' THEN 1 END) as in_progress
+          COUNT(CASE WHEN t.status_is_final THEN 1 END) as completed,
+          COUNT(CASE WHEN NOT t.status_is_final AND ts.name != 'Backlog' THEN 1 END) as in_progress
         FROM tasks t
         JOIN task_statuses ts ON t.status_id = ts.id
         GROUP BY project_id

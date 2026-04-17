@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Build conditions
-    const conditions: string[] = ['t.due_date < CURRENT_DATE', 'ts.is_final = false']
+    const conditions: string[] = ['t.due_date < CURRENT_DATE', 't.status_is_final = false']
     const params: any[] = []
     let idx = 1
 

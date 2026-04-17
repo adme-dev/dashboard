@@ -40,8 +40,8 @@ export default defineEventHandler(async (event) => {
     const taskStats = await queryOne(`
       SELECT
         COUNT(*) as total,
-        COUNT(CASE WHEN ts.is_final THEN 1 END) as completed,
-        COUNT(CASE WHEN NOT ts.is_final AND ts.name != 'Backlog' THEN 1 END) as in_progress
+        COUNT(CASE WHEN t.status_is_final THEN 1 END) as completed,
+        COUNT(CASE WHEN NOT t.status_is_final AND ts.name != 'Backlog' THEN 1 END) as in_progress
       FROM tasks t
       JOIN task_statuses ts ON t.status_id = ts.id
       WHERE t.project_id = $1
@@ -52,7 +52,7 @@ export default defineEventHandler(async (event) => {
       SELECT t.id, t.title, t.due_date, ts.name as status_name, ts.color as status_color
       FROM tasks t
       JOIN task_statuses ts ON t.status_id = ts.id
-      WHERE t.project_id = $1 AND ts.is_final = false
+      WHERE t.project_id = $1 AND t.status_is_final = false
       ORDER BY t.due_date ASC NULLS LAST
       LIMIT 10
     `, [projectId])

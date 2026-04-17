@@ -61,8 +61,8 @@ export default defineEventHandler(async (event) => {
     const taskStats = await queryOne(`
       SELECT
         COUNT(*) as total,
-        COUNT(CASE WHEN ts.is_final THEN 1 END) as completed,
-        COUNT(CASE WHEN NOT ts.is_final THEN 1 END) as remaining
+        COUNT(CASE WHEN t.status_is_final THEN 1 END) as completed,
+        COUNT(CASE WHEN NOT t.status_is_final THEN 1 END) as remaining
       FROM tasks t
       JOIN task_statuses ts ON t.status_id = ts.id
       WHERE t.project_id = $1
@@ -79,7 +79,7 @@ export default defineEventHandler(async (event) => {
         ts.id as status_id,
         ts.name as status_name,
         ts.color as status_color,
-        ts.is_final,
+        t.status_is_final,
         assignee.name as assignee_name,
         assignee.avatar_url as assignee_avatar
       FROM tasks t
@@ -96,7 +96,7 @@ export default defineEventHandler(async (event) => {
         t.title,
         t.due_date,
         ts.name as status,
-        ts.is_final as is_completed
+        t.status_is_final as is_completed
       FROM tasks t
       JOIN task_statuses ts ON t.status_id = ts.id
       WHERE t.project_id = $1

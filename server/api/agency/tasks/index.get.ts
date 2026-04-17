@@ -2,7 +2,7 @@
  * List tasks with filtering and pagination
  */
 
-import { queryRows, queryOne } from '~~/server/utils/db'
+import { queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
@@ -82,47 +82,29 @@ export default defineEventHandler(async (event) => {
   }
 
   if (query.excludeCompleted === 'true') {
-    conditions.push('ts.is_final = false')
+    conditions.push('t.status_is_final = false')
   }
 
   if (query.overdue === 'true') {
-    conditions.push('t.due_date < CURRENT_DATE AND ts.is_final = false')
+    conditions.push('t.due_date < CURRENT_DATE AND t.status_is_final = false')
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
-  // Pagination - supports both offset and cursor-based
   const limit = Math.min(Number(query.limit) || 50, 100)
   const offset = Number(query.offset) || 0
-  const cursor = query.cursor as string | undefined // For cursor-based pagination
-
-  // Add cursor condition if provided (cursor is the last task's created_at + id)
-  if (cursor) {
-    const [cursorDate, cursorId] = cursor.split('_')
-    if (cursorDate && cursorId) {
-      conditions.push(`(t.created_at, t.id) < ($${idx}, $${idx + 1})`)
-      params.push(cursorDate, cursorId)
-      idx += 2
-    }
-  }
 
   try {
-    // Get total count
-    const countResult = await queryOne(`
-      SELECT COUNT(*) as total
-      FROM tasks t
-      JOIN task_statuses ts ON t.status_id = ts.id
-      ${whereClause}
-    `, params)
-
-    // Get tasks with related data
+    // Get tasks with related data. COUNT(*) OVER() returns the full unpaginated
+    // row count in the same query — avoids a second scan of tasks+task_statuses.
     const tasks = await queryRows(`
       SELECT
+        COUNT(*) OVER() as total_count,
         t.*,
         ts.name as status_name,
         ts.color as status_color,
         ts.category as status_category,
-        ts.is_final as status_is_final,
+        t.status_is_final as status_is_final,
         d.name as department_name,
         d.color as department_color,
         p.name as project_name,
@@ -235,14 +217,10 @@ export default defineEventHandler(async (event) => {
         commentCount: Number(t.comment_count) || 0,
       })),
       pagination: {
-        total: Number(countResult?.total) || 0,
+        total: Number(tasks[0]?.total_count) || 0,
         limit,
         offset,
-        hasMore: offset + tasks.length < Number(countResult?.total),
-        // Include next cursor for cursor-based pagination
-        nextCursor: tasks.length > 0 && tasks.length === limit
-          ? `${tasks[tasks.length - 1].created_at}_${tasks[tasks.length - 1].id}`
-          : null,
+        hasMore: offset + tasks.length < Number(tasks[0]?.total_count),
       }
     }
   } catch (error) {

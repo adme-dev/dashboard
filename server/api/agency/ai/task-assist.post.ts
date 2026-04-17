@@ -57,7 +57,7 @@ export default defineEventHandler(async (event) => {
             t.assignee_id, t.project_id, t.due_date, t.start_date,
             t.estimated_hours, t.actual_hours, t.is_blocked, t.blocked_reason,
             t.created_at, t.updated_at, t.completed_at,
-            ts.name AS status_name, ts.category AS status_category, ts.is_final,
+            ts.name AS status_name, ts.category AS status_category, t.status_is_final,
             u.name AS assignee_name,
             p.name AS project_name
           FROM tasks t

@@ -310,7 +310,7 @@ export default defineEventHandler(async (event) => {
         t.*,
         ts.name as status_name,
         ts.color as status_color,
-        ts.is_final as status_is_final,
+        t.status_is_final as status_is_final,
         d.name as department_name,
         assignee.name as assignee_name
       FROM tasks t

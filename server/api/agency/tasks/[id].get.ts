@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
         ts.name as status_name,
         ts.color as status_color,
         ts.category as status_category,
-        ts.is_final as status_is_final,
+        t.status_is_final as status_is_final,
         d.name as department_name,
         d.color as department_color,
         d.slug as department_slug,
@@ -86,7 +86,7 @@ export default defineEventHandler(async (event) => {
     const subtasks = await queryRows(`
       SELECT
         t.id, t.title, t.priority, t.due_date, t.completed_at,
-        ts.name as status_name, ts.color as status_color, ts.is_final,
+        ts.name as status_name, ts.color as status_color, t.status_is_final,
         assignee.name as assignee_name
       FROM tasks t
       JOIN task_statuses ts ON t.status_id = ts.id
@@ -101,7 +101,7 @@ export default defineEventHandler(async (event) => {
         td.id as dependency_id,
         td.dependency_type,
         t.id, t.title,
-        ts.name as status_name, ts.color as status_color, ts.is_final
+        ts.name as status_name, ts.color as status_color, t.status_is_final
       FROM task_dependencies td
       JOIN tasks t ON td.depends_on_task_id = t.id
       JOIN task_statuses ts ON t.status_id = ts.id
@@ -114,7 +114,7 @@ export default defineEventHandler(async (event) => {
         td.id as dependency_id,
         td.dependency_type,
         t.id, t.title,
-        ts.name as status_name, ts.color as status_color, ts.is_final
+        ts.name as status_name, ts.color as status_color, t.status_is_final
       FROM task_dependencies td
       JOIN tasks t ON td.task_id = t.id
       JOIN task_statuses ts ON t.status_id = ts.id

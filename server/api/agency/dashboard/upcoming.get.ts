@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
     const conditions: string[] = [
       't.due_date >= CURRENT_DATE',
       `t.due_date <= CURRENT_DATE + INTERVAL '${days} days'`,
-      'ts.is_final = false'
+      't.status_is_final = false'
     ]
     const params: any[] = []
     let idx = 1

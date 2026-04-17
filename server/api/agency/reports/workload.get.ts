@@ -91,12 +91,12 @@ export default defineEventHandler(async (event) => {
         tm.department_id,
         d.name AS department_name,
         tm.role,
-        COUNT(t.id) FILTER (WHERE ts.is_final = false) AS active_tasks,
-        COUNT(t.id) FILTER (WHERE ts.is_final = true) AS completed_tasks,
-        COALESCE(SUM(t.estimated_hours) FILTER (WHERE ts.is_final = false), 0) AS estimated_hours,
+        COUNT(t.id) FILTER (WHERE t.status_is_final = false) AS active_tasks,
+        COUNT(t.id) FILTER (WHERE t.status_is_final = true) AS completed_tasks,
+        COALESCE(SUM(t.estimated_hours) FILTER (WHERE t.status_is_final = false), 0) AS estimated_hours,
         COALESCE(SUM(t.actual_hours), 0) AS actual_hours,
         COUNT(t.id) FILTER (
-          WHERE ts.is_final = false
+          WHERE t.status_is_final = false
           AND t.due_date < CURRENT_DATE
         ) AS overdue_count
       FROM team_members tm
@@ -211,7 +211,7 @@ export default defineEventHandler(async (event) => {
                   SELECT SUM(t2.estimated_hours)
                   FROM tasks t2
                   JOIN task_statuses ts2 ON t2.status_id = ts2.id
-                  WHERE t2.assignee_id = tm.id AND ts2.is_final = false
+                  WHERE t2.assignee_id = tm.id AND t2.status_is_final = false
                 ), 0
               ) / 40.0 * 100
             )::numeric, 0

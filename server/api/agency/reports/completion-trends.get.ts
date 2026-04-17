@@ -77,14 +77,14 @@ export default defineEventHandler(async (event) => {
       WITH period_data AS (
         SELECT
           DATE_TRUNC('${intervalTrunc}', t.updated_at)::date AS period,
-          COUNT(*) FILTER (WHERE ts.is_final = true) AS completed,
+          COUNT(*) FILTER (WHERE t.status_is_final = true) AS completed,
           COUNT(*) FILTER (
             WHERE t.created_at >= DATE_TRUNC('${intervalTrunc}', t.updated_at)
             AND t.created_at < DATE_TRUNC('${intervalTrunc}', t.updated_at) + INTERVAL '1 ${intervalTrunc}'
           ) AS created,
           ROUND(
             AVG(
-              CASE WHEN ts.is_final = true
+              CASE WHEN t.status_is_final = true
               THEN EXTRACT(EPOCH FROM (t.updated_at - t.created_at)) / 3600
               END
             )::numeric, 1

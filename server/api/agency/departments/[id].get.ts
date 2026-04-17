@@ -52,7 +52,7 @@ export default defineEventHandler(async (event) => {
         SELECT assignee_id, COUNT(*) as active_task_count
         FROM tasks t
         JOIN task_statuses ts ON t.status_id = ts.id
-        WHERE ts.is_final = false
+        WHERE t.status_is_final = false
         GROUP BY assignee_id
       ) t ON tm.id = t.assignee_id
       WHERE dm.department_id = $1

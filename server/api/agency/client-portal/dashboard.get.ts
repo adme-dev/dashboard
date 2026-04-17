@@ -64,14 +64,14 @@ export default defineEventHandler(async (event) => {
         COALESCE(
           (SELECT COUNT(*) FROM tasks t
            JOIN task_statuses ts ON t.status_id = ts.id
-           WHERE t.project_id = p.id AND ts.is_final = true)::float /
+           WHERE t.project_id = p.id AND t.status_is_final = true)::float /
           NULLIF((SELECT COUNT(*) FROM tasks WHERE project_id = p.id), 0) * 100,
           0
         ) as progress_percent,
         (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) as total_tasks,
         (SELECT COUNT(*) FROM tasks t
          JOIN task_statuses ts ON t.status_id = ts.id
-         WHERE t.project_id = p.id AND ts.is_final = true) as completed_tasks
+         WHERE t.project_id = p.id AND t.status_is_final = true) as completed_tasks
       FROM projects p
       WHERE p.client_id = $1 AND p.status = 'active'
       ORDER BY p.due_date ASC NULLS LAST
@@ -173,7 +173,7 @@ export default defineEventHandler(async (event) => {
       WHERE p.client_id = $1
         AND t.due_date >= CURRENT_DATE
         AND t.due_date <= CURRENT_DATE + INTERVAL '14 days'
-        AND ts.is_final = false
+        AND t.status_is_final = false
       ORDER BY t.due_date ASC
       LIMIT 10
     `, [clientId])

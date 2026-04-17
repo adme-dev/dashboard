@@ -103,7 +103,7 @@ export default defineEventHandler(async (event) => {
       FROM tasks t
       JOIN task_statuses ts ON t.status_id = ts.id
       ${whereClause}
-      ${conditions.length > 0 ? 'AND' : 'WHERE'} ts.is_final = true
+      ${conditions.length > 0 ? 'AND' : 'WHERE'} t.status_is_final = true
     `
     const completedResult = await queryRows(completedQuery, params)
     const completedTasks = Number(completedResult[0]?.completed) || 0
@@ -121,7 +121,7 @@ export default defineEventHandler(async (event) => {
       FROM tasks t
       JOIN task_statuses ts ON t.status_id = ts.id
       ${whereClause}
-      ${conditions.length > 0 ? 'AND' : 'WHERE'} ts.is_final = true
+      ${conditions.length > 0 ? 'AND' : 'WHERE'} t.status_is_final = true
         AND t.updated_at >= $${paramIdx}::timestamp
         AND t.updated_at <= $${paramIdx + 1}::timestamp
       GROUP BY DATE_TRUNC('day', t.updated_at)

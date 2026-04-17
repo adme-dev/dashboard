@@ -58,7 +58,7 @@ export default defineEventHandler(async (event) => {
 
     // Completed tasks filter
     if (query.includeCompleted === 'false') {
-      conditions.push('ts.is_final = false')
+      conditions.push('t.status_is_final = false')
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
@@ -79,7 +79,7 @@ export default defineEventHandler(async (event) => {
         t.blocked_reason,
         -- Calculate progress percentage
         CASE
-          WHEN ts.is_final THEN 100
+          WHEN t.status_is_final THEN 100
           WHEN t.estimated_hours IS NOT NULL AND t.estimated_hours > 0 THEN
             LEAST(100, ROUND((COALESCE(t.actual_hours, 0) / t.estimated_hours) * 100))
           ELSE 0
@@ -89,7 +89,7 @@ export default defineEventHandler(async (event) => {
         ts.name as status_name,
         ts.color as status_color,
         ts.category as status_category,
-        ts.is_final,
+        t.status_is_final,
         -- Department info
         d.id as department_id,
         d.name as department_name,
@@ -120,7 +120,7 @@ export default defineEventHandler(async (event) => {
           td.depends_on_task_id,
           td.dependency_type,
           t.title as depends_on_title,
-          ts.is_final as depends_on_completed
+          t.status_is_final as depends_on_completed
         FROM task_dependencies td
         JOIN tasks t ON td.depends_on_task_id = t.id
         JOIN task_statuses ts ON t.status_id = ts.id

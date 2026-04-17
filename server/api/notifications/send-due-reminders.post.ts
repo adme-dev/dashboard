@@ -42,7 +42,7 @@ export default defineEventHandler(async (event) => {
       WHERE t.assignee_id IS NOT NULL
         AND t.due_date IS NOT NULL
         AND t.due_date BETWEEN $1 AND $2
-        AND ts.is_final = false
+        AND t.status_is_final = false
         AND NOT EXISTS (
           SELECT 1 FROM notifications n
           WHERE n.user_id = t.assignee_id
@@ -61,7 +61,7 @@ export default defineEventHandler(async (event) => {
       WHERE t.assignee_id IS NOT NULL
         AND t.due_date IS NOT NULL
         AND t.due_date < $1
-        AND ts.is_final = false
+        AND t.status_is_final = false
         AND NOT EXISTS (
           SELECT 1 FROM notifications n
           WHERE n.user_id = t.assignee_id

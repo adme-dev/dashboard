@@ -30,11 +30,11 @@ export default defineEventHandler(async (event) => {
         d.id as primary_department_id,
         d.name as primary_department_name,
         d.color as primary_department_color,
-        COUNT(t.id) FILTER (WHERE ts.is_final = false) as active_tasks,
-        COUNT(t.id) FILTER (WHERE t.due_date < CURRENT_DATE AND ts.is_final = false) as overdue_tasks,
-        COUNT(t.id) FILTER (WHERE t.due_date = CURRENT_DATE AND ts.is_final = false) as due_today,
-        COUNT(t.id) FILTER (WHERE t.due_date > CURRENT_DATE AND t.due_date <= CURRENT_DATE + INTERVAL '7 days' AND ts.is_final = false) as due_this_week,
-        COALESCE(SUM(t.estimated_hours) FILTER (WHERE ts.is_final = false), 0) as total_estimated_hours,
+        COUNT(t.id) FILTER (WHERE t.status_is_final = false) as active_tasks,
+        COUNT(t.id) FILTER (WHERE t.due_date < CURRENT_DATE AND t.status_is_final = false) as overdue_tasks,
+        COUNT(t.id) FILTER (WHERE t.due_date = CURRENT_DATE AND t.status_is_final = false) as due_today,
+        COUNT(t.id) FILTER (WHERE t.due_date > CURRENT_DATE AND t.due_date <= CURRENT_DATE + INTERVAL '7 days' AND t.status_is_final = false) as due_this_week,
+        COALESCE(SUM(t.estimated_hours) FILTER (WHERE t.status_is_final = false), 0) as total_estimated_hours,
         COALESCE(SUM(t.actual_hours), 0) as total_actual_hours,
         COUNT(t.id) FILTER (WHERE ts.category = 'in_progress') as in_progress,
         COUNT(t.id) FILTER (WHERE ts.category = 'review') as in_review
@@ -57,12 +57,12 @@ export default defineEventHandler(async (event) => {
         d.color,
         d.icon,
         COUNT(DISTINCT dm.team_member_id) as member_count,
-        COUNT(t.id) FILTER (WHERE ts.is_final = false) as active_tasks,
-        COUNT(t.id) FILTER (WHERE t.due_date < CURRENT_DATE AND ts.is_final = false) as overdue_tasks,
-        COALESCE(SUM(t.estimated_hours) FILTER (WHERE ts.is_final = false), 0) as total_estimated_hours,
+        COUNT(t.id) FILTER (WHERE t.status_is_final = false) as active_tasks,
+        COUNT(t.id) FILTER (WHERE t.due_date < CURRENT_DATE AND t.status_is_final = false) as overdue_tasks,
+        COALESCE(SUM(t.estimated_hours) FILTER (WHERE t.status_is_final = false), 0) as total_estimated_hours,
         COUNT(t.id) FILTER (WHERE ts.category = 'in_progress') as in_progress,
         COUNT(t.id) FILTER (WHERE ts.category = 'review') as in_review,
-        COUNT(t.id) FILTER (WHERE t.assignee_id IS NULL AND ts.is_final = false) as unassigned_tasks
+        COUNT(t.id) FILTER (WHERE t.assignee_id IS NULL AND t.status_is_final = false) as unassigned_tasks
       FROM departments d
       LEFT JOIN department_members dm ON d.id = dm.department_id
       LEFT JOIN tasks t ON d.id = t.department_id
@@ -76,11 +76,11 @@ export default defineEventHandler(async (event) => {
     const summary = await queryOne(`
       SELECT
         COUNT(DISTINCT tm.id) as total_members,
-        COUNT(t.id) FILTER (WHERE ts.is_final = false) as total_active_tasks,
-        COUNT(t.id) FILTER (WHERE t.due_date < CURRENT_DATE AND ts.is_final = false) as total_overdue,
-        COUNT(t.id) FILTER (WHERE t.assignee_id IS NULL AND ts.is_final = false) as total_unassigned,
-        COALESCE(SUM(t.estimated_hours) FILTER (WHERE ts.is_final = false), 0) as total_estimated_hours,
-        COUNT(DISTINCT t.assignee_id) FILTER (WHERE ts.is_final = false) as members_with_tasks
+        COUNT(t.id) FILTER (WHERE t.status_is_final = false) as total_active_tasks,
+        COUNT(t.id) FILTER (WHERE t.due_date < CURRENT_DATE AND t.status_is_final = false) as total_overdue,
+        COUNT(t.id) FILTER (WHERE t.assignee_id IS NULL AND t.status_is_final = false) as total_unassigned,
+        COALESCE(SUM(t.estimated_hours) FILTER (WHERE t.status_is_final = false), 0) as total_estimated_hours,
+        COUNT(DISTINCT t.assignee_id) FILTER (WHERE t.status_is_final = false) as members_with_tasks
       FROM team_members tm
       LEFT JOIN tasks t ON t.assignee_id = tm.id ${departmentCondition}
       LEFT JOIN task_statuses ts ON t.status_id = ts.id
