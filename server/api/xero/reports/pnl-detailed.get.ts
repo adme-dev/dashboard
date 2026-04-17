@@ -1,5 +1,5 @@
 import { createError } from 'h3'
-import { createXeroClient } from '../../../utils/xeroClient'
+import { xeroFetch } from '../../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
 import { cachedFetch } from '../../../utils/kv'
@@ -395,27 +395,28 @@ export default eventHandler(async (event) => {
   const cacheKey = `xero-report:${tenantId}:pnl-detailed:${fromDateStr}:${toDateStr}:${basis}${trackingSuffix ? ':' + trackingSuffix : ''}`
 
   return cachedFetch(event, cacheKey, 900, async () => {
-  const client = await createXeroClient({ tokenSet: token, event })
   let report
   try {
-    const response = await dedupedXeroCall(
+    const params = new URLSearchParams({
+      fromDate: fromDateStr,
+      toDate: toDateStr,
+      periods: String(periodCount),
+      timeframe: 'MONTH',
+    })
+    if (trackingCategoryID) params.set('trackingCategoryID', trackingCategoryID)
+    if (trackingOptionID) params.set('trackingOptionID', trackingOptionID)
+    if (trackingOptionID2) params.set('trackingOptionID2', trackingOptionID2)
+    if (basis === 'Cash') params.set('paymentsOnly', 'true')
+
+    report = await dedupedXeroCall(
       `pnlDetailed:${tenantId}:${fromDateStr}:${toDateStr}:${basis}:${trackingSuffix}`,
       'pnl-detailed',
-      () => client.accountingApi.getReportProfitAndLoss(
+      () => xeroFetch<any>({
+        accessToken: token.access_token!,
         tenantId,
-        fromDateStr,
-        toDateStr,
-        periodCount,
-        'MONTH',
-        trackingCategoryID,
-        trackingOptionID,
-        trackingOptionID2,
-        undefined,
-        undefined,
-        basis === 'Cash'
-      )
+        path: `Reports/ProfitAndLoss?${params.toString()}`,
+      })
     )
-    report = response.body
   } catch (err: any) {
     const statusCode = err?.response?.status || 500
     const detail = err?.response?.data || err?.message

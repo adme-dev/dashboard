@@ -1,5 +1,5 @@
 import { createError } from 'h3'
-import { createXeroClient } from '../../../utils/xeroClient'
+import { xeroFetch } from '../../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
 import { cachedFetch } from '~~/server/utils/kv'
@@ -35,34 +35,24 @@ export default eventHandler(async (event) => {
   return cachedFetch(event, `xero:aging:${tenantId}:${reportType}`, 300, async () => {
   const today = new Date()
 
-  const client = await createXeroClient({ tokenSet: token, event })
-
-  // Determine invoice type based on report
   const invoiceType = reportType === 'receivables' ? 'ACCREC' : 'ACCPAY'
   const statusFilter = 'AUTHORISED'
 
   // Fetch outstanding invoices with rate limiting
+  const params = new URLSearchParams({
+    where: `Type=="${invoiceType}"&&Status=="${statusFilter}"`,
+    order: 'DueDate ASC',
+    page: '1',
+    pageSize: '500',
+  })
   const invoicesResponse = await dedupedXeroCall(
     `aging-${invoiceType}:${tenantId}`,
     `aging-${reportType}`,
-    async () => {
-      const { body } = await (client.accountingApi.getInvoices as any)(
-        tenantId,
-        undefined,
-        `Type=="${invoiceType}"&&Status=="${statusFilter}"`,
-        'DueDate ASC',
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        1,
-        undefined,
-        undefined,
-        undefined,
-        500
-      )
-      return body
-    }
+    () => xeroFetch<any>({
+      accessToken: token.access_token!,
+      tenantId,
+      path: `Invoices?${params.toString()}`,
+    })
   )
 
   const invoices = invoicesResponse?.invoices || []
