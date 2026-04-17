@@ -342,6 +342,16 @@ const advisorOpen = ref(false)
 const advisorLoading = ref(false)
 const advisorData = ref<AdvisorResponse | null>(null)
 const advisorError = ref<string | null>(null)
+const advisorClientId = ref<string>('agency')
+// Client list is cheap + shared with the rest of /reports. Fetch client-side.
+const { data: advisorClientsData } = await useFetch<Array<{ id: string; name: string }>>(
+  '/api/agency/clients',
+  { server: false, default: () => [] }
+)
+const advisorClientOptions = computed(() => ([
+  { label: 'Agency (own books)', value: 'agency' },
+  ...(advisorClientsData.value ?? []).map((c: { id: string; name: string }) => ({ label: c.name, value: c.id })),
+]))
 
 async function openAdvisor(force = false) {
   advisorOpen.value = true
@@ -351,6 +361,7 @@ async function openAdvisor(force = false) {
   try {
     const query: Record<string, any> = { toDate: toDate.value }
     if (force) query.bust = 1
+    if (advisorClientId.value && advisorClientId.value !== 'agency') query.clientId = advisorClientId.value
     advisorData.value = await $fetch<AdvisorResponse>('/api/ai/financial-advisor', { query })
   } catch (err: any) {
     advisorError.value = err?.data?.statusMessage ?? err?.message ?? 'Advisor unavailable'
@@ -358,6 +369,14 @@ async function openAdvisor(force = false) {
     advisorLoading.value = false
   }
 }
+
+// Re-run advisor whenever the scope changes while the slide-over is open.
+watch(advisorClientId, () => {
+  if (advisorOpen.value) {
+    advisorData.value = null
+    openAdvisor(true)
+  }
+})
 
 function gradeColor(grade: 'A' | 'B' | 'C' | 'D' | 'F'): string {
   return ({ A: 'text-emerald-500', B: 'text-emerald-400', C: 'text-amber-500', D: 'text-orange-500', F: 'text-red-500' })[grade]
@@ -1375,10 +1394,32 @@ const breadcrumbs = computed(() => ([
               </div>
             </div>
             <div class="flex items-center gap-1">
+              <UButton
+                icon="i-lucide-list-todo"
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                to="/advisor"
+                label="Backlog"
+              />
               <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" size="xs" :loading="advisorLoading" @click="openAdvisor(true)" />
               <UButton icon="i-lucide-x" color="neutral" variant="ghost" size="xs" @click="advisorOpen = false" />
             </div>
           </header>
+
+          <!-- Scope selector: agency vs a specific client. Changing this
+               kicks a fresh generation via the watcher on advisorClientId. -->
+          <div class="px-6 py-3 border-b border-default flex items-center gap-2">
+            <UIcon name="i-lucide-target" class="size-4 text-muted" />
+            <span class="text-xs text-muted">Scope</span>
+            <USelectMenu
+              v-model="advisorClientId"
+              :items="advisorClientOptions"
+              value-key="value"
+              size="xs"
+              class="flex-1"
+            />
+          </div>
 
           <div class="flex-1 overflow-y-auto p-6 space-y-6">
             <div v-if="advisorLoading && !advisorData" class="space-y-3">
@@ -1451,9 +1492,14 @@ const breadcrumbs = computed(() => ([
                 </div>
               </div>
 
-              <p class="text-[10px] text-muted pt-4 border-t border-default">
-                Generated from your live Xero data. Re-generate for a fresh read.
-              </p>
+              <div class="pt-4 border-t border-default space-y-2">
+                <p class="text-[10px] text-muted">
+                  Generated from your live Xero data. Re-generate for a fresh read.
+                </p>
+                <p v-if="advisorData.recommendations.length" class="text-[10px] text-muted">
+                  Recommendations are saved to your <ULink to="/advisor" class="text-primary">advisor backlog</ULink> so you can triage, assign, and track impact.
+                </p>
+              </div>
             </template>
           </div>
         </div>

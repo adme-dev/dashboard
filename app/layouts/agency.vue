@@ -154,6 +154,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { label: 'Cash Flow', icon: 'i-lucide-trending-up', to: '/cashflow', onSelect: close },
       { label: 'Profit & Loss', icon: 'i-lucide-pie-chart', to: '/profit-loss', onSelect: close },
       { label: 'Financial Reports', icon: 'i-lucide-file-text', to: '/reports', onSelect: close },
+      { label: 'Advisor Backlog', icon: 'i-lucide-list-todo', to: '/advisor', onSelect: close },
       { label: 'Insights', icon: 'i-lucide-lightbulb', to: '/insights', onSelect: close },
       { label: 'Anomalies', icon: 'i-lucide-alert-triangle', to: '/anomalies', onSelect: close },
       { label: 'Recommendations', icon: 'i-lucide-clipboard-check', to: '/recommendations', onSelect: close },

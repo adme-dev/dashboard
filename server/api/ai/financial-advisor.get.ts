@@ -15,6 +15,39 @@ import { getSelectedTenant } from '~~/server/utils/session'
 import { cachedFetch } from '~~/server/utils/kv'
 import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
 import { query } from '~~/server/utils/db'
+import { embedRecommendation } from '~~/server/utils/advisorEmbedder'
+import { METRIC_REGISTRY } from '~~/server/utils/advisorMetrics'
+import { buildClientSnapshot } from '~~/server/utils/advisorClientSnapshot'
+
+// Path into the reduced `snapshot` object (not the raw endpoint
+// response) for every metric the advisor can tag. Kept in sync with
+// how the snapshot is built below.
+const SNAPSHOT_PATHS: Record<string, string[]> = {
+  netMarginMonth: ['pnl', 'netMarginMonth'],
+  netProfitMonth: ['pnl', 'netProfitMonth'],
+  netProfitYtd: ['pnl', 'netProfitYtd'],
+  revenueMonth: ['pnl', 'revenueMonth'],
+  debtorDays: ['execSummary', 'debtorDays'],
+  creditorDays: ['execSummary', 'creditorDays'],
+  grossProfitPercent: ['execSummary', 'grossProfitPercent'],
+  netProfitPercent: ['execSummary', 'netProfitPercent'],
+  currentRatio: ['execSummary', 'currentRatio'],
+  top1Share: ['concentration', 'top1Share'],
+  top3Share: ['concentration', 'top3Share'],
+  mrr: ['recurring', 'mrr'],
+  outstandingTotal: ['aging', 'totalOutstanding'],
+  overdueAmount: ['aging', 'criticalAmount'],
+  totalUnearned: ['unearnedRevenue', 'total'],
+}
+
+function readSnapshotPath(obj: any, path: string[]): number | null {
+  let cur = obj
+  for (const k of path) {
+    if (cur == null) return null
+    cur = cur[k]
+  }
+  return typeof cur === 'number' && Number.isFinite(cur) ? cur : null
+}
 
 type Advisor = {
   asOf: string
@@ -24,7 +57,14 @@ type Advisor = {
   headline: string
   strengths: Array<{ title: string; detail: string }>
   risks: Array<{ title: string; detail: string; severity: 'low' | 'medium' | 'high' }>
-  recommendations: Array<{ priority: 'low' | 'medium' | 'high'; title: string; impact: string; action: string }>
+  recommendations: Array<{
+    priority: 'low' | 'medium' | 'high'
+    title: string
+    impact: string
+    action: string
+    target_metric?: string | null
+    target_direction?: 'up' | 'down' | null
+  }>
   alerts: Array<{ level: 'info' | 'warning' | 'critical'; message: string }>
   industryContext?: string
 }
@@ -40,9 +80,26 @@ Your output MUST be a JSON object with exactly these keys and shapes:
   "headline": "one short headline (<= 10 words) for the top of the panel",
   "strengths": [ { "title": "...", "detail": "1-2 sentences" } ],
   "risks":     [ { "title": "...", "detail": "1-2 sentences", "severity": "low"|"medium"|"high" } ],
-  "recommendations": [ { "priority": "low"|"medium"|"high", "title": "...", "impact": "expected benefit in dollars or %", "action": "concrete next step" } ],
+  "recommendations": [ { "priority": "low"|"medium"|"high", "title": "...", "impact": "expected benefit in dollars or %", "action": "concrete next step", "target_metric": "<optional metric key from registry below>", "target_direction": "up"|"down" } ],
   "alerts":    [ { "level": "info"|"warning"|"critical", "message": "..." } ]
 }
+
+Metric registry (use EXACTLY these keys when tagging target_metric, otherwise omit the field):
+ - netMarginMonth — net profit margin for the month (percent, up is good)
+ - netProfitMonth — net profit for the month (currency, up)
+ - netProfitYtd — YTD net profit (currency, up)
+ - revenueMonth — revenue for the month (currency, up)
+ - debtorDays — days sales outstanding (days, DOWN is good)
+ - creditorDays — days payable outstanding (days, up is generally good within limits)
+ - grossProfitPercent — gross profit % (percent, up)
+ - netProfitPercent — net profit % (percent, up)
+ - currentRatio — current assets / current liabilities (ratio, up)
+ - top1Share — top-1 client revenue share (percent, DOWN is good — concentration risk)
+ - top3Share — top-3 client revenue share (percent, DOWN)
+ - mrr — monthly recurring revenue (currency, up)
+ - outstandingTotal — total outstanding A/R (currency, DOWN)
+ - overdueAmount — 90+ day overdue A/R (currency, DOWN)
+ - totalUnearned — unearned revenue / deferred (currency, up — implies prepaid retainers)
 
 Rules:
  - Reply with the JSON object ONLY — no markdown fences, no prose.
@@ -50,7 +107,8 @@ Rules:
  - Prefer 3-5 items per list; never more than 7.
  - Agency industry benchmarks you can reference when relevant: gross margin 45-60%, net margin 10-20%, DSO < 45 days, DPO 30-45 days, retainer revenue 40-60% of total, top-3 client concentration < 50%.
  - When flagging risk, tie it to an action that would move a specific metric.
- - Never invent data; if a field is missing just skip it.`
+ - Never invent data; if a field is missing just skip it.
+ - Tag target_metric + target_direction on any recommendation that clearly moves one of the registry metrics. Skip the tag if the action doesn't fit the registry.`
 
 async function fetchInternal(event: any, path: string, query?: Record<string, any>): Promise<any> {
   try {
@@ -77,7 +135,10 @@ export default eventHandler(async (event) => {
 
   const q = getQuery(event)
   const toDate = typeof q.toDate === 'string' ? q.toDate : new Date().toISOString().slice(0, 10)
-  const cacheKey = `ai:financial-advisor:${tenantId}:${toDate}`
+  const requestedClientId = typeof q.clientId === 'string' && q.clientId !== 'agency' ? q.clientId : null
+  const cacheKey = requestedClientId
+    ? `ai:financial-advisor:${tenantId}:${toDate}:client:${requestedClientId}`
+    : `ai:financial-advisor:${tenantId}:${toDate}`
 
   return cachedFetch<Advisor>(event, cacheKey, 3600, async () => {
     // Pull every report in parallel from our own endpoints — they're
@@ -174,31 +235,62 @@ export default eventHandler(async (event) => {
       } : null,
     }
 
+    // Client-scoped snapshot — derived from tracking categories and
+    // contact matches. Null until per-client Xero OAuth lands.
+    let clientSnapshot: Awaited<ReturnType<typeof buildClientSnapshot>> = null
+    if (requestedClientId) {
+      clientSnapshot = await buildClientSnapshot(event, requestedClientId, toDate)
+    }
+
+    // Carry-over: pull up to 10 recommendations still open or in-progress
+    // from prior months so the LLM can call them out instead of repeating
+    // itself. Scoped to (tenant, client) so each scope has its own memory.
+    let carryOver: Array<{ title: string; action: string; priority: string; status: string; period_label: string | null }> = []
+    try {
+      const carryWhere = requestedClientId
+        ? `r.tenant_id = $1 AND r.client_id = $2 AND r.status IN ('open', 'in_progress')`
+        : `r.tenant_id = $1 AND r.client_id IS NULL AND r.status IN ('open', 'in_progress')`
+      const carryParams: any[] = requestedClientId ? [tenantId, requestedClientId] : [tenantId]
+      carryOver = await query<any>(
+        `SELECT r.title, r.action, r.priority, r.status, far.period_label
+         FROM recommendations r
+         LEFT JOIN financial_advisor_reports far ON far.id = r.source_report_id
+         WHERE ${carryWhere}
+         ORDER BY
+           CASE r.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
+           r.created_at DESC
+         LIMIT 10`,
+        carryParams
+      )
+    } catch (err: any) {
+      console.warn('[financial-advisor] carry-over query failed:', err?.message ?? err)
+    }
+
+    const carryOverBlock = carryOver.length === 0 ? '' : `\n\nCARRY-OVER ITEMS (unresolved from prior months — reference these when still relevant, but don't repeat them verbatim):\n${JSON.stringify(carryOver, null, 2)}`
+    const clientBlock = clientSnapshot ? `\n\nCLIENT-SCOPED VIEW for ${clientSnapshot.client.name} (derived from the agency's tracking categories + contact matches — treat numbers as approximate):\n${JSON.stringify(clientSnapshot, null, 2)}` : ''
+    const promptBody = requestedClientId && clientSnapshot
+      ? `Analyse the agency's books for its client "${clientSnapshot.client.name}" and return the structured advice JSON. Speak directly to the AGENCY'S OWNER about their relationship with this client — pricing, collections, profitability, retention. Base AGENCY SNAPSHOT is included for context but focus on the CLIENT-SCOPED VIEW.\n\nAGENCY SNAPSHOT:\n${JSON.stringify(snapshot, null, 2)}${clientBlock}${carryOverBlock}`
+      : `Analyse this agency's financials for ${toDate} and return the structured advice JSON.\n\nSNAPSHOT:\n${JSON.stringify(snapshot, null, 2)}${carryOverBlock}`
+
     // Deep reasoning + strong structured-output adherence on Groq as of
     // April 2026 → openai/gpt-oss-120b. Fall back to llama-3.3-70b if the
     // provider ever 404s that model ID.
     let raw: string
     try {
-      raw = await generateGroqInsight(
-        `Analyse this agency's financials for ${toDate} and return the structured advice JSON.\n\nSNAPSHOT:\n${JSON.stringify(snapshot, null, 2)}`,
-        {
-          model: GROQ_MODELS.REASONING_120B,
-          temperature: 0.3,
-          maxTokens: 2500,
-          systemPrompt: SYSTEM_PROMPT,
-        }
-      )
+      raw = await generateGroqInsight(promptBody, {
+        model: GROQ_MODELS.REASONING_120B,
+        temperature: 0.3,
+        maxTokens: 2500,
+        systemPrompt: SYSTEM_PROMPT,
+      })
     } catch (err: any) {
       console.warn('[financial-advisor] REASONING_120B failed, falling back to LLAMA_70B:', err?.message)
-      raw = await generateGroqInsight(
-        `Analyse this agency's financials for ${toDate} and return the structured advice JSON.\n\nSNAPSHOT:\n${JSON.stringify(snapshot, null, 2)}`,
-        {
-          model: GROQ_MODELS.LLAMA_70B,
-          temperature: 0.3,
-          maxTokens: 2500,
-          systemPrompt: SYSTEM_PROMPT,
-        }
-      )
+      raw = await generateGroqInsight(promptBody, {
+        model: GROQ_MODELS.LLAMA_70B,
+        temperature: 0.3,
+        maxTokens: 2500,
+        systemPrompt: SYSTEM_PROMPT,
+      })
     }
 
     // Be tolerant of markdown fences the model sometimes wraps JSON in.
@@ -224,14 +316,17 @@ export default eventHandler(async (event) => {
 
     // Archive the report keyed by tenant + period so owners can look
     // back at past CFO reads. Best-effort — never break the endpoint.
+    // Also mirror each recommendation into the `recommendations` backlog
+    // table so owners can triage + assign them from /advisor.
     try {
       const periodDate = new Date(toDate)
       const periodLabel = periodDate.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })
       const user = (event.context as any).user
-      await query(
+      const archiveRows = await query<{ id: string }>(
         `INSERT INTO financial_advisor_reports
             (tenant_id, period_key, period_label, grade, score, headline, verdict, payload, model, generated_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING id`,
         [
           tenantId,
           toDate,
@@ -245,6 +340,65 @@ export default eventHandler(async (event) => {
           user?.id ?? null,
         ]
       )
+      const reportId = archiveRows?.[0]?.id ?? null
+
+      if (reportId && result.recommendations.length > 0) {
+        for (const rec of result.recommendations) {
+          // Validate target_metric against the registry. If the model
+          // emits something we don't track, drop it rather than poison
+          // the attribution job later.
+          const metricName = rec.target_metric && METRIC_REGISTRY[rec.target_metric] ? rec.target_metric : null
+          const registryEntry = metricName ? METRIC_REGISTRY[metricName] : null
+          const baselineValue = metricName ? readSnapshotPath(snapshot, SNAPSHOT_PATHS[metricName] ?? []) : null
+          const direction = (rec.target_direction === 'up' || rec.target_direction === 'down')
+            ? rec.target_direction
+            : (registryEntry?.preferredDirection ?? null)
+
+          const inserted = await query<{ id: string }>(
+            `INSERT INTO recommendations
+                (tenant_id, client_id, source_report_id, title, action, impact, priority,
+                 target_metric, baseline_metric_value, target_direction,
+                 xero_metric_snapshot)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+             RETURNING id`,
+            [
+              tenantId,
+              requestedClientId,
+              reportId,
+              rec.title,
+              rec.action,
+              rec.impact ?? null,
+              rec.priority,
+              metricName,
+              baselineValue,
+              direction,
+              JSON.stringify(requestedClientId && clientSnapshot ? { agency: snapshot, client: clientSnapshot } : snapshot),
+            ]
+          )
+          const recId = inserted?.[0]?.id
+          if (recId) {
+            // Fire-and-forget: embed for Vectorize-backed similarity search.
+            // Errors are swallowed inside the helper — never fail the
+            // advisor response over a vector upsert.
+            embedRecommendation(event, {
+              id: recId,
+              tenant_id: tenantId,
+              client_id: requestedClientId,
+              client_name: clientSnapshot?.client.name ?? null,
+              source_report_id: reportId,
+              period_key: toDate,
+              period_label: periodLabel,
+              title: rec.title,
+              action: rec.action,
+              impact: rec.impact ?? null,
+              priority: rec.priority,
+              status: 'open',
+            }).catch((err: any) => {
+              console.warn('[financial-advisor] embed failed:', err?.message ?? err)
+            })
+          }
+        }
+      }
     } catch (err: any) {
       console.warn('[financial-advisor] archive failed:', err?.message ?? err)
     }

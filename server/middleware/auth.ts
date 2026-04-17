@@ -18,7 +18,19 @@ const publicRoutes = [
   '/api/xero/callback',
   '/api/_nuxt_icon',
   '/_nuxt',
-  '/__nuxt_devtools__'
+  '/__nuxt_devtools__',
+  // Internal crons — each enforces its own secret-header check inline
+  '/api/internal/warmup',
+  '/api/internal/attribution-cron',
+]
+
+// Paths that an authenticated cron can read with X-Internal-Cron-Secret.
+// Narrow to read-only Xero + advisor surfaces — never include auth/
+// admin/mutation endpoints, even with the secret.
+const CRON_ALLOWED_PREFIXES = [
+  '/api/xero/',
+  '/api/advisor/',
+  '/api/ai/financial-advisor',
 ]
 
 export default defineEventHandler(async (event) => {
@@ -31,6 +43,26 @@ export default defineEventHandler(async (event) => {
 
   // Skip auth for non-API routes (pages handled by middleware in app)
   if (!pathname.startsWith('/api/')) {
+    return
+  }
+
+  // Internal cron bypass: a process inside CF with the shared secret
+  // can hit whitelisted read endpoints as a synthetic "cron" user.
+  // Used by /api/internal/attribution-cron to re-measure metrics on
+  // schedule. Silently falls through if the header is missing or the
+  // path isn't whitelisted.
+  const cronSecret = getHeader(event, 'x-internal-cron-secret')
+  const expectedCronSecret = process.env.CRON_INTERNAL_SECRET
+  if (cronSecret && expectedCronSecret && cronSecret === expectedCronSecret &&
+      CRON_ALLOWED_PREFIXES.some((p) => pathname.startsWith(p))) {
+    event.context.user = {
+      id: 'cron',
+      email: 'cron@internal',
+      name: 'Attribution Cron',
+      role: 'owner',
+      is_active: true,
+    }
+    event.context.auth = { userId: 'cron', role: 'owner' }
     return
   }
 
