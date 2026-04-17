@@ -14,6 +14,7 @@ import { getActiveTokenForSession } from '~~/server/utils/tokenStore'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { cachedFetch } from '~~/server/utils/kv'
 import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { query } from '~~/server/utils/db'
 
 type Advisor = {
   asOf: string
@@ -220,6 +221,34 @@ export default eventHandler(async (event) => {
       recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations.slice(0, 7) : [],
       alerts: Array.isArray(parsed.alerts) ? parsed.alerts.slice(0, 7) : [],
     }
+
+    // Archive the report keyed by tenant + period so owners can look
+    // back at past CFO reads. Best-effort — never break the endpoint.
+    try {
+      const periodDate = new Date(toDate)
+      const periodLabel = periodDate.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })
+      const user = (event.context as any).user
+      await query(
+        `INSERT INTO financial_advisor_reports
+            (tenant_id, period_key, period_label, grade, score, headline, verdict, payload, model, generated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          tenantId,
+          toDate,
+          periodLabel,
+          result.grade,
+          result.score,
+          result.headline,
+          result.verdict,
+          JSON.stringify(result),
+          'openai/gpt-oss-120b',
+          user?.id ?? null,
+        ]
+      )
+    } catch (err: any) {
+      console.warn('[financial-advisor] archive failed:', err?.message ?? err)
+    }
+
     return result
   })
 })
