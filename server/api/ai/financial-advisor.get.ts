@@ -14,7 +14,8 @@ import { getActiveTokenForSession } from '~~/server/utils/tokenStore'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { cachedFetch } from '~~/server/utils/kv'
 import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
-import { generateClaudeInsight, CLAUDE_MODELS } from '~~/server/utils/claudeClient'
+import { generateClaudeStructured, CLAUDE_MODELS } from '~~/server/utils/claudeClient'
+import { z } from 'zod'
 import { query } from '~~/server/utils/db'
 import { embedRecommendation } from '~~/server/utils/advisorEmbedder'
 import { METRIC_REGISTRY } from '~~/server/utils/advisorMetrics'
@@ -69,6 +70,34 @@ type Advisor = {
   alerts: Array<{ level: 'info' | 'warning' | 'critical'; message: string }>
   industryContext?: string
 }
+
+// Matches the JSON shape the LLM returns — asOf/industryContext are added by
+// code, not the model. Used with Claude's structured outputs so we skip the
+// markdown-fence strip + JSON.parse + 502 fallback dance.
+const AdvisorLLMSchema = z.object({
+  verdict: z.string(),
+  grade: z.enum(['A', 'B', 'C', 'D', 'F']),
+  score: z.number(),
+  headline: z.string(),
+  strengths: z.array(z.object({ title: z.string(), detail: z.string() })),
+  risks: z.array(z.object({
+    title: z.string(),
+    detail: z.string(),
+    severity: z.enum(['low', 'medium', 'high']),
+  })),
+  recommendations: z.array(z.object({
+    priority: z.enum(['low', 'medium', 'high']),
+    title: z.string(),
+    impact: z.string(),
+    action: z.string(),
+    target_metric: z.string().nullable().optional(),
+    target_direction: z.enum(['up', 'down']).nullable().optional(),
+  })),
+  alerts: z.array(z.object({
+    level: z.enum(['info', 'warning', 'critical']),
+    message: z.string(),
+  })),
+})
 
 const SYSTEM_PROMPT = `You are a senior CFO advising the owner of a digital marketing agency.
 You read structured financial snapshots and return concise, actionable CFO-grade advice.
@@ -278,57 +307,58 @@ export default eventHandler(async (event) => {
     // Default stays Groq so flipping ADVISOR_BACKEND=claude is opt-in, and
     // Claude errors fall back to Groq so a bad API key doesn't break advisor.
     const backend = (process.env.ADVISOR_BACKEND ?? 'groq').toLowerCase()
-    let raw: string
+    let parsed: Partial<Advisor>
     let modelUsed = 'openai/gpt-oss-120b'
+
+    const parseGroq = (raw: string): Partial<Advisor> => {
+      const jsonText = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
+      try {
+        return JSON.parse(jsonText)
+      } catch {
+        throw createError({ statusCode: 502, statusMessage: 'Advisor produced invalid JSON' })
+      }
+    }
 
     if (backend === 'claude') {
       try {
-        const result = await generateClaudeInsight(promptBody, {
+        const result = await generateClaudeStructured(promptBody, {
+          schema: AdvisorLLMSchema,
           model: CLAUDE_MODELS.SONNET_4_6,
           maxTokens: 2500,
           systemPrompt: SYSTEM_PROMPT,
         })
-        raw = result.text
+        parsed = result.parsed
         modelUsed = result.model
         console.log(
           `[financial-advisor] claude ok — in=${result.usage.inputTokens} out=${result.usage.outputTokens} cache_read=${result.usage.cacheReadTokens} cache_write=${result.usage.cacheCreationTokens}`
         )
       } catch (err: any) {
         console.warn('[financial-advisor] Claude failed, falling back to Groq:', err?.message)
-        raw = await generateGroqInsight(promptBody, {
+        parsed = parseGroq(await generateGroqInsight(promptBody, {
           model: GROQ_MODELS.REASONING_120B,
           temperature: 0.3,
           maxTokens: 2500,
           systemPrompt: SYSTEM_PROMPT,
-        })
+        }))
       }
     } else {
       try {
-        raw = await generateGroqInsight(promptBody, {
+        parsed = parseGroq(await generateGroqInsight(promptBody, {
           model: GROQ_MODELS.REASONING_120B,
           temperature: 0.3,
           maxTokens: 2500,
           systemPrompt: SYSTEM_PROMPT,
-        })
+        }))
       } catch (err: any) {
         console.warn('[financial-advisor] REASONING_120B failed, falling back to LLAMA_70B:', err?.message)
-        raw = await generateGroqInsight(promptBody, {
+        parsed = parseGroq(await generateGroqInsight(promptBody, {
           model: GROQ_MODELS.LLAMA_70B,
           temperature: 0.3,
           maxTokens: 2500,
           systemPrompt: SYSTEM_PROMPT,
-        })
+        }))
         modelUsed = 'llama-3.3-70b-versatile'
       }
-    }
-
-    // Be tolerant of markdown fences the model sometimes wraps JSON in.
-    const jsonText = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
-    let parsed: Partial<Advisor>
-    try {
-      parsed = JSON.parse(jsonText)
-    } catch {
-      throw createError({ statusCode: 502, statusMessage: 'Advisor produced invalid JSON' })
     }
 
     const result: Advisor = {
