@@ -209,6 +209,11 @@ export async function refreshXeroToken(options: {
  * to blow past the 30s wall-clock limit. Direct fetch() with AbortController
  * is predictable, abortable, and streams back in hundreds of ms.
  *
+ * Xero returns PascalCase regardless of the Accept header (`Invoices`,
+ * `Contact`, `LineItems`, …). This helper deep-converts keys to camelCase so
+ * call sites read the same shape the old SDK surfaced (`invoices`, `contact`,
+ * `lineItems`, …).
+ *
  * `path` is anything after `https://api.xero.com/api.xro/2.0/`, e.g.
  *   `Reports/ProfitAndLoss?fromDate=2026-01-01&toDate=2026-01-31`
  */
@@ -219,8 +224,9 @@ export async function xeroFetch<T = any>(options: {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
   body?: unknown
   timeoutMs?: number
+  raw?: boolean
 }): Promise<T> {
-  const { accessToken, tenantId, path, method = 'GET', body, timeoutMs = 15_000 } = options
+  const { accessToken, tenantId, path, method = 'GET', body, timeoutMs = 15_000, raw = false } = options
   const url = `https://api.xero.com/api.xro/2.0/${path.replace(/^\//, '')}`
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -246,7 +252,8 @@ export async function xeroFetch<T = any>(options: {
       })
     }
 
-    return await response.json() as T
+    const json = await response.json()
+    return (raw ? json : camelCaseKeysDeep(json)) as T
   } catch (err: any) {
     if (err?.name === 'AbortError') {
       throw createError({ statusCode: 504, statusMessage: `Xero ${path} timed out after ${timeoutMs}ms` })
@@ -255,6 +262,25 @@ export async function xeroFetch<T = any>(options: {
   } finally {
     clearTimeout(timer)
   }
+}
+
+function lowerFirst(key: string): string {
+  if (!key) return key
+  // Preserve ALLCAPS keys (e.g. `ID`) — most Xero keys are PascalCase words.
+  if (/^[A-Z]+$/.test(key)) return key.toLowerCase()
+  return key.charAt(0).toLowerCase() + key.slice(1)
+}
+
+function camelCaseKeysDeep(value: any): any {
+  if (Array.isArray(value)) return value.map(camelCaseKeysDeep)
+  if (value && typeof value === 'object' && value.constructor === Object) {
+    const out: Record<string, any> = {}
+    for (const [k, v] of Object.entries(value)) {
+      out[lowerFirst(k)] = camelCaseKeysDeep(v)
+    }
+    return out
+  }
+  return value
 }
 
 /**
