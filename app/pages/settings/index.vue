@@ -45,8 +45,15 @@ function onFileClick() {
   fileRef.value?.click()
 }
 
-// Load status on client (lazy to avoid blocking Suspense)
-const { data: xeroStatus, refresh: refreshStatus } = useLazyFetch('/api/xero/status', { server: false })
+// Load status on client (lazy to avoid blocking Suspense).
+// getCachedData returns undefined so every mount refetches — otherwise Nuxt serves
+// a stale response from the data cache and the page shows "not connected" on soft
+// navigations even after the user has linked Xero.
+const { data: xeroStatus, refresh: refreshStatus } = useLazyFetch('/api/xero/status', {
+  server: false,
+  key: 'xero-status',
+  getCachedData: () => undefined,
+})
 const { state: connectState, connect: connectXero } = useXeroConnect({ onStatusRefresh: refreshStatus })
 
 const connectLabel = computed(() => {

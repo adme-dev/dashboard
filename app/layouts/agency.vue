@@ -37,8 +37,13 @@ const workspaceNav = computed(() => {
 // Chat unread badge
 const { totalUnreadCount: chatUnreadCount } = useChat()
 
-// Xero connection status — drives XeroFlow section visibility
-const { data: xeroStatus } = useLazyFetch('/api/xero/status')
+// Xero connection status — drives XeroFlow section visibility.
+// getCachedData: () => undefined forces a fresh fetch per mount so that after a
+// user connects Xero elsewhere the nav reflects the new state without a hard refresh.
+const { data: xeroStatus } = useLazyFetch('/api/xero/status', {
+  key: 'xero-status-nav',
+  getCachedData: () => undefined,
+})
 const xeroConnected = computed(() => xeroStatus.value?.connected ?? false)
 
 // Main navigation — organized by feature groups, gated by RBAC
