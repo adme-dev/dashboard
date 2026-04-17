@@ -113,7 +113,7 @@ export default eventHandler(async (event) => {
   let tenantId: string | null = null
   try {
     token = await getActiveTokenForSession(event)
-    tenantId = getSelectedTenant(event)
+    tenantId = await getSelectedTenant(event)
   } catch {
     // Xero not connected — graceful degradation
     return { period, byPlatform: {}, total: 0, unmatchedTotal: 0, unmatched: [], connected: false }

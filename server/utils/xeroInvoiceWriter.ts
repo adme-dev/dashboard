@@ -178,7 +178,7 @@ export async function batchCreateInvoices(
   invoices: XeroAPIInvoice[],
 ): Promise<PushResult> {
   const token = await getActiveTokenForSession(event)
-  const tenantId = getSelectedTenant(event)
+  const tenantId = await getSelectedTenant(event)
 
   if (!tenantId) {
     throw new Error('No Xero organization selected')
@@ -258,7 +258,7 @@ export async function getInvoiceStatuses(
   if (invoiceNumbers.length === 0) return []
 
   const token = await getActiveTokenForSession(event)
-  const tenantId = getSelectedTenant(event)
+  const tenantId = await getSelectedTenant(event)
 
   if (!tenantId) {
     throw new Error('No Xero organization selected')

@@ -74,7 +74,7 @@ export function getPaymentTermDays(clientName: string): 7 | 14 {
  */
 export async function fetchXeroContacts(event: H3Event): Promise<XeroContact[]> {
   const token = await getActiveTokenForSession(event)
-  const tenantId = getSelectedTenant(event)
+  const tenantId = await getSelectedTenant(event)
 
   if (!tenantId) {
     throw new Error('No Xero organization selected')

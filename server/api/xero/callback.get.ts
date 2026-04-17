@@ -1,5 +1,6 @@
 import { exchangeXeroCode, fetchXeroTenants } from '~~/server/utils/xeroClient'
 import { setOrgToken, setOrgTenant } from '~~/server/utils/tokenStore'
+import { setSelectedTenant } from '~~/server/utils/session'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
@@ -33,7 +34,7 @@ export default defineEventHandler(async (event) => {
       tenantId: tenants[0].tenantId,
       tenantName: tenants[0].tenantName
     })
-    await setOrgTenant(event, tenants[0].tenantId, tenants[0].tenantName)
+    await setSelectedTenant(event, tenants[0].tenantId, tenants[0].tenantName)
   } else {
     // Store token, user will select tenant on settings page
     await setOrgToken(event, tokenSet)

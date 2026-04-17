@@ -3,7 +3,7 @@ import { getSelectedTenant } from '../utils/session'
 import { getCached, setCached } from '../utils/cache'
 
 export default eventHandler(async (event) => {
-  const tenantId = getSelectedTenant(event)
+  const tenantId = await getSelectedTenant(event)
   const cacheKey = tenantId ? `kpis:${tenantId}` : 'kpis:anon'
 
   const cached = await getCached<any[]>(cacheKey)

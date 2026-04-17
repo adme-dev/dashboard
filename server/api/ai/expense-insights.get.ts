@@ -6,7 +6,7 @@ import { cachedFetch } from '~~/server/utils/kv'
 
 export default defineEventHandler(async (event) => {
   const tokenSet = await getActiveTokenForSession(event)
-  const tenantId = getSelectedTenant(event)
+  const tenantId = await getSelectedTenant(event)
 
   if (!tokenSet?.access_token || !tenantId) {
     throw createError({ statusCode: 401, statusMessage: 'Xero authentication required' })

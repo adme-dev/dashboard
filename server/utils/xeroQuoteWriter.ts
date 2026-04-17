@@ -131,7 +131,7 @@ export async function pushQuoteToXero(
 
   // 5. Push to Xero
   const token = await getActiveTokenForSession(event)
-  const tenantId = getSelectedTenant(event)
+  const tenantId = await getSelectedTenant(event)
 
   if (!tenantId) {
     throw createError({ statusCode: 400, statusMessage: 'No Xero organization selected' })
@@ -207,7 +207,7 @@ export async function syncQuoteStatus(
   }
 
   const token = await getActiveTokenForSession(event)
-  const tenantId = getSelectedTenant(event)
+  const tenantId = await getSelectedTenant(event)
 
   if (!tenantId) {
     throw createError({ statusCode: 400, statusMessage: 'No Xero organization selected' })
@@ -275,7 +275,7 @@ export async function convertXeroQuoteToInvoice(
   }
 
   const token = await getActiveTokenForSession(event)
-  const tenantId = getSelectedTenant(event)
+  const tenantId = await getSelectedTenant(event)
 
   if (!tenantId) {
     throw createError({ statusCode: 400, statusMessage: 'No Xero organization selected' })

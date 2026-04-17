@@ -58,7 +58,7 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'title and description are required' })
   }
 
-  const tenantId = getSelectedTenant(event)
+  const tenantId = await getSelectedTenant(event)
 
   // Build a cache key from the item title (action plans are deterministic per item)
   const safeTitle = body.title.replace(/[^a-zA-Z0-9]/g, '-').slice(0, 60)

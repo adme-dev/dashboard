@@ -43,7 +43,7 @@ export default eventHandler(async (event) => {
     }
     throw error
   }
-  const tenantId = getSelectedTenant(event)
+  const tenantId = await getSelectedTenant(event)
   if (!tenantId) {
     throw createError({ statusCode: 400, statusMessage: 'No organization selected' })
   }

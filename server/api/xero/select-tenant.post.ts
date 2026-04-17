@@ -1,4 +1,4 @@
-import { setOrgTenant } from '../../utils/tokenStore'
+import { setSelectedTenant } from '../../utils/session'
 
 export default eventHandler(async (event) => {
   const body = await readBody<{ tenantId?: string; tenantName?: string }>(event)
@@ -6,6 +6,6 @@ export default eventHandler(async (event) => {
   if (!tenantId) {
     throw createError({ statusCode: 400, statusMessage: 'tenantId required' })
   }
-  await setOrgTenant(event, tenantId, body.tenantName || '')
+  await setSelectedTenant(event, tenantId, body.tenantName || '')
   return { ok: true }
 })

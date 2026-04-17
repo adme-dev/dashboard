@@ -99,7 +99,7 @@ async function getLastInvoiceNumber(event?: H3Event): Promise<number> {
   if (event) {
     try {
       const token = await getActiveTokenForSession(event)
-      const tenantId = getSelectedTenant(event)
+      const tenantId = await getSelectedTenant(event)
       if (tenantId) {
         const client = await createXeroClient({ tokenSet: token, event })
         const response = await (client.accountingApi as any).getInvoices(

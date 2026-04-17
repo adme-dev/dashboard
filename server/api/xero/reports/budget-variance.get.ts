@@ -41,7 +41,7 @@ const DEFAULT_MONTHLY_BUDGETS = {
 
 export default eventHandler(async (event) => {
   const token = await getActiveTokenForSession(event)
-  const tenantId = getSelectedTenant(event)
+  const tenantId = await getSelectedTenant(event)
   if (!tenantId) {
     throw createError({ statusCode: 400, statusMessage: 'No organization selected' })
   }

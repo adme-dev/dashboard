@@ -70,7 +70,7 @@ export async function fetchXeroTrackingCategories(event: H3Event): Promise<{
   categories: Array<{ name: string; trackingCategoryId: string; options: Array<{ name: string; trackingOptionId: string; status: string }> }>
 }> {
   const token = await getActiveTokenForSession(event)
-  const tenantId = getSelectedTenant(event)
+  const tenantId = await getSelectedTenant(event)
 
   if (!tenantId) {
     throw new Error('No Xero organization selected')

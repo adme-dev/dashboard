@@ -7,7 +7,7 @@ const MAX_SAVED = 50
 
 export default eventHandler(async (event) => {
   const user = requireAuth(event)
-  const tenantId = getSelectedTenant(event)
+  const tenantId = await getSelectedTenant(event)
   const body = await readBody(event)
 
   if (!body?.sourceTitle || !body?.planData) {

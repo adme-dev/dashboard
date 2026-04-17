@@ -34,8 +34,24 @@ export async function setSelectedTenant(event: H3Event, tenantId: string, tenant
   await setOrgTenant(event, tenantId, tenantName || '')
 }
 
-export function getSelectedTenant(event: H3Event): string | undefined {
-  return getCookie(event, 'xero_tenant_id')
+/**
+ * Resolve the active Xero tenant ID.
+ *
+ * Preference order:
+ *   1. `xero_tenant_id` cookie (fast path, set by callback / select-tenant)
+ *   2. Org-level tenant stored in KV / `xero_org_connection` DB table
+ *
+ * The org-level fallback is critical: the Xero connection is shared across
+ * all team members, but only the user who completed OAuth has the cookie.
+ * Without the fallback, every other user's Xero-backed endpoint 400s with
+ * "No organization selected".
+ */
+export async function getSelectedTenant(event: H3Event): Promise<string | undefined> {
+  const cookieTenant = getCookie(event, 'xero_tenant_id')
+  if (cookieTenant) return cookieTenant
+
+  const orgTenant = await getOrgTenant(event)
+  return orgTenant?.tenantId
 }
 
 /**

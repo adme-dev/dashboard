@@ -5,7 +5,7 @@ import { getSelectedTenant } from '~~/server/utils/session'
 
 export default eventHandler(async (event) => {
   const user = requireAuth(event)
-  const tenantId = getSelectedTenant(event)
+  const tenantId = await getSelectedTenant(event)
   const { status } = getQuery(event)
 
   const statusFilter = status && status !== 'all' ? String(status) : null
