@@ -10,6 +10,10 @@
 const MAX_CONCURRENT = 3
 const MAX_RETRIES = 3
 const BASE_DELAY_MS = 1000
+// Hard ceiling per SDK call. Axios inside xero-node runs on nodejs_compat and
+// occasionally hangs indefinitely on Cloudflare Pages. Without this, handlers
+// wedge the concurrency slot and are killed silently by CF at 30s.
+const CALL_TIMEOUT_MS = 15_000
 
 // Module-scope state (per isolate)
 let activeCount = 0
@@ -46,11 +50,26 @@ function is429(err: any): boolean {
   return status === 429
 }
 
+function withTimeout<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const err: any = new Error(`[xero-rate-limit] "${label}" timed out after ${CALL_TIMEOUT_MS}ms`)
+      err.statusCode = 504
+      err.__xeroTimeout = true
+      reject(err)
+    }, CALL_TIMEOUT_MS)
+    fn().then(
+      (value) => { clearTimeout(timer); resolve(value) },
+      (error) => { clearTimeout(timer); reject(error) },
+    )
+  })
+}
+
 async function executeWithRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     await acquireSlot()
     try {
-      const result = await fn()
+      const result = await withTimeout(label, fn)
       return result
     } catch (err: any) {
       if (is429(err) && attempt < MAX_RETRIES) {
