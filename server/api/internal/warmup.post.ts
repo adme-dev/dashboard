@@ -6,6 +6,9 @@
  * requests past CF's 30 s wall-clock.
  *
  * Auth: X-Warmup-Secret header must match WARMUP_SECRET env var.
+ * The inner fan-out also needs CRON_INTERNAL_SECRET so the fetches
+ * to /api/xero/* pass the middleware's cron-secret bypass — without
+ * it they'd get 401 and the cache would never prime.
  *
  * Intended to be hit every 5-10 min by a CF Cron Trigger (set up in
  * the CF dashboard: Workers & Pages → agency-dashboard → Settings →
@@ -50,9 +53,15 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Invalid warmup secret' })
   }
 
-  // Fire with bust=1 so each endpoint rewrites its KV entry from live
-  // Xero rather than reading the already-cached value. Batched in
-  // groups of 4 to stay well under Xero's 5-concurrent-per-tenant cap.
+  const cronSecret = process.env.CRON_INTERNAL_SECRET
+  if (!cronSecret) {
+    throw createError({ statusCode: 503, statusMessage: 'CRON_INTERNAL_SECRET not configured' })
+  }
+
+  // Let SWR decide: cold miss → sync fetch + prime; stale → serve stale
+  // + background refresh. Skipping bust=1 avoids hammering Xero every
+  // cron tick when the cache is still fresh. Batched in groups of 4 to
+  // stay under Xero's 5-concurrent-per-tenant cap.
   const results: Array<{ path: string; ok: boolean; ms: number; status?: number; error?: string }> = []
   const BATCH = 4
   for (let i = 0; i < ENDPOINTS.length; i += BATCH) {
@@ -61,20 +70,22 @@ export default eventHandler(async (event) => {
       batch.map(async ({ path, query }) => {
         const start = Date.now()
         try {
-          const url = `https://agency-dashboard-6cm.pages.dev${path}`
+          const qs = query ? '?' + new URLSearchParams(
+            Object.entries(query).reduce((acc, [k, v]) => {
+              if (v != null) acc[k] = String(v)
+              return acc
+            }, {} as Record<string, string>)
+          ).toString() : ''
+          const url = `https://agency-dashboard-6cm.pages.dev${path}${qs}`
           const response = await fetch(url, {
             method: 'GET',
             headers: {
-              'X-Warmup-Internal': '1',
-              // Pass through the warmup secret so the endpoint can
-              // identify and short-circuit auth checks if needed.
-              'X-Warmup-Secret': expected as string,
+              // Auth middleware recognises this and grants a synthetic
+              // 'cron' user for whitelisted read-only prefixes. Without
+              // it every call gets a 401 and the cache never primes.
+              'X-Internal-Cron-Secret': cronSecret,
             },
-            // Use bust=1 to rewrite the KV entry with fresh Xero data.
-            // Note: Xero tokens live in KV and endpoints call
-            // getActiveTokenForSession which reads from there, so no
-            // session cookie is needed.
-          }).catch(err => { throw err })
+          })
           results.push({ path, ok: response.ok, ms: Date.now() - start, status: response.status })
         } catch (err: any) {
           results.push({ path, ok: false, ms: Date.now() - start, error: err?.message ?? String(err) })
