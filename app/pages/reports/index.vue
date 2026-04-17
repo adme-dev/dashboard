@@ -170,39 +170,44 @@ const isCurrentMonth = computed(() =>
 )
 
 // ── Data fetches ──
-const { data: pnl, pending: pnlPending, refresh: refreshPnl } = await useFetch<PnlReport>(
+// All client-only + lazy. We never block SSR on Xero — the page renders
+// skeleton cards and each widget resolves independently. getCachedData: () =>
+// undefined stops Nuxt from replaying a stale snapshot across navigations.
+const fetchOpts = { server: false, getCachedData: () => undefined } as const
+
+const { data: pnl, pending: pnlPending, refresh: refreshPnl } = useLazyFetch<PnlReport>(
   '/api/xero/reports/pnl-detailed',
-  { query: computed(() => ({ toDate: toDate.value })) }
+  { ...fetchOpts, query: computed(() => ({ toDate: toDate.value })) }
 )
 
-const { data: balanceSheet, pending: bsPending, refresh: refreshBs } = await useFetch<BalanceSheet>(
+const { data: balanceSheet, pending: bsPending, refresh: refreshBs } = useLazyFetch<BalanceSheet>(
   '/api/xero/reports/balance-sheet',
-  { query: computed(() => ({ toDate: toDate.value })) }
+  { ...fetchOpts, query: computed(() => ({ toDate: toDate.value })) }
 )
 
-const { data: aging, pending: agingPending, refresh: refreshAging } = await useFetch<AgingReport>(
+const { data: aging, pending: agingPending, refresh: refreshAging } = useLazyFetch<AgingReport>(
   '/api/xero/reports/aging',
-  { lazy: true, server: false }
+  fetchOpts
 )
 
-const { data: agingPayables, pending: agingPayPending } = await useFetch<AgingReport>(
+const { data: agingPayables, pending: agingPayPending } = useLazyFetch<AgingReport>(
   '/api/xero/reports/aging',
-  { query: { type: 'payables' }, lazy: true, server: false }
+  { ...fetchOpts, query: { type: 'payables' } }
 )
 
-const { data: budget, pending: budgetPending, refresh: refreshBudget } = await useFetch<BudgetReport>(
+const { data: budget, pending: budgetPending, refresh: refreshBudget } = useLazyFetch<BudgetReport>(
   '/api/xero/reports/budget-variance',
-  { query: computed(() => ({ month: selectedMonth.value, year: selectedYear.value })), lazy: true, server: false }
+  { ...fetchOpts, query: computed(() => ({ month: selectedMonth.value, year: selectedYear.value })) }
 )
 
-const { data: pipeline, pending: pipelinePending, refresh: refreshPipeline } = await useFetch<PipelineReport>(
+const { data: pipeline, pending: pipelinePending, refresh: refreshPipeline } = useLazyFetch<PipelineReport>(
   '/api/xero/invoice-pipeline',
-  { lazy: true, server: false }
+  fetchOpts
 )
 
-const { data: bankSummary, pending: bankPending } = await useFetch<{ totalBalance: number }>(
+const { data: bankSummary, pending: bankPending } = useLazyFetch<{ totalBalance: number }>(
   '/api/xero/reports/bank-summary',
-  { lazy: true, server: false }
+  fetchOpts
 )
 
 const loading = computed(() => pnlPending.value && bsPending.value)
