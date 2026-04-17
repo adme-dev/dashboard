@@ -901,17 +901,22 @@ const breadcrumbs = computed(() => ([
                 </UBadge>
               </div>
 
-              <UTable :columns="budgetColumns" :data="budgetRows">
-                <template #status-cell="{ row }">
-                  <UBadge
-                    :color="row.original.status === 'over' ? 'error' : row.original.status === 'under' ? 'success' : 'neutral'"
-                    variant="subtle"
-                    size="xs"
-                  >
-                    {{ row.original.status === 'over' ? 'Over' : row.original.status === 'under' ? 'Under' : 'On Track' }}
-                  </UBadge>
-                </template>
-              </UTable>
+              <!-- Cap the Budget table height; long budget lists would
+                   otherwise push Invoice Pipeline far below the fold. -->
+              <div class="max-h-96 overflow-y-auto border border-default/40 rounded-md">
+                <UTable :columns="budgetColumns" :data="budgetRows" sticky>
+                  <template #status-cell="{ row }">
+                    <UBadge
+                      :color="row.original.status === 'over' ? 'error' : row.original.status === 'under' ? 'success' : 'neutral'"
+                      variant="subtle"
+                      size="xs"
+                    >
+                      {{ row.original.status === 'over' ? 'Over' : row.original.status === 'under' ? 'Under' : 'On Track' }}
+                    </UBadge>
+                  </template>
+                </UTable>
+              </div>
+              <p class="text-[10px] text-muted">{{ budgetRows.length }} {{ budgetRows.length === 1 ? 'category' : 'categories' }} — scroll for more</p>
 
               <!-- Budget alerts -->
               <div v-if="budget?.alerts?.length" class="space-y-1 pt-2 border-t border-default">

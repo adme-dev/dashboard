@@ -54,26 +54,34 @@ function flatten(rows: XeroRow[] | undefined, out: XeroRow[] = []): XeroRow[] {
 }
 
 /**
- * Executive Summary rows the agency dashboard surfaces. Keys match
- * common Xero row titles; values may be absent if Xero can't compute
- * them for the period (e.g. no receivables → DSO is null).
+ * Executive Summary rows the agency dashboard surfaces.
+ *
+ * Xero row titles vary by locale and report version. Keep each regex
+ * permissive — match on the distinctive keyword(s), not exact string.
+ * Example titles seen in the wild:
+ *   "Income", "Direct costs", "Gross Profit", "Gross Profit (% of Income)",
+ *   "Net Profit", "Net Profit (% of Income)", "Average Debtors Days",
+ *   "Average Creditors Days", "Short Term Cash Forecast",
+ *   "Current Assets to Liabilities", "Term Assets to Liabilities".
  */
 const METRIC_MAP: Array<{ key: string; match: RegExp }> = [
-  { key: 'income', match: /^income$/i },
-  { key: 'directCosts', match: /^direct\s+costs?$/i },
-  { key: 'grossProfit', match: /^gross\s+profit$/i },
-  { key: 'grossProfitPercent', match: /^gross\s+profit\s+%$/i },
-  { key: 'operatingExpenses', match: /^operating\s+expenses?$/i },
-  { key: 'netProfit', match: /^net\s+profit$/i },
-  { key: 'netProfitPercent', match: /^net\s+profit\s+%$/i },
+  { key: 'income', match: /^\s*(total\s+)?income\s*$/i },
+  { key: 'directCosts', match: /^\s*direct\s+costs?\s*$/i },
+  { key: 'grossProfit', match: /^\s*gross\s+profit\s*$/i },
+  { key: 'grossProfitPercent', match: /gross\s+profit.*(%|percent)/i },
+  { key: 'operatingExpenses', match: /^\s*operating\s+expenses?\s*$/i },
+  { key: 'netProfit', match: /^\s*net\s+profit\s*$/i },
+  { key: 'netProfitPercent', match: /net\s+profit.*(%|percent)/i },
   { key: 'cashReceived', match: /cash\s+received/i },
   { key: 'cashSpent', match: /cash\s+spent/i },
   { key: 'cashSurplus', match: /cash\s+surplus|cash\s+deficit/i },
   { key: 'closingBank', match: /closing\s+bank/i },
-  { key: 'debtorsSales', match: /debtors\s+sales/i },
-  { key: 'debtorDays', match: /debtor\s+days|days\s+sales\s+outstanding|\bdso\b/i },
-  { key: 'creditorDays', match: /creditor\s+days|days\s+payable\s+outstanding|\bdpo\b/i },
-  { key: 'currentRatio', match: /current\s+ratio/i },
+  { key: 'debtorsSales', match: /debtors?\s+to\s+sales|debtors?\s+sales/i },
+  // Xero actually labels these "Average Debtors Days" / "Average Creditors Days"
+  { key: 'debtorDays', match: /(average\s+)?debtors?\s+days|days\s+sales\s+outstanding|\bdso\b/i },
+  { key: 'creditorDays', match: /(average\s+)?creditors?\s+days|days\s+payable\s+outstanding|\bdpo\b/i },
+  // "Current Assets to Liabilities" = current ratio; ensure we don't match "Term Assets…"
+  { key: 'currentRatio', match: /^\s*current\s+(assets\s+to\s+liabilities|ratio)\s*$/i },
   { key: 'quickRatio', match: /quick\s+ratio/i },
   { key: 'inventoryTurnover', match: /inventory\s+turnover/i },
   { key: 'returnOnInvestment', match: /return\s+on\s+investment/i },

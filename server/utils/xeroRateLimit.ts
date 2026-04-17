@@ -7,13 +7,19 @@
  * in-flight requests so multiple callers share a single Promise.
  */
 
-const MAX_CONCURRENT = 3
+// Xero allows 5 concurrent requests per tenant. Match that ceiling so
+// pages like /reports (which fires ~10 Xero-backed endpoints in parallel)
+// don't wedge behind a 3-slot queue until CF kills the handler at 30s.
+const MAX_CONCURRENT = 5
 const MAX_RETRIES = 3
 const BASE_DELAY_MS = 1000
-// Hard ceiling per SDK call. Axios inside xero-node runs on nodejs_compat and
-// occasionally hangs indefinitely on Cloudflare Pages. Without this, handlers
-// wedge the concurrency slot and are killed silently by CF at 30s.
+// Per-call ceiling AFTER the concurrency slot is acquired. Keeps any one
+// Xero call from hanging indefinitely.
 const CALL_TIMEOUT_MS = 15_000
+// Total wall-clock ceiling for queue wait + call. CF Pages kills handlers
+// at 30s; bail earlier so the handler can return a clean 504 instead of
+// getting nuked with no response body.
+const TOTAL_TIMEOUT_MS = 25_000
 
 // Module-scope state (per isolate)
 let activeCount = 0
@@ -65,14 +71,41 @@ function withTimeout<T>(label: string, fn: () => Promise<T>): Promise<T> {
   })
 }
 
+async function acquireSlotWithTimeout(label: string, deadline: number): Promise<void> {
+  const remaining = deadline - Date.now()
+  if (remaining <= 0) {
+    const err: any = new Error(`[xero-rate-limit] "${label}" aborted before acquiring concurrency slot`)
+    err.statusCode = 504
+    throw err
+  }
+  return new Promise<void>((resolve, reject) => {
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      const err: any = new Error(`[xero-rate-limit] "${label}" gave up waiting for a slot after ${Math.round(remaining)}ms`)
+      err.statusCode = 504
+      reject(err)
+    }, remaining)
+    acquireSlot().then(() => {
+      if (timedOut) {
+        releaseSlot() // immediately hand back the slot we briefly held
+        return
+      }
+      clearTimeout(timer)
+      resolve()
+    })
+  })
+}
+
 async function executeWithRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  const deadline = Date.now() + TOTAL_TIMEOUT_MS
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    await acquireSlot()
+    await acquireSlotWithTimeout(label, deadline)
     try {
       const result = await withTimeout(label, fn)
       return result
     } catch (err: any) {
-      if (is429(err) && attempt < MAX_RETRIES) {
+      if (is429(err) && attempt < MAX_RETRIES && Date.now() < deadline) {
         const delay = jitter(BASE_DELAY_MS * Math.pow(2, attempt))
         console.warn(`[xero-rate-limit] 429 on "${label}" — retry ${attempt + 1}/${MAX_RETRIES} in ${Math.round(delay)}ms`)
         await new Promise((r) => setTimeout(r, delay))
