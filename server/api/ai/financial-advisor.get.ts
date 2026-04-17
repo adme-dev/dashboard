@@ -14,6 +14,7 @@ import { getActiveTokenForSession } from '~~/server/utils/tokenStore'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { cachedFetch } from '~~/server/utils/kv'
 import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
+import { generateClaudeInsight, CLAUDE_MODELS } from '~~/server/utils/claudeClient'
 import { query } from '~~/server/utils/db'
 import { embedRecommendation } from '~~/server/utils/advisorEmbedder'
 import { METRIC_REGISTRY } from '~~/server/utils/advisorMetrics'
@@ -272,25 +273,53 @@ export default eventHandler(async (event) => {
       ? `Analyse the agency's books for its client "${clientSnapshot.client.name}" and return the structured advice JSON. Speak directly to the AGENCY'S OWNER about their relationship with this client — pricing, collections, profitability, retention. Base AGENCY SNAPSHOT is included for context but focus on the CLIENT-SCOPED VIEW.\n\nAGENCY SNAPSHOT:\n${JSON.stringify(snapshot, null, 2)}${clientBlock}${carryOverBlock}`
       : `Analyse this agency's financials for ${toDate} and return the structured advice JSON.\n\nSNAPSHOT:\n${JSON.stringify(snapshot, null, 2)}${carryOverBlock}`
 
-    // Deep reasoning + strong structured-output adherence on Groq as of
-    // April 2026 → openai/gpt-oss-120b. Fall back to llama-3.3-70b if the
-    // provider ever 404s that model ID.
+    // Backend selection: Claude for prompt-cached runs (the SYSTEM_PROMPT
+    // is the same ~3K tokens every call — huge cache win), Groq otherwise.
+    // Default stays Groq so flipping ADVISOR_BACKEND=claude is opt-in, and
+    // Claude errors fall back to Groq so a bad API key doesn't break advisor.
+    const backend = (process.env.ADVISOR_BACKEND ?? 'groq').toLowerCase()
     let raw: string
-    try {
-      raw = await generateGroqInsight(promptBody, {
-        model: GROQ_MODELS.REASONING_120B,
-        temperature: 0.3,
-        maxTokens: 2500,
-        systemPrompt: SYSTEM_PROMPT,
-      })
-    } catch (err: any) {
-      console.warn('[financial-advisor] REASONING_120B failed, falling back to LLAMA_70B:', err?.message)
-      raw = await generateGroqInsight(promptBody, {
-        model: GROQ_MODELS.LLAMA_70B,
-        temperature: 0.3,
-        maxTokens: 2500,
-        systemPrompt: SYSTEM_PROMPT,
-      })
+    let modelUsed = 'openai/gpt-oss-120b'
+
+    if (backend === 'claude') {
+      try {
+        const result = await generateClaudeInsight(promptBody, {
+          model: CLAUDE_MODELS.SONNET_4_6,
+          maxTokens: 2500,
+          systemPrompt: SYSTEM_PROMPT,
+        })
+        raw = result.text
+        modelUsed = result.model
+        console.log(
+          `[financial-advisor] claude ok — in=${result.usage.inputTokens} out=${result.usage.outputTokens} cache_read=${result.usage.cacheReadTokens} cache_write=${result.usage.cacheCreationTokens}`
+        )
+      } catch (err: any) {
+        console.warn('[financial-advisor] Claude failed, falling back to Groq:', err?.message)
+        raw = await generateGroqInsight(promptBody, {
+          model: GROQ_MODELS.REASONING_120B,
+          temperature: 0.3,
+          maxTokens: 2500,
+          systemPrompt: SYSTEM_PROMPT,
+        })
+      }
+    } else {
+      try {
+        raw = await generateGroqInsight(promptBody, {
+          model: GROQ_MODELS.REASONING_120B,
+          temperature: 0.3,
+          maxTokens: 2500,
+          systemPrompt: SYSTEM_PROMPT,
+        })
+      } catch (err: any) {
+        console.warn('[financial-advisor] REASONING_120B failed, falling back to LLAMA_70B:', err?.message)
+        raw = await generateGroqInsight(promptBody, {
+          model: GROQ_MODELS.LLAMA_70B,
+          temperature: 0.3,
+          maxTokens: 2500,
+          systemPrompt: SYSTEM_PROMPT,
+        })
+        modelUsed = 'llama-3.3-70b-versatile'
+      }
     }
 
     // Be tolerant of markdown fences the model sometimes wraps JSON in.
@@ -336,7 +365,7 @@ export default eventHandler(async (event) => {
           result.headline,
           result.verdict,
           JSON.stringify(result),
-          'openai/gpt-oss-120b',
+          modelUsed,
           user?.id ?? null,
         ]
       )
