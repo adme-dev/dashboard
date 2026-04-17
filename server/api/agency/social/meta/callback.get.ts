@@ -37,10 +37,9 @@ export default eventHandler(async (event) => {
 
     const config = useRuntimeConfig()
     const reqUrl = getRequestURL(event)
-    const publicUrl = `${reqUrl.protocol}//${reqUrl.host}`
-    const redirectUri = config.metaRedirectUri.startsWith('http')
-      ? config.metaRedirectUri
-      : `${publicUrl}${config.metaRedirectUri}`
+    const configured = config.metaRedirectUri
+    const callbackPath = configured.startsWith('http') ? new URL(configured).pathname : configured
+    const redirectUri = `${reqUrl.protocol}//${reqUrl.host}${callbackPath}`
 
     // Exchange code for short-lived token
     const shortToken = await exchangeMetaCode(

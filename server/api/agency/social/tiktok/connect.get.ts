@@ -26,12 +26,13 @@ export default eventHandler(async (event) => {
     maxAge: 60 * 10
   })
 
-  // Build absolute redirect URI from incoming request
+  // Always derive the redirect URI from the incoming request host so it
+  // matches the current environment (localhost, preview, production). If the
+  // env var happens to be an absolute URL, only its pathname is kept.
   const reqUrl = getRequestURL(event)
-  const publicUrl = `${reqUrl.protocol}//${reqUrl.host}`
-  const redirectUri = config.tiktokRedirectUri.startsWith('http')
-    ? config.tiktokRedirectUri
-    : `${publicUrl}${config.tiktokRedirectUri}`
+  const configured = config.tiktokRedirectUri
+  const callbackPath = configured.startsWith('http') ? new URL(configured).pathname : configured
+  const redirectUri = `${reqUrl.protocol}//${reqUrl.host}${callbackPath}`
 
   const url = getTikTokAuthUrl(config.tiktokAppId, redirectUri, state)
 

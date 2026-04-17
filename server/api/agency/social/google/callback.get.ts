@@ -38,10 +38,9 @@ export default eventHandler(async (event) => {
 
     const config = useRuntimeConfig()
     const reqUrl = getRequestURL(event)
-    const publicUrl = `${reqUrl.protocol}//${reqUrl.host}`
-    const redirectUri = config.googleRedirectUri.startsWith('http')
-      ? config.googleRedirectUri
-      : `${publicUrl}${config.googleRedirectUri}`
+    const configured = config.googleRedirectUri
+    const callbackPath = configured.startsWith('http') ? new URL(configured).pathname : configured
+    const redirectUri = `${reqUrl.protocol}//${reqUrl.host}${callbackPath}`
 
     // Exchange code for tokens (includes refresh_token because we used prompt=consent)
     const tokens = await exchangeGoogleCode(
