@@ -202,6 +202,62 @@ export async function refreshXeroToken(options: {
 }
 
 /**
+ * Authenticated fetch against the Xero REST API.
+ *
+ * Replaces `client.accountingApi.*` usage. The xero-node SDK runs on axios
+ * through nodejs_compat on Cloudflare Pages, where it hangs or stalls enough
+ * to blow past the 30s wall-clock limit. Direct fetch() with AbortController
+ * is predictable, abortable, and streams back in hundreds of ms.
+ *
+ * `path` is anything after `https://api.xero.com/api.xro/2.0/`, e.g.
+ *   `Reports/ProfitAndLoss?fromDate=2026-01-01&toDate=2026-01-31`
+ */
+export async function xeroFetch<T = any>(options: {
+  accessToken: string
+  tenantId: string
+  path: string
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  body?: unknown
+  timeoutMs?: number
+}): Promise<T> {
+  const { accessToken, tenantId, path, method = 'GET', body, timeoutMs = 15_000 } = options
+  const url = `https://api.xero.com/api.xro/2.0/${path.replace(/^\//, '')}`
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(url, {
+      method,
+      signal: controller.signal,
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Xero-Tenant-Id': tenantId,
+        'Accept': 'application/json',
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    })
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '')
+      throw createError({
+        statusCode: response.status === 401 ? 401 : response.status === 429 ? 429 : 502,
+        statusMessage: `Xero ${method} ${path} failed: ${response.status} ${text.slice(0, 200)}`
+      })
+    }
+
+    return await response.json() as T
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      throw createError({ statusCode: 504, statusMessage: `Xero ${path} timed out after ${timeoutMs}ms` })
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
  * Fetch Xero tenant connections using fetch (CF Workers compatible).
  * Replaces XeroClient.updateTenants() which uses axios (Node.js HTTP).
  */

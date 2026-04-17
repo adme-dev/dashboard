@@ -1,5 +1,5 @@
 import { createError } from 'h3'
-import { createXeroClient } from '../../../utils/xeroClient'
+import { xeroFetch } from '../../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
 import { cachedFetch } from '../../../utils/kv'
@@ -56,22 +56,14 @@ export default eventHandler(async (event) => {
   const cacheKey = `xero-report:${tenantId}:pnl:${from}:${to}`
 
   return cachedFetch(event, cacheKey, 900, async () => {
-  const client = await createXeroClient({ tokenSet: token, event })
-  const { body: report } = await dedupedXeroCall(
+  const report = await dedupedXeroCall(
     `pnl:${tenantId}:${from}:${to}`,
     'pnl',
-    () => (client.accountingApi.getReportProfitAndLoss as any)(
+    () => xeroFetch<any>({
+      accessToken: token.access_token!,
       tenantId,
-      from,
-      to,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      false
-    )
+      path: `Reports/ProfitAndLoss?fromDate=${from}&toDate=${to}&standardLayout=false`,
+    })
   )
 
   const reportTable = report?.reports?.[0] ?? report?.Reports?.[0]
