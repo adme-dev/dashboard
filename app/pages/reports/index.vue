@@ -210,10 +210,75 @@ const { data: bankSummary, pending: bankPending } = useLazyFetch<{ totalBalance:
   fetchOpts
 )
 
+// Xero Executive Summary — DSO / DPO / current ratio / etc., computed
+// server-side by Xero rather than rederived from P&L + Balance Sheet.
+type ExecutiveSummary = {
+  asOf: string
+  metrics: Record<string, { latest: number | null; periods: number[]; label: string }>
+}
+const { data: execSummary, pending: execPending } = useLazyFetch<ExecutiveSummary>(
+  '/api/xero/reports/executive-summary',
+  { ...fetchOpts, query: computed(() => ({ date: toDate.value })) }
+)
+
+// Recurring revenue (retainers / subscriptions) — MRR + top clients.
+type RepeatingInvoices = {
+  summary: { mrr: number; arr: number; activeCount: number; totalCount: number; clientCount: number }
+  topClients: Array<{ contact: string; contactId: string; monthly: number; schedules: number }>
+}
+const { data: recurring, pending: recurringPending } = useLazyFetch<RepeatingInvoices>(
+  '/api/xero/repeating-invoices',
+  fetchOpts
+)
+
+// Client / project P&L via tracking categories.
+type ClientPnl = {
+  category: { id: string; name: string } | null
+  options: Array<{ name: string; revenue: number; directCosts: number; grossProfit: number; operatingExpenses: number; netProfit: number; netMargin: number }>
+  totals: { revenue?: number; directCosts?: number; operatingExpenses?: number; netProfit?: number }
+}
+const { data: clientPnl, pending: clientPnlPending, refresh: refreshClientPnl } = useLazyFetch<ClientPnl>(
+  '/api/xero/reports/client-pnl',
+  { ...fetchOpts, query: computed(() => {
+    const d = new Date(selectedYear.value, selectedMonth.value - 1, 1)
+    const end = new Date(selectedYear.value, selectedMonth.value, 0)
+    return { fromDate: d.toISOString().slice(0, 10), toDate: end.toISOString().slice(0, 10) }
+  }) }
+)
+
 const loading = computed(() => pnlPending.value && bsPending.value)
 
 async function refreshAll() {
-  await Promise.all([refreshPnl(), refreshBs(), refreshAging(), refreshBudget(), refreshPipeline()])
+  await Promise.all([refreshPnl(), refreshBs(), refreshAging(), refreshBudget(), refreshPipeline(), refreshClientPnl()])
+}
+
+// Executive Summary tiles (formatter-aware)
+const execTiles = computed(() => {
+  const m = execSummary.value?.metrics
+  if (!m) return []
+  return [
+    { key: 'debtorDays', label: 'Debtor days (DSO)', value: m.debtorDays?.latest ?? null, suffix: ' days', good: (v: number) => v <= 45, bad: (v: number) => v > 75 },
+    { key: 'creditorDays', label: 'Creditor days (DPO)', value: m.creditorDays?.latest ?? null, suffix: ' days', good: (v: number) => v >= 30, bad: (v: number) => v < 15 },
+    { key: 'currentRatio', label: 'Current ratio', value: m.currentRatio?.latest ?? null, suffix: 'x', good: (v: number) => v >= 1.5, bad: (v: number) => v < 1 },
+    { key: 'quickRatio', label: 'Quick ratio', value: m.quickRatio?.latest ?? null, suffix: 'x', good: (v: number) => v >= 1, bad: (v: number) => v < 0.7 },
+    { key: 'grossProfitPercent', label: 'Gross profit %', value: m.grossProfitPercent?.latest ?? null, suffix: '%', good: (v: number) => v >= 40, bad: (v: number) => v < 20 },
+    { key: 'netProfitPercent', label: 'Net profit %', value: m.netProfitPercent?.latest ?? null, suffix: '%', good: (v: number) => v >= 15, bad: (v: number) => v < 5 },
+  ]
+})
+
+function execTileColor(tile: { value: number | null; good?: (v: number) => boolean; bad?: (v: number) => boolean }): string {
+  if (tile.value === null) return 'text-muted'
+  if (tile.bad?.(tile.value)) return 'text-red-500'
+  if (tile.good?.(tile.value)) return 'text-emerald-500'
+  return 'text-amber-500'
+}
+
+function fmtExecValue(tile: { value: number | null; suffix: string }): string {
+  if (tile.value === null) return '—'
+  if (tile.suffix === 'x') return `${tile.value.toFixed(2)}x`
+  if (tile.suffix === '%') return `${tile.value.toFixed(1)}%`
+  if (tile.suffix === ' days') return `${Math.round(tile.value)} days`
+  return String(tile.value)
 }
 
 // ── Formatters ──
@@ -543,6 +608,117 @@ const breadcrumbs = computed(() => ([
             <p class="text-[11px] text-muted mt-1">{{ card.sub }}</p>
           </UCard>
         </div>
+
+        <!-- ═══ Executive Summary (Xero KPIs) + Recurring Revenue ═══ -->
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <!-- Executive Summary tiles from Xero's server-side KPI report -->
+          <UCard class="xl:col-span-2" :ui="{ body: '!p-6 space-y-4' }">
+            <header class="flex items-center justify-between">
+              <div>
+                <p class="text-xs uppercase text-muted">Executive Summary</p>
+                <h3 class="text-lg font-semibold">Key financial ratios</h3>
+              </div>
+              <span class="text-[10px] text-muted">Source: Xero</span>
+            </header>
+            <div v-if="execPending" class="grid grid-cols-3 gap-3">
+              <USkeleton v-for="n in 6" :key="`es-sk-${n}`" class="h-20" />
+            </div>
+            <div v-else-if="execTiles.length" class="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div v-for="tile in execTiles" :key="tile.key" class="rounded-lg border border-default px-3 py-3 bg-elevated/30">
+                <p class="text-[10px] uppercase text-muted tracking-wide mb-1">{{ tile.label }}</p>
+                <p :class="['text-lg font-semibold', execTileColor(tile)]">{{ fmtExecValue(tile) }}</p>
+              </div>
+            </div>
+            <p v-else class="text-sm text-muted">Executive Summary unavailable — Xero may not have returned any periods for this date.</p>
+          </UCard>
+
+          <!-- Recurring revenue from repeating invoices -->
+          <UCard :ui="{ body: '!p-6 space-y-4' }">
+            <header class="flex items-center justify-between">
+              <div>
+                <p class="text-xs uppercase text-muted">Recurring Revenue</p>
+                <h3 class="text-lg font-semibold">Retainers &amp; subscriptions</h3>
+              </div>
+              <UIcon name="i-lucide-repeat" class="size-4 text-primary" />
+            </header>
+            <div v-if="recurringPending" class="space-y-3">
+              <USkeleton class="h-10" />
+              <USkeleton class="h-10" />
+              <USkeleton class="h-10" />
+            </div>
+            <template v-else-if="recurring">
+              <div class="grid grid-cols-2 gap-3">
+                <div class="rounded-lg border border-default px-3 py-3 bg-elevated/30">
+                  <p class="text-[10px] uppercase text-muted tracking-wide">MRR</p>
+                  <p class="text-xl font-semibold">{{ fmt(recurring.summary.mrr) }}</p>
+                </div>
+                <div class="rounded-lg border border-default px-3 py-3 bg-elevated/30">
+                  <p class="text-[10px] uppercase text-muted tracking-wide">ARR</p>
+                  <p class="text-xl font-semibold">{{ fmt(recurring.summary.arr) }}</p>
+                </div>
+              </div>
+              <div class="text-xs text-muted">
+                {{ recurring.summary.activeCount }} active schedule{{ recurring.summary.activeCount === 1 ? '' : 's' }}
+                across {{ recurring.summary.clientCount }} client{{ recurring.summary.clientCount === 1 ? '' : 's' }}
+              </div>
+              <div v-if="recurring.topClients?.length" class="pt-3 border-t border-default space-y-2">
+                <p class="text-[10px] uppercase text-muted font-semibold tracking-wider">Top recurring clients</p>
+                <div v-for="c in recurring.topClients.slice(0, 5)" :key="c.contactId || c.contact" class="flex items-center justify-between text-xs">
+                  <span class="truncate pr-2">{{ c.contact }}</span>
+                  <span class="font-medium text-muted">{{ fmt(c.monthly) }}/mo</span>
+                </div>
+              </div>
+            </template>
+            <p v-else class="text-sm text-muted">No repeating invoices found. Set up retainers in Xero to populate this tile.</p>
+          </UCard>
+        </div>
+
+        <!-- ═══ Client / Project P&L (via tracking categories) ═══ -->
+        <UCard :ui="{ body: '!p-6 space-y-5' }">
+          <header class="flex items-center justify-between">
+            <div>
+              <p class="text-xs uppercase text-muted">Client P&amp;L</p>
+              <h3 class="text-lg font-semibold">
+                {{ clientPnl?.category?.name ? `By ${clientPnl.category.name.toLowerCase()}` : 'Tracking-category split' }}
+              </h3>
+            </div>
+            <span v-if="clientPnl?.category" class="text-[10px] text-muted">{{ monthLabel }}</span>
+          </header>
+
+          <div v-if="clientPnlPending" class="space-y-2">
+            <USkeleton v-for="n in 5" :key="`cp-sk-${n}`" class="h-8" />
+          </div>
+          <template v-else-if="clientPnl?.category && clientPnl.options.length">
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="text-left text-xs uppercase text-muted border-b border-default">
+                    <th class="py-2 pr-3 font-medium">{{ clientPnl.category.name }}</th>
+                    <th class="py-2 px-3 font-medium text-right">Revenue</th>
+                    <th class="py-2 px-3 font-medium text-right">Gross profit</th>
+                    <th class="py-2 px-3 font-medium text-right">Net profit</th>
+                    <th class="py-2 pl-3 font-medium text-right">Net margin</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="opt in clientPnl.options.slice(0, 10)" :key="opt.name" class="border-b border-default/40 hover:bg-elevated/40">
+                    <td class="py-2 pr-3">{{ opt.name }}</td>
+                    <td class="py-2 px-3 text-right font-medium">{{ fmt(opt.revenue) }}</td>
+                    <td class="py-2 px-3 text-right">{{ fmt(opt.grossProfit) }}</td>
+                    <td class="py-2 px-3 text-right" :class="opt.netProfit >= 0 ? 'text-emerald-500' : 'text-red-500'">{{ fmt(opt.netProfit) }}</td>
+                    <td class="py-2 pl-3 text-right text-xs text-muted">{{ fmtPct(opt.netMargin) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p v-if="clientPnl.options.length > 10" class="text-xs text-muted pt-2">
+              Showing top 10 of {{ clientPnl.options.length }} {{ clientPnl.category.name.toLowerCase() }}s
+            </p>
+          </template>
+          <p v-else class="text-sm text-muted">
+            No tracking-category data. Set up a Client or Project tracking category in Xero and tag your invoices to see per-client profitability here.
+          </p>
+        </UCard>
 
         <!-- ═══ P&L Summary + Balance Sheet ═══ -->
         <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
