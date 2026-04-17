@@ -173,15 +173,32 @@ export default eventHandler(async (event) => {
       } : null,
     }
 
-    const raw = await generateGroqInsight(
-      `Analyse this agency's financials for ${toDate} and return the structured advice JSON.\n\nSNAPSHOT:\n${JSON.stringify(snapshot, null, 2)}`,
-      {
-        model: GROQ_MODELS.LLAMA_70B,
-        temperature: 0.3,
-        maxTokens: 2500,
-        systemPrompt: SYSTEM_PROMPT,
-      }
-    )
+    // Deep reasoning + strong structured-output adherence on Groq as of
+    // April 2026 → openai/gpt-oss-120b. Fall back to llama-3.3-70b if the
+    // provider ever 404s that model ID.
+    let raw: string
+    try {
+      raw = await generateGroqInsight(
+        `Analyse this agency's financials for ${toDate} and return the structured advice JSON.\n\nSNAPSHOT:\n${JSON.stringify(snapshot, null, 2)}`,
+        {
+          model: GROQ_MODELS.REASONING_120B,
+          temperature: 0.3,
+          maxTokens: 2500,
+          systemPrompt: SYSTEM_PROMPT,
+        }
+      )
+    } catch (err: any) {
+      console.warn('[financial-advisor] REASONING_120B failed, falling back to LLAMA_70B:', err?.message)
+      raw = await generateGroqInsight(
+        `Analyse this agency's financials for ${toDate} and return the structured advice JSON.\n\nSNAPSHOT:\n${JSON.stringify(snapshot, null, 2)}`,
+        {
+          model: GROQ_MODELS.LLAMA_70B,
+          temperature: 0.3,
+          maxTokens: 2500,
+          systemPrompt: SYSTEM_PROMPT,
+        }
+      )
+    }
 
     // Be tolerant of markdown fences the model sometimes wraps JSON in.
     const jsonText = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()

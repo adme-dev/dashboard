@@ -20,14 +20,35 @@ function getGroqClient() {
   return groq
 }
 
-// Available Groq models optimized for different use cases
+/**
+ * Groq model catalog. Verified against https://console.groq.com/docs/models
+ *
+ * Pick per use-case:
+ *   • Deep reasoning / structured JSON (CFO advisor, action plans)
+ *       → REASONING_120B (openai/gpt-oss-120b) — best JSON adherence + tool use
+ *   • General analysis & summarisation
+ *       → LLAMA_70B (llama-3.3-70b-versatile) — solid fallback
+ *   • Fast widget-level insights
+ *       → LLAMA_8B (llama-3.1-8b-instant) — sub-second on Groq
+ *   • Mid-tier reasoning
+ *       → REASONING_20B (openai/gpt-oss-20b) — faster/cheaper than 120B
+ *
+ * Preview-only (may be yanked; always wrap in try/catch with a fallback):
+ *   • LLAMA_4_SCOUT — Llama-4 early-access
+ *   • QWEN3_32B — multilingual
+ */
 export const GROQ_MODELS = {
-  // Fast reasoning for financial analysis
+  // Deep reasoning, best structured-output adherence + built-in tool use.
+  REASONING_120B: 'openai/gpt-oss-120b',
+  // Mid-tier reasoning — cheaper, still high quality JSON.
+  REASONING_20B: 'openai/gpt-oss-20b',
+  // General-purpose llama-3.3 70B (128K context).
   LLAMA_70B: 'llama-3.3-70b-versatile',
-  // Faster responses for simple insights
+  // Fast lightweight model for per-widget insight strings.
   LLAMA_8B: 'llama-3.1-8b-instant',
-  // Balanced performance
-  MIXTRAL_8X7B: 'mixtral-8x7b-32768'
+  // Preview — do not rely on exclusively.
+  LLAMA_4_SCOUT: 'meta-llama/llama-4-scout-17b-16e-instruct',
+  QWEN3_32B: 'qwen/qwen3-32b',
 } as const
 
 export type GroqModel = typeof GROQ_MODELS[keyof typeof GROQ_MODELS]
