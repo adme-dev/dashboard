@@ -252,33 +252,46 @@ async function refreshAll() {
   await Promise.all([refreshPnl(), refreshBs(), refreshAging(), refreshBudget(), refreshPipeline(), refreshClientPnl()])
 }
 
-// Executive Summary tiles (formatter-aware)
-const execTiles = computed(() => {
+// Executive Summary tiles. Xero's ExecutiveSummary report doesn't publish a
+// "Quick Ratio" row — use "Current assets to liabilities" as the current
+// ratio and fill the other slots with Gross/Net margin, DSO/DPO, and the
+// short-term cash forecast which ARE in the report.
+type ExecTile = {
+  key: string
+  label: string
+  value: number | null
+  format: 'days' | 'percent' | 'ratio' | 'currency'
+  good?: (v: number) => boolean
+  bad?: (v: number) => boolean
+}
+const execTiles = computed<ExecTile[]>(() => {
   const m = execSummary.value?.metrics
   if (!m) return []
   return [
-    { key: 'debtorDays', label: 'Debtor days (DSO)', value: m.debtorDays?.latest ?? null, suffix: ' days', good: (v: number) => v <= 45, bad: (v: number) => v > 75 },
-    { key: 'creditorDays', label: 'Creditor days (DPO)', value: m.creditorDays?.latest ?? null, suffix: ' days', good: (v: number) => v >= 30, bad: (v: number) => v < 15 },
-    { key: 'currentRatio', label: 'Current ratio', value: m.currentRatio?.latest ?? null, suffix: 'x', good: (v: number) => v >= 1.5, bad: (v: number) => v < 1 },
-    { key: 'quickRatio', label: 'Quick ratio', value: m.quickRatio?.latest ?? null, suffix: 'x', good: (v: number) => v >= 1, bad: (v: number) => v < 0.7 },
-    { key: 'grossProfitPercent', label: 'Gross profit %', value: m.grossProfitPercent?.latest ?? null, suffix: '%', good: (v: number) => v >= 40, bad: (v: number) => v < 20 },
-    { key: 'netProfitPercent', label: 'Net profit %', value: m.netProfitPercent?.latest ?? null, suffix: '%', good: (v: number) => v >= 15, bad: (v: number) => v < 5 },
+    { key: 'debtorDays', label: 'Debtor days (DSO)', value: m.debtorDays?.latest ?? null, format: 'days', good: v => v <= 45, bad: v => v > 75 },
+    { key: 'creditorDays', label: 'Creditor days (DPO)', value: m.creditorDays?.latest ?? null, format: 'days', good: v => v >= 30, bad: v => v < 15 },
+    { key: 'currentRatio', label: 'Current assets / liabilities', value: m.currentRatio?.latest ?? null, format: 'ratio', good: v => v >= 1.5, bad: v => v < 1 },
+    { key: 'grossProfitPercent', label: 'Gross profit margin', value: m.grossProfitPercent?.latest ?? null, format: 'percent', good: v => v >= 40, bad: v => v < 20 },
+    { key: 'netProfitPercent', label: 'Net profit margin', value: m.netProfitPercent?.latest ?? null, format: 'percent', good: v => v >= 15, bad: v => v < 5 },
+    { key: 'shortTermCashForecast', label: 'Short-term cash forecast', value: m.shortTermCashForecast?.latest ?? null, format: 'currency', good: v => v > 0, bad: v => v < 0 },
   ]
 })
 
-function execTileColor(tile: { value: number | null; good?: (v: number) => boolean; bad?: (v: number) => boolean }): string {
+function execTileColor(tile: ExecTile): string {
   if (tile.value === null) return 'text-muted'
   if (tile.bad?.(tile.value)) return 'text-red-500'
   if (tile.good?.(tile.value)) return 'text-emerald-500'
   return 'text-amber-500'
 }
 
-function fmtExecValue(tile: { value: number | null; suffix: string }): string {
+function fmtExecValue(tile: ExecTile): string {
   if (tile.value === null) return '—'
-  if (tile.suffix === 'x') return `${tile.value.toFixed(2)}x`
-  if (tile.suffix === '%') return `${tile.value.toFixed(1)}%`
-  if (tile.suffix === ' days') return `${Math.round(tile.value)} days`
-  return String(tile.value)
+  switch (tile.format) {
+    case 'ratio': return `${tile.value.toFixed(2)}x`
+    case 'percent': return `${tile.value.toFixed(1)}%`
+    case 'days': return `${Math.round(tile.value)} days`
+    case 'currency': return fmt(tile.value)
+  }
 }
 
 // ── Formatters ──

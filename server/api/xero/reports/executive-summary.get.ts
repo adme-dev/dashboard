@@ -2,11 +2,28 @@
  * GET /api/xero/reports/executive-summary
  *
  * Thin wrapper around Xero's Executive Summary report. Returns the
- * native KPI grid (DSO, DPO, gross profit %, current ratio, etc.) so
- * the /reports page can surface audited numbers instead of recomputing
- * approximations from P&L + Balance Sheet.
+ * native KPI grid (DSO, DPO, gross/net margin, current ratio, etc.)
+ * so the /reports page can surface audited numbers instead of
+ * recomputing approximations from P&L + Balance Sheet.
  *
  * Xero docs: https://developer.xero.com/documentation/api/accounting/reports#executive-summary
+ *
+ * Actual row titles observed (AU, 2026):
+ *   Cash:         "Cash received", "Cash spent", "Cash surplus (deficit)",
+ *                 "Closing bank balance"
+ *   Profitability: "Income", "Direct costs", "Gross profit (loss)",
+ *                 "Other Income", "Expenses", "Profit (loss)"
+ *   Balance Sheet: "Debtors", "Creditors", "Net assets"
+ *   Income:       "Number of invoices issued", "Average value of invoices"
+ *   Performance:  "Gross profit margin", "Net profit margin",
+ *                 "Return on investment (p.a.)"
+ *   Position:     "Average debtors days", "Average creditors days",
+ *                 "Short term cash forecast",
+ *                 "Current assets to liabilities",
+ *                 "Term assets to liabilities"
+ *
+ * Column layout is [label, currentPeriod, priorPeriod, Variance] — we
+ * skip the Variance column.
  */
 
 import { createError } from 'h3'
@@ -32,17 +49,28 @@ function parseNumeric(input: unknown): number | null {
   if (!trimmed) return null
   const isNegative = /^\(.*\)$/.test(trimmed)
   const normalized = trimmed.replace(/[(),%$]/g, '').replace(/[^0-9.-]/g, '')
+  if (!normalized || normalized === '-' || normalized === '.') return null
   const n = Number(normalized)
   if (Number.isNaN(n)) return null
   return isNegative ? -n : n
 }
 
-function getRowTitle(row: XeroRow): string {
-  return row.title ?? row.Title ?? ''
-}
-
 function getCells(row: XeroRow): XeroCell[] {
   return row.cells ?? row.Cells ?? []
+}
+
+function cellValue(cell: XeroCell | undefined): string {
+  const raw = cell?.value ?? cell?.Value
+  return raw === undefined || raw === null ? '' : String(raw)
+}
+
+/** Xero puts the row label in cells[0]; section titles live on `title`. */
+function getRowLabel(row: XeroRow): string {
+  return row.title ?? row.Title ?? cellValue(getCells(row)[0])
+}
+
+function getRowType(row: XeroRow): string {
+  return (row.rowType ?? row.RowType ?? '').toLowerCase()
 }
 
 function flatten(rows: XeroRow[] | undefined, out: XeroRow[] = []): XeroRow[] {
@@ -54,39 +82,34 @@ function flatten(rows: XeroRow[] | undefined, out: XeroRow[] = []): XeroRow[] {
 }
 
 /**
- * Executive Summary rows the agency dashboard surfaces.
- *
- * Xero row titles vary by locale and report version. Keep each regex
- * permissive — match on the distinctive keyword(s), not exact string.
- * Example titles seen in the wild:
- *   "Income", "Direct costs", "Gross Profit", "Gross Profit (% of Income)",
- *   "Net Profit", "Net Profit (% of Income)", "Average Debtors Days",
- *   "Average Creditors Days", "Short Term Cash Forecast",
- *   "Current Assets to Liabilities", "Term Assets to Liabilities".
+ * Dashboard-facing metrics keyed to the actual row titles Xero returns.
+ * Each entry can match more than one alternative so this stays stable
+ * across report versions and minor labeling drift.
  */
 const METRIC_MAP: Array<{ key: string; match: RegExp }> = [
-  { key: 'income', match: /^\s*(total\s+)?income\s*$/i },
-  { key: 'directCosts', match: /^\s*direct\s+costs?\s*$/i },
-  { key: 'grossProfit', match: /^\s*gross\s+profit\s*$/i },
-  { key: 'grossProfitPercent', match: /gross\s+profit.*(%|percent)/i },
-  { key: 'operatingExpenses', match: /^\s*operating\s+expenses?\s*$/i },
-  { key: 'netProfit', match: /^\s*net\s+profit\s*$/i },
-  { key: 'netProfitPercent', match: /net\s+profit.*(%|percent)/i },
-  { key: 'cashReceived', match: /cash\s+received/i },
-  { key: 'cashSpent', match: /cash\s+spent/i },
-  { key: 'cashSurplus', match: /cash\s+surplus|cash\s+deficit/i },
-  { key: 'closingBank', match: /closing\s+bank/i },
-  { key: 'debtorsSales', match: /debtors?\s+to\s+sales|debtors?\s+sales/i },
-  // Xero actually labels these "Average Debtors Days" / "Average Creditors Days"
-  { key: 'debtorDays', match: /(average\s+)?debtors?\s+days|days\s+sales\s+outstanding|\bdso\b/i },
-  { key: 'creditorDays', match: /(average\s+)?creditors?\s+days|days\s+payable\s+outstanding|\bdpo\b/i },
-  // "Current Assets to Liabilities" = current ratio; ensure we don't match "Term Assets…"
-  { key: 'currentRatio', match: /^\s*current\s+(assets\s+to\s+liabilities|ratio)\s*$/i },
-  { key: 'quickRatio', match: /quick\s+ratio/i },
-  { key: 'inventoryTurnover', match: /inventory\s+turnover/i },
-  { key: 'returnOnInvestment', match: /return\s+on\s+investment/i },
-  { key: 'returnOnCapital', match: /return\s+on\s+capital/i },
-  { key: 'returnOnAssets', match: /return\s+on\s+assets/i },
+  { key: 'cashReceived', match: /^cash\s+received$/i },
+  { key: 'cashSpent', match: /^cash\s+spent$/i },
+  { key: 'cashSurplus', match: /^cash\s+surplus/i },
+  { key: 'closingBank', match: /^closing\s+bank/i },
+  { key: 'income', match: /^income$/i },
+  { key: 'directCosts', match: /^direct\s+costs?$/i },
+  { key: 'grossProfit', match: /^gross\s+profit(\s+\(loss\))?$/i },
+  { key: 'otherIncome', match: /^other\s+income$/i },
+  { key: 'expenses', match: /^expenses?$/i },
+  { key: 'netProfit', match: /^(net\s+)?profit(\s+\(loss\))?$/i },
+  { key: 'debtors', match: /^debtors$/i },
+  { key: 'creditors', match: /^creditors$/i },
+  { key: 'netAssets', match: /^net\s+assets$/i },
+  { key: 'invoiceCount', match: /^number\s+of\s+invoices/i },
+  { key: 'avgInvoiceValue', match: /^average\s+value\s+of\s+invoices/i },
+  { key: 'grossProfitPercent', match: /^gross\s+profit\s+margin$/i },
+  { key: 'netProfitPercent', match: /^net\s+profit\s+margin$/i },
+  { key: 'returnOnInvestment', match: /^return\s+on\s+investment/i },
+  { key: 'debtorDays', match: /^average\s+debtors?\s+days$/i },
+  { key: 'creditorDays', match: /^average\s+creditors?\s+days$/i },
+  { key: 'shortTermCashForecast', match: /^short\s+term\s+cash\s+forecast$/i },
+  { key: 'currentRatio', match: /^current\s+assets\s+to\s+liabilities$/i },
+  { key: 'termRatio', match: /^term\s+assets\s+to\s+liabilities$/i },
 ]
 
 export default eventHandler(async (event) => {
@@ -113,31 +136,36 @@ export default eventHandler(async (event) => {
       })
     )
 
-    // Xero returns a single report with one header row followed by many
-    // metric rows. Each metric row has a cell per period; we surface the
-    // latest period's value.
     const reportTable = report?.reports?.[0]
-    const rows = flatten(reportTable?.rows ?? [])
-    const periodHeader = rows.find(r => (r.rowType ?? r.RowType ?? '').toLowerCase() === 'header')
-    const periodLabels = periodHeader
-      ? getCells(periodHeader).slice(1).map(c => String(c.value ?? c.Value ?? ''))
-      : []
+    const topRows: XeroRow[] = reportTable?.rows ?? []
+    const flat = flatten(topRows)
 
-    const metrics: Record<string, { latest: number | null; periods: number[]; label: string }> = {}
+    // Header row gives us period labels. Drop the trailing "Variance" column
+    // so "periods" only holds real reporting periods.
+    const headerRow = flat.find(r => getRowType(r) === 'header')
+    const headerLabels = headerRow
+      ? getCells(headerRow).slice(1).map(c => cellValue(c))
+      : []
+    const varianceIdx = headerLabels.findIndex(l => /^variance$/i.test(l))
+    const periodLabels = varianceIdx >= 0 ? headerLabels.slice(0, varianceIdx) : headerLabels
+
+    const metrics: Record<string, { latest: number | null; previous: number | null; periods: number[]; label: string }> = {}
 
     for (const { key, match } of METRIC_MAP) {
-      const row = rows.find(r => match.test(getRowTitle(r)))
+      const row = flat.find(r => getRowType(r) === 'row' && match.test(getRowLabel(r)))
       if (!row) {
-        metrics[key] = { latest: null, periods: [], label: '' }
+        metrics[key] = { latest: null, previous: null, periods: [], label: '' }
         continue
       }
-      const cells = getCells(row).slice(1) // skip the label cell
-      const periods = cells.map(c => parseNumeric(c.value ?? c.Value)).map(v => v ?? 0)
-      const latestIndex = periods.length - 1
+      // cells = [label, currentPeriod, priorPeriod, Variance]
+      const valueCells = getCells(row).slice(1)
+      const trimmed = varianceIdx >= 0 ? valueCells.slice(0, varianceIdx) : valueCells
+      const periods = trimmed.map(c => parseNumeric(c.value ?? c.Value)).map(v => (v === null ? 0 : v))
       metrics[key] = {
-        latest: periods[latestIndex] ?? null,
+        latest: periods[0] ?? null,   // current period is first
+        previous: periods[1] ?? null, // prior period is second
         periods,
-        label: getRowTitle(row),
+        label: getRowLabel(row),
       }
     }
 
