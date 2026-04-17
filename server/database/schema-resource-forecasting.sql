@@ -306,7 +306,7 @@ BEGIN
   FROM tasks t
   JOIN task_statuses ts ON t.status_id = ts.id
   WHERE t.assignee_id = p_team_member_id
-    AND ts.is_final = false
+    AND t.status_is_final = false
     AND t.due_date >= p_week_start
     AND t.due_date <= v_week_end;
 
@@ -325,7 +325,7 @@ BEGIN
     FROM tasks t
     JOIN task_statuses ts ON t.status_id = ts.id
     WHERE t.assignee_id = p_team_member_id
-      AND ts.is_final = false
+      AND t.status_is_final = false
       AND t.due_date >= p_week_start
       AND t.due_date <= v_week_end
       AND t.project_id IS NOT NULL

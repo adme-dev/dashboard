@@ -327,7 +327,7 @@ SELECT
   ts.name as status_name,
   ts.color as status_color,
   ts.category as status_category,
-  ts.is_final,
+  t.status_is_final,
   d.name as department_name,
   d.color as department_color,
   a.name as assignee_name,

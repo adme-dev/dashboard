@@ -300,7 +300,7 @@ SELECT
   ts.name AS status_name,
   ts.color AS status_color,
   ts.category AS status_category,
-  ts.is_final AS status_is_final,
+  t.status_is_final AS status_is_final,
   -- Department
   d.id AS department_id,
   d.name AS department_name,
@@ -346,7 +346,7 @@ SELECT
   COUNT(t.id) AS task_count,
   SUM(t.estimated_hours) AS total_estimated_hours,
   SUM(t.actual_hours) AS total_actual_hours,
-  COUNT(CASE WHEN t.due_date < CURRENT_DATE AND ts.is_final = false THEN 1 END) AS overdue_count,
+  COUNT(CASE WHEN t.due_date < CURRENT_DATE AND t.status_is_final = false THEN 1 END) AS overdue_count,
   COUNT(CASE WHEN t.due_date = CURRENT_DATE THEN 1 END) AS due_today_count,
   COUNT(CASE WHEN t.due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days' THEN 1 END) AS due_this_week_count
 FROM departments d
@@ -368,10 +368,10 @@ SELECT
   COUNT(t.id) FILTER (WHERE t.due_date BETWEEN date_trunc('week', CURRENT_DATE) AND date_trunc('week', CURRENT_DATE) + INTERVAL '6 days') AS tasks_this_week,
   SUM(t.estimated_hours) FILTER (WHERE t.due_date BETWEEN date_trunc('week', CURRENT_DATE) AND date_trunc('week', CURRENT_DATE) + INTERVAL '6 days') AS estimated_hours_this_week,
   -- All active tasks
-  COUNT(t.id) FILTER (WHERE ts.is_final = false) AS active_tasks,
-  SUM(t.estimated_hours) FILTER (WHERE ts.is_final = false) AS total_estimated_hours,
+  COUNT(t.id) FILTER (WHERE t.status_is_final = false) AS active_tasks,
+  SUM(t.estimated_hours) FILTER (WHERE t.status_is_final = false) AS total_estimated_hours,
   -- Overdue
-  COUNT(t.id) FILTER (WHERE t.due_date < CURRENT_DATE AND ts.is_final = false) AS overdue_tasks,
+  COUNT(t.id) FILTER (WHERE t.due_date < CURRENT_DATE AND t.status_is_final = false) AS overdue_tasks,
   -- Completed this week
   COUNT(t.id) FILTER (WHERE t.completed_at >= date_trunc('week', CURRENT_DATE)) AS completed_this_week
 FROM team_members tm

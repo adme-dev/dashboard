@@ -317,9 +317,9 @@ BEGIN
   -- Calculate Schedule Score
   SELECT
     COUNT(*) AS total_tasks,
-    COUNT(*) FILTER (WHERE ts.is_final = true) AS completed_tasks,
-    COUNT(*) FILTER (WHERE t.due_date < CURRENT_DATE AND ts.is_final = false) AS overdue_tasks,
-    COUNT(*) FILTER (WHERE t.due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7 AND ts.is_final = false) AS due_soon
+    COUNT(*) FILTER (WHERE t.status_is_final = true) AS completed_tasks,
+    COUNT(*) FILTER (WHERE t.due_date < CURRENT_DATE AND t.status_is_final = false) AS overdue_tasks,
+    COUNT(*) FILTER (WHERE t.due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7 AND t.status_is_final = false) AS due_soon
   INTO v_task_stats
   FROM tasks t
   JOIN task_statuses ts ON t.status_id = ts.id
