@@ -7,8 +7,14 @@ const AsyncCategoryDonut = defineAsyncComponent(() => import('~/components/expen
 const AsyncVendorContributionBars = defineAsyncComponent(() => import('~/components/expenses/VendorContributionBars.client.vue'))
 const AsyncCategoryTreemap = defineAsyncComponent(() => import('~/components/expenses/CategoryTreemap.client.vue'))
 
-// Check if connected to Xero - required for real data
-const { data: statusData, refresh: refreshStatus } = await useFetch('/api/xero/status')
+// Check if connected to Xero - required for real data.
+// Client-only + getCachedData so the page renders immediately and reflects
+// current connection state on every navigation.
+const { data: statusData, refresh: refreshStatus } = useLazyFetch('/api/xero/status', {
+  server: false,
+  key: 'xero-status-expenses',
+  getCachedData: () => undefined,
+})
 const isConnected = computed(() => statusData.value?.connected || false)
 
 // Period selection
@@ -49,9 +55,12 @@ function nextMonth() {
 }
 const isCurrentMonth = computed(() => selectedMonth.value === now.getMonth() + 1 && selectedYear.value === now.getFullYear())
 
-// Only fetch data if connected to Xero
-const { data, pending, error, refresh } = await useFetch('/api/xero/expenses', {
-  lazy: true,
+// Only fetch data if connected to Xero.
+// Lazy + client-only: don't block page render on Xero latency and never
+// serve a stale cached response from Nuxt's data layer.
+const { data, pending, error, refresh } = useLazyFetch('/api/xero/expenses', {
+  server: false,
+  getCachedData: () => undefined,
   query: computed(() => ({ from: periodFrom.value, to: periodTo.value }))
 })
 
