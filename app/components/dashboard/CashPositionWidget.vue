@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const { data, status } = await useFetch('/api/xero/reports/cash-flow-forecast')
+const { data, status } = useLazyFetch('/api/xero/reports/cash-flow-forecast', { server: false })
 
 const cashData = computed(() => data.value as any)
 const currentCash = computed(() => cashData.value?.currentCash || 0)

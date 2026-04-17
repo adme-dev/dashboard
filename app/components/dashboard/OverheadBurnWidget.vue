@@ -3,7 +3,7 @@ const now = new Date()
 const month = now.getMonth() + 1
 const year = now.getFullYear()
 
-const { data, status, refresh } = await useFetch('/api/xero/overheads', {
+const { data, status, refresh } = useLazyFetch('/api/xero/overheads', { server: false,
   query: { month, year },
 })
 

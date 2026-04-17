@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const { data, status } = await useFetch('/api/xero/reports/aging')
+const { data, status } = useLazyFetch('/api/xero/reports/aging', { server: false })
 
 const agingData = computed(() => data.value as any)
 const totalOutstanding = computed(() => agingData.value?.totalOutstanding || 0)

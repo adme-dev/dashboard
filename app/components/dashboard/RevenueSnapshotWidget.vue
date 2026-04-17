@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const { data, status } = await useFetch('/api/xero/reports/pnl')
+const { data, status } = useLazyFetch('/api/xero/reports/pnl', { server: false })
 
 const pnl = computed(() => data.value as any)
 
