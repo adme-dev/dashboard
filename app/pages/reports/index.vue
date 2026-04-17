@@ -326,6 +326,59 @@ function concentrationRiskColor(risk: 'low' | 'medium' | 'high'): string {
   return 'text-emerald-500'
 }
 
+// ── Financial Advisor slide-over ──
+type AdvisorResponse = {
+  asOf: string
+  verdict: string
+  grade: 'A' | 'B' | 'C' | 'D' | 'F'
+  score: number
+  headline: string
+  strengths: Array<{ title: string; detail: string }>
+  risks: Array<{ title: string; detail: string; severity: 'low' | 'medium' | 'high' }>
+  recommendations: Array<{ priority: 'low' | 'medium' | 'high'; title: string; impact: string; action: string }>
+  alerts: Array<{ level: 'info' | 'warning' | 'critical'; message: string }>
+}
+const advisorOpen = ref(false)
+const advisorLoading = ref(false)
+const advisorData = ref<AdvisorResponse | null>(null)
+const advisorError = ref<string | null>(null)
+
+async function openAdvisor(force = false) {
+  advisorOpen.value = true
+  if (advisorData.value && !force) return
+  advisorLoading.value = true
+  advisorError.value = null
+  try {
+    const query: Record<string, any> = { toDate: toDate.value }
+    if (force) query.bust = 1
+    advisorData.value = await $fetch<AdvisorResponse>('/api/ai/financial-advisor', { query })
+  } catch (err: any) {
+    advisorError.value = err?.data?.statusMessage ?? err?.message ?? 'Advisor unavailable'
+  } finally {
+    advisorLoading.value = false
+  }
+}
+
+function gradeColor(grade: 'A' | 'B' | 'C' | 'D' | 'F'): string {
+  return ({ A: 'text-emerald-500', B: 'text-emerald-400', C: 'text-amber-500', D: 'text-orange-500', F: 'text-red-500' })[grade]
+}
+
+function severityBadge(s: 'low' | 'medium' | 'high'): 'success' | 'warning' | 'error' {
+  return s === 'high' ? 'error' : s === 'medium' ? 'warning' : 'success'
+}
+
+function priorityBadge(p: 'low' | 'medium' | 'high'): 'info' | 'warning' | 'error' {
+  return p === 'high' ? 'error' : p === 'medium' ? 'warning' : 'info'
+}
+
+function alertIcon(level: 'info' | 'warning' | 'critical'): string {
+  return level === 'critical' ? 'i-lucide-alert-octagon' : level === 'warning' ? 'i-lucide-alert-triangle' : 'i-lucide-info'
+}
+
+function alertColor(level: 'info' | 'warning' | 'critical'): string {
+  return level === 'critical' ? 'text-red-500' : level === 'warning' ? 'text-amber-500' : 'text-blue-500'
+}
+
 // Executive Summary tiles. Xero's ExecutiveSummary report doesn't publish a
 // "Quick Ratio" row — use "Current assets to liabilities" as the current
 // ratio and fill the other slots with Gross/Net margin, DSO/DPO, and the
@@ -589,6 +642,14 @@ const breadcrumbs = computed(() => ([
           <UDashboardSidebarCollapse />
         </template>
         <template #right>
+          <UButton
+            label="Financial Advisor"
+            color="primary"
+            variant="soft"
+            icon="i-lucide-sparkles"
+            :loading="advisorLoading"
+            @click="openAdvisor"
+          />
           <UButton
             label="Refresh"
             color="neutral"
@@ -1298,5 +1359,103 @@ const breadcrumbs = computed(() => ([
         </div>
       </div>
     </template>
+
+    <!-- ═══ Financial Advisor slide-over ═══ -->
+    <USlideover v-model:open="advisorOpen" :ui="{ content: 'max-w-xl' }">
+      <template #content>
+        <div class="flex flex-col h-full">
+          <header class="px-6 py-4 border-b border-default flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-sparkles" class="size-5 text-primary" />
+              <div>
+                <h3 class="font-semibold">Financial Advisor</h3>
+                <p class="text-xs text-muted">CFO-grade read on {{ monthLabel }}</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-1">
+              <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" size="xs" :loading="advisorLoading" @click="openAdvisor(true)" />
+              <UButton icon="i-lucide-x" color="neutral" variant="ghost" size="xs" @click="advisorOpen = false" />
+            </div>
+          </header>
+
+          <div class="flex-1 overflow-y-auto p-6 space-y-6">
+            <div v-if="advisorLoading && !advisorData" class="space-y-3">
+              <USkeleton class="h-20" />
+              <USkeleton class="h-32" />
+              <USkeleton class="h-32" />
+            </div>
+
+            <UAlert v-else-if="advisorError" color="error" variant="subtle" icon="i-lucide-alert-triangle" :title="advisorError" />
+
+            <template v-else-if="advisorData">
+              <!-- Grade + verdict -->
+              <div class="rounded-xl border border-default p-5 bg-elevated/40">
+                <div class="flex items-start justify-between gap-4">
+                  <div class="flex-1">
+                    <p class="text-xs uppercase text-muted tracking-wide">Overall</p>
+                    <h4 class="text-lg font-semibold mt-1">{{ advisorData.headline }}</h4>
+                    <p class="text-sm text-muted mt-2">{{ advisorData.verdict }}</p>
+                  </div>
+                  <div class="flex flex-col items-center">
+                    <div :class="['text-4xl font-bold leading-none', gradeColor(advisorData.grade)]">{{ advisorData.grade }}</div>
+                    <div class="text-[10px] text-muted mt-1">{{ advisorData.score }}/100</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Alerts -->
+              <div v-if="advisorData.alerts.length" class="space-y-2">
+                <p class="text-[10px] uppercase text-muted font-semibold tracking-wider">Alerts</p>
+                <div v-for="(a, i) in advisorData.alerts" :key="i" class="flex gap-2 items-start p-3 rounded-lg border border-default">
+                  <UIcon :name="alertIcon(a.level)" :class="['size-4 mt-0.5 shrink-0', alertColor(a.level)]" />
+                  <span class="text-sm">{{ a.message }}</span>
+                </div>
+              </div>
+
+              <!-- Risks -->
+              <div v-if="advisorData.risks.length" class="space-y-2">
+                <p class="text-[10px] uppercase text-muted font-semibold tracking-wider">Risks</p>
+                <div v-for="(r, i) in advisorData.risks" :key="i" class="p-3 rounded-lg border border-default space-y-1">
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="font-medium text-sm">{{ r.title }}</p>
+                    <UBadge :color="severityBadge(r.severity)" variant="subtle" size="xs">{{ r.severity }}</UBadge>
+                  </div>
+                  <p class="text-xs text-muted leading-relaxed">{{ r.detail }}</p>
+                </div>
+              </div>
+
+              <!-- Recommendations -->
+              <div v-if="advisorData.recommendations.length" class="space-y-2">
+                <p class="text-[10px] uppercase text-muted font-semibold tracking-wider">Recommended actions</p>
+                <div v-for="(rec, i) in advisorData.recommendations" :key="i" class="p-3 rounded-lg border border-default space-y-1.5">
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="font-medium text-sm">{{ rec.title }}</p>
+                    <UBadge :color="priorityBadge(rec.priority)" variant="subtle" size="xs">{{ rec.priority }}</UBadge>
+                  </div>
+                  <p class="text-xs text-muted leading-relaxed">{{ rec.action }}</p>
+                  <p class="text-[11px] text-primary">Impact: {{ rec.impact }}</p>
+                </div>
+              </div>
+
+              <!-- Strengths -->
+              <div v-if="advisorData.strengths.length" class="space-y-2">
+                <p class="text-[10px] uppercase text-muted font-semibold tracking-wider">What's working</p>
+                <div v-for="(s, i) in advisorData.strengths" :key="i" class="flex gap-2 items-start">
+                  <UIcon name="i-lucide-check-circle-2" class="size-4 mt-0.5 shrink-0 text-emerald-500" />
+                  <div>
+                    <p class="text-sm font-medium">{{ s.title }}</p>
+                    <p class="text-xs text-muted leading-relaxed">{{ s.detail }}</p>
+                  </div>
+                </div>
+              </div>
+
+              <p class="text-[10px] text-muted pt-4 border-t border-default">
+                Generated from your live Xero data. Re-generate for a fresh read.
+              </p>
+            </template>
+          </div>
+        </div>
+      </template>
+    </USlideover>
   </UDashboardPanel>
 </template>
