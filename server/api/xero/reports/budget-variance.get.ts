@@ -1,5 +1,5 @@
 import { createError } from 'h3'
-import { createXeroClient } from '../../../utils/xeroClient'
+import { xeroFetch } from '../../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
 import { cachedFetch } from '~~/server/utils/kv'
@@ -60,7 +60,7 @@ export default eventHandler(async (event) => {
   const cacheKey = `xero-report:${tenantId}:budget-variance:${targetMonth}:${targetYear}`
 
   return cachedFetch(event, cacheKey, 600, async () => {
-  const client = await createXeroClient({ tokenSet: token, event })
+  const accessToken = token.access_token!
 
   // Get chart of accounts for proper category names
   let accountsMap = new Map<string, string>()
@@ -68,10 +68,7 @@ export default eventHandler(async (event) => {
     const acctBody = await dedupedXeroCall(
       `budget-accounts:${tenantId}`,
       'budget-accounts',
-      async () => {
-        const { body } = await client.accountingApi.getAccounts(tenantId)
-        return body
-      }
+      () => xeroFetch<any>({ accessToken, tenantId, path: 'Accounts' })
     )
     const accounts = acctBody?.accounts || []
     for (const account of accounts) {
@@ -91,27 +88,16 @@ export default eventHandler(async (event) => {
     const results: any[] = []
     let page = 1
     for (;;) {
+      const params = new URLSearchParams({
+        where: whereExpr,
+        order: 'Date DESC',
+        page: String(page),
+        pageSize: '100',
+      })
       const body = await dedupedXeroCall(
         `budget-inv:${tenantId}:p${page}`,
         'budget-inv',
-        async () => {
-          const { body } = await (client.accountingApi.getInvoices as any)(
-            tenantId,
-            undefined,
-            whereExpr,
-            'Date DESC',
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            page,
-            undefined,
-            undefined,
-            undefined,
-            100
-          )
-          return body
-        }
+        () => xeroFetch<any>({ accessToken, tenantId, path: `Invoices?${params.toString()}` })
       )
       const list = body?.invoices || []
       if (!list.length) break

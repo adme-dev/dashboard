@@ -1,5 +1,5 @@
 import { createError } from 'h3'
-import { createXeroClient } from '../utils/xeroClient'
+import { xeroFetch } from '../utils/xeroClient'
 import { getActiveTokenForSession } from '../utils/tokenStore'
 import { getSelectedTenant } from '../utils/session'
 import { cachedFetch } from '~~/server/utils/kv'
@@ -42,7 +42,11 @@ export default eventHandler(async (event) => {
   const cacheKey = `xero:kpis-advanced:${tenantId}`
 
   return cachedFetch(event, cacheKey, 300, async () => {
-  const client = await createXeroClient({ tokenSet: token, event })
+  const accessToken = token.access_token!
+  const invoicesQuery = (where: string, order: string, pageSize = 500) => {
+    const params = new URLSearchParams({ where, order, page: '1', pageSize: String(pageSize) })
+    return `Invoices?${params.toString()}`
+  }
 
   // Parallel data fetching — dedupedXeroCall queue limits to 3 concurrent
   const [
@@ -56,59 +60,35 @@ export default eventHandler(async (event) => {
     balanceSheetResponse
   ] = await Promise.allSettled([
     dedupedXeroCall(`kpi-bank-summary:${tenantId}`, 'kpi-bank-summary', () =>
-      client.accountingApi.getReportBankSummary(tenantId, ensureDateString(addDays(today, -30)), ensureDateString(today))
+      xeroFetch<any>({ accessToken, tenantId, path: `Reports/BankSummary?fromDate=${ensureDateString(addDays(today, -30))}&toDate=${ensureDateString(today)}` })
     ),
 
     dedupedXeroCall(`kpi-rev-current:${tenantId}`, 'kpi-rev-current', () =>
-      (client.accountingApi.getInvoices as any)(
-        tenantId, undefined,
-        `Type=="ACCREC"&&Status=="PAID"&&Date>=${dtExpr(monthStart)}&&Date<=${dtExpr(today)}`,
-        'Date DESC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 500
-      )
+      xeroFetch<any>({ accessToken, tenantId, path: invoicesQuery(`Type=="ACCREC"&&Status=="PAID"&&Date>=${dtExpr(monthStart)}&&Date<=${dtExpr(today)}`, 'Date DESC') })
     ),
 
     dedupedXeroCall(`kpi-rev-last:${tenantId}`, 'kpi-rev-last', () =>
-      (client.accountingApi.getInvoices as any)(
-        tenantId, undefined,
-        `Type=="ACCREC"&&Status=="PAID"&&Date>=${dtExpr(lastMonth)}&&Date<=${dtExpr(lastMonthEnd)}`,
-        'Date DESC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 500
-      )
+      xeroFetch<any>({ accessToken, tenantId, path: invoicesQuery(`Type=="ACCREC"&&Status=="PAID"&&Date>=${dtExpr(lastMonth)}&&Date<=${dtExpr(lastMonthEnd)}`, 'Date DESC') })
     ),
 
     dedupedXeroCall(`kpi-exp-current:${tenantId}`, 'kpi-exp-current', () =>
-      (client.accountingApi.getInvoices as any)(
-        tenantId, undefined,
-        `Type=="ACCPAY"&&Status=="PAID"&&Date>=${dtExpr(monthStart)}&&Date<=${dtExpr(today)}`,
-        'Date DESC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 500
-      )
+      xeroFetch<any>({ accessToken, tenantId, path: invoicesQuery(`Type=="ACCPAY"&&Status=="PAID"&&Date>=${dtExpr(monthStart)}&&Date<=${dtExpr(today)}`, 'Date DESC') })
     ),
 
     dedupedXeroCall(`kpi-exp-last:${tenantId}`, 'kpi-exp-last', () =>
-      (client.accountingApi.getInvoices as any)(
-        tenantId, undefined,
-        `Type=="ACCPAY"&&Status=="PAID"&&Date>=${dtExpr(lastMonth)}&&Date<=${dtExpr(lastMonthEnd)}`,
-        'Date DESC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 500
-      )
+      xeroFetch<any>({ accessToken, tenantId, path: invoicesQuery(`Type=="ACCPAY"&&Status=="PAID"&&Date>=${dtExpr(lastMonth)}&&Date<=${dtExpr(lastMonthEnd)}`, 'Date DESC') })
     ),
 
     dedupedXeroCall(`kpi-outstanding:${tenantId}`, 'kpi-outstanding', () =>
-      (client.accountingApi.getInvoices as any)(
-        tenantId, undefined,
-        'Type=="ACCREC"&&Status=="AUTHORISED"',
-        'DueDate ASC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 200
-      )
+      xeroFetch<any>({ accessToken, tenantId, path: invoicesQuery('Type=="ACCREC"&&Status=="AUTHORISED"', 'DueDate ASC', 200) })
     ),
 
     dedupedXeroCall(`kpi-overdue:${tenantId}`, 'kpi-overdue', () =>
-      (client.accountingApi.getInvoices as any)(
-        tenantId, undefined,
-        `Type=="ACCREC"&&Status=="AUTHORISED"&&DueDate<${dtExpr(today)}`,
-        'DueDate ASC', undefined, undefined, undefined, undefined, 1, undefined, undefined, undefined, 200
-      )
+      xeroFetch<any>({ accessToken, tenantId, path: invoicesQuery(`Type=="ACCREC"&&Status=="AUTHORISED"&&DueDate<${dtExpr(today)}`, 'DueDate ASC', 200) })
     ),
 
     dedupedXeroCall(`kpi-balance-sheet:${tenantId}`, 'kpi-balance-sheet', () =>
-      client.accountingApi.getReportBalanceSheet(tenantId, ensureDateString(today))
+      xeroFetch<any>({ accessToken, tenantId, path: `Reports/BalanceSheet?date=${ensureDateString(today)}` })
     )
   ])
 
@@ -120,7 +100,7 @@ export default eventHandler(async (event) => {
   // Process cash position
   let currentCash = 0
   const cashData = extractData(currentCashResponse)
-  if (cashData?.body?.reports?.[0]?.rows) {
+  if (cashData?.reports?.[0]?.rows) {
     function flattenRows(rows: any[], out: any[] = []): any[] {
       for (const row of rows) {
         out.push(row)
@@ -131,7 +111,7 @@ export default eventHandler(async (event) => {
       return out
     }
     
-    const allRows = flattenRows(cashData.body.reports[0].rows)
+    const allRows = flattenRows(cashData.reports[0].rows)
     for (const row of allRows) {
       const cells = row?.Cells || row?.cells || []
       const lastCell = cells[cells.length - 1]
@@ -146,28 +126,28 @@ export default eventHandler(async (event) => {
   }
 
   // Process revenue data
-  const currentMonthRevenue = extractData(currentMonthInvoicesResponse)?.body?.invoices
+  const currentMonthRevenue = extractData(currentMonthInvoicesResponse)?.invoices
     ?.reduce((sum: number, inv: any) => sum + (Number(inv?.total) || 0), 0) || 0
 
-  const lastMonthRevenue = extractData(lastMonthInvoicesResponse)?.body?.invoices
+  const lastMonthRevenue = extractData(lastMonthInvoicesResponse)?.invoices
     ?.reduce((sum: number, inv: any) => sum + (Number(inv?.total) || 0), 0) || 0
 
   // Process expense data
-  const currentMonthExpenses = extractData(currentMonthExpensesResponse)?.body?.invoices
+  const currentMonthExpenses = extractData(currentMonthExpensesResponse)?.invoices
     ?.reduce((sum: number, inv: any) => sum + (Number(inv?.total) || 0), 0) || 0
 
-  const lastMonthExpenses = extractData(lastMonthExpensesResponse)?.body?.invoices
+  const lastMonthExpenses = extractData(lastMonthExpensesResponse)?.invoices
     ?.reduce((sum: number, inv: any) => sum + (Number(inv?.total) || 0), 0) || 0
 
   // Process outstanding invoices
-  const outstandingInvoices = extractData(outstandingInvoicesResponse)?.body?.invoices || []
+  const outstandingInvoices = extractData(outstandingInvoicesResponse)?.invoices || []
   const totalOutstanding = outstandingInvoices.reduce((sum: number, inv: any) => sum + (Number(inv?.amountDue) || 0), 0)
 
-  const overdueInvoices = extractData(overdueInvoicesResponse)?.body?.invoices || []
+  const overdueInvoices = extractData(overdueInvoicesResponse)?.invoices || []
   const totalOverdue = overdueInvoices.reduce((sum: number, inv: any) => sum + (Number(inv?.amountDue) || 0), 0)
 
   // Process balance sheet data
-  const balanceSheet = extractData(balanceSheetResponse)?.body?.reports?.[0] || null
+  const balanceSheet = extractData(balanceSheetResponse)?.reports?.[0] || null
   let totalAssets = 0
   let totalLiabilities = 0
   let totalEquity = 0
