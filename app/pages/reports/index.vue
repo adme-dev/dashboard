@@ -1359,9 +1359,11 @@ const breadcrumbs = computed(() => ([
         </div>
       </div>
     </template>
+  </UDashboardPanel>
 
-    <!-- ═══ Financial Advisor slide-over ═══ -->
-    <USlideover v-model:open="advisorOpen" :ui="{ content: 'max-w-xl' }">
+  <!-- ═══ Financial Advisor slide-over (sibling of UDashboardPanel so
+       it never affects the panel's slot rendering) ═══ -->
+  <USlideover v-model:open="advisorOpen" :ui="{ content: 'max-w-xl' }">
       <template #content>
         <div class="flex flex-col h-full">
           <header class="px-6 py-4 border-b border-default flex items-center justify-between">
@@ -1457,5 +1459,4 @@ const breadcrumbs = computed(() => ([
         </div>
       </template>
     </USlideover>
-  </UDashboardPanel>
 </template>
