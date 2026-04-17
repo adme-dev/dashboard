@@ -9,7 +9,9 @@ const DEFAULT_SCOPES = [
   'accounting.settings.read',
   'accounting.transactions.read',
   'accounting.transactions',
-  'accounting.contacts.read'
+  'accounting.contacts.read',
+  // Required for GET /Budgets and /Reports/BudgetSummary.
+  'accounting.budgets.read',
 ]
 
 const XERO_OIDC_DISCOVERY_URL = 'https://identity.xero.com/.well-known/openid-configuration'

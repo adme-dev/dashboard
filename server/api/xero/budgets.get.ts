@@ -64,12 +64,30 @@ export default eventHandler(async (event) => {
   const cacheKey = `xero:budgets:${tenantId}:${requestedBudgetId ?? 'auto'}:${periods}`
 
   return cachedFetch(event, cacheKey, 900, async () => {
-    // 1. Discover budgets
-    const listBody = await dedupedXeroCall(
-      `budgets-list:${tenantId}`,
-      'budgets-list',
-      () => xeroFetch<any>({ accessToken, tenantId, path: 'Budgets' })
-    )
+    // 1. Discover budgets. If the OAuth scope doesn't include
+    // accounting.budgets.read, Xero returns 401 here — return an empty
+    // payload with a hint rather than surfacing a hard error so the UI
+    // can show "reconnect Xero" guidance.
+    let listBody: any
+    try {
+      listBody = await dedupedXeroCall(
+        `budgets-list:${tenantId}`,
+        'budgets-list',
+        () => xeroFetch<any>({ accessToken, tenantId, path: 'Budgets' })
+      )
+    } catch (err: any) {
+      if (err?.statusCode === 401) {
+        return {
+          budgets: [],
+          selected: null,
+          rows: [],
+          periodLabels: [],
+          scopeMissing: true,
+          message: 'Reconnect Xero to grant budget read access.',
+        }
+      }
+      throw err
+    }
     const budgets = (listBody?.budgets ?? []) as Array<{ budgetID: string; description?: string; type?: string; updatedDateUtc?: string }>
 
     if (!budgets.length) {

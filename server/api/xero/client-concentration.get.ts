@@ -49,24 +49,32 @@ export default eventHandler(async (event) => {
     const results: any[] = []
     let page = 1
 
-    while (page <= 20) {
+    // Fetch in ~3 pages worst-case; cap at 5 to avoid eating rate-limit budget.
+    // Use standard (not summaryOnly) format since summaryOnly omits total/amounts
+    // we need for aggregation. pageSize=100 is Xero's default; max allowed is 1000.
+    while (page <= 5) {
       const params = new URLSearchParams({
-        where: `Type=="ACCREC"&&(Status=="PAID"||Status=="AUTHORISED")&&Date>=${dtExpr(from)}&&Date<=${dtExpr(to)}`,
+        where: `Type=="ACCREC"&&Date>=${dtExpr(from)}&&Date<=${dtExpr(to)}`,
         order: 'Date DESC',
         page: String(page),
-        pageSize: '200',
-        summaryOnly: 'true',
+        pageSize: '100',
       })
-      const body = await dedupedXeroCall(
-        `client-concentration:${tenantId}:p${page}:${fromStr}:${toStr}`,
-        'client-concentration',
-        () => xeroFetch<any>({ accessToken, tenantId, path: `Invoices?${params.toString()}` })
-      )
-      const list = body?.invoices ?? []
-      if (!list.length) break
-      results.push(...list)
-      if (list.length < 200) break
-      page += 1
+      try {
+        const body = await dedupedXeroCall(
+          `client-concentration:${tenantId}:p${page}:${fromStr}:${toStr}`,
+          'client-concentration',
+          () => xeroFetch<any>({ accessToken, tenantId, path: `Invoices?${params.toString()}` })
+        )
+        const list = body?.invoices ?? []
+        if (!list.length) break
+        results.push(...list)
+        if (list.length < 100) break
+        page += 1
+      } catch (err: any) {
+        // Soft-fail: return partial data rather than 500ing the whole panel.
+        console.warn('[client-concentration] page fetch failed:', err?.statusMessage ?? err?.message)
+        break
+      }
     }
 
     const byContact = new Map<string, { id: string; name: string; total: number; paid: number; outstanding: number; invoiceCount: number }>()
