@@ -487,6 +487,16 @@
         </div>
         <div class="flex items-center gap-1">
           <UButton
+            icon="i-lucide-terminal-square"
+            variant="soft"
+            color="primary"
+            size="xs"
+            title="Copy a ready-to-paste IDE prompt for this task (Claude Code, Cursor, etc.)"
+            @click="selectedTaskId && openIdePrompt(selectedTaskId)"
+          >
+            IDE prompt
+          </UButton>
+          <UButton
             icon="i-lucide-message-circle"
             :variant="showChat ? 'soft' : 'ghost'"
             :color="showChat ? 'primary' : 'neutral'"
