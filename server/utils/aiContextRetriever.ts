@@ -769,39 +769,83 @@ async function semanticRerank(items: ContextItem[], question: string, event?: H3
 
 /**
  * Search the connected codebases (graphify graphs in R2) for nodes
- * matching the user's keywords. Scoped to boards the user can access.
+ * matching the user's keywords.
+ *
+ * Scope rules:
+ *  - If `boardId` is provided, only the repo connected to that board is searched.
+ *  - Otherwise fans out to repos the user can access, capped to the most
+ *    recently synced 3 to bound R2 cost (admins might have many repos).
  */
+const MAX_FANOUT_REPOS = 3
+
 async function searchCodebase(
   userId: string,
   userRole: string,
   keywords: string[],
+  boardId?: string,
 ): Promise<ContextItem[]> {
   if (keywords.length === 0) return []
 
-  // Find graphify paths the user can see
   const isAdmin = userRole === 'owner' || userRole === 'admin'
-  const sql = isAdmin
-    ? `SELECT pr.graphify_path, d.id AS dept_id, d.name AS board_name
-         FROM project_repos pr
-         JOIN departments d ON d.id = pr.department_id
-        WHERE pr.graphify_path IS NOT NULL`
-    : `SELECT pr.graphify_path, d.id AS dept_id, d.name AS board_name
-         FROM project_repos pr
-         JOIN departments d ON d.id = pr.department_id
-        WHERE pr.graphify_path IS NOT NULL
-          AND EXISTS (
-            SELECT 1 FROM department_members dm
-             WHERE dm.department_id = pr.department_id
-               AND dm.team_member_id = $1
-          )`
+
+  // 1) board-scoped: prefer the explicit board context if supplied
+  let sql: string
+  let params: any[]
+  if (boardId) {
+    // Still respect access — admin sees any, member must be in department_members.
+    if (isAdmin) {
+      sql = `SELECT pr.graphify_path, d.id AS dept_id, d.name AS board_name
+               FROM project_repos pr
+               JOIN departments d ON d.id = pr.department_id
+              WHERE pr.graphify_path IS NOT NULL
+                AND pr.department_id = $1
+              LIMIT 1`
+      params = [boardId]
+    } else {
+      sql = `SELECT pr.graphify_path, d.id AS dept_id, d.name AS board_name
+               FROM project_repos pr
+               JOIN departments d ON d.id = pr.department_id
+              WHERE pr.graphify_path IS NOT NULL
+                AND pr.department_id = $1
+                AND EXISTS (
+                  SELECT 1 FROM department_members dm
+                   WHERE dm.department_id = pr.department_id
+                     AND dm.team_member_id = $2
+                )
+              LIMIT 1`
+      params = [boardId, userId]
+    }
+  } else if (isAdmin) {
+    sql = `SELECT pr.graphify_path, d.id AS dept_id, d.name AS board_name
+             FROM project_repos pr
+             JOIN departments d ON d.id = pr.department_id
+            WHERE pr.graphify_path IS NOT NULL
+            ORDER BY pr.graphify_last_synced_at DESC NULLS LAST, pr.updated_at DESC
+            LIMIT $1`
+    params = [MAX_FANOUT_REPOS]
+  } else {
+    sql = `SELECT pr.graphify_path, d.id AS dept_id, d.name AS board_name
+             FROM project_repos pr
+             JOIN departments d ON d.id = pr.department_id
+            WHERE pr.graphify_path IS NOT NULL
+              AND EXISTS (
+                SELECT 1 FROM department_members dm
+                 WHERE dm.department_id = pr.department_id
+                   AND dm.team_member_id = $1
+              )
+            ORDER BY pr.graphify_last_synced_at DESC NULLS LAST, pr.updated_at DESC
+            LIMIT $2`
+    params = [userId, MAX_FANOUT_REPOS]
+  }
 
   let repos: { graphify_path: string; dept_id: string; board_name: string }[]
   try {
     repos = await queryRows<{ graphify_path: string; dept_id: string; board_name: string }>(
       sql,
-      isAdmin ? [] : [userId],
+      params,
     )
-  } catch {
+  } catch (err) {
+    console.error('[searchCodebase] repo lookup failed', err)
     return []
   }
   if (repos.length === 0) return []
@@ -810,7 +854,7 @@ async function searchCodebase(
   const { searchNodes, GraphifyError } = await import('~~/server/utils/graphify')
 
   const items: ContextItem[] = []
-  // Top 3 keywords, deduped — keeps cost bounded across multiple repos.
+  // Top 3 keywords — keeps cost bounded across multiple repos.
   const topKeywords = keywords.slice(0, 3)
 
   for (const repo of repos) {
@@ -828,10 +872,15 @@ async function searchCodebase(
           })
         }
       } catch (err) {
-        if (err instanceof GraphifyError) {
-          // 404 = artifact missing in R2 — skip silently
-          if (err.status !== 404) console.error('[searchCodebase]', err.message)
+        if (err instanceof GraphifyError && err.status === 404) {
+          // Artifact missing in R2 (graphify_path probably stale) — skip silently
+          continue
         }
+        // Real errors get a stack so they show up in observability.
+        console.error(
+          `[searchCodebase] graphify search failed for path=${repo.graphify_path} kw="${kw}":`,
+          err,
+        )
       }
     }
   }
@@ -886,14 +935,19 @@ function compositeScore(items: ContextItem[], intent: AiIntent, entities: string
   }).sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
 }
 
-// Penalize over-representation of a single type in top results
-function applyDiversityPenalty(items: ContextItem[]): ContextItem[] {
+// Penalize over-representation of a single type in top results.
+// For code_query, codebase items are SUPPOSED to dominate, so we raise
+// the cap for them to avoid starving the answer.
+function applyDiversityPenalty(items: ContextItem[], intent: AiIntent): ContextItem[] {
   const typeCounts = new Map<string, number>()
+  const primarySources = INTENT_TO_SOURCES[intent] || []
   const penalized = items.map(item => {
     const count = (typeCounts.get(item.type) || 0) + 1
     typeCounts.set(item.type, count)
-    if (count > 3) {
-      const penalty = 0.08 * (count - 3)
+    // Allow up to 10 of the intent's primary type, 3 of every other.
+    const cap = primarySources.includes(item.type) ? 10 : 3
+    if (count > cap) {
+      const penalty = 0.08 * (count - cap)
       return { ...item, relevanceScore: Math.max(0, (item.relevanceScore || 0) - penalty) }
     }
     return item
@@ -905,7 +959,8 @@ export async function retrieveContext(
   userId: string,
   userRole: string,
   question: string,
-  event?: H3Event
+  event?: H3Event,
+  boardId?: string,
 ): Promise<ContextBundle> {
   const keywords = extractKeywords(question)
 
@@ -952,7 +1007,7 @@ export async function retrieveContext(
     queryPromises.push(searchSavedActionPlans(userId, keywords).catch(() => []))
   }
   if (sources.has('codebase')) {
-    queryPromises.push(searchCodebase(userId, userRole, keywords).catch(() => []))
+    queryPromises.push(searchCodebase(userId, userRole, keywords, boardId).catch(() => []))
   }
 
   const results = await Promise.all(queryPromises)
@@ -972,7 +1027,7 @@ export async function retrieveContext(
   // Composite scoring pipeline
   const reranked = await semanticRerank(unique, question, event)
   const scored = compositeScore(reranked, intentResult.intent, intentResult.entities)
-  const diverse = applyDiversityPenalty(scored)
+  const diverse = applyDiversityPenalty(scored, intentResult.intent)
 
   // Token budget: ~3000 tokens for context
   let tokenCount = 0

@@ -125,6 +125,15 @@ Always include a "title" field. Max 8 items. Charts are IN ADDITION to text, not
       case 'time_tracking_query':
         formatGuidance = `\n\n## Formatting\nFor time tracking data, use structured lists or tables with hours and dates. Highlight totals in **bold**. Show utilization as percentage when relevant.`
         break
+      case 'code_query':
+        formatGuidance = `\n\n## Formatting\nFor code references:
+- Cite source files as \`path/to/file.ts:line\` when known.
+- Quote relevant code snippets in fenced blocks with the language hint (e.g. \`\`\`ts).
+- Distinguish between client-side (Vue/Nuxt) and server-side (Nitro / Cloudflare Workers / cron jobs) paths.
+- If the user is asking about a relationship (caller → callee, community membership, hub node), describe the connection briefly with arrows: \`A → B → C\`.
+- Cite "codebase" context items by name (e.g. "VehicleChatAgent at workers/vehicle-chat-agent/...").
+- If the codebase context doesn't have what you need, say so honestly rather than guessing — point at the closest matching node and suggest the file the user should open.`
+        break
     }
   }
 

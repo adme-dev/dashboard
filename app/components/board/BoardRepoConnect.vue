@@ -168,8 +168,13 @@ async function loadStatus() {
       `/api/agency/boards/${props.boardId}/repo`,
     )
     repo.value = res.repo
-  } catch {
-    // 403/404 is fine — just means user can't see / nothing connected
+  } catch (err: any) {
+    // 403/404 is fine — just means user can't see / nothing connected.
+    // Anything else is worth a console line so it's not silently invisible.
+    const code = err?.statusCode ?? err?.response?.status
+    if (code !== 403 && code !== 404) {
+      console.error('[BoardRepoConnect] failed to load repo status:', err)
+    }
     repo.value = null
   } finally {
     loading.value = false
@@ -209,12 +214,8 @@ async function submit() {
       return
     }
 
-    // When updating without changing token, the API still requires the field.
-    // Only POST a token if user typed one; UI prevents empty-token new connections.
-    if (!body.accessToken) {
-      errorMessage.value = 'Provide a token to update — or leave the existing connection alone'
-      return
-    }
+    // When updating, accessToken is optional — the API preserves the
+    // stored token if we omit it. Just send whatever the user provided.
 
     await $fetch(`/api/agency/boards/${props.boardId}/repo`, {
       method: 'POST',

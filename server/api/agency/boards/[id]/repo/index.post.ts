@@ -7,7 +7,8 @@
  *
  * Body:
  *  - repoUrl       (required) GitHub repo URL — normalized before insert
- *  - accessToken   (required) PAT — stored encrypted, never returned
+ *  - accessToken   (required when creating; optional when updating an
+ *                   existing connection — omit to keep the stored token)
  *  - defaultBranch (optional, default 'main')
  *  - graphifyPath  (optional) R2 key prefix where graphify-out lives
  */
@@ -45,7 +46,6 @@ export default defineEventHandler(async (event) => {
   const graphifyPath = body?.graphifyPath ? body.graphifyPath.toString().trim() : null
 
   if (!rawRepoUrl) throw createError({ statusCode: 400, statusMessage: 'repoUrl is required' })
-  if (!accessToken) throw createError({ statusCode: 400, statusMessage: 'accessToken is required' })
 
   let repoUrl: string
   try {
@@ -58,19 +58,41 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'repoUrl must be a GitHub repo URL' })
   }
 
-  const { ciphertext, iv } = await encryptToken(accessToken)
-
-  await execute(
-    `INSERT INTO project_repos (department_id, repo_url, default_branch, access_token_encrypted, token_iv, graphify_path, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     ON CONFLICT (department_id, repo_url) DO UPDATE
-       SET default_branch = EXCLUDED.default_branch,
-           access_token_encrypted = EXCLUDED.access_token_encrypted,
-           token_iv = EXCLUDED.token_iv,
-           graphify_path = COALESCE(EXCLUDED.graphify_path, project_repos.graphify_path),
-           updated_at = NOW()`,
-    [board.id, repoUrl, defaultBranch, ciphertext, iv, graphifyPath, user.id],
+  // If a row already exists for this (board, repo), token is optional —
+  // omit means keep the stored one. New connections must supply a token.
+  const existing = await queryOne<{ id: string }>(
+    'SELECT id FROM project_repos WHERE department_id = $1 AND repo_url = $2',
+    [board.id, repoUrl],
   )
+
+  if (!existing && !accessToken) {
+    throw createError({ statusCode: 400, statusMessage: 'accessToken is required for a new connection' })
+  }
+
+  if (accessToken) {
+    const { ciphertext, iv } = await encryptToken(accessToken)
+    await execute(
+      `INSERT INTO project_repos (department_id, repo_url, default_branch, access_token_encrypted, token_iv, graphify_path, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (department_id, repo_url) DO UPDATE
+         SET default_branch = EXCLUDED.default_branch,
+             access_token_encrypted = EXCLUDED.access_token_encrypted,
+             token_iv = EXCLUDED.token_iv,
+             graphify_path = COALESCE(EXCLUDED.graphify_path, project_repos.graphify_path),
+             updated_at = NOW()`,
+      [board.id, repoUrl, defaultBranch, ciphertext, iv, graphifyPath, user.id],
+    )
+  } else {
+    // Keep stored token, update only metadata.
+    await execute(
+      `UPDATE project_repos
+          SET default_branch = $3,
+              graphify_path = COALESCE($4, graphify_path),
+              updated_at = NOW()
+        WHERE department_id = $1 AND repo_url = $2`,
+      [board.id, repoUrl, defaultBranch, graphifyPath],
+    )
+  }
 
   const row = await queryOne(
     `SELECT id, repo_url, default_branch, graphify_path, graphify_last_synced_at, updated_at
