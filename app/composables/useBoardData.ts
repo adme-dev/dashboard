@@ -521,6 +521,15 @@ export function useBoardData(boardId: Ref<string>) {
     await refreshColumns()
   }
 
+  // --- Column Resize ---
+  async function resizeColumn(columnId: string, width: number) {
+    await $fetch(`/api/agency/boards/${boardId.value}/columns/${columnId}`, {
+      method: 'PATCH',
+      body: { width },
+    })
+    await refreshColumns()
+  }
+
   // --- Cell Values ---
 
   // Initialize cell values from board data when loaded
@@ -704,6 +713,7 @@ export function useBoardData(boardId: Ref<string>) {
     refresh,
     refreshColumns,
     toggleColumnVisibility,
+    resizeColumn,
 
     // View
     activeView,

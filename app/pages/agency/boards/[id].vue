@@ -63,13 +63,19 @@
                   />
                 </div>
                 <div class="flex-1 min-w-[250px] px-4 py-2 border-r border-gray-200 dark:border-neutral-700">Item</div>
-                <div v-for="col in columns" :key="col.id" class="px-4 py-2 border-r border-gray-200 dark:border-neutral-700 flex items-center justify-between group" :style="{ width: (col.width || 150) + 'px' }">
-                  <span>{{ col.name }}</span>
+                <div v-for="col in columns" :key="col.id" class="relative px-4 py-2 border-r border-gray-200 dark:border-neutral-700 flex items-center justify-between group" :style="{ width: (col.width || 150) + 'px' }">
+                  <span class="truncate">{{ col.name }}</span>
                   <UDropdownMenu :items="columnMenuItems(col)">
                     <button class="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 dark:hover:bg-neutral-700 rounded transition-opacity">
                       <UIcon name="i-lucide-more-vertical" class="w-3.5 h-3.5 text-gray-500 dark:text-neutral-400" />
                     </button>
                   </UDropdownMenu>
+                  <div
+                    class="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-500/60 transition-colors"
+                    :class="{ 'bg-blue-500/60': resizingColumnId === col.id }"
+                    @mousedown="onColumnResizeStart($event, col)"
+                    @click.stop
+                  />
                 </div>
               </div>
 
@@ -965,6 +971,39 @@ function columnMenuItems(col: BoardColumn) {
     { type: 'separator' as const },
     { label: 'Delete', icon: 'i-lucide-trash-2', color: 'error' as const, onSelect: () => { showDeleteConfirm.value = col.id } },
   ]
+}
+
+const resizingColumnId = ref<string | null>(null)
+
+function onColumnResizeStart(event: MouseEvent, col: BoardColumn) {
+  event.preventDefault()
+  event.stopPropagation()
+
+  const startX = event.clientX
+  const startWidth = col.width || 150
+  resizingColumnId.value = col.id
+
+  function onMove(ev: MouseEvent) {
+    const newWidth = Math.max(80, Math.min(800, startWidth + (ev.clientX - startX)))
+    ;(col as any).width = newWidth
+  }
+
+  function onUp() {
+    window.removeEventListener('mousemove', onMove)
+    window.removeEventListener('mouseup', onUp)
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    const finalWidth = col.width || 150
+    resizingColumnId.value = null
+    if (finalWidth !== startWidth) {
+      containerRef.value?.resizeColumn?.(col.id, finalWidth)
+    }
+  }
+
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup', onUp)
 }
 
 function openColumnConfig(col: BoardColumn) {
