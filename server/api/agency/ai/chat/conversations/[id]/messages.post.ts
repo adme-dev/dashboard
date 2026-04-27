@@ -56,8 +56,12 @@ export default defineEventHandler(async (event) => {
     ? body.mentionedEntities.filter((e: any) => e?.type && e?.id && ALLOWED_ENTITY_TYPES.has(e.type)).slice(0, 10)
     : []
 
+  // Optional: caller can supply the board the conversation is anchored to
+  // so codebase context is scoped to that board's connected repo.
+  const boardId = typeof body?.boardId === 'string' ? body.boardId : undefined
+
   try {
-    const result = await processUserMessage(id, user.id, user.role, content, event, mentionedEntities)
+    const result = await processUserMessage(id, user.id, user.role, content, event, mentionedEntities, boardId)
     return result
   } catch (err: any) {
     console.error('Failed to process AI message:', err)

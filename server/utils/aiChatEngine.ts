@@ -334,6 +334,7 @@ export async function processUserMessage(
   content: string,
   event?: H3Event,
   mentionedEntities?: Array<{ type: string; id: string }>,
+  boardId?: string,
 ): Promise<ChatResponse> {
   const startTime = Date.now()
 
@@ -352,7 +353,7 @@ export async function processUserMessage(
   }))
 
   // 2. Retrieve relevant context (now intent-aware with relevance scoring)
-  const contextBundle = await retrieveContext(userId, userRole, content)
+  const contextBundle = await retrieveContext(userId, userRole, content, event, boardId)
   const contextSources: AiContextSource[] = contextBundle.items.map(item => ({
     type: item.type,
     id: item.id,

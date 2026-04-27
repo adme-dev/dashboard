@@ -1,7 +1,8 @@
 import type { H3Event } from 'h3'
-import { queryRows } from '~~/server/utils/db'
+import { queryRows, queryOne } from '~~/server/utils/db'
 import { classifyIntent, type AiIntent } from '~~/server/utils/aiIntentClassifier'
 import { searchSimilar } from '~~/server/utils/aiVectorize'
+import { isUUID } from '~~/server/utils/ids'
 
 export interface ContextItem {
   type: string
@@ -788,10 +789,25 @@ async function searchCodebase(
 
   const isAdmin = userRole === 'owner' || userRole === 'admin'
 
+  // Resolve boardId to a canonical UUID (callers may pass either form).
+  let resolvedBoardId: string | undefined
+  if (boardId) {
+    if (isUUID(boardId)) {
+      resolvedBoardId = boardId
+    } else {
+      const dept = await queryOne<{ id: string }>(
+        'SELECT id FROM departments WHERE slug = $1',
+        [boardId],
+      )
+      if (dept) resolvedBoardId = dept.id
+      // If slug doesn't resolve, treat as no board context — fall through to fan-out.
+    }
+  }
+
   // 1) board-scoped: prefer the explicit board context if supplied
   let sql: string
   let params: any[]
-  if (boardId) {
+  if (resolvedBoardId) {
     // Still respect access — admin sees any, member must be in department_members.
     if (isAdmin) {
       sql = `SELECT pr.graphify_path, d.id AS dept_id, d.name AS board_name
@@ -800,7 +816,7 @@ async function searchCodebase(
               WHERE pr.graphify_path IS NOT NULL
                 AND pr.department_id = $1
               LIMIT 1`
-      params = [boardId]
+      params = [resolvedBoardId]
     } else {
       sql = `SELECT pr.graphify_path, d.id AS dept_id, d.name AS board_name
                FROM project_repos pr
@@ -813,7 +829,7 @@ async function searchCodebase(
                      AND dm.team_member_id = $2
                 )
               LIMIT 1`
-      params = [boardId, userId]
+      params = [resolvedBoardId, userId]
     }
   } else if (isAdmin) {
     sql = `SELECT pr.graphify_path, d.id AS dept_id, d.name AS board_name

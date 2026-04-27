@@ -85,6 +85,10 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  // Optional boardId — scopes codebase context to that board's connected repo.
+  const boardIdPart = formData.find(p => p.name === 'boardId')
+  const boardId = boardIdPart?.data ? boardIdPart.data.toString('utf-8').trim() || undefined : undefined
+
   // Step 1: Speech-to-Text
   const sttResult = await speechToText(event, audioPart.data)
 
@@ -101,7 +105,7 @@ export default defineEventHandler(async (event) => {
   // Step 2: Process through existing AI pipeline (unchanged)
   let result
   try {
-    result = await processUserMessage(id, user.id, user.role, transcribedText, event, mentionedEntities)
+    result = await processUserMessage(id, user.id, user.role, transcribedText, event, mentionedEntities, boardId)
   } catch (err: any) {
     console.error('Failed to process voice message:', err)
     throw createError({
