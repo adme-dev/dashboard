@@ -24,8 +24,8 @@
           <UTextarea
             v-model="prompt"
             :rows="18"
-            class="font-mono text-xs"
-            :ui="{ base: 'leading-snug' }"
+            class="w-full"
+            :ui="{ root: 'w-full', base: 'w-full font-mono text-xs leading-snug resize-y bg-elevated/40' }"
             spellcheck="false"
           />
 
