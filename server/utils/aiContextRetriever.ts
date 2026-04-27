@@ -59,6 +59,7 @@ const INTENT_TO_SOURCES: Record<AiIntent, string[]> = {
   pricing_query: ['rate_card', 'financial', 'saved_plans'],
   search: ['tasks', 'clients', 'briefs', 'rate_card'],
   action_request: ['tasks', 'boards'],
+  code_query: ['codebase'],
   general: ['tasks', 'clients'],
 }
 
@@ -84,6 +85,7 @@ const SCORING_PROFILES: Record<AiIntent, ScoringProfile> = {
   time_tracking_query: { semantic: 0.15, recency: 0.30, importance: 0.15, intent: 0.25, entity: 0.15, recencyHalfLifeDays: 7 },
   pricing_query:   { semantic: 0.30, recency: 0.10, importance: 0.20, intent: 0.25, entity: 0.15, recencyHalfLifeDays: 180 },
   action_request:  { semantic: 0.20, recency: 0.25, importance: 0.15, intent: 0.25, entity: 0.15, recencyHalfLifeDays: 14 },
+  code_query:      { semantic: 0.30, recency: 0.10, importance: 0.20, intent: 0.30, entity: 0.10, recencyHalfLifeDays: 365 },
   general:         { semantic: 0.25, recency: 0.20, importance: 0.15, intent: 0.20, entity: 0.20, recencyHalfLifeDays: 30 },
 }
 
@@ -765,6 +767,78 @@ async function semanticRerank(items: ContextItem[], question: string, event?: H3
   }
 }
 
+/**
+ * Search the connected codebases (graphify graphs in R2) for nodes
+ * matching the user's keywords. Scoped to boards the user can access.
+ */
+async function searchCodebase(
+  userId: string,
+  userRole: string,
+  keywords: string[],
+): Promise<ContextItem[]> {
+  if (keywords.length === 0) return []
+
+  // Find graphify paths the user can see
+  const isAdmin = userRole === 'owner' || userRole === 'admin'
+  const sql = isAdmin
+    ? `SELECT pr.graphify_path, d.id AS dept_id, d.name AS board_name
+         FROM project_repos pr
+         JOIN departments d ON d.id = pr.department_id
+        WHERE pr.graphify_path IS NOT NULL`
+    : `SELECT pr.graphify_path, d.id AS dept_id, d.name AS board_name
+         FROM project_repos pr
+         JOIN departments d ON d.id = pr.department_id
+        WHERE pr.graphify_path IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM department_members dm
+             WHERE dm.department_id = pr.department_id
+               AND dm.team_member_id = $1
+          )`
+
+  let repos: { graphify_path: string; dept_id: string; board_name: string }[]
+  try {
+    repos = await queryRows<{ graphify_path: string; dept_id: string; board_name: string }>(
+      sql,
+      isAdmin ? [] : [userId],
+    )
+  } catch {
+    return []
+  }
+  if (repos.length === 0) return []
+
+  // Lazy-import to avoid loading the AWS SDK when no code questions are asked.
+  const { searchNodes, GraphifyError } = await import('~~/server/utils/graphify')
+
+  const items: ContextItem[] = []
+  // Top 3 keywords, deduped — keeps cost bounded across multiple repos.
+  const topKeywords = keywords.slice(0, 3)
+
+  for (const repo of repos) {
+    for (const kw of topKeywords) {
+      try {
+        const nodes = await searchNodes(repo.graphify_path, kw, 5)
+        for (const n of nodes) {
+          items.push({
+            type: 'codebase',
+            id: `${repo.dept_id}:${n.id}`,
+            title: n.label,
+            snippet: `${n.source_file ?? 'unknown source'}${n.source_location ? ` (${n.source_location})` : ''} · board: ${repo.board_name}`,
+            url: `/agency/boards/${repo.dept_id}`,
+            relevanceScore: 0.6,
+          })
+        }
+      } catch (err) {
+        if (err instanceof GraphifyError) {
+          // 404 = artifact missing in R2 — skip silently
+          if (err.status !== 404) console.error('[searchCodebase]', err.message)
+        }
+      }
+    }
+  }
+
+  return items
+}
+
 // 5-signal composite scoring: semantic + recency + importance + intent + entity
 function compositeScore(items: ContextItem[], intent: AiIntent, entities: string[]): ContextItem[] {
   const profile = SCORING_PROFILES[intent] || SCORING_PROFILES.general
@@ -876,6 +950,9 @@ export async function retrieveContext(
   }
   if (sources.has('saved_plans')) {
     queryPromises.push(searchSavedActionPlans(userId, keywords).catch(() => []))
+  }
+  if (sources.has('codebase')) {
+    queryPromises.push(searchCodebase(userId, userRole, keywords).catch(() => []))
   }
 
   const results = await Promise.all(queryPromises)

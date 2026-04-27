@@ -13,6 +13,7 @@ export type AiIntent =
   | 'time_tracking_query'
   | 'pricing_query'
   | 'action_request'
+  | 'code_query'
   | 'general'
 
 export interface IntentResult {
@@ -38,6 +39,7 @@ const INTENT_PATTERNS: PatternRule[] = [
   { intent: 'time_tracking_query', pattern: /\b(hours?|time\s*(logged|tracking|entries|sheets?)|timesheets?|timer|utilization|billable|logged\s*time|capacity|overtime)\b/i, weight: 0.85 },
   { intent: 'pricing_query', pattern: /\b(rate\s*card|pricing|how\s+much|cost\s+of|service\s+price|setup?\s*fee|price\s+list|rates?|charge\s+for)\b/i, weight: 0.85 },
   { intent: 'action_request', pattern: /\b(create|add|update|change|move|assign|delete|remove|set|mark|complete)\b/i, weight: 0.65 },
+  { intent: 'code_query', pattern: /\b(code\s|codebase|source\s+code|repo(sitory)?|implementation|component\b|function\b|method\b|module\b|class\b|file\b|where\s+(is|are)\s+\w+\s+(defined|implemented|located|written)|how\s+does\s+\w+\s+(work|function))\b/i, weight: 0.8 },
 ]
 
 // Extract potential entity names (capitalized words that aren't common English)
@@ -133,7 +135,7 @@ function classifyByPatterns(message: string): IntentResult | null {
 async function classifyByLLM(message: string, event?: H3Event): Promise<IntentResult> {
   const validIntents: AiIntent[] = [
     'task_query', 'brief_query', 'project_query', 'financial_query',
-    'team_query', 'process_query', 'time_tracking_query', 'pricing_query', 'search', 'action_request', 'general',
+    'team_query', 'process_query', 'time_tracking_query', 'pricing_query', 'search', 'action_request', 'code_query', 'general',
   ]
 
   // Try LoRA-enhanced intent classification first

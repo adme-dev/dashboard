@@ -609,6 +609,7 @@ export interface CampaignDailySpendResponse {
 export type AiIntent =
   | 'task_query' | 'brief_query' | 'project_query' | 'financial_query'
   | 'team_query' | 'process_query' | 'time_tracking_query'
+  | 'pricing_query' | 'code_query'
   | 'search' | 'action_request' | 'general'
 
 export interface AiConversation {
