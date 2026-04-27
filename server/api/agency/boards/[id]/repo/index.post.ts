@@ -2,57 +2,59 @@
  * Connect a GitHub repo (and graphify path) to a board.
  * POST /api/agency/boards/:id/repo
  *
+ * AuthZ: caller must (a) have board access AND (b) be owner/admin —
+ * stored PATs are privilege-bearing.
+ *
  * Body:
- *  - repoUrl       (required) GitHub repo URL
+ *  - repoUrl       (required) GitHub repo URL — normalized before insert
  *  - accessToken   (required) PAT — stored encrypted, never returned
  *  - defaultBranch (optional, default 'main')
  *  - graphifyPath  (optional) R2 key prefix where graphify-out lives
  */
 
-import { createError, getRouterParam, readBody } from 'h3'
-import { requireAuth } from '~~/server/utils/auth'
+import { createError, defineEventHandler, getRouterParam, readBody } from 'h3'
+import { requireBoardAccess, hasRole } from '~~/server/utils/auth'
 import { queryOne, execute } from '~~/server/utils/db'
 import { encryptToken } from '~~/server/utils/tokenCrypto'
-import { parseRepoUrl } from '~~/server/utils/github'
+import { parseRepoUrl, normalizeRepoUrl, GithubError } from '~~/server/utils/github'
+import { isUUID } from '~~/server/utils/ids'
 
-function isUUID(s: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s)
-}
-
-async function resolveBoardId(idOrSlug: string): Promise<string | null> {
-  if (isUUID(idOrSlug)) {
-    const row = await queryOne<{ id: string }>('SELECT id FROM departments WHERE id = $1', [idOrSlug])
-    return row?.id ?? null
-  }
-  const row = await queryOne<{ id: string }>('SELECT id FROM departments WHERE slug = $1', [idOrSlug])
-  return row?.id ?? null
-}
-
-export default eventHandler(async (event) => {
-  const user = await requireAuth(event)
+export default defineEventHandler(async (event) => {
   const boardParam = getRouterParam(event, 'id')
   if (!boardParam) {
     throw createError({ statusCode: 400, statusMessage: 'Board id is required' })
   }
 
-  const boardId = await resolveBoardId(boardParam)
-  if (!boardId) {
-    throw createError({ statusCode: 404, statusMessage: 'Board not found' })
+  const user = await requireBoardAccess(event, boardParam)
+  if (!hasRole(user, ['owner', 'admin'])) {
+    throw createError({ statusCode: 403, statusMessage: 'Admin access required to connect a repo' })
   }
 
+  // Resolve the board id post-auth (requireBoardAccess validates but doesn't return it)
+  const where = isUUID(boardParam) ? 'id = $1' : 'slug = $1'
+  const board = await queryOne<{ id: string }>(
+    `SELECT id FROM departments WHERE ${where}`,
+    [boardParam],
+  )
+  if (!board) throw createError({ statusCode: 404, statusMessage: 'Board not found' })
+
   const body = await readBody(event)
-  const repoUrl = (body?.repoUrl ?? '').toString().trim()
+  const rawRepoUrl = (body?.repoUrl ?? '').toString().trim()
   const accessToken = (body?.accessToken ?? '').toString()
-  const defaultBranch = (body?.defaultBranch ?? 'main').toString().trim() || 'main'
+  const defaultBranch = (body?.defaultBranch ?? '').toString().trim() || 'main'
   const graphifyPath = body?.graphifyPath ? body.graphifyPath.toString().trim() : null
 
-  if (!repoUrl) throw createError({ statusCode: 400, statusMessage: 'repoUrl is required' })
+  if (!rawRepoUrl) throw createError({ statusCode: 400, statusMessage: 'repoUrl is required' })
   if (!accessToken) throw createError({ statusCode: 400, statusMessage: 'accessToken is required' })
 
-  // Validates URL shape early
+  let repoUrl: string
   try {
-    parseRepoUrl(repoUrl)
-  } catch {
+    parseRepoUrl(rawRepoUrl) // validate shape
+    repoUrl = normalizeRepoUrl(rawRepoUrl) // strip trailing /, .git, etc.
+  } catch (err) {
+    if (err instanceof GithubError) {
+      throw createError({ statusCode: err.status, statusMessage: err.message })
+    }
     throw createError({ statusCode: 400, statusMessage: 'repoUrl must be a GitHub repo URL' })
   }
 
@@ -67,18 +69,15 @@ export default eventHandler(async (event) => {
            token_iv = EXCLUDED.token_iv,
            graphify_path = COALESCE(EXCLUDED.graphify_path, project_repos.graphify_path),
            updated_at = NOW()`,
-    [boardId, repoUrl, defaultBranch, ciphertext, iv, graphifyPath, user.id],
+    [board.id, repoUrl, defaultBranch, ciphertext, iv, graphifyPath, user.id],
   )
 
   const row = await queryOne(
     `SELECT id, repo_url, default_branch, graphify_path, graphify_last_synced_at, updated_at
        FROM project_repos
       WHERE department_id = $1 AND repo_url = $2`,
-    [boardId, repoUrl],
+    [board.id, repoUrl],
   )
 
-  return {
-    success: true,
-    repo: row,
-  }
+  return { success: true, repo: row }
 })

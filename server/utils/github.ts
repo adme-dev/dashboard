@@ -1,6 +1,10 @@
 /**
  * Read-only GitHub API client for the project_repos integration.
- * Uses raw fetch (no octokit dependency) — read ops only for AI agent context.
+ * Raw fetch (no octokit) — read ops only for AI agent context.
+ *
+ * Errors are deliberately generic in `GithubError`. Callers should
+ * surface the message as-is to clients (it's pre-sanitized) and log
+ * the raw `cause` server-side for debugging.
  */
 
 import { queryOne, execute } from './db'
@@ -11,8 +15,8 @@ interface ProjectRepoRow {
   department_id: string
   repo_url: string
   default_branch: string
-  access_token_encrypted: Buffer | null
-  token_iv: Buffer | null
+  access_token_encrypted: Uint8Array | null
+  token_iv: Uint8Array | null
   graphify_path: string | null
 }
 
@@ -21,9 +25,34 @@ export interface RepoCoords {
   repo: string
 }
 
+export class GithubError extends Error {
+  status: number
+  constructor(status: number, message: string, options?: { cause?: unknown }) {
+    super(message, options as ErrorOptions)
+    this.name = 'GithubError'
+    this.status = status
+  }
+}
+
+/**
+ * Strip trailing /, .git, and lowercase host portion. Used for
+ * uniqueness on (department_id, repo_url) to avoid duplicate rows.
+ */
+export function normalizeRepoUrl(input: string): string {
+  let url = input.trim()
+  url = url.replace(/\/+$/, '')
+  url = url.replace(/\.git$/i, '')
+  // Lowercase the github.com host but leave owner/repo case alone (they're case-insensitive on GH but tools may care).
+  return url.replace(/^https?:\/\/github\.com/i, 'https://github.com')
+}
+
 export function parseRepoUrl(url: string): RepoCoords {
-  const m = url.match(/github\.com[:/]([^/]+)\/([^/.]+?)(?:\.git)?\/?$/i)
-  if (!m) throw new Error(`Invalid GitHub URL: ${url}`)
+  // Allow dots in repo name (e.g. owner/some.repo). Strip .git separately.
+  const cleaned = url.replace(/\.git$/i, '').replace(/\/+$/, '')
+  const m = cleaned.match(/github\.com[:/]([^/]+)\/([^/?#]+?)(?:\/|$)/i)
+  if (!m || !m[1] || !m[2]) {
+    throw new GithubError(400, 'Invalid GitHub URL')
+  }
   return { owner: m[1], repo: m[2] }
 }
 
@@ -41,13 +70,13 @@ export async function setRepoToken(departmentId: string, plaintextToken: string)
     [ciphertext, iv, departmentId],
   )
   if (updated === 0) {
-    throw new Error(`No project_repos row found for department ${departmentId}`)
+    throw new GithubError(404, 'No repo connected to this board')
   }
 }
 
 async function getDecryptedToken(repo: ProjectRepoRow): Promise<string> {
   if (!repo.access_token_encrypted || !repo.token_iv) {
-    throw new Error('No access token configured for this repo')
+    throw new GithubError(409, 'No access token configured for this repo')
   }
   return decryptToken(repo.access_token_encrypted, repo.token_iv)
 }
@@ -65,8 +94,16 @@ async function ghFetch(repo: ProjectRepoRow, apiPath: string, init?: RequestInit
     },
   })
   if (!res.ok) {
-    const body = await res.text()
-    throw new Error(`GitHub ${res.status} on ${apiPath}: ${body.slice(0, 200)}`)
+    // Log full detail server-side; surface generic message to caller.
+    const body = await res.text().catch(() => '')
+    console.error(`[github] ${res.status} ${apiPath}: ${body.slice(0, 500)}`)
+    if (res.status === 404) throw new GithubError(404, 'Not found in repo')
+    if (res.status === 401 || res.status === 403) {
+      throw new GithubError(res.status, 'GitHub auth failed — check the access token')
+    }
+    if (res.status === 422) throw new GithubError(422, 'GitHub rejected the request')
+    if (res.status === 429) throw new GithubError(429, 'GitHub rate limit hit, try again later')
+    throw new GithubError(502, 'Upstream GitHub error')
   }
   return res
 }
@@ -80,35 +117,33 @@ export interface RepoFileEntry {
 
 export async function listFiles(departmentId: string, path = ''): Promise<RepoFileEntry[]> {
   const repo = await getRepoForBoard(departmentId)
-  if (!repo) throw new Error(`No repo connected to board ${departmentId}`)
+  if (!repo) throw new GithubError(404, 'No repo connected to this board')
   const { owner, repo: name } = parseRepoUrl(repo.repo_url)
   const res = await ghFetch(
     repo,
     `/repos/${owner}/${name}/contents/${encodeURI(path)}?ref=${encodeURIComponent(repo.default_branch)}`,
   )
   const data = (await res.json()) as any
-  if (!Array.isArray(data)) {
-    throw new Error(`Path "${path}" is a file, not a directory`)
-  }
+  if (!Array.isArray(data)) throw new GithubError(400, 'Path is a file, not a directory')
   return data.map((d: any) => ({ name: d.name, path: d.path, type: d.type, size: d.size }))
 }
 
 export async function getFile(departmentId: string, path: string): Promise<string> {
   const repo = await getRepoForBoard(departmentId)
-  if (!repo) throw new Error(`No repo connected to board ${departmentId}`)
+  if (!repo) throw new GithubError(404, 'No repo connected to this board')
   const { owner, repo: name } = parseRepoUrl(repo.repo_url)
   const res = await ghFetch(
     repo,
     `/repos/${owner}/${name}/contents/${encodeURI(path)}?ref=${encodeURIComponent(repo.default_branch)}`,
   )
   const data = (await res.json()) as any
-  if (Array.isArray(data)) {
-    throw new Error(`Path "${path}" is a directory, not a file`)
-  }
-  if (data.encoding !== 'base64') {
-    throw new Error(`Unexpected encoding: ${data.encoding}`)
-  }
-  return Buffer.from(data.content, 'base64').toString('utf-8')
+  if (Array.isArray(data)) throw new GithubError(400, 'Path is a directory, not a file')
+  if (data.encoding !== 'base64') throw new GithubError(502, 'Unexpected GitHub response encoding')
+  // Decode base64 → utf8 without depending on Buffer (CF-portable).
+  const binStr = atob(String(data.content).replace(/\n/g, ''))
+  const bytes = new Uint8Array(binStr.length)
+  for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i)
+  return new TextDecoder().decode(bytes)
 }
 
 export interface CodeSearchHit {
@@ -117,15 +152,21 @@ export interface CodeSearchHit {
   fragment: string
 }
 
+// Strip GitHub search qualifiers so user input can't pivot the search
+// to other repos / orgs / users via the connected token's scopes.
+const GH_SEARCH_QUALIFIERS = /\b(?:repo|org|user|in|path|filename|extension|language|fork|forks|size|topic|topics|is|archived):/gi
+
 export async function searchCode(
   departmentId: string,
   query: string,
   limit = 10,
 ): Promise<CodeSearchHit[]> {
   const repo = await getRepoForBoard(departmentId)
-  if (!repo) throw new Error(`No repo connected to board ${departmentId}`)
+  if (!repo) throw new GithubError(404, 'No repo connected to this board')
   const { owner, repo: name } = parseRepoUrl(repo.repo_url)
-  const fullQuery = `${query} repo:${owner}/${name}`
+  const sanitized = query.replace(GH_SEARCH_QUALIFIERS, '').trim()
+  if (!sanitized) throw new GithubError(400, 'Empty query after sanitization')
+  const fullQuery = `${sanitized} repo:${owner}/${name}`
   const res = await ghFetch(
     repo,
     `/search/code?q=${encodeURIComponent(fullQuery)}&per_page=${Math.min(limit, 30)}`,

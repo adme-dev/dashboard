@@ -8,6 +8,10 @@
  *
  * The graphify_path column on project_repos stores just the prefix
  * (e.g. "graphify/promotion-knoxgwmhaval").
+ *
+ * Caches are per-isolate / per-Node-process (Map keyed by R2 key).
+ * Multiple isolates on CF Pages will each fetch independently — that's fine,
+ * R2 reads are cheap and the 5-min TTL keeps things warm enough.
  */
 
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3'
@@ -34,23 +38,34 @@ export interface GraphData {
   graph?: { hyperedges?: any[] }
 }
 
+export class GraphifyError extends Error {
+  status: number
+  constructor(status: number, message: string, options?: { cause?: unknown }) {
+    super(message, options as ErrorOptions)
+    this.name = 'GraphifyError'
+    this.status = status
+  }
+}
+
 const CACHE_TTL_MS = 5 * 60 * 1000
 
 interface CacheEntry<T> {
-  key: string
   value: T
   loadedAt: number
 }
 
-let _graphCache: CacheEntry<GraphData> | null = null
-let _reportCache: CacheEntry<string> | null = null
+const _graphCache = new Map<string, CacheEntry<GraphData>>()
+const _reportCache = new Map<string, CacheEntry<string>>()
 
 function getR2(): S3Client {
   const accountId = process.env.R2_ACCOUNT_ID
   const accessKeyId = process.env.R2_ACCESS_KEY_ID
   const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY
   if (!accountId || !accessKeyId || !secretAccessKey) {
-    throw new Error('R2 not configured (R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY)')
+    throw new GraphifyError(
+      500,
+      'R2 storage is not configured on this environment',
+    )
   }
   return new S3Client({
     region: 'auto',
@@ -59,38 +74,66 @@ function getR2(): S3Client {
   })
 }
 
-async function readR2Object(key: string): Promise<Buffer> {
+async function readR2Object(key: string): Promise<Uint8Array> {
   const client = getR2()
   const bucket = process.env.R2_BUCKET_NAME || 'agency-files'
-  const res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }))
-  if (!res.Body) throw new Error(`R2 object not found: ${key}`)
-
-  const chunks: Buffer[] = []
-  for await (const chunk of res.Body as AsyncIterable<Uint8Array>) {
-    chunks.push(Buffer.from(chunk))
+  let res
+  try {
+    res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }))
+  } catch (err: any) {
+    if (err?.name === 'NoSuchKey' || err?.$metadata?.httpStatusCode === 404) {
+      throw new GraphifyError(404, 'Graphify artifact not found in R2', { cause: err })
+    }
+    console.error(`[graphify] R2 read failed for ${key}:`, err)
+    throw new GraphifyError(502, 'Failed to read graphify artifact from R2', { cause: err })
   }
-  return Buffer.concat(chunks)
+  if (!res.Body) throw new GraphifyError(404, 'Graphify artifact not found in R2')
+
+  const chunks: Uint8Array[] = []
+  // Body may be a Node Readable, a Web ReadableStream, or async-iterable depending on runtime.
+  // The aws-sdk normalizes to async iterable on Node; on Workers, transformToByteArray is preferred.
+  const body: any = res.Body
+  if (typeof body.transformToByteArray === 'function') {
+    return await body.transformToByteArray()
+  }
+  for await (const chunk of body as AsyncIterable<Uint8Array>) {
+    chunks.push(chunk)
+  }
+  // Concatenate Uint8Arrays
+  let total = 0
+  for (const c of chunks) total += c.length
+  const out = new Uint8Array(total)
+  let offset = 0
+  for (const c of chunks) {
+    out.set(c, offset)
+    offset += c.length
+  }
+  return out
+}
+
+function bytesToString(bytes: Uint8Array): string {
+  return new TextDecoder().decode(bytes)
 }
 
 export async function loadGraph(graphifyPath: string): Promise<GraphData> {
   const key = `${graphifyPath}/graph.json`
-  if (_graphCache && _graphCache.key === key && Date.now() - _graphCache.loadedAt < CACHE_TTL_MS) {
-    return _graphCache.value
-  }
-  const buf = await readR2Object(key)
-  const graph = JSON.parse(buf.toString('utf-8')) as GraphData
-  _graphCache = { key, value: graph, loadedAt: Date.now() }
+  const cached = _graphCache.get(key)
+  if (cached && Date.now() - cached.loadedAt < CACHE_TTL_MS) return cached.value
+
+  const bytes = await readR2Object(key)
+  const graph = JSON.parse(bytesToString(bytes)) as GraphData
+  _graphCache.set(key, { value: graph, loadedAt: Date.now() })
   return graph
 }
 
 export async function loadReport(graphifyPath: string): Promise<string> {
   const key = `${graphifyPath}/GRAPH_REPORT.md`
-  if (_reportCache && _reportCache.key === key && Date.now() - _reportCache.loadedAt < CACHE_TTL_MS) {
-    return _reportCache.value
-  }
-  const buf = await readR2Object(key)
-  const md = buf.toString('utf-8')
-  _reportCache = { key, value: md, loadedAt: Date.now() }
+  const cached = _reportCache.get(key)
+  if (cached && Date.now() - cached.loadedAt < CACHE_TTL_MS) return cached.value
+
+  const bytes = await readR2Object(key)
+  const md = bytesToString(bytes)
+  _reportCache.set(key, { value: md, loadedAt: Date.now() })
   return md
 }
 

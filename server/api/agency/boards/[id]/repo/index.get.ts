@@ -1,20 +1,20 @@
 /**
  * Get the repo connection for a board (no token returned).
  * GET /api/agency/boards/:id/repo
+ *
+ * AuthZ: caller must have board access.
  */
 
-import { createError, getRouterParam } from 'h3'
-import { requireAuth } from '~~/server/utils/auth'
+import { createError, defineEventHandler, getRouterParam } from 'h3'
+import { requireBoardAccess } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
+import { isUUID } from '~~/server/utils/ids'
 
-function isUUID(s: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s)
-}
-
-export default eventHandler(async (event) => {
-  await requireAuth(event)
+export default defineEventHandler(async (event) => {
   const idOrSlug = getRouterParam(event, 'id')
   if (!idOrSlug) throw createError({ statusCode: 400, statusMessage: 'Board id is required' })
+
+  await requireBoardAccess(event, idOrSlug)
 
   const where = isUUID(idOrSlug) ? 'd.id = $1' : 'd.slug = $1'
   const row = await queryOne(
@@ -27,8 +27,5 @@ export default eventHandler(async (event) => {
     [idOrSlug],
   )
 
-  return {
-    connected: row !== null,
-    repo: row,
-  }
+  return { connected: row !== null, repo: row }
 })

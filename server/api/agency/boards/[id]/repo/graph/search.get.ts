@@ -2,24 +2,20 @@
  * Search graphify nodes for the connected repo.
  * GET /api/agency/boards/:id/repo/graph/search?q=VehicleChatAgent&limit=10
  *
- * Returns nodes whose label / id / source_file matches the query.
- * Backed by the graphify graph stored in R2 (graphify_path prefix).
+ * AuthZ: caller must have board access.
  */
 
-import { createError, getQuery, getRouterParam } from 'h3'
-import { requireAuth } from '~~/server/utils/auth'
+import { createError, defineEventHandler, getQuery, getRouterParam } from 'h3'
+import { requireBoardAccess } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
-import { searchNodes } from '~~/server/utils/graphify'
+import { searchNodes, GraphifyError } from '~~/server/utils/graphify'
+import { isUUID } from '~~/server/utils/ids'
 
-function isUUID(s: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s)
-}
-
-export default eventHandler(async (event) => {
-  await requireAuth(event)
-
+export default defineEventHandler(async (event) => {
   const idOrSlug = getRouterParam(event, 'id')
   if (!idOrSlug) throw createError({ statusCode: 400, statusMessage: 'Board id is required' })
+
+  await requireBoardAccess(event, idOrSlug)
 
   const q = getQuery(event)
   const query = (q.q ?? '').toString().trim()
@@ -43,10 +39,11 @@ export default eventHandler(async (event) => {
   try {
     const nodes = await searchNodes(row.graphify_path, query, limit)
     return { query, count: nodes.length, nodes }
-  } catch (err: any) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: `Failed to search graph: ${err.message ?? 'unknown'}`,
-    })
+  } catch (err) {
+    if (err instanceof GraphifyError) {
+      throw createError({ statusCode: err.status, statusMessage: err.message })
+    }
+    console.error('[repo/graph/search] unexpected error:', err)
+    throw createError({ statusCode: 500, statusMessage: 'Failed to search graph' })
   }
 })
