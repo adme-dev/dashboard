@@ -94,50 +94,48 @@
     <!-- Create mode -->
     <template v-if="mode === 'create'">
       <div class="p-3 space-y-3">
-        <!-- Task title -->
-        <div>
-          <label class="block text-xs font-medium text-gray-600 dark:text-neutral-400 mb-1">Task title</label>
+        <UFormField label="Task title" required>
           <UInput
             v-model="newTask.title"
             placeholder="Enter task title..."
             size="sm"
             autofocus
+            class="w-full"
           />
-        </div>
+        </UFormField>
 
-        <!-- Board/Department -->
-        <div>
-          <label class="block text-xs font-medium text-gray-600 dark:text-neutral-400 mb-1">Board</label>
+        <UFormField label="Board" required>
           <USelectMenu
             v-model="newTask.departmentId"
             :items="boardOptions"
+            value-key="value"
             placeholder="Select board..."
             size="sm"
+            class="w-full"
           />
-        </div>
+        </UFormField>
 
-        <!-- Assignee -->
-        <div>
-          <label class="block text-xs font-medium text-gray-600 dark:text-neutral-400 mb-1">Assignee</label>
+        <UFormField label="Assignee">
           <USelectMenu
             v-model="newTask.assigneeId"
             :items="memberOptions"
+            value-key="value"
             placeholder="Unassigned"
             size="sm"
+            class="w-full"
           />
-        </div>
+        </UFormField>
 
-        <!-- Priority -->
-        <div>
-          <label class="block text-xs font-medium text-gray-600 dark:text-neutral-400 mb-1">Priority</label>
+        <UFormField label="Priority">
           <USelectMenu
             v-model="newTask.priority"
             :items="priorityOptions"
+            value-key="value"
             size="sm"
+            class="w-full"
           />
-        </div>
+        </UFormField>
 
-        <!-- Create button -->
         <UButton
           block
           size="sm"
@@ -301,12 +299,14 @@ async function switchToCreate() {
 async function loadCreateData() {
   try {
     const [boardsData, membersData, taskData] = await Promise.all([
-      $fetch<any[]>('/api/agency/boards'),
+      $fetch<any>('/api/agency/boards'),
       $fetch<any>('/api/agency/team-members'),
       $fetch<any>(`/api/agency/tasks/${props.taskId}`),
     ])
-    boards.value = (boardsData || []).map((b: any) => ({ id: b.id, name: b.name }))
-    members.value = ((membersData?.members ?? membersData) || [])
+    const boardsList = Array.isArray(boardsData) ? boardsData : (boardsData?.boards ?? [])
+    boards.value = boardsList.map((b: any) => ({ id: b.id, name: b.name }))
+    const membersList = Array.isArray(membersData) ? membersData : (membersData?.members ?? [])
+    members.value = membersList
       .filter((m: any) => m.isActive !== false)
       .map((m: any) => ({ id: m.id, name: m.name }))
     sourceProjectId.value = taskData?.projectId || taskData?.project_id || null
