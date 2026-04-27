@@ -16,6 +16,9 @@
         </div>
       </div>
       <div class="flex items-center gap-2 flex-shrink-0">
+        <!-- Connect GitHub Repo (AI agent context) -->
+        <BoardRepoConnect :board-id="boardId" />
+
         <!-- Subscribe Button -->
         <UPopover>
           <UButton
