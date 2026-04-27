@@ -565,6 +565,12 @@
       </div>
     </template>
   </USlideover>
+
+  <BoardTaskIdePrompt
+    v-model="idePromptOpen"
+    :board-id="boardId"
+    :task-id="idePromptTaskId"
+  />
 </template>
 
 <script setup lang="ts">
@@ -875,6 +881,7 @@ function taskMenuItems(item: { id: string; title: string }, group: BoardGroup) {
       { label: 'Link to task...', icon: 'i-lucide-link-2' as const, onSelect: () => { linkPickerTaskId.value = item.id } },
     ],
     [
+      { label: 'Copy IDE prompt', icon: 'i-lucide-terminal-square' as const, onSelect: () => openIdePrompt(item.id) },
       { label: 'Duplicate', icon: 'i-lucide-copy' as const, onSelect: () => duplicateTask(item.id) },
       ...(moveToGroupItems.length > 0 ? [{
         label: 'Move to group',
@@ -886,6 +893,13 @@ function taskMenuItems(item: { id: string; title: string }, group: BoardGroup) {
       { label: 'Delete', icon: 'i-lucide-trash-2' as const, color: 'error' as const, onSelect: () => { taskToDelete.value = item.id } },
     ],
   ]
+}
+
+const idePromptOpen = ref(false)
+const idePromptTaskId = ref<string | null>(null)
+function openIdePrompt(taskId: string) {
+  idePromptTaskId.value = taskId
+  idePromptOpen.value = true
 }
 
 function startAddSubitem(taskId: string) {
