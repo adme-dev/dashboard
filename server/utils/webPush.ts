@@ -11,9 +11,9 @@
  * Setup:
  *   1. Run: npx @pushforge/builder vapid
  *   2. Add to .env:
- *        VAPID_PUBLIC_KEY='{"kty":"EC","crv":"P-256","x":"...","y":"..."}'
- *        VAPID_PRIVATE_KEY='{"kty":"EC","crv":"P-256","x":"...","y":"...","d":"..."}'
- *        VAPID_SUBJECT="mailto:you@yourdomain.com"
+ *        VAPID_PUBLIC_KEY=<base64url string from CLI output>
+ *        VAPID_PRIVATE_KEY=<JWK JSON from CLI output, single line>
+ *        VAPID_SUBJECT=mailto:you@yourdomain.com
  *   3. For Cloudflare prod, mirror with: wrangler secret put VAPID_PRIVATE_KEY etc.
  */
 
@@ -34,55 +34,32 @@ interface StoredSubscription {
   auth_key: string
 }
 
-function getEnv(): { publicJwk: any; privateJwk: any; subject: string } | null {
+function getEnv(): { publicKey: string; privateJwk: any; subject: string } | null {
   const pub = process.env.VAPID_PUBLIC_KEY
   const priv = process.env.VAPID_PRIVATE_KEY
   const subject = process.env.VAPID_SUBJECT
   if (!pub || !priv || !subject) return null
   try {
     return {
-      publicJwk: JSON.parse(pub),
+      publicKey: pub.trim(),
       privateJwk: JSON.parse(priv),
       subject,
     }
   } catch (err) {
-    console.error('[WebPush] VAPID keys are not valid JSON:', err)
+    console.error('[WebPush] VAPID_PRIVATE_KEY is not valid JSON:', err)
     return null
   }
 }
 
 /**
- * Convert the public JWK (x,y coords) to the base64url-encoded uncompressed
- * P-256 byte string the browser's PushManager.subscribe expects as
- * `applicationServerKey`. Format: 0x04 || X || Y (65 bytes).
+ * Returns the VAPID public key in the base64url-encoded uncompressed P-256
+ * format that PushManager.subscribe expects as `applicationServerKey`.
+ * `npx @pushforge/builder vapid` already outputs the public key in this
+ * format, so we return it verbatim.
  */
 export function getVapidPublicKeyForBrowser(): string | null {
   const env = getEnv()
-  if (!env) return null
-  const { x, y } = env.publicJwk
-  if (!x || !y) return null
-
-  const xBytes = base64UrlToBytes(x)
-  const yBytes = base64UrlToBytes(y)
-  const out = new Uint8Array(1 + xBytes.length + yBytes.length)
-  out[0] = 0x04
-  out.set(xBytes, 1)
-  out.set(yBytes, 1 + xBytes.length)
-  return bytesToBase64Url(out)
-}
-
-function base64UrlToBytes(b64url: string): Uint8Array {
-  const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(b64url.length / 4) * 4, '=')
-  const bin = atob(b64)
-  const out = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
-  return out
-}
-
-function bytesToBase64Url(bytes: Uint8Array): string {
-  let bin = ''
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!)
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  return env?.publicKey ?? null
 }
 
 /**
