@@ -162,7 +162,8 @@ async function handleSend(
   if (attachments?.length) metadata.attachments = attachments
   if (replyToId) metadata.replyToId = replyToId
   const hasMetadata = Object.keys(metadata).length > 0
-  const body = text || ' '
+  // Server accepts empty content as long as there's at least one attachment.
+  const body = text
 
   // Prefer WS — the chat-rooms Durable Object broadcasts the message to every
   // connected listener, giving recipients sub-second delivery. The DO will

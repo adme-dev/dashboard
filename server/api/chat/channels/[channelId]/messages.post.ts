@@ -16,13 +16,18 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   const { content, threadParentId, metadata } = body
 
-  if (!content || typeof content !== 'string' || content.trim().length === 0) {
-    throw createError({ statusCode: 400, statusMessage: 'Message content is required' })
-  }
-
   const safeMetadata = metadata && typeof metadata === 'object' && !Array.isArray(metadata)
     ? metadata
     : {}
+
+  const trimmedContent = typeof content === 'string' ? content.trim() : ''
+  const hasAttachments = Array.isArray((safeMetadata as any).attachments)
+    && (safeMetadata as any).attachments.length > 0
+
+  // A message must carry either text or at least one attachment.
+  if (!trimmedContent && !hasAttachments) {
+    throw createError({ statusCode: 400, statusMessage: 'Message content or attachment is required' })
+  }
 
   // Verify membership
   const membership = await queryOne(`
@@ -42,7 +47,7 @@ export default defineEventHandler(async (event) => {
   `, [
     channelId,
     user.id,
-    content.trim(),
+    trimmedContent,
     threadParentId || null,
     JSON.stringify(safeMetadata)
   ])
