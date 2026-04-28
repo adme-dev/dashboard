@@ -4,6 +4,47 @@ const toast = useToast()
 const loading = ref(true)
 const saving = ref(false)
 
+// Browser push subscription
+const push = useWebPush()
+
+// Detect iOS Safari users — push only works after they install the site as a PWA.
+const isIosSafari = computed(() => {
+  if (!import.meta.client) return false
+  const ua = navigator.userAgent
+  const isIos = /iPhone|iPad|iPod/.test(ua)
+  const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua)
+  // navigator.standalone is true once the user has added to home screen
+  const installed = (navigator as any).standalone === true
+  return isIos && isSafari && !installed
+})
+
+async function togglePush(enable: boolean) {
+  if (enable) {
+    const result = await push.enable()
+    if (result.ok) {
+      toast.add({ title: 'Browser notifications on', color: 'success', duration: 2000 })
+    } else if (result.reason === 'permission_denied') {
+      toast.add({
+        title: 'Permission denied',
+        description: 'Enable notifications in your browser settings, then try again.',
+        color: 'error',
+        duration: 4000,
+      })
+    } else if (result.reason === 'unsupported') {
+      toast.add({
+        title: 'Not supported on this browser',
+        color: 'error',
+        duration: 3000,
+      })
+    } else {
+      toast.add({ title: 'Failed to enable browser notifications', color: 'error', duration: 3000 })
+    }
+  } else {
+    await push.disable()
+    toast.add({ title: 'Browser notifications off', color: 'success', duration: 2000 })
+  }
+}
+
 const state = reactive<{ [key: string]: boolean }>({
   // Email notifications
   email_task_assigned: true,
@@ -176,7 +217,54 @@ async function onChange(field: string, value: boolean) {
       <XfLoader size="sm" />
     </div>
 
-    <div v-else v-for="(section, index) in sections" :key="index">
+    <!-- Browser Push (special-cased — talks to the browser, not the prefs API) -->
+    <div v-if="!loading">
+      <UPageCard
+        title="Browser Notifications"
+        description="Get instant alerts on this device, even when XeroFlow is closed."
+        variant="naked"
+        class="mb-4"
+      />
+
+      <UPageCard variant="subtle">
+        <UFormField
+          name="push_enabled"
+          label="Enable on this device"
+          :description="
+            !push.isSupported.value
+              ? 'Your browser does not support push notifications.'
+              : push.permission.value === 'denied'
+                ? 'Permission was denied — enable it in your browser site settings to turn this on.'
+                : 'When on, the bell rings on this device even when XeroFlow is closed.'
+          "
+          class="flex items-center justify-between gap-2"
+        >
+          <USwitch
+            :model-value="push.isSubscribed.value"
+            :disabled="!push.isSupported.value || push.isBusy.value || push.permission.value === 'denied'"
+            @update:model-value="(val: boolean) => togglePush(val)"
+          />
+        </UFormField>
+
+        <!-- iOS PWA install hint -->
+        <div
+          v-if="isIosSafari"
+          class="mt-4 rounded-lg border border-default bg-elevated/50 px-4 py-3 text-sm flex items-start gap-3"
+        >
+          <UIcon name="i-lucide-info" class="size-5 text-primary shrink-0 mt-0.5" />
+          <div class="space-y-1">
+            <p class="font-medium">Add XeroFlow to your home screen first</p>
+            <p class="text-muted">
+              On iOS, push notifications only work for sites installed as an app.
+              Tap <UIcon name="i-lucide-share" class="inline size-4 mx-1" /> Share &rarr;
+              <em>Add to Home Screen</em>, then open the app icon and come back here to turn this on.
+            </p>
+          </div>
+        </div>
+      </UPageCard>
+    </div>
+
+    <div v-if="!loading" v-for="(section, index) in sections" :key="index">
       <UPageCard
         :title="section.title"
         :description="section.description"
