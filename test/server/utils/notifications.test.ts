@@ -30,6 +30,7 @@ import {
   createNotification,
   createBulkNotifications,
   notifyTaskAssigned,
+  notifyTaskAssigneeChanged,
   notifyMention,
   notifyApprovalRequest,
   notifyDueReminder,
@@ -248,6 +249,94 @@ describe('notifications utility', () => {
       })
 
       expect(mockSendTaskAssignedEmail).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('notifyTaskAssigneeChanged', () => {
+    it('notifies the new assignee on a real change', async () => {
+      mockQueryOne
+        .mockResolvedValueOnce({ name: 'John', email: 'john@example.com' }) // assigner
+        .mockResolvedValueOnce({ name: 'Jane', email: 'jane@example.com', notification_preferences: {} }) // assignee
+        .mockResolvedValueOnce({ id: 'notif-1', created_at: new Date().toISOString() }) // notification insert
+
+      const result = await notifyTaskAssigneeChanged({
+        taskId: 'task-1',
+        taskTitle: 'Ship it',
+        oldAssigneeId: null,
+        newAssigneeId: 'jane-id',
+        actorId: 'john-id',
+      })
+
+      expect(result).toEqual({ notified: true })
+      expect(mockQueryOne).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO notifications'),
+        expect.arrayContaining(['jane-id', 'task_assigned'])
+      )
+      expect(mockSendTaskAssignedEmail).toHaveBeenCalledTimes(1)
+    })
+
+    it('skips when assignee is unchanged', async () => {
+      const result = await notifyTaskAssigneeChanged({
+        taskId: 'task-1',
+        taskTitle: 'Ship it',
+        oldAssigneeId: 'jane-id',
+        newAssigneeId: 'jane-id',
+        actorId: 'john-id',
+      })
+
+      expect(result).toEqual({ notified: false, reason: 'unchanged' })
+      expect(mockQueryOne).not.toHaveBeenCalled()
+      expect(mockSendTaskAssignedEmail).not.toHaveBeenCalled()
+    })
+
+    it('skips when task is being unassigned', async () => {
+      const result = await notifyTaskAssigneeChanged({
+        taskId: 'task-1',
+        taskTitle: 'Ship it',
+        oldAssigneeId: 'jane-id',
+        newAssigneeId: null,
+        actorId: 'john-id',
+      })
+
+      expect(result).toEqual({ notified: false, reason: 'unassigned' })
+      expect(mockQueryOne).not.toHaveBeenCalled()
+      expect(mockSendTaskAssignedEmail).not.toHaveBeenCalled()
+    })
+
+    it('skips self-assignment (actor assigns themselves)', async () => {
+      const result = await notifyTaskAssigneeChanged({
+        taskId: 'task-1',
+        taskTitle: 'Ship it',
+        oldAssigneeId: null,
+        newAssigneeId: 'jane-id',
+        actorId: 'jane-id',
+      })
+
+      expect(result).toEqual({ notified: false, reason: 'self_assignment' })
+      expect(mockQueryOne).not.toHaveBeenCalled()
+      expect(mockSendTaskAssignedEmail).not.toHaveBeenCalled()
+    })
+
+    it('passes dueDate and projectName through to the email', async () => {
+      mockQueryOne
+        .mockResolvedValueOnce({ name: 'John', email: 'john@example.com' })
+        .mockResolvedValueOnce({ name: 'Jane', email: 'jane@example.com', notification_preferences: {} })
+        .mockResolvedValueOnce({ id: 'notif-1', created_at: new Date().toISOString() })
+
+      const due = new Date('2026-12-31T00:00:00Z')
+      await notifyTaskAssigneeChanged({
+        taskId: 'task-1',
+        taskTitle: 'Ship it',
+        oldAssigneeId: null,
+        newAssigneeId: 'jane-id',
+        actorId: 'john-id',
+        dueDate: due,
+        projectName: 'Project X',
+      })
+
+      expect(mockSendTaskAssignedEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ dueDate: due, projectName: 'Project X' })
+      )
     })
   })
 
