@@ -4,6 +4,8 @@
  * In dev mode, returns a JSON mock (DO only works in Cloudflare Workers).
  */
 
+import { toWebRequest } from 'h3'
+
 export default defineEventHandler(async (event) => {
   const projectId = getRouterParam(event, 'projectId')
   if (!projectId) {
@@ -38,14 +40,10 @@ export default defineEventHandler(async (event) => {
     url.searchParams.set('userAvatar', user.avatar_url)
   }
 
-  const wsHeaders: Record<string, string> = { Upgrade: 'websocket' }
-  const rawHeaders = event.node.req.headers || {}
-  for (const key of ['sec-websocket-key', 'sec-websocket-version', 'sec-websocket-extensions', 'sec-websocket-protocol']) {
-    const val = rawHeaders[key]
-    if (typeof val === 'string') wsHeaders[key] = val
-  }
-
-  const upgradeRequest = new Request(url.toString(), { headers: wsHeaders })
+  // Clone the original Worker Request with the rewritten URL — preserves
+  // forbidden upgrade headers (Connection, Upgrade, Sec-WebSocket-*) that
+  // `new Request(url, init)` would strip, so the DO sees a real WS upgrade.
+  const upgradeRequest = new Request(url.toString(), toWebRequest(event))
 
   return stub.fetch(upgradeRequest)
 })

@@ -100,8 +100,12 @@ const showPicker = ref(false)
 const searchQuery = ref('')
 const pickerPosition = ref({ x: 0, y: 0 })
 
-// Fetch clients from API
-const { data: clientsData } = useFetch<ClientOption[]>('/api/agency/clients')
+// Fetch clients from API — fixed key so every CellClient instance on the
+// board shares one request instead of firing per cell.
+const { data: clientsData } = useAsyncData(
+  'agency-clients',
+  () => $fetch<ClientOption[]>('/api/agency/clients'),
+)
 const allClients = computed<ClientOption[]>(() => (clientsData.value as any) || [])
 
 const selectedClientId = computed<string | null>(() => props.value?.jsonValue?.clientId || null)

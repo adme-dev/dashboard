@@ -131,8 +131,12 @@ const showPicker = ref(false)
 const searchQuery = ref('')
 const pickerPosition = ref({ x: 0, y: 0 })
 
-// Fetch team members from API
-const { data: teamData } = useFetch('/api/agency/team-members')
+// Fetch team members from API — fixed key so every CellPeople instance on
+// the board shares one request instead of firing per cell.
+const { data: teamData } = useAsyncData(
+  'agency-team-members',
+  () => $fetch('/api/agency/team-members'),
+)
 const allPeople = computed<TeamMember[]>(() => (teamData.value as any)?.members || [])
 
 const selectedIds = computed<string[]>(() => props.value?.jsonValue?.userIds || [])
