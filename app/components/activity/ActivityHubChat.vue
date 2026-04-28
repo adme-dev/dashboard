@@ -158,18 +158,32 @@ async function handleSend(
   if (!text && !attachments?.length) return
 
   const channelId = activeChannel.value.id
-  sending.value = true
-
   const metadata: Record<string, unknown> = {}
   if (attachments?.length) metadata.attachments = attachments
   if (replyToId) metadata.replyToId = replyToId
+  const hasMetadata = Object.keys(metadata).length > 0
+  const body = text || ' '
 
+  // Prefer WS — the chat-rooms Durable Object broadcasts the message to every
+  // connected listener, giving recipients sub-second delivery. The DO will
+  // echo the message back to us via the WS handler, so we don't push it
+  // locally here.
+  if (ws && wsConnected.value) {
+    ws.sendMessage(body, undefined, hasMetadata ? metadata : undefined)
+    replyingTo.value = null
+    return
+  }
+
+  // Fallback: REST directly to DB. No DO broadcast — recipients without an
+  // open WS see the message via their polling loop. Used in dev (no wrangler)
+  // and as a safety net during transient WS drops.
+  sending.value = true
   try {
     const sent = await $fetch<ChatMessage>(`/api/chat/channels/${channelId}/messages`, {
       method: 'POST',
       body: {
-        content: text || ' ',
-        ...(Object.keys(metadata).length ? { metadata } : {}),
+        content: body,
+        ...(hasMetadata ? { metadata } : {}),
       },
     })
     if (!messages.value.find(m => m.id === sent.id)) {
