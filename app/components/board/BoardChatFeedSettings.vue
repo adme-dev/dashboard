@@ -12,6 +12,8 @@ const toast = useToast()
 const loading = ref(true)
 const saving = ref(false)
 const feeds = ref<any[]>([])
+const confirmRemove = ref<any | null>(null)
+const removing = ref(false)
 
 const availableEvents = [
   { value: 'task_created', label: 'New item created', icon: 'i-lucide-plus-circle' },
@@ -92,6 +94,22 @@ async function toggleEventType(feed: any, eventType: string) {
 
 function openChannel(channelId: string) {
   navigateTo(`/agency/chat?channel=${channelId}`)
+}
+
+async function removeFeed(feed: any) {
+  removing.value = true
+  try {
+    await $fetch(`/api/chat/board-feeds/${props.boardId}/${feed.id}`, {
+      method: 'DELETE'
+    })
+    feeds.value = feeds.value.filter(f => f.id !== feed.id)
+    confirmRemove.value = null
+    toast.add({ title: 'Chat feed removed', color: 'success' })
+  } catch {
+    toast.add({ title: 'Failed to remove feed', color: 'error' })
+  } finally {
+    removing.value = false
+  }
 }
 
 watch(() => props.open, (open) => {
@@ -181,6 +199,15 @@ watch(() => props.open, (open) => {
                 size="xs"
                 @click="openChannel(feed.channel_id)"
               />
+              <UButton
+                label="Remove"
+                icon="i-lucide-trash-2"
+                variant="ghost"
+                color="error"
+                size="xs"
+                class="ml-auto"
+                @click="confirmRemove = feed"
+              />
             </div>
           </div>
 
@@ -204,6 +231,29 @@ watch(() => props.open, (open) => {
       <div class="flex justify-end">
         <UButton variant="ghost" color="neutral" @click="emit('update:open', false)">
           Close
+        </UButton>
+      </div>
+    </template>
+  </UModal>
+
+  <UModal :open="!!confirmRemove" @update:open="(v) => { if (!v) confirmRemove = null }">
+    <template #header>
+      <div class="flex items-center gap-2">
+        <UIcon name="i-lucide-trash-2" class="w-5 h-5 text-error" />
+        <h3 class="font-semibold">Remove chat feed?</h3>
+      </div>
+    </template>
+    <template #body>
+      <p class="text-sm text-muted">
+        This unlinks <span class="font-medium text-default">#{{ confirmRemove?.channel_name }}</span>
+        from this board. Posted activity updates will stop, but the chat channel and its messages are kept.
+      </p>
+    </template>
+    <template #footer>
+      <div class="flex justify-end gap-2">
+        <UButton variant="ghost" color="neutral" @click="confirmRemove = null">Cancel</UButton>
+        <UButton color="error" :loading="removing" @click="removeFeed(confirmRemove)">
+          Remove
         </UButton>
       </div>
     </template>
