@@ -133,6 +133,8 @@ onMounted(async () => {
   }
 })
 
+const toast = useToast()
+
 async function handleSubscribe(level: string) {
   try {
     if (level === subscriptionLevel.value) {
@@ -145,13 +147,18 @@ async function handleSubscribe(level: string) {
       const isMuted = level === 'muted'
       await $fetch(`/api/agency/boards/${props.boardId}/subscribe`, {
         method: 'POST',
-        body: { events, notifyInapp: !isMuted, notifyEmail: false },
+        body: { events, notifyInapp: true, notifyEmail: false, isMuted },
       })
       isSubscribed.value = true
       subscriptionLevel.value = level
     }
-  } catch (err) {
+  } catch (err: any) {
     console.error('Subscribe failed:', err)
+    toast.add({
+      title: 'Could not update notifications',
+      description: err?.statusMessage || 'Please try again.',
+      color: 'error',
+    })
   }
 }
 
