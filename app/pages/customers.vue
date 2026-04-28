@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'agency' })
+definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
 
 import type { TableColumn } from '@nuxt/ui'
 import { upperFirst } from 'scule'

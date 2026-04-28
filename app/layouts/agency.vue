@@ -157,8 +157,8 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     )
   }
 
-  // XeroFlow — canAccessFinance AND Xero connected
-  if (canAccessFinance.value && xeroConnected.value) {
+  // XeroFlow — owner + admin only AND Xero connected
+  if (canAccessAdmin.value && xeroConnected.value) {
     items.push(
       { type: 'label' as const, label: 'XeroFlow' },
       { label: 'Xero Dashboard', icon: 'i-lucide-layout-dashboard', to: '/xeroflow', onSelect: close },

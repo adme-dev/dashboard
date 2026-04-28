@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'agency' })
+definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
 
 // Import cashflow components
 import CashFlowChart from '~/components/dashboard/CashFlowChart.client.vue'

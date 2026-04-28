@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'agency' })
+definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
 
 const { data, pending, error, refresh } = await useFetch('/api/ai/recommendations')
 </script>

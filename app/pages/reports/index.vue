@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { CalendarDate, today, getLocalTimeZone } from '@internationalized/date'
 
-definePageMeta({ layout: 'agency' })
+definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
 
 // ── Types ──
 type SummaryMetric = { month: number; previousMonth: number; ytd: number }
