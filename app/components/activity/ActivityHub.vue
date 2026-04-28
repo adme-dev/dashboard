@@ -117,20 +117,23 @@ watch(isOpen, (open) => {
   >
     <div
       v-show="!isOpen && !hidden"
-      class="fixed bottom-6 right-6 z-50"
+      class="fixed bottom-6 right-6 z-50 w-12 h-12"
     >
       <button
-        class="relative rounded-full w-12 h-12 shadow-lg bg-primary text-white flex items-center justify-center hover:bg-primary/90 transition-colors cursor-pointer"
+        class="w-full h-full rounded-full shadow-lg bg-primary text-white flex items-center justify-center hover:bg-primary/90 transition-colors cursor-pointer"
         @click="toggle"
       >
         <UIcon name="i-lucide-activity" class="w-5 h-5" />
-        <span
-          v-if="totalUnreadBadge > 0"
-          class="absolute -top-1 -right-1 min-w-5 h-5 px-1.5 rounded-full bg-error text-white text-[10px] font-bold leading-none flex items-center justify-center ring-2 ring-default shadow"
-        >
-          {{ totalUnreadBadge > 99 ? '99+' : totalUnreadBadge }}
-        </span>
       </button>
+      <!-- Badge is a SIBLING of the button, not a child. Safari clips
+           absolute descendants of a `border-radius: 9999px` element, which
+           cropped the unread count. Sibling avoids that. -->
+      <span
+        v-if="totalUnreadBadge > 0"
+        class="pointer-events-none absolute -top-1 -right-1 min-w-5 h-5 px-1.5 rounded-full bg-error text-white text-[10px] font-bold leading-none flex items-center justify-center ring-2 ring-default shadow"
+      >
+        {{ totalUnreadBadge > 99 ? '99+' : totalUnreadBadge }}
+      </span>
     </div>
   </Transition>
 </template>
