@@ -1,7 +1,9 @@
 /**
  * GET /api/chat/channels/:channelId/messages
  * Paginated message history from Neon (for scroll-back beyond DO's recent window).
- * Query: ?before=<messageId>&limit=50&threadParentId=<id>
+ * Query: ?before=<messageId>&after=<messageId>&limit=50&threadParentId=<id>
+ *   - before: load older messages for scroll-back
+ *   - after: load newer messages (for polling fallback when WS unavailable)
  */
 import { queryOne, queryRows } from '~~/server/utils/db'
 
@@ -26,6 +28,7 @@ export default defineEventHandler(async (event) => {
 
   const limit = Math.min(Number(query.limit) || 50, 100)
   const before = query.before ? Number(query.before) : null
+  const after = query.after ? Number(query.after) : null
   const threadParentId = query.threadParentId ? Number(query.threadParentId) : null
 
   let whereClause = 'WHERE m.channel_id = $1 AND m.deleted_at IS NULL'
@@ -38,6 +41,12 @@ export default defineEventHandler(async (event) => {
     paramIdx++
   }
 
+  if (after) {
+    whereClause += ` AND m.id > $${paramIdx}`
+    params.push(after)
+    paramIdx++
+  }
+
   if (threadParentId) {
     whereClause += ` AND m.thread_parent_id = $${paramIdx}`
     params.push(threadParentId)
@@ -46,6 +55,10 @@ export default defineEventHandler(async (event) => {
     // Top-level messages only (no thread replies in main feed)
     whereClause += ' AND m.thread_parent_id IS NULL'
   }
+
+  // For `after` polling, ascending order returns oldest-new-first which is what
+  // the client expects to append. Otherwise default to newest-first + reverse.
+  const orderBy = after ? 'ASC' : 'DESC'
 
   const messages = await queryRows(`
     SELECT
@@ -58,7 +71,7 @@ export default defineEventHandler(async (event) => {
     FROM chat_messages m
     JOIN team_members tm ON tm.id = m.user_id
     ${whereClause}
-    ORDER BY m.id DESC
+    ORDER BY m.id ${orderBy}
     LIMIT $${paramIdx}
   `, [...params, limit])
 
@@ -91,6 +104,6 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  // Return in ascending order for display
-  return messages.reverse()
+  // `after` queries already arrive ASC; otherwise reverse DESC → ASC for display.
+  return after ? messages : messages.reverse()
 })

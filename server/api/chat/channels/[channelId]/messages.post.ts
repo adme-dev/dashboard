@@ -14,11 +14,15 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readBody(event)
-  const { content, threadParentId } = body
+  const { content, threadParentId, metadata } = body
 
   if (!content || typeof content !== 'string' || content.trim().length === 0) {
     throw createError({ statusCode: 400, statusMessage: 'Message content is required' })
   }
+
+  const safeMetadata = metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+    ? metadata
+    : {}
 
   // Verify membership
   const membership = await queryOne(`
@@ -40,7 +44,7 @@ export default defineEventHandler(async (event) => {
     user.id,
     content.trim(),
     threadParentId || null,
-    JSON.stringify({})
+    JSON.stringify(safeMetadata)
   ])
 
   // Update last_read_message_id for sender

@@ -97,6 +97,7 @@ watch(isOpen, (open) => {
           leave-to-class="opacity-0"
         >
           <ActivityHubFeed v-if="activeTab === 'feed'" key="feed" />
+          <ActivityHubChat v-else-if="activeTab === 'chat'" key="chat" />
           <ActivityHubForYou v-else-if="activeTab === 'for-you'" key="for-you" />
           <ActivityHubIncoming v-else-if="activeTab === 'incoming'" key="incoming" />
           <ActivityHubAi v-else-if="activeTab === 'ai'" key="ai" />
@@ -114,14 +115,22 @@ watch(isOpen, (open) => {
     leave-from-class="opacity-100 scale-100"
     leave-to-class="opacity-0 scale-75"
   >
-    <button
+    <div
       v-show="!isOpen && !hidden"
-      class="fixed bottom-6 right-6 z-50 rounded-full w-12 h-12 shadow-lg bg-primary text-white flex items-center justify-center hover:bg-primary/90 transition-colors cursor-pointer"
-      @click="toggle"
+      class="fixed bottom-6 right-6 z-50"
     >
-      <UChip :color="totalUnreadBadge > 0 ? 'error' : 'neutral'" :show="totalUnreadBadge > 0" inset>
+      <button
+        class="relative rounded-full w-12 h-12 shadow-lg bg-primary text-white flex items-center justify-center hover:bg-primary/90 transition-colors cursor-pointer"
+        @click="toggle"
+      >
         <UIcon name="i-lucide-activity" class="w-5 h-5" />
-      </UChip>
-    </button>
+        <span
+          v-if="totalUnreadBadge > 0"
+          class="absolute -top-1 -right-1 min-w-5 h-5 px-1.5 rounded-full bg-error text-white text-[10px] font-bold leading-none flex items-center justify-center ring-2 ring-default shadow"
+        >
+          {{ totalUnreadBadge > 99 ? '99+' : totalUnreadBadge }}
+        </span>
+      </button>
+    </div>
   </Transition>
 </template>

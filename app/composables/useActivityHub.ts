@@ -1,6 +1,6 @@
 import { useLocalStorage } from '@vueuse/core'
 
-export type ActivityHubTab = 'feed' | 'for-you' | 'incoming' | 'ai'
+export type ActivityHubTab = 'feed' | 'chat' | 'for-you' | 'incoming' | 'ai'
 
 const _isOpen = ref(false)
 const _hidden = ref(false)

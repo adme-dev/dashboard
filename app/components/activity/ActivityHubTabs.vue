@@ -7,6 +7,7 @@ const { totalUnreadCount: chatUnreadCount } = useChat()
 
 const tabs: { key: ActivityHubTab; icon: string; label: string }[] = [
   { key: 'feed', icon: 'i-lucide-rss', label: 'Feed' },
+  { key: 'chat', icon: 'i-lucide-message-square', label: 'Chat' },
   { key: 'for-you', icon: 'i-lucide-bell', label: 'For You' },
   { key: 'incoming', icon: 'i-lucide-inbox', label: 'Incoming' },
   { key: 'ai', icon: 'i-lucide-sparkles', label: 'AI' },
@@ -14,7 +15,7 @@ const tabs: { key: ActivityHubTab; icon: string; label: string }[] = [
 
 function getBadge(key: ActivityHubTab): number {
   if (key === 'for-you') return unreadCount.value
-  if (key === 'feed') return chatUnreadCount.value
+  if (key === 'chat') return chatUnreadCount.value
   return 0
 }
 </script>
@@ -24,7 +25,7 @@ function getBadge(key: ActivityHubTab): number {
     <button
       v-for="tab in tabs"
       :key="tab.key"
-      class="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-xs font-medium transition-colors cursor-pointer"
+      class="flex-1 min-w-0 flex items-center justify-center gap-1 px-1 py-2 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap"
       :class="[
         activeTab === tab.key
           ? 'text-primary border-b-2 border-primary'
@@ -32,13 +33,14 @@ function getBadge(key: ActivityHubTab): number {
       ]"
       @click="activeTab = tab.key"
     >
-      <UIcon :name="tab.icon" class="w-3.5 h-3.5" />
-      <span>{{ tab.label }}</span>
+      <UIcon :name="tab.icon" class="w-3.5 h-3.5 shrink-0" />
+      <span class="truncate">{{ tab.label }}</span>
       <UBadge
         v-if="getBadge(tab.key) > 0"
         :label="String(getBadge(tab.key))"
         color="error"
         size="xs"
+        class="shrink-0"
       />
     </button>
   </div>

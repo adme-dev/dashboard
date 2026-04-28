@@ -112,7 +112,7 @@ const selectedMentionIndex = ref(0)
 
 // Fetch team members for mention autocomplete
 const { data: teamMembersData } = useFetch('/api/agency/team-members')
-const teamMembers = computed(() => (teamMembersData.value as any[]) || [])
+const teamMembers = computed(() => ((teamMembersData.value as any)?.members as any[]) || [])
 
 const filteredMentions = computed(() => {
   if (!mentionQuery.value) return teamMembers.value.slice(0, 8)
