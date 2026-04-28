@@ -1963,6 +1963,51 @@ const features: Record<string, Feature> = {
     ]
   },
 
+  'smart-watch': {
+    title: 'Smart Watch & Notifications',
+    slug: 'smart-watch',
+    icon: 'i-lucide-bell-ring',
+    category: 'Communication',
+    categoryIcon: 'i-lucide-message-circle',
+    categoryIconBg: 'bg-violet-50',
+    categoryIconColor: 'text-violet-600',
+    description: 'Granular subscription controls, AI-prioritised inbox, daily digest narrative, snooze, quiet hours, and semantic keyword watch — so the right team members hear about the right work without drowning in pings.',
+    details: [
+      {
+        title: 'Watch any board, any item, any column',
+        content: 'Subscribe at three scopes: an entire board, a single item, or a specific column (e.g. only when something enters Done). The Watch popover on every board header surfaces a subscriber stack with avatars, a snooze section, and quick options — All activity, Mentions only, Muted, or Custom… The Custom modal exposes five event categories (items, status moves, field edits, people, structure) plus a per-board email toggle. Item-level Watch lives on the task panel, and a "Watching" page at /agency/notifications/watching lists every subscription with bulk unwatch and a scope filter.'
+      },
+      {
+        title: 'Reasons baked into every notification',
+        content: 'Every notification carries a reason tag: Mentioned (red), Assigned (blue), Watching (grey), or system. The reason renders as a UBadge next to the title in your inbox so you can triage in one glance — no more "why am I getting this?" mystery. A small ? icon next to the badge opens an AI-generated one-line explanation specific to that notification, drawing on the actor, the change, and the board context.'
+      },
+      {
+        title: 'AI-prioritised inbox',
+        content: 'Every notification is scored 0..1 on importance using a fast rule-based heuristic at write time — mentions and assignments score highest, watching is moderate, with type-specific bumps for overdue tasks and approval requests. On inbox open, Workers AI re-classifies recent items via the llama-3.1-8b classifier and refines the scores in place. Toggle "Sort: Importance" in the inbox tab to surface the urgent stuff first; "Sort: Recent" preserves the historical newest-first behaviour.'
+      },
+      {
+        title: 'Daily digest with AI narrative',
+        content: 'A "Digest" tab in the notification slideover rolls up Today or Last 7 days into per-board summaries, with counts split by reason and the top 3 items by activity. Click any board to navigate, click any item to deep-link straight to its panel. Groq generates a one-sentence narrative for each board ("Sarah unblocked the homepage proof and Meta spend jumped 42% awaiting your sign-off") so you can skim what mattered without reading every entry.'
+      },
+      {
+        title: 'Snooze and Quiet Hours',
+        content: 'Snooze any board for 1h, 8h, end of day, tomorrow 8am, next workday (skipping weekends), or pick a custom date and time. While snoozed, the Watch button shows a moon icon with the remaining countdown and auto-uncovers when the window expires. At the user level, Quiet Hours suppresses browser push notifications during a configured time range and selected days — your inbox still receives everything, but the bell stops ringing. @mentions and assignments always come through regardless, since they are direct user-action.'
+      },
+      {
+        title: 'Auto-watch & auto-acknowledge',
+        content: 'When you create a task, comment on one, get assigned, or are @mentioned, you are automatically subscribed at the item level so you stay in the loop without thinking about it. Toggle off in /settings/notifications if you prefer manual. Auto-acknowledge is opt-in: when on, the moment someone assigns you a task, Groq drafts a contextual acknowledgement comment in your voice and posts it on your behalf, so the assigner knows you are alerted even before you open the app.'
+      },
+      {
+        title: 'Semantic keyword subscriptions',
+        content: 'Add keywords on the Watching page to track topics across every board you have access to. When new notification text contains a keyword (case-insensitive ILIKE), you get a "Keyword match" notification. Beyond exact matches, every keyword is embedded with Workers AI bge-base-en-v1.5 and stored in Vectorize, so semantically related text fires "Related to" notifications too — typing "invoicing" once will catch "billing", "payment processing", and "EOM submission" without you naming each.'
+      },
+      {
+        title: 'Auto-watch suggestions',
+        content: 'If you keep visiting a board you do not subscribe to (3+ visits in a 7-day window), a friendly toast surfaces with a one-click Watch button. Saves the awkward dance of "oh, I should have subscribed to this last week".'
+      }
+    ]
+  },
+
   // ─── AI & Intelligence (additional) ─────────────────────────────
   'composite-scoring': {
     title: 'Composite Scoring',

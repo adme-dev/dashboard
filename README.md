@@ -17,7 +17,7 @@ Internal operations dashboard for a digital marketing agency. Manages work (boar
 - **Real-Time Chat** — Channels, DMs, threads, file sharing, emoji reactions, pins, presence indicators, read receipts, Cmd+K switcher, and board/task integration.
 - **AI Features** — Groq-powered chat with @entity mentions, proactive anomaly detection (8 analyzers), intent classification, Vectorize semantic search, LoRA adapter management, and training data pipeline.
 - **Time Tracking** — Task-level time logging, weekly timesheets, and manager approval workflows.
-- **Notifications & Automations** — In-app notifications, email templates (Resend), board subscriptions, and automation recipes.
+- **Smart Watch & Notifications** — Board / item / column subscriptions with reason tags, AI-prioritised inbox, daily digest narrative (Groq), snooze, quiet hours, semantic keyword subscriptions (Vectorize), auto-watch on participation, auto-acknowledge for assignments, plus email templates (Resend) and automation recipes.
 - **Client Portal** — Separate auth system with cookie-based sessions, permission-gated views for projects, approvals, invoices, and gallery.
 
 ## Tech Stack

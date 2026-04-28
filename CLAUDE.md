@@ -8,7 +8,7 @@ This is **XeroFlow Agency** — an internal operations dashboard for a digital m
 - **Client & Project Management**: Clients, briefs, proofs, intake forms, project tracking
 - **Financial Operations**: Xero integration (invoices, expenses, profit & loss), cashflow forecasting, end-of-month (EOM) invoice generation engine
 - **Ad Spend Tracking**: Meta Ads and Google Ads integrations — OAuth connections, spend syncing, daily/campaign breakdowns, budget management with audit trails
-- **Notifications & Automations**: In-app notifications, email templates (Resend), board subscriptions, automation recipes (trigger → action)
+- **Smart Watch & Notifications**: Board / item / column subscriptions with reason tags (`mentioned` / `assigned` / `watching_*`), per-event filtering, snooze, quiet hours / DND, AI importance scoring + Workers AI refinement, daily digest with Groq narrative, semantic keyword subs (Vectorize bge-base-en), auto-watch on participation, auto-acknowledge drafts (Groq). Email templates (Resend) + automation recipes layer on top. See `server/utils/notifications.ts`, `server/utils/subscriptions.ts`, `server/utils/quietHours.ts`, `server/utils/notificationImportance.ts`, `server/utils/keywordSubscriptions.ts`. Migrations 077–081.
 - **AI Features**: Groq-powered AI chat, anomaly detection, recommendations
 
 The primary users are agency staff — account managers, media buyers, producers, and finance.

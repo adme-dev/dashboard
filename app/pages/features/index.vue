@@ -194,6 +194,7 @@ const categories = [
       { title: 'Link Previews', slug: 'link-previews', icon: 'i-lucide-external-link', description: 'Automatic OG unfurl for shared URLs — rich preview cards with title, image, and description.' },
       { title: 'Message Forwarding', slug: 'message-forwarding', icon: 'i-lucide-forward', description: 'Forward messages to any channel or DM with full attribution and context.' },
       { title: 'Activity Hub', slug: 'activity-hub', icon: 'i-lucide-activity', description: 'Unified notification centre with live feed, For You tab, and keyboard shortcuts for quick access.' },
+      { title: 'Smart Watch', slug: 'smart-watch', icon: 'i-lucide-bell-ring', description: 'AI-scored inbox, daily digest narrative, snooze, quiet hours, and semantic keyword subscriptions across every board.' },
       { title: 'Email Templates', slug: 'email-templates', icon: 'i-lucide-mail', description: 'Resend-powered email templates for notifications, invites, and client communications.' },
       { title: 'Automations', slug: 'automations', icon: 'i-lucide-zap', description: 'Trigger → action recipes. Auto-notify on status changes, assignments, and due dates.' },
     ]
