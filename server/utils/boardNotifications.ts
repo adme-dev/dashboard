@@ -131,7 +131,9 @@ export async function notifyBoardSubscribers(event: BoardEventNotification): Pro
             createNotification({
               userId: km.userId,
               type: mapEventToNotificationType(event.type),
-              title: `Keyword match: "${km.keyword}"`,
+              title: km.mode === 'semantic'
+                ? `Related to "${km.keyword}"`
+                : `Keyword match: "${km.keyword}"`,
               message,
               link,
               actorId: event.actorId,
@@ -143,6 +145,7 @@ export async function notifyBoardSubscribers(event: BoardEventNotification): Pro
                 taskTitle,
                 eventType: event.type,
                 matchedKeyword: km.keyword,
+                matchMode: km.mode,
               },
             })
           )

@@ -253,19 +253,37 @@ export async function notifyTaskAssigned(params: NotifyTaskAssignedParams) {
     console.error('Auto-subscribe assignee failed:', err)
   }
 
-  // Auto-acknowledge: if the assignee opted in, post a "Got it" comment on
-  // their behalf so the assigner knows they've been alerted.
+  // Auto-acknowledge: if the assignee opted in, post a comment on their
+  // behalf so the assigner knows they've been alerted. Phase E2 upgrades
+  // this from a static "Got it" to a Groq-drafted contextual reply that
+  // mentions the task title and the assigner's name. Falls back to the
+  // static template on Groq failure.
   try {
     const ackPref = await queryOne(
       `SELECT auto_ack_assignments FROM team_members WHERE id = $1`,
       [params.assigneeId]
     )
     if (ackPref?.auto_ack_assignments === true) {
+      let draft = `👋 Got it — thanks ${assigner.name}, I'll take a look.`
+      try {
+        const { generateGroqInsight, GROQ_MODELS } = await import('~~/server/utils/groqClient')
+        const prompt = `Write a SHORT (max 18 words), professional acknowledgement message that "${assignee.name}" might send when assigned to "${params.taskTitle}" by ${assigner.name}. Be warm but business-like. No emoji except a single 👋 at the start. No preamble, just the message text.`
+        const aiDraft = await generateGroqInsight(prompt, {
+          model: GROQ_MODELS.LLAMA_8B,
+          maxTokens: 60,
+          temperature: 0.4,
+          systemPrompt: 'You write short, professional acknowledgement comments. One sentence only. No quotes, no preamble.',
+        })
+        const cleaned = aiDraft.trim().replace(/^["']|["']$/g, '')
+        if (cleaned && cleaned.length <= 200) draft = cleaned
+      } catch {
+        // Stay with static template
+      }
       await queryOne(
         `INSERT INTO task_activities (task_id, user_id, activity_type, content)
          VALUES ($1, $2, 'comment', $3)
          RETURNING id`,
-        [params.taskId, params.assigneeId, '👋 Got it — thanks for the assignment.']
+        [params.taskId, params.assigneeId, draft]
       )
     }
   } catch (err) {

@@ -116,6 +116,22 @@ watch(isNotificationsSlideoverOpen, async (isOpen) => {
   if (isOpen && notifications.value.length === 0) {
     await fetchNotifications()
   }
+  // Phase E2: refine importance scores once per session via Workers AI.
+  // Best-effort and silent — UI doesn't block on it.
+  if (isOpen && import.meta.client) {
+    try {
+      const key = 'notif-importance-refined'
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, String(Date.now()))
+        $fetch('/api/notifications/refine-scores', { method: 'POST' })
+          .then(async () => {
+            // Re-fetch with current sort to pick up updated scores
+            await fetchNotifications({ sort: inboxSort.value })
+          })
+          .catch(() => { /* silent */ })
+      }
+    } catch { /* silent — sessionStorage may be unavailable */ }
+  }
 })
 
 // Handle notification click

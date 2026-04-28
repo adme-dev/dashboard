@@ -48,6 +48,7 @@
                     <UButton label="End of day" variant="soft" size="xs" color="neutral" @click="snoozeUntilEndOfDay()" />
                     <UButton label="Tomorrow" variant="soft" size="xs" color="neutral" @click="snoozeUntilTomorrow8am()" />
                     <UButton label="Next workday" variant="soft" size="xs" color="neutral" @click="snoozeUntilNextWorkday()" />
+                    <UButton label="Custom…" variant="soft" size="xs" color="neutral" @click="openCustomSnooze = true" />
                   </div>
                 </div>
               </div>
@@ -82,6 +83,26 @@
           :board-id="boardId"
           @saved="onSettingsSaved"
         />
+
+        <!-- Custom snooze date/time picker -->
+        <UModal v-model:open="openCustomSnooze" :ui="{ content: 'max-w-sm' }">
+          <template #content>
+            <div class="p-5 space-y-4">
+              <h3 class="text-base font-semibold">Snooze until…</h3>
+              <UFormField label="Date" name="snooze_date">
+                <UInput v-model="customSnoozeDate" type="date" size="sm" />
+              </UFormField>
+              <UFormField label="Time" name="snooze_time">
+                <UInput v-model="customSnoozeTime" type="time" size="sm" />
+              </UFormField>
+              <p v-if="customSnoozeError" class="text-sm text-error">{{ customSnoozeError }}</p>
+              <div class="flex justify-end gap-2 pt-2">
+                <UButton label="Cancel" variant="ghost" color="neutral" @click="openCustomSnooze = false" />
+                <UButton label="Snooze" color="primary" @click="applyCustomSnooze" />
+              </div>
+            </div>
+          </template>
+        </UModal>
 
         <UButton color="primary" icon="i-lucide-plus" size="sm" @click="$emit('newItem')">
           New Item
@@ -225,6 +246,42 @@ async function snoozeUntilEndOfDay() {
     d.setHours(23, 59, 0, 0)
   }
   await applySnooze(d)
+}
+
+// Custom snooze
+const openCustomSnooze = ref(false)
+const customSnoozeDate = ref('')
+const customSnoozeTime = ref('')
+const customSnoozeError = ref<string | null>(null)
+
+watch(openCustomSnooze, (isOpen) => {
+  if (!isOpen) return
+  // Default to tomorrow 9am in local time
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  d.setHours(9, 0, 0, 0)
+  customSnoozeDate.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  customSnoozeTime.value = '09:00'
+  customSnoozeError.value = null
+})
+
+async function applyCustomSnooze() {
+  customSnoozeError.value = null
+  if (!customSnoozeDate.value || !customSnoozeTime.value) {
+    customSnoozeError.value = 'Pick a date and time.'
+    return
+  }
+  const target = new Date(`${customSnoozeDate.value}T${customSnoozeTime.value}`)
+  if (isNaN(target.getTime())) {
+    customSnoozeError.value = 'Invalid date or time.'
+    return
+  }
+  if (target.getTime() <= Date.now()) {
+    customSnoozeError.value = 'Pick a future time.'
+    return
+  }
+  await applySnooze(target)
+  openCustomSnooze.value = false
 }
 
 async function snoozeUntilNextWorkday() {
