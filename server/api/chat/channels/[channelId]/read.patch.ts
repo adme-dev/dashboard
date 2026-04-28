@@ -13,8 +13,11 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Channel ID required' })
   }
 
-  const { messageId } = body
-  if (!messageId || typeof messageId !== 'number') {
+  // Postgres BIGINT ids serialize as strings in JSON, so accept number or
+  // numeric string and coerce to a positive integer.
+  const raw = body?.messageId
+  const messageId = typeof raw === 'number' ? raw : Number(raw)
+  if (!Number.isFinite(messageId) || messageId <= 0) {
     throw createError({ statusCode: 400, statusMessage: 'messageId (number) is required' })
   }
 
