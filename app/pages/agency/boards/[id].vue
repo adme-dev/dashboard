@@ -71,8 +71,9 @@
                     </button>
                   </UDropdownMenu>
                   <div
-                    class="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-500/60 transition-colors"
-                    :class="{ 'bg-blue-500/60': resizingColumnId === col.id }"
+                    class="absolute top-0 right-0 h-full w-2 cursor-col-resize z-10 transition-colors after:absolute after:top-1 after:bottom-1 after:right-0 after:w-px after:bg-blue-500/0 group-hover:after:bg-blue-500/30 hover:!bg-blue-500/30 hover:after:!bg-blue-500 hover:after:!w-0.5 active:!bg-blue-500/50"
+                    :class="{ '!bg-blue-500/50 after:!bg-blue-500 after:!w-0.5': resizingColumnId === col.id }"
+                    title="Drag to resize"
                     @mousedown="onColumnResizeStart($event, col)"
                     @click.stop
                   />
