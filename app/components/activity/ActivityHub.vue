@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useDraggable, useWindowSize } from '@vueuse/core'
+import { useDraggable, useWindowSize, useLocalStorage } from '@vueuse/core'
 
 const { isOpen, hidden, activeTab, sizeMode, savedPosition, totalUnreadBadge, toggle } = useActivityHub()
 
@@ -8,8 +8,64 @@ const headerRef = ref<InstanceType<any> | null>(null)
 
 const { width: winW, height: winH } = useWindowSize()
 
-const panelWidth = computed(() => sizeMode.value === 'compact' ? 400 : 480)
-const panelHeight = computed(() => sizeMode.value === 'compact' ? 520 : 650)
+// Free-resize: when the user drags the resize handle, we record an explicit
+// size that overrides the sizeMode preset. Toggling sizeMode clears these
+// (so the toggle still feels like "reset to preset").
+const userWidth = useLocalStorage<number | null>('activity-hub-user-width', null)
+const userHeight = useLocalStorage<number | null>('activity-hub-user-height', null)
+
+const MIN_W = 320
+const MIN_H = 380
+const MAX_W = 900
+const MAX_H = 1000
+
+const presetWidth = computed(() => sizeMode.value === 'compact' ? 400 : 480)
+const presetHeight = computed(() => sizeMode.value === 'compact' ? 520 : 650)
+
+const panelWidth = computed(() => userWidth.value ?? presetWidth.value)
+const panelHeight = computed(() => userHeight.value ?? presetHeight.value)
+
+// Reset custom size when user explicitly toggles between compact/expanded.
+watch(sizeMode, () => {
+  userWidth.value = null
+  userHeight.value = null
+})
+
+const isResizing = ref(false)
+
+function startResize(e: MouseEvent) {
+  e.preventDefault()
+  e.stopPropagation()
+  isResizing.value = true
+  const startCursorX = e.clientX
+  const startCursorY = e.clientY
+  const startW = panelWidth.value
+  const startH = panelHeight.value
+  const startX = x.value
+  const startY = y.value
+
+  function onMove(ev: MouseEvent) {
+    // Drag from top-left corner: moving up-and-left grows the panel while
+    // keeping the bottom-right corner anchored.
+    const dx = startCursorX - ev.clientX
+    const dy = startCursorY - ev.clientY
+    const newW = Math.min(MAX_W, Math.max(MIN_W, startW + dx))
+    const newH = Math.min(MAX_H, Math.max(MIN_H, startH + dy))
+    userWidth.value = newW
+    userHeight.value = newH
+    x.value = startX - (newW - startW)
+    y.value = startY - (newH - startH)
+  }
+
+  function onUp() {
+    isResizing.value = false
+    window.removeEventListener('mousemove', onMove)
+    window.removeEventListener('mouseup', onUp)
+  }
+
+  window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup', onUp)
+}
 
 const MARGIN = 24
 
@@ -74,7 +130,7 @@ watch(isOpen, (open) => {
     <div
       v-show="isOpen && !hidden"
       ref="panelEl"
-      class="fixed z-50 rounded-xl shadow-xl border border-default bg-default flex flex-col overflow-hidden"
+      class="fixed z-50 rounded-xl shadow-xl border-2 border-neutral-300 dark:border-neutral-700 bg-default flex flex-col overflow-hidden"
       :style="{
         width: `${panelWidth}px`,
         height: `${panelHeight}px`,
@@ -82,6 +138,16 @@ watch(isOpen, (open) => {
         top: `${y}px`,
       }"
     >
+      <!-- Resize handle: drag from the top-left corner to grow/shrink the
+           panel while keeping the bottom-right corner anchored. -->
+      <div
+        class="absolute top-0 left-0 w-4 h-4 z-30 cursor-nwse-resize group/resize"
+        :class="isResizing ? 'bg-primary/10' : ''"
+        @mousedown="startResize"
+      >
+        <div class="absolute top-1 left-1 w-2 h-2 border-l-2 border-t-2 border-muted group-hover/resize:border-primary transition-colors" />
+      </div>
+
       <ActivityHubHeader ref="headerRef" />
       <ActivityHubTabs />
 
