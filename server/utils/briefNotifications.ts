@@ -199,6 +199,46 @@ export async function notifyBriefAssigned(params: {
 }
 
 /**
+ * Notify on brief assignee change. Wraps notifyBriefAssigned with the
+ * skip-unchanged / skip-unassign / skip-self guards every caller needs.
+ */
+export interface NotifyBriefAssigneeChangedParams {
+  briefId: string
+  briefTitle: string
+  referenceNumber: string
+  oldAssigneeId: string | null
+  newAssigneeId: string | null
+  actorId: string
+}
+
+export type NotifyBriefAssigneeChangedResult =
+  | { notified: true }
+  | { notified: false; reason: 'unchanged' | 'unassigned' | 'self_assignment' }
+
+export async function notifyBriefAssigneeChanged(
+  params: NotifyBriefAssigneeChangedParams
+): Promise<NotifyBriefAssigneeChangedResult> {
+  if (params.oldAssigneeId === params.newAssigneeId) {
+    return { notified: false, reason: 'unchanged' }
+  }
+  if (!params.newAssigneeId) {
+    return { notified: false, reason: 'unassigned' }
+  }
+  if (params.newAssigneeId === params.actorId) {
+    return { notified: false, reason: 'self_assignment' }
+  }
+
+  await notifyBriefAssigned({
+    briefId: params.briefId,
+    briefTitle: params.briefTitle,
+    referenceNumber: params.referenceNumber,
+    assigneeId: params.newAssigneeId,
+    assignerId: params.actorId,
+  })
+  return { notified: true }
+}
+
+/**
  * Notify watchers/admins when a brief is submitted
  */
 export async function notifyBriefSubmitted(params: {

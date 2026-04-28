@@ -7,6 +7,7 @@
 
 import { queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { notifyBriefAssigneeChanged } from '~~/server/utils/briefNotifications'
 
 interface UpdateBriefBody {
   title?: string
@@ -37,9 +38,9 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    // Check if brief exists
+    // Check if brief exists (also pull fields needed for the assignment notification)
     const brief = await queryOne(
-      `SELECT id, template_id, status FROM briefs WHERE id = $1`,
+      `SELECT id, template_id, status, assigned_to, title, reference_number FROM briefs WHERE id = $1`,
       [briefId]
     )
 
@@ -184,6 +185,18 @@ export default defineEventHandler(async (event) => {
         VALUES ($1, $2, 'updated', $3)
       `, [briefId, user.id, JSON.stringify({ updatedFields: Object.keys(body) })])
     })
+
+    // Notify the new assignee (helper handles unchanged/unassign/self skips)
+    if (body.assignedTo !== undefined) {
+      notifyBriefAssigneeChanged({
+        briefId: briefId!,
+        briefTitle: brief.title,
+        referenceNumber: brief.reference_number,
+        oldAssigneeId: brief.assigned_to,
+        newAssigneeId: body.assignedTo || null,
+        actorId: user.id,
+      }).catch(err => console.error('Failed to send brief assignment notification:', err))
+    }
 
     // Return updated brief
     const updated = await queryOne(`
