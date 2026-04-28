@@ -39,6 +39,7 @@ export default defineEventHandler(async (event) => {
         notifyInapp: s.notify_inapp,
         notifyEmail: s.notify_email,
         isMuted: s.is_muted,
+        snoozeUntil: s.snooze_until,
         createdAt: s.created_at,
       })),
     }

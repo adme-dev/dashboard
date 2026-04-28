@@ -5,6 +5,7 @@
 import { queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { notifyTaskAssigned } from '~~/server/utils/notifications'
+import { autoSubscribeIfEnabled } from '~~/server/utils/subscriptions'
 
 function isUUID(str: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str)
@@ -210,6 +211,12 @@ export default defineEventHandler(async (event) => {
         dueDate: task.due_date
       }).catch(err => console.error('Failed to send task assignment notification:', err))
     }
+
+    // Auto-subscribe creator to follow-up activity on the task they just created
+    // (item-level scope so the board doesn't fire-hose them).
+    autoSubscribeIfEnabled(user.id, task.department_id, task.id).catch(err =>
+      console.error('Auto-subscribe creator failed:', err)
+    )
 
     return {
       id: task.id,

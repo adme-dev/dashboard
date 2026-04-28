@@ -16,6 +16,21 @@ export async function autoSubscribe(userId: string, boardId: string, itemId?: st
 }
 
 /**
+ * Auto-subscribe respecting the user's `auto_subscribe_on_participation` preference.
+ * Used by participation triggers (task creation, comment, assignment, mention).
+ * Wrap in try/catch at call site — failure here must never break the primary action.
+ */
+export async function autoSubscribeIfEnabled(userId: string, boardId: string, itemId?: string): Promise<void> {
+  const row = await queryOne(
+    `SELECT auto_subscribe_on_participation FROM team_members WHERE id = $1`,
+    [userId]
+  )
+  // Default true if column missing (Phase A pre-migration) or row not found.
+  if (row?.auto_subscribe_on_participation === false) return
+  await autoSubscribe(userId, boardId, itemId)
+}
+
+/**
  * Get all subscribers who should be notified for a given event.
  * Checks board-level, item-level, and column-level subscriptions.
  * Filters by event type and muted status.
@@ -29,7 +44,11 @@ export async function getSubscribers(params: {
   const { boardId, itemId, columnId, eventType } = params
 
   // Build conditions to match board-level, item-level, and column-level subs
-  const conditions: string[] = ['bs.board_id = $1', 'bs.is_muted = false']
+  const conditions: string[] = [
+    'bs.board_id = $1',
+    'bs.is_muted = false',
+    '(bs.snooze_until IS NULL OR bs.snooze_until <= NOW())',
+  ]
   const values: any[] = [boardId]
   let idx = 2
 

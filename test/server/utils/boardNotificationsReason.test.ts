@@ -92,4 +92,22 @@ describe('notifyBoardSubscribers reason inference', () => {
 
     expect(mockCreateNotification).not.toHaveBeenCalled()
   })
+
+  it('still passes through subscribers returned (snooze filtering happens in getSubscribers, not here)', async () => {
+    // Confirms that the dispatcher itself doesn't filter by snooze — the snooze
+    // filter lives in the SQL inside getSubscribers, so anything getSubscribers
+    // returns is something the user wants to see.
+    mockGetSubscribers.mockResolvedValueOnce([
+      { userId: 'u1', notifyInapp: true, notifyEmail: false, itemId: null },
+    ])
+
+    await notifyBoardSubscribers({
+      boardId: 'b1',
+      type: 'cell_updated',
+      taskId: 't1',
+      actorId: 'actor',
+    })
+
+    expect(mockCreateNotification).toHaveBeenCalledTimes(1)
+  })
 })

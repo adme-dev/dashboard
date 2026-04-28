@@ -519,15 +519,48 @@
             size="xs"
             @click="showChat = !showChat"
           />
-          <UButton
-            :icon="itemSubscribed ? 'i-lucide-bell-ring' : 'i-lucide-bell'"
-            :variant="itemSubscribed ? 'soft' : 'ghost'"
-            :color="itemSubscribed ? 'primary' : 'neutral'"
-            size="xs"
-            @click="toggleItemSubscription"
-          >
-            {{ itemSubscribed ? 'Watching' : 'Watch' }}
-          </UButton>
+          <UPopover>
+            <UButton
+              :icon="itemSubscribed ? 'i-lucide-bell-ring' : 'i-lucide-bell'"
+              :variant="itemSubscribed ? 'soft' : 'ghost'"
+              :color="itemSubscribed ? 'primary' : 'neutral'"
+              size="xs"
+            >
+              {{ itemSubscribed ? 'Watching' : 'Watch' }}
+            </UButton>
+            <template #content>
+              <div class="p-2 w-56 space-y-0.5">
+                <p class="text-xs font-medium px-2 py-1 text-muted">This item only</p>
+                <div
+                  v-for="opt in itemSubscribeOptions"
+                  :key="opt.value"
+                  class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-elevated/50 cursor-pointer text-sm"
+                  @click="handleItemSubscribe(opt.value)"
+                >
+                  <UIcon :name="opt.icon" class="w-4 h-4" />
+                  <span>{{ opt.label }}</span>
+                  <UIcon v-if="itemSubscriptionLevel === opt.value" name="i-lucide-check" class="w-4 h-4 ml-auto text-primary" />
+                </div>
+                <div class="border-t border-default mt-1 pt-1">
+                  <div
+                    class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-elevated/50 cursor-pointer text-sm"
+                    @click="openItemSettings = true"
+                  >
+                    <UIcon name="i-lucide-settings-2" class="w-4 h-4" />
+                    <span>Custom…</span>
+                    <UIcon v-if="itemSubscriptionLevel === 'custom'" name="i-lucide-check" class="w-4 h-4 ml-auto text-primary" />
+                  </div>
+                </div>
+              </div>
+            </template>
+          </UPopover>
+          <BoardWatchSettings
+            v-if="selectedTaskId"
+            v-model:open="openItemSettings"
+            :board-id="boardId"
+            :item-id="selectedTaskId"
+            @saved="onItemSettingsSaved"
+          />
         </div>
       </div>
     </template>
@@ -609,6 +642,7 @@ import BoardGroupSummary from '~/components/board/BoardGroupSummary.vue'
 import BoardColumnConfig from '~/components/board/BoardColumnConfig.vue'
 import BoardColumnTypeSelector from '~/components/board/BoardColumnTypeSelector.vue'
 import BoardExportModal from '~/components/board/BoardExportModal.vue'
+import BoardWatchSettings from '~/components/board/BoardWatchSettings.vue'
 import BoardTemplateChooser from '~/components/board/BoardTemplateChooser.vue'
 import BoardAutomationBuilder from '~/components/board/BoardAutomationBuilder.vue'
 import BoardChatFeedSettings from '~/components/board/BoardChatFeedSettings.vue'
@@ -757,36 +791,73 @@ const tabs = [
 // --- Item Subscription ---
 
 const itemSubscribed = ref(false)
+const itemSubscriptionLevel = ref<string | null>(null)
+const openItemSettings = ref(false)
+
+const itemSubscribeOptions = [
+  { value: 'all', label: 'All activity', icon: 'i-lucide-bell-ring' },
+  { value: 'mentions', label: 'Mentions only', icon: 'i-lucide-at-sign' },
+  { value: 'muted', label: 'Muted', icon: 'i-lucide-bell-off' },
+]
+
+function classifyItemLevel(sub: any): string {
+  if (sub.isMuted) return 'muted'
+  const events: string[] = sub.events || []
+  if (events.length === 0) return 'all'
+  if (events.length === 1 && events[0] === 'task_mentioned') return 'mentions'
+  return 'custom'
+}
 
 async function checkItemSubscription(taskId: string) {
   itemSubscribed.value = false
+  itemSubscriptionLevel.value = null
   try {
     const { subscriptions } = await $fetch<{ subscriptions: any[] }>(`/api/agency/boards/${boardId.value}/subscriptions`)
-    itemSubscribed.value = subscriptions.some((s: any) => s.itemId === taskId)
+    const sub = subscriptions.find((s: any) => s.itemId === taskId && !s.columnId)
+    if (sub) {
+      itemSubscribed.value = true
+      itemSubscriptionLevel.value = classifyItemLevel(sub)
+    }
   } catch {
     // Non-critical
   }
 }
 
-async function toggleItemSubscription() {
+async function handleItemSubscribe(level: string) {
   if (!selectedTaskId.value) return
   try {
-    if (itemSubscribed.value) {
+    if (level === itemSubscriptionLevel.value) {
+      // Toggle off
       await $fetch(`/api/agency/boards/${boardId.value}/unsubscribe`, {
         method: 'DELETE',
         params: { itemId: selectedTaskId.value },
       })
       itemSubscribed.value = false
-    } else {
-      await $fetch(`/api/agency/boards/${boardId.value}/subscribe`, {
-        method: 'POST',
-        body: { itemId: selectedTaskId.value },
-      })
-      itemSubscribed.value = true
+      itemSubscriptionLevel.value = null
+      return
     }
+    const events = level === 'mentions' ? ['task_mentioned'] : []
+    const isMuted = level === 'muted'
+    await $fetch(`/api/agency/boards/${boardId.value}/subscribe`, {
+      method: 'POST',
+      body: {
+        itemId: selectedTaskId.value,
+        events,
+        notifyInapp: true,
+        notifyEmail: false,
+        isMuted,
+      },
+    })
+    itemSubscribed.value = true
+    itemSubscriptionLevel.value = level
   } catch (err) {
-    console.error('Item subscribe toggle failed:', err)
+    console.error('Item subscribe failed:', err)
   }
+}
+
+function onItemSettingsSaved(payload: { subscribed: boolean; level: string | null }) {
+  itemSubscribed.value = payload.subscribed
+  itemSubscriptionLevel.value = payload.level
 }
 
 // --- Task Actions ---

@@ -5,6 +5,7 @@
 
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { sendTaskAssignedEmail, sendMentionEmail, sendApprovalRequestEmail, sendDueReminderEmail } from '~~/server/utils/email'
+import { autoSubscribeIfEnabled } from '~~/server/utils/subscriptions'
 
 const baseUrl = process.env.APP_URL || 'http://localhost:3000'
 
@@ -229,6 +230,16 @@ export async function notifyTaskAssigned(params: NotifyTaskAssignedParams) {
     }
   })
 
+  // Auto-subscribe the assignee at item level so they get follow-up activity.
+  try {
+    const taskRow = await queryOne(`SELECT department_id FROM tasks WHERE id = $1`, [params.taskId])
+    if (taskRow?.department_id) {
+      await autoSubscribeIfEnabled(params.assigneeId, taskRow.department_id, params.taskId)
+    }
+  } catch (err) {
+    console.error('Auto-subscribe assignee failed:', err)
+  }
+
   // Send email notification (check preference)
   const prefs = assignee.notification_preferences || {}
   if (prefs.email_task_assigned !== false) {
@@ -361,6 +372,16 @@ export async function notifyMention(params: NotifyMentionParams) {
       commentSnippet: params.commentSnippet.substring(0, 100)
     }
   })
+
+  // Auto-subscribe the mentioned user at item level.
+  try {
+    const taskRow = await queryOne(`SELECT department_id FROM tasks WHERE id = $1`, [params.taskId])
+    if (taskRow?.department_id) {
+      await autoSubscribeIfEnabled(params.mentionedUserId, taskRow.department_id, params.taskId)
+    }
+  } catch (err) {
+    console.error('Auto-subscribe mentioned user failed:', err)
+  }
 
   // Send email notification (check preference)
   const prefs = mentioned.notification_preferences || {}

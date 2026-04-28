@@ -10,6 +10,7 @@ interface SubscribeBody {
   notifyInapp?: boolean
   notifyEmail?: boolean
   isMuted?: boolean
+  snoozeUntil?: string | null
 }
 
 export default defineEventHandler(async (event) => {
@@ -28,20 +29,23 @@ export default defineEventHandler(async (event) => {
   const isMuted = body.isMuted ?? false
   const itemId = body.itemId || null
   const columnId = body.columnId || null
+  // Explicit null clears snooze; undefined leaves whatever we're inserting (null on insert, current on update).
+  const snoozeUntil = body.snoozeUntil ? new Date(body.snoozeUntil) : null
 
   try {
     const sub = await queryOne(`
-      INSERT INTO board_subscriptions (user_id, board_id, item_id, column_id, events, notify_inapp, notify_email, is_muted)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO board_subscriptions (user_id, board_id, item_id, column_id, events, notify_inapp, notify_email, is_muted, snooze_until)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       ON CONFLICT (user_id, board_id, COALESCE(item_id, '00000000-0000-0000-0000-000000000000'), COALESCE(column_id, '00000000-0000-0000-0000-000000000000'))
       DO UPDATE SET
         events = EXCLUDED.events,
         notify_inapp = EXCLUDED.notify_inapp,
         notify_email = EXCLUDED.notify_email,
         is_muted = EXCLUDED.is_muted,
+        snooze_until = EXCLUDED.snooze_until,
         updated_at = NOW()
       RETURNING *
-    `, [user.id, boardId, itemId, columnId, events, notifyInapp, notifyEmail, isMuted])
+    `, [user.id, boardId, itemId, columnId, events, notifyInapp, notifyEmail, isMuted, snoozeUntil])
 
     return {
       id: sub.id,
@@ -52,6 +56,7 @@ export default defineEventHandler(async (event) => {
       notifyInapp: sub.notify_inapp,
       notifyEmail: sub.notify_email,
       isMuted: sub.is_muted,
+      snoozeUntil: sub.snooze_until,
       createdAt: sub.created_at,
     }
   } catch (error: any) {

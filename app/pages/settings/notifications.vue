@@ -78,11 +78,17 @@ const state = reactive<{ [key: string]: boolean }>({
   inapp_chat_dm: true
 })
 
+const autoSubscribeOnParticipation = ref(true)
+
 // Fetch preferences on mount
 onMounted(async () => {
   try {
-    const { preferences } = await $fetch<{ preferences: Record<string, boolean> }>('/api/notifications/preferences')
+    const { preferences, autoSubscribeOnParticipation: aso } = await $fetch<{
+      preferences: Record<string, boolean>
+      autoSubscribeOnParticipation?: boolean
+    }>('/api/notifications/preferences')
     Object.assign(state, preferences)
+    if (typeof aso === 'boolean') autoSubscribeOnParticipation.value = aso
   } catch (error) {
     console.error('Failed to load notification preferences:', error)
     toast.add({
@@ -94,6 +100,19 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+async function onAutoSubscribeChange(value: boolean) {
+  try {
+    await $fetch('/api/notifications/preferences', {
+      method: 'PUT',
+      body: { autoSubscribeOnParticipation: value }
+    })
+    toast.add({ title: 'Preference saved', color: 'success', duration: 2000 })
+  } catch {
+    autoSubscribeOnParticipation.value = !value
+    toast.add({ title: 'Failed to save preference', color: 'error', duration: 3000 })
+  }
+}
 
 const sections = [{
   title: 'Email Notifications',
@@ -268,6 +287,29 @@ async function onChange(field: string, value: boolean) {
             </p>
           </div>
         </div>
+      </UPageCard>
+    </div>
+
+    <!-- Auto-subscribe on participation -->
+    <div v-if="!loading">
+      <UPageCard
+        title="Watching"
+        description="What you automatically subscribe to as you work."
+        variant="naked"
+        class="mb-4"
+      />
+      <UPageCard variant="subtle">
+        <UFormField
+          name="auto_subscribe_on_participation"
+          label="Auto-watch when I participate"
+          description="Subscribe me to items I create, comment on, am assigned to, or am @mentioned in. Unwatch anytime from the Watching page."
+          class="flex items-center justify-between gap-2"
+        >
+          <USwitch
+            :model-value="autoSubscribeOnParticipation"
+            @update:model-value="(val: boolean) => { autoSubscribeOnParticipation = val; onAutoSubscribeChange(val) }"
+          />
+        </UFormField>
       </UPageCard>
     </div>
 

@@ -22,16 +22,34 @@
         <!-- Subscribe Button -->
         <UPopover>
           <UButton
-            :icon="isSubscribed ? 'i-lucide-bell-ring' : 'i-lucide-bell'"
+            :icon="isSnoozed ? 'i-lucide-moon' : (isSubscribed ? 'i-lucide-bell-ring' : 'i-lucide-bell')"
             :variant="isSubscribed ? 'soft' : 'ghost'"
             :color="isSubscribed ? 'primary' : 'neutral'"
             size="sm"
           >
-            {{ isSubscribed ? 'Watching' : 'Watch' }}
+            {{ isSnoozed ? `Snoozed (${snoozeRemaining})` : (isSubscribed ? 'Watching' : 'Watch') }}
           </UButton>
           <template #content>
             <div class="p-3 w-72 space-y-1">
               <BoardWatchSubscriberStack :board-id="boardId" />
+
+              <!-- Snooze section -->
+              <div class="border-b border-default mb-1 pb-2">
+                <div v-if="isSnoozed" class="px-2 py-1.5 flex items-center gap-2 text-sm">
+                  <UIcon name="i-lucide-moon" class="w-4 h-4 text-warning" />
+                  <span class="text-muted truncate">Snoozed for {{ snoozeRemaining }}</span>
+                  <UButton label="Cancel" variant="ghost" size="xs" color="neutral" class="ml-auto" @click="cancelSnooze" />
+                </div>
+                <div v-else class="px-2 py-1">
+                  <p class="text-xs font-medium text-muted uppercase tracking-wide mb-1">Snooze</p>
+                  <div class="flex flex-wrap gap-1">
+                    <UButton label="1h" variant="soft" size="xs" color="neutral" @click="snoozeFor(60)" />
+                    <UButton label="8h" variant="soft" size="xs" color="neutral" @click="snoozeFor(60 * 8)" />
+                    <UButton label="Tomorrow" variant="soft" size="xs" color="neutral" @click="snoozeUntilTomorrow8am()" />
+                  </div>
+                </div>
+              </div>
+
               <p class="text-sm font-medium px-2 pb-1">Board Notifications</p>
               <div
                 v-for="opt in subscribeOptions"
@@ -129,6 +147,31 @@ const views: { id: BoardViewType; label: string; icon: string }[] = [
 const isSubscribed = ref(false)
 const subscriptionLevel = ref<string | null>(null)
 const openSettings = ref(false)
+const currentBoardSub = ref<any | null>(null)
+const snoozeUntil = ref<string | null>(null)
+const now = ref(Date.now())
+
+const isSnoozed = computed(() => {
+  if (!snoozeUntil.value) return false
+  return new Date(snoozeUntil.value).getTime() > now.value
+})
+
+const snoozeRemaining = computed(() => {
+  if (!snoozeUntil.value) return ''
+  const diff = new Date(snoozeUntil.value).getTime() - now.value
+  if (diff <= 0) return ''
+  const minutes = Math.floor(diff / 60_000)
+  if (minutes < 60) return `${minutes}m left`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h left`
+  return `${Math.floor(hours / 24)}d left`
+})
+
+// Tick `now` every minute so the remaining counter and isSnoozed flag update
+// without a manual reload after the snooze expires.
+let tickHandle: ReturnType<typeof setInterval> | null = null
+onMounted(() => { tickHandle = setInterval(() => { now.value = Date.now() }, 60_000) })
+onBeforeUnmount(() => { if (tickHandle) clearInterval(tickHandle) })
 
 const subscribeOptions = [
   { value: 'all', label: 'All activity', icon: 'i-lucide-bell-ring' },
@@ -152,11 +195,56 @@ onMounted(async () => {
     if (boardSub) {
       isSubscribed.value = true
       subscriptionLevel.value = classifyLevel(boardSub)
+      currentBoardSub.value = boardSub
+      snoozeUntil.value = boardSub.snoozeUntil || null
     }
   } catch {
     // Silently fail — subscription check is non-critical
   }
 })
+
+async function snoozeFor(minutes: number) {
+  await applySnooze(new Date(Date.now() + minutes * 60_000))
+}
+
+async function snoozeUntilTomorrow8am() {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  d.setHours(8, 0, 0, 0)
+  await applySnooze(d)
+}
+
+async function cancelSnooze() {
+  await applySnooze(null)
+}
+
+async function applySnooze(until: Date | null) {
+  // Preserve current subscription state; if not subscribed, snoozing creates a default
+  // "all activity" subscription and immediately mutes it for the snooze window.
+  const sub = currentBoardSub.value
+  const body: any = {
+    events: sub?.events ?? [],
+    notifyInapp: sub?.notifyInapp ?? true,
+    notifyEmail: sub?.notifyEmail ?? false,
+    isMuted: sub?.isMuted ?? false,
+    snoozeUntil: until ? until.toISOString() : null,
+  }
+  try {
+    const updated = await $fetch<any>(`/api/agency/boards/${props.boardId}/subscribe`, { method: 'POST', body })
+    snoozeUntil.value = updated?.snoozeUntil || null
+    currentBoardSub.value = { ...sub, ...updated }
+    if (!isSubscribed.value) {
+      isSubscribed.value = true
+      subscriptionLevel.value = classifyLevel(updated)
+    }
+  } catch (err: any) {
+    toast.add({
+      title: until ? 'Could not snooze' : 'Could not cancel snooze',
+      description: err?.statusMessage || 'Please try again.',
+      color: 'error',
+    })
+  }
+}
 
 function onSettingsSaved(payload: { subscribed: boolean; level: string | null }) {
   isSubscribed.value = payload.subscribed

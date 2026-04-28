@@ -4,6 +4,7 @@
 
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { notifyMention, notifyTaskComment } from '~~/server/utils/notifications'
+import { autoSubscribeIfEnabled } from '~~/server/utils/subscriptions'
 
 interface AddCommentBody {
   content: string
@@ -30,7 +31,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Verify task exists and get details for notifications
-    const task = await queryOne('SELECT id, title, assignee_id, reporter_id FROM tasks WHERE id = $1', [id])
+    const task = await queryOne('SELECT id, title, assignee_id, reporter_id, department_id FROM tasks WHERE id = $1', [id])
     if (!task) {
       throw createError({
         statusCode: 404,
@@ -61,6 +62,13 @@ export default defineEventHandler(async (event) => {
         reporterId: task.reporter_id,
         commentSnippet: body.content.substring(0, 100)
       }).catch(err => console.error('Failed to send comment notification:', err))
+
+      // Auto-subscribe the commenter to this task's activity at item scope.
+      if (task.department_id) {
+        autoSubscribeIfEnabled(body.userId, task.department_id, id).catch(err =>
+          console.error('Auto-subscribe commenter failed:', err)
+        )
+      }
     }
 
     // Extract @mentions from content and notify users (separately from general comment notifications)

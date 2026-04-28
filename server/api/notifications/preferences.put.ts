@@ -33,27 +33,36 @@ const ALLOWED_KEYS = [
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
   const body = await readBody(event)
-  const { preferences } = body
+  const { preferences, autoSubscribeOnParticipation } = body
 
-  if (!preferences || typeof preferences !== 'object') {
+  if (!preferences && autoSubscribeOnParticipation === undefined) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Preferences object is required'
+      statusMessage: 'preferences object or autoSubscribeOnParticipation is required'
     })
   }
 
   // Filter to only allowed keys and validate values are booleans
   const sanitizedPreferences: Record<string, boolean> = {}
-  for (const key of ALLOWED_KEYS) {
-    if (key in preferences) {
-      if (typeof preferences[key] !== 'boolean') {
-        throw createError({
-          statusCode: 400,
-          statusMessage: `Preference ${key} must be a boolean`
-        })
+  if (preferences && typeof preferences === 'object') {
+    for (const key of ALLOWED_KEYS) {
+      if (key in preferences) {
+        if (typeof preferences[key] !== 'boolean') {
+          throw createError({
+            statusCode: 400,
+            statusMessage: `Preference ${key} must be a boolean`
+          })
+        }
+        sanitizedPreferences[key] = preferences[key]
       }
-      sanitizedPreferences[key] = preferences[key]
     }
+  }
+
+  if (autoSubscribeOnParticipation !== undefined && typeof autoSubscribeOnParticipation !== 'boolean') {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'autoSubscribeOnParticipation must be a boolean'
+    })
   }
 
   try {
@@ -70,17 +79,26 @@ export default defineEventHandler(async (event) => {
       ...sanitizedPreferences
     }
 
-    // Update preferences
-    const result = await queryOne(`
-      UPDATE team_members
-      SET notification_preferences = $2
-      WHERE id = $1
-      RETURNING notification_preferences
-    `, [user.id, JSON.stringify(merged)])
+    // Update preferences (and auto-subscribe column if provided)
+    const result = autoSubscribeOnParticipation !== undefined
+      ? await queryOne(`
+          UPDATE team_members
+          SET notification_preferences = $2,
+              auto_subscribe_on_participation = $3
+          WHERE id = $1
+          RETURNING notification_preferences, auto_subscribe_on_participation
+        `, [user.id, JSON.stringify(merged), autoSubscribeOnParticipation])
+      : await queryOne(`
+          UPDATE team_members
+          SET notification_preferences = $2
+          WHERE id = $1
+          RETURNING notification_preferences, auto_subscribe_on_participation
+        `, [user.id, JSON.stringify(merged)])
 
     return {
       success: true,
-      preferences: result?.notification_preferences || merged
+      preferences: result?.notification_preferences || merged,
+      autoSubscribeOnParticipation: result?.auto_subscribe_on_participation ?? true,
     }
   } catch (error) {
     console.error('Failed to update notification preferences:', error)

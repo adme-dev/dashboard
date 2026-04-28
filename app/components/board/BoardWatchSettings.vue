@@ -2,7 +2,7 @@
   <UModal v-model:open="open" :ui="{ content: 'max-w-md' }">
     <template #content>
       <div class="p-5 space-y-4">
-        <h3 class="text-base font-semibold">Notification Settings</h3>
+        <h3 class="text-base font-semibold">{{ props.itemId ? 'Item Notifications' : 'Board Notifications' }}</h3>
 
         <URadioGroup v-model="preset" :items="presetItems" />
 
@@ -32,7 +32,7 @@
 </template>
 
 <script setup lang="ts">
-const props = defineProps<{ boardId: string }>()
+const props = defineProps<{ boardId: string; itemId?: string }>()
 const emit = defineEmits<{ saved: [{ subscribed: boolean; level: string | null }] }>()
 
 const open = defineModel<boolean>('open', { default: false })
@@ -96,22 +96,25 @@ async function hydrate() {
     const { subscriptions } = await $fetch<{ subscriptions: any[] }>(
       `/api/agency/boards/${props.boardId}/subscriptions`
     )
-    const boardSub = subscriptions.find((s: any) => !s.itemId && !s.columnId)
-    if (!boardSub) {
+    // Match the right subscription scope: item-level if itemId set, else board-level.
+    const sub = props.itemId
+      ? subscriptions.find((s: any) => s.itemId === props.itemId && !s.columnId)
+      : subscriptions.find((s: any) => !s.itemId && !s.columnId)
+    if (!sub) {
       preset.value = 'all'
       Object.assign(selectedGroups, { items: true, status: true, fields: true, people: true, structure: true })
       emailEnabled.value = false
       return
     }
-    if (boardSub.isMuted) {
+    if (sub.isMuted) {
       preset.value = 'muted'
-      emailEnabled.value = !!boardSub.notifyEmail
+      emailEnabled.value = !!sub.notifyEmail
       return
     }
-    const { groups: g, matchesPreset } = eventsToGroups(boardSub.events || [])
+    const { groups: g, matchesPreset } = eventsToGroups(sub.events || [])
     Object.assign(selectedGroups, g)
     preset.value = matchesPreset || 'custom'
-    emailEnabled.value = !!boardSub.notifyEmail
+    emailEnabled.value = !!sub.notifyEmail
   } catch {
     // non-critical — leave defaults
   } finally {
@@ -132,7 +135,7 @@ watch(selectedGroups, () => {
 async function save() {
   saving.value = true
   try {
-    let body: { events: string[]; notifyInapp: boolean; notifyEmail: boolean; isMuted: boolean }
+    let body: { itemId?: string; events: string[]; notifyInapp: boolean; notifyEmail: boolean; isMuted: boolean }
     let level: string
 
     if (preset.value === 'muted') {
@@ -156,6 +159,8 @@ async function save() {
         level = 'custom'
       }
     }
+
+    if (props.itemId) body.itemId = props.itemId
 
     await $fetch(`/api/agency/boards/${props.boardId}/subscribe`, { method: 'POST', body })
     emit('saved', { subscribed: true, level })

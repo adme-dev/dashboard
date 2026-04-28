@@ -264,6 +264,7 @@ const footerNav = computed<NavigationMenuItem[]>(() => {
       { label: 'General', to: '/settings', exact: true, onSelect: close },
       { label: 'Members', to: '/settings/members', onSelect: close },
       { label: 'Notifications', to: '/settings/notifications', onSelect: close },
+      { label: 'Watching', to: '/agency/notifications/watching', onSelect: close },
       { label: 'Security', to: '/settings/security', onSelect: close },
       ...(canAccessAdmin.value ? [{ label: 'Admin', to: '/settings/admin', onSelect: close }] : []),
       { label: 'Integrations', to: '/settings/integrations/monday', onSelect: close },
