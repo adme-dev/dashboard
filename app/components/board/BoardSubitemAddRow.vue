@@ -4,7 +4,7 @@
     <div class="w-10 px-2 py-2 border-r border-gray-200 dark:border-neutral-700" />
 
     <!-- Add input -->
-    <div class="flex-1 min-w-[250px] px-4 py-1.5 border-r border-gray-200 dark:border-neutral-700">
+    <div class="flex-shrink-0 px-4 py-1.5 border-r border-gray-200 dark:border-neutral-700" :style="{ width: itemColWidth + 'px' }">
       <div class="flex items-center gap-1.5 pl-6">
         <UIcon name="i-lucide-plus" class="w-3.5 h-3.5 text-gray-400 dark:text-neutral-500 flex-shrink-0" />
         <input
@@ -41,6 +41,7 @@ defineEmits<{
 const newTitle = ref('')
 const { addSubitem } = useBoardSubitems()
 const toast = useToast()
+const itemColWidth = inject<Ref<number>>('itemColWidth', ref(320))
 
 async function handleAdd() {
   const title = newTitle.value.trim()

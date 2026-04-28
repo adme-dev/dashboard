@@ -1,7 +1,7 @@
 <template>
   <div class="flex items-center bg-gray-50/50 dark:bg-neutral-800/50 border-b border-gray-200 dark:border-neutral-700">
     <div class="w-10 px-2 py-2 border-r border-gray-200 dark:border-neutral-700"></div>
-    <div class="flex-1 min-w-[250px] px-4 py-2">
+    <div class="flex-shrink-0 px-4 py-2 border-r border-gray-200 dark:border-neutral-700" :style="{ width: itemColWidth + 'px' }">
       <div class="flex items-center gap-2">
         <UIcon name="i-lucide-plus" class="w-4 h-4 text-gray-400 dark:text-neutral-500" />
         <input
@@ -46,6 +46,7 @@ const emit = defineEmits<{
 const title = ref('')
 const loading = ref(false)
 const inputRef = ref<HTMLInputElement | null>(null)
+const itemColWidth = inject<Ref<number>>('itemColWidth', ref(320))
 
 async function handleAdd() {
   const trimmed = title.value.trim()

@@ -62,7 +62,16 @@
                     @update:model-value="selection.selectGroup(group.items, !!$event)"
                   />
                 </div>
-                <div class="flex-1 min-w-[250px] px-4 py-2 border-r border-gray-200 dark:border-neutral-700">Item</div>
+                <div class="relative flex-shrink-0 px-4 py-2 border-r border-gray-200 dark:border-neutral-700 flex items-center group/itemcol" :style="{ width: itemColWidth + 'px' }">
+                  <span class="truncate">Item</span>
+                  <div
+                    class="absolute top-0 right-0 h-full w-2 cursor-col-resize z-10 transition-colors after:absolute after:top-1 after:bottom-1 after:right-0 after:w-px after:bg-blue-500/0 group-hover/itemcol:after:bg-blue-500/30 hover:!bg-blue-500/30 hover:after:!bg-blue-500 hover:after:!w-0.5 active:!bg-blue-500/50"
+                    :class="{ '!bg-blue-500/50 after:!bg-blue-500 after:!w-0.5': resizingItemCol }"
+                    title="Drag to resize"
+                    @mousedown="onItemColResizeStart"
+                    @click.stop
+                  />
+                </div>
                 <div v-for="col in columns" :key="col.id" class="relative px-4 py-2 border-r border-gray-200 dark:border-neutral-700 flex items-center justify-between group" :style="{ width: (col.width || 150) + 'px' }">
                   <span class="truncate">{{ col.name }}</span>
                   <UDropdownMenu :items="columnMenuItems(col)">
@@ -93,7 +102,7 @@
                       @update:model-value="selection.toggle(item.id)"
                     />
                   </div>
-                  <div class="flex-1 min-w-[250px] px-4 py-3 border-r border-gray-200 dark:border-neutral-700">
+                  <div class="flex-shrink-0 px-4 py-3 border-r border-gray-200 dark:border-neutral-700" :style="{ width: itemColWidth + 'px' }">
                     <div class="flex items-center gap-1.5">
                       <!-- Subitem expand/collapse toggle — always visible when has subtasks, shown on hover otherwise -->
                       <button
@@ -975,6 +984,54 @@ function columnMenuItems(col: BoardColumn) {
 }
 
 const resizingColumnId = ref<string | null>(null)
+
+// --- Item column width (resizable, persisted per-board to localStorage) ---
+const ITEM_COL_DEFAULT = 320
+const ITEM_COL_MIN = 180
+const ITEM_COL_MAX = 800
+const itemColWidth = ref(ITEM_COL_DEFAULT)
+const resizingItemCol = ref(false)
+provide('itemColWidth', itemColWidth)
+
+function itemColStorageKey() {
+  return `board:${boardId.value}:itemColWidth`
+}
+
+watch(boardId, () => {
+  if (typeof window === 'undefined') return
+  const stored = window.localStorage.getItem(itemColStorageKey())
+  const parsed = stored ? parseInt(stored, 10) : NaN
+  itemColWidth.value = Number.isFinite(parsed) ? Math.max(ITEM_COL_MIN, Math.min(ITEM_COL_MAX, parsed)) : ITEM_COL_DEFAULT
+}, { immediate: true })
+
+function onItemColResizeStart(event: MouseEvent) {
+  event.preventDefault()
+  event.stopPropagation()
+
+  const startX = event.clientX
+  const startWidth = itemColWidth.value
+  resizingItemCol.value = true
+
+  function onMove(ev: MouseEvent) {
+    itemColWidth.value = Math.max(ITEM_COL_MIN, Math.min(ITEM_COL_MAX, startWidth + (ev.clientX - startX)))
+  }
+
+  function onUp() {
+    window.removeEventListener('mousemove', onMove)
+    window.removeEventListener('mouseup', onUp)
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    resizingItemCol.value = false
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(itemColStorageKey(), String(itemColWidth.value))
+    }
+  }
+
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup', onUp)
+}
 
 function onColumnResizeStart(event: MouseEvent, col: BoardColumn) {
   event.preventDefault()

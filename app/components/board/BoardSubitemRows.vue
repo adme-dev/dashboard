@@ -18,7 +18,7 @@
       </div>
 
       <!-- Title (indented) -->
-      <div class="flex-1 min-w-[250px] px-4 py-2.5 border-r border-gray-200 dark:border-neutral-700">
+      <div class="flex-shrink-0 px-4 py-2.5 border-r border-gray-200 dark:border-neutral-700" :style="{ width: itemColWidth + 'px' }">
         <div class="flex items-center gap-1.5 pl-6">
           <UIcon name="i-lucide-corner-down-right" class="w-3.5 h-3.5 text-gray-400 dark:text-neutral-500 flex-shrink-0" />
           <p class="text-sm text-gray-700 dark:text-neutral-300 truncate min-w-0 flex-1">{{ subitem.title }}</p>
@@ -61,7 +61,7 @@
       <div class="w-10 px-2 py-2.5 border-r border-gray-200 dark:border-neutral-700" />
 
       <!-- Title + board badge -->
-      <div class="flex-1 min-w-[250px] px-4 py-2.5 border-r border-gray-200 dark:border-neutral-700">
+      <div class="flex-shrink-0 px-4 py-2.5 border-r border-gray-200 dark:border-neutral-700" :style="{ width: itemColWidth + 'px' }">
         <div class="flex items-center gap-1.5 pl-6">
           <UIcon name="i-lucide-git-branch" class="w-3.5 h-3.5 text-purple-400 dark:text-purple-500 flex-shrink-0" />
           <p class="text-sm text-gray-700 dark:text-neutral-300 truncate min-w-0 flex-1">{{ linked.task.title }}</p>
@@ -142,6 +142,7 @@ const emit = defineEmits<{
 
 const toast = useToast()
 const { getSubitems, isLoading: isLoadingFn } = useBoardSubitems()
+const itemColWidth = inject<Ref<number>>('itemColWidth', ref(320))
 
 const subitems = computed(() => getSubitems(props.parentTaskId))
 const isLoading = computed(() => isLoadingFn(props.parentTaskId))
