@@ -139,7 +139,7 @@ const handleDragLeave = (e: DragEvent) => {
     <div
       v-if="!isCollapsed"
       ref="columnRef"
-      class="flex-1 overflow-y-auto p-3 bg-white dark:bg-neutral-800/50 border border-t-0 border-neutral-200 dark:border-neutral-700 rounded-b-lg min-h-[200px] transition-colors"
+      class="flex-1 overflow-y-auto p-3 space-y-2 bg-white dark:bg-neutral-800/50 border border-t-0 border-neutral-200 dark:border-neutral-700 rounded-b-lg min-h-[200px] transition-colors"
       :class="{ 'bg-[#13B5EA]/5 ring-2 ring-[#13B5EA]/20': isDragOver }"
       role="list"
       :aria-label="`Tasks in ${status.name}`"
