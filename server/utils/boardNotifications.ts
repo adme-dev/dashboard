@@ -9,6 +9,9 @@
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { createNotification } from '~~/server/utils/notifications'
 import { getSubscribers } from '~~/server/utils/subscriptions'
+import { sendBoardMemberAddedEmail } from '~~/server/utils/email'
+
+const baseUrl = process.env.APP_URL || 'http://localhost:3000'
 
 interface BoardEventNotification {
   boardId: string
@@ -256,4 +259,62 @@ function getActionDescription(type: string, changes?: Record<string, any>): stri
     default:
       return 'made changes'
   }
+}
+
+/**
+ * Notify a user when they're added as a member of a board (department).
+ * Skips self-add. Returns notified=false with reason for visibility/testing.
+ */
+export interface NotifyBoardMemberAddedParams {
+  memberId: string
+  boardId: string
+  boardName: string
+  actorId: string
+}
+
+export type NotifyBoardMemberAddedResult =
+  | { notified: true }
+  | { notified: false; reason: 'self_add' | 'member_not_found' }
+
+export async function notifyBoardMemberAdded(
+  params: NotifyBoardMemberAddedParams
+): Promise<NotifyBoardMemberAddedResult> {
+  if (params.memberId === params.actorId) {
+    return { notified: false, reason: 'self_add' }
+  }
+
+  const actor = await queryOne(`SELECT name FROM team_members WHERE id = $1`, [params.actorId])
+  const member = await queryOne(
+    `SELECT name, email, notification_preferences FROM team_members WHERE id = $1`,
+    [params.memberId]
+  )
+
+  if (!member) {
+    return { notified: false, reason: 'member_not_found' }
+  }
+
+  const adderName = actor?.name || 'Someone'
+
+  await createNotification({
+    userId: params.memberId,
+    type: 'board_member_added',
+    title: `Added to ${params.boardName}`,
+    message: `${adderName} added you to the "${params.boardName}" board`,
+    link: `/agency/boards/${params.boardId}`,
+    actorId: params.actorId,
+    metadata: { boardId: params.boardId, boardName: params.boardName },
+  })
+
+  const prefs = member.notification_preferences || {}
+  if (prefs.email_board_member_added !== false) {
+    await sendBoardMemberAddedEmail({
+      to: member.email,
+      name: member.name,
+      boardName: params.boardName,
+      adderName,
+      boardUrl: `${baseUrl}/agency/boards/${params.boardId}`,
+    })
+  }
+
+  return { notified: true }
 }

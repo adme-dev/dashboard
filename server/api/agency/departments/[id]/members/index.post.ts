@@ -3,6 +3,7 @@
  */
 
 import { queryOne } from '~~/server/utils/db'
+import { notifyBoardMemberAdded } from '~~/server/utils/boardNotifications'
 
 interface AddMemberBody {
   teamMemberId: string
@@ -11,6 +12,8 @@ interface AddMemberBody {
 }
 
 export default defineEventHandler(async (event) => {
+  const user = await requireAuth(event)
+
   const departmentId = getRouterParam(event, 'id')
   const body = await readBody<AddMemberBody>(event)
 
@@ -29,8 +32,8 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    // Verify department exists
-    const department = await queryOne('SELECT id FROM departments WHERE id = $1', [departmentId])
+    // Verify department exists (also pull name for the notification)
+    const department = await queryOne('SELECT id, name FROM departments WHERE id = $1', [departmentId])
     if (!department) {
       throw createError({
         statusCode: 404,
@@ -69,6 +72,14 @@ export default defineEventHandler(async (event) => {
       body.role || 'member',
       body.isPrimary ?? false,
     ])
+
+    // Notify the new member (helper handles self-add skip)
+    notifyBoardMemberAdded({
+      memberId: body.teamMemberId,
+      boardId: departmentId,
+      boardName: department.name,
+      actorId: user.id,
+    }).catch(err => console.error('Failed to send board member added notification:', err))
 
     return {
       membershipId: membership.id,

@@ -11,12 +11,14 @@ const state = reactive<{ [key: string]: boolean }>({
   email_task_due: true,
   email_approval_request: true,
   email_weekly_digest: false,
+  email_board_member_added: true,
   // In-app notifications
   inapp_task_assigned: true,
   inapp_task_mentioned: true,
   inapp_task_status: true,
   inapp_task_comment: true,
-  inapp_approval: true
+  inapp_approval: true,
+  inapp_board_member_added: true
 })
 
 // Fetch preferences on mount
@@ -59,6 +61,10 @@ const sections = [{
     name: 'email_weekly_digest',
     label: 'Weekly Digest',
     description: 'A summary of activity from the past week.'
+  }, {
+    name: 'email_board_member_added',
+    label: 'Board Memberships',
+    description: 'When someone adds you to a board.'
   }]
 }, {
   title: 'In-App Notifications',
@@ -83,6 +89,10 @@ const sections = [{
     name: 'inapp_approval',
     label: 'Approvals',
     description: 'When someone requests or completes an approval.'
+  }, {
+    name: 'inapp_board_member_added',
+    label: 'Board Memberships',
+    description: 'When someone adds you to a board.'
   }]
 }]
 

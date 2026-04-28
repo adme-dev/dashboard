@@ -28,6 +28,7 @@ export type NotificationType =
   | 'brief_commented'
   | 'brief_assigned'
   | 'brief_submitted'
+  | 'board_member_added'
 
 interface CreateNotificationParams {
   userId: string
@@ -89,6 +90,7 @@ const TYPE_TO_INAPP_PREF: Partial<Record<NotificationType, string>> = {
   approval_requested: 'inapp_approval',
   approval_completed: 'inapp_approval',
   approval_response: 'inapp_approval',
+  board_member_added: 'inapp_board_member_added',
 }
 
 /**

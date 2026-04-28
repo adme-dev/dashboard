@@ -891,6 +891,44 @@ export async function sendBoardChangeEmail(data: {
   }
 }
 
+export async function sendBoardMemberAddedEmail(data: {
+  to: string
+  name: string
+  boardName: string
+  adderName: string
+  boardUrl: string
+}): Promise<void> {
+  const client = getResendClient()
+  if (!client) {
+    console.log('[Email] Board member added email (no client) for', data.to)
+    return
+  }
+
+  const { html, text } = renderEmailTemplate({
+    title: `You've been added to ${escapeHtml(data.boardName)}`,
+    greeting: `Hi ${escapeHtml(data.name)},`,
+    bodyHtml: `
+      <p><strong>${escapeHtml(data.adderName)}</strong> added you to the <strong>${escapeHtml(data.boardName)}</strong> board.</p>
+      <p>You'll see updates from this board in your inbox and can jump in to collaborate.</p>
+    `,
+    ctaText: 'Open Board',
+    ctaUrl: data.boardUrl,
+  })
+
+  try {
+    await client.emails.send({
+      from: getFromHeader(),
+      to: data.to,
+      subject: `${data.adderName} added you to ${data.boardName}`,
+      html,
+      text,
+    })
+    console.log('[Email] Board member added email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send board member added email:', error)
+  }
+}
+
 /**
  * Send AI agent digest email
  */

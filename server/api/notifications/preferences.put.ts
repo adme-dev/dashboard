@@ -12,11 +12,13 @@ const ALLOWED_KEYS = [
   'email_task_due',
   'email_approval_request',
   'email_weekly_digest',
+  'email_board_member_added',
   'inapp_task_assigned',
   'inapp_task_mentioned',
   'inapp_task_status',
   'inapp_task_comment',
-  'inapp_approval'
+  'inapp_approval',
+  'inapp_board_member_added'
 ]
 
 export default defineEventHandler(async (event) => {

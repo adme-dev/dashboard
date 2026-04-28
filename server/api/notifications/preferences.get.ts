@@ -13,12 +13,14 @@ const DEFAULT_PREFERENCES = {
   email_task_due: true,
   email_approval_request: true,
   email_weekly_digest: false,
+  email_board_member_added: true,
   // In-app notifications
   inapp_task_assigned: true,
   inapp_task_mentioned: true,
   inapp_task_status: true,
   inapp_task_comment: true,
-  inapp_approval: true
+  inapp_approval: true,
+  inapp_board_member_added: true
 }
 
 export default defineEventHandler(async (event) => {
