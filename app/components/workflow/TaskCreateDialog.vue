@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { CalendarDate, parseDate, type DateValue } from '@internationalized/date'
+
 const props = defineProps<{
   open: boolean
   statuses: Array<{ id: string; name: string; color: string; category?: string }>
@@ -172,6 +174,35 @@ function handleAiKeydown(e: KeyboardEvent) {
   }
 }
 
+// Date picker helpers — bridge between ISO YYYY-MM-DD strings and CalendarDate
+function toCalendarDate(iso: string): DateValue | null {
+  if (!iso) return null
+  try {
+    return parseDate(iso.length > 10 ? iso.slice(0, 10) : iso)
+  } catch {
+    return null
+  }
+}
+
+const dateFormatter = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+
+function formatDate(iso: string): string {
+  if (!iso) return ''
+  const cd = toCalendarDate(iso)
+  if (!cd) return ''
+  return dateFormatter.format(new Date((cd as CalendarDate).year, (cd as CalendarDate).month - 1, (cd as CalendarDate).day))
+}
+
+const startDateModel = computed({
+  get: () => toCalendarDate(form.value.startDate),
+  set: (v) => { form.value.startDate = v ? v.toString() : '' }
+})
+
+const dueDateModel = computed({
+  get: () => toCalendarDate(form.value.dueDate),
+  set: (v) => { form.value.dueDate = v ? v.toString() : '' }
+})
+
 function toggleLabel(labelId: string) {
   const idx = form.value.labels.indexOf(labelId)
   if (idx === -1) {
@@ -241,9 +272,9 @@ async function createTask() {
           </div>
         </template>
 
-        <div class="space-y-5">
+        <div class="space-y-6">
           <!-- Zone A: AI Input -->
-          <div class="rounded-lg border border-default bg-elevated/30 p-4">
+          <div class="rounded-lg border border-default bg-elevated/30 p-3">
             <div class="flex items-center gap-2 mb-2">
               <UIcon name="i-lucide-sparkles" class="w-4 h-4 text-primary" />
               <span class="text-sm font-medium">AI Assist</span>
@@ -253,22 +284,25 @@ async function createTask() {
             <UTextarea
               v-model="aiInput"
               data-ai-input
-              placeholder="Describe what needs to be done... e.g. 'Create a campaign review for Acme, high priority, assign to someone in marketing, due next Friday'"
+              class="w-full"
+              :ui="{ base: 'w-full' }"
+              placeholder="Describe what needs to be done — e.g. 'Campaign review for Acme, high priority, marketing lead, due next Friday'"
               :rows="2"
               @keydown="handleAiKeydown"
             />
 
-            <div class="flex items-center justify-between mt-2">
-              <div class="flex flex-wrap gap-1.5">
-                <button
-                  v-for="chip in quickChips"
-                  :key="chip"
-                  class="text-[11px] px-2 py-0.5 rounded-full border border-default text-muted hover:text-default hover:bg-elevated transition-colors"
-                  @click="useChip(chip)"
-                >
-                  {{ chip.slice(0, 30) }}...
-                </button>
-              </div>
+            <div class="flex flex-wrap gap-1.5 mt-2">
+              <button
+                v-for="chip in quickChips"
+                :key="chip"
+                class="text-[11px] px-2 py-0.5 rounded-full border border-default text-muted hover:text-default hover:bg-elevated transition-colors"
+                @click="useChip(chip)"
+              >
+                {{ chip }}
+              </button>
+            </div>
+
+            <div class="flex justify-end mt-3">
               <UButton
                 size="xs"
                 :loading="aiLoading"
@@ -307,36 +341,49 @@ async function createTask() {
           </div>
 
           <!-- Zone B: Form Fields -->
-          <form class="space-y-4" @submit.prevent="createTask">
-            <!-- Title -->
-            <UFormField label="Title" required>
-              <template #label>
-                <span class="flex items-center gap-1">
-                  Title
-                  <UIcon v-if="isAiField('title')" name="i-lucide-sparkles" class="w-3 h-3 text-primary" />
-                </span>
-              </template>
-              <UInput
-                v-model="form.title"
-                placeholder="Enter task title..."
-                autofocus
-              />
-            </UFormField>
+          <form class="space-y-6" @submit.prevent="createTask">
+            <!-- Section: Details -->
+            <div class="space-y-4">
+              <p class="text-xs font-medium uppercase tracking-wide text-muted">Details</p>
 
-            <!-- Description -->
-            <UFormField label="Description">
-              <template #label>
-                <span class="flex items-center gap-1">
-                  Description
-                  <UIcon v-if="isAiField('description')" name="i-lucide-sparkles" class="w-3 h-3 text-primary" />
-                </span>
-              </template>
-              <UTextarea
-                v-model="form.description"
-                placeholder="Task description..."
-                :rows="3"
-              />
-            </UFormField>
+              <!-- Title -->
+              <UFormField label="Title" required>
+                <template #label>
+                  <span class="flex items-center gap-1">
+                    Title
+                    <UIcon v-if="isAiField('title')" name="i-lucide-sparkles" class="w-3 h-3 text-primary" />
+                  </span>
+                </template>
+                <UInput
+                  v-model="form.title"
+                  class="w-full"
+                  :ui="{ base: 'w-full' }"
+                  placeholder="What needs to be done?"
+                  autofocus
+                />
+              </UFormField>
+
+              <!-- Description -->
+              <UFormField label="Description">
+                <template #label>
+                  <span class="flex items-center gap-1">
+                    Description
+                    <UIcon v-if="isAiField('description')" name="i-lucide-sparkles" class="w-3 h-3 text-primary" />
+                  </span>
+                </template>
+                <UTextarea
+                  v-model="form.description"
+                  class="w-full"
+                  :ui="{ base: 'w-full' }"
+                  placeholder="Add context, links, or acceptance criteria…"
+                  :rows="4"
+                />
+              </UFormField>
+            </div>
+
+            <!-- Section: Assignment -->
+            <div class="space-y-4">
+              <p class="text-xs font-medium uppercase tracking-wide text-muted">Assignment</p>
 
             <!-- Status & Priority -->
             <div class="grid grid-cols-2 gap-4">
@@ -352,6 +399,7 @@ async function createTask() {
                   :items="statuses.map(s => ({ label: s.name, value: s.id, color: s.color }))"
                   placeholder="Select status..."
                   value-key="value"
+                  class="w-full"
                 >
                   <template #item="{ item }">
                     <span
@@ -374,6 +422,7 @@ async function createTask() {
                   v-model="form.priority"
                   :items="priorityOptions"
                   value-key="value"
+                  class="w-full"
                 />
               </UFormField>
             </div>
@@ -392,6 +441,7 @@ async function createTask() {
                   :members="teamMembers"
                   :ai-suggested-id="aiSuggestedAssigneeId"
                   :ai-reason="aiAssigneeReason"
+                  class="w-full"
                 />
               </UFormField>
 
@@ -407,47 +457,92 @@ async function createTask() {
                   :items="projects.map(p => ({ label: p.name, value: p.id }))"
                   placeholder="No project"
                   value-key="value"
+                  class="w-full"
                 />
               </UFormField>
             </div>
+            </div>
 
-            <!-- Dates & Hours -->
-            <div class="grid grid-cols-3 gap-4">
-              <UFormField label="Due Date">
-                <template #label>
-                  <span class="flex items-center gap-1">
-                    Due Date
-                    <UIcon v-if="isAiField('dueDate')" name="i-lucide-sparkles" class="w-3 h-3 text-primary" />
-                  </span>
-                </template>
-                <UInput v-model="form.dueDate" type="date" />
-              </UFormField>
+            <!-- Section: Schedule -->
+            <div class="space-y-4">
+              <p class="text-xs font-medium uppercase tracking-wide text-muted">Schedule</p>
 
-              <UFormField label="Start Date">
-                <template #label>
-                  <span class="flex items-center gap-1">
-                    Start Date
-                    <UIcon v-if="isAiField('startDate')" name="i-lucide-sparkles" class="w-3 h-3 text-primary" />
-                  </span>
-                </template>
-                <UInput v-model="form.startDate" type="date" />
-              </UFormField>
+              <!-- Dates & Hours -->
+              <div class="grid grid-cols-3 gap-4">
+                <UFormField label="Start Date">
+                  <template #label>
+                    <span class="flex items-center gap-1">
+                      Start Date
+                      <UIcon v-if="isAiField('startDate')" name="i-lucide-sparkles" class="w-3 h-3 text-primary" />
+                    </span>
+                  </template>
+                  <UPopover>
+                    <UButton
+                      color="neutral"
+                      variant="outline"
+                      icon="i-lucide-calendar"
+                      class="w-full justify-start font-normal"
+                      :class="!form.startDate && 'text-muted'"
+                    >
+                      {{ formatDate(form.startDate) || 'Pick start date' }}
+                    </UButton>
+                    <template #content>
+                      <UCalendar v-model="startDateModel" class="p-2" />
+                      <div v-if="form.startDate" class="border-t border-default p-2 flex justify-end">
+                        <UButton size="xs" variant="ghost" color="neutral" @click="form.startDate = ''">Clear</UButton>
+                      </div>
+                    </template>
+                  </UPopover>
+                </UFormField>
 
-              <UFormField label="Est. Hours">
-                <template #label>
-                  <span class="flex items-center gap-1">
-                    Est. Hours
-                    <UIcon v-if="isAiField('estimatedHours')" name="i-lucide-sparkles" class="w-3 h-3 text-primary" />
-                  </span>
-                </template>
-                <UInput
-                  v-model.number="form.estimatedHours"
-                  type="number"
-                  placeholder="0"
-                  :min="0"
-                  :step="0.5"
-                />
-              </UFormField>
+                <UFormField label="Due Date">
+                  <template #label>
+                    <span class="flex items-center gap-1">
+                      Due Date
+                      <UIcon v-if="isAiField('dueDate')" name="i-lucide-sparkles" class="w-3 h-3 text-primary" />
+                    </span>
+                  </template>
+                  <UPopover>
+                    <UButton
+                      color="neutral"
+                      variant="outline"
+                      icon="i-lucide-calendar"
+                      class="w-full justify-start font-normal"
+                      :class="!form.dueDate && 'text-muted'"
+                    >
+                      {{ formatDate(form.dueDate) || 'Pick due date' }}
+                    </UButton>
+                    <template #content>
+                      <UCalendar v-model="dueDateModel" class="p-2" />
+                      <div v-if="form.dueDate" class="border-t border-default p-2 flex justify-end">
+                        <UButton size="xs" variant="ghost" color="neutral" @click="form.dueDate = ''">Clear</UButton>
+                      </div>
+                    </template>
+                  </UPopover>
+                </UFormField>
+
+                <UFormField label="Est. Hours">
+                  <template #label>
+                    <span class="flex items-center gap-1">
+                      Est. Hours
+                      <UIcon v-if="isAiField('estimatedHours')" name="i-lucide-sparkles" class="w-3 h-3 text-primary" />
+                    </span>
+                  </template>
+                  <UInput
+                    v-model.number="form.estimatedHours"
+                    type="number"
+                    placeholder="0"
+                    :min="0"
+                    :step="0.5"
+                    class="w-full"
+                    :ui="{ base: 'w-full' }"
+                  >
+                    <template #trailing>
+                      <span class="text-xs text-muted">h</span>
+                    </template>
+                  </UInput>
+                </UFormField>
+              </div>
             </div>
 
             <!-- Labels -->

@@ -55,6 +55,7 @@ function getInitials(name: string) {
     :items="items"
     :placeholder="placeholder || 'Unassigned'"
     value-key="value"
+    class="w-full"
   >
     <template #item="{ item }">
       <div class="flex items-center gap-2 w-full min-w-0">
