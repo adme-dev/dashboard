@@ -133,8 +133,14 @@ const showCreateForm = ref(false)
 const newLabelName = ref('')
 const newLabelColor = ref('#6B7280')
 
-// Fetch all available labels
-const { data: labelsData, refresh: refreshLabels } = useFetch<Label[]>('/api/agency/labels')
+// Fetch all available labels — fixed key + `dedupe: 'defer'` so every
+// CellLabel instance on the board shares one in-flight request. Default
+// `cancel` dedupe lets each cell fire its own fetch on initial mount.
+const { data: labelsData, refresh: refreshLabels } = useAsyncData(
+  'agency-labels',
+  () => $fetch<Label[]>('/api/agency/labels'),
+  { dedupe: 'defer' },
+)
 const allLabels = computed<Label[]>(() => labelsData.value || [])
 
 const selectedIds = computed<string[]>(() => props.value?.jsonValue?.labelIds || [])

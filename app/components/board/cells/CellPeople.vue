@@ -131,11 +131,14 @@ const showPicker = ref(false)
 const searchQuery = ref('')
 const pickerPosition = ref({ x: 0, y: 0 })
 
-// Fetch team members from API — fixed key so every CellPeople instance on
-// the board shares one request instead of firing per cell.
+// Fetch team members from API — fixed key + `dedupe: 'defer'` so every
+// CellPeople instance on the board shares one in-flight request. Without
+// `defer`, Nuxt's default `cancel` mode lets each instance fall through and
+// fire its own fetch (the abort signal isn't propagated to `$fetch` here).
 const { data: teamData } = useAsyncData(
   'agency-team-members',
   () => $fetch('/api/agency/team-members'),
+  { dedupe: 'defer' },
 )
 const allPeople = computed<TeamMember[]>(() => (teamData.value as any)?.members || [])
 
