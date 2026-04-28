@@ -368,7 +368,11 @@ defineExpose({ scrollToBottom, scrollToUnread })
                 </button>
 
                 <!-- Emoji picker -->
-                <UPopover :open="emojiPickerMessageId === msg.id" @update:open="v => { if (!v) emojiPickerMessageId = null }">
+                <UPopover
+                  :open="emojiPickerMessageId === msg.id"
+                  :content="{ side: 'top', align: 'end', sideOffset: 6, collisionPadding: 8 }"
+                  @update:open="v => { if (!v) emojiPickerMessageId = null }"
+                >
                   <UTooltip text="Add reaction">
                     <UButton
                       icon="i-lucide-smile-plus"

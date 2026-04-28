@@ -238,7 +238,11 @@ defineExpose({ addReply, applyEdit, applyDelete, applyReaction })
             </button>
 
             <!-- Emoji picker -->
-            <UPopover :open="emojiPickerReplyId === reply.id" @update:open="v => { if (!v) emojiPickerReplyId = null }">
+            <UPopover
+              :open="emojiPickerReplyId === reply.id"
+              :content="{ side: 'top', align: 'end', sideOffset: 6, collisionPadding: 8 }"
+              @update:open="v => { if (!v) emojiPickerReplyId = null }"
+            >
               <UButton
                 icon="i-lucide-smile-plus"
                 variant="ghost"
