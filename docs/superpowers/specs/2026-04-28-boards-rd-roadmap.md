@@ -66,7 +66,19 @@ Each idea has: hook, agency-specific angle, and notes. Per-phase design docs wil
 
 ## Phasing
 
-Each phase is an independent unit of work that ships visible value. Earlier phases unlock later ones.
+Each phase is an independent unit of work that ships visible value. Earlier phases unlock later ones. **Phase 0** runs as a parallel tech-debt track that doesn't block any feature phase.
+
+### Phase 0 — Tech foundations (parallel track)
+
+**Goal:** pay down the debt that will otherwise compound through every phase below.
+
+**Includes:**
+- **Schema squash** — consolidate ~50 incremental migrations into a canonical `schema/boards-v2.sql`; deprecate the legacy `task_monday_column_values` fallback in `[id]/index.get.ts`
+- **Cell registry consolidation** — replace 18 of 24 thin cell wrappers with a `CellSmart.vue` driven by a column-type registry (`{ inputComponent, validator, parser, renderer }`)
+- **BoardRoom observability** — emit metrics from the Durable Object (events/sec, active connections, drops, presence lag); admin-only "realtime healthy / degraded" pill
+- **E2E test scaffolding** — Playwright suite for the canonical workflow (create board → add column → add item → edit cell → trigger automation → verify chat feed); runs against preview deploys
+
+**Why parallel:** none of these block the feature phases; they all reduce friction in later phases. Owner can pick them off opportunistically.
 
 ### Phase 1 — Signal Foundation
 
@@ -125,6 +137,9 @@ Each ships independently after Phase 1 lands:
 - **#13 Cross-board dependencies**
 - **#14 Board-as-code export**
 - **#15 Capacity map view** (needs Phase 1)
+- **#16 Formula columns** — wire the `formula` column type that's already in the ENUM but never implemented. Client-side eval (HyperFormula-style) for sums/refs; server-side memoised eval for cross-row aggregates.
+- **#17 Conditional / chained automations** — extend `BoardAutomationBuilder` with if/else branches, action chains, and an outbound webhook action. Persist as JSONB step-list in `board_automations.action_config`.
+- **#18 View state persistence (per-user)** — store column widths, group-collapse state, scroll anchor, active filter chips per (view × user) so layouts don't reset on refresh.
 
 ## Dependency graph
 
@@ -151,8 +166,19 @@ Phase 4 (Collab depth)
 Phase 5 (Primitives — any order)
   ├── #4 What-if simulator
   ├── #7 Per-cell client visibility
+  ├── #12 Predictive risk pills        (needs Phase 1)
   ├── #13 Cross-board deps
-  └── #14 Board-as-code
+  ├── #14 Board-as-code
+  ├── #15 Capacity map view            (needs Phase 1)
+  ├── #16 Formula columns
+  ├── #17 Conditional automations
+  └── #18 View state persistence
+
+Phase 0 (Tech foundations — parallel track)
+  ├── Schema squash
+  ├── Cell registry consolidation
+  ├── BoardRoom observability
+  └── E2E test scaffolding
 ```
 
 ## Success metrics (per phase, owner to define before design)
@@ -170,9 +196,32 @@ Phase 5 (Primitives — any order)
 - **External API rate limits** (Phase 2): Meta/Google Ads/Xero have aggressive limits; cache layer is mandatory; need fallback rendering when stale.
 - **Schema drift** (cross-cutting): each phase adds tables; migration squash should be scheduled before Phase 5 to avoid 70+ migration files.
 
+## Reconciliation with prior round
+
+Mapping the earlier 12 R&D ideas to this roadmap:
+
+| Prior idea | Status |
+|---|---|
+| Workspace pulse | Folded into **#11 Instruments HUD** (Phase 1) at workspace + board scope |
+| "Since you" digest | Folded into **#5 Smart triage inbox** (Phase 1) |
+| Formula columns | Tracked as **#16** (Phase 5) |
+| AI status nudges | Folded into **#1 AI PM Agent** (Phase 3) |
+| Conditional automations | Tracked as **#17** (Phase 5) |
+| View state persistence | Tracked as **#18** (Phase 5) |
+| Realtime metrics | Tracked in **Phase 0 — BoardRoom observability** |
+| Cell registry consolidation | Tracked in **Phase 0** |
+| AI board summary | Folded into **#1 AI PM Agent** (Phase 3) |
+| Quick capture routing | Folded into **#2 NL operator** + **#3 Voice quick-capture** (Phase 3) |
+| Schema squash | Tracked in **Phase 0** |
+| E2E test scaffolding | Tracked in **Phase 0** |
+
+Nothing from the prior round is dropped.
+
 ## Out of scope (now)
 
-- The earlier round of 12 R&D ideas that overlapped (formula columns, conditional automations, schema squash, E2E test scaffolding, cell registry consolidation, view persistence, realtime metrics, AI nudges, board summary, quick capture routing, "since you" digest, workspace pulse). Some are duplicates of what's above; the rest are infra/refactor and should be tracked separately.
+- Mobile-first board redesign
+- Net-new pricing/tier work
+- Replacing the legacy `task_monday_column_values` read path (Phase 0 deprecates it; full removal is a separate cleanup)
 
 ## Open questions for first deep-dive
 
