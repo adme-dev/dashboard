@@ -400,6 +400,7 @@ defineExpose({ scrollToBottom, scrollToUnread })
 
                 <!-- More actions -->
                 <UDropdownMenu
+                  :content="{ side: 'top', align: 'end', sideOffset: 6, collisionPadding: 8 }"
                   :items="[
                     [
                       { label: 'Reply', icon: 'i-lucide-reply', click: () => emit('reply', msg) },
