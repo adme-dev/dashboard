@@ -9,20 +9,36 @@
  *   event: board_update
  *   id: <eventId>
  *   data: { type, taskId?, columnId?, changes?, timestamp }
+ *
+ * Accepts either a department UUID or a slug. Subscribers MUST be keyed by the
+ * UUID — server/utils/boardEvents.ts emits with the UUID, so a slug-keyed
+ * subscriber would silently never receive events.
  */
 
 import { createEventStream, getRouterParam, getQuery } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { subscribeToBoardEvents, getBoardEventsSince, getLatestEventId } from '~~/server/utils/boardEvents'
 import type { BoardEvent } from '~~/server/utils/boardEvents'
+import { queryOne } from '~~/server/utils/db'
+import { isUUID } from '~~/server/utils/ids'
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
 
-  const boardId = getRouterParam(event, 'id')
-  if (!boardId) {
+  const boardIdOrSlug = getRouterParam(event, 'id')
+  if (!boardIdOrSlug) {
     throw createError({ statusCode: 400, statusMessage: 'Board ID required' })
   }
+
+  const board = isUUID(boardIdOrSlug)
+    ? await queryOne('SELECT id FROM departments WHERE id = $1::uuid', [boardIdOrSlug])
+    : await queryOne('SELECT id FROM departments WHERE slug = $1', [boardIdOrSlug])
+
+  if (!board) {
+    throw createError({ statusCode: 404, statusMessage: 'Board not found' })
+  }
+
+  const boardId: string = board.id
 
   const query = getQuery(event)
   const lastEventId = Number(query.lastEventId) || 0

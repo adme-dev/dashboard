@@ -1,16 +1,30 @@
 /**
  * POST /api/chat/board-feeds/:boardId
  * Link a chat channel to a board for event feed, or create a new channel and link it.
+ *
+ * Accepts either a department UUID or a slug — resolves to UUID before any
+ * UUID-typed query runs.
  */
 import { queryOne, execute } from '~~/server/utils/db'
+import { isUUID } from '~~/server/utils/ids'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
 
-  const boardId = getRouterParam(event, 'boardId')
-  if (!boardId) {
+  const boardIdOrSlug = getRouterParam(event, 'boardId')
+  if (!boardIdOrSlug) {
     throw createError({ statusCode: 400, statusMessage: 'Board ID is required' })
   }
+
+  const board = isUUID(boardIdOrSlug)
+    ? await queryOne('SELECT id, name FROM departments WHERE id = $1::uuid', [boardIdOrSlug])
+    : await queryOne('SELECT id, name FROM departments WHERE slug = $1', [boardIdOrSlug])
+
+  if (!board) {
+    throw createError({ statusCode: 404, statusMessage: 'Board not found' })
+  }
+
+  const boardId: string = board.id
 
   const body = await readBody(event)
   const {
@@ -23,8 +37,7 @@ export default defineEventHandler(async (event) => {
 
   // If no channel specified, create one
   if (!targetChannelId && shouldCreate) {
-    const board = await queryOne('SELECT name FROM departments WHERE id = $1', [boardId])
-    const boardName = board?.name || 'Board'
+    const boardName = board.name || 'Board'
     const slug = `board-${boardId.substring(0, 8)}-${Date.now().toString(36)}`
 
     const channel = await queryOne(`

@@ -2,15 +2,32 @@
  * GET /api/agency/boards/:id/connect
  * WebSocket upgrade proxy — routes to BoardRoom Durable Object.
  * In dev mode, returns a JSON mock (DO only works in Cloudflare Workers).
+ *
+ * Accepts either a department UUID or a slug. The DO room MUST be keyed by the
+ * UUID because server/utils/boardEvents.ts emits with the UUID — keying the
+ * room by slug here would silently route events to a different DO instance.
  */
 
+import { queryOne } from '~~/server/utils/db'
+import { isUUID } from '~~/server/utils/ids'
+
 export default defineEventHandler(async (event) => {
-  const boardId = getRouterParam(event, 'id')
-  if (!boardId) {
+  const boardIdOrSlug = getRouterParam(event, 'id')
+  if (!boardIdOrSlug) {
     throw createError({ statusCode: 400, statusMessage: 'Board ID required' })
   }
 
   const user = await requireAuth(event)
+
+  const board = isUUID(boardIdOrSlug)
+    ? await queryOne('SELECT id FROM departments WHERE id = $1::uuid', [boardIdOrSlug])
+    : await queryOne('SELECT id FROM departments WHERE slug = $1', [boardIdOrSlug])
+
+  if (!board) {
+    throw createError({ statusCode: 404, statusMessage: 'Board not found' })
+  }
+
+  const boardId: string = board.id
 
   // In development, return mock
   if (process.dev) {
