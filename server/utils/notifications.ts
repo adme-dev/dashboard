@@ -131,6 +131,23 @@ export async function createNotification(params: CreateNotificationParams) {
       params.metadata ? JSON.stringify(params.metadata) : null
     ])
 
+    // Fan out a Web Push to every device the user has subscribed.
+    // Fire-and-forget — push delivery never blocks notification creation.
+    // No-ops silently when VAPID env vars are unset or the user has no subs.
+    void (async () => {
+      try {
+        const { sendWebPushToUser } = await import('~~/server/utils/webPush')
+        await sendWebPushToUser(params.userId, {
+          title: params.title,
+          body: params.message,
+          url: params.link || undefined,
+          tag: params.type,
+        })
+      } catch (err) {
+        console.error('[Notifications] Web Push fan-out failed:', err)
+      }
+    })()
+
     return notification
   } catch (error) {
     console.error('Failed to create notification:', error)
