@@ -4,6 +4,7 @@
 
 import { queryOne, transaction } from '~~/server/utils/db'
 import { notifyTaskAssigneeChanged } from '~~/server/utils/notifications'
+import { runAfterResponse } from '~~/server/utils/asyncBackground'
 
 interface UpdateAssigneeBody {
   assigneeId: string | null
@@ -92,15 +93,17 @@ export default defineEventHandler(async (event) => {
       WHERE t.id = $1
     `, [id])
 
-    // Send notification (helper handles unchanged/unassign/self-assignment skips)
-    notifyTaskAssigneeChanged({
+    // Send notification (helper handles unchanged/unassign/self-assignment skips).
+    // runAfterResponse keeps the work alive past the HTTP response on
+    // Cloudflare Workers (bare .catch() fire-and-forget would be killed).
+    runAfterResponse(event, notifyTaskAssigneeChanged({
       taskId: id,
       taskTitle: currentTask.title,
       oldAssigneeId: currentTask.assignee_id,
       newAssigneeId: body.assigneeId || null,
       actorId: actorUserId,
       dueDate: currentTask.due_date ? new Date(currentTask.due_date) : undefined,
-    }).catch(err => console.error('Failed to send assignment notification:', err))
+    }), 'notifyTaskAssigneeChanged')
 
     return {
       id,

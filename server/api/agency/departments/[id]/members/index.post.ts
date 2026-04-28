@@ -5,6 +5,7 @@
 import { queryOne } from '~~/server/utils/db'
 import { notifyBoardMemberAdded } from '~~/server/utils/boardNotifications'
 import { PERMISSIONS } from '~~/server/utils/permissions'
+import { runAfterResponse } from '~~/server/utils/asyncBackground'
 
 interface AddMemberBody {
   teamMemberId: string
@@ -76,13 +77,14 @@ export default defineEventHandler(async (event) => {
       body.isPrimary ?? false,
     ])
 
-    // Notify the new member (helper handles self-add skip)
-    notifyBoardMemberAdded({
+    // Notify the new member (helper handles self-add skip).
+    // runAfterResponse keeps the work alive past the HTTP response on CF.
+    runAfterResponse(event, notifyBoardMemberAdded({
       memberId: body.teamMemberId,
       boardId: departmentId,
       boardName: department.name,
       actorId: user.id,
-    }).catch(err => console.error('Failed to send board member added notification:', err))
+    }), 'notifyBoardMemberAdded')
 
     return {
       membershipId: membership.id,

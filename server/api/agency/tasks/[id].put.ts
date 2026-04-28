@@ -9,6 +9,7 @@ import { evaluateAutomations } from '~~/server/utils/automationEngine'
 import { enqueue } from '~~/server/utils/queue'
 import { postBoardEventToChat } from '~~/server/utils/boardChatBridge'
 import { notifyTaskAssigneeChanged } from '~~/server/utils/notifications'
+import { runAfterResponse } from '~~/server/utils/asyncBackground'
 
 interface UpdateTaskBody {
   title?: string
@@ -293,24 +294,26 @@ export default defineEventHandler(async (event) => {
       // Evaluate board automations (queued with retry, fallback to fire-and-forget)
       enqueue(event, 'board.automate', boardEvent, () => evaluateAutomations(currentTask.department_id, boardEvent))
 
-      // Post to linked chat channels (fire-and-forget)
-      postBoardEventToChat({
+      // Post to linked chat channels (fire-and-forget, survives past response)
+      runAfterResponse(event, postBoardEventToChat({
         ...boardEvent,
         taskTitle: currentTask.title,
-      }).catch(() => {})
+      }), 'postBoardEventToChat')
     }
 
     // Notify the new assignee directly (in-app + email).
     // The helper handles unchanged/unassign/self-assignment skips.
+    // Wrapped in runAfterResponse so the work survives past the HTTP response
+    // on Cloudflare Workers — bare .catch() fire-and-forget would be killed.
     if (body.assigneeId !== undefined) {
-      notifyTaskAssigneeChanged({
+      runAfterResponse(event, notifyTaskAssigneeChanged({
         taskId: id,
         taskTitle: currentTask.title,
         oldAssigneeId: currentTask.assignee_id,
         newAssigneeId: body.assigneeId || null,
         actorId: actorUserId,
         dueDate: currentTask.due_date ? new Date(currentTask.due_date) : undefined,
-      }).catch(err => console.error('Failed to send assignment notification:', err))
+      }), 'notifyTaskAssigneeChanged')
     }
 
     // Fetch complete updated task

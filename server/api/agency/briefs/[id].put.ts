@@ -8,6 +8,7 @@
 import { queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { notifyBriefAssigneeChanged } from '~~/server/utils/briefNotifications'
+import { runAfterResponse } from '~~/server/utils/asyncBackground'
 
 interface UpdateBriefBody {
   title?: string
@@ -186,16 +187,17 @@ export default defineEventHandler(async (event) => {
       `, [briefId, user.id, JSON.stringify({ updatedFields: Object.keys(body) })])
     })
 
-    // Notify the new assignee (helper handles unchanged/unassign/self skips)
+    // Notify the new assignee (helper handles unchanged/unassign/self skips).
+    // runAfterResponse keeps the work alive past the HTTP response on CF.
     if (body.assignedTo !== undefined) {
-      notifyBriefAssigneeChanged({
+      runAfterResponse(event, notifyBriefAssigneeChanged({
         briefId: briefId!,
         briefTitle: brief.title,
         referenceNumber: brief.reference_number,
         oldAssigneeId: brief.assigned_to,
         newAssigneeId: body.assignedTo || null,
         actorId: user.id,
-      }).catch(err => console.error('Failed to send brief assignment notification:', err))
+      }), 'notifyBriefAssigneeChanged')
     }
 
     // Return updated brief

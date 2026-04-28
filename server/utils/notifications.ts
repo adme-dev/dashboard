@@ -118,21 +118,22 @@ const TYPE_TO_INAPP_PREF: Partial<Record<NotificationType, string>> = {
  */
 export async function createNotification(params: CreateNotificationParams) {
   try {
-    // 1. Web Push fan-out — fire-and-forget, independent of in-app prefs.
-    //    No-ops silently when VAPID env vars are unset or the user has no subs.
-    void (async () => {
-      try {
-        const { sendWebPushToUser } = await import('~~/server/utils/webPush')
-        await sendWebPushToUser(params.userId, {
-          title: params.title,
-          body: params.message,
-          url: params.link || undefined,
-          tag: params.type,
-        })
-      } catch (err) {
-        console.error('[Notifications] Web Push fan-out failed:', err)
-      }
-    })()
+    // 1. Web Push fan-out — independent of in-app prefs.
+    //    Awaited inline so it joins the parent's await/waitUntil chain on
+    //    Cloudflare Workers; un-awaited IIFEs get cancelled when the response
+    //    returns. No-ops silently when VAPID env vars are unset or the user
+    //    has no subs.
+    try {
+      const { sendWebPushToUser } = await import('~~/server/utils/webPush')
+      await sendWebPushToUser(params.userId, {
+        title: params.title,
+        body: params.message,
+        url: params.link || undefined,
+        tag: params.type,
+      })
+    } catch (err) {
+      console.error('[Notifications] Web Push fan-out failed:', err)
+    }
 
     // 2. In-app gate.
     const prefKey = TYPE_TO_INAPP_PREF[params.type]
