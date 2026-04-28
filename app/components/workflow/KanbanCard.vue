@@ -59,6 +59,16 @@ const taskTypeIcons: Record<string, string> = {
 }
 
 const taskTypeIcon = computed(() => taskTypeIcons[props.task.taskType] || 'i-lucide-check-square')
+const showTypeIcon = computed(() => props.task.taskType && props.task.taskType !== 'task')
+
+// Header row only renders if it has meaningful content
+const hasHeaderContent = computed(() =>
+  showTypeIcon.value
+  || props.task.isBlocked
+  || !!props.task.actualHours
+  || !!props.task.estimatedHours
+  || !!props.task.commentCount
+)
 
 // Due date formatting and styling
 const dueDateInfo = computed(() => {
@@ -191,7 +201,7 @@ onClickOutside(labelMenuRef, () => {
 
 <template>
   <article
-    class="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded p-3 cursor-pointer transition-all hover:border-neutral-400 dark:hover:border-neutral-500 hover:shadow-sm group"
+    class="relative bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md pl-3.5 pr-3 py-2.5 cursor-pointer transition-all hover:border-neutral-400 dark:hover:border-neutral-500 hover:shadow-sm group"
     :class="{
       'opacity-50 scale-95 rotate-1': isDragging,
       'border-[#FF6B6B] ring-1 ring-[#FF6B6B]/30': task.isBlocked,
@@ -206,23 +216,20 @@ onClickOutside(labelMenuRef, () => {
     @dragstart="handleDragStart"
     @dragend="handleDragEnd"
   >
-    <!-- Header: Priority & Type -->
-    <div class="flex items-center gap-2 mb-2" aria-hidden="true">
-      <div
-        class="w-5 h-5 rounded flex items-center justify-center"
-        :style="{ backgroundColor: priorityStyle.bgColor }"
-        :title="priorityStyle.label"
-      >
-        <UIcon
-          :name="priorityStyle.icon"
-          class="h-3 w-3"
-          :style="{ color: priorityStyle.color }"
-        />
-      </div>
+    <!-- Priority left-edge stripe -->
+    <span
+      class="absolute left-0 top-0 bottom-0 w-1 rounded-l-md"
+      :style="{ backgroundColor: priorityStyle.color }"
+      :title="`${priorityStyle.label} priority`"
+      aria-hidden="true"
+    />
 
+    <!-- Header: type icon + indicators (only when non-default content) -->
+    <div v-if="hasHeaderContent" class="flex items-center gap-2 mb-1.5" aria-hidden="true">
       <UIcon
+        v-if="showTypeIcon"
         :name="taskTypeIcon"
-        class="h-4 w-4 text-neutral-400 dark:text-neutral-500"
+        class="h-3.5 w-3.5 text-neutral-400 dark:text-neutral-500"
         :title="task.taskType"
       />
 
@@ -232,14 +239,14 @@ onClickOutside(labelMenuRef, () => {
       <UIcon
         v-if="task.isBlocked"
         name="i-lucide-ban"
-        class="h-4 w-4 text-[#FF6B6B]"
+        class="h-3.5 w-3.5 text-[#FF6B6B]"
         :title="task.blockedReason || 'Blocked'"
       />
 
       <!-- Time tracking indicator -->
       <div
         v-if="task.actualHours || task.estimatedHours"
-        class="flex items-center gap-1 text-xs"
+        class="flex items-center gap-0.5 text-[11px]"
         :class="{
           'text-[#FF6B6B]': task.estimatedHours && task.actualHours && task.actualHours > task.estimatedHours,
           'text-[#7DD3A8]': task.estimatedHours && task.actualHours && task.actualHours <= task.estimatedHours,
@@ -247,24 +254,27 @@ onClickOutside(labelMenuRef, () => {
         }"
         :title="`${task.actualHours || 0}h / ${task.estimatedHours || 0}h`"
       >
-        <UIcon name="i-lucide-clock" class="h-3.5 w-3.5" />
+        <UIcon name="i-lucide-clock" class="h-3 w-3" />
         <span>{{ task.actualHours || 0 }}h</span>
       </div>
 
       <!-- Comments count -->
-      <div v-if="task.commentCount" class="flex items-center gap-1 text-neutral-500 dark:text-neutral-400 text-xs">
-        <UIcon name="i-lucide-message-square" class="h-3.5 w-3.5" />
+      <div v-if="task.commentCount" class="flex items-center gap-0.5 text-neutral-500 dark:text-neutral-400 text-[11px]">
+        <UIcon name="i-lucide-message-square" class="h-3 w-3" />
         <span>{{ task.commentCount }}</span>
       </div>
     </div>
 
     <!-- Title -->
-    <h4 class="font-medium text-sm text-neutral-900 dark:text-neutral-100 line-clamp-2 mb-2">
+    <h4 class="font-medium text-sm text-neutral-900 dark:text-neutral-100 line-clamp-2 leading-snug">
       {{ task.title }}
     </h4>
 
     <!-- Labels with Edit Button -->
-    <div class="flex flex-wrap gap-1 mb-2 items-center">
+    <div
+      v-if="(task.labels?.length || 0) > 0"
+      class="flex flex-wrap gap-1 mt-2 items-center"
+    >
       <span
         v-for="label in task.labels?.slice(0, 3)"
         :key="label.id"
@@ -379,50 +389,48 @@ onClickOutside(labelMenuRef, () => {
     </div>
 
     <!-- Subtask Progress -->
-    <div v-if="subtaskProgress" class="mb-2">
-      <div class="flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400 mb-1">
-        <span>Subtasks</span>
-        <span>{{ subtaskProgress.completed }}/{{ subtaskProgress.total }}</span>
-      </div>
-      <div class="h-1.5 bg-neutral-200 dark:bg-neutral-600 rounded-full overflow-hidden">
+    <div v-if="subtaskProgress" class="flex items-center gap-2 mt-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+      <UIcon name="i-lucide-list-checks" class="h-3 w-3 flex-shrink-0" />
+      <div class="flex-1 h-1 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
         <div
           class="h-full bg-[#13B5EA] rounded-full transition-all"
           :style="{ width: `${subtaskProgress.percentage}%` }"
         />
       </div>
+      <span class="tabular-nums flex-shrink-0">{{ subtaskProgress.completed }}/{{ subtaskProgress.total }}</span>
     </div>
 
     <!-- Footer: Due Date & Assignee -->
-    <div class="flex items-center justify-between mt-2 pt-2 border-t border-neutral-100 dark:border-neutral-700">
+    <div class="flex items-center justify-between gap-2 mt-2.5">
       <!-- Due date -->
-      <div v-if="dueDateInfo" class="flex items-center gap-1 text-xs">
+      <div v-if="dueDateInfo" class="flex items-center gap-1 text-[11px] min-w-0">
         <UIcon
           :name="dueDateInfo.isOverdue ? 'i-lucide-alert-triangle' : 'i-lucide-calendar'"
-          class="h-3.5 w-3.5"
-          :class="{ 'text-muted': !dueDateInfo.color }"
+          class="h-3 w-3 flex-shrink-0"
+          :class="{ 'text-neutral-400 dark:text-neutral-500': !dueDateInfo.color }"
           :style="dueDateInfo.color ? { color: dueDateInfo.color } : undefined"
         />
         <span
-          class="font-medium"
-          :class="{ 'text-muted': !dueDateInfo.color }"
+          class="font-medium truncate"
+          :class="{ 'text-neutral-500 dark:text-neutral-400': !dueDateInfo.color }"
           :style="dueDateInfo.color ? { color: dueDateInfo.color } : undefined"
         >{{ dueDateInfo.label }}</span>
       </div>
       <div v-else class="flex-1" />
 
       <!-- Assignee -->
-      <div v-if="task.assignee" class="flex items-center gap-1.5">
+      <div v-if="task.assignee" class="flex items-center gap-1.5 flex-shrink-0">
         <div
-          class="w-5 h-5 rounded-full bg-neutral-200 dark:bg-neutral-600 flex items-center justify-center text-xs font-medium text-neutral-700 dark:text-neutral-200"
+          class="w-5 h-5 rounded-full bg-neutral-200 dark:bg-neutral-600 flex items-center justify-center text-[10px] font-medium text-neutral-700 dark:text-neutral-200"
         >
           {{ task.assignee.name.charAt(0).toUpperCase() }}
         </div>
-        <span class="text-xs text-neutral-500 dark:text-neutral-400 truncate max-w-[80px]">
+        <span class="text-[11px] text-neutral-500 dark:text-neutral-400 truncate max-w-[80px]">
           {{ task.assignee.name.split(' ')[0] }}
         </span>
       </div>
-      <div v-else class="flex items-center gap-1 text-neutral-400 dark:text-neutral-500 text-xs">
-        <UIcon name="i-lucide-user" class="h-3.5 w-3.5" />
+      <div v-else class="flex items-center gap-1 text-neutral-400/70 dark:text-neutral-500/70 text-[11px] flex-shrink-0">
+        <UIcon name="i-lucide-user" class="h-3 w-3" />
         <span>Unassigned</span>
       </div>
     </div>
@@ -430,11 +438,11 @@ onClickOutside(labelMenuRef, () => {
     <!-- Project info (if available) -->
     <div
       v-if="task.project"
-      class="mt-2 pt-2 border-t border-neutral-100 dark:border-neutral-700 text-xs text-neutral-500 dark:text-neutral-400 truncate"
+      class="flex items-center gap-1 mt-1.5 text-[11px] text-neutral-500 dark:text-neutral-400 truncate"
     >
-      <UIcon name="i-lucide-folder" class="h-3 w-3 inline mr-1" aria-hidden="true" />
+      <UIcon name="i-lucide-folder" class="h-3 w-3 flex-shrink-0" aria-hidden="true" />
       <span class="sr-only">Project: </span>
-      {{ task.project.clientName ? `${task.project.clientName} / ` : '' }}{{ task.project.name }}
+      <span class="truncate">{{ task.project.clientName ? `${task.project.clientName} / ` : '' }}{{ task.project.name }}</span>
     </div>
   </article>
 </template>
