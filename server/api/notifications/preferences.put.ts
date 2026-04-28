@@ -30,15 +30,34 @@ const ALLOWED_KEYS = [
   'inapp_chat_dm'
 ]
 
+function validateQuietHours(input: any): { valid: boolean; reason?: string } {
+  if (input === null) return { valid: true }
+  if (typeof input !== 'object') return { valid: false, reason: 'must be an object or null' }
+  if (typeof input.enabled !== 'boolean') return { valid: false, reason: 'enabled must be a boolean' }
+  if (typeof input.startMinute !== 'number' || input.startMinute < 0 || input.startMinute > 1439) {
+    return { valid: false, reason: 'startMinute must be 0..1439' }
+  }
+  if (typeof input.endMinute !== 'number' || input.endMinute < 0 || input.endMinute > 1439) {
+    return { valid: false, reason: 'endMinute must be 0..1439' }
+  }
+  if (typeof input.timezone !== 'string' || !input.timezone) {
+    return { valid: false, reason: 'timezone (IANA) is required' }
+  }
+  if (!Array.isArray(input.daysOfWeek) || !input.daysOfWeek.every((d: any) => typeof d === 'number' && d >= 0 && d <= 6)) {
+    return { valid: false, reason: 'daysOfWeek must be an array of 0..6' }
+  }
+  return { valid: true }
+}
+
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
   const body = await readBody(event)
-  const { preferences, autoSubscribeOnParticipation } = body
+  const { preferences, autoSubscribeOnParticipation, quietHours } = body
 
-  if (!preferences && autoSubscribeOnParticipation === undefined) {
+  if (!preferences && autoSubscribeOnParticipation === undefined && quietHours === undefined) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'preferences object or autoSubscribeOnParticipation is required'
+      statusMessage: 'preferences, autoSubscribeOnParticipation, or quietHours is required'
     })
   }
 
@@ -65,6 +84,13 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  if (quietHours !== undefined) {
+    const v = validateQuietHours(quietHours)
+    if (!v.valid) {
+      throw createError({ statusCode: 400, statusMessage: `quietHours invalid: ${v.reason}` })
+    }
+  }
+
   try {
     // Get current preferences
     const current = await queryOne(`
@@ -79,26 +105,33 @@ export default defineEventHandler(async (event) => {
       ...sanitizedPreferences
     }
 
-    // Update preferences (and auto-subscribe column if provided)
-    const result = autoSubscribeOnParticipation !== undefined
-      ? await queryOne(`
-          UPDATE team_members
-          SET notification_preferences = $2,
-              auto_subscribe_on_participation = $3
-          WHERE id = $1
-          RETURNING notification_preferences, auto_subscribe_on_participation
-        `, [user.id, JSON.stringify(merged), autoSubscribeOnParticipation])
-      : await queryOne(`
-          UPDATE team_members
-          SET notification_preferences = $2
-          WHERE id = $1
-          RETURNING notification_preferences, auto_subscribe_on_participation
-        `, [user.id, JSON.stringify(merged)])
+    // Build dynamic UPDATE based on which fields were provided
+    const sets: string[] = ['notification_preferences = $2']
+    const values: any[] = [user.id, JSON.stringify(merged)]
+    let idx = 3
+    if (autoSubscribeOnParticipation !== undefined) {
+      sets.push(`auto_subscribe_on_participation = $${idx}`)
+      values.push(autoSubscribeOnParticipation)
+      idx++
+    }
+    if (quietHours !== undefined) {
+      sets.push(`quiet_hours = $${idx}`)
+      values.push(quietHours === null ? null : JSON.stringify(quietHours))
+      idx++
+    }
+
+    const result = await queryOne(`
+      UPDATE team_members
+      SET ${sets.join(', ')}
+      WHERE id = $1
+      RETURNING notification_preferences, auto_subscribe_on_participation, quiet_hours
+    `, values)
 
     return {
       success: true,
       preferences: result?.notification_preferences || merged,
       autoSubscribeOnParticipation: result?.auto_subscribe_on_participation ?? true,
+      quietHours: result?.quiet_hours || null,
     }
   } catch (error) {
     console.error('Failed to update notification preferences:', error)

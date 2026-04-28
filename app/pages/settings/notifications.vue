@@ -80,15 +80,99 @@ const state = reactive<{ [key: string]: boolean }>({
 
 const autoSubscribeOnParticipation = ref(true)
 
+interface QuietHours {
+  enabled: boolean
+  startMinute: number
+  endMinute: number
+  timezone: string
+  daysOfWeek: number[]
+}
+
+function defaultQuietHours(): QuietHours {
+  const tz = (typeof Intl !== 'undefined' && Intl.DateTimeFormat().resolvedOptions().timeZone) || 'Australia/Sydney'
+  return {
+    enabled: false,
+    startMinute: 20 * 60, // 8pm
+    endMinute: 8 * 60,    // 8am next day
+    timezone: tz,
+    daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+  }
+}
+
+const quietHours = ref<QuietHours>(defaultQuietHours())
+
+const quietStart = computed({
+  get: () => minutesToTime(quietHours.value.startMinute),
+  set: (v: string) => { quietHours.value.startMinute = timeToMinutes(v) },
+})
+const quietEnd = computed({
+  get: () => minutesToTime(quietHours.value.endMinute),
+  set: (v: string) => { quietHours.value.endMinute = timeToMinutes(v) },
+})
+
+function minutesToTime(m: number): string {
+  const h = Math.floor(m / 60)
+  const mm = m % 60
+  return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+}
+function timeToMinutes(t: string): number {
+  const [h, m] = t.split(':').map(n => parseInt(n, 10))
+  return (h || 0) * 60 + (m || 0)
+}
+
+const dayChips = [
+  { value: 1, label: 'M' },
+  { value: 2, label: 'T' },
+  { value: 3, label: 'W' },
+  { value: 4, label: 'T' },
+  { value: 5, label: 'F' },
+  { value: 6, label: 'S' },
+  { value: 0, label: 'S' },
+]
+
+function toggleDay(d: number) {
+  const days = quietHours.value.daysOfWeek
+  if (days.includes(d)) {
+    quietHours.value.daysOfWeek = days.filter(x => x !== d)
+  } else {
+    quietHours.value.daysOfWeek = [...days, d].sort((a, b) => a - b)
+  }
+  saveQuietHours()
+}
+
+let quietSaveTimer: ReturnType<typeof setTimeout> | null = null
+function saveQuietHours() {
+  // Refresh timezone in case browser changed (travel, etc.)
+  const tz = (typeof Intl !== 'undefined' && Intl.DateTimeFormat().resolvedOptions().timeZone) || quietHours.value.timezone
+  quietHours.value.timezone = tz
+  if (quietSaveTimer) clearTimeout(quietSaveTimer)
+  quietSaveTimer = setTimeout(async () => {
+    try {
+      await $fetch('/api/notifications/preferences', {
+        method: 'PUT',
+        body: { quietHours: quietHours.value },
+      })
+    } catch (err: any) {
+      toast.add({
+        title: 'Could not save quiet hours',
+        description: err?.statusMessage || 'Please try again.',
+        color: 'error',
+      })
+    }
+  }, 350)
+}
+
 // Fetch preferences on mount
 onMounted(async () => {
   try {
-    const { preferences, autoSubscribeOnParticipation: aso } = await $fetch<{
+    const { preferences, autoSubscribeOnParticipation: aso, quietHours: qh } = await $fetch<{
       preferences: Record<string, boolean>
       autoSubscribeOnParticipation?: boolean
+      quietHours?: QuietHours | null
     }>('/api/notifications/preferences')
     Object.assign(state, preferences)
     if (typeof aso === 'boolean') autoSubscribeOnParticipation.value = aso
+    if (qh) quietHours.value = { ...defaultQuietHours(), ...qh }
   } catch (error) {
     console.error('Failed to load notification preferences:', error)
     toast.add({
@@ -310,6 +394,71 @@ async function onChange(field: string, value: boolean) {
             @update:model-value="(val: boolean) => { autoSubscribeOnParticipation = val; onAutoSubscribeChange(val) }"
           />
         </UFormField>
+      </UPageCard>
+    </div>
+
+    <!-- Quiet Hours -->
+    <div v-if="!loading">
+      <UPageCard
+        title="Quiet Hours"
+        description="Pause browser notifications during a recurring window. Your inbox still receives everything. @mentions and assignments always come through."
+        variant="naked"
+        class="mb-4"
+      />
+      <UPageCard variant="subtle">
+        <UFormField
+          name="quiet_hours_enabled"
+          label="Enable quiet hours"
+          description="When on, browser pings are suppressed during the window below."
+          class="flex items-center justify-between gap-2 not-last:pb-4"
+        >
+          <USwitch
+            v-model="quietHours.enabled"
+            @update:model-value="saveQuietHours"
+          />
+        </UFormField>
+
+        <div v-if="quietHours.enabled" class="space-y-4 pt-2">
+          <div class="flex items-center gap-3">
+            <UFormField name="quiet_start" label="From" class="flex-1">
+              <UInput
+                v-model="quietStart"
+                type="time"
+                size="sm"
+                @change="saveQuietHours"
+              />
+            </UFormField>
+            <UFormField name="quiet_end" label="Until" class="flex-1">
+              <UInput
+                v-model="quietEnd"
+                type="time"
+                size="sm"
+                @change="saveQuietHours"
+              />
+            </UFormField>
+          </div>
+
+          <UFormField
+            name="quiet_days"
+            label="Days"
+            description="Click to toggle. Defaults to every day."
+          >
+            <div class="flex gap-1.5 flex-wrap">
+              <UButton
+                v-for="d in dayChips"
+                :key="d.value"
+                :label="d.label"
+                :variant="quietHours.daysOfWeek.includes(d.value) ? 'solid' : 'soft'"
+                :color="quietHours.daysOfWeek.includes(d.value) ? 'primary' : 'neutral'"
+                size="xs"
+                class="w-9 justify-center"
+                @click="toggleDay(d.value)"
+              />
+            </div>
+          </UFormField>
+
+          <p class="text-xs text-muted">Timezone: {{ quietHours.timezone }} (auto-detected)</p>
+        </div>
       </UPageCard>
     </div>
 

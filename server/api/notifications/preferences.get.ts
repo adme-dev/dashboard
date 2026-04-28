@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     const result = await queryOne(`
-      SELECT notification_preferences, auto_subscribe_on_participation
+      SELECT notification_preferences, auto_subscribe_on_participation, quiet_hours
       FROM team_members
       WHERE id = $1
     `, [user.id])
@@ -51,6 +51,7 @@ export default defineEventHandler(async (event) => {
     return {
       preferences,
       autoSubscribeOnParticipation: result?.auto_subscribe_on_participation ?? true,
+      quietHours: result?.quiet_hours || null,
     }
   } catch (error) {
     console.error('Failed to fetch notification preferences:', error)

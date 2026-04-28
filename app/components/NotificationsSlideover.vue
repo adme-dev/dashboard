@@ -28,6 +28,51 @@ function reasonBadge(reason: string | null | undefined): ReasonBadge | null {
   return null
 }
 
+// Tabs: inbox vs today's digest
+const activeTab = ref<'inbox' | 'digest'>('inbox')
+const digestRange = ref<'today' | 'week'>('today')
+
+interface DigestBoard {
+  boardId: string
+  boardName: string
+  counts: { mentioned: number; assigned: number; watching: number; direct: number }
+  topItems: Array<{ taskId: string; taskTitle: string; count: number }>
+}
+interface DigestResponse {
+  range: string
+  startedAt: string
+  totalNotifications: number
+  boards: DigestBoard[]
+}
+
+const digestLoading = ref(false)
+const digest = ref<DigestResponse | null>(null)
+
+async function loadDigest() {
+  digestLoading.value = true
+  try {
+    digest.value = await $fetch<DigestResponse>(`/api/notifications/digest?range=${digestRange.value}`)
+  } catch (err) {
+    console.error('Failed to load digest:', err)
+    digest.value = null
+  } finally {
+    digestLoading.value = false
+  }
+}
+
+watch([activeTab, digestRange], ([tab]) => {
+  if (tab === 'digest') loadDigest()
+})
+
+function goToBoard(boardId: string, taskId?: string) {
+  isNotificationsSlideoverOpen.value = false
+  router.push(taskId ? `/agency/boards/${boardId}?task=${taskId}` : `/agency/boards/${boardId}`)
+}
+
+function boardTotal(b: DigestBoard): number {
+  return b.counts.mentioned + b.counts.assigned + b.counts.watching + b.counts.direct
+}
+
 // Fetch notifications when slideover opens
 watch(isNotificationsSlideoverOpen, async (isOpen) => {
   if (isOpen && notifications.value.length === 0) {
@@ -83,6 +128,98 @@ async function loadMore() {
     </template>
 
     <template #body>
+      <!-- Tab switcher -->
+      <div class="flex items-center gap-0.5 -mx-3 mb-3 border-b border-default px-3">
+        <button
+          class="px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
+          :class="activeTab === 'inbox'
+            ? 'border-primary text-primary'
+            : 'border-transparent text-muted hover:text-highlighted'"
+          @click="activeTab = 'inbox'"
+        >
+          Inbox
+        </button>
+        <button
+          class="px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
+          :class="activeTab === 'digest'
+            ? 'border-primary text-primary'
+            : 'border-transparent text-muted hover:text-highlighted'"
+          @click="activeTab = 'digest'"
+        >
+          Digest
+        </button>
+      </div>
+
+      <!-- Digest tab -->
+      <template v-if="activeTab === 'digest'">
+        <div class="flex items-center gap-2 mb-3">
+          <UButton
+            label="Today"
+            :variant="digestRange === 'today' ? 'soft' : 'ghost'"
+            :color="digestRange === 'today' ? 'primary' : 'neutral'"
+            size="xs"
+            @click="digestRange = 'today'"
+          />
+          <UButton
+            label="Last 7 days"
+            :variant="digestRange === 'week' ? 'soft' : 'ghost'"
+            :color="digestRange === 'week' ? 'primary' : 'neutral'"
+            size="xs"
+            @click="digestRange = 'week'"
+          />
+          <span v-if="digest" class="text-xs text-muted ml-auto">
+            {{ digest.totalNotifications }} total
+          </span>
+        </div>
+
+        <div v-if="digestLoading" class="space-y-3">
+          <USkeleton v-for="i in 3" :key="i" class="h-20 w-full" />
+        </div>
+
+        <div v-else-if="!digest || digest.boards.length === 0" class="text-center py-12">
+          <UIcon name="i-lucide-bell-off" class="w-10 h-10 mx-auto mb-3 text-muted opacity-50" />
+          <p class="text-sm text-highlighted">No activity {{ digestRange === 'today' ? 'today' : 'this week' }}</p>
+          <p class="text-xs text-muted mt-1">You're all caught up.</p>
+        </div>
+
+        <div v-else class="space-y-3">
+          <div
+            v-for="board in digest.boards"
+            :key="board.boardId"
+            class="rounded-lg border border-default overflow-hidden"
+          >
+            <button
+              class="w-full px-3 py-2 bg-elevated/30 flex items-center gap-2 text-left hover:bg-elevated/50"
+              @click="goToBoard(board.boardId)"
+            >
+              <UIcon name="i-lucide-columns-3" class="w-4 h-4 text-muted" />
+              <span class="text-sm font-medium truncate">{{ board.boardName }}</span>
+              <span class="text-xs text-muted ml-auto">{{ boardTotal(board) }}</span>
+            </button>
+            <div class="px-3 py-2 space-y-1.5">
+              <div class="flex flex-wrap gap-1.5">
+                <UBadge v-if="board.counts.mentioned" :label="`${board.counts.mentioned} mentioned`" color="error" variant="subtle" size="xs" />
+                <UBadge v-if="board.counts.assigned" :label="`${board.counts.assigned} assigned`" color="info" variant="subtle" size="xs" />
+                <UBadge v-if="board.counts.watching" :label="`${board.counts.watching} watching`" color="neutral" variant="subtle" size="xs" />
+                <UBadge v-if="board.counts.direct" :label="`${board.counts.direct} other`" color="neutral" variant="subtle" size="xs" />
+              </div>
+              <div v-if="board.topItems.length > 0" class="space-y-0.5">
+                <button
+                  v-for="item in board.topItems"
+                  :key="item.taskId"
+                  class="w-full text-left text-xs text-muted hover:text-highlighted truncate"
+                  @click="goToBoard(board.boardId, item.taskId)"
+                >
+                  · {{ item.taskTitle }} <span class="text-dimmed">({{ item.count }})</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- Inbox tab -->
+      <template v-else>
       <!-- Loading state -->
       <template v-if="loading && notifications.length === 0">
         <div class="space-y-3 -mx-3">
@@ -200,6 +337,7 @@ async function loadMore() {
           <p class="text-sm font-medium text-highlighted">No notifications</p>
           <p class="text-xs text-muted mt-1">You're all caught up!</p>
         </div>
+      </template>
       </template>
     </template>
   </USlideover>

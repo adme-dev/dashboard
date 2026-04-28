@@ -6,6 +6,7 @@
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { sendTaskAssignedEmail, sendMentionEmail, sendApprovalRequestEmail, sendDueReminderEmail } from '~~/server/utils/email'
 import { autoSubscribeIfEnabled } from '~~/server/utils/subscriptions'
+import { isWithinQuietHours } from '~~/server/utils/quietHours'
 
 const baseUrl = process.env.APP_URL || 'http://localhost:3000'
 
@@ -131,15 +132,19 @@ export async function createNotification(params: CreateNotificationParams) {
     //    Awaited inline so it joins the parent's await/waitUntil chain on
     //    Cloudflare Workers; un-awaited IIFEs get cancelled when the response
     //    returns. No-ops silently when VAPID env vars are unset or the user
-    //    has no subs.
+    //    has no subs. Suppressed during quiet hours (Phase C) for low-signal
+    //    reasons; mentions/assignments always push.
     try {
-      const { sendWebPushToUser } = await import('~~/server/utils/webPush')
-      await sendWebPushToUser(params.userId, {
-        title: params.title,
-        body: params.message,
-        url: params.link || undefined,
-        tag: params.type,
-      })
+      const muted = await isWithinQuietHours(params.userId, params.reason)
+      if (!muted) {
+        const { sendWebPushToUser } = await import('~~/server/utils/webPush')
+        await sendWebPushToUser(params.userId, {
+          title: params.title,
+          body: params.message,
+          url: params.link || undefined,
+          tag: params.type,
+        })
+      }
     } catch (err) {
       console.error('[Notifications] Web Push fan-out failed:', err)
     }
