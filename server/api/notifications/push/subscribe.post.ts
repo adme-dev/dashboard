@@ -6,6 +6,7 @@
 
 import { execute } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { isValidPushEndpoint } from '~~/server/utils/pushSubscriptionValidation'
 
 interface SubscribeBody {
   endpoint: string
@@ -20,6 +21,13 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 400,
       statusMessage: 'endpoint, keys.p256dh, and keys.auth are required',
+    })
+  }
+
+  if (!isValidPushEndpoint(body.endpoint)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'endpoint is not from a recognised push service',
     })
   }
 

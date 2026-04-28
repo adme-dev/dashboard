@@ -4,6 +4,7 @@
 
 import { queryOne } from '~~/server/utils/db'
 import { notifyBoardMemberAdded } from '~~/server/utils/boardNotifications'
+import { PERMISSIONS } from '~~/server/utils/permissions'
 
 interface AddMemberBody {
   teamMemberId: string
@@ -12,7 +13,9 @@ interface AddMemberBody {
 }
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
+  // Only management roles can add members to a board.
+  // Without this gate, any authenticated user could add (and notify) anyone.
+  const user = await requireRole(event, PERMISSIONS.MANAGEMENT)
 
   const departmentId = getRouterParam(event, 'id')
   const body = await readBody<AddMemberBody>(event)

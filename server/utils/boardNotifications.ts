@@ -36,8 +36,16 @@ export async function notifyBoardSubscribers(event: BoardEventNotification): Pro
       eventType: event.type,
     })
 
-    // Filter out the actor (don't notify yourself)
-    const toNotify = subscribers.filter(s => s.userId !== event.actorId)
+    // Filter out the actor (don't notify yourself).
+    // Also skip the new assignee on assignment changes — they get a more
+    // specific `task_assigned` via notifyTaskAssigneeChanged, so a generic
+    // "X updated item" board notification on the same event is duplicate noise.
+    const newAssigneeId = typeof event.changes?.assignee === 'string'
+      ? event.changes.assignee
+      : null
+    const toNotify = subscribers.filter(
+      s => s.userId !== event.actorId && s.userId !== newAssigneeId
+    )
 
     if (toNotify.length === 0) return
 

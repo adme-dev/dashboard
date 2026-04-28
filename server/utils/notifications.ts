@@ -102,11 +102,39 @@ const TYPE_TO_INAPP_PREF: Partial<Record<NotificationType, string>> = {
 
 /**
  * Create a notification for a user.
- * Honours `inapp_*` preferences in `team_members.notification_preferences`:
- * if the recipient has explicitly disabled this type, returns null without inserting.
+ *
+ * Two gates, evaluated independently:
+ *   - In-app: honours `inapp_*` keys in team_members.notification_preferences.
+ *     If the recipient has explicitly disabled this type, no row is inserted
+ *     (no inbox / bell / Activity Hub entry).
+ *   - Web Push: fans out to every device the user has subscribed, regardless
+ *     of in-app prefs. The user controls push via the per-device toggle in
+ *     /settings/notifications, which adds/removes their push_subscriptions
+ *     row. No subscription = no push. No VAPID env = no push.
+ *
+ * Why decoupled: a user may want a quiet inbox but still get push (or vice
+ * versa). Coupling them — the previous behaviour — meant turning off any
+ * inapp toggle silently turned off push for the same type, with no UI hint.
  */
 export async function createNotification(params: CreateNotificationParams) {
   try {
+    // 1. Web Push fan-out — fire-and-forget, independent of in-app prefs.
+    //    No-ops silently when VAPID env vars are unset or the user has no subs.
+    void (async () => {
+      try {
+        const { sendWebPushToUser } = await import('~~/server/utils/webPush')
+        await sendWebPushToUser(params.userId, {
+          title: params.title,
+          body: params.message,
+          url: params.link || undefined,
+          tag: params.type,
+        })
+      } catch (err) {
+        console.error('[Notifications] Web Push fan-out failed:', err)
+      }
+    })()
+
+    // 2. In-app gate.
     const prefKey = TYPE_TO_INAPP_PREF[params.type]
     if (prefKey) {
       const row = await queryOne(
@@ -130,23 +158,6 @@ export async function createNotification(params: CreateNotificationParams) {
       params.actorId || null,
       params.metadata ? JSON.stringify(params.metadata) : null
     ])
-
-    // Fan out a Web Push to every device the user has subscribed.
-    // Fire-and-forget — push delivery never blocks notification creation.
-    // No-ops silently when VAPID env vars are unset or the user has no subs.
-    void (async () => {
-      try {
-        const { sendWebPushToUser } = await import('~~/server/utils/webPush')
-        await sendWebPushToUser(params.userId, {
-          title: params.title,
-          body: params.message,
-          url: params.link || undefined,
-          tag: params.type,
-        })
-      } catch (err) {
-        console.error('[Notifications] Web Push fan-out failed:', err)
-      }
-    })()
 
     return notification
   } catch (error) {

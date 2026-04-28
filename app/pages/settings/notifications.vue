@@ -7,14 +7,21 @@ const saving = ref(false)
 // Browser push subscription
 const push = useWebPush()
 
-// Detect iOS Safari users — push only works after they install the site as a PWA.
+// Detect iOS Safari users on a non-installed site — push only works after
+// they "Add to Home Screen". Primary signal is matchMedia (works on every
+// modern browser); navigator.standalone is the legacy iOS fallback.
+// iPadOS 13+ reports as a Mac in the UA, so we also accept touch + Apple GPU
+// as an iOS hint.
 const isIosSafari = computed(() => {
   if (!import.meta.client) return false
   const ua = navigator.userAgent
-  const isIos = /iPhone|iPad|iPod/.test(ua)
+  const isIos =
+    /iPhone|iPad|iPod/.test(ua) ||
+    (/Mac/.test(ua) && navigator.maxTouchPoints > 1)
   const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua)
-  // navigator.standalone is true once the user has added to home screen
-  const installed = (navigator as any).standalone === true
+  const installed =
+    window.matchMedia?.('(display-mode: standalone)').matches ||
+    (navigator as any).standalone === true
   return isIos && isSafari && !installed
 })
 

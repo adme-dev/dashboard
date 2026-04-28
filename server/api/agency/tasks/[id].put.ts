@@ -40,11 +40,8 @@ interface UpdateTaskBody {
 }
 
 export default defineEventHandler(async (event) => {
-  let actorUserId = ''
-  try {
-    const user = await requireAuth(event)
-    actorUserId = user.id
-  } catch { /* auth optional for backwards compat */ }
+  const user = await requireAuth(event)
+  const actorUserId = user.id
 
   const id = getRouterParam(event, 'id')
   const body = await readBody<UpdateTaskBody>(event)
@@ -232,10 +229,11 @@ export default defineEventHandler(async (event) => {
         // Log field changes
         for (const change of changes) {
           await client.query(`
-            INSERT INTO task_activities (task_id, activity_type, content, old_value, new_value)
-            VALUES ($1, 'field_change', $2, $3, $4)
+            INSERT INTO task_activities (task_id, user_id, activity_type, content, old_value, new_value)
+            VALUES ($1, $2, 'updated', $3, $4, $5)
           `, [
             id,
+            actorUserId,
             `Changed ${change.field}`,
             JSON.stringify(change.oldValue),
             JSON.stringify(change.newValue),
@@ -285,7 +283,7 @@ export default defineEventHandler(async (event) => {
         boardId: currentTask.department_id,
         type: 'task_updated',
         taskId: id,
-        actorId: actorUserId || currentTask.assignee_id || '',
+        actorId: actorUserId,
         changes: Object.fromEntries(changes.map(c => [c.field, c.newValue])),
       }
 
@@ -304,7 +302,7 @@ export default defineEventHandler(async (event) => {
 
     // Notify the new assignee directly (in-app + email).
     // The helper handles unchanged/unassign/self-assignment skips.
-    if (body.assigneeId !== undefined && actorUserId) {
+    if (body.assigneeId !== undefined) {
       notifyTaskAssigneeChanged({
         taskId: id,
         taskTitle: currentTask.title,
