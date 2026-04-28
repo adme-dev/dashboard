@@ -112,6 +112,83 @@ describe('notifications utility', () => {
 
       await expect(createNotification(params)).rejects.toThrow('Database error')
     })
+
+    describe('in-app preference gating', () => {
+      it('skips creation when inapp pref for the type is false', async () => {
+        mockQueryOne
+          .mockResolvedValueOnce({ notification_preferences: { inapp_task_assigned: false } })
+
+        const result = await createNotification({
+          userId: 'user-123',
+          type: 'task_assigned',
+          title: 'New Task',
+          message: 'You were assigned',
+        })
+
+        // Only the prefs lookup should have run; no INSERT
+        expect(mockQueryOne).toHaveBeenCalledTimes(1)
+        expect(mockQueryOne).toHaveBeenCalledWith(
+          expect.stringContaining('notification_preferences'),
+          ['user-123']
+        )
+        expect(result).toBeNull()
+      })
+
+      it('creates notification when inapp pref is true', async () => {
+        mockQueryOne
+          .mockResolvedValueOnce({ notification_preferences: { inapp_task_assigned: true } })
+          .mockResolvedValueOnce({ id: 'notif-1', created_at: new Date().toISOString() })
+
+        const result = await createNotification({
+          userId: 'user-123',
+          type: 'task_assigned',
+          title: 'New Task',
+          message: 'You were assigned',
+        })
+
+        expect(mockQueryOne).toHaveBeenCalledTimes(2)
+        expect(mockQueryOne).toHaveBeenLastCalledWith(
+          expect.stringContaining('INSERT INTO notifications'),
+          expect.anything()
+        )
+        expect(result).toEqual({ id: 'notif-1', created_at: expect.any(String) })
+      })
+
+      it('defaults to creating when no preference is set', async () => {
+        mockQueryOne
+          .mockResolvedValueOnce({ notification_preferences: {} })
+          .mockResolvedValueOnce({ id: 'notif-1', created_at: new Date().toISOString() })
+
+        await createNotification({
+          userId: 'user-123',
+          type: 'task_assigned',
+          title: 'New Task',
+          message: 'You were assigned',
+        })
+
+        expect(mockQueryOne).toHaveBeenCalledTimes(2)
+      })
+
+      it('creates ungated notification types regardless of preferences', async () => {
+        // 'system' has no inapp_ pref mapping — should always create without lookup
+        mockQueryOne
+          .mockResolvedValueOnce({ id: 'notif-1', created_at: new Date().toISOString() })
+
+        await createNotification({
+          userId: 'user-123',
+          type: 'system',
+          title: 'Important',
+          message: 'System alert',
+        })
+
+        // Goes straight to INSERT — no preference lookup
+        expect(mockQueryOne).toHaveBeenCalledTimes(1)
+        expect(mockQueryOne).toHaveBeenCalledWith(
+          expect.stringContaining('INSERT INTO notifications'),
+          expect.anything()
+        )
+      })
+    })
   })
 
   describe('createBulkNotifications', () => {

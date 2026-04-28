@@ -77,10 +77,37 @@ interface NotifyDueReminderParams {
 }
 
 /**
- * Create a notification for a user
+ * Map notification type → user-controllable in-app preference key.
+ * Types not in this map always create (system, chat, brief, invitation, digest, etc.)
+ * because they're either critical or have their own opt-in/out elsewhere.
+ */
+const TYPE_TO_INAPP_PREF: Partial<Record<NotificationType, string>> = {
+  task_assigned: 'inapp_task_assigned',
+  task_mentioned: 'inapp_task_mentioned',
+  task_comment: 'inapp_task_comment',
+  task_status_changed: 'inapp_task_status',
+  approval_requested: 'inapp_approval',
+  approval_completed: 'inapp_approval',
+  approval_response: 'inapp_approval',
+}
+
+/**
+ * Create a notification for a user.
+ * Honours `inapp_*` preferences in `team_members.notification_preferences`:
+ * if the recipient has explicitly disabled this type, returns null without inserting.
  */
 export async function createNotification(params: CreateNotificationParams) {
   try {
+    const prefKey = TYPE_TO_INAPP_PREF[params.type]
+    if (prefKey) {
+      const row = await queryOne(
+        `SELECT notification_preferences FROM team_members WHERE id = $1`,
+        [params.userId]
+      )
+      const prefs = row?.notification_preferences || {}
+      if (prefs[prefKey] === false) return null
+    }
+
     const notification = await queryOne(`
       INSERT INTO notifications (user_id, type, title, message, link, actor_id, metadata)
       VALUES ($1, $2, $3, $4, $5, $6, $7)
