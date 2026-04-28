@@ -26,7 +26,15 @@ const emit = defineEmits<{
 const emojiPickerMessageId = ref<number | null>(null)
 
 const container = ref<HTMLElement | null>(null)
-const unreadDividerRef = ref<HTMLElement | null>(null)
+// Vue collects refs inside v-for as an array, even when only one element ever
+// matches. Type as array so .scrollIntoView() doesn't throw on the array
+// itself.
+const unreadDividerRef = ref<HTMLElement[]>([])
+
+function getUnreadDividerEl(): HTMLElement | null {
+  const v = unreadDividerRef.value
+  return Array.isArray(v) ? (v[0] ?? null) : (v ?? null)
+}
 const isAtBottom = ref(true)
 const showScrollDown = ref(false)
 
@@ -66,9 +74,8 @@ function scrollToBottom(smooth = true) {
 // Scroll to unread divider
 function scrollToUnread() {
   nextTick(() => {
-    if (unreadDividerRef.value) {
-      unreadDividerRef.value.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }
+    const el = getUnreadDividerEl()
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
   })
 }
 
@@ -95,8 +102,9 @@ watch(() => props.messages.length, () => {
 // On initial load, scroll to unread divider or bottom
 onMounted(() => {
   nextTick(() => {
-    if (firstUnreadId.value && unreadDividerRef.value) {
-      unreadDividerRef.value.scrollIntoView({ behavior: 'instant', block: 'center' })
+    const dividerEl = getUnreadDividerEl()
+    if (firstUnreadId.value && dividerEl) {
+      dividerEl.scrollIntoView({ behavior: 'instant', block: 'center' })
     } else {
       scrollToBottom(false)
     }
