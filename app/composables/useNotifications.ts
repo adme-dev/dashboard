@@ -9,6 +9,13 @@ interface NotificationActor {
   avatarUrl: string | null
 }
 
+type NotificationReason =
+  | 'mentioned'
+  | 'assigned'
+  | 'watching_board'
+  | 'watching_item'
+  | 'direct'
+
 interface Notification {
   id: string
   type: string
@@ -16,6 +23,7 @@ interface Notification {
   message: string
   link: string | null
   metadata: Record<string, any> | null
+  reason: NotificationReason | null
   isRead: boolean
   readAt: string | null
   createdAt: string
@@ -222,6 +230,7 @@ export function useNotifications() {
             message: notification.message,
             link: notification.link,
             metadata: notification.metadata,
+            reason: notification.reason || null,
             isRead: false,
             readAt: null,
             createdAt: notification.createdAt,

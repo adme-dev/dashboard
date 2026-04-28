@@ -30,8 +30,9 @@
             {{ isSubscribed ? 'Watching' : 'Watch' }}
           </UButton>
           <template #content>
-            <div class="p-3 w-64 space-y-2">
-              <p class="text-sm font-medium">Board Notifications</p>
+            <div class="p-3 w-72 space-y-1">
+              <BoardWatchSubscriberStack :board-id="boardId" />
+              <p class="text-sm font-medium px-2 pb-1">Board Notifications</p>
               <div
                 v-for="opt in subscribeOptions"
                 :key="opt.value"
@@ -42,9 +43,25 @@
                 <span>{{ opt.label }}</span>
                 <UIcon v-if="subscriptionLevel === opt.value" name="i-lucide-check" class="w-4 h-4 ml-auto text-primary" />
               </div>
+              <div class="border-t border-default mt-1 pt-1">
+                <div
+                  class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-elevated/50 cursor-pointer text-sm"
+                  @click="openSettings = true"
+                >
+                  <UIcon name="i-lucide-settings-2" class="w-4 h-4" />
+                  <span>Custom…</span>
+                  <UIcon v-if="subscriptionLevel === 'custom'" name="i-lucide-check" class="w-4 h-4 ml-auto text-primary" />
+                </div>
+              </div>
             </div>
           </template>
         </UPopover>
+
+        <BoardWatchSettings
+          v-model:open="openSettings"
+          :board-id="boardId"
+          @saved="onSettingsSaved"
+        />
 
         <UButton color="primary" icon="i-lucide-plus" size="sm" @click="$emit('newItem')">
           New Item
@@ -111,12 +128,21 @@ const views: { id: BoardViewType; label: string; icon: string }[] = [
 // Subscription state
 const isSubscribed = ref(false)
 const subscriptionLevel = ref<string | null>(null)
+const openSettings = ref(false)
 
 const subscribeOptions = [
   { value: 'all', label: 'All activity', icon: 'i-lucide-bell-ring' },
   { value: 'mentions', label: 'Mentions only', icon: 'i-lucide-at-sign' },
   { value: 'muted', label: 'Muted', icon: 'i-lucide-bell-off' },
 ]
+
+function classifyLevel(boardSub: any): string {
+  if (boardSub.isMuted) return 'muted'
+  const events: string[] = boardSub.events || []
+  if (events.length === 0) return 'all'
+  if (events.length === 1 && events[0] === 'task_mentioned') return 'mentions'
+  return 'custom'
+}
 
 // Check subscription status on mount
 onMounted(async () => {
@@ -125,13 +151,17 @@ onMounted(async () => {
     const boardSub = subscriptions.find((s: any) => !s.itemId && !s.columnId)
     if (boardSub) {
       isSubscribed.value = true
-      subscriptionLevel.value = boardSub.isMuted ? 'muted' :
-        (boardSub.events?.length ? 'mentions' : 'all')
+      subscriptionLevel.value = classifyLevel(boardSub)
     }
   } catch {
     // Silently fail — subscription check is non-critical
   }
 })
+
+function onSettingsSaved(payload: { subscribed: boolean; level: string | null }) {
+  isSubscribed.value = payload.subscribed
+  subscriptionLevel.value = payload.level
+}
 
 const toast = useToast()
 

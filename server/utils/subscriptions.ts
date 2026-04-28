@@ -25,7 +25,7 @@ export async function getSubscribers(params: {
   itemId?: string
   columnId?: string
   eventType: string
-}): Promise<Array<{ userId: string; notifyInapp: boolean; notifyEmail: boolean }>> {
+}): Promise<Array<{ userId: string; notifyInapp: boolean; notifyEmail: boolean; itemId: string | null }>> {
   const { boardId, itemId, columnId, eventType } = params
 
   // Build conditions to match board-level, item-level, and column-level subs
@@ -55,7 +55,8 @@ export async function getSubscribers(params: {
     SELECT DISTINCT ON (bs.user_id)
       bs.user_id,
       bs.notify_inapp,
-      bs.notify_email
+      bs.notify_email,
+      bs.item_id
     FROM board_subscriptions bs
     WHERE ${conditions.join(' AND ')}
     ORDER BY bs.user_id, bs.item_id NULLS LAST
@@ -65,6 +66,7 @@ export async function getSubscribers(params: {
     userId: r.user_id,
     notifyInapp: r.notify_inapp,
     notifyEmail: r.notify_email,
+    itemId: r.item_id,
   }))
 }
 

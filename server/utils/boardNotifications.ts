@@ -100,6 +100,7 @@ export async function notifyBoardSubscribers(event: BoardEventNotification): Pro
           message,
           link,
           actorId: event.actorId,
+          reason: sub.itemId ? 'watching_item' : 'watching_board',
           metadata: {
             boardId: event.boardId,
             boardName,

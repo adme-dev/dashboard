@@ -1,10 +1,13 @@
 /**
- * List all subscribers for a board (admin view)
+ * List subscribers for a board.
+ * - default: full subscriber rows (admin view)
+ * - ?summary=true: { count, top: [..3] } — used by Watch popover stack
  */
-import { queryRows } from '~~/server/utils/db'
+import { queryRows, queryOne } from '~~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
   const boardId = getRouterParam(event, 'id')
+  const query = getQuery(event)
 
   if (!boardId) {
     throw createError({ statusCode: 400, statusMessage: 'Board ID is required' })
@@ -12,7 +15,32 @@ export default defineEventHandler(async (event) => {
 
   await requireBoardAccess(event, boardId)
 
+  const summary = query.summary === 'true' || query.summary === '1'
+
   try {
+    if (summary) {
+      const top = await queryRows(`
+        SELECT DISTINCT ON (tm.id)
+          tm.id, tm.name, tm.avatar_url
+        FROM board_subscriptions bs
+        JOIN team_members tm ON bs.user_id = tm.id
+        WHERE bs.board_id = $1 AND bs.is_muted = false
+        ORDER BY tm.id, bs.created_at ASC
+        LIMIT 3
+      `, [boardId])
+
+      const countRow = await queryOne(`
+        SELECT COUNT(DISTINCT bs.user_id) AS count
+        FROM board_subscriptions bs
+        WHERE bs.board_id = $1 AND bs.is_muted = false
+      `, [boardId])
+
+      return {
+        count: parseInt(countRow?.count || '0', 10),
+        top: top.map(r => ({ id: r.id, name: r.name, avatarUrl: r.avatar_url })),
+      }
+    }
+
     const rows = await queryRows(`
       SELECT bs.*,
         tm.name as user_name,
@@ -48,7 +76,7 @@ export default defineEventHandler(async (event) => {
     }
   } catch (error: any) {
     if (error.message?.includes('does not exist')) {
-      return { subscribers: [] }
+      return summary ? { count: 0, top: [] } : { subscribers: [] }
     }
     throw error
   }

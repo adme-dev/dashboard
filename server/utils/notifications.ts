@@ -30,6 +30,13 @@ export type NotificationType =
   | 'brief_submitted'
   | 'board_member_added'
 
+export type NotificationReason =
+  | 'mentioned'
+  | 'assigned'
+  | 'watching_board'
+  | 'watching_item'
+  | 'direct'
+
 interface CreateNotificationParams {
   userId: string
   type: NotificationType
@@ -39,6 +46,7 @@ interface CreateNotificationParams {
   actorId?: string
   metadata?: Record<string, any>
   sendEmail?: boolean
+  reason?: NotificationReason
 }
 
 export interface NotifyTaskAssignedParams {
@@ -147,8 +155,8 @@ export async function createNotification(params: CreateNotificationParams) {
     }
 
     const notification = await queryOne(`
-      INSERT INTO notifications (user_id, type, title, message, link, actor_id, metadata)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO notifications (user_id, type, title, message, link, actor_id, metadata, reason)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING id, created_at
     `, [
       params.userId,
@@ -157,7 +165,8 @@ export async function createNotification(params: CreateNotificationParams) {
       params.message,
       params.link || null,
       params.actorId || null,
-      params.metadata ? JSON.stringify(params.metadata) : null
+      params.metadata ? JSON.stringify(params.metadata) : null,
+      params.reason || null
     ])
 
     return notification
@@ -212,6 +221,7 @@ export async function notifyTaskAssigned(params: NotifyTaskAssignedParams) {
     message: `${assigner.name} assigned you to "${params.taskTitle}"`,
     link: `/agency/tasks/${params.taskId}`,
     actorId: params.assignerId,
+    reason: 'assigned',
     metadata: {
       taskId: params.taskId,
       taskTitle: params.taskTitle,
@@ -344,6 +354,7 @@ export async function notifyMention(params: NotifyMentionParams) {
     message: `${mentioner.name} mentioned you in "${params.taskTitle}"`,
     link: `/agency/tasks/${params.taskId}`,
     actorId: params.mentionerId,
+    reason: 'mentioned',
     metadata: {
       taskId: params.taskId,
       taskTitle: params.taskTitle,

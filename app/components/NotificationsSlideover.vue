@@ -16,6 +16,18 @@ const {
 
 const router = useRouter()
 
+type ReasonBadge = { label: string; color: 'error' | 'info' | 'neutral'; variant: 'solid' | 'subtle' }
+
+function reasonBadge(reason: string | null | undefined): ReasonBadge | null {
+  if (!reason || reason === 'direct') return null
+  if (reason === 'mentioned') return { label: 'Mentioned', color: 'error', variant: 'solid' }
+  if (reason === 'assigned') return { label: 'Assigned', color: 'info', variant: 'solid' }
+  if (reason === 'watching_board' || reason === 'watching_item') {
+    return { label: 'Watching', color: 'neutral', variant: 'subtle' }
+  }
+  return null
+}
+
 // Fetch notifications when slideover opens
 watch(isNotificationsSlideoverOpen, async (isOpen) => {
   if (isOpen && notifications.value.length === 0) {
@@ -133,9 +145,19 @@ async function loadMore() {
 
             <!-- Content -->
             <div class="flex-1 min-w-0">
-              <p class="text-sm font-medium text-highlighted truncate">
-                {{ notification.title }}
-              </p>
+              <div class="flex items-center gap-2">
+                <p class="text-sm font-medium text-highlighted truncate">
+                  {{ notification.title }}
+                </p>
+                <UBadge
+                  v-if="reasonBadge(notification.reason)"
+                  :label="reasonBadge(notification.reason)!.label"
+                  :color="reasonBadge(notification.reason)!.color"
+                  :variant="reasonBadge(notification.reason)!.variant"
+                  size="xs"
+                  class="flex-shrink-0"
+                />
+              </div>
               <p class="text-sm text-muted line-clamp-2">
                 {{ notification.message }}
               </p>

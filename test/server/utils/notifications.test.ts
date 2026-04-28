@@ -689,3 +689,94 @@ describe('notifications utility', () => {
     })
   })
 })
+
+describe('notification reason propagation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('createNotification stores reason when provided', async () => {
+    mockQueryOne
+      .mockResolvedValueOnce({ notification_preferences: {} })
+      .mockResolvedValueOnce({ id: 'n1', created_at: new Date().toISOString() })
+
+    await createNotification({
+      userId: 'u1',
+      type: 'task_assigned',
+      title: 't',
+      message: 'm',
+      reason: 'assigned',
+    })
+
+    const insertCall = mockQueryOne.mock.calls.find(c =>
+      typeof c[0] === 'string' && c[0].includes('INSERT INTO notifications')
+    )
+    expect(insertCall).toBeDefined()
+    const sql = insertCall![0] as string
+    const params = insertCall![1] as any[]
+    expect(sql).toMatch(/reason/)
+    expect(params[params.length - 1]).toBe('assigned')
+  })
+
+  it('createNotification stores null reason when not provided', async () => {
+    mockQueryOne
+      .mockResolvedValueOnce({ notification_preferences: {} })
+      .mockResolvedValueOnce({ id: 'n2', created_at: new Date().toISOString() })
+
+    await createNotification({
+      userId: 'u1',
+      type: 'system',
+      title: 't',
+      message: 'm',
+    })
+
+    const insertCall = mockQueryOne.mock.calls.find(c =>
+      typeof c[0] === 'string' && c[0].includes('INSERT INTO notifications')
+    )
+    const params = insertCall![1] as any[]
+    expect(params[params.length - 1]).toBeNull()
+  })
+
+  it('notifyMention passes reason="mentioned"', async () => {
+    mockQueryOne
+      .mockResolvedValueOnce({ name: 'Alice', email: 'a@x.com' })
+      .mockResolvedValueOnce({ name: 'Bob', email: 'b@x.com', notification_preferences: { email_task_mentioned: false } })
+      .mockResolvedValueOnce({ notification_preferences: {} })
+      .mockResolvedValueOnce({ id: 'n', created_at: new Date().toISOString() })
+
+    await notifyMention({
+      taskId: 't1',
+      taskTitle: 'Task',
+      mentionedUserId: 'bob',
+      mentionerId: 'alice',
+      commentSnippet: 'hi @Bob',
+    })
+
+    const insertCall = mockQueryOne.mock.calls.find(c =>
+      typeof c[0] === 'string' && c[0].includes('INSERT INTO notifications')
+    )
+    const params = insertCall![1] as any[]
+    expect(params[params.length - 1]).toBe('mentioned')
+  })
+
+  it('notifyTaskAssigned passes reason="assigned"', async () => {
+    mockQueryOne
+      .mockResolvedValueOnce({ name: 'Alice', email: 'a@x.com' })
+      .mockResolvedValueOnce({ name: 'Bob', email: 'b@x.com', notification_preferences: { email_task_assigned: false } })
+      .mockResolvedValueOnce({ notification_preferences: {} })
+      .mockResolvedValueOnce({ id: 'n', created_at: new Date().toISOString() })
+
+    await notifyTaskAssigned({
+      taskId: 't1',
+      taskTitle: 'Task',
+      assigneeId: 'bob',
+      assignerId: 'alice',
+    })
+
+    const insertCall = mockQueryOne.mock.calls.find(c =>
+      typeof c[0] === 'string' && c[0].includes('INSERT INTO notifications')
+    )
+    const params = insertCall![1] as any[]
+    expect(params[params.length - 1]).toBe('assigned')
+  })
+})
