@@ -8,6 +8,7 @@ import { notifyBoardSubscribers } from '~~/server/utils/boardNotifications'
 import { evaluateAutomations } from '~~/server/utils/automationEngine'
 import { enqueue } from '~~/server/utils/queue'
 import { postBoardEventToChat } from '~~/server/utils/boardChatBridge'
+import { notifyTaskAssigneeChanged } from '~~/server/utils/notifications'
 
 interface UpdateTaskBody {
   title?: string
@@ -260,6 +261,17 @@ export default defineEventHandler(async (event) => {
       return updatedTask
     })
 
+    // Auto-subscribe assignee to board item BEFORE notifying subscribers,
+    // so the new assignee is included in the notification fan-out.
+    if (body.assigneeId && currentTask.department_id) {
+      const { autoSubscribe } = await import('~~/server/utils/subscriptions')
+      try {
+        await autoSubscribe(body.assigneeId, currentTask.department_id, id)
+      } catch (err) {
+        console.error('Auto-subscribe failed:', err)
+      }
+    }
+
     // Emit board event for real-time updates
     if (currentTask.department_id && changes.length > 0) {
       emitBoardEvent({
@@ -290,11 +302,17 @@ export default defineEventHandler(async (event) => {
       }).catch(() => {})
     }
 
-    // Auto-subscribe assignee to board item
-    if (body.assigneeId && currentTask.department_id) {
-      const { autoSubscribe } = await import('~~/server/utils/subscriptions')
-      autoSubscribe(body.assigneeId, currentTask.department_id, id)
-        .catch(err => console.error('Auto-subscribe failed:', err))
+    // Notify the new assignee directly (in-app + email).
+    // The helper handles unchanged/unassign/self-assignment skips.
+    if (body.assigneeId !== undefined && actorUserId) {
+      notifyTaskAssigneeChanged({
+        taskId: id,
+        taskTitle: currentTask.title,
+        oldAssigneeId: currentTask.assignee_id,
+        newAssigneeId: body.assigneeId || null,
+        actorId: actorUserId,
+        dueDate: currentTask.due_date ? new Date(currentTask.due_date) : undefined,
+      }).catch(err => console.error('Failed to send assignment notification:', err))
     }
 
     // Fetch complete updated task

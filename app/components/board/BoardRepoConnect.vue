@@ -27,18 +27,29 @@
     </template>
   </UPopover>
 
-  <UButton
-    v-else-if="repo"
-    icon="i-lucide-github"
-    variant="soft"
-    color="success"
-    size="sm"
-    :title="`Connected to ${shortRepoName}`"
-    @click="openModal()"
-  >
-    <span class="hidden sm:inline">{{ shortRepoName }}</span>
-    <UIcon name="i-lucide-circle-check" class="w-3.5 h-3.5 -mr-0.5" />
-  </UButton>
+  <div v-else-if="repo" class="flex items-center gap-1">
+    <UButton
+      icon="i-lucide-github"
+      variant="soft"
+      color="success"
+      size="sm"
+      :title="`Connected to ${shortRepoName}`"
+      @click="openModal()"
+    >
+      <span class="hidden sm:inline">{{ shortRepoName }}</span>
+      <UIcon name="i-lucide-circle-check" class="w-3.5 h-3.5 -mr-0.5" />
+    </UButton>
+    <UButton
+      icon="i-lucide-message-square-code"
+      variant="soft"
+      color="primary"
+      size="sm"
+      :title="`Chat with the AI about ${shortRepoName} — scoped to this repo`"
+      @click="chatWithRepo"
+    >
+      <span class="hidden md:inline">Chat with repo</span>
+    </UButton>
+  </div>
 
   <UModal v-model:open="modalOpen" title="Connect GitHub Repository">
     <template #content>
@@ -134,12 +145,19 @@ interface RepoInfo {
 }
 
 const toast = useToast()
+const { open: openHub, setScope } = useActivityHub()
 const loading = ref(true)
 const repo = ref<RepoInfo | null>(null)
 const modalOpen = ref(false)
 const showToken = ref(false)
 const submitting = ref(false)
 const errorMessage = ref<string | null>(null)
+
+function chatWithRepo() {
+  if (!repo.value) return
+  setScope(props.boardId, shortRepoName.value)
+  openHub('ai')
+}
 
 const form = reactive({
   repoUrl: '',

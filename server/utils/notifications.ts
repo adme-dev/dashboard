@@ -170,6 +170,48 @@ export async function notifyTaskAssigned(params: NotifyTaskAssignedParams) {
 }
 
 /**
+ * Notify on assignee change. Wraps notifyTaskAssigned with the guards every
+ * caller needs: skip on no-change, skip on unassign, skip on self-assignment.
+ */
+export interface NotifyTaskAssigneeChangedParams {
+  taskId: string
+  taskTitle: string
+  oldAssigneeId: string | null
+  newAssigneeId: string | null
+  actorId: string
+  dueDate?: Date
+  projectName?: string
+}
+
+export type NotifyTaskAssigneeChangedResult =
+  | { notified: true }
+  | { notified: false; reason: 'unchanged' | 'unassigned' | 'self_assignment' }
+
+export async function notifyTaskAssigneeChanged(
+  params: NotifyTaskAssigneeChangedParams
+): Promise<NotifyTaskAssigneeChangedResult> {
+  if (params.oldAssigneeId === params.newAssigneeId) {
+    return { notified: false, reason: 'unchanged' }
+  }
+  if (!params.newAssigneeId) {
+    return { notified: false, reason: 'unassigned' }
+  }
+  if (params.newAssigneeId === params.actorId) {
+    return { notified: false, reason: 'self_assignment' }
+  }
+
+  await notifyTaskAssigned({
+    assigneeId: params.newAssigneeId,
+    taskId: params.taskId,
+    taskTitle: params.taskTitle,
+    assignerId: params.actorId,
+    dueDate: params.dueDate,
+    projectName: params.projectName,
+  })
+  return { notified: true }
+}
+
+/**
  * Notify task stakeholders when a comment is added
  */
 export async function notifyTaskComment(params: {

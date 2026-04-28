@@ -3,14 +3,16 @@
  */
 
 import { queryOne, transaction } from '~~/server/utils/db'
-import { notifyTaskAssigned } from '~~/server/utils/notifications'
+import { notifyTaskAssigneeChanged } from '~~/server/utils/notifications'
 
 interface UpdateAssigneeBody {
   assigneeId: string | null
-  userId?: string
 }
 
 export default defineEventHandler(async (event) => {
+  const user = await requireAuth(event)
+  const actorUserId = user.id
+
   const id = getRouterParam(event, 'id')
   const body = await readBody<UpdateAssigneeBody>(event)
 
@@ -75,7 +77,7 @@ export default defineEventHandler(async (event) => {
         VALUES ($1, $2, 'assignment', $3, $4, $5)
       `, [
         id,
-        body.userId || null,
+        actorUserId,
         activityContent,
         JSON.stringify({ assigneeId: currentTask.assignee_id, assigneeName: currentTask.old_assignee_name }),
         JSON.stringify({ assigneeId: body.assigneeId, assigneeName: newAssigneeName }),
@@ -90,16 +92,15 @@ export default defineEventHandler(async (event) => {
       WHERE t.id = $1
     `, [id])
 
-    // Send notification if task is assigned to someone new
-    if (body.assigneeId && body.assigneeId !== body.userId) {
-      notifyTaskAssigned({
-        assigneeId: body.assigneeId,
-        taskId: id,
-        taskTitle: currentTask.title,
-        assignerId: body.userId || '',
-        dueDate: currentTask.due_date ? new Date(currentTask.due_date) : undefined
-      }).catch(err => console.error('Failed to send assignment notification:', err))
-    }
+    // Send notification (helper handles unchanged/unassign/self-assignment skips)
+    notifyTaskAssigneeChanged({
+      taskId: id,
+      taskTitle: currentTask.title,
+      oldAssigneeId: currentTask.assignee_id,
+      newAssigneeId: body.assigneeId || null,
+      actorId: actorUserId,
+      dueDate: currentTask.due_date ? new Date(currentTask.due_date) : undefined,
+    }).catch(err => console.error('Failed to send assignment notification:', err))
 
     return {
       id,

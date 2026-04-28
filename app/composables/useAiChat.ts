@@ -147,7 +147,11 @@ export function useAiChat() {
     })
   }
 
-  async function sendMessage(content: string, mentionedEntities?: Array<{ type: string; id: string }>) {
+  async function sendMessage(
+    content: string,
+    mentionedEntities?: Array<{ type: string; id: string }>,
+    boardId?: string,
+  ) {
     if (!activeConversation.value || sending.value) return
 
     sending.value = true
@@ -172,6 +176,7 @@ export function useAiChat() {
       if (mentionedEntities && mentionedEntities.length > 0) {
         body.mentionedEntities = mentionedEntities
       }
+      if (boardId) body.boardId = boardId
 
       const result = await $fetch<ChatMessageResponse>(
         `/api/agency/ai/chat/conversations/${activeConversation.value.id}/messages`,

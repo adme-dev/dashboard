@@ -3,7 +3,7 @@ const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const { user } = useAuth()
-const { close, toggleSize } = useActivityHub()
+const { close, toggleSize, scopedBoardId, scopedBoardLabel, clearScope } = useActivityHub()
 
 const inputText = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
@@ -39,7 +39,7 @@ async function handleSend() {
 
   try {
     await ensureConversation()
-    await sendMessage(text)
+    await sendMessage(text, undefined, scopedBoardId.value ?? undefined)
     scrollToBottom()
   } catch (err: any) {
     toast.add({
@@ -106,6 +106,26 @@ watch(() => messages.value.length, () => {
 
 <template>
   <div class="flex flex-col h-full">
+    <!-- Repo scope chip — shown when chatting in a board-anchored context -->
+    <div
+      v-if="scopedBoardId"
+      class="flex items-center justify-between gap-2 px-3 py-1.5 bg-primary/5 border-b border-default text-xs"
+    >
+      <div class="flex items-center gap-1.5 min-w-0">
+        <UIcon name="i-lucide-link" class="w-3.5 h-3.5 text-primary shrink-0" />
+        <span class="text-muted">Scoped to repo:</span>
+        <span class="font-medium truncate">{{ scopedBoardLabel || scopedBoardId }}</span>
+      </div>
+      <UButton
+        icon="i-lucide-x"
+        variant="ghost"
+        color="neutral"
+        size="xs"
+        title="Clear scope — broaden to all accessible repos"
+        @click="clearScope()"
+      />
+    </div>
+
     <!-- Quick Actions -->
     <AiQuickActions @action="handleQuickAction" />
 
