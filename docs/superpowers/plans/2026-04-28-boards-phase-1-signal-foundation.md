@@ -10,6 +10,61 @@
 
 > **Schema-naming note:** the user-facing concept is "board" but the historical Postgres table is `departments`. New foreign keys reference `departments(id)`; tasks already use `department_id`. The `boards` URL/UI naming stays.
 
+> **BoardRoom DO non-persistence (verified 2026-04-28):** the existing `workers/board-events/` Durable Object is in-memory only — no `storage.put`, `storage.sql`, or other persisted writes. `board_events` is therefore the canonical persistent log; no duplicate-work risk.
+
+---
+
+## Execution slices
+
+Run the plan as **three vertical slices**, each ending in something visible. This is appropriate for a platform still in development — fast feedback beats sequential perfection.
+
+### Slice 1.0 — "Thin proof" (4–5 days)
+
+End state: one mutation type (status change) → `board_events` → daily rollup → HUD shows throughput on a board.
+
+Tasks: **1, 3, 4, 5 (status only — defer assignee/create/delete to 1.A), 7, 8, 9, 19, 20, 26 (telemetry)**.
+
+Why: proves the schema, the rollup pipeline, the Cron trigger, the Workers AI binding, and the HUD component pattern. Any architectural mistake surfaces here, not in week 4.
+
+### Slice 1.A — "Foundation complete" (1–2 weeks)
+
+End state: every mutation endpoint emits events, all four metrics in HUD, last 30 days backfilled.
+
+Tasks: **2, 5 (rest — assignee/create/delete), 6, 10, 21**.
+
+### Slice 1.B — "Triage feed" (2 weeks)
+
+End state: `/agency/triage` page live with For You / My Work / Following tabs and AI-decorated reasoning.
+
+Tasks: **11, 12, 13, 14, 15, 16, 17, 18, 24**.
+
+### Cut / deferred (do **not** run as part of Phase 1)
+
+- **Task 21 step 1** (per-user HUD collapse via `board_views.config`) — use `localStorage` only (step 2). The view-config integration is over-engineering for a UI toggle.
+- **Tasks 22 & 23** (Playwright E2E specs) — defer to a real Phase 0 E2E sprint after Phase 1 is feature-complete. The repo currently has 1 test file; bolting on Playwright inside Phase 1 is scope creep. Equivalent assertions can be Vitest integration tests against the dev server in the meantime.
+- **"Front-facing page sync" out-of-band task** — defer until the platform ships externally. Marketing pages are not load-bearing for staff users now.
+
+### Feature-flagging
+
+The Curation Worker reads an env var `ENABLE_AI_DECORATION`; when unset or `"false"`, it skips the Workers AI call and stores `reasoning = NULL`. This lets Slice 1.A ship without depending on Llama-3 quality, and lets you toggle AI decoration off in production without redeploying.
+
+Add to `workers/triage-curator/wrangler.toml`:
+
+```toml
+[vars]
+ENABLE_AI_DECORATION = "true"
+```
+
+And in `src/index.ts`, gate the call:
+
+```ts
+if ((env.ENABLE_AI_DECORATION ?? 'false') !== 'true') {
+  return new Map()
+}
+```
+
+(Folds into Task 12 when implementing.)
+
 ---
 
 ## File Structure
@@ -2404,6 +2459,190 @@ NODE_OPTIONS='--max-old-space-size=8192' pnpm deploy:production
 
 ```bash
 git commit --allow-empty -m "chore(triage): deploy Phase 1 Signal Foundation to production"
+```
+
+---
+
+## Task 26: Telemetry helper + page/worker instrumentation
+
+**Files:**
+- Create: `server/utils/triage/telemetry.ts`
+- Test: `test/server/utils/triage/telemetry.test.ts`
+- Modify: `app/pages/agency/triage.vue`
+- Modify: `workers/triage-curator/src/index.ts`
+
+> **Slice:** part of 1.0. Ship telemetry from day one so heuristic-weight tuning has data when we need it.
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+// test/server/utils/triage/telemetry.test.ts
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+vi.mock('~~/server/utils/db', () => ({ execute: vi.fn() }))
+
+import { recordTriageEvent } from '~~/server/utils/triage/telemetry'
+import * as db from '~~/server/utils/db'
+
+describe('recordTriageEvent', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('inserts a row with the event name and payload', async () => {
+    await recordTriageEvent({ event: 'triage_open', userId: 'u1', payload: { tab: 'curated' } })
+    expect(db.execute).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO triage_telemetry'),
+      ['triage_open', 'u1', JSON.stringify({ tab: 'curated' })]
+    )
+  })
+
+  it('swallows errors (non-blocking)', async () => {
+    vi.mocked(db.execute).mockRejectedValueOnce(new Error('boom'))
+    await expect(recordTriageEvent({ event: 'triage_item_click', userId: 'u1', payload: {} }))
+      .resolves.toBeUndefined()
+  })
+})
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+```bash
+pnpm test test/server/utils/triage/telemetry.test.ts
+```
+Expected: FAIL — module not found.
+
+- [ ] **Step 3: Add a tiny migration for the telemetry table**
+
+Append to `server/database/migrations/082-triage-telemetry.sql`:
+
+```sql
+CREATE TABLE IF NOT EXISTS triage_telemetry (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  event       VARCHAR(40) NOT NULL,
+  user_id     UUID REFERENCES team_members(id) ON DELETE SET NULL,
+  payload     JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_triage_telemetry_event_time ON triage_telemetry (event, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_triage_telemetry_user_time  ON triage_telemetry (user_id, created_at DESC);
+```
+
+Apply:
+```bash
+psql "$DATABASE_URL" -f server/database/migrations/082-triage-telemetry.sql
+```
+
+- [ ] **Step 4: Write the helper**
+
+```ts
+// server/utils/triage/telemetry.ts
+import { execute } from '~~/server/utils/db'
+
+export type TriageEvent =
+  | 'triage_open'
+  | 'triage_item_click'
+  | 'triage_mark_read'
+  | 'triage_curation_skipped'
+  | 'triage_curation_duration_ms'
+  | 'triage_curation_ai_failure'
+
+export async function recordTriageEvent(params: {
+  event: TriageEvent
+  userId: string | null
+  payload: Record<string, unknown>
+}): Promise<void> {
+  try {
+    await execute(
+      `INSERT INTO triage_telemetry (event, user_id, payload) VALUES ($1, $2, $3)`,
+      [params.event, params.userId ?? null, JSON.stringify(params.payload ?? {})]
+    )
+  } catch (err) {
+    console.error('[triage-telemetry] write failure:', err)
+  }
+}
+```
+
+- [ ] **Step 5: Run tests to verify pass**
+
+```bash
+pnpm test test/server/utils/triage/telemetry.test.ts
+```
+Expected: PASS — 2 tests.
+
+- [ ] **Step 6: Add a server endpoint for client-side calls**
+
+```ts
+// server/api/agency/triage/telemetry.post.ts
+import { requireAuth } from '~~/server/utils/auth'
+import { recordTriageEvent, type TriageEvent } from '~~/server/utils/triage/telemetry'
+
+const ALLOWED: TriageEvent[] = ['triage_open', 'triage_item_click', 'triage_mark_read']
+
+export default defineEventHandler(async (event) => {
+  const user = await requireAuth(event)
+  const body = await readBody<{ event: TriageEvent; payload?: Record<string, unknown> }>(event)
+  if (!body?.event || !ALLOWED.includes(body.event)) {
+    throw createError({ statusCode: 400, statusMessage: 'invalid event' })
+  }
+  await recordTriageEvent({ event: body.event, userId: user.id, payload: body.payload ?? {} })
+  return { ok: true }
+})
+```
+
+- [ ] **Step 7: Wire client-side calls in `app/pages/agency/triage.vue`**
+
+Add to `<script setup>`:
+
+```ts
+async function logEvent(event: 'triage_open' | 'triage_item_click' | 'triage_mark_read', payload: Record<string, unknown>) {
+  $fetch('/api/agency/triage/telemetry', { method: 'POST', body: { event, payload } }).catch(() => {})
+}
+
+onMounted(() => logEvent('triage_open', { tab: tab.value }))
+watch(tab, (newTab) => logEvent('triage_open', { tab: newTab }))
+```
+
+In `TriageItemCard.vue`, on the open and markRead handlers, emit a `track` event up; the page calls `logEvent('triage_item_click', { id: item.id, tab, rank })` and `logEvent('triage_mark_read', { id: item.id, tab })`.
+
+- [ ] **Step 8: Wire worker-side telemetry in `triage-curator`**
+
+In the curation worker's `scheduled()`, around the per-user pass:
+
+```ts
+const start = Date.now()
+const r = await curateForUser(env, userId)
+const durationMs = Date.now() - start
+
+const sql = neon(env.DATABASE_URL)
+await sql`
+  INSERT INTO triage_telemetry (event, user_id, payload)
+  VALUES (
+    ${r.skipped ? 'triage_curation_skipped' : 'triage_curation_duration_ms'},
+    ${userId},
+    ${JSON.stringify({ duration_ms: durationMs, count: r.count ?? 0 })}::jsonb
+  )
+`
+```
+
+If `decorateBatch` returned an empty Map AND the request was attempted (i.e. AI was enabled), record `triage_curation_ai_failure` once for the whole pass.
+
+- [ ] **Step 9: Smoke check**
+
+```bash
+psql "$DATABASE_URL" -c "SELECT event, COUNT(*) FROM triage_telemetry GROUP BY event;"
+```
+Expected: at least `triage_open`, `triage_item_click`, `triage_curation_duration_ms` appear after exercising the page and the worker.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add server/database/migrations/082-triage-telemetry.sql \
+        server/utils/triage/telemetry.ts \
+        test/server/utils/triage/telemetry.test.ts \
+        server/api/agency/triage/telemetry.post.ts \
+        app/pages/agency/triage.vue \
+        app/components/triage/TriageItemCard.vue \
+        workers/triage-curator/src/index.ts
+git commit -m "feat(triage): telemetry helper + page/worker instrumentation"
 ```
 
 ---
