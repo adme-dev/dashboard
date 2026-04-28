@@ -24,7 +24,7 @@ export interface ContextBundle {
 }
 
 // Simple keyword extraction from user question
-function extractKeywords(question: string): string[] {
+export function extractKeywords(question: string): string[] {
   const stopWords = new Set([
     'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
     'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',

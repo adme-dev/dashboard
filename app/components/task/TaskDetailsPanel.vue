@@ -139,6 +139,96 @@
       </div>
     </div>
 
+    <!-- AI Context (Wiki) Section — only shown when board has a connected repo+graph -->
+    <div v-if="wiki?.enabled" class="border border-gray-200 dark:border-neutral-700 rounded-lg">
+      <button
+        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-900 dark:text-neutral-100 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors"
+        @click="showWiki = !showWiki"
+      >
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-sparkles" class="w-4 h-4 text-gray-500 dark:text-neutral-400" />
+          <span>AI Context</span>
+          <span
+            v-if="wiki.status === 'stale'"
+            class="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+          >Stale</span>
+          <span
+            v-else-if="wiki.status === 'never-generated'"
+            class="text-xs text-gray-400 dark:text-neutral-500"
+          >Not generated</span>
+        </div>
+        <UIcon
+          :name="showWiki ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+          class="w-4 h-4 text-gray-400 dark:text-neutral-500"
+        />
+      </button>
+      <div v-if="showWiki" class="px-4 pt-4 pb-4 border-t border-gray-200 dark:border-neutral-700 space-y-3">
+        <!-- Never generated -->
+        <div v-if="wiki.status === 'never-generated'" class="space-y-3">
+          <p class="text-sm text-gray-600 dark:text-neutral-400">
+            Generate a 2–3 sentence AI summary of what this task likely touches in the connected repo, plus a list of relevant files.
+          </p>
+          <UButton
+            icon="i-lucide-sparkles"
+            size="sm"
+            :loading="wikiGenerating"
+            @click="regenerateWiki"
+          >
+            Generate AI Context
+          </UButton>
+        </div>
+
+        <!-- Fresh / Stale: show content -->
+        <div v-else class="space-y-3">
+          <p v-if="wiki.summary" class="text-sm text-gray-700 dark:text-neutral-300 leading-relaxed">
+            {{ wiki.summary }}
+          </p>
+          <p v-else class="text-sm text-gray-500 dark:text-neutral-400 italic">
+            No summary available.
+          </p>
+
+          <!-- File list -->
+          <div v-if="wiki.files?.length" class="space-y-1">
+            <p class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">
+              Relevant files ({{ wiki.files.length }})
+            </p>
+            <a
+              v-for="file in wiki.files"
+              :key="file.path"
+              :href="githubFileUrl(file.path)"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex items-center gap-2 px-2 py-1.5 rounded text-sm text-gray-700 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-800 group"
+            >
+              <UIcon name="i-lucide-file-code" class="w-4 h-4 text-gray-400 dark:text-neutral-500 flex-shrink-0" />
+              <span class="font-mono text-xs truncate">{{ file.path }}</span>
+              <span v-if="file.label && file.label !== file.path" class="text-xs text-gray-400 dark:text-neutral-500 truncate">
+                · {{ file.label }}
+              </span>
+              <UIcon name="i-lucide-external-link" class="w-3 h-3 text-gray-300 dark:text-neutral-600 ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+            </a>
+          </div>
+
+          <!-- Footer: timestamp + refresh -->
+          <div class="flex items-center justify-between pt-2 text-xs text-gray-500 dark:text-neutral-400 border-t border-gray-100 dark:border-neutral-800">
+            <span>
+              Generated {{ wiki.generatedAt ? formatDate(wiki.generatedAt) : '—' }}
+              <span v-if="wiki.model" class="text-gray-400 dark:text-neutral-500">· {{ wiki.model }}</span>
+            </span>
+            <UButton
+              icon="i-lucide-refresh-cw"
+              variant="ghost"
+              size="xs"
+              :loading="wikiGenerating"
+              @click="regenerateWiki"
+            >
+              Refresh
+            </UButton>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Activity Log Section -->
     <div class="border border-gray-200 dark:border-neutral-700 rounded-lg">
       <button
@@ -189,10 +279,79 @@ const showFiles = ref(false)
 const showLinkedItems = ref(false)
 const linkedItemCount = ref(0)
 const showActivity = ref(false)
+const showWiki = ref(false)
 
 function toggleLinkedItems() {
   showLinkedItems.value = !showLinkedItems.value
 }
+
+// AI Context (Wiki) ---------------------------------------------------------
+interface WikiFile {
+  path: string
+  label: string
+  source_location?: string | null
+}
+
+interface WikiResponse {
+  enabled: boolean
+  reason?: 'no-repo' | 'no-graphify'
+  status?: 'never-generated' | 'fresh' | 'stale'
+  summary?: string
+  files?: WikiFile[]
+  repo?: { url: string; branch: string }
+  generatedAt?: string
+  model?: string | null
+}
+
+const wiki = ref<WikiResponse | null>(null)
+const wikiGenerating = ref(false)
+
+async function fetchWiki() {
+  try {
+    wiki.value = await $fetch<WikiResponse>(`/api/agency/tasks/${props.taskId}/wiki`)
+  } catch (err) {
+    console.error('Failed to fetch wiki:', err)
+    wiki.value = { enabled: false }
+  }
+}
+
+async function regenerateWiki() {
+  if (wikiGenerating.value) return
+  wikiGenerating.value = true
+  try {
+    const result = await $fetch<WikiResponse>(`/api/agency/tasks/${props.taskId}/wiki/regenerate`, {
+      method: 'POST',
+    })
+    wiki.value = result
+    toast.add({ title: 'AI Context generated', color: 'success' })
+  } catch (err: any) {
+    console.error('Failed to regenerate wiki:', err)
+    toast.add({
+      title: 'Generation failed',
+      description: err.data?.statusMessage || 'Unable to generate AI Context',
+      color: 'error',
+    })
+  } finally {
+    wikiGenerating.value = false
+  }
+}
+
+function githubFileUrl(path: string): string {
+  if (!wiki.value?.repo) return '#'
+  // Reject anything that could escape the /blob/<branch>/ scope of github.com.
+  // graphify-supplied source_file values are normally safe (e.g. src/foo.ts) but
+  // the column is third-party-tool-controlled, so we validate defensively.
+  if (!path || !/^[\w./@-]+$/.test(path) || path.includes('..')) return '#'
+  const { url, branch } = wiki.value.repo
+  const base = url.replace(/\/$/, '')
+  const encodedPath = path.split('/').map(encodeURIComponent).join('/')
+  return `${base}/blob/${encodeURIComponent(branch)}/${encodedPath}`
+}
+
+onMounted(() => {
+  fetchWiki()
+})
+// --------------------------------------------------------------------------
 
 // Files state
 const attachments = ref<Attachment[]>([])
@@ -312,8 +471,11 @@ watch(() => props.taskId, () => {
   attachments.value = []
   fileSearch.value = ''
   linkedItemCount.value = 0
+  wiki.value = null
+  showWiki.value = false
   if (showFiles.value) {
     fetchAttachments()
   }
+  fetchWiki()
 })
 </script>
