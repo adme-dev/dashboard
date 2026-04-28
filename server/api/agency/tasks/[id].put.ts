@@ -214,13 +214,6 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    if (fields.length === 0 && body.labels === undefined) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'No fields to update'
-      })
-    }
-
     const result = await transaction(async (client) => {
       let updatedTask = currentTask
 
