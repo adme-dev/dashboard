@@ -22,8 +22,12 @@ const emit = defineEmits<{
   'forward': [message: ChatMessage]
 }>()
 
-// Emoji picker state
+// Emoji picker / dropdown open state. Used both to control the popover open
+// state AND to keep the hover toolbar pinned visible while a menu is open
+// (otherwise leaving .group:hover unmounts the trigger and Radix drops the
+// menu at viewport 0,0).
 const emojiPickerMessageId = ref<number | null>(null)
+const menuOpenMessageId = ref<number | null>(null)
 
 const container = ref<HTMLElement | null>(null)
 // Vue collects refs inside v-for as an array, even when only one element ever
@@ -355,8 +359,13 @@ defineExpose({ scrollToBottom, scrollToUnread })
                 </div>
               </div>
 
-              <!-- Hover actions -->
-              <div class="absolute top-0 right-1 -mt-3 hidden group-hover:flex items-center gap-0.5 bg-elevated border border-default rounded-md shadow-sm px-0.5 py-0.5">
+              <!-- Hover actions — kept visible while a popover/dropdown is open
+                   on this message so its trigger stays mounted and the floating
+                   menu doesn't lose its anchor. -->
+              <div
+                class="absolute top-0 right-1 -mt-3 items-center gap-0.5 bg-elevated border border-default rounded-md shadow-sm px-0.5 py-0.5"
+                :class="(emojiPickerMessageId === msg.id || menuOpenMessageId === msg.id) ? 'flex' : 'hidden group-hover:flex'"
+              >
                 <!-- Quick emoji -->
                 <button
                   v-for="emoji in quickEmojis.slice(0, 3)"
@@ -401,6 +410,7 @@ defineExpose({ scrollToBottom, scrollToUnread })
                 <!-- More actions -->
                 <UDropdownMenu
                   :content="{ side: 'top', align: 'end', sideOffset: 6, collisionPadding: 8 }"
+                  @update:open="v => menuOpenMessageId = v ? msg.id : (menuOpenMessageId === msg.id ? null : menuOpenMessageId)"
                   :items="[
                     [
                       { label: 'Reply', icon: 'i-lucide-reply', click: () => emit('reply', msg) },
