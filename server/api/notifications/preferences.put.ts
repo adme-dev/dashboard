@@ -52,12 +52,17 @@ function validateQuietHours(input: any): { valid: boolean; reason?: string } {
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
   const body = await readBody(event)
-  const { preferences, autoSubscribeOnParticipation, quietHours } = body
+  const { preferences, autoSubscribeOnParticipation, quietHours, autoAckAssignments } = body
 
-  if (!preferences && autoSubscribeOnParticipation === undefined && quietHours === undefined) {
+  if (
+    !preferences &&
+    autoSubscribeOnParticipation === undefined &&
+    quietHours === undefined &&
+    autoAckAssignments === undefined
+  ) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'preferences, autoSubscribeOnParticipation, or quietHours is required'
+      statusMessage: 'At least one preference field is required'
     })
   }
 
@@ -91,6 +96,10 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  if (autoAckAssignments !== undefined && typeof autoAckAssignments !== 'boolean') {
+    throw createError({ statusCode: 400, statusMessage: 'autoAckAssignments must be a boolean' })
+  }
+
   try {
     // Get current preferences
     const current = await queryOne(`
@@ -119,12 +128,17 @@ export default defineEventHandler(async (event) => {
       values.push(quietHours === null ? null : JSON.stringify(quietHours))
       idx++
     }
+    if (autoAckAssignments !== undefined) {
+      sets.push(`auto_ack_assignments = $${idx}`)
+      values.push(autoAckAssignments)
+      idx++
+    }
 
     const result = await queryOne(`
       UPDATE team_members
       SET ${sets.join(', ')}
       WHERE id = $1
-      RETURNING notification_preferences, auto_subscribe_on_participation, quiet_hours
+      RETURNING notification_preferences, auto_subscribe_on_participation, quiet_hours, auto_ack_assignments
     `, values)
 
     return {
@@ -132,6 +146,7 @@ export default defineEventHandler(async (event) => {
       preferences: result?.notification_preferences || merged,
       autoSubscribeOnParticipation: result?.auto_subscribe_on_participation ?? true,
       quietHours: result?.quiet_hours || null,
+      autoAckAssignments: result?.auto_ack_assignments ?? false,
     }
   } catch (error) {
     console.error('Failed to update notification preferences:', error)

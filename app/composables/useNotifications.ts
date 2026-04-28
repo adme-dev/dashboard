@@ -24,6 +24,7 @@ interface Notification {
   link: string | null
   metadata: Record<string, any> | null
   reason: NotificationReason | null
+  importanceScore: number | null
   isRead: boolean
   readAt: string | null
   createdAt: string
@@ -47,13 +48,14 @@ export function useNotifications() {
   /**
    * Fetch notifications from API
    */
-  async function fetchNotifications(options?: { unreadOnly?: boolean; append?: boolean }) {
+  async function fetchNotifications(options?: { unreadOnly?: boolean; append?: boolean; sort?: 'recent' | 'importance' }) {
     loading.value = true
     try {
       const offset = options?.append ? notifications.value.length : 0
       const params = new URLSearchParams()
       if (options?.unreadOnly) params.set('unread', 'true')
       if (offset) params.set('offset', String(offset))
+      if (options?.sort) params.set('sort', options.sort)
 
       const data = await $fetch(`/api/notifications?${params}`) as NotificationsResponse
 
@@ -231,6 +233,7 @@ export function useNotifications() {
             link: notification.link,
             metadata: notification.metadata,
             reason: notification.reason || null,
+            importanceScore: typeof notification.importanceScore === 'number' ? notification.importanceScore : null,
             isRead: false,
             readAt: null,
             createdAt: notification.createdAt,

@@ -14,12 +14,14 @@ interface BoardRollup {
   boardName: string
   counts: { mentioned: number; assigned: number; watching: number; direct: number }
   topItems: Array<{ taskId: string; taskTitle: string; count: number }>
+  narrative?: string | null
 }
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
   const query = getQuery(event)
   const range = query.range === 'week' ? 'week' : 'today'
+  const wantNarrative = query.narrative === 'true' || query.narrative === '1'
 
   // Compute range start
   const now = new Date()
@@ -130,6 +132,37 @@ export default defineEventHandler(async (event) => {
       const sumZ = z.counts.mentioned + z.counts.assigned + z.counts.watching + z.counts.direct
       return sumZ - sumA
     })
+
+    // Optional: Groq-generated narrative per board.
+    // One LLM call per board, capped at top 5 boards by total to bound cost.
+    // Failure is silent — frontend falls back to count badges + top items.
+    if (wantNarrative && boards.length > 0) {
+      try {
+        const { generateGroqInsight, GROQ_MODELS } = await import('~~/server/utils/groqClient')
+        const top = boards.slice(0, 5)
+        await Promise.allSettled(
+          top.map(async (b) => {
+            try {
+              const itemList = b.topItems.length > 0
+                ? b.topItems.map(t => `"${t.taskTitle}" (${t.count} updates)`).join(', ')
+                : 'no specific items'
+              const prompt = `Write ONE short sentence (max 20 words) summarising activity on the "${b.boardName}" board for a busy team member. Be specific and skimmable.\n\nActivity:\n- ${b.counts.mentioned} mentions of you\n- ${b.counts.assigned} assignments to you\n- ${b.counts.watching} from items you watch\n- ${b.counts.direct} other\n\nTop items: ${itemList}\n\nReturn just the sentence, no preamble.`
+              const text = await generateGroqInsight(prompt, {
+                model: GROQ_MODELS.LLAMA_8B,
+                maxTokens: 60,
+                temperature: 0.3,
+                systemPrompt: 'You write punchy single-sentence activity summaries. No emoji, no preamble, no bullet points.',
+              })
+              b.narrative = text.trim().replace(/^["']|["']$/g, '')
+            } catch {
+              b.narrative = null
+            }
+          })
+        )
+      } catch {
+        // Groq client unavailable — skip narratives entirely
+      }
+    }
 
     return {
       range,

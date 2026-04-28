@@ -28,15 +28,38 @@ function reasonBadge(reason: string | null | undefined): ReasonBadge | null {
   return null
 }
 
+// Lazy-loaded "why am I seeing this" explanations, keyed by notification id.
+const whyCache = ref<Record<string, string>>({})
+const whyLoading = ref<Record<string, boolean>>({})
+
+async function loadWhy(notificationId: string) {
+  if (whyCache.value[notificationId] || whyLoading.value[notificationId]) return
+  whyLoading.value[notificationId] = true
+  try {
+    const data = await $fetch<{ reason: string }>(`/api/notifications/${notificationId}/why`)
+    whyCache.value[notificationId] = data.reason
+  } catch {
+    whyCache.value[notificationId] = 'Could not load explanation.'
+  } finally {
+    whyLoading.value[notificationId] = false
+  }
+}
+
 // Tabs: inbox vs today's digest
 const activeTab = ref<'inbox' | 'digest'>('inbox')
 const digestRange = ref<'today' | 'week'>('today')
+const inboxSort = ref<'recent' | 'importance'>('recent')
+
+watch(inboxSort, async (sort) => {
+  await fetchNotifications({ sort })
+})
 
 interface DigestBoard {
   boardId: string
   boardName: string
   counts: { mentioned: number; assigned: number; watching: number; direct: number }
   topItems: Array<{ taskId: string; taskTitle: string; count: number }>
+  narrative?: string | null
 }
 interface DigestResponse {
   range: string
@@ -51,11 +74,26 @@ const digest = ref<DigestResponse | null>(null)
 async function loadDigest() {
   digestLoading.value = true
   try {
+    // narrative=true asks the server to ask Groq for a per-board sentence.
+    // It can be slow (3-5s) so we don't block the count layout — load counts
+    // first, then call again with narrative=true and merge.
     digest.value = await $fetch<DigestResponse>(`/api/notifications/digest?range=${digestRange.value}`)
+    digestLoading.value = false
+    try {
+      const enriched = await $fetch<DigestResponse>(`/api/notifications/digest?range=${digestRange.value}&narrative=true`)
+      // Only patch in narratives if the digest tab is still active and range hasn't changed
+      if (digest.value && digest.value.range === enriched.range) {
+        for (const b of enriched.boards) {
+          const existing = digest.value.boards.find(x => x.boardId === b.boardId)
+          if (existing) existing.narrative = b.narrative
+        }
+      }
+    } catch {
+      // narrative is best-effort
+    }
   } catch (err) {
     console.error('Failed to load digest:', err)
     digest.value = null
-  } finally {
     digestLoading.value = false
   }
 }
@@ -197,6 +235,12 @@ async function loadMore() {
               <span class="text-xs text-muted ml-auto">{{ boardTotal(board) }}</span>
             </button>
             <div class="px-3 py-2 space-y-1.5">
+              <p
+                v-if="board.narrative"
+                class="text-sm text-highlighted leading-snug"
+              >
+                {{ board.narrative }}
+              </p>
               <div class="flex flex-wrap gap-1.5">
                 <UBadge v-if="board.counts.mentioned" :label="`${board.counts.mentioned} mentioned`" color="error" variant="subtle" size="xs" />
                 <UBadge v-if="board.counts.assigned" :label="`${board.counts.assigned} assigned`" color="info" variant="subtle" size="xs" />
@@ -220,6 +264,25 @@ async function loadMore() {
 
       <!-- Inbox tab -->
       <template v-else>
+      <!-- Sort toggle -->
+      <div v-if="notifications.length > 0" class="flex items-center gap-2 mb-3">
+        <span class="text-xs text-muted">Sort:</span>
+        <UButton
+          label="Recent"
+          :variant="inboxSort === 'recent' ? 'soft' : 'ghost'"
+          :color="inboxSort === 'recent' ? 'primary' : 'neutral'"
+          size="xs"
+          @click="inboxSort = 'recent'"
+        />
+        <UButton
+          label="Importance"
+          :variant="inboxSort === 'importance' ? 'soft' : 'ghost'"
+          :color="inboxSort === 'importance' ? 'primary' : 'neutral'"
+          size="xs"
+          @click="inboxSort = 'importance'"
+        />
+      </div>
+
       <!-- Loading state -->
       <template v-if="loading && notifications.length === 0">
         <div class="space-y-3 -mx-3">
@@ -294,6 +357,26 @@ async function loadMore() {
                   size="xs"
                   class="flex-shrink-0"
                 />
+                <UPopover
+                  v-if="notification.reason && notification.reason !== 'direct'"
+                  :ui="{ content: 'max-w-xs' }"
+                  @click.stop
+                >
+                  <button
+                    class="text-muted hover:text-highlighted flex-shrink-0"
+                    title="Why this notification?"
+                    @click.stop="loadWhy(notification.id)"
+                  >
+                    <UIcon name="i-lucide-help-circle" class="w-3.5 h-3.5" />
+                  </button>
+                  <template #content>
+                    <div class="p-3 text-sm">
+                      <p class="text-xs font-medium text-muted uppercase tracking-wide mb-1">Why this notification</p>
+                      <p v-if="whyLoading[notification.id]" class="text-muted">Generating explanation…</p>
+                      <p v-else>{{ whyCache[notification.id] || 'Click to load' }}</p>
+                    </div>
+                  </template>
+                </UPopover>
               </div>
               <p class="text-sm text-muted line-clamp-2">
                 {{ notification.message }}

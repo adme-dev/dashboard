@@ -7,6 +7,49 @@
       </p>
     </header>
 
+    <!-- Keyword subscriptions -->
+    <section class="mb-8 border border-default rounded-lg p-4">
+      <h2 class="text-base font-semibold mb-1">Keywords</h2>
+      <p class="text-xs text-muted mb-3">
+        Get notified when notification text matches any of these (case-insensitive). Useful for following topics across boards.
+      </p>
+      <div class="flex flex-wrap gap-2 mb-3">
+        <UBadge
+          v-for="k in keywords"
+          :key="k.id"
+          :label="k.keyword"
+          color="primary"
+          variant="soft"
+          size="md"
+          class="pr-1 cursor-default"
+        >
+          <template #trailing>
+            <button class="ml-2 hover:text-error" @click="removeKeyword(k.id)" title="Remove">
+              <UIcon name="i-lucide-x" class="w-3 h-3" />
+            </button>
+          </template>
+        </UBadge>
+        <span v-if="keywords.length === 0" class="text-xs text-muted">No keywords yet.</span>
+      </div>
+      <form class="flex gap-2" @submit.prevent="addKeyword">
+        <UInput
+          v-model="newKeyword"
+          placeholder="e.g. invoicing"
+          size="sm"
+          class="flex-1"
+          maxlength="80"
+        />
+        <UButton
+          label="Add"
+          color="primary"
+          size="sm"
+          :loading="addingKeyword"
+          :disabled="!newKeyword.trim()"
+          @click="addKeyword"
+        />
+      </form>
+    </section>
+
     <div class="flex items-center gap-3 mb-4">
       <div class="flex items-center gap-1">
         <UButton
@@ -127,6 +170,58 @@ const scopeFilter = ref<'all' | 'board' | 'item' | 'column'>('all')
 const searchQuery = ref('')
 const toast = useToast()
 
+// Keyword subscriptions
+interface Keyword { id: string; keyword: string; createdAt: string }
+const keywords = ref<Keyword[]>([])
+const newKeyword = ref('')
+const addingKeyword = ref(false)
+
+async function loadKeywords() {
+  try {
+    const data = await $fetch<{ keywords: Keyword[] }>('/api/notifications/keywords')
+    keywords.value = data.keywords
+  } catch {
+    keywords.value = []
+  }
+}
+
+async function addKeyword() {
+  const k = newKeyword.value.trim()
+  if (!k) return
+  addingKeyword.value = true
+  try {
+    const data = await $fetch<{ id: string; keyword: string; createdAt: string; alreadyExisted?: boolean }>(
+      '/api/notifications/keywords',
+      { method: 'POST', body: { keyword: k } }
+    )
+    if (!data.alreadyExisted) {
+      keywords.value = [{ id: data.id, keyword: data.keyword, createdAt: data.createdAt }, ...keywords.value]
+    }
+    newKeyword.value = ''
+  } catch (err: any) {
+    toast.add({
+      title: 'Could not add keyword',
+      description: err?.statusMessage || 'Please try again.',
+      color: 'error',
+    })
+  } finally {
+    addingKeyword.value = false
+  }
+}
+
+async function removeKeyword(id: string) {
+  try {
+    await $fetch(`/api/notifications/keywords/${id}`, { method: 'DELETE' })
+    keywords.value = keywords.value.filter(k => k.id !== id)
+  } catch (err: any) {
+    toast.add({
+      title: 'Could not remove keyword',
+      description: err?.statusMessage || 'Please try again.',
+      color: 'error',
+    })
+  }
+}
+
 const scopeFilters = [
   { value: 'all', label: 'All' },
   { value: 'board', label: 'Boards' },
@@ -231,5 +326,8 @@ async function unwatch(id: string) {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadKeywords()
+})
 </script>

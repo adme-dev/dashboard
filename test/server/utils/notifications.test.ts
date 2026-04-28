@@ -715,7 +715,7 @@ describe('notification reason propagation', () => {
     const sql = insertCall![0] as string
     const params = insertCall![1] as any[]
     expect(sql).toMatch(/reason/)
-    expect(params[params.length - 1]).toBe('assigned')
+    expect(params[params.length - 2]).toBe('assigned')
   })
 
   it('createNotification stores null reason when not provided', async () => {
@@ -734,7 +734,7 @@ describe('notification reason propagation', () => {
       typeof c[0] === 'string' && c[0].includes('INSERT INTO notifications')
     )
     const params = insertCall![1] as any[]
-    expect(params[params.length - 1]).toBeNull()
+    expect(params[params.length - 2]).toBeNull()
   })
 
   it('notifyMention passes reason="mentioned"', async () => {
@@ -756,7 +756,7 @@ describe('notification reason propagation', () => {
       typeof c[0] === 'string' && c[0].includes('INSERT INTO notifications')
     )
     const params = insertCall![1] as any[]
-    expect(params[params.length - 1]).toBe('mentioned')
+    expect(params[params.length - 2]).toBe('mentioned')
   })
 
   it('notifyTaskAssigned passes reason="assigned"', async () => {
@@ -777,6 +777,6 @@ describe('notification reason propagation', () => {
       typeof c[0] === 'string' && c[0].includes('INSERT INTO notifications')
     )
     const params = insertCall![1] as any[]
-    expect(params[params.length - 1]).toBe('assigned')
+    expect(params[params.length - 2]).toBe('assigned')
   })
 })

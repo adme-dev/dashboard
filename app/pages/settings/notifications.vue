@@ -79,6 +79,20 @@ const state = reactive<{ [key: string]: boolean }>({
 })
 
 const autoSubscribeOnParticipation = ref(true)
+const autoAckAssignments = ref(false)
+
+async function onAutoAckChange(value: boolean) {
+  try {
+    await $fetch('/api/notifications/preferences', {
+      method: 'PUT',
+      body: { autoAckAssignments: value },
+    })
+    toast.add({ title: 'Preference saved', color: 'success', duration: 2000 })
+  } catch {
+    autoAckAssignments.value = !value
+    toast.add({ title: 'Failed to save preference', color: 'error', duration: 3000 })
+  }
+}
 
 interface QuietHours {
   enabled: boolean
@@ -165,13 +179,15 @@ function saveQuietHours() {
 // Fetch preferences on mount
 onMounted(async () => {
   try {
-    const { preferences, autoSubscribeOnParticipation: aso, quietHours: qh } = await $fetch<{
+    const { preferences, autoSubscribeOnParticipation: aso, quietHours: qh, autoAckAssignments: aak } = await $fetch<{
       preferences: Record<string, boolean>
       autoSubscribeOnParticipation?: boolean
       quietHours?: QuietHours | null
+      autoAckAssignments?: boolean
     }>('/api/notifications/preferences')
     Object.assign(state, preferences)
     if (typeof aso === 'boolean') autoSubscribeOnParticipation.value = aso
+    if (typeof aak === 'boolean') autoAckAssignments.value = aak
     if (qh) quietHours.value = { ...defaultQuietHours(), ...qh }
   } catch (error) {
     console.error('Failed to load notification preferences:', error)
@@ -382,16 +398,27 @@ async function onChange(field: string, value: boolean) {
         variant="naked"
         class="mb-4"
       />
-      <UPageCard variant="subtle">
+      <UPageCard variant="subtle" :ui="{ container: 'divide-y divide-default' }">
         <UFormField
           name="auto_subscribe_on_participation"
           label="Auto-watch when I participate"
           description="Subscribe me to items I create, comment on, am assigned to, or am @mentioned in. Unwatch anytime from the Watching page."
-          class="flex items-center justify-between gap-2"
+          class="flex items-center justify-between not-last:pb-4 gap-2"
         >
           <USwitch
             :model-value="autoSubscribeOnParticipation"
             @update:model-value="(val: boolean) => { autoSubscribeOnParticipation = val; onAutoSubscribeChange(val) }"
+          />
+        </UFormField>
+        <UFormField
+          name="auto_ack_assignments"
+          label="Auto-acknowledge assignments"
+          description="When I'm assigned to a task, post a quick acknowledgement comment automatically so the assigner knows I've been alerted."
+          class="flex items-center justify-between not-last:pb-4 gap-2"
+        >
+          <USwitch
+            :model-value="autoAckAssignments"
+            @update:model-value="(val: boolean) => { autoAckAssignments = val; onAutoAckChange(val) }"
           />
         </UFormField>
       </UPageCard>

@@ -761,6 +761,49 @@ watch(boardId, () => {
   subitemHelper.reset()
 })
 
+// Record a visit and surface a watch suggestion if the user keeps coming back
+// to a board they don't subscribe to. One-shot per board mount.
+async function recordVisitAndMaybeSuggest(bId: string) {
+  try {
+    const result = await $fetch<{ suggestWatch: boolean; recentVisits?: number }>(
+      `/api/agency/boards/${bId}/visit`,
+      { method: 'POST' }
+    )
+    if (result.suggestWatch) {
+      const toast = useToast()
+      toast.add({
+        title: 'Watch this board?',
+        description: `You've opened this board ${result.recentVisits} times this week. Get notified about updates?`,
+        color: 'info',
+        duration: 8000,
+        actions: [{
+          label: 'Watch',
+          onClick: async () => {
+            try {
+              await $fetch(`/api/agency/boards/${bId}/subscribe`, {
+                method: 'POST',
+                body: { events: [], notifyInapp: true, notifyEmail: false, isMuted: false },
+              })
+              toast.add({ title: 'Now watching this board', color: 'success' })
+            } catch {
+              toast.add({ title: 'Could not subscribe', color: 'error' })
+            }
+          },
+        }],
+      })
+    }
+  } catch {
+    // non-critical
+  }
+}
+
+onMounted(() => {
+  if (boardId.value) recordVisitAndMaybeSuggest(boardId.value)
+})
+watch(boardId, (nb) => {
+  if (nb) recordVisitAndMaybeSuggest(nb)
+})
+
 // --- Container accessors ---
 
 const refresh = () => containerRef.value?.refresh()

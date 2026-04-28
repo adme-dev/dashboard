@@ -29,6 +29,14 @@ export default defineEventHandler(async (event) => {
     let useLegacySchema = false
 
     try {
+      // Sort: ?sort=importance ranks by importance_score DESC then recency.
+      // Default 'recent' keeps the historical newest-first ordering.
+      const queryParams = getQuery(event)
+      const sort = queryParams.sort === 'importance' ? 'importance' : 'recent'
+      const orderBy = sort === 'importance'
+        ? 'COALESCE(n.importance_score, 0.4) DESC, n.created_at DESC'
+        : 'n.created_at DESC'
+
       notifications = await queryRows(`
         SELECT
           n.id,
@@ -38,6 +46,7 @@ export default defineEventHandler(async (event) => {
           n.link,
           n.metadata,
           n.reason,
+          n.importance_score,
           n.is_read,
           n.read_at,
           n.created_at,
@@ -47,7 +56,7 @@ export default defineEventHandler(async (event) => {
         FROM notifications n
         LEFT JOIN team_members tm ON n.actor_id = tm.id
         WHERE ${whereClause}
-        ORDER BY n.created_at DESC
+        ORDER BY ${orderBy}
         LIMIT $${paramIdx} OFFSET $${paramIdx + 1}
       `, [...params, limit, offset])
     } catch {
@@ -86,6 +95,7 @@ export default defineEventHandler(async (event) => {
         link: n.link || null,
         metadata: n.metadata || null,
         reason: n.reason || null,
+        importanceScore: typeof n.importance_score === 'number' ? n.importance_score : null,
         isRead: n.is_read,
         readAt: n.read_at,
         createdAt: n.created_at,

@@ -45,7 +45,9 @@
                   <div class="flex flex-wrap gap-1">
                     <UButton label="1h" variant="soft" size="xs" color="neutral" @click="snoozeFor(60)" />
                     <UButton label="8h" variant="soft" size="xs" color="neutral" @click="snoozeFor(60 * 8)" />
+                    <UButton label="End of day" variant="soft" size="xs" color="neutral" @click="snoozeUntilEndOfDay()" />
                     <UButton label="Tomorrow" variant="soft" size="xs" color="neutral" @click="snoozeUntilTomorrow8am()" />
+                    <UButton label="Next workday" variant="soft" size="xs" color="neutral" @click="snoozeUntilNextWorkday()" />
                   </div>
                 </div>
               </div>
@@ -210,6 +212,31 @@ async function snoozeFor(minutes: number) {
 async function snoozeUntilTomorrow8am() {
   const d = new Date()
   d.setDate(d.getDate() + 1)
+  d.setHours(8, 0, 0, 0)
+  await applySnooze(d)
+}
+
+async function snoozeUntilEndOfDay() {
+  // 6 PM in user's local timezone
+  const d = new Date()
+  d.setHours(18, 0, 0, 0)
+  // If already past 6pm, jump to 11:59pm
+  if (d.getTime() <= Date.now()) {
+    d.setHours(23, 59, 0, 0)
+  }
+  await applySnooze(d)
+}
+
+async function snoozeUntilNextWorkday() {
+  // Next Monday 8am if it's Friday/Saturday/Sunday; otherwise tomorrow 8am.
+  const d = new Date()
+  const day = d.getDay() // 0=Sun..6=Sat
+  let addDays: number
+  if (day === 5) addDays = 3      // Friday → Monday
+  else if (day === 6) addDays = 2 // Saturday → Monday
+  else if (day === 0) addDays = 1 // Sunday → Monday
+  else addDays = 1                // weekday → tomorrow
+  d.setDate(d.getDate() + addDays)
   d.setHours(8, 0, 0, 0)
   await applySnooze(d)
 }

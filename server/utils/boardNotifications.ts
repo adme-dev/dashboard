@@ -10,6 +10,7 @@ import { queryOne, queryRows } from '~~/server/utils/db'
 import { createNotification } from '~~/server/utils/notifications'
 import { getSubscribers } from '~~/server/utils/subscriptions'
 import { sendBoardMemberAddedEmail } from '~~/server/utils/email'
+import { findKeywordMatches } from '~~/server/utils/keywordSubscriptions'
 
 const baseUrl = process.env.APP_URL || 'http://localhost:3000'
 
@@ -113,6 +114,43 @@ export async function notifyBoardSubscribers(event: BoardEventNotification): Pro
         })
       )
     )
+
+    // Keyword subscription fan-out — Phase E
+    // Notify users whose keyword matches the title/message (excluding actor +
+    // anyone already notified via subscription).
+    try {
+      const alreadyNotified = new Set([event.actorId, ...inappSubscribers.map(s => s.userId)])
+      const keywordMatches = await findKeywordMatches({
+        title,
+        message,
+        excludeUserIds: Array.from(alreadyNotified),
+      })
+      if (keywordMatches.length > 0) {
+        await Promise.allSettled(
+          keywordMatches.map(km =>
+            createNotification({
+              userId: km.userId,
+              type: mapEventToNotificationType(event.type),
+              title: `Keyword match: "${km.keyword}"`,
+              message,
+              link,
+              actorId: event.actorId,
+              reason: 'direct',
+              metadata: {
+                boardId: event.boardId,
+                boardName,
+                taskId: event.taskId,
+                taskTitle,
+                eventType: event.type,
+                matchedKeyword: km.keyword,
+              },
+            })
+          )
+        )
+      }
+    } catch (err) {
+      console.error('[BoardNotifications] Keyword fan-out failed:', err)
+    }
 
     // Email notifications (use sendBoardChangeEmail)
     if (emailSubscribers.length > 0) {

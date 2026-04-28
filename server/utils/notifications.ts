@@ -7,6 +7,7 @@ import { queryOne, queryRows } from '~~/server/utils/db'
 import { sendTaskAssignedEmail, sendMentionEmail, sendApprovalRequestEmail, sendDueReminderEmail } from '~~/server/utils/email'
 import { autoSubscribeIfEnabled } from '~~/server/utils/subscriptions'
 import { isWithinQuietHours } from '~~/server/utils/quietHours'
+import { computeImportance } from '~~/server/utils/notificationImportance'
 
 const baseUrl = process.env.APP_URL || 'http://localhost:3000'
 
@@ -160,9 +161,15 @@ export async function createNotification(params: CreateNotificationParams) {
       if (prefs[prefKey] === false) return null
     }
 
+    const importanceScore = computeImportance({
+      type: params.type,
+      reason: params.reason,
+      metadata: params.metadata,
+    })
+
     const notification = await queryOne(`
-      INSERT INTO notifications (user_id, type, title, message, link, actor_id, metadata, reason)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO notifications (user_id, type, title, message, link, actor_id, metadata, reason, importance_score)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING id, created_at
     `, [
       params.userId,
@@ -172,7 +179,8 @@ export async function createNotification(params: CreateNotificationParams) {
       params.link || null,
       params.actorId || null,
       params.metadata ? JSON.stringify(params.metadata) : null,
-      params.reason || null
+      params.reason || null,
+      importanceScore
     ])
 
     return notification
@@ -243,6 +251,25 @@ export async function notifyTaskAssigned(params: NotifyTaskAssignedParams) {
     }
   } catch (err) {
     console.error('Auto-subscribe assignee failed:', err)
+  }
+
+  // Auto-acknowledge: if the assignee opted in, post a "Got it" comment on
+  // their behalf so the assigner knows they've been alerted.
+  try {
+    const ackPref = await queryOne(
+      `SELECT auto_ack_assignments FROM team_members WHERE id = $1`,
+      [params.assigneeId]
+    )
+    if (ackPref?.auto_ack_assignments === true) {
+      await queryOne(
+        `INSERT INTO task_activities (task_id, user_id, activity_type, content)
+         VALUES ($1, $2, 'comment', $3)
+         RETURNING id`,
+        [params.taskId, params.assigneeId, '👋 Got it — thanks for the assignment.']
+      )
+    }
+  } catch (err) {
+    console.error('Auto-ack failed:', err)
   }
 
   // Send email notification (check preference)
