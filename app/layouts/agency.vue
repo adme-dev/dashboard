@@ -37,6 +37,20 @@ const workspaceNav = computed(() => {
 // Chat unread badge
 const { totalUnreadCount: chatUnreadCount } = useChat()
 
+// Inbox unread badge — fetch initial count and stay live via SSE
+const { unreadCount: inboxUnreadCount, fetchNotifications, connectToStream, disconnectFromStream } = useNotifications()
+onMounted(async () => {
+  try {
+    await fetchNotifications({ unreadOnly: true })
+  } catch {
+    // ignore — badge just won't update until next fetch
+  }
+  connectToStream()
+})
+onBeforeUnmount(() => {
+  disconnectFromStream()
+})
+
 // Xero connection status — drives XeroFlow section visibility.
 // getCachedData: () => undefined forces a fresh fetch per mount so that after a
 // user connects Xero elsewhere the nav reflects the new state without a hard refresh.
@@ -52,7 +66,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     // Main — visible to all authenticated users
     { type: 'label', label: 'Main' },
     { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/agency', exact: true, onSelect: close },
-    { label: 'Inbox', icon: 'i-lucide-inbox', to: '/agency/inbox', badge: '4', onSelect: close },
+    { label: 'Inbox', icon: 'i-lucide-inbox', to: '/agency/inbox', badge: inboxUnreadCount.value > 0 ? inboxUnreadCount.value.toString() : undefined, onSelect: close },
     { label: 'All Boards', icon: 'i-lucide-layout-grid', to: '/agency/boards', onSelect: close },
 
     // Work Management — visible to all authenticated users

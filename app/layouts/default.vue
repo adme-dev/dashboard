@@ -6,7 +6,21 @@ const toast = useToast()
 
 const open = ref(false)
 
-const links = [[{
+// Inbox unread badge — reactive count from notifications composable
+const { unreadCount: inboxUnreadCount, fetchNotifications, connectToStream, disconnectFromStream } = useNotifications()
+onMounted(async () => {
+  try {
+    await fetchNotifications({ unreadOnly: true })
+  } catch {
+    // ignore — badge just won't update until next fetch
+  }
+  connectToStream()
+})
+onBeforeUnmount(() => {
+  disconnectFromStream()
+})
+
+const links = computed(() => [[{
   label: 'Home',
   icon: 'i-lucide-house',
   to: '/',
@@ -24,7 +38,7 @@ const links = [[{
   label: 'Inbox',
   icon: 'i-lucide-inbox',
   to: '/agency/inbox',
-  badge: '4',
+  badge: inboxUnreadCount.value > 0 ? inboxUnreadCount.value.toString() : undefined,
   onSelect: () => {
     open.value = false
   }
@@ -279,12 +293,12 @@ const links = [[{
   icon: 'i-lucide-info',
   to: 'https://github.com/nuxt-ui-templates/dashboard',
   target: '_blank'
-}]] satisfies NavigationMenuItem[][]
+}]] satisfies NavigationMenuItem[][])
 
 const groups = computed(() => [{
   id: 'links',
   label: 'Go to',
-  items: links.flat()
+  items: links.value.flat()
 }, {
   id: 'code',
   label: 'Code',
