@@ -87,10 +87,17 @@ const TYPE_TO_INAPP_PREF: Partial<Record<NotificationType, string>> = {
   task_mentioned: 'inapp_task_mentioned',
   task_comment: 'inapp_task_comment',
   task_status_changed: 'inapp_task_status',
+  task_due_soon: 'inapp_task_due',
+  task_overdue: 'inapp_task_due',
   approval_requested: 'inapp_approval',
   approval_completed: 'inapp_approval',
   approval_response: 'inapp_approval',
   board_member_added: 'inapp_board_member_added',
+  brief_assigned: 'inapp_brief_assigned',
+  brief_status_changed: 'inapp_brief_status',
+  brief_commented: 'inapp_brief_comment',
+  chat_mention: 'inapp_chat_mention',
+  chat_dm: 'inapp_chat_dm',
 }
 
 /**

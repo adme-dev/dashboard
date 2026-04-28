@@ -12,13 +12,22 @@ const state = reactive<{ [key: string]: boolean }>({
   email_approval_request: true,
   email_weekly_digest: false,
   email_board_member_added: true,
+  email_brief_assigned: true,
+  email_brief_status: true,
+  email_brief_comment: true,
   // In-app notifications
   inapp_task_assigned: true,
   inapp_task_mentioned: true,
   inapp_task_status: true,
   inapp_task_comment: true,
+  inapp_task_due: true,
   inapp_approval: true,
-  inapp_board_member_added: true
+  inapp_board_member_added: true,
+  inapp_brief_assigned: true,
+  inapp_brief_status: true,
+  inapp_brief_comment: true,
+  inapp_chat_mention: true,
+  inapp_chat_dm: true
 })
 
 // Fetch preferences on mount
@@ -65,6 +74,18 @@ const sections = [{
     name: 'email_board_member_added',
     label: 'Board Memberships',
     description: 'When someone adds you to a board.'
+  }, {
+    name: 'email_brief_assigned',
+    label: 'Brief Assignments',
+    description: 'When someone assigns a brief to you.'
+  }, {
+    name: 'email_brief_status',
+    label: 'Brief Status Changes',
+    description: 'When a brief you\'re watching changes status.'
+  }, {
+    name: 'email_brief_comment',
+    label: 'Brief Comments',
+    description: 'When someone comments on a brief you\'re watching.'
   }]
 }, {
   title: 'In-App Notifications',
@@ -86,6 +107,10 @@ const sections = [{
     label: 'New Comments',
     description: 'When someone comments on your tasks.'
   }, {
+    name: 'inapp_task_due',
+    label: 'Due Date Reminders',
+    description: 'When a task is due soon or overdue.'
+  }, {
     name: 'inapp_approval',
     label: 'Approvals',
     description: 'When someone requests or completes an approval.'
@@ -93,6 +118,26 @@ const sections = [{
     name: 'inapp_board_member_added',
     label: 'Board Memberships',
     description: 'When someone adds you to a board.'
+  }, {
+    name: 'inapp_brief_assigned',
+    label: 'Brief Assignments',
+    description: 'When someone assigns a brief to you.'
+  }, {
+    name: 'inapp_brief_status',
+    label: 'Brief Status Changes',
+    description: 'When a brief you\'re watching changes status.'
+  }, {
+    name: 'inapp_brief_comment',
+    label: 'Brief Comments',
+    description: 'When someone comments on a brief you\'re watching.'
+  }, {
+    name: 'inapp_chat_mention',
+    label: 'Chat Mentions',
+    description: 'When someone @mentions you in a chat channel.'
+  }, {
+    name: 'inapp_chat_dm',
+    label: 'Direct Messages',
+    description: 'When someone sends you a direct chat message.'
   }]
 }]
 

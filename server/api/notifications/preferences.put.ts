@@ -13,12 +13,21 @@ const ALLOWED_KEYS = [
   'email_approval_request',
   'email_weekly_digest',
   'email_board_member_added',
+  'email_brief_assigned',
+  'email_brief_status',
+  'email_brief_comment',
   'inapp_task_assigned',
   'inapp_task_mentioned',
   'inapp_task_status',
   'inapp_task_comment',
+  'inapp_task_due',
   'inapp_approval',
-  'inapp_board_member_added'
+  'inapp_board_member_added',
+  'inapp_brief_assigned',
+  'inapp_brief_status',
+  'inapp_brief_comment',
+  'inapp_chat_mention',
+  'inapp_chat_dm'
 ]
 
 export default defineEventHandler(async (event) => {
