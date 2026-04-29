@@ -94,7 +94,27 @@ function getFromHeader(event?: H3Event): string {
 }
 
 /**
- * Shared email template renderer — generates consistent branded HTML + plain text.
+ * Two-letter logo monogram from the app name.
+ * "XeroFlow Agency" → "XF", "Acme" → "AC", "FooBar Co" → "FB".
+ */
+function logoMonogram(appName: string): string {
+  const words = appName.trim().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return '••'
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase()
+  return (words[0][0] + words[1][0]).toUpperCase()
+}
+
+/**
+ * Shared email template renderer — produces the same look used by the
+ * magic-link email (light-grey background, white rounded card, black pill
+ * CTA). All transactional emails inherit this.
+ *
+ * Args (loosely the original API kept compatible):
+ *   - title:     becomes the centred H1 inside the card
+ *   - greeting:  optional intro (e.g. "Hi Paul,") rendered above the body
+ *   - bodyHtml:  free-form HTML for the main message
+ *   - ctaText/ctaUrl: optional pill-shaped CTA
+ *   - footerHtml: extra footer text shown beneath the unsubscribe link
  */
 function renderEmailTemplate(options: {
   title: string
@@ -103,57 +123,122 @@ function renderEmailTemplate(options: {
   ctaText?: string
   ctaUrl?: string
   footerHtml?: string
+  recipientEmail?: string
 }): { html: string; text: string } {
   const { appName, appUrl } = getEmailConfig()
-  const greeting = options.greeting ? `<p style="font-size: 16px; color: #333;">${options.greeting}</p>` : ''
+  const monogram = logoMonogram(appName)
+  const safeAppName = escapeHtml(appName)
+
+  const greetingHtml = options.greeting
+    ? `<p style="margin:0 0 16px;color:#333333;font-size:15px;line-height:1.5;text-align:left;">${options.greeting}</p>`
+    : ''
 
   const ctaButton = options.ctaText && options.ctaUrl
-    ? `<div style="margin: 24px 0;">
+    ? `
+      <div style="margin:0 0 28px;">
+        <!--[if mso]>
+        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="${options.ctaUrl}" style="height:48px;v-text-anchor:middle;width:240px;" arcsize="50%" fillcolor="#111111">
+          <center style="color:#ffffff;font-family:sans-serif;font-size:16px;font-weight:bold;">${options.ctaText}</center>
+        </v:roundrect>
+        <![endif]-->
+        <!--[if !mso]><!-->
         <a href="${options.ctaUrl}"
-           style="display: inline-block; background: ${BRAND_COLOR}; color: #ffffff; padding: 12px 28px;
-                  text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">
+           style="display:inline-block;background-color:#111111;color:#ffffff !important;padding:14px 36px;text-decoration:none;border-radius:100px;font-size:16px;font-weight:600;letter-spacing:-0.01em;border:2px solid #111111;mso-padding-alt:0;">
           ${options.ctaText}
         </a>
+        <!--<![endif]-->
       </div>`
     : ''
 
-  const footer = options.footerHtml || ''
+  const footerExtra = options.footerHtml
+    ? `<p style="margin:0 0 8px;color:#999999;font-size:12px;line-height:1.6;">${options.footerHtml}</p>`
+    : ''
+
+  const recipientLine = options.recipientEmail
+    ? `<p style="margin:0 0 4px;color:#999999;font-size:12px;">You received this because you have an account at ${safeAppName} (${escapeHtml(options.recipientEmail)}).</p>`
+    : `<p style="margin:0 0 4px;color:#999999;font-size:12px;">You received this because you have an account at ${safeAppName}.</p>`
 
   const html = `<!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"></head>
-<body style="margin: 0; padding: 0; background-color: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-  <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-    <div style="background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-      <div style="background: ${BRAND_COLOR}; padding: 20px 32px;">
-        <h1 style="margin: 0; color: #ffffff; font-size: 18px; font-weight: 600;">${appName}</h1>
-      </div>
-      <div style="padding: 32px;">
-        ${greeting}
-        <div style="font-size: 15px; line-height: 1.6; color: #374151;">
-          ${options.bodyHtml}
-        </div>
-        ${ctaButton}
-      </div>
-      <div style="padding: 20px 32px; background: #f9fafb; border-top: 1px solid #e5e7eb;">
-        ${footer}
-        <p style="margin: 8px 0 0; font-size: 12px; color: #9ca3af;">
-          <a href="${appUrl}/settings/notifications" style="color: #9ca3af; text-decoration: underline;">Unsubscribe</a>
-          from these emails.
-        </p>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <meta name="color-scheme" content="light only">
+  <meta name="supported-color-schemes" content="light only">
+</head>
+<body style="margin:0;padding:0;background-color:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#111111;">
+  <div style="max-width:560px;margin:0 auto;padding:48px 24px;">
+
+    <!-- Logo -->
+    <div style="text-align:center;margin-bottom:48px;">
+      <div style="display:inline-block;width:40px;height:40px;background:#111111;border-radius:10px;line-height:40px;text-align:center;">
+        <span style="color:#ffffff;font-size:14px;font-weight:700;letter-spacing:-0.02em;">${monogram}</span>
       </div>
     </div>
+
+    <!-- Card -->
+    <div style="background:#ffffff;border:1px solid #e0e0e0;border-radius:20px;padding:48px 40px;text-align:center;">
+
+      <h1 style="margin:0 0 12px;color:#111111;font-size:28px;font-weight:500;letter-spacing:-0.03em;line-height:1.25;">
+        ${options.title}
+      </h1>
+
+      <div style="margin:0 0 32px;color:#666666;font-size:16px;line-height:1.6;text-align:left;">
+        ${greetingHtml}
+        ${options.bodyHtml}
+      </div>
+
+      ${ctaButton}
+
+      <!-- Divider -->
+      <div style="height:1px;background:#e0e0e0;margin:0 0 24px;"></div>
+
+      <!-- Fallback link -->
+      ${options.ctaUrl
+        ? `<p style="margin:0;color:#999999;font-size:13px;line-height:1.6;">
+             Or copy this link into your browser:<br>
+             <a href="${options.ctaUrl}" style="color:#666666;text-decoration:underline;word-break:break-all;">${options.ctaUrl}</a>
+           </p>`
+        : `<p style="margin:0;color:#999999;font-size:13px;line-height:1.6;">
+             Manage your notifications anytime in your <a href="${appUrl}/settings/notifications" style="color:#666666;text-decoration:underline;">notification settings</a>.
+           </p>`}
+    </div>
+
+    <!-- Footer -->
+    <div style="text-align:center;margin-top:32px;">
+      ${footerExtra}
+      ${recipientLine}
+      <p style="margin:0;color:#bbbbbb;font-size:12px;">
+        <a href="${appUrl}/settings/notifications" style="color:#bbbbbb;text-decoration:underline;">Manage notification preferences</a>
+      </p>
+    </div>
+
   </div>
 </body>
 </html>`
 
-  // Generate plain text by stripping HTML
-  let text = options.greeting ? options.greeting.replace(/<[^>]*>/g, '') + '\n\n' : ''
-  text += options.bodyHtml.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&mdash;/g, '--').replace(/\n{3,}/g, '\n\n').trim()
+  // Plain text — strip HTML, preserve newlines.
+  const stripHtml = (s: string) => s
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&mdash;/g, '—')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+
+  let text = `${stripHtml(options.title)}\n\n`
+  if (options.greeting) text += `${stripHtml(options.greeting)}\n\n`
+  text += stripHtml(options.bodyHtml) + '\n\n'
   if (options.ctaText && options.ctaUrl) {
-    text += `\n\n${options.ctaText}: ${options.ctaUrl}`
+    text += `${options.ctaText}: ${options.ctaUrl}\n\n`
   }
-  text += `\n\nManage notification preferences: ${appUrl}/settings/notifications`
+  text += `Manage notification preferences: ${appUrl}/settings/notifications`
 
   return { html, text }
 }
