@@ -18,11 +18,32 @@ export default defineEventHandler(async (event) => {
   const user = await requireBoardAccess(event, boardId)
 
   try {
-    // Insert the visit (fire and forget — never block on this)
-    await execute(
-      `INSERT INTO board_visits (user_id, board_id) VALUES ($1, $2)`,
+    // Server-side debounce: skip the INSERT if the same user already logged
+    // a visit on this board in the last 5 minutes. Prevents SPA re-mounts
+    // from inflating the visit count.
+    const recent = await queryOne(
+      `SELECT id FROM board_visits
+       WHERE user_id = $1 AND board_id = $2
+         AND visited_at > NOW() - INTERVAL '5 minutes'
+       LIMIT 1`,
       [user.id, boardId]
     )
+    if (!recent) {
+      await execute(
+        `INSERT INTO board_visits (user_id, board_id) VALUES ($1, $2)`,
+        [user.id, boardId]
+      )
+    }
+
+    // Inline retention prune: drop this user's old visit rows (>30 days).
+    // Bounded scope (per-user, per-board) keeps it cheap on each call.
+    // Failure is non-blocking — a few stale rows aren't a problem.
+    execute(
+      `DELETE FROM board_visits
+       WHERE user_id = $1 AND board_id = $2
+         AND visited_at < NOW() - INTERVAL '30 days'`,
+      [user.id, boardId]
+    ).catch(() => { /* non-critical */ })
 
     // Check if user already has a subscription on this board (any scope).
     const existingSub = await queryOne(

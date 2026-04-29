@@ -62,18 +62,41 @@ export default defineEventHandler(async (event) => {
         }
 
         try {
-          // Check for new notifications since last check
-          const newNotifications = await queryRows(`
-            SELECT
-              n.id, n.type, n.title, n.message, n.link, n.metadata, n.created_at,
-              tm.id as actor_id, tm.name as actor_name
-            FROM notifications n
-            LEFT JOIN team_members tm ON n.actor_id = tm.id
-            WHERE n.user_id = $1
-              AND n.created_at > $2
-              AND n.is_read = false
-            ORDER BY n.created_at ASC
-          `, [userId, lastCheckTime.toISOString()])
+          // Check for new notifications since last check.
+          // Selecting reason + importance_score so the inbox sort + reason
+          // badge stay accurate for SSE-delivered rows. Wrapped in inner
+          // try so a missing column on legacy DBs falls back to the safe set.
+          let newNotifications
+          try {
+            newNotifications = await queryRows(`
+              SELECT
+                n.id, n.type, n.title, n.message, n.link, n.metadata,
+                n.reason, n.importance_score, n.created_at,
+                tm.id as actor_id, tm.name as actor_name
+              FROM notifications n
+              LEFT JOIN team_members tm ON n.actor_id = tm.id
+              WHERE n.user_id = $1
+                AND n.created_at > $2
+                AND n.is_read = false
+              ORDER BY n.created_at ASC
+            `, [userId, lastCheckTime.toISOString()])
+          } catch (err: any) {
+            if (String(err?.message || '').includes('does not exist')) {
+              newNotifications = await queryRows(`
+                SELECT
+                  n.id, n.type, n.title, n.message, n.link, n.metadata, n.created_at,
+                  tm.id as actor_id, tm.name as actor_name
+                FROM notifications n
+                LEFT JOIN team_members tm ON n.actor_id = tm.id
+                WHERE n.user_id = $1
+                  AND n.created_at > $2
+                  AND n.is_read = false
+                ORDER BY n.created_at ASC
+              `, [userId, lastCheckTime.toISOString()])
+            } else {
+              throw err
+            }
+          }
 
           if (newNotifications.length > 0) {
             for (const notification of newNotifications) {
@@ -84,6 +107,8 @@ export default defineEventHandler(async (event) => {
                 message: notification.message,
                 link: notification.link,
                 metadata: notification.metadata,
+                reason: notification.reason || null,
+                importanceScore: typeof notification.importance_score === 'number' ? notification.importance_score : null,
                 createdAt: notification.created_at,
                 actor: notification.actor_id ? {
                   id: notification.actor_id,

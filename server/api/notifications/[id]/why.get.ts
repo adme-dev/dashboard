@@ -6,8 +6,9 @@
  *
  * Falls back to a static template when Groq is unavailable.
  */
-import { queryOne } from '~~/server/utils/db'
+import { queryOne, execute } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { enforceRateLimit } from '~~/server/utils/rateLimit'
 
 const STATIC_REASON_BLURBS: Record<string, string> = {
   mentioned: 'You were @mentioned in this update.',
@@ -34,11 +35,26 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Notification not found' })
   }
 
+  // 1. Cache hit — explanation persisted on the notification's metadata
+  //    after first generation. Avoids re-running Groq on every popover open.
+  const cachedWhy = row.metadata?.why
+  if (typeof cachedWhy === 'string' && cachedWhy.length > 0) {
+    return { reason: cachedWhy, generatedByAI: row.metadata?.whyGeneratedByAI === true, cached: true }
+  }
+
   const fallback = row.reason && STATIC_REASON_BLURBS[row.reason]
     ? STATIC_REASON_BLURBS[row.reason]
     : 'A system notification was sent to you.'
 
-  // Try Groq for a richer, context-aware explanation.
+  // 2. Rate limit Groq calls per user. 30/hour is generous for normal use
+  //    (one popover open every 2 minutes) but caps spam.
+  await enforceRateLimit(event, {
+    key: `why:${user.id}`,
+    limit: 30,
+    windowSeconds: 3600,
+  })
+
+  // 3. Generate via Groq.
   try {
     const { generateGroqInsight, GROQ_MODELS } = await import('~~/server/utils/groqClient')
     const md = row.metadata || {}
@@ -61,8 +77,23 @@ export default defineEventHandler(async (event) => {
     })
 
     const cleaned = text.trim().replace(/^["']|["']$/g, '')
-    return { reason: cleaned || fallback, generatedByAI: !!cleaned }
+    const finalReason = cleaned || fallback
+    const generatedByAI = !!cleaned
+
+    // 4. Persist on metadata so subsequent calls hit the cache branch above.
+    //    Best-effort; failure here just means we'll regenerate next time.
+    try {
+      const newMetadata = { ...(row.metadata || {}), why: finalReason, whyGeneratedByAI: generatedByAI }
+      await execute(
+        `UPDATE notifications SET metadata = $1 WHERE id = $2 AND user_id = $3`,
+        [JSON.stringify(newMetadata), notificationId, user.id]
+      )
+    } catch (err) {
+      console.error('[why] cache persist failed:', err)
+    }
+
+    return { reason: finalReason, generatedByAI, cached: false }
   } catch {
-    return { reason: fallback, generatedByAI: false }
+    return { reason: fallback, generatedByAI: false, cached: false }
   }
 })

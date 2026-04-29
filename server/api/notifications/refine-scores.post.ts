@@ -16,6 +16,7 @@
 import { queryOne, queryRows, execute } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { edgeClassify } from '~~/server/utils/edgeAi'
+import { enforceRateLimit } from '~~/server/utils/rateLimit'
 
 const BATCH_LIMIT = 25 // bound the number of inferences per call
 const URGENT = 0.85
@@ -24,6 +25,14 @@ const LOW = 0.20
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
+
+  // Cost guard: max 6 calls per user per 10 minutes (each call burns up to
+  // BATCH_LIMIT Workers AI inferences).
+  await enforceRateLimit(event, {
+    key: `refine-scores:${user.id}`,
+    limit: 6,
+    windowSeconds: 600,
+  })
 
   // Pick recent low-confidence notifications (rule-based defaulted to 0.4)
   // that haven't been refined yet.
