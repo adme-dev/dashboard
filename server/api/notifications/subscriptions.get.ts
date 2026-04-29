@@ -5,7 +5,7 @@
  *
  * Powers the My Subscriptions page at /agency/notifications/watching.
  */
-import { queryRows } from '~~/server/utils/db'
+import { queryRows, queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 
 type Preset = 'all' | 'mentions' | 'custom' | 'muted'
@@ -18,8 +18,18 @@ function classifyPreset(events: string[] | null, isMuted: boolean): Preset {
   return 'custom'
 }
 
+const DEFAULT_LIMIT = 100
+const MAX_LIMIT = 500
+
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
+  const query = getQuery(event)
+
+  // Pagination — bounded so a runaway page size can't DOS the DB.
+  const requestedLimit = Number(query.limit ?? DEFAULT_LIMIT)
+  const limit = Math.max(1, Math.min(MAX_LIMIT, isFinite(requestedLimit) ? requestedLimit : DEFAULT_LIMIT))
+  const requestedOffset = Number(query.offset ?? 0)
+  const offset = Math.max(0, isFinite(requestedOffset) ? requestedOffset : 0)
 
   try {
     const rows = await queryRows(`
@@ -44,7 +54,14 @@ export default defineEventHandler(async (event) => {
       LEFT JOIN custom_columns cc ON bs.column_id = cc.id
       WHERE bs.user_id = $1
       ORDER BY d.name, bs.created_at DESC
-    `, [user.id])
+      LIMIT $2 OFFSET $3
+    `, [user.id, limit, offset])
+
+    const totalRow = await queryOne(
+      `SELECT COUNT(*)::int AS count FROM board_subscriptions WHERE user_id = $1`,
+      [user.id]
+    )
+    const total = totalRow?.count || 0
 
     return {
       subscriptions: rows.map(r => {
@@ -68,11 +85,15 @@ export default defineEventHandler(async (event) => {
           createdAt: r.created_at,
           updatedAt: r.updated_at,
         }
-      })
+      }),
+      total,
+      limit,
+      offset,
+      hasMore: offset + rows.length < total,
     }
   } catch (error: any) {
     if (error.message?.includes('does not exist')) {
-      return { subscriptions: [] }
+      return { subscriptions: [], total: 0, limit, offset, hasMore: false }
     }
     console.error('Failed to fetch aggregated subscriptions:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to fetch subscriptions' })

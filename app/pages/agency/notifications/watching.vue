@@ -81,6 +81,9 @@
     </div>
 
     <div v-else class="space-y-6">
+      <p v-if="total > subscriptions.length" class="text-xs text-muted">
+        Showing {{ subscriptions.length }} of {{ total }} subscriptions.
+      </p>
       <div v-for="group in groupedByBoard" :key="group.boardId" class="border border-default rounded-lg overflow-hidden">
         <div class="px-4 py-2.5 bg-elevated/30 border-b border-default flex items-center gap-2">
           <UIcon name="i-lucide-columns-3" class="w-4 h-4 text-muted" />
@@ -134,6 +137,17 @@
             />
           </div>
         </div>
+      </div>
+
+      <div v-if="hasMore" class="text-center pt-2">
+        <UButton
+          label="Load more"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          :loading="loadingMore"
+          @click="loadMore"
+        />
       </div>
     </div>
   </div>
@@ -293,11 +307,22 @@ function snoozeRelative(iso: string | null): string {
   return `${Math.floor(hours / 24)}d`
 }
 
+const PAGE_SIZE = 100
+const offset = ref(0)
+const total = ref(0)
+const hasMore = ref(false)
+const loadingMore = ref(false)
+
 async function load() {
   loading.value = true
+  offset.value = 0
   try {
-    const data = await $fetch<{ subscriptions: Subscription[] }>('/api/notifications/subscriptions')
+    const data = await $fetch<{ subscriptions: Subscription[]; total: number; hasMore: boolean }>(
+      `/api/notifications/subscriptions?limit=${PAGE_SIZE}&offset=0`
+    )
     subscriptions.value = data.subscriptions
+    total.value = data.total
+    hasMore.value = data.hasMore
   } catch (err: any) {
     toast.add({
       title: 'Could not load subscriptions',
@@ -306,6 +331,29 @@ async function load() {
     })
   } finally {
     loading.value = false
+  }
+}
+
+async function loadMore() {
+  if (loadingMore.value || !hasMore.value) return
+  loadingMore.value = true
+  try {
+    const newOffset = subscriptions.value.length
+    const data = await $fetch<{ subscriptions: Subscription[]; total: number; hasMore: boolean }>(
+      `/api/notifications/subscriptions?limit=${PAGE_SIZE}&offset=${newOffset}`
+    )
+    subscriptions.value = [...subscriptions.value, ...data.subscriptions]
+    total.value = data.total
+    hasMore.value = data.hasMore
+    offset.value = newOffset
+  } catch (err: any) {
+    toast.add({
+      title: 'Could not load more',
+      description: err?.statusMessage || 'Please try again.',
+      color: 'error',
+    })
+  } finally {
+    loadingMore.value = false
   }
 }
 
