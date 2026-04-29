@@ -6,6 +6,7 @@
  * are unavailable (the dispatcher handles either case).
  */
 import { queryOne, execute } from '~~/server/utils/db'
+import { requireAuth } from '~~/server/utils/auth'
 import { generateEmbedding, upsertVector } from '~~/server/utils/aiVectorize'
 
 interface Body {

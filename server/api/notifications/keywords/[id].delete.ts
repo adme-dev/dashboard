@@ -3,6 +3,7 @@
  * Vectorize when present, so semantic match doesn't return stale matches.
  */
 import { execute, queryOne } from '~~/server/utils/db'
+import { requireAuth } from '~~/server/utils/auth'
 import { deleteVector } from '~~/server/utils/aiVectorize'
 
 export default defineEventHandler(async (event) => {

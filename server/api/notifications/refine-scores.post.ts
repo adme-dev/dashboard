@@ -14,6 +14,7 @@
  * Returns counts: { refined, skipped }
  */
 import { queryOne, queryRows, execute } from '~~/server/utils/db'
+import { requireAuth } from '~~/server/utils/auth'
 import { edgeClassify } from '~~/server/utils/edgeAi'
 
 const BATCH_LIMIT = 25 // bound the number of inferences per call

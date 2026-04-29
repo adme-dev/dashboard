@@ -6,6 +6,7 @@
  * Powers the My Subscriptions page at /agency/notifications/watching.
  */
 import { queryRows } from '~~/server/utils/db'
+import { requireAuth } from '~~/server/utils/auth'
 
 type Preset = 'all' | 'mentions' | 'custom' | 'muted'
 

@@ -3,6 +3,7 @@
  * Verifies the subscription belongs to the current user before deleting.
  */
 import { execute, queryOne } from '~~/server/utils/db'
+import { requireAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)

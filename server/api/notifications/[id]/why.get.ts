@@ -7,6 +7,7 @@
  * Falls back to a static template when Groq is unavailable.
  */
 import { queryOne } from '~~/server/utils/db'
+import { requireAuth } from '~~/server/utils/auth'
 
 const STATIC_REASON_BLURBS: Record<string, string> = {
   mentioned: 'You were @mentioned in this update.',

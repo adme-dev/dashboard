@@ -167,21 +167,47 @@ export async function createNotification(params: CreateNotificationParams) {
       metadata: params.metadata,
     })
 
-    const notification = await queryOne(`
-      INSERT INTO notifications (user_id, type, title, message, link, actor_id, metadata, reason, importance_score)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING id, created_at
-    `, [
-      params.userId,
-      params.type,
-      params.title,
-      params.message,
-      params.link || null,
-      params.actorId || null,
-      params.metadata ? JSON.stringify(params.metadata) : null,
-      params.reason || null,
-      importanceScore
-    ])
+    let notification
+    try {
+      notification = await queryOne(`
+        INSERT INTO notifications (user_id, type, title, message, link, actor_id, metadata, reason, importance_score)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id, created_at
+      `, [
+        params.userId,
+        params.type,
+        params.title,
+        params.message,
+        params.link || null,
+        params.actorId || null,
+        params.metadata ? JSON.stringify(params.metadata) : null,
+        params.reason || null,
+        importanceScore
+      ])
+    } catch (err: any) {
+      // Defensive fallback for partially-deployed schemas (e.g. when a deploy
+      // ships before its migration). Retry with the legacy column set when
+      // reason/importance_score don't exist on the target DB.
+      const msg = String(err?.message || '')
+      if (msg.includes('column "reason"') || msg.includes('column "importance_score"') || msg.includes('does not exist')) {
+        console.warn('[Notifications] Falling back to legacy INSERT (Phase A reason/score columns missing on this DB):', msg)
+        notification = await queryOne(`
+          INSERT INTO notifications (user_id, type, title, message, link, actor_id, metadata)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          RETURNING id, created_at
+        `, [
+          params.userId,
+          params.type,
+          params.title,
+          params.message,
+          params.link || null,
+          params.actorId || null,
+          params.metadata ? JSON.stringify(params.metadata) : null,
+        ])
+      } else {
+        throw err
+      }
+    }
 
     return notification
   } catch (error) {
@@ -227,21 +253,26 @@ export async function notifyTaskAssigned(params: NotifyTaskAssignedParams) {
 
   if (!assigner || !assignee) return
 
-  // Create in-app notification
-  await createNotification({
-    userId: params.assigneeId,
-    type: 'task_assigned',
-    title: 'New Task Assigned',
-    message: `${assigner.name} assigned you to "${params.taskTitle}"`,
-    link: `/agency/tasks/${params.taskId}`,
-    actorId: params.assignerId,
-    reason: 'assigned',
-    metadata: {
-      taskId: params.taskId,
-      taskTitle: params.taskTitle,
-      projectName: params.projectName
-    }
-  })
+  // Create in-app notification — wrapped so a failure here (schema skew,
+  // legacy DB, etc.) doesn't block the email send below.
+  try {
+    await createNotification({
+      userId: params.assigneeId,
+      type: 'task_assigned',
+      title: 'New Task Assigned',
+      message: `${assigner.name} assigned you to "${params.taskTitle}"`,
+      link: `/agency/tasks/${params.taskId}`,
+      actorId: params.assignerId,
+      reason: 'assigned',
+      metadata: {
+        taskId: params.taskId,
+        taskTitle: params.taskTitle,
+        projectName: params.projectName
+      }
+    })
+  } catch (err) {
+    console.error('[notifyTaskAssigned] createNotification failed (continuing with email):', err)
+  }
 
   // Auto-subscribe the assignee at item level so they get follow-up activity.
   try {
@@ -407,21 +438,26 @@ export async function notifyMention(params: NotifyMentionParams) {
 
   if (!mentioner || !mentioned) return
 
-  // Create in-app notification
-  await createNotification({
-    userId: params.mentionedUserId,
-    type: 'task_mentioned',
-    title: 'You were mentioned',
-    message: `${mentioner.name} mentioned you in "${params.taskTitle}"`,
-    link: `/agency/tasks/${params.taskId}`,
-    actorId: params.mentionerId,
-    reason: 'mentioned',
-    metadata: {
-      taskId: params.taskId,
-      taskTitle: params.taskTitle,
-      commentSnippet: params.commentSnippet.substring(0, 100)
-    }
-  })
+  // Create in-app notification — wrapped so a failure here doesn't block
+  // the mention email or auto-subscribe.
+  try {
+    await createNotification({
+      userId: params.mentionedUserId,
+      type: 'task_mentioned',
+      title: 'You were mentioned',
+      message: `${mentioner.name} mentioned you in "${params.taskTitle}"`,
+      link: `/agency/tasks/${params.taskId}`,
+      actorId: params.mentionerId,
+      reason: 'mentioned',
+      metadata: {
+        taskId: params.taskId,
+        taskTitle: params.taskTitle,
+        commentSnippet: params.commentSnippet.substring(0, 100)
+      }
+    })
+  } catch (err) {
+    console.error('[notifyMention] createNotification failed (continuing with email):', err)
+  }
 
   // Auto-subscribe the mentioned user at item level.
   try {
