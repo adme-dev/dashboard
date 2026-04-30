@@ -189,3 +189,23 @@ The `NODE_OPTIONS` flag is required to avoid OOM during the Nuxt build step. The
 - `nuxi build` crashes with OOM (even at 4GB) — pre-existing, use `NODE_OPTIONS='--max-old-space-size=8192'`
 - ~60+ pre-existing TS errors from types only in `index.d.ts` not `index.ts`
 - `typescript.strict: false` in nuxt.config — don't enable without a migration plan
+
+## Anomalies overhaul — deploy runbook
+
+After deploying the cron + notification wiring (the third Phase-3 PR of this overhaul):
+
+1. Run the backfill (notifications suppressed):
+   ```bash
+   ANOMALY_NOTIFICATIONS_DISABLED=true tsx scripts/anomaly-backfill.ts
+   ```
+2. Verify the `anomalies` table has rows for the active state of the org's data:
+   ```bash
+   export DATABASE_URL=$(grep DATABASE_URL .env | cut -d= -f2-)
+   psql "$DATABASE_URL" -c "SELECT type, severity, COUNT(*) FROM anomalies WHERE status NOT IN ('resolved','dismissed') GROUP BY type, severity"
+   ```
+3. Enable the cron trigger in the Cloudflare dashboard:
+   - Workers & Pages → `agency-dashboard` → Settings → Triggers → Cron
+   - Schedule: `0 * * * *` (the handler self-gates to 7am tenant-local time)
+   - The trigger should target POST `/api/cron/anomaly-detection` with header `x-cron-secret: $CRON_SECRET`.
+
+After enabling, only genuinely-new anomalies (post-backfill) will trigger Smart Watch + email notifications.
