@@ -116,11 +116,66 @@ const typeFilterOptions = [
 type SeverityFilterValue = typeof severityFilterOptions[number]['value']
 type TypeFilterValue = typeof typeFilterOptions[number]['value']
 
-const activeSeverity = ref<SeverityFilterValue>('all')
-const activeType = ref<TypeFilterValue>('all')
+const route = useRoute()
+const router = useRouter()
+
+const tab = computed<'active' | 'history'>({
+  get: () => (route.query.tab === 'history' ? 'history' : 'active'),
+  set: (v) => {
+    router.replace({ query: { ...route.query, tab: v, status: undefined } })
+  },
+})
+
+const statusPill = computed<string>({
+  get: () => (typeof route.query.status === 'string' ? route.query.status : 'all'),
+  set: (v) => {
+    router.replace({ query: { ...route.query, status: v === 'all' ? undefined : v } })
+  },
+})
+
+const activePillOptions = [
+  { value: 'all', label: 'All' },
+  { value: 'open', label: 'Open' },
+  { value: 'acknowledged', label: 'Acknowledged' },
+  { value: 'snoozed', label: 'Snoozed' },
+]
+const historyPillOptions = [
+  { value: 'all', label: 'All' },
+  { value: 'resolved', label: 'Resolved' },
+  { value: 'dismissed', label: 'Dismissed' },
+]
+const pillOptions = computed(() =>
+  tab.value === 'history' ? historyPillOptions : activePillOptions,
+)
+
+const tabItems = [
+  { label: 'Active', value: 'active' },
+  { label: 'History', value: 'history' },
+]
+
+const activeSeverity = computed<SeverityFilterValue>({
+  get: () => {
+    const q = route.query.severity
+    return (q && severityFilterOptions.some(o => o.value === q)) ? q as SeverityFilterValue : 'all'
+  },
+  set: (v) => {
+    router.replace({ query: { ...route.query, severity: v === 'all' ? undefined : v } })
+  },
+})
+
+const activeType = computed<TypeFilterValue>({
+  get: () => {
+    const q = route.query.type
+    return (q && typeFilterOptions.some(o => o.value === q)) ? q as TypeFilterValue : 'all'
+  },
+  set: (v) => {
+    router.replace({ query: { ...route.query, type: v === 'all' ? undefined : v } })
+  },
+})
 
 const filterParams = computed(() => {
-  const q: Record<string, string> = {}
+  const q: Record<string, string> = { tab: tab.value }
+  if (statusPill.value !== 'all') q.status = statusPill.value
   if (activeSeverity.value !== 'all') q.severity = activeSeverity.value
   if (activeType.value !== 'all') q.type = activeType.value
   return q
@@ -131,7 +186,7 @@ const { data, pending, error, refresh } = await useFetch<{
   anomalies: Anomaly[]
 }>('/api/ai/anomalies', {
   query: filterParams,
-  watch: [activeSeverity, activeType],
+  watch: [tab, statusPill, activeSeverity, activeType],
   lazy: true,
 })
 
@@ -360,6 +415,21 @@ function openActionPlan(anomaly: Anomaly) {
     </template>
 
     <template #body>
+      <UTabs :items="tabItems" v-model="tab" class="mb-4" />
+
+      <div class="flex flex-wrap items-center gap-2 mb-6">
+        <UButton
+          v-for="opt in pillOptions"
+          :key="opt.value"
+          :variant="statusPill === opt.value ? 'solid' : 'subtle'"
+          color="neutral"
+          size="xs"
+          @click="statusPill = opt.value"
+        >
+          {{ opt.label }}
+        </UButton>
+      </div>
+
       <div v-if="pending" class="space-y-6">
         <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <USkeleton v-for="n in 4" :key="n" class="h-28" />
@@ -451,10 +521,12 @@ function openActionPlan(anomaly: Anomaly) {
         <div v-if="!hasAnomalies" class="flex flex-col items-center justify-center rounded-lg border border-dashed border-muted/60 bg-muted/20 py-16 text-center">
           <UIcon name="i-lucide-sparkles" class="size-10 text-emerald-500" />
           <p class="mt-4 text-lg font-semibold">
-            All clear for now
+            {{ tab === 'history' ? 'No history in this view' : 'All clear for now' }}
           </p>
           <p class="mt-2 max-w-md text-sm text-muted">
-            We did not detect any anomalies across Profit &amp; Loss, expenses, cash flow, receivables, or budget data. We will alert you as soon as new signals appear.
+            {{ tab === 'history'
+              ? 'No resolved or dismissed anomalies match the current filters.'
+              : 'We did not detect any anomalies across Profit & Loss, expenses, cash flow, receivables, or budget data. We will alert you as soon as new signals appear.' }}
           </p>
           <UButton
             class="mt-6"
