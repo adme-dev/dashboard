@@ -1,6 +1,6 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { execute, queryRows } from '~~/server/utils/db'
-import { enqueue } from '~~/server/utils/leads/queue'
+import { enqueueLeadJob } from '~~/server/utils/leads/queue'
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
     [id],
   )
   for (const d of failed) {
-    await enqueue({ type: 'delivery.dispatch', payload: { delivery_id: d.id } })
+    await enqueueLeadJob({ type: 'delivery.dispatch', payload: { delivery_id: d.id } })
   }
   return { ok: true, retried: failed.length }
 })

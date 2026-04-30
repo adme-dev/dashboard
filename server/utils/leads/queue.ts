@@ -10,7 +10,9 @@ export interface QueueMessage {
   delaySeconds?: number
 }
 
-export async function enqueue(msg: QueueMessage): Promise<void> {
+// Renamed from `enqueue` to avoid collision with `server/utils/queue.ts` exports
+// in Nuxt's auto-import scan.
+export async function enqueueLeadJob(msg: QueueMessage): Promise<void> {
   const event = (globalThis as any).useEvent?.()
   const queue = event?.context?.cloudflare?.env?.LEADS_DELIVERY_QUEUE
   if (queue && typeof queue.send === 'function') {

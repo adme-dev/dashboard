@@ -19,9 +19,9 @@ export async function handleQueueMessage(msg: QueueMessage): Promise<void> {
   if (msg.type === 'rules.evaluate' && msg.payload.lead_id) {
     const result = await evaluateLead(msg.payload.lead_id)
     // Each insertDelivery already wrote a row; chain a delivery.dispatch per planned id.
-    const { enqueue } = await import('./queue')
+    const { enqueueLeadJob } = await import('./queue')
     for (const d of result.deliveries) {
-      await enqueue({
+      await enqueueLeadJob({
         type: 'delivery.dispatch',
         payload: { delivery_id: d.delivery_id },
         delaySeconds: d.delay_minutes * 60,
@@ -49,12 +49,12 @@ async function dispatchOne(deliveryId: string, _attempt: number): Promise<void> 
   // Schedule check
   if (new Date(claimed.scheduled_at).getTime() > Date.now()) {
     await releaseClaim(deliveryId)
-    const { enqueue } = await import('./queue')
+    const { enqueueLeadJob } = await import('./queue')
     const delaySeconds = Math.max(
       1,
       Math.ceil((new Date(claimed.scheduled_at).getTime() - Date.now()) / 1000),
     )
-    await enqueue({
+    await enqueueLeadJob({
       type: 'delivery.dispatch',
       payload: { delivery_id: deliveryId },
       delaySeconds,
@@ -107,8 +107,8 @@ async function dispatchOne(deliveryId: string, _attempt: number): Promise<void> 
   await markFailed(deliveryId, result.error, next, final)
   if (final) return
   const delaySeconds = Math.ceil(((result as any).retry_after_ms ?? BACKOFF_MS[next]) / 1000)
-  const { enqueue } = await import('./queue')
-  await enqueue({
+  const { enqueueLeadJob } = await import('./queue')
+  await enqueueLeadJob({
     type: 'delivery.dispatch',
     payload: { delivery_id: deliveryId },
     attempt: next,

@@ -6,7 +6,7 @@ import {
 import { normalizeGooglePayload } from '~~/server/utils/leads/normalizer'
 import { resolveAssignedAm } from '~~/server/utils/leads/autoAssign'
 import { allowRequest } from '~~/server/utils/leads/rateLimit'
-import { enqueue } from '~~/server/utils/leads/queue'
+import { enqueueLeadJob } from '~~/server/utils/leads/queue'
 import { timingSafeEqual } from 'node:crypto'
 
 function safeEqual(a: string, b: string): boolean {
@@ -63,7 +63,7 @@ export default defineEventHandler(async (event) => {
       await upsertFormMetadata('google', norm.form_id, norm.form_name, norm.field_data)
     }
     if (!leadId) return { ok: true, skipped: true }
-    await enqueue({ type: 'rules.evaluate', payload: { lead_id: leadId } })
+    await enqueueLeadJob({ type: 'rules.evaluate', payload: { lead_id: leadId } })
     return { ok: true, lead_id: leadId }
   } catch (e: any) {
     await logIngestionError('google', body, getRequestHeaders(event), e?.message ?? String(e))

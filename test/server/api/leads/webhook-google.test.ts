@@ -44,7 +44,7 @@ vi.mock('../../../../server/utils/leads/db', async () => {
 })
 
 vi.mock('../../../../server/utils/leads/queue', () => ({
-  enqueue: vi.fn(),
+  enqueueLeadJob: vi.fn(),
 }))
 
 vi.mock('../../../../server/utils/leads/autoAssign', () => ({
@@ -61,7 +61,7 @@ vi.mock('../../../../server/utils/leads/rateLimit', () => ({
 
 import * as leadsDb from '../../../../server/utils/leads/db'
 import { queryOne } from '~~/server/utils/db'
-import { enqueue } from '../../../../server/utils/leads/queue'
+import { enqueueLeadJob } from '../../../../server/utils/leads/queue'
 
 const handler = (
   await import('../../../../server/api/leads/webhook/google/[token].post')
@@ -119,7 +119,7 @@ describe('POST /api/leads/webhook/google/[token]', () => {
     const r = await handler(fakeEvent('t1', body))
     expect(r).toMatchObject({ ok: true })
     expect(leadsDb.insertLeadWithDedup).toHaveBeenCalled()
-    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ type: 'rules.evaluate' }))
+    expect(enqueueLeadJob).toHaveBeenCalledWith(expect.objectContaining({ type: 'rules.evaluate' }))
   })
 
   it('200 with skipped:true on dedup', async () => {
@@ -133,6 +133,6 @@ describe('POST /api/leads/webhook/google/[token]', () => {
       user_column_data: [],
     }))
     expect(r).toMatchObject({ ok: true, skipped: true })
-    expect(enqueue).not.toHaveBeenCalled()
+    expect(enqueueLeadJob).not.toHaveBeenCalled()
   })
 })
