@@ -53,4 +53,41 @@ describe('revenueAnalyser', () => {
     }))
     expect(out).toHaveLength(0)
   })
+
+  it('flags revenue:yoy-decline when current month is >15% below same month last year', async () => {
+    const periods = []
+    for (let m = 0; m < 13; m++) {
+      periods.push({ label: `Period ${m}`, revenue: m === 12 ? 70_000 : 100_000 })
+    }
+    const out = await revenueAnalyser(ctx({
+      fromDate: '2025-04-01', toDate: '2026-04-30',
+      revenueTotal: 70_000, expensesTotal: 0, netProfit: 0, profitMargin: 0,
+      periods,
+    }))
+    expect(out.find(a => a.fingerprint === 'revenue:yoy-decline')).toBeDefined()
+  })
+
+  it('escalates revenue:yoy-decline to critical at >30% drop', async () => {
+    const periods: any[] = []
+    for (let m = 0; m < 13; m++) {
+      periods.push({ label: `Period ${m}`, revenue: m === 12 ? 50_000 : 100_000 })
+    }
+    const out = await revenueAnalyser(ctx({
+      fromDate: '2025-04-01', toDate: '2026-04-30',
+      revenueTotal: 50_000, expensesTotal: 0, netProfit: 0, profitMargin: 0,
+      periods,
+    }))
+    const yoy = out.find(a => a.fingerprint === 'revenue:yoy-decline')
+    expect(yoy?.severity).toBe('critical')
+  })
+
+  it('does NOT fire YoY when there are fewer than 13 periods', async () => {
+    const periods = Array.from({ length: 6 }, (_, i) => ({ label: `Period ${i}`, revenue: 100_000 }))
+    const out = await revenueAnalyser(ctx({
+      fromDate: '2025-11-01', toDate: '2026-04-30',
+      revenueTotal: 100_000, expensesTotal: 0, netProfit: 0, profitMargin: 0,
+      periods,
+    }))
+    expect(out.find(a => a.fingerprint === 'revenue:yoy-decline')).toBeUndefined()
+  })
 })

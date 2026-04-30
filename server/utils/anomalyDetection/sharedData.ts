@@ -23,7 +23,7 @@ export async function fetchSharedData(event: H3Event | null): Promise<SharedData
 
   const [pnl, expenses, bankMonitoring, cashForecast, aging, budgetVariance] =
     await Promise.all([
-      safe($fetch<any>('/api/xero/reports/pnl', { headers })),
+      safe($fetch<any>('/api/xero/reports/pnl', { headers, query: { periods: 13, timeframe: 'MONTH' } })),
       safe($fetch<any>('/api/xero/expenses', { headers })),
       safe($fetch<any>('/api/xero/bank-monitoring', { headers })),
       safe($fetch<any>('/api/xero/reports/cash-flow-forecast', { headers })),
