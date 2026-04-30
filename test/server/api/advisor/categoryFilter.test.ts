@@ -75,7 +75,12 @@ describe('GET /api/advisor/recommendations — category filter', () => {
     const [sql] = mockQueryRows.mock.calls[0]
     // r.category appears in the SELECT list (return value); the test
     // is that the WHERE clause has no category filter on it.
-    const whereClause = sql.split(/\bWHERE\b/i)[1]?.split(/\bORDER BY\b/i)[0] ?? ''
+    // Anchor on `WHERE r.tenant_id` (stable first predicate) to avoid
+    // matching the `WHERE` inside COUNT FILTER (WHERE c.deleted_at...).
+    const start = sql.search(/\bWHERE\s+r\.tenant_id/i)
+    const tail = start >= 0 ? sql.slice(start) : ''
+    const end = tail.search(/\b(GROUP\s+BY|ORDER\s+BY)\b/i)
+    const whereClause = end < 0 ? tail : tail.slice(0, end)
     expect(whereClause).not.toMatch(/r\.category/)
   })
 })

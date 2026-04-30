@@ -42,7 +42,14 @@ vi.mock('h3', () => ({
 const { default: handler } = await import('../../../../server/api/advisor/recommendations/index.get')
 
 function whereClause(sql: string): string {
-  return sql.split(/\bWHERE\b/i)[1]?.split(/\bORDER BY\b/i)[0] ?? ''
+  // Anchor on `WHERE r.tenant_id` (the stable first predicate) and end
+  // at `GROUP BY` or `ORDER BY`, whichever comes first. Avoids matching
+  // the `WHERE` inside `COUNT FILTER (WHERE c.deleted_at IS NULL)`.
+  const start = sql.search(/\bWHERE\s+r\.tenant_id/i)
+  if (start < 0) return ''
+  const tail = sql.slice(start)
+  const end = tail.search(/\b(GROUP\s+BY|ORDER\s+BY)\b/i)
+  return end < 0 ? tail : tail.slice(0, end)
 }
 
 describe('GET /api/advisor/recommendations — snooze visibility', () => {
