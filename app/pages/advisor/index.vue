@@ -148,6 +148,7 @@ const periodOptions = computed(() => {
 })
 
 const columns = [
+  { accessorKey: 'select', header: '' },
   { accessorKey: 'priority', header: 'Priority' },
   { accessorKey: 'category', header: 'Category' },
   { accessorKey: 'title', header: 'Recommendation' },
@@ -157,6 +158,67 @@ const columns = [
   { accessorKey: 'due_date', header: 'Due' },
   { accessorKey: 'status', header: 'Status' },
 ]
+
+// ── Bulk selection state ───────────────────────────────────────────
+// Manual checkbox column with a Set ref. UTable v4's selection API
+// is left unused here on purpose — the spec calls out that path as
+// the safer fallback.
+const selection = ref<Set<string>>(new Set())
+const bulkLoading = ref(false)
+
+function toggleSelect(id: string, ev?: Event) {
+  ev?.stopPropagation()
+  const next = new Set(selection.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selection.value = next
+}
+
+function isSelected(id: string): boolean {
+  return selection.value.has(id)
+}
+
+function clearSelection() {
+  selection.value = new Set()
+}
+
+// Reset selection when the visible list changes meaningfully (filters /
+// refresh) so we never apply a bulk action to ids that are no longer
+// in the user's view.
+watch([statusFilter, priorityFilter, clientFilter, periodFilter, assigneeFilter, categoryFilter, sourceFilter, showSnoozed], () => {
+  clearSelection()
+})
+
+async function applyBulk(patch: Record<string, any>) {
+  if (selection.value.size === 0) return
+  bulkLoading.value = true
+  const ids = Array.from(selection.value)
+  try {
+    const res = await $fetch<{ updated: number; requested: number }>(
+      '/api/advisor/recommendations/bulk',
+      { method: 'POST', body: { ids, patch } }
+    )
+    if (res.updated < res.requested) {
+      toast.add({
+        title: 'Partial update',
+        description: `Updated ${res.updated} of ${res.requested}. Some items couldn't be changed.`,
+        color: 'warning',
+      })
+    } else {
+      toast.add({ title: `Updated ${res.updated}`, color: 'success' })
+    }
+    clearSelection()
+    await refresh()
+  } catch (err: any) {
+    toast.add({
+      title: 'Bulk update failed',
+      description: err?.data?.statusMessage ?? err?.message,
+      color: 'error',
+    })
+  } finally {
+    bulkLoading.value = false
+  }
+}
 
 // Helpers used in table cells (the drawer has its own copies for the
 // helpers it needs internally — kept duplicated rather than promoted to
@@ -445,6 +507,18 @@ const summary = computed(() => {
             class="cursor-pointer"
             @select="(_e: any, row: any) => openDrawer(row.original)"
           >
+            <template #select-header>
+              <span class="sr-only">Select</span>
+            </template>
+
+            <template #select-cell="{ row }">
+              <UCheckbox
+                :model-value="isSelected(row.original.id)"
+                @update:model-value="toggleSelect(row.original.id)"
+                @click.stop
+              />
+            </template>
+
             <template #priority-cell="{ row }">
               <UBadge :color="priorityColor(row.original.priority)" variant="subtle" size="xs">
                 {{ row.original.priority }}
@@ -520,6 +594,15 @@ const summary = computed(() => {
     :team-members="teamData?.members ?? []"
     :metric-keys="METRIC_KEYS"
     @created="onCreated"
+  />
+
+  <!-- Bulk action bar -->
+  <AdvisorBulkActionBar
+    :count="selection.size"
+    :loading="bulkLoading"
+    :team-members="teamData?.members ?? []"
+    @apply="applyBulk"
+    @clear="clearSelection"
   />
 
   <!-- Detail drawer (extracted to component) -->
