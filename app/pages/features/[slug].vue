@@ -387,6 +387,35 @@ const features: Record<string, Feature> = {
   },
 
   // ─── Financial Operations ─────────────────────────────────────
+  'lead-capture-routing': {
+    title: 'Lead Capture & Routing',
+    slug: 'lead-capture-routing',
+    icon: 'i-lucide-inbox',
+    category: 'Financial Operations',
+    categoryIcon: 'i-lucide-calculator',
+    categoryIconBg: 'bg-emerald-50',
+    categoryIconColor: 'text-emerald-600',
+    description: 'Real-time Meta + Google ad inquiries land directly in the dashboard. Per-form rules fan them out to Slack, email, your CRM, Sheets, and the client portal — without Zapier.',
+    details: [
+      {
+        title: 'Real-time, not polled',
+        content: "Meta and Google both publish native webhooks. We accept them directly — sub-60-second delivery instead of Zapier's 1-15 minute polling window. Speed-to-lead matters: contacting a lead within 5 minutes is 21x more likely to convert.",
+      },
+      {
+        title: 'Multi-tenant by design',
+        content: "One agency dashboard manages every client's lead routing. Each client gets their own webhook URL, their own form rules, and their own portal view — no Zap duplication, no per-task fees.",
+      },
+      {
+        title: 'Client portal inbox built-in',
+        content: 'Add a "portal" destination to any rule and the client sees their leads inside the same XeroFlow portal where they already track invoices and projects. Branded, real-time, no extra login.',
+      },
+      {
+        title: "Routing logic that's actually useful",
+        content: 'Per-destination filters: "SMS only if budget > $5,000", "Slack only if utm_source = facebook". Optional delays from immediate to 24 hours. HMAC-signed outbound webhooks with idempotency keys so receivers can safely dedupe our retries.',
+      },
+    ],
+  },
+
   'xero-integration': {
     title: 'Xero Integration',
     slug: 'xero-integration',
