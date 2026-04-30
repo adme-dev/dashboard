@@ -832,6 +832,49 @@ const agingSections = [
               </div>
             </div>
           </UCard>
+
+          <!-- Chronic late payers — customers whose average days-to-pay
+               is highest. Click to drill into that customer. Hidden if
+               we don't have enough paid-invoice history (≥3 invoices/customer). -->
+          <UCard v-if="((summary as any)?.latePayers || []).length" class="lg:col-span-3">
+            <template #header>
+              <div class="flex items-center justify-between">
+                <UTooltip text="Customers ranked by average days-to-pay across paid invoices in scope (min 3 invoices each). High numbers = chronic late payers worth renegotiating terms with.">
+                  <h3 class="text-base font-semibold text-[var(--ui-text-highlighted)] flex items-center gap-1">
+                    Chronic Late Payers
+                    <UIcon name="i-lucide-info" class="h-4 w-4 text-[var(--ui-text-muted)]" />
+                  </h3>
+                </UTooltip>
+                <UBadge color="neutral" variant="subtle">{{ (summary as any)?.latePayers?.length ?? 0 }}</UBadge>
+              </div>
+            </template>
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+              <button
+                v-for="payer in (summary as any)?.latePayers ?? []"
+                :key="payer.name"
+                type="button"
+                class="text-left p-3 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-elevated)] hover:border-red-400 hover:bg-red-50/30 dark:hover:bg-red-950/20 transition-colors"
+                @click="openCustomer({ name: payer.name, outstanding: payer.openOverdue, overdue: payer.openOverdue, count: 0 })"
+              >
+                <div class="flex items-start justify-between gap-2 mb-1">
+                  <p class="font-medium text-[var(--ui-text-highlighted)] text-sm truncate">{{ payer.name }}</p>
+                  <UBadge
+                    size="sm"
+                    :color="payer.avgDaysToPay > 60 ? 'error' : payer.avgDaysToPay > 30 ? 'warning' : 'neutral'"
+                    variant="subtle"
+                  >
+                    {{ payer.avgDaysToPay }}d avg
+                  </UBadge>
+                </div>
+                <div class="grid grid-cols-2 gap-1 text-[11px] text-[var(--ui-text-muted)]">
+                  <span>Worst: <span class="font-medium text-[var(--ui-text-highlighted)]">{{ payer.maxDaysToPay }}d</span></span>
+                  <span>Paid: <span class="font-medium text-[var(--ui-text-highlighted)]">{{ payer.paidCount }} inv</span></span>
+                  <span>Billed: <span class="font-medium text-[var(--ui-text-highlighted)]">{{ formatCurrency(payer.totalBilled) }}</span></span>
+                  <span v-if="payer.openOverdue > 0" class="text-red-500 dark:text-red-400">Overdue: <span class="font-medium">{{ formatCurrency(payer.openOverdue) }}</span></span>
+                </div>
+              </button>
+            </div>
+          </UCard>
         </div>
 
         <!-- Collapsible aging details (full width below the 3-col row) -->

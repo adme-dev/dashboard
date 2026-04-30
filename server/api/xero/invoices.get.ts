@@ -201,6 +201,46 @@ export default eventHandler(async (event) => {
       ? Math.round((outstandingTotal / last30dInvoicedTotal) * 30)
       : null
 
+    // Late-payer ranking — group paid invoices by customer and surface
+    // chronic offenders. Only includes customers with ≥3 paid invoices
+    // (so a single big-late payment doesn't dominate). Sorted by average
+    // days-to-pay descending. Used by the "Chronic Late Payers" card to
+    // tell the agency owner which clients to renegotiate terms with.
+    const payersMap = new Map<string, { name: string; daysToPayValues: number[]; openOverdue: number; totalBilled: number }>()
+    for (const inv of paidDetailed) {
+      const name = inv.contact || 'Unknown'
+      if (!payersMap.has(name)) {
+        payersMap.set(name, { name, daysToPayValues: [], openOverdue: 0, totalBilled: 0 })
+      }
+      const entry = payersMap.get(name)!
+      if (typeof inv.daysToPay === 'number' && Number.isFinite(inv.daysToPay)) {
+        entry.daysToPayValues.push(inv.daysToPay)
+      }
+      entry.totalBilled += Number(inv.total) || 0
+    }
+    // Augment with current overdue balance per customer
+    for (const inv of overdue) {
+      const name = inv.contact || 'Unknown'
+      const entry = payersMap.get(name)
+      if (entry) entry.openOverdue += Number(inv.amountDue) || 0
+    }
+    const latePayers = Array.from(payersMap.values())
+      .filter((p) => p.daysToPayValues.length >= 3)
+      .map((p) => {
+        const avg = p.daysToPayValues.reduce((s, n) => s + n, 0) / p.daysToPayValues.length
+        const max = Math.max(...p.daysToPayValues)
+        return {
+          name: p.name,
+          avgDaysToPay: Math.round(avg),
+          maxDaysToPay: max,
+          paidCount: p.daysToPayValues.length,
+          totalBilled: Math.round(p.totalBilled),
+          openOverdue: Math.round(p.openOverdue),
+        }
+      })
+      .sort((a, b) => b.avgDaysToPay - a.avgDaysToPay)
+      .slice(0, 8)
+
     const avgDaysToPay = (() => {
       const values = paidDetailed
         .map((inv: any) => inv.daysToPay)
@@ -278,6 +318,7 @@ export default eventHandler(async (event) => {
         paidLast30Count: paidLast30.length,
         avgDaysToPay,
         topCustomers,
+        latePayers,
         agingBuckets,
         agingDetails
       },
