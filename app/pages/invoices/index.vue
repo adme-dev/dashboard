@@ -27,6 +27,36 @@ const { data: creditNotesSummary } = await useFetch<{ total: number; count: numb
   { default: () => null as any }
 )
 
+// AI-generated owner briefing. Loads after the page renders so it never
+// blocks the (much more important) numeric data. Server caches 1 hour
+// per tenant — manual refresh is the escape hatch for fresh tokens.
+type AiBriefing = {
+  headline: string
+  narrative: string
+  actions: Array<{ label: string; why?: string }>
+  riskLevel: 'low' | 'moderate' | 'high'
+  generatedAt: string
+  cached: boolean
+}
+const aiBriefing = ref<AiBriefing | null>(null)
+const aiBriefingPending = ref(false)
+const aiBriefingError = ref<string | null>(null)
+async function loadAiBriefing(force = false) {
+  aiBriefingPending.value = true
+  aiBriefingError.value = null
+  try {
+    const res = await $fetch<AiBriefing>(
+      `/api/xero/invoices/ai-briefing${force ? '?refresh=1' : ''}`
+    )
+    aiBriefing.value = res
+  } catch (err: any) {
+    aiBriefingError.value = err?.statusMessage || err?.message || 'Could not load briefing'
+  } finally {
+    aiBriefingPending.value = false
+  }
+}
+onMounted(() => loadAiBriefing(false))
+
 const search = ref('')
 const validViews = ['all', 'outstanding', 'overdue', 'paid'] as const
 type ViewType = typeof validViews[number]
@@ -516,6 +546,76 @@ const agingSections = [
       />
 
       <div v-else class="space-y-6">
+        <!-- AI Owner Briefing — generated narrative + 1-2 actions. Loads
+             after the page so it never blocks the numeric cards. -->
+        <UCard
+          class="border-l-4"
+          :class="{
+            'border-l-emerald-500': aiBriefing?.riskLevel === 'low',
+            'border-l-amber-500': aiBriefing?.riskLevel === 'moderate',
+            'border-l-red-500': aiBriefing?.riskLevel === 'high',
+            'border-l-[var(--ui-border)]': !aiBriefing,
+          }"
+        >
+          <div class="flex items-start gap-3">
+            <div class="shrink-0 w-9 h-9 rounded-lg bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center mt-0.5">
+              <UIcon name="i-lucide-sparkles" class="h-5 w-5 text-violet-600 dark:text-violet-400" />
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between gap-3 mb-1">
+                <p class="text-[10px] uppercase tracking-wide text-[var(--ui-text-muted)] font-semibold">Owner briefing · AI</p>
+                <div class="flex items-center gap-2">
+                  <span v-if="aiBriefing?.cached" class="text-[10px] text-[var(--ui-text-muted)]">cached</span>
+                  <UButton
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    icon="i-lucide-refresh-cw"
+                    :loading="aiBriefingPending"
+                    @click="loadAiBriefing(true)"
+                  >
+                    Refresh
+                  </UButton>
+                </div>
+              </div>
+
+              <!-- Loading skeleton -->
+              <div v-if="aiBriefingPending && !aiBriefing" class="space-y-2">
+                <USkeleton class="h-5 w-1/2" />
+                <USkeleton class="h-4 w-full" />
+                <USkeleton class="h-4 w-3/4" />
+              </div>
+
+              <!-- Error state -->
+              <p v-else-if="aiBriefingError && !aiBriefing" class="text-sm text-[var(--ui-text-muted)]">
+                {{ aiBriefingError }}
+              </p>
+
+              <!-- Loaded -->
+              <template v-else-if="aiBriefing">
+                <p class="text-base font-semibold text-[var(--ui-text-highlighted)] mb-1">{{ aiBriefing.headline }}</p>
+                <p class="text-sm text-[var(--ui-text-muted)] leading-relaxed mb-3">{{ aiBriefing.narrative }}</p>
+                <ul v-if="aiBriefing.actions?.length" class="space-y-1.5">
+                  <li
+                    v-for="(action, idx) in aiBriefing.actions"
+                    :key="idx"
+                    class="flex items-start gap-2 text-sm"
+                  >
+                    <UIcon name="i-lucide-arrow-right" class="h-4 w-4 mt-0.5 text-violet-600 dark:text-violet-400 shrink-0" />
+                    <div>
+                      <span class="font-medium text-[var(--ui-text-highlighted)]">{{ action.label }}</span>
+                      <span v-if="action.why" class="text-[var(--ui-text-muted)]"> — {{ action.why }}</span>
+                    </div>
+                  </li>
+                </ul>
+                <p class="text-[10px] text-[var(--ui-text-muted)] mt-2 italic">
+                  AI-generated — verify against the data below before acting.
+                </p>
+              </template>
+            </div>
+          </div>
+        </UCard>
+
         <!-- Summary Cards -->
         <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
           <UCard>
