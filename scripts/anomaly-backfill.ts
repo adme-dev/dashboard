@@ -9,16 +9,23 @@
 //   2. Enabling the cron causes only genuinely-NEW incidents (post-backfill)
 //      to trigger notifications.
 //
-// Usage (from the repo root):
-//   ANOMALY_NOTIFICATIONS_DISABLED=true tsx scripts/anomaly-backfill.ts
+// Usage (from the worktree root):
+//   pnpm dev    # in another terminal — sharedData.ts hits Nitro routes via $fetch
+//   ANOMALY_NOTIFICATIONS_DISABLED=true \
+//     pnpm exec tsx --tsconfig .nuxt/tsconfig.server.json scripts/anomaly-backfill.ts
+//
+// The `--tsconfig .nuxt/tsconfig.server.json` flag is required so tsx can
+// resolve the `~~/` alias used by the detection layer.
 //
 // The `ANOMALY_NOTIFICATIONS_DISABLED=true` env is the safety guard — the
 // script refuses to run without it, to prevent accidental notification flood.
 
-// Use absolute imports relative to the repo root, mirroring the project's
-// `~~/server/...` aliases. Since `tsx` uses the same TS config as Nuxt,
-// these resolve cleanly in dev. Adjust the import paths if running outside
-// of `tsx` (e.g., post-build).
+// $fetch polyfill — Nuxt's $fetch is a runtime global, not available in tsx.
+// We point ofetch at the local dev server (or a deployed origin via BACKFILL_BASE_URL)
+// so server/utils/anomalyDetection/sharedData.ts can hit /api/xero/* routes.
+import { ofetch } from 'ofetch'
+const baseURL = process.env.BACKFILL_BASE_URL || 'http://localhost:3000'
+;(globalThis as any).$fetch = ofetch.create({ baseURL })
 
 async function main() {
   if (process.env.ANOMALY_NOTIFICATIONS_DISABLED !== 'true') {

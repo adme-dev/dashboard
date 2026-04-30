@@ -2,7 +2,7 @@
 definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
 
 type AnomalySeverity = 'critical' | 'warning' | 'info'
-type AnomalyType = 'profitability' | 'revenue' | 'expenses' | 'cashflow' | 'receivables' | 'budget'
+type AnomalyType = 'profitability' | 'revenue' | 'expenses' | 'cashflow' | 'receivables' | 'budget' | 'adspend' | 'clients' | 'transactions'
 
 type MetricFormat = 'currency' | 'percent' | 'number'
 
@@ -93,6 +93,21 @@ const typeMeta: Record<AnomalyType, { label: string, description: string, icon: 
     label: 'Budget',
     description: 'Budget variance, overruns, and projected spending.',
     icon: 'i-lucide-calculator'
+  },
+  adspend: {
+    label: 'Ad Spend',
+    description: 'Per-client and per-platform daily spend spikes vs. rolling baseline.',
+    icon: 'i-lucide-megaphone'
+  },
+  clients: {
+    label: 'Clients',
+    description: 'Per-client scope creep and revenue concentration risk.',
+    icon: 'i-lucide-users'
+  },
+  transactions: {
+    label: 'Transactions',
+    description: 'Per-line-item statistical outliers within an account.',
+    icon: 'i-lucide-list-checks'
   }
 }
 
@@ -110,7 +125,10 @@ const typeFilterOptions = [
   { value: 'expenses', label: typeMeta.expenses.label },
   { value: 'cashflow', label: typeMeta.cashflow.label },
   { value: 'receivables', label: typeMeta.receivables.label },
-  { value: 'budget', label: typeMeta.budget.label }
+  { value: 'budget', label: typeMeta.budget.label },
+  { value: 'adspend', label: typeMeta.adspend.label },
+  { value: 'clients', label: typeMeta.clients.label },
+  { value: 'transactions', label: typeMeta.transactions.label }
 ] as const
 
 type SeverityFilterValue = typeof severityFilterOptions[number]['value']
@@ -249,20 +267,21 @@ const filteredAnomalies = computed(() => {
 })
 
 const groupedAnomalies = computed(() => {
-  const groups: Record<AnomalyType, Anomaly[]> = {
-    profitability: [],
-    revenue: [],
-    expenses: [],
-    cashflow: [],
-    receivables: [],
-    budget: []
-  }
+  // Order matches typeMeta — sections render in this order.
+  const order: AnomalyType[] = [
+    'profitability', 'revenue', 'expenses', 'cashflow', 'receivables',
+    'budget', 'adspend', 'clients', 'transactions',
+  ]
+  const groups = Object.fromEntries(order.map(t => [t, [] as Anomaly[]])) as Record<AnomalyType, Anomaly[]>
 
   for (const anomaly of filteredAnomalies.value) {
-    groups[anomaly.type].push(anomaly)
+    // Defensive: if a future server adds a new type before the page is updated,
+    // collect it under the closest match instead of crashing.
+    if (groups[anomaly.type]) groups[anomaly.type].push(anomaly)
+    else groups.profitability.push(anomaly)
   }
 
-  return (Object.keys(groups) as AnomalyType[])
+  return order
     .filter(type => groups[type].length > 0)
     .map(type => ({ type, items: groups[type] }))
 })
@@ -414,7 +433,7 @@ function openActionPlan(anomaly: Anomaly) {
     <template #header>
       <UDashboardNavbar
         title="Anomaly Detection"
-        description="Automated monitoring across revenue, expenses, cash flow, receivables, and budget"
+        description="Automated monitoring across profit, revenue, expenses, cash flow, receivables, budget, ad-spend, per-client, and transactions"
       >
         <template #leading>
           <UDashboardSidebarCollapse />
@@ -581,7 +600,7 @@ function openActionPlan(anomaly: Anomaly) {
           <p class="mt-2 max-w-md text-sm text-muted">
             {{ tab === 'history'
               ? 'No resolved or dismissed anomalies match the current filters.'
-              : 'We did not detect any anomalies across Profit & Loss, expenses, cash flow, receivables, or budget data. We will alert you as soon as new signals appear.' }}
+              : 'No anomalies detected across financial, ad-spend, or per-client signals. We will alert you as soon as new signals appear.' }}
           </p>
           <UButton
             class="mt-6"
