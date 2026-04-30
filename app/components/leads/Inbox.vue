@@ -6,7 +6,9 @@ const { filters, page, pageSize, data, pending, refresh } = useLeads()
 const { events: liveEvents } = useLeadsStream()
 
 // When SSE pings, refresh the list (cheap — current view only).
-watch(liveEvents, () => refresh(), { deep: true })
+// Debounce to 500 ms to absorb burst arrivals (e.g. 10 leads/sec).
+const debouncedRefresh = useDebounceFn(() => refresh(), 500)
+watch(liveEvents, () => debouncedRefresh(), { deep: true })
 
 const selectedLead = ref<Lead | null>(null)
 const showSlideover = ref(false)
