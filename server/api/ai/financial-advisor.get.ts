@@ -20,6 +20,7 @@ import { query } from '~~/server/utils/db'
 import { embedRecommendation } from '~~/server/utils/advisorEmbedder'
 import { METRIC_REGISTRY } from '~~/server/utils/advisorMetrics'
 import { buildClientSnapshot } from '~~/server/utils/advisorClientSnapshot'
+import { CATEGORIES, isCategory } from '~~/server/utils/advisorCategories'
 
 // Path into the reduced `snapshot` object (not the raw endpoint
 // response) for every metric the advisor can tag. Kept in sync with
@@ -92,6 +93,7 @@ const AdvisorLLMSchema = z.object({
     action: z.string(),
     target_metric: z.string().nullable().optional(),
     target_direction: z.enum(['up', 'down']).nullable().optional(),
+    category: z.enum([...CATEGORIES] as [string, ...string[]]).nullable().optional(),
   })),
   alerts: z.array(z.object({
     level: z.enum(['info', 'warning', 'critical']),
@@ -110,7 +112,7 @@ Your output MUST be a JSON object with exactly these keys and shapes:
   "headline": "one short headline (<= 10 words) for the top of the panel",
   "strengths": [ { "title": "...", "detail": "1-2 sentences" } ],
   "risks":     [ { "title": "...", "detail": "1-2 sentences", "severity": "low"|"medium"|"high" } ],
-  "recommendations": [ { "priority": "low"|"medium"|"high", "title": "...", "impact": "expected benefit in dollars or %", "action": "concrete next step", "target_metric": "<optional metric key from registry below>", "target_direction": "up"|"down" } ],
+  "recommendations": [ { "priority": "low"|"medium"|"high", "title": "...", "impact": "expected benefit in dollars or %", "action": "concrete next step", "target_metric": "<optional metric key from registry below>", "target_direction": "up"|"down", "category": "<optional one of: cashflow|collections|pricing|margin|cost-control|growth|staffing|tax-compliance|risk>" } ],
   "alerts":    [ { "level": "info"|"warning"|"critical", "message": "..." } ]
 }
 
@@ -138,7 +140,8 @@ Rules:
  - Agency industry benchmarks you can reference when relevant: gross margin 45-60%, net margin 10-20%, DSO < 45 days, DPO 30-45 days, retainer revenue 40-60% of total, top-3 client concentration < 50%.
  - When flagging risk, tie it to an action that would move a specific metric.
  - Never invent data; if a field is missing just skip it.
- - Tag target_metric + target_direction on any recommendation that clearly moves one of the registry metrics. Skip the tag if the action doesn't fit the registry.`
+ - Tag target_metric + target_direction on any recommendation that clearly moves one of the registry metrics. Skip the tag if the action doesn't fit the registry.
+ - Tag category with the dominant theme using one of: cashflow, collections, pricing, margin, cost-control, growth, staffing, tax-compliance, risk. Pick the single best fit. Omit the field if genuinely unclear — null is acceptable, do not guess.`
 
 async function fetchInternal(event: any, path: string, query?: Record<string, any>): Promise<any> {
   try {
@@ -413,12 +416,16 @@ export default eventHandler(async (event) => {
             ? rec.target_direction
             : (registryEntry?.preferredDirection ?? null)
 
+          // Validate category against the fixed taxonomy. Drop unknown
+          // values rather than reject the whole row.
+          const category = isCategory(rec.category) ? rec.category : null
+
           const inserted = await query<{ id: string }>(
             `INSERT INTO recommendations
                 (tenant_id, client_id, source_report_id, title, action, impact, priority,
                  target_metric, baseline_metric_value, target_direction,
-                 xero_metric_snapshot)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                 xero_metric_snapshot, category)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
              RETURNING id`,
             [
               tenantId,
@@ -432,6 +439,7 @@ export default eventHandler(async (event) => {
               baselineValue,
               direction,
               JSON.stringify(requestedClientId && clientSnapshot ? { agency: snapshot, client: clientSnapshot } : snapshot),
+              category,
             ]
           )
           const recId = inserted?.[0]?.id
