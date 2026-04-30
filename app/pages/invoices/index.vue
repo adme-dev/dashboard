@@ -621,6 +621,41 @@ const agingSections = [
           </div>
         </UCard>
 
+        <!-- GST / Tax collected — sum of totalTax on issued invoices over rolling windows.
+             Australian agencies use this for BAS prep (GST on sales = box 1A). -->
+        <UCard v-if="((summary as any)?.taxSummary?.last90 ?? 0) > 0">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <div class="shrink-0 w-10 h-10 rounded-lg bg-teal-50 dark:bg-teal-500/10 flex items-center justify-center">
+                <UIcon name="i-lucide-percent" class="h-5 w-5 text-teal-600 dark:text-teal-400" />
+              </div>
+              <div>
+                <UTooltip text="GST/VAT collected on sales invoices. Sums the totalTax field across every invoice issued in each window. For Australian BAS, the FY-to-date figure is GST on sales (box 1A) — but always reconcile against Xero's official BAS report before lodging.">
+                  <p class="text-sm text-[var(--ui-text-muted)] flex items-center gap-1">
+                    GST Collected on Sales
+                    <UIcon name="i-lucide-info" class="h-3 w-3" />
+                  </p>
+                </UTooltip>
+                <p class="text-2xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.taxSummary?.fyToDate) }}</p>
+                <p class="text-xs text-[var(--ui-text-muted)] mt-0.5">
+                  AU financial year to date · since {{ formatDate((summary as any)?.taxSummary?.fyStart) }}
+                </p>
+              </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <UBadge color="neutral" variant="subtle">
+                Last 30 days: {{ formatCurrency((summary as any)?.taxSummary?.last30) }}
+              </UBadge>
+              <UBadge color="neutral" variant="subtle">
+                Last 90 days: {{ formatCurrency((summary as any)?.taxSummary?.last90) }}
+              </UBadge>
+              <UBadge color="neutral" variant="subtle">
+                CY YTD: {{ formatCurrency((summary as any)?.taxSummary?.calendarYtd) }}
+              </UBadge>
+            </div>
+          </div>
+        </UCard>
+
         <!-- Cash collection forecast — projected inflows from open AR. -->
         <UCard v-if="((summary as any)?.cashForecast?.buckets || []).some((b: any) => b.count > 0)">
           <template #header>

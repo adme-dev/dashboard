@@ -94,7 +94,10 @@ export default eventHandler(async (event) => {
         // Last Xero modification timestamp. For an unedited invoice this
         // is effectively the "entered into Xero" date — Xero has no
         // separate created field. Bumps on every subsequent edit.
-        updatedDate: inv?.updatedDateUTC || null
+        updatedDate: inv?.updatedDateUTC || null,
+        // Tax fields needed for BAS / tax summary aggregation.
+        subTotal: Number(inv?.subTotal ?? 0),
+        totalTax: Number(inv?.totalTax ?? 0)
       }
     }
 
@@ -250,6 +253,37 @@ export default eventHandler(async (event) => {
       .sort((a, b) => b.avgDaysToPay - a.avgDaysToPay)
       .slice(0, 8)
 
+    // Tax / GST summary — sales GST collected over rolling windows.
+    // For Australian BAS prep: GST on sales is `1A` on the form.
+    // We sum totalTax across every invoice issued in the period (open
+    // + paid + overdue all roll up here). Australian financial year
+    // (Jul 1 – Jun 30) is detected so YTD makes sense for AU agencies.
+    const taxSummary = (() => {
+      const allByIssueDate = [...openInvoices, ...paidDetailed]
+      const taxBetween = (fromISO: string) => allByIssueDate
+        .filter((inv: any) => inv.date && inv.date >= fromISO)
+        .reduce((sum: number, inv: any) => sum + (Number(inv.totalTax) || 0), 0)
+      const salesBetween = (fromISO: string) => allByIssueDate
+        .filter((inv: any) => inv.date && inv.date >= fromISO)
+        .reduce((sum: number, inv: any) => sum + (Number(inv.subTotal) || 0), 0)
+      const dateAgo = (days: number) => new Date(today.getTime() - days * 86400000).toISOString().slice(0, 10)
+      // Australian financial year starts 1 July. If we're past 1 Jul this
+      // calendar year, FY started this Jul; otherwise it started last Jul.
+      const fyStartYear = today.getMonth() >= 6 ? today.getFullYear() : today.getFullYear() - 1
+      const fyStart = `${fyStartYear}-07-01`
+      // Calendar YTD as a fallback for non-AU users.
+      const calYearStart = `${today.getFullYear()}-01-01`
+      return {
+        last30: Math.round(taxBetween(dateAgo(30))),
+        last90: Math.round(taxBetween(dateAgo(90))),
+        salesLast30: Math.round(salesBetween(dateAgo(30))),
+        salesLast90: Math.round(salesBetween(dateAgo(90))),
+        fyToDate: Math.round(taxBetween(fyStart)),
+        fyStart,
+        calendarYtd: Math.round(taxBetween(calYearStart)),
+      }
+    })()
+
     // Cash collection forecast — projects expected cash inflow from
     // every open invoice, bucketed by due date relative to today.
     // "Overdue" amounts assumed collectible ASAP (chase priority);
@@ -394,6 +428,7 @@ export default eventHandler(async (event) => {
         concentration,
         latePayers,
         cashForecast,
+        taxSummary,
         agingBuckets,
         agingDetails,
         truncated
