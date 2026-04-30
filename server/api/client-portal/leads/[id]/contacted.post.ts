@@ -7,7 +7,7 @@ export default defineEventHandler(async (event) => {
   const n = await execute(
     `UPDATE leads SET status = 'contacted', contacted_at = NOW()
      WHERE id = $1 AND client_id = $2 AND deleted_at IS NULL AND status = 'new'`,
-    [id, client.client_id],
+    [id, client.clientId],
   )
   if (!n) throw createError({ statusCode: 404, statusMessage: 'not_updatable' })
   return { ok: true }

@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
         AND d.destination_type = 'portal' AND d.enabled = TRUE
     )`,
   ]
-  const params: any[] = [client.client_id]
+  const params: any[] = [client.clientId]
   if (q.status) { params.push(q.status); conds.push(`l.status = $${params.length}`) }
   if (q.from) { params.push(q.from); conds.push(`l.submitted_at >= $${params.length}`) }
   if (q.to) { params.push(q.to); conds.push(`l.submitted_at <= $${params.length}`) }

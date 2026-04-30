@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
         WHERE r.source = l.source AND r.form_id = l.form_id
           AND d.destination_type = 'portal' AND d.enabled = TRUE
       )
-  `, [id, client.client_id])
+  `, [id, client.clientId])
   if (!lead) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   return { lead }
 })

@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
            AND d.destination_type = 'portal' AND d.enabled = TRUE
        )
      ORDER BY l.submitted_at DESC LIMIT 5000`,
-    [client.client_id],
+    [client.clientId],
   )
   const header = ['submitted_at', 'source', 'form_name', 'status', 'field_data']
   const lines = [header.join(','), ...rows.map(r => header.map(h => esc(r[h])).join(','))]
