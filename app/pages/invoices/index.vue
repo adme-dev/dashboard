@@ -6,6 +6,13 @@ const router = useRouter()
 
 const { data, pending, error, refresh } = await useFetch('/api/xero/invoices')
 
+// Forward-looking pipeline (quotes not yet invoiced). Loaded in parallel
+// — failure here must NOT block the AR view, so errors are swallowed.
+const { data: quotesSummary } = await useFetch<{ total: number; count: number; byStatus: { draft: { count: number; total: number }; sent: { count: number; total: number }; accepted: { count: number; total: number } } }>(
+  '/api/xero/quotes-summary',
+  { default: () => null as any }
+)
+
 const search = ref('')
 const validViews = ['all', 'outstanding', 'overdue', 'paid'] as const
 type ViewType = typeof validViews[number]
@@ -384,6 +391,33 @@ const agingSections = [
           :title="`${summary.notSentCount} invoice${summary.notSentCount === 1 ? '' : 's'} not yet sent — ${formatCurrency(summary.notSentTotal)}`"
           description="These invoices were created but never emailed to the client. Open them and hit Send in Xero before chasing payment."
         />
+
+        <!-- Forward pipeline — quotes won/sent/drafted but not yet invoiced. -->
+        <UCard v-if="(quotesSummary?.count || 0) > 0">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <div class="shrink-0 w-10 h-10 rounded-lg bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center">
+                <UIcon name="i-lucide-file-search" class="h-5 w-5 text-violet-600 dark:text-violet-400" />
+              </div>
+              <div>
+                <p class="text-sm text-[var(--ui-text-muted)]">Forward Pipeline</p>
+                <p class="text-2xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency(quotesSummary?.total) }}</p>
+                <p class="text-xs text-[var(--ui-text-muted)] mt-0.5">{{ quotesSummary?.count }} active quote{{ (quotesSummary?.count ?? 0) === 1 ? '' : 's' }} not yet invoiced</p>
+              </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <UBadge v-if="(quotesSummary?.byStatus.accepted.count || 0) > 0" color="success" variant="subtle">
+                Accepted: {{ formatCurrency(quotesSummary?.byStatus.accepted.total) }} ({{ quotesSummary?.byStatus.accepted.count }})
+              </UBadge>
+              <UBadge v-if="(quotesSummary?.byStatus.sent.count || 0) > 0" color="info" variant="subtle">
+                Sent: {{ formatCurrency(quotesSummary?.byStatus.sent.total) }} ({{ quotesSummary?.byStatus.sent.count }})
+              </UBadge>
+              <UBadge v-if="(quotesSummary?.byStatus.draft.count || 0) > 0" color="neutral" variant="subtle">
+                Draft: {{ formatCurrency(quotesSummary?.byStatus.draft.total) }} ({{ quotesSummary?.byStatus.draft.count }})
+              </UBadge>
+            </div>
+          </div>
+        </UCard>
 
         <!-- Invoice Table (primary content) -->
         <UCard>
