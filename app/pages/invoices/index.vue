@@ -870,6 +870,16 @@ const agingSections = [
               <span class="text-[var(--ui-text-muted)]">Paid</span>
               <span class="font-medium text-emerald-600 dark:text-emerald-400">{{ formatDate((invoiceDetail as any).fullyPaidOnDate) }}</span>
             </div>
+            <UTooltip
+              v-if="(invoiceDetail as any).updatedDate"
+              text="Xero only exposes the last-update timestamp. For an unedited invoice this matches the original creation; if the invoice has been edited, this is the latest edit."
+              class="col-span-2"
+            >
+              <div class="flex justify-between">
+                <span class="text-[var(--ui-text-muted)]">Last updated in Xero</span>
+                <span class="font-medium text-[var(--ui-text-highlighted)]">{{ formatDate((invoiceDetail as any).updatedDate) }}</span>
+              </div>
+            </UTooltip>
             <div
               v-if="(invoiceDetail as any).status === 'AUTHORISED' && (invoiceDetail as any).dueDate"
               class="col-span-2"

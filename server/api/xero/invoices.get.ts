@@ -62,7 +62,11 @@ export default eventHandler(async (event) => {
         amountPaid: Number(inv?.amountPaid ?? 0),
         amountDue: Number(inv?.amountDue ?? 0),
         currency: inv?.currencyCode,
-        sentToContact: Boolean(inv?.sentToContact)
+        sentToContact: Boolean(inv?.sentToContact),
+        // Last Xero modification timestamp. For an unedited invoice this
+        // is effectively the "entered into Xero" date — Xero has no
+        // separate created field. Bumps on every subsequent edit.
+        updatedDate: inv?.updatedDateUTC || null
       }
     }
 
