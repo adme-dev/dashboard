@@ -1553,29 +1553,46 @@ const agingSections = [
   </UDashboardPanel>
 
   <!-- Invoice Detail Slideover -->
-  <USlideover v-model:open="showInvoiceDetail" :title="detailPending ? 'Loading...' : ((invoiceDetail as any)?.number || 'Invoice')" :description="detailPending ? 'Fetching invoice details...' : ((invoiceDetail as any)?.contact?.name || 'Invoice details')">
+  <USlideover v-model:open="showInvoiceDetail" :title="detailPending ? 'Loading' : ((invoiceDetail as any)?.number || 'Invoice')" description="">
     <template #title>
-      <div class="min-w-0">
-        <p class="font-semibold text-[var(--ui-text-highlighted)] truncate">
-          {{ detailPending ? 'Loading...' : ((invoiceDetail as any)?.number || 'Invoice') }}
+      <div class="min-w-0 pr-2">
+        <div class="flex items-center gap-2 min-w-0">
+          <p class="font-semibold text-[var(--ui-text-highlighted)] truncate">
+            {{ detailPending ? 'Loading' : ((invoiceDetail as any)?.number || 'Invoice') }}
+          </p>
+          <UBadge
+            v-if="!detailPending && invoiceDetail"
+            :color="statusColor((invoiceDetail as any).status)"
+            variant="subtle"
+            size="sm"
+            class="shrink-0"
+          >
+            {{ statusLabel((invoiceDetail as any).status) }}
+          </UBadge>
+        </div>
+        <p
+          v-if="!detailPending && (invoiceDetail as any)?.contact?.name"
+          class="text-sm text-[var(--ui-text-muted)] truncate font-normal mt-0.5"
+        >
+          {{ (invoiceDetail as any).contact.name }}
         </p>
-        <p v-if="!detailPending && (invoiceDetail as any)?.reference" class="text-xs text-[var(--ui-text-muted)] truncate font-normal">
+        <p
+          v-if="!detailPending && (invoiceDetail as any)?.reference"
+          class="text-xs text-[var(--ui-text-muted)] truncate font-normal"
+        >
           Ref: {{ (invoiceDetail as any).reference }}
         </p>
       </div>
     </template>
     <template #actions>
-      <UBadge v-if="!detailPending && invoiceDetail" :color="statusColor((invoiceDetail as any).status)" variant="subtle">
-        {{ statusLabel((invoiceDetail as any).status) }}
-      </UBadge>
       <UButton
         v-if="!detailPending && invoiceDetail && ((invoiceDetail as any)?.amountDue || 0) > 0"
         size="xs"
         variant="ghost"
         color="neutral"
         icon="i-lucide-link"
-        label="Copy pay link"
         :loading="payLinkPending === (invoiceDetail as any)?.id"
+        :title="'Copy pay link'"
         @click="copyPayLink((invoiceDetail as any)?.id)"
       />
       <UButton
@@ -1584,17 +1601,19 @@ const agingSections = [
         variant="solid"
         color="primary"
         icon="i-lucide-send"
-        label="Send reminder"
         :loading="reminderPending === (invoiceDetail as any)?.id"
+        :title="'Send reminder'"
         @click="sendReminder((invoiceDetail as any)?.id)"
-      />
+      >
+        Remind
+      </UButton>
       <NuxtLink
         v-if="!detailPending && (invoiceDetail as any)?.url"
         :to="(invoiceDetail as any).url"
         target="_blank"
         external
       >
-        <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-external-link" label="Xero" />
+        <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-external-link" :title="'Open in Xero'" />
       </NuxtLink>
     </template>
     <template #body>
