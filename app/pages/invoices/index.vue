@@ -261,6 +261,16 @@ function statusLabel(status?: string): string {
   return s.charAt(0) + s.slice(1).toLowerCase()
 }
 
+// "Not yet sent" drill-down slideover. Lists every open invoice with
+// sentToContact === false so the user can chase them through Xero.
+const showNotSentDetail = ref(false)
+const notSentInvoices = computed<any[]>(() => {
+  const open = [...((data.value as any)?.outstanding ?? []), ...((data.value as any)?.overdue ?? [])]
+  return open
+    .filter((inv: any) => inv.sentToContact === false)
+    .sort((a: any, b: any) => (a.dueDate || '').localeCompare(b.dueDate || ''))
+})
+
 // Customer drill-down slideover. Click a row in "Top Outstanding" to
 // see every invoice we have for that customer with KPIs computed from
 // the invoices already in scope (no extra Xero call).
@@ -456,15 +466,22 @@ const agingSections = [
           </UCard>
         </div>
 
-        <!-- "Not yet sent" alert — open invoices that were never emailed via Xero. -->
-        <UAlert
+        <!-- "Not yet sent" alert — clickable; opens slideover listing the unsent open invoices. -->
+        <button
           v-if="(summary?.notSentCount || 0) > 0"
-          color="warning"
-          variant="subtle"
-          icon="i-lucide-mail-warning"
-          :title="`${summary.notSentCount} invoice${summary.notSentCount === 1 ? '' : 's'} not yet sent — ${formatCurrency(summary.notSentTotal)}`"
-          description="These invoices were created but never emailed to the client. Open them and hit Send in Xero before chasing payment."
-        />
+          type="button"
+          class="block w-full text-left rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"
+          @click="showNotSentDetail = true"
+        >
+          <UAlert
+            color="warning"
+            variant="subtle"
+            icon="i-lucide-mail-warning"
+            :title="`${summary.notSentCount} invoice${summary.notSentCount === 1 ? '' : 's'} not yet sent — ${formatCurrency(summary.notSentTotal)}`"
+            description="Click to review them. They were created but never emailed via Xero — send before chasing payment."
+            class="cursor-pointer hover:ring-1 hover:ring-amber-400 transition"
+          />
+        </button>
 
         <!-- Forward pipeline — quotes won/sent/drafted but not yet invoiced. -->
         <UCard v-if="(quotesSummary?.count || 0) > 0">
@@ -1205,6 +1222,68 @@ const agingSections = [
             </button>
           </div>
         </div>
+      </div>
+    </template>
+  </USlideover>
+
+  <!-- "Not yet sent" drill-down: every open invoice that was never emailed via Xero. -->
+  <USlideover v-model:open="showNotSentDetail" :title="`${notSentInvoices.length} not yet sent`" :description="formatCurrency(summary?.notSentTotal) + ' total'">
+    <template #title>
+      <div class="min-w-0">
+        <p class="font-semibold text-[var(--ui-text-highlighted)] truncate">{{ notSentInvoices.length }} invoice{{ notSentInvoices.length === 1 ? '' : 's' }} not yet sent</p>
+        <p class="text-xs text-[var(--ui-text-muted)] truncate font-normal">{{ formatCurrency(summary?.notSentTotal) }} · open balance</p>
+      </div>
+    </template>
+    <template #body>
+      <div class="space-y-4">
+        <UAlert
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-info"
+          title="Why this matters"
+          description="These invoices were created in Xero but never emailed to the client (sentToContact=false). Send them before chasing payment — the client may not even know they exist yet."
+        />
+
+        <div v-if="notSentInvoices.length" class="space-y-2">
+          <button
+            v-for="inv in notSentInvoices"
+            :key="inv.id"
+            type="button"
+            class="w-full text-left p-3 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-elevated)] hover:border-amber-500 hover:bg-amber-50/40 dark:hover:bg-amber-950/20 transition"
+            @click="openInvoice(inv.id); showNotSentDetail = false"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0 flex-1">
+                <p class="font-medium text-[var(--ui-text-highlighted)] text-sm truncate">{{ inv.number }}</p>
+                <p class="text-xs text-[var(--ui-text-muted)] truncate">{{ inv.contact || 'Unknown' }}</p>
+                <p class="text-[11px] text-[var(--ui-text-muted)]">
+                  Issued {{ formatDate(inv.date) }} · Due {{ formatDate(inv.dueDate) }}
+                </p>
+              </div>
+              <div class="text-right shrink-0">
+                <p class="font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency(inv.amountDue, inv.currency) }}</p>
+                <UBadge
+                  v-if="inv.status === 'OVERDUE'"
+                  color="error"
+                  variant="subtle"
+                  size="sm"
+                >
+                  {{ inv.daysOverdue }}d overdue
+                </UBadge>
+                <UBadge
+                  v-else
+                  color="warning"
+                  variant="subtle"
+                  size="sm"
+                >
+                  Due in {{ inv.daysUntilDue }}d
+                </UBadge>
+              </div>
+            </div>
+          </button>
+        </div>
+
+        <p v-else class="text-sm text-[var(--ui-text-muted)] text-center py-4">All open invoices have been sent. Nothing to chase here.</p>
       </div>
     </template>
   </USlideover>
