@@ -18,33 +18,52 @@ export default eventHandler(async (event) => {
   return cachedFetch(event, cacheKey, 300, async () => {
     const dateKey = ensureDateString(new Date())
 
-    const buildParams = (where: string, order: string) => new URLSearchParams({
-      where,
-      order,
-      page: '1',
-      pageSize: '100',
-    })
+    // Page through Xero until we get a partial page (last page) or hit
+    // the safety cap. Without this, /invoices silently truncated to the
+    // first 100 results — agencies with >100 open invoices saw bogus
+    // aging buckets because the long-tail invoices fell off.
+    async function fetchAllPages(
+      where: string,
+      order: string,
+      dedupBase: string,
+      labelBase: string,
+      maxPages: number,
+    ): Promise<any[]> {
+      const all: any[] = []
+      for (let page = 1; page <= maxPages; page++) {
+        const params = new URLSearchParams({
+          where,
+          order,
+          page: String(page),
+          pageSize: '100',
+        })
+        const body = await dedupedXeroCall(
+          `${dedupBase}:${tenantId}:${dateKey}:p${page}`,
+          `${labelBase}-p${page}`,
+          () => xeroFetch<any>({
+            accessToken: token.access_token!,
+            tenantId,
+            path: `Invoices?${params.toString()}`,
+          })
+        )
+        const invoices = body?.invoices || []
+        all.push(...invoices)
+        if (invoices.length < 100) return all
+      }
+      console.warn(`[invoices] hit page cap ${maxPages} for "${labelBase}" — there may be more invoices not shown`)
+      return all
+    }
 
-    const [authorisedBody, paidBody] = await Promise.all([
-      dedupedXeroCall(
-        `invoices-accrec-authorised:${tenantId}:${dateKey}`,
-        'invoices-authorised',
-        () => xeroFetch<any>({
-          accessToken: token.access_token!,
-          tenantId,
-          path: `Invoices?${buildParams('Type=="ACCREC"&&Status=="AUTHORISED"', 'DueDate ASC').toString()}`,
-        })
-      ),
-      dedupedXeroCall(
-        `invoices-accrec-paid:${tenantId}:${dateKey}`,
-        'invoices-paid',
-        () => xeroFetch<any>({
-          accessToken: token.access_token!,
-          tenantId,
-          path: `Invoices?${buildParams('Type=="ACCREC"&&Status=="PAID"', 'Date DESC').toString()}`,
-        })
-      )
+    // AUTHORISED: 10 pages × 100 = up to 1000 open invoices. Anything
+    // bigger and the org is past where this dashboard is the right tool.
+    // PAID: 3 pages × 100 = 300 most-recent paid (only the last 30 days
+    // is surfaced anyway, so 300 is plenty).
+    const [authorisedRaw, paidRaw] = await Promise.all([
+      fetchAllPages('Type=="ACCREC"&&Status=="AUTHORISED"', 'DueDate ASC', 'invoices-accrec-authorised', 'invoices-authorised', 10),
+      fetchAllPages('Type=="ACCREC"&&Status=="PAID"', 'Date DESC', 'invoices-accrec-paid', 'invoices-paid', 3),
     ])
+    const authorisedBody = { invoices: authorisedRaw }
+    const paidBody = { invoices: paidRaw }
 
     const today = new Date()
     const todayISO = today.toISOString().slice(0, 10)

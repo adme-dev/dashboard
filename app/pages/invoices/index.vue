@@ -261,6 +261,73 @@ function statusLabel(status?: string): string {
   return s.charAt(0) + s.slice(1).toLowerCase()
 }
 
+// Customer drill-down slideover. Click a row in "Top Outstanding" to
+// see every invoice we have for that customer with KPIs computed from
+// the invoices already in scope (no extra Xero call).
+const showCustomerDetail = ref(false)
+const selectedCustomer = ref<{ name: string; outstanding: number; overdue: number; count: number } | null>(null)
+
+function openCustomer(client: any) {
+  selectedCustomer.value = {
+    name: client.name,
+    outstanding: client.outstanding ?? 0,
+    overdue: client.overdue ?? 0,
+    count: client.count ?? 0,
+  }
+  showCustomerDetail.value = true
+}
+
+const customerOpen = computed<any[]>(() => {
+  if (!selectedCustomer.value) return []
+  const name = selectedCustomer.value.name
+  const open = [...((data.value as any)?.outstanding ?? []), ...((data.value as any)?.overdue ?? [])]
+  return open
+    .filter((inv: any) => inv.contact === name)
+    .sort((a: any, b: any) => (a.dueDate || '').localeCompare(b.dueDate || ''))
+})
+const customerPaid = computed<any[]>(() => {
+  if (!selectedCustomer.value) return []
+  const name = selectedCustomer.value.name
+  const paid = (data.value as any)?.paid ?? []
+  return paid
+    .filter((inv: any) => inv.contact === name)
+    .sort((a: any, b: any) => (b.fullyPaidOnDate || '').localeCompare(a.fullyPaidOnDate || ''))
+    .slice(0, 10)
+})
+const customerKpis = computed(() => {
+  if (!selectedCustomer.value) return null
+  const open = customerOpen.value
+  const paid = customerPaid.value
+  const lifetimeBilled = paid.reduce((s, inv) => s + (inv.total || 0), 0) + open.reduce((s, inv) => s + (inv.total || 0), 0)
+  const daysToPayValues = paid.map((inv) => inv.daysToPay).filter((n) => typeof n === 'number' && Number.isFinite(n))
+  const avgDaysToPay = daysToPayValues.length
+    ? Math.round(daysToPayValues.reduce((s: number, n: number) => s + n, 0) / daysToPayValues.length)
+    : null
+  const oldestOverdue = open
+    .filter((inv) => inv.status === 'OVERDUE')
+    .reduce((max: number, inv: any) => Math.max(max, inv.daysOverdue || 0), 0)
+  const earliestRelationship = paid.reduce((earliest: string | null, inv: any) => {
+    if (!inv.date) return earliest
+    if (!earliest || inv.date < earliest) return inv.date
+    return earliest
+  }, null as string | null)
+  return {
+    lifetimeBilled,
+    avgDaysToPay,
+    oldestOverdueDays: oldestOverdue,
+    earliestInvoiceDate: earliestRelationship,
+    paidCount: paid.length,
+    openCount: open.length,
+  }
+})
+
+function focusCustomerInTable() {
+  if (!selectedCustomer.value) return
+  search.value = selectedCustomer.value.name
+  selectedView.value = 'all'
+  showCustomerDetail.value = false
+}
+
 const agingSections = [
   { key: 'current', title: 'Due in 30+ days', color: 'text-[var(--ui-text-muted)]', helper: 'Planned future billing' },
   { key: 'dueSoon', title: 'Due within 7 days', color: 'text-amber-600 dark:text-amber-400', helper: 'Reach out before due date' },
@@ -652,7 +719,13 @@ const agingSections = [
               </div>
             </template>
             <div class="space-y-3">
-              <div v-for="client in paginatedTopCustomers" :key="client.name" class="p-3 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-elevated)]">
+              <button
+                v-for="client in paginatedTopCustomers"
+                :key="client.name"
+                type="button"
+                class="w-full text-left p-3 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-elevated)] hover:border-[var(--ui-primary)] hover:bg-[var(--ui-bg-accented)] focus:outline-none focus:ring-2 focus:ring-[var(--ui-primary)] transition-colors"
+                @click="openCustomer(client)"
+              >
                 <div class="flex items-center justify-between">
                   <p class="font-medium text-[var(--ui-text-highlighted)] text-sm truncate mr-2">{{ client.name }}</p>
                   <span class="text-xs text-[var(--ui-text-muted)] shrink-0">{{ client.count }} inv</span>
@@ -665,7 +738,7 @@ const agingSections = [
                   <span>Overdue</span>
                   <span class="font-medium">{{ formatCurrency(client.overdue) }}</span>
                 </div>
-              </div>
+              </button>
               <p v-if="!topCustomers.length" class="text-sm text-[var(--ui-text-muted)] text-center py-4">No outstanding clients — nice work!</p>
             </div>
             <div v-if="topCustomers.length > topCustomersPageSize" class="mt-3 flex items-center justify-between border-t border-[var(--ui-border)] pt-3">
@@ -997,6 +1070,139 @@ const agingSections = [
           <div class="flex items-center justify-between text-xs text-[var(--ui-text-muted)]">
             <span>Type</span>
             <span class="font-medium">{{ (invoiceDetail as any).type === 'ACCREC' ? 'Accounts Receivable' : (invoiceDetail as any).type === 'ACCPAY' ? 'Accounts Payable' : (invoiceDetail as any).type }}</span>
+          </div>
+        </div>
+      </div>
+    </template>
+  </USlideover>
+
+  <!-- Customer drill-down: opens from "Top Outstanding" rows. -->
+  <USlideover v-model:open="showCustomerDetail" :title="selectedCustomer?.name || 'Customer'" :description="`${selectedCustomer?.count ?? 0} open invoice${(selectedCustomer?.count ?? 0) === 1 ? '' : 's'}`">
+    <template #title>
+      <div class="min-w-0">
+        <p class="font-semibold text-[var(--ui-text-highlighted)] truncate">{{ selectedCustomer?.name || 'Customer' }}</p>
+        <p class="text-xs text-[var(--ui-text-muted)] truncate font-normal">
+          {{ selectedCustomer?.count ?? 0 }} open invoice{{ (selectedCustomer?.count ?? 0) === 1 ? '' : 's' }}
+        </p>
+      </div>
+    </template>
+    <template #actions>
+      <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-list-filter" label="Show in table" @click="focusCustomerInTable" />
+    </template>
+    <template #body>
+      <div v-if="selectedCustomer" class="space-y-6">
+        <!-- Headline numbers -->
+        <div class="grid grid-cols-2 gap-3">
+          <div class="p-3 rounded-lg border border-[var(--ui-border)]">
+            <p class="text-[10px] text-[var(--ui-text-muted)] uppercase">Outstanding</p>
+            <p class="text-lg font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency(selectedCustomer.outstanding) }}</p>
+          </div>
+          <div class="p-3 rounded-lg border" :class="selectedCustomer.overdue > 0 ? 'border-red-300 dark:border-red-700' : 'border-[var(--ui-border)]'">
+            <p class="text-[10px] text-[var(--ui-text-muted)] uppercase">Overdue</p>
+            <p class="text-lg font-semibold" :class="selectedCustomer.overdue > 0 ? 'text-red-600 dark:text-red-400' : 'text-[var(--ui-text-highlighted)]'">
+              {{ formatCurrency(selectedCustomer.overdue) }}
+            </p>
+          </div>
+        </div>
+
+        <!-- Relationship KPIs -->
+        <div v-if="customerKpis" class="space-y-2">
+          <h3 class="text-xs uppercase text-[var(--ui-text-muted)] font-semibold tracking-wider">Relationship</h3>
+          <div class="grid grid-cols-2 gap-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-[var(--ui-text-muted)]">Lifetime billed (visible)</span>
+              <span class="font-medium text-[var(--ui-text-highlighted)]">{{ formatCurrency(customerKpis.lifetimeBilled) }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-[var(--ui-text-muted)]">Avg days to pay</span>
+              <span class="font-medium text-[var(--ui-text-highlighted)]">{{ customerKpis.avgDaysToPay ?? '—' }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-[var(--ui-text-muted)]">Open invoices</span>
+              <span class="font-medium text-[var(--ui-text-highlighted)]">{{ customerKpis.openCount }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-[var(--ui-text-muted)]">Recent payments</span>
+              <span class="font-medium text-[var(--ui-text-highlighted)]">{{ customerKpis.paidCount }}</span>
+            </div>
+            <div v-if="customerKpis.oldestOverdueDays > 0" class="flex justify-between col-span-2">
+              <span class="text-[var(--ui-text-muted)]">Oldest overdue</span>
+              <span class="font-medium text-red-600 dark:text-red-400">{{ customerKpis.oldestOverdueDays }} days</span>
+            </div>
+            <div v-if="customerKpis.earliestInvoiceDate" class="flex justify-between col-span-2">
+              <span class="text-[var(--ui-text-muted)]">Earliest invoice we can see</span>
+              <span class="font-medium text-[var(--ui-text-highlighted)]">{{ formatDate(customerKpis.earliestInvoiceDate) }}</span>
+            </div>
+          </div>
+          <p class="text-[10px] text-[var(--ui-text-muted)] mt-1 italic">
+            Numbers limited to invoices fetched on this page (up to 1000 open + 300 most-recent paid).
+          </p>
+        </div>
+
+        <!-- Open invoices -->
+        <div v-if="customerOpen.length" class="space-y-2">
+          <h3 class="text-xs uppercase text-[var(--ui-text-muted)] font-semibold tracking-wider">Open invoices</h3>
+          <div class="space-y-2">
+            <button
+              v-for="inv in customerOpen"
+              :key="inv.id"
+              type="button"
+              class="w-full text-left p-3 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-elevated)] hover:border-[var(--ui-primary)] transition-colors"
+              @click="openInvoice(inv.id); showCustomerDetail = false"
+            >
+              <div class="flex items-center justify-between">
+                <div class="min-w-0 mr-2">
+                  <p class="font-medium text-[var(--ui-text-highlighted)] text-sm truncate">{{ inv.number }}</p>
+                  <p class="text-xs text-[var(--ui-text-muted)] truncate">
+                    Issued {{ formatDate(inv.date) }} · Due {{ formatDate(inv.dueDate) }}
+                  </p>
+                </div>
+                <div class="text-right shrink-0">
+                  <p class="font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency(inv.amountDue, inv.currency) }}</p>
+                  <UBadge
+                    v-if="inv.status === 'OVERDUE'"
+                    color="error"
+                    variant="subtle"
+                    size="sm"
+                  >
+                    {{ inv.daysOverdue }}d overdue
+                  </UBadge>
+                  <UBadge
+                    v-else
+                    color="warning"
+                    variant="subtle"
+                    size="sm"
+                  >
+                    Due in {{ inv.daysUntilDue }}d
+                  </UBadge>
+                </div>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Recent payments -->
+        <div v-if="customerPaid.length" class="space-y-2">
+          <h3 class="text-xs uppercase text-[var(--ui-text-muted)] font-semibold tracking-wider">Recent payments</h3>
+          <div class="space-y-2">
+            <button
+              v-for="inv in customerPaid"
+              :key="inv.id"
+              type="button"
+              class="w-full text-left p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 hover:ring-2 hover:ring-emerald-300 dark:hover:ring-emerald-700 transition"
+              @click="openInvoice(inv.id); showCustomerDetail = false"
+            >
+              <div class="flex items-center justify-between">
+                <div class="min-w-0 mr-2">
+                  <p class="font-medium text-[var(--ui-text-highlighted)] text-sm truncate">{{ inv.number }}</p>
+                  <p class="text-xs text-[var(--ui-text-muted)] truncate">Paid {{ formatDate(inv.fullyPaidOnDate) }}</p>
+                </div>
+                <div class="text-right shrink-0">
+                  <p class="font-semibold text-emerald-600 dark:text-emerald-400">{{ formatCurrency(inv.total, inv.currency) }}</p>
+                  <p class="text-xs text-[var(--ui-text-muted)]">{{ inv.daysToPay ?? '—' }}d to pay</p>
+                </div>
+              </div>
+            </button>
           </div>
         </div>
       </div>
