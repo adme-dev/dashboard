@@ -1,4 +1,4 @@
--- 085-leads-engine.sql
+-- 087-leads-engine.sql
 -- Phase 1 of the Leads Engine (Zapier replacement for Meta+Google ad inquiries).
 -- See docs/superpowers/specs/2026-04-30-leads-engine-design.md.
 --

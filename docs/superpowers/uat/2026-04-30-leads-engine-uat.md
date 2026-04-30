@@ -7,7 +7,7 @@
 ## Pre-flight
 
 - [ ] All three plans (1a / 1b / 1c) merged to `main`
-- [ ] Migration `085-leads-engine.sql` applied to staging Neon
+- [ ] Migration `087-leads-engine.sql` applied to staging Neon
 - [ ] `leads-delivery-worker` deployed to staging account
 - [ ] `leads-cron` deployed to staging account
 - [ ] `LEADS_DELIVERY_QUEUE` producer binding configured on the staging Pages env
