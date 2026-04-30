@@ -91,6 +91,11 @@ async function createRuleAndOpen(item: RuleListItem, clientId: string) {
   }
 }
 
+// Reset picker state when the modal closes so stale refs don't linger.
+watch(showClientPicker, (v) => {
+  if (!v) { pickerPendingItem.value = null; pickerClientId.value = null }
+})
+
 async function toggleEnabled(item: RuleListItem) {
   if (!item.rule_id) return
   await $fetch(`/api/leads/rules/${item.rule_id}`, { method: 'PATCH', body: { enabled: !item.enabled } })
@@ -129,9 +134,11 @@ async function toggleEnabled(item: RuleListItem) {
           </span>
         </template>
         <template #actions-cell="{ row }">
-          <UButton size="xs" variant="ghost" icon="i-lucide-settings" @click="configure(row.original)">
-            Configure
-          </UButton>
+          <UButton
+            size="xs" variant="ghost" icon="i-lucide-settings"
+            :disabled="showClientPicker"
+            @click="configure(row.original)"
+          >Configure</UButton>
         </template>
       </UTable>
     </div>
