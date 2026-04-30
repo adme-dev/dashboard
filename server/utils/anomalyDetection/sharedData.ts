@@ -1,6 +1,7 @@
 // server/utils/anomalyDetection/sharedData.ts
 import type { H3Event } from 'h3'
 import type { SharedData } from './types'
+import { queryRows } from '~~/server/utils/db'
 
 /**
  * Fetch every Xero/Meta/Google payload an analyser might need, in parallel,
@@ -31,9 +32,29 @@ export async function fetchSharedData(event: H3Event | null): Promise<SharedData
       safe($fetch<any>('/api/xero/reports/budget-variance', { headers })),
     ])
 
+  let mediaSpend: any = null
+  try {
+    mediaSpend = await queryRows(`
+      SELECT
+        ms.client_id::text AS client_id,
+        ac.name AS client_name,
+        ms.platform,
+        ds.spend_date::text AS spend_date,
+        ds.spend::numeric AS spend
+      FROM daily_spend ds
+      JOIN media_spend ms ON ds.media_spend_id = ms.id
+      LEFT JOIN agency_clients ac ON ms.client_id = ac.id
+      WHERE ds.spend_date >= CURRENT_DATE - INTERVAL '31 days'
+        AND ms.client_id IS NOT NULL
+      ORDER BY ds.spend_date DESC
+    `)
+  } catch (err) {
+    console.warn('[anomalies] daily_spend fetch failed:', err)
+    mediaSpend = null
+  }
+
   return {
     pnl, expenses, bankMonitoring, cashForecast, aging, budgetVariance,
-    // Phase-2 sources start out empty — populated when their analysers ship.
-    mediaSpend: null, clientRevenue: null, invoiceLines: null,
+    mediaSpend, clientRevenue: null, invoiceLines: null,
   }
 }
