@@ -20,6 +20,13 @@ const { data: recurringSummary } = await useFetch<{ summary: { mrr: number; arr:
   { default: () => null as any }
 )
 
+// Outstanding sales credit notes — money owed back to customers /
+// available to apply. Lets us compute a "Net AR" view alongside gross.
+const { data: creditNotesSummary } = await useFetch<{ total: number; count: number; byContact: Array<{ name: string; total: number; count: number }>; notes: Array<{ id: string; number: string; contact: string; date: string | null; remainingCredit: number; currency: string }> }>(
+  '/api/xero/credit-notes-summary',
+  { default: () => null as any }
+)
+
 const search = ref('')
 const validViews = ['all', 'outstanding', 'overdue', 'paid'] as const
 type ViewType = typeof validViews[number]
@@ -578,6 +585,37 @@ const agingSections = [
                 variant="subtle"
               >
                 Net of recurring costs: {{ formatCurrency(recurringSummary?.summary?.netRecurring) }}/mo
+              </UBadge>
+            </div>
+          </div>
+        </UCard>
+
+        <!-- Credit notes outstanding — money owed back to customers / unapplied credits. -->
+        <UCard v-if="(creditNotesSummary?.count || 0) > 0">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <div class="shrink-0 w-10 h-10 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center">
+                <UIcon name="i-lucide-receipt" class="h-5 w-5 text-rose-600 dark:text-rose-400" />
+              </div>
+              <div>
+                <UTooltip text="Active sales credit notes with an unapplied balance. This money is either owed back to the customer or available to apply against future invoices. Subtract from gross AR for a Net AR figure.">
+                  <p class="text-sm text-[var(--ui-text-muted)] flex items-center gap-1">
+                    Credit Notes Outstanding
+                    <UIcon name="i-lucide-info" class="h-3 w-3" />
+                  </p>
+                </UTooltip>
+                <p class="text-2xl font-bold text-rose-600 dark:text-rose-400">{{ formatCurrency(creditNotesSummary?.total) }}</p>
+                <p class="text-xs text-[var(--ui-text-muted)] mt-0.5">
+                  {{ creditNotesSummary?.count }} active credit note{{ (creditNotesSummary?.count ?? 0) === 1 ? '' : 's' }}
+                </p>
+              </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <UBadge color="neutral" variant="subtle">
+                Net AR: {{ formatCurrency(((summary as any)?.outstandingTotal ?? 0) - (creditNotesSummary?.total ?? 0)) }}
+              </UBadge>
+              <UBadge v-if="creditNotesSummary?.byContact?.[0]" color="warning" variant="subtle">
+                Largest: {{ creditNotesSummary.byContact[0].name }} · {{ formatCurrency(creditNotesSummary.byContact[0].total) }}
               </UBadge>
             </div>
           </div>
