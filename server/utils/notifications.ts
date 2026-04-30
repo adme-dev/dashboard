@@ -30,6 +30,7 @@ export type NotificationType =
   | 'brief_assigned'
   | 'brief_submitted'
   | 'board_member_added'
+  | 'anomaly_critical'
 
 export type NotificationReason =
   | 'mentioned'
@@ -107,6 +108,7 @@ const TYPE_TO_INAPP_PREF: Partial<Record<NotificationType, string>> = {
   brief_commented: 'inapp_brief_comment',
   chat_mention: 'inapp_chat_mention',
   chat_dm: 'inapp_chat_dm',
+  anomaly_critical: 'inapp_anomaly_critical',
 }
 
 /**

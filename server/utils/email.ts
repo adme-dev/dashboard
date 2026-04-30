@@ -1322,6 +1322,59 @@ export async function sendBriefAssignedEmail(data: {
   }
 }
 
+export async function sendAnomalyAlertEmail(data: {
+  to: string
+  name: string
+  title: string
+  description: string
+  metricLabel?: string
+  metricValue?: string         // already-formatted, e.g. "$50,000" or "12%"
+  recommendation?: string
+  url: string
+}): Promise<void> {
+  const client = getResendClient()
+  if (!client) {
+    console.log('[Email] Anomaly alert email (no client) for', data.to)
+    return
+  }
+
+  const metricLine = (data.metricLabel && data.metricValue)
+    ? `<p><strong>${escapeHtml(data.metricLabel)}:</strong> ${escapeHtml(data.metricValue)}</p>`
+    : ''
+  const recommendationBlock = data.recommendation
+    ? `<div style="background: #fff7e6; border-left: 4px solid #f39c12; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;">
+         <p style="margin: 0; font-weight: 600; font-size: 13px; color: #7a5b00;">Recommended next step</p>
+         <p style="margin: 4px 0 0 0; font-size: 14px; color: #5a4400;">${escapeHtml(data.recommendation)}</p>
+       </div>`
+    : ''
+
+  const { html, text } = renderEmailTemplate({
+    title: `[Critical] ${escapeHtml(data.title)}`,
+    greeting: `Hi ${escapeHtml(data.name)},`,
+    bodyHtml: `
+      <p style="font-size: 12px; color: #c43c3c; font-weight: 600; letter-spacing: 0.04em;">CRITICAL ANOMALY</p>
+      <p style="font-size: 16px; line-height: 1.5; margin: 8px 0 16px 0;">${escapeHtml(data.description)}</p>
+      ${metricLine}
+      ${recommendationBlock}
+    `,
+    ctaText: 'Open in dashboard',
+    ctaUrl: data.url,
+  })
+
+  try {
+    await client.emails.send({
+      from: getFromHeader(),
+      to: data.to,
+      subject: `[Critical] ${data.title}`,
+      html,
+      text,
+    })
+    console.log('[Email] Anomaly alert email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send anomaly alert email:', error)
+  }
+}
+
 /**
  * Format a number as currency
  */
