@@ -155,7 +155,7 @@ async function executeSendEmail(
   task: any,
   config: Record<string, any>
 ): Promise<void> {
-  const { sendBoardChangeEmail } = await import('~~/server/utils/email')
+  const { sendBoardChangeEmail, getAppUrl } = await import('~~/server/utils/email')
 
   // Determine recipient
   let recipientEmail = ''
@@ -183,6 +183,7 @@ async function executeSendEmail(
   // Get board name
   const board = await queryOne('SELECT name FROM departments WHERE id = $1', [event.boardId])
 
+  const appUrl = getAppUrl()
   await sendBoardChangeEmail({
     to: recipientEmail,
     name: recipientName,
@@ -190,9 +191,9 @@ async function executeSendEmail(
     actorName: 'Automation',
     action: subject,
     itemTitle: task?.title,
-    boardUrl: `${process.env.APP_URL || 'http://localhost:3000'}/agency/boards/${event.boardId}`,
+    boardUrl: `${appUrl}/agency/boards/${event.boardId}`,
     itemUrl: event.taskId
-      ? `${process.env.APP_URL || 'http://localhost:3000'}/agency/boards/${event.boardId}?task=${event.taskId}`
+      ? `${appUrl}/agency/boards/${event.boardId}?task=${event.taskId}`
       : undefined,
   })
 }

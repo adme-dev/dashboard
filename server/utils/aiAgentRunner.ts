@@ -7,10 +7,8 @@ import { queryOne, queryRows, execute } from '~~/server/utils/db'
 import { runAllAnalyzers, type AnalysisResult, type AnalysisFinding } from '~~/server/utils/aiAgentAnalyzer'
 import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
 import { createNotification } from '~~/server/utils/notifications'
-import { sendAiDigestEmail } from '~~/server/utils/email'
+import { sendAiDigestEmail, getAppUrl } from '~~/server/utils/email'
 import type { AgentRunType } from '~/types'
-
-const baseUrl = process.env.APP_URL || 'http://localhost:3000'
 
 interface TeamMember {
   id: string
@@ -243,7 +241,7 @@ export async function runAgentDigest(runType: AgentRunType): Promise<{ runId: st
             reportTitle,
             reportSummary: reportContent.substring(0, 300) + (reportContent.length > 300 ? '...' : ''),
             findingsCount: totalFindings,
-            reportUrl: `${baseUrl}/agency/ai/reports/${report.id}`
+            reportUrl: `${getAppUrl()}/agency/ai/reports/${report.id}`
           })
         } catch (emailErr) {
           console.error(`[AI Agent] Failed to send email to ${member.email}:`, emailErr)

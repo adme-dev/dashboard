@@ -18,6 +18,7 @@ const mockSendBoardChangeEmail = vi.fn()
 vi.mock('~~/server/utils/email', () => ({
   sendBoardMemberAddedEmail: (...args: any[]) => mockSendBoardMemberAddedEmail(...args),
   sendBoardChangeEmail: (...args: any[]) => mockSendBoardChangeEmail(...args),
+  getAppUrl: () => 'http://localhost:3000',
 }))
 
 import { notifyBoardMemberAdded } from '../../../server/utils/boardNotifications'

@@ -20,6 +20,7 @@ vi.mock('~~/server/utils/email', () => ({
   sendBriefStatusEmail: (...args: any[]) => mockSendBriefStatusEmail(...args),
   sendBriefCommentEmail: (...args: any[]) => mockSendBriefCommentEmail(...args),
   sendBriefAssignedEmail: (...args: any[]) => mockSendBriefAssignedEmail(...args),
+  getAppUrl: () => 'http://localhost:3000',
 }))
 
 import { notifyBriefAssigneeChanged } from '../../../server/utils/briefNotifications'

@@ -21,36 +21,71 @@ let resend: Resend | null = null
 let cachedApiKey: string | null = null
 
 /**
- * Read a Cloudflare Pages binding from the event context.
+ * Module-level cache of CF Pages bindings. On Cloudflare Pages, secrets are
+ * only exposed via `event.context.cloudflare.env` — they are NOT in
+ * `process.env` at runtime. This cache lets event-less call sites
+ * (notification utilities, AI agent runner, automation engine) still read
+ * bindings, as long as a per-request middleware has populated it on a prior
+ * request in the same isolate. Bindings are deploy-time stable, so cross-
+ * request reuse is safe.
+ */
+let cachedCfBindings: Record<string, any> | null = null
+
+export function setCfBindings(env: Record<string, any> | null | undefined): void {
+  if (env && typeof env === 'object') cachedCfBindings = env
+}
+
+export function getCachedBinding(key: string): string | undefined {
+  const v = cachedCfBindings?.[key]
+  return typeof v === 'string' ? v : undefined
+}
+
+/**
+ * Read a Cloudflare Pages binding. Order:
+ *   1. Per-request event.context.cloudflare.env (most reliable)
+ *   2. Module-cached bindings (set by the cf-env middleware on every request)
  */
 function getCfBinding(event: H3Event | undefined, key: string): string | undefined {
-  if (!event) return undefined
-  try {
-    return (event.context as any).cloudflare?.env?.[key] ?? undefined
-  } catch {
-    return undefined
+  if (event) {
+    try {
+      const v = (event.context as any).cloudflare?.env?.[key]
+      if (typeof v === 'string') return v
+    } catch {
+      // fall through
+    }
   }
+  return getCachedBinding(key)
 }
 
 /**
  * Resolve the Resend API key from all possible sources:
- * 1. Cloudflare Pages bindings (event.context.cloudflare.env)
+ * 1. CF Pages binding (per-request event or module cache)
  * 2. Nuxt runtimeConfig (supports NUXT_RESEND_API_KEY override)
  * 3. process.env fallback
  */
 function resolveApiKey(event?: H3Event): string | null {
-  // CF Pages bindings (most reliable in production)
   const cfKey = getCfBinding(event, 'RESEND_API_KEY')
   if (cfKey) return cfKey
 
-  // runtimeConfig (supports NUXT_ prefix override)
   const config = useRuntimeConfig()
   if (config.resendApiKey) return config.resendApiKey
 
-  // Fallback: direct process.env
   if (process.env.RESEND_API_KEY) return process.env.RESEND_API_KEY
 
   return null
+}
+
+/**
+ * Resolve the public app URL for use in email CTAs / links.
+ * On CF Pages, `process.env.APP_URL` is empty unless wired as a non-secret
+ * env var, so module-level constants would resolve to localhost. Use this
+ * per-call instead.
+ */
+export function getAppUrl(event?: H3Event): string {
+  return getCfBinding(event, 'APP_URL')
+    || (useRuntimeConfig().public as any)?.appUrl
+    || process.env.APP_URL
+    || 'http://localhost:3000'
 }
 
 /**

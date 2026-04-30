@@ -23,7 +23,8 @@ vi.mock('~~/server/utils/email', () => ({
   sendTaskAssignedEmail: (...args: any[]) => mockSendTaskAssignedEmail(...args),
   sendMentionEmail: (...args: any[]) => mockSendMentionEmail(...args),
   sendApprovalRequestEmail: (...args: any[]) => mockSendApprovalRequestEmail(...args),
-  sendDueReminderEmail: (...args: any[]) => mockSendDueReminderEmail(...args)
+  sendDueReminderEmail: (...args: any[]) => mockSendDueReminderEmail(...args),
+  getAppUrl: () => 'http://localhost:3000'
 }))
 
 import {

@@ -5,9 +5,7 @@
 
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { createNotification, createBulkNotifications } from '~~/server/utils/notifications'
-import { sendBriefStatusEmail, sendBriefCommentEmail, sendBriefAssignedEmail } from '~~/server/utils/email'
-
-const baseUrl = process.env.APP_URL || 'http://localhost:3000'
+import { sendBriefStatusEmail, sendBriefCommentEmail, sendBriefAssignedEmail, getAppUrl } from '~~/server/utils/email'
 
 const formatStatus = (s: string) =>
   s.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
@@ -70,7 +68,7 @@ export async function notifyBriefStatusChanged(params: {
           actorName,
           oldStatus: params.oldStatus,
           newStatus: params.newStatus,
-          briefUrl: `${baseUrl}/agency/briefs/${params.briefId}`
+          briefUrl: `${getAppUrl()}/agency/briefs/${params.briefId}`
         })
       }
     }
@@ -139,7 +137,7 @@ export async function notifyBriefCommented(params: {
           commenterName,
           commentSnippet: params.commentSnippet.substring(0, 200),
           isInternal: params.isInternal || false,
-          briefUrl: `${baseUrl}/agency/briefs/${params.briefId}`
+          briefUrl: `${getAppUrl()}/agency/briefs/${params.briefId}`
         })
       }
     }
@@ -190,7 +188,7 @@ export async function notifyBriefAssigned(params: {
         briefTitle: params.briefTitle,
         referenceNumber: params.referenceNumber,
         assignerName,
-        briefUrl: `${baseUrl}/agency/briefs/${params.briefId}`
+        briefUrl: `${getAppUrl()}/agency/briefs/${params.briefId}`
       })
     }
   } catch (error) {

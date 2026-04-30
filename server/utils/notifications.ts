@@ -4,12 +4,10 @@
  */
 
 import { queryOne, queryRows } from '~~/server/utils/db'
-import { sendTaskAssignedEmail, sendMentionEmail, sendApprovalRequestEmail, sendDueReminderEmail } from '~~/server/utils/email'
+import { sendTaskAssignedEmail, sendMentionEmail, sendApprovalRequestEmail, sendDueReminderEmail, getAppUrl } from '~~/server/utils/email'
 import { autoSubscribeIfEnabled } from '~~/server/utils/subscriptions'
 import { isWithinQuietHours } from '~~/server/utils/quietHours'
 import { computeImportance } from '~~/server/utils/notificationImportance'
-
-const baseUrl = process.env.APP_URL || 'http://localhost:3000'
 
 export type NotificationType =
   | 'task_assigned'
@@ -331,7 +329,7 @@ export async function notifyTaskAssigned(params: NotifyTaskAssignedParams) {
       assignerName: assigner.name,
       projectName: params.projectName,
       dueDate: params.dueDate,
-      taskUrl: `${baseUrl}/agency/tasks/${params.taskId}`
+      taskUrl: `${getAppUrl()}/agency/tasks/${params.taskId}`
     })
   }
 }
@@ -478,7 +476,7 @@ export async function notifyMention(params: NotifyMentionParams) {
       taskTitle: params.taskTitle,
       mentionerName: mentioner.name,
       commentSnippet: params.commentSnippet,
-      taskUrl: `${baseUrl}/agency/tasks/${params.taskId}`
+      taskUrl: `${getAppUrl()}/agency/tasks/${params.taskId}`
     })
   }
 }
@@ -523,7 +521,7 @@ export async function notifyApprovalRequest(params: NotifyApprovalRequestParams)
       taskTitle: params.taskTitle,
       requesterName: requester.name,
       stepName: params.stepName,
-      taskUrl: `${baseUrl}/agency/tasks/${params.taskId}`
+      taskUrl: `${getAppUrl()}/agency/tasks/${params.taskId}`
     })
   }
 }
@@ -569,7 +567,7 @@ export async function notifyDueReminder(params: NotifyDueReminderParams) {
       taskTitle: params.taskTitle,
       dueDate: params.dueDate,
       daysRemaining: Math.ceil((params.dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)),
-      taskUrl: `${baseUrl}/agency/tasks/${params.taskId}`
+      taskUrl: `${getAppUrl()}/agency/tasks/${params.taskId}`
     })
   }
 }
@@ -685,7 +683,7 @@ export async function notifyNextApprover(params: {
       taskTitle: params.taskTitle,
       requesterName: 'System',
       stepName: params.stepName,
-      taskUrl: `${baseUrl}/agency/tasks/${params.taskId}`
+      taskUrl: `${getAppUrl()}/agency/tasks/${params.taskId}`
     })
   }
 }

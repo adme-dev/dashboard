@@ -9,10 +9,8 @@
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { createNotification } from '~~/server/utils/notifications'
 import { getSubscribers } from '~~/server/utils/subscriptions'
-import { sendBoardMemberAddedEmail } from '~~/server/utils/email'
+import { sendBoardMemberAddedEmail, getAppUrl } from '~~/server/utils/email'
 import { findKeywordMatches } from '~~/server/utils/keywordSubscriptions'
-
-const baseUrl = process.env.APP_URL || 'http://localhost:3000'
 
 interface BoardEventNotification {
   boardId: string
@@ -173,6 +171,7 @@ export async function notifyBoardSubscribers(event: BoardEventNotification): Pro
           const prefKey = getEmailPrefKey(event.type)
           if (prefKey && prefs[prefKey] === false) return Promise.resolve()
 
+          const appUrl = getAppUrl()
           return sendBoardChangeEmail({
             to: user.email,
             name: user.name,
@@ -180,9 +179,9 @@ export async function notifyBoardSubscribers(event: BoardEventNotification): Pro
             actorName,
             action: getActionDescription(event.type, event.changes),
             itemTitle: taskTitle,
-            boardUrl: `${process.env.APP_URL || 'http://localhost:3000'}/agency/boards/${event.boardId}`,
+            boardUrl: `${appUrl}/agency/boards/${event.boardId}`,
             itemUrl: event.taskId
-              ? `${process.env.APP_URL || 'http://localhost:3000'}/agency/boards/${event.boardId}?task=${event.taskId}`
+              ? `${appUrl}/agency/boards/${event.boardId}?task=${event.taskId}`
               : undefined,
           })
         })
@@ -362,7 +361,7 @@ export async function notifyBoardMemberAdded(
       name: member.name,
       boardName: params.boardName,
       adderName,
-      boardUrl: `${baseUrl}/agency/boards/${params.boardId}`,
+      boardUrl: `${getAppUrl()}/agency/boards/${params.boardId}`,
     })
   }
 
