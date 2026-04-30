@@ -183,9 +183,10 @@ export default eventHandler(async (event) => {
   let parsed: any | null = null
   try {
     const raw = await generateGroqInsight(buildPrompt(payload), {
-      model: GROQ_MODELS.REASONING_20B, // fast, JSON-adherent, cheap
+      model: GROQ_MODELS.REASONING_120B, // best JSON adherence + reasoning; the briefing
+                                         // drives owner decisions, worth the extra tokens
       temperature: 0.2,
-      maxTokens: 600,
+      maxTokens: 800,
       systemPrompt: SYSTEM_PROMPT,
     })
     parsed = tryParseJson(raw)
