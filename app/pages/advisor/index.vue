@@ -189,6 +189,25 @@ watch([statusFilter, priorityFilter, clientFilter, periodFilter, assigneeFilter,
   clearSelection()
 })
 
+// ── View toggle (table | kanban) ───────────────────────────────────
+const view = useLocalStorage<'table' | 'kanban'>('advisor.view', 'table')
+
+async function moveStatus(id: string, status: 'open' | 'in_progress' | 'done' | 'dismissed') {
+  try {
+    await $fetch(`/api/advisor/recommendations/${id}`, {
+      method: 'PATCH',
+      body: { status },
+    })
+    await refresh()
+  } catch (err: any) {
+    toast.add({
+      title: 'Move failed',
+      description: err?.data?.statusMessage ?? err?.message,
+      color: 'error',
+    })
+  }
+}
+
 async function applyBulk(patch: Record<string, any>) {
   if (selection.value.size === 0) return
   bulkLoading.value = true
@@ -443,6 +462,22 @@ const summary = computed(() => {
               <UIcon name="i-lucide-target" class="size-4 text-muted" />
             </template>
           </USelectMenu>
+          <UButtonGroup>
+            <UButton
+              :color="view === 'table' ? 'primary' : 'neutral'"
+              :variant="view === 'table' ? 'solid' : 'outline'"
+              size="sm"
+              icon="i-lucide-list"
+              @click="view = 'table'"
+            >Table</UButton>
+            <UButton
+              :color="view === 'kanban' ? 'primary' : 'neutral'"
+              :variant="view === 'kanban' ? 'solid' : 'outline'"
+              size="sm"
+              icon="i-lucide-kanban"
+              @click="view = 'kanban'"
+            >Kanban</UButton>
+          </UButtonGroup>
           <UButton
             icon="i-lucide-plus"
             color="primary"
@@ -498,8 +533,17 @@ const summary = computed(() => {
           :assignee-options="assigneeOptions"
         />
 
-        <!-- Table -->
-        <UCard>
+        <!-- Kanban view -->
+        <AdvisorKanbanView
+          v-if="view === 'kanban'"
+          :recommendations="recommendations"
+          @open="openDrawer"
+          @move="moveStatus"
+          @add="() => (createModalOpen = true)"
+        />
+
+        <!-- Table view -->
+        <UCard v-else>
           <UTable
             :data="recommendations"
             :columns="columns"
