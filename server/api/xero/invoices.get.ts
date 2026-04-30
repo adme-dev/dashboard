@@ -183,6 +183,24 @@ export default eventHandler(async (event) => {
       return (today.getTime() - paidDate.getTime()) <= 1000 * 60 * 60 * 24 * 30
     })
 
+    // Days Sales Outstanding (DSO) — average number of days it takes the
+    // business to collect payment. Standard formula:
+    //   DSO = (AR / Net Credit Sales in period) × Days in period
+    // Lower is better. >45 days starts being a cash-flow warning sign.
+    //
+    // We compute a 30-day DSO using invoices ISSUED in the last 30 days
+    // (regardless of paid/unpaid status) as the sales-in-period figure.
+    // This requires both open and paid arrays — the open array contributes
+    // recently-issued unpaid invoices, the paid array contributes recently-
+    // issued ones that have already been collected.
+    const thirtyDaysAgoISO = new Date(today.getTime() - 30 * 86400000).toISOString().slice(0, 10)
+    const last30dInvoicedTotal = [...openInvoices, ...paidDetailed]
+      .filter((inv: any) => inv.date && inv.date >= thirtyDaysAgoISO)
+      .reduce((sum: number, inv: any) => sum + (Number(inv.total) || 0), 0)
+    const dso30 = last30dInvoicedTotal > 0
+      ? Math.round((outstandingTotal / last30dInvoicedTotal) * 30)
+      : null
+
     const avgDaysToPay = (() => {
       const values = paidDetailed
         .map((inv: any) => inv.daysToPay)
@@ -255,6 +273,7 @@ export default eventHandler(async (event) => {
         dueSoonTotal,
         notSentCount,
         notSentTotal,
+        dso30,
         paidLast30Total: paidLast30.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0),
         paidLast30Count: paidLast30.length,
         avgDaysToPay,

@@ -412,7 +412,7 @@ const agingSections = [
 
       <div v-else class="space-y-6">
         <!-- Summary Cards -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
           <UCard>
             <div class="flex items-center justify-between">
               <div>
@@ -463,6 +463,39 @@ const agingSections = [
               </div>
             </div>
             <p class="text-xs text-[var(--ui-text-muted)] mt-2">{{ summary?.paidLast30Count || 0 }} invoices closed recently</p>
+          </UCard>
+
+          <UCard>
+            <div class="flex items-center justify-between">
+              <div>
+                <UTooltip text="Days Sales Outstanding (30-day): how long, on average, it takes to collect a dollar of AR. Computed as (Outstanding AR / Sales last 30 days) × 30. Lower is better; >45 days starts being a cash-flow warning.">
+                  <p class="text-sm text-[var(--ui-text-muted)] flex items-center gap-1">
+                    DSO (30d)
+                    <UIcon name="i-lucide-info" class="h-3 w-3" />
+                  </p>
+                </UTooltip>
+                <p
+                  class="text-2xl font-bold"
+                  :class="{
+                    'text-emerald-600 dark:text-emerald-400': (summary?.dso30 ?? 0) > 0 && summary.dso30 <= 30,
+                    'text-amber-600 dark:text-amber-400': (summary?.dso30 ?? 0) > 30 && summary.dso30 <= 45,
+                    'text-red-600 dark:text-red-400': (summary?.dso30 ?? 0) > 45,
+                    'text-[var(--ui-text-highlighted)]': summary?.dso30 == null,
+                  }"
+                >
+                  {{ summary?.dso30 != null ? `${summary.dso30}d` : '—' }}
+                </p>
+              </div>
+              <div class="shrink-0 w-10 h-10 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center">
+                <UIcon name="i-lucide-timer" class="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+              </div>
+            </div>
+            <p class="text-xs text-[var(--ui-text-muted)] mt-2">
+              <span v-if="summary?.dso30 == null">No invoices issued in last 30 days</span>
+              <span v-else-if="summary.dso30 <= 30">Healthy — collecting on time</span>
+              <span v-else-if="summary.dso30 <= 45">Watch — collections slowing</span>
+              <span v-else>Cash-flow risk — chase aged AR</span>
+            </p>
           </UCard>
         </div>
 
