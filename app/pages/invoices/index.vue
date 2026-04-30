@@ -201,6 +201,36 @@ async function openInvoice(id: string) {
   }
 }
 
+// "Copy pay link" — fetches the customer-facing OnlineInvoiceUrl from
+// Xero on demand and writes it to the clipboard. Cached briefly per
+// invoice so a double-click doesn't double-fetch.
+const toast = useToast()
+const payLinkPending = ref<string | null>(null)
+const payLinkCache = new Map<string, string>()
+
+async function copyPayLink(invoiceId?: string) {
+  if (!invoiceId) return
+  payLinkPending.value = invoiceId
+  try {
+    let url = payLinkCache.get(invoiceId)
+    if (!url) {
+      const res = await $fetch<{ url: string }>(`/api/xero/invoices/${invoiceId}/online-url`)
+      url = res.url
+      payLinkCache.set(invoiceId, url)
+    }
+    await navigator.clipboard.writeText(url)
+    toast.add({ title: 'Pay link copied', description: 'Paste into your reminder email.', color: 'success' })
+  } catch (err: any) {
+    toast.add({
+      title: 'Could not copy pay link',
+      description: err?.statusMessage || err?.message || 'Try again in a moment.',
+      color: 'error'
+    })
+  } finally {
+    payLinkPending.value = null
+  }
+}
+
 function statusColor(status?: string): 'success' | 'error' | 'warning' | 'neutral' {
   if (!status) return 'neutral'
   const s = status.toUpperCase()
@@ -344,6 +374,16 @@ const agingSections = [
             <p class="text-xs text-[var(--ui-text-muted)] mt-2">{{ summary?.paidLast30Count || 0 }} invoices closed recently</p>
           </UCard>
         </div>
+
+        <!-- "Not yet sent" alert — open invoices that were never emailed via Xero. -->
+        <UAlert
+          v-if="(summary?.notSentCount || 0) > 0"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-mail-warning"
+          :title="`${summary.notSentCount} invoice${summary.notSentCount === 1 ? '' : 's'} not yet sent — ${formatCurrency(summary.notSentTotal)}`"
+          description="These invoices were created but never emailed to the client. Open them and hit Send in Xero before chasing payment."
+        />
 
         <!-- Invoice Table (primary content) -->
         <UCard>
@@ -694,6 +734,16 @@ const agingSections = [
       <UBadge v-if="!detailPending && invoiceDetail" :color="statusColor((invoiceDetail as any).status)" variant="subtle">
         {{ statusLabel((invoiceDetail as any).status) }}
       </UBadge>
+      <UButton
+        v-if="!detailPending && invoiceDetail && ((invoiceDetail as any)?.amountDue || 0) > 0"
+        size="xs"
+        variant="ghost"
+        color="neutral"
+        icon="i-lucide-link"
+        label="Copy pay link"
+        :loading="payLinkPending === (invoiceDetail as any)?.id"
+        @click="copyPayLink((invoiceDetail as any)?.id)"
+      />
       <NuxtLink
         v-if="!detailPending && (invoiceDetail as any)?.url"
         :to="(invoiceDetail as any).url"

@@ -61,7 +61,8 @@ export default eventHandler(async (event) => {
         total: Number(inv?.total ?? 0),
         amountPaid: Number(inv?.amountPaid ?? 0),
         amountDue: Number(inv?.amountDue ?? 0),
-        currency: inv?.currencyCode
+        currency: inv?.currencyCode,
+        sentToContact: Boolean(inv?.sentToContact)
       }
     }
 
@@ -145,6 +146,14 @@ export default eventHandler(async (event) => {
     const overdueTotal = sumBy(overdue, () => true)
     const dueSoonTotal = sumBy(outstanding, (inv) => inv.agingBucket === 'dueSoon')
 
+    // Open invoices that were never emailed via Xero — surfaces the
+    // "I forgot to send it" workflow gap. Xero's `SentToContact` is a
+    // boolean set when the invoice has been emailed from Xero at least
+    // once (or via the API). Manually-printed invoices stay false.
+    const notSent = openInvoices.filter((inv) => inv.sentToContact === false)
+    const notSentCount = notSent.length
+    const notSentTotal = sumBy(notSent, () => true)
+
     const paidLast30 = paidDetailed.filter((inv: any) => {
       if (!inv.fullyPaidOnDate) return false
       const paidDate = new Date(inv.fullyPaidOnDate)
@@ -221,6 +230,8 @@ export default eventHandler(async (event) => {
         overdueTotal,
         overdueCount: overdue.length,
         dueSoonTotal,
+        notSentCount,
+        notSentTotal,
         paidLast30Total: paidLast30.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0),
         paidLast30Count: paidLast30.length,
         avgDaysToPay,
