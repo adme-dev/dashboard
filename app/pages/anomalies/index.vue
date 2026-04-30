@@ -196,6 +196,13 @@ const summary = computed(() => data.value?.summary ?? null)
 const toast = useToast()
 const scanning = ref(false)
 
+const { refresh: refreshAnomalyCount } = useOpenAnomalyCount()
+
+async function onMutated() {
+  await refresh()
+  await refreshAnomalyCount()
+}
+
 async function runScan() {
   scanning.value = true
   try {
@@ -214,6 +221,7 @@ async function runScan() {
         )
         if (probe.status === 'completed') {
           await refresh()
+          await refreshAnomalyCount()
           toast.add({ title: 'Scan complete', color: 'success' })
           break
         }
@@ -221,6 +229,7 @@ async function runScan() {
     } else if (result.status === 'completed') {
       toast.add({ title: 'Scan complete', color: 'success' })
       await refresh()
+      await refreshAnomalyCount()
     } else {
       toast.add({ title: 'Scan failed', description: result.error ?? 'Unknown error', color: 'error' })
     }
@@ -266,6 +275,15 @@ const breadcrumbs = computed(() => ([
   { label: 'Reports', to: '/reports' },
   { label: 'Anomaly Detection', to: '/anomalies' }
 ]))
+
+const exportHref = computed(() => {
+  const params = new URLSearchParams()
+  params.set('tab', tab.value)
+  if (statusPill.value !== 'all') params.set('status', statusPill.value)
+  if (activeSeverity.value !== 'all') params.set('severity', activeSeverity.value)
+  if (activeType.value !== 'all') params.set('type', activeType.value)
+  return `/api/ai/anomalies/export?${params.toString()}`
+})
 
 function formatMetric(metric?: AnomalyMetric | null) {
   if (!metric) return '-'
@@ -408,6 +426,16 @@ function openActionPlan(anomaly: Anomaly) {
               value-key="value"
               size="sm"
               class="min-w-[180px]"
+            />
+
+            <UButton
+              label="Export CSV"
+              icon="i-lucide-download"
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              :to="exportHref"
+              external
             />
           </div>
         </template>
@@ -566,7 +594,7 @@ function openActionPlan(anomaly: Anomaly) {
                 v-for="anomaly in section.items"
                 :key="anomaly.id"
                 :anomaly="anomaly"
-                @mutated="refresh"
+                @mutated="onMutated"
                 @open-action-plan="openActionPlan"
               />
             </div>

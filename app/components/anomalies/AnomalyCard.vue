@@ -172,6 +172,46 @@ const snoozeInfo = computed(() => {
 const isActive = computed(() =>
   ['open', 'acknowledged', 'snoozed'].includes(props.anomaly.status),
 )
+
+// ── Drill-down link ─────────────
+function drillDownLink(): string | null {
+  const fp = props.anomaly.fingerprint
+  const ctx = props.anomaly.context
+  if (fp.startsWith('receivables:aging-concentration')) return '/invoices?aging=90+'
+  if (fp.startsWith('receivables:overdue-spike')) return '/invoices?status=overdue'
+  if (fp.startsWith('expenses:vendor-')) {
+    const vendor = ctx?.vendor
+    return vendor ? `/expenses?vendor=${encodeURIComponent(vendor)}` : null
+  }
+  if (fp.startsWith('expenses:category-concentration')) {
+    const cat = ctx?.category
+    return cat ? `/expenses?category=${encodeURIComponent(cat)}` : '/expenses'
+  }
+  if (fp.startsWith('clients:scope-creep-') || fp.startsWith('clients:concentration-')) {
+    const id = fp.split('-').slice(1).join('-')
+    return id ? `/clients/${id}` : '/clients'
+  }
+  if (fp.startsWith('adspend:spike-')) {
+    // fingerprint shape: adspend:spike-{clientId}-{platform}-{date}
+    const rest = fp.replace('adspend:spike-', '')
+    const parts = rest.split('-')
+    // clientId is the first uuid segment (5 dash-separated chunks); extract heuristically
+    if (parts.length >= 7) {
+      // UUID = parts[0..4], platform = parts[5], date = parts[6..]
+      const clientId = parts.slice(0, 5).join('-')
+      const platform = parts[5]
+      return `/agency/social/spend?client=${clientId}&platform=${platform}`
+    }
+    return '/agency/social/spend'
+  }
+  if (fp.startsWith('cashflow:bank-overdraft-')) return '/dashboard?focus=cashflow'
+  if (fp.startsWith('cashflow:')) return '/reports/cash-flow-forecast'
+  if (fp.startsWith('budget:')) return '/reports/budget-variance'
+  if (fp.startsWith('profitability:') || fp.startsWith('revenue:')) return '/reports/pnl'
+  return null
+}
+
+const drillLink = computed(() => drillDownLink())
 </script>
 
 <template>
@@ -273,6 +313,17 @@ const isActive = computed(() =>
       <UTooltip v-for="tag in anomaly.tags" :key="tag" :text="`Tag: ${tag}`">
         <UBadge color="primary" variant="soft">{{ tag }}</UBadge>
       </UTooltip>
+    </div>
+
+    <!-- Drill-down link -->
+    <div v-if="drillLink" class="-mt-2 mb-2 text-sm">
+      <NuxtLink
+        :to="drillLink"
+        class="inline-flex items-center gap-1 text-primary hover:underline"
+      >
+        <UIcon name="i-lucide-arrow-right" class="size-3.5" />
+        View source data
+      </NuxtLink>
     </div>
 
     <!-- Action footer (only for active statuses) -->

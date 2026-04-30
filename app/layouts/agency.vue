@@ -37,6 +37,9 @@ const workspaceNav = computed(() => {
 // Chat unread badge
 const { totalUnreadCount: chatUnreadCount } = useChat()
 
+// Open critical anomaly count — sidebar badge
+const { count: anomalyCount } = useOpenAnomalyCount()
+
 // Inbox unread badge — fetch initial count and stay live via SSE
 const { unreadCount: inboxUnreadCount, fetchNotifications, connectToStream, disconnectFromStream } = useNotifications()
 onMounted(async () => {
@@ -170,7 +173,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { label: 'Financial Reports', icon: 'i-lucide-file-text', to: '/reports', onSelect: close },
       { label: 'Advisor Backlog', icon: 'i-lucide-list-todo', to: '/advisor', onSelect: close },
       { label: 'Insights', icon: 'i-lucide-lightbulb', to: '/insights', onSelect: close },
-      { label: 'Anomalies', icon: 'i-lucide-alert-triangle', to: '/anomalies', onSelect: close },
+      { label: 'Anomalies', icon: 'i-lucide-alert-triangle', to: '/anomalies', onSelect: close, badge: anomalyCount.value > 0 ? String(anomalyCount.value) : undefined },
       { label: 'Recommendations', icon: 'i-lucide-clipboard-check', to: '/recommendations', onSelect: close },
       { label: 'Finance AI', icon: 'i-lucide-brain', to: '/agency/ai/finance', onSelect: close },
     )
