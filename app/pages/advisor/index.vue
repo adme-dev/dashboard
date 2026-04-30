@@ -244,6 +244,37 @@ async function onGraphNodeSelect(node: GraphNode) {
   }
 }
 
+// ── Manual create modal ────────────────────────────────────────────
+const createModalOpen = ref(false)
+
+// Metric registry mirrors server/utils/advisorMetrics.ts. Re-listed here
+// because client-side imports of that file would pull a server-only h3
+// dependency. Slice 6 / phase 2 may promote this to a shared module.
+const METRIC_KEYS = [
+  { key: 'netMarginMonth', label: 'Net margin (month)' },
+  { key: 'netProfitMonth', label: 'Net profit (month)' },
+  { key: 'netProfitYtd', label: 'Net profit (YTD)' },
+  { key: 'revenueMonth', label: 'Revenue (month)' },
+  { key: 'debtorDays', label: 'Debtor days' },
+  { key: 'creditorDays', label: 'Creditor days' },
+  { key: 'grossProfitPercent', label: 'Gross profit %' },
+  { key: 'netProfitPercent', label: 'Net profit %' },
+  { key: 'currentRatio', label: 'Current ratio' },
+  { key: 'top1Share', label: 'Top-1 client share' },
+  { key: 'top3Share', label: 'Top-3 client share' },
+  { key: 'mrr', label: 'MRR' },
+  { key: 'outstandingTotal', label: 'Outstanding A/R' },
+  { key: 'overdueAmount', label: 'Overdue A/R' },
+  { key: 'totalUnearned', label: 'Unearned revenue' },
+]
+
+async function onCreated(rec: Recommendation) {
+  // Refresh the list so the new rec appears (subject to current filters)
+  // and immediately open the drawer for editing.
+  await refresh()
+  openDrawer(rec)
+}
+
 async function patchRec(patch: Partial<Recommendation>) {
   if (!drawerRec.value) return
   const id = drawerRec.value.id
@@ -305,6 +336,12 @@ const summary = computed(() => {
               <UIcon name="i-lucide-target" class="size-4 text-muted" />
             </template>
           </USelectMenu>
+          <UButton
+            icon="i-lucide-plus"
+            color="primary"
+            size="sm"
+            @click="createModalOpen = true"
+          >New</UButton>
           <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" :loading="pending" @click="refresh()" />
         </template>
       </UDashboardNavbar>
@@ -430,6 +467,15 @@ const summary = computed(() => {
       </div>
     </template>
   </UDashboardPanel>
+
+  <!-- Manual create modal -->
+  <AdvisorCreateModal
+    v-model:open="createModalOpen"
+    :clients="clientsData ?? []"
+    :team-members="teamData?.members ?? []"
+    :metric-keys="METRIC_KEYS"
+    @created="onCreated"
+  />
 
   <!-- Detail drawer (extracted to component) -->
   <AdvisorDrawer
