@@ -396,6 +396,23 @@ function statusLabel(status?: string): string {
   return s.charAt(0) + s.slice(1).toLowerCase()
 }
 
+// "This month" drill-down slideover. Lists every invoice issued this
+// calendar month (paid or unpaid) so the user can see what got billed.
+const showMonthDetail = ref(false)
+const monthInvoices = computed<any[]>(() => {
+  const ids = ((summary.value as any)?.monthInvoiceIds ?? []) as string[]
+  if (!ids.length) return []
+  const idSet = new Set(ids)
+  const merged = [
+    ...((data.value as any)?.outstanding ?? []),
+    ...((data.value as any)?.overdue ?? []),
+    ...((data.value as any)?.paid ?? []),
+  ]
+  return merged
+    .filter((inv: any) => idSet.has(inv?.id))
+    .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''))
+})
+
 // "Not yet sent" drill-down slideover. Lists every open invoice with
 // sentToContact === false so the user can chase them through Xero.
 const showNotSentDetail = ref(false)
@@ -704,53 +721,86 @@ const agingSections = [
           </UCard>
         </div>
 
-        <!-- Pagination cap-hit warning — surfaces silently-truncated data. -->
-        <UAlert
-          v-if="(summary as any)?.truncated?.open || (summary as any)?.truncated?.paid"
-          color="warning"
-          variant="outline"
-          icon="i-lucide-database"
-          :title="'Truncated AR data'"
-          :description="`We fetched the most-relevant ${(summary as any)?.truncated?.open ? (summary as any).truncated.openLimit + ' open' : ''}${(summary as any)?.truncated?.open && (summary as any)?.truncated?.paid ? ' and ' : ''}${(summary as any)?.truncated?.paid ? (summary as any).truncated.paidLimit + ' most-recent paid' : ''} invoices, but Xero has more. Cards and aging buckets reflect only what we fetched. Raise the limit if you regularly hit this.`"
-        />
-
-        <!-- "Not yet sent" alert — clickable; opens slideover listing the unsent open invoices. -->
-        <button
-          v-if="(summary?.notSentCount || 0) > 0"
-          type="button"
-          class="block w-full text-left rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"
-          @click="showNotSentDetail = true"
+        <!-- Warning banners — truncation + not-yet-sent in a single row. -->
+        <div
+          v-if="(summary as any)?.truncated?.open || (summary as any)?.truncated?.paid || (summary?.notSentCount || 0) > 0"
+          class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch"
         >
+          <!-- Pagination cap-hit warning — surfaces silently-truncated data. -->
           <UAlert
+            v-if="(summary as any)?.truncated?.open || (summary as any)?.truncated?.paid"
             color="warning"
-            variant="subtle"
-            icon="i-lucide-mail-warning"
-            :title="`${summary.notSentCount} invoice${summary.notSentCount === 1 ? '' : 's'} not yet sent — ${formatCurrency(summary.notSentTotal)}`"
-            description="Click to review them. They were created but never emailed via Xero — send before chasing payment."
-            class="cursor-pointer hover:ring-1 hover:ring-amber-400 transition"
+            variant="outline"
+            icon="i-lucide-database"
+            :title="'Truncated AR data'"
+            :description="`We fetched the most-relevant ${(summary as any)?.truncated?.open ? (summary as any).truncated.openLimit + ' open' : ''}${(summary as any)?.truncated?.open && (summary as any)?.truncated?.paid ? ' and ' : ''}${(summary as any)?.truncated?.paid ? (summary as any).truncated.paidLimit + ' most-recent paid' : ''} invoices, but Xero has more. Cards and aging buckets reflect only what we fetched. Raise the limit if you regularly hit this.`"
+            class="h-full"
           />
-        </button>
+
+          <!-- "Not yet sent" alert — clickable; opens slideover listing the unsent open invoices. -->
+          <button
+            v-if="(summary?.notSentCount || 0) > 0"
+            type="button"
+            class="block w-full text-left rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 h-full"
+            @click="showNotSentDetail = true"
+          >
+            <UAlert
+              color="warning"
+              variant="subtle"
+              icon="i-lucide-mail-warning"
+              :title="`${summary.notSentCount} invoice${summary.notSentCount === 1 ? '' : 's'} not yet sent — ${formatCurrency(summary.notSentTotal)}`"
+              description="Click to review them. They were created but never emailed via Xero — send before chasing payment."
+              class="cursor-pointer hover:ring-1 hover:ring-amber-400 transition h-full"
+            />
+          </button>
+        </div>
 
         <!-- Revenue context row — forward pipeline, recurring, this-month
              billed, GST collected, credit notes outstanding. Each card is
              independently conditional and wrapped in a flex grid so absent
              cards collapse and the row stays balanced. -->
         <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          <!-- This Month Invoiced — running total billed this calendar month. -->
-          <UCard v-if="((summary as any)?.monthToDateInvoicedCount || 0) > 0">
-            <div class="flex items-center gap-3 mb-2">
-              <div class="shrink-0 w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
-                <UIcon name="i-lucide-calendar-clock" class="h-5 w-5 text-blue-600 dark:text-blue-400" />
+          <!-- This Month Invoiced — running total billed this calendar month.
+               Click → slideover with the per-invoice list. -->
+          <button
+            v-if="((summary as any)?.monthToDateInvoicedCount || 0) > 0"
+            type="button"
+            class="text-left rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+            @click="showMonthDetail = true"
+          >
+            <UCard class="hover:border-blue-500 dark:hover:border-blue-400 transition-colors h-full">
+              <div class="flex items-center gap-3 mb-2">
+                <div class="shrink-0 w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
+                  <UIcon name="i-lucide-calendar-clock" class="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div class="min-w-0">
+                  <p class="text-sm text-[var(--ui-text-muted)] truncate">This Month Invoiced</p>
+                  <p class="text-xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.monthToDateInvoicedTotal) }}</p>
+                </div>
               </div>
-              <div class="min-w-0">
-                <p class="text-sm text-[var(--ui-text-muted)] truncate">This Month Invoiced</p>
-                <p class="text-xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.monthToDateInvoicedTotal) }}</p>
+              <p class="text-xs text-[var(--ui-text-muted)] mb-2">
+                {{ (summary as any)?.monthToDateInvoicedCount }} invoice{{ (summary as any)?.monthToDateInvoicedCount === 1 ? '' : 's' }} · day {{ (summary as any)?.monthDayOfMonth }}/{{ (summary as any)?.monthDaysInMonth }}
+              </p>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <UBadge
+                  v-if="(summary as any)?.monthVsLastMonthPct != null"
+                  size="sm"
+                  variant="subtle"
+                  :color="(summary as any).monthVsLastMonthPct >= 0 ? 'success' : 'error'"
+                >
+                  {{ (summary as any).monthVsLastMonthPct >= 0 ? '+' : '' }}{{ (summary as any).monthVsLastMonthPct }}% vs last
+                </UBadge>
+                <UBadge
+                  v-if="(summary as any)?.monthPaceProjection > (summary as any)?.monthToDateInvoicedTotal"
+                  size="sm"
+                  variant="subtle"
+                  color="info"
+                >
+                  Pace: {{ formatCurrency((summary as any)?.monthPaceProjection) }}
+                </UBadge>
               </div>
-            </div>
-            <p class="text-xs text-[var(--ui-text-muted)]">
-              {{ (summary as any)?.monthToDateInvoicedCount }} invoice{{ (summary as any)?.monthToDateInvoicedCount === 1 ? '' : 's' }} since {{ formatDate((summary as any)?.monthStart) }}
-            </p>
-          </UCard>
+            </UCard>
+          </button>
 
           <!-- Forward pipeline — quotes won/sent/drafted but not yet invoiced. -->
           <UCard v-if="(quotesSummary?.count || 0) > 0">
@@ -1763,6 +1813,110 @@ const agingSections = [
         </div>
 
         <p v-else class="text-sm text-[var(--ui-text-muted)] text-center py-4">All open invoices have been sent. Nothing to chase here.</p>
+      </div>
+    </template>
+  </USlideover>
+
+  <!-- "This month" drill-down: every invoice issued this calendar month
+       (paid + unpaid) with comparison stats and the full per-invoice list. -->
+  <USlideover v-model:open="showMonthDetail" :title="`Invoiced this month: ${formatCurrency((summary as any)?.monthToDateInvoicedTotal)}`" :description="`${(summary as any)?.monthToDateInvoicedCount ?? 0} invoices since ${formatDate((summary as any)?.monthStart)}`">
+    <template #title>
+      <div class="min-w-0">
+        <p class="font-semibold text-[var(--ui-text-highlighted)] truncate">
+          Invoiced this month
+        </p>
+        <p class="text-xs text-[var(--ui-text-muted)] truncate font-normal">
+          {{ formatCurrency((summary as any)?.monthToDateInvoicedTotal) }} · {{ (summary as any)?.monthToDateInvoicedCount }} invoices · day {{ (summary as any)?.monthDayOfMonth }}/{{ (summary as any)?.monthDaysInMonth }}
+        </p>
+      </div>
+    </template>
+    <template #body>
+      <div class="space-y-6">
+        <!-- KPI grid -->
+        <div class="grid grid-cols-2 gap-3">
+          <div class="p-3 rounded-lg border border-[var(--ui-border)]">
+            <p class="text-[10px] text-[var(--ui-text-muted)] uppercase">Total billed</p>
+            <p class="text-lg font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.monthToDateInvoicedTotal) }}</p>
+          </div>
+          <div class="p-3 rounded-lg border border-[var(--ui-border)]">
+            <p class="text-[10px] text-[var(--ui-text-muted)] uppercase">Avg invoice</p>
+            <p class="text-lg font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.monthAvgInvoice) }}</p>
+          </div>
+          <div class="p-3 rounded-lg border border-emerald-300 dark:border-emerald-700">
+            <p class="text-[10px] text-[var(--ui-text-muted)] uppercase">Already paid</p>
+            <p class="text-lg font-semibold text-emerald-600 dark:text-emerald-400">{{ formatCurrency((summary as any)?.monthPaidPortion) }}</p>
+          </div>
+          <div class="p-3 rounded-lg border" :class="((summary as any)?.monthUnpaidPortion ?? 0) > 0 ? 'border-amber-300 dark:border-amber-700' : 'border-[var(--ui-border)]'">
+            <p class="text-[10px] text-[var(--ui-text-muted)] uppercase">Still owed</p>
+            <p class="text-lg font-semibold" :class="((summary as any)?.monthUnpaidPortion ?? 0) > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--ui-text-highlighted)]'">
+              {{ formatCurrency((summary as any)?.monthUnpaidPortion) }}
+            </p>
+          </div>
+        </div>
+
+        <!-- vs last month + pace -->
+        <div class="space-y-2">
+          <h3 class="text-xs uppercase text-[var(--ui-text-muted)] font-semibold tracking-wider">Trend</h3>
+          <div class="grid grid-cols-1 gap-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-[var(--ui-text-muted)]">Same window last month (1st – day {{ (summary as any)?.monthDayOfMonth }})</span>
+              <span class="font-medium text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.monthLastSameWindowTotal) }}</span>
+            </div>
+            <div v-if="(summary as any)?.monthVsLastMonthPct != null" class="flex justify-between">
+              <span class="text-[var(--ui-text-muted)]">Change</span>
+              <span
+                class="font-semibold"
+                :class="(summary as any).monthVsLastMonthPct >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'"
+              >
+                {{ (summary as any).monthVsLastMonthPct >= 0 ? '+' : '' }}{{ (summary as any).monthVsLastMonthPct }}%
+              </span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-[var(--ui-text-muted)]">Pace projection (end of month)</span>
+              <span class="font-medium text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.monthPaceProjection) }}</span>
+            </div>
+            <div v-if="(summary as any)?.monthTopCustomerName" class="flex justify-between">
+              <span class="text-[var(--ui-text-muted)]">Top customer this month</span>
+              <span class="font-medium text-[var(--ui-text-highlighted)] truncate ml-2">
+                {{ (summary as any).monthTopCustomerName }} · {{ formatCurrency((summary as any).monthTopCustomerTotal) }}
+              </span>
+            </div>
+          </div>
+          <p class="text-[10px] text-[var(--ui-text-muted)] italic">Comparison and pace use a straight-line extrapolation from current MTD; useful as a signal, not a forecast.</p>
+        </div>
+
+        <!-- Per-invoice list -->
+        <div v-if="monthInvoices.length" class="space-y-2">
+          <h3 class="text-xs uppercase text-[var(--ui-text-muted)] font-semibold tracking-wider">Invoices ({{ monthInvoices.length }})</h3>
+          <div class="space-y-2">
+            <button
+              v-for="inv in monthInvoices"
+              :key="inv.id"
+              type="button"
+              class="w-full text-left p-3 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-elevated)] hover:border-blue-500 dark:hover:border-blue-400 transition-colors"
+              @click="openInvoice(inv.id); showMonthDetail = false"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <div class="min-w-0 flex-1">
+                  <p class="font-medium text-[var(--ui-text-highlighted)] text-sm truncate">{{ inv.number }}</p>
+                  <p class="text-xs text-[var(--ui-text-muted)] truncate">{{ inv.contact || 'Unknown' }}</p>
+                  <p class="text-[11px] text-[var(--ui-text-muted)]">Issued {{ formatDate(inv.date) }}</p>
+                </div>
+                <div class="text-right shrink-0">
+                  <p class="font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency(inv.total, inv.currency) }}</p>
+                  <UBadge
+                    size="sm"
+                    :color="inv.status === 'PAID' ? 'success' : inv.status === 'OVERDUE' ? 'error' : 'warning'"
+                    variant="subtle"
+                  >
+                    {{ inv.status === 'PAID' ? 'Paid' : inv.status === 'OVERDUE' ? `${inv.daysOverdue}d overdue` : 'Open' }}
+                  </UBadge>
+                </div>
+              </div>
+            </button>
+          </div>
+        </div>
+        <p v-else class="text-sm text-[var(--ui-text-muted)] text-center py-4">No invoices were issued this month.</p>
       </div>
     </template>
   </USlideover>

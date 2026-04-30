@@ -258,12 +258,65 @@ export default eventHandler(async (event) => {
     // regardless of paid/unpaid status. Helpful for "are we on track to
     // hit our monthly billing target" at a glance.
     const monthStartISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
+    const lastMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+    const lastMonthStartISO = lastMonthDate.toISOString().slice(0, 10)
     const monthToDateInvoicedAll = [...openInvoices, ...paidDetailed]
       .filter((inv: any) => inv.date && inv.date >= monthStartISO)
     const monthToDateInvoicedTotal = Math.round(
       monthToDateInvoicedAll.reduce((sum: number, inv: any) => sum + (Number(inv.total) || 0), 0)
     )
     const monthToDateInvoicedCount = monthToDateInvoicedAll.length
+
+    // Same window from last month (1st → today's day-of-month) so the
+    // comparison is apples-to-apples regardless of where in the month
+    // we are. If today is the 14th, we compare against last month's
+    // 1st-14th total.
+    const dayOfMonth = today.getDate()
+    const lastMonthCutoff = new Date(today.getFullYear(), today.getMonth() - 1, dayOfMonth + 1).toISOString().slice(0, 10)
+    const lastMonthSameWindow = [...openInvoices, ...paidDetailed].filter(
+      (inv: any) => inv.date && inv.date >= lastMonthStartISO && inv.date < lastMonthCutoff
+    )
+    const lastMonthSameWindowTotal = Math.round(
+      lastMonthSameWindow.reduce((sum: number, inv: any) => sum + (Number(inv.total) || 0), 0)
+    )
+    const monthVsLastMonthPct = lastMonthSameWindowTotal > 0
+      ? Math.round(((monthToDateInvoicedTotal - lastMonthSameWindowTotal) / lastMonthSameWindowTotal) * 100)
+      : null
+
+    // Pace projection — straight-line extrapolation to end of month.
+    // Naive but useful as a "if we keep going at this rate" signal.
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
+    const monthPaceProjection = dayOfMonth > 0
+      ? Math.round((monthToDateInvoicedTotal / dayOfMonth) * daysInMonth)
+      : 0
+
+    // Average invoice value MTD.
+    const monthAvgInvoice = monthToDateInvoicedCount > 0
+      ? Math.round(monthToDateInvoicedTotal / monthToDateInvoicedCount)
+      : 0
+
+    // Paid vs still-owed split of MTD invoices.
+    const monthPaidPortion = Math.round(
+      monthToDateInvoicedAll
+        .filter((inv: any) => inv.status === 'PAID')
+        .reduce((sum: number, inv: any) => sum + (Number(inv.total) || 0), 0)
+    )
+    const monthUnpaidPortion = monthToDateInvoicedTotal - monthPaidPortion
+
+    // Top customer this month by total billed.
+    const monthByCustomer = new Map<string, number>()
+    for (const inv of monthToDateInvoicedAll) {
+      const name = inv.contact || 'Unknown'
+      monthByCustomer.set(name, (monthByCustomer.get(name) || 0) + (Number(inv.total) || 0))
+    }
+    const monthTopCustomer = Array.from(monthByCustomer.entries())
+      .sort((a, b) => b[1] - a[1])[0]
+    const monthTopCustomerName = monthTopCustomer?.[0] || null
+    const monthTopCustomerTotal = monthTopCustomer ? Math.round(monthTopCustomer[1]) : 0
+
+    // Light-weight invoice list for the month, stripped to what the
+    // slideover needs (client merges with annotated data when rendering).
+    const monthInvoiceIds = monthToDateInvoicedAll.map((inv: any) => inv.id).filter(Boolean)
 
     // Tax / GST summary — sales GST collected over rolling windows.
     // For Australian BAS prep: GST on sales is `1A` on the form.
@@ -471,6 +524,17 @@ export default eventHandler(async (event) => {
         monthToDateInvoicedTotal,
         monthToDateInvoicedCount,
         monthStart: monthStartISO,
+        monthLastSameWindowTotal: lastMonthSameWindowTotal,
+        monthVsLastMonthPct,
+        monthPaceProjection,
+        monthAvgInvoice,
+        monthPaidPortion,
+        monthUnpaidPortion,
+        monthTopCustomerName,
+        monthTopCustomerTotal,
+        monthInvoiceIds,
+        monthDayOfMonth: dayOfMonth,
+        monthDaysInMonth: daysInMonth,
         paidLast30Total: paidLast30.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0),
         paidLast30Count: paidLast30.length,
         avgDaysToPay,
