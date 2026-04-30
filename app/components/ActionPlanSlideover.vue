@@ -1,6 +1,7 @@
 <script setup lang="ts">
 interface ActionPlanItem {
   type: 'anomaly' | 'recommendation' | 'insight'
+  id?: string
   title: string
   description: string
   severity?: string
@@ -135,6 +136,45 @@ watch(() => props.open, (isOpen) => {
     savedId.value = null
   }
 })
+
+// Narrative (anomaly-specific, lazy with caching)
+const narrative = ref<string | null>(null)
+const narrativeCached = ref(false)
+const narrativeLoading = ref(false)
+const narrativeError = ref<string | null>(null)
+
+async function fetchNarrative() {
+  if (props.item?.type !== 'anomaly' || !props.item.id) return
+  narrative.value = null
+  narrativeCached.value = false
+  narrativeError.value = null
+  narrativeLoading.value = true
+  try {
+    const r = await $fetch<{ narrative: string; cached: boolean; generatedAt: string }>(
+      `/api/ai/anomalies/${props.item.id}/narrative`,
+    )
+    narrative.value = r.narrative
+    narrativeCached.value = r.cached
+  } catch (err: any) {
+    narrativeError.value = err?.data?.statusMessage || err?.message || 'Failed to load narrative'
+  } finally {
+    narrativeLoading.value = false
+  }
+}
+
+watch(
+  () => [props.open, props.item?.id, props.item?.type] as const,
+  ([open, id, type]) => {
+    if (open && type === 'anomaly' && id) {
+      fetchNarrative()
+    } else if (!open) {
+      narrative.value = null
+      narrativeCached.value = false
+      narrativeError.value = null
+    }
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -425,6 +465,40 @@ watch(() => props.open, (isOpen) => {
                 </a>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- AI Narrative (anomaly-only, lazy-cached) -->
+        <div v-if="item?.type === 'anomaly'" class="space-y-3 mt-6">
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-brain" class="size-4 text-primary" />
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-muted">
+              AI Analysis
+            </h3>
+            <UBadge v-if="narrativeCached" color="neutral" variant="subtle" size="xs">
+              Cached
+            </UBadge>
+          </div>
+
+          <div v-if="narrativeLoading" class="flex items-center gap-2 text-sm text-muted">
+            <UIcon name="i-lucide-loader-2" class="size-4 animate-spin" />
+            Generating analysis…
+          </div>
+
+          <UAlert
+            v-else-if="narrativeError"
+            color="error"
+            variant="subtle"
+            icon="i-lucide-alert-circle"
+            title="Could not load AI analysis"
+            :description="narrativeError"
+          />
+
+          <div
+            v-else-if="narrative"
+            class="prose prose-sm dark:prose-invert max-w-none whitespace-pre-line text-sm leading-relaxed"
+          >
+            {{ narrative }}
           </div>
         </div>
       </div>
