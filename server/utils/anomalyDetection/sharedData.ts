@@ -53,8 +53,50 @@ export async function fetchSharedData(event: H3Event | null): Promise<SharedData
     mediaSpend = null
   }
 
+  let clientRevenue: any = null
+  try {
+    clientRevenue = await queryRows(`
+      WITH window AS (
+        SELECT
+          (CURRENT_DATE - INTERVAL '30 days')::date AS period_start,
+          CURRENT_DATE::date AS period_end
+      ),
+      invoice_totals AS (
+        SELECT ai.client_id, SUM(ai.total)::numeric AS invoiced
+        FROM agency_invoices ai
+        WHERE ai.issue_date >= (SELECT period_start FROM window)
+          AND ai.issue_date <= (SELECT period_end FROM window)
+          AND ai.status IN ('sent', 'paid')
+        GROUP BY ai.client_id
+      ),
+      time_totals AS (
+        SELECT p.client_id, SUM(te.hours * te.hourly_rate)::numeric AS time_value
+        FROM time_entries te
+        JOIN projects p ON te.project_id = p.id
+        WHERE te.date >= (SELECT period_start FROM window)
+          AND te.date <= (SELECT period_end FROM window)
+          AND te.billable = true
+        GROUP BY p.client_id
+      )
+      SELECT
+        ac.id::text AS client_id,
+        ac.name AS client_name,
+        COALESCE(it.invoiced, 0)::numeric AS invoiced,
+        COALESCE(tt.time_value, 0)::numeric AS time_value,
+        (SELECT period_start::text FROM window) AS period_start,
+        (SELECT period_end::text FROM window) AS period_end
+      FROM agency_clients ac
+      LEFT JOIN invoice_totals it ON it.client_id = ac.id
+      LEFT JOIN time_totals tt ON tt.client_id = ac.id
+      WHERE COALESCE(it.invoiced, 0) > 0 OR COALESCE(tt.time_value, 0) > 0
+    `)
+  } catch (err) {
+    console.warn('[anomalies] client revenue fetch failed:', err)
+    clientRevenue = null
+  }
+
   return {
     pnl, expenses, bankMonitoring, cashForecast, aging, budgetVariance,
-    mediaSpend, clientRevenue: null, invoiceLines: null,
+    mediaSpend, clientRevenue, invoiceLines: null,
   }
 }
