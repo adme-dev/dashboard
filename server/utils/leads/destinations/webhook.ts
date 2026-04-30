@@ -5,10 +5,16 @@ import type { DestinationAdapter, DispatchResult } from './types'
 
 interface Cfg { url: string; method?: 'POST' | 'PUT'; headers?: Record<string, string>; secret?: string }
 
-const PRIVATE_HOST_RE = /^(?:localhost$|127\.|10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|169\.254\.|0\.0\.0\.0$|::1$)/i
+// Block IPv4 + IPv6 loopback / RFC1918 / link-local / unique-local / IPv4-mapped IPv6.
+// `::ffff:` is the IPv4-mapped-IPv6 prefix; URL.hostname canonicalises the dotted
+// IPv4 part to hex (e.g. `[::ffff:127.0.0.1]` -> `[::ffff:7f00:1]`), so we block
+// the whole prefix rather than try to enumerate every private form.
+const PRIVATE_HOST_RE = /^(?:localhost$|127\.|10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|169\.254\.|0\.0\.0\.0$|::1$|::ffff:|fe80:|fc[0-9a-f]{2}:|fd[0-9a-f]{2}:)/i
 
 function isPrivateHost(host: string): boolean {
-  return PRIVATE_HOST_RE.test(host)
+  // URL.hostname returns IPv6 wrapped in brackets — strip them before matching.
+  const bare = host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host
+  return PRIVATE_HOST_RE.test(bare)
 }
 
 const adapter: DestinationAdapter<Cfg> = {

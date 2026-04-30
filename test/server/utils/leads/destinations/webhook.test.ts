@@ -30,6 +30,14 @@ describe('validateConfig', () => {
     expect(adapter.validateConfig({ url: 'https://192.168.1.1/x' }).valid).toBe(false)
     expect(adapter.validateConfig({ url: 'https://169.254.169.254/' }).valid).toBe(false)
   })
+  it('blocks IPv6 loopback / link-local / IPv4-mapped (SSRF)', () => {
+    expect(adapter.validateConfig({ url: 'https://[::1]/callback' }).valid).toBe(false)
+    expect(adapter.validateConfig({ url: 'https://[::ffff:127.0.0.1]/x' }).valid).toBe(false)
+    expect(adapter.validateConfig({ url: 'https://[::ffff:10.0.0.1]/x' }).valid).toBe(false)
+    expect(adapter.validateConfig({ url: 'https://[fe80::1]/x' }).valid).toBe(false)
+    expect(adapter.validateConfig({ url: 'https://[fc00::1]/x' }).valid).toBe(false)
+    expect(adapter.validateConfig({ url: 'https://[fd12:3456::1]/x' }).valid).toBe(false)
+  })
   it('rejects CRLF-injected headers', () => {
     expect(adapter.validateConfig({
       url: 'https://x.example/h',
