@@ -1,0 +1,22 @@
+{
+  "name": "leads-delivery-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "presync": "echo syncing shared code...",
+    "sync": "./scripts/sync-shared.sh",
+    "predeploy": "pnpm sync",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "*",
+    "pg": "*",
+    "resend": "*"
+  },
+  "devDependencies": {
+    "wrangler": "*",
+    "@cloudflare/workers-types": "*",
+    "typescript": "*"
+  }
+}

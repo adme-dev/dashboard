@@ -1,0 +1,16 @@
+# workers/leads-delivery-worker/wrangler.toml
+name = "leads-delivery-worker"
+main = "src/index.ts"
+compatibility_date = "2025-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Configure queue consumer + bindings (DATABASE_URL, RESEND_API_KEY, HYPERDRIVE)
+# in the Cloudflare dashboard — Pages projects can't declare consumers in toml.
+# Locally, `wrangler dev` will need a queues.consumers stub if testing.
+
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "REPLACE_WITH_HYPERDRIVE_ID"
+
+[vars]
+WORKER_ID_PREFIX = "leads-w"
