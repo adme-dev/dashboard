@@ -751,16 +751,17 @@ const agingSections = [
               </div>
               <div class="mt-2 flex items-center justify-between gap-2">
                 <p class="text-xs text-[var(--ui-text-muted)]">{{ summary?.outstandingCount || 0 }} invoices with open balances</p>
-                <a
-                  href="https://go.xero.com/AccountsReceivable/Search.aspx?invoiceStatuses=AUTHORISED"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="text-[10px] text-[var(--ui-text-muted)] hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-0.5 shrink-0"
-                  @click.stop
-                >
-                  Verify in Xero
-                  <UIcon name="i-lucide-external-link" class="h-3 w-3" />
-                </a>
+                <UTooltip text="Verify in Xero">
+                  <a
+                    href="https://go.xero.com/AccountsReceivable/Search.aspx?invoiceStatuses=AUTHORISED"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-[var(--ui-text-muted)] hover:text-blue-600 dark:hover:text-blue-400 shrink-0"
+                    @click.stop
+                  >
+                    <UIcon name="i-lucide-external-link" class="h-3.5 w-3.5" />
+                  </a>
+                </UTooltip>
               </div>
             </UCard>
           </button>
@@ -778,16 +779,17 @@ const agingSections = [
               </div>
               <div class="mt-2 flex items-center justify-between gap-2">
                 <p class="text-xs text-[var(--ui-text-muted)]">{{ summary?.overdueCount || 0 }} invoices past due</p>
-                <a
-                  href="https://go.xero.com/AccountsReceivable/Search.aspx?invoiceStatuses=AUTHORISED"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="text-[10px] text-[var(--ui-text-muted)] hover:text-red-600 dark:hover:text-red-400 flex items-center gap-0.5 shrink-0"
-                  @click.stop
-                >
-                  Verify in Xero
-                  <UIcon name="i-lucide-external-link" class="h-3 w-3" />
-                </a>
+                <UTooltip text="Verify in Xero">
+                  <a
+                    href="https://go.xero.com/AccountsReceivable/Search.aspx?invoiceStatuses=AUTHORISED"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-[var(--ui-text-muted)] hover:text-red-600 dark:hover:text-red-400 shrink-0"
+                    @click.stop
+                  >
+                    <UIcon name="i-lucide-external-link" class="h-3.5 w-3.5" />
+                  </a>
+                </UTooltip>
               </div>
             </UCard>
           </button>
@@ -805,16 +807,17 @@ const agingSections = [
               </div>
               <div class="mt-2 flex items-center justify-between gap-2">
                 <p class="text-xs text-[var(--ui-text-muted)]">Upcoming cash expected this week</p>
-                <a
-                  href="https://go.xero.com/AccountsReceivable/Search.aspx?invoiceStatuses=AUTHORISED"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="text-[10px] text-[var(--ui-text-muted)] hover:text-amber-600 dark:hover:text-amber-400 flex items-center gap-0.5 shrink-0"
-                  @click.stop
-                >
-                  Verify in Xero
-                  <UIcon name="i-lucide-external-link" class="h-3 w-3" />
-                </a>
+                <UTooltip text="Verify in Xero">
+                  <a
+                    href="https://go.xero.com/AccountsReceivable/Search.aspx?invoiceStatuses=AUTHORISED"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-[var(--ui-text-muted)] hover:text-amber-600 dark:hover:text-amber-400 shrink-0"
+                    @click.stop
+                  >
+                    <UIcon name="i-lucide-external-link" class="h-3.5 w-3.5" />
+                  </a>
+                </UTooltip>
               </div>
             </UCard>
           </button>
@@ -832,16 +835,17 @@ const agingSections = [
               </div>
               <div class="mt-2 flex items-center justify-between gap-2">
                 <p class="text-xs text-[var(--ui-text-muted)]">{{ summary?.paidLast30Count || 0 }} invoices closed recently</p>
-                <a
-                  href="https://go.xero.com/AccountsReceivable/Search.aspx?invoiceStatuses=PAID"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="text-[10px] text-[var(--ui-text-muted)] hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center gap-0.5 shrink-0"
-                  @click.stop
-                >
-                  Verify in Xero
-                  <UIcon name="i-lucide-external-link" class="h-3 w-3" />
-                </a>
+                <UTooltip text="Verify in Xero">
+                  <a
+                    href="https://go.xero.com/AccountsReceivable/Search.aspx?invoiceStatuses=PAID"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-[var(--ui-text-muted)] hover:text-emerald-600 dark:hover:text-emerald-400 shrink-0"
+                    @click.stop
+                  >
+                    <UIcon name="i-lucide-external-link" class="h-3.5 w-3.5" />
+                  </a>
+                </UTooltip>
               </div>
             </UCard>
           </button>
