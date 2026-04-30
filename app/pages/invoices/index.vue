@@ -252,6 +252,67 @@ async function copyPayLink(invoiceId?: string) {
   }
 }
 
+// Bulk send dunning reminders — kicks off /bulk-reminder with the
+// supplied invoice IDs, surfaces a tally toast on completion. Server
+// dedups silently (skipped reasons returned per-invoice).
+const bulkReminderPending = ref(false)
+async function sendBulkReminders(invoiceIds: string[]) {
+  if (!invoiceIds.length) return
+  if (typeof window !== 'undefined' && !window.confirm(`Send a reminder email to ${invoiceIds.length} customer${invoiceIds.length === 1 ? '' : 's'}? Recently-reminded invoices will be skipped.`)) return
+  bulkReminderPending.value = true
+  try {
+    const res = await $fetch<{ ok: true; tally: { sent: number; skipped: number; failed: number }; results: Array<{ invoiceId: string; status: string; reason?: string }> }>(
+      '/api/xero/invoices/bulk-reminder',
+      { method: 'POST', body: { invoiceIds } }
+    )
+    const parts: string[] = []
+    if (res.tally.sent) parts.push(`${res.tally.sent} sent`)
+    if (res.tally.skipped) parts.push(`${res.tally.skipped} skipped`)
+    if (res.tally.failed) parts.push(`${res.tally.failed} failed`)
+    toast.add({
+      title: 'Bulk reminders complete',
+      description: parts.join(' · ') || 'Nothing to do',
+      color: res.tally.failed > 0 ? 'warning' : 'success',
+    })
+    await refresh()
+  } catch (err: any) {
+    toast.add({
+      title: 'Bulk reminder failed',
+      description: err?.statusMessage || err?.data?.statusMessage || err?.message || 'Try again in a moment.',
+      color: 'error',
+    })
+  } finally {
+    bulkReminderPending.value = false
+  }
+}
+
+function daysSince(iso?: string | null): number | null {
+  if (!iso) return null
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return null
+  return Math.max(0, Math.floor((Date.now() - t) / 86400000))
+}
+
+// Surface lastReminderAt for the currently-open invoice in the slideover.
+// The single-invoice detail endpoint doesn't include reminder history,
+// but the list response does — look it up there by id.
+const lastReminderForOpenInvoice = computed<string | null>(() => {
+  const id = (invoiceDetail.value as any)?.id
+  if (!id) return null
+  const lists = [
+    (data.value as any)?.outstanding,
+    (data.value as any)?.overdue,
+    (data.value as any)?.paid,
+    (data.value as any)?.all,
+  ]
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue
+    const hit = list.find((inv: any) => inv?.id === id)
+    if (hit?.lastReminderAt) return hit.lastReminderAt
+  }
+  return null
+})
+
 // Send dunning reminder — fires the email to the contact on file with
 // a one-click pay link. Server enforces a 3-day dedup guard (returns
 // 409 "lastSentAt"); we surface a confirm modal in that case.
@@ -747,13 +808,25 @@ const agingSections = [
         <!-- Invoice Table (primary content) -->
         <UCard>
           <template #header>
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
               <h3 class="text-base font-semibold text-[var(--ui-text-highlighted)]">
                 {{ selectedView === 'all' ? 'All Invoices' : selectedView === 'outstanding' ? 'Outstanding Invoices' : selectedView === 'overdue' ? 'Overdue Invoices' : 'Paid Invoices' }}
               </h3>
-              <UBadge v-if="selectedView === 'paid' && summary?.avgDaysToPay" color="neutral" variant="subtle">
-                Avg days to pay: {{ summary?.avgDaysToPay }}
-              </UBadge>
+              <div class="flex items-center gap-2">
+                <UBadge v-if="selectedView === 'paid' && summary?.avgDaysToPay" color="neutral" variant="subtle">
+                  Avg days to pay: {{ summary?.avgDaysToPay }}
+                </UBadge>
+                <UButton
+                  v-if="selectedView === 'overdue' && filteredOverdue.length > 0"
+                  size="xs"
+                  color="primary"
+                  icon="i-lucide-send"
+                  :loading="bulkReminderPending"
+                  @click="sendBulkReminders(filteredOverdue.map((i: any) => i.id))"
+                >
+                  Send reminders to {{ filteredOverdue.length }} overdue
+                </UButton>
+              </div>
             </div>
           </template>
 
@@ -1265,6 +1338,15 @@ const agingSections = [
                 <span class="font-medium text-[var(--ui-text-highlighted)]">{{ formatDate((invoiceDetail as any).updatedDate) }}</span>
               </div>
             </UTooltip>
+            <div
+              v-if="lastReminderForOpenInvoice"
+              class="col-span-2 flex justify-between"
+            >
+              <span class="text-[var(--ui-text-muted)]">Last reminder sent</span>
+              <span class="font-medium text-amber-600 dark:text-amber-400">
+                {{ daysSince(lastReminderForOpenInvoice) }}d ago
+              </span>
+            </div>
             <div
               v-if="(invoiceDetail as any).status === 'AUTHORISED' && (invoiceDetail as any).dueDate"
               class="col-span-2"

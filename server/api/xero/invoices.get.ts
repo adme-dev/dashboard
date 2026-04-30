@@ -5,6 +5,7 @@ import { getSelectedTenant } from '../../utils/session'
 import { cachedFetch } from '../../utils/kv'
 import { dedupedXeroCall } from '../../utils/xeroRateLimit'
 import { ensureDateString } from '../../utils/xeroDataFetcher'
+import { queryRows } from '../../utils/db'
 
 export default eventHandler(async (event) => {
   const token = await getActiveTokenForSession(event)
@@ -411,6 +412,41 @@ export default eventHandler(async (event) => {
       overdue60: overdue.filter((inv) => inv.agingBucket === 'overdue60')
     }
 
+    // Reminder history — annotate each invoice with the most-recent
+    // dunning email we've sent for it (if any). One indexed query, fast.
+    const allInvoiceIds = [
+      ...outstanding,
+      ...overdue,
+      ...paidDetailed,
+    ].map((i: any) => i.id).filter(Boolean)
+
+    const remindersById = new Map<string, string>()
+    if (allInvoiceIds.length) {
+      try {
+        const rows = await queryRows<{ invoice_id: string; last_sent: string }>(
+          `SELECT invoice_id, MAX(sent_at)::text AS last_sent
+           FROM invoice_reminders
+           WHERE invoice_id = ANY($1::text[]) AND status = 'sent'
+           GROUP BY invoice_id`,
+          [allInvoiceIds]
+        )
+        for (const r of rows) remindersById.set(r.invoice_id, r.last_sent)
+      } catch (err) {
+        // Non-fatal — reminder badges just won't appear if the table
+        // hasn't migrated yet or DB is briefly down.
+        console.warn('[invoices] could not load reminder history:', (err as any)?.message)
+      }
+    }
+    const annotate = (arr: any[]) => arr.map((inv) => ({
+      ...inv,
+      lastReminderAt: remindersById.get(inv.id) || null,
+    }))
+    const outstandingAnnotated = annotate(outstanding)
+    const overdueAnnotated = annotate(overdue)
+    const paidAnnotated = annotate(paidDetailed)
+    const paidRecentAnnotated = annotate(paidLast30)
+    const allAnnotated = annotate(allInvoices)
+
     return {
       summary: {
         outstandingTotal,
@@ -433,11 +469,11 @@ export default eventHandler(async (event) => {
         agingDetails,
         truncated
       },
-      outstanding,
-      overdue,
-      paid: paidDetailed,
-      paidRecent: paidLast30,
-      all: allInvoices
+      outstanding: outstandingAnnotated,
+      overdue: overdueAnnotated,
+      paid: paidAnnotated,
+      paidRecent: paidRecentAnnotated,
+      all: allAnnotated
     }
   })
 })
