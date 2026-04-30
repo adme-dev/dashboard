@@ -752,7 +752,7 @@ const agingSections = [
               <div class="mt-2 flex items-center justify-between gap-2">
                 <p class="text-xs text-[var(--ui-text-muted)]">{{ summary?.outstandingCount || 0 }} invoices with open balances</p>
                 <a
-                  href="https://go.xero.com/Reports/AgedReceivablesSummary"
+                  href="https://go.xero.com/AccountsReceivable/Search.aspx?invoiceStatuses=AUTHORISED"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="text-[10px] text-[var(--ui-text-muted)] hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-0.5 shrink-0"
@@ -779,7 +779,7 @@ const agingSections = [
               <div class="mt-2 flex items-center justify-between gap-2">
                 <p class="text-xs text-[var(--ui-text-muted)]">{{ summary?.overdueCount || 0 }} invoices past due</p>
                 <a
-                  href="https://go.xero.com/Reports/AgedReceivablesSummary"
+                  href="https://go.xero.com/AccountsReceivable/Search.aspx?invoiceStatuses=AUTHORISED"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="text-[10px] text-[var(--ui-text-muted)] hover:text-red-600 dark:hover:text-red-400 flex items-center gap-0.5 shrink-0"
