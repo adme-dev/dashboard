@@ -72,3 +72,16 @@ script_name = "banner-rooms-worker"
 
 # Environment-specific variables are managed in the Cloudflare Pages dashboard
 # (Settings > Variables and Secrets) for preview and production environments.
+
+# ============================================
+# Scheduled Triggers
+# ============================================
+
+# Anomaly detection runs hourly; the handler at /api/cron/anomaly-detection
+# self-gates to actually execute only at 7am tenant-local time. Configure
+# the cron trigger via the Cloudflare dashboard (Workers & Pages → this
+# project → Settings → Triggers → Cron) to hit POST /api/cron/anomaly-detection
+# with header `x-cron-secret: <CRON_SECRET>` on this schedule:
+#   0 * * * *      (top of every hour)
+[triggers]
+crons = ["0 * * * *"]
