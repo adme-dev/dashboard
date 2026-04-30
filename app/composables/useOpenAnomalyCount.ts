@@ -10,6 +10,13 @@
  *   - visibilitychange (tab focus returning)
  *   - Manual refresh() after a status mutation on the page
  */
+
+// Module-scope so multiple composable callers share the same registration.
+// Without this, each useOpenAnomalyCount() call would attach another listener
+// (the layout calls it, then the page calls it, etc.) and they'd accumulate
+// across navigation.
+let visListenerInstalled = false
+
 export function useOpenAnomalyCount() {
   const count = useState<number>('open-anomaly-count', () => 0)
 
@@ -23,7 +30,6 @@ export function useOpenAnomalyCount() {
     }
   }
 
-  let visListenerInstalled = false
   if (import.meta.client) {
     onMounted(() => {
       refresh()

@@ -187,20 +187,26 @@ function drillDownLink(): string | null {
     const cat = ctx?.category
     return cat ? `/expenses?category=${encodeURIComponent(cat)}` : '/expenses'
   }
-  if (fp.startsWith('clients:scope-creep-') || fp.startsWith('clients:concentration-')) {
-    const id = fp.split('-').slice(1).join('-')
-    return id ? `/clients/${id}` : '/clients'
+  if (fp.startsWith('clients:scope-creep-')) {
+    const id = fp.slice('clients:scope-creep-'.length)
+    return id ? `/clients/${encodeURIComponent(id)}` : '/clients'
+  }
+  if (fp.startsWith('clients:concentration-')) {
+    const id = fp.slice('clients:concentration-'.length)
+    return id ? `/clients/${encodeURIComponent(id)}` : '/clients'
   }
   if (fp.startsWith('adspend:spike-')) {
-    // fingerprint shape: adspend:spike-{clientId}-{platform}-{date}
-    const rest = fp.replace('adspend:spike-', '')
+    // Fingerprint shape: 'adspend:spike-{clientId}-{platform}-{date}', BUT
+    // the platform 'google_ads' is slugified to 'google-ads' so it can span
+    // multiple dash-separated chunks. We extract the UUID (first 5 chunks)
+    // and the date (last 3 chunks YYYY-MM-DD), and platform = whatever's
+    // between them.
+    const rest = fp.slice('adspend:spike-'.length)
     const parts = rest.split('-')
-    // clientId is the first uuid segment (5 dash-separated chunks); extract heuristically
-    if (parts.length >= 7) {
-      // UUID = parts[0..4], platform = parts[5], date = parts[6..]
+    if (parts.length >= 9) { // 5 UUID + ≥1 platform + 3 date
       const clientId = parts.slice(0, 5).join('-')
-      const platform = parts[5]
-      return `/agency/social/spend?client=${clientId}&platform=${platform}`
+      const platform = parts.slice(5, parts.length - 3).join('-')
+      return `/agency/social/spend?client=${encodeURIComponent(clientId)}&platform=${encodeURIComponent(platform)}`
     }
     return '/agency/social/spend'
   }
