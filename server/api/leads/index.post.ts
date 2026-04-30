@@ -3,9 +3,10 @@
 
 import { z } from 'zod'
 import { requireAuth } from '~~/server/utils/auth'
-import { insertLeadWithDedup } from '~~/server/utils/leads/db'
+import { insertLeadWithDedup, loadLead } from '~~/server/utils/leads/db'
 import { normalizeManualPayload } from '~~/server/utils/leads/normalizer'
 import { resolveAssignedAm } from '~~/server/utils/leads/autoAssign'
+import { notifyOnNewLead } from '~~/server/utils/leads/notifyOnNew'
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -29,5 +30,9 @@ export default defineEventHandler(async (event) => {
   })
   norm.assigned_to = await resolveAssignedAm(parsed.data.client_id)
   const id = await insertLeadWithDedup(norm)
+  if (id) {
+    const fresh = await loadLead(id)
+    if (fresh) await notifyOnNewLead(fresh)
+  }
   return { ok: true, lead_id: id }
 })

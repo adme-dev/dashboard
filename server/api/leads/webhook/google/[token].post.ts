@@ -1,12 +1,13 @@
 // server/api/leads/webhook/google/[token].post.ts
 import { queryOne } from '~~/server/utils/db'
 import {
-  insertLeadWithDedup, upsertFormMetadata, logIngestionError,
+  insertLeadWithDedup, upsertFormMetadata, logIngestionError, loadLead,
 } from '~~/server/utils/leads/db'
 import { normalizeGooglePayload } from '~~/server/utils/leads/normalizer'
 import { resolveAssignedAm } from '~~/server/utils/leads/autoAssign'
 import { allowRequest } from '~~/server/utils/leads/rateLimit'
 import { enqueueLeadJob } from '~~/server/utils/leads/queue'
+import { notifyOnNewLead } from '~~/server/utils/leads/notifyOnNew'
 import { timingSafeEqual } from 'node:crypto'
 
 function safeEqual(a: string, b: string): boolean {
@@ -64,6 +65,8 @@ export default defineEventHandler(async (event) => {
     }
     if (!leadId) return { ok: true, skipped: true }
     await enqueueLeadJob({ type: 'rules.evaluate', payload: { lead_id: leadId } })
+    const fresh = await loadLead(leadId)
+    if (fresh) await notifyOnNewLead(fresh)
     return { ok: true, lead_id: leadId }
   } catch (e: any) {
     await logIngestionError('google', body, getRequestHeaders(event), e?.message ?? String(e))
