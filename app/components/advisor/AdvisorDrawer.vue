@@ -73,6 +73,17 @@ type GraphNode = {
 }
 type GraphData = { nodes: GraphNode[]; edges: Array<{ from: string; to: string; type: string; label?: string }> }
 
+type Comment = {
+  id: string
+  recommendation_id: string
+  author_id: string | null
+  author_name: string | null
+  author_avatar_url: string | null
+  body: string
+  created_at: string
+  updated_at: string
+}
+
 const props = defineProps<{
   open: boolean
   loading: boolean
@@ -82,6 +93,9 @@ const props = defineProps<{
   similar: SimilarMatch[]
   graph: GraphData | null
   teamMembers: Array<{ id: string; name: string; avatar_url?: string | null }>
+  comments: Comment[]
+  currentUserId: string | null
+  canPrivilegedEdit: boolean
 }>()
 
 const emit = defineEmits<{
@@ -89,6 +103,7 @@ const emit = defineEmits<{
   (e: 'patch', patch: Partial<Recommendation>): void
   (e: 'open-similar', rec: Recommendation): void
   (e: 'graph-select', node: GraphNode): void
+  (e: 'comments-changed'): void
 }>()
 
 // ── Formatters ──────────────────────────────────────────────────────
@@ -333,6 +348,15 @@ function setOpen(v: boolean) {
               >Save notes</UButton>
             </div>
           </div>
+
+          <!-- Discussion -->
+          <AdvisorDrawerComments
+            :recommendation-id="rec.id"
+            :comments="comments"
+            :current-user-id="currentUserId"
+            :can-privileged-edit="canPrivilegedEdit"
+            @changed="emit('comments-changed')"
+          />
 
           <!-- Relationship graph -->
           <div v-if="graph && graph.nodes.length > 1">
