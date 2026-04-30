@@ -241,6 +241,38 @@ export default eventHandler(async (event) => {
       .sort((a, b) => b.avgDaysToPay - a.avgDaysToPay)
       .slice(0, 8)
 
+    // Cash collection forecast — projects expected cash inflow from
+    // every open invoice, bucketed by due date relative to today.
+    // "Overdue" amounts assumed collectible ASAP (chase priority);
+    // future buckets give the agency owner a 30-day cash visibility.
+    const forecastBuckets = [
+      { key: 'overdue', label: 'Overdue (chase now)', daysMin: -Infinity, daysMax: -1, total: 0, count: 0 },
+      { key: 'thisWeek', label: 'This week (0-7d)', daysMin: 0, daysMax: 7, total: 0, count: 0 },
+      { key: 'nextWeek', label: 'Next week (8-14d)', daysMin: 8, daysMax: 14, total: 0, count: 0 },
+      { key: 'rest30', label: 'Rest of 30 days (15-30d)', daysMin: 15, daysMax: 30, total: 0, count: 0 },
+      { key: 'beyond', label: 'Beyond 30 days', daysMin: 31, daysMax: Infinity, total: 0, count: 0 },
+    ]
+    for (const inv of openInvoices) {
+      if (typeof inv.daysUntilDue !== 'number') continue
+      const days = inv.daysUntilDue
+      const bucket = forecastBuckets.find((b) => days >= b.daysMin && days <= b.daysMax)
+      if (bucket) {
+        bucket.total += Number(inv.amountDue) || 0
+        bucket.count += 1
+      }
+    }
+    const cashForecast = {
+      buckets: forecastBuckets.map((b) => ({ key: b.key, label: b.label, total: Math.round(b.total), count: b.count })),
+      next30Total: Math.round(
+        forecastBuckets
+          .filter((b) => b.key === 'thisWeek' || b.key === 'nextWeek' || b.key === 'rest30')
+          .reduce((s, b) => s + b.total, 0)
+      ),
+      next30Count: forecastBuckets
+        .filter((b) => b.key === 'thisWeek' || b.key === 'nextWeek' || b.key === 'rest30')
+        .reduce((s, b) => s + b.count, 0),
+    }
+
     const avgDaysToPay = (() => {
       const values = paidDetailed
         .map((inv: any) => inv.daysToPay)
@@ -319,6 +351,7 @@ export default eventHandler(async (event) => {
         avgDaysToPay,
         topCustomers,
         latePayers,
+        cashForecast,
         agingBuckets,
         agingDetails
       },

@@ -573,6 +573,57 @@ const agingSections = [
           </div>
         </UCard>
 
+        <!-- Cash collection forecast — projected inflows from open AR. -->
+        <UCard v-if="((summary as any)?.cashForecast?.buckets || []).some((b: any) => b.count > 0)">
+          <template #header>
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <UTooltip text="Projected cash inflow from every open invoice, bucketed by due date. Overdue amounts are assumed collectible ASAP. Does not factor in customer payment-on-time history.">
+                <h3 class="text-base font-semibold text-[var(--ui-text-highlighted)] flex items-center gap-1">
+                  Cash Collection Forecast
+                  <UIcon name="i-lucide-info" class="h-4 w-4 text-[var(--ui-text-muted)]" />
+                </h3>
+              </UTooltip>
+              <div class="flex items-center gap-2 text-xs">
+                <span class="text-[var(--ui-text-muted)]">Next 30 days expected:</span>
+                <span class="font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.cashForecast?.next30Total) }}</span>
+                <span class="text-[var(--ui-text-muted)]">·</span>
+                <span class="text-[var(--ui-text-muted)]">{{ (summary as any)?.cashForecast?.next30Count }} invoice{{ ((summary as any)?.cashForecast?.next30Count ?? 0) === 1 ? '' : 's' }}</span>
+              </div>
+            </div>
+          </template>
+          <div class="space-y-2">
+            <template v-for="bucket in (summary as any)?.cashForecast?.buckets ?? []" :key="bucket.key">
+              <div v-if="bucket.count > 0" class="flex items-center gap-3">
+                <div class="w-44 shrink-0">
+                  <p
+                    class="text-sm font-medium"
+                    :class="bucket.key === 'overdue' ? 'text-red-600 dark:text-red-400' : 'text-[var(--ui-text-highlighted)]'"
+                  >
+                    {{ bucket.label }}
+                  </p>
+                  <p class="text-[11px] text-[var(--ui-text-muted)]">{{ bucket.count }} invoice{{ bucket.count === 1 ? '' : 's' }}</p>
+                </div>
+                <div class="flex-1 h-6 rounded-md bg-[var(--ui-bg-elevated)] overflow-hidden relative">
+                  <div
+                    class="h-full"
+                    :class="{
+                      'bg-red-500/70 dark:bg-red-500/40': bucket.key === 'overdue',
+                      'bg-amber-500/70 dark:bg-amber-500/40': bucket.key === 'thisWeek',
+                      'bg-amber-400/60 dark:bg-amber-400/30': bucket.key === 'nextWeek',
+                      'bg-emerald-500/70 dark:bg-emerald-500/40': bucket.key === 'rest30',
+                      'bg-blue-400/60 dark:bg-blue-400/30': bucket.key === 'beyond',
+                    }"
+                    :style="{ width: `${Math.max(2, ((bucket.total / Math.max(...((summary as any)?.cashForecast?.buckets ?? []).map((b: any) => b.total))) * 100) || 0)}%` }"
+                  ></div>
+                </div>
+                <div class="w-32 text-right shrink-0">
+                  <p class="text-sm font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency(bucket.total) }}</p>
+                </div>
+              </div>
+            </template>
+          </div>
+        </UCard>
+
         <!-- Invoice Table (primary content) -->
         <UCard>
           <template #header>
