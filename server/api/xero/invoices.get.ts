@@ -290,7 +290,7 @@ export default eventHandler(async (event) => {
       return Math.round(values.reduce((sum: number, n: number) => sum + n, 0) / values.length)
     })()
 
-    const topCustomers = (() => {
+    const allTopCustomers = (() => {
       const map = new Map<string, { name: string; outstanding: number; overdue: number; count: number }>()
       const push = (inv: any, listType: 'outstanding' | 'overdue') => {
         const key = inv.contact || 'Unknown'
@@ -312,8 +312,40 @@ export default eventHandler(async (event) => {
       return Array.from(map.values())
         .filter((entry) => entry.outstanding > 0)
         .sort((a, b) => b.outstanding - a.outstanding)
-        .slice(0, 8)
     })()
+
+    // Customer concentration risk — what fraction of AR sits with the
+    // top-1 / top-3 / top-5 clients. The agency-owner question: "if my
+    // biggest client doesn't pay this month, how big is the hole?"
+    // Risk level uses standard finance heuristics:
+    //   top1 >30%  OR top3 >60% → high
+    //   top1 >20%  OR top3 >45% → moderate
+    //   else                    → low
+    const concentration = (() => {
+      const total = outstandingTotal
+      const sumTopN = (n: number) => allTopCustomers.slice(0, n).reduce((s, c) => s + c.outstanding, 0)
+      const pct = (n: number) => total > 0 ? Math.round((sumTopN(n) / total) * 1000) / 10 : 0
+      const top1Pct = pct(1)
+      const top3Pct = pct(3)
+      const top5Pct = pct(5)
+      const top1Name = allTopCustomers[0]?.name ?? null
+      let riskLevel: 'low' | 'moderate' | 'high' = 'low'
+      if (top1Pct > 30 || top3Pct > 60) riskLevel = 'high'
+      else if (top1Pct > 20 || top3Pct > 45) riskLevel = 'moderate'
+      return {
+        top1Pct,
+        top3Pct,
+        top5Pct,
+        top1Name,
+        customerCount: allTopCustomers.length,
+        riskLevel,
+      }
+    })()
+
+    const topCustomers = allTopCustomers.slice(0, 8).map((c) => ({
+      ...c,
+      pctOfAr: outstandingTotal > 0 ? Math.round((c.outstanding / outstandingTotal) * 1000) / 10 : 0,
+    }))
 
     const allInvoices = [
       ...outstanding,
@@ -359,6 +391,7 @@ export default eventHandler(async (event) => {
         paidLast30Count: paidLast30.length,
         avgDaysToPay,
         topCustomers,
+        concentration,
         latePayers,
         cashForecast,
         agingBuckets,

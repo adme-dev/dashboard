@@ -828,6 +828,41 @@ const agingSections = [
                 <h3 class="text-base font-semibold text-[var(--ui-text-highlighted)]">Top Outstanding</h3>
                 <UBadge v-if="topCustomers.length" color="neutral" variant="subtle">{{ topCustomers.length }}</UBadge>
               </div>
+              <!-- Customer concentration risk indicator -->
+              <div v-if="(summary as any)?.concentration?.customerCount" class="mt-3 p-2.5 rounded-md bg-[var(--ui-bg-elevated)] border border-[var(--ui-border)]">
+                <div class="flex items-center justify-between mb-1.5">
+                  <UTooltip text="What share of total open AR sits with your biggest 1, 3, 5 clients. High concentration = if your top client doesn't pay, the hole is huge.">
+                    <p class="text-[10px] uppercase tracking-wide text-[var(--ui-text-muted)] flex items-center gap-1 font-semibold">
+                      Concentration
+                      <UIcon name="i-lucide-info" class="h-3 w-3" />
+                    </p>
+                  </UTooltip>
+                  <UBadge
+                    size="sm"
+                    :color="(summary as any).concentration.riskLevel === 'high' ? 'error' : (summary as any).concentration.riskLevel === 'moderate' ? 'warning' : 'success'"
+                    variant="subtle"
+                  >
+                    {{ (summary as any).concentration.riskLevel === 'high' ? 'High risk' : (summary as any).concentration.riskLevel === 'moderate' ? 'Moderate' : 'Low risk' }}
+                  </UBadge>
+                </div>
+                <div class="grid grid-cols-3 gap-1.5 text-center">
+                  <div>
+                    <p class="text-[10px] text-[var(--ui-text-muted)]">Top 1</p>
+                    <p class="text-sm font-semibold text-[var(--ui-text-highlighted)]">{{ (summary as any).concentration.top1Pct }}%</p>
+                  </div>
+                  <div>
+                    <p class="text-[10px] text-[var(--ui-text-muted)]">Top 3</p>
+                    <p class="text-sm font-semibold text-[var(--ui-text-highlighted)]">{{ (summary as any).concentration.top3Pct }}%</p>
+                  </div>
+                  <div>
+                    <p class="text-[10px] text-[var(--ui-text-muted)]">Top 5</p>
+                    <p class="text-sm font-semibold text-[var(--ui-text-highlighted)]">{{ (summary as any).concentration.top5Pct }}%</p>
+                  </div>
+                </div>
+                <p class="text-[10px] text-[var(--ui-text-muted)] mt-1.5 text-center">
+                  Across {{ (summary as any).concentration.customerCount }} client{{ (summary as any).concentration.customerCount === 1 ? '' : 's' }}
+                </p>
+              </div>
             </template>
             <div class="space-y-3">
               <button
@@ -843,7 +878,10 @@ const agingSections = [
                 </div>
                 <div class="flex items-center justify-between text-sm mt-1">
                   <span class="text-[var(--ui-text-muted)]">Outstanding</span>
-                  <span class="font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency(client.outstanding) }}</span>
+                  <div class="flex items-center gap-2">
+                    <span v-if="client.pctOfAr" class="text-[10px] text-[var(--ui-text-muted)]">{{ client.pctOfAr }}% of AR</span>
+                    <span class="font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency(client.outstanding) }}</span>
+                  </div>
                 </div>
                 <div v-if="client.overdue" class="flex items-center justify-between text-xs text-red-500 dark:text-red-400">
                   <span>Overdue</span>
