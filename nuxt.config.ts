@@ -126,7 +126,15 @@ export default defineNuxtConfig({
     },
     rollupConfig: {
       external: ['@react-email/render', '@cloudflare/puppeteer', 'puppeteer', 'gifenc', 'pngjs', 'pg-native']
-    }
+    },
+    scheduledTasks: {
+      // Every 5 minutes — stuck-claim recovery
+      '*/5 * * * *': ['leads:recover-claims'],
+      // Daily 03:10 UTC — ingestion-error purge
+      '10 3 * * *': ['leads:purge-ingestion-errors'],
+      // Daily 03:30 UTC — retention purge
+      '30 3 * * *': ['leads:purge-retention'],
+    },
   },
 
   devtools: {
