@@ -30,8 +30,11 @@ function filterFindingsForRole(
   switch (role) {
     case 'owner':
     case 'admin':
-      // Owners/admins see everything
-      filtered = allResults
+      // Owners/admins see financial anomalies + ad spend + EOM + key task signals
+      filtered = allResults.filter(r =>
+        ['financial_anomalies', 'ad_spend_anomalies', 'eom_status',
+         'overdue_tasks', 'deadline_risks', 'blocked_items'].includes(r.type)
+      )
       break
 
     case 'project_manager':
@@ -53,9 +56,9 @@ function filterFindingsForRole(
 
     case 'finance':
     case 'accountant':
-      // Finance sees EOM + ad spend
+      // Finance sees financial anomalies + EOM + ad spend
       filtered = allResults.filter(r =>
-        ['eom_status', 'ad_spend_anomalies'].includes(r.type)
+        ['financial_anomalies', 'ad_spend_anomalies', 'eom_status'].includes(r.type)
       )
       break
 
@@ -118,6 +121,7 @@ function formatAnalysisType(type: string): string {
     blocked_items: 'Blocked Items',
     deadline_risks: 'Deadline Risks',
     ad_spend_anomalies: 'Ad Spend Anomalies',
+    financial_anomalies: 'Financial Anomalies',
     eom_status: 'EOM Status',
     team_workload: 'Team Workload',
     unassigned_work: 'Unassigned Work'

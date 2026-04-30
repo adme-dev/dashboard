@@ -184,6 +184,39 @@ export async function analyzeAdSpendAnomalies(orgId?: string): Promise<AnalysisR
 }
 
 /**
+ * Returns active financial anomalies (everything except ad-spend, which has
+ * its own slot via analyzeAdSpendAnomalies). Reads from the persisted
+ * anomalies table — see server/utils/anomalyDetection/.
+ */
+export async function analyzeFinancialAnomalies(orgId?: string): Promise<AnalysisResult> {
+  const rows = await queryRows<{
+    id: string
+    title: string
+    description: string
+    severity: string
+    type: string
+    fingerprint: string
+  }>(
+    `SELECT id, title, description, severity, type, fingerprint
+     FROM anomalies
+     WHERE type IN ('profitability','revenue','expenses','cashflow','receivables','budget','clients','transactions')
+       AND status NOT IN ('resolved','dismissed')
+     ORDER BY (severity = 'critical') DESC, first_detected_at DESC
+     LIMIT 30`,
+  )
+
+  const findings: AnalysisFinding[] = rows.map(row => ({
+    severity: row.severity as AnalysisFinding['severity'],
+    title: row.title,
+    description: row.description,
+    entityId: row.id,
+    entityUrl: `/anomalies?focus=${row.id}`,
+  }))
+
+  return { type: 'financial_anomalies', findings, count: findings.length }
+}
+
+/**
  * EOM runs with draft/review status approaching month end
  */
 export async function analyzeEomStatus(orgId?: string): Promise<AnalysisResult> {
@@ -305,7 +338,7 @@ export async function analyzeTimesheetGaps(orgId?: string): Promise<AnalysisResu
 }
 
 /**
- * Run all 9 analyzers in parallel with error resilience
+ * Run all 10 analyzers in parallel with error resilience
  */
 export async function runAllAnalyzers(orgId?: string): Promise<AnalysisResult[]> {
   const results = await Promise.allSettled([
@@ -314,6 +347,7 @@ export async function runAllAnalyzers(orgId?: string): Promise<AnalysisResult[]>
     analyzeBlockedItems(orgId),
     analyzeDeadlineRisks(orgId),
     analyzeAdSpendAnomalies(orgId),
+    analyzeFinancialAnomalies(orgId),
     analyzeEomStatus(orgId),
     analyzeTeamWorkload(orgId),
     analyzeUnassignedWork(orgId),
