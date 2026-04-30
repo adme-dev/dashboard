@@ -252,6 +252,43 @@ async function copyPayLink(invoiceId?: string) {
   }
 }
 
+// Send dunning reminder — fires the email to the contact on file with
+// a one-click pay link. Server enforces a 3-day dedup guard (returns
+// 409 "lastSentAt"); we surface a confirm modal in that case.
+const reminderPending = ref<string | null>(null)
+async function sendReminder(invoiceId?: string, force = false) {
+  if (!invoiceId) return
+  reminderPending.value = invoiceId
+  try {
+    const res = await $fetch<{ ok: true; sentTo: string; daysOverdue: number }>(
+      `/api/xero/invoices/${invoiceId}/send-reminder`,
+      { method: 'POST', body: { force } }
+    )
+    toast.add({
+      title: 'Reminder sent',
+      description: `${res.sentTo}${res.daysOverdue > 0 ? ` · ${res.daysOverdue}d overdue` : ''}`,
+      color: 'success',
+    })
+  } catch (err: any) {
+    if (err?.statusCode === 409) {
+      // Recently sent — ask the user if they want to send again.
+      const lastSent = err?.data?.data?.lastSentAt || err?.data?.lastSentAt
+      const lastSentLabel = lastSent ? new Date(lastSent).toLocaleString() : 'recently'
+      if (typeof window !== 'undefined' && window.confirm(`A reminder was already sent on ${lastSentLabel}. Send another anyway?`)) {
+        await sendReminder(invoiceId, true)
+      }
+    } else {
+      toast.add({
+        title: 'Could not send reminder',
+        description: err?.statusMessage || err?.data?.statusMessage || err?.message || 'Try again in a moment.',
+        color: 'error',
+      })
+    }
+  } finally {
+    reminderPending.value = null
+  }
+}
+
 function statusColor(status?: string): 'success' | 'error' | 'warning' | 'neutral' {
   if (!status) return 'neutral'
   const s = status.toUpperCase()
@@ -1152,6 +1189,16 @@ const agingSections = [
         label="Copy pay link"
         :loading="payLinkPending === (invoiceDetail as any)?.id"
         @click="copyPayLink((invoiceDetail as any)?.id)"
+      />
+      <UButton
+        v-if="!detailPending && invoiceDetail && ((invoiceDetail as any)?.amountDue || 0) > 0"
+        size="xs"
+        variant="solid"
+        color="primary"
+        icon="i-lucide-send"
+        label="Send reminder"
+        :loading="reminderPending === (invoiceDetail as any)?.id"
+        @click="sendReminder((invoiceDetail as any)?.id)"
       />
       <NuxtLink
         v-if="!detailPending && (invoiceDetail as any)?.url"
