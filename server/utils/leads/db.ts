@@ -94,12 +94,19 @@ export async function upsertFormMetadata(
     ON CONFLICT (source, form_id) DO UPDATE SET
       form_name = COALESCE(EXCLUDED.form_name, lead_form_metadata.form_name),
       last_lead_at = EXCLUDED.last_lead_at,
+      -- Dedup by key, keep earliest first_seen_at. (jsonb_agg(DISTINCT f) was
+      -- broken because each new entry's first_seen_at made every row unique.)
       fields = (
-        SELECT jsonb_agg(DISTINCT f) FROM (
-          SELECT jsonb_array_elements(lead_form_metadata.fields) AS f
-          UNION
-          SELECT jsonb_array_elements(EXCLUDED.fields) AS f
-        ) merged
+        SELECT jsonb_agg(winner ORDER BY (winner->>'key'))
+        FROM (
+          SELECT DISTINCT ON (f->>'key') f AS winner
+          FROM (
+            SELECT jsonb_array_elements(lead_form_metadata.fields) AS f
+            UNION ALL
+            SELECT jsonb_array_elements(EXCLUDED.fields) AS f
+          ) all_fields
+          ORDER BY (f->>'key'), (f->>'first_seen_at') ASC
+        ) deduped
       ),
       updated_at = NOW()
   `, [source, form_id, form_name, JSON.stringify(newFields)])
@@ -245,8 +252,8 @@ export async function recoverStuckClaims(staleMinutes = 5): Promise<number> {
   return execute(`
     UPDATE lead_deliveries
     SET status = 'pending', claimed_at = NULL, claimed_by = NULL, updated_at = NOW()
-    WHERE status = 'claimed' AND claimed_at < NOW() - ($1 || ' minutes')::interval
-  `, [String(staleMinutes)])
+    WHERE status = 'claimed' AND claimed_at < NOW() - MAKE_INTERVAL(mins => $1::int)
+  `, [staleMinutes])
 }
 
 // ----------------------------------------------------------------------------
