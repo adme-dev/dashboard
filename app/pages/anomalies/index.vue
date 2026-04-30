@@ -14,22 +14,40 @@ type AnomalyMetric = {
 
 type Anomaly = {
   id: string
+  tenant_id: string
+  fingerprint: string
   type: AnomalyType
   severity: AnomalySeverity
+  status: 'open' | 'acknowledged' | 'snoozed' | 'resolved' | 'dismissed'
   title: string
   description: string
-  metric?: AnomalyMetric
-  comparison?: (AnomalyMetric & { trend?: 'up' | 'down' }) | null
-  context?: {
-    period?: string | null
-    range?: { from?: string | null, to?: string | null } | null
-    category?: string | null
-    vendor?: string | null
+  recommendation: string | null
+  tags: string[] | null
+  data_sources: string[]
+  metric: AnomalyMetric | null
+  comparison: (AnomalyMetric & { trend?: 'up' | 'down' }) | null
+  context: {
+    period?: string
+    range?: { from?: string | null; to?: string | null }
+    category?: string
+    vendor?: string
+    client?: string
+    account?: string
   } | null
-  recommendation?: string | null
-  tags?: string[] | null
-  dataSources: string[]
-  detectedAt: string
+  group_key: string | null
+  driver_narrative: string | null
+  driver_narrative_at: string | null
+  first_detected_at: string
+  last_detected_at: string
+  resolved_at: string | null
+  snoozed_until: string | null
+  notification_sent_at: string | null
+  acknowledged_by: string | null
+  acknowledged_at: string | null
+  assignee_id: string | null
+  resolution_notes: string | null
+  created_at: string
+  updated_at: string
 }
 
 type AnomalySummary = {
@@ -38,13 +56,6 @@ type AnomalySummary = {
   byType?: Record<AnomalyType, number>
   generatedAt: string
 }
-
-const { data, pending, error, refresh } = await useFetch<{ summary: AnomalySummary, anomalies: Anomaly[] }>('/api/ai/anomalies', {
-  lazy: true
-})
-
-const anomalies = computed(() => data.value?.anomalies ?? [])
-const summary = computed(() => data.value?.summary ?? null)
 
 const severityMeta: Record<AnomalySeverity, { label: string, color: 'error' | 'warning' | 'info', icon: string }> = {
   critical: { label: 'Critical', color: 'error', icon: 'i-lucide-alert-octagon' },
@@ -107,6 +118,63 @@ type TypeFilterValue = typeof typeFilterOptions[number]['value']
 
 const activeSeverity = ref<SeverityFilterValue>('all')
 const activeType = ref<TypeFilterValue>('all')
+
+const filterParams = computed(() => {
+  const q: Record<string, string> = {}
+  if (activeSeverity.value !== 'all') q.severity = activeSeverity.value
+  if (activeType.value !== 'all') q.type = activeType.value
+  return q
+})
+
+const { data, pending, error, refresh } = await useFetch<{
+  summary: AnomalySummary
+  anomalies: Anomaly[]
+}>('/api/ai/anomalies', {
+  query: filterParams,
+  watch: [activeSeverity, activeType],
+  lazy: true,
+})
+
+const anomalies = computed(() => data.value?.anomalies ?? [])
+const summary = computed(() => data.value?.summary ?? null)
+
+const toast = useToast()
+const scanning = ref(false)
+
+async function runScan() {
+  scanning.value = true
+  try {
+    const result = await $fetch<{ tenantId: string; status: 'completed' | 'in_flight' | 'error'; error?: string }>(
+      '/api/ai/anomalies/scan',
+      { method: 'POST' }
+    )
+    if (result.status === 'in_flight') {
+      toast.add({ title: 'Scan in progress', description: 'Already running. Refreshing once it completes.', color: 'info' })
+      // Poll up to 60s.
+      for (let i = 0; i < 12; i++) {
+        await new Promise(r => setTimeout(r, 5000))
+        const probe = await $fetch<{ status: string }>(
+          '/api/ai/anomalies/scan',
+          { method: 'POST' },
+        )
+        if (probe.status === 'completed') {
+          await refresh()
+          toast.add({ title: 'Scan complete', color: 'success' })
+          break
+        }
+      }
+    } else if (result.status === 'completed') {
+      toast.add({ title: 'Scan complete', color: 'success' })
+      await refresh()
+    } else {
+      toast.add({ title: 'Scan failed', description: result.error ?? 'Unknown error', color: 'error' })
+    }
+  } catch (err: any) {
+    toast.add({ title: 'Scan failed', description: err.statusMessage || String(err), color: 'error' })
+  } finally {
+    scanning.value = false
+  }
+}
 
 const filteredAnomalies = computed(() => {
   return anomalies.value.filter((anomaly) => {
@@ -254,11 +322,12 @@ function openActionPlan(anomaly: Anomaly) {
 
         <template #right>
           <UButton
-            label="Refresh"
+            label="Run scan now"
             color="neutral"
-            icon="i-lucide-refresh-cw"
-            :loading="pending"
-            @click="() => refresh()"
+            icon="i-lucide-radar"
+            :loading="scanning || pending"
+            :disabled="scanning"
+            @click="runScan"
           />
         </template>
       </UDashboardNavbar>
@@ -270,20 +339,20 @@ function openActionPlan(anomaly: Anomaly) {
 
         <template #right>
           <div class="flex flex-wrap items-center gap-3">
-            <USelect
+            <USelectMenu
               v-model="activeType"
-              :options="typeFilterOptions"
-              option-attribute="label"
-              value-attribute="value"
+              :items="typeFilterOptions"
+              value-key="value"
               size="sm"
+              class="min-w-[180px]"
             />
 
-            <USelect
+            <USelectMenu
               v-model="activeSeverity"
-              :options="severityFilterOptions"
-              option-attribute="label"
-              value-attribute="value"
+              :items="severityFilterOptions"
+              value-key="value"
               size="sm"
+              class="min-w-[180px]"
             />
           </div>
         </template>
@@ -442,7 +511,7 @@ function openActionPlan(anomaly: Anomaly) {
                         </div>
                       </UBadge>
                       <span class="text-xs text-muted">
-                        Detected {{ formatDate(anomaly.detectedAt) || 'recently' }}
+                        Detected {{ formatDate(anomaly.first_detected_at) || 'recently' }}
                       </span>
                     </div>
                     <h3 class="mt-2 text-xl font-semibold">
@@ -453,9 +522,9 @@ function openActionPlan(anomaly: Anomaly) {
                     </p>
                   </div>
 
-                  <div v-if="anomaly.dataSources?.length" class="flex flex-wrap gap-2">
+                  <div v-if="anomaly.data_sources?.length" class="flex flex-wrap gap-2">
                     <UBadge
-                      v-for="source in anomaly.dataSources"
+                      v-for="source in anomaly.data_sources"
                       :key="source"
                       color="neutral"
                       variant="subtle"
