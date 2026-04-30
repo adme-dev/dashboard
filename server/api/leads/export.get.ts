@@ -16,11 +16,18 @@ export default defineEventHandler(async (event) => {
   const conds: string[] = ['deleted_at IS NULL']
   const params: any[] = []
   if (q.client_id) { params.push(q.client_id); conds.push(`client_id = $${params.length}`) }
+  if (q.unmapped === 'true') conds.push(`client_id IS NULL`)
   if (q.source) { params.push(q.source); conds.push(`source = $${params.length}`) }
   if (q.form_id) { params.push(q.form_id); conds.push(`form_id = $${params.length}`) }
   if (q.status) { params.push(q.status); conds.push(`status = $${params.length}`) }
+  if (q.assigned_to) { params.push(q.assigned_to); conds.push(`assigned_to = $${params.length}`) }
   if (q.from) { params.push(q.from); conds.push(`submitted_at >= $${params.length}`) }
-  if (q.to) { params.push(q.to); conds.push(`submitted_at <= $${params.length}`) }
+  if (q.to) { params.push(q.to); conds.push(`submitted_at < ($${params.length}::date + INTERVAL '1 day')`) }
+  if (q.q) {
+    const safe = String(q.q).replace(/[%_]/g, c => '\\' + c)
+    params.push(`%${safe}%`)
+    conds.push(`field_data::text ILIKE $${params.length}`)
+  }
   const rows = await queryRows<any>(
     `SELECT submitted_at, source, form_name, status, assigned_to, client_id, field_data, attribution
      FROM leads WHERE ${conds.join(' AND ')}

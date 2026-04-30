@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
   if (q.status) push('status = ?', q.status)
   if (q.assigned_to) push('assigned_to = ?', q.assigned_to)
   if (q.from) push('submitted_at >= ?', q.from)
-  if (q.to) push('submitted_at <= ?', q.to)
+  if (q.to) push('submitted_at < (?::date + INTERVAL \'1 day\')', q.to)
   if (q.q) {
     // Search in JSONB serialized form (escape % and _ to neutralize ILIKE meta)
     const safe = q.q.replace(/[%_]/g, c => '\\' + c)
