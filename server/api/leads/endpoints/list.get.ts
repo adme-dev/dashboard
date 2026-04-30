@@ -1,11 +1,13 @@
 // server/api/leads/endpoints/list.get.ts
 // One row per client. Auto-creates on first read so the UI is always populated.
 
-import { requireAuth } from '~~/server/utils/auth'
+import { requireRole } from '~~/server/utils/auth'
 import { execute, queryRows } from '~~/server/utils/db'
 
+// Admin-only: the response includes the secret_key plaintext (used by the agency
+// to paste into Google Ads). Lower-privileged roles get 403.
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  await requireRole(event, ['owner', 'admin'])
   // Backfill: ensure every active client has a 'google' endpoint row
   await execute(`
     INSERT INTO lead_webhook_endpoints (client_id, source, url_token, secret_key)

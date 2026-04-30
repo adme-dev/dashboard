@@ -26,9 +26,10 @@ export default defineEventHandler(async (event) => {
     sets.push(`contacted_at = NOW()`)
   }
   params.push(id)
-  await execute(
+  const n = await execute(
     `UPDATE leads SET ${sets.join(', ')} WHERE id = $${params.length} AND deleted_at IS NULL`,
     params,
   )
+  if (!n) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   return { ok: true }
 })
