@@ -195,6 +195,41 @@ function prettyEvent(e: RecommendationEvent) {
   return e.event_type
 }
 
+// ── Event grouping ──────────────────────────────────────────────────
+// Bulk patches emit one event per row, which can flood the activity
+// log when the user updates 50 items. Collapse consecutive
+// 'bulk_updated' events from the same actor within a 5-minute window
+// into a single rendered row showing the count.
+type DisplayEvent = RecommendationEvent & { count?: number }
+
+const FIVE_MIN_MS = 5 * 60 * 1000
+
+const displayedEvents = computed<DisplayEvent[]>(() => {
+  const out: DisplayEvent[] = []
+  for (const e of props.events) {
+    const last = out[out.length - 1]
+    const sameKind =
+      last &&
+      last.event_type === 'bulk_updated' &&
+      e.event_type === 'bulk_updated' &&
+      last.actor_id === e.actor_id &&
+      Math.abs(new Date(last.created_at).getTime() - new Date(e.created_at).getTime()) < FIVE_MIN_MS
+    if (sameKind) {
+      last!.count = (last!.count ?? 1) + 1
+    } else {
+      out.push({ ...e, count: e.event_type === 'bulk_updated' ? 1 : undefined })
+    }
+  }
+  return out
+})
+
+function eventLabel(e: DisplayEvent): string {
+  if (e.event_type === 'bulk_updated' && e.count && e.count > 1) {
+    return `bulk-updated ${e.count} items`
+  }
+  return prettyEvent(e)
+}
+
 // ── Option lists ────────────────────────────────────────────────────
 const statusOptions = [
   { label: 'Open', value: 'open' },
@@ -454,11 +489,11 @@ function setOpen(v: boolean) {
           <div v-if="events.length">
             <p class="text-[10px] uppercase text-muted font-semibold tracking-wider mb-2">Activity</p>
             <div class="space-y-2">
-              <div v-for="e in events" :key="e.id" class="flex gap-2 items-start text-xs">
+              <div v-for="e in displayedEvents" :key="e.id" class="flex gap-2 items-start text-xs">
                 <UAvatar v-if="e.actor_name" :alt="e.actor_name" :src="e.actor_avatar_url ?? undefined" size="2xs" />
                 <UIcon v-else name="i-lucide-bot" class="size-4 mt-0.5 text-muted" />
                 <div class="flex-1 min-w-0">
-                  <p><span class="font-medium">{{ e.actor_name ?? 'System' }}</span> <span class="text-muted">{{ prettyEvent(e) }}</span></p>
+                  <p><span class="font-medium">{{ e.actor_name ?? 'System' }}</span> <span class="text-muted">{{ eventLabel(e) }}</span></p>
                   <p class="text-[10px] text-muted">{{ formatDate(e.created_at) }}</p>
                 </div>
               </div>
