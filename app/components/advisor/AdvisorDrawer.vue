@@ -285,7 +285,7 @@ function setOpen(v: boolean) {
                 @change="(e: Event) => emit('patch', { due_date: ((e.target as HTMLInputElement).value || null) as any })"
               />
             </div>
-            <div class="col-span-2">
+            <div>
               <p class="text-xs text-muted mb-1">Category</p>
               <USelectMenu
                 :model-value="rec.category ?? UNCATEGORIZED"
@@ -293,6 +293,25 @@ function setOpen(v: boolean) {
                 value-key="value"
                 size="sm"
                 @update:model-value="(v: string) => emit('patch', { category: (v === UNCATEGORIZED ? null : v) as any })"
+              />
+            </div>
+            <div>
+              <p class="text-xs text-muted mb-1 flex items-center gap-1">
+                Snoozed until
+                <UButton
+                  v-if="rec.snoozed_until"
+                  icon="i-lucide-x"
+                  size="3xs"
+                  color="neutral"
+                  variant="ghost"
+                  @click="emit('patch', { snoozed_until: null as any })"
+                />
+              </p>
+              <UInput
+                :model-value="rec.snoozed_until ?? ''"
+                type="date"
+                size="sm"
+                @change="(e: Event) => emit('patch', { snoozed_until: ((e.target as HTMLInputElement).value || null) as any })"
               />
             </div>
           </div>

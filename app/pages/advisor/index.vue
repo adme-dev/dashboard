@@ -78,6 +78,8 @@ const clientFilter = ref<string>(typeof route.query.clientId === 'string' ? rout
 const periodFilter = ref<string>('all')
 const assigneeFilter = ref<string>('all')
 const categoryFilter = ref<string>('all')
+const sourceFilter = ref<'all' | 'ai' | 'manual'>('all')
+const showSnoozed = ref(false)
 
 watch(clientFilter, (v) => {
   const next = { ...route.query }
@@ -95,6 +97,8 @@ const query = computed(() => {
   if (periodFilter.value !== 'all') q.period = periodFilter.value
   if (assigneeFilter.value !== 'all') q.assigned_to = assigneeFilter.value
   if (categoryFilter.value !== 'all') q.category = categoryFilter.value
+  if (sourceFilter.value !== 'all') q.source = sourceFilter.value
+  if (showSnoozed.value) q.include_snoozed = '1'
   return q
 })
 
@@ -343,6 +347,8 @@ const summary = computed(() => {
           v-model:period="periodFilter"
           v-model:assignee="assigneeFilter"
           v-model:category="categoryFilter"
+          v-model:source="sourceFilter"
+          v-model:show-snoozed="showSnoozed"
           :client-options="clientOptions"
           :period-options="periodOptions"
           :assignee-options="assigneeOptions"
@@ -395,7 +401,15 @@ const summary = computed(() => {
             </template>
 
             <template #due_date-cell="{ row }">
-              <span class="text-xs">{{ formatDate(row.original.due_date) }}</span>
+              <div class="flex items-center gap-1.5">
+                <span class="text-xs">{{ formatDate(row.original.due_date) }}</span>
+                <UTooltip
+                  v-if="row.original.snoozed_until"
+                  :text="`Snoozed until ${formatDate(row.original.snoozed_until)}`"
+                >
+                  <UIcon name="i-lucide-bell-off" class="size-3.5 text-amber-500" />
+                </UTooltip>
+              </div>
             </template>
 
             <template #status-cell="{ row }">
