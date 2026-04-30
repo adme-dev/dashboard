@@ -28,7 +28,7 @@ export default eventHandler(async (event) => {
       dedupBase: string,
       labelBase: string,
       maxPages: number,
-    ): Promise<any[]> {
+    ): Promise<{ invoices: any[]; truncated: boolean }> {
       const all: any[] = []
       for (let page = 1; page <= maxPages; page++) {
         const params = new URLSearchParams({
@@ -48,22 +48,31 @@ export default eventHandler(async (event) => {
         )
         const invoices = body?.invoices || []
         all.push(...invoices)
-        if (invoices.length < 100) return all
+        if (invoices.length < 100) return { invoices: all, truncated: false }
       }
+      // We hit the safety cap and the last page came back full — there
+      // are more invoices than we fetched. Surface this so the UI can
+      // warn the user instead of silently showing partial data.
       console.warn(`[invoices] hit page cap ${maxPages} for "${labelBase}" — there may be more invoices not shown`)
-      return all
+      return { invoices: all, truncated: true }
     }
 
     // AUTHORISED: 10 pages × 100 = up to 1000 open invoices. Anything
     // bigger and the org is past where this dashboard is the right tool.
     // PAID: 3 pages × 100 = 300 most-recent paid (only the last 30 days
     // is surfaced anyway, so 300 is plenty).
-    const [authorisedRaw, paidRaw] = await Promise.all([
+    const [authorisedResult, paidResult] = await Promise.all([
       fetchAllPages('Type=="ACCREC"&&Status=="AUTHORISED"', 'DueDate ASC', 'invoices-accrec-authorised', 'invoices-authorised', 10),
       fetchAllPages('Type=="ACCREC"&&Status=="PAID"', 'Date DESC', 'invoices-accrec-paid', 'invoices-paid', 3),
     ])
-    const authorisedBody = { invoices: authorisedRaw }
-    const paidBody = { invoices: paidRaw }
+    const authorisedBody = { invoices: authorisedResult.invoices }
+    const paidBody = { invoices: paidResult.invoices }
+    const truncated = {
+      open: authorisedResult.truncated,
+      paid: paidResult.truncated,
+      openLimit: 1000,
+      paidLimit: 300,
+    }
 
     const today = new Date()
     const todayISO = today.toISOString().slice(0, 10)
@@ -353,7 +362,8 @@ export default eventHandler(async (event) => {
         latePayers,
         cashForecast,
         agingBuckets,
-        agingDetails
+        agingDetails,
+        truncated
       },
       outstanding,
       overdue,

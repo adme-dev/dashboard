@@ -499,6 +499,16 @@ const agingSections = [
           </UCard>
         </div>
 
+        <!-- Pagination cap-hit warning — surfaces silently-truncated data. -->
+        <UAlert
+          v-if="(summary as any)?.truncated?.open || (summary as any)?.truncated?.paid"
+          color="warning"
+          variant="outline"
+          icon="i-lucide-database"
+          :title="'Truncated AR data'"
+          :description="`We fetched the most-relevant ${(summary as any)?.truncated?.open ? (summary as any).truncated.openLimit + ' open' : ''}${(summary as any)?.truncated?.open && (summary as any)?.truncated?.paid ? ' and ' : ''}${(summary as any)?.truncated?.paid ? (summary as any).truncated.paidLimit + ' most-recent paid' : ''} invoices, but Xero has more. Cards and aging buckets reflect only what we fetched. Raise the limit if you regularly hit this.`"
+        />
+
         <!-- "Not yet sent" alert — clickable; opens slideover listing the unsent open invoices. -->
         <button
           v-if="(summary?.notSentCount || 0) > 0"
