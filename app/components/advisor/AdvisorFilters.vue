@@ -7,6 +7,7 @@ import { CATEGORIES, CATEGORY_LABELS } from '~~/server/utils/advisorCategories'
 
 type StatusFilter = 'active' | 'all' | 'open' | 'in_progress' | 'done' | 'dismissed'
 type PriorityFilter = 'all' | 'low' | 'medium' | 'high'
+type SourceFilter = 'all' | 'ai' | 'manual'
 
 defineProps<{
   status: StatusFilter
@@ -15,6 +16,8 @@ defineProps<{
   period: string
   assignee: string
   category: string
+  source: SourceFilter
+  showSnoozed: boolean
   clientOptions: Array<{ label: string; value: string }>
   periodOptions: Array<{ label: string; value: string }>
   assigneeOptions: Array<{ label: string; value: string }>
@@ -27,7 +30,15 @@ const emit = defineEmits<{
   (e: 'update:period', v: string): void
   (e: 'update:assignee', v: string): void
   (e: 'update:category', v: string): void
+  (e: 'update:source', v: SourceFilter): void
+  (e: 'update:showSnoozed', v: boolean): void
 }>()
+
+const SOURCE_OPTIONS: Array<{ label: string; value: SourceFilter }> = [
+  { label: 'All', value: 'all' },
+  { label: 'AI', value: 'ai' },
+  { label: 'Manual', value: 'manual' },
+]
 
 const STATUS_OPTIONS: Array<{ label: string; value: StatusFilter }> = [
   { label: 'Active', value: 'active' },
@@ -115,6 +126,29 @@ const CHIP_OPTIONS = [
       >
         {{ opt.label }}
       </UBadge>
+    </div>
+
+    <!-- Source toggle + show-snoozed -->
+    <div class="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-default">
+      <span class="text-xs text-muted">Source:</span>
+      <UButtonGroup>
+        <UButton
+          v-for="o in SOURCE_OPTIONS"
+          :key="o.value"
+          :color="source === o.value ? 'primary' : 'neutral'"
+          :variant="source === o.value ? 'solid' : 'outline'"
+          size="xs"
+          @click="emit('update:source', o.value)"
+        >{{ o.label }}</UButton>
+      </UButtonGroup>
+
+      <div class="grow" />
+
+      <UCheckbox
+        :model-value="showSnoozed"
+        label="Show snoozed"
+        @update:model-value="(v: boolean) => emit('update:showSnoozed', v)"
+      />
     </div>
   </UCard>
 </template>

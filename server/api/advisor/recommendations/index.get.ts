@@ -15,6 +15,12 @@ import { CATEGORIES } from '~~/server/utils/advisorCategories'
 const ALLOWED_STATUS = new Set(['open', 'in_progress', 'done', 'dismissed'])
 const ALLOWED_PRIORITY = new Set(['low', 'medium', 'high'])
 const ALLOWED_CATEGORY = new Set<string>(CATEGORIES as readonly string[])
+const ALLOWED_SOURCE = new Set(['ai', 'manual'])
+
+// Statuses that should hide future-snoozed rows by default. The user
+// can opt back in via ?include_snoozed=1 or by selecting a closed
+// status (done/dismissed) — closed work isn't really "snoozed" anyway.
+const ACTIVE_STATUSES = new Set(['open', 'in_progress'])
 
 export default eventHandler(async (event) => {
   await requireAuth(event)
@@ -30,6 +36,8 @@ export default eventHandler(async (event) => {
   const period = typeof q.period === 'string' ? q.period : null
   const assignedTo = typeof q.assigned_to === 'string' ? q.assigned_to : null
   const categoryParam = typeof q.category === 'string' ? q.category : null
+  const sourceParam = typeof q.source === 'string' ? q.source : null
+  const includeSnoozed = q.include_snoozed === '1' || q.include_snoozed === 'true'
   const limit = Math.min(parseInt(typeof q.limit === 'string' ? q.limit : '100', 10) || 100, 500)
   const offset = Math.max(parseInt(typeof q.offset === 'string' ? q.offset : '0', 10) || 0, 0)
 
@@ -92,6 +100,27 @@ export default eventHandler(async (event) => {
     where.push(`r.category = $${idx}`)
     params.push(categoryParam)
     idx++
+  }
+
+  if (sourceParam) {
+    if (!ALLOWED_SOURCE.has(sourceParam)) {
+      throw createError({ statusCode: 400, statusMessage: 'Invalid source filter' })
+    }
+    where.push(`r.source = $${idx}`)
+    params.push(sourceParam)
+    idx++
+  }
+
+  // Snooze visibility: when the requested status set is exclusively
+  // active (open / in_progress), hide future-snoozed rows unless the
+  // caller opts in via ?include_snoozed=1. Closed-status views always
+  // show snoozed rows because "done while snoozed" isn't a thing.
+  const requestedStatuses = statusParam
+    ? statusParam.split(',').map((s) => s.trim()).filter(Boolean)
+    : ['open', 'in_progress']
+  const onlyActive = requestedStatuses.every((s) => ACTIVE_STATUSES.has(s))
+  if (onlyActive && !includeSnoozed) {
+    where.push(`(r.snoozed_until IS NULL OR r.snoozed_until <= CURRENT_DATE)`)
   }
 
   params.push(limit, offset)
