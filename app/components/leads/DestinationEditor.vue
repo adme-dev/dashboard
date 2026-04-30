@@ -10,7 +10,10 @@ const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ (e: 'saved'): void }>()
 
 const toast = useToast()
-const draft = ref<LeadRuleDestination>({ ...props.destination, config: { ...(props.destination.config ?? {}) } })
+const draft = ref<LeadRuleDestination>(structuredClone({
+  ...props.destination,
+  config: props.destination.config ?? {},
+}))
 const saving = ref(false)
 const errors = ref<Record<string, string>>({})
 
