@@ -186,6 +186,17 @@ function formatDate(iso: string | null | undefined) {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+type Comment = {
+  id: string
+  recommendation_id: string
+  author_id: string | null
+  author_name: string | null
+  author_avatar_url: string | null
+  body: string
+  created_at: string
+  updated_at: string
+}
+
 // ── Drawer state + handlers ──────────────────────────────────────────
 const drawerOpen = ref(false)
 const drawerLoading = ref(false)
@@ -194,6 +205,19 @@ const drawerEvents = ref<RecommendationEvent[]>([])
 const drawerOutcomes = ref<RecommendationOutcome[]>([])
 const drawerSimilar = ref<SimilarMatch[]>([])
 const drawerGraph = ref<GraphData | null>(null)
+const drawerComments = ref<Comment[]>([])
+
+// Current user + role check, used to gate comment edit/delete affordances
+// in the drawer. Server enforces the actual permission.
+const { data: currentUser } = await useFetch<{ id: string; role?: string } | null>(
+  '/api/auth/me',
+  { server: false, default: () => null }
+)
+const currentUserId = computed(() => currentUser.value?.id ?? null)
+const canPrivilegedEdit = computed(() => {
+  const role = currentUser.value?.role
+  return role === 'owner' || role === 'admin'
+})
 
 async function openDrawer(rec: Recommendation) {
   drawerOpen.value = true
@@ -201,13 +225,15 @@ async function openDrawer(rec: Recommendation) {
   drawerRec.value = rec
   drawerSimilar.value = []
   drawerGraph.value = null
+  drawerComments.value = []
   try {
-    const res = await $fetch<{ recommendation: Recommendation; events: RecommendationEvent[]; outcomes: RecommendationOutcome[] }>(
+    const res = await $fetch<{ recommendation: Recommendation; events: RecommendationEvent[]; outcomes: RecommendationOutcome[]; comments: Comment[] }>(
       `/api/advisor/recommendations/${rec.id}`
     )
     drawerRec.value = res.recommendation
     drawerEvents.value = res.events
     drawerOutcomes.value = res.outcomes
+    drawerComments.value = res.comments ?? []
     // Fetch related past advice + graph in the background — don't block
     // the drawer opening if Vectorize is slow or unavailable.
     $fetch<{ matches: SimilarMatch[] }>(`/api/advisor/recommendations/similar`, {
@@ -273,6 +299,25 @@ async function onCreated(rec: Recommendation) {
   // and immediately open the drawer for editing.
   await refresh()
   openDrawer(rec)
+}
+
+async function onCommentsChanged() {
+  if (!drawerRec.value) return
+  // Refetch the detail to pick up new comments + the audit event row.
+  try {
+    const detail = await $fetch<{
+      events: RecommendationEvent[]
+      outcomes: RecommendationOutcome[]
+      comments: Comment[]
+    }>(`/api/advisor/recommendations/${drawerRec.value.id}`)
+    drawerEvents.value = detail.events
+    drawerOutcomes.value = detail.outcomes
+    drawerComments.value = detail.comments ?? []
+    // Also refresh the list so the table's comment_count column updates.
+    refresh()
+  } catch {
+    /* silent — toast already raised by the child component */
+  }
 }
 
 async function patchRec(patch: Partial<Recommendation>) {
@@ -487,8 +532,12 @@ const summary = computed(() => {
     :similar="drawerSimilar"
     :graph="drawerGraph"
     :team-members="teamData?.members ?? []"
+    :comments="drawerComments"
+    :current-user-id="currentUserId"
+    :can-privileged-edit="canPrivilegedEdit"
     @patch="patchRec"
     @open-similar="openDrawer"
     @graph-select="onGraphNodeSelect"
+    @comments-changed="onCommentsChanged"
   />
 </template>

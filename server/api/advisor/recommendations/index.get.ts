@@ -156,13 +156,16 @@ export default eventHandler(async (event) => {
        tm.name AS assignee_name,
        tm.avatar_url AS assignee_avatar_url,
        creator.name AS created_by_name,
-       creator.avatar_url AS created_by_avatar_url
+       creator.avatar_url AS created_by_avatar_url,
+       COUNT(c.id) FILTER (WHERE c.deleted_at IS NULL)::int AS comment_count
      FROM recommendations r
      LEFT JOIN financial_advisor_reports far ON far.id = r.source_report_id
      LEFT JOIN agency_clients ac ON ac.id = r.client_id
      LEFT JOIN team_members tm ON tm.id = r.assigned_to
      LEFT JOIN team_members creator ON creator.id = r.created_by
+     LEFT JOIN recommendation_comments c ON c.recommendation_id = r.id
      WHERE ${where.join(' AND ')}
+     GROUP BY r.id, far.period_key, far.period_label, ac.name, tm.name, tm.avatar_url, creator.name, creator.avatar_url
      ORDER BY
        CASE r.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
        r.created_at DESC

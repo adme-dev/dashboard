@@ -43,7 +43,7 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Recommendation not found' })
   }
 
-  const [events, outcomes] = await Promise.all([
+  const [events, outcomes, comments] = await Promise.all([
     queryRows<any>(
       `SELECT
          e.id, e.event_type, e.actor_id, e.payload, e.created_at,
@@ -61,7 +61,16 @@ export default eventHandler(async (event) => {
        ORDER BY measured_at ASC`,
       [id]
     ),
+    queryRows<any>(
+      `SELECT c.id, c.recommendation_id, c.author_id, c.body, c.created_at, c.updated_at,
+              tm.name AS author_name, tm.avatar_url AS author_avatar_url
+       FROM recommendation_comments c
+       LEFT JOIN team_members tm ON tm.id = c.author_id
+       WHERE c.recommendation_id = $1 AND c.deleted_at IS NULL
+       ORDER BY c.created_at ASC`,
+      [id]
+    ),
   ])
 
-  return { recommendation: rec, events, outcomes }
+  return { recommendation: rec, events, outcomes, comments }
 })
