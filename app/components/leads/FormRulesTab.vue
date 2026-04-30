@@ -117,7 +117,7 @@ async function toggleEnabled(item: RuleListItem) {
           <span class="text-sm">{{ row.original.destination_count ?? 0 }}</span>
         </template>
         <template #enabled-cell="{ row }">
-          <UToggle
+          <USwitch
             :model-value="!!row.original.enabled"
             :disabled="!row.original.rule_id"
             @update:model-value="() => toggleEnabled(row.original)"

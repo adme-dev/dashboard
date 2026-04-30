@@ -140,7 +140,7 @@ const addMenuItems = computed(() => [
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2 flex-wrap">
                     <UBadge variant="soft" size="sm">{{ d.destination_type }}</UBadge>
-                    <UToggle :model-value="d.enabled" disabled />
+                    <USwitch :model-value="d.enabled" disabled />
                     <span v-if="d.delay_minutes" class="text-xs text-muted">
                       +{{ d.delay_minutes }}m delay
                     </span>
