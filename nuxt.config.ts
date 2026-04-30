@@ -136,8 +136,6 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
 
   routeRules: {
-    '/api/**': { cors: true },
-
     // Prerender static marketing pages at build time
     '/': { prerender: true },
     '/pricing': { prerender: true },
