@@ -691,7 +691,19 @@ const agingSections = [
                   <UIcon name="i-lucide-file-text" class="h-5 w-5 text-blue-600 dark:text-blue-400" />
                 </div>
               </div>
-              <p class="text-xs text-[var(--ui-text-muted)] mt-2">{{ summary?.outstandingCount || 0 }} invoices with open balances</p>
+              <div class="mt-2 flex items-center justify-between gap-2">
+                <p class="text-xs text-[var(--ui-text-muted)]">{{ summary?.outstandingCount || 0 }} invoices with open balances</p>
+                <a
+                  href="https://go.xero.com/Reports/AgedReceivablesSummary"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-[10px] text-[var(--ui-text-muted)] hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-0.5 shrink-0"
+                  @click.stop
+                >
+                  Verify in Xero
+                  <UIcon name="i-lucide-external-link" class="h-3 w-3" />
+                </a>
+              </div>
             </UCard>
           </button>
 
