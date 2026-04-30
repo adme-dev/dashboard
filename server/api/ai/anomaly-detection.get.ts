@@ -1,301 +1,113 @@
-import { createError } from 'h3'
-import { xeroFetch } from '../../utils/xeroClient'
-import { getActiveTokenForSession } from '../../utils/tokenStore'
-import { getSelectedTenant } from '../../utils/session'
-import { cachedFetch } from '~~/server/utils/kv'
-import { dedupedXeroCall } from '~~/server/utils/xeroRateLimit'
+// server/api/ai/anomaly-detection.get.ts
+//
+// Backwards-compatibility shim.
+// The page at /xeroflow consumes this endpoint via the AnomalyAlerts widget
+// (app/components/dashboard/AnomalyAlerts.vue). The full computation has been
+// migrated to the persisted detection layer (server/utils/anomalyDetection/);
+// this handler now reads from the `anomalies` table and reshapes the output
+// to the legacy contract the widget expects.
+//
+// When the dashboard widget is rewritten to consume /api/ai/anomalies directly
+// (Phase 4 UI polish), this file can be deleted.
 
-function ensureDateString(d: Date) {
-  return d.toISOString().slice(0, 10)
+import { defineEventHandler, getQuery, createError } from 'h3'
+import { requireAuth } from '~~/server/utils/auth'
+import { getSelectedTenant } from '~~/server/utils/session'
+import { queryRows, queryOne } from '~~/server/utils/db'
+
+interface LegacyAnomaly {
+  type: 'daily_spending' | 'category_spending' | 'vendor_spending' | 'timing_anomaly'
+  severity: 'high' | 'medium' | 'low'
+  amount: number
+  message: string
+  category?: string
+  vendor?: string
+  date?: string
 }
 
-function addDays(date: Date, days: number) {
-  const result = new Date(date)
-  result.setDate(result.getDate() + days)
-  return result
+const SEVERITY_MAP: Record<string, 'high' | 'medium' | 'low'> = {
+  critical: 'high',
+  warning: 'medium',
+  info: 'low',
 }
 
-function dtExpr(d: Date) {
-  const y = d.getUTCFullYear()
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0')
-  const day = String(d.getUTCDate()).padStart(2, '0')
-  return `DateTime(${y},${m},${day})`
+function legacyTypeFor(type: string, tags: string[] | null): LegacyAnomaly['type'] {
+  const t = (tags || []).map(s => s.toLowerCase())
+  if (type === 'expenses') {
+    if (t.some(x => x.includes('daily'))) return 'daily_spending'
+    if (t.some(x => x.includes('vendor'))) return 'vendor_spending'
+    if (t.some(x => x.includes('concentration'))) return 'category_spending'
+    return 'category_spending'
+  }
+  if (type === 'cashflow' || type === 'receivables') return 'timing_anomaly'
+  return 'category_spending'
 }
 
-function calculateStandardDeviation(values: number[]): number {
-  if (values.length === 0) return 0
-  const mean = values.reduce((sum, val) => sum + val, 0) / values.length
-  const squaredDiffs = values.map(val => Math.pow(val - mean, 2))
-  const avgSquaredDiff = squaredDiffs.reduce((sum, val) => sum + val, 0) / values.length
-  return Math.sqrt(avgSquaredDiff)
-}
-
-function isAnomaly(value: number, mean: number, stdDev: number, threshold: number = 2): boolean {
-  return Math.abs(value - mean) > threshold * stdDev
-}
-
-export default eventHandler(async (event) => {
-  const token = await getActiveTokenForSession(event)
+export default defineEventHandler(async (event) => {
+  await requireAuth(event)
   const tenantId = await getSelectedTenant(event)
   if (!tenantId) {
     throw createError({ statusCode: 400, statusMessage: 'No organization selected' })
   }
 
-  const query = getQuery(event)
-  const daysBack = Number(query.days) || 90
-  const sensitivity = Number(query.sensitivity) || 2 // Standard deviations
+  // Pull active anomalies for the tenant.
+  const rows = await queryRows<{
+    id: string
+    type: string
+    severity: string
+    title: string
+    description: string
+    metric: { label?: string; value?: number; format?: string } | null
+    context: { category?: string; vendor?: string; range?: { from?: string | null; to?: string | null } } | null
+    tags: string[] | null
+    first_detected_at: string
+  }>(
+    `SELECT id, type, severity, title, description, metric, context, tags, first_detected_at
+     FROM anomalies
+     WHERE tenant_id = $1 AND status NOT IN ('resolved','dismissed')
+     ORDER BY (severity = 'critical') DESC, first_detected_at DESC
+     LIMIT 50`,
+    [tenantId],
+  )
 
-  const today = new Date()
-  const startDate = addDays(today, -daysBack)
-
-  const cacheKey = `xero:anomaly-detection:${tenantId}:${daysBack}:${sensitivity}`
-
-  return cachedFetch(event, cacheKey, 600, async () => {
-  const accessToken = token.access_token!
-
-  // Get chart of accounts
-  let accountsMap = new Map<string, string>()
-  try {
-    const acctBody = await dedupedXeroCall(
-      `anomaly-accounts:${tenantId}`,
-      'anomaly-accounts',
-      () => xeroFetch<any>({ accessToken, tenantId, path: 'Accounts' })
-    )
-    const accounts = acctBody?.accounts || []
-    for (const account of accounts) {
-      if (account.accountID && account.name) {
-        accountsMap.set(account.accountID, account.name)
-        if (account.code) {
-          accountsMap.set(account.code, account.name)
-        }
-      }
+  const anomalies: LegacyAnomaly[] = rows.map(r => {
+    const amount = typeof r.metric?.value === 'number' ? r.metric.value : 0
+    return {
+      type: legacyTypeFor(r.type, r.tags),
+      severity: SEVERITY_MAP[r.severity] ?? 'low',
+      amount,
+      message: r.description,
+      category: r.context?.category,
+      vendor: r.context?.vendor,
+      date: r.context?.range?.from || r.first_detected_at?.slice(0, 10),
     }
-  } catch (err) {
-    console.warn('Failed to fetch chart of accounts:', err)
-  }
-
-  // Fetch recent expenses
-  async function fetchAllInvoices() {
-    const results: any[] = []
-    let page = 1
-    const whereClause = `Type=="ACCPAY"&&Date>=${dtExpr(startDate)}&&Date<=${dtExpr(today)}`
-
-    for (;;) {
-      const params = new URLSearchParams({
-        where: whereClause,
-        order: 'Date DESC',
-        page: String(page),
-        pageSize: '100',
-      })
-      const body = await dedupedXeroCall(
-        `anomaly-inv:${tenantId}:p${page}`,
-        'anomaly-inv',
-        () => xeroFetch<any>({ accessToken, tenantId, path: `Invoices?${params.toString()}` })
-      )
-      const list = body?.invoices || []
-      if (!list.length) break
-      results.push(...list)
-      if (list.length < 100) break
-      page += 1
-      if (page > 50) break
-    }
-    return results
-  }
-
-  const expenses = await fetchAllInvoices()
-
-  // Group expenses by category and vendor for analysis
-  const categoryData = new Map<string, number[]>()
-  const vendorData = new Map<string, number[]>()
-  const dailyTotals = new Map<string, number>()
-  const unusualTransactions: any[] = []
-
-  for (const expense of expenses) {
-    const total = Number(expense?.total) || 0
-    const vendor = expense?.contact?.name || 'Unknown'
-    const date = ensureDateString(new Date(expense?.date || today))
-    const lines = expense?.lineItems || []
-
-    // Track daily totals
-    dailyTotals.set(date, (dailyTotals.get(date) || 0) + total)
-
-    // Track vendor spending
-    if (!vendorData.has(vendor)) vendorData.set(vendor, [])
-    vendorData.get(vendor)!.push(total)
-
-    // Track category spending
-    if (lines.length > 0) {
-      for (const line of lines) {
-        const accountKey = line?.accountCode || line?.accountID
-        const categoryName = accountKey && accountsMap.has(accountKey) 
-          ? accountsMap.get(accountKey)! 
-          : 'Other'
-        const amount = Number(line?.lineAmount) || 0
-        
-        if (!categoryData.has(categoryName)) categoryData.set(categoryName, [])
-        categoryData.get(categoryName)!.push(amount)
-      }
-    } else {
-      if (!categoryData.has('Other')) categoryData.set('Other', [])
-      categoryData.get('Other')!.push(total)
-    }
-  }
-
-  // Detect anomalies
-  const anomalies: any[] = []
-
-  // 1. Daily spending anomalies
-  const dailyAmounts = Array.from(dailyTotals.values())
-  if (dailyAmounts.length > 7) {
-    const dailyMean = dailyAmounts.reduce((sum, val) => sum + val, 0) / dailyAmounts.length
-    const dailyStdDev = calculateStandardDeviation(dailyAmounts)
-    
-    for (const [date, amount] of dailyTotals.entries()) {
-      if (isAnomaly(amount, dailyMean, dailyStdDev, sensitivity)) {
-        anomalies.push({
-          type: 'daily_spending',
-          date,
-          amount,
-          expected: Math.round(dailyMean * 100) / 100,
-          deviation: Math.round(((amount - dailyMean) / dailyMean) * 100 * 100) / 100,
-          severity: Math.abs(amount - dailyMean) > 3 * dailyStdDev ? 'high' : 'medium',
-          message: `Daily spending of $${amount.toFixed(2)} is ${amount > dailyMean ? 'significantly higher' : 'significantly lower'} than average ($${dailyMean.toFixed(2)})`
-        })
-      }
-    }
-  }
-
-  // 2. Category spending anomalies
-  for (const [category, amounts] of categoryData.entries()) {
-    if (amounts.length > 3) {
-      const categoryMean = amounts.reduce((sum, val) => sum + val, 0) / amounts.length
-      const categoryStdDev = calculateStandardDeviation(amounts)
-      
-      for (const amount of amounts) {
-        if (isAnomaly(amount, categoryMean, categoryStdDev, sensitivity)) {
-          // Find the specific transaction
-          const transaction = expenses.find(exp => {
-            const lines = exp?.lineItems || []
-            return lines.some((line: any) => {
-              const accountKey = line?.accountCode || line?.accountID
-              const catName = accountKey && accountsMap.has(accountKey) 
-                ? accountsMap.get(accountKey)! 
-                : 'Other'
-              return catName === category && Math.abs(Number(line?.lineAmount) - amount) < 0.01
-            }) || (lines.length === 0 && category === 'Other' && Math.abs(Number(exp?.total) - amount) < 0.01)
-          })
-
-          if (transaction) {
-            anomalies.push({
-              type: 'category_spending',
-              category,
-              amount,
-              expected: Math.round(categoryMean * 100) / 100,
-              deviation: Math.round(((amount - categoryMean) / categoryMean) * 100 * 100) / 100,
-              severity: Math.abs(amount - categoryMean) > 3 * categoryStdDev ? 'high' : 'medium',
-              transaction: {
-                id: transaction.invoiceID,
-                number: transaction.invoiceNumber,
-                vendor: transaction?.contact?.name,
-                date: ensureDateString(new Date(transaction?.date || today))
-              },
-              message: `${category} expense of $${amount.toFixed(2)} is unusual (avg: $${categoryMean.toFixed(2)})`
-            })
-          }
-        }
-      }
-    }
-  }
-
-  // 3. Vendor spending anomalies
-  for (const [vendor, amounts] of vendorData.entries()) {
-    if (amounts.length > 2) {
-      const vendorMean = amounts.reduce((sum, val) => sum + val, 0) / amounts.length
-      const vendorStdDev = calculateStandardDeviation(amounts)
-      
-      const maxAmount = Math.max(...amounts)
-      if (isAnomaly(maxAmount, vendorMean, vendorStdDev, sensitivity)) {
-        const transaction = expenses.find(exp => 
-          exp?.contact?.name === vendor && Math.abs(Number(exp?.total) - maxAmount) < 0.01
-        )
-
-        if (transaction) {
-          anomalies.push({
-            type: 'vendor_spending',
-            vendor,
-            amount: maxAmount,
-            expected: Math.round(vendorMean * 100) / 100,
-            deviation: Math.round(((maxAmount - vendorMean) / vendorMean) * 100 * 100) / 100,
-            severity: Math.abs(maxAmount - vendorMean) > 3 * vendorStdDev ? 'high' : 'medium',
-            transaction: {
-              id: transaction.invoiceID,
-              number: transaction.invoiceNumber,
-              date: ensureDateString(new Date(transaction?.date || today))
-            },
-            message: `Payment to ${vendor} of $${maxAmount.toFixed(2)} is unusually high (avg: $${vendorMean.toFixed(2)})`
-          })
-        }
-      }
-    }
-  }
-
-  // 4. Weekend/Holiday spending (business expenses on non-business days)
-  const weekendExpenses = expenses.filter(exp => {
-    const date = new Date(exp?.date || today)
-    const dayOfWeek = date.getDay()
-    return dayOfWeek === 0 || dayOfWeek === 6 // Sunday or Saturday
   })
 
-  for (const expense of weekendExpenses) {
-    const amount = Number(expense?.total) || 0
-    if (amount > 500) { // Threshold for significant weekend expenses
-      anomalies.push({
-        type: 'timing_anomaly',
-        amount,
-        transaction: {
-          id: expense.invoiceID,
-          number: expense.invoiceNumber,
-          vendor: expense?.contact?.name,
-          date: ensureDateString(new Date(expense?.date || today))
-        },
-        severity: amount > 2000 ? 'high' : 'medium',
-        message: `Significant business expense ($${amount.toFixed(2)}) on weekend`
-      })
-    }
-  }
-
-  // Sort anomalies by severity and amount
-  anomalies.sort((a, b) => {
-    const severityOrder: Record<string, number> = { high: 3, medium: 2, low: 1 }
-    const severityDiff = (severityOrder[b.severity] || 0) - (severityOrder[a.severity] || 0)
-    if (severityDiff !== 0) return severityDiff
-    return b.amount - a.amount
-  })
-
-  // Calculate summary statistics
-  const totalExpenses = expenses.reduce((sum, exp) => sum + (Number(exp?.total) || 0), 0)
-  const anomalyCount = anomalies.length
-  const highSeverityCount = anomalies.filter(a => a.severity === 'high').length
+  // Summary numbers — best-effort approximations of the legacy fields.
+  // totalTransactions: there's no direct equivalent in the persisted layer.
+  // We surface the count of all anomaly events recorded (a reasonable proxy
+  // for "things looked at") so the widget's % calculation isn't divided by zero.
+  const eventTotal = await queryOne<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM anomaly_events ae
+     JOIN anomalies a ON a.id = ae.anomaly_id
+     WHERE a.tenant_id = $1`,
+    [tenantId],
+  )
+  const totalTransactions = Math.max(Number(eventTotal?.count ?? 0), anomalies.length)
+  const anomaliesDetected = anomalies.length
+  const highSeverityAnomalies = anomalies.filter(a => a.severity === 'high').length
+  const anomalyRate = totalTransactions > 0
+    ? Math.round((anomaliesDetected / totalTransactions) * 100 * 100) / 100
+    : 0
 
   return {
-    period: {
-      from: ensureDateString(startDate),
-      to: ensureDateString(today),
-      days: daysBack
-    },
     summary: {
-      totalTransactions: expenses.length,
-      totalAmount: Math.round(totalExpenses * 100) / 100,
-      anomaliesDetected: anomalyCount,
-      highSeverityAnomalies: highSeverityCount,
-      anomalyRate: expenses.length > 0 ? Math.round((anomalyCount / expenses.length) * 100 * 100) / 100 : 0
+      totalTransactions,
+      anomaliesDetected,
+      highSeverityAnomalies,
+      anomalyRate,
     },
-    anomalies: anomalies.slice(0, 50), // Limit to top 50 anomalies
-    insights: [
-      anomalyCount === 0 ? "No significant spending anomalies detected in the selected period." : null,
-      highSeverityCount > 0 ? `${highSeverityCount} high-severity anomalies require immediate attention.` : null,
-      weekendExpenses.length > 0 ? `${weekendExpenses.length} transactions occurred on weekends.` : null
-    ].filter(Boolean)
+    anomalies,
+    insights: [], // legacy field, kept for compat — empty
   }
-  }) // end cachedFetch
 })
