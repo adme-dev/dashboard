@@ -13,6 +13,13 @@ const { data: quotesSummary } = await useFetch<{ total: number; count: number; b
   { default: () => null as any }
 )
 
+// Recurring revenue (active retainers / subscriptions). Same parallel-
+// fetch contract — must not block AR.
+const { data: recurringSummary } = await useFetch<{ summary: { mrr: number; arr: number; activeCount: number; clientCount: number; netRecurring: number; recurringMonthlyCosts: number } }>(
+  '/api/xero/repeating-invoices',
+  { default: () => null as any }
+)
+
 const search = ref('')
 const validViews = ['all', 'outstanding', 'overdue', 'paid'] as const
 type ViewType = typeof validViews[number]
@@ -414,6 +421,36 @@ const agingSections = [
               </UBadge>
               <UBadge v-if="(quotesSummary?.byStatus.draft.count || 0) > 0" color="neutral" variant="subtle">
                 Draft: {{ formatCurrency(quotesSummary?.byStatus.draft.total) }} ({{ quotesSummary?.byStatus.draft.count }})
+              </UBadge>
+            </div>
+          </div>
+        </UCard>
+
+        <!-- Recurring revenue — active retainers / subscriptions normalised to MRR. -->
+        <UCard v-if="(recurringSummary?.summary?.activeCount || 0) > 0">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <div class="shrink-0 w-10 h-10 rounded-lg bg-cyan-50 dark:bg-cyan-500/10 flex items-center justify-center">
+                <UIcon name="i-lucide-repeat" class="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+              </div>
+              <div>
+                <p class="text-sm text-[var(--ui-text-muted)]">Recurring Revenue (MRR)</p>
+                <p class="text-2xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency(recurringSummary?.summary?.mrr) }}</p>
+                <p class="text-xs text-[var(--ui-text-muted)] mt-0.5">
+                  {{ recurringSummary?.summary?.activeCount }} active schedule{{ (recurringSummary?.summary?.activeCount ?? 0) === 1 ? '' : 's' }} across {{ recurringSummary?.summary?.clientCount }} client{{ (recurringSummary?.summary?.clientCount ?? 0) === 1 ? '' : 's' }}
+                </p>
+              </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <UBadge color="info" variant="subtle">
+                ARR: {{ formatCurrency(recurringSummary?.summary?.arr) }}
+              </UBadge>
+              <UBadge
+                v-if="(recurringSummary?.summary?.recurringMonthlyCosts || 0) > 0"
+                :color="(recurringSummary?.summary?.netRecurring ?? 0) >= 0 ? 'success' : 'error'"
+                variant="subtle"
+              >
+                Net of recurring costs: {{ formatCurrency(recurringSummary?.summary?.netRecurring) }}/mo
               </UBadge>
             </div>
           </div>
