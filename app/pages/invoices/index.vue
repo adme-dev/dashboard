@@ -718,7 +718,19 @@ const agingSections = [
                   <UIcon name="i-lucide-alert-triangle" class="h-5 w-5 text-red-600 dark:text-red-400" />
                 </div>
               </div>
-              <p class="text-xs text-[var(--ui-text-muted)] mt-2">{{ summary?.overdueCount || 0 }} invoices past due</p>
+              <div class="mt-2 flex items-center justify-between gap-2">
+                <p class="text-xs text-[var(--ui-text-muted)]">{{ summary?.overdueCount || 0 }} invoices past due</p>
+                <a
+                  href="https://go.xero.com/Reports/AgedReceivablesSummary"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-[10px] text-[var(--ui-text-muted)] hover:text-red-600 dark:hover:text-red-400 flex items-center gap-0.5 shrink-0"
+                  @click.stop
+                >
+                  Verify in Xero
+                  <UIcon name="i-lucide-external-link" class="h-3 w-3" />
+                </a>
+              </div>
             </UCard>
           </button>
 
@@ -733,7 +745,19 @@ const agingSections = [
                   <UIcon name="i-lucide-hourglass" class="h-5 w-5 text-amber-600 dark:text-amber-400" />
                 </div>
               </div>
-              <p class="text-xs text-[var(--ui-text-muted)] mt-2">Upcoming cash expected this week</p>
+              <div class="mt-2 flex items-center justify-between gap-2">
+                <p class="text-xs text-[var(--ui-text-muted)]">Upcoming cash expected this week</p>
+                <a
+                  href="https://go.xero.com/AccountsReceivable/Search.aspx?invoiceStatuses=AUTHORISED"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-[10px] text-[var(--ui-text-muted)] hover:text-amber-600 dark:hover:text-amber-400 flex items-center gap-0.5 shrink-0"
+                  @click.stop
+                >
+                  Verify in Xero
+                  <UIcon name="i-lucide-external-link" class="h-3 w-3" />
+                </a>
+              </div>
             </UCard>
           </button>
 
@@ -748,7 +772,19 @@ const agingSections = [
                   <UIcon name="i-lucide-badge-check" class="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                 </div>
               </div>
-              <p class="text-xs text-[var(--ui-text-muted)] mt-2">{{ summary?.paidLast30Count || 0 }} invoices closed recently</p>
+              <div class="mt-2 flex items-center justify-between gap-2">
+                <p class="text-xs text-[var(--ui-text-muted)]">{{ summary?.paidLast30Count || 0 }} invoices closed recently</p>
+                <a
+                  href="https://go.xero.com/AccountsReceivable/Search.aspx?invoiceStatuses=PAID"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-[10px] text-[var(--ui-text-muted)] hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center gap-0.5 shrink-0"
+                  @click.stop
+                >
+                  Verify in Xero
+                  <UIcon name="i-lucide-external-link" class="h-3 w-3" />
+                </a>
+              </div>
             </UCard>
           </button>
 
