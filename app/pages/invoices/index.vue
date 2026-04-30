@@ -396,6 +396,51 @@ function statusLabel(status?: string): string {
   return s.charAt(0) + s.slice(1).toLowerCase()
 }
 
+// Card drill-down slideover — generic "show me the invoices behind
+// this number" panel for the 5 KPI cards across the top of /invoices.
+type CardListKind = 'outstanding' | 'overdue' | 'dueSoon' | 'paid30'
+const showCardList = ref(false)
+const cardListKind = ref<CardListKind>('outstanding')
+const cardListTitle = computed(() => {
+  switch (cardListKind.value) {
+    case 'outstanding': return 'Outstanding balance'
+    case 'overdue': return 'Overdue invoices'
+    case 'dueSoon': return 'Due in next 7 days'
+    case 'paid30': return 'Paid in last 30 days'
+  }
+})
+const cardListInvoices = computed<any[]>(() => {
+  const d = data.value as any
+  switch (cardListKind.value) {
+    case 'outstanding':
+      return [...(d?.outstanding ?? []), ...(d?.overdue ?? [])]
+        .sort((a: any, b: any) => (a.dueDate || '').localeCompare(b.dueDate || ''))
+    case 'overdue':
+      return [...(d?.overdue ?? [])]
+        .sort((a: any, b: any) => (b.daysOverdue ?? 0) - (a.daysOverdue ?? 0))
+    case 'dueSoon':
+      return (d?.outstanding ?? [])
+        .filter((inv: any) => inv.agingBucket === 'dueSoon')
+        .sort((a: any, b: any) => (a.dueDate || '').localeCompare(b.dueDate || ''))
+    case 'paid30':
+      return (d?.paidRecent ?? [])
+        .slice()
+        .sort((a: any, b: any) => (b.fullyPaidOnDate || '').localeCompare(a.fullyPaidOnDate || ''))
+    default:
+      return []
+  }
+})
+const cardListTotal = computed(() =>
+  cardListInvoices.value.reduce((sum: number, inv: any) => {
+    const v = cardListKind.value === 'paid30' ? inv.total : inv.amountDue
+    return sum + (Number(v) || 0)
+  }, 0)
+)
+function openCardList(kind: CardListKind) {
+  cardListKind.value = kind
+  showCardList.value = true
+}
+
 // "This month" drill-down slideover. Lists every invoice issued this
 // calendar month (paid or unpaid) so the user can see what got billed.
 const showMonthDetail = ref(false)
@@ -633,59 +678,67 @@ const agingSections = [
           </div>
         </UCard>
 
-        <!-- Summary Cards -->
+        <!-- Summary Cards — clickable, each opens a slideover with its underlying invoice list. -->
         <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
-          <UCard>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">Outstanding Balance</p>
-                <p class="text-2xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.outstandingTotal) }}</p>
+          <button type="button" class="text-left rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" @click="openCardList('outstanding')">
+            <UCard class="hover:border-blue-500 dark:hover:border-blue-400 transition-colors h-full">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-[var(--ui-text-muted)]">Outstanding Balance</p>
+                  <p class="text-2xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.outstandingTotal) }}</p>
+                </div>
+                <div class="shrink-0 w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
+                  <UIcon name="i-lucide-file-text" class="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
               </div>
-              <div class="shrink-0 w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
-                <UIcon name="i-lucide-file-text" class="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              </div>
-            </div>
-            <p class="text-xs text-[var(--ui-text-muted)] mt-2">{{ summary?.outstandingCount || 0 }} invoices with open balances</p>
-          </UCard>
+              <p class="text-xs text-[var(--ui-text-muted)] mt-2">{{ summary?.outstandingCount || 0 }} invoices with open balances</p>
+            </UCard>
+          </button>
 
-          <UCard>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">Overdue Balance</p>
-                <p class="text-2xl font-bold text-red-600 dark:text-red-400">{{ formatCurrency((summary as any)?.overdueTotal) }}</p>
+          <button type="button" class="text-left rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400" @click="openCardList('overdue')">
+            <UCard class="hover:border-red-500 dark:hover:border-red-400 transition-colors h-full">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-[var(--ui-text-muted)]">Overdue Balance</p>
+                  <p class="text-2xl font-bold text-red-600 dark:text-red-400">{{ formatCurrency((summary as any)?.overdueTotal) }}</p>
+                </div>
+                <div class="shrink-0 w-10 h-10 rounded-lg bg-red-50 dark:bg-red-500/10 flex items-center justify-center">
+                  <UIcon name="i-lucide-alert-triangle" class="h-5 w-5 text-red-600 dark:text-red-400" />
+                </div>
               </div>
-              <div class="shrink-0 w-10 h-10 rounded-lg bg-red-50 dark:bg-red-500/10 flex items-center justify-center">
-                <UIcon name="i-lucide-alert-triangle" class="h-5 w-5 text-red-600 dark:text-red-400" />
-              </div>
-            </div>
-            <p class="text-xs text-[var(--ui-text-muted)] mt-2">{{ summary?.overdueCount || 0 }} invoices past due</p>
-          </UCard>
+              <p class="text-xs text-[var(--ui-text-muted)] mt-2">{{ summary?.overdueCount || 0 }} invoices past due</p>
+            </UCard>
+          </button>
 
-          <UCard>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">Due in 7 days</p>
-                <p class="text-2xl font-bold text-amber-600 dark:text-amber-400">{{ formatCurrency((summary as any)?.dueSoonTotal) }}</p>
+          <button type="button" class="text-left rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" @click="openCardList('dueSoon')">
+            <UCard class="hover:border-amber-500 dark:hover:border-amber-400 transition-colors h-full">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-[var(--ui-text-muted)]">Due in 7 days</p>
+                  <p class="text-2xl font-bold text-amber-600 dark:text-amber-400">{{ formatCurrency((summary as any)?.dueSoonTotal) }}</p>
+                </div>
+                <div class="shrink-0 w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
+                  <UIcon name="i-lucide-hourglass" class="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                </div>
               </div>
-              <div class="shrink-0 w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
-                <UIcon name="i-lucide-hourglass" class="h-5 w-5 text-amber-600 dark:text-amber-400" />
-              </div>
-            </div>
-            <p class="text-xs text-[var(--ui-text-muted)] mt-2">Upcoming cash expected this week</p>
-          </UCard>
+              <p class="text-xs text-[var(--ui-text-muted)] mt-2">Upcoming cash expected this week</p>
+            </UCard>
+          </button>
 
-          <UCard>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">Paid Last 30 Days</p>
-                <p class="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{{ formatCurrency(summary?.paidLast30Total) }}</p>
+          <button type="button" class="text-left rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" @click="openCardList('paid30')">
+            <UCard class="hover:border-emerald-500 dark:hover:border-emerald-400 transition-colors h-full">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-[var(--ui-text-muted)]">Paid Last 30 Days</p>
+                  <p class="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{{ formatCurrency(summary?.paidLast30Total) }}</p>
+                </div>
+                <div class="shrink-0 w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center">
+                  <UIcon name="i-lucide-badge-check" class="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                </div>
               </div>
-              <div class="shrink-0 w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center">
-                <UIcon name="i-lucide-badge-check" class="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-              </div>
-            </div>
-            <p class="text-xs text-[var(--ui-text-muted)] mt-2">{{ summary?.paidLast30Count || 0 }} invoices closed recently</p>
-          </UCard>
+              <p class="text-xs text-[var(--ui-text-muted)] mt-2">{{ summary?.paidLast30Count || 0 }} invoices closed recently</p>
+            </UCard>
+          </button>
 
           <UCard>
             <div class="flex items-center justify-between">
@@ -1917,6 +1970,72 @@ const agingSections = [
           </div>
         </div>
         <p v-else class="text-sm text-[var(--ui-text-muted)] text-center py-4">No invoices were issued this month.</p>
+      </div>
+    </template>
+  </USlideover>
+
+  <!-- KPI card drill-down: each of the 4 monetary cards (Outstanding,
+       Overdue, Due in 7, Paid Last 30) opens this with the underlying
+       invoice list. Click any row → existing per-invoice detail. -->
+  <USlideover v-model:open="showCardList" :title="cardListTitle" :description="`${cardListInvoices.length} invoice${cardListInvoices.length === 1 ? '' : 's'}`">
+    <template #title>
+      <div class="min-w-0">
+        <p class="font-semibold text-[var(--ui-text-highlighted)] truncate">{{ cardListTitle }}</p>
+        <p class="text-xs text-[var(--ui-text-muted)] truncate font-normal">
+          {{ cardListInvoices.length }} invoice{{ cardListInvoices.length === 1 ? '' : 's' }} · {{ formatCurrency(cardListTotal) }} total
+        </p>
+      </div>
+    </template>
+    <template #body>
+      <div class="space-y-2">
+        <button
+          v-for="inv in cardListInvoices"
+          :key="inv.id"
+          type="button"
+          class="w-full text-left p-3 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-elevated)] hover:border-[var(--ui-primary)] transition-colors"
+          @click="openInvoice(inv.id); showCardList = false"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <p class="font-medium text-[var(--ui-text-highlighted)] text-sm truncate">{{ inv.number }}</p>
+              <p class="text-xs text-[var(--ui-text-muted)] truncate">{{ inv.contact || 'Unknown' }}</p>
+              <p class="text-[11px] text-[var(--ui-text-muted)]">
+                <template v-if="cardListKind === 'paid30'">Paid {{ formatDate(inv.fullyPaidOnDate) }}{{ inv.daysToPay != null ? ` · ${inv.daysToPay}d to pay` : '' }}</template>
+                <template v-else>Issued {{ formatDate(inv.date) }} · Due {{ formatDate(inv.dueDate) }}</template>
+              </p>
+            </div>
+            <div class="text-right shrink-0">
+              <p class="font-semibold" :class="cardListKind === 'paid30' ? 'text-emerald-600 dark:text-emerald-400' : 'text-[var(--ui-text-highlighted)]'">
+                {{ formatCurrency(cardListKind === 'paid30' ? inv.total : inv.amountDue, inv.currency) }}
+              </p>
+              <UBadge
+                v-if="cardListKind !== 'paid30' && inv.status === 'OVERDUE'"
+                size="sm"
+                color="error"
+                variant="subtle"
+              >
+                {{ inv.daysOverdue }}d overdue
+              </UBadge>
+              <UBadge
+                v-else-if="cardListKind !== 'paid30' && inv.daysUntilDue != null"
+                size="sm"
+                color="warning"
+                variant="subtle"
+              >
+                Due in {{ inv.daysUntilDue }}d
+              </UBadge>
+              <UBadge
+                v-else-if="cardListKind === 'paid30'"
+                size="sm"
+                color="success"
+                variant="subtle"
+              >
+                Paid
+              </UBadge>
+            </div>
+          </div>
+        </button>
+        <p v-if="!cardListInvoices.length" class="text-sm text-[var(--ui-text-muted)] text-center py-6">No invoices in this view.</p>
       </div>
     </template>
   </USlideover>
