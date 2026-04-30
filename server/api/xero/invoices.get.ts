@@ -135,7 +135,13 @@ export default eventHandler(async (event) => {
     const sumBy = (list: any[], predicate: (inv: any) => boolean) =>
       list.reduce((total, inv) => predicate(inv) ? total + (inv.amountDue || 0) : total, 0)
 
-    const outstandingTotal = sumBy(outstanding, () => true)
+    // "Outstanding" in accounting terms is total open AR — every unpaid
+    // invoice with a positive amountDue, regardless of due date. The
+    // `outstanding` array only holds future-due invoices; overdue ones
+    // live in `overdue`. Combine them for the summary card.
+    const openInvoices = [...outstanding, ...overdue]
+    const outstandingTotal = sumBy(openInvoices, () => true)
+    const outstandingCount = openInvoices.length
     const overdueTotal = sumBy(overdue, () => true)
     const dueSoonTotal = sumBy(outstanding, (inv) => inv.agingBucket === 'dueSoon')
 
@@ -211,7 +217,7 @@ export default eventHandler(async (event) => {
     return {
       summary: {
         outstandingTotal,
-        outstandingCount: outstanding.length,
+        outstandingCount,
         overdueTotal,
         overdueCount: overdue.length,
         dueSoonTotal,
