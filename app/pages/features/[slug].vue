@@ -794,8 +794,8 @@ const features: Record<string, Feature> = {
     description: 'Eight specialized analyzers that proactively flag spend anomalies, deadline risks, and budget issues before they become problems.',
     details: [
       {
-        title: 'Eight Specialized Analyzers',
-        content: 'The proactive agent runs eight independent analyzers covering spend anomalies (unusual daily spend), budget pacing (projected overspend), deadline risks (tasks likely to miss due dates), workload imbalance (team members overloaded), client health (engagement and satisfaction signals), revenue patterns (declining or growing accounts), timesheet gaps (missing time entries), and operational efficiency (process bottlenecks).'
+        title: 'Nine Specialized Analyzers',
+        content: 'The detection layer runs nine independent analyzers across financial domains: profitability (margin compression and net loss), revenue (period-over-period and year-over-year decline), expenses (category concentration, vendor outliers, statistical spikes), cashflow (overdraft, low reserves, burn rate, projected shortfall), receivables (overdue concentration, slow payers, client concentration), budget (overspend and category-level overruns), ad-spend (per-client/platform daily-spend spikes), per-client (scope creep and revenue concentration), and transaction-level outliers. Each analyzer runs in parallel during scheduled and on-demand scans.'
       },
       {
         title: 'Proactive Notifications',
@@ -803,11 +803,11 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Severity Scoring',
-        content: 'Each anomaly is scored for severity based on financial impact, time sensitivity, and historical patterns. Critical anomalies (like a budget overspend in progress) trigger immediate alerts, while informational findings (like a minor workload imbalance) appear in summary reports. The scoring adapts over time as the system learns which types of anomalies your team acts on and which they dismiss.'
+        content: 'Each anomaly is scored as critical, warning, or info based on rule-based thresholds matched to financial impact and time sensitivity. Critical anomalies (e.g. a net-loss period or a projected cash shortfall) trigger Smart Watch + email notifications immediately. Warning and info findings appear on the Anomalies page and in the daily digest, but do not page anyone overnight.'
       },
       {
-        title: 'Feedback Loop',
-        content: 'Rate AI recommendations as helpful or unhelpful to train the system. Dismissed anomalies with feedback help calibrate future detection sensitivity. Over time, the anomaly detection becomes tuned to your agency\'s specific patterns and thresholds rather than generic defaults. This feedback also informs the LoRA adapter training pipeline for agency-specific model improvements.'
+        title: 'Incident Workflow',
+        content: 'Each detected anomaly becomes a persistent incident with status (open / acknowledged / snoozed / resolved / dismissed) and a full audit trail. Snoozing buys time without losing the signal — when the snooze expires, the row flips back to open if the underlying issue is still detected. Resolved-and-recurring anomalies create new incidents rather than reopening old ones, preserving incident history. Correlated findings (for example a low-margin month with margin compression and revenue decline) collapse under a single parent incident card.'
       }
     ]
   },

@@ -320,6 +320,33 @@ function formatNumber(value: number) {
   })
 }
 
+function groupByKey<T extends { group_key: string | null }>(items: T[]) {
+  const grouped = new Map<string, T[]>()
+  const ungrouped: T[] = []
+  for (const item of items) {
+    if (item.group_key) {
+      if (!grouped.has(item.group_key)) grouped.set(item.group_key, [])
+      grouped.get(item.group_key)!.push(item)
+    } else {
+      ungrouped.push(item)
+    }
+  }
+  return {
+    grouped: Array.from(grouped.entries()),  // [[groupKey, items[]], ...]
+    ungrouped,
+  }
+}
+
+function formatGroupKey(key: string): string {
+  // 'incident:profitability:Mar 2026' → 'Profitability incident — Mar 2026'
+  const parts = key.split(':')
+  if (parts.length < 3) return key
+  const [, kind, ...periodParts] = parts
+  const period = periodParts.join(':')
+  const kindLabel = kind.charAt(0).toUpperCase() + kind.slice(1)
+  return `${kindLabel} incident — ${period}`
+}
+
 function formatDate(value?: string | null) {
   if (!value) return null
   const date = new Date(value)
@@ -590,8 +617,30 @@ function openActionPlan(anomaly: Anomaly) {
             </div>
 
             <div class="space-y-4">
+              <template v-for="bucket in groupByKey(section.items).grouped" :key="bucket[0]">
+                <div class="rounded-lg border border-default bg-elevated/30 p-4 space-y-3">
+                  <div class="flex items-center gap-2">
+                    <UIcon name="i-lucide-link-2" class="size-4 text-primary" />
+                    <h3 class="text-sm font-semibold">
+                      {{ formatGroupKey(bucket[0]) }}
+                    </h3>
+                    <UBadge color="neutral" variant="subtle" size="xs">
+                      {{ bucket[1].length }} findings
+                    </UBadge>
+                  </div>
+                  <AnomalyCard
+                    v-for="anomaly in bucket[1]"
+                    :key="anomaly.id"
+                    :anomaly="anomaly"
+                    :nested="true"
+                    @mutated="onMutated"
+                    @open-action-plan="openActionPlan"
+                  />
+                </div>
+              </template>
+
               <AnomalyCard
-                v-for="anomaly in section.items"
+                v-for="anomaly in groupByKey(section.items).ungrouped"
                 :key="anomaly.id"
                 :anomaly="anomaly"
                 @mutated="onMutated"
