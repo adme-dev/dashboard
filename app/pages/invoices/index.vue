@@ -441,6 +441,64 @@ function openCardList(kind: CardListKind) {
   showCardList.value = true
 }
 
+// CSV download for the card-list slideover. Pure client-side — builds
+// a CSV string from the visible rows and triggers a Blob download.
+function csvEscape(value: unknown): string {
+  if (value == null) return ''
+  const s = String(value)
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+function downloadCardListCsv() {
+  if (!cardListInvoices.value.length) return
+  const isPaid = cardListKind.value === 'paid30'
+  const headers = isPaid
+    ? ['Invoice #', 'Customer', 'Issued', 'Due', 'Paid On', 'Days to Pay', 'Total', 'Currency', 'Status']
+    : ['Invoice #', 'Customer', 'Issued', 'Due', 'Days Until Due', 'Days Overdue', 'Amount Due', 'Currency', 'Status']
+  const rows = cardListInvoices.value.map((inv: any) => isPaid
+    ? [
+        inv.number ?? '',
+        inv.contact ?? '',
+        inv.date ?? '',
+        inv.dueDate ?? '',
+        inv.fullyPaidOnDate ?? '',
+        inv.daysToPay ?? '',
+        inv.total ?? '',
+        inv.currency ?? '',
+        inv.status ?? '',
+      ]
+    : [
+        inv.number ?? '',
+        inv.contact ?? '',
+        inv.date ?? '',
+        inv.dueDate ?? '',
+        inv.daysUntilDue ?? '',
+        inv.daysOverdue ?? '',
+        inv.amountDue ?? '',
+        inv.currency ?? '',
+        inv.status ?? '',
+      ]
+  )
+  const csv = [headers, ...rows]
+    .map((row) => row.map(csvEscape).join(','))
+    .join('\r\n')
+
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const today = new Date().toISOString().slice(0, 10)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `invoices-${cardListKind.value}-${today}.csv`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  toast.add({
+    title: 'CSV downloaded',
+    description: `${cardListInvoices.value.length} row${cardListInvoices.value.length === 1 ? '' : 's'}`,
+    color: 'success',
+  })
+}
+
 // "This month" drill-down slideover. Lists every invoice issued this
 // calendar month (paid or unpaid) so the user can see what got billed.
 const showMonthDetail = ref(false)
@@ -2033,6 +2091,17 @@ const agingSections = [
           {{ cardListInvoices.length }} invoice{{ cardListInvoices.length === 1 ? '' : 's' }} · {{ formatCurrency(cardListTotal) }} total
         </p>
       </div>
+    </template>
+    <template #actions>
+      <UButton
+        v-if="cardListInvoices.length"
+        size="xs"
+        variant="ghost"
+        color="neutral"
+        icon="i-lucide-download"
+        label="Download CSV"
+        @click="downloadCardListCsv"
+      />
     </template>
     <template #body>
       <div class="space-y-2">
