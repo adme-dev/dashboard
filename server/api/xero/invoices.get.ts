@@ -254,6 +254,17 @@ export default eventHandler(async (event) => {
       .sort((a, b) => b.avgDaysToPay - a.avgDaysToPay)
       .slice(0, 8)
 
+    // Month-to-date invoiced — total billed this calendar month so far,
+    // regardless of paid/unpaid status. Helpful for "are we on track to
+    // hit our monthly billing target" at a glance.
+    const monthStartISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
+    const monthToDateInvoicedAll = [...openInvoices, ...paidDetailed]
+      .filter((inv: any) => inv.date && inv.date >= monthStartISO)
+    const monthToDateInvoicedTotal = Math.round(
+      monthToDateInvoicedAll.reduce((sum: number, inv: any) => sum + (Number(inv.total) || 0), 0)
+    )
+    const monthToDateInvoicedCount = monthToDateInvoicedAll.length
+
     // Tax / GST summary — sales GST collected over rolling windows.
     // For Australian BAS prep: GST on sales is `1A` on the form.
     // We sum totalTax across every invoice issued in the period (open
@@ -457,6 +468,9 @@ export default eventHandler(async (event) => {
         notSentCount,
         notSentTotal,
         dso30,
+        monthToDateInvoicedTotal,
+        monthToDateInvoicedCount,
+        monthStart: monthStartISO,
         paidLast30Total: paidLast30.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0),
         paidLast30Count: paidLast30.length,
         avgDaysToPay,

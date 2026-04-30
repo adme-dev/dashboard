@@ -731,128 +731,130 @@ const agingSections = [
           />
         </button>
 
-        <!-- Forward pipeline — quotes won/sent/drafted but not yet invoiced. -->
-        <UCard v-if="(quotesSummary?.count || 0) > 0">
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div class="flex items-center gap-3">
+        <!-- Revenue context row — forward pipeline, recurring, this-month
+             billed, GST collected, credit notes outstanding. Each card is
+             independently conditional and wrapped in a flex grid so absent
+             cards collapse and the row stays balanced. -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <!-- This Month Invoiced — running total billed this calendar month. -->
+          <UCard v-if="((summary as any)?.monthToDateInvoicedCount || 0) > 0">
+            <div class="flex items-center gap-3 mb-2">
+              <div class="shrink-0 w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
+                <UIcon name="i-lucide-calendar-clock" class="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div class="min-w-0">
+                <p class="text-sm text-[var(--ui-text-muted)] truncate">This Month Invoiced</p>
+                <p class="text-xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.monthToDateInvoicedTotal) }}</p>
+              </div>
+            </div>
+            <p class="text-xs text-[var(--ui-text-muted)]">
+              {{ (summary as any)?.monthToDateInvoicedCount }} invoice{{ (summary as any)?.monthToDateInvoicedCount === 1 ? '' : 's' }} since {{ formatDate((summary as any)?.monthStart) }}
+            </p>
+          </UCard>
+
+          <!-- Forward pipeline — quotes won/sent/drafted but not yet invoiced. -->
+          <UCard v-if="(quotesSummary?.count || 0) > 0">
+            <div class="flex items-center gap-3 mb-2">
               <div class="shrink-0 w-10 h-10 rounded-lg bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center">
                 <UIcon name="i-lucide-file-search" class="h-5 w-5 text-violet-600 dark:text-violet-400" />
               </div>
-              <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">Forward Pipeline</p>
-                <p class="text-2xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency(quotesSummary?.total) }}</p>
-                <p class="text-xs text-[var(--ui-text-muted)] mt-0.5">{{ quotesSummary?.count }} active quote{{ (quotesSummary?.count ?? 0) === 1 ? '' : 's' }} not yet invoiced</p>
+              <div class="min-w-0">
+                <p class="text-sm text-[var(--ui-text-muted)] truncate">Forward Pipeline</p>
+                <p class="text-xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency(quotesSummary?.total) }}</p>
               </div>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <UBadge v-if="(quotesSummary?.byStatus.accepted.count || 0) > 0" color="success" variant="subtle">
-                Accepted: {{ formatCurrency(quotesSummary?.byStatus.accepted.total) }} ({{ quotesSummary?.byStatus.accepted.count }})
+            <p class="text-xs text-[var(--ui-text-muted)] mb-2">{{ quotesSummary?.count }} active quote{{ (quotesSummary?.count ?? 0) === 1 ? '' : 's' }} not yet invoiced</p>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <UBadge v-if="(quotesSummary?.byStatus.accepted.count || 0) > 0" color="success" variant="subtle" size="sm">
+                Accepted: {{ formatCurrency(quotesSummary?.byStatus.accepted.total) }}
               </UBadge>
-              <UBadge v-if="(quotesSummary?.byStatus.sent.count || 0) > 0" color="info" variant="subtle">
-                Sent: {{ formatCurrency(quotesSummary?.byStatus.sent.total) }} ({{ quotesSummary?.byStatus.sent.count }})
+              <UBadge v-if="(quotesSummary?.byStatus.sent.count || 0) > 0" color="info" variant="subtle" size="sm">
+                Sent: {{ formatCurrency(quotesSummary?.byStatus.sent.total) }}
               </UBadge>
-              <UBadge v-if="(quotesSummary?.byStatus.draft.count || 0) > 0" color="neutral" variant="subtle">
-                Draft: {{ formatCurrency(quotesSummary?.byStatus.draft.total) }} ({{ quotesSummary?.byStatus.draft.count }})
+              <UBadge v-if="(quotesSummary?.byStatus.draft.count || 0) > 0" color="neutral" variant="subtle" size="sm">
+                Draft: {{ formatCurrency(quotesSummary?.byStatus.draft.total) }}
               </UBadge>
             </div>
-          </div>
-        </UCard>
+          </UCard>
 
-        <!-- Recurring revenue — active retainers / subscriptions normalised to MRR. -->
-        <UCard v-if="(recurringSummary?.summary?.activeCount || 0) > 0">
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div class="flex items-center gap-3">
+          <!-- Recurring revenue — active retainers / subscriptions normalised to MRR. -->
+          <UCard v-if="(recurringSummary?.summary?.activeCount || 0) > 0">
+            <div class="flex items-center gap-3 mb-2">
               <div class="shrink-0 w-10 h-10 rounded-lg bg-cyan-50 dark:bg-cyan-500/10 flex items-center justify-center">
                 <UIcon name="i-lucide-repeat" class="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
               </div>
-              <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">Recurring Revenue (MRR)</p>
-                <p class="text-2xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency(recurringSummary?.summary?.mrr) }}</p>
-                <p class="text-xs text-[var(--ui-text-muted)] mt-0.5">
-                  {{ recurringSummary?.summary?.activeCount }} active schedule{{ (recurringSummary?.summary?.activeCount ?? 0) === 1 ? '' : 's' }} across {{ recurringSummary?.summary?.clientCount }} client{{ (recurringSummary?.summary?.clientCount ?? 0) === 1 ? '' : 's' }}
-                </p>
+              <div class="min-w-0">
+                <p class="text-sm text-[var(--ui-text-muted)] truncate">Recurring Revenue (MRR)</p>
+                <p class="text-xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency(recurringSummary?.summary?.mrr) }}</p>
               </div>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <UBadge color="info" variant="subtle">
+            <p class="text-xs text-[var(--ui-text-muted)] mb-2">
+              {{ recurringSummary?.summary?.activeCount }} schedule{{ (recurringSummary?.summary?.activeCount ?? 0) === 1 ? '' : 's' }} · {{ recurringSummary?.summary?.clientCount }} client{{ (recurringSummary?.summary?.clientCount ?? 0) === 1 ? '' : 's' }}
+            </p>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <UBadge color="info" variant="subtle" size="sm">
                 ARR: {{ formatCurrency(recurringSummary?.summary?.arr) }}
               </UBadge>
               <UBadge
                 v-if="(recurringSummary?.summary?.recurringMonthlyCosts || 0) > 0"
                 :color="(recurringSummary?.summary?.netRecurring ?? 0) >= 0 ? 'success' : 'error'"
                 variant="subtle"
+                size="sm"
               >
-                Net of recurring costs: {{ formatCurrency(recurringSummary?.summary?.netRecurring) }}/mo
+                Net: {{ formatCurrency(recurringSummary?.summary?.netRecurring) }}/mo
               </UBadge>
             </div>
-          </div>
-        </UCard>
+          </UCard>
 
-        <!-- Credit notes outstanding — money owed back to customers / unapplied credits. -->
-        <UCard v-if="(creditNotesSummary?.count || 0) > 0">
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div class="flex items-center gap-3">
-              <div class="shrink-0 w-10 h-10 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center">
-                <UIcon name="i-lucide-receipt" class="h-5 w-5 text-rose-600 dark:text-rose-400" />
-              </div>
-              <div>
-                <UTooltip text="Active sales credit notes with an unapplied balance. This money is either owed back to the customer or available to apply against future invoices. Subtract from gross AR for a Net AR figure.">
-                  <p class="text-sm text-[var(--ui-text-muted)] flex items-center gap-1">
-                    Credit Notes Outstanding
-                    <UIcon name="i-lucide-info" class="h-3 w-3" />
-                  </p>
-                </UTooltip>
-                <p class="text-2xl font-bold text-rose-600 dark:text-rose-400">{{ formatCurrency(creditNotesSummary?.total) }}</p>
-                <p class="text-xs text-[var(--ui-text-muted)] mt-0.5">
-                  {{ creditNotesSummary?.count }} active credit note{{ (creditNotesSummary?.count ?? 0) === 1 ? '' : 's' }}
-                </p>
-              </div>
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <UBadge color="neutral" variant="subtle">
-                Net AR: {{ formatCurrency(((summary as any)?.outstandingTotal ?? 0) - (creditNotesSummary?.total ?? 0)) }}
-              </UBadge>
-              <UBadge v-if="creditNotesSummary?.byContact?.[0]" color="warning" variant="subtle">
-                Largest: {{ creditNotesSummary.byContact[0].name }} · {{ formatCurrency(creditNotesSummary.byContact[0].total) }}
-              </UBadge>
-            </div>
-          </div>
-        </UCard>
-
-        <!-- GST / Tax collected — sum of totalTax on issued invoices over rolling windows.
-             Australian agencies use this for BAS prep (GST on sales = box 1A). -->
-        <UCard v-if="((summary as any)?.taxSummary?.last90 ?? 0) > 0">
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div class="flex items-center gap-3">
+          <!-- GST / Tax collected — sum of totalTax on issued invoices over rolling windows. -->
+          <UCard v-if="((summary as any)?.taxSummary?.last90 ?? 0) > 0">
+            <div class="flex items-center gap-3 mb-2">
               <div class="shrink-0 w-10 h-10 rounded-lg bg-teal-50 dark:bg-teal-500/10 flex items-center justify-center">
                 <UIcon name="i-lucide-percent" class="h-5 w-5 text-teal-600 dark:text-teal-400" />
               </div>
-              <div>
-                <UTooltip text="GST/VAT collected on sales invoices. Sums the totalTax field across every invoice issued in each window. For Australian BAS, the FY-to-date figure is GST on sales (box 1A) — but always reconcile against Xero's official BAS report before lodging.">
-                  <p class="text-sm text-[var(--ui-text-muted)] flex items-center gap-1">
-                    GST Collected on Sales
+              <div class="min-w-0">
+                <UTooltip text="GST/VAT collected on sales invoices. The headline is FY-to-date which maps to BAS box 1A — always reconcile against Xero's official BAS report before lodging.">
+                  <p class="text-sm text-[var(--ui-text-muted)] flex items-center gap-1 truncate">
+                    GST Collected
                     <UIcon name="i-lucide-info" class="h-3 w-3" />
                   </p>
                 </UTooltip>
-                <p class="text-2xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.taxSummary?.fyToDate) }}</p>
-                <p class="text-xs text-[var(--ui-text-muted)] mt-0.5">
-                  AU financial year to date · since {{ formatDate((summary as any)?.taxSummary?.fyStart) }}
-                </p>
+                <p class="text-xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.taxSummary?.fyToDate) }}</p>
               </div>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <UBadge color="neutral" variant="subtle">
-                Last 30 days: {{ formatCurrency((summary as any)?.taxSummary?.last30) }}
-              </UBadge>
-              <UBadge color="neutral" variant="subtle">
-                Last 90 days: {{ formatCurrency((summary as any)?.taxSummary?.last90) }}
-              </UBadge>
-              <UBadge color="neutral" variant="subtle">
-                CY YTD: {{ formatCurrency((summary as any)?.taxSummary?.calendarYtd) }}
+            <p class="text-xs text-[var(--ui-text-muted)] mb-2">FY-to-date · since {{ formatDate((summary as any)?.taxSummary?.fyStart) }}</p>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <UBadge color="neutral" variant="subtle" size="sm">30d: {{ formatCurrency((summary as any)?.taxSummary?.last30) }}</UBadge>
+              <UBadge color="neutral" variant="subtle" size="sm">90d: {{ formatCurrency((summary as any)?.taxSummary?.last90) }}</UBadge>
+            </div>
+          </UCard>
+
+          <!-- Credit notes outstanding — money owed back to customers / unapplied credits. -->
+          <UCard v-if="(creditNotesSummary?.count || 0) > 0">
+            <div class="flex items-center gap-3 mb-2">
+              <div class="shrink-0 w-10 h-10 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center">
+                <UIcon name="i-lucide-receipt" class="h-5 w-5 text-rose-600 dark:text-rose-400" />
+              </div>
+              <div class="min-w-0">
+                <UTooltip text="Active sales credit notes with an unapplied balance. Money owed back to the customer or available to apply against future invoices.">
+                  <p class="text-sm text-[var(--ui-text-muted)] flex items-center gap-1 truncate">
+                    Credit Notes
+                    <UIcon name="i-lucide-info" class="h-3 w-3" />
+                  </p>
+                </UTooltip>
+                <p class="text-xl font-bold text-rose-600 dark:text-rose-400">{{ formatCurrency(creditNotesSummary?.total) }}</p>
+              </div>
+            </div>
+            <p class="text-xs text-[var(--ui-text-muted)] mb-2">
+              {{ creditNotesSummary?.count }} active · Net AR {{ formatCurrency(((summary as any)?.outstandingTotal ?? 0) - (creditNotesSummary?.total ?? 0)) }}
+            </p>
+            <div v-if="creditNotesSummary?.byContact?.[0]" class="flex flex-wrap items-center gap-1.5">
+              <UBadge color="warning" variant="subtle" size="sm">
+                Largest: {{ creditNotesSummary.byContact[0].name }} · {{ formatCurrency(creditNotesSummary.byContact[0].total) }}
               </UBadge>
             </div>
-          </div>
-        </UCard>
+          </UCard>
+        </div>
 
         <!-- Cash collection forecast — projected inflows from open AR. -->
         <UCard v-if="((summary as any)?.cashForecast?.buckets || []).some((b: any) => b.count > 0)">
