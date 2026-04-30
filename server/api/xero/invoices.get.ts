@@ -1,5 +1,5 @@
 import { createError } from 'h3'
-import { createXeroClient } from '../../utils/xeroClient'
+import { xeroFetch } from '../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../utils/tokenStore'
 import { getSelectedTenant } from '../../utils/session'
 import { cachedFetch } from '../../utils/kv'
@@ -16,41 +16,33 @@ export default eventHandler(async (event) => {
   const cacheKey = `xero-report:${tenantId}:invoices`
 
   return cachedFetch(event, cacheKey, 300, async () => {
-    const client = await createXeroClient({ tokenSet: token, event })
     const dateKey = ensureDateString(new Date())
+
+    const buildParams = (where: string, order: string) => new URLSearchParams({
+      where,
+      order,
+      page: '1',
+      pageSize: '100',
+    })
 
     const [authorisedBody, paidBody] = await Promise.all([
       dedupedXeroCall(
         `invoices-accrec-authorised:${tenantId}:${dateKey}`,
         'invoices-authorised',
-        async () => {
-          const { body } = await (client.accountingApi.getInvoices as any)(
-            tenantId,
-            undefined,
-            'Type=="ACCREC"&&Status=="AUTHORISED"',
-            'DueDate ASC',
-            undefined, undefined, undefined, undefined,
-            1, undefined, undefined, undefined,
-            100
-          )
-          return body
-        }
+        () => xeroFetch<any>({
+          accessToken: token.access_token!,
+          tenantId,
+          path: `Invoices?${buildParams('Type=="ACCREC"&&Status=="AUTHORISED"', 'DueDate ASC').toString()}`,
+        })
       ),
       dedupedXeroCall(
         `invoices-accrec-paid:${tenantId}:${dateKey}`,
         'invoices-paid',
-        async () => {
-          const { body } = await (client.accountingApi.getInvoices as any)(
-            tenantId,
-            undefined,
-            'Type=="ACCREC"&&Status=="PAID"',
-            'Date DESC',
-            undefined, undefined, undefined, undefined,
-            1, undefined, undefined, undefined,
-            100
-          )
-          return body
-        }
+        () => xeroFetch<any>({
+          accessToken: token.access_token!,
+          tenantId,
+          path: `Invoices?${buildParams('Type=="ACCREC"&&Status=="PAID"', 'Date DESC').toString()}`,
+        })
       )
     ])
 

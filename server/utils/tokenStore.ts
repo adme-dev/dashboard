@@ -3,8 +3,6 @@ import { refreshXeroToken, type XeroTokenSet } from './xeroClient'
 import { queryOne, query } from './db'
 import { kvGet, kvPut, kvDelete } from './kv'
 
-const refreshLocks = new Map<string, Promise<XeroTokenSet>>()
-
 const TOKEN_TTL = 25 * 60   // 25 minutes (tokens expire at 30 min)
 
 const ORG_TOKEN_KV_KEY = 'xero-org-token'
@@ -135,7 +133,6 @@ export async function setOrgTenant(event: H3Event, tenantId: string, tenantName:
  */
 export async function getActiveOrgToken(event: H3Event, opts: { minTtlMs?: number } = {}): Promise<XeroTokenSet> {
   const windowMs = typeof opts.minTtlMs === 'number' ? opts.minTtlMs : 300_000
-  const lockKey = 'org'
   const token = await getOrgToken(event)
   if (!token?.access_token) {
     throw createError({ statusCode: 401, statusMessage: 'Not connected to Xero' })
@@ -150,31 +147,35 @@ export async function getActiveOrgToken(event: H3Event, opts: { minTtlMs?: numbe
     await clearOrgToken(event)
     throw createError({ statusCode: 401, statusMessage: 'Xero session expired, please reconnect' })
   }
-  if (refreshLocks.has(lockKey)) {
-    return await refreshLocks.get(lockKey)!
-  }
 
-  const refreshPromise = (async () => {
-    try {
-      const next = await refreshXeroToken({
-        refreshToken: token.refresh_token!,
-        event
-      })
-      await setOrgToken(event, next)
-      return next
-    } catch (err) {
-      await clearOrgToken(event)
-      throw createError({
-        statusCode: 401,
-        statusMessage: 'Failed to refresh Xero session'
-      })
-    } finally {
-      refreshLocks.delete(lockKey)
+  // Each request refreshes independently — no module-level lock.
+  // A cross-request promise lock would crash on Cloudflare Pages with
+  // "Cannot perform I/O on behalf of a different request" (CF error 1101).
+  // Two concurrent refreshes are rare (KV cache covers most reads), and
+  // if one loses the refresh-token rotation race we re-read in case the
+  // winner already wrote a fresh token to KV/DB.
+  try {
+    const next = await refreshXeroToken({
+      refreshToken: token.refresh_token!,
+      event
+    })
+    await setOrgToken(event, next)
+    return next
+  } catch (err) {
+    const winner = await getOrgToken(event)
+    if (
+      winner?.access_token
+      && winner.access_token !== token.access_token
+      && winner.expires_at > Date.now() + 5_000
+    ) {
+      return winner
     }
-  })()
-
-  refreshLocks.set(lockKey, refreshPromise)
-  return await refreshPromise
+    await clearOrgToken(event)
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Failed to refresh Xero session'
+    })
+  }
 }
 
 // ─── Backward-compatible aliases ─────────────────────────────────────
