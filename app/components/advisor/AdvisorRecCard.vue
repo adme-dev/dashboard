@@ -83,44 +83,44 @@ const isOverdue = computed(() => {
 
     <!-- Meta row -->
     <div class="flex items-center flex-wrap gap-1.5 mt-2">
-      <AdvisorCategoryBadge v-if="rec.category" :category="rec.category" size="xs" />
-      <UBadge v-if="rec.effort" color="neutral" variant="subtle" size="xs">
+      <AdvisorCategoryBadge v-if="rec.category" :category="rec.category" size="sm" />
+      <UBadge v-if="rec.effort" color="neutral" variant="subtle" size="sm">
         {{ EFFORT_LABELS[rec.effort] }}
       </UBadge>
-      <UBadge v-if="rec.client_name" color="info" variant="subtle" size="xs">
+      <UBadge v-if="rec.client_name" color="info" variant="subtle" size="sm">
         {{ rec.client_name }}
       </UBadge>
-      <UBadge v-else color="neutral" variant="subtle" size="xs">Agency</UBadge>
+      <UBadge v-else color="neutral" variant="subtle" size="sm">Agency</UBadge>
       <UBadge
         v-if="rec.source === 'manual'"
         color="info"
         variant="subtle"
-        size="xs"
+        size="sm"
       >Manual</UBadge>
     </div>
 
     <!-- Footer: due/snooze/assignee/comments -->
-    <div class="flex items-center justify-between gap-2 mt-2 text-[10px] text-muted">
+    <div class="flex items-center justify-between gap-2 mt-2 text-xs text-muted">
       <div class="flex items-center gap-2">
         <span
           v-if="rec.due_date"
-          class="inline-flex items-center gap-0.5"
+          class="inline-flex items-center gap-1"
           :class="{ 'text-red-500': isOverdue }"
         >
-          <UIcon name="i-lucide-calendar" class="size-3" />
+          <UIcon name="i-lucide-calendar" class="size-3.5" />
           {{ formatDue(rec.due_date) }}
         </span>
         <UTooltip
           v-if="rec.snoozed_until"
           :text="`Snoozed until ${formatDue(rec.snoozed_until)}`"
         >
-          <UIcon name="i-lucide-bell-off" class="size-3 text-amber-500" />
+          <UIcon name="i-lucide-bell-off" class="size-3.5 text-amber-500" />
         </UTooltip>
         <span
           v-if="rec.comment_count && rec.comment_count > 0"
-          class="inline-flex items-center gap-0.5"
+          class="inline-flex items-center gap-1"
         >
-          <UIcon name="i-lucide-message-square" class="size-3" />
+          <UIcon name="i-lucide-message-square" class="size-3.5" />
           {{ rec.comment_count }}
         </span>
       </div>
@@ -128,7 +128,7 @@ const isOverdue = computed(() => {
         v-if="rec.assignee_name"
         :src="rec.assignee_avatar_url ?? undefined"
         :alt="rec.assignee_name"
-        size="3xs"
+        size="2xs"
       />
     </div>
   </div>

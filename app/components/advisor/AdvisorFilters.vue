@@ -120,7 +120,7 @@ const CHIP_OPTIONS = [
         :key="opt.value"
         :color="category === opt.value ? 'primary' : 'neutral'"
         :variant="category === opt.value ? 'solid' : 'subtle'"
-        size="xs"
+        size="sm"
         class="cursor-pointer select-none"
         @click="emit('update:category', opt.value)"
       >
@@ -130,14 +130,14 @@ const CHIP_OPTIONS = [
 
     <!-- Source toggle + show-snoozed -->
     <div class="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-default">
-      <span class="text-xs text-muted">Source:</span>
+      <span class="text-sm text-muted">Source:</span>
       <UButtonGroup>
         <UButton
           v-for="o in SOURCE_OPTIONS"
           :key="o.value"
           :color="source === o.value ? 'primary' : 'neutral'"
           :variant="source === o.value ? 'solid' : 'outline'"
-          size="xs"
+          size="sm"
           @click="emit('update:source', o.value)"
         >{{ o.label }}</UButton>
       </UButtonGroup>

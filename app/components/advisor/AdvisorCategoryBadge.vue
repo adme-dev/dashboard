@@ -30,7 +30,7 @@ const label = computed(() => {
 </script>
 
 <template>
-  <UBadge :color="color" variant="subtle" :size="size ?? 'xs'">
+  <UBadge :color="color" variant="subtle" :size="size ?? 'sm'">
     {{ label }}
   </UBadge>
 </template>

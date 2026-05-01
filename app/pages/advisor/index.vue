@@ -260,6 +260,10 @@ function statusLabel(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
+function priorityLabel(p: string) {
+  return p.charAt(0).toUpperCase() + p.slice(1)
+}
+
 function formatDate(iso: string | null | undefined) {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -491,29 +495,29 @@ const summary = computed(() => {
 
     <template #body>
       <div class="space-y-4 p-4">
-        <div v-if="clientFilter !== 'all'" class="flex items-center gap-2 text-xs text-muted">
-          <UIcon name="i-lucide-focus" class="size-3.5" />
+        <div v-if="clientFilter !== 'all'" class="flex items-center gap-2 text-sm text-muted">
+          <UIcon name="i-lucide-focus" class="size-4" />
           <span>Scope:</span>
-          <UBadge color="primary" variant="subtle" size="xs">{{ scopeLabel }}</UBadge>
+          <UBadge color="primary" variant="subtle" size="sm">{{ scopeLabel }}</UBadge>
           <button class="text-muted hover:text-default underline-offset-2 hover:underline" @click="clientFilter = 'all'">Clear</button>
         </div>
 
         <!-- Summary tiles -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
           <UCard>
-            <p class="text-xs text-muted uppercase tracking-wider">Active</p>
+            <p class="text-sm font-medium text-muted">Active</p>
             <p class="text-2xl font-bold mt-1">{{ summary.total }}</p>
           </UCard>
           <UCard>
-            <p class="text-xs text-muted uppercase tracking-wider">High priority</p>
+            <p class="text-sm font-medium text-muted">High priority</p>
             <p class="text-2xl font-bold mt-1 text-red-500">{{ summary.high }}</p>
           </UCard>
           <UCard>
-            <p class="text-xs text-muted uppercase tracking-wider">In progress</p>
+            <p class="text-sm font-medium text-muted">In progress</p>
             <p class="text-2xl font-bold mt-1 text-primary">{{ summary.inProgress }}</p>
           </UCard>
           <UCard>
-            <p class="text-xs text-muted uppercase tracking-wider">Overdue</p>
+            <p class="text-sm font-medium text-muted">Overdue</p>
             <p class="text-2xl font-bold mt-1 text-amber-500">{{ summary.overdue }}</p>
           </UCard>
         </div>
@@ -564,28 +568,28 @@ const summary = computed(() => {
             </template>
 
             <template #priority-cell="{ row }">
-              <UBadge :color="priorityColor(row.original.priority)" variant="subtle" size="xs">
-                {{ row.original.priority }}
+              <UBadge :color="priorityColor(row.original.priority)" variant="subtle" size="sm">
+                {{ priorityLabel(row.original.priority) }}
               </UBadge>
             </template>
 
             <template #category-cell="{ row }">
-              <AdvisorCategoryBadge :category="row.original.category" />
+              <AdvisorCategoryBadge :category="row.original.category" size="sm" />
             </template>
 
             <template #title-cell="{ row }">
               <div class="space-y-0.5">
                 <p class="font-medium text-sm">{{ row.original.title }}</p>
-                <p class="text-xs text-muted truncate max-w-md">{{ row.original.action }}</p>
+                <p class="text-sm text-muted truncate max-w-md">{{ row.original.action }}</p>
               </div>
             </template>
 
             <template #client-cell="{ row }">
-              <span class="text-xs">{{ row.original.client_name ?? 'Agency' }}</span>
+              <span class="text-sm">{{ row.original.client_name ?? 'Agency' }}</span>
             </template>
 
             <template #period-cell="{ row }">
-              <span class="text-xs text-muted">{{ row.original.period_label ?? '—' }}</span>
+              <span class="text-sm text-muted">{{ row.original.period_label ?? '—' }}</span>
             </template>
 
             <template #assignee-cell="{ row }">
@@ -593,27 +597,27 @@ const summary = computed(() => {
                 <UAvatar
                   :src="row.original.assignee_avatar_url ?? undefined"
                   :alt="row.original.assignee_name"
-                  size="2xs"
+                  size="xs"
                 />
-                <span class="text-xs">{{ row.original.assignee_name }}</span>
+                <span class="text-sm">{{ row.original.assignee_name }}</span>
               </div>
-              <span v-else class="text-xs text-muted">—</span>
+              <span v-else class="text-sm text-muted">—</span>
             </template>
 
             <template #due_date-cell="{ row }">
               <div class="flex items-center gap-1.5">
-                <span class="text-xs">{{ formatDate(row.original.due_date) }}</span>
+                <span class="text-sm">{{ formatDate(row.original.due_date) }}</span>
                 <UTooltip
                   v-if="row.original.snoozed_until"
                   :text="`Snoozed until ${formatDate(row.original.snoozed_until)}`"
                 >
-                  <UIcon name="i-lucide-bell-off" class="size-3.5 text-amber-500" />
+                  <UIcon name="i-lucide-bell-off" class="size-4 text-amber-500" />
                 </UTooltip>
               </div>
             </template>
 
             <template #status-cell="{ row }">
-              <UBadge :color="statusColor(row.original.status)" variant="subtle" size="xs">
+              <UBadge :color="statusColor(row.original.status)" variant="subtle" size="sm">
                 {{ statusLabel(row.original.status) }}
               </UBadge>
             </template>
@@ -622,7 +626,7 @@ const summary = computed(() => {
               <div class="py-12 text-center text-sm text-muted">
                 <UIcon name="i-lucide-sparkles" class="size-8 mx-auto text-muted mb-2" />
                 <p>No recommendations match these filters.</p>
-                <p class="text-xs mt-1">Generate an advisor report on <ULink to="/reports">/reports</ULink> to populate this backlog.</p>
+                <p class="text-sm mt-1">Generate an advisor report on <ULink to="/reports">/reports</ULink> to populate this backlog.</p>
               </div>
             </template>
           </UTable>
