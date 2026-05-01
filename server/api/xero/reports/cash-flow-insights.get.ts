@@ -151,6 +151,36 @@ function summarizePurchaseOrders(body: any, status: string) {
   return { status, count: purchaseOrders.length, total }
 }
 
+// Per-section soft timeout. Cloudflare Pages workers cap response time around
+// 30s, and this endpoint fans out 12 Xero calls in parallel — a single slow
+// call (rate-limited + retrying) used to drag the whole request past the limit
+// and surface as a 504 to the user. Wrapping each call in a soft timeout
+// lets the request always return well under 10s; missing sections fall back
+// to safe empty values and the page renders the rest.
+const SECTION_TIMEOUT_MS = 8000
+
+function makeSoftFetch(failures: { count: number }) {
+  return async function softFetch<T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([
+        fn(),
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(() => {
+            reject(new Error(`[cash-flow-insights] "${label}" exceeded ${SECTION_TIMEOUT_MS}ms`))
+          }, SECTION_TIMEOUT_MS)
+        }),
+      ])
+    } catch (err: any) {
+      failures.count++
+      console.warn(`[cash-flow-insights] "${label}" failed — using fallback:`, err?.message ?? err)
+      return fallback
+    } finally {
+      if (timer) clearTimeout(timer)
+    }
+  }
+}
+
 export default eventHandler(async (event) => {
   const token = await getActiveTokenForSession(event)
   const tenantId = await getSelectedTenant(event)
@@ -164,7 +194,15 @@ export default eventHandler(async (event) => {
     const client = await createXeroClient({ tokenSet: token, event })
     const today = new Date()
 
-    // All calls go through dedupedXeroCall (rate-limited + deduped)
+    // All calls go through dedupedXeroCall (rate-limited + deduped) AND each
+    // is bounded by softFetch — a slow Xero call cannot drag the whole
+    // request past Cloudflare's worker timeout. Failures degrade to safe
+    // fallbacks so partial sections still render. We track failures so a
+    // mostly-empty result can be rejected instead of poisoning the 10-min
+    // KV cache with zeros.
+    const failures = { count: 0 }
+    const softFetch = makeSoftFetch(failures)
+
     const [
       balanceSheetBody,
       draftInvoicesBody,
@@ -179,19 +217,30 @@ export default eventHandler(async (event) => {
       outstandingBody,
       contactsBody
     ] = await Promise.all([
-      fetchBalanceSheet(client, tenantId),
-      fetchInvoiceSummary(client, tenantId, 'ACCREC', 'DRAFT'),
-      fetchInvoiceSummary(client, tenantId, 'ACCREC', 'SUBMITTED'),
-      fetchInvoiceSummary(client, tenantId, 'ACCPAY', 'DRAFT'),
-      fetchInvoiceSummary(client, tenantId, 'ACCPAY', 'SUBMITTED'),
-      fetchQuotesByStatus(client, tenantId, 'DRAFT'),
-      fetchQuotesByStatus(client, tenantId, 'SENT'),
-      fetchQuotesByStatus(client, tenantId, 'ACCEPTED'),
-      fetchPurchaseOrders(client, tenantId, 'DRAFT'),
-      fetchPurchaseOrders(client, tenantId, 'SUBMITTED'),
-      fetchOutstandingReceivables(client, tenantId),
-      fetchContacts(client, tenantId)
+      softFetch('balance-sheet', () => fetchBalanceSheet(client, tenantId), null as any),
+      softFetch('accrec-draft', () => fetchInvoiceSummary(client, tenantId, 'ACCREC', 'DRAFT'), { invoices: [] } as any),
+      softFetch('accrec-submitted', () => fetchInvoiceSummary(client, tenantId, 'ACCREC', 'SUBMITTED'), { invoices: [] } as any),
+      softFetch('accpay-draft', () => fetchInvoiceSummary(client, tenantId, 'ACCPAY', 'DRAFT'), { invoices: [] } as any),
+      softFetch('accpay-submitted', () => fetchInvoiceSummary(client, tenantId, 'ACCPAY', 'SUBMITTED'), { invoices: [] } as any),
+      softFetch('quotes-draft', () => fetchQuotesByStatus(client, tenantId, 'DRAFT'), { quotes: [] } as any),
+      softFetch('quotes-sent', () => fetchQuotesByStatus(client, tenantId, 'SENT'), { quotes: [] } as any),
+      softFetch('quotes-accepted', () => fetchQuotesByStatus(client, tenantId, 'ACCEPTED'), { quotes: [] } as any),
+      softFetch('po-draft', () => fetchPurchaseOrders(client, tenantId, 'DRAFT'), { purchaseOrders: [] } as any),
+      softFetch('po-submitted', () => fetchPurchaseOrders(client, tenantId, 'SUBMITTED'), { purchaseOrders: [] } as any),
+      softFetch('outstanding-receivables', () => fetchOutstandingReceivables(client, tenantId), { invoices: [] } as any),
+      softFetch('contacts', () => fetchContacts(client, tenantId), { contacts: [] } as any)
     ])
+
+    // If more than half the upstream calls failed, the resulting payload
+    // would be mostly zeros — caching that for 10 minutes is worse than
+    // surfacing an error the user can retry. Throwing here propagates out
+    // of cachedFetch without writing to KV.
+    if (failures.count > 6) {
+      throw createError({
+        statusCode: 503,
+        statusMessage: `Xero data temporarily unavailable (${failures.count}/12 calls failed)`,
+      })
+    }
 
     const workingCapital = computeWorkingCapital(balanceSheetBody)
 

@@ -154,120 +154,112 @@ export function fetchRecentPaidExpenses(clientOrToken: any, tenantId: string) {
 
 /**
  * Fetch balance sheet as of today. Deduped per tenant + date.
+ *
+ * Uses xeroFetch (raw fetch + AbortController) instead of the xero-node SDK
+ * because the SDK runs on axios under nodejs_compat on Cloudflare Pages and
+ * stalls long enough to blow past the worker timeout. See xeroClient.ts
+ * (`xeroFetch` docstring) for the full story.
  */
-export function fetchBalanceSheet(client: any, tenantId: string) {
+export function fetchBalanceSheet(clientOrToken: any, tenantId: string) {
+  const accessToken = resolveAccessToken(clientOrToken)
   const dateKey = ensureDateString(new Date())
   return dedupedXeroCall(
     `balanceSheet:${tenantId}:${dateKey}`,
     'balance-sheet',
-    async () => {
-      const { body } = await client.accountingApi.getReportBalanceSheet(tenantId, dateKey)
-      return body
-    }
+    () => xeroFetch<any>({
+      accessToken,
+      tenantId,
+      path: `Reports/BalanceSheet?date=${dateKey}`,
+    })
   )
 }
 
 /**
  * Fetch contacts. Deduped per tenant + date.
  */
-export function fetchContacts(client: any, tenantId: string) {
+export function fetchContacts(clientOrToken: any, tenantId: string) {
+  const accessToken = resolveAccessToken(clientOrToken)
   const dateKey = ensureDateString(new Date())
+  const params = new URLSearchParams({
+    order: 'Name ASC',
+    page: '1',
+    pageSize: '200',
+    summaryOnly: 'false',
+    includeArchived: 'false',
+  })
   return dedupedXeroCall(
     `contacts:${tenantId}:${dateKey}`,
     'contacts',
-    async () => {
-      const { body } = await client.accountingApi.getContacts(
-        tenantId, undefined, undefined, 'Name ASC', undefined, 1, false, false, undefined, 200
-      )
-      return body
-    }
+    () => xeroFetch<any>({ accessToken, tenantId, path: `Contacts?${params.toString()}` })
   )
 }
 
 /**
  * Fetch invoice summary by type and status. Deduped per unique combination.
  */
-export function fetchInvoiceSummary(client: any, tenantId: string, type: 'ACCREC' | 'ACCPAY', status: string) {
+export function fetchInvoiceSummary(clientOrToken: any, tenantId: string, type: 'ACCREC' | 'ACCPAY', status: string) {
+  const accessToken = resolveAccessToken(clientOrToken)
   const dateKey = ensureDateString(new Date())
+  const params = new URLSearchParams({
+    where: `Type=="${type}"&&Status=="${status}"`,
+    order: 'Date DESC',
+    page: '1',
+    pageSize: '500',
+  })
   return dedupedXeroCall(
     `invoiceSummary:${tenantId}:${type}:${status}:${dateKey}`,
     `${type}-${status}`,
-    async () => {
-      const { body } = await (client.accountingApi.getInvoices as any)(
-        tenantId,
-        undefined,
-        `Type=="${type}"&&Status=="${status}"`,
-        'Date DESC',
-        undefined, undefined, undefined, undefined,
-        1, undefined, undefined, undefined,
-        500
-      )
-      return body
-    }
+    () => xeroFetch<any>({ accessToken, tenantId, path: `Invoices?${params.toString()}` })
   )
 }
 
 /**
  * Fetch outstanding receivables with AmountDue > 0. Used by insights endpoint.
  */
-export function fetchOutstandingReceivables(client: any, tenantId: string) {
+export function fetchOutstandingReceivables(clientOrToken: any, tenantId: string) {
+  const accessToken = resolveAccessToken(clientOrToken)
   const dateKey = ensureDateString(new Date())
+  const params = new URLSearchParams({
+    where: 'Type=="ACCREC"&&Status=="AUTHORISED"&&AmountDue>0',
+    order: 'DueDate ASC',
+    page: '1',
+    pageSize: '500',
+  })
   return dedupedXeroCall(
     `outstandingReceivables:${tenantId}:${dateKey}`,
     'invoices-outstanding',
-    async () => {
-      const { body } = await (client.accountingApi.getInvoices as any)(
-        tenantId,
-        undefined,
-        'Type=="ACCREC"&&Status=="AUTHORISED"&&AmountDue>0',
-        'DueDate ASC',
-        undefined, undefined, undefined, undefined,
-        1, undefined, undefined, undefined,
-        500
-      )
-      return body
-    }
+    () => xeroFetch<any>({ accessToken, tenantId, path: `Invoices?${params.toString()}` })
   )
 }
 
 /**
  * Fetch quotes by status. Deduped per tenant + status + date.
  */
-export function fetchQuotesByStatus(client: any, tenantId: string, status: string) {
+export function fetchQuotesByStatus(clientOrToken: any, tenantId: string, status: string) {
+  const accessToken = resolveAccessToken(clientOrToken)
   const dateKey = ensureDateString(new Date())
+  const params = new URLSearchParams({ status })
   return dedupedXeroCall(
     `quotes:${tenantId}:${status}:${dateKey}`,
     `quotes-${status}`,
-    async () => {
-      const { body } = await (client.accountingApi.getQuotes as any)(
-        tenantId,
-        undefined, undefined, undefined, undefined, undefined, undefined,
-        status,
-        undefined, undefined, undefined
-      )
-      return body
-    }
+    () => xeroFetch<any>({ accessToken, tenantId, path: `Quotes?${params.toString()}` })
   )
 }
 
 /**
  * Fetch purchase orders by status. Deduped per tenant + status + date.
  */
-export function fetchPurchaseOrders(client: any, tenantId: string, status: 'DRAFT' | 'SUBMITTED' | 'AUTHORISED' | 'BILLED' | 'DELETED') {
+export function fetchPurchaseOrders(clientOrToken: any, tenantId: string, status: 'DRAFT' | 'SUBMITTED' | 'AUTHORISED' | 'BILLED' | 'DELETED') {
+  const accessToken = resolveAccessToken(clientOrToken)
   const dateKey = ensureDateString(new Date())
+  const params = new URLSearchParams({
+    status,
+    page: '1',
+    pageSize: '200',
+  })
   return dedupedXeroCall(
     `purchaseOrders:${tenantId}:${status}:${dateKey}`,
     `purchase-orders-${status}`,
-    async () => {
-      const { body } = await (client.accountingApi.getPurchaseOrders as any)(
-        tenantId,
-        undefined,
-        status,
-        undefined, undefined, undefined,
-        1,
-        200
-      )
-      return body
-    }
+    () => xeroFetch<any>({ accessToken, tenantId, path: `PurchaseOrders?${params.toString()}` })
   )
 }
