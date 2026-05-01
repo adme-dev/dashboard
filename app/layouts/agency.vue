@@ -119,6 +119,13 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     )
   }
 
+  // Leads — inbound inquiries from Meta + Google lead forms. Visible to all
+  // authenticated users; row-level access enforced server-side per client.
+  items.push(
+    { type: 'label', label: 'Leads' },
+    { label: 'Lead Inbox', icon: 'i-lucide-mail-question', to: '/agency/leads', onSelect: close },
+  )
+
   // Billing (scoped) — canAccessInvoices but NOT canAccessFinance (e.g. account managers)
   if (canAccessInvoices.value && !canAccessFinance.value) {
     items.push(
