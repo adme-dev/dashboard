@@ -822,11 +822,17 @@ export interface MetaLeadgenResolved {
  *
  * Throws on permission denial so callers can branch on it. Returns null
  * for 404 (lead deleted in Meta UI before we fetched).
+ *
+ * 10s timeout so a slow Meta response can't hang the webhook past CF
+ * Pages' execution limit.
  */
 export async function getMetaLeadgen(
   leadgenId: string,
   accessToken: string,
+  timeoutMs = 10_000,
 ): Promise<MetaLeadgenResolved | null> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
     return await ofetch<MetaLeadgenResolved>(
       `${META_GRAPH_BASE}/${leadgenId}`,
@@ -835,12 +841,15 @@ export async function getMetaLeadgen(
           access_token: accessToken,
           fields: 'id,created_time,field_data,ad_id,ad_name,form_id,campaign_id,campaign_name',
         },
+        signal: ctrl.signal,
       },
     )
   } catch (e: any) {
     const status = e?.status ?? e?.response?.status
     if (status === 404) return null
     throw e
+  } finally {
+    clearTimeout(timer)
   }
 }
 

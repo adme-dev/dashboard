@@ -75,14 +75,23 @@ export default defineEventHandler(async (event) => {
 
   if (!archives.length) return result
 
-  const tokens = await queryRows<TokenRow>(
+  const allTokens = await queryRows<TokenRow>(
     `SELECT client_id, access_token FROM social_connections
        WHERE platform = 'meta' AND status = 'active' AND access_token IS NOT NULL`,
+  )
+  // Dedupe — same OAuth grant replicated across many ad accounts.
+  const tokens = Array.from(
+    new Map(
+      allTokens.filter((t) => t.access_token).map((t) => [t.access_token!, t]),
+    ).values(),
   )
   if (!tokens.length) {
     result.details!.push('No active Meta connections — backfill cannot proceed.')
     return result
   }
+
+  const pageTokenCache = new Map<string, TokenRow>()
+  const MAX_TOKENS_PER_LEAD = 5
 
   for (const row of archives) {
     const payload = typeof row.raw_payload === 'string'
@@ -95,13 +104,22 @@ export default defineEventHandler(async (event) => {
       continue
     }
 
+    const ordered = pageId && pageTokenCache.has(pageId)
+      ? [pageTokenCache.get(pageId)!, ...tokens.filter((t) => t.access_token !== pageTokenCache.get(pageId)!.access_token)]
+      : tokens
+
     let resolved: any = null
     let permissionDenied = false
-    for (const t of tokens) {
+    let workingToken: TokenRow | null = null
+    for (const t of ordered.slice(0, MAX_TOKENS_PER_LEAD)) {
       if (!t.access_token) continue
       try {
         resolved = await getMetaLeadgen(leadgenId, t.access_token)
-        if (resolved) break
+        if (resolved) {
+          workingToken = t
+          if (pageId) pageTokenCache.set(pageId, t)
+          break
+        }
       } catch (e: any) {
         const status = e?.status ?? e?.response?.status
         const msg = String(e?.data?.error?.message ?? e?.message ?? '')
@@ -119,9 +137,8 @@ export default defineEventHandler(async (event) => {
       continue
     }
 
-    // Map page → client (best-effort)
-    const clientId =
-      tokens.find((t) => t.client_id != null)?.client_id ?? null
+    // Working token's connection owns the Page → its client_id is correct.
+    const clientId = workingToken?.client_id ?? null
 
     const norm = normalizeMetaPayload(
       {

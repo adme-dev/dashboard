@@ -15,7 +15,7 @@
 // Always-200: Meta auto-disables subscriptions that return non-2xx.
 // Signature verified via HMAC-SHA256 over raw body using META_APP_SECRET.
 
-import { queryRows, queryOne } from '~~/server/utils/db'
+import { queryRows } from '~~/server/utils/db'
 import {
   insertLeadWithDedup, upsertFormMetadata, logIngestionError, loadLead,
 } from '~~/server/utils/leads/db'
@@ -85,15 +85,28 @@ export default defineEventHandler(async (event) => {
     return { ok: true }
   }
 
-  // Pull active Meta tokens once. Token strategy: try each until one fetches
-  // successfully. After the first hit for a page_id we'd cache, but the
-  // simpler implementation just retries — Meta's leadgen webhook is
-  // low-throughput per page so the cost is fine.
-  const tokens = await queryRows<PageTokenRow>(
+  // Pull active Meta tokens, dedupe by access_token. The agency's many
+  // ad-account connections share one OAuth grant per user, so deduping
+  // collapses 100+ rows down to typically 1-3 unique tokens.
+  const allTokens = await queryRows<PageTokenRow>(
     `SELECT id, client_id, access_token
        FROM social_connections
       WHERE platform = 'meta' AND status = 'active' AND access_token IS NOT NULL`,
   )
+  const uniqueTokens = Array.from(
+    new Map(
+      allTokens.filter((t) => t.access_token).map((t) => [t.access_token!, t]),
+    ).values(),
+  )
+
+  // Cache: which token successfully fetched a leadgen for a given page_id.
+  // Reused across leadgens within the same webhook batch (Meta often
+  // includes multiple events per delivery).
+  const pageTokenCache = new Map<string, PageTokenRow>()
+
+  // Hard cap on tokens to try per leadgen. Pre-App-Review, all tokens deny —
+  // capping prevents 100+ fruitless calls per event.
+  const MAX_TOKENS_PER_LEADGEN = 5
 
   for (const entry of body.entry) {
     const pageId = entry.id
@@ -103,15 +116,19 @@ export default defineEventHandler(async (event) => {
       const leadgenId = change.value?.leadgen_id
       if (!leadgenId) continue
 
-      // Try each available token until one returns the lead. After App
-      // Review, the first one usually wins; pre-approval, all of them deny.
+      // If we already found a working token for this page, try it first.
+      const orderedTokens = pageTokenCache.has(pageId)
+        ? [pageTokenCache.get(pageId)!, ...uniqueTokens.filter((t) => t.id !== pageTokenCache.get(pageId)!.id)]
+        : uniqueTokens
+
       let resolved: any = null
       let permissionDenied = false
-      for (const t of tokens) {
+      let workingToken: PageTokenRow | null = null
+      for (const t of orderedTokens.slice(0, MAX_TOKENS_PER_LEADGEN)) {
         if (!t.access_token) continue
         try {
           resolved = await getMetaLeadgen(leadgenId, t.access_token)
-          if (resolved) break
+          if (resolved) { workingToken = t; pageTokenCache.set(pageId, t); break }
         } catch (e: any) {
           const status = e?.status ?? e?.response?.status
           const msg = String(e?.data?.error?.message ?? e?.message ?? '')
@@ -119,14 +136,11 @@ export default defineEventHandler(async (event) => {
             permissionDenied = true
             continue
           }
-          // Other errors (rate limit, network) — try next token.
           continue
         }
       }
 
       if (!resolved) {
-        // Archive — either lead was deleted in Meta or all tokens lacked
-        // permission. Either way the backfill cron picks this up later.
         await logIngestionError(
           'meta',
           {
@@ -142,16 +156,10 @@ export default defineEventHandler(async (event) => {
         continue
       }
 
-      // Map Meta page → client. If a connection has client_id set we use it;
-      // otherwise leave null (unmapped — admin can assign in inbox).
-      const conn = await queryOne<{ client_id: string | null }>(
-        `SELECT client_id FROM social_connections
-           WHERE platform = 'meta' AND status = 'active'
-             AND (account_id = $1 OR metadata->>'page_id' = $1)
-           LIMIT 1`,
-        [pageId],
-      ).catch(() => null)
-      const clientId = conn?.client_id ?? null
+      // The connection that owns the working token is the one with Page
+      // access — use its client_id. This is more correct than matching
+      // page_id against account_id (different namespaces in Meta).
+      const clientId = workingToken?.client_id ?? null
 
       const norm = normalizeMetaPayload(
         {
