@@ -224,8 +224,8 @@ const sections = [
                 color="info"
                 variant="subtle"
                 icon="i-lucide-info"
-                title="Status of Meta App Review"
-                description="When you submit App Review, Meta typically wants: a demo video showing the use case, a privacy policy URL, and verified business info. Approval takes 2–4 weeks. Once granted, no code changes — auto-ingestion starts working from existing Meta connections."
+                title="When Meta App Review approves leads_retrieval"
+                description="Auto-ingestion is wired and waiting. After approval: (1) reconnect each Meta account in Settings → Social → Meta to pick up the expanded scope, (2) ask admin to POST /api/leads/_internal/meta-backfill with the cron token to replay events archived during the wait period, (3) verify in the inbox. No code changes needed."
               />
             </div>
           </template>

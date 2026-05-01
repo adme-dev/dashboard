@@ -86,7 +86,7 @@ export function getMetaAuthUrl(appId: string, redirectUri: string, state: string
     client_id: appId,
     redirect_uri: redirectUri,
     state,
-    scope: 'ads_management,pages_read_engagement',
+    scope: 'ads_management,ads_read,pages_show_list,pages_read_engagement,pages_manage_ads,pages_manage_metadata,leads_retrieval,business_management',
     response_type: 'code'
   })
   return `https://www.facebook.com/v22.0/dialog/oauth?${params.toString()}`
@@ -782,6 +782,68 @@ const META_PAGE_LIMIT = 200 // safety cap on page traversal per token
  * returns code (#200). We track the denial count separately so the UI can
  * distinguish "no forms exist" from "no permission to read forms".
  */
+/**
+ * Verify Meta's webhook signature. Meta signs every webhook POST with an
+ * HMAC-SHA256 of the raw body using the App Secret. The signature is sent
+ * in the X-Hub-Signature-256 header as 'sha256=<hex>'. Reject any request
+ * whose signature doesn't match — otherwise anyone could POST to our
+ * endpoint and inject leads.
+ */
+export async function verifyMetaSignature(
+  rawBody: string,
+  signatureHeader: string | undefined,
+  appSecret: string,
+): Promise<boolean> {
+  if (!signatureHeader || !appSecret) return false
+  const expected = signatureHeader.replace(/^sha256=/, '').toLowerCase()
+  if (!/^[0-9a-f]{64}$/.test(expected)) return false
+  const { createHmac, timingSafeEqual } = await import('node:crypto')
+  const computed = createHmac('sha256', appSecret).update(rawBody).digest('hex')
+  if (computed.length !== expected.length) return false
+  try {
+    return timingSafeEqual(Buffer.from(computed), Buffer.from(expected))
+  } catch { return false }
+}
+
+export interface MetaLeadgenResolved {
+  id: string
+  created_time?: string
+  field_data: Array<{ name: string; values: string[] }>
+  ad_id?: string
+  ad_name?: string
+  form_id?: string
+  campaign_id?: string
+  campaign_name?: string
+}
+
+/**
+ * Fetch a single leadgen via Graph API. Requires the leads_retrieval
+ * permission to have been granted on the access token (Meta App Review).
+ *
+ * Throws on permission denial so callers can branch on it. Returns null
+ * for 404 (lead deleted in Meta UI before we fetched).
+ */
+export async function getMetaLeadgen(
+  leadgenId: string,
+  accessToken: string,
+): Promise<MetaLeadgenResolved | null> {
+  try {
+    return await ofetch<MetaLeadgenResolved>(
+      `${META_GRAPH_BASE}/${leadgenId}`,
+      {
+        query: {
+          access_token: accessToken,
+          fields: 'id,created_time,field_data,ad_id,ad_name,form_id,campaign_id,campaign_name',
+        },
+      },
+    )
+  } catch (e: any) {
+    const status = e?.status ?? e?.response?.status
+    if (status === 404) return null
+    throw e
+  }
+}
+
 export async function listMetaPageLeadForms(
   userAccessToken: string,
 ): Promise<MetaPageLeadFormsResult> {
