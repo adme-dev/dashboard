@@ -62,14 +62,18 @@ async function discoverForms(source: 'google' | 'meta') {
   discoverError.value = null
   discoveredForms.value = []
   try {
-    const r = await $fetch<{ forms: DiscoveredForm[]; connection_count: number }>(
-      `/api/leads/forms/discover?source=${source}`,
-    )
+    const r = await $fetch<{
+      forms: DiscoveredForm[]
+      connection_count: number
+      needs_meta_app_review?: boolean
+    }>(`/api/leads/forms/discover?source=${source}`)
     discoveredForms.value = r.forms
-    if (r.forms.length === 0 && r.connection_count > 0) {
-      discoverError.value = `Connected ${r.connection_count} ${source} accounts but no lead forms found. Either no forms exist yet or the connected tokens don't have access.`
-    } else if (r.connection_count === 0) {
+    if (r.connection_count === 0) {
       discoverError.value = `No ${source === 'google' ? 'Google Ads' : 'Meta'} accounts connected. Connect one in Settings → Social.`
+    } else if (r.needs_meta_app_review) {
+      discoverError.value = `Meta lead form discovery is gated by the leads_retrieval permission, which requires Meta App Review. Toggle "Use a custom form ID" below and paste the form ID from your Meta lead form URL (e.g. /forms/12345 in Ads Manager).`
+    } else if (r.forms.length === 0) {
+      discoverError.value = `Connected ${r.connection_count} ${source} accounts but no active lead forms were found. Either none exist yet or all are archived.`
     }
   } catch (e: any) {
     discoverError.value = e?.data?.statusMessage ?? 'Failed to discover forms'

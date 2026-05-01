@@ -759,6 +759,12 @@ export interface MetaPageLeadForm {
   page_name: string
 }
 
+export interface MetaPageLeadFormsResult {
+  forms: MetaPageLeadForm[]
+  permission_denied_count: number
+  pages_checked: number
+}
+
 interface PageEntry {
   id: string
   name: string
@@ -770,10 +776,15 @@ const META_PAGE_LIMIT = 200 // safety cap on page traversal per token
 /**
  * Lists all lead forms across all Pages a Meta user-access-token can manage.
  * Concurrency-bounded to avoid per-app rate limits on large agency accounts.
+ *
+ * Listing forms via /{page_id}/leadgen_forms requires the `leads_retrieval`
+ * permission (which is part of Meta App Review). Without it the endpoint
+ * returns code (#200). We track the denial count separately so the UI can
+ * distinguish "no forms exist" from "no permission to read forms".
  */
 export async function listMetaPageLeadForms(
   userAccessToken: string,
-): Promise<MetaPageLeadForm[]> {
+): Promise<MetaPageLeadFormsResult> {
   const pages: PageEntry[] = []
 
   // 1. Walk paginated /me/accounts to collect all manageable pages.
@@ -796,12 +807,13 @@ export async function listMetaPageLeadForms(
     }
   }
 
-  if (!pages.length) return []
+  if (!pages.length) return { forms: [], permission_denied_count: 0, pages_checked: 0 }
 
   // 2. Fan out across pages with bounded concurrency.
   const out: MetaPageLeadForm[] = []
   const queue = [...pages]
   const CONCURRENCY = 6
+  let permissionDenied = 0
   async function worker() {
     while (queue.length) {
       const page = queue.shift()
@@ -826,11 +838,19 @@ export async function listMetaPageLeadForms(
             page_name: page.name,
           })
         }
-      } catch {
-        // Skip pages this token can't read forms for.
+      } catch (e: any) {
+        // Track permission denies so the UI can distinguish "no forms" from
+        // "no permission". Meta returns OAuthException code 200 with message
+        // "Requires pages_manage_ads permission" or similar when leads_retrieval
+        // hasn't been granted via App Review.
+        const msg = String(e?.data?.error?.message ?? e?.message ?? '')
+        const code = e?.data?.error?.code ?? 0
+        if (code === 200 || /permission/i.test(msg)) {
+          permissionDenied++
+        }
       }
     }
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()))
-  return out
+  return { forms: out, permission_denied_count: permissionDenied, pages_checked: pages.length }
 }

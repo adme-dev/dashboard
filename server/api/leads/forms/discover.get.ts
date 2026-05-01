@@ -72,15 +72,16 @@ export default defineEventHandler(async (event) => {
   const results: FormResult[] = []
   const errors: string[] = []
 
+  let metaPermissionDenied = 0
+  let metaPagesChecked = 0
+
   async function fetchForConnection(c: ConnectionRow): Promise<FormResult[]> {
     if (source === 'meta') {
       if (!c.access_token) return []
-      // Meta forms are Page-owned, not Ad-Account-owned. The /me/accounts
-      // call returns the same Pages for every connection that shares a
-      // user-access-token, so the dedup below ensures we only do this once
-      // per unique token.
-      const forms = await listMetaPageLeadForms(c.access_token)
-      return forms.map((f) => ({
+      const result = await listMetaPageLeadForms(c.access_token)
+      metaPermissionDenied += result.permission_denied_count
+      metaPagesChecked += result.pages_checked
+      return result.forms.map((f) => ({
         form_id: f.id,
         form_name: f.name,
         account_id: f.page_id,
@@ -157,10 +158,22 @@ export default defineEventHandler(async (event) => {
     return accountCmp !== 0 ? accountCmp : a.form_name.localeCompare(b.form_name)
   })
 
+  // Meta-specific signal: if we walked pages but every leadgen_forms call
+  // came back with a permission error, that's the leads_retrieval App Review
+  // gap — not "no forms exist". UI uses this to surface the right hint.
+  const needsMetaAppReview =
+    source === 'meta' &&
+    metaPagesChecked > 0 &&
+    deduped.length === 0 &&
+    metaPermissionDenied >= metaPagesChecked / 2
+
   return {
     source,
     forms: deduped,
     connection_count: connections.length,
     error_count: errors.length,
+    needs_meta_app_review: needsMetaAppReview,
+    meta_pages_checked: source === 'meta' ? metaPagesChecked : undefined,
+    meta_permission_denied: source === 'meta' ? metaPermissionDenied : undefined,
   }
 })
