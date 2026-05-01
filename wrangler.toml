@@ -76,12 +76,13 @@ script_name = "banner-rooms-worker"
 # ============================================
 # Scheduled Triggers
 # ============================================
-
-# Anomaly detection runs hourly; the handler at /api/cron/anomaly-detection
-# self-gates to actually execute only at 7am tenant-local time. Configure
-# the cron trigger via the Cloudflare dashboard (Workers & Pages → this
-# project → Settings → Triggers → Cron) to hit POST /api/cron/anomaly-detection
-# with header `x-cron-secret: <CRON_SECRET>` on this schedule:
-#   0 * * * *      (top of every hour)
-[triggers]
-crons = ["0 * * * *"]
+#
+# Cloudflare Pages does NOT support [triggers] in wrangler.toml — wrangler v4
+# rejects it with: 'Configuration file for Pages projects does not support "triggers"'.
+# Pages cron triggers are configured via the dashboard only.
+#
+# To enable the anomaly-detection cron after deploy:
+#   Workers & Pages → agency-dashboard → Settings → Triggers → Cron
+#   Schedule: 0 * * * *  (top of every hour; the handler self-gates to 7am tenant-local)
+#   Target:   POST /api/cron/anomaly-detection
+#   Header:   x-cron-secret: <CRON_SECRET>  (auth — must match env var)
