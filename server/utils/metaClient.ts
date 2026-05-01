@@ -739,3 +739,41 @@ export async function createAd(
   }
   return { id: res.id }
 }
+
+// ============================================
+// Lead Generation Forms (for the form-picker dropdown in leads engine)
+// ============================================
+
+export interface MetaLeadgenForm {
+  id: string
+  name: string
+  status: string
+  page_id?: string
+}
+
+export async function listMetaLeadgenForms(
+  adAccountId: string,
+  accessToken: string,
+): Promise<MetaLeadgenForm[]> {
+  const cleanId = adAccountId.replace(/^act_/, '')
+  try {
+    const r = await ofetch<{ data?: any[] }>(
+      `${META_GRAPH_BASE}/act_${cleanId}/leadgen_forms`,
+      {
+        query: {
+          access_token: accessToken,
+          fields: 'id,name,status,page',
+          limit: 100,
+        },
+      },
+    )
+    return (r.data ?? []).map((f) => ({
+      id: String(f.id),
+      name: String(f.name ?? `Form ${f.id}`),
+      status: String(f.status ?? 'unknown'),
+      page_id: f.page?.id ? String(f.page.id) : undefined,
+    }))
+  } catch {
+    return []
+  }
+}

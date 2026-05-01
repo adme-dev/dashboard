@@ -608,6 +608,39 @@ async function googleAdsFetch<T>(
   throw new Error('Google Ads API: max retries exceeded')
 }
 
+// ============================================
+// Lead Form Assets (for the form-picker dropdown in leads engine)
+// ============================================
+
+export interface GoogleLeadFormAsset {
+  id: string
+  name: string
+  business_name?: string
+}
+
+export async function listGoogleLeadFormAssets(
+  customerId: string,
+  token: string,
+  developerToken: string,
+  loginCustomerId?: string,
+): Promise<GoogleLeadFormAsset[]> {
+  const query = `
+    SELECT asset.id, asset.name, asset.lead_form_asset.business_name
+    FROM asset
+    WHERE asset.type = 'LEAD_FORM'
+  `
+  try {
+    const results = await gaqlQuery(customerId, token, developerToken, query, loginCustomerId)
+    return results.map((r: any) => ({
+      id: String(r.asset?.id ?? ''),
+      name: String(r.asset?.name ?? `Form ${r.asset?.id ?? ''}`),
+      business_name: r.asset?.leadFormAsset?.businessName,
+    })).filter((f) => f.id)
+  } catch {
+    return []
+  }
+}
+
 // Local helper (not exported — avoids Nitro duplicate import warning with metaClient.ts)
 function getMonthRange(month: number, year: number): { since: string; until: string } {
   const since = `${year}-${String(month).padStart(2, '0')}-01`
