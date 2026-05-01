@@ -1,31 +1,34 @@
 <script setup lang="ts">
-interface AnomalyData {
+interface AnomalyMetric {
+  label: string
+  value: number
+  format: 'currency' | 'percent' | 'number'
+}
+
+interface NewAnomaly {
+  id: string
+  type: string
+  severity: 'critical' | 'warning' | 'info'
+  status: string
+  title: string
+  description: string
+  recommendation: string | null
+  metric: AnomalyMetric | null
+  context: { category?: string; vendor?: string; client?: string } | null
+  first_detected_at: string
+}
+
+interface NewAnomalyData {
+  anomalies: NewAnomaly[]
   summary: {
-    totalTransactions: number
-    anomaliesDetected: number
-    highSeverityAnomalies: number
-    anomalyRate: number
+    total: number
+    bySeverity: { critical: number; warning: number; info: number }
+    generatedAt: string
   }
-  anomalies: Array<{
-    type: string
-    severity: 'high' | 'medium' | 'low'
-    amount: number
-    message: string
-    category?: string
-    vendor?: string
-    date?: string
-    transaction?: {
-      id: string
-      number: string
-      vendor: string
-      date: string
-    }
-  }>
-  insights: string[]
 }
 
 const props = defineProps<{
-  data: AnomalyData | null
+  data: NewAnomalyData | null
   loading: boolean
 }>()
 
@@ -37,45 +40,46 @@ const formatCurrency = (value: number) => {
   }).format(value)
 }
 
+const formatMetric = (metric: AnomalyMetric) => {
+  if (metric.format === 'currency') return formatCurrency(metric.value)
+  if (metric.format === 'percent') return `${metric.value.toFixed(1)}%`
+  return metric.value.toLocaleString()
+}
+
 const getSeverityColor = (severity: string): 'error' | 'warning' | 'info' | 'neutral' => {
   switch (severity) {
-    case 'high': return 'error'
-    case 'medium': return 'warning'
-    case 'low': return 'info'
+    case 'critical': return 'error'
+    case 'warning': return 'warning'
+    case 'info': return 'info'
     default: return 'neutral'
   }
 }
 
 const getSeverityIcon = (severity: string) => {
   switch (severity) {
-    case 'high': return 'i-lucide-alert-triangle'
-    case 'medium': return 'i-lucide-alert-circle'
-    case 'low': return 'i-lucide-info'
+    case 'critical': return 'i-lucide-alert-octagon'
+    case 'warning': return 'i-lucide-alert-triangle'
+    case 'info': return 'i-lucide-info'
     default: return 'i-lucide-help-circle'
   }
 }
 
-const getTypeIcon = (type: string) => {
-  switch (type) {
-    case 'daily_spending': return 'i-lucide-calendar'
-    case 'category_spending': return 'i-lucide-tag'
-    case 'vendor_spending': return 'i-lucide-building-2'
-    case 'timing_anomaly': return 'i-lucide-clock'
-    default: return 'i-lucide-search'
-  }
+const TYPE_MAP: Record<string, { icon: string; label: string }> = {
+  profitability: { icon: 'i-lucide-piggy-bank', label: 'Profitability' },
+  revenue:       { icon: 'i-lucide-trending-down', label: 'Revenue' },
+  expenses:      { icon: 'i-lucide-credit-card', label: 'Expenses' },
+  cashflow:      { icon: 'i-lucide-wallet', label: 'Cash Flow' },
+  receivables:   { icon: 'i-lucide-receipt', label: 'Receivables' },
+  budget:        { icon: 'i-lucide-calculator', label: 'Budget' },
+  adspend:       { icon: 'i-lucide-megaphone', label: 'Ad Spend' },
+  clients:       { icon: 'i-lucide-users', label: 'Clients' },
+  transactions:  { icon: 'i-lucide-list-checks', label: 'Transactions' },
 }
 
-const getTypeLabel = (type: string) => {
-  switch (type) {
-    case 'daily_spending': return 'Daily Spending'
-    case 'category_spending': return 'Category Spending'
-    case 'vendor_spending': return 'Vendor Spending'
-    case 'timing_anomaly': return 'Timing Anomaly'
-    default: return 'Unknown'
-  }
-}
+const getTypeIcon = (type: string) => TYPE_MAP[type]?.icon ?? 'i-lucide-search'
+const getTypeLabel = (type: string) => TYPE_MAP[type]?.label ?? 'Unknown'
 
-// Show top 5 anomalies
+// Show top 5 anomalies (already sorted server-side: critical first, then by first_detected_at desc)
 const topAnomalies = computed(() => {
   if (!props.data?.anomalies) return []
   return props.data.anomalies.slice(0, 5)
@@ -84,15 +88,13 @@ const topAnomalies = computed(() => {
 // Summary stats
 const summaryStats = computed(() => {
   if (!props.data?.summary) return null
-  
-  const { totalTransactions, anomaliesDetected, highSeverityAnomalies, anomalyRate } = props.data.summary
-  
+
+  const { total, bySeverity } = props.data.summary
+
   return {
-    totalTransactions,
-    anomaliesDetected,
-    highSeverityAnomalies,
-    anomalyRate,
-    riskLevel: highSeverityAnomalies > 5 ? 'high' : highSeverityAnomalies > 2 ? 'medium' : 'low'
+    total,
+    bySeverity,
+    riskLevel: bySeverity.critical > 5 ? 'high' : bySeverity.critical > 2 ? 'medium' : 'low'
   }
 })
 </script>
@@ -105,7 +107,7 @@ const summaryStats = computed(() => {
           <h3 class="text-lg font-semibold">Anomaly Detection</h3>
           <p class="text-sm text-muted">AI-powered expense analysis</p>
         </div>
-        
+
         <UButton
           icon="i-lucide-external-link"
           color="neutral"
@@ -133,12 +135,12 @@ const summaryStats = computed(() => {
       <div class="grid grid-cols-2 gap-4 pb-4 border-b border-border">
         <div>
           <div class="text-2xl font-bold text-highlighted">
-            {{ summaryStats.anomaliesDetected }}
+            {{ summaryStats.total }}
           </div>
-          <div class="text-xs text-muted">Anomalies Detected</div>
+          <div class="text-xs text-muted">Total Active Anomalies</div>
         </div>
         <div>
-          <div 
+          <div
             class="text-2xl font-bold"
             :class="{
               'text-red-500': summaryStats.riskLevel === 'high',
@@ -146,30 +148,35 @@ const summaryStats = computed(() => {
               'text-emerald-500': summaryStats.riskLevel === 'low'
             }"
           >
-            {{ summaryStats.highSeverityAnomalies }}
+            {{ summaryStats.bySeverity.critical }}
           </div>
-          <div class="text-xs text-muted">High Severity</div>
+          <div class="text-xs text-muted">Critical</div>
         </div>
       </div>
 
-      <!-- Anomaly Rate -->
+      <!-- Severity breakdown -->
       <div class="flex items-center justify-between text-sm">
-        <span class="text-muted">Anomaly Rate</span>
-        <div class="flex items-center gap-2">
-          <span class="font-medium">{{ summaryStats.anomalyRate.toFixed(1) }}%</span>
-          <UProgress
-            :value="summaryStats.anomalyRate"
-            :max="10"
-            :color="summaryStats.anomalyRate > 5 ? 'error' : summaryStats.anomalyRate > 2 ? 'warning' : 'success'"
-            class="w-16"
-          />
+        <span class="text-muted">Severity breakdown</span>
+        <div class="flex items-center gap-3">
+          <span class="flex items-center gap-1">
+            <UBadge color="error" variant="subtle" size="xs">{{ summaryStats.bySeverity.critical }}</UBadge>
+            <span class="text-xs text-muted">Critical</span>
+          </span>
+          <span class="flex items-center gap-1">
+            <UBadge color="warning" variant="subtle" size="xs">{{ summaryStats.bySeverity.warning }}</UBadge>
+            <span class="text-xs text-muted">Warning</span>
+          </span>
+          <span class="flex items-center gap-1">
+            <UBadge color="info" variant="subtle" size="xs">{{ summaryStats.bySeverity.info }}</UBadge>
+            <span class="text-xs text-muted">Info</span>
+          </span>
         </div>
       </div>
 
       <!-- Top Anomalies -->
       <div class="space-y-3">
         <h4 class="text-sm font-medium text-highlighted">Recent Anomalies</h4>
-        
+
         <div v-if="topAnomalies.length === 0" class="text-center py-8">
           <UIcon name="i-lucide-shield-check" class="h-12 w-12 text-emerald-500 mx-auto mb-2" />
           <p class="text-sm text-muted">No anomalies detected</p>
@@ -177,26 +184,27 @@ const summaryStats = computed(() => {
         </div>
 
         <div v-else class="space-y-2 max-h-64 overflow-y-auto">
-          <div
+          <NuxtLink
             v-for="anomaly in topAnomalies"
-            :key="`${anomaly.type}-${anomaly.amount}`"
-            class="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-muted/30 transition-colors"
+            :key="anomaly.id"
+            :to="`/anomalies?focus=${anomaly.id}`"
+            class="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-muted/30 transition-colors block"
           >
             <!-- Severity Icon -->
-            <div 
+            <div
               class="flex-shrink-0 p-1.5 rounded-full"
               :class="{
-                'bg-red-100 dark:bg-red-900/20': anomaly.severity === 'high',
-                'bg-amber-100 dark:bg-amber-900/20': anomaly.severity === 'medium',
-                'bg-blue-100 dark:bg-blue-900/20': anomaly.severity === 'low'
+                'bg-red-100 dark:bg-red-900/20': anomaly.severity === 'critical',
+                'bg-amber-100 dark:bg-amber-900/20': anomaly.severity === 'warning',
+                'bg-blue-100 dark:bg-blue-900/20': anomaly.severity === 'info'
               }"
             >
-              <UIcon 
+              <UIcon
                 :name="getSeverityIcon(anomaly.severity)"
                 :class="{
-                  'text-red-600 dark:text-red-400': anomaly.severity === 'high',
-                  'text-amber-600 dark:text-amber-400': anomaly.severity === 'medium',
-                  'text-blue-600 dark:text-blue-400': anomaly.severity === 'low'
+                  'text-red-600 dark:text-red-400': anomaly.severity === 'critical',
+                  'text-amber-600 dark:text-amber-400': anomaly.severity === 'warning',
+                  'text-blue-600 dark:text-blue-400': anomaly.severity === 'info'
                 }"
                 class="h-3 w-3"
               />
@@ -209,7 +217,7 @@ const summaryStats = computed(() => {
                 <span class="text-xs font-medium text-highlighted">
                   {{ getTypeLabel(anomaly.type) }}
                 </span>
-                <UBadge 
+                <UBadge
                   :color="getSeverityColor(anomaly.severity)"
                   variant="subtle"
                   size="xs"
@@ -217,35 +225,21 @@ const summaryStats = computed(() => {
                   {{ anomaly.severity }}
                 </UBadge>
               </div>
-              
-              <p class="text-xs text-muted mb-1">{{ anomaly.message }}</p>
-              
+
+              <p class="text-xs text-muted mb-1">{{ anomaly.description }}</p>
+
               <div class="flex items-center justify-between">
-                <span class="text-xs font-medium text-highlighted">
-                  {{ formatCurrency(anomaly.amount) }}
+                <span v-if="anomaly.metric" class="text-xs font-medium text-highlighted">
+                  {{ formatMetric(anomaly.metric) }}
                 </span>
-                
-                <div v-if="anomaly.transaction" class="text-xs text-muted">
-                  {{ anomaly.transaction.date }}
+                <span v-else class="text-xs text-muted/50" />
+
+                <div class="text-xs text-muted">
+                  {{ new Date(anomaly.first_detected_at).toLocaleDateString() }}
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Insights -->
-      <div v-if="data?.insights && data.insights.length > 0" class="pt-4 border-t border-border">
-        <h4 class="text-sm font-medium text-highlighted mb-2">AI Insights</h4>
-        <div class="space-y-1">
-          <p
-            v-for="insight in data.insights"
-            :key="insight"
-            class="text-xs text-muted flex items-start gap-2"
-          >
-            <UIcon name="i-lucide-lightbulb" class="h-3 w-3 text-amber-500 mt-0.5 flex-shrink-0" />
-            {{ insight }}
-          </p>
+          </NuxtLink>
         </div>
       </div>
 

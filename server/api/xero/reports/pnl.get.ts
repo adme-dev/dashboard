@@ -53,16 +53,25 @@ export default eventHandler(async (event) => {
   const toDate = String(query.toDate || '')
   const { from, to } = (!fromDate || !toDate) ? getDefaultRange() : { from: fromDate, to: toDate }
 
-  const cacheKey = `xero-report:${tenantId}:pnl:${from}:${to}`
+  // Optional: multi-period support for YoY / trend analysis.
+  const periodsRaw = query.periods != null ? Number(query.periods) : null
+  const timeframeRaw = query.timeframe ? String(query.timeframe).toUpperCase() : null
+  const validTimeframe = timeframeRaw && ['MONTH', 'QUARTER', 'YEAR'].includes(timeframeRaw) ? timeframeRaw : null
+  const validPeriods = periodsRaw && Number.isInteger(periodsRaw) && periodsRaw >= 1 && periodsRaw <= 24 ? periodsRaw : null
+  const multiPeriodSuffix = (validPeriods && validTimeframe)
+    ? `&periods=${validPeriods}&timeframe=${validTimeframe}`
+    : ''
+
+  const cacheKey = `xero-report:${tenantId}:pnl:${from}:${to}:${validPeriods || 0}:${validTimeframe || ''}`
 
   return cachedFetch(event, cacheKey, 900, async () => {
   const report = await dedupedXeroCall(
-    `pnl:${tenantId}:${from}:${to}`,
+    `pnl:${tenantId}:${from}:${to}:${validPeriods || 0}:${validTimeframe || ''}`,
     'pnl',
     () => xeroFetch<any>({
       accessToken: token.access_token!,
       tenantId,
-      path: `Reports/ProfitAndLoss?fromDate=${from}&toDate=${to}&standardLayout=false`,
+      path: `Reports/ProfitAndLoss?fromDate=${from}&toDate=${to}&standardLayout=false${multiPeriodSuffix}`,
     })
   )
 

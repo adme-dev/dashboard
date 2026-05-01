@@ -152,41 +152,68 @@ export async function analyzeDeadlineRisks(orgId?: string): Promise<AnalysisResu
 }
 
 /**
- * media_spend records where daily spend > 2x the 30-day average
+ * Returns ad-spend anomalies from the persisted detection layer.
+ * The actual detection logic lives in
+ * server/utils/anomalyDetection/analysers/adspend.ts and runs via the cron
+ * (Phase 3) or the manual scan endpoint.
  */
 export async function analyzeAdSpendAnomalies(orgId?: string): Promise<AnalysisResult> {
-  const rows = await queryRows(`
-    WITH daily_avg AS (
-      SELECT client_name, platform,
-             AVG(actual_spend) as avg_spend
-      FROM media_spend
-      WHERE period >= NOW() - INTERVAL '30 days'
-      GROUP BY client_name, platform
-      HAVING AVG(actual_spend) > 0
-    )
-    SELECT ms.id, ms.client_name, ms.platform, ms.actual_spend, ms.period,
-           da.avg_spend
-    FROM media_spend ms
-    JOIN daily_avg da ON ms.client_name = da.client_name AND ms.platform = da.platform
-    WHERE ms.period >= NOW() - INTERVAL '3 days'
-      AND ms.actual_spend > da.avg_spend * 2
-    ORDER BY (ms.actual_spend / da.avg_spend) DESC
-    LIMIT 20
-  `)
+  const rows = await queryRows<{
+    id: string
+    title: string
+    description: string
+    severity: string
+    fingerprint: string
+  }>(
+    `SELECT id, title, description, severity, fingerprint
+     FROM anomalies
+     WHERE type = 'adspend' AND status NOT IN ('resolved','dismissed')
+     ORDER BY first_detected_at DESC
+     LIMIT 20`,
+  )
 
-  const findings: AnalysisFinding[] = rows.map(row => {
-    const ratio = (row.actual_spend / row.avg_spend).toFixed(1)
-
-    return {
-      severity: parseFloat(ratio) > 5 ? 'critical' : 'warning',
-      title: `${row.client_name} (${row.platform}) spend is ${ratio}x the 30-day average`,
-      description: `Spent $${Number(row.actual_spend).toLocaleString()} vs average of $${Number(row.avg_spend).toLocaleString()} on ${new Date(row.period).toLocaleDateString()}.`,
-      entityId: row.id,
-      entityUrl: `/agency/social/spend`
-    }
-  })
+  const findings: AnalysisFinding[] = rows.map(row => ({
+    severity: row.severity === 'critical' ? 'critical' : 'warning',
+    title: row.title,
+    description: row.description,
+    entityId: row.id,
+    entityUrl: `/anomalies?focus=${row.id}`,
+  }))
 
   return { type: 'ad_spend_anomalies', findings, count: findings.length }
+}
+
+/**
+ * Returns active financial anomalies (everything except ad-spend, which has
+ * its own slot via analyzeAdSpendAnomalies). Reads from the persisted
+ * anomalies table — see server/utils/anomalyDetection/.
+ */
+export async function analyzeFinancialAnomalies(orgId?: string): Promise<AnalysisResult> {
+  const rows = await queryRows<{
+    id: string
+    title: string
+    description: string
+    severity: string
+    type: string
+    fingerprint: string
+  }>(
+    `SELECT id, title, description, severity, type, fingerprint
+     FROM anomalies
+     WHERE type IN ('profitability','revenue','expenses','cashflow','receivables','budget','clients','transactions')
+       AND status NOT IN ('resolved','dismissed')
+     ORDER BY (severity = 'critical') DESC, first_detected_at DESC
+     LIMIT 30`,
+  )
+
+  const findings: AnalysisFinding[] = rows.map(row => ({
+    severity: row.severity as AnalysisFinding['severity'],
+    title: row.title,
+    description: row.description,
+    entityId: row.id,
+    entityUrl: `/anomalies?focus=${row.id}`,
+  }))
+
+  return { type: 'financial_anomalies', findings, count: findings.length }
 }
 
 /**
@@ -311,7 +338,7 @@ export async function analyzeTimesheetGaps(orgId?: string): Promise<AnalysisResu
 }
 
 /**
- * Run all 9 analyzers in parallel with error resilience
+ * Run all 10 analyzers in parallel with error resilience
  */
 export async function runAllAnalyzers(orgId?: string): Promise<AnalysisResult[]> {
   const results = await Promise.allSettled([
@@ -320,6 +347,7 @@ export async function runAllAnalyzers(orgId?: string): Promise<AnalysisResult[]>
     analyzeBlockedItems(orgId),
     analyzeDeadlineRisks(orgId),
     analyzeAdSpendAnomalies(orgId),
+    analyzeFinancialAnomalies(orgId),
     analyzeEomStatus(orgId),
     analyzeTeamWorkload(orgId),
     analyzeUnassignedWork(orgId),
