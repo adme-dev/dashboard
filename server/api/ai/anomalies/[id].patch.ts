@@ -35,6 +35,23 @@ export default defineEventHandler(async (event) => {
   )
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Anomaly not found' })
 
+  // State-machine guard: reject transitions that are invalid for the current status.
+  // The UI hides these buttons on terminal states, but the API must not trust that.
+  const ALLOWED: Record<string, Set<string>> = {
+    open:         new Set(['acknowledge', 'snooze', 'dismiss', 'resolve', 'assign']),
+    acknowledged: new Set(['snooze', 'dismiss', 'resolve', 'assign']),
+    snoozed:      new Set(['unsnooze', 'acknowledge', 'dismiss', 'resolve', 'assign']),
+    resolved:     new Set(['reopen']),
+    dismissed:    new Set(['reopen']),
+  }
+  const allowed = ALLOWED[row.status]
+  if (!allowed || !allowed.has(body.action)) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: `Action '${body.action}' not allowed on anomaly with status '${row.status}'`,
+    })
+  }
+
   await transaction(async (client) => {
     switch (body.action) {
       case 'acknowledge':

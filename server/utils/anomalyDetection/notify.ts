@@ -3,6 +3,8 @@ import { queryOne, queryRows } from '~~/server/utils/db'
 import { createNotification } from '~~/server/utils/notifications'
 import { sendAnomalyAlertEmail } from '~~/server/utils/email'
 import { PERMISSIONS } from '~~/server/utils/permissions'
+import { resolveUserPermissions } from '~~/server/utils/roleResolver'
+import { hasRole } from '~~/server/utils/auth'
 import type { AnomalyRow } from './types'
 
 const BASE_URL = process.env.PUBLIC_BASE_URL || 'https://agency-dashboard-6cm.pages.dev'
@@ -13,16 +15,21 @@ interface Recipient {
   name: string | null
 }
 
+interface RawTeamMember {
+  id: string
+  email: string
+  name: string | null
+  role: string
+  custom_role_id: string | null
+}
+
 /**
  * Fan a critical anomaly out to every team_member with FINANCE permission.
  *
- * Recipient resolution: direct role-string match against PERMISSIONS.FINANCE.
- * In the current schema, team_members.role contains BOTH legacy permission
- * slugs ('owner', 'admin', 'finance', etc.) AND display strings ('Account
- * Manager', 'Media Buyer'). The display strings won't match here — only users
- * whose role is one of the legacy slugs will be notified. For the live data
- * that's at minimum the org owner. To extend coverage, either change the
- * staff member's role string or add a routing layer here.
+ * Recipient resolution uses resolveUserPermissions + hasRole — the same path
+ * as the rest of the codebase. This honours both legacy role slugs ('owner',
+ * 'admin', 'finance') AND users whose permission_groups are resolved via a
+ * custom role (e.g. 'Account Manager', 'Media Buyer' with a Finance group).
  *
  * No-ops if env flag ANOMALY_NOTIFICATIONS_DISABLED=true (used by the
  * backfill script in P3.5).
@@ -36,14 +43,30 @@ export async function queueAnomalyNotification(anomalyId: string): Promise<void>
   )
   if (!anomaly) return
 
-  const financeRoles = PERMISSIONS.FINANCE
-  const recipients = await queryRows<Recipient>(
-    `SELECT id::text AS id, email, name
+  const members = await queryRows<RawTeamMember>(
+    `SELECT id::text AS id, email, name, role, custom_role_id::text AS custom_role_id
      FROM team_members
      WHERE email IS NOT NULL AND email <> ''
-       AND role = ANY($1)`,
-    [financeRoles as unknown as string[]],
+       AND is_active = true`,
   )
+
+  const recipients: Recipient[] = []
+  for (const m of members) {
+    let permissionGroups: string[] | undefined
+    try {
+      // resolveUserPermissions caches per-user via KV — passing null event
+      // bypasses cache but the function still resolves correctly from DB.
+      const resolved = await resolveUserPermissions(null as any, m.id, m.role, m.custom_role_id)
+      permissionGroups = resolved.groups
+    } catch (err) {
+      // If resolution fails (e.g. KV unavailable), fall through to legacy match
+      permissionGroups = undefined
+    }
+    const synthetic = { role: m.role, permissionGroups } as { role: string; permissionGroups?: string[] }
+    if (hasRole(synthetic as any, PERMISSIONS.FINANCE)) {
+      recipients.push({ id: m.id, email: m.email, name: m.name })
+    }
+  }
 
   if (recipients.length === 0) {
     console.warn('[anomalies notify] no recipients for finance permission — skipping fan-out')

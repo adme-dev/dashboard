@@ -19,7 +19,9 @@ export default defineEventHandler(async (event) => {
   const cronSecret = getHeader(event, 'x-cron-secret')
   const expectedSecret = process.env.CRON_SECRET
 
-  if (process.env.NODE_ENV === 'production' && cronSecret !== expectedSecret) {
+  // import.meta.dev is the Nuxt/Nitro-canonical dev check; works on Cloudflare
+  // Pages preview deploys (where NODE_ENV may not be 'production').
+  if (!import.meta.dev && cronSecret !== expectedSecret) {
     throw createError({
       statusCode: 401,
       statusMessage: 'Unauthorized',
@@ -55,7 +57,7 @@ export default defineEventHandler(async (event) => {
 
   // Run detection
   const start = Date.now()
-  const result = await runDetectionForTenant(conn.tenant_id, { event: null })
+  const result = await runDetectionForTenant(conn.tenant_id, { event })
   const durationMs = Date.now() - start
 
   console.log('[anomaly-cron]', {
