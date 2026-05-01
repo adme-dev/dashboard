@@ -24,6 +24,11 @@ const publicRoutes = [
   '/api/internal/attribution-cron',
   '/api/leads/_internal/',
   '/api/cron/',  // anomaly-detection cron + future cron handlers; each verifies x-cron-secret inline
+  // Public webhook endpoints — auth via per-endpoint secret in the request
+  // body (Meta's verify_token, Google's google_key matched against
+  // lead_webhook_endpoints.secret_key). Google + Meta servers don't have
+  // session cookies, so these MUST be public.
+  '/api/leads/webhook/',
 ]
 
 // Paths that an authenticated cron can read with X-Internal-Cron-Secret.
