@@ -13,6 +13,7 @@ watch(liveEvents, () => debouncedRefresh(), { deep: true })
 const selectedLead = ref<Lead | null>(null)
 const showSlideover = ref(false)
 const showManualModal = ref(false)
+const showImportModal = ref(false)
 
 // Lookup tables for client + user names — same endpoints the filter dropdown
 // uses, so de-duped by Nuxt's useFetch cache.
@@ -75,7 +76,8 @@ defineEmits<{ 'show-help': [] }>()
         <span v-if="data?.total" class="text-muted font-normal">— {{ data.total }} total</span>
       </h2>
       <div class="flex items-center gap-2">
-        <UButton icon="i-lucide-download" variant="ghost" size="sm" @click="exportCsv">CSV</UButton>
+        <UButton icon="i-lucide-upload-cloud" variant="ghost" size="sm" @click="showImportModal = true">Import CSV</UButton>
+        <UButton icon="i-lucide-download" variant="ghost" size="sm" @click="exportCsv">Export</UButton>
         <UButton icon="i-lucide-plus" color="primary" size="sm" @click="showManualModal = true">Manual lead</UButton>
         <UButton icon="i-lucide-refresh-cw" variant="ghost" size="sm" @click="refresh()">Refresh</UButton>
       </div>
@@ -191,6 +193,10 @@ defineEmits<{ 'show-help': [] }>()
     <LeadsManualLeadModal
       v-model:open="showManualModal"
       @created="refresh()"
+    />
+    <LeadsBulkImportModal
+      v-model:open="showImportModal"
+      @imported="refresh()"
     />
   </div>
 </template>

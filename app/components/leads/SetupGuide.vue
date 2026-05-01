@@ -140,38 +140,87 @@ const sections = [
           </template>
 
           <template #meta>
-            <div class="space-y-3 text-sm leading-relaxed">
-              <p class="text-muted">
-                Meta lead forms use a shared verify token rather than per-client URLs. The agency
-                operator (admin) sets the token once; marketers paste it into each Meta lead form.
-              </p>
-              <ol class="list-decimal list-inside space-y-2">
-                <li>
-                  Ask your admin for the <strong>Meta verify token</strong>
-                  (env var <code class="text-xs bg-elevated px-1 py-0.5 rounded">META_LEADGEN_VERIFY_TOKEN</code>).
-                </li>
-                <li>
-                  In Meta Business Suite → Lead Center → CRM Integrations, choose
-                  <em>Custom CRM</em>.
-                </li>
-                <li>
-                  Set the <strong>Callback URL</strong> to:<br>
-                  <code class="text-xs bg-elevated px-2 py-1 rounded">https://agency-dashboard-6cm.pages.dev/api/leads/webhook/meta</code>
-                </li>
-                <li>
-                  Set the <strong>Verify token</strong> to the value from step 1.
-                </li>
-                <li>
-                  Meta sends a verification GET request — the dashboard responds with the
-                  challenge if the token matches. Lead capture is then live.
-                </li>
-              </ol>
+            <div class="space-y-4 text-sm leading-relaxed">
               <UAlert
                 color="warning"
                 variant="subtle"
                 icon="i-lucide-construction"
-                title="Phase 1 limitation"
-                description="The Meta verify endpoint is live and accepts the handshake, but full Meta lead ingestion (subscribing to lead-form events + processing the payload) ships in Phase 2."
+                title="Meta auto-ingestion is gated by App Review"
+                description="Meta requires the leads_retrieval permission for any app to read lead form data. We can't auto-pull until that's approved (typically 2–4 weeks). The interim workflow below uses the CSV importer to bridge the gap."
+              />
+
+              <div>
+                <h4 class="text-sm font-semibold mb-1.5">Interim workflow (works today)</h4>
+                <ol class="list-decimal list-inside space-y-2 text-muted">
+                  <li>
+                    Marketer creates the Meta lead form in Ads Manager as normal.
+                    Note the <strong>form ID</strong> from the URL (e.g. <code class="bg-elevated px-1 py-0.5 rounded text-xs">/forms/12345</code>).
+                  </li>
+                  <li>
+                    In <strong>Form rules</strong> → <strong>+ New form rule</strong>, pick the
+                    client, set source to <strong>Meta</strong>, toggle <strong>Use a custom form ID</strong>,
+                    paste the form ID. Configure destinations (Slack, email, portal) as usual.
+                  </li>
+                  <li>
+                    Daily or after each campaign push:
+                    <ul class="list-disc list-inside ml-4 mt-1 space-y-0.5">
+                      <li>Open <strong>Meta Business Suite → Leads Center</strong></li>
+                      <li>Filter by the form, click <strong>Download leads</strong> → CSV format</li>
+                      <li>In our inbox, click <strong>Import CSV</strong> (top-right of the inbox).
+                          Pick the client + form, drop the file, confirm preview, import.</li>
+                    </ul>
+                  </li>
+                  <li>
+                    Imported leads run through your form rule destinations exactly like webhook
+                    leads — Slack pings, email notifications, portal visibility, etc. all fire.
+                  </li>
+                </ol>
+              </div>
+
+              <div>
+                <h4 class="text-sm font-semibold mb-1.5">Set up Meta to email leads as a backup</h4>
+                <p class="text-muted">
+                  In <strong>Lead Center → Settings → Email notifications</strong>, add the agency
+                  inbox so a copy of every lead also lands in email. Useful as a sanity check that
+                  nothing's been missed between CSV imports.
+                </p>
+              </div>
+
+              <div>
+                <h4 class="text-sm font-semibold mb-1.5">Webhook handshake (live now, ingestion off)</h4>
+                <p class="text-muted">
+                  The verify endpoint is wired up so Meta App Review can be submitted. Once the
+                  permission is granted, no UI changes — auto-ingestion will start working from
+                  any Meta lead form pointed at our webhook URL.
+                </p>
+                <ol class="list-decimal list-inside space-y-2 mt-2 text-xs text-muted">
+                  <li>
+                    Get the <strong>Meta verify token</strong> from admin
+                    (env var <code class="bg-elevated px-1 py-0.5 rounded">META_LEADGEN_VERIFY_TOKEN</code>).
+                  </li>
+                  <li>
+                    Meta App Dashboard → Webhooks → Page → Add subscription:
+                    <ul class="list-disc list-inside ml-4 mt-1">
+                      <li>Callback URL: <code class="bg-elevated px-1 py-0.5 rounded">https://agency-dashboard-6cm.pages.dev/api/leads/webhook/meta</code></li>
+                      <li>Verify token: the value from step 1</li>
+                      <li>Subscribe field: <code class="bg-elevated px-1 py-0.5 rounded">leadgen</code></li>
+                    </ul>
+                  </li>
+                  <li>
+                    Meta sends a verification GET to confirm — we echo the challenge back if the
+                    token matches. From that point Meta would forward leadgen events, but until
+                    App Review approves <code class="bg-elevated px-1 py-0.5 rounded">leads_retrieval</code>
+                    we can only archive the event metadata (not fetch the actual lead data).
+                  </li>
+                </ol>
+              </div>
+
+              <UAlert
+                color="info"
+                variant="subtle"
+                icon="i-lucide-info"
+                title="Status of Meta App Review"
+                description="When you submit App Review, Meta typically wants: a demo video showing the use case, a privacy policy URL, and verified business info. Approval takes 2–4 weeks. Once granted, no code changes — auto-ingestion starts working from existing Meta connections."
               />
             </div>
           </template>
