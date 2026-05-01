@@ -1,10 +1,13 @@
 <script setup lang="ts">
 // Sticky bottom action bar — appears when the user has selected >= 1
-// rows in the advisor table. Each control opens a UPopover; on commit
-// the parent emits the result via @applied (the parent owns the
-// /bulk POST and refresh logic).
+// rows in the advisor table. Each control is a UDropdownMenu (or UPopover
+// for the snooze date picker) anchored above the trigger so the menus
+// open *up* from the bottom bar instead of being pushed off-screen by
+// Floating UI's collision detection.
 
 import { CATEGORIES, CATEGORY_LABELS } from '~~/server/utils/advisorCategories'
+import { CalendarDate, parseDate, type DateValue } from '@internationalized/date'
+import type { DropdownMenuItem } from '@nuxt/ui'
 
 type BulkPatch = {
   status?: 'open' | 'in_progress' | 'done' | 'dismissed' | null
@@ -26,56 +29,83 @@ const emit = defineEmits<{
   (e: 'dismiss-confirm'): void
 }>()
 
-const STATUS_OPTIONS = [
-  { value: 'open', label: 'Open' },
-  { value: 'in_progress', label: 'In progress' },
-  { value: 'done', label: 'Done' },
-]
-const PRIORITY_OPTIONS = [
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
-]
-const NONE = '__none__'
-const UNASSIGNED = '__unassigned__'
-
-const CATEGORY_OPTIONS = [
-  { value: NONE, label: '— Clear category —' },
-  ...CATEGORIES.map((c) => ({ value: c, label: CATEGORY_LABELS[c] })),
-]
-
-const assigneeOptions = computed(() => ([
-  { value: UNASSIGNED, label: 'Unassigned' },
-  ...props.teamMembers.map((m) => ({ value: m.id, label: m.name })),
-]))
-
-const snoozeDate = ref('')
-
-function applyStatus(v: string) {
-  emit('apply', { status: v as any })
+// Shared positioning props for every menu in the bar — open above the
+// trigger, left-align, with collision padding so the panel never clips
+// the viewport edge.
+const POPOVER_CONTENT = {
+  side: 'top' as const,
+  align: 'start' as const,
+  sideOffset: 8,
+  collisionPadding: 8,
 }
-function applyPriority(v: string) {
-  emit('apply', { priority: v as any })
+
+// ── Menu items ─────────────────────────────────────────────────────
+const statusItems = computed<DropdownMenuItem[][]>(() => [[
+  { label: 'Open', icon: 'i-lucide-circle-dot', onSelect: () => emit('apply', { status: 'open' }) },
+  { label: 'In progress', icon: 'i-lucide-loader', onSelect: () => emit('apply', { status: 'in_progress' }) },
+  { label: 'Done', icon: 'i-lucide-check-circle-2', onSelect: () => emit('apply', { status: 'done' }) },
+]])
+
+const priorityItems = computed<DropdownMenuItem[][]>(() => [[
+  { label: 'Low', onSelect: () => emit('apply', { priority: 'low' }) },
+  { label: 'Medium', onSelect: () => emit('apply', { priority: 'medium' }) },
+  { label: 'High', onSelect: () => emit('apply', { priority: 'high' }) },
+]])
+
+const categoryItems = computed<DropdownMenuItem[][]>(() => [
+  CATEGORIES.map((c) => ({
+    label: CATEGORY_LABELS[c],
+    onSelect: () => emit('apply', { category: c }),
+  })),
+  [{
+    label: 'Clear category',
+    icon: 'i-lucide-x',
+    onSelect: () => emit('apply', { category: null }),
+  }],
+])
+
+const assigneeItems = computed<DropdownMenuItem[][]>(() => [
+  [{ label: 'Unassigned', icon: 'i-lucide-user-x', onSelect: () => emit('apply', { assigned_to: null }) }],
+  props.teamMembers.map((m) => ({
+    label: m.name,
+    onSelect: () => emit('apply', { assigned_to: m.id }),
+  })),
+])
+
+// ── Snooze date picker ─────────────────────────────────────────────
+const snoozeDate = ref('') // YYYY-MM-DD
+
+function toCalendarDate(iso: string): DateValue | null {
+  if (!iso) return null
+  try { return parseDate(iso.length > 10 ? iso.slice(0, 10) : iso) } catch { return null }
 }
-function applyCategory(v: string) {
-  emit('apply', { category: v === NONE ? null : v })
+
+const snoozeDateModel = computed({
+  get: () => toCalendarDate(snoozeDate.value),
+  set: (v: any) => { snoozeDate.value = v ? v.toString() : '' },
+})
+
+const dateFormatter = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short' })
+function formatSnoozeButton(): string {
+  const cd = toCalendarDate(snoozeDate.value)
+  if (!cd) return 'Snooze'
+  const c = cd as CalendarDate
+  return `Snooze · ${dateFormatter.format(new Date(c.year, c.month - 1, c.day))}`
 }
-function applyAssignee(v: string) {
-  emit('apply', { assigned_to: v === UNASSIGNED ? null : v })
-}
+
 function applySnooze() {
   if (!snoozeDate.value) return
   emit('apply', { snoozed_until: snoozeDate.value })
   snoozeDate.value = ''
 }
 function clearSnooze() {
+  snoozeDate.value = ''
   emit('apply', { snoozed_until: null })
 }
 
+// ── Dismiss confirm ────────────────────────────────────────────────
 const confirmDismiss = ref(false)
-function askDismiss() {
-  confirmDismiss.value = true
-}
+function askDismiss() { confirmDismiss.value = true }
 function doDismiss() {
   confirmDismiss.value = false
   emit('apply', { status: 'dismissed' })
@@ -89,88 +119,68 @@ function doDismiss() {
            bg-default border border-default rounded-lg shadow-lg
            flex items-center gap-2 px-3 py-2 pb-safe"
   >
-    <UBadge color="primary" variant="solid" size="xs">{{ count }} selected</UBadge>
+    <UBadge color="primary" variant="solid" size="sm">{{ count }} selected</UBadge>
 
-    <!-- Status -->
-    <UPopover>
-      <UButton size="xs" variant="outline" color="neutral" :loading="loading">Status ▾</UButton>
-      <template #content>
-        <div class="p-1 min-w-[160px]">
-          <button
-            v-for="o in STATUS_OPTIONS"
-            :key="o.value"
-            class="w-full text-left px-2 py-1.5 text-sm hover:bg-elevated rounded"
-            @click="applyStatus(o.value)"
-          >{{ o.label }}</button>
-        </div>
-      </template>
-    </UPopover>
+    <UDropdownMenu :items="statusItems" :content="POPOVER_CONTENT">
+      <UButton size="sm" variant="outline" color="neutral" trailing-icon="i-lucide-chevron-down" :loading="loading">
+        Status
+      </UButton>
+    </UDropdownMenu>
 
-    <!-- Priority -->
-    <UPopover>
-      <UButton size="xs" variant="outline" color="neutral" :loading="loading">Priority ▾</UButton>
-      <template #content>
-        <div class="p-1 min-w-[140px]">
-          <button
-            v-for="o in PRIORITY_OPTIONS"
-            :key="o.value"
-            class="w-full text-left px-2 py-1.5 text-sm hover:bg-elevated rounded"
-            @click="applyPriority(o.value)"
-          >{{ o.label }}</button>
-        </div>
-      </template>
-    </UPopover>
+    <UDropdownMenu :items="priorityItems" :content="POPOVER_CONTENT">
+      <UButton size="sm" variant="outline" color="neutral" trailing-icon="i-lucide-chevron-down" :loading="loading">
+        Priority
+      </UButton>
+    </UDropdownMenu>
 
-    <!-- Category -->
-    <UPopover>
-      <UButton size="xs" variant="outline" color="neutral" :loading="loading">Category ▾</UButton>
-      <template #content>
-        <div class="p-1 min-w-[180px] max-h-72 overflow-y-auto">
-          <button
-            v-for="o in CATEGORY_OPTIONS"
-            :key="o.value"
-            class="w-full text-left px-2 py-1.5 text-sm hover:bg-elevated rounded"
-            @click="applyCategory(o.value)"
-          >{{ o.label }}</button>
-        </div>
-      </template>
-    </UPopover>
+    <UDropdownMenu
+      :items="categoryItems"
+      :content="POPOVER_CONTENT"
+      :ui="{ content: 'max-h-72 overflow-y-auto' }"
+    >
+      <UButton size="sm" variant="outline" color="neutral" trailing-icon="i-lucide-chevron-down" :loading="loading">
+        Category
+      </UButton>
+    </UDropdownMenu>
 
-    <!-- Assignee -->
-    <UPopover>
-      <UButton size="xs" variant="outline" color="neutral" :loading="loading">Assignee ▾</UButton>
-      <template #content>
-        <div class="p-1 min-w-[180px] max-h-72 overflow-y-auto">
-          <button
-            v-for="o in assigneeOptions"
-            :key="o.value"
-            class="w-full text-left px-2 py-1.5 text-sm hover:bg-elevated rounded"
-            @click="applyAssignee(o.value)"
-          >{{ o.label }}</button>
-        </div>
-      </template>
-    </UPopover>
+    <UDropdownMenu
+      :items="assigneeItems"
+      :content="POPOVER_CONTENT"
+      :ui="{ content: 'max-h-72 overflow-y-auto' }"
+    >
+      <UButton size="sm" variant="outline" color="neutral" trailing-icon="i-lucide-chevron-down" :loading="loading">
+        Assignee
+      </UButton>
+    </UDropdownMenu>
 
-    <!-- Snooze until -->
-    <UPopover>
-      <UButton size="xs" variant="outline" color="neutral" :loading="loading">Snooze ▾</UButton>
+    <!-- Snooze: keeps UPopover because it embeds a calendar + apply/clear,
+         which is a flow UDropdownMenu can't represent cleanly. -->
+    <UPopover :content="POPOVER_CONTENT">
+      <UButton
+        size="sm"
+        variant="outline"
+        color="neutral"
+        icon="i-lucide-bell-off"
+        trailing-icon="i-lucide-chevron-down"
+        :loading="loading"
+      >
+        {{ formatSnoozeButton() }}
+      </UButton>
       <template #content>
-        <div class="p-2 space-y-2 min-w-[180px]">
-          <UInput v-model="snoozeDate" type="date" size="xs" />
-          <div class="flex gap-1.5">
-            <UButton size="xs" :disabled="!snoozeDate" @click="applySnooze">Apply</UButton>
-            <UButton size="xs" variant="ghost" color="neutral" @click="clearSnooze">Clear</UButton>
-          </div>
+        <UCalendar v-model="snoozeDateModel" class="p-2" />
+        <div class="border-t border-default p-2 flex justify-between gap-2">
+          <UButton size="xs" variant="ghost" color="neutral" @click="clearSnooze">Clear snooze</UButton>
+          <UButton size="xs" :disabled="!snoozeDate" @click="applySnooze">Apply</UButton>
         </div>
       </template>
     </UPopover>
 
     <div class="w-px h-6 bg-default/40 mx-1" />
 
-    <UButton size="xs" color="error" variant="ghost" :loading="loading" @click="askDismiss">Dismiss</UButton>
+    <UButton size="sm" color="error" variant="ghost" :loading="loading" @click="askDismiss">Dismiss</UButton>
     <UButton
       icon="i-lucide-x"
-      size="xs"
+      size="sm"
       color="neutral"
       variant="ghost"
       @click="emit('clear')"

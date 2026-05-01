@@ -9,6 +9,7 @@
 // here because they are only used in the drawer's render.
 
 import { CATEGORIES, CATEGORY_LABELS } from '~~/server/utils/advisorCategories'
+import { CalendarDate, parseDate, type DateValue } from '@internationalized/date'
 
 type Recommendation = {
   id: string
@@ -125,11 +126,32 @@ function statusLabel(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
+function priorityLabel(p: string) {
+  return p.charAt(0).toUpperCase() + p.slice(1)
+}
+
 function formatDate(iso: string | null | undefined) {
   if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+// ── Date picker helpers ─────────────────────────────────────────────
+// Bridge between ISO YYYY-MM-DD strings (server format) and CalendarDate
+// (UCalendar's internal model). Trim time portion if present so server
+// timestamps round-trip cleanly through the date-only picker.
+function toCalendarDate(iso: string | null | undefined): DateValue | null {
+  if (!iso) return null
+  try { return parseDate(iso.length > 10 ? iso.slice(0, 10) : iso) } catch { return null }
+}
+
+const dateButtonFormatter = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+function formatDateButton(iso: string | null | undefined): string {
+  const cd = toCalendarDate(iso)
+  if (!cd) return ''
+  const c = cd as CalendarDate
+  return dateButtonFormatter.format(new Date(c.year, c.month - 1, c.day))
 }
 
 // Mirrors the unit/label set in server/utils/advisorMetrics.ts so we can
@@ -257,6 +279,28 @@ const CATEGORY_OPTIONS = [
   ...CATEGORIES.map((c) => ({ value: c, label: CATEGORY_LABELS[c] })),
 ]
 
+// Writable computed CalendarDate models for the date popovers. Setting
+// either model emits a patch directly (no intermediate local state) so
+// the parent owns persistence and the picker stays in sync if the
+// server returns a different value.
+const dueDateModel = computed({
+  get: () => toCalendarDate(props.rec?.due_date),
+  set: (v: any) => emit('patch', { due_date: (v ? v.toString() : null) as any }),
+})
+
+const snoozedUntilModel = computed({
+  get: () => toCalendarDate(props.rec?.snoozed_until),
+  set: (v: any) => emit('patch', { snoozed_until: (v ? v.toString() : null) as any }),
+})
+
+// Shared popover content options for the date pickers — center-aligned
+// and collision-padded so the calendar never clips the drawer edge.
+const DATE_POPOVER_CONTENT = {
+  align: 'start' as const,
+  sideOffset: 6,
+  collisionPadding: 8,
+}
+
 // ── Outcome notes draft (local; resets on rec change) ───────────────
 const outcomeNotesDraft = ref('')
 watch(() => props.rec, (v) => { outcomeNotesDraft.value = v?.outcome_notes ?? '' }, { immediate: true })
@@ -273,15 +317,15 @@ function setOpen(v: boolean) {
         <div class="flex items-start justify-between p-5 border-b border-default">
           <div class="flex-1">
             <div class="flex items-center gap-2 flex-wrap">
-              <UBadge :color="priorityColor(rec.priority)" variant="subtle" size="xs">{{ rec.priority }}</UBadge>
-              <UBadge :color="statusColor(rec.status)" variant="subtle" size="xs">{{ statusLabel(rec.status) }}</UBadge>
-              <AdvisorCategoryBadge :category="rec.category" size="xs" />
-              <UBadge :color="rec.source === 'manual' ? 'info' : 'neutral'" variant="subtle" size="xs">
+              <UBadge :color="priorityColor(rec.priority)" variant="subtle" size="sm">{{ priorityLabel(rec.priority) }}</UBadge>
+              <UBadge :color="statusColor(rec.status)" variant="subtle" size="sm">{{ statusLabel(rec.status) }}</UBadge>
+              <AdvisorCategoryBadge :category="rec.category" size="sm" />
+              <UBadge :color="rec.source === 'manual' ? 'info' : 'neutral'" variant="subtle" size="sm">
                 {{ rec.source === 'manual' ? 'Manual' : 'AI' }}
               </UBadge>
-              <span class="text-xs text-muted">{{ rec.period_label ?? 'Unlinked' }}</span>
+              <span class="text-sm text-muted">{{ rec.period_label ?? 'Unlinked' }}</span>
             </div>
-            <h3 class="font-semibold text-lg mt-1">{{ rec.title }}</h3>
+            <h3 class="font-semibold text-xl mt-2">{{ rec.title }}</h3>
           </div>
           <UButton icon="i-lucide-x" color="neutral" variant="ghost" size="sm" @click="setOpen(false)" />
         </div>
@@ -289,95 +333,122 @@ function setOpen(v: boolean) {
         <div class="flex-1 overflow-y-auto p-5 space-y-5">
           <!-- Action & impact -->
           <div class="space-y-2">
-            <p class="text-[10px] uppercase text-muted font-semibold tracking-wider">Recommended action</p>
+            <p class="text-xs uppercase text-muted font-semibold tracking-wider">Recommended action</p>
             <p class="text-sm leading-relaxed">{{ rec.action }}</p>
             <p v-if="rec.impact" class="text-sm text-primary">Impact: {{ rec.impact }}</p>
           </div>
 
-          <!-- Controls grid -->
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <p class="text-xs text-muted mb-1">Status</p>
+          <!-- Controls grid: every field wraps in UFormField for label + spacing
+               consistency. Date inputs use UPopover + UCalendar (native date
+               inputs were ugly and broke the dark-mode rhythm). -->
+          <div class="grid grid-cols-2 gap-x-4 gap-y-4">
+            <UFormField label="Status">
               <USelectMenu
                 :model-value="rec.status"
                 :items="statusOptions"
                 value-key="value"
                 size="sm"
+                class="w-full"
                 @update:model-value="(v: string) => emit('patch', { status: v as any })"
               />
-            </div>
-            <div>
-              <p class="text-xs text-muted mb-1">Priority</p>
+            </UFormField>
+
+            <UFormField label="Priority">
               <USelectMenu
                 :model-value="rec.priority"
                 :items="priorityOptions"
                 value-key="value"
                 size="sm"
+                class="w-full"
                 @update:model-value="(v: string) => emit('patch', { priority: v as any })"
               />
-            </div>
-            <div>
-              <p class="text-xs text-muted mb-1">Assignee</p>
+            </UFormField>
+
+            <UFormField label="Assignee">
               <USelectMenu
                 :model-value="rec.assigned_to ?? UNASSIGNED"
                 :items="assigneeDrawerOptions"
                 value-key="value"
                 size="sm"
+                class="w-full"
                 @update:model-value="(v: string) => emit('patch', { assigned_to: (v === UNASSIGNED ? null : v) as any })"
               />
-            </div>
-            <div>
-              <p class="text-xs text-muted mb-1">Due date</p>
-              <UInput
-                :model-value="rec.due_date ?? ''"
-                type="date"
-                size="sm"
-                @change="(e: Event) => emit('patch', { due_date: ((e.target as HTMLInputElement).value || null) as any })"
-              />
-            </div>
-            <div>
-              <p class="text-xs text-muted mb-1">Category</p>
+            </UFormField>
+
+            <UFormField label="Due date">
+              <UPopover :content="DATE_POPOVER_CONTENT">
+                <UButton
+                  color="neutral"
+                  variant="outline"
+                  icon="i-lucide-calendar"
+                  size="sm"
+                  block
+                  class="justify-start font-normal"
+                  :class="!rec.due_date && 'text-muted'"
+                >
+                  {{ formatDateButton(rec.due_date) || 'Pick a date' }}
+                </UButton>
+                <template #content>
+                  <UCalendar v-model="dueDateModel" class="p-2" />
+                  <div v-if="rec.due_date" class="border-t border-default p-2 flex justify-end">
+                    <UButton size="xs" variant="ghost" color="neutral" @click="emit('patch', { due_date: null as any })">
+                      Clear
+                    </UButton>
+                  </div>
+                </template>
+              </UPopover>
+            </UFormField>
+
+            <UFormField label="Category">
               <USelectMenu
                 :model-value="rec.category ?? UNCATEGORIZED"
                 :items="CATEGORY_OPTIONS"
                 value-key="value"
                 size="sm"
+                class="w-full"
                 @update:model-value="(v: string) => emit('patch', { category: (v === UNCATEGORIZED ? null : v) as any })"
               />
-            </div>
-            <div>
-              <p class="text-xs text-muted mb-1 flex items-center gap-1">
-                Snoozed until
+            </UFormField>
+
+            <UFormField label="Snoozed until">
+              <UPopover :content="DATE_POPOVER_CONTENT">
                 <UButton
-                  v-if="rec.snoozed_until"
-                  icon="i-lucide-x"
-                  size="3xs"
                   color="neutral"
-                  variant="ghost"
-                  @click="emit('patch', { snoozed_until: null as any })"
-                />
-              </p>
-              <UInput
-                :model-value="rec.snoozed_until ?? ''"
-                type="date"
-                size="sm"
-                @change="(e: Event) => emit('patch', { snoozed_until: ((e.target as HTMLInputElement).value || null) as any })"
-              />
-            </div>
+                  variant="outline"
+                  icon="i-lucide-bell-off"
+                  size="sm"
+                  block
+                  class="justify-start font-normal"
+                  :class="!rec.snoozed_until && 'text-muted'"
+                >
+                  {{ formatDateButton(rec.snoozed_until) || 'Not snoozed' }}
+                </UButton>
+                <template #content>
+                  <UCalendar v-model="snoozedUntilModel" class="p-2" />
+                  <div v-if="rec.snoozed_until" class="border-t border-default p-2 flex justify-end">
+                    <UButton size="xs" variant="ghost" color="neutral" @click="emit('patch', { snoozed_until: null as any })">
+                      Clear snooze
+                    </UButton>
+                  </div>
+                </template>
+              </UPopover>
+            </UFormField>
           </div>
 
           <!-- Outcome notes -->
           <div>
-            <p class="text-xs text-muted mb-1">Outcome notes</p>
-            <UTextarea
-              v-model="outcomeNotesDraft"
-              :rows="5"
-              size="sm"
-              placeholder="What happened after acting on this?"
-            />
+            <UFormField label="Outcome notes">
+              <UTextarea
+                v-model="outcomeNotesDraft"
+                :rows="5"
+                size="sm"
+                :ui="{ base: 'w-full' }"
+                placeholder="What happened after acting on this?"
+              />
+            </UFormField>
             <div class="flex justify-end mt-2">
               <UButton
-                size="xs"
+                size="sm"
                 :disabled="outcomeNotesDraft === (rec.outcome_notes ?? '')"
                 @click="emit('patch', { outcome_notes: outcomeNotesDraft })"
               >Save notes</UButton>
@@ -395,13 +466,13 @@ function setOpen(v: boolean) {
 
           <!-- Relationship graph -->
           <div v-if="graph && graph.nodes.length > 1">
-            <p class="text-[10px] uppercase text-muted font-semibold tracking-wider mb-2">Relationships</p>
+            <p class="text-xs uppercase text-muted font-semibold tracking-wider mb-2">Relationships</p>
             <AdvisorGraph :data="graph" @select="(node: GraphNode) => emit('graph-select', node)" />
           </div>
 
           <!-- Related past advice -->
           <div v-if="similar.length">
-            <p class="text-[10px] uppercase text-muted font-semibold tracking-wider mb-2">Related past advice</p>
+            <p class="text-xs uppercase text-muted font-semibold tracking-wider mb-2">Related past advice</p>
             <div class="space-y-2">
               <div
                 v-for="m in similar"
@@ -413,11 +484,11 @@ function setOpen(v: boolean) {
                   <p class="font-medium text-sm truncate">{{ m.title }}</p>
                   <div class="flex items-center gap-1.5 shrink-0">
                     <UBadge :color="statusColor(m.status)" variant="subtle" size="xs">{{ statusLabel(m.status) }}</UBadge>
-                    <span class="text-[10px] text-muted font-mono">{{ (m.score * 100).toFixed(0) }}%</span>
+                    <span class="text-xs text-muted font-mono">{{ (m.score * 100).toFixed(0) }}%</span>
                   </div>
                 </div>
                 <p class="text-xs text-muted truncate">{{ m.action }}</p>
-                <div class="flex items-center gap-2 text-[10px] text-muted">
+                <div class="flex items-center gap-2 text-xs text-muted">
                   <span v-if="m.period_label">{{ m.period_label }}</span>
                   <span v-if="m.client_name">· {{ m.client_name }}</span>
                   <span v-if="m.assignee_name">· {{ m.assignee_name }}</span>
@@ -428,7 +499,7 @@ function setOpen(v: boolean) {
 
           <!-- Outcomes / impact attribution -->
           <div v-if="rec.target_metric || outcomes.length">
-            <p class="text-[10px] uppercase text-muted font-semibold tracking-wider mb-2">Impact attribution</p>
+            <p class="text-xs uppercase text-muted font-semibold tracking-wider mb-2">Impact attribution</p>
 
             <div v-if="rec.target_metric" class="flex items-center justify-between p-3 rounded-lg border border-default mb-2">
               <div>
@@ -452,7 +523,7 @@ function setOpen(v: boolean) {
                 <div class="flex items-center justify-between gap-3">
                   <div class="flex items-center gap-2">
                     <UBadge color="neutral" variant="subtle" size="xs">Day {{ o.days_after_action ?? '—' }}</UBadge>
-                    <span class="text-[10px] text-muted">{{ formatDate(o.measured_at) }}</span>
+                    <span class="text-xs text-muted">{{ formatDate(o.measured_at) }}</span>
                   </div>
                   <div class="flex items-center gap-3">
                     <span class="text-xs text-muted font-mono">{{ formatMetric(rec.baseline_metric_value, rec.target_metric) }}</span>
@@ -473,7 +544,7 @@ function setOpen(v: boolean) {
                   <span v-if="deltaDirection(o.metric_delta, rec.target_direction) === 'good'" class="ml-1">✓ target direction</span>
                   <span v-else-if="deltaDirection(o.metric_delta, rec.target_direction) === 'bad'" class="ml-1">✗ wrong direction</span>
                 </div>
-                <p v-if="o.notes" class="mt-1 text-[11px] text-muted italic">{{ o.notes }}</p>
+                <p v-if="o.notes" class="mt-1 text-xs text-muted italic">{{ o.notes }}</p>
               </div>
             </div>
 
@@ -487,14 +558,14 @@ function setOpen(v: boolean) {
 
           <!-- Event log -->
           <div v-if="events.length">
-            <p class="text-[10px] uppercase text-muted font-semibold tracking-wider mb-2">Activity</p>
+            <p class="text-xs uppercase text-muted font-semibold tracking-wider mb-2">Activity</p>
             <div class="space-y-2">
               <div v-for="e in displayedEvents" :key="e.id" class="flex gap-2 items-start text-xs">
                 <UAvatar v-if="e.actor_name" :alt="e.actor_name" :src="e.actor_avatar_url ?? undefined" size="2xs" />
                 <UIcon v-else name="i-lucide-bot" class="size-4 mt-0.5 text-muted" />
                 <div class="flex-1 min-w-0">
                   <p><span class="font-medium">{{ e.actor_name ?? 'System' }}</span> <span class="text-muted">{{ eventLabel(e) }}</span></p>
-                  <p class="text-[10px] text-muted">{{ formatDate(e.created_at) }}</p>
+                  <p class="text-xs text-muted">{{ formatDate(e.created_at) }}</p>
                 </div>
               </div>
             </div>

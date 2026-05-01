@@ -55,12 +55,23 @@ The primary users are agency staff — account managers, media buyers, producers
 | `prompt()` | `UModal` with `UInput` inside |
 | `<select>` | `USelectMenu` or `USelect` |
 | `<input>` | `UInput` |
+| `<input type="date">` | `UPopover` + `UCalendar` (see Form Design below) |
 | `<button>` | `UButton` |
 | `<dialog>` | `UModal` or `USlideover` |
 | `<table>` for data | `UTable` (or custom table with proper styling) |
 
 ### Key Nuxt UI v4 Components
-`UButton`, `UInput`, `UTextarea`, `UCheckbox`, `USelect`, `USelectMenu`, `UBadge`, `UAvatar`, `UIcon`, `UModal`, `USlideover`, `UPopover`, `UDropdownMenu`, `UTooltip`, `UCalendar`, `UTable`, `UTabs`, `UAccordion`, `UAlert`, `UCard`, `UPagination`
+`UButton`, `UInput`, `UTextarea`, `UCheckbox`, `USelect`, `USelectMenu`, `UBadge`, `UAvatar`, `UIcon`, `UModal`, `USlideover`, `UPopover`, `UDropdownMenu`, `UTooltip`, `UCalendar`, `UFormField`, `UTable`, `UTabs`, `UAccordion`, `UAlert`, `UCard`, `UPagination`
+
+### Form Design (MANDATORY)
+
+**Whenever you build or edit a form, first invoke the `frontend-design` skill** at `~/.claude/plugins/marketplaces/claude-plugins-official/plugins/frontend-design/skills/frontend-design/SKILL.md` and apply its design principles (typography, hierarchy, spacing, avoiding generic AI aesthetics) before writing or modifying any form fields. This is non-negotiable for any form-touching work in this project.
+
+Project-specific conventions on top of that skill:
+- **Labels** — wrap every field in `UFormField` with a `label` prop; never hand-roll `<p class="text-xs text-muted">Label</p>` above an input. UFormField handles label/help-text/error spacing consistently.
+- **Date inputs** — never use `<UInput type="date">` (browser-native, ugly, no dark-mode polish). Use the `UPopover` + `UCalendar` pattern with `@internationalized/date` (`CalendarDate`, `getLocalTimeZone`). See `app/components/workflow/TaskCreateDialog.vue` for the canonical implementation including the `toCalendarDate()` ISO ↔ CalendarDate helper.
+- **Field grids** — paired controls (e.g. status/priority, due/snooze) sit in `grid grid-cols-2 gap-4` with consistent vertical rhythm; never mix grid sizes or gaps within the same form section.
+- **Clear / reset affordances** — never bake clear buttons into the label row (breaks alignment); place a small ghost `UButton` inside the popover footer (`<template #content>`) instead.
 
 ### Toasts
 ```ts
