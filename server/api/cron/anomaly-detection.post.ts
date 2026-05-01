@@ -10,7 +10,7 @@
 // Auth: x-cron-secret header matched against CRON_SECRET env var.
 // In development, the secret check is skipped to allow easy manual triggering.
 
-import { defineEventHandler, getHeader, createError } from 'h3'
+import { defineEventHandler, getHeader, getQuery, createError } from 'h3'
 import { queryOne } from '~~/server/utils/db'
 import { runDetectionForTenant } from '~~/server/utils/anomalyDetection/runForTenant'
 
@@ -28,6 +28,12 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  // ?force=true bypasses the local-7am gate. Use for ad-hoc backfills,
+  // smoke tests, or to manually trigger detection without waiting for the
+  // next 7am tenant-local. The auth check above still gates access.
+  const query = getQuery(event)
+  const force = query.force === 'true' || query.force === '1'
+
   // Resolve the connected Xero org
   const conn = await queryOne<{ tenant_id: string; timezone: string }>(
     `SELECT tenant_id, timezone FROM xero_org_connection ORDER BY connected_at DESC LIMIT 1`,
@@ -36,7 +42,7 @@ export default defineEventHandler(async (event) => {
     return { ok: true, skipped: 'no Xero connection' }
   }
 
-  // Local-hour gate: only run once per day at 7am local time.
+  // Local-hour gate: only run once per day at 7am local time, unless force=true.
   // Using Intl.DateTimeFormat is the most reliable way to compute "what hour is it
   // RIGHT NOW in this timezone" in a Cloudflare Workers runtime (no luxon/date-fns-tz
   // dependency required).
@@ -51,7 +57,7 @@ export default defineEventHandler(async (event) => {
     localHour = new Date().getUTCHours()
   }
 
-  if (localHour !== 7) {
+  if (!force && localHour !== 7) {
     return { ok: true, tenant_id: conn.tenant_id, timezone: tz, skipped: `local hour=${localHour}` }
   }
 
@@ -64,6 +70,7 @@ export default defineEventHandler(async (event) => {
     tenant_id: conn.tenant_id,
     timezone: tz,
     localHour,
+    forced: force,
     durationMs,
     result,
   })
@@ -72,6 +79,7 @@ export default defineEventHandler(async (event) => {
     ok: true,
     tenant_id: conn.tenant_id,
     timezone: tz,
+    forced: force,
     durationMs,
     ...result,
   }
