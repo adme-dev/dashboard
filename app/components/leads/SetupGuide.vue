@@ -265,7 +265,7 @@ const sections = [
                 <p class="font-medium mb-1">Email + webhook templates</p>
                 <p class="text-muted">
                   Email subject/body and webhook payloads support
-                  <code class="bg-elevated px-1 py-0.5 rounded">{{ '{{' }} field_data.email {{ '}}' }}</code>
+                  <code v-pre class="bg-elevated px-1 py-0.5 rounded">{{ field_data.email }}</code>
                   variables. Standard fields:
                   <code class="bg-elevated px-1 py-0.5 rounded">lead.id</code>,
                   <code class="bg-elevated px-1 py-0.5 rounded">lead.source</code>,
