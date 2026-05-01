@@ -313,7 +313,7 @@ async function toggleEnabled(item: RuleListItem) {
             v-if="!useCustomFormId && newRule.source !== 'manual'"
             label="Form"
             required
-            :hint="discoverPending ? 'Loading forms from connected accounts…' : 'Pick a form from your connected ad accounts. Toggle Custom below if it isn\\'t listed yet.'"
+            :hint="discoverPending ? 'Loading forms from connected accounts…' : 'Pick a form from your connected ad accounts. Toggle Custom below if it is not listed yet.'"
           >
             <USelectMenu
               :model-value="newRule.form_id"
