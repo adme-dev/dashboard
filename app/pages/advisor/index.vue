@@ -23,6 +23,13 @@ type Recommendation = {
   assignee_avatar_url: string | null
   acted_at: string | null
   outcome_notes: string | null
+  category: string | null
+  effort: 'xs' | 's' | 'm' | 'l' | 'xl' | null
+  snoozed_until: string | null
+  source: 'ai' | 'manual'
+  created_by: string | null
+  created_by_name: string | null
+  created_by_avatar_url: string | null
   created_at: string
   updated_at: string
 }
@@ -46,6 +53,17 @@ type RecommendationOutcome = {
   notes: string | null
 }
 
+type SimilarMatch = Recommendation & { score: number }
+
+type GraphNode = {
+  id: string
+  type: 'recommendation' | 'client' | 'report' | 'metric' | 'outcome' | 'event' | 'assignee' | 'similar'
+  label: string
+  sublabel?: string
+  meta?: Record<string, any>
+}
+type GraphData = { nodes: GraphNode[]; edges: Array<{ from: string; to: string; type: string; label?: string }> }
+
 const toast = useToast()
 
 // Client scope is URL-persisted so the page is bookmarkable and the
@@ -59,6 +77,9 @@ const priorityFilter = ref<'all' | 'low' | 'medium' | 'high'>('all')
 const clientFilter = ref<string>(typeof route.query.clientId === 'string' ? route.query.clientId : 'all')
 const periodFilter = ref<string>('all')
 const assigneeFilter = ref<string>('all')
+const categoryFilter = ref<string>('all')
+const sourceFilter = ref<'all' | 'ai' | 'manual'>('all')
+const showSnoozed = ref(false)
 
 watch(clientFilter, (v) => {
   const next = { ...route.query }
@@ -75,6 +96,9 @@ const query = computed(() => {
   if (clientFilter.value !== 'all') q.client_id = clientFilter.value
   if (periodFilter.value !== 'all') q.period = periodFilter.value
   if (assigneeFilter.value !== 'all') q.assigned_to = assigneeFilter.value
+  if (categoryFilter.value !== 'all') q.category = categoryFilter.value
+  if (sourceFilter.value !== 'all') q.source = sourceFilter.value
+  if (showSnoozed.value) q.include_snoozed = '1'
   return q
 })
 
@@ -88,7 +112,7 @@ const { data: clientsData } = await useFetch<Array<{ id: string; name: string }>
   { server: false, default: () => [] }
 )
 
-const { data: teamData } = await useFetch<{ members: Array<{ id: string; name: string }> }>(
+const { data: teamData } = await useFetch<{ members: Array<{ id: string; name: string; avatar_url?: string | null }> }>(
   '/api/agency/team-members',
   { server: false, default: () => ({ members: [] }) }
 )
@@ -124,7 +148,9 @@ const periodOptions = computed(() => {
 })
 
 const columns = [
+  { accessorKey: 'select', header: '' },
   { accessorKey: 'priority', header: 'Priority' },
+  { accessorKey: 'category', header: 'Category' },
   { accessorKey: 'title', header: 'Recommendation' },
   { accessorKey: 'client', header: 'Client' },
   { accessorKey: 'period', header: 'Period' },
@@ -133,6 +159,89 @@ const columns = [
   { accessorKey: 'status', header: 'Status' },
 ]
 
+// ── Bulk selection state ───────────────────────────────────────────
+// Manual checkbox column with a Set ref. UTable v4's selection API
+// is left unused here on purpose — the spec calls out that path as
+// the safer fallback.
+const selection = ref<Set<string>>(new Set())
+const bulkLoading = ref(false)
+
+function toggleSelect(id: string, ev?: Event) {
+  ev?.stopPropagation()
+  const next = new Set(selection.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selection.value = next
+}
+
+function isSelected(id: string): boolean {
+  return selection.value.has(id)
+}
+
+function clearSelection() {
+  selection.value = new Set()
+}
+
+// Reset selection when the visible list changes meaningfully (filters /
+// refresh) so we never apply a bulk action to ids that are no longer
+// in the user's view.
+watch([statusFilter, priorityFilter, clientFilter, periodFilter, assigneeFilter, categoryFilter, sourceFilter, showSnoozed], () => {
+  clearSelection()
+})
+
+// ── View toggle (table | kanban) ───────────────────────────────────
+const view = useLocalStorage<'table' | 'kanban'>('advisor.view', 'table')
+
+async function moveStatus(id: string, status: 'open' | 'in_progress' | 'done' | 'dismissed') {
+  try {
+    await $fetch(`/api/advisor/recommendations/${id}`, {
+      method: 'PATCH',
+      body: { status },
+    })
+    await refresh()
+  } catch (err: any) {
+    toast.add({
+      title: 'Move failed',
+      description: err?.data?.statusMessage ?? err?.message,
+      color: 'error',
+    })
+  }
+}
+
+async function applyBulk(patch: Record<string, any>) {
+  if (selection.value.size === 0) return
+  bulkLoading.value = true
+  const ids = Array.from(selection.value)
+  try {
+    const res = await $fetch<{ updated: number; requested: number }>(
+      '/api/advisor/recommendations/bulk',
+      { method: 'POST', body: { ids, patch } }
+    )
+    if (res.updated < res.requested) {
+      toast.add({
+        title: 'Partial update',
+        description: `Updated ${res.updated} of ${res.requested}. Some items couldn't be changed.`,
+        color: 'warning',
+      })
+    } else {
+      toast.add({ title: `Updated ${res.updated}`, color: 'success' })
+    }
+    clearSelection()
+    await refresh()
+  } catch (err: any) {
+    toast.add({
+      title: 'Bulk update failed',
+      description: err?.data?.statusMessage ?? err?.message,
+      color: 'error',
+    })
+  } finally {
+    bulkLoading.value = false
+  }
+}
+
+// Helpers used in table cells (the drawer has its own copies for the
+// helpers it needs internally — kept duplicated rather than promoted to
+// a composable until a third surface needs them).
 function priorityColor(p: string) {
   if (p === 'high') return 'error'
   if (p === 'medium') return 'warning'
@@ -158,68 +267,18 @@ function formatDate(iso: string | null | undefined) {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-// Mirrors the unit/label set in server/utils/advisorMetrics.ts so we can
-// format metric values consistently in the UI without a round-trip.
-const METRIC_META: Record<string, { label: string; unit: 'percent' | 'days' | 'currency' | 'ratio' | 'count' }> = {
-  netMarginMonth: { label: 'Net margin (month)', unit: 'percent' },
-  netProfitMonth: { label: 'Net profit (month)', unit: 'currency' },
-  netProfitYtd: { label: 'Net profit (YTD)', unit: 'currency' },
-  revenueMonth: { label: 'Revenue (month)', unit: 'currency' },
-  debtorDays: { label: 'Debtor days', unit: 'days' },
-  creditorDays: { label: 'Creditor days', unit: 'days' },
-  grossProfitPercent: { label: 'Gross profit %', unit: 'percent' },
-  netProfitPercent: { label: 'Net profit %', unit: 'percent' },
-  currentRatio: { label: 'Current ratio', unit: 'ratio' },
-  top1Share: { label: 'Top-1 client share', unit: 'percent' },
-  top3Share: { label: 'Top-3 client share', unit: 'percent' },
-  mrr: { label: 'MRR', unit: 'currency' },
-  outstandingTotal: { label: 'Outstanding A/R', unit: 'currency' },
-  overdueAmount: { label: 'Overdue A/R', unit: 'currency' },
-  totalUnearned: { label: 'Unearned revenue', unit: 'currency' },
-}
-
-function formatMetric(value: number | null | undefined, metric: string | null | undefined): string {
-  if (value == null) return '—'
-  const n = Number(value)
-  const unit = (metric && METRIC_META[metric]?.unit) || 'count'
-  if (unit === 'currency') return n.toLocaleString('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
-  if (unit === 'percent') return `${n.toFixed(1)}%`
-  if (unit === 'days') return `${Math.round(n)} days`
-  if (unit === 'ratio') return n.toFixed(2)
-  return n.toLocaleString()
-}
-
-function formatDelta(delta: number | null | undefined, metric: string | null | undefined): string {
-  if (delta == null) return '—'
-  const n = Number(delta)
-  const sign = n > 0 ? '+' : ''
-  const unit = (metric && METRIC_META[metric]?.unit) || 'count'
-  if (unit === 'currency') return `${sign}${n.toLocaleString('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })}`
-  if (unit === 'percent') return `${sign}${n.toFixed(1)} pts`
-  if (unit === 'days') return `${sign}${Math.round(n)} d`
-  if (unit === 'ratio') return `${sign}${n.toFixed(2)}`
-  return `${sign}${n.toLocaleString()}`
-}
-
-function deltaDirection(delta: number | null | undefined, direction: 'up' | 'down' | null | undefined): 'good' | 'bad' | 'neutral' {
-  if (delta == null || delta === 0) return 'neutral'
-  if (!direction) return delta > 0 ? 'good' : 'bad'
-  if (direction === 'up') return delta > 0 ? 'good' : 'bad'
-  return delta < 0 ? 'good' : 'bad'
-}
-
-// ── Detail drawer ──
-type SimilarMatch = Recommendation & { score: number }
-
-type GraphNode = {
+type Comment = {
   id: string
-  type: 'recommendation' | 'client' | 'report' | 'metric' | 'outcome' | 'event' | 'assignee' | 'similar'
-  label: string
-  sublabel?: string
-  meta?: Record<string, any>
+  recommendation_id: string
+  author_id: string | null
+  author_name: string | null
+  author_avatar_url: string | null
+  body: string
+  created_at: string
+  updated_at: string
 }
-type GraphData = { nodes: GraphNode[]; edges: Array<{ from: string; to: string; type: string; label?: string }> }
 
+// ── Drawer state + handlers ──────────────────────────────────────────
 const drawerOpen = ref(false)
 const drawerLoading = ref(false)
 const drawerRec = ref<Recommendation | null>(null)
@@ -227,6 +286,19 @@ const drawerEvents = ref<RecommendationEvent[]>([])
 const drawerOutcomes = ref<RecommendationOutcome[]>([])
 const drawerSimilar = ref<SimilarMatch[]>([])
 const drawerGraph = ref<GraphData | null>(null)
+const drawerComments = ref<Comment[]>([])
+
+// Current user + role check, used to gate comment edit/delete affordances
+// in the drawer. Server enforces the actual permission.
+const { data: currentUser } = await useFetch<{ id: string; role?: string } | null>(
+  '/api/auth/me',
+  { server: false, default: () => null }
+)
+const currentUserId = computed(() => currentUser.value?.id ?? null)
+const canPrivilegedEdit = computed(() => {
+  const role = currentUser.value?.role
+  return role === 'owner' || role === 'admin'
+})
 
 async function openDrawer(rec: Recommendation) {
   drawerOpen.value = true
@@ -234,13 +306,15 @@ async function openDrawer(rec: Recommendation) {
   drawerRec.value = rec
   drawerSimilar.value = []
   drawerGraph.value = null
+  drawerComments.value = []
   try {
-    const res = await $fetch<{ recommendation: Recommendation; events: RecommendationEvent[]; outcomes: RecommendationOutcome[] }>(
+    const res = await $fetch<{ recommendation: Recommendation; events: RecommendationEvent[]; outcomes: RecommendationOutcome[]; comments: Comment[] }>(
       `/api/advisor/recommendations/${rec.id}`
     )
     drawerRec.value = res.recommendation
     drawerEvents.value = res.events
     drawerOutcomes.value = res.outcomes
+    drawerComments.value = res.comments ?? []
     // Fetch related past advice + graph in the background — don't block
     // the drawer opening if Vectorize is slow or unavailable.
     $fetch<{ matches: SimilarMatch[] }>(`/api/advisor/recommendations/similar`, {
@@ -277,6 +351,56 @@ async function onGraphNodeSelect(node: GraphNode) {
   }
 }
 
+// ── Manual create modal ────────────────────────────────────────────
+const createModalOpen = ref(false)
+
+// Metric registry mirrors server/utils/advisorMetrics.ts. Re-listed here
+// because client-side imports of that file would pull a server-only h3
+// dependency. Slice 6 / phase 2 may promote this to a shared module.
+const METRIC_KEYS = [
+  { key: 'netMarginMonth', label: 'Net margin (month)' },
+  { key: 'netProfitMonth', label: 'Net profit (month)' },
+  { key: 'netProfitYtd', label: 'Net profit (YTD)' },
+  { key: 'revenueMonth', label: 'Revenue (month)' },
+  { key: 'debtorDays', label: 'Debtor days' },
+  { key: 'creditorDays', label: 'Creditor days' },
+  { key: 'grossProfitPercent', label: 'Gross profit %' },
+  { key: 'netProfitPercent', label: 'Net profit %' },
+  { key: 'currentRatio', label: 'Current ratio' },
+  { key: 'top1Share', label: 'Top-1 client share' },
+  { key: 'top3Share', label: 'Top-3 client share' },
+  { key: 'mrr', label: 'MRR' },
+  { key: 'outstandingTotal', label: 'Outstanding A/R' },
+  { key: 'overdueAmount', label: 'Overdue A/R' },
+  { key: 'totalUnearned', label: 'Unearned revenue' },
+]
+
+async function onCreated(rec: Recommendation) {
+  // Refresh the list so the new rec appears (subject to current filters)
+  // and immediately open the drawer for editing.
+  await refresh()
+  openDrawer(rec)
+}
+
+async function onCommentsChanged() {
+  if (!drawerRec.value) return
+  // Refetch the detail to pick up new comments + the audit event row.
+  try {
+    const detail = await $fetch<{
+      events: RecommendationEvent[]
+      outcomes: RecommendationOutcome[]
+      comments: Comment[]
+    }>(`/api/advisor/recommendations/${drawerRec.value.id}`)
+    drawerEvents.value = detail.events
+    drawerOutcomes.value = detail.outcomes
+    drawerComments.value = detail.comments ?? []
+    // Also refresh the list so the table's comment_count column updates.
+    refresh()
+  } catch {
+    /* silent — toast already raised by the child component */
+  }
+}
+
 async function patchRec(patch: Partial<Recommendation>) {
   if (!drawerRec.value) return
   const id = drawerRec.value.id
@@ -297,41 +421,6 @@ async function patchRec(patch: Partial<Recommendation>) {
   } catch (err: any) {
     toast.add({ title: 'Save failed', description: err?.data?.statusMessage ?? err?.message, color: 'error' })
   }
-}
-
-const outcomeNotesDraft = ref('')
-watch(drawerRec, (v) => { outcomeNotesDraft.value = v?.outcome_notes ?? '' }, { immediate: true })
-
-const statusOptions = [
-  { label: 'Open', value: 'open' },
-  { label: 'In progress', value: 'in_progress' },
-  { label: 'Done', value: 'done' },
-  { label: 'Dismissed', value: 'dismissed' },
-]
-
-const priorityOptions = [
-  { label: 'Low', value: 'low' },
-  { label: 'Medium', value: 'medium' },
-  { label: 'High', value: 'high' },
-]
-
-const UNASSIGNED = '__unassigned__'
-const assigneeDrawerOptions = computed(() => ([
-  { label: 'Unassigned', value: UNASSIGNED },
-  ...(teamData.value?.members ?? []).map((m) => ({ label: m.name, value: m.id })),
-]))
-
-function prettyEvent(e: RecommendationEvent) {
-  if (e.event_type === 'updated' && e.payload) {
-    const keys = Object.keys(e.payload)
-    if (keys.length === 1) {
-      const k = keys[0]!
-      const change = e.payload[k]
-      return `${k.replace(/_/g, ' ')}: ${change.from ?? '—'} → ${change.to ?? '—'}`
-    }
-    return `Updated ${keys.length} fields`
-  }
-  return e.event_type
 }
 
 // Human-readable label for the current scope chip.
@@ -373,6 +462,28 @@ const summary = computed(() => {
               <UIcon name="i-lucide-target" class="size-4 text-muted" />
             </template>
           </USelectMenu>
+          <UButtonGroup>
+            <UButton
+              :color="view === 'table' ? 'primary' : 'neutral'"
+              :variant="view === 'table' ? 'solid' : 'outline'"
+              size="sm"
+              icon="i-lucide-list"
+              @click="view = 'table'"
+            >Table</UButton>
+            <UButton
+              :color="view === 'kanban' ? 'primary' : 'neutral'"
+              :variant="view === 'kanban' ? 'solid' : 'outline'"
+              size="sm"
+              icon="i-lucide-kanban"
+              @click="view = 'kanban'"
+            >Kanban</UButton>
+          </UButtonGroup>
+          <UButton
+            icon="i-lucide-plus"
+            color="primary"
+            size="sm"
+            @click="createModalOpen = true"
+          >New</UButton>
           <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" :loading="pending" @click="refresh()" />
         </template>
       </UDashboardNavbar>
@@ -408,61 +519,31 @@ const summary = computed(() => {
         </div>
 
         <!-- Filters -->
-        <UCard>
-          <div class="flex flex-wrap gap-2 items-center">
-            <UButtonGroup>
-              <UButton
-                v-for="o in [
-                  { label: 'Active', value: 'active' },
-                  { label: 'Open', value: 'open' },
-                  { label: 'In progress', value: 'in_progress' },
-                  { label: 'Done', value: 'done' },
-                  { label: 'Dismissed', value: 'dismissed' },
-                  { label: 'All', value: 'all' },
-                ]"
-                :key="o.value"
-                :color="statusFilter === o.value ? 'primary' : 'neutral'"
-                :variant="statusFilter === o.value ? 'solid' : 'outline'"
-                size="sm"
-                @click="statusFilter = o.value as any"
-              >{{ o.label }}</UButton>
-            </UButtonGroup>
+        <AdvisorFilters
+          v-model:status="statusFilter"
+          v-model:priority="priorityFilter"
+          v-model:client="clientFilter"
+          v-model:period="periodFilter"
+          v-model:assignee="assigneeFilter"
+          v-model:category="categoryFilter"
+          v-model:source="sourceFilter"
+          v-model:show-snoozed="showSnoozed"
+          :client-options="clientOptions"
+          :period-options="periodOptions"
+          :assignee-options="assigneeOptions"
+        />
 
-            <div class="grow" />
+        <!-- Kanban view -->
+        <AdvisorKanbanView
+          v-if="view === 'kanban'"
+          :recommendations="recommendations"
+          @open="openDrawer"
+          @move="moveStatus"
+          @add="() => (createModalOpen = true)"
+        />
 
-            <USelectMenu
-              v-model="priorityFilter"
-              :items="[{ label: 'All priorities', value: 'all' }, ...priorityOptions]"
-              value-key="value"
-              size="sm"
-              class="w-40"
-            />
-            <USelectMenu
-              v-model="clientFilter"
-              :items="clientOptions"
-              value-key="value"
-              size="sm"
-              class="w-52"
-            />
-            <USelectMenu
-              v-model="periodFilter"
-              :items="periodOptions"
-              value-key="value"
-              size="sm"
-              class="w-44"
-            />
-            <USelectMenu
-              v-model="assigneeFilter"
-              :items="assigneeOptions"
-              value-key="value"
-              size="sm"
-              class="w-48"
-            />
-          </div>
-        </UCard>
-
-        <!-- Table -->
-        <UCard>
+        <!-- Table view -->
+        <UCard v-else>
           <UTable
             :data="recommendations"
             :columns="columns"
@@ -470,10 +551,26 @@ const summary = computed(() => {
             class="cursor-pointer"
             @select="(_e: any, row: any) => openDrawer(row.original)"
           >
+            <template #select-header>
+              <span class="sr-only">Select</span>
+            </template>
+
+            <template #select-cell="{ row }">
+              <UCheckbox
+                :model-value="isSelected(row.original.id)"
+                @update:model-value="toggleSelect(row.original.id)"
+                @click.stop
+              />
+            </template>
+
             <template #priority-cell="{ row }">
               <UBadge :color="priorityColor(row.original.priority)" variant="subtle" size="xs">
                 {{ row.original.priority }}
               </UBadge>
+            </template>
+
+            <template #category-cell="{ row }">
+              <AdvisorCategoryBadge :category="row.original.category" />
             </template>
 
             <template #title-cell="{ row }">
@@ -504,7 +601,15 @@ const summary = computed(() => {
             </template>
 
             <template #due_date-cell="{ row }">
-              <span class="text-xs">{{ formatDate(row.original.due_date) }}</span>
+              <div class="flex items-center gap-1.5">
+                <span class="text-xs">{{ formatDate(row.original.due_date) }}</span>
+                <UTooltip
+                  v-if="row.original.snoozed_until"
+                  :text="`Snoozed until ${formatDate(row.original.snoozed_until)}`"
+                >
+                  <UIcon name="i-lucide-bell-off" class="size-3.5 text-amber-500" />
+                </UTooltip>
+              </div>
             </template>
 
             <template #status-cell="{ row }">
@@ -526,210 +631,40 @@ const summary = computed(() => {
     </template>
   </UDashboardPanel>
 
-  <!-- Detail drawer -->
-  <USlideover v-model:open="drawerOpen" :ui="{ content: 'max-w-2xl' }">
-    <template #content>
-      <div v-if="drawerRec" class="flex flex-col h-full">
-        <div class="flex items-start justify-between p-5 border-b border-default">
-          <div class="flex-1">
-            <div class="flex items-center gap-2">
-              <UBadge :color="priorityColor(drawerRec.priority)" variant="subtle" size="xs">{{ drawerRec.priority }}</UBadge>
-              <UBadge :color="statusColor(drawerRec.status)" variant="subtle" size="xs">{{ statusLabel(drawerRec.status) }}</UBadge>
-              <span class="text-xs text-muted">{{ drawerRec.period_label ?? 'Unlinked' }}</span>
-            </div>
-            <h3 class="font-semibold text-lg mt-1">{{ drawerRec.title }}</h3>
-          </div>
-          <UButton icon="i-lucide-x" color="neutral" variant="ghost" size="sm" @click="drawerOpen = false" />
-        </div>
+  <!-- Manual create modal -->
+  <AdvisorCreateModal
+    v-model:open="createModalOpen"
+    :clients="clientsData ?? []"
+    :team-members="teamData?.members ?? []"
+    :metric-keys="METRIC_KEYS"
+    @created="onCreated"
+  />
 
-        <div class="flex-1 overflow-y-auto p-5 space-y-5">
-          <!-- Action & impact -->
-          <div class="space-y-2">
-            <p class="text-[10px] uppercase text-muted font-semibold tracking-wider">Recommended action</p>
-            <p class="text-sm leading-relaxed">{{ drawerRec.action }}</p>
-            <p v-if="drawerRec.impact" class="text-sm text-primary">Impact: {{ drawerRec.impact }}</p>
-          </div>
+  <!-- Bulk action bar -->
+  <AdvisorBulkActionBar
+    :count="selection.size"
+    :loading="bulkLoading"
+    :team-members="teamData?.members ?? []"
+    @apply="applyBulk"
+    @clear="clearSelection"
+  />
 
-          <!-- Controls grid -->
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <p class="text-xs text-muted mb-1">Status</p>
-              <USelectMenu
-                :model-value="drawerRec.status"
-                :items="statusOptions"
-                value-key="value"
-                size="sm"
-                @update:model-value="(v: string) => patchRec({ status: v as any })"
-              />
-            </div>
-            <div>
-              <p class="text-xs text-muted mb-1">Priority</p>
-              <USelectMenu
-                :model-value="drawerRec.priority"
-                :items="priorityOptions"
-                value-key="value"
-                size="sm"
-                @update:model-value="(v: string) => patchRec({ priority: v as any })"
-              />
-            </div>
-            <div>
-              <p class="text-xs text-muted mb-1">Assignee</p>
-              <USelectMenu
-                :model-value="drawerRec.assigned_to ?? UNASSIGNED"
-                :items="assigneeDrawerOptions"
-                value-key="value"
-                size="sm"
-                @update:model-value="(v: string) => patchRec({ assigned_to: (v === UNASSIGNED ? null : v) as any })"
-              />
-            </div>
-            <div>
-              <p class="text-xs text-muted mb-1">Due date</p>
-              <UInput
-                :model-value="drawerRec.due_date ?? ''"
-                type="date"
-                size="sm"
-                @change="(e: Event) => patchRec({ due_date: (e.target as HTMLInputElement).value || null as any })"
-              />
-            </div>
-          </div>
-
-          <!-- Outcome notes -->
-          <div>
-            <p class="text-xs text-muted mb-1">Outcome notes</p>
-            <UTextarea
-              v-model="outcomeNotesDraft"
-              :rows="5"
-              size="sm"
-              placeholder="What happened after acting on this?"
-            />
-            <div class="flex justify-end mt-2">
-              <UButton
-                size="xs"
-                :disabled="outcomeNotesDraft === (drawerRec.outcome_notes ?? '')"
-                @click="patchRec({ outcome_notes: outcomeNotesDraft })"
-              >Save notes</UButton>
-            </div>
-          </div>
-
-          <!-- Relationship graph -->
-          <div v-if="drawerGraph && drawerGraph.nodes.length > 1">
-            <p class="text-[10px] uppercase text-muted font-semibold tracking-wider mb-2">Relationships</p>
-            <AdvisorGraph :data="drawerGraph" @select="onGraphNodeSelect" />
-          </div>
-
-          <!-- Related past advice -->
-          <div v-if="drawerSimilar.length">
-            <p class="text-[10px] uppercase text-muted font-semibold tracking-wider mb-2">Related past advice</p>
-            <div class="space-y-2">
-              <div
-                v-for="m in drawerSimilar"
-                :key="m.id"
-                class="p-3 rounded-lg border border-default space-y-1 cursor-pointer hover:bg-elevated/60 transition-colors"
-                @click="openDrawer(m)"
-              >
-                <div class="flex items-center justify-between gap-2">
-                  <p class="font-medium text-sm truncate">{{ m.title }}</p>
-                  <div class="flex items-center gap-1.5 shrink-0">
-                    <UBadge :color="statusColor(m.status)" variant="subtle" size="xs">{{ statusLabel(m.status) }}</UBadge>
-                    <span class="text-[10px] text-muted font-mono">{{ (m.score * 100).toFixed(0) }}%</span>
-                  </div>
-                </div>
-                <p class="text-xs text-muted truncate">{{ m.action }}</p>
-                <div class="flex items-center gap-2 text-[10px] text-muted">
-                  <span v-if="m.period_label">{{ m.period_label }}</span>
-                  <span v-if="m.client_name">· {{ m.client_name }}</span>
-                  <span v-if="m.assignee_name">· {{ m.assignee_name }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Outcomes / impact attribution -->
-          <div v-if="drawerRec.target_metric || drawerOutcomes.length">
-            <p class="text-[10px] uppercase text-muted font-semibold tracking-wider mb-2">Impact attribution</p>
-
-            <div v-if="drawerRec.target_metric" class="flex items-center justify-between p-3 rounded-lg border border-default mb-2">
-              <div>
-                <p class="text-xs text-muted">Tracking</p>
-                <p class="text-sm font-medium">{{ METRIC_META[drawerRec.target_metric]?.label ?? drawerRec.target_metric }}</p>
-              </div>
-              <div class="text-right">
-                <p class="text-xs text-muted flex items-center gap-1 justify-end">
-                  Target <UIcon :name="drawerRec.target_direction === 'up' ? 'i-lucide-arrow-up-right' : 'i-lucide-arrow-down-right'" class="size-3" />
-                </p>
-                <p class="text-sm font-mono">Baseline: {{ formatMetric(drawerRec.baseline_metric_value, drawerRec.target_metric) }}</p>
-              </div>
-            </div>
-
-            <div v-if="drawerOutcomes.length" class="space-y-2">
-              <div
-                v-for="o in drawerOutcomes"
-                :key="o.id"
-                class="p-3 rounded-lg border border-default"
-              >
-                <div class="flex items-center justify-between gap-3">
-                  <div class="flex items-center gap-2">
-                    <UBadge color="neutral" variant="subtle" size="xs">Day {{ o.days_after_action ?? '—' }}</UBadge>
-                    <span class="text-[10px] text-muted">{{ formatDate(o.measured_at) }}</span>
-                  </div>
-                  <div class="flex items-center gap-3">
-                    <span class="text-xs text-muted font-mono">{{ formatMetric(drawerRec.baseline_metric_value, drawerRec.target_metric) }}</span>
-                    <UIcon name="i-lucide-arrow-right" class="size-3 text-muted" />
-                    <span class="text-sm font-semibold font-mono">{{ formatMetric(o.metric_value, drawerRec.target_metric) }}</span>
-                  </div>
-                </div>
-                <div
-                  v-if="o.metric_delta != null"
-                  class="mt-1 text-right text-xs font-medium"
-                  :class="{
-                    'text-emerald-500': deltaDirection(o.metric_delta, drawerRec.target_direction) === 'good',
-                    'text-red-500': deltaDirection(o.metric_delta, drawerRec.target_direction) === 'bad',
-                    'text-muted': deltaDirection(o.metric_delta, drawerRec.target_direction) === 'neutral',
-                  }"
-                >
-                  {{ formatDelta(o.metric_delta, drawerRec.target_metric) }}
-                  <span v-if="deltaDirection(o.metric_delta, drawerRec.target_direction) === 'good'" class="ml-1">✓ target direction</span>
-                  <span v-else-if="deltaDirection(o.metric_delta, drawerRec.target_direction) === 'bad'" class="ml-1">✗ wrong direction</span>
-                </div>
-                <p v-if="o.notes" class="mt-1 text-[11px] text-muted italic">{{ o.notes }}</p>
-              </div>
-            </div>
-
-            <div
-              v-else-if="drawerRec.target_metric && drawerRec.status === 'done' && drawerRec.acted_at"
-              class="p-3 rounded-lg border border-dashed border-default text-xs text-muted text-center"
-            >
-              Pending measurement — first checkpoint 30 days after action.
-            </div>
-          </div>
-
-          <!-- Event log -->
-          <div v-if="drawerEvents.length">
-            <p class="text-[10px] uppercase text-muted font-semibold tracking-wider mb-2">Activity</p>
-            <div class="space-y-2">
-              <div v-for="e in drawerEvents" :key="e.id" class="flex gap-2 items-start text-xs">
-                <UAvatar v-if="e.actor_name" :alt="e.actor_name" :src="e.actor_avatar_url ?? undefined" size="2xs" />
-                <UIcon v-else name="i-lucide-bot" class="size-4 mt-0.5 text-muted" />
-                <div class="flex-1 min-w-0">
-                  <p><span class="font-medium">{{ e.actor_name ?? 'System' }}</span> <span class="text-muted">{{ prettyEvent(e) }}</span></p>
-                  <p class="text-[10px] text-muted">{{ formatDate(e.created_at) }}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Metadata footer -->
-          <div class="pt-4 border-t border-default space-y-1 text-xs text-muted">
-            <p>Created {{ formatDate(drawerRec.created_at) }}</p>
-            <p v-if="drawerRec.acted_at">Acted {{ formatDate(drawerRec.acted_at) }}</p>
-            <p v-if="drawerRec.client_name">Client: {{ drawerRec.client_name }}</p>
-          </div>
-        </div>
-      </div>
-      <div v-else-if="drawerLoading" class="p-5 space-y-3">
-        <USkeleton class="h-4 w-2/3" />
-        <USkeleton class="h-20" />
-      </div>
-    </template>
-  </USlideover>
+  <!-- Detail drawer (extracted to component) -->
+  <AdvisorDrawer
+    v-model:open="drawerOpen"
+    :loading="drawerLoading"
+    :rec="drawerRec"
+    :events="drawerEvents"
+    :outcomes="drawerOutcomes"
+    :similar="drawerSimilar"
+    :graph="drawerGraph"
+    :team-members="teamData?.members ?? []"
+    :comments="drawerComments"
+    :current-user-id="currentUserId"
+    :can-privileged-edit="canPrivilegedEdit"
+    @patch="patchRec"
+    @open-similar="openDrawer"
+    @graph-select="onGraphNodeSelect"
+    @comments-changed="onCommentsChanged"
+  />
 </template>

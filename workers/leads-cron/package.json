@@ -1,0 +1,14 @@
+{
+  "name": "leads-cron",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "devDependencies": {
+    "wrangler": "*",
+    "@cloudflare/workers-types": "*",
+    "typescript": "*"
+  }
+}

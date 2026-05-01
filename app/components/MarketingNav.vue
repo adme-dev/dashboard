@@ -584,6 +584,7 @@ const featuresCol2 = [
   { title: 'Xero Integration', subtitle: 'Sync invoices and accounts', icon: 'i-lucide-link', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/platform/financials' },
   { title: 'Ad Spend', subtitle: 'Meta & Google Ads tracking', icon: 'i-lucide-bar-chart-3', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/platform/ad-spend' },
   { title: 'EOM Engine', subtitle: 'Automated invoice generation', icon: 'i-lucide-receipt', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/platform/financials' },
+  { title: 'Lead Capture & Routing', subtitle: 'Real-time Meta + Google ad inquiries', icon: 'i-lucide-inbox', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/features/lead-capture-routing' },
 ]
 
 const featuresCol3a = [
@@ -600,6 +601,7 @@ const featuresCol3b = [
 
 const featuresCol4 = [
   { title: 'AI Assistant', subtitle: 'Chat, anomaly detection, search', icon: 'i-lucide-sparkles', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/platform/ai' },
+  { title: 'Advisor Backlog', subtitle: 'CFO recommendations as a triage queue', icon: 'i-lucide-target', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/features/advisor-backlog' },
   { title: 'AI Training', subtitle: 'Your data trains your AI, privately', icon: 'i-lucide-brain', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/ai-training' },
   { title: 'Voice AI', subtitle: 'Talk to your AI by voice', icon: 'i-lucide-mic', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/voice-ai' },
   { title: 'Semantic Search', subtitle: 'Vectorize-powered discovery', icon: 'i-lucide-search', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/platform/ai' },

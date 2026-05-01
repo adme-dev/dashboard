@@ -155,6 +155,7 @@ const categories = [
     iconBg: 'bg-emerald-50 dark:bg-emerald-500/10',
     iconColor: 'text-emerald-600',
     features: [
+      { title: 'Lead Capture & Routing', slug: 'lead-capture-routing', icon: 'i-lucide-inbox', description: 'Real-time Meta + Google ad inquiries land in the dashboard. Per-form rules fan them out to Slack, email, your CRM, Sheets, and the client portal — without Zapier.' },
       { title: 'Xero Integration', slug: 'xero-integration', icon: 'i-lucide-link', description: 'Two-way sync with Xero for invoices, expenses, contacts, and chart of accounts.' },
       { title: 'EOM Engine', slug: 'eom-engine', icon: 'i-lucide-file-spreadsheet', description: 'End-of-month invoice generation with configurable line items, tax, and auto-upload to Xero.' },
       { title: 'Meta Ads Tracking', slug: 'meta-ads-tracking', icon: 'i-lucide-megaphone', description: 'OAuth-connected Meta Ads spend syncing with daily breakdowns and campaign-level budgets.' },
@@ -213,6 +214,7 @@ const categories = [
       { title: 'Intent Classification', slug: 'intent-classification', icon: 'i-lucide-target', description: 'Edge-first intent classifier routes queries to the right data sources automatically.' },
       { title: 'Composite Scoring', slug: 'composite-scoring', icon: 'i-lucide-blend', description: 'Five-signal retrieval formula — semantic, recency, importance, intent match, and entity overlap.' },
       { title: 'AI Reports', slug: 'ai-reports', icon: 'i-lucide-file-text', description: 'Auto-generated reports with insights, trends, and recommendations for your agency.' },
+      { title: 'Advisor Backlog', slug: 'advisor-backlog', icon: 'i-lucide-target', description: 'AI-generated CFO recommendations with categorisation, snooze, comments, bulk triage, and Kanban view. Track impact at 30/60/90 days.' },
       { title: 'AI Training Pipeline', slug: 'ai-training-pipeline', icon: 'i-lucide-graduation-cap', description: 'Extract training data from conversations, upload knowledge entries, and manage training datasets.' },
       { title: 'Knowledge Base', slug: 'knowledge-base', icon: 'i-lucide-book-open', description: 'Curate and approve knowledge entries that enhance AI responses with agency-specific context.' },
       { title: 'LoRA Adapters', slug: 'lora-adapters', icon: 'i-lucide-cpu', description: 'Fine-tune AI models with your agency data. Custom adapters with traffic routing and A/B testing.' },

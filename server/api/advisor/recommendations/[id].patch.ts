@@ -10,10 +10,13 @@ import { createError } from 'h3'
 import { queryOne, query } from '~~/server/utils/db'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
+import { CATEGORIES } from '~~/server/utils/advisorCategories'
 
 const ALLOWED_STATUS = new Set(['open', 'in_progress', 'done', 'dismissed'])
 const ALLOWED_PRIORITY = new Set(['low', 'medium', 'high'])
 const ALLOWED_DIRECTION = new Set(['up', 'down'])
+const ALLOWED_CATEGORY = new Set<string>(CATEGORIES as readonly string[])
+const ALLOWED_EFFORT = new Set(['xs', 's', 'm', 'l', 'xl'])
 
 export default eventHandler(async (event) => {
   await requireAuth(event)
@@ -121,6 +124,28 @@ export default eventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'Invalid target_direction' })
     }
     pushSet('target_direction', body.target_direction || null)
+  }
+
+  if (body.category !== undefined) {
+    if (body.category !== null && !ALLOWED_CATEGORY.has(body.category)) {
+      throw createError({ statusCode: 400, statusMessage: 'Invalid category' })
+    }
+    pushSet('category', body.category || null)
+  }
+
+  if (body.effort !== undefined) {
+    if (body.effort !== null && !ALLOWED_EFFORT.has(body.effort)) {
+      throw createError({ statusCode: 400, statusMessage: 'Invalid effort' })
+    }
+    pushSet('effort', body.effort || null)
+  }
+
+  if (body.snoozed_until !== undefined) {
+    const v = body.snoozed_until
+    if (v && typeof v === 'string' && !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      throw createError({ statusCode: 400, statusMessage: 'Invalid snoozed_until (use YYYY-MM-DD)' })
+    }
+    pushSet('snoozed_until', v || null)
   }
 
   if (sets.length === 0) {

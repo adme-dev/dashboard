@@ -387,6 +387,35 @@ const features: Record<string, Feature> = {
   },
 
   // ─── Financial Operations ─────────────────────────────────────
+  'lead-capture-routing': {
+    title: 'Lead Capture & Routing',
+    slug: 'lead-capture-routing',
+    icon: 'i-lucide-inbox',
+    category: 'Financial Operations',
+    categoryIcon: 'i-lucide-calculator',
+    categoryIconBg: 'bg-emerald-50',
+    categoryIconColor: 'text-emerald-600',
+    description: 'Real-time Meta + Google ad inquiries land directly in the dashboard. Per-form rules fan them out to Slack, email, your CRM, Sheets, and the client portal — without Zapier.',
+    details: [
+      {
+        title: 'Real-time, not polled',
+        content: "Meta and Google both publish native webhooks. We accept them directly — sub-60-second delivery instead of Zapier's 1-15 minute polling window. Speed-to-lead matters: contacting a lead within 5 minutes is 21x more likely to convert.",
+      },
+      {
+        title: 'Multi-tenant by design',
+        content: "One agency dashboard manages every client's lead routing. Each client gets their own webhook URL, their own form rules, and their own portal view — no Zap duplication, no per-task fees.",
+      },
+      {
+        title: 'Client portal inbox built-in',
+        content: 'Add a "portal" destination to any rule and the client sees their leads inside the same XeroFlow portal where they already track invoices and projects. Branded, real-time, no extra login.',
+      },
+      {
+        title: "Routing logic that's actually useful",
+        content: 'Per-destination filters: "SMS only if budget > $5,000", "Slack only if utm_source = facebook". Optional delays from immediate to 24 hours. HMAC-signed outbound webhooks with idempotency keys so receivers can safely dedupe our retries.',
+      },
+    ],
+  },
+
   'xero-integration': {
     title: 'Xero Integration',
     slug: 'xero-integration',
@@ -892,6 +921,38 @@ const features: Record<string, Feature> = {
       {
         title: 'Export and Sharing',
         content: 'Reports can be exported as PDF, shared via chat channel, or emailed to stakeholders. The format is clean and professional — suitable for client presentations or board meetings. Scheduled reports are automatically delivered to configured channels or email addresses, so your Monday morning starts with fresh insights rather than a scramble to compile last week\'s numbers.'
+      }
+    ]
+  },
+  'advisor-backlog': {
+    title: 'Advisor Backlog',
+    slug: 'advisor-backlog',
+    icon: 'i-lucide-target',
+    category: 'AI & Intelligence',
+    categoryIcon: 'i-lucide-brain',
+    categoryIconBg: 'bg-amber-50',
+    categoryIconColor: 'text-amber-600',
+    description: 'AI-generated CFO recommendations as a managed backlog. Categorise, snooze, comment, bulk-triage, and switch between table and Kanban views — with measured impact at 30/60/90 days after action.',
+    details: [
+      {
+        title: 'AI Recommendations With Categorisation',
+        content: 'Every Financial Advisor report writes its recommendations to a managed backlog at /advisor. Each rec is automatically classified by Groq into one of nine categories: cashflow, collections, pricing, margin, cost-control, growth, staffing, tax-compliance, or risk. Filter the backlog by category chip to focus on a single theme — "show me all the cashflow items across every client" — or by client, period, assignee, priority, or source (AI vs manual). Categorisation drives reporting too: see which themes dominate this quarter, and where the agency is gaining or losing ground.'
+      },
+      {
+        title: 'Triage Like Real Work',
+        content: 'Treat advisor output as a real backlog, not an inbox. Each recommendation has status (open / in-progress / done / dismissed), priority, due date, and an assignable team member. Snooze a rec until a specific date — it disappears from the active view and reappears automatically when the date passes. Comment on recs with a flat discussion thread; comments persist as soft-deleted history so the audit trail is intact. Multi-select rows and bulk-set status, priority, category, assignee, or snooze date in one action — useful for closing out a quarter or assigning a wave of work to a new team member.'
+      },
+      {
+        title: 'Add Your Own Observations',
+        content: 'The AI is fast at spotting patterns; humans are better at context. Click "+ New" to add your own recommendation alongside the AI\'s. The form is progressive — title and action are required, with an advanced section for impact, effort sizing, target metric and direction, due date, and assignee. Manual recs carry a "Manual" badge and creator avatar so the audit trail shows who flagged what. They feed into the same backlog, the same categorisation, and the same impact tracking as AI-generated ones.'
+      },
+      {
+        title: 'Two Views, One Source of Truth',
+        content: 'Switch between the dense table view (filterable, sortable, multi-select for bulk actions) and a four-column Kanban board (Open / In progress / Done / Dismissed). Drag a card across columns to change status — the API call is pessimistic and snaps back if the update fails. The view choice persists per user via localStorage. In the detail drawer, every action shows up in an activity log, with consecutive bulk actions from the same person collapsed into a single "Paul updated 12 items" line so the timeline stays readable.'
+      },
+      {
+        title: 'Measured Impact, Not Vague Outcomes',
+        content: 'Each recommendation can target a specific metric (debtor days, MRR, net margin, top-3 client share, and 11 others). When the rec is marked done, a nightly cron re-measures that metric at 30, 60, and 90 days after action and records the delta. The drawer surfaces the baseline → outcome with a colour-coded "✓ target direction" or "✗ wrong direction" annotation, so you can see at a glance whether your advisory work moved the needle. Over time this builds a defensible record of advisor ROI in actual dollars.'
       }
     ]
   },

@@ -445,6 +445,48 @@ onMounted(async () => {
   loadSpendData()
   loadBankCharges()
 })
+
+// ---------------------------- Lead webhooks (Google only) ----------------------------
+interface LeadEndpoint {
+  id: string
+  client_id: string
+  client_name: string
+  url_token: string
+  secret_key: string
+  secret_key_grace_until: string | null
+  rotated_at: string | null
+  lead_count: string
+}
+
+const { data: endpointsData, refresh: refreshEndpoints } = useFetch<{ items: LeadEndpoint[] }>(
+  '/api/leads/endpoints/list',
+  { default: () => ({ items: [] }) },
+)
+const endpoints = computed(() => endpointsData.value?.items ?? [])
+const revealed = reactive<Record<string, boolean>>({})
+
+function urlFor(token: string): string {
+  // Use window.location for the host on the client; fall back during SSR.
+  const host = typeof window !== 'undefined'
+    ? window.location.origin
+    : (import.meta.env.VITE_PUBLIC_BASE_URL ?? '')
+  return `${host}/api/leads/webhook/google/${token}`
+}
+
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    toast.add({ title: 'Copied', color: 'success' })
+  } catch {
+    toast.add({ title: 'Copy failed', color: 'error' })
+  }
+}
+
+async function rotateEndpointKey(ep: LeadEndpoint) {
+  await $fetch(`/api/leads/endpoints/${ep.id}/rotate`, { method: 'POST' })
+  toast.add({ title: 'Key rotated — old key valid 30 more min', color: 'success' })
+  await refreshEndpoints()
+}
 </script>
 
 <template>
@@ -789,6 +831,76 @@ onMounted(async () => {
         </div>
       </template>
     </div>
+
+    <!-- Lead webhooks (Google only) -->
+    <section v-if="platform === 'google'" class="mt-8 border-t border-default pt-6 px-6 pb-6">
+      <h2 class="text-base font-semibold mb-1">Lead webhooks</h2>
+      <p class="text-sm text-muted mb-4">
+        Per-client webhook URLs for Google Ads Lead Form integration.
+        Paste these into the lead form asset's "Webhook integration" panel in Google Ads.
+      </p>
+
+      <div class="space-y-3">
+        <UCard v-for="ep in endpoints" :key="ep.id">
+          <template #header>
+            <div class="flex items-center justify-between">
+              <h3 class="font-medium">{{ ep.client_name }}</h3>
+              <UBadge variant="soft" size="sm" :color="Number(ep.lead_count) > 0 ? 'success' : 'neutral'">
+                {{ Number(ep.lead_count) > 0 ? `${ep.lead_count} lead(s)` : 'no leads yet' }}
+              </UBadge>
+            </div>
+          </template>
+          <div class="space-y-3">
+            <div>
+              <label class="text-xs text-muted">Webhook URL</label>
+              <div class="flex items-center gap-2">
+                <UInput :model-value="urlFor(ep.url_token)" readonly class="font-mono text-xs flex-1" />
+                <UButton size="xs" icon="i-lucide-copy" variant="ghost" @click="copyText(urlFor(ep.url_token))" />
+              </div>
+            </div>
+            <div>
+              <label class="text-xs text-muted">Webhook key</label>
+              <div class="flex items-center gap-2">
+                <UInput
+                  :type="revealed[ep.id] ? 'text' : 'password'"
+                  :model-value="ep.secret_key"
+                  readonly
+                  class="font-mono text-xs flex-1"
+                />
+                <UButton
+                  size="xs"
+                  :icon="revealed[ep.id] ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                  variant="ghost"
+                  @click="revealed[ep.id] = !revealed[ep.id]"
+                />
+                <UButton size="xs" icon="i-lucide-copy" variant="ghost" @click="copyText(ep.secret_key)" />
+              </div>
+              <p
+                v-if="ep.secret_key_grace_until && new Date(ep.secret_key_grace_until) > new Date()"
+                class="text-xs text-warning mt-1"
+              >
+                Previous key still valid until {{ new Date(ep.secret_key_grace_until).toLocaleTimeString() }}.
+              </p>
+            </div>
+            <div class="flex justify-end">
+              <UButton size="xs" variant="ghost" icon="i-lucide-rotate-cw" @click="rotateEndpointKey(ep)">Rotate key</UButton>
+            </div>
+          </div>
+        </UCard>
+        <p v-if="!endpoints.length" class="text-sm text-muted">
+          No webhook endpoints provisioned yet. Endpoints are created automatically when an admin adds a client.
+        </p>
+      </div>
+
+      <UAlert
+        class="mt-6"
+        icon="i-lucide-info"
+        title="How to wire this up"
+        description="In Google Ads → Assets → Lead form → Webhook integration: paste the URL and Key above, then click 'Send test data'. The card's 'lead(s)' badge updates when traffic arrives."
+        variant="soft"
+        color="info"
+      />
+    </section>
 
     <!-- Disconnect Confirmation Modal -->
     <UModal v-model:open="showDisconnectModal">

@@ -31,6 +31,7 @@ export type NotificationType =
   | 'brief_submitted'
   | 'board_member_added'
   | 'anomaly_critical'
+  | 'lead'
 
 export type NotificationReason =
   | 'mentioned'
@@ -38,6 +39,7 @@ export type NotificationReason =
   | 'watching_board'
   | 'watching_item'
   | 'direct'
+  | 'lead_arrived'
 
 interface CreateNotificationParams {
   userId: string
