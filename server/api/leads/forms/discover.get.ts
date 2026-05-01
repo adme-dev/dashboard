@@ -9,7 +9,7 @@
 
 import { z } from 'zod'
 import { queryRows, execute } from '~~/server/utils/db'
-import { listMetaLeadgenForms } from '~~/server/utils/metaClient'
+import { listMetaPageLeadForms } from '~~/server/utils/metaClient'
 import {
   listGoogleLeadFormAssets,
   refreshGoogleToken,
@@ -53,6 +53,17 @@ export default defineEventHandler(async (event) => {
     return { source, forms: [] as FormResult[], connection_count: 0 }
   }
 
+  // Meta: 100+ connections share a single OAuth user-token. Dedupe so we
+  // call /me/accounts once per unique token instead of once per ad account.
+  const workingConnections =
+    source === 'meta'
+      ? Array.from(
+          new Map(
+            connections.filter((c) => c.access_token).map((c) => [c.access_token!, c]),
+          ).values(),
+        )
+      : connections
+
   const config = useRuntimeConfig()
 
   // Bound concurrency at 8 — across 100+ connections, full parallelism would
@@ -64,12 +75,16 @@ export default defineEventHandler(async (event) => {
   async function fetchForConnection(c: ConnectionRow): Promise<FormResult[]> {
     if (source === 'meta') {
       if (!c.access_token) return []
-      const forms = await listMetaLeadgenForms(c.account_id, c.access_token)
+      // Meta forms are Page-owned, not Ad-Account-owned. The /me/accounts
+      // call returns the same Pages for every connection that shares a
+      // user-access-token, so the dedup below ensures we only do this once
+      // per unique token.
+      const forms = await listMetaPageLeadForms(c.access_token)
       return forms.map((f) => ({
         form_id: f.id,
         form_name: f.name,
-        account_id: c.account_id,
-        account_name: c.account_name ?? c.account_id,
+        account_id: f.page_id,
+        account_name: f.page_name,
       }))
     }
     // Google — refresh token if near-expiry, then query.
@@ -114,7 +129,7 @@ export default defineEventHandler(async (event) => {
   }
 
   // Concurrency-limited fan-out via simple queue.
-  const queue = [...connections]
+  const queue = [...workingConnections]
   async function worker() {
     while (queue.length) {
       const c = queue.shift()
@@ -129,15 +144,22 @@ export default defineEventHandler(async (event) => {
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()))
 
-  // Sort: account_name then form_name for stable display
-  results.sort((a, b) => {
+  // Dedup forms — Meta returns the same form across multiple ad-account
+  // tokens that all derive from one user OAuth grant. Key by form_id.
+  const dedupedMap = new Map<string, FormResult>()
+  for (const f of results) {
+    if (!dedupedMap.has(f.form_id)) dedupedMap.set(f.form_id, f)
+  }
+  const deduped = Array.from(dedupedMap.values())
+
+  deduped.sort((a, b) => {
     const accountCmp = a.account_name.localeCompare(b.account_name)
     return accountCmp !== 0 ? accountCmp : a.form_name.localeCompare(b.form_name)
   })
 
   return {
     source,
-    forms: results,
+    forms: deduped,
     connection_count: connections.length,
     error_count: errors.length,
   }

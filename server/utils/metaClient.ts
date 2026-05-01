@@ -743,37 +743,94 @@ export async function createAd(
 // ============================================
 // Lead Generation Forms (for the form-picker dropdown in leads engine)
 // ============================================
+//
+// Lead forms in Meta are owned by Pages, not Ad Accounts. The
+// /act_{id}/leadgen_forms endpoint doesn't exist (Meta returns code 100,
+// "nonexisting field"). The canonical path is:
+//   1. /me/accounts → list pages the user manages (with per-page tokens)
+//   2. /{page_id}/leadgen_forms → list forms on each page
+// Requires `pages_show_list` (granted on existing OAuth tokens).
 
-export interface MetaLeadgenForm {
+export interface MetaPageLeadForm {
   id: string
   name: string
   status: string
-  page_id?: string
+  page_id: string
+  page_name: string
 }
 
-export async function listMetaLeadgenForms(
-  adAccountId: string,
-  accessToken: string,
-): Promise<MetaLeadgenForm[]> {
-  const cleanId = adAccountId.replace(/^act_/, '')
-  try {
-    const r = await ofetch<{ data?: any[] }>(
-      `${META_GRAPH_BASE}/act_${cleanId}/leadgen_forms`,
-      {
-        query: {
-          access_token: accessToken,
-          fields: 'id,name,status,page',
-          limit: 100,
-        },
-      },
-    )
-    return (r.data ?? []).map((f) => ({
-      id: String(f.id),
-      name: String(f.name ?? `Form ${f.id}`),
-      status: String(f.status ?? 'unknown'),
-      page_id: f.page?.id ? String(f.page.id) : undefined,
-    }))
-  } catch {
-    return []
+interface PageEntry {
+  id: string
+  name: string
+  access_token: string
+}
+
+const META_PAGE_LIMIT = 200 // safety cap on page traversal per token
+
+/**
+ * Lists all lead forms across all Pages a Meta user-access-token can manage.
+ * Concurrency-bounded to avoid per-app rate limits on large agency accounts.
+ */
+export async function listMetaPageLeadForms(
+  userAccessToken: string,
+): Promise<MetaPageLeadForm[]> {
+  const pages: PageEntry[] = []
+
+  // 1. Walk paginated /me/accounts to collect all manageable pages.
+  let nextUrl: string | null =
+    `${META_GRAPH_BASE}/me/accounts?fields=id,name,access_token&limit=100&access_token=${encodeURIComponent(userAccessToken)}`
+  let traversed = 0
+  while (nextUrl && traversed < META_PAGE_LIMIT) {
+    try {
+      const r = await ofetch<{ data?: any[]; paging?: { next?: string } }>(nextUrl)
+      for (const p of r.data ?? []) {
+        if (p?.id && p?.access_token) {
+          pages.push({ id: String(p.id), name: String(p.name ?? p.id), access_token: String(p.access_token) })
+          traversed++
+          if (traversed >= META_PAGE_LIMIT) break
+        }
+      }
+      nextUrl = r.paging?.next ?? null
+    } catch {
+      break
+    }
   }
+
+  if (!pages.length) return []
+
+  // 2. Fan out across pages with bounded concurrency.
+  const out: MetaPageLeadForm[] = []
+  const queue = [...pages]
+  const CONCURRENCY = 6
+  async function worker() {
+    while (queue.length) {
+      const page = queue.shift()
+      if (!page) break
+      try {
+        const r = await ofetch<{ data?: any[] }>(
+          `${META_GRAPH_BASE}/${page.id}/leadgen_forms`,
+          {
+            query: {
+              access_token: page.access_token,
+              fields: 'id,name,status',
+              limit: 100,
+            },
+          },
+        )
+        for (const f of r.data ?? []) {
+          out.push({
+            id: String(f.id),
+            name: String(f.name ?? `Form ${f.id}`),
+            status: String(f.status ?? 'unknown'),
+            page_id: page.id,
+            page_name: page.name,
+          })
+        }
+      } catch {
+        // Skip pages this token can't read forms for.
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()))
+  return out
 }
