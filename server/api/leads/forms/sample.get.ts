@@ -47,7 +47,7 @@ export default defineEventHandler(async (event) => {
     { token: '{{ id }}', label: 'Lead ID', sample: 'uuid', group: 'lead' as const },
     { token: '{{ attribution.utm_source }}', label: 'UTM source', sample: 'google', group: 'attribution' as const },
     { token: '{{ attribution.utm_campaign }}', label: 'UTM campaign', sample: '', group: 'attribution' as const },
-    { token: '{{ attribution.gcl_id }}', label: 'GCLID', sample: '', group: 'attribution' as const },
+    { token: '{{ attribution.gclid }}', label: 'GCLID', sample: '', group: 'attribution' as const },
     { token: '{{ attribution.fbclid }}', label: 'FBCLID', sample: '', group: 'attribution' as const },
   ]
 
