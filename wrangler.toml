@@ -21,11 +21,15 @@ id = "7d5db1c489cb40f4b809d611e1408acd"
 binding = "JOBS_QUEUE"
 queue = "agency-jobs"
 
-# Producer binding for the leads delivery queue. Consumer runs in
-# workers/leads-delivery-worker/, configured in the CF dashboard.
-[[queues.producers]]
-binding = "LEADS_DELIVERY_QUEUE"
-queue = "leads-delivery-queue"
+# Producer binding for the leads delivery queue is intentionally OFF.
+# When this binding is undefined, server/utils/leads/queue.ts falls back to
+# inline dispatch in the Pages request — webhook → ingest → fan-out happens
+# synchronously. Re-enable once leads-delivery-worker is fixed (it currently
+# fails to bundle due to Nitro-specific imports in synced code) and a queue
+# consumer is wired in the CF dashboard.
+# [[queues.producers]]
+# binding = "LEADS_DELIVERY_QUEUE"
+# queue = "leads-delivery-queue"
 
 # AI — Workers AI for embeddings and edge inference
 [ai]
