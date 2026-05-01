@@ -1,15 +1,14 @@
 /**
- * POST /api/advisor/generate/collections
+ * POST /api/advisor/generate/ad-pacing
  *
- * Auth wrapper around runCollectionsGenerator. See server/utils/advisorGenerators.ts
+ * Auth wrapper around runAdPacingGenerator. See server/utils/advisorGenerators.ts
  * for the actual logic — the cron handler also calls that runner.
  */
 
 import { createError } from 'h3'
-import { getActiveTokenForSession } from '~~/server/utils/tokenStore'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
-import { runCollectionsGenerator } from '~~/server/utils/advisorGenerators'
+import { runAdPacingGenerator } from '~~/server/utils/advisorGenerators'
 
 export default eventHandler(async (event) => {
   await requireAuth(event)
@@ -19,6 +18,5 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'No organization selected' })
   }
 
-  const token = await getActiveTokenForSession(event)
-  return await runCollectionsGenerator(tenantId, token.access_token!)
+  return await runAdPacingGenerator(tenantId)
 })

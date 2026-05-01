@@ -61,27 +61,42 @@ const grouped = computed(() => {
 })
 
 const generating = ref(false)
-async function generateCollections() {
+
+interface GenerateResult { created: number; skipped: number; total: number; scanned: number; reason?: string }
+
+async function runGenerator(path: string): Promise<GenerateResult & { label: string; ok: boolean }> {
+  const label = path.split('/').pop() || path
+  try {
+    const result = await $fetch<GenerateResult>(path, { method: 'POST' })
+    return { ...result, label, ok: true }
+  } catch (err: any) {
+    console.warn(`[generator] ${label} failed:`, err)
+    return {
+      label, ok: false, created: 0, skipped: 0, total: 0, scanned: 0,
+      reason: err?.data?.statusMessage || err?.message || 'failed',
+    }
+  }
+}
+
+async function generateAll() {
   generating.value = true
   try {
-    const result = await $fetch<{ created: number; skipped: number; total: number; scanned: number }>(
-      '/api/advisor/generate/collections',
-      { method: 'POST' }
-    )
+    const results = await Promise.all([
+      runGenerator('/api/advisor/generate/collections'),
+      runGenerator('/api/advisor/generate/ad-pacing'),
+      runGenerator('/api/advisor/generate/project-burn'),
+    ])
+    const totalCreated = results.reduce((s, r) => s + r.created, 0)
+    const failed = results.filter((r) => !r.ok)
+    const summary = results.map((r) => `${r.label}: ${r.ok ? `${r.created} new` : 'failed'}`).join(' · ')
     toast.add({
-      title: result.created > 0 ? `${result.created} new recommendation${result.created === 1 ? '' : 's'}` : 'No new recommendations',
-      description: result.created > 0
-        ? `Scanned ${result.scanned} clients, ${result.skipped} already had open recs.`
-        : `Scanned ${result.scanned} clients — nothing new to flag.`,
-      color: result.created > 0 ? 'success' : 'info',
+      title: totalCreated > 0
+        ? `${totalCreated} new recommendation${totalCreated === 1 ? '' : 's'}`
+        : 'Inbox up to date',
+      description: summary,
+      color: failed.length > 0 ? 'warning' : (totalCreated > 0 ? 'success' : 'info'),
     })
     await refresh()
-  } catch (err: any) {
-    toast.add({
-      title: 'Failed to generate recommendations',
-      description: err?.data?.statusMessage || err?.message || 'Unknown error',
-      color: 'error',
-    })
   } finally {
     generating.value = false
   }
@@ -176,13 +191,12 @@ const categoryItems = [
         </template>
         <template #right>
           <UButton
-            color="neutral"
-            variant="outline"
-            icon="i-lucide-refresh-cw"
+            color="primary"
+            icon="i-lucide-sparkles"
             :loading="generating"
-            @click="generateCollections"
+            @click="generateAll"
           >
-            Scan AR for collections
+            Scan all sources
           </UButton>
         </template>
       </UDashboardNavbar>
@@ -230,7 +244,7 @@ const categoryItems = [
             <div class="text-base font-medium">No {{ statusFilter === 'active' ? 'open' : statusFilter }} recommendations</div>
             <p class="text-sm text-muted max-w-sm mx-auto">
               {{ statusFilter === 'active'
-                ? 'Click "Scan AR for collections" to surface clients whose payments have drifted.'
+                ? 'Click "Scan all sources" to check Xero AR, ad-spend pacing, and project burn rates.'
                 : 'Nothing here yet.' }}
             </p>
           </div>
@@ -258,7 +272,10 @@ const categoryItems = [
 
             <ul class="space-y-3">
               <li v-for="rec in grouped[bucket]" :key="rec.id">
-                <UCard class="hover:ring-2 hover:ring-primary/20 transition">
+                <UCard
+                  class="hover:ring-2 hover:ring-primary/20 transition cursor-pointer"
+                  @click="navigateTo(`/recommendations/${rec.id}`)"
+                >
                   <div class="flex flex-col gap-3">
                     <!-- Header row: badges + meta -->
                     <div class="flex flex-wrap items-center gap-2 text-xs">
@@ -305,25 +322,25 @@ const categoryItems = [
                           v-if="rec.status === 'open'"
                           size="xs" color="neutral" variant="soft"
                           icon="i-lucide-play"
-                          @click="markInProgress(rec.id)"
+                          @click.stop="markInProgress(rec.id)"
                         >In progress</UButton>
                         <UButton
                           v-if="['open', 'in_progress'].includes(rec.status)"
                           size="xs" color="success" variant="soft"
                           icon="i-lucide-check"
-                          @click="markDone(rec.id)"
+                          @click.stop="markDone(rec.id)"
                         >Done</UButton>
                         <UButton
                           v-if="['open', 'in_progress'].includes(rec.status)"
                           size="xs" color="neutral" variant="ghost"
                           icon="i-lucide-clock"
-                          @click="snooze7d(rec.id)"
+                          @click.stop="snooze7d(rec.id)"
                         >Snooze 7d</UButton>
                         <UButton
                           v-if="['open', 'in_progress'].includes(rec.status)"
                           size="xs" color="neutral" variant="ghost"
                           icon="i-lucide-x"
-                          @click="dismiss(rec.id)"
+                          @click.stop="dismiss(rec.id)"
                         >Dismiss</UButton>
                       </div>
                     </div>
