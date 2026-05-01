@@ -22,6 +22,8 @@ const SOURCE_OPTIONS = [
   { value: 'all', label: 'All sources' },
   { value: 'meta', label: 'Meta' },
   { value: 'google', label: 'Google' },
+  { value: 'webhook', label: 'Webhook' },
+  { value: 'csv', label: 'CSV import' },
   { value: 'manual', label: 'Manual' },
 ]
 const STATUS_OPTIONS = [

@@ -7,7 +7,7 @@ import { queryRows, queryCount } from '~~/server/utils/db'
 
 const Query = z.object({
   client_id: z.string().uuid().optional(),
-  source: z.enum(['meta', 'google', 'manual']).optional(),
+  source: z.enum(['meta', 'google', 'manual', 'webhook', 'csv']).optional(),
   form_id: z.string().optional(),
   status: z.string().optional(),
   assigned_to: z.string().uuid().optional(),

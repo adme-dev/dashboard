@@ -7,11 +7,15 @@ const ICONS: Record<LeadSource, string> = {
   meta: 'i-lucide-facebook',
   google: 'i-lucide-search',
   manual: 'i-lucide-pencil',
+  webhook: 'i-lucide-webhook',
+  csv: 'i-lucide-file-spreadsheet',
 }
 const TITLES: Record<LeadSource, string> = {
   meta: 'Meta Lead Ads',
   google: 'Google Lead Forms',
   manual: 'Manual entry',
+  webhook: 'Webhook (Zapier / Make / custom)',
+  csv: 'CSV import',
 }
 </script>
 
