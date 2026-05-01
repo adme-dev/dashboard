@@ -32,7 +32,7 @@ const tabs = [
     </header>
 
     <div class="flex-1 min-h-0">
-      <LeadsInbox v-if="tab === 'inbox'" />
+      <LeadsInbox v-if="tab === 'inbox'" @show-help="showSetupGuide = true" />
       <LeadsFormRulesTab v-else />
     </div>
 

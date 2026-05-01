@@ -13,7 +13,24 @@ watch(liveEvents, () => debouncedRefresh(), { deep: true })
 const selectedLead = ref<Lead | null>(null)
 const showSlideover = ref(false)
 const showManualModal = ref(false)
-const toast = useToast()
+
+// Lookup tables for client + user names — same endpoints the filter dropdown
+// uses, so de-duped by Nuxt's useFetch cache.
+interface ClientOption { id: string; name: string }
+interface UserOption { id: string; name: string }
+const { data: clients } = useFetch<ClientOption[]>('/api/agency/clients', { default: () => [] })
+const { data: teamData } = useFetch<{ members: UserOption[] }>('/api/agency/team-members', { default: () => ({ members: [] }) })
+
+const clientNameById = computed(() => {
+  const m = new Map<string, string>()
+  for (const c of clients.value ?? []) m.set(c.id, c.name)
+  return m
+})
+const userNameById = computed(() => {
+  const m = new Map<string, string>()
+  for (const u of teamData.value?.members ?? []) m.set(u.id, u.name)
+  return m
+})
 
 const columns = [
   { accessorKey: 'submitted_at', header: 'When' },
@@ -37,7 +54,6 @@ function openLead(lead: Lead) {
 }
 
 async function exportCsv() {
-  // Build query from current filters; let browser navigate so the file downloads.
   const q = new URLSearchParams()
   for (const [k, v] of Object.entries(filters.value)) {
     if (v == null || v === '' || v === false) continue
@@ -45,12 +61,19 @@ async function exportCsv() {
   }
   window.open(`/api/leads/export?${q.toString()}`, '_blank')
 }
+
+const hasItems = computed(() => (data.value?.items?.length ?? 0) > 0)
+
+defineEmits<{ 'show-help': [] }>()
 </script>
 
 <template>
   <div class="flex flex-col h-full">
     <div class="flex items-center justify-between px-4 py-3 border-b border-default">
-      <h2 class="text-base font-semibold">Inbox <span v-if="data?.total" class="text-muted font-normal">— {{ data.total }} total</span></h2>
+      <h2 class="text-base font-semibold">
+        Inbox
+        <span v-if="data?.total" class="text-muted font-normal">— {{ data.total }} total</span>
+      </h2>
       <div class="flex items-center gap-2">
         <UButton icon="i-lucide-download" variant="ghost" size="sm" @click="exportCsv">CSV</UButton>
         <UButton icon="i-lucide-plus" color="primary" size="sm" @click="showManualModal = true">Manual lead</UButton>
@@ -61,35 +84,86 @@ async function exportCsv() {
     <LeadsInboxFilters v-model:filters="filters" />
 
     <div class="flex-1 overflow-auto">
-      <UTable :data="data?.items ?? []" :columns="columns" :loading="pending" class="w-full">
+      <UTable
+        v-if="hasItems || pending"
+        :data="data?.items ?? []"
+        :columns="columns"
+        :loading="pending"
+        class="w-full"
+        :ui="{
+          tr: 'hover:bg-elevated/40 cursor-pointer transition-colors',
+          td: 'py-2.5',
+        }"
+      >
         <template #submitted_at-cell="{ row }">
-          <span class="text-sm whitespace-nowrap">{{ format(new Date(row.original.submitted_at), 'MMM d, HH:mm') }}</span>
+          <button class="text-left text-sm whitespace-nowrap" @click="openLead(row.original)">
+            {{ format(new Date(row.original.submitted_at), 'MMM d, HH:mm') }}
+          </button>
         </template>
         <template #client_id-cell="{ row }">
-          <span v-if="row.original.client_id" class="text-sm">{{ row.original.client_id.slice(0, 8) }}…</span>
-          <UBadge v-else color="warning" variant="soft" size="sm">Unmapped</UBadge>
+          <button class="text-left" @click="openLead(row.original)">
+            <span v-if="row.original.client_id" class="text-sm">
+              {{ clientNameById.get(row.original.client_id) ?? row.original.client_id.slice(0, 8) + '…' }}
+            </span>
+            <UBadge v-else color="warning" variant="soft" size="sm">Unmapped</UBadge>
+          </button>
         </template>
         <template #source-cell="{ row }">
-          <LeadsSourceIcon :source="row.original.source" />
+          <button @click="openLead(row.original)">
+            <LeadsSourceIcon :source="row.original.source" />
+          </button>
         </template>
         <template #form_name-cell="{ row }">
-          <span class="text-sm">{{ row.original.form_name || row.original.form_id || '—' }}</span>
+          <button class="text-left text-sm" @click="openLead(row.original)">
+            {{ row.original.form_name || row.original.form_id || '—' }}
+          </button>
         </template>
         <template #summary-cell="{ row }">
-          <button class="text-left text-sm hover:underline" @click="openLead(row.original)">
+          <button class="text-left text-sm font-medium" @click="openLead(row.original)">
             {{ summarize(row.original) || '—' }}
           </button>
         </template>
         <template #status-cell="{ row }">
-          <LeadsStatusBadge :status="row.original.status" />
+          <button @click="openLead(row.original)">
+            <LeadsStatusBadge :status="row.original.status" />
+          </button>
         </template>
         <template #assigned_to-cell="{ row }">
-          <span class="text-xs text-muted">{{ row.original.assigned_to ? row.original.assigned_to.slice(0, 8) + '…' : '—' }}</span>
+          <button class="text-left" @click="openLead(row.original)">
+            <span v-if="row.original.assigned_to" class="text-xs">
+              {{ userNameById.get(row.original.assigned_to) ?? row.original.assigned_to.slice(0, 8) + '…' }}
+            </span>
+            <span v-else class="text-xs text-muted">—</span>
+          </button>
         </template>
         <template #actions-cell="{ row }">
-          <LeadsInboxRowActions :lead="row.original" @changed="refresh()" />
+          <div @click.stop>
+            <LeadsInboxRowActions :lead="row.original" @changed="refresh()" />
+          </div>
         </template>
       </UTable>
+
+      <div v-else class="flex flex-col items-center justify-center h-full text-center px-6 py-12">
+        <UIcon name="i-lucide-inbox" class="size-12 text-dimmed mb-3" />
+        <h3 class="text-base font-semibold mb-1">No leads yet</h3>
+        <p class="text-sm text-muted max-w-md mb-4">
+          Once Meta or Google Ads sends an inquiry to a configured webhook, it'll appear here in real time.
+          You can also add a lead manually.
+        </p>
+        <div class="flex items-center gap-2">
+          <UButton icon="i-lucide-plus" color="primary" size="sm" @click="showManualModal = true">
+            Add manual lead
+          </UButton>
+          <UButton
+            icon="i-lucide-help-circle"
+            variant="ghost"
+            size="sm"
+            @click="$emit('show-help')"
+          >
+            How to set up
+          </UButton>
+        </div>
+      </div>
     </div>
 
     <div class="border-t border-default p-3 flex items-center justify-between">

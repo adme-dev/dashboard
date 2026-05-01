@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CalendarDate, DateFormatter, getLocalTimeZone, today } from '@internationalized/date'
 import type { LeadsListFilters } from '~/types/leadsUi'
 
 const model = defineModel<LeadsListFilters>('filters', { required: true })
@@ -7,15 +8,12 @@ interface ClientOption { id: string; name: string }
 interface FormOption { form_id: string; form_name: string | null; source: string }
 interface UserOption { id: string; name: string }
 
-// /api/agency/clients returns a plain array (not { items: [] })
 const { data: clients } = useFetch<ClientOption[]>('/api/agency/clients', {
   default: () => [],
 })
-// /api/leads/forms/list returns { items: LeadFormMetadata[] }
 const { data: forms } = useFetch<{ items: FormOption[] }>('/api/leads/forms/list', {
   default: () => ({ items: [] }),
 })
-// /api/agency/team-members returns { members: [...] } (no summary/departments/roles wrapper)
 const { data: teamData } = useFetch<{ members: UserOption[] }>('/api/agency/team-members', {
   default: () => ({ members: [] }),
 })
@@ -53,7 +51,6 @@ const userOptions = computed(() => [
   ...((teamData.value?.members ?? []) as UserOption[]).map(u => ({ value: u.id, label: u.name })),
 ])
 
-// Bridge sentinels <-> nullable model fields
 const clientSel = computed({
   get: () => model.value.unmapped ? 'unmapped' : (model.value.client_id ?? 'all'),
   set: (v: string) => {
@@ -85,6 +82,95 @@ const userSel = computed({
   get: () => model.value.assigned_to ?? 'all',
   set: (v: string) => { model.value.assigned_to = v === 'all' ? null : v },
 })
+
+// Date range — bridge YYYY-MM-DD string filter model with CalendarDate range
+const df = new DateFormatter('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+
+function strToCalendarDate(s: string | null | undefined): CalendarDate | undefined {
+  if (!s) return undefined
+  const [y, m, d] = s.split('-').map(Number)
+  if (!y || !m || !d) return undefined
+  return new CalendarDate(y, m, d)
+}
+
+function calendarDateToStr(cd: CalendarDate | undefined | null): string {
+  if (!cd) return ''
+  const m = String(cd.month).padStart(2, '0')
+  const d = String(cd.day).padStart(2, '0')
+  return `${cd.year}-${m}-${d}`
+}
+
+const calendarRange = computed({
+  get: () => ({
+    start: strToCalendarDate(model.value.from),
+    end: strToCalendarDate(model.value.to),
+  }),
+  set: (v: { start: CalendarDate | null; end: CalendarDate | null }) => {
+    model.value.from = v.start ? calendarDateToStr(v.start) : ''
+    model.value.to = v.end ? calendarDateToStr(v.end) : ''
+  },
+})
+
+const dateLabel = computed(() => {
+  const r = calendarRange.value
+  if (!r.start && !r.end) return 'Date range'
+  const tz = getLocalTimeZone()
+  const startStr = r.start ? df.format(r.start.toDate(tz)) : ''
+  const endStr = r.end ? df.format(r.end.toDate(tz)) : ''
+  if (r.start && r.end) return `${startStr} – ${endStr}`
+  return startStr || endStr
+})
+
+const PRESETS = [
+  { label: 'Last 7 days', days: 7 },
+  { label: 'Last 30 days', days: 30 },
+  { label: 'Last 90 days', days: 90 },
+  { label: 'This month', monthStart: true },
+]
+
+function applyPreset(preset: { days?: number; monthStart?: boolean }) {
+  const tz = getLocalTimeZone()
+  const end = today(tz)
+  let start = end.copy()
+  if (preset.days) {
+    start = start.subtract({ days: preset.days })
+  } else if (preset.monthStart) {
+    start = new CalendarDate(end.year, end.month, 1)
+  }
+  calendarRange.value = { start, end }
+}
+
+function clearDates() {
+  calendarRange.value = { start: null, end: null }
+}
+
+// Active-filter detection for the Clear button
+const hasActiveFilters = computed(() => {
+  const m = model.value
+  return Boolean(
+    m.q ||
+    m.client_id ||
+    m.unmapped ||
+    m.source ||
+    m.status ||
+    m.form_id ||
+    m.assigned_to ||
+    m.from ||
+    m.to,
+  )
+})
+
+function clearAll() {
+  model.value.q = ''
+  model.value.client_id = null
+  model.value.unmapped = false
+  model.value.source = null
+  model.value.status = null
+  model.value.form_id = null
+  model.value.assigned_to = null
+  model.value.from = ''
+  model.value.to = ''
+}
 </script>
 
 <template>
@@ -125,7 +211,59 @@ const userSel = computed({
       value-key="value"
       class="w-44"
     />
-    <UInput v-model="model.from" type="date" class="w-40" />
-    <UInput v-model="model.to" type="date" class="w-40" />
+
+    <UPopover :content="{ align: 'start' }" :modal="true">
+      <UButton
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-calendar"
+        class="data-[state=open]:bg-elevated group"
+      >
+        <span class="truncate">{{ dateLabel }}</span>
+        <template #trailing>
+          <UIcon name="i-lucide-chevron-down" class="shrink-0 text-dimmed size-4 group-data-[state=open]:rotate-180 transition-transform" />
+        </template>
+      </UButton>
+      <template #content>
+        <div class="flex items-stretch sm:divide-x divide-default">
+          <div class="hidden sm:flex flex-col justify-start py-2">
+            <UButton
+              v-for="preset in PRESETS"
+              :key="preset.label"
+              :label="preset.label"
+              color="neutral"
+              variant="ghost"
+              class="rounded-none justify-start px-4"
+              @click="applyPreset(preset)"
+            />
+            <UButton
+              label="Clear"
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-x"
+              class="rounded-none justify-start px-4 mt-2"
+              @click="clearDates"
+            />
+          </div>
+          <UCalendar
+            v-model="calendarRange"
+            class="p-2"
+            :number-of-months="2"
+            range
+          />
+        </div>
+      </template>
+    </UPopover>
+
+    <UButton
+      v-if="hasActiveFilters"
+      icon="i-lucide-x"
+      variant="ghost"
+      size="sm"
+      color="neutral"
+      @click="clearAll"
+    >
+      Clear filters
+    </UButton>
   </div>
 </template>
