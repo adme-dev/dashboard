@@ -7,12 +7,11 @@
 ## Pre-flight
 
 - [ ] All three plans (1a / 1b / 1c) merged to `main`
-- [ ] Migration `087-leads-engine.sql` applied to staging Neon
-- [ ] `leads-delivery-worker` deployed to staging account
-- [ ] `leads-cron` deployed to staging account
-- [ ] `LEADS_DELIVERY_QUEUE` producer binding configured on the staging Pages env
-- [ ] CF dashboard has the queue consumer wired
-- [ ] `INTERNAL_CRON_TOKEN`, `RESEND_API_KEY`, `DATABASE_URL`, `META_LEADGEN_VERIFY_TOKEN` all set on Pages + Worker envs
+- [ ] Migrations applied to staging Neon: `087-leads-engine.sql`, `090-leads-is-test.sql`, `091-leads-source-expand.sql`
+- [ ] `leads-cron` worker deployed (3 schedules: stuck-claim recovery every 5 min, ingestion-error purge daily at 03:10 UTC, retention purge daily at 03:30 UTC)
+- [ ] `INTERNAL_CRON_TOKEN`, `RESEND_API_KEY`, `DATABASE_URL`, `META_LEADGEN_VERIFY_TOKEN`, `META_APP_SECRET`, `GOOGLE_DEVELOPER_TOKEN`, `META_APP_ID`, `META_APP_SECRET` all set on Pages env
+- [ ] `LEADS_DELIVERY_QUEUE` binding kept OFF in `wrangler.toml` (inline-fallback dispatch is the production path; queue + consumer wiring is deferred Path Y)
+- [ ] Sidebar entry "Leads → Lead Inbox" visible to authed users
 
 ## Real Google Ads round-trip
 
@@ -52,6 +51,72 @@
 - [ ] Click "+ Manual lead", pick a client, add fields, submit
 - [ ] Confirm row appears in inbox with `source=manual`
 - [ ] Confirm notification fired to the assigned AM
+- [ ] Click "+ Add custom field" — verify the snake_case key is auto-derived from the friendly label
+
+## Generic webhook (Zapier / Make / n8n / custom)
+
+- [ ] In Settings → Social → Google → Lead webhooks, copy a client's URL + key
+- [ ] Replace the URL path `/google/<token>` with `/generic/<token>` and POST the documented JSON shape (see Setup guide → Other sources)
+- [ ] Confirm 200 + `lead_id` returned, lead appears in inbox with `source=webhook`
+- [ ] Replay with same `lead_id` — confirm `200 {skipped: true}` (idempotency)
+- [ ] Wrong `key` → 401 `invalid_key`
+- [ ] Empty `fields` object → 200 + ingestion_error logged
+
+## CSV import
+
+- [ ] Download a small Meta Lead Center CSV (or any CSV with full_name/email/phone columns + a `lead_id` column)
+- [ ] Inbox header → "Import CSV" → upload the file
+- [ ] Confirm preview shows correct headers + first 5 rows
+- [ ] Click Import → confirm "Imported N leads" toast + rows visible in inbox with `source=meta` (or `csv`)
+- [ ] Re-upload the same file → confirm "Skipped duplicates" count matches imported count
+- [ ] Edit the CSV to introduce a malformed row → confirm error count + first 10 errors shown in modal
+
+## Form picker dropdown (OAuth-based)
+
+- [ ] Form rules tab → "+ New form rule"
+- [ ] Pick a client, leave source as Google Ads → confirm the Form dropdown loads with discovered Google Lead Form Extension assets across all connected accounts (each entry shows form name + account name)
+- [ ] Switch source to Meta → confirm the dropdown surfaces a clear "leads_retrieval App Review pending" message and the "Use a custom form ID" toggle becomes available
+- [ ] Switch source to Webhook / CSV import / Manual → confirm the dropdown is replaced by a manual form ID input
+- [ ] Pick a discovered Google form → confirm form_name auto-fills, click Create & configure → rule editor opens
+
+## is_test flagging
+
+- [ ] In Google Ads "Send test data" against a configured form → confirm the lead lands but is HIDDEN from the default inbox
+- [ ] Toggle "Show test leads" in the filter bar → confirm test leads appear with a yellow "TEST" badge next to the source icon
+- [ ] Click "Clear filters" → confirm "Show test leads" toggles off
+
+## Destination editor — presets + field picker
+
+- [ ] Add a Slack destination → confirm "Lead alert" preset card appears at the top while config is empty → click it → confirm message_template populates with the {{ field.x }} skeleton
+- [ ] Add an Email destination → confirm "Sales notification" preset works the same way
+- [ ] On any new Slack/Email/Webhook destination, confirm the right-side "Available fields" panel lists Form fields (if the form has metadata), Lead metadata, and Attribution tokens
+- [ ] Click any token → confirm clipboard contains it + a "Copied" toast
+- [ ] Edit the message_template / body_template, save, click Test fire → confirm the rendered template arrives with values substituted
+
+## Lead detail slideover
+
+- [ ] Click any row in the inbox → slideover opens with full field data
+- [ ] Field keys appear humanized (`full_name` → "Full name", etc.)
+- [ ] Click the status badge in the header → confirm the dropdown menu lists 6 status options with icons
+- [ ] Pick a new status → confirm toast + badge updates + agency side reflects the change
+- [ ] Edit notes, click outside the textarea → confirm "Saving…" indicator → "Saved" check → fades after 2s
+- [ ] Click "Retry failed" in the Delivery history section → confirm any failed deliveries re-enqueue
+
+## Meta endpoints (pre-App-Review)
+
+- [ ] `curl https://<host>/api/leads/webhook/meta?hub.mode=subscribe&hub.verify_token=<META_LEADGEN_VERIFY_TOKEN>&hub.challenge=ABC` → returns `ABC` 200
+- [ ] Same with wrong verify_token → 403
+- [ ] POST a real Meta event with HMAC-SHA256(META_APP_SECRET) signature in `X-Hub-Signature-256` header → 200 + archived in `lead_ingestion_errors` (either `phase_1_archive` or `leadgen_not_resolvable`)
+- [ ] POST without signature → 401 `invalid_signature`
+- [ ] POST with invalid signature → 401 `invalid_signature`
+- [ ] After Meta App Review approves and operator reconnects Meta accounts: same POST succeeds, archive entry doesn't accumulate, lead lands in inbox
+
+## Meta backfill (post App Review)
+
+- [ ] After Meta App Review approves, reconnect at least one Meta account (Settings → Social → Meta) so the connection has the new scope
+- [ ] `curl -X POST -H "Authorization: Bearer $INTERNAL_CRON_TOKEN" https://<host>/api/leads/_internal/meta-backfill?limit=500` → 200 + `{scanned, ingested, duplicates, still_pending, errors}` summary
+- [ ] Confirm previously-archived rows in `lead_ingestion_errors` for `source=meta` decrease (rows that successfully fetch are deleted)
+- [ ] Confirm new leads appear in the inbox with `source=meta`
 
 ## Client portal
 
