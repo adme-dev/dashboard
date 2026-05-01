@@ -1,10 +1,11 @@
 // server/utils/leads/destinations/slack.ts
 import { registerAdapter } from './index'
+import { renderTemplate } from '../templateRender'
 import type { DestinationAdapter, DispatchResult } from './types'
 
-interface Cfg { webhook_url: string; channel?: string; mention?: string }
+interface Cfg { webhook_url: string; channel?: string; mention?: string; message_template?: string }
 
-function summary(lead: any): string {
+function autoSummary(lead: any): string {
   const f = lead.field_data ?? {}
   const parts: string[] = []
   if (f.full_name) parts.push(`*${f.full_name}*`)
@@ -24,14 +25,15 @@ const adapter: DestinationAdapter<Cfg> = {
     return { valid: true }
   },
   async dispatch(_delivery, lead, config) {
+    let messageText: string
+    if (config.message_template?.trim()) {
+      const { text } = renderTemplate(config.message_template, lead as any)
+      messageText = `${config.mention ? config.mention + ' ' : ''}${text}`
+    } else {
+      messageText = `${config.mention ? config.mention + ' ' : ''}*New lead* — ${lead.source}/${lead.form_name ?? lead.form_id ?? 'unknown'}\n${autoSummary(lead)}`
+    }
     const blocks = [
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `${config.mention ? config.mention + ' ' : ''}*New lead* — ${lead.source}/${lead.form_name ?? lead.form_id ?? 'unknown'}\n${summary(lead)}`,
-        },
-      },
+      { type: 'section', text: { type: 'mrkdwn', text: messageText } },
     ]
     try {
       const ctrl = new AbortController()
