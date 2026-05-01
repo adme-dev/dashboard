@@ -4,7 +4,7 @@ const MAX_SUBKEY_LEN = 80
 
 /**
  * Stable, slug-safe identifier for an anomaly across detection runs.
- * Active rows are deduped on (tenant_id, fingerprint) — see migration 085.
+ * Active rows are deduped on (tenant_id, fingerprint) — see migration 088.
  */
 export function buildFingerprint(type: AnomalyType, subKey: string): string {
   const slug = subKey

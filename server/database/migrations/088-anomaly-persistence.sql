@@ -1,4 +1,5 @@
--- Migration 085: Anomaly persistence
+-- Migration 088: Anomaly persistence
+-- (Renumbered from 085 during rebase — main shipped advisor 085/086 + leads 087.)
 -- Tables for the /anomalies workflow-grade incident system.
 -- See: docs/superpowers/specs/2026-04-30-anomalies-overhaul-design.md
 

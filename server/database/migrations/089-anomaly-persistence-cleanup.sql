@@ -1,5 +1,6 @@
--- Migration 086: Anomaly persistence cleanup
--- Follow-up to 085 — addresses code quality review:
+-- Migration 089: Anomaly persistence cleanup
+-- (Renumbered from 086 during rebase — main shipped advisor 085/086 + leads 087.)
+-- Follow-up to 088 — addresses code quality review:
 --   1. Rename indexes/trigger to match repo convention (idx_/trg_ prefixes).
 --   2. Add CHECK so a 'snoozed' row always has a snoozed_until (prevents stuck snoozes).
 --   3. Add index on last_detected_at for "stale anomaly" queries.
