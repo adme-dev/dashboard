@@ -34,6 +34,57 @@ const showClientPicker = ref(false)
 const pickerClientId = ref<string | null>(null)
 const pickerPendingItem = ref<RuleListItem | null>(null)
 
+// Proactive new-rule modal state
+const showNewRule = ref(false)
+const newRule = ref({
+  client_id: null as string | null,
+  source: 'google' as 'google' | 'meta' | 'manual',
+  form_id: '',
+  form_name: '',
+})
+const newRuleSaving = ref(false)
+const SOURCE_OPTIONS = [
+  { value: 'google', label: 'Google Ads' },
+  { value: 'meta', label: 'Meta (Facebook / Instagram)' },
+  { value: 'manual', label: 'Manual / Other' },
+]
+function resetNewRule() {
+  newRule.value = { client_id: null, source: 'google', form_id: '', form_name: '' }
+}
+async function createNewRule() {
+  if (!newRule.value.client_id) {
+    toast.add({ title: 'Pick a client', color: 'error' }); return
+  }
+  if (!newRule.value.form_id.trim()) {
+    toast.add({ title: 'Form ID is required', description: 'Find it in the Google Ads or Meta lead-form URL.', color: 'error' }); return
+  }
+  newRuleSaving.value = true
+  try {
+    const r = await $fetch<{ id: string }>('/api/leads/rules', {
+      method: 'POST',
+      body: {
+        client_id: newRule.value.client_id,
+        source: newRule.value.source,
+        form_id: newRule.value.form_id.trim(),
+        form_name: newRule.value.form_name.trim() || null,
+      },
+    })
+    toast.add({ title: 'Form rule created', description: 'Now add destinations to start routing leads.', color: 'success' })
+    editingRuleId.value = r.id
+    editingFormMeta.value = {
+      source: newRule.value.source,
+      form_id: newRule.value.form_id.trim(),
+      form_name: newRule.value.form_name.trim() || null,
+    }
+    showNewRule.value = false
+    resetNewRule()
+    showEditor.value = true
+    await refresh()
+  } catch (e: any) {
+    toast.add({ title: 'Failed to create rule', description: e?.data?.statusMessage ?? '', color: 'error' })
+  } finally { newRuleSaving.value = false }
+}
+
 const columns = [
   { accessorKey: 'form_name', header: 'Form' },
   { accessorKey: 'source', header: 'Source' },
@@ -106,8 +157,14 @@ async function toggleEnabled(item: RuleListItem) {
 <template>
   <div class="flex flex-col h-full">
     <div class="px-4 py-3 border-b border-default flex items-center justify-between">
-      <h2 class="text-base font-semibold">Form rules</h2>
-      <UButton variant="ghost" size="sm" icon="i-lucide-refresh-cw" @click="refresh()">Refresh</UButton>
+      <div>
+        <h2 class="text-base font-semibold">Form rules</h2>
+        <p class="text-xs text-muted">Routing rules per lead form. New forms appear here automatically on first lead.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <UButton color="primary" size="sm" icon="i-lucide-plus" @click="showNewRule = true">New form rule</UButton>
+        <UButton variant="ghost" size="sm" icon="i-lucide-refresh-cw" @click="refresh()">Refresh</UButton>
+      </div>
     </div>
 
     <div class="flex-1 overflow-auto p-2">
@@ -151,6 +208,72 @@ async function toggleEnabled(item: RuleListItem) {
       :form-meta="editingFormMeta"
       @changed="refresh()"
     />
+
+    <!-- Proactive new form rule modal -->
+    <UModal v-model:open="showNewRule" :ui="{ content: 'max-w-lg' }">
+      <template #content>
+        <div class="p-6 space-y-4">
+          <div>
+            <h3 class="text-lg font-semibold">New form rule</h3>
+            <p class="text-sm text-muted mt-0.5">
+              Set up routing before the first lead arrives. Useful when you know the form ID from the
+              ad-platform URL ahead of launch.
+            </p>
+          </div>
+
+          <UFormField label="Client" required>
+            <USelectMenu
+              v-model="newRule.client_id"
+              :items="clientOptions"
+              value-key="value"
+              placeholder="Pick a client"
+              class="w-full"
+            />
+          </UFormField>
+
+          <UFormField label="Source" required>
+            <USelectMenu
+              v-model="newRule.source"
+              :items="SOURCE_OPTIONS"
+              value-key="value"
+              class="w-full"
+            />
+          </UFormField>
+
+          <UFormField
+            label="Form ID"
+            required
+            hint="Find in the platform's lead-form URL — e.g. ...?formId=12345 (Google) or /forms/67890 (Meta)"
+          >
+            <UInput
+              v-model="newRule.form_id"
+              placeholder="e.g. 12345 or AW-67890"
+              class="w-full"
+            />
+          </UFormField>
+
+          <UFormField
+            label="Form name"
+            hint="Optional — for display in the inbox and reports"
+          >
+            <UInput
+              v-model="newRule.form_name"
+              placeholder="e.g. Brighton SUV — Test Drive"
+              class="w-full"
+            />
+          </UFormField>
+
+          <div class="flex justify-end gap-2 pt-3 border-t border-default">
+            <UButton variant="ghost" color="neutral" @click="showNewRule = false; resetNewRule()">
+              Cancel
+            </UButton>
+            <UButton :loading="newRuleSaving" color="primary" icon="i-lucide-arrow-right" @click="createNewRule">
+              Create &amp; configure
+            </UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
 
     <!-- Client picker modal — replaces window.prompt -->
     <UModal v-model:open="showClientPicker">
