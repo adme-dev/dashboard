@@ -395,23 +395,35 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-calculator',
     categoryIconBg: 'bg-emerald-50',
     categoryIconColor: 'text-emerald-600',
-    description: 'Real-time Meta + Google ad inquiries land directly in the dashboard. Per-form rules fan them out to Slack, email, your CRM, Sheets, and the client portal — without Zapier.',
+    description: 'Real-time inbox for Google Ads, Meta, Zapier/Make/n8n, CSV imports, and manual entry. Per-form rules fan leads out to Slack, email, your CRM, Sheets, and the client portal.',
     details: [
       {
+        title: 'Five ways in, one inbox',
+        content: "Google Ads native webhooks (per-client URL + key, paste into the lead form's webhook integration). Meta lead form CRM integration (live verify endpoint; Webhooks API ingestion activates the moment Meta App Review approves leads_retrieval). A generic webhook endpoint that Zapier, Make, n8n, partner CRMs, embedded forms, and mobile apps can POST to — same auth model as Google. CSV importer for Meta Lead Center exports with column auto-mapping. Manual entry for walk-ins and phone calls.",
+      },
+      {
         title: 'Real-time, not polled',
-        content: "Meta and Google both publish native webhooks. We accept them directly — sub-60-second delivery instead of Zapier's 1-15 minute polling window. Speed-to-lead matters: contacting a lead within 5 minutes is 21x more likely to convert.",
+        content: 'Native webhooks deliver leads within seconds, not Zapier\'s 1-15 minute polling window. Speed-to-lead matters — contacting a lead within 5 minutes is 21x more likely to convert. Each ingestion path enqueues routing immediately, and the SSE stream pushes new rows to any open inbox tab without a refresh.',
       },
       {
         title: 'Multi-tenant by design',
-        content: "One agency dashboard manages every client's lead routing. Each client gets their own webhook URL, their own form rules, and their own portal view — no Zap duplication, no per-task fees.",
+        content: "One agency dashboard manages every client's lead routing. Each client gets their own webhook URL + secret key, their own form rules, and their own portal view — no Zap duplication, no per-task fees, no separate logins to maintain.",
       },
       {
         title: 'Client portal inbox built-in',
-        content: 'Add a "portal" destination to any rule and the client sees their leads inside the same XeroFlow portal where they already track invoices and projects. Branded, real-time, no extra login.',
+        content: 'Add a "portal" destination to any rule and the client sees their leads inside the same XeroFlow portal where they already track invoices and projects. Branded, real-time, no extra login — and the client\'s "Mark contacted" actions sync back to the agency side automatically.',
       },
       {
         title: "Routing logic that's actually useful",
-        content: 'Per-destination filters: "SMS only if budget > $5,000", "Slack only if utm_source = facebook". Optional delays from immediate to 24 hours. HMAC-signed outbound webhooks with idempotency keys so receivers can safely dedupe our retries.',
+        content: 'Per-destination filters: "SMS only if budget > $5,000", "Slack only if utm_source = facebook", "Email everyone but skip spam". Optional delays from immediate to 24 hours — common pattern: Slack ping immediately, email the team if no one\'s claimed in 30 minutes. HMAC-signed outbound webhooks with idempotency keys so receivers can safely dedupe our retries.',
+      },
+      {
+        title: "Senses test data and treats it differently",
+        content: 'Google\'s "Send test data" button (`is_test=true` flag) flows through ingestion but the lead is hidden from the default inbox view — toggle "Show test leads" to see them. No more weeding through synthetic submissions during setup, and no accidental Slack notifications when QA pokes a form.',
+      },
+      {
+        title: 'Marketer-friendly setup',
+        content: 'In-product setup guide with platform-specific instructions, a destination-config wizard with one-click presets ("Slack: Lead alert", "Email: Sales notification"), a side panel that lists the actual fields each form has sent so template tokens can be copied without typing them, and a form picker that lists Google Ads lead forms across all connected accounts directly from the API.',
       },
     ],
   },
