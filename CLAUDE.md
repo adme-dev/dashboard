@@ -192,20 +192,65 @@ The `NODE_OPTIONS` flag is required to avoid OOM during the Nuxt build step. The
 
 ## Anomalies overhaul — deploy runbook
 
-After deploying the cron + notification wiring (the third Phase-3 PR of this overhaul):
+The order matters. **Don't skip steps 1 or 2** — together they prevent a flood of critical-severity emails on the first cron run for problems that have been ongoing.
 
-1. Run the backfill (notifications suppressed):
-   ```bash
-   ANOMALY_NOTIFICATIONS_DISABLED=true tsx scripts/anomaly-backfill.ts
-   ```
-2. Verify the `anomalies` table has rows for the active state of the org's data:
-   ```bash
-   export DATABASE_URL=$(grep DATABASE_URL .env | cut -d= -f2-)
-   psql "$DATABASE_URL" -c "SELECT type, severity, COUNT(*) FROM anomalies WHERE status NOT IN ('resolved','dismissed') GROUP BY type, severity"
-   ```
-3. Enable the cron trigger in the Cloudflare dashboard:
-   - Workers & Pages → `agency-dashboard` → Settings → Triggers → Cron
-   - Schedule: `0 * * * *` (the handler self-gates to 7am tenant-local time)
-   - The trigger should target POST `/api/cron/anomaly-detection` with header `x-cron-secret: $CRON_SECRET`.
+### 1. Pre-deploy: set the recipient allowlist on Cloudflare Pages
 
-After enabling, only genuinely-new anomalies (post-backfill) will trigger Smart Watch + email notifications.
+Workers & Pages → `agency-dashboard` → Settings → Environment Variables → Production:
+
+- `ANOMALY_NOTIFY_ALLOWLIST` → `paul@adme.net.au` (start with just the owner)
+
+This caps notification fan-out to the listed emails regardless of role. Broaden later as you build confidence; unset to fan out to all FINANCE-permission staff.
+
+### 2. Deploy
+
+```bash
+NODE_OPTIONS='--max-old-space-size=8192' pnpm deploy:production
+```
+
+This runs migrations 085 + 086 implicitly (they're additive — `IF NOT EXISTS` guards on every CREATE) the next time anything hits the DB. **No notifications fire yet** because the cron trigger isn't enabled.
+
+### 3. Backfill (notifications suppressed)
+
+Run from the worktree root with the dev server running locally (or set `BACKFILL_BASE_URL` to a deployed origin):
+
+```bash
+pnpm dev   # in another terminal — sharedData.ts hits Nitro routes via $fetch
+ANOMALY_NOTIFICATIONS_DISABLED=true \
+  pnpm exec tsx --tsconfig .nuxt/tsconfig.server.json scripts/anomaly-backfill.ts
+```
+
+The `--tsconfig .nuxt/tsconfig.server.json` flag is required so tsx can resolve the `~~/` Nuxt alias. The `ANOMALY_NOTIFICATIONS_DISABLED=true` flag is the safety guard — the script refuses to run without it.
+
+### 4. Verify the table populated
+
+```bash
+export DATABASE_URL=$(grep DATABASE_URL .env | cut -d= -f2-)
+psql "$DATABASE_URL" -c "SELECT type, severity, COUNT(*) FROM anomalies WHERE status NOT IN ('resolved','dismissed') GROUP BY type, severity"
+```
+
+Expect rows across multiple types if the org has real Xero data. Empty result is also fine — means nothing's anomalous right now.
+
+### 5. Enable the cron trigger in the Cloudflare dashboard
+
+Workers & Pages → `agency-dashboard` → Settings → Triggers → Cron:
+
+- Schedule: `0 * * * *` (the handler self-gates to 7am tenant-local time)
+- Targets POST `/api/cron/anomaly-detection` with header `x-cron-secret: $CRON_SECRET`
+
+After enabling, only genuinely-new anomalies (post-backfill) trigger notifications. The first email will land at the next 7am local for the connected org.
+
+### 6. Broaden the allowlist over time
+
+Once you've confirmed notifications are well-behaved (a week or two of data):
+
+- Add more emails to `ANOMALY_NOTIFY_ALLOWLIST`, OR
+- Unset the env var entirely to fan out to every FINANCE-permission user.
+
+### Rollback
+
+If anything goes wrong:
+
+- **Stop notifications immediately**: set `ANOMALY_NOTIFICATIONS_DISABLED=true` on the deployed env, redeploy. Cron + manual scans still run, just no fan-out.
+- **Stop detection entirely**: disable the cron trigger in the CF dashboard. The page still works (reads from the persisted table).
+- **Revert the migration**: 085 + 086 are additive; safe to leave in place even if the rest of the feature is rolled back.

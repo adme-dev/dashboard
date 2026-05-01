@@ -24,6 +24,24 @@ interface RawTeamMember {
 }
 
 /**
+ * Parse the optional ANOMALY_NOTIFY_ALLOWLIST env (comma-separated emails).
+ * When set, ONLY these addresses receive notifications, regardless of role.
+ * Used during initial production rollout to bring up notifications gradually
+ * (e.g. owner-only for the first week, then broaden).
+ *
+ * Empty / unset = full fan-out to all FINANCE-permission users.
+ */
+function getAllowlist(): Set<string> | null {
+  const raw = process.env.ANOMALY_NOTIFY_ALLOWLIST
+  if (!raw || !raw.trim()) return null
+  const emails = raw
+    .split(',')
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean)
+  return emails.length > 0 ? new Set(emails) : null
+}
+
+/**
  * Fan a critical anomaly out to every team_member with FINANCE permission.
  *
  * Recipient resolution uses resolveUserPermissions + hasRole — the same path
@@ -31,8 +49,10 @@ interface RawTeamMember {
  * 'admin', 'finance') AND users whose permission_groups are resolved via a
  * custom role (e.g. 'Account Manager', 'Media Buyer' with a Finance group).
  *
- * No-ops if env flag ANOMALY_NOTIFICATIONS_DISABLED=true (used by the
- * backfill script in P3.5).
+ * Two env-flag safety layers:
+ *   - ANOMALY_NOTIFICATIONS_DISABLED=true → no-op entirely (backfill script).
+ *   - ANOMALY_NOTIFY_ALLOWLIST="a@x,b@y" → only these emails receive (gradual
+ *     rollout). Unset/empty = full fan-out.
  */
 export async function queueAnomalyNotification(anomalyId: string): Promise<void> {
   if (process.env.ANOMALY_NOTIFICATIONS_DISABLED === 'true') return
@@ -68,8 +88,20 @@ export async function queueAnomalyNotification(anomalyId: string): Promise<void>
     }
   }
 
-  if (recipients.length === 0) {
-    console.warn('[anomalies notify] no recipients for finance permission — skipping fan-out')
+  // Apply the email allowlist if set — gradual rollout safety.
+  const allowlist = getAllowlist()
+  const filtered = allowlist
+    ? recipients.filter(r => allowlist.has(r.email.toLowerCase()))
+    : recipients
+
+  if (allowlist && filtered.length < recipients.length) {
+    console.log(
+      `[anomalies notify] allowlist filter: ${recipients.length} → ${filtered.length} recipients`,
+    )
+  }
+
+  if (filtered.length === 0) {
+    console.warn('[anomalies notify] no recipients after permission/allowlist filter — skipping fan-out')
     return
   }
 
@@ -77,7 +109,7 @@ export async function queueAnomalyNotification(anomalyId: string): Promise<void>
   const metricLabel = anomaly.metric?.label
   const metricValue = formatMetricForEmail(anomaly.metric)
 
-  for (const r of recipients) {
+  for (const r of filtered) {
     // In-app (Smart Watch) — gates on the user's notification_preferences via createNotification.
     try {
       await createNotification({
