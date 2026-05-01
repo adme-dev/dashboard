@@ -18,6 +18,11 @@ const sections = [
     slot: 'meta',
   },
   {
+    label: 'Other sources — Zapier, Make, n8n, custom webhooks',
+    icon: 'i-lucide-webhook',
+    slot: 'generic',
+  },
+  {
     label: 'Configure routing rules + destinations',
     icon: 'i-lucide-list-checks',
     slot: 'rules',
@@ -221,6 +226,122 @@ const sections = [
                 icon="i-lucide-info"
                 title="Status of Meta App Review"
                 description="When you submit App Review, Meta typically wants: a demo video showing the use case, a privacy policy URL, and verified business info. Approval takes 2–4 weeks. Once granted, no code changes — auto-ingestion starts working from existing Meta connections."
+              />
+            </div>
+          </template>
+
+          <template #generic>
+            <div class="space-y-4 text-sm leading-relaxed">
+              <p>
+                Anything that can POST JSON can push leads in — Zapier, Make
+                (Integromat), n8n, partner CRMs, mobile apps, contact forms on
+                your client's own websites, etc. Use the per-client URL + key
+                from <span class="font-mono text-xs">Settings → Social → Google → Lead webhooks</span>
+                (it's the same key the Google integration uses; one credential covers
+                all source types for that client).
+              </p>
+
+              <div>
+                <p class="font-medium mb-1.5">Endpoint</p>
+                <pre class="bg-elevated rounded p-3 text-xs font-mono overflow-x-auto"><span class="text-muted">POST</span> https://agency-dashboard-6cm.pages.dev/api/leads/webhook/generic/<span class="text-primary-500">&lt;url_token&gt;</span></pre>
+              </div>
+
+              <div>
+                <p class="font-medium mb-1.5">Body</p>
+                <pre class="bg-elevated rounded p-3 text-xs font-mono overflow-x-auto leading-relaxed">{
+  "key": "<span class="text-primary-500">&lt;secret_key&gt;</span>",
+  "lead_id": "abc-123",          // optional — used for dedup
+  "form_id": "newsletter-signup", // optional
+  "form_name": "Newsletter",      // optional
+  "source": "webhook",            // 'webhook' | 'meta' | 'csv' | 'manual' | 'google'
+  "fields": {
+    "full_name": "Sarah Mitchell",
+    "email": "sarah@example.com",
+    "phone_number": "+61404123456",
+    "budget": "75000"
+  },
+  "attribution": {
+    "utm_source": "newsletter",
+    "utm_campaign": "spring-sale"
+  }
+}</pre>
+              </div>
+
+              <div>
+                <p class="font-medium mb-1.5">Response</p>
+                <pre class="bg-elevated rounded p-3 text-xs font-mono">{ "ok": true, "lead_id": "..." }
+// or for duplicate lead_ids:
+{ "ok": true, "skipped": true }</pre>
+              </div>
+
+              <div>
+                <p class="font-medium mb-1.5">Quick test with curl</p>
+                <pre class="bg-elevated rounded p-3 text-xs font-mono overflow-x-auto leading-relaxed">curl -X POST \
+  https://agency-dashboard-6cm.pages.dev/api/leads/webhook/generic/&lt;token&gt; \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "key": "&lt;secret_key&gt;",
+    "fields": { "full_name": "Test", "email": "t@example.com" }
+  }'</pre>
+              </div>
+
+              <div>
+                <p class="font-medium mb-1.5">Recipes by tool</p>
+                <table class="w-full text-xs border border-default rounded">
+                  <thead class="bg-elevated text-left">
+                    <tr>
+                      <th class="px-2 py-1.5 font-medium">Tool</th>
+                      <th class="px-2 py-1.5 font-medium">How</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-default">
+                    <tr>
+                      <td class="px-2 py-1.5 font-medium align-top">Zapier</td>
+                      <td class="px-2 py-1.5 text-muted">
+                        Trigger: Facebook Lead Ads (or any source). Action: <em>Webhooks by Zapier → POST</em>.
+                        URL = our generic endpoint. Payload Type = JSON. Map the trigger fields into a
+                        nested <code class="bg-elevated px-1 py-0.5 rounded">fields</code> object.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td class="px-2 py-1.5 font-medium align-top">Make / Integromat</td>
+                      <td class="px-2 py-1.5 text-muted">
+                        Module: <em>HTTP → Make a request</em>. Method POST, URL = endpoint, Body type = JSON.
+                        Use <em>Set multiple variables</em> upstream to assemble the <code class="bg-elevated px-1 py-0.5 rounded">fields</code> object.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td class="px-2 py-1.5 font-medium align-top">n8n</td>
+                      <td class="px-2 py-1.5 text-muted">
+                        Node: <em>HTTP Request</em>. Method POST, JSON body, paste the schema above and
+                        wire field values via expressions.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td class="px-2 py-1.5 font-medium align-top">Custom code</td>
+                      <td class="px-2 py-1.5 text-muted">
+                        Any HTTP client (axios, fetch, Python requests, Postman, curl). Endpoint accepts
+                        up to 200 requests/minute per token; deduped by <code class="bg-elevated px-1 py-0.5 rounded">lead_id</code> if set.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td class="px-2 py-1.5 font-medium align-top">Embedded contact form</td>
+                      <td class="px-2 py-1.5 text-muted">
+                        Form action = endpoint, fields named <code class="bg-elevated px-1 py-0.5 rounded">key</code>,
+                        <code class="bg-elevated px-1 py-0.5 rounded">fields[full_name]</code>, etc. Or use a
+                        small JS submit handler that builds the JSON body.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <UAlert
+                color="info"
+                variant="subtle"
+                icon="i-lucide-info"
+                title="This is the recommended Meta workaround"
+                description="Until Meta App Review approves leads_retrieval, point a Zapier 'Facebook Lead Ads' trigger at this endpoint. Zapier already has the App Review for that flow. Trade-off: per-task billing on Zapier; we don't pull yet."
               />
             </div>
           </template>
