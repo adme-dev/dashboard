@@ -1,10 +1,11 @@
 import { createError } from 'h3'
-import { createXeroClient } from '../../utils/xeroClient'
+import { xeroFetch } from '../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../utils/tokenStore'
 import { getSelectedTenant } from '../../utils/session'
 import { cachedFetch } from '../../utils/kv'
 import { dedupedXeroCall } from '../../utils/xeroRateLimit'
 import { ensureDateString } from '../../utils/xeroDataFetcher'
+import { queryRows } from '../../utils/db'
 
 export default eventHandler(async (event) => {
   const token = await getActiveTokenForSession(event)
@@ -16,43 +17,63 @@ export default eventHandler(async (event) => {
   const cacheKey = `xero-report:${tenantId}:invoices`
 
   return cachedFetch(event, cacheKey, 300, async () => {
-    const client = await createXeroClient({ tokenSet: token, event })
     const dateKey = ensureDateString(new Date())
 
-    const [authorisedBody, paidBody] = await Promise.all([
-      dedupedXeroCall(
-        `invoices-accrec-authorised:${tenantId}:${dateKey}`,
-        'invoices-authorised',
-        async () => {
-          const { body } = await (client.accountingApi.getInvoices as any)(
+    // Page through Xero until we get a partial page (last page) or hit
+    // the safety cap. Without this, /invoices silently truncated to the
+    // first 100 results — agencies with >100 open invoices saw bogus
+    // aging buckets because the long-tail invoices fell off.
+    async function fetchAllPages(
+      where: string,
+      order: string,
+      dedupBase: string,
+      labelBase: string,
+      maxPages: number,
+    ): Promise<{ invoices: any[]; truncated: boolean }> {
+      const all: any[] = []
+      for (let page = 1; page <= maxPages; page++) {
+        const params = new URLSearchParams({
+          where,
+          order,
+          page: String(page),
+          pageSize: '100',
+        })
+        const body = await dedupedXeroCall(
+          `${dedupBase}:${tenantId}:${dateKey}:p${page}`,
+          `${labelBase}-p${page}`,
+          () => xeroFetch<any>({
+            accessToken: token.access_token!,
             tenantId,
-            undefined,
-            'Type=="ACCREC"&&Status=="AUTHORISED"',
-            'DueDate ASC',
-            undefined, undefined, undefined, undefined,
-            1, undefined, undefined, undefined,
-            100
-          )
-          return body
-        }
-      ),
-      dedupedXeroCall(
-        `invoices-accrec-paid:${tenantId}:${dateKey}`,
-        'invoices-paid',
-        async () => {
-          const { body } = await (client.accountingApi.getInvoices as any)(
-            tenantId,
-            undefined,
-            'Type=="ACCREC"&&Status=="PAID"',
-            'Date DESC',
-            undefined, undefined, undefined, undefined,
-            1, undefined, undefined, undefined,
-            100
-          )
-          return body
-        }
-      )
+            path: `Invoices?${params.toString()}`,
+          })
+        )
+        const invoices = body?.invoices || []
+        all.push(...invoices)
+        if (invoices.length < 100) return { invoices: all, truncated: false }
+      }
+      // We hit the safety cap and the last page came back full — there
+      // are more invoices than we fetched. Surface this so the UI can
+      // warn the user instead of silently showing partial data.
+      console.warn(`[invoices] hit page cap ${maxPages} for "${labelBase}" — there may be more invoices not shown`)
+      return { invoices: all, truncated: true }
+    }
+
+    // AUTHORISED: 10 pages × 100 = up to 1000 open invoices. Anything
+    // bigger and the org is past where this dashboard is the right tool.
+    // PAID: 3 pages × 100 = 300 most-recent paid (only the last 30 days
+    // is surfaced anyway, so 300 is plenty).
+    const [authorisedResult, paidResult] = await Promise.all([
+      fetchAllPages('Type=="ACCREC"&&Status=="AUTHORISED"', 'DueDate ASC', 'invoices-accrec-authorised', 'invoices-authorised', 10),
+      fetchAllPages('Type=="ACCREC"&&Status=="PAID"', 'Date DESC', 'invoices-accrec-paid', 'invoices-paid', 3),
     ])
+    const authorisedBody = { invoices: authorisedResult.invoices }
+    const paidBody = { invoices: paidResult.invoices }
+    const truncated = {
+      open: authorisedResult.truncated,
+      paid: paidResult.truncated,
+      openLimit: 1000,
+      paidLimit: 300,
+    }
 
     const today = new Date()
     const todayISO = today.toISOString().slice(0, 10)
@@ -69,7 +90,15 @@ export default eventHandler(async (event) => {
         total: Number(inv?.total ?? 0),
         amountPaid: Number(inv?.amountPaid ?? 0),
         amountDue: Number(inv?.amountDue ?? 0),
-        currency: inv?.currencyCode
+        currency: inv?.currencyCode,
+        sentToContact: Boolean(inv?.sentToContact),
+        // Last Xero modification timestamp. For an unedited invoice this
+        // is effectively the "entered into Xero" date — Xero has no
+        // separate created field. Bumps on every subsequent edit.
+        updatedDate: inv?.updatedDateUTC || null,
+        // Tax fields needed for BAS / tax summary aggregation.
+        subTotal: Number(inv?.subTotal ?? 0),
+        totalTax: Number(inv?.totalTax ?? 0)
       }
     }
 
@@ -143,15 +172,214 @@ export default eventHandler(async (event) => {
     const sumBy = (list: any[], predicate: (inv: any) => boolean) =>
       list.reduce((total, inv) => predicate(inv) ? total + (inv.amountDue || 0) : total, 0)
 
-    const outstandingTotal = sumBy(outstanding, () => true)
+    // "Outstanding" in accounting terms is total open AR — every unpaid
+    // invoice with a positive amountDue, regardless of due date. The
+    // `outstanding` array only holds future-due invoices; overdue ones
+    // live in `overdue`. Combine them for the summary card.
+    const openInvoices = [...outstanding, ...overdue]
+    const outstandingTotal = sumBy(openInvoices, () => true)
+    const outstandingCount = openInvoices.length
     const overdueTotal = sumBy(overdue, () => true)
     const dueSoonTotal = sumBy(outstanding, (inv) => inv.agingBucket === 'dueSoon')
+
+    // Open invoices that were never emailed via Xero — surfaces the
+    // "I forgot to send it" workflow gap. Xero's `SentToContact` is a
+    // boolean set when the invoice has been emailed from Xero at least
+    // once (or via the API). Manually-printed invoices stay false.
+    const notSent = openInvoices.filter((inv) => inv.sentToContact === false)
+    const notSentCount = notSent.length
+    const notSentTotal = sumBy(notSent, () => true)
 
     const paidLast30 = paidDetailed.filter((inv: any) => {
       if (!inv.fullyPaidOnDate) return false
       const paidDate = new Date(inv.fullyPaidOnDate)
       return (today.getTime() - paidDate.getTime()) <= 1000 * 60 * 60 * 24 * 30
     })
+
+    // Days Sales Outstanding (DSO) — average number of days it takes the
+    // business to collect payment. Standard formula:
+    //   DSO = (AR / Net Credit Sales in period) × Days in period
+    // Lower is better. >45 days starts being a cash-flow warning sign.
+    //
+    // We compute a 30-day DSO using invoices ISSUED in the last 30 days
+    // (regardless of paid/unpaid status) as the sales-in-period figure.
+    // This requires both open and paid arrays — the open array contributes
+    // recently-issued unpaid invoices, the paid array contributes recently-
+    // issued ones that have already been collected.
+    const thirtyDaysAgoISO = new Date(today.getTime() - 30 * 86400000).toISOString().slice(0, 10)
+    const last30dInvoicedTotal = [...openInvoices, ...paidDetailed]
+      .filter((inv: any) => inv.date && inv.date >= thirtyDaysAgoISO)
+      .reduce((sum: number, inv: any) => sum + (Number(inv.total) || 0), 0)
+    const dso30 = last30dInvoicedTotal > 0
+      ? Math.round((outstandingTotal / last30dInvoicedTotal) * 30)
+      : null
+
+    // Late-payer ranking — group paid invoices by customer and surface
+    // chronic offenders. Only includes customers with ≥3 paid invoices
+    // (so a single big-late payment doesn't dominate). Sorted by average
+    // days-to-pay descending. Used by the "Chronic Late Payers" card to
+    // tell the agency owner which clients to renegotiate terms with.
+    const payersMap = new Map<string, { name: string; daysToPayValues: number[]; openOverdue: number; totalBilled: number }>()
+    for (const inv of paidDetailed) {
+      const name = inv.contact || 'Unknown'
+      if (!payersMap.has(name)) {
+        payersMap.set(name, { name, daysToPayValues: [], openOverdue: 0, totalBilled: 0 })
+      }
+      const entry = payersMap.get(name)!
+      if (typeof inv.daysToPay === 'number' && Number.isFinite(inv.daysToPay)) {
+        entry.daysToPayValues.push(inv.daysToPay)
+      }
+      entry.totalBilled += Number(inv.total) || 0
+    }
+    // Augment with current overdue balance per customer
+    for (const inv of overdue) {
+      const name = inv.contact || 'Unknown'
+      const entry = payersMap.get(name)
+      if (entry) entry.openOverdue += Number(inv.amountDue) || 0
+    }
+    const latePayers = Array.from(payersMap.values())
+      .filter((p) => p.daysToPayValues.length >= 3)
+      .map((p) => {
+        const avg = p.daysToPayValues.reduce((s, n) => s + n, 0) / p.daysToPayValues.length
+        const max = Math.max(...p.daysToPayValues)
+        return {
+          name: p.name,
+          avgDaysToPay: Math.round(avg),
+          maxDaysToPay: max,
+          paidCount: p.daysToPayValues.length,
+          totalBilled: Math.round(p.totalBilled),
+          openOverdue: Math.round(p.openOverdue),
+        }
+      })
+      .sort((a, b) => b.avgDaysToPay - a.avgDaysToPay)
+      .slice(0, 8)
+
+    // Month-to-date invoiced — total billed this calendar month so far,
+    // regardless of paid/unpaid status. Helpful for "are we on track to
+    // hit our monthly billing target" at a glance.
+    const monthStartISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
+    const lastMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+    const lastMonthStartISO = lastMonthDate.toISOString().slice(0, 10)
+    const monthToDateInvoicedAll = [...openInvoices, ...paidDetailed]
+      .filter((inv: any) => inv.date && inv.date >= monthStartISO)
+    const monthToDateInvoicedTotal = Math.round(
+      monthToDateInvoicedAll.reduce((sum: number, inv: any) => sum + (Number(inv.total) || 0), 0)
+    )
+    const monthToDateInvoicedCount = monthToDateInvoicedAll.length
+
+    // Same window from last month (1st → today's day-of-month) so the
+    // comparison is apples-to-apples regardless of where in the month
+    // we are. If today is the 14th, we compare against last month's
+    // 1st-14th total.
+    const dayOfMonth = today.getDate()
+    const lastMonthCutoff = new Date(today.getFullYear(), today.getMonth() - 1, dayOfMonth + 1).toISOString().slice(0, 10)
+    const lastMonthSameWindow = [...openInvoices, ...paidDetailed].filter(
+      (inv: any) => inv.date && inv.date >= lastMonthStartISO && inv.date < lastMonthCutoff
+    )
+    const lastMonthSameWindowTotal = Math.round(
+      lastMonthSameWindow.reduce((sum: number, inv: any) => sum + (Number(inv.total) || 0), 0)
+    )
+    const monthVsLastMonthPct = lastMonthSameWindowTotal > 0
+      ? Math.round(((monthToDateInvoicedTotal - lastMonthSameWindowTotal) / lastMonthSameWindowTotal) * 100)
+      : null
+
+    // Pace projection — straight-line extrapolation to end of month.
+    // Naive but useful as a "if we keep going at this rate" signal.
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
+    const monthPaceProjection = dayOfMonth > 0
+      ? Math.round((monthToDateInvoicedTotal / dayOfMonth) * daysInMonth)
+      : 0
+
+    // Average invoice value MTD.
+    const monthAvgInvoice = monthToDateInvoicedCount > 0
+      ? Math.round(monthToDateInvoicedTotal / monthToDateInvoicedCount)
+      : 0
+
+    // Paid vs still-owed split of MTD invoices.
+    const monthPaidPortion = Math.round(
+      monthToDateInvoicedAll
+        .filter((inv: any) => inv.status === 'PAID')
+        .reduce((sum: number, inv: any) => sum + (Number(inv.total) || 0), 0)
+    )
+    const monthUnpaidPortion = monthToDateInvoicedTotal - monthPaidPortion
+
+    // Top customer this month by total billed.
+    const monthByCustomer = new Map<string, number>()
+    for (const inv of monthToDateInvoicedAll) {
+      const name = inv.contact || 'Unknown'
+      monthByCustomer.set(name, (monthByCustomer.get(name) || 0) + (Number(inv.total) || 0))
+    }
+    const monthTopCustomer = Array.from(monthByCustomer.entries())
+      .sort((a, b) => b[1] - a[1])[0]
+    const monthTopCustomerName = monthTopCustomer?.[0] || null
+    const monthTopCustomerTotal = monthTopCustomer ? Math.round(monthTopCustomer[1]) : 0
+
+    // Light-weight invoice list for the month, stripped to what the
+    // slideover needs (client merges with annotated data when rendering).
+    const monthInvoiceIds = monthToDateInvoicedAll.map((inv: any) => inv.id).filter(Boolean)
+
+    // Tax / GST summary — sales GST collected over rolling windows.
+    // For Australian BAS prep: GST on sales is `1A` on the form.
+    // We sum totalTax across every invoice issued in the period (open
+    // + paid + overdue all roll up here). Australian financial year
+    // (Jul 1 – Jun 30) is detected so YTD makes sense for AU agencies.
+    const taxSummary = (() => {
+      const allByIssueDate = [...openInvoices, ...paidDetailed]
+      const taxBetween = (fromISO: string) => allByIssueDate
+        .filter((inv: any) => inv.date && inv.date >= fromISO)
+        .reduce((sum: number, inv: any) => sum + (Number(inv.totalTax) || 0), 0)
+      const salesBetween = (fromISO: string) => allByIssueDate
+        .filter((inv: any) => inv.date && inv.date >= fromISO)
+        .reduce((sum: number, inv: any) => sum + (Number(inv.subTotal) || 0), 0)
+      const dateAgo = (days: number) => new Date(today.getTime() - days * 86400000).toISOString().slice(0, 10)
+      // Australian financial year starts 1 July. If we're past 1 Jul this
+      // calendar year, FY started this Jul; otherwise it started last Jul.
+      const fyStartYear = today.getMonth() >= 6 ? today.getFullYear() : today.getFullYear() - 1
+      const fyStart = `${fyStartYear}-07-01`
+      // Calendar YTD as a fallback for non-AU users.
+      const calYearStart = `${today.getFullYear()}-01-01`
+      return {
+        last30: Math.round(taxBetween(dateAgo(30))),
+        last90: Math.round(taxBetween(dateAgo(90))),
+        salesLast30: Math.round(salesBetween(dateAgo(30))),
+        salesLast90: Math.round(salesBetween(dateAgo(90))),
+        fyToDate: Math.round(taxBetween(fyStart)),
+        fyStart,
+        calendarYtd: Math.round(taxBetween(calYearStart)),
+      }
+    })()
+
+    // Cash collection forecast — projects expected cash inflow from
+    // every open invoice, bucketed by due date relative to today.
+    // "Overdue" amounts assumed collectible ASAP (chase priority);
+    // future buckets give the agency owner a 30-day cash visibility.
+    const forecastBuckets = [
+      { key: 'overdue', label: 'Overdue (chase now)', daysMin: -Infinity, daysMax: -1, total: 0, count: 0 },
+      { key: 'thisWeek', label: 'This week (0-7d)', daysMin: 0, daysMax: 7, total: 0, count: 0 },
+      { key: 'nextWeek', label: 'Next week (8-14d)', daysMin: 8, daysMax: 14, total: 0, count: 0 },
+      { key: 'rest30', label: 'Rest of 30 days (15-30d)', daysMin: 15, daysMax: 30, total: 0, count: 0 },
+      { key: 'beyond', label: 'Beyond 30 days', daysMin: 31, daysMax: Infinity, total: 0, count: 0 },
+    ]
+    for (const inv of openInvoices) {
+      if (typeof inv.daysUntilDue !== 'number') continue
+      const days = inv.daysUntilDue
+      const bucket = forecastBuckets.find((b) => days >= b.daysMin && days <= b.daysMax)
+      if (bucket) {
+        bucket.total += Number(inv.amountDue) || 0
+        bucket.count += 1
+      }
+    }
+    const cashForecast = {
+      buckets: forecastBuckets.map((b) => ({ key: b.key, label: b.label, total: Math.round(b.total), count: b.count })),
+      next30Total: Math.round(
+        forecastBuckets
+          .filter((b) => b.key === 'thisWeek' || b.key === 'nextWeek' || b.key === 'rest30')
+          .reduce((s, b) => s + b.total, 0)
+      ),
+      next30Count: forecastBuckets
+        .filter((b) => b.key === 'thisWeek' || b.key === 'nextWeek' || b.key === 'rest30')
+        .reduce((s, b) => s + b.count, 0),
+    }
 
     const avgDaysToPay = (() => {
       const values = paidDetailed
@@ -161,7 +389,7 @@ export default eventHandler(async (event) => {
       return Math.round(values.reduce((sum: number, n: number) => sum + n, 0) / values.length)
     })()
 
-    const topCustomers = (() => {
+    const allTopCustomers = (() => {
       const map = new Map<string, { name: string; outstanding: number; overdue: number; count: number }>()
       const push = (inv: any, listType: 'outstanding' | 'overdue') => {
         const key = inv.contact || 'Unknown'
@@ -183,8 +411,40 @@ export default eventHandler(async (event) => {
       return Array.from(map.values())
         .filter((entry) => entry.outstanding > 0)
         .sort((a, b) => b.outstanding - a.outstanding)
-        .slice(0, 8)
     })()
+
+    // Customer concentration risk — what fraction of AR sits with the
+    // top-1 / top-3 / top-5 clients. The agency-owner question: "if my
+    // biggest client doesn't pay this month, how big is the hole?"
+    // Risk level uses standard finance heuristics:
+    //   top1 >30%  OR top3 >60% → high
+    //   top1 >20%  OR top3 >45% → moderate
+    //   else                    → low
+    const concentration = (() => {
+      const total = outstandingTotal
+      const sumTopN = (n: number) => allTopCustomers.slice(0, n).reduce((s, c) => s + c.outstanding, 0)
+      const pct = (n: number) => total > 0 ? Math.round((sumTopN(n) / total) * 1000) / 10 : 0
+      const top1Pct = pct(1)
+      const top3Pct = pct(3)
+      const top5Pct = pct(5)
+      const top1Name = allTopCustomers[0]?.name ?? null
+      let riskLevel: 'low' | 'moderate' | 'high' = 'low'
+      if (top1Pct > 30 || top3Pct > 60) riskLevel = 'high'
+      else if (top1Pct > 20 || top3Pct > 45) riskLevel = 'moderate'
+      return {
+        top1Pct,
+        top3Pct,
+        top5Pct,
+        top1Name,
+        customerCount: allTopCustomers.length,
+        riskLevel,
+      }
+    })()
+
+    const topCustomers = allTopCustomers.slice(0, 8).map((c) => ({
+      ...c,
+      pctOfAr: outstandingTotal > 0 ? Math.round((c.outstanding / outstandingTotal) * 1000) / 10 : 0,
+    }))
 
     const allInvoices = [
       ...outstanding,
@@ -216,25 +476,82 @@ export default eventHandler(async (event) => {
       overdue60: overdue.filter((inv) => inv.agingBucket === 'overdue60')
     }
 
+    // Reminder history — annotate each invoice with the most-recent
+    // dunning email we've sent for it (if any). One indexed query, fast.
+    const allInvoiceIds = [
+      ...outstanding,
+      ...overdue,
+      ...paidDetailed,
+    ].map((i: any) => i.id).filter(Boolean)
+
+    const remindersById = new Map<string, string>()
+    if (allInvoiceIds.length) {
+      try {
+        const rows = await queryRows<{ invoice_id: string; last_sent: string }>(
+          `SELECT invoice_id, MAX(sent_at)::text AS last_sent
+           FROM invoice_reminders
+           WHERE invoice_id = ANY($1::text[]) AND status = 'sent'
+           GROUP BY invoice_id`,
+          [allInvoiceIds]
+        )
+        for (const r of rows) remindersById.set(r.invoice_id, r.last_sent)
+      } catch (err) {
+        // Non-fatal — reminder badges just won't appear if the table
+        // hasn't migrated yet or DB is briefly down.
+        console.warn('[invoices] could not load reminder history:', (err as any)?.message)
+      }
+    }
+    const annotate = (arr: any[]) => arr.map((inv) => ({
+      ...inv,
+      lastReminderAt: remindersById.get(inv.id) || null,
+    }))
+    const outstandingAnnotated = annotate(outstanding)
+    const overdueAnnotated = annotate(overdue)
+    const paidAnnotated = annotate(paidDetailed)
+    const paidRecentAnnotated = annotate(paidLast30)
+    const allAnnotated = annotate(allInvoices)
+
     return {
       summary: {
         outstandingTotal,
-        outstandingCount: outstanding.length,
+        outstandingCount,
         overdueTotal,
         overdueCount: overdue.length,
         dueSoonTotal,
+        notSentCount,
+        notSentTotal,
+        dso30,
+        monthToDateInvoicedTotal,
+        monthToDateInvoicedCount,
+        monthStart: monthStartISO,
+        monthLastSameWindowTotal: lastMonthSameWindowTotal,
+        monthVsLastMonthPct,
+        monthPaceProjection,
+        monthAvgInvoice,
+        monthPaidPortion,
+        monthUnpaidPortion,
+        monthTopCustomerName,
+        monthTopCustomerTotal,
+        monthInvoiceIds,
+        monthDayOfMonth: dayOfMonth,
+        monthDaysInMonth: daysInMonth,
         paidLast30Total: paidLast30.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0),
         paidLast30Count: paidLast30.length,
         avgDaysToPay,
         topCustomers,
+        concentration,
+        latePayers,
+        cashForecast,
+        taxSummary,
         agingBuckets,
-        agingDetails
+        agingDetails,
+        truncated
       },
-      outstanding,
-      overdue,
-      paid: paidDetailed,
-      paidRecent: paidLast30,
-      all: allInvoices
+      outstanding: outstandingAnnotated,
+      overdue: overdueAnnotated,
+      paid: paidAnnotated,
+      paidRecent: paidRecentAnnotated,
+      all: allAnnotated
     }
   })
 })

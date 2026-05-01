@@ -1064,3 +1064,133 @@ export interface ClientRequestMessage {
   authorType: 'client' | 'team'
   createdAt: string
 }
+
+// ============================================================================
+// Leads engine — see docs/superpowers/specs/2026-04-30-leads-engine-design.md
+// ============================================================================
+
+export type LeadSource = 'meta' | 'google' | 'manual'
+export type LeadStatus =
+  | 'new' | 'contacted' | 'qualified' | 'won' | 'lost' | 'spam_suspected'
+export type LeadDeliveryStatus =
+  | 'pending' | 'claimed' | 'delivered' | 'failed' | 'cancelled' | 'skipped'
+export type LeadDestinationType =
+  | 'portal' | 'webhook' | 'slack' | 'email' | 'sheets' | 'assign_user'
+  | 'sms' | 'autoresponder_email' | 'autoresponder_sms'
+
+export interface Lead {
+  id: string
+  client_id: string | null
+  source: LeadSource
+  source_lead_id: string
+  form_id: string | null
+  form_name: string | null
+  ad_id: string | null
+  ad_name: string | null
+  campaign_id: string | null
+  campaign_name: string | null
+  page_id: string | null
+  submitted_at: string
+  ingested_at: string
+  field_data: Record<string, string>
+  attribution: Record<string, string> | null
+  score: number | null
+  score_reasons: any | null
+  status: LeadStatus
+  spam_reasons: any | null
+  assigned_to: string | null
+  contacted_at: string | null
+  contacted_by: string | null
+  notes: string | null
+  created_by: string | null
+  deleted_at: string | null
+  created_at: string
+}
+
+export type LeadFilterOp =
+  | 'eq' | 'neq' | 'gt' | 'lt' | 'gte' | 'lte'
+  | 'contains' | 'starts_with' | 'ends_with'
+  | 'is_empty' | 'is_not_empty' | 'in' | 'not_in'
+
+export interface LeadFilter {
+  field: string                // dotted path: 'field_data.budget' | 'attribution.utm_source' | 'score'
+  op: LeadFilterOp
+  value?: string | number | boolean | string[] | null
+}
+
+export interface LeadFormRule {
+  id: string
+  client_id: string
+  source: 'meta' | 'google'
+  form_id: string
+  form_name: string | null
+  enabled: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface LeadRuleDestination {
+  id: string
+  rule_id: string
+  destination_type: LeadDestinationType
+  config: Record<string, any>
+  filter: LeadFilter | null
+  delay_minutes: number
+  enabled: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface LeadDelivery {
+  id: string
+  lead_id: string
+  rule_destination_id: string | null
+  destination_type: LeadDestinationType
+  status: LeadDeliveryStatus
+  scheduled_at: string
+  claimed_at: string | null
+  claimed_by: string | null
+  attempted_at: string | null
+  last_error: string | null
+  retry_count: number
+  response_meta: any | null
+  idempotency_key: string
+  created_at: string
+  updated_at: string
+}
+
+export interface LeadFormMetadataField {
+  key: string
+  label?: string
+  sample_value?: string
+  first_seen_at: string
+}
+
+export interface LeadFormMetadata {
+  id: string
+  source: LeadSource
+  form_id: string
+  form_name: string | null
+  fields: LeadFormMetadataField[]
+  last_lead_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface LeadWebhookEndpoint {
+  id: string
+  client_id: string
+  source: 'google' | 'meta_app'
+  url_token: string
+  secret_key: string
+  secret_key_previous: string | null
+  secret_key_grace_until: string | null
+  rotated_at: string | null
+  created_at: string
+}
+
+export type DispatchResult =
+  | { status: 'delivered'; response_meta?: any }
+  | { status: 'failed'; error: string; retry_after_ms?: number }

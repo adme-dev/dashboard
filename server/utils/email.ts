@@ -574,6 +574,93 @@ export async function sendDueReminderEmail(data: {
   }
 }
 
+/**
+ * Customer-facing dunning reminder for an outstanding sales invoice.
+ * Sent from the agency to the client, chasing payment with a one-click
+ * pay link (Xero OnlineInvoiceUrl). Tone adapts to days-overdue.
+ */
+export async function sendInvoiceReminderEmail(data: {
+  to: string
+  contactName: string
+  invoiceNumber: string
+  amountDue: number
+  currency: string
+  dueDate: string
+  daysOverdue: number
+  payUrl?: string | null
+  agencyName?: string
+  event?: H3Event
+}): Promise<{ ok: boolean; error?: string }> {
+  const client = getResendClient(data.event)
+  if (!client) {
+    return { ok: false, error: 'Email service not configured (RESEND_API_KEY missing).' }
+  }
+
+  const { appName } = getEmailConfig(data.event)
+  const agency = data.agencyName || appName
+  const overdue = data.daysOverdue > 0
+  const amountFmt = new Intl.NumberFormat('en-AU', {
+    style: 'currency',
+    currency: data.currency || 'AUD',
+    maximumFractionDigits: 2,
+  }).format(data.amountDue)
+
+  let toneOpening: string
+  let subject: string
+  if (!overdue) {
+    toneOpening = `A friendly reminder that invoice ${escapeHtml(data.invoiceNumber)} is due ${escapeHtml(data.dueDate)}. The link below takes you straight to a secure pay page — no Xero login required.`
+    subject = `Reminder: invoice ${data.invoiceNumber} due ${data.dueDate}`
+  } else if (data.daysOverdue <= 7) {
+    toneOpening = `Just a quick note that invoice ${escapeHtml(data.invoiceNumber)} (${escapeHtml(data.dueDate)}) is now ${data.daysOverdue} day${data.daysOverdue === 1 ? '' : 's'} past due. Easy fix — the link below takes you straight to a secure pay page.`
+    subject = `Invoice ${data.invoiceNumber} — ${data.daysOverdue} day${data.daysOverdue === 1 ? '' : 's'} overdue`
+  } else if (data.daysOverdue <= 30) {
+    toneOpening = `Invoice ${escapeHtml(data.invoiceNumber)} was due ${escapeHtml(data.dueDate)} and is now ${data.daysOverdue} days overdue. We'd appreciate prompt payment via the link below — if there's an issue with the invoice please reply to this email so we can resolve it together.`
+    subject = `Action needed: invoice ${data.invoiceNumber} ${data.daysOverdue}d overdue`
+  } else {
+    toneOpening = `Invoice ${escapeHtml(data.invoiceNumber)} is ${data.daysOverdue} days past due. Please settle the balance via the link below as soon as possible. If the invoice is in dispute or you need to discuss a payment plan, reply directly to this email.`
+    subject = `URGENT: invoice ${data.invoiceNumber} ${data.daysOverdue}d overdue`
+  }
+
+  const bodyHtml = `
+    <p style="margin:0 0 16px;">${toneOpening}</p>
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:20px;margin:0 0 24px;text-align:left;">
+      <p style="margin:0 0 8px;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;">Invoice</p>
+      <p style="margin:0 0 12px;font-size:18px;font-weight:600;color:#111827;">${escapeHtml(data.invoiceNumber)}</p>
+      <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Amount due</p>
+      <p style="margin:0 0 12px;font-size:22px;font-weight:700;color:${overdue ? '#dc2626' : '#111827'};">${escapeHtml(amountFmt)}</p>
+      <p style="margin:0;font-size:13px;color:#6b7280;">
+        Due ${escapeHtml(data.dueDate)}${overdue ? ` · <span style="color:#dc2626;font-weight:600;">${data.daysOverdue} day${data.daysOverdue === 1 ? '' : 's'} overdue</span>` : ''}
+      </p>
+    </div>
+    <p style="margin:0 0 8px;font-size:14px;color:#374151;">Thanks,</p>
+    <p style="margin:0;font-size:14px;color:#374151;font-weight:600;">${escapeHtml(agency)}</p>
+  `
+
+  const { html, text } = renderEmailTemplate({
+    title: overdue ? 'Payment overdue' : 'Friendly payment reminder',
+    greeting: `Hi ${escapeHtml(data.contactName || 'there')},`,
+    bodyHtml,
+    ctaText: data.payUrl ? 'Pay invoice' : undefined,
+    ctaUrl: data.payUrl || undefined,
+    footerHtml: "If you've already paid, please disregard — payments can take a day or two to clear in our system.",
+    recipientEmail: data.to,
+  })
+
+  try {
+    await client.emails.send({
+      from: getFromHeader(data.event),
+      to: data.to,
+      subject,
+      html,
+      text,
+    })
+    return { ok: true }
+  } catch (error: any) {
+    console.error('[Email] Failed to send invoice reminder:', error)
+    return { ok: false, error: error?.message || String(error) }
+  }
+}
+
 export async function sendInvitationEmail(data: {
   to: string
   name?: string

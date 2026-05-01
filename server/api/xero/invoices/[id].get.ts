@@ -1,5 +1,5 @@
 import { createError } from 'h3'
-import { createXeroClient } from '../../../utils/xeroClient'
+import { xeroFetch } from '../../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
 import { cachedFetch } from '../../../utils/kv'
@@ -20,15 +20,14 @@ export default eventHandler(async (event) => {
   const cacheKey = `xero-invoice:${tenantId}:${invoiceId}`
 
   return cachedFetch(event, cacheKey, 120, async () => {
-    const client = await createXeroClient({ tokenSet: token, event })
-
     const body = await dedupedXeroCall(
       `invoice-detail:${tenantId}:${invoiceId}`,
       'invoice-detail',
-      async () => {
-        const { body } = await (client.accountingApi.getInvoice as any)(tenantId, invoiceId)
-        return body
-      }
+      () => xeroFetch<any>({
+        accessToken: token.access_token!,
+        tenantId,
+        path: `Invoices/${invoiceId}`,
+      })
     )
 
     const inv = body?.invoices?.[0]
@@ -40,6 +39,13 @@ export default eventHandler(async (event) => {
       if (!input) return undefined
       if (typeof input === 'string') return input.slice(0, 10)
       if (input instanceof Date) return input.toISOString().slice(0, 10)
+      return undefined
+    }
+
+    function isoFull(input?: string | Date | null): string | undefined {
+      if (!input) return undefined
+      if (typeof input === 'string') return input
+      if (input instanceof Date) return input.toISOString()
       return undefined
     }
 
@@ -64,6 +70,11 @@ export default eventHandler(async (event) => {
       date: iso(inv.date),
       dueDate: iso(inv.dueDate),
       fullyPaidOnDate: iso(inv.fullyPaidOnDate),
+      // Last time Xero recorded a change. For an unedited invoice this
+      // ≈ creation timestamp (the closest "entered into Xero" we get —
+      // Xero doesn't expose a separate created field).
+      updatedDate: isoFull(inv.updatedDateUTC),
+      sentToContact: Boolean(inv.sentToContact),
       subtotal: Number(inv.subTotal ?? 0),
       totalTax: Number(inv.totalTax ?? 0),
       total: Number(inv.total ?? 0),

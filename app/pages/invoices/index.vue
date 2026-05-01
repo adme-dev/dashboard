@@ -6,6 +6,57 @@ const router = useRouter()
 
 const { data, pending, error, refresh } = await useFetch('/api/xero/invoices')
 
+// Forward-looking pipeline (quotes not yet invoiced). Loaded in parallel
+// — failure here must NOT block the AR view, so errors are swallowed.
+const { data: quotesSummary } = await useFetch<{ total: number; count: number; byStatus: { draft: { count: number; total: number }; sent: { count: number; total: number }; accepted: { count: number; total: number } } }>(
+  '/api/xero/quotes-summary',
+  { default: () => null as any }
+)
+
+// Recurring revenue (active retainers / subscriptions). Same parallel-
+// fetch contract — must not block AR.
+const { data: recurringSummary } = await useFetch<{ summary: { mrr: number; arr: number; activeCount: number; clientCount: number; netRecurring: number; recurringMonthlyCosts: number } }>(
+  '/api/xero/repeating-invoices',
+  { default: () => null as any }
+)
+
+// Outstanding sales credit notes — money owed back to customers /
+// available to apply. Lets us compute a "Net AR" view alongside gross.
+const { data: creditNotesSummary } = await useFetch<{ total: number; count: number; byContact: Array<{ name: string; total: number; count: number }>; notes: Array<{ id: string; number: string; contact: string; date: string | null; remainingCredit: number; currency: string }> }>(
+  '/api/xero/credit-notes-summary',
+  { default: () => null as any }
+)
+
+// AI-generated owner briefing. Loads after the page renders so it never
+// blocks the (much more important) numeric data. Server caches 1 hour
+// per tenant — manual refresh is the escape hatch for fresh tokens.
+type AiBriefing = {
+  headline: string
+  narrative: string
+  actions: Array<{ label: string; why?: string }>
+  riskLevel: 'low' | 'moderate' | 'high'
+  generatedAt: string
+  cached: boolean
+}
+const aiBriefing = ref<AiBriefing | null>(null)
+const aiBriefingPending = ref(false)
+const aiBriefingError = ref<string | null>(null)
+async function loadAiBriefing(force = false) {
+  aiBriefingPending.value = true
+  aiBriefingError.value = null
+  try {
+    const res = await $fetch<AiBriefing>(
+      `/api/xero/invoices/ai-briefing${force ? '?refresh=1' : ''}`
+    )
+    aiBriefing.value = res
+  } catch (err: any) {
+    aiBriefingError.value = err?.statusMessage || err?.message || 'Could not load briefing'
+  } finally {
+    aiBriefingPending.value = false
+  }
+}
+onMounted(() => loadAiBriefing(false))
+
 const search = ref('')
 const validViews = ['all', 'outstanding', 'overdue', 'paid'] as const
 type ViewType = typeof validViews[number]
@@ -201,6 +252,134 @@ async function openInvoice(id: string) {
   }
 }
 
+// "Copy pay link" — fetches the customer-facing OnlineInvoiceUrl from
+// Xero on demand and writes it to the clipboard. Cached briefly per
+// invoice so a double-click doesn't double-fetch.
+const toast = useToast()
+const payLinkPending = ref<string | null>(null)
+const payLinkCache = new Map<string, string>()
+
+async function copyPayLink(invoiceId?: string) {
+  if (!invoiceId) return
+  payLinkPending.value = invoiceId
+  try {
+    let url = payLinkCache.get(invoiceId)
+    if (!url) {
+      const res = await $fetch<{ url: string }>(`/api/xero/invoices/${invoiceId}/online-url`)
+      url = res.url
+      payLinkCache.set(invoiceId, url)
+    }
+    await navigator.clipboard.writeText(url)
+    toast.add({ title: 'Pay link copied', description: 'Paste into your reminder email.', color: 'success' })
+  } catch (err: any) {
+    toast.add({
+      title: 'Could not copy pay link',
+      description: err?.statusMessage || err?.message || 'Try again in a moment.',
+      color: 'error'
+    })
+  } finally {
+    payLinkPending.value = null
+  }
+}
+
+// Bulk send dunning reminders — kicks off /bulk-reminder with the
+// supplied invoice IDs, surfaces a tally toast on completion. Server
+// dedups silently (skipped reasons returned per-invoice).
+const bulkReminderPending = ref(false)
+async function sendBulkReminders(invoiceIds: string[]) {
+  if (!invoiceIds.length) return
+  if (typeof window !== 'undefined' && !window.confirm(`Send a reminder email to ${invoiceIds.length} customer${invoiceIds.length === 1 ? '' : 's'}? Recently-reminded invoices will be skipped.`)) return
+  bulkReminderPending.value = true
+  try {
+    const res = await $fetch<{ ok: true; tally: { sent: number; skipped: number; failed: number }; results: Array<{ invoiceId: string; status: string; reason?: string }> }>(
+      '/api/xero/invoices/bulk-reminder',
+      { method: 'POST', body: { invoiceIds } }
+    )
+    const parts: string[] = []
+    if (res.tally.sent) parts.push(`${res.tally.sent} sent`)
+    if (res.tally.skipped) parts.push(`${res.tally.skipped} skipped`)
+    if (res.tally.failed) parts.push(`${res.tally.failed} failed`)
+    toast.add({
+      title: 'Bulk reminders complete',
+      description: parts.join(' · ') || 'Nothing to do',
+      color: res.tally.failed > 0 ? 'warning' : 'success',
+    })
+    await refresh()
+  } catch (err: any) {
+    toast.add({
+      title: 'Bulk reminder failed',
+      description: err?.statusMessage || err?.data?.statusMessage || err?.message || 'Try again in a moment.',
+      color: 'error',
+    })
+  } finally {
+    bulkReminderPending.value = false
+  }
+}
+
+function daysSince(iso?: string | null): number | null {
+  if (!iso) return null
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return null
+  return Math.max(0, Math.floor((Date.now() - t) / 86400000))
+}
+
+// Surface lastReminderAt for the currently-open invoice in the slideover.
+// The single-invoice detail endpoint doesn't include reminder history,
+// but the list response does — look it up there by id.
+const lastReminderForOpenInvoice = computed<string | null>(() => {
+  const id = (invoiceDetail.value as any)?.id
+  if (!id) return null
+  const lists = [
+    (data.value as any)?.outstanding,
+    (data.value as any)?.overdue,
+    (data.value as any)?.paid,
+    (data.value as any)?.all,
+  ]
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue
+    const hit = list.find((inv: any) => inv?.id === id)
+    if (hit?.lastReminderAt) return hit.lastReminderAt
+  }
+  return null
+})
+
+// Send dunning reminder — fires the email to the contact on file with
+// a one-click pay link. Server enforces a 3-day dedup guard (returns
+// 409 "lastSentAt"); we surface a confirm modal in that case.
+const reminderPending = ref<string | null>(null)
+async function sendReminder(invoiceId?: string, force = false) {
+  if (!invoiceId) return
+  reminderPending.value = invoiceId
+  try {
+    const res = await $fetch<{ ok: true; sentTo: string; daysOverdue: number }>(
+      `/api/xero/invoices/${invoiceId}/send-reminder`,
+      { method: 'POST', body: { force } }
+    )
+    toast.add({
+      title: 'Reminder sent',
+      description: `${res.sentTo}${res.daysOverdue > 0 ? ` · ${res.daysOverdue}d overdue` : ''}`,
+      color: 'success',
+    })
+  } catch (err: any) {
+    if (err?.statusCode === 409) {
+      // Recently sent — ask the user if they want to send again.
+      const lastSent = err?.data?.data?.lastSentAt || err?.data?.lastSentAt
+      const lastSentLabel = lastSent ? new Date(lastSent).toLocaleString() : 'recently'
+      if (typeof window !== 'undefined' && window.confirm(`A reminder was already sent on ${lastSentLabel}. Send another anyway?`)) {
+        await sendReminder(invoiceId, true)
+      }
+    } else {
+      toast.add({
+        title: 'Could not send reminder',
+        description: err?.statusMessage || err?.data?.statusMessage || err?.message || 'Try again in a moment.',
+        color: 'error',
+      })
+    }
+  } finally {
+    reminderPending.value = null
+  }
+}
+
 function statusColor(status?: string): 'success' | 'error' | 'warning' | 'neutral' {
   if (!status) return 'neutral'
   const s = status.toUpperCase()
@@ -215,6 +394,203 @@ function statusLabel(status?: string): string {
   const s = status.toUpperCase()
   if (s === 'AUTHORISED') return 'Outstanding'
   return s.charAt(0) + s.slice(1).toLowerCase()
+}
+
+// Card drill-down slideover — generic "show me the invoices behind
+// this number" panel for the 5 KPI cards across the top of /invoices.
+type CardListKind = 'outstanding' | 'overdue' | 'dueSoon' | 'paid30'
+const showCardList = ref(false)
+const cardListKind = ref<CardListKind>('outstanding')
+const cardListTitle = computed(() => {
+  switch (cardListKind.value) {
+    case 'outstanding': return 'Outstanding balance'
+    case 'overdue': return 'Overdue invoices'
+    case 'dueSoon': return 'Due in next 7 days'
+    case 'paid30': return 'Paid in last 30 days'
+  }
+})
+const cardListInvoices = computed<any[]>(() => {
+  const d = data.value as any
+  switch (cardListKind.value) {
+    case 'outstanding':
+      return [...(d?.outstanding ?? []), ...(d?.overdue ?? [])]
+        .sort((a: any, b: any) => (a.dueDate || '').localeCompare(b.dueDate || ''))
+    case 'overdue':
+      return [...(d?.overdue ?? [])]
+        .sort((a: any, b: any) => (b.daysOverdue ?? 0) - (a.daysOverdue ?? 0))
+    case 'dueSoon':
+      return (d?.outstanding ?? [])
+        .filter((inv: any) => inv.agingBucket === 'dueSoon')
+        .sort((a: any, b: any) => (a.dueDate || '').localeCompare(b.dueDate || ''))
+    case 'paid30':
+      return (d?.paidRecent ?? [])
+        .slice()
+        .sort((a: any, b: any) => (b.fullyPaidOnDate || '').localeCompare(a.fullyPaidOnDate || ''))
+    default:
+      return []
+  }
+})
+const cardListTotal = computed(() =>
+  cardListInvoices.value.reduce((sum: number, inv: any) => {
+    const v = cardListKind.value === 'paid30' ? inv.total : inv.amountDue
+    return sum + (Number(v) || 0)
+  }, 0)
+)
+function openCardList(kind: CardListKind) {
+  cardListKind.value = kind
+  showCardList.value = true
+}
+
+// CSV download for the card-list slideover. Pure client-side — builds
+// a CSV string from the visible rows and triggers a Blob download.
+function csvEscape(value: unknown): string {
+  if (value == null) return ''
+  const s = String(value)
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+function downloadCardListCsv() {
+  if (!cardListInvoices.value.length) return
+  const isPaid = cardListKind.value === 'paid30'
+  const headers = isPaid
+    ? ['Invoice #', 'Customer', 'Issued', 'Due', 'Paid On', 'Days to Pay', 'Total', 'Currency', 'Status']
+    : ['Invoice #', 'Customer', 'Issued', 'Due', 'Days Until Due', 'Days Overdue', 'Amount Due', 'Currency', 'Status']
+  const rows = cardListInvoices.value.map((inv: any) => isPaid
+    ? [
+        inv.number ?? '',
+        inv.contact ?? '',
+        inv.date ?? '',
+        inv.dueDate ?? '',
+        inv.fullyPaidOnDate ?? '',
+        inv.daysToPay ?? '',
+        inv.total ?? '',
+        inv.currency ?? '',
+        inv.status ?? '',
+      ]
+    : [
+        inv.number ?? '',
+        inv.contact ?? '',
+        inv.date ?? '',
+        inv.dueDate ?? '',
+        inv.daysUntilDue ?? '',
+        inv.daysOverdue ?? '',
+        inv.amountDue ?? '',
+        inv.currency ?? '',
+        inv.status ?? '',
+      ]
+  )
+  const csv = [headers, ...rows]
+    .map((row) => row.map(csvEscape).join(','))
+    .join('\r\n')
+
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const today = new Date().toISOString().slice(0, 10)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `invoices-${cardListKind.value}-${today}.csv`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  toast.add({
+    title: 'CSV downloaded',
+    description: `${cardListInvoices.value.length} row${cardListInvoices.value.length === 1 ? '' : 's'}`,
+    color: 'success',
+  })
+}
+
+// "This month" drill-down slideover. Lists every invoice issued this
+// calendar month (paid or unpaid) so the user can see what got billed.
+const showMonthDetail = ref(false)
+const monthInvoices = computed<any[]>(() => {
+  const ids = ((summary.value as any)?.monthInvoiceIds ?? []) as string[]
+  if (!ids.length) return []
+  const idSet = new Set(ids)
+  const merged = [
+    ...((data.value as any)?.outstanding ?? []),
+    ...((data.value as any)?.overdue ?? []),
+    ...((data.value as any)?.paid ?? []),
+  ]
+  return merged
+    .filter((inv: any) => idSet.has(inv?.id))
+    .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''))
+})
+
+// "Not yet sent" drill-down slideover. Lists every open invoice with
+// sentToContact === false so the user can chase them through Xero.
+const showNotSentDetail = ref(false)
+const notSentInvoices = computed<any[]>(() => {
+  const open = [...((data.value as any)?.outstanding ?? []), ...((data.value as any)?.overdue ?? [])]
+  return open
+    .filter((inv: any) => inv.sentToContact === false)
+    .sort((a: any, b: any) => (a.dueDate || '').localeCompare(b.dueDate || ''))
+})
+
+// Customer drill-down slideover. Click a row in "Top Outstanding" to
+// see every invoice we have for that customer with KPIs computed from
+// the invoices already in scope (no extra Xero call).
+const showCustomerDetail = ref(false)
+const selectedCustomer = ref<{ name: string; outstanding: number; overdue: number; count: number } | null>(null)
+
+function openCustomer(client: any) {
+  selectedCustomer.value = {
+    name: client.name,
+    outstanding: client.outstanding ?? 0,
+    overdue: client.overdue ?? 0,
+    count: client.count ?? 0,
+  }
+  showCustomerDetail.value = true
+}
+
+const customerOpen = computed<any[]>(() => {
+  if (!selectedCustomer.value) return []
+  const name = selectedCustomer.value.name
+  const open = [...((data.value as any)?.outstanding ?? []), ...((data.value as any)?.overdue ?? [])]
+  return open
+    .filter((inv: any) => inv.contact === name)
+    .sort((a: any, b: any) => (a.dueDate || '').localeCompare(b.dueDate || ''))
+})
+const customerPaid = computed<any[]>(() => {
+  if (!selectedCustomer.value) return []
+  const name = selectedCustomer.value.name
+  const paid = (data.value as any)?.paid ?? []
+  return paid
+    .filter((inv: any) => inv.contact === name)
+    .sort((a: any, b: any) => (b.fullyPaidOnDate || '').localeCompare(a.fullyPaidOnDate || ''))
+    .slice(0, 10)
+})
+const customerKpis = computed(() => {
+  if (!selectedCustomer.value) return null
+  const open = customerOpen.value
+  const paid = customerPaid.value
+  const lifetimeBilled = paid.reduce((s, inv) => s + (inv.total || 0), 0) + open.reduce((s, inv) => s + (inv.total || 0), 0)
+  const daysToPayValues = paid.map((inv) => inv.daysToPay).filter((n) => typeof n === 'number' && Number.isFinite(n))
+  const avgDaysToPay = daysToPayValues.length
+    ? Math.round(daysToPayValues.reduce((s: number, n: number) => s + n, 0) / daysToPayValues.length)
+    : null
+  const oldestOverdue = open
+    .filter((inv) => inv.status === 'OVERDUE')
+    .reduce((max: number, inv: any) => Math.max(max, inv.daysOverdue || 0), 0)
+  const earliestRelationship = paid.reduce((earliest: string | null, inv: any) => {
+    if (!inv.date) return earliest
+    if (!earliest || inv.date < earliest) return inv.date
+    return earliest
+  }, null as string | null)
+  return {
+    lifetimeBilled,
+    avgDaysToPay,
+    oldestOverdueDays: oldestOverdue,
+    earliestInvoiceDate: earliestRelationship,
+    paidCount: paid.length,
+    openCount: open.length,
+  }
+})
+
+function focusCustomerInTable() {
+  if (!selectedCustomer.value) return
+  search.value = selectedCustomer.value.name
+  selectedView.value = 'all'
+  showCustomerDetail.value = false
 }
 
 const agingSections = [
@@ -290,71 +666,482 @@ const agingSections = [
       />
 
       <div v-else class="space-y-6">
-        <!-- Summary Cards -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          <UCard>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">Outstanding Balance</p>
-                <p class="text-2xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.outstandingTotal) }}</p>
-              </div>
-              <div class="shrink-0 w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
-                <UIcon name="i-lucide-file-text" class="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              </div>
+        <!-- AI Owner Briefing — generated narrative + 1-2 actions. Loads
+             after the page so it never blocks the numeric cards. -->
+        <UCard
+          class="border-l-4"
+          :class="{
+            'border-l-emerald-500': aiBriefing?.riskLevel === 'low',
+            'border-l-amber-500': aiBriefing?.riskLevel === 'moderate',
+            'border-l-red-500': aiBriefing?.riskLevel === 'high',
+            'border-l-[var(--ui-border)]': !aiBriefing,
+          }"
+        >
+          <div class="flex items-start gap-3">
+            <div class="shrink-0 w-9 h-9 rounded-lg bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center mt-0.5">
+              <UIcon name="i-lucide-sparkles" class="h-5 w-5 text-violet-600 dark:text-violet-400" />
             </div>
-            <p class="text-xs text-[var(--ui-text-muted)] mt-2">{{ summary?.outstandingCount || 0 }} invoices with open balances</p>
-          </UCard>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between gap-3 mb-1">
+                <p class="text-[10px] uppercase tracking-wide text-[var(--ui-text-muted)] font-semibold">Owner briefing · AI</p>
+                <div class="flex items-center gap-2">
+                  <span v-if="aiBriefing?.cached" class="text-[10px] text-[var(--ui-text-muted)]">cached</span>
+                  <UButton
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    icon="i-lucide-refresh-cw"
+                    :loading="aiBriefingPending"
+                    @click="loadAiBriefing(true)"
+                  >
+                    Refresh
+                  </UButton>
+                </div>
+              </div>
+
+              <!-- Loading skeleton -->
+              <div v-if="aiBriefingPending && !aiBriefing" class="space-y-2">
+                <USkeleton class="h-5 w-1/2" />
+                <USkeleton class="h-4 w-full" />
+                <USkeleton class="h-4 w-3/4" />
+              </div>
+
+              <!-- Error state -->
+              <p v-else-if="aiBriefingError && !aiBriefing" class="text-sm text-[var(--ui-text-muted)]">
+                {{ aiBriefingError }}
+              </p>
+
+              <!-- Loaded -->
+              <template v-else-if="aiBriefing">
+                <p class="text-base font-semibold text-[var(--ui-text-highlighted)] mb-1">{{ aiBriefing.headline }}</p>
+                <p class="text-sm text-[var(--ui-text-muted)] leading-relaxed mb-3">{{ aiBriefing.narrative }}</p>
+                <ul v-if="aiBriefing.actions?.length" class="space-y-1.5">
+                  <li
+                    v-for="(action, idx) in aiBriefing.actions"
+                    :key="idx"
+                    class="flex items-start gap-2 text-sm"
+                  >
+                    <UIcon name="i-lucide-arrow-right" class="h-4 w-4 mt-0.5 text-violet-600 dark:text-violet-400 shrink-0" />
+                    <div>
+                      <span class="font-medium text-[var(--ui-text-highlighted)]">{{ action.label }}</span>
+                      <span v-if="action.why" class="text-[var(--ui-text-muted)]"> — {{ action.why }}</span>
+                    </div>
+                  </li>
+                </ul>
+                <p class="text-[10px] text-[var(--ui-text-muted)] mt-2 italic">
+                  AI-generated — verify against the data below before acting.
+                </p>
+              </template>
+            </div>
+          </div>
+        </UCard>
+
+        <!-- Summary Cards — clickable, each opens a slideover with its underlying invoice list. -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+          <button type="button" class="text-left rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" @click="openCardList('outstanding')">
+            <UCard class="hover:border-blue-500 dark:hover:border-blue-400 transition-colors h-full">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-[var(--ui-text-muted)]">Outstanding Balance</p>
+                  <p class="text-2xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.outstandingTotal) }}</p>
+                </div>
+                <div class="shrink-0 w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
+                  <UIcon name="i-lucide-file-text" class="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+              </div>
+              <div class="mt-2 flex items-center justify-between gap-2">
+                <p class="text-xs text-[var(--ui-text-muted)]">{{ summary?.outstandingCount || 0 }} invoices with open balances</p>
+                <UTooltip text="Verify in Xero">
+                  <a
+                    href="https://go.xero.com/AccountsReceivable/Search.aspx?invoiceStatuses=AUTHORISED"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-[var(--ui-text-muted)] hover:text-blue-600 dark:hover:text-blue-400 shrink-0"
+                    @click.stop
+                  >
+                    <UIcon name="i-lucide-external-link" class="h-3.5 w-3.5" />
+                  </a>
+                </UTooltip>
+              </div>
+            </UCard>
+          </button>
+
+          <button type="button" class="text-left rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400" @click="openCardList('overdue')">
+            <UCard class="hover:border-red-500 dark:hover:border-red-400 transition-colors h-full">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-[var(--ui-text-muted)]">Overdue Balance</p>
+                  <p class="text-2xl font-bold text-red-600 dark:text-red-400">{{ formatCurrency((summary as any)?.overdueTotal) }}</p>
+                </div>
+                <div class="shrink-0 w-10 h-10 rounded-lg bg-red-50 dark:bg-red-500/10 flex items-center justify-center">
+                  <UIcon name="i-lucide-alert-triangle" class="h-5 w-5 text-red-600 dark:text-red-400" />
+                </div>
+              </div>
+              <div class="mt-2 flex items-center justify-between gap-2">
+                <p class="text-xs text-[var(--ui-text-muted)]">{{ summary?.overdueCount || 0 }} invoices past due</p>
+                <UTooltip text="Verify in Xero">
+                  <a
+                    href="https://go.xero.com/AccountsReceivable/Search.aspx?invoiceStatuses=AUTHORISED"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-[var(--ui-text-muted)] hover:text-red-600 dark:hover:text-red-400 shrink-0"
+                    @click.stop
+                  >
+                    <UIcon name="i-lucide-external-link" class="h-3.5 w-3.5" />
+                  </a>
+                </UTooltip>
+              </div>
+            </UCard>
+          </button>
+
+          <button type="button" class="text-left rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" @click="openCardList('dueSoon')">
+            <UCard class="hover:border-amber-500 dark:hover:border-amber-400 transition-colors h-full">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-[var(--ui-text-muted)]">Due in 7 days</p>
+                  <p class="text-2xl font-bold text-amber-600 dark:text-amber-400">{{ formatCurrency((summary as any)?.dueSoonTotal) }}</p>
+                </div>
+                <div class="shrink-0 w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
+                  <UIcon name="i-lucide-hourglass" class="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                </div>
+              </div>
+              <div class="mt-2 flex items-center justify-between gap-2">
+                <p class="text-xs text-[var(--ui-text-muted)]">Upcoming cash expected this week</p>
+                <UTooltip text="Verify in Xero">
+                  <a
+                    href="https://go.xero.com/AccountsReceivable/Search.aspx?invoiceStatuses=AUTHORISED"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-[var(--ui-text-muted)] hover:text-amber-600 dark:hover:text-amber-400 shrink-0"
+                    @click.stop
+                  >
+                    <UIcon name="i-lucide-external-link" class="h-3.5 w-3.5" />
+                  </a>
+                </UTooltip>
+              </div>
+            </UCard>
+          </button>
+
+          <button type="button" class="text-left rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400" @click="openCardList('paid30')">
+            <UCard class="hover:border-emerald-500 dark:hover:border-emerald-400 transition-colors h-full">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-[var(--ui-text-muted)]">Paid Last 30 Days</p>
+                  <p class="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{{ formatCurrency(summary?.paidLast30Total) }}</p>
+                </div>
+                <div class="shrink-0 w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center">
+                  <UIcon name="i-lucide-badge-check" class="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+              </div>
+              <div class="mt-2 flex items-center justify-between gap-2">
+                <p class="text-xs text-[var(--ui-text-muted)]">{{ summary?.paidLast30Count || 0 }} invoices closed recently</p>
+                <UTooltip text="Verify in Xero">
+                  <a
+                    href="https://go.xero.com/AccountsReceivable/Search.aspx?invoiceStatuses=PAID"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-[var(--ui-text-muted)] hover:text-emerald-600 dark:hover:text-emerald-400 shrink-0"
+                    @click.stop
+                  >
+                    <UIcon name="i-lucide-external-link" class="h-3.5 w-3.5" />
+                  </a>
+                </UTooltip>
+              </div>
+            </UCard>
+          </button>
 
           <UCard>
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">Overdue Balance</p>
-                <p class="text-2xl font-bold text-red-600 dark:text-red-400">{{ formatCurrency((summary as any)?.overdueTotal) }}</p>
+                <UTooltip text="Days Sales Outstanding (30-day): how long, on average, it takes to collect a dollar of AR. Computed as (Outstanding AR / Sales last 30 days) × 30. Lower is better; >45 days starts being a cash-flow warning.">
+                  <p class="text-sm text-[var(--ui-text-muted)] flex items-center gap-1">
+                    DSO (30d)
+                    <UIcon name="i-lucide-info" class="h-3 w-3" />
+                  </p>
+                </UTooltip>
+                <p
+                  class="text-2xl font-bold"
+                  :class="{
+                    'text-emerald-600 dark:text-emerald-400': (summary?.dso30 ?? 0) > 0 && summary.dso30 <= 30,
+                    'text-amber-600 dark:text-amber-400': (summary?.dso30 ?? 0) > 30 && summary.dso30 <= 45,
+                    'text-red-600 dark:text-red-400': (summary?.dso30 ?? 0) > 45,
+                    'text-[var(--ui-text-highlighted)]': summary?.dso30 == null,
+                  }"
+                >
+                  {{ summary?.dso30 != null ? `${summary.dso30}d` : '—' }}
+                </p>
               </div>
-              <div class="shrink-0 w-10 h-10 rounded-lg bg-red-50 dark:bg-red-500/10 flex items-center justify-center">
-                <UIcon name="i-lucide-alert-triangle" class="h-5 w-5 text-red-600 dark:text-red-400" />
-              </div>
-            </div>
-            <p class="text-xs text-[var(--ui-text-muted)] mt-2">{{ summary?.overdueCount || 0 }} invoices past due</p>
-          </UCard>
-
-          <UCard>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">Due in 7 days</p>
-                <p class="text-2xl font-bold text-amber-600 dark:text-amber-400">{{ formatCurrency((summary as any)?.dueSoonTotal) }}</p>
-              </div>
-              <div class="shrink-0 w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
-                <UIcon name="i-lucide-hourglass" class="h-5 w-5 text-amber-600 dark:text-amber-400" />
-              </div>
-            </div>
-            <p class="text-xs text-[var(--ui-text-muted)] mt-2">Upcoming cash expected this week</p>
-          </UCard>
-
-          <UCard>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">Paid Last 30 Days</p>
-                <p class="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{{ formatCurrency(summary?.paidLast30Total) }}</p>
-              </div>
-              <div class="shrink-0 w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center">
-                <UIcon name="i-lucide-badge-check" class="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              <div class="shrink-0 w-10 h-10 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center">
+                <UIcon name="i-lucide-timer" class="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
               </div>
             </div>
-            <p class="text-xs text-[var(--ui-text-muted)] mt-2">{{ summary?.paidLast30Count || 0 }} invoices closed recently</p>
+            <p class="text-xs text-[var(--ui-text-muted)] mt-2">
+              <span v-if="summary?.dso30 == null">No invoices issued in last 30 days</span>
+              <span v-else-if="summary.dso30 <= 30">Healthy — collecting on time</span>
+              <span v-else-if="summary.dso30 <= 45">Watch — collections slowing</span>
+              <span v-else>Cash-flow risk — chase aged AR</span>
+            </p>
           </UCard>
         </div>
+
+        <!-- Warning banners — truncation + not-yet-sent in a single row. -->
+        <div
+          v-if="(summary as any)?.truncated?.open || (summary as any)?.truncated?.paid || (summary?.notSentCount || 0) > 0"
+          class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch"
+        >
+          <!-- Pagination cap-hit warning — surfaces silently-truncated data. -->
+          <UAlert
+            v-if="(summary as any)?.truncated?.open || (summary as any)?.truncated?.paid"
+            color="warning"
+            variant="outline"
+            icon="i-lucide-database"
+            :title="'Truncated AR data'"
+            :description="`We fetched the most-relevant ${(summary as any)?.truncated?.open ? (summary as any).truncated.openLimit + ' open' : ''}${(summary as any)?.truncated?.open && (summary as any)?.truncated?.paid ? ' and ' : ''}${(summary as any)?.truncated?.paid ? (summary as any).truncated.paidLimit + ' most-recent paid' : ''} invoices, but Xero has more. Cards and aging buckets reflect only what we fetched. Raise the limit if you regularly hit this.`"
+            class="h-full"
+          />
+
+          <!-- "Not yet sent" alert — clickable; opens slideover listing the unsent open invoices. -->
+          <button
+            v-if="(summary?.notSentCount || 0) > 0"
+            type="button"
+            class="block w-full text-left rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 h-full"
+            @click="showNotSentDetail = true"
+          >
+            <UAlert
+              color="warning"
+              variant="subtle"
+              icon="i-lucide-mail-warning"
+              :title="`${summary.notSentCount} invoice${summary.notSentCount === 1 ? '' : 's'} not yet sent — ${formatCurrency(summary.notSentTotal)}`"
+              description="Click to review them. They were created but never emailed via Xero — send before chasing payment."
+              class="cursor-pointer hover:ring-1 hover:ring-amber-400 transition h-full"
+            />
+          </button>
+        </div>
+
+        <!-- Revenue context row — forward pipeline, recurring, this-month
+             billed, GST collected, credit notes outstanding. Each card is
+             independently conditional and wrapped in a flex grid so absent
+             cards collapse and the row stays balanced. -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <!-- This Month Invoiced — running total billed this calendar month.
+               Click → slideover with the per-invoice list. -->
+          <button
+            v-if="((summary as any)?.monthToDateInvoicedCount || 0) > 0"
+            type="button"
+            class="text-left rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+            @click="showMonthDetail = true"
+          >
+            <UCard class="hover:border-blue-500 dark:hover:border-blue-400 transition-colors h-full">
+              <div class="flex items-center gap-3 mb-2">
+                <div class="shrink-0 w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
+                  <UIcon name="i-lucide-calendar-clock" class="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div class="min-w-0">
+                  <p class="text-sm text-[var(--ui-text-muted)] truncate">This Month Invoiced</p>
+                  <p class="text-xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.monthToDateInvoicedTotal) }}</p>
+                </div>
+              </div>
+              <p class="text-xs text-[var(--ui-text-muted)] mb-2">
+                {{ (summary as any)?.monthToDateInvoicedCount }} invoice{{ (summary as any)?.monthToDateInvoicedCount === 1 ? '' : 's' }} · day {{ (summary as any)?.monthDayOfMonth }}/{{ (summary as any)?.monthDaysInMonth }}
+              </p>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <UBadge
+                  v-if="(summary as any)?.monthVsLastMonthPct != null"
+                  size="sm"
+                  variant="subtle"
+                  :color="(summary as any).monthVsLastMonthPct >= 0 ? 'success' : 'error'"
+                >
+                  {{ (summary as any).monthVsLastMonthPct >= 0 ? '+' : '' }}{{ (summary as any).monthVsLastMonthPct }}% vs last
+                </UBadge>
+                <UBadge
+                  v-if="(summary as any)?.monthPaceProjection > (summary as any)?.monthToDateInvoicedTotal"
+                  size="sm"
+                  variant="subtle"
+                  color="info"
+                >
+                  Pace: {{ formatCurrency((summary as any)?.monthPaceProjection) }}
+                </UBadge>
+              </div>
+            </UCard>
+          </button>
+
+          <!-- Forward pipeline — quotes won/sent/drafted but not yet invoiced. -->
+          <UCard v-if="(quotesSummary?.count || 0) > 0">
+            <div class="flex items-center gap-3 mb-2">
+              <div class="shrink-0 w-10 h-10 rounded-lg bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center">
+                <UIcon name="i-lucide-file-search" class="h-5 w-5 text-violet-600 dark:text-violet-400" />
+              </div>
+              <div class="min-w-0">
+                <p class="text-sm text-[var(--ui-text-muted)] truncate">Forward Pipeline</p>
+                <p class="text-xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency(quotesSummary?.total) }}</p>
+              </div>
+            </div>
+            <p class="text-xs text-[var(--ui-text-muted)] mb-2">{{ quotesSummary?.count }} active quote{{ (quotesSummary?.count ?? 0) === 1 ? '' : 's' }} not yet invoiced</p>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <UBadge v-if="(quotesSummary?.byStatus.accepted.count || 0) > 0" color="success" variant="subtle" size="sm">
+                Accepted: {{ formatCurrency(quotesSummary?.byStatus.accepted.total) }}
+              </UBadge>
+              <UBadge v-if="(quotesSummary?.byStatus.sent.count || 0) > 0" color="info" variant="subtle" size="sm">
+                Sent: {{ formatCurrency(quotesSummary?.byStatus.sent.total) }}
+              </UBadge>
+              <UBadge v-if="(quotesSummary?.byStatus.draft.count || 0) > 0" color="neutral" variant="subtle" size="sm">
+                Draft: {{ formatCurrency(quotesSummary?.byStatus.draft.total) }}
+              </UBadge>
+            </div>
+          </UCard>
+
+          <!-- Recurring revenue — active retainers / subscriptions normalised to MRR. -->
+          <UCard v-if="(recurringSummary?.summary?.activeCount || 0) > 0">
+            <div class="flex items-center gap-3 mb-2">
+              <div class="shrink-0 w-10 h-10 rounded-lg bg-cyan-50 dark:bg-cyan-500/10 flex items-center justify-center">
+                <UIcon name="i-lucide-repeat" class="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+              </div>
+              <div class="min-w-0">
+                <p class="text-sm text-[var(--ui-text-muted)] truncate">Recurring Revenue (MRR)</p>
+                <p class="text-xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency(recurringSummary?.summary?.mrr) }}</p>
+              </div>
+            </div>
+            <p class="text-xs text-[var(--ui-text-muted)] mb-2">
+              {{ recurringSummary?.summary?.activeCount }} schedule{{ (recurringSummary?.summary?.activeCount ?? 0) === 1 ? '' : 's' }} · {{ recurringSummary?.summary?.clientCount }} client{{ (recurringSummary?.summary?.clientCount ?? 0) === 1 ? '' : 's' }}
+            </p>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <UBadge color="info" variant="subtle" size="sm">
+                ARR: {{ formatCurrency(recurringSummary?.summary?.arr) }}
+              </UBadge>
+              <UBadge
+                v-if="(recurringSummary?.summary?.recurringMonthlyCosts || 0) > 0"
+                :color="(recurringSummary?.summary?.netRecurring ?? 0) >= 0 ? 'success' : 'error'"
+                variant="subtle"
+                size="sm"
+              >
+                Net: {{ formatCurrency(recurringSummary?.summary?.netRecurring) }}/mo
+              </UBadge>
+            </div>
+          </UCard>
+
+          <!-- GST / Tax collected — sum of totalTax on issued invoices over rolling windows. -->
+          <UCard v-if="((summary as any)?.taxSummary?.last90 ?? 0) > 0">
+            <div class="flex items-center gap-3 mb-2">
+              <div class="shrink-0 w-10 h-10 rounded-lg bg-teal-50 dark:bg-teal-500/10 flex items-center justify-center">
+                <UIcon name="i-lucide-percent" class="h-5 w-5 text-teal-600 dark:text-teal-400" />
+              </div>
+              <div class="min-w-0">
+                <UTooltip text="GST/VAT collected on sales invoices. The headline is FY-to-date which maps to BAS box 1A — always reconcile against Xero's official BAS report before lodging.">
+                  <p class="text-sm text-[var(--ui-text-muted)] flex items-center gap-1 truncate">
+                    GST Collected
+                    <UIcon name="i-lucide-info" class="h-3 w-3" />
+                  </p>
+                </UTooltip>
+                <p class="text-xl font-bold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.taxSummary?.fyToDate) }}</p>
+              </div>
+            </div>
+            <p class="text-xs text-[var(--ui-text-muted)] mb-2">FY-to-date · since {{ formatDate((summary as any)?.taxSummary?.fyStart) }}</p>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <UBadge color="neutral" variant="subtle" size="sm">30d: {{ formatCurrency((summary as any)?.taxSummary?.last30) }}</UBadge>
+              <UBadge color="neutral" variant="subtle" size="sm">90d: {{ formatCurrency((summary as any)?.taxSummary?.last90) }}</UBadge>
+            </div>
+          </UCard>
+
+          <!-- Credit notes outstanding — money owed back to customers / unapplied credits. -->
+          <UCard v-if="(creditNotesSummary?.count || 0) > 0">
+            <div class="flex items-center gap-3 mb-2">
+              <div class="shrink-0 w-10 h-10 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center">
+                <UIcon name="i-lucide-receipt" class="h-5 w-5 text-rose-600 dark:text-rose-400" />
+              </div>
+              <div class="min-w-0">
+                <UTooltip text="Active sales credit notes with an unapplied balance. Money owed back to the customer or available to apply against future invoices.">
+                  <p class="text-sm text-[var(--ui-text-muted)] flex items-center gap-1 truncate">
+                    Credit Notes
+                    <UIcon name="i-lucide-info" class="h-3 w-3" />
+                  </p>
+                </UTooltip>
+                <p class="text-xl font-bold text-rose-600 dark:text-rose-400">{{ formatCurrency(creditNotesSummary?.total) }}</p>
+              </div>
+            </div>
+            <p class="text-xs text-[var(--ui-text-muted)] mb-2">
+              {{ creditNotesSummary?.count }} active · Net AR {{ formatCurrency(((summary as any)?.outstandingTotal ?? 0) - (creditNotesSummary?.total ?? 0)) }}
+            </p>
+            <div v-if="creditNotesSummary?.byContact?.[0]" class="flex flex-wrap items-center gap-1.5">
+              <UBadge color="warning" variant="subtle" size="sm">
+                Largest: {{ creditNotesSummary.byContact[0].name }} · {{ formatCurrency(creditNotesSummary.byContact[0].total) }}
+              </UBadge>
+            </div>
+          </UCard>
+        </div>
+
+        <!-- Cash collection forecast — projected inflows from open AR. -->
+        <UCard v-if="((summary as any)?.cashForecast?.buckets || []).some((b: any) => b.count > 0)">
+          <template #header>
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <UTooltip text="Projected cash inflow from every open invoice, bucketed by due date. Overdue amounts are assumed collectible ASAP. Does not factor in customer payment-on-time history.">
+                <h3 class="text-base font-semibold text-[var(--ui-text-highlighted)] flex items-center gap-1">
+                  Cash Collection Forecast
+                  <UIcon name="i-lucide-info" class="h-4 w-4 text-[var(--ui-text-muted)]" />
+                </h3>
+              </UTooltip>
+              <div class="flex items-center gap-2 text-xs">
+                <span class="text-[var(--ui-text-muted)]">Next 30 days expected:</span>
+                <span class="font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.cashForecast?.next30Total) }}</span>
+                <span class="text-[var(--ui-text-muted)]">·</span>
+                <span class="text-[var(--ui-text-muted)]">{{ (summary as any)?.cashForecast?.next30Count }} invoice{{ ((summary as any)?.cashForecast?.next30Count ?? 0) === 1 ? '' : 's' }}</span>
+              </div>
+            </div>
+          </template>
+          <div class="space-y-2">
+            <template v-for="bucket in (summary as any)?.cashForecast?.buckets ?? []" :key="bucket.key">
+              <div v-if="bucket.count > 0" class="flex items-center gap-3">
+                <div class="w-44 shrink-0">
+                  <p
+                    class="text-sm font-medium"
+                    :class="bucket.key === 'overdue' ? 'text-red-600 dark:text-red-400' : 'text-[var(--ui-text-highlighted)]'"
+                  >
+                    {{ bucket.label }}
+                  </p>
+                  <p class="text-[11px] text-[var(--ui-text-muted)]">{{ bucket.count }} invoice{{ bucket.count === 1 ? '' : 's' }}</p>
+                </div>
+                <div class="flex-1 h-6 rounded-md bg-[var(--ui-bg-elevated)] overflow-hidden relative">
+                  <div
+                    class="h-full"
+                    :class="{
+                      'bg-red-500/70 dark:bg-red-500/40': bucket.key === 'overdue',
+                      'bg-amber-500/70 dark:bg-amber-500/40': bucket.key === 'thisWeek',
+                      'bg-amber-400/60 dark:bg-amber-400/30': bucket.key === 'nextWeek',
+                      'bg-emerald-500/70 dark:bg-emerald-500/40': bucket.key === 'rest30',
+                      'bg-blue-400/60 dark:bg-blue-400/30': bucket.key === 'beyond',
+                    }"
+                    :style="{ width: `${Math.max(2, ((bucket.total / Math.max(...((summary as any)?.cashForecast?.buckets ?? []).map((b: any) => b.total))) * 100) || 0)}%` }"
+                  ></div>
+                </div>
+                <div class="w-32 text-right shrink-0">
+                  <p class="text-sm font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency(bucket.total) }}</p>
+                </div>
+              </div>
+            </template>
+          </div>
+        </UCard>
 
         <!-- Invoice Table (primary content) -->
         <UCard>
           <template #header>
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
               <h3 class="text-base font-semibold text-[var(--ui-text-highlighted)]">
                 {{ selectedView === 'all' ? 'All Invoices' : selectedView === 'outstanding' ? 'Outstanding Invoices' : selectedView === 'overdue' ? 'Overdue Invoices' : 'Paid Invoices' }}
               </h3>
-              <UBadge v-if="selectedView === 'paid' && summary?.avgDaysToPay" color="neutral" variant="subtle">
-                Avg days to pay: {{ summary?.avgDaysToPay }}
-              </UBadge>
+              <div class="flex items-center gap-2">
+                <UBadge v-if="selectedView === 'paid' && summary?.avgDaysToPay" color="neutral" variant="subtle">
+                  Avg days to pay: {{ summary?.avgDaysToPay }}
+                </UBadge>
+                <UButton
+                  v-if="selectedView === 'overdue' && filteredOverdue.length > 0"
+                  size="xs"
+                  color="primary"
+                  icon="i-lucide-send"
+                  :loading="bulkReminderPending"
+                  @click="sendBulkReminders(filteredOverdue.map((i: any) => i.id))"
+                >
+                  Send reminders to {{ filteredOverdue.length }} overdue
+                </UButton>
+              </div>
             </div>
           </template>
 
@@ -539,22 +1326,66 @@ const agingSections = [
                 <h3 class="text-base font-semibold text-[var(--ui-text-highlighted)]">Top Outstanding</h3>
                 <UBadge v-if="topCustomers.length" color="neutral" variant="subtle">{{ topCustomers.length }}</UBadge>
               </div>
+              <!-- Customer concentration risk indicator -->
+              <div v-if="(summary as any)?.concentration?.customerCount" class="mt-3 p-2.5 rounded-md bg-[var(--ui-bg-elevated)] border border-[var(--ui-border)]">
+                <div class="flex items-center justify-between mb-1.5">
+                  <UTooltip text="What share of total open AR sits with your biggest 1, 3, 5 clients. High concentration = if your top client doesn't pay, the hole is huge.">
+                    <p class="text-[10px] uppercase tracking-wide text-[var(--ui-text-muted)] flex items-center gap-1 font-semibold">
+                      Concentration
+                      <UIcon name="i-lucide-info" class="h-3 w-3" />
+                    </p>
+                  </UTooltip>
+                  <UBadge
+                    size="sm"
+                    :color="(summary as any).concentration.riskLevel === 'high' ? 'error' : (summary as any).concentration.riskLevel === 'moderate' ? 'warning' : 'success'"
+                    variant="subtle"
+                  >
+                    {{ (summary as any).concentration.riskLevel === 'high' ? 'High risk' : (summary as any).concentration.riskLevel === 'moderate' ? 'Moderate' : 'Low risk' }}
+                  </UBadge>
+                </div>
+                <div class="grid grid-cols-3 gap-1.5 text-center">
+                  <div>
+                    <p class="text-[10px] text-[var(--ui-text-muted)]">Top 1</p>
+                    <p class="text-sm font-semibold text-[var(--ui-text-highlighted)]">{{ (summary as any).concentration.top1Pct }}%</p>
+                  </div>
+                  <div>
+                    <p class="text-[10px] text-[var(--ui-text-muted)]">Top 3</p>
+                    <p class="text-sm font-semibold text-[var(--ui-text-highlighted)]">{{ (summary as any).concentration.top3Pct }}%</p>
+                  </div>
+                  <div>
+                    <p class="text-[10px] text-[var(--ui-text-muted)]">Top 5</p>
+                    <p class="text-sm font-semibold text-[var(--ui-text-highlighted)]">{{ (summary as any).concentration.top5Pct }}%</p>
+                  </div>
+                </div>
+                <p class="text-[10px] text-[var(--ui-text-muted)] mt-1.5 text-center">
+                  Across {{ (summary as any).concentration.customerCount }} client{{ (summary as any).concentration.customerCount === 1 ? '' : 's' }}
+                </p>
+              </div>
             </template>
             <div class="space-y-3">
-              <div v-for="client in paginatedTopCustomers" :key="client.name" class="p-3 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-elevated)]">
+              <button
+                v-for="client in paginatedTopCustomers"
+                :key="client.name"
+                type="button"
+                class="w-full text-left p-3 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-elevated)] hover:border-[var(--ui-primary)] hover:bg-[var(--ui-bg-accented)] focus:outline-none focus:ring-2 focus:ring-[var(--ui-primary)] transition-colors"
+                @click="openCustomer(client)"
+              >
                 <div class="flex items-center justify-between">
                   <p class="font-medium text-[var(--ui-text-highlighted)] text-sm truncate mr-2">{{ client.name }}</p>
                   <span class="text-xs text-[var(--ui-text-muted)] shrink-0">{{ client.count }} inv</span>
                 </div>
                 <div class="flex items-center justify-between text-sm mt-1">
                   <span class="text-[var(--ui-text-muted)]">Outstanding</span>
-                  <span class="font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency(client.outstanding) }}</span>
+                  <div class="flex items-center gap-2">
+                    <span v-if="client.pctOfAr" class="text-[10px] text-[var(--ui-text-muted)]">{{ client.pctOfAr }}% of AR</span>
+                    <span class="font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency(client.outstanding) }}</span>
+                  </div>
                 </div>
                 <div v-if="client.overdue" class="flex items-center justify-between text-xs text-red-500 dark:text-red-400">
                   <span>Overdue</span>
                   <span class="font-medium">{{ formatCurrency(client.overdue) }}</span>
                 </div>
-              </div>
+              </button>
               <p v-if="!topCustomers.length" class="text-sm text-[var(--ui-text-muted)] text-center py-4">No outstanding clients — nice work!</p>
             </div>
             <div v-if="topCustomers.length > topCustomersPageSize" class="mt-3 flex items-center justify-between border-t border-[var(--ui-border)] pt-3">
@@ -596,6 +1427,49 @@ const agingSections = [
                 <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-chevron-left" :disabled="recentPaymentsPage <= 1" @click="recentPaymentsPage--" />
                 <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-chevron-right" :disabled="recentPaymentsPage >= totalRecentPaymentsPages" @click="recentPaymentsPage++" />
               </div>
+            </div>
+          </UCard>
+
+          <!-- Chronic late payers — customers whose average days-to-pay
+               is highest. Click to drill into that customer. Hidden if
+               we don't have enough paid-invoice history (≥3 invoices/customer). -->
+          <UCard v-if="((summary as any)?.latePayers || []).length" class="lg:col-span-3">
+            <template #header>
+              <div class="flex items-center justify-between">
+                <UTooltip text="Customers ranked by average days-to-pay across paid invoices in scope (min 3 invoices each). High numbers = chronic late payers worth renegotiating terms with.">
+                  <h3 class="text-base font-semibold text-[var(--ui-text-highlighted)] flex items-center gap-1">
+                    Chronic Late Payers
+                    <UIcon name="i-lucide-info" class="h-4 w-4 text-[var(--ui-text-muted)]" />
+                  </h3>
+                </UTooltip>
+                <UBadge color="neutral" variant="subtle">{{ (summary as any)?.latePayers?.length ?? 0 }}</UBadge>
+              </div>
+            </template>
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+              <button
+                v-for="payer in (summary as any)?.latePayers ?? []"
+                :key="payer.name"
+                type="button"
+                class="text-left p-3 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-elevated)] hover:border-red-400 hover:bg-red-50/30 dark:hover:bg-red-950/20 transition-colors"
+                @click="openCustomer({ name: payer.name, outstanding: payer.openOverdue, overdue: payer.openOverdue, count: 0 })"
+              >
+                <div class="flex items-start justify-between gap-2 mb-1">
+                  <p class="font-medium text-[var(--ui-text-highlighted)] text-sm truncate">{{ payer.name }}</p>
+                  <UBadge
+                    size="sm"
+                    :color="payer.avgDaysToPay > 60 ? 'error' : payer.avgDaysToPay > 30 ? 'warning' : 'neutral'"
+                    variant="subtle"
+                  >
+                    {{ payer.avgDaysToPay }}d avg
+                  </UBadge>
+                </div>
+                <div class="grid grid-cols-2 gap-1 text-[11px] text-[var(--ui-text-muted)]">
+                  <span>Worst: <span class="font-medium text-[var(--ui-text-highlighted)]">{{ payer.maxDaysToPay }}d</span></span>
+                  <span>Paid: <span class="font-medium text-[var(--ui-text-highlighted)]">{{ payer.paidCount }} inv</span></span>
+                  <span>Billed: <span class="font-medium text-[var(--ui-text-highlighted)]">{{ formatCurrency(payer.totalBilled) }}</span></span>
+                  <span v-if="payer.openOverdue > 0" class="text-red-500 dark:text-red-400">Overdue: <span class="font-medium">{{ formatCurrency(payer.openOverdue) }}</span></span>
+                </div>
+              </button>
             </div>
           </UCard>
         </div>
@@ -679,28 +1553,67 @@ const agingSections = [
   </UDashboardPanel>
 
   <!-- Invoice Detail Slideover -->
-  <USlideover v-model:open="showInvoiceDetail" :title="detailPending ? 'Loading...' : ((invoiceDetail as any)?.number || 'Invoice')" :description="detailPending ? 'Fetching invoice details...' : ((invoiceDetail as any)?.contact?.name || 'Invoice details')">
+  <USlideover v-model:open="showInvoiceDetail" :title="detailPending ? 'Loading' : ((invoiceDetail as any)?.number || 'Invoice')" description="">
     <template #title>
-      <div class="min-w-0">
-        <p class="font-semibold text-[var(--ui-text-highlighted)] truncate">
-          {{ detailPending ? 'Loading...' : ((invoiceDetail as any)?.number || 'Invoice') }}
+      <div class="min-w-0 pr-2">
+        <div class="flex items-center gap-2 min-w-0">
+          <p class="font-semibold text-[var(--ui-text-highlighted)] truncate">
+            {{ detailPending ? 'Loading' : ((invoiceDetail as any)?.number || 'Invoice') }}
+          </p>
+          <UBadge
+            v-if="!detailPending && invoiceDetail"
+            :color="statusColor((invoiceDetail as any).status)"
+            variant="subtle"
+            size="sm"
+            class="shrink-0"
+          >
+            {{ statusLabel((invoiceDetail as any).status) }}
+          </UBadge>
+        </div>
+        <p
+          v-if="!detailPending && (invoiceDetail as any)?.contact?.name"
+          class="text-sm text-[var(--ui-text-muted)] truncate font-normal mt-0.5"
+        >
+          {{ (invoiceDetail as any).contact.name }}
         </p>
-        <p v-if="!detailPending && (invoiceDetail as any)?.reference" class="text-xs text-[var(--ui-text-muted)] truncate font-normal">
+        <p
+          v-if="!detailPending && (invoiceDetail as any)?.reference"
+          class="text-xs text-[var(--ui-text-muted)] truncate font-normal"
+        >
           Ref: {{ (invoiceDetail as any).reference }}
         </p>
       </div>
     </template>
     <template #actions>
-      <UBadge v-if="!detailPending && invoiceDetail" :color="statusColor((invoiceDetail as any).status)" variant="subtle">
-        {{ statusLabel((invoiceDetail as any).status) }}
-      </UBadge>
+      <UButton
+        v-if="!detailPending && invoiceDetail && ((invoiceDetail as any)?.amountDue || 0) > 0"
+        size="xs"
+        variant="ghost"
+        color="neutral"
+        icon="i-lucide-link"
+        :loading="payLinkPending === (invoiceDetail as any)?.id"
+        :title="'Copy pay link'"
+        @click="copyPayLink((invoiceDetail as any)?.id)"
+      />
+      <UButton
+        v-if="!detailPending && invoiceDetail && ((invoiceDetail as any)?.amountDue || 0) > 0"
+        size="xs"
+        variant="solid"
+        color="primary"
+        icon="i-lucide-send"
+        :loading="reminderPending === (invoiceDetail as any)?.id"
+        :title="'Send reminder'"
+        @click="sendReminder((invoiceDetail as any)?.id)"
+      >
+        Remind
+      </UButton>
       <NuxtLink
         v-if="!detailPending && (invoiceDetail as any)?.url"
         :to="(invoiceDetail as any).url"
         target="_blank"
         external
       >
-        <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-external-link" label="Xero" />
+        <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-external-link" :title="'Open in Xero'" />
       </NuxtLink>
     </template>
     <template #body>
@@ -748,6 +1661,25 @@ const agingSections = [
             <div v-if="(invoiceDetail as any).fullyPaidOnDate" class="flex justify-between col-span-2">
               <span class="text-[var(--ui-text-muted)]">Paid</span>
               <span class="font-medium text-emerald-600 dark:text-emerald-400">{{ formatDate((invoiceDetail as any).fullyPaidOnDate) }}</span>
+            </div>
+            <UTooltip
+              v-if="(invoiceDetail as any).updatedDate"
+              text="Xero only exposes the last-update timestamp. For an unedited invoice this matches the original creation; if the invoice has been edited, this is the latest edit."
+              class="col-span-2"
+            >
+              <div class="flex justify-between">
+                <span class="text-[var(--ui-text-muted)]">Last updated in Xero</span>
+                <span class="font-medium text-[var(--ui-text-highlighted)]">{{ formatDate((invoiceDetail as any).updatedDate) }}</span>
+              </div>
+            </UTooltip>
+            <div
+              v-if="lastReminderForOpenInvoice"
+              class="col-span-2 flex justify-between"
+            >
+              <span class="text-[var(--ui-text-muted)]">Last reminder sent</span>
+              <span class="font-medium text-amber-600 dark:text-amber-400">
+                {{ daysSince(lastReminderForOpenInvoice) }}d ago
+              </span>
             </div>
             <div
               v-if="(invoiceDetail as any).status === 'AUTHORISED' && (invoiceDetail as any).dueDate"
@@ -868,6 +1800,382 @@ const agingSections = [
             <span class="font-medium">{{ (invoiceDetail as any).type === 'ACCREC' ? 'Accounts Receivable' : (invoiceDetail as any).type === 'ACCPAY' ? 'Accounts Payable' : (invoiceDetail as any).type }}</span>
           </div>
         </div>
+      </div>
+    </template>
+  </USlideover>
+
+  <!-- Customer drill-down: opens from "Top Outstanding" rows. -->
+  <USlideover v-model:open="showCustomerDetail" :title="selectedCustomer?.name || 'Customer'" :description="`${selectedCustomer?.count ?? 0} open invoice${(selectedCustomer?.count ?? 0) === 1 ? '' : 's'}`">
+    <template #title>
+      <div class="min-w-0">
+        <p class="font-semibold text-[var(--ui-text-highlighted)] truncate">{{ selectedCustomer?.name || 'Customer' }}</p>
+        <p class="text-xs text-[var(--ui-text-muted)] truncate font-normal">
+          {{ selectedCustomer?.count ?? 0 }} open invoice{{ (selectedCustomer?.count ?? 0) === 1 ? '' : 's' }}
+        </p>
+      </div>
+    </template>
+    <template #actions>
+      <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-list-filter" label="Show in table" @click="focusCustomerInTable" />
+    </template>
+    <template #body>
+      <div v-if="selectedCustomer" class="space-y-6">
+        <!-- Headline numbers -->
+        <div class="grid grid-cols-2 gap-3">
+          <div class="p-3 rounded-lg border border-[var(--ui-border)]">
+            <p class="text-[10px] text-[var(--ui-text-muted)] uppercase">Outstanding</p>
+            <p class="text-lg font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency(selectedCustomer.outstanding) }}</p>
+          </div>
+          <div class="p-3 rounded-lg border" :class="selectedCustomer.overdue > 0 ? 'border-red-300 dark:border-red-700' : 'border-[var(--ui-border)]'">
+            <p class="text-[10px] text-[var(--ui-text-muted)] uppercase">Overdue</p>
+            <p class="text-lg font-semibold" :class="selectedCustomer.overdue > 0 ? 'text-red-600 dark:text-red-400' : 'text-[var(--ui-text-highlighted)]'">
+              {{ formatCurrency(selectedCustomer.overdue) }}
+            </p>
+          </div>
+        </div>
+
+        <!-- Relationship KPIs -->
+        <div v-if="customerKpis" class="space-y-2">
+          <h3 class="text-xs uppercase text-[var(--ui-text-muted)] font-semibold tracking-wider">Relationship</h3>
+          <div class="grid grid-cols-2 gap-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-[var(--ui-text-muted)]">Lifetime billed (visible)</span>
+              <span class="font-medium text-[var(--ui-text-highlighted)]">{{ formatCurrency(customerKpis.lifetimeBilled) }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-[var(--ui-text-muted)]">Avg days to pay</span>
+              <span class="font-medium text-[var(--ui-text-highlighted)]">{{ customerKpis.avgDaysToPay ?? '—' }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-[var(--ui-text-muted)]">Open invoices</span>
+              <span class="font-medium text-[var(--ui-text-highlighted)]">{{ customerKpis.openCount }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-[var(--ui-text-muted)]">Recent payments</span>
+              <span class="font-medium text-[var(--ui-text-highlighted)]">{{ customerKpis.paidCount }}</span>
+            </div>
+            <div v-if="customerKpis.oldestOverdueDays > 0" class="flex justify-between col-span-2">
+              <span class="text-[var(--ui-text-muted)]">Oldest overdue</span>
+              <span class="font-medium text-red-600 dark:text-red-400">{{ customerKpis.oldestOverdueDays }} days</span>
+            </div>
+            <div v-if="customerKpis.earliestInvoiceDate" class="flex justify-between col-span-2">
+              <span class="text-[var(--ui-text-muted)]">Earliest invoice we can see</span>
+              <span class="font-medium text-[var(--ui-text-highlighted)]">{{ formatDate(customerKpis.earliestInvoiceDate) }}</span>
+            </div>
+          </div>
+          <p class="text-[10px] text-[var(--ui-text-muted)] mt-1 italic">
+            Numbers limited to invoices fetched on this page (up to 1000 open + 300 most-recent paid).
+          </p>
+        </div>
+
+        <!-- Open invoices -->
+        <div v-if="customerOpen.length" class="space-y-2">
+          <h3 class="text-xs uppercase text-[var(--ui-text-muted)] font-semibold tracking-wider">Open invoices</h3>
+          <div class="space-y-2">
+            <button
+              v-for="inv in customerOpen"
+              :key="inv.id"
+              type="button"
+              class="w-full text-left p-3 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-elevated)] hover:border-[var(--ui-primary)] transition-colors"
+              @click="openInvoice(inv.id); showCustomerDetail = false"
+            >
+              <div class="flex items-center justify-between">
+                <div class="min-w-0 mr-2">
+                  <p class="font-medium text-[var(--ui-text-highlighted)] text-sm truncate">{{ inv.number }}</p>
+                  <p class="text-xs text-[var(--ui-text-muted)] truncate">
+                    Issued {{ formatDate(inv.date) }} · Due {{ formatDate(inv.dueDate) }}
+                  </p>
+                </div>
+                <div class="text-right shrink-0">
+                  <p class="font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency(inv.amountDue, inv.currency) }}</p>
+                  <UBadge
+                    v-if="inv.status === 'OVERDUE'"
+                    color="error"
+                    variant="subtle"
+                    size="sm"
+                  >
+                    {{ inv.daysOverdue }}d overdue
+                  </UBadge>
+                  <UBadge
+                    v-else
+                    color="warning"
+                    variant="subtle"
+                    size="sm"
+                  >
+                    Due in {{ inv.daysUntilDue }}d
+                  </UBadge>
+                </div>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Recent payments -->
+        <div v-if="customerPaid.length" class="space-y-2">
+          <h3 class="text-xs uppercase text-[var(--ui-text-muted)] font-semibold tracking-wider">Recent payments</h3>
+          <div class="space-y-2">
+            <button
+              v-for="inv in customerPaid"
+              :key="inv.id"
+              type="button"
+              class="w-full text-left p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 hover:ring-2 hover:ring-emerald-300 dark:hover:ring-emerald-700 transition"
+              @click="openInvoice(inv.id); showCustomerDetail = false"
+            >
+              <div class="flex items-center justify-between">
+                <div class="min-w-0 mr-2">
+                  <p class="font-medium text-[var(--ui-text-highlighted)] text-sm truncate">{{ inv.number }}</p>
+                  <p class="text-xs text-[var(--ui-text-muted)] truncate">Paid {{ formatDate(inv.fullyPaidOnDate) }}</p>
+                </div>
+                <div class="text-right shrink-0">
+                  <p class="font-semibold text-emerald-600 dark:text-emerald-400">{{ formatCurrency(inv.total, inv.currency) }}</p>
+                  <p class="text-xs text-[var(--ui-text-muted)]">{{ inv.daysToPay ?? '—' }}d to pay</p>
+                </div>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </template>
+  </USlideover>
+
+  <!-- "Not yet sent" drill-down: every open invoice that was never emailed via Xero. -->
+  <USlideover v-model:open="showNotSentDetail" :title="`${notSentInvoices.length} not yet sent`" :description="formatCurrency(summary?.notSentTotal) + ' total'">
+    <template #title>
+      <div class="min-w-0">
+        <p class="font-semibold text-[var(--ui-text-highlighted)] truncate">{{ notSentInvoices.length }} invoice{{ notSentInvoices.length === 1 ? '' : 's' }} not yet sent</p>
+        <p class="text-xs text-[var(--ui-text-muted)] truncate font-normal">{{ formatCurrency(summary?.notSentTotal) }} · open balance</p>
+      </div>
+    </template>
+    <template #body>
+      <div class="space-y-4">
+        <UAlert
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-info"
+          title="Why this matters"
+          description="These invoices were created in Xero but never emailed to the client (sentToContact=false). Send them before chasing payment — the client may not even know they exist yet."
+        />
+
+        <div v-if="notSentInvoices.length" class="space-y-2">
+          <button
+            v-for="inv in notSentInvoices"
+            :key="inv.id"
+            type="button"
+            class="w-full text-left p-3 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-elevated)] hover:border-amber-500 hover:bg-amber-50/40 dark:hover:bg-amber-950/20 transition"
+            @click="openInvoice(inv.id); showNotSentDetail = false"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0 flex-1">
+                <p class="font-medium text-[var(--ui-text-highlighted)] text-sm truncate">{{ inv.number }}</p>
+                <p class="text-xs text-[var(--ui-text-muted)] truncate">{{ inv.contact || 'Unknown' }}</p>
+                <p class="text-[11px] text-[var(--ui-text-muted)]">
+                  Issued {{ formatDate(inv.date) }} · Due {{ formatDate(inv.dueDate) }}
+                </p>
+              </div>
+              <div class="text-right shrink-0">
+                <p class="font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency(inv.amountDue, inv.currency) }}</p>
+                <UBadge
+                  v-if="inv.status === 'OVERDUE'"
+                  color="error"
+                  variant="subtle"
+                  size="sm"
+                >
+                  {{ inv.daysOverdue }}d overdue
+                </UBadge>
+                <UBadge
+                  v-else
+                  color="warning"
+                  variant="subtle"
+                  size="sm"
+                >
+                  Due in {{ inv.daysUntilDue }}d
+                </UBadge>
+              </div>
+            </div>
+          </button>
+        </div>
+
+        <p v-else class="text-sm text-[var(--ui-text-muted)] text-center py-4">All open invoices have been sent. Nothing to chase here.</p>
+      </div>
+    </template>
+  </USlideover>
+
+  <!-- "This month" drill-down: every invoice issued this calendar month
+       (paid + unpaid) with comparison stats and the full per-invoice list. -->
+  <USlideover v-model:open="showMonthDetail" :title="`Invoiced this month: ${formatCurrency((summary as any)?.monthToDateInvoicedTotal)}`" :description="`${(summary as any)?.monthToDateInvoicedCount ?? 0} invoices since ${formatDate((summary as any)?.monthStart)}`">
+    <template #title>
+      <div class="min-w-0">
+        <p class="font-semibold text-[var(--ui-text-highlighted)] truncate">
+          Invoiced this month
+        </p>
+        <p class="text-xs text-[var(--ui-text-muted)] truncate font-normal">
+          {{ formatCurrency((summary as any)?.monthToDateInvoicedTotal) }} · {{ (summary as any)?.monthToDateInvoicedCount }} invoices · day {{ (summary as any)?.monthDayOfMonth }}/{{ (summary as any)?.monthDaysInMonth }}
+        </p>
+      </div>
+    </template>
+    <template #body>
+      <div class="space-y-6">
+        <!-- KPI grid -->
+        <div class="grid grid-cols-2 gap-3">
+          <div class="p-3 rounded-lg border border-[var(--ui-border)]">
+            <p class="text-[10px] text-[var(--ui-text-muted)] uppercase">Total billed</p>
+            <p class="text-lg font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.monthToDateInvoicedTotal) }}</p>
+          </div>
+          <div class="p-3 rounded-lg border border-[var(--ui-border)]">
+            <p class="text-[10px] text-[var(--ui-text-muted)] uppercase">Avg invoice</p>
+            <p class="text-lg font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.monthAvgInvoice) }}</p>
+          </div>
+          <div class="p-3 rounded-lg border border-emerald-300 dark:border-emerald-700">
+            <p class="text-[10px] text-[var(--ui-text-muted)] uppercase">Already paid</p>
+            <p class="text-lg font-semibold text-emerald-600 dark:text-emerald-400">{{ formatCurrency((summary as any)?.monthPaidPortion) }}</p>
+          </div>
+          <div class="p-3 rounded-lg border" :class="((summary as any)?.monthUnpaidPortion ?? 0) > 0 ? 'border-amber-300 dark:border-amber-700' : 'border-[var(--ui-border)]'">
+            <p class="text-[10px] text-[var(--ui-text-muted)] uppercase">Still owed</p>
+            <p class="text-lg font-semibold" :class="((summary as any)?.monthUnpaidPortion ?? 0) > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--ui-text-highlighted)]'">
+              {{ formatCurrency((summary as any)?.monthUnpaidPortion) }}
+            </p>
+          </div>
+        </div>
+
+        <!-- vs last month + pace -->
+        <div class="space-y-2">
+          <h3 class="text-xs uppercase text-[var(--ui-text-muted)] font-semibold tracking-wider">Trend</h3>
+          <div class="grid grid-cols-1 gap-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-[var(--ui-text-muted)]">Same window last month (1st – day {{ (summary as any)?.monthDayOfMonth }})</span>
+              <span class="font-medium text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.monthLastSameWindowTotal) }}</span>
+            </div>
+            <div v-if="(summary as any)?.monthVsLastMonthPct != null" class="flex justify-between">
+              <span class="text-[var(--ui-text-muted)]">Change</span>
+              <span
+                class="font-semibold"
+                :class="(summary as any).monthVsLastMonthPct >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'"
+              >
+                {{ (summary as any).monthVsLastMonthPct >= 0 ? '+' : '' }}{{ (summary as any).monthVsLastMonthPct }}%
+              </span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-[var(--ui-text-muted)]">Pace projection (end of month)</span>
+              <span class="font-medium text-[var(--ui-text-highlighted)]">{{ formatCurrency((summary as any)?.monthPaceProjection) }}</span>
+            </div>
+            <div v-if="(summary as any)?.monthTopCustomerName" class="flex justify-between">
+              <span class="text-[var(--ui-text-muted)]">Top customer this month</span>
+              <span class="font-medium text-[var(--ui-text-highlighted)] truncate ml-2">
+                {{ (summary as any).monthTopCustomerName }} · {{ formatCurrency((summary as any).monthTopCustomerTotal) }}
+              </span>
+            </div>
+          </div>
+          <p class="text-[10px] text-[var(--ui-text-muted)] italic">Comparison and pace use a straight-line extrapolation from current MTD; useful as a signal, not a forecast.</p>
+        </div>
+
+        <!-- Per-invoice list -->
+        <div v-if="monthInvoices.length" class="space-y-2">
+          <h3 class="text-xs uppercase text-[var(--ui-text-muted)] font-semibold tracking-wider">Invoices ({{ monthInvoices.length }})</h3>
+          <div class="space-y-2">
+            <button
+              v-for="inv in monthInvoices"
+              :key="inv.id"
+              type="button"
+              class="w-full text-left p-3 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-elevated)] hover:border-blue-500 dark:hover:border-blue-400 transition-colors"
+              @click="openInvoice(inv.id); showMonthDetail = false"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <div class="min-w-0 flex-1">
+                  <p class="font-medium text-[var(--ui-text-highlighted)] text-sm truncate">{{ inv.number }}</p>
+                  <p class="text-xs text-[var(--ui-text-muted)] truncate">{{ inv.contact || 'Unknown' }}</p>
+                  <p class="text-[11px] text-[var(--ui-text-muted)]">Issued {{ formatDate(inv.date) }}</p>
+                </div>
+                <div class="text-right shrink-0">
+                  <p class="font-semibold text-[var(--ui-text-highlighted)]">{{ formatCurrency(inv.total, inv.currency) }}</p>
+                  <UBadge
+                    size="sm"
+                    :color="inv.status === 'PAID' ? 'success' : inv.status === 'OVERDUE' ? 'error' : 'warning'"
+                    variant="subtle"
+                  >
+                    {{ inv.status === 'PAID' ? 'Paid' : inv.status === 'OVERDUE' ? `${inv.daysOverdue}d overdue` : 'Open' }}
+                  </UBadge>
+                </div>
+              </div>
+            </button>
+          </div>
+        </div>
+        <p v-else class="text-sm text-[var(--ui-text-muted)] text-center py-4">No invoices were issued this month.</p>
+      </div>
+    </template>
+  </USlideover>
+
+  <!-- KPI card drill-down: each of the 4 monetary cards (Outstanding,
+       Overdue, Due in 7, Paid Last 30) opens this with the underlying
+       invoice list. Click any row → existing per-invoice detail. -->
+  <USlideover v-model:open="showCardList" :title="cardListTitle" :description="`${cardListInvoices.length} invoice${cardListInvoices.length === 1 ? '' : 's'}`">
+    <template #title>
+      <div class="min-w-0">
+        <p class="font-semibold text-[var(--ui-text-highlighted)] truncate">{{ cardListTitle }}</p>
+        <p class="text-xs text-[var(--ui-text-muted)] truncate font-normal">
+          {{ cardListInvoices.length }} invoice{{ cardListInvoices.length === 1 ? '' : 's' }} · {{ formatCurrency(cardListTotal) }} total
+        </p>
+      </div>
+    </template>
+    <template #actions>
+      <UButton
+        v-if="cardListInvoices.length"
+        size="xs"
+        variant="ghost"
+        color="neutral"
+        icon="i-lucide-download"
+        label="Download CSV"
+        @click="downloadCardListCsv"
+      />
+    </template>
+    <template #body>
+      <div class="space-y-2">
+        <button
+          v-for="inv in cardListInvoices"
+          :key="inv.id"
+          type="button"
+          class="w-full text-left p-3 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg-elevated)] hover:border-[var(--ui-primary)] transition-colors"
+          @click="openInvoice(inv.id); showCardList = false"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <p class="font-medium text-[var(--ui-text-highlighted)] text-sm truncate">{{ inv.number }}</p>
+              <p class="text-xs text-[var(--ui-text-muted)] truncate">{{ inv.contact || 'Unknown' }}</p>
+              <p class="text-[11px] text-[var(--ui-text-muted)]">
+                <template v-if="cardListKind === 'paid30'">Paid {{ formatDate(inv.fullyPaidOnDate) }}{{ inv.daysToPay != null ? ` · ${inv.daysToPay}d to pay` : '' }}</template>
+                <template v-else>Issued {{ formatDate(inv.date) }} · Due {{ formatDate(inv.dueDate) }}</template>
+              </p>
+            </div>
+            <div class="text-right shrink-0">
+              <p class="font-semibold" :class="cardListKind === 'paid30' ? 'text-emerald-600 dark:text-emerald-400' : 'text-[var(--ui-text-highlighted)]'">
+                {{ formatCurrency(cardListKind === 'paid30' ? inv.total : inv.amountDue, inv.currency) }}
+              </p>
+              <UBadge
+                v-if="cardListKind !== 'paid30' && inv.status === 'OVERDUE'"
+                size="sm"
+                color="error"
+                variant="subtle"
+              >
+                {{ inv.daysOverdue }}d overdue
+              </UBadge>
+              <UBadge
+                v-else-if="cardListKind !== 'paid30' && inv.daysUntilDue != null"
+                size="sm"
+                color="warning"
+                variant="subtle"
+              >
+                Due in {{ inv.daysUntilDue }}d
+              </UBadge>
+              <UBadge
+                v-else-if="cardListKind === 'paid30'"
+                size="sm"
+                color="success"
+                variant="subtle"
+              >
+                Paid
+              </UBadge>
+            </div>
+          </div>
+        </button>
+        <p v-if="!cardListInvoices.length" class="text-sm text-[var(--ui-text-muted)] text-center py-6">No invoices in this view.</p>
       </div>
     </template>
   </USlideover>

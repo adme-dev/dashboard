@@ -1,0 +1,15 @@
+name = "leads-cron"
+main = "src/index.ts"
+compatibility_date = "2025-12-01"
+
+[triggers]
+crons = [
+  "*/5 * * * *",   # recover stuck claims
+  "10 3 * * *",    # purge ingestion errors
+  "30 3 * * *"     # purge retention
+]
+
+[vars]
+APP_BASE_URL = "https://your-dashboard.adme.net.au"
+# INTERNAL_CRON_TOKEN set as a secret via:
+#   wrangler secret put INTERNAL_CRON_TOKEN
