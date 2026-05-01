@@ -1,5 +1,4 @@
 import { createError } from 'h3'
-import { createXeroClient } from '../../../utils/xeroClient'
 import { getActiveTokenForSession } from '../../../utils/tokenStore'
 import { getSelectedTenant } from '../../../utils/session'
 import { cachedFetch } from '../../../utils/kv'
@@ -190,8 +189,9 @@ export default eventHandler(async (event) => {
 
   const cacheKey = `xero-report:${tenantId}:cash-flow-insights`
 
+  const accessToken = token.access_token!
+
   return cachedFetch(event, cacheKey, 600, async () => {
-    const client = await createXeroClient({ tokenSet: token, event })
     const today = new Date()
 
     // All calls go through dedupedXeroCall (rate-limited + deduped) AND each
@@ -217,18 +217,18 @@ export default eventHandler(async (event) => {
       outstandingBody,
       contactsBody
     ] = await Promise.all([
-      softFetch('balance-sheet', () => fetchBalanceSheet(client, tenantId), null as any),
-      softFetch('accrec-draft', () => fetchInvoiceSummary(client, tenantId, 'ACCREC', 'DRAFT'), { invoices: [] } as any),
-      softFetch('accrec-submitted', () => fetchInvoiceSummary(client, tenantId, 'ACCREC', 'SUBMITTED'), { invoices: [] } as any),
-      softFetch('accpay-draft', () => fetchInvoiceSummary(client, tenantId, 'ACCPAY', 'DRAFT'), { invoices: [] } as any),
-      softFetch('accpay-submitted', () => fetchInvoiceSummary(client, tenantId, 'ACCPAY', 'SUBMITTED'), { invoices: [] } as any),
-      softFetch('quotes-draft', () => fetchQuotesByStatus(client, tenantId, 'DRAFT'), { quotes: [] } as any),
-      softFetch('quotes-sent', () => fetchQuotesByStatus(client, tenantId, 'SENT'), { quotes: [] } as any),
-      softFetch('quotes-accepted', () => fetchQuotesByStatus(client, tenantId, 'ACCEPTED'), { quotes: [] } as any),
-      softFetch('po-draft', () => fetchPurchaseOrders(client, tenantId, 'DRAFT'), { purchaseOrders: [] } as any),
-      softFetch('po-submitted', () => fetchPurchaseOrders(client, tenantId, 'SUBMITTED'), { purchaseOrders: [] } as any),
-      softFetch('outstanding-receivables', () => fetchOutstandingReceivables(client, tenantId), { invoices: [] } as any),
-      softFetch('contacts', () => fetchContacts(client, tenantId), { contacts: [] } as any)
+      softFetch('balance-sheet', () => fetchBalanceSheet(accessToken, tenantId), null as any),
+      softFetch('accrec-draft', () => fetchInvoiceSummary(accessToken, tenantId, 'ACCREC', 'DRAFT'), { invoices: [] } as any),
+      softFetch('accrec-submitted', () => fetchInvoiceSummary(accessToken, tenantId, 'ACCREC', 'SUBMITTED'), { invoices: [] } as any),
+      softFetch('accpay-draft', () => fetchInvoiceSummary(accessToken, tenantId, 'ACCPAY', 'DRAFT'), { invoices: [] } as any),
+      softFetch('accpay-submitted', () => fetchInvoiceSummary(accessToken, tenantId, 'ACCPAY', 'SUBMITTED'), { invoices: [] } as any),
+      softFetch('quotes-draft', () => fetchQuotesByStatus(accessToken, tenantId, 'DRAFT'), { quotes: [] } as any),
+      softFetch('quotes-sent', () => fetchQuotesByStatus(accessToken, tenantId, 'SENT'), { quotes: [] } as any),
+      softFetch('quotes-accepted', () => fetchQuotesByStatus(accessToken, tenantId, 'ACCEPTED'), { quotes: [] } as any),
+      softFetch('po-draft', () => fetchPurchaseOrders(accessToken, tenantId, 'DRAFT'), { purchaseOrders: [] } as any),
+      softFetch('po-submitted', () => fetchPurchaseOrders(accessToken, tenantId, 'SUBMITTED'), { purchaseOrders: [] } as any),
+      softFetch('outstanding-receivables', () => fetchOutstandingReceivables(accessToken, tenantId), { invoices: [] } as any),
+      softFetch('contacts', () => fetchContacts(accessToken, tenantId), { contacts: [] } as any)
     ])
 
     // If more than half the upstream calls failed, the resulting payload
