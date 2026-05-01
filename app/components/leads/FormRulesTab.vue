@@ -47,8 +47,11 @@ const useCustomFormId = ref(false)
 const SOURCE_OPTIONS = [
   { value: 'google', label: 'Google Ads' },
   { value: 'meta', label: 'Meta (Facebook / Instagram)' },
+  { value: 'webhook', label: 'Webhook (Zapier / Make / n8n / custom)' },
+  { value: 'csv', label: 'CSV import' },
   { value: 'manual', label: 'Manual / Other' },
 ]
+const SOURCES_WITH_DISCOVERY = new Set(['google', 'meta'])
 
 // OAuth-based form discovery — fired when source is google/meta and the user
 // hasn't toggled "custom form ID". Empty for manual source.
@@ -83,22 +86,23 @@ async function discoverForms(source: 'google' | 'meta') {
 }
 
 // When source changes, re-fetch discovered forms (unless user chose custom).
+// Sources without API discovery (manual, webhook, csv) force custom form ID.
 watch(() => newRule.value.source, (s) => {
   newRule.value.form_id = ''
   newRule.value.form_name = ''
-  if (s === 'manual') {
+  if (!SOURCES_WITH_DISCOVERY.has(s)) {
     discoveredForms.value = []
     discoverError.value = null
     useCustomFormId.value = true
   } else if (!useCustomFormId.value) {
-    discoverForms(s)
+    discoverForms(s as 'google' | 'meta')
   }
 })
 
 // When the modal opens, kick off discovery if applicable.
 watch(showNewRule, (open) => {
-  if (open && !useCustomFormId.value && newRule.value.source !== 'manual') {
-    discoverForms(newRule.value.source)
+  if (open && !useCustomFormId.value && SOURCES_WITH_DISCOVERY.has(newRule.value.source)) {
+    discoverForms(newRule.value.source as 'google' | 'meta')
   }
 })
 
@@ -314,7 +318,7 @@ async function toggleEnabled(item: RuleListItem) {
           </UFormField>
 
           <UFormField
-            v-if="!useCustomFormId && newRule.source !== 'manual'"
+            v-if="!useCustomFormId && SOURCES_WITH_DISCOVERY.has(newRule.source)"
             label="Form"
             required
             :hint="discoverPending ? 'Loading forms from connected accounts…' : 'Pick a form from your connected ad accounts. Toggle Custom below if it is not listed yet.'"
@@ -349,7 +353,7 @@ async function toggleEnabled(item: RuleListItem) {
           </UFormField>
 
           <label
-            v-if="newRule.source !== 'manual'"
+            v-if="SOURCES_WITH_DISCOVERY.has(newRule.source)"
             class="flex items-center gap-2 text-xs text-muted cursor-pointer select-none -mt-2"
           >
             <USwitch v-model="useCustomFormId" size="xs" />
