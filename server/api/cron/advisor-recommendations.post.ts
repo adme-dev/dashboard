@@ -20,6 +20,11 @@ import {
   runCollectionsGenerator,
   runAdPacingGenerator,
   runProjectBurnGenerator,
+  runRetainerCapGenerator,
+  runConcentrationGenerator,
+  runLeadsVolumeGenerator,
+  runAgiPerFteGenerator,
+  runVendorHygieneGenerator,
 } from '~~/server/utils/advisorGenerators'
 
 const TARGET_LOCAL_HOUR = 6
@@ -79,6 +84,11 @@ export default defineEventHandler(async (event) => {
     ['collections', () => runCollectionsGenerator(conn.tenant_id, accessToken)],
     ['ad-pacing', () => runAdPacingGenerator(conn.tenant_id)],
     ['project-burn', () => runProjectBurnGenerator(conn.tenant_id)],
+    ['retainer-cap', () => runRetainerCapGenerator(conn.tenant_id)],
+    ['concentration', () => runConcentrationGenerator(conn.tenant_id, accessToken)],
+    ['leads-volume', () => runLeadsVolumeGenerator(conn.tenant_id)],
+    ['agi-per-fte', () => runAgiPerFteGenerator(conn.tenant_id, accessToken)],
+    ['vendor-hygiene', () => runVendorHygieneGenerator(conn.tenant_id)],
   ] as const) {
     try {
       results[name] = await runner()

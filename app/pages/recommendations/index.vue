@@ -85,6 +85,11 @@ async function generateAll() {
       runGenerator('/api/advisor/generate/collections'),
       runGenerator('/api/advisor/generate/ad-pacing'),
       runGenerator('/api/advisor/generate/project-burn'),
+      runGenerator('/api/advisor/generate/retainer-cap'),
+      runGenerator('/api/advisor/generate/concentration'),
+      runGenerator('/api/advisor/generate/leads-volume'),
+      runGenerator('/api/advisor/generate/agi-per-fte'),
+      runGenerator('/api/advisor/generate/vendor-hygiene'),
     ])
     const totalCreated = results.reduce((s, r) => s + r.created, 0)
     const failed = results.filter((r) => !r.ok)
