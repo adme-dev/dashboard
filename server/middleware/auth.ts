@@ -23,6 +23,7 @@ const publicRoutes = [
   '/api/internal/warmup',
   '/api/internal/attribution-cron',
   '/api/leads/_internal/',
+  '/api/cron/',  // anomaly-detection cron + future cron handlers; each verifies x-cron-secret inline
 ]
 
 // Paths that an authenticated cron can read with X-Internal-Cron-Secret.
