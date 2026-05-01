@@ -4,13 +4,28 @@ main = "src/index.ts"
 compatibility_date = "2025-12-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Configure queue consumer + bindings (DATABASE_URL, RESEND_API_KEY, HYPERDRIVE)
-# in the Cloudflare dashboard — Pages projects can't declare consumers in toml.
-# Locally, `wrangler dev` will need a queues.consumers stub if testing.
+# Aliases redirect Nitro-style imports in the synced code to worker-local
+# adapters. `~~/server/utils/db` → pg-based adapter using Hyperdrive CS.
+# `~~/server/utils/notifications` → no-op stub (notify happens in Pages, not here).
+# `~~/app/types` → all imports are `import type` and erased by the bundler.
+[alias]
+"~~/server/utils/db" = "./src/db.ts"
+"~~/server/utils/notifications" = "./src/notifications.ts"
+"~~/app/types" = "../../app/types/index.ts"
 
 [[hyperdrive]]
 binding = "HYPERDRIVE"
-id = "REPLACE_WITH_HYPERDRIVE_ID"
+id = "900b4b74ec41462cbbabebd0aa8775aa"
 
 [vars]
 WORKER_ID_PREFIX = "leads-w"
+
+# Queue consumer for leads-delivery-queue. The Pages app produces; this Worker
+# consumes. max_retries = 0 because the app manages retries via lead_deliveries
+# state machine (markFailed + reschedule).
+[[queues.consumers]]
+queue = "leads-delivery-queue"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 0
+dead_letter_queue = "leads-delivery-dlq"
