@@ -31,7 +31,8 @@ const { data: pipelineData, pending: pipelinePending, refresh: refreshPipeline }
   default: () => null
 })
 
-const { data: anomalyData, pending: anomalyPending, refresh: refreshAnomalies } = useFetch('/api/ai/anomaly-detection?days=30&sensitivity=2', {
+const { data: anomalyData, pending: anomalyPending, refresh: refreshAnomalies } = useFetch('/api/ai/anomalies', {
+  query: { tab: 'active' },
   immediate: false,
   default: () => null
 })
