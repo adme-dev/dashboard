@@ -3,18 +3,24 @@ const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ (e: 'created'): void }>()
 
 const toast = useToast()
-// /api/agency/clients returns a plain array, not { items: [] }
 const { data: clients } = useFetch<{ id: string; name: string }[]>('/api/agency/clients', {
   default: () => [],
 })
 
 const clientId = ref<string | null>(null)
 const formName = ref<string>('')
-const fields = ref<{ key: string; value: string }[]>([
-  { key: 'full_name', value: '' },
-  { key: 'email', value: '' },
-  { key: 'phone_number', value: '' },
+
+// Standard fields are always visible with friendly labels — marketers don't
+// think in snake_case. Keys are stable so the lead schema stays consistent.
+interface FixedField { label: string; key: string; value: string; placeholder: string; type?: string }
+const fixedFields = ref<FixedField[]>([
+  { label: 'Full name', key: 'full_name', value: '', placeholder: 'e.g. Sarah Mitchell' },
+  { label: 'Email', key: 'email', value: '', placeholder: 'sarah@example.com', type: 'email' },
+  { label: 'Phone', key: 'phone_number', value: '', placeholder: '+61 4xx xxx xxx', type: 'tel' },
 ])
+
+// Custom fields — user provides any label, we auto-derive the storage key.
+const customFields = ref<{ label: string; value: string }[]>([])
 const runRules = ref(false)
 const saving = ref(false)
 
@@ -22,28 +28,35 @@ const clientOptions = computed(() =>
   ((clients.value ?? []) as { id: string; name: string }[]).map(c => ({ value: c.id, label: c.name })),
 )
 
-function addField() { fields.value.push({ key: '', value: '' }) }
-function removeField(i: number) { fields.value.splice(i, 1) }
+function deriveKey(label: string): string {
+  return label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'field'
+}
+
+function addCustomField() { customFields.value.push({ label: '', value: '' }) }
+function removeCustomField(i: number) { customFields.value.splice(i, 1) }
 
 function reset() {
   clientId.value = null
   formName.value = ''
-  fields.value = [
-    { key: 'full_name', value: '' },
-    { key: 'email', value: '' },
-    { key: 'phone_number', value: '' },
-  ]
+  fixedFields.value.forEach(f => f.value = '')
+  customFields.value = []
   runRules.value = false
 }
 
 async function submit() {
   if (!clientId.value) {
-    toast.add({ title: 'Pick a client', color: 'error' }); return
+    toast.add({ title: 'Pick a client first', color: 'error' }); return
   }
   const field_data: Record<string, string> = {}
-  for (const f of fields.value) if (f.key && f.value) field_data[f.key] = f.value
+  for (const f of fixedFields.value) if (f.value.trim()) field_data[f.key] = f.value.trim()
+  for (const f of customFields.value) {
+    const label = f.label.trim()
+    const value = f.value.trim()
+    if (!label || !value) continue
+    field_data[deriveKey(label)] = value
+  }
   if (!Object.keys(field_data).length) {
-    toast.add({ title: 'Add at least one field', color: 'error' }); return
+    toast.add({ title: 'Fill in at least one field', color: 'error' }); return
   }
   saving.value = true
   try {
@@ -61,42 +74,100 @@ async function submit() {
     open.value = false
     emit('created')
   } catch (e: any) {
-    toast.add({ title: 'Failed', description: e?.data?.statusMessage ?? '', color: 'error' })
+    toast.add({ title: 'Failed to add lead', description: e?.data?.statusMessage ?? '', color: 'error' })
   } finally { saving.value = false }
 }
 </script>
 
 <template>
-  <UModal v-model:open="open">
+  <UModal v-model:open="open" :ui="{ content: 'max-w-xl' }">
     <template #content>
-      <div class="p-6 space-y-4 w-full max-w-xl">
-        <h3 class="text-base font-semibold">New manual lead</h3>
-
-        <div class="space-y-2">
-          <label class="text-xs text-muted">Client</label>
-          <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" placeholder="Pick a client" />
+      <div class="p-6 space-y-5">
+        <div>
+          <h3 class="text-lg font-semibold">New manual lead</h3>
+          <p class="text-sm text-muted mt-0.5">
+            For phone calls, walk-ins, or leads from outside the dashboard.
+          </p>
         </div>
 
-        <div class="space-y-2">
-          <label class="text-xs text-muted">Form name (optional)</label>
-          <UInput v-model="formName" placeholder="e.g. Phone-In, Walk-in" />
-        </div>
+        <UFormField label="Client" required>
+          <USelectMenu
+            v-model="clientId"
+            :items="clientOptions"
+            value-key="value"
+            placeholder="Pick a client"
+            class="w-full"
+          />
+        </UFormField>
 
-        <div class="space-y-2">
-          <label class="text-xs text-muted">Fields</label>
-          <div v-for="(f, i) in fields" :key="i" class="flex items-center gap-2">
-            <UInput v-model="f.key" placeholder="key" class="w-40" />
-            <UInput v-model="f.value" placeholder="value" class="flex-1" />
-            <UButton icon="i-lucide-x" variant="ghost" size="sm" @click="removeField(i)" />
+        <UFormField label="Form name" hint="Optional — for tracking the source">
+          <UInput
+            v-model="formName"
+            placeholder="e.g. Phone-In, Walk-in, Trade Show"
+            class="w-full"
+          />
+        </UFormField>
+
+        <div>
+          <label class="block text-sm font-medium mb-2">Lead details</label>
+          <div class="space-y-3">
+            <UFormField
+              v-for="f in fixedFields"
+              :key="f.key"
+              :label="f.label"
+              size="sm"
+            >
+              <UInput
+                v-model="f.value"
+                :placeholder="f.placeholder"
+                :type="f.type ?? 'text'"
+                class="w-full"
+              />
+            </UFormField>
+
+            <div v-if="customFields.length" class="pt-2 border-t border-default space-y-3">
+              <p class="text-xs uppercase font-semibold text-muted tracking-wide">Custom fields</p>
+              <div
+                v-for="(row, i) in customFields"
+                :key="i"
+                class="grid grid-cols-[1fr_1fr_auto] gap-2 items-start"
+              >
+                <UInput v-model="row.label" placeholder="Field name (e.g. Budget)" />
+                <UInput v-model="row.value" placeholder="Value" />
+                <UButton
+                  icon="i-lucide-x"
+                  variant="ghost"
+                  color="neutral"
+                  size="sm"
+                  @click="removeCustomField(i)"
+                />
+              </div>
+            </div>
           </div>
-          <UButton icon="i-lucide-plus" variant="ghost" size="sm" @click="addField">Add field</UButton>
+
+          <UButton
+            icon="i-lucide-plus"
+            variant="ghost"
+            size="sm"
+            color="primary"
+            class="mt-2 -ml-2"
+            @click="addCustomField"
+          >
+            Add custom field
+          </UButton>
         </div>
 
-        <UCheckbox v-model="runRules" label="Run rules engine for this lead (otherwise skip fan-out)" />
+        <UCheckbox
+          v-model="runRules"
+          label="Run routing rules for this lead"
+          help="Off by default — manual leads usually skip Slack/email fan-out."
+        />
 
-        <div class="flex justify-end gap-2 pt-2 border-t border-default">
-          <UButton variant="ghost" @click="open = false">Cancel</UButton>
-          <UButton :loading="saving" color="primary" @click="submit">Add lead</UButton>
+        <div class="flex justify-end gap-2 pt-4 border-t border-default">
+          <UButton variant="ghost" color="neutral" @click="open = false">Cancel</UButton>
+          <UButton :loading="saving" color="primary" icon="i-lucide-check" @click="submit">
+            Add lead
+          </UButton>
         </div>
       </div>
     </template>
