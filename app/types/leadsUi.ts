@@ -10,6 +10,7 @@ export interface LeadsListFilters {
   q: string
   from: string | null
   to: string | null
+  include_test: boolean
 }
 
 export interface LeadsListResponse {
@@ -22,4 +23,5 @@ export interface LeadsListResponse {
 export const DEFAULT_FILTERS: LeadsListFilters = {
   client_id: null, unmapped: false, source: null, form_id: null,
   status: null, assigned_to: null, q: '', from: null, to: null,
+  include_test: false,
 }

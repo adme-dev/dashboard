@@ -28,6 +28,7 @@ export interface InsertLeadInput {
   attribution: Record<string, string> | null
   assigned_to: string | null
   created_by: string | null
+  is_test?: boolean
 }
 
 /** INSERT … ON CONFLICT DO NOTHING RETURNING id. Returns null if duplicate. */
@@ -36,9 +37,9 @@ export async function insertLeadWithDedup(input: InsertLeadInput): Promise<strin
     INSERT INTO leads (
       client_id, source, source_lead_id, form_id, form_name,
       ad_id, ad_name, campaign_id, campaign_name, page_id,
-      submitted_at, field_data, attribution, assigned_to, created_by
+      submitted_at, field_data, attribution, assigned_to, created_by, is_test
     ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14, $15
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14, $15, $16
     )
     ON CONFLICT (source, source_lead_id) WHERE deleted_at IS NULL
     DO NOTHING
@@ -49,7 +50,7 @@ export async function insertLeadWithDedup(input: InsertLeadInput): Promise<strin
     input.submitted_at,
     JSON.stringify(input.field_data),
     input.attribution ? JSON.stringify(input.attribution) : null,
-    input.assigned_to, input.created_by,
+    input.assigned_to, input.created_by, Boolean(input.is_test),
   ])
   return row?.id ?? null
 }

@@ -18,6 +18,7 @@ export function useLeads() {
     if (f.q) p.q = f.q
     if (f.from) p.from = f.from
     if (f.to) p.to = f.to
+    if (f.include_test) p.include_test = 'true'
     return p
   })
 

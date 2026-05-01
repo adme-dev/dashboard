@@ -156,7 +156,8 @@ const hasActiveFilters = computed(() => {
     m.form_id ||
     m.assigned_to ||
     m.from ||
-    m.to,
+    m.to ||
+    m.include_test,
   )
 })
 
@@ -170,6 +171,7 @@ function clearAll() {
   model.value.assigned_to = null
   model.value.from = ''
   model.value.to = ''
+  model.value.include_test = false
 }
 </script>
 
@@ -254,6 +256,11 @@ function clearAll() {
         </div>
       </template>
     </UPopover>
+
+    <label class="flex items-center gap-2 text-xs text-muted cursor-pointer select-none">
+      <USwitch v-model="model.include_test" size="xs" />
+      Show test leads
+    </label>
 
     <UButton
       v-if="hasActiveFilters"

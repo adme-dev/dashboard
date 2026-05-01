@@ -15,6 +15,7 @@ const Query = z.object({
   from: z.string().optional(),
   to: z.string().optional(),
   unmapped: z.coerce.boolean().optional(),
+  include_test: z.coerce.boolean().optional(),
   page: z.coerce.number().int().min(1).default(1),
   page_size: z.coerce.number().int().min(1).max(200).default(50),
 })
@@ -29,6 +30,7 @@ export default defineEventHandler(async (event) => {
 
   if (q.client_id) push('client_id = ?', q.client_id)
   if (q.unmapped) conds.push('client_id IS NULL')
+  if (!q.include_test) conds.push('is_test = false')
   if (q.source) push('source = ?', q.source)
   if (q.form_id) push('form_id = ?', q.form_id)
   if (q.status) push('status = ?', q.status)

@@ -109,8 +109,15 @@ defineEmits<{ 'show-help': [] }>()
           </button>
         </template>
         <template #source-cell="{ row }">
-          <button @click="openLead(row.original)">
+          <button class="flex items-center gap-1.5" @click="openLead(row.original)">
             <LeadsSourceIcon :source="row.original.source" />
+            <UBadge
+              v-if="row.original.is_test"
+              color="warning"
+              variant="soft"
+              size="sm"
+              class="font-mono text-[10px]"
+            >TEST</UBadge>
           </button>
         </template>
         <template #form_name-cell="{ row }">
