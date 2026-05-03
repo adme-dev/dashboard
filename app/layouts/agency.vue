@@ -172,8 +172,10 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     items.push(
       { type: 'label' as const, label: 'XeroFlow' },
       { label: 'Xero Dashboard', icon: 'i-lucide-layout-dashboard', to: '/xeroflow', onSelect: close },
+      { label: 'Get Out', icon: 'i-lucide-target', to: '/xeroflow/get-out', onSelect: close },
       { label: 'Customers', icon: 'i-lucide-users', to: '/customers', onSelect: close },
       { label: 'Xero Invoices', icon: 'i-lucide-receipt', to: '/invoices', onSelect: close },
+      { label: 'Invoice Builder', icon: 'i-lucide-file-plus', to: '/xeroflow/invoice-builder', onSelect: close },
       { label: 'Xero Expenses', icon: 'i-lucide-wallet', to: '/expenses', onSelect: close },
       { label: 'Cash Flow', icon: 'i-lucide-trending-up', to: '/cashflow', onSelect: close },
       { label: 'Profit & Loss', icon: 'i-lucide-pie-chart', to: '/profit-loss', onSelect: close },
