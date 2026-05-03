@@ -161,7 +161,7 @@ export async function getActiveOrgToken(event: H3Event, opts: { minTtlMs?: numbe
     })
     await setOrgToken(event, next)
     return next
-  } catch (err) {
+  } catch (err: any) {
     const winner = await getOrgToken(event)
     if (
       winner?.access_token
@@ -170,10 +170,37 @@ export async function getActiveOrgToken(event: H3Event, opts: { minTtlMs?: numbe
     ) {
       return winner
     }
-    await clearOrgToken(event)
+
+    // Only wipe the connection when Xero gave a *definitive* "this refresh
+    // token is dead" response. Anything else (network blip, 5xx, timeout,
+    // rate-limit) is transient — keep the row so the user can retry without
+    // having to re-OAuth.
+    //
+    // refreshXeroToken throws createError with the upstream status + body
+    // baked into statusMessage. invalid_grant is the only OAuth error that
+    // means the refresh token itself is dead. revoked + expired both
+    // surface that way too.
+    const msg = String(err?.statusMessage ?? err?.message ?? '')
+    const definitivelyDead =
+      msg.includes('invalid_grant')
+      || msg.includes('invalid_request')
+      || msg.includes('unauthorized_client')
+      || /\bfailed:\s*4\d\d\b/.test(msg)  // any 4xx response from token endpoint
+
+    if (definitivelyDead) {
+      await clearOrgToken(event)
+      throw createError({
+        statusCode: 401,
+        statusMessage: 'Xero session expired, please reconnect',
+      })
+    }
+
+    // Transient — keep the saved row + bubble a 503 so the caller knows
+    // to retry rather than treat this as "user logged out".
+    console.warn('[tokenStore] transient Xero refresh failure, keeping connection:', msg)
     throw createError({
-      statusCode: 401,
-      statusMessage: 'Failed to refresh Xero session'
+      statusCode: 503,
+      statusMessage: 'Could not refresh Xero token (transient) — try again in a moment',
     })
   }
 }
