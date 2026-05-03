@@ -35,11 +35,26 @@ export default defineEventHandler(async (event) => {
         AND status NOT IN ('VOIDED','DRAFT','DELETED')
         AND date BETWEEN $2::date AND $3::date
   `
-  const [thisMonth, lastMonthSameDay, lastMonthFull] = await Promise.all([
+  // Earliest cached ACCREC invoice — lets the UI distinguish "we genuinely
+  // had $0 last May" from "we didn't have a Xero connection last May yet".
+  const earliestRowPromise = queryOne<{ earliest: string | null }>(
+    `SELECT MIN(date)::text AS earliest
+       FROM xero_invoices_cache
+       WHERE tenant_id = $1 AND type = 'ACCREC'`,
+    [tenantId],
+  )
+  const [thisMonth, lastMonthSameDay, lastMonthFull, earliestRow] = await Promise.all([
     queryOne<MonthRow>(sql, [tenantId, thisStart, thisEnd]),
     queryOne<MonthRow>(sql, [tenantId, lastStart, lastSameDay]),
     queryOne<MonthRow>(sql, [tenantId, lastStart, lastFullEnd]),
+    earliestRowPromise,
   ])
+
+  // "Sufficient history" means the start of last year's comparison window
+  // is on or after the earliest invoice we have cached for this tenant.
+  // Otherwise the comparison is meaningless and the UI should say so.
+  const dataAvailableSince = earliestRow?.earliest ?? null
+  const historicalDataSufficient = !!(dataAvailableSince && dataAvailableSince <= lastStart)
 
   const thisInvoiced = Number(thisMonth?.invoiced_cents ?? 0) / 100
   const lastSameDayInvoiced = Number(lastMonthSameDay?.invoiced_cents ?? 0) / 100
@@ -69,5 +84,7 @@ export default defineEventHandler(async (event) => {
       invoiced: Math.round(lastFullInvoiced * 100) / 100,
     },
     deltaPct: { sameDay: sameDayDelta, fullMonth: fullMonthDelta },
+    dataAvailableSince,
+    historicalDataSufficient,
   }
 })

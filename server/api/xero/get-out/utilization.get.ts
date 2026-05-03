@@ -21,15 +21,22 @@ interface UtilRow {
   billable_amount_cents: string | number
 }
 
+interface CapacityRow {
+  billable_team_size: string | number
+  total_weekly_capacity: string | number | null
+}
+
 function n(v: unknown): number {
   if (v == null) return 0
   const num = typeof v === 'number' ? v : Number(v)
   return Number.isFinite(num) ? num : 0
 }
 
-// Available hours per working day. 7.5h is a common Australian agency
-// default — adjust if the tenant configures something different later.
+// Default daily/weekly hours used when a team member has no `weekly_capacity`
+// configured. 7.5h × 5 working days = 37.5h is a common Australian agency
+// baseline. A team member's own `weekly_capacity` overrides this.
 const DEFAULT_DAILY_HOURS = 7.5
+const DEFAULT_WEEKLY_HOURS = DEFAULT_DAILY_HOURS * 5
 
 function workingDaysSoFar(): number {
   const today = new Date()
@@ -51,23 +58,47 @@ export default defineEventHandler(async (event) => {
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10)
   const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().slice(0, 10)
 
-  const rows = await queryRows<UtilRow>(
-    `SELECT
-       te.user_id,
-       tm.name AS user_name,
-       SUM(te.hours)::text AS total_hours,
-       SUM(CASE WHEN te.billable THEN te.hours ELSE 0 END)::text AS billable_hours,
-       (SUM(CASE WHEN te.billable THEN te.hours * te.hourly_rate ELSE 0 END) * 100)::bigint::text
-         AS billable_amount_cents
-     FROM time_entries te
-     JOIN team_members tm ON te.user_id = tm.id
-     WHERE te.date BETWEEN $1::date AND $2::date
-     GROUP BY te.user_id, tm.name
-     ORDER BY billable_hours DESC NULLS LAST`,
-    [monthStart, monthEnd],
-  )
+  // Team capacity is the denominator for utilization. Active team members
+  // explicitly marked non-billable (target_utilization = 0 — typically admin/HR)
+  // are excluded so the headline % isn't dragged down by people who aren't
+  // expected to log billable hours.
+  const [rows, capacity] = await Promise.all([
+    queryRows<UtilRow>(
+      `SELECT
+         te.user_id,
+         tm.name AS user_name,
+         SUM(te.hours)::text AS total_hours,
+         SUM(CASE WHEN te.billable THEN te.hours ELSE 0 END)::text AS billable_hours,
+         (SUM(CASE WHEN te.billable THEN te.hours * te.hourly_rate ELSE 0 END) * 100)::bigint::text
+           AS billable_amount_cents
+       FROM time_entries te
+       JOIN team_members tm ON te.user_id = tm.id
+       WHERE te.date BETWEEN $1::date AND $2::date
+       GROUP BY te.user_id, tm.name
+       ORDER BY billable_hours DESC NULLS LAST`,
+      [monthStart, monthEnd],
+    ),
+    queryRows<CapacityRow>(
+      `SELECT
+         COUNT(*)::text AS billable_team_size,
+         COALESCE(SUM(COALESCE(weekly_capacity, $1)), 0)::text AS total_weekly_capacity
+       FROM team_members
+       WHERE is_active = true
+         AND (target_utilization IS NULL OR target_utilization > 0)`,
+      [DEFAULT_WEEKLY_HOURS],
+    ),
+  ])
 
   const workingDays = workingDaysSoFar()
+  const billableTeamSize = Number(capacity[0]?.billable_team_size ?? 0)
+  const totalWeeklyCapacity = Number(capacity[0]?.total_weekly_capacity ?? 0)
+  // Spread weekly capacity over a 5-day work-week to derive daily, then
+  // multiply by working days elapsed this month for available hours.
+  const totalAvailable = billableTeamSize > 0 && totalWeeklyCapacity > 0
+    ? (totalWeeklyCapacity / 5) * workingDays
+    : 0
+  // Per-user "available" still uses the default — granular caps would
+  // need the per-user weekly_capacity, but we don't surface that here.
   const availableHoursPerUser = workingDays * DEFAULT_DAILY_HOURS
 
   let totalLogged = 0
@@ -95,11 +126,9 @@ export default defineEventHandler(async (event) => {
     }
   })
 
-  // Agency-wide utilization across the people who logged ANY time this
-  // month. Doesn't account for staff on leave or non-time-tracking roles
-  // (admin, HR) — for the headline number we want to compare what
-  // producers do, not what admin does.
-  const totalAvailable = members.length * availableHoursPerUser
+  // Agency-wide utilization uses true team capacity (active + billable team
+  // members), so the headline % stays meaningful even when no time has been
+  // logged yet this month.
   const overallUtilization = totalAvailable > 0
     ? Math.round((totalBillable / totalAvailable) * 1000) / 10
     : 0
@@ -119,7 +148,8 @@ export default defineEventHandler(async (event) => {
     overall: {
       totalLogged: Math.round(totalLogged * 10) / 10,
       totalBillable: Math.round(totalBillable * 10) / 10,
-      totalAvailable,
+      totalAvailable: Math.round(totalAvailable * 10) / 10,
+      billableTeamSize,
       utilizationPct: overallUtilization,
       band,
       avgBillableRate,
