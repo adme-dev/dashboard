@@ -1,3 +1,16 @@
+/**
+ * GET /api/xero/get-out
+ *
+ * Calculates the "Get Out" cashflow target for the business.
+ *
+ *   target = wages + expenses + extras  (all configurable per tenant)
+ *   shortfall = target - invoiced this month
+ *
+ * Pulls live ACCREC invoices from Xero for the current month, plus loads
+ * the per-tenant config from agency_settings (migration 095). Falls back
+ * to the historical defaults if nothing is configured.
+ */
+
 import { createError } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { xeroFetch } from '../../utils/xeroClient'
@@ -6,56 +19,22 @@ import { getSelectedTenant } from '../../utils/session'
 import { cachedFetch } from '../../utils/kv'
 import { toXeroDateTime } from '../../utils/xeroDataFetcher'
 import { dedupedXeroCall } from '../../utils/xeroRateLimit'
-
-
-/**
- * GET /api/xero/get-out
- *
- * Calculates the "Get Out" cashflow target for the business.
- * Pulls live invoice data from Xero for current month billing,
- * and combines with configured fixed costs to show:
- *   - Estimated Monthly Wages
- *   - Expenses only Total
- *   - Extras (ATO, loans, interest)
- *   - Total Expenses inc Extras
- *   - Updated monthly GET OUT (revenue target)
- *   - Current Month Invoicing Total
- *   - Difference (shortfall / surplus)
- *
- * Fixed costs are read from agency_settings table (configurable per tenant).
- */
-
-interface GetOutConfig {
-  monthlyWages: number
-  estimatedExpenses: number
-  extras: {
-    atoRepayment: number
-    loan1: number
-    loan2: number
-    loanInterest: number
-  }
-}
-
-function getDefaultConfig(): GetOutConfig {
-  return {
-    monthlyWages: 102_263,
-    estimatedExpenses: 44_026,
-    extras: {
-      atoRepayment: 5_000,
-      loan1: 3_000,
-      loan2: 1_500,
-      loanInterest: 824,
-    },
-  }
-}
+import { loadGetOutConfig, summariseConfig } from '../../utils/getOutConfig'
 
 export default eventHandler(async (event) => {
   await requireAuth(event)
   const token = await getActiveTokenForSession(event)
-  const tenantId = await getSelectedTenant(event)
-  if (!tenantId) {
+  const tenantIdRaw = await getSelectedTenant(event)
+  if (!tenantIdRaw) {
     throw createError({ statusCode: 400, statusMessage: 'No organization selected' })
   }
+  if (!token) {
+    throw createError({ statusCode: 401, statusMessage: 'Not authenticated with Xero' })
+  }
+  // Locked-in non-nullable refs so the captures inside cachedFetch's closure
+  // can pass them to xeroFetch without re-narrowing.
+  const tenantId: string = tenantIdRaw
+  const accessToken: string = token.access_token!
 
   const cacheKey = `xero-get-out:${tenantId}`
 
@@ -82,10 +61,10 @@ export default eventHandler(async (event) => {
           `get-out:${tenantId}:${year}-${month}:p${page}`,
           `get-out-p${page}`,
           () => xeroFetch<any>({
-            accessToken: token.access_token!,
+            accessToken,
             tenantId,
             path: `Invoices?${params.toString()}`,
-          })
+          }),
         )
         const invoices = body?.invoices || []
         all.push(...invoices)
@@ -98,22 +77,21 @@ export default eventHandler(async (event) => {
     const { invoices, truncated } = await fetchAllPages()
     const currentMonthInvoicedTotal = invoices.reduce(
       (sum: number, inv: any) => sum + (Number(inv.total) || 0),
-      0
+      0,
     )
     const currentMonthInvoicedCount = invoices.length
 
-    // ── Load configuration (fallback to defaults) ──
-    // TODO: load from DB once agency_settings table has get_out_config column
-    const config = getDefaultConfig()
+    // ── Configurable inputs (DB-backed via agency_settings) ──
+    const config = await loadGetOutConfig(tenantId)
+    const totals = summariseConfig(config)
 
-    const extrasTotal =
-      config.extras.atoRepayment +
-      config.extras.loan1 +
-      config.extras.loan2 +
-      config.extras.loanInterest
-
-    const expensesTotalIncExtras = config.estimatedExpenses + extrasTotal
-    const getOutTarget = config.monthlyWages + expensesTotalIncExtras
+    // Convert cents back to dollars for the existing response shape so the
+    // UI doesn't need a coordinated change.
+    const wages = totals.wagesCents / 100
+    const expensesEstimated = totals.expensesCents / 100
+    const extrasTotal = totals.extrasCents / 100
+    const expensesTotalIncExtras = expensesEstimated + extrasTotal
+    const getOutTarget = wages + expensesTotalIncExtras
     const difference = currentMonthInvoicedTotal - getOutTarget
 
     // ── Projection ──
@@ -123,22 +101,18 @@ export default eventHandler(async (event) => {
       : 0
 
     // ── Category breakdown from line items ──
-    // Aggregate by COA code from the invoice line items
     const categoryTotals: Record<string, { total: number; count: number }> = {}
     for (const inv of invoices) {
       const items = inv.lineItems || []
       for (const item of items) {
         const code = item.accountCode || 'unknown'
-        if (!categoryTotals[code]) {
-          categoryTotals[code] = { total: 0, count: 0 }
-        }
+        if (!categoryTotals[code]) categoryTotals[code] = { total: 0, count: 0 }
         const lineTotal = (Number(item.quantity) || 0) * (Number(item.unitAmount) || 0)
         categoryTotals[code].total += lineTotal
         categoryTotals[code].count += 1
       }
     }
 
-    // Map to friendly names
     const categoryMap: Record<string, string> = {
       '205': 'Printing',
       '210': 'Production',
@@ -158,6 +132,19 @@ export default eventHandler(async (event) => {
       count: data.count,
     })).sort((a, b) => b.total - a.total)
 
+    // Backward-compatible "extras detail" for the old UI section. Pulls
+    // the first matches per legacy label so the existing template renders;
+    // anything beyond the four legacy slots lives in `config.lines`.
+    const extrasLines = config.lines.filter(l => l.category === 'extras')
+    const findCents = (substr: string) =>
+      (extrasLines.find(l => l.label.toLowerCase().includes(substr))?.amountCents ?? 0) / 100
+    const legacyExtras = {
+      atoRepayment: findCents('ato'),
+      loan1: findCents('loan 1'),
+      loan2: findCents('loan 2'),
+      loanInterest: findCents('interest'),
+    }
+
     return {
       period: {
         year,
@@ -166,14 +153,13 @@ export default eventHandler(async (event) => {
         dayOfMonth,
         daysInMonth,
       },
+      // Full editable config — the new settings UI consumes this directly.
       config,
-      wages: config.monthlyWages,
+      // Legacy shape for the existing template — preserved for back-compat.
+      wages,
       expenses: {
-        estimated: config.estimatedExpenses,
-        extras: {
-          detail: config.extras,
-          total: extrasTotal,
-        },
+        estimated: expensesEstimated,
+        extras: { detail: legacyExtras, total: extrasTotal },
         totalIncExtras: expensesTotalIncExtras,
       },
       getOutTarget,

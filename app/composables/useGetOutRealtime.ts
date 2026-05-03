@@ -18,15 +18,16 @@ export interface GetOutData {
     dayOfMonth: number
     daysInMonth: number
   }
+  // New shape: editable line items grouped by category. The settings
+  // modal writes to this same shape via PUT /api/xero/get-out/config.
   config: {
-    monthlyWages: number
-    estimatedExpenses: number
-    extras: {
-      atoRepayment: number
-      loan1: number
-      loan2: number
-      loanInterest: number
-    }
+    lines: Array<{
+      id: string
+      label: string
+      category: 'wages' | 'expenses' | 'extras'
+      amountCents: number
+      notes?: string | null
+    }>
   }
   wages: number
   expenses: {

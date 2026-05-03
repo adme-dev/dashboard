@@ -19,6 +19,35 @@ const breadcrumbs = computed(() => [
   { label: 'XeroFlow', to: '/xeroflow' },
   { label: 'Get Out', to: '/xeroflow/get-out' },
 ])
+
+// ── Pacing curve (cumulative this month vs prior vs target line) ──
+interface PacingResponse {
+  period: { year: number; month: number; daysInMonth: number; dayOfMonth: number }
+  target: number
+  dailyPaceTarget: number
+  currentTotal: number
+  priorTotal: number
+  points: Array<{ day: number; currentCumulative: number | null; priorCumulative: number | null; targetLine: number }>
+}
+const { data: pacing } = await useFetch<PacingResponse>('/api/xero/get-out/pacing', {
+  lazy: true, server: false,
+})
+
+// ── Last 12 months target vs invoiced ──
+interface HistoryResponse {
+  months: Array<{ monthStart: string; monthLabel: string; invoiced: number; target: number; hit: boolean; pctOfTarget: number; invoiceCount: number }>
+  summary: { monthsTracked: number; hitCount: number; missCount: number; hitRate: number; avgPctOfTarget: number; currentTarget: number }
+}
+const { data: history } = await useFetch<HistoryResponse>('/api/xero/get-out/history', {
+  lazy: true, server: false,
+})
+
+// ── Settings modal — gear button in the header opens it ──
+const showConfigModal = ref(false)
+async function onConfigSaved() {
+  // Bust both the page payload and the pacing/history charts since target changes everywhere
+  await Promise.all([refresh?.(), refreshNuxtData()])
+}
 </script>
 
 <template>
@@ -34,6 +63,14 @@ const breadcrumbs = computed(() => [
               <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
               Live
             </div>
+            <UButton
+              icon="i-lucide-settings"
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              label="Configure"
+              @click="showConfigModal = true"
+            />
             <UButton
               icon="i-lucide-refresh-cw"
               color="neutral"
@@ -64,7 +101,7 @@ const breadcrumbs = computed(() => [
         color="error"
         variant="subtle"
         title="Unable to load Get Out data"
-        :description="error.statusMessage || 'Please try refreshing.'"
+        :description="(error as any)?.statusMessage || 'Please try refreshing.'"
       />
 
       <div v-else-if="data" class="space-y-6 max-w-3xl mx-auto">
@@ -150,6 +187,28 @@ const breadcrumbs = computed(() => [
           </div>
         </UCard>
 
+        <!-- Pacing curve — cumulative this month vs last month vs daily-pace target -->
+        <UCard v-if="pacing && pacing.points.length">
+          <template #header>
+            <div class="flex items-center justify-between">
+              <h3 class="font-semibold">Pacing</h3>
+              <p class="text-xs text-muted">
+                Day {{ pacing.period.dayOfMonth }}/{{ pacing.period.daysInMonth }} ·
+                {{ formatCurrency(pacing.currentTotal) }} of {{ formatCurrency(pacing.target) }}
+                <span v-if="pacing.priorTotal > 0" class="ml-1">
+                  · last month finished {{ formatCurrency(pacing.priorTotal) }}
+                </span>
+              </p>
+            </div>
+          </template>
+          <XeroflowGetOutPacingChart
+            :points="pacing.points"
+            :target="pacing.target"
+            :days-in-month="pacing.period.daysInMonth"
+            :day-of-month="pacing.period.dayOfMonth"
+          />
+        </UCard>
+
         <!-- Current Month Performance -->
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <UCard>
@@ -195,7 +254,61 @@ const breadcrumbs = computed(() => [
             </div>
           </div>
         </UCard>
+
+        <!-- 12-month history strip -->
+        <UCard v-if="history && history.months.length">
+          <template #header>
+            <div class="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h3 class="font-semibold">12-month performance</h3>
+                <p class="text-xs text-muted">
+                  Hit target {{ history.summary.hitCount }} of {{ history.summary.monthsTracked }} months
+                  · avg {{ history.summary.avgPctOfTarget }}% of target
+                </p>
+              </div>
+              <UBadge
+                :color="history.summary.hitRate >= 75 ? 'success' : history.summary.hitRate >= 50 ? 'warning' : 'error'"
+                variant="subtle"
+                size="sm"
+              >
+                {{ history.summary.hitRate }}% hit rate
+              </UBadge>
+            </div>
+          </template>
+          <div class="grid grid-cols-6 sm:grid-cols-12 gap-2">
+            <UTooltip
+              v-for="m in history.months"
+              :key="m.monthStart"
+              :text="`${m.monthLabel}: ${formatCurrency(m.invoiced)} of ${formatCurrency(m.target)} (${m.pctOfTarget}%)`"
+            >
+              <div class="flex flex-col items-center gap-1">
+                <div class="relative w-full h-16 bg-muted/10 rounded overflow-hidden">
+                  <div
+                    class="absolute bottom-0 left-0 right-0 transition-all"
+                    :class="m.hit ? 'bg-emerald-500/70 dark:bg-emerald-400/70' : 'bg-amber-500/70 dark:bg-amber-400/70'"
+                    :style="{ height: `${Math.min(100, m.pctOfTarget)}%` }"
+                  />
+                  <!-- 100% target line -->
+                  <div class="absolute left-0 right-0 border-t border-default" style="top: 0%" />
+                </div>
+                <span class="text-[10px] text-muted truncate w-full text-center">{{ m.monthLabel }}</span>
+              </div>
+            </UTooltip>
+          </div>
+          <p class="text-[11px] text-muted mt-3 italic">
+            Bars compare each month's invoicing to today's Get Out target.
+            Note: target reflects current config — historical config snapshots aren't tracked.
+          </p>
+        </UCard>
       </div>
     </template>
   </UDashboardPanel>
+
+  <!-- Settings modal — gear button in header opens it -->
+  <XeroflowGetOutConfigModal
+    v-if="data"
+    v-model:open="showConfigModal"
+    :initial-lines="data.config?.lines ?? []"
+    @saved="onConfigSaved"
+  />
 </template>
