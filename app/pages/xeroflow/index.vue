@@ -151,6 +151,8 @@ const budgetAlerts = computed(() => {
 
 // Quick action links for all XeroFlow pages
 const quickActions = [
+  { label: 'Get Out', icon: 'i-lucide-target', to: '/xeroflow/get-out' },
+  { label: 'Invoice Builder', icon: 'i-lucide-file-plus', to: '/xeroflow/invoice-builder' },
   { label: 'Invoices', icon: 'i-lucide-receipt', to: '/invoices' },
   { label: 'Expenses', icon: 'i-lucide-wallet', to: '/expenses' },
   { label: 'Cash Flow', icon: 'i-lucide-trending-up', to: '/cashflow' },
@@ -270,7 +272,7 @@ const quickActions = [
           </template>
         </ClientOnly>
 
-        <!-- Main Dashboard Grid: Cash Flow + Anomaly Alerts -->
+        <!-- Main Dashboard Grid: Cash Flow + Get Out + Anomaly Alerts -->
         <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
           <!-- Cash Flow Forecast (2/3 width) -->
           <div class="xl:col-span-2">
@@ -285,8 +287,10 @@ const quickActions = [
             </ClientOnly>
           </div>
 
-          <!-- Anomaly Alerts (1/3 width) -->
-          <div>
+          <!-- Get Out Panel (1/3 width) -->
+          <div class="space-y-6">
+            <XeroflowGetOutPanel />
+
             <ClientOnly>
               <AsyncAnomalyAlerts
                 :data="anomalyData as any"

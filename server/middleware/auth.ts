@@ -16,6 +16,7 @@ const publicRoutes = [
   '/api/test/cookies',
   '/api/webhooks',
   '/api/xero/callback',
+  '/api/xero/webhook',
   '/api/_nuxt_icon',
   '/_nuxt',
   '/__nuxt_devtools__',
