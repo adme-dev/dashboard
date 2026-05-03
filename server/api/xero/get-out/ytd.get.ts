@@ -63,6 +63,15 @@ export default defineEventHandler(async (event) => {
   const onPace = ytdInvoiced >= expectedByNow
   const projectedAnnual = daysIn > 0 ? (ytdInvoiced / daysIn) * totalDays : 0
 
+  // Stale goal heuristic: a goal that's more than 1.5× under (or over) the
+  // current pace by month 4 is almost certainly stale. Surface the projection
+  // so the operator can re-baseline rather than chase a fictional number.
+  const goalLooksStale = (
+    daysIn >= 60
+    && expectedByNow > 0
+    && (ytdInvoiced / expectedByNow > 1.5 || ytdInvoiced / expectedByNow < 0.5)
+  )
+
   return {
     annualGoal: Math.round(annualGoal * 100) / 100,
     goalSource,
@@ -74,5 +83,6 @@ export default defineEventHandler(async (event) => {
     projectedAnnual: Math.round(projectedAnnual * 100) / 100,
     daysIn,
     totalDays,
+    goalLooksStale,
   }
 })

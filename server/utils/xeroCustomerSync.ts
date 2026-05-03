@@ -547,6 +547,98 @@ export async function recomputeCustomerRollups(opts: {
   return Number(rows[0]?.count ?? 0)
 }
 
+// ─── Inferred MRR (retainer pattern detection) ───────────────────
+
+/**
+ * Detects retainer-style billing that isn't modeled as Xero RepeatingInvoices.
+ * Looks at each contact's invoice cadence over the last 6 months and scores:
+ *
+ *   high   → 5+ active months AND stddev/mean < 0.2 (very steady)
+ *   medium → 4+ active months AND stddev/mean < 0.4 (mostly steady)
+ *   low    → 3+ active months (some pattern)
+ *   none   → fewer than 3 active months
+ *
+ * `inferred_mrr_cents` = median of monthly totals across active months
+ * (median is more robust than mean against an unusual single-month spike).
+ *
+ * `recurring_basis` rolls up Xero schedules + inferred:
+ *   xero_repeating > inferred_high > inferred_medium > inferred_low > none
+ */
+export async function recomputeInferredMRR(opts: { tenantId: string }): Promise<number> {
+  const { tenantId } = opts
+
+  // Single statement: compute inferred values for any contact with activity
+  // in the last 6 months, LEFT JOIN onto the rollup row, and let nulls fall
+  // back to defaults so contacts with no recent activity get cleanly reset.
+  const result = await query<{ contact_id: string }>(
+    `
+    WITH monthly AS (
+      SELECT
+        contact_id,
+        DATE_TRUNC('month', date)::date AS month_start,
+        SUM(total_cents)::bigint AS month_cents
+      FROM xero_invoices_cache
+      WHERE tenant_id = $1
+        AND type = 'ACCREC'
+        AND status IN ('PAID','AUTHORISED')
+        AND date >= (CURRENT_DATE - INTERVAL '6 months')::date
+      GROUP BY contact_id, DATE_TRUNC('month', date)
+      HAVING SUM(total_cents) > 0
+    ),
+    agg AS (
+      SELECT
+        contact_id,
+        COUNT(*)::int AS active_months,
+        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY month_cents) AS median_cents,
+        AVG(month_cents)::numeric AS avg_cents,
+        STDDEV_POP(month_cents)::numeric AS stddev_cents
+      FROM monthly
+      GROUP BY contact_id
+    ),
+    inferred AS (
+      SELECT
+        contact_id,
+        active_months,
+        median_cents,
+        avg_cents,
+        stddev_cents,
+        CASE
+          WHEN active_months >= 5
+               AND avg_cents > 0
+               AND (stddev_cents / avg_cents) < 0.2 THEN 'high'
+          WHEN active_months >= 4
+               AND avg_cents > 0
+               AND (stddev_cents / avg_cents) < 0.4 THEN 'medium'
+          WHEN active_months >= 3 THEN 'low'
+          ELSE 'none'
+        END AS confidence
+      FROM agg
+    )
+    UPDATE xero_customer_rollups r SET
+      inferred_mrr_cents = CASE
+        WHEN i.confidence IS NULL OR i.confidence = 'none' THEN 0
+        ELSE COALESCE(i.median_cents, 0)::bigint
+      END,
+      inferred_mrr_confidence = COALESCE(i.confidence, 'none'),
+      inferred_active_months  = COALESCE(i.active_months, 0),
+      recurring_basis = CASE
+        WHEN r.has_active_repeating         THEN 'xero_repeating'
+        WHEN COALESCE(i.confidence, 'none') = 'high'   THEN 'inferred_high'
+        WHEN COALESCE(i.confidence, 'none') = 'medium' THEN 'inferred_medium'
+        WHEN COALESCE(i.confidence, 'none') = 'low'    THEN 'inferred_low'
+        ELSE 'none'
+      END
+    FROM (SELECT contact_id FROM xero_customer_rollups WHERE tenant_id = $1) ids
+    LEFT JOIN inferred i USING (contact_id)
+    WHERE r.tenant_id = $1
+      AND r.contact_id = ids.contact_id
+    RETURNING r.contact_id
+    `,
+    [tenantId],
+  )
+  return result.length
+}
+
 // ─── Insights (churn risk + forecast) ─────────────────────────────
 
 interface InsightsRow {
@@ -808,6 +900,15 @@ export async function fullCustomerSync(opts: {
     rollupsRecomputed = await recomputeCustomerRollups({ tenantId, mrrByContact: mrrMap })
   } catch (e: any) {
     errors.push(`rollups: ${e?.statusMessage ?? e?.message ?? String(e)}`)
+  }
+
+  // Inferred MRR is a post-pass over the rollup data — keep it in this
+  // orchestrator so a fresh sync always lands with both the schedule-based
+  // and the cadence-based recurring picture in the same row.
+  try {
+    await recomputeInferredMRR({ tenantId })
+  } catch (e: any) {
+    errors.push(`inferred-mrr: ${e?.statusMessage ?? e?.message ?? String(e)}`)
   }
 
   // Insights are pure derivations from rollup data — even if rollups are

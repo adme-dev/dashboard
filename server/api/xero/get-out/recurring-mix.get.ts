@@ -27,6 +27,9 @@ interface ContactInvoicedRow {
   contact_id: string
   invoiced_cents: string | number
   mrr_cents: string | number | null
+  inferred_mrr_cents: string | number | null
+  inferred_mrr_confidence: 'none' | 'low' | 'medium' | 'high' | null
+  has_active_repeating: boolean | null
 }
 
 function n(v: unknown): number {
@@ -49,7 +52,10 @@ export default defineEventHandler(async (event) => {
   const rows = await queryRows<ContactInvoicedRow>(
     `SELECT i.contact_id,
             SUM(i.total_cents)::text AS invoiced_cents,
-            cr.mrr_cents
+            cr.mrr_cents,
+            cr.inferred_mrr_cents,
+            cr.inferred_mrr_confidence,
+            cr.has_active_repeating
        FROM xero_invoices_cache i
        LEFT JOIN xero_customer_rollups cr
          ON cr.tenant_id = i.tenant_id AND cr.contact_id = i.contact_id
@@ -57,7 +63,8 @@ export default defineEventHandler(async (event) => {
          AND i.type = 'ACCREC'
          AND i.status NOT IN ('VOIDED','DRAFT','DELETED')
          AND i.date BETWEEN $2::date AND $3::date
-       GROUP BY i.contact_id, cr.mrr_cents`,
+       GROUP BY i.contact_id, cr.mrr_cents, cr.inferred_mrr_cents,
+                cr.inferred_mrr_confidence, cr.has_active_repeating`,
     [tenantId, monthStart, monthEnd],
   )
 
@@ -65,18 +72,32 @@ export default defineEventHandler(async (event) => {
   let recurringRevenue = 0
   let projectRevenue = 0
   let recurringClientCount = 0
+  let xeroScheduleClients = 0
+  let inferredClients = 0
 
   for (const r of rows) {
     const invoiced = n(r.invoiced_cents) / 100
-    const mrr = n(r.mrr_cents) / 100
+    // Prefer Xero's RepeatingInvoice MRR when set; otherwise fall back to
+    // the inferred MRR derived from invoice cadence.
+    const xeroMrr = n(r.mrr_cents) / 100
+    const inferredMrr = n(r.inferred_mrr_cents) / 100
+    const confidence = r.inferred_mrr_confidence ?? 'none'
+    const isXeroRepeating = !!r.has_active_repeating
+    const recurringSource = xeroMrr > 0
+      ? xeroMrr
+      // Only count medium/high inferred — "low" is too noisy for the headline %.
+      : (confidence === 'high' || confidence === 'medium' ? inferredMrr : 0)
+
     totalRevenue += invoiced
-    if (mrr > 0) {
+    if (recurringSource > 0) {
       // Cap recurring contribution per contact at invoiced amount —
-      // a contact's MRR can't exceed what we actually billed them.
-      const recurringPortion = Math.min(mrr, invoiced)
+      // a contact's recurring rate can't exceed what we actually billed them.
+      const recurringPortion = Math.min(recurringSource, invoiced)
       recurringRevenue += recurringPortion
       projectRevenue += invoiced - recurringPortion
       recurringClientCount++
+      if (isXeroRepeating) xeroScheduleClients++
+      else inferredClients++
     } else {
       projectRevenue += invoiced
     }
@@ -98,6 +119,8 @@ export default defineEventHandler(async (event) => {
     projectRevenue: Math.round(projectRevenue * 100) / 100,
     recurringPct,
     recurringClientCount,
+    xeroScheduleClients,
+    inferredClients,
     band,
   }
 })

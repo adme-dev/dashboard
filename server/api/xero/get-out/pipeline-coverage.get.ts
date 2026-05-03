@@ -14,6 +14,7 @@ import { xeroFetch } from '~~/server/utils/xeroClient'
 import { getActiveTokenForSession } from '~~/server/utils/tokenStore'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { cachedFetch } from '~~/server/utils/kv'
+import { queryOne } from '~~/server/utils/db'
 import { loadGetOutConfig, summariseConfig } from '~~/server/utils/getOutConfig'
 
 const QUOTE_PROBABILITY: Record<string, number> = {
@@ -94,12 +95,56 @@ export default defineEventHandler(async (event) => {
       console.warn('[pipeline-coverage] repeating fetch failed:', err?.message)
     }
 
+    // Inferred MRR — picks up retainer relationships that bill monthly
+    // through manually re-issued invoices instead of Xero RepeatingInvoices.
+    // Counts high+medium+low confidence × 3 months as the 90-day contribution.
+    // Weighting: high=1.0, medium=0.85, low=0.6 (low confidence still has signal
+    // — it just shouldn't count fully against a weighted forecast).
+    let inferredMrrTotal = 0
+    let inferredHighMrr = 0
+    let inferredMediumMrr = 0
+    let inferredLowMrr = 0
+    let inferredScheduleCount = 0
+    let inferredContribution = 0
+    let inferredWeightedContribution = 0
+    try {
+      const row = await queryOne<{
+        high_cents: string | null
+        medium_cents: string | null
+        low_cents: string | null
+        contact_count: string | null
+      }>(
+        `SELECT
+           COALESCE(SUM(CASE WHEN inferred_mrr_confidence='high'   THEN inferred_mrr_cents END), 0)::text AS high_cents,
+           COALESCE(SUM(CASE WHEN inferred_mrr_confidence='medium' THEN inferred_mrr_cents END), 0)::text AS medium_cents,
+           COALESCE(SUM(CASE WHEN inferred_mrr_confidence='low'    THEN inferred_mrr_cents END), 0)::text AS low_cents,
+           COUNT(*) FILTER (WHERE inferred_mrr_cents > 0)::text AS contact_count
+         FROM xero_customer_rollups
+         WHERE tenant_id = $1
+           AND NOT has_active_repeating`,
+        // NOT has_active_repeating prevents double-counting contacts that
+        // already showed up in the Xero RepeatingInvoices loop above.
+        [tenantId],
+      )
+      inferredHighMrr   = n(row?.high_cents) / 100
+      inferredMediumMrr = n(row?.medium_cents) / 100
+      inferredLowMrr    = n(row?.low_cents) / 100
+      inferredMrrTotal  = inferredHighMrr + inferredMediumMrr + inferredLowMrr
+      inferredScheduleCount = Number(row?.contact_count ?? 0)
+      // 90-day = 3 monthly firings per contact (face contribution).
+      inferredContribution = inferredMrrTotal * 3
+      // Weighted: high stays at 1.0, medium/low are downweighted.
+      inferredWeightedContribution = (inferredHighMrr * 1.0 + inferredMediumMrr * 0.85 + inferredLowMrr * 0.6) * 3
+    } catch (err: any) {
+      console.warn('[pipeline-coverage] inferred MRR query failed:', err?.message)
+    }
+
     const config = await loadGetOutConfig(tenantId)
     const monthlyTarget = summariseConfig(config).totalCents / 100
     const quarterlyTarget = monthlyTarget * 3
 
-    const totalPipeline = quotesFaceValue + recurringContribution
-    const weightedPipeline = quotesWeighted + recurringContribution  // recurring is contracted, weight 1.0
+    const totalPipeline = quotesFaceValue + recurringContribution + inferredContribution
+    const weightedPipeline = quotesWeighted + recurringContribution + inferredWeightedContribution  // recurring is contracted, weight 1.0
     const coverageFace = quarterlyTarget > 0
       ? Math.round((totalPipeline / quarterlyTarget) * 100) / 100
       : null
@@ -125,6 +170,13 @@ export default defineEventHandler(async (event) => {
         quoteCount,
         recurringContribution: Math.round(recurringContribution * 100) / 100,
         recurringScheduleCount,
+        // Inferred MRR — retainer-style billing without a Xero schedule.
+        inferredMonthlyMrr: Math.round(inferredMrrTotal * 100) / 100,
+        inferredHighMrr: Math.round(inferredHighMrr * 100) / 100,
+        inferredMediumMrr: Math.round(inferredMediumMrr * 100) / 100,
+        inferredLowMrr: Math.round(inferredLowMrr * 100) / 100,
+        inferredScheduleCount,
+        inferredContribution: Math.round(inferredContribution * 100) / 100,
         totalFace: Math.round(totalPipeline * 100) / 100,
         totalWeighted: Math.round(weightedPipeline * 100) / 100,
       },
