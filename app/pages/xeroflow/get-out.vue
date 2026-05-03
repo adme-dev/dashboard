@@ -98,6 +98,52 @@ function quoteStatusColor(status: 'draft' | 'sent' | 'accepted'): string {
   return 'neutral'
 }
 
+// ── Phase 3a: cash + AR aging + AP due ──
+const { data: cash } = await useFetch<{
+  cashOnHand: number; daysOfCash: number | null; monthsRunway: number | null
+  band: 'critical'|'tight'|'healthy'|'strong'|'unknown'; avgMonthlyOutflow: number
+}>('/api/xero/get-out/cash-position', { lazy: true, server: false })
+
+const { data: aging } = await useFetch<{
+  totalOutstanding: number; totalInvoices: number; averageDaysPastDue: number
+  agingSummary: Array<{ bucket: string; amount: number; count: number; percentage: number }>
+}>('/api/xero/reports/aging', { lazy: true, server: false })
+
+const { data: apDue } = await useFetch<{
+  totalDueThisMonth: number; totalDueThisWeek: number; totalOverdue: number
+  billCount: number; urgentCount: number
+}>('/api/xero/get-out/ap-due', { lazy: true, server: false })
+
+// ── Phase 3b: margin + recurring mix ──
+const { data: margin } = await useFetch<{
+  revenue: number; passthrough: number; agi: number; deliveryCosts: number
+  deliveryMargin: number | null
+  deliveryMarginBand: 'strong'|'healthy'|'concerning'|'red'|'unknown'
+}>('/api/xero/get-out/margin', { lazy: true, server: false })
+
+const { data: recurringMix } = await useFetch<{
+  totalRevenue: number; recurringRevenue: number; recurringPct: number
+  recurringClientCount: number; band: 'low'|'mixed'|'healthy'|'high'
+}>('/api/xero/get-out/recurring-mix', { lazy: true, server: false })
+
+function cashBandColor(b: string): string {
+  if (b === 'critical') return 'error'
+  if (b === 'tight') return 'warning'
+  if (b === 'strong' || b === 'healthy') return 'success'
+  return 'neutral'
+}
+function marginBandColor(b: string): string {
+  if (b === 'red') return 'error'
+  if (b === 'concerning') return 'warning'
+  if (b === 'strong' || b === 'healthy') return 'success'
+  return 'neutral'
+}
+function mixBandColor(b: string): string {
+  if (b === 'low') return 'warning'
+  if (b === 'mixed') return 'info'
+  return 'success'
+}
+
 // ── Settings modal — gear button in the header opens it ──
 const showConfigModal = ref(false)
 async function onConfigSaved() {
@@ -206,6 +252,80 @@ async function onConfigSaved() {
             </div>
             <p class="text-2xl font-bold tabular-nums">{{ data.period.daysInMonth - data.period.dayOfMonth }}</p>
             <p class="text-[11px] text-muted mt-1">Day {{ data.period.dayOfMonth }} of {{ data.period.daysInMonth }}</p>
+          </UCard>
+        </div>
+
+        <!-- ═══ Phase 3a + 3b: Cash reality + profit reality strip ═══ -->
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <!-- Cash on hand -->
+          <UCard :ui="{ body: '!p-4' }">
+            <div class="flex items-start justify-between mb-2">
+              <p class="text-xs text-muted uppercase tracking-wide">Cash on hand</p>
+              <UIcon name="i-lucide-banknote" class="size-5 text-emerald-500" />
+            </div>
+            <p class="text-xl font-bold tabular-nums">{{ cash ? formatCurrency(cash.cashOnHand) : '—' }}</p>
+            <div class="flex items-center gap-1.5 mt-1">
+              <UBadge v-if="cash?.daysOfCash != null" :color="cashBandColor(cash.band) as any" variant="subtle" size="xs">
+                {{ cash.daysOfCash }}d runway
+              </UBadge>
+              <span v-if="cash?.monthsRunway != null" class="text-[11px] text-muted">~{{ cash.monthsRunway }}mo</span>
+            </div>
+          </UCard>
+
+          <!-- AR aging snapshot -->
+          <UCard :ui="{ body: '!p-4' }">
+            <div class="flex items-start justify-between mb-2">
+              <p class="text-xs text-muted uppercase tracking-wide">AR outstanding</p>
+              <UIcon name="i-lucide-receipt" class="size-5 text-blue-500" />
+            </div>
+            <p class="text-xl font-bold tabular-nums">{{ aging ? formatCurrency(aging.totalOutstanding) : '—' }}</p>
+            <p class="text-[11px] text-muted mt-1">
+              Avg {{ aging ? Math.round(aging.averageDaysPastDue) : 0 }}d past due
+              <span v-if="aging?.totalInvoices">· {{ aging.totalInvoices }} inv</span>
+            </p>
+          </UCard>
+
+          <!-- AP due this month -->
+          <UCard :ui="{ body: '!p-4' }">
+            <div class="flex items-start justify-between mb-2">
+              <p class="text-xs text-muted uppercase tracking-wide">AP due this mo</p>
+              <UIcon name="i-lucide-credit-card" class="size-5 text-amber-500" />
+            </div>
+            <p class="text-xl font-bold tabular-nums">{{ apDue ? formatCurrency(apDue.totalDueThisMonth) : '—' }}</p>
+            <p class="text-[11px] mt-1" :class="(apDue?.totalOverdue ?? 0) > 0 ? 'text-red-500 font-medium' : 'text-muted'">
+              <span v-if="(apDue?.totalOverdue ?? 0) > 0">{{ formatCurrency(apDue?.totalOverdue) }} overdue · </span>
+              {{ apDue?.billCount ?? 0 }} bills
+            </p>
+          </UCard>
+
+          <!-- Delivery margin -->
+          <UCard :ui="{ body: '!p-4' }">
+            <div class="flex items-start justify-between mb-2">
+              <p class="text-xs text-muted uppercase tracking-wide">Delivery margin</p>
+              <UIcon name="i-lucide-percent" class="size-5 text-violet-500" />
+            </div>
+            <p class="text-xl font-bold tabular-nums">
+              {{ margin?.deliveryMargin != null ? `${margin.deliveryMargin}%` : '—' }}
+            </p>
+            <div class="flex items-center gap-1.5 mt-1">
+              <UBadge :color="marginBandColor(margin?.deliveryMarginBand ?? 'unknown') as any" variant="subtle" size="xs">
+                AGI {{ margin ? formatCurrency(margin.agi) : '—' }}
+              </UBadge>
+            </div>
+          </UCard>
+
+          <!-- Recurring mix -->
+          <UCard :ui="{ body: '!p-4' }">
+            <div class="flex items-start justify-between mb-2">
+              <p class="text-xs text-muted uppercase tracking-wide">Recurring mix</p>
+              <UIcon name="i-lucide-repeat" class="size-5 text-violet-500" />
+            </div>
+            <p class="text-xl font-bold tabular-nums">{{ recurringMix?.recurringPct ?? 0 }}%</p>
+            <div class="flex items-center gap-1.5 mt-1">
+              <UBadge :color="mixBandColor(recurringMix?.band ?? 'low') as any" variant="subtle" size="xs">
+                {{ recurringMix?.recurringClientCount ?? 0 }} retainers
+              </UBadge>
+            </div>
           </UCard>
         </div>
 
