@@ -163,6 +163,12 @@ const { data: taxProvision } = await useFetch<{
   totalSetAside: number
 }>('/api/xero/get-out/tax-provision', { lazy: true, server: false })
 
+const { data: quoteVel } = await useFetch<{
+  velocity: { avgSentToCloseDays: number | null; sampleSize: number; acceptanceRate: number | null; acceptedCount: number; declinedCount: number }
+  openSent: { totalCount: number; totalValue: number; likelyByEom: { count: number; value: number } }
+  ageBuckets: { fresh: { count: number; value: number }; warming: { count: number; value: number }; stale: { count: number; value: number }; dead: { count: number; value: number } }
+}>('/api/xero/get-out/quote-velocity', { lazy: true, server: false })
+
 function severityIconOps(s: string) {
   if (s === 'critical') return 'i-lucide-alert-octagon'
   if (s === 'high') return 'i-lucide-alert-triangle'
@@ -729,18 +735,37 @@ async function onConfigSaved() {
 
         <!-- ═══ Row: Top contributors (2/3) + Target breakdown (1/3) ═══ -->
         <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <UCard v-if="topClients && topClients.clients.length" class="xl:col-span-2" :ui="{ body: '!p-0' }">
+          <UCard class="xl:col-span-2" :ui="{ body: '!p-0' }">
             <template #header>
               <div class="flex items-center justify-between px-6">
                 <div>
                   <h3 class="font-semibold">Top contributors this month</h3>
                   <p class="text-sm text-muted">
-                    {{ topClients.contributorCount }} clients · {{ formatCurrency(topClients.totalThisMonth) }} total
+                    <span v-if="topClients && topClients.clients.length">
+                      {{ topClients.contributorCount }} clients · {{ formatCurrency(topClients.totalThisMonth) }} total
+                    </span>
+                    <span v-else-if="!topClients">Loading…</span>
+                    <span v-else>No invoices issued yet this month — typical end-of-month pattern</span>
                   </p>
                 </div>
               </div>
             </template>
-            <div class="overflow-x-auto">
+            <div v-if="!topClients" class="px-6 py-8">
+              <USkeleton class="h-4 w-3/4 mb-2" />
+              <USkeleton class="h-4 w-1/2" />
+            </div>
+            <div v-else-if="!topClients.clients.length" class="px-6 py-12 text-center">
+              <UIcon name="i-lucide-receipt" class="size-8 text-muted mx-auto mb-2" />
+              <p class="text-sm text-muted">
+                Top contributors will appear here once May invoicing starts.
+                <br>
+                Last month's contributors:
+              </p>
+              <p class="text-sm font-medium mt-2">
+                {{ formatCurrency(pacing?.priorTotal ?? 0) }} across the month
+              </p>
+            </div>
+            <div v-else class="overflow-x-auto">
               <table class="w-full text-sm">
                 <thead class="bg-elevated/50 text-sm uppercase text-muted">
                   <tr>
@@ -854,43 +879,24 @@ async function onConfigSaved() {
           </UCard>
         </div>
 
-        <!-- ═══ Row: Category breakdown (1/2) + 12-month history (1/2) ═══ -->
-        <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          <!-- Category Breakdown -->
-          <UCard v-if="data.categoryBreakdown?.length">
-            <template #header>
-              <h3 class="font-semibold">This month by category</h3>
-            </template>
-            <div class="space-y-2">
-              <div
-                v-for="cat in data.categoryBreakdown"
-                :key="cat.code"
-                class="flex items-center justify-between py-2 border-b border-default/50 last:border-0"
-              >
-                <div class="flex items-center gap-2">
-                  <UBadge size="sm" variant="subtle">{{ cat.code }}</UBadge>
-                  <span class="text-sm">{{ cat.name }}</span>
-                </div>
-                <div class="text-right">
-                  <span class="font-medium tabular-nums">{{ formatCurrency(cat.total) }}</span>
-                  <span class="text-sm text-muted ml-2">({{ cat.count }} lines)</span>
-                </div>
-              </div>
-            </div>
-          </UCard>
-
-          <!-- 12-month history strip -->
-          <UCard v-if="history && history.months.length">
+        <!-- ═══ Row: 12-month performance (2/3) + Quote velocity (1/3) ═══ -->
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <!-- 12-month history strip — wider so the bar chart breathes -->
+          <UCard class="xl:col-span-2">
             <template #header>
               <div class="flex items-center justify-between gap-3 flex-wrap">
                 <div>
                   <h3 class="font-semibold">12-month performance</h3>
                   <p class="text-sm text-muted">
-                    {{ history.summary.hitCount }}/{{ history.summary.monthsTracked }} hit
-                    · avg {{ history.summary.avgPctOfTarget }}% of target
+                    <span v-if="history && history.months.length">
+                      {{ history.summary.hitCount }}/{{ history.summary.monthsTracked }} hit
+                      · avg {{ history.summary.avgPctOfTarget }}% of target
+                    </span>
+                    <span v-else>Loading…</span>
                   </p>
                 </div>
                 <UBadge
+                  v-if="history && history.months.length"
                   :color="history.summary.hitRate >= 75 ? 'success' : history.summary.hitRate >= 50 ? 'warning' : 'error'"
                   variant="subtle"
                   size="sm"
@@ -899,30 +905,142 @@ async function onConfigSaved() {
                 </UBadge>
               </div>
             </template>
-            <div class="grid grid-cols-6 sm:grid-cols-12 gap-2">
-              <UTooltip
-                v-for="m in history.months"
-                :key="m.monthStart"
-                :text="`${m.monthLabel}: ${formatCurrency(m.invoiced)} of ${formatCurrency(m.target)} (${m.pctOfTarget}%)`"
-              >
-                <div class="flex flex-col items-center gap-1">
-                  <div class="relative w-full h-16 bg-muted/10 rounded overflow-hidden">
-                    <div
-                      class="absolute bottom-0 left-0 right-0 transition-all"
-                      :class="m.hit ? 'bg-emerald-500/70 dark:bg-emerald-400/70' : 'bg-amber-500/70 dark:bg-amber-400/70'"
-                      :style="{ height: `${Math.min(100, m.pctOfTarget)}%` }"
-                    />
-                    <div class="absolute left-0 right-0 border-t border-default" style="top: 0%" />
-                  </div>
-                  <span class="text-xs text-muted truncate w-full text-center">{{ m.monthLabel }}</span>
-                </div>
-              </UTooltip>
+            <div v-if="!history || !history.months.length" class="py-8">
+              <USkeleton class="h-16 w-full" />
             </div>
-            <p class="text-xs text-muted mt-3 italic">
-              Bars compare each month's invoicing to today's Get Out target.
-            </p>
+            <template v-else>
+              <div class="grid grid-cols-6 sm:grid-cols-12 gap-2">
+                <UTooltip
+                  v-for="m in history.months"
+                  :key="m.monthStart"
+                  :text="`${m.monthLabel}: ${formatCurrency(m.invoiced)} of ${formatCurrency(m.target)} (${m.pctOfTarget}%)`"
+                >
+                  <div class="flex flex-col items-center gap-1">
+                    <div class="relative w-full h-16 bg-muted/10 rounded overflow-hidden">
+                      <div
+                        class="absolute bottom-0 left-0 right-0 transition-all"
+                        :class="m.hit ? 'bg-emerald-500/70 dark:bg-emerald-400/70' : 'bg-amber-500/70 dark:bg-amber-400/70'"
+                        :style="{ height: `${Math.min(100, m.pctOfTarget)}%` }"
+                      />
+                      <div class="absolute left-0 right-0 border-t border-default" style="top: 0%" />
+                    </div>
+                    <span class="text-xs text-muted truncate w-full text-center">{{ m.monthLabel }}</span>
+                  </div>
+                </UTooltip>
+              </div>
+              <p class="text-xs text-muted mt-3 italic">
+                Bars compare each month's invoicing to today's Get Out target.
+              </p>
+            </template>
+          </UCard>
+
+          <!-- Quote velocity — pairs with the existing Open quotes card to show
+               sent→close cadence and how many of the open sent quotes are
+               likely to close before EOM. -->
+          <UCard>
+            <template #header>
+              <div>
+                <h3 class="font-semibold">Quote velocity</h3>
+                <p class="text-sm text-muted">
+                  <span v-if="quoteVel && quoteVel.velocity.avgSentToCloseDays != null">
+                    Avg sent → close: {{ quoteVel.velocity.avgSentToCloseDays }}d
+                    · {{ quoteVel.velocity.acceptanceRate }}% accepted
+                  </span>
+                  <span v-else-if="quoteVel">Not enough closed quotes for a velocity number yet</span>
+                  <span v-else>Loading…</span>
+                </p>
+              </div>
+            </template>
+            <div v-if="!quoteVel" class="py-4">
+              <USkeleton class="h-4 w-full mb-2" />
+              <USkeleton class="h-4 w-3/4" />
+            </div>
+            <div v-else class="space-y-4 text-sm">
+              <div>
+                <p class="text-xs uppercase text-muted">Likely to close by EOM</p>
+                <p class="text-2xl font-bold tabular-nums text-emerald-500">
+                  {{ formatCurrency(quoteVel.openSent.likelyByEom.value) }}
+                </p>
+                <p class="text-sm text-muted">
+                  {{ quoteVel.openSent.likelyByEom.count }} of {{ quoteVel.openSent.totalCount }} open sent quotes
+                </p>
+              </div>
+              <div class="space-y-1.5 pt-3 border-t border-default">
+                <p class="text-xs uppercase text-muted mb-2">Open sent by age</p>
+                <div class="flex items-center justify-between">
+                  <span class="flex items-center gap-2">
+                    <span class="size-2 rounded-full bg-emerald-500" />
+                    Fresh (≤7d)
+                  </span>
+                  <span class="tabular-nums">
+                    {{ quoteVel.ageBuckets.fresh.count }}
+                    · {{ formatCurrency(quoteVel.ageBuckets.fresh.value) }}
+                  </span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="flex items-center gap-2">
+                    <span class="size-2 rounded-full bg-amber-400" />
+                    Warming (8–30d)
+                  </span>
+                  <span class="tabular-nums">
+                    {{ quoteVel.ageBuckets.warming.count }}
+                    · {{ formatCurrency(quoteVel.ageBuckets.warming.value) }}
+                  </span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="flex items-center gap-2">
+                    <span class="size-2 rounded-full bg-orange-500" />
+                    Stale (31–90d)
+                  </span>
+                  <span class="tabular-nums">
+                    {{ quoteVel.ageBuckets.stale.count }}
+                    · {{ formatCurrency(quoteVel.ageBuckets.stale.value) }}
+                  </span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="flex items-center gap-2">
+                    <span class="size-2 rounded-full bg-red-500" />
+                    Dead (&gt;90d)
+                  </span>
+                  <span class="tabular-nums">
+                    {{ quoteVel.ageBuckets.dead.count }}
+                    · {{ formatCurrency(quoteVel.ageBuckets.dead.value) }}
+                  </span>
+                </div>
+              </div>
+              <p class="text-xs text-muted italic pt-2 border-t border-default">
+                Velocity from {{ quoteVel.velocity.sampleSize }} closed quote{{ quoteVel.velocity.sampleSize === 1 ? '' : 's' }}.
+                Dead quotes &gt; 90d should be archived.
+              </p>
+            </div>
           </UCard>
         </div>
+
+        <!-- ═══ Row: Category breakdown (full width when it has data) ═══ -->
+        <UCard v-if="data.categoryBreakdown?.length">
+          <template #header>
+            <div class="flex items-center justify-between">
+              <h3 class="font-semibold">This month by category</h3>
+              <p class="text-sm text-muted">{{ data.categoryBreakdown.length }} categories</p>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+            <div
+              v-for="cat in data.categoryBreakdown"
+              :key="cat.code"
+              class="flex items-center justify-between py-2 px-3 rounded border border-default/50"
+            >
+              <div class="flex items-center gap-2 min-w-0">
+                <UBadge size="sm" variant="subtle">{{ cat.code }}</UBadge>
+                <span class="text-sm truncate">{{ cat.name }}</span>
+              </div>
+              <div class="text-right shrink-0 ml-2">
+                <span class="font-medium tabular-nums">{{ formatCurrency(cat.total) }}</span>
+                <p class="text-xs text-muted">{{ cat.count }} lines</p>
+              </div>
+            </div>
+          </div>
+        </UCard>
       </div>
     </template>
   </UDashboardPanel>
