@@ -274,6 +274,9 @@ const bankDiscrepancy = computed(() => {
         @sync="handleSyncAll"
       />
 
+      <!-- Connection Health Strip -->
+      <ConnectionHealthStrip />
+
       <!-- Summary Cards -->
       <div v-if="spendData" class="grid grid-cols-2 lg:grid-cols-6 gap-4">
         <!-- Total Spend -->
