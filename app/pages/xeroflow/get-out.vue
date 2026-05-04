@@ -569,28 +569,36 @@ async function onConfigSaved() {
 
         <!-- ═══ Row: Recurring calendar + AR collection forecast + Tax provision ═══ -->
         <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <!-- Recurring schedule calendar -->
-          <UCard v-if="recurringCal" :ui="{ body: '!p-0' }">
+          <!-- Recurring schedule calendar — always renders the slot so the
+               row stays a clean 3-up even while data is loading or empty. -->
+          <UCard :ui="{ body: '!p-0' }">
             <template #header>
               <div class="px-6">
                 <div class="flex items-center justify-between">
                   <h3 class="font-semibold">Retainer calendar</h3>
                   <UBadge
-                    v-if="recurringCal.counts.missing > 0"
+                    v-if="recurringCal && recurringCal.counts.missing > 0"
                     color="error" variant="subtle" size="sm"
                   >
                     {{ recurringCal.counts.missing }} missing
                   </UBadge>
-                  <UBadge v-else-if="recurringCal.counts.fired > 0" color="success" variant="subtle" size="sm">
+                  <UBadge v-else-if="recurringCal && recurringCal.counts.fired > 0" color="success" variant="subtle" size="sm">
                     All clear
                   </UBadge>
                 </div>
                 <p class="text-sm text-muted">
-                  {{ recurringCal.counts.fired }} fired · {{ recurringCal.counts.pending }} pending · {{ recurringCal.counts.missing }} missing
+                  <span v-if="recurringCal">
+                    {{ recurringCal.counts.fired }} fired · {{ recurringCal.counts.pending }} pending · {{ recurringCal.counts.missing }} missing
+                  </span>
+                  <span v-else>Loading…</span>
                 </p>
               </div>
             </template>
-            <ul class="divide-y divide-default max-h-80 overflow-y-auto">
+            <div v-if="!recurringCal" class="px-6 py-8 text-center text-sm text-muted">
+              <USkeleton class="h-4 w-3/4 mb-2 mx-auto" />
+              <USkeleton class="h-4 w-1/2 mx-auto" />
+            </div>
+            <ul v-else class="divide-y divide-default max-h-80 overflow-y-auto">
               <li v-for="e in recurringCal.entries.slice(0, 12)" :key="e.contactId + (e.expectedDay ?? '')" class="px-6 py-2">
                 <div class="flex items-center justify-between gap-2">
                   <div class="min-w-0 flex-1">
@@ -615,64 +623,79 @@ async function onConfigSaved() {
           </UCard>
 
           <!-- AR collection forecast -->
-          <UCard v-if="arForecast" :ui="{ body: '!p-0' }">
+          <UCard :ui="{ body: '!p-0' }">
             <template #header>
               <div class="px-6">
                 <h3 class="font-semibold">AR collection forecast</h3>
                 <p class="text-sm text-muted">
-                  Of {{ formatCurrency(arForecast.totals.total) }} outstanding · DSO-weighted
+                  <span v-if="arForecast">Of {{ formatCurrency(arForecast.totals.total) }} outstanding · DSO-weighted</span>
+                  <span v-else>Loading…</span>
                 </p>
               </div>
             </template>
-            <div class="px-6 py-3 grid grid-cols-3 gap-2">
-              <div>
-                <p class="text-xs uppercase text-muted">This month</p>
-                <p class="text-base font-bold tabular-nums text-emerald-500">{{ formatCurrency(arForecast.totals.thisMonth) }}</p>
-              </div>
-              <div>
-                <p class="text-xs uppercase text-muted">Next month</p>
-                <p class="text-base font-bold tabular-nums text-amber-500">{{ formatCurrency(arForecast.totals.nextMonth) }}</p>
-              </div>
-              <div>
-                <p class="text-xs uppercase text-muted">Later</p>
-                <p class="text-base font-bold tabular-nums text-red-500">{{ formatCurrency(arForecast.totals.later) }}</p>
-              </div>
+            <div v-if="!arForecast" class="px-6 py-8">
+              <USkeleton class="h-4 w-3/4 mb-2" />
+              <USkeleton class="h-4 w-1/2" />
             </div>
-            <div class="border-t border-default">
-              <p class="px-6 pt-3 text-xs uppercase text-muted">Landing this month</p>
-              <ul class="divide-y divide-default max-h-60 overflow-y-auto">
-                <li v-for="inv in arForecast.thisMonthInvoices" :key="inv.invoiceId" class="px-6 py-2 text-sm">
-                  <div class="flex items-center justify-between gap-2">
-                    <div class="min-w-0 flex-1">
-                      <p class="font-medium truncate">{{ inv.contactName ?? '—' }}</p>
-                      <p class="text-xs text-muted">
-                        {{ inv.invoiceNumber || '—' }} · expected ~{{ new Date(inv.expectedDate).toLocaleDateString('en-AU', { month: 'short', day: 'numeric' }) }}
-                      </p>
+            <template v-else>
+              <div class="px-6 py-3 grid grid-cols-3 gap-2">
+                <div>
+                  <p class="text-xs uppercase text-muted">This month</p>
+                  <p class="text-base font-bold tabular-nums text-emerald-500">{{ formatCurrency(arForecast.totals.thisMonth) }}</p>
+                </div>
+                <div>
+                  <p class="text-xs uppercase text-muted">Next month</p>
+                  <p class="text-base font-bold tabular-nums text-amber-500">{{ formatCurrency(arForecast.totals.nextMonth) }}</p>
+                </div>
+                <div>
+                  <p class="text-xs uppercase text-muted">Later</p>
+                  <p class="text-base font-bold tabular-nums text-red-500">{{ formatCurrency(arForecast.totals.later) }}</p>
+                </div>
+              </div>
+              <div class="border-t border-default">
+                <p class="px-6 pt-3 text-xs uppercase text-muted">Landing this month</p>
+                <ul class="divide-y divide-default max-h-60 overflow-y-auto">
+                  <li v-for="inv in arForecast.thisMonthInvoices" :key="inv.invoiceId" class="px-6 py-2 text-sm">
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="min-w-0 flex-1">
+                        <p class="font-medium truncate">{{ inv.contactName ?? '—' }}</p>
+                        <p class="text-xs text-muted">
+                          {{ inv.invoiceNumber || '—' }} · expected ~{{ new Date(inv.expectedDate).toLocaleDateString('en-AU', { month: 'short', day: 'numeric' }) }}
+                        </p>
+                      </div>
+                      <p class="text-sm tabular-nums font-medium">{{ formatCurrency(inv.amount) }}</p>
                     </div>
-                    <p class="text-sm tabular-nums font-medium">{{ formatCurrency(inv.amount) }}</p>
-                  </div>
-                </li>
-                <li v-if="!arForecast.thisMonthInvoices.length" class="px-6 py-6 text-center text-muted text-sm">
-                  No AR landing this month.
-                </li>
-              </ul>
-            </div>
+                  </li>
+                  <li v-if="!arForecast.thisMonthInvoices.length" class="px-6 py-6 text-center text-muted text-sm">
+                    No AR landing this month.
+                  </li>
+                </ul>
+              </div>
+            </template>
           </UCard>
 
           <!-- Tax provision tracker -->
-          <UCard v-if="taxProvision">
+          <UCard>
             <template #header>
               <div>
                 <div class="flex items-center justify-between">
                   <h3 class="font-semibold">Tax provision</h3>
-                  <UBadge :color="(taxProvision.bas.daysUntil < 30 ? 'warning' : 'info') as any" variant="subtle" size="sm">
+                  <UBadge v-if="taxProvision" :color="(taxProvision.bas.daysUntil < 30 ? 'warning' : 'info') as any" variant="subtle" size="sm">
                     BAS in {{ taxProvision.bas.daysUntil }}d
                   </UBadge>
                 </div>
-                <p class="text-sm text-muted">{{ taxProvision.currentQuarter.label }} · BAS due {{ taxProvision.bas.dueDate }}</p>
+                <p class="text-sm text-muted">
+                  <span v-if="taxProvision">{{ taxProvision.currentQuarter.label }} · BAS due {{ taxProvision.bas.dueDate }}</span>
+                  <span v-else>Loading…</span>
+                </p>
               </div>
             </template>
-            <div class="space-y-3 text-sm">
+            <div v-if="!taxProvision" class="py-4">
+              <USkeleton class="h-8 w-1/2 mb-3" />
+              <USkeleton class="h-4 w-full mb-2" />
+              <USkeleton class="h-4 w-3/4" />
+            </div>
+            <div v-else class="space-y-3 text-sm">
               <div>
                 <p class="text-xs uppercase text-muted">Set aside</p>
                 <p class="text-2xl font-bold tabular-nums">{{ formatCurrency(taxProvision.totalSetAside) }}</p>
