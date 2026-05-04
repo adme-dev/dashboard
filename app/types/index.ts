@@ -531,6 +531,8 @@ export interface SocialConnection {
   connectedBy: string | null
   createdAt: string
   updatedAt: string
+  health?: 'healthy' | 'expiring_soon' | 'expired' | 'stale_sync' | 'never_synced' | 'error'
+  daysUntilExpiry?: number | null
 }
 
 export interface AdAccountClientMap {
