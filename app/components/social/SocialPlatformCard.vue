@@ -40,7 +40,8 @@ const lastSyncedText = computed(() => {
 const isBroken = computed(() =>
   props.worstHealth === 'expired'
   || props.worstHealth === 'error'
-  || props.worstHealth === 'never_synced',
+  || props.worstHealth === 'never_synced'
+  || props.worstHealth === 'expiring_soon',
 )
 
 const expiryLabel = computed(() => {
