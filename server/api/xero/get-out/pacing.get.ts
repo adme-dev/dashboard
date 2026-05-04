@@ -116,12 +116,40 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  // Working-day awareness: the agency invoices end-of-month, so the
+  // operationally meaningful number is "$/working-day from here", not
+  // calendar-day. Mon-Fri only.
+  let workingDaysSoFar = 0
+  let workingDaysRemaining = 0
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dow = new Date(year, month - 1, day).getDay()
+    const isWorkingDay = dow !== 0 && dow !== 6
+    if (!isWorkingDay) continue
+    if (day <= dayOfMonth) workingDaysSoFar++
+    else workingDaysRemaining++
+  }
+
+  const requiredFromHere = Math.max(0, target - currentRunning)
+  const requiredPerWorkingDay = workingDaysRemaining > 0
+    ? requiredFromHere / workingDaysRemaining
+    : 0
+  // "If today's pace continues" projection — uses the current invoicing rate
+  // per elapsed day rather than the linear daily-pace target.
+  const projectedAtCurrentPace = dayOfMonth > 0
+    ? (currentRunning / dayOfMonth) * daysInMonth
+    : 0
+  const projectedShortfall = target - projectedAtCurrentPace
+
   return {
-    period: { year, month, daysInMonth, dayOfMonth },
+    period: { year, month, daysInMonth, dayOfMonth, workingDaysSoFar, workingDaysRemaining },
     target: Math.round(target * 100) / 100,
     dailyPaceTarget: Math.round(dailyPaceTarget * 100) / 100,
     currentTotal: Math.round(currentRunning * 100) / 100,
     priorTotal: Math.round(priorRunning * 100) / 100,
+    requiredFromHere: Math.round(requiredFromHere * 100) / 100,
+    requiredPerWorkingDay: Math.round(requiredPerWorkingDay * 100) / 100,
+    projectedAtCurrentPace: Math.round(projectedAtCurrentPace * 100) / 100,
+    projectedShortfall: Math.round(projectedShortfall * 100) / 100,
     points,
   }
 })

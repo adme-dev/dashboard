@@ -31,6 +31,20 @@ const QUOTE_PROBABILITY: Record<string, number> = {
   ACCEPTED: 0.80,
 }
 
+// Worst- and best-case scenarios apply different haircuts on each layer:
+//   worst  → "what if everything slips?"
+//   best   → "what if it all closes?"
+const WORST_QUOTE_PROBABILITY: Record<string, number> = {
+  DRAFT: 0.05, SENT: 0.20, ACCEPTED: 0.60,
+}
+const BEST_QUOTE_PROBABILITY: Record<string, number> = {
+  DRAFT: 0.40, SENT: 0.70, ACCEPTED: 0.95,
+}
+// AR haircut for worst case: clients usually pay around DSO, so within-month
+// collectibility is rough. Best case = full AR collectible.
+const WORST_AR_HAIRCUT = 0.6
+const WORST_RECURRING_HAIRCUT = 0.85  // some schedules slip / client cancels mid-cycle
+
 interface InvoicedTotals {
   invoiced_cents: string | number
   voided_cents: string | number
@@ -101,6 +115,8 @@ export default defineEventHandler(async (event) => {
       ACCEPTED: { count: 0, total: 0 },
     }
     let quotesProbable = 0
+    let quotesWorst = 0
+    let quotesBest = 0
     try {
       const quotesBody = await xeroFetch<any>({
         accessToken,
@@ -114,6 +130,8 @@ export default defineEventHandler(async (event) => {
         quotesByStatus[status]!.count++
         quotesByStatus[status]!.total += total
         quotesProbable += total * QUOTE_PROBABILITY[status]
+        quotesWorst    += total * (WORST_QUOTE_PROBABILITY[status] ?? 0)
+        quotesBest     += total * (BEST_QUOTE_PROBABILITY[status] ?? 0)
       }
     } catch (err: any) {
       console.warn('[get-out/forecast] quotes fetch failed:', err?.statusMessage ?? err?.message)
@@ -178,6 +196,14 @@ export default defineEventHandler(async (event) => {
     const gap = Math.max(0, target - totalProjected)
     const surplus = Math.max(0, totalProjected - target)
 
+    // Worst / best case envelopes — same pieces, different haircuts.
+    // Worst: AR collectibility ↓, recurring slips ↓, quotes weighted lower.
+    // Best:  full AR, full recurring, quotes weighted upper.
+    const arWorst         = arCollectible * WORST_AR_HAIRCUT
+    const recurringWorst  = recurringRemaining * WORST_RECURRING_HAIRCUT
+    const worstTotal      = Math.max(0, invoiced + arWorst - leakage) + recurringWorst + quotesWorst
+    const bestTotal       = Math.max(0, invoiced + arCollectible - leakage) + recurringRemaining + quotesBest
+
     return {
       target: Math.round(target * 100) / 100,
       layers: {
@@ -198,6 +224,13 @@ export default defineEventHandler(async (event) => {
       gap: Math.round(gap * 100) / 100,
       surplus: Math.round(surplus * 100) / 100,
       onTrack: totalProjected >= target,
+      scenarios: {
+        worst:     Math.round(worstTotal * 100) / 100,
+        realistic: Math.round(totalProjected * 100) / 100,
+        best:      Math.round(bestTotal * 100) / 100,
+        worstGap:  Math.round(Math.max(0, target - worstTotal) * 100) / 100,
+        bestGap:   Math.round(Math.max(0, target - bestTotal) * 100) / 100,
+      },
       quotes: {
         byStatus: {
           draft: { count: quotesByStatus.DRAFT!.count, total: Math.round(quotesByStatus.DRAFT!.total * 100) / 100 },

@@ -22,11 +22,15 @@ const breadcrumbs = computed(() => [
 
 // ── Pacing curve (cumulative this month vs prior vs target line) ──
 interface PacingResponse {
-  period: { year: number; month: number; daysInMonth: number; dayOfMonth: number }
+  period: { year: number; month: number; daysInMonth: number; dayOfMonth: number; workingDaysSoFar: number; workingDaysRemaining: number }
   target: number
   dailyPaceTarget: number
   currentTotal: number
   priorTotal: number
+  requiredFromHere: number
+  requiredPerWorkingDay: number
+  projectedAtCurrentPace: number
+  projectedShortfall: number
   points: Array<{ day: number; currentCumulative: number | null; priorCumulative: number | null; targetLine: number }>
 }
 const { data: pacing } = await useFetch<PacingResponse>('/api/xero/get-out/pacing', {
@@ -53,6 +57,7 @@ interface ForecastResponse {
   gap: number
   surplus: number
   onTrack: boolean
+  scenarios: { worst: number; realistic: number; best: number; worstGap: number; bestGap: number }
   quotes: { byStatus: { draft: { count: number; total: number }; sent: { count: number; total: number }; accepted: { count: number; total: number } } }
   recurringSchedulesRemaining: number
   computedAt: string
@@ -125,6 +130,48 @@ const { data: recurringMix } = await useFetch<{
   totalRevenue: number; recurringRevenue: number; recurringPct: number
   recurringClientCount: number; band: 'low'|'mixed'|'healthy'|'high'
 }>('/api/xero/get-out/recurring-mix', { lazy: true, server: false })
+
+// ── Phase 4: smart actions, recurring calendar, AR collection forecast, tax provision ──
+const { data: opsActions } = await useFetch<{
+  generatedAt: string
+  period: { monthStart: string; monthEnd: string; dayOfMonth: number; daysInMonth: number; workingDaysRemaining: number }
+  target: number; invoiced: number; shortfall: number
+  actions: Array<{ id: string; severity: 'critical'|'high'|'medium'|'low'; title: string; detail: string; value: string; linkTo?: string }>
+}>('/api/xero/get-out/operational-actions', { lazy: true, server: false })
+
+const { data: recurringCal } = await useFetch<{
+  period: { year: number; month: number; daysInMonth: number; dayOfMonth: number }
+  totals: { missing: number; pending: number; fired: number }
+  counts: { missing: number; pending: number; fired: number }
+  entries: Array<{ contactId: string; name: string | null; amount: number; expectedDay: number | null; status: 'fired'|'pending'|'missing'; source: 'xero_repeating'|'inferred' }>
+}>('/api/xero/get-out/recurring-calendar', { lazy: true, server: false })
+
+const { data: arForecast } = await useFetch<{
+  totals: { thisMonth: number; nextMonth: number; later: number; total: number }
+  counts: { thisMonth: number; nextMonth: number; total: number }
+  thisMonthInvoices: Array<{ invoiceId: string; invoiceNumber: string | null; contactName: string | null; amount: number; dueDate: string | null; expectedDate: string; dsoDays: number }>
+}>('/api/xero/get-out/ar-collection-forecast', { lazy: true, server: false })
+
+const { data: taxProvision } = await useFetch<{
+  currentQuarter: { label: string; fromDate: string; toDate: string; monthsElapsed: number }
+  bas: { dueDate: string; daysUntil: number }
+  gst: { collected: number; paid: number; netOwed: number; arInclGst: number; apInclGst: number }
+  payg: { estimated: number; basedOnWagesQuarter: number; ratePct: number }
+  superGuarantee: { estimated: number; ratePct: number }
+  totalSetAside: number
+}>('/api/xero/get-out/tax-provision', { lazy: true, server: false })
+
+function severityIconOps(s: string) {
+  if (s === 'critical') return 'i-lucide-alert-octagon'
+  if (s === 'high') return 'i-lucide-alert-triangle'
+  if (s === 'medium') return 'i-lucide-info'
+  return 'i-lucide-circle'
+}
+function statusColor(s: string) {
+  if (s === 'missing') return 'error'
+  if (s === 'pending') return 'warning'
+  return 'success'
+}
 
 function cashBandColor(b: string): string {
   if (b === 'critical') return 'error'
@@ -210,6 +257,50 @@ async function onConfigSaved() {
       />
 
       <div v-else-if="data" class="space-y-6">
+        <!-- ═══ Smart action list — what to do this month ═══ -->
+        <UCard v-if="opsActions?.actions?.length" :ui="{ body: '!p-0' }">
+          <template #header>
+            <div class="flex items-center justify-between">
+              <div>
+                <h3 class="font-semibold flex items-center gap-2">
+                  <UIcon name="i-lucide-list-checks" class="text-primary" />
+                  Action list
+                </h3>
+                <p class="text-xs text-muted">
+                  {{ opsActions.actions.length }} ranked action{{ opsActions.actions.length === 1 ? '' : 's' }}
+                  · {{ opsActions.period.workingDaysRemaining }} working days left
+                </p>
+              </div>
+            </div>
+          </template>
+          <ul class="divide-y divide-default">
+            <li v-for="a in opsActions.actions" :key="a.id" class="flex items-start gap-3 px-6 py-3">
+              <UIcon
+                :name="severityIconOps(a.severity)"
+                class="mt-0.5 shrink-0"
+                :class="{
+                  'text-red-500':    a.severity === 'critical',
+                  'text-amber-500':  a.severity === 'high',
+                  'text-blue-500':   a.severity === 'medium',
+                  'text-muted':      a.severity === 'low',
+                }"
+              />
+              <div class="flex-1 min-w-0">
+                <div class="flex items-baseline justify-between gap-3 flex-wrap">
+                  <p class="font-medium text-sm">{{ a.title }}</p>
+                  <span class="text-xs tabular-nums font-medium"
+                    :class="{
+                      'text-red-500':   a.severity === 'critical',
+                      'text-amber-500': a.severity === 'high',
+                      'text-muted':     a.severity === 'medium' || a.severity === 'low',
+                    }">{{ a.value }}</span>
+                </div>
+                <p class="text-xs text-muted mt-0.5">{{ a.detail }}</p>
+              </div>
+            </li>
+          </ul>
+        </UCard>
+
         <!-- ═══ KPI strip — 4 cards across the top ═══ -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <UCard :ui="{ body: '!p-4' }">
@@ -247,11 +338,19 @@ async function onConfigSaved() {
 
           <UCard :ui="{ body: '!p-4' }">
             <div class="flex items-start justify-between mb-2">
-              <p class="text-xs text-muted uppercase tracking-wide">Days remaining</p>
-              <UIcon name="i-lucide-calendar-clock" class="size-5 text-violet-500" />
+              <p class="text-xs text-muted uppercase tracking-wide">Pace required</p>
+              <UIcon name="i-lucide-gauge" class="size-5 text-violet-500" />
             </div>
-            <p class="text-2xl font-bold tabular-nums">{{ data.period.daysInMonth - data.period.dayOfMonth }}</p>
-            <p class="text-[11px] text-muted mt-1">Day {{ data.period.dayOfMonth }} of {{ data.period.daysInMonth }}</p>
+            <p class="text-2xl font-bold tabular-nums">
+              {{ pacing && pacing.requiredPerWorkingDay > 0
+                ? formatCurrency(pacing.requiredPerWorkingDay) + '/day'
+                : pacing && pacing.requiredFromHere === 0 ? 'On target ✓' : '—' }}
+            </p>
+            <p class="text-[11px] text-muted mt-1">
+              <span v-if="pacing">{{ pacing.period.workingDaysRemaining }} working days left
+                · projecting {{ formatCurrency(pacing.projectedAtCurrentPace) }}</span>
+              <span v-else>Day {{ data.period.dayOfMonth }} of {{ data.period.daysInMonth }}</span>
+            </p>
           </UCard>
         </div>
 
@@ -348,6 +447,47 @@ async function onConfigSaved() {
             :surplus="forecast.surplus"
             :on-track="forecast.onTrack"
           />
+
+          <!-- Worst / realistic / best scenario envelope -->
+          <div v-if="forecast.scenarios" class="mt-4 pt-4 border-t border-default">
+            <p class="text-xs text-muted uppercase tracking-wide mb-3">Scenario envelope</p>
+            <div class="grid grid-cols-3 gap-3">
+              <div class="p-3 rounded border border-default bg-red-50/40 dark:bg-red-500/5">
+                <div class="flex items-center gap-1.5 mb-1">
+                  <UIcon name="i-lucide-trending-down" class="size-3.5 text-red-500" />
+                  <p class="text-xs text-muted uppercase">Worst case</p>
+                </div>
+                <p class="text-lg font-bold tabular-nums">{{ formatCurrency(forecast.scenarios.worst) }}</p>
+                <p class="text-[11px]" :class="forecast.scenarios.worstGap > 0 ? 'text-red-500' : 'text-emerald-500'">
+                  {{ forecast.scenarios.worstGap > 0 ? `${formatCurrency(forecast.scenarios.worstGap)} short` : 'Still hits target' }}
+                </p>
+              </div>
+              <div class="p-3 rounded border border-primary/40 bg-primary/5">
+                <div class="flex items-center gap-1.5 mb-1">
+                  <UIcon name="i-lucide-target" class="size-3.5 text-primary" />
+                  <p class="text-xs text-muted uppercase">Realistic</p>
+                </div>
+                <p class="text-lg font-bold tabular-nums">{{ formatCurrency(forecast.scenarios.realistic) }}</p>
+                <p class="text-[11px]" :class="forecast.gap > 0 ? 'text-amber-500' : 'text-emerald-500'">
+                  {{ forecast.gap > 0 ? `${formatCurrency(forecast.gap)} short` : `${formatCurrency(forecast.surplus)} surplus` }}
+                </p>
+              </div>
+              <div class="p-3 rounded border border-default bg-emerald-50/40 dark:bg-emerald-500/5">
+                <div class="flex items-center gap-1.5 mb-1">
+                  <UIcon name="i-lucide-trending-up" class="size-3.5 text-emerald-500" />
+                  <p class="text-xs text-muted uppercase">Best case</p>
+                </div>
+                <p class="text-lg font-bold tabular-nums">{{ formatCurrency(forecast.scenarios.best) }}</p>
+                <p class="text-[11px]" :class="forecast.scenarios.bestGap > 0 ? 'text-amber-500' : 'text-emerald-500'">
+                  {{ forecast.scenarios.bestGap > 0 ? `${formatCurrency(forecast.scenarios.bestGap)} short` : 'Above target' }}
+                </p>
+              </div>
+            </div>
+            <p class="text-[10px] text-muted italic mt-2">
+              Worst = AR × 60% + recurring × 85% + quotes weighted lower (5/20/60%).
+              Best = full AR + full recurring + quotes weighted upper (40/70/95%).
+            </p>
+          </div>
         </UCard>
 
         <!-- ═══ Row: Pacing chart (2/3) + Quote pipeline (1/3) ═══ -->
@@ -410,6 +550,143 @@ async function onConfigSaved() {
               + {{ forecast.recurringSchedulesRemaining }} recurring schedule{{ forecast.recurringSchedulesRemaining === 1 ? '' : 's' }} firing later this month
               ({{ formatCurrency(forecast.layers.recurring) }})
             </p>
+          </UCard>
+        </div>
+
+        <!-- ═══ Row: Recurring calendar + AR collection forecast + Tax provision ═══ -->
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <!-- Recurring schedule calendar -->
+          <UCard v-if="recurringCal" :ui="{ body: '!p-0' }">
+            <template #header>
+              <div class="px-6">
+                <div class="flex items-center justify-between">
+                  <h3 class="font-semibold">Retainer calendar</h3>
+                  <UBadge
+                    v-if="recurringCal.counts.missing > 0"
+                    color="error" variant="subtle" size="xs"
+                  >
+                    {{ recurringCal.counts.missing }} missing
+                  </UBadge>
+                  <UBadge v-else-if="recurringCal.counts.fired > 0" color="success" variant="subtle" size="xs">
+                    All clear
+                  </UBadge>
+                </div>
+                <p class="text-xs text-muted">
+                  {{ recurringCal.counts.fired }} fired · {{ recurringCal.counts.pending }} pending · {{ recurringCal.counts.missing }} missing
+                </p>
+              </div>
+            </template>
+            <ul class="divide-y divide-default max-h-80 overflow-y-auto">
+              <li v-for="e in recurringCal.entries.slice(0, 12)" :key="e.contactId + (e.expectedDay ?? '')" class="px-6 py-2">
+                <div class="flex items-center justify-between gap-2">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2">
+                      <UBadge :color="statusColor(e.status) as any" variant="subtle" size="xs" class="capitalize">
+                        {{ e.status }}
+                      </UBadge>
+                      <p class="text-sm font-medium truncate">{{ e.name }}</p>
+                    </div>
+                    <p class="text-[11px] text-muted">
+                      {{ e.expectedDay ? `Typical day ${e.expectedDay}` : 'No history' }}
+                      · {{ e.source === 'xero_repeating' ? 'Xero schedule' : 'inferred pattern' }}
+                    </p>
+                  </div>
+                  <p class="text-sm tabular-nums font-medium">{{ formatCurrency(e.amount) }}</p>
+                </div>
+              </li>
+              <li v-if="!recurringCal.entries.length" class="px-6 py-6 text-center text-muted text-sm">
+                No retainer activity this month.
+              </li>
+            </ul>
+          </UCard>
+
+          <!-- AR collection forecast -->
+          <UCard v-if="arForecast" :ui="{ body: '!p-0' }">
+            <template #header>
+              <div class="px-6">
+                <h3 class="font-semibold">AR collection forecast</h3>
+                <p class="text-xs text-muted">
+                  Of {{ formatCurrency(arForecast.totals.total) }} outstanding · DSO-weighted
+                </p>
+              </div>
+            </template>
+            <div class="px-6 py-3 grid grid-cols-3 gap-2">
+              <div>
+                <p class="text-[10px] uppercase text-muted">This month</p>
+                <p class="text-base font-bold tabular-nums text-emerald-500">{{ formatCurrency(arForecast.totals.thisMonth) }}</p>
+              </div>
+              <div>
+                <p class="text-[10px] uppercase text-muted">Next month</p>
+                <p class="text-base font-bold tabular-nums text-amber-500">{{ formatCurrency(arForecast.totals.nextMonth) }}</p>
+              </div>
+              <div>
+                <p class="text-[10px] uppercase text-muted">Later</p>
+                <p class="text-base font-bold tabular-nums text-red-500">{{ formatCurrency(arForecast.totals.later) }}</p>
+              </div>
+            </div>
+            <div class="border-t border-default">
+              <p class="px-6 pt-3 text-[10px] uppercase text-muted">Landing this month</p>
+              <ul class="divide-y divide-default max-h-60 overflow-y-auto">
+                <li v-for="inv in arForecast.thisMonthInvoices" :key="inv.invoiceId" class="px-6 py-2 text-sm">
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="min-w-0 flex-1">
+                      <p class="font-medium truncate">{{ inv.contactName ?? '—' }}</p>
+                      <p class="text-[11px] text-muted">
+                        {{ inv.invoiceNumber || '—' }} · expected ~{{ new Date(inv.expectedDate).toLocaleDateString('en-AU', { month: 'short', day: 'numeric' }) }}
+                      </p>
+                    </div>
+                    <p class="text-sm tabular-nums font-medium">{{ formatCurrency(inv.amount) }}</p>
+                  </div>
+                </li>
+                <li v-if="!arForecast.thisMonthInvoices.length" class="px-6 py-6 text-center text-muted text-sm">
+                  No AR landing this month.
+                </li>
+              </ul>
+            </div>
+          </UCard>
+
+          <!-- Tax provision tracker -->
+          <UCard v-if="taxProvision">
+            <template #header>
+              <div>
+                <div class="flex items-center justify-between">
+                  <h3 class="font-semibold">Tax provision</h3>
+                  <UBadge :color="(taxProvision.bas.daysUntil < 30 ? 'warning' : 'info') as any" variant="subtle" size="xs">
+                    BAS in {{ taxProvision.bas.daysUntil }}d
+                  </UBadge>
+                </div>
+                <p class="text-xs text-muted">{{ taxProvision.currentQuarter.label }} · BAS due {{ taxProvision.bas.dueDate }}</p>
+              </div>
+            </template>
+            <div class="space-y-3 text-sm">
+              <div>
+                <p class="text-[10px] uppercase text-muted">Set aside</p>
+                <p class="text-2xl font-bold tabular-nums">{{ formatCurrency(taxProvision.totalSetAside) }}</p>
+              </div>
+              <div class="space-y-2 pt-2 border-t border-default">
+                <div class="flex items-center justify-between">
+                  <span>GST net owed</span>
+                  <span class="tabular-nums font-medium">{{ formatCurrency(taxProvision.gst.netOwed) }}</span>
+                </div>
+                <div class="flex items-center justify-between text-xs text-muted pl-3">
+                  <span>collected ÷ paid</span>
+                  <span class="tabular-nums">
+                    {{ formatCurrency(taxProvision.gst.collected) }} / {{ formatCurrency(taxProvision.gst.paid) }}
+                  </span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span>PAYG (~{{ taxProvision.payg.ratePct }}%)</span>
+                  <span class="tabular-nums font-medium">{{ formatCurrency(taxProvision.payg.estimated) }}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span>Super ({{ taxProvision.superGuarantee.ratePct }}%)</span>
+                  <span class="tabular-nums font-medium">{{ formatCurrency(taxProvision.superGuarantee.estimated) }}</span>
+                </div>
+              </div>
+              <p class="text-[10px] text-muted italic pt-2 border-t border-default">
+                Rough estimate. Sanity-check with your accountant before lodgement.
+              </p>
+            </div>
           </UCard>
         </div>
 
