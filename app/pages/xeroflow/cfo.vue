@@ -12,6 +12,9 @@ const { data: topClients }  = await useFetch<any>('/api/xero/get-out/top-clients
 const { data: profit }      = await useFetch<any>('/api/xero/get-out/profitability',      { lazy: true, server: false })
 const { data: runway }      = await useFetch<any>('/api/xero/get-out/cash-runway',        { lazy: true, server: false })
 const { data: mix }         = await useFetch<any>('/api/xero/get-out/recurring-mix',      { lazy: true, server: false })
+const { data: actions }     = await useFetch<any>('/api/xero/get-out/actions',            { lazy: true, server: false })
+const { data: mrrMovement } = await useFetch<any>('/api/xero/get-out/mrr-movement',       { lazy: true, server: false })
+const { data: efficiency }  = await useFetch<any>('/api/xero/get-out/efficiency',         { lazy: true, server: false })
 
 function fmt(v?: number | null, currency = 'AUD'): string {
   if (typeof v !== 'number' || Number.isNaN(v)) return '—'
@@ -63,6 +66,23 @@ function concentrationBandColor(b: string) {
   if (b === 'elevated') return 'info'
   return 'success'
 }
+function severityColor(s: string) {
+  if (s === 'critical') return 'error'
+  if (s === 'high') return 'warning'
+  if (s === 'medium') return 'info'
+  return 'neutral'
+}
+function severityIcon(s: string) {
+  if (s === 'critical') return 'i-lucide-alert-octagon'
+  if (s === 'high') return 'i-lucide-alert-triangle'
+  if (s === 'medium') return 'i-lucide-info'
+  return 'i-lucide-circle'
+}
+function revPerHeadColor(b?: string) {
+  if (b === 'low') return 'warning'
+  if (b === 'strong') return 'success'
+  return 'info'
+}
 
 // Cashflow chart axis math — uses projected balance so the trajectory bars
 // reflect the realistic forecast, not the empty known-AR-only view.
@@ -110,6 +130,48 @@ const breadcrumbs = computed(() => [
 
     <template #body>
       <div class="space-y-6">
+        <!-- ─── Smart action list — what to do this week ─────────────── -->
+        <UCard v-if="actions?.actions?.length" :ui="{ body: '!p-0' }">
+          <template #header>
+            <div class="flex items-center justify-between">
+              <div>
+                <h3 class="font-semibold flex items-center gap-2">
+                  <UIcon name="i-lucide-list-checks" class="text-primary" />
+                  This week
+                </h3>
+                <p class="text-xs text-muted">{{ actions.actions.length }} ranked action{{ actions.actions.length === 1 ? '' : 's' }} from your live numbers</p>
+              </div>
+            </div>
+          </template>
+          <ul class="divide-y divide-default">
+            <li v-for="a in actions.actions" :key="a.id" class="flex items-start gap-3 px-6 py-3">
+              <UIcon
+                :name="severityIcon(a.severity)"
+                class="mt-0.5 shrink-0"
+                :class="{
+                  'text-red-500':    a.severity === 'critical',
+                  'text-amber-500':  a.severity === 'high',
+                  'text-blue-500':   a.severity === 'medium',
+                  'text-muted':      a.severity === 'low',
+                }"
+              />
+              <div class="flex-1 min-w-0">
+                <div class="flex items-baseline justify-between gap-3 flex-wrap">
+                  <p class="font-medium text-sm">{{ a.title }}</p>
+                  <span class="text-xs tabular-nums font-medium"
+                    :class="{
+                      'text-red-500':   a.severity === 'critical',
+                      'text-amber-500': a.severity === 'high',
+                      'text-muted':     a.severity === 'medium' || a.severity === 'low',
+                    }">{{ a.value }}</span>
+                </div>
+                <p class="text-xs text-muted mt-0.5">{{ a.detail }}</p>
+              </div>
+              <NuxtLink v-if="a.linkTo" :to="a.linkTo" class="text-xs text-primary hover:underline shrink-0 mt-0.5">Open →</NuxtLink>
+            </li>
+          </ul>
+        </UCard>
+
         <!-- ─── Hero KPIs (4 numbers a CFO checks first) ─────────────── -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <UCard :ui="{ body: '!p-4' }" :class="runway?.band === 'critical' ? 'bg-red-50/60 dark:bg-red-500/5' : ''">
@@ -428,6 +490,64 @@ const breadcrumbs = computed(() => [
             </UCard>
           </div>
 
+          <!-- MRR movement (last completed month vs prior) -->
+          <UCard v-if="mrrMovement" :ui="{ body: '!p-0' }">
+            <template #header>
+              <div class="px-6">
+                <div class="flex items-center justify-between">
+                  <h3 class="font-semibold">MRR movement</h3>
+                  <UBadge
+                    :color="(mrrMovement.totals.netMovement >= 0 ? 'success' : 'error') as any"
+                    variant="subtle" size="xs"
+                  >
+                    {{ mrrMovement.totals.netMovement >= 0 ? '+' : '' }}{{ fmtCompact(mrrMovement.totals.netMovement) }} net
+                    · {{ mrrMovement.totals.movementPct >= 0 ? '+' : '' }}{{ mrrMovement.totals.movementPct }}%
+                  </UBadge>
+                </div>
+                <p class="text-xs text-muted">
+                  {{ mrrMovement.period.lastMonth }} vs {{ mrrMovement.period.priorMonth }}
+                </p>
+              </div>
+            </template>
+            <div class="grid grid-cols-2 gap-px bg-default">
+              <div class="bg-default p-4">
+                <p class="text-[10px] uppercase text-muted">+ New</p>
+                <p class="text-base font-bold tabular-nums text-emerald-500">{{ fmtCompact(mrrMovement.totals.newMrr) }}</p>
+                <p class="text-[10px] text-muted">{{ mrrMovement.counts.new }} client{{ mrrMovement.counts.new === 1 ? '' : 's' }}</p>
+              </div>
+              <div class="bg-default p-4">
+                <p class="text-[10px] uppercase text-muted">+ Expansion</p>
+                <p class="text-base font-bold tabular-nums text-emerald-500">{{ fmtCompact(mrrMovement.totals.expansionMrr) }}</p>
+                <p class="text-[10px] text-muted">{{ mrrMovement.counts.expansion }} client{{ mrrMovement.counts.expansion === 1 ? '' : 's' }}</p>
+              </div>
+              <div class="bg-default p-4">
+                <p class="text-[10px] uppercase text-muted">− Contraction</p>
+                <p class="text-base font-bold tabular-nums text-amber-500">{{ fmtCompact(mrrMovement.totals.contractionMrr) }}</p>
+                <p class="text-[10px] text-muted">{{ mrrMovement.counts.contraction }} client{{ mrrMovement.counts.contraction === 1 ? '' : 's' }}</p>
+              </div>
+              <div class="bg-default p-4">
+                <p class="text-[10px] uppercase text-muted">− Churned</p>
+                <p class="text-base font-bold tabular-nums text-red-500">{{ fmtCompact(mrrMovement.totals.churnedMrr) }}</p>
+                <p class="text-[10px] text-muted">{{ mrrMovement.counts.churned }} client{{ mrrMovement.counts.churned === 1 ? '' : 's' }}</p>
+              </div>
+            </div>
+            <div v-if="mrrMovement.topMovers?.length" class="px-6 pt-3 pb-4 border-t border-default">
+              <p class="text-[10px] uppercase text-muted mb-2">Top movers</p>
+              <ul class="space-y-1">
+                <li v-for="m in mrrMovement.topMovers" :key="m.contactId" class="flex items-center justify-between text-xs">
+                  <span class="truncate flex-1 mr-2">{{ m.name }}</span>
+                  <UBadge
+                    :color="(m.bucket === 'expansion' || m.bucket === 'new' ? 'success' : m.bucket === 'contraction' ? 'warning' : 'error') as any"
+                    variant="subtle" size="xs" class="capitalize mr-2"
+                  >{{ m.bucket }}</UBadge>
+                  <span class="tabular-nums font-medium" :class="m.bucket === 'expansion' || m.bucket === 'new' ? 'text-emerald-500' : 'text-red-500'">
+                    {{ m.bucket === 'expansion' || m.bucket === 'new' ? '+' : '−' }}{{ fmtCompact(m.delta) }}
+                  </span>
+                </li>
+              </ul>
+            </div>
+          </UCard>
+
           <!-- Top clients + concentration -->
           <UCard v-if="topClients" :ui="{ body: '!p-0' }">
             <template #header>
@@ -487,6 +607,48 @@ const breadcrumbs = computed(() => [
             <h2 class="text-base font-semibold">Profit &amp; capacity</h2>
             <p class="text-xs text-muted">Are we keeping what we earn — and using the time we're paid for?</p>
           </div>
+
+          <UCard v-if="efficiency" class="!mb-0">
+            <template #header>
+              <div class="flex items-center justify-between">
+                <div>
+                  <h3 class="font-semibold">Per-head economics &amp; DSO</h3>
+                  <p class="text-xs text-muted">{{ efficiency.billableTeamSize }} billable team · industry: $150-250k revenue/head</p>
+                </div>
+                <UBadge :color="revPerHeadColor(efficiency.revPerHeadBand) as any" variant="subtle" size="xs" class="capitalize">{{ efficiency.revPerHeadBand }}</UBadge>
+              </div>
+            </template>
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <p class="text-[10px] uppercase text-muted">Revenue/head (run-rate)</p>
+                <p class="text-lg font-bold tabular-nums">{{ fmtCompact(efficiency.revenuePerHeadAnnualised) }}</p>
+                <p class="text-[10px] text-muted">YTD: {{ fmtCompact(efficiency.revenuePerHead) }}</p>
+              </div>
+              <div>
+                <p class="text-[10px] uppercase text-muted">Cost/head</p>
+                <p class="text-lg font-bold tabular-nums">{{ fmtCompact(efficiency.costPerHead) }}</p>
+                <p class="text-[10px] text-muted">{{ fmtCompact(efficiency.annualCost) }} total</p>
+              </div>
+              <div>
+                <p class="text-[10px] uppercase text-muted">Profit/head</p>
+                <p class="text-lg font-bold tabular-nums" :class="efficiency.profitPerHead < 0 ? 'text-red-500' : 'text-emerald-500'">
+                  {{ fmtCompact(efficiency.profitPerHead) }}
+                </p>
+                <p class="text-[10px] text-muted">After all overhead</p>
+              </div>
+              <div>
+                <p class="text-[10px] uppercase text-muted">DSO (last 90d)</p>
+                <p class="text-lg font-bold tabular-nums">
+                  {{ efficiency.dso.current != null ? `${efficiency.dso.current}d` : '—' }}
+                </p>
+                <p v-if="efficiency.dso.delta != null" class="text-[10px]"
+                  :class="efficiency.dso.delta > 1 ? 'text-amber-500' : efficiency.dso.delta < -1 ? 'text-emerald-500' : 'text-muted'">
+                  {{ efficiency.dso.delta > 0 ? '+' : '' }}{{ efficiency.dso.delta }}d vs prior
+                </p>
+                <p v-else class="text-[10px] text-muted">No prior data</p>
+              </div>
+            </div>
+          </UCard>
 
           <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
             <UCard v-if="profit">
