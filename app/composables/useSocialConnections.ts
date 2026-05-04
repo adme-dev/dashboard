@@ -147,11 +147,20 @@ export function useSocialConnections() {
     await fetchConnections()
   }
 
+  /**
+   * Kicks off a platform spend sync. The endpoint now runs fire-and-forget
+   * via Cloudflare's waitUntil — it returns { status: 'started', startedAt }
+   * almost immediately. Callers should poll connections.lastSyncedAt or
+   * refresh loadSpend after a delay to see the resulting data.
+   */
   async function syncSpend(platform: SocialPlatform, month?: number, year?: number) {
     const body: any = {}
     if (month) body.month = month
     if (year) body.year = year
-    return await $fetch<any>(`/api/agency/social/${platform}/sync-spend`, { method: 'POST', body, timeout: 120_000 })
+    return await $fetch<{ status: 'started'; startedAt: string }>(
+      `/api/agency/social/${platform}/sync-spend`,
+      { method: 'POST', body, timeout: 30_000 }
+    )
   }
 
   async function fetchSpendSummary(month: number, year: number, platform?: string): Promise<SpendSummary> {

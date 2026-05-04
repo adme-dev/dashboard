@@ -82,11 +82,20 @@ const metaConnectLabel = computed(() => {
 async function syncMetaSpend() {
   try {
     metaSyncing.value = true
-    const result = await $fetch<{ synced: number; totalSpend: number }>('/api/agency/social/meta/sync-spend', { method: 'POST' })
-    toast.add({ title: 'Spend synced', description: `${result.synced} campaigns, $${result.totalSpend} total`, icon: 'i-lucide-check', color: 'success' })
-    await refreshMetaAccounts()
+    // Endpoint is now fire-and-forget — returns immediately, sync runs via
+    // Cloudflare waitUntil. Refresh accounts list after a short delay so the
+    // user sees the updated lastSyncedAt.
+    await $fetch<{ status: 'started'; startedAt: string }>('/api/agency/social/meta/sync-spend', { method: 'POST' })
+    toast.add({
+      title: 'Sync started',
+      description: 'Meta spend sync running in background — refreshing accounts shortly.',
+      icon: 'i-lucide-refresh-cw',
+      color: 'info',
+    })
+    setTimeout(() => { refreshMetaAccounts() }, 30_000)
+    setTimeout(() => { refreshMetaAccounts() }, 90_000)
   } catch (err: any) {
-    toast.add({ title: 'Sync failed', description: err?.data?.statusMessage || 'Could not sync spend data.', icon: 'i-lucide-alert-triangle', color: 'error' })
+    toast.add({ title: 'Sync failed', description: err?.data?.statusMessage || 'Could not start sync.', icon: 'i-lucide-alert-triangle', color: 'error' })
   } finally {
     metaSyncing.value = false
   }

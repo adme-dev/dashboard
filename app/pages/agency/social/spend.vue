@@ -48,17 +48,38 @@ async function loadSpend() {
   }
 }
 
-async function loadBankCharges() {
+// Debounce + in-flight cancellation: bank-charges hits Xero serially across
+// every BANK + CREDITCARD account, so each call burns 5–20s. Without this,
+// rapid platform-segment clicks fired 4× in parallel and the gateway returned
+// 504 on each one (see console errors that prompted this fix).
+let bankChargesDebounceTimer: ReturnType<typeof setTimeout> | null = null
+let bankChargesAbort: AbortController | null = null
+
+function loadBankCharges() {
+  if (bankChargesDebounceTimer) clearTimeout(bankChargesDebounceTimer)
+  bankChargesDebounceTimer = setTimeout(() => { void doLoadBankCharges() }, 300)
+}
+
+async function doLoadBankCharges() {
+  if (bankChargesAbort) bankChargesAbort.abort()
+  const ctrl = new AbortController()
+  bankChargesAbort = ctrl
   bankLoading.value = true
   try {
     bankCharges.value = await $fetch('/api/agency/social/spend/bank-charges', {
       query: { month: selectedMonth.value, year: selectedYear.value },
+      signal: ctrl.signal,
     })
-  } catch {
-    // Xero not connected or error — silently degrade
+  } catch (err: any) {
+    // Aborted by a newer request — keep the previous value, don't clear.
+    if (err?.name === 'AbortError' || ctrl.signal.aborted) return
+    // Xero not connected or genuine error — silently degrade.
     bankCharges.value = null
   } finally {
-    bankLoading.value = false
+    if (bankChargesAbort === ctrl) {
+      bankChargesAbort = null
+      bankLoading.value = false
+    }
   }
 }
 
@@ -67,11 +88,26 @@ const syncablePlatforms = ['meta', 'google', 'tiktok', 'linkedin', 'pinterest', 
 async function handleSyncAll() {
   syncing.value = true
   try {
-    await Promise.allSettled(
+    // Each call now returns immediately; the actual sync runs in the
+    // background via Cloudflare waitUntil (see asyncBackground.ts). We count
+    // how many platforms accepted the start signal so the toast doesn't
+    // promise success on platforms that returned an error.
+    const results = await Promise.allSettled(
       syncablePlatforms.map(p => syncSpend(p as any, selectedMonth.value, selectedYear.value))
     )
-    toast.add({ title: 'Sync complete', description: 'Spend data updated', color: 'success' })
-    await loadSpend()
+    const started = results.filter(r => r.status === 'fulfilled').length
+    const failed = results.length - started
+    toast.add({
+      title: failed === 0 ? 'Sync started' : `Sync started (${failed} failed to start)`,
+      description: `${started} platforms syncing in background — refreshing data as it lands.`,
+      color: failed === 0 ? 'info' : 'warning',
+    })
+    // Background sync typically completes in 30–90s. Refresh the table a few
+    // times so the user sees data as it lands without manual reloads.
+    const REFRESH_AT_MS = [30_000, 60_000, 120_000]
+    for (const delay of REFRESH_AT_MS) {
+      setTimeout(() => loadSpend(), delay)
+    }
   } catch (e: any) {
     toast.add({ title: 'Sync error', description: e.message, color: 'error' })
   } finally {
@@ -264,6 +300,10 @@ const bankDiscrepancy = computed(() => {
           </div>
           <template v-if="hasBankData">
             <p class="text-2xl font-bold tracking-tight">{{ formatCurrency(combinedBankTotal) }}</p>
+            <div v-if="bankCharges?.partial" class="text-[10px] font-medium text-amber-500 flex items-center gap-1">
+              <UIcon name="i-lucide-clock" class="size-3" />
+              Partial: {{ bankCharges.accountsScanned }}/{{ bankCharges.accountsTotal }} bank accounts. Refresh to retry.
+            </div>
             <div v-if="bankDiscrepancy && Math.abs(bankDiscrepancy.diff) >= 1" class="text-[10px] font-medium" :class="bankDiscrepancy.diff > 0 ? 'text-amber-500' : 'text-emerald-500'">
               {{ bankDiscrepancy.diff > 0 ? '+' : '' }}{{ formatCurrency(bankDiscrepancy.diff) }}
               ({{ bankDiscrepancy.pct > 0 ? '+' : '' }}{{ bankDiscrepancy.pct }}%)

@@ -32,3 +32,45 @@ export function runAfterResponse(
   // Local Node: the promise just runs in the background — fine, Node won't
   // cancel it. The .catch() above swallows any rejection.
 }
+
+interface KVBinding {
+  delete(key: string): Promise<void>
+}
+
+/**
+ * Fire-and-forget pattern for spend sync endpoints.
+ *
+ * Each /api/agency/social/<platform>/sync-spend handler runs a long Meta /
+ * Google / etc. API loop that almost always exceeds CF Pages' ~30s function
+ * limit when an agency has more than a couple of connected accounts. This
+ * helper kicks the work off via waitUntil so the HTTP response returns
+ * immediately, then busts the KV cache once the sync completes.
+ *
+ * The cache binding is captured synchronously because reaching into
+ * event.context after the request has ended throws "Cannot perform I/O on
+ * behalf of a different request" (CF error 1101).
+ */
+export function runSpendSyncInBackground(
+  event: H3Event,
+  options: {
+    label: string
+    sync: () => Promise<unknown>
+    kvKeys: string[]
+  }
+): { status: 'started'; startedAt: string } {
+  const cache = (event.context as any).cloudflare?.env?.CACHE as
+    | KVBinding
+    | undefined
+
+  const work = (async () => {
+    await options.sync()
+    if (cache) {
+      await Promise.all(
+        options.kvKeys.map(k => cache.delete(k).catch(() => {}))
+      )
+    }
+  })()
+
+  runAfterResponse(event, work, options.label)
+  return { status: 'started', startedAt: new Date().toISOString() }
+}

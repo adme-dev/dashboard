@@ -102,6 +102,14 @@ function ensureDateString(d: Date) {
 export default eventHandler(async (event) => {
   await requireAuth(event)
 
+  // Total wall-clock budget for the entire handler. CF Pages drops the
+  // connection (504) somewhere past ~30s; we cap at 24s so the response can
+  // still serialize and travel back. Every async leg below checks remaining
+  // time and bails to "partial" if the budget is exhausted.
+  const HANDLER_BUDGET_MS = 24_000
+  const handlerStart = Date.now()
+  const remaining = () => HANDLER_BUDGET_MS - (Date.now() - handlerStart)
+
   const query = getQuery(event)
   const now = new Date()
   const month = parseInt(String(query.month || now.getMonth() + 1), 10)
@@ -130,29 +138,44 @@ export default eventHandler(async (event) => {
   const lastDay = new Date(year, month, 0).getDate()
   const endDate = new Date(Date.UTC(year, month - 1, lastDay))
 
-  // Get all bank AND credit card accounts (Meta charges often hit a CC, not the bank)
-  const bankResponse = await dedupedXeroCall(
-    `bank-charges-bank:${tenantId}`,
-    'bank-charges-bank',
-    async () => {
-      const { body } = await client.accountingApi.getAccounts(tenantId, undefined, 'Type=="BANK"', 'Name ASC')
-      return body
-    }
-  )
-  const ccResponse = await dedupedXeroCall(
-    `bank-charges-cc:${tenantId}`,
-    'bank-charges-cc',
-    async () => {
-      const { body } = await client.accountingApi.getAccounts(tenantId, undefined, 'Type=="CREDITCARD"', 'Name ASC')
-      return body
-    }
-  )
+  // Fetch BANK + CREDITCARD account lists in parallel so we don't burn the
+  // handler budget on two sequential 25s deadlines from dedupedXeroCall.
+  const [bankResponse, ccResponse] = await Promise.all([
+    dedupedXeroCall(
+      `bank-charges-bank:${tenantId}`,
+      'bank-charges-bank',
+      async () => {
+        const { body } = await client.accountingApi.getAccounts(tenantId, undefined, 'Type=="BANK"', 'Name ASC')
+        return body
+      }
+    ).catch(err => {
+      console.warn('[BankCharges] bank account list failed:', err)
+      return null
+    }),
+    dedupedXeroCall(
+      `bank-charges-cc:${tenantId}`,
+      'bank-charges-cc',
+      async () => {
+        const { body } = await client.accountingApi.getAccounts(tenantId, undefined, 'Type=="CREDITCARD"', 'Name ASC')
+        return body
+      }
+    ).catch(err => {
+      console.warn('[BankCharges] credit card account list failed:', err)
+      return null
+    }),
+  ])
   const bankAccounts = [
     ...(bankResponse?.accounts || []),
     ...(ccResponse?.accounts || []),
   ]
 
-  // Fetch transactions for each bank account in the date range
+  // Fetch transactions per account, parallelized with the remaining wall-time
+  // budget. Each dedupedXeroCall has its own 25s deadline; we layer the
+  // handler budget on top so even slow per-account calls can't push the
+  // handler past CF Pages' 30s cap.
+  const CONCURRENCY = 6
+  let budgetExhausted = remaining() <= 1_000  // already over → mark partial, skip transaction loop
+
   const allTransactions: Array<{
     bankTransactionID: string
     date: string
@@ -163,46 +186,61 @@ export default eventHandler(async (event) => {
     type?: string
   }> = []
 
-  for (const account of bankAccounts) {
-    try {
-      const txBody = await dedupedXeroCall(
-        `bank-charges-tx:${tenantId}:${account.accountID}`,
-        'bank-charges-tx',
-        async () => {
-          const { body } = await client.accountingApi.getBankTransactions(
-            tenantId,
-            undefined,
-            `BankAccount.AccountID==Guid("${account.accountID}")&&Date>=${dtExpr(startDate)}&&Date<=${dtExpr(endDate)}`,
-            'Date ASC',
-            1,
-            undefined,
-            500
-          )
-          return body
-        }
-      )
+  const accountQueue = [...bankAccounts]
 
-      const txns = txBody?.bankTransactions || []
-      // Only include SPEND/outflow transactions (negative amounts or type=SPEND)
-      for (const tx of txns) {
-        const amount = Number(tx.total) || 0
-        // Bank transactions: negative = outflow, or type == 'SPEND'
-        if (amount < 0 || (tx as any).type === 'SPEND') {
-          allTransactions.push({
-            bankTransactionID: tx.bankTransactionID || '',
-            date: ensureDateString(new Date(tx.date || '')),
-            total: Math.abs(amount),
-            reference: tx.reference,
-            description: (tx as any).description,
-            contact: tx.contact,
-            type: (tx as any).type,
-          })
-        }
+  async function fetchAccount() {
+    while (accountQueue.length && !budgetExhausted) {
+      // Reserve ~3s for response serialization and the meta-billing fallback.
+      if (remaining() <= 3_000) {
+        budgetExhausted = true
+        return
       }
-    } catch (err) {
-      console.warn(`[BankCharges] Failed to fetch transactions for ${account.name}:`, err)
+      const account = accountQueue.shift()
+      if (!account) return
+      try {
+        const txBody = await dedupedXeroCall(
+          `bank-charges-tx:${tenantId}:${account.accountID}`,
+          'bank-charges-tx',
+          async () => {
+            const { body } = await client.accountingApi.getBankTransactions(
+              tenantId,
+              undefined,
+              `BankAccount.AccountID==Guid("${account.accountID}")&&Date>=${dtExpr(startDate)}&&Date<=${dtExpr(endDate)}`,
+              'Date ASC',
+              1,
+              undefined,
+              500
+            )
+            return body
+          }
+        )
+
+        const txns = txBody?.bankTransactions || []
+        // Only include SPEND/outflow transactions (negative amounts or type=SPEND)
+        for (const tx of txns) {
+          const amount = Number(tx.total) || 0
+          // Bank transactions: negative = outflow, or type == 'SPEND'
+          if (amount < 0 || (tx as any).type === 'SPEND') {
+            allTransactions.push({
+              bankTransactionID: tx.bankTransactionID || '',
+              date: ensureDateString(new Date(tx.date || '')),
+              total: Math.abs(amount),
+              reference: tx.reference,
+              description: (tx as any).description,
+              contact: tx.contact,
+              type: (tx as any).type,
+            })
+          }
+        }
+      } catch (err) {
+        console.warn(`[BankCharges] Failed to fetch transactions for ${account.name}:`, err)
+      }
     }
   }
+
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, bankAccounts.length) }, () => fetchAccount())
+  )
 
   // Group transactions by platform
   const byPlatform: Record<string, { total: number; transactions: BankChargeTransaction[] }> = {}
@@ -237,9 +275,12 @@ export default eventHandler(async (event) => {
   }
 
   // --- Meta spend from Facebook Insights API (fallback when Xero has no Meta CC data) ---
+  // Need at least ~5s of headroom: one DB query + parallel Meta Insights calls
+  // for every connected account. Skip otherwise so the response can serialize
+  // before CF Pages cuts the function.
   let metaBilling: { total: number; accounts: Array<{ accountId: string; accountName: string; total: number }> } | null = null
   const metaXeroTotal = byPlatform['meta']?.total ?? 0
-  if (metaXeroTotal <= 0) {
+  if (metaXeroTotal <= 0 && !budgetExhausted && remaining() > 5_000) {
     try {
       const connections = await queryRows<{
         id: string
@@ -290,5 +331,8 @@ export default eventHandler(async (event) => {
     unmatched: unmatched.slice(0, 20),
     metaBilling,
     connected: true,
+    partial: budgetExhausted,
+    accountsScanned: bankAccounts.length - accountQueue.length,
+    accountsTotal: bankAccounts.length,
   }
 })
