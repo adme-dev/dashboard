@@ -71,6 +71,7 @@ export default eventHandler(async (event) => {
         spendIds: r.spend_ids || [],
         rolling: r.is_rolling || false,
         commissionRate: parseFloat(r.commission_rate) || 0,
+        lastSyncedAt: r.last_synced_at || null,
       }
     })
 
