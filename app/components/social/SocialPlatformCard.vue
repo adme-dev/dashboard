@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { ConnectionHealth } from '~~/server/utils/connectionHealth'
+
 const props = defineProps<{
   platform: string
   displayName: string
@@ -9,6 +11,8 @@ const props = defineProps<{
   connected: boolean
   accountCount: number
   lastSyncedAt: string | null
+  worstHealth?: ConnectionHealth | null
+  daysUntilExpiry?: number | null
   syncing?: boolean
   connecting?: boolean
   comingSoon?: boolean
@@ -16,6 +20,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   connect: [platform: string]
+  reconnect: [platform: string]
   disconnect: [platform: string]
   sync: [platform: string]
   'view-accounts': [platform: string]
@@ -30,6 +35,21 @@ const lastSyncedText = computed(() => {
   if (hours < 1) return 'Synced just now'
   if (hours < 24) return `Synced ${hours}h ago`
   return `Synced ${Math.floor(hours / 24)}d ago`
+})
+
+const isBroken = computed(() =>
+  props.worstHealth === 'expired'
+  || props.worstHealth === 'error'
+  || props.worstHealth === 'never_synced',
+)
+
+const expiryLabel = computed(() => {
+  const d = props.daysUntilExpiry
+  if (d == null) return null
+  if (d < 0) return `Expired ${Math.abs(d)}d ago`
+  if (d > 30) return null  // far-future expiries are noise
+  if (d === 0) return 'Expires today'
+  return `Expires in ${d}d`
 })
 </script>
 
@@ -50,7 +70,11 @@ const lastSyncedText = computed(() => {
   </div>
 
   <!-- Active platform card -->
-  <div v-else class="border border-default rounded-xl bg-elevated/50 overflow-hidden">
+  <div
+    v-else
+    :id="platform"
+    class="border border-default rounded-xl bg-elevated/50 overflow-hidden scroll-mt-24"
+  >
     <!-- Header -->
     <div class="px-5 py-4 flex items-center justify-between border-b border-default">
       <div class="flex items-center gap-3">
@@ -81,11 +105,38 @@ const lastSyncedText = computed(() => {
           </div>
         </div>
 
+        <div
+          v-if="worstHealth && worstHealth !== 'healthy'"
+          class="flex items-center gap-2 mb-4 flex-wrap"
+        >
+          <ConnectionHealthBadge :status="worstHealth" :count="accountCount" />
+          <span v-if="expiryLabel" class="text-xs text-amber-500">{{ expiryLabel }}</span>
+        </div>
+
         <div class="flex items-center gap-2">
           <UButton size="xs" variant="soft" icon="i-lucide-list" @click="emit('view-accounts', platform)">
             View Accounts
           </UButton>
-          <UButton size="xs" variant="soft" color="neutral" icon="i-lucide-refresh-cw" :loading="syncing" @click="emit('sync', platform)">
+          <UButton
+            v-if="isBroken"
+            size="xs"
+            variant="solid"
+            color="warning"
+            icon="i-lucide-plug"
+            :loading="connecting"
+            @click="emit('reconnect', platform)"
+          >
+            Reconnect
+          </UButton>
+          <UButton
+            v-else
+            size="xs"
+            variant="soft"
+            color="neutral"
+            icon="i-lucide-refresh-cw"
+            :loading="syncing"
+            @click="emit('sync', platform)"
+          >
             Sync
           </UButton>
           <div class="flex-1" />

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { ConnectionHealth } from '~~/server/utils/connectionHealth'
+
 definePageMeta({ layout: 'agency', middleware: ['role-media'] })
 
 const toast = useToast()
@@ -28,8 +30,18 @@ const platforms = [
   { key: 'microsoft_ads', displayName: 'Microsoft Ads', icon: 'i-lucide-search', bgColor: 'bg-cyan-50 dark:bg-cyan-950', iconColor: 'text-cyan-600', description: 'Bing search and display ads' },
 ]
 
+const SEVERITY_ORDER: ConnectionHealth[] = [
+  'error', 'expired', 'expiring_soon', 'never_synced', 'stale_sync', 'healthy',
+]
+
 const platformSummaries = computed(() => {
-  const map: Record<string, { connected: boolean; accountCount: number; lastSyncedAt: string | null }> = {}
+  const map: Record<string, {
+    connected: boolean
+    accountCount: number
+    lastSyncedAt: string | null
+    worstHealth: ConnectionHealth | null
+    daysUntilExpiry: number | null
+  }> = {}
   for (const p of platforms) {
     const conns = connections.value.filter((c: any) => c.platform === p.key && c.status === 'active')
     const lastSync = conns
@@ -37,10 +49,26 @@ const platformSummaries = computed(() => {
       .filter(Boolean)
       .sort()
       .pop() || null
+
+    let worstHealth: ConnectionHealth | null = null
+    let worstDays: number | null = null
+    for (const c of conns) {
+      if (!c.health) continue
+      if (
+        worstHealth === null
+        || SEVERITY_ORDER.indexOf(c.health) < SEVERITY_ORDER.indexOf(worstHealth)
+      ) {
+        worstHealth = c.health
+        worstDays = c.daysUntilExpiry ?? null
+      }
+    }
+
     map[p.key] = {
       connected: conns.length > 0,
       accountCount: conns.length,
       lastSyncedAt: lastSync,
+      worstHealth,
+      daysUntilExpiry: worstDays,
     }
   }
   return map
@@ -265,12 +293,15 @@ const graphExplorerLabel = computed(() => {
             :connected="platformSummaries[p.key]?.connected || false"
             :account-count="platformSummaries[p.key]?.accountCount || 0"
             :last-synced-at="platformSummaries[p.key]?.lastSyncedAt || null"
+            :worst-health="platformSummaries[p.key]?.worstHealth || null"
+            :days-until-expiry="platformSummaries[p.key]?.daysUntilExpiry ?? null"
             :syncing="syncing === p.key"
             :connecting="connecting === p.key"
             :coming-soon="p.comingSoon"
             @connect="handleConnect"
             @disconnect="handleDisconnect"
             @sync="handleSync"
+            @reconnect="handleConnect"
             @view-accounts="handleViewAccounts"
             @paste-token="handleManualToken"
           />
