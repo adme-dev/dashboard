@@ -319,6 +319,10 @@ const bankDiscrepancy = computed(() => {
               <span class="text-sm text-muted">Loading...</span>
             </div>
           </template>
+          <template v-else-if="bankCharges?.connected">
+            <p class="text-2xl font-bold tracking-tight">{{ formatCurrency(0) }}</p>
+            <p class="text-[10px] text-muted">No bank charges matched this period</p>
+          </template>
           <template v-else>
             <p class="text-2xl font-bold tracking-tight text-muted">-</p>
             <p class="text-[10px] text-muted">Connect Xero to see bank charges</p>
