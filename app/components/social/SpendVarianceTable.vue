@@ -16,6 +16,7 @@ const props = defineProps<{
     campaignCount: number
     spendIds?: string[]
     rolling?: boolean
+    lastSyncedAt?: string | null
   }>
   totals: { budget: number; spend: number; commission: number; variance: number }
   search?: string
@@ -190,6 +191,18 @@ async function saveBudget(item: typeof props.items[0]) {
   }
 }
 
+const STALE_MS = 24 * 60 * 60 * 1000
+
+function isStale(lastSyncedAt: string | null | undefined): boolean {
+  if (!lastSyncedAt) return false  // null is rendered as "Never synced" elsewhere; only flag rows with a real-but-old timestamp
+  return Date.now() - new Date(lastSyncedAt).getTime() > STALE_MS
+}
+
+function staleTooltip(lastSyncedAt: string | null | undefined): string {
+  if (!lastSyncedAt) return 'Never synced'
+  return `Last synced ${new Date(lastSyncedAt).toLocaleString()}`
+}
+
 function formatCurrency(val: number) {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0 }).format(val)
 }
@@ -286,7 +299,14 @@ const totalColSpan = computed(() => hasBankData.value ? 9 : 8)
       </thead>
       <tbody>
         <tr v-for="item in filtered" :key="itemKey(item)" class="border-b border-default/50 hover:bg-elevated/50 group">
-          <td class="py-2 px-3 font-medium">{{ item.clientName }}</td>
+          <td class="py-2 px-3 font-medium">
+            <span>{{ item.clientName }}</span>
+            <UTooltip v-if="isStale(item.lastSyncedAt)" :text="staleTooltip(item.lastSyncedAt)">
+              <UBadge color="warning" variant="subtle" size="xs" icon="i-lucide-clock" class="ml-2 align-middle">
+                stale
+              </UBadge>
+            </UTooltip>
+          </td>
           <td class="py-2 px-3">
             <div class="flex items-center gap-1">
               <UIcon :name="platformIcon(item.platform)" class="w-4 h-4" />
