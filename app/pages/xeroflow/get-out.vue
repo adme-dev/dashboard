@@ -205,6 +205,36 @@ async function onConfigSaved() {
   // Bust both the page payload and the pacing/history charts since target changes everywhere
   await Promise.all([refresh?.(), refreshNuxtData()])
 }
+
+// 12-month performance chart scale. Old version capped bars at 100%, which
+// made months above target visually identical. Now we scale to whichever is
+// taller — target × 1.2 OR the highest invoiced month × 1.1 — so a 200%
+// month genuinely looks taller than a 100% month, with the target rendered
+// as a horizontal reference line.
+const historyChart = computed(() => {
+  const months = history.value?.months ?? []
+  if (!months.length) return { max: 1, target: 0, targetPct: 0 }
+  const target = months[0]?.target ?? 0
+  const maxInvoiced = Math.max(...months.map(m => m.invoiced || 0))
+  const max = Math.max(target * 1.2, maxInvoiced * 1.1, 1)
+  const targetPct = max > 0 ? (target / max) * 100 : 0
+  return { max, target, targetPct }
+})
+function historyBarHeight(invoiced: number): number {
+  if (!historyChart.value.max) return 0
+  return Math.min(100, (invoiced / historyChart.value.max) * 100)
+}
+function historyBarColor(m: { invoiced: number; target: number }): string {
+  if (!m.invoiced) return 'bg-muted/20'
+  const pct = m.target > 0 ? (m.invoiced / m.target) : 0
+  if (pct >= 1.0) return 'bg-emerald-500/80 dark:bg-emerald-400/80'
+  if (pct >= 0.8) return 'bg-amber-400/80'
+  return 'bg-red-500/70'
+}
+function fmtMonthLabel(label: string): string {
+  // "June 25" → "Jun 25" — saves horizontal space on bar labels
+  return label.replace(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]+/, '$1')
+}
 </script>
 
 <template>
@@ -909,28 +939,65 @@ async function onConfigSaved() {
               <USkeleton class="h-16 w-full" />
             </div>
             <template v-else>
-              <div class="grid grid-cols-6 sm:grid-cols-12 gap-2">
-                <UTooltip
-                  v-for="m in history.months"
-                  :key="m.monthStart"
-                  :text="`${m.monthLabel}: ${formatCurrency(m.invoiced)} of ${formatCurrency(m.target)} (${m.pctOfTarget}%)`"
+              <!-- Chart canvas: bars scale to actual value with a horizontal
+                   target line. Always-visible value labels above each bar so
+                   the chart reads at a glance — no hover needed. -->
+              <div class="relative pt-6">
+                <!-- Target reference line + label -->
+                <div
+                  class="absolute left-0 right-0 border-t border-dashed border-blue-500/50 z-10 pointer-events-none"
+                  :style="{ top: `calc(1.5rem + ${100 - historyChart.targetPct}% * 0.96)` }"
                 >
-                  <div class="flex flex-col items-center gap-1">
-                    <div class="relative w-full h-16 bg-muted/10 rounded overflow-hidden">
+                  <span class="absolute -top-2 right-0 text-[10px] font-medium text-blue-500 bg-default px-1">
+                    Target {{ formatCurrency(historyChart.target) }}
+                  </span>
+                </div>
+
+                <!-- Bars — height proportional to invoiced ÷ chart-max so
+                     a 200% month actually looks taller than a 100% month. -->
+                <div class="grid grid-cols-6 sm:grid-cols-12 gap-2 h-40">
+                  <div
+                    v-for="m in history.months"
+                    :key="m.monthStart"
+                    class="flex flex-col items-center gap-1 group"
+                    :title="`${m.monthLabel}\nInvoiced: ${formatCurrency(m.invoiced)}\nTarget: ${formatCurrency(m.target)}\n${m.pctOfTarget}% of target · ${m.invoiceCount} invoices`"
+                  >
+                    <span class="text-[10px] tabular-nums font-medium" :class="m.invoiced > 0 ? '' : 'text-muted'">
+                      {{ m.invoiced > 0
+                        ? (m.invoiced >= 1_000_000
+                            ? `$${(m.invoiced / 1_000_000).toFixed(1)}m`
+                            : `$${Math.round(m.invoiced / 1_000)}k`)
+                        : '—' }}
+                    </span>
+                    <div class="relative w-full flex-1 bg-muted/10 rounded overflow-hidden flex items-end">
                       <div
-                        class="absolute bottom-0 left-0 right-0 transition-all"
-                        :class="m.hit ? 'bg-emerald-500/70 dark:bg-emerald-400/70' : 'bg-amber-500/70 dark:bg-amber-400/70'"
-                        :style="{ height: `${Math.min(100, m.pctOfTarget)}%` }"
+                        class="w-full transition-all rounded group-hover:opacity-100 opacity-90"
+                        :class="historyBarColor(m)"
+                        :style="{ height: `${historyBarHeight(m.invoiced)}%` }"
                       />
-                      <div class="absolute left-0 right-0 border-t border-default" style="top: 0%" />
                     </div>
-                    <span class="text-xs text-muted truncate w-full text-center">{{ m.monthLabel }}</span>
+                    <span class="text-xs tabular-nums" :class="m.invoiced > 0 ? (m.pctOfTarget >= 100 ? 'text-emerald-500' : m.pctOfTarget >= 80 ? 'text-amber-500' : 'text-red-500') : 'text-muted'">
+                      {{ m.invoiced > 0 ? `${m.pctOfTarget}%` : '—' }}
+                    </span>
+                    <span class="text-xs text-muted truncate w-full text-center">{{ fmtMonthLabel(m.monthLabel) }}</span>
                   </div>
-                </UTooltip>
+                </div>
               </div>
-              <p class="text-xs text-muted mt-3 italic">
-                Bars compare each month's invoicing to today's Get Out target.
-              </p>
+              <div class="flex items-center gap-4 mt-4 pt-3 border-t border-default text-xs text-muted">
+                <span class="flex items-center gap-1.5">
+                  <span class="size-2 rounded-full bg-emerald-500" /> Hit target
+                </span>
+                <span class="flex items-center gap-1.5">
+                  <span class="size-2 rounded-full bg-amber-400" /> 80–99% of target
+                </span>
+                <span class="flex items-center gap-1.5">
+                  <span class="size-2 rounded-full bg-red-500" /> Below 80%
+                </span>
+                <span class="flex items-center gap-1.5">
+                  <span class="size-2 rounded-full bg-muted/40" /> No invoicing
+                </span>
+                <span class="ml-auto italic">Hover a bar for full breakdown</span>
+              </div>
             </template>
           </UCard>
 
