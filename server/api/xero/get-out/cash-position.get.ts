@@ -59,13 +59,22 @@ export default defineEventHandler(async (event) => {
       burnSource = 'target'
     }
 
-    const daysOfCash = dailyOutflow > 0 ? Math.floor(cashOnHand / dailyOutflow) : null
-    const monthsRunway = dailyOutflow > 0 ? Math.round((cashOnHand / (dailyOutflow * 30)) * 10) / 10 : null
+    // Negative cash means the operating account is overdrawn — runway math
+    // (cash ÷ burn) produces meaningless negative days, so we surface a
+    // distinct `overdrawn` state instead of "-175d runway".
+    const overdrawn = cashOnHand < 0
+    const daysOfCash = overdrawn
+      ? 0
+      : dailyOutflow > 0 ? Math.floor(cashOnHand / dailyOutflow) : null
+    const monthsRunway = overdrawn
+      ? 0
+      : dailyOutflow > 0 ? Math.round((cashOnHand / (dailyOutflow * 30)) * 10) / 10 : null
 
     // Health bands (industry rule of thumb): <30 days critical, <90 tight,
-    // 90-180 healthy, >180 strong.
+    // 90-180 healthy, >180 strong. Overdrawn always = critical.
     let band: 'critical' | 'tight' | 'healthy' | 'strong' | 'unknown' = 'unknown'
-    if (daysOfCash != null) {
+    if (overdrawn) band = 'critical'
+    else if (daysOfCash != null) {
       if (daysOfCash < 30) band = 'critical'
       else if (daysOfCash < 90) band = 'tight'
       else if (daysOfCash < 180) band = 'healthy'
@@ -79,6 +88,7 @@ export default defineEventHandler(async (event) => {
       daysOfCash,
       monthsRunway,
       band,
+      overdrawn,
       burnSource,
       computedAt: new Date().toISOString(),
     }

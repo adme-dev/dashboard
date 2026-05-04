@@ -62,20 +62,62 @@ export default defineEventHandler(async (event) => {
   const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
   const monthEnd = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`
 
-  // Pull this-month invoiced and target so we know the gap.
-  const totals = await queryOne<{ invoiced_cents: string }>(
-    `SELECT COALESCE(SUM(total_cents), 0)::text AS invoiced_cents
-       FROM xero_invoices_cache
-       WHERE tenant_id = $1
-         AND type = 'ACCREC'
-         AND status NOT IN ('VOIDED','DRAFT','DELETED')
-         AND date BETWEEN $2::date AND $3::date`,
+  // Pull this-month invoiced AND collectible AR + recurring + inferred MRR
+  // so we can compare against target on a forecast basis (NOT just on what's
+  // been invoiced so far). Otherwise the action list contradicts the forecast
+  // band — early in a month with end-of-month invoicing pattern, raw invoiced
+  // = $0 even though the forecast comfortably covers target.
+  const totalsRow = await queryOne<{
+    invoiced_cents: string
+    ar_collectible_cents: string
+    inferred_unbilled_cents: string
+  }>(
+    `WITH this_month AS (
+       SELECT
+         COALESCE(SUM(CASE
+           WHEN type='ACCREC' AND status NOT IN ('VOIDED','DRAFT','DELETED')
+                AND date BETWEEN $2::date AND $3::date
+           THEN total_cents ELSE 0 END), 0) AS invoiced_cents,
+         COALESCE(SUM(CASE
+           WHEN type='ACCREC' AND status='AUTHORISED'
+                AND amount_due_cents > 0
+                AND (due_date IS NULL OR due_date <= $3::date)
+           THEN amount_due_cents ELSE 0 END), 0) AS ar_collectible_cents
+         FROM xero_invoices_cache
+         WHERE tenant_id = $1
+     ),
+     -- Inferred MRR for contacts that haven't yet invoiced this month —
+     -- they're expected to per their pattern.
+     unbilled AS (
+       SELECT COALESCE(SUM(r.inferred_mrr_cents), 0) AS unbilled_cents
+         FROM xero_customer_rollups r
+         WHERE r.tenant_id = $1
+           AND r.inferred_mrr_confidence IN ('high','medium')
+           AND NOT EXISTS (
+             SELECT 1 FROM xero_invoices_cache i
+               WHERE i.tenant_id = r.tenant_id
+                 AND i.contact_id = r.contact_id
+                 AND i.type = 'ACCREC'
+                 AND i.status NOT IN ('VOIDED','DRAFT','DELETED')
+                 AND i.date BETWEEN $2::date AND $3::date
+           )
+     )
+     SELECT
+       invoiced_cents::text         AS invoiced_cents,
+       ar_collectible_cents::text   AS ar_collectible_cents,
+       unbilled_cents::text         AS inferred_unbilled_cents
+       FROM this_month CROSS JOIN unbilled`,
     [tenantId, monthStart, monthEnd],
   )
-  const invoiced = n(totals?.invoiced_cents) / 100
+  const invoiced = n(totalsRow?.invoiced_cents) / 100
+  const arCollectible = n(totalsRow?.ar_collectible_cents) / 100
+  const inferredUnbilled = n(totalsRow?.inferred_unbilled_cents) / 100
   const cfg = await loadGetOutConfig(tenantId)
   const target = summariseConfig(cfg).totalCents / 100
-  const shortfall = Math.max(0, target - invoiced)
+  // Forecast estimate ≈ invoiced + AR likely to land + retainers expected to
+  // bill later this month (caps inferred at AR-collectible-style timeframe).
+  const expectedThisMonth = invoiced + arCollectible + inferredUnbilled
+  const forecastGap = Math.max(0, target - expectedThisMonth)
 
   // Working days remaining (Mon-Fri only) — drives "$/day required" math.
   let workingDaysRemaining = 0
@@ -84,12 +126,14 @@ export default defineEventHandler(async (event) => {
     if (dow !== 0 && dow !== 6) workingDaysRemaining++
   }
 
-  // ── 1. Shortfall heads-up + closure recipe ─────────────────────────
-  if (shortfall > 0) {
+  // ── 1. Shortfall — only when forecast actually projects a miss ──────
+  // If the forecast comfortably covers target, don't fire a shortfall action
+  // even if literal-invoiced-this-month is zero.
+  if (forecastGap > 0) {
     const requiredPerWorkingDay = workingDaysRemaining > 0
-      ? shortfall / workingDaysRemaining
-      : shortfall
-    const sev: Severity = workingDaysRemaining <= 3 && shortfall > 0
+      ? forecastGap / workingDaysRemaining
+      : forecastGap
+    const sev: Severity = workingDaysRemaining <= 3
       ? 'critical'
       : workingDaysRemaining <= 7
         ? 'high'
@@ -97,14 +141,26 @@ export default defineEventHandler(async (event) => {
     actions.push({
       id: 'shortfall',
       severity: sev,
-      title: `${fmtAUD(shortfall)} short of monthly target`,
-      detail: `${workingDaysRemaining} working days left — need ${fmtAUD(requiredPerWorkingDay)}/day to hit ${fmtAUD(target)}.`,
-      value: fmtAUD(shortfall),
+      title: `${fmtAUD(forecastGap)} forecast shortfall`,
+      detail: `Even with AR landing + retainers billing, forecast falls short of ${fmtAUD(target)}. Need ${fmtAUD(requiredPerWorkingDay)}/day from net-new revenue over ${workingDaysRemaining} working days.`,
+      value: fmtAUD(forecastGap),
+    })
+  } else if (target > 0 && invoiced === 0 && dayOfMonth <= 7) {
+    // Early-month FYI: target is covered on forecast even though invoicing
+    // hasn't started yet. Surface as low-sev "all clear so far".
+    actions.push({
+      id: 'forecast-on-track',
+      severity: 'low',
+      title: 'On track via forecast',
+      detail: `${fmtAUD(invoiced)} invoiced + ${fmtAUD(arCollectible)} AR + ${fmtAUD(inferredUnbilled)} retainers due → projecting ${fmtAUD(expectedThisMonth)} vs ${fmtAUD(target)} target.`,
+      value: `+${fmtAUD(expectedThisMonth - target)}`,
     })
   }
 
   // ── 2. Stuck sent quotes (live) ────────────────────────────────────
-  // A sent quote sitting > 14 days is the easiest "follow up" lever.
+  // Two separate buckets:
+  //   stuck (14-120 days)   — actionable follow-ups, biggest ROI
+  //   dead  (>180 days)     — cleanup task; archive or decline rather than chase
   try {
     const body = await xeroFetch<any>({
       accessToken: token.access_token!,
@@ -112,13 +168,15 @@ export default defineEventHandler(async (event) => {
       path: 'Quotes?order=Date DESC',
     })
     const stuck: Array<{ name: string; total: number; days: number }> = []
+    const dead: Array<{ name: string; total: number; days: number }> = []
     for (const q of (body?.quotes ?? [])) {
       if (String(q.status ?? '').toUpperCase() !== 'SENT') continue
       const dateStr = q.date ? String(q.date).slice(0, 10) : null
       if (!dateStr) continue
       const days = Math.floor((today.getTime() - new Date(dateStr).getTime()) / 86_400_000)
-      if (days < 14) continue
-      stuck.push({ name: q.contact?.name ?? 'Unknown', total: n(q.total), days })
+      const entry = { name: q.contact?.name ?? 'Unknown', total: n(q.total), days }
+      if (days >= 14 && days <= 120) stuck.push(entry)
+      else if (days > 180) dead.push(entry)
     }
     if (stuck.length > 0) {
       stuck.sort((a, b) => b.total - a.total)
@@ -130,6 +188,16 @@ export default defineEventHandler(async (event) => {
         title: `Follow up ${stuck.length} stuck quote${stuck.length === 1 ? '' : 's'}`,
         detail: `Biggest: ${biggest.name} (${fmtAUD(biggest.total)}) sat ${biggest.days}d in 'sent'. ${rest.length > 0 ? `Plus ${rest.length} more totalling ${fmtAUD(rest.reduce((s, x) => s + x.total, 0))}.` : ''}`,
         value: fmtAUD(stuck.reduce((s, x) => s + x.total, 0)),
+      })
+    }
+    if (dead.length > 0) {
+      const deadTotal = dead.reduce((s, x) => s + x.total, 0)
+      actions.push({
+        id: 'quote-dead',
+        severity: 'low',
+        title: `Archive ${dead.length} ancient quote${dead.length === 1 ? '' : 's'}`,
+        detail: `${dead.length} sent quotes older than 6 months. Mark them lost or archive — they're polluting forecast metrics.`,
+        value: fmtAUD(deadTotal),
       })
     }
   } catch (err: any) {
@@ -241,7 +309,7 @@ export default defineEventHandler(async (event) => {
   }
 
   // ── 5. Surplus (already past target) ───────────────────────────────
-  if (shortfall === 0 && invoiced > target) {
+  if (invoiced > target) {
     const overshoot = invoiced - target
     actions.push({
       id: 'surplus',
@@ -258,7 +326,8 @@ export default defineEventHandler(async (event) => {
     period: { monthStart, monthEnd, dayOfMonth, daysInMonth, workingDaysRemaining },
     target: Math.round(target * 100) / 100,
     invoiced: Math.round(invoiced * 100) / 100,
-    shortfall: Math.round(shortfall * 100) / 100,
+    expectedThisMonth: Math.round(expectedThisMonth * 100) / 100,
+    shortfall: Math.round(forecastGap * 100) / 100,
     actions: actions.slice(0, 8),
   }
 })

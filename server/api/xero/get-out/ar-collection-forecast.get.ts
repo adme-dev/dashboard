@@ -86,17 +86,27 @@ export default defineEventHandler(async (event) => {
   let thisMonthCents = 0
   let nextMonthCents = 0
   let laterCents = 0
+  let overdueCents = 0
   const thisMonthInvoices: any[] = []
+  const todayStr = today.toISOString().slice(0, 10)
 
   for (const r of rows) {
     const amount = n(r.amount_due_cents) / 100
     const dso = r.contact_dso_days != null ? Math.round(Number(r.contact_dso_days)) : FALLBACK_DSO_DAYS
-    // Expected payment date = the later of due_date and (issue + DSO).
+    // Expected payment date = the later of due_date and (issue + DSO),
+    // then clamped to today: if maths produces a date in the past, the
+    // invoice is already chase-able, not "expected on X".
     const issueExpectation = addDays(r.date, dso)
     const dueExpectation = r.due_date ?? r.date
-    const expected = issueExpectation > dueExpectation ? issueExpectation : dueExpectation
+    const rawExpected = issueExpectation > dueExpectation ? issueExpectation : dueExpectation
+    // Past dates are nonsensical as a "forecast" — they mean the invoice
+    // is already overdue. Surface those as a separate `overdue` bucket and
+    // clamp the displayed expected date to today for UX.
+    const isOverdue = rawExpected < todayStr
+    const expected = isOverdue ? todayStr : rawExpected
 
-    if (expected <= monthEnd) {
+    if (isOverdue) {
+      overdueCents += amount
       thisMonthCents += amount
       thisMonthInvoices.push({
         invoiceId: r.invoice_id,
@@ -106,6 +116,19 @@ export default defineEventHandler(async (event) => {
         dueDate: r.due_date,
         expectedDate: expected,
         dsoDays: dso,
+        overdue: true,
+      })
+    } else if (expected <= monthEnd) {
+      thisMonthCents += amount
+      thisMonthInvoices.push({
+        invoiceId: r.invoice_id,
+        invoiceNumber: r.invoice_number,
+        contactName: r.contact_name,
+        amount: Math.round(amount * 100) / 100,
+        dueDate: r.due_date,
+        expectedDate: expected,
+        dsoDays: dso,
+        overdue: false,
       })
     } else if (expected <= nextMonthEndStr) {
       nextMonthCents += amount
@@ -114,22 +137,28 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  thisMonthInvoices.sort((a, b) => (a.expectedDate < b.expectedDate ? -1 : 1))
+  // Sort: overdue invoices float to the top, then by expected date.
+  thisMonthInvoices.sort((a, b) => {
+    if (a.overdue !== b.overdue) return a.overdue ? -1 : 1
+    return a.expectedDate < b.expectedDate ? -1 : 1
+  })
 
   return {
-    period: { monthEnd, nextMonthEnd: nextMonthEndStr },
+    period: { monthEnd, nextMonthEnd: nextMonthEndStr, today: todayStr },
     totals: {
+      overdue:   Math.round(overdueCents * 100) / 100,
       thisMonth: Math.round(thisMonthCents * 100) / 100,
       nextMonth: Math.round(nextMonthCents * 100) / 100,
       later:     Math.round(laterCents * 100) / 100,
       total:     Math.round((thisMonthCents + nextMonthCents + laterCents) * 100) / 100,
     },
     counts: {
+      overdue:   thisMonthInvoices.filter(i => i.overdue).length,
       thisMonth: thisMonthInvoices.length,
-      nextMonth: rows.length - thisMonthInvoices.length, // approximate, not split next/later
-      total: rows.length,
+      nextMonth: rows.length - thisMonthInvoices.length,
+      total:     rows.length,
     },
-    thisMonthInvoices: thisMonthInvoices.slice(0, 12), // top 12 by expected date
-    methodology: 'expectedDate = max(due_date, issue_date + contact_DSO). DSO falls back to 7 days when no history.',
+    thisMonthInvoices: thisMonthInvoices.slice(0, 12),
+    methodology: 'expectedDate = max(due_date, issue_date + contact_DSO), clamped to today. DSO falls back to 7 days when no history. Past-date invoices flagged as overdue.',
   }
 })

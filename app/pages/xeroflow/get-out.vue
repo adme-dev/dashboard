@@ -29,8 +29,9 @@ interface PacingResponse {
   priorTotal: number
   requiredFromHere: number
   requiredPerWorkingDay: number
-  projectedAtCurrentPace: number
-  projectedShortfall: number
+  projectedAtCurrentPace: number | null
+  projectedShortfall: number | null
+  invoicingNotYetStarted: boolean
   points: Array<{ day: number; currentCumulative: number | null; priorCumulative: number | null; targetLine: number }>
 }
 const { data: pacing } = await useFetch<PacingResponse>('/api/xero/get-out/pacing', {
@@ -107,6 +108,7 @@ function quoteStatusColor(status: 'draft' | 'sent' | 'accepted'): string {
 const { data: cash } = await useFetch<{
   cashOnHand: number; daysOfCash: number | null; monthsRunway: number | null
   band: 'critical'|'tight'|'healthy'|'strong'|'unknown'; avgMonthlyOutflow: number
+  overdrawn: boolean
 }>('/api/xero/get-out/cash-position', { lazy: true, server: false })
 
 const { data: aging } = await useFetch<{
@@ -211,7 +213,7 @@ async function onConfigSaved() {
         </template>
         <template #right>
           <div class="flex items-center gap-3">
-            <div v-if="isLive" class="flex items-center gap-1.5 text-xs text-emerald-500">
+            <div v-if="isLive" class="flex items-center gap-1.5 text-sm text-emerald-500">
               <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
               Live
             </div>
@@ -266,7 +268,7 @@ async function onConfigSaved() {
                   <UIcon name="i-lucide-list-checks" class="text-primary" />
                   Action list
                 </h3>
-                <p class="text-xs text-muted">
+                <p class="text-sm text-muted">
                   {{ opsActions.actions.length }} ranked action{{ opsActions.actions.length === 1 ? '' : 's' }}
                   · {{ opsActions.period.workingDaysRemaining }} working days left
                 </p>
@@ -288,14 +290,14 @@ async function onConfigSaved() {
               <div class="flex-1 min-w-0">
                 <div class="flex items-baseline justify-between gap-3 flex-wrap">
                   <p class="font-medium text-sm">{{ a.title }}</p>
-                  <span class="text-xs tabular-nums font-medium"
+                  <span class="text-sm tabular-nums font-medium"
                     :class="{
                       'text-red-500':   a.severity === 'critical',
                       'text-amber-500': a.severity === 'high',
                       'text-muted':     a.severity === 'medium' || a.severity === 'low',
                     }">{{ a.value }}</span>
                 </div>
-                <p class="text-xs text-muted mt-0.5">{{ a.detail }}</p>
+                <p class="text-sm text-muted mt-0.5">{{ a.detail }}</p>
               </div>
             </li>
           </ul>
@@ -305,25 +307,25 @@ async function onConfigSaved() {
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <UCard :ui="{ body: '!p-4' }">
             <div class="flex items-start justify-between mb-2">
-              <p class="text-xs text-muted uppercase tracking-wide">Monthly target</p>
+              <p class="text-sm text-muted uppercase tracking-wide">Monthly target</p>
               <UIcon name="i-lucide-target" class="size-5 text-blue-500" />
             </div>
             <p class="text-2xl font-bold tabular-nums">{{ formatCurrency(data.getOutTarget) }}</p>
-            <p class="text-[11px] text-muted mt-1">Wages + expenses + extras</p>
+            <p class="text-xs text-muted mt-1">Wages + expenses + extras</p>
           </UCard>
 
           <UCard :ui="{ body: '!p-4' }">
             <div class="flex items-start justify-between mb-2">
-              <p class="text-xs text-muted uppercase tracking-wide">Invoiced so far</p>
+              <p class="text-sm text-muted uppercase tracking-wide">Invoiced so far</p>
               <UIcon name="i-lucide-receipt" class="size-5 text-emerald-500" />
             </div>
             <p class="text-2xl font-bold tabular-nums">{{ formatCurrency(data.currentMonth.invoicedTotal) }}</p>
-            <p class="text-[11px] text-muted mt-1">{{ data.currentMonth.invoicedCount }} invoices</p>
+            <p class="text-xs text-muted mt-1">{{ data.currentMonth.invoicedCount }} invoices</p>
           </UCard>
 
           <UCard :ui="{ body: '!p-4' }" :class="differenceBg">
             <div class="flex items-start justify-between mb-2">
-              <p class="text-xs text-muted uppercase tracking-wide">{{ isPositive ? 'Surplus' : 'Shortfall' }}</p>
+              <p class="text-sm text-muted uppercase tracking-wide">{{ isPositive ? 'Surplus' : 'Shortfall' }}</p>
               <UIcon
                 :name="isPositive ? 'i-lucide-trending-up' : 'i-lucide-trending-down'"
                 class="size-5"
@@ -333,12 +335,12 @@ async function onConfigSaved() {
             <p class="text-2xl font-bold tabular-nums" :class="differenceColor">
               {{ isPositive ? '+' : '' }}{{ formatCurrency(data.difference) }}
             </p>
-            <p class="text-[11px] text-muted mt-1">{{ isPositive ? 'Ahead of target' : 'Behind target' }}</p>
+            <p class="text-xs text-muted mt-1">{{ isPositive ? 'Ahead of target' : 'Behind target' }}</p>
           </UCard>
 
           <UCard :ui="{ body: '!p-4' }">
             <div class="flex items-start justify-between mb-2">
-              <p class="text-xs text-muted uppercase tracking-wide">Pace required</p>
+              <p class="text-sm text-muted uppercase tracking-wide">Pace required</p>
               <UIcon name="i-lucide-gauge" class="size-5 text-violet-500" />
             </div>
             <p class="text-2xl font-bold tabular-nums">
@@ -346,9 +348,14 @@ async function onConfigSaved() {
                 ? formatCurrency(pacing.requiredPerWorkingDay) + '/day'
                 : pacing && pacing.requiredFromHere === 0 ? 'On target ✓' : '—' }}
             </p>
-            <p class="text-[11px] text-muted mt-1">
-              <span v-if="pacing">{{ pacing.period.workingDaysRemaining }} working days left
-                · projecting {{ formatCurrency(pacing.projectedAtCurrentPace) }}</span>
+            <p class="text-sm text-muted mt-1">
+              <span v-if="pacing && pacing.invoicingNotYetStarted">
+                {{ pacing.period.workingDaysRemaining }} working days left · invoicing not yet started
+              </span>
+              <span v-else-if="pacing && pacing.projectedAtCurrentPace != null">
+                {{ pacing.period.workingDaysRemaining }} working days left · projecting {{ formatCurrency(pacing.projectedAtCurrentPace) }}
+              </span>
+              <span v-else-if="pacing">{{ pacing.period.workingDaysRemaining }} working days left</span>
               <span v-else>Day {{ data.period.dayOfMonth }} of {{ data.period.daysInMonth }}</span>
             </p>
           </UCard>
@@ -357,28 +364,35 @@ async function onConfigSaved() {
         <!-- ═══ Phase 3a + 3b: Cash reality + profit reality strip ═══ -->
         <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <!-- Cash on hand -->
-          <UCard :ui="{ body: '!p-4' }">
+          <UCard :ui="{ body: '!p-4' }" :class="cash?.overdrawn ? 'bg-red-50/60 dark:bg-red-500/5' : ''">
             <div class="flex items-start justify-between mb-2">
-              <p class="text-xs text-muted uppercase tracking-wide">Cash on hand</p>
-              <UIcon name="i-lucide-banknote" class="size-5 text-emerald-500" />
+              <p class="text-sm text-muted uppercase tracking-wide">Cash on hand</p>
+              <UIcon name="i-lucide-banknote" class="size-5" :class="cash?.overdrawn ? 'text-red-500' : 'text-emerald-500'" />
             </div>
-            <p class="text-xl font-bold tabular-nums">{{ cash ? formatCurrency(cash.cashOnHand) : '—' }}</p>
+            <p class="text-xl font-bold tabular-nums" :class="cash?.overdrawn ? 'text-red-500' : ''">
+              {{ cash ? formatCurrency(cash.cashOnHand) : '—' }}
+            </p>
             <div class="flex items-center gap-1.5 mt-1">
-              <UBadge v-if="cash?.daysOfCash != null" :color="cashBandColor(cash.band) as any" variant="subtle" size="xs">
-                {{ cash.daysOfCash }}d runway
+              <UBadge v-if="cash?.overdrawn" color="error" variant="subtle" size="sm">
+                Overdrawn
               </UBadge>
-              <span v-if="cash?.monthsRunway != null" class="text-[11px] text-muted">~{{ cash.monthsRunway }}mo</span>
+              <template v-else>
+                <UBadge v-if="cash?.daysOfCash != null" :color="cashBandColor(cash.band) as any" variant="subtle" size="sm">
+                  {{ cash.daysOfCash }}d runway
+                </UBadge>
+                <span v-if="cash?.monthsRunway != null" class="text-sm text-muted">~{{ cash.monthsRunway }}mo</span>
+              </template>
             </div>
           </UCard>
 
           <!-- AR aging snapshot -->
           <UCard :ui="{ body: '!p-4' }">
             <div class="flex items-start justify-between mb-2">
-              <p class="text-xs text-muted uppercase tracking-wide">AR outstanding</p>
+              <p class="text-sm text-muted uppercase tracking-wide">AR outstanding</p>
               <UIcon name="i-lucide-receipt" class="size-5 text-blue-500" />
             </div>
             <p class="text-xl font-bold tabular-nums">{{ aging ? formatCurrency(aging.totalOutstanding) : '—' }}</p>
-            <p class="text-[11px] text-muted mt-1">
+            <p class="text-xs text-muted mt-1">
               Avg {{ aging ? Math.round(aging.averageDaysPastDue) : 0 }}d past due
               <span v-if="aging?.totalInvoices">· {{ aging.totalInvoices }} inv</span>
             </p>
@@ -387,11 +401,11 @@ async function onConfigSaved() {
           <!-- AP due this month -->
           <UCard :ui="{ body: '!p-4' }">
             <div class="flex items-start justify-between mb-2">
-              <p class="text-xs text-muted uppercase tracking-wide">AP due this mo</p>
+              <p class="text-sm text-muted uppercase tracking-wide">AP due this mo</p>
               <UIcon name="i-lucide-credit-card" class="size-5 text-amber-500" />
             </div>
             <p class="text-xl font-bold tabular-nums">{{ apDue ? formatCurrency(apDue.totalDueThisMonth) : '—' }}</p>
-            <p class="text-[11px] mt-1" :class="(apDue?.totalOverdue ?? 0) > 0 ? 'text-red-500 font-medium' : 'text-muted'">
+            <p class="text-xs mt-1" :class="(apDue?.totalOverdue ?? 0) > 0 ? 'text-red-500 font-medium' : 'text-muted'">
               <span v-if="(apDue?.totalOverdue ?? 0) > 0">{{ formatCurrency(apDue?.totalOverdue) }} overdue · </span>
               {{ apDue?.billCount ?? 0 }} bills
             </p>
@@ -400,14 +414,14 @@ async function onConfigSaved() {
           <!-- Delivery margin -->
           <UCard :ui="{ body: '!p-4' }">
             <div class="flex items-start justify-between mb-2">
-              <p class="text-xs text-muted uppercase tracking-wide">Delivery margin</p>
+              <p class="text-sm text-muted uppercase tracking-wide">Delivery margin</p>
               <UIcon name="i-lucide-percent" class="size-5 text-violet-500" />
             </div>
             <p class="text-xl font-bold tabular-nums">
               {{ margin?.deliveryMargin != null ? `${margin.deliveryMargin}%` : '—' }}
             </p>
             <div class="flex items-center gap-1.5 mt-1">
-              <UBadge :color="marginBandColor(margin?.deliveryMarginBand ?? 'unknown') as any" variant="subtle" size="xs">
+              <UBadge :color="marginBandColor(margin?.deliveryMarginBand ?? 'unknown') as any" variant="subtle" size="sm">
                 AGI {{ margin ? formatCurrency(margin.agi) : '—' }}
               </UBadge>
             </div>
@@ -416,12 +430,12 @@ async function onConfigSaved() {
           <!-- Recurring mix -->
           <UCard :ui="{ body: '!p-4' }">
             <div class="flex items-start justify-between mb-2">
-              <p class="text-xs text-muted uppercase tracking-wide">Recurring mix</p>
+              <p class="text-sm text-muted uppercase tracking-wide">Recurring mix</p>
               <UIcon name="i-lucide-repeat" class="size-5 text-violet-500" />
             </div>
             <p class="text-xl font-bold tabular-nums">{{ recurringMix?.recurringPct ?? 0 }}%</p>
             <div class="flex items-center gap-1.5 mt-1">
-              <UBadge :color="mixBandColor(recurringMix?.band ?? 'low') as any" variant="subtle" size="xs">
+              <UBadge :color="mixBandColor(recurringMix?.band ?? 'low') as any" variant="subtle" size="sm">
                 {{ recurringMix?.recurringClientCount ?? 0 }} retainers
               </UBadge>
             </div>
@@ -450,40 +464,40 @@ async function onConfigSaved() {
 
           <!-- Worst / realistic / best scenario envelope -->
           <div v-if="forecast.scenarios" class="mt-4 pt-4 border-t border-default">
-            <p class="text-xs text-muted uppercase tracking-wide mb-3">Scenario envelope</p>
+            <p class="text-sm text-muted uppercase tracking-wide mb-3">Scenario envelope</p>
             <div class="grid grid-cols-3 gap-3">
               <div class="p-3 rounded border border-default bg-red-50/40 dark:bg-red-500/5">
                 <div class="flex items-center gap-1.5 mb-1">
                   <UIcon name="i-lucide-trending-down" class="size-3.5 text-red-500" />
-                  <p class="text-xs text-muted uppercase">Worst case</p>
+                  <p class="text-sm text-muted uppercase">Worst case</p>
                 </div>
                 <p class="text-lg font-bold tabular-nums">{{ formatCurrency(forecast.scenarios.worst) }}</p>
-                <p class="text-[11px]" :class="forecast.scenarios.worstGap > 0 ? 'text-red-500' : 'text-emerald-500'">
+                <p class="text-xs" :class="forecast.scenarios.worstGap > 0 ? 'text-red-500' : 'text-emerald-500'">
                   {{ forecast.scenarios.worstGap > 0 ? `${formatCurrency(forecast.scenarios.worstGap)} short` : 'Still hits target' }}
                 </p>
               </div>
               <div class="p-3 rounded border border-primary/40 bg-primary/5">
                 <div class="flex items-center gap-1.5 mb-1">
                   <UIcon name="i-lucide-target" class="size-3.5 text-primary" />
-                  <p class="text-xs text-muted uppercase">Realistic</p>
+                  <p class="text-sm text-muted uppercase">Realistic</p>
                 </div>
                 <p class="text-lg font-bold tabular-nums">{{ formatCurrency(forecast.scenarios.realistic) }}</p>
-                <p class="text-[11px]" :class="forecast.gap > 0 ? 'text-amber-500' : 'text-emerald-500'">
+                <p class="text-xs" :class="forecast.gap > 0 ? 'text-amber-500' : 'text-emerald-500'">
                   {{ forecast.gap > 0 ? `${formatCurrency(forecast.gap)} short` : `${formatCurrency(forecast.surplus)} surplus` }}
                 </p>
               </div>
               <div class="p-3 rounded border border-default bg-emerald-50/40 dark:bg-emerald-500/5">
                 <div class="flex items-center gap-1.5 mb-1">
                   <UIcon name="i-lucide-trending-up" class="size-3.5 text-emerald-500" />
-                  <p class="text-xs text-muted uppercase">Best case</p>
+                  <p class="text-sm text-muted uppercase">Best case</p>
                 </div>
                 <p class="text-lg font-bold tabular-nums">{{ formatCurrency(forecast.scenarios.best) }}</p>
-                <p class="text-[11px]" :class="forecast.scenarios.bestGap > 0 ? 'text-amber-500' : 'text-emerald-500'">
+                <p class="text-xs" :class="forecast.scenarios.bestGap > 0 ? 'text-amber-500' : 'text-emerald-500'">
                   {{ forecast.scenarios.bestGap > 0 ? `${formatCurrency(forecast.scenarios.bestGap)} short` : 'Above target' }}
                 </p>
               </div>
             </div>
-            <p class="text-[10px] text-muted italic mt-2">
+            <p class="text-xs text-muted italic mt-2">
               Worst = AR × 60% + recurring × 85% + quotes weighted lower (5/20/60%).
               Best = full AR + full recurring + quotes weighted upper (40/70/95%).
             </p>
@@ -496,7 +510,7 @@ async function onConfigSaved() {
             <template #header>
               <div class="flex items-center justify-between">
                 <h3 class="font-semibold">Pacing</h3>
-                <p class="text-xs text-muted">
+                <p class="text-sm text-muted">
                   {{ formatCurrency(pacing.currentTotal) }} of {{ formatCurrency(pacing.target) }}
                   <span v-if="pacing.priorTotal > 0" class="ml-1">
                     · last month {{ formatCurrency(pacing.priorTotal) }}
@@ -517,7 +531,7 @@ async function onConfigSaved() {
             <template #header>
               <div>
                 <h3 class="font-semibold">Open quotes</h3>
-                <p class="text-xs text-muted">
+                <p class="text-sm text-muted">
                   {{ formatCurrency(forecast.layers.quotesProbable) }} probability-weighted
                 </p>
               </div>
@@ -530,14 +544,14 @@ async function onConfigSaved() {
               >
                 <div class="min-w-0">
                   <div class="flex items-center gap-2">
-                    <UBadge :color="quoteStatusColor(status) as any" variant="subtle" size="xs" class="capitalize">
+                    <UBadge :color="quoteStatusColor(status) as any" variant="subtle" size="sm" class="capitalize">
                       {{ status }}
                     </UBadge>
-                    <span class="text-[11px] text-muted">
+                    <span class="text-xs text-muted">
                       ×{{ status === 'draft' ? '20%' : status === 'sent' ? '40%' : '80%' }}
                     </span>
                   </div>
-                  <p class="text-[11px] text-muted mt-0.5">
+                  <p class="text-xs text-muted mt-0.5">
                     {{ forecast.quotes.byStatus[status].count }} quote{{ forecast.quotes.byStatus[status].count === 1 ? '' : 's' }}
                   </p>
                 </div>
@@ -546,7 +560,7 @@ async function onConfigSaved() {
                 </p>
               </div>
             </div>
-            <p v-if="forecast.recurringSchedulesRemaining > 0" class="text-xs text-muted mt-3">
+            <p v-if="forecast.recurringSchedulesRemaining > 0" class="text-sm text-muted mt-3">
               + {{ forecast.recurringSchedulesRemaining }} recurring schedule{{ forecast.recurringSchedulesRemaining === 1 ? '' : 's' }} firing later this month
               ({{ formatCurrency(forecast.layers.recurring) }})
             </p>
@@ -563,15 +577,15 @@ async function onConfigSaved() {
                   <h3 class="font-semibold">Retainer calendar</h3>
                   <UBadge
                     v-if="recurringCal.counts.missing > 0"
-                    color="error" variant="subtle" size="xs"
+                    color="error" variant="subtle" size="sm"
                   >
                     {{ recurringCal.counts.missing }} missing
                   </UBadge>
-                  <UBadge v-else-if="recurringCal.counts.fired > 0" color="success" variant="subtle" size="xs">
+                  <UBadge v-else-if="recurringCal.counts.fired > 0" color="success" variant="subtle" size="sm">
                     All clear
                   </UBadge>
                 </div>
-                <p class="text-xs text-muted">
+                <p class="text-sm text-muted">
                   {{ recurringCal.counts.fired }} fired · {{ recurringCal.counts.pending }} pending · {{ recurringCal.counts.missing }} missing
                 </p>
               </div>
@@ -581,12 +595,12 @@ async function onConfigSaved() {
                 <div class="flex items-center justify-between gap-2">
                   <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2">
-                      <UBadge :color="statusColor(e.status) as any" variant="subtle" size="xs" class="capitalize">
+                      <UBadge :color="statusColor(e.status) as any" variant="subtle" size="sm" class="capitalize">
                         {{ e.status }}
                       </UBadge>
                       <p class="text-sm font-medium truncate">{{ e.name }}</p>
                     </div>
-                    <p class="text-[11px] text-muted">
+                    <p class="text-xs text-muted">
                       {{ e.expectedDay ? `Typical day ${e.expectedDay}` : 'No history' }}
                       · {{ e.source === 'xero_repeating' ? 'Xero schedule' : 'inferred pattern' }}
                     </p>
@@ -605,33 +619,33 @@ async function onConfigSaved() {
             <template #header>
               <div class="px-6">
                 <h3 class="font-semibold">AR collection forecast</h3>
-                <p class="text-xs text-muted">
+                <p class="text-sm text-muted">
                   Of {{ formatCurrency(arForecast.totals.total) }} outstanding · DSO-weighted
                 </p>
               </div>
             </template>
             <div class="px-6 py-3 grid grid-cols-3 gap-2">
               <div>
-                <p class="text-[10px] uppercase text-muted">This month</p>
+                <p class="text-xs uppercase text-muted">This month</p>
                 <p class="text-base font-bold tabular-nums text-emerald-500">{{ formatCurrency(arForecast.totals.thisMonth) }}</p>
               </div>
               <div>
-                <p class="text-[10px] uppercase text-muted">Next month</p>
+                <p class="text-xs uppercase text-muted">Next month</p>
                 <p class="text-base font-bold tabular-nums text-amber-500">{{ formatCurrency(arForecast.totals.nextMonth) }}</p>
               </div>
               <div>
-                <p class="text-[10px] uppercase text-muted">Later</p>
+                <p class="text-xs uppercase text-muted">Later</p>
                 <p class="text-base font-bold tabular-nums text-red-500">{{ formatCurrency(arForecast.totals.later) }}</p>
               </div>
             </div>
             <div class="border-t border-default">
-              <p class="px-6 pt-3 text-[10px] uppercase text-muted">Landing this month</p>
+              <p class="px-6 pt-3 text-xs uppercase text-muted">Landing this month</p>
               <ul class="divide-y divide-default max-h-60 overflow-y-auto">
                 <li v-for="inv in arForecast.thisMonthInvoices" :key="inv.invoiceId" class="px-6 py-2 text-sm">
                   <div class="flex items-center justify-between gap-2">
                     <div class="min-w-0 flex-1">
                       <p class="font-medium truncate">{{ inv.contactName ?? '—' }}</p>
-                      <p class="text-[11px] text-muted">
+                      <p class="text-xs text-muted">
                         {{ inv.invoiceNumber || '—' }} · expected ~{{ new Date(inv.expectedDate).toLocaleDateString('en-AU', { month: 'short', day: 'numeric' }) }}
                       </p>
                     </div>
@@ -651,16 +665,16 @@ async function onConfigSaved() {
               <div>
                 <div class="flex items-center justify-between">
                   <h3 class="font-semibold">Tax provision</h3>
-                  <UBadge :color="(taxProvision.bas.daysUntil < 30 ? 'warning' : 'info') as any" variant="subtle" size="xs">
+                  <UBadge :color="(taxProvision.bas.daysUntil < 30 ? 'warning' : 'info') as any" variant="subtle" size="sm">
                     BAS in {{ taxProvision.bas.daysUntil }}d
                   </UBadge>
                 </div>
-                <p class="text-xs text-muted">{{ taxProvision.currentQuarter.label }} · BAS due {{ taxProvision.bas.dueDate }}</p>
+                <p class="text-sm text-muted">{{ taxProvision.currentQuarter.label }} · BAS due {{ taxProvision.bas.dueDate }}</p>
               </div>
             </template>
             <div class="space-y-3 text-sm">
               <div>
-                <p class="text-[10px] uppercase text-muted">Set aside</p>
+                <p class="text-xs uppercase text-muted">Set aside</p>
                 <p class="text-2xl font-bold tabular-nums">{{ formatCurrency(taxProvision.totalSetAside) }}</p>
               </div>
               <div class="space-y-2 pt-2 border-t border-default">
@@ -668,7 +682,7 @@ async function onConfigSaved() {
                   <span>GST net owed</span>
                   <span class="tabular-nums font-medium">{{ formatCurrency(taxProvision.gst.netOwed) }}</span>
                 </div>
-                <div class="flex items-center justify-between text-xs text-muted pl-3">
+                <div class="flex items-center justify-between text-sm text-muted pl-3">
                   <span>collected ÷ paid</span>
                   <span class="tabular-nums">
                     {{ formatCurrency(taxProvision.gst.collected) }} / {{ formatCurrency(taxProvision.gst.paid) }}
@@ -683,7 +697,7 @@ async function onConfigSaved() {
                   <span class="tabular-nums font-medium">{{ formatCurrency(taxProvision.superGuarantee.estimated) }}</span>
                 </div>
               </div>
-              <p class="text-[10px] text-muted italic pt-2 border-t border-default">
+              <p class="text-xs text-muted italic pt-2 border-t border-default">
                 Rough estimate. Sanity-check with your accountant before lodgement.
               </p>
             </div>
@@ -697,7 +711,7 @@ async function onConfigSaved() {
               <div class="flex items-center justify-between px-6">
                 <div>
                   <h3 class="font-semibold">Top contributors this month</h3>
-                  <p class="text-xs text-muted">
+                  <p class="text-sm text-muted">
                     {{ topClients.contributorCount }} clients · {{ formatCurrency(topClients.totalThisMonth) }} total
                   </p>
                 </div>
@@ -705,7 +719,7 @@ async function onConfigSaved() {
             </template>
             <div class="overflow-x-auto">
               <table class="w-full text-sm">
-                <thead class="bg-elevated/50 text-xs uppercase text-muted">
+                <thead class="bg-elevated/50 text-sm uppercase text-muted">
                   <tr>
                     <th class="text-left font-medium px-4 py-2">Client</th>
                     <th class="text-right font-medium px-4 py-2">This month</th>
@@ -724,11 +738,11 @@ async function onConfigSaved() {
                   >
                     <td class="px-4 py-2 max-w-xs">
                       <p class="font-medium truncate">{{ c.name }}</p>
-                      <p class="text-xs text-muted truncate">{{ c.email || '—' }}</p>
+                      <p class="text-sm text-muted truncate">{{ c.email || '—' }}</p>
                     </td>
                     <td class="px-4 py-2 text-right tabular-nums font-medium">
                       {{ formatCurrency(c.thisMonth) }}
-                      <p class="text-[11px] text-muted font-normal">{{ c.thisMonthCount }} inv</p>
+                      <p class="text-xs text-muted font-normal">{{ c.thisMonthCount }} inv</p>
                     </td>
                     <td class="px-4 py-2 text-right tabular-nums">{{ c.sharePct }}%</td>
                     <td class="px-4 py-2 text-right tabular-nums">
@@ -738,7 +752,7 @@ async function onConfigSaved() {
                       >
                         {{ c.vsPriorPct >= 0 ? '+' : '' }}{{ c.vsPriorPct }}%
                       </span>
-                      <span v-else class="text-muted text-xs">new</span>
+                      <span v-else class="text-muted text-sm">new</span>
                     </td>
                     <td class="px-4 py-2 text-right tabular-nums">
                       <span :class="c.overdue > 0 ? 'text-red-500 font-medium' : c.outstanding > 0 ? 'font-medium' : 'text-muted'">
@@ -746,7 +760,7 @@ async function onConfigSaved() {
                       </span>
                     </td>
                     <td class="px-4 py-2">
-                      <UBadge :color="riskBadgeColor(c.churnRiskBand) as any" variant="subtle" size="xs" class="capitalize">
+                      <UBadge :color="riskBadgeColor(c.churnRiskBand) as any" variant="subtle" size="sm" class="capitalize">
                         {{ c.churnRiskBand }}
                       </UBadge>
                     </td>
@@ -762,7 +776,7 @@ async function onConfigSaved() {
               <div class="flex items-center justify-between">
                 <h3 class="font-semibold">Target breakdown</h3>
                 <UButton
-                  size="xs"
+                  size="sm"
                   variant="ghost"
                   color="neutral"
                   icon="i-lucide-pencil"
@@ -798,7 +812,7 @@ async function onConfigSaved() {
                 <span class="text-sm font-semibold">Total target</span>
                 <span class="text-lg font-bold tabular-nums">{{ formatCurrency(data.getOutTarget) }}</span>
               </div>
-              <details v-if="data.config?.lines?.length" class="text-xs text-muted">
+              <details v-if="data.config?.lines?.length" class="text-sm text-muted">
                 <summary class="cursor-pointer hover:text-default select-none">
                   Show {{ data.config.lines.length }} line item{{ data.config.lines.length === 1 ? '' : 's' }}
                 </summary>
@@ -831,12 +845,12 @@ async function onConfigSaved() {
                 class="flex items-center justify-between py-2 border-b border-default/50 last:border-0"
               >
                 <div class="flex items-center gap-2">
-                  <UBadge size="xs" variant="subtle">{{ cat.code }}</UBadge>
+                  <UBadge size="sm" variant="subtle">{{ cat.code }}</UBadge>
                   <span class="text-sm">{{ cat.name }}</span>
                 </div>
                 <div class="text-right">
                   <span class="font-medium tabular-nums">{{ formatCurrency(cat.total) }}</span>
-                  <span class="text-xs text-muted ml-2">({{ cat.count }} lines)</span>
+                  <span class="text-sm text-muted ml-2">({{ cat.count }} lines)</span>
                 </div>
               </div>
             </div>
@@ -848,7 +862,7 @@ async function onConfigSaved() {
               <div class="flex items-center justify-between gap-3 flex-wrap">
                 <div>
                   <h3 class="font-semibold">12-month performance</h3>
-                  <p class="text-xs text-muted">
+                  <p class="text-sm text-muted">
                     {{ history.summary.hitCount }}/{{ history.summary.monthsTracked }} hit
                     · avg {{ history.summary.avgPctOfTarget }}% of target
                   </p>
@@ -877,11 +891,11 @@ async function onConfigSaved() {
                     />
                     <div class="absolute left-0 right-0 border-t border-default" style="top: 0%" />
                   </div>
-                  <span class="text-[10px] text-muted truncate w-full text-center">{{ m.monthLabel }}</span>
+                  <span class="text-xs text-muted truncate w-full text-center">{{ m.monthLabel }}</span>
                 </div>
               </UTooltip>
             </div>
-            <p class="text-[11px] text-muted mt-3 italic">
+            <p class="text-xs text-muted mt-3 italic">
               Bars compare each month's invoicing to today's Get Out target.
             </p>
           </UCard>

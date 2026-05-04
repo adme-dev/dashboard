@@ -135,10 +135,18 @@ export default defineEventHandler(async (event) => {
     : 0
   // "If today's pace continues" projection — uses the current invoicing rate
   // per elapsed day rather than the linear daily-pace target.
-  const projectedAtCurrentPace = dayOfMonth > 0
-    ? (currentRunning / dayOfMonth) * daysInMonth
-    : 0
-  const projectedShortfall = target - projectedAtCurrentPace
+  //
+  // Early-month with end-of-month invoicing pattern (zero invoiced in week 1)
+  // breaks the linear projection — extrapolating $0 over 30 days projects $0,
+  // which is misleading. Suppress projection in those cases and let the UI
+  // hint with "invoicing not yet started" instead of showing a meaningless 0.
+  const earlyMonthNoInvoicing = currentRunning === 0 && dayOfMonth <= 7
+  const projectedAtCurrentPace = earlyMonthNoInvoicing || dayOfMonth === 0
+    ? null
+    : (currentRunning / dayOfMonth) * daysInMonth
+  const projectedShortfall = projectedAtCurrentPace == null
+    ? null
+    : target - projectedAtCurrentPace
 
   return {
     period: { year, month, daysInMonth, dayOfMonth, workingDaysSoFar, workingDaysRemaining },
@@ -148,8 +156,13 @@ export default defineEventHandler(async (event) => {
     priorTotal: Math.round(priorRunning * 100) / 100,
     requiredFromHere: Math.round(requiredFromHere * 100) / 100,
     requiredPerWorkingDay: Math.round(requiredPerWorkingDay * 100) / 100,
-    projectedAtCurrentPace: Math.round(projectedAtCurrentPace * 100) / 100,
-    projectedShortfall: Math.round(projectedShortfall * 100) / 100,
+    projectedAtCurrentPace: projectedAtCurrentPace == null
+      ? null
+      : Math.round(projectedAtCurrentPace * 100) / 100,
+    projectedShortfall: projectedShortfall == null
+      ? null
+      : Math.round(projectedShortfall * 100) / 100,
+    invoicingNotYetStarted: earlyMonthNoInvoicing,
     points,
   }
 })

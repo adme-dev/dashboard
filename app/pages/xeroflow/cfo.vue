@@ -139,7 +139,7 @@ const breadcrumbs = computed(() => [
                   <UIcon name="i-lucide-list-checks" class="text-primary" />
                   This week
                 </h3>
-                <p class="text-xs text-muted">{{ actions.actions.length }} ranked action{{ actions.actions.length === 1 ? '' : 's' }} from your live numbers</p>
+                <p class="text-sm text-muted">{{ actions.actions.length }} ranked action{{ actions.actions.length === 1 ? '' : 's' }} from your live numbers</p>
               </div>
             </div>
           </template>
@@ -158,16 +158,16 @@ const breadcrumbs = computed(() => [
               <div class="flex-1 min-w-0">
                 <div class="flex items-baseline justify-between gap-3 flex-wrap">
                   <p class="font-medium text-sm">{{ a.title }}</p>
-                  <span class="text-xs tabular-nums font-medium"
+                  <span class="text-sm tabular-nums font-medium"
                     :class="{
                       'text-red-500':   a.severity === 'critical',
                       'text-amber-500': a.severity === 'high',
                       'text-muted':     a.severity === 'medium' || a.severity === 'low',
                     }">{{ a.value }}</span>
                 </div>
-                <p class="text-xs text-muted mt-0.5">{{ a.detail }}</p>
+                <p class="text-sm text-muted mt-0.5">{{ a.detail }}</p>
               </div>
-              <NuxtLink v-if="a.linkTo" :to="a.linkTo" class="text-xs text-primary hover:underline shrink-0 mt-0.5">Open →</NuxtLink>
+              <NuxtLink v-if="a.linkTo" :to="a.linkTo" class="text-sm text-primary hover:underline shrink-0 mt-0.5">Open →</NuxtLink>
             </li>
           </ul>
         </UCard>
@@ -175,39 +175,39 @@ const breadcrumbs = computed(() => [
         <!-- ─── Hero KPIs (4 numbers a CFO checks first) ─────────────── -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <UCard :ui="{ body: '!p-4' }" :class="runway?.band === 'critical' ? 'bg-red-50/60 dark:bg-red-500/5' : ''">
-            <p class="text-xs text-muted uppercase tracking-wide mb-2">Cash · Runway</p>
+            <p class="text-sm text-muted uppercase tracking-wide mb-2">Cash · Runway</p>
             <p class="text-xl font-bold tabular-nums" :class="runway?.currentCash < 0 ? 'text-red-500' : ''">
               {{ fmt(runway?.currentCash) }}
             </p>
-            <UBadge v-if="runway?.band" :color="runwayBandColor(runway.band) as any" variant="subtle" size="xs" class="capitalize mt-1">
+            <UBadge v-if="runway?.band" :color="runwayBandColor(runway.band) as any" variant="subtle" size="sm" class="capitalize mt-1">
               {{ runway.runwayMonths >= 99 ? 'Self-funding' : `${runway.runwayMonths}mo runway` }}
             </UBadge>
           </UCard>
 
           <UCard :ui="{ body: '!p-4' }" :class="ytd?.onPace ? 'bg-emerald-50/50 dark:bg-emerald-500/5' : 'bg-amber-50/50 dark:bg-amber-500/5'">
-            <p class="text-xs text-muted uppercase tracking-wide mb-2">YTD revenue</p>
+            <p class="text-sm text-muted uppercase tracking-wide mb-2">YTD revenue</p>
             <p class="text-xl font-bold tabular-nums">{{ fmt(ytd?.ytdInvoiced) }}</p>
-            <p class="text-[11px] text-muted mt-1">
+            <p class="text-xs text-muted mt-1">
               Projecting {{ fmtCompact(ytd?.projectedAnnual) }} · goal {{ fmtCompact(ytd?.annualGoal) }}
             </p>
           </UCard>
 
           <UCard :ui="{ body: '!p-4' }" :class="profit?.band === 'loss' ? 'bg-red-50/60 dark:bg-red-500/5' : profit?.band === 'thin' ? 'bg-amber-50/50 dark:bg-amber-500/5' : ''">
-            <p class="text-xs text-muted uppercase tracking-wide mb-2">YTD net margin</p>
+            <p class="text-sm text-muted uppercase tracking-wide mb-2">YTD net margin</p>
             <p class="text-xl font-bold tabular-nums" :class="profit?.ytd?.netProfit < 0 ? 'text-red-500' : ''">
               {{ profit?.ytd ? `${profit.ytd.margin}%` : '—' }}
             </p>
-            <p class="text-[11px] text-muted mt-1">
+            <p class="text-xs text-muted mt-1">
               Net {{ fmtCompact(profit?.ytd?.netProfit) }} on {{ fmtCompact(profit?.ytd?.revenue) }}
             </p>
           </UCard>
 
           <UCard :ui="{ body: '!p-4' }">
-            <p class="text-xs text-muted uppercase tracking-wide mb-2">Pipeline coverage</p>
+            <p class="text-sm text-muted uppercase tracking-wide mb-2">Pipeline coverage</p>
             <p class="text-xl font-bold tabular-nums">
               {{ coverage?.coverage?.weighted != null ? `${coverage.coverage.weighted}×` : '—' }}
             </p>
-            <UBadge v-if="coverage?.coverage?.band" :color="coverageBandColor(coverage.coverage.band) as any" variant="subtle" size="xs" class="capitalize mt-1">
+            <UBadge v-if="coverage?.coverage?.band" :color="coverageBandColor(coverage.coverage.band) as any" variant="subtle" size="sm" class="capitalize mt-1">
               {{ coverage.coverage.band }} (need 3×)
             </UBadge>
           </UCard>
@@ -228,7 +228,7 @@ const breadcrumbs = computed(() => [
         <div class="space-y-4">
           <div class="flex items-baseline gap-3">
             <h2 class="text-base font-semibold">Cash &amp; AR</h2>
-            <p class="text-xs text-muted">What's in the bank, what's coming in, what's overdue.</p>
+            <p class="text-sm text-muted">What's in the bank, what's coming in, what's overdue.</p>
           </div>
 
           <!-- 13-week cashflow forecast -->
@@ -237,7 +237,7 @@ const breadcrumbs = computed(() => [
               <div class="flex items-center justify-between flex-wrap gap-2">
                 <div>
                   <h3 class="font-semibold">13-week cashflow forecast</h3>
-                  <p class="text-xs text-muted">
+                  <p class="text-sm text-muted">
                     Opening {{ fmt(cashflow.openingCash) }}
                     · projected close {{ fmt(cashflow.closingBalanceProjected) }}
                     <span :class="cashflow.netChangeProjected >= 0 ? 'text-emerald-500' : 'text-red-500'">
@@ -253,7 +253,7 @@ const breadcrumbs = computed(() => [
               </div>
             </template>
 
-            <p class="text-[11px] text-muted italic mb-2">
+            <p class="text-xs text-muted italic mb-2">
               Solid bars = known AR/AP from Xero. Hashed bars = projected (inferred MRR
               high+medium-confidence × 90 days, weekly burn from Get Out config).
               <span v-if="cashflow.projectionInputs">
@@ -263,7 +263,7 @@ const breadcrumbs = computed(() => [
             </p>
 
             <div class="overflow-x-auto">
-              <table class="w-full text-xs">
+              <table class="w-full text-sm">
                 <thead class="bg-elevated/50 text-muted uppercase">
                   <tr>
                     <th class="text-left font-medium px-2 py-2">Week</th>
@@ -318,14 +318,14 @@ const breadcrumbs = computed(() => [
               <template #header>
                 <div class="flex items-center justify-between">
                   <h3 class="font-semibold">AR aging</h3>
-                  <UBadge :color="agingBandColor(aging.band) as any" variant="subtle" size="xs" class="capitalize">
+                  <UBadge :color="agingBandColor(aging.band) as any" variant="subtle" size="sm" class="capitalize">
                     {{ aging.overduePct }}% overdue · {{ aging.band }}
                   </UBadge>
                 </div>
               </template>
               <div class="space-y-3">
                 <div class="flex items-baseline justify-between">
-                  <span class="text-xs text-muted">Outstanding</span>
+                  <span class="text-sm text-muted">Outstanding</span>
                   <span class="text-xl font-bold tabular-nums">{{ fmt(aging.totalOutstanding) }}</span>
                 </div>
                 <div v-if="agingTotal > 0" class="space-y-2">
@@ -336,7 +336,7 @@ const breadcrumbs = computed(() => [
                     <div class="bg-red-500" :style="{ width: `${(aging.buckets['61-90'] / agingTotal) * 100}%` }" :title="`61-90d ${fmt(aging.buckets['61-90'])}`" />
                     <div class="bg-red-700" :style="{ width: `${(aging.buckets['90+'] / agingTotal) * 100}%` }" :title="`90+d ${fmt(aging.buckets['90+'])}`" />
                   </div>
-                  <div class="grid grid-cols-5 gap-1 text-[10px] text-muted">
+                  <div class="grid grid-cols-5 gap-1 text-xs text-muted">
                     <div class="text-center"><div class="font-medium tabular-nums">{{ fmtCompact(aging.buckets.current) }}</div><div>Current</div></div>
                     <div class="text-center"><div class="font-medium tabular-nums">{{ fmtCompact(aging.buckets['1-30']) }}</div><div>1-30d</div></div>
                     <div class="text-center"><div class="font-medium tabular-nums">{{ fmtCompact(aging.buckets['31-60']) }}</div><div>31-60d</div></div>
@@ -344,7 +344,7 @@ const breadcrumbs = computed(() => [
                     <div class="text-center"><div class="font-medium tabular-nums">{{ fmtCompact(aging.buckets['90+']) }}</div><div>90+d</div></div>
                   </div>
                 </div>
-                <p v-if="aging.oldestOverdueDays > 0" class="text-xs text-muted">
+                <p v-if="aging.oldestOverdueDays > 0" class="text-sm text-muted">
                   Oldest overdue: <span class="font-medium" :class="aging.oldestOverdueDays > 60 ? 'text-red-500' : 'text-amber-500'">{{ aging.oldestOverdueDays }} days</span>
                 </p>
               </div>
@@ -354,11 +354,11 @@ const breadcrumbs = computed(() => [
               <template #header>
                 <div class="px-6">
                   <h3 class="font-semibold">Top overdue accounts</h3>
-                  <p class="text-xs text-muted">{{ fmt(aging.totalOverdue) }} overdue · chase first</p>
+                  <p class="text-sm text-muted">{{ fmt(aging.totalOverdue) }} overdue · chase first</p>
                 </div>
               </template>
               <table class="w-full text-sm">
-                <thead class="bg-elevated/50 text-xs uppercase text-muted">
+                <thead class="bg-elevated/50 text-sm uppercase text-muted">
                   <tr>
                     <th class="text-left font-medium px-4 py-2">Client</th>
                     <th class="text-right font-medium px-4 py-2">Overdue</th>
@@ -369,7 +369,7 @@ const breadcrumbs = computed(() => [
                   <tr v-for="c in aging.topOverdue" :key="c.contactId">
                     <td class="px-4 py-2 truncate">{{ c.name }}</td>
                     <td class="px-4 py-2 text-right tabular-nums font-medium">{{ fmt(c.overdue) }}</td>
-                    <td class="px-4 py-2 text-right text-xs" :class="c.oldestOverdueDays > 60 ? 'text-red-500 font-medium' : c.oldestOverdueDays > 30 ? 'text-amber-500' : 'text-muted'">
+                    <td class="px-4 py-2 text-right text-sm" :class="c.oldestOverdueDays > 60 ? 'text-red-500 font-medium' : c.oldestOverdueDays > 30 ? 'text-amber-500' : 'text-muted'">
                       {{ c.oldestOverdueDays }}d
                     </td>
                   </tr>
@@ -386,7 +386,7 @@ const breadcrumbs = computed(() => [
         <div class="space-y-4">
           <div class="flex items-baseline gap-3">
             <h2 class="text-base font-semibold">Revenue &amp; pipeline</h2>
-            <p class="text-xs text-muted">Where the money's coming from, and what's coming next.</p>
+            <p class="text-sm text-muted">Where the money's coming from, and what's coming next.</p>
           </div>
 
           <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -397,7 +397,7 @@ const breadcrumbs = computed(() => [
               </template>
               <div class="space-y-3">
                 <div>
-                  <p class="text-xs text-muted">This month invoiced</p>
+                  <p class="text-sm text-muted">This month invoiced</p>
                   <p class="text-2xl font-bold tabular-nums">{{ fmt(mix.totalRevenue) }}</p>
                 </div>
                 <div class="flex h-3 rounded overflow-hidden">
@@ -406,18 +406,18 @@ const breadcrumbs = computed(() => [
                 </div>
                 <div class="grid grid-cols-2 gap-3 text-sm">
                   <div>
-                    <p class="text-xs text-muted">Recurring</p>
-                    <p class="font-medium">{{ fmt(mix.recurringRevenue) }} <span class="text-xs text-muted">{{ mix.recurringPct }}%</span></p>
-                    <p class="text-[11px] text-muted">
+                    <p class="text-sm text-muted">Recurring</p>
+                    <p class="font-medium">{{ fmt(mix.recurringRevenue) }} <span class="text-sm text-muted">{{ mix.recurringPct }}%</span></p>
+                    <p class="text-xs text-muted">
                       {{ mix.xeroScheduleClients }} on schedule · {{ mix.inferredClients }} inferred
                     </p>
                   </div>
                   <div>
-                    <p class="text-xs text-muted">Project</p>
-                    <p class="font-medium">{{ fmt(mix.projectRevenue) }} <span class="text-xs text-muted">{{ Math.round(100 - mix.recurringPct) }}%</span></p>
+                    <p class="text-sm text-muted">Project</p>
+                    <p class="font-medium">{{ fmt(mix.projectRevenue) }} <span class="text-sm text-muted">{{ Math.round(100 - mix.recurringPct) }}%</span></p>
                   </div>
                 </div>
-                <p class="text-[11px] text-muted italic">Healthy ratio: 50-60%+ recurring.</p>
+                <p class="text-xs text-muted italic">Healthy ratio: 50-60%+ recurring.</p>
               </div>
             </UCard>
 
@@ -428,24 +428,24 @@ const breadcrumbs = computed(() => [
               </template>
               <div class="space-y-3">
                 <div>
-                  <p class="text-xs text-muted">Weighted ÷ quarterly target</p>
+                  <p class="text-sm text-muted">Weighted ÷ quarterly target</p>
                   <p class="text-3xl font-bold tabular-nums">{{ coverage.coverage?.weighted ?? 0 }}×</p>
                 </div>
                 <div class="grid grid-cols-2 gap-3 pt-3 border-t border-default text-sm">
                   <div>
-                    <p class="text-xs text-muted">Open quotes (face)</p>
+                    <p class="text-sm text-muted">Open quotes (face)</p>
                     <p class="font-medium">{{ fmt(coverage.pipeline.quotesFaceValue) }}</p>
-                    <p class="text-[11px] text-muted">{{ coverage.pipeline.quoteCount }} quotes</p>
+                    <p class="text-xs text-muted">{{ coverage.pipeline.quoteCount }} quotes</p>
                   </div>
                   <div>
-                    <p class="text-xs text-muted">Recurring (90d)</p>
+                    <p class="text-sm text-muted">Recurring (90d)</p>
                     <p class="font-medium">{{ fmt(coverage.pipeline.recurringContribution + coverage.pipeline.inferredContribution) }}</p>
-                    <p class="text-[11px] text-muted">
+                    <p class="text-xs text-muted">
                       {{ coverage.pipeline.recurringScheduleCount }} Xero · {{ coverage.pipeline.inferredScheduleCount }} inferred
                     </p>
                   </div>
                 </div>
-                <p class="text-[11px] text-muted italic">Target {{ fmt(coverage.quarterlyTarget) }}. Healthy: 3-4×.</p>
+                <p class="text-xs text-muted italic">Target {{ fmt(coverage.quarterlyTarget) }}. Healthy: 3-4×.</p>
               </div>
             </UCard>
 
@@ -456,7 +456,7 @@ const breadcrumbs = computed(() => [
               </template>
               <div class="space-y-3">
                 <div>
-                  <p class="text-xs text-muted uppercase">This month so far</p>
+                  <p class="text-sm text-muted uppercase">This month so far</p>
                   <p class="text-2xl font-bold tabular-nums">{{ fmt(yoy.thisYear.invoiced) }}</p>
                 </div>
                 <div v-if="yoy.historicalDataSufficient === false" class="pt-3 border-t border-default">
@@ -472,16 +472,16 @@ const breadcrumbs = computed(() => [
                 </div>
                 <div v-else class="grid grid-cols-2 gap-3 pt-3 border-t border-default">
                   <div>
-                    <p class="text-xs text-muted">Same day last yr</p>
+                    <p class="text-sm text-muted">Same day last yr</p>
                     <p class="text-base font-medium tabular-nums">{{ fmt(yoy.lastYearSameDay.invoiced) }}</p>
-                    <p v-if="yoy.deltaPct?.sameDay != null" class="text-xs font-medium" :class="yoy.deltaPct.sameDay >= 0 ? 'text-emerald-500' : 'text-red-500'">
+                    <p v-if="yoy.deltaPct?.sameDay != null" class="text-sm font-medium" :class="yoy.deltaPct.sameDay >= 0 ? 'text-emerald-500' : 'text-red-500'">
                       {{ yoy.deltaPct.sameDay >= 0 ? '+' : '' }}{{ yoy.deltaPct.sameDay }}%
                     </p>
                   </div>
                   <div>
-                    <p class="text-xs text-muted">Full month last yr</p>
+                    <p class="text-sm text-muted">Full month last yr</p>
                     <p class="text-base font-medium tabular-nums">{{ fmt(yoy.lastYearFull.invoiced) }}</p>
-                    <p v-if="yoy.deltaPct?.fullMonth != null" class="text-xs font-medium" :class="yoy.deltaPct.fullMonth >= 0 ? 'text-emerald-500' : 'text-red-500'">
+                    <p v-if="yoy.deltaPct?.fullMonth != null" class="text-sm font-medium" :class="yoy.deltaPct.fullMonth >= 0 ? 'text-emerald-500' : 'text-red-500'">
                       Pace: {{ yoy.deltaPct.fullMonth >= 0 ? '+' : '' }}{{ yoy.deltaPct.fullMonth }}%
                     </p>
                   </div>
@@ -498,47 +498,47 @@ const breadcrumbs = computed(() => [
                   <h3 class="font-semibold">MRR movement</h3>
                   <UBadge
                     :color="(mrrMovement.totals.netMovement >= 0 ? 'success' : 'error') as any"
-                    variant="subtle" size="xs"
+                    variant="subtle" size="sm"
                   >
                     {{ mrrMovement.totals.netMovement >= 0 ? '+' : '' }}{{ fmtCompact(mrrMovement.totals.netMovement) }} net
                     · {{ mrrMovement.totals.movementPct >= 0 ? '+' : '' }}{{ mrrMovement.totals.movementPct }}%
                   </UBadge>
                 </div>
-                <p class="text-xs text-muted">
+                <p class="text-sm text-muted">
                   {{ mrrMovement.period.lastMonth }} vs {{ mrrMovement.period.priorMonth }}
                 </p>
               </div>
             </template>
             <div class="grid grid-cols-2 gap-px bg-default">
               <div class="bg-default p-4">
-                <p class="text-[10px] uppercase text-muted">+ New</p>
+                <p class="text-xs uppercase text-muted">+ New</p>
                 <p class="text-base font-bold tabular-nums text-emerald-500">{{ fmtCompact(mrrMovement.totals.newMrr) }}</p>
-                <p class="text-[10px] text-muted">{{ mrrMovement.counts.new }} client{{ mrrMovement.counts.new === 1 ? '' : 's' }}</p>
+                <p class="text-xs text-muted">{{ mrrMovement.counts.new }} client{{ mrrMovement.counts.new === 1 ? '' : 's' }}</p>
               </div>
               <div class="bg-default p-4">
-                <p class="text-[10px] uppercase text-muted">+ Expansion</p>
+                <p class="text-xs uppercase text-muted">+ Expansion</p>
                 <p class="text-base font-bold tabular-nums text-emerald-500">{{ fmtCompact(mrrMovement.totals.expansionMrr) }}</p>
-                <p class="text-[10px] text-muted">{{ mrrMovement.counts.expansion }} client{{ mrrMovement.counts.expansion === 1 ? '' : 's' }}</p>
+                <p class="text-xs text-muted">{{ mrrMovement.counts.expansion }} client{{ mrrMovement.counts.expansion === 1 ? '' : 's' }}</p>
               </div>
               <div class="bg-default p-4">
-                <p class="text-[10px] uppercase text-muted">− Contraction</p>
+                <p class="text-xs uppercase text-muted">− Contraction</p>
                 <p class="text-base font-bold tabular-nums text-amber-500">{{ fmtCompact(mrrMovement.totals.contractionMrr) }}</p>
-                <p class="text-[10px] text-muted">{{ mrrMovement.counts.contraction }} client{{ mrrMovement.counts.contraction === 1 ? '' : 's' }}</p>
+                <p class="text-xs text-muted">{{ mrrMovement.counts.contraction }} client{{ mrrMovement.counts.contraction === 1 ? '' : 's' }}</p>
               </div>
               <div class="bg-default p-4">
-                <p class="text-[10px] uppercase text-muted">− Churned</p>
+                <p class="text-xs uppercase text-muted">− Churned</p>
                 <p class="text-base font-bold tabular-nums text-red-500">{{ fmtCompact(mrrMovement.totals.churnedMrr) }}</p>
-                <p class="text-[10px] text-muted">{{ mrrMovement.counts.churned }} client{{ mrrMovement.counts.churned === 1 ? '' : 's' }}</p>
+                <p class="text-xs text-muted">{{ mrrMovement.counts.churned }} client{{ mrrMovement.counts.churned === 1 ? '' : 's' }}</p>
               </div>
             </div>
             <div v-if="mrrMovement.topMovers?.length" class="px-6 pt-3 pb-4 border-t border-default">
-              <p class="text-[10px] uppercase text-muted mb-2">Top movers</p>
+              <p class="text-xs uppercase text-muted mb-2">Top movers</p>
               <ul class="space-y-1">
-                <li v-for="m in mrrMovement.topMovers" :key="m.contactId" class="flex items-center justify-between text-xs">
+                <li v-for="m in mrrMovement.topMovers" :key="m.contactId" class="flex items-center justify-between text-sm">
                   <span class="truncate flex-1 mr-2">{{ m.name }}</span>
                   <UBadge
                     :color="(m.bucket === 'expansion' || m.bucket === 'new' ? 'success' : m.bucket === 'contraction' ? 'warning' : 'error') as any"
-                    variant="subtle" size="xs" class="capitalize mr-2"
+                    variant="subtle" size="sm" class="capitalize mr-2"
                   >{{ m.bucket }}</UBadge>
                   <span class="tabular-nums font-medium" :class="m.bucket === 'expansion' || m.bucket === 'new' ? 'text-emerald-500' : 'text-red-500'">
                     {{ m.bucket === 'expansion' || m.bucket === 'new' ? '+' : '−' }}{{ fmtCompact(m.delta) }}
@@ -554,19 +554,19 @@ const breadcrumbs = computed(() => [
               <div class="px-6 flex items-center justify-between">
                 <div>
                   <h3 class="font-semibold">Top 10 clients · YTD</h3>
-                  <p class="text-xs text-muted">
+                  <p class="text-sm text-muted">
                     Top 5 = {{ topClients.top5SharePct ?? '—' }}%
                     · top 10 = {{ topClients.top10SharePct ?? '—' }}%
                     · biggest = {{ topClients.top1SharePct }}%
                   </p>
                 </div>
-                <UBadge :color="concentrationBandColor(topClients.concentrationBand) as any" variant="subtle" size="xs" class="capitalize">
+                <UBadge :color="concentrationBandColor(topClients.concentrationBand) as any" variant="subtle" size="sm" class="capitalize">
                   Concentration · {{ topClients.concentrationBand }}
                 </UBadge>
               </div>
             </template>
             <table class="w-full text-sm">
-              <thead class="bg-elevated/50 text-xs uppercase text-muted">
+              <thead class="bg-elevated/50 text-sm uppercase text-muted">
                 <tr>
                   <th class="text-left font-medium px-4 py-2">Client</th>
                   <th class="text-left font-medium px-4 py-2">Type</th>
@@ -579,17 +579,17 @@ const breadcrumbs = computed(() => [
                 <tr v-for="c in topClients.clients" :key="c.contactId">
                   <td class="px-4 py-2 truncate font-medium">{{ c.name }}</td>
                   <td class="px-4 py-2">
-                    <UBadge v-if="c.recurringBasis === 'xero_repeating'" color="success" variant="subtle" size="xs">Schedule</UBadge>
-                    <UBadge v-else-if="c.recurringBasis === 'inferred_high'" color="info" variant="subtle" size="xs">Retainer (high)</UBadge>
-                    <UBadge v-else-if="c.recurringBasis === 'inferred_medium'" color="info" variant="subtle" size="xs">Retainer (med)</UBadge>
-                    <UBadge v-else-if="c.recurringBasis === 'inferred_low'" color="neutral" variant="subtle" size="xs">Repeat</UBadge>
-                    <UBadge v-else color="neutral" variant="subtle" size="xs">Project</UBadge>
+                    <UBadge v-if="c.recurringBasis === 'xero_repeating'" color="success" variant="subtle" size="sm">Schedule</UBadge>
+                    <UBadge v-else-if="c.recurringBasis === 'inferred_high'" color="info" variant="subtle" size="sm">Retainer (high)</UBadge>
+                    <UBadge v-else-if="c.recurringBasis === 'inferred_medium'" color="info" variant="subtle" size="sm">Retainer (med)</UBadge>
+                    <UBadge v-else-if="c.recurringBasis === 'inferred_low'" color="neutral" variant="subtle" size="sm">Repeat</UBadge>
+                    <UBadge v-else color="neutral" variant="subtle" size="sm">Project</UBadge>
                   </td>
                   <td class="px-4 py-2 text-right tabular-nums font-medium">{{ fmt(c.ytdRevenue) }}</td>
                   <td class="px-4 py-2 text-right tabular-nums text-muted">
                     {{ c.inferredMrr > 0 ? fmt(c.inferredMrr) : '—' }}
                   </td>
-                  <td class="px-4 py-2 text-right tabular-nums text-xs" :class="c.concentrationPct >= 25 ? 'text-red-500 font-medium' : c.concentrationPct >= 15 ? 'text-amber-500' : 'text-muted'">
+                  <td class="px-4 py-2 text-right tabular-nums text-sm" :class="c.concentrationPct >= 25 ? 'text-red-500 font-medium' : c.concentrationPct >= 15 ? 'text-amber-500' : 'text-muted'">
                     {{ c.concentrationPct }}%
                   </td>
                 </tr>
@@ -605,7 +605,7 @@ const breadcrumbs = computed(() => [
         <div class="space-y-4">
           <div class="flex items-baseline gap-3">
             <h2 class="text-base font-semibold">Profit &amp; capacity</h2>
-            <p class="text-xs text-muted">Are we keeping what we earn — and using the time we're paid for?</p>
+            <p class="text-sm text-muted">Are we keeping what we earn — and using the time we're paid for?</p>
           </div>
 
           <UCard v-if="efficiency" class="!mb-0">
@@ -613,39 +613,39 @@ const breadcrumbs = computed(() => [
               <div class="flex items-center justify-between">
                 <div>
                   <h3 class="font-semibold">Per-head economics &amp; DSO</h3>
-                  <p class="text-xs text-muted">{{ efficiency.billableTeamSize }} billable team · industry: $150-250k revenue/head</p>
+                  <p class="text-sm text-muted">{{ efficiency.billableTeamSize }} billable team · industry: $150-250k revenue/head</p>
                 </div>
-                <UBadge :color="revPerHeadColor(efficiency.revPerHeadBand) as any" variant="subtle" size="xs" class="capitalize">{{ efficiency.revPerHeadBand }}</UBadge>
+                <UBadge :color="revPerHeadColor(efficiency.revPerHeadBand) as any" variant="subtle" size="sm" class="capitalize">{{ efficiency.revPerHeadBand }}</UBadge>
               </div>
             </template>
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
-                <p class="text-[10px] uppercase text-muted">Revenue/head (run-rate)</p>
+                <p class="text-xs uppercase text-muted">Revenue/head (run-rate)</p>
                 <p class="text-lg font-bold tabular-nums">{{ fmtCompact(efficiency.revenuePerHeadAnnualised) }}</p>
-                <p class="text-[10px] text-muted">YTD: {{ fmtCompact(efficiency.revenuePerHead) }}</p>
+                <p class="text-xs text-muted">YTD: {{ fmtCompact(efficiency.revenuePerHead) }}</p>
               </div>
               <div>
-                <p class="text-[10px] uppercase text-muted">Cost/head</p>
+                <p class="text-xs uppercase text-muted">Cost/head</p>
                 <p class="text-lg font-bold tabular-nums">{{ fmtCompact(efficiency.costPerHead) }}</p>
-                <p class="text-[10px] text-muted">{{ fmtCompact(efficiency.annualCost) }} total</p>
+                <p class="text-xs text-muted">{{ fmtCompact(efficiency.annualCost) }} total</p>
               </div>
               <div>
-                <p class="text-[10px] uppercase text-muted">Profit/head</p>
+                <p class="text-xs uppercase text-muted">Profit/head</p>
                 <p class="text-lg font-bold tabular-nums" :class="efficiency.profitPerHead < 0 ? 'text-red-500' : 'text-emerald-500'">
                   {{ fmtCompact(efficiency.profitPerHead) }}
                 </p>
-                <p class="text-[10px] text-muted">After all overhead</p>
+                <p class="text-xs text-muted">After all overhead</p>
               </div>
               <div>
-                <p class="text-[10px] uppercase text-muted">DSO (last 90d)</p>
+                <p class="text-xs uppercase text-muted">DSO (last 90d)</p>
                 <p class="text-lg font-bold tabular-nums">
                   {{ efficiency.dso.current != null ? `${efficiency.dso.current}d` : '—' }}
                 </p>
-                <p v-if="efficiency.dso.delta != null" class="text-[10px]"
+                <p v-if="efficiency.dso.delta != null" class="text-xs"
                   :class="efficiency.dso.delta > 1 ? 'text-amber-500' : efficiency.dso.delta < -1 ? 'text-emerald-500' : 'text-muted'">
                   {{ efficiency.dso.delta > 0 ? '+' : '' }}{{ efficiency.dso.delta }}d vs prior
                 </p>
-                <p v-else class="text-[10px] text-muted">No prior data</p>
+                <p v-else class="text-xs text-muted">No prior data</p>
               </div>
             </div>
           </UCard>
@@ -655,26 +655,26 @@ const breadcrumbs = computed(() => [
               <template #header>
                 <div class="flex items-center justify-between">
                   <h3 class="font-semibold">Profitability</h3>
-                  <UBadge :color="profitBandColor(profit.band) as any" variant="subtle" size="xs" class="capitalize">{{ profit.band }}</UBadge>
+                  <UBadge :color="profitBandColor(profit.band) as any" variant="subtle" size="sm" class="capitalize">{{ profit.band }}</UBadge>
                 </div>
               </template>
               <div class="space-y-3 text-sm">
                 <div>
-                  <p class="text-xs text-muted uppercase">YTD net</p>
+                  <p class="text-sm text-muted uppercase">YTD net</p>
                   <p class="text-2xl font-bold tabular-nums" :class="profit.ytd.netProfit < 0 ? 'text-red-500' : ''">
                     {{ fmt(profit.ytd.netProfit) }}
                     <span class="text-sm font-normal text-muted">· {{ profit.ytd.margin }}% margin</span>
                   </p>
-                  <p class="text-[11px] text-muted">
+                  <p class="text-xs text-muted">
                     Revenue {{ fmtCompact(profit.ytd.revenue) }} · Expenses {{ fmtCompact(profit.ytd.expenses) }} · Gross {{ profit.ytd.grossMargin }}%
                   </p>
                 </div>
                 <div class="pt-3 border-t border-default">
-                  <p class="text-xs text-muted uppercase">MTD</p>
+                  <p class="text-sm text-muted uppercase">MTD</p>
                   <p class="font-medium tabular-nums" :class="profit.mtd.netProfit < 0 ? 'text-red-500' : ''">
                     {{ fmt(profit.mtd.netProfit) }} · {{ profit.mtd.margin }}%
                   </p>
-                  <p class="text-[11px] text-muted">{{ fmtCompact(profit.mtd.revenue) }} revenue this month</p>
+                  <p class="text-xs text-muted">{{ fmtCompact(profit.mtd.revenue) }} revenue this month</p>
                 </div>
               </div>
             </UCard>
@@ -684,11 +684,11 @@ const breadcrumbs = computed(() => [
                 <div class="px-6">
                   <div class="flex items-center justify-between">
                     <h3 class="font-semibold">Utilization MTD</h3>
-                    <UBadge v-if="utilization?.overall?.band" :color="utilBandColor(utilization.overall.band) as any" variant="subtle" size="xs" class="capitalize">
+                    <UBadge v-if="utilization?.overall?.band" :color="utilBandColor(utilization.overall.band) as any" variant="subtle" size="sm" class="capitalize">
                       {{ utilization.overall.utilizationPct }}% · {{ utilization.overall.band }}
                     </UBadge>
                   </div>
-                  <p class="text-xs text-muted">
+                  <p class="text-sm text-muted">
                     {{ utilization.overall.totalBillable }}h of {{ utilization.overall.totalAvailable }}h
                     available · {{ utilization.overall.billableTeamSize }} team · {{ utilization.period.workingDaysSoFar }} working days
                     <span v-if="utilization.overall.avgBillableRate"> · ABR {{ fmtCompact(utilization.overall.avgBillableRate) }}</span>
@@ -696,7 +696,7 @@ const breadcrumbs = computed(() => [
                 </div>
               </template>
               <table class="w-full text-sm">
-                <thead class="bg-elevated/50 text-xs uppercase text-muted">
+                <thead class="bg-elevated/50 text-sm uppercase text-muted">
                   <tr>
                     <th class="text-left font-medium px-4 py-2">User</th>
                     <th class="text-right font-medium px-4 py-2">Billable</th>
@@ -722,13 +722,13 @@ const breadcrumbs = computed(() => [
               <template #header>
                 <div class="px-6">
                   <h3 class="font-semibold">Unbilled WIP</h3>
-                  <p class="text-xs text-muted">
+                  <p class="text-sm text-muted">
                     {{ fmt(wip.summary.totalAmount) }} across {{ wip.summary.projectCount }} projects · {{ wip.summary.totalHours }}h
                   </p>
                 </div>
               </template>
               <table class="w-full text-sm">
-                <thead class="bg-elevated/50 text-xs uppercase text-muted">
+                <thead class="bg-elevated/50 text-sm uppercase text-muted">
                   <tr>
                     <th class="text-left font-medium px-4 py-2">Project</th>
                     <th class="text-right font-medium px-4 py-2">Amount</th>
@@ -739,10 +739,10 @@ const breadcrumbs = computed(() => [
                   <tr v-for="p in wip.projects" :key="p.id">
                     <td class="px-4 py-2 max-w-xs">
                       <p class="font-medium truncate">{{ p.name }}</p>
-                      <p class="text-xs text-muted truncate">{{ p.clientName }}</p>
+                      <p class="text-sm text-muted truncate">{{ p.clientName }}</p>
                     </td>
                     <td class="px-4 py-2 text-right tabular-nums font-medium">{{ fmt(p.amount) }}</td>
-                    <td class="px-4 py-2 text-right text-xs" :class="p.ageDays > 60 ? 'text-red-500 font-medium' : p.ageDays > 30 ? 'text-amber-500' : 'text-muted'">
+                    <td class="px-4 py-2 text-right text-sm" :class="p.ageDays > 60 ? 'text-red-500 font-medium' : p.ageDays > 30 ? 'text-amber-500' : 'text-muted'">
                       {{ p.ageDays }}d
                     </td>
                   </tr>
