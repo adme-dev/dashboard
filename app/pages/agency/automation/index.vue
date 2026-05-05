@@ -261,8 +261,8 @@ const resetNewRule = () => {
             :key="rule.id"
             class="hover:shadow-md transition-shadow"
           >
-            <div class="flex items-start justify-between">
-              <div class="flex items-start gap-4">
+            <div class="flex flex-col sm:flex-row items-start justify-between gap-4">
+              <div class="flex items-start gap-4 flex-1 min-w-0">
                 <!-- Trigger Icon -->
                 <div
                   class="p-3 rounded-lg"
@@ -307,7 +307,7 @@ const resetNewRule = () => {
               </div>
 
               <!-- Stats & Actions -->
-              <div class="flex items-center gap-6">
+              <div class="flex flex-wrap items-center gap-4 sm:gap-6">
                 <!-- Scope -->
                 <div v-if="rule.scope.project || rule.scope.client" class="text-right">
                   <p class="text-xs text-gray-400">Scope</p>

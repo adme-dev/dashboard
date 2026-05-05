@@ -281,12 +281,7 @@ const getExecutionStatusColor = (status: string): 'success' | 'error' | 'warning
               </UFormField>
 
               <UFormField label="Status">
-                <div class="flex items-center gap-4 h-10">
-                  <label class="flex items-center gap-2 cursor-pointer">
-                    <input v-model="editedRule.isActive" type="checkbox" class="rounded" />
-                    <span>Active</span>
-                  </label>
-                </div>
+                <UCheckbox v-model="editedRule.isActive" label="Active" />
               </UFormField>
 
               <div class="md:col-span-2">
@@ -316,19 +311,19 @@ const getExecutionStatusColor = (status: string): 'success' | 'error' | 'warning
               </UFormField>
 
               <!-- Trigger-specific config -->
-              <div v-if="editedRule.trigger.type === 'task_due_soon'" class="grid grid-cols-2 gap-4">
+              <div v-if="editedRule.trigger.type === 'task_due_soon'" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <UFormField label="Days Before Due">
                   <UInput v-model.number="editedRule.trigger.config.daysBefore" type="number" min="1" />
                 </UFormField>
               </div>
 
-              <div v-if="editedRule.trigger.type === 'budget_threshold'" class="grid grid-cols-2 gap-4">
+              <div v-if="editedRule.trigger.type === 'budget_threshold'" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <UFormField label="Threshold Percentage">
                   <UInput v-model.number="editedRule.trigger.config.threshold" type="number" min="1" max="100" />
                 </UFormField>
               </div>
 
-              <div v-if="editedRule.trigger.type === 'schedule'" class="grid grid-cols-2 gap-4">
+              <div v-if="editedRule.trigger.type === 'schedule'" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <UFormField label="Cron Expression">
                   <UInput v-model="editedRule.trigger.config.cron" placeholder="0 9 * * 1-5" />
                 </UFormField>
@@ -358,7 +353,7 @@ const getExecutionStatusColor = (status: string): 'success' | 'error' | 'warning
               <div
                 v-for="(condition, index) in editedRule.conditions"
                 :key="index"
-                class="flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-800"
+                class="flex flex-wrap items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-800"
               >
                 <span v-if="index > 0" class="text-sm font-medium text-gray-500">AND</span>
 
@@ -580,7 +575,7 @@ const getExecutionStatusColor = (status: string): 'success' | 'error' | 'warning
               v-for="execution in executions"
               :key="execution.id"
             >
-              <div class="flex items-center justify-between">
+              <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div class="flex items-center gap-4">
                   <UIcon
                     :name="execution.status === 'success' ? 'i-lucide-check-circle' : 'i-lucide-x-circle'"
@@ -593,7 +588,7 @@ const getExecutionStatusColor = (status: string): 'success' | 'error' | 'warning
                   </div>
                 </div>
 
-                <div class="flex items-center gap-4">
+                <div class="flex flex-wrap items-center gap-4">
                   <div class="text-right">
                     <UBadge :color="getExecutionStatusColor(execution.status)" variant="subtle">
                       {{ execution.status }}
