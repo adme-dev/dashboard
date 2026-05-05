@@ -16,11 +16,19 @@ A live R&D pass against 8 specialized agency platforms (Funnel.io, Improvado, Su
 
 | # | Phase | Status | Why this order |
 |---|-------|--------|----------------|
-| P1 | Connection Health Surface | Firm | Pacing/alerts mislead when half the data is stale. Must come first. |
+| P1 | Connection Health Surface | Firm — **shipped 2026-05-04** | Pacing/alerts mislead when half the data is stale. Must come first. |
 | P2 | Pacing Intelligence | Firm | Closes the biggest competitive gap; informs P3's alert dimensions. |
 | P3 | Alert Rules + Activity Feed | Firm | Depends on P2 (pacing status is one alert dimension). Closes the operator's morning-routine loop. |
-| P4 | AI Layer | Sketch | Revisited after P3. Risk: token cost vs. utility unknown. |
+| P4 | In-App AI Chat as MCP Client | Sketch (revised) | Becomes much smaller after P6 ships. Revisited after P3. |
 | P5 | Three-Way Reconciliation + Margin | Sketch | Depends on invoice schema not yet wired. |
+
+## Adjacent initiative — XeroFlow MCP server (P6)
+
+**[P6](2026-05-04-xeroflow-mcp-server-sketch.md)** is not part of the ad-spend-page sequence but is referenced from this roadmap because it changes P4's architecture. P6 exposes XeroFlow as a remote MCP server (`mcp.adme.net.au/agency`) so agency staff can query the data layer from any AI tool — Claude Desktop, Perplexity, ChatGPT, Cursor, the in-app chat — via standard remote-MCP-with-OAuth.
+
+Why it earns a spot on this roadmap: **P4 stops being a from-scratch build once P6 exists** — the in-app chat becomes one MCP client among many, all calling the same tool surface. The leverage ratio is high (one MCP server unlocks every AI surface the team uses), and it has no upstream dependency on P2/P3 — can ship in parallel.
+
+**Decision point:** validate ergonomics by installing Meta's MCP (`mcp.facebook.com/ads`) in Claude Desktop and doing a real ad-ops task before committing to P6 scope.
 
 ## Per-phase success metrics
 
@@ -69,8 +77,9 @@ No feature flags. The page is internal-only — broken changes get redeployed. P
 - [P1 — Connection Health Surface](2026-05-04-ad-spend-p1-connection-health.md) — firm
 - [P2 — Pacing Intelligence](2026-05-04-ad-spend-p2-pacing.md) — firm
 - [P3 — Alert Rules + Activity Feed](2026-05-04-ad-spend-p3-alerts.md) — firm
-- [P4 — AI Layer](2026-05-04-ad-spend-p4-ai-sketch.md) — sketch only
+- [P4 — In-App AI Chat as MCP Client](2026-05-04-ad-spend-p4-ai-sketch.md) — sketch only (revised 2026-05-04)
 - [P5 — Three-Way Reconciliation + Margin](2026-05-04-ad-spend-p5-reconciliation-sketch.md) — sketch only
+- [P6 — XeroFlow MCP Server](2026-05-04-xeroflow-mcp-server-sketch.md) — sketch only, adjacent initiative (added 2026-05-04)
 
 ## Source material
 
