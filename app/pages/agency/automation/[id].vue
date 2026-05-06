@@ -311,23 +311,17 @@ const getExecutionStatusColor = (status: string): 'success' | 'error' | 'warning
               </UFormField>
 
               <!-- Trigger-specific config -->
-              <div v-if="editedRule.trigger.type === 'task_due_soon'" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <UFormField label="Days Before Due">
-                  <UInput v-model.number="editedRule.trigger.config.daysBefore" type="number" min="1" />
-                </UFormField>
-              </div>
+              <UFormField v-if="editedRule.trigger.type === 'task_due_soon'" label="Days Before Due" class="max-w-xs">
+                <UInput v-model.number="editedRule.trigger.config.daysBefore" type="number" min="1" />
+              </UFormField>
 
-              <div v-if="editedRule.trigger.type === 'budget_threshold'" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <UFormField label="Threshold Percentage">
-                  <UInput v-model.number="editedRule.trigger.config.threshold" type="number" min="1" max="100" />
-                </UFormField>
-              </div>
+              <UFormField v-if="editedRule.trigger.type === 'budget_threshold'" label="Threshold Percentage" class="max-w-xs">
+                <UInput v-model.number="editedRule.trigger.config.threshold" type="number" min="1" max="100" />
+              </UFormField>
 
-              <div v-if="editedRule.trigger.type === 'schedule'" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <UFormField label="Cron Expression">
-                  <UInput v-model="editedRule.trigger.config.cron" placeholder="0 9 * * 1-5" />
-                </UFormField>
-              </div>
+              <UFormField v-if="editedRule.trigger.type === 'schedule'" label="Cron Expression" class="max-w-md">
+                <UInput v-model="editedRule.trigger.config.cron" placeholder="0 9 * * 1-5" />
+              </UFormField>
             </div>
           </UCard>
 
@@ -353,30 +347,29 @@ const getExecutionStatusColor = (status: string): 'success' | 'error' | 'warning
               <div
                 v-for="(condition, index) in editedRule.conditions"
                 :key="index"
-                class="flex flex-wrap items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-800"
+                class="grid grid-cols-1 sm:grid-cols-[auto_10rem_9rem_1fr_auto] gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-800 items-center"
               >
                 <span v-if="index > 0" class="text-sm font-medium text-gray-500">AND</span>
+                <span v-else class="w-8"></span>
 
                 <USelectMenu
                   v-model="condition.field"
                   :items="conditionFields"
                   value-key="value"
-                  class="w-40"
                 />
 
                 <USelectMenu
                   v-model="condition.operator"
                   :items="conditionOperators"
                   value-key="value"
-                  class="w-36"
                 />
 
                 <UInput
                   v-if="!['is_empty', 'is_not_empty'].includes(condition.operator)"
                   v-model="condition.value"
                   placeholder="Value"
-                  class="flex-1"
                 />
+                <span v-else class="hidden sm:block"></span>
 
                 <UButton
                   variant="ghost"
