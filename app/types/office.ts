@@ -94,3 +94,28 @@ export interface OfficeSnapshot {
   // Derived view, keyed by zoneId
   zoneOccupancy: Record<string, ActorHandle[]>
 }
+
+// =============================================================================
+// Phase 1b — RealtimeKit media credentials
+// =============================================================================
+
+export type ZonePresetName = 'staff_full' | 'viewer_lurking'
+
+// Returned to the joining browser on zone:joined / zone:token-refreshed. The
+// browser passes `authToken` into RealtimeKitClient.init() and binds the
+// resulting MediaStreamTracks to our OfficeMediaTile components.
+export interface MediaCredentials {
+  authToken: string
+  meetingId: string
+  participantId: string  // CF-side id; required for refresh
+  presetName: ZonePresetName
+  expiresAt: number  // ms epoch — best-effort estimate; refresh fires ~5min before
+}
+
+export type ZoneJoinFailReason
+  = | 'capacity'
+    | 'denied'
+    | 'meeting-create-failed'
+    | 'mint-failed'
+    | 'quota'
+    | 'realtime-unavailable'

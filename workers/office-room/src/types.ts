@@ -1,4 +1,11 @@
-import type { ActorHandle, OfficeStatus, OfficeSnapshot } from '../../../app/types/office'
+import type {
+  ActorHandle,
+  OfficeStatus,
+  OfficeSnapshot,
+  MediaCredentials,
+  ZonePresetName,
+  ZoneJoinFailReason,
+} from '../../../app/types/office'
 
 // =============================================================================
 // Inbound WS messages (browser -> DO)
@@ -7,7 +14,7 @@ import type { ActorHandle, OfficeStatus, OfficeSnapshot } from '../../../app/typ
 export type InboundMessage
   = | { type: 'heartbeat' }
     | { type: 'status:set', status: OfficeStatus }
-    | { type: 'zone:enter', zoneId: string }
+    | { type: 'zone:enter', zoneId: string, preferredPreset?: ZonePresetName }
     | { type: 'zone:leave' }
 
 // =============================================================================
@@ -20,8 +27,8 @@ export type OutboundMessage
     | { type: 'participant:left', handle: ActorHandle }
     | { type: 'participant:updated', handle: ActorHandle, status: OfficeStatus }
     | { type: 'participant:moved', handle: ActorHandle, zoneId: string | null }
-    | { type: 'zone:entered', zoneId: string }
-    | { type: 'zone:denied', zoneId: string, reason: string }
-    | { type: 'zone:full', zoneId: string }
+    | { type: 'zone:joined', zoneId: string, media: MediaCredentials }
+    | { type: 'zone:join-failed', zoneId: string, reason: ZoneJoinFailReason, message?: string }
+    | { type: 'zone:token-refreshed', zoneId: string, media: MediaCredentials }
     | { type: 'zone:taken-over' } // sent to older tab when newer tab takes the zone
     | { type: 'error', message: string }
