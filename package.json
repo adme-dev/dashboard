@@ -32,6 +32,7 @@
     "@anthropic-ai/sdk": "^0.90.0",
     "@aws-sdk/client-s3": "^3.952.0",
     "@aws-sdk/s3-request-presigner": "^3.952.0",
+    "@cloudflare/realtimekit": "^1.4.0",
     "@codemirror/lang-css": "^6.3.1",
     "@codemirror/lang-html": "^6.4.9",
     "@codemirror/lang-javascript": "^6.2.2",
