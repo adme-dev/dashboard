@@ -92,3 +92,18 @@ export function evaluateAcl(input: AclInput): AclResult {
   }
   return { allowed: true }
 }
+
+// =============================================================================
+// DO accessor
+// =============================================================================
+
+import type { H3Event } from 'h3'
+
+export function getOfficeRoom(event: H3Event, officeId: string) {
+  const env = (event.context as any).cloudflare?.env
+  if (!env?.OFFICE_ROOMS) {
+    throw new Error('OFFICE_ROOMS binding not available')
+  }
+  const id = env.OFFICE_ROOMS.idFromName(officeId)
+  return env.OFFICE_ROOMS.get(id)
+}
