@@ -6,13 +6,22 @@ Phase 1a delivers presence-only office UI — no video/audio. That ships in Phas
 ## Setup
 
 - [ ] Migrations 097 + 098 have run; `psql -c "SELECT COUNT(*) FROM offices"` returns >= 1.
-- [ ] `office-room-worker` deployed to Cloudflare (`wrangler deployments list` in `workers/office-room/`).
-- [ ] `OFFICE_SYNC_SECRET` set in three places:
-      - Local `.env` (for `pnpm dev` to verify sync endpoint header)
-      - Cloudflare Pages env var (production + preview) so the Nitro endpoint can verify the header
-      - Worker secret (`cd workers/office-room && wrangler secret put OFFICE_SYNC_SECRET`) so the DO can present it
+- [ ] `office-room-worker` deployed (latest version visible in `wrangler deployments list`). The worker's fetch handler MUST be the JWT-validating version (post code-review fix) — confirm by curling `https://office-room-worker.adme-dev.workers.dev/office/<id>` with no token: expect 426 (no Upgrade) or 401 (Upgrade but no token).
+- [ ] `OFFICE_SYNC_SECRET` set in THREE places (same value):
+      - Local `.env` (for `pnpm dev`).
+      - Worker secret on `office-room-worker` (`wrangler secret put OFFICE_SYNC_SECRET --config workers/office-room/wrangler.toml`) so it can verify JWTs from Pages AND present a header to the chat-presence sync endpoint.
+      - Cloudflare Pages env var (production + preview) so the Nitro `/api/office/:officeId/token` endpoint can sign JWTs and the `/api/office/_internal/sync-status` endpoint can verify the sync header.
+- [ ] (Optional) `OFFICE_WORKER_URL` Pages env var — only needed if the worker is deployed to a non-default hostname. Default is `wss://office-room-worker.adme-dev.workers.dev`.
 - [ ] `OFFICE_ROOMS` binding present in root `wrangler.toml`.
 - [ ] `agency_clients.office_access`, `client_chat_status` table, and office tables all exist in the target DB (verify with `psql -c "\dt offices office_zones office_members zone_visits client_chat_status"`).
+
+## WS handshake smoke test (do this first)
+
+Before the two-browser walkthrough, confirm the architecture pieces:
+
+- [ ] In a browser tab logged into the dashboard, open DevTools → Network → and visit `/office`. Look for a `POST /api/office/<office-id>/token` request — should return `200` with `{ token, workerUrl, exp }`.
+- [ ] In the same DevTools tab, look for a WebSocket connection in the WS filter — should be `wss://office-room-worker.adme-dev.workers.dev/office/<id>?t=...` returning `101 Switching Protocols`. If you see no 101 or the request errors, the handshake is broken.
+- [ ] Confirm presence works: your own avatar appears in the "Wandering" tray within a couple of seconds.
 
 ## Two-browser walkthrough
 
