@@ -43,6 +43,17 @@ export function useOfficeRealtime(opts: UseOfficeRealtimeOptions) {
   const state = ref<RealtimeState>('idle')
   const lastError = ref<string | null>(null)
 
+  // Connect-sequence counter — every connect() and disconnect() bumps this.
+  // Each in-flight connect captures its own seq at entry and verifies after
+  // every await that it's still the current attempt. If a newer connect (or
+  // a disconnect) has bumped seq, the stale call tears down its own
+  // partially-initialised client without touching composable state — that
+  // state belongs to the newer attempt now. Without this, rapid credential
+  // changes (e.g. zone:enter → zone:leave → zone:enter within ~1s, or a
+  // token refresh racing with the watch) could leave two SDK clients alive
+  // simultaneously and emit cross-talk events into the participants ref.
+  let connectSeq = 0
+
   // Local tracks / toggles
   const localAudioTrack = ref<MediaStreamTrack | null>(null)
   const localVideoTrack = ref<MediaStreamTrack | null>(null)
@@ -105,17 +116,32 @@ export function useOfficeRealtime(opts: UseOfficeRealtimeOptions) {
   // ─── Connect ─────────────────────────────────────────────────────────────
 
   async function connect(creds: MediaCredentials): Promise<void> {
-    // Tear down any existing session first
-    if (state.value === 'connecting' || state.value === 'connected') {
-      await disconnect()
-    }
+    // Always tear down any prior session before starting a new attempt.
+    // Don't gate on state — 'failed' and 'closed' can still hold a leaked
+    // half-initialised clientRef. disconnect() itself bumps connectSeq.
+    await disconnect()
 
+    const mySeq = ++connectSeq
     state.value = 'connecting'
     lastError.value = null
 
+    // After every await below: if connectSeq has moved past mySeq, a newer
+    // connect() or disconnect() has taken over. Tear down anything we've
+    // already created locally and return without touching composable state.
+    const abortIfStale = async (client: RealtimeKitClient | null): Promise<boolean> => {
+      if (mySeq === connectSeq) return false
+      if (client) {
+        try { await (client as any).leaveRoom() } catch { /* ignore */ }
+      }
+      return true
+    }
+
     try {
       const SDK = await loadSDK()
+      if (await abortIfStale(null)) return
+
       const client = await SDK.init({ authToken: creds.authToken })
+      if (await abortIfStale(client)) return
       clientRef.value = client
 
       // Wire local self events
@@ -153,11 +179,17 @@ export function useOfficeRealtime(opts: UseOfficeRealtimeOptions) {
       onParticipants()
 
       await client.join()
+      if (await abortIfStale(client)) return
+
       state.value = 'connected'
     } catch (err) {
+      // If a newer attempt took over while we were failing, don't write our
+      // 'failed' state on top of theirs.
+      if (mySeq !== connectSeq) return
       state.value = 'failed'
       lastError.value = (err as Error)?.message ?? String(err)
-      // Best-effort cleanup — ignore secondary errors
+      // Best-effort cleanup. disconnect() preserves 'failed' (its terminal
+      // guard only writes 'closed' when state !== 'failed').
       await disconnect()
     }
   }
@@ -165,6 +197,9 @@ export function useOfficeRealtime(opts: UseOfficeRealtimeOptions) {
   // ─── Disconnect ──────────────────────────────────────────────────────────
 
   async function disconnect(): Promise<void> {
+    // Bump seq so any in-flight connect aborts on its next await checkpoint.
+    connectSeq++
+
     const c = clientRef.value
     clientRef.value = null
 
