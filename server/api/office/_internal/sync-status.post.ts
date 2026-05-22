@@ -13,6 +13,7 @@
 
 import { z } from 'zod'
 import { execute } from '~~/server/utils/db'
+import { isAuthorizedSyncRequest } from '~~/server/utils/officeSyncAuth'
 
 const Body = z.object({
   actor_type: z.enum(['user', 'client']),
@@ -31,31 +32,8 @@ function toChatStatus(s: z.infer<typeof Body>['status']): 'online' | 'away' | 'd
   return 'online'
 }
 
-interface CloudflareContext {
-  cloudflare?: { env?: Record<string, unknown> }
-}
-
-function getSecret(event: Parameters<typeof defineEventHandler>[0] extends (e: infer E) => unknown ? E : never): string | undefined {
-  // CF Pages: secrets are bound on event.context.cloudflare.env, NOT process.env.
-  // Local dev (Node.js Nitro): process.env is the only place.
-  const cfEnv = (event.context as CloudflareContext).cloudflare?.env
-  return (cfEnv?.OFFICE_SYNC_SECRET as string | undefined) ?? process.env.OFFICE_SYNC_SECRET
-}
-
-// Timing-safe string compare (Web Crypto-style) for the shared secret.
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  let mismatch = 0
-  for (let i = 0; i < a.length; i++) {
-    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  }
-  return mismatch === 0
-}
-
 export default defineEventHandler(async (event) => {
-  const secret = getHeader(event, 'x-office-sync-secret')
-  const expected = getSecret(event)
-  if (!expected || !secret || !timingSafeEqual(secret, expected)) {
+  if (!isAuthorizedSyncRequest(event, getHeader(event, 'x-office-sync-secret'))) {
     throw createError({ statusCode: 401, statusMessage: 'unauthorized' })
   }
 
