@@ -34,10 +34,25 @@ interface ConnMeta {
   joinedAt: number
 }
 
+/** Media state persisted in the WS attachment to survive DO hibernation. */
+interface MediaAttachment {
+  currentZoneId: string | null
+  cfMeetingId: string | null
+  cfParticipantId: string | null
+  presetName: ZonePresetName | null
+  tokenExpiresAt: number | null
+}
+
 interface ParticipantState extends ConnMeta {
   status: OfficeStatus
   currentZoneId: string | null
   cfParticipantId: string | null
+  /** Which CF meeting the current token is scoped to. */
+  cfMeetingId: string | null
+  /** Preset used at mint — preserved across refresh to prevent preset-flip. */
+  presetName: ZonePresetName | null
+  /** ms epoch of token expiry; refresh fires at expiresAt - REFRESH_LEAD_MS. */
+  tokenExpiresAt: number | null
   lastSeenAt: number
   disconnectedAt: number | null
 }
@@ -53,8 +68,10 @@ export class OfficeRoom extends DurableObject<Env> {
 
   // Lazy-populated zone metadata cache (capacity + CF meeting id per zone)
   private zoneMeta: Map<string, { capacity: number, cfMeetingId: string | null, cfPresetDefault: string }> | null = null
-  // Per-participant token refresh timers
-  private refreshTimers = new Map<ActorHandle, ReturnType<typeof setTimeout>>()
+
+  // Per-zone async mutex to serialise zone:enter critical sections (Bug 2)
+  private zoneEnterLocks = new Map<string, Promise<unknown>>()
+
   // Original officeId (UUID) used to construct this DO via idFromName. Must
   // be captured from the WS handshake — ctx.id.toString() returns the hashed
   // DO id, not the office UUID. Persisted to storage so it survives DO
@@ -71,8 +88,10 @@ export class OfficeRoom extends DurableObject<Env> {
     // Restore handles AND participant identity from hibernation tags. Without
     // rehydrating `participants`, post-wakeup messages on existing WSs would
     // find no participant entry and silently drop status/zone changes.
-    // Note: ephemeral state (status, currentZoneId) resets to defaults across
-    // hibernation — only the identity (ConnMeta) is durable in attachments.
+    //
+    // Media state (cfMeetingId, cfParticipantId, presetName, tokenExpiresAt,
+    // currentZoneId) is also restored from attachments — this is what allows
+    // alarm-based token refresh to survive hibernation (Bug 1 / Bug 4).
     //
     // Also restore officeId from storage (set on first WS handshake). Without
     // this, zone metadata lookups fail after hibernation.
@@ -82,7 +101,7 @@ export class OfficeRoom extends DurableObject<Env> {
     })
     const now = Date.now()
     for (const ws of ctx.getWebSockets()) {
-      const tag = ws.deserializeAttachment() as Partial<ConnMeta> | undefined
+      const tag = ws.deserializeAttachment() as Partial<ConnMeta & MediaAttachment> | undefined
       if (!tag?.handle) continue
       this.wsToHandle.set(ws, tag.handle)
       if (!this.participants.has(tag.handle)) {
@@ -94,8 +113,12 @@ export class OfficeRoom extends DurableObject<Env> {
           isGuest: tag.isGuest ?? false,
           joinedAt: tag.joinedAt ?? now,
           status: 'available',
-          currentZoneId: null,
-          cfParticipantId: null,
+          // Restore media state from attachment (Bug 1 / Bug 4 fix)
+          currentZoneId: tag.currentZoneId ?? null,
+          cfParticipantId: tag.cfParticipantId ?? null,
+          cfMeetingId: tag.cfMeetingId ?? null,
+          presetName: tag.presetName ?? null,
+          tokenExpiresAt: tag.tokenExpiresAt ?? null,
           lastSeenAt: now,
           disconnectedAt: null
         })
@@ -140,9 +163,16 @@ export class OfficeRoom extends DurableObject<Env> {
       isGuest,
       joinedAt: Date.now()
     }
-    // Persist full identity in the attachment so the participants Map can be
-    // rebuilt verbatim after DO hibernation.
-    server.serializeAttachment(meta)
+    // Persist full identity + empty media state in the attachment so the
+    // participants Map can be rebuilt verbatim after DO hibernation.
+    server.serializeAttachment({
+      ...meta,
+      currentZoneId: null,
+      cfMeetingId: null,
+      cfParticipantId: null,
+      presetName: null,
+      tokenExpiresAt: null,
+    } satisfies ConnMeta & MediaAttachment)
     this.wsToHandle.set(server, handle)
     this.handleConnect(server, meta)
 
@@ -184,8 +214,9 @@ export class OfficeRoom extends DurableObject<Env> {
   }
 
   async alarm(): Promise<void> {
-    // Fired by setAlarm() for the 30s grace timer. Reap disconnected or silent participants.
     const now = Date.now()
+
+    // Grace + heartbeat cleanup
     for (const [handle, p] of this.participants) {
       if (p.disconnectedAt && now - p.disconnectedAt >= GRACE_MS) {
         this.removeParticipant(handle)
@@ -196,14 +227,18 @@ export class OfficeRoom extends DurableObject<Env> {
         this.removeParticipant(handle)
       }
     }
-    // Schedule next check if anyone's still in grace
-    const nextGrace = Array.from(this.participants.values())
-      .filter(p => p.disconnectedAt !== null)
-      .map(p => p.disconnectedAt! + GRACE_MS)
-      .sort((a, b) => a - b)[0]
-    if (nextGrace) {
-      await this.ctx.storage.setAlarm(nextGrace)
+
+    // Token refresh: fire for any connected participant whose token is within
+    // REFRESH_LEAD_MS of expiry (Bug 1 fix — alarm-based, survives hibernation)
+    for (const [handle, p] of this.participants) {
+      if (!p.tokenExpiresAt || !p.cfMeetingId || !p.cfParticipantId) continue
+      if (p.disconnectedAt !== null) continue  // skip disconnected (Bug 4 fix)
+      if (now >= p.tokenExpiresAt - this.REFRESH_LEAD_MS) {
+        await this.refreshTokenForParticipant(handle, p)
+      }
     }
+
+    await this.scheduleNextAlarm()
   }
 
   // ---------- Core handlers ---------------------------------------------------
@@ -239,6 +274,9 @@ export class OfficeRoom extends DurableObject<Env> {
       status: 'available',
       currentZoneId: null,
       cfParticipantId: null,
+      cfMeetingId: null,
+      presetName: null,
+      tokenExpiresAt: null,
       lastSeenAt: Date.now(),
       disconnectedAt: null
     }
@@ -281,76 +319,90 @@ export class OfficeRoom extends DurableObject<Env> {
         return
       }
       case 'zone:enter': {
-        const meta = await this.loadZoneMeta()
-        const zoneMeta = meta?.get(msg.zoneId)
-        // If we don't know the zone, fail soft rather than minting blindly
-        if (!zoneMeta) {
-          this.sendTo(ws, { type: 'zone:join-failed', zoneId: msg.zoneId, reason: 'realtime-unavailable' as ZoneJoinFailReason, message: 'Zone metadata not loaded' })
-          return
-        }
-        if (this.zoneOccupancyCount(msg.zoneId) >= zoneMeta.capacity) {
-          this.sendTo(ws, { type: 'zone:join-failed', zoneId: msg.zoneId, reason: 'capacity' as ZoneJoinFailReason, message: 'Room is full' })
-          return
-        }
-        // Resolve preset: server enforces — client's preferredPreset is honored only when it's 'viewer_lurking'
-        const presetName: ZonePresetName = msg.preferredPreset === 'viewer_lurking'
-          ? 'viewer_lurking'
-          : (zoneMeta.cfPresetDefault as ZonePresetName) || 'staff_full'
-
-        // Ensure meeting exists
-        let cfMeetingId = zoneMeta.cfMeetingId
-        if (!cfMeetingId) {
-          try {
-            const result = await createZoneMeeting({
-              env: this.env,
-              title: `Zone ${msg.zoneId}`,
-            })
-            cfMeetingId = result.meetingId
-            this.zoneMeta!.set(msg.zoneId, { ...zoneMeta, cfMeetingId })
-            // Best-effort persist; doesn't block the join
-            this.ctx.waitUntil(this.persistMeetingId(msg.zoneId, cfMeetingId))
-          } catch (err) {
-            this.sendTo(ws, { type: 'zone:join-failed', zoneId: msg.zoneId, reason: 'meeting-create-failed' as ZoneJoinFailReason, message: (err as Error).message })
+        // Bug 2 fix: serialise the critical section per zone to prevent two
+        // concurrent enters from both passing the cfMeetingId === null check and
+        // each creating a separate CF meeting.
+        await this.withZoneEnterLock(msg.zoneId, async () => {
+          const meta = await this.loadZoneMeta()
+          const zoneMeta = meta?.get(msg.zoneId)
+          // If we don't know the zone, fail soft rather than minting blindly
+          if (!zoneMeta) {
+            this.sendTo(ws, { type: 'zone:join-failed', zoneId: msg.zoneId, reason: 'realtime-unavailable' as ZoneJoinFailReason, message: 'Zone metadata not loaded' })
             return
           }
-        }
+          if (this.zoneOccupancyCount(msg.zoneId) >= zoneMeta.capacity) {
+            this.sendTo(ws, { type: 'zone:join-failed', zoneId: msg.zoneId, reason: 'capacity' as ZoneJoinFailReason, message: 'Room is full' })
+            return
+          }
+          // Resolve preset: server enforces — client's preferredPreset is honored only when it's 'viewer_lurking'
+          const presetName: ZonePresetName = msg.preferredPreset === 'viewer_lurking'
+            ? 'viewer_lurking'
+            : (zoneMeta.cfPresetDefault as ZonePresetName) || 'staff_full'
 
-        // Mint participant token
-        let mint: { participantId: string, authToken: string }
-        try {
-          mint = await mintZoneToken({
-            env: this.env,
+          // Ensure meeting exists
+          let cfMeetingId = zoneMeta.cfMeetingId
+          if (!cfMeetingId) {
+            try {
+              const result = await createZoneMeeting({
+                env: this.env,
+                title: `Zone ${msg.zoneId}`,
+              })
+              cfMeetingId = result.meetingId
+              this.zoneMeta!.set(msg.zoneId, { ...zoneMeta, cfMeetingId })
+              // Best-effort persist; doesn't block the join
+              this.ctx.waitUntil(this.persistMeetingId(msg.zoneId, cfMeetingId))
+            } catch (err) {
+              this.sendTo(ws, { type: 'zone:join-failed', zoneId: msg.zoneId, reason: 'meeting-create-failed' as ZoneJoinFailReason, message: (err as Error).message })
+              return
+            }
+          }
+
+          // Mint participant token
+          let mint: { participantId: string, authToken: string }
+          try {
+            mint = await mintZoneToken({
+              env: this.env,
+              meetingId: cfMeetingId,
+              handle,
+              name: p.name,
+              presetName,
+            })
+          } catch (err) {
+            this.sendTo(ws, { type: 'zone:join-failed', zoneId: msg.zoneId, reason: 'mint-failed' as ZoneJoinFailReason, message: (err as Error).message })
+            return
+          }
+
+          // Bug 1 + Bug 3 fix: track cfMeetingId and presetName per participant
+          p.cfParticipantId = mint.participantId
+          p.cfMeetingId = cfMeetingId
+          p.presetName = presetName  // preserved on refresh — prevents preset-flip
+          p.tokenExpiresAt = Date.now() + this.TOKEN_TTL_MS
+          const mediaCredentials: MediaCredentials = {
+            authToken: mint.authToken,
             meetingId: cfMeetingId,
-            handle,
-            name: p.name,
+            participantId: mint.participantId,
             presetName,
-          })
-        } catch (err) {
-          this.sendTo(ws, { type: 'zone:join-failed', zoneId: msg.zoneId, reason: 'mint-failed' as ZoneJoinFailReason, message: (err as Error).message })
-          return
-        }
-
-        p.cfParticipantId = mint.participantId
-        const expiresAt = Date.now() + this.TOKEN_TTL_MS
-        const mediaCredentials: MediaCredentials = {
-          authToken: mint.authToken,
-          meetingId: cfMeetingId,
-          participantId: mint.participantId,
-          presetName,
-          expiresAt,
-        }
-        const { send, broadcast } = applyZoneEnter(p, msg.zoneId, mediaCredentials, now)
-        this.sendTo(ws, send)
-        this.broadcast(broadcast)
-        this.scheduleTokenRefresh(handle, msg.zoneId, cfMeetingId, expiresAt)
+            expiresAt: p.tokenExpiresAt,
+          }
+          const { send, broadcast } = applyZoneEnter(p, msg.zoneId, mediaCredentials, now)
+          this.sendTo(ws, send)
+          this.broadcast(broadcast)
+          // Persist media state to attachment for hibernation survival (Bug 1)
+          this.persistMediaStateToAttachments(handle)
+        })
+        // Schedule (or re-schedule) the DO alarm after the lock resolves
+        await this.scheduleNextAlarm()
         return
       }
       case 'zone:leave': {
-        const refreshT = this.refreshTimers.get(handle)
-        if (refreshT) { clearTimeout(refreshT); this.refreshTimers.delete(handle) }
         p.cfParticipantId = null
+        p.cfMeetingId = null
+        p.presetName = null
+        p.tokenExpiresAt = null
+        this.persistMediaStateToAttachments(handle)
         const { broadcast } = applyZoneLeave(p, now)
         this.broadcast(broadcast)
+        await this.scheduleNextAlarm()
         return
       }
     }
@@ -368,7 +420,10 @@ export class OfficeRoom extends DurableObject<Env> {
     if (!p) return
     if (this.hasOtherActiveSocket(handle, closingWs)) return
     p.disconnectedAt = Date.now()
-    await this.ctx.storage.setAlarm(Date.now() + GRACE_MS)
+    // Bug 4 fix: use scheduleNextAlarm() so both grace AND refresh slots are
+    // computed together — no separate setAlarm call that could clobber a pending
+    // refresh scheduled earlier.
+    await this.scheduleNextAlarm()
   }
 
   private hasOtherActiveSocket(handle: ActorHandle, exclude?: WebSocket): boolean {
@@ -382,10 +437,10 @@ export class OfficeRoom extends DurableObject<Env> {
   }
 
   private removeParticipant(handle: ActorHandle): void {
-    const refreshT = this.refreshTimers.get(handle)
-    if (refreshT) { clearTimeout(refreshT); this.refreshTimers.delete(handle) }
     if (!this.participants.delete(handle)) return
     this.broadcast({ type: 'participant:left', handle })
+    // Re-evaluate alarm — that participant's refresh and grace slots are gone
+    void this.ctx.waitUntil(this.scheduleNextAlarm())
   }
 
   // ---------- Zone metadata helpers ------------------------------------------
@@ -433,46 +488,121 @@ export class OfficeRoom extends DurableObject<Env> {
     } catch { /* best-effort */ }
   }
 
-  // ---------- Token refresh --------------------------------------------------
+  // ---------- Token refresh (alarm-based — Bug 1 fix) -----------------------
 
-  private scheduleTokenRefresh(handle: ActorHandle, zoneId: string, meetingId: string, expiresAt: number): void {
-    const existing = this.refreshTimers.get(handle)
-    if (existing) clearTimeout(existing)
-    const fireIn = Math.max(10_000, expiresAt - Date.now() - this.REFRESH_LEAD_MS)
-    const t = setTimeout(() => this.refreshToken(handle, zoneId, meetingId), fireIn)
-    this.refreshTimers.set(handle, t)
+  /**
+   * Computes the minimum next wake time across all participants (grace expiry
+   * and token refresh) and registers a single alarm. Replaces the old
+   * per-participant setTimeout pattern which was silently lost on hibernation.
+   */
+  private async scheduleNextAlarm(): Promise<void> {
+    let nextAt: number | null = null
+    for (const p of this.participants.values()) {
+      if (p.disconnectedAt !== null) {
+        const at = p.disconnectedAt + GRACE_MS
+        if (nextAt === null || at < nextAt) nextAt = at
+      }
+      if (
+        p.tokenExpiresAt !== null &&
+        p.cfMeetingId !== null &&
+        p.cfParticipantId !== null &&
+        p.disconnectedAt === null
+      ) {
+        // Floor at now+1s to avoid scheduling alarms in the past (CF rejects those)
+        const at = Math.max(Date.now() + 1_000, p.tokenExpiresAt - this.REFRESH_LEAD_MS)
+        if (nextAt === null || at < nextAt) nextAt = at
+      }
+    }
+    if (nextAt !== null) {
+      await this.ctx.storage.setAlarm(nextAt)
+    } else {
+      await this.ctx.storage.deleteAlarm()
+    }
   }
 
-  private async refreshToken(handle: ActorHandle, zoneId: string, meetingId: string): Promise<void> {
-    this.refreshTimers.delete(handle)
-    const p = this.participants.get(handle)
-    if (!p || p.currentZoneId !== zoneId || !p.cfParticipantId) return
-
+  /**
+   * Refreshes the CF RealtimeKit token for a single participant.
+   * Preserves the originally-minted presetName to fix the preset-flip bug (Bug 3).
+   */
+  private async refreshTokenForParticipant(handle: ActorHandle, p: ParticipantState): Promise<void> {
+    if (!p.cfMeetingId || !p.cfParticipantId || !p.presetName || !p.currentZoneId) return
     try {
       const out = await refreshZoneToken({
         env: this.env,
-        meetingId,
+        meetingId: p.cfMeetingId,
         participantId: p.cfParticipantId,
       })
-      const meta = this.zoneMeta?.get(zoneId)
-      const presetName: ZonePresetName = (meta?.cfPresetDefault as ZonePresetName) || 'staff_full'
       const expiresAt = Date.now() + this.TOKEN_TTL_MS
+      p.tokenExpiresAt = expiresAt
       const media: MediaCredentials = {
         authToken: out.authToken,
-        meetingId,
+        meetingId: p.cfMeetingId,
         participantId: p.cfParticipantId,
-        presetName,
+        presetName: p.presetName,  // Bug 3 fix: preserved — not re-read from zone default
         expiresAt,
       }
+      const zoneId = p.currentZoneId
       for (const ws of this.ctx.getWebSockets()) {
         const tag = ws.deserializeAttachment() as { handle?: ActorHandle } | undefined
-        if (tag?.handle === handle) {
-          try { ws.send(JSON.stringify({ type: 'zone:token-refreshed', zoneId, media } satisfies OutboundMessage)) } catch { /* ignore */ }
-        }
+        if (tag?.handle !== handle) continue
+        try { ws.send(JSON.stringify({ type: 'zone:token-refreshed', zoneId, media } satisfies OutboundMessage)) } catch { /* ignore */ }
       }
-      this.scheduleTokenRefresh(handle, zoneId, meetingId, expiresAt)
+      this.persistMediaStateToAttachments(handle)
     } catch {
-      // Refresh failed. Don't kick — SDK will surface expiry and client will leave gracefully.
+      // Refresh failed — leave tokenExpiresAt alone; the next alarm tick will
+      // retry, or the SDK will surface auth errors and the client will leave.
+    }
+  }
+
+  // ---------- Attachment persistence helpers ---------------------------------
+
+  /**
+   * Writes current media state (cfMeetingId, cfParticipantId, presetName,
+   * tokenExpiresAt, currentZoneId) into the WS attachment for all sockets
+   * belonging to this handle. Called after every state change so that the DO
+   * can rehydrate accurately after hibernation.
+   */
+  private persistMediaStateToAttachments(handle: ActorHandle): void {
+    const p = this.participants.get(handle)
+    if (!p) return
+    for (const ws of this.ctx.getWebSockets()) {
+      const tag = ws.deserializeAttachment() as Partial<ConnMeta & MediaAttachment> | undefined
+      if (tag?.handle !== handle) continue
+      ws.serializeAttachment({
+        handle: p.handle,
+        name: p.name,
+        avatarUrl: p.avatarUrl,
+        role: p.role,
+        isGuest: p.isGuest,
+        joinedAt: p.joinedAt,
+        // Media state — survives hibernation (Bug 1 fix)
+        currentZoneId: p.currentZoneId,
+        cfMeetingId: p.cfMeetingId,
+        cfParticipantId: p.cfParticipantId,
+        presetName: p.presetName,
+        tokenExpiresAt: p.tokenExpiresAt,
+      } satisfies ConnMeta & MediaAttachment)
+    }
+  }
+
+  // ---------- Per-zone enter lock (Bug 2 fix) --------------------------------
+
+  /**
+   * Async mutex per zoneId. Serialises the capacity-check + meeting-create +
+   * token-mint critical section so that two concurrent zone:enter messages on
+   * an empty zone can't both observe cfMeetingId === null and each create a
+   * separate CF meeting.
+   */
+  private async withZoneEnterLock<T>(zoneId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.zoneEnterLocks.get(zoneId) ?? Promise.resolve()
+    const next = prev.catch(() => undefined).then(fn)
+    this.zoneEnterLocks.set(zoneId, next)
+    try {
+      return await next
+    } finally {
+      if (this.zoneEnterLocks.get(zoneId) === next) {
+        this.zoneEnterLocks.delete(zoneId)
+      }
     }
   }
 
