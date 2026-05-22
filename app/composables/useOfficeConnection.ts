@@ -103,12 +103,51 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
     }
   }
 
-  function connect() {
-    if (!opts.officeId.value) return
-    if (ws && ws.readyState <= WebSocket.OPEN) return
+  // Set true by disconnect() so the subsequent onclose doesn't schedule a
+  // phantom reconnect to an office we deliberately left.
+  let intentionallyClosed = false
 
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    ws = new WebSocket(`${proto}//${location.host}/api/ws/office/${opts.officeId.value}`)
+  async function fetchHandshake(officeId: string): Promise<{ token: string, workerUrl: string }> {
+    return await $fetch<{ token: string, workerUrl: string, exp: number }>(
+      `/api/office/${officeId}/token`,
+      { method: 'POST' }
+    )
+  }
+
+  async function connect() {
+    if (!opts.officeId.value) return
+    // Block when CONNECTING(0), OPEN(1), or CLOSING(2) — only CLOSED(3)
+    // and `null` should let us open a new socket.
+    if (ws && ws.readyState !== WebSocket.CLOSED) return
+    // Browser-only — never run during SSR
+    if (typeof window === 'undefined') return
+
+    intentionallyClosed = false
+    const officeId = opts.officeId.value
+
+    let handshake: { token: string, workerUrl: string }
+    try {
+      handshake = await fetchHandshake(officeId)
+    } catch (err) {
+      const status = (err as { statusCode?: number })?.statusCode
+      if (status === 401 || status === 403) {
+        lastError.value = status === 401
+          ? 'Your session expired — please log in again.'
+          : 'You are not a member of this office.'
+        // Don't schedule reconnect on permanent auth failures
+        return
+      }
+      lastError.value = `Couldn't authenticate to office: ${(err as Error).message}`
+      scheduleReconnect()
+      return
+    }
+
+    // Bail if officeId changed while we were fetching the handshake
+    if (opts.officeId.value !== officeId) return
+
+    ws = new WebSocket(
+      `${handshake.workerUrl}/office/${officeId}?t=${encodeURIComponent(handshake.token)}`
+    )
 
     ws.onopen = () => {
       isConnected.value = true
@@ -126,11 +165,17 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
       }
     }
 
-    ws.onclose = () => {
+    ws.onclose = (e) => {
       isConnected.value = false
       if (heartbeatTimer) {
         clearInterval(heartbeatTimer)
         heartbeatTimer = null
+      }
+      // Don't reconnect on intentional close OR on auth-permanent codes
+      if (intentionallyClosed) return
+      if (e.code === 4001 || e.code === 4003) {
+        lastError.value = 'Session expired — please reload the page.'
+        return
       }
       scheduleReconnect()
     }
@@ -152,6 +197,7 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
   }
 
   function disconnect() {
+    intentionallyClosed = true
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null

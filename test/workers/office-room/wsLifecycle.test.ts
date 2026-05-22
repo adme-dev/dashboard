@@ -38,8 +38,10 @@ describe('OfficeRoom WS upgrade handshake', () => {
   })
 
   it('responds with 426 when /office/:id is hit without an Upgrade header', async () => {
-    // The default fetch handler routes /office/:id into the DO, which then
-    // requires the WS upgrade header. Without it the DO returns 426.
+    // The worker rejects non-WS requests up-front. JWT validation is covered
+    // by test/server/utils/officeJwt.test.ts (round-trip) — the upgrade gate
+    // can't be smoke-tested via undici fetch because undici refuses to send
+    // the Upgrade header (test runtime quirk).
     const res = await worker.fetch('http://example.com/office/test-office')
     expect(res.status).toBe(426)
   })
