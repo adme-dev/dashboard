@@ -44,3 +44,7 @@ server/uploads/
 
 # Git worktrees
 .worktrees/
+
+# Claude Code harness state (worktrees + scheduled-tasks lock + transient session files)
+.claude/worktrees/
+.claude/scheduled_tasks.lock
