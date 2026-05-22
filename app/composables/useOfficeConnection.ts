@@ -109,6 +109,14 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
       case 'zone:join-failed':
         joinFailure.value = { zoneId: msg.zoneId, reason: msg.reason, message: msg.message }
         lastError.value = msg.message || `Couldn't join: ${msg.reason}`
+        // If the failure references the zone we were already in (e.g., a
+        // mid-session refresh failure or a server-side eviction) clear the
+        // stale credentials so the room panel closes instead of running with
+        // an expired token.
+        if (currentZoneId.value === msg.zoneId) {
+          currentZoneId.value = null
+          currentMediaCredentials.value = null
+        }
         return
       case 'error':
         lastError.value = msg.message
@@ -221,6 +229,12 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
     }
     ws?.close()
     ws = null
+    // Clear zone state so a subsequent connect to a different office (or a
+    // logout) doesn't leak the prior office's credentials into the room
+    // panel via the stale currentMediaCredentials ref.
+    currentZoneId.value = null
+    currentMediaCredentials.value = null
+    joinFailure.value = null
   }
 
   function send(msg: InboundMessage) {
@@ -236,6 +250,12 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
     send({ type: 'zone:enter', zoneId, ...(preferredPreset ? { preferredPreset } : {}) })
   }
   function leaveZone() {
+    // Idempotent: callers (Leave button + USlideover dismiss + page-level
+    // teardown) can each trigger this in the same tick. Skip the redundant
+    // WS send if we're already out of a zone.
+    if (currentZoneId.value === null && currentMediaCredentials.value === null) {
+      return
+    }
     send({ type: 'zone:leave' })
     currentZoneId.value = null
     currentMediaCredentials.value = null

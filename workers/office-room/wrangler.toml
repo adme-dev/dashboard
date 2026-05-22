@@ -20,3 +20,14 @@ SYNC_BASE_URL = "https://agency-dashboard-6cm.pages.dev"
 #   cd workers/office-room && wrangler secret put OFFICE_SYNC_SECRET
 # The same value must also exist as an env var on the Pages app so the
 # /api/office/_internal/sync-status endpoint can verify the header.
+
+# Phase 1b — Cloudflare RealtimeKit secrets. All three must be set before
+# any zone:enter will succeed; otherwise the DO replies zone:join-failed
+# reason='realtime-unavailable'.
+#   cd workers/office-room && wrangler secret put CF_ACCOUNT_ID
+#   cd workers/office-room && wrangler secret put CF_REALTIMEKIT_APP_ID
+#   cd workers/office-room && wrangler secret put CF_REALTIMEKIT_API_TOKEN
+# CF_REALTIMEKIT_API_TOKEN is a CF account-level API token with the
+# 'Realtime Kit:Edit' scope (Account > Realtime Kit > Edit). The DO uses
+# it to call api.cloudflare.com/.../realtime/kit/<app>/meetings/* for
+# meeting creation, participant token minting, and refresh.
