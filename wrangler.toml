@@ -78,6 +78,12 @@ name = "BANNER_ROOMS"
 class_name = "BannerRoom"
 script_name = "banner-rooms-worker"
 
+# Office Rooms — Durable Objects for virtual office presence (Phase 1a)
+[[durable_objects.bindings]]
+name = "OFFICE_ROOMS"
+class_name = "OfficeRoom"
+script_name = "office-room-worker"
+
 # Environment-specific variables are managed in the Cloudflare Pages dashboard
 # (Settings > Variables and Secrets) for preview and production environments.
 
