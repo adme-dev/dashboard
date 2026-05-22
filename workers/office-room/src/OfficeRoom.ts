@@ -9,7 +9,10 @@ import type { InboundMessage, OutboundMessage } from './types'
 import { applyStatusSet, applyZoneEnter, applyZoneLeave } from './handlers'
 
 interface Env {
-  // bound by the parent worker; no explicit env needed in 1a
+  /** Base URL of the Pages app, e.g. https://agency-dashboard-6cm.pages.dev */
+  SYNC_BASE_URL?: string
+  /** Shared secret for the chat-presence sync endpoint */
+  OFFICE_SYNC_SECRET?: string
 }
 
 interface ConnMeta {
@@ -36,6 +39,8 @@ export class OfficeRoom extends DurableObject<Env> {
   private participants = new Map<ActorHandle, ParticipantState>()
   // Map from WS to its handle (so we can find the participant on close)
   private wsToHandle = new WeakMap<WebSocket, ActorHandle>()
+  // Pending 5s-debounced status syncs to the Pages chat-presence endpoint
+  private syncTimers = new Map<ActorHandle, ReturnType<typeof setTimeout>>()
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
@@ -192,6 +197,7 @@ export class OfficeRoom extends DurableObject<Env> {
       case 'status:set': {
         const { broadcast } = applyStatusSet(p, msg.status, now)
         this.broadcast(broadcast)
+        this.scheduleStatusSync(handle, msg.status)
         return
       }
       case 'zone:enter': {
@@ -252,6 +258,35 @@ export class OfficeRoom extends DurableObject<Env> {
       ws.send(JSON.stringify(msg))
     } catch {
       /* ignore */
+    }
+  }
+
+  // ---------- Chat-presence write-through (5s debounce) ---------------------
+
+  private scheduleStatusSync(handle: ActorHandle, status: OfficeStatus): void {
+    const existing = this.syncTimers.get(handle)
+    if (existing) clearTimeout(existing)
+    const t = setTimeout(() => this.syncStatus(handle, status), 5_000)
+    this.syncTimers.set(handle, t)
+  }
+
+  private async syncStatus(handle: ActorHandle, status: OfficeStatus): Promise<void> {
+    this.syncTimers.delete(handle)
+    const env = this.env
+    if (!env.SYNC_BASE_URL || !env.OFFICE_SYNC_SECRET) return
+
+    const [type, id] = handle.split(':') as ['user' | 'client', string]
+    try {
+      await fetch(`${env.SYNC_BASE_URL}/api/office/_internal/sync-status`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-office-sync-secret': env.OFFICE_SYNC_SECRET,
+        },
+        body: JSON.stringify({ actor_type: type, actor_id: id, status }),
+      })
+    } catch {
+      /* best-effort; chat presence is non-critical */
     }
   }
 

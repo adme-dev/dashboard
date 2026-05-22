@@ -10,3 +10,13 @@ class_name = "OfficeRoom"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["OfficeRoom"]
+
+[vars]
+# Base URL of the Pages app — DO posts here to mirror office status to the
+# chat presence tables. Override per-environment if needed.
+SYNC_BASE_URL = "https://agency-dashboard-6cm.pages.dev"
+
+# OFFICE_SYNC_SECRET is set as a worker secret, not committed:
+#   cd workers/office-room && wrangler secret put OFFICE_SYNC_SECRET
+# The same value must also exist as an env var on the Pages app so the
+# /api/office/_internal/sync-status endpoint can verify the header.
