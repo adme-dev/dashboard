@@ -7,6 +7,8 @@
 
 **Verification pass (2026-05-22):** spec was reviewed against the live codebase. Six integration assumptions were corrected: chat table schema (§4.3.a), polymorphic actor handle convention (§4.3.b), reuse of existing `user_chat_status` presence table (§4.3.c), WebSocket endpoint path (§5.2), migration numbering 092→097 (§10), and known-limitation entries added for shared presence, externally-managed `clients` table, and greenfield WebRTC (§13).
 
+**Phase 1a status (2026-05-22):** Implemented on branch `feat/virtual-office-1a-presence` — schema (migrations 097/098), OfficeRoom DurableObject (deployed: `office-room-worker.adme-dev.workers.dev`), Nitro WS proxy + read/admin endpoints, `useOfficeConnection` composable, ro.am-inspired floor plan UI with per-zone-type theming, status sync to chat presence. Phase 1a deviation from §4.3.c: `user_chat_status.user_id` is a PRIMARY KEY (NOT NULL) — extending it with a XOR'd `client_user_id` was structurally impossible, so the spec's alternate option (parallel `client_chat_status` table) was used instead. Phase 1b (Cloudflare Realtime media) plan to be written next.
+
 ---
 
 ## 1. Purpose
