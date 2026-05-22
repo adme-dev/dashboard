@@ -6,6 +6,7 @@ import type {
   OfficeStatus,
 } from '../../../app/types/office'
 import type { InboundMessage, OutboundMessage } from './types'
+import { applyStatusSet, applyZoneEnter, applyZoneLeave } from './handlers'
 
 interface Env {
   // bound by the parent worker; no explicit env needed in 1a
@@ -184,23 +185,28 @@ export class OfficeRoom extends DurableObject<Env> {
     if (!p) return
     p.lastSeenAt = Date.now()
 
+    const now = Date.now()
     switch (msg.type) {
       case 'heartbeat':
         return
-      case 'status:set':
-        p.status = msg.status
-        this.broadcast({ type: 'participant:updated', handle, status: msg.status })
+      case 'status:set': {
+        const { broadcast } = applyStatusSet(p, msg.status, now)
+        this.broadcast(broadcast)
         return
-      case 'zone:enter':
-        // 1a: no media token, no ACL check yet (full ACL in 1b/1c). For 1a we trust the API to gate.
-        p.currentZoneId = msg.zoneId
-        this.sendTo(ws, { type: 'zone:entered', zoneId: msg.zoneId })
-        this.broadcast({ type: 'participant:moved', handle, zoneId: msg.zoneId })
+      }
+      case 'zone:enter': {
+        // 1a: no media token, no ACL check yet (full ACL in 1b/1c).
+        // The Nitro WS endpoint gates membership; the DO trusts the upgrade.
+        const { send, broadcast } = applyZoneEnter(p, msg.zoneId, now)
+        this.sendTo(ws, send)
+        this.broadcast(broadcast)
         return
-      case 'zone:leave':
-        p.currentZoneId = null
-        this.broadcast({ type: 'participant:moved', handle, zoneId: null })
+      }
+      case 'zone:leave': {
+        const { broadcast } = applyZoneLeave(p, now)
+        this.broadcast(broadcast)
         return
+      }
     }
   }
 
