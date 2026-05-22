@@ -54,6 +54,10 @@ export default {
     const id = env.OFFICE_ROOMS.idFromName(officeId)
     const stub = env.OFFICE_ROOMS.get(id)
     const params = new URLSearchParams({
+      // officeId is forwarded explicitly because idFromName is one-way — the
+      // DO's ctx.id is a hash of the name, not the name itself. Without this
+      // the DO has no way to query office_zones for capacity/cf_meeting_id.
+      officeId,
       handle: claims.handle,
       name: claims.name,
       avatarUrl: claims.avatarUrl ?? '',

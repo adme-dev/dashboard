@@ -55,6 +55,11 @@ export class OfficeRoom extends DurableObject<Env> {
   private zoneMeta: Map<string, { capacity: number, cfMeetingId: string | null, cfPresetDefault: string }> | null = null
   // Per-participant token refresh timers
   private refreshTimers = new Map<ActorHandle, ReturnType<typeof setTimeout>>()
+  // Original officeId (UUID) used to construct this DO via idFromName. Must
+  // be captured from the WS handshake — ctx.id.toString() returns the hashed
+  // DO id, not the office UUID. Persisted to storage so it survives DO
+  // hibernation. Without this, loadZoneMeta cannot query office_zones.
+  private officeId: string | null = null
 
   // Token TTL that mirrors the CF default (1 hour)
   private readonly TOKEN_TTL_MS = 60 * 60_000
@@ -68,6 +73,13 @@ export class OfficeRoom extends DurableObject<Env> {
     // find no participant entry and silently drop status/zone changes.
     // Note: ephemeral state (status, currentZoneId) resets to defaults across
     // hibernation — only the identity (ConnMeta) is durable in attachments.
+    //
+    // Also restore officeId from storage (set on first WS handshake). Without
+    // this, zone metadata lookups fail after hibernation.
+    ctx.blockConcurrencyWhile(async () => {
+      const stored = await ctx.storage.get<string>('officeId')
+      if (stored) this.officeId = stored
+    })
     const now = Date.now()
     for (const ws of ctx.getWebSockets()) {
       const tag = ws.deserializeAttachment() as Partial<ConnMeta> | undefined
@@ -97,14 +109,23 @@ export class OfficeRoom extends DurableObject<Env> {
     }
 
     const url = new URL(request.url)
+    const officeId = url.searchParams.get('officeId')
     const handle = url.searchParams.get('handle') as ActorHandle | null
     const name = url.searchParams.get('name')
     const avatarUrl = url.searchParams.get('avatarUrl')
     const role = url.searchParams.get('role') as 'admin' | 'member' | 'guest' | null
     const isGuest = url.searchParams.get('isGuest') === 'true'
 
-    if (!handle || !name || !role) {
+    if (!handle || !name || !role || !officeId) {
       return new Response('Missing required params', { status: 400 })
+    }
+
+    // Capture officeId on first handshake and persist for hibernation recovery.
+    // ctx.id.toString() returns a hash, not the office UUID — we need the
+    // original to query office_zones in loadZoneMeta.
+    if (!this.officeId) {
+      this.officeId = officeId
+      await this.ctx.storage.put('officeId', officeId)
     }
 
     const pair = new WebSocketPair()
@@ -373,9 +394,10 @@ export class OfficeRoom extends DurableObject<Env> {
     if (this.zoneMeta) return this.zoneMeta
     const env = this.env
     if (!env.SYNC_BASE_URL || !env.OFFICE_SYNC_SECRET) return null
+    if (!this.officeId) return null  // first WS hasn't arrived yet
     try {
-      const officeId = this.ctx.id.toString()
-      const res = await fetch(`${env.SYNC_BASE_URL}/api/office/_internal/zones?officeId=${officeId}`, {
+      const officeId = this.officeId
+      const res = await fetch(`${env.SYNC_BASE_URL}/api/office/_internal/zones?officeId=${encodeURIComponent(officeId)}`, {
         headers: { 'x-office-sync-secret': env.OFFICE_SYNC_SECRET },
       })
       if (!res.ok) return null
@@ -475,7 +497,7 @@ export class OfficeRoom extends DurableObject<Env> {
         ;(zoneOccupancy[p.currentZoneId] ||= []).push(handle)
       }
     }
-    return { officeId: this.ctx.id.toString(), participants, zoneOccupancy }
+    return { officeId: this.officeId ?? this.ctx.id.toString(), participants, zoneOccupancy }
   }
 
   private sendTo(ws: WebSocket, msg: OutboundMessage): void {
