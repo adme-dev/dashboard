@@ -232,9 +232,11 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     )
   }
 
-  // Chat — visible to all staff
+  // Collaboration — Chat + Virtual Office, visible to all staff
   items.push(
+    { type: 'label', label: 'Collaboration' },
     { label: 'Chat', icon: 'i-lucide-message-circle', to: '/agency/chat', badge: chatUnreadCount.value > 0 ? chatUnreadCount.value.toString() : undefined, onSelect: close },
+    { label: 'Office', icon: 'i-lucide-building-2', to: '/office', onSelect: close },
   )
 
   return items
