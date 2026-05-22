@@ -1196,3 +1196,5 @@ export interface LeadWebhookEndpoint {
 export type DispatchResult =
   | { status: 'delivered'; response_meta?: any }
   | { status: 'failed'; error: string; retry_after_ms?: number }
+
+export * from './office'
