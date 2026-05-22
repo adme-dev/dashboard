@@ -54,6 +54,38 @@ watch(
 const participantCount = computed(() => connection.participants.value.size)
 const officeName = computed(() => detail.value?.office.name ?? '')
 const showSwitcher = computed(() => (listData.value?.offices.length ?? 0) > 1)
+
+// Phase 1b — room panel opens when a zone:joined message carries credentials.
+const currentZone = computed(() => {
+  const zoneId = connection.currentZoneId.value
+  if (!zoneId) return null
+  return detail.value?.zones.find(z => z.id === zoneId) ?? null
+})
+
+const roomPanelOpen = computed({
+  get: () => Boolean(connection.currentMediaCredentials.value),
+  set: (v) => {
+    // Closing the panel from inside means leaving the zone.
+    if (!v) connection.leaveZone()
+  }
+})
+
+function handleRoomLeave() {
+  connection.leaveZone()
+}
+
+watch(
+  () => connection.joinFailure.value,
+  (failure) => {
+    if (!failure) return
+    toast.add({
+      title: 'Couldn\'t join room',
+      description: failure.message || `Reason: ${failure.reason}`,
+      color: 'error'
+    })
+    connection.joinFailure.value = null
+  }
+)
 </script>
 
 <template>
@@ -104,6 +136,13 @@ const showSwitcher = computed(() => (listData.value?.offices.length ?? 0) > 1)
         :participants="connection.participants.value"
         :zone-occupancy="connection.zoneOccupancy.value"
         @enter-zone="enterZone"
+      />
+
+      <OfficeRoomPanel
+        v-model:open="roomPanelOpen"
+        :zone="currentZone"
+        :credentials="connection.currentMediaCredentials.value"
+        @leave="handleRoomLeave"
       />
     </div>
 
