@@ -1,0 +1,12 @@
+name = "office-room-worker"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[durable_objects.bindings]]
+name = "OFFICE_ROOMS"
+class_name = "OfficeRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["OfficeRoom"]
