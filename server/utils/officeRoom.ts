@@ -107,3 +107,22 @@ export function getOfficeRoom(event: H3Event, officeId: string) {
   const id = env.OFFICE_ROOMS.idFromName(officeId)
   return env.OFFICE_ROOMS.get(id)
 }
+
+// =============================================================================
+// Admin guard
+// =============================================================================
+
+import { queryOne } from './db'
+import { requireAuth } from './auth'
+
+export async function requireOfficeAdmin(event: H3Event, officeId: string) {
+  const user = await requireAuth(event)
+  const membership = await queryOne<OfficeMemberRow>(
+    `SELECT * FROM office_members WHERE office_id = $1 AND user_id = $2`,
+    [officeId, user.id],
+  )
+  if (!membership || membership.role !== 'admin') {
+    throw createError({ statusCode: 403, statusMessage: 'Office admin required' })
+  }
+  return { user, membership }
+}
