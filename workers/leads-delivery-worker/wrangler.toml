@@ -10,7 +10,7 @@ compatibility_flags = ["nodejs_compat"]
 
 [[hyperdrive]]
 binding = "HYPERDRIVE"
-id = "REPLACE_WITH_HYPERDRIVE_ID"
+id = "900b4b74ec41462cbbabebd0aa8775aa"
 
 [vars]
 WORKER_ID_PREFIX = "leads-w"

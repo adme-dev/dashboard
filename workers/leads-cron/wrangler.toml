@@ -10,6 +10,6 @@ crons = [
 ]
 
 [vars]
-APP_BASE_URL = "https://your-dashboard.adme.net.au"
+APP_BASE_URL = "https://agency-dashboard-6cm.pages.dev"
 # INTERNAL_CRON_TOKEN set as a secret via:
 #   wrangler secret put INTERNAL_CRON_TOKEN
