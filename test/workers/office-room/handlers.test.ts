@@ -26,17 +26,20 @@ describe('OfficeRoom handlers', () => {
     })
   })
 
-  it('applyZoneEnter updates currentZoneId and emits both send + broadcast', () => {
+  it('applyZoneEnter updates currentZoneId and emits zone:joined + participant:moved', () => {
     const p = baseP()
-    const out = applyZoneEnter(p, 'zone-1', 100)
+    const media = {
+      authToken: 'tok',
+      meetingId: 'meet-1',
+      participantId: 'p-1',
+      presetName: 'staff_full' as const,
+      expiresAt: 1_000,
+    }
+    const out = applyZoneEnter(p, 'zone-1', media, 100)
     expect(p.currentZoneId).toBe('zone-1')
     expect(p.lastSeenAt).toBe(100)
-    expect(out.send).toEqual({ type: 'zone:entered', zoneId: 'zone-1' })
-    expect(out.broadcast).toEqual({
-      type: 'participant:moved',
-      handle: 'user:u1',
-      zoneId: 'zone-1'
-    })
+    expect(out.send).toEqual({ type: 'zone:joined', zoneId: 'zone-1', media })
+    expect(out.broadcast).toEqual({ type: 'participant:moved', handle: 'user:u1', zoneId: 'zone-1' })
   })
 
   it('applyZoneLeave clears currentZoneId and emits participant:moved with null', () => {

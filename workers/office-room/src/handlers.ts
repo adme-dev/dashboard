@@ -4,7 +4,7 @@
  * outbound messages the caller should send/broadcast.
  */
 
-import type { ActorHandle, OfficeStatus } from '../../../app/types/office'
+import type { ActorHandle, MediaCredentials, OfficeStatus } from '../../../app/types/office'
 import type { OutboundMessage } from './types'
 
 export interface ParticipantLite {
@@ -27,12 +27,13 @@ export function applyStatusSet(
 export function applyZoneEnter(
   p: ParticipantLite,
   zoneId: string,
-  now: number
+  media: MediaCredentials,
+  now: number,
 ): { send: OutboundMessage, broadcast: OutboundMessage } {
   p.currentZoneId = zoneId
   p.lastSeenAt = now
   return {
-    send: { type: 'zone:entered', zoneId },
+    send: { type: 'zone:joined', zoneId, media },
     broadcast: { type: 'participant:moved', handle: p.handle, zoneId }
   }
 }

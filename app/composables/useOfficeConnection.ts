@@ -1,9 +1,12 @@
 import type { Ref } from 'vue'
 import type {
+  ActorHandle,
+  MediaCredentials,
   OfficeParticipant,
   OfficeSnapshot,
   OfficeStatus,
-  ActorHandle
+  ZoneJoinFailReason,
+  ZonePresetName,
 } from '~~/app/types/office'
 import type {
   InboundMessage,
@@ -19,6 +22,9 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
   const zoneOccupancy = ref<Record<string, ActorHandle[]>>({})
   const isConnected = ref(false)
   const lastError = ref<string | null>(null)
+  const currentZoneId = ref<string | null>(null)
+  const currentMediaCredentials = ref<MediaCredentials | null>(null)
+  const joinFailure = ref<{ zoneId: string, reason: ZoneJoinFailReason, message?: string } | null>(null)
 
   let ws: WebSocket | null = null
   let reconnectAttempt = 0
@@ -91,11 +97,18 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
         zoneOccupancy.value = zo
         return
       }
-      case 'zone:denied':
-        lastError.value = `Zone access denied: ${msg.reason}`
+      case 'zone:joined':
+        currentZoneId.value = msg.zoneId
+        currentMediaCredentials.value = msg.media
         return
-      case 'zone:full':
-        lastError.value = 'Room is full'
+      case 'zone:token-refreshed':
+        if (currentZoneId.value === msg.zoneId) {
+          currentMediaCredentials.value = msg.media
+        }
+        return
+      case 'zone:join-failed':
+        joinFailure.value = { zoneId: msg.zoneId, reason: msg.reason, message: msg.message }
+        lastError.value = msg.message || `Couldn't join: ${msg.reason}`
         return
       case 'error':
         lastError.value = msg.message
@@ -219,11 +232,13 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
   function setStatus(status: OfficeStatus) {
     send({ type: 'status:set', status })
   }
-  function enterZone(zoneId: string) {
-    send({ type: 'zone:enter', zoneId })
+  function enterZone(zoneId: string, preferredPreset?: ZonePresetName) {
+    send({ type: 'zone:enter', zoneId, ...(preferredPreset ? { preferredPreset } : {}) })
   }
   function leaveZone() {
     send({ type: 'zone:leave' })
+    currentZoneId.value = null
+    currentMediaCredentials.value = null
   }
 
   watch(
@@ -242,8 +257,11 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
     zoneOccupancy,
     isConnected,
     lastError,
+    currentZoneId,
+    currentMediaCredentials,
+    joinFailure,
     setStatus,
     enterZone,
-    leaveZone
+    leaveZone,
   }
 }

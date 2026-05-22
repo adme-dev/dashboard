@@ -1,18 +1,28 @@
 import { DurableObject } from 'cloudflare:workers'
 import type {
   ActorHandle,
+  MediaCredentials,
   OfficeParticipant,
   OfficeSnapshot,
-  OfficeStatus
+  OfficeStatus,
+  ZoneJoinFailReason,
+  ZonePresetName,
 } from '../../../app/types/office'
 import type { InboundMessage, OutboundMessage } from './types'
 import { applyStatusSet, applyZoneEnter, applyZoneLeave } from './handlers'
+import { createZoneMeeting, mintZoneToken, refreshZoneToken } from './realtime'
 
 interface Env {
   /** Base URL of the Pages app, e.g. https://agency-dashboard-6cm.pages.dev */
   SYNC_BASE_URL?: string
   /** Shared secret for the chat-presence sync endpoint */
   OFFICE_SYNC_SECRET?: string
+  /** Cloudflare account ID (for RealtimeKit) */
+  CF_ACCOUNT_ID?: string
+  /** RealtimeKit app ID */
+  CF_REALTIMEKIT_APP_ID?: string
+  /** RealtimeKit API token */
+  CF_REALTIMEKIT_API_TOKEN?: string
 }
 
 interface ConnMeta {
@@ -27,6 +37,7 @@ interface ConnMeta {
 interface ParticipantState extends ConnMeta {
   status: OfficeStatus
   currentZoneId: string | null
+  cfParticipantId: string | null
   lastSeenAt: number
   disconnectedAt: number | null
 }
@@ -39,6 +50,16 @@ export class OfficeRoom extends DurableObject<Env> {
   private participants = new Map<ActorHandle, ParticipantState>()
   // Map from WS to its handle (so we can find the participant on close)
   private wsToHandle = new WeakMap<WebSocket, ActorHandle>()
+
+  // Lazy-populated zone metadata cache (capacity + CF meeting id per zone)
+  private zoneMeta: Map<string, { capacity: number, cfMeetingId: string | null, cfPresetDefault: string }> | null = null
+  // Per-participant token refresh timers
+  private refreshTimers = new Map<ActorHandle, ReturnType<typeof setTimeout>>()
+
+  // Token TTL that mirrors the CF default (1 hour)
+  private readonly TOKEN_TTL_MS = 60 * 60_000
+  // Fire refresh this many ms before expiry
+  private readonly REFRESH_LEAD_MS = 5 * 60_000
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
@@ -62,6 +83,7 @@ export class OfficeRoom extends DurableObject<Env> {
           joinedAt: tag.joinedAt ?? now,
           status: 'available',
           currentZoneId: null,
+          cfParticipantId: null,
           lastSeenAt: now,
           disconnectedAt: null
         })
@@ -195,6 +217,7 @@ export class OfficeRoom extends DurableObject<Env> {
       ...meta,
       status: 'available',
       currentZoneId: null,
+      cfParticipantId: null,
       lastSeenAt: Date.now(),
       disconnectedAt: null
     }
@@ -232,20 +255,79 @@ export class OfficeRoom extends DurableObject<Env> {
         const { broadcast } = applyStatusSet(p, msg.status, now)
         this.broadcast(broadcast)
         // Fire the chat-presence sync via waitUntil so it survives even if the
-        // message handler returns before fetch settles. Previously this was
-        // a setTimeout debounce, which was lost on DO hibernation.
+        // message handler returns before fetch settles.
         this.ctx.waitUntil(this.syncStatus(handle, msg.status))
         return
       }
       case 'zone:enter': {
-        // 1a: no media token, no ACL check yet (full ACL in 1b/1c).
-        // The Nitro WS endpoint gates membership; the DO trusts the upgrade.
-        const { send, broadcast } = applyZoneEnter(p, msg.zoneId, now)
+        const meta = await this.loadZoneMeta()
+        const zoneMeta = meta?.get(msg.zoneId)
+        // If we don't know the zone, fail soft rather than minting blindly
+        if (!zoneMeta) {
+          this.sendTo(ws, { type: 'zone:join-failed', zoneId: msg.zoneId, reason: 'realtime-unavailable' as ZoneJoinFailReason, message: 'Zone metadata not loaded' })
+          return
+        }
+        if (this.zoneOccupancyCount(msg.zoneId) >= zoneMeta.capacity) {
+          this.sendTo(ws, { type: 'zone:join-failed', zoneId: msg.zoneId, reason: 'capacity' as ZoneJoinFailReason, message: 'Room is full' })
+          return
+        }
+        // Resolve preset: server enforces — client's preferredPreset is honored only when it's 'viewer_lurking'
+        const presetName: ZonePresetName = msg.preferredPreset === 'viewer_lurking'
+          ? 'viewer_lurking'
+          : (zoneMeta.cfPresetDefault as ZonePresetName) || 'staff_full'
+
+        // Ensure meeting exists
+        let cfMeetingId = zoneMeta.cfMeetingId
+        if (!cfMeetingId) {
+          try {
+            const result = await createZoneMeeting({
+              env: this.env,
+              title: `Zone ${msg.zoneId}`,
+            })
+            cfMeetingId = result.meetingId
+            this.zoneMeta!.set(msg.zoneId, { ...zoneMeta, cfMeetingId })
+            // Best-effort persist; doesn't block the join
+            this.ctx.waitUntil(this.persistMeetingId(msg.zoneId, cfMeetingId))
+          } catch (err) {
+            this.sendTo(ws, { type: 'zone:join-failed', zoneId: msg.zoneId, reason: 'meeting-create-failed' as ZoneJoinFailReason, message: (err as Error).message })
+            return
+          }
+        }
+
+        // Mint participant token
+        let mint: { participantId: string, authToken: string }
+        try {
+          mint = await mintZoneToken({
+            env: this.env,
+            meetingId: cfMeetingId,
+            handle,
+            name: p.name,
+            presetName,
+          })
+        } catch (err) {
+          this.sendTo(ws, { type: 'zone:join-failed', zoneId: msg.zoneId, reason: 'mint-failed' as ZoneJoinFailReason, message: (err as Error).message })
+          return
+        }
+
+        p.cfParticipantId = mint.participantId
+        const expiresAt = Date.now() + this.TOKEN_TTL_MS
+        const mediaCredentials: MediaCredentials = {
+          authToken: mint.authToken,
+          meetingId: cfMeetingId,
+          participantId: mint.participantId,
+          presetName,
+          expiresAt,
+        }
+        const { send, broadcast } = applyZoneEnter(p, msg.zoneId, mediaCredentials, now)
         this.sendTo(ws, send)
         this.broadcast(broadcast)
+        this.scheduleTokenRefresh(handle, msg.zoneId, cfMeetingId, expiresAt)
         return
       }
       case 'zone:leave': {
+        const refreshT = this.refreshTimers.get(handle)
+        if (refreshT) { clearTimeout(refreshT); this.refreshTimers.delete(handle) }
+        p.cfParticipantId = null
         const { broadcast } = applyZoneLeave(p, now)
         this.broadcast(broadcast)
         return
@@ -279,8 +361,97 @@ export class OfficeRoom extends DurableObject<Env> {
   }
 
   private removeParticipant(handle: ActorHandle): void {
+    const refreshT = this.refreshTimers.get(handle)
+    if (refreshT) { clearTimeout(refreshT); this.refreshTimers.delete(handle) }
     if (!this.participants.delete(handle)) return
     this.broadcast({ type: 'participant:left', handle })
+  }
+
+  // ---------- Zone metadata helpers ------------------------------------------
+
+  private async loadZoneMeta(): Promise<Map<string, { capacity: number, cfMeetingId: string | null, cfPresetDefault: string }> | null> {
+    if (this.zoneMeta) return this.zoneMeta
+    const env = this.env
+    if (!env.SYNC_BASE_URL || !env.OFFICE_SYNC_SECRET) return null
+    try {
+      const officeId = this.ctx.id.toString()
+      const res = await fetch(`${env.SYNC_BASE_URL}/api/office/_internal/zones?officeId=${officeId}`, {
+        headers: { 'x-office-sync-secret': env.OFFICE_SYNC_SECRET },
+      })
+      if (!res.ok) return null
+      const { zones } = (await res.json()) as { zones: { id: string, capacity: number, cf_meeting_id: string | null, cf_preset_default: string }[] }
+      const m = new Map(zones.map(z => [z.id, { capacity: z.capacity, cfMeetingId: z.cf_meeting_id, cfPresetDefault: z.cf_preset_default }]))
+      this.zoneMeta = m
+      return m
+    } catch {
+      return null
+    }
+  }
+
+  private zoneOccupancyCount(zoneId: string): number {
+    let n = 0
+    for (const p of this.participants.values()) {
+      if (p.currentZoneId === zoneId && p.disconnectedAt === null) n++
+    }
+    return n
+  }
+
+  private async persistMeetingId(zoneId: string, meetingId: string): Promise<void> {
+    const env = this.env
+    if (!env.SYNC_BASE_URL || !env.OFFICE_SYNC_SECRET) return
+    try {
+      await fetch(`${env.SYNC_BASE_URL}/api/office/_internal/meeting`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-office-sync-secret': env.OFFICE_SYNC_SECRET,
+        },
+        body: JSON.stringify({ zoneId, meetingId }),
+      })
+    } catch { /* best-effort */ }
+  }
+
+  // ---------- Token refresh --------------------------------------------------
+
+  private scheduleTokenRefresh(handle: ActorHandle, zoneId: string, meetingId: string, expiresAt: number): void {
+    const existing = this.refreshTimers.get(handle)
+    if (existing) clearTimeout(existing)
+    const fireIn = Math.max(10_000, expiresAt - Date.now() - this.REFRESH_LEAD_MS)
+    const t = setTimeout(() => this.refreshToken(handle, zoneId, meetingId), fireIn)
+    this.refreshTimers.set(handle, t)
+  }
+
+  private async refreshToken(handle: ActorHandle, zoneId: string, meetingId: string): Promise<void> {
+    this.refreshTimers.delete(handle)
+    const p = this.participants.get(handle)
+    if (!p || p.currentZoneId !== zoneId || !p.cfParticipantId) return
+
+    try {
+      const out = await refreshZoneToken({
+        env: this.env,
+        meetingId,
+        participantId: p.cfParticipantId,
+      })
+      const meta = this.zoneMeta?.get(zoneId)
+      const presetName: ZonePresetName = (meta?.cfPresetDefault as ZonePresetName) || 'staff_full'
+      const expiresAt = Date.now() + this.TOKEN_TTL_MS
+      const media: MediaCredentials = {
+        authToken: out.authToken,
+        meetingId,
+        participantId: p.cfParticipantId,
+        presetName,
+        expiresAt,
+      }
+      for (const ws of this.ctx.getWebSockets()) {
+        const tag = ws.deserializeAttachment() as { handle?: ActorHandle } | undefined
+        if (tag?.handle === handle) {
+          try { ws.send(JSON.stringify({ type: 'zone:token-refreshed', zoneId, media } satisfies OutboundMessage)) } catch { /* ignore */ }
+        }
+      }
+      this.scheduleTokenRefresh(handle, zoneId, meetingId, expiresAt)
+    } catch {
+      // Refresh failed. Don't kick — SDK will surface expiry and client will leave gracefully.
+    }
   }
 
   // ---------- Snapshot + broadcast helpers -----------------------------------
