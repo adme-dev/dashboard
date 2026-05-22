@@ -13,13 +13,6 @@ BEGIN;
 DO $$
 DECLARE
   v_office_id uuid;
-  v_zone_lobby uuid;
-  v_zone_mtg_a uuid;
-  v_zone_mtg_b uuid;
-  v_zone_mtg_c uuid;
-  v_zone_mtg_d uuid;
-  v_zone_focus_1 uuid;
-  v_zone_focus_2 uuid;
 BEGIN
   -- Office (idempotent via WHERE NOT EXISTS — no unique constraint on name)
   INSERT INTO offices (name, layout)
@@ -39,15 +32,6 @@ BEGIN
     (v_office_id, 'focus-2', 'Focus Room 2',   'focus',   '{"x":220,"y":300,"w":150,"h":150}'::jsonb, 4,  '{}'::jsonb)
   ON CONFLICT (office_id, slug) DO NOTHING;
 
-  -- Capture zone ids for chat_channels seeding
-  SELECT id INTO v_zone_lobby   FROM office_zones WHERE office_id = v_office_id AND slug = 'lobby';
-  SELECT id INTO v_zone_mtg_a   FROM office_zones WHERE office_id = v_office_id AND slug = 'mtg-a';
-  SELECT id INTO v_zone_mtg_b   FROM office_zones WHERE office_id = v_office_id AND slug = 'mtg-b';
-  SELECT id INTO v_zone_mtg_c   FROM office_zones WHERE office_id = v_office_id AND slug = 'mtg-c';
-  SELECT id INTO v_zone_mtg_d   FROM office_zones WHERE office_id = v_office_id AND slug = 'mtg-d';
-  SELECT id INTO v_zone_focus_1 FROM office_zones WHERE office_id = v_office_id AND slug = 'focus-1';
-  SELECT id INTO v_zone_focus_2 FROM office_zones WHERE office_id = v_office_id AND slug = 'focus-2';
-
   -- Pre-create chat_channels for each zone (Phase 1c will write into these)
   -- slug is globally unique in chat_channels; use 'office-<zone-slug>' prefix
   INSERT INTO chat_channels (name, slug, type, external_id, created_by)
@@ -64,7 +48,11 @@ BEGIN
       WHERE c.type = 'office_zone' AND c.external_id = z.id
     );
 
-  -- Add all active staff as office members
+  -- Add all active INTERNAL agency staff as office members.
+  -- Scope: @adme.net.au emails only — the broader team_members table also
+  -- contains external client/agency contacts (e.g. Toyota, partner agencies)
+  -- and test personas that have never logged in. Including them would
+  -- pollute the office floor plan with stale external rows.
   INSERT INTO office_members (office_id, user_id, role)
   SELECT
     v_office_id,
@@ -72,6 +60,7 @@ BEGIN
     CASE WHEN u.user_role IN ('owner', 'admin') THEN 'admin' ELSE 'member' END
   FROM team_members u
   WHERE u.is_active = true
+    AND u.email ILIKE '%@adme.net.au'
     AND NOT EXISTS (
       SELECT 1 FROM office_members om
       WHERE om.office_id = v_office_id AND om.user_id = u.id
