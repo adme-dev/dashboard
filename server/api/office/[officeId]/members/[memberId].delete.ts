@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   await requireOfficeAdmin(event, officeId)
   await execute(
     `DELETE FROM office_members WHERE id = $1 AND office_id = $2`,
-    [memberId, officeId],
+    [memberId, officeId]
   )
   return { deleted: 1 }
 })

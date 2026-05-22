@@ -8,12 +8,12 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:modelValue': [v: string] }>()
 
 const items = computed(() =>
-  props.offices.map((o) => ({
+  props.offices.map(o => ({
     label: o.name,
-    onSelect: () => emit('update:modelValue', o.id),
-  })),
+    onSelect: () => emit('update:modelValue', o.id)
+  }))
 )
-const current = computed(() => props.offices.find((o) => o.id === props.modelValue))
+const current = computed(() => props.offices.find(o => o.id === props.modelValue))
 </script>
 
 <template>
@@ -22,5 +22,7 @@ const current = computed(() => props.offices.find((o) => o.id === props.modelVal
       {{ current?.name || 'Select office' }}
     </UButton>
   </UDropdownMenu>
-  <div v-else-if="current" class="text-sm font-medium px-3">{{ current.name }}</div>
+  <div v-else-if="current" class="text-sm font-medium px-3">
+    {{ current.name }}
+  </div>
 </template>

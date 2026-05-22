@@ -14,13 +14,13 @@ const { data: detail } = await useFetch<{
   zones: OfficeZoneRow[]
   myRole: string
 }>(() => (selectedId.value ? `/api/office/${selectedId.value}` : null), {
-  watch: [selectedId],
+  watch: [selectedId]
 })
 
 const connection = useOfficeConnection({ officeId: selectedId })
 
 const myStatus = ref<OfficeStatus>('available')
-watch(myStatus, (s) => connection.setStatus(s))
+watch(myStatus, s => connection.setStatus(s))
 
 function enterZone(zoneId: string) {
   connection.enterZone(zoneId)
@@ -34,7 +34,7 @@ watch(
       toast.add({ title: 'Office', description: err, color: 'error' })
       connection.lastError.value = null
     }
-  },
+  }
 )
 </script>
 
@@ -42,7 +42,9 @@ watch(
   <div class="p-4 space-y-3">
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-2">
-        <h1 class="text-lg font-semibold">Office</h1>
+        <h1 class="text-lg font-semibold">
+          Office
+        </h1>
         <OfficeSwitcher
           v-if="listData?.offices"
           v-model="selectedId"

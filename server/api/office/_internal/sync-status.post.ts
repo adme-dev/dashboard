@@ -17,7 +17,7 @@ import { execute } from '~~/server/utils/db'
 const Body = z.object({
   actor_type: z.enum(['user', 'client']),
   actor_id: z.string().uuid(),
-  status: z.enum(['available', 'busy', 'dnd', 'away']),
+  status: z.enum(['available', 'busy', 'dnd', 'away'])
 })
 
 // Map office status -> chat status enum.
@@ -47,7 +47,7 @@ export default defineEventHandler(async (event) => {
        VALUES ($1, $2, now(), now())
        ON CONFLICT (user_id) DO UPDATE
          SET status = EXCLUDED.status, last_seen_at = now(), updated_at = now()`,
-      [body.actor_id, chatStatus],
+      [body.actor_id, chatStatus]
     )
   } else {
     await execute(
@@ -55,7 +55,7 @@ export default defineEventHandler(async (event) => {
        VALUES ($1, $2, now(), now())
        ON CONFLICT (client_user_id) DO UPDATE
          SET status = EXCLUDED.status, last_seen_at = now(), updated_at = now()`,
-      [body.actor_id, chatStatus],
+      [body.actor_id, chatStatus]
     )
   }
 

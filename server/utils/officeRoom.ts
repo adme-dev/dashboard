@@ -3,8 +3,21 @@ import type {
   ActorRef,
   ActorType,
   OfficeMemberRow,
-  OfficeZoneRow,
+  OfficeZoneRow
 } from '~~/app/types/office'
+
+// =============================================================================
+// DO accessor
+// =============================================================================
+
+import type { H3Event } from 'h3'
+
+// =============================================================================
+// Admin guard
+// =============================================================================
+
+import { queryOne } from './db'
+import { requireAuth } from './auth'
 
 // =============================================================================
 // ActorHandle helpers
@@ -12,7 +25,7 @@ import type {
 
 export function toActorHandle(
   actor: { id: string },
-  type: ActorType,
+  type: ActorType
 ): ActorHandle {
   if (!actor?.id) throw new Error('toActorHandle: missing id')
   return `${type}:${actor.id}` as ActorHandle
@@ -44,9 +57,9 @@ export interface AclInput {
   actorClientId?: string
 }
 
-export type AclResult =
-  | { allowed: true }
-  | { allowed: false; reason: string }
+export type AclResult
+  = | { allowed: true }
+    | { allowed: false, reason: string }
 
 export function evaluateAcl(input: AclInput): AclResult {
   const { actor, zone, membership, actorClientId } = input
@@ -93,33 +106,30 @@ export function evaluateAcl(input: AclInput): AclResult {
   return { allowed: true }
 }
 
-// =============================================================================
-// DO accessor
-// =============================================================================
-
-import type { H3Event } from 'h3'
-
-export function getOfficeRoom(event: H3Event, officeId: string) {
-  const env = (event.context as any).cloudflare?.env
-  if (!env?.OFFICE_ROOMS) {
-    throw new Error('OFFICE_ROOMS binding not available')
-  }
-  const id = env.OFFICE_ROOMS.idFromName(officeId)
-  return env.OFFICE_ROOMS.get(id)
+interface CloudflareContext {
+  cloudflare?: { env?: Record<string, unknown> }
 }
 
-// =============================================================================
-// Admin guard
-// =============================================================================
+interface OfficeRoomsBinding {
+  idFromName: (name: string) => unknown
+  get: (id: unknown) => { fetch: (req: Request) => Promise<Response> }
+}
 
-import { queryOne } from './db'
-import { requireAuth } from './auth'
+export function getOfficeRoom(event: H3Event, officeId: string) {
+  const env = (event.context as CloudflareContext).cloudflare?.env
+  const binding = env?.OFFICE_ROOMS as OfficeRoomsBinding | undefined
+  if (!binding) {
+    throw new Error('OFFICE_ROOMS binding not available')
+  }
+  const id = binding.idFromName(officeId)
+  return binding.get(id)
+}
 
 export async function requireOfficeAdmin(event: H3Event, officeId: string) {
   const user = await requireAuth(event)
   const membership = await queryOne<OfficeMemberRow>(
     `SELECT * FROM office_members WHERE office_id = $1 AND user_id = $2`,
-    [officeId, user.id],
+    [officeId, user.id]
   )
   if (!membership || membership.role !== 'admin') {
     throw createError({ statusCode: 403, statusMessage: 'Office admin required' })

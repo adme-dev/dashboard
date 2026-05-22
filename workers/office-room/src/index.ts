@@ -32,5 +32,5 @@ export default {
     const id = env.OFFICE_ROOMS.idFromName(officeId)
     const stub = env.OFFICE_ROOMS.get(id)
     return stub.fetch(request)
-  },
+  }
 } satisfies ExportedHandler<Env>

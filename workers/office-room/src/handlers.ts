@@ -17,7 +17,7 @@ export interface ParticipantLite {
 export function applyStatusSet(
   p: ParticipantLite,
   status: OfficeStatus,
-  now: number,
+  now: number
 ): { broadcast: OutboundMessage } {
   p.status = status
   p.lastSeenAt = now
@@ -27,23 +27,23 @@ export function applyStatusSet(
 export function applyZoneEnter(
   p: ParticipantLite,
   zoneId: string,
-  now: number,
-): { send: OutboundMessage; broadcast: OutboundMessage } {
+  now: number
+): { send: OutboundMessage, broadcast: OutboundMessage } {
   p.currentZoneId = zoneId
   p.lastSeenAt = now
   return {
     send: { type: 'zone:entered', zoneId },
-    broadcast: { type: 'participant:moved', handle: p.handle, zoneId },
+    broadcast: { type: 'participant:moved', handle: p.handle, zoneId }
   }
 }
 
 export function applyZoneLeave(
   p: ParticipantLite,
-  now: number,
+  now: number
 ): { broadcast: OutboundMessage } {
   p.currentZoneId = null
   p.lastSeenAt = now
   return {
-    broadcast: { type: 'participant:moved', handle: p.handle, zoneId: null },
+    broadcast: { type: 'participant:moved', handle: p.handle, zoneId: null }
   }
 }

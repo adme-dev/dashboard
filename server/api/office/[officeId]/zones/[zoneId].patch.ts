@@ -15,7 +15,7 @@ const Body = z.object({
       x: z.number(),
       y: z.number(),
       w: z.number().positive(),
-      h: z.number().positive(),
+      h: z.number().positive()
     })
     .optional(),
   capacity: z.number().int().positive().optional(),
@@ -24,9 +24,9 @@ const Body = z.object({
     .object({
       allowed_roles: z.array(z.string()).optional(),
       allowed_clients: z.array(z.string().uuid()).optional(),
-      public_lobby: z.boolean().optional(),
+      public_lobby: z.boolean().optional()
     })
-    .optional(),
+    .optional()
 })
 
 export default defineEventHandler(async (event) => {
@@ -64,7 +64,7 @@ export default defineEventHandler(async (event) => {
   params.push(zoneId, officeId)
   await execute(
     `UPDATE office_zones SET ${sets.join(', ')} WHERE id = $${i++} AND office_id = $${i}`,
-    params,
+    params
   )
   return { updated: 1 }
 })

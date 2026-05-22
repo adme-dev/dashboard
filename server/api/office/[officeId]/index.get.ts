@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
 
   const membership = await queryOne<OfficeMemberRow>(
     `SELECT * FROM office_members WHERE office_id = $1 AND user_id = $2`,
-    [officeId, user.id],
+    [officeId, user.id]
   )
   if (!membership) {
     throw createError({ statusCode: 403, statusMessage: 'Not a member of this office' })
@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
 
   const office = await queryOne<OfficeRow>(
     `SELECT * FROM offices WHERE id = $1`,
-    [officeId],
+    [officeId]
   )
   if (!office) {
     throw createError({ statusCode: 404, statusMessage: 'Office not found' })
@@ -33,17 +33,17 @@ export default defineEventHandler(async (event) => {
 
   const zones = await queryRows<OfficeZoneRow>(
     `SELECT * FROM office_zones WHERE office_id = $1 ORDER BY slug ASC`,
-    [officeId],
+    [officeId]
   )
 
   const members = await queryRows<
-    OfficeMemberRow & { name: string | null; avatar_url: string | null }
+    OfficeMemberRow & { name: string | null, avatar_url: string | null }
   >(
     `SELECT om.*, tm.name, tm.avatar_url
      FROM office_members om
      LEFT JOIN team_members tm ON tm.id = om.user_id
      WHERE om.office_id = $1`,
-    [officeId],
+    [officeId]
   )
 
   return { office, zones, members, myRole: membership.role }

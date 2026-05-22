@@ -3,17 +3,18 @@ import {
   toActorHandle,
   parseActorHandle,
   isUserHandle,
-  isClientHandle,
+  isClientHandle
 } from '~~/server/utils/officeRoom'
+import type { ActorHandle } from '~~/app/types/office'
 
 describe('ActorHandle', () => {
   it('toActorHandle builds a user handle from a User-like object', () => {
-    const u = { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', email: 'x@y.z' } as any
+    const u = { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', email: 'x@y.z' }
     expect(toActorHandle(u, 'user')).toBe('user:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
   })
 
   it('toActorHandle builds a client handle from a ClientUser-like object', () => {
-    const c = { id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', clientId: 'cccccccc-cccc-cccc-cccc-cccccccccccc' } as any
+    const c = { id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', clientId: 'cccccccc-cccc-cccc-cccc-cccccccccccc' }
     expect(toActorHandle(c, 'client')).toBe('client:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb')
   })
 
@@ -26,9 +27,9 @@ describe('ActorHandle', () => {
   })
 
   it('parseActorHandle throws on malformed input', () => {
-    expect(() => parseActorHandle('garbage' as any)).toThrow()
-    expect(() => parseActorHandle('user:' as any)).toThrow()
-    expect(() => parseActorHandle(':abc' as any)).toThrow()
+    expect(() => parseActorHandle('garbage' as ActorHandle)).toThrow()
+    expect(() => parseActorHandle('user:' as ActorHandle)).toThrow()
+    expect(() => parseActorHandle(':abc' as ActorHandle)).toThrow()
   })
 
   it('isUserHandle / isClientHandle discriminate', () => {

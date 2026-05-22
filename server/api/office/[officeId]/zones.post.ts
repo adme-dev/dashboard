@@ -16,7 +16,7 @@ const Body = z.object({
     x: z.number(),
     y: z.number(),
     w: z.number().positive(),
-    h: z.number().positive(),
+    h: z.number().positive()
   }),
   capacity: z.number().int().positive().default(20),
   is_private: z.boolean().default(false),
@@ -24,9 +24,9 @@ const Body = z.object({
     .object({
       allowed_roles: z.array(z.string()).optional(),
       allowed_clients: z.array(z.string().uuid()).optional(),
-      public_lobby: z.boolean().optional(),
+      public_lobby: z.boolean().optional()
     })
-    .default({}),
+    .default({})
 })
 
 export default defineEventHandler(async (event) => {
@@ -46,8 +46,8 @@ export default defineEventHandler(async (event) => {
       JSON.stringify(body.position),
       body.capacity,
       body.is_private,
-      JSON.stringify(body.acl),
-    ],
+      JSON.stringify(body.acl)
+    ]
   )
 
   if (!zone) {
@@ -60,7 +60,7 @@ export default defineEventHandler(async (event) => {
      VALUES ($1, $2, 'office_zone', $3,
        (SELECT id FROM team_members WHERE user_role = 'owner' ORDER BY created_at ASC LIMIT 1))
      ON CONFLICT DO NOTHING`,
-    [body.name, `office-${body.slug}`, zone.id],
+    [body.name, `office-${body.slug}`, zone.id]
   )
 
   return { id: zone.id }

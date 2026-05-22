@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
   const membership = await queryOne<OfficeMemberRow>(
     `SELECT * FROM office_members
      WHERE office_id = $1 AND user_id = $2`,
-    [officeId, user.id],
+    [officeId, user.id]
   )
   if (!membership) {
     throw createError({ statusCode: 403, statusMessage: 'Not a member of this office' })
@@ -45,13 +45,13 @@ export default defineEventHandler(async (event) => {
     name: user.name || user.email,
     avatarUrl: user.avatar_url || '',
     role: membership.role,
-    isGuest: 'false',
+    isGuest: 'false'
   })
 
   const stub = getOfficeRoom(event, officeId)
   const upgradeReq = new Request(
     `https://office-room-do/?${params.toString()}`,
-    { headers: event.node.req.headers as any },
+    { headers: event.node.req.headers as unknown as HeadersInit }
   )
   return stub.fetch(upgradeReq)
 })

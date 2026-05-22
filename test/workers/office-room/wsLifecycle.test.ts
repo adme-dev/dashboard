@@ -23,8 +23,8 @@ describe('OfficeRoom WS upgrade handshake', () => {
       {
         config: resolve(__dirname, '../../../workers/office-room/wrangler.toml'),
         experimental: { disableExperimentalWarning: true },
-        local: true,
-      },
+        local: true
+      }
     )
   }, 30_000)
 

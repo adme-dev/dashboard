@@ -22,7 +22,7 @@ const overflow = computed(() => Math.max(0, props.occupants.length - 5))
       left: zone.position.x + 'px',
       top: zone.position.y + 'px',
       width: zone.position.w + 'px',
-      height: zone.position.h + 'px',
+      height: zone.position.h + 'px'
     }"
     role="button"
     :aria-label="`Enter ${zone.name}`"
@@ -30,7 +30,9 @@ const overflow = computed(() => Math.max(0, props.occupants.length - 5))
   >
     <div class="flex flex-col h-full p-3 gap-2">
       <div class="flex items-center justify-between">
-        <div class="font-medium text-sm text-highlighted truncate">{{ zone.name }}</div>
+        <div class="font-medium text-sm text-highlighted truncate">
+          {{ zone.name }}
+        </div>
         <UBadge color="neutral" variant="subtle" size="xs">
           {{ occupants.length }}/{{ zone.capacity }}
         </UBadge>

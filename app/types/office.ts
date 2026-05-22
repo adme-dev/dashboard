@@ -84,8 +84,8 @@ export interface OfficeParticipant {
   role: OfficeMemberRole
   status: OfficeStatus
   currentZoneId: string | null
-  joinedAt: number  // ms epoch
-  isGuest: boolean  // true if actorType='client'
+  joinedAt: number // ms epoch
+  isGuest: boolean // true if actorType='client'
 }
 
 export interface OfficeSnapshot {

@@ -3,7 +3,7 @@ import type {
   ActorHandle,
   OfficeParticipant,
   OfficeSnapshot,
-  OfficeStatus,
+  OfficeStatus
 } from '../../../app/types/office'
 import type { InboundMessage, OutboundMessage } from './types'
 import { applyStatusSet, applyZoneEnter, applyZoneLeave } from './handlers'
@@ -82,7 +82,7 @@ export class OfficeRoom extends DurableObject<Env> {
       avatarUrl,
       role,
       isGuest,
-      joinedAt: Date.now(),
+      joinedAt: Date.now()
     }
     this.handleConnect(server, meta)
 
@@ -110,7 +110,7 @@ export class OfficeRoom extends DurableObject<Env> {
     ws: WebSocket,
     _code: number,
     _reason: string,
-    _wasClean: boolean,
+    _wasClean: boolean
   ): Promise<void> {
     const handle = this.wsToHandle.get(ws)
     if (!handle) return
@@ -138,8 +138,8 @@ export class OfficeRoom extends DurableObject<Env> {
     }
     // Schedule next check if anyone's still in grace
     const nextGrace = Array.from(this.participants.values())
-      .filter((p) => p.disconnectedAt !== null)
-      .map((p) => p.disconnectedAt! + GRACE_MS)
+      .filter(p => p.disconnectedAt !== null)
+      .map(p => p.disconnectedAt! + GRACE_MS)
       .sort((a, b) => a - b)[0]
     if (nextGrace) {
       await this.ctx.storage.setAlarm(nextGrace)
@@ -163,7 +163,7 @@ export class OfficeRoom extends DurableObject<Env> {
       status: 'available',
       currentZoneId: null,
       lastSeenAt: Date.now(),
-      disconnectedAt: null,
+      disconnectedAt: null
     }
     this.participants.set(meta.handle, participant)
 
@@ -175,16 +175,16 @@ export class OfficeRoom extends DurableObject<Env> {
         name: meta.name,
         avatarUrl: meta.avatarUrl,
         status: 'available',
-        isGuest: meta.isGuest,
+        isGuest: meta.isGuest
       },
-      meta.handle,
+      meta.handle
     )
   }
 
   private async handleMessage(
     handle: ActorHandle,
     ws: WebSocket,
-    msg: InboundMessage,
+    msg: InboundMessage
   ): Promise<void> {
     const p = this.participants.get(handle)
     if (!p) return
@@ -244,7 +244,7 @@ export class OfficeRoom extends DurableObject<Env> {
         status: p.status,
         currentZoneId: p.currentZoneId,
         joinedAt: p.joinedAt,
-        isGuest: p.isGuest,
+        isGuest: p.isGuest
       })
       if (p.currentZoneId) {
         ;(zoneOccupancy[p.currentZoneId] ||= []).push(handle)
@@ -281,9 +281,9 @@ export class OfficeRoom extends DurableObject<Env> {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          'x-office-sync-secret': env.OFFICE_SYNC_SECRET,
+          'x-office-sync-secret': env.OFFICE_SYNC_SECRET
         },
-        body: JSON.stringify({ actor_type: type, actor_id: id, status }),
+        body: JSON.stringify({ actor_type: type, actor_id: id, status })
       })
     } catch {
       /* best-effort; chat presence is non-critical */

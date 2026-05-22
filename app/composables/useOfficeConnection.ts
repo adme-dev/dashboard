@@ -3,11 +3,11 @@ import type {
   OfficeParticipant,
   OfficeSnapshot,
   OfficeStatus,
-  ActorHandle,
+  ActorHandle
 } from '~~/app/types/office'
 import type {
   InboundMessage,
-  OutboundMessage,
+  OutboundMessage
 } from '../../workers/office-room/src/types'
 
 interface UseOfficeConnectionOptions {
@@ -47,7 +47,7 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
           status: msg.status,
           currentZoneId: null,
           joinedAt: Date.now(),
-          isGuest: msg.isGuest,
+          isGuest: msg.isGuest
         })
         participants.value = m
         return
@@ -60,7 +60,7 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
         if (left?.currentZoneId) {
           const zo = { ...zoneOccupancy.value }
           zo[left.currentZoneId] = (zo[left.currentZoneId] || []).filter(
-            (h) => h !== msg.handle,
+            h => h !== msg.handle
           )
           zoneOccupancy.value = zo
         }
@@ -80,7 +80,7 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
         const zo = { ...zoneOccupancy.value }
         if (p.currentZoneId) {
           zo[p.currentZoneId] = (zo[p.currentZoneId] || []).filter(
-            (h) => h !== msg.handle,
+            h => h !== msg.handle
           )
         }
         if (msg.zoneId) {
@@ -186,7 +186,7 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
       if (oldId) disconnect()
       if (newId) connect()
     },
-    { immediate: true },
+    { immediate: true }
   )
 
   onBeforeUnmount(disconnect)
@@ -198,6 +198,6 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
     lastError,
     setStatus,
     enterZone,
-    leaveZone,
+    leaveZone
   }
 }

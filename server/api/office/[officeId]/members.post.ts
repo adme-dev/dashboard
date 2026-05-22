@@ -12,10 +12,10 @@ const Body = z
   .object({
     user_id: z.string().uuid().optional(),
     client_user_id: z.string().uuid().optional(),
-    role: z.enum(['admin', 'member', 'guest']),
+    role: z.enum(['admin', 'member', 'guest'])
   })
-  .refine((b) => Boolean(b.user_id) !== Boolean(b.client_user_id), {
-    message: 'Provide exactly one of user_id or client_user_id',
+  .refine(b => Boolean(b.user_id) !== Boolean(b.client_user_id), {
+    message: 'Provide exactly one of user_id or client_user_id'
   })
 
 export default defineEventHandler(async (event) => {
@@ -28,7 +28,7 @@ export default defineEventHandler(async (event) => {
      VALUES ($1, $2, $3, $4)
      ON CONFLICT DO NOTHING
      RETURNING id`,
-    [officeId, body.user_id ?? null, body.client_user_id ?? null, body.role],
+    [officeId, body.user_id ?? null, body.client_user_id ?? null, body.role]
   )
   return { id: row?.id ?? null }
 })

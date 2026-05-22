@@ -9,20 +9,20 @@ function zone(overrides: Partial<OfficeZoneRow> = {}): OfficeZoneRow {
     capacity: 10, is_private: false, acl: {},
     notes: '', notes_version: 0, notes_updated_at: null, notes_updated_by: null,
     created_at: new Date().toISOString(),
-    ...overrides,
+    ...overrides
   }
 }
 
 const staffMember: OfficeMemberRow = {
   id: 'm1', office_id: 'o1',
   user_id: 'u1', client_user_id: null,
-  role: 'member', added_at: new Date().toISOString(),
+  role: 'member', added_at: new Date().toISOString()
 }
 
 const clientMember: OfficeMemberRow = {
   id: 'm2', office_id: 'o1',
   user_id: null, client_user_id: 'cu1',
-  role: 'guest', added_at: new Date().toISOString(),
+  role: 'guest', added_at: new Date().toISOString()
 }
 
 describe('evaluateAcl', () => {

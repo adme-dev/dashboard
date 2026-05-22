@@ -3,14 +3,14 @@ import {
   applyStatusSet,
   applyZoneEnter,
   applyZoneLeave,
-  type ParticipantLite,
+  type ParticipantLite
 } from '../../../workers/office-room/src/handlers'
 
 const baseP = (): ParticipantLite => ({
   handle: 'user:u1',
   status: 'available',
   currentZoneId: null,
-  lastSeenAt: 0,
+  lastSeenAt: 0
 })
 
 describe('OfficeRoom handlers', () => {
@@ -22,7 +22,7 @@ describe('OfficeRoom handlers', () => {
     expect(out.broadcast).toEqual({
       type: 'participant:updated',
       handle: 'user:u1',
-      status: 'dnd',
+      status: 'dnd'
     })
   })
 
@@ -35,7 +35,7 @@ describe('OfficeRoom handlers', () => {
     expect(out.broadcast).toEqual({
       type: 'participant:moved',
       handle: 'user:u1',
-      zoneId: 'zone-1',
+      zoneId: 'zone-1'
     })
   })
 
@@ -47,7 +47,7 @@ describe('OfficeRoom handlers', () => {
     expect(out.broadcast).toEqual({
       type: 'participant:moved',
       handle: 'user:u1',
-      zoneId: null,
+      zoneId: null
     })
   })
 })

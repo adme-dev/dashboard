@@ -10,17 +10,17 @@ const statusColors: Record<OfficeStatus, string> = {
   available: 'bg-emerald-500',
   busy: 'bg-amber-500',
   dnd: 'bg-red-500',
-  away: 'bg-zinc-400',
+  away: 'bg-zinc-400'
 }
 
 const sz = computed(() => props.size ?? 32)
 const initials = computed(() =>
   props.participant.name
     .split(/\s+/)
-    .map((w) => w[0])
+    .map(w => w[0])
     .slice(0, 2)
     .join('')
-    .toUpperCase(),
+    .toUpperCase()
 )
 </script>
 
@@ -39,7 +39,7 @@ const initials = computed(() =>
       :class="statusColors[participant.status]"
       :style="{
         width: `${Math.max(6, sz / 4)}px`,
-        height: `${Math.max(6, sz / 4)}px`,
+        height: `${Math.max(6, sz / 4)}px`
       }"
     />
   </div>

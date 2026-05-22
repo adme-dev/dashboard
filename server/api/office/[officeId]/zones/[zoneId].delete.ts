@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
 
   await execute(
     `DELETE FROM office_zones WHERE id = $1 AND office_id = $2`,
-    [zoneId, officeId],
+    [zoneId, officeId]
   )
   return { deleted: 1 }
 })

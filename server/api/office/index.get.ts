@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
      JOIN office_members om ON om.office_id = o.id
      WHERE om.user_id = $1
      ORDER BY o.name ASC`,
-    [user.id],
+    [user.id]
   )
   return { offices }
 })

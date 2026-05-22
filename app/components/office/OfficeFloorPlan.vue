@@ -3,7 +3,7 @@ import type {
   OfficeRow,
   OfficeZoneRow,
   OfficeParticipant,
-  ActorHandle,
+  ActorHandle
 } from '~~/app/types/office'
 
 const props = defineProps<{
@@ -17,13 +17,13 @@ const emit = defineEmits<{ enterZone: [zoneId: string] }>()
 
 const layout = computed(() => ({
   width: props.office.layout?.width ?? 1200,
-  height: props.office.layout?.height ?? 800,
+  height: props.office.layout?.height ?? 800
 }))
 
 function occupantsOf(zoneId: string): OfficeParticipant[] {
   const handles = props.zoneOccupancy[zoneId] || []
   return handles
-    .map((h) => props.participants.get(h))
+    .map(h => props.participants.get(h))
     .filter((p): p is OfficeParticipant => Boolean(p))
 }
 
@@ -32,7 +32,7 @@ const lobbyOccupants = computed<OfficeParticipant[]>(() => {
   for (const list of Object.values(props.zoneOccupancy)) {
     for (const h of list) inZone.add(h)
   }
-  return Array.from(props.participants.values()).filter((p) => !inZone.has(p.handle))
+  return Array.from(props.participants.values()).filter(p => !inZone.has(p.handle))
 })
 </script>
 
