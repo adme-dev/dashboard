@@ -39,8 +39,6 @@ export class OfficeRoom extends DurableObject<Env> {
   private participants = new Map<ActorHandle, ParticipantState>()
   // Map from WS to its handle (so we can find the participant on close)
   private wsToHandle = new WeakMap<WebSocket, ActorHandle>()
-  // Pending 5s-debounced status syncs to the Pages chat-presence endpoint
-  private syncTimers = new Map<ActorHandle, ReturnType<typeof setTimeout>>()
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
@@ -133,13 +131,13 @@ export class OfficeRoom extends DurableObject<Env> {
   ): Promise<void> {
     const handle = this.wsToHandle.get(ws)
     if (!handle) return
-    this.handleDisconnect(handle)
+    await this.handleDisconnect(handle, ws)
   }
 
   async webSocketError(ws: WebSocket, _err: unknown): Promise<void> {
     const handle = this.wsToHandle.get(ws)
     if (!handle) return
-    this.handleDisconnect(handle)
+    await this.handleDisconnect(handle, ws)
   }
 
   async alarm(): Promise<void> {
@@ -170,10 +168,26 @@ export class OfficeRoom extends DurableObject<Env> {
   private handleConnect(ws: WebSocket, meta: ConnMeta): void {
     const existing = this.participants.get(meta.handle)
     if (existing) {
-      // Reconnect: clear disconnect timer, refresh ws
+      const wasDisconnected = existing.disconnectedAt !== null
       existing.disconnectedAt = null
       existing.lastSeenAt = Date.now()
       this.sendTo(ws, { type: 'snapshot', snapshot: this.buildSnapshot() })
+      // If this was a within-grace reconnect, peers that joined during the
+      // grace window never saw this participant in their snapshot. Re-announce.
+      if (wasDisconnected) {
+        this.broadcast(
+          {
+            type: 'participant:joined',
+            handle: meta.handle,
+            name: existing.name,
+            avatarUrl: existing.avatarUrl,
+            role: existing.role,
+            status: existing.status,
+            isGuest: existing.isGuest
+          },
+          meta.handle
+        )
+      }
       return
     }
 
@@ -193,6 +207,7 @@ export class OfficeRoom extends DurableObject<Env> {
         handle: meta.handle,
         name: meta.name,
         avatarUrl: meta.avatarUrl,
+        role: meta.role,
         status: 'available',
         isGuest: meta.isGuest
       },
@@ -216,7 +231,10 @@ export class OfficeRoom extends DurableObject<Env> {
       case 'status:set': {
         const { broadcast } = applyStatusSet(p, msg.status, now)
         this.broadcast(broadcast)
-        this.scheduleStatusSync(handle, msg.status)
+        // Fire the chat-presence sync via waitUntil so it survives even if the
+        // message handler returns before fetch settles. Previously this was
+        // a setTimeout debounce, which was lost on DO hibernation.
+        this.ctx.waitUntil(this.syncStatus(handle, msg.status))
         return
       }
       case 'zone:enter': {
@@ -235,12 +253,29 @@ export class OfficeRoom extends DurableObject<Env> {
     }
   }
 
-  private handleDisconnect(handle: ActorHandle): void {
+  /**
+   * Called from webSocketClose / webSocketError. If the actor has other
+   * tabs still attached, don't mark the participant as disconnected — the
+   * 30s grace eviction would otherwise kill a live multi-tab user.
+   * Marked async so the setAlarm Promise is properly awaited (alarms
+   * scheduled via fire-and-forget can be dropped if the isolate yields).
+   */
+  private async handleDisconnect(handle: ActorHandle, closingWs?: WebSocket): Promise<void> {
     const p = this.participants.get(handle)
     if (!p) return
+    if (this.hasOtherActiveSocket(handle, closingWs)) return
     p.disconnectedAt = Date.now()
-    // Schedule alarm to reap after grace
-    this.ctx.storage.setAlarm(Date.now() + GRACE_MS)
+    await this.ctx.storage.setAlarm(Date.now() + GRACE_MS)
+  }
+
+  private hasOtherActiveSocket(handle: ActorHandle, exclude?: WebSocket): boolean {
+    for (const other of this.ctx.getWebSockets()) {
+      if (exclude && other === exclude) continue
+      if (other.readyState !== WebSocket.OPEN && other.readyState !== WebSocket.CONNECTING) continue
+      const tag = other.deserializeAttachment() as { handle?: ActorHandle } | undefined
+      if (tag?.handle === handle) return true
+    }
+    return false
   }
 
   private removeParticipant(handle: ActorHandle): void {
@@ -280,17 +315,14 @@ export class OfficeRoom extends DurableObject<Env> {
     }
   }
 
-  // ---------- Chat-presence write-through (5s debounce) ---------------------
-
-  private scheduleStatusSync(handle: ActorHandle, status: OfficeStatus): void {
-    const existing = this.syncTimers.get(handle)
-    if (existing) clearTimeout(existing)
-    const t = setTimeout(() => this.syncStatus(handle, status), 5_000)
-    this.syncTimers.set(handle, t)
-  }
+  // ---------- Chat-presence write-through (fired via waitUntil) -------------
+  //
+  // The previous implementation used a 5s setTimeout debounce, but in-memory
+  // timers don't survive DO hibernation. Now invoked directly from the
+  // status:set branch via ctx.waitUntil(), which keeps the fetch alive past
+  // the handler return without depending on isolate longevity.
 
   private async syncStatus(handle: ActorHandle, status: OfficeStatus): Promise<void> {
-    this.syncTimers.delete(handle)
     const env = this.env
     if (!env.SYNC_BASE_URL || !env.OFFICE_SYNC_SECRET) return
 

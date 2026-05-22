@@ -16,7 +16,7 @@ export type InboundMessage
 
 export type OutboundMessage
   = | { type: 'snapshot', snapshot: OfficeSnapshot }
-    | { type: 'participant:joined', handle: ActorHandle, name: string, avatarUrl: string | null, status: OfficeStatus, isGuest: boolean }
+    | { type: 'participant:joined', handle: ActorHandle, name: string, avatarUrl: string | null, role: 'admin' | 'member' | 'guest', status: OfficeStatus, isGuest: boolean }
     | { type: 'participant:left', handle: ActorHandle }
     | { type: 'participant:updated', handle: ActorHandle, status: OfficeStatus }
     | { type: 'participant:moved', handle: ActorHandle, zoneId: string | null }

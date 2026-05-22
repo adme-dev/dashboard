@@ -43,7 +43,7 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
           handle: msg.handle,
           name: msg.name,
           avatarUrl: msg.avatarUrl,
-          role: 'member',
+          role: msg.role,
           status: msg.status,
           currentZoneId: null,
           joinedAt: Date.now(),
