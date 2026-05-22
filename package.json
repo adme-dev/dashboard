@@ -79,7 +79,7 @@
     "typescript": "^5.9.2",
     "vitest": "^4.0.15",
     "vue-tsc": "^3.0.7",
-    "wrangler": "^4.85.0"
+    "wrangler": "^4.87.0"
   },
   "resolutions": {
     "unimport": "4.1.1"
