@@ -34,7 +34,7 @@ const videoItems = computed(() =>
 </script>
 
 <template>
-  <UModal v-model:open="localOpen" :ui="{ width: 'sm:max-w-sm' }">
+  <UModal v-model:open="localOpen" :ui="{ content: 'sm:max-w-sm' }">
     <template #content>
       <div class="flex flex-col gap-0 overflow-hidden rounded-xl">
         <!-- Header -->
