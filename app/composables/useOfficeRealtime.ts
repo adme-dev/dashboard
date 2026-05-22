@@ -23,6 +23,9 @@ export interface UseOfficeRealtimeOptions {
 // Dynamic import keeps RealtimeKit out of non-office bundles and out of SSR.
 
 type RealtimeKitClientCtor = typeof import('@cloudflare/realtimekit').default
+// Client has a private constructor, so InstanceType<typeof Client> doesn't
+// type-check. Pull the instance type out of init()'s return value instead.
+type RealtimeKitClient = Awaited<ReturnType<RealtimeKitClientCtor['init']>>
 
 let SDKPromise: Promise<RealtimeKitClientCtor> | null = null
 
@@ -51,11 +54,11 @@ export function useOfficeRealtime(opts: UseOfficeRealtimeOptions) {
   const participants = ref<RemoteParticipant[]>([])
 
   // SDK Client — stored in shallowRef to prevent Vue from tracking SDK internals
-  const clientRef = shallowRef<InstanceType<RealtimeKitClientCtor> | null>(null)
+  const clientRef = shallowRef<RealtimeKitClient | null>(null)
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
 
-  function rebuildLocal(c: InstanceType<RealtimeKitClientCtor>): void {
+  function rebuildLocal(c: RealtimeKitClient): void {
     const s = c.self as any
     localAudioTrack.value = s.audioEnabled && s.audioTrack ? s.audioTrack : null
     localVideoTrack.value = s.videoEnabled && s.videoTrack ? s.videoTrack : null
@@ -64,7 +67,7 @@ export function useOfficeRealtime(opts: UseOfficeRealtimeOptions) {
     localScreenEnabled.value = Boolean(s.screenShareEnabled)
   }
 
-  function rebuildParticipants(c: InstanceType<RealtimeKitClientCtor>): void {
+  function rebuildParticipants(c: RealtimeKitClient): void {
     // ClientMap extends Map<string, Participant>, so .values() is standard Map iteration
     const joined = c.participants.joined as any
     const list: RemoteParticipant[] = []
@@ -92,7 +95,7 @@ export function useOfficeRealtime(opts: UseOfficeRealtimeOptions) {
     participants.value = list
   }
 
-  function wireParticipant(p: any, c: InstanceType<RealtimeKitClientCtor>): void {
+  function wireParticipant(p: any, c: RealtimeKitClient): void {
     const onUpdate = () => rebuildParticipants(c)
     p.on('videoUpdate', onUpdate)
     p.on('audioUpdate', onUpdate)
