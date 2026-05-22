@@ -1,6 +1,6 @@
 -- =============================================================================
 -- Virtual Office Foundation
--- Phase 1a: schema + chat_channels/user_chat_status/clients extensions
+-- Phase 1a: office tables + chat_channels/client_chat_status/agency_clients
 -- =============================================================================
 
 BEGIN;
@@ -77,24 +77,39 @@ ALTER TABLE chat_channels ADD COLUMN IF NOT EXISTS external_id uuid;
 CREATE INDEX IF NOT EXISTS idx_chat_channels_external
   ON chat_channels(type, external_id) WHERE external_id IS NOT NULL;
 
--- ---------- 3. user_chat_status extension for client presence --------------
--- Decision: extend the existing table with a nullable client_user_id rather than
--- creating a parallel table. CHECK enforces one-or-the-other.
+-- ---------- 3. Client presence — parallel table, NOT an extension ----------
+-- Reason: user_chat_status.user_id is PK NOT NULL (migration 020), so we can't
+-- XOR it with a nullable client_user_id on the same table — client rows would
+-- violate the PK. Mirror the user_chat_status shape in a parallel table so the
+-- application layer can route by actor_type.
 
-ALTER TABLE user_chat_status ADD COLUMN IF NOT EXISTS client_user_id uuid;
-ALTER TABLE user_chat_status DROP CONSTRAINT IF EXISTS user_chat_status_actor_check;
-ALTER TABLE user_chat_status ADD CONSTRAINT user_chat_status_actor_check
-  CHECK ((user_id IS NULL) <> (client_user_id IS NULL));
+CREATE TABLE IF NOT EXISTS client_chat_status (
+  client_user_id  uuid PRIMARY KEY,
+  status          varchar(20) NOT NULL DEFAULT 'offline'
+                  CHECK (status IN ('online','away','dnd','offline')),
+  custom_text     varchar(100),
+  last_seen_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now()
+);
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_user_chat_status_user
-  ON user_chat_status(user_id) WHERE user_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_user_chat_status_client
-  ON user_chat_status(client_user_id) WHERE client_user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_client_chat_status_last_seen
+  ON client_chat_status(last_seen_at DESC);
 
 -- ---------- 4. agency_clients table flag for Phase 1d portal entry ---------
 -- Note: the table is named `agency_clients` (not `clients`) in this project.
 -- ALTER ... IF NOT EXISTS is safe / idempotent on re-run.
 
 ALTER TABLE agency_clients ADD COLUMN IF NOT EXISTS office_access boolean NOT NULL DEFAULT false;
+
+-- ---------- 5. Triggers — keep offices.updated_at fresh --------------------
+-- Uses the project-wide update_updated_at_column() function (defined elsewhere
+-- and used by migrations 008, 087, 088, ...). Wrapped in DO/EXCEPTION so re-run
+-- is idempotent.
+
+DO $$ BEGIN
+  CREATE TRIGGER update_offices_updated_at
+    BEFORE UPDATE ON offices
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 COMMIT;
