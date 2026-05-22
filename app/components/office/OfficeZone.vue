@@ -10,65 +10,58 @@ const emit = defineEmits<{
   enter: [zoneId: string]
 }>()
 
-// Zone-type-specific visual treatment. Light + dark pairs everywhere
-// so the office reads in both modes per project conventions.
-const zoneTheme: Record<ZoneType, { gradient: string, ring: string, icon: string, label: string }> = {
+// Per-zone subtle ring tone — restrained, monochromatic-leaning.
+// ro.am uses neutrals everywhere and reserves saturated rings for state
+// (in-call orange, selected purple, etc). We match that: a faint ring
+// suggesting the room's purpose, and a stronger ring when occupied.
+const zoneTint: Record<ZoneType, { icon: string, ringOccupied: string, glow: string }> = {
   lobby: {
-    gradient: 'from-amber-50 via-orange-50/60 to-amber-50 dark:from-amber-950/40 dark:via-orange-950/30 dark:to-amber-950/40',
-    ring: 'ring-amber-200/60 dark:ring-amber-800/50',
     icon: 'i-lucide-sofa',
-    label: 'text-amber-700 dark:text-amber-300'
+    ringOccupied: 'ring-amber-400/40',
+    glow: 'bg-amber-500/[0.04]'
   },
   meeting: {
-    gradient: 'from-sky-50 via-indigo-50/60 to-sky-50 dark:from-sky-950/40 dark:via-indigo-950/30 dark:to-sky-950/40',
-    ring: 'ring-sky-200/60 dark:ring-sky-800/50',
     icon: 'i-lucide-users-round',
-    label: 'text-sky-700 dark:text-sky-300'
+    ringOccupied: 'ring-sky-400/40',
+    glow: 'bg-sky-500/[0.04]'
   },
   focus: {
-    gradient: 'from-emerald-50 via-teal-50/60 to-emerald-50 dark:from-emerald-950/40 dark:via-teal-950/30 dark:to-emerald-950/40',
-    ring: 'ring-emerald-200/60 dark:ring-emerald-800/50',
     icon: 'i-lucide-headphones',
-    label: 'text-emerald-700 dark:text-emerald-300'
+    ringOccupied: 'ring-emerald-400/40',
+    glow: 'bg-emerald-500/[0.04]'
   },
   theater: {
-    gradient: 'from-violet-50 via-fuchsia-50/60 to-violet-50 dark:from-violet-950/40 dark:via-fuchsia-950/30 dark:to-violet-950/40',
-    ring: 'ring-violet-200/60 dark:ring-violet-800/50',
     icon: 'i-lucide-presentation',
-    label: 'text-violet-700 dark:text-violet-300'
+    ringOccupied: 'ring-violet-400/40',
+    glow: 'bg-violet-500/[0.04]'
   },
   client_lounge: {
-    gradient: 'from-rose-50 via-pink-50/60 to-rose-50 dark:from-rose-950/40 dark:via-pink-950/30 dark:to-rose-950/40',
-    ring: 'ring-rose-200/60 dark:ring-rose-800/50',
     icon: 'i-lucide-handshake',
-    label: 'text-rose-700 dark:text-rose-300'
+    ringOccupied: 'ring-rose-400/40',
+    glow: 'bg-rose-500/[0.04]'
   }
 }
 
-const theme = computed(() => zoneTheme[props.zone.zone_type])
-const stackedAvatars = computed(() => props.occupants.slice(0, 5))
-const overflow = computed(() => Math.max(0, props.occupants.length - 5))
+const tint = computed(() => zoneTint[props.zone.zone_type])
+const stackedAvatars = computed(() => props.occupants.slice(0, 6))
+const overflow = computed(() => Math.max(0, props.occupants.length - 6))
 const isOccupied = computed(() => props.occupants.length > 0)
 const fillRatio = computed(() => props.occupants.length / Math.max(1, props.zone.capacity))
-const capacityTone = computed(() => {
-  if (fillRatio.value >= 1) return 'bg-red-500/15 text-red-700 dark:text-red-300'
-  if (fillRatio.value >= 0.75) return 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-  return 'bg-white/60 dark:bg-zinc-900/60 text-default'
-})
+const isFull = computed(() => fillRatio.value >= 1)
 </script>
 
 <template>
   <button
     type="button"
-    class="group absolute overflow-hidden rounded-2xl ring-1 cursor-pointer
-           transition-all duration-200 ease-out text-left
-           hover:scale-[1.015] hover:shadow-xl hover:z-10
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    :disabled="isFull"
+    class="group absolute overflow-hidden rounded-2xl transition-all duration-200 text-left
+           bg-[#16181d] ring-1
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
     :class="[
-      'bg-gradient-to-br',
-      theme.gradient,
-      theme.ring,
-      isOccupied ? 'shadow-md' : 'shadow-sm'
+      isOccupied ? tint.ringOccupied : 'ring-white/[0.06]',
+      isFull
+        ? 'opacity-50 cursor-not-allowed'
+        : 'cursor-pointer hover:ring-white/30 hover:bg-[#1a1d23] hover:z-10 hover:shadow-[0_10px_40px_-15px_rgba(0,0,0,0.6)]'
     ]"
     :style="{
       left: zone.position.x + 'px',
@@ -76,52 +69,76 @@ const capacityTone = computed(() => {
       width: zone.position.w + 'px',
       height: zone.position.h + 'px'
     }"
-    :aria-label="`Enter ${zone.name}`"
-    @click="emit('enter', zone.id)"
+    :aria-label="isFull ? `${zone.name} (full)` : `Enter ${zone.name}`"
+    @click="!isFull && emit('enter', zone.id)"
   >
-    <!-- Decorative zone icon: large, low-opacity, bottom-right -->
-    <UIcon
-      :name="theme.icon"
-      class="absolute -bottom-3 -right-3 size-24 opacity-[0.08] dark:opacity-[0.12] pointer-events-none"
+    <!-- Inner color wash — extremely subtle, only visible when occupied -->
+    <div
+      v-if="isOccupied"
+      class="absolute inset-0 pointer-events-none transition-opacity"
+      :class="tint.glow"
     />
 
-    <div class="relative flex h-full flex-col p-3 gap-2">
+    <div class="relative flex h-full flex-col p-3.5 gap-2">
+      <!-- Header: tiny icon + name on left, capacity badge on right -->
       <div class="flex items-start justify-between gap-2">
         <div class="flex items-center gap-1.5 min-w-0">
-          <UIcon :name="theme.icon" :class="[theme.label, 'size-3.5 shrink-0']" />
-          <span class="font-semibold text-sm text-highlighted truncate">{{ zone.name }}</span>
+          <UIcon
+            :name="tint.icon"
+            class="size-3.5 shrink-0 text-white/50"
+          />
+          <span class="font-medium text-[13px] text-white truncate tracking-tight">
+            {{ zone.name }}
+          </span>
+          <span
+            v-if="isOccupied"
+            class="ml-1 size-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]"
+          />
         </div>
-        <span
-          class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium tabular-nums backdrop-blur-sm"
-          :class="capacityTone"
-        >
-          {{ occupants.length }}/{{ zone.capacity }}
+        <span class="shrink-0 text-[10px] font-medium tabular-nums text-white/40">
+          {{ occupants.length }}<span class="text-white/20">/{{ zone.capacity }}</span>
         </span>
       </div>
 
-      <!-- Occupied state: "live" indicator -->
-      <div
-        v-if="isOccupied"
-        class="absolute top-3 right-14 flex items-center gap-1 pointer-events-none"
-      >
-        <span class="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-      </div>
-
-      <div class="flex -space-x-2 mt-auto items-end">
+      <!-- Avatar grid: bigger, named, ro.am-style -->
+      <div class="flex flex-wrap gap-2 mt-auto">
         <OfficeAvatar
           v-for="p in stackedAvatars"
           :key="p.handle"
           :participant="p"
-          :size="32"
+          :size="34"
+          show-label
         />
-        <span
+        <div
           v-if="overflow > 0"
-          class="ml-1 inline-flex items-center justify-center rounded-full
-                 bg-zinc-900/85 dark:bg-white/85 text-white dark:text-zinc-900
-                 size-7 text-[11px] font-semibold tabular-nums ring-2 ring-default"
+          class="inline-flex flex-col items-center gap-1"
         >
-          +{{ overflow }}
-        </span>
+          <span
+            class="inline-flex items-center justify-center rounded-full
+                   bg-white/10 text-white text-[10px] font-semibold tabular-nums
+                   size-[34px] ring-1 ring-white/20"
+          >
+            +{{ overflow }}
+          </span>
+        </div>
+      </div>
+
+      <!-- Hover affordance — subtle, only shows on hover -->
+      <div
+        v-if="!isFull"
+        class="absolute inset-x-0 bottom-0 px-3 py-1.5 opacity-0 group-hover:opacity-100
+               transition-opacity bg-black/60 backdrop-blur-sm border-t border-white/[0.06]
+               text-[10px] font-medium tracking-wide text-white/70 text-center"
+      >
+        {{ zone.zone_type === 'lobby' ? 'Step in' : 'Knock to enter' }}
+      </div>
+
+      <div
+        v-else
+        class="absolute inset-x-0 bottom-0 px-3 py-1.5 bg-red-500/10 border-t border-red-500/20
+               text-[10px] font-medium text-red-300 text-center"
+      >
+        Room full
       </div>
     </div>
   </button>
