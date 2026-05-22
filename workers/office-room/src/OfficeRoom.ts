@@ -44,11 +44,29 @@ export class OfficeRoom extends DurableObject<Env> {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
-    // Restore handles from hibernation tags so we can attribute message events
+    // Restore handles AND participant identity from hibernation tags. Without
+    // rehydrating `participants`, post-wakeup messages on existing WSs would
+    // find no participant entry and silently drop status/zone changes.
+    // Note: ephemeral state (status, currentZoneId) resets to defaults across
+    // hibernation — only the identity (ConnMeta) is durable in attachments.
+    const now = Date.now()
     for (const ws of ctx.getWebSockets()) {
-      const tag = ws.deserializeAttachment() as { handle?: ActorHandle } | undefined
-      if (tag?.handle) {
-        this.wsToHandle.set(ws, tag.handle)
+      const tag = ws.deserializeAttachment() as Partial<ConnMeta> | undefined
+      if (!tag?.handle) continue
+      this.wsToHandle.set(ws, tag.handle)
+      if (!this.participants.has(tag.handle)) {
+        this.participants.set(tag.handle, {
+          handle: tag.handle,
+          name: tag.name ?? 'Unknown',
+          avatarUrl: tag.avatarUrl ?? null,
+          role: tag.role ?? 'member',
+          isGuest: tag.isGuest ?? false,
+          joinedAt: tag.joinedAt ?? now,
+          status: 'available',
+          currentZoneId: null,
+          lastSeenAt: now,
+          disconnectedAt: null
+        })
       }
     }
   }
@@ -73,9 +91,6 @@ export class OfficeRoom extends DurableObject<Env> {
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket]
 
     this.ctx.acceptWebSocket(server)
-    server.serializeAttachment({ handle })
-    this.wsToHandle.set(server, handle)
-
     const meta: ConnMeta = {
       handle,
       name,
@@ -84,6 +99,10 @@ export class OfficeRoom extends DurableObject<Env> {
       isGuest,
       joinedAt: Date.now()
     }
+    // Persist full identity in the attachment so the participants Map can be
+    // rebuilt verbatim after DO hibernation.
+    server.serializeAttachment(meta)
+    this.wsToHandle.set(server, handle)
     this.handleConnect(server, meta)
 
     return new Response(null, { status: 101, webSocket: client })
