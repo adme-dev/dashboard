@@ -1,76 +1,109 @@
 // =============================================================================
-// Cloudflare Realtime API client — server-side
+// Cloudflare RealtimeKit API client — server-side
 // =============================================================================
 //
-// Used by the OfficeRoom DO to mint per-participant tokens scoped to one zone.
-// Endpoint paths are based on the spike findings (Task 0). Update if the CF
-// API surface changes.
+// Used by the OfficeRoom DO to create meetings and mint/refresh per-participant
+// tokens scoped to one zone.
 //
-// NOTE: Endpoint paths (rtc.live.cloudflare.com/v1/apps/.../sessions/tokens,
-// DELETE .../sessions/<key>) are ASSUMED based on plan documentation and are
-// pending Task 0 spike confirmation. Tests use mocked fetch so they pass
-// regardless of actual endpoint correctness.
+// API base: https://api.cloudflare.com/client/v4/accounts/<accountId>/realtime/kit/<appId>
+// Auth: Bearer <apiToken>
+// Response envelope: { success: boolean, data?: T, errors?: { message: string }[] }
 
-export interface MintTokenInput {
+export interface CFAuth {
+  accountId: string
   appId: string
-  appSecret: string
-  /** Stable key per zone, e.g. `office:o1:zone:z1` */
-  sessionKey: string
-  /** ActorHandle like `user:<uuid>` */
-  participantId: string
+  apiToken: string
   /** Inject `fetch` for testability */
   fetcher?: typeof fetch
 }
 
-export interface MintTokenResult {
-  token: string
-  sessionId: string
-  /** ms epoch */
-  expiresAt: number
+export interface CreateMeetingInput extends CFAuth {
+  title?: string
+}
+export interface CreateMeetingResult {
+  meetingId: string
 }
 
-const REALTIME_BASE = 'https://rtc.live.cloudflare.com/v1'
+export interface MintTokenInput extends CFAuth {
+  meetingId: string
+  name: string
+  presetName: string
+  customParticipantId: string
+}
+export interface MintTokenResult {
+  participantId: string
+  authToken: string
+}
+
+export interface RefreshTokenInput extends CFAuth {
+  meetingId: string
+  participantId: string
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+const cfBase = (a: CFAuth) =>
+  `https://api.cloudflare.com/client/v4/accounts/${a.accountId}/realtime/kit/${a.appId}`
+
+async function cfPost<T>(a: CFAuth, path: string, body: unknown): Promise<T> {
+  const fetcher = a.fetcher ?? fetch
+  const res = await fetcher(`${cfBase(a)}${path}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${a.apiToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body ?? {}),
+  })
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '')
+    throw new Error(`CF RealtimeKit ${res.status}: ${detail}`)
+  }
+  const json = await res.json() as { success: boolean; data?: T; errors?: { message: string }[] }
+  if (!json.success) {
+    const msg = json.errors?.map(e => e.message).join('; ') ?? 'success:false'
+    throw new Error(`CF RealtimeKit error: ${msg}`)
+  }
+  return json.data as T
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+export async function createMeeting(
+  input: CreateMeetingInput,
+): Promise<CreateMeetingResult> {
+  const body: Record<string, unknown> = {}
+  if (input.title !== undefined) body.title = input.title
+  const data = await cfPost<{ id: string }>(input, '/meetings', body)
+  return { meetingId: data.id }
+}
 
 export async function mintParticipantToken(
   input: MintTokenInput,
 ): Promise<MintTokenResult> {
-  const fetcher = input.fetcher ?? fetch
-  const res = await fetcher(`${REALTIME_BASE}/apps/${input.appId}/sessions/tokens`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${input.appSecret}`,
-      'Content-Type': 'application/json',
+  const data = await cfPost<{ id: string; token: string }>(
+    input,
+    `/meetings/${input.meetingId}/participants`,
+    {
+      name: input.name,
+      preset_name: input.presetName,
+      custom_participant_id: input.customParticipantId,
     },
-    body: JSON.stringify({
-      sessionKey: input.sessionKey,
-      participantId: input.participantId,
-    }),
-  })
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '')
-    throw new Error(`mintParticipantToken ${res.status}: ${detail}`)
-  }
-  return (await res.json()) as MintTokenResult
+  )
+  return { participantId: data.id, authToken: data.token }
 }
 
-export interface EndSessionInput {
-  appId: string
-  appSecret: string
-  sessionKey: string
-  fetcher?: typeof fetch
-}
-
-export async function endSession(input: EndSessionInput): Promise<void> {
-  const fetcher = input.fetcher ?? fetch
-  try {
-    await fetcher(
-      `${REALTIME_BASE}/apps/${input.appId}/sessions/${encodeURIComponent(input.sessionKey)}`,
-      {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${input.appSecret}` },
-      },
-    )
-  } catch {
-    // best-effort; cleanup failures are non-fatal
-  }
+export async function refreshParticipantToken(
+  input: RefreshTokenInput,
+): Promise<MintTokenResult> {
+  const data = await cfPost<{ token: string }>(
+    input,
+    `/meetings/${input.meetingId}/participants/${input.participantId}/token`,
+    {},
+  )
+  return { participantId: input.participantId, authToken: data.token }
 }

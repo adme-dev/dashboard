@@ -1,60 +1,92 @@
 import { describe, it, expect, vi } from 'vitest'
-import { mintParticipantToken, endSession } from '~~/server/utils/officeRealtime'
+import {
+  createMeeting,
+  mintParticipantToken,
+  refreshParticipantToken,
+} from '~~/server/utils/officeRealtime'
 
-// NOTE: The plan's original URL regex was `/realtime|calls/i`, but the
-// implementation endpoint `https://rtc.live.cloudflare.com/...` does not
-// contain "realtime" or "calls". Adjusted to `/rtc\.live\.cloudflare\.com/i`
-// which specifically matches the CF Realtime host. The spirit ("URL should look
-// like a Realtime/Calls endpoint") is preserved — `rtc` is Cloudflare's Realtime
-// product domain. See implementer report for details.
+const baseAuth = { accountId: 'acc1', appId: 'app1', apiToken: 'tok1' }
 
-describe('officeRealtime', () => {
-  it('mintParticipantToken posts to the correct CF Realtime endpoint with auth', async () => {
-    const fetchSpy = vi.fn().mockResolvedValue({
+describe('officeRealtime — RealtimeKit', () => {
+  it('createMeeting POSTs to .../meetings and returns meetingId', async () => {
+    const fetcher = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ token: 'tok_abc', sessionId: 'sess_123', expiresAt: 1000 })
+      json: async () => ({ success: true, data: { id: 'meet-1', title: 'Zone' } })
     } as Response)
-
-    const res = await mintParticipantToken({
-      appId: 'app-x',
-      appSecret: 'sec-y',
-      sessionKey: 'office:o1:zone:z1',
-      participantId: 'user:u1',
-      fetcher: fetchSpy
-    })
-
-    expect(res).toEqual({ token: 'tok_abc', sessionId: 'sess_123', expiresAt: 1000 })
-    expect(fetchSpy).toHaveBeenCalledOnce()
-    const [url, init] = fetchSpy.mock.calls[0]!
-    expect(url).toMatch(/rtc\.live\.cloudflare\.com/i)
+    const out = await createMeeting({ ...baseAuth, title: 'Zone', fetcher })
+    expect(out).toEqual({ meetingId: 'meet-1' })
+    const [url, init] = fetcher.mock.calls[0]!
+    expect(url).toBe('https://api.cloudflare.com/client/v4/accounts/acc1/realtime/kit/app1/meetings')
+    expect((init as RequestInit).method).toBe('POST')
     expect((init as RequestInit).headers).toMatchObject({
-      'Authorization': expect.stringContaining('sec-y')
+      'Authorization': 'Bearer tok1',
+      'Content-Type': 'application/json',
     })
-    const body = JSON.parse((init as RequestInit).body as string)
-    expect(body).toMatchObject({ sessionKey: 'office:o1:zone:z1', participantId: 'user:u1' })
+    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({ title: 'Zone' })
   })
 
-  it('mintParticipantToken throws on non-200 with a readable message', async () => {
-    const fetchSpy = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 429,
-      text: async () => 'rate-limited'
+  it('mintParticipantToken POSTs participant body and returns authToken', async () => {
+    const fetcher = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: { id: 'p-1', token: 'rtkt_xyz', custom_participant_id: 'user:u1', preset_name: 'staff_full' }
+      })
     } as Response)
+    const out = await mintParticipantToken({
+      ...baseAuth,
+      meetingId: 'meet-1',
+      name: 'Paul',
+      presetName: 'staff_full',
+      customParticipantId: 'user:u1',
+      fetcher,
+    })
+    expect(out).toEqual({ participantId: 'p-1', authToken: 'rtkt_xyz' })
+    const [url, init] = fetcher.mock.calls[0]!
+    expect(url).toBe('https://api.cloudflare.com/client/v4/accounts/acc1/realtime/kit/app1/meetings/meet-1/participants')
+    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
+      name: 'Paul',
+      preset_name: 'staff_full',
+      custom_participant_id: 'user:u1',
+    })
+  })
 
+  it('refreshParticipantToken POSTs to the token sub-endpoint and echoes participantId', async () => {
+    const fetcher = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: { token: 'rtkt_refreshed' } })
+    } as Response)
+    const out = await refreshParticipantToken({
+      ...baseAuth,
+      meetingId: 'meet-1',
+      participantId: 'p-1',
+      fetcher,
+    })
+    expect(out).toEqual({ participantId: 'p-1', authToken: 'rtkt_refreshed' })
+    const [url] = fetcher.mock.calls[0]!
+    expect(url).toBe(
+      'https://api.cloudflare.com/client/v4/accounts/acc1/realtime/kit/app1/meetings/meet-1/participants/p-1/token'
+    )
+  })
+
+  it('mintParticipantToken throws on non-200 with status + body', async () => {
+    const fetcher = vi.fn().mockResolvedValue({
+      ok: false, status: 403, text: async () => 'forbidden'
+    } as Response)
     await expect(
       mintParticipantToken({
-        appId: 'a', appSecret: 's',
-        sessionKey: 'k', participantId: 'p',
-        fetcher: fetchSpy
+        ...baseAuth, meetingId: 'm', name: 'n', presetName: 'p', customParticipantId: 'c', fetcher
       })
-    ).rejects.toThrow(/429|rate-limited/i)
+    ).rejects.toThrow(/403|forbidden/i)
   })
 
-  it('endSession swallows errors (best-effort cleanup)', async () => {
-    const fetchSpy = vi.fn().mockRejectedValue(new Error('network'))
-    // Must not throw
+  it('throws when CF returns success:false (createMeeting)', async () => {
+    const fetcher = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: false, errors: [{ message: 'bad preset' }] })
+    } as Response)
     await expect(
-      endSession({ appId: 'a', appSecret: 's', sessionKey: 'k', fetcher: fetchSpy })
-    ).resolves.toBeUndefined()
+      createMeeting({ ...baseAuth, fetcher })
+    ).rejects.toThrow(/bad preset|success.*false/i)
   })
 })
