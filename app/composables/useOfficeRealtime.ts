@@ -1,5 +1,6 @@
 import type { Ref } from 'vue'
 import type { MediaCredentials } from '~~/app/types/office'
+import { resolveForceRelay } from '~/composables/officeForceRelay'
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -140,7 +141,10 @@ export function useOfficeRealtime(opts: UseOfficeRealtimeOptions) {
       const SDK = await loadSDK()
       if (await abortIfStale(null)) return
 
-      const client = await SDK.init({ authToken: creds.authToken })
+      const client = await SDK.init({
+        authToken: creds.authToken,
+        overrides: { forceRelay: resolveForceRelay(useRuntimeConfig()) },
+      })
       if (await abortIfStale(client)) return
       clientRef.value = client
 
