@@ -49,7 +49,14 @@ export interface UseOfficeKnocks {
   denyKnock(): void
   cancelKnock(): void
   onIncoming(msg: Omit<KnockIncomingMessage, 'type'>): void
-  onResult(msg: Omit<KnockResultMessage, 'type'>): { status: KnockResultStatus; media?: MediaCredentials }
+  /**
+   * Returns the result status, media credentials (only when accepted), and
+   * the targetZoneId of the cleared pendingKnock so the parent can update
+   * its local `currentZoneId` on accepted results (the server broadcasts a
+   * `participant:moved` for the knocker but no `zone:joined`, so the parent
+   * must wire `currentZoneId`/`currentMediaCredentials` itself).
+   */
+  onResult(msg: Omit<KnockResultMessage, 'type'>): { status: KnockResultStatus; media?: MediaCredentials; targetZoneId?: string }
   onCancelled(msg: Omit<KnockCancelledMessage, 'type'>): void
 }
 
@@ -91,9 +98,10 @@ export function useOfficeKnocks(opts: { send: SendFn }): UseOfficeKnocks {
     incomingKnock.value = { ...msg, receivedAt: Date.now() }
   }
 
-  function onResult(msg: Omit<KnockResultMessage, 'type'>): { status: KnockResultStatus; media?: MediaCredentials } {
+  function onResult(msg: Omit<KnockResultMessage, 'type'>): { status: KnockResultStatus; media?: MediaCredentials; targetZoneId?: string } {
+    const targetZoneId = pendingKnock.value?.targetZoneId
     pendingKnock.value = null
-    return { status: msg.status, media: msg.media }
+    return { status: msg.status, media: msg.media, targetZoneId }
   }
 
   function onCancelled(msg: Omit<KnockCancelledMessage, 'type'>) {

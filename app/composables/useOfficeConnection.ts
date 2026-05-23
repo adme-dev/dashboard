@@ -15,6 +15,14 @@ import type {
 
 interface UseOfficeConnectionOptions {
   officeId: Ref<string | null>
+  /**
+   * Optional callback invoked for every parsed inbound message AFTER the
+   * composable's own state handlers (snapshot / participant:* / zone:*) have
+   * been applied. Lets the parent component fan out to feature-specific
+   * composables (e.g. useOfficeKnocks for knock:* messages) without bypassing
+   * the canonical WS plumbing.
+   */
+  onMessage?: (msg: OutboundMessage) => void
 }
 
 export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
@@ -42,7 +50,7 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
     switch (msg.type) {
       case 'snapshot':
         applySnapshot(msg.snapshot)
-        return
+        break
       case 'participant:joined': {
         const m = new Map(participants.value)
         m.set(msg.handle, {
@@ -56,7 +64,7 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
           isGuest: msg.isGuest
         })
         participants.value = m
-        return
+        break
       }
       case 'participant:left': {
         const m = new Map(participants.value)
@@ -70,19 +78,19 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
           )
           zoneOccupancy.value = zo
         }
-        return
+        break
       }
       case 'participant:updated': {
         const m = new Map(participants.value)
         const p = m.get(msg.handle)
         if (p) m.set(msg.handle, { ...p, status: msg.status })
         participants.value = m
-        return
+        break
       }
       case 'participant:moved': {
         const m = new Map(participants.value)
         const p = m.get(msg.handle)
-        if (!p) return
+        if (!p) break
         const zo = { ...zoneOccupancy.value }
         if (p.currentZoneId) {
           zo[p.currentZoneId] = (zo[p.currentZoneId] || []).filter(
@@ -95,17 +103,17 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
         m.set(msg.handle, { ...p, currentZoneId: msg.zoneId })
         participants.value = m
         zoneOccupancy.value = zo
-        return
+        break
       }
       case 'zone:joined':
         currentZoneId.value = msg.zoneId
         currentMediaCredentials.value = msg.media
-        return
+        break
       case 'zone:token-refreshed':
         if (currentZoneId.value === msg.zoneId) {
           currentMediaCredentials.value = msg.media
         }
-        return
+        break
       case 'zone:join-failed':
         joinFailure.value = { zoneId: msg.zoneId, reason: msg.reason, message: msg.message }
         lastError.value = msg.message || `Couldn't join: ${msg.reason}`
@@ -117,10 +125,20 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
           currentZoneId.value = null
           currentMediaCredentials.value = null
         }
-        return
+        break
       case 'error':
         lastError.value = msg.message
-        return
+        break
+    }
+    // Fan out to consumer-supplied handler last so internal state is fully
+    // applied before downstream composables see the message. Errors in the
+    // callback are isolated to prevent breaking the WS message pump.
+    if (opts.onMessage) {
+      try {
+        opts.onMessage(msg)
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -283,5 +301,9 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
     setStatus,
     enterZone,
     leaveZone,
+    // Phase 1c.1: knock composable needs to send knock:* messages over the
+    // same WS, so we expose the typed send fn. (Internal: only dispatches
+    // when the socket is OPEN; silently drops otherwise.)
+    send,
   }
 }
