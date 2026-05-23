@@ -23,6 +23,7 @@ const publicRoutes = [
   '/api/internal/warmup',
   '/api/internal/attribution-cron',
   '/api/leads/_internal/',
+  '/api/office/_internal/',  // OfficeRoom DO calls back for zone meta / meeting persistence / status sync; each verifies x-office-sync-secret inline
   '/api/cron/',  // anomaly-detection cron + future cron handlers; each verifies x-cron-secret inline
   // Public webhook endpoints — auth via per-endpoint secret in the request
   // body (Meta's verify_token, Google's google_key matched against
