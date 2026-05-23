@@ -212,6 +212,7 @@ watch(
         :zones="detail.zones"
         :participants="connection.participants.value"
         :zone-occupancy="connection.zoneOccupancy.value"
+        :current-user-zone-id="connection.currentZoneId.value"
         @enter-zone="enterZone"
         @knock="onKnockableClick"
       />

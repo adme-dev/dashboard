@@ -11,9 +11,15 @@ const props = defineProps<{
   zones: OfficeZoneRow[]
   participants: Map<ActorHandle, OfficeParticipant>
   zoneOccupancy: Record<string, ActorHandle[]>
+  currentUserZoneId?: string | null
 }>()
 
-const emit = defineEmits<{ enterZone: [zoneId: string] }>()
+const emit = defineEmits<{
+  enterZone: [zoneId: string]
+  knock: [payload: { zoneId: string; zoneName: string; occupantNames: string[] }]
+}>()
+
+const toast = useToast()
 
 const layout = computed(() => ({
   width: props.office.layout?.width ?? 1200,
@@ -67,7 +73,10 @@ const totalParticipants = computed(() => props.participants.size)
         :key="zone.id"
         :zone="zone"
         :occupants="occupantsOf(zone.id)"
+        :current-user-zone-id="currentUserZoneId"
         @enter="emit('enterZone', $event)"
+        @knock="(payload) => emit('knock', payload)"
+        @toast="(t) => toast.add(t)"
       />
     </div>
 
