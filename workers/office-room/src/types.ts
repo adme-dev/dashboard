@@ -5,6 +5,13 @@ import type {
   MediaCredentials,
   ZonePresetName,
   ZoneJoinFailReason,
+  KnockResultStatus,
+  KnockRequestMessage,
+  KnockIncomingMessage,
+  KnockAcceptMessage,
+  KnockDenyMessage,
+  KnockCancelMessage,
+  KnockResultMessage,
 } from '../../../app/types/office'
 
 // =============================================================================
@@ -16,6 +23,10 @@ export type InboundMessage
     | { type: 'status:set', status: OfficeStatus }
     | { type: 'zone:enter', zoneId: string, preferredPreset?: ZonePresetName }
     | { type: 'zone:leave' }
+    | KnockRequestMessage
+    | KnockAcceptMessage
+    | KnockDenyMessage
+    | KnockCancelMessage
 
 // =============================================================================
 // Outbound WS messages (DO -> browser)
@@ -32,3 +43,5 @@ export type OutboundMessage
     | { type: 'zone:token-refreshed', zoneId: string, media: MediaCredentials }
     | { type: 'zone:taken-over' } // sent to older tab when newer tab takes the zone
     | { type: 'error', message: string }
+    | KnockIncomingMessage
+    | KnockResultMessage

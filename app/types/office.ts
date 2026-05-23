@@ -119,3 +119,66 @@ export type ZoneJoinFailReason
     | 'mint-failed'
     | 'quota'
     | 'realtime-unavailable'
+
+// =============================================================================
+// Phase 1c.1 — Knock pattern (audio-first + drop-in)
+// =============================================================================
+
+export type KnockId = string & { readonly __brand: 'KnockId' }
+
+export type KnockResultStatus =
+  | 'accepted'
+  | 'denied'
+  | 'timeout'
+  | 'no-occupant'
+  | 'busy'
+  | 'not-knockable'
+  | 'self-knock'
+
+/** Client → server: knocker initiates a knock on a focus/private zone. */
+export interface KnockRequestMessage {
+  type: 'knock:request'
+  targetZoneId: string
+}
+
+/** Server → knockee: knockee's client should open the accept/deny modal. */
+export interface KnockIncomingMessage {
+  type: 'knock:incoming'
+  knockId: KnockId
+  fromHandle: ActorHandle
+  fromName: string
+  zoneId: string
+  /** ms remaining at message send time; client uses for countdown */
+  ttlMs: number
+}
+
+/** Client → server: knockee accepts the knock. */
+export interface KnockAcceptMessage {
+  type: 'knock:accept'
+  knockId: KnockId
+}
+
+/** Client → server: knockee denies the knock. */
+export interface KnockDenyMessage {
+  type: 'knock:deny'
+  knockId: KnockId
+}
+
+/** Client → server: knocker cancels their pending knock before response. */
+export interface KnockCancelMessage {
+  type: 'knock:cancel'
+  knockId: KnockId
+}
+
+/** Server → knocker: terminal result for an outbound knock. */
+export interface KnockResultMessage {
+  type: 'knock:result'
+  knockId: KnockId
+  status: KnockResultStatus
+  /**
+   * Present only when status === 'accepted'. Full MediaCredentials so the
+   * client can call useOfficeRealtime.connect(creds) directly — same shape
+   * used by zone:joined.
+   */
+  media?: MediaCredentials
+}
