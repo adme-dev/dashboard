@@ -99,7 +99,7 @@ export interface OfficeSnapshot {
 // Phase 1b — RealtimeKit media credentials
 // =============================================================================
 
-export type ZonePresetName = 'staff_full' | 'viewer_lurking'
+export type ZonePresetName = 'staff_full' | 'viewer_lurking' | 'audio_only_publish'
 
 // Returned to the joining browser on zone:joined / zone:token-refreshed. The
 // browser passes `authToken` into RealtimeKitClient.init() and binds the
@@ -138,6 +138,7 @@ export type KnockResultStatus =
 /** Client → server: knocker initiates a knock on a focus/private zone. */
 export interface KnockRequestMessage {
   type: 'knock:request'
+  knockId: KnockId
   targetZoneId: string
 }
 

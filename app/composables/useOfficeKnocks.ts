@@ -18,7 +18,7 @@ import type {
 
 interface SendFn {
   (msg:
-    | { type: 'knock:request'; targetZoneId: string }
+    | { type: 'knock:request'; knockId: KnockId; targetZoneId: string }
     | { type: 'knock:accept'; knockId: KnockId }
     | { type: 'knock:deny'; knockId: KnockId }
     | { type: 'knock:cancel'; knockId: KnockId }
@@ -27,8 +27,8 @@ interface SendFn {
 
 export interface PendingKnock {
   targetZoneId: string
-  /** Set when knockId comes back via knock:incoming or the first server-side echo. */
-  knockId?: KnockId
+  /** Client-generated UUID, minted synchronously in sendKnock before the WS message is sent. */
+  knockId: KnockId
   status: 'awaiting'
 }
 
@@ -66,8 +66,9 @@ export function useOfficeKnocks(opts: { send: SendFn }): UseOfficeKnocks {
 
   function sendKnock(targetZoneId: string) {
     if (pendingKnock.value) return  // only one pending knock at a time
-    pendingKnock.value = { targetZoneId, status: 'awaiting' }
-    opts.send({ type: 'knock:request', targetZoneId })
+    const knockId = crypto.randomUUID() as KnockId
+    pendingKnock.value = { targetZoneId, knockId, status: 'awaiting' }
+    opts.send({ type: 'knock:request', knockId, targetZoneId })
   }
 
   function acceptKnock() {
@@ -86,10 +87,7 @@ export function useOfficeKnocks(opts: { send: SendFn }): UseOfficeKnocks {
 
   function cancelKnock() {
     const k = pendingKnock.value
-    if (!k?.knockId) {
-      pendingKnock.value = null
-      return
-    }
+    if (!k) return
     opts.send({ type: 'knock:cancel', knockId: k.knockId })
     pendingKnock.value = null
   }

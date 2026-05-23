@@ -450,7 +450,7 @@ export class OfficeRoom extends DurableObject<Env> {
         // 'focus' nor 'private'. Both zone types support knock-to-enter; other
         // zone types (lobby, meeting, theater, client_lounge) do not.
         if (!zoneMeta || (zoneMeta.zoneType !== 'focus' && zoneMeta.zoneType !== 'private')) {
-          this.sendTo(ws, { type: 'knock:result', knockId: '' as any, status: 'not-knockable' })
+          this.sendTo(ws, { type: 'knock:result', knockId: msg.knockId, status: 'not-knockable' })
           return
         }
         // Reject path 2 (no-occupant): find an active occupant of the target
@@ -464,29 +464,29 @@ export class OfficeRoom extends DurableObject<Env> {
           }
         }
         if (!knockeeHandle) {
-          this.sendTo(ws, { type: 'knock:result', knockId: '' as any, status: 'no-occupant' })
+          this.sendTo(ws, { type: 'knock:result', knockId: msg.knockId, status: 'no-occupant' })
           return
         }
         const knockeeSockets = this.socketsForHandle(knockeeHandle)
         if (knockeeSockets.length === 0) {
-          this.sendTo(ws, { type: 'knock:result', knockId: '' as any, status: 'no-occupant' })
+          this.sendTo(ws, { type: 'knock:result', knockId: msg.knockId, status: 'no-occupant' })
           return
         }
         // Reject path 3 (self-knock): knocker is already in the target zone.
         if (p.currentZoneId === targetZoneId) {
-          this.sendTo(ws, { type: 'knock:result', knockId: '' as any, status: 'self-knock' })
+          this.sendTo(ws, { type: 'knock:result', knockId: msg.knockId, status: 'self-knock' })
           return
         }
         // Reject path 4 (busy): zone has an active accepted-knock in progress.
         if (this.knockState.acceptedByZone.has(targetZoneId)) {
-          this.sendTo(ws, { type: 'knock:result', knockId: '' as any, status: 'busy' })
+          this.sendTo(ws, { type: 'knock:result', knockId: msg.knockId, status: 'busy' })
           return
         }
-        // Reserve a knockId. The handler stores entry, and we dispatch to all
-        // knockee tabs; the wsId we record is the first tab's (used only for
-        // the "find the WS" path on cancel/timeout — accept/deny can come
-        // from any tab and we resolve by knockId, not by ws).
-        const knockId = crypto.randomUUID()
+        // Use the client-generated knockId from the message. The client mints
+        // a UUID synchronously in sendKnock and stores it on pendingKnock
+        // immediately — this means cancelKnock always has a knockId to send.
+        // applyKnockRequest still rejects duplicate knockIds as collision defense.
+        const knockId = msg.knockId
         const result = applyKnockRequest({
           state: this.knockState,
           knockId,
@@ -501,7 +501,7 @@ export class OfficeRoom extends DurableObject<Env> {
         })
         if (result.kind !== 'ok') {
           // Duplicate knockId (vanishingly unlikely with uuid). Surface as not-knockable.
-          this.sendTo(ws, { type: 'knock:result', knockId: '' as any, status: 'not-knockable' })
+          this.sendTo(ws, { type: 'knock:result', knockId: msg.knockId, status: 'not-knockable' })
           return
         }
         // Dispatch knock:incoming to every tab of the knockee
@@ -562,7 +562,7 @@ export class OfficeRoom extends DurableObject<Env> {
         }
         // Knock-accepted knockers always get audio_only_publish (focus-zone
         // knock semantics — they're joining a focus room).
-        const presetName = 'audio_only_publish' as ZonePresetName
+        const presetName: ZonePresetName = 'audio_only_publish'
         // Fix 5: if the knocker disconnected between accept and this lookup,
         // bail out — but notify their WS (if still alive on a different tab)
         // with 'no-occupant' so the modal doesn't hang.
@@ -651,14 +651,20 @@ export class OfficeRoom extends DurableObject<Env> {
 
       case 'knock:cancel': {
         const knockId = msg.knockId
+        // Capture knockeeHandle before applyKnockCancel deletes the entry.
+        const knockeeHandle = this.knockState.byId.get(knockId)?.knockeeHandle as ActorHandle | undefined
+        this.clearKnockTimeout(knockId)
         const result = applyKnockCancel({
           state: this.knockState,
           knockId,
           cancellerWsId: this.wsId(ws),
         })
         if (result.kind !== 'ok') return  // not the canceller, or already resolved
-        this.clearKnockTimeout(knockId)
-        // Spec: no dispatch — knocker already knows since they sent it.
+        // Notify the knockee so their incoming modal closes immediately.
+        // Symmetric with the knocker-tab-close path in webSocketClose.
+        if (knockeeHandle) {
+          this.sendToHandle(knockeeHandle, { type: 'knock:cancelled', knockId: knockId as any })
+        }
         return
       }
     }

@@ -102,11 +102,26 @@ function onConfirmKnock() {
   if (!confirmZone.value) return
   const target = confirmZone.value
   knocks.sendKnock(target.zoneId)
-  toast.add({
+  const waitingToast = toast.add({
     title: `Knocking on ${target.occupantNames.join(', ') || target.zoneName}…`,
     description: 'Waiting for response (30s)',
     color: 'info',
+    duration: 30_000,
+    actions: [{
+      label: 'Cancel',
+      onClick: () => knocks.cancelKnock(),
+    }],
   })
+  // Dismiss the waiting toast early once the knock resolves (result or cancel).
+  const stopWatcher = watch(
+    () => knocks.pendingKnock.value,
+    (v) => {
+      if (!v) {
+        toast.remove(waitingToast.id)
+        stopWatcher()
+      }
+    },
+  )
 }
 
 // Look up the zone name for the incoming-knock modal from the loaded zones
