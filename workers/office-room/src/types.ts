@@ -12,6 +12,7 @@ import type {
   KnockDenyMessage,
   KnockCancelMessage,
   KnockResultMessage,
+  KnockCancelledMessage,
 } from '../../../app/types/office'
 
 // =============================================================================
@@ -45,3 +46,4 @@ export type OutboundMessage
     | { type: 'error', message: string }
     | KnockIncomingMessage
     | KnockResultMessage
+    | KnockCancelledMessage

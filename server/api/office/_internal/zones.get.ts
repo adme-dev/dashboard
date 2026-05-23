@@ -20,8 +20,9 @@ export default defineEventHandler(async (event) => {
     capacity: number
     cf_meeting_id: string | null
     cf_preset_default: string
+    zone_type: string
   }>(
-    `SELECT id, capacity, cf_meeting_id, cf_preset_default
+    `SELECT id, capacity, cf_meeting_id, cf_preset_default, zone_type
      FROM office_zones WHERE office_id = $1`,
     [officeId],
   )

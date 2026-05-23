@@ -182,3 +182,17 @@ export interface KnockResultMessage {
    */
   media?: MediaCredentials
 }
+
+/**
+ * Server → knockee: the knock was abandoned by the knocker (they left the
+ * office, closed their tab, or fully disconnected) before the knockee
+ * responded. The knockee's accept/deny modal should close silently.
+ *
+ * No "cancelled" entry was added to KnockResultStatus because that union is
+ * scoped to the knocker's outbound-knock result; the knockee's modal needs a
+ * distinct close signal.
+ */
+export interface KnockCancelledMessage {
+  type: 'knock:cancelled'
+  knockId: KnockId
+}

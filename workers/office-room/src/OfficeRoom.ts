@@ -76,8 +76,8 @@ export class OfficeRoom extends DurableObject<Env> {
   // Map from WS to its handle (so we can find the participant on close)
   private wsToHandle = new WeakMap<WebSocket, ActorHandle>()
 
-  // Lazy-populated zone metadata cache (capacity + CF meeting id per zone)
-  private zoneMeta: Map<string, { capacity: number, cfMeetingId: string | null, cfPresetDefault: string }> | null = null
+  // Lazy-populated zone metadata cache (capacity + CF meeting id + zone type per zone)
+  private zoneMeta: Map<string, { capacity: number, cfMeetingId: string | null, cfPresetDefault: string, zoneType: string }> | null = null
 
   // Per-zone async mutex to serialise zone:enter critical sections (Bug 2)
   private zoneEnterLocks = new Map<string, Promise<unknown>>()
@@ -355,8 +355,9 @@ export class OfficeRoom extends DurableObject<Env> {
             return
           }
           if (this.zoneOccupancyCount(msg.zoneId) >= zoneMeta.capacity) {
-            // Phase 1c.1: an accepted knocker may bypass capacity for this one entry.
-            // Slot is released after the enter completes (below).
+            // Phase 1c.1: an accepted knocker bypasses capacity for this one entry.
+            // Slot is held for the zone session and released by cleanupKnocksForHandle
+            // on zone:leave or full disconnect.
             if (!this.isAcceptedKnockerFor(p.handle, msg.zoneId)) {
               this.sendTo(ws, { type: 'zone:join-failed', zoneId: msg.zoneId, reason: 'capacity' as ZoneJoinFailReason, message: 'Room is full' })
               return
@@ -428,8 +429,11 @@ export class OfficeRoom extends DurableObject<Env> {
         p.presetName = null
         p.tokenExpiresAt = null
         this.persistMediaStateToAttachments(handle)
-        // Phase 1c.1: leaving releases any accepted-knock slot we held in the zone.
-        this.cleanupKnocksForHandle(handle)
+        // Phase 1c.1: leaving releases any accepted-knock capacity-bypass slot
+        // we held — but does NOT tear down outgoing pending knocks. If the
+        // user is in Zone X and knocking on Zone Y, leaving X shouldn't kill
+        // the knock on Y (the user is still online and can respond / cancel).
+        this.releaseAcceptedKnockSlotsForHandle(handle)
         const { broadcast } = applyZoneLeave(p, now)
         this.broadcast(broadcast)
         await this.scheduleNextAlarm()
@@ -442,24 +446,16 @@ export class OfficeRoom extends DurableObject<Env> {
         const targetZoneId = msg.targetZoneId
         const meta = await this.loadZoneMeta()
         const zoneMeta = meta?.get(targetZoneId)
-        // Reject path 1: zone unknown or not focus-type (only focus zones are knockable)
-        if (!zoneMeta || zoneMeta.cfPresetDefault !== 'audio_only_publish') {
+        // Reject path 1 (not-knockable): zone unknown, or zone_type is neither
+        // 'focus' nor 'private'. Both zone types support knock-to-enter; other
+        // zone types (lobby, meeting, theater, client_lounge) do not.
+        if (!zoneMeta || (zoneMeta.zoneType !== 'focus' && zoneMeta.zoneType !== 'private')) {
           this.sendTo(ws, { type: 'knock:result', knockId: '' as any, status: 'not-knockable' })
           return
         }
-        // Reject path 2: knocker already in the target zone (self-knock)
-        if (p.currentZoneId === targetZoneId) {
-          this.sendTo(ws, { type: 'knock:result', knockId: '' as any, status: 'self-knock' })
-          return
-        }
-        // Reject path 3: zone has an active accepted-knock in progress
-        if (this.knockState.acceptedByZone.has(targetZoneId)) {
-          this.sendTo(ws, { type: 'knock:result', knockId: '' as any, status: 'busy' })
-          return
-        }
-        // Find an occupant of the target zone (any will do; if multiple we
-        // pick the first; the knockee's other-tab open WS all get notified
-        // because we dispatch by handle, not by ws id).
+        // Reject path 2 (no-occupant): find an active occupant of the target
+        // zone. Pick the first; if multiple, all the knockee's tabs get
+        // knock:incoming because we dispatch by handle, not by ws id.
         let knockeeHandle: ActorHandle | null = null
         for (const candidate of this.participants.values()) {
           if (candidate.currentZoneId === targetZoneId && candidate.disconnectedAt === null) {
@@ -474,6 +470,16 @@ export class OfficeRoom extends DurableObject<Env> {
         const knockeeSockets = this.socketsForHandle(knockeeHandle)
         if (knockeeSockets.length === 0) {
           this.sendTo(ws, { type: 'knock:result', knockId: '' as any, status: 'no-occupant' })
+          return
+        }
+        // Reject path 3 (self-knock): knocker is already in the target zone.
+        if (p.currentZoneId === targetZoneId) {
+          this.sendTo(ws, { type: 'knock:result', knockId: '' as any, status: 'self-knock' })
+          return
+        }
+        // Reject path 4 (busy): zone has an active accepted-knock in progress.
+        if (this.knockState.acceptedByZone.has(targetZoneId)) {
+          this.sendTo(ws, { type: 'knock:result', knockId: '' as any, status: 'busy' })
           return
         }
         // Reserve a knockId. The handler stores entry, and we dispatch to all
@@ -557,14 +563,20 @@ export class OfficeRoom extends DurableObject<Env> {
         // Knock-accepted knockers always get audio_only_publish (focus-zone
         // knock semantics — they're joining a focus room).
         const presetName = 'audio_only_publish' as ZonePresetName
+        // Fix 5: if the knocker disconnected between accept and this lookup,
+        // bail out — but notify their WS (if still alive on a different tab)
+        // with 'no-occupant' so the modal doesn't hang.
+        const knocker = this.participants.get(result.knockerHandle as ActorHandle)
+        if (!knocker) {
+          this.knockState.acceptedByZone.delete(result.zoneId)
+          const knockerWs = this.findWsByWsId(result.knockerWsId)
+          if (knockerWs) {
+            this.sendTo(knockerWs, { type: 'knock:result', knockId: knockId as any, status: 'no-occupant' })
+          }
+          return
+        }
         let mint: { participantId: string, authToken: string }
         try {
-          // Find the knocker participant by handle to use their display name.
-          const knocker = this.participants.get(result.knockerHandle as ActorHandle)
-          if (!knocker) {
-            this.knockState.acceptedByZone.delete(result.zoneId)
-            return
-          }
           mint = await mintZoneToken({
             env: this.env,
             meetingId: cfMeetingId,
@@ -588,9 +600,31 @@ export class OfficeRoom extends DurableObject<Env> {
           presetName,
           expiresAt,
         }
+        // Phase 1c.1: Track media state on the knocker's ParticipantState so
+        // alarm-based token refresh works (Bug 1) and presetName is preserved
+        // across refresh (Bug 3). Without this the knocker would lose audio
+        // after ~55min when refresh fires and finds no presetName.
+        knocker.cfParticipantId = mint.participantId
+        knocker.cfMeetingId = cfMeetingId
+        knocker.presetName = presetName
+        knocker.tokenExpiresAt = expiresAt
         // Reserve the knocker's capacity-bypass slot so their forthcoming
-        // zone:enter can succeed even when the room is at capacity.
+        // zone:enter (if they explicitly send one) can succeed even when the
+        // room is at capacity. Kept as defense-in-depth.
         this.acceptedKnockerHandlesByZone.set(result.zoneId, result.knockerHandle as ActorHandle)
+        // Fix 1: move the knocker into the zone server-side and broadcast the
+        // move to all other clients so floor plans update. Task 9 only calls
+        // useOfficeRealtime().connect(media) on the knocker — it does NOT send
+        // zone:enter — so the move must happen here. Broadcast uses the same
+        // 'participant:moved' shape as the applyZoneEnter helper.
+        knocker.currentZoneId = result.zoneId
+        knocker.lastSeenAt = Date.now()
+        this.persistMediaStateToAttachments(result.knockerHandle as ActorHandle)
+        this.broadcast({
+          type: 'participant:moved',
+          handle: result.knockerHandle as ActorHandle,
+          zoneId: result.zoneId,
+        })
         const knockerWs = this.findWsByWsId(result.knockerWsId)
         if (knockerWs) {
           this.sendTo(knockerWs, {
@@ -600,6 +634,8 @@ export class OfficeRoom extends DurableObject<Env> {
             media,
           })
         }
+        // Re-schedule the alarm now that the knocker has a tokenExpiresAt.
+        await this.scheduleNextAlarm()
         return
       }
 
@@ -638,26 +674,35 @@ export class OfficeRoom extends DurableObject<Env> {
   private async handleDisconnect(handle: ActorHandle, closingWs?: WebSocket): Promise<void> {
     const p = this.participants.get(handle)
     if (!p) return
-    // Phase 1c.1: if THIS ws had any pending knocks (knocker or knockee), tear
-    // them down regardless of whether other tabs are still open — the specific
-    // tab's UI is gone. Pass the closing-ws id so we only touch entries that
-    // reference it, leaving multi-tab knocks on other tabs intact.
+    // Phase 1c.1: per-tab cleanup. If the participant has other tabs still
+    // open, only tear down a knock when that tab's closure leaves the
+    // participant with ZERO open tabs holding the relevant UI. A multi-tab
+    // knockee should not lose the modal because one of their tabs closed.
     if (closingWs) {
       const closingWsId = this.wsIdMap.get(closingWs)
+      const otherTabsRemain = this.hasOtherActiveSocket(handle, closingWs)
       if (closingWsId) {
-        // Only tear down knocks that specifically reference the closing ws.
-        // If the participant has other tabs open, the actor-level state
-        // (acceptedKnockerHandlesByZone) stays intact and is released only
-        // when they actually leave the zone or fully disconnect.
         for (const [knockId, entry] of this.knockState.byId) {
-          if (entry.knockerWsId !== closingWsId && entry.knockeeWsId !== closingWsId) continue
+          const knockerMatch = entry.knockerHandle === handle && entry.knockerWsId === closingWsId
+          // The knockee modal is open on every tab of the knockee — so the
+          // knock is "dead" only when ZERO tabs remain. (Fix 4)
+          const knockeeFullyGone = entry.knockeeHandle === handle && !otherTabsRemain
+          if (!knockerMatch && !knockeeFullyGone) continue
           this.clearKnockTimeout(knockId)
           this.knockState.byId.delete(knockId)
-          if (entry.knockeeWsId === closingWsId) {
+          if (knockeeFullyGone) {
+            // Knockee has no tabs left — notify the knocker.
             const knockerWs = this.findWsByWsId(entry.knockerWsId)
             if (knockerWs) {
               this.sendTo(knockerWs, { type: 'knock:result', knockId: knockId as any, status: 'no-occupant' })
             }
+          } else if (knockerMatch) {
+            // Knocker's tab closed — notify the knockee so their incoming
+            // modal closes silently. (Fix 3)
+            this.sendToHandle(entry.knockeeHandle as ActorHandle, {
+              type: 'knock:cancelled',
+              knockId: knockId as any,
+            })
           }
         }
       }
@@ -665,7 +710,8 @@ export class OfficeRoom extends DurableObject<Env> {
     if (this.hasOtherActiveSocket(handle, closingWs)) return
     p.disconnectedAt = Date.now()
     // Phase 1c.1: full disconnect (no other tabs) — release any zone-bypass
-    // slots and pending knocks that reference this handle.
+    // slots and pending knocks that reference this handle. cleanupKnocksForHandle
+    // notifies the counterparty (knockee → knock:cancelled, knocker → 'no-occupant').
     this.cleanupKnocksForHandle(handle)
     // Bug 4 fix: use scheduleNextAlarm() so both grace AND refresh slots are
     // computed together — no separate setAlarm call that could clobber a pending
@@ -696,7 +742,7 @@ export class OfficeRoom extends DurableObject<Env> {
 
   // ---------- Zone metadata helpers ------------------------------------------
 
-  private async loadZoneMeta(): Promise<Map<string, { capacity: number, cfMeetingId: string | null, cfPresetDefault: string }> | null> {
+  private async loadZoneMeta(): Promise<Map<string, { capacity: number, cfMeetingId: string | null, cfPresetDefault: string, zoneType: string }> | null> {
     if (this.zoneMeta) return this.zoneMeta
     const env = this.env
     if (!env.SYNC_BASE_URL || !env.OFFICE_SYNC_SECRET) return null
@@ -707,8 +753,8 @@ export class OfficeRoom extends DurableObject<Env> {
         headers: { 'x-office-sync-secret': env.OFFICE_SYNC_SECRET },
       })
       if (!res.ok) return null
-      const { zones } = (await res.json()) as { zones: { id: string, capacity: number, cf_meeting_id: string | null, cf_preset_default: string }[] }
-      const m = new Map(zones.map(z => [z.id, { capacity: z.capacity, cfMeetingId: z.cf_meeting_id, cfPresetDefault: z.cf_preset_default }]))
+      const { zones } = (await res.json()) as { zones: { id: string, capacity: number, cf_meeting_id: string | null, cf_preset_default: string, zone_type: string }[] }
+      const m = new Map(zones.map(z => [z.id, { capacity: z.capacity, cfMeetingId: z.cf_meeting_id, cfPresetDefault: z.cf_preset_default, zoneType: z.zone_type }]))
       this.zoneMeta = m
       return m
     } catch {
@@ -937,7 +983,9 @@ export class OfficeRoom extends DurableObject<Env> {
 
   private findWsByWsId(wsIdStr: string): WebSocket | null {
     for (const ws of this.ctx.getWebSockets()) {
-      if (this.wsIdMap.get(ws) === wsIdStr) return ws
+      if (this.wsIdMap.get(ws) !== wsIdStr) continue
+      if (ws.readyState !== WebSocket.OPEN) continue
+      return ws
     }
     return null
   }
@@ -946,24 +994,40 @@ export class OfficeRoom extends DurableObject<Env> {
     return this.acceptedKnockerHandlesByZone.get(zoneId) === handle
   }
 
-  /** Clear any pending knocks and accepted-knock entries involving this handle. */
-  private cleanupKnocksForHandle(handle: ActorHandle, disconnectedWsId?: string): void {
-    // Release any accepted-knock zone slots where this handle was the accepted knocker
+  /**
+   * Release any accepted-knock capacity-bypass slots held by this handle.
+   * Called by zone:leave (handle still connected but leaving the zone) and by
+   * full disconnect via cleanupKnocksForHandle. Does NOT touch pending knocks
+   * — those are the responsibility of cleanupKnocksForHandle on full
+   * disconnect; an outbound knock on Zone Y should NOT die when the knocker
+   * merely leaves Zone X.
+   */
+  private releaseAcceptedKnockSlotsForHandle(handle: ActorHandle): void {
     for (const [zoneId, knockerHandle] of this.acceptedKnockerHandlesByZone) {
       if (knockerHandle === handle) {
         this.acceptedKnockerHandlesByZone.delete(zoneId)
         this.knockState.acceptedByZone.delete(zoneId)
       }
     }
-    // Tear down any pending knocks involving this handle / ws
+  }
+
+  /**
+   * Clear any pending knocks and accepted-knock entries involving this handle.
+   * Used on full disconnect (no other tabs open). If the gone party is the
+   * knocker, the knockee receives knock:cancelled so their modal closes; if
+   * the gone party is the knockee, the knocker receives 'no-occupant'.
+   */
+  private cleanupKnocksForHandle(handle: ActorHandle): void {
+    this.releaseAcceptedKnockSlotsForHandle(handle)
+    // Tear down any pending knocks involving this handle
     for (const [knockId, entry] of this.knockState.byId) {
-      const wsMatches = disconnectedWsId !== undefined && (entry.knockerWsId === disconnectedWsId || entry.knockeeWsId === disconnectedWsId)
-      const handleMatches = entry.knockerHandle === handle || entry.knockeeHandle === handle
-      if (!wsMatches && !handleMatches) continue
+      const isKnocker = entry.knockerHandle === handle
+      const isKnockee = entry.knockeeHandle === handle
+      if (!isKnocker && !isKnockee) continue
       this.clearKnockTimeout(knockId)
       this.knockState.byId.delete(knockId)
-      // If the knockee is the one gone, inform the knocker so their pending UI clears.
-      if (entry.knockeeHandle === handle || entry.knockeeWsId === disconnectedWsId) {
+      if (isKnockee) {
+        // Knockee is gone — notify the knocker so their pending UI clears.
         const knockerWs = this.findWsByWsId(entry.knockerWsId)
         if (knockerWs) {
           this.sendTo(knockerWs, {
@@ -972,6 +1036,13 @@ export class OfficeRoom extends DurableObject<Env> {
             status: 'no-occupant',
           })
         }
+      } else if (isKnocker) {
+        // Knocker is gone — notify the knockee so their incoming-knock modal
+        // closes silently. knock:cancelled is targeted at the knockee.
+        this.sendToHandle(entry.knockeeHandle as ActorHandle, {
+          type: 'knock:cancelled',
+          knockId: knockId as any,
+        })
       }
     }
   }
