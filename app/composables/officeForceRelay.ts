@@ -1,5 +1,5 @@
 // Tiny helper isolating the runtime-config read for unit testability.
-// Used by useOfficeRealtime to drive `defaults.forceRelay` on SDK.init.
+// Used by useOfficeRealtime to drive `overrides.forceRelay` on SDK.init.
 // Strict boolean-true comparison — string "true" returns false. Pages env
 // vars are string-typed; Nuxt's runtime config layer is expected to coerce
 // NUXT_PUBLIC_OFFICE_FORCE_RELAY=true to a real boolean before reaching here.
