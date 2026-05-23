@@ -54,6 +54,10 @@ const connection = useOfficeConnection({
         // inside OfficeRoomPanel) reactively (re)connects with the new creds.
         connection.currentZoneId.value = result.targetZoneId
         connection.currentMediaCredentials.value = result.media
+      } else if (result.status === 'accepted') {
+        // Server accepted but client lost the pendingKnock (race with cancel/timeout).
+        // Surface a warning so the limbo is observable.
+        console.warn('[office] knock:result accepted but targetZoneId missing — pendingKnock was already cleared')
       } else if (result.status === 'denied') {
         toast.add({ title: 'Knock declined', description: 'They declined the knock.', color: 'error' })
       } else if (result.status === 'timeout') {

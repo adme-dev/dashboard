@@ -136,8 +136,8 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
     if (opts.onMessage) {
       try {
         opts.onMessage(msg)
-      } catch {
-        /* ignore */
+      } catch (err) {
+        console.error('[office] onMessage handler threw:', err)
       }
     }
   }
