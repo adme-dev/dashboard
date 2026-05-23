@@ -178,7 +178,7 @@ function onZoneClick() {
                text-[10px] font-medium tracking-wide text-center"
         :class="isKnockable ? 'text-amber-300/80' : 'text-white/70'"
       >
-        {{ isKnockable ? 'Knock to enter' : zone.zone_type === 'lobby' ? 'Step in' : 'Knock to enter' }}
+        {{ isKnockable ? 'Knock to enter' : zone.zone_type === 'lobby' ? 'Step in' : 'Enter' }}
       </div>
 
       <div
