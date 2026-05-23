@@ -9,7 +9,17 @@ import type {
   ZonePresetName,
 } from '../../../app/types/office'
 import type { InboundMessage, OutboundMessage } from './types'
-import { applyStatusSet, applyZoneEnter, applyZoneLeave } from './handlers'
+import {
+  applyKnockAccept,
+  applyKnockCancel,
+  applyKnockDeny,
+  applyKnockRequest,
+  applyKnockTimeout,
+  applyStatusSet,
+  applyZoneEnter,
+  applyZoneLeave,
+  type KnockState,
+} from './handlers'
 import { createZoneMeeting, mintZoneToken, refreshZoneToken } from './realtime'
 
 interface Env {
@@ -82,6 +92,20 @@ export class OfficeRoom extends DurableObject<Env> {
   private readonly TOKEN_TTL_MS = 60 * 60_000
   // Fire refresh this many ms before expiry
   private readonly REFRESH_LEAD_MS = 5 * 60_000
+
+  // ---------- Knock state (Phase 1c.1) --------------------------------------
+  // Knocks expire after 30s. Timer is in-memory setTimeout — DO hibernation
+  // would silently drop the timer; per spec, that's acceptable (knockee just
+  // stops getting the incoming UI, knocker sees an indefinite pending until
+  // either party cancels or the hibernation wakes for another reason).
+  private readonly KNOCK_TTL_MS = 30_000
+  private knockState: KnockState = { byId: new Map(), acceptedByZone: new Map() }
+  private knockTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map()
+  /** zoneId → knocker handle currently allowed to bypass the capacity check */
+  private acceptedKnockerHandlesByZone: Map<string, ActorHandle> = new Map()
+  /** Stable per-WS string id (WebSocket has no built-in identity we can use as Map key) */
+  private wsIdMap: WeakMap<WebSocket, string> = new WeakMap()
+  private wsIdCounter = 0
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
@@ -331,8 +355,12 @@ export class OfficeRoom extends DurableObject<Env> {
             return
           }
           if (this.zoneOccupancyCount(msg.zoneId) >= zoneMeta.capacity) {
-            this.sendTo(ws, { type: 'zone:join-failed', zoneId: msg.zoneId, reason: 'capacity' as ZoneJoinFailReason, message: 'Room is full' })
-            return
+            // Phase 1c.1: an accepted knocker may bypass capacity for this one entry.
+            // Slot is released after the enter completes (below).
+            if (!this.isAcceptedKnockerFor(p.handle, msg.zoneId)) {
+              this.sendTo(ws, { type: 'zone:join-failed', zoneId: msg.zoneId, reason: 'capacity' as ZoneJoinFailReason, message: 'Room is full' })
+              return
+            }
           }
           // Resolve preset: server enforces — client's preferredPreset is honored only when it's 'viewer_lurking'
           const presetName: ZonePresetName = msg.preferredPreset === 'viewer_lurking'
@@ -400,9 +428,201 @@ export class OfficeRoom extends DurableObject<Env> {
         p.presetName = null
         p.tokenExpiresAt = null
         this.persistMediaStateToAttachments(handle)
+        // Phase 1c.1: leaving releases any accepted-knock slot we held in the zone.
+        this.cleanupKnocksForHandle(handle)
         const { broadcast } = applyZoneLeave(p, now)
         this.broadcast(broadcast)
         await this.scheduleNextAlarm()
+        return
+      }
+
+      // -------- Phase 1c.1: Knock dispatch --------------------------------
+
+      case 'knock:request': {
+        const targetZoneId = msg.targetZoneId
+        const meta = await this.loadZoneMeta()
+        const zoneMeta = meta?.get(targetZoneId)
+        // Reject path 1: zone unknown or not focus-type (only focus zones are knockable)
+        if (!zoneMeta || zoneMeta.cfPresetDefault !== 'audio_only_publish') {
+          this.sendTo(ws, { type: 'knock:result', knockId: '' as any, status: 'not-knockable' })
+          return
+        }
+        // Reject path 2: knocker already in the target zone (self-knock)
+        if (p.currentZoneId === targetZoneId) {
+          this.sendTo(ws, { type: 'knock:result', knockId: '' as any, status: 'self-knock' })
+          return
+        }
+        // Reject path 3: zone has an active accepted-knock in progress
+        if (this.knockState.acceptedByZone.has(targetZoneId)) {
+          this.sendTo(ws, { type: 'knock:result', knockId: '' as any, status: 'busy' })
+          return
+        }
+        // Find an occupant of the target zone (any will do; if multiple we
+        // pick the first; the knockee's other-tab open WS all get notified
+        // because we dispatch by handle, not by ws id).
+        let knockeeHandle: ActorHandle | null = null
+        for (const candidate of this.participants.values()) {
+          if (candidate.currentZoneId === targetZoneId && candidate.disconnectedAt === null) {
+            knockeeHandle = candidate.handle
+            break
+          }
+        }
+        if (!knockeeHandle) {
+          this.sendTo(ws, { type: 'knock:result', knockId: '' as any, status: 'no-occupant' })
+          return
+        }
+        const knockeeSockets = this.socketsForHandle(knockeeHandle)
+        if (knockeeSockets.length === 0) {
+          this.sendTo(ws, { type: 'knock:result', knockId: '' as any, status: 'no-occupant' })
+          return
+        }
+        // Reserve a knockId. The handler stores entry, and we dispatch to all
+        // knockee tabs; the wsId we record is the first tab's (used only for
+        // the "find the WS" path on cancel/timeout — accept/deny can come
+        // from any tab and we resolve by knockId, not by ws).
+        const knockId = crypto.randomUUID()
+        const result = applyKnockRequest({
+          state: this.knockState,
+          knockId,
+          knockerHandle: p.handle,
+          knockerName: p.name,
+          knockerWsId: this.wsId(ws),
+          knockeeHandle,
+          knockeeWsId: this.wsId(knockeeSockets[0]!),
+          zoneId: targetZoneId,
+          now,
+          ttlMs: this.KNOCK_TTL_MS,
+        })
+        if (result.kind !== 'ok') {
+          // Duplicate knockId (vanishingly unlikely with uuid). Surface as not-knockable.
+          this.sendTo(ws, { type: 'knock:result', knockId: '' as any, status: 'not-knockable' })
+          return
+        }
+        // Dispatch knock:incoming to every tab of the knockee
+        this.sendToHandle(knockeeHandle, result.toKnockee)
+        // 30s timeout — DO hibernation may drop this, accepted per spec.
+        const timer = setTimeout(() => this.fireKnockTimeout(knockId), this.KNOCK_TTL_MS)
+        this.knockTimeouts.set(knockId, timer)
+        return
+      }
+
+      case 'knock:accept': {
+        const knockId = msg.knockId
+        this.clearKnockTimeout(knockId)
+        const result = applyKnockAccept({ state: this.knockState, knockId })
+        if (result.kind !== 'ok') {
+          // Race: already accepted/denied/cancelled/timed out. Nothing to do.
+          return
+        }
+        // Verify knockee is still in the target zone — if they left, the
+        // knock no longer makes sense. Release the busy slot and notify
+        // the knocker that the room is empty.
+        const knockee = this.participants.get(result.knockeeHandle as ActorHandle)
+        if (!knockee || knockee.currentZoneId !== result.zoneId || knockee.disconnectedAt !== null) {
+          this.knockState.acceptedByZone.delete(result.zoneId)
+          const knockerWs = this.findWsByWsId(result.knockerWsId)
+          if (knockerWs) {
+            this.sendTo(knockerWs, { type: 'knock:result', knockId: knockId as any, status: 'no-occupant' })
+          }
+          return
+        }
+        // Mint a media token for the knocker against the zone's CF meeting.
+        // Ensure the meeting exists first.
+        const meta = await this.loadZoneMeta()
+        const zoneMeta = meta?.get(result.zoneId)
+        if (!zoneMeta) {
+          this.knockState.acceptedByZone.delete(result.zoneId)
+          const knockerWs = this.findWsByWsId(result.knockerWsId)
+          if (knockerWs) {
+            this.sendTo(knockerWs, { type: 'knock:result', knockId: knockId as any, status: 'not-knockable' })
+          }
+          return
+        }
+        let cfMeetingId = zoneMeta.cfMeetingId
+        if (!cfMeetingId) {
+          try {
+            const created = await createZoneMeeting({ env: this.env, title: `Zone ${result.zoneId}` })
+            cfMeetingId = created.meetingId
+            this.zoneMeta!.set(result.zoneId, { ...zoneMeta, cfMeetingId })
+            this.ctx.waitUntil(this.persistMeetingId(result.zoneId, cfMeetingId))
+          } catch {
+            this.knockState.acceptedByZone.delete(result.zoneId)
+            const knockerWs = this.findWsByWsId(result.knockerWsId)
+            if (knockerWs) {
+              this.sendTo(knockerWs, { type: 'knock:result', knockId: knockId as any, status: 'no-occupant' })
+            }
+            return
+          }
+        }
+        // Knock-accepted knockers always get audio_only_publish (focus-zone
+        // knock semantics — they're joining a focus room).
+        const presetName = 'audio_only_publish' as ZonePresetName
+        let mint: { participantId: string, authToken: string }
+        try {
+          // Find the knocker participant by handle to use their display name.
+          const knocker = this.participants.get(result.knockerHandle as ActorHandle)
+          if (!knocker) {
+            this.knockState.acceptedByZone.delete(result.zoneId)
+            return
+          }
+          mint = await mintZoneToken({
+            env: this.env,
+            meetingId: cfMeetingId,
+            handle: result.knockerHandle as ActorHandle,
+            name: result.knockerName,
+            presetName,
+          })
+        } catch {
+          this.knockState.acceptedByZone.delete(result.zoneId)
+          const knockerWs = this.findWsByWsId(result.knockerWsId)
+          if (knockerWs) {
+            this.sendTo(knockerWs, { type: 'knock:result', knockId: knockId as any, status: 'no-occupant' })
+          }
+          return
+        }
+        const expiresAt = Date.now() + this.TOKEN_TTL_MS
+        const media: MediaCredentials = {
+          authToken: mint.authToken,
+          meetingId: cfMeetingId,
+          participantId: mint.participantId,
+          presetName,
+          expiresAt,
+        }
+        // Reserve the knocker's capacity-bypass slot so their forthcoming
+        // zone:enter can succeed even when the room is at capacity.
+        this.acceptedKnockerHandlesByZone.set(result.zoneId, result.knockerHandle as ActorHandle)
+        const knockerWs = this.findWsByWsId(result.knockerWsId)
+        if (knockerWs) {
+          this.sendTo(knockerWs, {
+            type: 'knock:result',
+            knockId: knockId as any,
+            status: 'accepted',
+            media,
+          })
+        }
+        return
+      }
+
+      case 'knock:deny': {
+        const knockId = msg.knockId
+        this.clearKnockTimeout(knockId)
+        const result = applyKnockDeny({ state: this.knockState, knockId })
+        if (result.kind !== 'ok') return  // race; nothing to do
+        const knockerWs = this.findWsByWsId(result.knockerWsId)
+        if (knockerWs) this.sendTo(knockerWs, result.toKnocker)
+        return
+      }
+
+      case 'knock:cancel': {
+        const knockId = msg.knockId
+        const result = applyKnockCancel({
+          state: this.knockState,
+          knockId,
+          cancellerWsId: this.wsId(ws),
+        })
+        if (result.kind !== 'ok') return  // not the canceller, or already resolved
+        this.clearKnockTimeout(knockId)
+        // Spec: no dispatch — knocker already knows since they sent it.
         return
       }
     }
@@ -418,8 +638,35 @@ export class OfficeRoom extends DurableObject<Env> {
   private async handleDisconnect(handle: ActorHandle, closingWs?: WebSocket): Promise<void> {
     const p = this.participants.get(handle)
     if (!p) return
+    // Phase 1c.1: if THIS ws had any pending knocks (knocker or knockee), tear
+    // them down regardless of whether other tabs are still open — the specific
+    // tab's UI is gone. Pass the closing-ws id so we only touch entries that
+    // reference it, leaving multi-tab knocks on other tabs intact.
+    if (closingWs) {
+      const closingWsId = this.wsIdMap.get(closingWs)
+      if (closingWsId) {
+        // Only tear down knocks that specifically reference the closing ws.
+        // If the participant has other tabs open, the actor-level state
+        // (acceptedKnockerHandlesByZone) stays intact and is released only
+        // when they actually leave the zone or fully disconnect.
+        for (const [knockId, entry] of this.knockState.byId) {
+          if (entry.knockerWsId !== closingWsId && entry.knockeeWsId !== closingWsId) continue
+          this.clearKnockTimeout(knockId)
+          this.knockState.byId.delete(knockId)
+          if (entry.knockeeWsId === closingWsId) {
+            const knockerWs = this.findWsByWsId(entry.knockerWsId)
+            if (knockerWs) {
+              this.sendTo(knockerWs, { type: 'knock:result', knockId: knockId as any, status: 'no-occupant' })
+            }
+          }
+        }
+      }
+    }
     if (this.hasOtherActiveSocket(handle, closingWs)) return
     p.disconnectedAt = Date.now()
+    // Phase 1c.1: full disconnect (no other tabs) — release any zone-bypass
+    // slots and pending knocks that reference this handle.
+    this.cleanupKnocksForHandle(handle)
     // Bug 4 fix: use scheduleNextAlarm() so both grace AND refresh slots are
     // computed together — no separate setAlarm call that could clobber a pending
     // refresh scheduled earlier.
@@ -438,6 +685,10 @@ export class OfficeRoom extends DurableObject<Env> {
 
   private removeParticipant(handle: ActorHandle): void {
     if (!this.participants.delete(handle)) return
+    // Phase 1c.1: defensive cleanup — should already have happened on
+    // handleDisconnect, but if a participant was force-evicted while still
+    // holding a knock-bypass slot, release it now.
+    this.cleanupKnocksForHandle(handle)
     this.broadcast({ type: 'participant:left', handle })
     // Re-evaluate alarm — that participant's refresh and grace slots are gone
     void this.ctx.waitUntil(this.scheduleNextAlarm())
@@ -635,6 +886,93 @@ export class OfficeRoom extends DurableObject<Env> {
       ws.send(JSON.stringify(msg))
     } catch {
       /* ignore */
+    }
+  }
+
+  // ---------- Knock helpers (Phase 1c.1) --------------------------------------
+
+  /** Lazy-assign a stable per-WS string id (used as knockerWsId / knockeeWsId). */
+  private wsId(ws: WebSocket): string {
+    let id = this.wsIdMap.get(ws)
+    if (!id) {
+      id = `ws-${++this.wsIdCounter}`
+      this.wsIdMap.set(ws, id)
+    }
+    return id
+  }
+
+  /** Find all currently-open WS belonging to a given handle (multi-tab). */
+  private socketsForHandle(handle: ActorHandle): WebSocket[] {
+    const out: WebSocket[] = []
+    for (const ws of this.ctx.getWebSockets()) {
+      const tag = ws.deserializeAttachment() as { handle?: ActorHandle } | undefined
+      if (tag?.handle === handle) out.push(ws)
+    }
+    return out
+  }
+
+  /** Send a message to every WS belonging to a handle (no-op if none). */
+  private sendToHandle(handle: ActorHandle, msg: OutboundMessage): void {
+    for (const ws of this.socketsForHandle(handle)) this.sendTo(ws, msg)
+  }
+
+  private clearKnockTimeout(knockId: string): void {
+    const h = this.knockTimeouts.get(knockId)
+    if (h) {
+      clearTimeout(h)
+      this.knockTimeouts.delete(knockId)
+    }
+  }
+
+  private fireKnockTimeout(knockId: string): void {
+    this.knockTimeouts.delete(knockId)
+    const result = applyKnockTimeout({ state: this.knockState, knockId })
+    if (result.kind !== 'ok') return  // race: accept/deny/cancel beat us
+    // Find the knocker via the entry's knockerHandle — wsId may have closed.
+    // applyKnockTimeout consumed the entry; we need the handle from before.
+    // The result only returns knockerWsId; we can find a live ws by id.
+    const ws = this.findWsByWsId(result.knockerWsId)
+    if (ws) this.sendTo(ws, result.toKnocker)
+  }
+
+  private findWsByWsId(wsIdStr: string): WebSocket | null {
+    for (const ws of this.ctx.getWebSockets()) {
+      if (this.wsIdMap.get(ws) === wsIdStr) return ws
+    }
+    return null
+  }
+
+  private isAcceptedKnockerFor(handle: ActorHandle, zoneId: string): boolean {
+    return this.acceptedKnockerHandlesByZone.get(zoneId) === handle
+  }
+
+  /** Clear any pending knocks and accepted-knock entries involving this handle. */
+  private cleanupKnocksForHandle(handle: ActorHandle, disconnectedWsId?: string): void {
+    // Release any accepted-knock zone slots where this handle was the accepted knocker
+    for (const [zoneId, knockerHandle] of this.acceptedKnockerHandlesByZone) {
+      if (knockerHandle === handle) {
+        this.acceptedKnockerHandlesByZone.delete(zoneId)
+        this.knockState.acceptedByZone.delete(zoneId)
+      }
+    }
+    // Tear down any pending knocks involving this handle / ws
+    for (const [knockId, entry] of this.knockState.byId) {
+      const wsMatches = disconnectedWsId !== undefined && (entry.knockerWsId === disconnectedWsId || entry.knockeeWsId === disconnectedWsId)
+      const handleMatches = entry.knockerHandle === handle || entry.knockeeHandle === handle
+      if (!wsMatches && !handleMatches) continue
+      this.clearKnockTimeout(knockId)
+      this.knockState.byId.delete(knockId)
+      // If the knockee is the one gone, inform the knocker so their pending UI clears.
+      if (entry.knockeeHandle === handle || entry.knockeeWsId === disconnectedWsId) {
+        const knockerWs = this.findWsByWsId(entry.knockerWsId)
+        if (knockerWs) {
+          this.sendTo(knockerWs, {
+            type: 'knock:result',
+            knockId: knockId as any,
+            status: 'no-occupant',
+          })
+        }
+      }
     }
   }
 
