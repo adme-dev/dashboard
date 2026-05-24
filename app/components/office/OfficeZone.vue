@@ -45,6 +45,9 @@ const zoneTint: Record<ZoneType, { icon: string, ringOccupied: string, glow: str
   }
 }
 
+const isDeskOrAdhoc = computed(() =>
+  props.zone.zone_type === 'desk' || props.zone.zone_type === 'adhoc'
+)
 const tint = computed(() => zoneTint[props.zone.zone_type])
 const stackedAvatars = computed(() => props.occupants.slice(0, 6))
 const overflow = computed(() => Math.max(0, props.occupants.length - 6))
@@ -86,7 +89,9 @@ function onZoneClick() {
 </script>
 
 <template>
+  <template v-if="isDeskOrAdhoc" />
   <button
+    v-else
     type="button"
     :disabled="isFull && !isKnockable"
     class="group absolute overflow-hidden rounded-2xl transition-all duration-200 text-left
