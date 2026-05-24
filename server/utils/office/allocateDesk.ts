@@ -27,8 +27,8 @@ export function computeNextDeskPosition(args: ComputeNextArgs): { x: number; y: 
     taken.add(`${col},${row}`)
   }
 
-  let row = 0
-  while (true) {
+  const MAX_ROWS = 1000 // safety: 8 cols × 1000 rows = 8000 desks is way beyond agency scale
+  for (let row = 0; row < MAX_ROWS; row++) {
     for (let col = 0; col < args.colsPerRow; col++) {
       if (!taken.has(`${col},${row}`)) {
         return {
@@ -37,8 +37,8 @@ export function computeNextDeskPosition(args: ComputeNextArgs): { x: number; y: 
         }
       }
     }
-    row++
   }
+  throw new Error(`computeNextDeskPosition: grid exhausted (>${MAX_ROWS} rows)`)
 }
 
 export async function allocateDesk(
@@ -66,6 +66,8 @@ export async function allocateDesk(
   )
   const pos = computeNextDeskPosition({ existingDesks, ...grid })
 
+  // Desks are 80×60 inside 96×76 grid cells — 16px gap on each axis
+  // keeps them visually separated on the floor plan.
   const created = await queryOne<OfficeZoneRow>(
     `INSERT INTO office_zones
        (office_id, name, zone_type, capacity, x, y, width, height,
