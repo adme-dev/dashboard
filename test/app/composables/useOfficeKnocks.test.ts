@@ -87,3 +87,60 @@ describe('useOfficeKnocks', () => {
     expect(k.incomingKnock.value).not.toBeNull()
   })
 })
+
+describe('sendPersonKnock', () => {
+  it('emits knock:request-person with a fresh knockId', () => {
+    const sent: any[] = []
+    const knocks = useOfficeKnocks({ send: (m) => sent.push(m) })
+
+    knocks.sendPersonKnock('user:target' as any)
+
+    expect(sent).toHaveLength(1)
+    expect(sent[0].type).toBe('knock:request-person')
+    expect(sent[0].targetHandle).toBe('user:target')
+    expect(typeof sent[0].knockId).toBe('string')
+    expect(sent[0].knockId.length).toBeGreaterThan(0)
+    expect(knocks.pendingKnock.value?.knockId).toBe(sent[0].knockId)
+  })
+
+  it('cancelKnock works for a person knock', () => {
+    const sent: any[] = []
+    const knocks = useOfficeKnocks({ send: (m) => sent.push(m) })
+
+    knocks.sendPersonKnock('user:target' as any)
+    sent.length = 0
+    knocks.cancelKnock()
+
+    expect(sent[0].type).toBe('knock:cancel')
+    expect(knocks.pendingKnock.value).toBeNull()
+  })
+})
+
+describe('onResult — new statuses from 1c.0', () => {
+  it('clears pending and returns offline status', () => {
+    const knocks = useOfficeKnocks({ send: () => {} })
+    knocks.sendPersonKnock('user:target' as any)
+    const pendingId = knocks.pendingKnock.value!.knockId
+
+    const res = knocks.onResult({ knockId: pendingId, status: 'offline' } as any)
+
+    expect(res.status).toBe('offline')
+    expect(knocks.pendingKnock.value).toBeNull()
+  })
+
+  it('returns open-room with targetZoneId', () => {
+    const knocks = useOfficeKnocks({ send: () => {} })
+    knocks.sendPersonKnock('user:target' as any)
+    const pendingId = knocks.pendingKnock.value!.knockId
+
+    const res = knocks.onResult({
+      knockId: pendingId,
+      status: 'open-room',
+      targetZoneId: 'meeting-1',
+    } as any)
+
+    expect(res.status).toBe('open-room')
+    expect(res.targetZoneId).toBe('meeting-1')
+    expect(knocks.pendingKnock.value).toBeNull()
+  })
+})

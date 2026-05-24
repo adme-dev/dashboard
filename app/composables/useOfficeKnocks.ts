@@ -19,6 +19,7 @@ import type {
 interface SendFn {
   (msg:
     | { type: 'knock:request'; knockId: KnockId; targetZoneId: string }
+    | { type: 'knock:request-person'; knockId: KnockId; targetHandle: ActorHandle }
     | { type: 'knock:accept'; knockId: KnockId }
     | { type: 'knock:deny'; knockId: KnockId }
     | { type: 'knock:cancel'; knockId: KnockId }
@@ -26,10 +27,12 @@ interface SendFn {
 }
 
 export interface PendingKnock {
-  targetZoneId: string
+  targetZoneId?: string
+  targetHandle?: ActorHandle
   /** Client-generated UUID, minted synchronously in sendKnock before the WS message is sent. */
   knockId: KnockId
   status: 'awaiting'
+  kind: 'zone' | 'person'
 }
 
 export interface IncomingKnock {
@@ -45,6 +48,7 @@ export interface UseOfficeKnocks {
   pendingKnock: Ref<PendingKnock | null>
   incomingKnock: Ref<IncomingKnock | null>
   sendKnock(targetZoneId: string): void
+  sendPersonKnock(targetHandle: ActorHandle): void
   acceptKnock(): void
   denyKnock(): void
   cancelKnock(): void
@@ -67,8 +71,15 @@ export function useOfficeKnocks(opts: { send: SendFn }): UseOfficeKnocks {
   function sendKnock(targetZoneId: string) {
     if (pendingKnock.value) return  // only one pending knock at a time
     const knockId = crypto.randomUUID() as KnockId
-    pendingKnock.value = { targetZoneId, knockId, status: 'awaiting' }
+    pendingKnock.value = { targetZoneId, knockId, status: 'awaiting', kind: 'zone' }
     opts.send({ type: 'knock:request', knockId, targetZoneId })
+  }
+
+  function sendPersonKnock(targetHandle: ActorHandle) {
+    if (pendingKnock.value) return  // only one pending knock at a time
+    const knockId = crypto.randomUUID() as KnockId
+    pendingKnock.value = { targetHandle, knockId, status: 'awaiting', kind: 'person' }
+    opts.send({ type: 'knock:request-person', knockId, targetHandle })
   }
 
   function acceptKnock() {
@@ -97,9 +108,11 @@ export function useOfficeKnocks(opts: { send: SendFn }): UseOfficeKnocks {
   }
 
   function onResult(msg: Omit<KnockResultMessage, 'type'>): { status: KnockResultStatus; media?: MediaCredentials; targetZoneId?: string } {
-    const targetZoneId = pendingKnock.value?.targetZoneId
+    // For zone knocks: targetZoneId lives in pendingKnock.
+    // For open-room results (including person knocks): targetZoneId is in the message.
+    const pendingTargetZoneId = pendingKnock.value?.targetZoneId
     pendingKnock.value = null
-    return { status: msg.status, media: msg.media, targetZoneId }
+    return { status: msg.status, media: msg.media, targetZoneId: msg.targetZoneId ?? pendingTargetZoneId }
   }
 
   function onCancelled(msg: Omit<KnockCancelledMessage, 'type'>) {
@@ -114,6 +127,7 @@ export function useOfficeKnocks(opts: { send: SendFn }): UseOfficeKnocks {
     pendingKnock,
     incomingKnock,
     sendKnock,
+    sendPersonKnock,
     acceptKnock,
     denyKnock,
     cancelKnock,
