@@ -195,7 +195,7 @@ export interface KnockCancelInput {
 
 export function applyKnockCancel(
   input: KnockCancelInput,
-): KnockHandlerResult<Record<string, never>> {
+): KnockHandlerResult<object> {
   const entry = input.state.byId.get(input.knockId)
   if (!entry) return { kind: 'error', reason: 'not-found' }
   if (entry.knockerWsId !== input.cancellerWsId) {

@@ -7,12 +7,14 @@ import type {
   ZoneJoinFailReason,
   KnockResultStatus,
   KnockRequestMessage,
+  KnockRequestPersonMessage,
   KnockIncomingMessage,
   KnockAcceptMessage,
   KnockDenyMessage,
   KnockCancelMessage,
   KnockResultMessage,
   KnockCancelledMessage,
+  OfficeZoneRow,
 } from '../../../app/types/office'
 
 // =============================================================================
@@ -25,6 +27,7 @@ export type InboundMessage
     | { type: 'zone:enter', zoneId: string, preferredPreset?: ZonePresetName }
     | { type: 'zone:leave' }
     | KnockRequestMessage
+    | KnockRequestPersonMessage
     | KnockAcceptMessage
     | KnockDenyMessage
     | KnockCancelMessage
@@ -43,6 +46,8 @@ export type OutboundMessage
     | { type: 'zone:join-failed', zoneId: string, reason: ZoneJoinFailReason, message?: string }
     | { type: 'zone:token-refreshed', zoneId: string, media: MediaCredentials }
     | { type: 'zone:taken-over' } // sent to older tab when newer tab takes the zone
+    | { type: 'zone:created', zone: OfficeZoneRow }
+    | { type: 'zone:deleted', zoneId: string }
     | { type: 'error', message: string }
     | KnockIncomingMessage
     | KnockResultMessage

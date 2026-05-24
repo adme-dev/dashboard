@@ -5,8 +5,10 @@ import type {
   OfficeParticipant,
   OfficeSnapshot,
   OfficeStatus,
+  OfficeZoneRow,
   ZoneJoinFailReason,
   ZonePresetName,
+  ZoneType,
 } from '../../../app/types/office'
 import type { InboundMessage, OutboundMessage } from './types'
 import {
@@ -14,6 +16,7 @@ import {
   applyKnockCancel,
   applyKnockDeny,
   applyKnockRequest,
+  applyKnockRequestPerson,
   applyKnockTimeout,
   applyStatusSet,
   applyZoneEnter,
@@ -77,7 +80,7 @@ export class OfficeRoom extends DurableObject<Env> {
   private wsToHandle = new WeakMap<WebSocket, ActorHandle>()
 
   // Lazy-populated zone metadata cache (capacity + CF meeting id + zone type per zone)
-  private zoneMeta: Map<string, { capacity: number, cfMeetingId: string | null, cfPresetDefault: string, zoneType: string }> | null = null
+  private zoneMeta: Map<string, { capacity: number, cfMeetingId: string | null, cfPresetDefault: string, zoneType: string, isEphemeral: boolean }> | null = null
 
   // Per-zone async mutex to serialise zone:enter critical sections (Bug 2)
   private zoneEnterLocks = new Map<string, Promise<unknown>>()
@@ -262,6 +265,15 @@ export class OfficeRoom extends DurableObject<Env> {
       }
     }
 
+    // Adhoc fallback sweep: any ephemeral zone with 0 occupants in our cache.
+    if (this.zoneMeta) {
+      for (const [zoneId, meta] of this.zoneMeta) {
+        if (meta.isEphemeral && this.zoneOccupancyCount(zoneId) === 0) {
+          await this.deleteAdhocZone(zoneId)
+        }
+      }
+    }
+
     await this.scheduleNextAlarm()
   }
 
@@ -424,6 +436,7 @@ export class OfficeRoom extends DurableObject<Env> {
         return
       }
       case 'zone:leave': {
+        const leftZoneId = p.currentZoneId
         p.cfParticipantId = null
         p.cfMeetingId = null
         p.presetName = null
@@ -436,6 +449,13 @@ export class OfficeRoom extends DurableObject<Env> {
         this.releaseAcceptedKnockSlotsForHandle(handle)
         const { broadcast } = applyZoneLeave(p, now)
         this.broadcast(broadcast)
+        // Ad-hoc auto-cleanup: if this was the last person in an ephemeral zone, delete it.
+        if (leftZoneId) {
+          const meta = this.zoneMeta?.get(leftZoneId)
+          if (meta?.isEphemeral && this.zoneOccupancyCount(leftZoneId) === 0) {
+            this.ctx.waitUntil(this.deleteAdhocZone(leftZoneId))
+          }
+        }
         await this.scheduleNextAlarm()
         return
       }
@@ -667,6 +687,41 @@ export class OfficeRoom extends DurableObject<Env> {
         }
         return
       }
+
+      case 'knock:request-person': {
+        const zoneByOccupant = this.buildZoneByOccupant()
+        const result = applyKnockRequestPerson(
+          { zoneByOccupant },
+          msg,
+          p.handle,
+        )
+
+        if (result.kind === 'result') {
+          this.sendTo(ws, result.result as any)
+          return
+        }
+
+        if (result.kind === 'delegate-zone-knock') {
+          // Re-enter the zone-knock flow as if the user had sent knock:request directly.
+          return this.handleKnockRequestInline(
+            { type: 'knock:request', knockId: result.knockId as any, targetZoneId: result.targetZoneId },
+            p.handle,
+            ws,
+            now,
+          )
+        }
+
+        if (result.kind === 'adhoc-create') {
+          const adhoc = await this.createAdhocZone(result.anchorZoneId)
+          return this.handleKnockRequestInline(
+            { type: 'knock:request', knockId: result.knockId as any, targetZoneId: adhoc.id },
+            p.handle,
+            ws,
+            now,
+          )
+        }
+        return
+      }
     }
   }
 
@@ -736,19 +791,29 @@ export class OfficeRoom extends DurableObject<Env> {
   }
 
   private removeParticipant(handle: ActorHandle): void {
+    const p = this.participants.get(handle)
+    const evictedZoneId = p?.currentZoneId ?? null
     if (!this.participants.delete(handle)) return
     // Phase 1c.1: defensive cleanup — should already have happened on
     // handleDisconnect, but if a participant was force-evicted while still
     // holding a knock-bypass slot, release it now.
     this.cleanupKnocksForHandle(handle)
     this.broadcast({ type: 'participant:left', handle })
+    // Ad-hoc auto-cleanup: if the evicted participant was the last occupant of
+    // an ephemeral zone, delete it (alarm sweep also catches this, but sooner is better).
+    if (evictedZoneId) {
+      const meta = this.zoneMeta?.get(evictedZoneId)
+      if (meta?.isEphemeral && this.zoneOccupancyCount(evictedZoneId) === 0) {
+        void this.ctx.waitUntil(this.deleteAdhocZone(evictedZoneId))
+      }
+    }
     // Re-evaluate alarm — that participant's refresh and grace slots are gone
     void this.ctx.waitUntil(this.scheduleNextAlarm())
   }
 
   // ---------- Zone metadata helpers ------------------------------------------
 
-  private async loadZoneMeta(): Promise<Map<string, { capacity: number, cfMeetingId: string | null, cfPresetDefault: string, zoneType: string }> | null> {
+  private async loadZoneMeta(): Promise<Map<string, { capacity: number, cfMeetingId: string | null, cfPresetDefault: string, zoneType: string, isEphemeral: boolean }> | null> {
     if (this.zoneMeta) return this.zoneMeta
     const env = this.env
     if (!env.SYNC_BASE_URL || !env.OFFICE_SYNC_SECRET) return null
@@ -760,7 +825,7 @@ export class OfficeRoom extends DurableObject<Env> {
       })
       if (!res.ok) return null
       const { zones } = (await res.json()) as { zones: { id: string, capacity: number, cf_meeting_id: string | null, cf_preset_default: string, zone_type: string }[] }
-      const m = new Map(zones.map(z => [z.id, { capacity: z.capacity, cfMeetingId: z.cf_meeting_id, cfPresetDefault: z.cf_preset_default, zoneType: z.zone_type }]))
+      const m = new Map(zones.map(z => [z.id, { capacity: z.capacity, cfMeetingId: z.cf_meeting_id, cfPresetDefault: z.cf_preset_default, zoneType: z.zone_type, isEphemeral: z.zone_type === 'adhoc' }]))
       this.zoneMeta = m
       return m
     } catch {
@@ -1051,6 +1116,135 @@ export class OfficeRoom extends DurableObject<Env> {
         })
       }
     }
+  }
+
+  // ---------- Phase 1c.0 helpers — knock-person + ad-hoc lifecycle -----------
+
+  private buildZoneByOccupant(): Map<ActorHandle, { id: string; zone_type: ZoneType }> {
+    const out = new Map<ActorHandle, { id: string; zone_type: ZoneType }>()
+    for (const [, p] of this.participants) {
+      if (!p.currentZoneId || p.disconnectedAt !== null) continue
+      const meta = this.zoneMeta?.get(p.currentZoneId)
+      if (!meta) continue
+      out.set(p.handle, { id: p.currentZoneId, zone_type: meta.zoneType as ZoneType })
+    }
+    return out
+  }
+
+  private async createAdhocZone(anchorZoneId: string): Promise<{ id: string } & Record<string, unknown>> {
+    const env = this.env
+    if (!env.SYNC_BASE_URL || !env.OFFICE_SYNC_SECRET) {
+      throw new Error('createAdhocZone: missing SYNC_BASE_URL or OFFICE_SYNC_SECRET')
+    }
+    const res = await fetch(`${env.SYNC_BASE_URL}/api/office/_internal/zones/create`, {
+      method: 'POST',
+      headers: {
+        'x-office-sync-secret': env.OFFICE_SYNC_SECRET,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        officeId: this.officeId,
+        anchorZoneId,
+        zoneType: 'adhoc',
+      }),
+    })
+    if (!res.ok) {
+      throw new Error(`createAdhocZone failed: ${res.status} ${await res.text()}`)
+    }
+    const { zone } = await res.json() as { zone: OfficeZoneRow }
+
+    if (!this.zoneMeta) this.zoneMeta = new Map()
+    this.zoneMeta.set(zone.id, {
+      capacity: zone.capacity,
+      cfMeetingId: null,
+      cfPresetDefault: 'staff_full',
+      zoneType: zone.zone_type,
+      isEphemeral: true,
+    })
+
+    this.broadcast({ type: 'zone:created', zone })
+
+    return zone as unknown as { id: string } & Record<string, unknown>
+  }
+
+  private async deleteAdhocZone(zoneId: string): Promise<void> {
+    const env = this.env
+    if (!env.SYNC_BASE_URL || !env.OFFICE_SYNC_SECRET) return
+    const res = await fetch(`${env.SYNC_BASE_URL}/api/office/_internal/zones/${zoneId}`, {
+      method: 'DELETE',
+      headers: { 'x-office-sync-secret': env.OFFICE_SYNC_SECRET },
+    })
+    if (!res.ok) {
+      console.error('[office-room] deleteAdhocZone failed', zoneId, res.status)
+      return
+    }
+    this.zoneMeta?.delete(zoneId)
+    this.broadcast({ type: 'zone:deleted', zoneId })
+  }
+
+  /**
+   * Extracted zone-knock logic so knock:request-person can re-enter it for a
+   * specific zoneId (either existing or freshly created ad-hoc). Mirrors the
+   * inline knock:request case exactly — same validation path, same dispatch.
+   */
+  private async handleKnockRequestInline(
+    msg: { type: 'knock:request'; knockId: string; targetZoneId: string },
+    knockerHandle: ActorHandle,
+    ws: WebSocket,
+    now: number,
+  ): Promise<void> {
+    const targetZoneId = msg.targetZoneId
+    const meta = await this.loadZoneMeta()
+    const zoneMeta = meta?.get(targetZoneId)
+    if (!zoneMeta || (zoneMeta.zoneType !== 'focus' && zoneMeta.zoneType !== 'private' && zoneMeta.zoneType !== 'adhoc')) {
+      this.sendTo(ws, { type: 'knock:result', knockId: msg.knockId as any, status: 'not-knockable' })
+      return
+    }
+    let knockeeHandle: ActorHandle | null = null
+    for (const candidate of this.participants.values()) {
+      if (candidate.currentZoneId === targetZoneId && candidate.disconnectedAt === null) {
+        knockeeHandle = candidate.handle
+        break
+      }
+    }
+    if (!knockeeHandle) {
+      this.sendTo(ws, { type: 'knock:result', knockId: msg.knockId as any, status: 'no-occupant' })
+      return
+    }
+    const knockeeSockets = this.socketsForHandle(knockeeHandle)
+    if (knockeeSockets.length === 0) {
+      this.sendTo(ws, { type: 'knock:result', knockId: msg.knockId as any, status: 'no-occupant' })
+      return
+    }
+    const p = this.participants.get(knockerHandle)
+    if (!p) return
+    if (p.currentZoneId === targetZoneId) {
+      this.sendTo(ws, { type: 'knock:result', knockId: msg.knockId as any, status: 'self-knock' })
+      return
+    }
+    if (this.knockState.acceptedByZone.has(targetZoneId)) {
+      this.sendTo(ws, { type: 'knock:result', knockId: msg.knockId as any, status: 'busy' })
+      return
+    }
+    const result = applyKnockRequest({
+      state: this.knockState,
+      knockId: msg.knockId,
+      knockerHandle: p.handle,
+      knockerName: p.name,
+      knockerWsId: this.wsId(ws),
+      knockeeHandle,
+      knockeeWsId: this.wsId(knockeeSockets[0]!),
+      zoneId: targetZoneId,
+      now,
+      ttlMs: this.KNOCK_TTL_MS,
+    })
+    if (result.kind !== 'ok') {
+      this.sendTo(ws, { type: 'knock:result', knockId: msg.knockId as any, status: 'not-knockable' })
+      return
+    }
+    this.sendToHandle(knockeeHandle, result.toKnockee)
+    const timer = setTimeout(() => this.fireKnockTimeout(msg.knockId), this.KNOCK_TTL_MS)
+    this.knockTimeouts.set(msg.knockId, timer)
   }
 
   // ---------- Chat-presence write-through (fired via waitUntil) -------------
