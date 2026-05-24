@@ -7,6 +7,7 @@
 import { z } from 'zod'
 import { queryOne } from '~~/server/utils/db'
 import { requireOfficeAdmin } from '~~/server/utils/officeRoom'
+import { allocateDesk } from '~~/server/utils/office/allocateDesk'
 
 const Body = z
   .object({
@@ -30,5 +31,16 @@ export default defineEventHandler(async (event) => {
      RETURNING id`,
     [officeId, body.user_id ?? null, body.client_user_id ?? null, body.role]
   )
+
+  // Allocate a desk zone for staff members (not client users).
+  // Non-fatal: the GET endpoint's lazy backfill will recover any missed desks.
+  if (body.user_id) {
+    try {
+      await allocateDesk(officeId, body.user_id)
+    } catch (err) {
+      console.error('[office] allocateDesk failed for member add', { officeId, userId: body.user_id, err })
+    }
+  }
+
   return { id: row?.id ?? null }
 })
