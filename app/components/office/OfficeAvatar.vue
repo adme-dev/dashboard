@@ -5,6 +5,12 @@ const props = defineProps<{
   participant: OfficeParticipant
   size?: number
   showLabel?: boolean
+  isSelf?: boolean
+  isOffline?: boolean
+}>()
+
+const emit = defineEmits<{
+  click: [participant: OfficeParticipant]
 }>()
 
 const statusColors: Record<OfficeStatus, string> = {
@@ -31,29 +37,40 @@ const initials = computed(() =>
     .toUpperCase()
 )
 const firstName = computed(() => props.participant.name.split(/\s+/)[0] ?? '')
-const tooltipText = computed(
-  () => `${props.participant.name} — ${statusLabels[props.participant.status]}`
+const tooltipText = computed(() => {
+  if (props.isOffline) return `${props.participant.name} — Offline`
+  return `${props.participant.name} — ${statusLabels[props.participant.status]}`
+})
+const selfRing = computed(() =>
+  props.isSelf ? 'ring-2 ring-violet-400 ring-offset-2 ring-offset-[#0a0b0e]' : ''
 )
 </script>
 
 <template>
-  <div class="inline-flex flex-col items-center gap-1">
+  <div
+    class="inline-flex flex-col items-center gap-1"
+    @click="emit('click', participant)"
+  >
     <UTooltip :text="tooltipText" :delay-duration="120">
       <div
         class="relative inline-block transition-transform duration-150 hover:scale-[1.08] cursor-pointer"
+        :class="{ 'opacity-40 grayscale': isOffline }"
         :style="{ width: `${sz}px`, height: `${sz}px` }"
       >
         <UAvatar
           :src="participant.avatarUrl || undefined"
           :alt="participant.name"
           :size="sz <= 24 ? 'xs' : sz <= 32 ? 'sm' : 'md'"
-          :ui="participant.isGuest
-            ? { root: 'ring-2 ring-orange-400 ring-offset-2 ring-offset-[#0a0b0e]' }
-            : { root: 'ring-1 ring-white/15' }"
+          :ui="isSelf
+            ? { root: selfRing }
+            : participant.isGuest
+              ? { root: 'ring-2 ring-orange-400 ring-offset-2 ring-offset-[#0a0b0e]' }
+              : { root: 'ring-1 ring-white/15' }"
         >
           <span v-if="!participant.avatarUrl" class="text-white/80">{{ initials }}</span>
         </UAvatar>
         <span
+          v-if="!isOffline"
           class="absolute bottom-0 right-0 block rounded-full ring-2 ring-[#16181d]"
           :class="statusColors[participant.status]"
           :style="{
