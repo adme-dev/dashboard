@@ -712,7 +712,18 @@ export class OfficeRoom extends DurableObject<Env> {
         }
 
         if (result.kind === 'adhoc-create') {
-          const adhoc = await this.createAdhocZone(result.anchorZoneId)
+          let adhoc: { id: string; [k: string]: unknown }
+          try {
+            adhoc = await this.createAdhocZone(result.anchorZoneId)
+          } catch (err) {
+            console.error('[office-room] createAdhocZone failed for knock-person', err)
+            this.sendToHandle(p.handle, {
+              type: 'knock:result',
+              knockId: result.knockId as any,
+              status: 'not-knockable',
+            } as any)
+            return
+          }
           return this.handleKnockRequestInline(
             { type: 'knock:request', knockId: result.knockId as any, targetZoneId: adhoc.id },
             p.handle,

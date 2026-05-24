@@ -445,7 +445,7 @@ export async function allocateDesk(
 
   // Look up the user's display name for the desk label
   const user = await queryOne<{ name: string }>(
-    `SELECT name FROM users WHERE id = $1`,
+    `SELECT name FROM team_members WHERE id = $1`,
     [userId],
   )
   const label = user?.name ? `${user.name}'s desk` : 'Desk'
@@ -521,9 +521,13 @@ Run `pnpm dev` and either via the existing admin UI/API or via direct `curl` wit
 
 ```bash
 export DATABASE_URL=$(grep '^DATABASE_URL=' .env | cut -d= -f2-)
-psql "$DATABASE_URL" -c "SELECT id, name, zone_type, x, y, assigned_user_id
+psql "$DATABASE_URL" -c "SELECT id, name, zone_type,
+                                  (position->>'x')::int AS x,
+                                  (position->>'y')::int AS y,
+                                  assigned_user_id
                           FROM office_zones
-                          WHERE zone_type = 'desk' ORDER BY y, x"
+                          WHERE zone_type = 'desk'
+                          ORDER BY (position->>'y')::int, (position->>'x')::int"
 ```
 
 Expected: a new row with `zone_type='desk'` and `assigned_user_id` matching the user you added.
@@ -572,7 +576,7 @@ const members = await queryRows<{
       dz.id AS "deskZoneId",
       ucs.last_seen_at AS "lastSeenAt"
     FROM office_members om
-    JOIN users u ON u.id = om.user_id
+    JOIN team_members u ON u.id = om.user_id
     LEFT JOIN office_zones dz
       ON dz.office_id = om.office_id
      AND dz.zone_type = 'desk'
@@ -675,23 +679,34 @@ export default defineEventHandler(async (event) => {
   }
   const body = Body.parse(await readBody(event))
 
-  // Look up anchor desk position to place the adhoc just above it
+  // Look up anchor desk position to place the adhoc just above it.
+  // office_zones uses `position jsonb` shape `{x,y,w,h}` — not flat cols.
   const anchor = await queryOne<{ x: number; y: number; office_id: string }>(
-    `SELECT x, y, office_id FROM office_zones WHERE id = $1`,
+    `SELECT (position->>'x')::int AS x,
+            (position->>'y')::int AS y,
+            office_id
+       FROM office_zones WHERE id = $1`,
     [body.anchorZoneId],
   )
   if (!anchor || anchor.office_id !== body.officeId) {
     throw createError({ statusCode: 400, statusMessage: 'Invalid anchor zone' })
   }
 
+  // Slug must be unique within the office; use the random adhoc UUID later
+  // — we can't know it in advance, so derive a slug from the anchor + timestamp.
+  const slug = `adhoc-${body.anchorZoneId.slice(0, 8)}-${Date.now()}`
+  const position = { x: anchor.x, y: anchor.y - 80, w: 120, h: 80 }
+
+  // cf_preset_default is NOT NULL with default 'staff_full' — leave it to the
+  // default (which is what we want for adhoc rooms anyway: audio + video).
   const adhoc = await queryOne<OfficeZoneRow>(
     `INSERT INTO office_zones
-       (office_id, name, zone_type, capacity, x, y, width, height,
-        is_ephemeral, anchor_zone_id, cf_preset_default)
-     VALUES ($1, '', 'adhoc', $2, $3, $4, 120, 80, TRUE, $5, $6)
+       (office_id, slug, name, zone_type, capacity, position,
+        is_ephemeral, anchor_zone_id)
+     VALUES ($1, $2, '', 'adhoc', $3, $4::jsonb, TRUE, $5)
      RETURNING *`,
-    [body.officeId, body.capacity, anchor.x, anchor.y - 80,
-     body.anchorZoneId, body.cfPresetDefault],
+    [body.officeId, slug, body.capacity, JSON.stringify(position),
+     body.anchorZoneId],
   )
   if (!adhoc) throw createError({ statusCode: 500, statusMessage: 'Insert failed' })
   return { zone: adhoc }
@@ -729,7 +744,7 @@ export default defineEventHandler(async (event) => {
 SECRET=$(grep '^OFFICE_SYNC_SECRET=' .env | cut -d= -f2-)
 # Replace OFFICE_ID + ANCHOR_ID with real UUIDs from your dev office
 curl -sS -X POST http://localhost:3000/api/office/_internal/zones/create \
-  -H "x-office-sync: $SECRET" \
+  -H "x-office-sync-secret: $SECRET" \
   -H 'Content-Type: application/json' \
   -d '{"officeId":"<office-uuid>","anchorZoneId":"<desk-uuid>","zoneType":"adhoc"}'
 ```
@@ -740,7 +755,7 @@ Then delete it:
 
 ```bash
 curl -sS -X DELETE http://localhost:3000/api/office/_internal/zones/<adhoc-id> \
-  -H "x-office-sync: $SECRET"
+  -H "x-office-sync-secret: $SECRET"
 ```
 
 Expected: `{ "deleted": 1 }`.
@@ -1033,7 +1048,7 @@ private async createAdhocZone(anchorZoneId: string): Promise<{ id: string }> {
   const res = await fetch(`${this.env.PAGES_ORIGIN}/api/office/_internal/zones/create`, {
     method: 'POST',
     headers: {
-      'x-office-sync': this.env.OFFICE_SYNC_SECRET,
+      'x-office-sync-secret': this.env.OFFICE_SYNC_SECRET,
       'content-type': 'application/json',
     },
     body: JSON.stringify({
@@ -1083,7 +1098,7 @@ And the helper:
 private async deleteAdhocZone(zoneId: string): Promise<void> {
   const res = await fetch(`${this.env.PAGES_ORIGIN}/api/office/_internal/zones/${zoneId}`, {
     method: 'DELETE',
-    headers: { 'x-office-sync': this.env.OFFICE_SYNC_SECRET },
+    headers: { 'x-office-sync-secret': this.env.OFFICE_SYNC_SECRET },
   })
   if (!res.ok) {
     console.error('[office-room] deleteAdhocZone failed', zoneId, res.status)
@@ -1410,7 +1425,7 @@ Inside the floor surface, after the existing zone loop, add:
   v-for="desk in deskZones"
   :key="desk.id"
   class="absolute"
-  :style="{ left: desk.x + 'px', top: desk.y + 'px', width: desk.width + 'px', height: desk.height + 'px' }"
+  :style="{ left: desk.position.x + 'px', top: desk.position.y + 'px', width: desk.position.w + 'px', height: desk.position.h + 'px' }"
 >
   <OfficeAvatar
     v-if="avatarForDesk(desk.id)"
@@ -1436,7 +1451,7 @@ Inside the floor surface, after the existing zone loop, add:
   class="absolute rounded-full backdrop-blur-md bg-white/[0.08] ring-1 ring-emerald-400/30
          shadow-[0_0_20px_rgba(52,211,153,0.25)] flex items-center justify-center gap-1
          cursor-pointer hover:bg-white/[0.12] transition"
-  :style="{ left: adhoc.x + 'px', top: adhoc.y + 'px', width: adhoc.width + 'px', height: adhoc.height + 'px' }"
+  :style="{ left: adhoc.position.x + 'px', top: adhoc.position.y + 'px', width: adhoc.position.w + 'px', height: adhoc.position.h + 'px' }"
   @click="onAdhocClick(adhoc)"
 >
   <OfficeAvatar
