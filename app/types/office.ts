@@ -15,7 +15,7 @@ export interface ActorRef {
 
 // Postgres row types (mirror migrations 097/098)
 
-export type ZoneType = 'lobby' | 'meeting' | 'focus' | 'theater' | 'client_lounge'
+export type ZoneType = 'lobby' | 'meeting' | 'focus' | 'theater' | 'client_lounge' | 'desk' | 'adhoc'
 
 export interface OfficeRow {
   id: string
@@ -47,6 +47,10 @@ export interface OfficeZoneRow {
   notes_updated_at: string | null
   notes_updated_by: string | null
   created_at: string
+  // migration 101 — desk assignment + ad-hoc/ephemeral zone support
+  assigned_user_id: string | null
+  is_ephemeral: boolean
+  anchor_zone_id: string | null
 }
 
 export interface ZonePosition {
@@ -63,6 +67,17 @@ export interface ZoneAcl {
 }
 
 export type OfficeMemberRole = 'admin' | 'member' | 'guest'
+
+// Staff member view — used by the desk map and offline member list.
+// userId maps to team_members.id (UUID).
+export interface OfficeMember {
+  userId: string
+  name: string
+  avatarUrl: string | null
+  role: string
+  deskZoneId: string | null
+  lastSeenAt: string | null
+}
 
 export interface OfficeMemberRow {
   id: string
@@ -134,12 +149,21 @@ export type KnockResultStatus =
   | 'busy'
   | 'not-knockable'
   | 'self-knock'
+  | 'offline'   // target user is not connected to the office
+  | 'open-room' // target zone has no access restriction; knocker can join directly
 
 /** Client → server: knocker initiates a knock on a focus/private zone. */
 export interface KnockRequestMessage {
   type: 'knock:request'
   knockId: KnockId
   targetZoneId: string
+}
+
+/** Client → server: knocker initiates a knock on a specific person (desk or wherever they are). */
+export interface KnockRequestPersonMessage {
+  type: 'knock:request-person'
+  knockId: KnockId
+  targetHandle: ActorHandle
 }
 
 /** Server → knockee: knockee's client should open the accept/deny modal. */
@@ -177,11 +201,13 @@ export interface KnockResultMessage {
   knockId: KnockId
   status: KnockResultStatus
   /**
-   * Present only when status === 'accepted'. Full MediaCredentials so the
-   * client can call useOfficeRealtime.connect(creds) directly — same shape
-   * used by zone:joined.
+   * Present when status === 'accepted' or 'open-room'. Full MediaCredentials
+   * so the client can call useOfficeRealtime.connect(creds) directly — same
+   * shape used by zone:joined.
    */
   media?: MediaCredentials
+  /** Present when status === 'open-room'; tells the knocker which zone to join. */
+  targetZoneId?: string
 }
 
 /**
