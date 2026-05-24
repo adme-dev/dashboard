@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { OfficeRow, OfficeZoneRow, OfficeStatus } from '~~/app/types/office'
+import type { OfficeRow, OfficeZoneRow, OfficeStatus, OfficeMember, OfficeParticipant } from '~~/app/types/office'
 import type { InboundMessage } from '~~/workers/office-room/src/types'
 
 definePageMeta({ layout: 'agency' })
@@ -13,6 +13,7 @@ const selectedId = ref<string | null>(listData.value?.offices[0]?.id ?? null)
 const { data: detail } = await useFetch<{
   office: OfficeRow
   zones: OfficeZoneRow[]
+  members: OfficeMember[]
   myRole: string
 }>(() => (selectedId.value ? `/api/office/${selectedId.value}` : null), {
   watch: [selectedId]
@@ -70,6 +71,16 @@ const connection = useOfficeConnection({
         toast.add({ title: 'Not knockable', description: 'That room cannot be knocked.', color: 'error' })
       } else if (result.status === 'self-knock') {
         toast.add({ title: 'Already there', description: "You're already in that room.", color: 'info' })
+      } else if (result.status === 'offline') {
+        toast.add({
+          title: 'Offline',
+          description: "They're not in the office right now — try Slack.",
+          color: 'warning'
+        })
+      } else if (result.status === 'open-room') {
+        if (result.targetZoneId) {
+          connection.enterZone(result.targetZoneId)
+        }
       }
     } else if (msg.type === 'knock:cancelled') {
       // Server signals the knocker abandoned the knock; silently close the
@@ -113,6 +124,26 @@ function onConfirmKnock() {
     }],
   })
   // Dismiss the waiting toast early once the knock resolves (result or cancel).
+  const stopWatcher = watch(
+    () => knocks.pendingKnock.value,
+    (v) => {
+      if (!v) {
+        toast.remove(waitingToast.id)
+        stopWatcher()
+      }
+    },
+  )
+}
+
+function onKnockPersonClick(participant: OfficeParticipant) {
+  knocks.sendPersonKnock(participant.handle)
+  const waitingToast = toast.add({
+    title: `Knocking on ${participant.name}…`,
+    description: 'Waiting for response (30s)',
+    color: 'info',
+    duration: 30_000,
+    actions: [{ label: 'Cancel', onClick: () => knocks.cancelKnock() }],
+  })
   const stopWatcher = watch(
     () => knocks.pendingKnock.value,
     (v) => {
@@ -225,11 +256,13 @@ watch(
       <OfficeFloorPlan
         :office="detail.office"
         :zones="detail.zones"
+        :members="detail.members"
         :participants="connection.participants.value"
         :zone-occupancy="connection.zoneOccupancy.value"
         :current-user-zone-id="connection.currentZoneId.value"
         @enter-zone="enterZone"
         @knock="onKnockableClick"
+        @knock-person="onKnockPersonClick"
       />
 
       <OfficeRoomPanel
