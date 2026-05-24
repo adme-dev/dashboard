@@ -8,10 +8,12 @@ import {
   applyKnockDeny,
   applyKnockCancel,
   applyKnockTimeout,
+  applyKnockRequestPerson,
   type ParticipantLite,
   type KnockState,
   type KnockStateEntry,
 } from '../../../workers/office-room/src/handlers'
+import type { ZoneType } from '../../../app/types/office'
 
 const emptyKnockState = (): KnockState => ({
   byId: new Map(),
@@ -205,5 +207,97 @@ describe('applyKnockTimeout', () => {
     expect(out.kind).toBe('error')
     if (out.kind !== 'error') return
     expect(out.reason).toBe('not-found')
+  })
+})
+
+// =============================================================================
+// applyKnockRequestPerson tests — Phase 1c.0 Task 9
+// =============================================================================
+
+const makePersonState = (occupants: Array<{ handle: string; id: string; zone_type: ZoneType }>) => ({
+  zoneByOccupant: new Map(occupants.map(o => [o.handle, { id: o.id, zone_type: o.zone_type }])),
+})
+
+describe('applyKnockRequestPerson', () => {
+  const knocker = 'user:alice'
+  const target = 'user:bob'
+  const knockId = 'k-person-1'
+
+  const msg = (targetHandle: string) => ({
+    type: 'knock:request-person' as const,
+    knockId,
+    targetHandle,
+  })
+
+  it('1. offline — target not in zoneByOccupant → status offline', () => {
+    const state = makePersonState([])
+    const out = applyKnockRequestPerson(state, msg(target), knocker)
+    expect(out).toEqual({
+      kind: 'result',
+      result: { type: 'knock:result', knockId, status: 'offline' },
+    })
+  })
+
+  it('2. self-knock — knocker === target → status self-knock', () => {
+    const state = makePersonState([{ handle: knocker, id: 'zone-desk-1', zone_type: 'desk' }])
+    const out = applyKnockRequestPerson(state, msg(knocker), knocker)
+    expect(out).toEqual({
+      kind: 'result',
+      result: { type: 'knock:result', knockId, status: 'self-knock' },
+    })
+  })
+
+  it('3. open-room (meeting) — target in meeting zone → status open-room with targetZoneId', () => {
+    const state = makePersonState([{ handle: target, id: 'zone-meeting-1', zone_type: 'meeting' }])
+    const out = applyKnockRequestPerson(state, msg(target), knocker)
+    expect(out).toEqual({
+      kind: 'result',
+      result: { type: 'knock:result', knockId, status: 'open-room', targetZoneId: 'zone-meeting-1' },
+    })
+  })
+
+  it('4. open-room (lobby) — target in lobby zone → status open-room with targetZoneId', () => {
+    const state = makePersonState([{ handle: target, id: 'zone-lobby-1', zone_type: 'lobby' }])
+    const out = applyKnockRequestPerson(state, msg(target), knocker)
+    expect(out).toEqual({
+      kind: 'result',
+      result: { type: 'knock:result', knockId, status: 'open-room', targetZoneId: 'zone-lobby-1' },
+    })
+  })
+
+  it('5. adhoc-create (desk) — target at desk → kind adhoc-create with anchorZoneId', () => {
+    const state = makePersonState([{ handle: target, id: 'zone-desk-2', zone_type: 'desk' }])
+    const out = applyKnockRequestPerson(state, msg(target), knocker)
+    expect(out).toEqual({
+      kind: 'adhoc-create',
+      knockId,
+      knockerHandle: knocker,
+      targetHandle: target,
+      anchorZoneId: 'zone-desk-2',
+    })
+  })
+
+  it('6. delegate-zone-knock (focus) — target in focus zone → kind delegate-zone-knock', () => {
+    const state = makePersonState([{ handle: target, id: 'zone-focus-1', zone_type: 'focus' }])
+    const out = applyKnockRequestPerson(state, msg(target), knocker)
+    expect(out).toEqual({
+      kind: 'delegate-zone-knock',
+      knockId,
+      knockerHandle: knocker,
+      targetHandle: target,
+      targetZoneId: 'zone-focus-1',
+    })
+  })
+
+  it('7. delegate-zone-knock (adhoc) — target in adhoc zone → kind delegate-zone-knock', () => {
+    const state = makePersonState([{ handle: target, id: 'zone-adhoc-1', zone_type: 'adhoc' }])
+    const out = applyKnockRequestPerson(state, msg(target), knocker)
+    expect(out).toEqual({
+      kind: 'delegate-zone-knock',
+      knockId,
+      knockerHandle: knocker,
+      targetHandle: target,
+      targetZoneId: 'zone-adhoc-1',
+    })
   })
 })

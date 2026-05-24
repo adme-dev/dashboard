@@ -8,8 +8,10 @@ import type {
   ActorHandle,
   KnockIncomingMessage,
   KnockResultMessage,
+  KnockResultStatus,
   MediaCredentials,
   OfficeStatus,
+  ZoneType,
 } from '../../../app/types/office'
 import type { OutboundMessage } from './types'
 
@@ -224,5 +226,73 @@ export function applyKnockTimeout(
       status: 'timeout',
     },
     knockerWsId: entry.knockerWsId,
+  }
+}
+
+// =============================================================================
+// Phase 1c.0 — applyKnockRequestPerson
+// =============================================================================
+
+export type KnockPersonResult =
+  | {
+      kind: 'result'
+      result: { type: 'knock:result'; knockId: string; status: KnockResultStatus; targetZoneId?: string }
+    }
+  | {
+      kind: 'adhoc-create'
+      knockId: string
+      knockerHandle: ActorHandle
+      targetHandle: ActorHandle
+      anchorZoneId: string
+    }
+  | {
+      kind: 'delegate-zone-knock'
+      knockId: string
+      knockerHandle: ActorHandle
+      targetHandle: ActorHandle
+      targetZoneId: string
+    }
+
+export function applyKnockRequestPerson(
+  state: {
+    zoneByOccupant: Map<ActorHandle, { id: string; zone_type: ZoneType }>
+  },
+  msg: { type: 'knock:request-person'; knockId: string; targetHandle: ActorHandle },
+  knockerHandle: ActorHandle,
+): KnockPersonResult {
+  if (msg.targetHandle === knockerHandle) {
+    return { kind: 'result', result: { type: 'knock:result', knockId: msg.knockId, status: 'self-knock' } }
+  }
+
+  const targetZone = state.zoneByOccupant.get(msg.targetHandle)
+  if (!targetZone) {
+    return { kind: 'result', result: { type: 'knock:result', knockId: msg.knockId, status: 'offline' } }
+  }
+
+  switch (targetZone.zone_type) {
+    case 'lobby':
+    case 'meeting':
+      return {
+        kind: 'result',
+        result: { type: 'knock:result', knockId: msg.knockId, status: 'open-room', targetZoneId: targetZone.id },
+      }
+    case 'desk':
+      return {
+        kind: 'adhoc-create',
+        knockId: msg.knockId,
+        knockerHandle,
+        targetHandle: msg.targetHandle,
+        anchorZoneId: targetZone.id,
+      }
+    case 'focus':
+    case 'adhoc':
+    default:
+      return {
+        kind: 'delegate-zone-knock',
+        knockId: msg.knockId,
+        knockerHandle,
+        targetHandle: msg.targetHandle,
+        targetZoneId: targetZone.id,
+      }
   }
 }
