@@ -23,7 +23,7 @@ const {
   selectMic,
   selectCam,
   stop: stopMedia,
-} = useMediaDevices({ initialAudio: true, initialVideo: true })
+} = useMediaDevices({ initialAudio: true, initialVideo: false })
 
 const credsRef = computed(() => props.credentials)
 

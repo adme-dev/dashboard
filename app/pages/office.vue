@@ -233,6 +233,7 @@ watch(
       />
 
       <OfficeRoomPanel
+        v-if="roomPanelOpen"
         v-model:open="roomPanelOpen"
         :zone="currentZone"
         :credentials="connection.currentMediaCredentials.value"
