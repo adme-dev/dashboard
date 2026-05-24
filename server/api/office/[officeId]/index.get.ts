@@ -6,7 +6,8 @@
 
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne, queryRows } from '~~/server/utils/db'
-import type { OfficeRow, OfficeZoneRow, OfficeMemberRow } from '~~/app/types/office'
+import { allocateDesk } from '~~/server/utils/office/allocateDesk'
+import type { OfficeRow, OfficeZoneRow, OfficeMemberRow, OfficeMember } from '~~/app/types/office'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -36,15 +37,47 @@ export default defineEventHandler(async (event) => {
     [officeId]
   )
 
-  const members = await queryRows<
-    OfficeMemberRow & { name: string | null, avatar_url: string | null }
-  >(
-    `SELECT om.*, tm.name, tm.avatar_url
-     FROM office_members om
-     LEFT JOIN team_members tm ON tm.id = om.user_id
-     WHERE om.office_id = $1`,
+  const members = await queryRows<{
+    userId: string
+    name: string
+    avatarUrl: string | null
+    role: string
+    deskZoneId: string | null
+    lastSeenAt: string | null
+  }>(
+    `SELECT
+        u.id           AS "userId",
+        u.name,
+        u.avatar_url   AS "avatarUrl",
+        om.role,
+        dz.id          AS "deskZoneId",
+        ucs.last_seen_at AS "lastSeenAt"
+      FROM office_members om
+      JOIN team_members u ON u.id = om.user_id
+      LEFT JOIN office_zones dz
+        ON dz.office_id = om.office_id
+       AND dz.zone_type = 'desk'
+       AND dz.assigned_user_id = u.id
+      LEFT JOIN user_chat_status ucs ON ucs.user_id = u.id
+      WHERE om.office_id = $1
+        AND om.user_id IS NOT NULL`,
     [officeId]
   )
 
-  return { office, zones, members, myRole: membership.role }
+  // Lazy backfill: any staff member without a desk gets one allocated now.
+  // Idempotent — allocateDesk returns the existing row if one already exists.
+  const missing = members.filter(m => !m.deskZoneId)
+  if (missing.length > 0) {
+    for (const m of missing) {
+      try {
+        const desk = await allocateDesk(officeId, m.userId)
+        m.deskZoneId = desk.id
+        zones.push(desk)
+      } catch (err) {
+        console.error('[office] lazy desk backfill failed', { officeId, userId: m.userId, err })
+      }
+    }
+  }
+
+  return { office, zones, myRole: membership.role, members }
 })
