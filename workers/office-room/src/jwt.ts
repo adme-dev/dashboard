@@ -5,7 +5,7 @@
  * does not need to reach into Nuxt's server/ alias.
  */
 
-import type { ActorHandle, OfficeMemberRole } from '../../../app/types/office'
+import type { ActorHandle, OfficeMemberRole, OfficeZoneAccessPolicy, ZoneType } from '../../../app/types/office'
 
 export interface OfficeJwtClaims {
   handle: ActorHandle
@@ -14,9 +14,16 @@ export interface OfficeJwtClaims {
   role: OfficeMemberRole
   isGuest: boolean
   officeId: string
+  allowedZoneId?: string | null
+  guestBadgeId?: string | null
+  zoneCapacities?: Record<string, number>
+  zoneAccessPolicies?: Record<string, OfficeZoneAccessPolicy>
   /** Unix seconds */
   exp: number
 }
+
+const ROLES = new Set(['admin', 'member', 'guest'])
+const ZONE_TYPES = new Set<ZoneType>(['lobby', 'meeting', 'focus', 'theater', 'client_lounge', 'desk'])
 
 function base64UrlDecode(s: string): Uint8Array {
   const pad = '='.repeat((4 - (s.length % 4)) % 4)
@@ -35,6 +42,81 @@ async function importKey(secret: string): Promise<CryptoKey> {
     false,
     ['verify']
   )
+}
+
+function stringOrNull(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value : null
+}
+
+function parseZoneCapacities(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const capacities: Record<string, number> = {}
+  for (const [zoneId, rawCapacity] of Object.entries(value)) {
+    const capacity = Number(rawCapacity)
+    if (zoneId && Number.isFinite(capacity) && capacity > 0) {
+      capacities[zoneId] = Math.floor(capacity)
+    }
+  }
+  return capacities
+}
+
+function parseZoneAccessPolicies(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const policies: Record<string, OfficeZoneAccessPolicy> = {}
+  for (const [zoneId, rawPolicy] of Object.entries(value)) {
+    if (!zoneId || !rawPolicy || typeof rawPolicy !== 'object' || Array.isArray(rawPolicy)) continue
+    const policy = rawPolicy as Partial<OfficeZoneAccessPolicy>
+    if (typeof policy.zone_type !== 'string' || !ZONE_TYPES.has(policy.zone_type as ZoneType)) continue
+    if (typeof policy.is_private !== 'boolean') continue
+    const acl = policy.acl && typeof policy.acl === 'object' && !Array.isArray(policy.acl)
+      ? policy.acl
+      : {}
+    policies[zoneId] = {
+      zone_type: policy.zone_type as ZoneType,
+      is_private: policy.is_private,
+      acl: {
+        allowed_roles: Array.isArray(acl.allowed_roles)
+          ? acl.allowed_roles.filter((role): role is OfficeMemberRole => ROLES.has(role))
+          : undefined,
+        allowed_clients: Array.isArray(acl.allowed_clients)
+          ? acl.allowed_clients.filter((clientId): clientId is string => typeof clientId === 'string')
+          : undefined,
+        public_lobby: acl.public_lobby === true ? true : undefined
+      }
+    }
+  }
+  return policies
+}
+
+function validateClaims(value: unknown): OfficeJwtClaims | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const claims = value as Partial<OfficeJwtClaims>
+  if (typeof claims.handle !== 'string' || !/^(user|client):.+/.test(claims.handle)) return null
+  if (typeof claims.name !== 'string' || !claims.name.trim()) return null
+  if (typeof claims.officeId !== 'string' || !claims.officeId.trim()) return null
+  if (typeof claims.role !== 'string' || !ROLES.has(claims.role)) return null
+  if (typeof claims.isGuest !== 'boolean') return null
+  if (typeof claims.exp !== 'number' || claims.exp * 1000 < Date.now()) return null
+  if (claims.isGuest) {
+    if (claims.role !== 'guest') return null
+    if (!stringOrNull(claims.guestBadgeId) || !stringOrNull(claims.allowedZoneId)) return null
+  } else if (claims.role === 'guest') {
+    return null
+  }
+
+  return {
+    handle: claims.handle,
+    name: claims.name,
+    avatarUrl: stringOrNull(claims.avatarUrl),
+    role: claims.role,
+    isGuest: claims.isGuest,
+    officeId: claims.officeId,
+    allowedZoneId: stringOrNull(claims.allowedZoneId),
+    guestBadgeId: stringOrNull(claims.guestBadgeId),
+    zoneCapacities: parseZoneCapacities(claims.zoneCapacities),
+    zoneAccessPolicies: parseZoneAccessPolicies(claims.zoneAccessPolicies),
+    exp: claims.exp
+  }
 }
 
 export async function verifyOfficeJwt(
@@ -59,6 +141,5 @@ export async function verifyOfficeJwt(
   } catch {
     return null
   }
-  if (typeof claims.exp !== 'number' || claims.exp * 1000 < Date.now()) return null
-  return claims
+  return validateClaims(claims)
 }

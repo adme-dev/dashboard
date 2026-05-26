@@ -30,6 +30,23 @@ describe('officeJwt', () => {
     expect(verified?.role).toBe('member')
   })
 
+  it('preserves the optional allowed zone claim for guest room tokens', async () => {
+    const token = await signOfficeJwt(baseClaims({
+      handle: 'client:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+      role: 'guest',
+      isGuest: true,
+      allowedZoneId: 'zone-1',
+      guestBadgeId: 'badge-1',
+      zoneCapacities: { 'zone-1': 4 }
+    }), SECRET)
+
+    const verified = await verifyOfficeJwt(token, SECRET)
+
+    expect(verified?.allowedZoneId).toBe('zone-1')
+    expect(verified?.guestBadgeId).toBe('badge-1')
+    expect(verified?.zoneCapacities).toEqual({ 'zone-1': 4 })
+  })
+
   it('rejects a token signed with a different secret', async () => {
     const token = await signOfficeJwt(baseClaims(), SECRET)
     expect(await verifyOfficeJwt(token, 'other-secret')).toBeNull()

@@ -7,37 +7,47 @@
 import { z } from 'zod'
 import { execute, queryOne } from '~~/server/utils/db'
 import { requireOfficeAdmin } from '~~/server/utils/officeRoom'
+import { logOfficeAuditEvent } from '~~/server/utils/officeAudit'
+import { notifyOfficeZoneUpserted } from '~~/server/utils/officeRoomControl'
+import type { OfficeZoneRow } from '~~/app/types/office'
+import {
+  ZoneAclSchema,
+  ZoneCapacitySchema,
+  ZoneNameSchema,
+  ZonePositionSchema,
+  ZoneSlugSchema,
+  ZoneTypeSchema
+} from '~~/server/utils/officeZoneValidation'
 
 const Body = z.object({
-  slug: z.string().regex(/^[a-z0-9-]+$/).max(64),
-  name: z.string().min(1).max(120),
-  zone_type: z.enum(['lobby', 'meeting', 'focus', 'theater', 'client_lounge']),
-  position: z.object({
-    x: z.number(),
-    y: z.number(),
-    w: z.number().positive(),
-    h: z.number().positive()
-  }),
-  capacity: z.number().int().positive().default(20),
+  slug: ZoneSlugSchema,
+  name: ZoneNameSchema,
+  zone_type: ZoneTypeSchema,
+  position: ZonePositionSchema,
+  capacity: ZoneCapacitySchema.default(20),
   is_private: z.boolean().default(false),
-  acl: z
-    .object({
-      allowed_roles: z.array(z.string()).optional(),
-      allowed_clients: z.array(z.string().uuid()).optional(),
-      public_lobby: z.boolean().optional()
-    })
-    .default({})
+  acl: ZoneAclSchema.default({})
 })
 
 export default defineEventHandler(async (event) => {
   const officeId = getRouterParam(event, 'officeId')!
-  await requireOfficeAdmin(event, officeId)
+  const { user } = await requireOfficeAdmin(event, officeId)
   const body = Body.parse(await readBody(event))
 
-  const zone = await queryOne<{ id: string }>(
+  const existingZone = await queryOne<{ id: string }>(
+    `SELECT id
+     FROM office_zones
+     WHERE office_id = $1 AND slug = $2`,
+    [officeId, body.slug]
+  )
+  if (existingZone) {
+    throw createError({ statusCode: 409, statusMessage: 'Room slug already exists' })
+  }
+
+  const zone = await queryOne<OfficeZoneRow>(
     `INSERT INTO office_zones (office_id, slug, name, zone_type, position, capacity, is_private, acl)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     RETURNING id`,
+     RETURNING *`,
     [
       officeId,
       body.slug,
@@ -56,12 +66,35 @@ export default defineEventHandler(async (event) => {
 
   // Pre-create the chat channel for this zone (Phase 1c writes into it)
   await execute(
-    `INSERT INTO chat_channels (name, slug, type, external_id, created_by)
-     VALUES ($1, $2, 'office_zone', $3,
-       (SELECT id FROM team_members WHERE user_role = 'owner' ORDER BY created_at ASC LIMIT 1))
+    `INSERT INTO chat_channels (name, slug, description, type, is_private, external_id, created_by)
+     VALUES ($1, $2, $3, 'office_zone', true, $4, $5)
      ON CONFLICT DO NOTHING`,
-    [body.name, `office-${body.slug}`, zone.id]
+    [
+      body.name,
+      `office-zone-${zone.id}`,
+      `Persistent room thread for ${body.name}`,
+      zone.id,
+      user.id
+    ]
   )
+
+  await logOfficeAuditEvent({
+    officeId,
+    actorId: user.id,
+    action: 'zone.created',
+    targetType: 'office_zone',
+    targetId: zone.id,
+    metadata: {
+      slug: body.slug,
+      name: body.name,
+      zone_type: body.zone_type,
+      capacity: body.capacity,
+      is_private: body.is_private,
+      acl: body.acl,
+      position: body.position
+    }
+  })
+  await notifyOfficeZoneUpserted(event, officeId, zone)
 
   return { id: zone.id }
 })

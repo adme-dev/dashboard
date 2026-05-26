@@ -6,6 +6,7 @@
 
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne, queryRows } from '~~/server/utils/db'
+import { canAdministerOffice } from '~~/server/utils/officeRoom'
 import type { OfficeRow, OfficeZoneRow, OfficeMemberRow } from '~~/app/types/office'
 
 export default defineEventHandler(async (event) => {
@@ -46,5 +47,10 @@ export default defineEventHandler(async (event) => {
     [officeId]
   )
 
-  return { office, zones, members, myRole: membership.role }
+  return {
+    office,
+    zones,
+    members,
+    myRole: canAdministerOffice(user, membership) ? 'admin' : membership.role
+  }
 })

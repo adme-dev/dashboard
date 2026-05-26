@@ -11,7 +11,7 @@
  * domain. The token carries the verified identity in a signed payload.
  */
 
-import type { ActorHandle, OfficeMemberRole } from '~~/app/types/office'
+import type { ActorHandle, OfficeMemberRole, OfficeZoneAccessPolicy } from '~~/app/types/office'
 
 export interface OfficeJwtClaims {
   handle: ActorHandle
@@ -20,6 +20,10 @@ export interface OfficeJwtClaims {
   role: OfficeMemberRole
   isGuest: boolean
   officeId: string
+  allowedZoneId?: string | null
+  guestBadgeId?: string | null
+  zoneCapacities?: Record<string, number>
+  zoneAccessPolicies?: Record<string, OfficeZoneAccessPolicy>
   /** Unix seconds */
   exp: number
 }

@@ -1,14 +1,29 @@
 import { DurableObject } from 'cloudflare:workers'
 import type {
   ActorHandle,
+  OfficeMediaUnavailableReason,
   OfficeParticipant,
   OfficeSnapshot,
+  OfficeZoneAccessPolicy,
+  OfficeZoneRow,
+  ZoneType,
   OfficeStatus
 } from '../../../app/types/office'
 import type { InboundMessage, OutboundMessage } from './types'
-import { applyStatusSet, applyZoneEnter, applyZoneLeave } from './handlers'
+import {
+  applyPresenceEvent,
+  applyParticipantEvict,
+  applyStatusSet,
+  applyZoneEnter,
+  applyZoneLeave,
+  applyZoneNotesUpdated,
+  evaluateZoneCapacity,
+  evaluateGuestBadgeIdentity,
+  evaluateZoneEntry
+} from './handlers'
+import { buildZoneCorrelationId, createZoneRealtimeSession, type RealtimeEnv } from './realtime'
 
-interface Env {
+interface Env extends RealtimeEnv {
   /** Base URL of the Pages app, e.g. https://agency-dashboard-6cm.pages.dev */
   SYNC_BASE_URL?: string
   /** Shared secret for the chat-presence sync endpoint */
@@ -16,11 +31,16 @@ interface Env {
 }
 
 interface ConnMeta {
+  officeId: string
   handle: ActorHandle
   name: string
   avatarUrl: string | null
   role: 'admin' | 'member' | 'guest'
   isGuest: boolean
+  allowedZoneId: string | null
+  guestBadgeId: string | null
+  zoneCapacities: Record<string, number>
+  zoneAccessPolicies: Record<string, OfficeZoneAccessPolicy>
   joinedAt: number
 }
 
@@ -33,10 +53,68 @@ interface ParticipantState extends ConnMeta {
 
 const GRACE_MS = 30_000
 const HEARTBEAT_TIMEOUT_MS = 60_000
+const ZONE_TYPES = new Set<ZoneType>(['lobby', 'meeting', 'focus', 'theater', 'client_lounge', 'desk'])
+
+function sanitizeZoneCapacities(value: unknown): Record<string, number> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+
+  const capacities: Record<string, number> = {}
+  for (const [zoneId, capacity] of Object.entries(value)) {
+    if (typeof capacity !== 'number' || !Number.isFinite(capacity) || capacity < 1) continue
+    capacities[zoneId] = Math.floor(capacity)
+  }
+  return capacities
+}
+
+function parseZoneCapacities(value: string | null): Record<string, number> {
+  if (!value) return {}
+  try {
+    return sanitizeZoneCapacities(JSON.parse(value))
+  } catch {
+    return {}
+  }
+}
+
+function sanitizeZoneAccessPolicies(value: unknown): Record<string, OfficeZoneAccessPolicy> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const policies: Record<string, OfficeZoneAccessPolicy> = {}
+  for (const [zoneId, rawPolicy] of Object.entries(value)) {
+    if (!zoneId || !rawPolicy || typeof rawPolicy !== 'object' || Array.isArray(rawPolicy)) continue
+    const policy = rawPolicy as Partial<OfficeZoneAccessPolicy>
+    if (
+      typeof policy.zone_type !== 'string'
+      || !ZONE_TYPES.has(policy.zone_type as ZoneType)
+      || typeof policy.is_private !== 'boolean'
+    ) continue
+    policies[zoneId] = {
+      zone_type: policy.zone_type as ZoneType,
+      is_private: policy.is_private,
+      acl: policy.acl && typeof policy.acl === 'object' && !Array.isArray(policy.acl) ? policy.acl : {}
+    }
+  }
+  return policies
+}
+
+function parseZoneAccessPolicies(value: string | null): Record<string, OfficeZoneAccessPolicy> {
+  if (!value) return {}
+  try {
+    return sanitizeZoneAccessPolicies(JSON.parse(value))
+  } catch {
+    return {}
+  }
+}
+
+function mediaUnavailableReason(error: unknown): OfficeMediaUnavailableReason {
+  const message = error instanceof Error ? error.message.toLowerCase() : ''
+  if (message.includes('quota') || message.includes('429')) return 'quota'
+  if (message.includes('realtime') || message.includes('fetch')) return 'realtime-unavailable'
+  return 'unknown'
+}
 
 export class OfficeRoom extends DurableObject<Env> {
   // In-memory participant state keyed by ActorHandle
   private participants = new Map<ActorHandle, ParticipantState>()
+  private zoneCapacities = new Map<string, number>()
   // Map from WS to its handle (so we can find the participant on close)
   private wsToHandle = new WeakMap<WebSocket, ActorHandle>()
 
@@ -54,34 +132,97 @@ export class OfficeRoom extends DurableObject<Env> {
       this.wsToHandle.set(ws, tag.handle)
       if (!this.participants.has(tag.handle)) {
         this.participants.set(tag.handle, {
+          officeId: tag.officeId ?? '',
           handle: tag.handle,
           name: tag.name ?? 'Unknown',
           avatarUrl: tag.avatarUrl ?? null,
           role: tag.role ?? 'member',
           isGuest: tag.isGuest ?? false,
+          allowedZoneId: tag.allowedZoneId ?? null,
+          guestBadgeId: tag.guestBadgeId ?? null,
+          zoneCapacities: sanitizeZoneCapacities(tag.zoneCapacities),
+          zoneAccessPolicies: sanitizeZoneAccessPolicies(tag.zoneAccessPolicies),
           joinedAt: tag.joinedAt ?? now,
           status: 'available',
           currentZoneId: null,
           lastSeenAt: now,
           disconnectedAt: null
         })
+        this.mergeZoneCapacities(sanitizeZoneCapacities(tag.zoneCapacities))
       }
     }
   }
 
   async fetch(request: Request): Promise<Response> {
     if (request.headers.get('Upgrade') !== 'websocket') {
+      return await this.handleControlRequest(request)
+    }
+
+    return this.handleWebSocketUpgrade(request)
+  }
+
+  private async handleControlRequest(request: Request): Promise<Response> {
+    const url = new URL(request.url)
+    if (request.method !== 'POST') {
+      return new Response('Not found', { status: 404 })
+    }
+
+    const body = await request.json() as {
+      zoneId?: unknown
+      capacity?: unknown
+      policy?: unknown
+      zone?: unknown
+    }
+    if (typeof body.zoneId !== 'string' || !body.zoneId) {
+      return new Response('zoneId required', { status: 400 })
+    }
+
+    if (url.pathname === '/admin/zone-deleted') {
+      this.applyZoneDeleted(body.zoneId)
+      return Response.json({ ok: true })
+    }
+
+    if (url.pathname === '/admin/zone-upserted') {
+      const zone = this.sanitizeZoneRow(body.zone)
+      if (!zone || zone.id !== body.zoneId) {
+        return new Response('valid zone required', { status: 400 })
+      }
+      this.applyZoneUpserted(zone)
+      return Response.json({ ok: true })
+    }
+
+    if (url.pathname !== '/admin/zone-policy') {
+      return new Response('Not found', { status: 404 })
+    }
+
+    const policy = sanitizeZoneAccessPolicies({ [body.zoneId]: body.policy })[body.zoneId] ?? null
+    this.applyZonePolicyUpdate({
+      zoneId: body.zoneId,
+      capacity: typeof body.capacity === 'number' ? body.capacity : null,
+      policy
+    })
+
+    return Response.json({ ok: true })
+  }
+
+  private async handleWebSocketUpgrade(request: Request): Promise<Response> {
+    if (request.headers.get('Upgrade') !== 'websocket') {
       return new Response('Expected WebSocket', { status: 426 })
     }
 
     const url = new URL(request.url)
+    const officeId = url.searchParams.get('officeId')
     const handle = url.searchParams.get('handle') as ActorHandle | null
     const name = url.searchParams.get('name')
     const avatarUrl = url.searchParams.get('avatarUrl')
     const role = url.searchParams.get('role') as 'admin' | 'member' | 'guest' | null
     const isGuest = url.searchParams.get('isGuest') === 'true'
+    const allowedZoneId = url.searchParams.get('allowedZoneId') || null
+    const guestBadgeId = url.searchParams.get('guestBadgeId') || null
+    const zoneCapacities = parseZoneCapacities(url.searchParams.get('zoneCapacities'))
+    const zoneAccessPolicies = parseZoneAccessPolicies(url.searchParams.get('zoneAccessPolicies'))
 
-    if (!handle || !name || !role) {
+    if (!officeId || !handle || !name || !role) {
       return new Response('Missing required params', { status: 400 })
     }
 
@@ -90,11 +231,16 @@ export class OfficeRoom extends DurableObject<Env> {
 
     this.ctx.acceptWebSocket(server)
     const meta: ConnMeta = {
+      officeId,
       handle,
       name,
       avatarUrl,
       role,
       isGuest,
+      allowedZoneId,
+      guestBadgeId,
+      zoneCapacities,
+      zoneAccessPolicies,
       joinedAt: Date.now()
     }
     // Persist full identity in the attachment so the participants Map can be
@@ -168,9 +314,19 @@ export class OfficeRoom extends DurableObject<Env> {
   private handleConnect(ws: WebSocket, meta: ConnMeta): void {
     const existing = this.participants.get(meta.handle)
     if (existing) {
+      this.takeOverExistingSockets(meta.handle, ws)
       const wasDisconnected = existing.disconnectedAt !== null
       existing.disconnectedAt = null
       existing.lastSeenAt = Date.now()
+      existing.name = meta.name
+      existing.avatarUrl = meta.avatarUrl
+      existing.role = meta.role
+      existing.isGuest = meta.isGuest
+      existing.allowedZoneId = meta.allowedZoneId
+      existing.guestBadgeId = meta.guestBadgeId
+      existing.zoneCapacities = meta.zoneCapacities
+      existing.zoneAccessPolicies = meta.zoneAccessPolicies
+      this.mergeZoneCapacities(meta.zoneCapacities)
       this.sendTo(ws, { type: 'snapshot', snapshot: this.buildSnapshot() })
       // If this was a within-grace reconnect, peers that joined during the
       // grace window never saw this participant in their snapshot. Re-announce.
@@ -199,6 +355,8 @@ export class OfficeRoom extends DurableObject<Env> {
       disconnectedAt: null
     }
     this.participants.set(meta.handle, participant)
+    this.mergeZoneCapacities(meta.zoneCapacities)
+    this.ctx.waitUntil(this.syncLocation(meta.officeId, meta.handle, null, 'online'))
 
     this.sendTo(ws, { type: 'snapshot', snapshot: this.buildSnapshot() })
     this.broadcast(
@@ -215,6 +373,20 @@ export class OfficeRoom extends DurableObject<Env> {
     )
   }
 
+  private takeOverExistingSockets(handle: ActorHandle, currentWs: WebSocket): void {
+    for (const ws of this.ctx.getWebSockets()) {
+      if (ws === currentWs) continue
+      const tag = ws.deserializeAttachment() as { handle?: ActorHandle } | undefined
+      if (tag?.handle !== handle) continue
+      this.sendTo(ws, { type: 'zone:taken-over' })
+      try {
+        ws.close(4000, 'session taken over')
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
   private async handleMessage(
     handle: ActorHandle,
     ws: WebSocket,
@@ -223,6 +395,18 @@ export class OfficeRoom extends DurableObject<Env> {
     const p = this.participants.get(handle)
     if (!p) return
     p.lastSeenAt = Date.now()
+
+    const guestAccess = await this.validateGuestBadge(p)
+    if (!guestAccess.allowed) {
+      this.sendTo(ws, { type: 'error', message: guestAccess.reason })
+      this.removeParticipant(handle)
+      try {
+        ws.close(4003, guestAccess.reason)
+      } catch {
+        /* ignore */
+      }
+      return
+    }
 
     const now = Date.now()
     switch (msg.type) {
@@ -238,15 +422,73 @@ export class OfficeRoom extends DurableObject<Env> {
         return
       }
       case 'zone:enter': {
+        const entry = evaluateZoneEntry(p, msg.zoneId, p.zoneAccessPolicies[msg.zoneId])
+        if (!entry.allowed) {
+          this.sendTo(ws, {
+            type: 'zone:denied',
+            zoneId: msg.zoneId,
+            reason: entry.reason
+          })
+          return
+        }
+        const capacity = evaluateZoneCapacity(
+          this.zoneCapacities.get(msg.zoneId),
+          this.zoneOccupantCount(msg.zoneId, handle)
+        )
+        if (!capacity.allowed) {
+          this.sendTo(ws, { type: 'zone:full', zoneId: msg.zoneId })
+          return
+        }
         // 1a: no media token, no ACL check yet (full ACL in 1b/1c).
         // The Nitro WS endpoint gates membership; the DO trusts the upgrade.
         const { send, broadcast } = applyZoneEnter(p, msg.zoneId, now)
         this.sendTo(ws, send)
         this.broadcast(broadcast)
+        this.ctx.waitUntil(this.reserveZoneMediaSession(p, ws, msg.zoneId))
+        this.ctx.waitUntil(this.syncLocation(p.officeId, handle, msg.zoneId, 'online'))
         return
       }
       case 'zone:leave': {
         const { broadcast } = applyZoneLeave(p, now)
+        this.broadcast(broadcast)
+        this.ctx.waitUntil(this.syncLocation(p.officeId, handle, null, 'online'))
+        return
+      }
+      case 'participant:evict': {
+        const target = this.participants.get(msg.handle)
+        const targetSnapshot = target
+          ? { handle: target.handle, name: target.name, zoneId: target.currentZoneId }
+          : null
+        const result = applyParticipantEvict(p, target, now)
+        if (!result.allowed) {
+          this.sendTo(ws, result.send)
+          return
+        }
+        this.sendToHandle(msg.handle, result.send)
+        this.broadcast(result.broadcast)
+        this.ctx.waitUntil(this.syncLocation(p.officeId, msg.handle, null, 'online'))
+        this.ctx.waitUntil(this.syncAuditEvent({
+          officeId: p.officeId,
+          actorHandle: p.handle,
+          action: 'room.participant_evicted',
+          targetType: 'office_zone',
+          targetId: result.send.zoneId,
+          metadata: {
+            evicted_handle: targetSnapshot?.handle ?? msg.handle,
+            evicted_name: targetSnapshot?.name ?? null,
+            zone_id: targetSnapshot?.zoneId ?? result.send.zoneId
+          }
+        }))
+        return
+      }
+      case 'zone:notes-updated': {
+        const result = applyZoneNotesUpdated(p, msg, now)
+        if (result.allowed) this.broadcast(result.broadcast)
+        else this.sendTo(ws, result.send)
+        return
+      }
+      case 'presence:event': {
+        const { broadcast } = applyPresenceEvent(p, msg.kind, msg.target, now)
         this.broadcast(broadcast)
         return
       }
@@ -278,9 +520,205 @@ export class OfficeRoom extends DurableObject<Env> {
     return false
   }
 
+  private mergeZoneCapacities(capacities: Record<string, number>): void {
+    for (const [zoneId, capacity] of Object.entries(capacities)) {
+      if (!zoneId || !Number.isFinite(capacity) || capacity < 1) continue
+      this.zoneCapacities.set(zoneId, Math.floor(capacity))
+    }
+  }
+
+  private applyZonePolicyUpdate(input: {
+    zoneId: string
+    capacity: number | null
+    policy: OfficeZoneAccessPolicy | null
+  }): void {
+    if (input.capacity && Number.isFinite(input.capacity) && input.capacity > 0) {
+      this.zoneCapacities.set(input.zoneId, Math.floor(input.capacity))
+    }
+
+    const now = Date.now()
+    for (const p of this.participants.values()) {
+      if (input.capacity && Number.isFinite(input.capacity) && input.capacity > 0) {
+        p.zoneCapacities[input.zoneId] = Math.floor(input.capacity)
+      }
+      if (input.policy) {
+        p.zoneAccessPolicies[input.zoneId] = input.policy
+      } else {
+        const { [input.zoneId]: _removedPolicy, ...remainingPolicies } = p.zoneAccessPolicies
+        p.zoneAccessPolicies = remainingPolicies
+      }
+
+      if (p.currentZoneId !== input.zoneId) continue
+      const entry = evaluateZoneEntry(p, input.zoneId, p.zoneAccessPolicies[input.zoneId])
+      if (entry.allowed) continue
+
+      p.currentZoneId = null
+      p.lastSeenAt = now
+      this.sendToHandle(p.handle, {
+        type: 'zone:access-revoked',
+        zoneId: input.zoneId,
+        reason: entry.reason
+      })
+      this.broadcast({ type: 'participant:moved', handle: p.handle, zoneId: null })
+      this.ctx.waitUntil(this.syncLocation(p.officeId, p.handle, null, 'online'))
+    }
+  }
+
+  private applyZoneUpserted(zone: OfficeZoneRow): void {
+    this.applyZonePolicyUpdate({
+      zoneId: zone.id,
+      capacity: zone.capacity,
+      policy: {
+        zone_type: zone.zone_type,
+        is_private: zone.is_private,
+        acl: zone.acl ?? {}
+      }
+    })
+    this.broadcast({ type: 'zone:upserted', zone })
+  }
+
+  private applyZoneDeleted(zoneId: string): void {
+    this.zoneCapacities.delete(zoneId)
+    const now = Date.now()
+
+    for (const p of this.participants.values()) {
+      const { [zoneId]: _removedPolicy, ...remainingPolicies } = p.zoneAccessPolicies
+      p.zoneAccessPolicies = remainingPolicies
+      const { [zoneId]: _removedCapacity, ...remainingCapacities } = p.zoneCapacities
+      p.zoneCapacities = remainingCapacities
+
+      if (p.currentZoneId !== zoneId) continue
+      p.currentZoneId = null
+      p.lastSeenAt = now
+      this.broadcast({ type: 'participant:moved', handle: p.handle, zoneId: null })
+      this.ctx.waitUntil(this.syncLocation(p.officeId, p.handle, null, 'online'))
+    }
+
+    this.broadcast({
+      type: 'zone:deleted',
+      zoneId,
+      reason: 'This room was removed by an office admin.'
+    })
+  }
+
+  private sanitizeZoneRow(value: unknown): OfficeZoneRow | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+    const zone = value as Partial<OfficeZoneRow>
+    if (
+      typeof zone.id !== 'string'
+      || typeof zone.office_id !== 'string'
+      || typeof zone.slug !== 'string'
+      || typeof zone.name !== 'string'
+      || typeof zone.zone_type !== 'string'
+      || !ZONE_TYPES.has(zone.zone_type as ZoneType)
+      || typeof zone.capacity !== 'number'
+      || !Number.isInteger(zone.capacity)
+      || zone.capacity < 1
+      || typeof zone.is_private !== 'boolean'
+      || !zone.position
+      || typeof zone.position !== 'object'
+    ) return null
+
+    const position = zone.position as Partial<OfficeZoneRow['position']>
+    if (
+      typeof position.x !== 'number'
+      || typeof position.y !== 'number'
+      || typeof position.w !== 'number'
+      || typeof position.h !== 'number'
+      || !Number.isFinite(position.x)
+      || !Number.isFinite(position.y)
+      || !Number.isFinite(position.w)
+      || !Number.isFinite(position.h)
+      || position.x < 0
+      || position.y < 0
+      || position.w <= 0
+      || position.h <= 0
+    ) return null
+
+    return {
+      id: zone.id,
+      office_id: zone.office_id,
+      slug: zone.slug,
+      name: zone.name,
+      zone_type: zone.zone_type as ZoneType,
+      position: {
+        x: position.x,
+        y: position.y,
+        w: position.w,
+        h: position.h
+      },
+      capacity: zone.capacity,
+      is_private: zone.is_private,
+      acl: zone.acl && typeof zone.acl === 'object' && !Array.isArray(zone.acl) ? zone.acl : {},
+      notes: typeof zone.notes === 'string' ? zone.notes : '',
+      notes_version: typeof zone.notes_version === 'number' ? zone.notes_version : 0,
+      notes_updated_at: typeof zone.notes_updated_at === 'string' ? zone.notes_updated_at : null,
+      notes_updated_by: typeof zone.notes_updated_by === 'string' ? zone.notes_updated_by : null,
+      created_at: typeof zone.created_at === 'string' ? zone.created_at : new Date(0).toISOString()
+    }
+  }
+
+  private zoneOccupantCount(zoneId: string, enteringHandle: ActorHandle): number {
+    const occupants = new Set<ActorHandle>()
+    for (const [handle, participant] of this.participants) {
+      if (handle === enteringHandle) continue
+      if (participant.disconnectedAt !== null) continue
+      if (participant.currentZoneId === zoneId) occupants.add(handle)
+    }
+    return occupants.size
+  }
+
+  private async reserveZoneMediaSession(
+    participant: ParticipantState,
+    ws: WebSocket,
+    zoneId: string
+  ): Promise<void> {
+    if (!this.env.REALTIME_APP_ID || !this.env.REALTIME_APP_SECRET) {
+      this.sendTo(ws, {
+        type: 'zone:media-unavailable',
+        zoneId,
+        reason: 'not-configured',
+        message: 'Realtime media is not configured for this worker.'
+      })
+      return
+    }
+
+    try {
+      const session = await createZoneRealtimeSession({
+        env: this.env,
+        officeId: participant.officeId,
+        zoneId,
+        handle: participant.handle
+      })
+      this.sendTo(ws, {
+        type: 'zone:media-session',
+        zoneId,
+        media: {
+          provider: 'cloudflare-realtime',
+          sessionId: session.sessionId,
+          correlationId: buildZoneCorrelationId({
+            officeId: participant.officeId,
+            zoneId,
+            handle: participant.handle
+          }),
+          createdAt: Date.now()
+        }
+      })
+    } catch (error) {
+      this.sendTo(ws, {
+        type: 'zone:media-unavailable',
+        zoneId,
+        reason: mediaUnavailableReason(error),
+        message: error instanceof Error ? error.message : 'Realtime media is unavailable.'
+      })
+    }
+  }
+
   private removeParticipant(handle: ActorHandle): void {
-    if (!this.participants.delete(handle)) return
+    const participant = this.participants.get(handle)
+    if (!participant || !this.participants.delete(handle)) return
     this.broadcast({ type: 'participant:left', handle })
+    this.ctx.waitUntil(this.syncLocation(participant.officeId, handle, null, 'offline'))
   }
 
   // ---------- Snapshot + broadcast helpers -----------------------------------
@@ -315,6 +753,14 @@ export class OfficeRoom extends DurableObject<Env> {
     }
   }
 
+  private sendToHandle(handle: ActorHandle, msg: OutboundMessage): void {
+    for (const ws of this.ctx.getWebSockets()) {
+      const tag = ws.deserializeAttachment() as { handle?: ActorHandle } | undefined
+      if (tag?.handle !== handle) continue
+      this.sendTo(ws, msg)
+    }
+  }
+
   // ---------- Chat-presence write-through (fired via waitUntil) -------------
   //
   // The previous implementation used a 5s setTimeout debounce, but in-memory
@@ -338,6 +784,111 @@ export class OfficeRoom extends DurableObject<Env> {
       })
     } catch {
       /* best-effort; chat presence is non-critical */
+    }
+  }
+
+  private async syncLocation(
+    officeId: string,
+    handle: ActorHandle,
+    zoneId: string | null,
+    presence: 'online' | 'offline'
+  ): Promise<void> {
+    const env = this.env
+    if (!officeId || !env.SYNC_BASE_URL || !env.OFFICE_SYNC_SECRET) return
+
+    const [type, id] = handle.split(':') as ['user' | 'client', string]
+    try {
+      await fetch(`${env.SYNC_BASE_URL}/api/office/_internal/sync-location`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-office-sync-secret': env.OFFICE_SYNC_SECRET
+        },
+        body: JSON.stringify({
+          office_id: officeId,
+          actor_type: type,
+          actor_id: id,
+          zone_id: zoneId,
+          presence
+        })
+      })
+    } catch {
+      /* best-effort; live server-side occupancy can recover on next move */
+    }
+  }
+
+  private async syncAuditEvent(input: {
+    officeId: string
+    actorHandle: ActorHandle
+    action: string
+    targetType: string
+    targetId: string | null
+    metadata: Record<string, unknown>
+  }): Promise<void> {
+    const env = this.env
+    if (!input.officeId || !env.SYNC_BASE_URL || !env.OFFICE_SYNC_SECRET) return
+
+    const [actorType, actorId] = input.actorHandle.split(':') as ['user' | 'client', string]
+    try {
+      await fetch(`${env.SYNC_BASE_URL}/api/office/_internal/audit`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-office-sync-secret': env.OFFICE_SYNC_SECRET
+        },
+        body: JSON.stringify({
+          office_id: input.officeId,
+          actor_id: actorType === 'user' ? actorId : null,
+          action: input.action,
+          target_type: input.targetType,
+          target_id: input.targetId,
+          metadata: input.metadata
+        })
+      })
+    } catch {
+      /* best-effort; live room audit should not block room controls */
+    }
+  }
+
+  private async validateGuestBadge(
+    participant: ParticipantState
+  ): Promise<{ allowed: true } | { allowed: false, reason: string }> {
+    const identity = evaluateGuestBadgeIdentity(participant)
+    if (!identity.allowed) {
+      return identity
+    }
+
+    if (!participant.isGuest) {
+      return { allowed: true }
+    }
+
+    const env = this.env
+    if (!env.SYNC_BASE_URL || !env.OFFICE_SYNC_SECRET) {
+      return { allowed: false, reason: 'guest badge validation is unavailable' }
+    }
+
+    try {
+      const response = await fetch(`${env.SYNC_BASE_URL}/api/office/_internal/guest-badge-status`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-office-sync-secret': env.OFFICE_SYNC_SECRET
+        },
+        body: JSON.stringify({
+          office_id: participant.officeId,
+          badge_id: participant.guestBadgeId,
+          allowed_zone_id: participant.allowedZoneId
+        })
+      })
+      if (!response.ok) {
+        return { allowed: false, reason: 'guest badge is no longer active' }
+      }
+      const result = await response.json() as { active?: boolean, reason?: string }
+      return result.active
+        ? { allowed: true }
+        : { allowed: false, reason: result.reason || 'guest badge is no longer active' }
+    } catch {
+      return { allowed: false, reason: 'guest badge validation failed' }
     }
   }
 

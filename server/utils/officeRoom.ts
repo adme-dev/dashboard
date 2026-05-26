@@ -17,7 +17,7 @@ import type { H3Event } from 'h3'
 // =============================================================================
 
 import { queryOne } from './db'
-import { requireAuth } from './auth'
+import { requireAuth, type User } from './auth'
 
 // =============================================================================
 // ActorHandle helpers
@@ -115,6 +115,19 @@ interface OfficeRoomsBinding {
   get: (id: unknown) => { fetch: (req: Request) => Promise<Response> }
 }
 
+const PLATFORM_OFFICE_ADMIN_ROLES = new Set(['owner', 'admin', 'super_admin'])
+
+export function isPlatformOfficeAdminRole(role: string | null | undefined) {
+  return Boolean(role && PLATFORM_OFFICE_ADMIN_ROLES.has(role))
+}
+
+export function canAdministerOffice(
+  user: Pick<User, 'role'>,
+  membership: Pick<OfficeMemberRow, 'role'> | null
+) {
+  return membership?.role === 'admin' || isPlatformOfficeAdminRole(user.role)
+}
+
 export function getOfficeRoom(event: H3Event, officeId: string) {
   const env = (event.context as CloudflareContext).cloudflare?.env
   const binding = env?.OFFICE_ROOMS as OfficeRoomsBinding | undefined
@@ -131,7 +144,7 @@ export async function requireOfficeAdmin(event: H3Event, officeId: string) {
     `SELECT * FROM office_members WHERE office_id = $1 AND user_id = $2`,
     [officeId, user.id]
   )
-  if (!membership || membership.role !== 'admin') {
+  if (!canAdministerOffice(user, membership)) {
     throw createError({ statusCode: 403, statusMessage: 'Office admin required' })
   }
   return { user, membership }

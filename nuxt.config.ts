@@ -1,6 +1,18 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+const devWatcherIgnored = [
+  '**/.claude/worktrees/**',
+  '**/.worktrees/**',
+  '**/.wrangler/**',
+  'coverage/**',
+  'dist/**',
+  '**/node_modules/.cache/**',
+  '**/node_modules/.vite/**'
+]
+
 export default defineNuxtConfig({
   ssr: true,
+
+  ignore: devWatcherIgnored,
 
   modules: [
     '@nuxt/eslint',
@@ -141,6 +153,18 @@ export default defineNuxtConfig({
     enabled: true
   },
 
+  experimental: {
+    appManifest: false
+  },
+
+  vite: {
+    server: {
+      watch: {
+        ignored: devWatcherIgnored
+      }
+    }
+  },
+
   css: ['~/assets/css/main.css'],
 
   routeRules: {
@@ -164,23 +188,45 @@ export default defineNuxtConfig({
     '/sign-in': { prerender: true },
 
     // Keep all auth-gated routes as client-only SPA
+    '/agency': { ssr: false },
     '/agency/**': { ssr: false },
+    '/portal': { ssr: false },
     '/portal/**': { ssr: false },
+    '/admin': { ssr: false },
     '/admin/**': { ssr: false },
+    '/settings': { ssr: false },
     '/settings/**': { ssr: false },
+    '/chat': { ssr: false },
     '/chat/**': { ssr: false },
+    '/office': { ssr: false },
+    '/l/**': { ssr: false },
+    '/lobby/**': { ssr: false },
+    '/lobby-room/**': { ssr: false },
+    '/invoices': { ssr: false },
     '/invoices/**': { ssr: false },
+    '/customers': { ssr: false },
     '/customers/**': { ssr: false },
+    '/insights': { ssr: false },
     '/insights/**': { ssr: false },
+    '/profit-loss': { ssr: false },
     '/profit-loss/**': { ssr: false },
+    '/expenses': { ssr: false },
     '/expenses/**': { ssr: false },
+    '/cashflow': { ssr: false },
     '/cashflow/**': { ssr: false },
+    '/reports': { ssr: false },
     '/reports/**': { ssr: false },
+    '/anomalies': { ssr: false },
     '/anomalies/**': { ssr: false },
+    '/recommendations': { ssr: false },
     '/recommendations/**': { ssr: false },
+    '/xeroflow': { ssr: false },
     '/xeroflow/**': { ssr: false },
+    '/review': { ssr: false },
     '/review/**': { ssr: false },
+    '/approve': { ssr: false },
     '/approve/**': { ssr: false },
+    '/intake': { ssr: false },
     '/intake/**': { ssr: false },
   },
 

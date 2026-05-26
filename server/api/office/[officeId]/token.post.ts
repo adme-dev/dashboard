@@ -12,10 +12,10 @@
 
 import type { H3Event } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
-import { queryOne } from '~~/server/utils/db'
+import { queryOne, queryRows } from '~~/server/utils/db'
 import { toActorHandle } from '~~/server/utils/officeRoom'
 import { signOfficeJwt, type OfficeJwtClaims } from '~~/server/utils/officeJwt'
-import type { OfficeMemberRow } from '~~/app/types/office'
+import type { OfficeMemberRow, OfficeZoneAccessPolicy } from '~~/app/types/office'
 
 interface CloudflareContext {
   cloudflare?: { env?: Record<string, unknown> }
@@ -48,6 +48,34 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 500, statusMessage: 'OFFICE_SYNC_SECRET not configured' })
   }
 
+  const zoneRows = await queryRows<{
+    id: string
+    capacity: number
+    zone_type: OfficeZoneAccessPolicy['zone_type']
+    is_private: boolean
+    acl: OfficeZoneAccessPolicy['acl']
+  }>(
+    `SELECT id, capacity, zone_type, is_private, acl
+     FROM office_zones
+     WHERE office_id = $1`,
+    [officeId]
+  )
+  const zoneCapacities = Object.fromEntries(
+    zoneRows
+      .filter(zone => Number.isFinite(Number(zone.capacity)) && Number(zone.capacity) > 0)
+      .map(zone => [zone.id, Math.floor(Number(zone.capacity))])
+  )
+  const zoneAccessPolicies = Object.fromEntries(
+    zoneRows.map(zone => [
+      zone.id,
+      {
+        zone_type: zone.zone_type,
+        is_private: Boolean(zone.is_private),
+        acl: zone.acl ?? {}
+      } satisfies OfficeZoneAccessPolicy
+    ])
+  )
+
   const claims: OfficeJwtClaims = {
     handle: toActorHandle({ id: user.id }, 'user'),
     name: user.name || user.email,
@@ -55,6 +83,8 @@ export default defineEventHandler(async (event) => {
     role: membership.role,
     isGuest: false,
     officeId,
+    zoneCapacities,
+    zoneAccessPolicies,
     exp: Math.floor(Date.now() / 1000) + 5 * 60
   }
   const token = await signOfficeJwt(claims, secret)

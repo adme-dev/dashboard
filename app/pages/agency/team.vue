@@ -1,10 +1,46 @@
 <script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
+
 definePageMeta({
   title: 'Team Members',
   middleware: ['auth']
 })
 
+type TeamMember = {
+  id: string
+  name: string
+  email: string
+  role?: string | null
+  department?: string | null
+  hourlyRate: number
+  hourlyCost: number
+  targetUtilization: number
+  avatarUrl?: string | null
+  isActive: boolean
+  hoursThisMonth: number
+  billableHoursThisMonth: number
+  utilizationRate: number
+  activeProjects: number
+  createdAt?: string
+}
+
+type TeamMembersResponse = {
+  members?: Array<Partial<TeamMember>>
+  summary?: {
+    total: number
+    active: number
+    totalCapacity: number
+    totalBillableHours: number
+    avgUtilization: number
+  }
+  departments?: string[]
+  roles?: string[]
+}
+
+type TeamTableRow = TeamMember | { original?: Partial<TeamMember> }
+
 const toast = useToast()
+const route = useRoute()
 
 // Filters
 const departmentFilter = ref<string | null>(null)
@@ -12,7 +48,7 @@ const roleFilter = ref<string | null>(null)
 const activeFilter = ref('true')
 
 // Fetch team members
-const { data, pending, refresh } = await useFetch('/api/agency/team-members', {
+const { data, pending, refresh } = await useFetch<TeamMembersResponse>('/api/agency/team-members', {
   query: {
     active: activeFilter,
     department: departmentFilter,
@@ -20,12 +56,35 @@ const { data, pending, refresh } = await useFetch('/api/agency/team-members', {
   }
 })
 
-const members = computed(() => ((data.value as any)?.members || []) as any[])
-const summary = computed(() => (data.value as any)?.summary || {
+const toSafeNumber = (value: unknown) => {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : 0
+}
+
+const normalizeMember = (member: Partial<TeamMember> = {}): TeamMember => ({
+  id: member.id ?? '',
+  name: member.name ?? '',
+  email: member.email ?? '',
+  role: member.role ?? null,
+  department: member.department ?? null,
+  hourlyRate: toSafeNumber(member?.hourlyRate),
+  hourlyCost: toSafeNumber(member?.hourlyCost),
+  targetUtilization: toSafeNumber(member?.targetUtilization),
+  avatarUrl: member.avatarUrl ?? null,
+  isActive: member.isActive ?? false,
+  hoursThisMonth: toSafeNumber(member?.hoursThisMonth),
+  billableHoursThisMonth: toSafeNumber(member?.billableHoursThisMonth),
+  utilizationRate: toSafeNumber(member?.utilizationRate),
+  activeProjects: toSafeNumber(member?.activeProjects),
+  createdAt: member.createdAt
+})
+
+const members = computed(() => (data.value?.members || []).map(normalizeMember))
+const summary = computed(() => data.value?.summary || {
   total: 0, active: 0, totalCapacity: 0, totalBillableHours: 0, avgUtilization: 0
 })
-const departments = computed(() => ((data.value as any)?.departments || []) as string[])
-const roles = computed(() => ((data.value as any)?.roles || []) as string[])
+const departments = computed(() => data.value?.departments || [])
+const roles = computed(() => data.value?.roles || [])
 
 // Format helpers
 const formatCurrency = (value: number) => {
@@ -46,25 +105,49 @@ const getUtilizationColor = (rate: number): 'success' | 'warning' | 'error' | 'n
 }
 
 // Table columns
-const columns: any[] = [
-  { key: 'name', label: 'Team Member' },
-  { key: 'role', label: 'Role' },
-  { key: 'department', label: 'Department' },
-  { key: 'utilization', label: 'Utilization' },
-  { key: 'hoursThisMonth', label: 'Hours (Month)' },
-  { key: 'activeProjects', label: 'Projects' },
-  { key: 'status', label: 'Status' },
-  { key: 'actions', label: '' }
+const columns: TableColumn<TeamMember>[] = [
+  { id: 'name', accessorKey: 'name', header: 'Team Member' },
+  { id: 'role', accessorKey: 'role', header: 'Role' },
+  { id: 'department', accessorKey: 'department', header: 'Department' },
+  { id: 'utilization', accessorKey: 'utilizationRate', header: 'Utilization' },
+  { id: 'hoursThisMonth', accessorKey: 'hoursThisMonth', header: 'Hours (Month)' },
+  { id: 'activeProjects', accessorKey: 'activeProjects', header: 'Projects' },
+  { id: 'status', accessorKey: 'isActive', header: 'Status' },
+  { id: 'actions', accessorKey: 'id', header: '' }
 ]
+
+const tableMember = (row: TeamTableRow) => normalizeMember('original' in row ? row.original : row)
 
 // Member detail modal
 const showMemberModal = ref(false)
-const selectedMember = ref<any>(null)
+const selectedMember = ref<TeamMember | null>(null)
 
-const openMemberModal = (member: any) => {
-  selectedMember.value = member
+const openMemberModal = (member: Partial<TeamMember>) => {
+  selectedMember.value = normalizeMember(member)
   showMemberModal.value = true
 }
+
+const handledRouteMemberId = ref<string | null>(null)
+
+watch(
+  [members, () => route.query.member],
+  ([currentMembers, memberId]) => {
+    if (typeof memberId !== 'string' || handledRouteMemberId.value === memberId) return
+
+    const member = currentMembers.find(item => item.id === memberId)
+    if (member) {
+      handledRouteMemberId.value = memberId
+      openMemberModal(member)
+      return
+    }
+
+    if (activeFilter.value === 'true') {
+      activeFilter.value = ''
+      refresh()
+    }
+  },
+  { immediate: true }
+)
 
 // Get initials for avatar
 const getInitials = (name: string) => {
@@ -78,7 +161,7 @@ const getInitials = (name: string) => {
 
 // Create/Edit modal
 const showCreateModal = ref(false)
-const editingMember = ref<any>(null)
+const editingMember = ref<TeamMember | null>(null)
 const saving = ref(false)
 
 const memberForm = ref({
@@ -107,20 +190,29 @@ const openCreateModal = () => {
   showCreateModal.value = true
 }
 
-const openEditModal = (member: any) => {
-  editingMember.value = member
+const openEditModal = (member: Partial<TeamMember>) => {
+  const normalizedMember = normalizeMember(member)
+  editingMember.value = normalizedMember
   memberForm.value = {
-    name: member.name,
-    email: member.email,
-    role: member.role || '',
-    department: member.department || '',
-    hourlyRate: member.hourlyRate || null,
-    hourlyCost: member.hourlyCost || null,
-    targetUtilization: member.targetUtilization || null,
-    isActive: member.isActive
+    name: normalizedMember.name,
+    email: normalizedMember.email,
+    role: normalizedMember.role || '',
+    department: normalizedMember.department || '',
+    hourlyRate: normalizedMember.hourlyRate || null,
+    hourlyCost: normalizedMember.hourlyCost || null,
+    targetUtilization: normalizedMember.targetUtilization || null,
+    isActive: normalizedMember.isActive
   }
   showMemberModal.value = false
   showCreateModal.value = true
+}
+
+const errorDescription = (error: unknown) => {
+  if (typeof error === 'object' && error && 'data' in error) {
+    const data = (error as { data?: { message?: string } }).data
+    if (data?.message) return data.message
+  }
+  return error instanceof Error ? error.message : 'Unknown error'
 }
 
 const saveMember = async () => {
@@ -146,10 +238,10 @@ const saveMember = async () => {
     }
     showCreateModal.value = false
     refresh()
-  } catch (error: any) {
+  } catch (error: unknown) {
     toast.add({
       title: editingMember.value ? 'Failed to update team member' : 'Failed to create team member',
-      description: error.data?.message || error.message,
+      description: errorDescription(error),
       color: 'error'
     })
   } finally {
@@ -158,12 +250,12 @@ const saveMember = async () => {
 }
 
 // Delete member
-const deletingMember = ref<any>(null)
+const deletingMember = ref<TeamMember | null>(null)
 const showDeleteModal = ref(false)
 const deleting = ref(false)
 
-const confirmDelete = (member: any) => {
-  deletingMember.value = member
+const confirmDelete = (member: Partial<TeamMember>) => {
+  deletingMember.value = normalizeMember(member)
   showDeleteModal.value = true
 }
 
@@ -182,10 +274,10 @@ const deleteMember = async () => {
     }
     showDeleteModal.value = false
     refresh()
-  } catch (error: any) {
+  } catch (error: unknown) {
     toast.add({
       title: 'Failed to delete team member',
-      description: error.data?.message || error.message,
+      description: errorDescription(error),
       color: 'error'
     })
   } finally {
@@ -211,10 +303,10 @@ const commonRoles = [
 
 // Client book slideover
 const showClientBook = ref(false)
-const clientBookMember = ref<any>(null)
+const clientBookMember = ref<TeamMember | null>(null)
 
-const openClientBook = (member: any) => {
-  clientBookMember.value = member
+const openClientBook = (member: Partial<TeamMember>) => {
+  clientBookMember.value = normalizeMember(member)
   showClientBook.value = true
 }
 
@@ -253,8 +345,12 @@ const commonDepartments = [
                 <UIcon name="i-lucide-users" class="w-5 h-5 text-blue-500" />
               </div>
               <div>
-                <p class="text-sm text-gray-500">Total Members</p>
-                <p class="text-xl font-bold">{{ summary.total }}</p>
+                <p class="text-sm text-gray-500">
+                  Total Members
+                </p>
+                <p class="text-xl font-bold">
+                  {{ summary.total }}
+                </p>
               </div>
             </div>
           </UCard>
@@ -265,8 +361,12 @@ const commonDepartments = [
                 <UIcon name="i-lucide-user-check" class="w-5 h-5 text-emerald-500" />
               </div>
               <div>
-                <p class="text-sm text-gray-500">Active</p>
-                <p class="text-xl font-bold text-emerald-500">{{ summary.active }}</p>
+                <p class="text-sm text-gray-500">
+                  Active
+                </p>
+                <p class="text-xl font-bold text-emerald-500">
+                  {{ summary.active }}
+                </p>
               </div>
             </div>
           </UCard>
@@ -277,8 +377,12 @@ const commonDepartments = [
                 <UIcon name="i-lucide-clock" class="w-5 h-5 text-purple-500" />
               </div>
               <div>
-                <p class="text-sm text-gray-500">Total Capacity</p>
-                <p class="text-xl font-bold text-purple-500">{{ summary.totalCapacity }}h</p>
+                <p class="text-sm text-gray-500">
+                  Total Capacity
+                </p>
+                <p class="text-xl font-bold text-purple-500">
+                  {{ summary.totalCapacity }}h
+                </p>
               </div>
             </div>
           </UCard>
@@ -289,8 +393,12 @@ const commonDepartments = [
                 <UIcon name="i-lucide-timer" class="w-5 h-5 text-amber-500" />
               </div>
               <div>
-                <p class="text-sm text-gray-500">Billable Hours</p>
-                <p class="text-xl font-bold text-amber-500">{{ summary.totalBillableHours.toFixed(1) }}h</p>
+                <p class="text-sm text-gray-500">
+                  Billable Hours
+                </p>
+                <p class="text-xl font-bold text-amber-500">
+                  {{ summary.totalBillableHours.toFixed(1) }}h
+                </p>
               </div>
             </div>
           </UCard>
@@ -301,8 +409,12 @@ const commonDepartments = [
                 <UIcon name="i-lucide-trending-up" class="w-5 h-5 text-cyan-500" />
               </div>
               <div>
-                <p class="text-sm text-gray-500">Avg Utilization</p>
-                <p class="text-xl font-bold text-cyan-500">{{ summary.avgUtilization }}%</p>
+                <p class="text-sm text-gray-500">
+                  Avg Utilization
+                </p>
+                <p class="text-xl font-bold text-cyan-500">
+                  {{ summary.avgUtilization }}%
+                </p>
               </div>
             </div>
           </UCard>
@@ -347,30 +459,34 @@ const commonDepartments = [
         <UCard v-else>
           <UTable :data="members" :columns="columns">
             <template #name-cell="{ row: r }">
-              <div class="flex items-center gap-3 cursor-pointer" @click="openMemberModal(r)">
+              <div class="flex items-center gap-3 cursor-pointer" @click="openMemberModal(tableMember(r))">
                 <UAvatar
-                  :src="(r as any).avatarUrl"
-                  :alt="(r as any).name"
+                  :src="tableMember(r).avatarUrl || undefined"
+                  :alt="tableMember(r).name"
                   size="sm"
                 >
                   <template #fallback>
-                    {{ getInitials((r as any).name) }}
+                    {{ getInitials(tableMember(r).name) }}
                   </template>
                 </UAvatar>
                 <div>
-                  <p class="font-medium">{{ (r as any).name }}</p>
-                  <p class="text-xs text-gray-500">{{ (r as any).email }}</p>
+                  <p class="font-medium">
+                    {{ tableMember(r).name }}
+                  </p>
+                  <p class="text-xs text-gray-500">
+                    {{ tableMember(r).email }}
+                  </p>
                 </div>
               </div>
             </template>
 
             <template #role-cell="{ row: r }">
-              <span class="text-gray-600">{{ (r as any).role || '—' }}</span>
+              <span class="text-gray-600">{{ tableMember(r).role || '—' }}</span>
             </template>
 
             <template #department-cell="{ row: r }">
-              <UBadge v-if="(r as any).department" variant="subtle" color="neutral">
-                {{ (r as any).department }}
+              <UBadge v-if="tableMember(r).department" variant="subtle" color="neutral">
+                {{ tableMember(r).department }}
               </UBadge>
               <span v-else class="text-gray-400">—</span>
             </template>
@@ -378,35 +494,35 @@ const commonDepartments = [
             <template #utilization-cell="{ row: r }">
               <div class="flex items-center gap-2">
                 <UProgress
-                  :value="(r as any).utilizationRate"
+                  :value="tableMember(r).utilizationRate"
                   :max="100"
-                  :color="getUtilizationColor((r as any).utilizationRate)"
+                  :color="getUtilizationColor(tableMember(r).utilizationRate)"
                   size="sm"
                   class="w-20"
                 />
-                <span class="text-sm font-medium">{{ (r as any).utilizationRate }}%</span>
+                <span class="text-sm font-medium">{{ tableMember(r).utilizationRate }}%</span>
               </div>
             </template>
 
             <template #hoursThisMonth-cell="{ row: r }">
               <div>
-                <span class="font-medium">{{ (r as any).hoursThisMonth.toFixed(1) }}h</span>
+                <span class="font-medium">{{ tableMember(r).hoursThisMonth.toFixed(1) }}h</span>
                 <span class="text-xs text-gray-500 ml-1">
-                  ({{ (r as any).billableHoursThisMonth.toFixed(1) }}h billable)
+                  ({{ tableMember(r).billableHoursThisMonth.toFixed(1) }}h billable)
                 </span>
               </div>
             </template>
 
             <template #activeProjects-cell="{ row: r }">
-              <span class="font-medium">{{ (r as any).activeProjects }}</span>
+              <span class="font-medium">{{ tableMember(r).activeProjects }}</span>
             </template>
 
             <template #status-cell="{ row: r }">
               <UBadge
-                :color="(r as any).isActive ? 'success' : 'neutral'"
+                :color="tableMember(r).isActive ? 'success' : 'neutral'"
                 variant="subtle"
               >
-                {{ (r as any).isActive ? 'Active' : 'Inactive' }}
+                {{ tableMember(r).isActive ? 'Active' : 'Inactive' }}
               </UBadge>
             </template>
 
@@ -414,20 +530,20 @@ const commonDepartments = [
               <UDropdownMenu
                 :items="[
                   [{
-                    label: 'View Clients',
-                    icon: 'i-lucide-briefcase',
-                    click: () => openClientBook(r)
-                  },
-                  {
-                    label: 'Edit',
-                    icon: 'i-lucide-edit',
-                    click: () => openEditModal(r)
-                  }],
+                     label: 'View Clients',
+                     icon: 'i-lucide-briefcase',
+                     click: () => openClientBook(tableMember(r))
+                   },
+                   {
+                     label: 'Edit',
+                     icon: 'i-lucide-edit',
+                     click: () => openEditModal(tableMember(r))
+                   }],
                   [{
                     label: 'Delete',
                     icon: 'i-lucide-trash-2',
                     color: 'error' as const,
-                    click: () => confirmDelete(r)
+                    click: () => confirmDelete(tableMember(r))
                   }]
                 ]"
               >
@@ -452,7 +568,7 @@ const commonDepartments = [
       <template #header>
         <div class="flex items-center gap-3">
           <UAvatar
-            :src="selectedMember?.avatarUrl"
+            :src="selectedMember?.avatarUrl || undefined"
             :alt="selectedMember?.name"
             size="lg"
           >
@@ -461,8 +577,12 @@ const commonDepartments = [
             </template>
           </UAvatar>
           <div>
-            <h3 class="font-semibold">{{ selectedMember?.name }}</h3>
-            <p class="text-sm text-gray-500">{{ selectedMember?.role }}</p>
+            <h3 class="font-semibold">
+              {{ selectedMember?.name }}
+            </h3>
+            <p class="text-sm text-gray-500">
+              {{ selectedMember?.role }}
+            </p>
           </div>
         </div>
       </template>
@@ -470,45 +590,83 @@ const commonDepartments = [
         <div v-if="selectedMember" class="space-y-4">
           <dl class="grid grid-cols-2 gap-4">
             <div>
-              <dt class="text-sm text-gray-500">Email</dt>
-              <dd class="font-medium">{{ selectedMember.email }}</dd>
+              <dt class="text-sm text-gray-500">
+                Email
+              </dt>
+              <dd class="font-medium">
+                {{ selectedMember.email }}
+              </dd>
             </div>
             <div>
-              <dt class="text-sm text-gray-500">Department</dt>
-              <dd class="font-medium">{{ selectedMember.department || '—' }}</dd>
+              <dt class="text-sm text-gray-500">
+                Department
+              </dt>
+              <dd class="font-medium">
+                {{ selectedMember.department || '—' }}
+              </dd>
             </div>
             <div>
-              <dt class="text-sm text-gray-500">Hourly Rate</dt>
-              <dd class="font-medium">{{ formatCurrency(selectedMember.hourlyRate) }}/hr</dd>
+              <dt class="text-sm text-gray-500">
+                Hourly Rate
+              </dt>
+              <dd class="font-medium">
+                {{ formatCurrency(selectedMember.hourlyRate) }}/hr
+              </dd>
             </div>
             <div>
-              <dt class="text-sm text-gray-500">Hourly Cost</dt>
-              <dd class="font-medium">{{ formatCurrency(selectedMember.hourlyCost) }}/hr</dd>
+              <dt class="text-sm text-gray-500">
+                Hourly Cost
+              </dt>
+              <dd class="font-medium">
+                {{ formatCurrency(selectedMember.hourlyCost) }}/hr
+              </dd>
             </div>
             <div>
-              <dt class="text-sm text-gray-500">Target Utilization</dt>
-              <dd class="font-medium">{{ selectedMember.targetUtilization }}h/month</dd>
+              <dt class="text-sm text-gray-500">
+                Target Utilization
+              </dt>
+              <dd class="font-medium">
+                {{ selectedMember.targetUtilization }}h/month
+              </dd>
             </div>
             <div>
-              <dt class="text-sm text-gray-500">Current Utilization</dt>
-              <dd class="font-medium">{{ selectedMember.utilizationRate }}%</dd>
+              <dt class="text-sm text-gray-500">
+                Current Utilization
+              </dt>
+              <dd class="font-medium">
+                {{ selectedMember.utilizationRate }}%
+              </dd>
             </div>
           </dl>
 
           <div class="pt-4 border-t">
-            <h4 class="font-medium mb-3">This Month</h4>
+            <h4 class="font-medium mb-3">
+              This Month
+            </h4>
             <div class="grid grid-cols-3 gap-4 text-center">
               <div class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <p class="text-2xl font-bold">{{ selectedMember.hoursThisMonth.toFixed(1) }}h</p>
-                <p class="text-xs text-gray-500">Total Hours</p>
+                <p class="text-2xl font-bold">
+                  {{ selectedMember.hoursThisMonth.toFixed(1) }}h
+                </p>
+                <p class="text-xs text-gray-500">
+                  Total Hours
+                </p>
               </div>
               <div class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <p class="text-2xl font-bold text-emerald-500">{{ selectedMember.billableHoursThisMonth.toFixed(1) }}h</p>
-                <p class="text-xs text-gray-500">Billable</p>
+                <p class="text-2xl font-bold text-emerald-500">
+                  {{ selectedMember.billableHoursThisMonth.toFixed(1) }}h
+                </p>
+                <p class="text-xs text-gray-500">
+                  Billable
+                </p>
               </div>
               <div class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <p class="text-2xl font-bold text-blue-500">{{ selectedMember.activeProjects }}</p>
-                <p class="text-xs text-gray-500">Active Projects</p>
+                <p class="text-2xl font-bold text-blue-500">
+                  {{ selectedMember.activeProjects }}
+                </p>
+                <p class="text-xs text-gray-500">
+                  Active Projects
+                </p>
               </div>
             </div>
           </div>
@@ -516,7 +674,12 @@ const commonDepartments = [
       </template>
       <template #footer>
         <div class="flex justify-between">
-          <UButton variant="outline" label="Edit" icon="i-lucide-edit" @click="openEditModal(selectedMember)" />
+          <UButton
+            variant="outline"
+            label="Edit"
+            icon="i-lucide-edit"
+            @click="openEditModal(selectedMember)"
+          />
           <UButton variant="ghost" label="Close" @click="showMemberModal = false" />
         </div>
       </template>
@@ -525,7 +688,9 @@ const commonDepartments = [
     <!-- Create/Edit Modal -->
     <UModal v-model:open="showCreateModal" class="max-w-lg">
       <template #header>
-        <h3 class="font-semibold">{{ editingMember ? 'Edit Team Member' : 'Add Team Member' }}</h3>
+        <h3 class="font-semibold">
+          {{ editingMember ? 'Edit Team Member' : 'Add Team Member' }}
+        </h3>
       </template>
       <template #body>
         <div class="space-y-4">
@@ -555,16 +720,31 @@ const commonDepartments = [
 
           <div class="grid grid-cols-2 gap-4">
             <UFormField label="Hourly Rate ($)">
-              <UInput v-model.number="memberForm.hourlyRate" type="number" min="0" placeholder="150" />
+              <UInput
+                v-model.number="memberForm.hourlyRate"
+                type="number"
+                min="0"
+                placeholder="150"
+              />
             </UFormField>
 
             <UFormField label="Hourly Cost ($)">
-              <UInput v-model.number="memberForm.hourlyCost" type="number" min="0" placeholder="75" />
+              <UInput
+                v-model.number="memberForm.hourlyCost"
+                type="number"
+                min="0"
+                placeholder="75"
+              />
             </UFormField>
           </div>
 
           <UFormField label="Target Utilization (hours/month)">
-            <UInput v-model.number="memberForm.targetUtilization" type="number" min="0" placeholder="120" />
+            <UInput
+              v-model.number="memberForm.targetUtilization"
+              type="number"
+              min="0"
+              placeholder="120"
+            />
           </UFormField>
 
           <UCheckbox v-model="memberForm.isActive" label="Active team member" />
@@ -586,7 +766,9 @@ const commonDepartments = [
     <!-- Delete Confirmation Modal -->
     <UModal v-model:open="showDeleteModal" class="max-w-sm">
       <template #header>
-        <h3 class="font-semibold text-red-500">Delete Team Member</h3>
+        <h3 class="font-semibold text-red-500">
+          Delete Team Member
+        </h3>
       </template>
       <template #body>
         <p>Are you sure you want to delete <strong>{{ deletingMember?.name }}</strong>?</p>

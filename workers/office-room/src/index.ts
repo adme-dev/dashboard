@@ -54,11 +54,16 @@ export default {
     const id = env.OFFICE_ROOMS.idFromName(officeId)
     const stub = env.OFFICE_ROOMS.get(id)
     const params = new URLSearchParams({
+      officeId,
       handle: claims.handle,
       name: claims.name,
       avatarUrl: claims.avatarUrl ?? '',
       role: claims.role,
-      isGuest: claims.isGuest ? 'true' : 'false'
+      isGuest: claims.isGuest ? 'true' : 'false',
+      allowedZoneId: claims.allowedZoneId ?? '',
+      guestBadgeId: claims.guestBadgeId ?? '',
+      zoneCapacities: JSON.stringify(claims.zoneCapacities ?? {}),
+      zoneAccessPolicies: JSON.stringify(claims.zoneAccessPolicies ?? {})
     })
     return stub.fetch(`https://office-room-do/?${params.toString()}`, {
       headers: request.headers

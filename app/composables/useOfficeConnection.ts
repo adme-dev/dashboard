@@ -1,8 +1,14 @@
 import type { Ref } from 'vue'
 import type {
+  OfficeMediaSession,
+  OfficeMediaUnavailableReason,
+  OfficePresenceEvent,
+  OfficePresenceEventKind,
+  OfficePresenceEventTarget,
   OfficeParticipant,
   OfficeSnapshot,
   OfficeStatus,
+  OfficeZoneRow,
   ActorHandle
 } from '~~/app/types/office'
 import type {
@@ -12,24 +18,82 @@ import type {
 
 interface UseOfficeConnectionOptions {
   officeId: Ref<string | null>
+  tokenEndpoint?: Ref<string | null>
+  initialZoneId?: Ref<string | null>
+}
+
+type OfficeJoinFailure = {
+  zoneId: string
+  reason: 'denied' | 'full'
+  message: string
+}
+
+type OfficeMediaUnavailable = {
+  zoneId: string
+  reason: OfficeMediaUnavailableReason
+  message: string
 }
 
 export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
   const participants = ref<Map<ActorHandle, OfficeParticipant>>(new Map())
   const zoneOccupancy = ref<Record<string, ActorHandle[]>>({})
+  const transientEvents = ref<OfficePresenceEvent[]>([])
   const isConnected = ref(false)
   const lastError = ref<string | null>(null)
+  const currentZoneId = ref<string | null>(null)
+  const joinFailure = ref<OfficeJoinFailure | null>(null)
+  const mediaSession = ref<OfficeMediaSession | null>(null)
+  const mediaUnavailable = ref<OfficeMediaUnavailable | null>(null)
+  const zoneNoteUpdates = ref<Record<string, Pick<OfficeZoneRow, 'notes' | 'notes_version' | 'notes_updated_at' | 'notes_updated_by'>>>({})
+  const deletedZoneIds = ref<Set<string>>(new Set())
+  const upsertedZones = ref<Record<string, OfficeZoneRow>>({})
 
   let ws: WebSocket | null = null
   let reconnectAttempt = 0
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  const eventTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  let desiredStatus: OfficeStatus | null = null
+  let desiredZoneId: string | null = opts.initialZoneId?.value ?? null
 
   function applySnapshot(snap: OfficeSnapshot) {
     const m = new Map<ActorHandle, OfficeParticipant>()
     for (const p of snap.participants) m.set(p.handle, p)
     participants.value = m
     zoneOccupancy.value = { ...snap.zoneOccupancy }
+  }
+
+  function clearPresenceState() {
+    participants.value = new Map()
+    zoneOccupancy.value = {}
+    transientEvents.value = []
+    currentZoneId.value = null
+    joinFailure.value = null
+    mediaSession.value = null
+    mediaUnavailable.value = null
+    zoneNoteUpdates.value = {}
+    deletedZoneIds.value = new Set()
+    upsertedZones.value = {}
+    for (const timer of eventTimers.values()) clearTimeout(timer)
+    eventTimers.clear()
+  }
+
+  function removeTransientEvent(id: string) {
+    if (eventTimers.has(id)) {
+      clearTimeout(eventTimers.get(id))
+      eventTimers.delete(id)
+    }
+    transientEvents.value = transientEvents.value.filter(event => event.id !== id)
+  }
+
+  function addTransientEvent(event: OfficePresenceEvent) {
+    removeTransientEvent(event.id)
+    transientEvents.value = [...transientEvents.value, event]
+      .filter(item => item.expiresAt > Date.now())
+      .slice(-24)
+
+    const ttl = Math.max(0, event.expiresAt - Date.now())
+    eventTimers.set(event.id, setTimeout(() => removeTransientEvent(event.id), ttl))
   }
 
   function applyMessage(msg: OutboundMessage) {
@@ -92,10 +156,121 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
         return
       }
       case 'zone:denied':
-        lastError.value = `Zone access denied: ${msg.reason}`
+        desiredZoneId = null
+        currentZoneId.value = null
+        joinFailure.value = {
+          zoneId: msg.zoneId,
+          reason: 'denied',
+          message: `Zone access denied: ${msg.reason}`
+        }
+        lastError.value = joinFailure.value.message
         return
       case 'zone:full':
-        lastError.value = 'Room is full'
+        desiredZoneId = null
+        currentZoneId.value = null
+        joinFailure.value = {
+          zoneId: msg.zoneId,
+          reason: 'full',
+          message: 'Room is full'
+        }
+        lastError.value = joinFailure.value.message
+        return
+      case 'zone:entered':
+        desiredZoneId = msg.zoneId
+        currentZoneId.value = msg.zoneId
+        joinFailure.value = null
+        mediaSession.value = null
+        mediaUnavailable.value = null
+        lastError.value = null
+        return
+      case 'zone:media-session':
+        if (currentZoneId.value === msg.zoneId) {
+          mediaSession.value = msg.media
+          mediaUnavailable.value = null
+        }
+        return
+      case 'zone:media-unavailable':
+        if (currentZoneId.value === msg.zoneId) {
+          mediaSession.value = null
+          mediaUnavailable.value = {
+            zoneId: msg.zoneId,
+            reason: msg.reason,
+            message: msg.message ?? 'Realtime media is unavailable.'
+          }
+        }
+        return
+      case 'zone:notes-updated':
+        zoneNoteUpdates.value = {
+          ...zoneNoteUpdates.value,
+          [msg.zoneId]: {
+            notes: msg.notes,
+            notes_version: msg.version,
+            notes_updated_at: msg.updatedAt,
+            notes_updated_by: msg.updatedBy
+          }
+        }
+        return
+      case 'zone:taken-over':
+        currentZoneId.value = null
+        joinFailure.value = null
+        mediaSession.value = null
+        mediaUnavailable.value = null
+        lastError.value = 'This room session moved to another tab.'
+        disconnect()
+        return
+      case 'zone:evicted':
+        currentZoneId.value = null
+        desiredZoneId = null
+        joinFailure.value = {
+          zoneId: msg.zoneId,
+          reason: 'denied',
+          message: 'You were removed from this room by an office admin.'
+        }
+        mediaSession.value = null
+        mediaUnavailable.value = null
+        lastError.value = joinFailure.value.message
+        return
+      case 'zone:access-revoked':
+        currentZoneId.value = null
+        desiredZoneId = null
+        joinFailure.value = {
+          zoneId: msg.zoneId,
+          reason: 'denied',
+          message: `Room access changed: ${msg.reason}`
+        }
+        mediaSession.value = null
+        mediaUnavailable.value = null
+        lastError.value = joinFailure.value.message
+        return
+      case 'zone:deleted': {
+        deletedZoneIds.value = new Set([...deletedZoneIds.value, msg.zoneId])
+        const { [msg.zoneId]: _removedZone, ...remainingZones } = upsertedZones.value
+        upsertedZones.value = remainingZones
+        const { [msg.zoneId]: _removedOccupancy, ...remainingOccupancy } = zoneOccupancy.value
+        zoneOccupancy.value = remainingOccupancy
+        if (currentZoneId.value === msg.zoneId || desiredZoneId === msg.zoneId) {
+          currentZoneId.value = null
+          desiredZoneId = null
+          joinFailure.value = {
+            zoneId: msg.zoneId,
+            reason: 'denied',
+            message: msg.reason
+          }
+          mediaSession.value = null
+          mediaUnavailable.value = null
+          lastError.value = msg.reason
+        }
+        return
+      }
+      case 'zone:upserted':
+        deletedZoneIds.value = new Set([...deletedZoneIds.value].filter(zoneId => zoneId !== msg.zone.id))
+        upsertedZones.value = {
+          ...upsertedZones.value,
+          [msg.zone.id]: msg.zone
+        }
+        return
+      case 'presence:event':
+        addTransientEvent(msg.event)
         return
       case 'error':
         lastError.value = msg.message
@@ -109,7 +284,7 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
 
   async function fetchHandshake(officeId: string): Promise<{ token: string, workerUrl: string }> {
     return await $fetch<{ token: string, workerUrl: string, exp: number }>(
-      `/api/office/${officeId}/token`,
+      opts.tokenEndpoint?.value ?? `/api/office/${officeId}/token`,
       { method: 'POST' }
     )
   }
@@ -152,6 +327,7 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
     ws.onopen = () => {
       isConnected.value = true
       reconnectAttempt = 0
+      replayDesiredState()
       heartbeatTimer = setInterval(() => {
         ws?.send(JSON.stringify({ type: 'heartbeat' } satisfies InboundMessage))
       }, 20_000)
@@ -198,6 +374,8 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
 
   function disconnect() {
     intentionallyClosed = true
+    isConnected.value = false
+    clearPresenceState()
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
@@ -213,24 +391,87 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
   function send(msg: InboundMessage) {
     if (ws?.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(msg))
+      return true
+    }
+    return false
+  }
+
+  function replayDesiredState() {
+    if (desiredStatus) {
+      send({ type: 'status:set', status: desiredStatus })
+    }
+    if (desiredZoneId) {
+      send({ type: 'zone:enter', zoneId: desiredZoneId })
     }
   }
 
   function setStatus(status: OfficeStatus) {
+    desiredStatus = status
     send({ type: 'status:set', status })
   }
   function enterZone(zoneId: string) {
+    desiredZoneId = zoneId
+    joinFailure.value = null
+    mediaSession.value = null
+    mediaUnavailable.value = null
     send({ type: 'zone:enter', zoneId })
   }
   function leaveZone() {
+    desiredZoneId = null
+    currentZoneId.value = null
+    joinFailure.value = null
+    mediaSession.value = null
+    mediaUnavailable.value = null
     send({ type: 'zone:leave' })
   }
+  function sendPresenceEvent(kind: OfficePresenceEventKind, target: OfficePresenceEventTarget) {
+    send({ type: 'presence:event', kind, target })
+  }
+  function evictParticipant(handle: ActorHandle) {
+    send({ type: 'participant:evict', handle })
+  }
+  function sendZoneNotesUpdated(zone: Pick<OfficeZoneRow, 'id' | 'notes' | 'notes_version' | 'notes_updated_at' | 'notes_updated_by'>) {
+    zoneNoteUpdates.value = {
+      ...zoneNoteUpdates.value,
+      [zone.id]: {
+        notes: zone.notes,
+        notes_version: zone.notes_version,
+        notes_updated_at: zone.notes_updated_at,
+        notes_updated_by: zone.notes_updated_by
+      }
+    }
+    send({
+      type: 'zone:notes-updated',
+      zoneId: zone.id,
+      notes: zone.notes,
+      version: zone.notes_version,
+      updatedAt: zone.notes_updated_at,
+      updatedBy: zone.notes_updated_by
+    })
+  }
+
+  watch(
+    () => opts.initialZoneId?.value ?? null,
+    (zoneId) => {
+      if (!zoneId || desiredZoneId === zoneId) return
+      desiredZoneId = zoneId
+      joinFailure.value = null
+      mediaSession.value = null
+      mediaUnavailable.value = null
+      send({ type: 'zone:enter', zoneId })
+    }
+  )
 
   watch(
     () => opts.officeId.value,
     (newId, oldId) => {
-      if (oldId) disconnect()
-      if (newId) connect()
+      if (oldId) {
+        disconnect()
+      }
+      if (newId) {
+        desiredZoneId = opts.initialZoneId?.value ?? null
+        connect()
+      }
     },
     { immediate: true }
   )
@@ -240,10 +481,22 @@ export function useOfficeConnection(opts: UseOfficeConnectionOptions) {
   return {
     participants,
     zoneOccupancy,
+    transientEvents,
     isConnected,
     lastError,
+    currentZoneId,
+    joinFailure,
+    mediaSession,
+    mediaUnavailable,
+    zoneNoteUpdates,
+    deletedZoneIds,
+    upsertedZones,
+    disconnect,
     setStatus,
     enterZone,
-    leaveZone
+    leaveZone,
+    sendPresenceEvent,
+    evictParticipant,
+    sendZoneNotesUpdated
   }
 }

@@ -14,7 +14,10 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { unstable_dev, type UnstableDevWorker } from 'wrangler'
 import { resolve } from 'node:path'
 
-describe('OfficeRoom WS upgrade handshake', () => {
+const runWorkerIntegration = process.env.RUN_OFFICE_WORKER_INTEGRATION === 'true'
+const describeWorkerIntegration = runWorkerIntegration ? describe : describe.skip
+
+describeWorkerIntegration('OfficeRoom WS upgrade handshake', () => {
   let worker: UnstableDevWorker
 
   beforeAll(async () => {

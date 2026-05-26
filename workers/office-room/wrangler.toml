@@ -20,3 +20,8 @@ SYNC_BASE_URL = "https://agency-dashboard-6cm.pages.dev"
 #   cd workers/office-room && wrangler secret put OFFICE_SYNC_SECRET
 # The same value must also exist as an env var on the Pages app so the
 # /api/office/_internal/sync-status endpoint can verify the header.
+
+# REALTIME_APP_ID and REALTIME_APP_SECRET are set as worker secrets, not committed:
+#   cd workers/office-room && wrangler secret put REALTIME_APP_ID
+#   cd workers/office-room && wrangler secret put REALTIME_APP_SECRET
+# When absent, room entry still works and the client stays in local-preview mode.
