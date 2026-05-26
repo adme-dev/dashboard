@@ -1,10 +1,23 @@
 <script setup lang="ts">
 const props = defineProps<{
-  attachments: Array<{ url: string; name: string; type: string; size: number; key?: string }>
+  attachments: Array<{ url: string, name: string, type: string, size: number, key?: string }>
 }>()
+
+const safeAttachments = computed(() =>
+  props.attachments
+    .map(attachment => ({
+      ...attachment,
+      url: safeAttachmentUrl(attachment.url)
+    }))
+    .filter((attachment): attachment is typeof attachment & { url: string } => Boolean(attachment.url))
+)
 
 function isImage(type: string) {
   return type.startsWith('image/')
+}
+
+function safeAttachmentUrl(value?: string | null) {
+  return safeMediaUrl(value)
 }
 
 function formatSize(bytes: number): string {
@@ -26,9 +39,9 @@ function getFileIcon(type: string): string {
 </script>
 
 <template>
-  <div v-if="attachments && attachments.length > 0" class="flex flex-wrap gap-2 mt-1.5">
+  <div v-if="safeAttachments.length > 0" class="flex flex-wrap gap-2 mt-1.5">
     <!-- Image attachments: show preview -->
-    <template v-for="att in attachments" :key="att.url">
+    <template v-for="att in safeAttachments" :key="att.url">
       <a
         v-if="isImage(att.type)"
         :href="att.url"
@@ -41,7 +54,7 @@ function getFileIcon(type: string): string {
           :alt="att.name"
           class="max-w-full max-h-64 object-contain bg-elevated"
           loading="lazy"
-        />
+        >
         <div class="px-2 py-1 text-xs text-muted truncate bg-elevated/50">
           {{ att.name }} &middot; {{ formatSize(att.size) }}
         </div>

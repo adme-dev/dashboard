@@ -399,7 +399,7 @@ async function selectTenant(tenantId: string | any) {
       >
         <div class="flex flex-wrap items-center gap-3">
           <UAvatar
-            :src="profile.avatar"
+            :src="safeMediaUrl(profile.avatar)"
             :alt="profile.name"
             size="lg"
           />

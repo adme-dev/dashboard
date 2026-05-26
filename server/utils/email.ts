@@ -1098,6 +1098,94 @@ export async function sendBoardChangeEmail(data: {
   }
 }
 
+export async function sendOfficeFollowUpEmail(data: {
+  to: string
+  subject: string
+  body: string
+  meetingTitle: string
+}, event?: H3Event): Promise<void> {
+  const client = getResendClient(event)
+  if (!client) {
+    console.log('[Email] Office follow-up email (no client) for', data.to)
+    return
+  }
+
+  const safeBody = escapeHtml(data.body).replace(/\n/g, '<br>')
+  const { html, text } = renderEmailTemplate({
+    title: escapeHtml(data.subject),
+    bodyHtml: `
+      <p style="margin: 0 0 12px;">Follow-up from <strong>${escapeHtml(data.meetingTitle)}</strong>.</p>
+      <div style="background: #f3f4f6; border-left: 4px solid ${BRAND_COLOR}; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;">
+        <p style="margin: 0; white-space: pre-wrap;">${safeBody}</p>
+      </div>
+    `,
+    recipientEmail: data.to
+  })
+
+  try {
+    await client.emails.send({
+      from: getFromHeader(event),
+      to: data.to,
+      subject: data.subject,
+      html,
+      text
+    })
+    console.log('[Email] Office follow-up email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send office follow-up email:', error)
+    throw error
+  }
+}
+
+export async function sendOfficeMeetingInviteEmail(data: {
+  to: string
+  meetingTitle: string
+  inviteUrl: string
+  scheduleLabel?: string
+  roomName?: string | null
+  note?: string
+}, event?: H3Event): Promise<void> {
+  const client = getResendClient(event)
+  if (!client) {
+    console.log('[Email] Office meeting invite email (no client) for', data.to)
+    return
+  }
+
+  const detailRows = [
+    data.scheduleLabel ? `<p style="margin:0 0 8px;color:#555555;font-size:14px;"><strong>When:</strong> ${escapeHtml(data.scheduleLabel)}</p>` : '',
+    data.roomName ? `<p style="margin:0 0 8px;color:#555555;font-size:14px;"><strong>Room:</strong> ${escapeHtml(data.roomName)}</p>` : ''
+  ].filter(Boolean).join('')
+  const noteHtml = data.note
+    ? `<p style="margin:16px 0 0;color:#555555;font-size:14px;line-height:1.6;">${escapeHtml(data.note).replace(/\n/g, '<br>')}</p>`
+    : ''
+
+  const { html, text } = renderEmailTemplate({
+    title: `You're invited to ${escapeHtml(data.meetingTitle)}`,
+    bodyHtml: `
+      <p style="margin:0 0 16px;color:#333333;font-size:15px;line-height:1.6;">Use the lobby link below to join from your browser. No account is required.</p>
+      ${detailRows}
+      ${noteHtml}
+    `,
+    ctaText: 'Open Meeting Lobby',
+    ctaUrl: data.inviteUrl,
+    recipientEmail: data.to
+  })
+
+  try {
+    await client.emails.send({
+      from: getFromHeader(event),
+      to: data.to,
+      subject: `Meeting invite: ${data.meetingTitle}`,
+      html,
+      text
+    })
+    console.log('[Email] Office meeting invite email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send office meeting invite email:', error)
+    throw error
+  }
+}
+
 export async function sendBoardMemberAddedEmail(data: {
   to: string
   name: string

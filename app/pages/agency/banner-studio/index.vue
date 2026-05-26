@@ -246,8 +246,8 @@ function clearFilters() {
           <!-- Thumbnail -->
           <div class="aspect-video bg-[var(--ui-bg-elevated)] flex items-center justify-center relative">
             <img
-              v-if="p.thumbnailUrl"
-              :src="p.thumbnailUrl"
+              v-if="safeMediaUrl(p.thumbnailUrl)"
+              :src="safeMediaUrl(p.thumbnailUrl)"
               :alt="p.name"
               class="w-full h-full object-cover"
             >

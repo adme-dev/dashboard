@@ -205,8 +205,8 @@ function timeAgo(date: string) {
             class="relative aspect-video rounded-lg overflow-hidden bg-elevated group"
           >
             <img
-              v-if="item.thumbnailUrl"
-              :src="item.thumbnailUrl"
+              v-if="safeMediaUrl(item.thumbnailUrl)"
+              :src="safeMediaUrl(item.thumbnailUrl)"
               :alt="item.title"
               class="w-full h-full object-cover group-hover:scale-105 transition-transform"
             />

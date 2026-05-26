@@ -207,8 +207,8 @@ async function deleteAsset(asset: BannerAsset) {
       >
         <div class="aspect-square bg-(--ui-bg) flex items-center justify-center">
           <img
-            v-if="asset.mimeType?.startsWith('image')"
-            :src="asset.thumbnailUrl || asset.url"
+            v-if="asset.mimeType?.startsWith('image') && (safeMediaUrl(asset.thumbnailUrl) || safeMediaUrl(asset.url))"
+            :src="safeMediaUrl(asset.thumbnailUrl) || safeMediaUrl(asset.url)"
             :alt="asset.name"
             class="w-full h-full object-cover"
           >

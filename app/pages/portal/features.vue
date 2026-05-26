@@ -157,8 +157,8 @@ const features = computed<FeatureCard[]>(() => {
                 class="aspect-square rounded overflow-hidden bg-elevated"
               >
                 <img
-                  v-if="item.thumbnailUrl"
-                  :src="item.thumbnailUrl"
+                  v-if="safeMediaUrl(item.thumbnailUrl)"
+                  :src="safeMediaUrl(item.thumbnailUrl)"
                   :alt="item.title"
                   class="w-full h-full object-cover"
                 />

@@ -325,7 +325,7 @@
             class="flex items-center justify-between p-2 rounded hover:bg-elevated"
           >
             <div class="flex items-center gap-2">
-              <UAvatar size="sm" :src="user.avatarUrl" :alt="user.name" />
+              <UAvatar size="sm" :src="user.avatarUrl || undefined" :alt="user.name" />
               <div>
                 <div class="text-sm font-medium">{{ user.name }}</div>
                 <div class="text-xs text-muted">{{ user.email }}</div>

@@ -64,7 +64,7 @@ const statusCounts = computed(() => {
         <UTooltip v-for="member in members" :key="member.id" :text="`${member.name} — ${member.capacityStatus}`">
           <UAvatar
             :alt="member.name"
-            :src="member.avatar || member.avatarUrl"
+            :src="member.avatar || member.avatarUrl || undefined"
             size="sm"
             class="ring-2"
             :class="statusRing[member.capacityStatus]"

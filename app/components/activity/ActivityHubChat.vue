@@ -360,7 +360,7 @@ onUnmounted(() => {
               class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-elevated/60 transition-colors text-left cursor-pointer"
               @click="openConversation(ch)"
             >
-              <UAvatar :src="ch.avatar_url" :alt="ch.name" size="2xs" class="shrink-0" />
+              <UAvatar :src="ch.avatar_url || undefined" :alt="ch.name" size="2xs" class="shrink-0" />
               <div class="flex-1 min-w-0">
                 <span
                   class="text-xs truncate block"

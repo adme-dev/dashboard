@@ -104,7 +104,7 @@ function getChannelIcon(type: string) {
           </div>
 
           <div class="flex items-start gap-2">
-            <UAvatar :src="result.user_avatar" :alt="result.user_name" size="xs" class="shrink-0 mt-0.5" />
+            <UAvatar :src="result.user_avatar || undefined" :alt="result.user_name" size="xs" class="shrink-0 mt-0.5" />
             <div class="flex-1 min-w-0">
               <span class="text-sm font-medium">{{ result.user_name }}</span>
               <!-- eslint-disable-next-line vue/no-v-html -->

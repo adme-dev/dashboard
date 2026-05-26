@@ -381,7 +381,7 @@ watch(
                   </p>
                   <a
                     v-if="insight.sourceUrl"
-                    :href="insight.sourceUrl"
+                    :href="safePublicUrl(insight.sourceUrl)"
                     target="_blank"
                     rel="noopener noreferrer"
                     class="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
@@ -455,7 +455,7 @@ watch(
                 </p>
                 <a
                   v-if="ref.url"
-                  :href="ref.url"
+                  :href="safePublicUrl(ref.url)"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"

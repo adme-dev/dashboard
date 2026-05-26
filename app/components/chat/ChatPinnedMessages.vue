@@ -71,7 +71,7 @@ function formatTime(date: string) {
         >
           <!-- Author + time -->
           <div class="flex items-center gap-2 mb-1">
-            <UAvatar :src="pin.user_avatar" :alt="pin.user_name" size="xs" />
+            <UAvatar :src="pin.user_avatar || undefined" :alt="pin.user_name" size="xs" />
             <span class="text-sm font-semibold">{{ pin.user_name }}</span>
             <span class="text-[11px] text-muted">{{ formatTime(pin.created_at) }}</span>
           </div>

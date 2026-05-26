@@ -291,7 +291,7 @@ const getActivityIcon = (type: string) => {
                     variant="ghost"
                     size="sm"
                     icon="i-lucide-download"
-                    :href="attachment.fileUrl"
+                    :href="safeMediaUrl(attachment.fileUrl)"
                     target="_blank"
                   />
                 </div>

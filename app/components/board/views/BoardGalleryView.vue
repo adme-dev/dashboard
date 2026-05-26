@@ -49,7 +49,7 @@
                     v-for="a in item.assignees.slice(0, 3)"
                     :key="a.id"
                     size="xs"
-                    :src="a.avatar"
+                    :src="safeMediaUrl(a.avatar)"
                     :alt="a.name"
                     class="ring-2 ring-white dark:ring-neutral-900"
                   />

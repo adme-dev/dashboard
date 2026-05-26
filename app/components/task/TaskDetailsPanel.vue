@@ -80,12 +80,12 @@
             <!-- Actions -->
             <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <UButton
-                v-if="file.fileUrl"
+                v-if="safeMediaUrl(file.fileUrl)"
                 icon="i-lucide-download"
                 variant="ghost"
                 color="neutral"
                 size="xs"
-                :href="file.fileUrl"
+                :href="safeMediaUrl(file.fileUrl)"
                 target="_blank"
               />
               <UButton

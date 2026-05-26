@@ -96,7 +96,7 @@ onMounted(() => {
     <!-- Message preview -->
     <div class="mb-4 p-3 bg-elevated/50 rounded-lg border border-default">
       <div class="flex items-center gap-2 mb-1">
-        <UAvatar :src="message.user_avatar" :alt="message.user_name" size="2xs" />
+        <UAvatar :src="message.user_avatar || undefined" :alt="message.user_name" size="2xs" />
         <span class="text-xs font-semibold">{{ message.user_name }}</span>
       </div>
       <p class="text-sm text-muted line-clamp-3">{{ message.content }}</p>

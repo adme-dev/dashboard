@@ -214,13 +214,13 @@ watch(search, () => { page.value = 1 })
                 <div class="flex items-center gap-3 mb-4">
                   <UIcon :name="getPlatformIcon(row.platform)" class="w-5 h-5 text-muted shrink-0" />
                   <h3 class="text-sm font-semibold text-default truncate">{{ row.campaignName }}</h3>
-                  <div v-if="row.deepLinkUrl" class="shrink-0 ml-auto flex items-center gap-2">
+                  <div v-if="safePublicUrl(row.deepLinkUrl)" class="shrink-0 ml-auto flex items-center gap-2">
                     <span v-if="row.campaignStatus && ['DRAFT', 'PENDING_REVIEW', 'IN_PROCESS'].includes(row.campaignStatus.toUpperCase())" class="text-[10px] text-warning flex items-center gap-1">
                       <UIcon name="i-lucide-triangle-alert" class="w-3 h-3" />
                       Campaign pending setup
                     </span>
                     <a
-                      :href="row.deepLinkUrl"
+                      :href="safePublicUrl(row.deepLinkUrl)"
                       target="_blank"
                       rel="noopener"
                       @click.stop

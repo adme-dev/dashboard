@@ -680,7 +680,7 @@ onUnmounted(() => {
               class="flex items-center gap-3 px-2 py-2"
             >
               <div class="relative">
-                <UAvatar :src="member.avatar_url" :alt="member.name" size="sm" />
+                <UAvatar :src="member.avatar_url || undefined" :alt="member.name" size="sm" />
                 <span
                   :class="[
                     'absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-elevated',

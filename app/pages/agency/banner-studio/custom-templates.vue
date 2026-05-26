@@ -157,8 +157,8 @@ const categoryLabel = (cat: string) => categories.find(c => c.value === cat)?.la
           @click="openPreview(tpl)"
         >
           <img
-            v-if="tpl.thumbnailUrl"
-            :src="tpl.thumbnailUrl"
+            v-if="safeMediaUrl(tpl.thumbnailUrl)"
+            :src="safeMediaUrl(tpl.thumbnailUrl)"
             :alt="tpl.name"
             class="w-full h-full object-cover"
           >

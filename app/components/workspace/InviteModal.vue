@@ -34,7 +34,7 @@
               class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50"
             >
               <div class="flex items-center gap-3">
-                <UAvatar :src="member.avatarUrl" :alt="member.name" size="sm" />
+                <UAvatar :src="member.avatarUrl || undefined" :alt="member.name" size="sm" />
                 <div>
                   <div class="font-medium text-sm">{{ member.name }}</div>
                   <div class="text-xs text-gray-500">{{ member.title || member.email }}</div>
@@ -65,7 +65,7 @@
               class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50"
             >
               <div class="flex items-center gap-3">
-                <UAvatar :src="user.avatarUrl" :alt="user.name" size="sm" />
+                <UAvatar :src="user.avatarUrl || undefined" :alt="user.name" size="sm" />
                 <div>
                   <div class="font-medium text-sm">{{ user.name }}</div>
                   <div class="text-xs text-gray-500">{{ user.email }}</div>

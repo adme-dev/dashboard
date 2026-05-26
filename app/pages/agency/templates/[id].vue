@@ -216,11 +216,11 @@
                   Auto-include
                 </UBadge>
                 <UButton
-                  v-if="doc.fileUrl"
+                  v-if="safeMediaUrl(doc.fileUrl)"
                   size="xs"
                   variant="ghost"
                   icon="i-lucide-download"
-                  :href="doc.fileUrl"
+                  :href="safeMediaUrl(doc.fileUrl)"
                   target="_blank"
                 />
               </div>

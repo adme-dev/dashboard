@@ -15,18 +15,38 @@ interface LinkPreviewData {
 const preview = ref<LinkPreviewData | null>(null)
 const loading = ref(true)
 const failed = ref(false)
+const safeSourceUrl = computed(() => safePreviewUrl(props.url))
 
 const hostname = computed(() => {
-  try { return new globalThis.URL(props.url).hostname } catch { return props.url }
+  const url = safeSourceUrl.value
+  if (!url) return props.url
+  try {
+    return new globalThis.URL(url).hostname
+  } catch {
+    return props.url
+  }
 })
 
 async function fetchPreview() {
+  if (!safeSourceUrl.value) {
+    failed.value = true
+    loading.value = false
+    return
+  }
   try {
     const data = await $fetch<LinkPreviewData>('/api/chat/link-preview', {
-      params: { url: props.url }
+      params: { url: safeSourceUrl.value }
     })
-    if (data?.title || data?.description || data?.image) {
-      preview.value = data
+    const safeUrl = safePreviewUrl(data?.url) ?? safeSourceUrl.value
+    const safeImage = safePreviewUrl(data?.image)
+    const safeFavicon = safePreviewUrl(data?.favicon)
+    if (data?.title || data?.description || safeImage) {
+      preview.value = {
+        ...data,
+        url: safeUrl,
+        image: safeImage,
+        favicon: safeFavicon
+      }
     } else {
       failed.value = true
     }
@@ -38,6 +58,10 @@ async function fetchPreview() {
 }
 
 onMounted(fetchPreview)
+
+function safePreviewUrl(value?: string | null) {
+  return safePublicUrl(value)
+}
 </script>
 
 <template>
@@ -57,7 +81,7 @@ onMounted(fetchPreview)
         class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         loading="lazy"
         @error="($event.target as HTMLImageElement).style.display = 'none'"
-      />
+      >
     </div>
 
     <div class="px-3 py-2.5">
@@ -69,7 +93,7 @@ onMounted(fetchPreview)
           class="w-3.5 h-3.5 rounded-sm"
           loading="lazy"
           @error="($event.target as HTMLImageElement).style.display = 'none'"
-        />
+        >
         <span class="text-[11px] text-muted font-medium">{{ preview.siteName || hostname }}</span>
       </div>
 

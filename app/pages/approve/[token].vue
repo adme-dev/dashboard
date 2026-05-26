@@ -213,7 +213,7 @@ function formatDateTime(date: string | null) {
               <a
                 v-for="(attachment, index) in approval.attachments"
                 :key="index"
-                :href="attachment.url"
+                :href="safeMediaUrl(attachment.url)"
                 target="_blank"
                 class="flex items-center gap-2 px-3 py-2 bg-neutral-100 dark:bg-neutral-800 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
               >

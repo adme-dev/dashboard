@@ -71,8 +71,8 @@ function formatDate(date: string | null) {
       >
         <div class="aspect-video">
           <img
-            v-if="d.thumbnailUrl"
-            :src="d.thumbnailUrl"
+            v-if="safeMediaUrl(d.thumbnailUrl)"
+            :src="safeMediaUrl(d.thumbnailUrl)"
             :alt="d.title"
             class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />
@@ -98,8 +98,8 @@ function formatDate(date: string | null) {
 
         <!-- File link -->
         <a
-          v-if="d.fileUrl"
-          :href="d.fileUrl"
+          v-if="safeMediaUrl(d.fileUrl)"
+          :href="safeMediaUrl(d.fileUrl)"
           target="_blank"
           class="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity"
         >

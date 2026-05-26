@@ -359,7 +359,7 @@ function handleSend() {
           @mousedown.prevent="insertMention(member)"
           @mouseenter="selectedMentionIndex = idx"
         >
-          <UAvatar :src="member.avatar_url" :alt="member.name" size="xs" />
+          <UAvatar :src="member.avatar_url || undefined" :alt="member.name" size="xs" />
           <div class="min-w-0">
             <div class="text-sm font-medium truncate">{{ member.name }}</div>
             <div class="text-xs text-muted truncate">{{ member.email }}</div>

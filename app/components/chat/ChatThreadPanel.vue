@@ -154,7 +154,7 @@ defineExpose({ addReply, applyEdit, applyDelete, applyReaction })
     <!-- Parent message -->
     <div class="px-4 py-3 border-b border-default bg-elevated/25">
       <div class="flex items-center gap-2 mb-1">
-        <UAvatar :src="parentMessage.user_avatar" :alt="parentMessage.user_name" size="xs" />
+        <UAvatar :src="parentMessage.user_avatar || undefined" :alt="parentMessage.user_name" size="xs" />
         <span class="text-sm font-semibold">{{ parentMessage.user_name }}</span>
         <span class="text-[11px] text-muted">{{ formatTime(parentMessage.created_at) }}</span>
       </div>
@@ -197,7 +197,7 @@ defineExpose({ addReply, applyEdit, applyDelete, applyReaction })
 
       <div v-else class="space-y-1">
         <div v-for="reply in replies" :key="reply.id" class="flex gap-2.5 group relative py-1 -mx-1 px-1 rounded-md hover:bg-elevated/50">
-          <UAvatar :src="reply.user_avatar" :alt="reply.user_name" size="xs" class="shrink-0 mt-0.5" />
+          <UAvatar :src="reply.user_avatar || undefined" :alt="reply.user_name" size="xs" class="shrink-0 mt-0.5" />
           <div class="flex-1 min-w-0">
             <div class="flex items-baseline gap-2 mb-0.5">
               <span class="text-sm font-semibold">{{ reply.user_name }}</span>

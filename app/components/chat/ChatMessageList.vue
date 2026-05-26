@@ -255,7 +255,7 @@ defineExpose({ scrollToBottom, scrollToUnread })
               <div class="w-9 shrink-0">
                 <UAvatar
                   v-if="showAuthor(group.messages, idx)"
-                  :src="msg.user_avatar"
+                  :src="msg.user_avatar || undefined"
                   :alt="msg.user_name"
                   size="sm"
                 />
@@ -278,7 +278,7 @@ defineExpose({ scrollToBottom, scrollToUnread })
                   class="flex items-start gap-2 mb-1 pl-2 border-l-2 border-primary/40 rounded-sm"
                 >
                   <template v-if="getQuotedMessage(msg)">
-                    <UAvatar :src="getQuotedMessage(msg)!.user_avatar" :alt="getQuotedMessage(msg)!.user_name" size="2xs" class="mt-0.5" />
+                    <UAvatar :src="getQuotedMessage(msg)!.user_avatar || undefined" :alt="getQuotedMessage(msg)!.user_name" size="2xs" class="mt-0.5" />
                     <div class="min-w-0">
                       <span class="text-[11px] font-semibold text-muted">{{ getQuotedMessage(msg)!.user_name }}</span>
                       <p class="text-xs text-muted line-clamp-2">{{ getQuotedMessage(msg)!.content }}</p>

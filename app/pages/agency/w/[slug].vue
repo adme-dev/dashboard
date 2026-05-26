@@ -257,7 +257,7 @@
               >
                 <UAvatar
                   :alt="member.name"
-                  :src="member.avatarUrl"
+                  :src="member.avatarUrl || undefined"
                   size="sm"
                 />
                 <div class="flex-1 min-w-0">

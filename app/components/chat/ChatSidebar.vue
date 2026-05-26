@@ -202,7 +202,7 @@ function getDmUserId(ch: ChatChannel): string | undefined {
             >
               <div class="relative">
                 <UAvatar
-                  :src="ch.avatar_url"
+                  :src="ch.avatar_url || undefined"
                   :alt="ch.name"
                   size="xs"
                 />

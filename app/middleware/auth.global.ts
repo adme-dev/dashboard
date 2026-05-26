@@ -28,6 +28,9 @@ export default defineNuxtRouteMiddleware(async (to, _from) => {
     '/banner-studio',
     '/creativity',
     '/portal',
+    '/l/',
+    '/lobby',
+    '/lobby-room'
   ]
 
   if (to.path === '/' || publicPrefixes.some(p => to.path.startsWith(p))) {
@@ -35,8 +38,8 @@ export default defineNuxtRouteMiddleware(async (to, _from) => {
   }
 
   // Check all three auth signals — any one is sufficient
-  const authToken = useCookie('auth_token').value      // readable during SSR
-  const authStatus = useCookie('auth_status').value     // readable always
+  const authToken = useCookie('auth_token').value // readable during SSR
+  const authStatus = useCookie('auth_status').value // readable always
   const clientToken = useCookie('auth_token_client').value // readable always
 
   const hasAuth = authToken || clientToken || authStatus === 'logged_in'

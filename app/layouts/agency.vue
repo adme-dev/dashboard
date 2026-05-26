@@ -387,7 +387,9 @@ const groups = computed(() => [{
       <slot />
     </div>
 
-    <ActivityHub />
+    <ClientOnly>
+      <ActivityHub />
+    </ClientOnly>
   </UDashboardGroup>
 </template>
 

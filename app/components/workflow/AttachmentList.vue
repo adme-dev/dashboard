@@ -177,8 +177,8 @@ defineExpose({ refresh })
           @click="openPreview(attachment)"
         >
           <img
-            v-if="attachment.fileType.startsWith('image/')"
-            :src="attachment.fileUrl"
+            v-if="attachment.fileType.startsWith('image/') && safeMediaUrl(attachment.fileUrl)"
+            :src="safeMediaUrl(attachment.fileUrl)"
             :alt="attachment.fileName"
             class="w-full h-full object-cover rounded"
           />
@@ -214,7 +214,7 @@ defineExpose({ refresh })
               color="neutral"
               variant="ghost"
               size="xs"
-              :href="attachment.fileUrl"
+              :href="safeMediaUrl(attachment.fileUrl)"
               target="_blank"
             />
           </UTooltip>
@@ -256,7 +256,7 @@ defineExpose({ refresh })
             label="Download"
             icon="i-lucide-download"
             color="primary"
-            :href="previewUrl || undefined"
+            :href="safeMediaUrl(previewUrl)"
             target="_blank"
           />
           <UButton

@@ -204,7 +204,7 @@ watch(() => props.taskId, () => {
           <!-- Regular message -->
           <template v-else>
             <UAvatar
-              :src="msg.user_avatar"
+              :src="msg.user_avatar || undefined"
               :alt="msg.user_name"
               size="xs"
               class="mt-0.5 shrink-0"

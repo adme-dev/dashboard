@@ -118,7 +118,7 @@
                 :key="member.id"
                 class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50"
               >
-                <UAvatar :src="member.avatar_url" :alt="member.name" size="sm" />
+                <UAvatar :src="member.avatar_url || undefined" :alt="member.name" size="sm" />
                 <div class="flex-1">
                   <div class="text-sm font-medium">{{ member.name }}</div>
                   <div class="text-xs text-gray-500">{{ member.email }}</div>

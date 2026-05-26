@@ -472,7 +472,8 @@ function removeBgImage() {
               @click="pickAsset(asset)"
             >
               <img
-                :src="asset.thumbnailUrl || asset.url"
+                v-if="safeMediaUrl(asset.thumbnailUrl) || safeMediaUrl(asset.url)"
+                :src="safeMediaUrl(asset.thumbnailUrl) || safeMediaUrl(asset.url)"
                 :alt="asset.name"
                 class="w-full h-full object-cover"
               />

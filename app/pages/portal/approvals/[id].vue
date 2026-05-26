@@ -120,7 +120,7 @@ const statusColors: Record<string, string> = {
               <a
                 v-for="(attachment, i) in data.approval.attachments"
                 :key="i"
-                :href="typeof attachment === 'string' ? attachment : attachment.url"
+                :href="safeMediaUrl(typeof attachment === 'string' ? attachment : attachment.url)"
                 target="_blank"
                 class="flex items-center gap-2 p-3 rounded-lg bg-elevated hover:bg-muted/20 transition-colors"
               >

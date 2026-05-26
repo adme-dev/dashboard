@@ -156,8 +156,8 @@ async function submitComment() {
             class="relative aspect-video rounded-lg overflow-hidden bg-elevated group"
           >
             <img
-              v-if="d.thumbnailUrl"
-              :src="d.thumbnailUrl"
+              v-if="safeMediaUrl(d.thumbnailUrl)"
+              :src="safeMediaUrl(d.thumbnailUrl)"
               :alt="d.title"
               class="w-full h-full object-cover group-hover:scale-105 transition-transform"
             />

@@ -591,8 +591,8 @@ const tabs = computed(() => [
               >
                 <div class="aspect-video bg-elevated flex items-center justify-center relative">
                   <img
-                    v-if="asset.thumbnailUrl || asset.fileUrl"
-                    :src="asset.thumbnailUrl || asset.fileUrl"
+                    v-if="safeMediaUrl(asset.thumbnailUrl) || safeMediaUrl(asset.fileUrl)"
+                    :src="safeMediaUrl(asset.thumbnailUrl) || safeMediaUrl(asset.fileUrl)"
                     :alt="asset.fileName"
                     class="w-full h-full object-cover"
                   />
@@ -677,7 +677,8 @@ const tabs = computed(() => [
                         @mouseleave="handleMouseUp"
                       >
                         <img
-                          :src="selectedAsset.fileUrl"
+                          v-if="safeMediaUrl(selectedAsset.fileUrl)"
+                          :src="safeMediaUrl(selectedAsset.fileUrl)"
                           :alt="selectedAsset.fileName"
                           class="max-w-full max-h-[60vh] object-contain select-none"
                           draggable="false"

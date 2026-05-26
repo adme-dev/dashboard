@@ -155,7 +155,7 @@ const removeMember = async (memberId: string, memberName: string) => {
       >
         <div class="flex items-center gap-3 min-w-0">
           <UAvatar
-            :src="member.member_avatar"
+            :src="safeMediaUrl(member.member_avatar)"
             :alt="member.member_name"
             size="sm"
           />

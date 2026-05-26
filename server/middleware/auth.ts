@@ -1,4 +1,4 @@
-import { validateSession, TransientAuthError } from '../utils/auth'
+import { validateSession, TransientAuthError, type User } from '../utils/auth'
 import { kvGet, kvPut } from '../utils/kv'
 import { resolveUserPermissions } from '../utils/roleResolver'
 import { isReadOnlyRole } from '../utils/permissions'
@@ -15,6 +15,8 @@ const publicRoutes = [
   '/api/admin/magic-link-debug',
   '/api/test/cookies',
   '/api/webhooks',
+  '/api/office/_internal/',
+  '/api/public/office-lobby',
   '/api/xero/callback',
   '/api/_nuxt_icon',
   '/_nuxt',
@@ -23,12 +25,12 @@ const publicRoutes = [
   '/api/internal/warmup',
   '/api/internal/attribution-cron',
   '/api/leads/_internal/',
-  '/api/cron/',  // anomaly-detection cron + future cron handlers; each verifies x-cron-secret inline
+  '/api/cron/', // anomaly-detection cron + future cron handlers; each verifies x-cron-secret inline
   // Public webhook endpoints — auth via per-endpoint secret in the request
   // body (Meta's verify_token, Google's google_key matched against
   // lead_webhook_endpoints.secret_key). Google + Meta servers don't have
   // session cookies, so these MUST be public.
-  '/api/leads/webhook/',
+  '/api/leads/webhook/'
 ]
 
 // Paths that an authenticated cron can read with X-Internal-Cron-Secret.
@@ -37,8 +39,28 @@ const publicRoutes = [
 const CRON_ALLOWED_PREFIXES = [
   '/api/xero/',
   '/api/advisor/',
-  '/api/ai/financial-advisor',
+  '/api/ai/financial-advisor'
 ]
+
+type MiddlewareUser = User & { isCustomReadOnly?: boolean }
+
+function getErrorStatusCode(error: unknown) {
+  return error && typeof error === 'object' && 'statusCode' in error
+    ? (error as { statusCode?: number }).statusCode
+    : undefined
+}
+
+function getErrorName(error: unknown) {
+  return error && typeof error === 'object' && 'name' in error
+    ? (error as { name?: string }).name
+    : undefined
+}
+
+function getErrorMessage(error: unknown) {
+  return error && typeof error === 'object' && 'message' in error
+    ? (error as { message?: string }).message
+    : String(error)
+}
 
 export default defineEventHandler(async (event) => {
   const { pathname } = getRequestURL(event)
@@ -60,14 +82,14 @@ export default defineEventHandler(async (event) => {
   // path isn't whitelisted.
   const cronSecret = getHeader(event, 'x-internal-cron-secret')
   const expectedCronSecret = process.env.CRON_INTERNAL_SECRET
-  if (cronSecret && expectedCronSecret && cronSecret === expectedCronSecret &&
-      CRON_ALLOWED_PREFIXES.some((p) => pathname.startsWith(p))) {
+  if (cronSecret && expectedCronSecret && cronSecret === expectedCronSecret
+    && CRON_ALLOWED_PREFIXES.some(p => pathname.startsWith(p))) {
     event.context.user = {
       id: 'cron',
       email: 'cron@internal',
       name: 'Attribution Cron',
       role: 'owner',
-      is_active: true,
+      is_active: true
     }
     event.context.auth = { userId: 'cron', role: 'owner' }
     return
@@ -94,7 +116,7 @@ export default defineEventHandler(async (event) => {
 
   // Check KV cache first (use first 16 chars of token as key — safe, not sensitive)
   const cacheKey = `auth-session:${token.slice(0, 16)}`
-  const cachedUser = await kvGet<{ id: string; email: string; name: string; role: string; is_active: boolean; avatar_url?: string; custom_role_id?: string | null; permissionGroups?: string[]; isCustomReadOnly?: boolean }>(event, cacheKey)
+  const cachedUser = await kvGet<{ id: string, email: string, name: string, role: string, is_active: boolean, avatar_url?: string, custom_role_id?: string | null, permissionGroups?: string[], isCustomReadOnly?: boolean }>(event, cacheKey)
 
   if (cachedUser) {
     event.context.user = cachedUser
@@ -124,20 +146,20 @@ export default defineEventHandler(async (event) => {
     // Resolve permission groups
     const resolved = await resolveUserPermissions(event, user.id, user.role, user.custom_role_id)
     user.permissionGroups = resolved.groups
-    ;(user as any).isCustomReadOnly = resolved.isReadOnly && !isReadOnlyRole(user.role)
+    ;(user as MiddlewareUser).isCustomReadOnly = resolved.isReadOnly && !isReadOnlyRole(user.role)
 
     // Cache in KV for 5 minutes (includes permissionGroups + custom_role_id)
     kvPut(event, cacheKey, user, 300)
 
     event.context.user = user
     event.context.auth = { userId: user.id, role: user.role }
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Re-throw HTTP errors (our own 401 above)
-    if (error.statusCode) throw error
+    if (getErrorStatusCode(error)) throw error
 
     // Transient DB errors — return 503, do NOT delete cookies
-    if (error instanceof TransientAuthError || error.name === 'TransientAuthError') {
-      console.error('[Auth Middleware] Transient DB error, returning 503:', error.message)
+    if (error instanceof TransientAuthError || getErrorName(error) === 'TransientAuthError') {
+      console.error('[Auth Middleware] Transient DB error, returning 503:', getErrorMessage(error))
       throw createError({
         statusCode: 503,
         statusMessage: 'Service temporarily unavailable — please retry'

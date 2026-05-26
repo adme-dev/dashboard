@@ -8,7 +8,7 @@
         <UAvatar
           v-for="person in assignedPeople.slice(0, 4)"
           :key="person.id"
-          :src="person.avatarUrl"
+          :src="person.avatarUrl || undefined"
           :alt="person.name"
           :fallback="getInitials(person.name)"
           size="sm"
@@ -40,7 +40,7 @@
               :key="person.id"
               class="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-700 px-2 py-1 rounded-full text-sm"
             >
-              <UAvatar :src="person.avatarUrl" :alt="person.name" :fallback="getInitials(person.name)" size="2xs" class="bg-blue-500 text-white" />
+              <UAvatar :src="person.avatarUrl || undefined" :alt="person.name" :fallback="getInitials(person.name)" size="2xs" class="bg-blue-500 text-white" />
               <span>{{ person.name }}</span>
               <button @click="togglePerson(person.id)" class="hover:text-blue-900 ml-0.5">
                 <UIcon name="i-lucide-x" class="w-3.5 h-3.5" />
@@ -72,7 +72,7 @@
             :class="{ 'bg-blue-50 dark:bg-blue-900/30': isSelected(person.id) }"
             @click="togglePerson(person.id)"
           >
-            <UAvatar :src="person.avatarUrl" :alt="person.name" :fallback="person.initials || getInitials(person.name)" size="sm" class="bg-gray-700 text-white" />
+            <UAvatar :src="person.avatarUrl || undefined" :alt="person.name" :fallback="person.initials || getInitials(person.name)" size="sm" class="bg-gray-700 text-white" />
             <div class="text-left flex-1">
               <div class="text-sm font-medium text-gray-900 dark:text-neutral-100">{{ person.name }}</div>
               <div v-if="person.role" class="text-xs text-gray-500 dark:text-neutral-400">{{ person.role }}</div>

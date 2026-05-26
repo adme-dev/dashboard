@@ -204,8 +204,8 @@ const getWidthClass = (width: string) => {
       <!-- Header -->
       <div class="text-center mb-8">
         <img
-          v-if="form.logoUrl"
-          :src="form.logoUrl"
+          v-if="safeMediaUrl(form.logoUrl)"
+          :src="safeMediaUrl(form.logoUrl)"
           alt="Logo"
           class="h-12 mx-auto mb-4"
         />
@@ -228,8 +228,8 @@ const getWidthClass = (width: string) => {
           {{ form.confirmationMessage || 'Your submission has been received. We\'ll be in touch shortly.' }}
         </p>
         <UButton
-          v-if="form.confirmationRedirectUrl"
-          :href="form.confirmationRedirectUrl"
+          v-if="safePublicUrl(form.confirmationRedirectUrl)"
+          :href="safePublicUrl(form.confirmationRedirectUrl)"
           class="mt-6"
           color="primary"
           label="Continue"

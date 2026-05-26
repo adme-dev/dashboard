@@ -119,7 +119,7 @@
           <!-- Updates List -->
           <div class="space-y-4">
             <div v-for="update in updates" :key="update.id" class="flex gap-3">
-              <UAvatar :src="update.author.avatar" :alt="update.author.name" size="sm" />
+              <UAvatar :src="safeMediaUrl(update.author.avatar)" :alt="update.author.name" size="sm" />
               <div class="flex-1">
                 <div class="flex items-center gap-2">
                   <span class="font-medium text-sm">{{ update.author.name }}</span>

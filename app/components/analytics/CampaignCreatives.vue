@@ -100,8 +100,8 @@ const showPreview = computed({
         >
           <div class="h-28 w-40 bg-elevated rounded-md overflow-hidden border border-default/50 group-hover:border-primary/50 transition-colors">
             <img
-              v-if="creative.thumbnailUrl"
-              :src="creative.thumbnailUrl"
+              v-if="safeMediaUrl(creative.thumbnailUrl)"
+              :src="safeMediaUrl(creative.thumbnailUrl)"
               :alt="creative.title || 'Ad creative'"
               class="w-full h-full object-cover"
               loading="lazy"
@@ -123,9 +123,9 @@ const showPreview = computed({
             <h3 class="text-base font-semibold text-default pr-4">{{ previewCreative.title || 'Ad Creative' }}</h3>
             <UButton icon="i-lucide-x" variant="ghost" size="xs" @click="previewCreative = null" />
           </div>
-          <div v-if="previewCreative.thumbnailUrl" class="rounded-lg overflow-hidden bg-elevated mb-4">
+          <div v-if="safeMediaUrl(previewCreative.thumbnailUrl)" class="rounded-lg overflow-hidden bg-elevated mb-4">
             <img
-              :src="previewCreative.thumbnailUrl"
+              :src="safeMediaUrl(previewCreative.thumbnailUrl)"
               :alt="previewCreative.title || 'Creative'"
               class="w-full max-h-[70vh] object-contain"
             />

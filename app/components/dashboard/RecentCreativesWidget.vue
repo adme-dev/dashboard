@@ -100,8 +100,8 @@ const filters = [
       >
         <!-- Thumbnail or file type icon -->
         <img
-          v-if="item.thumbnailUrl || (!item.isVideo && item.fileUrl)"
-          :src="item.thumbnailUrl || item.fileUrl"
+          v-if="safeMediaUrl(item.thumbnailUrl) || (!item.isVideo && safeMediaUrl(item.fileUrl))"
+          :src="safeMediaUrl(item.thumbnailUrl) || safeMediaUrl(item.fileUrl)"
           :alt="item.fileName"
           class="w-full h-full object-cover"
           loading="lazy"
@@ -157,7 +157,7 @@ const filters = [
           <div class="flex items-center gap-1 mt-0.5">
             <UAvatar
               v-if="item.uploader"
-              :src="item.uploader.avatarUrl"
+              :src="item.uploader.avatarUrl || undefined"
               :alt="item.uploader.name"
               size="3xs"
             />

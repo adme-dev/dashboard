@@ -61,7 +61,7 @@ function copyTag(code: string, label: string) {
               icon="i-lucide-external-link"
               variant="outline"
               size="sm"
-              :href="instance.publishedUrl"
+              :href="safePublicUrl(instance.publishedUrl)"
               target="_blank"
               tag="a"
             />
