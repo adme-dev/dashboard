@@ -11,6 +11,8 @@
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 
+const toNumber = (value: string | number | null | undefined) => Number(value || 0)
+
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
   const query = getQuery(event)
@@ -190,6 +192,97 @@ export default defineEventHandler(async (event) => {
       WHERE cd.client_id = $1 AND cd.is_visible_to_client = true
     `, [clientId])
 
+    const requestHealth = await queryOne(`
+      SELECT
+        COUNT(*) FILTER (WHERE status NOT IN ('completed', 'closed', 'cancelled')) AS open_requests,
+        COUNT(*) FILTER (
+          WHERE priority = 'urgent'
+            AND status NOT IN ('completed', 'closed', 'cancelled')
+        ) AS urgent_requests,
+        COUNT(*) FILTER (
+          WHERE assigned_to IS NULL
+            AND status NOT IN ('completed', 'closed', 'cancelled')
+        ) AS unassigned_requests,
+        COUNT(*) FILTER (
+          WHERE status NOT IN ('completed', 'closed', 'cancelled')
+            AND desired_deadline IS NOT NULL
+            AND desired_deadline < CURRENT_DATE
+        ) AS overdue_requests,
+        COALESCE(SUM(CASE
+          WHEN request_type = 'job_request'
+            AND status NOT IN ('completed', 'closed', 'cancelled')
+          THEN estimated_budget ELSE 0
+        END), 0) AS open_requested_budget
+      FROM client_requests
+      WHERE client_id = $1
+    `, [clientId])
+
+    const leadHealth = await queryOne(`
+      SELECT
+        COUNT(*) FILTER (WHERE l.submitted_at >= NOW() - INTERVAL '30 days') AS leads_last_30,
+        COUNT(*) FILTER (
+          WHERE l.submitted_at >= NOW() - INTERVAL '30 days'
+            AND l.contacted_at IS NULL
+            AND l.status IN ('new', 'contacted', 'qualified')
+        ) AS uncontacted_leads_last_30,
+        COUNT(*) FILTER (
+          WHERE l.submitted_at >= NOW() - INTERVAL '30 days'
+            AND l.status = 'won'
+        ) AS won_leads_last_30,
+        AVG(EXTRACT(EPOCH FROM (l.contacted_at - l.submitted_at)) / 60)
+          FILTER (WHERE l.submitted_at >= NOW() - INTERVAL '30 days' AND l.contacted_at IS NOT NULL) AS avg_response_minutes_last_30
+      FROM leads l
+      JOIN lead_form_rules r ON r.id = l.rule_id
+      JOIN lead_form_destinations d ON d.rule_id = r.id
+      WHERE l.client_id = $1
+        AND l.deleted_at IS NULL
+        AND r.enabled = TRUE
+        AND d.destination_type = 'portal'
+    `, [clientId])
+
+    const accessHealth = await queryOne(`
+      SELECT
+        COUNT(*) AS total_users,
+        COUNT(*) FILTER (WHERE status = 'active') AS active_users,
+        COUNT(*) FILTER (WHERE status = 'pending') AS pending_users,
+        COUNT(*) FILTER (WHERE email LIKE '%@portal-access.local') AS agency_access_users,
+        MAX(last_login_at) AS last_login_at
+      FROM client_users
+      WHERE client_id = $1
+    `, [clientId])
+
+    const billingHealth = await queryOne(`
+      SELECT
+        COUNT(*) FILTER (
+          WHERE status = 'overdue'
+            OR (status = 'sent' AND due_date < CURRENT_DATE)
+        ) AS overdue_invoices,
+        COUNT(*) FILTER (
+          WHERE status IN ('sent', 'overdue')
+            AND due_date >= CURRENT_DATE
+            AND due_date <= CURRENT_DATE + INTERVAL '7 days'
+        ) AS due_next_7_count,
+        COALESCE(SUM(CASE
+          WHEN status IN ('sent', 'overdue')
+            AND due_date >= CURRENT_DATE
+            AND due_date <= CURRENT_DATE + INTERVAL '7 days'
+          THEN total_amount - amount_paid ELSE 0
+        END), 0) AS due_next_7_amount,
+        COALESCE(SUM(CASE
+          WHEN status = 'paid'
+            AND paid_date >= CURRENT_DATE - INTERVAL '90 days'
+          THEN total_amount ELSE 0
+        END), 0) AS paid_last_90,
+        COALESCE(AVG(CASE
+          WHEN status = 'paid'
+            AND paid_date IS NOT NULL
+            AND issue_date IS NOT NULL
+          THEN paid_date - issue_date
+        END), 0) AS avg_days_to_pay
+      FROM invoices
+      WHERE client_id = $1
+    `, [clientId])
+
     return {
       client: {
         id: client.id,
@@ -284,10 +377,41 @@ export default defineEventHandler(async (event) => {
         details: a.details,
         createdAt: a.created_at,
         userName: a.user_name
-      }))
+      })),
+      enterprise: {
+        requests: {
+          open: toNumber(requestHealth?.open_requests),
+          urgent: toNumber(requestHealth?.urgent_requests),
+          unassigned: toNumber(requestHealth?.unassigned_requests),
+          overdue: toNumber(requestHealth?.overdue_requests),
+          openRequestedBudget: toNumber(requestHealth?.open_requested_budget)
+        },
+        leads: {
+          leadsLast30: toNumber(leadHealth?.leads_last_30),
+          uncontactedLast30: toNumber(leadHealth?.uncontacted_leads_last_30),
+          wonLast30: toNumber(leadHealth?.won_leads_last_30),
+          avgResponseMinutesLast30: leadHealth?.avg_response_minutes_last_30 == null
+            ? null
+            : Math.round(toNumber(leadHealth.avg_response_minutes_last_30))
+        },
+        access: {
+          totalUsers: toNumber(accessHealth?.total_users),
+          activeUsers: toNumber(accessHealth?.active_users),
+          pendingUsers: toNumber(accessHealth?.pending_users),
+          agencyAccessUsers: toNumber(accessHealth?.agency_access_users),
+          lastLoginAt: accessHealth?.last_login_at || null
+        },
+        billing: {
+          overdueInvoices: toNumber(billingHealth?.overdue_invoices),
+          dueNext7Count: toNumber(billingHealth?.due_next_7_count),
+          dueNext7Amount: toNumber(billingHealth?.due_next_7_amount),
+          paidLast90: toNumber(billingHealth?.paid_last_90),
+          averageDaysToPay: Math.round(toNumber(billingHealth?.avg_days_to_pay))
+        }
+      }
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error) {
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error
     console.error('Failed to fetch dashboard:', error)
     throw createError({
       statusCode: 500,
