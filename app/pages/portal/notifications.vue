@@ -1,7 +1,11 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
-const { data, pending, refresh } = useFetch('/api/portal/notifications')
+const activeView = ref('all')
+const unreadOnly = computed(() => activeView.value === 'unread' ? 'true' : undefined)
+const { data, pending, refresh } = useFetch('/api/portal/notifications', {
+  query: { unreadOnly }
+})
 const toast = useToast()
 
 interface PortalNotification {
@@ -29,6 +33,11 @@ const notificationIcons: Record<string, string> = {
   default: 'i-lucide-bell'
 }
 
+const viewTabs = computed(() => [
+  { label: 'All', value: 'all' },
+  { label: `Unread (${data.value?.unreadCount ?? 0})`, value: 'unread' }
+])
+
 function getIcon(type: string) {
   return notificationIcons[type] || notificationIcons.default
 }
@@ -54,10 +63,8 @@ async function markRead(id: string) {
 }
 
 async function markAllRead() {
-  if (!data.value?.notifications) return
-  const unread = data.value.notifications.filter(n => !n.isRead)
   try {
-    await Promise.all(unread.map(n => $fetch(`/api/portal/notifications/${n.id}/read`, { method: 'POST' })))
+    await $fetch('/api/portal/notifications/all/read', { method: 'POST' })
     await refresh()
     toast.add({ title: 'All notifications marked as read', color: 'success' })
   } catch {
@@ -89,6 +96,8 @@ function getLink(n: PortalNotification) {
         Mark all as read
       </UButton>
     </div>
+
+    <UTabs v-model="activeView" :items="viewTabs" />
 
     <div v-if="pending" class="space-y-3">
       <div v-for="i in 5" :key="i" class="h-16 rounded-lg bg-elevated animate-pulse" />

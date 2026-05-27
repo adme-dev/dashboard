@@ -15,6 +15,16 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
+    if (notificationId === 'all') {
+      await execute(`
+        UPDATE client_notifications
+        SET is_read = true, read_at = NOW()
+        WHERE client_user_id = $1 AND is_read = false AND is_archived = false
+      `, [clientUser.id])
+
+      return { success: true }
+    }
+
     await execute(`
       UPDATE client_notifications
       SET is_read = true, read_at = NOW()

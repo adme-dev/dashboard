@@ -15,8 +15,8 @@ export default defineEventHandler(async (event) => {
 
   try {
     const conditions: string[] = ['cn.client_user_id = $1', 'cn.is_archived = false']
-    const params: any[] = [clientUser.id]
-    let idx = 2
+    const params: unknown[] = [clientUser.id]
+    const idx = 2
 
     if (unreadOnly) {
       conditions.push('cn.is_read = false')
