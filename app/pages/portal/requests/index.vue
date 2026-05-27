@@ -100,6 +100,37 @@ const serviceRequestPresets: Record<string, { category: string, title: string, d
   }
 }
 
+const accessRequestPresets: Record<string, { title: string, description: string }> = {
+  jobs: {
+    title: 'Request access to jobs',
+    description: 'Please review whether I should have access to booked jobs, project timelines, tasks, and job history.'
+  },
+  billing: {
+    title: 'Request access to billing',
+    description: 'Please review whether I should have access to current billing, outstanding invoices, and billing history.'
+  },
+  analytics: {
+    title: 'Request access to campaign analytics',
+    description: 'Please review whether I should have access to campaign analytics, leads, reports, and exports.'
+  },
+  approvals: {
+    title: 'Request approval permissions',
+    description: 'Please review whether I should be able to approve work or request revisions in the client portal.'
+  },
+  requests: {
+    title: 'Request intake permissions',
+    description: 'Please review whether I should be able to submit job requests, briefs, and support tickets.'
+  },
+  budgets: {
+    title: 'Request budget visibility',
+    description: 'Please review whether I should have access to budget and commercial project information.'
+  },
+  time: {
+    title: 'Request time entry visibility',
+    description: 'Please review whether I should have access to time entries tracked against our work.'
+  }
+}
+
 // Fetch projects for the selector
 const { data: projectsData } = useFetch('/api/portal/projects')
 
@@ -127,8 +158,23 @@ function applyServicePreset(service: unknown) {
   showCreate.value = true
 }
 
+function applyAccessPreset(access: unknown) {
+  if (typeof access !== 'string') return
+  const preset = accessRequestPresets[access]
+  if (!preset || !hasPermission('canSubmitRequests')) return
+
+  form.requestType = 'support_ticket'
+  form.category = 'access'
+  form.title = preset.title
+  form.description = preset.description
+  form.priority = 'normal'
+  showCreate.value = true
+}
+
 onMounted(() => applyServicePreset(route.query.service))
+onMounted(() => applyAccessPreset(route.query.access))
 watch(() => route.query.service, applyServicePreset)
+watch(() => route.query.access, applyAccessPreset)
 
 async function submitRequest() {
   if (!form.title.trim() || !form.description.trim()) {
