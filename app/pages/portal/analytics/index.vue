@@ -101,6 +101,21 @@ const metricOptions = [
   { label: 'CTR', value: 'ctr' },
   { label: 'Cost / Lead', value: 'costPerLead' }
 ]
+
+const leadFunnel = computed(() => {
+  const current = totals.value
+  if (!current) return []
+
+  return [
+    { label: 'New', value: current.leadNew || 0, color: 'bg-info' },
+    { label: 'Contacted', value: current.leadContacted || 0, color: 'bg-primary' },
+    { label: 'Qualified', value: current.leadQualified || 0, color: 'bg-warning' },
+    { label: 'Won', value: current.leadWon || 0, color: 'bg-success' },
+    { label: 'Lost', value: current.leadLost || 0, color: 'bg-muted' }
+  ]
+})
+
+const leadFunnelMax = computed(() => Math.max(...leadFunnel.value.map(stage => Number(stage.value)), 1))
 </script>
 
 <template>
@@ -276,6 +291,46 @@ const metricOptions = [
                 <p class="text-xs text-muted">
                   {{ metric.description }}
                 </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Lead Funnel -->
+        <div class="border border-default rounded-lg p-4">
+          <div class="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <h3 class="text-sm font-semibold text-default">
+                Lead Progression
+              </h3>
+              <p class="text-xs text-muted mt-1">
+                Portal-visible leads attributed to shared campaigns.
+              </p>
+            </div>
+            <UBadge color="neutral" variant="subtle">
+              {{ fmtCompact(totals?.leads || 0) }} leads
+            </UBadge>
+          </div>
+
+          <div v-if="loading" class="space-y-3">
+            <USkeleton v-for="i in 5" :key="i" class="h-8 w-full rounded" />
+          </div>
+          <div v-else-if="leadFunnel.length" class="space-y-3">
+            <div
+              v-for="stage in leadFunnel"
+              :key="stage.label"
+              class="space-y-1"
+            >
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-muted">{{ stage.label }}</span>
+                <span class="font-medium tabular-nums">{{ fmtCompact(stage.value) }}</span>
+              </div>
+              <div class="h-2 rounded-full bg-default overflow-hidden">
+                <div
+                  class="h-full rounded-full"
+                  :class="stage.color"
+                  :style="{ width: `${Math.max(4, Math.round((Number(stage.value) / leadFunnelMax) * 100))}%` }"
+                />
               </div>
             </div>
           </div>
