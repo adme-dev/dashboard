@@ -100,6 +100,32 @@ interface PortalRequest {
   updatedAt: string
 }
 
+interface PortalRequestDetail extends PortalRequest {
+  description: string
+  assignedAvatar?: string | null
+  assignedRole?: string | null
+  responseNotes?: string | null
+  respondedByName?: string | null
+  respondedAt?: string | null
+  resolvedAt?: string | null
+  submittedByEmail?: string | null
+}
+
+interface PortalRequestMessage {
+  id: string
+  content: string
+  isInternal: boolean
+  authorName?: string | null
+  authorAvatar?: string | null
+  authorType: 'client' | 'team'
+  createdAt: string
+}
+
+interface PortalRequestDetailResponse {
+  request: PortalRequestDetail
+  messages: PortalRequestMessage[]
+}
+
 interface AgencyClient {
   id: string
   name: string
@@ -557,6 +583,57 @@ const updatePortalRequest = async (request: PortalRequest, updates: Record<strin
     toast.add({ title: 'Failed to update request', description: errorMessage(err), color: 'error' })
   } finally {
     updatingRequestId.value = null
+  }
+}
+
+const showRequestDetail = ref(false)
+const selectedRequest = ref<PortalRequestDetail | null>(null)
+const selectedRequestMessages = ref<PortalRequestMessage[]>([])
+const loadingRequestDetail = ref(false)
+const replyForm = ref({
+  content: '',
+  isInternal: false
+})
+const sendingReply = ref(false)
+
+const openRequestDetail = async (request: PortalRequest) => {
+  showRequestDetail.value = true
+  loadingRequestDetail.value = true
+  selectedRequest.value = null
+  selectedRequestMessages.value = []
+  replyForm.value = { content: '', isInternal: false }
+
+  try {
+    const result = await $fetch<PortalRequestDetailResponse>(`/api/agency/client-portal/requests/${request.id}`)
+    selectedRequest.value = result.request
+    selectedRequestMessages.value = result.messages
+  } catch (err: unknown) {
+    toast.add({ title: 'Failed to load request', description: errorMessage(err), color: 'error' })
+    showRequestDetail.value = false
+  } finally {
+    loadingRequestDetail.value = false
+  }
+}
+
+const sendRequestReply = async () => {
+  if (!selectedRequest.value || !replyForm.value.content.trim()) return
+
+  sendingReply.value = true
+  try {
+    await $fetch(`/api/agency/client-portal/requests/${selectedRequest.value.id}/messages`, {
+      method: 'POST',
+      body: {
+        content: replyForm.value.content,
+        isInternal: replyForm.value.isInternal
+      }
+    })
+    toast.add({ title: replyForm.value.isInternal ? 'Internal note added' : 'Reply sent', color: 'success' })
+    await openRequestDetail(selectedRequest.value)
+    await refreshRequests()
+  } catch (err: unknown) {
+    toast.add({ title: 'Failed to send reply', description: errorMessage(err), color: 'error' })
+  } finally {
+    sendingReply.value = false
   }
 }
 
@@ -1239,7 +1316,13 @@ const enterpriseRollout = [
               <template #title-cell="{ row }">
                 <div class="min-w-0">
                   <p class="font-medium truncate">
-                    {{ row.original.title }}
+                    <button
+                      class="text-left hover:text-primary transition-colors"
+                      type="button"
+                      @click="openRequestDetail(row.original)"
+                    >
+                      {{ row.original.title }}
+                    </button>
                   </p>
                   <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--ui-text-muted)]">
                     <span>{{ formatRequestType(row.original.requestType) }}</span>
@@ -1252,7 +1335,13 @@ const enterpriseRollout = [
               <template #client-cell="{ row }">
                 <div>
                   <p class="text-sm font-medium">
-                    {{ row.original.clientName }}
+                    <button
+                      class="text-left hover:text-primary transition-colors"
+                      type="button"
+                      @click="openRequestDetail(row.original)"
+                    >
+                      {{ row.original.clientName }}
+                    </button>
                   </p>
                   <p class="text-xs text-[var(--ui-text-muted)]">
                     {{ row.original.submittedByName || 'Client user' }}
@@ -1301,9 +1390,19 @@ const enterpriseRollout = [
               </template>
 
               <template #createdAt-cell="{ row }">
-                <span class="text-sm text-[var(--ui-text-muted)]">
-                  {{ formatDate(row.original.createdAt) }}
-                </span>
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-sm text-[var(--ui-text-muted)]">
+                    {{ formatDate(row.original.createdAt) }}
+                  </span>
+                  <UButton
+                    icon="i-lucide-panel-right-open"
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    aria-label="Open request detail"
+                    @click="openRequestDetail(row.original)"
+                  />
+                </div>
               </template>
             </UTable>
 
@@ -1868,6 +1967,167 @@ const enterpriseRollout = [
           >
             Save access
           </UButton>
+        </div>
+      </template>
+    </USlideover>
+
+    <USlideover v-model:open="showRequestDetail">
+      <template #header>
+        <div class="min-w-0">
+          <h3 class="text-[18px] font-[600] truncate">
+            {{ selectedRequest?.title || 'Client request' }}
+          </h3>
+          <p v-if="selectedRequest" class="text-sm text-[var(--ui-text-muted)] mt-1">
+            {{ selectedRequest.clientName }} · {{ formatRequestType(selectedRequest.requestType) }}
+          </p>
+        </div>
+      </template>
+
+      <template #body>
+        <div v-if="loadingRequestDetail" class="flex items-center justify-center py-12">
+          <XfLoader />
+        </div>
+
+        <div v-else-if="selectedRequest" class="space-y-6">
+          <div class="flex flex-wrap items-center gap-2">
+            <UBadge :color="getRequestStatusColor(selectedRequest.status)" variant="subtle">
+              {{ formatRequestType(selectedRequest.status) }}
+            </UBadge>
+            <UBadge :color="getRequestPriorityColor(selectedRequest.priority)" variant="outline">
+              {{ selectedRequest.priority }}
+            </UBadge>
+            <UBadge v-if="selectedRequest.category" color="neutral" variant="subtle">
+              {{ formatRequestType(selectedRequest.category) }}
+            </UBadge>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+            <div>
+              <p class="text-[var(--ui-text-muted)]">
+                Submitted by
+              </p>
+              <p class="font-medium">
+                {{ selectedRequest.submittedByName || 'Client user' }}
+              </p>
+              <p v-if="selectedRequest.submittedByEmail" class="text-xs text-[var(--ui-text-muted)]">
+                {{ selectedRequest.submittedByEmail }}
+              </p>
+            </div>
+            <div>
+              <p class="text-[var(--ui-text-muted)]">
+                Submitted
+              </p>
+              <p class="font-medium">
+                {{ formatDateTime(selectedRequest.createdAt) }}
+              </p>
+            </div>
+            <div v-if="selectedRequest.projectName">
+              <p class="text-[var(--ui-text-muted)]">
+                Project
+              </p>
+              <p class="font-medium">
+                {{ selectedRequest.projectName }}
+              </p>
+            </div>
+            <div v-if="selectedRequest.assignedName">
+              <p class="text-[var(--ui-text-muted)]">
+                Assigned
+              </p>
+              <p class="font-medium">
+                {{ selectedRequest.assignedName }}
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <p class="text-sm font-medium mb-2">
+              Description
+            </p>
+            <div class="rounded-lg bg-[var(--ui-bg-elevated)] p-4 text-sm whitespace-pre-wrap">
+              {{ selectedRequest.description }}
+            </div>
+          </div>
+
+          <div v-if="selectedRequest.responseNotes">
+            <p class="text-sm font-medium mb-2">
+              Team response
+            </p>
+            <div class="rounded-lg bg-[var(--ui-bg-elevated)] p-4 text-sm whitespace-pre-wrap">
+              {{ selectedRequest.responseNotes }}
+            </div>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <p class="text-sm font-medium">
+                Conversation
+              </p>
+              <UBadge color="neutral" variant="subtle" size="xs">
+                {{ selectedRequestMessages.length }}
+              </UBadge>
+            </div>
+
+            <div class="space-y-3">
+              <div
+                v-for="message in selectedRequestMessages"
+                :key="message.id"
+                class="rounded-lg border border-[var(--ui-border)] p-3"
+                :class="message.isInternal ? 'bg-amber-500/5' : ''"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <UAvatar :src="message.authorAvatar || undefined" :alt="message.authorName || 'User'" size="xs" />
+                    <div class="min-w-0">
+                      <p class="text-sm font-medium truncate">
+                        {{ message.authorName || 'Unknown user' }}
+                      </p>
+                      <p class="text-xs text-[var(--ui-text-muted)]">
+                        {{ formatDateTime(message.createdAt) }}
+                      </p>
+                    </div>
+                  </div>
+                  <UBadge
+                    v-if="message.isInternal"
+                    color="warning"
+                    variant="subtle"
+                    size="xs"
+                  >
+                    Internal
+                  </UBadge>
+                </div>
+                <p class="text-sm mt-3 whitespace-pre-wrap">
+                  {{ message.content }}
+                </p>
+              </div>
+
+              <p v-if="selectedRequestMessages.length === 0" class="text-sm text-[var(--ui-text-muted)] text-center py-4">
+                No messages yet.
+              </p>
+            </div>
+          </div>
+
+          <form class="space-y-3 border-t border-[var(--ui-border)] pt-4" @submit.prevent="sendRequestReply">
+            <UTextarea
+              v-model="replyForm.content"
+              placeholder="Write a reply or internal note"
+              :rows="4"
+              class="w-full"
+            />
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <label class="flex items-center gap-2 text-sm cursor-pointer">
+                <UCheckbox v-model="replyForm.isInternal" />
+                Internal note
+              </label>
+              <UButton
+                type="submit"
+                icon="i-lucide-send"
+                :loading="sendingReply"
+                :disabled="!replyForm.content.trim()"
+              >
+                {{ replyForm.isInternal ? 'Add note' : 'Send reply' }}
+              </UButton>
+            </div>
+          </form>
         </div>
       </template>
     </USlideover>

@@ -148,6 +148,7 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
     const status = typeof details.status === 'string' ? details.status.replaceAll('_', ' ') : 'updated'
     return `updated your request to ${status}`
   }
+  if (activity.action === 'agency_request_reply') return 'replied to your request'
   if (activity.action === 'agency_portal_access') return 'previewed the client portal'
   if (activity.action === 'invite_accepted') return 'accepted a portal invite'
   if (activity.action === 'approval_response') return 'responded to an approval'
