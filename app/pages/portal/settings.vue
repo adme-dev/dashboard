@@ -5,6 +5,30 @@ const { user, fetchUser } = usePortalAuth()
 const toast = useToast()
 const saving = ref(false)
 
+interface PortalAccessUser {
+  id: string
+  email: string
+  name: string
+  title?: string | null
+  role: string
+  status: string
+  avatarUrl?: string | null
+  isPrimaryContact: boolean
+  permissions: {
+    canViewProjects: boolean
+    canViewInvoices: boolean
+    canApproveWork: boolean
+    canViewAnalytics: boolean
+    canSubmitRequests: boolean
+  }
+  lastLoginAt?: string | null
+  invitedAt?: string | null
+  createdAt: string
+  isCurrentUser: boolean
+}
+
+const { data: accessData, pending: accessPending } = useFetch<{ users: PortalAccessUser[] }>('/api/portal/users')
+
 const form = reactive({
   name: user.value?.name || '',
   phone: user.value?.phone || '',
@@ -94,6 +118,23 @@ const permissionModules = computed(() => [
 ])
 
 const enabledModuleCount = computed(() => permissionModules.value.filter(module => module.enabled).length)
+const activeAccessUsers = computed(() => accessData.value?.users.filter(accessUser => accessUser.status === 'active').length ?? 0)
+const pendingAccessUsers = computed(() => accessData.value?.users.filter(accessUser => accessUser.status === 'pending').length ?? 0)
+
+function formatDate(date: string | null | undefined) {
+  if (!date) return '-'
+  return new Date(date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function accessModules(accessUser: PortalAccessUser) {
+  const modules = []
+  if (accessUser.permissions.canViewProjects) modules.push('Jobs')
+  if (accessUser.permissions.canViewInvoices) modules.push('Billing')
+  if (accessUser.permissions.canViewAnalytics) modules.push('Analytics')
+  if (accessUser.permissions.canApproveWork) modules.push('Approvals')
+  if (accessUser.permissions.canSubmitRequests) modules.push('Requests')
+  return modules
+}
 
 async function saveProfile() {
   saving.value = true
@@ -241,6 +282,103 @@ async function saveProfile() {
             </UButton>
           </div>
         </div>
+      </div>
+    </UCard>
+
+    <UCard>
+      <template #header>
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 class="font-semibold">
+              Team Access
+            </h2>
+            <p class="text-sm text-muted mt-1">
+              People in {{ user?.clientName }} with client portal accounts.
+            </p>
+          </div>
+          <div class="flex gap-2">
+            <UBadge color="success" variant="subtle">
+              {{ activeAccessUsers }} active
+            </UBadge>
+            <UBadge v-if="pendingAccessUsers" color="warning" variant="subtle">
+              {{ pendingAccessUsers }} pending
+            </UBadge>
+          </div>
+        </div>
+      </template>
+
+      <div v-if="accessPending" class="space-y-3">
+        <div v-for="i in 3" :key="i" class="h-20 rounded-lg bg-elevated animate-pulse" />
+      </div>
+
+      <div v-else class="space-y-3">
+        <div
+          v-for="accessUser in accessData?.users"
+          :key="accessUser.id"
+          class="rounded-lg border border-default bg-default p-4"
+        >
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div class="flex items-start gap-3 min-w-0">
+              <UAvatar :src="accessUser.avatarUrl || undefined" :alt="accessUser.name" size="sm" />
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <p class="font-medium">
+                    {{ accessUser.name }}
+                  </p>
+                  <UBadge
+                    v-if="accessUser.isCurrentUser"
+                    size="xs"
+                    color="primary"
+                    variant="subtle"
+                  >
+                    You
+                  </UBadge>
+                  <UBadge
+                    v-if="accessUser.isPrimaryContact"
+                    size="xs"
+                    color="neutral"
+                    variant="subtle"
+                  >
+                    Primary
+                  </UBadge>
+                </div>
+                <p class="text-sm text-muted truncate">
+                  {{ accessUser.email }}
+                </p>
+                <p v-if="accessUser.title" class="text-xs text-muted mt-1">
+                  {{ accessUser.title }}
+                </p>
+              </div>
+            </div>
+            <div class="flex flex-col gap-2 sm:items-end">
+              <UBadge :color="accessUser.status === 'active' ? 'success' : accessUser.status === 'pending' ? 'warning' : 'neutral'" variant="subtle">
+                {{ accessUser.status }}
+              </UBadge>
+              <p class="text-xs text-muted">
+                Last login {{ formatDate(accessUser.lastLoginAt) }}
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-3 flex flex-wrap gap-1">
+            <UBadge
+              v-for="module in accessModules(accessUser)"
+              :key="module"
+              color="neutral"
+              variant="subtle"
+              size="xs"
+            >
+              {{ module }}
+            </UBadge>
+            <span v-if="accessModules(accessUser).length === 0" class="text-xs text-muted">
+              No portal modules enabled
+            </span>
+          </div>
+        </div>
+
+        <p v-if="!accessData?.users.length" class="text-sm text-muted text-center py-6">
+          No portal users found.
+        </p>
       </div>
     </UCard>
 
