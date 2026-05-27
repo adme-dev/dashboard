@@ -47,6 +47,16 @@ interface PortalClient {
   unassignedRequests: number
   jobRequests: number
   supportRequests: number
+  briefsTotal: number
+  briefsOpen: number
+  briefsNeedsInfo: number
+  briefsUrgent: number
+  briefsOverdue: number
+  briefsSubmitted30d: number
+  deliverablesVisible: number
+  deliverablesApproved: number
+  deliverablesFinal: number
+  deliverablesRecent30d: number
   campaignCount: number
   campaignPlatforms: number
   campaignSpend90d: number
@@ -207,7 +217,10 @@ const portalClientSummary = computed(() => {
     openRequests: items.reduce((sum, client) => sum + Number(client.openRequests || 0), 0),
     campaignSpend90d: items.reduce((sum, client) => sum + Number(client.campaignSpend90d || 0), 0),
     contactedLeads30d: items.reduce((sum, client) => sum + Number(client.contactedLeads30d || 0), 0),
-    uncontactedLeads30d: items.reduce((sum, client) => sum + Number(client.uncontactedLeads30d || 0), 0)
+    uncontactedLeads30d: items.reduce((sum, client) => sum + Number(client.uncontactedLeads30d || 0), 0),
+    briefsOpen: items.reduce((sum, client) => sum + Number(client.briefsOpen || 0), 0),
+    briefsOverdue: items.reduce((sum, client) => sum + Number(client.briefsOverdue || 0), 0),
+    deliverablesVisible: items.reduce((sum, client) => sum + Number(client.deliverablesVisible || 0), 0)
   }
 })
 
@@ -226,6 +239,9 @@ const clientRiskItems = computed(() => portalClients.value
       client.unassignedRequests > 0
         ? { label: `${client.unassignedRequests} unassigned`, color: 'warning' as const }
         : null,
+      client.briefsOverdue > 0
+        ? { label: `${client.briefsOverdue} overdue brief${client.briefsOverdue === 1 ? '' : 's'}`, color: 'warning' as const }
+        : null,
       client.readinessScore < 70
         ? { label: `${client.readinessScore}% readiness`, color: 'warning' as const }
         : null,
@@ -234,15 +250,21 @@ const clientRiskItems = computed(() => portalClients.value
         : null,
       client.visibleMeetings === 0
         ? { label: 'No meetings shared', color: 'neutral' as const }
+        : null,
+      client.deliverablesVisible === 0
+        ? { label: 'No deliverables shared', color: 'neutral' as const }
         : null
     ].filter(Boolean) as Array<{ label: string, color: 'error' | 'warning' | 'neutral' }>
 
     const score = (client.overdueInvoices * 4)
       + (client.urgentRequests * 4)
       + (client.uncontactedLeads30d * 3)
+      + (client.briefsUrgent * 3)
+      + (client.briefsOverdue * 3)
       + (client.unassignedRequests * 2)
       + ((100 - client.readinessScore) / 10)
       + (client.campaignCount === 0 ? 3 : 0)
+      + (client.deliverablesVisible === 0 ? 2 : 0)
       + (client.visibleMeetings === 0 ? 2 : 0)
 
     return { client, risks, score }
@@ -257,7 +279,8 @@ const operationalFilterChips = [
   { label: 'Request risk', value: 'request-risk', icon: 'i-lucide-message-square-warning' },
   { label: 'Lead risk', value: 'lead-risk', icon: 'i-lucide-phone-missed' },
   { label: 'Missing campaigns', value: 'missing-campaigns', icon: 'i-lucide-chart-no-axes-combined' },
-  { label: 'Missing meetings', value: 'missing-meetings', icon: 'i-lucide-video-off' }
+  { label: 'Missing meetings', value: 'missing-meetings', icon: 'i-lucide-video-off' },
+  { label: 'Missing content', value: 'missing-content', icon: 'i-lucide-folder-open-dot' }
 ]
 
 const applyClientStatusFilter = (status: string) => {
@@ -445,6 +468,8 @@ const portalModuleReadiness = (client: PortalClient) => [
   { label: 'Analytics', value: client.moduleAccess?.analytics || 0 },
   { label: 'Approvals', value: client.moduleAccess?.approvals || 0 },
   { label: 'Requests', value: client.moduleAccess?.requests || 0 },
+  { label: 'Briefs', value: client.briefsOpen || 0 },
+  { label: 'Files', value: client.deliverablesVisible || 0 },
   { label: 'Meetings', value: client.visibleMeetings || 0 }
 ]
 
@@ -767,6 +792,7 @@ const clientColumns = [
   { accessorKey: 'leads', header: 'Leads 30d' },
   { accessorKey: 'campaigns', header: 'Campaigns' },
   { accessorKey: 'requests', header: 'Requests' },
+  { accessorKey: 'content', header: 'Content' },
   { accessorKey: 'billing', header: 'Billing' },
   { accessorKey: 'activity', header: 'Last Activity' },
   { accessorKey: 'actions', header: '' }
@@ -980,6 +1006,7 @@ const enterpriseRollout = [
               <div class="flex flex-wrap gap-2 text-xs text-[var(--ui-text-muted)]">
                 <span>{{ formatCurrency(portalClientSummary.outstandingAmount) }} outstanding</span>
                 <span>{{ portalClientSummary.openRequests }} open requests</span>
+                <span>{{ portalClientSummary.briefsOpen }} open briefs</span>
                 <span>{{ formatCurrency(portalClientSummary.campaignSpend90d) }} campaign spend</span>
               </div>
             </div>
@@ -1099,6 +1126,7 @@ const enterpriseRollout = [
                     { label: 'Lead risk', value: 'lead-risk' },
                     { label: 'Missing campaigns', value: 'missing-campaigns' },
                     { label: 'Missing meetings', value: 'missing-meetings' },
+                    { label: 'Missing content', value: 'missing-content' },
                     { label: 'Configured', value: 'configured' },
                     { label: 'Invite pending', value: 'pending' },
                     { label: 'No users yet', value: 'no-users' }
@@ -1160,6 +1188,9 @@ const enterpriseRollout = [
                     </p>
                     <p class="text-xs text-[var(--ui-text-dimmed)]">
                       {{ row.original.visibleMeetings }} meetings, {{ row.original.meetingRecordings }} recordings
+                    </p>
+                    <p class="text-xs text-[var(--ui-text-dimmed)]">
+                      {{ row.original.deliverablesVisible }} shared files, {{ row.original.briefsTotal }} briefs
                     </p>
                   </div>
                 </div>
@@ -1291,6 +1322,43 @@ const enterpriseRollout = [
                       size="xs"
                     >
                       {{ row.original.unassignedRequests }} unassigned
+                    </UBadge>
+                  </div>
+                </div>
+              </template>
+
+              <template #content-cell="{ row }">
+                <div class="text-sm">
+                  <p class="font-medium" :class="row.original.briefsOverdue > 0 ? 'text-warning' : ''">
+                    {{ row.original.briefsOpen }} open briefs
+                  </p>
+                  <p class="text-xs text-[var(--ui-text-muted)]">
+                    {{ row.original.deliverablesVisible }} shared, {{ row.original.deliverablesFinal }} final
+                  </p>
+                  <div class="mt-1 flex flex-wrap gap-1">
+                    <UBadge
+                      v-if="row.original.briefsOverdue > 0"
+                      color="warning"
+                      variant="subtle"
+                      size="xs"
+                    >
+                      {{ row.original.briefsOverdue }} overdue
+                    </UBadge>
+                    <UBadge
+                      v-if="row.original.briefsNeedsInfo > 0"
+                      color="info"
+                      variant="subtle"
+                      size="xs"
+                    >
+                      {{ row.original.briefsNeedsInfo }} need info
+                    </UBadge>
+                    <UBadge
+                      v-if="row.original.deliverablesRecent30d > 0"
+                      color="success"
+                      variant="subtle"
+                      size="xs"
+                    >
+                      {{ row.original.deliverablesRecent30d }} recent
                     </UBadge>
                   </div>
                 </div>

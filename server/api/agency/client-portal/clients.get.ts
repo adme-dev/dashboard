@@ -46,6 +46,16 @@ interface PortalClientRow {
   unassigned_requests: string | number | null
   job_requests: string | number | null
   support_requests: string | number | null
+  briefs_total: string | number | null
+  briefs_open: string | number | null
+  briefs_needs_info: string | number | null
+  briefs_urgent: string | number | null
+  briefs_overdue: string | number | null
+  briefs_submitted_30d: string | number | null
+  deliverables_visible: string | number | null
+  deliverables_approved: string | number | null
+  deliverables_final: string | number | null
+  deliverables_recent_30d: string | number | null
   campaign_count: string | number | null
   campaign_platforms: string | number | null
   campaign_spend_90d: string | number | null
@@ -109,9 +119,12 @@ const buildOrderBy = (status: string) => {
     return `(
       (COALESCE(inv.overdue_invoices, 0) * 4)
       + (COALESCE(req.urgent_requests, 0) * 4)
+      + (COALESCE(br.briefs_urgent, 0) * 3)
+      + (COALESCE(br.briefs_overdue, 0) * 3)
       + (COALESCE(ld.uncontacted_leads_30d, 0) * 3)
       + (COALESCE(req.unassigned_requests, 0) * 2)
       + CASE WHEN COALESCE(campaigns.campaign_count, 0) = 0 THEN 3 ELSE 0 END
+      + CASE WHEN COALESCE(dl.deliverables_visible, 0) = 0 THEN 2 ELSE 0 END
       + CASE WHEN COALESCE(mt.visible_meetings, 0) = 0 THEN 2 ELSE 0 END
     ) DESC, c.name`
   }
@@ -129,6 +142,9 @@ const buildOrderBy = (status: string) => {
   }
   if (status === 'missing-meetings') {
     return 'COALESCE(cu.active_users, 0) DESC, c.name'
+  }
+  if (status === 'missing-content') {
+    return 'COALESCE(br.briefs_open, 0) DESC, COALESCE(dl.deliverables_visible, 0) ASC, c.name'
   }
   return 'c.name'
 }
@@ -166,8 +182,11 @@ export default defineEventHandler(async (event) => {
       COALESCE(inv.overdue_invoices, 0) > 0
       OR COALESCE(req.urgent_requests, 0) > 0
       OR COALESCE(req.unassigned_requests, 0) > 0
+      OR COALESCE(br.briefs_urgent, 0) > 0
+      OR COALESCE(br.briefs_overdue, 0) > 0
       OR COALESCE(ld.uncontacted_leads_30d, 0) > 0
       OR COALESCE(campaigns.campaign_count, 0) = 0
+      OR COALESCE(dl.deliverables_visible, 0) = 0
       OR COALESCE(mt.visible_meetings, 0) = 0
     )`)
   } else if (status === 'billing-risk') {
@@ -183,6 +202,8 @@ export default defineEventHandler(async (event) => {
     conditions.push('COALESCE(campaigns.campaign_count, 0) = 0')
   } else if (status === 'missing-meetings') {
     conditions.push('COALESCE(mt.visible_meetings, 0) = 0')
+  } else if (status === 'missing-content') {
+    conditions.push('(COALESCE(br.briefs_open, 0) > 0 OR COALESCE(dl.deliverables_visible, 0) = 0)')
   }
 
   params.push(limit)
@@ -227,6 +248,16 @@ export default defineEventHandler(async (event) => {
         COALESCE(req.unassigned_requests, 0) AS unassigned_requests,
         COALESCE(req.job_requests, 0) AS job_requests,
         COALESCE(req.support_requests, 0) AS support_requests,
+        COALESCE(br.briefs_total, 0) AS briefs_total,
+        COALESCE(br.briefs_open, 0) AS briefs_open,
+        COALESCE(br.briefs_needs_info, 0) AS briefs_needs_info,
+        COALESCE(br.briefs_urgent, 0) AS briefs_urgent,
+        COALESCE(br.briefs_overdue, 0) AS briefs_overdue,
+        COALESCE(br.briefs_submitted_30d, 0) AS briefs_submitted_30d,
+        COALESCE(dl.deliverables_visible, 0) AS deliverables_visible,
+        COALESCE(dl.deliverables_approved, 0) AS deliverables_approved,
+        COALESCE(dl.deliverables_final, 0) AS deliverables_final,
+        COALESCE(dl.deliverables_recent_30d, 0) AS deliverables_recent_30d,
         COALESCE(campaigns.campaign_count, 0) AS campaign_count,
         COALESCE(campaigns.campaign_platforms, 0) AS campaign_platforms,
         COALESCE(campaigns.campaign_spend_90d, 0) AS campaign_spend_90d,
@@ -329,6 +360,38 @@ export default defineEventHandler(async (event) => {
       LEFT JOIN (
         SELECT
           client_id,
+          COUNT(*) AS briefs_total,
+          COUNT(*) FILTER (WHERE status NOT IN ('completed', 'cancelled', 'rejected')) AS briefs_open,
+          COUNT(*) FILTER (WHERE status = 'needs_info') AS briefs_needs_info,
+          COUNT(*) FILTER (
+            WHERE priority = 'urgent'
+              AND status NOT IN ('completed', 'cancelled', 'rejected')
+          ) AS briefs_urgent,
+          COUNT(*) FILTER (
+            WHERE status NOT IN ('completed', 'cancelled', 'rejected')
+              AND requested_deadline IS NOT NULL
+              AND requested_deadline < CURRENT_DATE
+          ) AS briefs_overdue,
+          COUNT(*) FILTER (WHERE submitted_at >= NOW() - INTERVAL '30 days') AS briefs_submitted_30d
+        FROM briefs
+        GROUP BY client_id
+      ) br ON br.client_id = c.id
+      LEFT JOIN (
+        SELECT
+          client_id,
+          COUNT(*) FILTER (WHERE is_visible_to_client = true) AS deliverables_visible,
+          COUNT(*) FILTER (WHERE status = 'approved') AS deliverables_approved,
+          COUNT(*) FILTER (WHERE is_final = true) AS deliverables_final,
+          COUNT(*) FILTER (
+            WHERE is_visible_to_client = true
+              AND created_at >= NOW() - INTERVAL '30 days'
+          ) AS deliverables_recent_30d
+        FROM client_deliverables
+        GROUP BY client_id
+      ) dl ON dl.client_id = c.id
+      LEFT JOIN (
+        SELECT
+          client_id,
           COUNT(DISTINCT COALESCE(NULLIF(campaign_id, ''), id::text)) AS campaign_count,
           COUNT(DISTINCT platform) AS campaign_platforms,
           COALESCE(SUM(actual_spend), 0) AS campaign_spend_90d,
@@ -402,6 +465,16 @@ export default defineEventHandler(async (event) => {
           unassignedRequests: toNumber(row.unassigned_requests),
           jobRequests: toNumber(row.job_requests),
           supportRequests: toNumber(row.support_requests),
+          briefsTotal: toNumber(row.briefs_total),
+          briefsOpen: toNumber(row.briefs_open),
+          briefsNeedsInfo: toNumber(row.briefs_needs_info),
+          briefsUrgent: toNumber(row.briefs_urgent),
+          briefsOverdue: toNumber(row.briefs_overdue),
+          briefsSubmitted30d: toNumber(row.briefs_submitted_30d),
+          deliverablesVisible: toNumber(row.deliverables_visible),
+          deliverablesApproved: toNumber(row.deliverables_approved),
+          deliverablesFinal: toNumber(row.deliverables_final),
+          deliverablesRecent30d: toNumber(row.deliverables_recent_30d),
           campaignCount: toNumber(row.campaign_count),
           campaignPlatforms: toNumber(row.campaign_platforms),
           campaignSpend90d: toNumber(row.campaign_spend_90d),

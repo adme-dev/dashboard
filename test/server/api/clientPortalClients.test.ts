@@ -84,6 +84,16 @@ describe('agency client portal clients API', () => {
       unassigned_requests: '3',
       job_requests: '4',
       support_requests: '5',
+      briefs_total: '9',
+      briefs_open: '3',
+      briefs_needs_info: '1',
+      briefs_urgent: '2',
+      briefs_overdue: '1',
+      briefs_submitted_30d: '4',
+      deliverables_visible: '12',
+      deliverables_approved: '8',
+      deliverables_final: '5',
+      deliverables_recent_30d: '6',
       campaign_count: '11',
       campaign_platforms: '2',
       campaign_spend_90d: '9876.5',
@@ -133,6 +143,16 @@ describe('agency client portal clients API', () => {
       unassignedRequests: 3,
       jobRequests: 4,
       supportRequests: 5,
+      briefsTotal: 9,
+      briefsOpen: 3,
+      briefsNeedsInfo: 1,
+      briefsUrgent: 2,
+      briefsOverdue: 1,
+      briefsSubmitted30d: 4,
+      deliverablesVisible: 12,
+      deliverablesApproved: 8,
+      deliverablesFinal: 5,
+      deliverablesRecent30d: 6,
       campaignCount: 11,
       campaignPlatforms: 2,
       campaignSpend90d: 9876.5,
@@ -165,6 +185,13 @@ describe('agency client portal clients API', () => {
     expect(sql).toContain('COUNT(*) FILTER (WHERE status IN (\'submitted\', \'in_review\', \'approved\', \'in_progress\')) AS open_requests')
     expect(sql).toContain('AND priority = \'urgent\'')
     expect(sql).toContain('AND assigned_to IS NULL')
+    expect(sql).toContain('FROM briefs')
+    expect(sql).toContain('COUNT(*) FILTER (WHERE status = \'needs_info\') AS briefs_needs_info')
+    expect(sql).toContain('requested_deadline < CURRENT_DATE')
+    expect(sql).toContain('COUNT(*) FILTER (WHERE submitted_at >= NOW() - INTERVAL \'30 days\') AS briefs_submitted_30d')
+    expect(sql).toContain('FROM client_deliverables')
+    expect(sql).toContain('COUNT(*) FILTER (WHERE is_visible_to_client = true) AS deliverables_visible')
+    expect(sql).toContain('COUNT(*) FILTER (WHERE is_final = true) AS deliverables_final')
     expect(sql).toContain('FROM media_spend')
     expect(sql).toContain('COUNT(DISTINCT COALESCE(NULLIF(campaign_id, \'\'), id::text)) AS campaign_count')
     expect(sql).toContain('COUNT(DISTINCT platform) AS campaign_platforms')
@@ -216,13 +243,19 @@ describe('agency client portal clients API', () => {
     expect(sql).toContain('COALESCE(inv.overdue_invoices, 0) > 0')
     expect(sql).toContain('COALESCE(req.urgent_requests, 0) > 0')
     expect(sql).toContain('COALESCE(req.unassigned_requests, 0) > 0')
+    expect(sql).toContain('COALESCE(br.briefs_urgent, 0) > 0')
+    expect(sql).toContain('COALESCE(br.briefs_overdue, 0) > 0')
     expect(sql).toContain('COALESCE(ld.uncontacted_leads_30d, 0) > 0')
     expect(sql).toContain('COALESCE(campaigns.campaign_count, 0) = 0')
+    expect(sql).toContain('COALESCE(dl.deliverables_visible, 0) = 0')
     expect(sql).toContain('COALESCE(mt.visible_meetings, 0) = 0')
     expect(sql).toContain('(COALESCE(inv.overdue_invoices, 0) * 4)')
     expect(sql).toContain('(COALESCE(req.urgent_requests, 0) * 4)')
+    expect(sql).toContain('(COALESCE(br.briefs_urgent, 0) * 3)')
+    expect(sql).toContain('(COALESCE(br.briefs_overdue, 0) * 3)')
     expect(sql).toContain('(COALESCE(ld.uncontacted_leads_30d, 0) * 3)')
     expect(sql).toContain('CASE WHEN COALESCE(campaigns.campaign_count, 0) = 0 THEN 3 ELSE 0 END')
+    expect(sql).toContain('CASE WHEN COALESCE(dl.deliverables_visible, 0) = 0 THEN 2 ELSE 0 END')
   })
 
   it('filters clients by lead response risk', async () => {
@@ -247,6 +280,15 @@ describe('agency client portal clients API', () => {
     await clientsHandler({ query: { status: 'missing-meetings' } })
     expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('COALESCE(mt.visible_meetings, 0) = 0')
     expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('ORDER BY COALESCE(cu.active_users, 0) DESC, c.name')
+
+    vi.clearAllMocks()
+    mockRequireRole.mockResolvedValue({ id: 'agency-user-1', role: 'media_buyer' })
+    mockQueryRows.mockResolvedValue([])
+    mockEnsureOfficeRecordingsTables.mockResolvedValue(undefined)
+
+    await clientsHandler({ query: { status: 'missing-content' } })
+    expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('(COALESCE(br.briefs_open, 0) > 0 OR COALESCE(dl.deliverables_visible, 0) = 0)')
+    expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('ORDER BY COALESCE(br.briefs_open, 0) DESC, COALESCE(dl.deliverables_visible, 0) ASC, c.name')
   })
 
   it('orders billing and request risk filters by severity', async () => {
