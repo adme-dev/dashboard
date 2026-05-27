@@ -33,6 +33,44 @@ interface PortalClientRow {
   history_jobs: string | number | null
 }
 
+const toNumber = (value: string | number | null | undefined) => Number(value || 0)
+
+const buildSetupGaps = (row: PortalClientRow) => {
+  const gaps: string[] = []
+  const activeUsers = toNumber(row.active_users)
+  const pendingUsers = toNumber(row.pending_users)
+  const activeProjects = toNumber(row.active_projects)
+  const upcomingJobs = toNumber(row.upcoming_jobs)
+  const invoiceUsers = toNumber(row.invoice_access_users)
+  const analyticsUsers = toNumber(row.analytics_access_users)
+  const requestUsers = toNumber(row.request_access_users)
+  const portalLeads = toNumber(row.portal_leads_30d)
+
+  if (activeUsers === 0) {
+    gaps.push(pendingUsers > 0 ? 'Activate pending client users' : 'Invite a client portal user')
+  }
+  if (activeProjects === 0 && upcomingJobs === 0) gaps.push('Add booked jobs or project history')
+  if (invoiceUsers === 0) gaps.push('Enable billing visibility')
+  if (analyticsUsers === 0) gaps.push('Enable campaign analytics visibility')
+  if (requestUsers === 0) gaps.push('Enable request intake')
+  if (portalLeads === 0) gaps.push('Route lead forms to the portal')
+
+  return gaps
+}
+
+const readinessScore = (row: PortalClientRow) => {
+  const checks = [
+    toNumber(row.active_users) > 0,
+    toNumber(row.active_projects) > 0 || toNumber(row.upcoming_jobs) > 0 || toNumber(row.history_jobs) > 0,
+    toNumber(row.invoice_access_users) > 0,
+    toNumber(row.analytics_access_users) > 0,
+    toNumber(row.request_access_users) > 0,
+    Boolean(row.last_activity_at)
+  ]
+
+  return Math.round((checks.filter(Boolean).length / checks.length) * 100)
+}
+
 export default defineEventHandler(async (event) => {
   await requireRole(event, [
     ...new Set([...PERMISSIONS.CLIENTS, ...PERMISSIONS.MEDIA_BUYING])
@@ -150,38 +188,45 @@ export default defineEventHandler(async (event) => {
     `, params)
 
     return {
-      clients: rows.map(row => ({
-        id: row.id,
-        name: row.name,
-        logoUrl: row.logo_url,
-        isActive: row.is_active,
-        createdAt: row.created_at,
-        portalUsers: Number(row.portal_users || 0),
-        activeUsers: Number(row.active_users || 0),
-        pendingUsers: Number(row.pending_users || 0),
-        agencyAccessUsers: Number(row.agency_access_users || 0),
-        moduleAccess: {
-          projects: Number(row.project_access_users || 0),
-          invoices: Number(row.invoice_access_users || 0),
-          approvals: Number(row.approval_access_users || 0),
-          analytics: Number(row.analytics_access_users || 0),
-          requests: Number(row.request_access_users || 0)
-        },
-        lastLoginAt: row.last_login_at,
-        lastActivityAt: row.last_activity_at,
-        pendingApprovals: Number(row.pending_approvals || 0),
-        portalLeads30d: Number(row.portal_leads_30d || 0),
-        newLeads30d: Number(row.new_leads_30d || 0),
-        wonLeads30d: Number(row.won_leads_30d || 0),
-        activeProjects: Number(row.active_projects || 0),
-        upcomingJobs: Number(row.upcoming_jobs || 0),
-        historyJobs: Number(row.history_jobs || 0),
-        portalStatus: Number(row.active_users || 0) > 0
-          ? 'active'
-          : Number(row.pending_users || 0) > 0
-            ? 'pending'
-            : 'not_configured'
-      }))
+      clients: rows.map((row) => {
+        const activeUsers = toNumber(row.active_users)
+        const pendingUsers = toNumber(row.pending_users)
+
+        return {
+          id: row.id,
+          name: row.name,
+          logoUrl: row.logo_url,
+          isActive: row.is_active,
+          createdAt: row.created_at,
+          portalUsers: toNumber(row.portal_users),
+          activeUsers,
+          pendingUsers,
+          agencyAccessUsers: toNumber(row.agency_access_users),
+          moduleAccess: {
+            projects: toNumber(row.project_access_users),
+            invoices: toNumber(row.invoice_access_users),
+            approvals: toNumber(row.approval_access_users),
+            analytics: toNumber(row.analytics_access_users),
+            requests: toNumber(row.request_access_users)
+          },
+          readinessScore: readinessScore(row),
+          setupGaps: buildSetupGaps(row),
+          lastLoginAt: row.last_login_at,
+          lastActivityAt: row.last_activity_at,
+          pendingApprovals: toNumber(row.pending_approvals),
+          portalLeads30d: toNumber(row.portal_leads_30d),
+          newLeads30d: toNumber(row.new_leads_30d),
+          wonLeads30d: toNumber(row.won_leads_30d),
+          activeProjects: toNumber(row.active_projects),
+          upcomingJobs: toNumber(row.upcoming_jobs),
+          historyJobs: toNumber(row.history_jobs),
+          portalStatus: activeUsers > 0
+            ? 'active'
+            : pendingUsers > 0
+              ? 'pending'
+              : 'not_configured'
+        }
+      })
     }
   } catch (error) {
     console.error('Failed to fetch portal clients:', error)

@@ -33,6 +33,8 @@ interface PortalClient {
   activeProjects: number
   upcomingJobs: number
   historyJobs: number
+  readinessScore: number
+  setupGaps: string[]
 }
 
 interface PortalUser {
@@ -125,6 +127,10 @@ const portalClientSummary = computed(() => {
     active: items.filter(client => client.portalStatus === 'active').length,
     pending: items.filter(client => client.portalStatus === 'pending').length,
     notConfigured: items.filter(client => client.portalStatus === 'not_configured').length,
+    needsAttention: items.filter(client => (client.setupGaps?.length || 0) > 0).length,
+    averageReadiness: items.length
+      ? Math.round(items.reduce((sum, client) => sum + Number(client.readinessScore || 0), 0) / items.length)
+      : 0,
     leads30d: items.reduce((sum, client) => sum + Number(client.portalLeads30d || 0), 0)
   }
 })
@@ -274,6 +280,8 @@ const portalModuleReadiness = (client: PortalClient) => [
   { label: 'Requests', value: client.moduleAccess?.requests || 0 }
 ]
 
+const nextSetupGap = (client: PortalClient) => client.setupGaps?.[0] || 'Ready for client review'
+
 const portalUserModules = (user: PortalUser) => [
   { label: 'Jobs', enabled: user.permissions?.canViewProjects !== false },
   { label: 'Billing', enabled: Boolean(user.permissions?.canViewInvoices) },
@@ -379,6 +387,13 @@ const getPortalStatusColor = (status: string): 'success' | 'warning' | 'neutral'
   }
 }
 
+const getReadinessColor = (score: number): 'success' | 'warning' | 'error' | 'neutral' => {
+  if (score >= 80) return 'success'
+  if (score >= 50) return 'warning'
+  if (score > 0) return 'error'
+  return 'neutral'
+}
+
 const formatPortalStatus = (status: string) => {
   switch (status) {
     case 'active': return 'Active'
@@ -476,6 +491,7 @@ const clientColumns = [
   { accessorKey: 'name', header: 'Client' },
   { accessorKey: 'status', header: 'Portal Status' },
   { accessorKey: 'users', header: 'Users' },
+  { accessorKey: 'readiness', header: 'Readiness' },
   { accessorKey: 'leads', header: 'Leads 30d' },
   { accessorKey: 'activity', header: 'Last Activity' },
   { accessorKey: 'actions', header: '' }
@@ -654,10 +670,13 @@ const enterpriseRollout = [
               </div>
               <div>
                 <p class="text-sm text-[var(--ui-text-muted)]">
-                  Needs Setup
+                  Needs Attention
                 </p>
                 <p class="text-xl font-bold text-purple-500">
-                  {{ portalClientSummary.notConfigured }}
+                  {{ portalClientSummary.needsAttention }}
+                </p>
+                <p class="text-xs text-[var(--ui-text-muted)]">
+                  {{ portalClientSummary.averageReadiness }}% avg readiness
                 </p>
               </div>
             </div>
@@ -754,18 +773,26 @@ const enterpriseRollout = [
               </template>
 
               <template #status-cell="{ row }">
-                <div class="flex flex-wrap items-center gap-2">
-                  <UBadge :color="getPortalStatusColor(row.original.portalStatus)" variant="subtle">
-                    {{ formatPortalStatus(row.original.portalStatus) }}
-                  </UBadge>
-                  <UBadge
-                    v-if="row.original.pendingApprovals"
-                    color="warning"
-                    variant="subtle"
-                    size="xs"
+                <div class="space-y-2">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <UBadge :color="getPortalStatusColor(row.original.portalStatus)" variant="subtle">
+                      {{ formatPortalStatus(row.original.portalStatus) }}
+                    </UBadge>
+                    <UBadge
+                      v-if="row.original.pendingApprovals"
+                      color="warning"
+                      variant="subtle"
+                      size="xs"
+                    >
+                      {{ row.original.pendingApprovals }} approvals
+                    </UBadge>
+                  </div>
+                  <p
+                    v-if="row.original.setupGaps?.length"
+                    class="text-xs text-[var(--ui-text-muted)] max-w-[220px]"
                   >
-                    {{ row.original.pendingApprovals }} approvals
-                  </UBadge>
+                    Next: {{ nextSetupGap(row.original) }}
+                  </p>
                 </div>
               </template>
 
@@ -786,6 +813,26 @@ const enterpriseRollout = [
                       {{ module.label }} {{ module.value }}
                     </UBadge>
                   </div>
+                </div>
+              </template>
+
+              <template #readiness-cell="{ row }">
+                <div class="w-36">
+                  <div class="flex items-center justify-between gap-2 text-xs mb-1">
+                    <span class="text-[var(--ui-text-muted)]">Setup</span>
+                    <UBadge :color="getReadinessColor(row.original.readinessScore)" variant="subtle" size="xs">
+                      {{ row.original.readinessScore }}%
+                    </UBadge>
+                  </div>
+                  <div class="h-1.5 rounded-full bg-[var(--ui-bg-elevated)] overflow-hidden">
+                    <div
+                      class="h-full rounded-full bg-primary"
+                      :style="{ width: `${row.original.readinessScore}%` }"
+                    />
+                  </div>
+                  <p class="mt-1 text-xs text-[var(--ui-text-muted)]">
+                    {{ row.original.setupGaps?.length || 0 }} gaps
+                  </p>
                 </div>
               </template>
 

@@ -83,6 +83,8 @@ describe('agency client portal clients API', () => {
         analytics: 2,
         requests: 2
       },
+      readinessScore: 100,
+      setupGaps: [],
       pendingApprovals: 4,
       portalLeads30d: 12,
       newLeads30d: 5,
@@ -126,7 +128,16 @@ describe('agency client portal clients API', () => {
 
     expect(result.clients[0]).toMatchObject({
       id: 'client-2',
-      portalStatus: 'not_configured'
+      portalStatus: 'not_configured',
+      readinessScore: 0,
+      setupGaps: [
+        'Invite a client portal user',
+        'Add booked jobs or project history',
+        'Enable billing visibility',
+        'Enable campaign analytics visibility',
+        'Enable request intake',
+        'Route lead forms to the portal'
+      ]
     })
     expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('COALESCE(cu.portal_users, 0) = 0')
   })
