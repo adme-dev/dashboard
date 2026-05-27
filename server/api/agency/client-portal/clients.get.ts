@@ -6,6 +6,7 @@
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { requireRole } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
+import { ensureOfficeRecordingsTables } from '~~/server/utils/officeRecordings'
 
 interface PortalClientRow {
   id: string
@@ -31,6 +32,9 @@ interface PortalClientRow {
   active_projects: string | number | null
   upcoming_jobs: string | number | null
   history_jobs: string | number | null
+  visible_meetings: string | number | null
+  upcoming_meetings: string | number | null
+  meeting_recordings: string | number | null
 }
 
 const toNumber = (value: string | number | null | undefined) => Number(value || 0)
@@ -45,6 +49,7 @@ const buildSetupGaps = (row: PortalClientRow) => {
   const analyticsUsers = toNumber(row.analytics_access_users)
   const requestUsers = toNumber(row.request_access_users)
   const portalLeads = toNumber(row.portal_leads_30d)
+  const visibleMeetings = toNumber(row.visible_meetings)
 
   if (activeUsers === 0) {
     gaps.push(pendingUsers > 0 ? 'Activate pending client users' : 'Invite a client portal user')
@@ -54,6 +59,7 @@ const buildSetupGaps = (row: PortalClientRow) => {
   if (analyticsUsers === 0) gaps.push('Enable campaign analytics visibility')
   if (requestUsers === 0) gaps.push('Enable request intake')
   if (portalLeads === 0) gaps.push('Route lead forms to the portal')
+  if (visibleMeetings === 0) gaps.push('Share client meetings or recordings')
 
   return gaps
 }
@@ -65,6 +71,7 @@ const readinessScore = (row: PortalClientRow) => {
     toNumber(row.invoice_access_users) > 0,
     toNumber(row.analytics_access_users) > 0,
     toNumber(row.request_access_users) > 0,
+    toNumber(row.visible_meetings) > 0,
     Boolean(row.last_activity_at)
   ]
 
@@ -75,6 +82,7 @@ export default defineEventHandler(async (event) => {
   await requireRole(event, [
     ...new Set([...PERMISSIONS.CLIENTS, ...PERMISSIONS.MEDIA_BUYING])
   ])
+  await ensureOfficeRecordingsTables()
 
   const query = getQuery(event)
   const search = typeof query.search === 'string' ? query.search.trim() : ''
@@ -126,7 +134,10 @@ export default defineEventHandler(async (event) => {
         COALESCE(ld.won_leads_30d, 0) AS won_leads_30d,
         COALESCE(pr.active_projects, 0) AS active_projects,
         COALESCE(pr.upcoming_jobs, 0) AS upcoming_jobs,
-        COALESCE(pr.history_jobs, 0) AS history_jobs
+        COALESCE(pr.history_jobs, 0) AS history_jobs,
+        COALESCE(mt.visible_meetings, 0) AS visible_meetings,
+        COALESCE(mt.upcoming_meetings, 0) AS upcoming_meetings,
+        COALESCE(mt.meeting_recordings, 0) AS meeting_recordings
       FROM agency_clients c
       LEFT JOIN (
         SELECT
@@ -182,6 +193,19 @@ export default defineEventHandler(async (event) => {
         FROM projects
         GROUP BY client_id
       ) pr ON pr.client_id = c.id
+      LEFT JOIN (
+        SELECT
+          cu.client_id,
+          COUNT(DISTINCT oms.id) FILTER (WHERE oms.status <> 'cancelled') AS visible_meetings,
+          COUNT(DISTINCT oms.id) FILTER (WHERE oms.status IN ('live', 'planned')) AS upcoming_meetings,
+          COUNT(DISTINCT rec.id) FILTER (WHERE rec.status = 'ready') AS meeting_recordings
+        FROM client_users cu
+        JOIN office_members om ON om.client_user_id = cu.id
+        JOIN office_meeting_sessions oms ON oms.office_id = om.office_id
+        LEFT JOIN office_recordings rec ON rec.meeting_session_id = oms.id
+          AND rec.status <> 'archived'
+        GROUP BY cu.client_id
+      ) mt ON mt.client_id = c.id
       WHERE ${conditions.join(' AND ')}
       ORDER BY c.name
       LIMIT $${idx}
@@ -220,6 +244,9 @@ export default defineEventHandler(async (event) => {
           activeProjects: toNumber(row.active_projects),
           upcomingJobs: toNumber(row.upcoming_jobs),
           historyJobs: toNumber(row.history_jobs),
+          visibleMeetings: toNumber(row.visible_meetings),
+          upcomingMeetings: toNumber(row.upcoming_meetings),
+          meetingRecordings: toNumber(row.meeting_recordings),
           portalStatus: activeUsers > 0
             ? 'active'
             : pendingUsers > 0

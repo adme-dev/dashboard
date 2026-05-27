@@ -33,6 +33,9 @@ interface PortalClient {
   activeProjects: number
   upcomingJobs: number
   historyJobs: number
+  visibleMeetings: number
+  upcomingMeetings: number
+  meetingRecordings: number
   readinessScore: number
   setupGaps: string[]
 }
@@ -180,7 +183,8 @@ const portalClientSummary = computed(() => {
     averageReadiness: items.length
       ? Math.round(items.reduce((sum, client) => sum + Number(client.readinessScore || 0), 0) / items.length)
       : 0,
-    leads30d: items.reduce((sum, client) => sum + Number(client.portalLeads30d || 0), 0)
+    leads30d: items.reduce((sum, client) => sum + Number(client.portalLeads30d || 0), 0),
+    meetings: items.reduce((sum, client) => sum + Number(client.visibleMeetings || 0), 0)
   }
 })
 
@@ -363,7 +367,8 @@ const portalModuleReadiness = (client: PortalClient) => [
   { label: 'Billing', value: client.moduleAccess?.invoices || 0 },
   { label: 'Analytics', value: client.moduleAccess?.analytics || 0 },
   { label: 'Approvals', value: client.moduleAccess?.approvals || 0 },
-  { label: 'Requests', value: client.moduleAccess?.requests || 0 }
+  { label: 'Requests', value: client.moduleAccess?.requests || 0 },
+  { label: 'Meetings', value: client.visibleMeetings || 0 }
 ]
 
 const nextSetupGap = (client: PortalClient) => client.setupGaps?.[0] || 'Ready for client review'
@@ -849,6 +854,9 @@ const enterpriseRollout = [
                 <p class="text-xl font-bold text-amber-500">
                   {{ portalClientSummary.leads30d }}
                 </p>
+                <p class="text-xs text-[var(--ui-text-muted)]">
+                  {{ portalClientSummary.meetings }} shared meetings
+                </p>
               </div>
             </div>
           </UCard>
@@ -958,6 +966,9 @@ const enterpriseRollout = [
                     </p>
                     <p class="text-xs text-[var(--ui-text-dimmed)]">
                       {{ row.original.upcomingJobs }} upcoming, {{ row.original.historyJobs }} completed
+                    </p>
+                    <p class="text-xs text-[var(--ui-text-dimmed)]">
+                      {{ row.original.visibleMeetings }} meetings, {{ row.original.meetingRecordings }} recordings
                     </p>
                   </div>
                 </div>

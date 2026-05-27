@@ -19,6 +19,7 @@ testGlobal.createError = input => Object.assign(new Error(input.statusMessage), 
 
 const mockRequireRole = vi.fn()
 const mockQueryRows = vi.fn()
+const mockEnsureOfficeRecordingsTables = vi.fn()
 
 vi.mock('~~/server/utils/auth', () => ({
   requireRole: (...args: unknown[]) => mockRequireRole(...args)
@@ -26,6 +27,10 @@ vi.mock('~~/server/utils/auth', () => ({
 
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args)
+}))
+
+vi.mock('~~/server/utils/officeRecordings', () => ({
+  ensureOfficeRecordingsTables: (...args: unknown[]) => mockEnsureOfficeRecordingsTables(...args)
 }))
 
 const { default: clientsHandler } = await import(
@@ -37,6 +42,7 @@ describe('agency client portal clients API', () => {
     vi.clearAllMocks()
     mockRequireRole.mockResolvedValue({ id: 'agency-user-1', role: 'media_buyer' })
     mockQueryRows.mockResolvedValue([])
+    mockEnsureOfficeRecordingsTables.mockResolvedValue(undefined)
   })
 
   it('lists clients with portal readiness and lead activity', async () => {
@@ -63,7 +69,10 @@ describe('agency client portal clients API', () => {
       won_leads_30d: '2',
       active_projects: '6',
       upcoming_jobs: '8',
-      history_jobs: '17'
+      history_jobs: '17',
+      visible_meetings: '9',
+      upcoming_meetings: '3',
+      meeting_recordings: '4'
     }])
 
     const result = await clientsHandler({
@@ -92,6 +101,9 @@ describe('agency client portal clients API', () => {
       activeProjects: 6,
       upcomingJobs: 8,
       historyJobs: 17,
+      visibleMeetings: 9,
+      upcomingMeetings: 3,
+      meetingRecordings: 4,
       portalStatus: 'active'
     })])
 
@@ -107,9 +119,13 @@ describe('agency client portal clients API', () => {
     expect(sql).toContain('COALESCE(can_submit_requests, true) = true')
     expect(sql).toContain('status IN (\'draft\', \'active\', \'on_hold\')')
     expect(sql).toContain('status IN (\'completed\', \'cancelled\')')
+    expect(sql).toContain('JOIN office_members om ON om.client_user_id = cu.id')
+    expect(sql).toContain('JOIN office_meeting_sessions oms ON oms.office_id = om.office_id')
+    expect(sql).toContain('COUNT(DISTINCT rec.id) FILTER (WHERE rec.status = \'ready\')')
     expect(sql).toContain('COALESCE(cu.portal_users, 0) > 0')
     expect(sql).toContain('c.name ILIKE $1')
     expect(params).toEqual(['%Client%', 100])
+    expect(mockEnsureOfficeRecordingsTables).toHaveBeenCalledOnce()
   })
 
   it('marks clients without users as not configured', async () => {
@@ -136,7 +152,8 @@ describe('agency client portal clients API', () => {
         'Enable billing visibility',
         'Enable campaign analytics visibility',
         'Enable request intake',
-        'Route lead forms to the portal'
+        'Route lead forms to the portal',
+        'Share client meetings or recordings'
       ]
     })
     expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('COALESCE(cu.portal_users, 0) = 0')
