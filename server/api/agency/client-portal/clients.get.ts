@@ -28,7 +28,10 @@ interface PortalClientRow {
   pending_approvals: string | number | null
   portal_leads_30d: string | number | null
   new_leads_30d: string | number | null
+  contacted_leads_30d: string | number | null
+  uncontacted_leads_30d: string | number | null
   won_leads_30d: string | number | null
+  avg_response_minutes_30d: string | number | null
   active_projects: string | number | null
   upcoming_jobs: string | number | null
   history_jobs: string | number | null
@@ -66,6 +69,7 @@ const buildSetupGaps = (row: PortalClientRow) => {
   const campaignCount = toNumber(row.campaign_count)
   const requestUsers = toNumber(row.request_access_users)
   const portalLeads = toNumber(row.portal_leads_30d)
+  const uncontactedLeads = toNumber(row.uncontacted_leads_30d)
   const visibleMeetings = toNumber(row.visible_meetings)
 
   if (activeUsers === 0) {
@@ -78,18 +82,21 @@ const buildSetupGaps = (row: PortalClientRow) => {
   else if (campaignCount === 0) gaps.push('Map Google or Facebook campaign data')
   if (requestUsers === 0) gaps.push('Enable request intake')
   if (portalLeads === 0) gaps.push('Route lead forms to the portal')
+  else if (uncontactedLeads > 0) gaps.push('Review uncontacted portal leads')
   if (visibleMeetings === 0) gaps.push('Share client meetings or recordings')
 
   return gaps
 }
 
 const readinessScore = (row: PortalClientRow) => {
+  const portalLeads = toNumber(row.portal_leads_30d)
   const checks = [
     toNumber(row.active_users) > 0,
     toNumber(row.active_projects) > 0 || toNumber(row.upcoming_jobs) > 0 || toNumber(row.history_jobs) > 0,
     toNumber(row.invoice_access_users) > 0 && toNumber(row.total_invoices) > 0,
     toNumber(row.analytics_access_users) > 0 && toNumber(row.campaign_count) > 0,
     toNumber(row.request_access_users) > 0,
+    portalLeads > 0 && toNumber(row.uncontacted_leads_30d) === 0,
     toNumber(row.visible_meetings) > 0,
     Boolean(row.last_activity_at)
   ]
@@ -102,6 +109,7 @@ const buildOrderBy = (status: string) => {
     return `(
       (COALESCE(inv.overdue_invoices, 0) * 4)
       + (COALESCE(req.urgent_requests, 0) * 4)
+      + (COALESCE(ld.uncontacted_leads_30d, 0) * 3)
       + (COALESCE(req.unassigned_requests, 0) * 2)
       + CASE WHEN COALESCE(campaigns.campaign_count, 0) = 0 THEN 3 ELSE 0 END
       + CASE WHEN COALESCE(mt.visible_meetings, 0) = 0 THEN 2 ELSE 0 END
@@ -112,6 +120,9 @@ const buildOrderBy = (status: string) => {
   }
   if (status === 'request-risk') {
     return 'COALESCE(req.urgent_requests, 0) DESC, COALESCE(req.unassigned_requests, 0) DESC, c.name'
+  }
+  if (status === 'lead-risk') {
+    return 'COALESCE(ld.uncontacted_leads_30d, 0) DESC, COALESCE(ld.avg_response_minutes_30d, 0) DESC, c.name'
   }
   if (status === 'missing-campaigns') {
     return 'COALESCE(campaigns.campaign_spend_90d, 0) ASC, c.name'
@@ -155,6 +166,7 @@ export default defineEventHandler(async (event) => {
       COALESCE(inv.overdue_invoices, 0) > 0
       OR COALESCE(req.urgent_requests, 0) > 0
       OR COALESCE(req.unassigned_requests, 0) > 0
+      OR COALESCE(ld.uncontacted_leads_30d, 0) > 0
       OR COALESCE(campaigns.campaign_count, 0) = 0
       OR COALESCE(mt.visible_meetings, 0) = 0
     )`)
@@ -162,6 +174,11 @@ export default defineEventHandler(async (event) => {
     conditions.push('COALESCE(inv.overdue_invoices, 0) > 0')
   } else if (status === 'request-risk') {
     conditions.push('(COALESCE(req.urgent_requests, 0) > 0 OR COALESCE(req.unassigned_requests, 0) > 0)')
+  } else if (status === 'lead-risk') {
+    conditions.push(`(
+      COALESCE(ld.uncontacted_leads_30d, 0) > 0
+      OR COALESCE(ld.avg_response_minutes_30d, 0) > 240
+    )`)
   } else if (status === 'missing-campaigns') {
     conditions.push('COALESCE(campaigns.campaign_count, 0) = 0')
   } else if (status === 'missing-meetings') {
@@ -192,7 +209,10 @@ export default defineEventHandler(async (event) => {
         COALESCE(ap.pending_approvals, 0) AS pending_approvals,
         COALESCE(ld.portal_leads_30d, 0) AS portal_leads_30d,
         COALESCE(ld.new_leads_30d, 0) AS new_leads_30d,
+        COALESCE(ld.contacted_leads_30d, 0) AS contacted_leads_30d,
+        COALESCE(ld.uncontacted_leads_30d, 0) AS uncontacted_leads_30d,
         COALESCE(ld.won_leads_30d, 0) AS won_leads_30d,
+        ld.avg_response_minutes_30d,
         COALESCE(pr.active_projects, 0) AS active_projects,
         COALESCE(pr.upcoming_jobs, 0) AS upcoming_jobs,
         COALESCE(pr.history_jobs, 0) AS history_jobs,
@@ -248,7 +268,15 @@ export default defineEventHandler(async (event) => {
           l.client_id,
           COUNT(*) FILTER (WHERE l.submitted_at >= NOW() - INTERVAL '30 days') AS portal_leads_30d,
           COUNT(*) FILTER (WHERE l.submitted_at >= NOW() - INTERVAL '30 days' AND l.status = 'new') AS new_leads_30d,
-          COUNT(*) FILTER (WHERE l.submitted_at >= NOW() - INTERVAL '30 days' AND l.status = 'won') AS won_leads_30d
+          COUNT(*) FILTER (WHERE l.submitted_at >= NOW() - INTERVAL '30 days' AND l.contacted_at IS NOT NULL) AS contacted_leads_30d,
+          COUNT(*) FILTER (
+            WHERE l.submitted_at >= NOW() - INTERVAL '30 days'
+              AND l.contacted_at IS NULL
+              AND l.status IN ('new', 'contacted', 'qualified')
+          ) AS uncontacted_leads_30d,
+          COUNT(*) FILTER (WHERE l.submitted_at >= NOW() - INTERVAL '30 days' AND l.status = 'won') AS won_leads_30d,
+          AVG(EXTRACT(EPOCH FROM (l.contacted_at - l.submitted_at)) / 60)
+            FILTER (WHERE l.submitted_at >= NOW() - INTERVAL '30 days' AND l.contacted_at IS NOT NULL) AS avg_response_minutes_30d
         FROM leads l
         JOIN lead_form_rules r ON r.id = l.rule_id
         JOIN lead_form_destinations d ON d.rule_id = r.id
@@ -356,7 +384,10 @@ export default defineEventHandler(async (event) => {
           pendingApprovals: toNumber(row.pending_approvals),
           portalLeads30d: toNumber(row.portal_leads_30d),
           newLeads30d: toNumber(row.new_leads_30d),
+          contactedLeads30d: toNumber(row.contacted_leads_30d),
+          uncontactedLeads30d: toNumber(row.uncontacted_leads_30d),
           wonLeads30d: toNumber(row.won_leads_30d),
+          avgResponseMinutes30d: row.avg_response_minutes_30d == null ? null : Math.round(toNumber(row.avg_response_minutes_30d)),
           activeProjects: toNumber(row.active_projects),
           upcomingJobs: toNumber(row.upcoming_jobs),
           historyJobs: toNumber(row.history_jobs),

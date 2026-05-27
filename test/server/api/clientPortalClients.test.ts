@@ -66,7 +66,10 @@ describe('agency client portal clients API', () => {
       pending_approvals: '4',
       portal_leads_30d: '12',
       new_leads_30d: '5',
+      contacted_leads_30d: '8',
+      uncontacted_leads_30d: '3',
       won_leads_30d: '2',
+      avg_response_minutes_30d: '42.4',
       active_projects: '6',
       upcoming_jobs: '8',
       history_jobs: '17',
@@ -107,12 +110,15 @@ describe('agency client portal clients API', () => {
         analytics: 2,
         requests: 2
       },
-      readinessScore: 100,
-      setupGaps: [],
+      readinessScore: 88,
+      setupGaps: ['Review uncontacted portal leads'],
       pendingApprovals: 4,
       portalLeads30d: 12,
       newLeads30d: 5,
+      contactedLeads30d: 8,
+      uncontactedLeads30d: 3,
       wonLeads30d: 2,
+      avgResponseMinutes30d: 42,
       activeProjects: 6,
       upcomingJobs: 8,
       historyJobs: 17,
@@ -142,6 +148,9 @@ describe('agency client portal clients API', () => {
     expect(sql).toContain('FROM agency_clients c')
     expect(sql).toContain('d.destination_type = \'portal\'')
     expect(sql).toContain('COUNT(*) FILTER (')
+    expect(sql).toContain('contacted_leads_30d')
+    expect(sql).toContain('uncontacted_leads_30d')
+    expect(sql).toContain('avg_response_minutes_30d')
     expect(sql).toContain('can_view_projects = true')
     expect(sql).toContain('can_view_invoices = true')
     expect(sql).toContain('can_approve_work = true')
@@ -207,11 +216,22 @@ describe('agency client portal clients API', () => {
     expect(sql).toContain('COALESCE(inv.overdue_invoices, 0) > 0')
     expect(sql).toContain('COALESCE(req.urgent_requests, 0) > 0')
     expect(sql).toContain('COALESCE(req.unassigned_requests, 0) > 0')
+    expect(sql).toContain('COALESCE(ld.uncontacted_leads_30d, 0) > 0')
     expect(sql).toContain('COALESCE(campaigns.campaign_count, 0) = 0')
     expect(sql).toContain('COALESCE(mt.visible_meetings, 0) = 0')
     expect(sql).toContain('(COALESCE(inv.overdue_invoices, 0) * 4)')
     expect(sql).toContain('(COALESCE(req.urgent_requests, 0) * 4)')
+    expect(sql).toContain('(COALESCE(ld.uncontacted_leads_30d, 0) * 3)')
     expect(sql).toContain('CASE WHEN COALESCE(campaigns.campaign_count, 0) = 0 THEN 3 ELSE 0 END')
+  })
+
+  it('filters clients by lead response risk', async () => {
+    await clientsHandler({ query: { status: 'lead-risk' } })
+
+    const sql = String(mockQueryRows.mock.calls[0]?.[0])
+    expect(sql).toContain('COALESCE(ld.uncontacted_leads_30d, 0) > 0')
+    expect(sql).toContain('COALESCE(ld.avg_response_minutes_30d, 0) > 240')
+    expect(sql).toContain('ORDER BY COALESCE(ld.uncontacted_leads_30d, 0) DESC, COALESCE(ld.avg_response_minutes_30d, 0) DESC, c.name')
   })
 
   it('filters clients by specific setup gaps', async () => {

@@ -29,7 +29,10 @@ interface PortalClient {
   pendingApprovals: number
   portalLeads30d: number
   newLeads30d: number
+  contactedLeads30d: number
+  uncontactedLeads30d: number
   wonLeads30d: number
+  avgResponseMinutes30d?: number | null
   activeProjects: number
   upcomingJobs: number
   historyJobs: number
@@ -202,7 +205,9 @@ const portalClientSummary = computed(() => {
     meetings: items.reduce((sum, client) => sum + Number(client.visibleMeetings || 0), 0),
     outstandingAmount: items.reduce((sum, client) => sum + Number(client.outstandingAmount || 0), 0),
     openRequests: items.reduce((sum, client) => sum + Number(client.openRequests || 0), 0),
-    campaignSpend90d: items.reduce((sum, client) => sum + Number(client.campaignSpend90d || 0), 0)
+    campaignSpend90d: items.reduce((sum, client) => sum + Number(client.campaignSpend90d || 0), 0),
+    contactedLeads30d: items.reduce((sum, client) => sum + Number(client.contactedLeads30d || 0), 0),
+    uncontactedLeads30d: items.reduce((sum, client) => sum + Number(client.uncontactedLeads30d || 0), 0)
   }
 })
 
@@ -214,6 +219,9 @@ const clientRiskItems = computed(() => portalClients.value
         : null,
       client.urgentRequests > 0
         ? { label: `${client.urgentRequests} urgent request${client.urgentRequests === 1 ? '' : 's'}`, color: 'error' as const }
+        : null,
+      client.uncontactedLeads30d > 0
+        ? { label: `${client.uncontactedLeads30d} uncontacted lead${client.uncontactedLeads30d === 1 ? '' : 's'}`, color: 'error' as const }
         : null,
       client.unassignedRequests > 0
         ? { label: `${client.unassignedRequests} unassigned`, color: 'warning' as const }
@@ -231,6 +239,7 @@ const clientRiskItems = computed(() => portalClients.value
 
     const score = (client.overdueInvoices * 4)
       + (client.urgentRequests * 4)
+      + (client.uncontactedLeads30d * 3)
       + (client.unassignedRequests * 2)
       + ((100 - client.readinessScore) / 10)
       + (client.campaignCount === 0 ? 3 : 0)
@@ -246,6 +255,7 @@ const operationalFilterChips = [
   { label: 'Needs attention', value: 'risk', icon: 'i-lucide-radar' },
   { label: 'Billing risk', value: 'billing-risk', icon: 'i-lucide-receipt-text' },
   { label: 'Request risk', value: 'request-risk', icon: 'i-lucide-message-square-warning' },
+  { label: 'Lead risk', value: 'lead-risk', icon: 'i-lucide-phone-missed' },
   { label: 'Missing campaigns', value: 'missing-campaigns', icon: 'i-lucide-chart-no-axes-combined' },
   { label: 'Missing meetings', value: 'missing-meetings', icon: 'i-lucide-video-off' }
 ]
@@ -519,6 +529,12 @@ const formatDateTime = (date?: string | null) => {
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(amount)
+
+const formatLeadResponse = (minutes?: number | null) => {
+  if (minutes == null || Number.isNaN(minutes)) return 'No responses'
+  if (minutes < 60) return `${minutes}m avg response`
+  return `${Math.round(minutes / 60)}h avg response`
+}
 
 // Status colors
 const getUserStatusColor = (status: string): 'success' | 'warning' | 'error' | 'neutral' => {
@@ -928,7 +944,7 @@ const enterpriseRollout = [
                   {{ portalClientSummary.leads30d }}
                 </p>
                 <p class="text-xs text-[var(--ui-text-muted)]">
-                  {{ portalClientSummary.meetings }} shared meetings
+                  {{ portalClientSummary.uncontactedLeads30d }} uncontacted · {{ portalClientSummary.meetings }} meetings
                 </p>
               </div>
             </div>
@@ -1080,6 +1096,7 @@ const enterpriseRollout = [
                     { label: 'Needs attention', value: 'risk' },
                     { label: 'Billing risk', value: 'billing-risk' },
                     { label: 'Request risk', value: 'request-risk' },
+                    { label: 'Lead risk', value: 'lead-risk' },
                     { label: 'Missing campaigns', value: 'missing-campaigns' },
                     { label: 'Missing meetings', value: 'missing-meetings' },
                     { label: 'Configured', value: 'configured' },
@@ -1218,8 +1235,20 @@ const enterpriseRollout = [
                     {{ row.original.portalLeads30d }} leads
                   </p>
                   <p class="text-xs text-[var(--ui-text-muted)]">
-                    {{ row.original.newLeads30d }} new, {{ row.original.wonLeads30d }} won
+                    {{ row.original.contactedLeads30d }} contacted, {{ row.original.wonLeads30d }} won
                   </p>
+                  <p class="text-xs text-[var(--ui-text-dimmed)]">
+                    {{ formatLeadResponse(row.original.avgResponseMinutes30d) }}
+                  </p>
+                  <UBadge
+                    v-if="row.original.uncontactedLeads30d > 0"
+                    color="error"
+                    variant="subtle"
+                    size="xs"
+                    class="mt-1"
+                  >
+                    {{ row.original.uncontactedLeads30d }} uncontacted
+                  </UBadge>
                 </div>
               </template>
 
