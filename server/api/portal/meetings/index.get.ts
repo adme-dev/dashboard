@@ -24,6 +24,10 @@ type PortalMeetingRow = {
   zone_slug: string | null
   ready_recording_count: string | number | null
   latest_recording_token: string | null
+  summary_count: string | number | null
+  action_item_artifact_count: string | number | null
+  notes_count: string | number | null
+  transcript_count: string | number | null
 }
 
 type MeetingStatsRow = {
@@ -50,7 +54,13 @@ const mapMeeting = (meeting: PortalMeetingRow) => ({
   zoneName: meeting.zone_name,
   zoneSlug: meeting.zone_slug,
   readyRecordingCount: Number(meeting.ready_recording_count || 0),
-  latestRecordingToken: meeting.latest_recording_token
+  latestRecordingToken: meeting.latest_recording_token,
+  artifacts: {
+    summaries: Number(meeting.summary_count || 0),
+    actionItems: Number(meeting.action_item_artifact_count || 0),
+    notes: Number(meeting.notes_count || 0),
+    transcripts: Number(meeting.transcript_count || 0)
+  }
 })
 
 export default defineEventHandler(async (event) => {
@@ -86,7 +96,11 @@ export default defineEventHandler(async (event) => {
         oz.name AS zone_name,
         oz.slug AS zone_slug,
         COALESCE(recording_summary.ready_recording_count, 0)::int AS ready_recording_count,
-        recording_summary.latest_recording_token
+        recording_summary.latest_recording_token,
+        COALESCE(artifact_summary.summary_count, 0)::int AS summary_count,
+        COALESCE(artifact_summary.action_item_artifact_count, 0)::int AS action_item_artifact_count,
+        COALESCE(artifact_summary.notes_count, 0)::int AS notes_count,
+        COALESCE(artifact_summary.transcript_count, 0)::int AS transcript_count
       FROM office_members om
       JOIN offices o ON o.id = om.office_id
       JOIN office_meeting_sessions oms ON oms.office_id = om.office_id
@@ -99,6 +113,15 @@ export default defineEventHandler(async (event) => {
         WHERE meeting_session_id = oms.id
           AND status <> 'archived'
       ) recording_summary ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(*) FILTER (WHERE artifact_type = 'summary')::int AS summary_count,
+          COUNT(*) FILTER (WHERE artifact_type = 'action_items')::int AS action_item_artifact_count,
+          COUNT(*) FILTER (WHERE artifact_type = 'notes')::int AS notes_count,
+          COUNT(*) FILTER (WHERE artifact_type = 'transcript')::int AS transcript_count
+        FROM office_meeting_artifacts
+        WHERE meeting_session_id = oms.id
+      ) artifact_summary ON TRUE
       WHERE ${conditions.join(' AND ')}
       ORDER BY
         CASE

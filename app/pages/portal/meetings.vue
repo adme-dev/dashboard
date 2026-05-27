@@ -13,6 +13,12 @@ interface PortalMeeting {
   durationMinutes: number | null
   zoneName: string | null
   latestRecordingToken: string | null
+  artifacts?: {
+    summaries: number
+    actionItems: number
+    notes: number
+    transcripts: number
+  }
 }
 
 interface PortalMeetingsDashboard {
@@ -90,6 +96,12 @@ function artifactIcon(type: string) {
 function openArtifacts(meeting: PortalMeeting) {
   selectedMeeting.value = meeting
   showArtifacts.value = true
+}
+
+function artifactCount(meeting: PortalMeeting) {
+  const artifacts = meeting.artifacts
+  if (!artifacts) return 0
+  return artifacts.summaries + artifacts.actionItems + artifacts.notes + artifacts.transcripts
 }
 </script>
 
@@ -185,6 +197,48 @@ function openArtifacts(meeting: PortalMeeting) {
                   <span>{{ meeting.durationMinutes ? `${meeting.durationMinutes} min` : 'Duration pending' }}</span>
                 </div>
               </div>
+              <div class="mt-3 flex flex-wrap gap-1">
+                <UBadge
+                  v-if="meeting.artifacts?.summaries"
+                  color="neutral"
+                  variant="subtle"
+                  size="xs"
+                >
+                  Summary
+                </UBadge>
+                <UBadge
+                  v-if="meeting.artifacts?.actionItems"
+                  color="neutral"
+                  variant="subtle"
+                  size="xs"
+                >
+                  Actions
+                </UBadge>
+                <UBadge
+                  v-if="meeting.artifacts?.notes"
+                  color="neutral"
+                  variant="subtle"
+                  size="xs"
+                >
+                  Notes
+                </UBadge>
+                <UBadge
+                  v-if="meeting.artifacts?.transcripts"
+                  color="neutral"
+                  variant="subtle"
+                  size="xs"
+                >
+                  Transcript
+                </UBadge>
+                <UBadge
+                  v-if="meeting.readyRecordingCount"
+                  color="neutral"
+                  variant="subtle"
+                  size="xs"
+                >
+                  {{ meeting.readyRecordingCount }} recording{{ meeting.readyRecordingCount === 1 ? '' : 's' }}
+                </UBadge>
+              </div>
             </div>
 
             <div class="flex flex-wrap gap-2">
@@ -212,7 +266,7 @@ function openArtifacts(meeting: PortalMeeting) {
                 variant="outline"
                 @click="openArtifacts(meeting)"
               >
-                Notes
+                {{ artifactCount(meeting) ? `${artifactCount(meeting)} note${artifactCount(meeting) === 1 ? '' : 's'}` : 'Notes' }}
               </UButton>
               <UButton
                 to="/portal/requests"

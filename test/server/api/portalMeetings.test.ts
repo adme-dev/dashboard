@@ -64,7 +64,11 @@ describe('portal meetings API', () => {
         zone_name: 'Boardroom',
         zone_slug: 'boardroom',
         ready_recording_count: '1',
-        latest_recording_token: 'recording-token'
+        latest_recording_token: 'recording-token',
+        summary_count: '1',
+        action_item_artifact_count: '1',
+        notes_count: '0',
+        transcript_count: '1'
       }
     ])
     mockQueryOne.mockResolvedValue({
@@ -93,7 +97,13 @@ describe('portal meetings API', () => {
       joinPath: '/lobby/office-1?meeting=meeting-1',
       durationMinutes: 30,
       readyRecordingCount: 1,
-      latestRecordingToken: 'recording-token'
+      latestRecordingToken: 'recording-token',
+      artifacts: {
+        summaries: 1,
+        actionItems: 1,
+        notes: 0,
+        transcripts: 1
+      }
     })
     expect(mockQueryRows).toHaveBeenCalledWith(
       expect.stringContaining('om.client_user_id = $1'),
