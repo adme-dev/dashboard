@@ -102,5 +102,19 @@ describe('portal users API', () => {
         })
       })
     ])
+    expect(result.summary).toEqual({
+      total: 2,
+      active: 1,
+      pending: 1,
+      primaryContacts: 1,
+      lastLoginAt: '2026-05-28T01:00:00Z',
+      moduleCoverage: {
+        projects: 1,
+        invoices: 1,
+        approvals: 1,
+        analytics: 1,
+        requests: 1
+      }
+    })
   })
 })

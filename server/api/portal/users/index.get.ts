@@ -58,28 +58,50 @@ export default defineEventHandler(async (event) => {
         name ASC
     `, [clientUser.clientId, clientUser.id])
 
+    const mappedUsers = users.map(user => ({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      title: user.title,
+      role: user.role,
+      status: user.status,
+      avatarUrl: user.avatar_url,
+      isPrimaryContact: user.is_primary_contact,
+      permissions: {
+        canViewProjects: user.can_view_projects,
+        canViewInvoices: user.can_view_invoices,
+        canApproveWork: user.can_approve_work,
+        canViewAnalytics: user.can_view_analytics,
+        canSubmitRequests: user.can_submit_requests
+      },
+      lastLoginAt: user.last_login_at,
+      invitedAt: user.invited_at,
+      createdAt: user.created_at,
+      isCurrentUser: user.id === clientUser.id
+    }))
+    const activeUsers = mappedUsers.filter(user => user.status === 'active')
+    const moduleCoverage = {
+      projects: activeUsers.filter(user => user.permissions.canViewProjects).length,
+      invoices: activeUsers.filter(user => user.permissions.canViewInvoices).length,
+      approvals: activeUsers.filter(user => user.permissions.canApproveWork).length,
+      analytics: activeUsers.filter(user => user.permissions.canViewAnalytics).length,
+      requests: activeUsers.filter(user => user.permissions.canSubmitRequests).length
+    }
+    const lastLoginAt = mappedUsers
+      .map(user => user.lastLoginAt)
+      .filter((date): date is string => Boolean(date))
+      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || null
+
     return {
-      users: users.map(user => ({
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        title: user.title,
-        role: user.role,
-        status: user.status,
-        avatarUrl: user.avatar_url,
-        isPrimaryContact: user.is_primary_contact,
-        permissions: {
-          canViewProjects: user.can_view_projects,
-          canViewInvoices: user.can_view_invoices,
-          canApproveWork: user.can_approve_work,
-          canViewAnalytics: user.can_view_analytics,
-          canSubmitRequests: user.can_submit_requests
-        },
-        lastLoginAt: user.last_login_at,
-        invitedAt: user.invited_at,
-        createdAt: user.created_at,
-        isCurrentUser: user.id === clientUser.id
-      }))
+      users: mappedUsers,
+      summary: {
+        total: mappedUsers.length,
+        active: activeUsers.length,
+        pending: mappedUsers.filter(user => user.status === 'pending').length,
+        primaryContacts: mappedUsers.filter(user => user.isPrimaryContact).length,
+        lastLoginAt,
+        moduleCoverage
+      }
     }
   } catch (error) {
     console.error('Failed to fetch portal users:', error)

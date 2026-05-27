@@ -120,6 +120,36 @@ const permissionModules = computed(() => [
 const enabledModuleCount = computed(() => permissionModules.value.filter(module => module.enabled).length)
 const activeAccessUsers = computed(() => accessData.value?.users.filter(accessUser => accessUser.status === 'active').length ?? 0)
 const pendingAccessUsers = computed(() => accessData.value?.users.filter(accessUser => accessUser.status === 'pending').length ?? 0)
+const accessSummary = computed(() => {
+  const users = accessData.value?.users || []
+  const activeUsers = users.filter(accessUser => accessUser.status === 'active')
+  const lastLoginAt = users
+    .map(accessUser => accessUser.lastLoginAt)
+    .filter(Boolean)
+    .sort((a, b) => new Date(String(b)).getTime() - new Date(String(a)).getTime())[0] || null
+
+  return {
+    total: users.length,
+    active: activeUsers.length,
+    pending: users.filter(accessUser => accessUser.status === 'pending').length,
+    primaryContacts: users.filter(accessUser => accessUser.isPrimaryContact).length,
+    lastLoginAt,
+    moduleCoverage: {
+      projects: activeUsers.filter(accessUser => accessUser.permissions.canViewProjects).length,
+      invoices: activeUsers.filter(accessUser => accessUser.permissions.canViewInvoices).length,
+      approvals: activeUsers.filter(accessUser => accessUser.permissions.canApproveWork).length,
+      analytics: activeUsers.filter(accessUser => accessUser.permissions.canViewAnalytics).length,
+      requests: activeUsers.filter(accessUser => accessUser.permissions.canSubmitRequests).length
+    }
+  }
+})
+const accessCoverageItems = computed(() => [
+  { label: 'Jobs', value: accessSummary.value.moduleCoverage.projects, icon: 'i-lucide-folder-kanban' },
+  { label: 'Billing', value: accessSummary.value.moduleCoverage.invoices, icon: 'i-lucide-receipt-text' },
+  { label: 'Approvals', value: accessSummary.value.moduleCoverage.approvals, icon: 'i-lucide-check-check' },
+  { label: 'Analytics', value: accessSummary.value.moduleCoverage.analytics, icon: 'i-lucide-chart-no-axes-combined' },
+  { label: 'Requests', value: accessSummary.value.moduleCoverage.requests, icon: 'i-lucide-message-square-plus' }
+])
 
 function formatDate(date: string | null | undefined) {
   if (!date) return '-'
@@ -220,6 +250,76 @@ async function saveProfile() {
           </UButton>
         </div>
       </form>
+    </UCard>
+
+    <UCard>
+      <template #header>
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-shield-check" class="text-primary" />
+          <h2 class="font-semibold">
+            Access Health
+          </h2>
+        </div>
+      </template>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="rounded-lg border border-default bg-default p-3">
+          <p class="text-xs text-muted">
+            Active users
+          </p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ accessSummary.active }}/{{ accessSummary.total }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            {{ accessSummary.pending }} pending invite{{ accessSummary.pending === 1 ? '' : 's' }}
+          </p>
+        </div>
+        <div class="rounded-lg border border-default bg-default p-3">
+          <p class="text-xs text-muted">
+            Primary contacts
+          </p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ accessSummary.primaryContacts }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Main agency contact route
+          </p>
+        </div>
+        <div class="rounded-lg border border-default bg-default p-3">
+          <p class="text-xs text-muted">
+            Last login
+          </p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ formatDate(accessSummary.lastLoginAt) }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Most recent portal access
+          </p>
+        </div>
+        <div class="rounded-lg border border-default bg-default p-3">
+          <p class="text-xs text-muted">
+            Module coverage
+          </p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ accessCoverageItems.filter(item => item.value > 0).length }}/{{ accessCoverageItems.length }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Modules available to active users
+          </p>
+        </div>
+      </div>
+
+      <div class="mt-4 flex flex-wrap gap-2">
+        <UBadge
+          v-for="item in accessCoverageItems"
+          :key="item.label"
+          :color="item.value > 0 ? 'success' : 'neutral'"
+          variant="subtle"
+        >
+          <UIcon :name="item.icon" class="size-3 mr-1" />
+          {{ item.label }} {{ item.value }}
+        </UBadge>
+      </div>
     </UCard>
 
     <UCard>
