@@ -242,6 +242,19 @@ const clientRiskItems = computed(() => portalClients.value
   .sort((a, b) => b.score - a.score)
   .slice(0, 5))
 
+const operationalFilterChips = [
+  { label: 'Needs attention', value: 'risk', icon: 'i-lucide-radar' },
+  { label: 'Billing risk', value: 'billing-risk', icon: 'i-lucide-receipt-text' },
+  { label: 'Request risk', value: 'request-risk', icon: 'i-lucide-message-square-warning' },
+  { label: 'Missing campaigns', value: 'missing-campaigns', icon: 'i-lucide-chart-no-axes-combined' },
+  { label: 'Missing meetings', value: 'missing-meetings', icon: 'i-lucide-video-off' }
+]
+
+const applyClientStatusFilter = (status: string) => {
+  portalClientFilters.value.status = status
+  activeTab.value = 'clients'
+}
+
 // Fetch client portal users
 const portalUserFilters = ref({
   clientId: '',
@@ -955,6 +968,30 @@ const enterpriseRollout = [
               </div>
             </div>
           </template>
+
+          <div class="mb-4 flex flex-wrap gap-2">
+            <UButton
+              v-for="chip in operationalFilterChips"
+              :key="chip.value"
+              :icon="chip.icon"
+              size="xs"
+              :color="portalClientFilters.status === chip.value ? 'primary' : 'neutral'"
+              :variant="portalClientFilters.status === chip.value ? 'soft' : 'outline'"
+              @click="applyClientStatusFilter(chip.value)"
+            >
+              {{ chip.label }}
+            </UButton>
+            <UButton
+              v-if="portalClientFilters.status !== 'all'"
+              icon="i-lucide-x"
+              size="xs"
+              color="neutral"
+              variant="ghost"
+              @click="applyClientStatusFilter('all')"
+            >
+              Clear
+            </UButton>
+          </div>
 
           <div class="grid grid-cols-1 lg:grid-cols-5 gap-3">
             <div
