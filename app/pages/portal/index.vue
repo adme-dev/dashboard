@@ -40,7 +40,7 @@ interface PortalDashboard {
   }
   meetings: {
     stats: { totalVisible: number, live: number, planned: number, recordings: number }
-    upcoming: Array<{ id: string, officeName: string, title: string, status: string, startedAt: string | null, createdAt: string, scheduledStartAt: string | null, durationMinutes: number | null, zoneName: string | null, latestRecordingToken: string | null }>
+    upcoming: Array<{ id: string, officeName: string, title: string, joinPath: string, status: string, startedAt: string | null, createdAt: string, scheduledStartAt: string | null, durationMinutes: number | null, zoneName: string | null, latestRecordingToken: string | null }>
   }
   upcomingDeadlines: Array<{ id: string, title: string, dueDate: string | null, projectName: string, status: { color: string | null } }>
   recentActivity: Array<{ id: string, action: string, createdAt: string, userName: string | null }>
@@ -280,6 +280,16 @@ function jobStatusColor(status: string) {
                 </UBadge>
               </div>
               <div class="flex items-center gap-2 mt-3">
+                <UButton
+                  v-if="meeting.status === 'live' || meeting.status === 'planned'"
+                  :to="meeting.joinPath"
+                  icon="i-lucide-video"
+                  size="xs"
+                  color="primary"
+                  variant="solid"
+                >
+                  Join
+                </UButton>
                 <UButton
                   to="/portal/meetings"
                   icon="i-lucide-door-open"

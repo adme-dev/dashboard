@@ -5,6 +5,7 @@ interface PortalMeeting {
   id: string
   officeName: string
   title: string
+  joinPath: string
   status: string
   startedAt: string | null
   createdAt: string
@@ -144,6 +145,14 @@ function statusColor(status: string) {
             </div>
 
             <div class="flex flex-wrap gap-2">
+              <UButton
+                v-if="meeting.status === 'live' || meeting.status === 'planned'"
+                :to="meeting.joinPath"
+                icon="i-lucide-video"
+                color="primary"
+              >
+                Join meeting
+              </UButton>
               <UButton
                 v-if="meeting.latestRecordingToken"
                 :to="`/recordings/${meeting.latestRecordingToken}`"

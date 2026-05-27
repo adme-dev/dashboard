@@ -570,6 +570,7 @@ export default defineEventHandler(async (event) => {
           officeId: m.office_id,
           officeName: m.office_name,
           title: m.title,
+          joinPath: `/lobby/${m.office_id}?meeting=${encodeURIComponent(String(m.id))}`,
           status: m.status,
           source: m.source,
           startedAt: m.started_at,

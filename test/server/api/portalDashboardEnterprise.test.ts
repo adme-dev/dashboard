@@ -122,6 +122,31 @@ describe('portal dashboard enterprise summary', () => {
           completed_tasks: '6'
         }
       ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'meeting-1',
+          office_id: 'office-1',
+          office_name: 'Client Office',
+          title: 'Monthly review',
+          status: 'planned',
+          source: 'scheduled',
+          started_at: null,
+          ended_at: null,
+          created_at: '2026-05-27T00:00:00.000Z',
+          scheduled_start_at: '2026-06-01T00:00:00.000Z',
+          duration_minutes: '30',
+          zone_name: 'Meeting Room',
+          zone_slug: 'meeting-room',
+          ready_recording_count: '1',
+          latest_recording_token: 'recording-token'
+        }
+      ])
 
     const result = await dashboardHandler({})
 
@@ -186,6 +211,15 @@ describe('portal dashboard enterprise summary', () => {
         pendingUsers: 1,
         lastLoginAt: '2026-05-26T00:00:00.000Z'
       }
+    })
+    expect(result.meetings.upcoming[0]).toMatchObject({
+      id: 'meeting-1',
+      officeId: 'office-1',
+      title: 'Monthly review',
+      joinPath: '/lobby/office-1?meeting=meeting-1',
+      durationMinutes: 30,
+      readyRecordingCount: 1,
+      latestRecordingToken: 'recording-token'
     })
 
     const campaignSql = String(mockQueryOne.mock.calls[6]?.[0])
