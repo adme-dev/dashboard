@@ -1,0 +1,153 @@
+/**
+ * Client Portal - Meetings
+ * GET /api/portal/meetings
+ */
+
+import { queryOne, queryRows } from '~~/server/utils/db'
+import { requireClientAuth } from '~~/server/utils/clientAuth'
+import { ensureOfficeMeetingArtifactsTables } from '~~/server/utils/officeMeetingArtifacts'
+import { ensureOfficeRecordingsTables } from '~~/server/utils/officeRecordings'
+
+type PortalMeetingRow = {
+  id: string
+  office_id: string
+  office_name: string
+  title: string
+  status: string
+  source: string | null
+  started_at: string | null
+  ended_at: string | null
+  created_at: string
+  scheduled_start_at: string | null
+  duration_minutes: string | number | null
+  zone_name: string | null
+  zone_slug: string | null
+  ready_recording_count: string | number | null
+  latest_recording_token: string | null
+}
+
+type MeetingStatsRow = {
+  total_visible: string | number | null
+  live: string | number | null
+  planned: string | number | null
+  ended: string | number | null
+  recordings: string | number | null
+}
+
+const mapMeeting = (meeting: PortalMeetingRow) => ({
+  id: meeting.id,
+  officeId: meeting.office_id,
+  officeName: meeting.office_name,
+  title: meeting.title,
+  joinPath: `/lobby/${meeting.office_id}?meeting=${encodeURIComponent(String(meeting.id))}`,
+  status: meeting.status,
+  source: meeting.source,
+  startedAt: meeting.started_at,
+  endedAt: meeting.ended_at,
+  createdAt: meeting.created_at,
+  scheduledStartAt: meeting.scheduled_start_at,
+  durationMinutes: meeting.duration_minutes ? Number(meeting.duration_minutes) : null,
+  zoneName: meeting.zone_name,
+  zoneSlug: meeting.zone_slug,
+  readyRecordingCount: Number(meeting.ready_recording_count || 0),
+  latestRecordingToken: meeting.latest_recording_token
+})
+
+export default defineEventHandler(async (event) => {
+  const clientUser = await requireClientAuth(event)
+  const query = getQuery(event)
+  const view = query.view as string | undefined
+  const limit = Math.min(Number(query.limit) || 50, 100)
+
+  await ensureOfficeMeetingArtifactsTables()
+  await ensureOfficeRecordingsTables()
+
+  try {
+    const conditions = ['om.client_user_id = $1', 'oms.status <> \'cancelled\'']
+    if (view === 'upcoming') {
+      conditions.push('oms.status IN (\'live\', \'planned\')')
+    } else if (view === 'history') {
+      conditions.push('oms.status NOT IN (\'live\', \'planned\')')
+    }
+
+    const meetings = await queryRows<PortalMeetingRow>(`
+      SELECT
+        oms.id,
+        oms.office_id,
+        o.name AS office_name,
+        oms.title,
+        oms.status,
+        oms.source,
+        oms.started_at,
+        oms.ended_at,
+        oms.created_at,
+        oms.consent #>> '{setup,scheduled_start_at}' AS scheduled_start_at,
+        oms.consent #>> '{setup,duration_minutes}' AS duration_minutes,
+        oz.name AS zone_name,
+        oz.slug AS zone_slug,
+        COALESCE(recording_summary.ready_recording_count, 0)::int AS ready_recording_count,
+        recording_summary.latest_recording_token
+      FROM office_members om
+      JOIN offices o ON o.id = om.office_id
+      JOIN office_meeting_sessions oms ON oms.office_id = om.office_id
+      LEFT JOIN office_zones oz ON oz.id = oms.zone_id
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(*) FILTER (WHERE status = 'ready')::int AS ready_recording_count,
+          (ARRAY_AGG(share_token ORDER BY created_at DESC) FILTER (WHERE status = 'ready' AND share_token IS NOT NULL))[1] AS latest_recording_token
+        FROM office_recordings
+        WHERE meeting_session_id = oms.id
+          AND status <> 'archived'
+      ) recording_summary ON TRUE
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY
+        CASE
+          WHEN oms.status = 'live' THEN 0
+          WHEN oms.status = 'planned' THEN 1
+          ELSE 2
+        END ASC,
+        CASE
+          WHEN oms.status IN ('live', 'planned')
+           AND (oms.consent #>> '{setup,scheduled_start_at}') ~ '^\\d{4}-\\d{2}-\\d{2}T'
+          THEN (oms.consent #>> '{setup,scheduled_start_at}')::timestamptz
+          ELSE NULL
+        END ASC NULLS LAST,
+        oms.ended_at DESC NULLS LAST,
+        oms.created_at DESC
+      LIMIT $2
+    `, [clientUser.id, limit])
+
+    const stats = await queryOne<MeetingStatsRow>(`
+      SELECT
+        COUNT(*) AS total_visible,
+        COUNT(*) FILTER (WHERE oms.status = 'live') AS live,
+        COUNT(*) FILTER (WHERE oms.status = 'planned') AS planned,
+        COUNT(*) FILTER (WHERE oms.status NOT IN ('live', 'planned', 'cancelled')) AS ended,
+        COALESCE(SUM(recording_summary.ready_recording_count), 0) AS recordings
+      FROM office_members om
+      JOIN office_meeting_sessions oms ON oms.office_id = om.office_id
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) FILTER (WHERE status = 'ready')::int AS ready_recording_count
+        FROM office_recordings
+        WHERE meeting_session_id = oms.id
+          AND status <> 'archived'
+      ) recording_summary ON TRUE
+      WHERE om.client_user_id = $1
+        AND oms.status <> 'cancelled'
+    `, [clientUser.id])
+
+    return {
+      meetings: meetings.map(mapMeeting),
+      stats: {
+        totalVisible: Number(stats?.total_visible || 0),
+        live: Number(stats?.live || 0),
+        planned: Number(stats?.planned || 0),
+        ended: Number(stats?.ended || 0),
+        recordings: Number(stats?.recordings || 0)
+      }
+    }
+  } catch (error) {
+    console.error('Failed to fetch portal meetings:', error)
+    throw createError({ statusCode: 500, statusMessage: 'Failed to fetch meetings' })
+  }
+})

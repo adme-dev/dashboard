@@ -16,18 +16,28 @@ interface PortalMeeting {
 }
 
 interface PortalMeetingsDashboard {
-  meetings: {
-    stats: {
-      totalVisible: number
-      live: number
-      planned: number
-      recordings: number
-    }
-    upcoming: PortalMeeting[]
+  stats: {
+    totalVisible: number
+    live: number
+    planned: number
+    ended: number
+    recordings: number
   }
+  meetings: PortalMeeting[]
 }
 
-const { data, pending } = useFetch<PortalMeetingsDashboard>('/api/portal/dashboard')
+const activeTab = ref('upcoming')
+const meetingQuery = computed(() => activeTab.value === 'all' ? {} : { view: activeTab.value })
+
+const { data, pending } = useFetch<PortalMeetingsDashboard>('/api/portal/meetings', {
+  query: meetingQuery
+})
+
+const tabs = [
+  { label: 'Upcoming', value: 'upcoming' },
+  { label: 'History', value: 'history' },
+  { label: 'All', value: 'all' }
+]
 
 function formatMeetingDate(date: string | null | undefined) {
   if (!date) return '-'
@@ -49,6 +59,12 @@ function statusColor(status: string) {
   if (status === 'planned') return 'primary'
   if (status === 'ended') return 'neutral'
   return 'warning'
+}
+
+function emptyLabel() {
+  if (activeTab.value === 'history') return 'No meeting history shared yet'
+  if (activeTab.value === 'all') return 'No meetings shared yet'
+  return 'No upcoming meetings shared yet'
 }
 </script>
 
@@ -84,7 +100,7 @@ function statusColor(status: string) {
             Shared meetings
           </p>
           <p class="text-2xl font-bold mt-2">
-            {{ data?.meetings?.stats?.totalVisible || 0 }}
+            {{ data?.stats?.totalVisible || 0 }}
           </p>
         </UCard>
         <UCard>
@@ -92,7 +108,7 @@ function statusColor(status: string) {
             Live now
           </p>
           <p class="text-2xl font-bold text-success mt-2">
-            {{ data?.meetings?.stats?.live || 0 }}
+            {{ data?.stats?.live || 0 }}
           </p>
         </UCard>
         <UCard>
@@ -100,7 +116,7 @@ function statusColor(status: string) {
             Planned
           </p>
           <p class="text-2xl font-bold text-primary mt-2">
-            {{ data?.meetings?.stats?.planned || 0 }}
+            {{ data?.stats?.planned || 0 }}
           </p>
         </UCard>
         <UCard>
@@ -108,14 +124,16 @@ function statusColor(status: string) {
             Recordings
           </p>
           <p class="text-2xl font-bold mt-2">
-            {{ data?.meetings?.stats?.recordings || 0 }}
+            {{ data?.stats?.recordings || 0 }}
           </p>
         </UCard>
       </div>
 
+      <UTabs v-model="activeTab" :items="tabs" />
+
       <div class="space-y-4">
         <UCard
-          v-for="meeting in data?.meetings?.upcoming || []"
+          v-for="meeting in data?.meetings || []"
           :key="meeting.id"
         >
           <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -175,11 +193,11 @@ function statusColor(status: string) {
         </UCard>
       </div>
 
-      <UCard v-if="!(data?.meetings?.upcoming || []).length">
+      <UCard v-if="!(data?.meetings || []).length">
         <div class="text-center py-12">
           <UIcon name="i-lucide-video" class="size-10 text-muted mx-auto mb-3" />
           <h2 class="font-semibold">
-            No meetings shared yet
+            {{ emptyLabel() }}
           </h2>
           <p class="text-sm text-muted mt-1">
             When your agency shares client reviews, live sessions, or recordings, they will appear here.
