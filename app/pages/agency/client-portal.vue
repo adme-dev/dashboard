@@ -131,7 +131,7 @@ watch(clients, (items) => {
 }, { immediate: true })
 
 const openingPortal = ref(false)
-const openClientPortal = async (clientId?: string | null) => {
+const openClientPortal = async (clientId?: string | null, path = '/portal') => {
   const targetClientId = clientId || selectedAccessClientId.value
   if (!targetClientId) {
     toast.add({ title: 'Select a client first', color: 'error' })
@@ -144,7 +144,7 @@ const openClientPortal = async (clientId?: string | null) => {
       method: 'POST',
       body: { clientId: targetClientId }
     })
-    await navigateTo('/portal')
+    await navigateTo(path)
   } catch (err: unknown) {
     toast.add({
       title: 'Failed to open portal',
@@ -155,6 +155,55 @@ const openClientPortal = async (clientId?: string | null) => {
     openingPortal.value = false
   }
 }
+
+const getClientPortalActions = (clientId?: string | null) => [
+  [
+    {
+      label: 'Dashboard',
+      icon: 'i-lucide-layout-dashboard',
+      onSelect: () => openClientPortal(clientId, '/portal')
+    },
+    {
+      label: 'All Jobs',
+      icon: 'i-lucide-folder-kanban',
+      onSelect: () => openClientPortal(clientId, '/portal/projects')
+    },
+    {
+      label: 'Upcoming Jobs',
+      icon: 'i-lucide-calendar-clock',
+      onSelect: () => openClientPortal(clientId, '/portal/projects?view=upcoming')
+    },
+    {
+      label: 'Job History',
+      icon: 'i-lucide-history',
+      onSelect: () => openClientPortal(clientId, '/portal/projects?view=history')
+    }
+  ],
+  [
+    {
+      label: 'Campaign Analytics',
+      icon: 'i-lucide-chart-no-axes-combined',
+      onSelect: () => openClientPortal(clientId, '/portal/analytics')
+    },
+    {
+      label: 'Billing',
+      icon: 'i-lucide-receipt-text',
+      onSelect: () => openClientPortal(clientId, '/portal/invoices')
+    },
+    {
+      label: 'Requests',
+      icon: 'i-lucide-message-square-plus',
+      onSelect: () => openClientPortal(clientId, '/portal/requests')
+    },
+    {
+      label: 'Meetings',
+      icon: 'i-lucide-video',
+      onSelect: () => openClientPortal(clientId, '/office')
+    }
+  ]
+]
+
+const selectedClientPortalActions = computed(() => getClientPortalActions(selectedAccessClientId.value))
 
 const inviteClientUser = (clientId?: string | null) => {
   inviteForm.value.clientId = clientId || null
@@ -514,6 +563,15 @@ const enterpriseRollout = [
                   :loading="openingPortal"
                   @click="openClientPortal()"
                 />
+                <UDropdownMenu :items="selectedClientPortalActions">
+                  <UButton
+                    icon="i-lucide-chevron-down"
+                    color="neutral"
+                    variant="outline"
+                    :loading="openingPortal"
+                    aria-label="Open selected client portal section"
+                  />
+                </UDropdownMenu>
               </div>
             </div>
           </UCard>
@@ -597,15 +655,16 @@ const enterpriseRollout = [
                     aria-label="Invite portal user"
                     @click="inviteClientUser(row.original.id)"
                   />
-                  <UButton
-                    icon="i-lucide-external-link"
-                    variant="ghost"
-                    color="neutral"
-                    size="sm"
-                    :loading="openingPortal"
-                    aria-label="Open client portal"
-                    @click="openClientPortal(row.original.id)"
-                  />
+                  <UDropdownMenu :items="getClientPortalActions(row.original.id)">
+                    <UButton
+                      icon="i-lucide-more-horizontal"
+                      variant="ghost"
+                      color="neutral"
+                      size="sm"
+                      :loading="openingPortal"
+                      aria-label="Open client portal sections"
+                    />
+                  </UDropdownMenu>
                 </div>
               </template>
             </UTable>
@@ -697,15 +756,16 @@ const enterpriseRollout = [
               </template>
 
               <template #actions-cell="{ row }">
-                <UButton
-                  icon="i-lucide-external-link"
-                  variant="ghost"
-                  color="neutral"
-                  size="sm"
-                  :loading="openingPortal"
-                  aria-label="Open client portal"
-                  @click="openClientPortal(row.original.clientId)"
-                />
+                <UDropdownMenu :items="getClientPortalActions(row.original.clientId)">
+                  <UButton
+                    icon="i-lucide-more-horizontal"
+                    variant="ghost"
+                    color="neutral"
+                    size="sm"
+                    :loading="openingPortal"
+                    aria-label="Open client portal sections"
+                  />
+                </UDropdownMenu>
               </template>
             </UTable>
 
