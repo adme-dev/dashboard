@@ -57,7 +57,7 @@ describe('portal dashboard enterprise summary', () => {
       .mockResolvedValueOnce({ id: 'client-1', name: 'Client Co' })
       .mockResolvedValueOnce({ total: '2', active: '1', completed: '1', on_hold: '0' })
       .mockResolvedValueOnce({ total: '2', paid: '1', outstanding: '1', total_paid: '900', total_outstanding: '300' })
-      .mockResolvedValueOnce({ total: '1', submitted: '1', in_progress: '0' })
+      .mockResolvedValueOnce({ total: '3', submitted: '1', needs_review: '2', in_progress: '1', open: '2', resolved: '1' })
       .mockResolvedValueOnce({
         active_jobs: '3',
         overdue_jobs: '1',
@@ -175,6 +175,15 @@ describe('portal dashboard enterprise summary', () => {
         completedTasks: 6
       }
     ])
+
+    expect(result.requests.stats).toEqual({
+      total: 3,
+      submitted: 1,
+      needsReview: 2,
+      inProgress: 1,
+      open: 2,
+      resolved: 1
+    })
 
     expect(result.enterprise).toEqual({
       jobs: {

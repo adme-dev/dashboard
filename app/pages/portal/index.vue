@@ -19,8 +19,8 @@ interface PortalDashboard {
     recent: Array<{ id: string, source: string, formName: string | null, submittedAt: string, fieldData: Record<string, unknown> | null, status: string, campaignName: string | null }>
   }
   requests: {
-    stats: { submitted: number, inProgress: number }
-    recent: Array<{ id: string, requestType: string, title: string, priority: string, assignedName: string | null }>
+    stats: { total: number, submitted: number, needsReview: number, inProgress: number, open: number, resolved: number }
+    recent: Array<{ id: string, requestType: string, title: string, priority: string, status: string, assignedName: string | null, createdAt: string }>
   }
   gallery: {
     recent: Array<{ id: string, title: string, thumbnailUrl: string | null }>
@@ -121,6 +121,16 @@ function jobStatusColor(status: string) {
   if (status === 'completed') return 'neutral'
   if (status === 'cancelled') return 'error'
   return 'primary'
+}
+
+function requestStatusColor(status: string) {
+  if (status === 'submitted') return 'warning'
+  if (status === 'in_review') return 'info'
+  if (status === 'approved') return 'success'
+  if (status === 'in_progress') return 'primary'
+  if (status === 'completed') return 'success'
+  if (status === 'cancelled') return 'error'
+  return 'neutral'
 }
 
 function activityDetails(details: Record<string, unknown> | string | null | undefined) {
@@ -773,11 +783,11 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
                 <span class="font-semibold">Open Requests</span>
               </div>
               <div class="flex items-center gap-2">
-                <UBadge v-if="dashboard.requests.stats.submitted > 0" color="warning" variant="subtle">
-                  {{ dashboard.requests.stats.submitted }} new
+                <UBadge v-if="dashboard.requests.stats.open > 0" color="primary" variant="subtle">
+                  {{ dashboard.requests.stats.open }} open
                 </UBadge>
-                <UBadge v-if="dashboard.requests.stats.inProgress > 0" color="primary" variant="subtle">
-                  {{ dashboard.requests.stats.inProgress }} active
+                <UBadge v-if="dashboard.requests.stats.needsReview > 0" color="warning" variant="subtle">
+                  {{ dashboard.requests.stats.needsReview }} review
                 </UBadge>
               </div>
             </div>
@@ -792,17 +802,27 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
             >
               <div class="flex items-center justify-between">
                 <span class="font-medium text-sm">{{ req.title }}</span>
-                <UBadge
-                  size="xs"
-                  variant="subtle"
-                  :color="req.priority === 'urgent' ? 'error' : req.priority === 'high' ? 'warning' : 'neutral'"
-                >
-                  {{ req.priority }}
-                </UBadge>
+                <div class="flex items-center gap-1">
+                  <UBadge
+                    size="xs"
+                    variant="subtle"
+                    :color="requestStatusColor(req.status)"
+                  >
+                    {{ req.status.replace(/_/g, ' ') }}
+                  </UBadge>
+                  <UBadge
+                    size="xs"
+                    variant="outline"
+                    :color="req.priority === 'urgent' ? 'error' : req.priority === 'high' ? 'warning' : 'neutral'"
+                  >
+                    {{ req.priority }}
+                  </UBadge>
+                </div>
               </div>
               <div class="flex items-center gap-2 mt-1 text-xs text-muted">
                 <span>{{ req.requestType === 'job_request' ? 'Job' : 'Support' }}</span>
                 <span v-if="req.assignedName">· {{ req.assignedName }}</span>
+                <span>· {{ timeAgo(req.createdAt) }}</span>
               </div>
             </NuxtLink>
 

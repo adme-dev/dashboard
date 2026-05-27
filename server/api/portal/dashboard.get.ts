@@ -193,7 +193,10 @@ export default defineEventHandler(async (event) => {
       SELECT
         COUNT(*) as total,
         COUNT(CASE WHEN status = 'submitted' THEN 1 END) as submitted,
-        COUNT(CASE WHEN status IN ('in_review', 'approved', 'in_progress') THEN 1 END) as in_progress
+        COUNT(CASE WHEN status IN ('submitted', 'in_review') THEN 1 END) as needs_review,
+        COUNT(CASE WHEN status IN ('in_review', 'approved', 'in_progress') THEN 1 END) as in_progress,
+        COUNT(CASE WHEN status NOT IN ('completed', 'closed', 'cancelled') THEN 1 END) as open,
+        COUNT(CASE WHEN status IN ('completed', 'closed') THEN 1 END) as resolved
       FROM client_requests
       WHERE client_id = $1
     `, [clientId])
@@ -499,7 +502,10 @@ export default defineEventHandler(async (event) => {
         stats: {
           total: Number(requestStats?.total || 0),
           submitted: Number(requestStats?.submitted || 0),
-          inProgress: Number(requestStats?.in_progress || 0)
+          needsReview: Number(requestStats?.needs_review || 0),
+          inProgress: Number(requestStats?.in_progress || 0),
+          open: Number(requestStats?.open || 0),
+          resolved: Number(requestStats?.resolved || 0)
         },
         recent: recentRequests.map(r => ({
           id: r.id,
