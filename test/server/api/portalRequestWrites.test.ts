@@ -74,11 +74,29 @@ describe('portal request write APIs', () => {
         category: 'strategy',
         title: 'Launch planning',
         description: 'Please help plan our next campaign.',
-        priority: 'high'
+        priority: 'high',
+        estimatedBudget: '2500',
+        desiredDeadline: '2026-06-15'
       }
     })
 
     expect(result).toEqual({ id: 'request-1', createdAt: '2026-05-28T00:00:00Z' })
+    expect(mockClientQuery).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO client_requests'),
+      expect.arrayContaining([
+        'client-1',
+        'client-user-1',
+        'job_request',
+        'strategy',
+        'Launch planning',
+        'Please help plan our next campaign.',
+        'high',
+        null,
+        '[]',
+        2500,
+        '2026-06-15'
+      ])
+    )
     expect(mockClientQuery).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO client_activity_log'),
       expect.arrayContaining([
@@ -107,6 +125,34 @@ describe('portal request write APIs', () => {
       },
       reason: 'direct'
     })
+  })
+
+  it('rejects invalid budget and desired deadline values', async () => {
+    await expect(createRequestHandler({
+      body: {
+        requestType: 'job_request',
+        title: 'Bad budget',
+        description: 'Please help.',
+        estimatedBudget: '-1'
+      }
+    })).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: 'Invalid estimated budget'
+    })
+
+    await expect(createRequestHandler({
+      body: {
+        requestType: 'job_request',
+        title: 'Bad date',
+        description: 'Please help.',
+        desiredDeadline: 'next Friday'
+      }
+    })).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: 'Invalid desired deadline'
+    })
+
+    expect(mockTransaction).not.toHaveBeenCalled()
   })
 
   it('logs client activity when a client adds a request message', async () => {

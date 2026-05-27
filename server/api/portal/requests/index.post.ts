@@ -49,6 +49,23 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid priority' })
   }
 
+  const normalizedEstimatedBudget = estimatedBudget == null || estimatedBudget === ''
+    ? null
+    : Number(estimatedBudget)
+  if (normalizedEstimatedBudget != null && (!Number.isFinite(normalizedEstimatedBudget) || normalizedEstimatedBudget < 0)) {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid estimated budget' })
+  }
+
+  const normalizedDesiredDeadline = desiredDeadline == null || desiredDeadline === ''
+    ? null
+    : String(desiredDeadline)
+  if (
+    normalizedDesiredDeadline
+    && (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDesiredDeadline) || Number.isNaN(Date.parse(`${normalizedDesiredDeadline}T00:00:00Z`)))
+  ) {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid desired deadline' })
+  }
+
   try {
     // If projectId provided, verify it belongs to this client
     if (projectId) {
@@ -78,8 +95,8 @@ export default defineEventHandler(async (event) => {
         priority || 'normal',
         projectId || null,
         JSON.stringify(attachments || []),
-        estimatedBudget || null,
-        desiredDeadline || null
+        normalizedEstimatedBudget,
+        normalizedDesiredDeadline
       ])
 
       const request = inserted.rows[0]
