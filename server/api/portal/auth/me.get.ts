@@ -39,8 +39,8 @@ export default defineEventHandler(async (event) => {
         avatarUrl: clientUser.avatarUrl,
         role: clientUser.role,
         isPrimaryContact: clientUser.isPrimaryContact,
-        notificationPreferences: {},
-        timezone: 'UTC',
+        notificationPreferences: clientUser.notificationPreferences,
+        timezone: clientUser.timezone,
         permissions: clientUser.permissions
       },
       client: {
@@ -54,8 +54,8 @@ export default defineEventHandler(async (event) => {
         activeProjects: Number(activeProjects?.count || 0)
       }
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error
     console.error('Failed to get current user:', error)
     throw createError({
       statusCode: 500,

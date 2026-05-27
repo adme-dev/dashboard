@@ -98,8 +98,15 @@ const enabledModuleCount = computed(() => permissionModules.value.filter(module 
 async function saveProfile() {
   saving.value = true
   try {
-    // Note: This would need a PUT endpoint for client user profile updates
-    // For now, show a message
+    await $fetch('/api/portal/profile', {
+      method: 'PUT',
+      body: {
+        name: form.name,
+        title: form.title,
+        phone: form.phone,
+        timezone: form.timezone
+      }
+    })
     toast.add({ title: 'Profile saved', color: 'success' })
     await fetchUser()
   } catch (error: unknown) {

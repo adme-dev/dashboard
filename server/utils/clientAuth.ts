@@ -19,6 +19,8 @@ export interface ServerClientUser {
   clientId: string
   clientName: string
   clientLogo: string | null
+  notificationPreferences: Record<string, boolean>
+  timezone: string
   permissions: {
     canViewProjects: boolean
     canViewInvoices: boolean
@@ -97,6 +99,8 @@ export async function requireClientAuth(event: H3Event): Promise<ServerClientUse
       cu.can_invite_users,
       cu.can_view_analytics,
       cu.can_submit_requests,
+      cu.notification_preferences,
+      cu.timezone,
       cu.status,
       c.id as client_id,
       c.name as client_name,
@@ -125,6 +129,8 @@ export async function requireClientAuth(event: H3Event): Promise<ServerClientUse
     clientId: user.client_id,
     clientName: user.client_name,
     clientLogo: user.client_logo,
+    notificationPreferences: user.notification_preferences || {},
+    timezone: user.timezone || 'UTC',
     permissions: {
       canViewProjects: user.can_view_projects,
       canViewInvoices: user.can_view_invoices,
