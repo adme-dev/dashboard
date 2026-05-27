@@ -887,6 +887,36 @@ const enterpriseRollout = [
 
         <!-- Enterprise Tab -->
         <div v-if="activeTab === 'enterprise'" class="space-y-6">
+          <UCard>
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h2 class="text-lg font-semibold">
+                  Client Portal Preview
+                </h2>
+                <p class="text-sm text-[var(--ui-text-muted)] mt-1">
+                  Choose a client, then open the exact portal module they will see.
+                </p>
+              </div>
+              <div class="flex flex-col sm:flex-row gap-2 lg:w-[460px]">
+                <USelectMenu
+                  v-model="selectedAccessClientId"
+                  :items="clientOptions"
+                  placeholder="Select client"
+                  value-key="value"
+                  searchable
+                  class="w-full"
+                />
+                <UButton
+                  label="Open Dashboard"
+                  icon="i-lucide-layout-dashboard"
+                  color="primary"
+                  :loading="openingPortal"
+                  @click="openClientPortal(selectedAccessClientId, '/portal')"
+                />
+              </div>
+            </div>
+          </UCard>
+
           <div class="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6">
             <UCard>
               <template #header>
@@ -940,6 +970,16 @@ const enterpriseRollout = [
                       {{ module.next }}
                     </p>
                   </div>
+                  <UButton
+                    :label="`Preview ${module.title}`"
+                    icon="i-lucide-external-link"
+                    color="neutral"
+                    variant="outline"
+                    size="sm"
+                    block
+                    :loading="openingPortal"
+                    @click="openClientPortal(selectedAccessClientId, module.clientPath)"
+                  />
                 </div>
               </div>
             </UCard>
