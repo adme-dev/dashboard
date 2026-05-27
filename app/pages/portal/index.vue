@@ -35,7 +35,7 @@ interface PortalDashboard {
   enterprise: {
     jobs: { active: number, overdue: number, dueSoon: number, completedLast30: number, nextDueDate: string | null }
     billing: { outstandingCount: number, overdueCount: number, outstandingAmount: number, aged60Amount: number, aged60Count: number, paidLast90: number, lastPaidAt: string | null, nextDueDate: string | null } | null
-    campaigns: { campaigns: number, platforms: number, spend: number, impressions: number, clicks: number, conversions: number, leadsLast30: number, visibleLeads: number, wonLeads: number, costPerLead: number | null, lastSyncedAt: string | null } | null
+    campaigns: { campaigns: number, platforms: number, spend: number, impressions: number, clicks: number, conversions: number, leadsLast30: number, visibleLeads: number, contactedLeadsLast30: number, uncontactedLeadsLast30: number, wonLeads: number, avgResponseMinutesLast30: number | null, costPerLead: number | null, lastSyncedAt: string | null } | null
     access: { totalUsers: number, activeUsers: number, pendingUsers: number, lastLoginAt: string | null }
   }
   meetings: {
@@ -147,6 +147,16 @@ const accountPriorities = computed<AccountPriority[]>(() => {
     })
   }
 
+  if (data.enterprise.campaigns?.uncontactedLeadsLast30) {
+    items.push({
+      title: 'Check lead follow-up',
+      detail: `${data.enterprise.campaigns.uncontactedLeadsLast30} shared lead${data.enterprise.campaigns.uncontactedLeadsLast30 === 1 ? '' : 's'} still uncontacted`,
+      icon: 'i-lucide-phone-missed',
+      color: 'error',
+      to: '/portal/leads'
+    })
+  }
+
   if (data.requests.stats.open > 0) {
     items.push({
       title: 'Track open requests',
@@ -241,6 +251,12 @@ function formatCurrency(amount: number) {
 
 function formatCompact(amount: number) {
   return new Intl.NumberFormat('en-AU', { notation: 'compact', maximumFractionDigits: 1 }).format(amount)
+}
+
+function formatLeadResponse(minutes: number | null | undefined) {
+  if (minutes == null || Number.isNaN(minutes)) return '-'
+  if (minutes < 60) return `${minutes}m`
+  return `${Math.round(minutes / 60)}h`
 }
 
 function timeAgo(date: string) {
@@ -648,6 +664,14 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
             <span class="text-right font-medium">{{ formatCurrency(dashboard.enterprise.campaigns.spend) }}</span>
             <span class="text-muted">Leads 30d</span>
             <span class="text-right font-medium">{{ dashboard.enterprise.campaigns.leadsLast30 }}</span>
+            <span class="text-muted">Contacted</span>
+            <span class="text-right font-medium">{{ dashboard.enterprise.campaigns.contactedLeadsLast30 }}</span>
+            <span class="text-muted">Uncontacted</span>
+            <span class="text-right font-medium" :class="dashboard.enterprise.campaigns.uncontactedLeadsLast30 > 0 ? 'text-error' : ''">
+              {{ dashboard.enterprise.campaigns.uncontactedLeadsLast30 }}
+            </span>
+            <span class="text-muted">Avg response</span>
+            <span class="text-right font-medium">{{ formatLeadResponse(dashboard.enterprise.campaigns.avgResponseMinutesLast30) }}</span>
             <span class="text-muted">Cost / lead</span>
             <span class="text-right font-medium">
               {{ dashboard.enterprise.campaigns.costPerLead == null ? '-' : formatCurrency(dashboard.enterprise.campaigns.costPerLead) }}

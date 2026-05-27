@@ -87,6 +87,9 @@ describe('portal dashboard enterprise summary', () => {
       .mockResolvedValueOnce({
         visible_leads: '80',
         leads_last_30: '20',
+        contacted_leads_last_30: '14',
+        uncontacted_leads_last_30: '3',
+        avg_response_minutes_last_30: '38.2',
         won_leads: '5'
       })
       .mockResolvedValueOnce({
@@ -214,7 +217,10 @@ describe('portal dashboard enterprise summary', () => {
         conversions: 90,
         leadsLast30: 20,
         visibleLeads: 80,
+        contactedLeadsLast30: 14,
+        uncontactedLeadsLast30: 3,
         wonLeads: 5,
+        avgResponseMinutesLast30: 38,
         costPerLead: 150,
         lastSyncedAt: '2026-05-27T00:00:00.000Z'
       },
@@ -236,9 +242,13 @@ describe('portal dashboard enterprise summary', () => {
     })
 
     const campaignSql = String(mockQueryOne.mock.calls[6]?.[0])
+    const leadSql = String(mockQueryOne.mock.calls[7]?.[0])
     expect(campaignSql).toContain('FROM media_spend ms')
     expect(campaignSql).toContain('ad_account_client_map')
     expect(campaignSql).toContain('TO_CHAR(CURRENT_DATE - INTERVAL \'90 days\', \'YYYY-MM\')')
+    expect(leadSql).toContain('contacted_leads_last_30')
+    expect(leadSql).toContain('uncontacted_leads_last_30')
+    expect(leadSql).toContain('avg_response_minutes_last_30')
 
     const upcomingJobsSql = String(mockQueryRows.mock.calls[1]?.[0])
     const completedJobsSql = String(mockQueryRows.mock.calls[2]?.[0])

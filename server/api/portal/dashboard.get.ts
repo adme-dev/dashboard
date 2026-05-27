@@ -364,7 +364,15 @@ export default defineEventHandler(async (event) => {
         SELECT
           COUNT(*) AS visible_leads,
           COUNT(*) FILTER (WHERE l.submitted_at >= NOW() - INTERVAL '30 days') AS leads_last_30,
-          COUNT(*) FILTER (WHERE l.status = 'won') AS won_leads
+          COUNT(*) FILTER (WHERE l.submitted_at >= NOW() - INTERVAL '30 days' AND l.contacted_at IS NOT NULL) AS contacted_leads_last_30,
+          COUNT(*) FILTER (
+            WHERE l.submitted_at >= NOW() - INTERVAL '30 days'
+              AND l.contacted_at IS NULL
+              AND l.status IN ('new', 'contacted', 'qualified')
+          ) AS uncontacted_leads_last_30,
+          COUNT(*) FILTER (WHERE l.status = 'won') AS won_leads,
+          AVG(EXTRACT(EPOCH FROM (l.contacted_at - l.submitted_at)) / 60)
+            FILTER (WHERE l.submitted_at >= NOW() - INTERVAL '30 days' AND l.contacted_at IS NOT NULL) AS avg_response_minutes_last_30
         FROM leads l
         WHERE l.client_id = $1
           AND l.deleted_at IS NULL
@@ -562,7 +570,12 @@ export default defineEventHandler(async (event) => {
               conversions: toNum(campaignHealth?.conversions),
               leadsLast30: Number(leadHealth?.leads_last_30 || 0),
               visibleLeads: Number(leadHealth?.visible_leads || 0),
+              contactedLeadsLast30: Number(leadHealth?.contacted_leads_last_30 || 0),
+              uncontactedLeadsLast30: Number(leadHealth?.uncontacted_leads_last_30 || 0),
               wonLeads: Number(leadHealth?.won_leads || 0),
+              avgResponseMinutesLast30: leadHealth?.avg_response_minutes_last_30 == null
+                ? null
+                : Math.round(toNum(leadHealth.avg_response_minutes_last_30)),
               costPerLead: Number(leadHealth?.leads_last_30 || 0) > 0
                 ? toNum(campaignHealth?.spend) / Number(leadHealth?.leads_last_30 || 0)
                 : null,
