@@ -45,6 +45,8 @@ describe('agency client portal request patch API', () => {
     mockQueryOne.mockResolvedValue({
       id: 'request-1',
       client_id: 'client-1',
+      client_user_id: 'client-user-1',
+      title: 'Request access to billing',
       status: 'submitted'
     })
     mockDbQuery.mockImplementation(async (sql: string) => {
@@ -81,7 +83,7 @@ describe('agency client portal request patch API', () => {
     })
 
     expect(mockQueryOne).toHaveBeenCalledWith(
-      'SELECT id, client_id, status FROM client_requests WHERE id = $1',
+      'SELECT id, client_id, client_user_id, title, status FROM client_requests WHERE id = $1',
       ['request-1']
     )
     expect(mockDbQuery).toHaveBeenCalledWith(
@@ -95,6 +97,15 @@ describe('agency client portal request patch API', () => {
           assignedTo: 'team-2',
           priority: 'high'
         })
+      ]
+    )
+    expect(mockDbQuery).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO client_notifications'),
+      [
+        'client-user-1',
+        'Request in review',
+        '"Request access to billing" was updated to in review.',
+        '/portal/requests/request-1'
       ]
     )
     expect(result).toMatchObject({

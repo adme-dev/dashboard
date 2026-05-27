@@ -18,6 +18,8 @@ type UpdateClientRequestBody = {
 type ClientRequestRow = {
   id: string
   client_id: string
+  client_user_id: string | null
+  title: string
   status: string
 }
 
@@ -52,7 +54,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Verify request exists
-    const existing = await queryOne<ClientRequestRow>('SELECT id, client_id, status FROM client_requests WHERE id = $1', [requestId])
+    const existing = await queryOne<ClientRequestRow>('SELECT id, client_id, client_user_id, title, status FROM client_requests WHERE id = $1', [requestId])
     if (!existing) {
       throw createError({ statusCode: 404, statusMessage: 'Request not found' })
     }
@@ -143,6 +145,23 @@ export default defineEventHandler(async (event) => {
           priority: row.priority
         })
       ])
+
+      if (status && status !== existing.status && existing.client_user_id) {
+        await db.query(`
+          INSERT INTO client_notifications (
+            client_user_id,
+            type,
+            title,
+            message,
+            action_url
+          ) VALUES ($1, 'status_change', $2, $3, $4)
+        `, [
+          existing.client_user_id,
+          `Request ${row.status.replace(/_/g, ' ')}`,
+          `"${existing.title}" was updated to ${row.status.replace(/_/g, ' ')}.`,
+          `/portal/requests/${requestId}`
+        ])
+      }
 
       return row
     })

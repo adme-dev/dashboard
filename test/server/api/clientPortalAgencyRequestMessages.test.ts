@@ -44,7 +44,9 @@ describe('agency client portal request messages API', () => {
     mockRequireAuth.mockResolvedValue({ id: 'team-1' })
     mockQueryOne.mockResolvedValue({
       id: 'request-1',
-      client_id: 'client-1'
+      client_id: 'client-1',
+      client_user_id: 'client-user-1',
+      title: 'Request access to billing'
     })
     mockDbQuery.mockImplementation(async (sql: string) => {
       if (sql.includes('INSERT INTO client_request_messages')) {
@@ -70,7 +72,7 @@ describe('agency client portal request messages API', () => {
     })
 
     expect(mockQueryOne).toHaveBeenCalledWith(
-      'SELECT id, client_id FROM client_requests WHERE id = $1',
+      'SELECT id, client_id, client_user_id, title FROM client_requests WHERE id = $1',
       ['request-1']
     )
     expect(mockDbQuery).toHaveBeenCalledWith(
@@ -82,6 +84,15 @@ describe('agency client portal request messages API', () => {
           agencyUserId: 'team-1',
           messageId: 'message-1'
         })
+      ]
+    )
+    expect(mockDbQuery).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO client_notifications'),
+      [
+        'client-user-1',
+        'Agency replied to your request',
+        'New reply on "Request access to billing".',
+        '/portal/requests/request-1'
       ]
     )
     expect(result).toEqual({
@@ -101,7 +112,7 @@ describe('agency client portal request messages API', () => {
     expect(mockTransaction).not.toHaveBeenCalled()
   })
 
-  it('does not log client activity for internal notes', async () => {
+  it('does not log client activity or notifications for internal notes', async () => {
     await messagesHandler({
       params: { id: 'request-1' },
       body: {
@@ -112,6 +123,10 @@ describe('agency client portal request messages API', () => {
 
     expect(mockDbQuery).not.toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO client_activity_log'),
+      expect.anything()
+    )
+    expect(mockDbQuery).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO client_notifications'),
       expect.anything()
     )
   })
