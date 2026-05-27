@@ -172,6 +172,81 @@ const agingColors: Record<string, string> = {
         </div>
       </UCard>
 
+      <UCard v-if="data?.summary">
+        <template #header>
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-landmark" class="text-primary" />
+            <span class="font-semibold">Commercial summary</span>
+          </div>
+        </template>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <button
+            type="button"
+            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+            @click="activeTab = 'current'"
+          >
+            <p class="text-xs text-muted">
+              Next due date
+            </p>
+            <p class="mt-1 text-sm font-semibold">
+              {{ formatDate(data.summary.nextDueDate) }}
+            </p>
+            <p class="mt-1 text-xs text-muted">
+              {{ data.summary.current }} current invoice{{ data.summary.current === 1 ? '' : 's' }}
+            </p>
+          </button>
+
+          <button
+            type="button"
+            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+            @click="activeTab = 'overdue'"
+          >
+            <p class="text-xs text-muted">
+              Overdue balance
+            </p>
+            <p class="mt-1 text-sm font-semibold" :class="data.summary.overdueAmount > 0 ? 'text-error' : ''">
+              {{ formatCurrency(data.summary.overdueAmount) }}
+            </p>
+            <p class="mt-1 text-xs text-muted">
+              {{ data.summary.overdue }} overdue invoice{{ data.summary.overdue === 1 ? '' : 's' }}
+            </p>
+          </button>
+
+          <button
+            type="button"
+            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+            @click="activeTab = 'history'"
+          >
+            <p class="text-xs text-muted">
+              Last paid
+            </p>
+            <p class="mt-1 text-sm font-semibold">
+              {{ formatDate(data.summary.lastPaidDate) }}
+            </p>
+            <p class="mt-1 text-xs text-muted">
+              {{ data.summary.history }} paid invoice{{ data.summary.history === 1 ? '' : 's' }}
+            </p>
+          </button>
+
+          <button
+            type="button"
+            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+            @click="activeTab = 'history'"
+          >
+            <p class="text-xs text-muted">
+              Average paid invoice
+            </p>
+            <p class="mt-1 text-sm font-semibold">
+              {{ formatCurrency(data.summary.averagePaidInvoice) }}
+            </p>
+            <p class="mt-1 text-xs text-muted">
+              {{ formatCurrency(data.summary.totalPaid) }} paid total
+            </p>
+          </button>
+        </div>
+      </UCard>
+
       <UTabs v-model="activeTab" :items="tabs" />
 
       <div v-if="pending" class="space-y-3">
