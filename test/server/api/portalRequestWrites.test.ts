@@ -22,6 +22,7 @@ testGlobal.createError = input => Object.assign(new Error(input.statusMessage), 
 
 const mockRequireClientAuth = vi.fn()
 const mockQueryOne = vi.fn()
+const mockQueryRows = vi.fn()
 const mockTransaction = vi.fn()
 const mockClientQuery = vi.fn()
 const mockCreateNotification = vi.fn()
@@ -32,6 +33,7 @@ vi.mock('~~/server/utils/clientAuth', () => ({
 
 vi.mock('~~/server/utils/db', () => ({
   queryOne: (...args: unknown[]) => mockQueryOne(...args),
+  queryRows: (...args: unknown[]) => mockQueryRows(...args),
   transaction: (...args: unknown[]) => mockTransaction(...args)
 }))
 
@@ -55,6 +57,7 @@ describe('portal request write APIs', () => {
       permissions: { canSubmitRequests: true }
     })
     mockQueryOne.mockResolvedValue({ id: 'request-1', status: 'in_progress' })
+    mockQueryRows.mockResolvedValue([{ id: 'team-1' }, { id: 'team-2' }])
     mockCreateNotification.mockResolvedValue({ id: 'notification-1' })
     mockClientQuery.mockReset()
     mockTransaction.mockImplementation(async callback => callback({ query: mockClientQuery }))
@@ -86,6 +89,24 @@ describe('portal request write APIs', () => {
       ])
     )
     expect(mockClientQuery.mock.calls[1][0]).toContain('client_request_submitted')
+    expect(mockQueryRows).toHaveBeenCalledWith(
+      expect.stringContaining('FROM team_members tm'),
+      [null, 'client-1']
+    )
+    expect(mockCreateNotification).toHaveBeenCalledWith({
+      userId: 'team-1',
+      type: 'team_update',
+      title: 'New client request submitted',
+      message: '"Launch planning" was submitted from the client portal.',
+      link: '/agency/client-portal?tab=requests&requestId=request-1',
+      metadata: {
+        clientId: 'client-1',
+        requestId: 'request-1',
+        requestType: 'job_request',
+        priority: 'high'
+      },
+      reason: 'direct'
+    })
   })
 
   it('logs client activity when a client adds a request message', async () => {

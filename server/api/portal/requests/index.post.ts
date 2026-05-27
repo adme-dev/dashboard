@@ -3,12 +3,17 @@
  * POST /api/portal/requests
  */
 
-import { queryOne, transaction } from '~~/server/utils/db'
+import { queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
+import { createNotification } from '~~/server/utils/notifications'
 
 const JOB_CATEGORIES = ['new_project', 'additional_work', 'revision', 'content', 'design', 'development', 'strategy', 'other']
 const SUPPORT_CATEGORIES = ['billing', 'access', 'bug', 'question', 'feedback', 'other']
 const PRIORITIES = ['low', 'normal', 'high', 'urgent']
+
+type StaffNotificationRecipient = {
+  id: string
+}
 
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
@@ -97,6 +102,42 @@ export default defineEventHandler(async (event) => {
 
       return request
     })
+
+    try {
+      const recipients = await queryRows<StaffNotificationRecipient>(`
+        SELECT DISTINCT tm.id
+        FROM team_members tm
+        WHERE tm.is_active = true
+          AND (
+            tm.user_role IN ('owner', 'admin', 'lead', 'project_manager', 'account_manager')
+            OR tm.id = (
+              SELECT p.project_manager_id
+              FROM projects p
+              WHERE p.id = $1
+                AND p.client_id = $2
+            )
+          )
+        ORDER BY tm.id
+        LIMIT 10
+      `, [projectId || null, clientUser.clientId])
+
+      await Promise.all(recipients.map(recipient => createNotification({
+        userId: recipient.id,
+        type: 'team_update',
+        title: 'New client request submitted',
+        message: `"${title.trim()}" was submitted from the client portal.`,
+        link: `/agency/client-portal?tab=requests&requestId=${result.id}`,
+        metadata: {
+          clientId: clientUser.clientId,
+          requestId: result.id,
+          requestType,
+          priority: priority || 'normal'
+        },
+        reason: 'direct'
+      })))
+    } catch (notificationError) {
+      console.warn('Failed to notify staff about client request:', notificationError)
+    }
 
     return {
       id: result.id,
