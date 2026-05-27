@@ -82,7 +82,30 @@ interface PortalActivity {
   agencyUserRole?: string | null
 }
 
+interface PortalRequest {
+  id: string
+  requestType: string
+  category?: string | null
+  title: string
+  priority: string
+  status: string
+  assignedTo?: string | null
+  assignedName?: string | null
+  projectName?: string | null
+  clientName: string
+  estimatedBudget?: number | null
+  desiredDeadline?: string | null
+  submittedByName?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 interface AgencyClient {
+  id: string
+  name: string
+}
+
+interface TeamMember {
   id: string
   name: string
 }
@@ -174,6 +197,34 @@ const { data: activityData, pending: activityPending, refresh: refreshActivity }
 
 const portalActivity = computed(() => ((activityData.value as { activity?: PortalActivity[] } | null)?.activity || []))
 
+const requestFilters = ref({
+  clientId: '',
+  type: 'all',
+  status: 'all'
+})
+
+const requestQuery = computed(() => ({
+  clientId: requestFilters.value.clientId || undefined,
+  type: requestFilters.value.type,
+  status: requestFilters.value.status,
+  limit: 100
+}))
+
+const { data: requestsData, pending: requestsPending, refresh: refreshRequests } = await useFetch('/api/agency/client-portal/requests', {
+  query: requestQuery
+})
+
+const portalRequests = computed(() => ((requestsData.value as { requests?: PortalRequest[] } | null)?.requests || []))
+const portalRequestSummary = computed(() => {
+  const items = portalRequests.value
+  return {
+    submitted: items.filter(request => request.status === 'submitted').length,
+    inProgress: items.filter(request => ['in_review', 'approved', 'in_progress'].includes(request.status)).length,
+    urgent: items.filter(request => request.priority === 'urgent').length,
+    access: items.filter(request => request.category === 'access').length
+  }
+})
+
 // Fetch clients for invite modal
 const { data: clientsData } = await useFetch('/api/agency/clients', {
   query: { limit: 100 }
@@ -187,6 +238,15 @@ const clientOptions = computed(() => clients.value.map(client => ({ label: clien
 const portalUserClientOptions = computed(() => [
   { label: 'All clients', value: '' },
   ...clientOptions.value
+])
+
+const { data: teamMembersData } = await useFetch('/api/agency/team-members', {
+  query: { active: 'true' }
+})
+const teamMembers = computed<TeamMember[]>(() => ((teamMembersData.value as { members?: TeamMember[] } | null)?.members || []))
+const assigneeOptions = computed(() => [
+  { label: 'Unassigned', value: '' },
+  ...teamMembers.value.map(member => ({ label: member.name, value: member.id }))
 ])
 
 const selectedAccessClientId = ref<string | null>(null)
@@ -379,6 +439,29 @@ const getApprovalStatusColor = (status: string): 'success' | 'warning' | 'error'
   }
 }
 
+const getRequestStatusColor = (status: string): 'success' | 'warning' | 'error' | 'neutral' | 'info' | 'primary' => {
+  switch (status) {
+    case 'submitted': return 'warning'
+    case 'in_review': return 'info'
+    case 'approved': return 'success'
+    case 'in_progress': return 'primary'
+    case 'completed': return 'success'
+    case 'cancelled': return 'error'
+    default: return 'neutral'
+  }
+}
+
+const getRequestPriorityColor = (priority: string): 'error' | 'warning' | 'info' | 'neutral' => {
+  switch (priority) {
+    case 'urgent': return 'error'
+    case 'high': return 'warning'
+    case 'normal': return 'info'
+    default: return 'neutral'
+  }
+}
+
+const formatRequestType = (type: string) => type.replaceAll('_', ' ')
+
 const getPortalStatusColor = (status: string): 'success' | 'warning' | 'neutral' => {
   switch (status) {
     case 'active': return 'success'
@@ -460,6 +543,23 @@ const sendInvite = async () => {
   }
 }
 
+const updatingRequestId = ref<string | null>(null)
+const updatePortalRequest = async (request: PortalRequest, updates: Record<string, unknown>) => {
+  updatingRequestId.value = request.id
+  try {
+    await $fetch(`/api/agency/client-portal/requests/${request.id}`, {
+      method: 'PATCH',
+      body: updates
+    })
+    toast.add({ title: 'Request updated', color: 'success' })
+    await refreshRequests()
+  } catch (err: unknown) {
+    toast.add({ title: 'Failed to update request', description: errorMessage(err), color: 'error' })
+  } finally {
+    updatingRequestId.value = null
+  }
+}
+
 const resetInviteForm = () => {
   inviteForm.value = {
     clientId: null,
@@ -512,6 +612,15 @@ const activityColumns = [
   { accessorKey: 'actor', header: 'Actor' },
   { accessorKey: 'source', header: 'Source' },
   { accessorKey: 'createdAt', header: 'When' }
+]
+
+const requestColumns = [
+  { accessorKey: 'title', header: 'Request' },
+  { accessorKey: 'client', header: 'Client' },
+  { accessorKey: 'priority', header: 'Priority' },
+  { accessorKey: 'status', header: 'Status' },
+  { accessorKey: 'assigned', header: 'Assigned' },
+  { accessorKey: 'createdAt', header: 'Created' }
 ]
 
 const enterpriseModules = [
@@ -690,6 +799,7 @@ const enterpriseRollout = [
             { label: 'Clients', value: 'clients', icon: 'i-lucide-building-2' },
             { label: 'Portal Users', value: 'users', icon: 'i-lucide-users' },
             { label: 'Approvals', value: 'approvals', icon: 'i-lucide-check-square' },
+            { label: 'Requests', value: 'requests', icon: 'i-lucide-message-square-plus' },
             { label: 'Audit', value: 'audit', icon: 'i-lucide-shield-check' },
             { label: 'Enterprise', value: 'enterprise', icon: 'i-lucide-building' }
           ]"
@@ -1044,6 +1154,161 @@ const enterpriseRollout = [
 
             <div v-if="approvals.length === 0" class="text-center text-[var(--ui-text-muted)] py-8">
               No approval requests yet
+            </div>
+          </UCard>
+        </div>
+
+        <!-- Requests Tab -->
+        <div v-if="activeTab === 'requests'">
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+            <UCard>
+              <p class="text-sm text-[var(--ui-text-muted)]">
+                New requests
+              </p>
+              <p class="text-xl font-bold mt-1">
+                {{ portalRequestSummary.submitted }}
+              </p>
+            </UCard>
+            <UCard>
+              <p class="text-sm text-[var(--ui-text-muted)]">
+                In progress
+              </p>
+              <p class="text-xl font-bold mt-1">
+                {{ portalRequestSummary.inProgress }}
+              </p>
+            </UCard>
+            <UCard>
+              <p class="text-sm text-[var(--ui-text-muted)]">
+                Urgent
+              </p>
+              <p class="text-xl font-bold mt-1 text-red-500">
+                {{ portalRequestSummary.urgent }}
+              </p>
+            </UCard>
+            <UCard>
+              <p class="text-sm text-[var(--ui-text-muted)]">
+                Access requests
+              </p>
+              <p class="text-xl font-bold mt-1">
+                {{ portalRequestSummary.access }}
+              </p>
+            </UCard>
+          </div>
+
+          <UCard class="mb-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <USelectMenu
+                v-model="requestFilters.clientId"
+                :items="portalUserClientOptions"
+                placeholder="All clients"
+                value-key="value"
+                searchable
+              />
+              <USelect
+                v-model="requestFilters.type"
+                :items="[
+                  { label: 'All request types', value: 'all' },
+                  { label: 'Job requests', value: 'job_request' },
+                  { label: 'Support tickets', value: 'support_ticket' }
+                ]"
+                value-key="value"
+              />
+              <USelect
+                v-model="requestFilters.status"
+                :items="[
+                  { label: 'All statuses', value: 'all' },
+                  { label: 'Submitted', value: 'submitted' },
+                  { label: 'In review', value: 'in_review' },
+                  { label: 'Approved', value: 'approved' },
+                  { label: 'In progress', value: 'in_progress' },
+                  { label: 'Completed', value: 'completed' },
+                  { label: 'Closed', value: 'closed' },
+                  { label: 'Cancelled', value: 'cancelled' }
+                ]"
+                value-key="value"
+              />
+            </div>
+          </UCard>
+
+          <UCard>
+            <div v-if="requestsPending" class="flex items-center justify-center py-12">
+              <XfLoader />
+            </div>
+
+            <UTable v-else :data="portalRequests" :columns="requestColumns">
+              <template #title-cell="{ row }">
+                <div class="min-w-0">
+                  <p class="font-medium truncate">
+                    {{ row.original.title }}
+                  </p>
+                  <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--ui-text-muted)]">
+                    <span>{{ formatRequestType(row.original.requestType) }}</span>
+                    <span v-if="row.original.category">· {{ formatRequestType(row.original.category) }}</span>
+                    <span v-if="row.original.desiredDeadline">· Due {{ formatDate(row.original.desiredDeadline) }}</span>
+                  </div>
+                </div>
+              </template>
+
+              <template #client-cell="{ row }">
+                <div>
+                  <p class="text-sm font-medium">
+                    {{ row.original.clientName }}
+                  </p>
+                  <p class="text-xs text-[var(--ui-text-muted)]">
+                    {{ row.original.submittedByName || 'Client user' }}
+                  </p>
+                </div>
+              </template>
+
+              <template #priority-cell="{ row }">
+                <UBadge :color="getRequestPriorityColor(row.original.priority)" variant="subtle">
+                  {{ row.original.priority }}
+                </UBadge>
+              </template>
+
+              <template #status-cell="{ row }">
+                <USelect
+                  :model-value="row.original.status"
+                  :items="[
+                    { label: 'Submitted', value: 'submitted' },
+                    { label: 'In review', value: 'in_review' },
+                    { label: 'Approved', value: 'approved' },
+                    { label: 'In progress', value: 'in_progress' },
+                    { label: 'Completed', value: 'completed' },
+                    { label: 'Closed', value: 'closed' },
+                    { label: 'Cancelled', value: 'cancelled' }
+                  ]"
+                  value-key="value"
+                  size="sm"
+                  class="w-36"
+                  :color="getRequestStatusColor(row.original.status)"
+                  :loading="updatingRequestId === row.original.id"
+                  @update:model-value="updatePortalRequest(row.original, { status: $event })"
+                />
+              </template>
+
+              <template #assigned-cell="{ row }">
+                <USelectMenu
+                  :model-value="row.original.assignedTo || ''"
+                  :items="assigneeOptions"
+                  value-key="value"
+                  searchable
+                  size="sm"
+                  class="w-44"
+                  :loading="updatingRequestId === row.original.id"
+                  @update:model-value="updatePortalRequest(row.original, { assignedTo: $event || null })"
+                />
+              </template>
+
+              <template #createdAt-cell="{ row }">
+                <span class="text-sm text-[var(--ui-text-muted)]">
+                  {{ formatDate(row.original.createdAt) }}
+                </span>
+              </template>
+            </UTable>
+
+            <div v-if="!requestsPending && portalRequests.length === 0" class="text-center text-[var(--ui-text-muted)] py-8">
+              No client requests match the current filters.
             </div>
           </UCard>
         </div>
