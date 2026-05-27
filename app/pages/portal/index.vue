@@ -48,6 +48,119 @@ interface PortalDashboard {
 
 const { data: dashboard, pending } = useFetch<PortalDashboard>('/api/portal/dashboard')
 
+type PriorityColor = 'primary' | 'warning' | 'error' | 'success' | 'info' | 'neutral'
+
+interface AccountPriority {
+  title: string
+  detail: string
+  icon: string
+  color: PriorityColor
+  to: string
+}
+
+const accountPriorities = computed<AccountPriority[]>(() => {
+  const data = dashboard.value
+  if (!data) return []
+
+  const items: AccountPriority[] = []
+
+  if (data.enterprise.jobs.overdue > 0) {
+    items.push({
+      title: 'Review overdue job dates',
+      detail: `${data.enterprise.jobs.overdue} job${data.enterprise.jobs.overdue === 1 ? '' : 's'} past the planned date`,
+      icon: 'i-lucide-calendar-alert',
+      color: 'error',
+      to: '/portal/projects?view=upcoming'
+    })
+  } else if (data.enterprise.jobs.dueSoon > 0) {
+    items.push({
+      title: 'Check upcoming job dates',
+      detail: `${data.enterprise.jobs.dueSoon} upcoming deadline${data.enterprise.jobs.dueSoon === 1 ? '' : 's'}`,
+      icon: 'i-lucide-calendar-clock',
+      color: 'warning',
+      to: '/portal/projects?view=upcoming'
+    })
+  }
+
+  if (data.approvals.pendingCount > 0) {
+    items.push({
+      title: 'Approve pending work',
+      detail: `${data.approvals.pendingCount} item${data.approvals.pendingCount === 1 ? '' : 's'} waiting on your decision`,
+      icon: 'i-lucide-check-check',
+      color: 'warning',
+      to: '/portal/approvals'
+    })
+  }
+
+  if (data.enterprise.billing?.overdueCount) {
+    items.push({
+      title: 'Resolve overdue billing',
+      detail: `${data.enterprise.billing.overdueCount} overdue invoice${data.enterprise.billing.overdueCount === 1 ? '' : 's'}`,
+      icon: 'i-lucide-receipt-text',
+      color: 'error',
+      to: '/portal/invoices'
+    })
+  } else if (data.enterprise.billing?.outstandingCount) {
+    items.push({
+      title: 'Review current billing',
+      detail: `${data.enterprise.billing.outstandingCount} outstanding invoice${data.enterprise.billing.outstandingCount === 1 ? '' : 's'}`,
+      icon: 'i-lucide-receipt-text',
+      color: 'neutral',
+      to: '/portal/invoices'
+    })
+  }
+
+  if (data.meetings.stats.live > 0) {
+    items.push({
+      title: 'Join live client meeting',
+      detail: `${data.meetings.stats.live} live room${data.meetings.stats.live === 1 ? '' : 's'} available now`,
+      icon: 'i-lucide-video',
+      color: 'success',
+      to: '/portal/meetings'
+    })
+  } else if (data.meetings.stats.planned > 0) {
+    items.push({
+      title: 'Prepare for upcoming meetings',
+      detail: `${data.meetings.stats.planned} planned session${data.meetings.stats.planned === 1 ? '' : 's'}`,
+      icon: 'i-lucide-video',
+      color: 'primary',
+      to: '/portal/meetings'
+    })
+  }
+
+  if (data.leads.stats.new > 0) {
+    items.push({
+      title: 'Review new shared leads',
+      detail: `${data.leads.stats.new} new lead${data.leads.stats.new === 1 ? '' : 's'} from connected forms`,
+      icon: 'i-lucide-inbox',
+      color: 'info',
+      to: '/portal/leads'
+    })
+  }
+
+  if (data.requests.stats.open > 0) {
+    items.push({
+      title: 'Track open requests',
+      detail: `${data.requests.stats.open} request${data.requests.stats.open === 1 ? '' : 's'} in progress or review`,
+      icon: 'i-lucide-message-square-plus',
+      color: 'primary',
+      to: '/portal/requests'
+    })
+  }
+
+  if (items.length === 0) {
+    items.push({
+      title: 'Account is up to date',
+      detail: 'No urgent jobs, approvals, billing, meetings, leads, or requests need attention',
+      icon: 'i-lucide-circle-check',
+      color: 'success',
+      to: '/portal/features'
+    })
+  }
+
+  return items.slice(0, 4)
+})
+
 function formatDate(date: string | null) {
   if (!date) return '-'
   return new Date(date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
@@ -514,6 +627,54 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
           </div>
         </NuxtLink>
       </div>
+
+      <UCard>
+        <template #header>
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-list-checks" class="text-primary" />
+              <span class="font-semibold">Account Priorities</span>
+            </div>
+            <UButton
+              to="/portal/features"
+              variant="ghost"
+              color="neutral"
+              size="xs"
+              trailing-icon="i-lucide-arrow-right"
+            >
+              Services
+            </UButton>
+          </div>
+        </template>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          <NuxtLink
+            v-for="priority in accountPriorities"
+            :key="priority.title"
+            :to="priority.to"
+            class="rounded-lg border border-default bg-default p-3 hover:bg-elevated transition-colors"
+          >
+            <div class="flex items-start gap-3">
+              <div class="rounded-md bg-elevated p-2">
+                <UIcon :name="priority.icon" class="size-4" />
+              </div>
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <p class="text-sm font-semibold">
+                    {{ priority.title }}
+                  </p>
+                  <UBadge :color="priority.color" variant="subtle" size="xs">
+                    Action
+                  </UBadge>
+                </div>
+                <p class="mt-1 text-xs text-muted">
+                  {{ priority.detail }}
+                </p>
+              </div>
+            </div>
+          </NuxtLink>
+        </div>
+      </UCard>
 
       <UCard>
         <template #header>
