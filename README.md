@@ -81,7 +81,7 @@ workers/
 
 ### Prerequisites
 
-- Node.js 22.x (see `.nvmrc`)
+- Node.js 24.x (see `.nvmrc`)
 - pnpm >= 10
 - Xero developer account with an OAuth 2.0 app configured
 - Neon Postgres database

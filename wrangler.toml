@@ -56,7 +56,7 @@ id = "900b4b74ec41462cbbabebd0aa8775aa"
 # ============================================
 [vars]
 APP_NAME = "XeroFlow Agency"
-NODE_VERSION = "22"
+NODE_VERSION = "24"
 EMAIL_FROM = "notification@adme.net.au"
 # APP_URL is set in CF Pages dashboard to avoid binding conflict
 
