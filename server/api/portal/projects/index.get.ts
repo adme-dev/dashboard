@@ -12,14 +12,20 @@ export default defineEventHandler(async (event) => {
   const clientId = clientUser.clientId
 
   const status = query.status as string | undefined
+  const view = query.view as string | undefined
   const limit = Math.min(Number(query.limit) || 50, 100)
 
   try {
     const conditions: string[] = ['p.client_id = $1']
-    const params: any[] = [clientId]
+    const params: unknown[] = [clientId]
     let idx = 2
 
-    if (status && status !== 'all') {
+    if (view === 'upcoming') {
+      conditions.push(`p.status IN ('draft', 'active', 'on_hold')`)
+      conditions.push(`(p.due_date IS NULL OR p.due_date >= CURRENT_DATE)`)
+    } else if (view === 'history') {
+      conditions.push(`p.status IN ('completed', 'cancelled')`)
+    } else if (status && status !== 'all') {
       conditions.push(`p.status = $${idx}`)
       params.push(status)
       idx++
@@ -69,18 +75,31 @@ export default defineEventHandler(async (event) => {
       ) deliverables ON p.id = deliverables.project_id
       WHERE ${conditions.join(' AND ')}
       ORDER BY
-        CASE p.status WHEN 'active' THEN 0 WHEN 'on_hold' THEN 1 ELSE 2 END,
-        p.due_date ASC NULLS LAST,
+        CASE
+          WHEN $${idx + 1} = 'history' THEN NULL
+          WHEN p.status = 'active' THEN 0
+          WHEN p.status = 'on_hold' THEN 1
+          WHEN p.status = 'draft' THEN 2
+          ELSE 3
+        END ASC NULLS LAST,
+        CASE WHEN $${idx + 1} = 'history' THEN p.due_date END DESC NULLS LAST,
+        CASE WHEN COALESCE($${idx + 1}, '') <> 'history' THEN p.due_date END ASC NULLS LAST,
         p.created_at DESC
       LIMIT $${idx}
-    `, params)
+    `, [...params, view || null])
 
     const summary = await queryOne(`
       SELECT
         COUNT(*) as total,
         COUNT(CASE WHEN status = 'active' THEN 1 END) as active,
         COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
-        COUNT(CASE WHEN status = 'on_hold' THEN 1 END) as on_hold
+        COUNT(CASE WHEN status = 'on_hold' THEN 1 END) as on_hold,
+        COUNT(CASE
+          WHEN status IN ('draft', 'active', 'on_hold')
+            AND (due_date IS NULL OR due_date >= CURRENT_DATE)
+          THEN 1
+        END) as upcoming,
+        COUNT(CASE WHEN status IN ('completed', 'cancelled') THEN 1 END) as history
       FROM projects
       WHERE client_id = $1
     `, [clientId])
@@ -111,7 +130,9 @@ export default defineEventHandler(async (event) => {
         total: Number(summary?.total || 0),
         active: Number(summary?.active || 0),
         completed: Number(summary?.completed || 0),
-        onHold: Number(summary?.on_hold || 0)
+        onHold: Number(summary?.on_hold || 0),
+        upcoming: Number(summary?.upcoming || 0),
+        history: Number(summary?.history || 0)
       }
     }
   } catch (error) {

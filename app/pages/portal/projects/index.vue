@@ -2,15 +2,27 @@
 definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
 const activeTab = ref('all')
-const statusFilter = computed(() => activeTab.value === 'all' ? undefined : activeTab.value)
+const queryFilter = computed(() => {
+  if (['upcoming', 'history'].includes(activeTab.value)) {
+    return { view: activeTab.value }
+  }
+
+  if (activeTab.value !== 'all') {
+    return { status: activeTab.value }
+  }
+
+  return {}
+})
 
 const { data, pending } = useFetch('/api/portal/projects', {
-  query: { status: statusFilter }
+  query: queryFilter
 })
 
 const tabs = [
   { label: 'All', value: 'all' },
+  { label: 'Upcoming', value: 'upcoming' },
   { label: 'Active', value: 'active' },
+  { label: 'History', value: 'history' },
   { label: 'Completed', value: 'completed' },
   { label: 'On Hold', value: 'on_hold' }
 ]
@@ -21,10 +33,19 @@ function formatDate(date: string | null) {
 }
 
 const statusColors: Record<string, string> = {
+  draft: 'neutral',
   active: 'success',
   completed: 'neutral',
   on_hold: 'warning',
   cancelled: 'error'
+}
+
+function emptyStateLabel() {
+  if (activeTab.value === 'upcoming') return 'No upcoming jobs booked'
+  if (activeTab.value === 'history') return 'No completed job history yet'
+  if (activeTab.value === 'active') return 'No active jobs'
+  if (activeTab.value === 'completed') return 'No completed jobs'
+  return 'No jobs found'
 }
 </script>
 
@@ -37,6 +58,64 @@ const statusColors: Record<string, string> = {
       <div v-if="data?.summary" class="flex items-center gap-2 text-sm text-muted">
         <span>{{ data.summary.total }} total</span>
       </div>
+    </div>
+
+    <div v-if="data?.summary" class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <button
+        type="button"
+        class="rounded-lg border border-default bg-default p-4 text-left hover:bg-elevated transition-colors"
+        @click="activeTab = 'upcoming'"
+      >
+        <div class="flex items-center gap-2 text-sm text-muted">
+          <UIcon name="i-lucide-calendar-clock" class="size-4" />
+          Upcoming jobs
+        </div>
+        <p class="text-2xl font-bold mt-2">
+          {{ data.summary.upcoming }}
+        </p>
+      </button>
+
+      <button
+        type="button"
+        class="rounded-lg border border-default bg-default p-4 text-left hover:bg-elevated transition-colors"
+        @click="activeTab = 'active'"
+      >
+        <div class="flex items-center gap-2 text-sm text-muted">
+          <UIcon name="i-lucide-loader-circle" class="size-4" />
+          Active jobs
+        </div>
+        <p class="text-2xl font-bold mt-2">
+          {{ data.summary.active }}
+        </p>
+      </button>
+
+      <button
+        type="button"
+        class="rounded-lg border border-default bg-default p-4 text-left hover:bg-elevated transition-colors"
+        @click="activeTab = 'history'"
+      >
+        <div class="flex items-center gap-2 text-sm text-muted">
+          <UIcon name="i-lucide-history" class="size-4" />
+          Job history
+        </div>
+        <p class="text-2xl font-bold mt-2">
+          {{ data.summary.history }}
+        </p>
+      </button>
+
+      <button
+        type="button"
+        class="rounded-lg border border-default bg-default p-4 text-left hover:bg-elevated transition-colors"
+        @click="activeTab = 'completed'"
+      >
+        <div class="flex items-center gap-2 text-sm text-muted">
+          <UIcon name="i-lucide-check-check" class="size-4" />
+          Completed
+        </div>
+        <p class="text-2xl font-bold mt-2">
+          {{ data.summary.completed }}
+        </p>
+      </button>
     </div>
 
     <UTabs
@@ -84,6 +163,7 @@ const statusColors: Record<string, string> = {
             <div class="flex items-center justify-between text-xs text-muted">
               <span>{{ project.tasks.completed }}/{{ project.tasks.total }} tasks</span>
               <span v-if="project.dueDate">Due {{ formatDate(project.dueDate) }}</span>
+              <span v-else-if="project.startDate">Starts {{ formatDate(project.startDate) }}</span>
             </div>
 
             <div class="flex items-center gap-2 flex-wrap">
@@ -114,7 +194,7 @@ const statusColors: Record<string, string> = {
     </div>
 
     <p v-if="!pending && (!data?.projects || data.projects.length === 0)" class="text-center text-muted py-12">
-      No projects found
+      {{ emptyStateLabel() }}
     </p>
   </div>
 </template>
