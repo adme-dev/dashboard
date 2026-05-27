@@ -26,6 +26,25 @@ function formatDate(date: string | null) {
   return new Date(date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
 }
 
+function deadlineLabel(date: string | null, status: string) {
+  if (!date || ['completed', 'cancelled', 'rejected'].includes(status)) return date ? `Due ${formatDate(date)}` : null
+  const due = new Date(date)
+  const now = new Date()
+  const days = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+  if (days < 0) return `${Math.abs(days)}d overdue`
+  if (days === 0) return 'Due today'
+  if (days <= 14) return `Due in ${days}d`
+  return `Due ${formatDate(date)}`
+}
+
+function deadlineColor(date: string | null, status: string) {
+  if (!date || ['completed', 'cancelled', 'rejected'].includes(status)) return 'neutral'
+  const days = Math.ceil((new Date(date).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+  if (days < 0) return 'error'
+  if (days <= 14) return 'warning'
+  return 'neutral'
+}
+
 const statusColors: Record<string, string> = {
   draft: 'neutral',
   submitted: 'warning',
@@ -61,7 +80,9 @@ const priorityColors: Record<string, string> = {
 <template>
   <div class="p-6 space-y-6 max-w-5xl mx-auto">
     <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-bold">Briefs</h1>
+      <h1 class="text-2xl font-bold">
+        Briefs
+      </h1>
       <div class="flex items-center gap-3">
         <div v-if="data?.summary" class="flex items-center gap-2 text-sm">
           <UBadge v-if="data.summary.submitted > 0" color="warning" variant="subtle">
@@ -84,24 +105,115 @@ const priorityColors: Record<string, string> = {
     <!-- Summary cards -->
     <div v-if="data?.summary" class="grid grid-cols-2 sm:grid-cols-4 gap-4">
       <div class="p-4 rounded-lg bg-elevated">
-        <p class="text-2xl font-bold">{{ data.summary.total }}</p>
-        <p class="text-xs text-muted mt-1">Total Briefs</p>
+        <p class="text-2xl font-bold">
+          {{ data.summary.total }}
+        </p>
+        <p class="text-xs text-muted mt-1">
+          Total Briefs
+        </p>
       </div>
       <div class="p-4 rounded-lg bg-elevated">
-        <p class="text-2xl font-bold text-warning">{{ data.summary.submitted }}</p>
-        <p class="text-xs text-muted mt-1">Awaiting Review</p>
+        <p class="text-2xl font-bold text-warning">
+          {{ data.summary.submitted }}
+        </p>
+        <p class="text-xs text-muted mt-1">
+          Awaiting Review
+        </p>
       </div>
       <div class="p-4 rounded-lg bg-elevated">
-        <p class="text-2xl font-bold text-primary">{{ data.summary.inProgress }}</p>
-        <p class="text-xs text-muted mt-1">In Progress</p>
+        <p class="text-2xl font-bold text-primary">
+          {{ data.summary.inProgress }}
+        </p>
+        <p class="text-xs text-muted mt-1">
+          In Progress
+        </p>
       </div>
       <div class="p-4 rounded-lg bg-elevated">
-        <p class="text-2xl font-bold text-success">{{ data.summary.completed }}</p>
-        <p class="text-xs text-muted mt-1">Completed</p>
+        <p class="text-2xl font-bold text-success">
+          {{ data.summary.completed }}
+        </p>
+        <p class="text-xs text-muted mt-1">
+          Completed
+        </p>
       </div>
     </div>
 
-    <UTabs :items="tabs" v-model="activeTab" />
+    <UCard v-if="data?.summary">
+      <template #header>
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-clipboard-list" class="text-primary" />
+          <span class="font-semibold">Briefing Health</span>
+        </div>
+      </template>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeTab = 'submitted'"
+        >
+          <p class="text-xs text-muted">
+            New briefs 30d
+          </p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ data.summary.submittedLast30 }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Recently submitted
+          </p>
+        </button>
+
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeTab = 'all'"
+        >
+          <p class="text-xs text-muted">
+            Needs info
+          </p>
+          <p class="mt-1 text-sm font-semibold" :class="data.summary.needsInfo > 0 ? 'text-warning' : ''">
+            {{ data.summary.needsInfo }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Waiting on clarification
+          </p>
+        </button>
+
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeTab = 'all'"
+        >
+          <p class="text-xs text-muted">
+            Deadline risk
+          </p>
+          <p class="mt-1 text-sm font-semibold" :class="data.summary.overdue > 0 ? 'text-error' : data.summary.dueSoon > 0 ? 'text-warning' : ''">
+            {{ data.summary.overdue }} overdue
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            {{ data.summary.dueSoon }} due soon
+          </p>
+        </button>
+
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeTab = 'completed'"
+        >
+          <p class="text-xs text-muted">
+            Avg completion
+          </p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ data.summary.averageCompletionDays }}d
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            From submission to completion
+          </p>
+        </button>
+      </div>
+    </UCard>
+
+    <UTabs v-model="activeTab" :items="tabs" />
 
     <!-- Loading state -->
     <div v-if="pending" class="space-y-3">
@@ -120,7 +232,9 @@ const priorityColors: Record<string, string> = {
         <div class="flex items-start justify-between gap-4">
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2 flex-wrap">
-              <h3 class="font-medium">{{ brief.title }}</h3>
+              <h3 class="font-medium">
+                {{ brief.title }}
+              </h3>
               <UBadge :color="(statusColors[brief.status] as any) || 'neutral'" variant="subtle" size="xs">
                 {{ statusLabels[brief.status] || brief.status }}
               </UBadge>
@@ -133,6 +247,24 @@ const priorityColors: Record<string, string> = {
               <span v-if="brief.template">{{ brief.template.name }}</span>
               <span v-if="brief.category">· {{ brief.category.name }}</span>
               <span v-if="brief.commentCount > 0">· {{ brief.commentCount }} comment{{ brief.commentCount !== 1 ? 's' : '' }}</span>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <UBadge
+                v-if="deadlineLabel(brief.requestedDeadline, brief.status)"
+                :color="(deadlineColor(brief.requestedDeadline, brief.status) as any)"
+                variant="subtle"
+                size="xs"
+              >
+                {{ deadlineLabel(brief.requestedDeadline, brief.status) }}
+              </UBadge>
+              <UBadge
+                v-if="brief.status === 'needs_info'"
+                color="warning"
+                variant="outline"
+                size="xs"
+              >
+                Needs info
+              </UBadge>
             </div>
           </div>
           <div class="text-right shrink-0 space-y-1">

@@ -6,6 +6,22 @@
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 
+type BriefSummaryRow = {
+  total: string | number | null
+  draft: string | number | null
+  submitted: string | number | null
+  needs_info: string | number | null
+  in_progress: string | number | null
+  completed: string | number | null
+  urgent: string | number | null
+  overdue: string | number | null
+  due_soon: string | number | null
+  submitted_last_30: string | number | null
+  avg_completion_days: string | number | null
+}
+
+const toNumber = (value: string | number | null | undefined) => Number(value || 0)
+
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
   const query = getQuery(event)
@@ -15,7 +31,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     const conditions: string[] = ['b.client_id = $1']
-    const params: any[] = [clientUser.clientId]
+    const params: unknown[] = [clientUser.clientId]
     let idx = 2
 
     if (status && status !== 'all') {
@@ -68,12 +84,30 @@ export default defineEventHandler(async (event) => {
       LIMIT $${idx}
     `, params)
 
-    const summary = await queryOne(`
+    const summary = await queryOne<BriefSummaryRow>(`
       SELECT
         COUNT(*) AS total,
+        COUNT(CASE WHEN status = 'draft' THEN 1 END) AS draft,
         COUNT(CASE WHEN status = 'submitted' THEN 1 END) AS submitted,
+        COUNT(CASE WHEN status = 'needs_info' THEN 1 END) AS needs_info,
         COUNT(CASE WHEN status IN ('under_review', 'needs_info', 'approved', 'in_progress') THEN 1 END) AS in_progress,
-        COUNT(CASE WHEN status = 'completed' THEN 1 END) AS completed
+        COUNT(CASE WHEN status = 'completed' THEN 1 END) AS completed,
+        COUNT(CASE WHEN priority = 'urgent' AND status NOT IN ('completed', 'cancelled', 'rejected') THEN 1 END) AS urgent,
+        COUNT(CASE
+          WHEN status NOT IN ('completed', 'cancelled', 'rejected')
+            AND requested_deadline IS NOT NULL
+            AND requested_deadline < CURRENT_DATE
+          THEN 1
+        END) AS overdue,
+        COUNT(CASE
+          WHEN status NOT IN ('completed', 'cancelled', 'rejected')
+            AND requested_deadline >= CURRENT_DATE
+            AND requested_deadline <= CURRENT_DATE + INTERVAL '14 days'
+          THEN 1
+        END) AS due_soon,
+        COUNT(CASE WHEN submitted_at >= NOW() - INTERVAL '30 days' THEN 1 END) AS submitted_last_30,
+        COALESCE(AVG(EXTRACT(EPOCH FROM (completed_at - submitted_at)) / 86400)
+          FILTER (WHERE status = 'completed' AND completed_at IS NOT NULL AND submitted_at IS NOT NULL), 0) AS avg_completion_days
       FROM briefs
       WHERE client_id = $1
     `, [clientUser.clientId])
@@ -109,13 +143,20 @@ export default defineEventHandler(async (event) => {
         commentCount: Number(b.comment_count) || 0
       })),
       summary: {
-        total: Number(summary?.total || 0),
-        submitted: Number(summary?.submitted || 0),
-        inProgress: Number(summary?.in_progress || 0),
-        completed: Number(summary?.completed || 0)
+        total: toNumber(summary?.total),
+        draft: toNumber(summary?.draft),
+        submitted: toNumber(summary?.submitted),
+        needsInfo: toNumber(summary?.needs_info),
+        inProgress: toNumber(summary?.in_progress),
+        completed: toNumber(summary?.completed),
+        urgent: toNumber(summary?.urgent),
+        overdue: toNumber(summary?.overdue),
+        dueSoon: toNumber(summary?.due_soon),
+        submittedLast30: toNumber(summary?.submitted_last_30),
+        averageCompletionDays: Math.round(toNumber(summary?.avg_completion_days))
       }
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error('Failed to fetch portal briefs:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to fetch briefs' })
   }
