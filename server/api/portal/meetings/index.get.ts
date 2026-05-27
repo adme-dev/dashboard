@@ -36,10 +36,14 @@ type MeetingStatsRow = {
   planned: string | number | null
   ended: string | number | null
   recordings: string | number | null
+  recordings_last_30: string | number | null
   summaries: string | number | null
   action_items: string | number | null
   notes: string | number | null
   transcripts: string | number | null
+  completed_last_30: string | number | null
+  missing_follow_up: string | number | null
+  next_meeting_at: string | null
 }
 
 const mapMeeting = (meeting: PortalMeetingRow) => ({
@@ -151,14 +155,36 @@ export default defineEventHandler(async (event) => {
         COUNT(*) FILTER (WHERE oms.status = 'planned') AS planned,
         COUNT(*) FILTER (WHERE oms.status NOT IN ('live', 'planned', 'cancelled')) AS ended,
         COALESCE(SUM(recording_summary.ready_recording_count), 0) AS recordings,
+        COALESCE(SUM(recording_summary.ready_recording_last_30_count), 0) AS recordings_last_30,
         COALESCE(SUM(artifact_summary.summary_count), 0) AS summaries,
         COALESCE(SUM(artifact_summary.action_item_artifact_count), 0) AS action_items,
         COALESCE(SUM(artifact_summary.notes_count), 0) AS notes,
-        COALESCE(SUM(artifact_summary.transcript_count), 0) AS transcripts
+        COALESCE(SUM(artifact_summary.transcript_count), 0) AS transcripts,
+        COUNT(*) FILTER (
+          WHERE oms.status NOT IN ('live', 'planned', 'cancelled')
+            AND COALESCE(oms.ended_at, oms.created_at) >= NOW() - INTERVAL '30 days'
+        ) AS completed_last_30,
+        COUNT(*) FILTER (
+          WHERE oms.status NOT IN ('live', 'planned', 'cancelled')
+            AND COALESCE(artifact_summary.summary_count, 0) = 0
+            AND COALESCE(artifact_summary.action_item_artifact_count, 0) = 0
+            AND COALESCE(recording_summary.ready_recording_count, 0) = 0
+        ) AS missing_follow_up,
+        MIN(
+          CASE
+            WHEN oms.status IN ('live', 'planned')
+             AND (oms.consent #>> '{setup,scheduled_start_at}') ~ '^\\d{4}-\\d{2}-\\d{2}T'
+            THEN (oms.consent #>> '{setup,scheduled_start_at}')::timestamptz
+            WHEN oms.status IN ('live', 'planned') THEN oms.started_at
+            ELSE NULL
+          END
+        ) AS next_meeting_at
       FROM office_members om
       JOIN office_meeting_sessions oms ON oms.office_id = om.office_id
       LEFT JOIN LATERAL (
-        SELECT COUNT(*) FILTER (WHERE status = 'ready')::int AS ready_recording_count
+        SELECT
+          COUNT(*) FILTER (WHERE status = 'ready')::int AS ready_recording_count,
+          COUNT(*) FILTER (WHERE status = 'ready' AND created_at >= NOW() - INTERVAL '30 days')::int AS ready_recording_last_30_count
         FROM office_recordings
         WHERE meeting_session_id = oms.id
           AND status <> 'archived'
@@ -184,10 +210,14 @@ export default defineEventHandler(async (event) => {
         planned: Number(stats?.planned || 0),
         ended: Number(stats?.ended || 0),
         recordings: Number(stats?.recordings || 0),
+        recordingsLast30: Number(stats?.recordings_last_30 || 0),
         summaries: Number(stats?.summaries || 0),
         actionItems: Number(stats?.action_items || 0),
         notes: Number(stats?.notes || 0),
-        transcripts: Number(stats?.transcripts || 0)
+        transcripts: Number(stats?.transcripts || 0),
+        completedLast30: Number(stats?.completed_last_30 || 0),
+        missingFollowUp: Number(stats?.missing_follow_up || 0),
+        nextMeetingAt: stats?.next_meeting_at || null
       }
     }
   } catch (error) {

@@ -12,6 +12,7 @@ interface PortalMeeting {
   scheduledStartAt: string | null
   durationMinutes: number | null
   zoneName: string | null
+  readyRecordingCount?: number
   latestRecordingToken: string | null
   artifacts?: {
     summaries: number
@@ -32,6 +33,10 @@ interface PortalMeetingsDashboard {
     actionItems: number
     notes: number
     transcripts: number
+    recordingsLast30: number
+    completedLast30: number
+    missingFollowUp: number
+    nextMeetingAt: string | null
   }
   meetings: PortalMeeting[]
 }
@@ -106,6 +111,11 @@ function artifactCount(meeting: PortalMeeting) {
   const artifacts = meeting.artifacts
   if (!artifacts) return 0
   return artifacts.summaries + artifacts.actionItems + artifacts.notes + artifacts.transcripts
+}
+
+function formatCompactDate(date: string | null | undefined) {
+  if (!date) return '-'
+  return new Date(date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
 }
 </script>
 
@@ -185,6 +195,81 @@ function artifactCount(meeting: PortalMeeting) {
           </p>
         </UCard>
       </div>
+
+      <UCard v-if="data?.stats">
+        <template #header>
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-gauge" class="text-primary" />
+            <span class="font-semibold">Meeting readiness</span>
+          </div>
+        </template>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <button
+            type="button"
+            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+            @click="activeTab = 'upcoming'"
+          >
+            <p class="text-xs text-muted">
+              Next meeting
+            </p>
+            <p class="mt-1 text-sm font-semibold">
+              {{ formatCompactDate(data.stats.nextMeetingAt) }}
+            </p>
+            <p class="mt-1 text-xs text-muted">
+              {{ data.stats.live }} live, {{ data.stats.planned }} planned
+            </p>
+          </button>
+
+          <button
+            type="button"
+            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+            @click="activeTab = 'history'"
+          >
+            <p class="text-xs text-muted">
+              Completed last 30d
+            </p>
+            <p class="mt-1 text-sm font-semibold">
+              {{ data.stats.completedLast30 }}
+            </p>
+            <p class="mt-1 text-xs text-muted">
+              Recent client sessions
+            </p>
+          </button>
+
+          <button
+            type="button"
+            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+            @click="activeTab = 'history'"
+          >
+            <p class="text-xs text-muted">
+              New recordings
+            </p>
+            <p class="mt-1 text-sm font-semibold">
+              {{ data.stats.recordingsLast30 }}
+            </p>
+            <p class="mt-1 text-xs text-muted">
+              Ready in the last 30 days
+            </p>
+          </button>
+
+          <button
+            type="button"
+            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+            @click="activeTab = 'history'"
+          >
+            <p class="text-xs text-muted">
+              Missing follow-up
+            </p>
+            <p class="mt-1 text-sm font-semibold" :class="data.stats.missingFollowUp > 0 ? 'text-warning' : ''">
+              {{ data.stats.missingFollowUp }}
+            </p>
+            <p class="mt-1 text-xs text-muted">
+              Ended sessions without notes
+            </p>
+          </button>
+        </div>
+      </UCard>
 
       <UTabs v-model="activeTab" :items="tabs" />
 

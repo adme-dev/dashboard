@@ -77,10 +77,14 @@ describe('portal meetings API', () => {
       planned: '1',
       ended: '1',
       recordings: '2',
+      recordings_last_30: '1',
       summaries: '2',
       action_items: '3',
       notes: '4',
-      transcripts: '1'
+      transcripts: '1',
+      completed_last_30: '2',
+      missing_follow_up: '1',
+      next_meeting_at: '2026-06-01T00:00:00Z'
     })
   })
 
@@ -95,10 +99,14 @@ describe('portal meetings API', () => {
       planned: 1,
       ended: 1,
       recordings: 2,
+      recordingsLast30: 1,
       summaries: 2,
       actionItems: 3,
       notes: 4,
-      transcripts: 1
+      transcripts: 1,
+      completedLast30: 2,
+      missingFollowUp: 1,
+      nextMeetingAt: '2026-06-01T00:00:00Z'
     })
     expect(result.meetings[0]).toMatchObject({
       id: 'meeting-1',
@@ -119,6 +127,10 @@ describe('portal meetings API', () => {
     )
     expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('SUM(artifact_summary.action_item_artifact_count)')
     expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('FROM office_meeting_artifacts')
+    expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('recordings_last_30')
+    expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('completed_last_30')
+    expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('missing_follow_up')
+    expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('next_meeting_at')
   })
 
   it('filters history meetings away from live and planned sessions', async () => {
