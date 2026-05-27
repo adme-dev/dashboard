@@ -24,7 +24,7 @@ interface FeatureCard {
 const features = computed<FeatureCard[]>(() => {
   const cards: FeatureCard[] = [
     {
-      title: 'Campaign Analytics',
+      title: 'Campaigns',
       description: 'Track ad performance across Meta & Google Ads with AI-powered insights, demographic breakdowns, and creative analysis.',
       icon: 'i-lucide-bar-chart-4',
       iconColor: 'text-primary',
@@ -32,8 +32,8 @@ const features = computed<FeatureCard[]>(() => {
       permission: canViewAnalytics.value
     },
     {
-      title: 'Projects',
-      description: 'Monitor project progress, track tasks, and stay on top of deadlines.',
+      title: 'Booked Jobs',
+      description: 'Monitor booked work, upcoming jobs, completed job history, tasks, and delivery timelines.',
       icon: 'i-lucide-folder-kanban',
       iconColor: 'text-blue-500',
       to: '/portal/projects'
@@ -53,12 +53,34 @@ const features = computed<FeatureCard[]>(() => {
       to: '/portal/gallery'
     },
     {
-      title: 'Invoices',
-      description: 'View invoices, payment history, and outstanding balances.',
+      title: 'Billing',
+      description: 'View current billing, outstanding balances, paid invoice history, and project-linked invoice details.',
       icon: 'i-lucide-receipt',
       iconColor: 'text-emerald-500',
       to: '/portal/invoices',
       permission: canViewInvoices.value
+    },
+    {
+      title: 'Meetings',
+      description: 'Join client review calls, see scheduled sessions, and watch shared recordings from your agency.',
+      icon: 'i-lucide-video',
+      iconColor: 'text-cyan-500',
+      to: '/portal/meetings'
+    },
+    {
+      title: 'Leads',
+      description: 'See the portal-visible leads your agency is routing from ad campaigns and forms.',
+      icon: 'i-lucide-inbox',
+      iconColor: 'text-orange-500',
+      to: '/portal/leads',
+      permission: canViewAnalytics.value
+    },
+    {
+      title: 'Requests',
+      description: 'Submit new briefs, job requests, support items, and follow-up tasks for the agency team.',
+      icon: 'i-lucide-message-square-plus',
+      iconColor: 'text-fuchsia-500',
+      to: '/portal/requests'
     },
     {
       title: 'Notifications',
@@ -113,12 +135,12 @@ const features = computed<FeatureCard[]>(() => {
           </p>
 
           <!-- Analytics mini-widget -->
-          <div v-if="feature.title === 'Campaign Analytics'" class="rounded-lg bg-elevated/50 p-3">
+          <div v-if="feature.title === 'Campaigns'" class="rounded-lg bg-elevated/50 p-3">
             <PortalAdPerformanceCard />
           </div>
 
           <!-- Projects mini-widget -->
-          <div v-else-if="feature.title === 'Projects' && dashboard" class="rounded-lg bg-elevated/50 p-3 space-y-2">
+          <div v-else-if="feature.title === 'Booked Jobs' && dashboard" class="rounded-lg bg-elevated/50 p-3 space-y-2">
             <div class="flex items-center justify-between">
               <span class="text-xs text-muted">Active projects</span>
               <UBadge color="primary" variant="subtle" size="xs">
@@ -178,7 +200,7 @@ const features = computed<FeatureCard[]>(() => {
           </div>
 
           <!-- Invoices mini-widget -->
-          <div v-else-if="feature.title === 'Invoices' && dashboard" class="rounded-lg bg-elevated/50 p-3">
+          <div v-else-if="feature.title === 'Billing' && dashboard" class="rounded-lg bg-elevated/50 p-3">
             <div class="flex items-center justify-between">
               <span class="text-xs text-muted">Outstanding</span>
               <span class="text-sm font-semibold text-warning">
@@ -188,6 +210,44 @@ const features = computed<FeatureCard[]>(() => {
             <div class="flex items-center justify-between mt-1">
               <span class="text-xs text-muted">Invoices due</span>
               <span class="text-xs font-medium">{{ dashboard.invoices.outstanding.length }}</span>
+            </div>
+          </div>
+
+          <!-- Meetings mini-widget -->
+          <div v-else-if="feature.title === 'Meetings' && dashboard" class="rounded-lg bg-elevated/50 p-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-muted">Visible meetings</span>
+              <UBadge color="primary" variant="subtle" size="xs">
+                {{ dashboard.meetings?.stats?.totalVisible || 0 }}
+              </UBadge>
+            </div>
+            <div class="flex items-center justify-between mt-1">
+              <span class="text-xs text-muted">Recordings</span>
+              <span class="text-xs font-medium">{{ dashboard.meetings?.stats?.recordings || 0 }}</span>
+            </div>
+          </div>
+
+          <!-- Leads mini-widget -->
+          <div v-else-if="feature.title === 'Leads' && dashboard" class="rounded-lg bg-elevated/50 p-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-muted">Visible leads</span>
+              <span class="text-sm font-semibold">{{ dashboard.leads?.stats?.total || 0 }}</span>
+            </div>
+            <div class="flex items-center justify-between mt-1">
+              <span class="text-xs text-muted">Won leads</span>
+              <span class="text-xs font-medium">{{ dashboard.leads?.stats?.won || 0 }}</span>
+            </div>
+          </div>
+
+          <!-- Requests mini-widget -->
+          <div v-else-if="feature.title === 'Requests' && dashboard" class="rounded-lg bg-elevated/50 p-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-muted">Submitted</span>
+              <span class="text-sm font-semibold">{{ dashboard.requests?.stats?.submitted || 0 }}</span>
+            </div>
+            <div class="flex items-center justify-between mt-1">
+              <span class="text-xs text-muted">In progress</span>
+              <span class="text-xs font-medium">{{ dashboard.requests?.stats?.inProgress || 0 }}</span>
             </div>
           </div>
 
