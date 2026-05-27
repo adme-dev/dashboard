@@ -7,6 +7,7 @@ definePageMeta({
 })
 
 const toast = useToast()
+const route = useRoute()
 
 interface PortalClient {
   id: string
@@ -838,7 +839,7 @@ const replyForm = ref({
 })
 const sendingReply = ref(false)
 
-const openRequestDetail = async (request: PortalRequest) => {
+const openRequestDetail = async (request: Pick<PortalRequest, 'id'>) => {
   showRequestDetail.value = true
   loadingRequestDetail.value = true
   selectedRequest.value = null
@@ -856,6 +857,31 @@ const openRequestDetail = async (request: PortalRequest) => {
     loadingRequestDetail.value = false
   }
 }
+
+const routeQueryString = (value: unknown) => Array.isArray(value) ? value[0] : value
+const lastOpenedRequestId = ref<string | null>(null)
+const handleRequestDeepLink = async () => {
+  const tab = routeQueryString(route.query.tab)
+  const requestId = routeQueryString(route.query.requestId)
+
+  if (tab === 'requests') activeTab.value = 'requests'
+  if (typeof requestId !== 'string' || !requestId || lastOpenedRequestId.value === requestId) return
+
+  lastOpenedRequestId.value = requestId
+  activeTab.value = 'requests'
+  await openRequestDetail({ id: requestId })
+}
+
+onMounted(() => {
+  handleRequestDeepLink()
+})
+
+watch(
+  () => [route.query.tab, route.query.requestId],
+  () => {
+    handleRequestDeepLink()
+  }
+)
 
 const sendRequestReply = async () => {
   if (!selectedRequest.value || !replyForm.value.content.trim()) return
