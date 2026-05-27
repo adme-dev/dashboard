@@ -662,6 +662,61 @@ const getRequestPriorityColor = (priority: string): 'error' | 'warning' | 'info'
 
 const formatRequestType = (type: string) => type.replaceAll('_', ' ')
 
+const requestDaysUntil = (date?: string | null) => {
+  if (!date) return null
+  const due = new Date(date)
+  const now = new Date()
+  return Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+const requestDeadlineStatus = (date?: string | null) => {
+  const days = requestDaysUntil(date)
+  if (days == null) return { label: 'No target date', color: 'neutral' as const }
+  if (days < 0) return { label: `${Math.abs(days)}d overdue`, color: 'error' as const }
+  if (days === 0) return { label: 'Due today', color: 'warning' as const }
+  if (days <= 14) return { label: `Due in ${days}d`, color: 'warning' as const }
+  return { label: formatDate(date), color: 'neutral' as const }
+}
+
+const selectedRequestHealth = computed(() => {
+  const request = selectedRequest.value
+  if (!request) return []
+
+  const deadline = requestDeadlineStatus(request.desiredDeadline)
+  const responseState = request.respondedAt
+    ? { label: `Responded ${formatDate(request.respondedAt)}`, color: 'success' as const }
+    : ['submitted', 'in_review'].includes(request.status)
+        ? { label: 'Needs first response', color: 'warning' as const }
+        : { label: 'Response not logged', color: 'neutral' as const }
+
+  return [
+    {
+      label: 'Owner',
+      value: request.assignedName || 'Unassigned',
+      icon: request.assignedName ? 'i-lucide-user-check' : 'i-lucide-user-x',
+      color: request.assignedName ? 'success' as const : 'warning' as const
+    },
+    {
+      label: 'Target',
+      value: deadline.label,
+      icon: 'i-lucide-calendar-clock',
+      color: deadline.color
+    },
+    {
+      label: 'Response',
+      value: responseState.label,
+      icon: 'i-lucide-message-circle',
+      color: responseState.color
+    },
+    {
+      label: 'Budget',
+      value: request.estimatedBudget ? formatCurrency(request.estimatedBudget) : 'Not provided',
+      icon: 'i-lucide-wallet',
+      color: request.estimatedBudget ? 'primary' as const : 'neutral' as const
+    }
+  ]
+})
+
 const getPortalStatusColor = (status: string): 'success' | 'warning' | 'neutral' => {
   switch (status) {
     case 'active': return 'success'
@@ -755,6 +810,15 @@ const updatePortalRequest = async (request: PortalRequest, updates: Record<strin
       method: 'PATCH',
       body: updates
     })
+    if (selectedRequest.value?.id === request.id) {
+      if (typeof updates.status === 'string') selectedRequest.value.status = updates.status
+      if ('assignedTo' in updates) {
+        const assignedTo = typeof updates.assignedTo === 'string' ? updates.assignedTo : null
+        const assignee = teamMembers.value.find(member => member.id === assignedTo)
+        selectedRequest.value.assignedTo = assignedTo
+        selectedRequest.value.assignedName = assignee?.name || null
+      }
+    }
     toast.add({ title: 'Request updated', color: 'success' })
     await refreshRequests()
   } catch (err: unknown) {
@@ -2505,6 +2569,58 @@ const enterpriseRollout = [
             <UBadge v-if="selectedRequest.category" color="neutral" variant="subtle">
               {{ formatRequestType(selectedRequest.category) }}
             </UBadge>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div
+              v-for="item in selectedRequestHealth"
+              :key="item.label"
+              class="rounded-lg border border-[var(--ui-border)] bg-[var(--ui-bg)] p-3"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-xs text-[var(--ui-text-muted)]">
+                  {{ item.label }}
+                </p>
+                <UIcon :name="item.icon" class="size-4 text-[var(--ui-text-muted)]" />
+              </div>
+              <UBadge :color="item.color" variant="subtle" class="mt-2">
+                {{ item.value }}
+              </UBadge>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-[var(--ui-border)] p-3">
+            <p class="text-sm font-medium mb-3">
+              Triage
+            </p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <USelect
+                :model-value="selectedRequest.status"
+                :items="[
+                  { label: 'Submitted', value: 'submitted' },
+                  { label: 'In review', value: 'in_review' },
+                  { label: 'Approved', value: 'approved' },
+                  { label: 'In progress', value: 'in_progress' },
+                  { label: 'Completed', value: 'completed' },
+                  { label: 'Closed', value: 'closed' },
+                  { label: 'Cancelled', value: 'cancelled' }
+                ]"
+                value-key="value"
+                size="sm"
+                :color="getRequestStatusColor(selectedRequest.status)"
+                :loading="updatingRequestId === selectedRequest.id"
+                @update:model-value="updatePortalRequest(selectedRequest, { status: $event })"
+              />
+              <USelectMenu
+                :model-value="selectedRequest.assignedTo || ''"
+                :items="assigneeOptions"
+                value-key="value"
+                searchable
+                size="sm"
+                :loading="updatingRequestId === selectedRequest.id"
+                @update:model-value="updatePortalRequest(selectedRequest, { assignedTo: $event || null })"
+              />
+            </div>
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
