@@ -24,6 +24,8 @@ interface PortalClientRow {
   new_leads_30d: string | number | null
   won_leads_30d: string | number | null
   active_projects: string | number | null
+  upcoming_jobs: string | number | null
+  history_jobs: string | number | null
 }
 
 export default defineEventHandler(async (event) => {
@@ -74,7 +76,9 @@ export default defineEventHandler(async (event) => {
         COALESCE(ld.portal_leads_30d, 0) AS portal_leads_30d,
         COALESCE(ld.new_leads_30d, 0) AS new_leads_30d,
         COALESCE(ld.won_leads_30d, 0) AS won_leads_30d,
-        COALESCE(pr.active_projects, 0) AS active_projects
+        COALESCE(pr.active_projects, 0) AS active_projects,
+        COALESCE(pr.upcoming_jobs, 0) AS upcoming_jobs,
+        COALESCE(pr.history_jobs, 0) AS history_jobs
       FROM agency_clients c
       LEFT JOIN (
         SELECT
@@ -114,9 +118,15 @@ export default defineEventHandler(async (event) => {
         GROUP BY l.client_id
       ) ld ON ld.client_id = c.id
       LEFT JOIN (
-        SELECT client_id, COUNT(*) AS active_projects
+        SELECT
+          client_id,
+          COUNT(*) FILTER (WHERE status = 'active') AS active_projects,
+          COUNT(*) FILTER (
+            WHERE status IN ('draft', 'active', 'on_hold')
+              AND (due_date IS NULL OR due_date >= CURRENT_DATE)
+          ) AS upcoming_jobs,
+          COUNT(*) FILTER (WHERE status IN ('completed', 'cancelled')) AS history_jobs
         FROM projects
-        WHERE status = 'active'
         GROUP BY client_id
       ) pr ON pr.client_id = c.id
       WHERE ${conditions.join(' AND ')}
@@ -142,6 +152,8 @@ export default defineEventHandler(async (event) => {
         newLeads30d: Number(row.new_leads_30d || 0),
         wonLeads30d: Number(row.won_leads_30d || 0),
         activeProjects: Number(row.active_projects || 0),
+        upcomingJobs: Number(row.upcoming_jobs || 0),
+        historyJobs: Number(row.history_jobs || 0),
         portalStatus: Number(row.active_users || 0) > 0
           ? 'active'
           : Number(row.pending_users || 0) > 0

@@ -56,7 +56,9 @@ describe('agency client portal clients API', () => {
       portal_leads_30d: '12',
       new_leads_30d: '5',
       won_leads_30d: '2',
-      active_projects: '6'
+      active_projects: '6',
+      upcoming_jobs: '8',
+      history_jobs: '17'
     }])
 
     const result = await clientsHandler({
@@ -74,6 +76,8 @@ describe('agency client portal clients API', () => {
       newLeads30d: 5,
       wonLeads30d: 2,
       activeProjects: 6,
+      upcomingJobs: 8,
+      historyJobs: 17,
       portalStatus: 'active'
     })])
 
@@ -81,6 +85,9 @@ describe('agency client portal clients API', () => {
     const params = mockQueryRows.mock.calls[0]?.[1]
     expect(sql).toContain('FROM agency_clients c')
     expect(sql).toContain('d.destination_type = \'portal\'')
+    expect(sql).toContain('COUNT(*) FILTER (')
+    expect(sql).toContain('status IN (\'draft\', \'active\', \'on_hold\')')
+    expect(sql).toContain('status IN (\'completed\', \'cancelled\')')
     expect(sql).toContain('COALESCE(cu.portal_users, 0) > 0')
     expect(sql).toContain('c.name ILIKE $1')
     expect(params).toEqual(['%Client%', 100])

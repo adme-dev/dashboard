@@ -24,6 +24,8 @@ interface PortalClient {
   newLeads30d: number
   wonLeads30d: number
   activeProjects: number
+  upcomingJobs: number
+  historyJobs: number
 }
 
 interface PortalUser {
@@ -595,6 +597,9 @@ const enterpriseRollout = [
                     </p>
                     <p class="text-xs text-[var(--ui-text-muted)]">
                       {{ row.original.activeProjects }} active projects
+                    </p>
+                    <p class="text-xs text-[var(--ui-text-dimmed)]">
+                      {{ row.original.upcomingJobs }} upcoming, {{ row.original.historyJobs }} completed
                     </p>
                   </div>
                 </div>
