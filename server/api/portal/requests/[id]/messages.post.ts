@@ -5,6 +5,14 @@
 
 import { queryOne, transaction } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
+import { createNotification } from '~~/server/utils/notifications'
+
+type ClientRequestMessageTarget = {
+  id: string
+  status: string
+  title: string
+  assigned_to: string | null
+}
 
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
@@ -23,8 +31,8 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Verify request belongs to client and is not closed
-    const request = await queryOne(
-      'SELECT id, status FROM client_requests WHERE id = $1 AND client_id = $2',
+    const request = await queryOne<ClientRequestMessageTarget>(
+      'SELECT id, status, title, assigned_to FROM client_requests WHERE id = $1 AND client_id = $2',
       [requestId, clientUser.clientId]
     )
 
@@ -63,6 +71,22 @@ export default defineEventHandler(async (event) => {
 
       return result
     })
+
+    if (request.assigned_to) {
+      await createNotification({
+        userId: request.assigned_to,
+        type: 'team_update',
+        title: 'Client replied to a request',
+        message: `New client reply on "${request.title}".`,
+        link: `/agency/client-portal?tab=requests&requestId=${requestId}`,
+        metadata: {
+          clientId: clientUser.clientId,
+          requestId,
+          messageId: message.id
+        },
+        reason: 'direct'
+      })
+    }
 
     return {
       id: message.id,
