@@ -6,6 +6,7 @@ const route = useRoute()
 const open = ref(false)
 
 const close = () => { open.value = false }
+const isAgencyAccess = computed(() => user.value?.title === 'Agency portal access' || user.value?.email?.endsWith('@portal-access.local'))
 
 // Notification count (fetched separately)
 const { data: notifData } = useLazyFetch('/api/portal/notifications', {
@@ -130,6 +131,15 @@ async function handleLogout() {
     </UDashboardSidebar>
 
     <div class="flex-1 min-w-0 flex flex-col overflow-hidden">
+      <div
+        v-if="isAgencyAccess"
+        class="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100"
+      >
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-shield-check" class="h-4 w-4 shrink-0" />
+          <span class="truncate">Agency access: viewing {{ user?.clientName }} as {{ user?.name }}.</span>
+        </div>
+      </div>
       <slot />
     </div>
   </UDashboardGroup>

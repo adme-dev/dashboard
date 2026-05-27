@@ -3,29 +3,49 @@ import { format } from 'date-fns'
 
 definePageMeta({
   title: 'Client Portal',
-  middleware: ['role-clients']
+  middleware: ['role-client-portal-access']
 })
 
 const toast = useToast()
 
 // Active tab
-const activeTab = ref('users')
+const activeTab = ref('clients')
+
+const portalClientFilters = ref({
+  search: '',
+  status: 'all'
+})
+
+const portalClientQuery = computed(() => ({
+  search: portalClientFilters.value.search || undefined,
+  status: portalClientFilters.value.status,
+  limit: 100
+}))
+
+const { data: portalClientsData, pending: portalClientsPending, refresh: refreshPortalClients } = await useFetch('/api/agency/client-portal/clients', {
+  query: portalClientQuery
+})
+
+const portalClients = computed(() => ((portalClientsData.value as any)?.clients || []) as any[])
+const portalClientSummary = computed(() => {
+  const items = portalClients.value
+  return {
+    total: items.length,
+    active: items.filter(client => client.portalStatus === 'active').length,
+    pending: items.filter(client => client.portalStatus === 'pending').length,
+    notConfigured: items.filter(client => client.portalStatus === 'not_configured').length,
+    leads30d: items.reduce((sum, client) => sum + Number(client.portalLeads30d || 0), 0)
+  }
+})
 
 // Fetch client portal users
 const { data: usersData, pending: usersPending, refresh: refreshUsers } = await useFetch('/api/agency/client-portal/users')
 
 const users = computed(() => ((usersData.value as any)?.users || []) as any[])
-const usersSummary = computed(() => ((usersData.value as any)?.summary || {
-  total: 0, active: 0, pending: 0, suspended: 0
-}) as any)
-
 // Fetch approvals
-const { data: approvalsData, pending: approvalsPending, refresh: refreshApprovals } = await useFetch('/api/agency/client-portal/approvals')
+const { data: approvalsData, pending: approvalsPending } = await useFetch('/api/agency/client-portal/approvals')
 
 const approvals = computed(() => ((approvalsData.value as any)?.approvals || []) as any[])
-const approvalsSummary = computed(() => ((approvalsData.value as any)?.summary || {
-  total: 0, pending: 0, approved: 0, rejected: 0
-}) as any)
 
 // Fetch clients for invite modal
 const { data: clientsData } = await useFetch('/api/agency/clients', {
@@ -36,6 +56,45 @@ const clients = computed(() => {
   if (Array.isArray(raw)) return raw as any[]
   return ((raw as any)?.clients || []) as any[]
 })
+const clientOptions = computed(() => clients.value.map((c: any) => ({ label: c.name, value: c.id })))
+
+const selectedAccessClientId = ref<string | null>(null)
+watch(clients, (items) => {
+  if (!selectedAccessClientId.value && items.length > 0) {
+    selectedAccessClientId.value = items[0].id
+  }
+}, { immediate: true })
+
+const openingPortal = ref(false)
+const openClientPortal = async (clientId?: string | null) => {
+  const targetClientId = clientId || selectedAccessClientId.value
+  if (!targetClientId) {
+    toast.add({ title: 'Select a client first', color: 'error' })
+    return
+  }
+
+  openingPortal.value = true
+  try {
+    await $fetch('/api/agency/client-portal/access', {
+      method: 'POST',
+      body: { clientId: targetClientId }
+    })
+    await navigateTo('/portal')
+  } catch (err: any) {
+    toast.add({
+      title: 'Failed to open portal',
+      description: err.data?.message || err.message,
+      color: 'error'
+    })
+  } finally {
+    openingPortal.value = false
+  }
+}
+
+const inviteClientUser = (clientId?: string | null) => {
+  inviteForm.value.clientId = clientId || null
+  showInviteModal.value = true
+}
 
 // Format helpers
 const formatDate = (date: string) => {
@@ -68,6 +127,22 @@ const getApprovalStatusColor = (status: string): 'success' | 'warning' | 'error'
   }
 }
 
+const getPortalStatusColor = (status: string): 'success' | 'warning' | 'neutral' => {
+  switch (status) {
+    case 'active': return 'success'
+    case 'pending': return 'warning'
+    default: return 'neutral'
+  }
+}
+
+const formatPortalStatus = (status: string) => {
+  switch (status) {
+    case 'active': return 'Active'
+    case 'pending': return 'Invite pending'
+    default: return 'Not configured'
+  }
+}
+
 // Invite slideover
 const showInviteModal = ref(false)
 const inviteForm = ref({
@@ -79,7 +154,9 @@ const inviteForm = ref({
     canViewInvoices: true,
     canApproveWork: false,
     canViewTimeEntries: false,
-    canViewBudgets: false
+    canViewBudgets: false,
+    canViewAnalytics: true,
+    canSubmitRequests: true
   }
 })
 
@@ -105,6 +182,7 @@ const sendInvite = async () => {
     showInviteModal.value = false
     resetInviteForm()
     refreshUsers()
+    refreshPortalClients()
   } catch (err: any) {
     toast.add({ title: 'Failed to send invite', description: err.data?.message || err.message, color: 'error' })
   } finally {
@@ -122,7 +200,9 @@ const resetInviteForm = () => {
       canViewInvoices: true,
       canApproveWork: false,
       canViewTimeEntries: false,
-      canViewBudgets: false
+      canViewBudgets: false,
+      canViewAnalytics: true,
+      canSubmitRequests: true
     }
   }
 }
@@ -133,7 +213,17 @@ const userColumns = [
   { accessorKey: 'client', header: 'Client' },
   { accessorKey: 'permissions', header: 'Permissions' },
   { accessorKey: 'lastLogin', header: 'Last Login' },
-  { accessorKey: 'status', header: 'Status' }
+  { accessorKey: 'status', header: 'Status' },
+  { accessorKey: 'actions', header: '' }
+]
+
+const clientColumns = [
+  { accessorKey: 'name', header: 'Client' },
+  { accessorKey: 'status', header: 'Portal Status' },
+  { accessorKey: 'users', header: 'Users' },
+  { accessorKey: 'leads', header: 'Leads 30d' },
+  { accessorKey: 'activity', header: 'Last Activity' },
+  { accessorKey: 'actions', header: '' }
 ]
 
 // Approval columns (v4 format)
@@ -155,7 +245,7 @@ const approvalColumns = [
             label="Invite Client User"
             icon="i-lucide-user-plus"
             color="primary"
-            @click="showInviteModal = true"
+            @click="inviteClientUser()"
           />
         </template>
       </UDashboardNavbar>
@@ -169,8 +259,8 @@ const approvalColumns = [
                 <UIcon name="i-lucide-users" class="w-5 h-5 text-blue-500" />
               </div>
               <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">Portal Users</p>
-                <p class="text-xl font-bold">{{ usersSummary.total }}</p>
+                <p class="text-sm text-[var(--ui-text-muted)]">Client Portals</p>
+                <p class="text-xl font-bold">{{ portalClientSummary.total }}</p>
               </div>
             </div>
           </UCard>
@@ -181,8 +271,8 @@ const approvalColumns = [
                 <UIcon name="i-lucide-check-circle" class="w-5 h-5 text-emerald-500" />
               </div>
               <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">Active Users</p>
-                <p class="text-xl font-bold text-emerald-500">{{ usersSummary.active }}</p>
+                <p class="text-sm text-[var(--ui-text-muted)]">Active Portals</p>
+                <p class="text-xl font-bold text-emerald-500">{{ portalClientSummary.active }}</p>
               </div>
             </div>
           </UCard>
@@ -193,8 +283,8 @@ const approvalColumns = [
                 <UIcon name="i-lucide-clock" class="w-5 h-5 text-amber-500" />
               </div>
               <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">Pending Approvals</p>
-                <p class="text-xl font-bold text-amber-500">{{ approvalsSummary.pending }}</p>
+                <p class="text-sm text-[var(--ui-text-muted)]">30d Portal Leads</p>
+                <p class="text-xl font-bold text-amber-500">{{ portalClientSummary.leads30d }}</p>
               </div>
             </div>
           </UCard>
@@ -205,8 +295,8 @@ const approvalColumns = [
                 <UIcon name="i-lucide-mail" class="w-5 h-5 text-purple-500" />
               </div>
               <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">Pending Invites</p>
-                <p class="text-xl font-bold text-purple-500">{{ usersSummary.pending }}</p>
+                <p class="text-sm text-[var(--ui-text-muted)]">Needs Setup</p>
+                <p class="text-xl font-bold text-purple-500">{{ portalClientSummary.notConfigured }}</p>
               </div>
             </div>
           </UCard>
@@ -216,11 +306,141 @@ const approvalColumns = [
         <UTabs
           v-model="activeTab"
           :items="[
+            { label: 'Clients', value: 'clients', icon: 'i-lucide-building-2' },
             { label: 'Portal Users', value: 'users', icon: 'i-lucide-users' },
             { label: 'Approvals', value: 'approvals', icon: 'i-lucide-check-square' }
           ]"
           class="mb-6"
         />
+
+        <div v-if="activeTab === 'clients'">
+          <UCard class="mb-4">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:w-[520px]">
+                <UInput
+                  v-model="portalClientFilters.search"
+                  icon="i-lucide-search"
+                  placeholder="Search clients"
+                />
+                <USelect
+                  v-model="portalClientFilters.status"
+                  :items="[
+                    { label: 'All portal statuses', value: 'all' },
+                    { label: 'Configured', value: 'configured' },
+                    { label: 'Invite pending', value: 'pending' },
+                    { label: 'No users yet', value: 'no-users' }
+                  ]"
+                  value-key="value"
+                />
+              </div>
+              <div class="flex flex-col sm:flex-row gap-2">
+                <USelectMenu
+                  v-model="selectedAccessClientId"
+                  :items="clientOptions"
+                  placeholder="Quick open client"
+                  value-key="value"
+                  searchable
+                  class="w-full sm:w-64"
+                />
+                <UButton
+                  label="Open Portal"
+                  icon="i-lucide-external-link"
+                  color="primary"
+                  :loading="openingPortal"
+                  @click="openClientPortal()"
+                />
+              </div>
+            </div>
+          </UCard>
+
+          <UCard>
+            <div v-if="portalClientsPending" class="flex items-center justify-center py-12">
+              <XfLoader />
+            </div>
+
+            <UTable v-else :data="portalClients" :columns="clientColumns">
+              <template #name-cell="{ row }">
+                <div class="flex items-center gap-3 min-w-0">
+                  <UAvatar
+                    :src="row.original.logoUrl || undefined"
+                    :alt="row.original.name"
+                    size="sm"
+                  />
+                  <div class="min-w-0">
+                    <p class="font-medium truncate">{{ row.original.name }}</p>
+                    <p class="text-xs text-[var(--ui-text-muted)]">
+                      {{ row.original.activeProjects }} active projects
+                    </p>
+                  </div>
+                </div>
+              </template>
+
+              <template #status-cell="{ row }">
+                <div class="flex flex-wrap items-center gap-2">
+                  <UBadge :color="getPortalStatusColor(row.original.portalStatus)" variant="subtle">
+                    {{ formatPortalStatus(row.original.portalStatus) }}
+                  </UBadge>
+                  <UBadge v-if="row.original.pendingApprovals" color="warning" variant="subtle" size="xs">
+                    {{ row.original.pendingApprovals }} approvals
+                  </UBadge>
+                </div>
+              </template>
+
+              <template #users-cell="{ row }">
+                <div class="text-sm">
+                  <p>{{ row.original.activeUsers }} active / {{ row.original.portalUsers }} total</p>
+                  <p class="text-xs text-[var(--ui-text-muted)]">
+                    {{ row.original.pendingUsers }} pending, {{ row.original.agencyAccessUsers }} agency access
+                  </p>
+                </div>
+              </template>
+
+              <template #leads-cell="{ row }">
+                <div class="text-sm">
+                  <p class="font-medium">{{ row.original.portalLeads30d }} leads</p>
+                  <p class="text-xs text-[var(--ui-text-muted)]">
+                    {{ row.original.newLeads30d }} new, {{ row.original.wonLeads30d }} won
+                  </p>
+                </div>
+              </template>
+
+              <template #activity-cell="{ row }">
+                <div class="text-sm text-[var(--ui-text-muted)]">
+                  <p>{{ formatDateTime(row.original.lastActivityAt || row.original.lastLoginAt) }}</p>
+                  <p v-if="row.original.lastLoginAt" class="text-xs">
+                    Login {{ formatDate(row.original.lastLoginAt) }}
+                  </p>
+                </div>
+              </template>
+
+              <template #actions-cell="{ row }">
+                <div class="flex justify-end gap-2">
+                  <UButton
+                    icon="i-lucide-user-plus"
+                    variant="ghost"
+                    color="neutral"
+                    size="sm"
+                    aria-label="Invite portal user"
+                    @click="inviteClientUser(row.original.id)"
+                  />
+                  <UButton
+                    icon="i-lucide-external-link"
+                    variant="ghost"
+                    color="neutral"
+                    size="sm"
+                    :loading="openingPortal"
+                    aria-label="Open client portal"
+                    @click="openClientPortal(row.original.id)"
+                  />
+                </div>
+              </template>
+            </UTable>
+
+            <div v-if="!portalClientsPending && portalClients.length === 0" class="text-center text-[var(--ui-text-muted)] py-8">
+              No clients match the current filters.
+            </div>
+          </UCard>
+        </div>
 
         <!-- Users Tab -->
         <div v-if="activeTab === 'users'">
@@ -252,6 +472,12 @@ const approvalColumns = [
                   <UBadge v-if="row.original.permissions?.canViewTimeEntries" size="xs" variant="subtle" color="neutral">
                     Time
                   </UBadge>
+                  <UBadge v-if="row.original.permissions?.canViewAnalytics" size="xs" variant="subtle" color="primary">
+                    Analytics
+                  </UBadge>
+                  <UBadge v-if="row.original.permissions?.canSubmitRequests" size="xs" variant="subtle" color="warning">
+                    Requests
+                  </UBadge>
                 </div>
               </template>
 
@@ -265,6 +491,18 @@ const approvalColumns = [
                 <UBadge :color="getUserStatusColor(row.original.status)" variant="subtle">
                   {{ row.original.status }}
                 </UBadge>
+              </template>
+
+              <template #actions-cell="{ row }">
+                <UButton
+                  icon="i-lucide-external-link"
+                  variant="ghost"
+                  color="neutral"
+                  size="sm"
+                  :loading="openingPortal"
+                  aria-label="Open client portal"
+                  @click="openClientPortal(row.original.clientId)"
+                />
               </template>
             </UTable>
 
@@ -338,7 +576,7 @@ const approvalColumns = [
               <label class="block text-[13px] font-medium mb-2">Client <span class="text-red-500">*</span></label>
               <USelectMenu
                 v-model="inviteForm.clientId"
-                :items="clients.map((c: any) => ({ label: c.name, value: c.id }))"
+                :items="clientOptions"
                 placeholder="Select client"
                 value-key="value"
                 searchable
@@ -414,6 +652,22 @@ const approvalColumns = [
                 <div>
                   <span class="text-[13px] font-medium">View budget details</span>
                   <p class="text-[12px] text-[var(--ui-text-muted)]">See budget allocation and spend breakdowns.</p>
+                </div>
+              </label>
+
+              <label class="flex items-center gap-3 cursor-pointer">
+                <UCheckbox v-model="inviteForm.permissions.canViewAnalytics" />
+                <div>
+                  <span class="text-[13px] font-medium">View analytics</span>
+                  <p class="text-[12px] text-[var(--ui-text-muted)]">See campaign performance, lead volume, and trends.</p>
+                </div>
+              </label>
+
+              <label class="flex items-center gap-3 cursor-pointer">
+                <UCheckbox v-model="inviteForm.permissions.canSubmitRequests" />
+                <div>
+                  <span class="text-[13px] font-medium">Submit requests</span>
+                  <p class="text-[12px] text-[var(--ui-text-muted)]">Create briefs and portal requests.</p>
                 </div>
               </label>
             </div>

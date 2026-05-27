@@ -29,28 +29,28 @@ const features = computed<FeatureCard[]>(() => {
       icon: 'i-lucide-bar-chart-4',
       iconColor: 'text-primary',
       to: '/portal/analytics',
-      permission: canViewAnalytics.value,
+      permission: canViewAnalytics.value
     },
     {
       title: 'Projects',
       description: 'Monitor project progress, track tasks, and stay on top of deadlines.',
       icon: 'i-lucide-folder-kanban',
       iconColor: 'text-blue-500',
-      to: '/portal/projects',
+      to: '/portal/projects'
     },
     {
       title: 'Approvals',
       description: 'Review and approve deliverables, creative concepts, and campaign briefs in one place.',
       icon: 'i-lucide-check-circle',
       iconColor: 'text-amber-500',
-      to: '/portal/approvals',
+      to: '/portal/approvals'
     },
     {
       title: 'Creative Gallery',
       description: 'Browse all deliverables and creative assets from your campaigns.',
       icon: 'i-lucide-image',
       iconColor: 'text-violet-500',
-      to: '/portal/gallery',
+      to: '/portal/gallery'
     },
     {
       title: 'Invoices',
@@ -58,15 +58,15 @@ const features = computed<FeatureCard[]>(() => {
       icon: 'i-lucide-receipt',
       iconColor: 'text-emerald-500',
       to: '/portal/invoices',
-      permission: canViewInvoices.value,
+      permission: canViewInvoices.value
     },
     {
       title: 'Notifications',
       description: 'Stay informed with real-time updates on project milestones and approvals.',
       icon: 'i-lucide-bell',
       iconColor: 'text-rose-500',
-      to: '/portal/notifications',
-    },
+      to: '/portal/notifications'
+    }
   ]
 
   return cards.filter(c => c.permission !== false)
@@ -77,7 +77,9 @@ const features = computed<FeatureCard[]>(() => {
   <div class="p-6 space-y-8 max-w-7xl mx-auto">
     <!-- Hero Header -->
     <div class="text-center space-y-2 py-4">
-      <h1 class="text-3xl font-bold">Your Portal at a Glance</h1>
+      <h1 class="text-3xl font-bold">
+        Your Portal at a Glance
+      </h1>
       <p class="text-muted text-lg max-w-2xl mx-auto">
         Everything you need to manage your projects, review deliverables, and track campaign performance — all in one place.
       </p>
@@ -106,7 +108,9 @@ const features = computed<FeatureCard[]>(() => {
         </template>
 
         <div class="space-y-4">
-          <p class="text-sm text-muted leading-relaxed">{{ feature.description }}</p>
+          <p class="text-sm text-muted leading-relaxed">
+            {{ feature.description }}
+          </p>
 
           <!-- Analytics mini-widget -->
           <div v-if="feature.title === 'Campaign Analytics'" class="rounded-lg bg-elevated/50 p-3">
@@ -117,7 +121,9 @@ const features = computed<FeatureCard[]>(() => {
           <div v-else-if="feature.title === 'Projects' && dashboard" class="rounded-lg bg-elevated/50 p-3 space-y-2">
             <div class="flex items-center justify-between">
               <span class="text-xs text-muted">Active projects</span>
-              <UBadge color="primary" variant="subtle" size="xs">{{ dashboard.projects.stats.active }}</UBadge>
+              <UBadge color="primary" variant="subtle" size="xs">
+                {{ dashboard.projects.stats.active }}
+              </UBadge>
             </div>
             <div v-for="project in dashboard.projects.active.slice(0, 2)" :key="project.id" class="space-y-1">
               <div class="flex items-center justify-between text-xs">
@@ -131,7 +137,9 @@ const features = computed<FeatureCard[]>(() => {
                 />
               </div>
             </div>
-            <p v-if="!dashboard.projects.active.length" class="text-xs text-muted text-center py-2">No active projects</p>
+            <p v-if="!dashboard.projects.active.length" class="text-xs text-muted text-center py-2">
+              No active projects
+            </p>
           </div>
 
           <!-- Approvals mini-widget -->
@@ -161,7 +169,7 @@ const features = computed<FeatureCard[]>(() => {
                   :src="safeMediaUrl(item.thumbnailUrl)"
                   :alt="item.title"
                   class="w-full h-full object-cover"
-                />
+                >
                 <div v-else class="w-full h-full flex items-center justify-center">
                   <UIcon name="i-lucide-file" class="w-4 h-4 text-muted" />
                 </div>

@@ -1,18 +1,27 @@
 <script setup lang="ts">
+const props = defineProps<{
+  lockedClientId?: string | null
+}>()
+
 const { filters, updateFilters, setDatePreset, ALL_PLATFORM_KEYS, getPlatformLabel } = useAnalytics()
 
-const { data: clientsData } = useLazyFetch('/api/agency/clients')
+interface ClientOption {
+  id: string
+  name: string
+}
+
+const { data: clientsData } = useLazyFetch<ClientOption[]>('/api/agency/clients')
 const clientOptions = computed(() => {
-  const clients = (clientsData.value as any) || []
+  const clients = clientsData.value || []
   return [
     { label: 'All Clients', value: 'all' },
-    ...clients.map((c: any) => ({ label: c.name, value: c.id })),
+    ...clients.map(c => ({ label: c.name, value: c.id }))
   ]
 })
 
 const platformOptions = ALL_PLATFORM_KEYS.map(k => ({
   label: getPlatformLabel(k),
-  value: k,
+  value: k
 }))
 
 const datePresets = [
@@ -21,17 +30,30 @@ const datePresets = [
   { label: '90 days', value: '90d' },
   { label: 'MTD', value: 'mtd' },
   { label: 'Last Month', value: 'last-month' },
-  { label: 'YTD', value: 'ytd' },
+  { label: 'YTD', value: 'ytd' }
 ]
 
 const selectedClient = computed({
-  get: () => filters.value.clientId || 'all',
-  set: (v: string) => updateFilters({ clientId: v === 'all' ? null : v }),
+  get: () => props.lockedClientId || filters.value.clientId || 'all',
+  set: (v: string) => {
+    if (!props.lockedClientId) updateFilters({ clientId: v === 'all' ? null : v })
+  }
 })
 
 const selectedPlatforms = computed({
   get: () => filters.value.platforms,
-  set: (v: string[]) => updateFilters({ platforms: v }),
+  set: (v: string[]) => updateFilters({ platforms: v })
+})
+
+const exportUrl = computed(() => {
+  const params = new URLSearchParams({
+    startDate: filters.value.startDate,
+    endDate: filters.value.endDate
+  })
+  if (filters.value.platforms.length) params.set('platform', filters.value.platforms.join(','))
+  const clientId = props.lockedClientId || filters.value.clientId
+  if (clientId) params.set('clientId', clientId)
+  return `/api/agency/analytics/export?${params.toString()}`
 })
 </script>
 
@@ -90,6 +112,7 @@ const selectedPlatforms = computed({
       size="sm"
       class="w-48"
       value-key="value"
+      :disabled="Boolean(lockedClientId)"
     />
 
     <!-- Export -->
@@ -100,7 +123,7 @@ const selectedPlatforms = computed({
         size="sm"
         variant="soft"
         color="neutral"
-        :to="`/api/agency/analytics/export?startDate=${filters.startDate}&endDate=${filters.endDate}${filters.platforms.length ? '&platform=' + filters.platforms.join(',') : ''}${filters.clientId ? '&clientId=' + filters.clientId : ''}`"
+        :to="exportUrl"
         external
         target="_blank"
       />

@@ -6,6 +6,15 @@
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 
+const PORTAL_VISIBLE_LEADS_EXISTS = `EXISTS (
+  SELECT 1 FROM lead_form_rules r
+  JOIN lead_rule_destinations d ON d.rule_id = r.id
+  WHERE r.source = l.source AND r.form_id = l.form_id
+    AND r.client_id = l.client_id
+    AND r.enabled = TRUE
+    AND d.destination_type = 'portal' AND d.enabled = TRUE
+)`
+
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
   const clientId = clientUser.clientId
@@ -178,6 +187,35 @@ export default defineEventHandler(async (event) => {
       LIMIT 10
     `, [clientId])
 
+    const leadStats = await queryOne(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(CASE WHEN status = 'new' THEN 1 END) as new,
+        COUNT(CASE WHEN status = 'contacted' THEN 1 END) as contacted,
+        COUNT(CASE WHEN status = 'won' THEN 1 END) as won
+      FROM leads l
+      WHERE l.client_id = $1
+        AND l.deleted_at IS NULL
+        AND ${PORTAL_VISIBLE_LEADS_EXISTS}
+    `, [clientId])
+
+    const recentLeads = await queryRows(`
+      SELECT
+        l.id,
+        l.source,
+        l.form_name,
+        l.submitted_at,
+        l.field_data,
+        l.status,
+        l.campaign_name
+      FROM leads l
+      WHERE l.client_id = $1
+        AND l.deleted_at IS NULL
+        AND ${PORTAL_VISIBLE_LEADS_EXISTS}
+      ORDER BY l.submitted_at DESC
+      LIMIT 5
+    `, [clientId])
+
     return {
       client: {
         id: client?.id,
@@ -280,6 +318,23 @@ export default defineEventHandler(async (event) => {
         projectName: t.project_name,
         status: { name: t.status_name, color: t.status_color }
       })),
+      leads: {
+        stats: {
+          total: Number(leadStats?.total || 0),
+          new: Number(leadStats?.new || 0),
+          contacted: Number(leadStats?.contacted || 0),
+          won: Number(leadStats?.won || 0)
+        },
+        recent: recentLeads.map(l => ({
+          id: l.id,
+          source: l.source,
+          formName: l.form_name,
+          submittedAt: l.submitted_at,
+          fieldData: l.field_data,
+          status: l.status,
+          campaignName: l.campaign_name
+        }))
+      },
       recentActivity: recentActivity.map(a => ({
         id: a.id,
         action: a.action,
@@ -290,8 +345,14 @@ export default defineEventHandler(async (event) => {
         userName: a.user_name
       }))
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error: unknown) {
+    if (
+      error
+      && typeof error === 'object'
+      && 'statusCode' in error
+    ) {
+      throw error
+    }
     console.error('Failed to fetch dashboard:', error)
     throw createError({
       statusCode: 500,

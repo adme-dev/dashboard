@@ -12,22 +12,93 @@ interface RuleListItem {
   last_lead_at: string | null
 }
 
+interface EndpointListItem {
+  id: string
+  client_id: string
+  client_name: string
+  url_token: string
+  secret_key: string
+  lead_count: string | number | null
+  google_lead_count: string | number | null
+  routable_lead_count: string | number | null
+}
+
 const { data, refresh, pending } = useFetch<{ items: RuleListItem[] }>('/api/leads/rules/list', {
+  default: () => ({ items: [] })
+})
+const {
+  data: endpointsData,
+  pending: endpointsPending,
+  error: endpointsError,
+  refresh: refreshEndpoints
+} = useFetch<{ items: EndpointListItem[] }>('/api/leads/endpoints/list', {
   default: () => ({ items: [] }),
+  immediate: false
 })
 
 // Clients for the picker modal — plain array from /api/agency/clients
-const { data: clients } = useFetch<{ id: string; name: string }[]>('/api/agency/clients', {
-  default: () => [],
+const { data: clients } = useFetch<{ id: string, name: string }[]>('/api/agency/clients', {
+  default: () => []
 })
 const clientOptions = computed(() =>
-  ((clients.value ?? []) as { id: string; name: string }[]).map(c => ({ value: c.id, label: c.name })),
+  ((clients.value ?? []) as { id: string, name: string }[]).map(c => ({ value: c.id, label: c.name }))
 )
 
 const editingRuleId = ref<string | null>(null)
-const editingFormMeta = ref<{ source: string; form_id: string; form_name: string | null } | null>(null)
+const editingFormMeta = ref<{ source: string, form_id: string, form_name: string | null } | null>(null)
 const showEditor = ref(false)
 const toast = useToast()
+const showConnectionGuide = ref(false)
+const selectedEndpointClientId = ref<string | null>(null)
+
+const ruleItems = computed(() => data.value?.items ?? [])
+const readyRules = computed(() =>
+  ruleItems.value.filter(item => item.rule_id && item.enabled && Number(item.destination_count ?? 0) > 0)
+)
+const needsDestinations = computed(() =>
+  ruleItems.value.filter(item => item.rule_id && Number(item.destination_count ?? 0) === 0)
+)
+const unmappedForms = computed(() => ruleItems.value.filter(item => !item.rule_id || !item.client_id))
+const pausedRules = computed(() => ruleItems.value.filter(item => item.rule_id && !item.enabled))
+const endpointItems = computed(() => endpointsData.value?.items ?? [])
+const selectedEndpoint = computed(() =>
+  endpointItems.value.find(item => item.client_id === selectedEndpointClientId.value) ?? endpointItems.value[0] ?? null
+)
+const baseUrl = computed(() => {
+  if (import.meta.client) return window.location.origin
+  return 'https://agency-dashboard-6cm.pages.dev'
+})
+const googleWebhookUrl = computed(() =>
+  selectedEndpoint.value ? `${baseUrl.value}/api/leads/webhook/google/${selectedEndpoint.value.url_token}` : ''
+)
+const genericWebhookUrl = computed(() =>
+  selectedEndpoint.value ? `${baseUrl.value}/api/leads/webhook/generic/${selectedEndpoint.value.url_token}` : ''
+)
+
+function ruleState(item: RuleListItem): { label: string, color: 'success' | 'warning' | 'error' | 'neutral' } {
+  if (!item.rule_id || !item.client_id) return { label: 'Map client', color: 'error' }
+  if (!item.enabled) return { label: 'Paused', color: 'neutral' }
+  if (Number(item.destination_count ?? 0) === 0) return { label: 'Add destination', color: 'warning' }
+  return { label: 'Ready', color: 'success' }
+}
+
+function errorMessage(e: unknown): string {
+  return e && typeof e === 'object' && 'data' in e
+    ? (e as { data?: { statusMessage?: string } }).data?.statusMessage ?? ''
+    : ''
+}
+
+async function openConnectionGuide() {
+  showConnectionGuide.value = true
+  await refreshEndpoints()
+  selectedEndpointClientId.value = endpointItems.value[0]?.client_id ?? null
+}
+
+async function copyText(value: string, label: string) {
+  if (!value) return
+  await navigator.clipboard.writeText(value)
+  toast.add({ title: `${label} copied`, color: 'success' })
+}
 
 // Client picker modal state
 const showClientPicker = ref(false)
@@ -38,24 +109,70 @@ const pickerPendingItem = ref<RuleListItem | null>(null)
 const showNewRule = ref(false)
 const newRule = ref({
   client_id: null as string | null,
-  source: 'google' as 'google' | 'meta' | 'manual',
+  source: 'google' as 'google' | 'meta' | 'webhook' | 'csv',
   form_id: '',
-  form_name: '',
+  form_name: ''
 })
 const newRuleSaving = ref(false)
 const useCustomFormId = ref(false)
 const SOURCE_OPTIONS = [
-  { value: 'google', label: 'Google Ads' },
-  { value: 'meta', label: 'Meta (Facebook / Instagram)' },
-  { value: 'webhook', label: 'Webhook (Zapier / Make / n8n / custom)' },
-  { value: 'csv', label: 'CSV import' },
-  { value: 'manual', label: 'Manual / Other' },
+  { value: 'google', label: 'Google Ads', description: 'Native Google lead forms' },
+  { value: 'meta', label: 'Meta', description: 'Facebook or Instagram lead forms' },
+  { value: 'webhook', label: 'Webhook', description: 'Replace a Zapier catch hook, Make, n8n, or custom form' },
+  { value: 'csv', label: 'CSV import', description: 'Route imported lead exports through the same destinations' }
 ]
 const SOURCES_WITH_DISCOVERY = new Set(['google', 'meta'])
 
+const sourceHelp = computed(() => {
+  switch (newRule.value.source) {
+    case 'google':
+      return {
+        title: 'Google lead form',
+        body: 'Pick a discovered Google Ads lead form, or paste the form ID from the Google lead-form URL if it is not listed yet.',
+        icon: 'i-simple-icons-google'
+      }
+    case 'meta':
+      return {
+        title: 'Meta lead form',
+        body: 'Use this for Facebook or Instagram lead forms. If Meta App Review blocks discovery, paste the form ID from Ads Manager.',
+        icon: 'i-simple-icons-meta'
+      }
+    case 'webhook':
+      return {
+        title: 'Webhook bridge',
+        body: 'Use this when the old Zap starts with a catch hook or another form tool. Send the incoming payload to the client webhook endpoint using this form ID.',
+        icon: 'i-lucide-webhook'
+      }
+    case 'csv':
+      return {
+        title: 'CSV import',
+        body: 'Use this when the team imports Lead Center or partner exports. The same form ID must be entered in the CSV import modal when running rules.',
+        icon: 'i-lucide-file-spreadsheet'
+      }
+    default:
+      return {
+        title: 'Lead source',
+        body: 'Choose where this form receives leads from, then add destinations after the rule is created.',
+        icon: 'i-lucide-route'
+      }
+  }
+})
+
+const formIdLabel = computed(() => newRule.value.source === 'csv' ? 'Import form key' : 'Form ID')
+const formIdHint = computed(() => {
+  if (newRule.value.source === 'webhook') return 'Use a stable key from the old Zap or form tool, such as dealer-test-drive or website-finance.'
+  if (newRule.value.source === 'csv') return 'Use a stable import key, then reuse it in the CSV import modal when Run routing rules is enabled.'
+  return 'Find in the platform lead-form URL, such as ?formId=12345 for Google or /forms/67890 for Meta.'
+})
+const formIdPlaceholder = computed(() => {
+  if (newRule.value.source === 'webhook') return 'e.g. website-test-drive'
+  if (newRule.value.source === 'csv') return 'e.g. meta-lead-center-export'
+  return 'e.g. 12345 or AW-67890'
+})
+
 // OAuth-based form discovery — fired when source is google/meta and the user
 // hasn't toggled "custom form ID". Empty for manual source.
-interface DiscoveredForm { form_id: string; form_name: string; account_id: string; account_name: string }
+interface DiscoveredForm { form_id: string, form_name: string, account_id: string, account_name: string }
 const discoverPending = ref(false)
 const discoveredForms = ref<DiscoveredForm[]>([])
 const discoverError = ref<string | null>(null)
@@ -78,8 +195,8 @@ async function discoverForms(source: 'google' | 'meta') {
     } else if (r.forms.length === 0) {
       discoverError.value = `Connected ${r.connection_count} ${source} accounts but no active lead forms were found. Either none exist yet or all are archived.`
     }
-  } catch (e: any) {
-    discoverError.value = e?.data?.statusMessage ?? 'Failed to discover forms'
+  } catch (e: unknown) {
+    discoverError.value = errorMessage(e) || 'Failed to discover forms'
   } finally {
     discoverPending.value = false
   }
@@ -107,16 +224,16 @@ watch(showNewRule, (open) => {
 })
 
 const formOptions = computed(() =>
-  discoveredForms.value.map((f) => ({
+  discoveredForms.value.map(f => ({
     value: f.form_id,
     label: f.form_name,
-    description: f.account_name,
-  })),
+    description: f.account_name
+  }))
 )
 
 // When the user picks a discovered form, auto-fill form_name.
 function onDiscoveredPick(form_id: string) {
-  const match = discoveredForms.value.find((f) => f.form_id === form_id)
+  const match = discoveredForms.value.find(f => f.form_id === form_id)
   if (match) {
     newRule.value.form_id = match.form_id
     newRule.value.form_name = match.form_name
@@ -130,10 +247,12 @@ function resetNewRule() {
 }
 async function createNewRule() {
   if (!newRule.value.client_id) {
-    toast.add({ title: 'Pick a client', color: 'error' }); return
+    toast.add({ title: 'Pick a client', color: 'error' })
+    return
   }
   if (!newRule.value.form_id.trim()) {
-    toast.add({ title: 'Form ID is required', description: 'Find it in the Google Ads or Meta lead-form URL.', color: 'error' }); return
+    toast.add({ title: 'Form ID is required', description: 'Find it in the Google Ads or Meta lead-form URL.', color: 'error' })
+    return
   }
   newRuleSaving.value = true
   try {
@@ -143,32 +262,35 @@ async function createNewRule() {
         client_id: newRule.value.client_id,
         source: newRule.value.source,
         form_id: newRule.value.form_id.trim(),
-        form_name: newRule.value.form_name.trim() || null,
-      },
+        form_name: newRule.value.form_name.trim() || null
+      }
     })
     toast.add({ title: 'Form rule created', description: 'Now add destinations to start routing leads.', color: 'success' })
     editingRuleId.value = r.id
     editingFormMeta.value = {
       source: newRule.value.source,
       form_id: newRule.value.form_id.trim(),
-      form_name: newRule.value.form_name.trim() || null,
+      form_name: newRule.value.form_name.trim() || null
     }
     showNewRule.value = false
     resetNewRule()
     showEditor.value = true
     await refresh()
-  } catch (e: any) {
-    toast.add({ title: 'Failed to create rule', description: e?.data?.statusMessage ?? '', color: 'error' })
-  } finally { newRuleSaving.value = false }
+  } catch (e: unknown) {
+    toast.add({ title: 'Failed to create rule', description: errorMessage(e), color: 'error' })
+  } finally {
+    newRuleSaving.value = false
+  }
 }
 
 const columns = [
   { accessorKey: 'form_name', header: 'Form' },
   { accessorKey: 'source', header: 'Source' },
+  { accessorKey: 'state', header: 'State' },
   { accessorKey: 'destination_count', header: 'Destinations' },
   { accessorKey: 'enabled', header: 'Enabled' },
   { accessorKey: 'last_lead_at', header: 'Last lead' },
-  { accessorKey: 'actions', header: '' },
+  { accessorKey: 'actions', header: '' }
 ]
 
 async function configure(item: RuleListItem) {
@@ -207,21 +329,24 @@ async function createRuleAndOpen(item: RuleListItem, clientId: string) {
   try {
     const r = await $fetch<{ id: string }>('/api/leads/rules', {
       method: 'POST',
-      body: { client_id: clientId, source: item.source, form_id: item.form_id, form_name: item.form_name },
+      body: { client_id: clientId, source: item.source, form_id: item.form_id, form_name: item.form_name }
     })
     // editingFormMeta is set in both paths before showEditor = true
     editingRuleId.value = r.id
     editingFormMeta.value = { source: item.source, form_id: item.form_id, form_name: item.form_name }
     showEditor.value = true
     await refresh()
-  } catch (e: any) {
-    toast.add({ title: 'Failed to create rule', description: e?.data?.statusMessage ?? '', color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Failed to create rule', description: errorMessage(e), color: 'error' })
   }
 }
 
 // Reset picker state when the modal closes so stale refs don't linger.
 watch(showClientPicker, (v) => {
-  if (!v) { pickerPendingItem.value = null; pickerClientId.value = null }
+  if (!v) {
+    pickerPendingItem.value = null
+    pickerClientId.value = null
+  }
 })
 
 async function toggleEnabled(item: RuleListItem) {
@@ -235,12 +360,87 @@ async function toggleEnabled(item: RuleListItem) {
   <div class="flex flex-col h-full">
     <div class="px-4 py-3 border-b border-default flex items-center justify-between">
       <div>
-        <h2 class="text-base font-semibold">Form rules</h2>
-        <p class="text-xs text-muted">Routing rules per lead form. New forms appear here automatically on first lead.</p>
+        <h2 class="text-base font-semibold">
+          Form rules
+        </h2>
+        <p class="text-xs text-muted">
+          Replace Zapier by routing Google, Meta, webhook, and CSV leads to the right destinations.
+        </p>
       </div>
       <div class="flex items-center gap-2">
-        <UButton color="primary" size="sm" icon="i-lucide-plus" @click="showNewRule = true">New form rule</UButton>
-        <UButton variant="ghost" size="sm" icon="i-lucide-refresh-cw" @click="refresh()">Refresh</UButton>
+        <UButton
+          variant="ghost"
+          size="sm"
+          icon="i-lucide-plug-zap"
+          @click="openConnectionGuide"
+        >
+          Connection details
+        </UButton>
+        <UButton
+          color="primary"
+          size="sm"
+          icon="i-lucide-plus"
+          @click="showNewRule = true"
+        >
+          New form rule
+        </UButton>
+        <UButton
+          variant="ghost"
+          size="sm"
+          icon="i-lucide-refresh-cw"
+          @click="refresh()"
+        >
+          Refresh
+        </UButton>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-4 gap-2 p-3 border-b border-default bg-elevated/30">
+      <div class="rounded border border-default bg-default p-3">
+        <p class="text-xs text-muted">
+          Ready to replace Zapier
+        </p>
+        <p class="mt-1 text-xl font-semibold">
+          {{ readyRules.length }}
+        </p>
+      </div>
+      <div class="rounded border border-default bg-default p-3">
+        <p class="text-xs text-muted">
+          Need destinations
+        </p>
+        <p class="mt-1 text-xl font-semibold">
+          {{ needsDestinations.length }}
+        </p>
+      </div>
+      <div class="rounded border border-default bg-default p-3">
+        <p class="text-xs text-muted">
+          Need client mapping
+        </p>
+        <p class="mt-1 text-xl font-semibold">
+          {{ unmappedForms.length }}
+        </p>
+      </div>
+      <div class="rounded border border-default bg-default p-3">
+        <p class="text-xs text-muted">
+          Paused rules
+        </p>
+        <p class="mt-1 text-xl font-semibold">
+          {{ pausedRules.length }}
+        </p>
+      </div>
+    </div>
+
+    <div v-if="ruleItems.length && readyRules.length === 0" class="mx-3 mt-3 rounded border border-warning/30 bg-warning/10 p-3 text-sm">
+      <div class="flex items-start gap-2">
+        <UIcon name="i-lucide-triangle-alert" class="mt-0.5 size-4 text-warning" />
+        <div>
+          <p class="font-medium">
+            No form is fully wired yet.
+          </p>
+          <p class="text-muted">
+            Map a form to a client, add at least one destination, then use Test fire before switching the team off Zapier.
+          </p>
+        </div>
       </div>
     </div>
 
@@ -250,7 +450,14 @@ async function toggleEnabled(item: RuleListItem) {
           <span class="text-sm">{{ row.original.form_name || row.original.form_id }}</span>
         </template>
         <template #source-cell="{ row }">
-          <UBadge variant="soft" size="sm">{{ row.original.source }}</UBadge>
+          <UBadge variant="soft" size="sm">
+            {{ row.original.source }}
+          </UBadge>
+        </template>
+        <template #state-cell="{ row }">
+          <UBadge :color="ruleState(row.original).color" variant="soft" size="sm">
+            {{ ruleState(row.original).label }}
+          </UBadge>
         </template>
         <template #destination_count-cell="{ row }">
           <span class="text-sm">{{ row.original.destination_count ?? 0 }}</span>
@@ -269,10 +476,14 @@ async function toggleEnabled(item: RuleListItem) {
         </template>
         <template #actions-cell="{ row }">
           <UButton
-            size="xs" variant="ghost" icon="i-lucide-settings"
+            size="xs"
+            variant="ghost"
+            icon="i-lucide-settings"
             :disabled="showClientPicker"
             @click="configure(row.original)"
-          >Configure</UButton>
+          >
+            Configure
+          </UButton>
         </template>
       </UTable>
     </div>
@@ -287,15 +498,44 @@ async function toggleEnabled(item: RuleListItem) {
     />
 
     <!-- Proactive new form rule modal -->
-    <UModal v-model:open="showNewRule" :ui="{ content: 'max-w-lg' }">
+    <UModal v-model:open="showNewRule" :ui="{ content: 'max-w-xl' }">
       <template #content>
         <div class="p-6 space-y-4">
           <div>
-            <h3 class="text-lg font-semibold">New form rule</h3>
+            <h3 class="text-lg font-semibold">
+              New form rule
+            </h3>
             <p class="text-sm text-muted mt-0.5">
               Set up routing before the first lead arrives. Useful when you know the form ID from the
               ad-platform URL ahead of launch.
             </p>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2">
+            <div class="rounded border border-default p-3">
+              <p class="text-xs font-medium">
+                1. Pick source
+              </p>
+              <p class="mt-1 text-xs text-muted">
+                Google, Meta, webhook, or CSV.
+              </p>
+            </div>
+            <div class="rounded border border-default p-3">
+              <p class="text-xs font-medium">
+                2. Map client
+              </p>
+              <p class="mt-1 text-xs text-muted">
+                Stamp every lead to the right account.
+              </p>
+            </div>
+            <div class="rounded border border-default p-3">
+              <p class="text-xs font-medium">
+                3. Add destinations
+              </p>
+              <p class="mt-1 text-xs text-muted">
+                Slack, email, Sheets, portal, or webhook.
+              </p>
+            </div>
           </div>
 
           <UFormField label="Client" required>
@@ -316,6 +556,20 @@ async function toggleEnabled(item: RuleListItem) {
               class="w-full"
             />
           </UFormField>
+
+          <div class="rounded border border-default bg-elevated/30 p-3 text-sm">
+            <div class="flex items-start gap-2">
+              <UIcon :name="sourceHelp.icon" class="mt-0.5 size-4 text-primary" />
+              <div>
+                <p class="font-medium">
+                  {{ sourceHelp.title }}
+                </p>
+                <p class="text-muted">
+                  {{ sourceHelp.body }}
+                </p>
+              </div>
+            </div>
+          </div>
 
           <UFormField
             v-if="!useCustomFormId && SOURCES_WITH_DISCOVERY.has(newRule.source)"
@@ -341,13 +595,13 @@ async function toggleEnabled(item: RuleListItem) {
 
           <UFormField
             v-else
-            label="Form ID"
+            :label="formIdLabel"
             required
-            hint="Find in the platform's lead-form URL — e.g. ...?formId=12345 (Google) or /forms/67890 (Meta)"
+            :hint="formIdHint"
           >
             <UInput
               v-model="newRule.form_id"
-              placeholder="e.g. 12345 or AW-67890"
+              :placeholder="formIdPlaceholder"
               class="w-full"
             />
           </UFormField>
@@ -375,8 +629,160 @@ async function toggleEnabled(item: RuleListItem) {
             <UButton variant="ghost" color="neutral" @click="showNewRule = false; resetNewRule()">
               Cancel
             </UButton>
-            <UButton :loading="newRuleSaving" color="primary" icon="i-lucide-arrow-right" @click="createNewRule">
+            <UButton
+              :loading="newRuleSaving"
+              color="primary"
+              icon="i-lucide-arrow-right"
+              @click="createNewRule"
+            >
               Create &amp; configure
+            </UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="showConnectionGuide" :ui="{ content: 'max-w-2xl' }">
+      <template #content>
+        <div class="p-6 space-y-4">
+          <div>
+            <h3 class="text-lg font-semibold">
+              Connection details
+            </h3>
+            <p class="text-sm text-muted mt-0.5">
+              Copy these into Google Ads, Zapier, Make, n8n, or a custom form before disabling the old Zap.
+            </p>
+          </div>
+
+          <UAlert
+            v-if="endpointsError"
+            color="error"
+            variant="subtle"
+            icon="i-lucide-lock"
+            title="Admin access required"
+            description="Webhook URLs and keys are only visible to owners and admins."
+          />
+
+          <div v-else-if="endpointsPending" class="rounded border border-default p-4 text-sm text-muted">
+            Loading connection details…
+          </div>
+
+          <template v-else>
+            <UFormField label="Client">
+              <USelectMenu
+                v-model="selectedEndpointClientId"
+                :items="endpointItems.map(item => ({ value: item.client_id, label: item.client_name }))"
+                value-key="value"
+                class="w-full"
+              />
+            </UFormField>
+
+            <div v-if="selectedEndpoint" class="space-y-4">
+              <section class="rounded border border-default p-4 space-y-3">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-medium">
+                      Google Ads lead form webhook
+                    </p>
+                    <p class="text-xs text-muted">
+                      Paste this URL and key into the Google Ads lead form asset webhook integration.
+                    </p>
+                  </div>
+                  <UBadge variant="soft" size="sm">
+                    {{ selectedEndpoint.google_lead_count ?? 0 }} Google leads
+                  </UBadge>
+                </div>
+                <div class="space-y-2">
+                  <UInput :model-value="googleWebhookUrl" readonly>
+                    <template #trailing>
+                      <UButton
+                        icon="i-lucide-copy"
+                        variant="ghost"
+                        size="xs"
+                        aria-label="Copy Google webhook URL"
+                        @click="copyText(googleWebhookUrl, 'Google webhook URL')"
+                      />
+                    </template>
+                  </UInput>
+                  <UInput :model-value="selectedEndpoint.secret_key" readonly type="password">
+                    <template #trailing>
+                      <UButton
+                        icon="i-lucide-copy"
+                        variant="ghost"
+                        size="xs"
+                        aria-label="Copy webhook key"
+                        @click="copyText(selectedEndpoint.secret_key, 'Webhook key')"
+                      />
+                    </template>
+                  </UInput>
+                </div>
+              </section>
+
+              <section class="rounded border border-default p-4 space-y-3">
+                <div>
+                  <p class="text-sm font-medium">
+                    Generic webhook for Zapier, Make, n8n, and custom forms
+                  </p>
+                  <p class="text-xs text-muted">
+                    POST JSON here with the key, source, form_id, and fields. Use the same form_id in the rule.
+                    This client has {{ selectedEndpoint.routable_lead_count ?? 0 }} routed lead{{ Number(selectedEndpoint.routable_lead_count ?? 0) === 1 ? '' : 's' }} across Google, Meta, webhook, and CSV sources.
+                  </p>
+                </div>
+                <UInput :model-value="genericWebhookUrl" readonly>
+                  <template #trailing>
+                    <UButton
+                      icon="i-lucide-copy"
+                      variant="ghost"
+                      size="xs"
+                      aria-label="Copy generic webhook URL"
+                      @click="copyText(genericWebhookUrl, 'Generic webhook URL')"
+                    />
+                  </template>
+                </UInput>
+                <pre class="bg-elevated rounded p-3 text-xs font-mono overflow-x-auto">{
+  "key": "{{ selectedEndpoint.secret_key }}",
+  "source": "webhook",
+  "form_id": "website-test-drive",
+  "fields": {
+    "full_name": "Sarah Mitchell",
+    "email": "sarah@example.com",
+    "phone_number": "+61404123456"
+  }
+}</pre>
+              </section>
+
+              <section class="grid grid-cols-3 gap-2 text-xs">
+                <div class="rounded border border-default p-3">
+                  <p class="font-medium">
+                    1. Connect
+                  </p>
+                  <p class="mt-1 text-muted">
+                    Paste the URL and key into the ad platform or automation tool.
+                  </p>
+                </div>
+                <div class="rounded border border-default p-3">
+                  <p class="font-medium">
+                    2. Test
+                  </p>
+                  <p class="mt-1 text-muted">
+                    Send a platform test lead and confirm it appears in the inbox.
+                  </p>
+                </div>
+                <div class="rounded border border-default p-3">
+                  <p class="font-medium">
+                    3. Route
+                  </p>
+                  <p class="mt-1 text-muted">
+                    Add destinations and run Test fire before disabling the old Zap.
+                  </p>
+                </div>
+              </section>
+            </div>
+          </template>
+
+          <div class="flex justify-end pt-2 border-t border-default">
+            <UButton variant="ghost" @click="showConnectionGuide = false">
+              Close
             </UButton>
           </div>
         </div>
@@ -387,7 +793,9 @@ async function toggleEnabled(item: RuleListItem) {
     <UModal v-model:open="showClientPicker">
       <template #content>
         <div class="p-6 space-y-4 w-full max-w-md">
-          <h3 class="text-base font-semibold">Pick a client for this form</h3>
+          <h3 class="text-base font-semibold">
+            Pick a client for this form
+          </h3>
           <p class="text-sm text-muted">
             This form isn't mapped yet. Select the client whose ads this form belongs to —
             leads will be stamped with that client and routed to its rules.
@@ -399,8 +807,12 @@ async function toggleEnabled(item: RuleListItem) {
             placeholder="Pick a client"
           />
           <div class="flex justify-end gap-2 pt-2 border-t border-default">
-            <UButton variant="ghost" @click="showClientPicker = false">Cancel</UButton>
-            <UButton color="primary" @click="confirmPicker">Continue</UButton>
+            <UButton variant="ghost" @click="showClientPicker = false">
+              Cancel
+            </UButton>
+            <UButton color="primary" @click="confirmPicker">
+              Continue
+            </UButton>
           </div>
         </div>
       </template>

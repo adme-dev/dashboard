@@ -6,6 +6,14 @@ const { fmtCurrency, fmtCompact, fmtPercent, getPlatformLabel, getPlatformIcon }
 const route = useRoute()
 const platform = computed(() => route.params.platform as string)
 
+interface AnalyticsOverview {
+  totals: Record<string, number | null>
+}
+
+interface TrendResponse {
+  dataPoints: Array<Record<string, unknown>>
+}
+
 const now = new Date()
 const thirtyDaysAgo = new Date(now)
 thirtyDaysAgo.setDate(now.getDate() - 30)
@@ -20,36 +28,44 @@ const endDate = ref(formatDateISO(now))
 const apiQuery = computed(() => ({
   startDate: startDate.value,
   endDate: endDate.value,
-  platform: platform.value,
+  platform: platform.value
 }))
+
+const exportUrl = computed(() => {
+  const params = new URLSearchParams(apiQuery.value)
+  return `/api/portal/analytics/export?${params.toString()}`
+})
 
 // Overview
-const { data: overviewData, status: overviewStatus } = useFetch('/api/portal/analytics/overview', {
+const { data: overviewData, status: overviewStatus } = useFetch<AnalyticsOverview>('/api/portal/analytics/overview', {
   query: apiQuery,
-  watch: [apiQuery],
+  watch: [apiQuery]
 })
-const overview = computed(() => overviewData.value as any)
+const overview = computed(() => overviewData.value)
 const totals = computed(() => overview.value?.totals || null)
 
-// Campaigns
-const campaignQuery = computed(() => ({
-  ...apiQuery.value,
-  limit: '50',
-  sortBy: 'spend',
-  sortDir: 'desc',
-}))
-const { data: campaignData, status: campaignStatus } = useFetch('/api/portal/analytics/campaigns', {
-  query: campaignQuery,
-  watch: [campaignQuery],
-})
-const campaigns = computed(() => (campaignData.value as any)?.campaigns || [])
-
 // Trend
-const { data: trendData, status: trendStatus } = useFetch('/api/portal/analytics/trends', {
-  query: computed(() => ({ ...apiQuery.value, metric: 'spend', groupBy: 'day' })),
-  watch: [apiQuery],
+const trendMetric = ref('spend')
+const trendQuery = computed(() => ({
+  ...apiQuery.value,
+  metric: trendMetric.value,
+  groupBy: 'day'
+}))
+const { data: trendData, status: trendStatus } = useFetch<TrendResponse>('/api/portal/analytics/trends', {
+  query: trendQuery,
+  watch: [trendQuery]
 })
-const trendPoints = computed(() => (trendData.value as any)?.dataPoints || [])
+const trendPoints = computed(() => trendData.value?.dataPoints || [])
+
+const metricOptions = [
+  { label: 'Spend', value: 'spend' },
+  { label: 'Impressions', value: 'impressions' },
+  { label: 'Clicks', value: 'clicks' },
+  { label: 'Leads', value: 'leads' },
+  { label: 'CPC', value: 'cpc' },
+  { label: 'CTR', value: 'ctr' },
+  { label: 'Cost / Lead', value: 'costPerLead' }
+]
 
 const loading = computed(() => overviewStatus.value === 'pending')
 </script>
@@ -58,84 +74,108 @@ const loading = computed(() => overviewStatus.value === 'pending')
   <div class="p-6 space-y-6 max-w-[1200px] mx-auto">
     <!-- Header -->
     <div class="flex items-center gap-3">
-      <UButton to="/portal/analytics" variant="ghost" color="neutral" icon="i-lucide-arrow-left" size="sm" />
+      <UButton
+        to="/portal/analytics"
+        variant="ghost"
+        color="neutral"
+        icon="i-lucide-arrow-left"
+        size="sm"
+      />
       <UIcon :name="getPlatformIcon(platform)" class="w-5 h-5 text-muted" />
       <div>
-        <h1 class="text-2xl font-bold text-default">{{ getPlatformLabel(platform) }}</h1>
-        <p class="text-sm text-muted">Platform-specific performance</p>
+        <h1 class="text-2xl font-bold text-default">
+          {{ getPlatformLabel(platform) }}
+        </h1>
+        <p class="text-sm text-muted">
+          Platform-specific performance
+        </p>
       </div>
     </div>
 
     <!-- Date Range -->
-    <div class="flex items-center gap-3">
-      <UInput v-model="startDate" type="date" size="sm" class="w-36" />
+    <div class="flex flex-wrap items-center gap-3">
+      <UInput
+        v-model="startDate"
+        type="date"
+        size="sm"
+        class="w-36"
+      />
       <span class="text-muted text-sm">to</span>
-      <UInput v-model="endDate" type="date" size="sm" class="w-36" />
+      <UInput
+        v-model="endDate"
+        type="date"
+        size="sm"
+        class="w-36"
+      />
+      <UButton
+        :to="exportUrl"
+        target="_blank"
+        icon="i-lucide-download"
+        label="Export CSV"
+        size="sm"
+        variant="outline"
+        color="neutral"
+        class="ml-auto"
+      />
     </div>
 
     <!-- KPI Summary -->
-    <div v-if="loading" class="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <USkeleton v-for="i in 4" :key="i" class="h-20 rounded-lg" />
+    <div v-if="loading" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <USkeleton v-for="i in 6" :key="i" class="h-20 rounded-lg" />
     </div>
-    <div v-else-if="totals" class="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <div v-for="kpi in [
-        { label: 'Spend', value: fmtCurrency(totals.spend), icon: 'i-lucide-wallet' },
-        { label: 'Clicks', value: fmtCompact(totals.clicks), icon: 'i-lucide-mouse-pointer-click' },
-        { label: 'CTR', value: fmtPercent(totals.ctr), icon: 'i-lucide-percent' },
-        { label: 'CPC', value: fmtCurrency(totals.cpc, 2), icon: 'i-lucide-hand-coins' },
-      ]" :key="kpi.label" class="p-4 rounded-lg border border-default bg-elevated/30">
+    <div v-else-if="totals" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div
+        v-for="kpi in [
+          { label: 'Spend', value: fmtCurrency(totals.spend), icon: 'i-lucide-wallet' },
+          { label: 'Clicks', value: fmtCompact(totals.clicks), icon: 'i-lucide-mouse-pointer-click' },
+          { label: 'Leads', value: fmtCompact(totals.leads || 0), icon: 'i-lucide-inbox' },
+          { label: 'CTR', value: fmtPercent(totals.ctr), icon: 'i-lucide-percent' },
+          { label: 'CPC', value: fmtCurrency(totals.cpc, 2), icon: 'i-lucide-hand-coins' },
+          { label: 'Cost / Lead', value: totals.costPerLead != null ? fmtCurrency(totals.costPerLead, 2) : '-', icon: 'i-lucide-user-round-check' }
+        ]"
+        :key="kpi.label"
+        class="p-4 rounded-lg border border-default bg-elevated/30"
+      >
         <div class="flex items-center gap-2 mb-1">
           <UIcon :name="kpi.icon" class="w-4 h-4 text-muted" />
           <span class="text-xs text-muted">{{ kpi.label }}</span>
         </div>
-        <p class="text-xl font-bold tabular-nums">{{ kpi.value }}</p>
+        <p class="text-xl font-bold tabular-nums">
+          {{ kpi.value }}
+        </p>
       </div>
     </div>
 
     <!-- Trend -->
     <div class="border border-default rounded-lg p-4">
-      <h3 class="text-sm font-semibold mb-3">Spend Trend</h3>
-      <AnalyticsTrendChart :data="trendPoints" metric="spend" :loading="trendStatus === 'pending'" />
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-semibold">
+          Trend
+        </h3>
+        <USelectMenu
+          v-model="trendMetric"
+          :items="metricOptions"
+          value-key="value"
+          size="xs"
+          class="w-32"
+        />
+      </div>
+      <AnalyticsTrendChart
+        :data="trendPoints"
+        :metric="trendMetric"
+        :loading="trendStatus === 'pending'"
+      />
     </div>
 
     <!-- Campaign Table -->
-    <div>
-      <h3 class="text-sm font-semibold mb-3">Campaigns</h3>
-      <div class="border border-default rounded-lg overflow-hidden">
-        <div v-if="campaignStatus === 'pending'" class="p-4 space-y-3">
-          <USkeleton v-for="i in 5" :key="i" class="h-10 w-full rounded" />
-        </div>
-        <table v-else class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-default bg-elevated/30">
-              <th class="px-3 py-2.5 text-left text-xs font-medium text-muted">Campaign</th>
-              <th class="px-3 py-2.5 text-right text-xs font-medium text-muted">Spend</th>
-              <th class="px-3 py-2.5 text-right text-xs font-medium text-muted">Impr.</th>
-              <th class="px-3 py-2.5 text-right text-xs font-medium text-muted">Clicks</th>
-              <th class="px-3 py-2.5 text-right text-xs font-medium text-muted">CTR</th>
-              <th class="px-3 py-2.5 text-right text-xs font-medium text-muted">CPC</th>
-              <th class="px-3 py-2.5 text-right text-xs font-medium text-muted">Conv.</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="c in campaigns" :key="c.campaignId" class="border-b border-default/50 hover:bg-elevated/30">
-              <td class="px-3 py-2.5">
-                <span class="truncate max-w-[250px] block" :title="c.campaignName">{{ c.campaignName }}</span>
-                <span v-if="c.campaignStatus" class="text-xs text-muted">{{ c.campaignStatus }}</span>
-              </td>
-              <td class="px-3 py-2.5 text-right tabular-nums font-medium">{{ fmtCurrency(c.spend) }}</td>
-              <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtCompact(c.impressions) }}</td>
-              <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtCompact(c.clicks) }}</td>
-              <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtPercent(c.ctr) }}</td>
-              <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtCurrency(c.cpc, 2) }}</td>
-              <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtCompact(c.conversions) }}</td>
-            </tr>
-            <tr v-if="!campaigns.length">
-              <td colspan="7" class="px-3 py-8 text-center text-muted">No campaign data</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <AnalyticsCampaignTable
+      :start-date="startDate"
+      :end-date="endDate"
+      :platforms="[platform]"
+      api-base="/api/portal/analytics"
+      :hide-columns="['budget', 'variance']"
+      show-lead-columns
+      lead-link-base="/portal/leads"
+    />
   </div>
 </template>

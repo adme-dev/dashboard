@@ -5,48 +5,48 @@ const sections = [
   {
     label: 'Quick start (5-min overview)',
     icon: 'i-lucide-rocket',
-    slot: 'quickstart',
+    slot: 'quickstart'
   },
   {
     label: 'Set up a Google Ads lead form',
     icon: 'i-lucide-chrome',
-    slot: 'google',
+    slot: 'google'
   },
   {
     label: 'Set up a Meta (Facebook / Instagram) lead form',
     icon: 'i-lucide-facebook',
-    slot: 'meta',
+    slot: 'meta'
   },
   {
     label: 'Other sources — Zapier, Make, n8n, custom webhooks',
     icon: 'i-lucide-webhook',
-    slot: 'generic',
+    slot: 'generic'
   },
   {
     label: 'Configure routing rules + destinations',
     icon: 'i-lucide-list-checks',
-    slot: 'rules',
+    slot: 'rules'
   },
   {
     label: 'Filters, delays, and templates',
     icon: 'i-lucide-filter',
-    slot: 'advanced',
+    slot: 'advanced'
   },
   {
     label: 'Manual leads + the client portal',
     icon: 'i-lucide-user-plus',
-    slot: 'manual',
+    slot: 'manual'
   },
   {
     label: 'How retries, retention, and crons work',
     icon: 'i-lucide-cog',
-    slot: 'ops',
+    slot: 'ops'
   },
   {
     label: 'Troubleshooting',
     icon: 'i-lucide-life-buoy',
-    slot: 'troubleshoot',
-  },
+    slot: 'troubleshoot'
+  }
 ]
 </script>
 
@@ -56,7 +56,9 @@ const sections = [
       <div class="p-6 max-h-[80vh] overflow-y-auto">
         <div class="flex items-start justify-between mb-4">
           <div>
-            <h2 class="text-xl font-semibold">Leads engine setup guide</h2>
+            <h2 class="text-xl font-semibold">
+              Leads engine setup guide
+            </h2>
             <p class="text-sm text-muted mt-1">
               How to capture, route, and follow up on Meta + Google ad inquiries.
             </p>
@@ -67,13 +69,14 @@ const sections = [
         <UAccordion :items="sections" multiple>
           <template #quickstart>
             <div class="space-y-3 text-sm leading-relaxed">
-              <p class="text-muted">From zero to your first lead in under 10 minutes.</p>
+              <p class="text-muted">
+                From zero to your first lead in under 10 minutes.
+              </p>
               <ol class="list-decimal list-inside space-y-2">
                 <li>
-                  <strong>Generate a webhook URL.</strong> Go to
-                  <span class="font-mono text-xs">Settings → Social → Google → Lead webhooks</span>
-                  and click <em>Show URL &amp; key</em> for the client. Each client gets a unique URL
-                  + secret key.
+                  <strong>Copy the webhook URL and key.</strong> Open
+                  <span class="font-mono text-xs">Form rules → Connection details</span>
+                  and pick the client. Each client gets a unique URL + secret key.
                 </li>
                 <li>
                   <strong>Paste into Google Ads.</strong> In the Lead form asset's
@@ -110,10 +113,10 @@ const sections = [
               <ol class="list-decimal list-inside space-y-3">
                 <li>
                   In this dashboard, open
-                  <span class="font-mono text-xs">Settings → Social → Google → Lead webhooks</span>.
+                  <span class="font-mono text-xs">Form rules → Connection details</span>.
                 </li>
                 <li>
-                  Find the client and click <em>Show URL &amp; key</em>. Copy both.
+                  Pick the client, then copy the Google Ads webhook URL and key.
                 </li>
                 <li>
                   In Google Ads, open the lead form asset (Tools &amp; Settings → Assets → Lead form).
@@ -155,7 +158,9 @@ const sections = [
               />
 
               <div>
-                <h4 class="text-sm font-semibold mb-1.5">Interim workflow (works today)</h4>
+                <h4 class="text-sm font-semibold mb-1.5">
+                  Interim workflow (works today)
+                </h4>
                 <ol class="list-decimal list-inside space-y-2 text-muted">
                   <li>
                     Marketer creates the Meta lead form in Ads Manager as normal.
@@ -171,8 +176,10 @@ const sections = [
                     <ul class="list-disc list-inside ml-4 mt-1 space-y-0.5">
                       <li>Open <strong>Meta Business Suite → Leads Center</strong></li>
                       <li>Filter by the form, click <strong>Download leads</strong> → CSV format</li>
-                      <li>In our inbox, click <strong>Import CSV</strong> (top-right of the inbox).
-                          Pick the client + form, drop the file, confirm preview, import.</li>
+                      <li>
+                        In our inbox, click <strong>Import CSV</strong> (top-right of the inbox).
+                        Pick the client + form, drop the file, confirm preview, import.
+                      </li>
                     </ul>
                   </li>
                   <li>
@@ -183,7 +190,9 @@ const sections = [
               </div>
 
               <div>
-                <h4 class="text-sm font-semibold mb-1.5">Set up Meta to email leads as a backup</h4>
+                <h4 class="text-sm font-semibold mb-1.5">
+                  Set up Meta to email leads as a backup
+                </h4>
                 <p class="text-muted">
                   In <strong>Lead Center → Settings → Email notifications</strong>, add the agency
                   inbox so a copy of every lead also lands in email. Useful as a sanity check that
@@ -192,7 +201,9 @@ const sections = [
               </div>
 
               <div>
-                <h4 class="text-sm font-semibold mb-1.5">Webhook handshake (live now, ingestion off)</h4>
+                <h4 class="text-sm font-semibold mb-1.5">
+                  Webhook handshake (live now, ingestion off)
+                </h4>
                 <p class="text-muted">
                   The verify endpoint is wired up so Meta App Review can be submitted. Once the
                   permission is granted, no UI changes — auto-ingestion will start working from
@@ -236,18 +247,22 @@ const sections = [
                 Anything that can POST JSON can push leads in — Zapier, Make
                 (Integromat), n8n, partner CRMs, mobile apps, contact forms on
                 your client's own websites, etc. Use the per-client URL + key
-                from <span class="font-mono text-xs">Settings → Social → Google → Lead webhooks</span>
-                (it's the same key the Google integration uses; one credential covers
-                all source types for that client).
+                from <span class="font-mono text-xs">Form rules → Connection details</span>.
+                It is the same key the Google integration uses; one credential covers
+                all source types for that client.
               </p>
 
               <div>
-                <p class="font-medium mb-1.5">Endpoint</p>
+                <p class="font-medium mb-1.5">
+                  Endpoint
+                </p>
                 <pre class="bg-elevated rounded p-3 text-xs font-mono overflow-x-auto"><span class="text-muted">POST</span> https://agency-dashboard-6cm.pages.dev/api/leads/webhook/generic/<span class="text-primary-500">&lt;url_token&gt;</span></pre>
               </div>
 
               <div>
-                <p class="font-medium mb-1.5">Body</p>
+                <p class="font-medium mb-1.5">
+                  Body
+                </p>
                 <pre class="bg-elevated rounded p-3 text-xs font-mono overflow-x-auto leading-relaxed">{
   "key": "<span class="text-primary-500">&lt;secret_key&gt;</span>",
   "lead_id": "abc-123",          // optional — used for dedup
@@ -268,14 +283,18 @@ const sections = [
               </div>
 
               <div>
-                <p class="font-medium mb-1.5">Response</p>
+                <p class="font-medium mb-1.5">
+                  Response
+                </p>
                 <pre class="bg-elevated rounded p-3 text-xs font-mono">{ "ok": true, "lead_id": "..." }
 // or for duplicate lead_ids:
 { "ok": true, "skipped": true }</pre>
               </div>
 
               <div>
-                <p class="font-medium mb-1.5">Quick test with curl</p>
+                <p class="font-medium mb-1.5">
+                  Quick test with curl
+                </p>
                 <pre class="bg-elevated rounded p-3 text-xs font-mono overflow-x-auto leading-relaxed">curl -X POST \
   https://agency-dashboard-6cm.pages.dev/api/leads/webhook/generic/&lt;token&gt; \
   -H 'Content-Type: application/json' \
@@ -286,17 +305,25 @@ const sections = [
               </div>
 
               <div>
-                <p class="font-medium mb-1.5">Recipes by tool</p>
+                <p class="font-medium mb-1.5">
+                  Recipes by tool
+                </p>
                 <table class="w-full text-xs border border-default rounded">
                   <thead class="bg-elevated text-left">
                     <tr>
-                      <th class="px-2 py-1.5 font-medium">Tool</th>
-                      <th class="px-2 py-1.5 font-medium">How</th>
+                      <th class="px-2 py-1.5 font-medium">
+                        Tool
+                      </th>
+                      <th class="px-2 py-1.5 font-medium">
+                        How
+                      </th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-default">
                     <tr>
-                      <td class="px-2 py-1.5 font-medium align-top">Zapier</td>
+                      <td class="px-2 py-1.5 font-medium align-top">
+                        Zapier
+                      </td>
                       <td class="px-2 py-1.5 text-muted">
                         Trigger: Facebook Lead Ads (or any source). Action: <em>Webhooks by Zapier → POST</em>.
                         URL = our generic endpoint. Payload Type = JSON. Map the trigger fields into a
@@ -304,28 +331,36 @@ const sections = [
                       </td>
                     </tr>
                     <tr>
-                      <td class="px-2 py-1.5 font-medium align-top">Make / Integromat</td>
+                      <td class="px-2 py-1.5 font-medium align-top">
+                        Make / Integromat
+                      </td>
                       <td class="px-2 py-1.5 text-muted">
                         Module: <em>HTTP → Make a request</em>. Method POST, URL = endpoint, Body type = JSON.
                         Use <em>Set multiple variables</em> upstream to assemble the <code class="bg-elevated px-1 py-0.5 rounded">fields</code> object.
                       </td>
                     </tr>
                     <tr>
-                      <td class="px-2 py-1.5 font-medium align-top">n8n</td>
+                      <td class="px-2 py-1.5 font-medium align-top">
+                        n8n
+                      </td>
                       <td class="px-2 py-1.5 text-muted">
                         Node: <em>HTTP Request</em>. Method POST, JSON body, paste the schema above and
                         wire field values via expressions.
                       </td>
                     </tr>
                     <tr>
-                      <td class="px-2 py-1.5 font-medium align-top">Custom code</td>
+                      <td class="px-2 py-1.5 font-medium align-top">
+                        Custom code
+                      </td>
                       <td class="px-2 py-1.5 text-muted">
                         Any HTTP client (axios, fetch, Python requests, Postman, curl). Endpoint accepts
                         up to 200 requests/minute per token; deduped by <code class="bg-elevated px-1 py-0.5 rounded">lead_id</code> if set.
                       </td>
                     </tr>
                     <tr>
-                      <td class="px-2 py-1.5 font-medium align-top">Embedded contact form</td>
+                      <td class="px-2 py-1.5 font-medium align-top">
+                        Embedded contact form
+                      </td>
                       <td class="px-2 py-1.5 text-muted">
                         Form action = endpoint, fields named <code class="bg-elevated px-1 py-0.5 rounded">key</code>,
                         <code class="bg-elevated px-1 py-0.5 rounded">fields[full_name]</code>, etc. Or use a
@@ -353,7 +388,9 @@ const sections = [
                 Each destination is a place leads get sent — Slack, email, an outbound webhook,
                 Google Sheets, the client portal, or an auto-assignment to a user.
               </p>
-              <p class="font-medium pt-1">To configure:</p>
+              <p class="font-medium pt-1">
+                To configure:
+              </p>
               <ol class="list-decimal list-inside space-y-2">
                 <li>Open the <em>Form rules</em> tab.</li>
                 <li>
@@ -365,28 +402,52 @@ const sections = [
                   <table class="w-full mt-2 text-xs border border-default rounded">
                     <tbody class="divide-y divide-default">
                       <tr>
-                        <td class="px-2 py-1.5 font-medium">Slack</td>
-                        <td class="px-2 py-1.5 text-muted">Posts a message to a channel via webhook URL</td>
+                        <td class="px-2 py-1.5 font-medium">
+                          Slack
+                        </td>
+                        <td class="px-2 py-1.5 text-muted">
+                          Posts a message to a channel via webhook URL
+                        </td>
                       </tr>
                       <tr>
-                        <td class="px-2 py-1.5 font-medium">Email</td>
-                        <td class="px-2 py-1.5 text-muted">Sends to one or more recipients (comma-separated)</td>
+                        <td class="px-2 py-1.5 font-medium">
+                          Email
+                        </td>
+                        <td class="px-2 py-1.5 text-muted">
+                          Sends to one or more recipients (comma-separated)
+                        </td>
                       </tr>
                       <tr>
-                        <td class="px-2 py-1.5 font-medium">Webhook</td>
-                        <td class="px-2 py-1.5 text-muted">POSTs the lead JSON to a custom URL</td>
+                        <td class="px-2 py-1.5 font-medium">
+                          Webhook
+                        </td>
+                        <td class="px-2 py-1.5 text-muted">
+                          POSTs the lead JSON to a custom URL
+                        </td>
                       </tr>
                       <tr>
-                        <td class="px-2 py-1.5 font-medium">Google Sheets</td>
-                        <td class="px-2 py-1.5 text-muted">Appends a row to a spreadsheet</td>
+                        <td class="px-2 py-1.5 font-medium">
+                          Google Sheets
+                        </td>
+                        <td class="px-2 py-1.5 text-muted">
+                          Appends a row to a spreadsheet
+                        </td>
                       </tr>
                       <tr>
-                        <td class="px-2 py-1.5 font-medium">Portal</td>
-                        <td class="px-2 py-1.5 text-muted">Makes the lead visible on the client's portal inbox</td>
+                        <td class="px-2 py-1.5 font-medium">
+                          Portal
+                        </td>
+                        <td class="px-2 py-1.5 text-muted">
+                          Makes the lead visible on the client's portal inbox
+                        </td>
                       </tr>
                       <tr>
-                        <td class="px-2 py-1.5 font-medium">Assign user</td>
-                        <td class="px-2 py-1.5 text-muted">Auto-assigns to an account manager (round-robin or fixed)</td>
+                        <td class="px-2 py-1.5 font-medium">
+                          Assign user
+                        </td>
+                        <td class="px-2 py-1.5 text-muted">
+                          Auto-assigns to an account manager (round-robin or fixed)
+                        </td>
                       </tr>
                     </tbody>
                   </table>
@@ -406,7 +467,9 @@ const sections = [
           <template #advanced>
             <div class="space-y-4 text-sm leading-relaxed">
               <div>
-                <p class="font-medium mb-1">Filters</p>
+                <p class="font-medium mb-1">
+                  Filters
+                </p>
                 <p class="text-muted mb-2">
                   Filters narrow which leads fire a destination. Each destination can have its own
                   filter set — useful for "only Slack the high-value ones, but always email everyone."
@@ -425,14 +488,18 @@ const sections = [
                 </p>
               </div>
               <div>
-                <p class="font-medium mb-1">Delays</p>
+                <p class="font-medium mb-1">
+                  Delays
+                </p>
                 <p class="text-muted">
                   Each destination can be delayed up to 12 hours. Common pattern: send to Slack
                   immediately, send a follow-up email after 30 minutes if no one's claimed the lead.
                 </p>
               </div>
               <div>
-                <p class="font-medium mb-1">Email + webhook templates</p>
+                <p class="font-medium mb-1">
+                  Email + webhook templates
+                </p>
                 <p class="text-muted">
                   Email subject/body and webhook payloads support
                   <code v-pre class="bg-elevated px-1 py-0.5 rounded">{{ field_data.email }}</code>
@@ -449,7 +516,9 @@ const sections = [
           <template #manual>
             <div class="space-y-3 text-sm leading-relaxed">
               <div>
-                <p class="font-medium mb-1">Adding a lead manually</p>
+                <p class="font-medium mb-1">
+                  Adding a lead manually
+                </p>
                 <p class="text-muted">
                   For phone calls, in-person inquiries, or migrating leads from elsewhere — click
                   <em>+ Manual lead</em> in the inbox header. Pick the client, fill in the standard
@@ -463,7 +532,9 @@ const sections = [
                 </p>
               </div>
               <div>
-                <p class="font-medium mb-1">Client portal access</p>
+                <p class="font-medium mb-1">
+                  Client portal access
+                </p>
                 <p class="text-muted">
                   Clients with a portal login can view their own leads at <code class="bg-elevated px-1 py-0.5 rounded">/portal/leads</code>.
                   They see a read-only inbox, can mark leads as <em>contacted</em>, and can export
@@ -483,26 +554,50 @@ const sections = [
               <table class="w-full text-xs border border-default rounded">
                 <thead class="bg-elevated text-left">
                   <tr>
-                    <th class="px-2 py-1.5 font-medium">Job</th>
-                    <th class="px-2 py-1.5 font-medium">Schedule</th>
-                    <th class="px-2 py-1.5 font-medium">Purpose</th>
+                    <th class="px-2 py-1.5 font-medium">
+                      Job
+                    </th>
+                    <th class="px-2 py-1.5 font-medium">
+                      Schedule
+                    </th>
+                    <th class="px-2 py-1.5 font-medium">
+                      Purpose
+                    </th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-default">
                   <tr>
-                    <td class="px-2 py-1.5">Stuck-claim recovery</td>
-                    <td class="px-2 py-1.5">Every 5 minutes</td>
-                    <td class="px-2 py-1.5 text-muted">Resets deliveries that started but didn't finish — usually means a worker crashed mid-flight.</td>
+                    <td class="px-2 py-1.5">
+                      Stuck-claim recovery
+                    </td>
+                    <td class="px-2 py-1.5">
+                      Every 5 minutes
+                    </td>
+                    <td class="px-2 py-1.5 text-muted">
+                      Resets deliveries that started but didn't finish — usually means a worker crashed mid-flight.
+                    </td>
                   </tr>
                   <tr>
-                    <td class="px-2 py-1.5">Ingestion error purge</td>
-                    <td class="px-2 py-1.5">Daily at 03:10 UTC</td>
-                    <td class="px-2 py-1.5 text-muted">Deletes raw-payload error rows older than 30 days.</td>
+                    <td class="px-2 py-1.5">
+                      Ingestion error purge
+                    </td>
+                    <td class="px-2 py-1.5">
+                      Daily at 03:10 UTC
+                    </td>
+                    <td class="px-2 py-1.5 text-muted">
+                      Deletes raw-payload error rows older than 30 days.
+                    </td>
                   </tr>
                   <tr>
-                    <td class="px-2 py-1.5">Retention purge</td>
-                    <td class="px-2 py-1.5">Daily at 03:30 UTC</td>
-                    <td class="px-2 py-1.5 text-muted">Soft-deletes leads in terminal states (delivered / archived) older than 18 months.</td>
+                    <td class="px-2 py-1.5">
+                      Retention purge
+                    </td>
+                    <td class="px-2 py-1.5">
+                      Daily at 03:30 UTC
+                    </td>
+                    <td class="px-2 py-1.5 text-muted">
+                      Soft-deletes leads in terminal states (delivered / archived) older than 18 months.
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -523,7 +618,9 @@ const sections = [
           <template #troubleshoot>
             <div class="space-y-3 text-sm leading-relaxed">
               <div>
-                <p class="font-medium mb-1">"Send test data" works in Google Ads but no lead arrives</p>
+                <p class="font-medium mb-1">
+                  "Send test data" works in Google Ads but no lead arrives
+                </p>
                 <ul class="list-disc list-inside text-muted space-y-1 ml-2">
                   <li>Check the URL and key are pasted exactly (no trailing whitespace).</li>
                   <li>If you rotated the key, Google Ads still has the old one — paste the new one.</li>
@@ -531,7 +628,9 @@ const sections = [
                 </ul>
               </div>
               <div>
-                <p class="font-medium mb-1">Slack messages aren't arriving</p>
+                <p class="font-medium mb-1">
+                  Slack messages aren't arriving
+                </p>
                 <ul class="list-disc list-inside text-muted space-y-1 ml-2">
                   <li>Verify the Slack incoming-webhook URL is still active (Slack disables old ones).</li>
                   <li>Check the rule's destination is toggled <em>Active</em>.</li>
@@ -540,7 +639,9 @@ const sections = [
                 </ul>
               </div>
               <div>
-                <p class="font-medium mb-1">Email is not delivering</p>
+                <p class="font-medium mb-1">
+                  Email is not delivering
+                </p>
                 <ul class="list-disc list-inside text-muted space-y-1 ml-2">
                   <li>Resend (the email provider) requires verified sender domains. Confirm with admin.</li>
                   <li>Check the recipient's spam folder.</li>
@@ -548,7 +649,9 @@ const sections = [
                 </ul>
               </div>
               <div>
-                <p class="font-medium mb-1">Want to wipe a lead permanently</p>
+                <p class="font-medium mb-1">
+                  Want to wipe a lead permanently
+                </p>
                 <p class="text-muted">
                   Soft-delete from the inbox just hides it. Admins can hard-delete via
                   <span class="font-mono text-xs">DELETE /api/leads/&lt;id&gt;/purge</span> for

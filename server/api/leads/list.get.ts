@@ -11,13 +11,15 @@ const Query = z.object({
   form_id: z.string().optional(),
   status: z.string().optional(),
   assigned_to: z.string().uuid().optional(),
+  campaign_id: z.string().optional(),
+  campaign_name: z.string().optional(),
   q: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
   unmapped: z.coerce.boolean().optional(),
   include_test: z.coerce.boolean().optional(),
   page: z.coerce.number().int().min(1).default(1),
-  page_size: z.coerce.number().int().min(1).max(200).default(50),
+  page_size: z.coerce.number().int().min(1).max(200).default(50)
 })
 
 export default defineEventHandler(async (event) => {
@@ -25,8 +27,11 @@ export default defineEventHandler(async (event) => {
   const q = Query.parse(getQuery(event))
 
   const conds: string[] = ['deleted_at IS NULL']
-  const params: any[] = []
-  const push = (c: string, v: any) => { params.push(v); conds.push(c.replace('?', '$' + params.length)) }
+  const params: unknown[] = []
+  const push = (condition: string, value: unknown) => {
+    params.push(value)
+    conds.push(condition.replace('?', '$' + params.length))
+  }
 
   if (q.client_id) push('client_id = ?', q.client_id)
   if (q.unmapped) conds.push('client_id IS NULL')
@@ -35,6 +40,8 @@ export default defineEventHandler(async (event) => {
   if (q.form_id) push('form_id = ?', q.form_id)
   if (q.status) push('status = ?', q.status)
   if (q.assigned_to) push('assigned_to = ?', q.assigned_to)
+  if (q.campaign_id) push('campaign_id = ?', q.campaign_id)
+  if (q.campaign_name) push('campaign_name = ?', q.campaign_name)
   if (q.from) push('submitted_at >= ?', q.from)
   if (q.to) push('submitted_at < (?::date + INTERVAL \'1 day\')', q.to)
   if (q.q) {

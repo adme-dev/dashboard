@@ -1123,7 +1123,7 @@ export interface LeadFilter {
 export interface LeadFormRule {
   id: string
   client_id: string
-  source: 'meta' | 'google'
+  source: Exclude<LeadSource, 'manual'>
   form_id: string
   form_name: string | null
   enabled: boolean

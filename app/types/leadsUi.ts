@@ -7,6 +7,8 @@ export interface LeadsListFilters {
   form_id: string | null
   status: LeadStatus | null
   assigned_to: string | null
+  campaign_id: string | null
+  campaign_name: string | null
   q: string
   from: string | null
   to: string | null
@@ -22,6 +24,7 @@ export interface LeadsListResponse {
 
 export const DEFAULT_FILTERS: LeadsListFilters = {
   client_id: null, unmapped: false, source: null, form_id: null,
-  status: null, assigned_to: null, q: '', from: null, to: null,
-  include_test: false,
+  status: null, assigned_to: null, campaign_id: null, campaign_name: null,
+  q: '', from: null, to: null,
+  include_test: false
 }

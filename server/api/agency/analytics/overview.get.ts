@@ -7,6 +7,10 @@
 import { queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { computeMetrics, toNum, PLATFORM_LABELS, PLATFORM_COLORS, buildClientCondition } from '~~/server/utils/analyticsMetrics'
+import {
+  PORTAL_LEAD_STATUS_SELECT,
+  leadPlatformForSourceSql
+} from '~~/server/utils/leads/portalAnalytics'
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
@@ -23,7 +27,7 @@ export default defineEventHandler(async (event) => {
 
   // Build dynamic WHERE conditions
   const conditions: string[] = ['ms.period >= $1', 'ms.period <= $2']
-  const params: any[] = [startDate.slice(0, 7), endDate.slice(0, 7)]
+  const params: unknown[] = [startDate.slice(0, 7), endDate.slice(0, 7)]
   let idx = 3
 
   if (clientId) {
@@ -90,7 +94,7 @@ export default defineEventHandler(async (event) => {
 
     // Previous period totals
     const prevConditions: string[] = [`ms.period >= $1`, `ms.period <= $2`]
-    const prevParams: any[] = [prevStartPeriod, prevEndPeriod]
+    const prevParams: unknown[] = [prevStartPeriod, prevEndPeriod]
     let prevIdx = 3
     if (clientId) {
       prevConditions.push(buildClientCondition(prevIdx))
@@ -116,6 +120,60 @@ export default defineEventHandler(async (event) => {
       WHERE ${prevWhere}
     `, prevParams)
 
+    const leadConditions = [
+      'l.deleted_at IS NULL',
+      'l.submitted_at >= $1::date',
+      `l.submitted_at < ($2::date + INTERVAL '1 day')`
+    ]
+    const leadParams: unknown[] = [startDate, endDate]
+    let leadIdx = 3
+    if (clientId) {
+      leadConditions.push(`l.client_id = $${leadIdx}`)
+      leadParams.push(clientId)
+      leadIdx++
+    }
+    if (platforms && platforms.length > 0) {
+      leadConditions.push(`${leadPlatformForSourceSql('l')} = ANY($${leadIdx})`)
+      leadParams.push(platforms)
+      leadIdx++
+    }
+
+    const leadRows = await queryRows(`
+      SELECT
+        ${PORTAL_LEAD_STATUS_SELECT},
+        AVG(EXTRACT(EPOCH FROM (l.contacted_at - l.submitted_at)) / 60)
+          FILTER (WHERE l.contacted_at IS NOT NULL) AS avg_response_minutes
+      FROM leads l
+      WHERE ${leadConditions.join(' AND ')}
+    `, leadParams)
+
+    const prevLeadConditions = [
+      'l.deleted_at IS NULL',
+      'l.submitted_at >= $1::date',
+      `l.submitted_at < ($2::date + INTERVAL '1 day')`
+    ]
+    const prevLeadParams: unknown[] = [
+      prevStart.toISOString().slice(0, 10),
+      prevEnd.toISOString().slice(0, 10)
+    ]
+    let prevLeadIdx = 3
+    if (clientId) {
+      prevLeadConditions.push(`l.client_id = $${prevLeadIdx}`)
+      prevLeadParams.push(clientId)
+      prevLeadIdx++
+    }
+    if (platforms && platforms.length > 0) {
+      prevLeadConditions.push(`${leadPlatformForSourceSql('l')} = ANY($${prevLeadIdx})`)
+      prevLeadParams.push(platforms)
+      prevLeadIdx++
+    }
+
+    const prevLeadRows = await queryRows(`
+      SELECT ${PORTAL_LEAD_STATUS_SELECT}
+      FROM leads l
+      WHERE ${prevLeadConditions.join(' AND ')}
+    `, prevLeadParams)
+
     // Compute totals
     let totalSpend = 0, totalBudget = 0, totalImpressions = 0, totalClicks = 0, totalConversions = 0, totalRevenue = 0, totalRollingCount = 0
     for (const r of byPlatformRows) {
@@ -130,7 +188,7 @@ export default defineEventHandler(async (event) => {
 
     const totalsMetrics = computeMetrics(totalSpend, totalImpressions, totalClicks, totalConversions, totalRevenue)
 
-    const byPlatform = byPlatformRows.map(r => {
+    const byPlatform = byPlatformRows.map((r) => {
       const spend = toNum(r.spend)
       const budget = toNum(r.budget)
       const impressions = toNum(r.impressions)
@@ -151,11 +209,11 @@ export default defineEventHandler(async (event) => {
         ...metrics,
         campaignCount: Number(r.campaign_count || 0),
         rollingCount: Number(r.rolling_count || 0),
-        pctOfTotal: totalSpend > 0 ? Math.round((spend / totalSpend) * 10000) / 100 : 0,
+        pctOfTotal: totalSpend > 0 ? Math.round((spend / totalSpend) * 10000) / 100 : 0
       }
     })
 
-    const byClient = byClientRows.map(r => {
+    const byClient = byClientRows.map((r) => {
       const spend = toNum(r.spend)
       const budget = toNum(r.budget)
       const impressions = toNum(r.impressions)
@@ -172,7 +230,7 @@ export default defineEventHandler(async (event) => {
         campaignCount: Number(r.campaign_count || 0),
         rollingCount: Number(r.rolling_count || 0),
         cpc: metrics.cpc,
-        ctr: metrics.ctr,
+        ctr: metrics.ctr
       }
     })
 
@@ -184,6 +242,8 @@ export default defineEventHandler(async (event) => {
     const pConversions = toNum(prev.conversions)
     const pRevenue = toNum(prev.revenue)
     const prevMetrics = computeMetrics(pSpend, pImpressions, pClicks, pConversions, pRevenue)
+    const leadTotals = leadRows[0] || {}
+    const previousLeadTotals = prevLeadRows[0] || {}
 
     return {
       totals: {
@@ -194,7 +254,19 @@ export default defineEventHandler(async (event) => {
         clicks: totalClicks,
         conversions: totalConversions,
         revenue: totalRevenue,
-        ...totalsMetrics,
+        leads: Number(leadTotals.lead_count || 0),
+        leadNew: Number(leadTotals.lead_new_count || 0),
+        leadContacted: Number(leadTotals.lead_contacted_count || 0),
+        leadQualified: Number(leadTotals.lead_qualified_count || 0),
+        leadWon: Number(leadTotals.lead_won_count || 0),
+        leadLost: Number(leadTotals.lead_lost_count || 0),
+        costPerLead: Number(leadTotals.lead_count || 0) > 0
+          ? totalSpend / Number(leadTotals.lead_count || 0)
+          : null,
+        avgResponseMinutes: leadTotals.avg_response_minutes == null
+          ? null
+          : toNum(leadTotals.avg_response_minutes),
+        ...totalsMetrics
       },
       byPlatform,
       byClient,
@@ -205,8 +277,17 @@ export default defineEventHandler(async (event) => {
         clicks: pClicks,
         conversions: pConversions,
         revenue: pRevenue,
-        ...prevMetrics,
-      },
+        leads: Number(previousLeadTotals.lead_count || 0),
+        leadNew: Number(previousLeadTotals.lead_new_count || 0),
+        leadContacted: Number(previousLeadTotals.lead_contacted_count || 0),
+        leadQualified: Number(previousLeadTotals.lead_qualified_count || 0),
+        leadWon: Number(previousLeadTotals.lead_won_count || 0),
+        leadLost: Number(previousLeadTotals.lead_lost_count || 0),
+        costPerLead: Number(previousLeadTotals.lead_count || 0) > 0
+          ? pSpend / Number(previousLeadTotals.lead_count || 0)
+          : null,
+        ...prevMetrics
+      }
     }
   } catch (error) {
     console.error('Analytics overview failed:', error)

@@ -2,7 +2,18 @@
 definePageMeta({ layout: 'agency', middleware: ['role-media'] })
 
 const route = useRoute()
-const { filters, apiQuery, updateFilters } = useAnalytics()
+const { filters, apiQuery } = useAnalytics()
+
+interface AnalyticsOverview {
+  totals: Record<string, number | null>
+  previousPeriod: Record<string, number | null>
+  byPlatform: Array<Record<string, unknown>>
+  byClient: Array<Record<string, unknown>>
+}
+
+interface TrendResponse {
+  dataPoints: Array<Record<string, unknown>>
+}
 
 // Sync clientId with URL — clear it if not in current query params
 // (prevents stale filter from client detail page persisting)
@@ -12,12 +23,12 @@ if (filters.value.clientId !== urlClientId) {
 }
 
 // Overview data
-const { data: overviewData, status: overviewStatus, refresh: refreshOverview } = useFetch('/api/agency/analytics/overview', {
+const { data: overviewData, status: overviewStatus, refresh: refreshOverview } = useFetch<AnalyticsOverview>('/api/agency/analytics/overview', {
   query: apiQuery,
-  watch: [apiQuery],
+  watch: [apiQuery]
 })
 
-const overview = computed(() => overviewData.value as any)
+const overview = computed(() => overviewData.value)
 const totals = computed(() => overview.value?.totals || null)
 const previousPeriod = computed(() => overview.value?.previousPeriod || null)
 const byPlatform = computed(() => overview.value?.byPlatform || [])
@@ -30,31 +41,33 @@ const trendGroupBy = ref<'day' | 'week' | 'month'>('day')
 const trendQuery = computed(() => ({
   ...apiQuery.value,
   metric: trendMetric.value,
-  groupBy: trendGroupBy.value,
+  groupBy: trendGroupBy.value
 }))
 
-const { data: trendData, status: trendStatus, refresh: refreshTrends } = useFetch('/api/agency/analytics/trends', {
+const { data: trendData, status: trendStatus, refresh: refreshTrends } = useFetch<TrendResponse>('/api/agency/analytics/trends', {
   query: trendQuery,
-  watch: [trendQuery],
+  watch: [trendQuery]
 })
 
-const trendPoints = computed(() => (trendData.value as any)?.dataPoints || [])
+const trendPoints = computed(() => trendData.value?.dataPoints || [])
 
 // Metric options for trend chart
 const metricOptions = [
   { label: 'Spend', value: 'spend' },
   { label: 'Impressions', value: 'impressions' },
   { label: 'Clicks', value: 'clicks' },
+  { label: 'Leads', value: 'leads' },
   { label: 'CPC', value: 'cpc' },
   { label: 'CPM', value: 'cpm' },
   { label: 'CTR', value: 'ctr' },
   { label: 'ROAS', value: 'roas' },
+  { label: 'Cost / Lead', value: 'costPerLead' }
 ]
 
 const groupByOptions = [
   { label: 'Daily', value: 'day' },
   { label: 'Weekly', value: 'week' },
-  { label: 'Monthly', value: 'month' },
+  { label: 'Monthly', value: 'month' }
 ]
 
 const loading = computed(() => overviewStatus.value === 'pending')
@@ -68,9 +81,9 @@ async function syncAll() {
   try {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 5 * 60 * 1000) // 5 min total
-    const res = await $fetch<{ results: Record<string, any> }>('/api/agency/analytics/sync', {
+    const res = await $fetch<{ results: Record<string, { error?: unknown }> }>('/api/agency/analytics/sync', {
       method: 'POST',
-      signal: controller.signal,
+      signal: controller.signal
     })
     clearTimeout(timeout)
 
@@ -84,21 +97,21 @@ async function syncAll() {
       toast.add({
         title: 'Sync partially complete',
         description: `${8 - errors.length} platforms synced. ${errors.length} had errors.`,
-        color: 'warning',
+        color: 'warning'
       })
     } else if (errors.length === 0) {
       toast.add({ title: 'Sync complete', description: 'All platforms synced successfully', color: 'success' })
     } else {
       toast.add({ title: 'Sync failed', description: 'All platforms had errors. Check your connections in Social Hub.', color: 'error' })
     }
-  } catch (err: any) {
-    const isTimeout = err?.name === 'AbortError'
+  } catch (err: unknown) {
+    const isTimeout = err instanceof Error && err.name === 'AbortError'
     toast.add({
       title: isTimeout ? 'Sync timed out' : 'Sync failed',
       description: isTimeout
         ? 'The sync took too long. Some platforms may have synced — try refreshing.'
         : 'Could not sync platforms. Check your connections in Social Hub.',
-      color: 'error',
+      color: 'error'
     })
   } finally {
     syncing.value = false
@@ -111,8 +124,12 @@ async function syncAll() {
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-bold text-default">Analytics</h1>
-        <p class="text-sm text-muted mt-1">Cross-platform marketing performance</p>
+        <h1 class="text-2xl font-bold text-default">
+          Analytics
+        </h1>
+        <p class="text-sm text-muted mt-1">
+          Cross-platform marketing performance
+        </p>
       </div>
       <UButton
         icon="i-lucide-refresh-cw"
@@ -136,7 +153,9 @@ async function syncAll() {
 
     <!-- Platform Chart -->
     <div class="border border-default rounded-lg p-4">
-      <h3 class="text-sm font-semibold text-default mb-3">Spend by Platform</h3>
+      <h3 class="text-sm font-semibold text-default mb-3">
+        Spend by Platform
+      </h3>
       <AnalyticsPlatformChart
         :data="trendPoints"
         :loading="trendStatus === 'pending'"
@@ -145,7 +164,9 @@ async function syncAll() {
 
     <!-- Platform Table -->
     <div>
-      <h3 class="text-sm font-semibold text-default mb-3">Platform Breakdown</h3>
+      <h3 class="text-sm font-semibold text-default mb-3">
+        Platform Breakdown
+      </h3>
       <AnalyticsPlatformTable
         :platforms="byPlatform"
         :loading="loading"
@@ -155,7 +176,9 @@ async function syncAll() {
     <!-- Trend Chart -->
     <div class="border border-default rounded-lg p-4">
       <div class="flex items-center justify-between mb-3">
-        <h3 class="text-sm font-semibold text-default">Performance Trends</h3>
+        <h3 class="text-sm font-semibold text-default">
+          Performance Trends
+        </h3>
         <div class="flex items-center gap-2">
           <USelectMenu
             v-model="trendMetric"
@@ -186,11 +209,15 @@ async function syncAll() {
       :end-date="filters.endDate"
       :platforms="filters.platforms"
       :client-id="filters.clientId"
+      show-lead-columns
+      lead-link-base="/agency/leads"
     />
 
     <!-- Client Breakdown -->
     <div>
-      <h3 class="text-sm font-semibold text-default mb-3">Client Breakdown</h3>
+      <h3 class="text-sm font-semibold text-default mb-3">
+        Client Breakdown
+      </h3>
       <AnalyticsClientBreakdown
         :clients="byClient"
         :loading="loading"

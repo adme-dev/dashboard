@@ -1,21 +1,26 @@
 /**
- * Analytics Export (CSV)
- * GET /api/agency/analytics/export
+ * Portal Analytics Export (CSV) — client-scoped
+ * GET /api/portal/analytics/export
  *
- * Query params: same as campaigns (startDate, endDate, clientId?, platform?, search?)
- * Optional: includeBreakdowns=true to append breakdown rows
- * Returns CSV file.
+ * Query params: startDate, endDate, platform?, search?
  */
 import { queryRows } from '~~/server/utils/db'
-import { requireAuth } from '~~/server/utils/auth'
+import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { computeMetrics, toNum, PLATFORM_LABELS, buildClientCondition } from '~~/server/utils/analyticsMetrics'
 import {
   PORTAL_LEAD_STATUS_SELECT,
+  PORTAL_VISIBLE_LEADS_EXISTS,
   leadSourceForPlatformSql
 } from '~~/server/utils/leads/portalAnalytics'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const clientUser = await requireClientAuth(event)
+
+  if (!clientUser.permissions.canViewAnalytics) {
+    throw createError({ statusCode: 403, statusMessage: 'Analytics access not enabled' })
+  }
+
+  const clientId = clientUser.clientId
   const q = getQuery(event)
 
   const startDate = q.startDate as string
@@ -24,20 +29,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'startDate and endDate are required' })
   }
 
-  const clientId = q.clientId as string | undefined
   const platforms = q.platform ? String(q.platform).split(',').map(p => p.trim()).filter(Boolean) : null
   const search = q.search as string | undefined
-  const includeBreakdowns = q.includeBreakdowns === 'true'
 
-  const conditions: string[] = ['ms.period >= $1', 'ms.period <= $2']
-  const params: unknown[] = [startDate.slice(0, 7), endDate.slice(0, 7)]
-  let idx = 3
+  const conditions: string[] = ['ms.period >= $1', 'ms.period <= $2', buildClientCondition(3)]
+  const params: unknown[] = [startDate.slice(0, 7), endDate.slice(0, 7), clientId]
+  let idx = 4
 
-  if (clientId) {
-    conditions.push(buildClientCondition(idx))
-    params.push(clientId)
-    idx++
-  }
   if (platforms && platforms.length > 0) {
     conditions.push(`ms.platform = ANY($${idx})`)
     params.push(platforms)
@@ -65,19 +63,14 @@ export default defineEventHandler(async (event) => {
           ms.campaign_name,
           ms.platform,
           ms.campaign_id,
-          ms.client_id,
-          c.name as client_name,
           SUM(ms.actual_spend) as spend,
-          SUM(ms.budget_allocated) as budget,
           SUM(ms.impressions) as impressions,
           SUM(ms.clicks) as clicks,
           SUM(ms.conversions) as conversions,
-          COALESCE(SUM(ms.revenue), 0) as revenue,
-          (array_agg(ms.id ORDER BY ms.synced_at DESC NULLS LAST))[1] as media_spend_id
+          COALESCE(SUM(ms.revenue), 0) as revenue
         FROM media_spend ms
-        LEFT JOIN agency_clients c ON ms.client_id = c.id
         WHERE ${where}
-        GROUP BY ms.campaign_name, ms.platform, ms.campaign_id, ms.client_id, c.name
+        GROUP BY ms.campaign_name, ms.platform, ms.campaign_id
       )
       SELECT
         c.*,
@@ -86,32 +79,29 @@ export default defineEventHandler(async (event) => {
         COALESCE(la.lead_contacted_count, 0) AS lead_contacted_count,
         COALESCE(la.lead_qualified_count, 0) AS lead_qualified_count,
         COALESCE(la.lead_won_count, 0) AS lead_won_count,
-        COALESCE(la.lead_lost_count, 0) AS lead_lost_count,
-        CASE WHEN COALESCE(la.lead_count, 0) > 0 THEN c.spend / la.lead_count ELSE NULL END AS cost_per_lead
+        COALESCE(la.lead_lost_count, 0) AS lead_lost_count
       FROM campaigns c
       LEFT JOIN LATERAL (
         SELECT ${PORTAL_LEAD_STATUS_SELECT}
         FROM leads l
-        WHERE l.deleted_at IS NULL
+        WHERE l.client_id = $3
+          AND l.deleted_at IS NULL
           AND l.submitted_at >= $${leadStartIdx}::date
           AND l.submitted_at < ($${leadEndIdx}::date + INTERVAL '1 day')
           AND l.source = ${leadSourceForPlatformSql('c')}
-          AND (c.client_id IS NULL OR l.client_id = c.client_id)
           AND (
             (c.campaign_id IS NOT NULL AND l.campaign_id = c.campaign_id)
             OR (c.campaign_id IS NULL AND c.campaign_name IS NOT NULL AND l.campaign_name = c.campaign_name)
           )
+          AND ${PORTAL_VISIBLE_LEADS_EXISTS}
       ) la ON TRUE
       ORDER BY c.spend DESC
     `, params)
 
-    // Campaign-level CSV
     const headers = [
       'Platform',
       'Campaign',
-      'Client',
       'Spend',
-      'Budget',
       'Impressions',
       'Clicks',
       'Leads',
@@ -131,7 +121,6 @@ export default defineEventHandler(async (event) => {
 
     const csvRows = rows.map((r) => {
       const spend = toNum(r.spend)
-      const budget = toNum(r.budget)
       const impressions = toNum(r.impressions)
       const clicks = toNum(r.clicks)
       const conversions = toNum(r.conversions)
@@ -142,9 +131,7 @@ export default defineEventHandler(async (event) => {
       return [
         PLATFORM_LABELS[r.platform] || r.platform,
         escapeCsv(r.campaign_name || ''),
-        escapeCsv(r.client_name || 'Unknown'),
         spend.toFixed(2),
-        budget.toFixed(2),
         impressions,
         clicks,
         leadCount,
@@ -163,69 +150,14 @@ export default defineEventHandler(async (event) => {
       ].join(',')
     })
 
-    const sections = [headers.join(','), ...csvRows]
-
-    // Breakdown data (optional)
-    if (includeBreakdowns) {
-      const spendIds = rows.map(r => r.media_spend_id).filter(Boolean)
-      if (spendIds.length > 0) {
-        const breakdownRows = await queryRows(`
-          SELECT
-            sb.media_spend_id,
-            sb.dimension_type,
-            sb.dimension_value,
-            sb.spend,
-            sb.impressions,
-            sb.clicks,
-            sb.conversions,
-            sb.revenue
-          FROM spend_breakdowns sb
-          WHERE sb.media_spend_id = ANY($1)
-          ORDER BY sb.media_spend_id, sb.dimension_type, sb.spend DESC
-        `, [spendIds])
-
-        if (breakdownRows.length > 0) {
-          // Build lookup: media_spend_id → campaign name + platform
-          const spendLookup = new Map(rows.map(r => [r.media_spend_id, { name: r.campaign_name, platform: r.platform }]))
-
-          sections.push('')
-          sections.push('--- Demographic & Device Breakdowns ---')
-          sections.push('Platform,Campaign,Dimension,Value,Spend,Impressions,Clicks,Conversions,Revenue,CTR,CPC')
-
-          for (const b of breakdownRows) {
-            const campaign = spendLookup.get(b.media_spend_id)
-            const spend = toNum(b.spend)
-            const impressions = toNum(b.impressions)
-            const clicks = toNum(b.clicks)
-            const ctr = impressions > 0 ? (clicks / impressions) * 100 : null
-            const cpc = clicks > 0 ? spend / clicks : null
-
-            sections.push([
-              PLATFORM_LABELS[campaign?.platform || ''] || campaign?.platform || '',
-              escapeCsv(campaign?.name || ''),
-              b.dimension_type,
-              escapeCsv(b.dimension_value),
-              spend.toFixed(2),
-              impressions,
-              clicks,
-              toNum(b.conversions),
-              toNum(b.revenue).toFixed(2),
-              ctr !== null ? ctr.toFixed(2) : '',
-              cpc !== null ? cpc.toFixed(2) : ''
-            ].join(','))
-          }
-        }
-      }
-    }
-
-    const csv = sections.join('\n')
+    const csv = [headers.join(','), ...csvRows].join('\n')
 
     setResponseHeader(event, 'Content-Type', 'text/csv; charset=utf-8')
-    setResponseHeader(event, 'Content-Disposition', `attachment; filename="analytics-export-${startDate}-${endDate}.csv"`)
+    setResponseHeader(event, 'Content-Disposition', `attachment; filename="portal-analytics-${startDate}-${endDate}.csv"`)
 
     return csv
   } catch (error) {
-    console.error('Analytics export failed:', error)
+    console.error('Portal analytics export failed:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to export analytics data' })
   }
 })

@@ -2,15 +2,27 @@
  * Analytics Trends
  * GET /api/agency/analytics/trends
  *
- * Query params: startDate, endDate, metric (spend|impressions|clicks|cpc|cpm|ctr|roas),
+ * Query params: startDate, endDate, metric (spend|impressions|clicks|cpc|cpm|ctr|roas|leads|costPerLead),
  *               groupBy (day|week|month), clientId?, platform? (comma-separated)
  */
 import { queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { computeMetrics, toNum, buildClientCondition } from '~~/server/utils/analyticsMetrics'
+import {
+  leadDateBucketSql,
+  leadPlatformForSourceSql
+} from '~~/server/utils/leads/portalAnalytics'
 
-const VALID_METRICS = ['spend', 'impressions', 'clicks', 'cpc', 'cpm', 'ctr', 'roas'] as const
-const RAW_METRICS = ['spend', 'impressions', 'clicks'] as const
+const VALID_METRICS = ['spend', 'impressions', 'clicks', 'cpc', 'cpm', 'ctr', 'roas', 'leads', 'costPerLead'] as const
+
+interface TrendRaw {
+  spend: number
+  impressions: number
+  clicks: number
+  conversions: number
+  revenue: number
+  leads: number
+}
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
@@ -24,7 +36,7 @@ export default defineEventHandler(async (event) => {
   if (!startDate || !endDate) {
     throw createError({ statusCode: 400, statusMessage: 'startDate and endDate are required' })
   }
-  if (!VALID_METRICS.includes(metric as any)) {
+  if (!VALID_METRICS.includes(metric as typeof VALID_METRICS[number])) {
     throw createError({ statusCode: 400, statusMessage: `Invalid metric. Valid: ${VALID_METRICS.join(', ')}` })
   }
   if (!['day', 'week', 'month'].includes(groupBy)) {
@@ -35,12 +47,12 @@ export default defineEventHandler(async (event) => {
   const platforms = q.platform ? String(q.platform).split(',').map(p => p.trim()).filter(Boolean) : null
 
   try {
-    let rows: any[]
+    let rows: Record<string, unknown>[]
 
     if (groupBy === 'day' || groupBy === 'week') {
       // Query daily_spend joined to media_spend for platform/client filtering
       const conditions: string[] = [`ds.spend_date >= $1`, `ds.spend_date <= $2`]
-      const params: any[] = [startDate, endDate]
+      const params: unknown[] = [startDate, endDate]
       let idx = 3
 
       if (clientId) {
@@ -76,7 +88,7 @@ export default defineEventHandler(async (event) => {
     } else {
       // groupBy === 'month' — query media_spend directly
       const conditions: string[] = [`ms.period >= $1`, `ms.period <= $2`]
-      const params: any[] = [startDate.slice(0, 7), endDate.slice(0, 7)]
+      const params: unknown[] = [startDate.slice(0, 7), endDate.slice(0, 7)]
       let idx = 3
 
       if (clientId) {
@@ -106,27 +118,85 @@ export default defineEventHandler(async (event) => {
       `, params)
     }
 
+    const leadConditions = [
+      'l.deleted_at IS NULL',
+      'l.submitted_at >= $1::date',
+      `l.submitted_at < ($2::date + INTERVAL '1 day')`
+    ]
+    const leadParams: unknown[] = [startDate, endDate]
+    let leadIdx = 3
+    if (clientId) {
+      leadConditions.push(`l.client_id = $${leadIdx}`)
+      leadParams.push(clientId)
+      leadIdx++
+    }
+    if (platforms && platforms.length > 0) {
+      leadConditions.push(`${leadPlatformForSourceSql('l')} = ANY($${leadIdx})`)
+      leadParams.push(platforms)
+      leadIdx++
+    }
+
+    const leadDateExpr = leadDateBucketSql(groupBy)
+    const leadRows = await queryRows<Record<string, unknown>>(`
+      SELECT
+        ${leadDateExpr} as date,
+        ${leadPlatformForSourceSql('l')} as platform,
+        COUNT(*)::int as leads
+      FROM leads l
+      WHERE ${leadConditions.join(' AND ')}
+      GROUP BY ${leadDateExpr}, ${leadPlatformForSourceSql('l')}
+      ORDER BY date
+    `, leadParams)
+
     // Group by date, then compute metrics per platform and aggregate
-    const dateMap = new Map<string, { byPlatform: Map<string, { spend: number; impressions: number; clicks: number; conversions: number; revenue: number }> }>()
+    const dateMap = new Map<string, { byPlatform: Map<string, TrendRaw> }>()
 
     for (const r of rows) {
       const dateKey = String(r.date).slice(0, groupBy === 'month' ? 7 : 10)
+      const platform = String(r.platform)
       if (!dateMap.has(dateKey)) {
         dateMap.set(dateKey, { byPlatform: new Map() })
       }
       const entry = dateMap.get(dateKey)!
-      entry.byPlatform.set(r.platform, {
+      entry.byPlatform.set(platform, {
         spend: toNum(r.spend),
         impressions: toNum(r.impressions),
         clicks: toNum(r.clicks),
         conversions: toNum(r.conversions),
         revenue: toNum(r.revenue),
+        leads: 0
+      })
+    }
+
+    for (const r of leadRows) {
+      const dateKey = String(r.date).slice(0, groupBy === 'month' ? 7 : 10)
+      const platform = String(r.platform)
+      if (!dateMap.has(dateKey)) {
+        dateMap.set(dateKey, { byPlatform: new Map() })
+      }
+      const entry = dateMap.get(dateKey)!
+      const current = entry.byPlatform.get(platform) ?? {
+        spend: 0,
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+        revenue: 0,
+        leads: 0
+      }
+      entry.byPlatform.set(platform, {
+        ...current,
+        leads: toNum(r.leads)
       })
     }
 
     const dataPoints = Array.from(dateMap.entries()).map(([date, entry]) => {
       // Aggregate across platforms
-      let totalSpend = 0, totalImpressions = 0, totalClicks = 0, totalConversions = 0, totalRevenue = 0
+      let totalSpend = 0
+      let totalImpressions = 0
+      let totalClicks = 0
+      let totalConversions = 0
+      let totalRevenue = 0
+      let totalLeads = 0
       const byPlatform: Record<string, number> = {}
 
       for (const [platform, raw] of entry.byPlatform) {
@@ -135,12 +205,20 @@ export default defineEventHandler(async (event) => {
         totalClicks += raw.clicks
         totalConversions += raw.conversions
         totalRevenue += raw.revenue
+        totalLeads += raw.leads
 
         // Get the per-platform metric value
-        byPlatform[platform] = getMetricValue(metric, raw.spend, raw.impressions, raw.clicks, raw.conversions, raw.revenue)
+        byPlatform[platform] = getMetricValue(metric, raw)
       }
 
-      const value = getMetricValue(metric, totalSpend, totalImpressions, totalClicks, totalConversions, totalRevenue)
+      const value = getMetricValue(metric, {
+        spend: totalSpend,
+        impressions: totalImpressions,
+        clicks: totalClicks,
+        conversions: totalConversions,
+        revenue: totalRevenue,
+        leads: totalLeads
+      })
 
       return { date, value, byPlatform }
     })
@@ -152,12 +230,14 @@ export default defineEventHandler(async (event) => {
   }
 })
 
-function getMetricValue(metric: string, spend: number, impressions: number, clicks: number, conversions: number, revenue: number): number {
-  if (metric === 'spend') return spend
-  if (metric === 'impressions') return impressions
-  if (metric === 'clicks') return clicks
+function getMetricValue(metric: string, raw: TrendRaw): number {
+  if (metric === 'spend') return raw.spend
+  if (metric === 'impressions') return raw.impressions
+  if (metric === 'clicks') return raw.clicks
+  if (metric === 'leads') return raw.leads
+  if (metric === 'costPerLead') return raw.leads > 0 ? raw.spend / raw.leads : 0
 
-  const m = computeMetrics(spend, impressions, clicks, conversions, revenue)
+  const m = computeMetrics(raw.spend, raw.impressions, raw.clicks, raw.conversions, raw.revenue)
   if (metric === 'cpc') return m.cpc ?? 0
   if (metric === 'cpm') return m.cpm ?? 0
   if (metric === 'ctr') return m.ctr ?? 0

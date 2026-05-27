@@ -6,24 +6,72 @@ interface PortalLead {
   source: string
   form_name: string | null
   submitted_at: string
-  field_data: Record<string, string>
+  field_data: Record<string, unknown>
+  attribution?: Record<string, unknown> | null
   status: string
   contacted_at: string | null
+  campaign_name: string | null
+  ad_name: string | null
+  score?: number | null
+  score_reasons?: unknown
+}
+
+interface LeadsResponse {
+  items: PortalLead[]
+  total: number
+  stats: Array<{ status: string, count: string }>
 }
 
 const status = ref<string>('all')
+const source = ref<string>('all')
+const search = ref('')
+const campaign = ref('')
+const campaignId = ref('')
+const from = ref('')
+const to = ref('')
 const page = ref(1)
+const selectedLeadId = ref<string | null>(null)
 const PAGE_SIZE = 50
+const route = useRoute()
+
+if (typeof route.query.status === 'string') status.value = route.query.status
+if (typeof route.query.source === 'string') source.value = route.query.source
+if (typeof route.query.search === 'string') search.value = route.query.search
+if (typeof route.query.leadId === 'string') selectedLeadId.value = route.query.leadId
+if (typeof route.query.campaign === 'string') campaign.value = route.query.campaign
+if (typeof route.query.campaignId === 'string') campaignId.value = route.query.campaignId
+else if (typeof route.query.campaign_id === 'string') campaignId.value = route.query.campaign_id
+if (typeof route.query.from === 'string') from.value = route.query.from
+if (typeof route.query.to === 'string') to.value = route.query.to
 
 const params = computed(() => {
   const p: Record<string, string> = { page: String(page.value), page_size: String(PAGE_SIZE) }
   if (status.value !== 'all') p.status = status.value
+  if (source.value !== 'all') p.source = source.value
+  if (search.value.trim()) p.search = search.value.trim()
+  if (campaign.value.trim()) p.campaign = campaign.value.trim()
+  if (campaignId.value.trim()) p.campaignId = campaignId.value.trim()
+  if (from.value) p.from = from.value
+  if (to.value) p.to = to.value
   return p
 })
 
-const { data, refresh, pending } = useFetch<{ items: PortalLead[]; total: number }>(
+const exportParams = computed(() => {
+  const p = { ...params.value }
+  delete p.page
+  delete p.page_size
+  return p
+})
+
+const { data, refresh, pending } = useFetch<LeadsResponse>(
   '/api/client-portal/leads/list',
-  { query: params, watch: [params], default: () => ({ items: [], total: 0 }) },
+  { query: params, watch: [params], default: () => ({ items: [], total: 0, stats: [] }) }
+)
+
+const selectedUrl = computed(() => selectedLeadId.value ? `/api/client-portal/leads/${selectedLeadId.value}` : null)
+const { data: selectedData, pending: selectedPending, refresh: refreshSelected } = useFetch<{ lead: PortalLead }>(
+  selectedUrl,
+  { immediate: false }
 )
 
 const STATUS_OPTIONS = [
@@ -32,43 +80,202 @@ const STATUS_OPTIONS = [
   { value: 'contacted', label: 'Contacted' },
   { value: 'qualified', label: 'Qualified' },
   { value: 'won', label: 'Won' },
-  { value: 'lost', label: 'Lost' },
+  { value: 'lost', label: 'Lost' }
+]
+const SOURCE_OPTIONS = [
+  { value: 'all', label: 'All sources' },
+  { value: 'google', label: 'Google' },
+  { value: 'meta', label: 'Meta' },
+  { value: 'webhook', label: 'Webhook' },
+  { value: 'csv', label: 'CSV' }
 ]
 const toast = useToast()
 
 const columns = [
   { accessorKey: 'submitted_at', header: 'When' },
+  { accessorKey: 'source', header: 'Source' },
   { accessorKey: 'form_name', header: 'Form' },
   { accessorKey: 'summary', header: 'Lead' },
+  { accessorKey: 'campaign_name', header: 'Campaign' },
   { accessorKey: 'status', header: 'Status' },
-  { accessorKey: 'actions', header: '' },
+  { accessorKey: 'actions', header: '' }
 ]
 
 function summarize(l: PortalLead): string {
   const f = l.field_data ?? {}
-  return [f.full_name, f.email, f.phone_number ?? f.phone].filter(Boolean).slice(0, 2).join(' · ')
+  return [
+    f.full_name,
+    f.name,
+    f.email,
+    f.phone_number ?? f.phone
+  ].filter(Boolean).slice(0, 2).map(String).join(' · ')
 }
 
 async function markContacted(l: PortalLead) {
   await $fetch(`/api/client-portal/leads/${l.id}/contacted`, { method: 'POST' })
   toast.add({ title: 'Marked contacted', color: 'success' })
   await refresh()
+  if (selectedLeadId.value === l.id) await refreshSelected()
 }
 
-function downloadCsv() { window.open('/api/client-portal/leads/export', '_blank') }
+function sourceIcon(s: string) {
+  if (s === 'google') return 'i-lucide-chrome'
+  if (s === 'meta') return 'i-lucide-badge'
+  if (s === 'webhook') return 'i-lucide-webhook'
+  if (s === 'csv') return 'i-lucide-file-spreadsheet'
+  return 'i-lucide-inbox'
+}
+
+function statusColor(s: string) {
+  if (s === 'new') return 'info'
+  if (s === 'contacted') return 'primary'
+  if (s === 'qualified') return 'warning'
+  if (s === 'won') return 'success'
+  if (s === 'lost') return 'neutral'
+  return 'error'
+}
+
+function openLead(l: PortalLead) {
+  selectedLeadId.value = l.id
+}
+
+function formatFieldLabel(key: string) {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function formatFieldValue(value: unknown) {
+  if (value == null || value === '') return '-'
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+function downloadCsv() {
+  const query = new URLSearchParams(exportParams.value)
+  window.open(`/api/client-portal/leads/export?${query.toString()}`, '_blank')
+}
+
+function clearCampaignFilter() {
+  campaign.value = ''
+  campaignId.value = ''
+  from.value = ''
+  to.value = ''
+}
+
+const selectedLead = computed(() => selectedData.value?.lead ?? null)
+const statsByStatus = computed(() => Object.fromEntries((data.value?.stats ?? []).map(s => [s.status, Number(s.count)])))
+const visibleRange = computed(() => {
+  const total = data.value?.total ?? 0
+  if (!total) return '0'
+  const start = (page.value - 1) * PAGE_SIZE + 1
+  const end = Math.min(page.value * PAGE_SIZE, total)
+  return `${start}-${end}`
+})
+
+watch([status, source, search, campaign, campaignId, from, to], () => {
+  page.value = 1
+})
+watch(selectedLeadId, async (id) => {
+  if (id) await refreshSelected()
+})
 </script>
 
 <template>
   <div class="flex flex-col h-full">
-    <div class="flex items-center justify-between px-4 py-3 border-b border-default">
-      <div class="flex items-center gap-2">
-        <USelectMenu v-model="status" :items="STATUS_OPTIONS" value-key="value" class="w-36" />
-        <span class="text-xs text-muted">{{ data?.total ?? 0 }} total</span>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 px-4 py-3 border-b border-default bg-muted/20">
+      <div class="rounded-lg border border-default bg-default p-3">
+        <p class="text-xs text-muted">
+          Visible leads
+        </p>
+        <p class="text-2xl font-semibold">
+          {{ data?.total ?? 0 }}
+        </p>
+      </div>
+      <div class="rounded-lg border border-default bg-default p-3">
+        <p class="text-xs text-muted">
+          New
+        </p>
+        <p class="text-2xl font-semibold">
+          {{ statsByStatus.new ?? 0 }}
+        </p>
+      </div>
+      <div class="rounded-lg border border-default bg-default p-3">
+        <p class="text-xs text-muted">
+          Contacted
+        </p>
+        <p class="text-2xl font-semibold">
+          {{ statsByStatus.contacted ?? 0 }}
+        </p>
+      </div>
+      <div class="rounded-lg border border-default bg-default p-3">
+        <p class="text-xs text-muted">
+          Won
+        </p>
+        <p class="text-2xl font-semibold">
+          {{ statsByStatus.won ?? 0 }}
+        </p>
+      </div>
+    </div>
+
+    <div class="flex flex-col gap-3 px-4 py-3 border-b border-default lg:flex-row lg:items-center lg:justify-between">
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <UInput
+          v-model="search"
+          icon="i-lucide-search"
+          placeholder="Search name, email, phone, campaign"
+          class="w-full sm:w-80"
+        />
+        <USelectMenu
+          v-model="status"
+          :items="STATUS_OPTIONS"
+          value-key="value"
+          class="w-full sm:w-36"
+        />
+        <USelectMenu
+          v-model="source"
+          :items="SOURCE_OPTIONS"
+          value-key="value"
+          class="w-full sm:w-40"
+        />
       </div>
       <div class="flex items-center gap-2">
-        <UButton size="sm" variant="ghost" icon="i-lucide-download" @click="downloadCsv">CSV</UButton>
-        <UButton size="sm" variant="ghost" icon="i-lucide-refresh-cw" @click="refresh()">Refresh</UButton>
+        <span class="text-xs text-muted">{{ visibleRange }} of {{ data?.total ?? 0 }}</span>
+        <UButton
+          size="sm"
+          variant="ghost"
+          icon="i-lucide-download"
+          @click="downloadCsv"
+        >
+          CSV
+        </UButton>
+        <UButton
+          size="sm"
+          variant="ghost"
+          icon="i-lucide-refresh-cw"
+          @click="refresh()"
+        >
+          Refresh
+        </UButton>
       </div>
+    </div>
+
+    <div v-if="campaign || from || to" class="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-default bg-elevated/20">
+      <span v-if="campaign" class="inline-flex items-center gap-1.5 rounded-md border border-default bg-default px-2 py-1 text-xs">
+        <UIcon name="i-lucide-megaphone" class="size-3.5 text-muted" />
+        {{ campaign }}
+      </span>
+      <span v-if="from || to" class="inline-flex items-center gap-1.5 rounded-md border border-default bg-default px-2 py-1 text-xs">
+        <UIcon name="i-lucide-calendar" class="size-3.5 text-muted" />
+        {{ from || 'Start' }} to {{ to || 'Today' }}
+      </span>
+      <UButton
+        size="xs"
+        variant="ghost"
+        color="neutral"
+        icon="i-lucide-x"
+        @click="clearCampaignFilter"
+      >
+        Clear campaign filter
+      </UButton>
     </div>
 
     <div class="flex-1 overflow-auto">
@@ -76,27 +283,169 @@ function downloadCsv() { window.open('/api/client-portal/leads/export', '_blank'
         <template #submitted_at-cell="{ row }">
           <span class="text-sm whitespace-nowrap">{{ format(new Date(row.original.submitted_at), 'MMM d, HH:mm') }}</span>
         </template>
+        <template #source-cell="{ row }">
+          <span class="inline-flex items-center gap-1.5 text-sm capitalize">
+            <UIcon :name="sourceIcon(row.original.source)" class="size-4 text-muted" />
+            {{ row.original.source }}
+          </span>
+        </template>
         <template #form_name-cell="{ row }">
-          <span class="text-sm">{{ row.original.form_name || '—' }}</span>
+          <span class="text-sm">{{ row.original.form_name || '-' }}</span>
         </template>
         <template #summary-cell="{ row }">
-          <span class="text-sm">{{ summarize(row.original) || '—' }}</span>
+          <button
+            type="button"
+            class="text-sm text-left hover:text-primary"
+            @click="openLead(row.original)"
+          >
+            {{ summarize(row.original) || 'Open lead' }}
+          </button>
+        </template>
+        <template #campaign_name-cell="{ row }">
+          <div class="max-w-56">
+            <p class="text-sm truncate">
+              {{ row.original.campaign_name || '-' }}
+            </p>
+            <p v-if="row.original.ad_name" class="text-xs text-muted truncate">
+              {{ row.original.ad_name }}
+            </p>
+          </div>
         </template>
         <template #status-cell="{ row }">
-          <UBadge variant="soft" size="sm">{{ row.original.status }}</UBadge>
+          <UBadge variant="soft" size="sm" :color="statusColor(row.original.status)">
+            {{ row.original.status }}
+          </UBadge>
         </template>
         <template #actions-cell="{ row }">
-          <UButton
-            v-if="row.original.status === 'new'"
-            size="xs" variant="ghost" icon="i-lucide-check"
-            @click="markContacted(row.original)"
-          >Mark contacted</UButton>
+          <div class="flex items-center justify-end gap-1">
+            <UButton
+              size="xs"
+              variant="ghost"
+              icon="i-lucide-eye"
+              aria-label="View lead"
+              @click="openLead(row.original)"
+            />
+            <UButton
+              v-if="row.original.status === 'new'"
+              size="xs"
+              variant="ghost"
+              icon="i-lucide-check"
+              @click="markContacted(row.original)"
+            >
+              Contacted
+            </UButton>
+          </div>
+        </template>
+        <template #empty>
+          <div class="py-14 text-center">
+            <UIcon name="i-lucide-inbox" class="mx-auto size-8 text-muted" />
+            <p class="mt-3 text-sm font-medium">
+              No shared leads yet
+            </p>
+            <p class="mt-1 text-sm text-muted">
+              Leads appear here once your agency routes a connected form to your portal.
+            </p>
+          </div>
         </template>
       </UTable>
     </div>
 
     <div class="border-t border-default p-3 flex items-center justify-end">
-      <UPagination v-model:page="page" :total="data?.total ?? 0" :items-per-page="PAGE_SIZE" :sibling-count="1" />
+      <UPagination
+        v-model:page="page"
+        :total="data?.total ?? 0"
+        :items-per-page="PAGE_SIZE"
+        :sibling-count="1"
+      />
     </div>
+
+    <USlideover
+      :open="Boolean(selectedLeadId)"
+      title="Lead details"
+      description="Client-visible inquiry record"
+      @update:open="value => { if (!value) selectedLeadId = null }"
+    >
+      <template #body>
+        <div v-if="selectedPending" class="py-12 text-center text-sm text-muted">
+          Loading lead...
+        </div>
+        <div v-else-if="selectedLead" class="space-y-6">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-sm text-muted">
+                {{ format(new Date(selectedLead.submitted_at), 'MMM d, yyyy h:mm a') }}
+              </p>
+              <h2 class="mt-1 text-lg font-semibold">
+                {{ summarize(selectedLead) || selectedLead.form_name || 'Lead' }}
+              </h2>
+            </div>
+            <UBadge variant="soft" :color="statusColor(selectedLead.status)">
+              {{ selectedLead.status }}
+            </UBadge>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div class="rounded-lg border border-default p-3">
+              <p class="text-xs text-muted">
+                Source
+              </p>
+              <p class="mt-1 text-sm font-medium capitalize">
+                {{ selectedLead.source }}
+              </p>
+            </div>
+            <div class="rounded-lg border border-default p-3">
+              <p class="text-xs text-muted">
+                Form
+              </p>
+              <p class="mt-1 text-sm font-medium">
+                {{ selectedLead.form_name || '-' }}
+              </p>
+            </div>
+            <div class="rounded-lg border border-default p-3">
+              <p class="text-xs text-muted">
+                Campaign
+              </p>
+              <p class="mt-1 text-sm font-medium">
+                {{ selectedLead.campaign_name || '-' }}
+              </p>
+            </div>
+            <div class="rounded-lg border border-default p-3">
+              <p class="text-xs text-muted">
+                Ad
+              </p>
+              <p class="mt-1 text-sm font-medium">
+                {{ selectedLead.ad_name || '-' }}
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <h3 class="text-sm font-semibold">
+              Contact fields
+            </h3>
+            <dl class="mt-2 divide-y divide-default rounded-lg border border-default">
+              <div
+                v-for="[key, value] in Object.entries(selectedLead.field_data ?? {})"
+                :key="key"
+                class="grid grid-cols-3 gap-3 p-3"
+              >
+                <dt class="text-xs text-muted">
+                  {{ formatFieldLabel(key) }}
+                </dt>
+                <dd class="col-span-2 text-sm break-words">
+                  {{ formatFieldValue(value) }}
+                </dd>
+              </div>
+            </dl>
+          </div>
+
+          <div v-if="selectedLead.status === 'new'" class="pt-2">
+            <UButton icon="i-lucide-check" block @click="markContacted(selectedLead)">
+              Mark contacted
+            </UButton>
+          </div>
+        </div>
+      </template>
+    </USlideover>
   </div>
 </template>

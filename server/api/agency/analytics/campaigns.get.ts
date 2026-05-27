@@ -9,8 +9,12 @@ import { queryRows, queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { computeMetrics, toNum, PLATFORM_LABELS, PLATFORM_COLORS, buildClientCondition } from '~~/server/utils/analyticsMetrics'
 import { buildCampaignDeepLink } from '~~/server/utils/platformDeepLinks'
+import {
+  PORTAL_LEAD_STATUS_SELECT,
+  leadSourceForPlatformSql
+} from '~~/server/utils/leads/portalAnalytics'
 
-const ALLOWED_SORT = ['spend', 'budget', 'impressions', 'clicks', 'conversions', 'revenue', 'campaign_name', 'platform'] as const
+const ALLOWED_SORT = ['spend', 'budget', 'impressions', 'clicks', 'conversions', 'revenue', 'campaign_name', 'platform', 'lead_count', 'cost_per_lead'] as const
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
@@ -24,7 +28,10 @@ export default defineEventHandler(async (event) => {
 
   const clientId = q.clientId as string | undefined
   const platforms = q.platform ? String(q.platform).split(',').map(p => p.trim()).filter(Boolean) : null
-  const sortBy = ALLOWED_SORT.includes(q.sortBy as any) ? q.sortBy as string : 'spend'
+  const requestedSort = String(q.sortBy || '')
+  const sortBy = ALLOWED_SORT.includes(requestedSort as typeof ALLOWED_SORT[number])
+    ? requestedSort
+    : 'spend'
   const sortDir = q.sortDir === 'asc' ? 'ASC' : 'DESC'
   const limit = Math.min(Math.max(Number(q.limit) || 50, 1), 200)
   const offset = Math.max(Number(q.offset) || 0, 0)
@@ -33,7 +40,7 @@ export default defineEventHandler(async (event) => {
   const showInactive = q.showInactive === 'true'
 
   const conditions: string[] = ['ms.period >= $1', 'ms.period <= $2']
-  const params: any[] = [startDate.slice(0, 7), endDate.slice(0, 7)]
+  const params: unknown[] = [startDate.slice(0, 7), endDate.slice(0, 7)]
   let idx = 3
 
   if (clientId) {
@@ -69,6 +76,12 @@ export default defineEventHandler(async (event) => {
     const total = Number(countResult?.count || 0)
 
     // Fetch campaigns
+    params.push(startDate)
+    const leadStartIdx = idx
+    idx++
+    params.push(endDate)
+    const leadEndIdx = idx
+    idx++
     params.push(limit)
     const limitIdx = idx
     idx++
@@ -76,36 +89,61 @@ export default defineEventHandler(async (event) => {
     const offsetIdx = idx
 
     const rows = await queryRows(`
+      WITH campaigns AS (
+        SELECT
+          ms.campaign_id,
+          ms.campaign_name,
+          ms.platform,
+          ms.campaign_type,
+          ms.campaign_status,
+          ms.client_id,
+          c.name as client_name,
+          SUM(ms.actual_spend) as spend,
+          SUM(ms.budget_allocated) as budget,
+          BOOL_OR(ms.budget_rolling) as budget_rolling,
+          SUM(ms.impressions) as impressions,
+          SUM(ms.clicks) as clicks,
+          SUM(ms.conversions) as conversions,
+          COALESCE(SUM(ms.revenue), 0) as revenue,
+          MAX(ms.synced_at) as last_synced,
+          (array_agg(ms.id ORDER BY ms.synced_at DESC NULLS LAST))[1] as media_spend_id,
+          (array_agg(ms.connection_id ORDER BY ms.synced_at DESC NULLS LAST))[1] as connection_id,
+          (array_agg(sc.account_id ORDER BY ms.synced_at DESC NULLS LAST))[1] as connection_account_id,
+          (array_agg(sc.metadata::text ORDER BY ms.synced_at DESC NULLS LAST))[1] as connection_metadata
+        FROM media_spend ms
+        LEFT JOIN agency_clients c ON ms.client_id = c.id
+        LEFT JOIN social_connections sc ON ms.connection_id = sc.id
+        WHERE ${where}
+        GROUP BY ms.campaign_id, ms.campaign_name, ms.platform, ms.campaign_type, ms.campaign_status, ms.client_id, c.name
+      )
       SELECT
-        ms.campaign_id,
-        ms.campaign_name,
-        ms.platform,
-        ms.campaign_type,
-        ms.campaign_status,
-        ms.client_id,
-        c.name as client_name,
-        SUM(ms.actual_spend) as spend,
-        SUM(ms.budget_allocated) as budget,
-        BOOL_OR(ms.budget_rolling) as budget_rolling,
-        SUM(ms.impressions) as impressions,
-        SUM(ms.clicks) as clicks,
-        SUM(ms.conversions) as conversions,
-        COALESCE(SUM(ms.revenue), 0) as revenue,
-        MAX(ms.synced_at) as last_synced,
-        (array_agg(ms.id ORDER BY ms.synced_at DESC NULLS LAST))[1] as media_spend_id,
-        (array_agg(ms.connection_id ORDER BY ms.synced_at DESC NULLS LAST))[1] as connection_id,
-        (array_agg(sc.account_id ORDER BY ms.synced_at DESC NULLS LAST))[1] as connection_account_id,
-        (array_agg(sc.metadata::text ORDER BY ms.synced_at DESC NULLS LAST))[1] as connection_metadata
-      FROM media_spend ms
-      LEFT JOIN agency_clients c ON ms.client_id = c.id
-      LEFT JOIN social_connections sc ON ms.connection_id = sc.id
-      WHERE ${where}
-      GROUP BY ms.campaign_id, ms.campaign_name, ms.platform, ms.campaign_type, ms.campaign_status, ms.client_id, c.name
-      ORDER BY ${sortBy} ${sortDir}
+        c.*,
+        COALESCE(la.lead_count, 0) AS lead_count,
+        COALESCE(la.lead_new_count, 0) AS lead_new_count,
+        COALESCE(la.lead_contacted_count, 0) AS lead_contacted_count,
+        COALESCE(la.lead_qualified_count, 0) AS lead_qualified_count,
+        COALESCE(la.lead_won_count, 0) AS lead_won_count,
+        COALESCE(la.lead_lost_count, 0) AS lead_lost_count,
+        CASE WHEN COALESCE(la.lead_count, 0) > 0 THEN c.spend / la.lead_count ELSE NULL END AS cost_per_lead
+      FROM campaigns c
+      LEFT JOIN LATERAL (
+        SELECT ${PORTAL_LEAD_STATUS_SELECT}
+        FROM leads l
+        WHERE l.deleted_at IS NULL
+          AND l.submitted_at >= $${leadStartIdx}::date
+          AND l.submitted_at < ($${leadEndIdx}::date + INTERVAL '1 day')
+          AND l.source = ${leadSourceForPlatformSql('c')}
+          AND (c.client_id IS NULL OR l.client_id = c.client_id)
+          AND (
+            (c.campaign_id IS NOT NULL AND l.campaign_id = c.campaign_id)
+            OR (c.campaign_id IS NULL AND c.campaign_name IS NOT NULL AND l.campaign_name = c.campaign_name)
+          )
+      ) la ON TRUE
+      ORDER BY ${sortBy === 'cost_per_lead' ? 'cost_per_lead' : sortBy} ${sortDir} NULLS LAST
       LIMIT $${limitIdx} OFFSET $${offsetIdx}
     `, params)
 
-    const campaigns = rows.map(r => {
+    const campaigns = rows.map((r) => {
       const spend = toNum(r.spend)
       const impressions = toNum(r.impressions)
       const clicks = toNum(r.clicks)
@@ -114,10 +152,14 @@ export default defineEventHandler(async (event) => {
       const metrics = computeMetrics(spend, impressions, clicks, conversions, revenue)
 
       // Build deep link URL
-      let connectionData: { accountId: string; metadata: any } | null = null
+      let connectionData: { accountId: string, metadata: unknown } | null = null
       if (r.connection_account_id) {
-        let metadata: any = null
-        try { metadata = typeof r.connection_metadata === 'string' ? JSON.parse(r.connection_metadata) : r.connection_metadata } catch { /* ignore */ }
+        let metadata: unknown = null
+        try {
+          metadata = typeof r.connection_metadata === 'string'
+            ? JSON.parse(r.connection_metadata)
+            : r.connection_metadata
+        } catch { /* ignore */ }
         connectionData = { accountId: r.connection_account_id, metadata }
       }
       const deepLinkUrl = buildCampaignDeepLink(r.platform, r.campaign_id, connectionData)
@@ -140,9 +182,16 @@ export default defineEventHandler(async (event) => {
         conversions,
         revenue,
         ...metrics,
+        leadCount: Number(r.lead_count || 0),
+        leadNewCount: Number(r.lead_new_count || 0),
+        leadContactedCount: Number(r.lead_contacted_count || 0),
+        leadQualifiedCount: Number(r.lead_qualified_count || 0),
+        leadWonCount: Number(r.lead_won_count || 0),
+        leadLostCount: Number(r.lead_lost_count || 0),
+        costPerLead: r.cost_per_lead == null ? null : toNum(r.cost_per_lead),
         lastSynced: r.last_synced,
         mediaSpendId: r.media_spend_id,
-        deepLinkUrl,
+        deepLinkUrl
       }
     })
 

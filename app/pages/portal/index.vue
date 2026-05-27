@@ -23,14 +23,45 @@ function timeAgo(date: string) {
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
   return `${Math.floor(diff / 86400)}d ago`
 }
+
+function leadSummary(fieldData: Record<string, unknown> | null | undefined) {
+  const fields = fieldData ?? {}
+  return [
+    fields.full_name,
+    fields.name,
+    fields.email,
+    fields.phone_number ?? fields.phone
+  ].filter(Boolean).slice(0, 2).map(String).join(' · ')
+}
+
+function leadSourceIcon(source: string) {
+  if (source === 'google') return 'i-lucide-chrome'
+  if (source === 'meta') return 'i-lucide-badge'
+  if (source === 'webhook') return 'i-lucide-webhook'
+  if (source === 'csv') return 'i-lucide-file-spreadsheet'
+  return 'i-lucide-inbox'
+}
+
+function leadStatusColor(status: string) {
+  if (status === 'new') return 'info'
+  if (status === 'contacted') return 'primary'
+  if (status === 'qualified') return 'warning'
+  if (status === 'won') return 'success'
+  if (status === 'lost') return 'neutral'
+  return 'error'
+}
 </script>
 
 <template>
   <div class="p-6 space-y-6 max-w-7xl mx-auto">
     <!-- Welcome Header -->
     <div>
-      <h1 class="text-2xl font-bold">Welcome back, {{ user?.name }}</h1>
-      <p class="text-muted">{{ user?.clientName }}</p>
+      <h1 class="text-2xl font-bold">
+        Welcome back, {{ user?.name }}
+      </h1>
+      <p class="text-muted">
+        {{ user?.clientName }}
+      </p>
     </div>
 
     <div v-if="pending" class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -134,6 +165,63 @@ function timeAgo(date: string) {
         </template>
       </UCard>
 
+      <!-- Recent Leads -->
+      <UCard>
+        <template #header>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-inbox" class="text-primary" />
+              <span class="font-semibold">Recent Leads</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <UBadge v-if="dashboard.leads.stats.new > 0" color="info" variant="subtle">
+                {{ dashboard.leads.stats.new }} new
+              </UBadge>
+              <UBadge color="neutral" variant="subtle">
+                {{ dashboard.leads.stats.total }} total
+              </UBadge>
+            </div>
+          </div>
+        </template>
+
+        <div class="space-y-3">
+          <NuxtLink
+            v-for="lead in dashboard.leads.recent"
+            :key="lead.id"
+            :to="{ path: '/portal/leads', query: { leadId: lead.id } }"
+            class="block p-3 rounded-lg hover:bg-elevated transition-colors"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <UIcon :name="leadSourceIcon(lead.source)" class="size-4 text-muted" />
+                  <span class="text-sm font-medium truncate">
+                    {{ leadSummary(lead.fieldData) || lead.formName || 'Lead inquiry' }}
+                  </span>
+                </div>
+                <div class="mt-1 flex items-center gap-2 text-xs text-muted">
+                  <span>{{ timeAgo(lead.submittedAt) }}</span>
+                  <span v-if="lead.campaignName">· {{ lead.campaignName }}</span>
+                </div>
+              </div>
+              <UBadge size="xs" variant="subtle" :color="leadStatusColor(lead.status)">
+                {{ lead.status }}
+              </UBadge>
+            </div>
+          </NuxtLink>
+
+          <p v-if="!dashboard.leads.recent.length" class="text-sm text-muted text-center py-4">
+            No shared leads yet
+          </p>
+        </div>
+
+        <template #footer>
+          <NuxtLink to="/portal/leads" class="text-sm text-primary hover:underline">
+            View all leads
+          </NuxtLink>
+        </template>
+      </UCard>
+
       <!-- Open Requests -->
       <UCard>
         <template #header>
@@ -209,7 +297,7 @@ function timeAgo(date: string) {
               :src="safeMediaUrl(item.thumbnailUrl)"
               :alt="item.title"
               class="w-full h-full object-cover group-hover:scale-105 transition-transform"
-            />
+            >
             <div v-else class="w-full h-full flex items-center justify-center">
               <UIcon name="i-lucide-file" class="w-8 h-8 text-muted" />
             </div>
@@ -234,7 +322,13 @@ function timeAgo(date: string) {
               <UIcon name="i-lucide-bar-chart-4" class="text-primary" />
               <span class="font-semibold">Ad Performance</span>
             </div>
-            <UButton to="/portal/analytics" variant="link" color="neutral" size="xs" trailing-icon="i-lucide-arrow-right">
+            <UButton
+              to="/portal/analytics"
+              variant="link"
+              color="neutral"
+              size="xs"
+              trailing-icon="i-lucide-arrow-right"
+            >
               Details
             </UButton>
           </div>
@@ -265,7 +359,9 @@ function timeAgo(date: string) {
           >
             <div>
               <span class="text-sm font-medium">{{ invoice.invoiceNumber }}</span>
-              <p class="text-xs text-muted">Due {{ formatDate(invoice.dueDate) }}</p>
+              <p class="text-xs text-muted">
+                Due {{ formatDate(invoice.dueDate) }}
+              </p>
             </div>
             <div class="text-right">
               <span class="text-sm font-semibold">{{ formatCurrency(invoice.amountDue) }}</span>
@@ -309,8 +405,12 @@ function timeAgo(date: string) {
           >
             <UAvatar :src="member.avatarUrl || undefined" :alt="member.name" size="sm" />
             <div class="min-w-0 flex-1">
-              <p class="text-sm font-medium truncate">{{ member.name }}</p>
-              <p class="text-xs text-muted truncate">{{ member.role || member.department || 'Team Member' }}</p>
+              <p class="text-sm font-medium truncate">
+                {{ member.name }}
+              </p>
+              <p class="text-xs text-muted truncate">
+                {{ member.role || member.department || 'Team Member' }}
+              </p>
             </div>
             <div class="flex items-center gap-1 shrink-0">
               <UButton
@@ -354,8 +454,12 @@ function timeAgo(date: string) {
               :style="{ backgroundColor: deadline.status.color || '#6b7280' }"
             />
             <div class="min-w-0 flex-1">
-              <p class="text-sm font-medium truncate">{{ deadline.title }}</p>
-              <p class="text-xs text-muted">{{ deadline.projectName }}</p>
+              <p class="text-sm font-medium truncate">
+                {{ deadline.title }}
+              </p>
+              <p class="text-xs text-muted">
+                {{ deadline.projectName }}
+              </p>
             </div>
             <span class="text-xs text-muted shrink-0">{{ formatDate(deadline.dueDate) }}</span>
           </div>

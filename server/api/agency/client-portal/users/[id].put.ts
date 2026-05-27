@@ -22,6 +22,8 @@ interface UpdateClientUserBody {
     canAddComments?: boolean
     canUploadFiles?: boolean
     canInviteUsers?: boolean
+    canViewAnalytics?: boolean
+    canSubmitRequests?: boolean
   }
   status?: 'active' | 'suspended' | 'deactivated'
   emailNotifications?: boolean
@@ -164,6 +166,16 @@ export default defineEventHandler(async (event) => {
         values.push(p.canInviteUsers)
         idx++
       }
+      if (p.canViewAnalytics !== undefined) {
+        fields.push(`can_view_analytics = $${idx}`)
+        values.push(p.canViewAnalytics)
+        idx++
+      }
+      if (p.canSubmitRequests !== undefined) {
+        fields.push(`can_submit_requests = $${idx}`)
+        values.push(p.canSubmitRequests)
+        idx++
+      }
     }
 
     if (fields.length === 0) {
@@ -202,7 +214,9 @@ export default defineEventHandler(async (event) => {
           canViewBudgets: user.can_view_budgets,
           canAddComments: user.can_add_comments,
           canUploadFiles: user.can_upload_files,
-          canInviteUsers: user.can_invite_users
+          canInviteUsers: user.can_invite_users,
+          canViewAnalytics: user.can_view_analytics ?? true,
+          canSubmitRequests: user.can_submit_requests ?? true
         },
         updatedAt: user.updated_at
       }

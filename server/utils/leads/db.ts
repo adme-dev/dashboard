@@ -5,7 +5,7 @@
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import type {
   Lead, LeadDelivery, LeadFormRule, LeadRuleDestination,
-  LeadFormMetadata, LeadFormMetadataField, LeadSource,
+  LeadFormMetadata, LeadFormMetadataField, LeadSource
 } from '~~/app/types'
 
 // ----------------------------------------------------------------------------
@@ -50,7 +50,7 @@ export async function insertLeadWithDedup(input: InsertLeadInput): Promise<strin
     input.submitted_at,
     JSON.stringify(input.field_data),
     input.attribution ? JSON.stringify(input.attribution) : null,
-    input.assigned_to, input.created_by, Boolean(input.is_test),
+    input.assigned_to, input.created_by, Boolean(input.is_test)
   ])
   return row?.id ?? null
 }
@@ -80,12 +80,12 @@ export async function upsertFormMetadata(
   source: LeadSource,
   form_id: string,
   form_name: string | null,
-  fieldData: Record<string, string>,
+  fieldData: Record<string, string>
 ): Promise<void> {
   const newFields: LeadFormMetadataField[] = Object.entries(fieldData).map(([key, value]) => ({
     key,
     sample_value: typeof value === 'string' ? value.slice(0, 200) : String(value),
-    first_seen_at: new Date().toISOString(),
+    first_seen_at: new Date().toISOString()
   }))
 
   // Pull current fields, union by key, write back. Single round trip via CTE.
@@ -115,17 +115,17 @@ export async function upsertFormMetadata(
 
 export async function listFormMetadata(): Promise<LeadFormMetadata[]> {
   return queryRows<LeadFormMetadata>(
-    `SELECT * FROM lead_form_metadata ORDER BY last_lead_at DESC NULLS LAST`,
+    `SELECT * FROM lead_form_metadata ORDER BY last_lead_at DESC NULLS LAST`
   )
 }
 
 export async function loadFormMetadata(
   source: LeadSource,
-  form_id: string,
+  form_id: string
 ): Promise<LeadFormMetadata | null> {
   return queryOne<LeadFormMetadata>(
     `SELECT * FROM lead_form_metadata WHERE source = $1 AND form_id = $2`,
-    [source, form_id],
+    [source, form_id]
   )
 }
 
@@ -134,19 +134,19 @@ export async function loadFormMetadata(
 // ----------------------------------------------------------------------------
 
 export async function loadRuleForForm(
-  source: 'meta' | 'google',
-  form_id: string,
-): Promise<{ rule: LeadFormRule; destinations: LeadRuleDestination[] } | null> {
+  source: Exclude<LeadSource, 'manual'>,
+  form_id: string
+): Promise<{ rule: LeadFormRule, destinations: LeadRuleDestination[] } | null> {
   const rule = await queryOne<LeadFormRule>(
     `SELECT * FROM lead_form_rules WHERE source = $1 AND form_id = $2`,
-    [source, form_id],
+    [source, form_id]
   )
   if (!rule) return null
   const destinations = await queryRows<LeadRuleDestination>(
     `SELECT * FROM lead_rule_destinations
      WHERE rule_id = $1 AND enabled = TRUE
      ORDER BY sort_order ASC, created_at ASC`,
-    [rule.id],
+    [rule.id]
   )
   return { rule, destinations }
 }
@@ -173,14 +173,14 @@ export async function insertDelivery(input: InsertDeliveryInput): Promise<string
     RETURNING id
   `, [
     input.lead_id, input.rule_destination_id, input.destination_type,
-    input.scheduled_at, input.idempotency_key,
+    input.scheduled_at, input.idempotency_key
   ])
   return row!.id
 }
 
 export async function insertCancelledPlaceholder(
   lead_id: string,
-  reason: string,
+  reason: string
 ): Promise<void> {
   await execute(`
     INSERT INTO lead_deliveries (
@@ -197,7 +197,7 @@ export async function insertCancelledPlaceholder(
  */
 export async function claimDelivery(
   delivery_id: string,
-  worker_id: string,
+  worker_id: string
 ): Promise<LeadDelivery | null> {
   return queryOne<LeadDelivery>(`
     UPDATE lead_deliveries
@@ -217,7 +217,7 @@ export async function releaseClaim(delivery_id: string): Promise<void> {
 
 export async function markDelivered(
   delivery_id: string,
-  response_meta: any,
+  response_meta: unknown
 ): Promise<void> {
   await execute(`
     UPDATE lead_deliveries
@@ -230,7 +230,7 @@ export async function markFailed(
   delivery_id: string,
   error: string,
   retry_count: number,
-  finalized: boolean,
+  finalized: boolean
 ): Promise<void> {
   await execute(`
     UPDATE lead_deliveries
@@ -263,9 +263,9 @@ export async function recoverStuckClaims(staleMinutes = 5): Promise<number> {
 
 export async function logIngestionError(
   source: LeadSource,
-  raw_payload: any,
-  headers: any,
-  error: string,
+  raw_payload: unknown,
+  headers: unknown,
+  error: string
 ): Promise<void> {
   await execute(`
     INSERT INTO lead_ingestion_errors (source, raw_payload, headers, error)

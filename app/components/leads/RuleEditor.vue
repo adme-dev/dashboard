@@ -3,14 +3,14 @@ import type { LeadRuleDestination, LeadDestinationType } from '~/types'
 
 const props = defineProps<{
   ruleId: string
-  formMeta: { source: string; form_id: string; form_name: string | null }
+  formMeta: { source: string, form_id: string, form_name: string | null }
 }>()
 const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ (e: 'changed'): void }>()
 
 const toast = useToast()
 const { data, refresh, pending } = useFetch<{
-  rule: any
+  rule: { enabled: boolean } | null
   destinations: LeadRuleDestination[]
 }>(`/api/leads/rules/${props.ruleId}`, { default: () => ({ rule: null, destinations: [] }) })
 
@@ -21,6 +21,32 @@ const showTestFire = ref(false)
 // Confirmation modal for delete (replaces window.confirm — project rule: no native dialogs)
 const showDeleteConfirm = ref(false)
 const pendingDelete = ref<LeadRuleDestination | null>(null)
+
+const enabledDestinationCount = computed(() =>
+  (data.value?.destinations ?? []).filter(d => d.enabled).length
+)
+const isRuleReady = computed(() => Boolean(data.value?.rule?.enabled && enabledDestinationCount.value > 0))
+const portalDestination = computed(() =>
+  (data.value?.destinations ?? []).find(d => d.destination_type === 'portal')
+)
+const portalVisible = computed(() => Boolean(data.value?.rule?.enabled && portalDestination.value?.enabled))
+
+function destinationSummary(d: LeadRuleDestination): string {
+  const config = d.config as Record<string, unknown>
+  if (d.destination_type === 'email') return String(config.to || config.recipients || 'Email destination')
+  if (d.destination_type === 'slack') return String(config.channel || config.webhook_url || 'Slack destination')
+  if (d.destination_type === 'webhook') return String(config.url || config.webhook_url || 'Webhook destination')
+  if (d.destination_type === 'assign_user') return String(config.user_id || 'Assign user')
+  if (d.destination_type === 'sheets') return String(config.spreadsheet_id || 'Google Sheet')
+  if (d.destination_type === 'portal') return 'Visible in client portal'
+  return JSON.stringify(config)
+}
+
+function errorMessage(e: unknown): string {
+  return e && typeof e === 'object' && 'data' in e
+    ? (e as { data?: { statusMessage?: string } }).data?.statusMessage ?? ''
+    : ''
+}
 
 function newDestination(type: LeadDestinationType) {
   editingDest.value = {
@@ -33,7 +59,7 @@ function newDestination(type: LeadDestinationType) {
     enabled: true,
     sort_order: 0,
     created_at: '',
-    updated_at: '',
+    updated_at: ''
   } as LeadRuleDestination
   showDestModal.value = true
 }
@@ -58,8 +84,8 @@ async function confirmDelete() {
     pendingDelete.value = null
     await refresh()
     emit('changed')
-  } catch (e: any) {
-    toast.add({ title: 'Failed to delete', description: e?.data?.statusMessage ?? '', color: 'error' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Failed to delete', description: errorMessage(e), color: 'error' })
   }
 }
 
@@ -68,21 +94,23 @@ function cancelDelete() {
   pendingDelete.value = null
 }
 
-const ADD_TYPES: { type: LeadDestinationType; label: string; icon: string }[] = [
-  { type: 'portal',      label: 'Client portal write',  icon: 'i-lucide-monitor' },
-  { type: 'webhook',     label: 'Outbound webhook',      icon: 'i-lucide-link' },
-  { type: 'slack',       label: 'Slack channel',         icon: 'i-lucide-message-circle' },
-  { type: 'email',       label: 'Email staff',           icon: 'i-lucide-mail' },
-  { type: 'sheets',      label: 'Google Sheet append',   icon: 'i-lucide-table' },
-  { type: 'assign_user', label: 'Assign to user',        icon: 'i-lucide-user' },
+const ADD_TYPES: { type: LeadDestinationType, label: string, icon: string }[] = [
+  { type: 'portal', label: 'Show in client portal', icon: 'i-lucide-monitor' },
+  { type: 'webhook', label: 'Outbound webhook', icon: 'i-lucide-link' },
+  { type: 'slack', label: 'Slack channel', icon: 'i-lucide-message-circle' },
+  { type: 'email', label: 'Email staff', icon: 'i-lucide-mail' },
+  { type: 'sheets', label: 'Google Sheet append', icon: 'i-lucide-table' },
+  { type: 'assign_user', label: 'Assign to user', icon: 'i-lucide-user' }
 ]
 
 const addMenuItems = computed(() => [
-  ADD_TYPES.map(t => ({
-    label: t.label,
-    icon: t.icon,
-    onSelect: () => newDestination(t.type),
-  })),
+  ADD_TYPES
+    .filter(t => t.type !== 'portal' || !portalDestination.value)
+    .map(t => ({
+      label: t.label,
+      icon: t.icon,
+      onSelect: () => newDestination(t.type)
+    }))
 ])
 </script>
 
@@ -93,8 +121,17 @@ const addMenuItems = computed(() => [
         <!-- Header -->
         <header class="px-6 py-4 border-b border-default flex items-center justify-between shrink-0">
           <div>
-            <h2 class="text-base font-semibold">{{ formMeta.form_name || formMeta.form_id }}</h2>
-            <p class="text-xs text-muted">{{ formMeta.source }} · form {{ formMeta.form_id }}</p>
+            <div class="flex items-center gap-2">
+              <h2 class="text-base font-semibold">
+                {{ formMeta.form_name || formMeta.form_id }}
+              </h2>
+              <UBadge :color="isRuleReady ? 'success' : 'warning'" variant="soft" size="sm">
+                {{ isRuleReady ? 'Ready' : 'Needs setup' }}
+              </UBadge>
+            </div>
+            <p class="text-xs text-muted">
+              {{ formMeta.source }} · form {{ formMeta.form_id }} · replaces Zapier routing for this form
+            </p>
           </div>
           <div class="flex items-center gap-2">
             <UButton
@@ -109,6 +146,7 @@ const addMenuItems = computed(() => [
               variant="ghost"
               size="sm"
               icon="i-lucide-x"
+              aria-label="Close rule editor"
               @click="open = false"
             />
           </div>
@@ -116,11 +154,86 @@ const addMenuItems = computed(() => [
 
         <!-- Body -->
         <div class="flex-1 overflow-auto p-6 space-y-6">
+          <section class="grid grid-cols-3 gap-2">
+            <div class="rounded border border-default p-3">
+              <div class="flex items-center gap-2 text-sm font-medium">
+                <UIcon name="i-lucide-inbox" class="size-4 text-primary" />
+                Capture
+              </div>
+              <p class="mt-1 text-xs text-muted">
+                Leads matching this form ID are ingested and deduped.
+              </p>
+            </div>
+            <div class="rounded border border-default p-3">
+              <div class="flex items-center gap-2 text-sm font-medium">
+                <UIcon name="i-lucide-route" class="size-4" :class="enabledDestinationCount ? 'text-primary' : 'text-warning'" />
+                Route
+              </div>
+              <p class="mt-1 text-xs text-muted">
+                {{ enabledDestinationCount }} active destination{{ enabledDestinationCount === 1 ? '' : 's' }} configured.
+              </p>
+            </div>
+            <div class="rounded border border-default p-3">
+              <div class="flex items-center gap-2 text-sm font-medium">
+                <UIcon name="i-lucide-flask-conical" class="size-4 text-primary" />
+                Verify
+              </div>
+              <p class="mt-1 text-xs text-muted">
+                Run Test fire before turning off the matching Zap.
+              </p>
+            </div>
+          </section>
+
+          <section class="rounded border border-default p-4">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-lucide-monitor" class="size-4 text-primary" />
+                  <h3 class="text-sm font-semibold">
+                    Client portal visibility
+                  </h3>
+                  <UBadge
+                    :color="portalVisible ? 'success' : 'neutral'"
+                    variant="soft"
+                    size="sm"
+                  >
+                    {{ portalVisible ? 'Visible to client' : 'Hidden from client' }}
+                  </UBadge>
+                </div>
+                <p class="mt-2 text-sm text-muted">
+                  Add an enabled portal destination when this form should appear in the mapped client's portal lead inbox.
+                  Keep it off for internal-only forms.
+                </p>
+              </div>
+              <UButton
+                v-if="!portalDestination"
+                size="sm"
+                icon="i-lucide-plus"
+                @click="newDestination('portal')"
+              >
+                Share to portal
+              </UButton>
+              <UButton
+                v-else
+                size="sm"
+                variant="ghost"
+                icon="i-lucide-pencil"
+                @click="editDestination(portalDestination)"
+              >
+                Edit
+              </UButton>
+            </div>
+          </section>
+
           <section>
             <div class="flex items-center justify-between mb-3">
-              <h3 class="text-sm font-semibold">Destinations</h3>
+              <h3 class="text-sm font-semibold">
+                Destinations
+              </h3>
               <UDropdownMenu :items="addMenuItems">
-                <UButton size="sm" icon="i-lucide-plus">Add destination</UButton>
+                <UButton size="sm" icon="i-lucide-plus">
+                  Add destination
+                </UButton>
               </UDropdownMenu>
             </div>
 
@@ -139,20 +252,25 @@ const addMenuItems = computed(() => [
               >
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2 flex-wrap">
-                    <UBadge variant="soft" size="sm">{{ d.destination_type }}</UBadge>
+                    <UBadge variant="soft" size="sm">
+                      {{ d.destination_type }}
+                    </UBadge>
                     <USwitch :model-value="d.enabled" disabled />
                     <span v-if="d.delay_minutes" class="text-xs text-muted">
                       +{{ d.delay_minutes }}m delay
                     </span>
                     <span v-if="d.filter" class="text-xs text-muted">· filtered</span>
                   </div>
-                  <p class="text-xs text-muted mt-1 truncate">{{ JSON.stringify(d.config) }}</p>
+                  <p class="text-xs text-muted mt-1 truncate">
+                    {{ destinationSummary(d) }}
+                  </p>
                 </div>
                 <div class="flex items-center gap-1 shrink-0">
                   <UButton
                     size="xs"
                     variant="ghost"
                     icon="i-lucide-pencil"
+                    aria-label="Edit destination"
                     @click="editDestination(d)"
                   />
                   <UButton
@@ -160,14 +278,20 @@ const addMenuItems = computed(() => [
                     variant="ghost"
                     color="error"
                     icon="i-lucide-trash-2"
+                    aria-label="Delete destination"
                     @click="askDelete(d)"
                   />
                 </div>
               </li>
 
-              <p v-if="!pending && !data?.destinations?.length" class="text-sm text-muted">
-                No destinations configured. Click <strong>Add destination</strong> to start.
-              </p>
+              <div v-if="!pending && !data?.destinations?.length" class="rounded border border-dashed border-default p-4 text-sm">
+                <p class="font-medium">
+                  No destinations configured.
+                </p>
+                <p class="mt-1 text-muted">
+                  Add Slack, email, webhook, Sheets, portal, or assignment destinations to replace the actions currently handled in Zapier.
+                </p>
+              </div>
             </ul>
           </section>
         </div>
@@ -195,14 +319,20 @@ const addMenuItems = computed(() => [
       <UModal v-model:open="showDeleteConfirm">
         <template #content>
           <div class="p-6 space-y-3 max-w-md">
-            <h3 class="text-base font-semibold">Delete destination?</h3>
+            <h3 class="text-base font-semibold">
+              Delete destination?
+            </h3>
             <p class="text-sm text-muted">
               This removes the destination immediately. Pending deliveries already enqueued
               for this rule will still attempt; new leads will skip it.
             </p>
             <div class="flex justify-end gap-2 pt-2">
-              <UButton variant="ghost" @click="cancelDelete">Cancel</UButton>
-              <UButton color="error" @click="confirmDelete">Delete</UButton>
+              <UButton variant="ghost" @click="cancelDelete">
+                Cancel
+              </UButton>
+              <UButton color="error" @click="confirmDelete">
+                Delete
+              </UButton>
             </div>
           </div>
         </template>

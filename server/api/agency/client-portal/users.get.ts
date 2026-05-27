@@ -54,6 +54,8 @@ export default defineEventHandler(async (event) => {
         cu.can_approve_work,
         cu.can_view_time_entries,
         cu.can_view_budgets,
+        cu.can_view_analytics,
+        cu.can_submit_requests,
         cu.last_login_at,
         cu.created_at,
         c.id as client_id,
@@ -92,7 +94,9 @@ export default defineEventHandler(async (event) => {
           canViewInvoices: u.can_view_invoices,
           canApproveWork: u.can_approve_work,
           canViewTimeEntries: u.can_view_time_entries,
-          canViewBudgets: u.can_view_budgets
+          canViewBudgets: u.can_view_budgets,
+          canViewAnalytics: u.can_view_analytics ?? true,
+          canSubmitRequests: u.can_submit_requests ?? true
         },
         lastLoginAt: u.last_login_at,
         createdAt: u.created_at,

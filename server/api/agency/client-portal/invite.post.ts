@@ -93,8 +93,10 @@ export default defineEventHandler(async (event) => {
         can_view_time_entries,
         can_view_budgets,
         can_add_comments,
-        can_upload_files
-      ) VALUES ($1, $2, $3, 'pending', NOW(), $4, $5, $6, $7, $8, $9, $10, $11)
+        can_upload_files,
+        can_view_analytics,
+        can_submit_requests
+      ) VALUES ($1, $2, $3, 'pending', NOW(), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *
     `, [
       clientId,
@@ -107,7 +109,9 @@ export default defineEventHandler(async (event) => {
       permissions.canViewTimeEntries ?? false,
       permissions.canViewBudgets ?? false,
       permissions.canAddComments ?? true,
-      permissions.canUploadFiles ?? true
+      permissions.canUploadFiles ?? true,
+      permissions.canViewAnalytics ?? true,
+      permissions.canSubmitRequests ?? true
     ])
 
     // Send invitation email
@@ -126,7 +130,9 @@ export default defineEventHandler(async (event) => {
           canViewTimeEntries: permissions.canViewTimeEntries ?? false,
           canViewBudgets: permissions.canViewBudgets ?? false,
           canAddComments: permissions.canAddComments ?? true,
-          canUploadFiles: permissions.canUploadFiles ?? true
+          canUploadFiles: permissions.canUploadFiles ?? true,
+          canViewAnalytics: permissions.canViewAnalytics ?? true,
+          canSubmitRequests: permissions.canSubmitRequests ?? true
         }
       })
     } catch (emailError) {

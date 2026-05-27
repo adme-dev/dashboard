@@ -4,9 +4,9 @@ import { queryOne } from '~~/server/utils/db'
 
 const Body = z.object({
   client_id: z.string().uuid(),
-  source: z.enum(['meta', 'google']),
+  source: z.enum(['meta', 'google', 'webhook', 'csv']),
   form_id: z.string().min(1),
-  form_name: z.string().nullable().optional(),
+  form_name: z.string().nullable().optional()
 })
 
 export default defineEventHandler(async (event) => {

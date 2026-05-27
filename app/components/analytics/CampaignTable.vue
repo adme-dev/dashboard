@@ -6,9 +6,13 @@ const props = withDefaults(defineProps<{
   clientId?: string | null
   apiBase?: string
   hideColumns?: string[]
+  showLeadColumns?: boolean
+  leadLinkBase?: string
 }>(), {
   apiBase: '/api/agency/analytics',
   hideColumns: () => [],
+  showLeadColumns: false,
+  leadLinkBase: ''
 })
 
 const { fmtCurrency, fmtCompact, fmtPercent, getPlatformIcon, getPlatformLabel } = useAnalytics()
@@ -20,12 +24,25 @@ const page = ref(1)
 const pageSize = 20
 const expandedId = ref<string | null>(null)
 
+interface CampaignRow {
+  campaignId: string
+  campaignName: string
+  platform: string
+  campaignStatus?: string | null
+  [key: string]: unknown
+}
+
+interface CampaignsResponse {
+  campaigns: CampaignRow[]
+  total: number
+}
+
 // Client-side cache to avoid re-fetching on collapse/re-expand
 const cache = reactive<Map<string, {
-  breakdowns?: Record<string, any[]>
-  creatives?: any[]
+  breakdowns?: Record<string, unknown[]>
+  creatives?: unknown[]
   aiSummary?: string | null
-  extraMetrics?: Record<string, any> | null
+  extraMetrics?: Record<string, unknown> | null
 }>>(new Map())
 
 function toggleExpand(id: string) {
@@ -36,12 +53,12 @@ function getCacheEntry(mediaSpendId: string) {
   return cache.get(mediaSpendId)
 }
 
-function onBreakdownsLoaded(mediaSpendId: string, payload: { breakdowns: any; extraMetrics: any }) {
+function onBreakdownsLoaded(mediaSpendId: string, payload: { breakdowns: Record<string, unknown[]>, extraMetrics: Record<string, unknown> | null }) {
   // Spread into new object so reactive Map detects the change
   cache.set(mediaSpendId, { ...(cache.get(mediaSpendId) || {}), breakdowns: payload.breakdowns, extraMetrics: payload.extraMetrics })
 }
 
-function onCreativesLoaded(mediaSpendId: string, creatives: any[]) {
+function onCreativesLoaded(mediaSpendId: string, creatives: unknown[]) {
   cache.set(mediaSpendId, { ...(cache.get(mediaSpendId) || {}), creatives })
 }
 
@@ -59,12 +76,6 @@ function statusColor(status: string | null): 'success' | 'warning' | 'error' | '
   return 'neutral'
 }
 
-function isActiveCampaign(status: string | null): boolean {
-  if (!status) return false
-  const s = status.toUpperCase()
-  return s === 'ACTIVE' || s === 'ENABLED' || s === 'DELIVERING'
-}
-
 const apiQuery = computed(() => {
   const q: Record<string, string> = {
     startDate: props.startDate,
@@ -72,7 +83,7 @@ const apiQuery = computed(() => {
     sortBy: sortBy.value,
     sortDir: sortDir.value,
     limit: String(pageSize),
-    offset: String((page.value - 1) * pageSize),
+    offset: String((page.value - 1) * pageSize)
   }
   if (props.platforms?.length) q.platform = props.platforms.join(',')
   if (props.clientId) q.clientId = props.clientId
@@ -80,13 +91,13 @@ const apiQuery = computed(() => {
   return q
 })
 
-const { data, status } = useFetch(() => `${props.apiBase}/campaigns`, {
+const { data, status } = useFetch<CampaignsResponse>(() => `${props.apiBase}/campaigns`, {
   query: apiQuery,
-  watch: [apiQuery],
+  watch: [apiQuery]
 })
 
-const campaigns = computed(() => (data.value as any)?.campaigns || [])
-const total = computed(() => (data.value as any)?.total || 0)
+const campaigns = computed(() => data.value?.campaigns || [])
+const total = computed(() => data.value?.total || 0)
 const totalPages = computed(() => Math.ceil(total.value / pageSize))
 
 function toggleSort(key: string) {
@@ -99,6 +110,13 @@ function toggleSort(key: string) {
   page.value = 1
 }
 
+function sortKeyForColumn(key: string): string {
+  if (key === 'campaignName') return 'campaign_name'
+  if (key === 'leadCount') return 'lead_count'
+  if (key === 'costPerLead') return 'cost_per_lead'
+  return key
+}
+
 const allColumns = [
   { key: 'campaignName', label: 'Campaign' },
   { key: 'spend', label: 'Spend' },
@@ -109,27 +127,59 @@ const allColumns = [
   { key: 'ctr', label: 'CTR' },
   { key: 'cpc', label: 'CPC' },
   { key: 'conversions', label: 'Conv.' },
+  { key: 'leadCount', label: 'Leads' },
+  { key: 'costPerLead', label: 'Cost / Lead' }
 ]
 
 const columns = computed(() =>
-  props.hideColumns.length > 0
-    ? allColumns.filter(c => !props.hideColumns.includes(c.key))
-    : allColumns
+  allColumns.filter((c) => {
+    if (!props.showLeadColumns && ['leadCount', 'costPerLead'].includes(c.key)) return false
+    return !props.hideColumns.includes(c.key)
+  })
 )
 
 function showColumn(key: string): boolean {
   return !props.hideColumns.includes(key)
 }
 
+function leadSourceForPlatform(platform: string): string | null {
+  if (platform === 'google_ads') return 'google'
+  if (platform === 'meta') return 'meta'
+  return null
+}
+
+function leadLinkForCampaign(row: CampaignRow): string {
+  if (!props.leadLinkBase) return ''
+  const params = new URLSearchParams({
+    from: props.startDate,
+    to: props.endDate,
+    campaign: String(row.campaignName || '')
+  })
+  if (row.campaignId) params.set('campaignId', String(row.campaignId))
+  const clientId = props.clientId || row.clientId
+  if (clientId) params.set('client_id', String(clientId))
+  const source = leadSourceForPlatform(row.platform)
+  if (source) params.set('source', source)
+  return `${props.leadLinkBase}?${params.toString()}`
+}
+
+function hasLeads(row: CampaignRow): boolean {
+  return Number(row.leadCount || 0) > 0
+}
+
 // Reset page on search change
-watch(search, () => { page.value = 1 })
+watch(search, () => {
+  page.value = 1
+})
 </script>
 
 <template>
   <div>
     <!-- Header with search -->
     <div class="flex items-center gap-3 mb-3">
-      <h3 class="text-sm font-semibold text-default">Top Campaigns</h3>
+      <h3 class="text-sm font-semibold text-default">
+        Top Campaigns
+      </h3>
       <span class="text-xs text-muted">{{ total }} total</span>
       <div class="ml-auto w-56">
         <UInput
@@ -154,12 +204,12 @@ watch(search, () => { page.value = 1 })
               :key="col.key"
               class="px-3 py-2.5 text-left text-xs font-medium text-muted cursor-pointer hover:text-default transition-colors"
               :class="col.key !== 'campaignName' ? 'text-right' : ''"
-              @click="toggleSort(col.key === 'campaignName' ? 'campaign_name' : col.key)"
+              @click="toggleSort(sortKeyForColumn(col.key))"
             >
               <div class="flex items-center gap-1" :class="col.key !== 'campaignName' ? 'justify-end' : ''">
                 {{ col.label }}
                 <UIcon
-                  v-if="sortBy === (col.key === 'campaignName' ? 'campaign_name' : col.key)"
+                  v-if="sortBy === sortKeyForColumn(col.key)"
                   :name="sortDir === 'desc' ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'"
                   class="w-3 h-3"
                 />
@@ -181,14 +231,30 @@ watch(search, () => { page.value = 1 })
                   />
                   <UIcon :name="getPlatformIcon(row.platform)" class="w-4 h-4 text-muted shrink-0" />
                   <span class="truncate font-medium" :title="row.campaignName">{{ row.campaignName }}</span>
-                  <UBadge v-if="row.campaignStatus && row.campaignStatus !== 'UNKNOWN'" variant="subtle" :color="statusColor(row.campaignStatus)" size="xs">{{ row.campaignStatus }}</UBadge>
+                  <UBadge
+                    v-if="row.campaignStatus && row.campaignStatus !== 'UNKNOWN'"
+                    variant="subtle"
+                    :color="statusColor(row.campaignStatus)"
+                    size="xs"
+                  >
+                    {{ row.campaignStatus }}
+                  </UBadge>
                 </div>
-                <p v-if="row.clientName" class="text-xs text-muted mt-0.5 pl-[3.25rem]">{{ row.clientName }}</p>
+                <p v-if="row.clientName" class="text-xs text-muted mt-0.5 pl-[3.25rem]">
+                  {{ row.clientName }}
+                </p>
               </td>
-              <td class="px-3 py-2.5 text-right tabular-nums font-medium">{{ fmtCurrency(row.spend) }}</td>
+              <td class="px-3 py-2.5 text-right tabular-nums font-medium">
+                {{ fmtCurrency(row.spend) }}
+              </td>
               <td v-if="showColumn('budget')" class="px-3 py-2.5 text-right tabular-nums text-muted">
                 <div class="flex items-center gap-1 justify-end">
-                  <UIcon v-if="row.budgetRolling" name="i-lucide-repeat" class="w-3 h-3 text-primary shrink-0" title="Rolling budget" />
+                  <UIcon
+                    v-if="row.budgetRolling"
+                    name="i-lucide-repeat"
+                    class="w-3 h-3 text-primary shrink-0"
+                    title="Rolling budget"
+                  />
                   {{ (row.budget ?? 0) > 0 ? fmtCurrency(row.budget) : '-' }}
                 </div>
               </td>
@@ -200,11 +266,27 @@ watch(search, () => { page.value = 1 })
                 </template>
                 <span v-else class="text-muted">-</span>
               </td>
-              <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtCompact(row.impressions) }}</td>
-              <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtCompact(row.clicks) }}</td>
-              <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtPercent(row.ctr) }}</td>
-              <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtCurrency(row.cpc, 2) }}</td>
-              <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtCompact(row.conversions) }}</td>
+              <td class="px-3 py-2.5 text-right tabular-nums">
+                {{ fmtCompact(row.impressions) }}
+              </td>
+              <td class="px-3 py-2.5 text-right tabular-nums">
+                {{ fmtCompact(row.clicks) }}
+              </td>
+              <td class="px-3 py-2.5 text-right tabular-nums">
+                {{ fmtPercent(row.ctr) }}
+              </td>
+              <td class="px-3 py-2.5 text-right tabular-nums">
+                {{ fmtCurrency(row.cpc, 2) }}
+              </td>
+              <td class="px-3 py-2.5 text-right tabular-nums">
+                {{ fmtCompact(row.conversions) }}
+              </td>
+              <td v-if="showColumn('leadCount') && showLeadColumns" class="px-3 py-2.5 text-right tabular-nums">
+                {{ fmtCompact(row.leadCount || 0) }}
+              </td>
+              <td v-if="showColumn('costPerLead') && showLeadColumns" class="px-3 py-2.5 text-right tabular-nums">
+                {{ row.costPerLead != null ? fmtCurrency(row.costPerLead, 2) : '-' }}
+              </td>
             </tr>
 
             <!-- Expanded detail row (full-width) -->
@@ -213,7 +295,9 @@ watch(search, () => { page.value = 1 })
                 <!-- Header with campaign name + deep link -->
                 <div class="flex items-center gap-3 mb-4">
                   <UIcon :name="getPlatformIcon(row.platform)" class="w-5 h-5 text-muted shrink-0" />
-                  <h3 class="text-sm font-semibold text-default truncate">{{ row.campaignName }}</h3>
+                  <h3 class="text-sm font-semibold text-default truncate">
+                    {{ row.campaignName }}
+                  </h3>
                   <div v-if="safePublicUrl(row.deepLinkUrl)" class="shrink-0 ml-auto flex items-center gap-2">
                     <span v-if="row.campaignStatus && ['DRAFT', 'PENDING_REVIEW', 'IN_PROCESS'].includes(row.campaignStatus.toUpperCase())" class="text-[10px] text-warning flex items-center gap-1">
                       <UIcon name="i-lucide-triangle-alert" class="w-3 h-3" />
@@ -234,30 +318,52 @@ watch(search, () => { page.value = 1 })
                     </a>
                   </div>
                   <UButton
+                    v-if="showLeadColumns && leadLinkBase && hasLeads(row)"
+                    :to="leadLinkForCampaign(row)"
+                    size="xs"
+                    variant="outline"
+                    icon="i-lucide-inbox"
+                    label="View leads"
+                    class="shrink-0"
+                    @click.stop
+                  />
+                  <UButton
                     size="xs"
                     variant="ghost"
                     icon="i-lucide-x"
                     class="shrink-0"
-                    :class="{ 'ml-auto': !row.deepLinkUrl  }"
+                    :class="{ 'ml-auto': !row.deepLinkUrl && !(showLeadColumns && leadLinkBase && hasLeads(row)) }"
                     @click.stop="expandedId = null"
                   />
                 </div>
 
                 <!-- KPI row -->
                 <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">
-                  <div v-for="metric in [
-                    { label: 'CPM', value: row.cpm != null ? fmtCurrency(row.cpm, 2) : '-', icon: 'i-lucide-eye' },
-                    { label: 'Cost / Conv.', value: row.costPerConversion != null ? fmtCurrency(row.costPerConversion, 2) : '-', icon: 'i-lucide-receipt' },
-                    { label: 'Conv. Rate', value: row.conversionRate != null ? fmtPercent(row.conversionRate) : '-', icon: 'i-lucide-funnel' },
-                    { label: 'ROAS', value: row.roas != null ? row.roas.toFixed(2) + 'x' : '-', icon: 'i-lucide-trending-up' },
-                    { label: 'Revenue', value: row.revenue > 0 ? fmtCurrency(row.revenue) : '-', icon: 'i-lucide-dollar-sign' },
-                  ]" :key="metric.label" class="flex items-center gap-2">
+                  <div
+                    v-for="metric in [
+                      { label: 'CPM', value: row.cpm != null ? fmtCurrency(row.cpm, 2) : '-', icon: 'i-lucide-eye' },
+                      { label: 'Cost / Conv.', value: row.costPerConversion != null ? fmtCurrency(row.costPerConversion, 2) : '-', icon: 'i-lucide-receipt' },
+                      { label: 'Conv. Rate', value: row.conversionRate != null ? fmtPercent(row.conversionRate) : '-', icon: 'i-lucide-funnel' },
+                      { label: 'ROAS', value: row.roas != null ? row.roas.toFixed(2) + 'x' : '-', icon: 'i-lucide-trending-up' },
+                      { label: 'Revenue', value: row.revenue > 0 ? fmtCurrency(row.revenue) : '-', icon: 'i-lucide-dollar-sign' },
+                      ...(showLeadColumns ? [
+                        { label: 'Leads', value: fmtCompact(row.leadCount || 0), icon: 'i-lucide-inbox' },
+                        { label: 'Cost / Lead', value: row.costPerLead != null ? fmtCurrency(row.costPerLead, 2) : '-', icon: 'i-lucide-user-round-check' }
+                      ] : [])
+                    ]"
+                    :key="metric.label"
+                    class="flex items-center gap-2"
+                  >
                     <div class="w-6 h-6 rounded bg-elevated flex items-center justify-center shrink-0">
                       <UIcon :name="metric.icon" class="w-3 h-3 text-muted" />
                     </div>
                     <div>
-                      <p class="text-[10px] text-muted font-medium leading-none mb-0.5">{{ metric.label }}</p>
-                      <p class="text-sm font-bold tabular-nums text-default leading-none">{{ metric.value }}</p>
+                      <p class="text-[10px] text-muted font-medium leading-none mb-0.5">
+                        {{ metric.label }}
+                      </p>
+                      <p class="text-sm font-bold tabular-nums text-default leading-none">
+                        {{ metric.value }}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -279,7 +385,7 @@ watch(search, () => { page.value = 1 })
                     :api-base="apiBase"
                     :initial-data="getCacheEntry(row.mediaSpendId)?.breakdowns"
                     :initial-extra-metrics="getCacheEntry(row.mediaSpendId)?.extraMetrics"
-                    @loaded="(p: any) => onBreakdownsLoaded(row.mediaSpendId, p)"
+                    @loaded="(p: { breakdowns: Record<string, unknown[]>; extraMetrics: Record<string, unknown> | null }) => onBreakdownsLoaded(row.mediaSpendId, p)"
                   />
                 </div>
 
@@ -290,7 +396,7 @@ watch(search, () => { page.value = 1 })
                     :platform="row.platform"
                     :api-base="apiBase"
                     :initial-data="getCacheEntry(row.mediaSpendId)?.creatives"
-                    @loaded="(c: any[]) => onCreativesLoaded(row.mediaSpendId, c)"
+                    @loaded="(c: unknown[]) => onCreativesLoaded(row.mediaSpendId, c)"
                   />
                 </div>
 
@@ -334,7 +440,12 @@ watch(search, () => { page.value = 1 })
       <p class="text-xs text-muted">
         Showing {{ (page - 1) * pageSize + 1 }}–{{ Math.min(page * pageSize, total) }} of {{ total }}
       </p>
-      <UPagination v-model:page="page" :total="total" :items-per-page="pageSize" size="sm" />
+      <UPagination
+        v-model:page="page"
+        :total="total"
+        :items-per-page="pageSize"
+        size="sm"
+      />
     </div>
   </div>
 </template>

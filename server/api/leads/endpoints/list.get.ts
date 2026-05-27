@@ -22,7 +22,13 @@ export default defineEventHandler(async (event) => {
     SELECT e.id, e.client_id, c.name AS client_name,
            e.url_token, e.secret_key, e.secret_key_grace_until, e.rotated_at,
            (SELECT COUNT(*) FROM leads l
-            WHERE l.source = 'google' AND l.client_id = e.client_id AND l.deleted_at IS NULL) AS lead_count
+            WHERE l.source = 'google' AND l.client_id = e.client_id AND l.deleted_at IS NULL) AS lead_count,
+           (SELECT COUNT(*) FROM leads l
+            WHERE l.source = 'google' AND l.client_id = e.client_id AND l.deleted_at IS NULL) AS google_lead_count,
+           (SELECT COUNT(*) FROM leads l
+            WHERE l.source IN ('google', 'meta', 'webhook', 'csv')
+              AND l.client_id = e.client_id
+              AND l.deleted_at IS NULL) AS routable_lead_count
     FROM lead_webhook_endpoints e
     JOIN agency_clients c ON c.id = e.client_id
     WHERE e.source = 'google'

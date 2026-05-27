@@ -2,7 +2,6 @@
 definePageMeta({ layout: 'agency', middleware: ['role-media'] })
 
 const route = useRoute()
-const router = useRouter()
 const clientId = computed(() => route.params.id as string)
 
 // Guard against invalid clientId (e.g. "null")
@@ -12,27 +11,38 @@ if (!validId.value) {
   navigateTo('/agency/analytics')
 }
 
-const { filters, fmtCurrency, fmtCompact, fmtPercent, getPlatformIcon, getPlatformColor, getPlatformLabel } = useAnalytics()
+const { filters } = useAnalytics()
+
+interface AnalyticsOverview {
+  totals: Record<string, number | null>
+  previousPeriod: Record<string, number | null>
+  byPlatform: Array<Record<string, unknown>>
+  byClient?: Array<{ clientName?: string | null }>
+}
+
+interface TrendResponse {
+  dataPoints: Array<Record<string, unknown>>
+}
 
 // Override apiQuery with this client's ID
 const apiQuery = computed(() => {
   const q: Record<string, string> = {
     startDate: filters.value.startDate,
     endDate: filters.value.endDate,
-    clientId: clientId.value,
+    clientId: clientId.value
   }
   if (filters.value.platforms.length > 0) q.platform = filters.value.platforms.join(',')
   return q
 })
 
 // Overview
-const { data: overviewData, status: overviewStatus } = useFetch('/api/agency/analytics/overview', {
+const { data: overviewData, status: overviewStatus } = useFetch<AnalyticsOverview>('/api/agency/analytics/overview', {
   query: apiQuery,
   watch: [apiQuery],
-  immediate: validId.value,
+  immediate: validId.value
 })
 
-const overview = computed(() => overviewData.value as any)
+const overview = computed(() => overviewData.value)
 const totals = computed(() => overview.value?.totals || null)
 const previousPeriod = computed(() => overview.value?.previousPeriod || null)
 const byPlatform = computed(() => overview.value?.byPlatform || [])
@@ -42,15 +52,15 @@ const trendMetric = ref('spend')
 const trendQuery = computed(() => ({
   ...apiQuery.value,
   metric: trendMetric.value,
-  groupBy: 'day',
+  groupBy: 'day'
 }))
 
-const { data: trendData, status: trendStatus } = useFetch('/api/agency/analytics/trends', {
+const { data: trendData, status: trendStatus } = useFetch<TrendResponse>('/api/agency/analytics/trends', {
   query: trendQuery,
   watch: [trendQuery],
-  immediate: validId.value,
+  immediate: validId.value
 })
-const trendPoints = computed(() => (trendData.value as any)?.dataPoints || [])
+const trendPoints = computed(() => trendData.value?.dataPoints || [])
 
 // Client name from overview data
 const clientName = computed(() => {
@@ -62,9 +72,11 @@ const metricOptions = [
   { label: 'Spend', value: 'spend' },
   { label: 'Impressions', value: 'impressions' },
   { label: 'Clicks', value: 'clicks' },
+  { label: 'Leads', value: 'leads' },
   { label: 'CPC', value: 'cpc' },
   { label: 'CTR', value: 'ctr' },
-  { label: 'ROAS', value: 'roas' },
+  { label: 'Cost / Lead', value: 'costPerLead' },
+  { label: 'ROAS', value: 'roas' }
 ]
 
 const loading = computed(() => overviewStatus.value === 'pending')
@@ -82,13 +94,17 @@ const loading = computed(() => overviewStatus.value === 'pending')
         size="sm"
       />
       <div>
-        <h1 class="text-2xl font-bold text-default">{{ clientName }}</h1>
-        <p class="text-sm text-muted">Client analytics</p>
+        <h1 class="text-2xl font-bold text-default">
+          {{ clientName }}
+        </h1>
+        <p class="text-sm text-muted">
+          Client analytics
+        </p>
       </div>
     </div>
 
     <!-- Filter Bar -->
-    <AnalyticsFilterBar />
+    <AnalyticsFilterBar :locked-client-id="clientId" />
 
     <!-- KPI Cards -->
     <AnalyticsKPICards
@@ -101,7 +117,9 @@ const loading = computed(() => overviewStatus.value === 'pending')
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <!-- Platform Table -->
       <div class="lg:col-span-2">
-        <h3 class="text-sm font-semibold text-default mb-3">Platform Performance</h3>
+        <h3 class="text-sm font-semibold text-default mb-3">
+          Platform Performance
+        </h3>
         <AnalyticsPlatformTable
           :platforms="byPlatform"
           :loading="loading"
@@ -117,7 +135,9 @@ const loading = computed(() => overviewStatus.value === 'pending')
     <!-- Trend Chart -->
     <div class="border border-default rounded-lg p-4">
       <div class="flex items-center justify-between mb-3">
-        <h3 class="text-sm font-semibold text-default">Spend Trend</h3>
+        <h3 class="text-sm font-semibold text-default">
+          Spend Trend
+        </h3>
         <USelectMenu
           v-model="trendMetric"
           :items="metricOptions"
@@ -139,6 +159,8 @@ const loading = computed(() => overviewStatus.value === 'pending')
       :end-date="filters.endDate"
       :platforms="filters.platforms"
       :client-id="clientId"
+      show-lead-columns
+      lead-link-base="/agency/leads"
     />
   </div>
 </template>

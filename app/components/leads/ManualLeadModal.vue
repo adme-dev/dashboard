@@ -3,8 +3,8 @@ const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ (e: 'created'): void }>()
 
 const toast = useToast()
-const { data: clients } = useFetch<{ id: string; name: string }[]>('/api/agency/clients', {
-  default: () => [],
+const { data: clients } = useFetch<{ id: string, name: string }[]>('/api/agency/clients', {
+  default: () => []
 })
 
 const clientId = ref<string | null>(null)
@@ -12,28 +12,34 @@ const formName = ref<string>('')
 
 // Standard fields are always visible with friendly labels — marketers don't
 // think in snake_case. Keys are stable so the lead schema stays consistent.
-interface FixedField { label: string; key: string; value: string; placeholder: string; type?: string }
+interface FixedField { label: string, key: string, value: string, placeholder: string, type?: string }
 const fixedFields = ref<FixedField[]>([
   { label: 'Full name', key: 'full_name', value: '', placeholder: 'e.g. Sarah Mitchell' },
   { label: 'Email', key: 'email', value: '', placeholder: 'sarah@example.com', type: 'email' },
-  { label: 'Phone', key: 'phone_number', value: '', placeholder: '+61 4xx xxx xxx', type: 'tel' },
+  { label: 'Phone', key: 'phone_number', value: '', placeholder: '+61 4xx xxx xxx', type: 'tel' }
 ])
 
 // Custom fields — user provides any label, we auto-derive the storage key.
-const customFields = ref<{ label: string; value: string }[]>([])
+const customFields = ref<{ label: string, value: string }[]>([])
 const runRules = ref(false)
 const saving = ref(false)
+const errors = ref<{ client?: string, fields?: string }>({})
 
 const clientOptions = computed(() =>
-  ((clients.value ?? []) as { id: string; name: string }[]).map(c => ({ value: c.id, label: c.name })),
+  ((clients.value ?? []) as { id: string, name: string }[]).map(c => ({ value: c.id, label: c.name }))
 )
 
 function deriveKey(label: string): string {
   return label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'field'
 }
 
-function addCustomField() { customFields.value.push({ label: '', value: '' }) }
-function removeCustomField(i: number) { customFields.value.splice(i, 1) }
+function addCustomField() {
+  customFields.value.push({ label: '', value: '' })
+}
+
+function removeCustomField(i: number) {
+  customFields.value.splice(i, 1)
+}
 
 function reset() {
   clientId.value = null
@@ -41,14 +47,20 @@ function reset() {
   fixedFields.value.forEach(f => f.value = '')
   customFields.value = []
   runRules.value = false
+  errors.value = {}
 }
 
 async function submit() {
+  errors.value = {}
   if (!clientId.value) {
-    toast.add({ title: 'Pick a client first', color: 'error' }); return
+    errors.value.client = 'Pick a client before adding this lead.'
+    toast.add({ title: 'Pick a client first', color: 'error' })
+    return
   }
   const field_data: Record<string, string> = {}
-  for (const f of fixedFields.value) if (f.value.trim()) field_data[f.key] = f.value.trim()
+  for (const f of fixedFields.value) {
+    if (f.value.trim()) field_data[f.key] = f.value.trim()
+  }
   for (const f of customFields.value) {
     const label = f.label.trim()
     const value = f.value.trim()
@@ -56,7 +68,9 @@ async function submit() {
     field_data[deriveKey(label)] = value
   }
   if (!Object.keys(field_data).length) {
-    toast.add({ title: 'Fill in at least one field', color: 'error' }); return
+    errors.value.fields = 'Fill in at least one lead detail.'
+    toast.add({ title: 'Fill in at least one field', color: 'error' })
+    return
   }
   saving.value = true
   try {
@@ -66,16 +80,21 @@ async function submit() {
         client_id: clientId.value,
         field_data,
         form_name: formName.value || null,
-        run_rules: runRules.value,
-      },
+        run_rules: runRules.value
+      }
     })
     toast.add({ title: 'Lead added', color: 'success' })
     reset()
     open.value = false
     emit('created')
-  } catch (e: any) {
-    toast.add({ title: 'Failed to add lead', description: e?.data?.statusMessage ?? '', color: 'error' })
-  } finally { saving.value = false }
+  } catch (e: unknown) {
+    const description = e && typeof e === 'object' && 'data' in e
+      ? (e as { data?: { statusMessage?: string } }).data?.statusMessage
+      : ''
+    toast.add({ title: 'Failed to add lead', description: description ?? '', color: 'error' })
+  } finally {
+    saving.value = false
+  }
 }
 </script>
 
@@ -84,13 +103,15 @@ async function submit() {
     <template #content>
       <div class="p-6 space-y-5">
         <div>
-          <h3 class="text-lg font-semibold">New manual lead</h3>
+          <h3 class="text-lg font-semibold">
+            New manual lead
+          </h3>
           <p class="text-sm text-muted mt-0.5">
             For phone calls, walk-ins, or leads from outside the dashboard.
           </p>
         </div>
 
-        <UFormField label="Client" required>
+        <UFormField label="Client" required :error="errors.client">
           <USelectMenu
             v-model="clientId"
             :items="clientOptions"
@@ -126,7 +147,9 @@ async function submit() {
             </UFormField>
 
             <div v-if="customFields.length" class="pt-2 border-t border-default space-y-3">
-              <p class="text-xs uppercase font-semibold text-muted tracking-wide">Custom fields</p>
+              <p class="text-xs uppercase font-semibold text-muted tracking-wide">
+                Custom fields
+              </p>
               <div
                 v-for="(row, i) in customFields"
                 :key="i"
@@ -139,11 +162,15 @@ async function submit() {
                   variant="ghost"
                   color="neutral"
                   size="sm"
+                  aria-label="Remove custom field"
                   @click="removeCustomField(i)"
                 />
               </div>
             </div>
           </div>
+          <p v-if="errors.fields" class="mt-2 text-sm text-error">
+            {{ errors.fields }}
+          </p>
 
           <UButton
             icon="i-lucide-plus"
@@ -164,8 +191,15 @@ async function submit() {
         />
 
         <div class="flex justify-end gap-2 pt-4 border-t border-default">
-          <UButton variant="ghost" color="neutral" @click="open = false">Cancel</UButton>
-          <UButton :loading="saving" color="primary" icon="i-lucide-check" @click="submit">
+          <UButton variant="ghost" color="neutral" @click="open = false">
+            Cancel
+          </UButton>
+          <UButton
+            :loading="saving"
+            color="primary"
+            icon="i-lucide-check"
+            @click="submit"
+          >
             Add lead
           </UButton>
         </div>

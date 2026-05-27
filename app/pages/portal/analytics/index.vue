@@ -1,8 +1,17 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
-const { user } = usePortalAuth()
 const { fmtCurrency, fmtCompact, fmtPercent, getPlatformIcon } = useAnalytics()
+
+interface AnalyticsOverview {
+  totals: Record<string, number | null>
+  previousPeriod: Record<string, number | null>
+  byPlatform: Array<Record<string, unknown>>
+}
+
+interface TrendResponse {
+  dataPoints: Array<Record<string, unknown>>
+}
 
 // Date range state
 const now = new Date()
@@ -23,13 +32,18 @@ const apiQuery = computed(() => {
   return q
 })
 
-// Overview data
-const { data: overviewData, status: overviewStatus } = useFetch('/api/portal/analytics/overview', {
-  query: apiQuery,
-  watch: [apiQuery],
+const exportUrl = computed(() => {
+  const params = new URLSearchParams(apiQuery.value)
+  return `/api/portal/analytics/export?${params.toString()}`
 })
 
-const overview = computed(() => overviewData.value as any)
+// Overview data
+const { data: overviewData, status: overviewStatus } = useFetch<AnalyticsOverview>('/api/portal/analytics/overview', {
+  query: apiQuery,
+  watch: [apiQuery]
+})
+
+const overview = computed(() => overviewData.value)
 const totals = computed(() => overview.value?.totals || null)
 const previousPeriod = computed(() => overview.value?.previousPeriod || null)
 const byPlatform = computed(() => overview.value?.byPlatform || [])
@@ -39,14 +53,14 @@ const trendMetric = ref('spend')
 const trendQuery = computed(() => ({
   ...apiQuery.value,
   metric: trendMetric.value,
-  groupBy: 'day',
+  groupBy: 'day'
 }))
 
-const { data: trendData, status: trendStatus } = useFetch('/api/portal/analytics/trends', {
+const { data: trendData, status: trendStatus } = useFetch<TrendResponse>('/api/portal/analytics/trends', {
   query: trendQuery,
-  watch: [trendQuery],
+  watch: [trendQuery]
 })
-const trendPoints = computed(() => (trendData.value as any)?.dataPoints || [])
+const trendPoints = computed(() => trendData.value?.dataPoints || [])
 
 function pctChange(current: number | null, prev: number | null): number | null {
   if (current == null || prev == null || prev === 0) return null
@@ -58,15 +72,22 @@ const loading = computed(() => overviewStatus.value === 'pending')
 const datePresets = [
   { label: '7 days', value: '7d' },
   { label: '30 days', value: '30d' },
-  { label: '90 days', value: '90d' },
+  { label: '90 days', value: '90d' }
 ]
 
 function setPreset(preset: string) {
   const today = new Date()
   let start: Date
-  if (preset === '7d') { start = new Date(today); start.setDate(today.getDate() - 7) }
-  else if (preset === '90d') { start = new Date(today); start.setDate(today.getDate() - 90) }
-  else { start = new Date(today); start.setDate(today.getDate() - 30) }
+  if (preset === '7d') {
+    start = new Date(today)
+    start.setDate(today.getDate() - 7)
+  } else if (preset === '90d') {
+    start = new Date(today)
+    start.setDate(today.getDate() - 90)
+  } else {
+    start = new Date(today)
+    start.setDate(today.getDate() - 30)
+  }
   startDate.value = formatDateISO(start)
   endDate.value = formatDateISO(today)
 }
@@ -75,8 +96,10 @@ const metricOptions = [
   { label: 'Spend', value: 'spend' },
   { label: 'Impressions', value: 'impressions' },
   { label: 'Clicks', value: 'clicks' },
+  { label: 'Leads', value: 'leads' },
   { label: 'CPC', value: 'cpc' },
   { label: 'CTR', value: 'ctr' },
+  { label: 'Cost / Lead', value: 'costPerLead' }
 ]
 </script>
 
@@ -84,15 +107,29 @@ const metricOptions = [
   <div class="p-6 space-y-6 max-w-[1400px] mx-auto">
     <!-- Header -->
     <div>
-      <h1 class="text-2xl font-bold text-default">Ad Performance</h1>
-      <p class="text-sm text-muted mt-1">Your advertising performance across all platforms</p>
+      <h1 class="text-2xl font-bold text-default">
+        Ad Performance
+      </h1>
+      <p class="text-sm text-muted mt-1">
+        Your advertising performance across all platforms
+      </p>
     </div>
 
     <!-- Filters -->
     <div class="flex flex-wrap items-center gap-3 p-4 bg-elevated/50 rounded-lg border border-default">
-      <UInput v-model="startDate" type="date" size="sm" class="w-36" />
+      <UInput
+        v-model="startDate"
+        type="date"
+        size="sm"
+        class="w-36"
+      />
       <span class="text-muted text-sm">to</span>
-      <UInput v-model="endDate" type="date" size="sm" class="w-36" />
+      <UInput
+        v-model="endDate"
+        type="date"
+        size="sm"
+        class="w-36"
+      />
       <div class="flex items-center gap-1">
         <UButton
           v-for="p in datePresets"
@@ -104,21 +141,33 @@ const metricOptions = [
           @click="setPreset(p.value)"
         />
       </div>
+      <UButton
+        :to="exportUrl"
+        target="_blank"
+        icon="i-lucide-download"
+        label="Export CSV"
+        size="sm"
+        variant="outline"
+        color="neutral"
+        class="ml-auto"
+      />
     </div>
 
     <!-- KPI Cards — top row -->
-    <div v-if="loading" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-      <USkeleton v-for="i in 6" :key="i" class="h-24 rounded-lg" />
+    <div v-if="loading" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+      <USkeleton v-for="i in 8" :key="i" class="h-24 rounded-lg" />
     </div>
-    <div v-else-if="totals" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+    <div v-else-if="totals" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
       <div
         v-for="kpi in [
           { label: 'Total Spend', value: fmtCurrency(totals.spend), change: pctChange(totals.spend, previousPeriod?.spend), icon: 'i-lucide-wallet' },
           { label: 'Impressions', value: fmtCompact(totals.impressions), change: pctChange(totals.impressions, previousPeriod?.impressions), icon: 'i-lucide-eye' },
           { label: 'Clicks', value: fmtCompact(totals.clicks), change: pctChange(totals.clicks, previousPeriod?.clicks), icon: 'i-lucide-mouse-pointer-click' },
+          { label: 'Leads', value: fmtCompact(totals.leads || 0), change: pctChange(totals.leads, previousPeriod?.leads), icon: 'i-lucide-inbox' },
           { label: 'CTR', value: fmtPercent(totals.ctr), change: pctChange(totals.ctr, previousPeriod?.ctr), icon: 'i-lucide-percent' },
           { label: 'CPC', value: fmtCurrency(totals.cpc, 2), change: pctChange(totals.cpc, previousPeriod?.cpc), icon: 'i-lucide-hand-coins', invert: true },
-          { label: 'Conversions', value: fmtCompact(totals.conversions), change: pctChange(totals.conversions, previousPeriod?.conversions), icon: 'i-lucide-target' },
+          { label: 'Cost / Lead', value: totals.costPerLead != null ? fmtCurrency(totals.costPerLead, 2) : '-', change: pctChange(totals.costPerLead, previousPeriod?.costPerLead), icon: 'i-lucide-user-round-check', invert: true },
+          { label: 'Conversions', value: fmtCompact(totals.conversions), change: pctChange(totals.conversions, previousPeriod?.conversions), icon: 'i-lucide-target' }
         ]"
         :key="kpi.label"
         class="p-4 rounded-lg border border-default bg-elevated/30"
@@ -127,7 +176,9 @@ const metricOptions = [
           <UIcon :name="kpi.icon" class="w-4 h-4 text-muted" />
           <span class="text-xs text-muted font-medium">{{ kpi.label }}</span>
         </div>
-        <p class="text-xl font-bold tabular-nums text-default">{{ kpi.value }}</p>
+        <p class="text-xl font-bold tabular-nums text-default">
+          {{ kpi.value }}
+        </p>
         <div v-if="kpi.change !== null" class="flex items-center gap-1 mt-1">
           <UIcon
             :name="kpi.change > 0 ? 'i-lucide-trending-up' : 'i-lucide-trending-down'"
@@ -149,7 +200,9 @@ const metricOptions = [
         <!-- Trend Chart -->
         <div class="border border-default rounded-lg p-4">
           <div class="flex items-center justify-between mb-3">
-            <h3 class="text-sm font-semibold text-default">Spend Trend</h3>
+            <h3 class="text-sm font-semibold text-default">
+              Spend Trend
+            </h3>
             <USelectMenu
               v-model="trendMetric"
               :items="metricOptions"
@@ -172,6 +225,8 @@ const metricOptions = [
           :platforms="selectedPlatforms"
           api-base="/api/portal/analytics"
           :hide-columns="['budget', 'variance']"
+          show-lead-columns
+          lead-link-base="/portal/leads"
         />
       </div>
 
@@ -179,7 +234,9 @@ const metricOptions = [
       <div class="space-y-6">
         <!-- Key Performance Metrics -->
         <div class="border border-default rounded-lg p-4">
-          <h3 class="text-sm font-semibold text-default mb-4">Performance Insights</h3>
+          <h3 class="text-sm font-semibold text-default mb-4">
+            Performance Insights
+          </h3>
 
           <div v-if="loading" class="space-y-4">
             <USkeleton v-for="i in 5" :key="i" class="h-12 w-full rounded" />
@@ -188,9 +245,10 @@ const metricOptions = [
             <div
               v-for="metric in [
                 { label: 'CPM', description: 'Cost per 1,000 views', value: totals.cpm != null ? fmtCurrency(totals.cpm, 2) : '-', change: pctChange(totals.cpm, previousPeriod?.cpm), invert: true, icon: 'i-lucide-eye' },
+                { label: 'Cost / Lead', description: 'Spend per portal-visible lead', value: totals.costPerLead != null ? fmtCurrency(totals.costPerLead, 2) : '-', change: pctChange(totals.costPerLead, previousPeriod?.costPerLead), invert: true, icon: 'i-lucide-user-round-check' },
                 { label: 'Cost / Conversion', description: 'Spend per lead or sale', value: totals.costPerConversion != null ? fmtCurrency(totals.costPerConversion, 2) : '-', change: pctChange(totals.costPerConversion, previousPeriod?.costPerConversion), invert: true, icon: 'i-lucide-receipt' },
                 { label: 'Conversion Rate', description: 'Clicks that convert', value: totals.conversionRate != null ? fmtPercent(totals.conversionRate) : '-', change: pctChange(totals.conversionRate, previousPeriod?.conversionRate), invert: false, icon: 'i-lucide-funnel' },
-                { label: 'ROAS', description: 'Revenue per $1 spent', value: totals.roas != null ? totals.roas.toFixed(2) + 'x' : '-', change: pctChange(totals.roas, previousPeriod?.roas), invert: false, icon: 'i-lucide-trending-up' },
+                { label: 'ROAS', description: 'Revenue per $1 spent', value: totals.roas != null ? totals.roas.toFixed(2) + 'x' : '-', change: pctChange(totals.roas, previousPeriod?.roas), invert: false, icon: 'i-lucide-trending-up' }
               ]"
               :key="metric.label"
               class="flex items-start gap-3"
@@ -212,8 +270,12 @@ const metricOptions = [
                     </span>
                   </div>
                 </div>
-                <p class="text-lg font-bold tabular-nums text-default">{{ metric.value }}</p>
-                <p class="text-xs text-muted">{{ metric.description }}</p>
+                <p class="text-lg font-bold tabular-nums text-default">
+                  {{ metric.value }}
+                </p>
+                <p class="text-xs text-muted">
+                  {{ metric.description }}
+                </p>
               </div>
             </div>
           </div>
@@ -221,7 +283,9 @@ const metricOptions = [
 
         <!-- Platform Breakdown -->
         <div v-if="byPlatform.length" class="border border-default rounded-lg p-4">
-          <h3 class="text-sm font-semibold text-default mb-4">By Platform</h3>
+          <h3 class="text-sm font-semibold text-default mb-4">
+            By Platform
+          </h3>
           <div class="space-y-3">
             <div v-for="p in byPlatform" :key="p.platform" class="space-y-2">
               <div class="flex items-center gap-2">
@@ -249,13 +313,45 @@ const metricOptions = [
 
         <!-- Quick Explainer -->
         <div class="border border-default rounded-lg p-4 bg-elevated/20">
-          <h4 class="text-xs font-semibold text-muted uppercase tracking-wider mb-2">Glossary</h4>
+          <h4 class="text-xs font-semibold text-muted uppercase tracking-wider mb-2">
+            Glossary
+          </h4>
           <dl class="space-y-1.5 text-xs text-muted">
-            <div><dt class="font-medium text-default inline">CPC</dt> <dd class="inline">— Cost per click</dd></div>
-            <div><dt class="font-medium text-default inline">CPM</dt> <dd class="inline">— Cost per 1,000 impressions</dd></div>
-            <div><dt class="font-medium text-default inline">CTR</dt> <dd class="inline">— Click-through rate (clicks / impressions)</dd></div>
-            <div><dt class="font-medium text-default inline">ROAS</dt> <dd class="inline">— Return on ad spend (revenue / spend)</dd></div>
-            <div><dt class="font-medium text-default inline">Conv. Rate</dt> <dd class="inline">— Conversions / clicks</dd></div>
+            <div>
+              <dt class="font-medium text-default inline">
+                CPC
+              </dt> <dd class="inline">
+                — Cost per click
+              </dd>
+            </div>
+            <div>
+              <dt class="font-medium text-default inline">
+                CPM
+              </dt> <dd class="inline">
+                — Cost per 1,000 impressions
+              </dd>
+            </div>
+            <div>
+              <dt class="font-medium text-default inline">
+                CTR
+              </dt> <dd class="inline">
+                — Click-through rate (clicks / impressions)
+              </dd>
+            </div>
+            <div>
+              <dt class="font-medium text-default inline">
+                ROAS
+              </dt> <dd class="inline">
+                — Return on ad spend (revenue / spend)
+              </dd>
+            </div>
+            <div>
+              <dt class="font-medium text-default inline">
+                Conv. Rate
+              </dt> <dd class="inline">
+                — Conversions / clicks
+              </dd>
+            </div>
           </dl>
         </div>
       </div>

@@ -12,6 +12,8 @@ const props = defineProps<{
     roas: number | null
     budget?: number
     rollingCount?: number
+    leads?: number
+    costPerLead?: number | null
   } | null
   previousPeriod?: {
     spend: number
@@ -24,6 +26,8 @@ const props = defineProps<{
     cpm: number | null
     ctr: number | null
     roas: number | null
+    leads?: number
+    costPerLead?: number | null
   } | null
   loading?: boolean
 }>()
@@ -59,62 +63,75 @@ const kpis = computed<KPI[]>(() => {
       label: 'Total Spend',
       value: fmtCurrency(t.spend),
       change: pctChange(t.spend, p?.spend ?? null),
-      icon: 'i-lucide-wallet',
+      icon: 'i-lucide-wallet'
     },
     {
       label: 'Budget',
       value: budget > 0 ? fmtCurrency(budget) : '-',
       subtitle: (t.rollingCount ?? 0) > 0 ? `${t.rollingCount} rolling` : undefined,
       change: pctChange(budget, prevBudget),
-      icon: 'i-lucide-piggy-bank',
+      icon: 'i-lucide-piggy-bank'
     },
     {
       label: 'Utilisation',
       value: utilisation != null ? `${utilisation.toFixed(1)}%` : '-',
       change: pctChange(utilisation, prevUtilisation),
       icon: 'i-lucide-gauge',
-      invertColor: true,
+      invertColor: true
     },
     {
       label: 'Impressions',
       value: fmtCompact(t.impressions),
       change: pctChange(t.impressions, p?.impressions ?? null),
-      icon: 'i-lucide-eye',
+      icon: 'i-lucide-eye'
     },
     {
       label: 'Clicks',
       value: fmtCompact(t.clicks),
       change: pctChange(t.clicks, p?.clicks ?? null),
-      icon: 'i-lucide-mouse-pointer-click',
+      icon: 'i-lucide-mouse-pointer-click'
+    },
+    {
+      label: 'Leads',
+      value: fmtCompact(t.leads ?? 0),
+      change: pctChange(t.leads ?? null, p?.leads ?? null),
+      icon: 'i-lucide-inbox'
     },
     {
       label: 'CTR',
       value: fmtPercent(t.ctr),
       change: pctChange(t.ctr, p?.ctr ?? null),
-      icon: 'i-lucide-percent',
+      icon: 'i-lucide-percent'
     },
     {
       label: 'CPC',
       value: fmtCurrency(t.cpc, 2),
       change: pctChange(t.cpc, p?.cpc ?? null),
       icon: 'i-lucide-hand-coins',
-      invertColor: true,
+      invertColor: true
     },
     {
       label: 'Conversions',
       value: fmtCompact(t.conversions),
       change: pctChange(t.conversions, p?.conversions ?? null),
-      icon: 'i-lucide-target',
+      icon: 'i-lucide-target'
     },
+    {
+      label: 'Cost / Lead',
+      value: t.costPerLead != null ? fmtCurrency(t.costPerLead, 2) : '-',
+      change: pctChange(t.costPerLead ?? null, p?.costPerLead ?? null),
+      icon: 'i-lucide-user-round-check',
+      invertColor: true
+    }
   ]
   return cards
 })
 </script>
 
 <template>
-  <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+  <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-10 gap-3">
     <template v-if="loading">
-      <USkeleton v-for="i in 8" :key="i" class="h-24 rounded-lg" />
+      <USkeleton v-for="i in 10" :key="i" class="h-24 rounded-lg" />
     </template>
     <template v-else>
       <div
@@ -126,7 +143,9 @@ const kpis = computed<KPI[]>(() => {
           <UIcon :name="kpi.icon" class="w-4 h-4 text-muted" />
           <span class="text-xs text-muted font-medium">{{ kpi.label }}</span>
         </div>
-        <p class="text-xl font-bold tabular-nums text-default">{{ kpi.value }}</p>
+        <p class="text-xl font-bold tabular-nums text-default">
+          {{ kpi.value }}
+        </p>
         <p v-if="kpi.subtitle" class="text-xs text-muted flex items-center gap-1 mt-0.5">
           <UIcon name="i-lucide-repeat" class="w-3 h-3" />
           {{ kpi.subtitle }}

@@ -4,12 +4,12 @@
 
 import {
   loadLead, loadRuleForForm, claimDelivery, releaseClaim,
-  markDelivered, markFailed, markSkipped,
+  markDelivered, markFailed, markSkipped
 } from './db'
 import { evaluateLead } from './rulesEngine'
 import { getAdapter } from './destinations'
 import { queryOne } from '~~/server/utils/db'
-import type { LeadDelivery, LeadRuleDestination } from '~~/app/types'
+import type { LeadDelivery, LeadRuleDestination, LeadSource } from '~~/app/types'
 import type { QueueMessage } from './queue'
 
 const WORKER_ID = `inline-${Math.random().toString(36).slice(2, 10)}`
@@ -24,7 +24,7 @@ export async function handleQueueMessage(msg: QueueMessage): Promise<void> {
       await enqueueLeadJob({
         type: 'delivery.dispatch',
         payload: { delivery_id: d.delivery_id },
-        delaySeconds: d.delay_minutes * 60,
+        delaySeconds: d.delay_minutes * 60
       })
     }
     return
@@ -38,7 +38,7 @@ export async function handleQueueMessage(msg: QueueMessage): Promise<void> {
 async function loadDestination(id: string): Promise<LeadRuleDestination | null> {
   return queryOne<LeadRuleDestination>(
     `SELECT * FROM lead_rule_destinations WHERE id = $1`,
-    [id],
+    [id]
   )
 }
 
@@ -52,12 +52,12 @@ async function dispatchOne(deliveryId: string, _attempt: number): Promise<void> 
     const { enqueueLeadJob } = await import('./queue')
     const delaySeconds = Math.max(
       1,
-      Math.ceil((new Date(claimed.scheduled_at).getTime() - Date.now()) / 1000),
+      Math.ceil((new Date(claimed.scheduled_at).getTime() - Date.now()) / 1000)
     )
     await enqueueLeadJob({
       type: 'delivery.dispatch',
       payload: { delivery_id: deliveryId },
-      delaySeconds,
+      delaySeconds
     })
     return
   }
@@ -76,7 +76,9 @@ async function dispatchOne(deliveryId: string, _attempt: number): Promise<void> 
     return
   }
   if (lead.form_id) {
-    const bundle = await loadRuleForForm(lead.source as 'meta' | 'google', lead.form_id)
+    const bundle = lead.source === 'manual'
+      ? null
+      : await loadRuleForForm(lead.source as Exclude<LeadSource, 'manual'>, lead.form_id)
     if (bundle && !bundle.rule.enabled) {
       await markSkipped(deliveryId, 'rule_disabled')
       return
@@ -90,7 +92,7 @@ async function dispatchOne(deliveryId: string, _attempt: number): Promise<void> 
       deliveryId,
       `unknown_adapter:${claimed.destination_type}`,
       claimed.retry_count,
-      true,
+      true
     )
     return
   }
@@ -106,12 +108,12 @@ async function dispatchOne(deliveryId: string, _attempt: number): Promise<void> 
   const final = next >= BACKOFF_MS.length
   await markFailed(deliveryId, result.error, next, final)
   if (final) return
-  const delaySeconds = Math.ceil(((result as any).retry_after_ms ?? BACKOFF_MS[next]) / 1000)
+  const delaySeconds = Math.ceil((result.retry_after_ms ?? BACKOFF_MS[next]) / 1000)
   const { enqueueLeadJob } = await import('./queue')
   await enqueueLeadJob({
     type: 'delivery.dispatch',
     payload: { delivery_id: deliveryId },
     attempt: next,
-    delaySeconds,
+    delaySeconds
   })
 }

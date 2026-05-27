@@ -4,18 +4,18 @@ import type { LeadsListFilters } from '~/types/leadsUi'
 
 const model = defineModel<LeadsListFilters>('filters', { required: true })
 
-interface ClientOption { id: string; name: string }
-interface FormOption { form_id: string; form_name: string | null; source: string }
-interface UserOption { id: string; name: string }
+interface ClientOption { id: string, name: string }
+interface FormOption { form_id: string, form_name: string | null, source: string }
+interface UserOption { id: string, name: string }
 
 const { data: clients } = useFetch<ClientOption[]>('/api/agency/clients', {
-  default: () => [],
+  default: () => []
 })
 const { data: forms } = useFetch<{ items: FormOption[] }>('/api/leads/forms/list', {
-  default: () => ({ items: [] }),
+  default: () => ({ items: [] })
 })
 const { data: teamData } = useFetch<{ members: UserOption[] }>('/api/agency/team-members', {
-  default: () => ({ members: [] }),
+  default: () => ({ members: [] })
 })
 
 const SOURCE_OPTIONS = [
@@ -24,7 +24,7 @@ const SOURCE_OPTIONS = [
   { value: 'google', label: 'Google' },
   { value: 'webhook', label: 'Webhook' },
   { value: 'csv', label: 'CSV import' },
-  { value: 'manual', label: 'Manual' },
+  { value: 'manual', label: 'Manual' }
 ]
 const STATUS_OPTIONS = [
   { value: 'all', label: 'All statuses' },
@@ -33,24 +33,24 @@ const STATUS_OPTIONS = [
   { value: 'qualified', label: 'Qualified' },
   { value: 'won', label: 'Won' },
   { value: 'lost', label: 'Lost' },
-  { value: 'spam_suspected', label: 'Spam?' },
+  { value: 'spam_suspected', label: 'Spam?' }
 ]
 
 const clientOptions = computed(() => [
   { value: 'all', label: 'All clients' },
   { value: 'unmapped', label: 'Unmapped' },
-  ...((clients.value ?? []) as ClientOption[]).map(c => ({ value: c.id, label: c.name })),
+  ...((clients.value ?? []) as ClientOption[]).map(c => ({ value: c.id, label: c.name }))
 ])
 const formOptions = computed(() => [
   { value: 'all', label: 'All forms' },
   ...(forms.value?.items ?? []).map((f: FormOption) => ({
     value: f.form_id,
-    label: f.form_name || f.form_id,
-  })),
+    label: f.form_name || f.form_id
+  }))
 ])
 const userOptions = computed(() => [
   { value: 'all', label: 'All assignees' },
-  ...((teamData.value?.members ?? []) as UserOption[]).map(u => ({ value: u.id, label: u.name })),
+  ...((teamData.value?.members ?? []) as UserOption[]).map(u => ({ value: u.id, label: u.name }))
 ])
 
 const clientSel = computed({
@@ -66,23 +66,27 @@ const clientSel = computed({
       model.value.client_id = v
       model.value.unmapped = false
     }
-  },
+  }
 })
 const sourceSel = computed({
   get: () => model.value.source ?? 'all',
-  set: (v: string) => { model.value.source = v === 'all' ? null : v as any },
+  set: (v: string) => {
+    model.value.source = v === 'all' ? null : v as LeadsListFilters['source']
+  }
 })
 const statusSel = computed({
   get: () => model.value.status ?? 'all',
-  set: (v: string) => { model.value.status = v === 'all' ? null : v as any },
+  set: (v: string) => {
+    model.value.status = v === 'all' ? null : v as LeadsListFilters['status']
+  }
 })
 const formSel = computed({
   get: () => model.value.form_id ?? 'all',
-  set: (v: string) => { model.value.form_id = v === 'all' ? null : v },
+  set: (v: string) => { model.value.form_id = v === 'all' ? null : v }
 })
 const userSel = computed({
   get: () => model.value.assigned_to ?? 'all',
-  set: (v: string) => { model.value.assigned_to = v === 'all' ? null : v },
+  set: (v: string) => { model.value.assigned_to = v === 'all' ? null : v }
 })
 
 // Date range — bridge YYYY-MM-DD string filter model with CalendarDate range
@@ -105,12 +109,12 @@ function calendarDateToStr(cd: CalendarDate | undefined | null): string {
 const calendarRange = computed({
   get: () => ({
     start: strToCalendarDate(model.value.from),
-    end: strToCalendarDate(model.value.to),
+    end: strToCalendarDate(model.value.to)
   }),
-  set: (v: { start: CalendarDate | null; end: CalendarDate | null }) => {
+  set: (v: { start: CalendarDate | null, end: CalendarDate | null }) => {
     model.value.from = v.start ? calendarDateToStr(v.start) : ''
     model.value.to = v.end ? calendarDateToStr(v.end) : ''
-  },
+  }
 })
 
 const dateLabel = computed(() => {
@@ -127,10 +131,10 @@ const PRESETS = [
   { label: 'Last 7 days', days: 7 },
   { label: 'Last 30 days', days: 30 },
   { label: 'Last 90 days', days: 90 },
-  { label: 'This month', monthStart: true },
+  { label: 'This month', monthStart: true }
 ]
 
-function applyPreset(preset: { days?: number; monthStart?: boolean }) {
+function applyPreset(preset: { days?: number, monthStart?: boolean }) {
   const tz = getLocalTimeZone()
   const end = today(tz)
   let start = end.copy()
@@ -150,16 +154,18 @@ function clearDates() {
 const hasActiveFilters = computed(() => {
   const m = model.value
   return Boolean(
-    m.q ||
-    m.client_id ||
-    m.unmapped ||
-    m.source ||
-    m.status ||
-    m.form_id ||
-    m.assigned_to ||
-    m.from ||
-    m.to ||
-    m.include_test,
+    m.q
+    || m.client_id
+    || m.unmapped
+    || m.source
+    || m.status
+    || m.form_id
+    || m.assigned_to
+    || m.campaign_id
+    || m.campaign_name
+    || m.from
+    || m.to
+    || m.include_test
   )
 })
 
@@ -171,6 +177,8 @@ function clearAll() {
   model.value.status = null
   model.value.form_id = null
   model.value.assigned_to = null
+  model.value.campaign_id = null
+  model.value.campaign_name = null
   model.value.from = ''
   model.value.to = ''
   model.value.include_test = false
@@ -274,5 +282,18 @@ function clearAll() {
     >
       Clear filters
     </UButton>
+
+    <div v-if="model.campaign_name || model.campaign_id" class="inline-flex items-center gap-1.5 rounded-md border border-default bg-default px-2 py-1 text-xs">
+      <UIcon name="i-lucide-megaphone" class="size-3.5 text-muted" />
+      <span class="max-w-56 truncate">{{ model.campaign_name || model.campaign_id }}</span>
+      <button
+        type="button"
+        class="text-muted hover:text-default"
+        aria-label="Clear campaign filter"
+        @click="model.campaign_name = null; model.campaign_id = null"
+      >
+        <UIcon name="i-lucide-x" class="size-3" />
+      </button>
+    </div>
   </div>
 </template>

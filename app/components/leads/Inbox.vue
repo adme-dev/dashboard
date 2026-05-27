@@ -17,8 +17,8 @@ const showImportModal = ref(false)
 
 // Lookup tables for client + user names — same endpoints the filter dropdown
 // uses, so de-duped by Nuxt's useFetch cache.
-interface ClientOption { id: string; name: string }
-interface UserOption { id: string; name: string }
+interface ClientOption { id: string, name: string }
+interface UserOption { id: string, name: string }
 const { data: clients } = useFetch<ClientOption[]>('/api/agency/clients', { default: () => [] })
 const { data: teamData } = useFetch<{ members: UserOption[] }>('/api/agency/team-members', { default: () => ({ members: [] }) })
 
@@ -41,7 +41,7 @@ const columns = [
   { accessorKey: 'summary', header: 'Lead' },
   { accessorKey: 'status', header: 'Status' },
   { accessorKey: 'assigned_to', header: 'Assigned' },
-  { accessorKey: 'actions', header: '' },
+  { accessorKey: 'actions', header: '' }
 ]
 
 function summarize(lead: Lead): string {
@@ -65,7 +65,7 @@ async function exportCsv() {
 
 const hasItems = computed(() => (data.value?.items?.length ?? 0) > 0)
 
-defineEmits<{ 'show-help': [] }>()
+defineEmits<{ 'show-help': [], 'show-rules': [] }>()
 </script>
 
 <template>
@@ -76,10 +76,46 @@ defineEmits<{ 'show-help': [] }>()
         <span v-if="data?.total" class="text-muted font-normal">— {{ data.total }} total</span>
       </h2>
       <div class="flex items-center gap-2">
-        <UButton icon="i-lucide-upload-cloud" variant="ghost" size="sm" @click="showImportModal = true">Import CSV</UButton>
-        <UButton icon="i-lucide-download" variant="ghost" size="sm" @click="exportCsv">Export</UButton>
-        <UButton icon="i-lucide-plus" color="primary" size="sm" @click="showManualModal = true">Manual lead</UButton>
-        <UButton icon="i-lucide-refresh-cw" variant="ghost" size="sm" @click="refresh()">Refresh</UButton>
+        <UButton
+          icon="i-lucide-route"
+          variant="ghost"
+          size="sm"
+          @click="$emit('show-rules')"
+        >
+          Set up routing
+        </UButton>
+        <UButton
+          icon="i-lucide-upload-cloud"
+          variant="ghost"
+          size="sm"
+          @click="showImportModal = true"
+        >
+          Import CSV
+        </UButton>
+        <UButton
+          icon="i-lucide-download"
+          variant="ghost"
+          size="sm"
+          @click="exportCsv"
+        >
+          Export
+        </UButton>
+        <UButton
+          icon="i-lucide-plus"
+          color="primary"
+          size="sm"
+          @click="showManualModal = true"
+        >
+          Manual lead
+        </UButton>
+        <UButton
+          icon="i-lucide-refresh-cw"
+          variant="ghost"
+          size="sm"
+          @click="refresh()"
+        >
+          Refresh
+        </UButton>
       </div>
     </div>
 
@@ -94,7 +130,7 @@ defineEmits<{ 'show-help': [] }>()
         class="w-full"
         :ui="{
           tr: 'hover:bg-elevated/40 cursor-pointer transition-colors',
-          td: 'py-2.5',
+          td: 'py-2.5'
         }"
       >
         <template #submitted_at-cell="{ row }">
@@ -107,11 +143,18 @@ defineEmits<{ 'show-help': [] }>()
             <span v-if="row.original.client_id" class="text-sm">
               {{ clientNameById.get(row.original.client_id) ?? row.original.client_id.slice(0, 8) + '…' }}
             </span>
-            <UBadge v-else color="warning" variant="soft" size="sm">Unmapped</UBadge>
+            <UBadge
+              v-else
+              color="warning"
+              variant="soft"
+              size="sm"
+            >
+              Unmapped
+            </UBadge>
           </button>
         </template>
         <template #source-cell="{ row }">
-          <button class="flex items-center gap-1.5" @click="openLead(row.original)">
+          <button class="flex items-center gap-1.5" :aria-label="`Open ${row.original.source} lead`" @click="openLead(row.original)">
             <LeadsSourceIcon :source="row.original.source" />
             <UBadge
               v-if="row.original.is_test"
@@ -119,7 +162,9 @@ defineEmits<{ 'show-help': [] }>()
               variant="soft"
               size="sm"
               class="font-mono text-[10px]"
-            >TEST</UBadge>
+            >
+              TEST
+            </UBadge>
           </button>
         </template>
         <template #form_name-cell="{ row }">
@@ -154,13 +199,28 @@ defineEmits<{ 'show-help': [] }>()
 
       <div v-else class="flex flex-col items-center justify-center h-full text-center px-6 py-12">
         <UIcon name="i-lucide-inbox" class="size-12 text-dimmed mb-3" />
-        <h3 class="text-base font-semibold mb-1">No leads yet</h3>
+        <h3 class="text-base font-semibold mb-1">
+          No leads yet
+        </h3>
         <p class="text-sm text-muted max-w-md mb-4">
           Once Meta or Google Ads sends an inquiry to a configured webhook, it'll appear here in real time.
-          You can also add a lead manually.
+          Set up routing first to replace the matching Zap, or add a lead manually.
         </p>
         <div class="flex items-center gap-2">
-          <UButton icon="i-lucide-plus" color="primary" size="sm" @click="showManualModal = true">
+          <UButton
+            icon="i-lucide-route"
+            color="primary"
+            size="sm"
+            @click="$emit('show-rules')"
+          >
+            Set up routing
+          </UButton>
+          <UButton
+            icon="i-lucide-plus"
+            variant="ghost"
+            size="sm"
+            @click="showManualModal = true"
+          >
             Add manual lead
           </UButton>
           <UButton
