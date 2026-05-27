@@ -134,6 +134,8 @@ describe('portal analytics lead metrics', () => {
           lead_count: '8',
           lead_new_count: '3',
           lead_contacted_count: '2',
+          lead_contacted_at_count: '5',
+          lead_uncontacted_count: '3',
           lead_qualified_count: '1',
           lead_won_count: '1',
           lead_lost_count: '1',
@@ -144,7 +146,9 @@ describe('portal analytics lead metrics', () => {
         {
           platform: 'meta',
           lead_count: '8',
-          lead_won_count: '1'
+          lead_won_count: '1',
+          lead_contacted_at_count: '5',
+          lead_uncontacted_count: '3'
         }
       ])
       .mockResolvedValueOnce([
@@ -167,6 +171,8 @@ describe('portal analytics lead metrics', () => {
       leads: 8,
       leadNew: 3,
       leadContacted: 2,
+      leadContactedAt: 5,
+      leadUncontacted: 3,
       leadWon: 1,
       costPerLead: 12.5,
       avgResponseMinutes: 45
@@ -175,6 +181,8 @@ describe('portal analytics lead metrics', () => {
       platform: 'meta',
       leads: 8,
       leadWon: 1,
+      leadContactedAt: 5,
+      leadUncontacted: 3,
       costPerLead: 12.5
     })
     expect(result.previousPeriod).toMatchObject({
@@ -185,6 +193,8 @@ describe('portal analytics lead metrics', () => {
     const leadPlatformSql = String(mockQueryRows.mock.calls[3]?.[0])
     expect(leadSql).toContain('FROM leads l')
     expect(leadSql).toContain('d.destination_type = \'portal\'')
+    expect(leadSql).toContain('lead_contacted_at_count')
+    expect(leadSql).toContain('lead_uncontacted_count')
     expect(leadPlatformSql).toContain('GROUP BY CASE')
   })
 

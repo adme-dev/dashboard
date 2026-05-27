@@ -116,6 +116,30 @@ const leadFunnel = computed(() => {
 })
 
 const leadFunnelMax = computed(() => Math.max(...leadFunnel.value.map(stage => Number(stage.value)), 1))
+
+const campaignOutcome = computed(() => {
+  const current = totals.value
+  if (!current) return null
+
+  const leads = Number(current.leads || 0)
+  const contacted = Number(current.leadContactedAt || current.leadContacted || 0)
+  const won = Number(current.leadWon || 0)
+  const spend = Number(current.spend || 0)
+
+  return {
+    contactedRate: leads > 0 ? Math.round((contacted / leads) * 100) : 0,
+    winRate: leads > 0 ? Math.round((won / leads) * 100) : 0,
+    uncontacted: Number(current.leadUncontacted || 0),
+    avgResponseMinutes: current.avgResponseMinutes == null ? null : Math.round(Number(current.avgResponseMinutes)),
+    spendPerWonLead: won > 0 ? spend / won : null
+  }
+})
+
+function formatResponseTime(minutes: number | null | undefined) {
+  if (minutes == null || Number.isNaN(minutes)) return '-'
+  if (minutes < 60) return `${minutes}m`
+  return `${Math.round(minutes / 60)}h`
+}
 </script>
 
 <template>
@@ -296,6 +320,72 @@ const leadFunnelMax = computed(() => Math.max(...leadFunnel.value.map(stage => N
           </div>
         </div>
 
+        <div v-if="campaignOutcome" class="border border-default rounded-lg p-4">
+          <div class="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <h3 class="text-sm font-semibold text-default">
+                Campaign Outcome Health
+              </h3>
+              <p class="text-xs text-muted mt-1">
+                Lead follow-up and conversion from shared advertising activity.
+              </p>
+            </div>
+            <UButton
+              to="/portal/leads"
+              icon="i-lucide-inbox"
+              size="xs"
+              color="neutral"
+              variant="outline"
+            >
+              Leads
+            </UButton>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div class="rounded-lg border border-default bg-default p-3">
+              <p class="text-xs text-muted">
+                Contacted rate
+              </p>
+              <p class="mt-1 text-lg font-semibold">
+                {{ campaignOutcome.contactedRate }}%
+              </p>
+            </div>
+            <div class="rounded-lg border border-default bg-default p-3">
+              <p class="text-xs text-muted">
+                Win rate
+              </p>
+              <p class="mt-1 text-lg font-semibold">
+                {{ campaignOutcome.winRate }}%
+              </p>
+            </div>
+            <div class="rounded-lg border border-default bg-default p-3">
+              <p class="text-xs text-muted">
+                Avg response
+              </p>
+              <p class="mt-1 text-lg font-semibold">
+                {{ formatResponseTime(campaignOutcome.avgResponseMinutes) }}
+              </p>
+            </div>
+            <div class="rounded-lg border border-default bg-default p-3">
+              <p class="text-xs text-muted">
+                Uncontacted
+              </p>
+              <p class="mt-1 text-lg font-semibold" :class="campaignOutcome.uncontacted > 0 ? 'text-warning' : ''">
+                {{ campaignOutcome.uncontacted }}
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-3 rounded-lg border border-default bg-default p-3">
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-xs text-muted">Spend per won lead</span>
+              <span class="text-sm font-semibold">
+                {{ campaignOutcome.spendPerWonLead == null ? '-' : fmtCurrency(campaignOutcome.spendPerWonLead, 2) }}
+              </span>
+            </div>
+          </div>
+        </div>
+
         <!-- Lead Funnel -->
         <div class="border border-default rounded-lg p-4">
           <div class="flex items-center justify-between gap-3 mb-4">
@@ -359,6 +449,7 @@ const leadFunnelMax = computed(() => Math.max(...leadFunnel.value.map(stage => N
               <div class="ml-5 flex items-center gap-3 text-xs text-muted">
                 <span class="tabular-nums">{{ fmtCompact(p.impressions) }} impr.</span>
                 <span class="tabular-nums">{{ fmtCompact(p.leads || 0) }} leads</span>
+                <span v-if="p.leadUncontacted" class="tabular-nums text-warning">{{ fmtCompact(p.leadUncontacted) }} uncontacted</span>
                 <span v-if="p.costPerLead != null" class="tabular-nums">{{ fmtCurrency(p.costPerLead, 2) }} CPL</span>
                 <span class="tabular-nums">{{ fmtPercent(p.ctr) }} CTR</span>
                 <span class="tabular-nums">{{ fmtCurrency(p.cpc, 2) }} CPC</span>

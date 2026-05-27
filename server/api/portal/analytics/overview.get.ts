@@ -106,6 +106,11 @@ export default defineEventHandler(async (event) => {
     const leadRows = await queryRows(`
       SELECT
         ${PORTAL_LEAD_STATUS_SELECT},
+        COUNT(*) FILTER (WHERE l.contacted_at IS NOT NULL)::int AS lead_contacted_at_count,
+        COUNT(*) FILTER (
+          WHERE l.contacted_at IS NULL
+            AND l.status IN ('new', 'contacted', 'qualified')
+        )::int AS lead_uncontacted_count,
         AVG(EXTRACT(EPOCH FROM (l.contacted_at - l.submitted_at)) / 60)
           FILTER (WHERE l.contacted_at IS NOT NULL) AS avg_response_minutes
       FROM leads l
@@ -115,7 +120,12 @@ export default defineEventHandler(async (event) => {
     const leadPlatformRows = await queryRows(`
       SELECT
         ${leadPlatformForSourceSql('l')} AS platform,
-        ${PORTAL_LEAD_STATUS_SELECT}
+        ${PORTAL_LEAD_STATUS_SELECT},
+        COUNT(*) FILTER (WHERE l.contacted_at IS NOT NULL)::int AS lead_contacted_at_count,
+        COUNT(*) FILTER (
+          WHERE l.contacted_at IS NULL
+            AND l.status IN ('new', 'contacted', 'qualified')
+        )::int AS lead_uncontacted_count
       FROM leads l
       WHERE ${leadConditions.join(' AND ')}
       GROUP BY ${leadPlatformForSourceSql('l')}
@@ -159,7 +169,9 @@ export default defineEventHandler(async (event) => {
       row.platform,
       {
         leads: Number(row.lead_count || 0),
-        leadWon: Number(row.lead_won_count || 0)
+        leadWon: Number(row.lead_won_count || 0),
+        leadContactedAt: Number(row.lead_contacted_at_count || 0),
+        leadUncontacted: Number(row.lead_uncontacted_count || 0)
       }
     ]))
 
@@ -170,7 +182,7 @@ export default defineEventHandler(async (event) => {
       const conversions = toNum(r.conversions)
       const revenue = toNum(r.revenue)
       const metrics = computeMetrics(spend, impressions, clicks, conversions, revenue)
-      const leadMetrics = leadsByPlatform.get(r.platform) || { leads: 0, leadWon: 0 }
+      const leadMetrics = leadsByPlatform.get(r.platform) || { leads: 0, leadWon: 0, leadContactedAt: 0, leadUncontacted: 0 }
       return {
         platform: r.platform,
         displayName: PLATFORM_LABELS[r.platform] || r.platform,
@@ -183,6 +195,8 @@ export default defineEventHandler(async (event) => {
         ...metrics,
         leads: leadMetrics.leads,
         leadWon: leadMetrics.leadWon,
+        leadContactedAt: leadMetrics.leadContactedAt,
+        leadUncontacted: leadMetrics.leadUncontacted,
         costPerLead: leadMetrics.leads > 0 ? spend / leadMetrics.leads : null,
         campaignCount: Number(r.campaign_count || 0),
         pctOfTotal: totalSpend > 0 ? Math.round((spend / totalSpend) * 10000) / 100 : 0
@@ -210,6 +224,8 @@ export default defineEventHandler(async (event) => {
         leads: Number(leadTotals.lead_count || 0),
         leadNew: Number(leadTotals.lead_new_count || 0),
         leadContacted: Number(leadTotals.lead_contacted_count || 0),
+        leadContactedAt: Number(leadTotals.lead_contacted_at_count || 0),
+        leadUncontacted: Number(leadTotals.lead_uncontacted_count || 0),
         leadQualified: Number(leadTotals.lead_qualified_count || 0),
         leadWon: Number(leadTotals.lead_won_count || 0),
         leadLost: Number(leadTotals.lead_lost_count || 0),
