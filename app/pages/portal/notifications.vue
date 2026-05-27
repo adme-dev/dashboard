@@ -38,6 +38,16 @@ const viewTabs = computed(() => [
   { label: `Unread (${data.value?.unreadCount ?? 0})`, value: 'unread' }
 ])
 
+const notificationHealthItems = computed(() => {
+  const summary = data.value?.summary
+  return [
+    { label: 'Unread', value: summary?.unread || 0, icon: 'i-lucide-bell-ring', color: 'primary' },
+    { label: 'Approvals', value: summary?.unreadApprovals || 0, icon: 'i-lucide-check-check', color: 'warning' },
+    { label: 'Billing', value: summary?.unreadBilling || 0, icon: 'i-lucide-receipt-text', color: 'error' },
+    { label: 'Work updates', value: (summary?.unreadDeliverables || 0) + (summary?.unreadProjects || 0), icon: 'i-lucide-folder-kanban', color: 'neutral' }
+  ]
+})
+
 function getIcon(type: string) {
   return notificationIcons[type] || notificationIcons.default
 }
@@ -98,6 +108,40 @@ function getLink(n: PortalNotification) {
     </div>
 
     <UTabs v-model="activeView" :items="viewTabs" />
+
+    <UCard v-if="data?.summary">
+      <template #header>
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-radar" class="text-primary" />
+          <span class="font-semibold">Notification Health</span>
+        </div>
+      </template>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <button
+          v-for="item in notificationHealthItems"
+          :key="item.label"
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeView = item.value > 0 ? 'unread' : 'all'"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <p class="text-xs text-muted">
+              {{ item.label }}
+            </p>
+            <UIcon :name="item.icon" class="size-4 text-muted" />
+          </div>
+          <p class="mt-1 text-sm font-semibold" :class="item.value > 0 && item.color === 'error' ? 'text-error' : item.value > 0 && item.color === 'warning' ? 'text-warning' : ''">
+            {{ item.value }}
+          </p>
+        </button>
+      </div>
+
+      <div class="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted">
+        <span>{{ data.summary.recent }} notification{{ data.summary.recent === 1 ? '' : 's' }} in the last 7 days</span>
+        <span v-if="data.summary.latestAt">Latest {{ timeAgo(data.summary.latestAt) }}</span>
+      </div>
+    </UCard>
 
     <div v-if="pending" class="space-y-3">
       <div v-for="i in 5" :key="i" class="h-16 rounded-lg bg-elevated animate-pulse" />

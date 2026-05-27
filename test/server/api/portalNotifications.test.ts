@@ -47,7 +47,18 @@ describe('portal notifications API', () => {
     vi.clearAllMocks()
     mockRequireClientAuth.mockResolvedValue({ id: 'client-user-1', clientId: 'client-1' })
     mockQueryRows.mockResolvedValue([])
-    mockQueryOne.mockResolvedValue({ count: '3' })
+    mockQueryOne
+      .mockResolvedValueOnce({ count: '3' })
+      .mockResolvedValueOnce({
+        total: '12',
+        unread: '3',
+        recent: '5',
+        unread_approvals: '1',
+        unread_billing: '1',
+        unread_deliverables: '1',
+        unread_projects: '0',
+        latest_at: '2026-05-28T00:00:00Z'
+      })
     mockExecute.mockResolvedValue({ rowCount: 1 })
   })
 
@@ -55,10 +66,25 @@ describe('portal notifications API', () => {
     const result = await listNotificationsHandler({ query: { unreadOnly: 'true', limit: '10' } })
 
     expect(result.unreadCount).toBe(3)
+    expect(result.summary).toEqual({
+      total: 12,
+      unread: 3,
+      recent: 5,
+      unreadApprovals: 1,
+      unreadBilling: 1,
+      unreadDeliverables: 1,
+      unreadProjects: 0,
+      latestAt: '2026-05-28T00:00:00Z'
+    })
     expect(mockQueryRows).toHaveBeenCalledWith(
       expect.stringContaining('cn.is_read = false'),
       ['client-user-1', 10]
     )
+    const summarySql = String(mockQueryOne.mock.calls[1]?.[0])
+    expect(summarySql).toContain('unread_approvals')
+    expect(summarySql).toContain('unread_billing')
+    expect(summarySql).toContain('unread_deliverables')
+    expect(summarySql).toContain('unread_projects')
   })
 
   it('marks all unread client notifications as read in one request', async () => {

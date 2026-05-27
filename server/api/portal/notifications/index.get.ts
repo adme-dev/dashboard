@@ -6,6 +6,19 @@
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 
+type NotificationSummaryRow = {
+  total: string | number | null
+  unread: string | number | null
+  recent: string | number | null
+  unread_approvals: string | number | null
+  unread_billing: string | number | null
+  unread_deliverables: string | number | null
+  unread_projects: string | number | null
+  latest_at: string | null
+}
+
+const toNumber = (value: string | number | null | undefined) => Number(value || 0)
+
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
   const query = getQuery(event)
@@ -56,6 +69,33 @@ export default defineEventHandler(async (event) => {
       WHERE client_user_id = $1 AND is_read = false AND is_archived = false
     `, [clientUser.id])
 
+    const summary = await queryOne<NotificationSummaryRow>(`
+      SELECT
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE is_read = false) AS unread,
+        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days') AS recent,
+        COUNT(*) FILTER (
+          WHERE is_read = false
+            AND type IN ('approval_requested', 'approval_responded')
+        ) AS unread_approvals,
+        COUNT(*) FILTER (
+          WHERE is_read = false
+            AND type IN ('invoice_sent', 'invoice_overdue')
+        ) AS unread_billing,
+        COUNT(*) FILTER (
+          WHERE is_read = false
+            AND type IN ('deliverable_published', 'comment_added', 'comment_reply')
+        ) AS unread_deliverables,
+        COUNT(*) FILTER (
+          WHERE is_read = false
+            AND type IN ('project_updated', 'status_change')
+        ) AS unread_projects,
+        MAX(created_at) AS latest_at
+      FROM client_notifications
+      WHERE client_user_id = $1
+        AND is_archived = false
+    `, [clientUser.id])
+
     return {
       notifications: notifications.map(n => ({
         id: n.id,
@@ -71,7 +111,17 @@ export default defineEventHandler(async (event) => {
         deliverableId: n.deliverable_id,
         invoice: n.invoice_id ? { id: n.invoice_id, number: n.invoice_number } : null
       })),
-      unreadCount: Number(unreadCount?.count || 0)
+      unreadCount: Number(unreadCount?.count || 0),
+      summary: {
+        total: toNumber(summary?.total),
+        unread: toNumber(summary?.unread),
+        recent: toNumber(summary?.recent),
+        unreadApprovals: toNumber(summary?.unread_approvals),
+        unreadBilling: toNumber(summary?.unread_billing),
+        unreadDeliverables: toNumber(summary?.unread_deliverables),
+        unreadProjects: toNumber(summary?.unread_projects),
+        latestAt: summary?.latest_at || null
+      }
     }
   } catch (error) {
     console.error('Failed to fetch notifications:', error)
