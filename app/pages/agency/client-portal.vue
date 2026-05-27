@@ -287,6 +287,59 @@ const inviteClientUser = (clientId?: string | null) => {
   showInviteModal.value = true
 }
 
+const showAccessModal = ref(false)
+const editingPortalUser = ref<PortalUser | null>(null)
+const accessForm = ref({
+  status: 'active',
+  permissions: {
+    canViewProjects: true,
+    canViewInvoices: false,
+    canApproveWork: false,
+    canViewTimeEntries: false,
+    canViewBudgets: false,
+    canViewAnalytics: true,
+    canSubmitRequests: true
+  }
+})
+
+const editPortalUserAccess = (user: PortalUser) => {
+  editingPortalUser.value = user
+  accessForm.value = {
+    status: user.status || 'active',
+    permissions: {
+      canViewProjects: user.permissions?.canViewProjects !== false,
+      canViewInvoices: Boolean(user.permissions?.canViewInvoices),
+      canApproveWork: Boolean(user.permissions?.canApproveWork),
+      canViewTimeEntries: Boolean(user.permissions?.canViewTimeEntries),
+      canViewBudgets: Boolean(user.permissions?.canViewBudgets),
+      canViewAnalytics: user.permissions?.canViewAnalytics !== false,
+      canSubmitRequests: user.permissions?.canSubmitRequests !== false
+    }
+  }
+  showAccessModal.value = true
+}
+
+const savingAccess = ref(false)
+const savePortalUserAccess = async () => {
+  if (!editingPortalUser.value) return
+
+  savingAccess.value = true
+  try {
+    await $fetch(`/api/agency/client-portal/users/${editingPortalUser.value.id}`, {
+      method: 'PUT',
+      body: accessForm.value
+    })
+    toast.add({ title: 'Portal access updated', color: 'success' })
+    showAccessModal.value = false
+    editingPortalUser.value = null
+    await Promise.all([refreshUsers(), refreshPortalClients()])
+  } catch (err: unknown) {
+    toast.add({ title: 'Failed to update access', description: errorMessage(err), color: 'error' })
+  } finally {
+    savingAccess.value = false
+  }
+}
+
 // Format helpers
 const formatDate = (date: string) => {
   if (!date) return '—'
@@ -866,16 +919,26 @@ const enterpriseRollout = [
               </template>
 
               <template #actions-cell="{ row }">
-                <UDropdownMenu :items="getClientPortalActions(row.original.clientId)">
+                <div class="flex justify-end gap-2">
                   <UButton
-                    icon="i-lucide-more-horizontal"
+                    icon="i-lucide-shield-check"
                     variant="ghost"
                     color="neutral"
                     size="sm"
-                    :loading="openingPortal"
-                    aria-label="Open client portal sections"
+                    aria-label="Edit portal access"
+                    @click="editPortalUserAccess(row.original)"
                   />
-                </UDropdownMenu>
+                  <UDropdownMenu :items="getClientPortalActions(row.original.clientId)">
+                    <UButton
+                      icon="i-lucide-more-horizontal"
+                      variant="ghost"
+                      color="neutral"
+                      size="sm"
+                      :loading="openingPortal"
+                      aria-label="Open client portal sections"
+                    />
+                  </UDropdownMenu>
+                </div>
               </template>
             </UTable>
 
@@ -1376,6 +1439,123 @@ const enterpriseRollout = [
             :loading="inviting"
             @click="sendInvite"
           />
+        </div>
+      </template>
+    </USlideover>
+
+    <USlideover v-model:open="showAccessModal">
+      <template #header>
+        <div>
+          <h3 class="text-[18px] font-[600]">
+            Portal Access
+          </h3>
+          <p class="text-sm text-[var(--ui-text-muted)] mt-1">
+            {{ editingPortalUser?.name }} · {{ editingPortalUser?.clientName }}
+          </p>
+        </div>
+      </template>
+      <template #body>
+        <form class="space-y-6" @submit.prevent="savePortalUserAccess">
+          <div>
+            <label class="block text-[13px] font-medium mb-2">Status</label>
+            <USelect
+              v-model="accessForm.status"
+              :items="[
+                { label: 'Active', value: 'active' },
+                { label: 'Suspended', value: 'suspended' },
+                { label: 'Deactivated', value: 'deactivated' }
+              ]"
+              value-key="value"
+              size="xl"
+              class="w-full"
+            />
+          </div>
+
+          <fieldset class="space-y-4">
+            <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest">
+              Portal modules
+            </legend>
+
+            <label class="flex items-center gap-3 cursor-pointer">
+              <UCheckbox v-model="accessForm.permissions.canViewProjects" />
+              <div>
+                <span class="text-[13px] font-medium">Jobs</span>
+                <p class="text-[12px] text-[var(--ui-text-muted)]">View booked jobs, tasks, timelines, and job history.</p>
+              </div>
+            </label>
+
+            <label class="flex items-center gap-3 cursor-pointer">
+              <UCheckbox v-model="accessForm.permissions.canViewInvoices" />
+              <div>
+                <span class="text-[13px] font-medium">Billing</span>
+                <p class="text-[12px] text-[var(--ui-text-muted)]">View current billing, overdue invoices, and paid history.</p>
+              </div>
+            </label>
+
+            <label class="flex items-center gap-3 cursor-pointer">
+              <UCheckbox v-model="accessForm.permissions.canViewAnalytics" />
+              <div>
+                <span class="text-[13px] font-medium">Campaign analytics</span>
+                <p class="text-[12px] text-[var(--ui-text-muted)]">View campaign metrics, lead performance, and exports.</p>
+              </div>
+            </label>
+
+            <label class="flex items-center gap-3 cursor-pointer">
+              <UCheckbox v-model="accessForm.permissions.canApproveWork" />
+              <div>
+                <span class="text-[13px] font-medium">Approvals</span>
+                <p class="text-[12px] text-[var(--ui-text-muted)]">Approve work and request revisions.</p>
+              </div>
+            </label>
+
+            <label class="flex items-center gap-3 cursor-pointer">
+              <UCheckbox v-model="accessForm.permissions.canSubmitRequests" />
+              <div>
+                <span class="text-[13px] font-medium">Requests</span>
+                <p class="text-[12px] text-[var(--ui-text-muted)]">Submit job requests, briefs, and support tickets.</p>
+              </div>
+            </label>
+          </fieldset>
+
+          <fieldset class="space-y-4">
+            <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest">
+              Sensitive visibility
+            </legend>
+
+            <label class="flex items-center gap-3 cursor-pointer">
+              <UCheckbox v-model="accessForm.permissions.canViewTimeEntries" />
+              <div>
+                <span class="text-[13px] font-medium">Time entries</span>
+                <p class="text-[12px] text-[var(--ui-text-muted)]">Show time tracked against work.</p>
+              </div>
+            </label>
+
+            <label class="flex items-center gap-3 cursor-pointer">
+              <UCheckbox v-model="accessForm.permissions.canViewBudgets" />
+              <div>
+                <span class="text-[13px] font-medium">Budgets</span>
+                <p class="text-[12px] text-[var(--ui-text-muted)]">Show budgets and commercial project details.</p>
+              </div>
+            </label>
+          </fieldset>
+        </form>
+      </template>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <UButton
+            variant="outline"
+            color="neutral"
+            @click="showAccessModal = false"
+          >
+            Cancel
+          </UButton>
+          <UButton
+            icon="i-lucide-save"
+            :loading="savingAccess"
+            @click="savePortalUserAccess"
+          >
+            Save access
+          </UButton>
         </div>
       </template>
     </USlideover>
