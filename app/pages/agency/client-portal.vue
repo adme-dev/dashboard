@@ -173,6 +173,51 @@ interface InviteResponse {
   }
 }
 
+interface AgencyPortalDashboard {
+  enterprise?: {
+    requests?: {
+      open: number
+      urgent: number
+      unassigned: number
+      overdue: number
+      openRequestedBudget: number
+    }
+    leads?: {
+      leadsLast30: number
+      uncontactedLast30: number
+      wonLast30: number
+      avgResponseMinutesLast30?: number | null
+    }
+    access?: {
+      totalUsers: number
+      activeUsers: number
+      pendingUsers: number
+      agencyAccessUsers: number
+      lastLoginAt?: string | null
+    }
+    billing?: {
+      overdueInvoices: number
+      dueNext7Count: number
+      dueNext7Amount: number
+      paidLast90: number
+      averageDaysToPay: number
+    }
+    content?: {
+      briefsTotal: number
+      briefsOpen: number
+      briefsNeedsInfo: number
+      briefsUrgent: number
+      briefsOverdue: number
+      briefsSubmitted30d: number
+      deliverablesVisible: number
+      deliverablesApproved: number
+      deliverablesFinal: number
+      deliverablesRecent30d: number
+      lastPublishedAt?: string | null
+    }
+  }
+}
+
 const errorMessage = (error: unknown) => {
   if (error && typeof error === 'object') {
     const maybeError = error as { data?: { message?: string }, message?: string }
@@ -461,6 +506,19 @@ const getClientPortalActions = (clientId?: string | null) => [
 ]
 
 const selectedClientPortalActions = computed(() => getClientPortalActions(selectedAccessClientId.value))
+
+const selectedDashboardQuery = computed(() => selectedAccessClientId.value
+  ? { clientId: selectedAccessClientId.value }
+  : undefined)
+
+const { data: selectedDashboardData, pending: selectedDashboardPending } = await useFetch('/api/agency/client-portal/dashboard', {
+  query: selectedDashboardQuery,
+  immediate: computed(() => Boolean(selectedAccessClientId.value)),
+  watch: [selectedAccessClientId]
+})
+
+const selectedDashboard = computed(() => selectedDashboardData.value as AgencyPortalDashboard | null)
+const selectedEnterprise = computed(() => selectedDashboard.value?.enterprise)
 
 const portalModuleReadiness = (client: PortalClient) => [
   { label: 'Jobs', value: client.moduleAccess?.projects || 0 },
@@ -1893,6 +1951,104 @@ const enterpriseRollout = [
                 />
               </div>
             </div>
+          </UCard>
+
+          <UCard>
+            <template #header>
+              <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-lucide-activity" class="size-4 text-primary" />
+                  <h2 class="font-semibold">
+                    Selected Client Operating Health
+                  </h2>
+                </div>
+                <UBadge v-if="selectedAccessClientId" color="primary" variant="subtle">
+                  Live portal data
+                </UBadge>
+              </div>
+            </template>
+
+            <div v-if="selectedDashboardPending" class="flex items-center justify-center py-8">
+              <XfLoader />
+            </div>
+
+            <div v-else-if="selectedEnterprise" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+              <div class="rounded-lg border border-[var(--ui-border)] p-4">
+                <div class="flex items-center justify-between gap-3">
+                  <p class="text-sm font-medium">
+                    Access
+                  </p>
+                  <UIcon name="i-lucide-users" class="size-4 text-[var(--ui-text-muted)]" />
+                </div>
+                <p class="mt-3 text-2xl font-semibold">
+                  {{ selectedEnterprise.access?.activeUsers || 0 }}
+                </p>
+                <p class="text-xs text-[var(--ui-text-muted)]">
+                  active of {{ selectedEnterprise.access?.totalUsers || 0 }} users · {{ selectedEnterprise.access?.agencyAccessUsers || 0 }} agency
+                </p>
+                <p class="mt-2 text-xs text-[var(--ui-text-dimmed)]">
+                  Last login {{ formatDateTime(selectedEnterprise.access?.lastLoginAt) }}
+                </p>
+              </div>
+
+              <div class="rounded-lg border border-[var(--ui-border)] p-4">
+                <div class="flex items-center justify-between gap-3">
+                  <p class="text-sm font-medium">
+                    Intake
+                  </p>
+                  <UIcon name="i-lucide-inbox" class="size-4 text-[var(--ui-text-muted)]" />
+                </div>
+                <p class="mt-3 text-2xl font-semibold" :class="(selectedEnterprise.requests?.urgent || 0) > 0 ? 'text-error' : ''">
+                  {{ selectedEnterprise.requests?.open || 0 }}
+                </p>
+                <p class="text-xs text-[var(--ui-text-muted)]">
+                  open requests · {{ selectedEnterprise.requests?.urgent || 0 }} urgent · {{ selectedEnterprise.requests?.unassigned || 0 }} unassigned
+                </p>
+                <p class="mt-2 text-xs text-[var(--ui-text-dimmed)]">
+                  {{ selectedEnterprise.leads?.leadsLast30 || 0 }} portal leads, {{ selectedEnterprise.leads?.uncontactedLast30 || 0 }} uncontacted
+                </p>
+              </div>
+
+              <div class="rounded-lg border border-[var(--ui-border)] p-4">
+                <div class="flex items-center justify-between gap-3">
+                  <p class="text-sm font-medium">
+                    Billing
+                  </p>
+                  <UIcon name="i-lucide-receipt-text" class="size-4 text-[var(--ui-text-muted)]" />
+                </div>
+                <p class="mt-3 text-2xl font-semibold" :class="(selectedEnterprise.billing?.overdueInvoices || 0) > 0 ? 'text-error' : ''">
+                  {{ formatCurrency(selectedEnterprise.billing?.dueNext7Amount || 0) }}
+                </p>
+                <p class="text-xs text-[var(--ui-text-muted)]">
+                  due next 7 days · {{ selectedEnterprise.billing?.overdueInvoices || 0 }} overdue
+                </p>
+                <p class="mt-2 text-xs text-[var(--ui-text-dimmed)]">
+                  {{ formatCurrency(selectedEnterprise.billing?.paidLast90 || 0) }} paid in 90d
+                </p>
+              </div>
+
+              <div class="rounded-lg border border-[var(--ui-border)] p-4">
+                <div class="flex items-center justify-between gap-3">
+                  <p class="text-sm font-medium">
+                    Content
+                  </p>
+                  <UIcon name="i-lucide-folder-open-dot" class="size-4 text-[var(--ui-text-muted)]" />
+                </div>
+                <p class="mt-3 text-2xl font-semibold" :class="(selectedEnterprise.content?.briefsOverdue || 0) > 0 ? 'text-warning' : ''">
+                  {{ selectedEnterprise.content?.briefsOpen || 0 }}
+                </p>
+                <p class="text-xs text-[var(--ui-text-muted)]">
+                  open briefs · {{ selectedEnterprise.content?.deliverablesVisible || 0 }} shared files
+                </p>
+                <p class="mt-2 text-xs text-[var(--ui-text-dimmed)]">
+                  Last shared {{ formatDateTime(selectedEnterprise.content?.lastPublishedAt) }}
+                </p>
+              </div>
+            </div>
+
+            <p v-else class="text-sm text-[var(--ui-text-muted)] py-6">
+              Select a client to preview their portal operating health.
+            </p>
           </UCard>
 
           <div class="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6">
