@@ -3,18 +3,26 @@ definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
 const { hasPermission } = usePortalAuth()
 
-const activeTab = ref('all')
-const statusFilter = computed(() => activeTab.value === 'all' ? undefined : activeTab.value)
+const activeTab = ref('current')
+const invoiceQuery = computed(() => {
+  if (activeTab.value === 'current' || activeTab.value === 'history') {
+    return { view: activeTab.value }
+  }
+  if (activeTab.value === 'overdue') {
+    return { status: 'overdue' }
+  }
+  return {}
+})
 
 const { data, pending } = useFetch('/api/portal/invoices', {
-  query: { status: statusFilter }
+  query: invoiceQuery
 })
 
 const tabs = [
-  { label: 'All', value: 'all' },
-  { label: 'Outstanding', value: 'sent' },
+  { label: 'Current billing', value: 'current' },
   { label: 'Overdue', value: 'overdue' },
-  { label: 'Paid', value: 'paid' }
+  { label: 'Billing history', value: 'history' },
+  { label: 'All', value: 'all' }
 ]
 
 // Detail slideover
@@ -55,7 +63,7 @@ const statusColors: Record<string, string> = {
 }
 
 const agingColors: Record<string, string> = {
-  current: 'neutral',
+  'current': 'neutral',
   '30d': 'warning',
   '60d': 'error',
   '90+': 'error'
@@ -66,30 +74,46 @@ const agingColors: Record<string, string> = {
   <div class="p-6 space-y-6 max-w-5xl mx-auto">
     <div v-if="!hasPermission('canViewInvoices')" class="text-center py-20">
       <UIcon name="i-lucide-lock" class="w-12 h-12 text-muted mx-auto mb-4" />
-      <h2 class="text-xl font-semibold">Access Restricted</h2>
-      <p class="text-muted mt-1">You do not have permission to view invoices.</p>
+      <h2 class="text-xl font-semibold">
+        Access Restricted
+      </h2>
+      <p class="text-muted mt-1">
+        You do not have permission to view invoices.
+      </p>
     </div>
 
     <template v-else>
-      <h1 class="text-2xl font-bold">Invoices</h1>
+      <h1 class="text-2xl font-bold">
+        Invoices
+      </h1>
 
       <!-- Summary Cards -->
       <div v-if="data?.summary" class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <UCard>
           <div class="text-center">
-            <p class="text-sm text-muted">Outstanding</p>
-            <p class="text-2xl font-bold text-warning">{{ formatCurrency(data.summary.totalOutstanding) }}</p>
+            <p class="text-sm text-muted">
+              Outstanding
+            </p>
+            <p class="text-2xl font-bold text-warning">
+              {{ formatCurrency(data.summary.totalOutstanding) }}
+            </p>
           </div>
         </UCard>
         <UCard>
           <div class="text-center">
-            <p class="text-sm text-muted">Paid This Year</p>
-            <p class="text-2xl font-bold text-success">{{ formatCurrency(data.summary.totalPaid) }}</p>
+            <p class="text-sm text-muted">
+              Paid This Year
+            </p>
+            <p class="text-2xl font-bold text-success">
+              {{ formatCurrency(data.summary.totalPaid) }}
+            </p>
           </div>
         </UCard>
         <UCard>
           <div class="text-center">
-            <p class="text-sm text-muted">Overdue</p>
+            <p class="text-sm text-muted">
+              Overdue
+            </p>
             <p class="text-2xl font-bold" :class="data.summary.overdue > 0 ? 'text-error' : 'text-muted'">
               {{ data.summary.overdue }}
             </p>
@@ -97,13 +121,17 @@ const agingColors: Record<string, string> = {
         </UCard>
         <UCard>
           <div class="text-center">
-            <p class="text-sm text-muted">Total Billed</p>
-            <p class="text-2xl font-bold">{{ formatCurrency(data.summary.totalBilled) }}</p>
+            <p class="text-sm text-muted">
+              Total Billed
+            </p>
+            <p class="text-2xl font-bold">
+              {{ formatCurrency(data.summary.totalBilled) }}
+            </p>
           </div>
         </UCard>
       </div>
 
-      <UTabs :items="tabs" v-model="activeTab" />
+      <UTabs v-model="activeTab" :items="tabs" />
 
       <div v-if="pending" class="space-y-3">
         <div v-for="i in 5" :key="i" class="h-16 rounded-lg bg-elevated animate-pulse" />
@@ -113,13 +141,27 @@ const agingColors: Record<string, string> = {
         <table class="w-full text-sm">
           <thead>
             <tr class="border-b border-default">
-              <th class="text-left py-3 px-4 font-medium text-muted">Invoice</th>
-              <th class="text-left py-3 px-4 font-medium text-muted">Date</th>
-              <th class="text-left py-3 px-4 font-medium text-muted">Due</th>
-              <th class="text-left py-3 px-4 font-medium text-muted">Project</th>
-              <th class="text-right py-3 px-4 font-medium text-muted">Amount</th>
-              <th class="text-right py-3 px-4 font-medium text-muted">Balance</th>
-              <th class="text-center py-3 px-4 font-medium text-muted">Status</th>
+              <th class="text-left py-3 px-4 font-medium text-muted">
+                Invoice
+              </th>
+              <th class="text-left py-3 px-4 font-medium text-muted">
+                Date
+              </th>
+              <th class="text-left py-3 px-4 font-medium text-muted">
+                Due
+              </th>
+              <th class="text-left py-3 px-4 font-medium text-muted">
+                Project
+              </th>
+              <th class="text-right py-3 px-4 font-medium text-muted">
+                Amount
+              </th>
+              <th class="text-right py-3 px-4 font-medium text-muted">
+                Balance
+              </th>
+              <th class="text-center py-3 px-4 font-medium text-muted">
+                Status
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -129,13 +171,21 @@ const agingColors: Record<string, string> = {
               class="border-b border-default/50 hover:bg-elevated transition-colors cursor-pointer"
               @click="openDetail(invoice.id)"
             >
-              <td class="py-3 px-4 font-medium">{{ invoice.invoiceNumber }}</td>
-              <td class="py-3 px-4 text-muted">{{ formatDate(invoice.issueDate) }}</td>
+              <td class="py-3 px-4 font-medium">
+                {{ invoice.invoiceNumber }}
+              </td>
+              <td class="py-3 px-4 text-muted">
+                {{ formatDate(invoice.issueDate) }}
+              </td>
               <td class="py-3 px-4" :class="invoice.isOverdue ? 'text-error font-medium' : 'text-muted'">
                 {{ formatDate(invoice.dueDate) }}
               </td>
-              <td class="py-3 px-4 text-muted">{{ invoice.projectName || '-' }}</td>
-              <td class="py-3 px-4 text-right">{{ formatCurrency(invoice.totalAmount) }}</td>
+              <td class="py-3 px-4 text-muted">
+                {{ invoice.projectName || '-' }}
+              </td>
+              <td class="py-3 px-4 text-right">
+                {{ formatCurrency(invoice.totalAmount) }}
+              </td>
               <td class="py-3 px-4 text-right font-medium">
                 {{ invoice.amountDue > 0 ? formatCurrency(invoice.amountDue) : '-' }}
               </td>
@@ -177,8 +227,12 @@ const agingColors: Record<string, string> = {
             <!-- Header -->
             <div class="flex items-start justify-between">
               <div>
-                <h2 class="text-lg font-semibold">{{ detailData.invoice.invoiceNumber }}</h2>
-                <p v-if="detailData.invoice.projectName" class="text-sm text-muted">{{ detailData.invoice.projectName }}</p>
+                <h2 class="text-lg font-semibold">
+                  {{ detailData.invoice.invoiceNumber }}
+                </h2>
+                <p v-if="detailData.invoice.projectName" class="text-sm text-muted">
+                  {{ detailData.invoice.projectName }}
+                </p>
               </div>
               <div class="flex items-center gap-2">
                 <UBadge :color="(statusColors[detailData.invoice.status] as any) || 'neutral'" variant="subtle">
@@ -197,43 +251,75 @@ const agingColors: Record<string, string> = {
             <!-- Invoice Info -->
             <div class="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <p class="text-muted">Issue Date</p>
-                <p class="font-medium">{{ formatDate(detailData.invoice.issueDate) }}</p>
+                <p class="text-muted">
+                  Issue Date
+                </p>
+                <p class="font-medium">
+                  {{ formatDate(detailData.invoice.issueDate) }}
+                </p>
               </div>
               <div>
-                <p class="text-muted">Due Date</p>
+                <p class="text-muted">
+                  Due Date
+                </p>
                 <p class="font-medium" :class="detailData.invoice.isOverdue ? 'text-error' : ''">
                   {{ formatDate(detailData.invoice.dueDate) }}
                 </p>
               </div>
               <div v-if="detailData.invoice.paidDate">
-                <p class="text-muted">Paid Date</p>
-                <p class="font-medium text-success">{{ formatDate(detailData.invoice.paidDate) }}</p>
+                <p class="text-muted">
+                  Paid Date
+                </p>
+                <p class="font-medium text-success">
+                  {{ formatDate(detailData.invoice.paidDate) }}
+                </p>
               </div>
               <div v-if="detailData.invoice.paymentTerms">
-                <p class="text-muted">Payment Terms</p>
-                <p class="font-medium">{{ detailData.invoice.paymentTerms.replace('_', ' ') }}</p>
+                <p class="text-muted">
+                  Payment Terms
+                </p>
+                <p class="font-medium">
+                  {{ detailData.invoice.paymentTerms.replace('_', ' ') }}
+                </p>
               </div>
             </div>
 
             <!-- Line Items -->
             <div v-if="detailData.lineItems.length">
-              <h3 class="font-semibold text-sm mb-3">Line Items</h3>
+              <h3 class="font-semibold text-sm mb-3">
+                Line Items
+              </h3>
               <table class="w-full text-sm">
                 <thead>
                   <tr class="border-b border-default">
-                    <th class="text-left py-2 font-medium text-muted">Description</th>
-                    <th class="text-right py-2 font-medium text-muted">Qty</th>
-                    <th class="text-right py-2 font-medium text-muted">Price</th>
-                    <th class="text-right py-2 font-medium text-muted">Amount</th>
+                    <th class="text-left py-2 font-medium text-muted">
+                      Description
+                    </th>
+                    <th class="text-right py-2 font-medium text-muted">
+                      Qty
+                    </th>
+                    <th class="text-right py-2 font-medium text-muted">
+                      Price
+                    </th>
+                    <th class="text-right py-2 font-medium text-muted">
+                      Amount
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="item in detailData.lineItems" :key="item.id" class="border-b border-default/50">
-                    <td class="py-2">{{ item.description }}</td>
-                    <td class="py-2 text-right text-muted">{{ item.quantity }}</td>
-                    <td class="py-2 text-right text-muted">{{ formatCurrency(item.unitPrice) }}</td>
-                    <td class="py-2 text-right font-medium">{{ formatCurrency(item.amount) }}</td>
+                    <td class="py-2">
+                      {{ item.description }}
+                    </td>
+                    <td class="py-2 text-right text-muted">
+                      {{ item.quantity }}
+                    </td>
+                    <td class="py-2 text-right text-muted">
+                      {{ formatCurrency(item.unitPrice) }}
+                    </td>
+                    <td class="py-2 text-right font-medium">
+                      {{ formatCurrency(item.amount) }}
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -269,8 +355,12 @@ const agingColors: Record<string, string> = {
 
             <!-- Notes -->
             <div v-if="detailData.invoice.notes" class="text-sm">
-              <h3 class="font-semibold mb-1">Notes</h3>
-              <p class="text-muted whitespace-pre-wrap">{{ detailData.invoice.notes }}</p>
+              <h3 class="font-semibold mb-1">
+                Notes
+              </h3>
+              <p class="text-muted whitespace-pre-wrap">
+                {{ detailData.invoice.notes }}
+              </p>
             </div>
           </template>
         </div>

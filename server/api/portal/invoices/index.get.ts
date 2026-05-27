@@ -14,21 +14,28 @@ export default defineEventHandler(async (event) => {
   }
 
   const query = getQuery(event)
+  const view = query.view as 'current' | 'history' | undefined
   const status = query.status as string | undefined
   const limit = Math.min(Number(query.limit) || 50, 100)
 
   try {
     const conditions: string[] = ['i.client_id = $1']
-    const params: any[] = [clientUser.clientId]
+    const params: unknown[] = [clientUser.clientId]
     let idx = 2
 
-    if (status && status !== 'all') {
+    if (view === 'current') {
+      conditions.push('i.status IN (\'sent\', \'overdue\')')
+    } else if (view === 'history') {
+      conditions.push('i.status = \'paid\'')
+    } else if (status && status !== 'all') {
       conditions.push(`i.status = $${idx}`)
       params.push(status)
       idx++
     }
 
     params.push(limit)
+    params.push(view ?? null)
+    const viewParamIndex = idx + 1
 
     const invoices = await queryRows(`
       SELECT
@@ -48,6 +55,7 @@ export default defineEventHandler(async (event) => {
       LEFT JOIN projects p ON i.project_id = p.id
       WHERE ${conditions.join(' AND ')}
       ORDER BY
+        CASE WHEN $${viewParamIndex} = 'history' THEN i.paid_date END DESC NULLS LAST,
         CASE i.status
           WHEN 'overdue' THEN 0
           WHEN 'sent' THEN 1
@@ -65,6 +73,8 @@ export default defineEventHandler(async (event) => {
         COUNT(CASE WHEN status = 'paid' THEN 1 END) as paid,
         COUNT(CASE WHEN status = 'sent' THEN 1 END) as sent,
         COUNT(CASE WHEN status = 'overdue' THEN 1 END) as overdue,
+        COUNT(CASE WHEN status IN ('sent', 'overdue') THEN 1 END) as current,
+        COUNT(CASE WHEN status = 'paid' THEN 1 END) as history,
         COALESCE(SUM(total_amount), 0) as total_billed,
         COALESCE(SUM(CASE WHEN status = 'paid' THEN total_amount ELSE 0 END), 0) as total_paid,
         COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') THEN total_amount - amount_paid ELSE 0 END), 0) as total_outstanding
@@ -94,6 +104,8 @@ export default defineEventHandler(async (event) => {
         paid: Number(summary?.paid || 0),
         sent: Number(summary?.sent || 0),
         overdue: Number(summary?.overdue || 0),
+        current: Number(summary?.current || 0),
+        history: Number(summary?.history || 0),
         totalBilled: Number(summary?.total_billed || 0),
         totalPaid: Number(summary?.total_paid || 0),
         totalOutstanding: Number(summary?.total_outstanding || 0)
