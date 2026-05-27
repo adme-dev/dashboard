@@ -5,6 +5,8 @@
 
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
+import { ensureOfficeMeetingArtifactsTables } from '~~/server/utils/officeMeetingArtifacts'
+import { ensureOfficeRecordingsTables } from '~~/server/utils/officeRecordings'
 
 const PORTAL_VISIBLE_LEADS_EXISTS = `EXISTS (
   SELECT 1 FROM lead_form_rules r
@@ -168,6 +170,56 @@ export default defineEventHandler(async (event) => {
       LIMIT 5
     `, [clientId])
 
+    await ensureOfficeMeetingArtifactsTables()
+    await ensureOfficeRecordingsTables()
+
+    const meetings = await queryRows(`
+      SELECT
+        oms.id,
+        oms.office_id,
+        o.name AS office_name,
+        oms.title,
+        oms.status,
+        oms.source,
+        oms.started_at,
+        oms.ended_at,
+        oms.created_at,
+        oms.consent #>> '{setup,scheduled_start_at}' AS scheduled_start_at,
+        oms.consent #>> '{setup,duration_minutes}' AS duration_minutes,
+        oz.name AS zone_name,
+        oz.slug AS zone_slug,
+        COALESCE(recording_summary.ready_recording_count, 0)::int AS ready_recording_count,
+        recording_summary.latest_recording_token
+      FROM office_members om
+      JOIN offices o ON o.id = om.office_id
+      JOIN office_meeting_sessions oms ON oms.office_id = om.office_id
+      LEFT JOIN office_zones oz ON oz.id = oms.zone_id
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(*) FILTER (WHERE status = 'ready')::int AS ready_recording_count,
+          (ARRAY_AGG(share_token ORDER BY created_at DESC) FILTER (WHERE status = 'ready' AND share_token IS NOT NULL))[1] AS latest_recording_token
+        FROM office_recordings
+        WHERE meeting_session_id = oms.id
+          AND status <> 'archived'
+      ) recording_summary ON TRUE
+      WHERE om.client_user_id = $1
+        AND oms.status <> 'cancelled'
+      ORDER BY
+        CASE
+          WHEN oms.status = 'live' THEN 0
+          WHEN oms.status = 'planned' THEN 1
+          ELSE 2
+        END ASC,
+        CASE
+          WHEN oms.status IN ('live', 'planned')
+           AND (oms.consent #>> '{setup,scheduled_start_at}') ~ '^\\d{4}-\\d{2}-\\d{2}T'
+          THEN (oms.consent #>> '{setup,scheduled_start_at}')::timestamptz
+          ELSE NULL
+        END ASC NULLS LAST,
+        oms.created_at DESC
+      LIMIT 6
+    `, [clientUser.id])
+
     const upcomingDeadlines = await queryRows(`
       SELECT
         t.id,
@@ -310,6 +362,31 @@ export default defineEventHandler(async (event) => {
           role: m.role,
           department: m.department
         }))
+      },
+      meetings: {
+        upcoming: meetings.map(m => ({
+          id: m.id,
+          officeId: m.office_id,
+          officeName: m.office_name,
+          title: m.title,
+          status: m.status,
+          source: m.source,
+          startedAt: m.started_at,
+          endedAt: m.ended_at,
+          createdAt: m.created_at,
+          scheduledStartAt: m.scheduled_start_at,
+          durationMinutes: m.duration_minutes ? Number(m.duration_minutes) : null,
+          zoneName: m.zone_name,
+          zoneSlug: m.zone_slug,
+          readyRecordingCount: Number(m.ready_recording_count || 0),
+          latestRecordingToken: m.latest_recording_token
+        })),
+        stats: {
+          totalVisible: meetings.length,
+          live: meetings.filter(m => m.status === 'live').length,
+          planned: meetings.filter(m => m.status === 'planned').length,
+          recordings: meetings.reduce((sum, m) => sum + Number(m.ready_recording_count || 0), 0)
+        }
       },
       upcomingDeadlines: upcomingDeadlines.map(t => ({
         id: t.id,

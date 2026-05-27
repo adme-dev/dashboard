@@ -8,6 +8,71 @@ definePageMeta({
 
 const toast = useToast()
 
+interface PortalClient {
+  id: string
+  name: string
+  logoUrl?: string | null
+  portalStatus: 'active' | 'pending' | 'not_configured'
+  portalUsers: number
+  activeUsers: number
+  pendingUsers: number
+  agencyAccessUsers: number
+  lastLoginAt?: string | null
+  lastActivityAt?: string | null
+  pendingApprovals: number
+  portalLeads30d: number
+  newLeads30d: number
+  wonLeads30d: number
+  activeProjects: number
+}
+
+interface PortalUser {
+  id: string
+  name: string
+  email: string
+  clientId: string
+  clientName: string
+  permissions?: {
+    canApproveWork?: boolean
+    canViewBudgets?: boolean
+    canViewTimeEntries?: boolean
+    canViewAnalytics?: boolean
+    canSubmitRequests?: boolean
+  }
+  lastLoginAt?: string | null
+  status: string
+}
+
+interface PortalApproval {
+  id: string
+  title: string
+  approvalType: string
+  projectName: string
+  clientName: string
+  requestedAt: string
+  dueDate?: string | null
+  status: string
+}
+
+interface AgencyClient {
+  id: string
+  name: string
+}
+
+interface InviteResponse {
+  user: {
+    email: string
+  }
+}
+
+const errorMessage = (error: unknown) => {
+  if (error && typeof error === 'object') {
+    const maybeError = error as { data?: { message?: string }, message?: string }
+    return maybeError.data?.message || maybeError.message || 'Unknown error'
+  }
+  return 'Unknown error'
+}
+
 // Active tab
 const activeTab = ref('clients')
 
@@ -26,7 +91,7 @@ const { data: portalClientsData, pending: portalClientsPending, refresh: refresh
   query: portalClientQuery
 })
 
-const portalClients = computed(() => ((portalClientsData.value as any)?.clients || []) as any[])
+const portalClients = computed(() => ((portalClientsData.value as { clients?: PortalClient[] } | null)?.clients || []))
 const portalClientSummary = computed(() => {
   const items = portalClients.value
   return {
@@ -41,11 +106,11 @@ const portalClientSummary = computed(() => {
 // Fetch client portal users
 const { data: usersData, pending: usersPending, refresh: refreshUsers } = await useFetch('/api/agency/client-portal/users')
 
-const users = computed(() => ((usersData.value as any)?.users || []) as any[])
+const users = computed(() => ((usersData.value as unknown as { users?: PortalUser[] } | null)?.users || []))
 // Fetch approvals
 const { data: approvalsData, pending: approvalsPending } = await useFetch('/api/agency/client-portal/approvals')
 
-const approvals = computed(() => ((approvalsData.value as any)?.approvals || []) as any[])
+const approvals = computed(() => ((approvalsData.value as unknown as { approvals?: PortalApproval[] } | null)?.approvals || []))
 
 // Fetch clients for invite modal
 const { data: clientsData } = await useFetch('/api/agency/clients', {
@@ -53,10 +118,10 @@ const { data: clientsData } = await useFetch('/api/agency/clients', {
 })
 const clients = computed(() => {
   const raw = clientsData.value
-  if (Array.isArray(raw)) return raw as any[]
-  return ((raw as any)?.clients || []) as any[]
+  if (Array.isArray(raw)) return raw as unknown as AgencyClient[]
+  return ((raw as { clients?: AgencyClient[] } | null)?.clients || [])
 })
-const clientOptions = computed(() => clients.value.map((c: any) => ({ label: c.name, value: c.id })))
+const clientOptions = computed(() => clients.value.map(client => ({ label: client.name, value: client.id })))
 
 const selectedAccessClientId = ref<string | null>(null)
 watch(clients, (items) => {
@@ -80,10 +145,10 @@ const openClientPortal = async (clientId?: string | null) => {
       body: { clientId: targetClientId }
     })
     await navigateTo('/portal')
-  } catch (err: any) {
+  } catch (err: unknown) {
     toast.add({
       title: 'Failed to open portal',
-      description: err.data?.message || err.message,
+      description: errorMessage(err),
       color: 'error'
     })
   } finally {
@@ -169,10 +234,10 @@ const sendInvite = async () => {
 
   inviting.value = true
   try {
-    const result = await $fetch('/api/agency/client-portal/invite', {
+    const result = await $fetch<InviteResponse>('/api/agency/client-portal/invite', {
       method: 'POST',
       body: inviteForm.value
-    }) as any
+    })
 
     toast.add({
       title: 'Invitation sent',
@@ -183,8 +248,8 @@ const sendInvite = async () => {
     resetInviteForm()
     refreshUsers()
     refreshPortalClients()
-  } catch (err: any) {
-    toast.add({ title: 'Failed to send invite', description: err.data?.message || err.message, color: 'error' })
+  } catch (err: unknown) {
+    toast.add({ title: 'Failed to send invite', description: errorMessage(err), color: 'error' })
   } finally {
     inviting.value = false
   }
@@ -234,6 +299,89 @@ const approvalColumns = [
   { accessorKey: 'dueDate', header: 'Due' },
   { accessorKey: 'status', header: 'Status' }
 ]
+
+const enterpriseModules = [
+  {
+    title: 'Booked Jobs',
+    icon: 'i-lucide-folder-kanban',
+    status: 'Live',
+    color: 'success',
+    clientPath: '/portal/projects',
+    description: 'Client-scoped projects, active work, progress, due dates, deliverables, tasks, and approvals.',
+    next: 'Add a booking calendar view, signed scope, key milestones, and account-owner health flags per job.'
+  },
+  {
+    title: 'Billing',
+    icon: 'i-lucide-receipt-text',
+    status: 'Live',
+    color: 'success',
+    clientPath: '/portal/invoices',
+    description: 'Outstanding invoices and billing history are already permission gated for client users.',
+    next: 'Add retainer burn, payment status timeline, statement export, and optional payment links.'
+  },
+  {
+    title: 'Campaign Analytics',
+    icon: 'i-lucide-chart-no-axes-combined',
+    status: 'Live',
+    color: 'success',
+    clientPath: '/portal/analytics',
+    description: 'Portal-visible campaign performance, trends, creatives, breakdowns, exports, and lead visibility.',
+    next: 'Add executive narrative, campaign goals, budget pacing, and platform health indicators for Meta and Google.'
+  },
+  {
+    title: 'Approvals & Files',
+    icon: 'i-lucide-check-check',
+    status: 'Live',
+    color: 'success',
+    clientPath: '/portal/approvals',
+    description: 'Creative review, approval state, revision requests, gallery access, and comments.',
+    next: 'Add version history, side-by-side review, legal/audit sign-off, and approval SLA reporting.'
+  },
+  {
+    title: 'Requests & Briefs',
+    icon: 'i-lucide-message-square-plus',
+    status: 'Live',
+    color: 'success',
+    clientPath: '/portal/requests',
+    description: 'Clients can submit job requests, briefs, support items, and threaded follow-up messages.',
+    next: 'Add intake templates by service line, request triage queues, estimates, and conversion into booked jobs.'
+  },
+  {
+    title: 'Video Meetings',
+    icon: 'i-lucide-video',
+    status: 'R&D',
+    color: 'warning',
+    clientPath: '/office',
+    description: 'The office/video system exists separately with lobbies, meetings, guests, rooms, and recordings.',
+    next: 'Expose client-safe meeting cards in the portal dashboard with join links, upcoming sessions, recordings, and permissions.'
+  }
+] as const
+
+const enterprisePlaybook = [
+  'Make the client dashboard the account home: jobs, approvals, leads, campaigns, invoices, meetings, and team contacts in one executive view.',
+  'Keep visibility explicit: every job, campaign, invoice, recording, file, and lead must have client-facing permissions.',
+  'Package the agency offer around service modules: paid media, SEO, content, creative, web, reporting, and support.',
+  'Give marketers an agency control plane: invite users, open as client, review portal readiness, and see which clients are missing setup.',
+  'Add executive reporting: goals, spend, leads, conversion, budget pacing, next actions, and plain-English account summaries.'
+]
+
+const enterpriseRollout = [
+  {
+    phase: 'Phase 1',
+    title: 'Client Home',
+    detail: 'Upgrade /portal into a dense executive dashboard for jobs booked in, approvals, leads, invoices, campaign performance, requests, and team contacts.'
+  },
+  {
+    phase: 'Phase 2',
+    title: 'Meetings',
+    detail: 'Connect office meetings to clients so they can see upcoming calls, join approved rooms, and watch shared recordings from the portal.'
+  },
+  {
+    phase: 'Phase 3',
+    title: 'Commercial Layer',
+    detail: 'Add retainers, past/current billing, account health, campaign objectives, service catalogue, and upsell-ready reporting.'
+  }
+]
 </script>
 
 <template>
@@ -259,8 +407,12 @@ const approvalColumns = [
                 <UIcon name="i-lucide-users" class="w-5 h-5 text-blue-500" />
               </div>
               <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">Client Portals</p>
-                <p class="text-xl font-bold">{{ portalClientSummary.total }}</p>
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  Client Portals
+                </p>
+                <p class="text-xl font-bold">
+                  {{ portalClientSummary.total }}
+                </p>
               </div>
             </div>
           </UCard>
@@ -271,8 +423,12 @@ const approvalColumns = [
                 <UIcon name="i-lucide-check-circle" class="w-5 h-5 text-emerald-500" />
               </div>
               <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">Active Portals</p>
-                <p class="text-xl font-bold text-emerald-500">{{ portalClientSummary.active }}</p>
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  Active Portals
+                </p>
+                <p class="text-xl font-bold text-emerald-500">
+                  {{ portalClientSummary.active }}
+                </p>
               </div>
             </div>
           </UCard>
@@ -283,8 +439,12 @@ const approvalColumns = [
                 <UIcon name="i-lucide-clock" class="w-5 h-5 text-amber-500" />
               </div>
               <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">30d Portal Leads</p>
-                <p class="text-xl font-bold text-amber-500">{{ portalClientSummary.leads30d }}</p>
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  30d Portal Leads
+                </p>
+                <p class="text-xl font-bold text-amber-500">
+                  {{ portalClientSummary.leads30d }}
+                </p>
               </div>
             </div>
           </UCard>
@@ -295,8 +455,12 @@ const approvalColumns = [
                 <UIcon name="i-lucide-mail" class="w-5 h-5 text-purple-500" />
               </div>
               <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">Needs Setup</p>
-                <p class="text-xl font-bold text-purple-500">{{ portalClientSummary.notConfigured }}</p>
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  Needs Setup
+                </p>
+                <p class="text-xl font-bold text-purple-500">
+                  {{ portalClientSummary.notConfigured }}
+                </p>
               </div>
             </div>
           </UCard>
@@ -308,7 +472,8 @@ const approvalColumns = [
           :items="[
             { label: 'Clients', value: 'clients', icon: 'i-lucide-building-2' },
             { label: 'Portal Users', value: 'users', icon: 'i-lucide-users' },
-            { label: 'Approvals', value: 'approvals', icon: 'i-lucide-check-square' }
+            { label: 'Approvals', value: 'approvals', icon: 'i-lucide-check-square' },
+            { label: 'Enterprise', value: 'enterprise', icon: 'i-lucide-building' }
           ]"
           class="mb-6"
         />
@@ -367,7 +532,9 @@ const approvalColumns = [
                     size="sm"
                   />
                   <div class="min-w-0">
-                    <p class="font-medium truncate">{{ row.original.name }}</p>
+                    <p class="font-medium truncate">
+                      {{ row.original.name }}
+                    </p>
                     <p class="text-xs text-[var(--ui-text-muted)]">
                       {{ row.original.activeProjects }} active projects
                     </p>
@@ -380,7 +547,12 @@ const approvalColumns = [
                   <UBadge :color="getPortalStatusColor(row.original.portalStatus)" variant="subtle">
                     {{ formatPortalStatus(row.original.portalStatus) }}
                   </UBadge>
-                  <UBadge v-if="row.original.pendingApprovals" color="warning" variant="subtle" size="xs">
+                  <UBadge
+                    v-if="row.original.pendingApprovals"
+                    color="warning"
+                    variant="subtle"
+                    size="xs"
+                  >
                     {{ row.original.pendingApprovals }} approvals
                   </UBadge>
                 </div>
@@ -397,7 +569,9 @@ const approvalColumns = [
 
               <template #leads-cell="{ row }">
                 <div class="text-sm">
-                  <p class="font-medium">{{ row.original.portalLeads30d }} leads</p>
+                  <p class="font-medium">
+                    {{ row.original.portalLeads30d }} leads
+                  </p>
                   <p class="text-xs text-[var(--ui-text-muted)]">
                     {{ row.original.newLeads30d }} new, {{ row.original.wonLeads30d }} won
                   </p>
@@ -452,8 +626,12 @@ const approvalColumns = [
             <UTable :data="users" :columns="userColumns">
               <template #name-cell="{ row }">
                 <div>
-                  <p class="font-medium">{{ row.original.name }}</p>
-                  <p class="text-xs text-[var(--ui-text-muted)]">{{ row.original.email }}</p>
+                  <p class="font-medium">
+                    {{ row.original.name }}
+                  </p>
+                  <p class="text-xs text-[var(--ui-text-muted)]">
+                    {{ row.original.email }}
+                  </p>
                 </div>
               </template>
 
@@ -463,19 +641,44 @@ const approvalColumns = [
 
               <template #permissions-cell="{ row }">
                 <div class="flex flex-wrap gap-1">
-                  <UBadge v-if="row.original.permissions?.canApproveWork" size="xs" variant="subtle" color="success">
+                  <UBadge
+                    v-if="row.original.permissions?.canApproveWork"
+                    size="xs"
+                    variant="subtle"
+                    color="success"
+                  >
                     Approve
                   </UBadge>
-                  <UBadge v-if="row.original.permissions?.canViewBudgets" size="xs" variant="subtle" color="info">
+                  <UBadge
+                    v-if="row.original.permissions?.canViewBudgets"
+                    size="xs"
+                    variant="subtle"
+                    color="info"
+                  >
                     Budgets
                   </UBadge>
-                  <UBadge v-if="row.original.permissions?.canViewTimeEntries" size="xs" variant="subtle" color="neutral">
+                  <UBadge
+                    v-if="row.original.permissions?.canViewTimeEntries"
+                    size="xs"
+                    variant="subtle"
+                    color="neutral"
+                  >
                     Time
                   </UBadge>
-                  <UBadge v-if="row.original.permissions?.canViewAnalytics" size="xs" variant="subtle" color="primary">
+                  <UBadge
+                    v-if="row.original.permissions?.canViewAnalytics"
+                    size="xs"
+                    variant="subtle"
+                    color="primary"
+                  >
                     Analytics
                   </UBadge>
-                  <UBadge v-if="row.original.permissions?.canSubmitRequests" size="xs" variant="subtle" color="warning">
+                  <UBadge
+                    v-if="row.original.permissions?.canSubmitRequests"
+                    size="xs"
+                    variant="subtle"
+                    color="warning"
+                  >
                     Requests
                   </UBadge>
                 </div>
@@ -522,7 +725,9 @@ const approvalColumns = [
             <UTable :data="approvals" :columns="approvalColumns">
               <template #title-cell="{ row }">
                 <div>
-                  <p class="font-medium">{{ row.original.title }}</p>
+                  <p class="font-medium">
+                    {{ row.original.title }}
+                  </p>
                   <UBadge size="xs" variant="subtle" color="neutral">
                     {{ row.original.approvalType }}
                   </UBadge>
@@ -531,8 +736,12 @@ const approvalColumns = [
 
               <template #project-cell="{ row }">
                 <div>
-                  <p class="text-[var(--ui-text-dimmed)]">{{ row.original.projectName }}</p>
-                  <p class="text-xs text-[var(--ui-text-muted)]">{{ row.original.clientName }}</p>
+                  <p class="text-[var(--ui-text-dimmed)]">
+                    {{ row.original.projectName }}
+                  </p>
+                  <p class="text-xs text-[var(--ui-text-muted)]">
+                    {{ row.original.clientName }}
+                  </p>
                 </div>
               </template>
 
@@ -558,19 +767,176 @@ const approvalColumns = [
             </div>
           </UCard>
         </div>
+
+        <!-- Enterprise Tab -->
+        <div v-if="activeTab === 'enterprise'" class="space-y-6">
+          <div class="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6">
+            <UCard>
+              <template #header>
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 class="text-lg font-semibold">
+                      Enterprise Portal Readiness
+                    </h2>
+                    <p class="text-sm text-[var(--ui-text-muted)] mt-1">
+                      The target is a client-facing operating room, not just a login area.
+                    </p>
+                  </div>
+                  <UBadge color="primary" variant="subtle">
+                    {{ enterpriseModules.filter(module => module.status === 'Live').length }}/{{ enterpriseModules.length }} live
+                  </UBadge>
+                </div>
+              </template>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div
+                  v-for="module in enterpriseModules"
+                  :key="module.title"
+                  class="rounded-lg border border-[var(--ui-border)] p-4 space-y-3"
+                >
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="flex items-center gap-3 min-w-0">
+                      <div class="size-9 rounded-lg bg-[var(--ui-bg-elevated)] flex items-center justify-center shrink-0">
+                        <UIcon :name="module.icon" class="size-4 text-[var(--ui-text-muted)]" />
+                      </div>
+                      <div class="min-w-0">
+                        <p class="font-medium truncate">
+                          {{ module.title }}
+                        </p>
+                        <p class="text-xs text-[var(--ui-text-muted)] truncate">
+                          {{ module.clientPath }}
+                        </p>
+                      </div>
+                    </div>
+                    <UBadge :color="module.color" variant="subtle" size="xs">
+                      {{ module.status }}
+                    </UBadge>
+                  </div>
+                  <p class="text-sm text-[var(--ui-text-muted)] leading-relaxed">
+                    {{ module.description }}
+                  </p>
+                  <div class="rounded-md bg-[var(--ui-bg-elevated)] p-3">
+                    <p class="text-xs font-medium mb-1">
+                      Enterprise next step
+                    </p>
+                    <p class="text-xs text-[var(--ui-text-muted)] leading-relaxed">
+                      {{ module.next }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </UCard>
+
+            <div class="space-y-6">
+              <UCard>
+                <template #header>
+                  <div class="flex items-center gap-2">
+                    <UIcon name="i-lucide-compass" class="size-4 text-primary" />
+                    <h2 class="font-semibold">
+                      Product Direction
+                    </h2>
+                  </div>
+                </template>
+                <div class="space-y-3">
+                  <div
+                    v-for="item in enterprisePlaybook"
+                    :key="item"
+                    class="flex gap-3"
+                  >
+                    <UIcon name="i-lucide-check" class="size-4 text-emerald-500 mt-0.5 shrink-0" />
+                    <p class="text-sm text-[var(--ui-text-muted)] leading-relaxed">
+                      {{ item }}
+                    </p>
+                  </div>
+                </div>
+              </UCard>
+
+              <UCard>
+                <template #header>
+                  <div class="flex items-center gap-2">
+                    <UIcon name="i-lucide-list-checks" class="size-4 text-primary" />
+                    <h2 class="font-semibold">
+                      Rollout Plan
+                    </h2>
+                  </div>
+                </template>
+                <div class="space-y-4">
+                  <div
+                    v-for="item in enterpriseRollout"
+                    :key="item.phase"
+                    class="rounded-lg border border-[var(--ui-border)] p-4"
+                  >
+                    <div class="flex items-center gap-2 mb-2">
+                      <UBadge color="neutral" variant="subtle" size="xs">
+                        {{ item.phase }}
+                      </UBadge>
+                      <p class="font-medium text-sm">
+                        {{ item.title }}
+                      </p>
+                    </div>
+                    <p class="text-sm text-[var(--ui-text-muted)] leading-relaxed">
+                      {{ item.detail }}
+                    </p>
+                  </div>
+                </div>
+              </UCard>
+            </div>
+          </div>
+
+          <UCard>
+            <template #header>
+              <div class="flex items-center gap-2">
+                <UIcon name="i-lucide-shield-check" class="size-4 text-primary" />
+                <h2 class="font-semibold">
+                  Enterprise Guardrails
+                </h2>
+              </div>
+            </template>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div class="rounded-lg bg-[var(--ui-bg-elevated)] p-4">
+                <p class="font-medium text-sm mb-1">
+                  Client isolation
+                </p>
+                <p class="text-sm text-[var(--ui-text-muted)] leading-relaxed">
+                  Portal APIs must continue to scope every query from the authenticated client session, never from client-controlled route params.
+                </p>
+              </div>
+              <div class="rounded-lg bg-[var(--ui-bg-elevated)] p-4">
+                <p class="font-medium text-sm mb-1">
+                  Permission gates
+                </p>
+                <p class="text-sm text-[var(--ui-text-muted)] leading-relaxed">
+                  Billing, analytics, time, approvals, meetings, recordings, and request creation need independent per-user switches.
+                </p>
+              </div>
+              <div class="rounded-lg bg-[var(--ui-bg-elevated)] p-4">
+                <p class="font-medium text-sm mb-1">
+                  Agency control
+                </p>
+                <p class="text-sm text-[var(--ui-text-muted)] leading-relaxed">
+                  Owners and marketing users need open-as-client access, readiness checks, audit logs, and visibility previews before inviting clients.
+                </p>
+              </div>
+            </div>
+          </UCard>
+        </div>
       </div>
     </UDashboardPanel>
 
     <!-- Invite Slideover -->
     <USlideover v-model:open="showInviteModal">
       <template #header>
-        <h3 class="text-[18px] font-[600]">Invite Client User</h3>
+        <h3 class="text-[18px] font-[600]">
+          Invite Client User
+        </h3>
       </template>
       <template #body>
         <form class="space-y-0" @submit.prevent="sendInvite">
           <!-- Section: Client & Contact -->
           <fieldset class="space-y-5 pb-6 mb-6 border-b border-[var(--ui-border)]">
-            <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">Client & Contact</legend>
+            <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">
+              Client & Contact
+            </legend>
 
             <div>
               <label class="block text-[13px] font-medium mb-2">Client <span class="text-red-500">*</span></label>
@@ -583,7 +949,9 @@ const approvalColumns = [
                 size="xl"
                 class="w-full"
               />
-              <p class="text-[12px] text-[var(--ui-text-muted)] mt-1.5">The client account this user belongs to.</p>
+              <p class="text-[12px] text-[var(--ui-text-muted)] mt-1.5">
+                The client account this user belongs to.
+              </p>
             </div>
 
             <div>
@@ -605,14 +973,20 @@ const approvalColumns = [
                 size="xl"
                 class="w-full"
               />
-              <p class="text-[12px] text-[var(--ui-text-muted)] mt-1.5">An invitation email with a sign-up link will be sent here.</p>
+              <p class="text-[12px] text-[var(--ui-text-muted)] mt-1.5">
+                An invitation email with a sign-up link will be sent here.
+              </p>
             </div>
           </fieldset>
 
           <!-- Section: Permissions -->
           <fieldset class="space-y-4">
-            <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">Permissions</legend>
-            <p class="text-[12px] text-[var(--ui-text-muted)]">Control what the invited user can see and do in the client portal.</p>
+            <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">
+              Permissions
+            </legend>
+            <p class="text-[12px] text-[var(--ui-text-muted)]">
+              Control what the invited user can see and do in the client portal.
+            </p>
 
             <div class="space-y-3 pt-1">
               <label class="flex items-center gap-3 cursor-pointer">

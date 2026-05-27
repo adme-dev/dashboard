@@ -2,10 +2,11 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
 
 const { user, logout } = usePortalAuth()
-const route = useRoute()
 const open = ref(false)
 
-const close = () => { open.value = false }
+const close = () => {
+  open.value = false
+}
 const isAgencyAccess = computed(() => user.value?.title === 'Agency portal access' || user.value?.email?.endsWith('@portal-access.local'))
 
 // Notification count (fetched separately)
@@ -20,28 +21,35 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
   { label: 'Approvals', icon: 'i-lucide-check-circle', to: '/portal/approvals', onSelect: close },
   { label: 'Requests', icon: 'i-lucide-message-square-plus', to: '/portal/requests', onSelect: close },
   { label: 'Leads', icon: 'i-lucide-inbox', to: '/portal/leads', onSelect: close },
-  ...(user.value?.permissions?.canSubmitRequests ? [
-    { label: 'Briefs', icon: 'i-lucide-file-text', to: '/portal/briefs', onSelect: close }
-  ] : []),
+  { label: 'Meetings', icon: 'i-lucide-video', to: '/portal/meetings', onSelect: close },
+  ...(user.value?.permissions?.canSubmitRequests
+    ? [
+        { label: 'Briefs', icon: 'i-lucide-file-text', to: '/portal/briefs', onSelect: close }
+      ]
+    : []),
   { label: 'Gallery', icon: 'i-lucide-image', to: '/portal/gallery', onSelect: close },
   { label: 'Features', icon: 'i-lucide-sparkles', to: '/portal/features', onSelect: close },
-  ...(user.value?.permissions?.canViewAnalytics ? [
-    { label: 'Analytics', icon: 'i-lucide-bar-chart-4', to: '/portal/analytics', onSelect: close }
-  ] : []),
-  ...(user.value?.permissions?.canViewInvoices ? [
-    { label: 'Invoices', icon: 'i-lucide-receipt', to: '/portal/invoices', onSelect: close }
-  ] : []),
+  ...(user.value?.permissions?.canViewAnalytics
+    ? [
+        { label: 'Analytics', icon: 'i-lucide-bar-chart-4', to: '/portal/analytics', onSelect: close }
+      ]
+    : []),
+  ...(user.value?.permissions?.canViewInvoices
+    ? [
+        { label: 'Invoices', icon: 'i-lucide-receipt', to: '/portal/invoices', onSelect: close }
+      ]
+    : []),
   {
     label: 'Notifications',
     icon: 'i-lucide-bell',
     to: '/portal/notifications',
     badge: unreadCount.value > 0 ? unreadCount.value.toString() : undefined,
     onSelect: close
-  },
+  }
 ])
 
 const footerItems: NavigationMenuItem[] = [
-  { label: 'Settings', icon: 'i-lucide-settings', to: '/portal/settings', onSelect: close },
+  { label: 'Settings', icon: 'i-lucide-settings', to: '/portal/settings', onSelect: close }
 ]
 
 async function handleLogout() {
@@ -72,8 +80,12 @@ async function handleLogout() {
             <UIcon name="i-lucide-building-2" class="text-primary" />
           </div>
           <div v-if="!collapsed" class="min-w-0">
-            <p class="font-semibold text-sm truncate">{{ user?.clientName }}</p>
-            <p class="text-xs text-muted truncate">Client Portal</p>
+            <p class="font-semibold text-sm truncate">
+              {{ user?.clientName }}
+            </p>
+            <p class="text-xs text-muted truncate">
+              Client Portal
+            </p>
           </div>
         </div>
       </template>
@@ -103,15 +115,15 @@ async function handleLogout() {
               type: 'label' as const
             }],
             [{
-              label: 'Settings',
-              icon: 'i-lucide-settings',
-              to: '/portal/settings'
-            },
-            {
-              label: 'Sign out',
-              icon: 'i-lucide-log-out',
-              click: handleLogout
-            }]
+               label: 'Settings',
+               icon: 'i-lucide-settings',
+               to: '/portal/settings'
+             },
+             {
+               label: 'Sign out',
+               icon: 'i-lucide-log-out',
+               click: handleLogout
+             }]
           ]"
         >
           <div class="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-elevated rounded-md">
@@ -121,8 +133,12 @@ async function handleLogout() {
               size="sm"
             />
             <div v-if="!collapsed" class="min-w-0 flex-1">
-              <p class="text-sm font-medium truncate">{{ user?.name }}</p>
-              <p class="text-xs text-muted truncate">{{ user?.email }}</p>
+              <p class="text-sm font-medium truncate">
+                {{ user?.name }}
+              </p>
+              <p class="text-xs text-muted truncate">
+                {{ user?.email }}
+              </p>
             </div>
             <UIcon v-if="!collapsed" name="i-lucide-chevrons-up-down" class="text-muted w-4 h-4 shrink-0" />
           </div>
