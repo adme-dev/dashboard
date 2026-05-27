@@ -358,6 +358,8 @@ const leadFunnelMax = computed(() => Math.max(...leadFunnel.value.map(stage => N
               <!-- Platform mini-metrics -->
               <div class="ml-5 flex items-center gap-3 text-xs text-muted">
                 <span class="tabular-nums">{{ fmtCompact(p.impressions) }} impr.</span>
+                <span class="tabular-nums">{{ fmtCompact(p.leads || 0) }} leads</span>
+                <span v-if="p.costPerLead != null" class="tabular-nums">{{ fmtCurrency(p.costPerLead, 2) }} CPL</span>
                 <span class="tabular-nums">{{ fmtPercent(p.ctr) }} CTR</span>
                 <span class="tabular-nums">{{ fmtCurrency(p.cpc, 2) }} CPC</span>
                 <span v-if="p.conversions > 0" class="tabular-nums">{{ fmtCompact(p.conversions) }} conv.</span>

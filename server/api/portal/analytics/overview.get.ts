@@ -112,6 +112,15 @@ export default defineEventHandler(async (event) => {
       WHERE ${leadConditions.join(' AND ')}
     `, leadParams)
 
+    const leadPlatformRows = await queryRows(`
+      SELECT
+        ${leadPlatformForSourceSql('l')} AS platform,
+        ${PORTAL_LEAD_STATUS_SELECT}
+      FROM leads l
+      WHERE ${leadConditions.join(' AND ')}
+      GROUP BY ${leadPlatformForSourceSql('l')}
+    `, leadParams)
+
     const prevLeadConditions = [
       'l.client_id = $1',
       'l.deleted_at IS NULL',
@@ -146,6 +155,13 @@ export default defineEventHandler(async (event) => {
     }
 
     const totalsMetrics = computeMetrics(totalSpend, totalImpressions, totalClicks, totalConversions, totalRevenue)
+    const leadsByPlatform = new Map(leadPlatformRows.map(row => [
+      row.platform,
+      {
+        leads: Number(row.lead_count || 0),
+        leadWon: Number(row.lead_won_count || 0)
+      }
+    ]))
 
     const byPlatform = byPlatformRows.map((r) => {
       const spend = toNum(r.spend)
@@ -154,6 +170,7 @@ export default defineEventHandler(async (event) => {
       const conversions = toNum(r.conversions)
       const revenue = toNum(r.revenue)
       const metrics = computeMetrics(spend, impressions, clicks, conversions, revenue)
+      const leadMetrics = leadsByPlatform.get(r.platform) || { leads: 0, leadWon: 0 }
       return {
         platform: r.platform,
         displayName: PLATFORM_LABELS[r.platform] || r.platform,
@@ -164,6 +181,9 @@ export default defineEventHandler(async (event) => {
         conversions,
         revenue,
         ...metrics,
+        leads: leadMetrics.leads,
+        leadWon: leadMetrics.leadWon,
+        costPerLead: leadMetrics.leads > 0 ? spend / leadMetrics.leads : null,
         campaignCount: Number(r.campaign_count || 0),
         pctOfTotal: totalSpend > 0 ? Math.round((spend / totalSpend) * 10000) / 100 : 0
       }

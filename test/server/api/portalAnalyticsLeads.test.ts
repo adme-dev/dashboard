@@ -142,6 +142,13 @@ describe('portal analytics lead metrics', () => {
       ])
       .mockResolvedValueOnce([
         {
+          platform: 'meta',
+          lead_count: '8',
+          lead_won_count: '1'
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
           lead_count: '4',
           lead_new_count: '2',
           lead_contacted_count: '1',
@@ -164,13 +171,21 @@ describe('portal analytics lead metrics', () => {
       costPerLead: 12.5,
       avgResponseMinutes: 45
     })
+    expect(result.byPlatform[0]).toMatchObject({
+      platform: 'meta',
+      leads: 8,
+      leadWon: 1,
+      costPerLead: 12.5
+    })
     expect(result.previousPeriod).toMatchObject({
       leads: 4,
       costPerLead: 20
     })
     const leadSql = String(mockQueryRows.mock.calls[2]?.[0])
+    const leadPlatformSql = String(mockQueryRows.mock.calls[3]?.[0])
     expect(leadSql).toContain('FROM leads l')
     expect(leadSql).toContain('d.destination_type = \'portal\'')
+    expect(leadPlatformSql).toContain('GROUP BY CASE')
   })
 
   it('supports lead trend metric from portal-visible leads', async () => {
