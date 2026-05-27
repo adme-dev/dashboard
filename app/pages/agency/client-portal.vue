@@ -65,6 +65,21 @@ interface PortalApproval {
   status: string
 }
 
+interface PortalActivity {
+  id: string
+  clientId: string
+  clientName: string
+  clientUserName?: string | null
+  clientUserEmail?: string | null
+  action: string
+  entityType?: string | null
+  ipAddress?: string | null
+  userAgent?: string | null
+  createdAt: string
+  agencyUserEmail?: string | null
+  agencyUserRole?: string | null
+}
+
 interface AgencyClient {
   id: string
   name: string
@@ -136,6 +151,23 @@ const { data: approvalsData, pending: approvalsPending } = await useFetch('/api/
 
 const approvals = computed(() => ((approvalsData.value as unknown as { approvals?: PortalApproval[] } | null)?.approvals || []))
 
+const activityFilters = ref({
+  clientId: '',
+  action: 'agency_portal_access'
+})
+
+const activityQuery = computed(() => ({
+  clientId: activityFilters.value.clientId || undefined,
+  action: activityFilters.value.action,
+  limit: 100
+}))
+
+const { data: activityData, pending: activityPending, refresh: refreshActivity } = await useFetch('/api/agency/client-portal/activity', {
+  query: activityQuery
+})
+
+const portalActivity = computed(() => ((activityData.value as { activity?: PortalActivity[] } | null)?.activity || []))
+
 // Fetch clients for invite modal
 const { data: clientsData } = await useFetch('/api/agency/clients', {
   query: { limit: 100 }
@@ -172,6 +204,7 @@ const openClientPortal = async (clientId?: string | null, path = '/portal') => {
       method: 'POST',
       body: { clientId: targetClientId }
     })
+    refreshActivity()
     await navigateTo(path)
   } catch (err: unknown) {
     toast.add({
@@ -301,6 +334,17 @@ const formatPortalStatus = (status: string) => {
   }
 }
 
+const formatActivityAction = (action: string) => {
+  switch (action) {
+    case 'agency_portal_access': return 'Agency opened portal'
+    case 'invite_accepted': return 'Invite accepted'
+    case 'login': return 'Client login'
+    case 'approval_response': return 'Approval response'
+    case 'comment_added': return 'Comment added'
+    default: return action.replaceAll('_', ' ')
+  }
+}
+
 // Invite slideover
 const showInviteModal = ref(false)
 const inviteForm = ref({
@@ -391,6 +435,14 @@ const approvalColumns = [
   { accessorKey: 'requestedAt', header: 'Requested' },
   { accessorKey: 'dueDate', header: 'Due' },
   { accessorKey: 'status', header: 'Status' }
+]
+
+const activityColumns = [
+  { accessorKey: 'event', header: 'Event' },
+  { accessorKey: 'client', header: 'Client' },
+  { accessorKey: 'actor', header: 'Actor' },
+  { accessorKey: 'source', header: 'Source' },
+  { accessorKey: 'createdAt', header: 'When' }
 ]
 
 const enterpriseModules = [
@@ -566,6 +618,7 @@ const enterpriseRollout = [
             { label: 'Clients', value: 'clients', icon: 'i-lucide-building-2' },
             { label: 'Portal Users', value: 'users', icon: 'i-lucide-users' },
             { label: 'Approvals', value: 'approvals', icon: 'i-lucide-check-square' },
+            { label: 'Audit', value: 'audit', icon: 'i-lucide-shield-check' },
             { label: 'Enterprise', value: 'enterprise', icon: 'i-lucide-building' }
           ]"
           class="mb-6"
@@ -881,6 +934,107 @@ const enterpriseRollout = [
 
             <div v-if="approvals.length === 0" class="text-center text-[var(--ui-text-muted)] py-8">
               No approval requests yet
+            </div>
+          </UCard>
+        </div>
+
+        <!-- Audit Tab -->
+        <div v-if="activeTab === 'audit'">
+          <UCard class="mb-4">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h2 class="text-lg font-semibold">
+                  Portal Access Audit
+                </h2>
+                <p class="text-sm text-[var(--ui-text-muted)] mt-1">
+                  Track owner, marketer, and client portal activity before clients are invited in.
+                </p>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:w-[520px]">
+                <USelectMenu
+                  v-model="activityFilters.clientId"
+                  :items="portalUserClientOptions"
+                  placeholder="All clients"
+                  value-key="value"
+                  searchable
+                />
+                <USelect
+                  v-model="activityFilters.action"
+                  :items="[
+                    { label: 'Agency portal access', value: 'agency_portal_access' },
+                    { label: 'All portal activity', value: 'all' }
+                  ]"
+                  value-key="value"
+                />
+              </div>
+            </div>
+          </UCard>
+
+          <UCard>
+            <div v-if="activityPending" class="flex items-center justify-center py-12">
+              <XfLoader />
+            </div>
+
+            <UTable v-else :data="portalActivity" :columns="activityColumns">
+              <template #event-cell="{ row }">
+                <div>
+                  <p class="font-medium">
+                    {{ formatActivityAction(row.original.action) }}
+                  </p>
+                  <p class="text-xs text-[var(--ui-text-muted)]">
+                    {{ row.original.entityType || 'portal' }}
+                  </p>
+                </div>
+              </template>
+
+              <template #client-cell="{ row }">
+                <span class="text-sm text-[var(--ui-text-dimmed)]">{{ row.original.clientName }}</span>
+              </template>
+
+              <template #actor-cell="{ row }">
+                <div class="text-sm">
+                  <p class="font-medium">
+                    {{ row.original.agencyUserEmail || row.original.clientUserEmail || row.original.clientUserName || 'Unknown user' }}
+                  </p>
+                  <div class="mt-1 flex flex-wrap gap-1">
+                    <UBadge
+                      v-if="row.original.agencyUserRole"
+                      color="primary"
+                      variant="subtle"
+                      size="xs"
+                    >
+                      {{ row.original.agencyUserRole }}
+                    </UBadge>
+                    <UBadge
+                      v-if="row.original.clientUserName"
+                      color="neutral"
+                      variant="subtle"
+                      size="xs"
+                    >
+                      {{ row.original.clientUserName }}
+                    </UBadge>
+                  </div>
+                </div>
+              </template>
+
+              <template #source-cell="{ row }">
+                <div class="max-w-[280px] text-sm text-[var(--ui-text-muted)]">
+                  <p>{{ row.original.ipAddress || 'No IP recorded' }}</p>
+                  <p class="truncate text-xs">
+                    {{ row.original.userAgent || 'No user agent recorded' }}
+                  </p>
+                </div>
+              </template>
+
+              <template #createdAt-cell="{ row }">
+                <span class="text-sm text-[var(--ui-text-muted)]">
+                  {{ formatDateTime(row.original.createdAt) }}
+                </span>
+              </template>
+            </UTable>
+
+            <div v-if="!activityPending && portalActivity.length === 0" class="text-center text-[var(--ui-text-muted)] py-8">
+              No portal audit activity matches the current filters.
             </div>
           </UCard>
         </div>
