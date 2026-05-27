@@ -58,6 +58,10 @@ function formatDate(date: string | null) {
   return new Date(date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+function formatCurrency(amount: number) {
+  return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(amount)
+}
+
 function daysUntil(date: string | null) {
   if (!date) return null
   const due = new Date(date)
@@ -249,6 +253,81 @@ function emptyStateLabel() {
       </div>
     </UCard>
 
+    <UCard v-if="data?.summary">
+      <template #header>
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-list-checks" class="text-primary" />
+          <span class="font-semibold">Delivery workload</span>
+        </div>
+      </template>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeTab = 'all'"
+        >
+          <p class="text-xs text-muted">
+            Open tasks
+          </p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ data.summary.openTasks }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            {{ data.summary.overdueTasks }} overdue
+          </p>
+        </button>
+
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeTab = 'active'"
+        >
+          <p class="text-xs text-muted">
+            Pending approvals
+          </p>
+          <p class="mt-1 text-sm font-semibold" :class="data.summary.pendingApprovals > 0 ? 'text-warning' : ''">
+            {{ data.summary.pendingApprovals }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Waiting on client decisions
+          </p>
+        </button>
+
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeTab = 'all'"
+        >
+          <p class="text-xs text-muted">
+            Visible deliverables
+          </p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ data.summary.visibleDeliverables }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Files and work shared to the portal
+          </p>
+        </button>
+
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeTab = 'upcoming'"
+        >
+          <p class="text-xs text-muted">
+            Booked budget
+          </p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ formatCurrency(data.summary.bookedBudget) }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            {{ formatCurrency(data.summary.totalBudget) }} total visible work
+          </p>
+        </button>
+      </div>
+    </UCard>
+
     <UTabs
       v-model="activeTab"
       :items="tabs"
@@ -312,6 +391,22 @@ function emptyStateLabel() {
                 size="xs"
               >
                 {{ project.pendingApprovals }} approvals
+              </UBadge>
+              <UBadge
+                v-if="project.overdueTasks > 0"
+                color="error"
+                variant="subtle"
+                size="xs"
+              >
+                {{ project.overdueTasks }} overdue tasks
+              </UBadge>
+              <UBadge
+                v-else-if="project.dueSoonTasks > 0"
+                color="warning"
+                variant="subtle"
+                size="xs"
+              >
+                {{ project.dueSoonTasks }} tasks due soon
               </UBadge>
               <UBadge
                 v-if="project.deliverableCount > 0"

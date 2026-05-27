@@ -46,6 +46,8 @@ export default defineEventHandler(async (event) => {
         COALESCE(tasks.total, 0) as total_tasks,
         COALESCE(tasks.completed, 0) as completed_tasks,
         COALESCE(tasks.in_progress, 0) as in_progress_tasks,
+        COALESCE(tasks.overdue, 0) as overdue_tasks,
+        COALESCE(tasks.due_soon, 0) as due_soon_tasks,
         COALESCE(approvals.pending, 0) as pending_approvals,
         COALESCE(deliverables.count, 0) as deliverable_count,
         pm.name as project_manager_name
@@ -56,7 +58,14 @@ export default defineEventHandler(async (event) => {
           project_id,
           COUNT(*) as total,
           COUNT(CASE WHEN t.status_is_final THEN 1 END) as completed,
-          COUNT(CASE WHEN NOT t.status_is_final AND ts.name != 'Backlog' THEN 1 END) as in_progress
+          COUNT(CASE WHEN NOT t.status_is_final AND ts.name != 'Backlog' THEN 1 END) as in_progress,
+          COUNT(CASE WHEN NOT t.status_is_final AND t.due_date < CURRENT_DATE THEN 1 END) as overdue,
+          COUNT(CASE
+            WHEN NOT t.status_is_final
+              AND t.due_date >= CURRENT_DATE
+              AND t.due_date <= CURRENT_DATE + INTERVAL '14 days'
+            THEN 1
+          END) as due_soon
         FROM tasks t
         JOIN task_statuses ts ON t.status_id = ts.id
         GROUP BY project_id
@@ -120,7 +129,37 @@ export default defineEventHandler(async (event) => {
             AND (due_date IS NULL OR due_date >= CURRENT_DATE)
           THEN 1
         END) as upcoming,
-        COUNT(CASE WHEN status IN ('completed', 'cancelled') THEN 1 END) as history
+        COUNT(CASE WHEN status IN ('completed', 'cancelled') THEN 1 END) as history,
+        COALESCE(SUM(budget), 0) as total_budget,
+        COALESCE(SUM(CASE WHEN status IN ('draft', 'active', 'on_hold') THEN budget ELSE 0 END), 0) as booked_budget,
+        (
+          SELECT COUNT(*)
+          FROM tasks t
+          JOIN projects tp ON tp.id = t.project_id
+          WHERE tp.client_id = $1
+            AND t.status_is_final = false
+        ) as open_tasks,
+        (
+          SELECT COUNT(*)
+          FROM tasks t
+          JOIN projects tp ON tp.id = t.project_id
+          WHERE tp.client_id = $1
+            AND t.status_is_final = false
+            AND t.due_date < CURRENT_DATE
+        ) as overdue_tasks,
+        (
+          SELECT COUNT(*)
+          FROM client_approvals ca
+          JOIN projects ap ON ap.id = ca.project_id
+          WHERE ap.client_id = $1
+            AND ca.status = 'pending'
+        ) as pending_approvals,
+        (
+          SELECT COUNT(*)
+          FROM client_deliverables cd
+          WHERE cd.client_id = $1
+            AND cd.is_visible_to_client = true
+        ) as visible_deliverables
       FROM projects
       WHERE client_id = $1
     `, [clientId])
@@ -144,6 +183,8 @@ export default defineEventHandler(async (event) => {
             ? Math.round((Number(p.completed_tasks || 0) / Number(p.total_tasks)) * 100)
             : 0
         },
+        overdueTasks: Number(p.overdue_tasks || 0),
+        dueSoonTasks: Number(p.due_soon_tasks || 0),
         pendingApprovals: Number(p.pending_approvals || 0),
         deliverableCount: Number(p.deliverable_count || 0)
       })),
@@ -157,7 +198,13 @@ export default defineEventHandler(async (event) => {
         nextDueDate: summary?.next_due_date || null,
         completedLast30: Number(summary?.completed_last_30 || 0),
         upcoming: Number(summary?.upcoming || 0),
-        history: Number(summary?.history || 0)
+        history: Number(summary?.history || 0),
+        totalBudget: Number(summary?.total_budget || 0),
+        bookedBudget: Number(summary?.booked_budget || 0),
+        openTasks: Number(summary?.open_tasks || 0),
+        overdueTasks: Number(summary?.overdue_tasks || 0),
+        pendingApprovals: Number(summary?.pending_approvals || 0),
+        visibleDeliverables: Number(summary?.visible_deliverables || 0)
       }
     }
   } catch (error) {

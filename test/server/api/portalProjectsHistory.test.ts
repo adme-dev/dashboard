@@ -64,6 +64,8 @@ describe('portal projects job history views', () => {
         total_tasks: '4',
         completed_tasks: '1',
         in_progress_tasks: '2',
+        overdue_tasks: '1',
+        due_soon_tasks: '2',
         pending_approvals: '0',
         deliverable_count: '1'
       }
@@ -78,7 +80,13 @@ describe('portal projects job history views', () => {
       next_due_date: '2026-06-30',
       completed_last_30: '1',
       upcoming: '2',
-      history: '1'
+      history: '1',
+      total_budget: '15000',
+      booked_budget: '11000',
+      open_tasks: '9',
+      overdue_tasks: '2',
+      pending_approvals: '3',
+      visible_deliverables: '7'
     })
 
     const result = await projectsHandler({ query: { view: 'upcoming' } })
@@ -91,21 +99,36 @@ describe('portal projects job history views', () => {
       nextDueDate: '2026-06-30',
       completedLast30: 1
     })
+    expect(result.summary).toMatchObject({
+      totalBudget: 15000,
+      bookedBudget: 11000,
+      openTasks: 9,
+      overdueTasks: 2,
+      pendingApprovals: 3,
+      visibleDeliverables: 7
+    })
     expect(result.projects[0]).toMatchObject({
       id: 'job-1',
       name: 'June campaign',
       startDate: '2026-06-01',
-      dueDate: '2026-06-30'
+      dueDate: '2026-06-30',
+      overdueTasks: 1,
+      dueSoonTasks: 2
     })
 
     const sql = String(mockQueryRows.mock.calls[0]?.[0])
     expect(sql).toContain('p.status IN (\'draft\', \'active\', \'on_hold\')')
     expect(sql).toContain('(p.due_date IS NULL OR p.due_date >= CURRENT_DATE)')
     expect(sql).toContain('COALESCE($3, \'\') <> \'history\'')
+    expect(sql).toContain('t.due_date < CURRENT_DATE')
+    expect(sql).toContain('t.due_date <= CURRENT_DATE + INTERVAL \'14 days\'')
     const summarySql = String(mockQueryOne.mock.calls[0]?.[0])
     expect(summarySql).toContain('due_date <= CURRENT_DATE + INTERVAL \'14 days\'')
     expect(summarySql).toContain('MIN(CASE')
     expect(summarySql).toContain('completed_last_30')
+    expect(summarySql).toContain('SUM(CASE WHEN status IN (\'draft\', \'active\', \'on_hold\') THEN budget ELSE 0 END)')
+    expect(summarySql).toContain('FROM client_deliverables cd')
+    expect(summarySql).toContain('ca.status = \'pending\'')
     expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['client-1', 50, 'upcoming'])
   })
 
