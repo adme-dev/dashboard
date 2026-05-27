@@ -81,6 +81,10 @@ describe('agency client portal clients API', () => {
       unassigned_requests: '3',
       job_requests: '4',
       support_requests: '5',
+      campaign_count: '11',
+      campaign_platforms: '2',
+      campaign_spend_90d: '9876.5',
+      campaign_last_synced_at: '2026-05-27T02:00:00Z',
       visible_meetings: '9',
       upcoming_meetings: '3',
       meeting_recordings: '4'
@@ -123,6 +127,10 @@ describe('agency client portal clients API', () => {
       unassignedRequests: 3,
       jobRequests: 4,
       supportRequests: 5,
+      campaignCount: 11,
+      campaignPlatforms: 2,
+      campaignSpend90d: 9876.5,
+      campaignLastSyncedAt: '2026-05-27T02:00:00Z',
       visibleMeetings: 9,
       upcomingMeetings: 3,
       meetingRecordings: 4,
@@ -148,6 +156,10 @@ describe('agency client portal clients API', () => {
     expect(sql).toContain('COUNT(*) FILTER (WHERE status IN (\'submitted\', \'in_review\', \'approved\', \'in_progress\')) AS open_requests')
     expect(sql).toContain('AND priority = \'urgent\'')
     expect(sql).toContain('AND assigned_to IS NULL')
+    expect(sql).toContain('FROM media_spend')
+    expect(sql).toContain('COUNT(DISTINCT COALESCE(NULLIF(campaign_id, \'\'), id::text)) AS campaign_count')
+    expect(sql).toContain('COUNT(DISTINCT platform) AS campaign_platforms')
+    expect(sql).toContain('SUM(actual_spend)')
     expect(sql).toContain('JOIN office_members om ON om.client_user_id = cu.id')
     expect(sql).toContain('JOIN office_meeting_sessions oms ON oms.office_id = om.office_id')
     expect(sql).toContain('COUNT(DISTINCT rec.id) FILTER (WHERE rec.status = \'ready\')')

@@ -43,6 +43,10 @@ interface PortalClientRow {
   unassigned_requests: string | number | null
   job_requests: string | number | null
   support_requests: string | number | null
+  campaign_count: string | number | null
+  campaign_platforms: string | number | null
+  campaign_spend_90d: string | number | null
+  campaign_last_synced_at: string | null
   visible_meetings: string | number | null
   upcoming_meetings: string | number | null
   meeting_recordings: string | number | null
@@ -59,6 +63,7 @@ const buildSetupGaps = (row: PortalClientRow) => {
   const invoiceUsers = toNumber(row.invoice_access_users)
   const totalInvoices = toNumber(row.total_invoices)
   const analyticsUsers = toNumber(row.analytics_access_users)
+  const campaignCount = toNumber(row.campaign_count)
   const requestUsers = toNumber(row.request_access_users)
   const portalLeads = toNumber(row.portal_leads_30d)
   const visibleMeetings = toNumber(row.visible_meetings)
@@ -70,6 +75,7 @@ const buildSetupGaps = (row: PortalClientRow) => {
   if (invoiceUsers === 0) gaps.push('Enable billing visibility')
   else if (totalInvoices === 0) gaps.push('Connect current or past billing')
   if (analyticsUsers === 0) gaps.push('Enable campaign analytics visibility')
+  else if (campaignCount === 0) gaps.push('Map Google or Facebook campaign data')
   if (requestUsers === 0) gaps.push('Enable request intake')
   if (portalLeads === 0) gaps.push('Route lead forms to the portal')
   if (visibleMeetings === 0) gaps.push('Share client meetings or recordings')
@@ -82,7 +88,7 @@ const readinessScore = (row: PortalClientRow) => {
     toNumber(row.active_users) > 0,
     toNumber(row.active_projects) > 0 || toNumber(row.upcoming_jobs) > 0 || toNumber(row.history_jobs) > 0,
     toNumber(row.invoice_access_users) > 0 && toNumber(row.total_invoices) > 0,
-    toNumber(row.analytics_access_users) > 0,
+    toNumber(row.analytics_access_users) > 0 && toNumber(row.campaign_count) > 0,
     toNumber(row.request_access_users) > 0,
     toNumber(row.visible_meetings) > 0,
     Boolean(row.last_activity_at)
@@ -159,6 +165,10 @@ export default defineEventHandler(async (event) => {
         COALESCE(req.unassigned_requests, 0) AS unassigned_requests,
         COALESCE(req.job_requests, 0) AS job_requests,
         COALESCE(req.support_requests, 0) AS support_requests,
+        COALESCE(campaigns.campaign_count, 0) AS campaign_count,
+        COALESCE(campaigns.campaign_platforms, 0) AS campaign_platforms,
+        COALESCE(campaigns.campaign_spend_90d, 0) AS campaign_spend_90d,
+        campaigns.campaign_last_synced_at,
         COALESCE(mt.visible_meetings, 0) AS visible_meetings,
         COALESCE(mt.upcoming_meetings, 0) AS upcoming_meetings,
         COALESCE(mt.meeting_recordings, 0) AS meeting_recordings
@@ -248,6 +258,17 @@ export default defineEventHandler(async (event) => {
       ) req ON req.client_id = c.id
       LEFT JOIN (
         SELECT
+          client_id,
+          COUNT(DISTINCT COALESCE(NULLIF(campaign_id, ''), id::text)) AS campaign_count,
+          COUNT(DISTINCT platform) AS campaign_platforms,
+          COALESCE(SUM(actual_spend), 0) AS campaign_spend_90d,
+          MAX(synced_at) AS campaign_last_synced_at
+        FROM media_spend
+        WHERE period >= TO_CHAR(CURRENT_DATE - INTERVAL '90 days', 'YYYY-MM')
+        GROUP BY client_id
+      ) campaigns ON campaigns.client_id = c.id
+      LEFT JOIN (
+        SELECT
           cu.client_id,
           COUNT(DISTINCT oms.id) FILTER (WHERE oms.status <> 'cancelled') AS visible_meetings,
           COUNT(DISTINCT oms.id) FILTER (WHERE oms.status IN ('live', 'planned')) AS upcoming_meetings,
@@ -308,6 +329,10 @@ export default defineEventHandler(async (event) => {
           unassignedRequests: toNumber(row.unassigned_requests),
           jobRequests: toNumber(row.job_requests),
           supportRequests: toNumber(row.support_requests),
+          campaignCount: toNumber(row.campaign_count),
+          campaignPlatforms: toNumber(row.campaign_platforms),
+          campaignSpend90d: toNumber(row.campaign_spend_90d),
+          campaignLastSyncedAt: row.campaign_last_synced_at,
           visibleMeetings: toNumber(row.visible_meetings),
           upcomingMeetings: toNumber(row.upcoming_meetings),
           meetingRecordings: toNumber(row.meeting_recordings),

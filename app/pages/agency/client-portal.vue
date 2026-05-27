@@ -44,6 +44,10 @@ interface PortalClient {
   unassignedRequests: number
   jobRequests: number
   supportRequests: number
+  campaignCount: number
+  campaignPlatforms: number
+  campaignSpend90d: number
+  campaignLastSyncedAt?: string | null
   visibleMeetings: number
   upcomingMeetings: number
   meetingRecordings: number
@@ -197,7 +201,8 @@ const portalClientSummary = computed(() => {
     leads30d: items.reduce((sum, client) => sum + Number(client.portalLeads30d || 0), 0),
     meetings: items.reduce((sum, client) => sum + Number(client.visibleMeetings || 0), 0),
     outstandingAmount: items.reduce((sum, client) => sum + Number(client.outstandingAmount || 0), 0),
-    openRequests: items.reduce((sum, client) => sum + Number(client.openRequests || 0), 0)
+    openRequests: items.reduce((sum, client) => sum + Number(client.openRequests || 0), 0),
+    campaignSpend90d: items.reduce((sum, client) => sum + Number(client.campaignSpend90d || 0), 0)
   }
 })
 
@@ -458,7 +463,7 @@ const formatDate = (date: string) => {
   return format(new Date(date), 'MMM d, yyyy')
 }
 
-const formatDateTime = (date: string) => {
+const formatDateTime = (date?: string | null) => {
   if (!date) return 'Never'
   return format(new Date(date), 'MMM d, yyyy h:mm a')
 }
@@ -695,6 +700,7 @@ const clientColumns = [
   { accessorKey: 'users', header: 'Users' },
   { accessorKey: 'readiness', header: 'Readiness' },
   { accessorKey: 'leads', header: 'Leads 30d' },
+  { accessorKey: 'campaigns', header: 'Campaigns' },
   { accessorKey: 'requests', header: 'Requests' },
   { accessorKey: 'billing', header: 'Billing' },
   { accessorKey: 'activity', header: 'Last Activity' },
@@ -880,6 +886,9 @@ const enterpriseRollout = [
                 </p>
                 <p class="text-xs text-[var(--ui-text-muted)]">
                   {{ portalClientSummary.openRequests }} open requests
+                </p>
+                <p class="text-xs text-[var(--ui-text-muted)]">
+                  {{ formatCurrency(portalClientSummary.campaignSpend90d) }} campaign spend
                 </p>
               </div>
             </div>
@@ -1069,6 +1078,21 @@ const enterpriseRollout = [
                   </p>
                   <p class="text-xs text-[var(--ui-text-muted)]">
                     {{ row.original.newLeads30d }} new, {{ row.original.wonLeads30d }} won
+                  </p>
+                </div>
+              </template>
+
+              <template #campaigns-cell="{ row }">
+                <div class="text-sm">
+                  <p class="font-medium">
+                    {{ row.original.campaignCount }} campaigns
+                  </p>
+                  <p class="text-xs text-[var(--ui-text-muted)]">
+                    {{ row.original.campaignPlatforms }} platform{{ row.original.campaignPlatforms === 1 ? '' : 's' }},
+                    {{ formatCurrency(row.original.campaignSpend90d) }}
+                  </p>
+                  <p class="text-xs text-[var(--ui-text-dimmed)]">
+                    Sync {{ formatDateTime(row.original.campaignLastSyncedAt) }}
                   </p>
                 </div>
               </template>
