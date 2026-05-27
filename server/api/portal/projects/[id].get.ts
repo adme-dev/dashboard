@@ -6,6 +6,15 @@
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 
+interface TeamMemberRow {
+  id: string
+  name: string
+  email: string | null
+  avatar_url: string | null
+  role: string | null
+  department: string | null
+}
+
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
   const projectId = getRouterParam(event, 'id')
@@ -49,12 +58,46 @@ export default defineEventHandler(async (event) => {
 
     // Upcoming tasks/milestones
     const upcomingTasks = await queryRows(`
-      SELECT t.id, t.title, t.due_date, ts.name as status_name, ts.color as status_color
+      SELECT
+        t.id,
+        t.title,
+        t.due_date,
+        t.start_date,
+        t.priority,
+        t.task_type,
+        ts.name as status_name,
+        ts.color as status_color,
+        assignee.name as assignee_name,
+        assignee.avatar_url as assignee_avatar
       FROM tasks t
       JOIN task_statuses ts ON t.status_id = ts.id
-      WHERE t.project_id = $1 AND t.status_is_final = false
+      LEFT JOIN team_members assignee ON t.assignee_id = assignee.id
+      WHERE t.project_id = $1
+        AND t.status_is_final = false
       ORDER BY t.due_date ASC NULLS LAST
       LIMIT 10
+    `, [projectId])
+
+    // Completed task history
+    const completedTaskHistory = await queryRows(`
+      SELECT
+        t.id,
+        t.title,
+        t.due_date,
+        t.completed_at,
+        t.priority,
+        t.task_type,
+        ts.name as status_name,
+        ts.color as status_color,
+        assignee.name as assignee_name,
+        assignee.avatar_url as assignee_avatar
+      FROM tasks t
+      JOIN task_statuses ts ON t.status_id = ts.id
+      LEFT JOIN team_members assignee ON t.assignee_id = assignee.id
+      WHERE t.project_id = $1
+        AND t.status_is_final = true
+      ORDER BY t.completed_at DESC NULLS LAST, t.due_date DESC NULLS LAST, t.updated_at DESC
+      LIMIT 20
     `, [projectId])
 
     // Deliverables
@@ -91,13 +134,13 @@ export default defineEventHandler(async (event) => {
     `, [projectId])
 
     // Team members assigned to tasks on this project (when settings allow)
-    let teamMembers: any[] = []
+    let teamMembers: TeamMemberRow[] = []
     if (settings?.show_team_members !== false) {
       teamMembers = await queryRows(`
         SELECT DISTINCT ON (tm.id)
           tm.id, tm.name, tm.email, tm.avatar_url, tm.role, tm.department
         FROM team_members tm
-        JOIN tasks t ON t.assigned_to = tm.id
+        JOIN tasks t ON t.assignee_id = tm.id
         WHERE t.project_id = $1
         ORDER BY tm.id
         LIMIT 10
@@ -131,8 +174,32 @@ export default defineEventHandler(async (event) => {
       upcomingTasks: upcomingTasks.map(t => ({
         id: t.id,
         title: t.title,
+        startDate: t.start_date,
         dueDate: t.due_date,
-        status: { name: t.status_name, color: t.status_color }
+        priority: t.priority,
+        taskType: t.task_type,
+        status: { name: t.status_name, color: t.status_color },
+        assignee: t.assignee_name
+          ? {
+              name: t.assignee_name,
+              avatarUrl: t.assignee_avatar
+            }
+          : null
+      })),
+      completedTasks: completedTaskHistory.map(t => ({
+        id: t.id,
+        title: t.title,
+        dueDate: t.due_date,
+        completedAt: t.completed_at,
+        priority: t.priority,
+        taskType: t.task_type,
+        status: { name: t.status_name, color: t.status_color },
+        assignee: t.assignee_name
+          ? {
+              name: t.assignee_name,
+              avatarUrl: t.assignee_avatar
+            }
+          : null
       })),
       deliverables: deliverables.map(d => ({
         id: d.id,
@@ -170,8 +237,8 @@ export default defineEventHandler(async (event) => {
         show_files: true
       }
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error
     console.error('Failed to fetch project:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to fetch project' })
   }
