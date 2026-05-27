@@ -21,6 +21,16 @@ interface FeatureCard {
   permission?: boolean
 }
 
+interface ServiceModule {
+  title: string
+  description: string
+  icon: string
+  status: 'Active' | 'Included' | 'Available' | 'Restricted'
+  proof: string
+  requestService: string
+  to?: string
+}
+
 const features = computed<FeatureCard[]>(() => {
   const cards: FeatureCard[] = [
     {
@@ -93,6 +103,77 @@ const features = computed<FeatureCard[]>(() => {
 
   return cards.filter(c => c.permission !== false)
 })
+
+const serviceModules = computed<ServiceModule[]>(() => {
+  const hasCampaigns = Boolean(dashboard.value?.enterprise?.campaigns?.campaigns)
+  const hasCreative = Boolean(dashboard.value?.gallery?.recent?.length)
+  const hasJobs = Boolean(dashboard.value?.projects?.stats?.total)
+  const hasMeetings = Boolean(dashboard.value?.meetings?.stats?.totalVisible)
+
+  return [
+    {
+      title: 'Paid media',
+      description: 'Google, Meta, lead routing, performance review, budget pacing, and campaign growth.',
+      icon: 'i-lucide-megaphone',
+      status: canViewAnalytics.value ? (hasCampaigns ? 'Active' : 'Included') : 'Restricted',
+      proof: hasCampaigns ? `${dashboard.value?.enterprise?.campaigns?.campaigns || 0} campaigns visible` : 'Campaign dashboard module',
+      requestService: 'paid_media',
+      to: canViewAnalytics.value ? '/portal/analytics' : undefined
+    },
+    {
+      title: 'Creative production',
+      description: 'Campaign assets, design revisions, approvals, gallery delivery, and creative refreshes.',
+      icon: 'i-lucide-palette',
+      status: hasCreative ? 'Active' : 'Available',
+      proof: hasCreative ? `${dashboard.value?.gallery?.recent?.length || 0} recent assets` : 'Request creative work',
+      requestService: 'creative',
+      to: '/portal/gallery'
+    },
+    {
+      title: 'SEO and content',
+      description: 'Content planning, on-page improvements, landing page copy, and organic growth work.',
+      icon: 'i-lucide-file-text',
+      status: 'Available',
+      proof: 'Briefs and requests supported',
+      requestService: 'seo_content',
+      to: '/portal/briefs'
+    },
+    {
+      title: 'Web and CRO',
+      description: 'Website updates, conversion improvements, forms, landing pages, and tracking fixes.',
+      icon: 'i-lucide-monitor-check',
+      status: hasJobs ? 'Active' : 'Available',
+      proof: hasJobs ? `${dashboard.value?.projects?.stats?.total || 0} jobs on record` : 'Create a job request',
+      requestService: 'web_cro',
+      to: '/portal/projects'
+    },
+    {
+      title: 'Reporting and insights',
+      description: 'Executive reporting, lead quality review, next actions, campaign summaries, and exports.',
+      icon: 'i-lucide-chart-pie',
+      status: canViewAnalytics.value ? 'Included' : 'Restricted',
+      proof: canViewAnalytics.value ? 'Analytics exports available' : 'Analytics permission required',
+      requestService: 'reporting',
+      to: canViewAnalytics.value ? '/portal/analytics' : undefined
+    },
+    {
+      title: 'Strategy and account planning',
+      description: 'Review calls, roadmap planning, service prioritisation, and performance check-ins.',
+      icon: 'i-lucide-compass',
+      status: hasMeetings ? 'Active' : 'Available',
+      proof: hasMeetings ? `${dashboard.value?.meetings?.stats?.totalVisible || 0} meetings shared` : 'Request a session',
+      requestService: 'strategy',
+      to: '/portal/meetings'
+    }
+  ]
+})
+
+function serviceStatusColor(status: ServiceModule['status']) {
+  if (status === 'Active') return 'success'
+  if (status === 'Included') return 'primary'
+  if (status === 'Restricted') return 'neutral'
+  return 'warning'
+}
 </script>
 
 <template>
@@ -275,5 +356,77 @@ const features = computed<FeatureCard[]>(() => {
         </template>
       </UCard>
     </div>
+
+    <UCard v-if="!pending">
+      <template #header>
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 class="text-lg font-semibold">
+              Services
+            </h2>
+            <p class="text-sm text-muted mt-1">
+              Active services, available workstreams, and request paths for the agency team.
+            </p>
+          </div>
+          <UBadge color="primary" variant="subtle">
+            {{ serviceModules.filter(module => module.status === 'Active').length }} active
+          </UBadge>
+        </div>
+      </template>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div
+          v-for="module in serviceModules"
+          :key="module.title"
+          class="rounded-lg border border-default bg-default p-4 space-y-4"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="size-9 rounded-lg bg-elevated flex items-center justify-center shrink-0">
+                <UIcon :name="module.icon" class="size-4 text-primary" />
+              </div>
+              <div class="min-w-0">
+                <p class="font-medium truncate">
+                  {{ module.title }}
+                </p>
+                <p class="text-xs text-muted truncate">
+                  {{ module.proof }}
+                </p>
+              </div>
+            </div>
+            <UBadge :color="serviceStatusColor(module.status)" variant="subtle" size="xs">
+              {{ module.status }}
+            </UBadge>
+          </div>
+
+          <p class="text-sm text-muted leading-relaxed">
+            {{ module.description }}
+          </p>
+
+          <div class="flex flex-wrap gap-2">
+            <UButton
+              v-if="module.to"
+              :to="module.to"
+              icon="i-lucide-arrow-right"
+              variant="outline"
+              color="neutral"
+              size="sm"
+            >
+              Open
+            </UButton>
+            <UButton
+              v-if="user?.permissions?.canSubmitRequests"
+              :to="`/portal/requests?service=${module.requestService}`"
+              icon="i-lucide-message-square-plus"
+              color="primary"
+              variant="soft"
+              size="sm"
+            >
+              Request
+            </UButton>
+          </div>
+        </div>
+      </div>
+    </UCard>
   </div>
 </template>

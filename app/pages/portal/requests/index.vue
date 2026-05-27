@@ -1,8 +1,9 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
-const { user, hasPermission } = usePortalAuth()
+const { hasPermission } = usePortalAuth()
 const toast = useToast()
+const route = useRoute()
 
 const activeTab = ref('all')
 const typeFilter = computed(() => {
@@ -66,6 +67,39 @@ const priorities = [
   { label: 'Urgent', value: 'urgent' }
 ]
 
+const serviceRequestPresets: Record<string, { category: string, title: string, description: string }> = {
+  paid_media: {
+    category: 'strategy',
+    title: 'Paid media support',
+    description: 'We would like help reviewing or expanding our paid media activity.'
+  },
+  creative: {
+    category: 'design',
+    title: 'Creative production request',
+    description: 'We would like new creative, design, or production support for upcoming campaigns.'
+  },
+  seo_content: {
+    category: 'content',
+    title: 'SEO and content request',
+    description: 'We would like help planning or producing SEO and content work.'
+  },
+  web_cro: {
+    category: 'development',
+    title: 'Website and conversion request',
+    description: 'We would like help improving our website, landing pages, or conversion paths.'
+  },
+  reporting: {
+    category: 'strategy',
+    title: 'Reporting and insights request',
+    description: 'We would like a clearer report, dashboard review, or campaign insights session.'
+  },
+  strategy: {
+    category: 'strategy',
+    title: 'Strategy session request',
+    description: 'We would like to book a strategy discussion with the agency team.'
+  }
+}
+
 // Fetch projects for the selector
 const { data: projectsData } = useFetch('/api/portal/projects')
 
@@ -79,6 +113,22 @@ function resetForm() {
   form.estimatedBudget = ''
   form.desiredDeadline = ''
 }
+
+function applyServicePreset(service: unknown) {
+  if (typeof service !== 'string') return
+  const preset = serviceRequestPresets[service]
+  if (!preset || !hasPermission('canSubmitRequests')) return
+
+  form.requestType = 'job_request'
+  form.category = preset.category
+  form.title = preset.title
+  form.description = preset.description
+  form.priority = 'normal'
+  showCreate.value = true
+}
+
+onMounted(() => applyServicePreset(route.query.service))
+watch(() => route.query.service, applyServicePreset)
 
 async function submitRequest() {
   if (!form.title.trim() || !form.description.trim()) {
@@ -104,8 +154,11 @@ async function submitRequest() {
     showCreate.value = false
     resetForm()
     await refresh()
-  } catch (e: any) {
-    toast.add({ title: 'Failed to submit', description: e.data?.statusMessage, color: 'error' })
+  } catch (error: unknown) {
+    const message = error && typeof error === 'object' && 'data' in error
+      ? (error as { data?: { statusMessage?: string } }).data?.statusMessage
+      : undefined
+    toast.add({ title: 'Failed to submit', description: message, color: 'error' })
   } finally {
     creating.value = false
   }
@@ -137,7 +190,9 @@ const priorityColors: Record<string, string> = {
 <template>
   <div class="p-6 space-y-6 max-w-5xl mx-auto">
     <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-bold">Requests</h1>
+      <h1 class="text-2xl font-bold">
+        Requests
+      </h1>
       <div class="flex items-center gap-3">
         <div v-if="data?.summary" class="flex items-center gap-2 text-sm">
           <UBadge v-if="data.summary.submitted > 0" color="warning" variant="subtle">
@@ -157,7 +212,7 @@ const priorityColors: Record<string, string> = {
       </div>
     </div>
 
-    <UTabs :items="tabs" v-model="activeTab" />
+    <UTabs v-model="activeTab" :items="tabs" />
 
     <div v-if="pending" class="space-y-3">
       <div v-for="i in 4" :key="i" class="h-24 rounded-lg bg-elevated animate-pulse" />
@@ -209,10 +264,14 @@ const priorityColors: Record<string, string> = {
     <USlideover v-model:open="showCreate">
       <template #content>
         <div class="p-6 space-y-6">
-          <h2 class="text-lg font-semibold">New Request</h2>
+          <h2 class="text-lg font-semibold">
+            New Request
+          </h2>
 
           <fieldset class="space-y-4">
-            <legend class="text-sm font-medium text-muted mb-2">Request Details</legend>
+            <legend class="text-sm font-medium text-muted mb-2">
+              Request Details
+            </legend>
 
             <div>
               <label class="text-sm font-medium mb-1 block">Type</label>
@@ -240,12 +299,22 @@ const priorityColors: Record<string, string> = {
 
             <div>
               <label class="text-sm font-medium mb-1 block">Title</label>
-              <UInput v-model="form.title" placeholder="Brief summary of your request" size="xl" class="w-full" />
+              <UInput
+                v-model="form.title"
+                placeholder="Brief summary of your request"
+                size="xl"
+                class="w-full"
+              />
             </div>
 
             <div>
               <label class="text-sm font-medium mb-1 block">Description</label>
-              <UTextarea v-model="form.description" placeholder="Describe what you need in detail..." :rows="6" class="w-full" />
+              <UTextarea
+                v-model="form.description"
+                placeholder="Describe what you need in detail..."
+                :rows="6"
+                class="w-full"
+              />
             </div>
 
             <div>
@@ -260,7 +329,9 @@ const priorityColors: Record<string, string> = {
           </fieldset>
 
           <fieldset class="space-y-4">
-            <legend class="text-sm font-medium text-muted mb-2">Additional Info</legend>
+            <legend class="text-sm font-medium text-muted mb-2">
+              Additional Info
+            </legend>
 
             <div v-if="projectsData?.projects?.length">
               <label class="text-sm font-medium mb-1 block">Related Project</label>
@@ -275,21 +346,34 @@ const priorityColors: Record<string, string> = {
 
             <div v-if="form.requestType === 'job_request'">
               <label class="text-sm font-medium mb-1 block">Estimated Budget (AUD)</label>
-              <UInput v-model="form.estimatedBudget" type="number" placeholder="Optional" size="xl" class="w-full" />
+              <UInput
+                v-model="form.estimatedBudget"
+                type="number"
+                placeholder="Optional"
+                size="xl"
+                class="w-full"
+              />
             </div>
 
             <div>
               <label class="text-sm font-medium mb-1 block">Desired Deadline</label>
-              <UInput v-model="form.desiredDeadline" type="date" size="xl" class="w-full" />
+              <UInput
+                v-model="form.desiredDeadline"
+                type="date"
+                size="xl"
+                class="w-full"
+              />
             </div>
           </fieldset>
 
           <div class="flex justify-end gap-3 pt-4 border-t border-default">
-            <UButton variant="outline" @click="showCreate = false">Cancel</UButton>
+            <UButton variant="outline" @click="showCreate = false">
+              Cancel
+            </UButton>
             <UButton
-              @click="submitRequest"
               :loading="creating"
               :disabled="!form.title.trim() || !form.description.trim()"
+              @click="submitRequest"
             >
               Submit Request
             </UButton>
