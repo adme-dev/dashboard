@@ -518,6 +518,10 @@ const formatActivityAction = (action: string) => {
     case 'login': return 'Client login'
     case 'approval_response': return 'Approval response'
     case 'comment_added': return 'Comment added'
+    case 'agency_request_updated': return 'Request updated'
+    case 'agency_request_reply': return 'Agency replied to request'
+    case 'client_request_submitted': return 'Client submitted request'
+    case 'client_request_message_added': return 'Client replied to request'
     default: return action.replaceAll('_', ' ')
   }
 }

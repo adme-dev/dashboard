@@ -149,6 +149,11 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
     return `updated your request to ${status}`
   }
   if (activity.action === 'agency_request_reply') return 'replied to your request'
+  if (activity.action === 'client_request_submitted') {
+    const title = typeof details.title === 'string' ? `: ${details.title}` : ''
+    return `submitted a request${title}`
+  }
+  if (activity.action === 'client_request_message_added') return 'added a request reply'
   if (activity.action === 'agency_portal_access') return 'previewed the client portal'
   if (activity.action === 'invite_accepted') return 'accepted a portal invite'
   if (activity.action === 'approval_response') return 'responded to an approval'
