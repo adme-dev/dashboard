@@ -21,6 +21,13 @@ interface LeadsResponse {
   total: number
   stats: Array<{ status: string, count: string }>
   sourceStats: Array<{ source: string, count: string }>
+  responseSummary: {
+    total: string
+    contacted: string
+    qualified: string
+    won: string
+    avg_response_minutes: string | null
+  } | null
 }
 
 const status = ref<string>('all')
@@ -66,7 +73,7 @@ const exportParams = computed(() => {
 
 const { data, refresh, pending } = useFetch<LeadsResponse>(
   '/api/client-portal/leads/list',
-  { query: params, watch: [params], default: () => ({ items: [], total: 0, stats: [], sourceStats: [] }) }
+  { query: params, watch: [params], default: () => ({ items: [], total: 0, stats: [], sourceStats: [], responseSummary: null }) }
 )
 
 const selectedUrl = computed(() => selectedLeadId.value ? `/api/client-portal/leads/${selectedLeadId.value}` : null)
@@ -168,6 +175,21 @@ const sourceBreakdown = computed(() => (data.value?.sourceStats ?? []).map(item 
   source: item.source,
   count: Number(item.count || 0)
 })))
+const responseSummary = computed(() => {
+  const summary = data.value?.responseSummary
+  const total = Number(summary?.total || 0)
+  const contacted = Number(summary?.contacted || 0)
+  return {
+    total,
+    contacted,
+    qualified: Number(summary?.qualified || 0),
+    won: Number(summary?.won || 0),
+    contactedRate: total > 0 ? Math.round((contacted / total) * 100) : 0,
+    avgResponseMinutes: summary?.avg_response_minutes == null
+      ? null
+      : Math.round(Number(summary.avg_response_minutes))
+  }
+})
 const visibleRange = computed(() => {
   const total = data.value?.total ?? 0
   if (!total) return '0'
@@ -208,7 +230,7 @@ watch(selectedLeadId, async (id) => {
           Contacted
         </p>
         <p class="text-2xl font-semibold">
-          {{ statsByStatus.contacted ?? 0 }}
+          {{ responseSummary.contactedRate }}%
         </p>
       </div>
       <div class="rounded-lg border border-default bg-default p-3">
@@ -217,6 +239,41 @@ watch(selectedLeadId, async (id) => {
         </p>
         <p class="text-2xl font-semibold">
           {{ statsByStatus.won ?? 0 }}
+        </p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 px-4 py-3 border-b border-default bg-default">
+      <div class="rounded-lg border border-default bg-default p-3">
+        <p class="text-xs text-muted">
+          Contacted leads
+        </p>
+        <p class="text-lg font-semibold">
+          {{ responseSummary.contacted }}
+        </p>
+      </div>
+      <div class="rounded-lg border border-default bg-default p-3">
+        <p class="text-xs text-muted">
+          Qualified
+        </p>
+        <p class="text-lg font-semibold">
+          {{ responseSummary.qualified }}
+        </p>
+      </div>
+      <div class="rounded-lg border border-default bg-default p-3">
+        <p class="text-xs text-muted">
+          Avg response
+        </p>
+        <p class="text-lg font-semibold">
+          {{ responseSummary.avgResponseMinutes == null ? '-' : `${responseSummary.avgResponseMinutes}m` }}
+        </p>
+      </div>
+      <div class="rounded-lg border border-default bg-default p-3">
+        <p class="text-xs text-muted">
+          Won rate
+        </p>
+        <p class="text-lg font-semibold">
+          {{ responseSummary.total > 0 ? `${Math.round((responseSummary.won / responseSummary.total) * 100)}%` : '0%' }}
         </p>
       </div>
     </div>

@@ -98,6 +98,24 @@ export default defineEventHandler(async (event) => {
      ORDER BY count DESC`,
     baseParams
   )
+  const responseSummary = await queryRows<{
+    total: string
+    contacted: string
+    qualified: string
+    won: string
+    avg_response_minutes: string | null
+  }>(
+    `SELECT
+       COUNT(*)::text AS total,
+       COUNT(*) FILTER (WHERE l.contacted_at IS NOT NULL)::text AS contacted,
+       COUNT(*) FILTER (WHERE l.status = 'qualified')::text AS qualified,
+       COUNT(*) FILTER (WHERE l.status = 'won')::text AS won,
+       AVG(EXTRACT(EPOCH FROM (l.contacted_at - l.submitted_at)) / 60)
+         FILTER (WHERE l.contacted_at IS NOT NULL) AS avg_response_minutes
+     FROM leads l
+     WHERE ${baseConds.join(' AND ')}`,
+    baseParams
+  )
 
-  return { items, total, page, page_size: ps, stats, sourceStats }
+  return { items, total, page, page_size: ps, stats, sourceStats, responseSummary: responseSummary[0] || null }
 })
