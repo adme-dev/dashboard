@@ -15,6 +15,20 @@ type StaffNotificationRecipient = {
   id: string
 }
 
+const normalizeAttachments = (value: unknown) => {
+  if (value == null) return []
+  if (!Array.isArray(value)) {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid attachments' })
+  }
+  if (value.length > 10) {
+    throw createError({ statusCode: 400, statusMessage: 'Too many attachments' })
+  }
+  if (value.some(item => !item || typeof item !== 'object' || Array.isArray(item))) {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid attachments' })
+  }
+  return value
+}
+
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
 
@@ -66,6 +80,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid desired deadline' })
   }
 
+  const normalizedAttachments = normalizeAttachments(attachments)
+
   try {
     // If projectId provided, verify it belongs to this client
     if (projectId) {
@@ -94,7 +110,7 @@ export default defineEventHandler(async (event) => {
         description.trim(),
         priority || 'normal',
         projectId || null,
-        JSON.stringify(attachments || []),
+        JSON.stringify(normalizedAttachments),
         normalizedEstimatedBudget,
         normalizedDesiredDeadline
       ])

@@ -76,7 +76,8 @@ describe('portal request write APIs', () => {
         description: 'Please help plan our next campaign.',
         priority: 'high',
         estimatedBudget: '2500',
-        desiredDeadline: '2026-06-15'
+        desiredDeadline: '2026-06-15',
+        attachments: [{ name: 'brief.pdf', url: '/files/brief.pdf' }]
       }
     })
 
@@ -92,7 +93,7 @@ describe('portal request write APIs', () => {
         'Please help plan our next campaign.',
         'high',
         null,
-        '[]',
+        JSON.stringify([{ name: 'brief.pdf', url: '/files/brief.pdf' }]),
         2500,
         '2026-06-15'
       ])
@@ -155,6 +156,22 @@ describe('portal request write APIs', () => {
     expect(mockTransaction).not.toHaveBeenCalled()
   })
 
+  it('rejects invalid request attachments', async () => {
+    await expect(createRequestHandler({
+      body: {
+        requestType: 'job_request',
+        title: 'Bad attachments',
+        description: 'Please help.',
+        attachments: 'not-an-array'
+      }
+    })).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: 'Invalid attachments'
+    })
+
+    expect(mockTransaction).not.toHaveBeenCalled()
+  })
+
   it('logs client activity when a client adds a request message', async () => {
     mockQueryOne.mockResolvedValueOnce({
       id: 'request-1',
@@ -168,7 +185,10 @@ describe('portal request write APIs', () => {
 
     const result = await addMessageHandler({
       params: { id: 'request-1' },
-      body: { content: 'Can we get an update?' }
+      body: {
+        content: 'Can we get an update?',
+        attachments: [{ name: 'screenshot.png', url: '/files/screenshot.png' }]
+      }
     })
 
     expect(result).toEqual({ id: 'message-1', createdAt: '2026-05-28T01:00:00Z' })
@@ -177,6 +197,12 @@ describe('portal request write APIs', () => {
       ['request-1', 'client-1']
     )
     expect(mockClientQuery.mock.calls[1][0]).toContain('client_request_message_added')
+    expect(mockClientQuery.mock.calls[0][1]).toEqual([
+      'request-1',
+      'client-user-1',
+      'Can we get an update?',
+      JSON.stringify([{ name: 'screenshot.png', url: '/files/screenshot.png' }])
+    ])
     expect(mockClientQuery.mock.calls[1][1]).toEqual([
       'client-user-1',
       'client-1',
@@ -196,5 +222,20 @@ describe('portal request write APIs', () => {
       },
       reason: 'direct'
     })
+  })
+
+  it('rejects invalid message attachments', async () => {
+    await expect(addMessageHandler({
+      params: { id: 'request-1' },
+      body: {
+        content: 'Can we get an update?',
+        attachments: [null]
+      }
+    })).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: 'Invalid attachments'
+    })
+
+    expect(mockTransaction).not.toHaveBeenCalled()
   })
 })

@@ -14,6 +14,20 @@ type ClientRequestMessageTarget = {
   assigned_to: string | null
 }
 
+const normalizeAttachments = (value: unknown) => {
+  if (value == null) return []
+  if (!Array.isArray(value)) {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid attachments' })
+  }
+  if (value.length > 10) {
+    throw createError({ statusCode: 400, statusMessage: 'Too many attachments' })
+  }
+  if (value.some(item => !item || typeof item !== 'object' || Array.isArray(item))) {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid attachments' })
+  }
+  return value
+}
+
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
   const requestId = getRouterParam(event, 'id')
@@ -28,6 +42,7 @@ export default defineEventHandler(async (event) => {
   if (!content?.trim()) {
     throw createError({ statusCode: 400, statusMessage: 'Message content is required' })
   }
+  const normalizedAttachments = normalizeAttachments(attachments)
 
   try {
     // Verify request belongs to client and is not closed
@@ -53,7 +68,7 @@ export default defineEventHandler(async (event) => {
         requestId,
         clientUser.id,
         content.trim(),
-        JSON.stringify(attachments || [])
+        JSON.stringify(normalizedAttachments)
       ])
 
       const result = inserted.rows[0]
