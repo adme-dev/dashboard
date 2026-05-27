@@ -1,4 +1,5 @@
 import Groq from 'groq-sdk'
+import { toFile } from 'groq-sdk/uploads'
 
 // Lazy initialization to avoid startup errors
 let groq: Groq | null = null
@@ -48,10 +49,23 @@ export const GROQ_MODELS = {
   LLAMA_8B: 'llama-3.1-8b-instant',
   // Preview — do not rely on exclusively.
   LLAMA_4_SCOUT: 'meta-llama/llama-4-scout-17b-16e-instruct',
-  QWEN3_32B: 'qwen/qwen3-32b',
+  QWEN3_32B: 'qwen/qwen3-32b'
+} as const
+
+export const GROQ_AUDIO_MODELS = {
+  WHISPER_LARGE_V3: 'whisper-large-v3',
+  WHISPER_LARGE_V3_TURBO: 'whisper-large-v3-turbo'
 } as const
 
 export type GroqModel = typeof GROQ_MODELS[keyof typeof GROQ_MODELS]
+export type GroqAudioModel = typeof GROQ_AUDIO_MODELS[keyof typeof GROQ_AUDIO_MODELS]
+
+type ExpenseDatum = {
+  total?: number
+  category?: string
+  vendor?: string
+  date?: string
+}
 
 interface GroqChatOptions {
   model?: GroqModel
@@ -100,10 +114,37 @@ export async function generateGroqInsight(
   }
 }
 
+export async function transcribeGroqAudio(input: {
+  buffer: Buffer
+  filename: string
+  contentType: string
+  prompt?: string
+  language?: string
+  model?: GroqAudioModel
+}) {
+  try {
+    const groqClient = getGroqClient()
+    const file = await toFile(input.buffer, input.filename, { type: input.contentType })
+    const transcription = await groqClient.audio.transcriptions.create({
+      file,
+      model: input.model ?? GROQ_AUDIO_MODELS.WHISPER_LARGE_V3_TURBO,
+      response_format: 'json',
+      temperature: 0,
+      ...(input.prompt ? { prompt: input.prompt } : {}),
+      ...(input.language ? { language: input.language } : {})
+    })
+
+    return transcription.text.trim()
+  } catch (error) {
+    console.error('Groq transcription error:', error)
+    throw new Error('Failed to transcribe audio')
+  }
+}
+
 /**
  * Analyze expense anomalies using AI
  */
-export async function analyzeExpenseAnomalies(expenseData: any[]): Promise<{
+export async function analyzeExpenseAnomalies(expenseData: ExpenseDatum[]): Promise<{
   anomalies: Array<{
     type: string
     severity: 'low' | 'medium' | 'high' | 'critical'
@@ -169,8 +210,8 @@ Identify potential anomalies and provide 2-3 key findings in JSON format:
  * Generate expense optimization recommendations
  */
 export async function generateExpenseOptimization(
-  expenseData: any[],
-  budgetData?: any[]
+  expenseData: ExpenseDatum[],
+  _budgetData?: unknown[]
 ): Promise<{
   recommendations: Array<{
     category: string
@@ -235,8 +276,8 @@ Provide 2-3 optimization recommendations in JSON format:
  * Generate natural language insights for expense trends
  */
 export async function generateExpenseInsights(
-  currentPeriodData: any[],
-  previousPeriodData?: any[]
+  currentPeriodData: ExpenseDatum[],
+  previousPeriodData?: ExpenseDatum[]
 ): Promise<{
   insights: string[]
   trends: string[]
@@ -245,10 +286,10 @@ export async function generateExpenseInsights(
 }> {
   const currentTotal = currentPeriodData.reduce((sum, item) => sum + (item.total || 0), 0)
   const currentTransactions = currentPeriodData.length
-  
+
   const previousTotal = previousPeriodData?.reduce((sum, item) => sum + (item.total || 0), 0) || 0
   const previousTransactions = previousPeriodData?.length || 0
-  
+
   const change = previousTotal > 0 ? ((currentTotal - previousTotal) / previousTotal * 100) : 0
 
   const prompt = `

@@ -13,6 +13,7 @@ import type {
   ZoneType,
   ActorHandle
 } from '~~/app/types/office'
+import { safeMediaUrl } from '~~/app/utils/safe-url'
 
 type OfficeJoinFailure = {
   zoneId: string
@@ -62,7 +63,7 @@ const emit = defineEmits<{
   evictParticipant: [handle: ActorHandle]
   zonesChanged: []
   zoneNotesChanged: [zone: OfficeZoneRow]
-  setupMeeting: [zoneId: string]
+  setupMeeting: [zoneId: string, meetingId?: string, artifactId?: string]
 }>()
 const toast = useToast()
 const { user } = useAuth()
@@ -442,8 +443,8 @@ const selectedPersonPrimaryActionIcon = computed(() => {
 const canUseSelectedPersonPrimaryAction = computed(() =>
   selectedPersonIsSelf.value ? canEnterSelectedPersonOffice.value : canSendPresenceToSelectedPerson.value
 )
-function setupMeetingForRoom(zoneId: string) {
-  emit('setupMeeting', zoneId)
+function setupMeetingForRoom(zoneId: string, meetingId?: string, artifactId?: string) {
+  emit('setupMeeting', zoneId, meetingId, artifactId)
   selectedTargetId.value = null
 }
 const selectedPersonPrimaryActionTitle = computed(() => {
@@ -754,6 +755,28 @@ function participantName(handle: ActorHandle) {
   if (participant?.name) return participant.name
   const userId = handle.startsWith('user:') ? handle.slice(5) : null
   return props.members.find(member => member.user_id === userId)?.name ?? 'Someone'
+}
+
+function targetAvatarSrc(target: SpotlightTarget) {
+  return safeMediaUrl(target.member?.avatar_url) ?? safeMediaUrl(target.participant?.avatarUrl)
+}
+
+function openPersonByHandle(handle: ActorHandle) {
+  const target = searchTargets.value.find(item =>
+    item.type === 'person'
+    && item.participant?.handle === handle
+  )
+
+  if (target) {
+    selectTarget(target)
+    return
+  }
+
+  actionToast(
+    'Guest profile',
+    'External guests are shown through guest badges and lobby requests.',
+    'i-lucide-user-round-search'
+  )
 }
 
 function knockTarget(target: SpotlightTarget) {
@@ -1070,7 +1093,7 @@ watch(
         >
           <UAvatar
             v-if="target.type === 'person'"
-            :src="target.member?.avatar_url || target.participant?.avatarUrl || undefined"
+            :src="targetAvatarSrc(target)"
             :alt="target.label"
             size="xs"
             :ui="{ root: 'ring-1 ring-white/15' }"
@@ -1450,6 +1473,7 @@ watch(
       @cancel-knock="cancelPendingKnock"
       @toggle-lock="toggleSelectedRoomLock"
       @evict="evictSelectedRoomOccupant"
+      @open-person="openPersonByHandle"
       @raise-hand="raiseHandSelectedRoom"
       @wave="waveSelectedRoom"
       @notes-changed="emit('zoneNotesChanged', $event)"
@@ -1469,7 +1493,7 @@ watch(
       >
         <UAvatar
           v-if="selectedTarget.type === 'person'"
-          :src="selectedTarget.member?.avatar_url || selectedTarget.participant?.avatarUrl || undefined"
+          :src="targetAvatarSrc(selectedTarget)"
           :alt="selectedTarget.label"
           size="sm"
           :ui="{ root: 'ring-1 ring-white/15' }"
@@ -1615,13 +1639,20 @@ watch(
           </div>
         </div>
         <div class="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
-          <OfficeAvatar
+          <button
             v-for="p in lobbyOccupants.slice(0, 12)"
             :key="p.handle"
-            :participant="p"
-            :size="34"
-            show-label
-          />
+            type="button"
+            class="-m-1 shrink-0 rounded-lg p-1 text-left transition hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+            :aria-label="`Open ${p.name}`"
+            @click="openPersonByHandle(p.handle)"
+          >
+            <OfficeAvatar
+              :participant="p"
+              :size="34"
+              show-label
+            />
+          </button>
           <div
             v-if="lobbyOccupants.length > 12"
             class="flex shrink-0 items-center text-xs text-white/40"

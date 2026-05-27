@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { OfficeAuditEventRow } from '~~/app/types/office'
+import { safeMediaUrl } from '~~/app/utils/safe-url'
 
 type AuditEventWithActor = OfficeAuditEventRow & {
   actor_name: string | null
@@ -50,13 +51,22 @@ watch(
 )
 
 function actionLabel(action: string) {
+  const labels: Record<string, string> = {
+    'recording.transcribed': 'Recording · AI notes generated',
+    'recording.transcription_failed': 'Recording · AI notes failed',
+    'meeting.live_transcribed': 'Meeting · live transcript segment',
+    'meeting.ended': 'Meeting · ended',
+    'meeting.cancelled': 'Meeting · cancelled',
+    'meeting.live': 'Meeting · started'
+  }
+  if (labels[action]) return labels[action]
   return action.replaceAll('_', ' ').replaceAll('.', ' · ')
 }
 
 function actionTone(action: string): 'success' | 'warning' | 'danger' | 'neutral' {
-  if (action.includes('revoked') || action.includes('cancelled') || action.includes('expired') || action.includes('evicted') || action.includes('deleted')) return 'danger'
+  if (action.includes('revoked') || action.includes('cancelled') || action.includes('expired') || action.includes('evicted') || action.includes('deleted') || action.includes('failed')) return 'danger'
   if (action.includes('updated') || action.includes('reactivated') || action.includes('active')) return 'warning'
-  if (action.includes('created') || action.includes('approved') || action.includes('sent') || action.includes('live') || action.includes('captured')) return 'success'
+  if (action.includes('created') || action.includes('approved') || action.includes('sent') || action.includes('live') || action.includes('captured') || action.includes('transcribed') || action.includes('ended')) return 'success'
   return 'neutral'
 }
 
@@ -91,6 +101,9 @@ function formatMetadataValue(value: unknown) {
   if (Array.isArray(value)) return value.map(item => formatMetadataValue(item)).filter(Boolean).join(', ')
   if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>
+    const populatedEntries = Object.entries(record)
+      .filter(([, item]) => typeof item === 'string' && item)
+      .map(([key]) => key.replaceAll('_', ' '))
     const allowedRoles = Array.isArray(record.allowed_roles)
       ? record.allowed_roles.map(item => formatMetadataValue(item)).filter(Boolean).join(', ')
       : ''
@@ -98,7 +111,7 @@ function formatMetadataValue(value: unknown) {
     const position = ['x', 'y', 'w', 'h'].every(key => typeof record[key] === 'number')
       ? `${record.x},${record.y} ${record.w}x${record.h}`
       : ''
-    return [allowedRoles, publicLobby, position].filter(Boolean).join(' · ')
+    return [allowedRoles, publicLobby, position, populatedEntries.join(' · ')].filter(Boolean).join(' · ')
   }
   if (typeof value !== 'string') return ''
   if (!value) return ''
@@ -132,7 +145,16 @@ function metadataChips(event: AuditEventWithActor) {
     'allowedZoneId',
     'guest_access_expired',
     'guest_badges_expired',
+    'transcriptLength',
+    'summaryLength',
+    'artifactIds',
+    'generated_summary_artifact_id',
+    'generated_action_items_artifact_id',
+    'transcript_artifact_id',
+    'summary_artifact_id',
+    'action_items_artifact_id',
     'source',
+    'error',
     'lobby_request_id',
     'guest_email',
     'guest_name',
@@ -158,7 +180,7 @@ function metadataChips(event: AuditEventWithActor) {
       if (!formatted) return null
       return {
         key,
-        label: key.replaceAll('_', ' '),
+        label: metadataChipLabel(key),
         value: metadataChipValue(key, formatted)
       }
     })
@@ -166,11 +188,27 @@ function metadataChips(event: AuditEventWithActor) {
     .slice(0, 4)
 }
 
+function metadataChipLabel(key: string) {
+  if (key === 'artifactIds') return 'artifacts'
+  if (key === 'transcriptLength') return 'transcript'
+  if (key === 'summaryLength') return 'summary'
+  if (key === 'generated_summary_artifact_id') return 'summary artifact'
+  if (key === 'generated_action_items_artifact_id') return 'actions artifact'
+  if (key === 'transcript_artifact_id') return 'transcript artifact'
+  if (key === 'summary_artifact_id') return 'summary artifact'
+  if (key === 'action_items_artifact_id') return 'actions artifact'
+  return key.replaceAll('_', ' ')
+}
+
 function metadataChipValue(key: string, formatted: string) {
   if (key === 'duration_minutes') return `${formatted} min`
   if (key === 'retention_days') return `${formatted} days`
   if (key === 'guest_access_expired') return `${formatted} passes`
   if (key === 'guest_badges_expired') return `${formatted} badges`
+  if (key === 'transcriptLength') return `${formatted} chars`
+  if (key === 'summaryLength') return `${formatted} chars`
+  if (key === 'artifactIds') return 'Artifacts saved'
+  if (key.endsWith('_artifact_id')) return 'Artifact linked'
   if (key === 'intake_count') return `${formatted} answers`
   if (key === 'changed') return formatted.replaceAll(',', ' ·')
   if (key === 'is_private') return formatted === 'Yes' ? 'Private' : 'Open'
@@ -279,7 +317,7 @@ function metadataChipValue(key: string, formatted: string) {
             </div>
             <div class="mt-1 flex items-center gap-2 text-[11px] text-white/40">
               <UAvatar
-                :src="event.actor_avatar_url || undefined"
+                :src="safeMediaUrl(event.actor_avatar_url)"
                 :alt="event.actor_name || 'System'"
                 size="3xs"
               />

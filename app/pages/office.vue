@@ -136,6 +136,7 @@ const selectedActionItemId = ref<string | null>(null)
 const selectedArtifactFocusKey = ref(0)
 const selectedMeetingSetupZoneId = ref<string | null>(null)
 const selectedRecordingMeetingId = ref<string | null>(null)
+const selectedRecordingId = ref<string | null>(null)
 const selectedAssistantJobId = ref<string | null>(null)
 const selectedAssistantJobFocusKey = ref(0)
 const adminModules = computed<OfficeModule[]>(() => {
@@ -212,7 +213,8 @@ const intelligenceModules = computed<OfficeModule[]>(() => {
       props: {
         officeId: detail.value.office.id,
         defaultOpen: true,
-        targetMeetingId: selectedRecordingMeetingId.value
+        targetMeetingId: selectedRecordingMeetingId.value,
+        targetRecordingId: selectedRecordingId.value
       }
     },
     {
@@ -254,7 +256,10 @@ const moduleDrawerOpen = computed({
 })
 
 function openOfficeModule(moduleId: string) {
-  if (moduleId === 'recordings') selectedRecordingMeetingId.value = null
+  if (moduleId === 'recordings') {
+    selectedRecordingMeetingId.value = null
+    selectedRecordingId.value = null
+  }
   if (moduleId === 'artifacts') {
     selectedArtifactMeetingId.value = null
     selectedArtifactId.value = null
@@ -275,8 +280,8 @@ function openMeetingSetup(meetingId?: string, artifactId?: string, actionItemId?
   activePanelId.value = 'artifacts'
 }
 
-function openMeetingSetupForZone(zoneId: string) {
-  openMeetingSetup(undefined, undefined, undefined, zoneId)
+function openMeetingSetupForZone(zoneId: string, meetingId?: string, artifactId?: string) {
+  openMeetingSetup(meetingId, artifactId, undefined, zoneId)
 }
 
 function handleOfficeArtifactsChanged() {
@@ -299,8 +304,9 @@ function openOfficeAssistant(jobId?: string) {
   activePanelId.value = 'assistant'
 }
 
-function openOfficeRecordings(meetingId?: string) {
+function openOfficeRecordings(meetingId?: string, recordingId?: string) {
   selectedRecordingMeetingId.value = meetingId ?? null
+  selectedRecordingId.value = recordingId ?? null
   activePanelId.value = 'recordings'
 }
 </script>
@@ -514,16 +520,23 @@ function openOfficeRecordings(meetingId?: string) {
     >
       <template #body>
         <div class="office-module-drawer -mx-2 -my-1 text-white">
-          <component
-            :is="activeOfficeModule.component"
-            v-if="activeOfficeModule"
-            v-bind="activeOfficeModule.props"
-            @office-artifacts-changed="handleOfficeArtifactsChanged"
-            @open-office-artifacts="openMeetingSetup"
-            @open-office-assistant="openOfficeAssistant"
-            @open-office-recordings="openOfficeRecordings"
-            @enter-office-zone="enterZone"
-          />
+          <Suspense v-if="activeOfficeModule">
+            <component
+              :is="activeOfficeModule.component"
+              v-bind="activeOfficeModule.props"
+              @office-artifacts-changed="handleOfficeArtifactsChanged"
+              @open-office-artifacts="openMeetingSetup"
+              @open-office-assistant="openOfficeAssistant"
+              @open-office-recordings="openOfficeRecordings"
+              @enter-office-zone="enterZone"
+            />
+
+            <template #fallback>
+              <div class="flex min-h-80 items-center justify-center rounded-xl border border-white/[0.08] bg-[#11141a]/85">
+                <XfLoader />
+              </div>
+            </template>
+          </Suspense>
         </div>
       </template>
     </USlideover>

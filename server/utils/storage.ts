@@ -32,8 +32,8 @@ function getR2Client(): S3Client {
     endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
     credentials: {
       accessKeyId: R2_ACCESS_KEY_ID,
-      secretAccessKey: R2_SECRET_ACCESS_KEY,
-    },
+      secretAccessKey: R2_SECRET_ACCESS_KEY
+    }
   })
 }
 
@@ -50,26 +50,26 @@ const ALLOWED_TYPES: Record<FileCategory, string[]> = {
     'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     'text/plain', 'text/csv', 'application/json',
-    'application/zip', 'application/x-rar-compressed',
+    'application/zip', 'application/x-rar-compressed'
   ],
   expenses: ['image/jpeg', 'image/png', 'application/pdf'],
   briefs: [
     'image/jpeg', 'image/png', 'image/gif', 'image/webp',
     'application/pdf',
-    'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   ],
   invoices: ['application/pdf', 'image/jpeg', 'image/png'],
-  general: ['*'], // Allow all types
+  general: ['*'] // Allow all types
 }
 
 // Max file sizes per category (in bytes)
 const MAX_FILE_SIZES: Record<FileCategory, number> = {
-  avatars: 2 * 1024 * 1024,      // 2MB
+  avatars: 2 * 1024 * 1024, // 2MB
   attachments: 50 * 1024 * 1024, // 50MB
-  expenses: 10 * 1024 * 1024,    // 10MB
-  briefs: 25 * 1024 * 1024,      // 25MB
-  invoices: 10 * 1024 * 1024,    // 10MB
-  general: 100 * 1024 * 1024,    // 100MB
+  expenses: 10 * 1024 * 1024, // 10MB
+  briefs: 25 * 1024 * 1024, // 25MB
+  invoices: 10 * 1024 * 1024, // 10MB
+  general: 100 * 1024 * 1024 // 100MB
 }
 
 /**
@@ -131,7 +131,7 @@ export async function uploadFile(
   key: string,
   contentType: string,
   metadata?: Record<string, string>
-): Promise<{ key: string; url: string; size: number }> {
+): Promise<{ key: string, url: string, size: number }> {
   // Local filesystem fallback for dev without R2
   if (!isStorageConfigured()) {
     const filePath = join(LOCAL_UPLOAD_DIR, key)
@@ -140,7 +140,7 @@ export async function uploadFile(
     return {
       key,
       url: `/api/_uploads/${key}`,
-      size: buffer.length,
+      size: buffer.length
     }
   }
 
@@ -151,7 +151,7 @@ export async function uploadFile(
     Key: key,
     Body: buffer,
     ContentType: contentType,
-    Metadata: metadata,
+    Metadata: metadata
   }))
 
   // Return the public URL if configured, otherwise generate a presigned URL
@@ -162,7 +162,7 @@ export async function uploadFile(
   return {
     key,
     url,
-    size: buffer.length,
+    size: buffer.length
   }
 }
 
@@ -184,8 +184,40 @@ export async function deleteFile(key: string): Promise<void> {
 
   await client.send(new DeleteObjectCommand({
     Bucket: R2_BUCKET_NAME,
-    Key: key,
+    Key: key
   }))
+}
+
+/**
+ * Download a stored file into memory. Intended for server-side processing jobs
+ * such as transcription; callers should enforce their own size limits.
+ */
+export async function downloadFileBuffer(key: string): Promise<Buffer> {
+  if (!isStorageConfigured()) {
+    const filePath = join(LOCAL_UPLOAD_DIR, key)
+    return fs.readFile(filePath)
+  }
+
+  const client = getR2Client()
+  const response = await client.send(new GetObjectCommand({
+    Bucket: R2_BUCKET_NAME,
+    Key: key
+  }))
+
+  const body = response.Body as {
+    transformToByteArray?: () => Promise<Uint8Array>
+    transformToString?: () => Promise<string>
+  } | undefined
+
+  if (body?.transformToByteArray) {
+    return Buffer.from(await body.transformToByteArray())
+  }
+
+  if (body?.transformToString) {
+    return Buffer.from(await body.transformToString())
+  }
+
+  throw new Error('Stored file response body is not readable')
 }
 
 /**
@@ -197,7 +229,7 @@ export async function fileExists(key: string): Promise<boolean> {
   try {
     await client.send(new HeadObjectCommand({
       Bucket: R2_BUCKET_NAME,
-      Key: key,
+      Key: key
     }))
     return true
   } catch {
@@ -218,7 +250,7 @@ export async function getPresignedUploadUrl(
   const command = new PutObjectCommand({
     Bucket: R2_BUCKET_NAME,
     Key: key,
-    ContentType: contentType,
+    ContentType: contentType
   })
 
   return getSignedUrl(client, command, { expiresIn })
@@ -235,7 +267,7 @@ export async function getPresignedDownloadUrl(
 
   const command = new GetObjectCommand({
     Bucket: R2_BUCKET_NAME,
-    Key: key,
+    Key: key
   })
 
   return getSignedUrl(client, command, { expiresIn })
@@ -255,14 +287,14 @@ export async function getFileMetadata(key: string): Promise<{
   try {
     const response = await client.send(new HeadObjectCommand({
       Bucket: R2_BUCKET_NAME,
-      Key: key,
+      Key: key
     }))
 
     return {
       size: response.ContentLength || 0,
       contentType: response.ContentType || 'application/octet-stream',
       lastModified: response.LastModified,
-      metadata: response.Metadata,
+      metadata: response.Metadata
     }
   } catch {
     return null

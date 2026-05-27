@@ -79,6 +79,16 @@ type HostNextStepItem = {
   tone: 'primary' | 'success' | 'warning' | 'neutral'
   action: HostNextStepAction
 }
+type MeetingQuestionSource = {
+  id: string
+  title: string
+  artifact_type: OfficeMeetingArtifactType
+  excerpt: string
+}
+type MeetingMemorySource = MeetingQuestionSource & {
+  meeting_id: string
+  meeting_title: string
+}
 
 const props = defineProps<{
   officeId: string
@@ -95,7 +105,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   openOfficeAssistant: [jobId?: string]
-  openOfficeRecordings: [meetingId?: string]
+  openOfficeRecordings: [meetingId?: string, recordingId?: string]
   enterOfficeZone: [zoneId: string]
 }>()
 
@@ -146,8 +156,19 @@ const updatingMeetingStatus = ref<string | null>(null)
 const creatingFollowUpForArtifactId = ref<string | null>(null)
 const updatingActionItemId = ref<string | null>(null)
 const creatingTaskForActionItemId = ref<string | null>(null)
+const creatingAllActionItemTasks = ref(false)
 const creatingAssistantForActionItemId = ref<string | null>(null)
 const actionItemTaskDepartmentId = ref('')
+const meetingQuestion = ref('')
+const meetingAnswer = ref('')
+const meetingAnswerSources = ref<MeetingQuestionSource[]>([])
+const meetingAnswerPending = ref(false)
+const meetingAnswerError = ref('')
+const meetingMemoryQuestion = ref('')
+const meetingMemoryAnswer = ref('')
+const meetingMemorySources = ref<MeetingMemorySource[]>([])
+const meetingMemoryPending = ref(false)
+const meetingMemoryError = ref('')
 const sendingInvitesForMeetingId = ref<string | null>(null)
 const handlingLobbyRequestId = ref<string | null>(null)
 const refreshingMeetingState = ref(false)
@@ -282,6 +303,14 @@ const externalMeetingCount = computed(() =>
 const selectedMeeting = computed(() =>
   meetings.value.find(meeting => meeting.id === selectedMeetingId.value) ?? meetings.value[0] ?? null
 )
+const visibleMeetings = computed(() => {
+  const visible = meetings.value.slice(0, 6)
+  const selected = selectedMeeting.value
+  if (selected && !visible.some(meeting => meeting.id === selected.id)) {
+    return [selected, ...visible]
+  }
+  return visible
+})
 const settings = computed(() => settingsData.value?.settings ?? null)
 const aiNotesAllowed = computed(() => settings.value?.ai_notes_enabled !== false)
 const recordingAllowed = computed(() => settings.value?.recording_enabled !== false)
@@ -493,6 +522,12 @@ const {
 )
 
 const selectedArtifacts = computed(() => artifactData.value?.artifacts ?? [])
+const meetingQuestionAvailable = computed(() =>
+  selectedArtifacts.value.some(artifact =>
+    ['summary', 'action_items', 'notes', 'transcript'].includes(artifact.artifact_type)
+    && artifact.content.trim().length > 0
+  )
+)
 
 const {
   data: actionItemsData,
@@ -509,6 +544,29 @@ const {
 
 const selectedActionItems = computed(() => actionItemsData.value?.actionItems ?? [])
 const openActionItemCount = computed(() => selectedActionItems.value.filter(item => item.status === 'open' || item.status === 'in_progress').length)
+const unlinkedOpenActionItems = computed(() =>
+  selectedActionItems.value.filter(item =>
+    !item.task_id
+    && (item.status === 'open' || item.status === 'in_progress')
+  )
+)
+
+function preferredMeetingForZone(zoneId: string | null | undefined) {
+  if (!zoneId) return null
+  const zoneMeetings = meetings.value.filter(meeting => meeting.zone_id === zoneId)
+  return zoneMeetings.find(meeting => meeting.status === 'live')
+    ?? zoneMeetings.find(meeting => meeting.status === 'planned')
+    ?? zoneMeetings[0]
+    ?? null
+}
+
+function selectInitialZoneMeeting() {
+  if (props.targetMeetingId) return false
+  const preferred = preferredMeetingForZone(props.initialZoneId)
+  if (!preferred) return false
+  selectedMeetingId.value = preferred.id
+  return true
+}
 
 const artifactLabels: Record<OfficeMeetingArtifactType, string> = {
   transcript: 'Transcript',
@@ -1524,9 +1582,21 @@ function isGuestIntakeArtifact(artifact: OfficeMeetingArtifactRow) {
   return artifactSystemEvent(artifact) === 'guest_intake'
 }
 
+function isLiveTranscriptArtifact(artifact: OfficeMeetingArtifactRow) {
+  return artifact.artifact_type === 'transcript'
+    && artifactStringMetadata(artifact, 'source') === 'office_live_transcription'
+}
+
+function isLiveGeneratedArtifact(artifact: OfficeMeetingArtifactRow) {
+  return artifactStringMetadata(artifact, 'generated_from') === 'office_live_transcription'
+}
+
 function artifactTypeLabel(artifact: OfficeMeetingArtifactRow) {
   if (isCloseoutArtifact(artifact)) return 'Closeout'
   if (isGuestIntakeArtifact(artifact)) return 'Guest intake'
+  if (isLiveTranscriptArtifact(artifact)) return 'Live transcript'
+  if (isLiveGeneratedArtifact(artifact) && artifact.artifact_type === 'summary') return 'Live summary'
+  if (isLiveGeneratedArtifact(artifact) && artifact.artifact_type === 'action_items') return 'Live actions'
   return artifactLabels[artifact.artifact_type] ?? artifact.artifact_type
 }
 
@@ -1562,6 +1632,11 @@ function guestIntakeAnswerLabel(artifact: OfficeMeetingArtifactRow) {
   return `${count} answer${count === 1 ? '' : 's'}`
 }
 
+function liveTranscriptSegmentLabel(artifact: OfficeMeetingArtifactRow) {
+  const count = artifactNumberMetadata(artifact, 'segment_count')
+  return `${count} segment${count === 1 ? '' : 's'}`
+}
+
 function artifactStringMetadata(artifact: OfficeMeetingArtifactRow, key: string) {
   const value = artifact.metadata?.[key]
   return typeof value === 'string' ? value : ''
@@ -1574,6 +1649,10 @@ function isRecordingArtifact(artifact: OfficeMeetingArtifactRow) {
 function recordingArtifactUrl(artifact: OfficeMeetingArtifactRow) {
   const token = artifactStringMetadata(artifact, 'share_token')
   return token ? `/recordings/${token}` : ''
+}
+
+function recordingArtifactId(artifact: OfficeMeetingArtifactRow) {
+  return artifactStringMetadata(artifact, 'recording_id')
 }
 
 function recordingArtifactStatusLabel(artifact: OfficeMeetingArtifactRow) {
@@ -1629,7 +1708,7 @@ function isPrepTemplateArtifact(artifact: OfficeMeetingArtifactRow) {
 function isFollowUpChecklistArtifact(artifact: OfficeMeetingArtifactRow) {
   return artifact.artifact_type === 'action_items'
     && artifactMetadataStatus(artifact) === 'generated'
-    && artifact.metadata?.generated_from === 'meeting_closeout'
+    && (artifact.metadata?.generated_from === 'meeting_closeout' || isLiveGeneratedArtifact(artifact))
 }
 
 function isChecklistArtifact(artifact: OfficeMeetingArtifactRow) {
@@ -1662,6 +1741,12 @@ function checklistItems(artifact: OfficeMeetingArtifactRow) {
 
 function artifactStatusLabel(artifact: OfficeMeetingArtifactRow) {
   const status = artifactMetadataStatus(artifact)
+  if (isLiveTranscriptArtifact(artifact)) {
+    const liveStatus = artifactStringMetadata(artifact, 'live_status')
+    if (liveStatus === 'finalized') return 'Finalized'
+    if (liveStatus === 'recording') return 'Live'
+    return 'Live notes'
+  }
   if (status === 'placeholder') return isPrepTemplateArtifact(artifact) ? 'Prep template' : 'Awaiting capture'
   if (isFollowUpChecklistArtifact(artifact)) return 'Follow-up ready'
   if (status === 'edited') return 'Edited'
@@ -1679,6 +1764,16 @@ function scrollToMeetingDetail(selector: string) {
   if (typeof document === 'undefined') return
   nextTick(() => {
     document.querySelector(selector)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+}
+
+function scrollToMeetingCard(meetingId: string) {
+  if (typeof document === 'undefined') return
+  nextTick(() => {
+    document.querySelector(`[data-office-meeting-id="${selectorEscape(meetingId)}"]`)?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest'
+    })
   })
 }
 
@@ -1857,18 +1952,26 @@ async function updateMeetingStatus(status: 'live' | 'ended' | 'cancelled', targe
   }
   updatingMeetingStatus.value = status
   try {
-    const result = await $fetch<{ guestAccessExpired?: number, guestBadgesExpired?: number }>(`/api/office/${props.officeId}/meetings/${meeting.id}`, {
+    const result = await $fetch<{
+      guestAccessExpired?: number
+      guestBadgesExpired?: number
+      generatedSummaryArtifactId?: string
+      generatedActionItemsArtifactId?: string
+    }>(`/api/office/${props.officeId}/meetings/${meeting.id}`, {
       method: 'PATCH',
       body: { status }
     })
     const guestAccessExpired = result.guestAccessExpired ?? 0
     const guestBadgesExpired = result.guestBadgesExpired ?? 0
+    const generatedLiveArtifacts = Boolean(result.generatedSummaryArtifactId || result.generatedActionItemsArtifactId)
     if (status === 'live' && meeting.zone_id) emit('enterOfficeZone', meeting.zone_id)
     toast.add({
       title: status === 'live' ? 'Meeting started' : status === 'ended' ? 'Meeting ended' : 'Meeting cancelled',
-      description: guestAccessExpired
-        ? `${guestAccessExpired} guest access pass${guestAccessExpired === 1 ? '' : 'es'} ended${guestBadgesExpired ? `, ${guestBadgesExpired} badge${guestBadgesExpired === 1 ? '' : 's'} expired` : ''}.`
-        : undefined,
+      description: generatedLiveArtifacts
+        ? 'Live transcript summary and action items were generated.'
+        : guestAccessExpired
+          ? `${guestAccessExpired} guest access pass${guestAccessExpired === 1 ? '' : 'es'} ended${guestBadgesExpired ? `, ${guestBadgesExpired} badge${guestBadgesExpired === 1 ? '' : 's'} expired` : ''}.`
+          : undefined,
       icon: status === 'live' ? 'i-lucide-play' : status === 'ended' ? 'i-lucide-check' : 'i-lucide-x',
       color: status === 'cancelled' ? 'warning' : 'success',
       duration: 1400
@@ -1946,6 +2049,77 @@ function actionItemAssigneeLabel(item: OfficeMeetingActionItemRow) {
 
 function actionItemTaskUrl(item: OfficeMeetingActionItemRow) {
   return item.task_id ? `/agency/tasks/${item.task_id}` : ''
+}
+
+async function askMeetingQuestion() {
+  if (!selectedMeeting.value || meetingAnswerPending.value) return
+  const question = meetingQuestion.value.trim()
+  if (question.length < 3) {
+    meetingAnswerError.value = 'Ask a specific question about this meeting.'
+    return
+  }
+
+  meetingAnswerPending.value = true
+  meetingAnswerError.value = ''
+  try {
+    const response = await $fetch<{
+      answer: string
+      sources: MeetingQuestionSource[]
+    }>(`/api/office/${props.officeId}/meetings/${selectedMeeting.value.id}/ask`, {
+      method: 'POST',
+      body: { question }
+    })
+    meetingAnswer.value = response.answer
+    meetingAnswerSources.value = response.sources
+  } catch (err: unknown) {
+    const message = err && typeof err === 'object' && 'data' in err
+      ? (err as { data?: { statusMessage?: string } }).data?.statusMessage
+      : undefined
+    meetingAnswerError.value = message || 'Could not answer from this meeting yet.'
+  } finally {
+    meetingAnswerPending.value = false
+  }
+}
+
+async function searchMeetingMemory() {
+  if (meetingMemoryPending.value) return
+  const question = meetingMemoryQuestion.value.trim()
+  if (question.length < 3) {
+    meetingMemoryError.value = 'Ask a specific question across meeting memory.'
+    return
+  }
+
+  meetingMemoryPending.value = true
+  meetingMemoryError.value = ''
+  try {
+    const response = await $fetch<{
+      answer: string
+      sources: MeetingMemorySource[]
+    }>(`/api/office/${props.officeId}/meetings/search`, {
+      method: 'POST',
+      body: { question }
+    })
+    meetingMemoryAnswer.value = response.answer
+    meetingMemorySources.value = response.sources
+  } catch (err: unknown) {
+    const message = err && typeof err === 'object' && 'data' in err
+      ? (err as { data?: { statusMessage?: string } }).data?.statusMessage
+      : undefined
+    meetingMemoryError.value = message || 'Could not search meeting memory yet.'
+  } finally {
+    meetingMemoryPending.value = false
+  }
+}
+
+async function openMeetingMemorySource(source: MeetingMemorySource) {
+  if (!meetings.value.some(meeting => meeting.id === source.meeting_id)) {
+    await refresh()
+  }
+  selectedMeetingId.value = source.meeting_id
+  focusedArtifactId.value = source.id
+  focusedArtifactScrolled.value = false
+  await refreshArtifacts()
+  scrollToArtifact(source.id)
 }
 
 function dateTimeLocalValue(value?: string | null) {
@@ -2043,6 +2217,62 @@ async function createTaskFromActionItem(item: OfficeMeetingActionItemRow) {
     toast.add({ title: 'Could not create task', description: message || 'Choose an assignee or department first.', color: 'error' })
   } finally {
     creatingTaskForActionItemId.value = null
+  }
+}
+
+async function createTasksFromOpenActionItems() {
+  if (!selectedMeeting.value || creatingAllActionItemTasks.value) return
+  const items = unlinkedOpenActionItems.value
+  if (!items.length) {
+    toast.add({
+      title: 'No tasks to create',
+      description: 'Open follow-ups are already linked or completed.',
+      icon: 'i-lucide-list-checks',
+      color: 'neutral',
+      duration: 1600
+    })
+    return
+  }
+
+  creatingAllActionItemTasks.value = true
+  let created = 0
+  let linked = 0
+  let failed = 0
+  try {
+    for (const item of items) {
+      creatingTaskForActionItemId.value = item.id
+      try {
+        const response = await $fetch<{ task?: { id: string }, created: boolean }>(
+          `/api/office/${props.officeId}/meetings/${selectedMeeting.value.id}/action-items/${item.id}/task`,
+          {
+            method: 'POST',
+            body: {
+              priority: 'medium',
+              department_id: actionItemTaskDepartmentId.value || undefined
+            }
+          }
+        )
+        if (response.created) created += 1
+        else linked += 1
+      } catch {
+        failed += 1
+      }
+    }
+    await refreshActionItems()
+    toast.add({
+      title: failed ? 'Some tasks need review' : 'Tasks created',
+      description: [
+        created ? `${created} created` : '',
+        linked ? `${linked} already linked` : '',
+        failed ? `${failed} failed` : ''
+      ].filter(Boolean).join(' · '),
+      icon: failed ? 'i-lucide-triangle-alert' : 'i-lucide-list-plus',
+      color: failed ? 'warning' : 'success',
+      duration: 2200
+    })
+  } finally {
+    creatingTaskForActionItemId.value = null
+    creatingAllActionItemTasks.value = false
   }
 }
 
@@ -2196,6 +2426,7 @@ async function createSession(startNow = false, sendInvitesAfterCreate = false) {
     await refresh()
     selectedMeetingId.value = result.session.id
     lastCreatedMeetingId.value = result.session.id
+    scrollToMeetingCard(result.session.id)
     await Promise.all([refreshArtifacts(), refreshActionItems()])
     if (sendInvitesAfterCreate) {
       try {
@@ -2318,15 +2549,32 @@ watch(settings, () => {
 })
 
 watch(meetings, (rows) => {
+  if (!selectedMeetingId.value && selectInitialZoneMeeting()) return
   if (!selectedMeetingId.value && rows[0]) selectedMeetingId.value = rows[0].id
 }, { immediate: true })
 
+watch(selectedMeetingId, () => {
+  meetingQuestion.value = ''
+  meetingAnswer.value = ''
+  meetingAnswerSources.value = []
+  meetingAnswerError.value = ''
+})
+
 watch(() => props.refreshKey, async () => {
   await refresh()
-  if (!props.targetMeetingId && meetings.value[0]) {
+  if (!props.targetMeetingId && selectInitialZoneMeeting()) {
+    // Room-originated opens should land on that room's active meeting.
+  } else if (!props.targetMeetingId && meetings.value[0]) {
     selectedMeetingId.value = meetings.value[0].id
   }
   await Promise.all([refreshArtifacts(), refreshActionItems()])
+})
+
+watch(() => props.officeId, () => {
+  meetingMemoryQuestion.value = ''
+  meetingMemoryAnswer.value = ''
+  meetingMemorySources.value = []
+  meetingMemoryError.value = ''
 })
 
 watch(() => props.targetMeetingId, async (meetingId) => {
@@ -2335,7 +2583,16 @@ watch(() => props.targetMeetingId, async (meetingId) => {
     await refresh()
   }
   selectedMeetingId.value = meetingId
+  scrollToMeetingCard(meetingId)
   await Promise.all([refreshArtifacts(), refreshActionItems()])
+}, { immediate: true })
+
+watch(() => props.initialZoneId, async (zoneId) => {
+  if (!zoneId || props.targetMeetingId) return
+  if (!preferredMeetingForZone(zoneId)) await refresh()
+  if (selectInitialZoneMeeting()) {
+    await Promise.all([refreshArtifacts(), refreshActionItems()])
+  }
 }, { immediate: true })
 
 function isTargetArtifact(artifact: OfficeMeetingArtifactRow) {
@@ -2397,6 +2654,11 @@ watch(() => [props.targetArtifactId, props.targetActionItemId, props.targetFocus
 }, { immediate: true })
 
 watch(selectedArtifacts, (artifacts) => {
+  if (!artifacts.some(artifact => artifact.id === meetingAnswerSources.value[0]?.id)) {
+    meetingAnswer.value = ''
+    meetingAnswerSources.value = []
+    meetingAnswerError.value = ''
+  }
   if (
     focusedArtifactId.value
     && !focusedActionItemId.value
@@ -2713,6 +2975,69 @@ onBeforeUnmount(() => {
             <span>{{ meetings.length }} total</span>
           </div>
         </div>
+        <div class="rounded-lg bg-white/[0.025] p-3 ring-1 ring-white/[0.05]">
+          <div class="mb-2 flex flex-wrap items-start justify-between gap-2">
+            <div class="min-w-0">
+              <div class="flex items-center gap-1.5 text-xs font-semibold text-white/80">
+                <UIcon name="i-lucide-search-check" class="size-3.5 text-violet-300/85" />
+                Meeting memory
+              </div>
+              <p class="mt-0.5 text-[11px] leading-4 text-white/38">
+                Search recent notes, summaries, action items, and transcripts.
+              </p>
+            </div>
+            <span class="rounded-md bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-medium text-white/45 ring-1 ring-white/[0.05]">
+              {{ meetings.length }} meetings
+            </span>
+          </div>
+          <form class="flex flex-col gap-2 sm:flex-row" @submit.prevent="searchMeetingMemory">
+            <input
+              v-model="meetingMemoryQuestion"
+              class="h-9 min-w-0 flex-1 rounded-md border border-white/[0.08] bg-white/[0.04] px-2 text-xs text-white outline-none placeholder:text-white/30 focus:border-white/25 disabled:cursor-wait disabled:opacity-55"
+              placeholder="Ask across recent meetings"
+              :disabled="meetingMemoryPending"
+            >
+            <button
+              type="submit"
+              class="h-9 rounded-md bg-violet-400/15 px-3 text-xs font-semibold text-violet-100 ring-1 ring-violet-300/20 transition hover:bg-violet-400/20 disabled:cursor-not-allowed disabled:opacity-55"
+              :disabled="meetingMemoryPending || meetingMemoryQuestion.trim().length < 3"
+            >
+              <UIcon
+                :name="meetingMemoryPending ? 'i-lucide-loader-2' : 'i-lucide-search'"
+                class="mr-1 inline size-3.5"
+                :class="meetingMemoryPending ? 'animate-spin' : ''"
+              />
+              {{ meetingMemoryPending ? 'Searching' : 'Search' }}
+            </button>
+          </form>
+          <div
+            v-if="meetingMemoryError"
+            class="mt-2 rounded-md bg-red-400/[0.07] px-3 py-2 text-xs leading-5 text-red-50/75 ring-1 ring-red-300/15"
+          >
+            {{ meetingMemoryError }}
+          </div>
+          <div
+            v-else-if="meetingMemoryAnswer"
+            class="mt-2 rounded-md bg-violet-400/[0.07] px-3 py-2 ring-1 ring-violet-300/15"
+          >
+            <p class="whitespace-pre-line text-xs leading-5 text-white/72">
+              {{ meetingMemoryAnswer }}
+            </p>
+            <div v-if="meetingMemorySources.length" class="mt-2 flex flex-wrap gap-1.5">
+              <button
+                v-for="source in meetingMemorySources"
+                :key="source.id"
+                type="button"
+                class="inline-flex max-w-full items-center gap-1 rounded-md bg-white/[0.05] px-1.5 py-0.5 text-[10px] font-medium text-white/48 ring-1 ring-white/[0.06] transition hover:bg-white/[0.08] hover:text-white/70"
+                :title="`${source.meeting_title}: ${source.excerpt}`"
+                @click="openMeetingMemorySource(source)"
+              >
+                <UIcon name="i-lucide-file-search" class="size-3" />
+                <span class="truncate">{{ source.meeting_title }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
         <div
           v-if="pending"
           class="flex items-center justify-center rounded-lg bg-white/[0.035] px-3 py-8 ring-1 ring-white/[0.05]"
@@ -2758,8 +3083,9 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div
-          v-for="meeting in meetings.slice(0, 6)"
+          v-for="meeting in visibleMeetings"
           :key="meeting.id"
+          :data-office-meeting-id="meeting.id"
           class="w-full rounded-lg px-3 py-2 text-left ring-1 transition"
           :class="selectedMeeting?.id === meeting.id
             ? 'bg-sky-400/10 ring-sky-300/20'
@@ -3610,22 +3936,38 @@ onBeforeUnmount(() => {
                 <span class="text-[11px] leading-4 text-white/40">
                   Task conversion uses the assignee or your default department when available.
                 </span>
-                <select
-                  v-model="actionItemTaskDepartmentId"
-                  class="h-7 w-44 rounded-md border border-white/[0.08] bg-[#171a20] px-2 text-[11px] text-white/65 outline-none transition focus:border-white/25"
-                  title="Fallback department for task creation"
-                >
-                  <option value="">
-                    Auto department
-                  </option>
-                  <option
-                    v-for="department in departments"
-                    :key="department.id"
-                    :value="department.id"
+                <div class="flex flex-wrap items-center gap-2">
+                  <select
+                    v-model="actionItemTaskDepartmentId"
+                    class="h-7 w-44 rounded-md border border-white/[0.08] bg-[#171a20] px-2 text-[11px] text-white/65 outline-none transition focus:border-white/25"
+                    title="Fallback department for task creation"
                   >
-                    {{ department.name }}
-                  </option>
-                </select>
+                    <option value="">
+                      Auto department
+                    </option>
+                    <option
+                      v-for="department in departments"
+                      :key="department.id"
+                      :value="department.id"
+                    >
+                      {{ department.name }}
+                    </option>
+                  </select>
+                  <button
+                    type="button"
+                    class="h-7 rounded-md bg-sky-400/10 px-2 text-[11px] font-semibold text-sky-100 ring-1 ring-sky-300/15 transition hover:bg-sky-400/15 disabled:cursor-wait disabled:opacity-60"
+                    :disabled="creatingAllActionItemTasks || !unlinkedOpenActionItems.length"
+                    :title="unlinkedOpenActionItems.length ? `Create ${unlinkedOpenActionItems.length} task${unlinkedOpenActionItems.length === 1 ? '' : 's'}` : 'No unlinked open follow-ups'"
+                    @click="createTasksFromOpenActionItems"
+                  >
+                    <UIcon
+                      :name="creatingAllActionItemTasks ? 'i-lucide-loader-2' : 'i-lucide-list-plus'"
+                      class="mr-1 inline size-3"
+                      :class="creatingAllActionItemTasks ? 'animate-spin' : ''"
+                    />
+                    {{ creatingAllActionItemTasks ? 'Creating' : `Create ${unlinkedOpenActionItems.length || ''} tasks` }}
+                  </button>
+                </div>
               </div>
               <div
                 v-for="item in selectedActionItems"
@@ -3766,6 +4108,70 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
+          <div class="mb-3 rounded-lg bg-white/[0.025] p-3 ring-1 ring-white/[0.05]">
+            <div class="mb-2 flex flex-wrap items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5 text-xs font-semibold text-white/80">
+                  <UIcon name="i-lucide-message-circle-question" class="size-3.5 text-violet-300/85" />
+                  Ask this meeting
+                </div>
+                <p class="mt-0.5 text-[11px] leading-4 text-white/38">
+                  Answers use this meeting's notes, transcript, summary, and action items.
+                </p>
+              </div>
+              <span class="rounded-md bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-medium text-white/45 ring-1 ring-white/[0.05]">
+                {{ meetingQuestionAvailable ? 'Ready' : 'Needs artifacts' }}
+              </span>
+            </div>
+            <form class="flex flex-col gap-2 sm:flex-row" @submit.prevent="askMeetingQuestion">
+              <input
+                v-model="meetingQuestion"
+                class="h-9 min-w-0 flex-1 rounded-md border border-white/[0.08] bg-white/[0.04] px-2 text-xs text-white outline-none placeholder:text-white/30 focus:border-white/25 disabled:cursor-not-allowed disabled:opacity-55"
+                placeholder="Ask about decisions, blockers, owners, or next steps"
+                :disabled="meetingAnswerPending || !meetingQuestionAvailable"
+              >
+              <button
+                type="submit"
+                class="h-9 rounded-md bg-violet-400/15 px-3 text-xs font-semibold text-violet-100 ring-1 ring-violet-300/20 transition hover:bg-violet-400/20 disabled:cursor-not-allowed disabled:opacity-55"
+                :disabled="meetingAnswerPending || !meetingQuestionAvailable || meetingQuestion.trim().length < 3"
+              >
+                <UIcon
+                  :name="meetingAnswerPending ? 'i-lucide-loader-2' : 'i-lucide-sparkles'"
+                  class="mr-1 inline size-3.5"
+                  :class="meetingAnswerPending ? 'animate-spin' : ''"
+                />
+                {{ meetingAnswerPending ? 'Asking' : 'Ask' }}
+              </button>
+            </form>
+            <div
+              v-if="meetingAnswerError"
+              class="mt-2 rounded-md bg-red-400/[0.07] px-3 py-2 text-xs leading-5 text-red-50/75 ring-1 ring-red-300/15"
+            >
+              {{ meetingAnswerError }}
+            </div>
+            <div
+              v-else-if="meetingAnswer"
+              class="mt-2 rounded-md bg-violet-400/[0.07] px-3 py-2 ring-1 ring-violet-300/15"
+            >
+              <p class="whitespace-pre-line text-xs leading-5 text-white/72">
+                {{ meetingAnswer }}
+              </p>
+              <div v-if="meetingAnswerSources.length" class="mt-2 flex flex-wrap gap-1.5">
+                <button
+                  v-for="source in meetingAnswerSources"
+                  :key="source.id"
+                  type="button"
+                  class="inline-flex max-w-full items-center gap-1 rounded-md bg-white/[0.05] px-1.5 py-0.5 text-[10px] font-medium text-white/48 ring-1 ring-white/[0.06] transition hover:bg-white/[0.08] hover:text-white/70"
+                  :title="source.excerpt"
+                  @click="scrollToArtifact(source.id)"
+                >
+                  <UIcon name="i-lucide-file-text" class="size-3" />
+                  <span class="truncate">{{ source.title }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div
             v-if="artifactsPending"
             data-office-artifacts-list
@@ -3851,14 +4257,26 @@ onBeforeUnmount(() => {
                     <UIcon name="i-lucide-external-link" class="size-3" />
                     Open recording
                   </NuxtLink>
+                  <button
+                    v-if="isRecordingArtifact(artifact) && recordingArtifactId(artifact)"
+                    type="button"
+                    class="inline-flex items-center gap-1 rounded-md bg-white/[0.04] px-1.5 py-1 text-[10px] font-semibold text-white/65 ring-1 ring-white/[0.06] transition hover:bg-white/[0.08] hover:text-white/85"
+                    :aria-label="`Manage recording for ${artifact.title}`"
+                    @click="selectedMeeting && emit('openOfficeRecordings', selectedMeeting.id, recordingArtifactId(artifact))"
+                  >
+                    <UIcon name="i-lucide-settings-2" class="size-3" />
+                    Manage
+                  </button>
                   <span
                     v-if="artifactStatusLabel(artifact)"
                     class="rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1"
-                    :class="isPlaceholderArtifact(artifact)
-                      ? 'bg-amber-300/10 text-amber-100 ring-amber-200/15'
-                      : isSystemArtifact(artifact)
-                        ? 'bg-sky-400/10 text-sky-100 ring-sky-300/15'
-                        : 'bg-emerald-400/10 text-emerald-100 ring-emerald-300/15'"
+                    :class="isLiveTranscriptArtifact(artifact)
+                      ? 'bg-emerald-400/10 text-emerald-100 ring-emerald-300/15'
+                      : isPlaceholderArtifact(artifact)
+                        ? 'bg-amber-300/10 text-amber-100 ring-amber-200/15'
+                        : isSystemArtifact(artifact)
+                          ? 'bg-sky-400/10 text-sky-100 ring-sky-300/15'
+                          : 'bg-emerald-400/10 text-emerald-100 ring-emerald-300/15'"
                   >
                     {{ artifactStatusLabel(artifact) }}
                   </span>
@@ -3942,6 +4360,20 @@ onBeforeUnmount(() => {
                     <UIcon name="i-lucide-crosshair" class="size-3" />
                     Source
                   </span>
+                  <span
+                    v-if="isLiveGeneratedArtifact(artifact)"
+                    class="inline-flex items-center gap-1 rounded-md bg-emerald-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-100 ring-1 ring-emerald-300/15"
+                  >
+                    <UIcon name="i-lucide-sparkles" class="size-3" />
+                    AI closeout
+                  </span>
+                  <span
+                    v-if="isLiveTranscriptArtifact(artifact)"
+                    class="inline-flex items-center gap-1 rounded-md bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-medium text-white/50 ring-1 ring-white/[0.05]"
+                  >
+                    <UIcon name="i-lucide-audio-lines" class="size-3" />
+                    {{ liveTranscriptSegmentLabel(artifact) }}
+                  </span>
                   <button
                     v-if="artifact.artifact_type === 'action_items' && !isSystemArtifact(artifact) && artifactDeliveryStatus(artifact) !== 'sent' && !artifactHasActiveFollowUpJob(artifact)"
                     type="button"
@@ -4001,7 +4433,7 @@ onBeforeUnmount(() => {
               <p
                 v-else-if="!isChecklistArtifact(artifact) && !isRecordingArtifact(artifact)"
                 class="mt-1 whitespace-pre-line text-xs leading-5 text-white/42"
-                :class="isCloseoutArtifact(artifact) || isGuestIntakeArtifact(artifact) ? '' : 'line-clamp-3'"
+                :class="isCloseoutArtifact(artifact) || isGuestIntakeArtifact(artifact) || isLiveTranscriptArtifact(artifact) ? '' : 'line-clamp-3'"
               >
                 {{ artifact.content || 'Ready for capture.' }}
               </p>

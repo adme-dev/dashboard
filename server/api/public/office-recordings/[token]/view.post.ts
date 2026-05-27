@@ -65,7 +65,7 @@ export default defineEventHandler(async (event) => {
   const viewerEmail = normalizeViewerEmail(body.viewerEmail)
   const viewerKey = normalizeViewerId(body.viewerId)
 
-  if (!body.countView && (viewerEmail || viewerKey)) {
+  if (viewerEmail || viewerKey) {
     const existingView = await queryOne<{ id: string }>(
       `SELECT id
        FROM office_recording_views
@@ -74,6 +74,7 @@ export default defineEventHandler(async (event) => {
            ($2::text IS NOT NULL AND lower(viewer_email) = $2)
            OR ($2::text IS NULL AND $3::text IS NOT NULL AND viewer_key = $3)
          )
+         ${body.countView ? 'AND created_at > now() - interval \'30 minutes\'' : ''}
        ORDER BY created_at DESC
        LIMIT 1`,
       [recording.id, viewerEmail, viewerKey]

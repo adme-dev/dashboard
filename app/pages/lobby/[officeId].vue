@@ -276,6 +276,7 @@ const submitBlockers = computed(() => {
   const blockers: string[] = []
   if (!name.value.trim()) blockers.push('name')
   if (!email.value.trim()) blockers.push('email')
+  else if (!emailValid.value) blockers.push('valid email')
   if (!selectedRoomSlug.value && !roomResolvedByMeetingInvite.value) blockers.push('room')
   if (missingRequiredIntakeFields.value.length) {
     blockers.push(`${missingRequiredIntakeFields.value.length} required detail${missingRequiredIntakeFields.value.length === 1 ? '' : 's'}`)
@@ -344,9 +345,15 @@ const roomOptions = computed(() =>
   }))
 )
 
+const emailValid = computed(() =>
+  !email.value.trim()
+  || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim())
+)
+
 const canSubmit = computed(() =>
   name.value.trim().length > 0
   && email.value.trim().length > 0
+  && emailValid.value
   && (selectedRoomSlug.value.length > 0 || roomResolvedByMeetingInvite.value)
   && missingRequiredIntakeFields.value.length === 0
   && data.value?.availability?.isAvailable !== false
@@ -674,7 +681,6 @@ function normalizeBrandTexture(value?: string) {
   if (texture === 'grid' || texture === 'mesh' || texture === 'none') return texture
   return 'dots'
 }
-
 
 function clearStoredRequest() {
   if (typeof window === 'undefined') return
@@ -1358,6 +1364,7 @@ watch(
                 :items="roomOptions"
                 value-key="value"
                 class="w-full"
+                :ui="{ base: 'w-full', content: 'w-full' }"
               />
             </UFormField>
 
@@ -1372,6 +1379,7 @@ watch(
                 :min="scheduledMinDateTime"
                 step="900"
                 class="w-full"
+                :ui="{ base: 'w-full' }"
                 @update:model-value="scheduledStartSuggested = false"
               />
             </UFormField>
@@ -1398,7 +1406,9 @@ watch(
                 v-model="name"
                 autocomplete="name"
                 placeholder="Jane Smith"
+                required
                 class="w-full"
+                :ui="{ base: 'w-full' }"
               />
             </UFormField>
 
@@ -1408,7 +1418,10 @@ watch(
                 type="email"
                 autocomplete="email"
                 placeholder="jane@example.com"
+                required
+                :aria-invalid="email.trim() && !emailValid ? 'true' : undefined"
                 class="w-full"
+                :ui="{ base: 'w-full' }"
               />
             </UFormField>
 
@@ -1418,6 +1431,7 @@ watch(
                 :rows="4"
                 placeholder="Optional context for the host"
                 class="w-full"
+                :ui="{ base: 'w-full' }"
               />
             </UFormField>
 
@@ -1448,20 +1462,29 @@ watch(
                   v-if="field.type === 'textarea'"
                   v-model="intakeAnswers[field.id]"
                   :rows="3"
+                  :required="field.required"
+                  :aria-invalid="field.required && !intakeAnswers[field.id]?.trim() ? 'true' : undefined"
                   class="w-full"
+                  :ui="{ base: 'w-full' }"
                 />
                 <USelect
                   v-else-if="field.type === 'select'"
                   v-model="intakeAnswers[field.id]"
                   :items="intakeOptions(field)"
                   value-key="value"
+                  :required="field.required"
+                  :aria-invalid="field.required && !intakeAnswers[field.id]?.trim() ? 'true' : undefined"
                   class="w-full"
+                  :ui="{ base: 'w-full', content: 'w-full' }"
                 />
                 <UInput
                   v-else
                   v-model="intakeAnswers[field.id]"
                   :type="field.type === 'email' ? 'email' : 'text'"
+                  :required="field.required"
+                  :aria-invalid="field.required && !intakeAnswers[field.id]?.trim() ? 'true' : undefined"
                   class="w-full"
+                  :ui="{ base: 'w-full' }"
                 />
               </UFormField>
             </div>

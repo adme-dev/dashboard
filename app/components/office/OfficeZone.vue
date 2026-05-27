@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { OfficeZoneRow, OfficeParticipant, OfficeMemberRow, OfficePresenceEventKind, ZoneType } from '~~/app/types/office'
+import { safeMediaUrl } from '~~/app/utils/safe-url'
 
 type DeskOwner = OfficeMemberRow & {
   name: string | null
@@ -93,6 +94,7 @@ const deskInitials = computed(() =>
     .join('')
     .toUpperCase()
 )
+const deskAvatarSrc = computed(() => safeMediaUrl(props.deskOwner?.avatar_url))
 const deskPresence = computed(() =>
   props.occupants.find(p => p.handle === `user:${props.deskOwner?.user_id}`)
 )
@@ -203,7 +205,7 @@ const displayPosition = computed(() => ({
     >
       <div class="flex min-w-0 items-center justify-between gap-2">
         <UAvatar
-          :src="deskOwner?.avatar_url || undefined"
+          :src="deskAvatarSrc"
           :alt="deskName"
           size="sm"
           :ui="{ root: 'ring-1 ring-white/15 shrink-0' }"

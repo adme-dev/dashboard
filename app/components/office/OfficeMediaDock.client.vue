@@ -7,8 +7,16 @@ const props = defineProps<{
   occupantCount: number
   mediaSession?: OfficeMediaSession | null
   mediaUnavailableMessage?: string | null
+  canUseLiveNotes?: boolean
+  liveNotesDisabledMessage?: string | null
 }>()
 
+const emit = defineEmits<{
+  liveNotesChanged: []
+  openOfficeArtifacts: [meetingId?: string, artifactId?: string]
+}>()
+
+const toast = useToast()
 const localVideoEl = ref<HTMLVideoElement | null>(null)
 const screenVideoEl = ref<HTMLVideoElement | null>(null)
 const localStream = ref<MediaStream | null>(null)
@@ -23,6 +31,16 @@ const selectedAudioInputId = ref('')
 const selectedVideoInputId = ref('')
 const selectedAudioOutputId = ref('')
 const refreshingDevices = ref(false)
+const liveNotesState = ref<'idle' | 'starting' | 'recording' | 'stopping' | 'error'>('idle')
+const liveNotesError = ref('')
+const liveNotesLastTranscript = ref('')
+const liveNotesSequence = ref(0)
+const liveNotesSegmentCount = ref(0)
+const liveNotesMeetingId = ref<string | null>(null)
+const liveNotesPauseMessage = ref('')
+const liveNotesRecorder = shallowRef<MediaRecorder | null>(null)
+const endingLiveMeeting = ref(false)
+let liveNotesTimer: ReturnType<typeof setTimeout> | null = null
 const realtime = useOfficeRealtime({
   officeId: toRef(props, 'officeId'),
   zoneId: toRef(props, 'zoneId'),
@@ -41,9 +59,21 @@ const canSelectOutputDevice = computed(() =>
   typeof HTMLMediaElement !== 'undefined'
   && 'setSinkId' in HTMLMediaElement.prototype
 )
+const liveNotesSupported = computed(() =>
+  typeof MediaRecorder !== 'undefined'
+  && typeof FormData !== 'undefined'
+)
+const liveNotesAllowed = computed(() => props.canUseLiveNotes !== false)
+const liveNotesBlockedMessage = computed(() =>
+  props.liveNotesDisabledMessage || 'Enter this room before starting live AI notes.'
+)
 const audioEnabled = computed(() => {
   void mediaStateVersion.value
   return Boolean(localStream.value?.getAudioTracks().some(track => track.enabled && track.readyState === 'live'))
+})
+const hasAudioTrack = computed(() => {
+  void mediaStateVersion.value
+  return Boolean(localStream.value?.getAudioTracks().some(track => track.readyState === 'live'))
 })
 const videoEnabled = computed(() => {
   void mediaStateVersion.value
@@ -85,13 +115,16 @@ const audioInputs = computed(() => mediaDevices.value.filter(device => device.ki
 const videoInputs = computed(() => mediaDevices.value.filter(device => device.kind === 'videoinput'))
 const audioOutputs = computed(() => mediaDevices.value.filter(device => device.kind === 'audiooutput'))
 const audioButtonLabel = computed(() => {
-  if (requesting.value === 'audio') return audioEnabled.value ? 'Muting' : 'Starting'
-  return audioEnabled.value ? 'Mute' : 'Unmute'
+  if (requesting.value === 'audio') return audioEnabled.value ? 'Muting' : hasAudioTrack.value ? 'Unmuting' : 'Starting'
+  if (audioEnabled.value) return 'Mute'
+  return hasAudioTrack.value ? 'Unmute' : 'Start mic'
 })
 const audioButtonTitle = computed(() =>
   audioEnabled.value
     ? 'Turn microphone off.'
-    : 'Turn microphone on. Your browser may ask for permission.'
+    : hasAudioTrack.value
+      ? 'Turn microphone back on.'
+      : 'Start microphone. Your browser may ask for permission.'
 )
 const videoButtonLabel = computed(() => {
   if (requesting.value === 'video') return videoEnabled.value ? 'Stopping' : 'Starting'
@@ -122,6 +155,58 @@ const setupSummary = computed(() => [
   videoEnabled.value ? selectedVideoInputLabel.value : 'Cam off',
   canSelectOutputDevice.value ? selectedAudioOutputLabel.value : 'System output'
 ])
+const liveNotesLabel = computed(() => {
+  if (liveNotesState.value === 'starting') return 'Starting AI notes'
+  if (liveNotesState.value === 'recording') return 'AI notes live'
+  if (liveNotesState.value === 'stopping') return 'Saving AI notes'
+  if (liveNotesState.value === 'error') return 'AI notes issue'
+  return 'Start AI notes'
+})
+const liveNotesActionLabel = computed(() => {
+  if (liveNotesState.value === 'recording') return 'Stop notes'
+  if (liveNotesState.value === 'error') return 'Retry AI notes'
+  return liveNotesLabel.value
+})
+const liveNotesDetail = computed(() => {
+  if (!liveNotesSupported.value) return 'Live notes are not supported in this browser.'
+  if (!liveNotesAllowed.value) return liveNotesBlockedMessage.value
+  if (liveNotesState.value === 'recording' && !audioEnabled.value) return 'Microphone is muted. AI notes will pause until the mic is on.'
+  if (liveNotesState.value === 'recording') return liveNotesLastTranscript.value || `Listening in short segments${liveNotesSegmentCount.value ? ` · ${liveNotesSegmentCount.value} saved` : ''}.`
+  if (liveNotesState.value === 'stopping') return 'Finalizing the current audio segment.'
+  if (liveNotesError.value) return liveNotesError.value
+  return 'Transcribe microphone audio into the active meeting transcript.'
+})
+const liveNotesCountLabel = computed(() =>
+  liveNotesSegmentCount.value
+    ? `${liveNotesSegmentCount.value} segment${liveNotesSegmentCount.value === 1 ? '' : 's'}`
+    : ''
+)
+const hasSavedLiveNotes = computed(() => liveNotesSegmentCount.value > 0)
+const canEndLiveNotesMeeting = computed(() =>
+  hasSavedLiveNotes.value
+  && Boolean(liveNotesMeetingId.value)
+  && !endingLiveMeeting.value
+  && (liveNotesState.value === 'idle' || liveNotesState.value === 'error')
+)
+const endLiveNotesMeetingTitle = computed(() => {
+  if (!liveNotesMeetingId.value) return 'Start live AI notes before ending this meeting.'
+  if (liveNotesState.value === 'recording') return 'Stop AI notes first so the final audio segment can be saved.'
+  if (liveNotesState.value === 'starting' || liveNotesState.value === 'stopping') return 'Wait for live notes to finish saving.'
+  return 'End this live meeting and generate summary/action artifacts.'
+})
+
+function liveAudioTracks() {
+  return localStream.value?.getAudioTracks().filter(track => track.readyState === 'live') ?? []
+}
+
+function preferredLiveNotesMimeType() {
+  if (typeof MediaRecorder === 'undefined') return ''
+  return [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4'
+  ].find(type => MediaRecorder.isTypeSupported(type)) ?? ''
+}
 
 function deviceLabel(device: MediaDeviceInfo, fallback: string, index: number) {
   return device.label || `${fallback} ${index + 1}`
@@ -129,6 +214,12 @@ function deviceLabel(device: MediaDeviceInfo, fallback: string, index: number) {
 
 function stopStream(stream: MediaStream | null) {
   for (const track of stream?.getTracks() ?? []) track.stop()
+}
+
+function clearLiveNotesTimer() {
+  if (!liveNotesTimer) return
+  clearTimeout(liveNotesTimer)
+  liveNotesTimer = null
 }
 
 function syncMediaState() {
@@ -179,7 +270,7 @@ function videoConstraints(): boolean | MediaTrackConstraints {
 }
 
 async function switchAudioInput() {
-  if (!audioEnabled.value) return
+  if (!hasAudioTrack.value) return
   requesting.value = 'audio'
   try {
     await ensureLocalStream({ audio: audioConstraints(), video: false })
@@ -255,14 +346,219 @@ async function ensureLocalStream(constraints: MediaStreamConstraints) {
   return localStream.value
 }
 
-async function toggleAudio() {
-  if (audioEnabled.value) {
-    for (const track of localStream.value?.getAudioTracks() ?? []) {
-      track.stop()
-      localStream.value?.removeTrack(track)
-    }
-    cleanupEmptyLocalStream()
+async function ensureLiveNotesAudio() {
+  const tracks = liveAudioTracks()
+  if (tracks.length) {
+    for (const track of tracks) track.enabled = true
+    syncMediaState()
     await realtime.publish()
+    return true
+  }
+
+  const stream = await ensureLocalStream({ audio: audioConstraints(), video: false })
+  await realtime.publish()
+  await refreshDevices()
+  return Boolean(stream?.getAudioTracks().some(track => track.readyState === 'live'))
+}
+
+async function sendLiveNotesChunk(blob: Blob, final = false) {
+  if (!blob.size && !final) return
+
+  const formData = new FormData()
+  if (blob.size) {
+    formData.append('audio', blob, `live-notes-${liveNotesSequence.value}.webm`)
+  }
+  formData.append('sequence', String(liveNotesSequence.value))
+  formData.append('final', final ? 'true' : 'false')
+
+  const result = await $fetch<{ meetingId: string, artifact?: { metadata?: Record<string, unknown> }, transcript: string, skipped?: boolean }>(
+    `/api/office/${props.officeId}/zones/${props.zoneId}/live-transcription`,
+    {
+      method: 'POST',
+      body: formData
+    }
+  )
+  liveNotesMeetingId.value = result.meetingId
+
+  if (result.transcript) {
+    liveNotesLastTranscript.value = result.transcript
+    const segmentCount = result.artifact?.metadata?.segment_count
+    liveNotesSegmentCount.value = typeof segmentCount === 'number' && Number.isFinite(segmentCount)
+      ? segmentCount
+      : liveNotesSegmentCount.value + 1
+    emit('liveNotesChanged')
+  } else if (!result.skipped && !liveNotesLastTranscript.value) {
+    liveNotesLastTranscript.value = 'No speech detected in the last segment.'
+  }
+}
+
+function liveNotesRequestError(error: unknown) {
+  if (error && typeof error === 'object' && 'data' in error) {
+    const statusMessage = (error as { data?: { statusMessage?: string, message?: string } }).data?.statusMessage
+      || (error as { data?: { statusMessage?: string, message?: string } }).data?.message
+    if (statusMessage) return statusMessage
+  }
+  return error instanceof Error ? error.message : 'Could not transcribe the live audio segment.'
+}
+
+function startLiveNotesSegment() {
+  if (liveNotesState.value !== 'recording') return
+
+  const tracks = liveAudioTracks().filter(track => track.enabled)
+  if (!tracks.length) {
+    liveNotesState.value = 'error'
+    liveNotesError.value = 'Microphone is off. Turn it on before starting AI notes.'
+    return
+  }
+
+  const mimeType = preferredLiveNotesMimeType()
+  const chunks: BlobPart[] = []
+  const recorder = new MediaRecorder(new MediaStream(tracks), mimeType ? { mimeType } : undefined)
+  liveNotesRecorder.value = recorder
+
+  recorder.ondataavailable = (event) => {
+    if (event.data.size > 0) chunks.push(event.data)
+  }
+  recorder.onstop = () => {
+    clearLiveNotesTimer()
+    const final = liveNotesState.value === 'stopping'
+    const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' })
+    liveNotesSequence.value += 1
+    void sendLiveNotesChunk(blob, final)
+      .catch((error: unknown) => {
+        liveNotesState.value = 'error'
+        liveNotesError.value = liveNotesRequestError(error)
+      })
+      .finally(() => {
+        if (final) {
+          if (liveNotesPauseMessage.value) {
+            liveNotesError.value = liveNotesPauseMessage.value
+            liveNotesPauseMessage.value = ''
+            liveNotesState.value = 'error'
+          } else {
+            liveNotesState.value = 'idle'
+          }
+          liveNotesRecorder.value = null
+          return
+        }
+        if (liveNotesState.value === 'recording') startLiveNotesSegment()
+      })
+  }
+
+  recorder.start()
+  liveNotesTimer = setTimeout(() => {
+    if (recorder.state === 'recording') recorder.stop()
+  }, 15_000)
+}
+
+async function startLiveNotes() {
+  if (!liveNotesSupported.value || liveNotesState.value === 'recording' || liveNotesState.value === 'starting') return
+  if (!liveNotesAllowed.value) {
+    liveNotesState.value = 'error'
+    liveNotesError.value = liveNotesBlockedMessage.value
+    return
+  }
+  liveNotesState.value = 'starting'
+  liveNotesError.value = ''
+  liveNotesPauseMessage.value = ''
+  liveNotesLastTranscript.value = ''
+  if (!liveNotesMeetingId.value) {
+    liveNotesSequence.value = 0
+    liveNotesSegmentCount.value = 0
+  }
+  try {
+    const ready = await ensureLiveNotesAudio()
+    if (!ready) {
+      liveNotesState.value = 'error'
+      liveNotesError.value = 'Microphone is unavailable.'
+      return
+    }
+    liveNotesState.value = 'recording'
+    startLiveNotesSegment()
+  } catch (error) {
+    markMediaFailure('audio', error)
+    liveNotesState.value = 'error'
+    liveNotesError.value = explainMediaError(error)
+  }
+}
+
+function stopLiveNotes(reason = '') {
+  if (liveNotesState.value !== 'recording') return
+  liveNotesPauseMessage.value = reason
+  liveNotesState.value = 'stopping'
+  clearLiveNotesTimer()
+  const recorder = liveNotesRecorder.value
+  if (recorder?.state === 'recording') {
+    recorder.stop()
+    return
+  }
+  liveNotesState.value = 'idle'
+}
+
+function toggleLiveNotes() {
+  if (liveNotesState.value === 'recording') {
+    stopLiveNotes()
+    return
+  }
+  if (!liveNotesAllowed.value) {
+    liveNotesState.value = 'error'
+    liveNotesError.value = liveNotesBlockedMessage.value
+    return
+  }
+  void startLiveNotes()
+}
+
+async function endLiveNotesMeeting() {
+  const meetingId = liveNotesMeetingId.value
+  if (!meetingId || endingLiveMeeting.value) return
+  if (liveNotesState.value !== 'idle' && liveNotesState.value !== 'error') return
+
+  endingLiveMeeting.value = true
+  try {
+    const result = await $fetch<{
+      generatedSummaryArtifactId?: string
+      generatedActionItemsArtifactId?: string
+    }>(`/api/office/${props.officeId}/meetings/${meetingId}`, {
+      method: 'PATCH',
+      body: { status: 'ended' }
+    })
+    const generated = Boolean(result.generatedSummaryArtifactId || result.generatedActionItemsArtifactId)
+    toast.add({
+      title: 'Meeting ended',
+      description: generated ? 'Live summary and action items were generated.' : 'Live notes were saved to meeting artifacts.',
+      icon: generated ? 'i-lucide-sparkles' : 'i-lucide-check',
+      color: 'success',
+      duration: 1800
+    })
+    emit('liveNotesChanged')
+    emit('openOfficeArtifacts', meetingId, result.generatedSummaryArtifactId || result.generatedActionItemsArtifactId)
+  } catch (error: unknown) {
+    const message = error && typeof error === 'object' && 'data' in error
+      ? (error as { data?: { statusMessage?: string } }).data?.statusMessage
+      : undefined
+    toast.add({
+      title: 'Could not end meeting',
+      description: message || 'Open meeting artifacts and try again.',
+      icon: 'i-lucide-circle-alert',
+      color: 'error'
+    })
+  } finally {
+    endingLiveMeeting.value = false
+  }
+}
+
+async function toggleAudio() {
+  const tracks = liveAudioTracks()
+  if (tracks.length) {
+    const nextEnabled = !audioEnabled.value
+    for (const track of tracks) {
+      track.enabled = nextEnabled
+    }
+    syncMediaState()
+    await realtime.publish()
+    if (!nextEnabled && liveNotesState.value === 'recording') {
+      stopLiveNotes('AI notes paused because the microphone was muted.')
+    }
     return
   }
 
@@ -359,12 +655,26 @@ watch(() => props.mediaSession, () => {
   void realtime.publish()
 })
 
+watch(() => props.zoneId, () => {
+  if (liveNotesState.value === 'recording') stopLiveNotes()
+})
+
+watch(liveNotesAllowed, (allowed) => {
+  if (!allowed && liveNotesState.value === 'recording') stopLiveNotes()
+})
+
+watch(audioEnabled, (enabled) => {
+  if (enabled || liveNotesState.value !== 'recording') return
+  stopLiveNotes('AI notes paused because the microphone was muted.')
+})
+
 onMounted(() => {
   void refreshDevices()
   navigator.mediaDevices?.addEventListener?.('devicechange', refreshDevices)
 })
 
 onBeforeUnmount(() => {
+  stopLiveNotes()
   navigator.mediaDevices?.removeEventListener?.('devicechange', refreshDevices)
   stopStream(localStream.value)
   stopStream(screenStream.value)
@@ -552,6 +862,73 @@ onBeforeUnmount(() => {
           :class="canSelectOutputDevice ? 'text-sky-200/70' : 'text-white/25'"
         />
         <span class="truncate">{{ setupSummary[2] }}</span>
+      </div>
+    </div>
+
+    <div class="mt-2 rounded-lg border border-white/[0.06] bg-white/[0.025] p-2">
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          class="flex h-9 flex-1 basis-36 items-center justify-center gap-2 rounded-lg px-3 text-xs font-semibold ring-1 transition disabled:opacity-60 sm:flex-none"
+          :class="liveNotesState === 'recording'
+            ? 'bg-emerald-400/10 text-emerald-100 ring-emerald-300/15 hover:bg-emerald-400/15'
+            : liveNotesState === 'error'
+              ? 'bg-red-400/10 text-red-100 ring-red-300/15 hover:bg-red-400/15'
+              : 'bg-white/[0.04] text-white/65 ring-white/[0.06] hover:bg-white/[0.08]'"
+          :disabled="liveNotesState === 'starting' || liveNotesState === 'stopping' || !liveNotesSupported || !liveNotesAllowed"
+          :aria-pressed="liveNotesState === 'recording'"
+          :title="liveNotesAllowed ? 'Transcribe microphone audio into the active meeting transcript.' : liveNotesBlockedMessage"
+          @click="toggleLiveNotes"
+        >
+          <UIcon
+            :name="liveNotesState === 'starting' || liveNotesState === 'stopping'
+              ? 'i-lucide-loader-circle'
+              : liveNotesState === 'recording'
+                ? 'i-lucide-bot-message-square'
+                : liveNotesState === 'error' ? 'i-lucide-rotate-cw' : 'i-lucide-notebook-tabs'"
+            class="size-4"
+            :class="liveNotesState === 'starting' || liveNotesState === 'stopping' ? 'animate-spin' : ''"
+          />
+          {{ liveNotesActionLabel }}
+        </button>
+        <button
+          v-if="hasSavedLiveNotes"
+          type="button"
+          class="flex h-9 flex-1 basis-32 items-center justify-center gap-2 rounded-lg bg-sky-400/10 px-3 text-xs font-semibold text-sky-100 ring-1 ring-sky-300/15 transition hover:bg-sky-400/15 sm:flex-none"
+          title="Open the meeting artifacts for this room."
+          @click="emit('openOfficeArtifacts', liveNotesMeetingId || undefined)"
+        >
+          <UIcon name="i-lucide-files" class="size-4" />
+          Review notes
+        </button>
+        <button
+          v-if="hasSavedLiveNotes"
+          type="button"
+          class="flex h-9 flex-1 basis-40 items-center justify-center gap-2 rounded-lg bg-emerald-400/10 px-3 text-xs font-semibold text-emerald-100 ring-1 ring-emerald-300/15 transition hover:bg-emerald-400/15 disabled:cursor-wait disabled:opacity-60 sm:flex-none"
+          :disabled="!canEndLiveNotesMeeting"
+          :title="endLiveNotesMeetingTitle"
+          @click="endLiveNotesMeeting"
+        >
+          <UIcon
+            :name="endingLiveMeeting ? 'i-lucide-loader-circle' : 'i-lucide-check-check'"
+            class="size-4"
+            :class="endingLiveMeeting ? 'animate-spin' : ''"
+          />
+          End + summarize
+        </button>
+        <div class="min-w-0 basis-full">
+          <div
+            class="truncate text-[11px] font-medium"
+            :class="liveNotesState === 'recording'
+              ? 'text-emerald-100/80'
+              : liveNotesState === 'error' ? 'text-red-100/80' : 'text-white/55'"
+          >
+            {{ liveNotesLabel }}<span v-if="liveNotesCountLabel" class="text-white/32"> · {{ liveNotesCountLabel }}</span>
+          </div>
+          <p class="line-clamp-2 text-[10px] leading-4 text-white/35">
+            {{ liveNotesDetail }}
+          </p>
+        </div>
       </div>
     </div>
 

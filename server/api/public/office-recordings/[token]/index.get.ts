@@ -26,6 +26,7 @@ type PublicRecordingRow = Pick<
   | 'created_at'
   | 'updated_at'
 > & {
+  meeting_session_id: string | null
   meeting_title: string | null
   office_name: string | null
 }
@@ -58,6 +59,7 @@ export default defineEventHandler(async (event) => {
             r.view_count,
             r.created_at,
             r.updated_at,
+            r.meeting_session_id,
             oms.title AS meeting_title,
             o.name AS office_name
      FROM office_recordings r
@@ -82,10 +84,31 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const { storage_key: _storageKey, thumbnail_key: _thumbnailKey, password_hash: _passwordHash, ...publicRecording } = recording
+  const actionItemsArtifact = recording.meeting_session_id
+    ? await queryOne<{ content: string }>(
+        `SELECT content
+         FROM office_meeting_artifacts
+         WHERE meeting_session_id = $1
+           AND artifact_type = 'action_items'
+           AND metadata->>'source' = 'office_recording_transcription'
+           AND metadata->>'recording_id' = $2
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [recording.meeting_session_id, recording.id]
+      )
+    : null
+
+  const {
+    storage_key: _storageKey,
+    thumbnail_key: _thumbnailKey,
+    password_hash: _passwordHash,
+    meeting_session_id: _meetingSessionId,
+    ...publicRecording
+  } = recording
   return {
     recording: {
       ...publicRecording,
+      action_items: actionItemsArtifact?.content ?? '',
       media_url: await resolveOfficeRecordingAssetUrl(recording.storage_key),
       thumbnail_url: await resolveOfficeRecordingAssetUrl(recording.thumbnail_key)
     }

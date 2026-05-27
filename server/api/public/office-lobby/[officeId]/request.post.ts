@@ -148,9 +148,6 @@ export default defineEventHandler(async (event) => {
     if (!Number.isFinite(scheduledAt)) {
       throw createError({ statusCode: 400, statusMessage: 'Invalid meeting time' })
     }
-    if (scheduledAt < Date.now() + minimumNoticeMs) {
-      throw createError({ statusCode: 400, statusMessage: 'Meeting time is inside the minimum notice window' })
-    }
     scheduledStartAt = new Date(scheduledAt).toISOString()
     if (
       lobby
@@ -158,6 +155,9 @@ export default defineEventHandler(async (event) => {
       && !isInOfficeLobbyAvailabilityWindow(scheduledStartAt, lobbyConfig.availability_windows)
     ) {
       throw createError({ statusCode: 400, statusMessage: 'Meeting time is outside this lobby availability window' })
+    }
+    if (scheduledAt < Date.now() + minimumNoticeMs) {
+      throw createError({ statusCode: 400, statusMessage: 'Meeting time is inside the minimum notice window' })
     }
   }
 

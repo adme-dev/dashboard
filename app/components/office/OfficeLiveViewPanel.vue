@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { OfficePresenceSummary } from '~~/app/types/office'
+import { safeMediaUrl } from '~~/app/utils/safe-url'
 
 const props = defineProps<{
   officeId: string
@@ -213,7 +214,7 @@ function seenAtLabel(location: OfficePresenceSummary['locations'][number]) {
               <UAvatar
                 v-for="occupant in room.occupants.slice(0, 8)"
                 :key="occupant.handle"
-                :src="occupant.avatar_url || undefined"
+                :src="safeMediaUrl(occupant.avatar_url)"
                 :alt="locationName(occupant)"
                 size="3xs"
               />
@@ -261,7 +262,7 @@ function seenAtLabel(location: OfficePresenceSummary['locations'][number]) {
             class="flex min-w-0 items-center gap-2 rounded-lg bg-white/[0.035] px-2.5 py-2 ring-1 ring-white/[0.05]"
           >
             <UAvatar
-              :src="location.avatar_url || undefined"
+              :src="safeMediaUrl(location.avatar_url)"
               :alt="locationName(location)"
               size="xs"
             />

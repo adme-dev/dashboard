@@ -84,36 +84,51 @@ export default defineEventHandler(async (event) => {
     `SELECT ol.id AS lobby_id,
             ol.handle,
             ol.name,
-            COUNT(olr.id)::int AS total_requests,
-            COUNT(*) FILTER (WHERE olr.status = 'pending')::int AS pending_requests,
-            COUNT(*) FILTER (WHERE olr.status = 'accepted')::int AS accepted_requests,
-            COUNT(*) FILTER (WHERE olr.status = 'declined')::int AS declined_requests,
-            COUNT(*) FILTER (WHERE olr.status = 'expired')::int AS expired_requests,
-            COUNT(*) FILTER (WHERE olr.scheduled_start_at IS NOT NULL)::int AS scheduled_requests,
-            COUNT(ogb.id)::int AS guest_badges,
-            COUNT(*) FILTER (
-              WHERE olr.created_at >= date_trunc('day', now())
-                AND olr.created_at < date_trunc('day', now()) + interval '1 day'
-            )::int AS requests_today,
+            COALESCE(requests.total_requests, 0)::int AS total_requests,
+            COALESCE(requests.pending_requests, 0)::int AS pending_requests,
+            COALESCE(requests.accepted_requests, 0)::int AS accepted_requests,
+            COALESCE(requests.declined_requests, 0)::int AS declined_requests,
+            COALESCE(requests.expired_requests, 0)::int AS expired_requests,
+            COALESCE(requests.scheduled_requests, 0)::int AS scheduled_requests,
+            COALESCE(badges.guest_badges, 0)::int AS guest_badges,
+            COALESCE(requests.requests_today, 0)::int AS requests_today,
             CASE
               WHEN ol.config->>'daily_cap' ~ '^[0-9]+$'
               THEN (ol.config->>'daily_cap')::int
               ELSE NULL
             END AS daily_cap,
             CASE
-              WHEN COUNT(olr.id) = 0 THEN 0
+              WHEN COALESCE(requests.total_requests, 0) = 0 THEN 0
               ELSE ROUND(
-                COUNT(*) FILTER (WHERE olr.status = 'accepted')::numeric
-                / COUNT(olr.id)::numeric
+                COALESCE(requests.accepted_requests, 0)::numeric
+                / requests.total_requests::numeric
                 * 100
               )::int
             END AS acceptance_rate,
-            MAX(olr.created_at) AS last_request_at
+            requests.last_request_at
      FROM office_lobbies ol
-     LEFT JOIN office_lobby_requests olr ON olr.lobby_id = ol.id
-     LEFT JOIN office_guest_badges ogb ON ogb.lobby_request_id = olr.id
+     LEFT JOIN LATERAL (
+       SELECT COUNT(*)::int AS total_requests,
+              COUNT(*) FILTER (WHERE status = 'pending')::int AS pending_requests,
+              COUNT(*) FILTER (WHERE status = 'accepted')::int AS accepted_requests,
+              COUNT(*) FILTER (WHERE status = 'declined')::int AS declined_requests,
+              COUNT(*) FILTER (WHERE status = 'expired')::int AS expired_requests,
+              COUNT(*) FILTER (WHERE scheduled_start_at IS NOT NULL)::int AS scheduled_requests,
+              COUNT(*) FILTER (
+                WHERE created_at >= date_trunc('day', now())
+                  AND created_at < date_trunc('day', now()) + interval '1 day'
+              )::int AS requests_today,
+              MAX(created_at) AS last_request_at
+       FROM office_lobby_requests
+       WHERE lobby_id = ol.id
+     ) requests ON TRUE
+     LEFT JOIN LATERAL (
+       SELECT COUNT(*)::int AS guest_badges
+       FROM office_guest_badges ogb
+       JOIN office_lobby_requests olr ON olr.id = ogb.lobby_request_id
+       WHERE olr.lobby_id = ol.id
+     ) badges ON TRUE
      WHERE ol.office_id = $1
-     GROUP BY ol.id, ol.handle, ol.name
      ORDER BY total_requests DESC, ol.created_at DESC`,
     [officeId]
   )

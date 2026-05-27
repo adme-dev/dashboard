@@ -6,9 +6,11 @@ import { z } from 'zod'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { logOfficeAuditEvent } from '~~/server/utils/officeAudit'
-import { createMeetingCloseoutArtifact, ensureOfficeMeetingArtifactsTables, prepareMeetingActionItemsForFollowUp } from '~~/server/utils/officeMeetingArtifacts'
+import { createMeetingActionItemsFromArtifact, createMeetingCloseoutArtifact, ensureOfficeMeetingArtifactsTables, prepareMeetingActionItemsForFollowUp } from '~~/server/utils/officeMeetingArtifacts'
+import { generateMeetingActionItemsFromTranscript, generateMeetingSummaryFromTranscript } from '~~/server/utils/officeTranscription'
 import { normalizeOfficeMeetingGuestEmails } from '~~/server/utils/officeMeetingGuests'
-import type { OfficeMeetingSessionRow, OfficeMemberRow } from '~~/app/types/office'
+import { ensureOfficeMeetingThreadChannel } from '~~/server/utils/officeThreads'
+import type { OfficeMeetingArtifactRow, OfficeMeetingSessionRow, OfficeMemberRow } from '~~/app/types/office'
 
 const GuestEmail = z.string().trim().email()
 
@@ -133,6 +135,8 @@ export default defineEventHandler(async (event) => {
 
   let guestAccessExpired = 0
   let guestBadgesExpired = 0
+  let generatedSummaryArtifactId: string | undefined
+  let generatedActionItemsArtifactId: string | undefined
   if (body.status === 'ended' || body.status === 'cancelled') {
     const expired = await queryOne<{ expired_count: number, badge_count: number }>(
       `WITH matching_requests AS (
@@ -187,6 +191,150 @@ export default defineEventHandler(async (event) => {
       status: body.status,
       createdBy: user.id
     })
+
+    if (body.status === 'ended') {
+      const liveTranscript = await queryOne<{ id: string, content: string }>(
+        `SELECT id, content
+         FROM office_meeting_artifacts
+         WHERE meeting_session_id = $1
+           AND artifact_type = 'transcript'
+           AND metadata->>'source' = 'office_live_transcription'
+           AND length(trim(content)) > 0
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [session.id]
+      )
+
+      if (liveTranscript?.content.trim()) {
+        const generatedState = await queryOne<{ summary_id: string | null, action_items_id: string | null }>(
+          `SELECT
+             MAX(id::text) FILTER (WHERE artifact_type = 'summary') AS summary_id,
+             MAX(id::text) FILTER (WHERE artifact_type = 'action_items') AS action_items_id
+           FROM office_meeting_artifacts
+           WHERE meeting_session_id = $1
+             AND metadata->>'generated_from' = 'office_live_transcription'`,
+          [session.id]
+        )
+        const existingActionItemsArtifact = generatedState?.action_items_id
+          ? await queryOne<OfficeMeetingArtifactRow>(
+              `SELECT *
+               FROM office_meeting_artifacts
+               WHERE id = $1
+                 AND meeting_session_id = $2
+                 AND artifact_type = 'action_items'
+               LIMIT 1`,
+              [generatedState.action_items_id, session.id]
+            )
+          : null
+        generatedSummaryArtifactId = generatedState?.summary_id ?? undefined
+        generatedActionItemsArtifactId = generatedState?.action_items_id ?? undefined
+
+        if (!generatedState?.summary_id || !generatedState.action_items_id) {
+          const summary = await generateMeetingSummaryFromTranscript({
+            title: session.title,
+            context: typeof session.consent?.setup?.context === 'string' ? session.consent.setup.context : undefined,
+            transcript: liveTranscript.content
+          })
+          const actionItems = await generateMeetingActionItemsFromTranscript({
+            title: session.title,
+            transcript: liveTranscript.content
+          })
+
+          const metadata = {
+            status: 'generated',
+            source: 'office_meeting_closeout',
+            generated_from: 'office_live_transcription',
+            transcript_artifact_id: liveTranscript.id,
+            generated_at: new Date().toISOString()
+          }
+
+          const summaryArtifact = generatedState?.summary_id
+            ? null
+            : await queryOne<OfficeMeetingArtifactRow>(
+                `INSERT INTO office_meeting_artifacts (
+                   meeting_session_id, artifact_type, title, content, metadata, created_by
+                 )
+                 VALUES ($1, 'summary', $2, $3, $4, $5)
+                 RETURNING *`,
+                [
+                  session.id,
+                  `${session.title} live summary`,
+                  summary,
+                  JSON.stringify(metadata),
+                  user.id
+                ]
+              )
+          const actionItemsArtifact = generatedState?.action_items_id
+            ? null
+            : await queryOne<OfficeMeetingArtifactRow>(
+                `INSERT INTO office_meeting_artifacts (
+                   meeting_session_id, artifact_type, title, content, metadata, created_by
+                 )
+                 VALUES ($1, 'action_items', $2, $3, $4, $5)
+                 RETURNING *`,
+                [
+                  session.id,
+                  `${session.title} live action items`,
+                  actionItems,
+                  JSON.stringify(metadata),
+                  user.id
+                ]
+              )
+
+          generatedSummaryArtifactId = summaryArtifact?.id ?? generatedSummaryArtifactId
+          generatedActionItemsArtifactId = actionItemsArtifact?.id ?? generatedActionItemsArtifactId
+
+          if (actionItemsArtifact) {
+            await createMeetingActionItemsFromArtifact({
+              officeId,
+              artifact: actionItemsArtifact,
+              actorId: user.id
+            })
+          }
+          if (!actionItemsArtifact && existingActionItemsArtifact) {
+            await createMeetingActionItemsFromArtifact({
+              officeId,
+              artifact: existingActionItemsArtifact,
+              actorId: user.id
+            })
+          }
+
+          const channel = await ensureOfficeMeetingThreadChannel({
+            officeId,
+            meetingId: session.id,
+            actorId: user.id
+          })
+          if (channel) {
+            await queryOne(
+              `INSERT INTO chat_messages (channel_id, user_id, content, metadata)
+               VALUES ($1, $2, $3, $4)
+               RETURNING id`,
+              [
+                channel.id,
+                user.id,
+                [
+                  `AI closeout generated for ${session.title}.`,
+                  'Live transcript summary and action items were saved to meeting artifacts.'
+                ].join('\n\n'),
+                JSON.stringify({
+                  source: 'office_live_transcription_closeout',
+                  meeting_id: session.id,
+                  transcript_artifact_id: liveTranscript.id,
+                  summary_artifact_id: summaryArtifact?.id ?? generatedSummaryArtifactId,
+                  action_items_artifact_id: actionItemsArtifact?.id ?? generatedActionItemsArtifactId
+                })
+              ]
+            )
+          }
+        } else if (existingActionItemsArtifact) {
+          await createMeetingActionItemsFromArtifact({
+            officeId,
+            artifact: existingActionItemsArtifact,
+            actorId: user.id
+          })
+        }
+      }
+    }
   }
 
   await logOfficeAuditEvent({
@@ -206,9 +354,17 @@ export default defineEventHandler(async (event) => {
       guest_count: Object.hasOwn(body, 'guest_emails') ? guestEmails.length : undefined,
       retention_days: Object.hasOwn(body, 'retention_days') ? body.retention_days ?? null : undefined,
       guest_access_expired: guestAccessExpired || undefined,
-      guest_badges_expired: guestBadgesExpired || undefined
+      guest_badges_expired: guestBadgesExpired || undefined,
+      generated_summary_artifact_id: generatedSummaryArtifactId,
+      generated_action_items_artifact_id: generatedActionItemsArtifactId
     }
   })
 
-  return { session, guestAccessExpired, guestBadgesExpired }
+  return {
+    session,
+    guestAccessExpired,
+    guestBadgesExpired,
+    generatedSummaryArtifactId,
+    generatedActionItemsArtifactId
+  }
 })

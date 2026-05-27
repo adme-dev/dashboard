@@ -75,6 +75,7 @@ const { data, refresh, pending, error } = useFetch<{ lobbies: LobbyWithDestinati
 const {
   data: analyticsData,
   refresh: refreshAnalytics,
+  pending: analyticsPending,
   error: analyticsError
 } = useFetch<{ analytics: LobbyAnalytics[] }>(
   () => `/api/office/${props.officeId}/lobbies/analytics`,
@@ -703,7 +704,13 @@ watch(lobbies, syncLobbyDrafts, { immediate: true })
             </button>
           </div>
         </div>
-        <div class="grid grid-cols-5 gap-2 rounded-lg bg-black/20 p-2 ring-1 ring-white/[0.05]">
+        <div class="relative grid grid-cols-5 gap-2 rounded-lg bg-black/20 p-2 ring-1 ring-white/[0.05]">
+          <div
+            v-if="analyticsPending"
+            class="absolute inset-0 z-10 grid place-items-center rounded-lg bg-black/45 backdrop-blur-sm"
+          >
+            <XfLoader size="sm" />
+          </div>
           <div>
             <div class="text-sm font-semibold text-white/85">
               {{ analyticsSummary.totalRequests }}

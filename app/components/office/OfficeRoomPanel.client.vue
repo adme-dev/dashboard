@@ -30,11 +30,12 @@ const emit = defineEmits<{
   leave: []
   copyLink: []
   openThread: []
-  setupMeeting: [zoneId: string]
+  setupMeeting: [zoneId: string, meetingId?: string, artifactId?: string]
   knock: []
   cancelKnock: []
   toggleLock: []
   evict: [handle: ActorHandle]
+  openPerson: [handle: ActorHandle]
   raiseHand: []
   wave: []
   notesChanged: [zone: OfficeZoneRow]
@@ -431,6 +432,10 @@ async function saveRoomNotes() {
       :occupant-count="occupants.length"
       :media-session="mediaSession"
       :media-unavailable-message="mediaUnavailableMessage"
+      :can-use-live-notes="isCurrentZone"
+      live-notes-disabled-message="Enter this room before starting live AI notes."
+      @live-notes-changed="emit('notesChanged', zone)"
+      @open-office-artifacts="(meetingId, artifactId) => emit('setupMeeting', zone.id, meetingId, artifactId)"
     />
 
     <section class="border-t border-white/[0.06] px-3 py-3">
@@ -447,20 +452,27 @@ async function saveRoomNotes() {
         <div
           v-for="occupant in occupants.slice(0, 10)"
           :key="occupant.handle"
-          class="flex min-w-0 items-center gap-2 rounded-lg bg-white/[0.025] px-2 py-2 ring-1 ring-white/[0.05]"
+          class="flex min-w-0 items-center gap-2 rounded-lg bg-white/[0.025] px-2 py-2 ring-1 ring-white/[0.05] transition hover:bg-white/[0.05] hover:ring-white/[0.09]"
         >
-          <OfficeAvatar
-            :participant="occupant"
-            :size="30"
-          />
-          <div class="min-w-0 flex-1">
-            <div class="truncate text-xs font-semibold text-white/75">
-              {{ occupant.name }}
+          <button
+            type="button"
+            class="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+            :aria-label="`Open ${occupant.name}`"
+            @click="emit('openPerson', occupant.handle)"
+          >
+            <OfficeAvatar
+              :participant="occupant"
+              :size="30"
+            />
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-xs font-semibold text-white/75">
+                {{ occupant.name }}
+              </div>
+              <div class="mt-0.5 truncate text-[11px] capitalize text-white/35">
+                {{ occupant.status.replace('_', ' ') }}
+              </div>
             </div>
-            <div class="mt-0.5 truncate text-[11px] capitalize text-white/35">
-              {{ occupant.status.replace('_', ' ') }}
-            </div>
-          </div>
+          </button>
           <button
             v-if="canManageRoom && occupant.handle !== currentUserHandle"
             type="button"
@@ -559,6 +571,11 @@ async function saveRoomNotes() {
         </div>
       </div>
     </section>
+
+    <OfficeRoomThread
+      :office-id="officeId"
+      :zone-id="zone.id"
+    />
 
     <section class="border-t border-white/[0.06] px-3 py-3">
       <button

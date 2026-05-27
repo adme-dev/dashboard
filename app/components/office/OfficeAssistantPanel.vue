@@ -61,7 +61,12 @@ const {
   }
 )
 
-const { data: jobsData, refresh: refreshJobs } = useFetch<{ jobs: OfficeAssistantJobRow[] }>(
+const {
+  data: jobsData,
+  refresh: refreshJobs,
+  pending: jobsPending,
+  error: jobsError
+} = useFetch<{ jobs: OfficeAssistantJobRow[] }>(
   () => `/api/office/${props.officeId}/assistant/jobs`,
   {
     watch: [() => props.officeId],
@@ -647,7 +652,7 @@ onBeforeUnmount(() => {
             {{ watchItem.watch_type.replaceAll('_', ' ') }}
           </div>
         </div>
-        <div v-if="jobs.length" class="space-y-2 pt-2">
+        <div v-if="jobsPending || jobsError || jobs.length" class="space-y-2 pt-2">
           <div class="flex items-center justify-between gap-2">
             <h4 class="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/35">
               Assistant jobs
@@ -661,7 +666,35 @@ onBeforeUnmount(() => {
               <UIcon name="i-lucide-refresh-cw" class="size-3.5" />
             </button>
           </div>
-          <div class="grid gap-1.5 sm:grid-cols-3 xl:grid-cols-6">
+          <div
+            v-if="jobsPending"
+            class="flex items-center justify-center rounded-lg bg-white/[0.035] px-3 py-8 ring-1 ring-white/[0.05]"
+          >
+            <XfLoader size="sm" />
+          </div>
+          <div
+            v-else-if="jobsError"
+            class="rounded-lg bg-red-400/[0.07] px-3 py-3 text-sm text-red-50/80 ring-1 ring-red-300/15"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="font-medium text-red-50">
+                  Could not load assistant jobs
+                </div>
+                <div class="mt-1 text-xs text-red-50/55">
+                  Follow-up jobs and approvals are temporarily unavailable.
+                </div>
+              </div>
+              <button
+                type="button"
+                class="rounded-md bg-white/[0.06] px-2 py-1 text-xs font-medium text-white/70 ring-1 ring-white/[0.08] transition hover:bg-white/[0.1]"
+                @click="refreshJobs"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+          <div v-else class="grid gap-1.5 sm:grid-cols-3 xl:grid-cols-6">
             <button
               v-for="filter in jobFilters"
               :key="filter.value"
@@ -681,7 +714,7 @@ onBeforeUnmount(() => {
             </button>
           </div>
           <div
-            v-if="!visibleJobs.length"
+            v-if="!jobsPending && !jobsError && !visibleJobs.length"
             class="rounded-lg bg-white/[0.035] px-3 py-3 text-sm text-white/45 ring-1 ring-white/[0.05]"
           >
             No {{ jobStatusFilter }} assistant jobs.

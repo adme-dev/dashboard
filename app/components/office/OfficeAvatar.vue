@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { OfficeParticipant, OfficeStatus } from '~~/app/types/office'
+import { safeMediaUrl } from '~~/app/utils/safe-url'
 
 const props = defineProps<{
   participant: OfficeParticipant
@@ -31,6 +32,7 @@ const initials = computed(() =>
     .toUpperCase()
 )
 const firstName = computed(() => props.participant.name.split(/\s+/)[0] ?? '')
+const avatarSrc = computed(() => safeMediaUrl(props.participant.avatarUrl))
 const tooltipText = computed(
   () => `${props.participant.name} — ${statusLabels[props.participant.status]}`
 )
@@ -44,14 +46,14 @@ const tooltipText = computed(
         :style="{ width: `${sz}px`, height: `${sz}px` }"
       >
         <UAvatar
-          :src="participant.avatarUrl || undefined"
+          :src="avatarSrc"
           :alt="participant.name"
           :size="sz <= 24 ? 'xs' : sz <= 32 ? 'sm' : 'md'"
           :ui="participant.isGuest
             ? { root: 'ring-2 ring-orange-400 ring-offset-2 ring-offset-[#0a0b0e]' }
             : { root: 'ring-1 ring-white/15' }"
         >
-          <span v-if="!participant.avatarUrl" class="text-white/80">{{ initials }}</span>
+          <span v-if="!avatarSrc" class="text-white/80">{{ initials }}</span>
         </UAvatar>
         <span
           class="absolute bottom-0 right-0 block rounded-full ring-2 ring-[#16181d]"
