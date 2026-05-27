@@ -49,9 +49,17 @@ describe('portal invoice billing views', () => {
       overdue: '0',
       current: '0',
       history: '0',
+      aging_current_count: '0',
+      aging_30_count: '0',
+      aging_60_count: '0',
+      aging_90_count: '0',
       total_billed: '0',
       total_paid: '0',
-      total_outstanding: '0'
+      total_outstanding: '0',
+      aging_current_amount: '0',
+      aging_30_amount: '0',
+      aging_60_amount: '0',
+      aging_90_amount: '0'
     })
   })
 
@@ -62,6 +70,8 @@ describe('portal invoice billing views', () => {
     const summarySql = String(mockQueryOne.mock.calls[0]?.[0])
     expect(sql).toContain('i.status IN (\'sent\', \'overdue\')')
     expect(summarySql).toContain('COUNT(CASE WHEN status IN (\'sent\', \'overdue\') THEN 1 END) as current')
+    expect(summarySql).toContain('aging_30_amount')
+    expect(summarySql).toContain('CURRENT_DATE - INTERVAL \'60 days\'')
     expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['client-1', 50, 'current'])
   })
 
@@ -73,9 +83,17 @@ describe('portal invoice billing views', () => {
       overdue: '1',
       current: '2',
       history: '2',
+      aging_current_count: '1',
+      aging_30_count: '1',
+      aging_60_count: '0',
+      aging_90_count: '0',
       total_billed: '8000',
       total_paid: '5000',
-      total_outstanding: '3000'
+      total_outstanding: '3000',
+      aging_current_amount: '1000',
+      aging_30_amount: '2000',
+      aging_60_amount: '0',
+      aging_90_amount: '0'
     })
 
     const result = await invoicesHandler({ query: { view: 'history', limit: '25' } })
@@ -88,7 +106,13 @@ describe('portal invoice billing views', () => {
       current: 2,
       history: 2,
       totalPaid: 5000,
-      totalOutstanding: 3000
+      totalOutstanding: 3000,
+      aging: {
+        current: { count: 1, amount: 1000 },
+        thirty: { count: 1, amount: 2000 },
+        sixty: { count: 0, amount: 0 },
+        ninetyPlus: { count: 0, amount: 0 }
+      }
     })
   })
 })

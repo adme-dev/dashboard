@@ -75,9 +75,17 @@ export default defineEventHandler(async (event) => {
         COUNT(CASE WHEN status = 'overdue' THEN 1 END) as overdue,
         COUNT(CASE WHEN status IN ('sent', 'overdue') THEN 1 END) as current,
         COUNT(CASE WHEN status = 'paid' THEN 1 END) as history,
+        COUNT(CASE WHEN status IN ('sent', 'overdue') AND due_date >= CURRENT_DATE THEN 1 END) as aging_current_count,
+        COUNT(CASE WHEN status IN ('sent', 'overdue') AND due_date < CURRENT_DATE AND due_date >= CURRENT_DATE - INTERVAL '30 days' THEN 1 END) as aging_30_count,
+        COUNT(CASE WHEN status IN ('sent', 'overdue') AND due_date < CURRENT_DATE - INTERVAL '30 days' AND due_date >= CURRENT_DATE - INTERVAL '60 days' THEN 1 END) as aging_60_count,
+        COUNT(CASE WHEN status IN ('sent', 'overdue') AND due_date < CURRENT_DATE - INTERVAL '60 days' THEN 1 END) as aging_90_count,
         COALESCE(SUM(total_amount), 0) as total_billed,
         COALESCE(SUM(CASE WHEN status = 'paid' THEN total_amount ELSE 0 END), 0) as total_paid,
-        COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') THEN total_amount - amount_paid ELSE 0 END), 0) as total_outstanding
+        COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') THEN total_amount - amount_paid ELSE 0 END), 0) as total_outstanding,
+        COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') AND due_date >= CURRENT_DATE THEN total_amount - amount_paid ELSE 0 END), 0) as aging_current_amount,
+        COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') AND due_date < CURRENT_DATE AND due_date >= CURRENT_DATE - INTERVAL '30 days' THEN total_amount - amount_paid ELSE 0 END), 0) as aging_30_amount,
+        COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') AND due_date < CURRENT_DATE - INTERVAL '30 days' AND due_date >= CURRENT_DATE - INTERVAL '60 days' THEN total_amount - amount_paid ELSE 0 END), 0) as aging_60_amount,
+        COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') AND due_date < CURRENT_DATE - INTERVAL '60 days' THEN total_amount - amount_paid ELSE 0 END), 0) as aging_90_amount
       FROM invoices
       WHERE client_id = $1
     `, [clientUser.clientId])
@@ -108,7 +116,25 @@ export default defineEventHandler(async (event) => {
         history: Number(summary?.history || 0),
         totalBilled: Number(summary?.total_billed || 0),
         totalPaid: Number(summary?.total_paid || 0),
-        totalOutstanding: Number(summary?.total_outstanding || 0)
+        totalOutstanding: Number(summary?.total_outstanding || 0),
+        aging: {
+          current: {
+            count: Number(summary?.aging_current_count || 0),
+            amount: Number(summary?.aging_current_amount || 0)
+          },
+          thirty: {
+            count: Number(summary?.aging_30_count || 0),
+            amount: Number(summary?.aging_30_amount || 0)
+          },
+          sixty: {
+            count: Number(summary?.aging_60_count || 0),
+            amount: Number(summary?.aging_60_amount || 0)
+          },
+          ninetyPlus: {
+            count: Number(summary?.aging_90_count || 0),
+            amount: Number(summary?.aging_90_amount || 0)
+          }
+        }
       }
     }
   } catch (error) {

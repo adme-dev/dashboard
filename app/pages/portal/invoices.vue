@@ -25,6 +25,16 @@ const tabs = [
   { label: 'All', value: 'all' }
 ]
 
+const agingBuckets = computed(() => {
+  const aging = data.value?.summary?.aging
+  return [
+    { label: 'Current', key: 'current', count: aging?.current?.count ?? 0, amount: aging?.current?.amount ?? 0, color: 'neutral' },
+    { label: '1-30 days', key: 'thirty', count: aging?.thirty?.count ?? 0, amount: aging?.thirty?.amount ?? 0, color: 'warning' },
+    { label: '31-60 days', key: 'sixty', count: aging?.sixty?.count ?? 0, amount: aging?.sixty?.amount ?? 0, color: 'error' },
+    { label: '60+ days', key: 'ninetyPlus', count: aging?.ninetyPlus?.count ?? 0, amount: aging?.ninetyPlus?.amount ?? 0, color: 'error' }
+  ]
+})
+
 // Detail slideover
 const selectedInvoiceId = ref<string | null>(null)
 const showDetail = ref(false)
@@ -130,6 +140,37 @@ const agingColors: Record<string, string> = {
           </div>
         </UCard>
       </div>
+
+      <UCard v-if="data?.summary">
+        <template #header>
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-chart-no-axes-column-increasing" class="text-primary" />
+            <span class="font-semibold">Receivables aging</span>
+          </div>
+        </template>
+
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <button
+            v-for="bucket in agingBuckets"
+            :key="bucket.key"
+            type="button"
+            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+            @click="activeTab = bucket.key === 'current' ? 'current' : 'overdue'"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-sm text-muted">
+                {{ bucket.label }}
+              </p>
+              <UBadge :color="(bucket.color as any)" variant="subtle" size="xs">
+                {{ bucket.count }}
+              </UBadge>
+            </div>
+            <p class="mt-2 text-lg font-semibold">
+              {{ formatCurrency(bucket.amount) }}
+            </p>
+          </button>
+        </div>
+      </UCard>
 
       <UTabs v-model="activeTab" :items="tabs" />
 
