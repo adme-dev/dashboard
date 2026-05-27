@@ -27,6 +27,7 @@ interface ServiceModule {
   icon: string
   status: 'Active' | 'Included' | 'Available' | 'Restricted'
   proof: string
+  metrics: Array<{ label: string, value: string }>
   requestService: string
   to?: string
 }
@@ -109,6 +110,9 @@ const serviceModules = computed<ServiceModule[]>(() => {
   const hasCreative = Boolean(dashboard.value?.gallery?.recent?.length)
   const hasJobs = Boolean(dashboard.value?.projects?.stats?.total)
   const hasMeetings = Boolean(dashboard.value?.meetings?.stats?.totalVisible)
+  const campaigns = dashboard.value?.enterprise?.campaigns
+  const jobs = dashboard.value?.projects?.stats
+  const meetings = dashboard.value?.meetings?.stats
 
   return [
     {
@@ -117,6 +121,11 @@ const serviceModules = computed<ServiceModule[]>(() => {
       icon: 'i-lucide-megaphone',
       status: canViewAnalytics.value ? (hasCampaigns ? 'Active' : 'Included') : 'Restricted',
       proof: hasCampaigns ? `${dashboard.value?.enterprise?.campaigns?.campaigns || 0} campaigns visible` : 'Campaign dashboard module',
+      metrics: [
+        { label: 'Campaigns', value: String(campaigns?.campaigns || 0) },
+        { label: 'Leads 30d', value: String(campaigns?.leadsLast30 || 0) },
+        { label: 'CPL', value: campaigns?.costPerLead == null ? '-' : formatCurrency(campaigns.costPerLead) }
+      ],
       requestService: 'paid_media',
       to: canViewAnalytics.value ? '/portal/analytics' : undefined
     },
@@ -126,6 +135,10 @@ const serviceModules = computed<ServiceModule[]>(() => {
       icon: 'i-lucide-palette',
       status: hasCreative ? 'Active' : 'Available',
       proof: hasCreative ? `${dashboard.value?.gallery?.recent?.length || 0} recent assets` : 'Request creative work',
+      metrics: [
+        { label: 'Assets', value: String(dashboard.value?.gallery?.recent?.length || 0) },
+        { label: 'Approvals', value: String(dashboard.value?.approvals?.pendingCount || 0) }
+      ],
       requestService: 'creative',
       to: '/portal/gallery'
     },
@@ -135,6 +148,10 @@ const serviceModules = computed<ServiceModule[]>(() => {
       icon: 'i-lucide-file-text',
       status: 'Available',
       proof: 'Briefs and requests supported',
+      metrics: [
+        { label: 'Briefs', value: 'Ready' },
+        { label: 'Requests', value: String(dashboard.value?.requests?.stats?.open || 0) }
+      ],
       requestService: 'seo_content',
       to: '/portal/briefs'
     },
@@ -144,6 +161,10 @@ const serviceModules = computed<ServiceModule[]>(() => {
       icon: 'i-lucide-monitor-check',
       status: hasJobs ? 'Active' : 'Available',
       proof: hasJobs ? `${dashboard.value?.projects?.stats?.total || 0} jobs on record` : 'Create a job request',
+      metrics: [
+        { label: 'Active', value: String(jobs?.active || 0) },
+        { label: 'History', value: String(dashboard.value?.projects?.completedRecent?.length || 0) }
+      ],
       requestService: 'web_cro',
       to: '/portal/projects'
     },
@@ -153,6 +174,10 @@ const serviceModules = computed<ServiceModule[]>(() => {
       icon: 'i-lucide-chart-pie',
       status: canViewAnalytics.value ? 'Included' : 'Restricted',
       proof: canViewAnalytics.value ? 'Analytics exports available' : 'Analytics permission required',
+      metrics: [
+        { label: 'Visible leads', value: String(campaigns?.visibleLeads || 0) },
+        { label: 'Won', value: String(campaigns?.wonLeads || 0) }
+      ],
       requestService: 'reporting',
       to: canViewAnalytics.value ? '/portal/analytics' : undefined
     },
@@ -162,6 +187,10 @@ const serviceModules = computed<ServiceModule[]>(() => {
       icon: 'i-lucide-compass',
       status: hasMeetings ? 'Active' : 'Available',
       proof: hasMeetings ? `${dashboard.value?.meetings?.stats?.totalVisible || 0} meetings shared` : 'Request a session',
+      metrics: [
+        { label: 'Meetings', value: String(meetings?.totalVisible || 0) },
+        { label: 'Recordings', value: String(meetings?.recordings || 0) }
+      ],
       requestService: 'strategy',
       to: '/portal/meetings'
     }
@@ -402,6 +431,21 @@ function serviceStatusColor(status: ServiceModule['status']) {
           <p class="text-sm text-muted leading-relaxed">
             {{ module.description }}
           </p>
+
+          <div v-if="module.metrics.length" class="grid grid-cols-2 gap-2">
+            <div
+              v-for="metric in module.metrics"
+              :key="metric.label"
+              class="rounded-md bg-elevated/60 p-2"
+            >
+              <p class="text-[11px] text-muted">
+                {{ metric.label }}
+              </p>
+              <p class="text-sm font-semibold truncate">
+                {{ metric.value }}
+              </p>
+            </div>
+          </div>
 
           <div class="flex flex-wrap gap-2">
             <UButton
