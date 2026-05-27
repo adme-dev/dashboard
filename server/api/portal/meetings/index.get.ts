@@ -36,6 +36,10 @@ type MeetingStatsRow = {
   planned: string | number | null
   ended: string | number | null
   recordings: string | number | null
+  summaries: string | number | null
+  action_items: string | number | null
+  notes: string | number | null
+  transcripts: string | number | null
 }
 
 const mapMeeting = (meeting: PortalMeetingRow) => ({
@@ -146,7 +150,11 @@ export default defineEventHandler(async (event) => {
         COUNT(*) FILTER (WHERE oms.status = 'live') AS live,
         COUNT(*) FILTER (WHERE oms.status = 'planned') AS planned,
         COUNT(*) FILTER (WHERE oms.status NOT IN ('live', 'planned', 'cancelled')) AS ended,
-        COALESCE(SUM(recording_summary.ready_recording_count), 0) AS recordings
+        COALESCE(SUM(recording_summary.ready_recording_count), 0) AS recordings,
+        COALESCE(SUM(artifact_summary.summary_count), 0) AS summaries,
+        COALESCE(SUM(artifact_summary.action_item_artifact_count), 0) AS action_items,
+        COALESCE(SUM(artifact_summary.notes_count), 0) AS notes,
+        COALESCE(SUM(artifact_summary.transcript_count), 0) AS transcripts
       FROM office_members om
       JOIN office_meeting_sessions oms ON oms.office_id = om.office_id
       LEFT JOIN LATERAL (
@@ -155,6 +163,15 @@ export default defineEventHandler(async (event) => {
         WHERE meeting_session_id = oms.id
           AND status <> 'archived'
       ) recording_summary ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(*) FILTER (WHERE artifact_type = 'summary')::int AS summary_count,
+          COUNT(*) FILTER (WHERE artifact_type = 'action_items')::int AS action_item_artifact_count,
+          COUNT(*) FILTER (WHERE artifact_type = 'notes')::int AS notes_count,
+          COUNT(*) FILTER (WHERE artifact_type = 'transcript')::int AS transcript_count
+        FROM office_meeting_artifacts
+        WHERE meeting_session_id = oms.id
+      ) artifact_summary ON TRUE
       WHERE om.client_user_id = $1
         AND oms.status <> 'cancelled'
     `, [clientUser.id])
@@ -166,7 +183,11 @@ export default defineEventHandler(async (event) => {
         live: Number(stats?.live || 0),
         planned: Number(stats?.planned || 0),
         ended: Number(stats?.ended || 0),
-        recordings: Number(stats?.recordings || 0)
+        recordings: Number(stats?.recordings || 0),
+        summaries: Number(stats?.summaries || 0),
+        actionItems: Number(stats?.action_items || 0),
+        notes: Number(stats?.notes || 0),
+        transcripts: Number(stats?.transcripts || 0)
       }
     }
   } catch (error) {

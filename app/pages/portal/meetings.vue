@@ -28,6 +28,10 @@ interface PortalMeetingsDashboard {
     planned: number
     ended: number
     recordings: number
+    summaries: number
+    actionItems: number
+    notes: number
+    transcripts: number
   }
   meetings: PortalMeeting[]
 }
@@ -131,7 +135,7 @@ function artifactCount(meeting: PortalMeeting) {
     </div>
 
     <template v-else>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="grid grid-cols-2 lg:grid-cols-6 gap-4">
         <UCard>
           <p class="text-sm text-muted">
             Shared meetings
@@ -162,6 +166,22 @@ function artifactCount(meeting: PortalMeeting) {
           </p>
           <p class="text-2xl font-bold mt-2">
             {{ data?.stats?.recordings || 0 }}
+          </p>
+        </UCard>
+        <UCard>
+          <p class="text-sm text-muted">
+            Summaries
+          </p>
+          <p class="text-2xl font-bold mt-2">
+            {{ data?.stats?.summaries || 0 }}
+          </p>
+        </UCard>
+        <UCard>
+          <p class="text-sm text-muted">
+            Action items
+          </p>
+          <p class="text-2xl font-bold mt-2">
+            {{ data?.stats?.actionItems || 0 }}
           </p>
         </UCard>
       </div>

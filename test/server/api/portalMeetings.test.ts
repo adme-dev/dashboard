@@ -76,7 +76,11 @@ describe('portal meetings API', () => {
       live: '1',
       planned: '1',
       ended: '1',
-      recordings: '2'
+      recordings: '2',
+      summaries: '2',
+      action_items: '3',
+      notes: '4',
+      transcripts: '1'
     })
   })
 
@@ -90,7 +94,11 @@ describe('portal meetings API', () => {
       live: 1,
       planned: 1,
       ended: 1,
-      recordings: 2
+      recordings: 2,
+      summaries: 2,
+      actionItems: 3,
+      notes: 4,
+      transcripts: 1
     })
     expect(result.meetings[0]).toMatchObject({
       id: 'meeting-1',
@@ -109,6 +117,8 @@ describe('portal meetings API', () => {
       expect.stringContaining('om.client_user_id = $1'),
       ['client-user-1', 20]
     )
+    expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('SUM(artifact_summary.action_item_artifact_count)')
+    expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('FROM office_meeting_artifacts')
   })
 
   it('filters history meetings away from live and planned sessions', async () => {
