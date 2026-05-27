@@ -92,6 +92,24 @@ export default defineEventHandler(async (event) => {
         COUNT(CASE WHEN status IN ('completed', 'closed') THEN 1 END) as resolved,
         COUNT(CASE WHEN status NOT IN ('completed', 'closed', 'cancelled') THEN 1 END) as open,
         COUNT(CASE WHEN priority = 'urgent' AND status NOT IN ('completed', 'closed', 'cancelled') THEN 1 END) as urgent_open,
+        COUNT(CASE WHEN assigned_to IS NULL AND status NOT IN ('completed', 'closed', 'cancelled') THEN 1 END) as unassigned_open,
+        COUNT(CASE
+          WHEN status NOT IN ('completed', 'closed', 'cancelled')
+            AND desired_deadline IS NOT NULL
+            AND desired_deadline < CURRENT_DATE
+          THEN 1
+        END) as past_desired_deadline,
+        COUNT(CASE
+          WHEN status NOT IN ('completed', 'closed', 'cancelled')
+            AND desired_deadline >= CURRENT_DATE
+            AND desired_deadline <= CURRENT_DATE + INTERVAL '14 days'
+          THEN 1
+        END) as due_soon,
+        COALESCE(SUM(CASE
+          WHEN request_type = 'job_request'
+            AND status NOT IN ('completed', 'closed', 'cancelled')
+          THEN estimated_budget ELSE 0
+        END), 0) as open_requested_budget,
         COUNT(CASE WHEN request_type = 'job_request' THEN 1 END) as job_requests,
         COUNT(CASE WHEN request_type = 'support_ticket' THEN 1 END) as support_tickets
       FROM client_requests
@@ -125,6 +143,10 @@ export default defineEventHandler(async (event) => {
         resolved: Number(summary?.resolved || 0),
         open: Number(summary?.open || 0),
         urgentOpen: Number(summary?.urgent_open || 0),
+        unassignedOpen: Number(summary?.unassigned_open || 0),
+        pastDesiredDeadline: Number(summary?.past_desired_deadline || 0),
+        dueSoon: Number(summary?.due_soon || 0),
+        openRequestedBudget: Number(summary?.open_requested_budget || 0),
         jobRequests: Number(summary?.job_requests || 0),
         supportTickets: Number(summary?.support_tickets || 0)
       }

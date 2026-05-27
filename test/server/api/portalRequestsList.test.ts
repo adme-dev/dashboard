@@ -47,6 +47,10 @@ describe('portal requests list API', () => {
       resolved: '2',
       open: '6',
       urgent_open: '1',
+      unassigned_open: '2',
+      past_desired_deadline: '1',
+      due_soon: '3',
+      open_requested_budget: '12500',
       job_requests: '5',
       support_tickets: '3'
     })
@@ -63,11 +67,18 @@ describe('portal requests list API', () => {
       resolved: 2,
       open: 6,
       urgentOpen: 1,
+      unassignedOpen: 2,
+      pastDesiredDeadline: 1,
+      dueSoon: 3,
+      openRequestedBudget: 12500,
       jobRequests: 5,
       supportTickets: 3
     })
     expect(mockQueryOne.mock.calls[0][0]).toContain('needs_review')
     expect(mockQueryOne.mock.calls[0][0]).toContain('urgent_open')
+    expect(mockQueryOne.mock.calls[0][0]).toContain('unassigned_open')
+    expect(mockQueryOne.mock.calls[0][0]).toContain('past_desired_deadline')
+    expect(mockQueryOne.mock.calls[0][0]).toContain('open_requested_budget')
     expect(mockQueryOne.mock.calls[0][0]).toContain('status NOT IN')
   })
 

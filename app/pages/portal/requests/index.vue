@@ -348,6 +348,81 @@ function statusHint(status: string) {
       </button>
     </div>
 
+    <UCard v-if="data?.summary">
+      <template #header>
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-radar" class="text-primary" />
+          <span class="font-semibold">Request intake health</span>
+        </div>
+      </template>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeStatus = 'open'"
+        >
+          <p class="text-xs text-muted">
+            Unassigned open
+          </p>
+          <p class="mt-1 text-sm font-semibold" :class="data.summary.unassignedOpen > 0 ? 'text-warning' : ''">
+            {{ data.summary.unassignedOpen }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Waiting for team ownership
+          </p>
+        </button>
+
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeStatus = 'open'"
+        >
+          <p class="text-xs text-muted">
+            Past desired date
+          </p>
+          <p class="mt-1 text-sm font-semibold" :class="data.summary.pastDesiredDeadline > 0 ? 'text-error' : ''">
+            {{ data.summary.pastDesiredDeadline }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Open requests past target
+          </p>
+        </button>
+
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeStatus = 'open'"
+        >
+          <p class="text-xs text-muted">
+            Due next 14 days
+          </p>
+          <p class="mt-1 text-sm font-semibold" :class="data.summary.dueSoon > 0 ? 'text-warning' : ''">
+            {{ data.summary.dueSoon }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Desired deadlines approaching
+          </p>
+        </button>
+
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeTab = 'job_request'; activeStatus = 'open'"
+        >
+          <p class="text-xs text-muted">
+            Open requested budget
+          </p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ formatCurrency(data.summary.openRequestedBudget) }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Client-estimated job requests
+          </p>
+        </button>
+      </div>
+    </UCard>
+
     <UTabs v-model="activeStatus" :items="statusTabs" />
 
     <div v-if="pending" class="space-y-3">
@@ -371,6 +446,14 @@ function statusHint(status: string) {
               </UBadge>
               <UBadge :color="(priorityColors[request.priority] as any) || 'neutral'" variant="outline" size="xs">
                 {{ request.priority }}
+              </UBadge>
+              <UBadge
+                v-if="!request.assignedName && !['completed', 'closed', 'cancelled'].includes(request.status)"
+                color="warning"
+                variant="subtle"
+                size="xs"
+              >
+                Unassigned
               </UBadge>
             </div>
             <div class="flex items-center gap-2 text-xs text-muted mt-1">
