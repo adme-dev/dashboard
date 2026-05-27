@@ -42,6 +42,8 @@ interface PortalUser {
   clientId: string
   clientName: string
   permissions?: {
+    canViewProjects?: boolean
+    canViewInvoices?: boolean
     canApproveWork?: boolean
     canViewBudgets?: boolean
     canViewTimeEntries?: boolean
@@ -113,7 +115,20 @@ const portalClientSummary = computed(() => {
 })
 
 // Fetch client portal users
-const { data: usersData, pending: usersPending, refresh: refreshUsers } = await useFetch('/api/agency/client-portal/users')
+const portalUserFilters = ref({
+  clientId: '',
+  status: 'all'
+})
+
+const portalUserQuery = computed(() => ({
+  clientId: portalUserFilters.value.clientId || undefined,
+  status: portalUserFilters.value.status,
+  limit: 100
+}))
+
+const { data: usersData, pending: usersPending, refresh: refreshUsers } = await useFetch('/api/agency/client-portal/users', {
+  query: portalUserQuery
+})
 
 const users = computed(() => ((usersData.value as unknown as { users?: PortalUser[] } | null)?.users || []))
 // Fetch approvals
@@ -131,6 +146,10 @@ const clients = computed(() => {
   return ((raw as { clients?: AgencyClient[] } | null)?.clients || [])
 })
 const clientOptions = computed(() => clients.value.map(client => ({ label: client.name, value: client.id })))
+const portalUserClientOptions = computed(() => [
+  { label: 'All clients', value: '' },
+  ...clientOptions.value
+])
 
 const selectedAccessClientId = ref<string | null>(null)
 watch(clients, (items) => {
@@ -220,6 +239,14 @@ const portalModuleReadiness = (client: PortalClient) => [
   { label: 'Analytics', value: client.moduleAccess?.analytics || 0 },
   { label: 'Approvals', value: client.moduleAccess?.approvals || 0 },
   { label: 'Requests', value: client.moduleAccess?.requests || 0 }
+]
+
+const portalUserModules = (user: PortalUser) => [
+  { label: 'Jobs', enabled: user.permissions?.canViewProjects !== false },
+  { label: 'Billing', enabled: Boolean(user.permissions?.canViewInvoices) },
+  { label: 'Analytics', enabled: Boolean(user.permissions?.canViewAnalytics) },
+  { label: 'Approvals', enabled: Boolean(user.permissions?.canApproveWork) },
+  { label: 'Requests', enabled: Boolean(user.permissions?.canSubmitRequests) }
 ]
 
 const inviteClientUser = (clientId?: string | null) => {
@@ -708,12 +735,42 @@ const enterpriseRollout = [
 
         <!-- Users Tab -->
         <div v-if="activeTab === 'users'">
-          <div v-if="usersPending" class="flex items-center justify-center py-12">
-            <XfLoader />
-          </div>
+          <UCard class="mb-4">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:w-[520px]">
+                <USelectMenu
+                  v-model="portalUserFilters.clientId"
+                  :items="portalUserClientOptions"
+                  placeholder="All clients"
+                  value-key="value"
+                  searchable
+                />
+                <USelect
+                  v-model="portalUserFilters.status"
+                  :items="[
+                    { label: 'All user statuses', value: 'all' },
+                    { label: 'Active users', value: 'active' },
+                    { label: 'Pending invites', value: 'pending' },
+                    { label: 'Suspended users', value: 'suspended' }
+                  ]"
+                  value-key="value"
+                />
+              </div>
+              <UButton
+                label="Invite Client User"
+                icon="i-lucide-user-plus"
+                color="primary"
+                @click="inviteClientUser()"
+              />
+            </div>
+          </UCard>
 
-          <UCard v-else>
-            <UTable :data="users" :columns="userColumns">
+          <UCard>
+            <div v-if="usersPending" class="flex items-center justify-center py-12">
+              <XfLoader />
+            </div>
+
+            <UTable v-else :data="users" :columns="userColumns">
               <template #name-cell="{ row }">
                 <div>
                   <p class="font-medium">
@@ -732,44 +789,13 @@ const enterpriseRollout = [
               <template #permissions-cell="{ row }">
                 <div class="flex flex-wrap gap-1">
                   <UBadge
-                    v-if="row.original.permissions?.canApproveWork"
+                    v-for="module in portalUserModules(row.original)"
+                    :key="module.label"
                     size="xs"
                     variant="subtle"
-                    color="success"
+                    :color="module.enabled ? 'success' : 'neutral'"
                   >
-                    Approve
-                  </UBadge>
-                  <UBadge
-                    v-if="row.original.permissions?.canViewBudgets"
-                    size="xs"
-                    variant="subtle"
-                    color="info"
-                  >
-                    Budgets
-                  </UBadge>
-                  <UBadge
-                    v-if="row.original.permissions?.canViewTimeEntries"
-                    size="xs"
-                    variant="subtle"
-                    color="neutral"
-                  >
-                    Time
-                  </UBadge>
-                  <UBadge
-                    v-if="row.original.permissions?.canViewAnalytics"
-                    size="xs"
-                    variant="subtle"
-                    color="primary"
-                  >
-                    Analytics
-                  </UBadge>
-                  <UBadge
-                    v-if="row.original.permissions?.canSubmitRequests"
-                    size="xs"
-                    variant="subtle"
-                    color="warning"
-                  >
-                    Requests
+                    {{ module.label }}
                   </UBadge>
                 </div>
               </template>
@@ -800,7 +826,7 @@ const enterpriseRollout = [
               </template>
             </UTable>
 
-            <div v-if="users.length === 0" class="text-center text-[var(--ui-text-muted)] py-8">
+            <div v-if="!usersPending && users.length === 0" class="text-center text-[var(--ui-text-muted)] py-8">
               No portal users yet. Invite a client to get started!
             </div>
           </UCard>
