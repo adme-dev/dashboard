@@ -6,26 +6,13 @@
 import { queryOne, transaction } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { createNotification } from '~~/server/utils/notifications'
+import { normalizeClientRequestAttachments } from '~~/server/utils/clientRequestAttachments'
 
 type ClientRequestMessageTarget = {
   id: string
   status: string
   title: string
   assigned_to: string | null
-}
-
-const normalizeAttachments = (value: unknown) => {
-  if (value == null) return []
-  if (!Array.isArray(value)) {
-    throw createError({ statusCode: 400, statusMessage: 'Invalid attachments' })
-  }
-  if (value.length > 10) {
-    throw createError({ statusCode: 400, statusMessage: 'Too many attachments' })
-  }
-  if (value.some(item => !item || typeof item !== 'object' || Array.isArray(item))) {
-    throw createError({ statusCode: 400, statusMessage: 'Invalid attachments' })
-  }
-  return value
 }
 
 export default defineEventHandler(async (event) => {
@@ -42,7 +29,7 @@ export default defineEventHandler(async (event) => {
   if (!content?.trim()) {
     throw createError({ statusCode: 400, statusMessage: 'Message content is required' })
   }
-  const normalizedAttachments = normalizeAttachments(attachments)
+  const normalizedAttachments = normalizeClientRequestAttachments(attachments)
 
   try {
     // Verify request belongs to client and is not closed

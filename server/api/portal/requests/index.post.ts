@@ -6,6 +6,7 @@
 import { queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { createNotification } from '~~/server/utils/notifications'
+import { normalizeClientRequestAttachments } from '~~/server/utils/clientRequestAttachments'
 
 const JOB_CATEGORIES = ['new_project', 'additional_work', 'revision', 'content', 'design', 'development', 'strategy', 'other']
 const SUPPORT_CATEGORIES = ['billing', 'access', 'bug', 'question', 'feedback', 'other']
@@ -13,20 +14,6 @@ const PRIORITIES = ['low', 'normal', 'high', 'urgent']
 
 type StaffNotificationRecipient = {
   id: string
-}
-
-const normalizeAttachments = (value: unknown) => {
-  if (value == null) return []
-  if (!Array.isArray(value)) {
-    throw createError({ statusCode: 400, statusMessage: 'Invalid attachments' })
-  }
-  if (value.length > 10) {
-    throw createError({ statusCode: 400, statusMessage: 'Too many attachments' })
-  }
-  if (value.some(item => !item || typeof item !== 'object' || Array.isArray(item))) {
-    throw createError({ statusCode: 400, statusMessage: 'Invalid attachments' })
-  }
-  return value
 }
 
 export default defineEventHandler(async (event) => {
@@ -80,7 +67,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid desired deadline' })
   }
 
-  const normalizedAttachments = normalizeAttachments(attachments)
+  const normalizedAttachments = normalizeClientRequestAttachments(attachments)
 
   try {
     // If projectId provided, verify it belongs to this client
