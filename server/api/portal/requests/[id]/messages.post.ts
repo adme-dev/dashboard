@@ -3,7 +3,7 @@
  * POST /api/portal/requests/:id/messages
  */
 
-import { queryOne } from '~~/server/utils/db'
+import { queryOne, transaction } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 
 export default defineEventHandler(async (event) => {
@@ -36,23 +36,40 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'Cannot add messages to a closed request' })
     }
 
-    const message = await queryOne(`
-      INSERT INTO client_request_messages (request_id, client_user_id, content, attachments, is_internal)
-      VALUES ($1, $2, $3, $4, false)
-      RETURNING id, created_at
-    `, [
-      requestId,
-      clientUser.id,
-      content.trim(),
-      JSON.stringify(attachments || [])
-    ])
+    const message = await transaction(async (client) => {
+      const inserted = await client.query(`
+        INSERT INTO client_request_messages (request_id, client_user_id, content, attachments, is_internal)
+        VALUES ($1, $2, $3, $4, false)
+        RETURNING id, created_at
+      `, [
+        requestId,
+        clientUser.id,
+        content.trim(),
+        JSON.stringify(attachments || [])
+      ])
+
+      const result = inserted.rows[0]
+
+      await client.query(`
+        INSERT INTO client_activity_log (
+          client_user_id, client_id, action, entity_type, entity_id, details
+        ) VALUES ($1, $2, 'client_request_message_added', 'client_request', $3, $4)
+      `, [
+        clientUser.id,
+        clientUser.clientId,
+        requestId,
+        JSON.stringify({ messageId: result.id })
+      ])
+
+      return result
+    })
 
     return {
       id: message.id,
       createdAt: message.created_at
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error
     console.error('Failed to add message:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to add message' })
   }

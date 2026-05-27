@@ -3,7 +3,7 @@
  * POST /api/portal/requests
  */
 
-import { queryOne } from '~~/server/utils/db'
+import { queryOne, transaction } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 
 const JOB_CATEGORIES = ['new_project', 'additional_work', 'revision', 'content', 'design', 'development', 'strategy', 'other']
@@ -56,32 +56,54 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    const result = await queryOne(`
-      INSERT INTO client_requests (
-        client_id, client_user_id, request_type, category, title, description,
-        priority, project_id, attachments, estimated_budget, desired_deadline
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-      RETURNING id, created_at
-    `, [
-      clientUser.clientId,
-      clientUser.id,
-      requestType,
-      category || null,
-      title.trim(),
-      description.trim(),
-      priority || 'normal',
-      projectId || null,
-      JSON.stringify(attachments || []),
-      estimatedBudget || null,
-      desiredDeadline || null
-    ])
+    const result = await transaction(async (client) => {
+      const inserted = await client.query(`
+        INSERT INTO client_requests (
+          client_id, client_user_id, request_type, category, title, description,
+          priority, project_id, attachments, estimated_budget, desired_deadline
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING id, created_at
+      `, [
+        clientUser.clientId,
+        clientUser.id,
+        requestType,
+        category || null,
+        title.trim(),
+        description.trim(),
+        priority || 'normal',
+        projectId || null,
+        JSON.stringify(attachments || []),
+        estimatedBudget || null,
+        desiredDeadline || null
+      ])
+
+      const request = inserted.rows[0]
+
+      await client.query(`
+        INSERT INTO client_activity_log (
+          client_user_id, client_id, action, entity_type, entity_id, details
+        ) VALUES ($1, $2, 'client_request_submitted', 'client_request', $3, $4)
+      `, [
+        clientUser.id,
+        clientUser.clientId,
+        request.id,
+        JSON.stringify({
+          requestType,
+          category: category || null,
+          priority: priority || 'normal',
+          title: title.trim()
+        })
+      ])
+
+      return request
+    })
 
     return {
       id: result.id,
       createdAt: result.created_at
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error
     console.error('Failed to create request:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to create request' })
   }
