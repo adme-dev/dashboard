@@ -16,7 +16,8 @@ const { data, pending } = useFetch('/api/portal/deliverables', {
 const { data: projectsData } = useFetch('/api/portal/projects', { query: { limit: 100 } })
 const projectOptions = computed(() => [
   { label: 'All Projects', value: '' },
-  ...(projectsData.value?.projects?.map((p: any) => ({ label: p.name, value: p.id })) || [])
+  ...(((projectsData.value as { projects?: Array<{ id: string, name: string }> } | null)?.projects || [])
+    .map(project => ({ label: project.name, value: project.id })))
 ])
 
 const typeOptions = [
@@ -32,16 +33,114 @@ function formatDate(date: string | null) {
   if (!date) return ''
   return new Date(date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
 }
+
+function formatCompact(value: number | null | undefined) {
+  return new Intl.NumberFormat('en-AU', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value || 0))
+}
+
+const deliverableTypeStats = computed(() => {
+  const byType = data.value?.summary?.byType || {}
+  return [
+    { label: 'Images', type: 'image', value: byType.image || 0, icon: 'i-lucide-image' },
+    { label: 'Video', type: 'video', value: byType.video || 0, icon: 'i-lucide-video' },
+    { label: 'Documents', type: 'document', value: byType.document || 0, icon: 'i-lucide-file-text' },
+    { label: 'Designs', type: 'design', value: byType.design || 0, icon: 'i-lucide-pen-tool' },
+    { label: 'Presentations', type: 'presentation', value: byType.presentation || 0, icon: 'i-lucide-presentation' }
+  ]
+})
 </script>
 
 <template>
   <div class="p-6 space-y-6 max-w-7xl mx-auto">
     <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-bold">Gallery</h1>
+      <h1 class="text-2xl font-bold">
+        Gallery
+      </h1>
       <div v-if="data?.pagination" class="text-sm text-muted">
         {{ data.pagination.total }} deliverables
       </div>
     </div>
+
+    <UCard v-if="data?.summary">
+      <template #header>
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-library" class="text-primary" />
+          <span class="font-semibold">Deliverable Library Health</span>
+        </div>
+      </template>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="typeFilter = ''"
+        >
+          <p class="text-xs text-muted">
+            Shared assets
+          </p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ data.summary.total }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            {{ data.summary.recent }} shared in last 30d
+          </p>
+        </button>
+
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="typeFilter = ''"
+        >
+          <p class="text-xs text-muted">
+            Final assets
+          </p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ data.summary.final }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            {{ data.summary.featured }} featured
+          </p>
+        </button>
+
+        <div class="rounded-lg border border-default bg-default p-3">
+          <p class="text-xs text-muted">
+            Engagement
+          </p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ formatCompact(data.summary.totalViews) }} views
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            {{ formatCompact(data.summary.totalDownloads) }} downloads
+          </p>
+        </div>
+
+        <div class="rounded-lg border border-default bg-default p-3">
+          <p class="text-xs text-muted">
+            Latest published
+          </p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ formatDate(data.summary.latestPublishedAt) || '-' }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            {{ data.summary.published }} published
+          </p>
+        </div>
+      </div>
+
+      <div class="mt-4 flex flex-wrap gap-2">
+        <UButton
+          v-for="item in deliverableTypeStats"
+          :key="item.label"
+          :icon="item.icon"
+          size="xs"
+          :color="item.value > 0 ? 'primary' : 'neutral'"
+          :variant="typeFilter === item.type ? 'soft' : 'outline'"
+          @click="typeFilter = item.type"
+        >
+          {{ item.label }} {{ item.value }}
+        </UButton>
+      </div>
+    </UCard>
 
     <!-- Filters -->
     <div class="flex items-center gap-3">
@@ -75,7 +174,7 @@ function formatDate(date: string | null) {
             :src="safeMediaUrl(d.thumbnailUrl)"
             :alt="d.title"
             class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          />
+          >
           <div v-else class="w-full h-full flex items-center justify-center">
             <UIcon name="i-lucide-file" class="w-12 h-12 text-muted" />
           </div>
@@ -83,7 +182,9 @@ function formatDate(date: string | null) {
 
         <!-- Overlay -->
         <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent p-3">
-          <p class="text-sm font-medium text-white truncate">{{ d.title }}</p>
+          <p class="text-sm font-medium text-white truncate">
+            {{ d.title }}
+          </p>
           <div class="flex items-center justify-between mt-1">
             <span class="text-xs text-white/70">{{ d.projectName }}</span>
             <span v-if="d.publishedAt" class="text-xs text-white/70">{{ formatDate(d.publishedAt) }}</span>
@@ -92,8 +193,20 @@ function formatDate(date: string | null) {
 
         <!-- Badges -->
         <div class="absolute top-2 right-2 flex items-center gap-1">
-          <UBadge v-if="d.isFeatured" color="warning" size="xs">Featured</UBadge>
-          <UBadge v-if="d.isFinal" color="success" size="xs">Final</UBadge>
+          <UBadge
+            v-if="d.isFeatured"
+            color="warning"
+            size="xs"
+          >
+            Featured
+          </UBadge>
+          <UBadge
+            v-if="d.isFinal"
+            color="success"
+            size="xs"
+          >
+            Final
+          </UBadge>
         </div>
 
         <!-- File link -->
@@ -103,7 +216,12 @@ function formatDate(date: string | null) {
           target="_blank"
           class="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity"
         >
-          <UButton size="xs" variant="solid" color="neutral" icon="i-lucide-download" />
+          <UButton
+            size="xs"
+            variant="solid"
+            color="neutral"
+            icon="i-lucide-download"
+          />
         </a>
       </div>
     </div>

@@ -6,6 +6,26 @@
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 
+type DeliverableSummaryRow = {
+  total: string | number | null
+  featured: string | number | null
+  final: string | number | null
+  recent: string | number | null
+  approved: string | number | null
+  published: string | number | null
+  draft: string | number | null
+  image: string | number | null
+  video: string | number | null
+  document: string | number | null
+  design: string | number | null
+  presentation: string | number | null
+  total_views: string | number | null
+  total_downloads: string | number | null
+  latest_published_at: string | null
+}
+
+const toNumber = (value: string | number | null | undefined) => Number(value || 0)
+
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
   const query = getQuery(event)
@@ -18,7 +38,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     const conditions: string[] = ['cd.client_id = $1', 'cd.is_visible_to_client = true']
-    const params: any[] = [clientUser.clientId]
+    const params: unknown[] = [clientUser.clientId]
     let idx = 2
 
     if (projectId) {
@@ -66,6 +86,28 @@ export default defineEventHandler(async (event) => {
       SELECT COUNT(*) as count FROM client_deliverables cd ${whereClause}
     `, countParams)
 
+    const summary = await queryOne<DeliverableSummaryRow>(`
+      SELECT
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE is_featured = true) AS featured,
+        COUNT(*) FILTER (WHERE is_final = true) AS final,
+        COUNT(*) FILTER (WHERE published_at >= NOW() - INTERVAL '30 days') AS recent,
+        COUNT(*) FILTER (WHERE status = 'approved') AS approved,
+        COUNT(*) FILTER (WHERE status = 'published') AS published,
+        COUNT(*) FILTER (WHERE status = 'draft') AS draft,
+        COUNT(*) FILTER (WHERE deliverable_type = 'image') AS image,
+        COUNT(*) FILTER (WHERE deliverable_type = 'video') AS video,
+        COUNT(*) FILTER (WHERE deliverable_type = 'document') AS document,
+        COUNT(*) FILTER (WHERE deliverable_type = 'design') AS design,
+        COUNT(*) FILTER (WHERE deliverable_type = 'presentation') AS presentation,
+        COALESCE(SUM(view_count), 0) AS total_views,
+        COALESCE(SUM(download_count), 0) AS total_downloads,
+        MAX(published_at) AS latest_published_at
+      FROM client_deliverables
+      WHERE client_id = $1
+        AND is_visible_to_client = true
+    `, [clientUser.clientId])
+
     return {
       deliverables: deliverables.map(d => ({
         id: d.id,
@@ -98,6 +140,25 @@ export default defineEventHandler(async (event) => {
         limit,
         offset,
         hasMore: offset + deliverables.length < Number(total?.count || 0)
+      },
+      summary: {
+        total: toNumber(summary?.total),
+        featured: toNumber(summary?.featured),
+        final: toNumber(summary?.final),
+        recent: toNumber(summary?.recent),
+        approved: toNumber(summary?.approved),
+        published: toNumber(summary?.published),
+        draft: toNumber(summary?.draft),
+        totalViews: toNumber(summary?.total_views),
+        totalDownloads: toNumber(summary?.total_downloads),
+        latestPublishedAt: summary?.latest_published_at || null,
+        byType: {
+          image: toNumber(summary?.image),
+          video: toNumber(summary?.video),
+          document: toNumber(summary?.document),
+          design: toNumber(summary?.design),
+          presentation: toNumber(summary?.presentation)
+        }
       }
     }
   } catch (error) {
