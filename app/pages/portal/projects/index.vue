@@ -58,6 +58,36 @@ function formatDate(date: string | null) {
   return new Date(date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+function daysUntil(date: string | null) {
+  if (!date) return null
+  const due = new Date(date)
+  const now = new Date()
+  return Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+function scheduleLabel(project: { dueDate: string | null, status: string }) {
+  if (project.status === 'completed') return 'Completed'
+  if (project.status === 'cancelled') return 'Cancelled'
+
+  const days = daysUntil(project.dueDate)
+  if (days == null) return 'No due date'
+  if (days < 0) return `${Math.abs(days)}d overdue`
+  if (days === 0) return 'Due today'
+  if (days <= 14) return `Due in ${days}d`
+  return 'On schedule'
+}
+
+function scheduleColor(project: { dueDate: string | null, status: string }) {
+  if (project.status === 'completed') return 'success'
+  if (project.status === 'cancelled') return 'error'
+
+  const days = daysUntil(project.dueDate)
+  if (days == null) return 'neutral'
+  if (days < 0) return 'error'
+  if (days <= 14) return 'warning'
+  return 'success'
+}
+
 const statusColors: Record<string, string> = {
   draft: 'neutral',
   active: 'success',
@@ -144,6 +174,81 @@ function emptyStateLabel() {
       </button>
     </div>
 
+    <UCard v-if="data?.summary">
+      <template #header>
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-calendar-check" class="text-primary" />
+          <span class="font-semibold">Job schedule health</span>
+        </div>
+      </template>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeTab = 'upcoming'"
+        >
+          <p class="text-xs text-muted">
+            Next due date
+          </p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ formatDate(data.summary.nextDueDate) }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            {{ data.summary.upcoming }} upcoming job{{ data.summary.upcoming === 1 ? '' : 's' }}
+          </p>
+        </button>
+
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeTab = 'upcoming'"
+        >
+          <p class="text-xs text-muted">
+            Due soon
+          </p>
+          <p class="mt-1 text-sm font-semibold" :class="data.summary.dueSoon > 0 ? 'text-warning' : ''">
+            {{ data.summary.dueSoon }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Due within 14 days
+          </p>
+        </button>
+
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeTab = 'upcoming'"
+        >
+          <p class="text-xs text-muted">
+            Overdue jobs
+          </p>
+          <p class="mt-1 text-sm font-semibold" :class="data.summary.overdue > 0 ? 'text-error' : ''">
+            {{ data.summary.overdue }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Past planned date
+          </p>
+        </button>
+
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeTab = 'history'"
+        >
+          <p class="text-xs text-muted">
+            Completed last 30d
+          </p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ data.summary.completedLast30 }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Recent job history
+          </p>
+        </button>
+      </div>
+    </UCard>
+
     <UTabs
       v-model="activeTab"
       :items="tabs"
@@ -193,6 +298,13 @@ function emptyStateLabel() {
             </div>
 
             <div class="flex items-center gap-2 flex-wrap">
+              <UBadge
+                :color="(scheduleColor(project) as any)"
+                variant="subtle"
+                size="xs"
+              >
+                {{ scheduleLabel(project) }}
+              </UBadge>
               <UBadge
                 v-if="project.pendingApprovals > 0"
                 color="warning"

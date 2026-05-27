@@ -96,6 +96,27 @@ export default defineEventHandler(async (event) => {
         COUNT(CASE WHEN status = 'on_hold' THEN 1 END) as on_hold,
         COUNT(CASE
           WHEN status IN ('draft', 'active', 'on_hold')
+            AND due_date < CURRENT_DATE
+          THEN 1
+        END) as overdue,
+        COUNT(CASE
+          WHEN status IN ('draft', 'active', 'on_hold')
+            AND due_date >= CURRENT_DATE
+            AND due_date <= CURRENT_DATE + INTERVAL '14 days'
+          THEN 1
+        END) as due_soon,
+        MIN(CASE
+          WHEN status IN ('draft', 'active', 'on_hold')
+            AND due_date >= CURRENT_DATE
+          THEN due_date
+        END) as next_due_date,
+        COUNT(CASE
+          WHEN status = 'completed'
+            AND COALESCE(updated_at, due_date, created_at) >= NOW() - INTERVAL '30 days'
+          THEN 1
+        END) as completed_last_30,
+        COUNT(CASE
+          WHEN status IN ('draft', 'active', 'on_hold')
             AND (due_date IS NULL OR due_date >= CURRENT_DATE)
           THEN 1
         END) as upcoming,
@@ -131,6 +152,10 @@ export default defineEventHandler(async (event) => {
         active: Number(summary?.active || 0),
         completed: Number(summary?.completed || 0),
         onHold: Number(summary?.on_hold || 0),
+        overdue: Number(summary?.overdue || 0),
+        dueSoon: Number(summary?.due_soon || 0),
+        nextDueDate: summary?.next_due_date || null,
+        completedLast30: Number(summary?.completed_last_30 || 0),
         upcoming: Number(summary?.upcoming || 0),
         history: Number(summary?.history || 0)
       }

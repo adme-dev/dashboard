@@ -44,6 +44,10 @@ describe('portal projects job history views', () => {
       active: '0',
       completed: '0',
       on_hold: '0',
+      overdue: '0',
+      due_soon: '0',
+      next_due_date: null,
+      completed_last_30: '0',
       upcoming: '0',
       history: '0'
     })
@@ -69,13 +73,24 @@ describe('portal projects job history views', () => {
       active: '1',
       completed: '1',
       on_hold: '0',
+      overdue: '1',
+      due_soon: '2',
+      next_due_date: '2026-06-30',
+      completed_last_30: '1',
       upcoming: '2',
       history: '1'
     })
 
     const result = await projectsHandler({ query: { view: 'upcoming' } })
 
-    expect(result.summary).toMatchObject({ upcoming: 2, history: 1 })
+    expect(result.summary).toMatchObject({
+      upcoming: 2,
+      history: 1,
+      overdue: 1,
+      dueSoon: 2,
+      nextDueDate: '2026-06-30',
+      completedLast30: 1
+    })
     expect(result.projects[0]).toMatchObject({
       id: 'job-1',
       name: 'June campaign',
@@ -87,6 +102,10 @@ describe('portal projects job history views', () => {
     expect(sql).toContain('p.status IN (\'draft\', \'active\', \'on_hold\')')
     expect(sql).toContain('(p.due_date IS NULL OR p.due_date >= CURRENT_DATE)')
     expect(sql).toContain('COALESCE($3, \'\') <> \'history\'')
+    const summarySql = String(mockQueryOne.mock.calls[0]?.[0])
+    expect(summarySql).toContain('due_date <= CURRENT_DATE + INTERVAL \'14 days\'')
+    expect(summarySql).toContain('MIN(CASE')
+    expect(summarySql).toContain('completed_last_30')
     expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['client-1', 50, 'upcoming'])
   })
 
