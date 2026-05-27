@@ -39,6 +39,11 @@ interface PortalClient {
   outstandingAmount: number
   overdueAmount: number
   paidInvoices: number
+  openRequests: number
+  urgentRequests: number
+  unassignedRequests: number
+  jobRequests: number
+  supportRequests: number
   visibleMeetings: number
   upcomingMeetings: number
   meetingRecordings: number
@@ -191,7 +196,8 @@ const portalClientSummary = computed(() => {
       : 0,
     leads30d: items.reduce((sum, client) => sum + Number(client.portalLeads30d || 0), 0),
     meetings: items.reduce((sum, client) => sum + Number(client.visibleMeetings || 0), 0),
-    outstandingAmount: items.reduce((sum, client) => sum + Number(client.outstandingAmount || 0), 0)
+    outstandingAmount: items.reduce((sum, client) => sum + Number(client.outstandingAmount || 0), 0),
+    openRequests: items.reduce((sum, client) => sum + Number(client.openRequests || 0), 0)
   }
 })
 
@@ -689,6 +695,7 @@ const clientColumns = [
   { accessorKey: 'users', header: 'Users' },
   { accessorKey: 'readiness', header: 'Readiness' },
   { accessorKey: 'leads', header: 'Leads 30d' },
+  { accessorKey: 'requests', header: 'Requests' },
   { accessorKey: 'billing', header: 'Billing' },
   { accessorKey: 'activity', header: 'Last Activity' },
   { accessorKey: 'actions', header: '' }
@@ -870,6 +877,9 @@ const enterpriseRollout = [
                 </p>
                 <p class="text-xs text-[var(--ui-text-muted)]">
                   {{ formatCurrency(portalClientSummary.outstandingAmount) }} outstanding
+                </p>
+                <p class="text-xs text-[var(--ui-text-muted)]">
+                  {{ portalClientSummary.openRequests }} open requests
                 </p>
               </div>
             </div>
@@ -1060,6 +1070,35 @@ const enterpriseRollout = [
                   <p class="text-xs text-[var(--ui-text-muted)]">
                     {{ row.original.newLeads30d }} new, {{ row.original.wonLeads30d }} won
                   </p>
+                </div>
+              </template>
+
+              <template #requests-cell="{ row }">
+                <div class="text-sm">
+                  <p class="font-medium" :class="row.original.urgentRequests > 0 ? 'text-error' : ''">
+                    {{ row.original.openRequests }} open
+                  </p>
+                  <p class="text-xs text-[var(--ui-text-muted)]">
+                    {{ row.original.jobRequests }} jobs, {{ row.original.supportRequests }} support
+                  </p>
+                  <div class="mt-1 flex flex-wrap gap-1">
+                    <UBadge
+                      v-if="row.original.urgentRequests > 0"
+                      color="error"
+                      variant="subtle"
+                      size="xs"
+                    >
+                      {{ row.original.urgentRequests }} urgent
+                    </UBadge>
+                    <UBadge
+                      v-if="row.original.unassignedRequests > 0"
+                      color="warning"
+                      variant="subtle"
+                      size="xs"
+                    >
+                      {{ row.original.unassignedRequests }} unassigned
+                    </UBadge>
+                  </div>
                 </div>
               </template>
 

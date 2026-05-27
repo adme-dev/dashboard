@@ -38,6 +38,11 @@ interface PortalClientRow {
   outstanding_amount: string | number | null
   overdue_amount: string | number | null
   paid_invoices: string | number | null
+  open_requests: string | number | null
+  urgent_requests: string | number | null
+  unassigned_requests: string | number | null
+  job_requests: string | number | null
+  support_requests: string | number | null
   visible_meetings: string | number | null
   upcoming_meetings: string | number | null
   meeting_recordings: string | number | null
@@ -149,6 +154,11 @@ export default defineEventHandler(async (event) => {
         COALESCE(inv.outstanding_amount, 0) AS outstanding_amount,
         COALESCE(inv.overdue_amount, 0) AS overdue_amount,
         COALESCE(inv.paid_invoices, 0) AS paid_invoices,
+        COALESCE(req.open_requests, 0) AS open_requests,
+        COALESCE(req.urgent_requests, 0) AS urgent_requests,
+        COALESCE(req.unassigned_requests, 0) AS unassigned_requests,
+        COALESCE(req.job_requests, 0) AS job_requests,
+        COALESCE(req.support_requests, 0) AS support_requests,
         COALESCE(mt.visible_meetings, 0) AS visible_meetings,
         COALESCE(mt.upcoming_meetings, 0) AS upcoming_meetings,
         COALESCE(mt.meeting_recordings, 0) AS meeting_recordings
@@ -221,6 +231,23 @@ export default defineEventHandler(async (event) => {
       ) inv ON inv.client_id = c.id
       LEFT JOIN (
         SELECT
+          client_id,
+          COUNT(*) FILTER (WHERE status IN ('submitted', 'in_review', 'approved', 'in_progress')) AS open_requests,
+          COUNT(*) FILTER (
+            WHERE status IN ('submitted', 'in_review', 'approved', 'in_progress')
+              AND priority = 'urgent'
+          ) AS urgent_requests,
+          COUNT(*) FILTER (
+            WHERE status IN ('submitted', 'in_review', 'approved', 'in_progress')
+              AND assigned_to IS NULL
+          ) AS unassigned_requests,
+          COUNT(*) FILTER (WHERE request_type = 'job_request') AS job_requests,
+          COUNT(*) FILTER (WHERE request_type = 'support_ticket') AS support_requests
+        FROM client_requests
+        GROUP BY client_id
+      ) req ON req.client_id = c.id
+      LEFT JOIN (
+        SELECT
           cu.client_id,
           COUNT(DISTINCT oms.id) FILTER (WHERE oms.status <> 'cancelled') AS visible_meetings,
           COUNT(DISTINCT oms.id) FILTER (WHERE oms.status IN ('live', 'planned')) AS upcoming_meetings,
@@ -276,6 +303,11 @@ export default defineEventHandler(async (event) => {
           outstandingAmount: toNumber(row.outstanding_amount),
           overdueAmount: toNumber(row.overdue_amount),
           paidInvoices: toNumber(row.paid_invoices),
+          openRequests: toNumber(row.open_requests),
+          urgentRequests: toNumber(row.urgent_requests),
+          unassignedRequests: toNumber(row.unassigned_requests),
+          jobRequests: toNumber(row.job_requests),
+          supportRequests: toNumber(row.support_requests),
           visibleMeetings: toNumber(row.visible_meetings),
           upcomingMeetings: toNumber(row.upcoming_meetings),
           meetingRecordings: toNumber(row.meeting_recordings),
