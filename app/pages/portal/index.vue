@@ -267,6 +267,24 @@ const accountCoverage = computed<AccountCoverage[]>(() => {
   ]
 })
 
+const accountCoverageSummary = computed(() => {
+  const items = accountCoverage.value
+  const live = items.filter(item => item.status === 'Live').length
+  const available = items.filter(item => item.status === 'Available').length
+  const restricted = items.filter(item => item.status === 'Restricted').length
+  const needsAction = items.find(item => item.color === 'error' || item.color === 'warning')
+    || items.find(item => item.status === 'Available')
+    || items.find(item => item.status === 'Restricted')
+
+  return {
+    live,
+    available,
+    restricted,
+    total: items.length,
+    needsAction
+  }
+})
+
 function formatDate(date: string | null) {
   if (!date) return '-'
   return new Date(date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
@@ -833,17 +851,56 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
               <UIcon name="i-lucide-panels-top-left" class="text-primary" />
               <span class="font-semibold">Account Coverage</span>
             </div>
-            <UButton
-              to="/portal/features"
-              variant="ghost"
-              color="neutral"
-              size="xs"
-              trailing-icon="i-lucide-arrow-right"
-            >
-              Service catalogue
-            </UButton>
+            <div class="flex flex-wrap items-center gap-2">
+              <UBadge color="success" variant="subtle">
+                {{ accountCoverageSummary.live }} live
+              </UBadge>
+              <UBadge color="warning" variant="subtle">
+                {{ accountCoverageSummary.available }} available
+              </UBadge>
+              <UBadge v-if="accountCoverageSummary.restricted" color="neutral" variant="subtle">
+                {{ accountCoverageSummary.restricted }} restricted
+              </UBadge>
+              <UButton
+                to="/portal/features"
+                variant="ghost"
+                color="neutral"
+                size="xs"
+                trailing-icon="i-lucide-arrow-right"
+              >
+                Service catalogue
+              </UButton>
+            </div>
           </div>
         </template>
+
+        <div
+          v-if="accountCoverageSummary.needsAction"
+          class="mb-4 rounded-lg border border-default bg-elevated/50 p-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div class="flex items-start gap-3">
+            <div class="rounded-md bg-default p-2">
+              <UIcon :name="accountCoverageSummary.needsAction.icon" class="size-4" />
+            </div>
+            <div>
+              <p class="text-sm font-semibold">
+                Next service focus: {{ accountCoverageSummary.needsAction.label }}
+              </p>
+              <p class="text-xs text-muted mt-1">
+                {{ accountCoverageSummary.needsAction.detail }}
+              </p>
+            </div>
+          </div>
+          <UButton
+            :to="accountCoverageSummary.needsAction.to"
+            :icon="accountCoverageSummary.needsAction.icon"
+            size="xs"
+            color="primary"
+            variant="soft"
+          >
+            Open
+          </UButton>
+        </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3">
           <NuxtLink
