@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     const conditions: string[] = ['p.client_id = $1']
-    const params: any[] = [clientUser.clientId]
+    const params: unknown[] = [clientUser.clientId]
     let idx = 2
 
     if (status && status !== 'all') {
@@ -62,6 +62,8 @@ export default defineEventHandler(async (event) => {
       SELECT
         COUNT(*) as total,
         COUNT(CASE WHEN ca.status = 'pending' THEN 1 END) as pending,
+        COUNT(CASE WHEN ca.status = 'pending' AND ca.due_date < CURRENT_DATE THEN 1 END) as overdue,
+        COUNT(CASE WHEN ca.status = 'pending' AND ca.due_date >= CURRENT_DATE AND ca.due_date <= CURRENT_DATE + INTERVAL '7 days' THEN 1 END) as due_soon,
         COUNT(CASE WHEN ca.status = 'approved' THEN 1 END) as approved,
         COUNT(CASE WHEN ca.status = 'rejected' THEN 1 END) as rejected,
         COUNT(CASE WHEN ca.status = 'revision_requested' THEN 1 END) as revision_requested
@@ -93,6 +95,8 @@ export default defineEventHandler(async (event) => {
       summary: {
         total: Number(summary?.total || 0),
         pending: Number(summary?.pending || 0),
+        overdue: Number(summary?.overdue || 0),
+        dueSoon: Number(summary?.due_soon || 0),
         approved: Number(summary?.approved || 0),
         rejected: Number(summary?.rejected || 0),
         revisionRequested: Number(summary?.revision_requested || 0)

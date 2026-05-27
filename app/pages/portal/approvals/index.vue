@@ -12,12 +12,32 @@ const tabs = [
   { label: 'All', value: 'all' },
   { label: 'Pending', value: 'pending' },
   { label: 'Approved', value: 'approved' },
-  { label: 'Rejected', value: 'rejected' }
+  { label: 'Rejected', value: 'rejected' },
+  { label: 'Revisions', value: 'revision_requested' }
 ]
 
 function formatDate(date: string | null) {
   if (!date) return '-'
   return new Date(date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
+}
+
+function dueLabel(date: string | null, status: string) {
+  if (!date || status !== 'pending') return date ? `Due ${formatDate(date)}` : null
+  const due = new Date(date)
+  const now = new Date()
+  const days = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+  if (days < 0) return `${Math.abs(days)}d overdue`
+  if (days === 0) return 'Due today'
+  if (days <= 7) return `Due in ${days}d`
+  return `Due ${formatDate(date)}`
+}
+
+function dueColor(date: string | null, status: string) {
+  if (!date || status !== 'pending') return 'neutral'
+  const days = Math.ceil((new Date(date).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+  if (days < 0) return 'error'
+  if (days <= 7) return 'warning'
+  return 'neutral'
 }
 
 const statusColors: Record<string, string> = {
@@ -31,7 +51,9 @@ const statusColors: Record<string, string> = {
 <template>
   <div class="p-6 space-y-6 max-w-5xl mx-auto">
     <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-bold">Approvals</h1>
+      <h1 class="text-2xl font-bold">
+        Approvals
+      </h1>
       <div v-if="data?.summary" class="flex items-center gap-3 text-sm">
         <UBadge v-if="data.summary.pending > 0" color="warning" variant="subtle">
           {{ data.summary.pending }} pending
@@ -39,7 +61,58 @@ const statusColors: Record<string, string> = {
       </div>
     </div>
 
-    <UTabs :items="tabs" v-model="activeTab" />
+    <UTabs v-model="activeTab" :items="tabs" />
+
+    <div v-if="data?.summary" class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <button
+        type="button"
+        class="rounded-lg border border-default bg-default p-3 text-left hover:bg-elevated transition-colors"
+        @click="activeTab = 'pending'"
+      >
+        <p class="text-xs text-muted">
+          Pending decisions
+        </p>
+        <p class="mt-1 text-lg font-semibold">
+          {{ data.summary.pending }}
+        </p>
+      </button>
+      <button
+        type="button"
+        class="rounded-lg border border-default bg-default p-3 text-left hover:bg-elevated transition-colors"
+        @click="activeTab = 'pending'"
+      >
+        <p class="text-xs text-muted">
+          Overdue
+        </p>
+        <p class="mt-1 text-lg font-semibold" :class="data.summary.overdue > 0 ? 'text-error' : ''">
+          {{ data.summary.overdue }}
+        </p>
+      </button>
+      <button
+        type="button"
+        class="rounded-lg border border-default bg-default p-3 text-left hover:bg-elevated transition-colors"
+        @click="activeTab = 'pending'"
+      >
+        <p class="text-xs text-muted">
+          Due soon
+        </p>
+        <p class="mt-1 text-lg font-semibold" :class="data.summary.dueSoon > 0 ? 'text-warning' : ''">
+          {{ data.summary.dueSoon }}
+        </p>
+      </button>
+      <button
+        type="button"
+        class="rounded-lg border border-default bg-default p-3 text-left hover:bg-elevated transition-colors"
+        @click="activeTab = 'revision_requested'"
+      >
+        <p class="text-xs text-muted">
+          Revisions requested
+        </p>
+        <p class="mt-1 text-lg font-semibold">
+          {{ data.summary.revisionRequested }}
+        </p>
+      </button>
+    </div>
 
     <div v-if="pending" class="space-y-3">
       <div v-for="i in 4" :key="i" class="h-24 rounded-lg bg-elevated animate-pulse" />
@@ -66,11 +139,19 @@ const statusColors: Record<string, string> = {
               <span>{{ approval.projectName }}</span>
               <span v-if="approval.requestedByName">· by {{ approval.requestedByName }}</span>
             </div>
+            <p v-if="approval.taskTitle" class="text-xs text-muted mt-2">
+              Task: {{ approval.taskTitle }}
+            </p>
           </div>
           <div class="text-right shrink-0">
-            <span v-if="approval.dueDate" class="text-xs text-muted">
-              Due {{ formatDate(approval.dueDate) }}
-            </span>
+            <UBadge
+              v-if="dueLabel(approval.dueDate, approval.status)"
+              :color="(dueColor(approval.dueDate, approval.status) as any)"
+              variant="subtle"
+              size="xs"
+            >
+              {{ dueLabel(approval.dueDate, approval.status) }}
+            </UBadge>
           </div>
         </div>
       </NuxtLink>
