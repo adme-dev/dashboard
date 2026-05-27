@@ -378,6 +378,8 @@ export default defineEventHandler(async (event) => {
         MAX(last_login_at) AS last_login_at
       FROM client_users
       WHERE client_id = $1
+        AND email NOT LIKE '%@portal-access.local'
+        AND COALESCE(title, '') <> 'Agency portal access'
     `, [clientId])
 
     const leadStats = await queryOne(`

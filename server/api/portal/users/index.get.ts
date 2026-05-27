@@ -49,6 +49,8 @@ export default defineEventHandler(async (event) => {
         created_at
       FROM client_users
       WHERE client_id = $1
+        AND email NOT LIKE '%@portal-access.local'
+        AND COALESCE(title, '') <> 'Agency portal access'
       ORDER BY
         CASE WHEN id = $2 THEN 0 ELSE 1 END,
         CASE status WHEN 'active' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END,

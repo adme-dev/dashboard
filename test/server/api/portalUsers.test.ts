@@ -76,6 +76,8 @@ describe('portal users API', () => {
       ['client-1', 'client-user-1']
     )
     expect(String(mockQueryRows.mock.calls[0][0])).toContain('WHERE client_id = $1')
+    expect(String(mockQueryRows.mock.calls[0][0])).toContain('email NOT LIKE \'%@portal-access.local\'')
+    expect(String(mockQueryRows.mock.calls[0][0])).toContain('COALESCE(title, \'\') <> \'Agency portal access\'')
     expect(result.users).toEqual([
       expect.objectContaining({
         id: 'client-user-1',

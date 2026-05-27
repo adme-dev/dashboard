@@ -238,7 +238,9 @@ describe('portal dashboard enterprise summary', () => {
 
     const upcomingJobsSql = String(mockQueryRows.mock.calls[1]?.[0])
     const completedJobsSql = String(mockQueryRows.mock.calls[2]?.[0])
+    const portalAccessSql = String(mockQueryOne.mock.calls[8]?.[0])
     expect(upcomingJobsSql).toContain('p.status IN (\'draft\', \'active\', \'on_hold\')')
     expect(completedJobsSql).toContain('p.status IN (\'completed\', \'cancelled\')')
+    expect(portalAccessSql).toContain('email NOT LIKE \'%@portal-access.local\'')
   })
 })
