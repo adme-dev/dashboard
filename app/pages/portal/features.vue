@@ -197,6 +197,25 @@ const serviceModules = computed<ServiceModule[]>(() => {
   ]
 })
 
+const serviceHealth = computed(() => {
+  const modules = serviceModules.value
+  return {
+    total: modules.length,
+    active: modules.filter(module => module.status === 'Active').length,
+    included: modules.filter(module => module.status === 'Included').length,
+    available: modules.filter(module => module.status === 'Available').length,
+    restricted: modules.filter(module => module.status === 'Restricted').length,
+    requestable: modules.filter(module => user.value?.permissions?.canSubmitRequests && module.status !== 'Restricted').length
+  }
+})
+
+const serviceCoverageItems = computed(() => [
+  { label: 'Active', value: serviceHealth.value.active, color: 'success' as const, icon: 'i-lucide-circle-check' },
+  { label: 'Included', value: serviceHealth.value.included, color: 'primary' as const, icon: 'i-lucide-package-check' },
+  { label: 'Available', value: serviceHealth.value.available, color: 'warning' as const, icon: 'i-lucide-sparkles' },
+  { label: 'Restricted', value: serviceHealth.value.restricted, color: 'neutral' as const, icon: 'i-lucide-lock' }
+])
+
 function serviceStatusColor(status: ServiceModule['status']) {
   if (status === 'Active') return 'success'
   if (status === 'Included') return 'primary'
@@ -385,6 +404,50 @@ function serviceStatusColor(status: ServiceModule['status']) {
         </template>
       </UCard>
     </div>
+
+    <UCard v-if="!pending">
+      <template #header>
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-map" class="text-primary" />
+            <span class="font-semibold">Service Coverage</span>
+          </div>
+          <UBadge color="primary" variant="subtle">
+            {{ serviceHealth.requestable }} requestable
+          </UBadge>
+        </div>
+      </template>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <button
+          v-for="item in serviceCoverageItems"
+          :key="item.label"
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <p class="text-xs text-muted">
+              {{ item.label }}
+            </p>
+            <UIcon :name="item.icon" class="size-4 text-muted" />
+          </div>
+          <p class="mt-1 text-sm font-semibold">
+            {{ item.value }}
+          </p>
+        </button>
+      </div>
+
+      <div class="mt-4 flex flex-wrap gap-2">
+        <UBadge
+          v-for="module in serviceModules"
+          :key="module.title"
+          :color="serviceStatusColor(module.status)"
+          variant="subtle"
+        >
+          {{ module.title }} · {{ module.status }}
+        </UBadge>
+      </div>
+    </UCard>
 
     <UCard v-if="!pending">
       <template #header>
