@@ -58,6 +58,15 @@ interface AccountPriority {
   to: string
 }
 
+interface AccountCoverage {
+  label: string
+  detail: string
+  icon: string
+  color: PriorityColor
+  to: string
+  status: 'Live' | 'Available' | 'Restricted'
+}
+
 const accountPriorities = computed<AccountPriority[]>(() => {
   const data = dashboard.value
   if (!data) return []
@@ -159,6 +168,66 @@ const accountPriorities = computed<AccountPriority[]>(() => {
   }
 
   return items.slice(0, 4)
+})
+
+const accountCoverage = computed<AccountCoverage[]>(() => {
+  const data = dashboard.value
+  if (!data) return []
+
+  return [
+    {
+      label: 'Jobs',
+      detail: `${data.projects.stats.active} active, ${data.projects.stats.completed} completed`,
+      icon: 'i-lucide-folder-kanban',
+      color: data.projects.stats.total > 0 ? 'success' : 'neutral',
+      to: '/portal/projects',
+      status: data.projects.stats.total > 0 ? 'Live' : 'Available'
+    },
+    {
+      label: 'Campaigns',
+      detail: data.enterprise.campaigns
+        ? `${data.enterprise.campaigns.campaigns} campaigns across ${data.enterprise.campaigns.platforms} platforms`
+        : 'Analytics permission required',
+      icon: 'i-lucide-chart-no-axes-combined',
+      color: data.enterprise.campaigns ? 'success' : 'neutral',
+      to: data.enterprise.campaigns ? '/portal/analytics' : '/portal/settings',
+      status: data.enterprise.campaigns ? 'Live' : 'Restricted'
+    },
+    {
+      label: 'Billing',
+      detail: data.enterprise.billing
+        ? `${data.enterprise.billing.outstandingCount} current, ${data.enterprise.billing.overdueCount} overdue`
+        : 'Invoice permission required',
+      icon: 'i-lucide-receipt-text',
+      color: data.enterprise.billing?.overdueCount ? 'error' : data.enterprise.billing ? 'success' : 'neutral',
+      to: data.enterprise.billing ? '/portal/invoices' : '/portal/settings',
+      status: data.enterprise.billing ? 'Live' : 'Restricted'
+    },
+    {
+      label: 'Approvals',
+      detail: `${data.approvals.pendingCount} decision${data.approvals.pendingCount === 1 ? '' : 's'} pending`,
+      icon: 'i-lucide-check-check',
+      color: data.approvals.pendingCount > 0 ? 'warning' : 'success',
+      to: '/portal/approvals',
+      status: 'Live'
+    },
+    {
+      label: 'Requests',
+      detail: `${data.requests.stats.open} open, ${data.requests.stats.resolved} resolved`,
+      icon: 'i-lucide-message-square-plus',
+      color: data.requests.stats.open > 0 ? 'primary' : 'success',
+      to: '/portal/requests',
+      status: 'Live'
+    },
+    {
+      label: 'Meetings',
+      detail: `${data.meetings.stats.planned + data.meetings.stats.live} upcoming, ${data.meetings.stats.recordings} recordings`,
+      icon: 'i-lucide-video',
+      color: data.meetings.stats.totalVisible > 0 ? 'success' : 'neutral',
+      to: '/portal/meetings',
+      status: data.meetings.stats.totalVisible > 0 ? 'Live' : 'Available'
+    }
+  ]
 })
 
 function formatDate(date: string | null) {
@@ -672,6 +741,50 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
                 </p>
               </div>
             </div>
+          </NuxtLink>
+        </div>
+      </UCard>
+
+      <UCard>
+        <template #header>
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-panels-top-left" class="text-primary" />
+              <span class="font-semibold">Account Coverage</span>
+            </div>
+            <UButton
+              to="/portal/features"
+              variant="ghost"
+              color="neutral"
+              size="xs"
+              trailing-icon="i-lucide-arrow-right"
+            >
+              Service catalogue
+            </UButton>
+          </div>
+        </template>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3">
+          <NuxtLink
+            v-for="item in accountCoverage"
+            :key="item.label"
+            :to="item.to"
+            class="rounded-lg border border-default bg-default p-3 hover:bg-elevated transition-colors"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="rounded-md bg-elevated p-2">
+                <UIcon :name="item.icon" class="size-4" />
+              </div>
+              <UBadge :color="item.color" variant="subtle" size="xs">
+                {{ item.status }}
+              </UBadge>
+            </div>
+            <p class="mt-3 text-sm font-semibold">
+              {{ item.label }}
+            </p>
+            <p class="mt-1 text-xs text-muted">
+              {{ item.detail }}
+            </p>
           </NuxtLink>
         </div>
       </UCard>
