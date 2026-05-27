@@ -110,6 +110,18 @@ const serviceRequestPresets: Record<string, { category: string, title: string, d
   }
 }
 
+const servicePresetOptions = [
+  { label: 'Paid media', value: 'paid_media', icon: 'i-lucide-megaphone' },
+  { label: 'Creative', value: 'creative', icon: 'i-lucide-palette' },
+  { label: 'SEO & content', value: 'seo_content', icon: 'i-lucide-file-text' },
+  { label: 'Web & CRO', value: 'web_cro', icon: 'i-lucide-monitor-check' },
+  { label: 'Reporting', value: 'reporting', icon: 'i-lucide-chart-pie' },
+  { label: 'Strategy', value: 'strategy', icon: 'i-lucide-compass' }
+]
+
+const selectedPreset = ref<string | null>(null)
+const selectedPresetLabel = computed(() => servicePresetOptions.find(option => option.value === selectedPreset.value)?.label || null)
+
 const accessRequestPresets: Record<string, { title: string, description: string }> = {
   jobs: {
     title: 'Request access to jobs',
@@ -145,6 +157,7 @@ const accessRequestPresets: Record<string, { title: string, description: string 
 const { data: projectsData } = useFetch('/api/portal/projects')
 
 function resetForm() {
+  selectedPreset.value = null
   form.requestType = 'job_request'
   form.category = ''
   form.title = ''
@@ -160,6 +173,7 @@ function applyServicePreset(service: unknown) {
   const preset = serviceRequestPresets[service]
   if (!preset || !hasPermission('canSubmitRequests')) return
 
+  selectedPreset.value = service
   form.requestType = 'job_request'
   form.category = preset.category
   form.title = preset.title
@@ -492,9 +506,38 @@ function statusHint(status: string) {
     <USlideover v-model:open="showCreate">
       <template #content>
         <div class="p-6 space-y-6">
-          <h2 class="text-lg font-semibold">
-            New Request
-          </h2>
+          <div class="space-y-2">
+            <div class="flex items-center justify-between gap-3">
+              <h2 class="text-lg font-semibold">
+                New Request
+              </h2>
+              <UBadge v-if="selectedPresetLabel" color="primary" variant="subtle">
+                {{ selectedPresetLabel }}
+              </UBadge>
+            </div>
+            <p class="text-sm text-muted">
+              {{ selectedPresetLabel ? `Prefilled from ${selectedPresetLabel}. Adjust the details before submitting.` : 'Tell the agency what you need, when you need it, and whether it relates to an existing job.' }}
+            </p>
+          </div>
+
+          <div class="rounded-lg border border-default bg-elevated/50 p-3">
+            <p class="text-xs font-medium text-muted mb-2">
+              Service shortcuts
+            </p>
+            <div class="flex flex-wrap gap-2">
+              <UButton
+                v-for="option in servicePresetOptions"
+                :key="option.value"
+                :icon="option.icon"
+                size="xs"
+                :color="selectedPreset === option.value ? 'primary' : 'neutral'"
+                :variant="selectedPreset === option.value ? 'soft' : 'outline'"
+                @click="applyServicePreset(option.value)"
+              >
+                {{ option.label }}
+              </UButton>
+            </div>
+          </div>
 
           <fieldset class="space-y-4">
             <legend class="text-sm font-medium text-muted mb-2">
