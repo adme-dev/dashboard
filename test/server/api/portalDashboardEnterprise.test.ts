@@ -99,6 +99,19 @@ describe('portal dashboard enterprise summary', () => {
         last_login_at: '2026-05-26T00:00:00.000Z'
       })
       .mockResolvedValueOnce({ total: '80', new: '10', contacted: '20', won: '5' })
+      .mockResolvedValueOnce({
+        briefs_total: '7',
+        briefs_open: '3',
+        briefs_needs_info: '1',
+        briefs_urgent: '2',
+        briefs_overdue: '1',
+        briefs_submitted_30d: '4',
+        deliverables_visible: '12',
+        deliverables_approved: '8',
+        deliverables_final: '5',
+        deliverables_recent_30d: '6',
+        last_published_at: '2026-05-27T00:00:00.000Z'
+      })
 
     mockQueryRows
       .mockResolvedValueOnce([])
@@ -229,6 +242,19 @@ describe('portal dashboard enterprise summary', () => {
         activeUsers: 3,
         pendingUsers: 1,
         lastLoginAt: '2026-05-26T00:00:00.000Z'
+      },
+      content: {
+        briefsTotal: 7,
+        briefsOpen: 3,
+        briefsNeedsInfo: 1,
+        briefsUrgent: 2,
+        briefsOverdue: 1,
+        briefsSubmitted30d: 4,
+        deliverablesVisible: 12,
+        deliverablesApproved: 8,
+        deliverablesFinal: 5,
+        deliverablesRecent30d: 6,
+        lastPublishedAt: '2026-05-27T00:00:00.000Z'
       }
     })
     expect(result.meetings.upcoming[0]).toMatchObject({
@@ -253,8 +279,14 @@ describe('portal dashboard enterprise summary', () => {
     const upcomingJobsSql = String(mockQueryRows.mock.calls[1]?.[0])
     const completedJobsSql = String(mockQueryRows.mock.calls[2]?.[0])
     const portalAccessSql = String(mockQueryOne.mock.calls[8]?.[0])
+    const contentSql = String(mockQueryOne.mock.calls[10]?.[0])
     expect(upcomingJobsSql).toContain('p.status IN (\'draft\', \'active\', \'on_hold\')')
     expect(completedJobsSql).toContain('p.status IN (\'completed\', \'cancelled\')')
     expect(portalAccessSql).toContain('email NOT LIKE \'%@portal-access.local\'')
+    expect(contentSql).toContain('FROM briefs')
+    expect(contentSql).toContain('briefs_needs_info')
+    expect(contentSql).toContain('requested_deadline < CURRENT_DATE')
+    expect(contentSql).toContain('FROM client_deliverables')
+    expect(contentSql).toContain('deliverables_recent_30d')
   })
 })

@@ -37,6 +37,7 @@ interface PortalDashboard {
     billing: { outstandingCount: number, overdueCount: number, outstandingAmount: number, aged60Amount: number, aged60Count: number, paidLast90: number, lastPaidAt: string | null, nextDueDate: string | null } | null
     campaigns: { campaigns: number, platforms: number, spend: number, impressions: number, clicks: number, conversions: number, leadsLast30: number, visibleLeads: number, contactedLeadsLast30: number, uncontactedLeadsLast30: number, wonLeads: number, avgResponseMinutesLast30: number | null, costPerLead: number | null, lastSyncedAt: string | null } | null
     access: { totalUsers: number, activeUsers: number, pendingUsers: number, lastLoginAt: string | null }
+    content: { briefsTotal: number, briefsOpen: number, briefsNeedsInfo: number, briefsUrgent: number, briefsOverdue: number, briefsSubmitted30d: number, deliverablesVisible: number, deliverablesApproved: number, deliverablesFinal: number, deliverablesRecent30d: number, lastPublishedAt: string | null }
   }
   meetings: {
     stats: { totalVisible: number, live: number, planned: number, recordings: number }
@@ -167,6 +168,24 @@ const accountPriorities = computed<AccountPriority[]>(() => {
     })
   }
 
+  if (data.enterprise.content.briefsOverdue > 0) {
+    items.push({
+      title: 'Review overdue briefs',
+      detail: `${data.enterprise.content.briefsOverdue} brief${data.enterprise.content.briefsOverdue === 1 ? '' : 's'} past the requested date`,
+      icon: 'i-lucide-file-clock',
+      color: 'warning',
+      to: '/portal/briefs'
+    })
+  } else if (data.enterprise.content.briefsNeedsInfo > 0) {
+    items.push({
+      title: 'Add brief details',
+      detail: `${data.enterprise.content.briefsNeedsInfo} brief${data.enterprise.content.briefsNeedsInfo === 1 ? '' : 's'} need more information`,
+      icon: 'i-lucide-file-question',
+      color: 'info',
+      to: '/portal/briefs'
+    })
+  }
+
   if (items.length === 0) {
     items.push({
       title: 'Account is up to date',
@@ -228,6 +247,14 @@ const accountCoverage = computed<AccountCoverage[]>(() => {
       color: data.requests.stats.open > 0 ? 'primary' : 'success',
       to: '/portal/requests',
       status: 'Live'
+    },
+    {
+      label: 'Briefs & Files',
+      detail: `${data.enterprise.content.briefsOpen} open briefs, ${data.enterprise.content.deliverablesVisible} files`,
+      icon: 'i-lucide-folder-open-dot',
+      color: data.enterprise.content.briefsOverdue > 0 ? 'warning' : data.enterprise.content.deliverablesVisible > 0 ? 'success' : 'neutral',
+      to: '/portal/briefs',
+      status: data.enterprise.content.briefsTotal > 0 || data.enterprise.content.deliverablesVisible > 0 ? 'Live' : 'Available'
     },
     {
       label: 'Meetings',
@@ -565,7 +592,7 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
         </UCard>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
         <NuxtLink to="/portal/projects" class="rounded-lg border border-default bg-default p-4 hover:bg-elevated transition-colors">
           <div class="flex items-start justify-between gap-3">
             <div>
@@ -717,6 +744,36 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
             <span class="text-right font-medium">{{ dashboard.enterprise.access.pendingUsers }}</span>
             <span class="text-muted">Last login</span>
             <span class="text-right font-medium">{{ dashboard.enterprise.access.lastLoginAt ? timeAgo(dashboard.enterprise.access.lastLoginAt) : '-' }}</span>
+          </div>
+        </NuxtLink>
+
+        <NuxtLink to="/portal/briefs" class="rounded-lg border border-default bg-default p-4 hover:bg-elevated transition-colors">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-sm text-muted">
+                Briefs & files
+              </p>
+              <p class="text-2xl font-bold mt-1" :class="dashboard.enterprise.content.briefsOverdue > 0 ? 'text-warning' : ''">
+                {{ dashboard.enterprise.content.briefsOpen }}
+              </p>
+            </div>
+            <UIcon name="i-lucide-folder-open-dot" class="size-5 text-primary" />
+          </div>
+          <div class="mt-4 grid grid-cols-2 gap-2 text-xs">
+            <span class="text-muted">Open briefs</span>
+            <span class="text-right font-medium">{{ dashboard.enterprise.content.briefsOpen }}</span>
+            <span class="text-muted">Need info</span>
+            <span class="text-right font-medium">{{ dashboard.enterprise.content.briefsNeedsInfo }}</span>
+            <span class="text-muted">Overdue</span>
+            <span class="text-right font-medium" :class="dashboard.enterprise.content.briefsOverdue > 0 ? 'text-warning' : ''">
+              {{ dashboard.enterprise.content.briefsOverdue }}
+            </span>
+            <span class="text-muted">Shared files</span>
+            <span class="text-right font-medium">{{ dashboard.enterprise.content.deliverablesVisible }}</span>
+            <span class="text-muted">Recent files</span>
+            <span class="text-right font-medium">{{ dashboard.enterprise.content.deliverablesRecent30d }}</span>
+            <span class="text-muted">Last shared</span>
+            <span class="text-right font-medium">{{ formatDate(dashboard.enterprise.content.lastPublishedAt) }}</span>
           </div>
         </NuxtLink>
       </div>
