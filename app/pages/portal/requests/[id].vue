@@ -83,6 +83,77 @@ const requestProgress = computed(() => {
     { label: 'Resolved', done: resolved, detail: request.resolvedAt ? formatDate(request.resolvedAt) : 'Open' }
   ]
 })
+
+const requestNextStep = computed(() => {
+  const request = data.value?.request
+  if (!request) return null
+
+  if (request.status === 'submitted') {
+    return {
+      icon: 'i-lucide-search-check',
+      title: 'Waiting for agency review',
+      description: 'The agency team has received this request and has not responded yet.'
+    }
+  }
+
+  if (request.status === 'in_review') {
+    return {
+      icon: 'i-lucide-clipboard-check',
+      title: 'Agency review in progress',
+      description: request.assignedName
+        ? `${request.assignedName} is reviewing the request and will confirm the next step.`
+        : 'The agency team is reviewing the scope and next step.'
+    }
+  }
+
+  if (request.status === 'approved') {
+    return {
+      icon: 'i-lucide-calendar-plus',
+      title: 'Approved for scheduling',
+      description: 'This request has been approved and is ready to be scheduled into upcoming work.'
+    }
+  }
+
+  if (request.status === 'in_progress') {
+    return {
+      icon: 'i-lucide-loader-circle',
+      title: 'Work is in progress',
+      description: request.assignedName
+        ? `${request.assignedName} is currently handling this request.`
+        : 'The agency team is actively working on this request.'
+    }
+  }
+
+  if (request.status === 'completed') {
+    return {
+      icon: 'i-lucide-check-circle-2',
+      title: 'Request completed',
+      description: 'The requested work has been completed.'
+    }
+  }
+
+  if (request.status === 'closed') {
+    return {
+      icon: 'i-lucide-lock',
+      title: 'Request closed',
+      description: 'This request has been closed and the conversation is read-only.'
+    }
+  }
+
+  if (request.status === 'cancelled') {
+    return {
+      icon: 'i-lucide-circle-x',
+      title: 'Request cancelled',
+      description: 'This request was cancelled and no further action is scheduled.'
+    }
+  }
+
+  return {
+    icon: 'i-lucide-message-square',
+    title: 'Request received',
+    description: 'The agency team can review and respond from their client portal workspace.'
+  }
+})
 </script>
 
 <template>
@@ -140,6 +211,22 @@ const requestProgress = computed(() => {
             </div>
             <p class="text-xs text-muted mt-2">
               {{ step.detail }}
+            </p>
+          </div>
+        </div>
+      </UCard>
+
+      <UCard v-if="requestNextStep">
+        <div class="flex items-start gap-3">
+          <div class="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <UIcon :name="requestNextStep.icon" class="size-5" />
+          </div>
+          <div class="min-w-0">
+            <p class="text-sm font-semibold">
+              {{ requestNextStep.title }}
+            </p>
+            <p class="mt-1 text-sm text-muted">
+              {{ requestNextStep.description }}
             </p>
           </div>
         </div>
