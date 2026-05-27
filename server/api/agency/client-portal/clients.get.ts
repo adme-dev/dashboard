@@ -124,6 +124,22 @@ export default defineEventHandler(async (event) => {
     conditions.push('COALESCE(cu.portal_users, 0) = 0')
   } else if (status === 'pending') {
     conditions.push('COALESCE(cu.pending_users, 0) > 0')
+  } else if (status === 'risk') {
+    conditions.push(`(
+      COALESCE(inv.overdue_invoices, 0) > 0
+      OR COALESCE(req.urgent_requests, 0) > 0
+      OR COALESCE(req.unassigned_requests, 0) > 0
+      OR COALESCE(campaigns.campaign_count, 0) = 0
+      OR COALESCE(mt.visible_meetings, 0) = 0
+    )`)
+  } else if (status === 'billing-risk') {
+    conditions.push('COALESCE(inv.overdue_invoices, 0) > 0')
+  } else if (status === 'request-risk') {
+    conditions.push('(COALESCE(req.urgent_requests, 0) > 0 OR COALESCE(req.unassigned_requests, 0) > 0)')
+  } else if (status === 'missing-campaigns') {
+    conditions.push('COALESCE(campaigns.campaign_count, 0) = 0')
+  } else if (status === 'missing-meetings') {
+    conditions.push('COALESCE(mt.visible_meetings, 0) = 0')
   }
 
   params.push(limit)

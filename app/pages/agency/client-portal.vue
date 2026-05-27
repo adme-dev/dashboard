@@ -1040,6 +1040,11 @@ const enterpriseRollout = [
                   v-model="portalClientFilters.status"
                   :items="[
                     { label: 'All portal statuses', value: 'all' },
+                    { label: 'Needs attention', value: 'risk' },
+                    { label: 'Billing risk', value: 'billing-risk' },
+                    { label: 'Request risk', value: 'request-risk' },
+                    { label: 'Missing campaigns', value: 'missing-campaigns' },
+                    { label: 'Missing meetings', value: 'missing-meetings' },
                     { label: 'Configured', value: 'configured' },
                     { label: 'Invite pending', value: 'pending' },
                     { label: 'No users yet', value: 'no-users' }

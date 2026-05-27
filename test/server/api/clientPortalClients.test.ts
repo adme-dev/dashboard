@@ -199,4 +199,28 @@ describe('agency client portal clients API', () => {
     })
     expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('COALESCE(cu.portal_users, 0) = 0')
   })
+
+  it('filters clients by operational portal risk', async () => {
+    await clientsHandler({ query: { status: 'risk' } })
+
+    const sql = String(mockQueryRows.mock.calls[0]?.[0])
+    expect(sql).toContain('COALESCE(inv.overdue_invoices, 0) > 0')
+    expect(sql).toContain('COALESCE(req.urgent_requests, 0) > 0')
+    expect(sql).toContain('COALESCE(req.unassigned_requests, 0) > 0')
+    expect(sql).toContain('COALESCE(campaigns.campaign_count, 0) = 0')
+    expect(sql).toContain('COALESCE(mt.visible_meetings, 0) = 0')
+  })
+
+  it('filters clients by specific setup gaps', async () => {
+    await clientsHandler({ query: { status: 'missing-campaigns' } })
+    expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('COALESCE(campaigns.campaign_count, 0) = 0')
+
+    vi.clearAllMocks()
+    mockRequireRole.mockResolvedValue({ id: 'agency-user-1', role: 'media_buyer' })
+    mockQueryRows.mockResolvedValue([])
+    mockEnsureOfficeRecordingsTables.mockResolvedValue(undefined)
+
+    await clientsHandler({ query: { status: 'missing-meetings' } })
+    expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('COALESCE(mt.visible_meetings, 0) = 0')
+  })
 })
