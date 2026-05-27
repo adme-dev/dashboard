@@ -6,14 +6,16 @@ const toast = useToast()
 const route = useRoute()
 
 const activeTab = ref('all')
+const activeStatus = ref('open')
 const typeFilter = computed(() => {
   if (activeTab.value === 'job_request') return 'job_request'
   if (activeTab.value === 'support_ticket') return 'support_ticket'
   return undefined
 })
+const viewFilter = computed(() => activeStatus.value === 'all' ? undefined : activeStatus.value)
 
 const { data, pending, refresh } = useFetch('/api/portal/requests', {
-  query: { type: typeFilter }
+  query: { type: typeFilter, view: viewFilter }
 })
 
 const tabs = [
@@ -21,6 +23,14 @@ const tabs = [
   { label: 'Job Requests', value: 'job_request' },
   { label: 'Support Tickets', value: 'support_ticket' }
 ]
+
+const statusTabs = computed(() => [
+  { label: `Open (${data.value?.summary?.open ?? 0})`, value: 'open' },
+  { label: `Needs review (${data.value?.summary?.needsReview ?? 0})`, value: 'needs_review' },
+  { label: `In progress (${data.value?.summary?.inProgress ?? 0})`, value: 'in_progress' },
+  { label: `Resolved (${data.value?.summary?.resolved ?? 0})`, value: 'resolved' },
+  { label: 'All', value: 'all' }
+])
 
 // Create request slideover
 const showCreate = ref(false)
@@ -231,6 +241,17 @@ const priorityColors: Record<string, string> = {
   high: 'warning',
   urgent: 'error'
 }
+
+function statusHint(status: string) {
+  if (status === 'submitted') return 'Waiting for agency review'
+  if (status === 'in_review') return 'Agency is reviewing'
+  if (status === 'approved') return 'Approved for scheduling'
+  if (status === 'in_progress') return 'Work in progress'
+  if (status === 'completed') return 'Completed'
+  if (status === 'closed') return 'Closed'
+  if (status === 'cancelled') return 'Cancelled'
+  return 'Request received'
+}
 </script>
 
 <template>
@@ -259,6 +280,8 @@ const priorityColors: Record<string, string> = {
     </div>
 
     <UTabs v-model="activeTab" :items="tabs" />
+
+    <UTabs v-model="activeStatus" :items="statusTabs" />
 
     <div v-if="pending" class="space-y-3">
       <div v-for="i in 4" :key="i" class="h-24 rounded-lg bg-elevated animate-pulse" />
@@ -290,6 +313,9 @@ const priorityColors: Record<string, string> = {
               <span v-if="request.category">{{ request.category.replace(/_/g, ' ') }}</span>
               <span v-if="request.projectName">· {{ request.projectName }}</span>
             </div>
+            <p class="text-xs text-muted mt-2">
+              {{ statusHint(request.status) }}
+            </p>
           </div>
           <div class="text-right shrink-0 space-y-1">
             <span class="text-xs text-muted block">{{ formatDate(request.createdAt) }}</span>

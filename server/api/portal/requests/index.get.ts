@@ -12,11 +12,12 @@ export default defineEventHandler(async (event) => {
 
   const type = query.type as string | undefined
   const status = query.status as string | undefined
+  const view = query.view as string | undefined
   const limit = Math.min(Number(query.limit) || 50, 100)
 
   try {
     const conditions: string[] = ['cr.client_id = $1']
-    const params: any[] = [clientUser.clientId]
+    const params: unknown[] = [clientUser.clientId]
     let idx = 2
 
     if (type && type !== 'all') {
@@ -25,7 +26,15 @@ export default defineEventHandler(async (event) => {
       idx++
     }
 
-    if (status && status !== 'all') {
+    if (view === 'open') {
+      conditions.push(`cr.status NOT IN ('completed', 'closed', 'cancelled')`)
+    } else if (view === 'needs_review') {
+      conditions.push(`cr.status IN ('submitted', 'in_review')`)
+    } else if (view === 'in_progress') {
+      conditions.push(`cr.status IN ('approved', 'in_progress')`)
+    } else if (view === 'resolved') {
+      conditions.push(`cr.status IN ('completed', 'closed')`)
+    } else if (status && status !== 'all') {
       conditions.push(`cr.status = $${idx}`)
       params.push(status)
       idx++
@@ -78,8 +87,10 @@ export default defineEventHandler(async (event) => {
       SELECT
         COUNT(*) as total,
         COUNT(CASE WHEN status = 'submitted' THEN 1 END) as submitted,
+        COUNT(CASE WHEN status IN ('submitted', 'in_review') THEN 1 END) as needs_review,
         COUNT(CASE WHEN status IN ('in_review', 'approved', 'in_progress') THEN 1 END) as in_progress,
         COUNT(CASE WHEN status IN ('completed', 'closed') THEN 1 END) as resolved,
+        COUNT(CASE WHEN status NOT IN ('completed', 'closed', 'cancelled') THEN 1 END) as open,
         COUNT(CASE WHEN request_type = 'job_request' THEN 1 END) as job_requests,
         COUNT(CASE WHEN request_type = 'support_ticket' THEN 1 END) as support_tickets
       FROM client_requests
@@ -108,8 +119,10 @@ export default defineEventHandler(async (event) => {
       summary: {
         total: Number(summary?.total || 0),
         submitted: Number(summary?.submitted || 0),
+        needsReview: Number(summary?.needs_review || 0),
         inProgress: Number(summary?.in_progress || 0),
         resolved: Number(summary?.resolved || 0),
+        open: Number(summary?.open || 0),
         jobRequests: Number(summary?.job_requests || 0),
         supportTickets: Number(summary?.support_tickets || 0)
       }
