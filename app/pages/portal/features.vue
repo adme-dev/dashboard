@@ -107,7 +107,9 @@ const features = computed<FeatureCard[]>(() => {
 
 const serviceModules = computed<ServiceModule[]>(() => {
   const hasCampaigns = Boolean(dashboard.value?.enterprise?.campaigns?.campaigns)
-  const hasCreative = Boolean(dashboard.value?.gallery?.recent?.length)
+  const content = dashboard.value?.enterprise?.content
+  const hasCreative = Boolean((content?.deliverablesVisible || 0) > 0 || dashboard.value?.gallery?.recent?.length)
+  const hasContentBriefs = Boolean((content?.briefsTotal || 0) > 0)
   const hasJobs = Boolean(dashboard.value?.projects?.stats?.total)
   const hasMeetings = Boolean(dashboard.value?.meetings?.stats?.totalVisible)
   const campaigns = dashboard.value?.enterprise?.campaigns
@@ -134,9 +136,10 @@ const serviceModules = computed<ServiceModule[]>(() => {
       description: 'Campaign assets, design revisions, approvals, gallery delivery, and creative refreshes.',
       icon: 'i-lucide-palette',
       status: hasCreative ? 'Active' : 'Available',
-      proof: hasCreative ? `${dashboard.value?.gallery?.recent?.length || 0} recent assets` : 'Request creative work',
+      proof: hasCreative ? `${content?.deliverablesVisible || dashboard.value?.gallery?.recent?.length || 0} shared assets` : 'Request creative work',
       metrics: [
-        { label: 'Assets', value: String(dashboard.value?.gallery?.recent?.length || 0) },
+        { label: 'Shared', value: String(content?.deliverablesVisible || 0) },
+        { label: 'Final', value: String(content?.deliverablesFinal || 0) },
         { label: 'Approvals', value: String(dashboard.value?.approvals?.pendingCount || 0) }
       ],
       requestService: 'creative',
@@ -146,10 +149,11 @@ const serviceModules = computed<ServiceModule[]>(() => {
       title: 'SEO and content',
       description: 'Content planning, on-page improvements, landing page copy, and organic growth work.',
       icon: 'i-lucide-file-text',
-      status: 'Available',
-      proof: 'Briefs and requests supported',
+      status: hasContentBriefs ? 'Active' : 'Available',
+      proof: hasContentBriefs ? `${content?.briefsTotal || 0} briefs on record` : 'Briefs and requests supported',
       metrics: [
-        { label: 'Briefs', value: 'Ready' },
+        { label: 'Open', value: String(content?.briefsOpen || 0) },
+        { label: 'Needs info', value: String(content?.briefsNeedsInfo || 0) },
         { label: 'Requests', value: String(dashboard.value?.requests?.stats?.open || 0) }
       ],
       requestService: 'seo_content',
@@ -207,6 +211,14 @@ const serviceHealth = computed(() => {
     restricted: modules.filter(module => module.status === 'Restricted').length,
     requestable: modules.filter(module => user.value?.permissions?.canSubmitRequests && module.status !== 'Restricted').length
   }
+})
+
+const nextServiceAction = computed(() => {
+  const modules = serviceModules.value
+  return modules.find(module => module.status === 'Available')
+    || modules.find(module => module.status === 'Included')
+    || modules.find(module => module.status === 'Restricted')
+    || modules[0]
 })
 
 const serviceCoverageItems = computed(() => [
@@ -446,6 +458,47 @@ function serviceStatusColor(status: ServiceModule['status']) {
         >
           {{ module.title }} · {{ module.status }}
         </UBadge>
+      </div>
+
+      <div
+        v-if="nextServiceAction"
+        class="mt-4 rounded-lg border border-default bg-elevated/50 p-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div class="flex items-start gap-3">
+          <div class="rounded-md bg-default p-2">
+            <UIcon :name="nextServiceAction.icon" class="size-4 text-primary" />
+          </div>
+          <div>
+            <p class="text-sm font-semibold">
+              Suggested next step: {{ nextServiceAction.title }}
+            </p>
+            <p class="text-xs text-muted mt-1">
+              {{ nextServiceAction.proof }}
+            </p>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <UButton
+            v-if="nextServiceAction.to"
+            :to="nextServiceAction.to"
+            icon="i-lucide-arrow-right"
+            size="xs"
+            color="neutral"
+            variant="outline"
+          >
+            Open
+          </UButton>
+          <UButton
+            v-if="user?.permissions?.canSubmitRequests && nextServiceAction.status !== 'Restricted'"
+            :to="`/portal/requests?service=${nextServiceAction.requestService}`"
+            icon="i-lucide-message-square-plus"
+            size="xs"
+            color="primary"
+            variant="soft"
+          >
+            Request
+          </UButton>
+        </div>
       </div>
     </UCard>
 
