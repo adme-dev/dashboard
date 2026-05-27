@@ -97,6 +97,31 @@ const readinessScore = (row: PortalClientRow) => {
   return Math.round((checks.filter(Boolean).length / checks.length) * 100)
 }
 
+const buildOrderBy = (status: string) => {
+  if (status === 'risk') {
+    return `(
+      (COALESCE(inv.overdue_invoices, 0) * 4)
+      + (COALESCE(req.urgent_requests, 0) * 4)
+      + (COALESCE(req.unassigned_requests, 0) * 2)
+      + CASE WHEN COALESCE(campaigns.campaign_count, 0) = 0 THEN 3 ELSE 0 END
+      + CASE WHEN COALESCE(mt.visible_meetings, 0) = 0 THEN 2 ELSE 0 END
+    ) DESC, c.name`
+  }
+  if (status === 'billing-risk') {
+    return 'COALESCE(inv.overdue_amount, 0) DESC, COALESCE(inv.overdue_invoices, 0) DESC, c.name'
+  }
+  if (status === 'request-risk') {
+    return 'COALESCE(req.urgent_requests, 0) DESC, COALESCE(req.unassigned_requests, 0) DESC, c.name'
+  }
+  if (status === 'missing-campaigns') {
+    return 'COALESCE(campaigns.campaign_spend_90d, 0) ASC, c.name'
+  }
+  if (status === 'missing-meetings') {
+    return 'COALESCE(cu.active_users, 0) DESC, c.name'
+  }
+  return 'c.name'
+}
+
 export default defineEventHandler(async (event) => {
   await requireRole(event, [
     ...new Set([...PERMISSIONS.CLIENTS, ...PERMISSIONS.MEDIA_BUYING])
@@ -107,6 +132,7 @@ export default defineEventHandler(async (event) => {
   const search = typeof query.search === 'string' ? query.search.trim() : ''
   const status = typeof query.status === 'string' ? query.status : 'all'
   const limit = Math.min(Number(query.limit) || 100, 250)
+  const orderBy = buildOrderBy(status)
 
   const conditions = ['c.is_active = true']
   const params: Array<string | number> = []
@@ -297,7 +323,7 @@ export default defineEventHandler(async (event) => {
         GROUP BY cu.client_id
       ) mt ON mt.client_id = c.id
       WHERE ${conditions.join(' AND ')}
-      ORDER BY c.name
+      ORDER BY ${orderBy}
       LIMIT $${idx}
     `, params)
 

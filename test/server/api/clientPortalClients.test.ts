@@ -209,11 +209,15 @@ describe('agency client portal clients API', () => {
     expect(sql).toContain('COALESCE(req.unassigned_requests, 0) > 0')
     expect(sql).toContain('COALESCE(campaigns.campaign_count, 0) = 0')
     expect(sql).toContain('COALESCE(mt.visible_meetings, 0) = 0')
+    expect(sql).toContain('(COALESCE(inv.overdue_invoices, 0) * 4)')
+    expect(sql).toContain('(COALESCE(req.urgent_requests, 0) * 4)')
+    expect(sql).toContain('CASE WHEN COALESCE(campaigns.campaign_count, 0) = 0 THEN 3 ELSE 0 END')
   })
 
   it('filters clients by specific setup gaps', async () => {
     await clientsHandler({ query: { status: 'missing-campaigns' } })
     expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('COALESCE(campaigns.campaign_count, 0) = 0')
+    expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('ORDER BY COALESCE(campaigns.campaign_spend_90d, 0) ASC, c.name')
 
     vi.clearAllMocks()
     mockRequireRole.mockResolvedValue({ id: 'agency-user-1', role: 'media_buyer' })
@@ -222,5 +226,19 @@ describe('agency client portal clients API', () => {
 
     await clientsHandler({ query: { status: 'missing-meetings' } })
     expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('COALESCE(mt.visible_meetings, 0) = 0')
+    expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('ORDER BY COALESCE(cu.active_users, 0) DESC, c.name')
+  })
+
+  it('orders billing and request risk filters by severity', async () => {
+    await clientsHandler({ query: { status: 'billing-risk' } })
+    expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('ORDER BY COALESCE(inv.overdue_amount, 0) DESC, COALESCE(inv.overdue_invoices, 0) DESC, c.name')
+
+    vi.clearAllMocks()
+    mockRequireRole.mockResolvedValue({ id: 'agency-user-1', role: 'media_buyer' })
+    mockQueryRows.mockResolvedValue([])
+    mockEnsureOfficeRecordingsTables.mockResolvedValue(undefined)
+
+    await clientsHandler({ query: { status: 'request-risk' } })
+    expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('ORDER BY COALESCE(req.urgent_requests, 0) DESC, COALESCE(req.unassigned_requests, 0) DESC, c.name')
   })
 })
