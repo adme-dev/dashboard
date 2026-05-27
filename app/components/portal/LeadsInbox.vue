@@ -20,6 +20,7 @@ interface LeadsResponse {
   items: PortalLead[]
   total: number
   stats: Array<{ status: string, count: string }>
+  sourceStats: Array<{ source: string, count: string }>
 }
 
 const status = ref<string>('all')
@@ -65,7 +66,7 @@ const exportParams = computed(() => {
 
 const { data, refresh, pending } = useFetch<LeadsResponse>(
   '/api/client-portal/leads/list',
-  { query: params, watch: [params], default: () => ({ items: [], total: 0, stats: [] }) }
+  { query: params, watch: [params], default: () => ({ items: [], total: 0, stats: [], sourceStats: [] }) }
 )
 
 const selectedUrl = computed(() => selectedLeadId.value ? `/api/client-portal/leads/${selectedLeadId.value}` : null)
@@ -163,6 +164,10 @@ function clearCampaignFilter() {
 
 const selectedLead = computed(() => selectedData.value?.lead ?? null)
 const statsByStatus = computed(() => Object.fromEntries((data.value?.stats ?? []).map(s => [s.status, Number(s.count)])))
+const sourceBreakdown = computed(() => (data.value?.sourceStats ?? []).map(item => ({
+  source: item.source,
+  count: Number(item.count || 0)
+})))
 const visibleRange = computed(() => {
   const total = data.value?.total ?? 0
   if (!total) return '0'
@@ -275,6 +280,32 @@ watch(selectedLeadId, async (id) => {
         @click="clearCampaignFilter"
       >
         Clear campaign filter
+      </UButton>
+    </div>
+
+    <div v-if="sourceBreakdown.length" class="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-default bg-default">
+      <span class="text-xs font-medium text-muted">Source mix</span>
+      <button
+        v-for="item in sourceBreakdown"
+        :key="item.source"
+        type="button"
+        class="inline-flex items-center gap-1.5 rounded-md border border-default px-2 py-1 text-xs transition-colors hover:bg-elevated"
+        :class="source === item.source ? 'bg-elevated text-primary' : 'bg-default'"
+        @click="source = item.source"
+      >
+        <UIcon :name="sourceIcon(item.source)" class="size-3.5 text-muted" />
+        <span class="capitalize">{{ item.source }}</span>
+        <span class="font-semibold">{{ item.count }}</span>
+      </button>
+      <UButton
+        v-if="source !== 'all'"
+        size="xs"
+        variant="ghost"
+        color="neutral"
+        icon="i-lucide-x"
+        @click="source = 'all'"
+      >
+        All sources
       </UButton>
     </div>
 

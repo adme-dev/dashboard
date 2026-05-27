@@ -66,13 +66,14 @@ describe('client portal leads API', () => {
     mockQueryRows
       .mockResolvedValueOnce([{ id: 'lead-1', source: 'webhook' }])
       .mockResolvedValueOnce([{ status: 'new', count: '1' }])
+      .mockResolvedValueOnce([{ source: 'webhook', count: '1' }])
     mockQueryCount.mockResolvedValueOnce(1)
 
     const result = await listHandler({
       query: { source: 'webhook', search: 'Jane', status: 'all' }
     })
 
-    expect(result).toMatchObject({ total: 1, items: [{ id: 'lead-1' }] })
+    expect(result).toMatchObject({ total: 1, items: [{ id: 'lead-1' }], sourceStats: [{ source: 'webhook', count: '1' }] })
     expect(mockRequireClientAuth).toHaveBeenCalledOnce()
     const sql = String(mockQueryRows.mock.calls[0]?.[0])
     const params = mockQueryRows.mock.calls[0]?.[1]
@@ -87,6 +88,7 @@ describe('client portal leads API', () => {
   it('filters client-visible leads by campaign and submitted date range', async () => {
     mockQueryRows
       .mockResolvedValueOnce([{ id: 'lead-1', campaign_name: 'Client Search' }])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
     mockQueryCount.mockResolvedValueOnce(1)
 
@@ -113,6 +115,7 @@ describe('client portal leads API', () => {
     mockQueryRows
       .mockResolvedValueOnce([{ id: 'lead-1', campaign_name: 'Client Search', status: 'new' }])
       .mockResolvedValueOnce([{ status: 'new', count: '3' }, { status: 'won', count: '1' }])
+      .mockResolvedValueOnce([{ source: 'google', count: '4' }])
     mockQueryCount.mockResolvedValueOnce(1)
 
     const result = await listHandler({
@@ -129,13 +132,18 @@ describe('client portal leads API', () => {
     expect(result.stats).toEqual([{ status: 'new', count: '3' }, { status: 'won', count: '1' }])
     const listSql = String(mockQueryRows.mock.calls[0]?.[0])
     const statsSql = String(mockQueryRows.mock.calls[1]?.[0])
+    const sourceStatsSql = String(mockQueryRows.mock.calls[2]?.[0])
     const listParams = mockQueryRows.mock.calls[0]?.[1]
     const statsParams = mockQueryRows.mock.calls[1]?.[1]
+    const sourceStatsParams = mockQueryRows.mock.calls[2]?.[1]
     expect(listSql).toContain('l.status = $7')
     expect(statsSql).toContain('l.campaign_id = $5')
     expect(statsSql).not.toContain('l.status =')
+    expect(sourceStatsSql).toContain('GROUP BY l.source')
+    expect(sourceStatsSql).not.toContain('l.status =')
     expect(listParams).toEqual(['client-1', 'google', '2026-05-01', '2026-05-27', 'camp-1', 'Client Search', 'new'])
     expect(statsParams).toEqual(['client-1', 'google', '2026-05-01', '2026-05-27', 'camp-1', 'Client Search'])
+    expect(sourceStatsParams).toEqual(['client-1', 'google', '2026-05-01', '2026-05-27', 'camp-1', 'Client Search'])
   })
 
   it('uses the same portal visibility rule for detail reads', async () => {

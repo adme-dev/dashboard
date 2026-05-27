@@ -90,6 +90,14 @@ export default defineEventHandler(async (event) => {
      GROUP BY l.status`,
     baseParams
   )
+  const sourceStats = await queryRows<{ source: string, count: string }>(
+    `SELECT l.source, COUNT(*)::text AS count
+     FROM leads l
+     WHERE ${baseConds.join(' AND ')}
+     GROUP BY l.source
+     ORDER BY count DESC`,
+    baseParams
+  )
 
-  return { items, total, page, page_size: ps, stats }
+  return { items, total, page, page_size: ps, stats, sourceStats }
 })
