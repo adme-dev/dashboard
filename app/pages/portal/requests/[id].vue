@@ -21,8 +21,11 @@ async function sendMessage() {
     newMessage.value = ''
     await refresh()
     toast.add({ title: 'Message sent', color: 'success' })
-  } catch (e: any) {
-    toast.add({ title: 'Failed to send', description: e.data?.statusMessage, color: 'error' })
+  } catch (error: unknown) {
+    const message = error && typeof error === 'object' && 'data' in error
+      ? (error as { data?: { statusMessage?: string } }).data?.statusMessage
+      : undefined
+    toast.add({ title: 'Failed to send', description: message, color: 'error' })
   } finally {
     sendingMessage.value = false
   }
@@ -39,21 +42,21 @@ function formatDateTime(date: string) {
   })
 }
 
-const statusColors: Record<string, string> = {
-  submitted: 'warning',
-  in_review: 'info',
-  approved: 'success',
-  in_progress: 'primary',
-  completed: 'success',
-  closed: 'neutral',
-  cancelled: 'error'
+function getStatusColor(status: string): 'success' | 'warning' | 'error' | 'neutral' | 'info' | 'primary' {
+  if (status === 'submitted') return 'warning'
+  if (status === 'in_review') return 'info'
+  if (status === 'approved') return 'success'
+  if (status === 'in_progress') return 'primary'
+  if (status === 'completed') return 'success'
+  if (status === 'cancelled') return 'error'
+  return 'neutral'
 }
 
-const priorityColors: Record<string, string> = {
-  low: 'neutral',
-  normal: 'info',
-  high: 'warning',
-  urgent: 'error'
+function getPriorityColor(priority: string): 'error' | 'warning' | 'info' | 'neutral' {
+  if (priority === 'urgent') return 'error'
+  if (priority === 'high') return 'warning'
+  if (priority === 'normal') return 'info'
+  return 'neutral'
 }
 
 const isOpen = computed(() => {
@@ -64,6 +67,22 @@ const isOpen = computed(() => {
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0 }).format(amount)
 }
+
+const requestProgress = computed(() => {
+  const request = data.value?.request
+  if (!request) return []
+
+  const responded = Boolean(request.respondedAt || request.assignedName || ['in_review', 'approved', 'in_progress', 'completed', 'closed'].includes(request.status))
+  const active = ['approved', 'in_progress', 'completed', 'closed'].includes(request.status)
+  const resolved = Boolean(request.resolvedAt || ['completed', 'closed'].includes(request.status))
+
+  return [
+    { label: 'Submitted', done: true, detail: formatDate(request.createdAt) },
+    { label: 'Agency response', done: responded, detail: request.respondedAt ? formatDate(request.respondedAt) : request.assignedName || 'Pending' },
+    { label: 'In progress', done: active, detail: active ? request.status.replace(/_/g, ' ') : 'Queued' },
+    { label: 'Resolved', done: resolved, detail: request.resolvedAt ? formatDate(request.resolvedAt) : 'Open' }
+  ]
+})
 </script>
 
 <template>
@@ -83,12 +102,14 @@ function formatCurrency(amount: number) {
 
         <div class="flex items-start justify-between gap-4 mt-2">
           <div>
-            <h1 class="text-2xl font-bold">{{ data.request.title }}</h1>
+            <h1 class="text-2xl font-bold">
+              {{ data.request.title }}
+            </h1>
             <div class="flex items-center gap-2 mt-2 flex-wrap">
-              <UBadge :color="(statusColors[data.request.status] as any) || 'neutral'" variant="subtle">
+              <UBadge :color="getStatusColor(data.request.status)" variant="subtle">
                 {{ data.request.status.replace(/_/g, ' ') }}
               </UBadge>
-              <UBadge :color="(priorityColors[data.request.priority] as any) || 'neutral'" variant="outline">
+              <UBadge :color="getPriorityColor(data.request.priority)" variant="outline">
                 {{ data.request.priority }}
               </UBadge>
               <UBadge color="neutral" variant="subtle">
@@ -99,40 +120,97 @@ function formatCurrency(amount: number) {
         </div>
       </div>
 
+      <UCard>
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div
+            v-for="step in requestProgress"
+            :key="step.label"
+            class="rounded-lg border border-default p-3"
+            :class="step.done ? 'bg-primary/5' : 'bg-elevated/40'"
+          >
+            <div class="flex items-center gap-2">
+              <UIcon
+                :name="step.done ? 'i-lucide-check-circle-2' : 'i-lucide-circle'"
+                class="size-4"
+                :class="step.done ? 'text-primary' : 'text-muted'"
+              />
+              <p class="text-sm font-medium">
+                {{ step.label }}
+              </p>
+            </div>
+            <p class="text-xs text-muted mt-2">
+              {{ step.detail }}
+            </p>
+          </div>
+        </div>
+      </UCard>
+
       <!-- Info Card -->
       <UCard>
         <div class="grid grid-cols-2 gap-4 text-sm">
           <div v-if="data.request.category">
-            <p class="text-muted">Category</p>
-            <p class="font-medium">{{ data.request.category.replace(/_/g, ' ') }}</p>
+            <p class="text-muted">
+              Category
+            </p>
+            <p class="font-medium">
+              {{ data.request.category.replace(/_/g, ' ') }}
+            </p>
           </div>
           <div v-if="data.request.projectName">
-            <p class="text-muted">Project</p>
-            <p class="font-medium">{{ data.request.projectName }}</p>
+            <p class="text-muted">
+              Project
+            </p>
+            <p class="font-medium">
+              {{ data.request.projectName }}
+            </p>
           </div>
           <div>
-            <p class="text-muted">Submitted By</p>
-            <p class="font-medium">{{ data.request.submittedByName }}</p>
+            <p class="text-muted">
+              Submitted By
+            </p>
+            <p class="font-medium">
+              {{ data.request.submittedByName }}
+            </p>
           </div>
           <div>
-            <p class="text-muted">Submitted</p>
-            <p class="font-medium">{{ formatDate(data.request.createdAt) }}</p>
+            <p class="text-muted">
+              Submitted
+            </p>
+            <p class="font-medium">
+              {{ formatDate(data.request.createdAt) }}
+            </p>
           </div>
           <div v-if="data.request.estimatedBudget">
-            <p class="text-muted">Estimated Budget</p>
-            <p class="font-medium">{{ formatCurrency(data.request.estimatedBudget) }}</p>
+            <p class="text-muted">
+              Estimated Budget
+            </p>
+            <p class="font-medium">
+              {{ formatCurrency(data.request.estimatedBudget) }}
+            </p>
           </div>
           <div v-if="data.request.desiredDeadline">
-            <p class="text-muted">Desired Deadline</p>
-            <p class="font-medium">{{ formatDate(data.request.desiredDeadline) }}</p>
+            <p class="text-muted">
+              Desired Deadline
+            </p>
+            <p class="font-medium">
+              {{ formatDate(data.request.desiredDeadline) }}
+            </p>
           </div>
           <div v-if="data.request.respondedAt">
-            <p class="text-muted">First Response</p>
-            <p class="font-medium">{{ formatDate(data.request.respondedAt) }}</p>
+            <p class="text-muted">
+              First Response
+            </p>
+            <p class="font-medium">
+              {{ formatDate(data.request.respondedAt) }}
+            </p>
           </div>
           <div v-if="data.request.resolvedAt">
-            <p class="text-muted">Resolved</p>
-            <p class="font-medium">{{ formatDate(data.request.resolvedAt) }}</p>
+            <p class="text-muted">
+              Resolved
+            </p>
+            <p class="font-medium">
+              {{ formatDate(data.request.resolvedAt) }}
+            </p>
           </div>
         </div>
       </UCard>
@@ -142,7 +220,9 @@ function formatCurrency(amount: number) {
         <template #header>
           <span class="font-semibold text-sm">Description</span>
         </template>
-        <p class="text-sm whitespace-pre-wrap">{{ data.request.description }}</p>
+        <p class="text-sm whitespace-pre-wrap">
+          {{ data.request.description }}
+        </p>
       </UCard>
 
       <!-- Assigned Team Member -->
@@ -153,8 +233,12 @@ function formatCurrency(amount: number) {
         <div class="flex items-center gap-3">
           <UAvatar :src="data.request.assignedAvatar || undefined" :alt="data.request.assignedName" size="sm" />
           <div>
-            <p class="font-medium text-sm">{{ data.request.assignedName }}</p>
-            <p v-if="data.request.assignedRole" class="text-xs text-muted">{{ data.request.assignedRole }}</p>
+            <p class="font-medium text-sm">
+              {{ data.request.assignedName }}
+            </p>
+            <p v-if="data.request.assignedRole" class="text-xs text-muted">
+              {{ data.request.assignedRole }}
+            </p>
           </div>
         </div>
       </UCard>
@@ -164,7 +248,9 @@ function formatCurrency(amount: number) {
         <template #header>
           <span class="font-semibold text-sm">Team Response</span>
         </template>
-        <p class="text-sm whitespace-pre-wrap">{{ data.request.responseNotes }}</p>
+        <p class="text-sm whitespace-pre-wrap">
+          {{ data.request.responseNotes }}
+        </p>
         <p v-if="data.request.respondedByName" class="text-xs text-muted mt-2">
           — {{ data.request.respondedByName }}
         </p>
@@ -176,7 +262,12 @@ function formatCurrency(amount: number) {
           <div class="flex items-center gap-2">
             <UIcon name="i-lucide-messages-square" class="text-primary" />
             <span class="font-semibold text-sm">Conversation</span>
-            <UBadge v-if="data.messages.length" color="neutral" variant="subtle" size="xs">
+            <UBadge
+              v-if="data.messages.length"
+              color="neutral"
+              variant="subtle"
+              size="xs"
+            >
               {{ data.messages.length }}
             </UBadge>
           </div>
@@ -192,10 +283,19 @@ function formatCurrency(amount: number) {
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2">
                 <span class="font-medium text-sm">{{ msg.authorName }}</span>
-                <UBadge v-if="msg.authorType === 'team'" size="xs" variant="subtle" color="primary">Team</UBadge>
+                <UBadge
+                  v-if="msg.authorType === 'team'"
+                  size="xs"
+                  variant="subtle"
+                  color="primary"
+                >
+                  Team
+                </UBadge>
                 <span class="text-xs text-muted">{{ formatDateTime(msg.createdAt) }}</span>
               </div>
-              <p class="text-sm mt-1 whitespace-pre-wrap">{{ msg.content }}</p>
+              <p class="text-sm mt-1 whitespace-pre-wrap">
+                {{ msg.content }}
+              </p>
             </div>
           </div>
 
@@ -206,7 +306,7 @@ function formatCurrency(amount: number) {
 
         <!-- Reply form -->
         <div v-if="isOpen" class="mt-4 pt-4 border-t border-default">
-          <form @submit.prevent="sendMessage" class="space-y-3">
+          <form class="space-y-3" @submit.prevent="sendMessage">
             <UTextarea
               v-model="newMessage"
               placeholder="Write a reply..."
@@ -227,7 +327,9 @@ function formatCurrency(amount: number) {
         </div>
 
         <div v-else class="mt-4 pt-4 border-t border-default">
-          <p class="text-sm text-muted text-center">This request is {{ data.request.status.replace(/_/g, ' ') }}.</p>
+          <p class="text-sm text-muted text-center">
+            This request is {{ data.request.status.replace(/_/g, ' ') }}.
+          </p>
         </div>
       </UCard>
     </template>

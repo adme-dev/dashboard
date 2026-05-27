@@ -6,6 +6,49 @@
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 
+type AgencyClientRequestRow = {
+  id: string
+  client_id: string
+  client_name: string
+  client_user_id: string
+  request_type: string
+  category: string | null
+  title: string
+  description: string
+  priority: string
+  status: string
+  assigned_to: string | null
+  assigned_name: string | null
+  assigned_avatar: string | null
+  assigned_role: string | null
+  project_id: string | null
+  project_name: string | null
+  task_id: string | null
+  attachments: unknown
+  estimated_budget: string | number | null
+  desired_deadline: string | null
+  response_notes: string | null
+  responded_by_name: string | null
+  responded_at: string | null
+  resolved_at: string | null
+  submitted_by_name: string | null
+  submitted_by_email: string | null
+  created_at: string
+  updated_at: string
+}
+
+type RequestMessageRow = {
+  id: string
+  content: string
+  attachments: unknown
+  is_internal: boolean
+  created_at: string
+  client_user_name: string | null
+  client_user_avatar: string | null
+  team_member_name: string | null
+  team_member_avatar: string | null
+}
+
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
   const requestId = getRouterParam(event, 'id')
@@ -15,7 +58,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const request = await queryOne(`
+    const request = await queryOne<AgencyClientRequestRow>(`
       SELECT
         cr.*,
         c.name as client_name,
@@ -40,7 +83,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Staff sees ALL messages including internal notes
-    const messages = await queryRows(`
+    const messages = await queryRows<RequestMessageRow>(`
       SELECT
         m.id,
         m.content,
@@ -100,8 +143,8 @@ export default defineEventHandler(async (event) => {
         createdAt: m.created_at
       }))
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error
     console.error('Failed to fetch request:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to fetch request' })
   }
