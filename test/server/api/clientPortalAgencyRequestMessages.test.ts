@@ -46,7 +46,9 @@ describe('agency client portal request messages API', () => {
       id: 'request-1',
       client_id: 'client-1',
       client_user_id: 'client-user-1',
-      title: 'Request access to billing'
+      title: 'Request access to billing',
+      status: 'submitted',
+      responded_at: null
     })
     mockDbQuery.mockImplementation(async (sql: string) => {
       if (sql.includes('INSERT INTO client_request_messages')) {
@@ -72,8 +74,12 @@ describe('agency client portal request messages API', () => {
     })
 
     expect(mockQueryOne).toHaveBeenCalledWith(
-      'SELECT id, client_id, client_user_id, title FROM client_requests WHERE id = $1',
+      'SELECT id, client_id, client_user_id, title, status, responded_at FROM client_requests WHERE id = $1',
       ['request-1']
+    )
+    expect(mockDbQuery).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE client_requests'),
+      ['team-1', 'request-1']
     )
     expect(mockDbQuery).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO client_activity_log'),
@@ -123,6 +129,10 @@ describe('agency client portal request messages API', () => {
 
     expect(mockDbQuery).not.toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO client_activity_log'),
+      expect.anything()
+    )
+    expect(mockDbQuery).not.toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE client_requests'),
       expect.anything()
     )
     expect(mockDbQuery).not.toHaveBeenCalledWith(

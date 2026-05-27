@@ -17,6 +17,8 @@ type ClientRequestRow = {
   client_id: string
   client_user_id: string | null
   title: string
+  status: string
+  responded_at: string | null
 }
 
 export default defineEventHandler(async (event) => {
@@ -36,7 +38,10 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Verify request exists
-    const request = await queryOne<ClientRequestRow>('SELECT id, client_id, client_user_id, title FROM client_requests WHERE id = $1', [requestId])
+    const request = await queryOne<ClientRequestRow>(
+      'SELECT id, client_id, client_user_id, title, status, responded_at FROM client_requests WHERE id = $1',
+      [requestId]
+    )
     if (!request) {
       throw createError({ statusCode: 404, statusMessage: 'Request not found' })
     }
@@ -57,6 +62,21 @@ export default defineEventHandler(async (event) => {
       const row = messageResult.rows[0]
 
       if (!isInternal) {
+        if (request.status === 'submitted' || !request.responded_at) {
+          await db.query(`
+            UPDATE client_requests
+            SET
+              status = CASE WHEN status = 'submitted' THEN 'in_review' ELSE status END,
+              responded_by = COALESCE(responded_by, $1),
+              responded_at = COALESCE(responded_at, NOW()),
+              updated_at = NOW()
+            WHERE id = $2
+          `, [
+            user.id,
+            requestId
+          ])
+        }
+
         await db.query(`
           INSERT INTO client_activity_log (
             client_id,
