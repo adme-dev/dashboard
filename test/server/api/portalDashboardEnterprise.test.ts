@@ -95,7 +95,61 @@ describe('portal dashboard enterprise summary', () => {
       })
       .mockResolvedValueOnce({ total: '80', new: '10', contacted: '20', won: '5' })
 
+    mockQueryRows
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'project-upcoming',
+          name: 'Upcoming campaign',
+          status: 'active',
+          start_date: '2026-06-01',
+          due_date: '2026-06-15',
+          budget: '5000',
+          total_tasks: '8',
+          completed_tasks: '2'
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'project-complete',
+          name: 'Completed campaign',
+          status: 'completed',
+          start_date: '2026-05-01',
+          due_date: '2026-05-20',
+          budget: '4000',
+          updated_at: '2026-05-21T00:00:00.000Z',
+          total_tasks: '6',
+          completed_tasks: '6'
+        }
+      ])
+
     const result = await dashboardHandler({})
+
+    expect(result.projects.upcoming).toEqual([
+      {
+        id: 'project-upcoming',
+        name: 'Upcoming campaign',
+        status: 'active',
+        startDate: '2026-06-01',
+        dueDate: '2026-06-15',
+        budget: 5000,
+        totalTasks: 8,
+        completedTasks: 2
+      }
+    ])
+    expect(result.projects.completedRecent).toEqual([
+      {
+        id: 'project-complete',
+        name: 'Completed campaign',
+        status: 'completed',
+        startDate: '2026-05-01',
+        dueDate: '2026-05-20',
+        budget: 4000,
+        completedAt: '2026-05-21T00:00:00.000Z',
+        totalTasks: 6,
+        completedTasks: 6
+      }
+    ])
 
     expect(result.enterprise).toEqual({
       jobs: {
@@ -138,5 +192,10 @@ describe('portal dashboard enterprise summary', () => {
     expect(campaignSql).toContain('FROM media_spend ms')
     expect(campaignSql).toContain('ad_account_client_map')
     expect(campaignSql).toContain('TO_CHAR(CURRENT_DATE - INTERVAL \'90 days\', \'YYYY-MM\')')
+
+    const upcomingJobsSql = String(mockQueryRows.mock.calls[1]?.[0])
+    const completedJobsSql = String(mockQueryRows.mock.calls[2]?.[0])
+    expect(upcomingJobsSql).toContain('p.status IN (\'draft\', \'active\', \'on_hold\')')
+    expect(completedJobsSql).toContain('p.status IN (\'completed\', \'cancelled\')')
   })
 })

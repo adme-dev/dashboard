@@ -64,6 +64,62 @@ export default defineEventHandler(async (event) => {
       LIMIT 10
     `, [clientId])
 
+    const upcomingJobs = await queryRows(`
+      SELECT
+        p.id,
+        p.name,
+        p.status,
+        p.start_date,
+        p.due_date,
+        p.budget,
+        COALESCE(task_stats.total_tasks, 0) AS total_tasks,
+        COALESCE(task_stats.completed_tasks, 0) AS completed_tasks
+      FROM projects p
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(*) AS total_tasks,
+          COUNT(*) FILTER (WHERE t.status_is_final = true) AS completed_tasks
+        FROM tasks t
+        WHERE t.project_id = p.id
+      ) task_stats ON TRUE
+      WHERE p.client_id = $1
+        AND p.status IN ('draft', 'active', 'on_hold')
+        AND (p.due_date IS NULL OR p.due_date >= CURRENT_DATE)
+      ORDER BY
+        p.due_date ASC NULLS LAST,
+        p.start_date ASC NULLS LAST,
+        p.created_at DESC
+      LIMIT 6
+    `, [clientId])
+
+    const completedJobs = await queryRows(`
+      SELECT
+        p.id,
+        p.name,
+        p.status,
+        p.start_date,
+        p.due_date,
+        p.budget,
+        p.updated_at,
+        COALESCE(task_stats.total_tasks, 0) AS total_tasks,
+        COALESCE(task_stats.completed_tasks, 0) AS completed_tasks
+      FROM projects p
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(*) AS total_tasks,
+          COUNT(*) FILTER (WHERE t.status_is_final = true) AS completed_tasks
+        FROM tasks t
+        WHERE t.project_id = p.id
+      ) task_stats ON TRUE
+      WHERE p.client_id = $1
+        AND p.status IN ('completed', 'cancelled')
+      ORDER BY
+        p.due_date DESC NULLS LAST,
+        p.updated_at DESC,
+        p.created_at DESC
+      LIMIT 6
+    `, [clientId])
+
     const pendingApprovals = await queryRows(`
       SELECT
         ca.id,
@@ -373,6 +429,27 @@ export default defineEventHandler(async (event) => {
           dueDate: p.due_date,
           budget: Number(p.budget || 0),
           progressPercent: Math.round(Number(p.progress_percent || 0)),
+          totalTasks: Number(p.total_tasks || 0),
+          completedTasks: Number(p.completed_tasks || 0)
+        })),
+        upcoming: upcomingJobs.map(p => ({
+          id: p.id,
+          name: p.name,
+          status: p.status,
+          startDate: p.start_date,
+          dueDate: p.due_date,
+          budget: Number(p.budget || 0),
+          totalTasks: Number(p.total_tasks || 0),
+          completedTasks: Number(p.completed_tasks || 0)
+        })),
+        completedRecent: completedJobs.map(p => ({
+          id: p.id,
+          name: p.name,
+          status: p.status,
+          startDate: p.start_date,
+          dueDate: p.due_date,
+          budget: Number(p.budget || 0),
+          completedAt: p.updated_at,
           totalTasks: Number(p.total_tasks || 0),
           completedTasks: Number(p.completed_tasks || 0)
         }))

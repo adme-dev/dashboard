@@ -1,7 +1,19 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
-const activeTab = ref('all')
+const route = useRoute()
+const router = useRouter()
+
+function tabFromQuery(query: typeof route.query) {
+  const view = Array.isArray(query.view) ? query.view[0] : query.view
+  const status = Array.isArray(query.status) ? query.status[0] : query.status
+
+  if (view === 'upcoming' || view === 'history') return view
+  if (['active', 'completed', 'on_hold'].includes(status || '')) return status as string
+  return 'all'
+}
+
+const activeTab = ref(tabFromQuery(route.query))
 const queryFilter = computed(() => {
   if (['upcoming', 'history'].includes(activeTab.value)) {
     return { view: activeTab.value }
@@ -26,6 +38,20 @@ const tabs = [
   { label: 'Completed', value: 'completed' },
   { label: 'On Hold', value: 'on_hold' }
 ]
+
+watch(activeTab, (tab) => {
+  const query = { ...route.query }
+  delete query.view
+  delete query.status
+
+  if (['upcoming', 'history'].includes(tab)) {
+    query.view = tab
+  } else if (tab !== 'all') {
+    query.status = tab
+  }
+
+  router.replace({ query })
+})
 
 function formatDate(date: string | null) {
   if (!date) return '-'

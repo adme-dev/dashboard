@@ -7,6 +7,8 @@ interface PortalDashboard {
   projects: {
     stats: { total: number, active: number, completed: number, onHold: number }
     active: Array<{ id: string, name: string, dueDate: string | null, progressPercent: number, completedTasks: number, totalTasks: number }>
+    upcoming: Array<{ id: string, name: string, status: string, startDate: string | null, dueDate: string | null, completedTasks: number, totalTasks: number }>
+    completedRecent: Array<{ id: string, name: string, status: string, dueDate: string | null, completedAt: string | null, completedTasks: number, totalTasks: number }>
   }
   approvals: {
     pending: Array<{ id: string, type: string, title: string, dueDate: string | null, projectName: string }>
@@ -111,6 +113,14 @@ function meetingWhen(meeting: { scheduledStartAt?: string | null, startedAt?: st
     hour: 'numeric',
     minute: '2-digit'
   })
+}
+
+function jobStatusColor(status: string) {
+  if (status === 'active') return 'success'
+  if (status === 'on_hold') return 'warning'
+  if (status === 'completed') return 'neutral'
+  if (status === 'cancelled') return 'error'
+  return 'primary'
 }
 </script>
 
@@ -442,6 +452,115 @@ function meetingWhen(meeting: { scheduledStartAt?: string | null, startedAt?: st
           </div>
         </NuxtLink>
       </div>
+
+      <UCard>
+        <template #header>
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-briefcase-business" class="text-primary" />
+              <span class="font-semibold">Job Timeline</span>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <UButton
+                to="/portal/projects?view=upcoming"
+                variant="ghost"
+                color="neutral"
+                size="xs"
+                trailing-icon="i-lucide-arrow-right"
+              >
+                Upcoming
+              </UButton>
+              <UButton
+                to="/portal/projects?view=history"
+                variant="ghost"
+                color="neutral"
+                size="xs"
+                trailing-icon="i-lucide-arrow-right"
+              >
+                History
+              </UButton>
+            </div>
+          </div>
+        </template>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <section>
+            <div class="mb-3">
+              <h3 class="text-sm font-semibold">
+                Upcoming jobs
+              </h3>
+              <p class="text-xs text-muted">
+                Booked work and scheduled projects coming up.
+              </p>
+            </div>
+            <div class="space-y-2">
+              <NuxtLink
+                v-for="job in dashboard.projects.upcoming"
+                :key="job.id"
+                :to="`/portal/projects/${job.id}`"
+                class="block rounded-lg border border-default bg-default p-3 hover:bg-elevated transition-colors"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="text-sm font-medium truncate">
+                      {{ job.name }}
+                    </p>
+                    <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+                      <span v-if="job.dueDate">Due {{ formatDate(job.dueDate) }}</span>
+                      <span v-else-if="job.startDate">Starts {{ formatDate(job.startDate) }}</span>
+                      <span>{{ job.completedTasks }}/{{ job.totalTasks }} tasks</span>
+                    </div>
+                  </div>
+                  <UBadge :color="jobStatusColor(job.status)" variant="subtle" size="xs">
+                    {{ job.status.replace('_', ' ') }}
+                  </UBadge>
+                </div>
+              </NuxtLink>
+              <p v-if="!dashboard.projects.upcoming.length" class="text-sm text-muted text-center py-6">
+                No upcoming jobs booked
+              </p>
+            </div>
+          </section>
+
+          <section>
+            <div class="mb-3">
+              <h3 class="text-sm font-semibold">
+                Recent completed jobs
+              </h3>
+              <p class="text-xs text-muted">
+                Finished work available in the client job history.
+              </p>
+            </div>
+            <div class="space-y-2">
+              <NuxtLink
+                v-for="job in dashboard.projects.completedRecent"
+                :key="job.id"
+                :to="`/portal/projects/${job.id}`"
+                class="block rounded-lg border border-default bg-default p-3 hover:bg-elevated transition-colors"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="text-sm font-medium truncate">
+                      {{ job.name }}
+                    </p>
+                    <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+                      <span>{{ job.completedAt ? `Completed ${formatDate(job.completedAt)}` : 'Completed' }}</span>
+                      <span v-if="job.dueDate">Due {{ formatDate(job.dueDate) }}</span>
+                      <span>{{ job.completedTasks }}/{{ job.totalTasks }} tasks</span>
+                    </div>
+                  </div>
+                  <UBadge :color="jobStatusColor(job.status)" variant="subtle" size="xs">
+                    {{ job.status.replace('_', ' ') }}
+                  </UBadge>
+                </div>
+              </NuxtLink>
+              <p v-if="!dashboard.projects.completedRecent.length" class="text-sm text-muted text-center py-6">
+                No completed job history yet
+              </p>
+            </div>
+          </section>
+        </div>
+      </UCard>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <!-- Active Jobs -->
