@@ -17,6 +17,13 @@ interface PortalClient {
   activeUsers: number
   pendingUsers: number
   agencyAccessUsers: number
+  moduleAccess: {
+    projects: number
+    invoices: number
+    approvals: number
+    analytics: number
+    requests: number
+  }
   lastLoginAt?: string | null
   lastActivityAt?: string | null
   pendingApprovals: number
@@ -206,6 +213,14 @@ const getClientPortalActions = (clientId?: string | null) => [
 ]
 
 const selectedClientPortalActions = computed(() => getClientPortalActions(selectedAccessClientId.value))
+
+const portalModuleReadiness = (client: PortalClient) => [
+  { label: 'Jobs', value: client.moduleAccess?.projects || 0 },
+  { label: 'Billing', value: client.moduleAccess?.invoices || 0 },
+  { label: 'Analytics', value: client.moduleAccess?.analytics || 0 },
+  { label: 'Approvals', value: client.moduleAccess?.approvals || 0 },
+  { label: 'Requests', value: client.moduleAccess?.requests || 0 }
+]
 
 const inviteClientUser = (clientId?: string | null) => {
   inviteForm.value.clientId = clientId || null
@@ -627,6 +642,17 @@ const enterpriseRollout = [
                   <p class="text-xs text-[var(--ui-text-muted)]">
                     {{ row.original.pendingUsers }} pending, {{ row.original.agencyAccessUsers }} agency access
                   </p>
+                  <div class="mt-2 flex flex-wrap gap-1">
+                    <UBadge
+                      v-for="module in portalModuleReadiness(row.original)"
+                      :key="module.label"
+                      :color="module.value > 0 ? 'success' : 'neutral'"
+                      variant="subtle"
+                      size="xs"
+                    >
+                      {{ module.label }} {{ module.value }}
+                    </UBadge>
+                  </div>
                 </div>
               </template>
 

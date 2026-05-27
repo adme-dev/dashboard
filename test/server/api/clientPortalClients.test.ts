@@ -50,6 +50,11 @@ describe('agency client portal clients API', () => {
       active_users: '2',
       pending_users: '1',
       agency_access_users: '1',
+      project_access_users: '2',
+      invoice_access_users: '1',
+      approval_access_users: '1',
+      analytics_access_users: '2',
+      request_access_users: '2',
       last_login_at: '2026-05-27T00:00:00Z',
       last_activity_at: '2026-05-27T01:00:00Z',
       pending_approvals: '4',
@@ -71,6 +76,13 @@ describe('agency client portal clients API', () => {
       activeUsers: 2,
       pendingUsers: 1,
       agencyAccessUsers: 1,
+      moduleAccess: {
+        projects: 2,
+        invoices: 1,
+        approvals: 1,
+        analytics: 2,
+        requests: 2
+      },
       pendingApprovals: 4,
       portalLeads30d: 12,
       newLeads30d: 5,
@@ -86,6 +98,11 @@ describe('agency client portal clients API', () => {
     expect(sql).toContain('FROM agency_clients c')
     expect(sql).toContain('d.destination_type = \'portal\'')
     expect(sql).toContain('COUNT(*) FILTER (')
+    expect(sql).toContain('can_view_projects = true')
+    expect(sql).toContain('can_view_invoices = true')
+    expect(sql).toContain('can_approve_work = true')
+    expect(sql).toContain('COALESCE(can_view_analytics, true) = true')
+    expect(sql).toContain('COALESCE(can_submit_requests, true) = true')
     expect(sql).toContain('status IN (\'draft\', \'active\', \'on_hold\')')
     expect(sql).toContain('status IN (\'completed\', \'cancelled\')')
     expect(sql).toContain('COALESCE(cu.portal_users, 0) > 0')

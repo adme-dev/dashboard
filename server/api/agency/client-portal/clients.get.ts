@@ -17,6 +17,11 @@ interface PortalClientRow {
   active_users: string | number | null
   pending_users: string | number | null
   agency_access_users: string | number | null
+  project_access_users: string | number | null
+  invoice_access_users: string | number | null
+  approval_access_users: string | number | null
+  analytics_access_users: string | number | null
+  request_access_users: string | number | null
   last_login_at: string | null
   last_activity_at: string | null
   pending_approvals: string | number | null
@@ -70,6 +75,11 @@ export default defineEventHandler(async (event) => {
         COALESCE(cu.active_users, 0) AS active_users,
         COALESCE(cu.pending_users, 0) AS pending_users,
         COALESCE(cu.agency_access_users, 0) AS agency_access_users,
+        COALESCE(cu.project_access_users, 0) AS project_access_users,
+        COALESCE(cu.invoice_access_users, 0) AS invoice_access_users,
+        COALESCE(cu.approval_access_users, 0) AS approval_access_users,
+        COALESCE(cu.analytics_access_users, 0) AS analytics_access_users,
+        COALESCE(cu.request_access_users, 0) AS request_access_users,
         cu.last_login_at,
         al.last_activity_at,
         COALESCE(ap.pending_approvals, 0) AS pending_approvals,
@@ -87,6 +97,11 @@ export default defineEventHandler(async (event) => {
           COUNT(*) FILTER (WHERE status = 'active') AS active_users,
           COUNT(*) FILTER (WHERE status = 'pending') AS pending_users,
           COUNT(*) FILTER (WHERE email LIKE '%@portal-access.local') AS agency_access_users,
+          COUNT(*) FILTER (WHERE status = 'active' AND can_view_projects = true) AS project_access_users,
+          COUNT(*) FILTER (WHERE status = 'active' AND can_view_invoices = true) AS invoice_access_users,
+          COUNT(*) FILTER (WHERE status = 'active' AND can_approve_work = true) AS approval_access_users,
+          COUNT(*) FILTER (WHERE status = 'active' AND COALESCE(can_view_analytics, true) = true) AS analytics_access_users,
+          COUNT(*) FILTER (WHERE status = 'active' AND COALESCE(can_submit_requests, true) = true) AS request_access_users,
           MAX(last_login_at) AS last_login_at
         FROM client_users
         GROUP BY client_id
@@ -145,6 +160,13 @@ export default defineEventHandler(async (event) => {
         activeUsers: Number(row.active_users || 0),
         pendingUsers: Number(row.pending_users || 0),
         agencyAccessUsers: Number(row.agency_access_users || 0),
+        moduleAccess: {
+          projects: Number(row.project_access_users || 0),
+          invoices: Number(row.invoice_access_users || 0),
+          approvals: Number(row.approval_access_users || 0),
+          analytics: Number(row.analytics_access_users || 0),
+          requests: Number(row.request_access_users || 0)
+        },
         lastLoginAt: row.last_login_at,
         lastActivityAt: row.last_activity_at,
         pendingApprovals: Number(row.pending_approvals || 0),
