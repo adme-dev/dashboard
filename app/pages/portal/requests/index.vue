@@ -225,6 +225,22 @@ function formatDate(date: string | null) {
   return new Date(date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
 }
 
+function formatCurrency(amount: number | null | undefined) {
+  if (amount == null) return '-'
+  return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(amount)
+}
+
+function deadlineLabel(date: string | null | undefined) {
+  if (!date) return null
+  const due = new Date(date)
+  const now = new Date()
+  const days = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+  if (days < 0) return `${Math.abs(days)}d past desired date`
+  if (days === 0) return 'Desired today'
+  if (days <= 14) return `Desired in ${days}d`
+  return `Desired ${formatDate(date)}`
+}
+
 const statusColors: Record<string, string> = {
   submitted: 'warning',
   in_review: 'info',
@@ -281,6 +297,57 @@ function statusHint(status: string) {
 
     <UTabs v-model="activeTab" :items="tabs" />
 
+    <div v-if="data?.summary" class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <button
+        type="button"
+        class="rounded-lg border border-default bg-default p-3 text-left hover:bg-elevated transition-colors"
+        @click="activeStatus = 'open'"
+      >
+        <p class="text-xs text-muted">
+          Open requests
+        </p>
+        <p class="mt-1 text-lg font-semibold">
+          {{ data.summary.open }}
+        </p>
+      </button>
+      <button
+        type="button"
+        class="rounded-lg border border-default bg-default p-3 text-left hover:bg-elevated transition-colors"
+        @click="activeStatus = 'needs_review'"
+      >
+        <p class="text-xs text-muted">
+          Needs review
+        </p>
+        <p class="mt-1 text-lg font-semibold">
+          {{ data.summary.needsReview }}
+        </p>
+      </button>
+      <button
+        type="button"
+        class="rounded-lg border border-default bg-default p-3 text-left hover:bg-elevated transition-colors"
+        @click="activeStatus = 'open'"
+      >
+        <p class="text-xs text-muted">
+          Urgent open
+        </p>
+        <p class="mt-1 text-lg font-semibold" :class="data.summary.urgentOpen > 0 ? 'text-error' : ''">
+          {{ data.summary.urgentOpen }}
+        </p>
+      </button>
+      <button
+        type="button"
+        class="rounded-lg border border-default bg-default p-3 text-left hover:bg-elevated transition-colors"
+        @click="activeStatus = 'resolved'"
+      >
+        <p class="text-xs text-muted">
+          Resolved
+        </p>
+        <p class="mt-1 text-lg font-semibold">
+          {{ data.summary.resolved }}
+        </p>
+      </button>
+    </div>
+
     <UTabs v-model="activeStatus" :items="statusTabs" />
 
     <div v-if="pending" class="space-y-3">
@@ -312,6 +379,12 @@ function statusHint(status: string) {
               </UBadge>
               <span v-if="request.category">{{ request.category.replace(/_/g, ' ') }}</span>
               <span v-if="request.projectName">· {{ request.projectName }}</span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 text-xs text-muted mt-2">
+              <span v-if="deadlineLabel(request.desiredDeadline)" :class="deadlineLabel(request.desiredDeadline)?.includes('past') ? 'text-error' : ''">
+                {{ deadlineLabel(request.desiredDeadline) }}
+              </span>
+              <span v-if="request.estimatedBudget != null">Budget {{ formatCurrency(request.estimatedBudget) }}</span>
             </div>
             <p class="text-xs text-muted mt-2">
               {{ statusHint(request.status) }}

@@ -46,6 +46,7 @@ describe('portal requests list API', () => {
       in_progress: '4',
       resolved: '2',
       open: '6',
+      urgent_open: '1',
       job_requests: '5',
       support_tickets: '3'
     })
@@ -61,10 +62,12 @@ describe('portal requests list API', () => {
       inProgress: 4,
       resolved: 2,
       open: 6,
+      urgentOpen: 1,
       jobRequests: 5,
       supportTickets: 3
     })
     expect(mockQueryOne.mock.calls[0][0]).toContain('needs_review')
+    expect(mockQueryOne.mock.calls[0][0]).toContain('urgent_open')
     expect(mockQueryOne.mock.calls[0][0]).toContain('status NOT IN')
   })
 

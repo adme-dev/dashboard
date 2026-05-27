@@ -91,6 +91,7 @@ export default defineEventHandler(async (event) => {
         COUNT(CASE WHEN status IN ('in_review', 'approved', 'in_progress') THEN 1 END) as in_progress,
         COUNT(CASE WHEN status IN ('completed', 'closed') THEN 1 END) as resolved,
         COUNT(CASE WHEN status NOT IN ('completed', 'closed', 'cancelled') THEN 1 END) as open,
+        COUNT(CASE WHEN priority = 'urgent' AND status NOT IN ('completed', 'closed', 'cancelled') THEN 1 END) as urgent_open,
         COUNT(CASE WHEN request_type = 'job_request' THEN 1 END) as job_requests,
         COUNT(CASE WHEN request_type = 'support_ticket' THEN 1 END) as support_tickets
       FROM client_requests
@@ -123,6 +124,7 @@ export default defineEventHandler(async (event) => {
         inProgress: Number(summary?.in_progress || 0),
         resolved: Number(summary?.resolved || 0),
         open: Number(summary?.open || 0),
+        urgentOpen: Number(summary?.urgent_open || 0),
         jobRequests: Number(summary?.job_requests || 0),
         supportTickets: Number(summary?.support_tickets || 0)
       }
