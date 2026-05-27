@@ -59,6 +59,43 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 404, statusMessage: 'Request not found' })
     }
 
+    if (assignedTo) {
+      const assignee = await queryOne<{ id: string }>(
+        'SELECT id FROM team_members WHERE id = $1 AND is_active = true',
+        [assignedTo]
+      )
+      if (!assignee) {
+        throw createError({ statusCode: 400, statusMessage: 'Invalid assignee' })
+      }
+    }
+
+    if (projectId) {
+      const project = await queryOne<{ id: string }>(
+        'SELECT id FROM projects WHERE id = $1 AND client_id = $2',
+        [projectId, existing.client_id]
+      )
+      if (!project) {
+        throw createError({ statusCode: 400, statusMessage: 'Invalid project' })
+      }
+    }
+
+    if (taskId) {
+      const taskParams = projectId
+        ? [taskId, existing.client_id, projectId]
+        : [taskId, existing.client_id]
+      const task = await queryOne<{ id: string }>(`
+        SELECT t.id
+        FROM tasks t
+        JOIN projects p ON p.id = t.project_id
+        WHERE t.id = $1
+          AND p.client_id = $2
+          ${projectId ? 'AND t.project_id = $3' : ''}
+      `, taskParams)
+      if (!task) {
+        throw createError({ statusCode: 400, statusMessage: 'Invalid task' })
+      }
+    }
+
     const updates: string[] = []
     const params: Array<string | null> = []
     let idx = 1

@@ -73,6 +73,16 @@ describe('agency client portal request patch API', () => {
   })
 
   it('updates a request and logs client activity', async () => {
+    mockQueryOne
+      .mockResolvedValueOnce({
+        id: 'request-1',
+        client_id: 'client-1',
+        client_user_id: 'client-user-1',
+        title: 'Request access to billing',
+        status: 'submitted'
+      })
+      .mockResolvedValueOnce({ id: 'team-2' })
+
     const result = await patchHandler({
       params: { id: 'request-1' },
       body: {
@@ -85,6 +95,10 @@ describe('agency client portal request patch API', () => {
     expect(mockQueryOne).toHaveBeenCalledWith(
       'SELECT id, client_id, client_user_id, title, status FROM client_requests WHERE id = $1',
       ['request-1']
+    )
+    expect(mockQueryOne).toHaveBeenCalledWith(
+      'SELECT id FROM team_members WHERE id = $1 AND is_active = true',
+      ['team-2']
     )
     expect(mockDbQuery).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO client_activity_log'),
@@ -112,5 +126,31 @@ describe('agency client portal request patch API', () => {
       id: 'request-1',
       status: 'in_review'
     })
+  })
+
+  it('rejects projects that do not belong to the request client', async () => {
+    mockQueryOne
+      .mockResolvedValueOnce({
+        id: 'request-1',
+        client_id: 'client-1',
+        client_user_id: 'client-user-1',
+        title: 'Request access to billing',
+        status: 'submitted'
+      })
+      .mockResolvedValueOnce(null)
+
+    await expect(patchHandler({
+      params: { id: 'request-1' },
+      body: { projectId: 'project-other-client' }
+    })).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: 'Invalid project'
+    })
+
+    expect(mockQueryOne).toHaveBeenCalledWith(
+      'SELECT id FROM projects WHERE id = $1 AND client_id = $2',
+      ['project-other-client', 'client-1']
+    )
+    expect(mockTransaction).not.toHaveBeenCalled()
   })
 })
