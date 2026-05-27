@@ -17,7 +17,7 @@ const unreadCount = computed(() => notifData.value?.unreadCount || 0)
 
 const mainNav = computed<NavigationMenuItem[]>(() => [
   { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/portal', exact: true, onSelect: close },
-  { label: 'Projects', icon: 'i-lucide-folder-kanban', to: '/portal/projects', onSelect: close },
+  { label: 'Jobs', icon: 'i-lucide-folder-kanban', to: '/portal/projects', onSelect: close },
   { label: 'Approvals', icon: 'i-lucide-check-circle', to: '/portal/approvals', onSelect: close },
   { label: 'Requests', icon: 'i-lucide-message-square-plus', to: '/portal/requests', onSelect: close },
   { label: 'Leads', icon: 'i-lucide-inbox', to: '/portal/leads', onSelect: close },

@@ -4,7 +4,7 @@ definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 const activeTab = ref('all')
 const statusFilter = computed(() => activeTab.value === 'all' ? undefined : activeTab.value)
 
-const { data, pending, refresh } = useFetch('/api/portal/projects', {
+const { data, pending } = useFetch('/api/portal/projects', {
   query: { status: statusFilter }
 })
 
@@ -31,15 +31,17 @@ const statusColors: Record<string, string> = {
 <template>
   <div class="p-6 space-y-6 max-w-7xl mx-auto">
     <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-bold">Projects</h1>
+      <h1 class="text-2xl font-bold">
+        Jobs & Projects
+      </h1>
       <div v-if="data?.summary" class="flex items-center gap-2 text-sm text-muted">
         <span>{{ data.summary.total }} total</span>
       </div>
     </div>
 
     <UTabs
-      :items="tabs"
       v-model="activeTab"
+      :items="tabs"
     />
 
     <div v-if="pending" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -57,7 +59,11 @@ const statusColors: Record<string, string> = {
           <div class="space-y-3">
             <div class="flex items-start justify-between">
               <h3 class="font-semibold truncate pr-2">{{ project.name }}</h3>
-              <UBadge :color="(statusColors[project.status] as any) || 'neutral'" variant="subtle" size="xs">
+              <UBadge
+                :color="(statusColors[project.status] as any) || 'neutral'"
+                variant="subtle"
+                size="xs"
+              >
                 {{ project.status.replace('_', ' ') }}
               </UBadge>
             </div>
@@ -81,10 +87,20 @@ const statusColors: Record<string, string> = {
             </div>
 
             <div class="flex items-center gap-2 flex-wrap">
-              <UBadge v-if="project.pendingApprovals > 0" color="warning" variant="subtle" size="xs">
+              <UBadge
+                v-if="project.pendingApprovals > 0"
+                color="warning"
+                variant="subtle"
+                size="xs"
+              >
                 {{ project.pendingApprovals }} approvals
               </UBadge>
-              <UBadge v-if="project.deliverableCount > 0" color="primary" variant="subtle" size="xs">
+              <UBadge
+                v-if="project.deliverableCount > 0"
+                color="primary"
+                variant="subtle"
+                size="xs"
+              >
                 {{ project.deliverableCount }} deliverables
               </UBadge>
             </div>

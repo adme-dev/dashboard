@@ -5,6 +5,7 @@
 
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
+import { buildClientCondition, toNum } from '~~/server/utils/analyticsMetrics'
 import { ensureOfficeMeetingArtifactsTables } from '~~/server/utils/officeMeetingArtifacts'
 import { ensureOfficeRecordingsTables } from '~~/server/utils/officeRecordings'
 
@@ -239,6 +240,87 @@ export default defineEventHandler(async (event) => {
       LIMIT 10
     `, [clientId])
 
+    const bookedJobHealth = await queryOne(`
+      SELECT
+        COUNT(*) FILTER (WHERE p.status = 'active') AS active_jobs,
+        COUNT(*) FILTER (
+          WHERE p.status = 'active'
+            AND p.due_date IS NOT NULL
+            AND p.due_date < CURRENT_DATE
+        ) AS overdue_jobs,
+        COUNT(*) FILTER (
+          WHERE p.status = 'active'
+            AND p.due_date >= CURRENT_DATE
+            AND p.due_date <= CURRENT_DATE + INTERVAL '14 days'
+        ) AS due_soon_jobs,
+        COUNT(*) FILTER (
+          WHERE p.status = 'completed'
+            AND p.updated_at >= NOW() - INTERVAL '30 days'
+        ) AS completed_last_30,
+        MIN(p.due_date) FILTER (
+          WHERE p.status = 'active'
+            AND p.due_date >= CURRENT_DATE
+        ) AS next_due_date
+      FROM projects p
+      WHERE p.client_id = $1
+    `, [clientId])
+
+    const billingHealth = clientUser.permissions.canViewInvoices
+      ? await queryOne(`
+        SELECT
+          COUNT(*) FILTER (WHERE status IN ('sent', 'overdue')) AS outstanding_count,
+          COUNT(*) FILTER (
+            WHERE status = 'overdue'
+              OR (status = 'sent' AND due_date < CURRENT_DATE)
+          ) AS overdue_count,
+          COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') THEN total_amount - amount_paid ELSE 0 END), 0) AS outstanding_amount,
+          COALESCE(SUM(CASE WHEN status = 'paid' AND paid_date >= CURRENT_DATE - INTERVAL '90 days' THEN total_amount ELSE 0 END), 0) AS paid_last_90,
+          MAX(paid_date) FILTER (WHERE status = 'paid') AS last_paid_at,
+          MIN(due_date) FILTER (WHERE status IN ('sent', 'overdue')) AS next_due_date
+        FROM invoices
+        WHERE client_id = $1
+      `, [clientId])
+      : null
+
+    const campaignHealth = clientUser.permissions.canViewAnalytics
+      ? await queryOne(`
+        SELECT
+          COUNT(DISTINCT COALESCE(NULLIF(ms.campaign_id, ''), ms.id::text)) AS campaigns,
+          COUNT(DISTINCT ms.platform) AS platforms,
+          COALESCE(SUM(ms.actual_spend), 0) AS spend,
+          COALESCE(SUM(ms.impressions), 0) AS impressions,
+          COALESCE(SUM(ms.clicks), 0) AS clicks,
+          COALESCE(SUM(ms.conversions), 0) AS conversions,
+          MAX(ms.synced_at) AS last_synced_at
+        FROM media_spend ms
+        WHERE ${buildClientCondition(1)}
+          AND ms.period >= TO_CHAR(CURRENT_DATE - INTERVAL '90 days', 'YYYY-MM')
+      `, [clientId])
+      : null
+
+    const leadHealth = clientUser.permissions.canViewAnalytics
+      ? await queryOne(`
+        SELECT
+          COUNT(*) AS visible_leads,
+          COUNT(*) FILTER (WHERE l.submitted_at >= NOW() - INTERVAL '30 days') AS leads_last_30,
+          COUNT(*) FILTER (WHERE l.status = 'won') AS won_leads
+        FROM leads l
+        WHERE l.client_id = $1
+          AND l.deleted_at IS NULL
+          AND ${PORTAL_VISIBLE_LEADS_EXISTS}
+      `, [clientId])
+      : null
+
+    const portalAccessHealth = await queryOne(`
+      SELECT
+        COUNT(*) AS total_users,
+        COUNT(*) FILTER (WHERE status = 'active') AS active_users,
+        COUNT(*) FILTER (WHERE status = 'pending') AS pending_users,
+        MAX(last_login_at) AS last_login_at
+      FROM client_users
+      WHERE client_id = $1
+    `, [clientId])
+
     const leadStats = await queryOne(`
       SELECT
         COUNT(*) as total,
@@ -362,6 +444,48 @@ export default defineEventHandler(async (event) => {
           role: m.role,
           department: m.department
         }))
+      },
+      enterprise: {
+        jobs: {
+          active: Number(bookedJobHealth?.active_jobs || 0),
+          overdue: Number(bookedJobHealth?.overdue_jobs || 0),
+          dueSoon: Number(bookedJobHealth?.due_soon_jobs || 0),
+          completedLast30: Number(bookedJobHealth?.completed_last_30 || 0),
+          nextDueDate: bookedJobHealth?.next_due_date || null
+        },
+        billing: clientUser.permissions.canViewInvoices
+          ? {
+              outstandingCount: Number(billingHealth?.outstanding_count || 0),
+              overdueCount: Number(billingHealth?.overdue_count || 0),
+              outstandingAmount: Number(billingHealth?.outstanding_amount || 0),
+              paidLast90: Number(billingHealth?.paid_last_90 || 0),
+              lastPaidAt: billingHealth?.last_paid_at || null,
+              nextDueDate: billingHealth?.next_due_date || null
+            }
+          : null,
+        campaigns: clientUser.permissions.canViewAnalytics
+          ? {
+              campaigns: Number(campaignHealth?.campaigns || 0),
+              platforms: Number(campaignHealth?.platforms || 0),
+              spend: toNum(campaignHealth?.spend),
+              impressions: toNum(campaignHealth?.impressions),
+              clicks: toNum(campaignHealth?.clicks),
+              conversions: toNum(campaignHealth?.conversions),
+              leadsLast30: Number(leadHealth?.leads_last_30 || 0),
+              visibleLeads: Number(leadHealth?.visible_leads || 0),
+              wonLeads: Number(leadHealth?.won_leads || 0),
+              costPerLead: Number(leadHealth?.leads_last_30 || 0) > 0
+                ? toNum(campaignHealth?.spend) / Number(leadHealth?.leads_last_30 || 0)
+                : null,
+              lastSyncedAt: campaignHealth?.last_synced_at || null
+            }
+          : null,
+        access: {
+          totalUsers: Number(portalAccessHealth?.total_users || 0),
+          activeUsers: Number(portalAccessHealth?.active_users || 0),
+          pendingUsers: Number(portalAccessHealth?.pending_users || 0),
+          lastLoginAt: portalAccessHealth?.last_login_at || null
+        }
       },
       meetings: {
         upcoming: meetings.map(m => ({

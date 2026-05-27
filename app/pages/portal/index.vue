@@ -30,6 +30,12 @@ interface PortalDashboard {
   team: {
     members: Array<{ id: string, name: string, email: string | null, phone: string | null, avatarUrl: string | null, role: string | null, department: string | null }>
   }
+  enterprise: {
+    jobs: { active: number, overdue: number, dueSoon: number, completedLast30: number, nextDueDate: string | null }
+    billing: { outstandingCount: number, overdueCount: number, outstandingAmount: number, paidLast90: number, lastPaidAt: string | null, nextDueDate: string | null } | null
+    campaigns: { campaigns: number, platforms: number, spend: number, impressions: number, clicks: number, conversions: number, leadsLast30: number, visibleLeads: number, wonLeads: number, costPerLead: number | null, lastSyncedAt: string | null } | null
+    access: { totalUsers: number, activeUsers: number, pendingUsers: number, lastLoginAt: string | null }
+  }
   meetings: {
     stats: { totalVisible: number, live: number, planned: number, recordings: number }
     upcoming: Array<{ id: string, officeName: string, title: string, status: string, startedAt: string | null, createdAt: string, scheduledStartAt: string | null, durationMinutes: number | null, zoneName: string | null, latestRecordingToken: string | null }>
@@ -47,6 +53,10 @@ function formatDate(date: string | null) {
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0 }).format(amount)
+}
+
+function formatCompact(amount: number) {
+  return new Intl.NumberFormat('en-AU', { notation: 'compact', maximumFractionDigits: 1 }).format(amount)
 }
 
 function timeAgo(date: string) {
@@ -289,14 +299,158 @@ function meetingWhen(meeting: { scheduledStartAt?: string | null, startedAt?: st
         </UCard>
       </div>
 
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <NuxtLink to="/portal/projects" class="rounded-lg border border-default bg-default p-4 hover:bg-elevated transition-colors">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-sm text-muted">
+                Booked job health
+              </p>
+              <p class="text-2xl font-bold mt-1">
+                {{ dashboard.enterprise.jobs.active }}
+              </p>
+            </div>
+            <UIcon name="i-lucide-calendar-check" class="size-5 text-primary" />
+          </div>
+          <div class="mt-4 grid grid-cols-2 gap-2 text-xs">
+            <span class="text-muted">Due soon</span>
+            <span class="text-right font-medium">{{ dashboard.enterprise.jobs.dueSoon }}</span>
+            <span class="text-muted">Overdue</span>
+            <span class="text-right font-medium" :class="dashboard.enterprise.jobs.overdue > 0 ? 'text-error' : ''">
+              {{ dashboard.enterprise.jobs.overdue }}
+            </span>
+            <span class="text-muted">Completed 30d</span>
+            <span class="text-right font-medium">{{ dashboard.enterprise.jobs.completedLast30 }}</span>
+            <span class="text-muted">Next date</span>
+            <span class="text-right font-medium">{{ formatDate(dashboard.enterprise.jobs.nextDueDate) }}</span>
+          </div>
+        </NuxtLink>
+
+        <NuxtLink
+          v-if="dashboard.enterprise.billing"
+          to="/portal/invoices"
+          class="rounded-lg border border-default bg-default p-4 hover:bg-elevated transition-colors"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-sm text-muted">
+                Billing health
+              </p>
+              <p class="text-2xl font-bold mt-1">
+                {{ formatCurrency(dashboard.enterprise.billing.outstandingAmount) }}
+              </p>
+            </div>
+            <UIcon name="i-lucide-receipt-text" class="size-5 text-primary" />
+          </div>
+          <div class="mt-4 grid grid-cols-2 gap-2 text-xs">
+            <span class="text-muted">Outstanding</span>
+            <span class="text-right font-medium">{{ dashboard.enterprise.billing.outstandingCount }}</span>
+            <span class="text-muted">Overdue</span>
+            <span class="text-right font-medium" :class="dashboard.enterprise.billing.overdueCount > 0 ? 'text-error' : ''">
+              {{ dashboard.enterprise.billing.overdueCount }}
+            </span>
+            <span class="text-muted">Paid 90d</span>
+            <span class="text-right font-medium">{{ formatCurrency(dashboard.enterprise.billing.paidLast90) }}</span>
+            <span class="text-muted">Next due</span>
+            <span class="text-right font-medium">{{ formatDate(dashboard.enterprise.billing.nextDueDate) }}</span>
+          </div>
+        </NuxtLink>
+
+        <div v-else class="rounded-lg border border-default bg-default p-4">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-sm text-muted">
+                Billing health
+              </p>
+              <p class="text-base font-semibold mt-2">
+                Restricted
+              </p>
+            </div>
+            <UIcon name="i-lucide-lock" class="size-5 text-muted" />
+          </div>
+          <p class="mt-4 text-xs text-muted">
+            Invoice access is controlled by your portal permissions.
+          </p>
+        </div>
+
+        <NuxtLink
+          v-if="dashboard.enterprise.campaigns"
+          to="/portal/analytics"
+          class="rounded-lg border border-default bg-default p-4 hover:bg-elevated transition-colors"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-sm text-muted">
+                Campaign health
+              </p>
+              <p class="text-2xl font-bold mt-1">
+                {{ dashboard.enterprise.campaigns.campaigns }}
+              </p>
+            </div>
+            <UIcon name="i-lucide-chart-no-axes-combined" class="size-5 text-primary" />
+          </div>
+          <div class="mt-4 grid grid-cols-2 gap-2 text-xs">
+            <span class="text-muted">Spend</span>
+            <span class="text-right font-medium">{{ formatCurrency(dashboard.enterprise.campaigns.spend) }}</span>
+            <span class="text-muted">Leads 30d</span>
+            <span class="text-right font-medium">{{ dashboard.enterprise.campaigns.leadsLast30 }}</span>
+            <span class="text-muted">Cost / lead</span>
+            <span class="text-right font-medium">
+              {{ dashboard.enterprise.campaigns.costPerLead == null ? '-' : formatCurrency(dashboard.enterprise.campaigns.costPerLead) }}
+            </span>
+            <span class="text-muted">Clicks</span>
+            <span class="text-right font-medium">{{ formatCompact(dashboard.enterprise.campaigns.clicks) }}</span>
+          </div>
+        </NuxtLink>
+
+        <div v-else class="rounded-lg border border-default bg-default p-4">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-sm text-muted">
+                Campaign health
+              </p>
+              <p class="text-base font-semibold mt-2">
+                Restricted
+              </p>
+            </div>
+            <UIcon name="i-lucide-lock" class="size-5 text-muted" />
+          </div>
+          <p class="mt-4 text-xs text-muted">
+            Analytics access is controlled by your portal permissions.
+          </p>
+        </div>
+
+        <NuxtLink to="/portal/settings" class="rounded-lg border border-default bg-default p-4 hover:bg-elevated transition-colors">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-sm text-muted">
+                Portal access
+              </p>
+              <p class="text-2xl font-bold mt-1">
+                {{ dashboard.enterprise.access.activeUsers }}
+              </p>
+            </div>
+            <UIcon name="i-lucide-users-round" class="size-5 text-primary" />
+          </div>
+          <div class="mt-4 grid grid-cols-2 gap-2 text-xs">
+            <span class="text-muted">Total users</span>
+            <span class="text-right font-medium">{{ dashboard.enterprise.access.totalUsers }}</span>
+            <span class="text-muted">Pending</span>
+            <span class="text-right font-medium">{{ dashboard.enterprise.access.pendingUsers }}</span>
+            <span class="text-muted">Last login</span>
+            <span class="text-right font-medium">{{ dashboard.enterprise.access.lastLoginAt ? timeAgo(dashboard.enterprise.access.lastLoginAt) : '-' }}</span>
+          </div>
+        </NuxtLink>
+      </div>
+
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <!-- Active Projects -->
+        <!-- Active Jobs -->
         <UCard>
           <template #header>
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">
                 <UIcon name="i-lucide-folder-kanban" class="text-primary" />
-                <span class="font-semibold">Active Projects</span>
+                <span class="font-semibold">Active Jobs</span>
               </div>
               <UBadge color="primary" variant="subtle">
                 {{ dashboard.projects.stats.active }}
