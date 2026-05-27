@@ -26,6 +26,14 @@ interface PortalMeetingsDashboard {
   meetings: PortalMeeting[]
 }
 
+interface PortalMeetingArtifact {
+  id: string
+  type: string
+  title: string
+  content: string
+  createdAt: string
+}
+
 const activeTab = ref('upcoming')
 const meetingQuery = computed(() => activeTab.value === 'all' ? {} : { view: activeTab.value })
 
@@ -38,6 +46,11 @@ const tabs = [
   { label: 'History', value: 'history' },
   { label: 'All', value: 'all' }
 ]
+
+const selectedMeeting = ref<PortalMeeting | null>(null)
+const showArtifacts = ref(false)
+const artifactsUrl = computed(() => selectedMeeting.value ? `/api/portal/meetings/${selectedMeeting.value.id}/artifacts` : null)
+const { data: artifactData, pending: artifactsPending } = useFetch<{ artifacts: PortalMeetingArtifact[] }>(artifactsUrl)
 
 function formatMeetingDate(date: string | null | undefined) {
   if (!date) return '-'
@@ -65,6 +78,18 @@ function emptyLabel() {
   if (activeTab.value === 'history') return 'No meeting history shared yet'
   if (activeTab.value === 'all') return 'No meetings shared yet'
   return 'No upcoming meetings shared yet'
+}
+
+function artifactIcon(type: string) {
+  if (type === 'summary') return 'i-lucide-file-text'
+  if (type === 'action_items') return 'i-lucide-list-checks'
+  if (type === 'transcript') return 'i-lucide-scroll-text'
+  return 'i-lucide-notebook-text'
+}
+
+function openArtifacts(meeting: PortalMeeting) {
+  selectedMeeting.value = meeting
+  showArtifacts.value = true
 }
 </script>
 
@@ -181,6 +206,15 @@ function emptyLabel() {
                 Watch recording
               </UButton>
               <UButton
+                v-if="meeting.status !== 'live'"
+                icon="i-lucide-file-text"
+                color="neutral"
+                variant="outline"
+                @click="openArtifacts(meeting)"
+              >
+                Notes
+              </UButton>
+              <UButton
                 to="/portal/requests"
                 icon="i-lucide-message-square"
                 color="neutral"
@@ -205,5 +239,45 @@ function emptyLabel() {
         </div>
       </UCard>
     </template>
+
+    <USlideover v-model:open="showArtifacts">
+      <template #content>
+        <div class="p-6 space-y-5">
+          <div>
+            <h2 class="text-lg font-semibold">
+              {{ selectedMeeting?.title || 'Meeting notes' }}
+            </h2>
+            <p class="text-sm text-muted mt-1">
+              {{ selectedMeeting ? meetingWhen(selectedMeeting) : '' }}
+            </p>
+          </div>
+
+          <div v-if="artifactsPending" class="space-y-3">
+            <div v-for="i in 3" :key="i" class="h-24 rounded-lg bg-elevated animate-pulse" />
+          </div>
+
+          <div v-else class="space-y-3">
+            <UCard
+              v-for="artifact in artifactData?.artifacts || []"
+              :key="artifact.id"
+            >
+              <template #header>
+                <div class="flex items-center gap-2">
+                  <UIcon :name="artifactIcon(artifact.type)" class="text-primary" />
+                  <span class="font-semibold text-sm">{{ artifact.title }}</span>
+                </div>
+              </template>
+              <p class="text-sm whitespace-pre-wrap line-clamp-[12]">
+                {{ artifact.content }}
+              </p>
+            </UCard>
+
+            <p v-if="!(artifactData?.artifacts || []).length" class="text-sm text-muted text-center py-8">
+              No notes, summary, or transcript have been shared for this meeting yet.
+            </p>
+          </div>
+        </div>
+      </template>
+    </USlideover>
   </div>
 </template>
