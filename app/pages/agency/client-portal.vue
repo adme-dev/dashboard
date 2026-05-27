@@ -206,6 +206,42 @@ const portalClientSummary = computed(() => {
   }
 })
 
+const clientRiskItems = computed(() => portalClients.value
+  .map((client) => {
+    const risks = [
+      client.overdueAmount > 0
+        ? { label: `${formatCurrency(client.overdueAmount)} overdue`, color: 'error' as const }
+        : null,
+      client.urgentRequests > 0
+        ? { label: `${client.urgentRequests} urgent request${client.urgentRequests === 1 ? '' : 's'}`, color: 'error' as const }
+        : null,
+      client.unassignedRequests > 0
+        ? { label: `${client.unassignedRequests} unassigned`, color: 'warning' as const }
+        : null,
+      client.readinessScore < 70
+        ? { label: `${client.readinessScore}% readiness`, color: 'warning' as const }
+        : null,
+      client.campaignCount === 0
+        ? { label: 'No campaign data', color: 'neutral' as const }
+        : null,
+      client.visibleMeetings === 0
+        ? { label: 'No meetings shared', color: 'neutral' as const }
+        : null
+    ].filter(Boolean) as Array<{ label: string, color: 'error' | 'warning' | 'neutral' }>
+
+    const score = (client.overdueInvoices * 4)
+      + (client.urgentRequests * 4)
+      + (client.unassignedRequests * 2)
+      + ((100 - client.readinessScore) / 10)
+      + (client.campaignCount === 0 ? 3 : 0)
+      + (client.visibleMeetings === 0 ? 2 : 0)
+
+    return { client, risks, score }
+  })
+  .filter(item => item.score > 0 && item.risks.length > 0)
+  .sort((a, b) => b.score - a.score)
+  .slice(0, 5))
+
 // Fetch client portal users
 const portalUserFilters = ref({
   clientId: '',
@@ -881,15 +917,6 @@ const enterpriseRollout = [
                 <p class="text-xs text-[var(--ui-text-muted)]">
                   {{ portalClientSummary.meetings }} shared meetings
                 </p>
-                <p class="text-xs text-[var(--ui-text-muted)]">
-                  {{ formatCurrency(portalClientSummary.outstandingAmount) }} outstanding
-                </p>
-                <p class="text-xs text-[var(--ui-text-muted)]">
-                  {{ portalClientSummary.openRequests }} open requests
-                </p>
-                <p class="text-xs text-[var(--ui-text-muted)]">
-                  {{ formatCurrency(portalClientSummary.campaignSpend90d) }} campaign spend
-                </p>
               </div>
             </div>
           </UCard>
@@ -913,6 +940,78 @@ const enterpriseRollout = [
             </div>
           </UCard>
         </div>
+
+        <UCard v-if="clientRiskItems.length" class="mb-6">
+          <template #header>
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div class="flex items-center gap-2">
+                <UIcon name="i-lucide-radar" class="text-primary" />
+                <span class="font-semibold">Client Risk Watchlist</span>
+              </div>
+              <div class="flex flex-wrap gap-2 text-xs text-[var(--ui-text-muted)]">
+                <span>{{ formatCurrency(portalClientSummary.outstandingAmount) }} outstanding</span>
+                <span>{{ portalClientSummary.openRequests }} open requests</span>
+                <span>{{ formatCurrency(portalClientSummary.campaignSpend90d) }} campaign spend</span>
+              </div>
+            </div>
+          </template>
+
+          <div class="grid grid-cols-1 lg:grid-cols-5 gap-3">
+            <div
+              v-for="item in clientRiskItems"
+              :key="item.client.id"
+              class="rounded-lg border border-default bg-default p-3"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <p class="text-sm font-semibold truncate">
+                    {{ item.client.name }}
+                  </p>
+                  <p class="text-xs text-[var(--ui-text-muted)]">
+                    {{ item.client.activeProjects }} active jobs · {{ item.client.openRequests }} open requests
+                  </p>
+                </div>
+                <UBadge :color="getReadinessColor(item.client.readinessScore)" variant="subtle" size="xs">
+                  {{ item.client.readinessScore }}%
+                </UBadge>
+              </div>
+
+              <div class="mt-3 flex flex-wrap gap-1">
+                <UBadge
+                  v-for="risk in item.risks.slice(0, 3)"
+                  :key="risk.label"
+                  :color="risk.color"
+                  variant="subtle"
+                  size="xs"
+                >
+                  {{ risk.label }}
+                </UBadge>
+              </div>
+
+              <div class="mt-3 flex items-center gap-2">
+                <UButton
+                  icon="i-lucide-layout-dashboard"
+                  size="xs"
+                  color="primary"
+                  variant="soft"
+                  :loading="openingPortal"
+                  @click="openClientPortal(item.client.id)"
+                >
+                  Open
+                </UButton>
+                <UButton
+                  icon="i-lucide-message-square-plus"
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  @click="requestFilters.clientId = item.client.id; activeTab = 'requests'"
+                >
+                  Requests
+                </UButton>
+              </div>
+            </div>
+          </div>
+        </UCard>
 
         <!-- Tabs -->
         <UTabs
