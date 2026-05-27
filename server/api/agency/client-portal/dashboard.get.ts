@@ -283,6 +283,57 @@ export default defineEventHandler(async (event) => {
       WHERE client_id = $1
     `, [clientId])
 
+    const contentHealth = await queryOne(`
+      SELECT
+        COALESCE(br.briefs_total, 0) AS briefs_total,
+        COALESCE(br.briefs_open, 0) AS briefs_open,
+        COALESCE(br.briefs_needs_info, 0) AS briefs_needs_info,
+        COALESCE(br.briefs_urgent, 0) AS briefs_urgent,
+        COALESCE(br.briefs_overdue, 0) AS briefs_overdue,
+        COALESCE(br.briefs_submitted_30d, 0) AS briefs_submitted_30d,
+        COALESCE(dl.deliverables_visible, 0) AS deliverables_visible,
+        COALESCE(dl.deliverables_approved, 0) AS deliverables_approved,
+        COALESCE(dl.deliverables_final, 0) AS deliverables_final,
+        COALESCE(dl.deliverables_recent_30d, 0) AS deliverables_recent_30d,
+        dl.last_published_at
+      FROM (SELECT $1::uuid AS client_id) c
+      LEFT JOIN (
+        SELECT
+          client_id,
+          COUNT(*) AS briefs_total,
+          COUNT(*) FILTER (WHERE status NOT IN ('completed', 'cancelled', 'rejected')) AS briefs_open,
+          COUNT(*) FILTER (WHERE status = 'needs_info') AS briefs_needs_info,
+          COUNT(*) FILTER (
+            WHERE priority = 'urgent'
+              AND status NOT IN ('completed', 'cancelled', 'rejected')
+          ) AS briefs_urgent,
+          COUNT(*) FILTER (
+            WHERE status NOT IN ('completed', 'cancelled', 'rejected')
+              AND requested_deadline IS NOT NULL
+              AND requested_deadline < CURRENT_DATE
+          ) AS briefs_overdue,
+          COUNT(*) FILTER (WHERE submitted_at >= NOW() - INTERVAL '30 days') AS briefs_submitted_30d
+        FROM briefs
+        WHERE client_id = $1
+        GROUP BY client_id
+      ) br ON br.client_id = c.client_id
+      LEFT JOIN (
+        SELECT
+          client_id,
+          COUNT(*) FILTER (WHERE is_visible_to_client = true) AS deliverables_visible,
+          COUNT(*) FILTER (WHERE status = 'approved') AS deliverables_approved,
+          COUNT(*) FILTER (WHERE is_final = true) AS deliverables_final,
+          COUNT(*) FILTER (
+            WHERE is_visible_to_client = true
+              AND created_at >= NOW() - INTERVAL '30 days'
+          ) AS deliverables_recent_30d,
+          MAX(published_at) FILTER (WHERE is_visible_to_client = true) AS last_published_at
+        FROM client_deliverables
+        WHERE client_id = $1
+        GROUP BY client_id
+      ) dl ON dl.client_id = c.client_id
+    `, [clientId])
+
     return {
       client: {
         id: client.id,
@@ -407,6 +458,19 @@ export default defineEventHandler(async (event) => {
           dueNext7Amount: toNumber(billingHealth?.due_next_7_amount),
           paidLast90: toNumber(billingHealth?.paid_last_90),
           averageDaysToPay: Math.round(toNumber(billingHealth?.avg_days_to_pay))
+        },
+        content: {
+          briefsTotal: toNumber(contentHealth?.briefs_total),
+          briefsOpen: toNumber(contentHealth?.briefs_open),
+          briefsNeedsInfo: toNumber(contentHealth?.briefs_needs_info),
+          briefsUrgent: toNumber(contentHealth?.briefs_urgent),
+          briefsOverdue: toNumber(contentHealth?.briefs_overdue),
+          briefsSubmitted30d: toNumber(contentHealth?.briefs_submitted_30d),
+          deliverablesVisible: toNumber(contentHealth?.deliverables_visible),
+          deliverablesApproved: toNumber(contentHealth?.deliverables_approved),
+          deliverablesFinal: toNumber(contentHealth?.deliverables_final),
+          deliverablesRecent30d: toNumber(contentHealth?.deliverables_recent_30d),
+          lastPublishedAt: contentHealth?.last_published_at || null
         }
       }
     }

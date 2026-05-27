@@ -79,6 +79,19 @@ describe('agency client portal dashboard API', () => {
         paid_last_90: '9000',
         avg_days_to_pay: '14.4'
       })
+      .mockResolvedValueOnce({
+        briefs_total: '8',
+        briefs_open: '3',
+        briefs_needs_info: '1',
+        briefs_urgent: '2',
+        briefs_overdue: '1',
+        briefs_submitted_30d: '4',
+        deliverables_visible: '11',
+        deliverables_approved: '7',
+        deliverables_final: '5',
+        deliverables_recent_30d: '6',
+        last_published_at: '2026-05-27T01:00:00Z'
+      })
   })
 
   it('returns enterprise operating health for an agency-opened client portal', async () => {
@@ -116,15 +129,35 @@ describe('agency client portal dashboard API', () => {
         dueNext7Amount: 1500,
         paidLast90: 9000,
         averageDaysToPay: 14
+      },
+      content: {
+        briefsTotal: 8,
+        briefsOpen: 3,
+        briefsNeedsInfo: 1,
+        briefsUrgent: 2,
+        briefsOverdue: 1,
+        briefsSubmitted30d: 4,
+        deliverablesVisible: 11,
+        deliverablesApproved: 7,
+        deliverablesFinal: 5,
+        deliverablesRecent30d: 6,
+        lastPublishedAt: '2026-05-27T01:00:00Z'
       }
     })
 
     const leadSql = String(mockQueryOne.mock.calls[5]?.[0])
     const accessSql = String(mockQueryOne.mock.calls[6]?.[0])
     const billingSql = String(mockQueryOne.mock.calls[7]?.[0])
+    const contentSql = String(mockQueryOne.mock.calls[8]?.[0])
     expect(leadSql).toContain('JOIN lead_form_destinations d ON d.rule_id = r.id')
     expect(leadSql).toContain('avg_response_minutes_last_30')
     expect(accessSql).toContain('agency_access_users')
     expect(billingSql).toContain('due_next_7_amount')
+    expect(contentSql).toContain('FROM briefs')
+    expect(contentSql).toContain('briefs_needs_info')
+    expect(contentSql).toContain('requested_deadline < CURRENT_DATE')
+    expect(contentSql).toContain('FROM client_deliverables')
+    expect(contentSql).toContain('deliverables_recent_30d')
+    expect(contentSql).toContain('last_published_at')
   })
 })
