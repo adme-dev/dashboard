@@ -333,6 +333,8 @@ export default defineEventHandler(async (event) => {
               OR (status = 'sent' AND due_date < CURRENT_DATE)
           ) AS overdue_count,
           COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') THEN total_amount - amount_paid ELSE 0 END), 0) AS outstanding_amount,
+          COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') AND due_date < CURRENT_DATE - INTERVAL '60 days' THEN total_amount - amount_paid ELSE 0 END), 0) AS aged_60_amount,
+          COUNT(*) FILTER (WHERE status IN ('sent', 'overdue') AND due_date < CURRENT_DATE - INTERVAL '60 days') AS aged_60_count,
           COALESCE(SUM(CASE WHEN status = 'paid' AND paid_date >= CURRENT_DATE - INTERVAL '90 days' THEN total_amount ELSE 0 END), 0) AS paid_last_90,
           MAX(paid_date) FILTER (WHERE status = 'paid') AS last_paid_at,
           MIN(due_date) FILTER (WHERE status IN ('sent', 'overdue')) AS next_due_date
@@ -543,6 +545,8 @@ export default defineEventHandler(async (event) => {
               outstandingCount: Number(billingHealth?.outstanding_count || 0),
               overdueCount: Number(billingHealth?.overdue_count || 0),
               outstandingAmount: Number(billingHealth?.outstanding_amount || 0),
+              aged60Amount: Number(billingHealth?.aged_60_amount || 0),
+              aged60Count: Number(billingHealth?.aged_60_count || 0),
               paidLast90: Number(billingHealth?.paid_last_90 || 0),
               lastPaidAt: billingHealth?.last_paid_at || null,
               nextDueDate: billingHealth?.next_due_date || null

@@ -69,6 +69,8 @@ describe('portal dashboard enterprise summary', () => {
         outstanding_count: '2',
         overdue_count: '1',
         outstanding_amount: '1200.50',
+        aged_60_amount: '250',
+        aged_60_count: '1',
         paid_last_90: '5400',
         last_paid_at: '2026-05-20',
         next_due_date: '2026-06-05'
@@ -197,6 +199,8 @@ describe('portal dashboard enterprise summary', () => {
         outstandingCount: 2,
         overdueCount: 1,
         outstandingAmount: 1200.5,
+        aged60Amount: 250,
+        aged60Count: 1,
         paidLast90: 5400,
         lastPaidAt: '2026-05-20',
         nextDueDate: '2026-06-05'

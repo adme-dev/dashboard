@@ -34,7 +34,7 @@ interface PortalDashboard {
   }
   enterprise: {
     jobs: { active: number, overdue: number, dueSoon: number, completedLast30: number, nextDueDate: string | null }
-    billing: { outstandingCount: number, overdueCount: number, outstandingAmount: number, paidLast90: number, lastPaidAt: string | null, nextDueDate: string | null } | null
+    billing: { outstandingCount: number, overdueCount: number, outstandingAmount: number, aged60Amount: number, aged60Count: number, paidLast90: number, lastPaidAt: string | null, nextDueDate: string | null } | null
     campaigns: { campaigns: number, platforms: number, spend: number, impressions: number, clicks: number, conversions: number, leadsLast30: number, visibleLeads: number, wonLeads: number, costPerLead: number | null, lastSyncedAt: string | null } | null
     access: { totalUsers: number, activeUsers: number, pendingUsers: number, lastLoginAt: string | null }
   }
@@ -419,6 +419,10 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
             </span>
             <span class="text-muted">Paid 90d</span>
             <span class="text-right font-medium">{{ formatCurrency(dashboard.enterprise.billing.paidLast90) }}</span>
+            <span class="text-muted">60+ days</span>
+            <span class="text-right font-medium" :class="dashboard.enterprise.billing.aged60Amount > 0 ? 'text-error' : ''">
+              {{ dashboard.enterprise.billing.aged60Amount > 0 ? formatCurrency(dashboard.enterprise.billing.aged60Amount) : '-' }}
+            </span>
             <span class="text-muted">Next due</span>
             <span class="text-right font-medium">{{ formatDate(dashboard.enterprise.billing.nextDueDate) }}</span>
           </div>
