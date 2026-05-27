@@ -21,6 +21,12 @@ function formatDate(date: string | null) {
   return new Date(date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
 }
 
+function formatResponseTime(hours: number | null | undefined) {
+  if (!hours) return '-'
+  if (hours < 24) return `${hours}h`
+  return `${Math.round(hours / 24)}d`
+}
+
 function dueLabel(date: string | null, status: string) {
   if (!date || status !== 'pending') return date ? `Due ${formatDate(date)}` : null
   const due = new Date(date)
@@ -114,6 +120,81 @@ const statusColors: Record<string, string> = {
       </button>
     </div>
 
+    <UCard v-if="data?.summary">
+      <template #header>
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-gauge" class="text-primary" />
+          <span class="font-semibold">Decision health</span>
+        </div>
+      </template>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeTab = 'all'"
+        >
+          <p class="text-xs text-muted">
+            Decisions total
+          </p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ data.summary.totalDecisions }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Approved, rejected, or revised
+          </p>
+        </button>
+
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeTab = 'all'"
+        >
+          <p class="text-xs text-muted">
+            Responded last 30d
+          </p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ data.summary.respondedLast30 }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Recent approval decisions
+          </p>
+        </button>
+
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeTab = 'all'"
+        >
+          <p class="text-xs text-muted">
+            Avg response
+          </p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ formatResponseTime(data.summary.averageResponseHours) }}
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            Time from request to response
+          </p>
+        </button>
+
+        <button
+          type="button"
+          class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+          @click="activeTab = 'revision_requested'"
+        >
+          <p class="text-xs text-muted">
+            Revision rate
+          </p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ data.summary.totalDecisions > 0 ? Math.round((data.summary.revisionRequested / data.summary.totalDecisions) * 100) : 0 }}%
+          </p>
+          <p class="mt-1 text-xs text-muted">
+            {{ data.summary.revisionRequested }} revision request{{ data.summary.revisionRequested === 1 ? '' : 's' }}
+          </p>
+        </button>
+      </div>
+    </UCard>
+
     <div v-if="pending" class="space-y-3">
       <div v-for="i in 4" :key="i" class="h-24 rounded-lg bg-elevated animate-pulse" />
     </div>
@@ -132,6 +213,14 @@ const statusColors: Record<string, string> = {
               <h3 class="font-medium">{{ approval.title }}</h3>
               <UBadge :color="(statusColors[approval.status] as any) || 'neutral'" variant="subtle" size="xs">
                 {{ approval.status.replace('_', ' ') }}
+              </UBadge>
+              <UBadge
+                v-if="approval.responseNotes"
+                color="neutral"
+                variant="outline"
+                size="xs"
+              >
+                Notes
               </UBadge>
             </div>
             <div class="flex items-center gap-2 text-xs text-muted mt-1">

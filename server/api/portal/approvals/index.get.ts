@@ -66,7 +66,11 @@ export default defineEventHandler(async (event) => {
         COUNT(CASE WHEN ca.status = 'pending' AND ca.due_date >= CURRENT_DATE AND ca.due_date <= CURRENT_DATE + INTERVAL '7 days' THEN 1 END) as due_soon,
         COUNT(CASE WHEN ca.status = 'approved' THEN 1 END) as approved,
         COUNT(CASE WHEN ca.status = 'rejected' THEN 1 END) as rejected,
-        COUNT(CASE WHEN ca.status = 'revision_requested' THEN 1 END) as revision_requested
+        COUNT(CASE WHEN ca.status = 'revision_requested' THEN 1 END) as revision_requested,
+        COUNT(CASE WHEN ca.responded_at >= NOW() - INTERVAL '30 days' THEN 1 END) as responded_last_30,
+        COUNT(CASE WHEN ca.status IN ('approved', 'rejected', 'revision_requested') THEN 1 END) as total_decisions,
+        COALESCE(AVG(EXTRACT(EPOCH FROM (ca.responded_at - ca.requested_at)) / 3600)
+          FILTER (WHERE ca.responded_at IS NOT NULL AND ca.requested_at IS NOT NULL), 0) as avg_response_hours
       FROM client_approvals ca
       JOIN projects p ON ca.project_id = p.id
       WHERE p.client_id = $1
@@ -99,7 +103,10 @@ export default defineEventHandler(async (event) => {
         dueSoon: Number(summary?.due_soon || 0),
         approved: Number(summary?.approved || 0),
         rejected: Number(summary?.rejected || 0),
-        revisionRequested: Number(summary?.revision_requested || 0)
+        revisionRequested: Number(summary?.revision_requested || 0),
+        respondedLast30: Number(summary?.responded_last_30 || 0),
+        totalDecisions: Number(summary?.total_decisions || 0),
+        averageResponseHours: Math.round(Number(summary?.avg_response_hours || 0))
       }
     }
   } catch (error) {

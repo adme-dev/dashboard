@@ -46,7 +46,10 @@ describe('portal approvals list API', () => {
       due_soon: '2',
       approved: '4',
       rejected: '1',
-      revision_requested: '2'
+      revision_requested: '2',
+      responded_last_30: '5',
+      total_decisions: '7',
+      avg_response_hours: '18.6'
     })
   })
 
@@ -60,12 +63,18 @@ describe('portal approvals list API', () => {
       dueSoon: 2,
       approved: 4,
       rejected: 1,
-      revisionRequested: 2
+      revisionRequested: 2,
+      respondedLast30: 5,
+      totalDecisions: 7,
+      averageResponseHours: 19
     })
 
     const sql = String(mockQueryOne.mock.calls[0]?.[0])
     expect(sql).toContain('ca.due_date < CURRENT_DATE')
     expect(sql).toContain('ca.due_date <= CURRENT_DATE + INTERVAL \'7 days\'')
+    expect(sql).toContain('responded_last_30')
+    expect(sql).toContain('total_decisions')
+    expect(sql).toContain('avg_response_hours')
   })
 
   it('filters approvals by status for client history', async () => {
