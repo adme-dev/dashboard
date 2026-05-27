@@ -70,6 +70,12 @@ describe('agency client portal clients API', () => {
       active_projects: '6',
       upcoming_jobs: '8',
       history_jobs: '17',
+      total_invoices: '7',
+      outstanding_invoices: '2',
+      overdue_invoices: '1',
+      outstanding_amount: '3000',
+      overdue_amount: '1200',
+      paid_invoices: '5',
       visible_meetings: '9',
       upcoming_meetings: '3',
       meeting_recordings: '4'
@@ -101,6 +107,12 @@ describe('agency client portal clients API', () => {
       activeProjects: 6,
       upcomingJobs: 8,
       historyJobs: 17,
+      totalInvoices: 7,
+      outstandingInvoices: 2,
+      overdueInvoices: 1,
+      outstandingAmount: 3000,
+      overdueAmount: 1200,
+      paidInvoices: 5,
       visibleMeetings: 9,
       upcomingMeetings: 3,
       meetingRecordings: 4,
@@ -119,6 +131,9 @@ describe('agency client portal clients API', () => {
     expect(sql).toContain('COALESCE(can_submit_requests, true) = true')
     expect(sql).toContain('status IN (\'draft\', \'active\', \'on_hold\')')
     expect(sql).toContain('status IN (\'completed\', \'cancelled\')')
+    expect(sql).toContain('FROM invoices')
+    expect(sql).toContain('COUNT(*) FILTER (WHERE status IN (\'sent\', \'overdue\')) AS outstanding_invoices')
+    expect(sql).toContain('SUM(CASE WHEN status = \'overdue\' THEN total_amount - amount_paid ELSE 0 END)')
     expect(sql).toContain('JOIN office_members om ON om.client_user_id = cu.id')
     expect(sql).toContain('JOIN office_meeting_sessions oms ON oms.office_id = om.office_id')
     expect(sql).toContain('COUNT(DISTINCT rec.id) FILTER (WHERE rec.status = \'ready\')')

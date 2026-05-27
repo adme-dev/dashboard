@@ -32,6 +32,12 @@ interface PortalClientRow {
   active_projects: string | number | null
   upcoming_jobs: string | number | null
   history_jobs: string | number | null
+  total_invoices: string | number | null
+  outstanding_invoices: string | number | null
+  overdue_invoices: string | number | null
+  outstanding_amount: string | number | null
+  overdue_amount: string | number | null
+  paid_invoices: string | number | null
   visible_meetings: string | number | null
   upcoming_meetings: string | number | null
   meeting_recordings: string | number | null
@@ -46,6 +52,7 @@ const buildSetupGaps = (row: PortalClientRow) => {
   const activeProjects = toNumber(row.active_projects)
   const upcomingJobs = toNumber(row.upcoming_jobs)
   const invoiceUsers = toNumber(row.invoice_access_users)
+  const totalInvoices = toNumber(row.total_invoices)
   const analyticsUsers = toNumber(row.analytics_access_users)
   const requestUsers = toNumber(row.request_access_users)
   const portalLeads = toNumber(row.portal_leads_30d)
@@ -56,6 +63,7 @@ const buildSetupGaps = (row: PortalClientRow) => {
   }
   if (activeProjects === 0 && upcomingJobs === 0) gaps.push('Add booked jobs or project history')
   if (invoiceUsers === 0) gaps.push('Enable billing visibility')
+  else if (totalInvoices === 0) gaps.push('Connect current or past billing')
   if (analyticsUsers === 0) gaps.push('Enable campaign analytics visibility')
   if (requestUsers === 0) gaps.push('Enable request intake')
   if (portalLeads === 0) gaps.push('Route lead forms to the portal')
@@ -68,7 +76,7 @@ const readinessScore = (row: PortalClientRow) => {
   const checks = [
     toNumber(row.active_users) > 0,
     toNumber(row.active_projects) > 0 || toNumber(row.upcoming_jobs) > 0 || toNumber(row.history_jobs) > 0,
-    toNumber(row.invoice_access_users) > 0,
+    toNumber(row.invoice_access_users) > 0 && toNumber(row.total_invoices) > 0,
     toNumber(row.analytics_access_users) > 0,
     toNumber(row.request_access_users) > 0,
     toNumber(row.visible_meetings) > 0,
@@ -135,6 +143,12 @@ export default defineEventHandler(async (event) => {
         COALESCE(pr.active_projects, 0) AS active_projects,
         COALESCE(pr.upcoming_jobs, 0) AS upcoming_jobs,
         COALESCE(pr.history_jobs, 0) AS history_jobs,
+        COALESCE(inv.total_invoices, 0) AS total_invoices,
+        COALESCE(inv.outstanding_invoices, 0) AS outstanding_invoices,
+        COALESCE(inv.overdue_invoices, 0) AS overdue_invoices,
+        COALESCE(inv.outstanding_amount, 0) AS outstanding_amount,
+        COALESCE(inv.overdue_amount, 0) AS overdue_amount,
+        COALESCE(inv.paid_invoices, 0) AS paid_invoices,
         COALESCE(mt.visible_meetings, 0) AS visible_meetings,
         COALESCE(mt.upcoming_meetings, 0) AS upcoming_meetings,
         COALESCE(mt.meeting_recordings, 0) AS meeting_recordings
@@ -195,6 +209,18 @@ export default defineEventHandler(async (event) => {
       ) pr ON pr.client_id = c.id
       LEFT JOIN (
         SELECT
+          client_id,
+          COUNT(*) AS total_invoices,
+          COUNT(*) FILTER (WHERE status IN ('sent', 'overdue')) AS outstanding_invoices,
+          COUNT(*) FILTER (WHERE status = 'overdue') AS overdue_invoices,
+          COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') THEN total_amount - amount_paid ELSE 0 END), 0) AS outstanding_amount,
+          COALESCE(SUM(CASE WHEN status = 'overdue' THEN total_amount - amount_paid ELSE 0 END), 0) AS overdue_amount,
+          COUNT(*) FILTER (WHERE status = 'paid') AS paid_invoices
+        FROM invoices
+        GROUP BY client_id
+      ) inv ON inv.client_id = c.id
+      LEFT JOIN (
+        SELECT
           cu.client_id,
           COUNT(DISTINCT oms.id) FILTER (WHERE oms.status <> 'cancelled') AS visible_meetings,
           COUNT(DISTINCT oms.id) FILTER (WHERE oms.status IN ('live', 'planned')) AS upcoming_meetings,
@@ -244,6 +270,12 @@ export default defineEventHandler(async (event) => {
           activeProjects: toNumber(row.active_projects),
           upcomingJobs: toNumber(row.upcoming_jobs),
           historyJobs: toNumber(row.history_jobs),
+          totalInvoices: toNumber(row.total_invoices),
+          outstandingInvoices: toNumber(row.outstanding_invoices),
+          overdueInvoices: toNumber(row.overdue_invoices),
+          outstandingAmount: toNumber(row.outstanding_amount),
+          overdueAmount: toNumber(row.overdue_amount),
+          paidInvoices: toNumber(row.paid_invoices),
           visibleMeetings: toNumber(row.visible_meetings),
           upcomingMeetings: toNumber(row.upcoming_meetings),
           meetingRecordings: toNumber(row.meeting_recordings),

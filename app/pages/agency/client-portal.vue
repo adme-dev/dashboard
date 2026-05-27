@@ -33,6 +33,12 @@ interface PortalClient {
   activeProjects: number
   upcomingJobs: number
   historyJobs: number
+  totalInvoices: number
+  outstandingInvoices: number
+  overdueInvoices: number
+  outstandingAmount: number
+  overdueAmount: number
+  paidInvoices: number
   visibleMeetings: number
   upcomingMeetings: number
   meetingRecordings: number
@@ -184,7 +190,8 @@ const portalClientSummary = computed(() => {
       ? Math.round(items.reduce((sum, client) => sum + Number(client.readinessScore || 0), 0) / items.length)
       : 0,
     leads30d: items.reduce((sum, client) => sum + Number(client.portalLeads30d || 0), 0),
-    meetings: items.reduce((sum, client) => sum + Number(client.visibleMeetings || 0), 0)
+    meetings: items.reduce((sum, client) => sum + Number(client.visibleMeetings || 0), 0),
+    outstandingAmount: items.reduce((sum, client) => sum + Number(client.outstandingAmount || 0), 0)
   }
 })
 
@@ -450,6 +457,9 @@ const formatDateTime = (date: string) => {
   return format(new Date(date), 'MMM d, yyyy h:mm a')
 }
 
+const formatCurrency = (amount: number) =>
+  new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(amount)
+
 // Status colors
 const getUserStatusColor = (status: string): 'success' | 'warning' | 'error' | 'neutral' => {
   switch (status) {
@@ -679,6 +689,7 @@ const clientColumns = [
   { accessorKey: 'users', header: 'Users' },
   { accessorKey: 'readiness', header: 'Readiness' },
   { accessorKey: 'leads', header: 'Leads 30d' },
+  { accessorKey: 'billing', header: 'Billing' },
   { accessorKey: 'activity', header: 'Last Activity' },
   { accessorKey: 'actions', header: '' }
 ]
@@ -856,6 +867,9 @@ const enterpriseRollout = [
                 </p>
                 <p class="text-xs text-[var(--ui-text-muted)]">
                   {{ portalClientSummary.meetings }} shared meetings
+                </p>
+                <p class="text-xs text-[var(--ui-text-muted)]">
+                  {{ formatCurrency(portalClientSummary.outstandingAmount) }} outstanding
                 </p>
               </div>
             </div>
@@ -1046,6 +1060,26 @@ const enterpriseRollout = [
                   <p class="text-xs text-[var(--ui-text-muted)]">
                     {{ row.original.newLeads30d }} new, {{ row.original.wonLeads30d }} won
                   </p>
+                </div>
+              </template>
+
+              <template #billing-cell="{ row }">
+                <div class="text-sm">
+                  <p class="font-medium" :class="row.original.overdueAmount > 0 ? 'text-error' : ''">
+                    {{ formatCurrency(row.original.outstandingAmount) }}
+                  </p>
+                  <p class="text-xs text-[var(--ui-text-muted)]">
+                    {{ row.original.outstandingInvoices }} current, {{ row.original.paidInvoices }} paid
+                  </p>
+                  <UBadge
+                    v-if="row.original.overdueInvoices > 0"
+                    color="error"
+                    variant="subtle"
+                    size="xs"
+                    class="mt-1"
+                  >
+                    {{ row.original.overdueInvoices }} overdue
+                  </UBadge>
                 </div>
               </template>
 
