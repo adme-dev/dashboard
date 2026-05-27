@@ -43,7 +43,7 @@ interface PortalDashboard {
     upcoming: Array<{ id: string, officeName: string, title: string, joinPath: string, status: string, startedAt: string | null, createdAt: string, scheduledStartAt: string | null, durationMinutes: number | null, zoneName: string | null, latestRecordingToken: string | null }>
   }
   upcomingDeadlines: Array<{ id: string, title: string, dueDate: string | null, projectName: string, status: { color: string | null } }>
-  recentActivity: Array<{ id: string, action: string, createdAt: string, userName: string | null }>
+  recentActivity: Array<{ id: string, action: string, entityType?: string | null, entityId?: string | null, details?: Record<string, unknown> | string | null, createdAt: string, userName: string | null }>
 }
 
 const { data: dashboard, pending } = useFetch<PortalDashboard>('/api/portal/dashboard')
@@ -121,6 +121,38 @@ function jobStatusColor(status: string) {
   if (status === 'completed') return 'neutral'
   if (status === 'cancelled') return 'error'
   return 'primary'
+}
+
+function activityDetails(details: Record<string, unknown> | string | null | undefined) {
+  if (!details) return {}
+  if (typeof details === 'object') return details
+  try {
+    const parsed = JSON.parse(details)
+    return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {}
+  } catch {
+    return {}
+  }
+}
+
+function activityIcon(action: string) {
+  if (action.includes('request')) return 'i-lucide-message-square'
+  if (action.includes('approval')) return 'i-lucide-check-check'
+  if (action.includes('login') || action.includes('access')) return 'i-lucide-shield-check'
+  if (action.includes('comment')) return 'i-lucide-message-circle'
+  return 'i-lucide-activity'
+}
+
+function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
+  const details = activityDetails(activity.details)
+  if (activity.action === 'agency_request_updated') {
+    const status = typeof details.status === 'string' ? details.status.replaceAll('_', ' ') : 'updated'
+    return `updated your request to ${status}`
+  }
+  if (activity.action === 'agency_portal_access') return 'previewed the client portal'
+  if (activity.action === 'invite_accepted') return 'accepted a portal invite'
+  if (activity.action === 'approval_response') return 'responded to an approval'
+  if (activity.action === 'comment_added') return 'added a comment'
+  return activity.action.replaceAll('_', ' ')
 }
 </script>
 
@@ -990,12 +1022,12 @@ function jobStatusColor(status: string) {
               class="flex items-start gap-3"
             >
               <div class="w-6 h-6 rounded-full bg-elevated flex items-center justify-center mt-0.5 shrink-0">
-                <UIcon name="i-lucide-activity" class="w-3 h-3 text-muted" />
+                <UIcon :name="activityIcon(activity.action)" class="w-3 h-3 text-muted" />
               </div>
               <div class="min-w-0 flex-1">
                 <p class="text-sm">
-                  <span class="font-medium">{{ activity.userName || 'System' }}</span>
-                  {{ activity.action.replace(/_/g, ' ') }}
+                  <span class="font-medium">{{ activity.userName || 'Agency team' }}</span>
+                  {{ activityLabel(activity) }}
                 </p>
                 <span class="text-xs text-muted">{{ timeAgo(activity.createdAt) }}</span>
               </div>
