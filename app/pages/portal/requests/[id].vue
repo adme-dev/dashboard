@@ -68,6 +68,61 @@ function formatCurrency(amount: number) {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0 }).format(amount)
 }
 
+function daysUntil(date: string | null | undefined) {
+  if (!date) return null
+  const due = new Date(date)
+  const now = new Date()
+  return Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+function deadlineStatus(date: string | null | undefined) {
+  const days = daysUntil(date)
+  if (days == null) return { label: 'No target date', color: 'neutral' as const }
+  if (days < 0) return { label: `${Math.abs(days)}d overdue`, color: 'error' as const }
+  if (days === 0) return { label: 'Due today', color: 'warning' as const }
+  if (days <= 14) return { label: `Due in ${days}d`, color: 'warning' as const }
+  return { label: formatDate(date || null), color: 'neutral' as const }
+}
+
+const requestHealth = computed(() => {
+  const request = data.value?.request
+  if (!request) return []
+
+  const deadline = deadlineStatus(request.desiredDeadline)
+  const responseState = request.respondedAt
+    ? { label: `Responded ${formatDate(request.respondedAt)}`, color: 'success' as const }
+    : ['submitted', 'in_review'].includes(request.status)
+        ? { label: 'Awaiting response', color: 'warning' as const }
+        : { label: 'Response not logged', color: 'neutral' as const }
+
+  return [
+    {
+      label: 'Owner',
+      value: request.assignedName || 'Unassigned',
+      icon: request.assignedName ? 'i-lucide-user-check' : 'i-lucide-user-x',
+      color: request.assignedName ? 'success' as const : 'warning' as const
+    },
+    {
+      label: 'Target',
+      value: deadline.label,
+      icon: 'i-lucide-calendar-clock',
+      color: deadline.color
+    },
+    {
+      label: 'Response',
+      value: responseState.label,
+      icon: 'i-lucide-message-circle',
+      color: responseState.color
+    },
+    {
+      label: 'Budget',
+      value: request.estimatedBudget ? formatCurrency(request.estimatedBudget) : 'Not provided',
+      icon: 'i-lucide-wallet',
+      color: request.estimatedBudget ? 'primary' as const : 'neutral' as const
+    }
+  ]
+})
+
 const requestProgress = computed(() => {
   const request = data.value?.request
   if (!request) return []
@@ -228,6 +283,33 @@ const requestNextStep = computed(() => {
             <p class="mt-1 text-sm text-muted">
               {{ requestNextStep.description }}
             </p>
+          </div>
+        </div>
+      </UCard>
+
+      <UCard>
+        <template #header>
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-radar" class="text-primary" />
+            <span class="font-semibold text-sm">Request Health</span>
+          </div>
+        </template>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div
+            v-for="item in requestHealth"
+            :key="item.label"
+            class="rounded-lg border border-default bg-default p-3"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <p class="text-xs text-muted">
+                {{ item.label }}
+              </p>
+              <UIcon :name="item.icon" class="size-4 text-muted" />
+            </div>
+            <UBadge :color="item.color" variant="subtle" class="mt-2">
+              {{ item.value }}
+            </UBadge>
           </div>
         </div>
       </UCard>
