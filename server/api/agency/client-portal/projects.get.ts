@@ -4,6 +4,7 @@
  *
  * Query params:
  * - clientId: Client ID (required)
+ * - view: Filter to upcoming or history job views
  * - status: Filter by status
  * - limit: Max results
  */
@@ -16,6 +17,7 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
 
   const clientId = query.clientId as string
+  const view = query.view as 'upcoming' | 'history' | undefined
   const status = query.status as string | undefined
   const limit = Math.min(Number(query.limit) || 50, 100)
 
@@ -28,16 +30,23 @@ export default defineEventHandler(async (event) => {
 
   try {
     const conditions: string[] = ['p.client_id = $1']
-    const params: any[] = [clientId]
+    const params: unknown[] = [clientId]
     let idx = 2
 
-    if (status && status !== 'all') {
+    if (view === 'upcoming') {
+      conditions.push('p.status IN (\'draft\', \'active\', \'on_hold\')')
+      conditions.push('(p.due_date IS NULL OR p.due_date >= CURRENT_DATE)')
+    } else if (view === 'history') {
+      conditions.push('p.status IN (\'completed\', \'cancelled\')')
+    } else if (status && status !== 'all') {
       conditions.push(`p.status = $${idx}`)
       params.push(status)
       idx++
     }
 
     params.push(limit)
+    params.push(view ?? null)
+    const viewParamIndex = idx + 1
 
     const projects = await queryRows(`
       SELECT
@@ -87,8 +96,15 @@ export default defineEventHandler(async (event) => {
       ) time ON p.id = time.project_id
       WHERE ${conditions.join(' AND ')}
       ORDER BY
-        CASE p.status WHEN 'active' THEN 0 WHEN 'on_hold' THEN 1 ELSE 2 END,
-        p.due_date ASC NULLS LAST,
+        CASE
+          WHEN $${viewParamIndex} = 'history' THEN NULL
+          WHEN p.status = 'active' THEN 0
+          WHEN p.status = 'on_hold' THEN 1
+          WHEN p.status = 'draft' THEN 2
+          ELSE 3
+        END ASC NULLS LAST,
+        CASE WHEN $${viewParamIndex} = 'history' THEN p.due_date END DESC NULLS LAST,
+        CASE WHEN COALESCE($${viewParamIndex}, '') <> 'history' THEN p.due_date END ASC NULLS LAST,
         p.created_at DESC
       LIMIT $${idx}
     `, params)
@@ -100,6 +116,12 @@ export default defineEventHandler(async (event) => {
         COUNT(CASE WHEN status = 'active' THEN 1 END) as active,
         COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
         COUNT(CASE WHEN status = 'on_hold' THEN 1 END) as on_hold,
+        COUNT(CASE
+          WHEN status IN ('draft', 'active', 'on_hold')
+            AND (due_date IS NULL OR due_date >= CURRENT_DATE)
+          THEN 1
+        END) as upcoming,
+        COUNT(CASE WHEN status IN ('completed', 'cancelled') THEN 1 END) as history,
         COALESCE(SUM(budget), 0) as total_budget
       FROM projects
       WHERE client_id = $1
@@ -133,6 +155,8 @@ export default defineEventHandler(async (event) => {
         active: Number(summary?.active || 0),
         completed: Number(summary?.completed || 0),
         onHold: Number(summary?.on_hold || 0),
+        upcoming: Number(summary?.upcoming || 0),
+        history: Number(summary?.history || 0),
         totalBudget: Number(summary?.total_budget || 0)
       }
     }
