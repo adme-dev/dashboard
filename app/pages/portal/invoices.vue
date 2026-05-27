@@ -247,6 +247,81 @@ const agingColors: Record<string, string> = {
         </div>
       </UCard>
 
+      <UCard v-if="data?.summary">
+        <template #header>
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-calendar-days" class="text-primary" />
+            <span class="font-semibold">Payment planning</span>
+          </div>
+        </template>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <button
+            type="button"
+            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+            @click="activeTab = 'current'"
+          >
+            <p class="text-xs text-muted">
+              Due next 7 days
+            </p>
+            <p class="mt-1 text-sm font-semibold" :class="data.summary.dueNext7Amount > 0 ? 'text-warning' : ''">
+              {{ formatCurrency(data.summary.dueNext7Amount) }}
+            </p>
+            <p class="mt-1 text-xs text-muted">
+              {{ data.summary.dueNext7Count }} invoice{{ data.summary.dueNext7Count === 1 ? '' : 's' }}
+            </p>
+          </button>
+
+          <button
+            type="button"
+            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+            @click="activeTab = 'history'"
+          >
+            <p class="text-xs text-muted">
+              Paid last 90 days
+            </p>
+            <p class="mt-1 text-sm font-semibold">
+              {{ formatCurrency(data.summary.paidLast90) }}
+            </p>
+            <p class="mt-1 text-xs text-muted">
+              Recent billing throughput
+            </p>
+          </button>
+
+          <button
+            type="button"
+            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+            @click="activeTab = 'history'"
+          >
+            <p class="text-xs text-muted">
+              Avg days to pay
+            </p>
+            <p class="mt-1 text-sm font-semibold">
+              {{ data.summary.averageDaysToPay }}d
+            </p>
+            <p class="mt-1 text-xs text-muted">
+              Based on paid invoices
+            </p>
+          </button>
+
+          <button
+            type="button"
+            class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+            @click="activeTab = data.summary.overdue > 0 ? 'overdue' : 'current'"
+          >
+            <p class="text-xs text-muted">
+              Balance at risk
+            </p>
+            <p class="mt-1 text-sm font-semibold" :class="data.summary.overdueAmount > 0 ? 'text-error' : ''">
+              {{ formatCurrency(data.summary.overdueAmount + data.summary.dueNext7Amount) }}
+            </p>
+            <p class="mt-1 text-xs text-muted">
+              Overdue plus due this week
+            </p>
+          </button>
+        </div>
+      </UCard>
+
       <UTabs v-model="activeTab" :items="tabs" />
 
       <div v-if="pending" class="space-y-3">
