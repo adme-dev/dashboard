@@ -3,7 +3,7 @@
  * POST /api/portal/auth/login
  */
 
-import { queryOne, queryRows, transaction } from '~~/server/utils/db'
+import { queryOne, transaction } from '~~/server/utils/db'
 import bcrypt from 'bcryptjs'
 
 export default defineEventHandler(async (event) => {
@@ -128,6 +128,18 @@ export default defineEventHandler(async (event) => {
       WHERE client_user_id = $1 AND is_read = false
     `, [user.id])
 
+    const activeProjects = await queryOne(`
+      SELECT COUNT(*) as count
+      FROM projects
+      WHERE client_id = $1 AND status = 'active'
+    `, [user.client_id])
+
+    const openRequests = await queryOne(`
+      SELECT COUNT(*) as count
+      FROM client_requests
+      WHERE client_id = $1 AND status NOT IN ('completed', 'closed', 'cancelled')
+    `, [user.client_id])
+
     return {
       user: {
         id: user.id,
@@ -156,11 +168,13 @@ export default defineEventHandler(async (event) => {
       },
       stats: {
         pendingApprovals: Number(pendingApprovals?.count || 0),
-        unreadNotifications: Number(unreadNotifications?.count || 0)
+        unreadNotifications: Number(unreadNotifications?.count || 0),
+        activeProjects: Number(activeProjects?.count || 0),
+        openRequests: Number(openRequests?.count || 0)
       }
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error
     console.error('Login failed:', error)
     throw createError({
       statusCode: 500,

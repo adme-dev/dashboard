@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
 
-const { user, logout } = usePortalAuth()
+const { user, stats, logout } = usePortalAuth()
 const open = ref(false)
 
 const close = () => {
@@ -14,12 +14,13 @@ const { data: notifData } = useLazyFetch('/api/portal/notifications', {
   query: { unreadOnly: 'true', limit: 1 }
 })
 const unreadCount = computed(() => notifData.value?.unreadCount || 0)
+const navBadge = (value?: number) => value && value > 0 ? value.toString() : undefined
 
 const mainNav = computed<NavigationMenuItem[]>(() => [
   { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/portal', exact: true, onSelect: close },
-  { label: 'Jobs', icon: 'i-lucide-folder-kanban', to: '/portal/projects', onSelect: close },
-  { label: 'Approvals', icon: 'i-lucide-check-circle', to: '/portal/approvals', onSelect: close },
-  { label: 'Requests', icon: 'i-lucide-message-square-plus', to: '/portal/requests', onSelect: close },
+  { label: 'Jobs', icon: 'i-lucide-folder-kanban', to: '/portal/projects', badge: navBadge(stats.value?.activeProjects), onSelect: close },
+  { label: 'Approvals', icon: 'i-lucide-check-circle', to: '/portal/approvals', badge: navBadge(stats.value?.pendingApprovals), onSelect: close },
+  { label: 'Requests', icon: 'i-lucide-message-square-plus', to: '/portal/requests', badge: navBadge(stats.value?.openRequests), onSelect: close },
   { label: 'Leads', icon: 'i-lucide-inbox', to: '/portal/leads', onSelect: close },
   { label: 'Meetings', icon: 'i-lucide-video', to: '/portal/meetings', onSelect: close },
   ...(user.value?.permissions?.canSubmitRequests
@@ -43,7 +44,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
     label: 'Notifications',
     icon: 'i-lucide-bell',
     to: '/portal/notifications',
-    badge: unreadCount.value > 0 ? unreadCount.value.toString() : undefined,
+    badge: navBadge(unreadCount.value || stats.value?.unreadNotifications),
     onSelect: close
   }
 ])

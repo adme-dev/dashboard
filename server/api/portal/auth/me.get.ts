@@ -29,6 +29,12 @@ export default defineEventHandler(async (event) => {
       WHERE client_id = $1 AND status = 'active'
     `, [clientUser.clientId])
 
+    const openRequests = await queryOne(`
+      SELECT COUNT(*) as count
+      FROM client_requests
+      WHERE client_id = $1 AND status NOT IN ('completed', 'closed', 'cancelled')
+    `, [clientUser.clientId])
+
     return {
       user: {
         id: clientUser.id,
@@ -51,7 +57,8 @@ export default defineEventHandler(async (event) => {
       stats: {
         pendingApprovals: Number(pendingApprovals?.count || 0),
         unreadNotifications: Number(unreadNotifications?.count || 0),
-        activeProjects: Number(activeProjects?.count || 0)
+        activeProjects: Number(activeProjects?.count || 0),
+        openRequests: Number(openRequests?.count || 0)
       }
     }
   } catch (error: unknown) {
