@@ -552,6 +552,33 @@ const { data: activityData, pending: activityPending, refresh: refreshActivity }
 })
 
 const portalActivity = computed(() => ((activityData.value as { activity?: PortalActivity[] } | null)?.activity || []))
+const portalActivitySummary = computed(() => {
+  const items = portalActivity.value
+  return {
+    total: items.length,
+    agencyAccess: items.filter(activity => activity.action === 'agency_portal_access').length,
+    clientLogins: items.filter(activity => ['login', 'invite_accepted'].includes(activity.action)).length,
+    requestEvents: items.filter(activity => activity.action.includes('request')).length,
+    approvalEvents: items.filter(activity => activity.action.includes('approval')).length,
+    uniqueClients: new Set(items.map(activity => activity.clientId)).size
+  }
+})
+const portalActivityFilterLabel = computed(() => {
+  const parts = []
+  if (activityFilters.value.clientId) {
+    const client = clients.value.find(item => item.id === activityFilters.value.clientId)
+    parts.push(client?.name || 'selected client')
+  } else {
+    parts.push('all clients')
+  }
+  parts.push(activityFilters.value.action === 'all' ? 'all portal activity' : formatActivityAction(activityFilters.value.action))
+  return parts.join(' · ')
+})
+
+const clearActivityFilters = () => {
+  activityFilters.value.clientId = ''
+  activityFilters.value.action = 'agency_portal_access'
+}
 
 const requestFilters = ref({
   clientId: typeof routeQueryString(route.query.clientId) === 'string' ? String(routeQueryString(route.query.clientId)) : '',
@@ -2526,38 +2553,127 @@ const enterpriseRollout = [
         </div>
 
         <!-- Audit Tab -->
-        <div v-if="activeTab === 'audit'">
-          <UCard class="mb-4">
+        <div v-if="activeTab === 'audit'" class="space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div class="rounded-lg border border-default bg-default p-4">
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  Audit events
+                </p>
+                <UIcon name="i-lucide-clipboard-list" class="size-4 text-[var(--ui-text-muted)]" />
+              </div>
+              <p class="text-xl font-bold mt-1">
+                {{ portalActivitySummary.total }}
+              </p>
+            </div>
+            <div class="rounded-lg border border-default bg-default p-4">
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  Agency access
+                </p>
+                <UIcon name="i-lucide-shield-check" class="size-4 text-primary" />
+              </div>
+              <p class="text-xl font-bold mt-1">
+                {{ portalActivitySummary.agencyAccess }}
+              </p>
+            </div>
+            <div class="rounded-lg border border-default bg-default p-4">
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  Client sessions
+                </p>
+                <UIcon name="i-lucide-user-check" class="size-4 text-emerald-500" />
+              </div>
+              <p class="text-xl font-bold mt-1">
+                {{ portalActivitySummary.clientLogins }}
+              </p>
+            </div>
+            <div class="rounded-lg border border-default bg-default p-4">
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  Active clients
+                </p>
+                <UIcon name="i-lucide-building-2" class="size-4 text-sky-500" />
+              </div>
+              <p class="text-xl font-bold mt-1">
+                {{ portalActivitySummary.uniqueClients }}
+              </p>
+            </div>
+          </div>
+
+          <UCard>
             <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h2 class="text-lg font-semibold">
-                  Portal Access Audit
+                  Portal access audit
                 </h2>
                 <p class="text-sm text-[var(--ui-text-muted)] mt-1">
-                  Track owner, marketer, and client portal activity before clients are invited in.
+                  Track owner, marketer, and client portal activity for permission reviews and support handover.
                 </p>
               </div>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:w-[520px]">
-                <USelectMenu
-                  v-model="activityFilters.clientId"
-                  :items="portalUserClientOptions"
-                  placeholder="All clients"
-                  value-key="value"
-                  searchable
-                />
-                <USelect
-                  v-model="activityFilters.action"
-                  :items="[
-                    { label: 'Agency portal access', value: 'agency_portal_access' },
-                    { label: 'All portal activity', value: 'all' }
-                  ]"
-                  value-key="value"
-                />
+              <div class="flex flex-col gap-3 lg:w-[620px]">
+                <div class="flex items-center justify-between gap-3 rounded-lg border border-default bg-elevated/40 px-3 py-2">
+                  <div class="min-w-0">
+                    <p class="text-xs uppercase tracking-wide text-[var(--ui-text-muted)]">
+                      Current view
+                    </p>
+                    <p class="truncate text-sm font-medium">
+                      {{ portalActivityFilterLabel }}
+                    </p>
+                  </div>
+                  <UButton
+                    label="Clear"
+                    icon="i-lucide-x"
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    :disabled="activityFilters.clientId === '' && activityFilters.action === 'agency_portal_access'"
+                    @click="clearActivityFilters"
+                  />
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <USelectMenu
+                    v-model="activityFilters.clientId"
+                    :items="portalUserClientOptions"
+                    placeholder="All clients"
+                    value-key="value"
+                    searchable
+                  />
+                  <USelect
+                    v-model="activityFilters.action"
+                    :items="[
+                      { label: 'Agency portal access', value: 'agency_portal_access' },
+                      { label: 'All portal activity', value: 'all' }
+                    ]"
+                    value-key="value"
+                  />
+                </div>
               </div>
             </div>
           </UCard>
 
           <UCard>
+            <template #header>
+              <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p class="text-base font-semibold">
+                    Activity trail
+                  </p>
+                  <p class="text-sm text-[var(--ui-text-muted)]">
+                    Inspect who entered a portal, what they touched, and the source recorded for the session.
+                  </p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <UBadge color="neutral" variant="subtle">
+                    {{ portalActivitySummary.requestEvents }} request events
+                  </UBadge>
+                  <UBadge color="neutral" variant="subtle">
+                    {{ portalActivitySummary.approvalEvents }} approval events
+                  </UBadge>
+                </div>
+              </div>
+            </template>
+
             <div v-if="activityPending" class="flex items-center justify-center py-12">
               <XfLoader />
             </div>
