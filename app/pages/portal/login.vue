@@ -36,7 +36,7 @@
         </div>
 
         <!-- Login Form -->
-        <form @submit.prevent="handleLogin" class="space-y-4">
+        <form class="space-y-4" @submit.prevent="handleLogin">
           <div
             v-if="error"
             class="flex items-start gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20"
@@ -59,7 +59,7 @@
               class="w-full px-4 py-3 rounded-xl border border-[#121317]/10 dark:border-white/10 bg-white dark:bg-white/[0.04] text-[15px] text-[#121317] dark:text-white placeholder:text-[#45474D]/50 dark:placeholder:text-white/30 focus:outline-none focus:border-[#121317]/30 dark:focus:border-white/20 focus:ring-2 focus:ring-[#121317]/5 dark:focus:ring-white/10 transition-all"
               :disabled="loading"
               autofocus
-            />
+            >
           </div>
 
           <div>
@@ -70,7 +70,7 @@
               placeholder="Enter your password"
               class="w-full px-4 py-3 rounded-xl border border-[#121317]/10 dark:border-white/10 bg-white dark:bg-white/[0.04] text-[15px] text-[#121317] dark:text-white placeholder:text-[#45474D]/50 dark:placeholder:text-white/30 focus:outline-none focus:border-[#121317]/30 dark:focus:border-white/20 focus:ring-2 focus:ring-[#121317]/5 dark:focus:ring-white/10 transition-all"
               :disabled="loading"
-            />
+            >
           </div>
 
           <button
@@ -78,8 +78,20 @@
             class="w-full py-3 px-4 bg-[#121317] dark:bg-white text-white dark:text-[#121317] text-[15px] font-medium rounded-full hover:bg-[#2a2b30] dark:hover:bg-white/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             :disabled="loading"
           >
-            <svg v-if="loading" class="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" />
+            <svg
+              v-if="loading"
+              class="animate-spin w-4 h-4"
+              viewBox="0 0 24 24"
+              fill="none"
+            >
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="3"
+              />
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
             {{ loading ? 'Signing in...' : 'Sign in' }}
@@ -142,6 +154,18 @@ const password = ref('')
 const error = ref('')
 const loading = ref(false)
 
+function errorMessage(error: unknown) {
+  if (error && typeof error === 'object') {
+    if ('data' in error) {
+      return (error as { data?: { statusMessage?: string } }).data?.statusMessage
+    }
+    if ('message' in error) {
+      return (error as { message?: string }).message
+    }
+  }
+  return undefined
+}
+
 watchEffect(() => {
   if (isAuthenticated.value) {
     const redirect = route.query.redirect as string
@@ -161,8 +185,8 @@ async function handleLogin() {
     await login(email.value, password.value)
     const redirect = route.query.redirect as string
     await navigateTo(redirect ? decodeURIComponent(redirect) : '/portal')
-  } catch (e: any) {
-    error.value = e.data?.statusMessage || e.message || 'Login failed'
+  } catch (caught: unknown) {
+    error.value = errorMessage(caught) || 'Login failed'
   } finally {
     loading.value = false
   }

@@ -15,6 +15,18 @@ const success = ref(false)
 // Store email from invite validation for auto-login
 const inviteEmail = ref('')
 
+function errorMessage(error: unknown) {
+  if (error && typeof error === 'object') {
+    if ('data' in error) {
+      return (error as { data?: { statusMessage?: string } }).data?.statusMessage
+    }
+    if ('message' in error) {
+      return (error as { message?: string }).message
+    }
+  }
+  return undefined
+}
+
 async function handleAccept() {
   error.value = ''
 
@@ -35,7 +47,7 @@ async function handleAccept() {
 
   loading.value = true
   try {
-    const data = await $fetch<{ success: boolean; user: any; sessionToken: string }>('/api/agency/client-portal/accept-invite', {
+    const data = await $fetch<{ success: boolean, user: { email: string }, sessionToken: string }>('/api/agency/client-portal/accept-invite', {
       method: 'POST',
       body: { token: token.value, password: password.value }
     })
@@ -53,8 +65,8 @@ async function handleAccept() {
       toast.add({ title: 'Account activated', description: 'Please sign in with your new password.', color: 'success' })
       await navigateTo('/portal/login')
     }
-  } catch (e: any) {
-    error.value = e.data?.statusMessage || 'Failed to accept invitation'
+  } catch (caught: unknown) {
+    error.value = errorMessage(caught) || 'Failed to accept invitation'
   } finally {
     loading.value = false
   }
@@ -68,8 +80,12 @@ async function handleAccept() {
         <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
           <UIcon name="i-lucide-mail-open" class="text-primary w-6 h-6" />
         </div>
-        <h1 class="text-2xl font-bold">Accept Invitation</h1>
-        <p class="text-muted mt-1">Set your password to activate your account</p>
+        <h1 class="text-2xl font-bold">
+          Accept Invitation
+        </h1>
+        <p class="text-muted mt-1">
+          Set your password to activate your account
+        </p>
       </div>
 
       <div v-if="!token" class="text-center">
@@ -81,7 +97,7 @@ async function handleAccept() {
         />
       </div>
 
-      <form v-else @submit.prevent="handleAccept" class="space-y-4">
+      <form v-else class="space-y-4" @submit.prevent="handleAccept">
         <UAlert
           v-if="error"
           :title="error"
