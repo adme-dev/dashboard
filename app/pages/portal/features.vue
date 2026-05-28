@@ -47,7 +47,7 @@ const features = computed<FeatureCard[]>(() => {
       description: 'Monitor booked work, upcoming jobs, completed job history, tasks, and delivery timelines.',
       icon: 'i-lucide-folder-kanban',
       iconColor: 'text-blue-500',
-      to: '/portal/projects'
+      to: '/portal/projects?view=upcoming'
     },
     {
       title: 'Approvals',
@@ -170,7 +170,7 @@ const serviceModules = computed<ServiceModule[]>(() => {
         { label: 'History', value: String(dashboard.value?.projects?.completedRecent?.length || 0) }
       ],
       requestService: 'web_cro',
-      to: '/portal/projects'
+      to: hasJobs ? '/portal/projects?status=active' : '/portal/projects?view=upcoming'
     },
     {
       title: 'Reporting and insights',

@@ -67,7 +67,7 @@ const permissionModules = computed(() => [
     description: 'Booked jobs, project timelines, tasks, and job history.',
     icon: 'i-lucide-folder-kanban',
     enabled: user.value?.permissions?.canViewProjects !== false,
-    to: '/portal/projects'
+    to: '/portal/projects?view=upcoming'
   },
   {
     key: 'billing',

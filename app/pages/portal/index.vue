@@ -224,13 +224,17 @@ const accountCoverage = computed<AccountCoverage[]>(() => {
   const data = dashboard.value
   if (!data) return []
 
+  const jobsPath = data.projects.stats.active > 0
+    ? '/portal/projects?status=active'
+    : data.projects.stats.completed > 0 ? '/portal/projects?view=history' : '/portal/projects?view=upcoming'
+
   return [
     {
       label: 'Jobs',
       detail: `${data.projects.stats.active} active, ${data.projects.stats.completed} completed`,
       icon: 'i-lucide-folder-kanban',
       color: data.projects.stats.total > 0 ? 'success' : 'neutral',
-      to: '/portal/projects',
+      to: jobsPath,
       status: data.projects.stats.total > 0 ? 'Live' : 'Available'
     },
     {
@@ -564,7 +568,7 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
           </div>
 
           <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6">
-            <NuxtLink to="/portal/projects" class="rounded-lg bg-elevated/60 p-4 hover:bg-elevated transition-colors">
+            <NuxtLink to="/portal/projects?status=active" class="rounded-lg bg-elevated/60 p-4 hover:bg-elevated transition-colors">
               <div class="flex items-center gap-2 text-sm text-muted">
                 <UIcon name="i-lucide-briefcase-business" class="size-4" />
                 Jobs booked
@@ -708,7 +712,12 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
-        <NuxtLink to="/portal/projects" class="rounded-lg border border-default bg-default p-4 hover:bg-elevated transition-colors">
+        <NuxtLink
+          :to="dashboard.enterprise.jobs.overdue > 0 || dashboard.enterprise.jobs.dueSoon > 0
+            ? '/portal/projects?view=upcoming'
+            : '/portal/projects?status=active'"
+          class="rounded-lg border border-default bg-default p-4 hover:bg-elevated transition-colors"
+        >
           <div class="flex items-start justify-between gap-3">
             <div>
               <p class="text-sm text-muted">
