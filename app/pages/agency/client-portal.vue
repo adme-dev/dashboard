@@ -489,6 +489,36 @@ const { data: usersData, pending: usersPending, refresh: refreshUsers } = await 
 })
 
 const users = computed(() => ((usersData.value as unknown as { users?: PortalUser[] } | null)?.users || []))
+const portalUserSummary = computed(() => {
+  const items = users.value
+  return {
+    total: items.length,
+    active: items.filter(user => user.status === 'active').length,
+    pending: items.filter(user => user.status === 'pending').length,
+    suspended: items.filter(user => user.status === 'suspended').length,
+    approvers: items.filter(user => user.permissions?.canApproveWork).length,
+    billing: items.filter(user => user.permissions?.canViewInvoices).length,
+    analytics: items.filter(user => user.permissions?.canViewAnalytics).length
+  }
+})
+const portalUserFilterLabel = computed(() => {
+  if (portalUserFilters.value.status !== 'all') return `${portalUserFilters.value.status} users`
+  if (portalUserFilters.value.clientId) {
+    return clients.value.find(client => client.id === portalUserFilters.value.clientId)?.name || 'selected client'
+  }
+  return 'all clients'
+})
+
+const setPortalUserStatus = (status: string) => {
+  portalUserFilters.value.status = status
+  activeTab.value = 'users'
+}
+
+const clearPortalUserFilters = () => {
+  portalUserFilters.value.clientId = ''
+  portalUserFilters.value.status = 'all'
+}
+
 // Fetch approvals
 const { data: approvalsData, pending: approvalsPending } = await useFetch('/api/agency/client-portal/approvals')
 
@@ -1905,9 +1935,90 @@ const enterpriseRollout = [
 
         <!-- Users Tab -->
         <div v-if="activeTab === 'users'">
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+            <button
+              type="button"
+              class="rounded-lg border border-default bg-default p-4 text-left transition-colors hover:bg-elevated"
+              @click="setPortalUserStatus('active')"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  Active users
+                </p>
+                <UIcon name="i-lucide-user-check" class="size-4 text-[var(--ui-text-muted)]" />
+              </div>
+              <p class="text-xl font-bold mt-1">
+                {{ portalUserSummary.active }}
+              </p>
+            </button>
+            <button
+              type="button"
+              class="rounded-lg border border-default bg-default p-4 text-left transition-colors hover:bg-elevated"
+              @click="setPortalUserStatus('pending')"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  Pending invites
+                </p>
+                <UIcon name="i-lucide-mail-clock" class="size-4 text-[var(--ui-text-muted)]" />
+              </div>
+              <p class="text-xl font-bold mt-1">
+                {{ portalUserSummary.pending }}
+              </p>
+            </button>
+            <div class="rounded-lg border border-default bg-default p-4">
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  Approvers
+                </p>
+                <UIcon name="i-lucide-check-check" class="size-4 text-[var(--ui-text-muted)]" />
+              </div>
+              <p class="text-xl font-bold mt-1">
+                {{ portalUserSummary.approvers }}
+              </p>
+            </div>
+            <div class="rounded-lg border border-default bg-default p-4">
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  Analytics access
+                </p>
+                <UIcon name="i-lucide-chart-no-axes-combined" class="size-4 text-[var(--ui-text-muted)]" />
+              </div>
+              <p class="text-xl font-bold mt-1">
+                {{ portalUserSummary.analytics }}
+              </p>
+            </div>
+          </div>
+
           <UCard class="mb-4">
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:w-[520px]">
+            <div class="flex flex-col gap-4">
+              <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h2 class="text-lg font-semibold">
+                    Portal access
+                  </h2>
+                  <p class="text-sm text-[var(--ui-text-muted)]">
+                    {{ users.length }} users across {{ portalUserFilterLabel }}.
+                  </p>
+                </div>
+                <div class="flex flex-col sm:flex-row gap-2">
+                  <UButton
+                    label="Invite Client User"
+                    icon="i-lucide-user-plus"
+                    color="primary"
+                    @click="inviteClientUser()"
+                  />
+                  <UButton
+                    label="Clear filters"
+                    icon="i-lucide-x"
+                    color="neutral"
+                    variant="ghost"
+                    :disabled="portalUserFilters.clientId === '' && portalUserFilters.status === 'all'"
+                    @click="clearPortalUserFilters"
+                  />
+                </div>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <USelectMenu
                   v-model="portalUserFilters.clientId"
                   :items="portalUserClientOptions"
@@ -1926,12 +2037,6 @@ const enterpriseRollout = [
                   value-key="value"
                 />
               </div>
-              <UButton
-                label="Invite Client User"
-                icon="i-lucide-user-plus"
-                color="primary"
-                @click="inviteClientUser()"
-              />
             </div>
           </UCard>
 
@@ -1986,12 +2091,13 @@ const enterpriseRollout = [
                 <div class="flex justify-end gap-2">
                   <UButton
                     icon="i-lucide-shield-check"
-                    variant="ghost"
-                    color="neutral"
+                    variant="soft"
+                    color="primary"
                     size="sm"
-                    aria-label="Edit portal access"
                     @click="editPortalUserAccess(row.original)"
-                  />
+                  >
+                    Access
+                  </UButton>
                   <UDropdownMenu :items="getClientPortalActions(row.original.clientId)">
                     <UButton
                       icon="i-lucide-more-horizontal"
