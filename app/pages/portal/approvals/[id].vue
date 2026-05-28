@@ -13,6 +13,13 @@ const responding = ref(false)
 const showRejectModal = ref(false)
 const pendingAction = ref<string>('')
 
+function errorMessage(error: unknown) {
+  if (error && typeof error === 'object' && 'data' in error) {
+    return (error as { data?: { statusMessage?: string } }).data?.statusMessage
+  }
+  return undefined
+}
+
 function formatDate(date: string | null) {
   if (!date) return '-'
   return new Date(date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -35,8 +42,8 @@ async function respond(action: string) {
     showRejectModal.value = false
     responseNotes.value = ''
     await refresh()
-  } catch (e: any) {
-    toast.add({ title: 'Failed', description: e.data?.statusMessage, color: 'error' })
+  } catch (error: unknown) {
+    toast.add({ title: 'Failed', description: errorMessage(error), color: 'error' })
   } finally {
     responding.value = false
   }
@@ -77,12 +84,16 @@ const statusColors: Record<string, string> = {
       <!-- Header -->
       <div class="flex items-start justify-between gap-4">
         <div>
-          <h1 class="text-2xl font-bold">{{ data.approval.title }}</h1>
+          <h1 class="text-2xl font-bold">
+            {{ data.approval.title }}
+          </h1>
           <div class="flex items-center gap-2 mt-2">
             <UBadge :color="(statusColors[data.approval.status] as any) || 'neutral'" variant="subtle">
               {{ data.approval.status.replace('_', ' ') }}
             </UBadge>
-            <UBadge color="neutral" variant="subtle">{{ data.approval.approvalType }}</UBadge>
+            <UBadge color="neutral" variant="subtle">
+              {{ data.approval.approvalType }}
+            </UBadge>
             <span class="text-sm text-muted">
               {{ data.approval.project.name }}
             </span>
@@ -94,13 +105,17 @@ const statusColors: Record<string, string> = {
       <UCard>
         <div class="space-y-4">
           <div v-if="data.approval.description" class="prose prose-sm max-w-none">
-            <p class="whitespace-pre-wrap">{{ data.approval.description }}</p>
+            <p class="whitespace-pre-wrap">
+              {{ data.approval.description }}
+            </p>
           </div>
 
           <div class="grid grid-cols-2 gap-4 text-sm">
             <div>
               <span class="text-muted">Requested by</span>
-              <p class="font-medium">{{ data.approval.requestedBy.name }}</p>
+              <p class="font-medium">
+                {{ data.approval.requestedBy.name }}
+              </p>
             </div>
             <div>
               <span class="text-muted">Requested</span>
@@ -118,7 +133,9 @@ const statusColors: Record<string, string> = {
 
           <!-- Attachments -->
           <div v-if="data.approval.attachments?.length">
-            <h3 class="text-sm font-medium mb-2">Attachments</h3>
+            <h3 class="text-sm font-medium mb-2">
+              Attachments
+            </h3>
             <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
               <a
                 v-for="(attachment, i) in data.approval.attachments"
@@ -137,28 +154,51 @@ const statusColors: Record<string, string> = {
 
           <!-- Response notes -->
           <div v-if="data.approval.responseNotes" class="p-3 rounded-lg bg-muted/10 border border-default">
-            <p class="text-sm font-medium mb-1">Response Notes</p>
-            <p class="text-sm whitespace-pre-wrap">{{ data.approval.responseNotes }}</p>
+            <p class="text-sm font-medium mb-1">
+              Response Notes
+            </p>
+            <p class="text-sm whitespace-pre-wrap">
+              {{ data.approval.responseNotes }}
+            </p>
           </div>
         </div>
       </UCard>
 
       <!-- Action Bar -->
       <div v-if="data.approval.status === 'pending' && hasPermission('canApproveWork')" class="flex items-center gap-3 p-4 rounded-lg bg-elevated">
-        <UButton color="success" @click="respond('approve')" :loading="responding" icon="i-lucide-check">
+        <UButton
+          color="success"
+          :loading="responding"
+          icon="i-lucide-check"
+          @click="respond('approve')"
+        >
           Approve
         </UButton>
-        <UButton color="warning" variant="soft" @click="respond('revision_requested')" :loading="responding" icon="i-lucide-edit">
+        <UButton
+          color="warning"
+          variant="soft"
+          :loading="responding"
+          icon="i-lucide-edit"
+          @click="respond('revision_requested')"
+        >
           Request Revision
         </UButton>
-        <UButton color="error" variant="soft" @click="respond('reject')" :loading="responding" icon="i-lucide-x">
+        <UButton
+          color="error"
+          variant="soft"
+          :loading="responding"
+          icon="i-lucide-x"
+          @click="respond('reject')"
+        >
           Reject
         </UButton>
       </div>
 
       <!-- Revision History -->
       <div v-if="data.revisionHistory.length > 1">
-        <h3 class="font-semibold mb-3">Revision History</h3>
+        <h3 class="font-semibold mb-3">
+          Revision History
+        </h3>
         <div class="space-y-2">
           <div v-for="rev in data.revisionHistory" :key="rev.id" class="flex items-center gap-3 p-3 rounded-lg bg-elevated">
             <UBadge :color="(statusColors[rev.status] as any) || 'neutral'" variant="subtle" size="xs">
@@ -172,17 +212,28 @@ const statusColors: Record<string, string> = {
 
       <!-- Comments -->
       <div v-if="data.comments.length">
-        <h3 class="font-semibold mb-3">Discussion</h3>
+        <h3 class="font-semibold mb-3">
+          Discussion
+        </h3>
         <div class="space-y-4">
           <div v-for="c in data.comments" :key="c.id" class="flex items-start gap-3">
             <UAvatar :src="c.author.avatarUrl || undefined" :alt="c.author.name" size="sm" />
             <div>
               <div class="flex items-center gap-2">
                 <span class="text-sm font-medium">{{ c.author.name }}</span>
-                <UBadge v-if="c.author.type === 'team'" size="xs" variant="subtle" color="primary">Team</UBadge>
+                <UBadge
+                  v-if="c.author.type === 'team'"
+                  size="xs"
+                  variant="subtle"
+                  color="primary"
+                >
+                  Team
+                </UBadge>
                 <span class="text-xs text-muted">{{ formatDate(c.createdAt) }}</span>
               </div>
-              <p class="text-sm mt-1 whitespace-pre-wrap">{{ c.content }}</p>
+              <p class="text-sm mt-1 whitespace-pre-wrap">
+                {{ c.content }}
+              </p>
             </div>
           </div>
         </div>
@@ -205,11 +256,13 @@ const statusColors: Record<string, string> = {
             />
           </div>
           <div class="flex justify-end gap-2">
-            <UButton variant="ghost" @click="showRejectModal = false">Cancel</UButton>
+            <UButton variant="ghost" @click="showRejectModal = false">
+              Cancel
+            </UButton>
             <UButton
               :color="pendingAction === 'reject' ? 'error' : 'warning'"
-              @click="submitWithNotes"
               :loading="responding"
+              @click="submitWithNotes"
             >
               {{ pendingAction === 'reject' ? 'Reject' : 'Request Revision' }}
             </UButton>

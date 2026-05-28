@@ -5,11 +5,25 @@ const route = useRoute()
 const briefId = route.params.id as string
 const toast = useToast()
 
-const { data, pending, refresh } = useFetch(`/api/portal/briefs/${briefId}`)
+const { data, pending } = useFetch(`/api/portal/briefs/${briefId}`)
 const { data: commentsData, refresh: refreshComments } = useFetch(`/api/portal/briefs/${briefId}/comments`)
 
 const newComment = ref('')
 const sendingComment = ref(false)
+
+interface BriefFieldValue {
+  fieldType: string
+  section?: string | null
+  stepTitle?: string | null
+  [key: string]: unknown
+}
+
+function errorMessage(error: unknown) {
+  if (error && typeof error === 'object' && 'data' in error) {
+    return (error as { data?: { statusMessage?: string } }).data?.statusMessage
+  }
+  return undefined
+}
 
 async function submitComment() {
   if (!newComment.value.trim()) return
@@ -22,8 +36,8 @@ async function submitComment() {
     newComment.value = ''
     await refreshComments()
     toast.add({ title: 'Comment added', color: 'success' })
-  } catch (e: any) {
-    toast.add({ title: 'Failed to add comment', description: e.data?.statusMessage, color: 'error' })
+  } catch (error: unknown) {
+    toast.add({ title: 'Failed to add comment', description: errorMessage(error), color: 'error' })
   } finally {
     sendingComment.value = false
   }
@@ -40,12 +54,16 @@ function formatDateTime(date: string) {
   })
 }
 
-function formatFieldValue(value: any, fieldType: string): string {
+function formatFieldValue(value: unknown, fieldType: string): string {
   if (value === null || value === undefined) return '-'
   // Parse JSON strings
   let parsed = value
   if (typeof value === 'string') {
-    try { parsed = JSON.parse(value) } catch { parsed = value }
+    try {
+      parsed = JSON.parse(value)
+    } catch {
+      parsed = value
+    }
   }
   if (Array.isArray(parsed)) return parsed.join(', ')
   if (typeof parsed === 'boolean') return parsed ? 'Yes' : 'No'
@@ -96,7 +114,7 @@ const isOpen = computed(() => {
 const fieldSections = computed(() => {
   if (!data.value?.fieldValues) return []
 
-  const sectionMap = new Map<string, any[]>()
+  const sectionMap = new Map<string, BriefFieldValue[]>()
   for (const fv of data.value.fieldValues) {
     // Skip display-only fields
     if (['heading', 'paragraph', 'divider'].includes(fv.fieldType)) continue
@@ -132,7 +150,9 @@ const fieldSections = computed(() => {
             <div class="flex items-center gap-2 mb-1">
               <span v-if="data.referenceNumber" class="text-sm font-mono text-muted">{{ data.referenceNumber }}</span>
             </div>
-            <h1 class="text-2xl font-bold">{{ data.title }}</h1>
+            <h1 class="text-2xl font-bold">
+              {{ data.title }}
+            </h1>
             <div class="flex items-center gap-2 mt-2 flex-wrap">
               <UBadge :color="(statusColors[data.status] as any) || 'neutral'" variant="subtle">
                 {{ statusLabels[data.status] || data.status }}
@@ -152,36 +172,68 @@ const fieldSections = computed(() => {
       <UCard>
         <div class="grid grid-cols-2 gap-4 text-sm">
           <div v-if="data.template">
-            <p class="text-muted">Template</p>
-            <p class="font-medium">{{ data.template.name }}</p>
+            <p class="text-muted">
+              Template
+            </p>
+            <p class="font-medium">
+              {{ data.template.name }}
+            </p>
           </div>
           <div v-if="data.submittedByName">
-            <p class="text-muted">Submitted By</p>
-            <p class="font-medium">{{ data.submittedByName }}</p>
+            <p class="text-muted">
+              Submitted By
+            </p>
+            <p class="font-medium">
+              {{ data.submittedByName }}
+            </p>
           </div>
           <div>
-            <p class="text-muted">Submitted</p>
-            <p class="font-medium">{{ formatDate(data.submittedAt || data.createdAt) }}</p>
+            <p class="text-muted">
+              Submitted
+            </p>
+            <p class="font-medium">
+              {{ formatDate(data.submittedAt || data.createdAt) }}
+            </p>
           </div>
           <div v-if="data.requestedDeadline">
-            <p class="text-muted">Requested Deadline</p>
-            <p class="font-medium">{{ formatDate(data.requestedDeadline) }}</p>
+            <p class="text-muted">
+              Requested Deadline
+            </p>
+            <p class="font-medium">
+              {{ formatDate(data.requestedDeadline) }}
+            </p>
           </div>
           <div v-if="data.estimatedCompletion">
-            <p class="text-muted">Estimated Completion</p>
-            <p class="font-medium">{{ formatDate(data.estimatedCompletion) }}</p>
+            <p class="text-muted">
+              Estimated Completion
+            </p>
+            <p class="font-medium">
+              {{ formatDate(data.estimatedCompletion) }}
+            </p>
           </div>
           <div v-if="data.assignee">
-            <p class="text-muted">Assigned To</p>
-            <p class="font-medium">{{ data.assignee.name }}</p>
+            <p class="text-muted">
+              Assigned To
+            </p>
+            <p class="font-medium">
+              {{ data.assignee.name }}
+            </p>
           </div>
           <div v-if="data.completedAt">
-            <p class="text-muted">Completed</p>
-            <p class="font-medium">{{ formatDate(data.completedAt) }}</p>
+            <p class="text-muted">
+              Completed
+            </p>
+            <p class="font-medium">
+              {{ formatDate(data.completedAt) }}
+            </p>
           </div>
           <div v-if="data.project">
-            <p class="text-muted">Project</p>
-            <p class="font-medium">{{ data.project.name }}</p>
+            <p class="text-muted">
+              Project
+            </p>
+            <p class="font-medium">
+              {{ data.project.name }}
+            </p>
           </div>
         </div>
       </UCard>
@@ -199,7 +251,9 @@ const fieldSections = computed(() => {
             </span>
           </div>
         </template>
-        <p class="text-sm whitespace-pre-wrap">{{ data.reviewNotes }}</p>
+        <p class="text-sm whitespace-pre-wrap">
+          {{ data.reviewNotes }}
+        </p>
       </UCard>
 
       <!-- Field values by section -->
@@ -209,8 +263,12 @@ const fieldSections = computed(() => {
         </template>
         <div class="space-y-4">
           <div v-for="field in section.fields" :key="field.fieldId" class="text-sm">
-            <p class="text-muted mb-0.5">{{ field.fieldLabel }}</p>
-            <p class="font-medium whitespace-pre-wrap">{{ formatFieldValue(field.value, field.fieldType) }}</p>
+            <p class="text-muted mb-0.5">
+              {{ field.fieldLabel }}
+            </p>
+            <p class="font-medium whitespace-pre-wrap">
+              {{ formatFieldValue(field.value, field.fieldType) }}
+            </p>
           </div>
         </div>
       </UCard>
@@ -243,7 +301,12 @@ const fieldSections = computed(() => {
           <div class="flex items-center gap-2">
             <UIcon name="i-lucide-messages-square" class="text-primary" />
             <span class="font-semibold text-sm">Comments</span>
-            <UBadge v-if="commentsData?.length" color="neutral" variant="subtle" size="xs">
+            <UBadge
+              v-if="commentsData?.length"
+              color="neutral"
+              variant="subtle"
+              size="xs"
+            >
               {{ commentsData.length }}
             </UBadge>
           </div>
@@ -263,7 +326,9 @@ const fieldSections = computed(() => {
                   <span class="font-medium text-sm">{{ comment.user?.name || 'Team Member' }}</span>
                   <span class="text-xs text-muted">{{ formatDateTime(comment.createdAt) }}</span>
                 </div>
-                <p class="text-sm mt-1 whitespace-pre-wrap">{{ comment.content }}</p>
+                <p class="text-sm mt-1 whitespace-pre-wrap">
+                  {{ comment.content }}
+                </p>
               </div>
             </div>
 
@@ -279,7 +344,9 @@ const fieldSections = computed(() => {
                   <span class="font-medium text-sm">{{ reply.user?.name || 'Team Member' }}</span>
                   <span class="text-xs text-muted">{{ formatDateTime(reply.createdAt) }}</span>
                 </div>
-                <p class="text-sm mt-1 whitespace-pre-wrap">{{ reply.content }}</p>
+                <p class="text-sm mt-1 whitespace-pre-wrap">
+                  {{ reply.content }}
+                </p>
               </div>
             </div>
           </div>
@@ -291,7 +358,7 @@ const fieldSections = computed(() => {
 
         <!-- Comment form -->
         <div v-if="isOpen" class="mt-4 pt-4 border-t border-default">
-          <form @submit.prevent="submitComment" class="space-y-3">
+          <form class="space-y-3" @submit.prevent="submitComment">
             <UTextarea
               v-model="newComment"
               placeholder="Add a comment..."
