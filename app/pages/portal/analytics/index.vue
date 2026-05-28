@@ -376,7 +376,7 @@ function formatResponseTime(minutes: number | null | undefined) {
               </p>
             </div>
             <UButton
-              to="/portal/leads"
+              to="/portal/leads?status=new"
               icon="i-lucide-inbox"
               size="xs"
               color="neutral"

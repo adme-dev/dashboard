@@ -165,7 +165,7 @@ const accountPriorities = computed<AccountPriority[]>(() => {
       detail: `${data.leads.stats.new} new lead${data.leads.stats.new === 1 ? '' : 's'} from connected forms`,
       icon: 'i-lucide-inbox',
       color: 'info',
-      to: '/portal/leads'
+      to: '/portal/leads?status=new'
     })
   }
 
@@ -175,7 +175,7 @@ const accountPriorities = computed<AccountPriority[]>(() => {
       detail: `${data.enterprise.campaigns.uncontactedLeadsLast30} shared lead${data.enterprise.campaigns.uncontactedLeadsLast30 === 1 ? '' : 's'} still uncontacted`,
       icon: 'i-lucide-phone-missed',
       color: 'error',
-      to: '/portal/leads'
+      to: '/portal/leads?status=new'
     })
   }
 
@@ -323,7 +323,7 @@ const enterpriseScorecard = computed<EnterpriseScorecardMetric[]>(() => {
       detail: `${contacted} contacted, ${uncontacted} awaiting follow-up`,
       icon: 'i-lucide-phone-call',
       color: scoreColor(followUpScore),
-      to: '/portal/leads'
+      to: uncontacted > 0 ? '/portal/leads?status=new' : '/portal/leads?status=contacted'
     })
   }
 
@@ -596,7 +596,10 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
               </p>
             </NuxtLink>
 
-            <NuxtLink to="/portal/leads" class="rounded-lg bg-elevated/60 p-4 hover:bg-elevated transition-colors">
+            <NuxtLink
+              :to="dashboard.leads.stats.new > 0 ? '/portal/leads?status=new' : '/portal/leads?status=won'"
+              class="rounded-lg bg-elevated/60 p-4 hover:bg-elevated transition-colors"
+            >
               <div class="flex items-center gap-2 text-sm text-muted">
                 <UIcon name="i-lucide-inbox" class="size-4" />
                 Shared leads
@@ -1342,8 +1345,11 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
           </div>
 
           <template #footer>
-            <NuxtLink to="/portal/leads" class="text-sm text-primary hover:underline">
-              View all leads
+            <NuxtLink
+              :to="dashboard.leads.stats.new > 0 ? '/portal/leads?status=new' : '/portal/leads'"
+              class="text-sm text-primary hover:underline"
+            >
+              {{ dashboard.leads.stats.new > 0 ? 'View new leads' : 'View all leads' }}
             </NuxtLink>
           </template>
         </UCard>
