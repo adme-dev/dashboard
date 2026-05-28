@@ -2,8 +2,21 @@
 definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
 const { hasPermission } = usePortalAuth()
+const route = useRoute()
+const router = useRouter()
 
-const activeTab = ref('current')
+const routeQueryString = (value: unknown) => Array.isArray(value) ? value[0] : value
+const invoiceTabs = ['current', 'overdue', 'history', 'all']
+const initialView = routeQueryString(route.query.view)
+const initialStatus = routeQueryString(route.query.status)
+
+const activeTab = ref(
+  typeof initialView === 'string' && invoiceTabs.includes(initialView)
+    ? initialView
+    : initialStatus === 'overdue'
+      ? 'overdue'
+      : 'current'
+)
 const invoiceQuery = computed(() => {
   if (activeTab.value === 'current' || activeTab.value === 'history') {
     return { view: activeTab.value }
@@ -17,6 +30,33 @@ const invoiceQuery = computed(() => {
 const { data, pending } = useFetch('/api/portal/invoices', {
   query: invoiceQuery
 })
+
+watch(activeTab, (tab) => {
+  const query: Record<string, string> = {}
+  if (tab === 'current' || tab === 'history') query.view = tab
+  if (tab === 'overdue') query.status = 'overdue'
+
+  const current = new URLSearchParams(route.query as Record<string, string>).toString()
+  const next = new URLSearchParams(query).toString()
+  if (current !== next) {
+    router.replace({ query })
+  }
+})
+
+watch(
+  () => [route.query.view, route.query.status],
+  () => {
+    const view = routeQueryString(route.query.view)
+    const status = routeQueryString(route.query.status)
+    if (typeof view === 'string' && invoiceTabs.includes(view)) {
+      activeTab.value = view
+    } else if (status === 'overdue') {
+      activeTab.value = 'overdue'
+    } else {
+      activeTab.value = 'current'
+    }
+  }
+)
 
 const tabs = [
   { label: 'Current billing', value: 'current' },
