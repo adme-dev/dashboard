@@ -289,6 +289,53 @@ const portalClientSummary = computed(() => {
   }
 })
 
+const selectedAccessClientName = computed(() =>
+  clients.value.find(client => client.id === selectedAccessClientId.value)?.name || 'Select client'
+)
+
+const commandCenterStats = computed(() => [
+  {
+    label: 'Client portals',
+    value: String(portalClientSummary.value.total),
+    detail: `${portalClientSummary.value.active} active, ${portalClientSummary.value.pending} pending`,
+    icon: 'i-lucide-building-2',
+    color: 'primary' as const,
+    filter: 'all'
+  },
+  {
+    label: 'Readiness',
+    value: `${portalClientSummary.value.averageReadiness}%`,
+    detail: `${portalClientSummary.value.needsAttention} need attention`,
+    icon: 'i-lucide-gauge',
+    color: getReadinessColor(portalClientSummary.value.averageReadiness),
+    filter: 'risk'
+  },
+  {
+    label: 'Lead follow-up',
+    value: String(portalClientSummary.value.uncontactedLeads30d),
+    detail: `${portalClientSummary.value.leads30d} portal leads in 30d`,
+    icon: 'i-lucide-phone-missed',
+    color: portalClientSummary.value.uncontactedLeads30d > 0 ? 'error' as const : 'success' as const,
+    filter: 'lead-risk'
+  },
+  {
+    label: 'Open requests',
+    value: String(portalClientSummary.value.openRequests),
+    detail: `${portalClientSummary.value.urgentRequests} urgent, ${portalClientSummary.value.unassignedRequests} unassigned`,
+    icon: 'i-lucide-message-square-warning',
+    color: portalClientSummary.value.urgentRequests > 0 ? 'error' as const : 'primary' as const,
+    filter: 'request-risk'
+  },
+  {
+    label: 'Billing exposure',
+    value: formatCurrency(portalClientSummary.value.overdueAmount),
+    detail: `${portalClientSummary.value.overdueInvoices} overdue invoices`,
+    icon: 'i-lucide-receipt-text',
+    color: portalClientSummary.value.overdueAmount > 0 ? 'error' as const : 'success' as const,
+    filter: 'billing-risk'
+  }
+])
+
 const portfolioPercent = (numerator: number, denominator: number) => {
   if (denominator <= 0) return 100
   return Math.max(0, Math.min(100, Math.round((numerator / denominator) * 100)))
@@ -562,9 +609,9 @@ const getClientPortalActions = (clientId?: string | null) => [
       onSelect: () => openClientPortal(clientId, '/portal')
     },
     {
-      label: 'All Jobs',
+      label: 'Active Jobs',
       icon: 'i-lucide-folder-kanban',
-      onSelect: () => openClientPortal(clientId, '/portal/projects')
+      onSelect: () => openClientPortal(clientId, '/portal/projects?status=active')
     },
     {
       label: 'Upcoming Jobs',
@@ -581,27 +628,36 @@ const getClientPortalActions = (clientId?: string | null) => [
     {
       label: 'Campaign Analytics',
       icon: 'i-lucide-chart-no-axes-combined',
-      onSelect: () => openClientPortal(clientId, '/portal/analytics')
+      onSelect: () => openClientPortal(clientId, '/portal/analytics?metric=leads')
     },
     {
       label: 'Billing',
       icon: 'i-lucide-receipt-text',
-      onSelect: () => openClientPortal(clientId, '/portal/invoices')
+      onSelect: () => openClientPortal(clientId, '/portal/invoices?view=current')
     },
     {
       label: 'Requests',
       icon: 'i-lucide-message-square-plus',
-      onSelect: () => openClientPortal(clientId, '/portal/requests')
+      onSelect: () => openClientPortal(clientId, '/portal/requests?view=open')
     },
     {
       label: 'Meetings',
       icon: 'i-lucide-video',
-      onSelect: () => openClientPortal(clientId, '/office')
+      onSelect: () => openClientPortal(clientId, '/portal/meetings?view=upcoming')
     }
   ]
 ]
 
 const selectedClientPortalActions = computed(() => getClientPortalActions(selectedAccessClientId.value))
+
+const portalTabItems = computed(() => [
+  { label: `Clients (${portalClientSummary.value.total})`, value: 'clients', icon: 'i-lucide-building-2' },
+  { label: `Users (${users.value.length})`, value: 'users', icon: 'i-lucide-users' },
+  { label: `Approvals (${approvals.value.length})`, value: 'approvals', icon: 'i-lucide-check-square' },
+  { label: `Requests (${portalRequests.value.length})`, value: 'requests', icon: 'i-lucide-message-square-plus' },
+  { label: 'Audit', value: 'audit', icon: 'i-lucide-shield-check' },
+  { label: 'Enterprise', value: 'enterprise', icon: 'i-lucide-building' }
+])
 
 const selectedDashboardQuery = computed(() => selectedAccessClientId.value
   ? { clientId: selectedAccessClientId.value }
@@ -1138,7 +1194,7 @@ const enterpriseModules = [
     icon: 'i-lucide-folder-kanban',
     status: 'Live',
     color: 'success',
-    clientPath: '/portal/projects',
+    clientPath: '/portal/projects?status=active',
     description: 'Client-scoped projects, active work, progress, due dates, deliverables, tasks, and approvals.',
     next: 'Add a booking calendar view, signed scope, key milestones, and account-owner health flags per job.'
   },
@@ -1147,7 +1203,7 @@ const enterpriseModules = [
     icon: 'i-lucide-receipt-text',
     status: 'Live',
     color: 'success',
-    clientPath: '/portal/invoices',
+    clientPath: '/portal/invoices?view=current',
     description: 'Outstanding invoices and billing history are already permission gated for client users.',
     next: 'Add retainer burn, payment status timeline, statement export, and optional payment links.'
   },
@@ -1156,7 +1212,7 @@ const enterpriseModules = [
     icon: 'i-lucide-chart-no-axes-combined',
     status: 'Live',
     color: 'success',
-    clientPath: '/portal/analytics',
+    clientPath: '/portal/analytics?metric=leads',
     description: 'Portal-visible campaign performance, trends, creatives, breakdowns, exports, and lead visibility.',
     next: 'Add executive narrative, campaign goals, budget pacing, and platform health indicators for Meta and Google.'
   },
@@ -1165,7 +1221,7 @@ const enterpriseModules = [
     icon: 'i-lucide-check-check',
     status: 'Live',
     color: 'success',
-    clientPath: '/portal/approvals',
+    clientPath: '/portal/approvals?status=pending',
     description: 'Creative review, approval state, revision requests, gallery access, and comments.',
     next: 'Add version history, side-by-side review, legal/audit sign-off, and approval SLA reporting.'
   },
@@ -1174,7 +1230,7 @@ const enterpriseModules = [
     icon: 'i-lucide-message-square-plus',
     status: 'Live',
     color: 'success',
-    clientPath: '/portal/requests',
+    clientPath: '/portal/requests?view=open',
     description: 'Clients can submit job requests, briefs, support items, and threaded follow-up messages.',
     next: 'Add intake templates by service line, request triage queues, estimates, and conversion into booked jobs.'
   },
@@ -1183,7 +1239,7 @@ const enterpriseModules = [
     icon: 'i-lucide-video',
     status: 'R&D',
     color: 'warning',
-    clientPath: '/office',
+    clientPath: '/portal/meetings?view=upcoming',
     description: 'The office/video system exists separately with lobbies, meetings, guests, rooms, and recordings.',
     next: 'Expose client-safe meeting cards in the portal dashboard with join links, upcoming sessions, recordings, and permissions.'
   }
@@ -1231,78 +1287,87 @@ const enterpriseRollout = [
       </UDashboardNavbar>
 
       <div class="flex-1 overflow-y-auto p-4 sm:p-6">
-        <!-- Summary Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <UCard>
-            <div class="flex items-center gap-3">
-              <div class="p-2 rounded-lg bg-blue-500/10">
-                <UIcon name="i-lucide-users" class="w-5 h-5 text-blue-500" />
+        <UCard class="mb-6">
+          <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div class="max-w-3xl">
+              <div class="flex flex-wrap items-center gap-2">
+                <UBadge color="primary" variant="subtle">
+                  Agency control plane
+                </UBadge>
+                <UBadge :color="portalClientSummary.needsAttention > 0 ? 'warning' : 'success'" variant="subtle">
+                  {{ portalClientSummary.needsAttention }} need attention
+                </UBadge>
               </div>
-              <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">
-                  Client Portals
-                </p>
-                <p class="text-xl font-bold">
-                  {{ portalClientSummary.total }}
-                </p>
-              </div>
+              <h1 class="mt-3 text-2xl font-semibold tracking-tight">
+                Client portal operations
+              </h1>
+              <p class="mt-2 text-sm text-[var(--ui-text-muted)] leading-relaxed">
+                Review client readiness, open the portal as a client, manage access, and triage leads, billing, jobs, requests, approvals, meetings, and shared content from one workspace.
+              </p>
             </div>
-          </UCard>
 
-          <UCard>
-            <div class="flex items-center gap-3">
-              <div class="p-2 rounded-lg bg-emerald-500/10">
-                <UIcon name="i-lucide-check-circle" class="w-5 h-5 text-emerald-500" />
+            <div class="w-full xl:w-[460px]">
+              <p class="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--ui-text-muted)]">
+                Open as client
+              </p>
+              <div class="flex flex-col gap-2 sm:flex-row">
+                <USelectMenu
+                  v-model="selectedAccessClientId"
+                  :items="clientOptions"
+                  placeholder="Select client"
+                  value-key="value"
+                  searchable
+                  class="w-full"
+                />
+                <UButton
+                  icon="i-lucide-layout-dashboard"
+                  color="primary"
+                  :loading="openingPortal"
+                  @click="openClientPortal(selectedAccessClientId, '/portal')"
+                >
+                  Open
+                </UButton>
+                <UDropdownMenu :items="selectedClientPortalActions">
+                  <UButton
+                    icon="i-lucide-chevron-down"
+                    color="neutral"
+                    variant="outline"
+                    :loading="openingPortal"
+                    aria-label="Open selected client portal section"
+                  />
+                </UDropdownMenu>
               </div>
-              <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">
-                  Active Portals
-                </p>
-                <p class="text-xl font-bold text-emerald-500">
-                  {{ portalClientSummary.active }}
-                </p>
-              </div>
+              <p class="mt-2 text-xs text-[var(--ui-text-muted)]">
+                Previewing {{ selectedAccessClientName }} with agency access audit logging.
+              </p>
             </div>
-          </UCard>
+          </div>
 
-          <UCard>
-            <div class="flex items-center gap-3">
-              <div class="p-2 rounded-lg bg-amber-500/10">
-                <UIcon name="i-lucide-clock" class="w-5 h-5 text-amber-500" />
+          <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+            <button
+              v-for="metric in commandCenterStats"
+              :key="metric.label"
+              type="button"
+              class="rounded-lg border border-default bg-default p-4 text-left transition-colors hover:bg-elevated"
+              @click="applyClientStatusFilter(metric.filter)"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="rounded-md bg-[var(--ui-bg-elevated)] p-2">
+                  <UIcon :name="metric.icon" class="size-4" />
+                </div>
+                <UBadge :color="metric.color" variant="subtle" size="xs">
+                  {{ metric.label }}
+                </UBadge>
               </div>
-              <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">
-                  30d Portal Leads
-                </p>
-                <p class="text-xl font-bold text-amber-500">
-                  {{ portalClientSummary.leads30d }}
-                </p>
-                <p class="text-xs text-[var(--ui-text-muted)]">
-                  {{ portalClientSummary.uncontactedLeads30d }} uncontacted · {{ portalClientSummary.meetings }} meetings
-                </p>
-              </div>
-            </div>
-          </UCard>
-
-          <UCard>
-            <div class="flex items-center gap-3">
-              <div class="p-2 rounded-lg bg-purple-500/10">
-                <UIcon name="i-lucide-mail" class="w-5 h-5 text-purple-500" />
-              </div>
-              <div>
-                <p class="text-sm text-[var(--ui-text-muted)]">
-                  Needs Attention
-                </p>
-                <p class="text-xl font-bold text-purple-500">
-                  {{ portalClientSummary.needsAttention }}
-                </p>
-                <p class="text-xs text-[var(--ui-text-muted)]">
-                  {{ portalClientSummary.averageReadiness }}% avg readiness
-                </p>
-              </div>
-            </div>
-          </UCard>
-        </div>
+              <p class="mt-3 text-2xl font-semibold">
+                {{ metric.value }}
+              </p>
+              <p class="mt-1 text-xs text-[var(--ui-text-muted)]">
+                {{ metric.detail }}
+              </p>
+            </button>
+          </div>
+        </UCard>
 
         <UCard class="mb-6">
           <template #header>
@@ -1451,14 +1516,7 @@ const enterpriseRollout = [
         <!-- Tabs -->
         <UTabs
           v-model="activeTab"
-          :items="[
-            { label: 'Clients', value: 'clients', icon: 'i-lucide-building-2' },
-            { label: 'Portal Users', value: 'users', icon: 'i-lucide-users' },
-            { label: 'Approvals', value: 'approvals', icon: 'i-lucide-check-square' },
-            { label: 'Requests', value: 'requests', icon: 'i-lucide-message-square-plus' },
-            { label: 'Audit', value: 'audit', icon: 'i-lucide-shield-check' },
-            { label: 'Enterprise', value: 'enterprise', icon: 'i-lucide-building' }
-          ]"
+          :items="portalTabItems"
           class="mb-6"
         />
 
@@ -1490,30 +1548,21 @@ const enterpriseRollout = [
                 />
               </div>
               <div class="flex flex-col sm:flex-row gap-2">
-                <USelectMenu
-                  v-model="selectedAccessClientId"
-                  :items="clientOptions"
-                  placeholder="Quick open client"
-                  value-key="value"
-                  searchable
-                  class="w-full sm:w-64"
+                <UButton
+                  label="Invite client user"
+                  icon="i-lucide-user-plus"
+                  color="neutral"
+                  variant="outline"
+                  @click="inviteClientUser()"
                 />
                 <UButton
-                  label="Open Portal"
-                  icon="i-lucide-external-link"
-                  color="primary"
-                  :loading="openingPortal"
-                  @click="openClientPortal()"
+                  label="Clear filters"
+                  icon="i-lucide-x"
+                  color="neutral"
+                  variant="ghost"
+                  :disabled="portalClientFilters.search === '' && portalClientFilters.status === 'all'"
+                  @click="portalClientFilters.search = ''; portalClientFilters.status = 'all'"
                 />
-                <UDropdownMenu :items="selectedClientPortalActions">
-                  <UButton
-                    icon="i-lucide-chevron-down"
-                    color="neutral"
-                    variant="outline"
-                    :loading="openingPortal"
-                    aria-label="Open selected client portal section"
-                  />
-                </UDropdownMenu>
               </div>
             </div>
           </UCard>
