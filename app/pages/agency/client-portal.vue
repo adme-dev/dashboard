@@ -751,6 +751,49 @@ const { data: selectedDashboardData, pending: selectedDashboardPending } = await
 
 const selectedDashboard = computed(() => selectedDashboardData.value as AgencyPortalDashboard | null)
 const selectedEnterprise = computed(() => selectedDashboard.value?.enterprise)
+const selectedClientHealthCards = computed(() => {
+  const enterprise = selectedEnterprise.value
+  if (!enterprise) return []
+
+  return [
+    {
+      label: 'Access',
+      value: String(enterprise.access?.activeUsers || 0),
+      detail: `active of ${enterprise.access?.totalUsers || 0} users · ${enterprise.access?.agencyAccessUsers || 0} agency`,
+      subdetail: `Last login ${formatDateTime(enterprise.access?.lastLoginAt)}`,
+      icon: 'i-lucide-users',
+      color: 'primary' as const,
+      path: '/portal/settings'
+    },
+    {
+      label: 'Intake',
+      value: String(enterprise.requests?.open || 0),
+      detail: `open requests · ${enterprise.requests?.urgent || 0} urgent · ${enterprise.requests?.unassigned || 0} unassigned`,
+      subdetail: `${enterprise.leads?.leadsLast30 || 0} portal leads, ${enterprise.leads?.uncontactedLast30 || 0} uncontacted`,
+      icon: 'i-lucide-inbox',
+      color: (enterprise.requests?.urgent || 0) > 0 ? 'error' as const : 'primary' as const,
+      path: (enterprise.requests?.open || 0) > 0 ? '/portal/requests?view=open' : '/portal/leads?status=new'
+    },
+    {
+      label: 'Billing',
+      value: formatCurrency(enterprise.billing?.dueNext7Amount || 0),
+      detail: `due next 7 days · ${enterprise.billing?.overdueInvoices || 0} overdue`,
+      subdetail: `${formatCurrency(enterprise.billing?.paidLast90 || 0)} paid in 90d`,
+      icon: 'i-lucide-receipt-text',
+      color: (enterprise.billing?.overdueInvoices || 0) > 0 ? 'error' as const : 'success' as const,
+      path: (enterprise.billing?.overdueInvoices || 0) > 0 ? '/portal/invoices?status=overdue' : '/portal/invoices?view=current'
+    },
+    {
+      label: 'Content',
+      value: String(enterprise.content?.briefsOpen || 0),
+      detail: `open briefs · ${enterprise.content?.deliverablesVisible || 0} shared files`,
+      subdetail: `Last shared ${formatDateTime(enterprise.content?.lastPublishedAt)}`,
+      icon: 'i-lucide-folder-open-dot',
+      color: (enterprise.content?.briefsOverdue || 0) > 0 ? 'warning' as const : 'success' as const,
+      path: (enterprise.content?.briefsNeedsInfo || 0) > 0 ? '/portal/briefs?status=needs_info' : '/portal/briefs?status=submitted'
+    }
+  ]
+})
 
 watch(
   [
@@ -2545,77 +2588,29 @@ const enterpriseRollout = [
             </div>
 
             <div v-else-if="selectedEnterprise" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-              <div class="rounded-lg border border-[var(--ui-border)] p-4">
+              <button
+                v-for="card in selectedClientHealthCards"
+                :key="card.label"
+                type="button"
+                class="rounded-lg border border-[var(--ui-border)] p-4 text-left transition-colors hover:bg-elevated"
+                @click="openClientPortal(selectedAccessClientId, card.path)"
+              >
                 <div class="flex items-center justify-between gap-3">
                   <p class="text-sm font-medium">
-                    Access
+                    {{ card.label }}
                   </p>
-                  <UIcon name="i-lucide-users" class="size-4 text-[var(--ui-text-muted)]" />
+                  <UIcon :name="card.icon" class="size-4 text-[var(--ui-text-muted)]" />
                 </div>
-                <p class="mt-3 text-2xl font-semibold">
-                  {{ selectedEnterprise.access?.activeUsers || 0 }}
+                <p class="mt-3 text-2xl font-semibold" :class="card.color === 'error' ? 'text-error' : card.color === 'warning' ? 'text-warning' : ''">
+                  {{ card.value }}
                 </p>
                 <p class="text-xs text-[var(--ui-text-muted)]">
-                  active of {{ selectedEnterprise.access?.totalUsers || 0 }} users · {{ selectedEnterprise.access?.agencyAccessUsers || 0 }} agency
+                  {{ card.detail }}
                 </p>
                 <p class="mt-2 text-xs text-[var(--ui-text-dimmed)]">
-                  Last login {{ formatDateTime(selectedEnterprise.access?.lastLoginAt) }}
+                  {{ card.subdetail }}
                 </p>
-              </div>
-
-              <div class="rounded-lg border border-[var(--ui-border)] p-4">
-                <div class="flex items-center justify-between gap-3">
-                  <p class="text-sm font-medium">
-                    Intake
-                  </p>
-                  <UIcon name="i-lucide-inbox" class="size-4 text-[var(--ui-text-muted)]" />
-                </div>
-                <p class="mt-3 text-2xl font-semibold" :class="(selectedEnterprise.requests?.urgent || 0) > 0 ? 'text-error' : ''">
-                  {{ selectedEnterprise.requests?.open || 0 }}
-                </p>
-                <p class="text-xs text-[var(--ui-text-muted)]">
-                  open requests · {{ selectedEnterprise.requests?.urgent || 0 }} urgent · {{ selectedEnterprise.requests?.unassigned || 0 }} unassigned
-                </p>
-                <p class="mt-2 text-xs text-[var(--ui-text-dimmed)]">
-                  {{ selectedEnterprise.leads?.leadsLast30 || 0 }} portal leads, {{ selectedEnterprise.leads?.uncontactedLast30 || 0 }} uncontacted
-                </p>
-              </div>
-
-              <div class="rounded-lg border border-[var(--ui-border)] p-4">
-                <div class="flex items-center justify-between gap-3">
-                  <p class="text-sm font-medium">
-                    Billing
-                  </p>
-                  <UIcon name="i-lucide-receipt-text" class="size-4 text-[var(--ui-text-muted)]" />
-                </div>
-                <p class="mt-3 text-2xl font-semibold" :class="(selectedEnterprise.billing?.overdueInvoices || 0) > 0 ? 'text-error' : ''">
-                  {{ formatCurrency(selectedEnterprise.billing?.dueNext7Amount || 0) }}
-                </p>
-                <p class="text-xs text-[var(--ui-text-muted)]">
-                  due next 7 days · {{ selectedEnterprise.billing?.overdueInvoices || 0 }} overdue
-                </p>
-                <p class="mt-2 text-xs text-[var(--ui-text-dimmed)]">
-                  {{ formatCurrency(selectedEnterprise.billing?.paidLast90 || 0) }} paid in 90d
-                </p>
-              </div>
-
-              <div class="rounded-lg border border-[var(--ui-border)] p-4">
-                <div class="flex items-center justify-between gap-3">
-                  <p class="text-sm font-medium">
-                    Content
-                  </p>
-                  <UIcon name="i-lucide-folder-open-dot" class="size-4 text-[var(--ui-text-muted)]" />
-                </div>
-                <p class="mt-3 text-2xl font-semibold" :class="(selectedEnterprise.content?.briefsOverdue || 0) > 0 ? 'text-warning' : ''">
-                  {{ selectedEnterprise.content?.briefsOpen || 0 }}
-                </p>
-                <p class="text-xs text-[var(--ui-text-muted)]">
-                  open briefs · {{ selectedEnterprise.content?.deliverablesVisible || 0 }} shared files
-                </p>
-                <p class="mt-2 text-xs text-[var(--ui-text-dimmed)]">
-                  Last shared {{ formatDateTime(selectedEnterprise.content?.lastPublishedAt) }}
-                </p>
-              </div>
+              </button>
             </div>
 
             <p v-else class="text-sm text-[var(--ui-text-muted)] py-6">
@@ -2632,7 +2627,7 @@ const enterpriseRollout = [
                       Enterprise Portal Readiness
                     </h2>
                     <p class="text-sm text-[var(--ui-text-muted)] mt-1">
-                      The target is a client-facing operating room, not just a login area.
+                      Live modules, preview routes, and product gaps for enterprise client servicing.
                     </p>
                   </div>
                   <UBadge color="primary" variant="subtle">
@@ -2670,7 +2665,7 @@ const enterpriseRollout = [
                   </p>
                   <div class="rounded-md bg-[var(--ui-bg-elevated)] p-3">
                     <p class="text-xs font-medium mb-1">
-                      Enterprise next step
+                      Product gap
                     </p>
                     <p class="text-xs text-[var(--ui-text-muted)] leading-relaxed">
                       {{ module.next }}
@@ -2696,7 +2691,7 @@ const enterpriseRollout = [
                   <div class="flex items-center gap-2">
                     <UIcon name="i-lucide-compass" class="size-4 text-primary" />
                     <h2 class="font-semibold">
-                      Product Direction
+                      Operating Principles
                     </h2>
                   </div>
                 </template>
