@@ -1,12 +1,33 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
-const activeView = ref('all')
+const route = useRoute()
+const router = useRouter()
+const routeView = Array.isArray(route.query.view) ? route.query.view[0] : route.query.view
+
+const activeView = ref(routeView === 'unread' ? 'unread' : 'all')
 const unreadOnly = computed(() => activeView.value === 'unread' ? 'true' : undefined)
 const { data, pending, refresh } = useFetch('/api/portal/notifications', {
   query: { unreadOnly }
 })
 const toast = useToast()
+
+watch(activeView, (view) => {
+  const query = view === 'unread' ? { view: 'unread' } : {}
+  const current = new URLSearchParams(route.query as Record<string, string>).toString()
+  const next = new URLSearchParams(query).toString()
+  if (current !== next) {
+    router.replace({ query })
+  }
+})
+
+watch(
+  () => route.query.view,
+  () => {
+    const view = Array.isArray(route.query.view) ? route.query.view[0] : route.query.view
+    activeView.value = view === 'unread' ? 'unread' : 'all'
+  }
+)
 
 interface PortalNotification {
   id: string
@@ -86,7 +107,7 @@ function getLink(n: PortalNotification) {
   if (n.actionUrl) return n.actionUrl
   if (n.approvalId) return `/portal/approvals/${n.approvalId}`
   if (n.project?.id) return `/portal/projects/${n.project.id}`
-  if (n.invoice?.id) return '/portal/invoices'
+  if (n.invoice?.id) return n.type === 'invoice_overdue' ? '/portal/invoices?status=overdue' : '/portal/invoices?view=current'
   return null
 }
 </script>
