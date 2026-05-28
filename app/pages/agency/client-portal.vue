@@ -293,6 +293,9 @@ const portalClientSummary = computed(() => {
 const selectedAccessClientName = computed(() =>
   clients.value.find(client => client.id === selectedAccessClientId.value)?.name || 'Select client'
 )
+const selectedPortalClient = computed(() =>
+  portalClients.value.find(client => client.id === selectedAccessClientId.value) || null
+)
 
 const commandCenterStats = computed(() => [
   {
@@ -833,6 +836,123 @@ const selectedClientHealthCards = computed(() => {
     }
   ]
 })
+
+const selectedClientNextActions = computed(() => {
+  const client = selectedPortalClient.value
+  if (!client) return []
+
+  const actions: Array<{
+    label: string
+    detail: string
+    icon: string
+    color: 'primary' | 'success' | 'warning' | 'error' | 'neutral'
+    action: string
+    path?: string
+  }> = []
+
+  if (client.portalUsers === 0) {
+    actions.push({
+      label: 'Invite first portal user',
+      detail: 'Give the client access before rollout starts.',
+      icon: 'i-lucide-user-plus',
+      color: 'warning',
+      action: 'invite'
+    })
+  }
+  if (client.overdueAmount > 0) {
+    actions.push({
+      label: 'Review billing exposure',
+      detail: `${formatCurrency(client.overdueAmount)} overdue across ${client.overdueInvoices} invoice${client.overdueInvoices === 1 ? '' : 's'}.`,
+      icon: 'i-lucide-receipt-text',
+      color: 'error',
+      action: 'open',
+      path: '/portal/invoices?status=overdue'
+    })
+  }
+  if (client.urgentRequests > 0 || client.unassignedRequests > 0) {
+    actions.push({
+      label: 'Triage open requests',
+      detail: `${client.urgentRequests} urgent and ${client.unassignedRequests} unassigned client requests.`,
+      icon: 'i-lucide-message-square-warning',
+      color: client.urgentRequests > 0 ? 'error' : 'warning',
+      action: 'requests'
+    })
+  }
+  if (client.uncontactedLeads30d > 0) {
+    actions.push({
+      label: 'Follow up portal leads',
+      detail: `${client.uncontactedLeads30d} uncontacted lead${client.uncontactedLeads30d === 1 ? '' : 's'} in the last 30 days.`,
+      icon: 'i-lucide-phone-missed',
+      color: 'error',
+      action: 'open',
+      path: '/portal/analytics?metric=leads'
+    })
+  }
+  if (client.pendingApprovals > 0) {
+    actions.push({
+      label: 'Clear pending approvals',
+      detail: `${client.pendingApprovals} approval${client.pendingApprovals === 1 ? '' : 's'} waiting on the client.`,
+      icon: 'i-lucide-check-check',
+      color: 'warning',
+      action: 'open',
+      path: '/portal/approvals?status=pending'
+    })
+  }
+  if (client.campaignCount === 0) {
+    actions.push({
+      label: 'Connect campaign reporting',
+      detail: 'No campaign data is visible in the client portal yet.',
+      icon: 'i-lucide-chart-no-axes-combined',
+      color: 'neutral',
+      action: 'open',
+      path: '/portal/analytics?metric=campaigns'
+    })
+  }
+  if (client.visibleMeetings === 0) {
+    actions.push({
+      label: 'Share meeting schedule',
+      detail: 'No upcoming calls or recordings are visible to the client.',
+      icon: 'i-lucide-video',
+      color: 'neutral',
+      action: 'open',
+      path: '/portal/meetings?view=upcoming'
+    })
+  }
+  if (client.deliverablesVisible === 0) {
+    actions.push({
+      label: 'Publish shared files',
+      detail: 'No deliverables or files are currently client-visible.',
+      icon: 'i-lucide-folder-open-dot',
+      color: 'neutral',
+      action: 'open',
+      path: '/portal/projects?status=active'
+    })
+  }
+
+  return actions.slice(0, 5)
+})
+
+const runSelectedClientNextAction = (action: { action: string, path?: string }) => {
+  if (!selectedAccessClientId.value) {
+    toast.add({ title: 'Select a client first', color: 'error' })
+    return
+  }
+
+  if (action.action === 'invite') {
+    inviteClientUser(selectedAccessClientId.value)
+    return
+  }
+
+  if (action.action === 'requests') {
+    requestFilters.value.clientId = selectedAccessClientId.value
+    requestFilters.value.status = 'all'
+    requestFilters.value.type = 'all'
+    activeTab.value = 'requests'
+    return
+  }
+
+  openClientPortal(selectedAccessClientId.value, action.path || '/portal')
+}
 
 watch(
   [
@@ -1466,6 +1586,37 @@ const enterpriseModules = [
     clientPath: '/portal/meetings?view=upcoming',
     description: 'The office/video system exists separately with lobbies, meetings, guests, rooms, and recordings.',
     next: 'Expose client-safe meeting cards in the portal dashboard with join links, upcoming sessions, recordings, and permissions.'
+  }
+] as const
+
+const enterpriseServicePackages = [
+  {
+    title: 'Paid Media Command',
+    icon: 'i-lucide-chart-no-axes-combined',
+    detail: 'Google, Meta, lead follow-up, campaign pacing, creative approvals, and monthly reporting.',
+    modules: ['Campaign analytics', 'Leads', 'Approvals', 'Requests'],
+    path: '/portal/analytics?metric=leads'
+  },
+  {
+    title: 'Client Operations',
+    icon: 'i-lucide-folder-kanban',
+    detail: 'Booked jobs, upcoming work, job history, support tickets, briefs, and shared deliverables.',
+    modules: ['Jobs', 'Requests', 'Briefs', 'Files'],
+    path: '/portal/projects?status=active'
+  },
+  {
+    title: 'Commercial Governance',
+    icon: 'i-lucide-receipt-text',
+    detail: 'Current billing, overdue exposure, paid history, budgets, retainers, and account health.',
+    modules: ['Billing', 'Budgets', 'Statements', 'Health'],
+    path: '/portal/invoices?view=current'
+  },
+  {
+    title: 'Relationship Layer',
+    icon: 'i-lucide-video',
+    detail: 'Upcoming calls, recordings, meeting notes, account contacts, and executive summaries.',
+    modules: ['Meetings', 'Recordings', 'Contacts', 'Summaries'],
+    path: '/portal/meetings?view=upcoming'
   }
 ] as const
 
@@ -2884,6 +3035,120 @@ const enterpriseRollout = [
               Select a client to preview their portal operating health.
             </p>
           </UCard>
+
+          <div class="grid grid-cols-1 xl:grid-cols-[0.9fr_1.1fr] gap-6">
+            <UCard>
+              <template #header>
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div class="flex items-center gap-2">
+                    <UIcon name="i-lucide-sparkles" class="size-4 text-primary" />
+                    <h2 class="font-semibold">
+                      Recommended next actions
+                    </h2>
+                  </div>
+                  <UBadge color="neutral" variant="subtle">
+                    {{ selectedAccessClientName }}
+                  </UBadge>
+                </div>
+              </template>
+
+              <div v-if="selectedClientNextActions.length" class="space-y-3">
+                <button
+                  v-for="action in selectedClientNextActions"
+                  :key="action.label"
+                  type="button"
+                  class="w-full rounded-lg border border-default bg-default p-4 text-left transition-colors hover:bg-elevated"
+                  @click="runSelectedClientNextAction(action)"
+                >
+                  <div class="flex items-start gap-3">
+                    <div class="size-9 rounded-lg bg-[var(--ui-bg-elevated)] flex items-center justify-center shrink-0">
+                      <UIcon :name="action.icon" class="size-4 text-[var(--ui-text-muted)]" />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center justify-between gap-3">
+                        <p class="font-medium text-sm">
+                          {{ action.label }}
+                        </p>
+                        <UBadge :color="action.color" variant="subtle" size="xs">
+                          Action
+                        </UBadge>
+                      </div>
+                      <p class="mt-1 text-sm text-[var(--ui-text-muted)] leading-relaxed">
+                        {{ action.detail }}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              </div>
+              <div v-else class="rounded-lg border border-default bg-default p-4">
+                <div class="flex items-start gap-3">
+                  <UIcon name="i-lucide-circle-check" class="size-5 text-emerald-500 mt-0.5" />
+                  <div>
+                    <p class="font-medium text-sm">
+                      No urgent client actions
+                    </p>
+                    <p class="mt-1 text-sm text-[var(--ui-text-muted)]">
+                      The selected client has no obvious access, billing, request, approval, lead, meeting, or content gaps in the current portal data.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </UCard>
+
+            <UCard>
+              <template #header>
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-lucide-package-check" class="size-4 text-primary" />
+                  <h2 class="font-semibold">
+                    Agency service packages
+                  </h2>
+                </div>
+              </template>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div
+                  v-for="service in enterpriseServicePackages"
+                  :key="service.title"
+                  class="rounded-lg border border-default bg-default p-4"
+                >
+                  <div class="flex items-start gap-3">
+                    <div class="size-9 rounded-lg bg-[var(--ui-bg-elevated)] flex items-center justify-center shrink-0">
+                      <UIcon :name="service.icon" class="size-4 text-[var(--ui-text-muted)]" />
+                    </div>
+                    <div class="min-w-0">
+                      <p class="font-medium text-sm">
+                        {{ service.title }}
+                      </p>
+                      <p class="mt-1 text-sm text-[var(--ui-text-muted)] leading-relaxed">
+                        {{ service.detail }}
+                      </p>
+                    </div>
+                  </div>
+                  <div class="mt-3 flex flex-wrap gap-1">
+                    <UBadge
+                      v-for="module in service.modules"
+                      :key="module"
+                      color="neutral"
+                      variant="subtle"
+                      size="xs"
+                    >
+                      {{ module }}
+                    </UBadge>
+                  </div>
+                  <UButton
+                    label="Preview"
+                    icon="i-lucide-external-link"
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    class="mt-3"
+                    :loading="openingPortal"
+                    @click="openClientPortal(selectedAccessClientId, service.path)"
+                  />
+                </div>
+              </div>
+            </UCard>
+          </div>
 
           <div class="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6">
             <UCard>
