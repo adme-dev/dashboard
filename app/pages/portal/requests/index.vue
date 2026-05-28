@@ -32,8 +32,10 @@ watch([activeTab, activeStatus], () => {
 
   const service = routeQueryString(route.query.service)
   const access = routeQueryString(route.query.access)
+  const support = routeQueryString(route.query.support)
   if (typeof service === 'string' && service) query.service = service
   if (typeof access === 'string' && access) query.access = access
+  if (typeof support === 'string' && support) query.support = support
 
   const current = new URLSearchParams(route.query as Record<string, string>).toString()
   const next = new URLSearchParams(query).toString()
@@ -187,6 +189,14 @@ const accessRequestPresets: Record<string, { title: string, description: string 
   }
 }
 
+const supportRequestPresets: Record<string, { category: string, title: string, description: string }> = {
+  meeting_follow_up: {
+    category: 'question',
+    title: 'Meeting follow-up',
+    description: 'We would like to send a follow-up question or request after a client meeting.'
+  }
+}
+
 // Fetch projects for the selector
 const { data: projectsData } = useFetch('/api/portal/projects')
 
@@ -229,10 +239,26 @@ function applyAccessPreset(access: unknown) {
   showCreate.value = true
 }
 
+function applySupportPreset(support: unknown) {
+  if (typeof support !== 'string') return
+  const preset = supportRequestPresets[support]
+  if (!preset || !hasPermission('canSubmitRequests')) return
+
+  selectedPreset.value = null
+  form.requestType = 'support_ticket'
+  form.category = preset.category
+  form.title = preset.title
+  form.description = preset.description
+  form.priority = 'normal'
+  showCreate.value = true
+}
+
 onMounted(() => applyServicePreset(route.query.service))
 onMounted(() => applyAccessPreset(route.query.access))
+onMounted(() => applySupportPreset(route.query.support))
 watch(() => route.query.service, applyServicePreset)
 watch(() => route.query.access, applyAccessPreset)
+watch(() => route.query.support, applySupportPreset)
 
 async function submitRequest() {
   if (!form.title.trim() || !form.description.trim()) {

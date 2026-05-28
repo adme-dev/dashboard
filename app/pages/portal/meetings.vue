@@ -399,7 +399,7 @@ function formatCompactDate(date: string | null | undefined) {
                 {{ artifactCount(meeting) ? `${artifactCount(meeting)} note${artifactCount(meeting) === 1 ? '' : 's'}` : 'Notes' }}
               </UButton>
               <UButton
-                to="/portal/requests?type=support_ticket"
+                to="/portal/requests?type=support_ticket&support=meeting_follow_up"
                 icon="i-lucide-message-square"
                 color="neutral"
                 variant="ghost"
