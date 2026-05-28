@@ -119,7 +119,10 @@ const fieldSections = computed(() => {
     <template v-else-if="data">
       <!-- Header -->
       <div>
-        <NuxtLink to="/portal/briefs" class="text-sm text-muted hover:text-default mb-2 inline-flex items-center gap-1">
+        <NuxtLink
+          :to="data.status ? `/portal/briefs?status=${data.status}` : '/portal/briefs?status=submitted'"
+          class="text-sm text-muted hover:text-default mb-2 inline-flex items-center gap-1"
+        >
           <UIcon name="i-lucide-arrow-left" class="w-3 h-3" />
           Back to briefs
         </NuxtLink>

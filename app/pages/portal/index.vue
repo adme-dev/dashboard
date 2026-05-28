@@ -1241,8 +1241,8 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
           </div>
 
           <template #footer>
-            <NuxtLink to="/portal/projects" class="text-sm text-primary hover:underline">
-              View all projects
+            <NuxtLink to="/portal/projects?status=active" class="text-sm text-primary hover:underline">
+              View active projects
             </NuxtLink>
           </template>
         </UCard>
@@ -1412,7 +1412,7 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
           </div>
 
           <template #footer>
-            <NuxtLink to="/portal/requests" class="text-sm text-primary hover:underline">
+            <NuxtLink to="/portal/requests?view=open" class="text-sm text-primary hover:underline">
               View open requests
             </NuxtLink>
           </template>

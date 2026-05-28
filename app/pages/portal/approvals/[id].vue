@@ -66,7 +66,10 @@ const statusColors: Record<string, string> = {
     </div>
 
     <template v-else-if="data">
-      <NuxtLink to="/portal/approvals" class="text-sm text-muted hover:text-default inline-flex items-center gap-1">
+      <NuxtLink
+        :to="data.approval.status ? `/portal/approvals?status=${data.approval.status}` : '/portal/approvals?status=pending'"
+        class="text-sm text-muted hover:text-default inline-flex items-center gap-1"
+      >
         <UIcon name="i-lucide-arrow-left" class="w-3 h-3" />
         Back to approvals
       </NuxtLink>

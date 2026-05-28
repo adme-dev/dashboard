@@ -221,7 +221,12 @@ const requestNextStep = computed(() => {
     <template v-else-if="data?.request">
       <!-- Header -->
       <div>
-        <NuxtLink to="/portal/requests" class="text-sm text-muted hover:text-default mb-2 inline-flex items-center gap-1">
+        <NuxtLink
+          :to="data.request.status === 'completed' || data.request.status === 'closed'
+            ? '/portal/requests?view=resolved'
+            : `/portal/requests?type=${data.request.requestType}&view=open`"
+          class="text-sm text-muted hover:text-default mb-2 inline-flex items-center gap-1"
+        >
           <UIcon name="i-lucide-arrow-left" class="w-3 h-3" />
           Back to requests
         </NuxtLink>

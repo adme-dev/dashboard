@@ -151,7 +151,12 @@ async function submitComment() {
     <template v-else-if="data">
       <!-- Header -->
       <div>
-        <NuxtLink to="/portal/projects" class="text-sm text-muted hover:text-default mb-2 inline-flex items-center gap-1">
+        <NuxtLink
+          :to="data.project.status === 'completed' || data.project.status === 'cancelled'
+            ? '/portal/projects?view=history'
+            : data.project.status ? `/portal/projects?status=${data.project.status}` : '/portal/projects?view=upcoming'"
+          class="text-sm text-muted hover:text-default mb-2 inline-flex items-center gap-1"
+        >
           <UIcon name="i-lucide-arrow-left" class="w-3 h-3" />
           Back to projects
         </NuxtLink>
