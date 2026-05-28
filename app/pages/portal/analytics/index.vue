@@ -2,6 +2,8 @@
 definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
 const { fmtCurrency, fmtCompact, fmtPercent, getPlatformIcon } = useAnalytics()
+const route = useRoute()
+const router = useRouter()
 
 interface AnalyticsOverview {
   totals: Record<string, number | null>
@@ -18,13 +20,25 @@ const now = new Date()
 const thirtyDaysAgo = new Date(now)
 thirtyDaysAgo.setDate(now.getDate() - 30)
 
-const startDate = ref(formatDateISO(thirtyDaysAgo))
-const endDate = ref(formatDateISO(now))
-const selectedPlatforms = ref<string[]>([])
-
 function formatDateISO(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+
+function queryString(value: unknown) {
+  return Array.isArray(value) ? value[0] : value
+}
+
+function validDateString(value: unknown, fallback: string) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : fallback
+}
+
+const startDate = ref(validDateString(queryString(route.query.startDate), formatDateISO(thirtyDaysAgo)))
+const endDate = ref(validDateString(queryString(route.query.endDate), formatDateISO(now)))
+const selectedPlatforms = ref<string[]>(
+  typeof queryString(route.query.platform) === 'string'
+    ? String(queryString(route.query.platform)).split(',').map(platform => platform.trim()).filter(Boolean)
+    : []
+)
 
 const apiQuery = computed(() => {
   const q: Record<string, string> = { startDate: startDate.value, endDate: endDate.value }
@@ -49,7 +63,9 @@ const previousPeriod = computed(() => overview.value?.previousPeriod || null)
 const byPlatform = computed(() => overview.value?.byPlatform || [])
 
 // Trend data
-const trendMetric = ref('spend')
+const allowedTrendMetrics = new Set(['spend', 'impressions', 'clicks', 'leads', 'cpc', 'ctr', 'costPerLead'])
+const initialMetric = queryString(route.query.metric)
+const trendMetric = ref(typeof initialMetric === 'string' && allowedTrendMetrics.has(initialMetric) ? initialMetric : 'spend')
 const trendQuery = computed(() => ({
   ...apiQuery.value,
   metric: trendMetric.value,
@@ -101,6 +117,35 @@ const metricOptions = [
   { label: 'CTR', value: 'ctr' },
   { label: 'Cost / Lead', value: 'costPerLead' }
 ]
+
+watch([startDate, endDate, selectedPlatforms, trendMetric], () => {
+  const query: Record<string, string> = {
+    startDate: startDate.value,
+    endDate: endDate.value
+  }
+  if (selectedPlatforms.value.length) query.platform = selectedPlatforms.value.join(',')
+  if (trendMetric.value !== 'spend') query.metric = trendMetric.value
+
+  const current = new URLSearchParams(route.query as Record<string, string>).toString()
+  const next = new URLSearchParams(query).toString()
+  if (current !== next) {
+    router.replace({ query })
+  }
+}, { deep: true })
+
+watch(
+  () => [route.query.startDate, route.query.endDate, route.query.platform, route.query.metric],
+  () => {
+    startDate.value = validDateString(queryString(route.query.startDate), formatDateISO(thirtyDaysAgo))
+    endDate.value = validDateString(queryString(route.query.endDate), formatDateISO(now))
+    const platform = queryString(route.query.platform)
+    selectedPlatforms.value = typeof platform === 'string'
+      ? platform.split(',').map(item => item.trim()).filter(Boolean)
+      : []
+    const metric = queryString(route.query.metric)
+    trendMetric.value = typeof metric === 'string' && allowedTrendMetrics.has(metric) ? metric : 'spend'
+  }
+)
 
 const leadFunnel = computed(() => {
   const current = totals.value
