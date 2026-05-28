@@ -49,12 +49,37 @@ interface PortalMeetingArtifact {
   createdAt: string
 }
 
-const activeTab = ref('upcoming')
+const route = useRoute()
+const router = useRouter()
+const routeQueryString = (value: unknown) => Array.isArray(value) ? value[0] : value
+const meetingTabs = ['upcoming', 'history', 'all']
+const initialView = routeQueryString(route.query.view)
+
+const activeTab = ref(typeof initialView === 'string' && meetingTabs.includes(initialView) ? initialView : 'upcoming')
 const meetingQuery = computed(() => activeTab.value === 'all' ? {} : { view: activeTab.value })
 
 const { data, pending } = useFetch<PortalMeetingsDashboard>('/api/portal/meetings', {
   query: meetingQuery
 })
+
+watch(activeTab, (tab) => {
+  const query: Record<string, string> = {}
+  if (tab !== 'upcoming') query.view = tab
+
+  const current = new URLSearchParams(route.query as Record<string, string>).toString()
+  const next = new URLSearchParams(query).toString()
+  if (current !== next) {
+    router.replace({ query })
+  }
+})
+
+watch(
+  () => route.query.view,
+  () => {
+    const view = routeQueryString(route.query.view)
+    activeTab.value = typeof view === 'string' && meetingTabs.includes(view) ? view : 'upcoming'
+  }
+)
 
 const tabs = [
   { label: 'Upcoming', value: 'upcoming' },
