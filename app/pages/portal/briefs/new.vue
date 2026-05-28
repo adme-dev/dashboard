@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BriefTemplate, BriefFormValues } from '~/types'
+import type { BriefTemplate, BriefFormValues, BriefCategory } from '~/types'
 
 definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
@@ -17,13 +17,28 @@ const briefPriority = ref('medium')
 const briefDeadline = ref('')
 const submitting = ref(false)
 
+interface BriefTemplateCategory extends BriefCategory {
+  templates: BriefTemplate[]
+}
+
+interface BriefTemplatesResponse {
+  categories: BriefTemplateCategory[]
+}
+
+function errorMessage(error: unknown) {
+  if (error && typeof error === 'object' && 'data' in error) {
+    return (error as { data?: { statusMessage?: string } }).data?.statusMessage
+  }
+  return undefined
+}
+
 // Fetch templates grouped by category
-const { data: templatesData, pending } = useFetch('/api/portal/briefs/templates')
+const { data: templatesData, pending } = useFetch<BriefTemplatesResponse>('/api/portal/briefs/templates')
 
 const categories = computed(() => templatesData.value?.categories || [])
 
 const selectedCategory = computed(() =>
-  categories.value.find((c: any) => c.id === selectedCategoryId.value)
+  categories.value.find(category => category.id === selectedCategoryId.value)
 )
 
 const priorities = [
@@ -38,8 +53,8 @@ function selectCategory(categoryId: string) {
   step.value = 'templates'
 }
 
-function selectTemplate(template: any) {
-  selectedTemplate.value = template as BriefTemplate
+function selectTemplate(template: BriefTemplate) {
+  selectedTemplate.value = template
   briefTitle.value = ''
   briefPriority.value = template.defaultPriority || 'medium'
   briefDeadline.value = ''
@@ -66,7 +81,7 @@ async function handleSubmit(fieldValues: BriefFormValues) {
 
   submitting.value = true
   try {
-    const result = await $fetch<{ id: string; referenceNumber: string }>('/api/portal/briefs', {
+    const result = await $fetch<{ id: string, referenceNumber: string }>('/api/portal/briefs', {
       method: 'POST',
       body: {
         templateId: selectedTemplate.value.id,
@@ -82,10 +97,10 @@ async function handleSubmit(fieldValues: BriefFormValues) {
       color: 'success'
     })
     await router.push(`/portal/briefs/${result.id}`)
-  } catch (e: any) {
+  } catch (error: unknown) {
     toast.add({
       title: 'Failed to submit brief',
-      description: e.data?.statusMessage || 'An error occurred',
+      description: errorMessage(error) || 'An error occurred',
       color: 'error'
     })
   } finally {
@@ -108,18 +123,26 @@ async function handleSubmit(fieldValues: BriefFormValues) {
       </button>
       <NuxtLink
         v-else
-        to="/portal/briefs"
+        to="/portal/briefs?status=submitted"
         class="text-sm text-muted hover:text-default mb-2 inline-flex items-center gap-1"
       >
         <UIcon name="i-lucide-arrow-left" class="w-3 h-3" />
         Back to briefs
       </NuxtLink>
 
-      <h1 class="text-2xl font-bold">Submit a Brief</h1>
+      <h1 class="text-2xl font-bold">
+        Submit a Brief
+      </h1>
       <p class="text-sm text-muted mt-1">
-        <template v-if="step === 'categories'">Choose a category to get started</template>
-        <template v-else-if="step === 'templates'">Select a template from {{ selectedCategory?.name }}</template>
-        <template v-else-if="selectedTemplate">Fill out the {{ selectedTemplate.name }} brief</template>
+        <template v-if="step === 'categories'">
+          Choose a category to get started
+        </template>
+        <template v-else-if="step === 'templates'">
+          Select a template from {{ selectedCategory?.name }}
+        </template>
+        <template v-else-if="selectedTemplate">
+          Fill out the {{ selectedTemplate.name }} brief
+        </template>
       </p>
     </div>
 
@@ -138,7 +161,9 @@ async function handleSubmit(fieldValues: BriefFormValues) {
       >
         <div class="flex items-center gap-3 mb-2">
           <UIcon v-if="category.icon" :name="category.icon" class="size-6 text-primary" />
-          <h3 class="text-lg font-semibold">{{ category.name }}</h3>
+          <h3 class="text-lg font-semibold">
+            {{ category.name }}
+          </h3>
         </div>
         <p class="text-sm text-muted">
           {{ category.templates.length }} template{{ category.templates.length !== 1 ? 's' : '' }}
@@ -161,13 +186,27 @@ async function handleSubmit(fieldValues: BriefFormValues) {
         <div class="flex items-start gap-3">
           <UIcon v-if="template.icon" :name="template.icon" class="size-5 text-primary mt-0.5" />
           <div class="flex-1 min-w-0">
-            <h3 class="font-semibold">{{ template.name }}</h3>
-            <p v-if="template.description" class="text-sm text-muted mt-1">{{ template.description }}</p>
+            <h3 class="font-semibold">
+              {{ template.name }}
+            </h3>
+            <p v-if="template.description" class="text-sm text-muted mt-1">
+              {{ template.description }}
+            </p>
             <div class="flex items-center gap-2 mt-2">
-              <UBadge v-if="template.fields?.length" color="neutral" variant="subtle" size="xs">
+              <UBadge
+                v-if="template.fields?.length"
+                color="neutral"
+                variant="subtle"
+                size="xs"
+              >
                 {{ template.fields.length }} field{{ template.fields.length !== 1 ? 's' : '' }}
               </UBadge>
-              <UBadge v-if="template.isMultiStep" color="info" variant="subtle" size="xs">
+              <UBadge
+                v-if="template.isMultiStep"
+                color="info"
+                variant="subtle"
+                size="xs"
+              >
                 Multi-step
               </UBadge>
             </div>
