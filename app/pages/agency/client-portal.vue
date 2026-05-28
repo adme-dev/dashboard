@@ -1124,6 +1124,61 @@ const inviteForm = ref({
     canSubmitRequests: true
   }
 })
+const invitePermissionPresets = [
+  {
+    label: 'Executive',
+    description: 'Reporting, billing, jobs, and requests.',
+    icon: 'i-lucide-briefcase-business',
+    permissions: {
+      canViewProjects: true,
+      canViewInvoices: true,
+      canApproveWork: false,
+      canViewTimeEntries: false,
+      canViewBudgets: true,
+      canViewAnalytics: true,
+      canSubmitRequests: true
+    }
+  },
+  {
+    label: 'Approver',
+    description: 'Jobs, files, revisions, and sign-off.',
+    icon: 'i-lucide-check-check',
+    permissions: {
+      canViewProjects: true,
+      canViewInvoices: false,
+      canApproveWork: true,
+      canViewTimeEntries: false,
+      canViewBudgets: false,
+      canViewAnalytics: true,
+      canSubmitRequests: true
+    }
+  },
+  {
+    label: 'Finance',
+    description: 'Billing history and commercial visibility.',
+    icon: 'i-lucide-receipt-text',
+    permissions: {
+      canViewProjects: false,
+      canViewInvoices: true,
+      canApproveWork: false,
+      canViewTimeEntries: false,
+      canViewBudgets: true,
+      canViewAnalytics: false,
+      canSubmitRequests: false
+    }
+  }
+]
+const selectedInviteClient = computed(() =>
+  portalClients.value.find(client => client.id === inviteForm.value.clientId)
+  || clients.value.find(client => client.id === inviteForm.value.clientId)
+  || null
+)
+const inviteEnabledModules = computed(() =>
+  Object.values(inviteForm.value.permissions).filter(Boolean).length
+)
+const applyInvitePermissionPreset = (preset: typeof invitePermissionPresets[number]) => {
+  inviteForm.value.permissions = { ...preset.permissions }
+}
 
 const inviting = ref(false)
 const sendInvite = async () => {
@@ -2990,14 +3045,40 @@ const enterpriseRollout = [
     <!-- Invite Slideover -->
     <USlideover v-model:open="showInviteModal">
       <template #header>
-        <h3 class="text-[18px] font-[600]">
-          Invite Client User
-        </h3>
+        <div class="flex items-start gap-3">
+          <div class="size-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <UIcon name="i-lucide-user-plus" class="size-5" />
+          </div>
+          <div>
+            <h3 class="text-[18px] font-[600]">
+              Invite portal user
+            </h3>
+            <p class="text-sm text-[var(--ui-text-muted)]">
+              Assign the client and choose exactly which service modules they can access.
+            </p>
+          </div>
+        </div>
       </template>
       <template #body>
-        <form class="space-y-0" @submit.prevent="sendInvite">
+        <form class="space-y-6" @submit.prevent="sendInvite">
+          <div class="rounded-lg border border-default bg-elevated/40 p-4">
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-xs uppercase tracking-wide text-[var(--ui-text-muted)]">
+                  Access package
+                </p>
+                <p class="truncate text-sm font-medium">
+                  {{ selectedInviteClient?.name || 'Choose a client' }}
+                </p>
+              </div>
+              <UBadge color="primary" variant="subtle">
+                {{ inviteEnabledModules }} modules
+              </UBadge>
+            </div>
+          </div>
+
           <!-- Section: Client & Contact -->
-          <fieldset class="space-y-5 pb-6 mb-6 border-b border-[var(--ui-border)]">
+          <fieldset class="space-y-5 pb-6 border-b border-[var(--ui-border)]">
             <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">
               Client & Contact
             </legend>
@@ -3044,13 +3125,39 @@ const enterpriseRollout = [
           </fieldset>
 
           <!-- Section: Permissions -->
-          <fieldset class="space-y-4">
-            <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">
-              Permissions
-            </legend>
-            <p class="text-[12px] text-[var(--ui-text-muted)]">
-              Control what the invited user can see and do in the client portal.
-            </p>
+          <fieldset class="space-y-5">
+            <div>
+              <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">
+                Permissions
+              </legend>
+              <p class="text-[12px] text-[var(--ui-text-muted)]">
+                Start from a common client role, then fine-tune the module switches below.
+              </p>
+            </div>
+
+            <div class="grid grid-cols-1 gap-2">
+              <button
+                v-for="preset in invitePermissionPresets"
+                :key="preset.label"
+                type="button"
+                class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+                @click="applyInvitePermissionPreset(preset)"
+              >
+                <div class="flex items-start gap-3">
+                  <div class="size-8 rounded-md bg-[var(--ui-bg-elevated)] flex items-center justify-center shrink-0">
+                    <UIcon :name="preset.icon" class="size-4 text-[var(--ui-text-muted)]" />
+                  </div>
+                  <div>
+                    <p class="text-sm font-medium">
+                      {{ preset.label }}
+                    </p>
+                    <p class="text-xs text-[var(--ui-text-muted)]">
+                      {{ preset.description }}
+                    </p>
+                  </div>
+                </div>
+              </button>
+            </div>
 
             <div class="space-y-3 pt-1">
               <label class="flex items-center gap-3 cursor-pointer">
