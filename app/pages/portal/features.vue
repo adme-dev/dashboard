@@ -39,7 +39,7 @@ const features = computed<FeatureCard[]>(() => {
       description: 'Track ad performance across Meta & Google Ads with AI-powered insights, demographic breakdowns, and creative analysis.',
       icon: 'i-lucide-bar-chart-4',
       iconColor: 'text-primary',
-      to: '/portal/analytics',
+      to: '/portal/analytics?metric=leads',
       permission: canViewAnalytics.value
     },
     {
@@ -54,7 +54,7 @@ const features = computed<FeatureCard[]>(() => {
       description: 'Review and approve deliverables, creative concepts, and campaign briefs in one place.',
       icon: 'i-lucide-check-circle',
       iconColor: 'text-amber-500',
-      to: '/portal/approvals'
+      to: '/portal/approvals?status=pending'
     },
     {
       title: 'Creative Gallery',
@@ -68,7 +68,7 @@ const features = computed<FeatureCard[]>(() => {
       description: 'View current billing, outstanding balances, paid invoice history, and project-linked invoice details.',
       icon: 'i-lucide-receipt',
       iconColor: 'text-emerald-500',
-      to: '/portal/invoices',
+      to: '/portal/invoices?view=current',
       permission: canViewInvoices.value
     },
     {
@@ -76,7 +76,7 @@ const features = computed<FeatureCard[]>(() => {
       description: 'Join client review calls, see scheduled sessions, and watch shared recordings from your agency.',
       icon: 'i-lucide-video',
       iconColor: 'text-cyan-500',
-      to: '/portal/meetings'
+      to: '/portal/meetings?view=upcoming'
     },
     {
       title: 'Leads',
@@ -91,14 +91,14 @@ const features = computed<FeatureCard[]>(() => {
       description: 'Submit new briefs, job requests, support items, and follow-up tasks for the agency team.',
       icon: 'i-lucide-message-square-plus',
       iconColor: 'text-fuchsia-500',
-      to: '/portal/requests'
+      to: '/portal/requests?type=job_request'
     },
     {
       title: 'Notifications',
       description: 'Stay informed with real-time updates on project milestones and approvals.',
       icon: 'i-lucide-bell',
       iconColor: 'text-rose-500',
-      to: '/portal/notifications'
+      to: '/portal/notifications?view=unread'
     }
   ]
 
@@ -129,7 +129,7 @@ const serviceModules = computed<ServiceModule[]>(() => {
         { label: 'CPL', value: campaigns?.costPerLead == null ? '-' : formatCurrency(campaigns.costPerLead) }
       ],
       requestService: 'paid_media',
-      to: canViewAnalytics.value ? '/portal/analytics' : undefined
+      to: canViewAnalytics.value ? '/portal/analytics?metric=leads' : undefined
     },
     {
       title: 'Creative production',
@@ -157,7 +157,7 @@ const serviceModules = computed<ServiceModule[]>(() => {
         { label: 'Requests', value: String(dashboard.value?.requests?.stats?.open || 0) }
       ],
       requestService: 'seo_content',
-      to: '/portal/briefs'
+      to: (content?.briefsNeedsInfo || 0) > 0 ? '/portal/briefs?status=needs_info' : '/portal/briefs?status=submitted'
     },
     {
       title: 'Web and CRO',
@@ -183,7 +183,7 @@ const serviceModules = computed<ServiceModule[]>(() => {
         { label: 'Won', value: String(campaigns?.wonLeads || 0) }
       ],
       requestService: 'reporting',
-      to: canViewAnalytics.value ? '/portal/analytics' : undefined
+      to: canViewAnalytics.value ? '/portal/analytics?metric=leads' : undefined
     },
     {
       title: 'Strategy and account planning',
@@ -196,7 +196,7 @@ const serviceModules = computed<ServiceModule[]>(() => {
         { label: 'Recordings', value: String(meetings?.recordings || 0) }
       ],
       requestService: 'strategy',
-      to: '/portal/meetings'
+      to: '/portal/meetings?view=upcoming'
     }
   ]
 })
