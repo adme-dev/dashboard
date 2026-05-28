@@ -4,9 +4,16 @@ definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 const { hasPermission } = usePortalAuth()
 const toast = useToast()
 const route = useRoute()
+const router = useRouter()
 
-const activeTab = ref('all')
-const activeStatus = ref('open')
+const routeQueryString = (value: unknown) => Array.isArray(value) ? value[0] : value
+const requestTypeTabs = ['all', 'job_request', 'support_ticket']
+const requestStatusTabs = ['open', 'needs_review', 'in_progress', 'resolved', 'all']
+const routeType = routeQueryString(route.query.type)
+const routeView = routeQueryString(route.query.view)
+
+const activeTab = ref(typeof routeType === 'string' && requestTypeTabs.includes(routeType) ? routeType : 'all')
+const activeStatus = ref(typeof routeView === 'string' && requestStatusTabs.includes(routeView) ? routeView : 'open')
 const typeFilter = computed(() => {
   if (activeTab.value === 'job_request') return 'job_request'
   if (activeTab.value === 'support_ticket') return 'support_ticket'
@@ -17,6 +24,33 @@ const viewFilter = computed(() => activeStatus.value === 'all' ? undefined : act
 const { data, pending, refresh } = useFetch('/api/portal/requests', {
   query: { type: typeFilter, view: viewFilter }
 })
+
+watch([activeTab, activeStatus], () => {
+  const query: Record<string, string> = {}
+  if (activeTab.value !== 'all') query.type = activeTab.value
+  if (activeStatus.value !== 'open') query.view = activeStatus.value
+
+  const service = routeQueryString(route.query.service)
+  const access = routeQueryString(route.query.access)
+  if (typeof service === 'string' && service) query.service = service
+  if (typeof access === 'string' && access) query.access = access
+
+  const current = new URLSearchParams(route.query as Record<string, string>).toString()
+  const next = new URLSearchParams(query).toString()
+  if (current !== next) {
+    router.replace({ query })
+  }
+})
+
+watch(
+  () => [route.query.type, route.query.view],
+  () => {
+    const type = routeQueryString(route.query.type)
+    const view = routeQueryString(route.query.view)
+    activeTab.value = typeof type === 'string' && requestTypeTabs.includes(type) ? type : 'all'
+    activeStatus.value = typeof view === 'string' && requestStatusTabs.includes(view) ? view : 'open'
+  }
+)
 
 const tabs = [
   { label: 'All', value: 'all' },
