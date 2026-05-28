@@ -296,6 +296,53 @@ const selectedAccessClientName = computed(() =>
 const selectedPortalClient = computed(() =>
   portalClients.value.find(client => client.id === selectedAccessClientId.value) || null
 )
+const selectedClientAccountBrief = computed(() => {
+  const client = selectedPortalClient.value
+  if (!client) return []
+
+  return [
+    {
+      label: 'Active jobs',
+      value: String(client.activeProjects),
+      detail: `${client.upcomingJobs} upcoming · ${client.historyJobs} completed`,
+      icon: 'i-lucide-folder-kanban',
+      color: client.activeProjects > 0 ? 'primary' as const : 'neutral' as const,
+      path: '/portal/projects?status=active'
+    },
+    {
+      label: 'Billing',
+      value: formatCurrency(client.outstandingAmount),
+      detail: `${client.outstandingInvoices} current · ${client.paidInvoices} paid`,
+      icon: 'i-lucide-receipt-text',
+      color: client.overdueInvoices > 0 ? 'error' as const : 'success' as const,
+      path: client.overdueInvoices > 0 ? '/portal/invoices?status=overdue' : '/portal/invoices?view=current'
+    },
+    {
+      label: 'Requests',
+      value: String(client.openRequests),
+      detail: `${client.jobRequests} job requests · ${client.supportRequests} support`,
+      icon: 'i-lucide-message-square-plus',
+      color: client.urgentRequests > 0 ? 'error' as const : 'primary' as const,
+      path: '/portal/requests?view=open'
+    },
+    {
+      label: 'Meetings',
+      value: String(client.upcomingMeetings),
+      detail: `${client.visibleMeetings} visible · ${client.meetingRecordings} recordings`,
+      icon: 'i-lucide-video',
+      color: client.upcomingMeetings > 0 ? 'success' as const : 'neutral' as const,
+      path: '/portal/meetings?view=upcoming'
+    },
+    {
+      label: 'Shared work',
+      value: String(client.deliverablesVisible),
+      detail: `${client.deliverablesFinal} final · ${client.briefsOpen} open briefs`,
+      icon: 'i-lucide-folder-open-dot',
+      color: client.deliverablesVisible > 0 ? 'success' as const : 'neutral' as const,
+      path: '/portal/projects?status=active'
+    }
+  ]
+})
 
 const commandCenterStats = computed(() => [
   {
@@ -2984,6 +3031,77 @@ const enterpriseRollout = [
                 />
               </div>
             </div>
+          </UCard>
+
+          <UCard>
+            <template #header>
+              <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-lucide-briefcase-business" class="size-4 text-primary" />
+                  <h2 class="font-semibold">
+                    Client account brief
+                  </h2>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <UButton
+                    label="Upcoming"
+                    icon="i-lucide-calendar-clock"
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    :loading="openingPortal"
+                    @click="openClientPortal(selectedAccessClientId, '/portal/projects?view=upcoming')"
+                  />
+                  <UButton
+                    label="History"
+                    icon="i-lucide-history"
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    :loading="openingPortal"
+                    @click="openClientPortal(selectedAccessClientId, '/portal/projects?view=history')"
+                  />
+                  <UButton
+                    label="Paid billing"
+                    icon="i-lucide-receipt"
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    :loading="openingPortal"
+                    @click="openClientPortal(selectedAccessClientId, '/portal/invoices?status=paid')"
+                  />
+                </div>
+              </div>
+            </template>
+
+            <div v-if="selectedClientAccountBrief.length" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+              <button
+                v-for="item in selectedClientAccountBrief"
+                :key="item.label"
+                type="button"
+                class="rounded-lg border border-default bg-default p-4 text-left transition-colors hover:bg-elevated"
+                @click="openClientPortal(selectedAccessClientId, item.path)"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="rounded-md bg-[var(--ui-bg-elevated)] p-2">
+                    <UIcon :name="item.icon" class="size-4 text-[var(--ui-text-muted)]" />
+                  </div>
+                  <UBadge :color="item.color" variant="subtle" size="xs">
+                    {{ item.label }}
+                  </UBadge>
+                </div>
+                <p class="mt-3 text-2xl font-semibold">
+                  {{ item.value }}
+                </p>
+                <p class="mt-1 text-xs text-[var(--ui-text-muted)]">
+                  {{ item.detail }}
+                </p>
+              </button>
+            </div>
+
+            <p v-else class="text-sm text-[var(--ui-text-muted)] py-6">
+              Select a client to review jobs, billing, requests, meetings, and shared work history.
+            </p>
           </UCard>
 
           <UCard>
