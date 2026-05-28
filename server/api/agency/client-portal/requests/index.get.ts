@@ -12,13 +12,15 @@ export default defineEventHandler(async (event) => {
 
   const clientId = query.clientId as string | undefined
   const type = query.type as string | undefined
+  const category = query.category as string | undefined
+  const priority = query.priority as string | undefined
   const status = query.status as string | undefined
   const assignedTo = query.assignedTo as string | undefined
   const limit = Math.min(Number(query.limit) || 50, 100)
 
   try {
     const conditions: string[] = []
-    const params: any[] = []
+    const params: Array<string | number> = []
     let idx = 1
 
     if (clientId) {
@@ -30,6 +32,18 @@ export default defineEventHandler(async (event) => {
     if (type && type !== 'all') {
       conditions.push(`cr.request_type = $${idx}`)
       params.push(type)
+      idx++
+    }
+
+    if (category && category !== 'all') {
+      conditions.push(`cr.category = $${idx}`)
+      params.push(category)
+      idx++
+    }
+
+    if (priority && priority !== 'all') {
+      conditions.push(`cr.priority = $${idx}`)
+      params.push(priority)
       idx++
     }
 

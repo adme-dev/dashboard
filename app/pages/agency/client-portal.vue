@@ -694,12 +694,16 @@ const clearActivityFilters = () => {
 const requestFilters = ref({
   clientId: typeof routeQueryString(route.query.clientId) === 'string' ? String(routeQueryString(route.query.clientId)) : '',
   type: typeof routeQueryString(route.query.requestType) === 'string' ? String(routeQueryString(route.query.requestType)) : 'all',
+  category: typeof routeQueryString(route.query.requestCategory) === 'string' ? String(routeQueryString(route.query.requestCategory)) : 'all',
+  priority: typeof routeQueryString(route.query.requestPriority) === 'string' ? String(routeQueryString(route.query.requestPriority)) : 'all',
   status: typeof routeQueryString(route.query.requestStatus) === 'string' ? String(routeQueryString(route.query.requestStatus)) : 'all'
 })
 
 const requestQuery = computed(() => ({
   clientId: requestFilters.value.clientId || undefined,
   type: requestFilters.value.type,
+  category: requestFilters.value.category,
+  priority: requestFilters.value.priority,
   status: requestFilters.value.status,
   limit: 100
 }))
@@ -728,19 +732,25 @@ const requestQueueLabel = computed(() => {
     parts.push('all clients')
   }
   if (requestFilters.value.type !== 'all') parts.push(formatRequestType(requestFilters.value.type))
+  if (requestFilters.value.category !== 'all') parts.push(formatRequestType(requestFilters.value.category))
+  if (requestFilters.value.priority !== 'all') parts.push(`${formatRequestType(requestFilters.value.priority)} priority`)
   if (requestFilters.value.status !== 'all') parts.push(formatRequestType(requestFilters.value.status))
   return parts.join(' · ')
 })
 
-const setRequestQueue = (status: string, type = 'all') => {
+const setRequestQueue = (status: string, type = 'all', category = 'all', priority = 'all') => {
   requestFilters.value.status = status
   requestFilters.value.type = type
+  requestFilters.value.category = category
+  requestFilters.value.priority = priority
   activeTab.value = 'requests'
 }
 
 const clearRequestFilters = () => {
   requestFilters.value.clientId = ''
   requestFilters.value.type = 'all'
+  requestFilters.value.category = 'all'
+  requestFilters.value.priority = 'all'
   requestFilters.value.status = 'all'
 }
 
@@ -1060,6 +1070,8 @@ const runSelectedClientNextAction = (action: { action: string, path?: string }) 
     requestFilters.value.clientId = selectedAccessClientId.value
     requestFilters.value.status = 'all'
     requestFilters.value.type = 'all'
+    requestFilters.value.category = 'all'
+    requestFilters.value.priority = 'all'
     activeTab.value = 'requests'
     return
   }
@@ -1090,6 +1102,8 @@ watch(
     () => portalClientFilters.value.status,
     () => requestFilters.value.clientId,
     () => requestFilters.value.type,
+    () => requestFilters.value.category,
+    () => requestFilters.value.priority,
     () => requestFilters.value.status,
     selectedAccessClientId
   ],
@@ -1105,6 +1119,8 @@ watch(
     if (activeTab.value === 'requests') {
       if (requestFilters.value.clientId) query.clientId = requestFilters.value.clientId
       if (requestFilters.value.type !== 'all') query.requestType = requestFilters.value.type
+      if (requestFilters.value.category !== 'all') query.requestCategory = requestFilters.value.category
+      if (requestFilters.value.priority !== 'all') query.requestPriority = requestFilters.value.priority
       if (requestFilters.value.status !== 'all') query.requestStatus = requestFilters.value.status
       const requestId = routeQueryString(route.query.requestId)
       if (typeof requestId === 'string' && requestId) query.requestId = requestId
@@ -1538,6 +1554,12 @@ const handleRequestDeepLink = async () => {
   if (typeof routeQueryString(route.query.requestType) === 'string') {
     requestFilters.value.type = String(routeQueryString(route.query.requestType))
   }
+  if (typeof routeQueryString(route.query.requestCategory) === 'string') {
+    requestFilters.value.category = String(routeQueryString(route.query.requestCategory))
+  }
+  if (typeof routeQueryString(route.query.requestPriority) === 'string') {
+    requestFilters.value.priority = String(routeQueryString(route.query.requestPriority))
+  }
   if (typeof routeQueryString(route.query.requestStatus) === 'string') {
     requestFilters.value.status = String(routeQueryString(route.query.requestStatus))
   }
@@ -1562,6 +1584,8 @@ watch(
     route.query.search,
     route.query.clientId,
     route.query.requestType,
+    route.query.requestCategory,
+    route.query.requestPriority,
     route.query.requestStatus,
     route.query.portalClientId,
     route.query.requestId
@@ -2722,7 +2746,11 @@ const enterpriseRollout = [
                 {{ portalRequestSummary.inProgress }}
               </p>
             </button>
-            <div class="rounded-lg border border-default bg-default p-4">
+            <button
+              type="button"
+              class="rounded-lg border border-default bg-default p-4 text-left transition-colors hover:bg-elevated"
+              @click="setRequestQueue('all', 'all', 'all', 'urgent')"
+            >
               <div class="flex items-center justify-between gap-3">
                 <p class="text-sm text-[var(--ui-text-muted)]">
                   Urgent
@@ -2732,11 +2760,11 @@ const enterpriseRollout = [
               <p class="text-xl font-bold mt-1 text-red-500">
                 {{ portalRequestSummary.urgent }}
               </p>
-            </div>
+            </button>
             <button
               type="button"
               class="rounded-lg border border-default bg-default p-4 text-left transition-colors hover:bg-elevated"
-              @click="setRequestQueue('all', 'support_ticket')"
+              @click="setRequestQueue('all', 'all', 'access')"
             >
               <div class="flex items-center justify-between gap-3">
                 <p class="text-sm text-[var(--ui-text-muted)]">
@@ -2766,11 +2794,11 @@ const enterpriseRollout = [
                   icon="i-lucide-x"
                   color="neutral"
                   variant="ghost"
-                  :disabled="requestFilters.clientId === '' && requestFilters.type === 'all' && requestFilters.status === 'all'"
+                  :disabled="requestFilters.clientId === '' && requestFilters.type === 'all' && requestFilters.category === 'all' && requestFilters.priority === 'all' && requestFilters.status === 'all'"
                   @click="clearRequestFilters"
                 />
               </div>
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
                 <USelectMenu
                   v-model="requestFilters.clientId"
                   :items="portalUserClientOptions"
@@ -2784,6 +2812,30 @@ const enterpriseRollout = [
                     { label: 'All request types', value: 'all' },
                     { label: 'Job requests', value: 'job_request' },
                     { label: 'Support tickets', value: 'support_ticket' }
+                  ]"
+                  value-key="value"
+                />
+                <USelect
+                  v-model="requestFilters.category"
+                  :items="[
+                    { label: 'All categories', value: 'all' },
+                    { label: 'Access', value: 'access' },
+                    { label: 'Billing', value: 'billing' },
+                    { label: 'Content', value: 'content' },
+                    { label: 'Campaigns', value: 'campaigns' },
+                    { label: 'Meetings', value: 'meetings' },
+                    { label: 'Other', value: 'other' }
+                  ]"
+                  value-key="value"
+                />
+                <USelect
+                  v-model="requestFilters.priority"
+                  :items="[
+                    { label: 'All priorities', value: 'all' },
+                    { label: 'Urgent', value: 'urgent' },
+                    { label: 'High', value: 'high' },
+                    { label: 'Normal', value: 'normal' },
+                    { label: 'Low', value: 'low' }
                   ]"
                   value-key="value"
                 />
