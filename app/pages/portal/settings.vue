@@ -75,7 +75,7 @@ const permissionModules = computed(() => [
     description: 'Current billing, outstanding invoices, and paid invoice history.',
     icon: 'i-lucide-receipt-text',
     enabled: Boolean(user.value?.permissions?.canViewInvoices),
-    to: '/portal/invoices'
+    to: '/portal/invoices?view=current'
   },
   {
     key: 'analytics',
@@ -83,7 +83,7 @@ const permissionModules = computed(() => [
     description: 'Campaign performance, portal-visible leads, reports, and exports.',
     icon: 'i-lucide-chart-no-axes-combined',
     enabled: Boolean(user.value?.permissions?.canViewAnalytics),
-    to: '/portal/analytics'
+    to: '/portal/analytics?metric=leads'
   },
   {
     key: 'approvals',
@@ -91,7 +91,7 @@ const permissionModules = computed(() => [
     description: 'Review work, approve deliverables, and request revisions.',
     icon: 'i-lucide-check-check',
     enabled: Boolean(user.value?.permissions?.canApproveWork),
-    to: '/portal/approvals'
+    to: '/portal/approvals?status=pending'
   },
   {
     key: 'requests',
@@ -99,7 +99,7 @@ const permissionModules = computed(() => [
     description: 'Submit briefs, job requests, and support tickets.',
     icon: 'i-lucide-message-square-plus',
     enabled: Boolean(user.value?.permissions?.canSubmitRequests),
-    to: '/portal/requests'
+    to: '/portal/requests?type=job_request'
   },
   {
     key: 'budgets',

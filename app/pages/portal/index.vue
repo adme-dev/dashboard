@@ -119,7 +119,7 @@ const accountPriorities = computed<AccountPriority[]>(() => {
       detail: `${data.approvals.pendingCount} item${data.approvals.pendingCount === 1 ? '' : 's'} waiting on your decision`,
       icon: 'i-lucide-check-check',
       color: 'warning',
-      to: '/portal/approvals'
+      to: '/portal/approvals?status=pending'
     })
   }
 
@@ -129,7 +129,7 @@ const accountPriorities = computed<AccountPriority[]>(() => {
       detail: `${data.enterprise.billing.overdueCount} overdue invoice${data.enterprise.billing.overdueCount === 1 ? '' : 's'}`,
       icon: 'i-lucide-receipt-text',
       color: 'error',
-      to: '/portal/invoices'
+      to: '/portal/invoices?status=overdue'
     })
   } else if (data.enterprise.billing?.outstandingCount) {
     items.push({
@@ -137,7 +137,7 @@ const accountPriorities = computed<AccountPriority[]>(() => {
       detail: `${data.enterprise.billing.outstandingCount} outstanding invoice${data.enterprise.billing.outstandingCount === 1 ? '' : 's'}`,
       icon: 'i-lucide-receipt-text',
       color: 'neutral',
-      to: '/portal/invoices'
+      to: '/portal/invoices?view=current'
     })
   }
 
@@ -147,7 +147,7 @@ const accountPriorities = computed<AccountPriority[]>(() => {
       detail: `${data.meetings.stats.live} live room${data.meetings.stats.live === 1 ? '' : 's'} available now`,
       icon: 'i-lucide-video',
       color: 'success',
-      to: '/portal/meetings'
+      to: '/portal/meetings?view=upcoming'
     })
   } else if (data.meetings.stats.planned > 0) {
     items.push({
@@ -155,7 +155,7 @@ const accountPriorities = computed<AccountPriority[]>(() => {
       detail: `${data.meetings.stats.planned} planned session${data.meetings.stats.planned === 1 ? '' : 's'}`,
       icon: 'i-lucide-video',
       color: 'primary',
-      to: '/portal/meetings'
+      to: '/portal/meetings?view=upcoming'
     })
   }
 
@@ -185,7 +185,7 @@ const accountPriorities = computed<AccountPriority[]>(() => {
       detail: `${data.requests.stats.open} request${data.requests.stats.open === 1 ? '' : 's'} in progress or review`,
       icon: 'i-lucide-message-square-plus',
       color: 'primary',
-      to: '/portal/requests'
+      to: '/portal/requests?view=open'
     })
   }
 
@@ -195,7 +195,7 @@ const accountPriorities = computed<AccountPriority[]>(() => {
       detail: `${data.enterprise.content.briefsOverdue} brief${data.enterprise.content.briefsOverdue === 1 ? '' : 's'} past the requested date`,
       icon: 'i-lucide-file-clock',
       color: 'warning',
-      to: '/portal/briefs'
+      to: '/portal/briefs?status=needs_info'
     })
   } else if (data.enterprise.content.briefsNeedsInfo > 0) {
     items.push({
@@ -203,7 +203,7 @@ const accountPriorities = computed<AccountPriority[]>(() => {
       detail: `${data.enterprise.content.briefsNeedsInfo} brief${data.enterprise.content.briefsNeedsInfo === 1 ? '' : 's'} need more information`,
       icon: 'i-lucide-file-question',
       color: 'info',
-      to: '/portal/briefs'
+      to: '/portal/briefs?status=needs_info'
     })
   }
 
@@ -254,7 +254,9 @@ const accountCoverage = computed<AccountCoverage[]>(() => {
         : 'Invoice permission required',
       icon: 'i-lucide-receipt-text',
       color: data.enterprise.billing?.overdueCount ? 'error' : data.enterprise.billing ? 'success' : 'neutral',
-      to: data.enterprise.billing ? '/portal/invoices' : '/portal/settings',
+      to: data.enterprise.billing
+        ? data.enterprise.billing.overdueCount > 0 ? '/portal/invoices?status=overdue' : '/portal/invoices?view=current'
+        : '/portal/settings',
       status: data.enterprise.billing ? 'Live' : 'Restricted'
     },
     {
@@ -262,7 +264,7 @@ const accountCoverage = computed<AccountCoverage[]>(() => {
       detail: `${data.approvals.pendingCount} decision${data.approvals.pendingCount === 1 ? '' : 's'} pending`,
       icon: 'i-lucide-check-check',
       color: data.approvals.pendingCount > 0 ? 'warning' : 'success',
-      to: '/portal/approvals',
+      to: data.approvals.pendingCount > 0 ? '/portal/approvals?status=pending' : '/portal/approvals',
       status: 'Live'
     },
     {
@@ -270,7 +272,7 @@ const accountCoverage = computed<AccountCoverage[]>(() => {
       detail: `${data.requests.stats.open} open, ${data.requests.stats.resolved} resolved`,
       icon: 'i-lucide-message-square-plus',
       color: data.requests.stats.open > 0 ? 'primary' : 'success',
-      to: '/portal/requests',
+      to: data.requests.stats.open > 0 ? '/portal/requests?view=open' : '/portal/requests?view=resolved',
       status: 'Live'
     },
     {
@@ -278,7 +280,7 @@ const accountCoverage = computed<AccountCoverage[]>(() => {
       detail: `${data.enterprise.content.briefsOpen} open briefs, ${data.enterprise.content.deliverablesVisible} files`,
       icon: 'i-lucide-folder-open-dot',
       color: data.enterprise.content.briefsOverdue > 0 ? 'warning' : data.enterprise.content.deliverablesVisible > 0 ? 'success' : 'neutral',
-      to: '/portal/briefs',
+      to: data.enterprise.content.briefsNeedsInfo > 0 ? '/portal/briefs?status=needs_info' : '/portal/briefs?status=submitted',
       status: data.enterprise.content.briefsTotal > 0 || data.enterprise.content.deliverablesVisible > 0 ? 'Live' : 'Available'
     },
     {
@@ -286,7 +288,7 @@ const accountCoverage = computed<AccountCoverage[]>(() => {
       detail: `${data.meetings.stats.planned + data.meetings.stats.live} upcoming, ${data.meetings.stats.recordings} recordings`,
       icon: 'i-lucide-video',
       color: data.meetings.stats.totalVisible > 0 ? 'success' : 'neutral',
-      to: '/portal/meetings',
+      to: data.meetings.stats.planned + data.meetings.stats.live > 0 ? '/portal/meetings?view=upcoming' : '/portal/meetings?view=history',
       status: data.meetings.stats.totalVisible > 0 ? 'Live' : 'Available'
     }
   ]
@@ -307,7 +309,7 @@ const enterpriseScorecard = computed<EnterpriseScorecardMetric[]>(() => {
         : `${data.enterprise.jobs.completedLast30} completed in the last 30 days`,
       icon: 'i-lucide-briefcase-business',
       color: scoreColor(deliveryOnTrack),
-      to: data.enterprise.jobs.overdue > 0 ? '/portal/projects?view=upcoming' : '/portal/projects'
+      to: data.enterprise.jobs.overdue > 0 ? '/portal/projects?view=upcoming' : '/portal/projects?status=active'
     }
   ]
 

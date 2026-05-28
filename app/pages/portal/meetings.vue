@@ -156,7 +156,7 @@ function formatCompactDate(date: string | null | undefined) {
         </p>
       </div>
       <UButton
-        to="/portal/requests"
+        to="/portal/requests?service=strategy"
         icon="i-lucide-message-square-plus"
         color="neutral"
         variant="outline"
@@ -399,7 +399,7 @@ function formatCompactDate(date: string | null | undefined) {
                 {{ artifactCount(meeting) ? `${artifactCount(meeting)} note${artifactCount(meeting) === 1 ? '' : 's'}` : 'Notes' }}
               </UButton>
               <UButton
-                to="/portal/requests"
+                to="/portal/requests?type=support_ticket"
                 icon="i-lucide-message-square"
                 color="neutral"
                 variant="ghost"
