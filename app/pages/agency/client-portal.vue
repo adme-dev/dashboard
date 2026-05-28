@@ -94,6 +94,7 @@ interface PortalApproval {
   title: string
   approvalType: string
   projectName: string
+  clientId?: string | null
   clientName: string
   requestedAt: string
   dueDate?: string | null
@@ -523,6 +524,17 @@ const clearPortalUserFilters = () => {
 const { data: approvalsData, pending: approvalsPending } = await useFetch('/api/agency/client-portal/approvals')
 
 const approvals = computed(() => ((approvalsData.value as unknown as { approvals?: PortalApproval[] } | null)?.approvals || []))
+const portalApprovalSummary = computed(() => {
+  const items = approvals.value
+  const pending = items.filter(approval => approval.status === 'pending')
+  return {
+    total: items.length,
+    pending: pending.length,
+    overdue: pending.filter(approval => approval.dueDate && new Date(approval.dueDate) < new Date()).length,
+    revisionRequested: items.filter(approval => approval.status === 'revision_requested').length,
+    approved: items.filter(approval => approval.status === 'approved').length
+  }
+})
 
 const activityFilters = ref({
   clientId: '',
@@ -1291,7 +1303,8 @@ const approvalColumns = [
   { accessorKey: 'project', header: 'Project' },
   { accessorKey: 'requestedAt', header: 'Requested' },
   { accessorKey: 'dueDate', header: 'Due' },
-  { accessorKey: 'status', header: 'Status' }
+  { accessorKey: 'status', header: 'Status' },
+  { accessorKey: 'actions', header: '' }
 ]
 
 const activityColumns = [
@@ -2162,13 +2175,76 @@ const enterpriseRollout = [
         </div>
 
         <!-- Approvals Tab -->
-        <div v-if="activeTab === 'approvals'">
-          <div v-if="approvalsPending" class="flex items-center justify-center py-12">
-            <XfLoader />
+        <div v-if="activeTab === 'approvals'" class="space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div class="rounded-lg border border-default bg-default p-4">
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  Pending decisions
+                </p>
+                <UIcon name="i-lucide-hourglass" class="size-4 text-amber-500" />
+              </div>
+              <p class="text-xl font-bold mt-1">
+                {{ portalApprovalSummary.pending }}
+              </p>
+            </div>
+            <div class="rounded-lg border border-default bg-default p-4">
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  Overdue
+                </p>
+                <UIcon name="i-lucide-alarm-clock" class="size-4 text-red-500" />
+              </div>
+              <p class="text-xl font-bold mt-1">
+                {{ portalApprovalSummary.overdue }}
+              </p>
+            </div>
+            <div class="rounded-lg border border-default bg-default p-4">
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  Revisions
+                </p>
+                <UIcon name="i-lucide-pencil-ruler" class="size-4 text-sky-500" />
+              </div>
+              <p class="text-xl font-bold mt-1">
+                {{ portalApprovalSummary.revisionRequested }}
+              </p>
+            </div>
+            <div class="rounded-lg border border-default bg-default p-4">
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  Approved
+                </p>
+                <UIcon name="i-lucide-circle-check" class="size-4 text-emerald-500" />
+              </div>
+              <p class="text-xl font-bold mt-1">
+                {{ portalApprovalSummary.approved }}
+              </p>
+            </div>
           </div>
 
-          <UCard v-else>
-            <UTable :data="approvals" :columns="approvalColumns">
+          <UCard>
+            <template #header>
+              <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p class="text-base font-semibold">
+                    Approval queue
+                  </p>
+                  <p class="text-sm text-[var(--ui-text-muted)]">
+                    Review client-visible work that needs a decision before production can move forward.
+                  </p>
+                </div>
+                <UBadge color="neutral" variant="subtle">
+                  {{ portalApprovalSummary.total }} total items
+                </UBadge>
+              </div>
+            </template>
+
+            <div v-if="approvalsPending" class="flex items-center justify-center py-12">
+              <XfLoader />
+            </div>
+
+            <UTable v-else :data="approvals" :columns="approvalColumns">
               <template #title-cell="{ row }">
                 <div>
                   <p class="font-medium">
@@ -2206,10 +2282,24 @@ const enterpriseRollout = [
                   {{ row.original.status }}
                 </UBadge>
               </template>
+
+              <template #actions-cell="{ row }">
+                <div class="flex justify-end gap-2">
+                  <UButton
+                    icon="i-lucide-external-link"
+                    variant="ghost"
+                    color="neutral"
+                    size="sm"
+                    :loading="openingPortal"
+                    aria-label="Open approvals in client portal"
+                    @click="openClientPortal(row.original.clientId, `/portal/approvals?status=${row.original.status}`)"
+                  />
+                </div>
+              </template>
             </UTable>
 
-            <div v-if="approvals.length === 0" class="text-center text-[var(--ui-text-muted)] py-8">
-              No approval requests yet
+            <div v-if="!approvalsPending && approvals.length === 0" class="text-center text-[var(--ui-text-muted)] py-10">
+              No approval requests are waiting across client portals.
             </div>
           </UCard>
         </div>
