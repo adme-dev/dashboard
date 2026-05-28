@@ -68,6 +68,27 @@ interface AccountCoverage {
   status: 'Live' | 'Available' | 'Restricted'
 }
 
+interface EnterpriseScorecardMetric {
+  label: string
+  value: number
+  detail: string
+  icon: string
+  color: PriorityColor
+  to: string
+}
+
+function percent(numerator: number, denominator: number) {
+  if (denominator <= 0) return 100
+  return Math.max(0, Math.min(100, Math.round((numerator / denominator) * 100)))
+}
+
+function scoreColor(value: number): PriorityColor {
+  if (value >= 85) return 'success'
+  if (value >= 65) return 'primary'
+  if (value >= 45) return 'warning'
+  return 'error'
+}
+
 const accountPriorities = computed<AccountPriority[]>(() => {
   const data = dashboard.value
   if (!data) return []
@@ -265,6 +286,82 @@ const accountCoverage = computed<AccountCoverage[]>(() => {
       status: data.meetings.stats.totalVisible > 0 ? 'Live' : 'Available'
     }
   ]
+})
+
+const enterpriseScorecard = computed<EnterpriseScorecardMetric[]>(() => {
+  const data = dashboard.value
+  if (!data) return []
+
+  const activeJobs = data.enterprise.jobs.active
+  const deliveryOnTrack = percent(Math.max(activeJobs - data.enterprise.jobs.overdue, 0), activeJobs)
+  const metrics: EnterpriseScorecardMetric[] = [
+    {
+      label: 'Delivery confidence',
+      value: deliveryOnTrack,
+      detail: activeJobs > 0
+        ? `${Math.max(activeJobs - data.enterprise.jobs.overdue, 0)} of ${activeJobs} active jobs on track`
+        : `${data.enterprise.jobs.completedLast30} completed in the last 30 days`,
+      icon: 'i-lucide-briefcase-business',
+      color: scoreColor(deliveryOnTrack),
+      to: '/portal/projects'
+    }
+  ]
+
+  if (data.enterprise.campaigns) {
+    const contacted = data.enterprise.campaigns.contactedLeadsLast30
+    const uncontacted = data.enterprise.campaigns.uncontactedLeadsLast30
+    const followUpScore = percent(contacted, contacted + uncontacted)
+    metrics.push({
+      label: 'Lead follow-up',
+      value: followUpScore,
+      detail: `${contacted} contacted, ${uncontacted} awaiting follow-up`,
+      icon: 'i-lucide-phone-call',
+      color: scoreColor(followUpScore),
+      to: '/portal/leads'
+    })
+  }
+
+  if (data.enterprise.billing) {
+    const outstanding = data.enterprise.billing.outstandingCount
+    const clear = Math.max(outstanding - data.enterprise.billing.overdueCount, 0)
+    const billingScore = percent(clear, outstanding)
+    metrics.push({
+      label: 'Billing position',
+      value: billingScore,
+      detail: outstanding > 0
+        ? `${data.enterprise.billing.overdueCount} overdue of ${outstanding} outstanding`
+        : 'No outstanding invoices',
+      icon: 'i-lucide-receipt-text',
+      color: scoreColor(billingScore),
+      to: '/portal/invoices'
+    })
+  }
+
+  const portalUsers = data.enterprise.access.totalUsers
+  const adoptionScore = percent(data.enterprise.access.activeUsers, portalUsers)
+  metrics.push({
+    label: 'Portal adoption',
+    value: adoptionScore,
+    detail: `${data.enterprise.access.activeUsers} active, ${data.enterprise.access.pendingUsers} pending users`,
+    icon: 'i-lucide-users-round',
+    color: scoreColor(adoptionScore),
+    to: '/portal/settings'
+  })
+
+  const visibleDeliverables = data.enterprise.content.deliverablesVisible
+  const contentScore = percent(data.enterprise.content.deliverablesFinal || data.enterprise.content.deliverablesApproved, visibleDeliverables)
+  metrics.push({
+    label: 'Content readiness',
+    value: contentScore,
+    detail: visibleDeliverables > 0
+      ? `${data.enterprise.content.deliverablesFinal} final, ${data.enterprise.content.deliverablesApproved} approved files`
+      : `${data.enterprise.content.briefsOpen} open briefs`,
+    icon: 'i-lucide-folder-open-dot',
+    color: scoreColor(contentScore),
+    to: '/portal/briefs'
+  })
+
+  return metrics.slice(0, 5)
 })
 
 const accountCoverageSummary = computed(() => {
@@ -795,6 +892,56 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
           </div>
         </NuxtLink>
       </div>
+
+      <UCard>
+        <template #header>
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-gauge" class="text-primary" />
+              <span class="font-semibold">Operational Scorecard</span>
+            </div>
+            <UButton
+              to="/portal/features"
+              variant="ghost"
+              color="neutral"
+              size="xs"
+              trailing-icon="i-lucide-arrow-right"
+            >
+              Services
+            </UButton>
+          </div>
+        </template>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+          <NuxtLink
+            v-for="metric in enterpriseScorecard"
+            :key="metric.label"
+            :to="metric.to"
+            class="rounded-lg border border-default bg-default p-4 hover:bg-elevated transition-colors"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="rounded-md bg-elevated p-2">
+                <UIcon :name="metric.icon" class="size-4" />
+              </div>
+              <UBadge :color="metric.color" variant="subtle" size="xs">
+                {{ metric.value }}%
+              </UBadge>
+            </div>
+            <p class="mt-3 text-sm font-semibold">
+              {{ metric.label }}
+            </p>
+            <UProgress
+              :value="metric.value"
+              :color="metric.color"
+              size="xs"
+              class="mt-3"
+            />
+            <p class="mt-2 text-xs text-muted">
+              {{ metric.detail }}
+            </p>
+          </NuxtLink>
+        </div>
+      </UCard>
 
       <UCard>
         <template #header>
