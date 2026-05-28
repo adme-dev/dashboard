@@ -539,6 +539,31 @@ const portalRequestSummary = computed(() => {
   }
 })
 
+const requestQueueLabel = computed(() => {
+  const parts = []
+  if (requestFilters.value.clientId) {
+    const client = clients.value.find(item => item.id === requestFilters.value.clientId)
+    parts.push(client?.name || 'selected client')
+  } else {
+    parts.push('all clients')
+  }
+  if (requestFilters.value.type !== 'all') parts.push(formatRequestType(requestFilters.value.type))
+  if (requestFilters.value.status !== 'all') parts.push(formatRequestType(requestFilters.value.status))
+  return parts.join(' · ')
+})
+
+const setRequestQueue = (status: string, type = 'all') => {
+  requestFilters.value.status = status
+  requestFilters.value.type = type
+  activeTab.value = 'requests'
+}
+
+const clearRequestFilters = () => {
+  requestFilters.value.clientId = ''
+  requestFilters.value.type = 'all'
+  requestFilters.value.status = 'all'
+}
+
 // Fetch clients for invite modal
 const { data: clientsData } = await useFetch('/api/agency/clients', {
   query: { limit: 100 }
@@ -2042,73 +2067,117 @@ const enterpriseRollout = [
 
         <!-- Requests Tab -->
         <div v-if="activeTab === 'requests'">
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-            <UCard>
-              <p class="text-sm text-[var(--ui-text-muted)]">
-                New requests
-              </p>
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+            <button
+              type="button"
+              class="rounded-lg border border-default bg-default p-4 text-left transition-colors hover:bg-elevated"
+              @click="setRequestQueue('submitted')"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  New requests
+                </p>
+                <UIcon name="i-lucide-inbox" class="size-4 text-[var(--ui-text-muted)]" />
+              </div>
               <p class="text-xl font-bold mt-1">
                 {{ portalRequestSummary.submitted }}
               </p>
-            </UCard>
-            <UCard>
-              <p class="text-sm text-[var(--ui-text-muted)]">
-                In progress
-              </p>
+            </button>
+            <button
+              type="button"
+              class="rounded-lg border border-default bg-default p-4 text-left transition-colors hover:bg-elevated"
+              @click="setRequestQueue('in_progress')"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  In progress
+                </p>
+                <UIcon name="i-lucide-loader-circle" class="size-4 text-[var(--ui-text-muted)]" />
+              </div>
               <p class="text-xl font-bold mt-1">
                 {{ portalRequestSummary.inProgress }}
               </p>
-            </UCard>
-            <UCard>
-              <p class="text-sm text-[var(--ui-text-muted)]">
-                Urgent
-              </p>
+            </button>
+            <div class="rounded-lg border border-default bg-default p-4">
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  Urgent
+                </p>
+                <UIcon name="i-lucide-siren" class="size-4 text-error" />
+              </div>
               <p class="text-xl font-bold mt-1 text-red-500">
                 {{ portalRequestSummary.urgent }}
               </p>
-            </UCard>
-            <UCard>
-              <p class="text-sm text-[var(--ui-text-muted)]">
-                Access requests
-              </p>
+            </div>
+            <button
+              type="button"
+              class="rounded-lg border border-default bg-default p-4 text-left transition-colors hover:bg-elevated"
+              @click="setRequestQueue('all', 'support_ticket')"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  Access requests
+                </p>
+                <UIcon name="i-lucide-shield-question" class="size-4 text-[var(--ui-text-muted)]" />
+              </div>
               <p class="text-xl font-bold mt-1">
                 {{ portalRequestSummary.access }}
               </p>
-            </UCard>
+            </button>
           </div>
 
           <UCard class="mb-4">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <USelectMenu
-                v-model="requestFilters.clientId"
-                :items="portalUserClientOptions"
-                placeholder="All clients"
-                value-key="value"
-                searchable
-              />
-              <USelect
-                v-model="requestFilters.type"
-                :items="[
-                  { label: 'All request types', value: 'all' },
-                  { label: 'Job requests', value: 'job_request' },
-                  { label: 'Support tickets', value: 'support_ticket' }
-                ]"
-                value-key="value"
-              />
-              <USelect
-                v-model="requestFilters.status"
-                :items="[
-                  { label: 'All statuses', value: 'all' },
-                  { label: 'Submitted', value: 'submitted' },
-                  { label: 'In review', value: 'in_review' },
-                  { label: 'Approved', value: 'approved' },
-                  { label: 'In progress', value: 'in_progress' },
-                  { label: 'Completed', value: 'completed' },
-                  { label: 'Closed', value: 'closed' },
-                  { label: 'Cancelled', value: 'cancelled' }
-                ]"
-                value-key="value"
-              />
+            <div class="flex flex-col gap-4">
+              <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h2 class="text-lg font-semibold">
+                    Request triage
+                  </h2>
+                  <p class="text-sm text-[var(--ui-text-muted)]">
+                    {{ portalRequests.length }} requests in {{ requestQueueLabel }}.
+                  </p>
+                </div>
+                <UButton
+                  label="Clear filters"
+                  icon="i-lucide-x"
+                  color="neutral"
+                  variant="ghost"
+                  :disabled="requestFilters.clientId === '' && requestFilters.type === 'all' && requestFilters.status === 'all'"
+                  @click="clearRequestFilters"
+                />
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <USelectMenu
+                  v-model="requestFilters.clientId"
+                  :items="portalUserClientOptions"
+                  placeholder="All clients"
+                  value-key="value"
+                  searchable
+                />
+                <USelect
+                  v-model="requestFilters.type"
+                  :items="[
+                    { label: 'All request types', value: 'all' },
+                    { label: 'Job requests', value: 'job_request' },
+                    { label: 'Support tickets', value: 'support_ticket' }
+                  ]"
+                  value-key="value"
+                />
+                <USelect
+                  v-model="requestFilters.status"
+                  :items="[
+                    { label: 'All statuses', value: 'all' },
+                    { label: 'Submitted', value: 'submitted' },
+                    { label: 'In review', value: 'in_review' },
+                    { label: 'Approved', value: 'approved' },
+                    { label: 'In progress', value: 'in_progress' },
+                    { label: 'Completed', value: 'completed' },
+                    { label: 'Closed', value: 'closed' },
+                    { label: 'Cancelled', value: 'cancelled' }
+                  ]"
+                  value-key="value"
+                />
+              </div>
             </div>
           </UCard>
 
