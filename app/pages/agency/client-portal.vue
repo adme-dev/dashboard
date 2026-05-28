@@ -794,6 +794,11 @@ const getClientPortalActions = (clientId?: string | null) => [
 
 const selectedClientPortalActions = computed(() => getClientPortalActions(selectedAccessClientId.value))
 
+const openEnterprisePlan = (clientId: string) => {
+  selectedAccessClientId.value = clientId
+  activeTab.value = 'enterprise'
+}
+
 const portalTabItems = computed(() => [
   { label: `Clients (${portalClientSummary.value.total})`, value: 'clients', icon: 'i-lucide-building-2' },
   { label: `Users (${users.value.length})`, value: 'users', icon: 'i-lucide-users' },
@@ -1930,6 +1935,15 @@ const enterpriseRollout = [
                 >
                   Requests
                 </UButton>
+                <UButton
+                  icon="i-lucide-building"
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  @click="openEnterprisePlan(item.client.id)"
+                >
+                  Plan
+                </UButton>
               </div>
             </div>
           </div>
@@ -2254,6 +2268,14 @@ const enterpriseRollout = [
                     size="sm"
                     aria-label="Invite portal user"
                     @click="inviteClientUser(row.original.id)"
+                  />
+                  <UButton
+                    icon="i-lucide-building"
+                    variant="ghost"
+                    color="neutral"
+                    size="sm"
+                    aria-label="Open enterprise plan"
+                    @click="openEnterprisePlan(row.original.id)"
                   />
                   <UDropdownMenu :items="getClientPortalActions(row.original.id)">
                     <UButton
