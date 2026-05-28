@@ -930,6 +930,12 @@ const editPortalUserAccess = (user: PortalUser) => {
   }
   showAccessModal.value = true
 }
+const accessEnabledModules = computed(() =>
+  Object.values(accessForm.value.permissions).filter(Boolean).length
+)
+const applyAccessPermissionPreset = (preset: typeof invitePermissionPresets[number]) => {
+  accessForm.value.permissions = { ...preset.permissions }
+}
 
 const savingAccess = ref(false)
 const savePortalUserAccess = async () => {
@@ -3242,17 +3248,43 @@ const enterpriseRollout = [
 
     <USlideover v-model:open="showAccessModal">
       <template #header>
-        <div>
-          <h3 class="text-[18px] font-[600]">
-            Portal Access
-          </h3>
-          <p class="text-sm text-[var(--ui-text-muted)] mt-1">
-            {{ editingPortalUser?.name }} · {{ editingPortalUser?.clientName }}
-          </p>
+        <div class="flex items-start gap-3">
+          <div class="size-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <UIcon name="i-lucide-shield-check" class="size-5" />
+          </div>
+          <div class="min-w-0">
+            <h3 class="text-[18px] font-[600]">
+              Portal access
+            </h3>
+            <p class="truncate text-sm text-[var(--ui-text-muted)] mt-1">
+              {{ editingPortalUser?.name }} · {{ editingPortalUser?.clientName }}
+            </p>
+          </div>
         </div>
       </template>
       <template #body>
         <form class="space-y-6" @submit.prevent="savePortalUserAccess">
+          <div class="rounded-lg border border-default bg-elevated/40 p-4">
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-xs uppercase tracking-wide text-[var(--ui-text-muted)]">
+                  Current access
+                </p>
+                <p class="truncate text-sm font-medium">
+                  {{ editingPortalUser?.email || 'Client user' }}
+                </p>
+              </div>
+              <div class="flex items-center gap-2">
+                <UBadge :color="getUserStatusColor(accessForm.status)" variant="subtle">
+                  {{ accessForm.status }}
+                </UBadge>
+                <UBadge color="primary" variant="subtle">
+                  {{ accessEnabledModules }} modules
+                </UBadge>
+              </div>
+            </div>
+          </div>
+
           <div>
             <label class="block text-[13px] font-medium mb-2">Status</label>
             <USelect
@@ -3268,10 +3300,39 @@ const enterpriseRollout = [
             />
           </div>
 
-          <fieldset class="space-y-4">
-            <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest">
-              Portal modules
-            </legend>
+          <fieldset class="space-y-5">
+            <div>
+              <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest">
+                Portal modules
+              </legend>
+              <p class="text-[12px] text-[var(--ui-text-muted)] mt-1">
+                Apply a standard access package, or update individual modules for this user.
+              </p>
+            </div>
+
+            <div class="grid grid-cols-1 gap-2">
+              <button
+                v-for="preset in invitePermissionPresets"
+                :key="preset.label"
+                type="button"
+                class="rounded-lg border border-default bg-default p-3 text-left transition-colors hover:bg-elevated"
+                @click="applyAccessPermissionPreset(preset)"
+              >
+                <div class="flex items-start gap-3">
+                  <div class="size-8 rounded-md bg-[var(--ui-bg-elevated)] flex items-center justify-center shrink-0">
+                    <UIcon :name="preset.icon" class="size-4 text-[var(--ui-text-muted)]" />
+                  </div>
+                  <div>
+                    <p class="text-sm font-medium">
+                      {{ preset.label }}
+                    </p>
+                    <p class="text-xs text-[var(--ui-text-muted)]">
+                      {{ preset.description }}
+                    </p>
+                  </div>
+                </div>
+              </button>
+            </div>
 
             <label class="flex items-center gap-3 cursor-pointer">
               <UCheckbox v-model="accessForm.permissions.canViewProjects" />
