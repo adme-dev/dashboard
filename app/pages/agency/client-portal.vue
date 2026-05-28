@@ -343,6 +343,67 @@ const selectedClientAccountBrief = computed(() => {
     }
   ]
 })
+const selectedClientReadinessChecklist = computed(() => {
+  const client = selectedPortalClient.value
+  if (!client) return []
+
+  const gaps = client.setupGaps?.length ? client.setupGaps : ['Ready for client review']
+  return gaps.map((gap) => {
+    const normalized = gap.toLowerCase()
+    if (normalized.includes('user') || normalized.includes('invite')) {
+      return {
+        label: gap,
+        icon: 'i-lucide-user-plus',
+        color: client.setupGaps?.length ? 'warning' as const : 'success' as const,
+        action: 'invite',
+        path: ''
+      }
+    }
+    if (normalized.includes('campaign') || normalized.includes('analytics') || normalized.includes('lead')) {
+      return {
+        label: gap,
+        icon: 'i-lucide-chart-no-axes-combined',
+        color: client.setupGaps?.length ? 'warning' as const : 'success' as const,
+        action: 'open',
+        path: '/portal/analytics?metric=leads'
+      }
+    }
+    if (normalized.includes('billing') || normalized.includes('invoice')) {
+      return {
+        label: gap,
+        icon: 'i-lucide-receipt-text',
+        color: client.setupGaps?.length ? 'warning' as const : 'success' as const,
+        action: 'open',
+        path: '/portal/invoices?view=current'
+      }
+    }
+    if (normalized.includes('meeting') || normalized.includes('recording') || normalized.includes('video')) {
+      return {
+        label: gap,
+        icon: 'i-lucide-video',
+        color: client.setupGaps?.length ? 'warning' as const : 'success' as const,
+        action: 'open',
+        path: '/portal/meetings?view=upcoming'
+      }
+    }
+    if (normalized.includes('content') || normalized.includes('file') || normalized.includes('deliverable') || normalized.includes('brief')) {
+      return {
+        label: gap,
+        icon: 'i-lucide-folder-open-dot',
+        color: client.setupGaps?.length ? 'warning' as const : 'success' as const,
+        action: 'open',
+        path: '/portal/projects?status=active'
+      }
+    }
+    return {
+      label: gap,
+      icon: client.setupGaps?.length ? 'i-lucide-circle-alert' : 'i-lucide-circle-check',
+      color: client.setupGaps?.length ? 'warning' as const : 'success' as const,
+      action: 'plan',
+      path: ''
+    }
+  })
+})
 
 const commandCenterStats = computed(() => [
   {
@@ -1004,6 +1065,22 @@ const runSelectedClientNextAction = (action: { action: string, path?: string }) 
   }
 
   openClientPortal(selectedAccessClientId.value, action.path || '/portal')
+}
+
+const runSelectedClientReadinessAction = (item: { action: string, path?: string }) => {
+  if (!selectedAccessClientId.value) {
+    toast.add({ title: 'Select a client first', color: 'error' })
+    return
+  }
+
+  if (item.action === 'invite') {
+    inviteClientUser(selectedAccessClientId.value)
+    return
+  }
+
+  if (item.action === 'open') {
+    openClientPortal(selectedAccessClientId.value, item.path || '/portal')
+  }
 }
 
 watch(
@@ -3053,6 +3130,75 @@ const enterpriseRollout = [
                 />
               </div>
             </div>
+          </UCard>
+
+          <UCard>
+            <template #header>
+              <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-lucide-list-checks" class="size-4 text-primary" />
+                  <h2 class="font-semibold">
+                    Portal readiness checklist
+                  </h2>
+                </div>
+                <UBadge :color="getReadinessColor(selectedPortalClient?.readinessScore || 0)" variant="subtle">
+                  {{ selectedPortalClient?.readinessScore || 0 }}% ready
+                </UBadge>
+              </div>
+            </template>
+
+            <div v-if="selectedPortalClient" class="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">
+              <div class="rounded-lg border border-default bg-default p-4">
+                <p class="text-sm text-[var(--ui-text-muted)]">
+                  Setup gaps
+                </p>
+                <p class="mt-1 text-3xl font-semibold">
+                  {{ selectedPortalClient.setupGaps?.length || 0 }}
+                </p>
+                <UProgress
+                  :value="selectedPortalClient.readinessScore"
+                  :color="getReadinessColor(selectedPortalClient.readinessScore)"
+                  size="sm"
+                  class="mt-4"
+                />
+                <p class="mt-2 text-xs text-[var(--ui-text-muted)]">
+                  Resolve each gap before client rollout, then preview the portal with agency access logging.
+                </p>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <button
+                  v-for="item in selectedClientReadinessChecklist"
+                  :key="item.label"
+                  type="button"
+                  class="rounded-lg border border-default bg-default p-4 text-left transition-colors hover:bg-elevated"
+                  @click="runSelectedClientReadinessAction(item)"
+                >
+                  <div class="flex items-start gap-3">
+                    <div class="size-9 rounded-lg bg-[var(--ui-bg-elevated)] flex items-center justify-center shrink-0">
+                      <UIcon :name="item.icon" class="size-4 text-[var(--ui-text-muted)]" />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-start justify-between gap-3">
+                        <p class="font-medium text-sm">
+                          {{ item.label }}
+                        </p>
+                        <UBadge :color="item.color" variant="subtle" size="xs">
+                          {{ selectedPortalClient.setupGaps?.length ? 'Gap' : 'Ready' }}
+                        </UBadge>
+                      </div>
+                      <p class="mt-1 text-xs text-[var(--ui-text-muted)]">
+                        {{ item.action === 'invite' ? 'Invite access' : item.action === 'open' ? 'Preview module' : 'No action required' }}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <p v-else class="text-sm text-[var(--ui-text-muted)] py-6">
+              Select a client to review every setup gap before inviting stakeholders into the portal.
+            </p>
           </UCard>
 
           <UCard>
