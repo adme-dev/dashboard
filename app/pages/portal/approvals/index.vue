@@ -1,12 +1,37 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
-const activeTab = ref('all')
+const route = useRoute()
+const router = useRouter()
+const routeQueryString = (value: unknown) => Array.isArray(value) ? value[0] : value
+const approvalTabs = ['all', 'pending', 'approved', 'rejected', 'revision_requested']
+const initialStatus = routeQueryString(route.query.status)
+
+const activeTab = ref(typeof initialStatus === 'string' && approvalTabs.includes(initialStatus) ? initialStatus : 'all')
 const statusFilter = computed(() => activeTab.value === 'all' ? undefined : activeTab.value)
 
 const { data, pending } = useFetch('/api/portal/approvals', {
   query: { status: statusFilter }
 })
+
+watch(activeTab, (tab) => {
+  const query: Record<string, string> = {}
+  if (tab !== 'all') query.status = tab
+
+  const current = new URLSearchParams(route.query as Record<string, string>).toString()
+  const next = new URLSearchParams(query).toString()
+  if (current !== next) {
+    router.replace({ query })
+  }
+})
+
+watch(
+  () => route.query.status,
+  () => {
+    const status = routeQueryString(route.query.status)
+    activeTab.value = typeof status === 'string' && approvalTabs.includes(status) ? status : 'all'
+  }
+)
 
 const tabs = [
   { label: 'All', value: 'all' },

@@ -2,8 +2,14 @@
 definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
 const { hasPermission } = usePortalAuth()
+const route = useRoute()
+const router = useRouter()
 
-const activeTab = ref('all')
+const routeQueryString = (value: unknown) => Array.isArray(value) ? value[0] : value
+const briefTabs = ['all', 'submitted', 'under_review', 'in_progress', 'completed', 'needs_info']
+const initialStatus = routeQueryString(route.query.status)
+
+const activeTab = ref(typeof initialStatus === 'string' && briefTabs.includes(initialStatus) ? initialStatus : 'all')
 const statusFilter = computed(() => {
   if (activeTab.value === 'all') return undefined
   return activeTab.value
@@ -12,6 +18,25 @@ const statusFilter = computed(() => {
 const { data, pending } = useFetch('/api/portal/briefs', {
   query: { status: statusFilter }
 })
+
+watch(activeTab, (tab) => {
+  const query: Record<string, string> = {}
+  if (tab !== 'all') query.status = tab
+
+  const current = new URLSearchParams(route.query as Record<string, string>).toString()
+  const next = new URLSearchParams(query).toString()
+  if (current !== next) {
+    router.replace({ query })
+  }
+})
+
+watch(
+  () => route.query.status,
+  () => {
+    const status = routeQueryString(route.query.status)
+    activeTab.value = typeof status === 'string' && briefTabs.includes(status) ? status : 'all'
+  }
+)
 
 const tabs = [
   { label: 'All', value: 'all' },
