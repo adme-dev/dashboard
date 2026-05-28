@@ -53,6 +53,66 @@ const statusColors: Record<string, string> = {
   cancelled: 'error'
 }
 
+function daysUntil(date: string | null) {
+  if (!date) return null
+  const target = new Date(date)
+  const today = new Date()
+  target.setHours(0, 0, 0, 0)
+  today.setHours(0, 0, 0, 0)
+  return Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+const jobHealth = computed(() => {
+  const detail = data.value
+  if (!detail) return []
+
+  const dueDays = daysUntil(detail.project.dueDate)
+  const nextTask = detail.upcomingTasks?.[0]
+  const pendingApprovals = detail.approvals.filter((approval: { status: string }) => approval.status === 'pending').length
+  const completedThisJob = detail.completedTasks.length
+
+  const schedule = dueDays == null
+    ? { value: 'No due date', detail: 'Schedule not published', color: 'neutral' as const }
+    : dueDays < 0
+      ? { value: `${Math.abs(dueDays)}d late`, detail: `Due ${formatDate(detail.project.dueDate)}`, color: 'error' as const }
+      : dueDays === 0
+        ? { value: 'Due today', detail: 'Scheduled completion today', color: 'warning' as const }
+        : dueDays <= 14
+          ? { value: `${dueDays}d left`, detail: `Due ${formatDate(detail.project.dueDate)}`, color: 'warning' as const }
+          : { value: 'On track', detail: `Due ${formatDate(detail.project.dueDate)}`, color: 'success' as const }
+
+  return [
+    {
+      label: 'Schedule',
+      value: schedule.value,
+      detail: schedule.detail,
+      icon: 'i-lucide-calendar-clock',
+      color: schedule.color
+    },
+    {
+      label: 'Next work',
+      value: nextTask ? formatDate(nextTask.dueDate || nextTask.startDate) : 'None scheduled',
+      detail: nextTask?.title || 'No active task is visible',
+      icon: 'i-lucide-list-checks',
+      color: nextTask ? 'primary' as const : 'neutral' as const
+    },
+    {
+      label: 'Completed history',
+      value: String(completedThisJob),
+      detail: `${detail.project.tasks.completed}/${detail.project.tasks.total} total tasks complete`,
+      icon: 'i-lucide-history',
+      color: completedThisJob > 0 ? 'success' as const : 'neutral' as const
+    },
+    {
+      label: 'Client decisions',
+      value: String(pendingApprovals),
+      detail: pendingApprovals > 0 ? 'Approvals waiting on review' : 'No pending approvals',
+      icon: 'i-lucide-check-check',
+      color: pendingApprovals > 0 ? 'warning' as const : 'success' as const
+    }
+  ]
+})
+
 function getErrorMessage(error: unknown) {
   if (error && typeof error === 'object' && 'data' in error) {
     const data = (error as { data?: { statusMessage?: string } }).data
@@ -129,6 +189,31 @@ async function submitComment() {
               <span v-if="data.project.dueDate">Due: {{ formatDate(data.project.dueDate) }}</span>
             </div>
           </div>
+        </div>
+
+        <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <button
+            v-for="metric in jobHealth"
+            :key="metric.label"
+            type="button"
+            class="rounded-lg border border-default bg-default p-4 text-left transition-colors hover:bg-elevated"
+            @click="metric.label === 'Client decisions' ? activeTab = 'approvals' : activeTab = 'work'"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="rounded-md bg-elevated p-2">
+                <UIcon :name="metric.icon" class="size-4" />
+              </div>
+              <UBadge :color="metric.color" variant="subtle" size="xs">
+                {{ metric.label }}
+              </UBadge>
+            </div>
+            <p class="mt-3 text-lg font-semibold">
+              {{ metric.value }}
+            </p>
+            <p class="mt-1 text-xs text-muted line-clamp-2">
+              {{ metric.detail }}
+            </p>
+          </button>
         </div>
       </div>
 
