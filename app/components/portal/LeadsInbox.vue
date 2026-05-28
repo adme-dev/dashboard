@@ -41,6 +41,7 @@ const page = ref(1)
 const selectedLeadId = ref<string | null>(null)
 const PAGE_SIZE = 50
 const route = useRoute()
+const router = useRouter()
 
 if (typeof route.query.status === 'string') status.value = route.query.status
 if (typeof route.query.source === 'string') source.value = route.query.source
@@ -51,6 +52,7 @@ if (typeof route.query.campaignId === 'string') campaignId.value = route.query.c
 else if (typeof route.query.campaign_id === 'string') campaignId.value = route.query.campaign_id
 if (typeof route.query.from === 'string') from.value = route.query.from
 if (typeof route.query.to === 'string') to.value = route.query.to
+if (typeof route.query.page === 'string') page.value = Math.max(1, Number.parseInt(route.query.page, 10) || 1)
 
 const params = computed(() => {
   const p: Record<string, string> = { page: String(page.value), page_size: String(PAGE_SIZE) }
@@ -169,6 +171,25 @@ function clearCampaignFilter() {
   to.value = ''
 }
 
+function syncRouteQuery() {
+  const query: Record<string, string> = {}
+  if (status.value !== 'all') query.status = status.value
+  if (source.value !== 'all') query.source = source.value
+  if (search.value.trim()) query.search = search.value.trim()
+  if (campaign.value.trim()) query.campaign = campaign.value.trim()
+  if (campaignId.value.trim()) query.campaignId = campaignId.value.trim()
+  if (from.value) query.from = from.value
+  if (to.value) query.to = to.value
+  if (page.value > 1) query.page = String(page.value)
+  if (selectedLeadId.value) query.leadId = selectedLeadId.value
+
+  const current = new URLSearchParams(route.query as Record<string, string>).toString()
+  const next = new URLSearchParams(query).toString()
+  if (current !== next) {
+    router.replace({ query })
+  }
+}
+
 const selectedLead = computed(() => selectedData.value?.lead ?? null)
 const statsByStatus = computed(() => Object.fromEntries((data.value?.stats ?? []).map(s => [s.status, Number(s.count)])))
 const sourceBreakdown = computed(() => (data.value?.sourceStats ?? []).map(item => ({
@@ -203,7 +224,24 @@ watch([status, source, search, campaign, campaignId, from, to], () => {
 })
 watch(selectedLeadId, async (id) => {
   if (id) await refreshSelected()
-})
+}, { immediate: true })
+watch([status, source, search, campaign, campaignId, from, to, page, selectedLeadId], syncRouteQuery)
+watch(
+  () => route.query,
+  (query) => {
+    status.value = typeof query.status === 'string' ? query.status : 'all'
+    source.value = typeof query.source === 'string' ? query.source : 'all'
+    search.value = typeof query.search === 'string' ? query.search : ''
+    campaign.value = typeof query.campaign === 'string' ? query.campaign : ''
+    campaignId.value = typeof query.campaignId === 'string'
+      ? query.campaignId
+      : typeof query.campaign_id === 'string' ? query.campaign_id : ''
+    from.value = typeof query.from === 'string' ? query.from : ''
+    to.value = typeof query.to === 'string' ? query.to : ''
+    page.value = typeof query.page === 'string' ? Math.max(1, Number.parseInt(query.page, 10) || 1) : 1
+    selectedLeadId.value = typeof query.leadId === 'string' ? query.leadId : null
+  }
+)
 </script>
 
 <template>
