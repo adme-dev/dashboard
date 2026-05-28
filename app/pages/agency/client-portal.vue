@@ -8,6 +8,7 @@ definePageMeta({
 
 const toast = useToast()
 const route = useRoute()
+const router = useRouter()
 
 interface PortalClient {
   id: string
@@ -236,12 +237,16 @@ const errorMessage = (error: unknown) => {
   return 'Unknown error'
 }
 
+const routeQueryString = (value: unknown) => Array.isArray(value) ? value[0] : value
+const portalTabs = ['clients', 'users', 'approvals', 'requests', 'audit', 'enterprise']
+const routeTab = routeQueryString(route.query.tab)
+
 // Active tab
-const activeTab = ref('clients')
+const activeTab = ref(typeof routeTab === 'string' && portalTabs.includes(routeTab) ? routeTab : 'clients')
 
 const portalClientFilters = ref({
-  search: '',
-  status: 'all'
+  search: typeof routeQueryString(route.query.search) === 'string' ? String(routeQueryString(route.query.search)) : '',
+  status: typeof routeQueryString(route.query.status) === 'string' ? String(routeQueryString(route.query.status)) : 'all'
 })
 
 const portalClientQuery = computed(() => ({
@@ -460,9 +465,9 @@ const { data: activityData, pending: activityPending, refresh: refreshActivity }
 const portalActivity = computed(() => ((activityData.value as { activity?: PortalActivity[] } | null)?.activity || []))
 
 const requestFilters = ref({
-  clientId: '',
-  type: 'all',
-  status: 'all'
+  clientId: typeof routeQueryString(route.query.clientId) === 'string' ? String(routeQueryString(route.query.clientId)) : '',
+  type: typeof routeQueryString(route.query.requestType) === 'string' ? String(routeQueryString(route.query.requestType)) : 'all',
+  status: typeof routeQueryString(route.query.requestStatus) === 'string' ? String(routeQueryString(route.query.requestStatus)) : 'all'
 })
 
 const requestQuery = computed(() => ({
@@ -511,7 +516,11 @@ const assigneeOptions = computed(() => [
   ...teamMembers.value.map(member => ({ label: member.name, value: member.id }))
 ])
 
-const selectedAccessClientId = ref<string | null>(null)
+const selectedAccessClientId = ref<string | null>(
+  typeof routeQueryString(route.query.portalClientId) === 'string'
+    ? String(routeQueryString(route.query.portalClientId))
+    : null
+)
 watch(clients, (items) => {
   if (!selectedAccessClientId.value && items.length > 0) {
     selectedAccessClientId.value = items[0].id
@@ -606,6 +615,45 @@ const { data: selectedDashboardData, pending: selectedDashboardPending } = await
 
 const selectedDashboard = computed(() => selectedDashboardData.value as AgencyPortalDashboard | null)
 const selectedEnterprise = computed(() => selectedDashboard.value?.enterprise)
+
+watch(
+  [
+    activeTab,
+    () => portalClientFilters.value.search,
+    () => portalClientFilters.value.status,
+    () => requestFilters.value.clientId,
+    () => requestFilters.value.type,
+    () => requestFilters.value.status,
+    selectedAccessClientId
+  ],
+  () => {
+    const query: Record<string, string> = {}
+    query.tab = activeTab.value
+
+    if (activeTab.value === 'clients') {
+      if (portalClientFilters.value.search) query.search = portalClientFilters.value.search
+      if (portalClientFilters.value.status !== 'all') query.status = portalClientFilters.value.status
+    }
+
+    if (activeTab.value === 'requests') {
+      if (requestFilters.value.clientId) query.clientId = requestFilters.value.clientId
+      if (requestFilters.value.type !== 'all') query.requestType = requestFilters.value.type
+      if (requestFilters.value.status !== 'all') query.requestStatus = requestFilters.value.status
+      const requestId = routeQueryString(route.query.requestId)
+      if (typeof requestId === 'string' && requestId) query.requestId = requestId
+    }
+
+    if (activeTab.value === 'enterprise' && selectedAccessClientId.value) {
+      query.portalClientId = selectedAccessClientId.value
+    }
+
+    const current = new URLSearchParams(route.query as Record<string, string>).toString()
+    const next = new URLSearchParams(query).toString()
+    if (current !== next) {
+      router.replace({ query })
+    }
+  }
+)
 
 const portalModuleReadiness = (client: PortalClient) => [
   { label: 'Jobs', value: client.moduleAccess?.projects || 0 },
@@ -944,13 +992,30 @@ const openRequestDetail = async (request: Pick<PortalRequest, 'id'>) => {
   }
 }
 
-const routeQueryString = (value: unknown) => Array.isArray(value) ? value[0] : value
 const lastOpenedRequestId = ref<string | null>(null)
 const handleRequestDeepLink = async () => {
   const tab = routeQueryString(route.query.tab)
   const requestId = routeQueryString(route.query.requestId)
 
-  if (tab === 'requests') activeTab.value = 'requests'
+  if (typeof tab === 'string' && portalTabs.includes(tab)) activeTab.value = tab
+  if (typeof routeQueryString(route.query.status) === 'string') {
+    portalClientFilters.value.status = String(routeQueryString(route.query.status))
+  }
+  if (typeof routeQueryString(route.query.search) === 'string') {
+    portalClientFilters.value.search = String(routeQueryString(route.query.search))
+  }
+  if (typeof routeQueryString(route.query.clientId) === 'string') {
+    requestFilters.value.clientId = String(routeQueryString(route.query.clientId))
+  }
+  if (typeof routeQueryString(route.query.requestType) === 'string') {
+    requestFilters.value.type = String(routeQueryString(route.query.requestType))
+  }
+  if (typeof routeQueryString(route.query.requestStatus) === 'string') {
+    requestFilters.value.status = String(routeQueryString(route.query.requestStatus))
+  }
+  if (typeof routeQueryString(route.query.portalClientId) === 'string') {
+    selectedAccessClientId.value = String(routeQueryString(route.query.portalClientId))
+  }
   if (typeof requestId !== 'string' || !requestId || lastOpenedRequestId.value === requestId) return
 
   lastOpenedRequestId.value = requestId
@@ -963,7 +1028,16 @@ onMounted(() => {
 })
 
 watch(
-  () => [route.query.tab, route.query.requestId],
+  () => [
+    route.query.tab,
+    route.query.status,
+    route.query.search,
+    route.query.clientId,
+    route.query.requestType,
+    route.query.requestStatus,
+    route.query.portalClientId,
+    route.query.requestId
+  ],
   () => {
     handleRequestDeepLink()
   }
