@@ -659,6 +659,31 @@ const portalTabItems = computed(() => [
   { label: 'Enterprise', value: 'enterprise', icon: 'i-lucide-building' }
 ])
 
+const activeClientFilterLabel = computed(() => {
+  const filters: Record<string, string> = {
+    'all': 'All clients',
+    'risk': 'Needs attention',
+    'billing-risk': 'Billing risk',
+    'request-risk': 'Request risk',
+    'lead-risk': 'Lead risk',
+    'missing-campaigns': 'Missing campaigns',
+    'missing-meetings': 'Missing meetings',
+    'missing-content': 'Missing content',
+    'configured': 'Configured portals',
+    'pending': 'Invite pending',
+    'no-users': 'No users yet'
+  }
+  return filters[portalClientFilters.value.status] || 'Filtered clients'
+})
+
+const clientListInsight = computed(() => {
+  const summary = portalClientSummary.value
+  if (portalClientFilters.value.status === 'all' && !portalClientFilters.value.search) {
+    return `${summary.active} active portals, ${summary.pending} pending invites, ${summary.notConfigured} not configured.`
+  }
+  return `${portalClients.value.length} clients match ${activeClientFilterLabel.value.toLowerCase()}.`
+})
+
 const selectedDashboardQuery = computed(() => selectedAccessClientId.value
   ? { clientId: selectedAccessClientId.value }
   : undefined)
@@ -1522,8 +1547,41 @@ const enterpriseRollout = [
 
         <div v-if="activeTab === 'clients'">
           <UCard class="mb-4">
-            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:w-[520px]">
+            <div class="flex flex-col gap-4">
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <h2 class="text-lg font-semibold">
+                      Client portfolio
+                    </h2>
+                    <UBadge color="neutral" variant="subtle">
+                      {{ activeClientFilterLabel }}
+                    </UBadge>
+                  </div>
+                  <p class="mt-1 text-sm text-[var(--ui-text-muted)]">
+                    {{ clientListInsight }}
+                  </p>
+                </div>
+                <div class="flex flex-col sm:flex-row gap-2">
+                  <UButton
+                    label="Invite client user"
+                    icon="i-lucide-user-plus"
+                    color="neutral"
+                    variant="outline"
+                    @click="inviteClientUser()"
+                  />
+                  <UButton
+                    label="Clear filters"
+                    icon="i-lucide-x"
+                    color="neutral"
+                    variant="ghost"
+                    :disabled="portalClientFilters.search === '' && portalClientFilters.status === 'all'"
+                    @click="portalClientFilters.search = ''; portalClientFilters.status = 'all'"
+                  />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-3">
                 <UInput
                   v-model="portalClientFilters.search"
                   icon="i-lucide-search"
@@ -1545,23 +1603,6 @@ const enterpriseRollout = [
                     { label: 'No users yet', value: 'no-users' }
                   ]"
                   value-key="value"
-                />
-              </div>
-              <div class="flex flex-col sm:flex-row gap-2">
-                <UButton
-                  label="Invite client user"
-                  icon="i-lucide-user-plus"
-                  color="neutral"
-                  variant="outline"
-                  @click="inviteClientUser()"
-                />
-                <UButton
-                  label="Clear filters"
-                  icon="i-lucide-x"
-                  color="neutral"
-                  variant="ghost"
-                  :disabled="portalClientFilters.search === '' && portalClientFilters.status === 'all'"
-                  @click="portalClientFilters.search = ''; portalClientFilters.status = 'all'"
                 />
               </div>
             </div>
@@ -1799,6 +1840,16 @@ const enterpriseRollout = [
 
               <template #actions-cell="{ row }">
                 <div class="flex justify-end gap-2">
+                  <UButton
+                    icon="i-lucide-layout-dashboard"
+                    color="primary"
+                    variant="soft"
+                    size="sm"
+                    :loading="openingPortal"
+                    @click="openClientPortal(row.original.id, '/portal')"
+                  >
+                    Open
+                  </UButton>
                   <UButton
                     icon="i-lucide-user-plus"
                     variant="ghost"
