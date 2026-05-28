@@ -19,13 +19,13 @@ const navBadge = (value?: number) => value && value > 0 ? value.toString() : und
 const mainNav = computed<NavigationMenuItem[]>(() => [
   { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/portal', exact: true, onSelect: close },
   { label: 'Jobs', icon: 'i-lucide-folder-kanban', to: '/portal/projects', badge: navBadge(stats.value?.activeProjects), onSelect: close },
-  { label: 'Approvals', icon: 'i-lucide-check-circle', to: '/portal/approvals', badge: navBadge(stats.value?.pendingApprovals), onSelect: close },
-  { label: 'Requests', icon: 'i-lucide-message-square-plus', to: '/portal/requests', badge: navBadge(stats.value?.openRequests), onSelect: close },
+  { label: 'Approvals', icon: 'i-lucide-check-circle', to: stats.value?.pendingApprovals ? '/portal/approvals?status=pending' : '/portal/approvals', badge: navBadge(stats.value?.pendingApprovals), onSelect: close },
+  { label: 'Requests', icon: 'i-lucide-message-square-plus', to: stats.value?.openRequests ? '/portal/requests' : '/portal/requests?view=resolved', badge: navBadge(stats.value?.openRequests), onSelect: close },
   { label: 'Leads', icon: 'i-lucide-inbox', to: '/portal/leads', onSelect: close },
   { label: 'Meetings', icon: 'i-lucide-video', to: '/portal/meetings', onSelect: close },
   ...(user.value?.permissions?.canSubmitRequests
     ? [
-        { label: 'Briefs', icon: 'i-lucide-file-text', to: '/portal/briefs', onSelect: close }
+        { label: 'Briefs', icon: 'i-lucide-file-text', to: '/portal/briefs?status=submitted', onSelect: close }
       ]
     : []),
   { label: 'Gallery', icon: 'i-lucide-image', to: '/portal/gallery', onSelect: close },
@@ -37,7 +37,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
     : []),
   ...(user.value?.permissions?.canViewInvoices
     ? [
-        { label: 'Invoices', icon: 'i-lucide-receipt', to: '/portal/invoices', onSelect: close }
+        { label: 'Invoices', icon: 'i-lucide-receipt', to: '/portal/invoices?view=current', onSelect: close }
       ]
     : []),
   {

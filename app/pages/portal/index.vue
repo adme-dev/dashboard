@@ -303,7 +303,7 @@ const enterpriseScorecard = computed<EnterpriseScorecardMetric[]>(() => {
         : `${data.enterprise.jobs.completedLast30} completed in the last 30 days`,
       icon: 'i-lucide-briefcase-business',
       color: scoreColor(deliveryOnTrack),
-      to: '/portal/projects'
+      to: data.enterprise.jobs.overdue > 0 ? '/portal/projects?view=upcoming' : '/portal/projects'
     }
   ]
 
@@ -333,7 +333,7 @@ const enterpriseScorecard = computed<EnterpriseScorecardMetric[]>(() => {
         : 'No outstanding invoices',
       icon: 'i-lucide-receipt-text',
       color: scoreColor(billingScore),
-      to: '/portal/invoices'
+      to: data.enterprise.billing.overdueCount > 0 ? '/portal/invoices?status=overdue' : '/portal/invoices?view=current'
     })
   }
 
@@ -358,7 +358,7 @@ const enterpriseScorecard = computed<EnterpriseScorecardMetric[]>(() => {
       : `${data.enterprise.content.briefsOpen} open briefs`,
     icon: 'i-lucide-folder-open-dot',
     color: scoreColor(contentScore),
-    to: '/portal/briefs'
+    to: data.enterprise.content.briefsNeedsInfo > 0 ? '/portal/briefs?status=needs_info' : '/portal/briefs?status=submitted'
   })
 
   return metrics.slice(0, 5)
@@ -545,7 +545,7 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
             </div>
             <div class="flex flex-wrap gap-2">
               <UButton
-                to="/portal/requests"
+                to="/portal/requests?type=job_request"
                 icon="i-lucide-plus"
                 color="primary"
               >
@@ -553,7 +553,7 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
               </UButton>
               <UButton
                 v-if="user?.permissions?.canViewAnalytics"
-                to="/portal/analytics"
+                to="/portal/analytics?metric=leads"
                 icon="i-lucide-chart-no-axes-combined"
                 variant="outline"
                 color="neutral"
@@ -577,7 +577,7 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
               </p>
             </NuxtLink>
 
-            <NuxtLink to="/portal/approvals" class="rounded-lg bg-elevated/60 p-4 hover:bg-elevated transition-colors">
+            <NuxtLink to="/portal/approvals?status=pending" class="rounded-lg bg-elevated/60 p-4 hover:bg-elevated transition-colors">
               <div class="flex items-center gap-2 text-sm text-muted">
                 <UIcon name="i-lucide-check-check" class="size-4" />
                 Awaiting approval
@@ -605,7 +605,7 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
 
             <NuxtLink
               v-if="user?.permissions?.canViewInvoices"
-              to="/portal/invoices"
+              to="/portal/invoices?view=current"
               class="rounded-lg bg-elevated/60 p-4 hover:bg-elevated transition-colors"
             >
               <div class="flex items-center gap-2 text-sm text-muted">
@@ -679,7 +679,7 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
                   Join
                 </UButton>
                 <UButton
-                  to="/portal/meetings"
+                  to="/portal/meetings?view=upcoming"
                   icon="i-lucide-door-open"
                   size="xs"
                   variant="outline"
@@ -736,7 +736,7 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
 
         <NuxtLink
           v-if="dashboard.enterprise.billing"
-          to="/portal/invoices"
+          :to="dashboard.enterprise.billing.overdueCount > 0 ? '/portal/invoices?status=overdue' : '/portal/invoices?view=current'"
           class="rounded-lg border border-default bg-default p-4 hover:bg-elevated transition-colors"
         >
           <div class="flex items-start justify-between gap-3">
@@ -787,7 +787,7 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
 
         <NuxtLink
           v-if="dashboard.enterprise.campaigns"
-          to="/portal/analytics"
+          to="/portal/analytics?metric=leads"
           class="rounded-lg border border-default bg-default p-4 hover:bg-elevated transition-colors"
         >
           <div class="flex items-start justify-between gap-3">
@@ -862,7 +862,7 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
           </div>
         </NuxtLink>
 
-        <NuxtLink to="/portal/briefs" class="rounded-lg border border-default bg-default p-4 hover:bg-elevated transition-colors">
+        <NuxtLink :to="dashboard.enterprise.content.briefsNeedsInfo > 0 ? '/portal/briefs?status=needs_info' : '/portal/briefs?status=submitted'" class="rounded-lg border border-default bg-default p-4 hover:bg-elevated transition-colors">
           <div class="flex items-start justify-between gap-3">
             <div>
               <p class="text-sm text-muted">
@@ -1274,8 +1274,8 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
           </div>
 
           <template #footer>
-            <NuxtLink to="/portal/approvals" class="text-sm text-primary hover:underline">
-              View all approvals
+            <NuxtLink to="/portal/approvals?status=pending" class="text-sm text-primary hover:underline">
+              View pending approvals
             </NuxtLink>
           </template>
         </UCard>
@@ -1396,7 +1396,7 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
 
           <template #footer>
             <NuxtLink to="/portal/requests" class="text-sm text-primary hover:underline">
-              View all requests
+              View open requests
             </NuxtLink>
           </template>
         </UCard>
@@ -1448,7 +1448,7 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
                 <span class="font-semibold">Ad Performance</span>
               </div>
               <UButton
-                to="/portal/analytics"
+                to="/portal/analytics?metric=leads"
                 variant="link"
                 color="neutral"
                 size="xs"
@@ -1507,8 +1507,8 @@ function activityLabel(activity: PortalDashboard['recentActivity'][number]) {
           </div>
 
           <template #footer>
-            <NuxtLink to="/portal/invoices" class="text-sm text-primary hover:underline">
-              View all invoices
+            <NuxtLink to="/portal/invoices?view=current" class="text-sm text-primary hover:underline">
+              View current invoices
             </NuxtLink>
           </template>
         </UCard>
