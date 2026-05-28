@@ -219,6 +219,15 @@ interface AgencyPortalDashboard {
   }
 }
 
+interface PortfolioScorecardMetric {
+  label: string
+  value: number
+  detail: string
+  icon: string
+  color: 'success' | 'primary' | 'warning' | 'error' | 'neutral'
+  filter?: string
+}
+
 const errorMessage = (error: unknown) => {
   if (error && typeof error === 'object') {
     const maybeError = error as { data?: { message?: string }, message?: string }
@@ -260,14 +269,91 @@ const portalClientSummary = computed(() => {
     leads30d: items.reduce((sum, client) => sum + Number(client.portalLeads30d || 0), 0),
     meetings: items.reduce((sum, client) => sum + Number(client.visibleMeetings || 0), 0),
     outstandingAmount: items.reduce((sum, client) => sum + Number(client.outstandingAmount || 0), 0),
+    overdueAmount: items.reduce((sum, client) => sum + Number(client.overdueAmount || 0), 0),
+    overdueInvoices: items.reduce((sum, client) => sum + Number(client.overdueInvoices || 0), 0),
     openRequests: items.reduce((sum, client) => sum + Number(client.openRequests || 0), 0),
+    urgentRequests: items.reduce((sum, client) => sum + Number(client.urgentRequests || 0), 0),
+    unassignedRequests: items.reduce((sum, client) => sum + Number(client.unassignedRequests || 0), 0),
     campaignSpend90d: items.reduce((sum, client) => sum + Number(client.campaignSpend90d || 0), 0),
     contactedLeads30d: items.reduce((sum, client) => sum + Number(client.contactedLeads30d || 0), 0),
     uncontactedLeads30d: items.reduce((sum, client) => sum + Number(client.uncontactedLeads30d || 0), 0),
     briefsOpen: items.reduce((sum, client) => sum + Number(client.briefsOpen || 0), 0),
     briefsOverdue: items.reduce((sum, client) => sum + Number(client.briefsOverdue || 0), 0),
-    deliverablesVisible: items.reduce((sum, client) => sum + Number(client.deliverablesVisible || 0), 0)
+    deliverablesVisible: items.reduce((sum, client) => sum + Number(client.deliverablesVisible || 0), 0),
+    clientsWithContent: items.filter(client => client.deliverablesVisible > 0 || client.briefsTotal > 0).length
   }
+})
+
+const portfolioPercent = (numerator: number, denominator: number) => {
+  if (denominator <= 0) return 100
+  return Math.max(0, Math.min(100, Math.round((numerator / denominator) * 100)))
+}
+
+const portfolioScoreColor = (value: number): PortfolioScorecardMetric['color'] => {
+  if (value >= 85) return 'success'
+  if (value >= 65) return 'primary'
+  if (value >= 45) return 'warning'
+  return 'error'
+}
+
+const portfolioScorecard = computed<PortfolioScorecardMetric[]>(() => {
+  const summary = portalClientSummary.value
+  const requestOwnership = portfolioPercent(
+    Math.max(summary.openRequests - summary.unassignedRequests, 0),
+    summary.openRequests
+  )
+  const leadFollowUp = portfolioPercent(
+    summary.contactedLeads30d,
+    summary.contactedLeads30d + summary.uncontactedLeads30d
+  )
+  const contentCoverage = portfolioPercent(summary.clientsWithContent, summary.total)
+  const billingClear = portfolioPercent(
+    Math.max(summary.outstandingAmount - summary.overdueAmount, 0),
+    summary.outstandingAmount
+  )
+
+  return [
+    {
+      label: 'Readiness',
+      value: summary.averageReadiness,
+      detail: `${summary.needsAttention} clients need attention`,
+      icon: 'i-lucide-gauge',
+      color: portfolioScoreColor(summary.averageReadiness),
+      filter: 'risk'
+    },
+    {
+      label: 'Lead follow-up',
+      value: leadFollowUp,
+      detail: `${summary.uncontactedLeads30d} uncontacted leads`,
+      icon: 'i-lucide-phone-call',
+      color: portfolioScoreColor(leadFollowUp),
+      filter: 'lead-risk'
+    },
+    {
+      label: 'Request ownership',
+      value: requestOwnership,
+      detail: `${summary.unassignedRequests} unassigned of ${summary.openRequests} open`,
+      icon: 'i-lucide-message-square-check',
+      color: portfolioScoreColor(requestOwnership),
+      filter: 'request-risk'
+    },
+    {
+      label: 'Billing position',
+      value: billingClear,
+      detail: `${summary.overdueInvoices} overdue invoices`,
+      icon: 'i-lucide-receipt-text',
+      color: portfolioScoreColor(billingClear),
+      filter: 'billing-risk'
+    },
+    {
+      label: 'Content coverage',
+      value: contentCoverage,
+      detail: `${summary.clientsWithContent} clients have briefs or files`,
+      icon: 'i-lucide-folder-open-dot',
+      color: portfolioScoreColor(contentCoverage),
+      filter: 'missing-content'
+    }
+  ]
 })
 
 const clientRiskItems = computed(() => portalClients.value
@@ -1143,6 +1229,53 @@ const enterpriseRollout = [
             </div>
           </UCard>
         </div>
+
+        <UCard class="mb-6">
+          <template #header>
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div class="flex items-center gap-2">
+                <UIcon name="i-lucide-gauge" class="text-primary" />
+                <span class="font-semibold">Portfolio Scorecard</span>
+              </div>
+              <div class="flex flex-wrap gap-2 text-xs text-[var(--ui-text-muted)]">
+                <span>{{ formatCurrency(portalClientSummary.outstandingAmount) }} outstanding</span>
+                <span>{{ portalClientSummary.urgentRequests }} urgent requests</span>
+                <span>{{ portalClientSummary.briefsOverdue }} overdue briefs</span>
+              </div>
+            </div>
+          </template>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+            <button
+              v-for="metric in portfolioScorecard"
+              :key="metric.label"
+              type="button"
+              class="rounded-lg border border-default bg-default p-4 text-left transition-colors hover:bg-elevated"
+              @click="metric.filter && applyClientStatusFilter(metric.filter)"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="rounded-md bg-[var(--ui-bg-elevated)] p-2">
+                  <UIcon :name="metric.icon" class="size-4" />
+                </div>
+                <UBadge :color="metric.color" variant="subtle" size="xs">
+                  {{ metric.value }}%
+                </UBadge>
+              </div>
+              <p class="mt-3 text-sm font-semibold">
+                {{ metric.label }}
+              </p>
+              <UProgress
+                :value="metric.value"
+                :color="metric.color"
+                size="xs"
+                class="mt-3"
+              />
+              <p class="mt-2 text-xs text-[var(--ui-text-muted)]">
+                {{ metric.detail }}
+              </p>
+            </button>
+          </div>
+        </UCard>
 
         <UCard v-if="clientRiskItems.length" class="mb-6">
           <template #header>
