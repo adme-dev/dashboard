@@ -314,6 +314,15 @@ watch(search, () => {
                   />
                   <UIcon :name="getPlatformIcon(row.platform)" class="w-4 h-4 text-muted shrink-0" />
                   <span class="truncate font-medium" :title="row.campaignName">{{ row.campaignName }}</span>
+                  <!-- Inline status badge when the dedicated Delivery column is hidden (preserves default view) -->
+                  <UBadge
+                    v-if="!isVisible('delivery') && row.campaignStatus && row.campaignStatus !== 'UNKNOWN'"
+                    variant="subtle"
+                    :color="statusColor(row.campaignStatus)"
+                    size="xs"
+                  >
+                    {{ row.campaignStatus }}
+                  </UBadge>
                 </div>
                 <p v-if="row.clientName" class="text-xs text-muted mt-0.5 pl-[3.25rem]">
                   {{ row.clientName }}
