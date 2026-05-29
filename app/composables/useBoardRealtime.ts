@@ -48,11 +48,17 @@ export function useBoardRealtime(boardId: Ref<string>, options: UseBoardRealtime
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let reconnectAttempts = 0
   const MAX_RECONNECT_DELAY = 30000
+  // SSE error budget — EventSource auto-reconnects on transient drops; only
+  // settle into polling after sustained failure so a momentary blip doesn't
+  // strand the session on slow polling. Reset on each successful (re)connect.
+  let sseErrorCount = 0
+  const MAX_SSE_ERRORS = 3
 
   function connect() {
     if (import.meta.server) return
     disconnect()
     reconnectAttempts = 0
+    sseErrorCount = 0
     // Skip WebSocket in dev — Durable Objects aren't available locally
     if (import.meta.dev) {
       fallbackToSSE()
@@ -149,6 +155,7 @@ export function useBoardRealtime(boardId: Ref<string>, options: UseBoardRealtime
         connected.value = true
         connectionType.value = 'sse'
         reconnectAttempts = 0
+        sseErrorCount = 0
         if (e.lastEventId) {
           lastEventId.value = Number(e.lastEventId)
         }
@@ -177,9 +184,17 @@ export function useBoardRealtime(boardId: Ref<string>, options: UseBoardRealtime
 
       eventSource.onerror = () => {
         connected.value = false
+        // A transient drop leaves the stream in CONNECTING while the browser
+        // retries natively — let it recover rather than killing it. Only give
+        // up (close + poll) when the stream is truly CLOSED or it keeps flapping
+        // without a successful reconnect (which would reset sseErrorCount).
+        if (eventSource?.readyState === EventSource.CONNECTING && sseErrorCount < MAX_SSE_ERRORS) {
+          sseErrorCount++
+          return
+        }
         eventSource?.close()
         eventSource = null
-        // SSE also failed — settle into polling
+        // SSE genuinely failed — settle into polling
         startPolling()
       }
     } catch {
