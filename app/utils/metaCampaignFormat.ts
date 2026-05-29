@@ -1,13 +1,23 @@
-/** Pure display helpers for Meta Ads–style campaign columns. No Nuxt/DOM deps. */
+/** Pure display helpers for Meta Ads– and Google Ads–style campaign columns. No Nuxt/DOM deps. */
 
 const BID_STRATEGY_LABELS: Record<string, string> = {
+  // Meta enums
   LOWEST_COST_WITHOUT_CAP: 'Highest volume',
   LOWEST_COST_WITH_BID_CAP: 'Bid cap',
   COST_CAP: 'Cost cap',
   LOWEST_COST_WITH_MIN_ROAS: 'Min ROAS',
+  // Google enums
+  MAXIMIZE_CONVERSIONS: 'Maximize conversions',
+  MAXIMIZE_CONVERSION_VALUE: 'Maximize conv. value',
+  TARGET_CPA: 'Target CPA',
+  TARGET_ROAS: 'Target ROAS',
+  TARGET_SPEND: 'Maximize clicks',
+  MAXIMIZE_CLICKS: 'Maximize clicks',
+  MANUAL_CPC: 'Manual CPC',
+  MANUAL_CPM: 'Manual CPM',
 }
 
-export function metaBidStrategyLabel(raw: string | null | undefined): string {
+export function bidStrategyLabel(raw: string | null | undefined): string {
   if (!raw) return '-'
   if (BID_STRATEGY_LABELS[raw]) return BID_STRATEGY_LABELS[raw]
   return raw

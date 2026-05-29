@@ -434,7 +434,7 @@ watch(search, () => {
 
               <!-- 16. bidStrategy -->
               <td v-if="isVisible('bidStrategy')" class="px-3 py-2.5 text-right text-muted">
-                {{ metaBidStrategyLabel(row.bidStrategy) }}
+                {{ bidStrategyLabel(row.bidStrategy) }}
               </td>
 
               <!-- 17. endDate -->
@@ -588,7 +588,7 @@ watch(search, () => {
                   <span v-if="row.campaignType">Type: {{ row.campaignType }}</span>
                   <span v-if="row.campaignStatus && row.campaignStatus !== 'UNKNOWN'">Status: {{ row.campaignStatus }}</span>
                   <span v-if="row.clientName">Client: {{ row.clientName }}</span>
-                  <span v-if="row.bidStrategy">Bid: {{ metaBidStrategyLabel(row.bidStrategy) }}</span>
+                  <span v-if="row.bidStrategy">Bid: {{ bidStrategyLabel(row.bidStrategy) }}</span>
                   <span v-if="row.budgetType">Budget type: {{ budgetTypeLabel(row.budgetType) }}</span>
                   <span v-if="row.endDate" class="flex items-center gap-1">
                     Ends: {{ endDateInfo(row.endDate).label }}

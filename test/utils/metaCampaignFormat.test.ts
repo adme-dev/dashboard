@@ -1,16 +1,22 @@
 import { describe, it, expect } from 'vitest'
-import { metaBidStrategyLabel, budgetTypeLabel, endDateInfo } from '~/app/utils/metaCampaignFormat'
+import { bidStrategyLabel, budgetTypeLabel, endDateInfo } from '~/app/utils/metaCampaignFormat'
 
-describe('metaBidStrategyLabel', () => {
+describe('bidStrategyLabel', () => {
   it('maps known Meta enums to friendly labels', () => {
-    expect(metaBidStrategyLabel('LOWEST_COST_WITHOUT_CAP')).toBe('Highest volume')
-    expect(metaBidStrategyLabel('COST_CAP')).toBe('Cost cap')
-    expect(metaBidStrategyLabel('LOWEST_COST_WITH_BID_CAP')).toBe('Bid cap')
-    expect(metaBidStrategyLabel('LOWEST_COST_WITH_MIN_ROAS')).toBe('Min ROAS')
+    expect(bidStrategyLabel('LOWEST_COST_WITHOUT_CAP')).toBe('Highest volume')
+    expect(bidStrategyLabel('COST_CAP')).toBe('Cost cap')
+    expect(bidStrategyLabel('LOWEST_COST_WITH_BID_CAP')).toBe('Bid cap')
+    expect(bidStrategyLabel('LOWEST_COST_WITH_MIN_ROAS')).toBe('Min ROAS')
   })
   it('title-cases unknown enums and handles null', () => {
-    expect(metaBidStrategyLabel('SOME_NEW_THING')).toBe('Some New Thing')
-    expect(metaBidStrategyLabel(null)).toBe('-')
+    expect(bidStrategyLabel('SOME_NEW_THING')).toBe('Some New Thing')
+    expect(bidStrategyLabel(null)).toBe('-')
+  })
+  it('maps Google bid-strategy enums', () => {
+    expect(bidStrategyLabel('MAXIMIZE_CONVERSIONS')).toBe('Maximize conversions')
+    expect(bidStrategyLabel('TARGET_CPA')).toBe('Target CPA')
+    expect(bidStrategyLabel('TARGET_ROAS')).toBe('Target ROAS')
+    expect(bidStrategyLabel('MANUAL_CPC')).toBe('Manual CPC')
   })
 })
 
