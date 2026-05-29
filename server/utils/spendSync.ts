@@ -10,7 +10,7 @@ import { queryRows, queryOne } from '~~/server/utils/db'
 // ─── Meta Spend Sync ────────────────────────────────────────────
 
 export async function syncMetaSpend(month: number, year: number): Promise<{ synced: number; totalSpend: number }> {
-  const { getCampaignInsights, getCampaignDailyInsights, extractConversions, extractRevenue } = await import('~~/server/utils/metaClient')
+  const { getCampaignInsights, getCampaignDailyInsights, getCampaigns, mapMetaCampaignMeta, extractConversions, extractRevenue } = await import('~~/server/utils/metaClient')
 
   const period = `${year}-${String(month).padStart(2, '0')}`
 
@@ -53,6 +53,16 @@ export async function syncMetaSpend(month: number, year: number): Promise<{ sync
       continue
     }
 
+    // Enrich with campaign-level metadata (status, end date, bid strategy, budget type).
+    // One call per account; non-fatal on failure.
+    const campaignMetaById = new Map<string, ReturnType<typeof mapMetaCampaignMeta>>()
+    try {
+      const campObjs = await getCampaigns(actId, conn.access_token)
+      for (const c of campObjs) campaignMetaById.set(c.id, mapMetaCampaignMeta(c))
+    } catch (err: any) {
+      console.warn(`[MetaSync] Campaign metadata fetch failed for ${conn.account_name}:`, err.message)
+    }
+
     for (const campaign of campaigns) {
       const spend = parseFloat(campaign.spend || '0')
       if (spend === 0) continue
@@ -76,6 +86,8 @@ export async function syncMetaSpend(month: number, year: number): Promise<{ sync
       const impressions = parseInt(campaign.impressions || '0', 10)
       const clicks = parseInt(campaign.clicks || '0', 10)
 
+      const cmeta = campaign.campaign_id ? (campaignMetaById.get(campaign.campaign_id) || null) : null
+
       const existing = await queryOne<{ id: string }>(
         `SELECT id FROM media_spend
          WHERE connection_id = $1 AND platform = 'meta' AND period = $2 AND campaign_id = $3`,
@@ -89,9 +101,14 @@ export async function syncMetaSpend(month: number, year: number): Promise<{ sync
              conversions = $5, client_id = COALESCE($6, media_spend.client_id),
              commission_rate = CASE WHEN $8 > 0 THEN $8 ELSE media_spend.commission_rate END,
              revenue = $9,
+             campaign_status = COALESCE($10, media_spend.campaign_status),
+             end_date = COALESCE($11, media_spend.end_date),
+             bid_strategy = COALESCE($12, media_spend.bid_strategy),
+             budget_type = COALESCE($13, media_spend.budget_type),
              synced_at = NOW(), updated_at = NOW()
            WHERE id = $7`,
-          [spend, campaign.campaign_name || null, impressions, clicks, conversions, clientId, existing.id, commissionRate, revenue]
+          [spend, campaign.campaign_name || null, impressions, clicks, conversions, clientId, existing.id, commissionRate, revenue,
+           cmeta?.status || null, cmeta?.endDate || null, cmeta?.bidStrategy || null, cmeta?.budgetType || null]
         )
       } else {
         // Check for rolling budget from previous month
@@ -103,10 +120,12 @@ export async function syncMetaSpend(month: number, year: number): Promise<{ sync
           `INSERT INTO media_spend (
              client_id, platform, period, budget_allocated, actual_spend,
              commission_rate, connection_id, campaign_id, campaign_name,
-             impressions, clicks, conversions, budget_rolling, revenue, synced_at
-           ) VALUES ($1, 'meta', $2, $11, $3, $4, $5, $6, $7, $8, $9, $10, $12, $13, NOW())
+             impressions, clicks, conversions, budget_rolling, revenue,
+             campaign_status, end_date, bid_strategy, budget_type, synced_at
+           ) VALUES ($1, 'meta', $2, $11, $3, $4, $5, $6, $7, $8, $9, $10, $12, $13, $14, $15, $16, $17, NOW())
            RETURNING id`,
-          [clientId, period, spend, commissionRate, conn.id, campaign.campaign_id || null, campaign.campaign_name || null, impressions, clicks, conversions, budgetVal, rollingVal, revenue]
+          [clientId, period, spend, commissionRate, conn.id, campaign.campaign_id || null, campaign.campaign_name || null, impressions, clicks, conversions, budgetVal, rollingVal, revenue,
+           cmeta?.status || null, cmeta?.endDate || null, cmeta?.bidStrategy || null, cmeta?.budgetType || null]
         )
       }
 

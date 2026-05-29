@@ -45,8 +45,33 @@ export interface MetaCampaign {
   name: string
   status: string
   objective: string
+  effective_status?: string
   daily_budget?: string
   lifetime_budget?: string
+  bid_strategy?: string
+  stop_time?: string
+  start_time?: string
+}
+
+export interface MetaCampaignMeta {
+  status: string | null
+  endDate: string | null
+  bidStrategy: string | null
+  budgetType: 'daily' | 'lifetime' | null
+}
+
+/** Pure: derive persisted campaign metadata from a Meta campaign object. */
+export function mapMetaCampaignMeta(c: MetaCampaign): MetaCampaignMeta {
+  const lifetime = Number(c.lifetime_budget || 0)
+  const daily = Number(c.daily_budget || 0)
+  const budgetType: 'daily' | 'lifetime' | null =
+    lifetime > 0 ? 'lifetime' : daily > 0 ? 'daily' : null
+  return {
+    status: c.effective_status || c.status || null,
+    endDate: c.stop_time ? c.stop_time.slice(0, 10) : null,
+    bidStrategy: c.bid_strategy || null,
+    budgetType,
+  }
 }
 
 export interface MetaAdSet {
@@ -595,7 +620,7 @@ export async function getCampaigns(
   statusFilter?: string
 ): Promise<MetaCampaign[]> {
   const params: Record<string, string> = {
-    fields: 'id,name,status,objective,daily_budget,lifetime_budget',
+    fields: 'id,name,status,effective_status,objective,daily_budget,lifetime_budget,bid_strategy,stop_time,start_time',
     limit: '100'
   }
   if (statusFilter) {
