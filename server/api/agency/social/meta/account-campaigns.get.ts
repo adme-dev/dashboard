@@ -1,5 +1,6 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
+import { toDateOnly } from '~~/server/utils/analyticsMetrics'
 
 /**
  * GET /api/agency/social/meta/account-campaigns?connectionId=X&month=Y&year=Z
@@ -67,7 +68,7 @@ export default eventHandler(async (event) => {
     reach: r.reach,
     costPerResult: r.cost_per_result,
     resultType: r.result_type,
-    endDate: r.end_date ? String(r.end_date).slice(0, 10) : null,
+    endDate: toDateOnly(r.end_date),
     bidStrategy: r.bid_strategy,
     budgetType: r.budget_type,
   }))

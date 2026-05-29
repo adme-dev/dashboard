@@ -7,7 +7,7 @@
  */
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
-import { computeMetrics, toNum, PLATFORM_LABELS, PLATFORM_COLORS, buildClientCondition } from '~~/server/utils/analyticsMetrics'
+import { computeMetrics, toNum, toDateOnly, PLATFORM_LABELS, PLATFORM_COLORS, buildClientCondition } from '~~/server/utils/analyticsMetrics'
 import { buildCampaignDeepLink } from '~~/server/utils/platformDeepLinks'
 import {
   PORTAL_LEAD_STATUS_SELECT,
@@ -200,7 +200,7 @@ export default defineEventHandler(async (event) => {
           ? toNum(r.cost_per_result)
           : (r.platform === 'google_ads' && conversions > 0 ? metrics.costPerConversion ?? null : null),
         resultType: r.result_type || (r.platform === 'google_ads' && conversions > 0 ? 'Conversions' : null),
-        endDate: r.end_date ? String(r.end_date).slice(0, 10) : null,
+        endDate: toDateOnly(r.end_date),
         bidStrategy: r.bid_strategy || null,
         budgetType: r.budget_type || null,
         lastSynced: r.last_synced,
