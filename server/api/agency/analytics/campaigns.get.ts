@@ -196,8 +196,10 @@ export default defineEventHandler(async (event) => {
         leadLostCount: Number(r.lead_lost_count || 0),
         costPerLead: r.cost_per_lead == null ? null : toNum(r.cost_per_lead),
         reach: toNum(r.reach),
-        costPerResult: r.cost_per_result == null ? null : toNum(r.cost_per_result),
-        resultType: r.result_type || null,
+        costPerResult: r.cost_per_result != null
+          ? toNum(r.cost_per_result)
+          : (r.platform === 'google_ads' && conversions > 0 ? metrics.costPerConversion ?? null : null),
+        resultType: r.result_type || (r.platform === 'google_ads' && conversions > 0 ? 'Conversions' : null),
         endDate: r.end_date ? String(r.end_date).slice(0, 10) : null,
         bidStrategy: r.bid_strategy || null,
         budgetType: r.budget_type || null,
