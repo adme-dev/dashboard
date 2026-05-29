@@ -6,7 +6,7 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "build": "NODE_OPTIONS='--max-old-space-size=8192' nuxt build && node scripts/wrap-worker.mjs",
+    "build": "NODE_OPTIONS='--max-old-space-size=16384' nuxt build && node scripts/wrap-worker.mjs",
     "dev": "nuxt dev",
     "dev:wrangler": "npx wrangler pages dev -- npm run dev",
     "dev:all": "concurrently \"pnpm dev\" \"pnpm zero:dev\"",

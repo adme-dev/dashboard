@@ -186,19 +186,21 @@ Deploy to Cloudflare Pages via Wrangler:
 
 ```bash
 # Production (branch: main)
-NODE_OPTIONS='--max-old-space-size=8192' pnpm deploy:production
+pnpm deploy:production
 
 # Preview (branch: preview)
-NODE_OPTIONS='--max-old-space-size=8192' pnpm deploy:preview
+pnpm deploy:preview
 
 # Default (no branch specified)
-NODE_OPTIONS='--max-old-space-size=8192' pnpm deploy
+pnpm deploy
 ```
 
-The `NODE_OPTIONS` flag is required to avoid OOM during the Nuxt build step. The deploy scripts run `pnpm build` then `wrangler pages deploy` from the `dist/` directory to the `agency-dashboard` project. Cloudflare Pages uses `--branch` (not `--env`) to target environments.
+The deploy scripts run `pnpm build` then `wrangler pages deploy` from the `dist/` directory to the `agency-dashboard` project. Cloudflare Pages uses `--branch` (not `--env`) to target environments.
+
+The build's heap limit is set **inside** the `build` script (`NODE_OPTIONS='--max-old-space-size=16384' nuxt build`), so prefixing your own `NODE_OPTIONS` on the deploy command is ignored — change the value in `package.json` if you need to adjust it. The Nitro server bundle needs ~8.2 GB, so anything ≤ 8 GB OOMs.
 
 ## Known Issues
-- `nuxi build` crashes with OOM (even at 4GB) — pre-existing, use `NODE_OPTIONS='--max-old-space-size=8192'`
+- Production build needs a large heap — the `build` script sets `--max-old-space-size=16384`; the Nitro server bundle OOMs at ≤ 8 GB. The limit is a ceiling (not a reservation), so it's safe on smaller machines as long as physical RAM exceeds the ~9 GB actual peak.
 - ~60+ pre-existing TS errors from types only in `index.d.ts` not `index.ts`
 - `typescript.strict: false` in nuxt.config — don't enable without a migration plan
 
@@ -217,7 +219,7 @@ This caps notification fan-out to the listed emails regardless of role. Broaden 
 ### 2. Deploy
 
 ```bash
-NODE_OPTIONS='--max-old-space-size=8192' pnpm deploy:production
+pnpm deploy:production
 ```
 
 This runs migrations 085 + 086 implicitly (they're additive — `IF NOT EXISTS` guards on every CREATE) the next time anything hits the DB. **No notifications fire yet** because the cron trigger isn't enabled.
