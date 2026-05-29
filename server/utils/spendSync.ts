@@ -273,9 +273,12 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
              campaign_type = $7, campaign_status = $8,
              commission_rate = CASE WHEN $10 > 0 THEN $10 ELSE media_spend.commission_rate END,
              revenue = $11,
+             end_date = COALESCE($12, media_spend.end_date),
+             bid_strategy = COALESCE($13, media_spend.bid_strategy),
+             budget_type = COALESCE($14, media_spend.budget_type),
              synced_at = NOW(), updated_at = NOW()
            WHERE id = $9`,
-          [campaign.spend, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, clientId, campaign.channelType || null, campaign.status || null, existing.id, commissionRate, campaign.conversionsValue || 0]
+          [campaign.spend, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, clientId, campaign.channelType || null, campaign.status || null, existing.id, commissionRate, campaign.conversionsValue || 0, campaign.endDate || null, campaign.bidStrategy || null, 'daily']
         )
       } else {
         // Check for rolling budget from previous month
@@ -287,10 +290,10 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
           `INSERT INTO media_spend (
              client_id, platform, period, budget_allocated, actual_spend,
              commission_rate, connection_id, campaign_id, campaign_name,
-             impressions, clicks, conversions, campaign_type, campaign_status, budget_rolling, revenue, synced_at
-           ) VALUES ($1, 'google_ads', $2, $13, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $14, $15, NOW())
+             impressions, clicks, conversions, campaign_type, campaign_status, budget_rolling, revenue, end_date, bid_strategy, budget_type, synced_at
+           ) VALUES ($1, 'google_ads', $2, $13, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $14, $15, $16, $17, $18, NOW())
            RETURNING id`,
-          [clientId, period, campaign.spend, commissionRate, conn.id, campaign.campaignId || null, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, campaign.channelType || null, campaign.status || null, budgetVal, rollingVal, campaign.conversionsValue || 0]
+          [clientId, period, campaign.spend, commissionRate, conn.id, campaign.campaignId || null, campaign.campaignName || null, campaign.impressions, campaign.clicks, campaign.conversions, campaign.channelType || null, campaign.status || null, budgetVal, rollingVal, campaign.conversionsValue || 0, campaign.endDate || null, campaign.bidStrategy || null, 'daily']
         )
       }
 
