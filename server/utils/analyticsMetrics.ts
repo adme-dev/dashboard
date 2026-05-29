@@ -24,6 +24,22 @@ export interface PacingResult {
 }
 
 /**
+ * Normalize a DB DATE value to a 'YYYY-MM-DD' string.
+ * The DB driver may return a DATE column as a JS Date object (local midnight) OR a string;
+ * naive `String(date).slice(0,10)` corrupts a Date into "Sun May 31" which reparses to year 2001.
+ * Handles both shapes and returns null for empty/unparseable values.
+ */
+export function toDateOnly(value: unknown): string | null {
+  if (!value) return null
+  if (value instanceof Date) {
+    if (isNaN(value.getTime())) return null
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
+  }
+  const s = String(value)
+  return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : null
+}
+
+/**
  * Compute derived metrics from raw aggregates.
  * Returns null for metrics that can't be computed (e.g. no clicks → no CPC).
  */

@@ -45,6 +45,62 @@ export default defineEventHandler(async (event) => {
 
   const eventStream = createEventStream(event)
 
+  // Cross-isolate path: relay from the BoardRoom Durable Object.
+  // The in-memory bus below is per-isolate, so an SSE subscriber here would
+  // miss events emitted on a different isolate. When the DO binding exists
+  // (production), the DO is the single source of truth — poll it for deltas.
+  const boardRoom = (event.context as any).cloudflare?.env?.BOARD_ROOMS
+  if (boardRoom) {
+    const stub = boardRoom.get(boardRoom.idFromName(boardId))
+    let lastSentId = lastEventId
+
+    const pushSince = async () => {
+      try {
+        const res = await stub.fetch(`https://board-do/board/${boardId}/events?since=${lastSentId}`)
+        if (!res.ok) return
+        const data = await res.json() as { events: BoardEvent[]; lastEventId: number }
+        for (const be of data.events) {
+          if (be.id <= lastSentId) continue
+          lastSentId = be.id
+          await eventStream.push({
+            id: String(be.id),
+            event: 'board_update',
+            data: JSON.stringify(formatEvent(be)),
+          })
+        }
+      } catch {
+        // DO unreachable — client heartbeat will lapse and it falls back to polling.
+      }
+    }
+
+    // Initial catch-up, then a baseline so the client knows where it stands.
+    await pushSince()
+    await eventStream.push({
+      id: String(lastSentId),
+      event: 'connected',
+      data: JSON.stringify({ boardId, timestamp: Date.now() }),
+    })
+
+    const pollTimer = setInterval(pushSince, 2000)
+    const heartbeatTimer = setInterval(async () => {
+      try {
+        await eventStream.push({ event: 'heartbeat', data: JSON.stringify({ timestamp: Date.now() }) })
+      } catch {
+        clearInterval(heartbeatTimer)
+      }
+    }, 30000)
+
+    eventStream.onClosed(async () => {
+      clearInterval(pollTimer)
+      clearInterval(heartbeatTimer)
+      await eventStream.close()
+    })
+
+    return eventStream.send()
+  }
+
+  // Dev / no DO binding: single-isolate in-memory bus (correct because there's
+  // only one isolate locally).
   // Send any missed events since lastEventId
   const missedEvents = getBoardEventsSince(boardId, lastEventId)
   for (const boardEvent of missedEvents) {

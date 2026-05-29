@@ -42,6 +42,9 @@ export function useChatWebSocket(channelId: string) {
   const messageHandlers = new Set<(msg: ChatWsMessage) => void>()
 
   let reconnectAttempts = 0
+  // Cap reconnects so a deleted/forbidden channel doesn't loop forever.
+  // ~8 attempts ≈ 3+6+12+24+30+30+30+30s of trying before giving up.
+  const MAX_RECONNECT_ATTEMPTS = 8
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let connectArgs: { userId: string; userName: string; userAvatar?: string } | null = null
 
@@ -86,6 +89,15 @@ export function useChatWebSocket(channelId: string) {
         isConnected.value = false
         isConnecting.value = false
         ws.value = null
+
+        // Deliberate disconnect() nulls connectArgs — don't schedule a reconnect.
+        if (!connectArgs) return
+
+        // Give up after the cap so a permanently-unreachable channel stops looping.
+        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+          error.value = 'Connection lost. Refresh to reconnect.'
+          return
+        }
 
         // Exponential backoff: 3s, 6s, 12s, max 30s
         const delay = Math.min(3000 * Math.pow(2, reconnectAttempts), 30000)

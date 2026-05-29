@@ -51,6 +51,18 @@ export class BoardRoom extends DurableObject<Env> {
       return Response.json({ users: this.getOnlineUsers() })
     }
 
+    // GET /events?since=N — return events since a given id.
+    // Used by the SSE fallback to relay events cross-isolate (the main app's
+    // in-memory bus is per-isolate, so SSE subscribers would otherwise miss
+    // events emitted on a different isolate). The DO is the single source.
+    if (url.pathname.endsWith('/events')) {
+      const since = Number(url.searchParams.get('since')) || 0
+      return Response.json({
+        events: this.events.filter(e => e.id > since),
+        lastEventId: this.eventCounter,
+      })
+    }
+
     // WebSocket upgrade
     const upgradeHeader = request.headers.get('Upgrade')
     if (upgradeHeader !== 'websocket') {

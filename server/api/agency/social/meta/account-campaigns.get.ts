@@ -1,5 +1,6 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
+import { toDateOnly } from '~~/server/utils/analyticsMetrics'
 
 /**
  * GET /api/agency/social/meta/account-campaigns?connectionId=X&month=Y&year=Z
@@ -33,10 +34,17 @@ export default eventHandler(async (event) => {
     campaign_type: string | null
     campaign_status: string | null
     synced_at: string | null
+    reach: number | null
+    cost_per_result: number | null
+    result_type: string | null
+    end_date: string | null
+    bid_strategy: string | null
+    budget_type: string | null
   }>(
     `SELECT id, campaign_id, campaign_name, actual_spend, budget_allocated, COALESCE(budget_rolling, false) as budget_rolling,
        commission_rate, impressions, clicks,
-       conversions, campaign_type, campaign_status, synced_at
+       conversions, campaign_type, campaign_status, synced_at,
+       reach, cost_per_result, result_type, end_date, bid_strategy, budget_type
      FROM media_spend
      WHERE connection_id = $1 AND period = $2 AND platform = 'meta'
      ORDER BY actual_spend DESC`,
@@ -57,5 +65,11 @@ export default eventHandler(async (event) => {
     campaignType: r.campaign_type,
     campaignStatus: r.campaign_status,
     syncedAt: r.synced_at,
+    reach: r.reach != null ? Number(r.reach) : null,
+    costPerResult: r.cost_per_result != null ? Number(r.cost_per_result) : null,
+    resultType: r.result_type,
+    endDate: toDateOnly(r.end_date),
+    bidStrategy: r.bid_strategy,
+    budgetType: r.budget_type,
   }))
 })

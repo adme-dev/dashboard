@@ -38,6 +38,8 @@ export interface GoogleAdsCampaignSpend {
   conversionsValue: number
   status: string
   channelType: string
+  endDate?: string | null
+  bidStrategy?: string | null
 }
 
 export interface GoogleTokenResponse {
@@ -283,6 +285,15 @@ export async function getGoogleCampaigns(
   }))
 }
 
+/** Google uses 2037-12-30 as the "no end date" sentinel. Treat that (and any 2037+) as no end. */
+export function normalizeGoogleEndDate(value: string | null | undefined): string | null {
+  if (!value) return null
+  const d = value.slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null
+  if (Number(d.slice(0, 4)) >= 2037) return null
+  return d
+}
+
 /**
  * Get monthly spend aggregated by campaign
  * Google Ads amounts are in cost_micros — divide by 1,000,000 for dollars
@@ -303,6 +314,8 @@ export async function getMonthlySpend(
       campaign.name,
       campaign.status,
       campaign.advertising_channel_type,
+      campaign.end_date,
+      campaign.bidding_strategy_type,
       metrics.cost_micros,
       metrics.impressions,
       metrics.clicks,
@@ -326,7 +339,9 @@ export async function getMonthlySpend(
       conversions: parseFloat(r.metrics?.conversions || '0'),
       conversionsValue: parseFloat(r.metrics?.conversionsValue || '0'),
       status: r.campaign.status || 'UNKNOWN',
-      channelType: r.campaign.advertisingChannelType || 'UNKNOWN'
+      channelType: r.campaign.advertisingChannelType || 'UNKNOWN',
+      endDate: normalizeGoogleEndDate(r.campaign.endDate),
+      bidStrategy: r.campaign.biddingStrategyType || null
     }
   })
 }

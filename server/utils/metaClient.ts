@@ -5,6 +5,7 @@
  */
 
 import { ofetch } from 'ofetch'
+import { unwrapMetaImageUrl } from '~~/server/utils/metaImage'
 
 const META_GRAPH_BASE = 'https://graph.facebook.com/v22.0'
 
@@ -44,8 +45,33 @@ export interface MetaCampaign {
   name: string
   status: string
   objective: string
+  effective_status?: string
   daily_budget?: string
   lifetime_budget?: string
+  bid_strategy?: string
+  stop_time?: string
+}
+
+export interface MetaCampaignMeta {
+  status: string | null
+  endDate: string | null
+  bidStrategy: string | null
+  budgetType: 'daily' | 'lifetime' | null
+}
+
+/** Pure: derive persisted campaign metadata from a Meta campaign object. */
+export function mapMetaCampaignMeta(c: MetaCampaign): MetaCampaignMeta {
+  const lifetime = parseFloat(c.lifetime_budget ?? '0') || 0
+  const daily = parseFloat(c.daily_budget ?? '0') || 0
+  const budgetType: 'daily' | 'lifetime' | null =
+    lifetime > 0 ? 'lifetime' : daily > 0 ? 'daily' : null
+  // endDate is the campaign's local end date (as shown in Meta Ads Manager), not UTC-normalised.
+  return {
+    status: c.effective_status || c.status || null,
+    endDate: c.stop_time && /^\d{4}-\d{2}-\d{2}/.test(c.stop_time) ? c.stop_time.slice(0, 10) : null,
+    bidStrategy: c.bid_strategy || null,
+    budgetType,
+  }
 }
 
 export interface MetaAdSet {
@@ -409,6 +435,32 @@ export interface MetaCreative {
 }
 
 /**
+ * Resolve the highest-resolution poster for a video creative.
+ *
+ * Creative-level `thumbnail_url` is only ~64x64 and `thumbnail_width/height`
+ * params are ignored, so video ads render blurry. The video object's
+ * `thumbnails` edge exposes full-res posters (the `is_preferred` one is
+ * typically 1200x1200). Returns null on any failure so callers fall back.
+ */
+async function getVideoThumbnail(videoId: string, token: string): Promise<string | null> {
+  try {
+    const res = await ofetch<{
+      thumbnails?: { data?: Array<{ uri: string; width?: number; height?: number; is_preferred?: boolean }> }
+    }>(`${META_GRAPH_BASE}/${videoId}`, {
+      method: 'GET',
+      query: { fields: 'thumbnails{uri,width,height,is_preferred}', access_token: token },
+    })
+    const thumbs = res.thumbnails?.data || []
+    if (!thumbs.length) return null
+    const preferred = thumbs.find(t => t.is_preferred)
+    const largest = thumbs.reduce((a, b) => ((b.width || 0) > (a.width || 0) ? b : a))
+    return (preferred || largest)?.uri || null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Get ad creatives for a campaign (top 5).
  */
 export async function getCampaignCreatives(
@@ -422,7 +474,8 @@ export async function getCampaignCreatives(
         creative?: {
           thumbnail_url?: string
           image_url?: string
-          effective_image_url?: string
+          video_id?: string
+          asset_feed_spec?: { videos?: Array<{ video_id?: string }> }
           object_story_spec?: {
             link_data?: { picture?: string; image_url?: string }
             video_data?: { image_url?: string }
@@ -436,21 +489,46 @@ export async function getCampaignCreatives(
     }>(`${META_GRAPH_BASE}/${campaignId}/ads`, {
       method: 'GET',
       query: {
-        fields: 'id,creative{thumbnail_url,image_url,effective_image_url,object_story_spec,title,body,object_type}',
+        fields: 'id,creative{thumbnail_url,image_url,video_id,asset_feed_spec{videos{video_id}},object_story_spec,title,body,object_type}',
         limit: '5',
         access_token: token
       }
     })
 
-    return (res.data || []).map(ad => ({
-      creativeId: ad.id,
-      type: ad.creative?.object_type || 'image',
-      thumbnailUrl: getBestCreativeImage(ad.creative),
-      title: ad.creative?.title || null,
-      body: ad.creative?.body || null,
+    // Resolve in parallel, cheapest-first. The creative-level thumbnail_url is
+    // only 64x64, so static images use their full-size image_url, emg-wrapped
+    // thumbnails are unwrapped to the durable full-res original, and video ads
+    // fall back to the video object's high-res poster.
+    return await Promise.all((res.data || []).map(async (ad) => {
+      const c = ad.creative
+      const videoId = c?.video_id || c?.asset_feed_spec?.videos?.find(v => v.video_id)?.video_id
+      // 1) a real high-res image embedded on the creative
+      let thumbnailUrl = getDirectCreativeImage(c)
+      // 2) emg wrapper → its inner url is the durable full-res original
+      if (!thumbnailUrl) {
+        const unwrapped = unwrapMetaImageUrl(c?.thumbnail_url ?? null)
+        if (unwrapped && unwrapped !== c?.thumbnail_url) thumbnailUrl = unwrapped
+      }
+      // 3) video poster (creative only exposes a 64x64 thumb) via the video edge
+      if (!thumbnailUrl && videoId) thumbnailUrl = await getVideoThumbnail(videoId, token)
+      // 4) last resort: the raw (small) thumbnail
+      if (!thumbnailUrl) thumbnailUrl = c?.thumbnail_url || null
+      return {
+        creativeId: ad.id,
+        type: c?.object_type || (videoId ? 'video' : 'image'),
+        thumbnailUrl,
+        title: c?.title || null,
+        body: c?.body || null,
+      }
     }))
   } catch (err: any) {
-    console.warn(`[MetaClient] Failed to fetch creatives for campaign ${campaignId}:`, err.message)
+    // Surface the Graph API error body (err.data.error) — the bare ofetch
+    // message is just the status and hides the real reason (e.g. #100 bad field).
+    const gErr = err?.data?.error
+    console.warn(
+      `[MetaClient] Failed to fetch creatives for campaign ${campaignId}:`,
+      gErr ? `(#${gErr.code}) ${gErr.message}` : err.message,
+    )
     return []
   }
 }
@@ -458,18 +536,17 @@ export async function getCampaignCreatives(
 /**
  * Extract the highest resolution image from a Meta creative.
  * Priority order (highest res first):
- *   1. effective_image_url — the actual displayed image (most reliable, high-res)
- *   2. image_url — the originally uploaded image
- *   3. object_story_spec link_data.image_url — full-res link ad image
- *   4. video_data.image_url — video poster image
- *   5. photo_data.url — photo ad image
- *   6. thumbnail_url — last resort (~64x64, very small)
+ *   1. image_url — the originally uploaded image
+ *   2. object_story_spec link_data.image_url — full-res link ad image
+ *   3. video_data.image_url — video poster image
+ *   4. photo_data.url — photo ad image
+ *   5. thumbnail_url — last resort (~64x64, very small)
  * Note: link_data.picture is just the OG preview thumbnail — skip it.
+ * (effective_image_url is NOT a valid AdCreative field — requesting it makes
+ * Graph return #100 and rejects the whole call.)
  */
-function getBestCreativeImage(creative: any): string | null {
+function getDirectCreativeImage(creative: any): string | null {
   if (!creative) return null
-  // Best: the effective image actually displayed in the ad
-  if (creative.effective_image_url) return creative.effective_image_url
   // Original upload
   if (creative.image_url) return creative.image_url
   // Story spec images (full-res versions)
@@ -477,8 +554,12 @@ function getBestCreativeImage(creative: any): string | null {
   if (spec?.link_data?.image_url) return spec.link_data.image_url
   if (spec?.video_data?.image_url) return spec.video_data.image_url
   if (spec?.photo_data?.url) return spec.photo_data.url
-  // Last resort: thumbnail (small but at least shows something)
-  return creative.thumbnail_url || null
+  return null
+}
+
+function getBestCreativeImage(creative: any): string | null {
+  // Last resort is the thumbnail (small but at least shows something).
+  return getDirectCreativeImage(creative) || creative?.thumbnail_url || null
 }
 
 // ============================================
@@ -538,19 +619,25 @@ export async function getCampaigns(
   token: string,
   statusFilter?: string
 ): Promise<MetaCampaign[]> {
-  const params: Record<string, string> = {
-    fields: 'id,name,status,objective,daily_budget,lifetime_budget',
+  const query: Record<string, string> = {
+    fields: 'id,name,status,effective_status,objective,daily_budget,lifetime_budget,bid_strategy,stop_time',
+    access_token: token,
     limit: '100'
   }
   if (statusFilter) {
-    params.filtering = JSON.stringify([{ field: 'effective_status', operator: 'IN', value: [statusFilter] }])
+    query.filtering = JSON.stringify([{ field: 'effective_status', operator: 'IN', value: [statusFilter] }])
   }
-  const res = await metaFetch<{ data: MetaCampaign[] }>(
-    `${META_GRAPH_BASE}/${accountId}/campaigns`,
-    token,
-    params
-  )
-  return res.data || []
+  const campaigns: MetaCampaign[] = []
+  let url: string | null = `${META_GRAPH_BASE}/${accountId}/campaigns`
+  while (url) {
+    const res: { data: MetaCampaign[]; paging?: { next?: string } } = await ofetch(url, {
+      method: 'GET',
+      query: url.includes('?') ? undefined : query
+    })
+    campaigns.push(...(res.data || []))
+    url = res.paging?.next || null
+  }
+  return campaigns
 }
 
 /**

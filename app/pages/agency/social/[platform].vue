@@ -267,13 +267,12 @@ async function loadSpendData() {
 async function handleSyncAll() {
   syncing.value = true
   try {
-    const result = await syncSpend(platform.value as 'meta' | 'google' | 'tiktok', selectedMonth.value, selectedYear.value)
+    await syncSpend(platform.value as 'meta' | 'google' | 'tiktok', selectedMonth.value, selectedYear.value)
     toast.add({
-      title: 'Sync complete',
-      description: `${result.synced} campaigns synced across ${result.accounts} accounts — $${result.totalSpend.toLocaleString()}`,
+      title: 'Sync started',
+      description: `${platformConfig.value.displayName} spend sync is running in the background.`,
       color: 'success',
     })
-    await loadSpendData()
   } catch (e: any) {
     toast.add({ title: 'Sync failed', description: e.data?.statusMessage || e.message, color: 'error' })
   } finally {
@@ -401,6 +400,11 @@ function campaignStatusBadge(status: string | null) {
     // Meta statuses
     ACTIVE: { label: 'Active', color: 'success' },
     ARCHIVED: { label: 'Archived', color: 'neutral' },
+    CAMPAIGN_PAUSED: { label: 'Paused', color: 'warning' },
+    ADSET_PAUSED: { label: 'Paused', color: 'warning' },
+    IN_PROCESS: { label: 'In process', color: 'info' },
+    WITH_ISSUES: { label: 'With issues', color: 'warning' },
+    DISAPPROVED: { label: 'Disapproved', color: 'error' },
     // TikTok statuses
     CAMPAIGN_STATUS_ENABLE: { label: 'Enabled', color: 'success' },
     CAMPAIGN_STATUS_DISABLE: { label: 'Disabled', color: 'warning' },
@@ -663,7 +667,7 @@ async function rotateEndpointKey(ep: LeadEndpoint) {
                             <th class="w-8"></th>
                             <th class="text-left px-4 py-2 font-medium text-muted text-xs">Campaign</th>
                             <th v-if="platform === 'google' || platform === 'tiktok'" class="text-left px-4 py-2 font-medium text-muted text-xs">Type</th>
-                            <th v-if="platform === 'google' || platform === 'tiktok'" class="text-left px-4 py-2 font-medium text-muted text-xs">Status</th>
+                            <th v-if="platform === 'google' || platform === 'tiktok' || platform === 'meta'" class="text-left px-4 py-2 font-medium text-muted text-xs">Status</th>
                             <th class="text-right px-4 py-2 font-medium text-muted text-xs">Spend</th>
                             <th class="text-right px-4 py-2 font-medium text-muted text-xs">Budget</th>
                             <th class="text-right px-4 py-2 font-medium text-muted text-xs">Variance</th>
@@ -671,6 +675,8 @@ async function rotateEndpointKey(ep: LeadEndpoint) {
                             <th class="text-right px-4 py-2 font-medium text-muted text-xs">Impressions</th>
                             <th class="text-right px-4 py-2 font-medium text-muted text-xs">Clicks</th>
                             <th class="text-right px-4 py-2 font-medium text-muted text-xs">Conv.</th>
+                            <th v-if="platform === 'meta'" class="text-right px-4 py-2 font-medium text-muted text-xs">Cost / result</th>
+                            <th v-if="platform === 'meta'" class="text-right px-4 py-2 font-medium text-muted text-xs">Ends</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -695,7 +701,7 @@ async function rotateEndpointKey(ep: LeadEndpoint) {
                               </UBadge>
                               <span v-else class="text-xs text-muted">-</span>
                             </td>
-                            <td v-if="platform === 'google' || platform === 'tiktok'" class="px-4 py-2">
+                            <td v-if="platform === 'google' || platform === 'tiktok' || platform === 'meta'" class="px-4 py-2">
                               <UBadge
                                 v-if="campaignStatusBadge(camp.campaignStatus)"
                                 :color="campaignStatusBadge(camp.campaignStatus)!.color as any"
@@ -818,7 +824,24 @@ async function rotateEndpointKey(ep: LeadEndpoint) {
                             </td>
                             <td class="px-4 py-2 text-right tabular-nums">{{ formatNumber(camp.impressions) }}</td>
                             <td class="px-4 py-2 text-right tabular-nums">{{ formatNumber(camp.clicks) }}</td>
-                            <td class="px-4 py-2 text-right tabular-nums">{{ formatNumber(camp.conversions) }}</td>
+                            <td class="px-4 py-2 text-right tabular-nums">
+                              <div class="flex flex-col items-end leading-tight">
+                                <span>{{ formatNumber(camp.conversions) }}</span>
+                                <span v-if="platform === 'meta' && camp.resultType" class="text-[10px] text-muted">{{ camp.resultType }}</span>
+                              </div>
+                            </td>
+                            <td v-if="platform === 'meta'" class="px-4 py-2 text-right tabular-nums">
+                              {{ camp.costPerResult != null ? formatCurrency(camp.costPerResult) : '-' }}
+                            </td>
+                            <td v-if="platform === 'meta'" class="px-4 py-2 text-right tabular-nums">
+                              <template v-if="camp.endDate">
+                                <div class="flex flex-col items-end leading-tight">
+                                  <span>{{ endDateInfo(camp.endDate).label }}</span>
+                                  <span v-if="endDateInfo(camp.endDate).hint" class="text-[10px] font-medium" :class="endDateInfo(camp.endDate).tone === 'error' ? 'text-error' : 'text-warning'">{{ endDateInfo(camp.endDate).hint }}</span>
+                                </div>
+                              </template>
+                              <span v-else class="text-muted">-</span>
+                            </td>
                           </tr>
                         </tbody>
                       </table>

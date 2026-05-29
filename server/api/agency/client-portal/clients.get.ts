@@ -309,11 +309,18 @@ export default defineEventHandler(async (event) => {
           AVG(EXTRACT(EPOCH FROM (l.contacted_at - l.submitted_at)) / 60)
             FILTER (WHERE l.submitted_at >= NOW() - INTERVAL '30 days' AND l.contacted_at IS NOT NULL) AS avg_response_minutes_30d
         FROM leads l
-        JOIN lead_form_rules r ON r.id = l.rule_id
-        JOIN lead_form_destinations d ON d.rule_id = r.id
         WHERE l.deleted_at IS NULL
-          AND r.enabled = TRUE
-          AND d.destination_type = 'portal'
+          AND EXISTS (
+            SELECT 1
+            FROM lead_form_rules r
+            JOIN lead_rule_destinations d ON d.rule_id = r.id
+            WHERE r.source = l.source
+              AND r.form_id = l.form_id
+              AND r.client_id = l.client_id
+              AND r.enabled = TRUE
+              AND d.destination_type = 'portal'
+              AND d.enabled = TRUE
+          )
         GROUP BY l.client_id
       ) ld ON ld.client_id = c.id
       LEFT JOIN (
