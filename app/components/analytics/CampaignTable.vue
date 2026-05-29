@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { DropdownMenuItem } from '@nuxt/ui'
+
 const props = withDefaults(defineProps<{
   startDate: string
   endDate: string
@@ -8,11 +10,13 @@ const props = withDefaults(defineProps<{
   hideColumns?: string[]
   showLeadColumns?: boolean
   leadLinkBase?: string
+  columnsStorageKey?: string
 }>(), {
   apiBase: '/api/agency/analytics',
   hideColumns: () => [],
   showLeadColumns: false,
-  leadLinkBase: ''
+  leadLinkBase: '',
+  columnsStorageKey: 'analytics:campaign-cols'
 })
 
 const { fmtCurrency, fmtCompact, fmtPercent, getPlatformIcon, getPlatformLabel } = useAnalytics()
@@ -114,33 +118,96 @@ function sortKeyForColumn(key: string): string {
   if (key === 'campaignName') return 'campaign_name'
   if (key === 'leadCount') return 'lead_count'
   if (key === 'costPerLead') return 'cost_per_lead'
+  if (key === 'costPerResult') return 'cost_per_result'
+  if (key === 'endDate') return 'end_date'
   return key
 }
 
+// ── Column definitions ────────────────────────────────────────────
 const allColumns = [
-  { key: 'campaignName', label: 'Campaign' },
-  { key: 'spend', label: 'Spend' },
-  { key: 'budget', label: 'Budget' },
-  { key: 'variance', label: 'Variance' },
-  { key: 'impressions', label: 'Impr.' },
-  { key: 'clicks', label: 'Clicks' },
-  { key: 'ctr', label: 'CTR' },
-  { key: 'cpc', label: 'CPC' },
-  { key: 'conversions', label: 'Conv.' },
-  { key: 'leadCount', label: 'Leads' },
-  { key: 'costPerLead', label: 'Cost / Lead' }
+  { key: 'campaignName', label: 'Campaign', sortable: true },
+  { key: 'delivery', label: 'Delivery', sortable: false },
+  { key: 'spend', label: 'Spend', sortable: true },
+  { key: 'budget', label: 'Budget', sortable: true },
+  { key: 'variance', label: 'Variance', sortable: false },
+  { key: 'results', label: 'Results', sortable: false },
+  { key: 'costPerResult', label: 'Cost / result', sortable: true },
+  { key: 'impressions', label: 'Impr.', sortable: true },
+  { key: 'reach', label: 'Reach', sortable: true },
+  { key: 'clicks', label: 'Clicks', sortable: true },
+  { key: 'ctr', label: 'CTR', sortable: true },
+  { key: 'cpc', label: 'CPC', sortable: true },
+  { key: 'conversions', label: 'Conv.', sortable: true },
+  { key: 'leadCount', label: 'Leads', sortable: true },
+  { key: 'costPerLead', label: 'Cost / Lead', sortable: true },
+  { key: 'bidStrategy', label: 'Bid strategy', sortable: false },
+  { key: 'endDate', label: 'Ends', sortable: true }
 ]
 
-const columns = computed(() =>
-  allColumns.filter((c) => {
-    if (!props.showLeadColumns && ['leadCount', 'costPerLead'].includes(c.key)) return false
-    return !props.hideColumns.includes(c.key)
-  })
-)
+// Columns shown today by default (new Meta columns are opt-in / via preset)
+const DEFAULT_VISIBLE = ['campaignName', 'spend', 'budget', 'variance', 'impressions', 'clicks', 'ctr', 'cpc', 'conversions', 'leadCount', 'costPerLead']
+// "Meta Ads view" preset mirrors Ads Manager
+const META_PRESET = ['campaignName', 'delivery', 'results', 'costPerResult', 'budget', 'spend', 'impressions', 'reach', 'endDate', 'bidStrategy']
 
-function showColumn(key: string): boolean {
-  return !props.hideColumns.includes(key)
+const visibleKeys = ref<string[]>([...DEFAULT_VISIBLE])
+
+onMounted(() => {
+  try {
+    const saved = localStorage.getItem(props.columnsStorageKey)
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      if (Array.isArray(parsed)) visibleKeys.value = parsed
+    }
+  } catch { /* ignore corrupt storage */ }
+})
+
+watch(visibleKeys, (v) => {
+  if (import.meta.client) {
+    try { localStorage.setItem(props.columnsStorageKey, JSON.stringify(v)) } catch { /* ignore */ }
+  }
+}, { deep: true })
+
+function isLeadCol(key: string): boolean {
+  return key === 'leadCount' || key === 'costPerLead'
 }
+
+function isVisible(key: string): boolean {
+  if (key === 'campaignName') return true
+  if (props.hideColumns.includes(key)) return false
+  if (isLeadCol(key) && !props.showLeadColumns) return false
+  return visibleKeys.value.includes(key)
+}
+
+// Keep backward-compat for any call site still using showColumn
+function showColumn(key: string): boolean {
+  return isVisible(key)
+}
+
+function toggleColumn(key: string) {
+  if (visibleKeys.value.includes(key)) {
+    visibleKeys.value = visibleKeys.value.filter(k => k !== key)
+  } else {
+    visibleKeys.value = [...visibleKeys.value, key]
+  }
+}
+
+function applyMetaPreset() {
+  visibleKeys.value = META_PRESET.filter(k => !props.hideColumns.includes(k))
+}
+
+// Columns to render in the header — preserves allColumns order
+const visibleColumns = computed(() => allColumns.filter(c => isVisible(c.key)))
+
+// Column picker dropdown items (array of one group = DropdownMenuItem[][])
+const columnPickerItems = computed<DropdownMenuItem[][]>(() => [[
+  ...allColumns
+    .filter(c => c.key !== 'campaignName' && !(isLeadCol(c.key) && !props.showLeadColumns) && !props.hideColumns.includes(c.key))
+    .map(c => ({
+      label: c.label,
+      icon: visibleKeys.value.includes(c.key) ? 'i-lucide-check' : 'i-lucide-minus',
+      onSelect: () => { toggleColumn(c.key) }
+    }))
+]])
 
 function leadSourceForPlatform(platform: string): string | null {
   if (platform === 'google_ads') return 'google'
@@ -181,13 +248,28 @@ watch(search, () => {
         Top Campaigns
       </h3>
       <span class="text-xs text-muted">{{ total }} total</span>
-      <div class="ml-auto w-56">
-        <UInput
-          v-model="search"
-          placeholder="Search campaigns..."
-          icon="i-lucide-search"
+      <div class="flex items-center gap-2 ml-auto">
+        <div class="w-56">
+          <UInput
+            v-model="search"
+            placeholder="Search campaigns..."
+            icon="i-lucide-search"
+            size="sm"
+          />
+        </div>
+        <UButton
           size="sm"
+          variant="outline"
+          icon="i-lucide-facebook"
+          label="Meta Ads view"
+          @click="applyMetaPreset"
         />
+        <UDropdownMenu
+          :items="columnPickerItems"
+          :content="{ align: 'end' }"
+        >
+          <UButton size="sm" variant="ghost" icon="i-lucide-sliders-horizontal" label="Columns" />
+        </UDropdownMenu>
       </div>
     </div>
 
@@ -200,16 +282,16 @@ watch(search, () => {
         <thead>
           <tr class="border-b border-default bg-elevated/30">
             <th
-              v-for="col in columns"
+              v-for="col in visibleColumns"
               :key="col.key"
-              class="px-3 py-2.5 text-left text-xs font-medium text-muted cursor-pointer hover:text-default transition-colors"
-              :class="col.key !== 'campaignName' ? 'text-right' : ''"
-              @click="toggleSort(sortKeyForColumn(col.key))"
+              class="px-3 py-2.5 text-left text-xs font-medium text-muted transition-colors"
+              :class="[col.key !== 'campaignName' ? 'text-right' : '', col.sortable ? 'cursor-pointer hover:text-default' : '']"
+              @click="col.sortable && toggleSort(sortKeyForColumn(col.key))"
             >
               <div class="flex items-center gap-1" :class="col.key !== 'campaignName' ? 'justify-end' : ''">
                 {{ col.label }}
                 <UIcon
-                  v-if="sortBy === sortKeyForColumn(col.key)"
+                  v-if="col.sortable && sortBy === sortKeyForColumn(col.key)"
                   :name="sortDir === 'desc' ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'"
                   class="w-3 h-3"
                 />
@@ -223,6 +305,7 @@ watch(search, () => {
               class="border-b border-default/50 hover:bg-elevated/30 transition-colors cursor-pointer"
               @click="toggleExpand(row.campaignId)"
             >
+              <!-- 1. campaignName — always visible, never gated -->
               <td class="px-3 py-2.5 max-w-[280px]">
                 <div class="flex items-center gap-2">
                   <UIcon
@@ -231,23 +314,32 @@ watch(search, () => {
                   />
                   <UIcon :name="getPlatformIcon(row.platform)" class="w-4 h-4 text-muted shrink-0" />
                   <span class="truncate font-medium" :title="row.campaignName">{{ row.campaignName }}</span>
-                  <UBadge
-                    v-if="row.campaignStatus && row.campaignStatus !== 'UNKNOWN'"
-                    variant="subtle"
-                    :color="statusColor(row.campaignStatus)"
-                    size="xs"
-                  >
-                    {{ row.campaignStatus }}
-                  </UBadge>
                 </div>
                 <p v-if="row.clientName" class="text-xs text-muted mt-0.5 pl-[3.25rem]">
                   {{ row.clientName }}
                 </p>
               </td>
-              <td class="px-3 py-2.5 text-right tabular-nums font-medium">
+
+              <!-- 2. delivery -->
+              <td v-if="isVisible('delivery')" class="px-3 py-2.5 text-right">
+                <UBadge
+                  v-if="row.campaignStatus && row.campaignStatus !== 'UNKNOWN'"
+                  variant="subtle"
+                  :color="statusColor(row.campaignStatus)"
+                  size="xs"
+                >
+                  {{ row.campaignStatus }}
+                </UBadge>
+                <span v-else class="text-muted">-</span>
+              </td>
+
+              <!-- 3. spend -->
+              <td v-if="isVisible('spend')" class="px-3 py-2.5 text-right tabular-nums font-medium">
                 {{ fmtCurrency(row.spend) }}
               </td>
-              <td v-if="showColumn('budget')" class="px-3 py-2.5 text-right tabular-nums text-muted">
+
+              <!-- 4. budget -->
+              <td v-if="isVisible('budget')" class="px-3 py-2.5 text-right tabular-nums text-muted">
                 <div class="flex items-center gap-1 justify-end">
                   <UIcon
                     v-if="row.budgetRolling"
@@ -258,7 +350,9 @@ watch(search, () => {
                   {{ (row.budget ?? 0) > 0 ? fmtCurrency(row.budget) : '-' }}
                 </div>
               </td>
-              <td v-if="showColumn('variance')" class="px-3 py-2.5 text-right tabular-nums">
+
+              <!-- 5. variance -->
+              <td v-if="isVisible('variance')" class="px-3 py-2.5 text-right tabular-nums">
                 <template v-if="(row.budget ?? 0) > 0">
                   <span :class="(row.budget - row.spend) >= 0 ? 'text-green-500' : 'text-red-500'">
                     {{ fmtCurrency(row.budget - row.spend) }}
@@ -266,32 +360,84 @@ watch(search, () => {
                 </template>
                 <span v-else class="text-muted">-</span>
               </td>
-              <td class="px-3 py-2.5 text-right tabular-nums">
+
+              <!-- 6. results -->
+              <td v-if="isVisible('results')" class="px-3 py-2.5 text-right tabular-nums">
+                <div class="flex flex-col items-end leading-tight">
+                  <span class="font-medium">{{ fmtCompact(row.conversions) }}</span>
+                  <span v-if="row.resultType" class="text-[10px] text-muted">{{ row.resultType }}</span>
+                </div>
+              </td>
+
+              <!-- 7. costPerResult -->
+              <td v-if="isVisible('costPerResult')" class="px-3 py-2.5 text-right tabular-nums">
+                {{ row.costPerResult != null ? fmtCurrency(row.costPerResult, 2) : '-' }}
+              </td>
+
+              <!-- 8. impressions -->
+              <td v-if="isVisible('impressions')" class="px-3 py-2.5 text-right tabular-nums">
                 {{ fmtCompact(row.impressions) }}
               </td>
-              <td class="px-3 py-2.5 text-right tabular-nums">
+
+              <!-- 9. reach -->
+              <td v-if="isVisible('reach')" class="px-3 py-2.5 text-right tabular-nums">
+                {{ row.reach ? fmtCompact(row.reach) : '-' }}
+              </td>
+
+              <!-- 10. clicks -->
+              <td v-if="isVisible('clicks')" class="px-3 py-2.5 text-right tabular-nums">
                 {{ fmtCompact(row.clicks) }}
               </td>
-              <td class="px-3 py-2.5 text-right tabular-nums">
+
+              <!-- 11. ctr -->
+              <td v-if="isVisible('ctr')" class="px-3 py-2.5 text-right tabular-nums">
                 {{ fmtPercent(row.ctr) }}
               </td>
-              <td class="px-3 py-2.5 text-right tabular-nums">
+
+              <!-- 12. cpc -->
+              <td v-if="isVisible('cpc')" class="px-3 py-2.5 text-right tabular-nums">
                 {{ fmtCurrency(row.cpc, 2) }}
               </td>
-              <td class="px-3 py-2.5 text-right tabular-nums">
+
+              <!-- 13. conversions -->
+              <td v-if="isVisible('conversions')" class="px-3 py-2.5 text-right tabular-nums">
                 {{ fmtCompact(row.conversions) }}
               </td>
-              <td v-if="showColumn('leadCount') && showLeadColumns" class="px-3 py-2.5 text-right tabular-nums">
+
+              <!-- 14. leadCount -->
+              <td v-if="isVisible('leadCount')" class="px-3 py-2.5 text-right tabular-nums">
                 {{ fmtCompact(row.leadCount || 0) }}
               </td>
-              <td v-if="showColumn('costPerLead') && showLeadColumns" class="px-3 py-2.5 text-right tabular-nums">
+
+              <!-- 15. costPerLead -->
+              <td v-if="isVisible('costPerLead')" class="px-3 py-2.5 text-right tabular-nums">
                 {{ row.costPerLead != null ? fmtCurrency(row.costPerLead, 2) : '-' }}
+              </td>
+
+              <!-- 16. bidStrategy -->
+              <td v-if="isVisible('bidStrategy')" class="px-3 py-2.5 text-right text-muted">
+                {{ metaBidStrategyLabel(row.bidStrategy) }}
+              </td>
+
+              <!-- 17. endDate -->
+              <td v-if="isVisible('endDate')" class="px-3 py-2.5 text-right tabular-nums">
+                <template v-if="row.endDate">
+                  <div class="flex flex-col items-end leading-tight">
+                    <span>{{ endDateInfo(row.endDate).label }}</span>
+                    <span
+                      v-if="endDateInfo(row.endDate).hint"
+                      class="text-[10px] font-medium"
+                      :class="endDateInfo(row.endDate).tone === 'error' ? 'text-error' : 'text-warning'"
+                    >{{ endDateInfo(row.endDate).hint }}</span>
+                  </div>
+                </template>
+                <span v-else class="text-muted">-</span>
               </td>
             </tr>
 
             <!-- Expanded detail row (full-width) -->
             <tr v-if="expandedId === row.campaignId" class="bg-elevated/20">
-              <td :colspan="columns.length" class="px-6 py-4">
+              <td :colspan="visibleColumns.length" class="px-6 py-4">
                 <!-- Header with campaign name + deep link -->
                 <div class="flex items-center gap-3 mb-4">
                   <UIcon :name="getPlatformIcon(row.platform)" class="w-5 h-5 text-muted shrink-0" />
@@ -346,6 +492,8 @@ watch(search, () => {
                       { label: 'Conv. Rate', value: row.conversionRate != null ? fmtPercent(row.conversionRate) : '-', icon: 'i-lucide-funnel' },
                       { label: 'ROAS', value: row.roas != null ? row.roas.toFixed(2) + 'x' : '-', icon: 'i-lucide-trending-up' },
                       { label: 'Revenue', value: row.revenue > 0 ? fmtCurrency(row.revenue) : '-', icon: 'i-lucide-dollar-sign' },
+                      { label: 'Reach', value: row.reach ? fmtCompact(row.reach) : '-', icon: 'i-lucide-users' },
+                      { label: 'Cost / result', value: row.costPerResult != null ? fmtCurrency(row.costPerResult, 2) : '-', icon: 'i-lucide-target' },
                       ...(showLeadColumns ? [
                         { label: 'Leads', value: fmtCompact(row.leadCount || 0), icon: 'i-lucide-inbox' },
                         { label: 'Cost / Lead', value: row.costPerLead != null ? fmtCurrency(row.costPerLead, 2) : '-', icon: 'i-lucide-user-round-check' }
@@ -422,12 +570,22 @@ watch(search, () => {
                   <span v-if="row.campaignType">Type: {{ row.campaignType }}</span>
                   <span v-if="row.campaignStatus && row.campaignStatus !== 'UNKNOWN'">Status: {{ row.campaignStatus }}</span>
                   <span v-if="row.clientName">Client: {{ row.clientName }}</span>
+                  <span v-if="row.bidStrategy">Bid: {{ metaBidStrategyLabel(row.bidStrategy) }}</span>
+                  <span v-if="row.budgetType">Budget type: {{ budgetTypeLabel(row.budgetType) }}</span>
+                  <span v-if="row.endDate" class="flex items-center gap-1">
+                    Ends: {{ endDateInfo(row.endDate).label }}
+                    <span
+                      v-if="endDateInfo(row.endDate).hint"
+                      class="font-medium"
+                      :class="endDateInfo(row.endDate).tone === 'error' ? 'text-error' : 'text-warning'"
+                    >({{ endDateInfo(row.endDate).hint }})</span>
+                  </span>
                 </div>
               </td>
             </tr>
           </template>
           <tr v-if="!campaigns.length">
-            <td :colspan="columns.length" class="px-3 py-8 text-center text-muted">
+            <td :colspan="visibleColumns.length" class="px-3 py-8 text-center text-muted">
               {{ search ? 'No campaigns matching search' : 'No campaign data for selected period' }}
             </td>
           </tr>
