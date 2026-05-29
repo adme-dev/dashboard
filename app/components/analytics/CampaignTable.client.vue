@@ -74,8 +74,8 @@ function statusColor(status: string | null): 'success' | 'warning' | 'error' | '
   if (!status) return 'neutral'
   const s = status.toUpperCase()
   if (s === 'ACTIVE' || s === 'ENABLED' || s === 'DELIVERING') return 'success'
-  if (s === 'PAUSED' || s === 'LIMITED') return 'warning'
-  if (s === 'DRAFT' || s === 'NOT_DELIVERING' || s === 'PENDING_REVIEW' || s === 'IN_PROCESS' || s === 'WITH_ISSUES') return 'info'
+  if (s === 'PAUSED' || s === 'LIMITED' || s === 'CAMPAIGN_PAUSED' || s === 'ADSET_PAUSED') return 'warning'
+  if (s === 'DRAFT' || s === 'NOT_DELIVERING' || s === 'PENDING_REVIEW' || s === 'IN_PROCESS' || s === 'WITH_ISSUES' || s === 'PENDING_BILLING_INFO') return 'info'
   if (s === 'DELETED' || s === 'ARCHIVED' || s === 'REMOVED' || s === 'DISAPPROVED') return 'error'
   return 'neutral'
 }
