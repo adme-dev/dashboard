@@ -6,6 +6,7 @@
  */
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { unwrapMetaImageUrl } from '~~/server/utils/metaImage'
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
@@ -45,7 +46,8 @@ export default defineEventHandler(async (event) => {
       id: r.id,
       creativeId: r.creative_id,
       type: r.creative_type,
-      thumbnailUrl: r.thumbnail_url,
+      // Upgrade legacy stored 64x64 emg-wrapper URLs to full-res at read time.
+      thumbnailUrl: unwrapMetaImageUrl(r.thumbnail_url),
       title: r.title,
       body: r.body,
     }))

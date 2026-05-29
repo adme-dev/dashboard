@@ -5,6 +5,7 @@
  */
 import { queryOne, queryRows, execute } from '~~/server/utils/db'
 import { computeMetrics } from '~~/server/utils/analyticsMetrics'
+import { unwrapMetaImageUrl } from '~~/server/utils/metaImage'
 
 const BREAKDOWN_PLATFORMS = ['meta', 'google_ads']
 
@@ -299,7 +300,8 @@ export async function syncCampaignCreatives(mediaSpendId: string): Promise<Creat
     console.error(`[OnDemandSync] Creative fetch failed for ${campaign.platform}:`, err.message)
   }
 
-  // Read back from DB to return
+  // Read back from DB to return. Upgrade legacy stored 64x64 emg-wrapper URLs to
+  // full-res at read time so existing rows render sharp without a re-sync.
   const rows = await queryRows<any>(
     `SELECT id, creative_id, creative_type, thumbnail_url, title, body
      FROM campaign_creatives WHERE media_spend_id = $1
@@ -311,7 +313,7 @@ export async function syncCampaignCreatives(mediaSpendId: string): Promise<Creat
     creatives: rows.map(r => ({
       id: r.id,
       type: r.creative_type,
-      thumbnailUrl: r.thumbnail_url,
+      thumbnailUrl: unwrapMetaImageUrl(r.thumbnail_url),
       title: r.title,
       body: r.body,
     })),
