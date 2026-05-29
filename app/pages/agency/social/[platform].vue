@@ -267,13 +267,12 @@ async function loadSpendData() {
 async function handleSyncAll() {
   syncing.value = true
   try {
-    const result = await syncSpend(platform.value as 'meta' | 'google' | 'tiktok', selectedMonth.value, selectedYear.value)
+    await syncSpend(platform.value as 'meta' | 'google' | 'tiktok', selectedMonth.value, selectedYear.value)
     toast.add({
-      title: 'Sync complete',
-      description: `${result.synced} campaigns synced across ${result.accounts} accounts — $${result.totalSpend.toLocaleString()}`,
+      title: 'Sync started',
+      description: `${platformConfig.value.displayName} spend sync is running in the background.`,
       color: 'success',
     })
-    await loadSpendData()
   } catch (e: any) {
     toast.add({ title: 'Sync failed', description: e.data?.statusMessage || e.message, color: 'error' })
   } finally {

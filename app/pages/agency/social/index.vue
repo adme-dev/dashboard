@@ -176,8 +176,8 @@ async function confirmDisconnect() {
 async function handleSync(platform: string) {
   syncing.value = platform
   try {
-    const result = await syncSpend(platform as any)
-    toast.add({ title: 'Sync complete', description: `Synced ${result.synced || 0} records`, color: 'success' })
+    await syncSpend(platform as any)
+    toast.add({ title: 'Sync started', description: `${getPlatformName(platform)} spend sync is running in the background.`, color: 'success' })
     await fetchConnections()
   } catch (e: any) {
     toast.add({ title: 'Sync failed', description: e.message, color: 'error' })
