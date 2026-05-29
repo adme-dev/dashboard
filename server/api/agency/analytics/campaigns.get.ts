@@ -14,7 +14,7 @@ import {
   leadSourceForPlatformSql
 } from '~~/server/utils/leads/portalAnalytics'
 
-const ALLOWED_SORT = ['spend', 'budget', 'impressions', 'clicks', 'conversions', 'revenue', 'campaign_name', 'platform', 'lead_count', 'cost_per_lead'] as const
+const ALLOWED_SORT = ['spend', 'budget', 'impressions', 'clicks', 'conversions', 'revenue', 'campaign_name', 'platform', 'lead_count', 'cost_per_lead', 'reach', 'cost_per_result', 'end_date'] as const
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
@@ -105,6 +105,12 @@ export default defineEventHandler(async (event) => {
           SUM(ms.clicks) as clicks,
           SUM(ms.conversions) as conversions,
           COALESCE(SUM(ms.revenue), 0) as revenue,
+          SUM(ms.reach) as reach,
+          (array_agg(ms.cost_per_result ORDER BY ms.synced_at DESC NULLS LAST))[1] as cost_per_result,
+          (array_agg(ms.result_type ORDER BY ms.synced_at DESC NULLS LAST))[1] as result_type,
+          (array_agg(ms.end_date ORDER BY ms.synced_at DESC NULLS LAST))[1] as end_date,
+          (array_agg(ms.bid_strategy ORDER BY ms.synced_at DESC NULLS LAST))[1] as bid_strategy,
+          (array_agg(ms.budget_type ORDER BY ms.synced_at DESC NULLS LAST))[1] as budget_type,
           MAX(ms.synced_at) as last_synced,
           (array_agg(ms.id ORDER BY ms.synced_at DESC NULLS LAST))[1] as media_spend_id,
           (array_agg(ms.connection_id ORDER BY ms.synced_at DESC NULLS LAST))[1] as connection_id,
@@ -189,6 +195,12 @@ export default defineEventHandler(async (event) => {
         leadWonCount: Number(r.lead_won_count || 0),
         leadLostCount: Number(r.lead_lost_count || 0),
         costPerLead: r.cost_per_lead == null ? null : toNum(r.cost_per_lead),
+        reach: toNum(r.reach),
+        costPerResult: r.cost_per_result == null ? null : toNum(r.cost_per_result),
+        resultType: r.result_type || null,
+        endDate: r.end_date ? String(r.end_date).slice(0, 10) : null,
+        bidStrategy: r.bid_strategy || null,
+        budgetType: r.budget_type || null,
         lastSynced: r.last_synced,
         mediaSpendId: r.media_spend_id,
         deepLinkUrl
