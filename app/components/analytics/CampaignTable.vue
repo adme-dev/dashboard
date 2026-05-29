@@ -149,9 +149,11 @@ const DEFAULT_VISIBLE = ['campaignName', 'spend', 'budget', 'variance', 'impress
 // "Meta Ads view" preset mirrors Ads Manager
 const META_PRESET = ['campaignName', 'delivery', 'results', 'costPerResult', 'budget', 'spend', 'impressions', 'reach', 'endDate', 'bidStrategy']
 
-// Client-only component (.client.vue), so localStorage is safe to read synchronously
-// during setup — this avoids the post-hydration column "flash" an onMounted swap would cause.
-function loadVisibleKeys(): string[] {
+const visibleKeys = ref<string[]>([...DEFAULT_VISIBLE])
+
+// Read the persisted column set, filtered to keys that still exist. Returns null when
+// there's nothing usable saved (corrupt, empty, or all-unknown), so we keep the defaults.
+function loadSavedKeys(): string[] | null {
   try {
     const saved = localStorage.getItem(props.columnsStorageKey)
     if (saved) {
@@ -163,10 +165,15 @@ function loadVisibleKeys(): string[] {
       }
     }
   } catch { /* ignore corrupt storage */ }
-  return [...DEFAULT_VISIBLE]
+  return null
 }
 
-const visibleKeys = ref<string[]>(loadVisibleKeys())
+// Hydrate from localStorage after mount (client-only lifecycle) — keeps SSR markup matching
+// the default column set, then applies the saved preference without a hydration mismatch.
+onMounted(() => {
+  const saved = loadSavedKeys()
+  if (saved) visibleKeys.value = saved
+})
 
 watch(visibleKeys, (v) => {
   if (import.meta.client) {
