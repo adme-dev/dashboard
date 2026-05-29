@@ -139,14 +139,10 @@ export default defineNuxtConfig({
     rollupConfig: {
       external: ['@react-email/render', '@cloudflare/puppeteer', 'puppeteer', 'gifenc', 'pngjs', 'pg-native']
     },
-    scheduledTasks: {
-      // Every 5 minutes — stuck-claim recovery
-      '*/5 * * * *': ['leads:recover-claims'],
-      // Daily 03:10 UTC — ingestion-error purge
-      '10 3 * * *': ['leads:purge-ingestion-errors'],
-      // Daily 03:30 UTC — retention purge
-      '30 3 * * *': ['leads:purge-retention'],
-    },
+    // Lead-maintenance crons run via the dedicated `leads-cron` companion Worker
+    // (workers/leads-cron) — its scheduled() handler POSTs to the
+    // /api/leads/_internal/* endpoints. Cloudflare Pages can't run Nitro
+    // scheduledTasks (no scheduled handler), so they are intentionally omitted here.
   },
 
   devtools: {
