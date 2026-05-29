@@ -149,17 +149,24 @@ const DEFAULT_VISIBLE = ['campaignName', 'spend', 'budget', 'variance', 'impress
 // "Meta Ads view" preset mirrors Ads Manager
 const META_PRESET = ['campaignName', 'delivery', 'results', 'costPerResult', 'budget', 'spend', 'impressions', 'reach', 'endDate', 'bidStrategy']
 
-const visibleKeys = ref<string[]>([...DEFAULT_VISIBLE])
-
-onMounted(() => {
+// Client-only component (.client.vue), so localStorage is safe to read synchronously
+// during setup — this avoids the post-hydration column "flash" an onMounted swap would cause.
+function loadVisibleKeys(): string[] {
   try {
     const saved = localStorage.getItem(props.columnsStorageKey)
     if (saved) {
       const parsed = JSON.parse(saved)
-      if (Array.isArray(parsed)) visibleKeys.value = parsed
+      if (Array.isArray(parsed)) {
+        const known = new Set(allColumns.map(c => c.key))
+        const cleaned = parsed.filter((k): k is string => typeof k === 'string' && known.has(k))
+        if (cleaned.length) return cleaned
+      }
     }
   } catch { /* ignore corrupt storage */ }
-})
+  return [...DEFAULT_VISIBLE]
+}
+
+const visibleKeys = ref<string[]>(loadVisibleKeys())
 
 watch(visibleKeys, (v) => {
   if (import.meta.client) {
@@ -176,11 +183,6 @@ function isVisible(key: string): boolean {
   if (props.hideColumns.includes(key)) return false
   if (isLeadCol(key) && !props.showLeadColumns) return false
   return visibleKeys.value.includes(key)
-}
-
-// Keep backward-compat for any call site still using showColumn
-function showColumn(key: string): boolean {
-  return isVisible(key)
 }
 
 function toggleColumn(key: string) {

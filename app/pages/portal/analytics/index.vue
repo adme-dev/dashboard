@@ -309,6 +309,7 @@ function formatResponseTime(minutes: number | null | undefined) {
           :platforms="selectedPlatforms"
           api-base="/api/portal/analytics"
           :hide-columns="['budget', 'variance']"
+          columns-storage-key="analytics:campaign-cols:portal"
           show-lead-columns
           lead-link-base="/portal/leads"
         />

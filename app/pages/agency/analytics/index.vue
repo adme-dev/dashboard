@@ -209,6 +209,7 @@ async function syncAll() {
       :end-date="filters.endDate"
       :platforms="filters.platforms"
       :client-id="filters.clientId"
+      columns-storage-key="analytics:campaign-cols:agency"
       show-lead-columns
       lead-link-base="/agency/leads"
     />

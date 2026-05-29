@@ -174,6 +174,7 @@ const loading = computed(() => overviewStatus.value === 'pending')
       :platforms="[platform]"
       api-base="/api/portal/analytics"
       :hide-columns="['budget', 'variance']"
+      columns-storage-key="analytics:campaign-cols:portal-platform"
       show-lead-columns
       lead-link-base="/portal/leads"
     />

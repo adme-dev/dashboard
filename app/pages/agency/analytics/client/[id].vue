@@ -159,6 +159,7 @@ const loading = computed(() => overviewStatus.value === 'pending')
       :end-date="filters.endDate"
       :platforms="filters.platforms"
       :client-id="clientId"
+      columns-storage-key="analytics:campaign-cols:agency-client"
       show-lead-columns
       lead-link-base="/agency/leads"
     />
