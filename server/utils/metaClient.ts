@@ -50,7 +50,6 @@ export interface MetaCampaign {
   lifetime_budget?: string
   bid_strategy?: string
   stop_time?: string
-  start_time?: string
 }
 
 export interface MetaCampaignMeta {
@@ -62,13 +61,14 @@ export interface MetaCampaignMeta {
 
 /** Pure: derive persisted campaign metadata from a Meta campaign object. */
 export function mapMetaCampaignMeta(c: MetaCampaign): MetaCampaignMeta {
-  const lifetime = Number(c.lifetime_budget || 0)
-  const daily = Number(c.daily_budget || 0)
+  const lifetime = parseFloat(c.lifetime_budget ?? '0') || 0
+  const daily = parseFloat(c.daily_budget ?? '0') || 0
   const budgetType: 'daily' | 'lifetime' | null =
     lifetime > 0 ? 'lifetime' : daily > 0 ? 'daily' : null
+  // endDate is the campaign's local end date (as shown in Meta Ads Manager), not UTC-normalised.
   return {
     status: c.effective_status || c.status || null,
-    endDate: c.stop_time ? c.stop_time.slice(0, 10) : null,
+    endDate: c.stop_time && /^\d{4}-\d{2}-\d{2}/.test(c.stop_time) ? c.stop_time.slice(0, 10) : null,
     bidStrategy: c.bid_strategy || null,
     budgetType,
   }
@@ -619,19 +619,25 @@ export async function getCampaigns(
   token: string,
   statusFilter?: string
 ): Promise<MetaCampaign[]> {
-  const params: Record<string, string> = {
-    fields: 'id,name,status,effective_status,objective,daily_budget,lifetime_budget,bid_strategy,stop_time,start_time',
+  const query: Record<string, string> = {
+    fields: 'id,name,status,effective_status,objective,daily_budget,lifetime_budget,bid_strategy,stop_time',
+    access_token: token,
     limit: '100'
   }
   if (statusFilter) {
-    params.filtering = JSON.stringify([{ field: 'effective_status', operator: 'IN', value: [statusFilter] }])
+    query.filtering = JSON.stringify([{ field: 'effective_status', operator: 'IN', value: [statusFilter] }])
   }
-  const res = await metaFetch<{ data: MetaCampaign[] }>(
-    `${META_GRAPH_BASE}/${accountId}/campaigns`,
-    token,
-    params
-  )
-  return res.data || []
+  const campaigns: MetaCampaign[] = []
+  let url: string | null = `${META_GRAPH_BASE}/${accountId}/campaigns`
+  while (url) {
+    const res: { data: MetaCampaign[]; paging?: { next?: string } } = await ofetch(url, {
+      method: 'GET',
+      query: url.includes('?') ? undefined : query
+    })
+    campaigns.push(...(res.data || []))
+    url = res.paging?.next || null
+  }
+  return campaigns
 }
 
 /**
