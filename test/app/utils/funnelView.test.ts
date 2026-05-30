@@ -46,6 +46,7 @@ describe('bestWorstCostPerLead', () => {
     expect(bestWorstCostPerLead(rows)).toEqual({ best: 'Paid Social', worst: 'Other' })
   })
   it('returns nulls when fewer than two channels have a cost/lead', () => {
+    expect(bestWorstCostPerLead([])).toEqual({ best: null, worst: null })
     expect(bestWorstCostPerLead([{ channel: 'A', costPerLead: 10 }])).toEqual({ best: null, worst: null })
     expect(bestWorstCostPerLead([{ channel: 'A', costPerLead: null }])).toEqual({ best: null, worst: null })
   })

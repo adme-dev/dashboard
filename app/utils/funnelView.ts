@@ -17,7 +17,7 @@ export function conversionRate(numerator: number, denominator: number): number |
 
 /** Fraction of a total, clamped to [0,1]. Guards divide-by-zero and negatives. */
 export function shareOfTotal(value: number, total: number): number {
-  if (!total || total <= 0) return 0
+  if (!Number.isFinite(total) || total <= 0) return 0
   const s = value / total
   if (s < 0) return 0
   if (s > 1) return 1
