@@ -95,6 +95,9 @@ const editForm = ref({
   retainerAmount: null as number | null,
   mediaCommissionRate: null as number | null,
   xeroContactId: null as string | null,
+  contactEmail: '',
+  contactPhone: '',
+  address: '',
   notes: '',
   isActive: true
 })
@@ -109,6 +112,9 @@ const openEditModal = () => {
       retainerAmount: client.value.retainerAmount,
       mediaCommissionRate: client.value.mediaCommissionRate,
       xeroContactId: client.value.xeroContactId || null,
+      contactEmail: client.value.contactEmail || '',
+      contactPhone: client.value.contactPhone || '',
+      address: client.value.address || '',
       notes: client.value.notes || '',
       isActive: client.value.isActive
     }
@@ -365,6 +371,22 @@ async function saveKpiTargets() {
                 <div>
                   <dt class="text-sm text-muted">Payment Terms</dt>
                   <dd class="font-medium">{{ client.paymentTerms }} days</dd>
+                </div>
+                <div v-if="client.contactEmail">
+                  <dt class="text-sm text-muted">Contact Email</dt>
+                  <dd class="font-medium">
+                    <a :href="`mailto:${client.contactEmail}`" class="text-primary hover:underline">{{ client.contactEmail }}</a>
+                  </dd>
+                </div>
+                <div v-if="client.contactPhone">
+                  <dt class="text-sm text-muted">Contact Phone</dt>
+                  <dd class="font-medium">
+                    <a :href="`tel:${client.contactPhone}`" class="text-primary hover:underline">{{ client.contactPhone }}</a>
+                  </dd>
+                </div>
+                <div v-if="client.address">
+                  <dt class="text-sm text-muted">Billing Address</dt>
+                  <dd class="text-sm whitespace-pre-line">{{ client.address }}</dd>
                 </div>
                 <div v-if="client.hourlyRate">
                   <dt class="text-sm text-muted">Hourly Rate</dt>
@@ -708,6 +730,33 @@ async function saveKpiTargets() {
                 </UInput>
               </UFormField>
             </div>
+          </fieldset>
+
+          <!-- Section: Contact -->
+          <fieldset class="space-y-5 pb-6 border-b border-default">
+            <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">Contact</legend>
+
+            <div class="grid grid-cols-2 gap-4">
+              <UFormField label="Contact Email">
+                <UInput v-model="editForm.contactEmail" type="email" size="xl" class="w-full" placeholder="name@company.com">
+                  <template #leading>
+                    <UIcon name="i-lucide-mail" class="text-muted" />
+                  </template>
+                </UInput>
+              </UFormField>
+
+              <UFormField label="Contact Phone">
+                <UInput v-model="editForm.contactPhone" type="tel" size="xl" class="w-full" placeholder="+61 ...">
+                  <template #leading>
+                    <UIcon name="i-lucide-phone" class="text-muted" />
+                  </template>
+                </UInput>
+              </UFormField>
+            </div>
+
+            <UFormField label="Billing Address">
+              <UTextarea v-model="editForm.address" :rows="3" size="xl" class="w-full" placeholder="Street, suburb, state, postcode" />
+            </UFormField>
           </fieldset>
 
           <!-- Section: Rates -->

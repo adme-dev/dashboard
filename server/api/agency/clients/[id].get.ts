@@ -119,6 +119,9 @@ export default defineEventHandler(async (event) => {
         mediaCommissionRate: client.media_commission_rate ? Number(client.media_commission_rate) : null,
         isActive: client.is_active,
         notes: client.notes,
+        contactEmail: client.contact_email,
+        contactPhone: client.contact_phone,
+        address: client.address,
         createdAt: client.created_at,
         updatedAt: client.updated_at
       },
