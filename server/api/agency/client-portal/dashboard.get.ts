@@ -30,7 +30,7 @@ export default defineEventHandler(async (event) => {
     // Verify client exists
     const client = await queryOne(`
       SELECT
-        id, name, logo_url, status, billing_type, retainer_amount,
+        id, name, logo_url, is_active, billing_type, retainer_amount,
         created_at
       FROM agency_clients
       WHERE id = $1
@@ -346,7 +346,7 @@ export default defineEventHandler(async (event) => {
         id: client.id,
         name: client.name,
         logoUrl: client.logo_url,
-        status: client.status,
+        status: client.is_active ? 'active' : 'inactive',
         billingType: client.billing_type,
         retainerAmount: Number(client.retainer_amount || 0),
         memberSince: client.created_at

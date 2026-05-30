@@ -58,7 +58,7 @@ export async function pushQuoteToXero(
     SELECT
       q.*,
       c.name AS client_name,
-      c.company AS client_company
+      c.name AS client_company
     FROM quotes q
     LEFT JOIN agency_clients c ON q.client_id = c.id
     WHERE q.id = $1

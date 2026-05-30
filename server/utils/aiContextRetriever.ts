@@ -246,12 +246,12 @@ async function searchBoards(userId: string): Promise<ContextItem[]> {
 async function searchClients(keywords: string[]): Promise<ContextItem[]> {
   const pattern = keywords.length > 0 ? keywords.join('|') : '.*'
   const rows = await queryRows(`
-    SELECT c.id, c.name, c.status, c.industry, c.created_at,
+    SELECT c.id, c.name, c.is_active, c.created_at,
            COUNT(DISTINCT b.id) as brief_count
     FROM agency_clients c
     LEFT JOIN briefs b ON b.client_id = c.id
     WHERE c.name ~* $1
-    GROUP BY c.id, c.name, c.status, c.industry, c.created_at
+    GROUP BY c.id, c.name, c.is_active, c.created_at
     ORDER BY c.name ASC
     LIMIT 5
   `, [pattern])
@@ -260,7 +260,7 @@ async function searchClients(keywords: string[]): Promise<ContextItem[]> {
     type: 'client',
     id: r.id,
     title: r.name,
-    snippet: `Status: ${r.status || 'active'}${r.industry ? ` | Industry: ${r.industry}` : ''} | ${r.brief_count} briefs`,
+    snippet: `Status: ${r.is_active === false ? 'inactive' : 'active'} | ${r.brief_count} briefs`,
     url: `/agency/clients/${r.id}`,
     updatedAt: r.created_at,
   }))

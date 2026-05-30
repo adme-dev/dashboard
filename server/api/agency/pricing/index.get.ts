@@ -72,7 +72,7 @@ export default defineEventHandler(async (event) => {
       SELECT
         jp.*,
         c.name as client_name,
-        c.email as client_email,
+        c.contact_email as client_email,
         b.title as brief_title,
         b.reference_number as brief_reference,
         p.name as project_name,
