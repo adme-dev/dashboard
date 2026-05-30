@@ -279,6 +279,9 @@ const graphExplorerLabel = computed(() => {
       </div>
 
       <template v-else>
+        <!-- Google Analytics 4 connect + property→client mapping -->
+        <SocialGa4ConnectCard class="mb-6" />
+
         <!-- Platform Cards Grid -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <SocialPlatformCard
