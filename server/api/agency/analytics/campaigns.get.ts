@@ -151,7 +151,7 @@ export default defineEventHandler(async (event) => {
             OR (c.campaign_id IS NULL AND c.campaign_name IS NOT NULL AND l.campaign_name = c.campaign_name)
           )
       ) la ON TRUE
-      ORDER BY ${sortBy === 'health_score' ? 'spend' : (sortBy === 'cost_per_lead' ? 'cost_per_lead' : sortBy)} ${sortDir} NULLS LAST
+      ORDER BY ${sortBy === 'health_score' ? 'spend' : sortBy} ${sortDir} NULLS LAST
       LIMIT $${limitIdx} OFFSET $${offsetIdx}
     `, params)
 
@@ -184,7 +184,7 @@ export default defineEventHandler(async (event) => {
         conversionRateRanking: r.conversion_rate_ranking,
         impressionShare: r.impression_share == null ? null : Number(r.impression_share),
         target: tgt ? {
-          targetCostPerResult: Number(tgt.target_cost_per_result),
+          targetCostPerResult: toNum(tgt.target_cost_per_result),
           targetCtr: tgt.target_ctr == null ? null : Number(tgt.target_ctr),
           maxFrequency: tgt.max_frequency == null ? null : Number(tgt.max_frequency),
         } : null,
@@ -243,6 +243,9 @@ export default defineEventHandler(async (event) => {
       }
     })
 
+    // health_score is computed in JS after LIMIT/OFFSET, so this sort is page-local
+    // (not a global ranking). The SQL above falls back to ORDER BY spend to keep page
+    // composition stable across requests.
     if (sortBy === 'health_score') {
       const dir = sortDir === 'ASC' ? 1 : -1
       campaigns.sort((a, b) => {
