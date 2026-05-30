@@ -7,6 +7,7 @@ interface ClientOption { label: string; value: string }
 
 const toast = useToast()
 const loading = ref(false)
+const autoMapping = ref(false)
 const connections = ref<Ga4Connection[]>([])
 const maps = ref<Ga4Map[]>([])
 const clientOptions = ref<ClientOption[]>([])
@@ -56,6 +57,56 @@ async function mapProperty(conn: Ga4Connection, prop: Ga4Property) {
   }
 }
 
+async function autoMap() {
+  // Flatten all properties with their owning connection.
+  const allProps: Array<{ connectionId: string; prop: Ga4Property }> = []
+  for (const conn of connections.value) {
+    for (const prop of conn.properties) allProps.push({ connectionId: conn.connectionId, prop })
+  }
+
+  const alreadyMapped = new Set(maps.value.map((m) => m.property_id))
+  const clientList = clientOptions.value.map((c) => ({ id: c.value, name: c.label }))
+  const results = matchPropertiesToClients(
+    allProps.map((a) => ({ propertyId: a.prop.propertyId, propertyDisplayName: a.prop.propertyDisplayName })),
+    clientList
+  )
+  const matchById = new Map(results.map((r) => [r.propertyId, r.clientId]))
+
+  const items = allProps
+    .filter((a) => !alreadyMapped.has(a.prop.propertyId) && matchById.get(a.prop.propertyId))
+    .map((a) => ({
+      connectionId: a.connectionId,
+      propertyId: a.prop.propertyId,
+      propertyDisplayName: a.prop.propertyDisplayName,
+      clientId: matchById.get(a.prop.propertyId) as string
+    }))
+
+  const manualCount = allProps.length - alreadyMapped.size - items.length
+
+  if (items.length === 0) {
+    toast.add({ title: 'No confident matches', description: 'Map the remaining properties manually.', color: 'warning' })
+    return
+  }
+
+  autoMapping.value = true
+  try {
+    const res = await $fetch<{ ok: boolean; mapped: number }>('/api/agency/social/ga4/map-bulk', {
+      method: 'POST',
+      body: { items }
+    })
+    toast.add({
+      title: 'Auto-mapped',
+      description: `${res.mapped} mapped, ${manualCount} need manual review.`,
+      color: 'success'
+    })
+    await loadProperties()
+  } catch (err: any) {
+    toast.add({ title: 'Auto-map failed', description: err.data?.statusMessage || err.message, color: 'error' })
+  } finally {
+    autoMapping.value = false
+  }
+}
+
 async function syncNow() {
   await $fetch('/api/agency/social/ga4/sync', { method: 'POST', body: { lookbackDays: 90 } })
   toast.add({ title: 'GA4 sync started', description: 'Pulling the last 90 days in the background.', color: 'success' })
@@ -73,6 +124,9 @@ onMounted(() => { loadClients(); loadProperties() })
           <span class="font-semibold">Google Analytics 4</span>
         </div>
         <div class="flex gap-2">
+          <UButton size="sm" variant="soft" icon="i-lucide-wand-2" :loading="autoMapping" :disabled="!connections.length" @click="autoMap">
+            Auto-map
+          </UButton>
           <UButton size="sm" variant="soft" icon="i-lucide-link" @click="connect">Connect Google Analytics</UButton>
           <UButton size="sm" variant="ghost" icon="i-lucide-refresh-cw" :disabled="!connections.length" @click="syncNow">Sync now</UButton>
         </div>
