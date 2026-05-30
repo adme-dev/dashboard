@@ -517,6 +517,7 @@ async function rotateEndpointKey(ep: LeadEndpoint) {
       <!-- Period picker + week filter + sync -->
       <div class="flex items-center gap-2 flex-wrap">
         <SocialSpendPeriodPicker
+          class="flex-1"
           v-model:month="selectedMonth"
           v-model:year="selectedYear"
           v-model:week-filter="weekFilter"
