@@ -26,8 +26,9 @@ const form = ref({
   projectManagerId: null as string | null
 })
 
-// Fetch clients
-const { data: clientsData } = await useFetch('/api/agency/clients')
+// Fetch clients — include inactive so a pre-selected client from ?clientId=
+// (which can point at an inactive client) is always present in the picker.
+const { data: clientsData } = await useFetch('/api/agency/clients', { query: { active: 'false' } })
 const clients = computed(() => ((clientsData.value as any) || []) as any[])
 
 // Fetch team members for project manager selection

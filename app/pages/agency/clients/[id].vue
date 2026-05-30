@@ -8,10 +8,15 @@ definePageMeta({
 
 const route = useRoute()
 const toast = useToast()
+// KPI targets are editable only by MANAGEMENT roles (matches the kpi-targets PUT
+// guard) — non-managers get a read-only view instead of a 403 on save.
+const { isManager } = useAuth()
 const clientId = route.params.id as string
 
 // Fetch client data
-const { data: clientData, pending, refresh } = await useFetch(`/api/agency/clients/${clientId}`)
+const { data: clientData, pending, refresh, error } = await useFetch(`/api/agency/clients/${clientId}`)
+// Distinguish a genuine 404 from a transient/permission failure for the error state.
+const isNotFound = computed(() => ((error.value as any)?.statusCode ?? (error.value as any)?.status) === 404)
 
 const client = computed(() => (clientData.value as any)?.client || null)
 const projects = computed(() => ((clientData.value as any)?.projects || []) as any[])
@@ -476,7 +481,7 @@ async function saveKpiTargets() {
                     <h3 class="text-sm font-semibold text-default">KPI Targets</h3>
                     <p class="text-xs text-muted">Per-result-type targets that drive the campaign health score.</p>
                   </div>
-                  <UButton size="xs" variant="outline" icon="i-lucide-plus" label="Add" @click="addKpiRow" />
+                  <UButton v-if="isManager" size="xs" variant="outline" icon="i-lucide-plus" label="Add" @click="addKpiRow" />
                 </div>
               </template>
               <div class="space-y-3">
@@ -488,22 +493,25 @@ async function saveKpiTargets() {
                       create-item
                       placeholder="Select result type"
                       size="sm"
+                      :disabled="!isManager"
                       @create="(v: string) => { t.resultType = v }"
                     />
                   </UFormField>
                   <UFormField class="col-span-3" label="Target cost / result">
-                    <UInput v-model.number="t.targetCostPerResult" type="number" :min="0" step="0.01" size="sm" />
+                    <UInput v-model.number="t.targetCostPerResult" type="number" :min="0" step="0.01" size="sm" :disabled="!isManager" />
                   </UFormField>
                   <UFormField class="col-span-2" label="Target CTR %">
-                    <UInput v-model.number="t.targetCtr" type="number" :min="0" step="0.01" size="sm" />
+                    <UInput v-model.number="t.targetCtr" type="number" :min="0" step="0.01" size="sm" :disabled="!isManager" />
                   </UFormField>
                   <UFormField class="col-span-2" label="Max freq.">
-                    <UInput v-model.number="t.maxFrequency" type="number" :min="0" step="0.1" size="sm" />
+                    <UInput v-model.number="t.maxFrequency" type="number" :min="0" step="0.1" size="sm" :disabled="!isManager" />
                   </UFormField>
-                  <UButton class="col-span-1" size="xs" variant="ghost" color="error" icon="i-lucide-trash-2" @click="removeKpiRow(i)" />
+                  <UButton v-if="isManager" class="col-span-1" size="xs" variant="ghost" color="error" icon="i-lucide-trash-2" @click="removeKpiRow(i)" />
                 </div>
-                <p v-if="!kpiTargets.length" class="text-xs text-muted">No targets yet. Add one to enable health scoring for this client.</p>
-                <div class="flex justify-end pt-1">
+                <p v-if="!kpiTargets.length" class="text-xs text-muted">
+                  {{ isManager ? 'No targets yet. Add one to enable health scoring for this client.' : 'No KPI targets set for this client.' }}
+                </p>
+                <div v-if="isManager" class="flex justify-end pt-1">
                   <UButton size="sm" label="Save targets" :loading="kpiSaving" @click="saveKpiTargets" />
                 </div>
               </div>
@@ -649,14 +657,19 @@ async function saveKpiTargets() {
           </div>
         </template>
 
-        <!-- Not found / failed to load -->
+        <!-- Not found (404) vs a transient/permission load failure -->
         <div v-else class="flex flex-col items-center justify-center text-center py-20">
-          <UIcon name="i-lucide-user-x" class="w-10 h-10 text-dimmed mb-3" />
-          <h3 class="text-base font-semibold">Client not found</h3>
+          <UIcon :name="isNotFound ? 'i-lucide-user-x' : 'i-lucide-alert-triangle'" class="w-10 h-10 text-dimmed mb-3" />
+          <h3 class="text-base font-semibold">{{ isNotFound ? 'Client not found' : 'Couldn’t load client' }}</h3>
           <p class="text-sm text-muted mt-1 max-w-sm">
-            This client doesn’t exist or you don’t have access to it. It may have been removed.
+            {{ isNotFound
+              ? 'This client doesn’t exist or you don’t have access to it. It may have been removed.'
+              : 'Something went wrong loading this client. Please try again.' }}
           </p>
-          <UButton class="mt-4" variant="outline" icon="i-lucide-arrow-left" label="Back to clients" to="/agency/clients" />
+          <div class="mt-4 flex items-center gap-2">
+            <UButton v-if="!isNotFound" icon="i-lucide-refresh-cw" label="Retry" @click="refresh()" />
+            <UButton variant="outline" icon="i-lucide-arrow-left" label="Back to clients" to="/agency/clients" />
+          </div>
         </div>
       </div>
     </UDashboardPanel>

@@ -97,6 +97,16 @@ export default defineEventHandler(async (event) => {
       LIMIT 20
     `, [id])
 
+    // Commission per row uses the row's own rate, falling back to the client's
+    // configured rate when the row carries none (CSV/manual imports and pre-rate
+    // syncs store commission_rate = 0). Rows and the summary share this so the
+    // headline figure always matches the per-row breakdown.
+    const clientCommissionRate = client.media_commission_rate ? Number(client.media_commission_rate) : 0
+    const rowCommission = (ms: any) => {
+      const rate = Number(ms.commission_rate) > 0 ? Number(ms.commission_rate) : clientCommissionRate
+      return (Number(ms.actual_spend) || 0) * rate / 100
+    }
+
     return {
       client: {
         id: client.id,
@@ -155,8 +165,8 @@ export default defineEventHandler(async (event) => {
         period: ms.period,
         budgetAllocated: Number(ms.budget_allocated) || 0,
         actualSpend: Number(ms.actual_spend) || 0,
-        commissionRate: Number(ms.commission_rate) || 0,
-        commission: (Number(ms.actual_spend) || 0) * (Number(ms.commission_rate) || 0) / 100
+        commissionRate: Number(ms.commission_rate) > 0 ? Number(ms.commission_rate) : clientCommissionRate,
+        commission: rowCommission(ms)
       })),
       summary: {
         totalRevenue,
@@ -169,9 +179,9 @@ export default defineEventHandler(async (event) => {
         completedProjects,
         totalInvoiced: invoices.reduce((sum, inv) => sum + Number(inv.total || 0), 0),
         totalMediaSpend: mediaSpend.reduce((sum, ms) => sum + Number(ms.actual_spend || 0), 0),
-        // Sum of per-row commission (actual_spend × that row's commission_rate) so the
-        // headline figure matches the per-row breakdown in the Media Spend tab.
-        totalMediaCommission: mediaSpend.reduce((sum, ms) => sum + (Number(ms.actual_spend) || 0) * (Number(ms.commission_rate) || 0) / 100, 0),
+        // Sum of per-row commission (with client-rate fallback, see rowCommission)
+        // so the headline figure matches the per-row breakdown in the Media Spend tab.
+        totalMediaCommission: mediaSpend.reduce((sum, ms) => sum + rowCommission(ms), 0),
         // Surfaced as a distinct metric — retainer revenue is recurring (per month),
         // intentionally NOT folded into project-budget revenue to stay consistent
         // with the clients list + analytics convention.
