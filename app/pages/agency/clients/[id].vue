@@ -178,11 +178,17 @@ const invoiceColumns = [
 ]
 
 // KPI Targets
-const { data: kpiData, refresh: refreshKpi } = useFetch<{ targets: Array<{ resultType: string; targetCostPerResult: number; targetCtr: number | null; maxFrequency: number | null }> }>(
-  () => `/api/agency/clients/${clientId}/kpi-targets`, { default: () => ({ targets: [] }) }
+const { data: kpiData, refresh: refreshKpi } = useFetch<{ targets: Array<{ resultType: string; targetCostPerResult: number; targetCtr: number | null; maxFrequency: number | null }>; availableResultTypes: string[] }>(
+  () => `/api/agency/clients/${clientId}/kpi-targets`, { default: () => ({ targets: [], availableResultTypes: [] }) }
 )
 const kpiTargets = ref<Array<{ resultType: string; targetCostPerResult: number | null; targetCtr: number | null; maxFrequency: number | null }>>([])
 watch(kpiData, (v) => { kpiTargets.value = (v?.targets || []).map(t => ({ ...t })) }, { immediate: true })
+// Result-type options = the values this client's campaigns actually carry, plus any already-saved targets.
+const resultTypeOptions = computed(() => {
+  const set = new Set<string>(kpiData.value?.availableResultTypes || [])
+  for (const t of kpiTargets.value) if (t.resultType) set.add(t.resultType)
+  return [...set].sort()
+})
 
 function addKpiRow() { kpiTargets.value.push({ resultType: '', targetCostPerResult: null, targetCtr: null, maxFrequency: null }) }
 function removeKpiRow(i: number) { kpiTargets.value.splice(i, 1) }
@@ -449,7 +455,14 @@ async function saveKpiTargets() {
               <div class="space-y-3">
                 <div v-for="(t, i) in kpiTargets" :key="i" class="grid grid-cols-12 gap-2 items-end">
                   <UFormField class="col-span-4" label="Result type">
-                    <UInput v-model="t.resultType" placeholder="e.g. Leads (Form)" size="sm" />
+                    <USelectMenu
+                      v-model="t.resultType"
+                      :items="resultTypeOptions"
+                      create-item
+                      placeholder="Select result type"
+                      size="sm"
+                      @create="(v: string) => { t.resultType = v }"
+                    />
                   </UFormField>
                   <UFormField class="col-span-3" label="Target cost / result">
                     <UInput v-model.number="t.targetCostPerResult" type="number" :min="0" step="0.01" size="sm" />
