@@ -4,7 +4,7 @@
 <script setup lang="ts">
 import { pctDelta, conversionRate, shareOfTotal, bestWorstCostPerLead } from '~/utils/funnelView'
 
-const props = defineProps<{ clientId: string; startDate: string; endDate: string }>()
+const props = defineProps<{ clientId: string, startDate: string, endDate: string }>()
 const { fmtCurrency, fmtCompact, fmtPercent } = useAnalytics()
 
 interface FunnelRow {
@@ -152,7 +152,9 @@ function deltaIcon(delta: number | null): string {
     <!-- No GA4 property mapped for this client -->
     <div v-else-if="!data?.hasGa4" class="flex flex-col items-center gap-3 py-10 text-center">
       <UIcon name="i-lucide-line-chart" class="w-8 h-8 text-muted" />
-      <p class="text-sm text-muted">No GA4 property is mapped for this client yet.</p>
+      <p class="text-sm text-muted">
+        No GA4 property is mapped for this client yet.
+      </p>
       <UButton
         to="/agency/social/ga4"
         icon="i-lucide-link"
@@ -206,23 +208,33 @@ function deltaIcon(delta: number | null): string {
 
       <!-- Channel table -->
       <UTable :data="channels" :columns="columns">
-        <template #spend-cell="{ row }">{{ fmtCurrency(row.original.spend) }}</template>
+        <template #spend-cell="{ row }">
+          {{ fmtCurrency(row.original.spend) }}
+        </template>
         <template #sessions-cell="{ row }">
           <div class="relative">
             <div class="absolute inset-y-0 left-0 rounded bg-primary/10" :style="{ width: `${Math.round(shareOfTotal(row.original.sessions, totalSessions) * 100)}%` }" />
             <span class="relative tabular-nums">{{ fmtCompact(row.original.sessions) }}</span>
           </div>
         </template>
-        <template #engagedSessions-cell="{ row }">{{ fmtCompact(row.original.engagedSessions) }}</template>
-        <template #keyEvents-cell="{ row }">{{ fmtCompact(row.original.keyEvents) }}</template>
+        <template #engagedSessions-cell="{ row }">
+          {{ fmtCompact(row.original.engagedSessions) }}
+        </template>
+        <template #keyEvents-cell="{ row }">
+          {{ fmtCompact(row.original.keyEvents) }}
+        </template>
         <template #leads-cell="{ row }">
           <div class="relative">
             <div class="absolute inset-y-0 left-0 rounded bg-success/10" :style="{ width: `${Math.round(shareOfTotal(row.original.leads, totalLeads) * 100)}%` }" />
             <span class="relative tabular-nums">{{ fmtCompact(row.original.leads) }}</span>
           </div>
         </template>
-        <template #costPerSession-cell="{ row }">{{ fmtRatioCurrency(row.original.costPerSession) }}</template>
-        <template #costPerKeyEvent-cell="{ row }">{{ fmtRatioCurrency(row.original.costPerKeyEvent) }}</template>
+        <template #costPerSession-cell="{ row }">
+          {{ fmtRatioCurrency(row.original.costPerSession) }}
+        </template>
+        <template #costPerKeyEvent-cell="{ row }">
+          {{ fmtRatioCurrency(row.original.costPerKeyEvent) }}
+        </template>
         <template #costPerLead-cell="{ row }">
           <span
             class="tabular-nums px-1.5 py-0.5 rounded"
@@ -232,7 +244,9 @@ function deltaIcon(delta: number | null): string {
             }"
           >{{ fmtRatioCurrency(row.original.costPerLead) }}</span>
         </template>
-        <template #sessionToLeadRate-cell="{ row }">{{ fmtRatePct(row.original.sessionToLeadRate) }}</template>
+        <template #sessionToLeadRate-cell="{ row }">
+          {{ fmtRatePct(row.original.sessionToLeadRate) }}
+        </template>
       </UTable>
     </div>
   </UCard>

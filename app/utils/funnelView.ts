@@ -30,9 +30,9 @@ export function shareOfTotal(value: number, total: number): number {
  * least two channels qualify, so a single channel is never highlighted as both.
  */
 export function bestWorstCostPerLead(
-  rows: Array<{ channel: string; costPerLead: number | null }>
-): { best: string | null; worst: string | null } {
-  const valid = rows.filter((r): r is { channel: string; costPerLead: number } => r.costPerLead != null)
+  rows: Array<{ channel: string, costPerLead: number | null }>
+): { best: string | null, worst: string | null } {
+  const valid = rows.filter((r): r is { channel: string, costPerLead: number } => r.costPerLead != null)
   if (valid.length < 2) return { best: null, worst: null }
   let best = valid[0]
   let worst = valid[0]

@@ -23,8 +23,8 @@ async function funnelForWindow(
   clientId: string,
   startDate: string,
   endDate: string
-): Promise<{ channels: FunnelChannelRow[]; totals: FunnelChannelRow; hasGa4: boolean }> {
-  const spendRows = await queryRows<{ channel: string; spend: string }>(
+): Promise<{ channels: FunnelChannelRow[], totals: FunnelChannelRow, hasGa4: boolean }> {
+  const spendRows = await queryRows<{ channel: string, spend: string }>(
     `SELECT ${SPEND_CHANNEL_CASE} AS channel, COALESCE(SUM(ds.spend),0) AS spend
      FROM daily_spend ds
      JOIN media_spend ms ON ms.id = ds.media_spend_id
@@ -32,7 +32,7 @@ async function funnelForWindow(
      GROUP BY 1`,
     [clientId, startDate, endDate]
   )
-  const ga4Rows = await queryRows<{ channel: string; sessions: string; engaged: string; key_events: string }>(
+  const ga4Rows = await queryRows<{ channel: string, sessions: string, engaged: string, key_events: string }>(
     `SELECT channel_group AS channel,
             COALESCE(SUM(sessions),0) AS sessions,
             COALESCE(SUM(engaged_sessions),0) AS engaged,
@@ -42,7 +42,7 @@ async function funnelForWindow(
      GROUP BY 1`,
     [clientId, startDate, endDate]
   )
-  const leadRows = await queryRows<{ channel: string; leads: string }>(
+  const leadRows = await queryRows<{ channel: string, leads: string }>(
     `SELECT ${LEAD_CHANNEL_CASE} AS channel, COUNT(*) AS leads
      FROM leads l
      WHERE l.client_id = $1 AND l.deleted_at IS NULL
@@ -54,7 +54,7 @@ async function funnelForWindow(
 
   const spendByChannel: Record<string, number> = {}
   for (const r of spendRows) spendByChannel[r.channel] = Number(r.spend)
-  const ga4ByChannel: Record<string, { sessions: number; engagedSessions: number; keyEvents: number }> = {}
+  const ga4ByChannel: Record<string, { sessions: number, engagedSessions: number, keyEvents: number }> = {}
   for (const r of ga4Rows) ga4ByChannel[r.channel] = { sessions: Number(r.sessions), engagedSessions: Number(r.engaged), keyEvents: Number(r.key_events) }
   const leadsByChannel: Record<string, number> = {}
   for (const r of leadRows) leadsByChannel[r.channel] = Number(r.leads)
