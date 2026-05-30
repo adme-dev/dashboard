@@ -214,7 +214,7 @@ export async function requireAuth(event: any): Promise<User> {
 }
 
 // Require role helper for API routes
-export async function requireRole(event: any, roles: string[]): Promise<User> {
+export async function requireRole(event: any, roles: readonly string[]): Promise<User> {
   const user = await requireAuth(event)
 
   // Skip role check in local development
@@ -222,7 +222,7 @@ export async function requireRole(event: any, roles: string[]): Promise<User> {
     return user
   }
 
-  if (!hasRole(user, roles)) {
+  if (!hasRole(user, roles as string[])) {
     throw createError({ statusCode: 403, statusMessage: 'Forbidden - Insufficient permissions' })
   }
 

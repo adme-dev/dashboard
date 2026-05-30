@@ -3,14 +3,15 @@
 // dispatches via the adapter, and returns per-destination result. Persists nothing.
 
 import { requireRole } from '~~/server/utils/auth'
-import { queryOne, queryRows } from '~~/server/utils/db'
+import { PERMISSIONS } from '~~/server/utils/permissions'
+import { execute, queryOne, queryRows } from '~~/server/utils/db'
 import { evaluateFilter } from '~~/server/utils/leads/filterEval'
 import { getAdapter } from '~~/server/utils/leads/destinations'
 import { deliveryIdempotencyKey } from '~~/server/utils/leads/idempotency'
 import type { Lead, LeadDelivery } from '~~/app/types'
 
 export default defineEventHandler(async (event) => {
-  await requireRole(event, ['owner', 'admin'])
+  await requireRole(event, PERMISSIONS.MEDIA_BUYING)
   const ruleId = getRouterParam(event, 'ruleId')!
   const overrides = (await readBody(event)) as { field_data?: Record<string, string> } | null
 
@@ -72,5 +73,7 @@ export default defineEventHandler(async (event) => {
     const r = await adapter.dispatch(fakeDelivery, fakeLead, d.config)
     results.push({ id: d.id, type: d.destination_type, ...r })
   }
+  // Stamp the rule so the editor's "Verify" step stays checked across reloads.
+  await execute(`UPDATE lead_form_rules SET last_test_fired_at = NOW() WHERE id = $1`, [ruleId])
   return { ok: true, lead_used: fakeLead, results }
 })

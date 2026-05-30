@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { requireRole } from '~~/server/utils/auth'
+import { PERMISSIONS } from '~~/server/utils/permissions'
 import { queryOne } from '~~/server/utils/db'
 
 const Body = z.object({
@@ -10,7 +11,7 @@ const Body = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  await requireRole(event, ['owner', 'admin'])
+  await requireRole(event, PERMISSIONS.MEDIA_BUYING)
   const b = Body.parse(await readBody(event))
   const row = await queryOne<{ id: string }>(`
     INSERT INTO lead_form_rules (client_id, source, form_id, form_name)
