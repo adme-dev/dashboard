@@ -1,8 +1,9 @@
 import { queryRows } from '~~/server/utils/db'
-import { requireAuth } from '~~/server/utils/auth'
+import { requireRole } from '~~/server/utils/auth'
+import { PERMISSIONS } from '~~/server/utils/permissions'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  await requireRole(event, PERMISSIONS.CLIENTS)
   const clientId = getRouterParam(event, 'id')
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'Client ID is required' })
 
