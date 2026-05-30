@@ -1806,6 +1806,10 @@ const features: Record<string, Feature> = {
       {
         title: 'Campaign Drill-Down',
         content: 'Click any metric to drill down into campaign-level detail. See individual campaigns ranked by spend, ROAS, or any other metric. Deep links take you directly to the campaign in the original ad platform dashboard for further investigation or optimisation. The campaign table uses an Ads Manager–style column layout — Delivery, Results, Cost per result, Reach, Bid strategy, and end dates — with a column picker to save your preferred view and a one-click Meta Ads preset to match the layout you already know.'
+      },
+      {
+        title: 'Campaign Health Score',
+        content: 'Each campaign gets a 0–100 health score with a colour-coded verdict — Scale, Hold, or Cut — based on how it performs against your client\'s own KPI targets (cost-per-result, CTR, frequency cap). The score combines efficiency, confidence, and engagement signals so your team knows exactly where to focus budget without requiring constant media buyer oversight.'
       }
     ]
   },
