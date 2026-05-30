@@ -21,5 +21,13 @@ export default eventHandler(async (event) => {
     [clientId, id]
   )
 
-  return { success: true }
+  // Propagate the assignment to this account's spend rows so analytics, the client
+  // portal, and campaign health scoring reflect it immediately (media_spend.client_id
+  // is what those features read; otherwise it wouldn't update until the next sync).
+  const spendRowsUpdated = await execute(
+    `UPDATE media_spend SET client_id = $1, updated_at = NOW() WHERE connection_id = $2`,
+    [clientId, id]
+  )
+
+  return { success: true, spendRowsUpdated }
 })
