@@ -4,9 +4,13 @@
  */
 
 import { queryOne, queryRows } from '~~/server/utils/db'
+import { requireRole } from '~~/server/utils/auth'
+import { PERMISSIONS } from '~~/server/utils/permissions'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  // Match the page's `role-clients` gate: only CLIENTS-permission staff may read
+  // full client financials (revenue, cost, invoices, time entries, team).
+  await requireRole(event, PERMISSIONS.CLIENTS)
 
   const id = getRouterParam(event, 'id')
 
@@ -164,7 +168,14 @@ export default defineEventHandler(async (event) => {
         activeProjects,
         completedProjects,
         totalInvoiced: invoices.reduce((sum, inv) => sum + Number(inv.total || 0), 0),
-        totalMediaSpend: mediaSpend.reduce((sum, ms) => sum + Number(ms.actual_spend || 0), 0)
+        totalMediaSpend: mediaSpend.reduce((sum, ms) => sum + Number(ms.actual_spend || 0), 0),
+        // Sum of per-row commission (actual_spend × that row's commission_rate) so the
+        // headline figure matches the per-row breakdown in the Media Spend tab.
+        totalMediaCommission: mediaSpend.reduce((sum, ms) => sum + (Number(ms.actual_spend) || 0) * (Number(ms.commission_rate) || 0) / 100, 0),
+        // Surfaced as a distinct metric — retainer revenue is recurring (per month),
+        // intentionally NOT folded into project-budget revenue to stay consistent
+        // with the clients list + analytics convention.
+        retainerAmount: client.retainer_amount ? Number(client.retainer_amount) : 0
       }
     }
   } catch (error: any) {
