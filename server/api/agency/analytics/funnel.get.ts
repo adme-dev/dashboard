@@ -1,11 +1,13 @@
 /**
  * Agency Funnel — staff-facing internal twin of the portal funnel.
  * GET /api/agency/analytics/funnel?clientId=&startDate=&endDate=
+ * Returns the current-window funnel plus the previous equal-length window's
+ * totals (for period-over-period deltas in the UI).
  */
 import { queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { buildClientCondition } from '~~/server/utils/analyticsMetrics'
-import { buildFunnel } from '~~/server/utils/ga4Funnel'
+import { buildFunnel, previousWindow, type FunnelChannelRow } from '~~/server/utils/ga4Funnel'
 
 const SPEND_CHANNEL_CASE = `CASE
   WHEN ms.platform IN ('google_ads','google') THEN 'Paid Search'
@@ -17,16 +19,11 @@ const LEAD_CHANNEL_CASE = `CASE
   WHEN l.source = 'meta' THEN 'Paid Social'
   ELSE 'Other' END`
 
-export default defineEventHandler(async (event) => {
-  await requireAuth(event)
-  const q = getQuery(event)
-  const clientId = q.clientId as string
-  const startDate = q.startDate as string
-  const endDate = q.endDate as string
-  if (!clientId || !startDate || !endDate) {
-    throw createError({ statusCode: 400, statusMessage: 'clientId, startDate and endDate are required' })
-  }
-
+async function funnelForWindow(
+  clientId: string,
+  startDate: string,
+  endDate: string
+): Promise<{ channels: FunnelChannelRow[]; totals: FunnelChannelRow; hasGa4: boolean }> {
   const spendRows = await queryRows<{ channel: string; spend: string }>(
     `SELECT ${SPEND_CHANNEL_CASE} AS channel, COALESCE(SUM(ds.spend),0) AS spend
      FROM daily_spend ds
@@ -64,4 +61,26 @@ export default defineEventHandler(async (event) => {
 
   const funnel = buildFunnel({ spendByChannel, ga4ByChannel, leadsByChannel })
   return { ...funnel, hasGa4: ga4Rows.length > 0 }
+}
+
+export default defineEventHandler(async (event) => {
+  await requireAuth(event)
+  const q = getQuery(event)
+  const clientId = q.clientId as string
+  const startDate = q.startDate as string
+  const endDate = q.endDate as string
+  if (!clientId || !startDate || !endDate) {
+    throw createError({ statusCode: 400, statusMessage: 'clientId, startDate and endDate are required' })
+  }
+
+  const current = await funnelForWindow(clientId, startDate, endDate)
+  const { prevStart, prevEnd } = previousWindow(startDate, endDate)
+  const previous = await funnelForWindow(clientId, prevStart, prevEnd)
+
+  return {
+    channels: current.channels,
+    totals: current.totals,
+    hasGa4: current.hasGa4,
+    previous: { totals: previous.totals }
+  }
 })
