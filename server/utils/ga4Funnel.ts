@@ -88,7 +88,7 @@ const DAY_MS = 86_400_000
 /**
  * Previous equal-length window, ending the day before startDate.
  * Dates are treated as UTC calendar days; returns YYYY-MM-DD strings.
- * Mirrors the prior-period logic in server/api/agency/analytics/overview.get.ts.
+ * Equivalent (for calendar-date inputs) to the prior-period logic in server/api/agency/analytics/overview.get.ts.
  */
 export function previousWindow(startDate: string, endDate: string): { prevStart: string; prevEnd: string } {
   const start = new Date(startDate)
