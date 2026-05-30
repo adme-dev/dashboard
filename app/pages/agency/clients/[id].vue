@@ -176,6 +176,31 @@ const invoiceColumns = [
   { accessorKey: 'total', header: 'Total' },
   { accessorKey: 'status', header: 'Status' }
 ]
+
+// KPI Targets
+const { data: kpiData, refresh: refreshKpi } = useFetch<{ targets: Array<{ resultType: string; targetCostPerResult: number; targetCtr: number | null; maxFrequency: number | null }> }>(
+  () => `/api/agency/clients/${clientId}/kpi-targets`, { default: () => ({ targets: [] }) }
+)
+const kpiTargets = ref<Array<{ resultType: string; targetCostPerResult: number | null; targetCtr: number | null; maxFrequency: number | null }>>([])
+watch(kpiData, (v) => { kpiTargets.value = (v?.targets || []).map(t => ({ ...t })) }, { immediate: true })
+
+function addKpiRow() { kpiTargets.value.push({ resultType: '', targetCostPerResult: null, targetCtr: null, maxFrequency: null }) }
+function removeKpiRow(i: number) { kpiTargets.value.splice(i, 1) }
+
+const kpiSaving = ref(false)
+async function saveKpiTargets() {
+  const clean = kpiTargets.value.filter(t => t.resultType && Number(t.targetCostPerResult) > 0)
+  kpiSaving.value = true
+  try {
+    await $fetch(`/api/agency/clients/${clientId}/kpi-targets`, { method: 'PUT', body: { targets: clean } })
+    toast.add({ title: 'KPI targets saved', color: 'success' })
+    await refreshKpi()
+  } catch {
+    toast.add({ title: 'Failed to save targets', color: 'error' })
+  } finally {
+    kpiSaving.value = false
+  }
+}
 </script>
 
 <template>
@@ -407,6 +432,40 @@ const invoiceColumns = [
                   size="sm"
                   @click="openEditModal"
                 />
+              </div>
+            </UCard>
+
+            <!-- KPI Targets -->
+            <UCard class="lg:col-span-3">
+              <template #header>
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h3 class="text-sm font-semibold text-default">KPI Targets</h3>
+                    <p class="text-xs text-muted">Per-result-type targets that drive the campaign health score.</p>
+                  </div>
+                  <UButton size="xs" variant="outline" icon="i-lucide-plus" label="Add" @click="addKpiRow" />
+                </div>
+              </template>
+              <div class="space-y-3">
+                <div v-for="(t, i) in kpiTargets" :key="i" class="grid grid-cols-12 gap-2 items-end">
+                  <UFormField class="col-span-4" label="Result type">
+                    <UInput v-model="t.resultType" placeholder="e.g. Leads (Form)" size="sm" />
+                  </UFormField>
+                  <UFormField class="col-span-3" label="Target cost / result">
+                    <UInput v-model.number="t.targetCostPerResult" type="number" :min="0" step="0.01" size="sm" />
+                  </UFormField>
+                  <UFormField class="col-span-2" label="Target CTR %">
+                    <UInput v-model.number="t.targetCtr" type="number" :min="0" step="0.01" size="sm" />
+                  </UFormField>
+                  <UFormField class="col-span-2" label="Max freq.">
+                    <UInput v-model.number="t.maxFrequency" type="number" :min="0" step="0.1" size="sm" />
+                  </UFormField>
+                  <UButton class="col-span-1" size="xs" variant="ghost" color="error" icon="i-lucide-trash-2" @click="removeKpiRow(i)" />
+                </div>
+                <p v-if="!kpiTargets.length" class="text-xs text-muted">No targets yet. Add one to enable health scoring for this client.</p>
+                <div class="flex justify-end pt-1">
+                  <UButton size="sm" label="Save targets" :loading="kpiSaving" @click="saveKpiTargets" />
+                </div>
               </div>
             </UCard>
           </div>
