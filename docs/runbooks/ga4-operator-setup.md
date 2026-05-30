@@ -12,6 +12,56 @@ Google Cloud project + OAuth client already exist. GA4 reuses the **same**
 
 ---
 
+## Why GA4 *and* Google Ads (they're not the same feed)
+
+A reasonable question: "we already pull Google Ads — isn't the analytics already
+in that feed?" No. They are **separate Google products with separate APIs**, and
+the data barely overlaps:
+
+- **Google Ads** (scope `adwords`, the Google Ads API — what we pull today) returns
+  **ad-campaign** metrics only: spend, clicks, impressions, ad-tracked conversions.
+  It does **not** return website sessions, organic/direct/referral traffic, or
+  on-site engagement.
+- **GA4** (scope `analytics.readonly`, the Analytics Data API) returns **website**
+  data: sessions, users, **traffic by channel** (`sessionDefaultChannelGroup`),
+  engagement, key events — including every **non-paid** channel. Channel grouping,
+  sessions, and organic traffic exist **only** here.
+
+So Google Ads gives the *paid-click* slice; GA4 adds **what happened after the
+click** plus **all non-paid traffic**. GA4 is additive, not redundant — that's the
+entire point of the funnel.
+
+### The "couldn't GA4 do it all?" alternative — and why we didn't
+
+When GA4 is *linked* to Google Ads, GA4 can also surface Google Ads **cost**
+(`advertiserAdCost`, `advertiserAdClicks`, …). So in theory the whole **Google**
+funnel (spend + sessions + conversions) could come from one GA4 call. We
+deliberately did **not** build it that way:
+
+1. **Google-only.** GA4's imported cost covers Google Ads, not **Meta**. You'd
+   still need the separate Meta pull — no feed is saved, the Google half just moves.
+2. **We already have a richer spend pipeline.** `media_spend` / `daily_spend`
+   covers Meta **and** Google with campaign-level detail, budgets, and audit trails
+   that GA4's imported cost doesn't replicate.
+3. **Numbers drift.** GA4's imported ad cost can differ from Ads-native figures
+   (attribution / timezone), so mixing sources of truth for *spend* invites
+   reconciliation headaches.
+
+**Architecture we shipped:** spend stays in the existing Meta+Google pipeline; GA4
+supplies only the site/funnel layer; the two join **by channel**. Keeping spend and
+analytics as separate authoritative sources is the standard, robust pattern.
+
+> Future lever: for **per-campaign** Google attribution, GA4's `sessionCampaignName`
+> + imported-cost dimensions are the path — that's the deferred UTM/campaign-grain
+> enhancement.
+
+References (verified against Google docs):
+[GA4 default channel group](https://support.google.com/analytics/answer/9756891?hl=en) ·
+[GA4 Data API schema](https://developers.google.com/analytics/devguides/reporting/data/v1/api-schema) ·
+[properties.runReport](https://developers.google.com/analytics/devguides/reporting/data/v1/rest/v1beta/properties/runReport)
+
+---
+
 ## What the code expects (the contract these steps satisfy)
 
 | Thing | Value |
