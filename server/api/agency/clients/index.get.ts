@@ -11,9 +11,10 @@ export default defineEventHandler(async (event) => {
   await requireAuth(event)
 
   const query = getQuery(event)
-  const activeOnly = query.active !== 'false'
+  // Default: active clients only. Pass ?active=false to include inactive ones.
+  const includeInactive = query.active === 'false'
 
-  return cachedFetch(event, `agency:clients:${activeOnly}`, 120, async () => {
+  return cachedFetch(event, `agency:clients:${includeInactive}`, 120, async () => {
   try {
     // Get clients with aggregated profitability data
     const clients = await queryRows(`
@@ -51,9 +52,9 @@ export default defineEventHandler(async (event) => {
         ) e ON p.id = e.project_id
         GROUP BY p.client_id
       ) stats ON c.id = stats.client_id
-      WHERE ($1 = false OR c.is_active = true)
+      WHERE ($1::boolean OR c.is_active = true)
       ORDER BY c.name
-    `, [!activeOnly])
+    `, [includeInactive])
 
     // Transform snake_case to camelCase for frontend
     return clients.map(c => ({
