@@ -3,12 +3,13 @@
 
 import { randomBytes } from 'node:crypto'
 import { requireRole } from '~~/server/utils/auth'
+import { PERMISSIONS } from '~~/server/utils/permissions'
 import { execute, queryRows } from '~~/server/utils/db'
 
 // Admin-only: the response includes the secret_key plaintext (used by the agency
 // to paste into Google Ads). Lower-privileged roles get 403.
 export default defineEventHandler(async (event) => {
-  await requireRole(event, ['owner', 'admin'])
+  await requireRole(event, PERMISSIONS.MEDIA_BUYING)
   // Backfill: ensure every client has a 'google' endpoint row. Tokens are
   // generated at the application layer (Web Crypto) — this DB has no pgcrypto
   // extension, so SQL gen_random_bytes() is unavailable. Mirrors the codebase

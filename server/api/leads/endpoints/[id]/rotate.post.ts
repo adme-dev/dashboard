@@ -1,9 +1,10 @@
 import { randomBytes } from 'node:crypto'
 import { requireRole } from '~~/server/utils/auth'
+import { PERMISSIONS } from '~~/server/utils/permissions'
 import { execute } from '~~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
-  await requireRole(event, ['owner', 'admin'])
+  await requireRole(event, PERMISSIONS.MEDIA_BUYING)
   const id = getRouterParam(event, 'id')!
   const newKey = randomBytes(24).toString('hex')
   await execute(

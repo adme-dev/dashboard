@@ -48,6 +48,93 @@ const sections = [
     slot: 'troubleshoot'
   }
 ]
+
+// ---- Live webhook credentials (single source of truth for URL + key) ----
+interface EndpointItem {
+  id: string
+  client_id: string
+  client_name: string
+  url_token: string
+  secret_key: string
+  lead_count: number | string | null
+}
+
+const toast = useToast()
+
+const {
+  data: endpointsData,
+  pending: endpointsPending,
+  error: endpointsError,
+  refresh: refreshEndpoints
+} = useFetch<{ items: EndpointItem[] }>('/api/leads/endpoints/list', {
+  default: () => ({ items: [] }),
+  immediate: false
+})
+
+const endpointItems = computed(() => endpointsData.value?.items ?? [])
+const credsForbidden = computed(() => {
+  const code = (endpointsError.value as { statusCode?: number } | null)?.statusCode
+  return code === 401 || code === 403
+})
+const clientItems = computed(() =>
+  endpointItems.value.map(e => ({ value: e.client_id, label: e.client_name }))
+)
+const selectedClientId = ref<string | null>(null)
+const selectedEndpoint = computed(() =>
+  endpointItems.value.find(e => e.client_id === selectedClientId.value) ?? endpointItems.value[0] ?? null
+)
+
+const baseUrl = computed(() =>
+  import.meta.client ? window.location.origin : 'https://agency-dashboard-6cm.pages.dev'
+)
+const googleWebhookUrl = computed(() =>
+  selectedEndpoint.value ? `${baseUrl.value}/api/leads/webhook/google/${selectedEndpoint.value.url_token}` : ''
+)
+const genericWebhookUrl = computed(() =>
+  selectedEndpoint.value ? `${baseUrl.value}/api/leads/webhook/generic/${selectedEndpoint.value.url_token}` : ''
+)
+
+const revealed = ref(false)
+const confirmingRotate = ref(false)
+const rotating = ref(false)
+const rotatedClientId = ref<string | null>(null)
+
+async function copyText(value: string, label: string) {
+  if (!value) return
+  if (import.meta.client) await navigator.clipboard.writeText(value)
+  toast.add({ title: label, color: 'success', icon: 'i-lucide-check' })
+}
+
+async function confirmRotate() {
+  const ep = selectedEndpoint.value
+  if (!ep) return
+  rotating.value = true
+  try {
+    await $fetch(`/api/leads/endpoints/${ep.id}/rotate`, { method: 'POST' })
+    rotatedClientId.value = ep.client_id
+    revealed.value = true
+    await refreshEndpoints()
+    toast.add({ title: 'Key rotated', description: 'Old key valid for 24h', color: 'success' })
+  } catch {
+    toast.add({ title: 'Rotate failed', color: 'error' })
+  } finally {
+    rotating.value = false
+    confirmingRotate.value = false
+  }
+}
+
+watch(open, (isOpen) => {
+  if (isOpen) {
+    revealed.value = false
+    confirmingRotate.value = false
+    rotatedClientId.value = null
+    refreshEndpoints()
+  }
+})
+
+watch(endpointItems, (items) => {
+  if (!selectedClientId.value && items.length) selectedClientId.value = items[0].client_id
+})
 </script>
 
 <template>
@@ -66,6 +153,134 @@ const sections = [
           <UButton variant="ghost" icon="i-lucide-x" @click="open = false" />
         </div>
 
+        <!-- Live webhook credentials — the single place to get a client's URL + key -->
+        <UCard class="mb-5" variant="subtle">
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-key-round" class="size-4 text-primary" />
+              <h3 class="text-sm font-semibold">Your webhook credentials</h3>
+            </div>
+          </template>
+
+          <div class="space-y-4">
+            <p class="text-sm text-muted">
+              Pick a client to reveal their unique webhook URL and secret key. The steps below
+              explain where to paste them for Google, Meta, or any other tool.
+            </p>
+
+            <UAlert
+              v-if="credsForbidden"
+              color="warning"
+              variant="subtle"
+              icon="i-lucide-lock"
+              title="Restricted"
+              description="Webhook URLs and keys are only visible to owners and admins."
+            />
+
+            <template v-else>
+              <UFormField label="Client">
+                <USelectMenu
+                  v-model="selectedClientId"
+                  :items="clientItems"
+                  value-key="value"
+                  placeholder="Select a client"
+                  :loading="endpointsPending"
+                  class="w-full sm:w-80"
+                />
+              </UFormField>
+
+              <p v-if="!endpointsPending && endpointItems.length === 0" class="text-sm text-muted">
+                No clients with lead endpoints yet. Create a form rule for a client to generate one.
+              </p>
+
+              <div v-else-if="selectedEndpoint" class="space-y-3">
+                <UFormField label="Google Ads webhook URL">
+                  <div class="flex items-center gap-2">
+                    <UInput :model-value="googleWebhookUrl" readonly size="sm" class="font-mono flex-1" />
+                    <UButton
+                      icon="i-lucide-copy"
+                      size="sm"
+                      variant="ghost"
+                      aria-label="Copy Google webhook URL"
+                      @click="copyText(googleWebhookUrl, 'Google webhook URL copied')"
+                    />
+                  </div>
+                </UFormField>
+
+                <UFormField label="Generic webhook URL" help="For Meta, Zapier, Make, n8n, or custom forms.">
+                  <div class="flex items-center gap-2">
+                    <UInput :model-value="genericWebhookUrl" readonly size="sm" class="font-mono flex-1" />
+                    <UButton
+                      icon="i-lucide-copy"
+                      size="sm"
+                      variant="ghost"
+                      aria-label="Copy generic webhook URL"
+                      @click="copyText(genericWebhookUrl, 'Generic webhook URL copied')"
+                    />
+                  </div>
+                </UFormField>
+
+                <UFormField label="Webhook key">
+                  <div class="flex items-center gap-2">
+                    <UInput
+                      :model-value="revealed ? selectedEndpoint.secret_key : '•'.repeat(40)"
+                      readonly
+                      size="sm"
+                      class="font-mono flex-1"
+                    />
+                    <UButton
+                      :icon="revealed ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                      size="sm"
+                      variant="ghost"
+                      :aria-label="revealed ? 'Hide key' : 'Reveal key'"
+                      @click="revealed = !revealed"
+                    />
+                    <UButton
+                      icon="i-lucide-copy"
+                      size="sm"
+                      variant="ghost"
+                      aria-label="Copy webhook key"
+                      @click="copyText(selectedEndpoint.secret_key, 'Webhook key copied')"
+                    />
+                    <UButton
+                      icon="i-lucide-refresh-cw"
+                      size="sm"
+                      variant="ghost"
+                      color="warning"
+                      aria-label="Rotate webhook key"
+                      @click="confirmingRotate = true"
+                    />
+                  </div>
+                </UFormField>
+
+                <div
+                  v-if="confirmingRotate"
+                  class="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm space-y-2"
+                >
+                  <p class="font-medium text-highlighted">Rotate this key?</p>
+                  <p class="text-muted">
+                    A new key is generated immediately. The old key keeps working for 24 hours, then
+                    stops — update {{ selectedEndpoint.client_name }}'s form tool before then.
+                  </p>
+                  <div class="flex justify-end gap-2">
+                    <UButton size="xs" variant="ghost" label="Cancel" @click="confirmingRotate = false" />
+                    <UButton size="xs" color="warning" label="Rotate key" :loading="rotating" @click="confirmRotate" />
+                  </div>
+                </div>
+
+                <UAlert
+                  v-if="rotatedClientId === selectedEndpoint.client_id"
+                  color="warning"
+                  variant="subtle"
+                  icon="i-lucide-clock"
+                  title="Key rotated"
+                  description="The old key keeps working for 24 hours — update your form tool before then."
+                />
+              </div>
+            </template>
+          </div>
+        </UCard>
+
         <UAccordion :items="sections" multiple>
           <template #quickstart>
             <div class="space-y-3 text-sm leading-relaxed">
@@ -74,9 +289,9 @@ const sections = [
               </p>
               <ol class="list-decimal list-inside space-y-2">
                 <li>
-                  <strong>Copy the webhook URL and key.</strong> Open
-                  <span class="font-mono text-xs">Form rules → Connection details</span>
-                  and pick the client. Each client gets a unique URL + secret key.
+                  <strong>Copy the webhook URL and key.</strong> Use the
+                  <strong>webhook credentials</strong> panel at the top of this guide and
+                  pick the client. Each client gets a unique URL + secret key.
                 </li>
                 <li>
                   <strong>Paste into Google Ads.</strong> In the Lead form asset's
@@ -112,11 +327,11 @@ const sections = [
             <div class="space-y-3 text-sm leading-relaxed">
               <ol class="list-decimal list-inside space-y-3">
                 <li>
-                  In this dashboard, open
-                  <span class="font-mono text-xs">Form rules → Connection details</span>.
+                  In the <strong>webhook credentials</strong> panel at the top of this guide,
+                  pick the client.
                 </li>
                 <li>
-                  Pick the client, then copy the Google Ads webhook URL and key.
+                  Copy the <strong>Google Ads webhook URL</strong> and the webhook key.
                 </li>
                 <li>
                   In Google Ads, open the lead form asset (Tools &amp; Settings → Assets → Lead form).
@@ -142,7 +357,7 @@ const sections = [
                 variant="subtle"
                 icon="i-lucide-alert-triangle"
                 title="Rotate the key if it leaks"
-                description="The Lead webhooks settings page has a Rotate button. Old keys stop working immediately — you'll need to update Google Ads with the new value."
+                description="Use the Rotate key button in the credentials panel above. The old key keeps working for 24 hours, so update Google Ads with the new value before it stops."
               />
             </div>
           </template>
@@ -247,7 +462,7 @@ const sections = [
                 Anything that can POST JSON can push leads in — Zapier, Make
                 (Integromat), n8n, partner CRMs, mobile apps, contact forms on
                 your client's own websites, etc. Use the per-client URL + key
-                from <span class="font-mono text-xs">Form rules → Connection details</span>.
+                from the <strong>webhook credentials</strong> panel at the top of this guide.
                 It is the same key the Google integration uses; one credential covers
                 all source types for that client.
               </p>

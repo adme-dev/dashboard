@@ -77,6 +77,14 @@ defineEmits<{ 'show-help': [], 'show-rules': [] }>()
       </h2>
       <div class="flex items-center gap-2">
         <UButton
+          icon="i-lucide-help-circle"
+          variant="ghost"
+          size="sm"
+          @click="$emit('show-help')"
+        >
+          Setup guide
+        </UButton>
+        <UButton
           icon="i-lucide-route"
           variant="ghost"
           size="sm"
@@ -203,13 +211,21 @@ defineEmits<{ 'show-help': [], 'show-rules': [] }>()
           No leads yet
         </h3>
         <p class="text-sm text-muted max-w-md mb-4">
-          Once Meta or Google Ads sends an inquiry to a configured webhook, it'll appear here in real time.
-          Set up routing first to replace the matching Zap, or add a lead manually.
+          Once a configured webhook receives an inquiry, it'll appear here in real time.
+          Start with the Setup guide to copy your webhook, then set up routing to map a form to a client — or add a lead manually.
         </p>
         <div class="flex items-center gap-2">
           <UButton
-            icon="i-lucide-route"
+            icon="i-lucide-help-circle"
             color="primary"
+            size="sm"
+            @click="$emit('show-help')"
+          >
+            Setup guide
+          </UButton>
+          <UButton
+            icon="i-lucide-route"
+            variant="outline"
             size="sm"
             @click="$emit('show-rules')"
           >
@@ -222,14 +238,6 @@ defineEmits<{ 'show-help': [], 'show-rules': [] }>()
             @click="showManualModal = true"
           >
             Add manual lead
-          </UButton>
-          <UButton
-            icon="i-lucide-help-circle"
-            variant="ghost"
-            size="sm"
-            @click="$emit('show-help')"
-          >
-            How to set up
           </UButton>
         </div>
       </div>

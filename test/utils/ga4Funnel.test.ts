@@ -1,6 +1,6 @@
 // test/utils/ga4Funnel.test.ts
 import { describe, it, expect } from 'vitest'
-import { buildFunnel } from '~~/server/utils/ga4Funnel'
+import { buildFunnel, previousWindow } from '~~/server/utils/ga4Funnel'
 
 describe('buildFunnel', () => {
   it('merges spend, ga4 and leads by channel and computes cost ratios', () => {
@@ -46,5 +46,29 @@ describe('buildFunnel', () => {
       leadsByChannel: {}
     })
     expect(out.channels.map((c) => c.channel)).toEqual(['Paid Search', 'Paid Social', 'Direct'])
+  })
+})
+
+describe('previousWindow', () => {
+  it('returns the equal-length window ending the day before startDate', () => {
+    // current window 2026-05-25..2026-05-31 is 7 days inclusive
+    expect(previousWindow('2026-05-25', '2026-05-31')).toEqual({
+      prevStart: '2026-05-18',
+      prevEnd: '2026-05-24'
+    })
+  })
+
+  it('handles a single-day window', () => {
+    expect(previousWindow('2026-05-31', '2026-05-31')).toEqual({
+      prevStart: '2026-05-30',
+      prevEnd: '2026-05-30'
+    })
+  })
+
+  it('handles a 30-day window', () => {
+    expect(previousWindow('2026-05-02', '2026-05-31')).toEqual({
+      prevStart: '2026-04-02',
+      prevEnd: '2026-05-01'
+    })
   })
 })

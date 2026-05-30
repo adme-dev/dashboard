@@ -4,6 +4,7 @@ const props = defineProps<{
   formMeta: { source: string, form_id: string, form_name: string | null }
 }>()
 const open = defineModel<boolean>('open', { default: false })
+const emit = defineEmits<{ fired: [] }>()
 
 const toast = useToast()
 const overrides = ref<{ key: string, value: string }[]>([])
@@ -54,6 +55,7 @@ async function run() {
       body: { field_data }
     })
     toast.add({ title: 'Test fired', color: 'success' })
+    emit('fired')
   } catch (e: unknown) {
     toast.add({ title: 'Test failed', description: errorMessage(e), color: 'error' })
   } finally {

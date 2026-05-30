@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatDistanceToNow } from 'date-fns'
 import type { LeadRuleDestination, LeadDestinationType } from '~/types'
 
 const props = defineProps<{
@@ -10,7 +11,7 @@ const emit = defineEmits<{ (e: 'changed'): void }>()
 
 const toast = useToast()
 const { data, refresh, pending } = useFetch<{
-  rule: { enabled: boolean } | null
+  rule: { enabled: boolean, last_test_fired_at: string | null } | null
   destinations: LeadRuleDestination[]
 }>(`/api/leads/rules/${props.ruleId}`, { default: () => ({ rule: null, destinations: [] }) })
 
@@ -30,6 +31,30 @@ const portalDestination = computed(() =>
   (data.value?.destinations ?? []).find(d => d.destination_type === 'portal')
 )
 const portalVisible = computed(() => Boolean(data.value?.rule?.enabled && portalDestination.value?.enabled))
+
+// ---- Setup-progress checklist + routing on/off ----
+const routeDone = computed(() => enabledDestinationCount.value > 0)
+const tested = computed(() => Boolean(data.value?.rule?.last_test_fired_at))
+const testedAgo = computed(() =>
+  data.value?.rule?.last_test_fired_at
+    ? formatDistanceToNow(new Date(data.value.rule.last_test_fired_at), { addSuffix: true })
+    : ''
+)
+
+const togglingEnabled = ref(false)
+async function setEnabled(value: boolean) {
+  togglingEnabled.value = true
+  try {
+    await $fetch(`/api/leads/rules/${props.ruleId}`, { method: 'PATCH', body: { enabled: value } })
+    await refresh()
+    emit('changed')
+    toast.add({ title: value ? 'Routing resumed' : 'Routing paused', color: 'success' })
+  } catch (e: unknown) {
+    toast.add({ title: 'Failed to update routing', description: errorMessage(e), color: 'error' })
+  } finally {
+    togglingEnabled.value = false
+  }
+}
 
 function destinationSummary(d: LeadRuleDestination): string {
   const config = d.config as Record<string, unknown>
@@ -154,34 +179,105 @@ const addMenuItems = computed(() => [
 
         <!-- Body -->
         <div class="flex-1 overflow-auto p-6 space-y-6">
-          <section class="grid grid-cols-3 gap-2">
-            <div class="rounded border border-default p-3">
-              <div class="flex items-center gap-2 text-sm font-medium">
-                <UIcon name="i-lucide-inbox" class="size-4 text-primary" />
-                Capture
+          <section class="rounded-lg border border-default overflow-hidden">
+            <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-default bg-elevated/30">
+              <div class="flex items-center gap-2">
+                <h3 class="text-sm font-semibold">
+                  Setup progress
+                </h3>
+                <UBadge :color="isRuleReady ? 'success' : 'warning'" variant="soft" size="sm">
+                  {{ isRuleReady ? 'Ready' : 'Needs setup' }}
+                </UBadge>
               </div>
-              <p class="mt-1 text-xs text-muted">
-                Leads matching this form ID are ingested and deduped.
-              </p>
-            </div>
-            <div class="rounded border border-default p-3">
-              <div class="flex items-center gap-2 text-sm font-medium">
-                <UIcon name="i-lucide-route" class="size-4" :class="enabledDestinationCount ? 'text-primary' : 'text-warning'" />
-                Route
+              <div class="flex items-center gap-2">
+                <span class="text-xs" :class="data?.rule?.enabled ? 'text-muted' : 'text-warning'">
+                  {{ data?.rule?.enabled ? 'Routing active' : 'Routing paused' }}
+                </span>
+                <USwitch
+                  :model-value="data?.rule?.enabled ?? false"
+                  :loading="togglingEnabled"
+                  aria-label="Toggle routing on or off"
+                  @update:model-value="setEnabled"
+                />
               </div>
-              <p class="mt-1 text-xs text-muted">
-                {{ enabledDestinationCount }} active destination{{ enabledDestinationCount === 1 ? '' : 's' }} configured.
-              </p>
             </div>
-            <div class="rounded border border-default p-3">
-              <div class="flex items-center gap-2 text-sm font-medium">
-                <UIcon name="i-lucide-flask-conical" class="size-4 text-primary" />
-                Verify
-              </div>
-              <p class="mt-1 text-xs text-muted">
-                Run Test fire before turning off the matching Zap.
-              </p>
+
+            <div
+              v-if="data?.rule && !data.rule.enabled"
+              class="px-4 py-2 text-xs text-warning bg-warning/10 border-b border-warning/20"
+            >
+              Routing paused — leads are still captured, just not sent to destinations.
             </div>
+
+            <ol class="divide-y divide-default">
+              <li class="flex items-start gap-3 px-4 py-3">
+                <span class="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-success/15 text-success">
+                  <UIcon name="i-lucide-check" class="size-3.5" />
+                </span>
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-medium">
+                    Capture
+                  </p>
+                  <p class="text-xs text-muted">
+                    Leads matching this form ID are ingested and deduped.
+                  </p>
+                </div>
+              </li>
+
+              <li class="flex items-start gap-3 px-4 py-3">
+                <span
+                  class="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full"
+                  :class="routeDone ? 'bg-success/15 text-success' : 'bg-warning/15 text-warning'"
+                >
+                  <UIcon :name="routeDone ? 'i-lucide-check' : 'i-lucide-route'" class="size-3.5" />
+                </span>
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-medium">
+                    Route
+                  </p>
+                  <p class="text-xs text-muted">
+                    {{ enabledDestinationCount }} active destination{{ enabledDestinationCount === 1 ? '' : 's' }} configured.
+                  </p>
+                </div>
+                <UDropdownMenu v-if="!routeDone" :items="addMenuItems">
+                  <UButton size="xs" variant="soft" icon="i-lucide-plus">
+                    Add destination
+                  </UButton>
+                </UDropdownMenu>
+              </li>
+
+              <li class="flex items-start gap-3 px-4 py-3">
+                <span
+                  class="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full"
+                  :class="tested ? 'bg-success/15 text-success' : 'border border-default bg-default text-dimmed'"
+                >
+                  <UIcon :name="tested ? 'i-lucide-check' : 'i-lucide-flask-conical'" class="size-3.5" />
+                </span>
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-medium">
+                    Verify
+                  </p>
+                  <p class="text-xs text-muted">
+                    <template v-if="tested">
+                      Last test fired {{ testedAgo }}.
+                    </template>
+                    <template v-else>
+                      Run a test fire before turning off the matching Zap.
+                    </template>
+                  </p>
+                </div>
+                <UButton
+                  v-if="!tested"
+                  size="xs"
+                  :variant="routeDone ? 'soft' : 'ghost'"
+                  :color="routeDone ? 'primary' : 'neutral'"
+                  icon="i-lucide-flask-conical"
+                  @click="showTestFire = true"
+                >
+                  Test fire
+                </UButton>
+              </li>
+            </ol>
           </section>
 
           <section class="rounded border border-default p-4">
@@ -313,6 +409,7 @@ const addMenuItems = computed(() => [
         v-model:open="showTestFire"
         :rule-id="ruleId"
         :form-meta="formMeta"
+        @fired="refresh()"
       />
 
       <!-- Delete confirmation modal -->
