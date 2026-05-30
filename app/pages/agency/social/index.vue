@@ -228,9 +228,14 @@ const graphExplorerLabel = computed(() => {
           <h1 class="text-xl font-semibold">Ad Platform Connections</h1>
           <p class="text-sm text-muted mt-0.5">Connect your ad accounts to sync spend data for EOM invoicing</p>
         </div>
-        <UButton to="/agency/social/spend" variant="soft" icon="i-lucide-bar-chart-3">
-          View Spend Dashboard
-        </UButton>
+        <div class="flex gap-2">
+          <UButton to="/agency/social/ga4" variant="soft" icon="i-lucide-line-chart">
+            Google Analytics
+          </UButton>
+          <UButton to="/agency/social/spend" variant="soft" icon="i-lucide-bar-chart-3">
+            View Spend Dashboard
+          </UButton>
+        </div>
       </div>
     </div>
 
@@ -279,9 +284,6 @@ const graphExplorerLabel = computed(() => {
       </div>
 
       <template v-else>
-        <!-- Google Analytics 4 connect + property→client mapping -->
-        <SocialGa4ConnectCard class="mb-6" />
-
         <!-- Platform Cards Grid -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <SocialPlatformCard
