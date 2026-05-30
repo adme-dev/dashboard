@@ -429,7 +429,7 @@ const META_CAMPAIGN_COLUMNS = [
   { key: 'costPerResult', label: 'Cost / result' },
   { key: 'ends', label: 'Ends' },
 ]
-const META_CAMPAIGN_DEFAULT = ['status', 'spend', 'variance', 'commission', 'impressions', 'clicks', 'conv']
+const META_CAMPAIGN_DEFAULT = ['status', 'health', 'spend', 'variance', 'commission', 'impressions', 'clicks', 'conv']
 const META_CAMPAIGN_VIEW_COLS = ['status', 'health', 'conv', 'costPerResult', 'spend', 'impressions', 'ends']
 const META_COLS_STORAGE_KEY = 'social:meta-campaign-cols'
 
@@ -581,14 +581,32 @@ async function rotateEndpointKey(ep: LeadEndpoint) {
       </div>
 
       <!-- Period picker + week filter + sync -->
-      <SocialSpendPeriodPicker
-        v-model:month="selectedMonth"
-        v-model:year="selectedYear"
-        v-model:week-filter="weekFilter"
-        :last-synced-at="lastSyncedAt"
-        :syncing="syncing"
-        @sync="handleSyncAll"
-      />
+      <div class="flex items-center gap-2 flex-wrap">
+        <SocialSpendPeriodPicker
+          v-model:month="selectedMonth"
+          v-model:year="selectedYear"
+          v-model:week-filter="weekFilter"
+          :last-synced-at="lastSyncedAt"
+          :syncing="syncing"
+          @sync="handleSyncAll"
+        />
+        <!-- Meta column picker — shown once in header, controls all account sub-tables -->
+        <template v-if="platform === 'meta'">
+          <UButton
+            size="xs"
+            variant="outline"
+            icon="i-lucide-facebook"
+            label="Meta Ads view"
+            @click="applyMetaCampaignPreset"
+          />
+          <UDropdownMenu
+            :items="metaColPickerItems"
+            :content="{ align: 'end' }"
+          >
+            <UButton size="xs" variant="ghost" icon="i-lucide-sliders-horizontal" label="Columns" />
+          </UDropdownMenu>
+        </template>
+      </div>
     </div>
 
     <div class="p-6">
@@ -721,22 +739,6 @@ async function rotateEndpointKey(ep: LeadEndpoint) {
                 <tr v-if="expandedAccounts.has(acct.id)" :key="acct.id + '-campaigns'">
                   <td colspan="12" class="p-0">
                     <div class="bg-elevated/20 border-b border-default">
-                      <!-- Meta column picker (Meta only) -->
-                      <div v-if="platform === 'meta'" class="flex items-center justify-end gap-2 px-4 pt-3 pb-1">
-                        <UButton
-                          size="xs"
-                          variant="outline"
-                          icon="i-lucide-facebook"
-                          label="Meta Ads view"
-                          @click="applyMetaCampaignPreset"
-                        />
-                        <UDropdownMenu
-                          :items="metaColPickerItems"
-                          :content="{ align: 'end' }"
-                        >
-                          <UButton size="xs" variant="ghost" icon="i-lucide-sliders-horizontal" label="Columns" />
-                        </UDropdownMenu>
-                      </div>
                       <div v-if="campaignLoading[acct.id]" class="flex justify-center py-6">
                         <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin text-muted" />
                       </div>
