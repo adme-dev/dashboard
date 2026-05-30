@@ -550,5 +550,12 @@ function formatResponseTime(minutes: number | null | undefined) {
         </div>
       </div>
     </div>
+
+    <!-- Website & Funnel (GA4) — hidden when no GA4 property is mapped -->
+    <PortalFunnelChart
+      :start-date="startDate"
+      :end-date="endDate"
+      class="mt-6"
+    />
   </div>
 </template>
