@@ -179,6 +179,7 @@ const categories = [
       { title: 'Platform Comparison', slug: 'platform-comparison', icon: 'i-lucide-git-compare', description: 'Side-by-side platform performance with unified metrics, normalised for cross-channel analysis.' },
       { title: 'On-Demand Sync', slug: 'on-demand-sync', icon: 'i-lucide-refresh-cw', description: 'Pull the latest data from ad platforms on demand — no waiting for scheduled syncs.' },
       { title: 'Export & Reporting', slug: 'export-reporting', icon: 'i-lucide-file-down', description: 'Export analytics to CSV with date ranges, breakdowns, and AI-generated summaries.' },
+      { title: 'GA4 Funnel & Website Analytics', slug: 'ga4-funnel', icon: 'i-lucide-filter', description: 'Connect Google Analytics 4 and see the full funnel — ad spend through sessions, on-site conversions, and captured leads, attributed by channel.' },
     ]
   },
   {

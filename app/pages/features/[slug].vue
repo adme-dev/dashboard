@@ -1953,6 +1953,34 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  'ga4-funnel': {
+    title: 'GA4 Funnel & Website Analytics',
+    slug: 'ga4-funnel',
+    icon: 'i-lucide-filter',
+    category: 'Analytics & Reporting',
+    categoryIcon: 'i-lucide-chart-area',
+    categoryIconBg: 'bg-cyan-50',
+    categoryIconColor: 'text-cyan-600',
+    description: 'Connect Google Analytics 4 and see the full funnel — ad spend through sessions, on-site conversions, and captured leads, attributed by channel. Close the loop from ad spend to on-site outcomes.',
+    details: [
+      {
+        title: 'One funnel, every channel',
+        content: 'We pull Google Analytics 4 alongside your Meta and Google ad spend and line them up by channel, so you read the whole story top to bottom: spend → sessions → key events → captured leads. Instead of three disconnected dashboards, the funnel sits in one place and every stage flows from the one above it.'
+      },
+      {
+        title: 'Channel-level attribution',
+        content: 'Paid Search and Paid Social map straight onto GA4 channel groups, so you see cost per session, cost per key event, and cost per lead per channel without fragile UTM wrangling. Spend from each platform lands next to the on-site behaviour it drove, making it obvious which channel is actually earning its budget.'
+      },
+      {
+        title: 'Signal vs ground truth',
+        content: 'GA4 key events show on-site conversion signal — form starts, submissions, and the events you have configured. Your captured leads show what actually landed in the inbox. We show both side by side so nothing hides: when GA4 reports conversions but the lead inbox is quiet, the gap is visible immediately rather than buried in a separate tool.'
+      },
+      {
+        title: 'Always current',
+        content: 'A daily sync refreshes the last two weeks of GA4 data to absorb Google Analytics reprocessing, which can revise figures for several days after the fact. The client report is never stale and never contradicts what the client sees in their own GA4 property when they check the same date range.'
+      }
+    ]
+  },
 
   // ─── Communication (additional) ─────────────────────────────────
   'link-previews': {
