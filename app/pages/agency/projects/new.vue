@@ -1,17 +1,24 @@
 <script setup lang="ts">
+import { CalendarDate, parseDate, type DateValue } from '@internationalized/date'
+
 definePageMeta({
   title: 'New Project',
   middleware: ['auth']
 })
 
 const router = useRouter()
+const route = useRoute()
 const toast = useToast()
+
+// Pre-select the client when arriving from a client page
+// (e.g. /agency/projects/new?clientId=…). Null when launched standalone.
+const initialClientId = (route.query.clientId as string) || null
 
 // Form data
 const form = ref({
   name: '',
   description: '',
-  clientId: null as string | null,
+  clientId: initialClientId as string | null,
   budgetAmount: 0,
   budgetType: 'fixed',
   startDate: new Date().toISOString().split('T')[0],
@@ -19,8 +26,9 @@ const form = ref({
   projectManagerId: null as string | null
 })
 
-// Fetch clients
-const { data: clientsData } = await useFetch('/api/agency/clients')
+// Fetch clients — include inactive so a pre-selected client from ?clientId=
+// (which can point at an inactive client) is always present in the picker.
+const { data: clientsData } = await useFetch('/api/agency/clients', { query: { active: 'false' } })
 const clients = computed(() => ((clientsData.value as any) || []) as any[])
 
 // Fetch team members for project manager selection
@@ -38,6 +46,36 @@ const budgetTypeOptions = [
   { label: 'Retainer', value: 'retainer' },
   { label: 'Hourly', value: 'hourly' }
 ]
+
+// Date picker helpers — bridge between ISO YYYY-MM-DD strings and CalendarDate
+// (mirrors the canonical pattern in components/workflow/TaskCreateDialog.vue)
+function toCalendarDate(iso: string): DateValue | null {
+  if (!iso) return null
+  try {
+    return parseDate(iso.length > 10 ? iso.slice(0, 10) : iso)
+  } catch {
+    return null
+  }
+}
+
+const dateFormatter = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+
+function formatDate(iso: string): string {
+  if (!iso) return ''
+  const cd = toCalendarDate(iso)
+  if (!cd) return ''
+  return dateFormatter.format(new Date((cd as CalendarDate).year, (cd as CalendarDate).month - 1, (cd as CalendarDate).day))
+}
+
+const startDateModel = computed({
+  get: () => toCalendarDate(form.value.startDate),
+  set: (v) => { form.value.startDate = v ? v.toString() : '' }
+})
+
+const endDateModel = computed({
+  get: () => toCalendarDate(form.value.endDate),
+  set: (v) => { form.value.endDate = v ? v.toString() : '' }
+})
 
 // Form validation
 const isValid = computed(() => {
@@ -152,8 +190,7 @@ const applyTemplate = async () => {
               <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">Project Info</legend>
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div>
-                  <label class="block text-[13px] font-medium mb-2">Client <span class="text-red-500">*</span></label>
+                <UFormField label="Client" required>
                   <USelectMenu
                     v-model="form.clientId"
                     :items="clients.map(c => ({ label: c.name, value: c.id }))"
@@ -163,21 +200,19 @@ const applyTemplate = async () => {
                     size="xl"
                     class="w-full"
                   />
-                </div>
+                </UFormField>
 
-                <div>
-                  <label class="block text-[13px] font-medium mb-2">Project Name <span class="text-red-500">*</span></label>
+                <UFormField label="Project Name" required>
                   <UInput
                     v-model="form.name"
                     placeholder="e.g., Website Redesign Q1 2024"
                     size="xl"
                     class="w-full"
                   />
-                </div>
+                </UFormField>
               </div>
 
-              <div>
-                <label class="block text-[13px] font-medium mb-2">Description</label>
+              <UFormField label="Description" help="Brief scope and objectives for the project.">
                 <UTextarea
                   v-model="form.description"
                   placeholder="Describe the project scope, deliverables, and key objectives..."
@@ -185,8 +220,7 @@ const applyTemplate = async () => {
                   size="xl"
                   class="w-full"
                 />
-                <p class="text-[12px] text-[var(--ui-text-muted)] mt-1.5">Brief scope and objectives for the project.</p>
-              </div>
+              </UFormField>
             </fieldset>
 
             <!-- Section: Budget & Timeline -->
@@ -194,8 +228,7 @@ const applyTemplate = async () => {
               <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">Budget & Timeline</legend>
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div>
-                  <label class="block text-[13px] font-medium mb-2">Budget Amount <span class="text-red-500">*</span></label>
+                <UFormField label="Budget Amount" required>
                   <UInput
                     v-model.number="form.budgetAmount"
                     type="number"
@@ -206,13 +239,12 @@ const applyTemplate = async () => {
                     class="w-full"
                   >
                     <template #leading>
-                      <span class="text-[var(--ui-text-muted)]">$</span>
+                      <span class="text-muted">$</span>
                     </template>
                   </UInput>
-                </div>
+                </UFormField>
 
-                <div>
-                  <label class="block text-[13px] font-medium mb-2">Budget Type</label>
+                <UFormField label="Budget Type" help="How the client is billed.">
                   <USelectMenu
                     v-model="form.budgetType"
                     :items="budgetTypeOptions"
@@ -220,21 +252,51 @@ const applyTemplate = async () => {
                     size="xl"
                     class="w-full"
                   />
-                  <p class="text-[12px] text-[var(--ui-text-muted)] mt-1.5">How the client is billed.</p>
-                </div>
+                </UFormField>
               </div>
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div>
-                  <label class="block text-[13px] font-medium mb-2">Start Date <span class="text-red-500">*</span></label>
-                  <UInput v-model="form.startDate" type="date" size="xl" class="w-full" />
-                </div>
+                <UFormField label="Start Date" required>
+                  <UPopover>
+                    <UButton
+                      color="neutral"
+                      variant="outline"
+                      icon="i-lucide-calendar"
+                      size="xl"
+                      class="w-full justify-start font-normal"
+                      :class="!form.startDate && 'text-muted'"
+                    >
+                      {{ formatDate(form.startDate) || 'Pick start date' }}
+                    </UButton>
+                    <template #content>
+                      <UCalendar v-model="startDateModel" class="p-2" />
+                      <div v-if="form.startDate" class="border-t border-default p-2 flex justify-end">
+                        <UButton size="xs" variant="ghost" color="neutral" @click="form.startDate = ''">Clear</UButton>
+                      </div>
+                    </template>
+                  </UPopover>
+                </UFormField>
 
-                <div>
-                  <label class="block text-[13px] font-medium mb-2">End Date</label>
-                  <UInput v-model="form.endDate" type="date" size="xl" class="w-full" />
-                  <p class="text-[12px] text-[var(--ui-text-muted)] mt-1.5">Leave blank for ongoing projects.</p>
-                </div>
+                <UFormField label="End Date" help="Leave blank for ongoing projects.">
+                  <UPopover>
+                    <UButton
+                      color="neutral"
+                      variant="outline"
+                      icon="i-lucide-calendar"
+                      size="xl"
+                      class="w-full justify-start font-normal"
+                      :class="!form.endDate && 'text-muted'"
+                    >
+                      {{ formatDate(form.endDate) || 'Pick end date' }}
+                    </UButton>
+                    <template #content>
+                      <UCalendar v-model="endDateModel" class="p-2" />
+                      <div v-if="form.endDate" class="border-t border-default p-2 flex justify-end">
+                        <UButton size="xs" variant="ghost" color="neutral" @click="form.endDate = ''">Clear</UButton>
+                      </div>
+                    </template>
+                  </UPopover>
+                </UFormField>
               </div>
             </fieldset>
 
@@ -243,8 +305,7 @@ const applyTemplate = async () => {
               <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">Assignment</legend>
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div>
-                  <label class="block text-[13px] font-medium mb-2">Project Manager</label>
+                <UFormField label="Project Manager" help="Responsible for delivery and client communication.">
                   <USelectMenu
                     v-model="form.projectManagerId"
                     :items="[
@@ -256,8 +317,7 @@ const applyTemplate = async () => {
                     size="xl"
                     class="w-full"
                   />
-                  <p class="text-[12px] text-[var(--ui-text-muted)] mt-1.5">Responsible for delivery and client communication.</p>
-                </div>
+                </UFormField>
               </div>
             </fieldset>
 
@@ -292,7 +352,7 @@ const applyTemplate = async () => {
       </template>
       <template #body>
         <div class="space-y-4">
-          <p class="text-sm text-gray-500">
+          <p class="text-sm text-muted">
             Select a template to quickly create a project with predefined phases and tasks.
           </p>
 
@@ -301,13 +361,13 @@ const applyTemplate = async () => {
               v-for="template in templates"
               :key="template.id"
               class="p-4 border rounded-lg cursor-pointer transition-colors"
-              :class="selectedTemplate?.id === template.id ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800'"
+              :class="selectedTemplate?.id === template.id ? 'border-primary bg-primary-50 dark:bg-primary-950' : 'hover:bg-elevated'"
               @click="selectedTemplate = template"
             >
               <div class="flex items-center justify-between">
                 <div>
                   <p class="font-medium">{{ template.name }}</p>
-                  <p class="text-sm text-gray-500">{{ template.description }}</p>
+                  <p class="text-sm text-muted">{{ template.description }}</p>
                 </div>
                 <UIcon
                   v-if="selectedTemplate?.id === template.id"
@@ -315,7 +375,7 @@ const applyTemplate = async () => {
                   class="w-5 h-5 text-primary-500"
                 />
               </div>
-              <div class="mt-2 flex items-center gap-4 text-xs text-gray-500">
+              <div class="mt-2 flex items-center gap-4 text-xs text-muted">
                 <span>{{ template.phaseCount }} phases</span>
                 <span>{{ template.taskCount }} tasks</span>
                 <span v-if="template.estimatedDurationDays">~{{ template.estimatedDurationDays }} days</span>
@@ -323,7 +383,7 @@ const applyTemplate = async () => {
             </div>
           </div>
 
-          <div v-if="templates.length === 0" class="text-center text-gray-500 py-8">
+          <div v-if="templates.length === 0" class="text-center text-muted py-8">
             No templates available. Create templates in the Templates section.
           </div>
         </div>

@@ -24,9 +24,9 @@ export default defineEventHandler(async (event) => {
       SELECT
         i.*,
         c.name as client_name,
-        c.email as client_email,
-        c.phone as client_phone,
-        c.billing_address as client_billing_address,
+        c.contact_email as client_email,
+        c.contact_phone as client_phone,
+        c.address as client_billing_address,
         p.name as project_name,
         tm.name as created_by_name
       FROM invoices i

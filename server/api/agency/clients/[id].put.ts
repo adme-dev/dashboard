@@ -4,9 +4,13 @@
  */
 
 import { queryOne } from '~~/server/utils/db'
+import { requireRole } from '~~/server/utils/auth'
+import { PERMISSIONS } from '~~/server/utils/permissions'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  // Editing billing type, rates, Xero link and active status is a sensitive
+  // mutation — gate it to CLIENTS-permission staff (matches the page's Edit action).
+  await requireRole(event, PERMISSIONS.CLIENTS)
 
   const id = getRouterParam(event, 'id')
   const body = await readBody(event)
@@ -18,20 +22,17 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // Build dynamic update query
-  const allowedFields = [
-    'name',
-    'billing_type',
-    'retainer_amount',
-    'payment_terms',
-    'hourly_rate',
-    'media_commission_rate',
-    'xero_contact_id',
-    'notes',
-    'is_active'
-  ]
+  // A client must always have a name — reject blanks rather than silently
+  // persisting an empty string (the form's `*` is cosmetic, not enforced).
+  if (body.name !== undefined && (typeof body.name !== 'string' || !body.name.trim())) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Client name cannot be empty'
+    })
+  }
 
-  // Map camelCase to snake_case
+  // Build dynamic update query — camelCase (request) → snake_case (column).
+  // This mapping is also the allowlist: only these fields can be updated.
   const fieldMapping: Record<string, string> = {
     name: 'name',
     billingType: 'billing_type',

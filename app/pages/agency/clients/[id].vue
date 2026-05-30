@@ -8,10 +8,15 @@ definePageMeta({
 
 const route = useRoute()
 const toast = useToast()
+// KPI targets are editable only by MANAGEMENT roles (matches the kpi-targets PUT
+// guard) — non-managers get a read-only view instead of a 403 on save.
+const { isManager } = useAuth()
 const clientId = route.params.id as string
 
 // Fetch client data
-const { data: clientData, pending, refresh } = await useFetch(`/api/agency/clients/${clientId}`)
+const { data: clientData, pending, refresh, error } = await useFetch(`/api/agency/clients/${clientId}`)
+// Distinguish a genuine 404 from a transient/permission failure for the error state.
+const isNotFound = computed(() => ((error.value as any)?.statusCode ?? (error.value as any)?.status) === 404)
 
 const client = computed(() => (clientData.value as any)?.client || null)
 const projects = computed(() => ((clientData.value as any)?.projects || []) as any[])
@@ -21,7 +26,7 @@ const mediaSpend = computed(() => ((clientData.value as any)?.mediaSpend || []) 
 const summary = computed(() => (clientData.value as any)?.summary || {
   totalRevenue: 0, totalCost: 0, grossProfit: 0, grossMargin: 0,
   totalHours: 0, totalProjects: 0, activeProjects: 0, completedProjects: 0,
-  totalInvoiced: 0, totalMediaSpend: 0
+  totalInvoiced: 0, totalMediaSpend: 0, totalMediaCommission: 0, retainerAmount: 0
 })
 
 // Active tab
@@ -29,9 +34,9 @@ const activeTab = ref('overview')
 
 // Format helpers
 const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat('en-AU', {
     style: 'currency',
-    currency: 'USD',
+    currency: 'AUD',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0
   }).format(value)
@@ -225,7 +230,7 @@ async function saveKpiTargets() {
             <UBadge variant="subtle" :color="client.isActive ? 'success' : 'neutral'">
               {{ client.isActive ? 'Active' : 'Inactive' }}
             </UBadge>
-            <span class="text-sm text-gray-500">{{ billingTypeLabels[client.billingType] || client.billingType }}</span>
+            <span class="text-sm text-muted">{{ billingTypeLabels[client.billingType] || client.billingType }}</span>
           </div>
         </template>
         <template #right>
@@ -254,24 +259,51 @@ async function saveKpiTargets() {
 
         <template v-else-if="client">
           <!-- Summary Cards -->
-          <div class="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
+          <!-- Revenue is surfaced by source (project budgets / retainer / commission /
+               invoiced) rather than blended, keeping the headline figure consistent
+               with the clients list + analytics, which both define revenue as project budgets. -->
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-3 mb-6">
             <UCard>
               <div class="text-center">
-                <p class="text-sm text-gray-500">Total Revenue</p>
+                <p class="text-sm text-muted">Project Revenue</p>
                 <p class="text-xl font-bold">{{ formatCurrency(summary.totalRevenue) }}</p>
               </div>
             </UCard>
 
             <UCard>
               <div class="text-center">
-                <p class="text-sm text-gray-500">Total Cost</p>
+                <p class="text-sm text-muted">Retainer</p>
+                <p class="text-xl font-bold">
+                  <template v-if="summary.retainerAmount > 0">{{ formatCurrency(summary.retainerAmount) }}<span class="text-sm font-normal text-muted">/mo</span></template>
+                  <template v-else>—</template>
+                </p>
+              </div>
+            </UCard>
+
+            <UCard>
+              <div class="text-center">
+                <p class="text-sm text-muted">Media Commission</p>
+                <p class="text-xl font-bold">{{ formatCurrency(summary.totalMediaCommission) }}</p>
+              </div>
+            </UCard>
+
+            <UCard>
+              <div class="text-center">
+                <p class="text-sm text-muted">Invoiced</p>
+                <p class="text-xl font-bold">{{ formatCurrency(summary.totalInvoiced) }}</p>
+              </div>
+            </UCard>
+
+            <UCard>
+              <div class="text-center">
+                <p class="text-sm text-muted">Total Cost</p>
                 <p class="text-xl font-bold">{{ formatCurrency(summary.totalCost) }}</p>
               </div>
             </UCard>
 
             <UCard>
               <div class="text-center">
-                <p class="text-sm text-gray-500">Gross Profit</p>
+                <p class="text-sm text-muted">Gross Profit</p>
                 <p class="text-xl font-bold" :class="summary.grossProfit >= 0 ? 'text-emerald-500' : 'text-red-500'">
                   {{ formatCurrency(summary.grossProfit) }}
                 </p>
@@ -280,7 +312,7 @@ async function saveKpiTargets() {
 
             <UCard>
               <div class="text-center">
-                <p class="text-sm text-gray-500">Margin</p>
+                <p class="text-sm text-muted">Margin</p>
                 <UBadge :color="getMarginColor(summary.grossMargin)" size="lg">
                   {{ formatPercent(summary.grossMargin) }}
                 </UBadge>
@@ -289,17 +321,17 @@ async function saveKpiTargets() {
 
             <UCard>
               <div class="text-center">
-                <p class="text-sm text-gray-500">Total Hours</p>
+                <p class="text-sm text-muted">Total Hours</p>
                 <p class="text-xl font-bold">{{ (summary.totalHours ?? 0).toFixed(1) }}h</p>
               </div>
             </UCard>
 
             <UCard>
               <div class="text-center">
-                <p class="text-sm text-gray-500">Projects</p>
+                <p class="text-sm text-muted">Projects</p>
                 <p class="text-xl font-bold">
                   <span class="text-emerald-500">{{ summary.activeProjects }}</span>
-                  <span class="text-gray-400"> / {{ summary.totalProjects }}</span>
+                  <span class="text-dimmed"> / {{ summary.totalProjects }}</span>
                 </p>
               </div>
             </UCard>
@@ -327,27 +359,27 @@ async function saveKpiTargets() {
               </template>
               <dl class="space-y-3">
                 <div>
-                  <dt class="text-sm text-gray-500">Billing Type</dt>
+                  <dt class="text-sm text-muted">Billing Type</dt>
                   <dd class="font-medium">{{ billingTypeLabels[client.billingType] || client.billingType }}</dd>
                 </div>
                 <div>
-                  <dt class="text-sm text-gray-500">Payment Terms</dt>
+                  <dt class="text-sm text-muted">Payment Terms</dt>
                   <dd class="font-medium">{{ client.paymentTerms }} days</dd>
                 </div>
                 <div v-if="client.hourlyRate">
-                  <dt class="text-sm text-gray-500">Hourly Rate</dt>
+                  <dt class="text-sm text-muted">Hourly Rate</dt>
                   <dd class="font-medium">{{ formatCurrency(client.hourlyRate) }}/hr</dd>
                 </div>
                 <div v-if="client.retainerAmount">
-                  <dt class="text-sm text-gray-500">Retainer Amount</dt>
+                  <dt class="text-sm text-muted">Retainer Amount</dt>
                   <dd class="font-medium">{{ formatCurrency(client.retainerAmount) }}/mo</dd>
                 </div>
                 <div v-if="client.mediaCommissionRate">
-                  <dt class="text-sm text-gray-500">Media Commission</dt>
+                  <dt class="text-sm text-muted">Media Commission</dt>
                   <dd class="font-medium">{{ client.mediaCommissionRate }}%</dd>
                 </div>
                 <div v-if="client.notes">
-                  <dt class="text-sm text-gray-500">Notes</dt>
+                  <dt class="text-sm text-muted">Notes</dt>
                   <dd class="text-sm">{{ client.notes }}</dd>
                 </div>
               </dl>
@@ -370,13 +402,13 @@ async function saveKpiTargets() {
                 <div
                   v-for="project in projects.filter(p => p.status === 'active').slice(0, 5)"
                   :key="project.id"
-                  class="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-800"
+                  class="flex items-center justify-between p-3 rounded-lg bg-elevated"
                 >
                   <div>
                     <NuxtLink :to="`/agency/projects/${project.id}`" class="font-medium hover:text-primary-500">
                       {{ project.name }}
                     </NuxtLink>
-                    <p class="text-sm text-gray-500">{{ formatCurrency(project.budgetAmount) }} budget</p>
+                    <p class="text-sm text-muted">{{ formatCurrency(project.budgetAmount) }} budget</p>
                   </div>
                   <div class="text-right">
                     <p class="font-medium">{{ formatCurrency(project.totalCost) }} spent</p>
@@ -385,7 +417,7 @@ async function saveKpiTargets() {
                     </UBadge>
                   </div>
                 </div>
-                <div v-if="projects.filter(p => p.status === 'active').length === 0" class="text-center text-gray-500 py-4">
+                <div v-if="projects.filter(p => p.status === 'active').length === 0" class="text-center text-muted py-4">
                   No active projects
                 </div>
               </div>
@@ -399,7 +431,7 @@ async function saveKpiTargets() {
               <template #header>
                 <div class="flex items-center justify-between">
                   <h3 class="font-semibold">Xero Integration</h3>
-                  <UIcon name="i-lucide-link" class="w-5 h-5 text-gray-400" />
+                  <UIcon name="i-lucide-link" class="w-5 h-5 text-dimmed" />
                 </div>
               </template>
               <div v-if="client.xeroContactId" class="flex items-center justify-between">
@@ -408,7 +440,7 @@ async function saveKpiTargets() {
                     <UIcon name="i-lucide-check" class="w-3 h-3 mr-1" />
                     Linked
                   </UBadge>
-                  <span class="text-sm text-gray-500">Contact ID: {{ client.xeroContactId }}</span>
+                  <span class="text-sm text-muted">Contact ID: {{ client.xeroContactId }}</span>
                 </div>
                 <div class="flex items-center gap-2">
                   <UButton
@@ -430,7 +462,7 @@ async function saveKpiTargets() {
                 </div>
               </div>
               <div v-else class="flex items-center justify-between">
-                <p class="text-sm text-gray-500">Not linked to a Xero contact</p>
+                <p class="text-sm text-muted">Not linked to a Xero contact</p>
                 <UButton
                   label="Link to Xero Contact"
                   icon="i-lucide-link"
@@ -449,7 +481,7 @@ async function saveKpiTargets() {
                     <h3 class="text-sm font-semibold text-default">KPI Targets</h3>
                     <p class="text-xs text-muted">Per-result-type targets that drive the campaign health score.</p>
                   </div>
-                  <UButton size="xs" variant="outline" icon="i-lucide-plus" label="Add" @click="addKpiRow" />
+                  <UButton v-if="isManager" size="xs" variant="outline" icon="i-lucide-plus" label="Add" @click="addKpiRow" />
                 </div>
               </template>
               <div class="space-y-3">
@@ -461,22 +493,25 @@ async function saveKpiTargets() {
                       create-item
                       placeholder="Select result type"
                       size="sm"
+                      :disabled="!isManager"
                       @create="(v: string) => { t.resultType = v }"
                     />
                   </UFormField>
                   <UFormField class="col-span-3" label="Target cost / result">
-                    <UInput v-model.number="t.targetCostPerResult" type="number" :min="0" step="0.01" size="sm" />
+                    <UInput v-model.number="t.targetCostPerResult" type="number" :min="0" step="0.01" size="sm" :disabled="!isManager" />
                   </UFormField>
                   <UFormField class="col-span-2" label="Target CTR %">
-                    <UInput v-model.number="t.targetCtr" type="number" :min="0" step="0.01" size="sm" />
+                    <UInput v-model.number="t.targetCtr" type="number" :min="0" step="0.01" size="sm" :disabled="!isManager" />
                   </UFormField>
                   <UFormField class="col-span-2" label="Max freq.">
-                    <UInput v-model.number="t.maxFrequency" type="number" :min="0" step="0.1" size="sm" />
+                    <UInput v-model.number="t.maxFrequency" type="number" :min="0" step="0.1" size="sm" :disabled="!isManager" />
                   </UFormField>
-                  <UButton class="col-span-1" size="xs" variant="ghost" color="error" icon="i-lucide-trash-2" @click="removeKpiRow(i)" />
+                  <UButton v-if="isManager" class="col-span-1" size="xs" variant="ghost" color="error" icon="i-lucide-trash-2" @click="removeKpiRow(i)" />
                 </div>
-                <p v-if="!kpiTargets.length" class="text-xs text-muted">No targets yet. Add one to enable health scoring for this client.</p>
-                <div class="flex justify-end pt-1">
+                <p v-if="!kpiTargets.length" class="text-xs text-muted">
+                  {{ isManager ? 'No targets yet. Add one to enable health scoring for this client.' : 'No KPI targets set for this client.' }}
+                </p>
+                <div v-if="isManager" class="flex justify-end pt-1">
                   <UButton size="sm" label="Save targets" :loading="kpiSaving" @click="saveKpiTargets" />
                 </div>
               </div>
@@ -514,7 +549,7 @@ async function saveKpiTargets() {
                 </template>
               </UTable>
 
-              <div v-if="projects.length === 0" class="text-center text-gray-500 py-8">
+              <div v-if="projects.length === 0" class="text-center text-muted py-8">
                 No projects yet
               </div>
             </UCard>
@@ -545,7 +580,7 @@ async function saveKpiTargets() {
                 </template>
               </UTable>
 
-              <div v-if="recentTimeEntries.length === 0" class="text-center text-gray-500 py-8">
+              <div v-if="recentTimeEntries.length === 0" class="text-center text-muted py-8">
                 No time entries yet
               </div>
             </UCard>
@@ -574,7 +609,7 @@ async function saveKpiTargets() {
                 </template>
               </UTable>
 
-              <div v-if="invoices.length === 0" class="text-center text-gray-500 py-8">
+              <div v-if="invoices.length === 0" class="text-center text-muted py-8">
                 No invoices yet
               </div>
             </UCard>
@@ -583,16 +618,16 @@ async function saveKpiTargets() {
           <!-- Media Spend Tab -->
           <div v-if="activeTab === 'media'">
             <UCard>
-              <div class="mb-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div class="mb-4 p-4 bg-elevated rounded-lg">
                 <div class="flex items-center justify-between">
                   <div>
-                    <p class="text-sm text-gray-500">Total Media Spend</p>
+                    <p class="text-sm text-muted">Total Media Spend</p>
                     <p class="text-2xl font-bold">{{ formatCurrency(summary.totalMediaSpend) }}</p>
                   </div>
-                  <div v-if="client.mediaCommissionRate">
-                    <p class="text-sm text-gray-500">Est. Commission</p>
+                  <div v-if="summary.totalMediaCommission > 0">
+                    <p class="text-sm text-muted">Est. Commission</p>
                     <p class="text-2xl font-bold text-emerald-500">
-                      {{ formatCurrency(summary.totalMediaSpend * client.mediaCommissionRate / 100) }}
+                      {{ formatCurrency(summary.totalMediaCommission) }}
                     </p>
                   </div>
                 </div>
@@ -602,11 +637,11 @@ async function saveKpiTargets() {
                 <div
                   v-for="spend in mediaSpend"
                   :key="spend.id"
-                  class="flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700"
+                  class="flex items-center justify-between p-3 rounded-lg border border-default"
                 >
                   <div>
                     <p class="font-medium">{{ spend.platform }}</p>
-                    <p class="text-sm text-gray-500">{{ spend.period }}</p>
+                    <p class="text-sm text-muted">{{ spend.period }}</p>
                   </div>
                   <div class="text-right">
                     <p class="font-medium">{{ formatCurrency(spend.actualSpend) }}</p>
@@ -615,12 +650,27 @@ async function saveKpiTargets() {
                 </div>
               </div>
 
-              <div v-if="mediaSpend.length === 0" class="text-center text-gray-500 py-8">
+              <div v-if="mediaSpend.length === 0" class="text-center text-muted py-8">
                 No media spend tracked
               </div>
             </UCard>
           </div>
         </template>
+
+        <!-- Not found (404) vs a transient/permission load failure -->
+        <div v-else class="flex flex-col items-center justify-center text-center py-20">
+          <UIcon :name="isNotFound ? 'i-lucide-user-x' : 'i-lucide-alert-triangle'" class="w-10 h-10 text-dimmed mb-3" />
+          <h3 class="text-base font-semibold">{{ isNotFound ? 'Client not found' : 'Couldn’t load client' }}</h3>
+          <p class="text-sm text-muted mt-1 max-w-sm">
+            {{ isNotFound
+              ? 'This client doesn’t exist or you don’t have access to it. It may have been removed.'
+              : 'Something went wrong loading this client. Please try again.' }}
+          </p>
+          <div class="mt-4 flex items-center gap-2">
+            <UButton v-if="!isNotFound" icon="i-lucide-refresh-cw" label="Retry" @click="refresh()" />
+            <UButton variant="outline" icon="i-lucide-arrow-left" label="Back to clients" to="/agency/clients" />
+          </div>
+        </div>
       </div>
     </UDashboardPanel>
 
@@ -630,19 +680,17 @@ async function saveKpiTargets() {
         <h3 class="text-[16px] font-[500]">Edit Client</h3>
       </template>
       <template #body>
-        <form @submit.prevent="saveClient" class="px-1">
+        <form @submit.prevent="saveClient" class="px-1 space-y-6">
           <!-- Section: General -->
-          <fieldset class="space-y-5 pb-6 mb-6 border-b border-[var(--ui-border)]">
-            <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">General</legend>
+          <fieldset class="space-y-5 pb-6 border-b border-default">
+            <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">General</legend>
 
-            <div>
-              <label class="block text-[13px] font-medium mb-2">Client Name <span class="text-red-500">*</span></label>
+            <UFormField label="Client Name" required>
               <UInput v-model="editForm.name" size="xl" class="w-full" placeholder="Client name" />
-            </div>
+            </UFormField>
 
             <div class="grid grid-cols-2 gap-4">
-              <div>
-                <label class="block text-[13px] font-medium mb-2">Billing Type</label>
+              <UFormField label="Billing Type">
                 <USelectMenu
                   v-model="editForm.billingType"
                   :items="billingTypeOptions"
@@ -650,78 +698,67 @@ async function saveKpiTargets() {
                   size="xl"
                   class="w-full"
                 />
-              </div>
+              </UFormField>
 
-              <div>
-                <label class="block text-[13px] font-medium mb-2">Payment Terms</label>
+              <UFormField label="Payment Terms">
                 <UInput v-model.number="editForm.paymentTerms" type="number" min="0" size="xl" class="w-full" placeholder="30">
                   <template #trailing>
-                    <span class="text-[var(--ui-text-muted)] text-xs">days</span>
+                    <span class="text-muted text-xs">days</span>
                   </template>
                 </UInput>
-              </div>
+              </UFormField>
             </div>
           </fieldset>
 
           <!-- Section: Rates -->
-          <fieldset class="space-y-5 pb-6 mb-6 border-b border-[var(--ui-border)]">
-            <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">Rates</legend>
+          <fieldset class="space-y-5 pb-6 border-b border-default">
+            <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">Rates</legend>
 
             <div class="grid grid-cols-2 gap-4">
-              <div>
-                <label class="block text-[13px] font-medium mb-2">Hourly Rate</label>
+              <UFormField label="Hourly Rate">
                 <UInput v-model.number="editForm.hourlyRate" type="number" min="0" size="xl" class="w-full" placeholder="0">
                   <template #leading>
-                    <span class="text-[var(--ui-text-muted)]">$</span>
+                    <span class="text-muted">$</span>
                   </template>
                 </UInput>
-              </div>
+              </UFormField>
 
-              <div>
-                <label class="block text-[13px] font-medium mb-2">Retainer Amount</label>
+              <UFormField label="Retainer Amount" help="Monthly retainer fee.">
                 <UInput v-model.number="editForm.retainerAmount" type="number" min="0" size="xl" class="w-full" placeholder="0">
                   <template #leading>
-                    <span class="text-[var(--ui-text-muted)]">$</span>
+                    <span class="text-muted">$</span>
                   </template>
                 </UInput>
-                <p class="text-[12px] text-[var(--ui-text-muted)] mt-1.5">Monthly retainer fee.</p>
-              </div>
+              </UFormField>
             </div>
 
-            <div>
-              <label class="block text-[13px] font-medium mb-2">Media Commission</label>
+            <UFormField label="Media Commission" help="Commission on ad spend.">
               <UInput v-model.number="editForm.mediaCommissionRate" type="number" min="0" max="100" size="xl" class="w-full" placeholder="0">
                 <template #trailing>
-                  <span class="text-[var(--ui-text-muted)]">%</span>
+                  <span class="text-muted">%</span>
                 </template>
               </UInput>
-              <p class="text-[12px] text-[var(--ui-text-muted)] mt-1.5">Commission on ad spend.</p>
-            </div>
+            </UFormField>
           </fieldset>
 
           <!-- Section: Integrations -->
-          <fieldset class="space-y-5 pb-6 mb-6 border-b border-[var(--ui-border)]">
-            <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">Integrations</legend>
+          <fieldset class="space-y-5 pb-6 border-b border-default">
+            <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">Integrations</legend>
 
-            <div>
-              <label class="block text-[13px] font-medium mb-2">Xero Contact</label>
+            <UFormField label="Xero Contact">
               <XeroContactSearch v-model="editForm.xeroContactId" />
-            </div>
+            </UFormField>
           </fieldset>
 
           <!-- Section: Notes & Status -->
-          <fieldset class="space-y-5 pb-4">
-            <legend class="text-[11px] font-medium text-[var(--ui-text-muted)] uppercase tracking-widest mb-1">Notes & Status</legend>
+          <fieldset class="space-y-5">
+            <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">Notes & Status</legend>
 
-            <div>
-              <label class="block text-[13px] font-medium mb-2">Notes</label>
+            <UFormField label="Notes">
               <UTextarea v-model="editForm.notes" :rows="4" size="xl" class="w-full" placeholder="Internal notes about this client..." />
-            </div>
+            </UFormField>
 
-            <div class="flex items-center gap-3 pt-1">
-              <UCheckbox v-model="editForm.isActive" />
-              <label class="text-[13px] font-medium cursor-pointer" @click="editForm.isActive = !editForm.isActive">Client is active</label>
-            </div>
+            <UCheckbox v-model="editForm.isActive" label="Client is active" />
           </fieldset>
         </form>
       </template>

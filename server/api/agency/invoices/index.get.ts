@@ -85,7 +85,7 @@ export default defineEventHandler(async (event) => {
         i.invoice_number,
         i.client_id,
         c.name as client_name,
-        c.email as client_email,
+        c.contact_email as client_email,
         i.project_id,
         p.name as project_name,
         i.issue_date,
