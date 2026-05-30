@@ -1,5 +1,5 @@
 import { requireAuth } from '~~/server/utils/auth'
-import { queryRows, queryOne, execute } from '~~/server/utils/db'
+import { queryRows, execute } from '~~/server/utils/db'
 import { refreshGoogleToken } from '~~/server/utils/googleAdsClient'
 import { listGa4Properties } from '~~/server/utils/ga4Client'
 
@@ -18,7 +18,7 @@ export default eventHandler(async (event) => {
   }>(`SELECT id, account_name, access_token, refresh_token, token_expires_at
       FROM social_connections WHERE platform = 'ga4' AND status = 'active'`)
 
-  const connections: Array<{ connectionId: string; accountName: string; properties: any[] }> = []
+  const connections: Array<{ connectionId: string; accountName: string; properties: Array<{ accountName: string; propertyId: string; propertyDisplayName: string }> }> = []
   for (const c of conns) {
     let token = c.access_token
     if (c.refresh_token && c.token_expires_at &&
