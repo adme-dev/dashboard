@@ -73,9 +73,12 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'clientId, startDate and endDate are required' })
   }
 
-  const current = await funnelForWindow(clientId, startDate, endDate)
   const { prevStart, prevEnd } = previousWindow(startDate, endDate)
-  const previous = await funnelForWindow(clientId, prevStart, prevEnd)
+  // hasGa4 reflects the current window only; previous-window GA4 presence isn't needed by the UI.
+  const [current, previous] = await Promise.all([
+    funnelForWindow(clientId, startDate, endDate),
+    funnelForWindow(clientId, prevStart, prevEnd)
+  ])
 
   return {
     channels: current.channels,
