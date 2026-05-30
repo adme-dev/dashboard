@@ -12,30 +12,9 @@ interface RuleListItem {
   last_lead_at: string | null
 }
 
-interface EndpointListItem {
-  id: string
-  client_id: string
-  client_name: string
-  url_token: string
-  secret_key: string
-  lead_count: string | number | null
-  google_lead_count: string | number | null
-  routable_lead_count: string | number | null
-}
-
 const { data, refresh, pending } = useFetch<{ items: RuleListItem[] }>('/api/leads/rules/list', {
   default: () => ({ items: [] })
 })
-const {
-  data: endpointsData,
-  pending: endpointsPending,
-  error: endpointsError,
-  refresh: refreshEndpoints
-} = useFetch<{ items: EndpointListItem[] }>('/api/leads/endpoints/list', {
-  default: () => ({ items: [] }),
-  immediate: false
-})
-
 // Clients for the picker modal — plain array from /api/agency/clients
 const { data: clients } = useFetch<{ id: string, name: string }[]>('/api/agency/clients', {
   default: () => []
@@ -48,8 +27,7 @@ const editingRuleId = ref<string | null>(null)
 const editingFormMeta = ref<{ source: string, form_id: string, form_name: string | null } | null>(null)
 const showEditor = ref(false)
 const toast = useToast()
-const showConnectionGuide = ref(false)
-const selectedEndpointClientId = ref<string | null>(null)
+const emit = defineEmits<{ 'open-setup-guide': [] }>()
 
 const ruleItems = computed(() => data.value?.items ?? [])
 const readyRules = computed(() =>
@@ -60,20 +38,6 @@ const needsDestinations = computed(() =>
 )
 const unmappedForms = computed(() => ruleItems.value.filter(item => !item.rule_id || !item.client_id))
 const pausedRules = computed(() => ruleItems.value.filter(item => item.rule_id && !item.enabled))
-const endpointItems = computed(() => endpointsData.value?.items ?? [])
-const selectedEndpoint = computed(() =>
-  endpointItems.value.find(item => item.client_id === selectedEndpointClientId.value) ?? endpointItems.value[0] ?? null
-)
-const baseUrl = computed(() => {
-  if (import.meta.client) return window.location.origin
-  return 'https://agency-dashboard-6cm.pages.dev'
-})
-const googleWebhookUrl = computed(() =>
-  selectedEndpoint.value ? `${baseUrl.value}/api/leads/webhook/google/${selectedEndpoint.value.url_token}` : ''
-)
-const genericWebhookUrl = computed(() =>
-  selectedEndpoint.value ? `${baseUrl.value}/api/leads/webhook/generic/${selectedEndpoint.value.url_token}` : ''
-)
 
 function ruleState(item: RuleListItem): { label: string, color: 'success' | 'warning' | 'error' | 'neutral' } {
   if (!item.rule_id || !item.client_id) return { label: 'Map client', color: 'error' }
@@ -86,18 +50,6 @@ function errorMessage(e: unknown): string {
   return e && typeof e === 'object' && 'data' in e
     ? (e as { data?: { statusMessage?: string } }).data?.statusMessage ?? ''
     : ''
-}
-
-async function openConnectionGuide() {
-  showConnectionGuide.value = true
-  await refreshEndpoints()
-  selectedEndpointClientId.value = endpointItems.value[0]?.client_id ?? null
-}
-
-async function copyText(value: string, label: string) {
-  if (!value) return
-  await navigator.clipboard.writeText(value)
-  toast.add({ title: `${label} copied`, color: 'success' })
 }
 
 // Client picker modal state
@@ -371,8 +323,8 @@ async function toggleEnabled(item: RuleListItem) {
         <UButton
           variant="ghost"
           size="sm"
-          icon="i-lucide-plug-zap"
-          @click="openConnectionGuide"
+          icon="i-lucide-book-open"
+          @click="emit('open-setup-guide')"
         >
           Connection details
         </UButton>
@@ -642,152 +594,8 @@ async function toggleEnabled(item: RuleListItem) {
       </template>
     </UModal>
 
-    <UModal v-model:open="showConnectionGuide" :ui="{ content: 'max-w-2xl' }">
-      <template #content>
-        <div class="p-6 space-y-4">
-          <div>
-            <h3 class="text-lg font-semibold">
-              Connection details
-            </h3>
-            <p class="text-sm text-muted mt-0.5">
-              Copy these into Google Ads, Zapier, Make, n8n, or a custom form before disabling the old Zap.
-            </p>
-          </div>
+    <!-- Connection details & webhook keys now live in the Setup guide (single source of truth) -->
 
-          <UAlert
-            v-if="endpointsError"
-            color="error"
-            variant="subtle"
-            icon="i-lucide-lock"
-            title="Admin access required"
-            description="Webhook URLs and keys are only visible to owners and admins."
-          />
-
-          <div v-else-if="endpointsPending" class="rounded border border-default p-4 text-sm text-muted">
-            Loading connection details…
-          </div>
-
-          <template v-else>
-            <UFormField label="Client">
-              <USelectMenu
-                v-model="selectedEndpointClientId"
-                :items="endpointItems.map(item => ({ value: item.client_id, label: item.client_name }))"
-                value-key="value"
-                class="w-full"
-              />
-            </UFormField>
-
-            <div v-if="selectedEndpoint" class="space-y-4">
-              <section class="rounded border border-default p-4 space-y-3">
-                <div class="flex items-start justify-between gap-3">
-                  <div>
-                    <p class="text-sm font-medium">
-                      Google Ads lead form webhook
-                    </p>
-                    <p class="text-xs text-muted">
-                      Paste this URL and key into the Google Ads lead form asset webhook integration.
-                    </p>
-                  </div>
-                  <UBadge variant="soft" size="sm">
-                    {{ selectedEndpoint.google_lead_count ?? 0 }} Google leads
-                  </UBadge>
-                </div>
-                <div class="space-y-2">
-                  <UInput :model-value="googleWebhookUrl" readonly>
-                    <template #trailing>
-                      <UButton
-                        icon="i-lucide-copy"
-                        variant="ghost"
-                        size="xs"
-                        aria-label="Copy Google webhook URL"
-                        @click="copyText(googleWebhookUrl, 'Google webhook URL')"
-                      />
-                    </template>
-                  </UInput>
-                  <UInput :model-value="selectedEndpoint.secret_key" readonly type="password">
-                    <template #trailing>
-                      <UButton
-                        icon="i-lucide-copy"
-                        variant="ghost"
-                        size="xs"
-                        aria-label="Copy webhook key"
-                        @click="copyText(selectedEndpoint.secret_key, 'Webhook key')"
-                      />
-                    </template>
-                  </UInput>
-                </div>
-              </section>
-
-              <section class="rounded border border-default p-4 space-y-3">
-                <div>
-                  <p class="text-sm font-medium">
-                    Generic webhook for Zapier, Make, n8n, and custom forms
-                  </p>
-                  <p class="text-xs text-muted">
-                    POST JSON here with the key, source, form_id, and fields. Use the same form_id in the rule.
-                    This client has {{ selectedEndpoint.routable_lead_count ?? 0 }} routed lead{{ Number(selectedEndpoint.routable_lead_count ?? 0) === 1 ? '' : 's' }} across Google, Meta, webhook, and CSV sources.
-                  </p>
-                </div>
-                <UInput :model-value="genericWebhookUrl" readonly>
-                  <template #trailing>
-                    <UButton
-                      icon="i-lucide-copy"
-                      variant="ghost"
-                      size="xs"
-                      aria-label="Copy generic webhook URL"
-                      @click="copyText(genericWebhookUrl, 'Generic webhook URL')"
-                    />
-                  </template>
-                </UInput>
-                <pre class="bg-elevated rounded p-3 text-xs font-mono overflow-x-auto">{
-  "key": "{{ selectedEndpoint.secret_key }}",
-  "source": "webhook",
-  "form_id": "website-test-drive",
-  "fields": {
-    "full_name": "Sarah Mitchell",
-    "email": "sarah@example.com",
-    "phone_number": "+61404123456"
-  }
-}</pre>
-              </section>
-
-              <section class="grid grid-cols-3 gap-2 text-xs">
-                <div class="rounded border border-default p-3">
-                  <p class="font-medium">
-                    1. Connect
-                  </p>
-                  <p class="mt-1 text-muted">
-                    Paste the URL and key into the ad platform or automation tool.
-                  </p>
-                </div>
-                <div class="rounded border border-default p-3">
-                  <p class="font-medium">
-                    2. Test
-                  </p>
-                  <p class="mt-1 text-muted">
-                    Send a platform test lead and confirm it appears in the inbox.
-                  </p>
-                </div>
-                <div class="rounded border border-default p-3">
-                  <p class="font-medium">
-                    3. Route
-                  </p>
-                  <p class="mt-1 text-muted">
-                    Add destinations and run Test fire before disabling the old Zap.
-                  </p>
-                </div>
-              </section>
-            </div>
-          </template>
-
-          <div class="flex justify-end pt-2 border-t border-default">
-            <UButton variant="ghost" @click="showConnectionGuide = false">
-              Close
-            </UButton>
-          </div>
-        </div>
-      </template>
-    </UModal>
 
     <!-- Client picker modal — replaces window.prompt -->
     <UModal v-model:open="showClientPicker">

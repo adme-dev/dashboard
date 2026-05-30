@@ -54,7 +54,7 @@ const tabs = [
         @show-help="showSetupGuide = true"
         @show-rules="tab = 'rules'"
       />
-      <LeadsFormRulesTab v-else />
+      <LeadsFormRulesTab v-else @open-setup-guide="showSetupGuide = true" />
     </div>
 
     <LeadsSetupGuide v-model:open="showSetupGuide" />
