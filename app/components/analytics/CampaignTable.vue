@@ -120,6 +120,7 @@ function sortKeyForColumn(key: string): string {
   if (key === 'costPerLead') return 'cost_per_lead'
   if (key === 'costPerResult') return 'cost_per_result'
   if (key === 'endDate') return 'end_date'
+  if (key === 'health') return 'health_score'
   return key
 }
 
@@ -127,6 +128,7 @@ function sortKeyForColumn(key: string): string {
 const allColumns = [
   { key: 'campaignName', label: 'Campaign', sortable: true },
   { key: 'delivery', label: 'Delivery', sortable: false },
+  { key: 'health', label: 'Health', sortable: true },
   { key: 'spend', label: 'Spend', sortable: true },
   { key: 'budget', label: 'Budget', sortable: true },
   { key: 'variance', label: 'Variance', sortable: false },
@@ -147,7 +149,7 @@ const allColumns = [
 // Columns shown today by default (new Meta columns are opt-in / via preset)
 const DEFAULT_VISIBLE = ['campaignName', 'spend', 'budget', 'variance', 'impressions', 'clicks', 'ctr', 'cpc', 'conversions', 'leadCount', 'costPerLead']
 // "Meta Ads view" preset mirrors Ads Manager
-const META_PRESET = ['campaignName', 'delivery', 'results', 'costPerResult', 'budget', 'spend', 'impressions', 'reach', 'endDate', 'bidStrategy']
+const META_PRESET = ['campaignName', 'delivery', 'health', 'results', 'costPerResult', 'budget', 'spend', 'impressions', 'reach', 'endDate', 'bidStrategy']
 
 const visibleKeys = ref<string[]>([...DEFAULT_VISIBLE])
 
@@ -351,7 +353,17 @@ watch(search, () => {
                 <span v-else class="text-muted">-</span>
               </td>
 
-              <!-- 3. spend -->
+              <!-- 3. health -->
+              <td v-if="isVisible('health')" class="px-3 py-2.5 text-right">
+                <UTooltip v-if="row.health && (row.health as any).verdict !== 'no-target'" :text="((row.health as any).reasons || []).join(' · ') || healthLabel((row.health as any).verdict)">
+                  <UBadge variant="subtle" :color="healthColor((row.health as any).verdict)" size="xs">
+                    <span v-if="(row.health as any).score != null" class="tabular-nums mr-1">{{ (row.health as any).score }}</span>{{ healthLabel((row.health as any).verdict) }}
+                  </UBadge>
+                </UTooltip>
+                <span v-else class="text-muted text-xs">{{ row.health ? healthLabel((row.health as any).verdict) : '-' }}</span>
+              </td>
+
+              <!-- 4. spend -->
               <td v-if="isVisible('spend')" class="px-3 py-2.5 text-right tabular-nums font-medium">
                 {{ fmtCurrency(row.spend) }}
               </td>
@@ -532,6 +544,14 @@ watch(search, () => {
                       </p>
                     </div>
                   </div>
+                </div>
+
+                <!-- Health score reasons -->
+                <div v-if="row.health && (row.health as any).reasons && (row.health as any).reasons.length" class="mb-4 flex flex-wrap items-center gap-2">
+                  <UBadge variant="subtle" :color="healthColor((row.health as any).verdict)" size="sm">
+                    Health {{ (row.health as any).score != null ? (row.health as any).score : '' }} · {{ healthLabel((row.health as any).verdict) }}
+                  </UBadge>
+                  <span v-for="(reason, i) in (row.health as any).reasons" :key="i" class="text-xs text-muted">{{ reason }}{{ i < (row.health as any).reasons.length - 1 ? ' ·' : '' }}</span>
                 </div>
 
                 <!-- Extra Metrics Row -->

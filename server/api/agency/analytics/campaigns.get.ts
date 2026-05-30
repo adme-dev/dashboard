@@ -13,8 +13,9 @@ import {
   PORTAL_LEAD_STATUS_SELECT,
   leadSourceForPlatformSql
 } from '~~/server/utils/leads/portalAnalytics'
+import { scoreCampaignHealth } from '~~/server/utils/campaignHealth'
 
-const ALLOWED_SORT = ['spend', 'budget', 'impressions', 'clicks', 'conversions', 'revenue', 'campaign_name', 'platform', 'lead_count', 'cost_per_lead', 'reach', 'cost_per_result', 'end_date'] as const
+const ALLOWED_SORT = ['spend', 'budget', 'impressions', 'clicks', 'conversions', 'revenue', 'campaign_name', 'platform', 'lead_count', 'cost_per_lead', 'reach', 'cost_per_result', 'end_date', 'health_score'] as const
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
@@ -108,6 +109,11 @@ export default defineEventHandler(async (event) => {
           SUM(ms.reach) as reach,
           (array_agg(ms.cost_per_result ORDER BY ms.synced_at DESC NULLS LAST))[1] as cost_per_result,
           (array_agg(ms.result_type ORDER BY ms.synced_at DESC NULLS LAST))[1] as result_type,
+          (array_agg(ms.frequency ORDER BY ms.synced_at DESC NULLS LAST))[1] as frequency,
+          (array_agg(ms.quality_ranking ORDER BY ms.synced_at DESC NULLS LAST))[1] as quality_ranking,
+          (array_agg(ms.engagement_rate_ranking ORDER BY ms.synced_at DESC NULLS LAST))[1] as engagement_rate_ranking,
+          (array_agg(ms.conversion_rate_ranking ORDER BY ms.synced_at DESC NULLS LAST))[1] as conversion_rate_ranking,
+          (array_agg(ms.impression_share ORDER BY ms.synced_at DESC NULLS LAST))[1] as impression_share,
           (array_agg(ms.end_date ORDER BY ms.synced_at DESC NULLS LAST))[1] as end_date,
           (array_agg(ms.bid_strategy ORDER BY ms.synced_at DESC NULLS LAST))[1] as bid_strategy,
           (array_agg(ms.budget_type ORDER BY ms.synced_at DESC NULLS LAST))[1] as budget_type,
@@ -145,17 +151,44 @@ export default defineEventHandler(async (event) => {
             OR (c.campaign_id IS NULL AND c.campaign_name IS NOT NULL AND l.campaign_name = c.campaign_name)
           )
       ) la ON TRUE
-      ORDER BY ${sortBy === 'cost_per_lead' ? 'cost_per_lead' : sortBy} ${sortDir} NULLS LAST
+      ORDER BY ${sortBy === 'health_score' ? 'spend' : sortBy} ${sortDir} NULLS LAST
       LIMIT $${limitIdx} OFFSET $${offsetIdx}
     `, params)
 
-    const campaigns = rows.map((r) => {
+    const clientIds = [...new Set(rows.map((r: any) => r.client_id).filter(Boolean))]
+    const targetRows = clientIds.length
+      ? await queryRows<{ client_id: string; result_type: string; target_cost_per_result: string; target_ctr: string | null; max_frequency: string | null }>(
+          `SELECT client_id, result_type, target_cost_per_result, target_ctr, max_frequency
+             FROM client_kpi_targets WHERE client_id = ANY($1)`, [clientIds])
+      : []
+    const targetByKey = new Map(targetRows.map(t => [`${t.client_id}|${t.result_type}`, t]))
+
+    const campaigns = rows.map((r: any) => {
       const spend = toNum(r.spend)
       const impressions = toNum(r.impressions)
       const clicks = toNum(r.clicks)
       const conversions = toNum(r.conversions)
       const revenue = toNum(r.revenue)
       const metrics = computeMetrics(spend, impressions, clicks, conversions, revenue)
+
+      const tgt = r.result_type ? targetByKey.get(`${r.client_id}|${r.result_type}`) : null
+      const health = scoreCampaignHealth({
+        platform: r.platform,
+        costPerResult: r.cost_per_result == null ? null : toNum(r.cost_per_result),
+        resultCount: conversions,
+        spend,
+        ctr: metrics.ctr,
+        frequency: r.frequency == null ? null : Number(r.frequency),
+        qualityRanking: r.quality_ranking,
+        engagementRateRanking: r.engagement_rate_ranking,
+        conversionRateRanking: r.conversion_rate_ranking,
+        impressionShare: r.impression_share == null ? null : Number(r.impression_share),
+        target: tgt ? {
+          targetCostPerResult: toNum(tgt.target_cost_per_result),
+          targetCtr: tgt.target_ctr == null ? null : Number(tgt.target_ctr),
+          maxFrequency: tgt.max_frequency == null ? null : Number(tgt.max_frequency),
+        } : null,
+      })
 
       // Build deep link URL
       let connectionData: { accountId: string, metadata: unknown } | null = null
@@ -203,11 +236,26 @@ export default defineEventHandler(async (event) => {
         endDate: toDateOnly(r.end_date),
         bidStrategy: r.bid_strategy || null,
         budgetType: r.budget_type || null,
+        health,
         lastSynced: r.last_synced,
         mediaSpendId: r.media_spend_id,
         deepLinkUrl
       }
     })
+
+    // health_score is computed in JS after LIMIT/OFFSET, so this sort is page-local
+    // (not a global ranking). The SQL above falls back to ORDER BY spend to keep page
+    // composition stable across requests.
+    if (sortBy === 'health_score') {
+      const dir = sortDir === 'ASC' ? 1 : -1
+      campaigns.sort((a, b) => {
+        const av = a.health?.score, bv = b.health?.score
+        if (av == null && bv == null) return 0
+        if (av == null) return 1
+        if (bv == null) return -1
+        return (av - bv) * dir
+      })
+    }
 
     return { campaigns, total, limit, offset }
   } catch (error) {

@@ -173,7 +173,7 @@ const categories = [
     iconBg: 'bg-cyan-50 dark:bg-cyan-500/10',
     iconColor: 'text-cyan-600',
     features: [
-      { title: 'Cross-Platform Dashboard', slug: 'cross-platform-dashboard', icon: 'i-lucide-layout-dashboard', description: 'Aggregated performance across Meta, Google, and other ad platforms in a unified view. Ads Manager–style campaign columns with a saveable layout and one-click Meta Ads preset.' },
+      { title: 'Cross-Platform Dashboard', slug: 'cross-platform-dashboard', icon: 'i-lucide-layout-dashboard', description: 'Aggregated performance across Meta, Google, and other ad platforms in a unified view. Ads Manager–style campaign columns with a saveable layout, one-click Meta Ads preset, and per-campaign health scores that flag what to scale or cut against each client\'s own KPI targets.' },
       { title: 'Hourly Breakdowns', slug: 'hourly-breakdowns', icon: 'i-lucide-clock-4', description: 'Granular hourly performance data with spend, impressions, and conversion trends throughout the day.' },
       { title: 'Campaign Alerts', slug: 'campaign-alerts', icon: 'i-lucide-bell-ring', description: 'Automated alerts for spend anomalies, pacing issues, and budget thresholds across platforms.' },
       { title: 'Platform Comparison', slug: 'platform-comparison', icon: 'i-lucide-git-compare', description: 'Side-by-side platform performance with unified metrics, normalised for cross-channel analysis.' },

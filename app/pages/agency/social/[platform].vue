@@ -416,6 +416,12 @@ function campaignStatusBadge(status: string | null) {
   return map[status] || { label: status, color: 'neutral' }
 }
 
+onMounted(async () => {
+  await fetchConnections()
+  loadSpendData()
+  loadBankCharges()
+})
+
 // Disconnect confirmation modal
 const disconnectTarget = ref<{ id: string; name: string } | null>(null)
 const disconnecting = ref(false)
@@ -443,12 +449,6 @@ async function confirmDisconnect() {
     disconnecting.value = false
   }
 }
-
-onMounted(async () => {
-  await fetchConnections()
-  loadSpendData()
-  loadBankCharges()
-})
 
 // ---------------------------- Lead webhooks (Google only) ----------------------------
 interface LeadEndpoint {
@@ -515,14 +515,17 @@ async function rotateEndpointKey(ep: LeadEndpoint) {
       </div>
 
       <!-- Period picker + week filter + sync -->
-      <SocialSpendPeriodPicker
-        v-model:month="selectedMonth"
-        v-model:year="selectedYear"
-        v-model:week-filter="weekFilter"
-        :last-synced-at="lastSyncedAt"
-        :syncing="syncing"
-        @sync="handleSyncAll"
-      />
+      <div class="flex items-center gap-2 flex-wrap">
+        <SocialSpendPeriodPicker
+          class="flex-1"
+          v-model:month="selectedMonth"
+          v-model:year="selectedYear"
+          v-model:week-filter="weekFilter"
+          :last-synced-at="lastSyncedAt"
+          :syncing="syncing"
+          @sync="handleSyncAll"
+        />
+      </div>
     </div>
 
     <div class="p-6">
@@ -668,6 +671,7 @@ async function rotateEndpointKey(ep: LeadEndpoint) {
                             <th class="text-left px-4 py-2 font-medium text-muted text-xs">Campaign</th>
                             <th v-if="platform === 'google' || platform === 'tiktok'" class="text-left px-4 py-2 font-medium text-muted text-xs">Type</th>
                             <th v-if="platform === 'google' || platform === 'tiktok' || platform === 'meta'" class="text-left px-4 py-2 font-medium text-muted text-xs">Status</th>
+                            <th v-if="platform === 'meta'" class="text-right px-4 py-2 font-medium text-muted text-xs">Health</th>
                             <th class="text-right px-4 py-2 font-medium text-muted text-xs">Spend</th>
                             <th class="text-right px-4 py-2 font-medium text-muted text-xs">Budget</th>
                             <th class="text-right px-4 py-2 font-medium text-muted text-xs">Variance</th>
@@ -711,6 +715,14 @@ async function rotateEndpointKey(ep: LeadEndpoint) {
                                 {{ campaignStatusBadge(camp.campaignStatus)!.label }}
                               </UBadge>
                               <span v-else class="text-xs text-muted">-</span>
+                            </td>
+                            <td v-if="platform === 'meta'" class="px-4 py-2 text-right">
+                              <UTooltip v-if="(camp as any).health && (camp as any).health.verdict !== 'no-target'" :text="((camp as any).health.reasons || []).join(' · ') || healthLabel((camp as any).health.verdict)">
+                                <UBadge variant="subtle" :color="healthColor((camp as any).health.verdict)" size="xs">
+                                  <span v-if="(camp as any).health.score != null" class="tabular-nums mr-1">{{ (camp as any).health.score }}</span>{{ healthLabel((camp as any).health.verdict) }}
+                                </UBadge>
+                              </UTooltip>
+                              <span v-else class="text-muted text-xs">{{ (camp as any).health ? healthLabel((camp as any).health.verdict) : '-' }}</span>
                             </td>
                             <td class="px-4 py-2 text-right tabular-nums">{{ formatCurrency(camp.spend) }}</td>
                             <!-- Budget (inline-editable) -->
