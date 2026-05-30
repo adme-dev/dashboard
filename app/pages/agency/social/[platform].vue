@@ -416,6 +416,78 @@ function campaignStatusBadge(status: string | null) {
   return map[status] || { label: status, color: 'neutral' }
 }
 
+// ── Meta campaign column picker ───────────────────────────────────
+const META_CAMPAIGN_COLUMNS = [
+  { key: 'status', label: 'Status' },
+  { key: 'health', label: 'Health' },
+  { key: 'spend', label: 'Spend' },
+  { key: 'variance', label: 'Variance' },
+  { key: 'commission', label: 'Commission' },
+  { key: 'impressions', label: 'Impressions' },
+  { key: 'clicks', label: 'Clicks' },
+  { key: 'conv', label: 'Conv.' },
+  { key: 'costPerResult', label: 'Cost / result' },
+  { key: 'ends', label: 'Ends' },
+]
+const META_CAMPAIGN_DEFAULT = ['status', 'spend', 'variance', 'commission', 'impressions', 'clicks', 'conv']
+const META_CAMPAIGN_VIEW_COLS = ['status', 'health', 'conv', 'costPerResult', 'spend', 'impressions', 'ends']
+const META_COLS_STORAGE_KEY = 'social:meta-campaign-cols'
+
+const visibleMetaCols = ref<string[]>([...META_CAMPAIGN_DEFAULT])
+
+function loadSavedMetaCols(): string[] | null {
+  try {
+    const saved = localStorage.getItem(META_COLS_STORAGE_KEY)
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      if (Array.isArray(parsed)) {
+        const known = new Set(META_CAMPAIGN_COLUMNS.map(c => c.key))
+        const cleaned = parsed.filter((k): k is string => typeof k === 'string' && known.has(k))
+        if (cleaned.length) return cleaned
+      }
+    }
+  } catch { /* ignore corrupt storage */ }
+  return null
+}
+
+onMounted(async () => {
+  await fetchConnections()
+  loadSpendData()
+  loadBankCharges()
+  const saved = loadSavedMetaCols()
+  if (saved) visibleMetaCols.value = saved
+})
+
+watch(visibleMetaCols, (v) => {
+  if (import.meta.client) {
+    try { localStorage.setItem(META_COLS_STORAGE_KEY, JSON.stringify(v)) } catch { /* ignore */ }
+  }
+}, { deep: true })
+
+function isMetaColVisible(key: string): boolean {
+  return visibleMetaCols.value.includes(key)
+}
+
+function toggleMetaCol(key: string) {
+  if (visibleMetaCols.value.includes(key)) {
+    visibleMetaCols.value = visibleMetaCols.value.filter(k => k !== key)
+  } else {
+    visibleMetaCols.value = [...visibleMetaCols.value, key]
+  }
+}
+
+function applyMetaCampaignPreset() {
+  visibleMetaCols.value = [...META_CAMPAIGN_VIEW_COLS]
+}
+
+const metaColPickerItems = computed(() => [[
+  ...META_CAMPAIGN_COLUMNS.map(c => ({
+    label: c.label,
+    icon: visibleMetaCols.value.includes(c.key) ? 'i-lucide-check' : 'i-lucide-minus',
+    onSelect: () => { toggleMetaCol(c.key) },
+  })),
+]])
+
 // Disconnect confirmation modal
 const disconnectTarget = ref<{ id: string; name: string } | null>(null)
 const disconnecting = ref(false)
@@ -443,12 +515,6 @@ async function confirmDisconnect() {
     disconnecting.value = false
   }
 }
-
-onMounted(async () => {
-  await fetchConnections()
-  loadSpendData()
-  loadBankCharges()
-})
 
 // ---------------------------- Lead webhooks (Google only) ----------------------------
 interface LeadEndpoint {
@@ -655,6 +721,22 @@ async function rotateEndpointKey(ep: LeadEndpoint) {
                 <tr v-if="expandedAccounts.has(acct.id)" :key="acct.id + '-campaigns'">
                   <td colspan="12" class="p-0">
                     <div class="bg-elevated/20 border-b border-default">
+                      <!-- Meta column picker (Meta only) -->
+                      <div v-if="platform === 'meta'" class="flex items-center justify-end gap-2 px-4 pt-3 pb-1">
+                        <UButton
+                          size="xs"
+                          variant="outline"
+                          icon="i-lucide-facebook"
+                          label="Meta Ads view"
+                          @click="applyMetaCampaignPreset"
+                        />
+                        <UDropdownMenu
+                          :items="metaColPickerItems"
+                          :content="{ align: 'end' }"
+                        >
+                          <UButton size="xs" variant="ghost" icon="i-lucide-sliders-horizontal" label="Columns" />
+                        </UDropdownMenu>
+                      </div>
                       <div v-if="campaignLoading[acct.id]" class="flex justify-center py-6">
                         <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin text-muted" />
                       </div>
@@ -667,16 +749,17 @@ async function rotateEndpointKey(ep: LeadEndpoint) {
                             <th class="w-8"></th>
                             <th class="text-left px-4 py-2 font-medium text-muted text-xs">Campaign</th>
                             <th v-if="platform === 'google' || platform === 'tiktok'" class="text-left px-4 py-2 font-medium text-muted text-xs">Type</th>
-                            <th v-if="platform === 'google' || platform === 'tiktok' || platform === 'meta'" class="text-left px-4 py-2 font-medium text-muted text-xs">Status</th>
-                            <th class="text-right px-4 py-2 font-medium text-muted text-xs">Spend</th>
+                            <th v-if="platform !== 'meta' ? (platform === 'google' || platform === 'tiktok') : isMetaColVisible('status')" class="text-left px-4 py-2 font-medium text-muted text-xs">Status</th>
+                            <th v-if="platform === 'meta' && isMetaColVisible('health')" class="text-right px-4 py-2 font-medium text-muted text-xs">Health</th>
+                            <th v-if="platform !== 'meta' || isMetaColVisible('spend')" class="text-right px-4 py-2 font-medium text-muted text-xs">Spend</th>
                             <th class="text-right px-4 py-2 font-medium text-muted text-xs">Budget</th>
-                            <th class="text-right px-4 py-2 font-medium text-muted text-xs">Variance</th>
-                            <th class="text-right px-4 py-2 font-medium text-muted text-xs">Commission</th>
-                            <th class="text-right px-4 py-2 font-medium text-muted text-xs">Impressions</th>
-                            <th class="text-right px-4 py-2 font-medium text-muted text-xs">Clicks</th>
-                            <th class="text-right px-4 py-2 font-medium text-muted text-xs">Conv.</th>
-                            <th v-if="platform === 'meta'" class="text-right px-4 py-2 font-medium text-muted text-xs">Cost / result</th>
-                            <th v-if="platform === 'meta'" class="text-right px-4 py-2 font-medium text-muted text-xs">Ends</th>
+                            <th v-if="platform !== 'meta' || isMetaColVisible('variance')" class="text-right px-4 py-2 font-medium text-muted text-xs">Variance</th>
+                            <th v-if="platform !== 'meta' || isMetaColVisible('commission')" class="text-right px-4 py-2 font-medium text-muted text-xs">Commission</th>
+                            <th v-if="platform !== 'meta' || isMetaColVisible('impressions')" class="text-right px-4 py-2 font-medium text-muted text-xs">Impressions</th>
+                            <th v-if="platform !== 'meta' || isMetaColVisible('clicks')" class="text-right px-4 py-2 font-medium text-muted text-xs">Clicks</th>
+                            <th v-if="platform !== 'meta' || isMetaColVisible('conv')" class="text-right px-4 py-2 font-medium text-muted text-xs">Conv.</th>
+                            <th v-if="platform === 'meta' && isMetaColVisible('costPerResult')" class="text-right px-4 py-2 font-medium text-muted text-xs">Cost / result</th>
+                            <th v-if="platform === 'meta' && isMetaColVisible('ends')" class="text-right px-4 py-2 font-medium text-muted text-xs">Ends</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -701,7 +784,7 @@ async function rotateEndpointKey(ep: LeadEndpoint) {
                               </UBadge>
                               <span v-else class="text-xs text-muted">-</span>
                             </td>
-                            <td v-if="platform === 'google' || platform === 'tiktok' || platform === 'meta'" class="px-4 py-2">
+                            <td v-if="platform !== 'meta' ? (platform === 'google' || platform === 'tiktok') : isMetaColVisible('status')" class="px-4 py-2">
                               <UBadge
                                 v-if="campaignStatusBadge(camp.campaignStatus)"
                                 :color="campaignStatusBadge(camp.campaignStatus)!.color as any"
@@ -712,7 +795,15 @@ async function rotateEndpointKey(ep: LeadEndpoint) {
                               </UBadge>
                               <span v-else class="text-xs text-muted">-</span>
                             </td>
-                            <td class="px-4 py-2 text-right tabular-nums">{{ formatCurrency(camp.spend) }}</td>
+                            <td v-if="platform === 'meta' && isMetaColVisible('health')" class="px-4 py-2 text-right">
+                              <UTooltip v-if="(camp as any).health && (camp as any).health.verdict !== 'no-target'" :text="((camp as any).health.reasons || []).join(' · ') || healthLabel((camp as any).health.verdict)">
+                                <UBadge variant="subtle" :color="healthColor((camp as any).health.verdict)" size="xs">
+                                  <span v-if="(camp as any).health.score != null" class="tabular-nums mr-1">{{ (camp as any).health.score }}</span>{{ healthLabel((camp as any).health.verdict) }}
+                                </UBadge>
+                              </UTooltip>
+                              <span v-else class="text-muted text-xs">{{ (camp as any).health ? healthLabel((camp as any).health.verdict) : '-' }}</span>
+                            </td>
+                            <td v-if="platform !== 'meta' || isMetaColVisible('spend')" class="px-4 py-2 text-right tabular-nums">{{ formatCurrency(camp.spend) }}</td>
                             <!-- Budget (inline-editable) -->
                             <td class="px-4 py-2 text-right tabular-nums relative" @click.stop>
                               <div v-if="editingBudget === camp.id" class="flex flex-col items-end gap-1">
@@ -803,7 +894,7 @@ async function rotateEndpointKey(ep: LeadEndpoint) {
                               </div>
                             </td>
                             <!-- Variance (spend - budget) -->
-                            <td class="px-4 py-2 text-right tabular-nums">
+                            <td v-if="platform !== 'meta' || isMetaColVisible('variance')" class="px-4 py-2 text-right tabular-nums">
                               <template v-if="camp.budget > 0">
                                 <span
                                   :class="camp.spend - camp.budget > 0 ? 'text-red-500' : 'text-green-500'"
@@ -815,25 +906,25 @@ async function rotateEndpointKey(ep: LeadEndpoint) {
                               <span v-else class="text-muted">-</span>
                             </td>
                             <!-- Commission -->
-                            <td class="px-4 py-2 text-right tabular-nums">
+                            <td v-if="platform !== 'meta' || isMetaColVisible('commission')" class="px-4 py-2 text-right tabular-nums">
                               <template v-if="camp.commissionRate > 0">
                                 <span class="font-medium">{{ formatCurrency(camp.spend * camp.commissionRate / 100) }}</span>
                                 <span class="text-xs text-muted block">{{ camp.commissionRate }}%</span>
                               </template>
                               <span v-else class="text-muted">-</span>
                             </td>
-                            <td class="px-4 py-2 text-right tabular-nums">{{ formatNumber(camp.impressions) }}</td>
-                            <td class="px-4 py-2 text-right tabular-nums">{{ formatNumber(camp.clicks) }}</td>
-                            <td class="px-4 py-2 text-right tabular-nums">
+                            <td v-if="platform !== 'meta' || isMetaColVisible('impressions')" class="px-4 py-2 text-right tabular-nums">{{ formatNumber(camp.impressions) }}</td>
+                            <td v-if="platform !== 'meta' || isMetaColVisible('clicks')" class="px-4 py-2 text-right tabular-nums">{{ formatNumber(camp.clicks) }}</td>
+                            <td v-if="platform !== 'meta' || isMetaColVisible('conv')" class="px-4 py-2 text-right tabular-nums">
                               <div class="flex flex-col items-end leading-tight">
                                 <span>{{ formatNumber(camp.conversions) }}</span>
                                 <span v-if="platform === 'meta' && camp.resultType" class="text-[10px] text-muted">{{ camp.resultType }}</span>
                               </div>
                             </td>
-                            <td v-if="platform === 'meta'" class="px-4 py-2 text-right tabular-nums">
+                            <td v-if="platform === 'meta' && isMetaColVisible('costPerResult')" class="px-4 py-2 text-right tabular-nums">
                               {{ camp.costPerResult != null ? formatCurrency(camp.costPerResult) : '-' }}
                             </td>
-                            <td v-if="platform === 'meta'" class="px-4 py-2 text-right tabular-nums">
+                            <td v-if="platform === 'meta' && isMetaColVisible('ends')" class="px-4 py-2 text-right tabular-nums">
                               <template v-if="camp.endDate">
                                 <div class="flex flex-col items-end leading-tight">
                                   <span>{{ endDateInfo(camp.endDate).label }}</span>
