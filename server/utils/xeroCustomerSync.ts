@@ -23,7 +23,7 @@ interface SyncOpts {
   modifiedAfter?: Date
 }
 
-export interface SyncResult {
+export interface XeroSyncResult {
   contactsUpserted: number
   invoicesUpserted: number
   rollupsRecomputed: number
@@ -846,7 +846,7 @@ export async function fullCustomerSync(opts: {
   tenantId: string
   accessToken: string
   full?: boolean
-}): Promise<SyncResult> {
+}): Promise<XeroSyncResult> {
   const { tenantId, accessToken, full = false } = opts
   const start = Date.now()
   const errors: string[] = []

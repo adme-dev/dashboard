@@ -13,7 +13,7 @@ export interface SyncOptions {
   skipArchived?: boolean
 }
 
-export interface SyncResult {
+export interface MondaySyncResult {
   itemsSynced: number
   itemsFailed: number
   errors: string[]
@@ -27,8 +27,8 @@ export async function syncMondayBoardToDepartment(
   boardId: string,
   departmentId: string,
   options: SyncOptions = {}
-): Promise<SyncResult> {
-  const result: SyncResult = {
+): Promise<MondaySyncResult> {
+  const result: MondaySyncResult = {
     itemsSynced: 0,
     itemsFailed: 0,
     errors: []
