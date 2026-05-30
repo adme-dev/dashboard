@@ -61,6 +61,7 @@ export default defineEventHandler(async (event) => {
      FROM leads l
      WHERE l.client_id = $1
        AND l.deleted_at IS NULL
+       AND l.source IN ('google', 'meta')
        AND l.submitted_at::date BETWEEN $2 AND $3
        AND ${PORTAL_VISIBLE_LEADS_EXISTS}
      GROUP BY 1`,

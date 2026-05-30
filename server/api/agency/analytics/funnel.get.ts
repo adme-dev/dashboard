@@ -49,6 +49,7 @@ export default defineEventHandler(async (event) => {
     `SELECT ${LEAD_CHANNEL_CASE} AS channel, COUNT(*) AS leads
      FROM leads l
      WHERE l.client_id = $1 AND l.deleted_at IS NULL
+       AND l.source IN ('google', 'meta')
        AND l.submitted_at::date BETWEEN $2 AND $3
      GROUP BY 1`,
     [clientId, startDate, endDate]
