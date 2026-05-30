@@ -89,6 +89,9 @@ const stages = computed(() => {
 })
 
 const bestWorst = computed(() => bestWorstCostPerLead(data.value?.channels || []))
+const channels = computed(() => data.value?.channels ?? [])
+const totalSessions = computed(() => data.value?.totals.sessions ?? 0)
+const totalLeads = computed(() => data.value?.totals.leads ?? 0)
 
 const columns = [
   { accessorKey: 'channel', header: 'Channel' },
@@ -110,14 +113,14 @@ function fmtRatePct(v: number | null): string {
   return v == null ? '—' : fmtPercent(v * 100, 1)
 }
 
-// Delta color: green good / red bad for count stages; muted/neutral for spend.
+// Delta color: green good / red bad for count stages; muted for spend or no change.
 function deltaClass(delta: number | null, judge: 'good' | 'neutral'): string {
-  if (delta == null) return 'text-muted'
-  if (judge === 'neutral') return 'text-muted'
-  return delta >= 0 ? 'text-green-500' : 'text-red-500'
+  if (delta == null || judge === 'neutral' || delta === 0) return 'text-muted'
+  return delta > 0 ? 'text-green-500' : 'text-red-500'
 }
 function deltaIcon(delta: number | null): string {
-  return (delta ?? 0) >= 0 ? 'i-lucide-trending-up' : 'i-lucide-trending-down'
+  if ((delta ?? 0) === 0) return 'i-lucide-minus'
+  return delta! > 0 ? 'i-lucide-trending-up' : 'i-lucide-trending-down'
 }
 </script>
 
@@ -142,7 +145,7 @@ function deltaIcon(delta: number | null): string {
     </div>
 
     <!-- Error -->
-    <div v-else-if="error" class="text-sm text-red-500 py-6 text-center">
+    <div v-else-if="error" class="text-sm text-error py-6 text-center">
       Couldn't load the funnel. Try refreshing.
     </div>
 
@@ -190,18 +193,23 @@ function deltaIcon(delta: number | null): string {
             </span>
             <span v-else class="w-20 shrink-0" />
           </div>
-          <p v-if="stage.conversion" class="text-xs text-muted mt-1 ml-[8.75rem]">
-            {{ stage.conversion }}
-          </p>
+          <!-- Conversion label aligns under the bar via spacers mirroring the icon (w-4) + label (w-28) + gaps. -->
+          <div v-if="stage.conversion" class="flex mt-1">
+            <div class="w-4 shrink-0" aria-hidden="true" />
+            <div class="w-28 shrink-0 ml-3" aria-hidden="true" />
+            <p class="text-xs text-muted ml-3">
+              {{ stage.conversion }}
+            </p>
+          </div>
         </div>
       </div>
 
       <!-- Channel table -->
-      <UTable :data="data!.channels" :columns="columns">
+      <UTable :data="channels" :columns="columns">
         <template #spend-cell="{ row }">{{ fmtCurrency(row.original.spend) }}</template>
         <template #sessions-cell="{ row }">
           <div class="relative">
-            <div class="absolute inset-y-0 left-0 rounded bg-primary/10" :style="{ width: `${Math.round(shareOfTotal(row.original.sessions, data!.totals.sessions) * 100)}%` }" />
+            <div class="absolute inset-y-0 left-0 rounded bg-primary/10" :style="{ width: `${Math.round(shareOfTotal(row.original.sessions, totalSessions) * 100)}%` }" />
             <span class="relative tabular-nums">{{ fmtCompact(row.original.sessions) }}</span>
           </div>
         </template>
@@ -209,7 +217,7 @@ function deltaIcon(delta: number | null): string {
         <template #keyEvents-cell="{ row }">{{ fmtCompact(row.original.keyEvents) }}</template>
         <template #leads-cell="{ row }">
           <div class="relative">
-            <div class="absolute inset-y-0 left-0 rounded bg-success/10" :style="{ width: `${Math.round(shareOfTotal(row.original.leads, data!.totals.leads) * 100)}%` }" />
+            <div class="absolute inset-y-0 left-0 rounded bg-success/10" :style="{ width: `${Math.round(shareOfTotal(row.original.leads, totalLeads) * 100)}%` }" />
             <span class="relative tabular-nums">{{ fmtCompact(row.original.leads) }}</span>
           </div>
         </template>
