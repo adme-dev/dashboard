@@ -174,6 +174,12 @@ const showNewClientModal = ref(false)
         <template #right>
           <div class="flex items-center gap-2">
             <UButton
+              to="/agency/clients/reconcile"
+              label="Reconcile with Xero"
+              icon="i-lucide-refresh-cw"
+              variant="soft"
+            />
+            <UButton
               v-if="isAdmin"
               label="Link Xero"
               icon="i-lucide-link"
