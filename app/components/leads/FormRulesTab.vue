@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { format } from 'date-fns'
+import type { LeadSource } from '~/types'
 
 interface RuleListItem {
-  source: string
+  source: LeadSource
   form_id: string
   form_name: string | null
   rule_id: string | null
   client_id: string | null
+  client_name: string | null
   enabled: boolean | null
   destination_count: string | number | null
   last_lead_at: string | null
@@ -236,6 +238,7 @@ async function createNewRule() {
 }
 
 const columns = [
+  { accessorKey: 'client_id', header: 'Client' },
   { accessorKey: 'form_name', header: 'Form' },
   { accessorKey: 'source', header: 'Source' },
   { accessorKey: 'state', header: 'State' },
@@ -244,6 +247,17 @@ const columns = [
   { accessorKey: 'last_lead_at', header: 'Last lead' },
   { accessorKey: 'actions', header: '' }
 ]
+
+const SOURCE_LABELS: Record<string, string> = {
+  meta: 'Facebook / Instagram',
+  google: 'Google Ads',
+  webhook: 'Website / custom',
+  csv: 'CSV import',
+  manual: 'Manual entry'
+}
+function sourceLabel(source: string): string {
+  return SOURCE_LABELS[source] ?? source
+}
 
 async function configure(item: RuleListItem) {
   if (item.rule_id) {
@@ -398,13 +412,18 @@ async function toggleEnabled(item: RuleListItem) {
 
     <div class="flex-1 overflow-auto p-2">
       <UTable :data="data?.items ?? []" :columns="columns" :loading="pending">
+        <template #client_id-cell="{ row }">
+          <span v-if="row.original.client_name" class="text-sm font-medium">{{ row.original.client_name }}</span>
+          <UBadge v-else color="warning" variant="soft" size="sm">Unmapped</UBadge>
+        </template>
         <template #form_name-cell="{ row }">
           <span class="text-sm">{{ row.original.form_name || row.original.form_id }}</span>
         </template>
         <template #source-cell="{ row }">
-          <UBadge variant="soft" size="sm">
-            {{ row.original.source }}
-          </UBadge>
+          <div class="flex items-center gap-1.5">
+            <LeadsSourceIcon :source="row.original.source" size="sm" />
+            <span class="text-sm">{{ sourceLabel(row.original.source) }}</span>
+          </div>
         </template>
         <template #state-cell="{ row }">
           <UBadge :color="ruleState(row.original).color" variant="soft" size="sm">
