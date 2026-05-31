@@ -7,12 +7,10 @@ const props = defineProps<{ clientId: string, record: CrmOpportunity | null, sta
 const emit = defineEmits<{ submit: [Record<string, unknown>], cancel: [] }>()
 const clientId = toRef(props, 'clientId')
 
-const { data: peopleData } = useFetch<{ items: CrmPerson[] }>('/api/crm/people', {
-  query: computed(() => ({ client_id: clientId.value, page_size: '200' })),
-})
-const { data: companiesData } = useFetch<{ items: CrmCompany[] }>('/api/crm/companies', {
-  query: computed(() => ({ client_id: clientId.value, page_size: '200' })),
-})
+const peopleQuery = computed(() => ({ client_id: clientId.value, page_size: '200' }))
+const companiesQuery = computed(() => ({ client_id: clientId.value, page_size: '200' }))
+const { data: peopleData } = useFetch<{ items: CrmPerson[] }>('/api/crm/people', { query: peopleQuery, watch: [peopleQuery] })
+const { data: companiesData } = useFetch<{ items: CrmCompany[] }>('/api/crm/companies', { query: companiesQuery, watch: [companiesQuery] })
 const personItems = computed(() => (peopleData.value?.items ?? []).map(p => ({ label: [p.first_name, p.last_name].filter(Boolean).join(' '), value: p.id })))
 const companyItems = computed(() => (companiesData.value?.items ?? []).map(c => ({ label: c.name, value: c.id })))
 const stageItems = computed(() => props.stages.map(s => ({ label: s.name, value: s.id })))

@@ -10,6 +10,7 @@ const title = computed(() => props.record ? 'Edit opportunity' : 'New opportunit
   <USlideover :open="open" :title="title" @update:open="emit('update:open', $event)">
     <template #body>
       <CrmOpportunityForm
+        :key="record?.id ?? 'new'"
         :client-id="clientId"
         :record="record"
         :stages="stages"
