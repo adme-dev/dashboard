@@ -89,7 +89,7 @@ export async function seedVerticalFromTemplate(clientId: string, verticalKey: st
            VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10)
            ON CONFLICT (object_def_id, key) DO NOTHING`,
           [o.client_id, objectDefId, f.key, f.label, f.field_type, JSON.stringify(f.options ?? []),
-            f.relation_target ?? null, f.is_required, f.is_title, f.position],
+            f.relation_target ?? null, f.is_required ?? false, f.is_title ?? false, f.position ?? 0],
         )
       }
       for (const s of plan.stagesByObjectKey[o.key] ?? []) {
