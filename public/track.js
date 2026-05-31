@@ -1,9 +1,9 @@
 /**
- * Engagr First-Party Tracking Pixel
- * < 3KB minified
+ * XeroFlow First-Party Tracking Tag (ships as /track.js)
  *
- * Usage:
- * <script src="https://{dealer-code}.engagr.com.au/tracking.js" async></script>
+ * Usage (raw, or via GTM Custom HTML — All Pages):
+ * <script src="https://<dashboard-origin>/track.js" data-key="xf_..." async></script>
+ * Optional: data-spa="true" for SPA route-change page_views.
  */
 ;(function (window, document) {
   'use strict'
@@ -1145,9 +1145,12 @@
   }
 
   // Auto-init from the script tag's data attributes. document.currentScript is
-  // reliable here (synchronous execution at parse time), so read data-key and
-  // data-spa now and pass them to init via the boot config.
+  // null when the tag is injected dynamically (e.g. GTM Custom HTML appends an
+  // async <script>), so fall back to locating our own tag by its data-key (then
+  // by src). Without this, GTM-installed sites would never call init().
   var script = document.currentScript
+    || document.querySelector('script[data-key][src*="track.js"]')
+    || document.querySelector('script[src*="track.js"]')
   if (script) {
     var autoInit = script.getAttribute('data-auto') !== 'false'
     if (autoInit) {

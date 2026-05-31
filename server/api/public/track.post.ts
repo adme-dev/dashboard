@@ -33,9 +33,11 @@ export default defineEventHandler(async (event) => {
   try {
     // 1. Write key (query ?k= or body.write_key). Query is preferred (sendBeacon URL).
     const writeKey = (getQuery(event).k as string) || ''
-    // 2. Body size cap (64 KB) before parse.
+    // 2. Body size cap (64 KB) — only reject when Content-Length is present and
+    //    over cap. A missing/0 header must NOT 413 a legitimate beacon (some
+    //    proxies/chunked sendBeacon requests omit it); readBody bounds the rest.
     const contentLength = parseInt(getHeader(event, 'content-length') || '0', 10)
-    if (!contentLength || contentLength > 64 * 1024) {
+    if (contentLength > 64 * 1024) {
       setResponseStatus(event, 413); return { ok: false }
     }
     // 3. Resolve tenant by write key.
@@ -56,10 +58,15 @@ export default defineEventHandler(async (event) => {
       consentCookieValue: getCookie(event, '_xf_consent'),
       cfIpCountry: getHeader(event, 'cf-ipcountry'),
     })
+    // Pepper the IP before hashing: an UNSALTED sha256 of an IPv4 is trivially
+    // reversible (the whole v4 space is ~4.3B preimages), so an unpeppered hash
+    // is effectively raw IP. With TRACKING_IP_SALT set the hash is non-reversible
+    // without the server secret. (Falls back to unsalted only if the env is unset.)
     const ip = getRequestIP(event, { xForwardedFor: true }) || ''
+    const ipSalt = process.env.TRACKING_IP_SALT || ''
     const ctx = {
       ua: getHeader(event, 'user-agent') || null,
-      ipHash: ip ? await sha256Hex(ip) : null,
+      ipHash: ip ? await sha256Hex(ip + ':' + ipSalt) : null,
       origin: reqOrigin,
       consent,
     }
