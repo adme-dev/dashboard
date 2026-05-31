@@ -234,11 +234,15 @@ export default eventHandler(async (event) => {
     total_spend: string
     total_impressions: string
     total_clicks: string
+    total_conversions: string
+    total_revenue: string
   }>(
     `SELECT ds.spend_date::text as spend_date,
             SUM(ds.spend)::text as total_spend,
             SUM(ds.impressions)::text as total_impressions,
-            SUM(ds.clicks)::text as total_clicks
+            SUM(ds.clicks)::text as total_clicks,
+            SUM(ds.conversions)::text as total_conversions,
+            SUM(ds.revenue)::text as total_revenue
      FROM daily_spend ds
      JOIN media_spend ms ON ms.id = ds.media_spend_id
      JOIN social_connections sc ON sc.id = ms.connection_id
@@ -265,6 +269,8 @@ export default eventHandler(async (event) => {
     budget: Math.round(dailyBudget * 100) / 100,
     impressions: parseInt(row.total_impressions, 10),
     clicks: parseInt(row.total_clicks, 10),
+    conversions: parseFloat(row.total_conversions) || 0,
+    revenue: parseFloat(row.total_revenue) || 0,
   }))
 
   // Fallback totals: if no daily_spend rows but campaigns have spend, aggregate from campaign estimates
@@ -286,6 +292,10 @@ export default eventHandler(async (event) => {
         budget: Math.round(dailyBudget * 100) / 100,
         impressions: v.impressions,
         clicks: v.clicks,
+        // Campaign daily points carry no conversion/revenue, so the estimated
+        // fallback leaves these at 0 (Performance tab shows "no conversion data").
+        conversions: 0,
+        revenue: 0,
       }))
   }
 

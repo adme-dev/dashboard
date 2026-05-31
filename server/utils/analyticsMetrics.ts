@@ -56,7 +56,7 @@ export function computeMetrics(
     ctr: impressions > 0 ? (clicks / impressions) * 100 : null,
     roas: spend > 0 && revenue > 0 ? revenue / spend : null,
     costPerConversion: conversions > 0 ? spend / conversions : null,
-    conversionRate: clicks > 0 ? (conversions / clicks) * 100 : null,
+    conversionRate: clicks > 0 ? (conversions / clicks) * 100 : null
   }
 }
 
@@ -102,7 +102,7 @@ export const PLATFORM_LABELS: Record<string, string> = {
   pinterest: 'Pinterest Ads',
   snapchat: 'Snapchat Ads',
   twitter: 'X (Twitter) Ads',
-  microsoft_ads: 'Microsoft Ads',
+  microsoft_ads: 'Microsoft Ads'
 }
 
 /** Consistent platform colors for charts (dark-mode safe) */
@@ -114,7 +114,7 @@ export const PLATFORM_COLORS: Record<string, string> = {
   pinterest: '#E60023',
   snapchat: '#F7D731',
   twitter: '#1DA1F2',
-  microsoft_ads: '#00A4EF',
+  microsoft_ads: '#00A4EF'
 }
 
 /** All supported platform keys */
@@ -130,7 +130,7 @@ export function formatCurrency(value: number, decimals = 0): string {
     style: 'currency',
     currency: 'AUD',
     minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
+    maximumFractionDigits: decimals
   }).format(value)
 }
 
@@ -172,6 +172,21 @@ export function buildClientCondition(paramIdx: number): string {
         )
     )
   )`
+}
+
+/**
+ * Inclusive day-window WHERE fragment for the daily_spend grain.
+ * Use with a `daily_spend ds JOIN media_spend ms ON ms.id = ds.media_spend_id`
+ * source (the pattern funnel.get.ts uses) instead of the month-bucketed
+ * `ms.period` filter, which silently widens sub-month windows to whole months.
+ * Caller pushes the ISO start/end dates into params at the given indices.
+ *
+ * @example
+ *   const where = `${dailySpendWindow(1, 2)} AND ${buildClientCondition(3)}`
+ *   queryRows(`... WHERE ${where}`, [startDate, endDate, clientId])
+ */
+export function dailySpendWindow(startIdx: number, endIdx: number): string {
+  return `ds.spend_date BETWEEN $${startIdx} AND $${endIdx}`
 }
 
 /**

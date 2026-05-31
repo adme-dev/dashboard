@@ -2,7 +2,7 @@
 definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
 
 type AnomalySeverity = 'critical' | 'warning' | 'info'
-type AnomalyType = 'profitability' | 'revenue' | 'expenses' | 'cashflow' | 'receivables' | 'budget' | 'adspend' | 'clients' | 'transactions'
+type AnomalyType = 'profitability' | 'revenue' | 'expenses' | 'cashflow' | 'receivables' | 'budget' | 'adspend' | 'clients' | 'transactions' | 'ga4'
 
 type MetricFormat = 'currency' | 'percent' | 'number'
 
@@ -28,7 +28,7 @@ type Anomaly = {
   comparison: (AnomalyMetric & { trend?: 'up' | 'down' }) | null
   context: {
     period?: string
-    range?: { from?: string | null; to?: string | null }
+    range?: { from?: string | null, to?: string | null }
     category?: string
     vendor?: string
     client?: string
@@ -108,6 +108,11 @@ const typeMeta: Record<AnomalyType, { label: string, description: string, icon: 
     label: 'Transactions',
     description: 'Per-line-item statistical outliers within an account.',
     icon: 'i-lucide-list-checks'
+  },
+  ga4: {
+    label: 'Website (GA4)',
+    description: 'Traffic drops, conversion-rate collapse, and channel-mix shifts.',
+    icon: 'i-lucide-globe'
   }
 }
 
@@ -128,7 +133,8 @@ const typeFilterOptions = [
   { value: 'budget', label: typeMeta.budget.label },
   { value: 'adspend', label: typeMeta.adspend.label },
   { value: 'clients', label: typeMeta.clients.label },
-  { value: 'transactions', label: typeMeta.transactions.label }
+  { value: 'transactions', label: typeMeta.transactions.label },
+  { value: 'ga4', label: typeMeta.ga4.label }
 ] as const
 
 type SeverityFilterValue = typeof severityFilterOptions[number]['value']
@@ -141,34 +147,34 @@ const tab = computed<'active' | 'history'>({
   get: () => (route.query.tab === 'history' ? 'history' : 'active'),
   set: (v) => {
     router.replace({ query: { ...route.query, tab: v, status: undefined } })
-  },
+  }
 })
 
 const statusPill = computed<string>({
   get: () => (typeof route.query.status === 'string' ? route.query.status : 'all'),
   set: (v) => {
     router.replace({ query: { ...route.query, status: v === 'all' ? undefined : v } })
-  },
+  }
 })
 
 const activePillOptions = [
   { value: 'all', label: 'All' },
   { value: 'open', label: 'Open' },
   { value: 'acknowledged', label: 'Acknowledged' },
-  { value: 'snoozed', label: 'Snoozed' },
+  { value: 'snoozed', label: 'Snoozed' }
 ]
 const historyPillOptions = [
   { value: 'all', label: 'All' },
   { value: 'resolved', label: 'Resolved' },
-  { value: 'dismissed', label: 'Dismissed' },
+  { value: 'dismissed', label: 'Dismissed' }
 ]
 const pillOptions = computed(() =>
-  tab.value === 'history' ? historyPillOptions : activePillOptions,
+  tab.value === 'history' ? historyPillOptions : activePillOptions
 )
 
 const tabItems = [
   { label: 'Active', value: 'active' },
-  { label: 'History', value: 'history' },
+  { label: 'History', value: 'history' }
 ]
 
 const activeSeverity = computed<SeverityFilterValue>({
@@ -178,7 +184,7 @@ const activeSeverity = computed<SeverityFilterValue>({
   },
   set: (v) => {
     router.replace({ query: { ...route.query, severity: v === 'all' ? undefined : v } })
-  },
+  }
 })
 
 const activeType = computed<TypeFilterValue>({
@@ -188,7 +194,7 @@ const activeType = computed<TypeFilterValue>({
   },
   set: (v) => {
     router.replace({ query: { ...route.query, type: v === 'all' ? undefined : v } })
-  },
+  }
 })
 
 const filterParams = computed(() => {
@@ -205,7 +211,7 @@ const { data, pending, error, refresh } = await useFetch<{
 }>('/api/ai/anomalies', {
   query: filterParams,
   watch: [tab, statusPill, activeSeverity, activeType],
-  lazy: true,
+  lazy: true
 })
 
 const anomalies = computed(() => data.value?.anomalies ?? [])
@@ -224,7 +230,7 @@ async function onMutated() {
 async function runScan() {
   scanning.value = true
   try {
-    const result = await $fetch<{ tenantId: string; status: 'completed' | 'in_flight' | 'error'; error?: string }>(
+    const result = await $fetch<{ tenantId: string, status: 'completed' | 'in_flight' | 'error', error?: string }>(
       '/api/ai/anomalies/scan',
       { method: 'POST' }
     )
@@ -235,7 +241,7 @@ async function runScan() {
         await new Promise(r => setTimeout(r, 5000))
         const probe = await $fetch<{ status: string }>(
           '/api/ai/anomalies/scan',
-          { method: 'POST' },
+          { method: 'POST' }
         )
         if (probe.status === 'completed') {
           await refresh()
@@ -270,7 +276,7 @@ const groupedAnomalies = computed(() => {
   // Order matches typeMeta — sections render in this order.
   const order: AnomalyType[] = [
     'profitability', 'revenue', 'expenses', 'cashflow', 'receivables',
-    'budget', 'adspend', 'clients', 'transactions',
+    'budget', 'adspend', 'clients', 'transactions', 'ga4'
   ]
   const groups = Object.fromEntries(order.map(t => [t, [] as Anomaly[]])) as Record<AnomalyType, Anomaly[]>
 
@@ -351,8 +357,8 @@ function groupByKey<T extends { group_key: string | null }>(items: T[]) {
     }
   }
   return {
-    grouped: Array.from(grouped.entries()),  // [[groupKey, items[]], ...]
-    ungrouped,
+    grouped: Array.from(grouped.entries()), // [[groupKey, items[]], ...]
+    ungrouped
   }
 }
 
@@ -422,7 +428,7 @@ function openActionPlan(anomaly: Anomaly) {
     category: typeMeta[anomaly.type]?.label || anomaly.type,
     metric: anomaly.metric ? { label: anomaly.metric.label, value: formatMetric(anomaly.metric) } : undefined,
     recommendation: anomaly.recommendation || undefined,
-    tags: anomaly.tags?.filter(Boolean) as string[] | undefined,
+    tags: anomaly.tags?.filter(Boolean) as string[] | undefined
   }
   actionPlanOpen.value = true
 }
@@ -489,7 +495,7 @@ function openActionPlan(anomaly: Anomaly) {
     </template>
 
     <template #body>
-      <UTabs :items="tabItems" v-model="tab" class="mb-4" />
+      <UTabs v-model="tab" :items="tabItems" class="mb-4" />
 
       <div class="flex flex-wrap items-center gap-2 mb-6">
         <UButton

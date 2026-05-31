@@ -1,4 +1,29 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+import { fileURLToPath } from 'node:url'
+
+// @flyhub/* email-builder packages are CLIENT-ONLY (the visual editor runs in the
+// browser). Alias them to a stub in the Nitro/Workers server bundle so the heavy
+// builder packages never ship server-side — the server renders email HTML via the
+// pure-TS pipeline in server/utils/email-marketing/render (no @flyhub dependency).
+const flyhubStub = fileURLToPath(new URL('./lib/flyhub-stub.ts', import.meta.url))
+const flyhubServerAlias = Object.fromEntries(
+  [
+    '@flyhub/email-builder',
+    '@flyhub/email-core',
+    '@flyhub/email-document-core',
+    '@flyhub/email-block-avatar',
+    '@flyhub/email-block-button',
+    '@flyhub/email-block-columns-container',
+    '@flyhub/email-block-container',
+    '@flyhub/email-block-divider',
+    '@flyhub/email-block-heading',
+    '@flyhub/email-block-html',
+    '@flyhub/email-block-image',
+    '@flyhub/email-block-spacer',
+    '@flyhub/email-block-text'
+  ].map(pkg => [pkg, flyhubStub])
+)
+
 const devWatcherIgnored = [
   '**/.claude/worktrees/**',
   '**/.worktrees/**',
@@ -10,41 +35,54 @@ const devWatcherIgnored = [
 ]
 
 export default defineNuxtConfig({
-  ssr: true,
-
-  ignore: devWatcherIgnored,
 
   modules: [
     '@nuxt/eslint',
     '@nuxt/ui',
     '@vueuse/nuxt'
   ],
+  ssr: true,
+
+  components: [
+    { path: '~/components/neubrutalism', pathPrefix: false },
+    '~/components'
+  ],
+
+  devtools: {
+    enabled: true
+  },
+
+  css: ['~/assets/css/main.css'],
+
+  colorMode: {
+    preference: 'dark'
+  },
 
   runtimeConfig: {
     // Private keys (only available on server-side)
     // These are automatically populated from Cloudflare Pages Environment Variables
-    
+
     // Database
     databaseUrl: process.env.DATABASE_URL || '',
-    
+
     // Security
     jwtSecret: process.env.JWT_SECRET || '',
     sessionSecret: process.env.SESSION_SECRET || '',
     cronSecret: process.env.CRON_SECRET || '',
-    
+
     // Xero OAuth
     xeroClientId: process.env.XERO_CLIENT_ID || '',
     xeroClientSecret: process.env.XERO_CLIENT_SECRET || '',
     xeroRedirectUri: process.env.XERO_REDIRECT_URI || '/api/xero/callback',
-    
+
     // Email (Resend)
     resendApiKey: process.env.RESEND_API_KEY || '',
     emailFrom: process.env.EMAIL_FROM || 'noreply@localhost',
-    
+
     // AI (Groq) — routed through Cloudflare AI Gateway when AI_GATEWAY_URL is set
     groqApiKey: process.env.GROQ_API_KEY || '',
     aiGatewayUrl: process.env.AI_GATEWAY_URL || '',
-    
+
     // Monday.com
     mondayApiToken: process.env.MONDAY_API_TOKEN || '',
 
@@ -96,7 +134,7 @@ export default defineNuxtConfig({
     r2AccessKeyId: process.env.R2_ACCESS_KEY_ID || '',
     r2SecretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
     r2BucketName: process.env.R2_BUCKET_NAME || 'agency-files',
-    
+
     // Durable Objects
     taskRooms: process.env.TASK_ROOMS || '',
 
@@ -121,48 +159,7 @@ export default defineNuxtConfig({
     }
   },
 
-  components: [
-    { path: '~/components/neubrutalism', pathPrefix: false },
-    '~/components'
-  ],
-
-  nitro: {
-    preset: 'cloudflare_pages',
-    cloudflare: {
-      deployConfig: true,
-      nodeCompat: true
-    },
-    prerender: {
-      crawlLinks: true,
-      // Ignore auth-gated routes and API endpoints during prerendering
-      ignore: ['/agency', '/portal', '/admin', '/settings', '/api', '/chat', '/invoices', '/customers', '/insights', '/profit-loss', '/expenses', '/cashflow', '/reports', '/anomalies', '/recommendations', '/xeroflow', '/review', '/approve', '/intake'],
-    },
-    rollupConfig: {
-      external: ['@react-email/render', '@cloudflare/puppeteer', 'puppeteer', 'gifenc', 'pngjs', 'pg-native']
-    },
-    // Lead-maintenance crons run via the dedicated `leads-cron` companion Worker
-    // (workers/leads-cron) — its scheduled() handler POSTs to the
-    // /api/leads/_internal/* endpoints. Cloudflare Pages can't run Nitro
-    // scheduledTasks (no scheduled handler), so they are intentionally omitted here.
-  },
-
-  devtools: {
-    enabled: true
-  },
-
-  experimental: {
-    appManifest: false
-  },
-
-  vite: {
-    server: {
-      watch: {
-        ignored: devWatcherIgnored
-      }
-    }
-  },
-
-  css: ['~/assets/css/main.css'],
+  ignore: devWatcherIgnored,
 
   routeRules: {
     // Prerender static marketing pages at build time
@@ -224,26 +221,47 @@ export default defineNuxtConfig({
     '/approve': { ssr: false },
     '/approve/**': { ssr: false },
     '/intake': { ssr: false },
-    '/intake/**': { ssr: false },
+    '/intake/**': { ssr: false }
   },
 
-  typescript: {
-    strict: false
-  },
-
-  colorMode: {
-    preference: 'dark'
+  experimental: {
+    appManifest: false
   },
 
   compatibilityDate: '2024-07-11',
 
-  eslint: {
-    config: {
-      stylistic: {
-        commaDangle: 'never',
-        braceStyle: '1tbs'
+  nitro: {
+    preset: 'cloudflare_pages',
+    // Keep @flyhub/* out of the server bundle (client-only editor packages).
+    alias: flyhubServerAlias,
+    cloudflare: {
+      deployConfig: true,
+      nodeCompat: true
+    },
+    prerender: {
+      crawlLinks: true,
+      // Ignore auth-gated routes and API endpoints during prerendering
+      ignore: ['/agency', '/portal', '/admin', '/settings', '/api', '/chat', '/invoices', '/customers', '/insights', '/profit-loss', '/expenses', '/cashflow', '/reports', '/anomalies', '/recommendations', '/xeroflow', '/review', '/approve', '/intake']
+    },
+    rollupConfig: {
+      external: ['@react-email/render', '@cloudflare/puppeteer', 'puppeteer', 'gifenc', 'pngjs', 'pg-native']
+    }
+    // Lead-maintenance crons run via the dedicated `leads-cron` companion Worker
+    // (workers/leads-cron) — its scheduled() handler POSTs to the
+    // /api/leads/_internal/* endpoints. Cloudflare Pages can't run Nitro
+    // scheduledTasks (no scheduled handler), so they are intentionally omitted here.
+  },
+
+  vite: {
+    server: {
+      watch: {
+        ignored: devWatcherIgnored
       }
     }
+  },
+
+  typescript: {
+    strict: false
   },
 
   // Environment variable validation helper
@@ -257,6 +275,15 @@ export default defineNuxtConfig({
         if (missing.length > 0) {
           console.warn(`⚠️  Missing required environment variables: ${missing.join(', ')}`)
         }
+      }
+    }
+  },
+
+  eslint: {
+    config: {
+      stylistic: {
+        commaDangle: 'never',
+        braceStyle: '1tbs'
       }
     }
   }

@@ -81,6 +81,16 @@ const bankLoading = ref(false)
 const campaignDailyData = ref<{ campaigns: any[]; totals: any[] }>({ campaigns: [], totals: [] })
 const chartLoading = ref(false)
 
+// Chart tabs — Spend (stacked daily), Pacing (cumulative vs budget/projection),
+// Performance (ROAS/CPA/CTR/CPC). UTabs unmounts inactive panels, so each chart
+// only computes while it's the active tab.
+const chartTab = ref<'spend' | 'pacing' | 'performance'>('spend')
+const chartTabItems = [
+  { label: 'Spend', value: 'spend', icon: 'i-lucide-bar-chart-3' },
+  { label: 'Pacing', value: 'pacing', icon: 'i-lucide-trending-up' },
+  { label: 'Performance', value: 'performance', icon: 'i-lucide-activity' },
+]
+
 // Expanded rows — tracks which account the chart is scoped to
 const expandedAccounts = ref<Set<string>>(new Set())
 const chartAccountId = ref<string | null>(null) // connectionId driving the chart
@@ -230,11 +240,16 @@ const sortedAccounts = computed(() => {
   return [...withSpend, ...noSpend]
 })
 
-async function loadBankCharges() {
+async function loadBankCharges(opts: { refresh?: boolean } = {}) {
   bankLoading.value = true
   try {
     bankCharges.value = await $fetch('/api/agency/social/spend/bank-charges', {
-      query: { month: selectedMonth.value, year: selectedYear.value },
+      query: {
+        month: selectedMonth.value,
+        year: selectedYear.value,
+        // After a sync, bypass the KV cache so the figure reflects the latest pull.
+        ...(opts.refresh ? { refresh: 1 } : {}),
+      },
     })
   } catch {
     bankCharges.value = null
@@ -264,21 +279,121 @@ async function loadSpendData() {
   }
 }
 
+// Background sync progress + polling. When the sync endpoint returns a jobId
+// (currently Google), we keep `syncing` true for the whole background run,
+// poll the job status, and refresh the page content when it finishes — instead
+// of the old fire-and-forget toast that left stale data on screen.
+const syncJobId = ref<string | null>(null)
+const syncStatusLabel = ref('')
+let syncPollTimer: ReturnType<typeof setTimeout> | null = null
+const SYNC_POLL_INTERVAL = 3000
+const SYNC_POLL_TIMEOUT = 180_000
+
+interface SyncStatusResponse {
+  status: 'running' | 'completed' | 'failed'
+  syncedCount: number
+  failures: Array<{ account: string; reason: string }>
+}
+
 async function handleSyncAll() {
+  if (syncing.value) return
   syncing.value = true
+  syncStatusLabel.value = `Starting ${platformConfig.value.displayName} sync…`
   try {
-    await syncSpend(platform.value as 'meta' | 'google' | 'tiktok', selectedMonth.value, selectedYear.value)
-    toast.add({
-      title: 'Sync started',
-      description: `${platformConfig.value.displayName} spend sync is running in the background.`,
-      color: 'success',
-    })
+    const res = await syncSpend(platform.value as 'meta' | 'google' | 'tiktok', selectedMonth.value, selectedYear.value)
+    if (res?.jobId) {
+      // Tracked background job — poll until done, then refresh content.
+      syncJobId.value = res.jobId
+      syncStatusLabel.value = `Syncing ${platformConfig.value.displayName} spend…`
+      pollSyncStatus(res.jobId)
+    } else {
+      // Platforms without job tracking keep the original fire-and-forget UX.
+      toast.add({
+        title: 'Sync started',
+        description: `${platformConfig.value.displayName} spend sync is running in the background.`,
+        color: 'success',
+      })
+      syncing.value = false
+      syncStatusLabel.value = ''
+    }
   } catch (e: any) {
     toast.add({ title: 'Sync failed', description: e.data?.statusMessage || e.message, color: 'error' })
-  } finally {
     syncing.value = false
+    syncStatusLabel.value = ''
   }
 }
+
+function stopSyncPoll() {
+  if (syncPollTimer) { clearTimeout(syncPollTimer); syncPollTimer = null }
+}
+
+function pollSyncStatus(jobId: string) {
+  const startedAt = Date.now()
+  const tick = async () => {
+    try {
+      const s = await $fetch<SyncStatusResponse>('/api/agency/social/spend/sync-status', { query: { jobId } })
+      if (s.status !== 'running') {
+        await finishSync(s)
+        return
+      }
+    } catch {
+      // transient (e.g. job row not visible yet) — keep polling until timeout
+    }
+    if (Date.now() - startedAt > SYNC_POLL_TIMEOUT) {
+      stopSyncPoll()
+      syncing.value = false
+      syncJobId.value = null
+      syncStatusLabel.value = ''
+      toast.add({
+        title: 'Still syncing',
+        description: `${platformConfig.value.displayName} sync is taking longer than expected — showing the latest data.`,
+        color: 'warning',
+      })
+      await refreshContent()
+      return
+    }
+    syncPollTimer = setTimeout(tick, SYNC_POLL_INTERVAL)
+  }
+  syncPollTimer = setTimeout(tick, SYNC_POLL_INTERVAL)
+}
+
+async function finishSync(s: SyncStatusResponse) {
+  stopSyncPoll()
+  syncing.value = false
+  syncJobId.value = null
+  syncStatusLabel.value = ''
+  if (s.status === 'failed') {
+    toast.add({ title: 'Sync failed', description: `${platformConfig.value.displayName} spend sync failed.`, color: 'error' })
+  } else if (s.failures?.length) {
+    const failed = s.failures.length
+    const names = s.failures.map(f => f.account).slice(0, 4).join(', ')
+    toast.add({
+      title: `Synced with ${failed} issue${failed !== 1 ? 's' : ''}`,
+      description: `${s.syncedCount} campaign${s.syncedCount !== 1 ? 's' : ''} updated. Couldn't sync: ${names}${failed > 4 ? ` +${failed - 4} more` : ''}.`,
+      color: 'warning',
+    })
+  } else {
+    toast.add({ title: 'Sync complete', description: `${platformConfig.value.displayName} spend updated.`, color: 'success' })
+  }
+  await refreshContent()
+}
+
+// Re-fetch the page's data in place (no full reload).
+async function refreshContent() {
+  await Promise.all([loadSpendData(), loadBankCharges({ refresh: true })])
+  // loadSpendData refreshes the global chart; only re-scope if a single account
+  // chart is active (it would otherwise have been overwritten with global data).
+  if (chartAccountId.value) loadChartData(chartAccountId.value)
+  for (const accountId of Array.from(expandedAccounts.value)) {
+    try {
+      campaignData.value[accountId] = await fetchAccountCampaigns(
+        platform.value as 'meta' | 'google' | 'tiktok', accountId, selectedMonth.value, selectedYear.value
+      )
+    } catch { /* leave the previous campaign data in place */ }
+  }
+}
+
+onBeforeUnmount(() => stopSyncPoll())
 
 async function toggleExpand(accountId: string) {
   if (expandedAccounts.value.has(accountId)) {
@@ -502,9 +617,24 @@ async function confirmDisconnect() {
       </div>
 
       <template v-else>
-        <!-- Daily Spend Chart -->
+        <!-- Spend charts: Spend / Pacing / Performance -->
         <div class="mb-6">
-          <SocialSpendChart :campaigns="filteredChartData.campaigns" :totals="filteredChartData.totals" :loading="chartLoading" :account-name="chartAccountName" :estimated="filteredChartData.estimated" />
+          <UTabs v-model="chartTab" :items="chartTabItems" variant="link" color="primary" class="mb-3" />
+          <SocialSpendChart
+            v-if="chartTab === 'spend'"
+            :campaigns="filteredChartData.campaigns" :totals="filteredChartData.totals"
+            :loading="chartLoading" :account-name="chartAccountName" :estimated="filteredChartData.estimated"
+          />
+          <SocialSpendPacingChart
+            v-else-if="chartTab === 'pacing'"
+            :totals="filteredChartData.totals" :loading="chartLoading"
+            :account-name="chartAccountName" :estimated="filteredChartData.estimated"
+          />
+          <SocialSpendPerformanceChart
+            v-else-if="chartTab === 'performance'"
+            :totals="filteredChartData.totals" :loading="chartLoading"
+            :account-name="chartAccountName" :estimated="filteredChartData.estimated"
+          />
         </div>
 
         <!-- Summary Stats -->
@@ -519,8 +649,16 @@ async function confirmDisconnect() {
           </div>
           <div v-if="platformBankTotal != null" class="border border-default rounded-xl p-4 bg-elevated/30">
             <p class="text-xs text-muted uppercase tracking-wide">Bank Charged</p>
-            <p class="text-2xl font-semibold mt-1">{{ formatCurrency(platformBankTotal) }}</p>
-            <p v-if="summaryStats.totalSpend > 0" class="text-xs mt-1" :class="Math.abs(platformBankTotal - summaryStats.totalSpend) > summaryStats.totalSpend * 0.05 ? 'text-amber-500' : 'text-green-500'">
+            <div class="flex items-center gap-2 mt-1">
+              <p class="text-2xl font-semibold">{{ formatCurrency(platformBankTotal) }}</p>
+              <UTooltip v-if="bankCharges?.partial" text="Xero returned only part of this month's transactions before the request timed out, so this figure is incomplete. Press Sync to refresh.">
+                <UBadge color="warning" variant="subtle" size="sm" icon="i-lucide-triangle-alert">Partial</UBadge>
+              </UTooltip>
+            </div>
+            <p v-if="bankCharges?.partial" class="text-xs mt-1 text-amber-500">
+              Incomplete — re-sync to update
+            </p>
+            <p v-else-if="summaryStats.totalSpend > 0" class="text-xs mt-1" :class="Math.abs(platformBankTotal - summaryStats.totalSpend) > summaryStats.totalSpend * 0.05 ? 'text-amber-500' : 'text-green-500'">
               {{ platformBankTotal > summaryStats.totalSpend ? '+' : '' }}{{ formatCurrency(platformBankTotal - summaryStats.totalSpend) }} vs reported
             </p>
           </div>
@@ -865,5 +1003,25 @@ async function confirmDisconnect() {
         </div>
       </template>
     </UModal>
+
+    <!-- Background sync progress bar — pinned to the bottom of the viewport while
+         a tracked sync runs; the page content refreshes itself when it finishes. -->
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition-all duration-200 ease-out"
+        enter-from-class="opacity-0 translate-y-full"
+        leave-active-class="transition-all duration-200 ease-in"
+        leave-to-class="opacity-0 translate-y-full"
+      >
+        <div v-if="syncing" class="fixed inset-x-0 bottom-0 z-50">
+          <div class="flex items-center gap-3 px-6 py-2.5 bg-elevated/95 backdrop-blur border-t border-default shadow-lg">
+            <UIcon name="i-lucide-loader-2" class="w-4 h-4 animate-spin text-primary shrink-0" />
+            <span class="text-sm font-medium text-default">{{ syncStatusLabel || 'Syncing…' }}</span>
+            <span class="text-xs text-muted hidden sm:inline">Updates automatically when finished</span>
+          </div>
+          <UProgress size="sm" class="block" />
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>

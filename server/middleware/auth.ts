@@ -17,6 +17,10 @@ const publicRoutes = [
   '/api/webhooks',
   '/api/office/_internal/',
   '/api/public/office-lobby',
+  // Public email-marketing surfaces (Phase 4) — unsubscribe / subscribe /
+  // double-opt-in confirm. Authorized by a signed link token (links.ts), not a
+  // session; recipients have no cookies.
+  '/api/public/email/',
   // Public first-party tracking beacon — cross-origin POSTs from external dealer
   // sites have no session cookie; tenancy is enforced by the embedded write key
   // (resolveSiteByWriteKey) + soft Origin allowlist inside the handler.
@@ -34,7 +38,10 @@ const publicRoutes = [
   // body (Meta's verify_token, Google's google_key matched against
   // lead_webhook_endpoints.secret_key). Google + Meta servers don't have
   // session cookies, so these MUST be public.
-  '/api/leads/webhook/'
+  '/api/leads/webhook/',
+  // Analytics export destination — authed by a hashed bearer token validated
+  // inline against analytics_export_tokens (no session cookie).
+  '/api/export/'
 ]
 
 // Paths that an authenticated cron can read with X-Internal-Cron-Secret.

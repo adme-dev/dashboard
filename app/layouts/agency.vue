@@ -125,7 +125,8 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
   // authenticated users; row-level access enforced server-side per client.
   items.push(
     { type: 'label', label: 'Leads' },
-    { label: 'Lead Inbox', icon: 'i-lucide-mail-question', to: '/agency/leads', onSelect: close }
+    { label: 'Lead Inbox', icon: 'i-lucide-mail-question', to: '/agency/leads', onSelect: close },
+    { label: 'Email Marketing', icon: 'i-lucide-mail', to: '/agency/email', onSelect: close }
   )
 
   // Billing (scoped) — canAccessInvoices but NOT canAccessFinance (e.g. account managers)

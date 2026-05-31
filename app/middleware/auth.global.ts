@@ -28,6 +28,7 @@ export default defineNuxtRouteMiddleware(async (to, _from) => {
     '/banner-studio',
     '/creativity',
     '/portal',
+    '/email/', // public email-marketing pages: unsubscribe / subscribe / confirm
     '/l/',
     '/lobby',
     '/lobby-room'

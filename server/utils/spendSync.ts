@@ -9,8 +9,9 @@ import { queryRows, queryOne } from '~~/server/utils/db'
 
 // ─── Meta Spend Sync ────────────────────────────────────────────
 
-export async function syncMetaSpend(month: number, year: number): Promise<{ synced: number; totalSpend: number }> {
+export async function syncMetaSpend(month: number, year: number): Promise<{ synced: number; totalSpend: number; failures: Array<{ account: string; reason: string }> }> {
   const { getCampaignInsights, getCampaignDailyInsights, getCampaigns, mapMetaCampaignMeta, extractConversions, extractRevenue } = await import('~~/server/utils/metaClient')
+  const failures: Array<{ account: string; reason: string }> = []
 
   const period = `${year}-${String(month).padStart(2, '0')}`
 
@@ -26,7 +27,7 @@ export async function syncMetaSpend(month: number, year: number): Promise<{ sync
      WHERE platform = 'meta' AND status = 'active'`
   )
 
-  if (connections.length === 0) return { synced: 0, totalSpend: 0 }
+  if (connections.length === 0) return { synced: 0, totalSpend: 0, failures }
 
   const mappings = await queryRows<{
     connection_id: string
@@ -50,6 +51,11 @@ export async function syncMetaSpend(month: number, year: number): Promise<{ sync
       campaigns = await getCampaignInsights(actId, conn.access_token, month, year)
     } catch (err: any) {
       console.error(`[MetaSync] Failed to fetch insights for ${conn.account_name}:`, err.message)
+      const gErr = err?.data?.error
+      const reason = gErr
+        ? `${gErr.message || 'Graph error'}${gErr.code ? ` (#${gErr.code})` : ''}`
+        : (err?.message || 'Unknown error')
+      failures.push({ account: conn.account_name, reason })
       continue
     }
 
@@ -164,13 +170,14 @@ export async function syncMetaSpend(month: number, year: number): Promise<{ sync
   // Breakdowns + creatives are now fetched on-demand when a user expands a campaign row
   // (see server/utils/onDemandSync.ts). Removed from bulk sync to keep it fast.
 
-  return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100 }
+  return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100, failures }
 }
 
 // ─── Google Spend Sync ──────────────────────────────────────────
 
-export async function syncGoogleSpend(month: number, year: number): Promise<{ synced: number; totalSpend: number }> {
+export async function syncGoogleSpend(month: number, year: number): Promise<{ synced: number; totalSpend: number; failures: Array<{ account: string; reason: string }> }> {
   const { getMonthlySpend, getDailySpend, refreshGoogleToken, listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
+  const failures: Array<{ account: string; reason: string }> = []
 
   const period = `${year}-${String(month).padStart(2, '0')}`
   const config = useRuntimeConfig()
@@ -189,7 +196,7 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
      WHERE platform = 'google' AND status = 'active'`
   )
 
-  if (connections.length === 0) return { synced: 0, totalSpend: 0 }
+  if (connections.length === 0) return { synced: 0, totalSpend: 0, failures }
 
   const mappings = await queryRows<{
     connection_id: string
@@ -230,6 +237,7 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
           )
         } catch (err: any) {
           console.error(`[GoogleSync] Failed to refresh token for ${conn.account_name}:`, err.message)
+          failures.push({ account: conn.account_name, reason: `Token refresh failed: ${err?.message || 'unknown'}` })
           continue
         }
       }
@@ -240,6 +248,12 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
       campaigns = await getMonthlySpend(conn.account_id, accessToken, config.googleDeveloperToken, month, year, mccId)
     } catch (err: any) {
       console.error(`[GoogleSync] Failed to fetch spend for ${conn.account_name}:`, err.message)
+      const status = err?.status || err?.statusCode
+      const reason = status === 403 ? 'Access denied (403) — check ad-account access / manager link'
+        : status === 400 ? 'Bad request (400)'
+        : status ? `Error ${status}`
+        : (err?.message || 'Unknown error')
+      failures.push({ account: conn.account_name, reason })
       continue
     }
 
@@ -331,7 +345,7 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
 
   // Breakdowns + creatives are now fetched on-demand (see onDemandSync.ts)
 
-  return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100 }
+  return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100, failures }
 }
 
 // ─── TikTok Spend Sync ──────────────────────────────────────────

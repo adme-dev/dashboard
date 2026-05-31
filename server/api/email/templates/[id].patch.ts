@@ -1,0 +1,24 @@
+// server/api/email/templates/[id].patch.ts
+import { z } from 'zod'
+import { requireWriteAccess } from '~~/server/utils/auth'
+import { updateTemplate } from '~~/server/utils/email-marketing/templates'
+
+const Body = z.object({
+  name: z.string().min(1).max(200).optional(),
+  subject: z.string().max(300).optional().nullable(),
+  preview_text: z.string().max(300).optional().nullable(),
+  body_source: z.any().optional()
+})
+
+export default defineEventHandler(async (event) => {
+  await requireWriteAccess(event)
+  const id = getRouterParam(event, 'id')
+  if (!id) throw createError({ statusCode: 400, statusMessage: 'missing_id' })
+  const parsed = Body.safeParse(await readBody(event))
+  if (!parsed.success) {
+    throw createError({ statusCode: 400, statusMessage: 'invalid_body', data: parsed.error.issues })
+  }
+  const template = await updateTemplate(id, parsed.data)
+  if (!template) throw createError({ statusCode: 404, statusMessage: 'not_found' })
+  return { template }
+})

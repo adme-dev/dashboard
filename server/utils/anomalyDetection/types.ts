@@ -4,7 +4,7 @@ export type AnomalySeverity = 'critical' | 'warning' | 'info'
 
 export type AnomalyType =
   | 'profitability' | 'revenue' | 'expenses' | 'cashflow'
-  | 'receivables' | 'budget' | 'adspend' | 'clients' | 'transactions'
+  | 'receivables' | 'budget' | 'adspend' | 'clients' | 'transactions' | 'ga4'
 
 export type AnomalyStatus =
   | 'open' | 'acknowledged' | 'snoozed' | 'resolved' | 'dismissed'
@@ -55,6 +55,8 @@ export interface SharedData {
   mediaSpend: any | null
   clientRevenue: any | null
   invoiceLines: any | null
+  // GA4 daily channel rows (last ~31 days) for the ga4 analyser
+  ga4Channel: any | null
 }
 
 export interface AnalyserContext {
