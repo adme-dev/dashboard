@@ -45,7 +45,8 @@ export default defineEventHandler(async (event) => {
     contactEmail: 'contact_email',
     contactPhone: 'contact_phone',
     address: 'address',
-    isActive: 'is_active'
+    isActive: 'is_active',
+    reportingTimezone: 'reporting_timezone'
   }
 
   const updates: string[] = []
@@ -106,6 +107,7 @@ export default defineEventHandler(async (event) => {
         contactEmail: client.contact_email,
         contactPhone: client.contact_phone,
         address: client.address,
+        reportingTimezone: client.reporting_timezone,
         createdAt: client.created_at,
         updatedAt: client.updated_at
       }

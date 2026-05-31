@@ -141,7 +141,9 @@ const columns = [
       class="border border-default rounded-xl"
     >
       <template #client_name-cell="{ row }">
-        <span class="font-medium">{{ row.original.client_name || '—' }}</span>
+        <ULink :to="`/agency/tracking/${row.original.client_id}`" class="font-medium hover:text-primary">
+          {{ row.original.client_name || '—' }}
+        </ULink>
       </template>
 
       <template #name-cell="{ row }">
