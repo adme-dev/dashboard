@@ -12,6 +12,8 @@
  * Node 18+) — mirrors the SHA-256 pattern in exportTokens.ts.
  */
 
+import { getCachedBinding } from '~~/server/utils/email'
+
 export type EmailLinkPurpose = 'unsub' | 'confirm'
 
 /**
@@ -19,10 +21,18 @@ export type EmailLinkPurpose = 'unsub' | 'confirm'
  * subsystems; falls back to CRON_SECRET (always set in deployed envs) and then
  * to a fixed dev string so local/test runs work without configuration. The
  * sender and the verifying endpoint both read this, so they always agree.
+ *
+ * IMPORTANT: on CF Pages, secrets are NOT exposed via process.env — only via the
+ * per-request binding, which the cfEnv middleware caches via setCfBindings on
+ * every request. So we must check getCachedBinding too, or in prod this would
+ * silently fall through to the insecure dev default and unsubscribe/confirm
+ * tokens would be forgeable by anyone. Mirrors the resend-webhook secret read.
  */
 export function emailLinkSecret(): string {
   return process.env.EMAIL_LINK_SECRET
+    || getCachedBinding('EMAIL_LINK_SECRET')
     || process.env.CRON_SECRET
+    || getCachedBinding('CRON_SECRET')
     || 'dev-insecure-email-link-secret'
 }
 

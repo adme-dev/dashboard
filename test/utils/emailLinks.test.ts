@@ -1,8 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import {
   signEmailToken,
-  verifyEmailToken
+  verifyEmailToken,
+  emailLinkSecret
 } from '~~/server/utils/email-marketing/links'
+import { setCfBindings } from '~~/server/utils/email'
 
 const SECRET = 'test-secret-do-not-use-in-prod'
 
@@ -58,5 +60,29 @@ describe('verifyEmailToken', () => {
 
   it('rejects a wrong-length token without throwing', async () => {
     expect(await verifyEmailToken(SECRET, 'abc', 'unsub', 'c1', 's1')).toBe(false)
+  })
+})
+
+describe('emailLinkSecret', () => {
+  const saved = { link: process.env.EMAIL_LINK_SECRET, cron: process.env.CRON_SECRET }
+  afterEach(() => {
+    if (saved.link === undefined) delete process.env.EMAIL_LINK_SECRET
+    else process.env.EMAIL_LINK_SECRET = saved.link
+    if (saved.cron === undefined) delete process.env.CRON_SECRET
+    else process.env.CRON_SECRET = saved.cron
+    setCfBindings({}) // reset the module binding cache between tests
+  })
+
+  it('prefers process.env.EMAIL_LINK_SECRET', () => {
+    process.env.EMAIL_LINK_SECRET = 'env-link'
+    setCfBindings({ EMAIL_LINK_SECRET: 'binding-link' })
+    expect(emailLinkSecret()).toBe('env-link')
+  })
+
+  it('falls back to the CF Pages binding when process.env is unset (the prod path)', () => {
+    delete process.env.EMAIL_LINK_SECRET
+    delete process.env.CRON_SECRET
+    setCfBindings({ EMAIL_LINK_SECRET: 'binding-link' })
+    expect(emailLinkSecret()).toBe('binding-link')
   })
 })
