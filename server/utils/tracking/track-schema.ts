@@ -64,7 +64,11 @@ const TrackEventSchema = z.object({
 })
 
 export const TrackPayloadSchema = z.object({
-  events: z.array(TrackEventSchema).min(1).max(50)
+  events: z.array(TrackEventSchema).min(1).max(50),
+  // Raw `_xf_consent` cookie value, forwarded by the tag from the dealer domain.
+  // The collect endpoint can't read that cookie cross-origin, so the tag relays
+  // it here; the endpoint prefers it over the (absent) request cookie.
+  consent: z.string().max(4096).nullable().optional()
 })
 
 export type TrackEvent = z.infer<typeof TrackEventSchema>

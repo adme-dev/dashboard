@@ -15,6 +15,24 @@ const valid = {
   }]
 }
 
+describe('parseTrackPayload — consent forwarding', () => {
+  it('accepts an optional batch-level consent string and exposes it', () => {
+    const cookie = JSON.stringify({ tracking: true, analytics: true, marketing: false, updatedAt: '2026-05-31T00:00:00Z' })
+    const r = parseTrackPayload({ ...valid, consent: cookie })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.payload.consent).toBe(cookie)
+  })
+  it('still accepts a batch with no consent (consent is optional)', () => {
+    const r = parseTrackPayload(valid)
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.payload.consent ?? null).toBe(null)
+  })
+  it('rejects an over-long consent value', () => {
+    const r = parseTrackPayload({ ...valid, consent: 'x'.repeat(5000) })
+    expect(r.ok).toBe(false)
+  })
+})
+
 describe('parseTrackPayload', () => {
   it('accepts a well-formed batch', () => {
     const r = parseTrackPayload(valid)
