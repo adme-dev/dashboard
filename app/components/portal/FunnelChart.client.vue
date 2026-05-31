@@ -6,6 +6,8 @@ const { fmtCurrency, fmtCompact } = useAnalytics()
 interface FunnelRow {
   channel: string; spend: number; sessions: number; engagedSessions: number
   keyEvents: number; leads: number
+  totalUsers: number; newUsers: number
+  engagementRate: number | null; avgSessionDuration: number | null
   costPerSession: number | null; costPerKeyEvent: number | null
   costPerLead: number | null; sessionToLeadRate: number | null
 }
@@ -20,6 +22,8 @@ const columns = [
   { accessorKey: 'channel', header: 'Channel' },
   { accessorKey: 'spend', header: 'Spend' },
   { accessorKey: 'sessions', header: 'Sessions' },
+  { accessorKey: 'totalUsers', header: 'Users' },
+  { accessorKey: 'engagementRate', header: 'Engagement' },
   { accessorKey: 'keyEvents', header: 'GA4 key events' },
   { accessorKey: 'leads', header: 'Leads' },
   { accessorKey: 'costPerLead', header: 'Cost / lead' }
@@ -27,6 +31,9 @@ const columns = [
 
 function fmtRatio(v: number | null): string {
   return v === null ? '—' : fmtCurrency(v)
+}
+function fmtPct(v: number | null): string {
+  return v === null ? '—' : `${(v * 100).toFixed(1)}%`
 }
 </script>
 
@@ -43,7 +50,7 @@ function fmtRatio(v: number | null): string {
     </template>
 
     <!-- Top-line funnel stages -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
       <div class="rounded-lg bg-elevated p-4">
         <p class="text-xs text-muted">Ad spend</p>
         <p class="text-xl font-semibold">{{ fmtCurrency(data!.totals.spend) }}</p>
@@ -51,6 +58,14 @@ function fmtRatio(v: number | null): string {
       <div class="rounded-lg bg-elevated p-4">
         <p class="text-xs text-muted">Sessions</p>
         <p class="text-xl font-semibold">{{ fmtCompact(data!.totals.sessions) }}</p>
+      </div>
+      <div class="rounded-lg bg-elevated p-4">
+        <p class="text-xs text-muted">Users</p>
+        <p class="text-xl font-semibold">{{ fmtCompact(data!.totals.totalUsers) }}</p>
+      </div>
+      <div class="rounded-lg bg-elevated p-4">
+        <p class="text-xs text-muted">Engagement rate</p>
+        <p class="text-xl font-semibold">{{ fmtPct(data!.totals.engagementRate) }}</p>
       </div>
       <div class="rounded-lg bg-elevated p-4">
         <p class="text-xs text-muted">GA4 key events</p>
@@ -65,6 +80,8 @@ function fmtRatio(v: number | null): string {
     <UTable :data="data!.channels" :columns="columns">
       <template #spend-cell="{ row }">{{ fmtCurrency(row.original.spend) }}</template>
       <template #sessions-cell="{ row }">{{ fmtCompact(row.original.sessions) }}</template>
+      <template #totalUsers-cell="{ row }">{{ fmtCompact(row.original.totalUsers) }}</template>
+      <template #engagementRate-cell="{ row }">{{ fmtPct(row.original.engagementRate) }}</template>
       <template #keyEvents-cell="{ row }">{{ fmtCompact(row.original.keyEvents) }}</template>
       <template #leads-cell="{ row }">{{ fmtCompact(row.original.leads) }}</template>
       <template #costPerLead-cell="{ row }">{{ fmtRatio(row.original.costPerLead) }}</template>

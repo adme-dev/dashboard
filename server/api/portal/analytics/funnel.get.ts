@@ -35,12 +35,20 @@ export default defineEventHandler(async (event) => {
     [clientId, startDate, endDate]
   )
 
-  // GA4 metrics by channel.
-  const ga4Rows = await queryRows<{ channel: string; sessions: string; engaged: string; key_events: string }>(
+  // GA4 metrics by channel. engagement_rate / avg_session_duration are
+  // session-weighted here so totals recover the correct average.
+  const ga4Rows = await queryRows<{
+    channel: string; sessions: string; engaged: string; key_events: string
+    total_users: string; new_users: string; engagement_weighted: string; duration_weighted: string
+  }>(
     `SELECT channel_group AS channel,
             COALESCE(SUM(sessions),0) AS sessions,
             COALESCE(SUM(engaged_sessions),0) AS engaged,
-            COALESCE(SUM(key_events),0) AS key_events
+            COALESCE(SUM(key_events),0) AS key_events,
+            COALESCE(SUM(total_users),0) AS total_users,
+            COALESCE(SUM(new_users),0) AS new_users,
+            COALESCE(SUM(engagement_rate * sessions),0) AS engagement_weighted,
+            COALESCE(SUM(avg_session_duration * sessions),0) AS duration_weighted
      FROM ga4_daily_channel
      WHERE client_id = $1 AND metric_date BETWEEN $2 AND $3
      GROUP BY 1`,
@@ -66,12 +74,19 @@ export default defineEventHandler(async (event) => {
     spendByChannel[channel] = (spendByChannel[channel] || 0) + Number(r.spend)
   }
 
-  const ga4ByChannel: Record<string, { sessions: number; engagedSessions: number; keyEvents: number }> = {}
+  const ga4ByChannel: Record<string, {
+    sessions: number; engagedSessions: number; keyEvents: number
+    totalUsers: number; newUsers: number; engagementRateWeighted: number; durationWeighted: number
+  }> = {}
   for (const r of ga4Rows) {
     ga4ByChannel[r.channel] = {
       sessions: Number(r.sessions),
       engagedSessions: Number(r.engaged),
-      keyEvents: Number(r.key_events)
+      keyEvents: Number(r.key_events),
+      totalUsers: Number(r.total_users),
+      newUsers: Number(r.new_users),
+      engagementRateWeighted: Number(r.engagement_weighted),
+      durationWeighted: Number(r.duration_weighted)
     }
   }
 

@@ -13,13 +13,30 @@ export interface FunnelChannelRow {
   engagedSessions: number
   keyEvents: number
   leads: number
+  totalUsers: number
+  newUsers: number
+  engagementRate: number | null
+  avgSessionDuration: number | null
   costPerSession: number | null
   costPerKeyEvent: number | null
   costPerLead: number | null
   sessionToLeadRate: number | null
 }
 
-interface Ga4ChannelAgg { sessions: number; engagedSessions: number; keyEvents: number }
+/**
+ * Per-channel GA4 aggregate. `engagementRate` and `avgSessionDuration` are
+ * stored as session-weighted sums (SUM(metric * sessions)); divide by sessions
+ * to recover the average — this keeps channel/total roll-ups correct.
+ */
+interface Ga4ChannelAgg {
+  sessions: number
+  engagedSessions: number
+  keyEvents: number
+  totalUsers: number
+  newUsers: number
+  engagementRateWeighted: number
+  durationWeighted: number
+}
 
 export interface FunnelInput {
   spendByChannel: Record<string, number>
@@ -35,8 +52,14 @@ function ratio(numerator: number, denominator: number): number | null {
 function emptyRow(channel: string): FunnelChannelRow {
   return {
     channel, spend: 0, sessions: 0, engagedSessions: 0, keyEvents: 0, leads: 0,
+    totalUsers: 0, newUsers: 0, engagementRate: null, avgSessionDuration: null,
     costPerSession: null, costPerKeyEvent: null, costPerLead: null, sessionToLeadRate: null
   }
+}
+
+const emptyGa4Agg: Ga4ChannelAgg = {
+  sessions: 0, engagedSessions: 0, keyEvents: 0,
+  totalUsers: 0, newUsers: 0, engagementRateWeighted: 0, durationWeighted: 0
 }
 
 export function buildFunnel(input: FunnelInput): { channels: FunnelChannelRow[]; totals: FunnelChannelRow } {
@@ -47,10 +70,15 @@ export function buildFunnel(input: FunnelInput): { channels: FunnelChannelRow[];
   ])
 
   const rows: FunnelChannelRow[] = []
+  // Track session-weighted sums so the totals row recovers correct averages.
+  let totalEngagementWeighted = 0
+  let totalDurationWeighted = 0
   for (const channel of channels) {
     const spend = input.spendByChannel[channel] || 0
-    const ga4 = input.ga4ByChannel[channel] || { sessions: 0, engagedSessions: 0, keyEvents: 0 }
+    const ga4 = input.ga4ByChannel[channel] || emptyGa4Agg
     const leads = input.leadsByChannel[channel] || 0
+    totalEngagementWeighted += ga4.engagementRateWeighted || 0
+    totalDurationWeighted += ga4.durationWeighted || 0
     rows.push({
       channel,
       spend,
@@ -58,6 +86,10 @@ export function buildFunnel(input: FunnelInput): { channels: FunnelChannelRow[];
       engagedSessions: ga4.engagedSessions,
       keyEvents: ga4.keyEvents,
       leads,
+      totalUsers: ga4.totalUsers || 0,
+      newUsers: ga4.newUsers || 0,
+      engagementRate: ratio(ga4.engagementRateWeighted || 0, ga4.sessions),
+      avgSessionDuration: ratio(ga4.durationWeighted || 0, ga4.sessions),
       costPerSession: spend ? ratio(spend, ga4.sessions) : null,
       costPerKeyEvent: spend ? ratio(spend, ga4.keyEvents) : null,
       costPerLead: spend ? ratio(spend, leads) : null,
@@ -73,8 +105,12 @@ export function buildFunnel(input: FunnelInput): { channels: FunnelChannelRow[];
     acc.engagedSessions += r.engagedSessions
     acc.keyEvents += r.keyEvents
     acc.leads += r.leads
+    acc.totalUsers += r.totalUsers
+    acc.newUsers += r.newUsers
     return acc
   }, emptyRow('All channels'))
+  totals.engagementRate = ratio(totalEngagementWeighted, totals.sessions)
+  totals.avgSessionDuration = ratio(totalDurationWeighted, totals.sessions)
   totals.costPerSession = totals.spend ? ratio(totals.spend, totals.sessions) : null
   totals.costPerKeyEvent = totals.spend ? ratio(totals.spend, totals.keyEvents) : null
   totals.costPerLead = totals.spend ? ratio(totals.spend, totals.leads) : null

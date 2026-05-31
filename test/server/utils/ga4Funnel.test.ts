@@ -6,14 +6,27 @@ describe('buildFunnel', () => {
   it('merges spend, ga4 and leads by channel and totals them', () => {
     const out = buildFunnel({
       spendByChannel: { 'Paid Search': 100, 'Paid Social': 50 },
-      ga4ByChannel: { 'Paid Search': { sessions: 200, engagedSessions: 120, keyEvents: 20 } },
+      ga4ByChannel: {
+        'Paid Search': {
+          sessions: 200, engagedSessions: 120, keyEvents: 20,
+          totalUsers: 150, newUsers: 90,
+          engagementRateWeighted: 0.6 * 200, // 60% engagement over 200 sessions
+          durationWeighted: 45 * 200 // 45s avg over 200 sessions
+        }
+      },
       leadsByChannel: { 'Paid Search': 10, 'Organic Search': 4 }
     })
     const ps = out.channels.find(c => c.channel === 'Paid Search')!
     expect(ps.costPerLead).toBe(10) // 100 / 10
     expect(ps.sessionToLeadRate).toBeCloseTo(0.05) // 10 / 200
+    expect(ps.totalUsers).toBe(150)
+    expect(ps.newUsers).toBe(90)
+    expect(ps.engagementRate).toBeCloseTo(0.6) // session-weighted average
+    expect(ps.avgSessionDuration).toBeCloseTo(45)
     expect(out.totals.spend).toBe(150)
     expect(out.totals.leads).toBe(14)
+    expect(out.totals.totalUsers).toBe(150)
+    expect(out.totals.engagementRate).toBeCloseTo(0.6) // weighted across all sessions
     // Organic Search has leads but no spend → costPerLead is null, not Infinity
     expect(out.channels.find(c => c.channel === 'Organic Search')!.costPerLead).toBeNull()
   })
