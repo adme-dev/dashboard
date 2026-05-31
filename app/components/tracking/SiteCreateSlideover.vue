@@ -25,7 +25,8 @@ const form = reactive({
   originsText: '',
   spa: false,
   consentMode: 'off',
-  retentionDays: 395
+  retentionDays: 395,
+  enforceOrigin: false
 })
 
 const submitting = ref(false)
@@ -37,6 +38,7 @@ function reset() {
   form.spa = false
   form.consentMode = 'off'
   form.retentionDays = 395
+  form.enforceOrigin = false
 }
 
 const canSubmit = computed(() => !!form.clientId && form.name.trim().length > 0)
@@ -57,7 +59,8 @@ async function submit() {
         allowedOrigins,
         spa: form.spa,
         consentMode: form.consentMode,
-        retentionDays: Number(form.retentionDays) || 395
+        retentionDays: Number(form.retentionDays) || 395,
+        enforceOrigin: form.enforceOrigin
       }
     })
     toast.add({ title: 'Tracking site created', color: 'success' })
@@ -128,6 +131,10 @@ async function submit() {
 
         <UFormField label="Single-page app (SPA)" help="Enable for Gatsby/Next.js sites so route changes fire page_view.">
           <UCheckbox v-model="form.spa" label="This site is a SPA" />
+        </UFormField>
+
+        <UFormField label="Enforce allowed origins" help="Hard-block (403) beacons from origins not listed above. No effect until origins are set.">
+          <UCheckbox v-model="form.enforceOrigin" label="Reject unlisted origins" />
         </UFormField>
       </div>
     </template>

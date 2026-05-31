@@ -208,9 +208,10 @@ An admin toggle for `enforce_origin` is added to the existing tracking-site sett
 - `server/api/agency/tracking/[id].patch.ts` — add `'enforce_origin'` to its `allowed` column
   array (the handler already snake-cases incoming keys and `invalidateSiteCache`es on write, so a
   toggle takes effect immediately).
-- `app/components/tracking/SiteCreateSlideover.vue` — the create/edit slideover that already
-  submits `allowedOrigins`; add a `USwitch` bound to `enforce_origin` (with helper text noting it
-  is a no-op until `allowed_origins` is populated).
+- `app/components/tracking/SiteCreateSlideover.vue` — the **create-only** slideover (no per-site
+  edit UI calls PATCH today); add a `USwitch` bound to `enforce_origin` (helper text noting it is a
+  no-op until `allowed_origins` is populated) so new sites can be created enforcing. **Existing**
+  sites are flipped via SQL during rollout (§6), same operational path as populating allowlists.
 
 ---
 
@@ -228,6 +229,17 @@ An admin toggle for `enforce_origin` is added to the existing tracking-site sett
 
 **Rollback:** set `TRACKING_RATE_LIMIT_MODE=off` (or `shadow`) and/or `TRACKING_ORIGIN_MODE=soft`
 — instant, env-only, no redeploy of the worker, no DB edits. The DO worker can stay deployed (idle).
+
+**Operator notes (surfaced in code review):**
+- **Origin matching is byte-exact.** `allowed_origins` entries must match the browser `Origin`
+  header exactly — scheme + host + port, no trailing slash (`https://www.dealer.com`, not
+  `https://www.dealer.com/` or `http://…`). `www` vs apex and `:443` are distinct strings. Verify
+  against real `[track] origin mismatch` shadow logs before flipping `enforce_origin` for a site.
+- **The per-IP layer is best-effort above 5,000 distinct IPs per site.** Each write_key's DO caps
+  its `ip_hash` LRU at 5,000 entries; a flood churning more distinct IPs than that against one site
+  evicts its own buckets and can reset its per-IP counter. The **per-key ceiling is the hard
+  backstop** (a single shared window, never evicted), so the global cap holds regardless — but do
+  not over-trust the per-IP burst guarantee under a high-cardinality distributed attack.
 
 ---
 

@@ -11,6 +11,7 @@ interface Body {
   consentMode?: string
   leadSelectors?: string[]
   retentionDays?: number
+  enforceOrigin?: boolean
 }
 
 export default defineEventHandler(async (event) => {
@@ -21,12 +22,12 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'name is required' })
   }
   const row = await queryOne(
-    `INSERT INTO tracking_sites (client_id, name, write_key, allowed_origins, spa, consent_mode, lead_selectors, retention_days)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+    `INSERT INTO tracking_sites (client_id, name, write_key, allowed_origins, spa, consent_mode, lead_selectors, retention_days, enforce_origin)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
     [
       body.clientId, body.name.trim(), generateWriteKey(),
       body.allowedOrigins ?? [], body.spa ?? false, body.consentMode ?? 'off',
-      body.leadSelectors ?? [], body.retentionDays ?? 395
+      body.leadSelectors ?? [], body.retentionDays ?? 395, body.enforceOrigin ?? false
     ]
   )
   return { site: row }

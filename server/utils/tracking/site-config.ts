@@ -19,6 +19,7 @@ export interface TrackingSite {
   name: string
   writeKey: string
   allowedOrigins: string[]
+  enforceOrigin: boolean
   spa: boolean
   consentMode: string
   leadSelectors: string[]
@@ -40,6 +41,23 @@ export function isOriginAllowed(site: Pick<TrackingSite, 'allowedOrigins'>, orig
   return site.allowedOrigins.includes(origin)
 }
 
+/**
+ * Should this request be hard-blocked (403) on Origin?
+ * - Empty allowlist ⇒ allow-all ⇒ never blocks (safe for un-configured sites).
+ * - Per-site enforce_origin must be true to block at all (default false = soft/log-only).
+ * - globalMode === 'soft' (env TRACKING_ORIGIN_MODE) is a global emergency override.
+ * Pure + injectable for tests.
+ */
+export function shouldBlockOrigin(
+  site: Pick<TrackingSite, 'allowedOrigins' | 'enforceOrigin'>,
+  origin: string | null,
+  globalMode: string | undefined,
+): boolean {
+  if (globalMode === 'soft') return false
+  if (!site.enforceOrigin) return false
+  return !isOriginAllowed(site, origin)
+}
+
 function mapRow(row: any): TrackingSite {
   return {
     id: row.id,
@@ -47,6 +65,7 @@ function mapRow(row: any): TrackingSite {
     name: row.name,
     writeKey: row.write_key,
     allowedOrigins: row.allowed_origins ?? [],
+    enforceOrigin: row.enforce_origin ?? false,
     spa: row.spa,
     consentMode: row.consent_mode,
     leadSelectors: row.lead_selectors ?? [],
@@ -70,7 +89,7 @@ export async function resolveSiteByWriteKey(
   }
   try {
     const row = await queryOne(
-      `SELECT id, client_id, name, write_key, allowed_origins, spa, consent_mode,
+      `SELECT id, client_id, name, write_key, allowed_origins, enforce_origin, spa, consent_mode,
               lead_selectors, retention_days, is_active
          FROM tracking_sites
         WHERE write_key = $1 AND is_active = TRUE`,

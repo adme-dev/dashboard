@@ -7,7 +7,7 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
   await requireSiteTrackingAccess(event, id) // role + per-client access for this site
   const body = await readBody<Record<string, unknown>>(event)
-  const allowed = ['name', 'allowed_origins', 'spa', 'consent_mode', 'lead_selectors', 'retention_days', 'is_active']
+  const allowed = ['name', 'allowed_origins', 'enforce_origin', 'spa', 'consent_mode', 'lead_selectors', 'retention_days', 'is_active']
   const sets: string[] = []
   const params: unknown[] = []
   for (const [k, v] of Object.entries(body || {})) {
