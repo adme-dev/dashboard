@@ -28,10 +28,38 @@ function isoDaysAgo(days: number): string {
   return new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)
 }
 
+/** Subtract n days from an ISO YYYY-MM-DD date (UTC), returning YYYY-MM-DD. */
+function subDaysIso(iso: string, n: number): string {
+  const d = new Date(iso + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() - n)
+  return d.toISOString().slice(0, 10)
+}
+
+/** Minimum trailing window (days) re-pulled every run — GA4 restates ~48h of data. */
+export const GA4_TRAILING_RESYNC_DAYS = 2
+
+/**
+ * Resolve the GA4 report window. An explicit startDate+endDate is used verbatim
+ * (arbitrary backfill). Otherwise the window ends today and reaches back
+ * `lookbackDays`, floored at GA4_TRAILING_RESYNC_DAYS so every run always
+ * overwrites the trailing ~48h GA4 keeps restating. Pure + injectable `today`
+ * for testing.
+ */
+export function ga4SyncWindow(
+  opts: { startDate?: string; endDate?: string; lookbackDays?: number; today?: string } = {}
+): { startDate: string; endDate: string } {
+  if (opts.startDate && opts.endDate) {
+    return { startDate: opts.startDate, endDate: opts.endDate }
+  }
+  const endDate = opts.today ?? isoDaysAgo(0)
+  const lookback = Math.max(opts.lookbackDays ?? 14, GA4_TRAILING_RESYNC_DAYS)
+  return { startDate: subDaysIso(endDate, lookback), endDate }
+}
+
 export async function syncGa4(
-  opts: { clientId?: string; lookbackDays?: number } = {}
+  opts: { clientId?: string; lookbackDays?: number; startDate?: string; endDate?: string } = {}
 ): Promise<Ga4SyncResult> {
-  const { clientId, lookbackDays = 14 } = opts
+  const { clientId } = opts
   const config = useRuntimeConfig()
   const result: Ga4SyncResult = { propertiesSynced: 0, rowsUpserted: 0, errors: [] }
 
@@ -48,8 +76,7 @@ export async function syncGa4(
     params
   )
 
-  const startDate = isoDaysAgo(lookbackDays)
-  const endDate = isoDaysAgo(0)
+  const { startDate, endDate } = ga4SyncWindow(opts)
 
   // Accumulate per-connection outcome so the status row reflects the whole run
   // (one connection can map multiple properties).
