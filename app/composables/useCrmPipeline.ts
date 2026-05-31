@@ -2,8 +2,9 @@
 import type { CrmPipelineSummary } from '~/types/crm'
 
 export function useCrmPipeline(clientId: Ref<string | null>) {
+  const base = inject<string>('crmApiBase', '/api/crm')
   const query = computed(() => ({ client_id: clientId.value ?? '' }))
-  const { data, refresh } = useFetch<CrmPipelineSummary>('/api/crm/pipeline', {
+  const { data, refresh } = useFetch<CrmPipelineSummary>(`${base}/pipeline`, {
     query,
     watch: [query],
     immediate: false,
