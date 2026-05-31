@@ -1,0 +1,17 @@
+name = "meta-status-cron"
+main = "src/index.ts"
+compatibility_date = "2025-12-01"
+
+# Hourly. The Pages handler self-gates (only syncs non-terminal ads created in
+# the last 30 days, capped at 100/run), so an hourly fire is cheap.
+[triggers]
+crons = [
+  "0 * * * *"   # sync Meta ad effective_status
+]
+
+[vars]
+APP_BASE_URL = "https://agency-dashboard-6cm.pages.dev"
+
+# CRON_SECRET is set as a secret, not a var — must match the Pages project's
+# CRON_SECRET so /api/cron/meta-ad-status-sync accepts the x-cron-secret header:
+#   wrangler secret put CRON_SECRET   (run inside this dir)
