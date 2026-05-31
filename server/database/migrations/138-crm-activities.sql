@@ -1,4 +1,4 @@
--- 137: CRM activities/notes timeline (Slice 3). Stacked on 134/135.
+-- 138: CRM activities/notes timeline (Slice 3). Stacked on 134/135.
 -- Polymorphic: target_type + target_id reference person|company|opportunity.
 CREATE TABLE IF NOT EXISTS crm_activities (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
