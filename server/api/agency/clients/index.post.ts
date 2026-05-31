@@ -69,9 +69,9 @@ export default defineEventHandler(async (event) => {
       INSERT INTO agency_clients (
         name, billing_type, retainer_amount, payment_terms,
         hourly_rate, media_commission_rate, notes,
-        contact_email, contact_phone, address, is_active
+        contact_email, contact_phone, address, reporting_timezone, is_active
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true)
       RETURNING *
     `, [
       body.name.trim(),
@@ -83,7 +83,8 @@ export default defineEventHandler(async (event) => {
       body.notes?.trim() || null,
       body.contactEmail?.trim() || null,
       body.contactPhone?.trim() || null,
-      body.address?.trim() || null
+      body.address?.trim() || null,
+      body.reportingTimezone || 'Australia/Brisbane'
     ])
 
     return {
@@ -99,6 +100,7 @@ export default defineEventHandler(async (event) => {
       contactPhone: client.contact_phone,
       address: client.address,
       isActive: client.is_active,
+      reportingTimezone: client.reporting_timezone,
       createdAt: client.created_at,
       updatedAt: client.updated_at
     }
