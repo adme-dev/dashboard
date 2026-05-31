@@ -1,6 +1,7 @@
 // test/utils/emailRenderDocument.test.ts
 import { describe, it, expect } from 'vitest'
-import { renderTemplateDocument, isFlyhubFormat } from '~~/server/utils/email-marketing/render'
+import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
+import { isFlyhubFormat } from '~~/server/utils/email-marketing/render/flyhub-html-renderer'
 
 describe('renderTemplateDocument — multi-block document', () => {
   it('renders heading + text + button in order', () => {

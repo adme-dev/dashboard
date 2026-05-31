@@ -24,6 +24,3 @@ export function renderTemplateDocument(doc: unknown, opts: RenderTemplateOptions
     variables: opts.variables
   })
 }
-
-export { isFlyhubFormat }
-export type { FlyhubDocument }

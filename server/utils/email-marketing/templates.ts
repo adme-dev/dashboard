@@ -3,7 +3,8 @@
 // body_source on write via the pure-TS renderer.
 
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
-import { renderTemplateDocument, isFlyhubFormat } from './render'
+import { renderTemplateDocument } from './render'
+import { isFlyhubFormat } from './render/flyhub-html-renderer'
 
 export interface EdmTemplate {
   id: string

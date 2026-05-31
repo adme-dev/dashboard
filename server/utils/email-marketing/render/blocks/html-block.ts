@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars -- ported block; unused items belong to the stubbed offers/dynamic paths */
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any -- ported block; unused items + any belong to the stubbed offers/Maizzle/vehicle paths */
 import { registerBlock } from '../block-registry'
 import type {
   FlyhubBlock,
@@ -851,13 +851,16 @@ function generateOemOffersHtml(
 // Maizzle-specific rendering helpers (uses email-components + shared offer generator)
 // ---------------------------------------------------------------------------
 
-// Lazy imports for Maizzle-specific dependencies
-let _emailComponents: typeof import('~~/server/utils/email-components') | null = null
+// Lazy imports for Maizzle-specific dependencies.
+// NOTE: `email-components` (automotive Maizzle vehicle rendering) is not ported
+// into the agency email module — the vehicle/Maizzle code path is dead here.
+// Stubbed to an empty object so the dynamic import resolves at build time.
+let _emailComponents: any = null
 let _offerGenerator: typeof import('./offer-html-generator') | null = null
 
 async function getEmailComponents() {
   if (!_emailComponents) {
-    _emailComponents = await import('~~/server/utils/email-components')
+    _emailComponents = {}
   }
   return _emailComponents
 }

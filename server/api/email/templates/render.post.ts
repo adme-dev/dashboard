@@ -4,7 +4,8 @@
 
 import { z } from 'zod'
 import { requireAuth } from '~~/server/utils/auth'
-import { renderTemplateDocument, isFlyhubFormat } from '~~/server/utils/email-marketing/render'
+import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
+import { isFlyhubFormat } from '~~/server/utils/email-marketing/render/flyhub-html-renderer'
 
 const Body = z.object({
   body_source: z.any(),
