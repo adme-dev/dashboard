@@ -26,9 +26,9 @@ import type { BlockDefinition, BlockRenderContext, FlyhubBlock, RenderFormat } f
 // placeholders for every block — including the EmailLayout root.
 const REGISTRY_KEY = '__edmBlockRegistry'
 const globalRegistry = globalThis as Record<string, unknown>
-const registry: Map<string, BlockDefinition> =
-  (globalRegistry[REGISTRY_KEY] as Map<string, BlockDefinition>) ??
-  (globalRegistry[REGISTRY_KEY] = new Map<string, BlockDefinition>())
+const registry: Map<string, BlockDefinition>
+  = (globalRegistry[REGISTRY_KEY] as Map<string, BlockDefinition>)
+    ?? (globalRegistry[REGISTRY_KEY] = new Map<string, BlockDefinition>())
 
 // ---------------------------------------------------------------------------
 // Registry API
@@ -114,7 +114,7 @@ function renderPlaceholder(type: string, format: RenderFormat): string {
       `      ${message}`,
       '    </mj-text>',
       '  </mj-column>',
-      '</mj-section>',
+      '</mj-section>'
     ].join('\n')
   }
 
@@ -126,6 +126,6 @@ function renderPlaceholder(type: string, format: RenderFormat): string {
     `      ${message}`,
     '    </td>',
     '  </tr>',
-    '</table>',
+    '</table>'
   ].join('\n')
 }
