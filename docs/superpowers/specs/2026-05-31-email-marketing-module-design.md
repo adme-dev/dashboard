@@ -1,7 +1,7 @@
 # Email Marketing Module — Design Spec
 
 **Date:** 2026-05-31
-**Status:** Approved design, ready for planning (revised 2026-05-31 after R&D — EmailBuilder.js composer, RFC 8058 opt-out, Resend pacing, MJML-on-Workers constraint)
+**Status:** Approved design, ready for planning (revised 2026-05-31 after R&D — composer = `@flyhub/email-builder` Vue port + pure-TS Workers-safe renderer cherry-picked from `promotion-knoxgwmhaval`; RFC 8058 opt-out; Resend pacing)
 **Owner:** Paul (paul@adme.net.au)
 
 ## Summary
@@ -15,14 +15,14 @@ Lives at **`/agency/email`**.
 ## Goals
 
 - Named **lists** + global **subscribers** (many-to-many), with CSV import and "add to list" from existing `leads` / `agency_clients`.
-- **Campaign composer**: a visual block builder — **EmailBuilder.js** (`@usewaypoint/email-builder`, MIT) — authoring a JSON document that renders to email-safe HTML in the browser; merge tags, an HTML block for raw markup, save/load reusable templates, test sends, schedule.
+- **Campaign composer**: a Vue-native visual block builder — **`@flyhub/email-builder`** (the Vue 3 port of EmailBuilder.js) — authoring a JSON document rendered to email-safe HTML by a **pure-TS server renderer** (Workers-safe); merge tags, an HTML block for raw markup, save/load reusable templates, test sends, schedule. Cherry-picked from the proven `promotion-knoxgwmhaval` EDM layer.
 - **Resumable, chunked sending engine** sized for **medium scale (2k–50k recipients/campaign)** — crash-safe, pausable, cancellable.
 - **Tracking + analytics** via Resend webhooks: delivered/opened/clicked/bounced/complained, per-campaign + per-subscriber, with auto-suppression of hard bounces/complaints.
 - **Public pages**: subscribe form + double opt-in, one-click unsubscribe + preference center. Legally compliant (AU Spam Act 2003 + Gmail/Yahoo bulk-sender requirements).
 
 ## Non-Goals (this milestone)
 
-- A **bespoke block builder** — we adopt **EmailBuilder.js** (`@usewaypoint`, MIT) rather than building our own editor. (This is the same library listmonk embeds.)
+- A **bespoke block builder** — we adopt **`@flyhub/email-builder`** (Vue port of EmailBuilder.js) + the pure-TS renderer, cherry-picked from `promotion-knoxgwmhaval`, rather than building our own editor.
 - **A/B testing** of subject lines / content variants.
 - Raw-SQL arbitrary **segmentation** (listmonk-style). V1 segmentation is list + status + simple attribute filters only.
 - **Per-client sending domains / DKIM** and dedicated-IP warm-up (relevant only when multi-tenant + large scale lands).
@@ -36,23 +36,33 @@ The other rejected approach — a naive cron loop that sends to everyone in a si
 
 **Corollary (Resend reality, confirmed by R&D):** because we use the send/Batch API rather than Audiences, Resend provides **nothing automatic** — no managed unsubscribe link/token, no auto `List-Unsubscribe` headers, no suppression list. We build all of it (see §4). Resend's hard limits: **Batch API = 100 emails/request**; **rate limit = 2 req/s default, max 5 req/s per team** (with `ratelimit-*` + `retry-after` response headers). The sending engine must pace to this globally (§2), not just fan out.
 
-## Key Decision: EmailBuilder.js for the composer, rendered in the browser
+## Key Decision: cherry-pick the `@flyhub/email-builder` Vue port + pure-TS server renderer
 
-The campaign composer is **EmailBuilder.js** (`@usewaypoint/email-builder` + its `@usewaypoint/block-*` packages, all MIT) — the exact library listmonk embeds for its visual builder. It is **React 18 + MUI**, so it is mounted as an **isolated micro-island** on the composer route only (the rest of `/agency/email` stays Nuxt/Vue 3). listmonk proves this island pattern in production (it embeds the same React app inside a Vue 2 host).
+We do **not** embed the React `@usewaypoint` island. Instead we **cherry-pick from an existing, production-proven Nuxt 4 + Cloudflare + Resend implementation** in a sibling project (`promotion-knoxgwmhaval`, the `layers/edm` Nuxt layer). That project already ported EmailBuilder.js to Vue and solved every hard problem for our exact stack.
 
-The email is stored as a **JSON document** (`@usewaypoint/document-core`) in `campaigns.body_source`; EmailBuilder.js renders it to email-safe HTML **client-side**, and we persist that rendered HTML in `campaigns.body_html`. Raw-HTML authoring is covered by EmailBuilder.js's built-in **HTML block** — no separate code editor needed.
+- **`@flyhub/email-builder`** (+ `@flyhub/email-block-*`, `@flyhub/email-core`, `@flyhub/email-document-core`) is the **Vue 3 port of EmailBuilder.js** — identical block set and document schema (`{ root: { type: 'EmailLayout', … } }`). Being Vue, it drops into Nuxt 4 natively — **no React/MUI island.**
+- **The MJML-on-Workers wall is avoided entirely** by a **pure-TypeScript server renderer** (`flyhub-html-renderer.ts` + a `block-registry`): it walks the JSON document and emits table-based, MSO-conditional, responsive email HTML by string-building. It has **zero** dependency on the `@flyhub`/MJML runtimes, so it runs on Cloudflare Workers. **MJML and `@maizzle/framework` are not used.**
 
-**Hard runtime constraint:** **MJML cannot run in the Cloudflare Workers runtime** (`window`/`fs` dependencies — a known, unresolved issue). EmailBuilder.js sidesteps this entirely by rendering HTML in the browser. The rule for this module is therefore absolute: **all email HTML is produced client-side; the Workers/edge runtime never compiles a template.** The server only ever stores and sends already-rendered HTML (with `{{merge_tags}}` substituted per-recipient at send time, a pure string operation).
+**Revised render model (supersedes the earlier "client-only render" constraint):** the email is authored as a **JSON document** stored in `campaigns.body_source`. The **authoritative HTML is rendered server-side at send/preview time** by the pure-TS renderer — `renderFlyhubDocumentToHtml(doc, { variables, subjectLine, previewText, primaryColor })` — which also does `{{merge_field}}` substitution (`html.replace(/{{key}}/g, value)`). The optional client-side preview is just a convenience; the server render is the source of truth. This is *better* than rendering in the browser: per-recipient personalization happens at send time from one stored document.
 
-**Integration contract (verified against listmonk's `frontend/email-builder` source — our exact blueprint):** the builder is built as a small React micro-app exposing imperative functions; the Vue host drives it:
+**Cloudflare bundle trick (proven, mandatory):** the heavy `@flyhub/*` packages are **aliased to a stub** (`flyhub-stub.ts`) in the Nitro `inline` + `alias` config so they are **excluded from the Workers server bundle** (the builder is client-only; the server uses the pure-TS renderer, which depends on none of them). This mirrors the sibling project's `nuxt.config.ts` and matters given the dashboard's existing bundle/heap sensitivity.
 
-- `render(containerId, props, force?)` — mounts the React+MUI app into a `<div id=…>`. `isRendered(containerId)` guards double-mount; `resetDocument()` / `DEFAULT_SOURCE` (`{ root: { type: 'EmailLayout', data: {} } }`) reset it.
-- `AppProps`:
-  - `data?: TEditorConfiguration` — the initial JSON document to load (i.e. `campaigns.body_source`).
-  - `onChange?: (json, html) => void` — **fires on every edit with BOTH the JSON document AND the rendered HTML**. The HTML comes from `renderToStaticMarkup(document, { rootBlockId: 'root' })` (from `@usewaypoint/email-builder`), wrapped to inject a `<meta viewport>`. So the host gets ready-to-send HTML for free on every change — no separate export step, no server render.
-  - `height?: string`.
-- **Our wiring:** a Nuxt `.client.vue` component mounts the div, dynamically imports the bundle, calls `render(id, { data: existingDoc, onChange: (json, html) => persist(json → body_source, html → body_html) })`. Route-split + client-only so React/MUI/emotion never enter SSR or the main bundle.
-- **Merge tags:** EmailBuilder.js has no native variable concept — you type `{{ first_name }}` into a Text/HTML block and it lands in the rendered HTML verbatim; we substitute server-side at send time (listmonk does the same with Go templates). No custom block needed for MVP.
+### Cherry-pick manifest (port from `promotion-knoxgwmhaval`, then adapt)
+
+**Client (browser-only):**
+- npm deps: `@flyhub/email-builder`, `@flyhub/email-core`, `@flyhub/email-document-core`, and the standard `@flyhub/email-block-{avatar,button,columns-container,container,divider,heading,html,image,spacer,text}`.
+- Port `layers/edm/components/edm/flyhub/EdmFlyhubBuilder.vue` + `stores/edmBuilder.ts` + `composables/useRegisteredBlocks.ts`, **re-skinned from shadcn-vue to Nuxt UI v4** (`Card`/`Button` → `UCard`/`UButton`, etc., per CLAUDE.md).
+
+**Server (Workers-safe, pure TS — port mostly as-is):**
+- `server/utils/flyhub-html-renderer.ts` (document orchestration + `isFlyhubFormat` guard).
+- `server/utils/block-registry.ts` (registry + `renderBlock`; note: it pins the registry on `globalThis.__edmBlockRegistry` to survive Vite SSR HMR — keep that).
+- `server/utils/blocks/{types,helpers,index}.ts` (infra; `index.ts` exports `BLOCKS_LOADED` to defeat tree-shaking of registration side-effects).
+- Generic block renderers to keep: `email-layout, heading, text, button, image, avatar, divider, spacer, container, columns-container, html-block`, plus generic marketing blocks `hero-section, cta-banner, feature-grid, header-block, footer-block, menu, social, review-stars, testimonial, countdown-timer, next-steps`.
+- **DROP (automotive/domain-specific):** all `vehicle-*`, `similar-vehicles`, `aged-inventory-alert`, `new-arrival-banner`, `price-drop-alert`, `brand-badge`, `salesperson-card`, `appointment-details`, `inquiry-summary`. **DROP** `maizzle-helpers.ts` + any MJML/Maizzle render paths (we only use the `html` render format).
+
+**Build config:** add `flyhub-stub.ts` + the Nitro `inline`/`alias` entries for the `@flyhub/*` packages (copy the pattern from the sibling `nuxt.config.ts`).
+
+**Merge tags:** type `{{ first_name }}` into Text/HTML blocks; the renderer substitutes via the `variables` map at send time. No custom block needed for MVP.
 
 ## Existing building blocks reused
 
@@ -76,7 +86,7 @@ All tables carry `client_id` (nullable for agency-first), `created_by`, `created
 - **`email_subscribers`** — `id`, `email` (citext, UNIQUE), `name`, `attribs` JSONB, `status` (`enabled` / `disabled` / `blocklisted`), timestamps. One global record per person, deduped by email.
 - **`email_lists`** — `id`, `name`, `description`, `client_id` (nullable), `double_optin` (bool), `created_by`, timestamps, `archived_at`.
 - **`subscriber_lists`** (junction) — `subscriber_id`, `list_id`, `status` (`unconfirmed` / `confirmed` / `unsubscribed`), `source` (`import` / `form` / `manual` / `leads`), `subscribed_at`, `unsubscribed_at`. PK `(subscriber_id, list_id)`.
-- **`campaigns`** — `id`, `name`, `subject`, `from_name`, `from_email`, `reply_to`, `body_html` (rendered, ready-to-send), `body_source` (EmailBuilder.js JSON document), `content_type` (`emailbuilder` / `html`), `template_id` (nullable), `status` (`draft` / `scheduled` / `sending` / `paused` / `sent` / `cancelled`), `scheduled_at`, `started_at`, `finished_at`, `client_id`, `created_by`, denormalized counters (`to_send`, `sent`, `delivered`, `opened`, `clicked`, `bounced`, `complained`, `unsubscribed`), timestamps.
+- **`campaigns`** — `id`, `name`, `subject`, `from_name`, `from_email`, `reply_to`, `body_html` (server-rendered, ready-to-send, may contain `{{tokens}}`), `body_source` (FlyHub JSON document — the source of truth), `content_type` (`flyhub` / `html`), `template_id` (nullable), `status` (`draft` / `scheduled` / `sending` / `paused` / `sent` / `cancelled`), `scheduled_at`, `started_at`, `finished_at`, `client_id`, `created_by`, denormalized counters (`to_send`, `sent`, `delivered`, `opened`, `clicked`, `bounced`, `complained`, `unsubscribed`), timestamps.
 - **`campaign_lists`** (junction) — `campaign_id`, `list_id`. A campaign may target multiple lists.
 - **`campaign_recipients`** — **the resumable work queue.** `id`, `campaign_id`, `subscriber_id`, `email` (snapshot), `status` (`pending` / `sent` / `failed` / `cancelled`), `resend_message_id`, `attempts`, `error`, `sent_at`. Unique `(campaign_id, subscriber_id)`.
 - **`email_events`** — `id`, `campaign_id`, `subscriber_id`, `resend_message_id`, `event_type` (`sent` / `delivered` / `opened` / `clicked` / `bounced` / `complained` / `unsubscribed`), `url` (for clicks), `occurred_at`, `raw` JSONB. Idempotent insert keyed on Resend event id.
@@ -89,7 +99,7 @@ All tables carry `client_id` (nullable for agency-first), `created_by`, `created
 2. **Materialize** — one job expands `campaign_lists` into `campaign_recipients` rows: dedup by email across lists; exclude `unsubscribed` (per target list), globally suppressed, and `disabled`/`blocklisted` subscribers. Set `campaigns.to_send`.
 3. **Chunked send jobs** — enqueue chunks of **100** (Resend Batch API limit). Each queue job:
    - Claims a chunk of `pending` rows (`FOR UPDATE SKIP LOCKED`).
-   - Substitutes `{{merge_tags}}` per recipient into the pre-rendered `body_html` (pure string op — no template compilation on the edge).
+   - Renders `body_html` once from `body_source` via the pure-TS renderer (Workers-safe), then substitutes `{{merge_tags}}` per recipient (pure string op). The render is a string-build, not template compilation — safe on the edge.
    - Calls **Resend Batch API**; records `resend_message_id` per recipient; status → `sent`; inserts `sent` `email_events`.
    - On 429 / rate-limit: read `retry-after`, back off, re-enqueue remainder.
    - **Global pacing:** the engine throttles to **≤2 req/s** (token bucket / single-flight consumer), staying under Resend's default cap. At 2 req/s × 100/batch ≈ 12k emails/min, so a 50k campaign drains in ~4 min. Concurrency is deliberately capped — we do NOT blast all queue consumers at once, or we 429 ourselves.
@@ -137,7 +147,7 @@ New `/agency/email` area:
 - **Lists** — `UTable` of lists + subscriber counts; create/edit/archive.
 - **Subscribers** — search, status filter, CSV import, manual add, "add to list" from `leads` / `agency_clients`.
 - **Campaigns** — list with status + headline stats.
-- **Composer** — **EmailBuilder.js** React island (block-based visual editor: text, heading, button, image, columns, container, divider, spacer, HTML, avatar) producing a JSON document → client-rendered HTML; merge tags (`{{ first_name }}`, `{{ email }}`, `{{ unsubscribe_url }}`) inserted as plain tokens and substituted at send time; recipient/list picker; **send test to me**; send now / schedule. Mounted only on this route; rest of the area is Nuxt/Vue.
+- **Composer** — **`@flyhub/email-builder`** Vue block editor (text, heading, button, image, columns, container, divider, spacer, HTML, avatar + generic marketing blocks) producing a JSON document; HTML rendered server-side by the pure-TS renderer; merge tags (`{{ first_name }}`, `{{ email }}`, `{{ unsubscribe_url }}`) substituted at send time; recipient/list picker; **send test to me**; send now / schedule. Builder chrome re-skinned to Nuxt UI v4.
 - **Campaign Report** — sent/delivered/open-rate/click-rate/bounce/unsub via Unovis charts + per-subscriber event drill-down.
 - **Templates** — save/load reusable shells.
 - **Settings** — from-name/from-email, double opt-in defaults, Resend webhook status.
@@ -162,7 +172,7 @@ New `/agency/email` area:
 ## Build order (phases — each its own plan)
 
 1. **Data + Lists + Subscribers + Import** — migrations 132+, list/subscriber CRUD, CSV import, pull-from-leads/clients, admin UI for lists/subscribers.
-2. **Composer + Sending engine** — campaigns + `campaign_recipients`; **EmailBuilder.js** composer island (JSON doc → client-rendered HTML); materialization + chunked queue sender with **≤2 req/s global pacing** + cron scheduler/watchdog; test sends; send gate.
+2. **Composer + Sending engine** — campaigns + `campaign_recipients`; cherry-pick `@flyhub/email-builder` composer (Vue, re-skinned to Nuxt UI) + the pure-TS server renderer + block-registry + stub-alias build config; materialization + chunked queue sender with **≤2 req/s global pacing** + cron scheduler/watchdog; test sends; send gate.
 3. **Tracking + Analytics** — Resend webhook handler, `email_events`, suppression auto-add, campaign report dashboard.
 4. **Public pages + opt-out** — subscribe + double opt-in + unsubscribe (GET preference center **and** POST one-click) + RFC 8058 `List-Unsubscribe` / `List-Unsubscribe-Post` headers + DKIM-coverage verification + AU sender-ID footer.
 5. **Templates + segmentation + marketing-page sync** — templates manager, v1 segmentation filters, update `app/pages/features/*` + `MarketingNav.vue` per CLAUDE.md.
@@ -170,8 +180,9 @@ New `/agency/email` area:
 
 ## External dependencies (new)
 
-- **`@usewaypoint/email-builder`** + `@usewaypoint/block-*` + `@usewaypoint/document-core` (MIT) — the composer. Pulls **React 18 + MUI** into one isolated route bundle (the same set listmonk ships). Verify the React island mounts cleanly under Nuxt 4's Vite build before committing to it in Phase 2.
-- No MJML dependency (cannot run on Workers; not needed since EmailBuilder.js renders client-side).
+- **`@flyhub/email-builder`** + `@flyhub/email-block-*` + `@flyhub/email-core` + `@flyhub/email-document-core` — the Vue 3 composer (client-only). **No React, no MUI.** Aliased to `flyhub-stub.ts` in the Nitro build so they never enter the Workers server bundle.
+- **No MJML / `@maizzle/framework`** — the pure-TS block-registry renderer replaces them and runs on Workers.
+- All composer pieces (builder component, store, server renderer, block registry, generic blocks, build config) are **ported from `promotion-knoxgwmhaval/layers/edm`** — already proven on Nuxt 4 + Cloudflare + Resend.
 
 ## Compliance notes (AU + bulk-sender) — see §4 for the authoritative mechanics
 
@@ -179,4 +190,4 @@ Australian Spam Act 2003: consent before sending, sender identification (legal n
 
 ## R&D provenance (2026-05-31)
 
-Findings backing the decisions above: Resend gives nothing automatic on the send/Batch path ([docs](https://resend.com/docs/dashboard/emails/add-unsubscribe-to-transactional-emails)); Batch=100/req, rate 2–5 req/s ([limits](https://resend.com/docs/api-reference/rate-limit)); RFC 8058 two-header one-click ([Mailgun](https://www.mailgun.com/blog/deliverability/what-is-rfc-8058/)); AU Spam Act s18 functional unsubscribe + 5-day rule ([AustLII](https://austlii.edu.au/cgi-bin/viewdoc/au/legis/cth/consol_act/sa200366/s18.html)); MJML can't run on Workers ([issue #2812](https://github.com/mjmlio/mjml/issues/2812)); EmailBuilder.js is the MIT library listmonk embeds ([listmonk email-builder](https://github.com/knadh/listmonk/tree/master/frontend/email-builder), [EmailBuilder.js](https://github.com/usewaypoint/email-builder-js)).
+Findings backing the decisions above: Resend gives nothing automatic on the send/Batch path ([docs](https://resend.com/docs/dashboard/emails/add-unsubscribe-to-transactional-emails)); Batch=100/req, rate 2–5 req/s ([limits](https://resend.com/docs/api-reference/rate-limit)); RFC 8058 two-header one-click ([Mailgun](https://www.mailgun.com/blog/deliverability/what-is-rfc-8058/)); AU Spam Act s18 functional unsubscribe + 5-day rule ([AustLII](https://austlii.edu.au/cgi-bin/viewdoc/au/legis/cth/consol_act/sa200366/s18.html)); MJML can't run on Workers ([issue #2812](https://github.com/mjmlio/mjml/issues/2812)); EmailBuilder.js is the library listmonk embeds ([listmonk email-builder](https://github.com/knadh/listmonk/tree/master/frontend/email-builder), [EmailBuilder.js](https://github.com/usewaypoint/email-builder-js)); **`@flyhub/email-builder` is its Vue 3 port**, already integrated for our exact stack in the local `promotion-knoxgwmhaval/layers/edm` Nuxt layer (with a Workers-safe pure-TS block-registry renderer + stub-alias build) — the source we cherry-pick.
