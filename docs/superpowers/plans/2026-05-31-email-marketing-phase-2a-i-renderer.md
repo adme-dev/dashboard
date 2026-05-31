@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Port the Workers-safe pure-TS flyhub document→HTML renderer (block registry + generic blocks + orchestrator) into the dashboard, add `email_templates` persistence (JSONB `body_source` + rendered `body_html`), and CRUD + stateless render endpoints — so we can store a flyhub JSON document and render it to email-safe HTML at the edge, with merge-field substitution.
+**Goal:** Port the Workers-safe pure-TS flyhub document→HTML renderer (block registry + generic blocks + orchestrator) into the dashboard, add `edm_templates` persistence (JSONB `body_source` + rendered `body_html`), and CRUD + stateless render endpoints — so we can store a flyhub JSON document and render it to email-safe HTML at the edge, with merge-field substitution.
 
 **Architecture:** All rendering is pure TypeScript string-building — **no `@flyhub` npm packages, no MJML, no build-config changes** (those belong to Phase 2a-ii, the editor). The renderer is cherry-picked from `promotion-knoxgwmhaval/layers/edm/server/utils` (proven in production), trimmed to generic blocks, placed under `server/utils/email-marketing/render/`. Templates store the document as JSONB and the rendered HTML is regenerated on every write.
 
@@ -38,7 +38,7 @@
 
 ---
 
-## Task 1: Migration 133 — email_templates
+## Task 1: Migration 133 — edm_templates
 
 **Files:**
 - Create: `server/database/migrations/133-email-templates.sql`
@@ -49,7 +49,7 @@
 -- 133: email marketing — reusable email templates / drafts (Phase 2a-i)
 -- Stores the flyhub document (JSONB body_source) and its server-rendered HTML.
 -- The editor (Phase 2a-ii) edits body_source; the renderer regenerates body_html.
-CREATE TABLE IF NOT EXISTS email_templates (
+CREATE TABLE IF NOT EXISTS edm_templates (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name         TEXT NOT NULL,
   subject      TEXT,
@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS email_templates (
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_email_templates_client ON email_templates(client_id);
+CREATE INDEX IF NOT EXISTS idx_edm_templates_client ON edm_templates(client_id);
 ```
 
 - [ ] **Step 2: Run + verify**
@@ -71,7 +71,7 @@ Run:
 ```bash
 export DATABASE_URL=$(grep DATABASE_URL .env | cut -d= -f2-)
 psql "$DATABASE_URL" -f server/database/migrations/133-email-templates.sql
-psql "$DATABASE_URL" -c "\d email_templates"
+psql "$DATABASE_URL" -c "\d edm_templates"
 ```
 Expected: `CREATE TABLE`/`CREATE INDEX`; table prints with `body_source` jsonb + `body_html` text.
 
@@ -79,7 +79,7 @@ Expected: `CREATE TABLE`/`CREATE INDEX`; table prints with `body_source` jsonb +
 
 ```bash
 git add server/database/migrations/133-email-templates.sql
-git commit -m "feat(email): migration 133 — email_templates (flyhub doc + rendered html)"
+git commit -m "feat(email): migration 133 — edm_templates (flyhub doc + rendered html)"
 ```
 
 ---
@@ -424,7 +424,7 @@ git commit -m "test(email): renderer unit tests — heading, multi-block, merge 
 
 ```ts
 // server/utils/email-marketing/templates.ts
-// DB layer for email_templates. body_html is always (re)rendered from
+// DB layer for edm_templates. body_html is always (re)rendered from
 // body_source on write via the pure-TS renderer.
 
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
@@ -454,12 +454,12 @@ function renderHtml(bodySource: unknown, subject?: string | null, previewText?: 
 
 export async function listTemplates(): Promise<EmailTemplate[]> {
   return queryRows<EmailTemplate>(
-    'SELECT * FROM email_templates ORDER BY updated_at DESC',
+    'SELECT * FROM edm_templates ORDER BY updated_at DESC',
   )
 }
 
 export async function getTemplate(id: string): Promise<EmailTemplate | null> {
-  return queryOne<EmailTemplate>('SELECT * FROM email_templates WHERE id = $1', [id])
+  return queryOne<EmailTemplate>('SELECT * FROM edm_templates WHERE id = $1', [id])
 }
 
 export async function createTemplate(input: {
@@ -473,7 +473,7 @@ export async function createTemplate(input: {
   const source = input.body_source ?? { root: { type: 'EmailLayout', data: { childrenIds: [] } } }
   const html = renderHtml(source, input.subject, input.preview_text)
   const row = await queryOne<EmailTemplate>(`
-    INSERT INTO email_templates (name, subject, preview_text, body_source, body_html, client_id, created_by)
+    INSERT INTO edm_templates (name, subject, preview_text, body_source, body_html, client_id, created_by)
     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)
     RETURNING *
   `, [
@@ -504,7 +504,7 @@ export async function updateTemplate(id: string, patch: {
   const html = renderHtml(source, subject, previewText)
 
   return queryOne<EmailTemplate>(`
-    UPDATE email_templates
+    UPDATE edm_templates
     SET name = $1, subject = $2, preview_text = $3, body_source = $4::jsonb, body_html = $5, updated_at = NOW()
     WHERE id = $6
     RETURNING *
@@ -512,7 +512,7 @@ export async function updateTemplate(id: string, patch: {
 }
 
 export async function deleteTemplate(id: string): Promise<void> {
-  await execute('DELETE FROM email_templates WHERE id = $1', [id])
+  await execute('DELETE FROM edm_templates WHERE id = $1', [id])
 }
 ```
 
@@ -760,7 +760,7 @@ git commit -m "chore(email): phase 2a-i lint + verification" || echo "nothing to
 
 ## Phase 2a-i Definition of Done
 
-- Migration 133 applied; `email_templates` present.
+- Migration 133 applied; `edm_templates` present.
 - Render pipeline ported under `server/utils/email-marketing/render/` — **no `@flyhub`/npm/MJML deps**, relative imports only.
 - ~8 renderer unit tests passing (heading, multi-block ordering, merge fields, invalid-doc guard).
 - Templates CRUD + stateless render endpoint working; `body_html` regenerated from `body_source` on every write (verified against the live DB).
