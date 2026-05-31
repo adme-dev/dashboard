@@ -1,0 +1,61 @@
+// workers/pages-cron/src/index.ts
+// Consolidated Cloudflare Cron Worker for the Pages app's HTTP /api/cron/* routes.
+//
+// The Nitro Cloudflare-Pages build emits no scheduled() handler and Pages cron
+// triggers aren't supported in wrangler.toml, so these endpoints can't be driven
+// by a Pages dashboard cron. This worker fills the gap (same pattern as
+// workers/leads-cron and workers/meta-status-cron): each cron expression fans
+// out to one or more endpoints, POSTed with the x-cron-secret header.
+//
+// NOTE: /api/cron/meta-ad-status-sync is handled by its own worker
+// (workers/meta-status-cron) and is intentionally NOT duplicated here.
+
+interface Env {
+  APP_BASE_URL: string
+  CRON_SECRET: string
+}
+
+// One cron expression may drive several endpoints. Keys MUST exactly match the
+// crons listed in wrangler.toml (controller.cron is matched verbatim).
+const ROUTES: Record<string, string[]> = {
+  // hourly — anomaly handler self-gates to 7am tenant-local.
+  // NOTE: /api/cron/ga4-sync is intentionally NOT wired yet — it hangs over HTTP
+  // (>150s, no response, last_run_at not updated), so it needs debugging before
+  // being scheduled. Add it back to this array once the hang is fixed.
+  '0 * * * *': ['/api/cron/anomaly-detection'],
+  // every 5 min — office-assistant watch evaluation (own 15-min debounce)
+  '*/5 * * * *': ['/api/cron/office-assistant'],
+  // daily — office meeting/recording retention cleanup
+  '35 3 * * *': ['/api/cron/office-retention'],
+  // daily — purge tracking_events past each site's retention_days
+  '45 3 * * *': ['/api/cron/tracking-retention'],
+}
+
+export default {
+  async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext) {
+    const paths = ROUTES[controller.cron]
+    if (!paths) {
+      console.warn('pages-cron: unknown cron', controller.cron)
+      return
+    }
+    await Promise.all(
+      paths.map(async (path) => {
+        try {
+          const resp = await fetch(`${env.APP_BASE_URL}${path}`, {
+            method: 'POST',
+            headers: { 'x-cron-secret': env.CRON_SECRET },
+          })
+          const text = await resp.text()
+          console.log('pages-cron.run', {
+            cron: controller.cron,
+            path,
+            status: resp.status,
+            body: text.slice(0, 200),
+          })
+        } catch (err) {
+          console.error('pages-cron.error', { cron: controller.cron, path, error: String(err) })
+        }
+      }),
+    )
+  },
+}
