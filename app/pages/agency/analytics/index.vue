@@ -223,6 +223,13 @@ async function syncAll() {
       api-base="/api/agency/analytics/funnel"
     />
 
+    <!-- Blended channels — works agency-wide or per client; self-hides when no data -->
+    <AgencyBlendedPanel
+      :start-date="filters.startDate"
+      :end-date="filters.endDate"
+      :client-id="filters.clientId"
+    />
+
     <!-- Client Breakdown -->
     <div>
       <h3 class="text-sm font-semibold text-default mb-3">
