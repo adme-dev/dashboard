@@ -91,6 +91,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     items.push(
       { type: 'label', label: 'Clients' },
       { label: 'Clients', icon: 'i-lucide-building-2', to: '/agency/clients', onSelect: close },
+      { label: 'CRM', icon: 'i-lucide-contact', to: '/agency/crm', onSelect: close },
       { label: 'Intake', icon: 'i-lucide-inbox', to: '/agency/intake', onSelect: close },
       { label: 'Client Portal', icon: 'i-lucide-globe', to: '/agency/client-portal', onSelect: close }
     )
