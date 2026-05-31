@@ -53,18 +53,24 @@ Expanded plan: `docs/superpowers/plans/2026-05-31-phase2-blended-attribution.md`
 - **Deploy + push:** committed to `main` only. `pnpm deploy:production`; push needs the `adme-dev` gh account.
 - Currency/timezone normalization (2.3) and a real touchpoint table (2.5) are deferred as noted above.
 
-### C. Phase 3 — Deeper GA4 + anomaly + reporting (not started)
-- 3.1 Richer GA4 ingestion (`sessionSourceMedium`, `sessionCampaignName`, `deviceCategory`, `landingPage`, `country`, event-level) + `batchRunReports` + quota self-throttle/backoff.
-- 3.2 **Wire GA4 into the anomaly engine** (`server/utils/anomalyDetection/`) — currently only spend/invoices/time; GA4 traffic/CVR drops go undetected.
-- 3.3 Caching + pre-aggregated rollups.
-- 3.4 Scheduled white-label PDF/email reports (R2 + Resend).
-- 3.5 Multi-property-per-client rollups (relax `UNIQUE(property_id)` 1:1).
-- 3.6 Internal benchmarking (cross-client percentiles).
-- 3.7 Warehouse/API export destination + NL insights via existing Groq chat (Supermetrics-inspired).
-- **"GA4 → KPIs/widgets" deferred slice** lives here: surface GA4 sessions/engagement/conversions in the dashboard KPI cards + widgets (not just the funnel).
+### C. Phase 3 — Deeper GA4 + anomaly + reporting ✅ DONE (committed to `main`)
+Migrations **127–131**. 6 new test files / 45 tests pass; suite baseline (104 `auth`/`cache`/`db` failures) unchanged.
+- 3.1 ✅ Richer GA4 ingestion — migration 127 (`ga4_daily_dimension` generic table + `ga4_daily_event`); `ga4Client.ts` gained dimension/event builders+parsers, `batchRunReports` (chunk ≤5, quota capture), `quotaShouldThrottle`, `ga4BackoffMs`, `withGa4Retry` (14 tests); `ga4DimensionSync.ts` orchestrates batched pull + self-throttle; cron runs channels + dimensions. Extracted `loadGa4Maps`/`ensureFreshGa4Token` (DRY).
+- 3.2 ✅ GA4 anomaly analyser — `analysers/ga4.ts` (traffic-drop / CVR-collapse / channel-mix-shift, volume-floored, 6 tests); migration 128 adds `'ga4'` to `anomalies_type_check`; anomalies page updated. Suppression/allowlist via existing pipeline.
+- 3.3 ✅ Caching — `analyticsCache.ts` SWR wrapper (provisional-48h flag + `_cache` envelope, short TTL for provisional) on overview + blended. **Rollup/materialized-views deferred** (data volume sub-100ms — premature).
+- 3.4 ✅ Scheduled reports — migration 131 (`report_schedules`/`report_runs`); `reportModel.ts` (compose + white-label HTML + due logic, 8 tests); `runReports.ts` (R2 archive + Resend); cron `/api/cron/scheduled-reports`; CRUD + send-now endpoints; UI `app/pages/agency/analytics/reports.vue`. **PDF deferred** — no Browser Rendering binding; delivered as HTML + R2 link.
+- 3.5 ✅ Multi-property — the real bug was `ga4_daily_channel`'s unique key omitting `property_id` (87 properties on one connection collapsed into one row). Migration 129 fixes the key + upsert; client_id-grouped aggregations roll up across properties for free. *(Note: `ga4_property_map` already allowed client→many properties.)*
+- 3.6 ✅ Internal benchmarking — `benchmarks.ts` (percentile/rank/summarize, 7 tests) + `internal-benchmarks.get.ts` (per-client GA4 engagement/CVR + blended CPL/CPA → portfolio quartiles + focal client percentile). Distinct from external `platform_benchmarks`.
+- 3.7 ✅ Export + NL insights — migration 130 (`analytics_export_tokens`, sha256-hashed); `GET /api/export/analytics` (token-auth, JSON/CSV canonical fact) + mint/list/revoke; `POST /api/agency/analytics/ask` (Groq grounded in canonical fact). **Warehouse push connectors deferred** — pull API is the destination.
+
+**Phase 3 follow-ons / still deferred:**
+- **Enable the GA4 cron** (§A.1) is now doubly important: 3.1 dimensions, 3.2 anomalies, and 3.6 GA4 benchmarks only populate once data flows. The cron handler runs channels + dimensions.
+- **API-only (no UI yet):** attribution selector, presets picker, internal-benchmarks display, NL `ask` box, export-token manager. Surfacing these is the remaining UI work.
+- **"GA4 → KPIs/widgets" slice** still open: surface GA4 sessions/engagement/conversions in the dashboard KPI cards/widgets (not just the funnel/blended panels).
+- Deferred with rationale: PDF rendering (Browser Rendering binding), rollup materialized views (volume), warehouse push connectors, currency/timezone normalization, real multi-touch touchpoint table.
 
 ### D. Loose ends / decisions
-- **Property→client is strictly 1:1** today — blocks multi-property clients (Phase 3.5).
+- ~~**Property→client is strictly 1:1**~~ — RESOLVED (3.5). `ga4_property_map` already allowed client→many; the fix was adding `property_id` to `ga4_daily_channel`'s unique key (migration 129).
 - **Build-vs-buy** still open: Semrush (SEO/organic — deferred) and Supermetrics (ETL/connector shortcut) — revisit after Phase 2 proves the taxonomy/blending layer.
 - **GA4 channel grouping is always last-click** regardless of property attribution setting → never assume GA4 channel == ad-platform channel.
 
@@ -80,7 +86,7 @@ Expanded plan: `docs/superpowers/plans/2026-05-31-phase2-blended-attribution.md`
 - DB model: migration `121-ga4-funnel.sql` (`ga4_property_map`, `ga4_daily_channel`) + `124-ga4-sync-status-and-retention.sql` (`ga4_sync_status`)
 
 **Runbook**
-- **Migrations** (run immediately on create): `export DATABASE_URL=$(grep DATABASE_URL .env | cut -d= -f2-) && psql "$DATABASE_URL" -f server/database/migrations/<file>.sql`. Next free number: **127** (125 = `spend_sync_jobs`, 126 = `channel-taxonomy`).
+- **Migrations** (run immediately on create): `export DATABASE_URL=$(grep DATABASE_URL .env | cut -d= -f2-) && psql "$DATABASE_URL" -f server/database/migrations/<file>.sql`. Next free number: **132** (126 = channel-taxonomy, 127 = ga4-dimensions, 128 = anomaly-ga4-type, 129 = ga4-multi-property, 130 = analytics-export-tokens, 131 = report-schedules).
 - **Deploy:** `pnpm deploy:production` (builds + `wrangler pages deploy`, ~few min; run backgrounded). Build heap handled in the `build` script.
 - **Push:** `origin` = `adme-dev/dashboard`; use the **`adme-dev`** gh account (Paul008 → 403). It's the active gh account in this environment.
 - **Tests:** `pnpm exec vitest run test/server`. NOTE: 4 suites fail on `main` baseline too (`auth`, `cache`, `db`, `leadsEndpointsList` = 106 failures) — pre-existing/flaky, unrelated. Treat that as the green baseline.
