@@ -26,7 +26,11 @@ Key modules: `server/utils/tracking/{track-schema,consent,normalize,pii-hash,sit
 ## Remaining code follow-ups (no deploy needed)
 - ~~**Provisioning-CRUD IDOR**~~ — **DONE this branch (`feat/tracking-provisioning-idor`):** list scopes to `client_team_assignments` clients for scoped roles; create/patch/snippet gate via `requireClientTrackingAccess`/`requireSiteTrackingAccess`; rotate-key left management-only (no scoped exposure). Helpers `accessibleClientIds` + `requireSiteTrackingAccess` added to `analytics-access.ts`.
 - **Hard Origin gate + per-key rate limiting** on the public beacon — currently soft (log-only) by design. ⚠️ Do NOT flip the hard 403 until allowlists are proven on live sites (premature flip = silent beacon drops at go-live). Rate limiting needs a CF state-store decision (KV `CACHE` binding vs Durable Object vs CF native rate-limit binding) — decide deliberately.
-- Minor: stale consent category lists in the tag's `isEventAllowed` (only bite once an explicit cookie exists); `dead_click` patches `history.pushState` per click → can race the SPA pushState patch; analytics review nits (tiny client-name endpoint for media_buyers so the drill-down header isn't "Client"; non-UUID `clientId` → 400 not 500).
+- ~~non-UUID `clientId`/`siteId` → 500~~ — **DONE (PR #29):** `isUuid` guard in the access helpers → 400 across all tracking endpoints.
+- Minor (open): stale consent category lists in the tag's `isEventAllowed` (only bite once an explicit cookie exists); `dead_click` patches `history.pushState` per click → can race the SPA pushState patch; tiny client-name endpoint for media_buyers so the drill-down header isn't "Client".
+
+## Deploy state (as of this handoff)
+Slices 1–2 + consent (#27, `c8c605f`) are LIVE in prod (agency-dashboard-6cm.pages.dev). PRs #28 (provisioning IDOR) + #29 (UUID guard) merged to `origin/main` AFTER that deploy → **redeploy to ship them.** Still pending operationally: set `TRACKING_IP_SALT`, curl proof, browser eyeball, GTM smoke.
 
 ## Future slices (bigger, not scoped)
 Conversion fan-out (Meta CAPI / Google Ads — keys off the now-accurate consent snapshot), raw-PII/leads wiring, 360/personas. Slice scope notes live in `docs/superpowers/specs/2026-05-31-tracking-*.md`.

@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { isManagementRole, ANALYTICS_ROLES } from '../../../../server/utils/tracking/analytics-access'
+import { isManagementRole, ANALYTICS_ROLES, isUuid } from '../../../../server/utils/tracking/analytics-access'
+
+describe('isUuid', () => {
+  it('accepts canonical UUIDs and rejects junk', () => {
+    expect(isUuid('6ff24c19-b238-465e-a4e2-fba84e8a4f42')).toBe(true)
+    expect(isUuid('not-a-uuid')).toBe(false)
+    expect(isUuid('')).toBe(false)
+    expect(isUuid(undefined)).toBe(false)
+  })
+})
 
 describe('isManagementRole', () => {
   it('treats owner/admin/lead/project_manager as management (see all clients)', () => {
