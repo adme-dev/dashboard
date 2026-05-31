@@ -157,7 +157,7 @@ export function useSocialConnections() {
     const body: any = {}
     if (month) body.month = month
     if (year) body.year = year
-    return await $fetch<{ status: 'started'; startedAt: string }>(
+    return await $fetch<{ status: 'started'; startedAt: string; jobId?: string }>(
       `/api/agency/social/${platform}/sync-spend`,
       { method: 'POST', body, timeout: 30_000 }
     )

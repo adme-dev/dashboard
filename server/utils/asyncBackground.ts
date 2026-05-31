@@ -50,27 +50,41 @@ interface KVBinding {
  * event.context after the request has ended throws "Cannot perform I/O on
  * behalf of a different request" (CF error 1101).
  */
-export function runSpendSyncInBackground(
+export function runSpendSyncInBackground<R = unknown>(
   event: H3Event,
   options: {
     label: string
-    sync: () => Promise<unknown>
+    sync: () => Promise<R>
     kvKeys: string[]
+    /** Run after the sync resolves and the KV cache is busted (e.g. mark a job row completed). */
+    onComplete?: (result: R) => Promise<void> | void
+    /** Run if the sync (or onComplete) throws (e.g. mark a job row failed). */
+    onError?: (err: unknown) => Promise<void> | void
+    /** Extra fields merged into the synchronous response (e.g. a job id to poll). */
+    extra?: Record<string, unknown>
   }
-): { status: 'started'; startedAt: string } {
+): { status: 'started'; startedAt: string } & Record<string, unknown> {
   const cache = (event.context as any).cloudflare?.env?.CACHE as
     | KVBinding
     | undefined
 
   const work = (async () => {
-    await options.sync()
-    if (cache) {
-      await Promise.all(
-        options.kvKeys.map(k => cache.delete(k).catch(() => {}))
-      )
+    try {
+      const result = await options.sync()
+      if (cache) {
+        await Promise.all(
+          options.kvKeys.map(k => cache.delete(k).catch(() => {}))
+        )
+      }
+      if (options.onComplete) await options.onComplete(result)
+    } catch (err) {
+      if (options.onError) {
+        try { await options.onError(err) } catch { /* don't mask the original */ }
+      }
+      throw err // surfaced by runAfterResponse's logger
     }
   })()
 
   runAfterResponse(event, work, options.label)
-  return { status: 'started', startedAt: new Date().toISOString() }
+  return { status: 'started', startedAt: new Date().toISOString(), ...(options.extra || {}) }
 }
