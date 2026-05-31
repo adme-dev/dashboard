@@ -1,11 +1,10 @@
 /** Render the install snippet for a site. GET /api/agency/tracking/:id/snippet */
 import { queryOne } from '~~/server/utils/db'
-import { requireAuth, requireRole } from '~~/server/utils/auth'
+import { requireSiteTrackingAccess } from '~~/server/utils/tracking/analytics-access'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
-  await requireRole(event, ['owner', 'admin', 'lead', 'project_manager', 'media_buyer', 'account_manager'])
   const id = getRouterParam(event, 'id')
+  await requireSiteTrackingAccess(event, id) // role + per-client access for this site
   const site = await queryOne(`SELECT write_key, spa FROM tracking_sites WHERE id = $1`, [id]) as any
   if (!site) throw createError({ statusCode: 404, statusMessage: 'Site not found' })
   const origin = getRequestProtocol(event) + '://' + getRequestHost(event)

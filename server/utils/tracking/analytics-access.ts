@@ -9,7 +9,7 @@
  */
 import type { H3Event } from 'h3'
 import { requireAuth, requireRole } from '~~/server/utils/auth'
-import { queryOne } from '~~/server/utils/db'
+import { queryOne, query } from '~~/server/utils/db'
 
 const MANAGEMENT_ROLES = ['owner', 'admin', 'lead', 'project_manager'] as const
 const SCOPED_ROLES = ['media_buyer', 'account_manager'] as const
@@ -32,4 +32,28 @@ export async function requireClientTrackingAccess(event: H3Event, clientId: stri
   )
   if (!row) throw createError({ statusCode: 403, statusMessage: 'No access to this client' })
   return user
+}
+
+/** Client ids the user may access: null = all clients (management role); else the
+ *  array of clients assigned via client_team_assignments. Use to scope list queries. */
+export async function accessibleClientIds(user: { id: string, role: string }): Promise<string[] | null> {
+  if (isManagementRole(user.role)) return null
+  const rows = await query<{ client_id: string }>(
+    `SELECT client_id FROM client_team_assignments WHERE team_member_id = $1`,
+    [user.id]
+  )
+  return rows.map(r => r.client_id)
+}
+
+/** Resolve a tracking site's owning client and gate access on it (for endpoints
+ *  keyed by site id, not client id). Returns the site's client_id. 404 if unknown. */
+export async function requireSiteTrackingAccess(event: H3Event, siteId: string | undefined): Promise<string> {
+  if (!siteId) throw createError({ statusCode: 400, statusMessage: 'site id is required' })
+  const row = await queryOne<{ client_id: string }>(
+    `SELECT client_id FROM tracking_sites WHERE id = $1`,
+    [siteId]
+  )
+  if (!row) throw createError({ statusCode: 404, statusMessage: 'Site not found' })
+  await requireClientTrackingAccess(event, row.client_id)
+  return row.client_id
 }
