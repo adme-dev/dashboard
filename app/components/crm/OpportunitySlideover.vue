@@ -17,6 +17,11 @@ const title = computed(() => props.record ? 'Edit opportunity' : 'New opportunit
         @submit="(b) => emit('save', b)"
         @cancel="emit('update:open', false)"
       />
+      <template v-if="record?.id">
+        <USeparator class="my-4" />
+        <h3 class="text-sm font-medium text-muted mb-3">Activity</h3>
+        <CrmActivityTimeline :client-id="clientId" target-type="opportunity" :target-id="record.id" />
+      </template>
     </template>
   </USlideover>
 </template>
