@@ -8,6 +8,7 @@ import { budgetAnalyser } from './analysers/budget'
 import { adspendAnalyser } from './analysers/adspend'
 import { clientsAnalyser } from './analysers/clients'
 import { transactionsAnalyser } from './analysers/transactions'
+import { ga4Analyser } from './analysers/ga4'
 
 import type { AnalyserContext, DetectedAnomaly } from './types'
 
@@ -21,6 +22,7 @@ const ALL = [
   adspendAnalyser,
   clientsAnalyser,
   transactionsAnalyser,
+  ga4Analyser,
 ]
 
 export async function runAllAnalysers(ctx: AnalyserContext): Promise<DetectedAnomaly[]> {

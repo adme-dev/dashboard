@@ -95,8 +95,29 @@ export async function fetchSharedData(event: H3Event | null): Promise<SharedData
     clientRevenue = null
   }
 
+  let ga4Channel: any = null
+  try {
+    ga4Channel = await queryRows(`
+      SELECT
+        g.client_id::text AS client_id,
+        ac.name AS client_name,
+        g.metric_date::text AS metric_date,
+        g.channel_group,
+        g.sessions::numeric AS sessions,
+        g.key_events::numeric AS key_events
+      FROM ga4_daily_channel g
+      LEFT JOIN agency_clients ac ON g.client_id = ac.id
+      WHERE g.metric_date >= CURRENT_DATE - INTERVAL '31 days'
+        AND g.client_id IS NOT NULL
+      ORDER BY g.metric_date DESC
+    `)
+  } catch (err) {
+    console.warn('[anomalies] ga4_daily_channel fetch failed:', err)
+    ga4Channel = null
+  }
+
   return {
     pnl, expenses, bankMonitoring, cashForecast, aging, budgetVariance,
-    mediaSpend, clientRevenue, invoiceLines: null,
+    mediaSpend, clientRevenue, invoiceLines: null, ga4Channel,
   }
 }
