@@ -23,7 +23,7 @@ export const FONT_FAMILY_MAP: Record<string, string> = {
     'ui-rounded, "Hiragino Maru Gothic ProN", Quicksand, Comfortaa, Manjari, "Arial Rounded MT Bold", Calibri, source-sans-pro, sans-serif',
   MODERN_SERIF: 'Charter, "Bitstream Charter", "Sitka Text", Cambria, serif',
   BOOK_SERIF: '"Iowan Old Style", "Palatino Linotype", "URW Palladio L", P052, serif',
-  MONOSPACE: '"Nimbus Mono PS", "Courier New", "Cutive Mono", monospace',
+  MONOSPACE: '"Nimbus Mono PS", "Courier New", "Cutive Mono", monospace'
 }
 
 // ---------------------------------------------------------------------------
@@ -66,7 +66,7 @@ export function formatPadding(
  * the others use `undefined`. Both are accepted here.
  */
 export interface FlyhubBlockStyle {
-  padding?: { top?: number; right?: number; bottom?: number; left?: number } | null
+  padding?: { top?: number, right?: number, bottom?: number, left?: number } | null
   textAlign?: string | 'left' | 'center' | 'right' | null
   color?: string | null
   backgroundColor?: string | null
@@ -134,7 +134,7 @@ export interface PreviewVehicle {
   fuelType?: string
   bodyType?: string
   odometer?: number
-  badges?: Array<{ type: string; text: string; color: string }>
+  badges?: Array<{ type: string, text: string, color: string }>
   urgencyTier?: 'warning' | 'urgent' | 'critical'
   urgencyMessage?: string
 }
@@ -157,7 +157,7 @@ export interface PreviewOffer {
   formattedPriceRetail?: string
   formattedPriceAbn?: string
   bannerText?: string
-  specifications?: Array<{ text: string; iconUrl?: string }>
+  specifications?: Array<{ text: string, iconUrl?: string }>
 }
 
 // ---------------------------------------------------------------------------

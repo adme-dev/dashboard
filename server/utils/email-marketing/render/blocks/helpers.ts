@@ -31,7 +31,7 @@ export function escapeUrl(url: string | undefined | null): string {
  * Replaces double quotes with single quotes to avoid breaking HTML attributes.
  */
 export function escapeFontFamilyForHtml(fontFamily: string): string {
-  return fontFamily.replace(/"/g, "'")
+  return fontFamily.replace(/"/g, '\'')
 }
 
 /**
@@ -56,7 +56,7 @@ export function formatAudPrice(price: number | undefined | null): string {
     style: 'currency',
     currency: 'AUD',
     minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 0
   }).format(price)
 }
 
