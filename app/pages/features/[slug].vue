@@ -738,6 +738,90 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  'email-campaigns': {
+    title: 'Email Campaigns',
+    slug: 'email-campaigns',
+    icon: 'i-lucide-send',
+    category: 'Communication',
+    categoryIcon: 'i-lucide-message-circle',
+    categoryIconBg: 'bg-violet-50',
+    categoryIconColor: 'text-violet-600',
+    description: 'Design, target, and send marketing email campaigns to your subscriber lists — with personalisation, delivery tracking, and one-click unsubscribe built in from the first send.',
+    details: [
+      {
+        title: 'Build and Target',
+        content: 'Create a campaign, design its body in the drag-and-drop email builder, and point it at one or more subscriber lists. XeroFlow materialises the recipient set for you — deduplicating people who appear on multiple lists, and automatically excluding anyone who has unsubscribed, hard-bounced, or been suppressed. Merge tags like first name and email personalise each message, so a single campaign reaches everyone with their own details filled in.'
+      },
+      {
+        title: 'Reliable, Paced Sending',
+        content: 'Sends go out through the Resend Batch API in paced chunks, with a crash-safe work queue behind them: if a send is interrupted, it resumes exactly where it left off rather than starting over or double-sending. Rate limits are handled with automatic back-off, and the whole pipeline is globally throttled so large campaigns deliver smoothly without tripping provider limits.'
+      },
+      {
+        title: 'Delivery and Engagement Tracking',
+        content: 'Every campaign tracks the full lifecycle of each message — sent, delivered, opened, clicked, bounced, and complained — ingested in real time from Resend webhooks. Open and click counts roll up per campaign so you can see what resonated, while hard bounces and spam complaints are automatically added to a global suppression list so you never email a bad or hostile address twice.'
+      },
+      {
+        title: 'Compliant by Default',
+        content: 'A campaign cannot send unless its body contains an unsubscribe link — it is enforced in code, not left to memory. Every message ships with RFC 8058 one-click unsubscribe and the matching List-Unsubscribe headers, so recipients can opt out from their inbox in a single click, and mailbox providers reward you with better deliverability.'
+      }
+    ]
+  },
+  'email-builder': {
+    title: 'Email Builder',
+    slug: 'email-builder',
+    icon: 'i-lucide-layout-template',
+    category: 'Communication',
+    categoryIcon: 'i-lucide-message-circle',
+    categoryIconBg: 'bg-violet-50',
+    categoryIconColor: 'text-violet-600',
+    description: 'A drag-and-drop visual editor for marketing emails — compose with reusable blocks, preview live, and render to bulletproof email HTML that looks right in every client.',
+    details: [
+      {
+        title: 'Drag-and-Drop Canvas',
+        content: 'Compose emails from a palette of blocks — headings, text, buttons, images, dividers, spacers, multi-column layouts, and containers. Drop blocks where you want them, reorder by dragging, and duplicate or delete with a click. Insert zones between every block make it effortless to build a polished layout without touching a line of code.'
+      },
+      {
+        title: 'Per-Block Styling',
+        content: 'Select any block to open its inspector and fine-tune typography, colour, padding, alignment, and more, plus document-level layout settings for width, background, and spacing. Changes reflect on the canvas instantly, so what you build is what your subscribers see.'
+      },
+      {
+        title: 'Bulletproof Email HTML',
+        content: 'Behind the friendly editor is a server-side renderer that turns your design into table-based, inline-styled HTML — the kind that survives Outlook, Gmail, Apple Mail, and everything in between. Flip between Editor, live Preview, and the raw HTML at any time, and copy the output if you need it elsewhere.'
+      },
+      {
+        title: 'Reusable Templates',
+        content: 'Save any design as a template and reuse it across campaigns. The Templates manager lets you open, duplicate, rename, and delete your saved layouts, so your team starts from a consistent, on-brand foundation every time instead of rebuilding from scratch.'
+      }
+    ]
+  },
+  'email-lists': {
+    title: 'Subscriber Lists',
+    slug: 'email-lists',
+    icon: 'i-lucide-users',
+    category: 'Communication',
+    categoryIcon: 'i-lucide-message-circle',
+    categoryIconBg: 'bg-violet-50',
+    categoryIconColor: 'text-violet-600',
+    description: 'Build and grow audiences the compliant way — named lists, CSV import, public subscribe forms with double opt-in, a preference centre, and signed one-click unsubscribe.',
+    details: [
+      {
+        title: 'Lists and Subscribers',
+        content: 'Organise your audience into named lists, each tracking per-member subscription state, and manage subscribers individually or in bulk. Bring existing contacts in with CSV import that parses and de-duplicates by email, so a messy export becomes a clean, deduplicated list ready to send to.'
+      },
+      {
+        title: 'Public Subscribe Forms',
+        content: 'Grow lists with a hosted subscribe page you can link from anywhere. Lists can require double opt-in — a confirmation email the new subscriber must click before they receive anything — and the form is protected by Cloudflare Turnstile to keep bots and abuse out without annoying real people.'
+      },
+      {
+        title: 'Preference Centre and Unsubscribe',
+        content: 'Every recipient gets a one-click unsubscribe and a preference centre where they can fine-tune which lists they stay on rather than leaving entirely. Links are HMAC-signed, so only the genuine recipient can change their preferences — no one can unsubscribe someone else by guessing an address.'
+      },
+      {
+        title: 'Suppression and Hygiene',
+        content: 'A global suppression list is honoured on every send and is the single source of truth for who must never be emailed. Hard bounces and spam complaints feed it automatically, and an explicit opt-out is recorded the moment a recipient unsubscribes — keeping your sender reputation healthy and your audience genuinely opted in.'
+      }
+    ]
+  },
   'automations': {
     title: 'Automations',
     slug: 'automations',
