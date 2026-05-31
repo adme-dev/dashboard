@@ -35,6 +35,23 @@ function moveBlock(blockId: string, direction: 'up' | 'down') {
 function updateLayout(patch: Record<string, unknown>) {
   store.updateLayoutSettings(patch)
 }
+
+// The selected block (null when nothing or the root layout is selected → show
+// email-layout settings instead of the per-block inspector).
+const selectedBlock = computed(() => {
+  const id = store.selectedBlockId.value
+  if (!id || id === 'root') return null
+  const b = store.document.value[id]
+  if (!b) return null
+  return { id, type: b.type, data: b.data }
+})
+
+function onBlockUpdate(updates: { style?: unknown, props?: unknown }) {
+  const id = store.selectedBlockId.value
+  if (!id) return
+  if (updates.style) store.updateBlockStyle(id, updates.style as Record<string, unknown>)
+  if (updates.props) store.updateBlockProps(id, updates.props as Record<string, unknown>)
+}
 </script>
 
 <template>
@@ -139,12 +156,20 @@ function updateLayout(patch: Record<string, unknown>) {
       </div>
     </main>
 
-    <!-- Right: email settings -->
+    <!-- Right: block inspector when a block is selected, else email settings -->
     <aside class="w-80 border-l border-default p-3 overflow-auto">
-      <p class="text-xs font-semibold uppercase text-muted mb-3">
-        Email settings
-      </p>
-      <EmailBuilderEmailLayoutSettings :settings="layout" @update="updateLayout" />
+      <template v-if="selectedBlock">
+        <p class="text-xs font-semibold uppercase text-muted mb-3">
+          {{ selectedBlock.type }} settings
+        </p>
+        <EmailBuilderBlockSettingsPanel :block="selectedBlock" @update="onBlockUpdate" />
+      </template>
+      <template v-else>
+        <p class="text-xs font-semibold uppercase text-muted mb-3">
+          Email settings
+        </p>
+        <EmailBuilderEmailLayoutSettings :settings="layout" @update="updateLayout" />
+      </template>
     </aside>
   </div>
 </template>
