@@ -10,9 +10,10 @@
  */
 import { execute } from '~~/server/utils/db'
 import { parseTrackPayload } from '~~/server/utils/tracking/track-schema'
-import { resolveSiteByWriteKey, isOriginAllowed } from '~~/server/utils/tracking/site-config'
+import { resolveSiteByWriteKey, isOriginAllowed, shouldBlockOrigin } from '~~/server/utils/tracking/site-config'
 import { snapshotConsent } from '~~/server/utils/tracking/consent'
 import { buildEventRows } from '~~/server/utils/tracking/event-insert'
+import { rateCheck } from '~~/server/utils/tracking/rate-limit'
 
 async function sha256Hex(value: string): Promise<string> {
   try {
@@ -49,9 +50,15 @@ export default defineEventHandler(async (event) => {
     const parsed = parseTrackPayload(raw)
     if (!parsed.ok) { setResponseStatus(event, 422); return { ok: false, errors: parsed.errors } }
 
-    // 5. Soft origin check — log mismatch, do not block (Slice 1).
-    const originOk = isOriginAllowed(site, reqOrigin)
-    if (!originOk) console.warn('[track] origin not in allowlist', { site: site.id, reqOrigin })
+    // 5. Origin gate. Empty allowlist ⇒ allow-all. Per-site enforce_origin promotes a
+    //    mismatch to a hard 403; TRACKING_ORIGIN_MODE=soft is a global kill switch.
+    if (!isOriginAllowed(site, reqOrigin)) {
+      console.warn('[track] origin mismatch', { site: site.id, reqOrigin })
+      if (shouldBlockOrigin(site, reqOrigin, process.env.TRACKING_ORIGIN_MODE)) {
+        setResponseStatus(event, 403)
+        return { ok: false }
+      }
+    }
 
     // 6. Consent snapshot + request context.
     // Prefer the consent value the tag forwarded in the body: this is a
@@ -74,6 +81,36 @@ export default defineEventHandler(async (event) => {
       ipHash: ip ? await sha256Hex(ip + ':' + ipSalt) : null,
       origin: reqOrigin,
       consent,
+    }
+
+    // 6b. Layered rate limit (per-key ceiling + per-IP burst) via the RateLimiter DO.
+    //     Fail-open: a limiter outage/absence must never drop real analytics.
+    const rlMode = process.env.TRACKING_RATE_LIMIT_MODE || 'shadow'
+    if (rlMode !== 'off') {
+      const limiter = (event.context as any).cloudflare?.env?.RATE_LIMITER
+      if (limiter) {
+        try {
+          const verdict = await rateCheck(limiter, {
+            writeKey,
+            ipHash: ctx.ipHash,
+            keyLimit: Number(process.env.TRACKING_RATE_LIMIT_KEY_LIMIT) || 600,
+            ipLimit: Number(process.env.TRACKING_RATE_LIMIT_IP_LIMIT) || 60,
+            windowMs: Number(process.env.TRACKING_RATE_LIMIT_WINDOW_MS) || 10_000,
+          })
+          if (!verdict.allowed) {
+            console.warn('[track] rate limit', { site: site.id, layer: verdict.layer, mode: rlMode })
+            if (rlMode === 'enforce') {
+              setResponseHeader(event, 'Retry-After', String(verdict.retryAfterSec ?? 10))
+              setResponseStatus(event, 429)
+              return { ok: false }
+            }
+            // shadow: logged the would-block, fall through and allow.
+          }
+        } catch (err) {
+          console.error('[track] rate limiter unavailable — failing open:', err)
+        }
+      }
+      // No binding (dev/local) ⇒ no-op, allow.
     }
 
     // 7. Build + insert rows (dedup on (site_id, event_id)).
