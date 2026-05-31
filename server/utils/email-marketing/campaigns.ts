@@ -215,5 +215,20 @@ export async function setCampaignStatus(id: string, to: CampaignStatus): Promise
   if (!canTransition(existing.status, to)) {
     throw createError({ statusCode: 409, statusMessage: `invalid_transition_${existing.status}_to_${to}` })
   }
-  await execute('UPDATE campaigns SET status = $2, updated_at = NOW() WHERE id = $1', [id, to])
+  // Stamp lifecycle timestamps: started_at on first entry to sending (kept if
+  // re-entered from paused), finished_at on terminal sent/cancelled.
+  const startedClause = to === 'sending' ? ', started_at = COALESCE(started_at, NOW())' : ''
+  const finishedClause = (to === 'sent' || to === 'cancelled') ? ', finished_at = NOW()' : ''
+  await execute(
+    `UPDATE campaigns SET status = $2, updated_at = NOW()${startedClause}${finishedClause} WHERE id = $1`,
+    [id, to]
+  )
+}
+
+// Mark a campaign's remaining pending recipients as cancelled (used by cancel).
+export async function cancelPendingRecipients(campaignId: string): Promise<number> {
+  return execute(
+    `UPDATE campaign_recipients SET status = 'cancelled' WHERE campaign_id = $1 AND status = 'pending'`,
+    [campaignId]
+  )
 }
