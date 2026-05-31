@@ -192,7 +192,7 @@ export default defineEventHandler(async (event) => {
         $1, $2, 'meta_ads', $3, $4, $5,
         $6, $7, $8, $9,
         $10, $11, $12, $13, $14,
-        $15, 'published', $16, NOW(), $17
+        $15, 'pending_review', $16, NOW(), $17
       )
       RETURNING
         id, project_id AS "projectId", published_id AS "publishedId",
