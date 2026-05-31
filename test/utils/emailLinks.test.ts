@@ -85,4 +85,24 @@ describe('emailLinkSecret', () => {
     setCfBindings({ EMAIL_LINK_SECRET: 'binding-link' })
     expect(emailLinkSecret()).toBe('binding-link')
   })
+
+  it('fails CLOSED in production when no secret resolves (never the dev default)', () => {
+    const savedNodeEnv = process.env.NODE_ENV
+    delete process.env.EMAIL_LINK_SECRET
+    delete process.env.CRON_SECRET
+    setCfBindings({})
+    try {
+      process.env.NODE_ENV = 'production'
+      expect(() => emailLinkSecret()).toThrow()
+    } finally {
+      process.env.NODE_ENV = savedNodeEnv
+    }
+  })
+
+  it('uses the dev default outside production', () => {
+    delete process.env.EMAIL_LINK_SECRET
+    delete process.env.CRON_SECRET
+    setCfBindings({})
+    expect(emailLinkSecret()).toBe('dev-insecure-email-link-secret')
+  })
 })

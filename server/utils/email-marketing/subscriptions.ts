@@ -55,21 +55,27 @@ export async function globalUnsubscribe(opts: {
   if (!sub) return null
 
   await transaction(async (db) => {
-    const res = await db.query(
+    const supp = await db.query(
       `INSERT INTO suppression_list (email, reason, campaign_id)
        VALUES ($1, 'global_unsubscribe', $2)
        ON CONFLICT (email) DO NOTHING`,
       [sub.email, opts.campaignId ?? null]
     )
-    const newlySuppressed = (res.rowCount ?? 0) > 0
 
-    await db.query(
+    const memberships = await db.query(
       `UPDATE subscriber_lists SET status = 'unsubscribed', unsubscribed_at = NOW()
        WHERE subscriber_id = $1 AND status <> 'unsubscribed'`,
       [opts.subscriberId]
     )
 
-    if (newlySuppressed) {
+    // Record the event + bump the counter on the FIRST explicit unsubscribe —
+    // i.e. when this call either newly suppressed the email OR transitioned an
+    // active membership. (A prior suppression for a *different* reason —
+    // hard_bounce/complaint — leaves the suppression insert a no-op, so keying
+    // only on that would silently lose the genuine user-initiated unsubscribe.)
+    // Repeat clicks / mailbox retries find nothing to transition → no dup event.
+    const firstExplicit = (supp.rowCount ?? 0) > 0 || (memberships.rowCount ?? 0) > 0
+    if (firstExplicit) {
       await db.query(
         `INSERT INTO email_events (campaign_id, subscriber_id, event_type)
          VALUES ($1, $2, 'unsubscribed')`,
@@ -96,19 +102,26 @@ export async function setListSubscription(opts: {
   subscribe: boolean
 }): Promise<boolean> {
   if (opts.subscribe) {
-    const n = await execute(
-      `UPDATE subscriber_lists
-       SET status = 'confirmed', unsubscribed_at = NULL, subscribed_at = NOW()
-       WHERE subscriber_id = $1 AND list_id = $2`,
-      [opts.subscriberId, opts.listId]
-    )
-    await execute(
-      `DELETE FROM suppression_list
-       WHERE reason = 'global_unsubscribe'
-         AND email = (SELECT email FROM email_subscribers WHERE id = $1)`,
-      [opts.subscriberId]
-    )
-    return n > 0
+    // Atomic: re-enabling the membership and lifting the global-unsubscribe
+    // suppression are a single consent change — a partial failure must not leave
+    // the subscriber confirmed-but-suppressed. This path is reached only with a
+    // valid signed link token (proof the subscriber controls the email), so
+    // lifting the global hard-stop here is authorized.
+    return transaction(async (db) => {
+      const res = await db.query(
+        `UPDATE subscriber_lists
+         SET status = 'confirmed', unsubscribed_at = NULL, subscribed_at = NOW()
+         WHERE subscriber_id = $1 AND list_id = $2`,
+        [opts.subscriberId, opts.listId]
+      )
+      await db.query(
+        `DELETE FROM suppression_list
+         WHERE reason = 'global_unsubscribe'
+           AND email = (SELECT email FROM email_subscribers WHERE id = $1)`,
+        [opts.subscriberId]
+      )
+      return (res.rowCount ?? 0) > 0
+    })
   }
   const n = await execute(
     `UPDATE subscriber_lists SET status = 'unsubscribed', unsubscribed_at = NOW()
@@ -126,11 +139,12 @@ export interface SubscribeResult {
   needsConfirm: boolean
 }
 
-// Public subscribe to a list (the marketing signup form). Upserts the subscriber
-// by case-insensitive email and attaches them to the list. Double-opt-in lists
-// land 'unconfirmed' (caller sends a confirm email); otherwise 'confirmed'
-// immediately and any prior global-unsubscribe suppression is cleared. A
-// disabled/blocklisted subscriber is never re-enabled or confirm-emailed.
+// Public subscribe to a list (the marketing signup form) — UNAUTHENTICATED.
+// Upserts the subscriber by case-insensitive email and attaches them to the
+// list. Double-opt-in lists land 'unconfirmed' (caller sends a confirm email);
+// otherwise 'confirmed' immediately. Never clears a global-unsubscribe
+// suppression (that requires proven consent — see confirmSubscription) and never
+// re-enables a disabled/blocklisted subscriber.
 export async function subscribePublic(opts: {
   email: string
   name?: string | null
@@ -161,44 +175,63 @@ export async function subscribePublic(opts: {
     // Attach to the list. Only an UNSUBSCRIBED membership is moved back to the
     // target status; an already-confirmed/unconfirmed row is left as-is so a
     // re-submit can't silently downgrade a confirmed opt-in to unconfirmed.
-    await db.query(
+    const memRes = await db.query(
       `INSERT INTO subscriber_lists (subscriber_id, list_id, status, source, subscribed_at)
        VALUES ($1, $2, $3, $4, NOW())
        ON CONFLICT (subscriber_id, list_id) DO UPDATE
          SET status = CASE
                WHEN subscriber_lists.status = 'unsubscribed' THEN EXCLUDED.status
                ELSE subscriber_lists.status END,
-             unsubscribed_at = NULL`,
+             unsubscribed_at = NULL
+       RETURNING status`,
       [subscriberId, opts.listId, targetStatus, opts.source ?? 'form']
     )
+    const membershipStatus = memRes.rows[0].status as MembershipStatus
 
-    if (!list.double_optin && subscriberStatus === 'enabled') {
-      await db.query(
-        `DELETE FROM suppression_list WHERE reason = 'global_unsubscribe' AND email = $1`,
-        [opts.email]
-      )
-    }
+    // NOTE: this endpoint is UNAUTHENTICATED — we do NOT clear a global
+    // unsubscribe suppression here. Doing so would let anyone re-enable a victim
+    // who opted out, just by knowing their email + a list id. Suppression is
+    // only lifted on proven consent: a double-opt-in confirm, or the
+    // token-authenticated preference center. A previously-suppressed email
+    // therefore stays suppressed until it confirms.
 
     return {
       subscriberId,
       listId: opts.listId,
       listName: list.name,
-      status: targetStatus,
-      needsConfirm: list.double_optin && subscriberStatus === 'enabled'
+      status: membershipStatus,
+      // Only worth a confirm email when the membership is actually awaiting
+      // confirmation (not already confirmed) and the subscriber isn't disabled.
+      needsConfirm: list.double_optin && subscriberStatus === 'enabled' && membershipStatus === 'unconfirmed'
     }
   })
 }
 
-// Double-opt-in confirm: promote an unconfirmed membership to confirmed. Returns
-// true if it transitioned (false if already confirmed / unknown / unsubscribed).
+// Double-opt-in confirm: promote an unconfirmed membership to confirmed. This is
+// the proven-consent moment, so it also lifts a prior global_unsubscribe
+// suppression for the email (never a hard_bounce/complaint one) — otherwise a
+// genuine re-subscriber who clicks confirm would stay permanently unmailable.
+// Atomic. Returns true if the membership transitioned (false if already
+// confirmed / unknown / unsubscribed).
 export async function confirmSubscription(opts: {
   subscriberId: string
   listId: string
 }): Promise<boolean> {
-  const n = await execute(
-    `UPDATE subscriber_lists SET status = 'confirmed'
-     WHERE subscriber_id = $1 AND list_id = $2 AND status = 'unconfirmed'`,
-    [opts.subscriberId, opts.listId]
-  )
-  return n > 0
+  return transaction(async (db) => {
+    const res = await db.query(
+      `UPDATE subscriber_lists SET status = 'confirmed'
+       WHERE subscriber_id = $1 AND list_id = $2 AND status = 'unconfirmed'`,
+      [opts.subscriberId, opts.listId]
+    )
+    const confirmed = (res.rowCount ?? 0) > 0
+    if (confirmed) {
+      await db.query(
+        `DELETE FROM suppression_list
+         WHERE reason = 'global_unsubscribe'
+           AND email = (SELECT email FROM email_subscribers WHERE id = $1)`,
+        [opts.subscriberId]
+      )
+    }
+    return confirmed
+  })
 }

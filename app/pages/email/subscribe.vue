@@ -11,11 +11,14 @@ useHead({ title: 'Subscribe · XeroFlow', meta: [{ name: 'robots', content: 'noi
 const email = ref('')
 const name = ref('')
 const submitting = ref(false)
+const touched = ref(false)
 const result = ref<{ needsConfirm: boolean, status: string, listName: string } | null>(null)
 
 const emailValid = computed(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim()))
+const emailError = computed(() => (touched.value && !emailValid.value ? 'Enter a valid email address' : undefined))
 
 async function submit() {
+  touched.value = true
   if (!emailValid.value || !listId.value) return
   submitting.value = true
   try {
@@ -86,7 +89,7 @@ async function submit() {
       </p>
 
       <form class="mt-6 space-y-4" @submit.prevent="submit">
-        <UFormField label="Email address" :ui="{ label: 'text-white/70' }">
+        <UFormField label="Email address" :error="emailError" :ui="{ label: 'text-white/70' }">
           <UInput
             v-model="email"
             type="email"
