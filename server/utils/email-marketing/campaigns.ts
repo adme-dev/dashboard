@@ -7,6 +7,7 @@ import { queryRows, queryOne, execute, transaction } from '~~/server/utils/db'
 import { renderTemplateDocument } from './render'
 import { isFlyhubFormat } from './render/flyhub-html-renderer'
 import { canTransition, type CampaignStatus } from './campaignSend'
+import { evaluateSegment, isValidSegment } from './segment'
 
 export interface Campaign {
   id: string
@@ -18,6 +19,7 @@ export interface Campaign {
   preview_text: string | null
   body_source: unknown
   body_html: string | null
+  filter_rules: unknown
   content_type: string
   template_id: string | null
   status: CampaignStatus
@@ -71,6 +73,7 @@ export async function createCampaign(input: {
   body_source?: unknown
   template_id?: string | null
   client_id?: string | null
+  filter_rules?: unknown
   created_by: string | null
 }): Promise<Campaign> {
   const source = input.body_source ?? { root: { type: 'EmailLayout', data: { childrenIds: [] } } }
@@ -78,8 +81,8 @@ export async function createCampaign(input: {
   const row = await queryOne<Campaign>(`
     INSERT INTO campaigns
       (name, subject, from_name, from_email, reply_to, preview_text,
-       body_source, body_html, template_id, client_id, created_by)
-    VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11)
+       body_source, body_html, template_id, client_id, created_by, filter_rules)
+    VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12::jsonb)
     RETURNING *
   `, [
     input.name,
@@ -92,7 +95,8 @@ export async function createCampaign(input: {
     html,
     input.template_id ?? null,
     input.client_id ?? null,
-    input.created_by
+    input.created_by,
+    input.filter_rules == null ? null : JSON.stringify(input.filter_rules)
   ])
   return row as Campaign
 }
@@ -110,6 +114,7 @@ export async function updateCampaign(id: string, patch: {
   body_source?: unknown
   template_id?: string | null
   scheduled_at?: string | null
+  filter_rules?: unknown
 }): Promise<Campaign | null> {
   const existing = await getCampaign(id)
   if (!existing) return null
@@ -121,6 +126,7 @@ export async function updateCampaign(id: string, patch: {
   const previewText = patch.preview_text !== undefined ? patch.preview_text : existing.preview_text
   const source = patch.body_source !== undefined ? patch.body_source : existing.body_source
   const html = renderHtml(source, subject, previewText)
+  const filterRules = patch.filter_rules !== undefined ? patch.filter_rules : existing.filter_rules
 
   const row = await queryOne<Campaign>(`
     UPDATE campaigns SET
@@ -134,6 +140,7 @@ export async function updateCampaign(id: string, patch: {
       body_html    = $9,
       template_id  = $10,
       scheduled_at = $11,
+      filter_rules = $12::jsonb,
       updated_at   = NOW()
     WHERE id = $1
     RETURNING *
@@ -148,7 +155,8 @@ export async function updateCampaign(id: string, patch: {
     JSON.stringify(source ?? null),
     html,
     patch.template_id !== undefined ? patch.template_id : existing.template_id,
-    patch.scheduled_at !== undefined ? patch.scheduled_at : existing.scheduled_at
+    patch.scheduled_at !== undefined ? patch.scheduled_at : existing.scheduled_at,
+    filterRules == null ? null : JSON.stringify(filterRules)
   ])
   return row
 }
@@ -174,6 +182,9 @@ export async function setCampaignLists(campaignId: string, listIds: string[]): P
 // Expand the target lists into the per-recipient work queue. Idempotent
 // (re-runnable): dedups one send per subscriber across lists, excludes per-list
 // unsubscribes, globally suppressed emails, and disabled/blocklisted subscribers.
+// When the campaign carries a Segment (filter_rules), the recipient set is
+// further narrowed to subscribers whose attribs/status match — evaluated in-app
+// (no JSONB→SQL translation), then applied as an id allowlist on the insert.
 // Sets campaigns.to_send. Does NOT send. Returns the recipient count.
 export async function materializeRecipients(campaignId: string): Promise<number> {
   const existing = await getCampaign(campaignId)
@@ -182,7 +193,44 @@ export async function materializeRecipients(campaignId: string): Promise<number>
     throw createError({ statusCode: 409, statusMessage: 'campaign_not_materializable' })
   }
 
+  const segment = isValidSegment(existing.filter_rules) ? existing.filter_rules : null
+
   return transaction(async (db) => {
+    // Rebuild the pending queue so the result reflects the CURRENT lists +
+    // segment (re-materialising after changing either must not leave stale
+    // recipients, which would inflate to_send). Only 'pending' rows are cleared;
+    // any already-'sent'/'failed' rows are preserved. Materialise is draft/
+    // scheduled-only, so in practice every recipient is still pending here.
+    await db.query(
+      `DELETE FROM campaign_recipients WHERE campaign_id = $1 AND status = 'pending'`,
+      [campaignId]
+    )
+
+    // With a segment: pull the eligible candidates (same base filter), evaluate
+    // the segment in JS, and keep the surviving ids as an allowlist. Without a
+    // segment, allowedIds stays null and the insert isn't narrowed.
+    let allowedIds: string[] | null = null
+    if (segment) {
+      const { rows: candidates } = await db.query(`
+        SELECT DISTINCT ON (s.id) s.id, s.email, s.name, s.status, s.attribs
+        FROM subscriber_lists sl
+        JOIN campaign_lists cl ON cl.list_id = sl.list_id AND cl.campaign_id = $1
+        JOIN email_subscribers s ON s.id = sl.subscriber_id
+        WHERE sl.status <> 'unsubscribed'
+          AND s.status = 'enabled'
+          AND NOT EXISTS (SELECT 1 FROM suppression_list sup WHERE sup.email = s.email)
+        ORDER BY s.id
+      `, [campaignId])
+      allowedIds = candidates
+        .filter(c => evaluateSegment({
+          email: c.email,
+          name: c.name,
+          status: c.status,
+          attribs: (c.attribs && typeof c.attribs === 'object' ? c.attribs : {}) as Record<string, unknown>
+        }, segment))
+        .map(c => c.id as string)
+    }
+
     await db.query(`
       INSERT INTO campaign_recipients (campaign_id, subscriber_id, email)
       SELECT DISTINCT ON (s.id) $1, s.id, s.email
@@ -192,9 +240,10 @@ export async function materializeRecipients(campaignId: string): Promise<number>
       WHERE sl.status <> 'unsubscribed'
         AND s.status = 'enabled'
         AND NOT EXISTS (SELECT 1 FROM suppression_list sup WHERE sup.email = s.email)
+        AND ($2::uuid[] IS NULL OR s.id = ANY($2::uuid[]))
       ORDER BY s.id
       ON CONFLICT (campaign_id, subscriber_id) DO NOTHING
-    `, [campaignId])
+    `, [campaignId, allowedIds])
 
     const { rows } = await db.query(
       'SELECT COUNT(*)::int AS n FROM campaign_recipients WHERE campaign_id = $1', [campaignId]
