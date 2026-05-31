@@ -99,3 +99,20 @@ export interface CrmPipelineSummary {
   openTotal: number
   weightedTotal: number
 }
+
+export interface CrmActivity {
+  id: string
+  client_id: string
+  target_type: 'person' | 'company' | 'opportunity'
+  target_id: string
+  type: 'note' | 'call' | 'email' | 'meeting' | 'task' | 'stage_change' | 'system'
+  title: string
+  body: string | null
+  scheduled_at: string | null
+  completed_at: string | null
+  is_completed: boolean
+  metadata: Record<string, unknown>
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
