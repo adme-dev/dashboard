@@ -8,7 +8,7 @@
 
 ## TL;DR
 - **Shipped to production (earlier session):** the `agency_clients` column-drift fixes (migrations 122–123), editable client contact fields, and **Phase 1 of the GA4 plan** (migration 124). All merged to `main`, pushed, deployed. Latest prod deploy: `https://0c77765b.agency-dashboard-6cm.pages.dev`.
-- **Committed to `main`, NOT yet deployed:** **Phase 2 of the GA4 plan** (migration 126; commits `768312f`→`d828d11`). Backend/data-layer + API complete; daily-grain fix is live-in-code for `/agency/analytics`; blended/attribution/presets are API-only (no UI yet). See "Phase 2 — DONE" below. Deploy + push (via `adme-dev`) are the next explicit steps.
+- **Shipped to production (this session):** **Phase 2 of the GA4 plan** (migration 126; commits `768312f`→`fdf5ebe`) + the blended UI panel. Prod deploy: `https://67c46d09.agency-dashboard-6cm.pages.dev`. Daily-grain fix + blended panel are now live on `/agency/analytics`; attribution/presets remain API-only. See "Phase 2 — DONE" below. **NOT pushed to `origin`** (needs the `adme-dev` gh account) — `main` is ahead of remote.
 - **Not done (the open work):** the GA4 cron trigger, mapping the remaining GA4 properties, UI surfacing of the new Phase 2 endpoints, and all of Phase 3. Details below.
 
 ---
