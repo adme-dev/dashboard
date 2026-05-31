@@ -15,6 +15,7 @@ import { PERMISSIONS } from '~~/server/utils/permissions'
 import { buildClientCondition } from '~~/server/utils/analyticsMetrics'
 import { previousWindow } from '~~/server/utils/ga4Funnel'
 import { resolveCanonicalChannel } from '~~/server/utils/channelTaxonomy'
+import { cachedAnalytics, analyticsCacheKey } from '~~/server/utils/analyticsCache'
 import {
   buildBlended,
   buildBlendedComparison,
@@ -104,21 +105,25 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  const cacheKey = analyticsCacheKey('blended', { clientId, startDate, endDate })
+
   try {
-    const current = await aggregate(startDate, endDate)
-    const { prevStart, prevEnd } = previousWindow(startDate, endDate)
-    const previous = await aggregate(prevStart, prevEnd)
+    return await cachedAnalytics(event, cacheKey, { endDate }, async () => {
+      const current = await aggregate(startDate, endDate)
+      const { prevStart, prevEnd } = previousWindow(startDate, endDate)
+      const previous = await aggregate(prevStart, prevEnd)
 
-    const blended = buildBlended(current.input)
-    const prevBlended = buildBlended(previous.input)
+      const blended = buildBlended(current.input)
+      const prevBlended = buildBlended(previous.input)
 
-    return {
-      ...blended,
-      comparison: buildBlendedComparison(blended.totals, prevBlended.totals),
-      hasGa4: current.ga4RowCount > 0,
-      // Conversions/revenue are each ad platform's own counting, not deduped truth.
-      conversionBasis: 'platform-reported'
-    }
+      return {
+        ...blended,
+        comparison: buildBlendedComparison(blended.totals, prevBlended.totals),
+        hasGa4: current.ga4RowCount > 0,
+        // Conversions/revenue are each ad platform's own counting, not deduped truth.
+        conversionBasis: 'platform-reported'
+      }
+    })
   } catch (error) {
     console.error('Analytics blended failed:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to fetch blended metrics' })
