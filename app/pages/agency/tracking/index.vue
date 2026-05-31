@@ -8,6 +8,7 @@ definePageMeta({
 interface TrackingSiteRow {
   id: string
   client_id: string
+  client_name: string | null
   name: string
   write_key: string
   spa: boolean
@@ -17,7 +18,20 @@ interface TrackingSiteRow {
   created_at: string
 }
 
-const { data, pending, refresh } = await useFetch<{ sites: TrackingSiteRow[] }>('/api/agency/tracking')
+// Client filter — drives the ?clientId= query reactively.
+const selectedClient = ref<string>('all')
+const { data: clientsData } = await useFetch<any>('/api/agency/clients')
+const clientFilterItems = computed(() => {
+  const list = Array.isArray(clientsData.value) ? clientsData.value : (clientsData.value?.clients ?? [])
+  return [
+    { label: 'All clients', value: 'all' },
+    ...list.map((c: any) => ({ label: c.name, value: c.id }))
+  ]
+})
+
+const { data, pending, refresh } = await useFetch<{ sites: TrackingSiteRow[] }>('/api/agency/tracking', {
+  query: computed(() => (selectedClient.value === 'all' ? {} : { clientId: selectedClient.value }))
+})
 const sites = computed(() => data.value?.sites ?? [])
 
 const showCreate = ref(false)
@@ -44,11 +58,22 @@ function truncateKey(key: string) {
   return key.length > 16 ? key.slice(0, 12) + '…' + key.slice(-3) : key
 }
 
+// Friendly, marketer-facing labels for the technical fields.
+const CONSENT_LABELS: Record<string, string> = {
+  off: 'Capture all',
+  au_optout: 'AU opt-out',
+  consent_gated: 'Consent-gated'
+}
+function consentLabel(mode: string) {
+  return CONSENT_LABELS[mode] ?? mode
+}
+
 const columns = [
+  { accessorKey: 'client_name', header: 'Client' },
   { accessorKey: 'name', header: 'Site' },
-  { accessorKey: 'write_key', header: 'Write key' },
-  { accessorKey: 'spa', header: 'Type' },
+  { accessorKey: 'spa', header: 'Website type' },
   { accessorKey: 'events_24h', header: 'Events (24h)' },
+  { accessorKey: 'write_key', header: 'Write key' },
   { accessorKey: 'actions', header: '' }
 ]
 </script>
@@ -74,6 +99,17 @@ const columns = [
       />
     </div>
 
+    <!-- Client filter -->
+    <div v-if="sites.length > 0 || selectedClient !== 'all'" class="flex items-center gap-2">
+      <span class="text-sm text-muted">Client</span>
+      <USelectMenu
+        v-model="selectedClient"
+        :items="clientFilterItems"
+        value-key="value"
+        class="w-64"
+      />
+    </div>
+
     <!-- Empty state -->
     <div
       v-if="!pending && sites.length === 0"
@@ -81,7 +117,7 @@ const columns = [
     >
       <UIcon name="i-lucide-radio" class="size-10 text-muted mx-auto" />
       <p class="mt-3 text-sm font-medium">
-        No tracking sites yet
+        {{ selectedClient === 'all' ? 'No tracking sites yet' : 'No tracking sites for this client' }}
       </p>
       <p class="text-sm text-muted mt-1">
         Create one to generate a write key and install snippet.
@@ -104,11 +140,36 @@ const columns = [
       :loading="pending"
       class="border border-default rounded-xl"
     >
+      <template #client_name-cell="{ row }">
+        <span class="font-medium">{{ row.original.client_name || '—' }}</span>
+      </template>
+
       <template #name-cell="{ row }">
         <div class="flex flex-col">
-          <span class="font-medium">{{ row.original.name }}</span>
-          <span class="text-xs text-muted">{{ row.original.consent_mode }}</span>
+          <span>{{ row.original.name }}</span>
+          <span class="text-xs text-muted">Tracking: {{ consentLabel(row.original.consent_mode) }}</span>
         </div>
+      </template>
+
+      <template #spa-cell="{ row }">
+        <UTooltip :text="row.original.spa ? 'Single-page app — route changes also count as page views (Gatsby, Next.js, etc.)' : 'Standard site — each page load is a page view'">
+          <UBadge :color="row.original.spa ? 'info' : 'neutral'" variant="soft" size="sm">
+            {{ row.original.spa ? 'Single-page app' : 'Standard site' }}
+          </UBadge>
+        </UTooltip>
+      </template>
+
+      <template #events_24h-cell="{ row }">
+        <span class="tabular-nums">{{ Number(row.original.events_24h) || 0 }}</span>
+      </template>
+
+      <template #write_key-header>
+        <span class="inline-flex items-center gap-1">
+          Write key
+          <UTooltip text="The public key embedded in the install snippet. It tells the dashboard which client's site an event came from. Safe to expose on the page.">
+            <UIcon name="i-lucide-info" class="size-3.5 text-muted" />
+          </UTooltip>
+        </span>
       </template>
 
       <template #write_key-cell="{ row }">
@@ -120,16 +181,6 @@ const columns = [
           {{ truncateKey(row.original.write_key) }}
           <UIcon name="i-lucide-copy" class="size-3" />
         </button>
-      </template>
-
-      <template #spa-cell="{ row }">
-        <UBadge :color="row.original.spa ? 'info' : 'neutral'" variant="soft" size="sm">
-          {{ row.original.spa ? 'SPA' : 'MPA' }}
-        </UBadge>
-      </template>
-
-      <template #events_24h-cell="{ row }">
-        <span class="tabular-nums">{{ Number(row.original.events_24h) || 0 }}</span>
       </template>
 
       <template #actions-cell="{ row }">
