@@ -3,10 +3,11 @@
 definePageMeta({ layout: 'agency' })
 useHead({ title: 'Email Marketing — XeroFlow Agency' })
 
-const tab = ref<'lists' | 'subscribers' | 'campaigns'>('lists')
+const tab = ref<'lists' | 'subscribers' | 'templates' | 'campaigns'>('lists')
 const tabs = [
   { value: 'lists', label: 'Lists', icon: 'i-lucide-list' },
   { value: 'subscribers', label: 'Subscribers', icon: 'i-lucide-users' },
+  { value: 'templates', label: 'Templates', icon: 'i-lucide-layout-template' },
   { value: 'campaigns', label: 'Campaigns', icon: 'i-lucide-send' }
 ]
 </script>
@@ -37,6 +38,7 @@ const tabs = [
     <div class="flex-1 overflow-auto px-6 py-4">
       <EmailListsPanel v-if="tab === 'lists'" />
       <EmailSubscribersPanel v-else-if="tab === 'subscribers'" />
+      <EmailTemplatesPanel v-else-if="tab === 'templates'" />
       <EmailCampaignsPanel v-else />
     </div>
   </div>
