@@ -600,6 +600,7 @@ export interface CampaignSeries {
 }
 export interface DailyTotal {
   date: string; spend: number; budget: number; impressions: number; clicks: number
+  conversions: number; revenue: number
 }
 export interface CampaignDailySpendResponse {
   campaigns: CampaignSeries[]; totals: DailyTotal[]; estimated?: boolean
