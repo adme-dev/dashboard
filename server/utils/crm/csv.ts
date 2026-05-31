@@ -26,12 +26,12 @@ export function parseCsv(text: string): string[][] {
     if (ch === '\r') { i++; continue }
     if (ch === '\n') {
       row.push(cell)
-      if (row.length > 1 || row[0].trim() !== '') rows.push(row)
+      if (row.length > 1 || (row[0] ?? '').trim() !== '') rows.push(row)
       row = []; cell = ''; i++; continue
     }
     cell += ch; i++
   }
   row.push(cell)
-  if (row.length > 1 || row[0].trim() !== '') rows.push(row)
+  if (row.length > 1 || (row[0] ?? '').trim() !== '') rows.push(row)
   return rows
 }

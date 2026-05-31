@@ -16,7 +16,7 @@ const Body = z.object({
   department: z.string().nullable().optional(),
   city: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
-  custom_fields: z.record(z.unknown()).optional(),
+  custom_fields: z.record(z.string(), z.unknown()).optional(),
 })
 
 export default defineEventHandler(async (event) => {

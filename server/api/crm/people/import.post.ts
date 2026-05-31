@@ -26,16 +26,17 @@ export default defineEventHandler(async (event) => {
 
   const rows = parseCsv(csv)
   if (rows.length < 2) throw createError({ statusCode: 400, statusMessage: 'CSV has no data rows' })
-  const headers = rows[0].map(normalizeKey)
+  const headers = rows[0]!.map(normalizeKey)
   const result = { imported: 0, skipped: 0, errors: [] as { row: number, message: string }[] }
 
   for (let r = 1; r < rows.length; r++) {
-    const cols = rows[r]
+    const cols = rows[r]!
     if (cols.every(c => !c.trim())) continue
     const rec: Partial<Record<PersonCol, string>> = {}
     headers.forEach((h, i) => {
       const target = HEADER_MAP[h]
-      if (target && cols[i]?.trim()) rec[target] = cols[i].trim()
+      const val = cols[i]?.trim()
+      if (target && val) rec[target] = val
     })
     if (!rec.first_name) { result.errors.push({ row: r + 1, message: 'missing first_name' }); continue }
     try {
