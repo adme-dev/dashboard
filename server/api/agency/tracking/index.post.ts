@@ -1,6 +1,6 @@
 /** Create a tracking site. POST /api/agency/tracking */
 import { queryOne } from '~~/server/utils/db'
-import { requireAuth, requireRole } from '~~/server/utils/auth'
+import { requireClientTrackingAccess } from '~~/server/utils/tracking/analytics-access'
 import { generateWriteKey } from '~~/server/utils/tracking/write-key'
 
 interface Body {
@@ -14,11 +14,11 @@ interface Body {
 }
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
-  await requireRole(event, ['owner', 'admin', 'lead', 'project_manager', 'media_buyer', 'account_manager'])
   const body = await readBody<Body>(event)
-  if (!body?.clientId || !body?.name?.trim()) {
-    throw createError({ statusCode: 400, statusMessage: 'clientId and name are required' })
+  // Gate on the target client: role + (for scoped roles) assignment to this client.
+  await requireClientTrackingAccess(event, body?.clientId)
+  if (!body?.name?.trim()) {
+    throw createError({ statusCode: 400, statusMessage: 'name is required' })
   }
   const row = await queryOne(
     `INSERT INTO tracking_sites (client_id, name, write_key, allowed_origins, spa, consent_mode, lead_selectors, retention_days)

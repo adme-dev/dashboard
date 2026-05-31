@@ -1,12 +1,11 @@
 /** Update tracking site config. PATCH /api/agency/tracking/:id */
 import { queryOne } from '~~/server/utils/db'
-import { requireAuth, requireRole } from '~~/server/utils/auth'
+import { requireSiteTrackingAccess } from '~~/server/utils/tracking/analytics-access'
 import { invalidateSiteCache } from '~~/server/utils/tracking/site-config'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
-  await requireRole(event, ['owner', 'admin', 'lead', 'project_manager', 'media_buyer', 'account_manager'])
   const id = getRouterParam(event, 'id')
+  await requireSiteTrackingAccess(event, id) // role + per-client access for this site
   const body = await readBody<Record<string, unknown>>(event)
   const allowed = ['name', 'allowed_origins', 'spa', 'consent_mode', 'lead_selectors', 'retention_days', 'is_active']
   const sets: string[] = []
