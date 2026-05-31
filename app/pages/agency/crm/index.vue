@@ -2,12 +2,9 @@
 definePageMeta({ layout: 'agency' })
 useHead({ title: 'CRM — XeroFlow Agency' })
 
-// Clients to pick from (reuse the existing agency clients endpoint).
-const { data: clientsData } = await useFetch<{ clients?: { id: string, name: string }[], items?: { id: string, name: string }[] }>('/api/agency/clients')
-const clientOptions = computed(() => {
-  const list = clientsData.value?.clients ?? clientsData.value?.items ?? []
-  return list.map(c => ({ label: c.name, value: c.id }))
-})
+// Clients to pick from (reuse the existing agency clients endpoint — returns a bare array).
+const { data: clientsData } = await useFetch<{ id: string, name: string }[]>('/api/agency/clients')
+const clientOptions = computed(() => (clientsData.value ?? []).map(c => ({ label: c.name, value: c.id })))
 
 const clientId = useState<string | null>('crm-active-client', () => null)
 const tab = ref<'people' | 'companies'>('people')
