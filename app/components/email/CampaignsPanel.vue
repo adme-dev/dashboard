@@ -218,6 +218,16 @@ const TERMINAL = new Set(['sent', 'cancelled'])
             {{ row.status }}
           </UBadge>
 
+          <UTooltip v-if="!TERMINAL.has(row.status)" text="Design the email">
+            <UButton
+              :to="`/agency/email/compose?campaign=${row.id}`"
+              icon="i-lucide-layout-template"
+              variant="ghost"
+              color="neutral"
+              size="xs"
+              label="Design"
+            />
+          </UTooltip>
           <UButton
             v-if="!TERMINAL.has(row.status)"
             icon="i-lucide-mail-check"

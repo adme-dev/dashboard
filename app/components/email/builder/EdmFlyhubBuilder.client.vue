@@ -102,7 +102,11 @@ function copyHtml() {
 }
 
 // ── Save / load ─────────────────────────────────────────────────────────
+// The composer doubles as a campaign body editor: opened with ?campaign=<id> it
+// loads and saves that campaign's body (subject + body_source) instead of an
+// edm_template. ?id=<templateId> is the original template-editing path.
 const templateId = ref<string | null>(null)
+const campaignId = ref<string | null>(null)
 const name = ref('')
 const subject = ref('')
 const previewText = ref('')
@@ -110,12 +114,28 @@ const saving = ref(false)
 const showSaveModal = ref(false)
 
 async function save() {
-  if (!name.value.trim()) {
-    toast.add({ title: 'Name required', description: 'Give the template a name.', color: 'error' })
-    return
-  }
   saving.value = true
   try {
+    // Campaign mode: the campaign already exists (its name is managed in the
+    // Campaigns tab), so we patch subject + body onto it — no name required.
+    if (campaignId.value) {
+      await $fetch(`/api/email/campaigns/${campaignId.value}`, {
+        method: 'PATCH',
+        body: {
+          subject: subject.value || null,
+          preview_text: previewText.value || null,
+          body_source: store.document.value
+        }
+      })
+      toast.add({ title: 'Saved', description: 'Campaign content saved.', color: 'success' })
+      showSaveModal.value = false
+      return
+    }
+
+    if (!name.value.trim()) {
+      toast.add({ title: 'Name required', description: 'Give the template a name.', color: 'error' })
+      return
+    }
     const body = {
       name: name.value.trim(),
       subject: subject.value || null,
@@ -134,13 +154,42 @@ async function save() {
     toast.add({ title: 'Saved', description: 'Template saved.', color: 'success' })
     showSaveModal.value = false
   } catch {
-    toast.add({ title: 'Save failed', description: 'Could not save the template.', color: 'error' })
+    toast.add({
+      title: 'Save failed',
+      description: campaignId.value ? 'Could not save the campaign.' : 'Could not save the template.',
+      color: 'error'
+    })
   } finally {
     saving.value = false
   }
 }
 
 onMounted(async () => {
+  const campaign = route.query.campaign
+  if (typeof campaign === 'string' && campaign) {
+    campaignId.value = campaign
+    try {
+      const res = await $fetch<{
+        campaign: {
+          id: string
+          name: string
+          subject: string | null
+          preview_text: string | null
+          body_source: unknown
+        }
+      }>(`/api/email/campaigns/${campaign}`)
+      if (res.campaign?.body_source) {
+        store.resetDocument(res.campaign.body_source as EdmFlyhubDocument)
+      }
+      name.value = res.campaign.name || ''
+      subject.value = res.campaign.subject || ''
+      previewText.value = res.campaign.preview_text || ''
+    } catch {
+      toast.add({ title: 'Load failed', description: 'Could not load that campaign.', color: 'error' })
+    }
+    return
+  }
+
   const id = route.query.id
   if (typeof id !== 'string' || !id) return
   try {
@@ -208,6 +257,14 @@ onMounted(async () => {
 
       <div class="flex-1" />
 
+      <UBadge
+        v-if="campaignId"
+        color="primary"
+        variant="subtle"
+        icon="i-lucide-send"
+        label="Editing campaign"
+        class="mr-1"
+      />
       <UButton
         v-if="viewMode !== 'editor'"
         icon="i-lucide-refresh-cw"
@@ -222,7 +279,7 @@ onMounted(async () => {
         icon="i-lucide-save"
         color="primary"
         size="sm"
-        label="Save"
+        :label="campaignId ? 'Save to campaign' : 'Save'"
         @click="showSaveModal = true"
       />
     </header>
@@ -386,13 +443,17 @@ onMounted(async () => {
     </div>
 
     <!-- Save modal -->
-    <UModal v-model:open="showSaveModal" title="Save template">
+    <UModal v-model:open="showSaveModal" :title="campaignId ? 'Save to campaign' : 'Save template'">
       <template #content>
         <div class="p-4 space-y-4">
           <p class="text-sm font-semibold">
-            {{ templateId ? 'Update template' : 'Save template' }}
+            {{ campaignId ? `Save content to “${name || 'campaign'}”` : (templateId ? 'Update template' : 'Save template') }}
           </p>
-          <UFormField label="Name" required>
+          <p v-if="campaignId" class="text-sm text-muted">
+            This updates the campaign's email content and subject. Manage its name and
+            recipients from the Campaigns tab.
+          </p>
+          <UFormField v-if="!campaignId" label="Name" required>
             <UInput v-model="name" placeholder="e.g. Monthly newsletter" class="w-full" />
           </UFormField>
           <UFormField label="Subject line">
