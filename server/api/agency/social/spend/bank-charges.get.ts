@@ -131,6 +131,26 @@ export default eventHandler(async (event) => {
     return { period, byPlatform: {}, total: 0, unmatchedTotal: 0, unmatched: [], connected: false }
   }
 
+  // Bank Charged is an expensive, rate-limit-prone live Xero crawl (it's what
+  // trips the 'concurrent' 429s). Cache the computed result per tenant+period in
+  // KV so repeated page loads don't re-hammer Xero. Only complete results are
+  // cached — never a truncated 'partial' one. `?refresh=1` bypasses the read
+  // (used by the post-sync refresh) but still repopulates the cache.
+  const cache = (event.context as any).cloudflare?.env?.CACHE as
+    | { get(k: string): Promise<string | null>; put(k: string, v: string, o?: { expirationTtl?: number }): Promise<void> }
+    | undefined
+  const cacheKey = `spend:bankcharges:${tenantId}:${period}`
+  const BANK_CHARGES_TTL_SECONDS = 3 * 60 * 60
+  const refreshParam = String(query.refresh ?? '')
+  const skipCacheRead = refreshParam === '1' || refreshParam === 'true'
+
+  if (cache && !skipCacheRead) {
+    try {
+      const cached = await cache.get(cacheKey)
+      if (cached) return JSON.parse(cached)
+    } catch { /* cache miss / parse error → compute fresh below */ }
+  }
+
   const client = await createXeroClient({ tokenSet: token, event })
 
   // Date range for the month
@@ -173,7 +193,11 @@ export default eventHandler(async (event) => {
   // budget. Each dedupedXeroCall has its own 25s deadline; we layer the
   // handler budget on top so even slow per-account calls can't push the
   // handler past CF Pages' 30s cap.
-  const CONCURRENCY = 6
+  // Xero caps in-flight requests at 5 per tenant (429 with
+  // x-rate-limit-problem: "concurrent" once exceeded). Stay at 4 so the
+  // spend dashboard's other parallel Xero-backed endpoints have a slot of
+  // headroom; dedupedXeroCall's 429 backoff absorbs any residual collision.
+  const CONCURRENCY = 4
   let budgetExhausted = remaining() <= 1_000  // already over → mark partial, skip transaction loop
 
   const allTransactions: Array<{
@@ -323,7 +347,7 @@ export default eventHandler(async (event) => {
     }
   }
 
-  return {
+  const result = {
     period,
     byPlatform,
     total,
@@ -335,4 +359,14 @@ export default eventHandler(async (event) => {
     accountsScanned: bankAccounts.length - accountQueue.length,
     accountsTotal: bankAccounts.length,
   }
+
+  // Cache only complete results — a partial (truncated) total would otherwise be
+  // served stale for hours.
+  if (cache && !budgetExhausted) {
+    try {
+      await cache.put(cacheKey, JSON.stringify(result), { expirationTtl: BANK_CHARGES_TTL_SECONDS })
+    } catch { /* non-fatal — just means the next load recomputes */ }
+  }
+
+  return result
 })
