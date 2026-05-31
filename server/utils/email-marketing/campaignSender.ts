@@ -11,7 +11,7 @@
 
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { getResendClient, getAppUrl, isEmailConfigured } from '~~/server/utils/email'
-import { RESEND_BATCH_LIMIT, buildBatchEmail } from './campaignSend'
+import { RESEND_BATCH_LIMIT, buildBatchEmail, isRateLimitError, parseRetryAfter } from './campaignSend'
 import type { Campaign } from './campaigns'
 
 export interface RecipientRow {
@@ -31,15 +31,41 @@ export function isCampaignSendingEnabled(): boolean {
 // ── DB: claim a chunk of pending recipients ─────────────────────────────────
 // 2b-2a single-flight claim. 2b-2b will switch to FOR UPDATE SKIP LOCKED for
 // concurrent queue consumers.
+// Atomic claim under FOR UPDATE SKIP LOCKED so an overlapping /send click and a
+// cron dispatch tick never grab the same rows. Sets claimed_at; the row stays
+// 'pending' until the batch succeeds (→ 'sent') or hard-fails (→ 'failed'); a
+// 429 releases the claim (claimed_at → NULL) so it's retried next pass.
 async function claimPendingChunk(campaignId: string, size: number): Promise<RecipientRow[]> {
   return queryRows<RecipientRow>(`
-    SELECT cr.id, cr.subscriber_id, cr.email::text AS email, s.name
-    FROM campaign_recipients cr
-    JOIN email_subscribers s ON s.id = cr.subscriber_id
-    WHERE cr.campaign_id = $1 AND cr.status = 'pending'
-    ORDER BY cr.created_at
-    LIMIT $2
+    UPDATE campaign_recipients cr
+    SET claimed_at = NOW()
+    FROM (
+      SELECT id FROM campaign_recipients
+      WHERE campaign_id = $1 AND status = 'pending' AND claimed_at IS NULL
+      ORDER BY created_at
+      LIMIT $2
+      FOR UPDATE SKIP LOCKED
+    ) sel
+    WHERE cr.id = sel.id
+    RETURNING cr.id, cr.subscriber_id, cr.email::text AS email,
+      (SELECT s.name FROM email_subscribers s WHERE s.id = cr.subscriber_id) AS name
   `, [campaignId, size])
+}
+
+async function releaseClaims(ids: string[]): Promise<void> {
+  if (ids.length === 0) return
+  await execute('UPDATE campaign_recipients SET claimed_at = NULL WHERE id = ANY($1::uuid[])', [ids])
+}
+
+// Watchdog: free rows whose claim went stale (sender crashed after claiming,
+// before sending), so the next dispatch tick re-sends them.
+export async function releaseStaleClaims(campaignId: string, olderThanMinutes = 10): Promise<number> {
+  return execute(`
+    UPDATE campaign_recipients
+    SET claimed_at = NULL
+    WHERE campaign_id = $1 AND status = 'pending' AND claimed_at IS NOT NULL
+      AND claimed_at < NOW() - MAKE_INTERVAL(mins => $2)
+  `, [campaignId, olderThanMinutes])
 }
 
 async function countPending(campaignId: string): Promise<number> {
@@ -50,10 +76,11 @@ async function countPending(campaignId: string): Promise<number> {
   return row?.n ?? 0
 }
 
-export interface ChunkResult { sent: number, failed: number }
+export interface ChunkResult { sent: number, failed: number, rateLimited: boolean, retryAfterSec: number }
 
 // Send one batch chunk for a campaign. Gated — throws if sending is disabled so
-// no path reaches Resend by accident.
+// no path reaches Resend by accident. On 429 the claim is released (not failed)
+// so the recipients retry on the next pass.
 export async function sendCampaignChunk(campaign: Campaign): Promise<ChunkResult> {
   if (!isCampaignSendingEnabled()) {
     throw createError({ statusCode: 403, statusMessage: 'sending_disabled' })
@@ -62,7 +89,7 @@ export async function sendCampaignChunk(campaign: Campaign): Promise<ChunkResult
   if (!client) throw createError({ statusCode: 503, statusMessage: 'resend_unavailable' })
 
   const recipients = await claimPendingChunk(campaign.id, RESEND_BATCH_LIMIT)
-  if (recipients.length === 0) return { sent: 0, failed: 0 }
+  if (recipients.length === 0) return { sent: 0, failed: 0, rateLimited: false, retryAfterSec: 0 }
 
   const appUrl = getAppUrl()
   const payload = recipients.map(r =>
@@ -73,7 +100,13 @@ export async function sendCampaignChunk(campaign: Campaign): Promise<ChunkResult
   let failed = 0
   try {
     const { data, error } = await client.batch.send(payload)
-    if (error) throw new Error(error.message || 'batch_send_failed')
+    if (error) {
+      if (isRateLimitError(error)) {
+        await releaseClaims(recipients.map(r => r.id))
+        return { sent: 0, failed: 0, rateLimited: true, retryAfterSec: parseRetryAfter(undefined) }
+      }
+      throw new Error(error.message || 'batch_send_failed')
+    }
     const ids = (data?.data ?? []) as Array<{ id: string }>
     for (let i = 0; i < recipients.length; i++) {
       const r = recipients[i]
@@ -90,6 +123,10 @@ export async function sendCampaignChunk(campaign: Campaign): Promise<ChunkResult
       sent++
     }
   } catch (err) {
+    if (isRateLimitError(err)) {
+      await releaseClaims(recipients.map(r => r.id))
+      return { sent: 0, failed: 0, rateLimited: true, retryAfterSec: parseRetryAfter(undefined) }
+    }
     const message = err instanceof Error ? err.message : 'send_failed'
     for (const r of recipients) {
       await execute(`
@@ -105,15 +142,22 @@ export async function sendCampaignChunk(campaign: Campaign): Promise<ChunkResult
     'UPDATE campaigns SET sent = sent + $2, updated_at = NOW() WHERE id = $1',
     [campaign.id, sent]
   )
-  return { sent, failed }
+  return { sent, failed, rateLimited: false, retryAfterSec: 0 }
 }
 
-export interface SendRunResult { sent: number, failed: number, remaining: number, drained: boolean }
+export interface SendRunResult {
+  sent: number
+  failed: number
+  remaining: number
+  drained: boolean
+  rateLimited: boolean
+}
 
 // Drive a campaign's send in a capped, paced loop (≤2 req/s → ~500ms between
 // batches, under Resend's default cap). Capped at maxChunks per invocation to
-// keep a single request bounded; larger campaigns continue on the next call
-// (2b-2b moves this to the queue for unbounded, resumable fan-out).
+// keep one request/tick bounded; larger campaigns continue on the next cron
+// dispatch tick (state persists in campaign_recipients → resumable). Stops early
+// on a 429 so the next tick backs off.
 export async function runCampaignSend(
   campaign: Campaign,
   opts: { maxChunks?: number, pacingMs?: number } = {}
@@ -122,13 +166,18 @@ export async function runCampaignSend(
   const pacingMs = opts.pacingMs ?? 500
   let sent = 0
   let failed = 0
+  let rateLimited = false
   for (let i = 0; i < maxChunks; i++) {
     const result = await sendCampaignChunk(campaign)
     sent += result.sent
     failed += result.failed
+    if (result.rateLimited) {
+      rateLimited = true
+      break
+    }
     if (result.sent === 0 && result.failed === 0) break
     if (i < maxChunks - 1) await new Promise(resolve => setTimeout(resolve, pacingMs))
   }
   const remaining = await countPending(campaign.id)
-  return { sent, failed, remaining, drained: remaining === 0 }
+  return { sent, failed, remaining, drained: remaining === 0, rateLimited }
 }

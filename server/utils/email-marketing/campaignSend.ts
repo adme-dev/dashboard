@@ -143,3 +143,38 @@ export function buildBatchEmail(
   if (campaign.reply_to) email.replyTo = campaign.reply_to
   return email
 }
+
+// ── Pure: rate-limit (429) handling ─────────────────────────────────────────
+
+// Detect a Resend rate-limit error from its error object / thrown shape.
+export function isRateLimitError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const e = err as { name?: string, statusCode?: number, message?: string }
+  if (e.statusCode === 429) return true
+  if (e.name === 'rate_limit_exceeded') return true
+  return /rate.?limit|too many requests/i.test(e.message || '')
+}
+
+// Parse a Retry-After header (integer seconds, or HTTP-date) into a clamped
+// number of seconds. Falls back to `fallbackSec` when absent/unparseable.
+export function parseRetryAfter(
+  header: string | null | undefined,
+  fallbackSec = 2,
+  maxSec = 60
+): number {
+  if (!header) return fallbackSec
+  const asInt = Number.parseInt(header.trim(), 10)
+  if (Number.isFinite(asInt) && String(asInt) === header.trim()) {
+    return Math.min(Math.max(asInt, 1), maxSec)
+  }
+  const asDate = Date.parse(header)
+  if (Number.isFinite(asDate)) {
+    // Date.now() is unavailable in some sandboxes; guard it.
+    const now = typeof Date.now === 'function' ? Date.now() : NaN
+    if (Number.isFinite(now)) {
+      const secs = Math.ceil((asDate - now) / 1000)
+      return Math.min(Math.max(secs, 1), maxSec)
+    }
+  }
+  return fallbackSec
+}
