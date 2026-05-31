@@ -169,6 +169,6 @@ function addChildBlock(type: string) {
 }
 
 .block-picker-item:hover {
-  @apply bg-muted;
+  background-color: var(--ui-bg-muted);
 }
 </style>

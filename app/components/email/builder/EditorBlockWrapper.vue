@@ -182,7 +182,7 @@ function insertBlockBelow(type: string) {
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   z-index: 10;
-  @apply bg-default;
+  background-color: var(--ui-bg);
 }
 
 .insert-zone {
@@ -246,6 +246,6 @@ function insertBlockBelow(type: string) {
 }
 
 .block-picker-item:hover {
-  @apply bg-muted;
+  background-color: var(--ui-bg-muted);
 }
 </style>
