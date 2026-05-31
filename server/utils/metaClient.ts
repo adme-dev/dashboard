@@ -601,7 +601,18 @@ export async function getAccountMonthlySpend(
     const spend = parseFloat(res.data?.[0]?.spend || '0')
     return { accountId, spend, currency: 'AUD' }
   } catch (err: any) {
-    console.warn(`[MetaBilling] Failed to fetch spend for ${accountId}:`, err.message)
+    // Surface the Graph API error code/subcode — a bare "403 Forbidden" hides
+    // why. #190 = token expired/invalid, #200/#10 = missing ads_read /
+    // app permission, #100 = bad account id. Tells us reconnect vs config fix.
+    const gErr = err?.data?.error
+    if (gErr) {
+      console.warn(
+        `[MetaBilling] Failed to fetch spend for ${accountId}: ` +
+        `code=${gErr.code} subcode=${gErr.error_subcode ?? '-'} "${gErr.message}" (fbtrace ${gErr.fbtrace_id ?? '-'})`
+      )
+    } else {
+      console.warn(`[MetaBilling] Failed to fetch spend for ${accountId}:`, err.message)
+    }
     return { accountId, spend: 0, currency: 'AUD' }
   }
 }

@@ -114,7 +114,15 @@ const budgetLinePath = computed(() => {
 })
 
 const hasBudget = computed(() => safeTotals.value.some(t => t.budget > 0))
-const totalSpend = computed(() => safeTotals.value.reduce((s, t) => s + t.spend, 0))
+// Header total comes from authoritative per-campaign monthly spend (top N +
+// "Other" in global mode, or every campaign when scoped) so it matches the
+// TOTAL SPEND card. The daily bars are an estimated breakdown that can sum a
+// little lower, so we don't derive the header from them. Falls back to the
+// summed daily totals only if no campaign rows are present.
+const totalSpend = computed(() => {
+  const fromCampaigns = safeCampaigns.value.reduce((s, c) => s + (c.monthlySpend || 0), 0)
+  return fromCampaigns > 0 ? fromCampaigns : safeTotals.value.reduce((s, t) => s + t.spend, 0)
+})
 const totalBudget = computed(() => safeTotals.value.reduce((s, t) => s + t.budget, 0))
 const overUnder = computed(() => totalSpend.value - totalBudget.value)
 

@@ -159,13 +159,15 @@ export async function gaqlQuery(
       return results
     } catch (err: any) {
       const status = err?.status || err?.statusCode
-      // Log detailed GAQL error info for debugging 400s
-      if (status === 400 && err.data) {
+      // Log detailed GAQL error info for debugging 4xx (bad query, permission
+      // denied, disabled customer, dev-token/login-customer-id problems). The
+      // GoogleAdsFailure errorCode in the body is what distinguishes them.
+      if ((status === 400 || status === 403) && err.data) {
         const details = err.data?.error?.details?.[0]?.errors?.[0]
         if (details) {
-          console.error(`[GoogleAds] GAQL 400 detail:`, JSON.stringify(details))
+          console.error(`[GoogleAds] GAQL ${status} detail (customer ${cleanCustomerId}):`, JSON.stringify(details))
         } else {
-          console.error(`[GoogleAds] GAQL 400 body:`, JSON.stringify(err.data).slice(0, 500))
+          console.error(`[GoogleAds] GAQL ${status} body (customer ${cleanCustomerId}):`, JSON.stringify(err.data).slice(0, 500))
         }
       }
       if ((status === 429 || status === 500 || status === 503) && attempt < retries) {
@@ -314,7 +316,7 @@ export async function getMonthlySpend(
       campaign.name,
       campaign.status,
       campaign.advertising_channel_type,
-      campaign.end_date,
+      campaign.end_date_time,
       campaign.bidding_strategy_type,
       metrics.cost_micros,
       metrics.impressions,
@@ -340,7 +342,7 @@ export async function getMonthlySpend(
       conversionsValue: parseFloat(r.metrics?.conversionsValue || '0'),
       status: r.campaign.status || 'UNKNOWN',
       channelType: r.campaign.advertisingChannelType || 'UNKNOWN',
-      endDate: normalizeGoogleEndDate(r.campaign.endDate),
+      endDate: normalizeGoogleEndDate(r.campaign.endDateTime),
       bidStrategy: r.campaign.biddingStrategyType || null
     }
   })
