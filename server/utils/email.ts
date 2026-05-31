@@ -159,7 +159,7 @@ function renderEmailTemplate(options: {
   ctaUrl?: string
   footerHtml?: string
   recipientEmail?: string
-}): { html: string; text: string } {
+}): { html: string, text: string } {
   const { appName, appUrl } = getEmailConfig()
   const monogram = logoMonogram(appName)
   const safeAppName = escapeHtml(appName)
@@ -263,7 +263,7 @@ function renderEmailTemplate(options: {
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+    .replace(/&#39;/g, '\'')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 
@@ -423,7 +423,7 @@ export async function sendTaskAssignedEmail(data: {
     await client.emails.send({
       from: getFromHeader(),
       to: data.to,
-      subject: `You've been assigned: ${data.taskTitle}`,  // plain text context, no escaping needed
+      subject: `You've been assigned: ${data.taskTitle}`, // plain text context, no escaping needed
       html,
       text
     })
@@ -575,6 +575,40 @@ export async function sendDueReminderEmail(data: {
 }
 
 /**
+ * Send a pre-rendered white-label analytics report (HTML body) to one or more
+ * recipients, optionally appending a link to the archived copy. The HTML is
+ * already composed by reportModel.renderReportHtml, so we send it as-is rather
+ * than wrapping it in the platform email template.
+ */
+export async function sendAnalyticsReportEmail(data: {
+  event?: H3Event
+  to: string[]
+  subject: string
+  html: string
+  reportUrl?: string | null
+}): Promise<{ sent: boolean }> {
+  const client = getResendClient(data.event)
+  if (!client) {
+    console.log('[Email] Analytics report (no Resend client) for', data.to.join(', '))
+    return { sent: false }
+  }
+  const html = data.reportUrl
+    ? data.html.replace(
+        '</body>',
+        `<div style="text-align:center;padding:16px;font-size:12px"><a href="${escapeHtml(data.reportUrl)}">View this report online</a></div></body>`
+      )
+    : data.html
+  try {
+    await client.emails.send({ from: getFromHeader(data.event), to: data.to, subject: data.subject, html })
+    console.log('[Email] Analytics report sent to', data.to.join(', '))
+    return { sent: true }
+  } catch (error) {
+    console.error('[Email] Failed to send analytics report:', error)
+    return { sent: false }
+  }
+}
+
+/**
  * Customer-facing dunning reminder for an outstanding sales invoice.
  * Sent from the agency to the client, chasing payment with a one-click
  * pay link (Xero OnlineInvoiceUrl). Tone adapts to days-overdue.
@@ -590,7 +624,7 @@ export async function sendInvoiceReminderEmail(data: {
   payUrl?: string | null
   agencyName?: string
   event?: H3Event
-}): Promise<{ ok: boolean; error?: string }> {
+}): Promise<{ ok: boolean, error?: string }> {
   const client = getResendClient(data.event)
   if (!client) {
     return { ok: false, error: 'Email service not configured (RESEND_API_KEY missing).' }
@@ -602,7 +636,7 @@ export async function sendInvoiceReminderEmail(data: {
   const amountFmt = new Intl.NumberFormat('en-AU', {
     style: 'currency',
     currency: data.currency || 'AUD',
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 2
   }).format(data.amountDue)
 
   let toneOpening: string
@@ -642,8 +676,8 @@ export async function sendInvoiceReminderEmail(data: {
     bodyHtml,
     ctaText: data.payUrl ? 'Pay invoice' : undefined,
     ctaUrl: data.payUrl || undefined,
-    footerHtml: "If you've already paid, please disregard — payments can take a day or two to clear in our system.",
-    recipientEmail: data.to,
+    footerHtml: 'If you\'ve already paid, please disregard — payments can take a day or two to clear in our system.',
+    recipientEmail: data.to
   })
 
   try {
@@ -652,7 +686,7 @@ export async function sendInvoiceReminderEmail(data: {
       to: data.to,
       subject,
       html,
-      text,
+      text
     })
     return { ok: true }
   } catch (error: any) {
@@ -852,7 +886,7 @@ export async function sendQuoteEmail(data: {
   total?: number
   currency?: string
   validUntil?: Date
-  lineItems?: Array<{ description: string; quantity: number; unitPrice: number; total: number }>
+  lineItems?: Array<{ description: string, quantity: number, unitPrice: number, total: number }>
   clientNotes?: string
   senderName?: string
   senderEmail?: string
@@ -1081,7 +1115,7 @@ export async function sendBoardChangeEmail(data: {
       ${itemLine}
     `,
     ctaText: data.itemUrl ? 'View Item' : 'View Board',
-    ctaUrl: data.itemUrl || data.boardUrl,
+    ctaUrl: data.itemUrl || data.boardUrl
   })
 
   try {
@@ -1090,7 +1124,7 @@ export async function sendBoardChangeEmail(data: {
       to: data.to,
       subject: `[${data.boardName}] ${data.actorName} ${data.action}`,
       html,
-      text,
+      text
     })
     console.log('[Email] Board change email sent to', data.to)
   } catch (error) {
@@ -1207,7 +1241,7 @@ export async function sendBoardMemberAddedEmail(data: {
       <p>You'll see updates from this board in your inbox and can jump in to collaborate.</p>
     `,
     ctaText: 'Open Board',
-    ctaUrl: data.boardUrl,
+    ctaUrl: data.boardUrl
   })
 
   try {
@@ -1216,7 +1250,7 @@ export async function sendBoardMemberAddedEmail(data: {
       to: data.to,
       subject: `${data.adderName} added you to ${data.boardName}`,
       html,
-      text,
+      text
     })
     console.log('[Email] Board member added email sent to', data.to)
   } catch (error) {
@@ -1416,7 +1450,7 @@ export async function sendAnomalyAlertEmail(data: {
   title: string
   description: string
   metricLabel?: string
-  metricValue?: string         // already-formatted, e.g. "$50,000" or "12%"
+  metricValue?: string // already-formatted, e.g. "$50,000" or "12%"
   recommendation?: string
   url: string
 }): Promise<void> {
@@ -1446,7 +1480,7 @@ export async function sendAnomalyAlertEmail(data: {
       ${recommendationBlock}
     `,
     ctaText: 'Open in dashboard',
-    ctaUrl: data.url,
+    ctaUrl: data.url
   })
 
   try {
@@ -1455,7 +1489,7 @@ export async function sendAnomalyAlertEmail(data: {
       to: data.to,
       subject: `[Critical] ${data.title}`,
       html,
-      text,
+      text
     })
     console.log('[Email] Anomaly alert email sent to', data.to)
   } catch (error) {
