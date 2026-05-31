@@ -49,7 +49,7 @@ Expanded plan: `docs/superpowers/plans/2026-05-31-phase2-blended-attribution.md`
 - 2.6 ✅ Blend presets — `server/utils/blendPresets.ts` (5 typed presets) + `presets.get.ts`.
 
 **Phase 2 follow-ons (decide before/with Phase 3):**
-- **UI surfacing:** blended / attribution / presets are API-only. Add a blended panel to `/agency/analytics` (real value now: spend/leads/sessions/CPL by canonical channel). Defer the attribution model selector until multi-touch journey data exists (Phase 3.1).
+- **UI surfacing:** ✅ blended panel added to `/agency/analytics` (`app/components/agency/BlendedPanel.client.vue` — tiles + per-canonical-channel table, agency-wide or per client). Still API-only: **attribution** (defer the model selector until multi-touch journey data exists, Phase 3.1) and **presets** (`presets.get.ts` — no picker UI yet).
 - **Deploy + push:** committed to `main` only. `pnpm deploy:production`; push needs the `adme-dev` gh account.
 - Currency/timezone normalization (2.3) and a real touchpoint table (2.5) are deferred as noted above.
 
