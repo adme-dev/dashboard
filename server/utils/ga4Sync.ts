@@ -51,7 +51,18 @@ export async function syncGa4(
   const startDate = isoDaysAgo(lookbackDays)
   const endDate = isoDaysAgo(0)
 
+  // Accumulate per-connection outcome so the status row reflects the whole run
+  // (one connection can map multiple properties).
+  const perConnection = new Map<string, { rows: number; error: string | null }>()
+  const noteConnection = (id: string, patch: { rows?: number; error?: string | null }) => {
+    const cur = perConnection.get(id) || { rows: 0, error: null }
+    if (patch.rows) cur.rows += patch.rows
+    if (patch.error !== undefined) cur.error = patch.error
+    perConnection.set(id, cur)
+  }
+
   for (const map of maps) {
+    if (!perConnection.has(map.connection_id)) perConnection.set(map.connection_id, { rows: 0, error: null })
     try {
       let token = map.access_token
       if (map.refresh_token && map.token_expires_at &&
@@ -90,11 +101,29 @@ export async function syncGa4(
           ]
         )
         result.rowsUpserted++
+        noteConnection(map.connection_id, { rows: 1 })
       }
       result.propertiesSynced++
     } catch (err: any) {
-      result.errors.push(`property ${map.property_id}: ${err.message || err}`)
+      const message = `property ${map.property_id}: ${err.message || err}`
+      result.errors.push(message)
+      noteConnection(map.connection_id, { error: message })
     }
+  }
+
+  // Persist per-connection sync status (last run/success/error + rows).
+  for (const [connectionId, outcome] of perConnection) {
+    await execute(
+      `INSERT INTO ga4_sync_status (connection_id, last_run_at, last_success_at, last_error, rows_upserted, updated_at)
+       VALUES ($1, NOW(), $2, $3, $4, NOW())
+       ON CONFLICT (connection_id) DO UPDATE SET
+         last_run_at = NOW(),
+         last_success_at = CASE WHEN $3 IS NULL THEN NOW() ELSE ga4_sync_status.last_success_at END,
+         last_error = $3,
+         rows_upserted = $4,
+         updated_at = NOW()`,
+      [connectionId, outcome.error ? null : new Date(), outcome.error, outcome.rows]
+    )
   }
 
   return result

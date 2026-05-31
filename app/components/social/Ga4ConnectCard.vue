@@ -1,7 +1,10 @@
 <!-- app/components/social/Ga4ConnectCard.vue -->
 <script setup lang="ts">
 interface Ga4Property { accountName: string; propertyId: string; propertyDisplayName: string }
-interface Ga4Connection { connectionId: string; accountName: string; properties: Ga4Property[] }
+interface Ga4Connection {
+  connectionId: string; accountName: string; properties: Ga4Property[]
+  lastRunAt: string | null; lastSuccessAt: string | null; lastError: string | null
+}
 interface Ga4Map { property_id: string; client_id: string; property_display_name: string }
 interface ClientOption { label: string; value: string }
 
@@ -11,6 +14,17 @@ const connections = ref<Ga4Connection[]>([])
 const maps = ref<Ga4Map[]>([])
 const clientOptions = ref<ClientOption[]>([])
 const selectedClient = reactive<Record<string, string>>({}) // propertyId -> clientId
+
+function relativeTime(iso: string | null): string {
+  if (!iso) return 'never'
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const mins = Math.round(diffMs / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.round(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.round(hrs / 24)}d ago`
+}
 
 async function loadProperties() {
   loading.value = true
@@ -85,7 +99,25 @@ onMounted(() => { loadClients(); loadProperties() })
     </div>
     <div v-else class="space-y-6">
       <div v-for="conn in connections" :key="conn.connectionId">
-        <p class="text-sm text-muted mb-2">{{ conn.accountName }}</p>
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-sm text-muted">{{ conn.accountName }}</p>
+          <UBadge
+            v-if="conn.lastError"
+            color="error"
+            variant="subtle"
+            icon="i-lucide-triangle-alert"
+            :label="`Sync failed ${relativeTime(conn.lastRunAt)}`"
+          />
+          <UBadge
+            v-else-if="conn.lastSuccessAt"
+            color="success"
+            variant="subtle"
+            icon="i-lucide-check"
+            :label="`Synced ${relativeTime(conn.lastSuccessAt)}`"
+          />
+          <UBadge v-else color="neutral" variant="subtle" label="Not synced yet" />
+        </div>
+        <p v-if="conn.lastError" class="text-xs text-error mb-2 truncate">{{ conn.lastError }}</p>
         <div v-if="!conn.properties.length" class="text-sm text-muted">No properties visible to this account.</div>
         <div v-for="prop in conn.properties" :key="prop.propertyId" class="flex items-center gap-3 py-2 border-b border-default last:border-0">
           <div class="flex-1 min-w-0">
