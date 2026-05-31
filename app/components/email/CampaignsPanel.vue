@@ -85,6 +85,92 @@ async function create() {
     creating.value = false
   }
 }
+
+// ── Send controls (gated) ──────────────────────────────────────────────────
+const { data: cfg } = await useFetch<{ sending_enabled: boolean }>(
+  '/api/email/campaigns/config',
+  { default: () => ({ sending_enabled: false }) }
+)
+const sendingEnabled = computed(() => !!cfg.value?.sending_enabled)
+
+const busyId = ref<string | null>(null)
+const showSend = ref(false)
+const sendTarget = ref<CampaignRow | null>(null)
+
+function errMessage(e: unknown): string {
+  const err = e as { data?: { statusMessage?: string, message?: string }, statusMessage?: string }
+  return err?.data?.message || err?.data?.statusMessage || err?.statusMessage || 'Something went wrong.'
+}
+
+function confirmSend(row: CampaignRow) {
+  sendTarget.value = row
+  showSend.value = true
+}
+
+async function doSend() {
+  const row = sendTarget.value
+  if (!row) return
+  busyId.value = row.id
+  try {
+    const res = await $fetch<{ sent: number, remaining: number, status: string }>(
+      `/api/email/campaigns/${row.id}/send`, { method: 'POST' }
+    )
+    toast.add({
+      title: res.status === 'sent' ? 'Campaign sent' : 'Sending…',
+      description: `${res.sent} sent, ${res.remaining} remaining.`,
+      color: 'success'
+    })
+    showSend.value = false
+    refresh()
+  } catch (e) {
+    toast.add({ title: 'Send failed', description: errMessage(e), color: 'error' })
+  } finally {
+    busyId.value = null
+  }
+}
+
+async function pause(row: CampaignRow) {
+  busyId.value = row.id
+  try {
+    await $fetch(`/api/email/campaigns/${row.id}/pause`, { method: 'POST' })
+    toast.add({ title: 'Paused', color: 'success' })
+    refresh()
+  } catch (e) {
+    toast.add({ title: 'Pause failed', description: errMessage(e), color: 'error' })
+  } finally {
+    busyId.value = null
+  }
+}
+
+async function cancel(row: CampaignRow) {
+  busyId.value = row.id
+  try {
+    await $fetch(`/api/email/campaigns/${row.id}/cancel`, { method: 'POST' })
+    toast.add({ title: 'Cancelled', color: 'success' })
+    refresh()
+  } catch (e) {
+    toast.add({ title: 'Cancel failed', description: errMessage(e), color: 'error' })
+  } finally {
+    busyId.value = null
+  }
+}
+
+async function testSend(row: CampaignRow) {
+  busyId.value = row.id
+  try {
+    const res = await $fetch<{ sent_to: string }>(
+      `/api/email/campaigns/${row.id}/test-send`, { method: 'POST' }
+    )
+    toast.add({ title: 'Test sent', description: `Sent to ${res.sent_to}.`, color: 'success' })
+  } catch (e) {
+    toast.add({ title: 'Test failed', description: errMessage(e), color: 'error' })
+  } finally {
+    busyId.value = null
+  }
+}
+
+const SENDABLE = new Set(['draft', 'scheduled', 'paused'])
+const TERMINAL = new Set(['sent', 'cancelled'])
 </script>
 
 <template>
@@ -95,6 +181,15 @@ async function create() {
       </p>
       <UButton icon="i-lucide-plus" label="New campaign" @click="openCreate" />
     </div>
+
+    <UAlert
+      v-if="!sendingEnabled"
+      icon="i-lucide-shield-alert"
+      color="warning"
+      variant="subtle"
+      title="Sending is disabled"
+      description="Set EMAIL_SENDING_ENABLED=true and configure Resend to enable sending. You can still build, target, and materialize campaigns."
+    />
 
     <div v-if="pending" class="text-sm text-muted">
       Loading…
@@ -117,11 +212,54 @@ async function create() {
             {{ row.subject }}
           </p>
         </div>
-        <div class="flex items-center gap-3 shrink-0">
+        <div class="flex items-center gap-2 shrink-0">
           <span class="text-xs text-muted">{{ row.sent }} / {{ row.to_send }} sent</span>
           <UBadge :color="(STATUS_COLOR[row.status] as any) || 'neutral'" variant="subtle">
             {{ row.status }}
           </UBadge>
+
+          <UButton
+            v-if="!TERMINAL.has(row.status)"
+            icon="i-lucide-mail-check"
+            variant="ghost"
+            color="neutral"
+            size="xs"
+            title="Send a test to me"
+            :loading="busyId === row.id"
+            :disabled="!sendingEnabled"
+            @click="testSend(row)"
+          />
+          <UTooltip v-if="SENDABLE.has(row.status)" :text="sendingEnabled ? 'Send' : 'Sending disabled'">
+            <UButton
+              icon="i-lucide-send"
+              color="primary"
+              size="xs"
+              label="Send"
+              :loading="busyId === row.id"
+              :disabled="!sendingEnabled || row.to_send < 1"
+              @click="confirmSend(row)"
+            />
+          </UTooltip>
+          <UButton
+            v-if="row.status === 'sending'"
+            icon="i-lucide-pause"
+            variant="soft"
+            color="warning"
+            size="xs"
+            label="Pause"
+            :loading="busyId === row.id"
+            @click="pause(row)"
+          />
+          <UButton
+            v-if="row.status === 'sending' || row.status === 'paused'"
+            icon="i-lucide-x"
+            variant="ghost"
+            color="error"
+            size="xs"
+            label="Cancel"
+            :loading="busyId === row.id"
+            @click="cancel(row)"
+          />
         </div>
       </div>
     </div>
@@ -160,6 +298,36 @@ async function create() {
               label="Create"
               :loading="creating"
               @click="create()"
+            />
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="showSend" title="Send campaign">
+      <template #content>
+        <div class="p-4 space-y-4">
+          <p class="text-sm font-semibold">
+            Send “{{ sendTarget?.name }}”?
+          </p>
+          <p class="text-sm text-muted">
+            This sends a real email to
+            <span class="font-medium text-default">{{ sendTarget?.to_send }}</span>
+            recipient(s). This can't be undone.
+          </p>
+          <div class="flex justify-end gap-2 pt-2">
+            <UButton
+              variant="ghost"
+              color="neutral"
+              label="Cancel"
+              @click="showSend = false"
+            />
+            <UButton
+              color="primary"
+              icon="i-lucide-send"
+              label="Send now"
+              :loading="busyId === sendTarget?.id"
+              @click="doSend()"
             />
           </div>
         </div>
