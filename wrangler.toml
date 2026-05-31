@@ -112,3 +112,15 @@ script_name = "office-room-worker"
 #   Schedule: 35 3 * * *  (daily)
 #   Target:   POST /api/cron/office-retention
 #   Header:   x-cron-secret: <CRON_SECRET>  (auth — must match env var)
+#
+# To enable GA4 sync (channel metrics + richer dimensions/events):
+#   Workers & Pages → agency-dashboard → Settings → Triggers → Cron
+#   Schedule: 0 * * * *  (hourly; idempotent, always re-pulls the trailing ~48h)
+#   Target:   POST /api/cron/ga4-sync
+#   Header:   x-cron-secret: <CRON_SECRET>  (auth — must match env var)
+#
+# To enable scheduled white-label client reports:
+#   Workers & Pages → agency-dashboard → Settings → Triggers → Cron
+#   Schedule: 0 6 * * *  (daily; each schedule self-gates on its weekly/monthly cadence)
+#   Target:   POST /api/cron/scheduled-reports
+#   Header:   x-cron-secret: <CRON_SECRET>  (auth — must match env var)
