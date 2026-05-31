@@ -100,7 +100,7 @@ export default defineEventHandler(async (event) => {
           if (!verdict.allowed) {
             console.warn('[track] rate limit', { site: site.id, layer: verdict.layer, mode: rlMode })
             if (rlMode === 'enforce') {
-              setResponseHeader(event, 'Retry-After', String(verdict.retryAfterSec ?? 10))
+              setResponseHeader(event, 'Retry-After', verdict.retryAfterSec ?? 10)
               setResponseStatus(event, 429)
               return { ok: false }
             }
