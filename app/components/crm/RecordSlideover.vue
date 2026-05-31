@@ -26,6 +26,11 @@ const title = computed(() =>
         @submit="(body) => emit('save', body)"
         @cancel="emit('update:open', false)"
       />
+      <template v-if="record?.id">
+        <USeparator class="my-4" />
+        <h3 class="text-sm font-medium text-muted mb-3">Activity</h3>
+        <CrmActivityTimeline :client-id="clientId" :target-type="objectType" :target-id="record.id" />
+      </template>
     </template>
   </USlideover>
 </template>
