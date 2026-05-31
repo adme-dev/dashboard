@@ -2,7 +2,7 @@
 import { z } from 'zod'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { queryOne } from '~~/server/utils/db'
-import { loadFieldDefs, validateAndCheckRelations } from '~~/server/utils/crm/engine/recordWrite'
+import { loadFieldDefs, validateAndCheckRelations, assertStageBelongsToClient } from '~~/server/utils/crm/engine/recordWrite'
 
 const Body = z.object({
   data: z.record(z.string(), z.unknown()).optional(),
@@ -27,7 +27,10 @@ export default defineEventHandler(async (event) => {
     const clean = await validateAndCheckRelations(defs, client.clientId, b.data)
     params.push(JSON.stringify(clean)); sets.push(`data = $${params.length}::jsonb`)
   }
-  if (b.stage_id !== undefined) { params.push(b.stage_id); sets.push(`stage_id = $${params.length}`) }
+  if (b.stage_id !== undefined) {
+    await assertStageBelongsToClient(b.stage_id, client.clientId)
+    params.push(b.stage_id); sets.push(`stage_id = $${params.length}`)
+  }
   if (!sets.length) throw createError({ statusCode: 400, statusMessage: 'No fields to update' })
   sets.push('updated_at = NOW()')
   params.push(id); const idIdx = params.length

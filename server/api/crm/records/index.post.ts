@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { assertObjectVisible } from '~~/server/utils/crm/engine/resolveObjects'
-import { loadFieldDefs, validateAndCheckRelations } from '~~/server/utils/crm/engine/recordWrite'
+import { loadFieldDefs, validateAndCheckRelations, assertStageBelongsToClient } from '~~/server/utils/crm/engine/recordWrite'
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -21,6 +21,7 @@ export default defineEventHandler(async (event) => {
   const obj = await assertObjectVisible(b.client_id, b.objectKey)
   const defs = await loadFieldDefs(obj.id, b.client_id)
   const clean = await validateAndCheckRelations(defs, b.client_id, b.data)
+  await assertStageBelongsToClient(b.stage_id, b.client_id)
   const row = await queryOne(
     `INSERT INTO crm_records (client_id, object_def_id, data, stage_id, created_by)
      VALUES ($1,$2,$3::jsonb,$4,$5) RETURNING *`,

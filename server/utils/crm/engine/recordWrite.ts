@@ -17,6 +17,18 @@ export function titleKeys(defs: EngineFieldDef[]): string[] {
   return titles.length ? titles : defs.slice(0, 1).map(d => d.key) // fall back to first field
 }
 
+// Verify a stage_id (if provided) belongs to this client. Config-object stages are always
+// per-client (seeded with object-key-prefixed codes), so a global/foreign stage is invalid.
+// No-op when stageId is null/undefined. Throws 400 otherwise.
+export async function assertStageBelongsToClient(stageId: string | null | undefined, clientId: string): Promise<void> {
+  if (stageId == null) return
+  const hit = await queryOne<{ id: string }>(
+    `SELECT id FROM crm_stages WHERE id = $1 AND client_id = $2`,
+    [stageId, clientId],
+  )
+  if (!hit) throw createError({ statusCode: 400, statusMessage: 'Invalid stage' })
+}
+
 export async function validateAndCheckRelations(
   defs: EngineFieldDef[],
   clientId: string,
