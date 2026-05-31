@@ -19,12 +19,20 @@ export function isManagementRole(role: string): boolean {
   return (MANAGEMENT_ROLES as readonly string[]).includes(role)
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+/** True for a canonical UUID. Used to 400 malformed ids before they reach a
+ *  uuid column (an invalid cast otherwise surfaces as a Postgres 500). */
+export function isUuid(v: string | undefined | null): boolean {
+  return !!v && UUID_RE.test(v)
+}
+
 /** Authenticates, role-gates, and (for scoped roles) verifies client assignment.
  *  Throws 401/403/400 as appropriate. Returns the authenticated user. */
 export async function requireClientTrackingAccess(event: H3Event, clientId: string | undefined) {
   const user = await requireAuth(event)
   await requireRole(event, ANALYTICS_ROLES)
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId is required' })
+  if (!isUuid(clientId)) throw createError({ statusCode: 400, statusMessage: 'Invalid clientId' })
   if (isManagementRole(user.role)) return user
   const row = await queryOne(
     `SELECT 1 FROM client_team_assignments WHERE client_id = $1 AND team_member_id = $2 LIMIT 1`,
@@ -49,6 +57,7 @@ export async function accessibleClientIds(user: { id: string, role: string }): P
  *  keyed by site id, not client id). Returns the site's client_id. 404 if unknown. */
 export async function requireSiteTrackingAccess(event: H3Event, siteId: string | undefined): Promise<string> {
   if (!siteId) throw createError({ statusCode: 400, statusMessage: 'site id is required' })
+  if (!isUuid(siteId)) throw createError({ statusCode: 400, statusMessage: 'Invalid site id' })
   const row = await queryOne<{ client_id: string }>(
     `SELECT client_id FROM tracking_sites WHERE id = $1`,
     [siteId]
