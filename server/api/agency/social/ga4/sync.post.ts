@@ -1,4 +1,5 @@
-import { requireAuth } from '~~/server/utils/auth'
+import { requireRole } from '~~/server/utils/auth'
+import { PERMISSIONS } from '~~/server/utils/permissions'
 import { runSpendSyncInBackground } from '~~/server/utils/asyncBackground'
 import { syncGa4 } from '~~/server/utils/ga4Sync'
 
@@ -8,7 +9,7 @@ import { syncGa4 } from '~~/server/utils/ga4Sync'
  * Body: { clientId?: string, lookbackDays?: number }
  */
 export default eventHandler(async (event) => {
-  await requireAuth(event)
+  await requireRole(event, [...new Set([...PERMISSIONS.CLIENTS, ...PERMISSIONS.MEDIA_BUYING])])
   const body = await readBody(event).catch(() => null)
   const clientId = body?.clientId as string | undefined
   const lookbackDays = typeof body?.lookbackDays === 'number' ? body.lookbackDays : 14

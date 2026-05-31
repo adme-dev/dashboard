@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { requireAuth } from '~~/server/utils/auth'
+import { requireRole } from '~~/server/utils/auth'
+import { PERMISSIONS } from '~~/server/utils/permissions'
 import { execute } from '~~/server/utils/db'
 
 const schema = z.object({
@@ -15,7 +16,7 @@ const schema = z.object({
  * property updates the existing row).
  */
 export default eventHandler(async (event) => {
-  await requireAuth(event)
+  await requireRole(event, [...new Set([...PERMISSIONS.CLIENTS, ...PERMISSIONS.MEDIA_BUYING])])
   const body = schema.parse(await readBody(event))
 
   await execute(

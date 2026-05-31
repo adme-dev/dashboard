@@ -1,5 +1,6 @@
 import { setCookie, getRequestURL } from 'h3'
-import { requireAuth } from '~~/server/utils/auth'
+import { requireRole } from '~~/server/utils/auth'
+import { PERMISSIONS } from '~~/server/utils/permissions'
 import { getGa4AuthUrl } from '~~/server/utils/ga4Client'
 
 /**
@@ -7,7 +8,7 @@ import { getGa4AuthUrl } from '~~/server/utils/ga4Client'
  * Returns a Google OAuth URL scoped for GA4 (analytics.readonly + openid email).
  */
 export default eventHandler(async (event) => {
-  await requireAuth(event)
+  await requireRole(event, [...new Set([...PERMISSIONS.CLIENTS, ...PERMISSIONS.MEDIA_BUYING])])
 
   const config = useRuntimeConfig()
   if (!config.googleClientId || !config.googleClientSecret) {
