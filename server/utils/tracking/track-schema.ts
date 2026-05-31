@@ -20,6 +20,11 @@ export const TRACK_EVENT_NAMES = [
   // core behaviour (fire in Slice 1)
   'page_view', 'scroll', 'engagement', 'click', 'phone_click', 'outbound_click',
   'form_start', 'form_submit', 'form_abandonment',
+  // tag behavioural signals — dead_click is default-on; the rest fire only when
+  // the tag's opt-in `behavioral` mode is enabled. Reserved so the endpoint never
+  // 422-rejects a tag-emitted event (see public/track.js).
+  'dead_click', 'rage_click', 'idle_start', 'idle_end', 'idle_extended',
+  'form_field_timings',
   // reserved richer signals (Slice 3/4 — accepted now, may not fire yet)
   'vehicle_view', 'vehicle_list_view', 'search', 'filter_change',
   'finance_calculator_interact', 'trade_in_start', 'trade_in_complete',
