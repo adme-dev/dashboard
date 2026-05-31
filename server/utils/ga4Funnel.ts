@@ -44,6 +44,36 @@ export interface FunnelInput {
   leadsByChannel: Record<string, number>
 }
 
+/** Metrics we compute a period-over-period delta for. */
+export type FunnelComparedMetric = 'spend' | 'sessions' | 'totalUsers' | 'keyEvents' | 'leads'
+
+export interface FunnelComparison {
+  /** Previous-window totals (same shape as the current totals row). */
+  totals: FunnelChannelRow
+  /** Fractional change current-vs-previous (0.1 = +10%); null when previous is 0. */
+  deltaPct: Record<FunnelComparedMetric, number | null>
+}
+
+/** Fractional change; null when the previous value is 0 (can't divide). */
+export function pctDelta(curr: number, prev: number): number | null {
+  if (!prev) return null
+  return (curr - prev) / prev
+}
+
+/** Build the comparison block from current + previous totals rows. */
+export function buildComparison(current: FunnelChannelRow, previous: FunnelChannelRow): FunnelComparison {
+  return {
+    totals: previous,
+    deltaPct: {
+      spend: pctDelta(current.spend, previous.spend),
+      sessions: pctDelta(current.sessions, previous.sessions),
+      totalUsers: pctDelta(current.totalUsers, previous.totalUsers),
+      keyEvents: pctDelta(current.keyEvents, previous.keyEvents),
+      leads: pctDelta(current.leads, previous.leads)
+    }
+  }
+}
+
 function ratio(numerator: number, denominator: number): number | null {
   if (!denominator) return null
   return numerator / denominator

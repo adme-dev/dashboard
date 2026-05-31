@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildFunnel, previousWindow } from '../../../server/utils/ga4Funnel'
+import { buildFunnel, previousWindow, pctDelta, buildComparison } from '../../../server/utils/ga4Funnel'
 import { adPlatformToChannel, leadSourceToChannel } from '../../../server/utils/channelMap'
 
 describe('buildFunnel', () => {
@@ -47,6 +47,28 @@ describe('previousWindow', () => {
       prevStart: '2026-05-01',
       prevEnd: '2026-05-07'
     })
+  })
+})
+
+describe('pctDelta / buildComparison', () => {
+  it('computes fractional change and returns null when previous is 0', () => {
+    expect(pctDelta(150, 100)).toBeCloseTo(0.5)
+    expect(pctDelta(80, 100)).toBeCloseTo(-0.2)
+    expect(pctDelta(10, 0)).toBeNull()
+  })
+
+  it('builds the comparison block from current + previous totals', () => {
+    const cur = buildFunnel({
+      spendByChannel: { 'Paid Search': 120 }, ga4ByChannel: {}, leadsByChannel: { 'Paid Search': 12 }
+    })
+    const prev = buildFunnel({
+      spendByChannel: { 'Paid Search': 100 }, ga4ByChannel: {}, leadsByChannel: { 'Paid Search': 10 }
+    })
+    const cmp = buildComparison(cur.totals, prev.totals)
+    expect(cmp.totals.spend).toBe(100)
+    expect(cmp.deltaPct.spend).toBeCloseTo(0.2)
+    expect(cmp.deltaPct.leads).toBeCloseTo(0.2)
+    expect(cmp.deltaPct.sessions).toBeNull() // prev sessions = 0
   })
 })
 
