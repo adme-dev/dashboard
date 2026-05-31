@@ -32,6 +32,45 @@ importers:
       '@codemirror/theme-one-dark':
         specifier: ^6.1.2
         version: 6.1.3
+      '@flyhub/email-block-avatar':
+        specifier: ^0.0.6
+        version: 0.0.6(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-block-button':
+        specifier: ^0.0.4
+        version: 0.0.4(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-block-columns-container':
+        specifier: ^0.0.4
+        version: 0.0.4(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-block-container':
+        specifier: ^0.0.3
+        version: 0.0.3(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-block-divider':
+        specifier: ^0.0.3
+        version: 0.0.3(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-block-heading':
+        specifier: ^0.0.2
+        version: 0.0.2(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-block-html':
+        specifier: ^0.0.3
+        version: 0.0.3(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-block-image':
+        specifier: ^0.0.4
+        version: 0.0.4(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-block-spacer':
+        specifier: ^0.0.1
+        version: 0.0.1(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-block-text':
+        specifier: ^0.0.3
+        version: 0.0.3(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-builder':
+        specifier: ^0.0.6
+        version: 0.0.6(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-core':
+        specifier: ^0.0.1
+        version: 0.0.1(zod@4.3.6)
+      '@flyhub/email-document-core':
+        specifier: ^0.0.2
+        version: 0.0.2(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
       '@iconify-json/lucide':
         specifier: ^1.2.92
         version: 1.2.92
@@ -1230,6 +1269,83 @@ packages:
 
   '@floating-ui/vue@1.1.11':
     resolution: {integrity: sha512-HzHKCNVxnGS35r9fCHBc3+uCnjw9IWIlCPL683cGgM9Kgj2BiAl8x1mS7vtvP6F9S/e/q4O6MApwSHj8hNLGfw==}
+
+  '@flyhub/email-block-avatar@0.0.6':
+    resolution: {integrity: sha512-aRIa93rlFJAUfj5IDCTBgshOyfYdOd1iMax+uNAsQ4hgSC9vV4o3We5bPsD2zbjdK1wqVwdtJTgjVJDaKK5k+g==}
+    peerDependencies:
+      vue: ^3
+      zod: ^1 || ^2 || ^3
+
+  '@flyhub/email-block-button@0.0.4':
+    resolution: {integrity: sha512-X5yKXgdVYKgmdhZZ06koEp/UxsdSinu9veOFtbElFcRV8pWCqsPHPpymHjX0efSgiGGQK5yPPzsdY/dIO2H6MA==}
+    peerDependencies:
+      vue: ^3
+      zod: ^1 || ^2 || ^3
+
+  '@flyhub/email-block-columns-container@0.0.4':
+    resolution: {integrity: sha512-Y6KdxtPF3/1BnuTLEvxD75nvoy8Yyj6Q3+AC/nK0aOR20eFPgEtBT4ZDHQuDl9I32XVD8o+0jKZg0RR2vhHsKw==}
+    peerDependencies:
+      vue: ^3
+      zod: ^1 || ^2 || ^3
+
+  '@flyhub/email-block-container@0.0.3':
+    resolution: {integrity: sha512-dd8zOAUFJZgh0M/ftu1XO1WgVp175E+myAgTIO3PtEGesHJrZ1vmGVcka6WmU3P2FPv3crqXjGW76xGsNH7Yqw==}
+    peerDependencies:
+      vue: ^3
+      zod: ^1 || ^2 || ^3
+
+  '@flyhub/email-block-divider@0.0.3':
+    resolution: {integrity: sha512-yGyFsb7dH4K83qzNOHtsP7o6lCd2Y/NQqstIbzikZBao7E9Oy5vHBexx4a6nOYd6hQpCkRXXiedZzA65RI1+OQ==}
+    peerDependencies:
+      vue: ^3
+      zod: ^1 || ^2 || ^3
+
+  '@flyhub/email-block-heading@0.0.2':
+    resolution: {integrity: sha512-jZQffegANWIrxkjyq+hxtpcOcjEbN06ajgH31jEV6ERwxbenwsyZ1Uz0o7beh9aVgxAO4Pd/e32muKwUmT3XmQ==}
+    peerDependencies:
+      vue: ^3
+      zod: ^1 || ^2 || ^3
+
+  '@flyhub/email-block-html@0.0.3':
+    resolution: {integrity: sha512-DDCqQPezn/neNz5RtToaNyntjOrdp/Qs63cewFKlUqwoxx5dPSmYWOLGrwJ1oZA54QR2WtcxfFS+76OSn5MPCg==}
+    peerDependencies:
+      vue: ^3
+      zod: ^1 || ^2 || ^3
+
+  '@flyhub/email-block-image@0.0.4':
+    resolution: {integrity: sha512-HR16NjZJLsiLsrgKgVKZLW0bYejMr/XxiOQisEGL4O/IKPVn51TCgqsoRzJwVIiLccYqm3NhDJybZPzeVOhD0Q==}
+    peerDependencies:
+      vue: ^3
+      zod: ^1 || ^2 || ^3
+
+  '@flyhub/email-block-spacer@0.0.1':
+    resolution: {integrity: sha512-dJYy/Rjj3BSDz7nXwYPX0qBG+4xgerErk8VFztcf+dUpsa8s6vtSU/IpgLu8MXY/3W8FUdW+IbXfiPQAmdjMsw==}
+    peerDependencies:
+      vue: ^3
+      zod: ^1 || ^2 || ^3
+
+  '@flyhub/email-block-text@0.0.3':
+    resolution: {integrity: sha512-RNNPmRV9bzCWCwAMjDXbAAHk7l0f7sjEW6TpiSpXEqlRFomaqJ9Uw3wdjcDJ37xqpffPUPAoCH22MqFZejkRvw==}
+    peerDependencies:
+      vue: ^3
+      zod: ^1 || ^2 || ^3
+
+  '@flyhub/email-builder@0.0.6':
+    resolution: {integrity: sha512-/bG+jbpKzjIBZ9IWyOogdXV+bEnwaP8mtPyUivOgvIeSzzRHDZuM0Obqh6Vk7pIUsx+yCR7Baus8dF6xh99nJw==}
+    peerDependencies:
+      vue: ^3
+      zod: ^1 || ^2 || ^3
+
+  '@flyhub/email-core@0.0.1':
+    resolution: {integrity: sha512-ln/DWIgHIyNPkqKT0jm0IOKNgfsJg2Y5bMdT79/n2YbUZg291Y/Q9WvcFPuBstR1NELJaBD/pcbLrVe3gr08HQ==}
+    peerDependencies:
+      zod: ^1 || ^2 || ^3
+
+  '@flyhub/email-document-core@0.0.2':
+    resolution: {integrity: sha512-1ABu1yvnXc69dAgA9WVRc9UMvQBhvTCNKkjihIlP3mF6r68Jpz7uBgQ+lAd+4+UwilvNLSfAmyjkPKUSWUWRDQ==}
+    peerDependencies:
+      vue: ^3
+      zod: ^1 || ^2 || ^3
 
   '@google-cloud/precise-date@4.0.0':
     resolution: {integrity: sha512-1TUx3KdaU3cN7nfCdNf+UVqA/PSX29Cjcox3fZZBtINlRrXVTmUkQnCKv2MbBUbCopbK4olAT1IHl76uZyCiVA==}
@@ -3995,6 +4111,9 @@ packages:
     resolution: {integrity: sha512-Izi8RQcffqCeNVgFigKli1ssklIbpHnCYc6AknXGYoB6grJqyeby7jv12JUQgmTAnIDnbck1uxksT4dzN3PWBA==}
     engines: {node: '>=12'}
 
+  assignment@2.0.0:
+    resolution: {integrity: sha512-naMULXjtgCs9SVUEtyvJNt68aF18em7/W+dhbR59kbz9cXWPEvUkCun2tqlgqRPSqZaKPpqLc5ZnwL8jVmJRvw==}
+
   ast-kit@2.2.0:
     resolution: {integrity: sha512-m1Q/RaVOnTp9JxPX+F+Zn7IcLYMzM8kZofDImfsKZd8MbR+ikdOzTeztStWqfrqIxZnYWryyI9ePm3NGjnZgGw==}
     engines: {node: '>=20.19.0'}
@@ -5430,6 +5549,10 @@ packages:
     resolution: {integrity: sha512-0hJU9SCPvmMzIBdZFqNPXWa6dqh7WdH0cII9y+CyS8rG3nL48Bclra9HmKhVVUHyPWNH5Y7xDwAB7bfgSjkUMQ==}
     engines: {node: '>= 0.4'}
 
+  he@0.5.0:
+    resolution: {integrity: sha512-DoufbNNOFzwRPy8uecq+j+VCPQ+JyDelHTmSgygrA5TsR8Cbw4Qcir5sGtWiusB4BdT89nmlaVDhSJOqC/33vw==}
+    hasBin: true
+
   he@1.2.0:
     resolution: {integrity: sha512-F/1DnUGPopORZi0ni+CvrCgHQ5FyEAHRLSApuYWMmrbSwoN2Mn/7k+Gl38gJnR7yyDZk6WLXwiGod1JOWNDKGw==}
     hasBin: true
@@ -5527,6 +5650,9 @@ packages:
   ini@4.1.1:
     resolution: {integrity: sha512-QQnnxNyfvmHFIsj7gkPcYymR8Jdw/o7mp5ZFihxn6h8Ci6fh3Dx4E1gPjpQEpIuPo9XVNY/ZUwh4BPMjGyL01g==}
     engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
+
+  insane@2.6.2:
+    resolution: {integrity: sha512-BqEL1CJsjJi+/C/zKZxv31zs3r6zkLH5Nz1WMFb7UBX2KHY2yXDpbFTSEmNHzomBbGDysIfkTX55A0mQZ2CQiw==}
 
   internmap@1.0.1:
     resolution: {integrity: sha512-lDB5YccMydFBtasVtxnZ3MRBHuaoE8GKsppq+EchKL2U4nK/DmEpPHNH8MZe5HkMtpSiTSOZwfN0tzYjO/lJEw==}
@@ -5962,6 +6088,11 @@ packages:
 
   maplibre-gl@2.4.0:
     resolution: {integrity: sha512-csNFylzntPmHWidczfgCZpvbTSmhaWvLRj9e1ezUDBEPizGgshgm3ea1T5TCNEEBq0roauu7BPuRZjA3wO4KqA==}
+
+  marked@15.0.12:
+    resolution: {integrity: sha512-8dD6FusOQSrpv9Z1rdNMdlSgQOIP880DHqnohobOmYLElGEqAL/JvxvuxZO16r4HtjTlfPRDC1hbvxC9dPN2nA==}
+    engines: {node: '>= 18'}
+    hasBin: true
 
   marked@17.0.3:
     resolution: {integrity: sha512-jt1v2ObpyOKR8p4XaUJVk3YWRJ5n+i4+rjQopxvV32rSndTJXvIzuUdWWIy/1pFQMkQmvTXawzDNqOH/CUmx6A==}
@@ -9487,6 +9618,93 @@ snapshots:
       - '@vue/composition-api'
       - vue
 
+  '@flyhub/email-block-avatar@0.0.6(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)':
+    dependencies:
+      '@flyhub/email-core': 0.0.1(zod@4.3.6)
+      vue: 3.5.28(typescript@5.9.2)
+      zod: 4.3.6
+
+  '@flyhub/email-block-button@0.0.4(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)':
+    dependencies:
+      '@flyhub/email-core': 0.0.1(zod@4.3.6)
+      vue: 3.5.28(typescript@5.9.2)
+      zod: 4.3.6
+
+  '@flyhub/email-block-columns-container@0.0.4(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)':
+    dependencies:
+      '@flyhub/email-core': 0.0.1(zod@4.3.6)
+      vue: 3.5.28(typescript@5.9.2)
+      zod: 4.3.6
+
+  '@flyhub/email-block-container@0.0.3(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)':
+    dependencies:
+      '@flyhub/email-core': 0.0.1(zod@4.3.6)
+      vue: 3.5.28(typescript@5.9.2)
+      zod: 4.3.6
+
+  '@flyhub/email-block-divider@0.0.3(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)':
+    dependencies:
+      '@flyhub/email-core': 0.0.1(zod@4.3.6)
+      vue: 3.5.28(typescript@5.9.2)
+      zod: 4.3.6
+
+  '@flyhub/email-block-heading@0.0.2(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)':
+    dependencies:
+      '@flyhub/email-core': 0.0.1(zod@4.3.6)
+      vue: 3.5.28(typescript@5.9.2)
+      zod: 4.3.6
+
+  '@flyhub/email-block-html@0.0.3(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)':
+    dependencies:
+      '@flyhub/email-core': 0.0.1(zod@4.3.6)
+      vue: 3.5.28(typescript@5.9.2)
+      zod: 4.3.6
+
+  '@flyhub/email-block-image@0.0.4(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)':
+    dependencies:
+      '@flyhub/email-core': 0.0.1(zod@4.3.6)
+      vue: 3.5.28(typescript@5.9.2)
+      zod: 4.3.6
+
+  '@flyhub/email-block-spacer@0.0.1(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)':
+    dependencies:
+      vue: 3.5.28(typescript@5.9.2)
+      zod: 4.3.6
+
+  '@flyhub/email-block-text@0.0.3(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)':
+    dependencies:
+      '@flyhub/email-core': 0.0.1(zod@4.3.6)
+      insane: 2.6.2
+      marked: 15.0.12
+      vue: 3.5.28(typescript@5.9.2)
+      zod: 4.3.6
+
+  '@flyhub/email-builder@0.0.6(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)':
+    dependencies:
+      '@flyhub/email-block-avatar': 0.0.6(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-block-button': 0.0.4(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-block-columns-container': 0.0.4(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-block-container': 0.0.3(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-block-divider': 0.0.3(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-block-heading': 0.0.2(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-block-html': 0.0.3(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-block-image': 0.0.4(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-block-spacer': 0.0.1(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-block-text': 0.0.3(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      '@flyhub/email-core': 0.0.1(zod@4.3.6)
+      '@flyhub/email-document-core': 0.0.2(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)
+      vue: 3.5.28(typescript@5.9.2)
+      zod: 4.3.6
+
+  '@flyhub/email-core@0.0.1(zod@4.3.6)':
+    dependencies:
+      zod: 4.3.6
+
+  '@flyhub/email-document-core@0.0.2(vue@3.5.28(typescript@5.9.2))(zod@4.3.6)':
+    dependencies:
+      vue: 3.5.28(typescript@5.9.2)
+      zod: 4.3.6
+
   '@google-cloud/precise-date@4.0.0': {}
 
   '@grpc/grpc-js@1.14.3':
@@ -12798,6 +13016,8 @@ snapshots:
 
   assertion-error@2.0.1: {}
 
+  assignment@2.0.0: {}
+
   ast-kit@2.2.0:
     dependencies:
       '@babel/parser': 7.29.0
@@ -14396,6 +14616,8 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
+  he@0.5.0: {}
+
   he@1.2.0: {}
 
   hey-listen@1.0.8: {}
@@ -14482,6 +14704,11 @@ snapshots:
   ini@1.3.8: {}
 
   ini@4.1.1: {}
+
+  insane@2.6.2:
+    dependencies:
+      assignment: 2.0.0
+      he: 0.5.0
 
   internmap@1.0.1: {}
 
@@ -14893,6 +15120,8 @@ snapshots:
       supercluster: 7.1.5
       tinyqueue: 2.0.3
       vt-pbf: 3.1.3
+
+  marked@15.0.12: {}
 
   marked@17.0.3: {}
 
