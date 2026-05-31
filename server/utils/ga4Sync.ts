@@ -15,13 +15,50 @@ export interface Ga4SyncResult {
   errors: string[]
 }
 
-interface MapRow {
+export interface MapRow {
   property_id: string
   client_id: string
   connection_id: string
   access_token: string
   refresh_token: string | null
   token_expires_at: string | null
+}
+
+/** Load active GA4 property→client mappings (optionally scoped to one client). */
+export async function loadGa4Maps(clientId?: string): Promise<MapRow[]> {
+  const params: unknown[] = []
+  let where = `c.platform = 'ga4' AND c.status = 'active'`
+  if (clientId) {
+    params.push(clientId)
+    where += ` AND m.client_id = $${params.length}`
+  }
+  return queryRows<MapRow>(
+    `SELECT m.property_id, m.client_id, m.connection_id,
+            c.access_token, c.refresh_token, c.token_expires_at
+     FROM ga4_property_map m
+     JOIN social_connections c ON c.id = m.connection_id
+     WHERE ${where}`,
+    params
+  )
+}
+
+/** Return a valid access token for a mapping, refreshing + persisting if it's near expiry. */
+export async function ensureFreshGa4Token(
+  map: MapRow,
+  config: { googleClientId: string, googleClientSecret: string }
+): Promise<string> {
+  if (
+    map.refresh_token && map.token_expires_at
+    && new Date(map.token_expires_at).getTime() < Date.now() + 5 * 60 * 1000
+  ) {
+    const refreshed = await refreshGoogleToken(map.refresh_token, config.googleClientId, config.googleClientSecret)
+    await execute(
+      `UPDATE social_connections SET access_token=$1, token_expires_at=$2, updated_at=NOW() WHERE id=$3`,
+      [refreshed.access_token, new Date(Date.now() + (refreshed.expires_in || 3600) * 1000), map.connection_id]
+    )
+    return refreshed.access_token
+  }
+  return map.access_token
 }
 
 function isoDaysAgo(days: number): string {
@@ -63,18 +100,7 @@ export async function syncGa4(
   const config = useRuntimeConfig()
   const result: Ga4SyncResult = { propertiesSynced: 0, rowsUpserted: 0, errors: [] }
 
-  const params: unknown[] = []
-  let where = `c.platform = 'ga4' AND c.status = 'active'`
-  if (clientId) { params.push(clientId); where += ` AND m.client_id = $${params.length}` }
-
-  const maps = await queryRows<MapRow>(
-    `SELECT m.property_id, m.client_id, m.connection_id,
-            c.access_token, c.refresh_token, c.token_expires_at
-     FROM ga4_property_map m
-     JOIN social_connections c ON c.id = m.connection_id
-     WHERE ${where}`,
-    params
-  )
+  const maps = await loadGa4Maps(clientId)
 
   const { startDate, endDate } = ga4SyncWindow(opts)
 
@@ -91,16 +117,7 @@ export async function syncGa4(
   for (const map of maps) {
     if (!perConnection.has(map.connection_id)) perConnection.set(map.connection_id, { rows: 0, error: null })
     try {
-      let token = map.access_token
-      if (map.refresh_token && map.token_expires_at
-        && new Date(map.token_expires_at).getTime() < Date.now() + 5 * 60 * 1000) {
-        const refreshed = await refreshGoogleToken(map.refresh_token, config.googleClientId, config.googleClientSecret)
-        token = refreshed.access_token
-        await execute(
-          `UPDATE social_connections SET access_token=$1, token_expires_at=$2, updated_at=NOW() WHERE id=$3`,
-          [token, new Date(Date.now() + (refreshed.expires_in || 3600) * 1000), map.connection_id]
-        )
-      }
+      const token = await ensureFreshGa4Token(map, config)
 
       const rows = await ga4RunReport(map.property_id, token, { startDate, endDate })
       for (const row of rows) {
