@@ -590,6 +590,7 @@ const featuresCol2 = [
 const featuresCol3a = [
   { title: 'Real-Time Chat', subtitle: 'Channels, threads, and DMs', icon: 'i-lucide-message-circle', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400', to: '/platform/chat' },
   { title: 'Smart Watch', subtitle: 'AI-prioritised notifications & digest', icon: 'i-lucide-bell-ring', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400', to: '/features/smart-watch' },
+  { title: 'Email Marketing', subtitle: 'Campaigns, builder, and lists', icon: 'i-lucide-send', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400', to: '/features/email-campaigns' },
   { title: 'Automations', subtitle: 'Trigger-action workflows', icon: 'i-lucide-zap', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400', to: '/platform/automations' },
 ]
 
