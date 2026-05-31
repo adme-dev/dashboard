@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CalendarDate, parseDate, type DateValue } from '@internationalized/date'
 definePageMeta({ layout: 'portal', middleware: 'portal-auth' })
 
 const { fmtCurrency, fmtCompact, fmtPercent, getPlatformIcon } = useAnalytics()
@@ -34,6 +35,31 @@ function validDateString(value: unknown, fallback: string) {
 
 const startDate = ref(validDateString(queryString(route.query.startDate), formatDateISO(thirtyDaysAgo)))
 const endDate = ref(validDateString(queryString(route.query.endDate), formatDateISO(now)))
+
+// Date picker helpers — bridge ISO YYYY-MM-DD strings ↔ CalendarDate (project
+// convention; see app/components/workflow/TaskCreateDialog.vue).
+function toCalendarDate(iso: string): DateValue | null {
+  if (!iso) return null
+  try {
+    return parseDate(iso.length > 10 ? iso.slice(0, 10) : iso)
+  } catch {
+    return null
+  }
+}
+const dateFormatter = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+function formatDate(iso: string): string {
+  const cd = toCalendarDate(iso)
+  if (!cd) return ''
+  return dateFormatter.format(new Date((cd as CalendarDate).year, (cd as CalendarDate).month - 1, (cd as CalendarDate).day))
+}
+const startDateModel = computed({
+  get: () => toCalendarDate(startDate.value),
+  set: (v) => { if (v) startDate.value = v.toString() }
+})
+const endDateModel = computed({
+  get: () => toCalendarDate(endDate.value),
+  set: (v) => { if (v) endDate.value = v.toString() }
+})
 const selectedPlatforms = ref<string[]>(
   typeof queryString(route.query.platform) === 'string'
     ? String(queryString(route.query.platform)).split(',').map(platform => platform.trim()).filter(Boolean)
@@ -201,19 +227,35 @@ function formatResponseTime(minutes: number | null | undefined) {
 
     <!-- Filters -->
     <div class="flex flex-wrap items-center gap-3 p-4 bg-elevated/50 rounded-lg border border-default">
-      <UInput
-        v-model="startDate"
-        type="date"
-        size="sm"
-        class="w-36"
-      />
+      <UPopover>
+        <UButton
+          color="neutral"
+          variant="outline"
+          size="sm"
+          icon="i-lucide-calendar"
+          class="w-36 justify-start font-normal"
+        >
+          {{ formatDate(startDate) || 'Start date' }}
+        </UButton>
+        <template #content>
+          <UCalendar v-model="startDateModel" class="p-2" />
+        </template>
+      </UPopover>
       <span class="text-muted text-sm">to</span>
-      <UInput
-        v-model="endDate"
-        type="date"
-        size="sm"
-        class="w-36"
-      />
+      <UPopover>
+        <UButton
+          color="neutral"
+          variant="outline"
+          size="sm"
+          icon="i-lucide-calendar"
+          class="w-36 justify-start font-normal"
+        >
+          {{ formatDate(endDate) || 'End date' }}
+        </UButton>
+        <template #content>
+          <UCalendar v-model="endDateModel" class="p-2" />
+        </template>
+      </UPopover>
       <div class="flex items-center gap-1">
         <UButton
           v-for="p in datePresets"
