@@ -72,3 +72,74 @@ export function canEnterSending(input: SendGateInput): SendGateResult {
   }
   return { ok: true }
 }
+
+// ── Pure send-formatting helpers (no I/O — kept here so they're testable
+// without pulling the Resend transport / DB) ───────────────────────────────
+
+// The campaign fields the per-recipient render needs.
+export interface CampaignContent {
+  subject: string | null
+  from_name: string | null
+  from_email: string | null
+  reply_to: string | null
+  body_html: string | null
+}
+
+// Per-recipient unsubscribe URL. The one-click page + token land in Phase 4;
+// this is the stable URL shape the {{unsubscribe_url}} merge tag resolves to.
+export function unsubscribeUrl(appUrl: string, campaignId: string, subscriberId: string): string {
+  return `${appUrl.replace(/\/+$/, '')}/email/unsubscribe?c=${campaignId}&s=${subscriberId}`
+}
+
+const MERGE_TAG = /\{\{\s*([a-z_]+)\s*\}\}/gi
+
+// Replace {{ key }} tokens (any spacing, case-insensitive) from vars; unknown
+// tags resolve to '' so no literal braces leak into the sent email.
+export function substituteMergeTags(html: string, vars: Record<string, string>): string {
+  return html.replace(MERGE_TAG, (_match, key: string) => vars[key.toLowerCase()] ?? '')
+}
+
+export function recipientVars(
+  recipient: { email: string, name: string | null },
+  unsubUrl: string
+): Record<string, string> {
+  const name = (recipient.name || '').trim()
+  const firstName = name.split(/\s+/)[0] || ''
+  return { email: recipient.email, name, first_name: firstName, unsubscribe_url: unsubUrl }
+}
+
+export interface BatchEmail {
+  from: string
+  to: string[]
+  subject: string
+  html: string
+  headers: Record<string, string>
+  replyTo?: string
+}
+
+// Build one personalized Batch email with the RFC 8058 one-click unsubscribe
+// headers (spec §4). Pure — given a campaign + recipient it returns the payload.
+export function buildBatchEmail(
+  campaign: CampaignContent,
+  recipient: { email: string, name: string | null, subscriber_id: string },
+  campaignId: string,
+  appUrl: string
+): BatchEmail {
+  const unsubUrl = unsubscribeUrl(appUrl, campaignId, recipient.subscriber_id)
+  const vars = recipientVars(recipient, unsubUrl)
+  const from = campaign.from_name
+    ? `${campaign.from_name} <${campaign.from_email}>`
+    : (campaign.from_email || '')
+  const email: BatchEmail = {
+    from,
+    to: [recipient.email],
+    subject: substituteMergeTags(campaign.subject || '', vars),
+    html: substituteMergeTags(campaign.body_html || '', vars),
+    headers: {
+      'List-Unsubscribe': `<${unsubUrl}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+    }
+  }
+  if (campaign.reply_to) email.replyTo = campaign.reply_to
+  return email
+}

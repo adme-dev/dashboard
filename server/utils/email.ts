@@ -96,7 +96,7 @@ export function isEmailConfigured(event?: H3Event): boolean {
   return !!resolveApiKey(event)
 }
 
-function getResendClient(event?: H3Event): Resend | null {
+export function getResendClient(event?: H3Event): Resend | null {
   const apiKey = resolveApiKey(event)
 
   if (!apiKey) {
