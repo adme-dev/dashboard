@@ -7,8 +7,9 @@
 ---
 
 ## TL;DR
-- **Shipped to production this session:** the `agency_clients` column-drift fixes (migrations 122–123), editable client contact fields, and **Phase 1 of the GA4 plan** (migration 124). All merged to `main`, pushed, deployed. Latest prod deploy: `https://0c77765b.agency-dashboard-6cm.pages.dev`.
-- **Not done (the open work):** the GA4 cron trigger, mapping the remaining GA4 properties, and GA4→KPIs/widgets — plus all of Phase 2 and Phase 3. Details below.
+- **Shipped to production (earlier session):** the `agency_clients` column-drift fixes (migrations 122–123), editable client contact fields, and **Phase 1 of the GA4 plan** (migration 124). All merged to `main`, pushed, deployed. Latest prod deploy: `https://0c77765b.agency-dashboard-6cm.pages.dev`.
+- **Committed to `main`, NOT yet deployed:** **Phase 2 of the GA4 plan** (migration 126; commits `768312f`→`d828d11`). Backend/data-layer + API complete; daily-grain fix is live-in-code for `/agency/analytics`; blended/attribution/presets are API-only (no UI yet). See "Phase 2 — DONE" below. Deploy + push (via `adme-dev`) are the next explicit steps.
+- **Not done (the open work):** the GA4 cron trigger, mapping the remaining GA4 properties, UI surfacing of the new Phase 2 endpoints, and all of Phase 3. Details below.
 
 ---
 
@@ -33,19 +34,24 @@
 ### A. Operational (no/low code — do these first; they make Phase 1 actually useful)
 1. **Enable the GA4 cron trigger** *(handler exists & is `x-cron-secret`-guarded: `server/api/cron/ga4-sync.post.ts`; currently NOT scheduled — GA4 only refreshes on manual "Sync now")*.
    - **Dashboard-only** (Cloudflare Pages rejects `[triggers]` in `wrangler.toml`): CF → `agency-dashboard` → Settings → Triggers → Cron → add `0 * * * *` → POST `/api/cron/ga4-sync` with header `x-cron-secret: $CRON_SECRET`.
-   - Low-code follow-up: document `ga4-sync` in the `wrangler.toml` cron-comment block (sits with anomaly-detection/office-assistant/office-retention), and move sync to **trailing-48h re-sync** (GA4 restates recent data) — overlaps Phase 2 Task 2.4.
+   - Low-code follow-up: document `ga4-sync` in the `wrangler.toml` cron-comment block (sits with anomaly-detection/office-assistant/office-retention). *(Trailing-48h re-sync is now built — Phase 2 Task 2.4 — so enabling the cron immediately gets the self-healing window.)*
 2. **Map the remaining unmapped GA4 properties** *(87 mapped in `ga4_property_map`; ~6 remain)*.
    - Operator task: `/agency/social` → GA4 connect card → pick client per property. Requires knowing which dealership each property belongs to.
    - Or: provide `property_id → client_id` pairings and map via `POST /api/agency/social/ga4/map` (now RBAC-gated).
 
-### B. Phase 2 — Blended cross-channel + attribution (not started)
-From the plan (`docs/superpowers/plans/2026-05-31-enterprise-analytics-ga4.md`, expand via `superpowers:writing-plans` before executing):
-- 2.1 Canonical channel taxonomy table + `channelTaxonomy.ts` (store GA4 last-click channel **and** platform channel — they're not equivalent).
-- 2.2 **Daily-grain accuracy** — move `overview/campaigns/export` off month-bucketed `ms.period` (today "last 7 days" silently widens to whole months).
-- 2.3 Blended CPL/CPA/ROAS endpoint + currency/timezone normalization.
-- 2.4 Trailing-48h re-sync + incremental sync + arbitrary backfill.
-- 2.5 Rule-based attribution toggle (last/first/linear/position/time-decay; position-based default) over a touchpoint table.
-- 2.6 Data-blending presets (Supermetrics-inspired).
+### B. Phase 2 — Blended cross-channel + attribution ✅ DONE (committed to `main`, not deployed)
+Expanded plan: `docs/superpowers/plans/2026-05-31-phase2-blended-attribution.md`. Migration **126** (`channel_taxonomy`, applied to DB). 6 tasks, one commit each, 43 new unit tests pass; suite baseline 104 failures (`auth`/`cache`/`db`) unchanged.
+- 2.1 ✅ Canonical taxonomy — migration 126 `channel_taxonomy` + `server/utils/channelTaxonomy.ts` (table → `channelMap.ts` fallback, unmapped collector, per-worker cache).
+- 2.2 ✅ **Daily-grain accuracy** — `overview/campaigns/export.get.ts` now aggregate from `daily_spend` over an inclusive `spend_date` window (1:1 join keeps budget/reach/metadata correct), prev-period via `previousWindow()`. **Live-verified:** a 7-day request used to return the whole month ($57.8k meta), now correct ($13.4k). *This improves the existing `/agency/analytics` page with no UI change.*
+- 2.3 ✅ Blended endpoint — `server/api/agency/analytics/blended.get.ts` + `blendedMetrics.ts` (blended CPL/CPA/ROAS per canonical channel; conversions labelled platform-reported). **Currency/timezone normalization deferred** (single AUD tenant today) — re-add when multi-currency lands.
+- 2.4 ✅ Trailing-48h re-sync + backfill — `ga4SyncWindow()` floors window at 2 days; `syncGa4`/`social/ga4/sync.post.ts` accept explicit `startDate/endDate`. Cron behaviour unchanged (still `lookbackDays:14`). *This is the Phase-2 half of the §A.1 "trailing-48h" follow-up.*
+- 2.5 ✅ Rule-based attribution **engine** — `server/utils/attribution.ts` (last/first/linear/position/time-decay, credit sums to 1) + `attribution.get.ts`. **DATA GAP:** `leads` is single-source (no per-user journey / UTM), so conversions are single-touch today → all models converge (correct). Engine is ready for real multi-touch journeys from Phase 3.1; **no touchpoint table built** and **no UI model selector** (would be a visible no-op now).
+- 2.6 ✅ Blend presets — `server/utils/blendPresets.ts` (5 typed presets) + `presets.get.ts`.
+
+**Phase 2 follow-ons (decide before/with Phase 3):**
+- **UI surfacing:** blended / attribution / presets are API-only. Add a blended panel to `/agency/analytics` (real value now: spend/leads/sessions/CPL by canonical channel). Defer the attribution model selector until multi-touch journey data exists (Phase 3.1).
+- **Deploy + push:** committed to `main` only. `pnpm deploy:production`; push needs the `adme-dev` gh account.
+- Currency/timezone normalization (2.3) and a real touchpoint table (2.5) are deferred as noted above.
 
 ### C. Phase 3 — Deeper GA4 + anomaly + reporting (not started)
 - 3.1 Richer GA4 ingestion (`sessionSourceMedium`, `sessionCampaignName`, `deviceCategory`, `landingPage`, `country`, event-level) + `batchRunReports` + quota self-throttle/backoff.
@@ -74,7 +80,7 @@ From the plan (`docs/superpowers/plans/2026-05-31-enterprise-analytics-ga4.md`, 
 - DB model: migration `121-ga4-funnel.sql` (`ga4_property_map`, `ga4_daily_channel`) + `124-ga4-sync-status-and-retention.sql` (`ga4_sync_status`)
 
 **Runbook**
-- **Migrations** (run immediately on create): `export DATABASE_URL=$(grep DATABASE_URL .env | cut -d= -f2-) && psql "$DATABASE_URL" -f server/database/migrations/<file>.sql`. Next free number: **125**.
+- **Migrations** (run immediately on create): `export DATABASE_URL=$(grep DATABASE_URL .env | cut -d= -f2-) && psql "$DATABASE_URL" -f server/database/migrations/<file>.sql`. Next free number: **127** (125 = `spend_sync_jobs`, 126 = `channel-taxonomy`).
 - **Deploy:** `pnpm deploy:production` (builds + `wrangler pages deploy`, ~few min; run backgrounded). Build heap handled in the `build` script.
 - **Push:** `origin` = `adme-dev/dashboard`; use the **`adme-dev`** gh account (Paul008 → 403). It's the active gh account in this environment.
 - **Tests:** `pnpm exec vitest run test/server`. NOTE: 4 suites fail on `main` baseline too (`auth`, `cache`, `db`, `leadsEndpointsList` = 106 failures) — pre-existing/flaky, unrelated. Treat that as the green baseline.
