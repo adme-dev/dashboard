@@ -10,6 +10,7 @@ interface CampaignRow {
   to_send: number
   sent: number
   updated_at: string
+  filter_rules?: { match: 'all' | 'any', rules: Array<{ field: string, op: string, value?: unknown }> } | null
 }
 interface ListRow { id: string, name: string }
 
@@ -96,6 +97,14 @@ const sendingEnabled = computed(() => !!cfg.value?.sending_enabled)
 const busyId = ref<string | null>(null)
 const showSend = ref(false)
 const sendTarget = ref<CampaignRow | null>(null)
+
+// Audience / segment editing
+const showSegment = ref(false)
+const segmentTarget = ref<CampaignRow | null>(null)
+function openSegment(row: CampaignRow) {
+  segmentTarget.value = row
+  showSegment.value = true
+}
 
 function errMessage(e: unknown): string {
   const err = e as { data?: { statusMessage?: string, message?: string }, statusMessage?: string }
@@ -218,6 +227,16 @@ const TERMINAL = new Set(['sent', 'cancelled'])
             {{ row.status }}
           </UBadge>
 
+          <UTooltip v-if="row.status === 'draft'" :text="row.filter_rules?.rules?.length ? 'Edit audience (segmented)' : 'Set audience'">
+            <UButton
+              icon="i-lucide-filter"
+              variant="ghost"
+              :color="row.filter_rules?.rules?.length ? 'primary' : 'neutral'"
+              size="xs"
+              label="Audience"
+              @click="openSegment(row)"
+            />
+          </UTooltip>
           <UTooltip v-if="!TERMINAL.has(row.status)" text="Design the email">
             <UButton
               :to="`/agency/email/compose?campaign=${row.id}`"
@@ -343,5 +362,13 @@ const TERMINAL = new Set(['sent', 'cancelled'])
         </div>
       </template>
     </UModal>
+
+    <EmailSegmentBuilder
+      v-model:open="showSegment"
+      :campaign-id="segmentTarget?.id || null"
+      :campaign-name="segmentTarget?.name"
+      :initial="segmentTarget?.filter_rules || null"
+      @saved="refresh()"
+    />
   </div>
 </template>

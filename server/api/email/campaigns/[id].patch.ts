@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { updateCampaign } from '~~/server/utils/email-marketing/campaigns'
+import { isValidSegment } from '~~/server/utils/email-marketing/segment'
 
 const Body = z.object({
   name: z.string().min(1).max(200).optional(),
@@ -12,7 +13,8 @@ const Body = z.object({
   preview_text: z.string().max(300).optional().nullable(),
   body_source: z.any().optional(),
   template_id: z.string().uuid().optional().nullable(),
-  scheduled_at: z.string().datetime().optional().nullable()
+  scheduled_at: z.string().datetime().optional().nullable(),
+  filter_rules: z.any().optional().nullable()
 })
 
 export default defineEventHandler(async (event) => {
@@ -22,6 +24,9 @@ export default defineEventHandler(async (event) => {
   const parsed = Body.safeParse(await readBody(event))
   if (!parsed.success) {
     throw createError({ statusCode: 400, statusMessage: 'invalid_body', data: parsed.error.issues })
+  }
+  if (parsed.data.filter_rules != null && !isValidSegment(parsed.data.filter_rules)) {
+    throw createError({ statusCode: 400, statusMessage: 'invalid_segment' })
   }
   const campaign = await updateCampaign(id, parsed.data)
   if (!campaign) throw createError({ statusCode: 404, statusMessage: 'not_found' })
