@@ -84,6 +84,12 @@ name = "OFFICE_ROOMS"
 class_name = "OfficeRoom"
 script_name = "office-room-worker"
 
+# Rate Limiter — Durable Object for the public tracking beacon (hosted in rate-limiter-worker)
+[[durable_objects.bindings]]
+name = "RATE_LIMITER"
+class_name = "RateLimiter"
+script_name = "rate-limiter-worker"
+
 # Environment-specific variables are managed in the Cloudflare Pages dashboard
 # (Settings > Variables and Secrets) for preview and production environments.
 
