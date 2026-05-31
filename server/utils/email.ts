@@ -835,6 +835,49 @@ export async function sendWelcomeEmail(data: {
   }
 }
 
+/**
+ * Double-opt-in confirmation email for the public subscribe form (email
+ * marketing Phase 4). Transactional — fires only on an explicit public signup
+ * to a double-opt-in list, and is best-effort (silently skips when Resend isn't
+ * configured). Independent of the campaign EMAIL_SENDING_ENABLED hard gate.
+ * The confirmUrl (with its signed token) is built by the caller.
+ */
+export async function sendDoubleOptInEmail(data: {
+  to: string
+  listName: string
+  confirmUrl: string
+}): Promise<void> {
+  const client = getResendClient()
+  if (!client) {
+    console.log('[Email] Double opt-in email (no client) for', data.to)
+    return
+  }
+
+  const { html, text } = renderEmailTemplate({
+    title: 'Confirm your subscription',
+    greeting: 'Hi,',
+    bodyHtml: `
+      <p>Please confirm you'd like to receive emails from <strong>${escapeHtml(data.listName)}</strong>.</p>
+      <p style="color: #6b7280; font-size: 13px;">If you didn't request this, you can safely ignore this email &mdash; you won't be subscribed.</p>
+    `,
+    ctaText: 'Confirm subscription',
+    ctaUrl: data.confirmUrl
+  })
+
+  try {
+    await client.emails.send({
+      from: getFromHeader(),
+      to: data.to,
+      subject: `Confirm your subscription to ${data.listName}`,
+      html,
+      text
+    })
+    console.log('[Email] Double opt-in email sent to', data.to)
+  } catch (error) {
+    console.error('[Email] Failed to send double opt-in email:', error)
+  }
+}
+
 export async function sendPasswordResetEmail(data: {
   to: string
   name: string

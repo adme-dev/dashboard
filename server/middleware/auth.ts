@@ -17,6 +17,10 @@ const publicRoutes = [
   '/api/webhooks',
   '/api/office/_internal/',
   '/api/public/office-lobby',
+  // Public email-marketing surfaces (Phase 4) — unsubscribe / subscribe /
+  // double-opt-in confirm. Authorized by a signed link token (links.ts), not a
+  // session; recipients have no cookies.
+  '/api/public/email/',
   '/api/xero/callback',
   '/api/_nuxt_icon',
   '/_nuxt',

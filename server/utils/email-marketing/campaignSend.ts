@@ -85,10 +85,19 @@ export interface CampaignContent {
   body_html: string | null
 }
 
-// Per-recipient unsubscribe URL. The one-click page + token land in Phase 4;
-// this is the stable URL shape the {{unsubscribe_url}} merge tag resolves to.
-export function unsubscribeUrl(appUrl: string, campaignId: string, subscriberId: string): string {
-  return `${appUrl.replace(/\/+$/, '')}/email/unsubscribe?c=${campaignId}&s=${subscriberId}`
+// Per-recipient unsubscribe URL. `token` is the HMAC signature over
+// (campaignId, subscriberId) — see email-marketing/links.ts — that lets the
+// public one-click page (Phase 4) act without a session while rejecting
+// tampered/guessed ids. Optional so the pure layer stays testable; the sender
+// always supplies it.
+export function unsubscribeUrl(
+  appUrl: string,
+  campaignId: string,
+  subscriberId: string,
+  token?: string
+): string {
+  const base = `${appUrl.replace(/\/+$/, '')}/email/unsubscribe?c=${campaignId}&s=${subscriberId}`
+  return token ? `${base}&t=${token}` : base
 }
 
 const MERGE_TAG = /\{\{\s*([a-z_]+)\s*\}\}/gi
@@ -123,9 +132,10 @@ export function buildBatchEmail(
   campaign: CampaignContent,
   recipient: { email: string, name: string | null, subscriber_id: string },
   campaignId: string,
-  appUrl: string
+  appUrl: string,
+  unsubToken?: string
 ): BatchEmail {
-  const unsubUrl = unsubscribeUrl(appUrl, campaignId, recipient.subscriber_id)
+  const unsubUrl = unsubscribeUrl(appUrl, campaignId, recipient.subscriber_id, unsubToken)
   const vars = recipientVars(recipient, unsubUrl)
   const from = campaign.from_name
     ? `${campaign.from_name} <${campaign.from_email}>`

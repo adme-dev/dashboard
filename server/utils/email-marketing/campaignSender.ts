@@ -12,6 +12,7 @@
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { getResendClient, getAppUrl, isEmailConfigured } from '~~/server/utils/email'
 import { RESEND_BATCH_LIMIT, buildBatchEmail, isRateLimitError, parseRetryAfter, canEnterSending } from './campaignSend'
+import { signEmailToken, emailLinkSecret } from './links'
 import { getCampaign, materializeRecipients, setCampaignStatus, type Campaign } from './campaigns'
 
 export interface RecipientRow {
@@ -92,9 +93,16 @@ export async function sendCampaignChunk(campaign: Campaign): Promise<ChunkResult
   if (recipients.length === 0) return { sent: 0, failed: 0, rateLimited: false, retryAfterSec: 0 }
 
   const appUrl = getAppUrl()
-  const payload = recipients.map(r =>
-    buildBatchEmail(campaign, { email: r.email, name: r.name, subscriber_id: r.subscriber_id }, campaign.id, appUrl)
-  )
+  const secret = emailLinkSecret()
+  const payload = await Promise.all(recipients.map(async r =>
+    buildBatchEmail(
+      campaign,
+      { email: r.email, name: r.name, subscriber_id: r.subscriber_id },
+      campaign.id,
+      appUrl,
+      await signEmailToken(secret, 'unsub', campaign.id, r.subscriber_id)
+    )
+  ))
 
   let sent = 0
   let failed = 0
