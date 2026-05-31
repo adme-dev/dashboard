@@ -13,7 +13,7 @@ const NAME_HEADERS = new Set(['name', 'full name', 'full_name', 'first name', 'f
 
 export interface CsvImportParse {
   subscribers: SubscriberInput[]
-  errors: Array<{ row: number; message: string }>
+  errors: Array<{ row: number, message: string }>
   total: number
 }
 
@@ -23,7 +23,7 @@ function normalizeKey(s: string): string {
 
 export function parseSubscriberCsv(
   csvText: string,
-  columnMapping?: Record<string, string>,
+  columnMapping?: Record<string, string>
 ): CsvImportParse {
   const rows = parseCsv(csvText)
   if (rows.length < 2) {
@@ -32,7 +32,7 @@ export function parseSubscriberCsv(
 
   const headers = rows[0].map(h => h.trim())
   // Resolve each column to a role: 'email' | 'name' | 'ignore' | 'attr:<key>'
-  const roles = headers.map(h => {
+  const roles = headers.map((h) => {
     const lower = h.toLowerCase()
     if (columnMapping && columnMapping[h]) {
       const m = columnMapping[h]
@@ -51,7 +51,7 @@ export function parseSubscriberCsv(
   }
 
   const subscribers: SubscriberInput[] = []
-  const errors: Array<{ row: number; message: string }> = []
+  const errors: Array<{ row: number, message: string }> = []
   const seen = new Set<string>()
   const dataRows = rows.slice(1)
 
@@ -73,11 +73,14 @@ export function parseSubscriberCsv(
     seen.add(email)
 
     let name: string | null = null
-    const attribs: Record<string, any> = {}
+    const attribs: Record<string, unknown> = {}
     roles.forEach((role, idx) => {
       const val = (cols[idx] ?? '').trim()
       if (!val) return
-      if (role === 'name') { name = val; return }
+      if (role === 'name') {
+        name = val
+        return
+      }
       if (role === 'email' || role === 'ignore') return
       if (role.startsWith('attr:')) attribs[role.slice(5)] = val
     })

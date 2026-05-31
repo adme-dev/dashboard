@@ -10,7 +10,7 @@ describe('parseSubscriberCsv', () => {
     expect(r.errors).toEqual([])
     expect(r.subscribers).toEqual([
       { email: 'a@x.com', name: 'Alice', attribs: { company: 'Acme' } },
-      { email: 'b@y.com', name: 'Bob', attribs: { company: 'Globex' } },
+      { email: 'b@y.com', name: 'Bob', attribs: { company: 'Globex' } }
     ])
   })
 

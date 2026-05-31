@@ -9,7 +9,7 @@ export interface EmailSubscriber {
   id: string
   email: string
   name: string | null
-  attribs: Record<string, any>
+  attribs: Record<string, unknown>
   status: SubscriberStatus
   client_id: string | null
   created_by: string | null
@@ -33,5 +33,5 @@ export interface EmailList {
 export interface SubscriberInput {
   email: string
   name?: string | null
-  attribs?: Record<string, any>
+  attribs?: Record<string, unknown>
 }

@@ -15,7 +15,11 @@ export function parseCsv(text: string): string[][] {
     const ch = text[i]
     if (inQuotes) {
       if (ch === '"') {
-        if (text[i + 1] === '"') { cell += '"'; i += 2; continue }
+        if (text[i + 1] === '"') {
+          cell += '"'
+          i += 2
+          continue
+        }
         inQuotes = false
         i++
         continue
@@ -24,9 +28,21 @@ export function parseCsv(text: string): string[][] {
       i++
       continue
     }
-    if (ch === '"') { inQuotes = true; i++; continue }
-    if (ch === ',') { row.push(cell); cell = ''; i++; continue }
-    if (ch === '\r') { i++; continue }
+    if (ch === '"') {
+      inQuotes = true
+      i++
+      continue
+    }
+    if (ch === ',') {
+      row.push(cell)
+      cell = ''
+      i++
+      continue
+    }
+    if (ch === '\r') {
+      i++
+      continue
+    }
     if (ch === '\n') {
       row.push(cell)
       if (row.length > 1 || row[0].trim() !== '') rows.push(row)
