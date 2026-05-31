@@ -92,7 +92,7 @@ export default defineEventHandler(async (event) => {
 
     const adPublish = await queryOne(`
       INSERT INTO banner_ad_publishes (project_id, published_id, platform, account_id, campaign_id, ad_group_id, status, published_by, published_at)
-      VALUES ($1, $2, 'google_ads', $3, $4, $5, 'published', $6, NOW())
+      VALUES ($1, $2, 'google_ads', $3, $4, $5, 'pending', $6, NOW())
       RETURNING
         id, project_id AS "projectId", published_id AS "publishedId",
         platform, account_id AS "accountId", campaign_id AS "campaignId",

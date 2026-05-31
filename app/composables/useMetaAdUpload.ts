@@ -83,6 +83,7 @@ const adPublishes = ref<any[]>([])
 const uploadProgress = ref<UploadProgressItem[]>([])
 const isUploading = ref(false)
 const uploadComplete = ref(false)
+const isSyncingStatuses = ref(false)
 
 // Cache keys to avoid re-fetching
 let _cachedConnectionId = ''
@@ -247,6 +248,22 @@ export function useMetaAdUpload() {
       adPublishes.value = data || []
     } catch {
       adPublishes.value = []
+    }
+  }
+
+  // Refresh Meta ad statuses for this project, then reload history.
+  async function syncStatuses(projectId: string) {
+    if (isSyncingStatuses.value) return { ok: false, updated: 0 }
+    isSyncingStatuses.value = true
+    try {
+      const res = await $fetch<{ ok: boolean; updated: number }>(
+        '/api/agency/banner-studio/ad-publish/meta/sync-status',
+        { method: 'POST', body: { projectId } },
+      )
+      await fetchAdPublishes(projectId)
+      return res
+    } finally {
+      isSyncingStatuses.value = false
     }
   }
 
@@ -491,6 +508,7 @@ export function useMetaAdUpload() {
     uploadProgress,
     isUploading,
     uploadComplete,
+    isSyncingStatuses,
 
     // Computed
     metaConnections,
@@ -514,6 +532,7 @@ export function useMetaAdUpload() {
     fetchPublished,
     fetchAllPublished,
     fetchAdPublishes,
+    syncStatuses,
     uploadAll,
     uploadAllBulk,
     saveTextPreset,
