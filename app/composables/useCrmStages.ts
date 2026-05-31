@@ -2,8 +2,9 @@
 import type { CrmStage } from '~/types/crm'
 
 export function useCrmStages(clientId: Ref<string | null>) {
+  const base = inject<string>('crmApiBase', '/api/crm')
   const query = computed(() => ({ client_id: clientId.value ?? '' }))
-  const { data, refresh } = useFetch<{ items: CrmStage[] }>('/api/crm/stages', {
+  const { data, refresh } = useFetch<{ items: CrmStage[] }>(`${base}/stages`, {
     query,
     watch: [query],
     immediate: false,

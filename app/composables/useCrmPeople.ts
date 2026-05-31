@@ -2,6 +2,7 @@
 import type { CrmPerson, CrmListResponse } from '~/types/crm'
 
 export function useCrmPeople(clientId: Ref<string | null>) {
+  const base = inject<string>('crmApiBase', '/api/crm')
   const search = useState<string>('crm-people-search', () => '')
   const companyId = useState<string | null>('crm-people-company', () => null)
   const page = useState<number>('crm-people-page', () => 1)
@@ -12,7 +13,7 @@ export function useCrmPeople(clientId: Ref<string | null>) {
     if (companyId.value) p.company_id = companyId.value
     return p
   })
-  const { data, pending, refresh } = useFetch<CrmListResponse<CrmPerson>>('/api/crm/people', {
+  const { data, pending, refresh } = useFetch<CrmListResponse<CrmPerson>>(`${base}/people`, {
     query,
     watch: [query],
     immediate: false,
@@ -21,22 +22,22 @@ export function useCrmPeople(clientId: Ref<string | null>) {
   watch(clientId, (v) => { if (v) refresh() }, { immediate: true })
 
   async function create(body: Partial<CrmPerson>) {
-    const res = await $fetch<{ item: CrmPerson }>('/api/crm/people', { method: 'POST', body: { ...body, client_id: clientId.value } })
+    const res = await $fetch<{ item: CrmPerson }>(`${base}/people`, { method: 'POST', body: { ...body, client_id: clientId.value } })
     await refresh()
     return res.item
   }
   async function update(id: string, body: Partial<CrmPerson>) {
-    const res = await $fetch<{ item: CrmPerson }>(`/api/crm/people/${id}`, { method: 'PATCH', body: { ...body, client_id: clientId.value } })
+    const res = await $fetch<{ item: CrmPerson }>(`${base}/people/${id}`, { method: 'PATCH', body: { ...body, client_id: clientId.value } })
     await refresh()
     return res.item
   }
   async function remove(id: string) {
-    await $fetch(`/api/crm/people/${id}`, { method: 'DELETE', query: { client_id: clientId.value } })
+    await $fetch(`${base}/people/${id}`, { method: 'DELETE', query: { client_id: clientId.value } })
     await refresh()
   }
   async function importCsv(csv: string) {
     const res = await $fetch<{ imported: number, skipped: number, errors: { row: number, message: string }[] }>(
-      '/api/crm/people/import', { method: 'POST', body: { client_id: clientId.value, csv } },
+      `${base}/people/import`, { method: 'POST', body: { client_id: clientId.value, csv } },
     )
     await refresh()
     return res
