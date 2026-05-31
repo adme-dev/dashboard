@@ -6,6 +6,9 @@ const toast = useToast()
 
 const listId = computed(() => String(route.query.list || ''))
 
+const turnstileSiteKey = computed(() => String(useRuntimeConfig().public.turnstileSiteKey || ''))
+const turnstileToken = ref('')
+
 useHead({ title: 'Subscribe · XeroFlow', meta: [{ name: 'robots', content: 'noindex' }] })
 
 const email = ref('')
@@ -16,22 +19,32 @@ const result = ref<{ needsConfirm: boolean, status: string, listName: string } |
 
 const emailValid = computed(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim()))
 const emailError = computed(() => (touched.value && !emailValid.value ? 'Enter a valid email address' : undefined))
+// When Turnstile is configured, block submit until the challenge is solved.
+const canSubmit = computed(() => emailValid.value && (!turnstileSiteKey.value || !!turnstileToken.value))
 
 async function submit() {
   touched.value = true
-  if (!emailValid.value || !listId.value) return
+  if (!canSubmit.value || !listId.value) return
   submitting.value = true
   try {
     result.value = await $fetch('/api/public/email/subscribe', {
       method: 'POST',
-      body: { email: email.value.trim(), name: name.value.trim() || null, listId: listId.value }
+      body: {
+        email: email.value.trim(),
+        name: name.value.trim() || null,
+        listId: listId.value,
+        turnstileToken: turnstileToken.value || undefined
+      }
     })
   } catch (e: unknown) {
     const statusMessage = (e as { data?: { statusMessage?: string } })?.data?.statusMessage
     const msg = statusMessage === 'list_not_found'
       ? 'That subscription list no longer exists.'
-      : 'We couldn\'t sign you up just now. Please try again.'
+      : statusMessage === 'captcha_failed'
+        ? 'Couldn\'t verify you\'re human — please try the challenge again.'
+        : 'We couldn\'t sign you up just now. Please try again.'
     toast.add({ title: 'Subscription failed', description: msg, color: 'error' })
+    turnstileToken.value = '' // force a fresh challenge on retry
   } finally {
     submitting.value = false
   }
@@ -110,6 +123,14 @@ async function submit() {
           />
         </UFormField>
 
+        <EmailPublicTurnstile
+          v-if="turnstileSiteKey"
+          :site-key="turnstileSiteKey"
+          theme="dark"
+          @verified="turnstileToken = $event"
+          @expired="turnstileToken = ''"
+        />
+
         <UButton
           type="submit"
           block
@@ -117,7 +138,7 @@ async function submit() {
           color="neutral"
           class="bg-white font-medium text-[#0a0b0e] hover:bg-white/90"
           :loading="submitting"
-          :disabled="!emailValid"
+          :disabled="!canSubmit"
           label="Subscribe"
         />
       </form>
