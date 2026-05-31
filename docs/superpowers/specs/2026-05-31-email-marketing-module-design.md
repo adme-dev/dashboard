@@ -44,6 +44,16 @@ The email is stored as a **JSON document** (`@usewaypoint/document-core`) in `ca
 
 **Hard runtime constraint:** **MJML cannot run in the Cloudflare Workers runtime** (`window`/`fs` dependencies — a known, unresolved issue). EmailBuilder.js sidesteps this entirely by rendering HTML in the browser. The rule for this module is therefore absolute: **all email HTML is produced client-side; the Workers/edge runtime never compiles a template.** The server only ever stores and sends already-rendered HTML (with `{{merge_tags}}` substituted per-recipient at send time, a pure string operation).
 
+**Integration contract (verified against listmonk's `frontend/email-builder` source — our exact blueprint):** the builder is built as a small React micro-app exposing imperative functions; the Vue host drives it:
+
+- `render(containerId, props, force?)` — mounts the React+MUI app into a `<div id=…>`. `isRendered(containerId)` guards double-mount; `resetDocument()` / `DEFAULT_SOURCE` (`{ root: { type: 'EmailLayout', data: {} } }`) reset it.
+- `AppProps`:
+  - `data?: TEditorConfiguration` — the initial JSON document to load (i.e. `campaigns.body_source`).
+  - `onChange?: (json, html) => void` — **fires on every edit with BOTH the JSON document AND the rendered HTML**. The HTML comes from `renderToStaticMarkup(document, { rootBlockId: 'root' })` (from `@usewaypoint/email-builder`), wrapped to inject a `<meta viewport>`. So the host gets ready-to-send HTML for free on every change — no separate export step, no server render.
+  - `height?: string`.
+- **Our wiring:** a Nuxt `.client.vue` component mounts the div, dynamically imports the bundle, calls `render(id, { data: existingDoc, onChange: (json, html) => persist(json → body_source, html → body_html) })`. Route-split + client-only so React/MUI/emotion never enter SSR or the main bundle.
+- **Merge tags:** EmailBuilder.js has no native variable concept — you type `{{ first_name }}` into a Text/HTML block and it lands in the rendered HTML verbatim; we substitute server-side at send time (listmonk does the same with Go templates). No custom block needed for MVP.
+
 ## Existing building blocks reused
 
 - **DB layer**: `server/utils/db.ts` (`queryRows`, `queryOne`, `execute`, `transaction`). Neon, dual-driver.
