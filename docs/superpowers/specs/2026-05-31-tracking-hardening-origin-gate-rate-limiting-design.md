@@ -208,9 +208,10 @@ An admin toggle for `enforce_origin` is added to the existing tracking-site sett
 - `server/api/agency/tracking/[id].patch.ts` — add `'enforce_origin'` to its `allowed` column
   array (the handler already snake-cases incoming keys and `invalidateSiteCache`es on write, so a
   toggle takes effect immediately).
-- `app/components/tracking/SiteCreateSlideover.vue` — the create/edit slideover that already
-  submits `allowedOrigins`; add a `USwitch` bound to `enforce_origin` (with helper text noting it
-  is a no-op until `allowed_origins` is populated).
+- `app/components/tracking/SiteCreateSlideover.vue` — the **create-only** slideover (no per-site
+  edit UI calls PATCH today); add a `USwitch` bound to `enforce_origin` (helper text noting it is a
+  no-op until `allowed_origins` is populated) so new sites can be created enforcing. **Existing**
+  sites are flipped via SQL during rollout (§6), same operational path as populating allowlists.
 
 ---
 
