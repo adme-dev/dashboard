@@ -29,6 +29,21 @@ describe('checkAndCount', () => {
     // one window later, ~start of new window: prevCount=3 weighted ~1.0 ⇒ still over limit
     expect(checkAndCount(s, t + 10_001, 3, 10_000).allowed).toBe(false)
   })
+
+  it('clamps a non-positive window (misconfig) instead of degenerating', () => {
+    const s: WindowState = newWindow(0)
+    const t = 1_000_000
+    // windowMs = 0 and negative must not produce NaN/Infinity or bypass the limit.
+    for (const badWindow of [0, -5]) {
+      const r = checkAndCount(s, t, 2, badWindow)
+      expect(r.allowed).toBe(true)
+      expect(Number.isFinite(r.retryAfterSec)).toBe(true)
+    }
+    // limit still enforced after the clamp (currCount now 2 ⇒ 3rd denied)
+    const denied = checkAndCount(s, t, 2, 0)
+    expect(denied.allowed).toBe(false)
+    expect(Number.isFinite(denied.retryAfterSec)).toBe(true)
+  })
 })
 
 describe('LruMap', () => {

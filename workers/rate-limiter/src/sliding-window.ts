@@ -37,12 +37,16 @@ export function checkAndCount(
   limit: number,
   windowMs: number,
 ): { allowed: boolean; retryAfterSec: number } {
-  roll(s, now, windowMs)
+  // Clamp defensively: a non-positive window (env misconfig) would make the
+  // weight math degenerate (divide-by-zero / always-reset). Caller's `|| 10000`
+  // guards 0/NaN but not negatives, so harden here where it's unit-testable.
+  const w = windowMs > 0 ? windowMs : 1
+  roll(s, now, w)
   const elapsedInCurr = now - s.windowStart
-  const prevWeight = Math.max(0, 1 - elapsedInCurr / windowMs)
+  const prevWeight = Math.max(0, 1 - elapsedInCurr / w)
   const estimated = s.currCount + s.prevCount * prevWeight
   if (estimated + 1 > limit) {
-    const retryAfterSec = Math.max(1, Math.ceil((s.windowStart + windowMs - now) / 1000))
+    const retryAfterSec = Math.max(1, Math.ceil((s.windowStart + w - now) / 1000))
     return { allowed: false, retryAfterSec }
   }
   s.currCount += 1
