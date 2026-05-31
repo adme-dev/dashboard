@@ -30,7 +30,10 @@ const publicRoutes = [
   // body (Meta's verify_token, Google's google_key matched against
   // lead_webhook_endpoints.secret_key). Google + Meta servers don't have
   // session cookies, so these MUST be public.
-  '/api/leads/webhook/'
+  '/api/leads/webhook/',
+  // Analytics export destination — authed by a hashed bearer token validated
+  // inline against analytics_export_tokens (no session cookie).
+  '/api/export/'
 ]
 
 // Paths that an authenticated cron can read with X-Internal-Cron-Secret.
