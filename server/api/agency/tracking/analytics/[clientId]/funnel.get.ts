@@ -2,17 +2,20 @@
 import { queryOne } from '~~/server/utils/db'
 import { requireClientTrackingAccess } from '~~/server/utils/tracking/analytics-access'
 import { parseRange } from '~~/server/utils/tracking/analytics-range'
+import { resolveClientTimezone, WINDOW_SQL } from '~~/server/utils/tracking/analytics-window'
 import { NOISE_SQL } from '~~/server/utils/tracking/analytics-sql'
 
 export default defineEventHandler(async (event) => {
   const clientId = getRouterParam(event, 'clientId')
   await requireClientTrackingAccess(event, clientId)
-  const range = parseRange(getQuery(event) as { from?: string, to?: string })
+  const { fromDate, toDate } = parseRange(getQuery(event) as { from?: string, to?: string })
+  const tz = await resolveClientTimezone(clientId)
 
+  // $1 clientId, $2 fromDate, $3 toDate, $4 tz
   const row = await queryOne<any>(
     `WITH e AS (
         SELECT session_id, event_name FROM tracking_events e
-         WHERE client_id = $1 AND received_at >= $2 AND received_at < $3 AND ${NOISE_SQL}
+         WHERE client_id = $1 AND ${WINDOW_SQL} AND ${NOISE_SQL}
            AND session_id IS NOT NULL
      )
      SELECT
@@ -20,7 +23,7 @@ export default defineEventHandler(async (event) => {
        COUNT(DISTINCT session_id) FILTER (WHERE event_name='engagement')  AS engaged,
        COUNT(DISTINCT session_id) FILTER (WHERE event_name='form_submit') AS converted
        FROM e`,
-    [clientId, range.from.toISOString(), range.toExclusive.toISOString()]
+    [clientId, fromDate, toDate, tz]
   )
   const viewed = Number(row?.viewed) || 0
   const engaged = Number(row?.engaged) || 0

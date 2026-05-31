@@ -1,29 +1,27 @@
 /** Daily visitors + events in the client's timezone. GET …/:clientId/timeseries?from&to */
-import { query, queryOne } from '~~/server/utils/db'
+import { query } from '~~/server/utils/db'
 import { requireClientTrackingAccess } from '~~/server/utils/tracking/analytics-access'
 import { parseRange } from '~~/server/utils/tracking/analytics-range'
+import { resolveClientTimezone, WINDOW_SQL } from '~~/server/utils/tracking/analytics-window'
 import { NOISE_SQL, dayBucketExpr } from '~~/server/utils/tracking/analytics-sql'
 
 export default defineEventHandler(async (event) => {
   const clientId = getRouterParam(event, 'clientId')
   await requireClientTrackingAccess(event, clientId)
-  const range = parseRange(getQuery(event) as { from?: string, to?: string })
+  const { fromDate, toDate } = parseRange(getQuery(event) as { from?: string, to?: string })
+  const tz = await resolveClientTimezone(clientId)
 
-  const tzRow = await queryOne<any>(`SELECT reporting_timezone FROM agency_clients WHERE id = $1`, [clientId])
-  const tz = tzRow?.reporting_timezone || 'Australia/Brisbane'
-
-  // $1 clientId, $2 from, $3 toExclusive, $4 tz
-  // Format the local day as text in SQL (to_char) so the driver returns a clean
-  // 'YYYY-MM-DD' string — NOT a Date, which toISOString() would shift by the
-  // process/machine timezone and render off-by-one.
+  // $1 clientId, $2 fromDate, $3 toDate, $4 tz. The window bounds (WINDOW_SQL)
+  // and the day bucket both use $4, so each local day is whole and in-range.
+  // to_char keeps the day a clean 'YYYY-MM-DD' string (no Date/tz round-trip).
   const rows = await query<any>(
     `SELECT to_char(${dayBucketExpr('$4')}, 'YYYY-MM-DD') AS day,
             COUNT(DISTINCT anon_id) AS visitors,
             COUNT(*) AS events
        FROM tracking_events e
-      WHERE client_id = $1 AND received_at >= $2 AND received_at < $3 AND ${NOISE_SQL}
+      WHERE client_id = $1 AND ${WINDOW_SQL} AND ${NOISE_SQL}
       GROUP BY day ORDER BY day ASC`,
-    [clientId, range.from.toISOString(), range.toExclusive.toISOString(), tz]
+    [clientId, fromDate, toDate, tz]
   )
 
   return {

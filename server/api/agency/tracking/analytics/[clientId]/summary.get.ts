@@ -2,20 +2,23 @@
 import { queryOne } from '~~/server/utils/db'
 import { requireClientTrackingAccess } from '~~/server/utils/tracking/analytics-access'
 import { parseRange } from '~~/server/utils/tracking/analytics-range'
+import { resolveClientTimezone, WINDOW_SQL } from '~~/server/utils/tracking/analytics-window'
 import { NOISE_SQL, numericJsonb } from '~~/server/utils/tracking/analytics-sql'
 
 export default defineEventHandler(async (event) => {
   const clientId = getRouterParam(event, 'clientId')
   await requireClientTrackingAccess(event, clientId)
-  const range = parseRange(getQuery(event) as { from?: string, to?: string })
+  const { fromDate, toDate } = parseRange(getQuery(event) as { from?: string, to?: string })
+  const tz = await resolveClientTimezone(clientId)
 
+  // $1 clientId, $2 fromDate, $3 toDate, $4 tz
   const row = await queryOne<any>(
     `WITH e AS (
         SELECT anon_id, session_id, event_name,
                ${numericJsonb('duration')} AS dur,
                ${numericJsonb('depth')} AS depth
           FROM tracking_events e
-         WHERE client_id = $1 AND received_at >= $2 AND received_at < $3 AND ${NOISE_SQL}
+         WHERE client_id = $1 AND ${WINDOW_SQL} AND ${NOISE_SQL}
      ),
      sess_eng AS (SELECT session_id, MAX(dur) AS max_dur FROM e WHERE event_name='engagement' GROUP BY session_id),
      sess_scroll AS (SELECT DISTINCT session_id FROM e WHERE event_name='scroll' AND depth >= 75)
@@ -28,7 +31,7 @@ export default defineEventHandler(async (event) => {
        (SELECT COUNT(*) FROM sess_scroll) AS sessions_scrolled_75,
        (SELECT COUNT(*) FROM e WHERE event_name='phone_click') AS call_clicks,
        (SELECT COUNT(*) FROM e WHERE event_name='form_submit') AS form_submits`,
-    [clientId, range.from.toISOString(), range.toExclusive.toISOString()]
+    [clientId, fromDate, toDate, tz]
   )
 
   return {

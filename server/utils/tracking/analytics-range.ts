@@ -1,8 +1,13 @@
 /** Parse + validate a from/to date query for analytics endpoints. Pure (clock
- *  injectable for tests). `toExclusive` is to + 1 day so the SQL uses [from, toExclusive). */
-export interface ParsedRange { from: Date, toExclusive: Date }
+ *  injectable for tests). Returns the LOCAL day strings ('YYYY-MM-DD'); the
+ *  endpoints turn these into client-tz UTC bounds via analytics-window.WINDOW_SQL. */
+export interface ParsedRange { fromDate: string, toDate: string }
 
 const DAY = 86_400_000
+
+function ymd(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
 
 export function parseRange(
   q: { from?: string, to?: string },
@@ -22,5 +27,5 @@ export function parseRange(
   if (to.getTime() - from.getTime() > 366 * DAY) {
     throw createError({ statusCode: 400, statusMessage: 'Range too large (max 366 days)' })
   }
-  return { from, toExclusive: new Date(to.getTime() + DAY) }
+  return { fromDate: ymd(from), toDate: ymd(to) }
 }
