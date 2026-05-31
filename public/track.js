@@ -489,6 +489,10 @@
         },
         event_data: payload.event_data || {},
       }],
+      // Forward the raw consent cookie value: it lives on the dealer domain, so
+      // our cross-origin endpoint can't read it — relaying it here keeps the
+      // server-stored consent snapshot accurate. null when not set.
+      consent: getCookie(CONSENT_COOKIE_NAME) || null,
     }
 
     // POST cross-origin to OUR origin with the write key on the query string

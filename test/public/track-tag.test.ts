@@ -75,4 +75,19 @@ describe('public/track.js transport', () => {
       expect(typeof ev.occurred_at).toBe('number')
     }
   })
+
+  it('forwards the raw _xf_consent cookie value in the batch (cross-origin relay)', () => {
+    const cookie = JSON.stringify({ tracking: true, analytics: true, marketing: false, updatedAt: '2026-05-31T00:00:00Z' })
+    document.cookie = '_xf_consent=' + encodeURIComponent(cookie)
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    beacons = []
+    ;(window as any).xf.track('phone_click', {})
+
+    expect(beacons.length).toBe(1)
+    const payload = JSON.parse(beacons[0].body)
+    expect(payload.consent).toBe(cookie)
+    // and the server schema accepts it
+    expect(parseTrackPayload(payload).ok).toBe(true)
+  })
 })

@@ -54,8 +54,13 @@ export default defineEventHandler(async (event) => {
     if (!originOk) console.warn('[track] origin not in allowlist', { site: site.id, reqOrigin })
 
     // 6. Consent snapshot + request context.
+    // Prefer the consent value the tag forwarded in the body: this is a
+    // cross-origin beacon, so the dealer-domain `_xf_consent` cookie is NOT sent
+    // to us — without the forwarded value the explicit choice is invisible and
+    // we'd always fall back to the cf-ipcountry region default. Region still
+    // comes from the request header (server-trusted).
     const consent = snapshotConsent({
-      consentCookieValue: getCookie(event, '_xf_consent'),
+      consentCookieValue: parsed.payload.consent ?? getCookie(event, '_xf_consent'),
       cfIpCountry: getHeader(event, 'cf-ipcountry'),
     })
     // Pepper the IP before hashing: an UNSALTED sha256 of an IPv4 is trivially
