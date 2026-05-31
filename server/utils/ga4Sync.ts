@@ -127,7 +127,7 @@ export async function syncGa4(
               sessions, total_users, new_users, engaged_sessions, engagement_rate,
               avg_session_duration, key_events, purchase_revenue, synced_at)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
-           ON CONFLICT (connection_id, metric_date, channel_group)
+           ON CONFLICT (connection_id, property_id, metric_date, channel_group)
            DO UPDATE SET
              sessions = EXCLUDED.sessions,
              total_users = EXCLUDED.total_users,
