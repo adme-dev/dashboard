@@ -6,7 +6,8 @@
  */
 import { queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
-import { computeMetrics, toNum, PLATFORM_LABELS, PLATFORM_COLORS, buildClientCondition } from '~~/server/utils/analyticsMetrics'
+import { computeMetrics, toNum, PLATFORM_LABELS, PLATFORM_COLORS, buildClientCondition, dailySpendWindow } from '~~/server/utils/analyticsMetrics'
+import { previousWindow } from '~~/server/utils/ga4Funnel'
 import {
   PORTAL_LEAD_STATUS_SELECT,
   leadPlatformForSourceSql
@@ -25,9 +26,11 @@ export default defineEventHandler(async (event) => {
   const clientId = q.clientId as string | undefined
   const platforms = q.platform ? String(q.platform).split(',').map(p => p.trim()).filter(Boolean) : null
 
-  // Build dynamic WHERE conditions
-  const conditions: string[] = ['ms.period >= $1', 'ms.period <= $2']
-  const params: unknown[] = [startDate.slice(0, 7), endDate.slice(0, 7)]
+  // Build dynamic WHERE conditions on the daily_spend grain (day-accurate).
+  // Campaign metadata (budget, rolling, counts) still lives on media_spend, so
+  // we aggregate at the campaign (media_spend.id) level first, then roll up.
+  const conditions: string[] = [dailySpendWindow(1, 2)]
+  const params: unknown[] = [startDate, endDate]
   let idx = 3
 
   if (clientId) {
@@ -43,58 +46,85 @@ export default defineEventHandler(async (event) => {
 
   const where = conditions.join(' AND ')
 
-  // Previous period: shift back by the date range duration
-  const start = new Date(startDate)
-  const end = new Date(endDate)
-  const durationMs = end.getTime() - start.getTime()
-  const prevEnd = new Date(start.getTime() - 1)
-  const prevStart = new Date(prevEnd.getTime() - durationMs)
-  const prevStartPeriod = prevStart.toISOString().slice(0, 7)
-  const prevEndPeriod = prevEnd.toISOString().slice(0, 7)
+  // Previous period: equal-length window ending the day before startDate (day-accurate).
+  const { prevStart, prevEnd } = previousWindow(startDate, endDate)
 
   try {
-    // By platform
+    // By platform — daily metrics from daily_spend, budget/counts from media_spend.
     const byPlatformRows = await queryRows(`
+      WITH cam AS (
+        SELECT
+          ms.id,
+          ms.platform,
+          ms.campaign_id,
+          (array_agg(ms.budget_allocated ORDER BY ms.synced_at DESC NULLS LAST))[1] as budget,
+          BOOL_OR(ms.budget_rolling) as budget_rolling,
+          SUM(ds.spend) as spend,
+          SUM(ds.impressions) as impressions,
+          SUM(ds.clicks) as clicks,
+          SUM(ds.conversions) as conversions,
+          SUM(ds.revenue) as revenue
+        FROM media_spend ms
+        JOIN daily_spend ds ON ds.media_spend_id = ms.id AND ${dailySpendWindow(1, 2)}
+        WHERE ${where}
+        GROUP BY ms.id, ms.platform, ms.campaign_id
+      )
       SELECT
-        ms.platform,
-        SUM(ms.actual_spend) as spend,
-        SUM(ms.budget_allocated) as budget,
-        SUM(ms.impressions) as impressions,
-        SUM(ms.clicks) as clicks,
-        SUM(ms.conversions) as conversions,
-        0 as revenue,
-        COUNT(DISTINCT ms.campaign_id) as campaign_count,
-        COUNT(DISTINCT CASE WHEN ms.budget_rolling THEN ms.campaign_id END) as rolling_count
-      FROM media_spend ms
-      WHERE ${where}
-      GROUP BY ms.platform
+        platform,
+        SUM(spend) as spend,
+        SUM(budget) as budget,
+        SUM(impressions) as impressions,
+        SUM(clicks) as clicks,
+        SUM(conversions) as conversions,
+        SUM(revenue) as revenue,
+        COUNT(DISTINCT campaign_id) as campaign_count,
+        COUNT(DISTINCT CASE WHEN budget_rolling THEN campaign_id END) as rolling_count
+      FROM cam
+      GROUP BY platform
       ORDER BY spend DESC
     `, params)
 
     // By client (group unlinked campaigns under "Unassigned")
     const byClientRows = await queryRows(`
+      WITH cam AS (
+        SELECT
+          ms.id,
+          ms.client_id,
+          ms.platform,
+          ms.campaign_id,
+          (array_agg(ms.budget_allocated ORDER BY ms.synced_at DESC NULLS LAST))[1] as budget,
+          BOOL_OR(ms.budget_rolling) as budget_rolling,
+          SUM(ds.spend) as spend,
+          SUM(ds.impressions) as impressions,
+          SUM(ds.clicks) as clicks,
+          SUM(ds.conversions) as conversions,
+          SUM(ds.revenue) as revenue
+        FROM media_spend ms
+        JOIN daily_spend ds ON ds.media_spend_id = ms.id AND ${dailySpendWindow(1, 2)}
+        WHERE ${where}
+        GROUP BY ms.id, ms.client_id, ms.platform, ms.campaign_id
+      )
       SELECT
-        ms.client_id,
+        cam.client_id,
         COALESCE(c.name, 'Unassigned') as client_name,
-        SUM(ms.actual_spend) as spend,
-        SUM(ms.budget_allocated) as budget,
-        SUM(ms.impressions) as impressions,
-        SUM(ms.clicks) as clicks,
-        SUM(ms.conversions) as conversions,
-        0 as revenue,
-        ARRAY_AGG(DISTINCT ms.platform) as platforms,
-        COUNT(DISTINCT ms.campaign_id) as campaign_count,
-        COUNT(DISTINCT CASE WHEN ms.budget_rolling THEN ms.campaign_id END) as rolling_count
-      FROM media_spend ms
-      LEFT JOIN agency_clients c ON ms.client_id = c.id
-      WHERE ${where}
-      GROUP BY ms.client_id, c.name
+        SUM(cam.spend) as spend,
+        SUM(cam.budget) as budget,
+        SUM(cam.impressions) as impressions,
+        SUM(cam.clicks) as clicks,
+        SUM(cam.conversions) as conversions,
+        SUM(cam.revenue) as revenue,
+        ARRAY_AGG(DISTINCT cam.platform) as platforms,
+        COUNT(DISTINCT cam.campaign_id) as campaign_count,
+        COUNT(DISTINCT CASE WHEN cam.budget_rolling THEN cam.campaign_id END) as rolling_count
+      FROM cam
+      LEFT JOIN agency_clients c ON cam.client_id = c.id
+      GROUP BY cam.client_id, c.name
       ORDER BY spend DESC
     `, params)
 
-    // Previous period totals
-    const prevConditions: string[] = [`ms.period >= $1`, `ms.period <= $2`]
-    const prevParams: unknown[] = [prevStartPeriod, prevEndPeriod]
+    // Previous period totals (same daily-grain shape, previous window)
+    const prevConditions: string[] = [dailySpendWindow(1, 2)]
+    const prevParams: unknown[] = [prevStart, prevEnd]
     let prevIdx = 3
     if (clientId) {
       prevConditions.push(buildClientCondition(prevIdx))
@@ -109,15 +139,28 @@ export default defineEventHandler(async (event) => {
     const prevWhere = prevConditions.join(' AND ')
 
     const prevRows = await queryRows(`
+      WITH cam AS (
+        SELECT
+          ms.id,
+          (array_agg(ms.budget_allocated ORDER BY ms.synced_at DESC NULLS LAST))[1] as budget,
+          SUM(ds.spend) as spend,
+          SUM(ds.impressions) as impressions,
+          SUM(ds.clicks) as clicks,
+          SUM(ds.conversions) as conversions,
+          SUM(ds.revenue) as revenue
+        FROM media_spend ms
+        JOIN daily_spend ds ON ds.media_spend_id = ms.id AND ${dailySpendWindow(1, 2)}
+        WHERE ${prevWhere}
+        GROUP BY ms.id
+      )
       SELECT
-        SUM(ms.actual_spend) as spend,
-        SUM(ms.budget_allocated) as budget,
-        SUM(ms.impressions) as impressions,
-        SUM(ms.clicks) as clicks,
-        SUM(ms.conversions) as conversions,
-        0 as revenue
-      FROM media_spend ms
-      WHERE ${prevWhere}
+        SUM(spend) as spend,
+        SUM(budget) as budget,
+        SUM(impressions) as impressions,
+        SUM(clicks) as clicks,
+        SUM(conversions) as conversions,
+        SUM(revenue) as revenue
+      FROM cam
     `, prevParams)
 
     const leadConditions = [
@@ -152,10 +195,7 @@ export default defineEventHandler(async (event) => {
       'l.submitted_at >= $1::date',
       `l.submitted_at < ($2::date + INTERVAL '1 day')`
     ]
-    const prevLeadParams: unknown[] = [
-      prevStart.toISOString().slice(0, 10),
-      prevEnd.toISOString().slice(0, 10)
-    ]
+    const prevLeadParams: unknown[] = [prevStart, prevEnd]
     let prevLeadIdx = 3
     if (clientId) {
       prevLeadConditions.push(`l.client_id = $${prevLeadIdx}`)

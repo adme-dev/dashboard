@@ -40,8 +40,10 @@ export default defineEventHandler(async (event) => {
 
   const showInactive = q.showInactive === 'true'
 
-  const conditions: string[] = ['ms.period >= $1', 'ms.period <= $2']
-  const params: unknown[] = [startDate.slice(0, 7), endDate.slice(0, 7)]
+  // $1,$2 = ISO start/end dates consumed by the daily_spend window CTE (day-accurate).
+  // Other filters start at $3; the lead LATERAL reuses $1/$2 for its date window.
+  const params: unknown[] = [startDate, endDate]
+  const conditions: string[] = []
   let idx = 3
 
   if (clientId) {
@@ -65,24 +67,22 @@ export default defineEventHandler(async (event) => {
     conditions.push(`(ms.campaign_status IS NULL OR ms.campaign_status NOT IN ('DELETED', 'ARCHIVED', 'REMOVED', 'deleted', 'archived', 'removed'))`)
   }
 
-  const where = conditions.join(' AND ')
+  const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : ''
 
   try {
-    // Count total
+    // Count total (only campaigns with spend in the day-accurate window)
     const countResult = await queryOne(`
       SELECT COUNT(DISTINCT ms.campaign_id) as count
       FROM media_spend ms
-      WHERE ${where}
+      JOIN (SELECT media_spend_id FROM daily_spend WHERE spend_date BETWEEN $1 AND $2 GROUP BY media_spend_id) d
+        ON d.media_spend_id = ms.id
+      ${where}
     `, params)
     const total = Number(countResult?.count || 0)
 
-    // Fetch campaigns
-    params.push(startDate)
-    const leadStartIdx = idx
-    idx++
-    params.push(endDate)
-    const leadEndIdx = idx
-    idx++
+    // Fetch campaigns. Lead window reuses $1/$2 (same start/end dates).
+    const leadStartIdx = 1
+    const leadEndIdx = 2
     params.push(limit)
     const limitIdx = idx
     idx++
@@ -90,7 +90,18 @@ export default defineEventHandler(async (event) => {
     const offsetIdx = idx
 
     const rows = await queryRows(`
-      WITH campaigns AS (
+      WITH daily AS (
+        SELECT ds.media_spend_id,
+               SUM(ds.spend) as spend,
+               SUM(ds.impressions) as impressions,
+               SUM(ds.clicks) as clicks,
+               SUM(ds.conversions) as conversions,
+               SUM(ds.revenue) as revenue
+        FROM daily_spend ds
+        WHERE ds.spend_date BETWEEN $1 AND $2
+        GROUP BY ds.media_spend_id
+      ),
+      campaigns AS (
         SELECT
           ms.campaign_id,
           ms.campaign_name,
@@ -99,13 +110,13 @@ export default defineEventHandler(async (event) => {
           ms.campaign_status,
           ms.client_id,
           c.name as client_name,
-          SUM(ms.actual_spend) as spend,
+          SUM(d.spend) as spend,
           SUM(ms.budget_allocated) as budget,
           BOOL_OR(ms.budget_rolling) as budget_rolling,
-          SUM(ms.impressions) as impressions,
-          SUM(ms.clicks) as clicks,
-          SUM(ms.conversions) as conversions,
-          COALESCE(SUM(ms.revenue), 0) as revenue,
+          SUM(d.impressions) as impressions,
+          SUM(d.clicks) as clicks,
+          SUM(d.conversions) as conversions,
+          COALESCE(SUM(d.revenue), 0) as revenue,
           SUM(ms.reach) as reach,
           (array_agg(ms.cost_per_result ORDER BY ms.synced_at DESC NULLS LAST))[1] as cost_per_result,
           (array_agg(ms.result_type ORDER BY ms.synced_at DESC NULLS LAST))[1] as result_type,
@@ -123,9 +134,10 @@ export default defineEventHandler(async (event) => {
           (array_agg(sc.account_id ORDER BY ms.synced_at DESC NULLS LAST))[1] as connection_account_id,
           (array_agg(sc.metadata::text ORDER BY ms.synced_at DESC NULLS LAST))[1] as connection_metadata
         FROM media_spend ms
+        JOIN daily d ON d.media_spend_id = ms.id
         LEFT JOIN agency_clients c ON ms.client_id = c.id
         LEFT JOIN social_connections sc ON ms.connection_id = sc.id
-        WHERE ${where}
+        ${where}
         GROUP BY ms.campaign_id, ms.campaign_name, ms.platform, ms.campaign_type, ms.campaign_status, ms.client_id, c.name
       )
       SELECT
