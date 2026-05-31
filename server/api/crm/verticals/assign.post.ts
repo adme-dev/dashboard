@@ -17,6 +17,9 @@ export default defineEventHandler(async (event) => {
       `INSERT INTO crm_client_verticals (client_id, vertical_key) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
       [b.client_id, b.vertical_key],
     )
+    // Instantiate the vertical's object/field/pipeline templates for this client (idempotent).
+    const { seedVerticalFromTemplate } = await import('~~/server/utils/crm/engine/seedVertical')
+    await seedVerticalFromTemplate(b.client_id, b.vertical_key)
   } else {
     await execute(`DELETE FROM crm_client_verticals WHERE client_id = $1 AND vertical_key = $2`, [b.client_id, b.vertical_key])
   }
