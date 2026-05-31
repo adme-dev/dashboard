@@ -20,6 +20,13 @@ const {
   canProceedStep4,
   adNamePattern,
   adStatus,
+  primaryTexts,
+  headlines,
+  descriptions,
+  callToAction,
+  linkUrl,
+  pageId,
+  pages,
   uploadProgress,
   isUploading,
   uploadComplete,
@@ -28,6 +35,24 @@ const {
   uploadAllBulk,
   reset,
 } = useMetaAdUpload()
+
+// ── Live ad preview (Review step) ──
+// Renders the selected creative inside a Meta feed mockup using the copy the
+// operator just entered. Because Meta uses asset_feed_spec (multiple text
+// variations), this shows ONE representative combination — the first non-empty
+// of each field — not every permutation.
+const previewIndex = ref(0)
+const previewCreative = computed(() => selectedCreatives.value[previewIndex.value] || selectedCreatives.value[0] || null)
+const previewPageName = computed(() => pages.value.find((p: { id: string, name: string }) => p.id === pageId.value)?.name)
+const firstFilled = (arr: string[]) => arr.find(t => t && t.trim()) || ''
+const previewPrimary = computed(() => firstFilled(primaryTexts.value))
+const previewHeadline = computed(() => firstFilled(headlines.value))
+const previewDescription = computed(() => firstFilled(descriptions.value))
+
+// Keep the preview index valid as the selection changes.
+watch(() => selectedCreatives.value.length, (len) => {
+  if (previewIndex.value >= len) previewIndex.value = 0
+})
 
 // ── Section collapse state ──
 const expandedSections = ref<Set<number>>(new Set([1]))
@@ -398,6 +423,49 @@ const reviewItems = computed(() =>
 
               <div v-else class="py-4 text-center text-xs text-(--ui-text-muted)">
                 Select creatives in section 3 to see the review summary.
+              </div>
+
+              <!-- Live ad preview -->
+              <div v-if="previewCreative" class="rounded-lg border border-(--ui-border) bg-(--ui-bg-elevated) p-4">
+                <div class="flex items-center justify-between mb-3">
+                  <span class="text-xs font-semibold">Live preview</span>
+                  <UTooltip text="Meta rotates your text variations automatically. This shows one representative combination in the feed placement.">
+                    <span class="text-[10px] text-(--ui-text-muted) flex items-center gap-1">
+                      <UIcon name="i-lucide-info" class="w-3 h-3" /> Representative
+                    </span>
+                  </UTooltip>
+                </div>
+
+                <div class="flex justify-center">
+                  <AdPreviewMetaFeedPreview
+                    :image="previewCreative.url"
+                    :page-name="previewPageName"
+                    :primary-text="previewPrimary"
+                    :headline="previewHeadline"
+                    :description="previewDescription"
+                    :cta-type="callToAction"
+                    :link-url="linkUrl"
+                  />
+                </div>
+
+                <!-- Creative switcher (only when more than one selected) -->
+                <div v-if="selectedCreatives.length > 1" class="mt-3">
+                  <p class="text-[10px] text-(--ui-text-muted) text-center mb-2">
+                    Showing creative {{ previewIndex + 1 }} of {{ selectedCreatives.length }} — copy is shared across all
+                  </p>
+                  <div class="flex flex-wrap gap-2 justify-center">
+                    <button
+                      v-for="(c, i) in selectedCreatives"
+                      :key="c.id"
+                      type="button"
+                      class="w-12 h-12 rounded-md overflow-hidden border-2 transition-colors"
+                      :class="i === previewIndex ? 'border-blue-500' : 'border-(--ui-border) hover:border-(--ui-text-muted)'"
+                      @click="previewIndex = i"
+                    >
+                      <img :src="c.url" :alt="c.formatKey" class="w-full h-full object-cover">
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <!-- Launch button -->

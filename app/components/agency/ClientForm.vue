@@ -11,6 +11,7 @@ const props = defineProps<{
     hourlyRate?: number
     mediaCommissionRate?: number
     notes?: string
+    reportingTimezone?: string
   }
 }>()
 
@@ -29,8 +30,22 @@ const form = reactive({
   paymentTerms: props.client?.paymentTerms || 30,
   hourlyRate: props.client?.hourlyRate || undefined,
   mediaCommissionRate: props.client?.mediaCommissionRate || undefined,
-  notes: props.client?.notes || ''
+  notes: props.client?.notes || '',
+  reportingTimezone: props.client?.reportingTimezone || 'Australia/Brisbane'
 })
+
+// Reporting timezone options (AU-first) for website analytics day boundaries.
+const TIMEZONE_OPTIONS = [
+  { label: 'Brisbane (AEST)', value: 'Australia/Brisbane' },
+  { label: 'Sydney / Melbourne (AEST/AEDT)', value: 'Australia/Sydney' },
+  { label: 'Adelaide (ACST/ACDT)', value: 'Australia/Adelaide' },
+  { label: 'Perth (AWST)', value: 'Australia/Perth' },
+  { label: 'Auckland (NZST/NZDT)', value: 'Pacific/Auckland' },
+  { label: 'UTC', value: 'UTC' },
+  { label: 'London (GMT/BST)', value: 'Europe/London' },
+  { label: 'New York (ET)', value: 'America/New_York' },
+  { label: 'Los Angeles (PT)', value: 'America/Los_Angeles' }
+]
 
 const isEditing = computed(() => !!props.client?.id)
 
@@ -119,7 +134,7 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <form @submit.prevent="handleSubmit" class="space-y-6">
+  <form class="space-y-6" @submit.prevent="handleSubmit">
     <!-- Client Name -->
     <UFormField label="Client Name" :error="errors.name" required>
       <UInput
@@ -215,6 +230,17 @@ const handleSubmit = async () => {
         v-model="form.paymentTerms"
         :options="paymentTermsOptions"
         :disabled="loading"
+      />
+    </UFormField>
+
+    <!-- Reporting Timezone -->
+    <UFormField label="Reporting timezone" help="Used for day boundaries in website analytics.">
+      <USelectMenu
+        v-model="form.reportingTimezone"
+        :items="TIMEZONE_OPTIONS"
+        value-key="value"
+        :disabled="loading"
+        class="w-full"
       />
     </UFormField>
 

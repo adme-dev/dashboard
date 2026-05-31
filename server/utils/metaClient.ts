@@ -838,6 +838,26 @@ export async function createAd(
   return { id: res.id }
 }
 
+/**
+ * Fetch the live delivery status of an ad. Used by the status-sync runner to
+ * keep `banner_ad_publishes.status` aligned with Meta (pending review → active /
+ * rejected / paused / removed).
+ */
+export async function getAdStatus(
+  adId: string,
+  token: string
+): Promise<{ effectiveStatus: string | null; issues: any[] | null }> {
+  const res = await metaFetch<{ effective_status?: string; issues_info?: any[] }>(
+    `${META_GRAPH_BASE}/${adId}`,
+    token,
+    { fields: 'effective_status,issues_info' }
+  )
+  return {
+    effectiveStatus: res.effective_status || null,
+    issues: res.issues_info || null
+  }
+}
+
 // ============================================
 // Lead Generation Forms (for the form-picker dropdown in leads engine)
 // ============================================

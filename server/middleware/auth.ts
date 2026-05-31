@@ -21,6 +21,10 @@ const publicRoutes = [
   // double-opt-in confirm. Authorized by a signed link token (links.ts), not a
   // session; recipients have no cookies.
   '/api/public/email/',
+  // Public first-party tracking beacon — cross-origin POSTs from external dealer
+  // sites have no session cookie; tenancy is enforced by the embedded write key
+  // (resolveSiteByWriteKey) + soft Origin allowlist inside the handler.
+  '/api/public/track',
   '/api/xero/callback',
   '/api/_nuxt_icon',
   '/_nuxt',

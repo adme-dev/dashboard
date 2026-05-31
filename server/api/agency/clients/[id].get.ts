@@ -122,6 +122,7 @@ export default defineEventHandler(async (event) => {
         contactEmail: client.contact_email,
         contactPhone: client.contact_phone,
         address: client.address,
+        reportingTimezone: client.reporting_timezone,
         createdAt: client.created_at,
         updatedAt: client.updated_at
       },

@@ -14,10 +14,29 @@ const {
   uploadComplete,
   adPublishes,
   fetchAdPublishes,
+  syncStatuses,
+  isSyncingStatuses,
   nextStep,
   prevStep,
   reset,
 } = useMetaAdUpload()
+
+const toast = useToast()
+
+async function refreshStatuses() {
+  try {
+    const res = await syncStatuses(props.projectId)
+    if (res?.ok) {
+      toast.add({
+        title: 'Statuses refreshed',
+        description: res.updated ? `${res.updated} ad${res.updated === 1 ? '' : 's'} updated.` : 'No changes since last check.',
+        color: 'success',
+      })
+    }
+  } catch (err: any) {
+    toast.add({ title: 'Refresh failed', description: err?.data?.statusMessage || err.message || 'Unknown error', color: 'error' })
+  }
+}
 
 const STEPS = [
   { num: 1, label: 'Account' },
@@ -55,10 +74,25 @@ function handleClose() {
 }
 
 function statusColor(s: string): 'success' | 'error' | 'warning' | 'neutral' {
-  if (s === 'published') return 'success'
-  if (s === 'error') return 'error'
-  if (s === 'paused') return 'warning'
+  if (s === 'active' || s === 'published') return 'success'
+  if (s === 'error' || s === 'rejected') return 'error'
+  if (s === 'paused' || s === 'pending_review' || s === 'pending') return 'warning'
   return 'neutral'
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  pending: 'Pending',
+  pending_review: 'In review',
+  active: 'Active',
+  paused: 'Paused',
+  rejected: 'Rejected',
+  error: 'Failed',
+  removed: 'Removed',
+  published: 'Published',
+}
+
+function statusLabel(s: string): string {
+  return STATUS_LABELS[s] || s
 }
 
 function platformLabel(p: string): string {
@@ -123,7 +157,19 @@ function platformLabel(p: string): string {
 
           <!-- Publish history (shown at bottom of step 1) -->
           <div v-if="step === 1 && adPublishes?.length" class="mt-6 border-t border-(--ui-border) pt-4">
-            <h3 class="text-xs font-bold uppercase tracking-wider text-(--ui-text-muted) mb-3">Recent Publishes</h3>
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-(--ui-text-muted)">Recent Publishes</h3>
+              <UButton
+                variant="ghost"
+                size="xs"
+                color="neutral"
+                icon="i-lucide-refresh-cw"
+                :loading="isSyncingStatuses"
+                @click="refreshStatuses"
+              >
+                Refresh
+              </UButton>
+            </div>
             <div class="space-y-1.5">
               <div
                 v-for="ap in adPublishes.slice(0, 5)"
@@ -135,7 +181,7 @@ function platformLabel(p: string): string {
                   <span class="text-(--ui-text-muted) ml-1">{{ platformLabel(ap.platform) }}</span>
                   <div v-if="ap.errorMessage" class="text-[10px] text-red-500 truncate">{{ ap.errorMessage }}</div>
                 </div>
-                <UBadge :color="statusColor(ap.status)" variant="subtle" size="xs">{{ ap.status }}</UBadge>
+                <UBadge :color="statusColor(ap.status)" variant="subtle" size="xs">{{ statusLabel(ap.status) }}</UBadge>
               </div>
             </div>
           </div>
