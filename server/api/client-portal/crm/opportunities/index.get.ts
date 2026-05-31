@@ -29,8 +29,8 @@ export default defineEventHandler(async (event) => {
             (p.first_name || ' ' || COALESCE(p.last_name,'')) AS person_name,
             c.name AS company_name
        FROM crm_opportunities o
-       LEFT JOIN crm_people p ON p.id = o.person_id
-       LEFT JOIN crm_companies c ON c.id = o.company_id
+       LEFT JOIN crm_people p ON p.id = o.person_id AND p.client_id = o.client_id
+       LEFT JOIN crm_companies c ON c.id = o.company_id AND c.client_id = o.client_id
        ${where}
        ORDER BY o.created_at DESC
        LIMIT ${q.page_size} OFFSET ${offset}`,
