@@ -289,8 +289,8 @@
     })
   }
 
-  // Consent cookie name (must match server-side CONSENT_COOKIE_NAME in collect.post.ts)
-  var CONSENT_COOKIE_NAME = '_engagr_consent'
+  // Consent cookie name — MUST match the server (track.post.ts reads '_xf_consent').
+  var CONSENT_COOKIE_NAME = '_xf_consent'
 
   // Read and parse the consent cookie
   // Returns null if no cookie or parse failure
@@ -957,25 +957,16 @@
         var totalTime = Math.round((Date.now() - interaction.startTime) / 1000)
         var fields = Object.keys(interaction.fields)
 
-        // Use sendBeacon for reliable delivery on unload
-        var payload = JSON.stringify({
-          client_id: getClientId(),
-          session_id: getSessionId(),
-          event_name: 'form_abandonment',
-          event_data: {
-            form_key: formKey,
-            fields_interacted: fields,
-            field_count: fields.length,
-            total_time_seconds: totalTime,
-            field_timings: fieldTimings[formKey] || {},
-          },
-          page_url: window.location.href,
-          timestamp: new Date().toISOString(),
+        // Route through track() so the event gets the write-key URL, absolute
+        // origin and Slice-1 batch shape (track() itself uses sendBeacon, which
+        // is reliable on unload). Never post the old flat shape to a bare path.
+        track('form_abandonment', {
+          form_key: formKey,
+          fields_interacted: fields,
+          field_count: fields.length,
+          total_time_seconds: totalTime,
+          field_timings: fieldTimings[formKey] || {},
         })
-
-        if (navigator.sendBeacon) {
-          navigator.sendBeacon(ENDPOINT, new Blob([payload], { type: 'application/json' }))
-        }
       }
     }
 
