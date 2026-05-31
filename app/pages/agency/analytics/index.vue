@@ -214,6 +214,15 @@ async function syncAll() {
       lead-link-base="/agency/leads"
     />
 
+    <!-- Website & Funnel (GA4) — requires a specific client; self-hides without GA4 -->
+    <PortalFunnelChart
+      v-if="filters.clientId"
+      :start-date="filters.startDate"
+      :end-date="filters.endDate"
+      :client-id="filters.clientId"
+      api-base="/api/agency/analytics/funnel"
+    />
+
     <!-- Client Breakdown -->
     <div>
       <h3 class="text-sm font-semibold text-default mb-3">

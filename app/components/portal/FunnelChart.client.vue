@@ -1,7 +1,10 @@
 <!-- app/components/portal/FunnelChart.client.vue -->
 <script setup lang="ts">
-const props = defineProps<{ startDate: string; endDate: string }>()
+// `clientId` is only needed for the agency endpoint; the portal endpoint scopes
+// to the authenticated client itself.
+const props = defineProps<{ startDate: string; endDate: string; apiBase?: string; clientId?: string | null }>()
 const { fmtCurrency, fmtCompact } = useAnalytics()
+const endpoint = computed(() => props.apiBase ?? '/api/portal/analytics/funnel')
 
 interface FunnelRow {
   channel: string; spend: number; sessions: number; engagedSessions: number
@@ -15,9 +18,9 @@ type ComparedMetric = 'spend' | 'sessions' | 'totalUsers' | 'keyEvents' | 'leads
 interface FunnelComparison { totals: FunnelRow; deltaPct: Record<ComparedMetric, number | null> }
 interface FunnelResponse { channels: FunnelRow[]; totals: FunnelRow; comparison?: FunnelComparison; hasGa4: boolean }
 
-const { data, pending } = await useFetch<FunnelResponse>('/api/portal/analytics/funnel', {
-  query: { startDate: () => props.startDate, endDate: () => props.endDate },
-  watch: [() => props.startDate, () => props.endDate]
+const { data, pending } = await useFetch<FunnelResponse>(() => endpoint.value, {
+  query: { startDate: () => props.startDate, endDate: () => props.endDate, clientId: () => props.clientId ?? undefined },
+  watch: [() => props.startDate, () => props.endDate, () => props.clientId, endpoint]
 })
 
 const columns = [
