@@ -19,7 +19,8 @@ onMounted(async () => {
   try {
     await $fetch('/api/public/email/confirm', {
       method: 'POST',
-      body: { s: s.value, l: l.value, t: t.value }
+      body: { s: s.value, l: l.value, t: t.value },
+      timeout: 15000 // never leave the spinner hanging on a stalled request
     })
     state.value = 'ok'
   } catch {

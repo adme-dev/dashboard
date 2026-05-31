@@ -29,11 +29,18 @@ export type EmailLinkPurpose = 'unsub' | 'confirm'
  * tokens would be forgeable by anyone. Mirrors the resend-webhook secret read.
  */
 export function emailLinkSecret(): string {
-  return process.env.EMAIL_LINK_SECRET
+  const resolved = process.env.EMAIL_LINK_SECRET
     || getCachedBinding('EMAIL_LINK_SECRET')
     || process.env.CRON_SECRET
     || getCachedBinding('CRON_SECRET')
-    || 'dev-insecure-email-link-secret'
+  if (resolved) return resolved
+  // Fail CLOSED in production: a predictable dev secret would make every
+  // unsubscribe/confirm token forgeable (full IDOR). Better to 500 the endpoint
+  // than to silently accept forged links. Only dev/test gets the fixed fallback.
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('EMAIL_LINK_SECRET (or CRON_SECRET) is not configured — refusing to sign/verify email links with an insecure default')
+  }
+  return 'dev-insecure-email-link-secret'
 }
 
 async function hmacHex(secret: string, message: string): Promise<string> {

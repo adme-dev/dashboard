@@ -18,13 +18,22 @@ const { data, error } = await useFetch<{ email: string, name: string | null, lis
 )
 
 const lists = ref<ListMembership[]>([])
+// Seed once from the server snapshot. We do NOT re-sync on later data changes
+// because the user mutates `lists` in place (toggles / unsubscribe-all); a
+// refetch overwriting it would visually revert a change that actually persisted.
+const seeded = ref(false)
 watchEffect(() => {
-  lists.value = (data.value?.lists ?? []).map(l => ({ ...l }))
+  if (!seeded.value && data.value?.lists) {
+    lists.value = data.value.lists.map(l => ({ ...l }))
+    seeded.value = true
+  }
 })
 
 const unsubscribedAll = ref(false)
 const submitting = ref(false)
-const pendingListId = ref<string | null>(null)
+// Track per-list in-flight state so overlapping toggles don't clobber each
+// other's spinner (a single shared id would).
+const pendingListIds = ref<Set<string>>(new Set())
 
 async function unsubscribeAll() {
   submitting.value = true
@@ -43,7 +52,7 @@ async function unsubscribeAll() {
 }
 
 async function setPreference(list: ListMembership, subscribe: boolean) {
-  pendingListId.value = list.list_id
+  pendingListIds.value = new Set(pendingListIds.value).add(list.list_id)
   const previous = list.status
   list.status = subscribe ? 'confirmed' : 'unsubscribed' // optimistic
   try {
@@ -56,7 +65,9 @@ async function setPreference(list: ListMembership, subscribe: boolean) {
     list.status = previous // revert
     toast.add({ title: 'Couldn\'t update that list', description: 'Please try again.', color: 'error' })
   } finally {
-    pendingListId.value = null
+    const next = new Set(pendingListIds.value)
+    next.delete(list.list_id)
+    pendingListIds.value = next
   }
 }
 </script>
@@ -136,7 +147,7 @@ async function setPreference(list: ListMembership, subscribe: boolean) {
             </div>
             <USwitch
               :model-value="list.status !== 'unsubscribed'"
-              :loading="pendingListId === list.list_id"
+              :loading="pendingListIds.has(list.list_id)"
               @update:model-value="(v: boolean) => setPreference(list, v)"
             />
           </li>
