@@ -20,9 +20,9 @@ export interface BlendedChannelRow {
   conversions: number
   revenue: number
   sessions: number
-  cpl: number | null   // spend / leads (owned leads)
-  cpa: number | null   // spend / conversions (platform-reported)
-  roas: number | null  // revenue / spend (platform-reported)
+  cpl: number | null // spend / leads (owned leads)
+  cpa: number | null // spend / conversions (platform-reported)
+  roas: number | null // revenue / spend (platform-reported)
 }
 
 export interface BlendedInput {
@@ -42,7 +42,7 @@ function emptyRow(channel: string): BlendedChannelRow {
   return { channel, spend: 0, leads: 0, conversions: 0, revenue: 0, sessions: 0, cpl: null, cpa: null, roas: null }
 }
 
-export function buildBlended(input: BlendedInput): { channels: BlendedChannelRow[]; totals: BlendedChannelRow } {
+export function buildBlended(input: BlendedInput): { channels: BlendedChannelRow[], totals: BlendedChannelRow } {
   const channelNames = new Set<string>([
     ...Object.keys(input.spendByChannel),
     ...Object.keys(input.leadsByChannel),

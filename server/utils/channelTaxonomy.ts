@@ -50,7 +50,7 @@ export function resolveFromTaxonomy(
   taxonomy: Map<string, string>,
   system: SourceSystem,
   nativeValue: string,
-  unmapped?: Map<string, { system: SourceSystem; nativeValue: string }>
+  unmapped?: Map<string, { system: SourceSystem, nativeValue: string }>
 ): string | null {
   const fromTable = taxonomy.get(taxonomyKey(system, nativeValue))
   if (fromTable) return fromTable
@@ -64,7 +64,7 @@ export function resolveFromTaxonomy(
 // ---- DB-bound caching layer -------------------------------------------------
 
 let cache: Map<string, string> | null = null
-const unmappedSeen = new Map<string, { system: SourceSystem; nativeValue: string }>()
+const unmappedSeen = new Map<string, { system: SourceSystem, nativeValue: string }>()
 
 /** Load (and cache) the taxonomy table into a `${system}|${native}` → canonical map. */
 export async function loadTaxonomy(force = false): Promise<Map<string, string>> {
@@ -85,7 +85,7 @@ export async function resolveCanonicalChannel(system: SourceSystem, nativeValue:
 }
 
 /** Values that resolved to neither a table entry nor a fallback this process. */
-export function collectUnmapped(): Array<{ system: SourceSystem; nativeValue: string }> {
+export function collectUnmapped(): Array<{ system: SourceSystem, nativeValue: string }> {
   return [...unmappedSeen.values()]
 }
 

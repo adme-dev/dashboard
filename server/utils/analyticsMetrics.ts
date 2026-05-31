@@ -56,7 +56,7 @@ export function computeMetrics(
     ctr: impressions > 0 ? (clicks / impressions) * 100 : null,
     roas: spend > 0 && revenue > 0 ? revenue / spend : null,
     costPerConversion: conversions > 0 ? spend / conversions : null,
-    conversionRate: clicks > 0 ? (conversions / clicks) * 100 : null,
+    conversionRate: clicks > 0 ? (conversions / clicks) * 100 : null
   }
 }
 
@@ -102,7 +102,7 @@ export const PLATFORM_LABELS: Record<string, string> = {
   pinterest: 'Pinterest Ads',
   snapchat: 'Snapchat Ads',
   twitter: 'X (Twitter) Ads',
-  microsoft_ads: 'Microsoft Ads',
+  microsoft_ads: 'Microsoft Ads'
 }
 
 /** Consistent platform colors for charts (dark-mode safe) */
@@ -114,7 +114,7 @@ export const PLATFORM_COLORS: Record<string, string> = {
   pinterest: '#E60023',
   snapchat: '#F7D731',
   twitter: '#1DA1F2',
-  microsoft_ads: '#00A4EF',
+  microsoft_ads: '#00A4EF'
 }
 
 /** All supported platform keys */
@@ -130,7 +130,7 @@ export function formatCurrency(value: number, decimals = 0): string {
     style: 'currency',
     currency: 'AUD',
     minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
+    maximumFractionDigits: decimals
   }).format(value)
 }
 

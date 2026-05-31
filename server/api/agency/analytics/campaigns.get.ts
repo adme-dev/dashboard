@@ -169,7 +169,7 @@ export default defineEventHandler(async (event) => {
 
     const clientIds = [...new Set(rows.map((r: any) => r.client_id).filter(Boolean))]
     const targetRows = clientIds.length
-      ? await queryRows<{ client_id: string; result_type: string; target_cost_per_result: string; target_ctr: string | null; max_frequency: string | null }>(
+      ? await queryRows<{ client_id: string, result_type: string, target_cost_per_result: string, target_ctr: string | null, max_frequency: string | null }>(
           `SELECT client_id, result_type, target_cost_per_result, target_ctr, max_frequency
              FROM client_kpi_targets WHERE client_id = ANY($1)`, [clientIds])
       : []
@@ -195,11 +195,13 @@ export default defineEventHandler(async (event) => {
         engagementRateRanking: r.engagement_rate_ranking,
         conversionRateRanking: r.conversion_rate_ranking,
         impressionShare: r.impression_share == null ? null : Number(r.impression_share),
-        target: tgt ? {
-          targetCostPerResult: toNum(tgt.target_cost_per_result),
-          targetCtr: tgt.target_ctr == null ? null : Number(tgt.target_ctr),
-          maxFrequency: tgt.max_frequency == null ? null : Number(tgt.max_frequency),
-        } : null,
+        target: tgt
+          ? {
+              targetCostPerResult: toNum(tgt.target_cost_per_result),
+              targetCtr: tgt.target_ctr == null ? null : Number(tgt.target_ctr),
+              maxFrequency: tgt.max_frequency == null ? null : Number(tgt.max_frequency)
+            }
+          : null
       })
 
       // Build deep link URL

@@ -32,13 +32,13 @@ export default defineEventHandler(async (event) => {
   }
 
   // Aggregate one window into a canonical-channel BlendedInput.
-  const aggregate = async (start: string, end: string): Promise<{ input: BlendedInput; ga4RowCount: number }> => {
+  const aggregate = async (start: string, end: string): Promise<{ input: BlendedInput, ga4RowCount: number }> => {
     // --- Spend / conversions / revenue (daily grain), by platform ---
     const spendParams: unknown[] = clientId ? [clientId, start, end] : [start, end]
     const spendWhere = clientId
       ? `${buildClientCondition(1)} AND ds.spend_date BETWEEN $2 AND $3`
       : `ds.spend_date BETWEEN $1 AND $2`
-    const spendRows = await queryRows<{ platform: string; spend: string; conversions: string; revenue: string }>(
+    const spendRows = await queryRows<{ platform: string, spend: string, conversions: string, revenue: string }>(
       `SELECT ms.platform AS platform,
               COALESCE(SUM(ds.spend),0) AS spend,
               COALESCE(SUM(ds.conversions),0) AS conversions,
@@ -55,7 +55,7 @@ export default defineEventHandler(async (event) => {
     const ga4Where = clientId
       ? `client_id = $1 AND metric_date BETWEEN $2 AND $3`
       : `metric_date BETWEEN $1 AND $2`
-    const ga4Rows = await queryRows<{ channel: string; sessions: string }>(
+    const ga4Rows = await queryRows<{ channel: string, sessions: string }>(
       `SELECT channel_group AS channel, COALESCE(SUM(sessions),0) AS sessions
        FROM ga4_daily_channel
        WHERE ${ga4Where}
@@ -68,7 +68,7 @@ export default defineEventHandler(async (event) => {
     const leadWhere = clientId
       ? `l.client_id = $1 AND l.deleted_at IS NULL AND l.submitted_at::date BETWEEN $2 AND $3`
       : `l.deleted_at IS NULL AND l.submitted_at::date BETWEEN $1 AND $2`
-    const leadRows = await queryRows<{ source: string; leads: string }>(
+    const leadRows = await queryRows<{ source: string, leads: string }>(
       `SELECT l.source AS source, COUNT(*) AS leads
        FROM leads l
        WHERE ${leadWhere}

@@ -40,7 +40,7 @@ export default defineEventHandler(async (event) => {
     const leadWhere = clientId
       ? `l.client_id = $1 AND l.deleted_at IS NULL AND l.submitted_at::date BETWEEN $2 AND $3`
       : `l.deleted_at IS NULL AND l.submitted_at::date BETWEEN $1 AND $2`
-    const leadRows = await queryRows<{ source: string; submitted_at: string }>(
+    const leadRows = await queryRows<{ source: string, submitted_at: string }>(
       `SELECT l.source AS source, l.submitted_at AS submitted_at
        FROM leads l
        WHERE ${leadWhere}`,

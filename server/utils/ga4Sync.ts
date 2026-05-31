@@ -46,8 +46,8 @@ export const GA4_TRAILING_RESYNC_DAYS = 2
  * for testing.
  */
 export function ga4SyncWindow(
-  opts: { startDate?: string; endDate?: string; lookbackDays?: number; today?: string } = {}
-): { startDate: string; endDate: string } {
+  opts: { startDate?: string, endDate?: string, lookbackDays?: number, today?: string } = {}
+): { startDate: string, endDate: string } {
   if (opts.startDate && opts.endDate) {
     return { startDate: opts.startDate, endDate: opts.endDate }
   }
@@ -57,7 +57,7 @@ export function ga4SyncWindow(
 }
 
 export async function syncGa4(
-  opts: { clientId?: string; lookbackDays?: number; startDate?: string; endDate?: string } = {}
+  opts: { clientId?: string, lookbackDays?: number, startDate?: string, endDate?: string } = {}
 ): Promise<Ga4SyncResult> {
   const { clientId } = opts
   const config = useRuntimeConfig()
@@ -80,8 +80,8 @@ export async function syncGa4(
 
   // Accumulate per-connection outcome so the status row reflects the whole run
   // (one connection can map multiple properties).
-  const perConnection = new Map<string, { rows: number; error: string | null }>()
-  const noteConnection = (id: string, patch: { rows?: number; error?: string | null }) => {
+  const perConnection = new Map<string, { rows: number, error: string | null }>()
+  const noteConnection = (id: string, patch: { rows?: number, error?: string | null }) => {
     const cur = perConnection.get(id) || { rows: 0, error: null }
     if (patch.rows) cur.rows += patch.rows
     if (patch.error !== undefined) cur.error = patch.error
@@ -92,8 +92,8 @@ export async function syncGa4(
     if (!perConnection.has(map.connection_id)) perConnection.set(map.connection_id, { rows: 0, error: null })
     try {
       let token = map.access_token
-      if (map.refresh_token && map.token_expires_at &&
-          new Date(map.token_expires_at).getTime() < Date.now() + 5 * 60 * 1000) {
+      if (map.refresh_token && map.token_expires_at
+        && new Date(map.token_expires_at).getTime() < Date.now() + 5 * 60 * 1000) {
         const refreshed = await refreshGoogleToken(map.refresh_token, config.googleClientId, config.googleClientSecret)
         token = refreshed.access_token
         await execute(

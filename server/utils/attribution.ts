@@ -17,7 +17,7 @@ export const ATTRIBUTION_MODELS: AttributionModel[] = ['last', 'first', 'linear'
 
 export interface Touchpoint {
   channel: string
-  timestamp: number   // epoch ms; the conversion is taken at the last touch's time
+  timestamp: number // epoch ms; the conversion is taken at the last touch's time
 }
 
 const DAY_MS = 86_400_000
@@ -29,10 +29,14 @@ function touchWeights(n: number, model: AttributionModel, sorted: Touchpoint[], 
 
   switch (model) {
     case 'last': {
-      const w = new Array(n).fill(0); w[n - 1] = 1; return w
+      const w = new Array(n).fill(0)
+      w[n - 1] = 1
+      return w
     }
     case 'first': {
-      const w = new Array(n).fill(0); w[0] = 1; return w
+      const w = new Array(n).fill(0)
+      w[0] = 1
+      return w
     }
     case 'linear': {
       return new Array(n).fill(1 / n)
@@ -73,7 +77,7 @@ export function attributeCredit(
 
   const credit: Record<string, number> = {}
   for (let i = 0; i < sorted.length; i++) {
-    if (weights[i] === 0) continue   // don't emit zero-credit channels
+    if (weights[i] === 0) continue // don't emit zero-credit channels
     credit[sorted[i].channel] = (credit[sorted[i].channel] || 0) + weights[i]
   }
   return credit
