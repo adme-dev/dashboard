@@ -11,8 +11,8 @@
 
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { getResendClient, getAppUrl, isEmailConfigured } from '~~/server/utils/email'
-import { RESEND_BATCH_LIMIT, buildBatchEmail, isRateLimitError, parseRetryAfter } from './campaignSend'
-import type { Campaign } from './campaigns'
+import { RESEND_BATCH_LIMIT, buildBatchEmail, isRateLimitError, parseRetryAfter, canEnterSending } from './campaignSend'
+import { getCampaign, materializeRecipients, setCampaignStatus, type Campaign } from './campaigns'
 
 export interface RecipientRow {
   id: string
@@ -180,4 +180,70 @@ export async function runCampaignSend(
   }
   const remaining = await countPending(campaign.id)
   return { sent, failed, remaining, drained: remaining === 0, rateLimited }
+}
+
+// ── Dispatcher (cron-driven) ────────────────────────────────────────────────
+// One tick of the campaign engine: promote due scheduled campaigns, then drain
+// in-flight ones a bounded amount (paced). Single-flight by design — the cron
+// runs one tick at a time, giving global ≤2 req/s pacing without the
+// multi-consumer 429 self-DoS a parallel queue fan-out risks. Resumable + a
+// watchdog (releaseStaleClaims) by virtue of all state living in
+// campaign_recipients. Gated: a no-op when sending is disabled.
+export interface DispatchSummary {
+  skipped?: string
+  promoted: number
+  drained: number
+  sent: number
+  failed: number
+}
+
+export async function dispatchCampaigns(opts: { maxChunksPerCampaign?: number } = {}): Promise<DispatchSummary> {
+  if (!isCampaignSendingEnabled()) {
+    return { skipped: 'sending_disabled', promoted: 0, drained: 0, sent: 0, failed: 0 }
+  }
+
+  // 1. Promote due scheduled campaigns (re-checking the send gate first).
+  const due = await queryRows<{ id: string }>(`
+    SELECT id FROM campaigns
+    WHERE status = 'scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= NOW()
+  `)
+  let promoted = 0
+  for (const c of due) {
+    try {
+      await materializeRecipients(c.id)
+      const full = await getCampaign(c.id)
+      if (!full) continue
+      const gate = canEnterSending({ status: full.status, toSend: full.to_send, bodyHtml: full.body_html })
+      if (!gate.ok) {
+        console.warn(`[campaign-dispatch] scheduled campaign ${c.id} blocked: ${gate.reason}`)
+        continue
+      }
+      await setCampaignStatus(c.id, 'sending')
+      promoted++
+    } catch (err) {
+      console.error(`[campaign-dispatch] promote failed for ${c.id}:`, err)
+    }
+  }
+
+  // 2. Drain in-flight campaigns (bounded per tick; stale claims released first).
+  const sending = await queryRows<Campaign>(`SELECT * FROM campaigns WHERE status = 'sending'`)
+  let sent = 0
+  let failed = 0
+  let drained = 0
+  for (const campaign of sending) {
+    try {
+      await releaseStaleClaims(campaign.id)
+      const result = await runCampaignSend(campaign, { maxChunks: opts.maxChunksPerCampaign ?? 50 })
+      sent += result.sent
+      failed += result.failed
+      if (result.drained) {
+        await setCampaignStatus(campaign.id, 'sent')
+        drained++
+      }
+    } catch (err) {
+      console.error(`[campaign-dispatch] drain failed for ${campaign.id}:`, err)
+    }
+  }
+
+  return { promoted, drained, sent, failed }
 }
