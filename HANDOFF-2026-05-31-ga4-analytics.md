@@ -8,7 +8,7 @@
 
 ## TL;DR
 - **Shipped to production (earlier session):** the `agency_clients` column-drift fixes (migrations 122–123), editable client contact fields, and **Phase 1 of the GA4 plan** (migration 124). All merged to `main`, pushed, deployed. Latest prod deploy: `https://0c77765b.agency-dashboard-6cm.pages.dev`.
-- **Shipped to production (this session):** **Phase 2 of the GA4 plan** (migration 126; commits `768312f`→`fdf5ebe`) + the blended UI panel. Prod deploy: `https://67c46d09.agency-dashboard-6cm.pages.dev`. Daily-grain fix + blended panel are now live on `/agency/analytics`; attribution/presets remain API-only. See "Phase 2 — DONE" below. **NOT pushed to `origin`** (needs the `adme-dev` gh account) — `main` is ahead of remote.
+- **Shipped to production (this session):** **Phase 2** (migration 126) + **Phase 3** (migrations 127–131) of the GA4 plan + the blended UI panel. Latest prod deploy: `https://9e60a6eb.agency-dashboard-6cm.pages.dev`. Daily-grain fix + blended panel live on `/agency/analytics`; richer GA4 ingestion, GA4 anomalies, caching, multi-property fix, benchmarking, export API + NL `ask`, and scheduled reports (`/agency/analytics/reports`) all live. **NOT pushed to `origin`** (needs the `adme-dev` gh account) — `main` is well ahead of remote.
 - **Not done (the open work):** the GA4 cron trigger, mapping the remaining GA4 properties, UI surfacing of the new Phase 2 endpoints, and all of Phase 3. Details below.
 
 ---
@@ -53,7 +53,7 @@ Expanded plan: `docs/superpowers/plans/2026-05-31-phase2-blended-attribution.md`
 - **Deploy + push:** committed to `main` only. `pnpm deploy:production`; push needs the `adme-dev` gh account.
 - Currency/timezone normalization (2.3) and a real touchpoint table (2.5) are deferred as noted above.
 
-### C. Phase 3 — Deeper GA4 + anomaly + reporting ✅ DONE (committed to `main`)
+### C. Phase 3 — Deeper GA4 + anomaly + reporting ✅ DONE & DEPLOYED
 Migrations **127–131**. 6 new test files / 45 tests pass; suite baseline (104 `auth`/`cache`/`db` failures) unchanged.
 - 3.1 ✅ Richer GA4 ingestion — migration 127 (`ga4_daily_dimension` generic table + `ga4_daily_event`); `ga4Client.ts` gained dimension/event builders+parsers, `batchRunReports` (chunk ≤5, quota capture), `quotaShouldThrottle`, `ga4BackoffMs`, `withGa4Retry` (14 tests); `ga4DimensionSync.ts` orchestrates batched pull + self-throttle; cron runs channels + dimensions. Extracted `loadGa4Maps`/`ensureFreshGa4Token` (DRY).
 - 3.2 ✅ GA4 anomaly analyser — `analysers/ga4.ts` (traffic-drop / CVR-collapse / channel-mix-shift, volume-floored, 6 tests); migration 128 adds `'ga4'` to `anomalies_type_check`; anomalies page updated. Suppression/allowlist via existing pipeline.
