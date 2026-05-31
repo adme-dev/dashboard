@@ -59,7 +59,7 @@ onBeforeUnmount(() => {
 // user connects Xero elsewhere the nav reflects the new state without a hard refresh.
 const { data: xeroStatus } = useLazyFetch('/api/xero/status', {
   key: 'xero-status-nav',
-  getCachedData: () => undefined,
+  getCachedData: () => undefined
 })
 const xeroConnected = computed(() => xeroStatus.value?.connected ?? false)
 
@@ -83,7 +83,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     { label: 'Projects', icon: 'i-lucide-folder-kanban', to: '/agency/projects', onSelect: close },
     { label: 'Briefs', icon: 'i-lucide-file-text', to: '/agency/briefs', onSelect: close },
     { label: 'Templates', icon: 'i-lucide-copy', to: '/agency/templates', onSelect: close },
-    { label: 'Proofs', icon: 'i-lucide-image', to: '/agency/proofs', onSelect: close },
+    { label: 'Proofs', icon: 'i-lucide-image', to: '/agency/proofs', onSelect: close }
   ]
 
   // Clients — canAccessClients
@@ -92,7 +92,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { type: 'label', label: 'Clients' },
       { label: 'Clients', icon: 'i-lucide-building-2', to: '/agency/clients', onSelect: close },
       { label: 'Intake', icon: 'i-lucide-inbox', to: '/agency/intake', onSelect: close },
-      { label: 'Client Portal', icon: 'i-lucide-globe', to: '/agency/client-portal', onSelect: close },
+      { label: 'Client Portal', icon: 'i-lucide-globe', to: '/agency/client-portal', onSelect: close }
     )
   }
 
@@ -102,7 +102,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     { label: 'Time Tracking', icon: 'i-lucide-clock', to: '/agency/time', onSelect: close },
     { label: 'Approvals', icon: 'i-lucide-check-check', to: '/agency/time/approvals', onSelect: close },
     { label: 'Time Reports', icon: 'i-lucide-bar-chart-3', to: '/agency/time/reports', onSelect: close },
-    { label: 'Capacity', icon: 'i-lucide-gauge', to: '/agency/capacity', onSelect: close },
+    { label: 'Capacity', icon: 'i-lucide-gauge', to: '/agency/capacity', onSelect: close }
   )
 
   // Budget Tracker — canAccessMediaBuying
@@ -116,6 +116,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { label: 'TikTok Ads', icon: 'i-lucide-music', to: '/agency/social/tiktok', onSelect: close },
       { label: 'Connections', icon: 'i-lucide-plug', to: '/agency/social', onSelect: close },
       { label: 'Budget Health', icon: 'i-lucide-gauge', to: '/agency/budget-health', onSelect: close },
+      { label: 'Site Tracking', icon: 'i-lucide-radio', to: '/agency/tracking', onSelect: close }
     )
   }
 
@@ -123,14 +124,14 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
   // authenticated users; row-level access enforced server-side per client.
   items.push(
     { type: 'label', label: 'Leads' },
-    { label: 'Lead Inbox', icon: 'i-lucide-mail-question', to: '/agency/leads', onSelect: close },
+    { label: 'Lead Inbox', icon: 'i-lucide-mail-question', to: '/agency/leads', onSelect: close }
   )
 
   // Billing (scoped) — canAccessInvoices but NOT canAccessFinance (e.g. account managers)
   if (canAccessInvoices.value && !canAccessFinance.value) {
     items.push(
       { type: 'label', label: 'Billing' },
-      { label: 'Invoices', icon: 'i-lucide-receipt', to: '/agency/billing', onSelect: close },
+      { label: 'Invoices', icon: 'i-lucide-receipt', to: '/agency/billing', onSelect: close }
     )
   }
 
@@ -141,7 +142,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { label: 'Billing', icon: 'i-lucide-receipt', to: '/agency/billing', onSelect: close },
       { label: 'Expenses', icon: 'i-lucide-credit-card', to: '/agency/expenses', onSelect: close },
       { label: 'Retainers', icon: 'i-lucide-repeat', to: '/agency/retainers', onSelect: close },
-      { label: 'Financial Health', icon: 'i-lucide-activity', to: '/agency/financial-health', onSelect: close },
+      { label: 'Financial Health', icon: 'i-lucide-activity', to: '/agency/financial-health', onSelect: close }
     )
   }
 
@@ -153,7 +154,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { label: 'Quotes', icon: 'i-lucide-file-badge', to: '/agency/sales/quotes', onSelect: close },
       { label: 'Pricing', icon: 'i-lucide-tag', to: '/agency/sales/pricing', onSelect: close },
       { label: 'Rate Card', icon: 'i-lucide-list-ordered', to: '/agency/rate-cards', onSelect: close },
-      { label: 'Price Templates', icon: 'i-lucide-file-stack', to: '/agency/sales/templates', onSelect: close },
+      { label: 'Price Templates', icon: 'i-lucide-file-stack', to: '/agency/sales/templates', onSelect: close }
     )
   }
 
@@ -163,7 +164,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { type: 'label', label: 'Reports' },
       { label: 'Reports', icon: 'i-lucide-pie-chart', to: '/agency/reports', onSelect: close },
       { label: 'Project Health', icon: 'i-lucide-activity', to: '/agency/health', onSelect: close },
-      { label: 'Alerts', icon: 'i-lucide-bell', to: '/agency/alerts', onSelect: close },
+      { label: 'Alerts', icon: 'i-lucide-bell', to: '/agency/alerts', onSelect: close }
     )
   }
 
@@ -185,7 +186,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { label: 'Insights', icon: 'i-lucide-lightbulb', to: '/insights', onSelect: close },
       { label: 'Anomalies', icon: 'i-lucide-alert-triangle', to: '/anomalies', onSelect: close, badge: anomalyCount.value > 0 ? String(anomalyCount.value) : undefined },
       { label: 'Recommendations', icon: 'i-lucide-clipboard-check', to: '/recommendations', onSelect: close },
-      { label: 'Finance AI', icon: 'i-lucide-brain', to: '/agency/ai/finance', onSelect: close },
+      { label: 'Finance AI', icon: 'i-lucide-brain', to: '/agency/ai/finance', onSelect: close }
     )
   }
 
@@ -193,29 +194,29 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
   items.push(
     { type: 'label', label: 'Team' },
     { label: 'Team Members', icon: 'i-lucide-users', to: '/agency/team', onSelect: close },
-    { label: 'Teams', icon: 'i-lucide-users-round', to: '/agency/teams', onSelect: close },
+    { label: 'Teams', icon: 'i-lucide-users-round', to: '/agency/teams', onSelect: close }
   )
 
   // Tools — AI Chat + Reports visible to all; Settings/Training/Knowledge admin-only; Automation gated
   items.push(
     { type: 'label', label: 'Tools' },
     { label: 'AI Chat', icon: 'i-lucide-sparkles', to: '/agency/ai/chat', onSelect: close },
-    { label: 'AI Reports', icon: 'i-lucide-file-bar-chart', to: '/agency/ai/reports', onSelect: close },
+    { label: 'AI Reports', icon: 'i-lucide-file-bar-chart', to: '/agency/ai/reports', onSelect: close }
   )
   if (canAccessAdmin.value) {
     items.push(
       { label: 'AI Settings', icon: 'i-lucide-settings-2', to: '/agency/ai/settings', onSelect: close },
-      { label: 'Knowledge Base', icon: 'i-lucide-book-open', to: '/agency/ai/knowledge', onSelect: close },
+      { label: 'Knowledge Base', icon: 'i-lucide-book-open', to: '/agency/ai/knowledge', onSelect: close }
     )
   }
   if (canAccessAiTraining.value) {
     items.push(
-      { label: 'AI Training', icon: 'i-lucide-graduation-cap', to: '/agency/ai/training', onSelect: close },
+      { label: 'AI Training', icon: 'i-lucide-graduation-cap', to: '/agency/ai/training', onSelect: close }
     )
   }
   if (canAccessAutomation.value) {
     items.push(
-      { label: 'Automation', icon: 'i-lucide-zap', to: '/agency/automation', onSelect: close },
+      { label: 'Automation', icon: 'i-lucide-zap', to: '/agency/automation', onSelect: close }
     )
   }
 
@@ -228,7 +229,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { label: 'Brand Kits', icon: 'i-lucide-paintbrush', to: '/agency/banner-studio/brand-kits', onSelect: close },
       { label: 'Upload Banners', icon: 'i-lucide-upload', to: '/agency/banner-studio/upload', onSelect: close },
       { label: 'Ad Preview', icon: 'i-lucide-monitor-play', to: '/agency/ad-preview', onSelect: close },
-      { label: 'Bulk Ad Launch', icon: 'i-lucide-rocket', to: '/agency/ad-publish', onSelect: close },
+      { label: 'Bulk Ad Launch', icon: 'i-lucide-rocket', to: '/agency/ad-publish', onSelect: close }
     )
   }
 
@@ -236,7 +237,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
   items.push(
     { type: 'label', label: 'Collaboration' },
     { label: 'Chat', icon: 'i-lucide-message-circle', to: '/agency/chat', badge: chatUnreadCount.value > 0 ? chatUnreadCount.value.toString() : undefined, onSelect: close },
-    { label: 'Office', icon: 'i-lucide-building-2', to: '/office', onSelect: close },
+    { label: 'Office', icon: 'i-lucide-building-2', to: '/office', onSelect: close }
   )
 
   return items
@@ -255,7 +256,7 @@ const footerNav = computed<NavigationMenuItem[]>(() => {
         { label: 'Migration', icon: 'i-lucide-arrow-left-right', to: '/agency/monday', onSelect: close },
         { label: 'Migrate Data', icon: 'i-lucide-database', to: '/agency/monday/migrate', onSelect: close },
         { label: 'Items', icon: 'i-lucide-list', to: '/agency/monday/items', onSelect: close },
-        { label: 'User Sync', icon: 'i-lucide-users', to: '/agency/monday/users', onSelect: close },
+        { label: 'User Sync', icon: 'i-lucide-users', to: '/agency/monday/users', onSelect: close }
       ]
     })
 
@@ -265,7 +266,7 @@ const footerNav = computed<NavigationMenuItem[]>(() => {
       icon: 'i-lucide-shield',
       children: [
         { label: 'User Management', icon: 'i-lucide-users', to: '/admin/users', onSelect: close },
-        { label: 'Teams', icon: 'i-lucide-users-round', to: '/admin/teams', onSelect: close },
+        { label: 'Teams', icon: 'i-lucide-users-round', to: '/admin/teams', onSelect: close }
       ]
     })
   }
@@ -282,7 +283,7 @@ const footerNav = computed<NavigationMenuItem[]>(() => {
       { label: 'Watching', to: '/agency/notifications/watching', onSelect: close },
       { label: 'Security', to: '/settings/security', onSelect: close },
       ...(canAccessAdmin.value ? [{ label: 'Admin', to: '/settings/admin', onSelect: close }] : []),
-      { label: 'Integrations', to: '/settings/integrations/monday', onSelect: close },
+      { label: 'Integrations', to: '/settings/integrations/monday', onSelect: close }
     ]
   })
 
@@ -295,7 +296,7 @@ const groups = computed(() => [{
   label: 'Go to',
   items: [
     ...mainNav.value.filter(i => i.type !== 'label'),
-    ...footerNav.value,
+    ...footerNav.value
   ]
 }, {
   id: 'code',
