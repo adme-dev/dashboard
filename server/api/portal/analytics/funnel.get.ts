@@ -9,16 +9,7 @@ import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { buildClientCondition } from '~~/server/utils/analyticsMetrics'
 import { PORTAL_VISIBLE_LEADS_EXISTS } from '~~/server/utils/leads/portalAnalytics'
 import { buildFunnel } from '~~/server/utils/ga4Funnel'
-
-const SPEND_CHANNEL_CASE = `CASE
-  WHEN ms.platform IN ('google_ads','google') THEN 'Paid Search'
-  WHEN ms.platform IN ('meta','meta_ads') THEN 'Paid Social'
-  ELSE 'Other' END`
-
-const LEAD_CHANNEL_CASE = `CASE
-  WHEN l.source = 'google' THEN 'Paid Search'
-  WHEN l.source = 'meta' THEN 'Paid Social'
-  ELSE 'Other' END`
+import { adPlatformToChannel, leadSourceToChannel } from '~~/server/utils/channelMap'
 
 export default defineEventHandler(async (event) => {
   const clientUser = await requireClientAuth(event)
@@ -33,13 +24,14 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'startDate and endDate are required' })
   }
 
-  // Spend by channel (daily_spend joined to media_spend, client-scoped).
-  const spendRows = await queryRows<{ channel: string; spend: string }>(
-    `SELECT ${SPEND_CHANNEL_CASE} AS channel, COALESCE(SUM(ds.spend),0) AS spend
+  // Spend by platform (daily_spend joined to media_spend, client-scoped).
+  // Channel bucketing is done in JS via channelMap — the single source of truth.
+  const spendRows = await queryRows<{ platform: string; spend: string }>(
+    `SELECT ms.platform AS platform, COALESCE(SUM(ds.spend),0) AS spend
      FROM daily_spend ds
      JOIN media_spend ms ON ms.id = ds.media_spend_id
      WHERE ${buildClientCondition(1)} AND ds.spend_date BETWEEN $2 AND $3
-     GROUP BY 1`,
+     GROUP BY ms.platform`,
     [clientId, startDate, endDate]
   )
 
@@ -55,21 +47,24 @@ export default defineEventHandler(async (event) => {
     [clientId, startDate, endDate]
   )
 
-  // Portal-visible leads by channel.
-  const leadRows = await queryRows<{ channel: string; leads: string }>(
-    `SELECT ${LEAD_CHANNEL_CASE} AS channel, COUNT(*) AS leads
+  // Portal-visible leads by source (bucketed in JS via channelMap).
+  const leadRows = await queryRows<{ source: string; leads: string }>(
+    `SELECT l.source AS source, COUNT(*) AS leads
      FROM leads l
      WHERE l.client_id = $1
        AND l.deleted_at IS NULL
        AND l.source IN ('google', 'meta')
        AND l.submitted_at::date BETWEEN $2 AND $3
        AND ${PORTAL_VISIBLE_LEADS_EXISTS}
-     GROUP BY 1`,
+     GROUP BY l.source`,
     [clientId, startDate, endDate]
   )
 
   const spendByChannel: Record<string, number> = {}
-  for (const r of spendRows) spendByChannel[r.channel] = Number(r.spend)
+  for (const r of spendRows) {
+    const channel = adPlatformToChannel(r.platform) ?? 'Other'
+    spendByChannel[channel] = (spendByChannel[channel] || 0) + Number(r.spend)
+  }
 
   const ga4ByChannel: Record<string, { sessions: number; engagedSessions: number; keyEvents: number }> = {}
   for (const r of ga4Rows) {
@@ -81,7 +76,11 @@ export default defineEventHandler(async (event) => {
   }
 
   const leadsByChannel: Record<string, number> = {}
-  for (const r of leadRows) leadsByChannel[r.channel] = Number(r.leads)
+  for (const r of leadRows) {
+    const channel = leadSourceToChannel(r.source)
+    if (!channel) continue
+    leadsByChannel[channel] = (leadsByChannel[channel] || 0) + Number(r.leads)
+  }
 
   const funnel = buildFunnel({ spendByChannel, ga4ByChannel, leadsByChannel })
   const hasGa4 = ga4Rows.length > 0
