@@ -24,7 +24,7 @@ Key modules: `server/utils/tracking/{track-schema,consent,normalize,pii-hash,sit
 5. **GTM install** on the 3 dealer sites: kia.gws (raw/GTM, MPA), kevindennisvw + ferntreegully (GTM, SPA). Confirm 200 beacons + climbing 24h counts.
 
 ## Remaining code follow-ups (no deploy needed)
-- **Provisioning-CRUD IDOR** — IN PROGRESS this session (branch `feat/tracking-provisioning-idor`): apply per-client access to `server/api/agency/tracking/{index.get,index.post,[id].patch,[id]/rotate-key.post,[id]/snippet.get}.ts` so scoped roles only manage their assigned clients' sites (analytics endpoints already do this).
+- ~~**Provisioning-CRUD IDOR**~~ — **DONE this branch (`feat/tracking-provisioning-idor`):** list scopes to `client_team_assignments` clients for scoped roles; create/patch/snippet gate via `requireClientTrackingAccess`/`requireSiteTrackingAccess`; rotate-key left management-only (no scoped exposure). Helpers `accessibleClientIds` + `requireSiteTrackingAccess` added to `analytics-access.ts`.
 - **Hard Origin gate + per-key rate limiting** on the public beacon — currently soft (log-only) by design. ⚠️ Do NOT flip the hard 403 until allowlists are proven on live sites (premature flip = silent beacon drops at go-live). Rate limiting needs a CF state-store decision (KV `CACHE` binding vs Durable Object vs CF native rate-limit binding) — decide deliberately.
 - Minor: stale consent category lists in the tag's `isEventAllowed` (only bite once an explicit cookie exists); `dead_click` patches `history.pushState` per click → can race the SPA pushState patch; analytics review nits (tiny client-name endpoint for media_buyers so the drill-down header isn't "Client"; non-UUID `clientId` → 400 not 500).
 
