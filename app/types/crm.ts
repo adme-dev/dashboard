@@ -52,3 +52,50 @@ export interface CrmListResponse<T> {
   page: number
   page_size: number
 }
+
+export interface CrmStage {
+  id: string
+  client_id: string | null
+  code: string
+  name: string
+  probability: number
+  sort_order: number
+  color: string
+  is_won: boolean
+  is_lost: boolean
+  is_active: boolean
+}
+
+export interface CrmOpportunity {
+  id: string
+  client_id: string
+  name: string
+  person_id: string | null
+  company_id: string | null
+  stage_id: string
+  owner_id: string | null
+  amount: number
+  probability: number
+  weighted_value: number
+  expected_close_date: string | null
+  actual_close_date: string | null
+  status: 'open' | 'won' | 'lost'
+  source: string | null
+  competitor: string | null
+  lost_reason: string | null
+  notes: string | null
+  next_action: string | null
+  next_action_date: string | null
+  stage_changed_at: string
+  custom_fields: Record<string, unknown>
+  created_at: string
+  updated_at: string
+  person_name?: string | null
+  company_name?: string | null
+}
+
+export interface CrmPipelineSummary {
+  byStage: Record<string, { count: number, total: number, weighted: number }>
+  openTotal: number
+  weightedTotal: number
+}

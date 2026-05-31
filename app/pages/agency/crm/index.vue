@@ -7,10 +7,11 @@ const { data: clientsData } = await useFetch<{ id: string, name: string }[]>('/a
 const clientOptions = computed(() => (clientsData.value ?? []).map(c => ({ label: c.name, value: c.id })))
 
 const clientId = useState<string | null>('crm-active-client', () => null)
-const tab = ref<'people' | 'companies'>('people')
+const tab = ref<'people' | 'companies' | 'pipeline'>('people')
 const tabItems = [
   { label: 'People', value: 'people', icon: 'i-lucide-users' },
   { label: 'Companies', value: 'companies', icon: 'i-lucide-building-2' },
+  { label: 'Pipeline', value: 'pipeline', icon: 'i-lucide-trello' },
 ]
 </script>
 
@@ -43,7 +44,8 @@ const tabItems = [
     <template v-else>
       <UTabs v-model="tab" :items="tabItems" class="w-full" />
       <CrmPeopleTable v-if="tab === 'people'" :client-id="clientId" />
-      <CrmCompaniesTable v-else :client-id="clientId" />
+      <CrmCompaniesTable v-else-if="tab === 'companies'" :client-id="clientId" />
+      <CrmPipelineBoard v-else :client-id="clientId" />
     </template>
   </div>
 </template>
