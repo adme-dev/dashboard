@@ -13,8 +13,11 @@ export default defineEventHandler(async (event) => {
   const tz = tzRow?.reporting_timezone || 'Australia/Brisbane'
 
   // $1 clientId, $2 from, $3 toExclusive, $4 tz
+  // Format the local day as text in SQL (to_char) so the driver returns a clean
+  // 'YYYY-MM-DD' string — NOT a Date, which toISOString() would shift by the
+  // process/machine timezone and render off-by-one.
   const rows = await query<any>(
-    `SELECT ${dayBucketExpr('$4')} AS day,
+    `SELECT to_char(${dayBucketExpr('$4')}, 'YYYY-MM-DD') AS day,
             COUNT(DISTINCT anon_id) AS visitors,
             COUNT(*) AS events
        FROM tracking_events e
@@ -26,7 +29,7 @@ export default defineEventHandler(async (event) => {
   return {
     timezone: tz,
     points: rows.map(r => ({
-      day: r.day instanceof Date ? r.day.toISOString().slice(0, 10) : String(r.day).slice(0, 10),
+      day: String(r.day),
       visitors: Number(r.visitors) || 0,
       events: Number(r.events) || 0
     }))
