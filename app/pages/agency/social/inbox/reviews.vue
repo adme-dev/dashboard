@@ -67,7 +67,7 @@ async function onSend(content: string) {
       <SocialInboxSidebar :conversations="conversations" :selected-id="selectedId" :loading="loading" @select="select" @filter="() => {}" />
       <div class="flex flex-col min-h-0">
         <SocialInboxThread :conversation="thread.conversation" :messages="thread.messages" class="flex-1 min-h-0" />
-        <SocialInboxComposer v-if="thread.conversation" :sending="sending" @send="onSend" />
+        <SocialInboxComposer v-if="thread.conversation" :sending="sending" :conversation-id="thread.conversation?.id" @send="onSend" />
       </div>
     </div>
   </div>

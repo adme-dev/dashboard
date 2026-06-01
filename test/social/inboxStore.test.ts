@@ -38,4 +38,14 @@ describe('recordInbound', () => {
     // critical: no counter bump when the message was a duplicate
     expect(calls.some(c => /UPDATE social_conversations/i.test(c))).toBe(false)
   })
+
+  it('flags automation_state=pending when a new inbound is recorded', async () => {
+    const fullSql: string[] = []
+    const db = {
+      queryOne: vi.fn(async () => ({ id: 'conv-1' })),
+      execute: vi.fn(async (sql: string) => { fullSql.push(sql); return 1 }), // 1 row → genuinely new
+    }
+    await recordInbound(db as any, 'client-1', 'acct-1', ev)
+    expect(fullSql.some(s => /automation_state\s*=\s*'pending'/.test(s))).toBe(true)
+  })
 })

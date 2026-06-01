@@ -285,6 +285,34 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  'social-automation': {
+    title: 'Reply Automation',
+    slug: 'social-automation',
+    icon: 'i-lucide-bot',
+    category: 'Social Publishing',
+    categoryIcon: 'i-lucide-share-2',
+    categoryIconBg: 'bg-sky-50',
+    categoryIconColor: 'text-sky-600',
+    description: 'Let AI draft on-brand replies to comments and reviews — suggested for one-click sending, queued for human approval, or sent automatically under strict guardrails.',
+    details: [
+      {
+        title: 'Four Modes, One Engine',
+        content: 'Every automation rule runs in one of four modes: off (manual), suggest (AI drafts, your team sends), approval (AI drafts, a human or the client signs off), or autopilot (sent automatically). Pick the level of control per client, per network, and per channel — comments and reviews each get their own rules.'
+      },
+      {
+        title: 'Guardrails You Can Trust',
+        content: 'Autopilot never fires blind. A deterministic safety rule forces any complaint, legal threat, or sensitive message to a human — always. On top of that: a confidence floor, per-rule hourly rate limits, business-hours gating, and exactly-one-reply-per-message idempotency. Every action is written to an auditable queue, and a global kill-switch keeps automation dormant until you turn it on.'
+      },
+      {
+        title: 'On-Brand, Never Invented',
+        content: 'Drafts come from your brand voice instructions and the full conversation context, and the model is told never to invent prices, dates, or facts. Low-confidence drafts route to a human automatically, so what goes out always reads like your team wrote it.'
+      },
+      {
+        title: 'Client Approval On The Roadmap',
+        content: 'Approval rules can route to the client portal, letting clients sign off on their own replies — building on the same audited queue and guardrails that power staff approvals.'
+      }
+    ]
+  },
   // ─── Creative Production ──────────────────────────────────────
   'audio-studio': {
     title: 'Audio Studio',

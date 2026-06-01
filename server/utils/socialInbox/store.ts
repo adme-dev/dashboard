@@ -59,6 +59,7 @@ async function bumpConversationForInbound(db: DbRunner, conversationId: string, 
        message_count = message_count + 1,
        unread_count = unread_count + 1,
        status = CASE WHEN status = 'closed' THEN 'open' ELSE status END,
+       automation_state = 'pending',
        updated_at = NOW()
      WHERE id = $1`,
     [conversationId, ev.message.platformTimestamp ?? null, (ev.message.content ?? '').slice(0, 200)],

@@ -3,6 +3,10 @@ import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { getProvider } from '~~/server/utils/social-providers/registry'
 import { normalizeInboxItem } from '~~/server/utils/socialInbox/normalize'
 import { recordInbound } from '~~/server/utils/socialInbox/store'
+import { isSocialAutomationEnabled } from '~~/server/utils/socialInbox/automationGate'
+import { processPendingAutomation } from '~~/server/utils/socialInbox/automation'
+import { generateReplyDraft } from '~~/server/utils/socialInbox/aiDraft'
+import { dispatchReply } from '~~/server/utils/socialInbox/dispatch'
 
 /**
  * POST /api/cron/sync-social-inbox
@@ -68,6 +72,19 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  console.log('social-inbox-sync.run', { accounts: accounts.length, synced })
-  return { synced }
+  // --- Phase 2b: automation pass (fully dormant unless the master gate is on) ---
+  let automated = 0
+  if (isSocialAutomationEnabled()) {
+    const engineDb = { queryOne, queryRows, execute }
+    const deps = {
+      generateDraft: generateReplyDraft,
+      dispatch: (a: { conversationId: string; clientId: string; content: string; aiGenerated: boolean; queueId: string }) =>
+        dispatchReply(engineDb, a.conversationId, { content: a.content, sentByUserId: 'automation', aiGenerated: a.aiGenerated }),
+    }
+    const r = await processPendingAutomation(engineDb, deps, 50)
+    automated = r.processed
+  }
+
+  console.log('social-inbox-sync.run', { accounts: accounts.length, synced, automated })
+  return { synced, automated }
 })

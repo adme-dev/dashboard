@@ -90,6 +90,7 @@ const replyDisabled = computed(() => selectedConv.value?.platform === 'tiktok')
         <SocialInboxThread :conversation="selectedConv" :messages="thread.messages" class="flex-1 min-h-0" />
         <SocialInboxComposer
           v-if="selectedConv" :sending="sending" :disabled="replyDisabled"
+          :conversation-id="selectedConv?.id"
           disabled-reason="TikTok replies require additional API access" @send="onSend"
         />
       </div>

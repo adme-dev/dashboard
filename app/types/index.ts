@@ -1313,6 +1313,60 @@ export interface SocialMessage {
   created_at: string
 }
 
+// --- Social Inbox automation (Slice 2 Phase 2b) ---
+export type SocialAutomationMode = 'off' | 'suggest' | 'approval' | 'autopilot'
+
+export interface SocialAutomationRule {
+  id: string
+  client_id: string
+  name: string
+  platform: string | null
+  channel_type: 'comment' | 'dm' | 'mention' | 'review' | null
+  mode: SocialAutomationMode
+  conditions: {
+    ratingMin?: number
+    ratingMax?: number
+    keywordsAny?: string[]
+    keywordsNone?: string[]
+    businessHoursOnly?: boolean
+  }
+  action: { aiPrompt?: string }
+  approval_by: 'staff' | 'client' | 'none'
+  rate_limit: number
+  confidence_floor: number
+  business_hours: { tz: string; days: number[]; start: string; end: string } | null
+  priority: number
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface SocialResponseQueueItem {
+  id: string
+  client_id: string
+  conversation_id: string
+  message_id: string | null
+  rule_id: string | null
+  draft_content: string
+  confidence: number | null
+  status: 'pending' | 'approved' | 'rejected' | 'sent' | 'failed' | 'skipped'
+  effective_mode: 'approval' | 'autopilot'
+  approver_type: 'staff' | 'client' | 'none'
+  approved_by: string | null
+  approved_at: string | null
+  guardrail_notes: string | null
+  error: string | null
+  created_at: string
+  updated_at: string
+  // joined for display
+  rule_name?: string | null
+  platform?: string
+  channel_type?: string
+  participant_name?: string | null
+  permalink?: string | null
+  inbound_preview?: string | null
+}
+
 export interface AudioAsset {
   id: string
   clientId: string | null
