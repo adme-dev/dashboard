@@ -18,11 +18,10 @@ interface Env {
 // One cron expression may drive several endpoints. Keys MUST exactly match the
 // crons listed in wrangler.toml (controller.cron is matched verbatim).
 const ROUTES: Record<string, string[]> = {
-  // hourly — anomaly handler self-gates to 7am tenant-local.
-  // NOTE: /api/cron/ga4-sync is intentionally NOT wired yet — it hangs over HTTP
-  // (>150s, no response, last_run_at not updated), so it needs debugging before
-  // being scheduled. Add it back to this array once the hang is fixed.
-  '0 * * * *': ['/api/cron/anomaly-detection'],
+  // hourly — anomaly handler self-gates to 7am tenant-local; ga4-sync re-pulls
+  // the trailing ~14d window (idempotent). ga4-sync was fixed in PR #49 to run
+  // concurrently + batch upserts (~33s for 87 properties, was a >150s hang).
+  '0 * * * *': ['/api/cron/anomaly-detection', '/api/cron/ga4-sync'],
   // every 5 min — office-assistant watch evaluation (own 15-min debounce)
   '*/5 * * * *': ['/api/cron/office-assistant'],
   // daily — office meeting/recording retention cleanup
