@@ -1,7 +1,30 @@
 <script setup lang="ts">
 import type { AudioAsset } from '~/types'
 
-defineProps<{ assets: AudioAsset[], loading?: boolean }>()
+const props = defineProps<{ assets: AudioAsset[], loading?: boolean, kind?: 'voiceover' | 'music' }>()
+
+const emptyText = computed(() =>
+  props.kind === 'music'
+    ? 'No music yet — generate a track above.'
+    : props.kind === 'voiceover'
+      ? 'No voiceovers yet — generate one above.'
+      : 'Nothing here yet — generate something above.'
+)
+
+function titleFor(a: AudioAsset): string {
+  return a.title || (a.kind === 'music' ? 'Untitled track' : 'Untitled voiceover')
+}
+
+// Right-side state when there's no playable master yet.
+function statusBadge(a: AudioAsset): { label: string, color: 'neutral' | 'info' | 'error', spin: boolean } {
+  switch (a.status) {
+    case 'queued': return { label: 'queued', color: 'neutral', spin: true }
+    case 'processing': return { label: 'generating', color: 'info', spin: true }
+    case 'rendering': return { label: 'rendering', color: 'info', spin: true }
+    case 'failed': return { label: 'failed', color: 'error', spin: false }
+    default: return { label: 'unavailable', color: 'error', spin: false }
+  }
+}
 </script>
 
 <template>
@@ -16,7 +39,7 @@ defineProps<{ assets: AudioAsset[], loading?: boolean }>()
     >
       <UIcon name="i-lucide-audio-lines" class="size-6 text-dimmed" />
       <p class="text-sm text-muted">
-        No voiceovers yet — generate one above.
+        {{ emptyText }}
       </p>
     </div>
 
@@ -24,7 +47,7 @@ defineProps<{ assets: AudioAsset[], loading?: boolean }>()
       <div class="flex items-center gap-4">
         <div class="min-w-0 flex-1">
           <p class="font-medium truncate">
-            {{ a.title || 'Untitled voiceover' }}
+            {{ titleFor(a) }}
           </p>
           <p v-if="a.prompt" class="text-xs text-muted truncate mt-0.5">
             {{ a.prompt }}
@@ -52,10 +75,11 @@ defineProps<{ assets: AudioAsset[], loading?: boolean }>()
           v-else
           size="xs"
           variant="subtle"
-          color="error"
-          class="shrink-0"
+          :color="statusBadge(a).color"
+          class="shrink-0 flex items-center gap-1"
         >
-          unavailable
+          <UIcon v-if="statusBadge(a).spin" name="i-lucide-loader-circle" class="animate-spin" />
+          {{ statusBadge(a).label }}
         </UBadge>
       </div>
     </UCard>

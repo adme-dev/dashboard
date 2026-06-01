@@ -89,7 +89,7 @@ function handleAssetClick(asset: BannerAsset) {
   toast.add({ title: 'Asset added', description: `"${asset.name}" added`, color: 'success' })
 }
 
-// Audio Studio voiceovers — owned, generated audio assets reusable as a layer.
+// Audio Studio — owned, generated audio (voiceover + music) reusable as a layer.
 const { data: voiceoverData } = useFetch<{ assets: AudioAsset[] }>('/api/agency/audio/assets', {
   query: { kind: 'voiceover' },
   default: () => ({ assets: [] }),
@@ -97,17 +97,34 @@ const { data: voiceoverData } = useFetch<{ assets: AudioAsset[] }>('/api/agency/
     // Audio Studio API may be unavailable — degrade silently.
   }
 })
+const { data: musicData } = useFetch<{ assets: AudioAsset[] }>('/api/agency/audio/assets', {
+  query: { kind: 'music' },
+  default: () => ({ assets: [] }),
+  onResponseError() {}
+})
 
-function addVoiceoverLayer(a: AudioAsset) {
+// Only playable assets (a master uploaded) belong in the picker — in-progress
+// music has no streamUrl yet.
+const audioStudioAssets = computed<AudioAsset[]>(() => [
+  ...(voiceoverData.value?.assets ?? []),
+  ...(musicData.value?.assets ?? [])
+].filter(a => !!a.streamUrl))
+
+function audioLayerName(a: AudioAsset): string {
+  return a.title || (a.kind === 'music' ? 'Music' : 'Voiceover')
+}
+
+function addAudioLayer(a: AudioAsset) {
   if (!a.streamUrl) {
-    toast.add({ title: 'Audio unavailable', description: 'This voiceover has no playable source', color: 'warning' })
+    toast.add({ title: 'Audio unavailable', description: 'This asset has no playable source', color: 'warning' })
     return
   }
+  const name = audioLayerName(a)
   addLayer({
     id: nextId(),
     type: 'audio',
     src: a.streamUrl,
-    name: a.title || 'Voiceover',
+    name,
     x: 0,
     y: 0,
     w: 0,
@@ -116,7 +133,7 @@ function addVoiceoverLayer(a: AudioAsset) {
     volume: 1,
     animIn: 'none'
   })
-  toast.add({ title: 'Voiceover added', description: `"${a.title || 'Voiceover'}" added`, color: 'success' })
+  toast.add({ title: 'Audio added', description: `"${name}" added`, color: 'success' })
 }
 
 async function uploadFiles(files: FileList | File[]) {
@@ -203,20 +220,20 @@ async function deleteAsset(asset: BannerAsset) {
       />
     </div>
 
-    <!-- Audio Studio voiceovers -->
-    <div v-if="voiceoverData?.assets?.length" class="space-y-1.5">
+    <!-- Audio Studio — owned voiceover + music -->
+    <div v-if="audioStudioAssets.length" class="space-y-1.5">
       <p class="text-[10px] font-semibold uppercase tracking-wider text-(--ui-text-muted)">
         Audio Studio
       </p>
       <button
-        v-for="a in voiceoverData.assets"
+        v-for="a in audioStudioAssets"
         :key="a.id"
         type="button"
         class="w-full flex items-center gap-2 text-left text-[11px] px-2 py-1.5 rounded bg-(--ui-bg) border border-(--ui-border) hover:bg-(--ui-bg-elevated) transition-colors truncate"
-        @click="addVoiceoverLayer(a)"
+        @click="addAudioLayer(a)"
       >
-        <UIcon name="i-lucide-mic" class="w-3.5 h-3.5 shrink-0 text-(--ui-text-muted)" />
-        <span class="truncate">{{ a.title || 'Untitled voiceover' }}</span>
+        <UIcon :name="a.kind === 'music' ? 'i-lucide-music' : 'i-lucide-mic'" class="w-3.5 h-3.5 shrink-0 text-(--ui-text-muted)" />
+        <span class="truncate">{{ audioLayerName(a) }}</span>
       </button>
     </div>
 
