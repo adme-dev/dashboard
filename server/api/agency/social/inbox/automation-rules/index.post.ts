@@ -1,0 +1,21 @@
+import { requireAuth } from '~~/server/utils/auth'
+import { queryOne } from '~~/server/utils/db'
+
+/** POST /api/agency/social/inbox/automation-rules  body: full rule (client_id required) */
+export default defineEventHandler(async (event) => {
+  const user = await requireAuth(event)
+  const b = await readBody(event)
+  if (!b?.client_id || !b?.name?.trim()) throw createError({ statusCode: 400, statusMessage: 'client_id and name required' })
+  const mode = ['off', 'suggest', 'approval', 'autopilot'].includes(b.mode) ? b.mode : 'off'
+  return await queryOne(
+    `INSERT INTO social_automation_rules
+       (client_id, name, platform, channel_type, mode, conditions, action, approval_by, rate_limit,
+        confidence_floor, business_hours, priority, enabled, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10,$11::jsonb,$12,$13,$14) RETURNING *`,
+    [b.client_id, b.name.trim(), b.platform ?? null, b.channel_type ?? null, mode,
+     JSON.stringify(b.conditions ?? {}), JSON.stringify(b.action ?? {}),
+     ['staff', 'client', 'none'].includes(b.approval_by) ? b.approval_by : 'staff',
+     Number(b.rate_limit) || 0, Number(b.confidence_floor ?? 0.7),
+     b.business_hours ? JSON.stringify(b.business_hours) : null,
+     Number(b.priority) || 100, b.enabled !== false, String(user.id)])
+})
