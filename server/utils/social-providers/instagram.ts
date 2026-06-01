@@ -14,7 +14,8 @@
  * Reference: https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/content-publishing
  */
 
-import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaItem } from './types'
+import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaItem, ReplyParams, ReplyResult } from './types'
+import { buildMessengerSend } from './facebook'
 
 const GRAPH_API_BASE = 'https://graph.facebook.com/v20.0'
 
@@ -450,4 +451,33 @@ async function postStory(
     url,
     status: 'success',
   }
+}
+
+// --- Slice 2d follow-up: Instagram inbox reply ---
+// Comment reply is UNGATED (instagram_manage_comments, in the base D2 scopes) — this closes a
+// real gap where IG comments ingested but couldn't be replied to. DM send is App-Review-gated and
+// routes through the linked Page's Messenger Send API (recipient = IGSID).
+
+/** Pure: build an IG comment-reply request. commentId = the IG comment to reply under. */
+export function buildIgCommentReply(commentId: string, content: string, accessToken: string) {
+  return { url: `${GRAPH_API_BASE}/${commentId}/replies`, body: { message: content, access_token: accessToken } }
+}
+
+instagramProvider.reply = async ({ accountId, accessToken, conversationId, content, channelType, viaPageId }: ReplyParams): Promise<ReplyResult> => {
+  if (channelType === 'dm') {
+    // IG DMs send via the connected Page's Send API (recipient = IGSID = conversationId).
+    const { url, body } = buildMessengerSend(viaPageId || accountId, conversationId, content, accessToken)
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const j: any = await res.json().catch(() => ({}))
+    return res.ok && j.message_id
+      ? { platformMessageId: String(j.message_id), status: 'success' }
+      : { platformMessageId: '', status: 'failed', error: j?.error?.message ?? `http ${res.status}` }
+  }
+  // comment / mention → reply on the comment via the IG /replies edge.
+  const { url, body } = buildIgCommentReply(conversationId, content, accessToken)
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const j: any = await res.json().catch(() => ({}))
+  return res.ok && j.id
+    ? { platformMessageId: String(j.id), status: 'success' }
+    : { platformMessageId: '', status: 'failed', error: j?.error?.message ?? `http ${res.status}` }
 }

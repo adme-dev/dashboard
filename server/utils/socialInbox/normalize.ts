@@ -112,3 +112,29 @@ export function normalizeMetaCommentWebhook(platform: string, change: any): Norm
     },
   }
 }
+
+/**
+ * Map one Instagram webhook `comments` change into a NormalizedEvent. IG comments use a DIFFERENT
+ * shape than the FB `feed` change: field `comments`, value { id, text, from:{id,username}, media:{id} },
+ * no item/verb. The conversation threads on the media id; the message id is the comment id (which
+ * `instagramProvider.reply` posts under via the /{id}/replies edge). Returns null if not an IG comment.
+ */
+export function normalizeIgCommentWebhook(change: any): NormalizedEvent | null {
+  if (change?.field !== 'comments') return null
+  const v = change?.value
+  if (!v?.id) return null
+  return {
+    platform: 'instagram',
+    channelType: 'comment',
+    platformConversationId: String(v.media?.id ?? v.id),
+    participant: { id: v.from?.id, name: v.from?.username, handle: v.from?.username },
+    message: {
+      platformMessageId: String(v.id),
+      direction: 'in',
+      authorId: v.from?.id,
+      authorName: v.from?.username,
+      messageType: 'comment',
+      content: v.text ?? '',
+    },
+  }
+}

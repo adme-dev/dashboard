@@ -48,6 +48,8 @@ export interface ReplyParams {
   content: string
   /** channel being replied on — providers branch DMs (Send API) vs comments (graph comments edge). */
   channelType?: 'comment' | 'dm' | 'mention' | 'review'
+  /** linked Page id for an IG DM send (IG messaging routes through the connected Page). */
+  viaPageId?: string
 }
 
 export interface ReplyResult {
