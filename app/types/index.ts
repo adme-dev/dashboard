@@ -1367,6 +1367,40 @@ export interface SocialResponseQueueItem {
   inbound_preview?: string | null
 }
 
+// --- Social Inbox team workflow (Slice 2c) ---
+export interface SocialSavedReply {
+  id: string
+  client_id: string | null
+  name: string
+  category: string | null
+  content: string
+  platforms: string[] | null
+  usage_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface SocialSlaPolicy {
+  id: string
+  client_id: string
+  channel_type: string | null
+  target_minutes: number
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface SocialInboxAnalytics {
+  total: number
+  open: number
+  responded: number
+  avgFirstResponseMinutes: number
+  slaTracked: number
+  breaches: number
+  withinSlaPct: number | null
+  automationRatePct: number
+}
+
 export interface AudioAsset {
   id: string
   clientId: string | null
