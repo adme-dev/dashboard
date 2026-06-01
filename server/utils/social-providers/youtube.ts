@@ -295,7 +295,7 @@ export const youtubeProvider: SocialPostProvider = {
         )
       }
 
-      const video = videos[0]
+      const video = videos[0]!
       const videoContentType = resolveVideoContentType(video.mimeType)
       const title = buildVideoTitle(content, ytOptions)
       const categoryId = ytOptions.categoryId || '2' // Autos & Vehicles

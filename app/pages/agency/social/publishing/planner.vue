@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useSocialPublishing } from '~/composables/useSocialPublishing'
-import type { SocialSlot, SocialPlatform } from '~/types'
+import type { SocialSlot, SocialPublishPlatform } from '~/types'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
@@ -27,13 +27,13 @@ const TIMES = Array.from({ length: 48 }, (_, i) => {
   const m = i % 2 ? '30' : '00'
   return `${h}:${m}`
 })
-const PLATFORMS: { value: SocialPlatform; label: string }[] = [
+const PLATFORMS: { value: SocialPublishPlatform; label: string }[] = [
   { value: 'facebook', label: 'Facebook' }, { value: 'instagram', label: 'Instagram' },
   { value: 'linkedin', label: 'LinkedIn' }, { value: 'tiktok', label: 'TikTok' },
   { value: 'youtube', label: 'YouTube' }, { value: 'google-business', label: 'Google Business' },
 ]
 
-const form = ref({ dayOfWeek: 1, timeOfDay: '09:00', platforms: [] as SocialPlatform[] })
+const form = ref({ dayOfWeek: 1, timeOfDay: '09:00', platforms: [] as SocialPublishPlatform[] })
 
 async function load() {
   if (!clientId.value) return

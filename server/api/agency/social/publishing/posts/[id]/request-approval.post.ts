@@ -32,9 +32,9 @@ export default defineEventHandler(async (event) => {
         type: 'approval_requested',
         title: 'Social post awaiting approval',
         message: (post.content || 'A social post').slice(0, 120),
-        link: `/agency/social/approvals`,
+        link: `/agency/social/publishing/approvals`,
         actorId: user.id,
-        reason: 'approval',
+        reason: 'direct',
       },
     )
   } catch (err) {

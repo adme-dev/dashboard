@@ -30,7 +30,7 @@ export async function nextOptimalSlots(
   )
   if (!slots.length) return []
 
-  const baseTz = slots[0].timezone || 'Australia/Sydney'
+  const baseTz = slots[0]!.timezone || 'Australia/Sydney'
   const start = now(baseTz)
   const out: Date[] = []
   const maxDays = count * 7 + 14

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { SocialPlatform } from '~/types'
+import type { SocialPublishPlatform } from '~/types'
 
 const props = defineProps<{
-  platforms: SocialPlatform[]
+  platforms: SocialPublishPlatform[]
   pageName?: string
   // (platform) => { content, mediaUrls } — resolved base+override from the composer
   resolve: (platform: string) => { content: string; mediaUrls: string[] }

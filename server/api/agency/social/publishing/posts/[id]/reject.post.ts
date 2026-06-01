@@ -28,9 +28,9 @@ export default defineEventHandler(async (event) => {
         type: 'approval_response',
         title: 'Social post needs changes',
         message: b.reason ? String(b.reason).slice(0, 120) : 'Your social post was rejected',
-        link: `/agency/social/compose?edit=${id}`,
+        link: `/agency/social/publishing/compose?edit=${id}`,
         actorId: user.id,
-        reason: 'approval',
+        reason: 'direct',
       })
     } catch (err) {
       console.error('[social] reject notification failed:', err)

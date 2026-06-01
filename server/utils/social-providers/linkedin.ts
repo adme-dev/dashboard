@@ -149,7 +149,7 @@ async function uploadVideo(
     })
 
     // Step 3: Upload to LinkedIn (single chunk for most files)
-    const firstUploadUrl = uploadInstructions[0].uploadUrl
+    const firstUploadUrl = uploadInstructions[0]!.uploadUrl
     await $fetch(firstUploadUrl, {
       method: 'PUT',
       headers: {
@@ -424,7 +424,7 @@ export const linkedinProvider: SocialPostProvider = {
 
     // --- Video post ---
     if (videos.length > 0) {
-      const uploadResult = await uploadVideo(params.accessToken, author, videos[0].url)
+      const uploadResult = await uploadVideo(params.accessToken, author, videos[0]!.url)
       if ('error' in uploadResult) {
         return { platformPostId: '', url: '', status: 'failed', error: uploadResult.error }
       }
@@ -459,8 +459,8 @@ export const linkedinProvider: SocialPostProvider = {
           params,
           author,
           visibility,
-          successfulUrns[0].urn,
-          successfulUrns[0].alt
+          successfulUrns[0]!.urn,
+          successfulUrns[0]!.alt
         )
       }
 

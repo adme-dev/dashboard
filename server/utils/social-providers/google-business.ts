@@ -147,7 +147,7 @@ function failResult(error: string): PostResult {
  */
 function parseDate(dateStr: string): { year: number; month: number; day: number } {
   const [year, month, day] = dateStr.split('-').map(Number)
-  return { year, month, day }
+  return { year: year ?? 0, month: month ?? 0, day: day ?? 0 }
 }
 
 /**
@@ -156,7 +156,7 @@ function parseDate(dateStr: string): { year: number; month: number; day: number 
  */
 function parseTime(timeStr: string): { hours: number; minutes: number } {
   const [hours, minutes] = timeStr.split(':').map(Number)
-  return { hours, minutes }
+  return { hours: hours ?? 0, minutes: minutes ?? 0 }
 }
 
 /**

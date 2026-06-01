@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { CalendarDate, parseDate, type DateValue } from '@internationalized/date'
-import type { SocialPlatform } from '~/types'
+import type { SocialPublishPlatform } from '~/types'
 import { useSocialComposer, type ScheduleMode } from '~/composables/useSocialComposer'
 
 const { state, setOverride, resolved } = useSocialComposer()
 
-const PLATFORM_OPTIONS: { value: SocialPlatform; label: string; icon: string; limit: number }[] = [
+const PLATFORM_OPTIONS: { value: SocialPublishPlatform; label: string; icon: string; limit: number }[] = [
   { value: 'facebook', label: 'Facebook', icon: 'i-lucide-facebook', limit: 63206 },
   { value: 'instagram', label: 'Instagram', icon: 'i-lucide-instagram', limit: 2200 },
   { value: 'linkedin', label: 'LinkedIn', icon: 'i-lucide-linkedin', limit: 3000 },

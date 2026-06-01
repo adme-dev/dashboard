@@ -28,9 +28,9 @@ export default defineEventHandler(async (event) => {
         type: 'approval_response',
         title: 'Social post approved',
         message: (post.content || 'Your social post').slice(0, 120),
-        link: `/agency/social/compose?edit=${id}`,
+        link: `/agency/social/publishing/compose?edit=${id}`,
         actorId: user.id,
-        reason: 'approval',
+        reason: 'direct',
       })
     } catch (err) {
       console.error('[social] approve notification failed:', err)

@@ -230,13 +230,13 @@ export const instagramProvider: SocialPostProvider = {
 
       // ── Story ────────────────────────────────────────
       if (postType === 'story') {
-        return await postStory(accountId, accessToken, media[0])
+        return await postStory(accountId, accessToken, media[0]!)
       }
 
       // ── Single video / Reel ──────────────────────────
       const videos = media.filter(m => m.type === 'video')
       if (videos.length > 0 && (postType === 'reel' || media.length === 1)) {
-        return await postReel(accountId, accessToken, content, videos[0], options)
+        return await postReel(accountId, accessToken, content, videos[0]!, options)
       }
 
       // ── Carousel (multiple media items) ──────────────
@@ -245,7 +245,7 @@ export const instagramProvider: SocialPostProvider = {
       }
 
       // ── Single image post ────────────────────────────
-      return await postSingleImage(accountId, accessToken, content, media[0], options)
+      return await postSingleImage(accountId, accessToken, content, media[0]!, options)
     } catch (err: unknown) {
       console.error('[Instagram Provider] Post failed:', err)
       return parseGraphError(err)

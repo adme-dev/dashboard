@@ -1,4 +1,4 @@
-import type { SocialPlatform, SocialPlatformOverride, SocialPost } from '~/types'
+import type { SocialPublishPlatform, SocialPlatformOverride, SocialPost } from '~/types'
 
 export type ScheduleMode = 'now' | 'schedule' | 'queue'
 
@@ -10,7 +10,7 @@ export interface ComposerState {
   hashtags: string[]
   firstComment: string
   tags: string[]
-  platforms: SocialPlatform[]
+  platforms: SocialPublishPlatform[]
   accountIds: string[]
   customizePerNetwork: boolean
   platformOverrides: Record<string, SocialPlatformOverride>

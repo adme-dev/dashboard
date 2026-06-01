@@ -145,7 +145,7 @@ export const facebookProvider: SocialPostProvider = {
       // ── Video post (Reels) ───────────────────────────
       const videos = media.filter(m => m.type === 'video')
       if (videos.length > 0) {
-        const video = videos[0]
+        const video = videos[0]!
         const res = await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/videos`, {
           method: 'POST',
           body: {
@@ -165,7 +165,7 @@ export const facebookProvider: SocialPostProvider = {
       const images = media.filter(m => m.type === 'image')
       if (images.length === 1) {
         // Upload as unpublished, then attach to a feed post for consistent URL format
-        const photoId = await uploadUnpublishedPhoto(accountId, accessToken, images[0].url)
+        const photoId = await uploadUnpublishedPhoto(accountId, accessToken, images[0]!.url)
 
         const res = await $fetch<{ id: string }>(`${GRAPH_API_BASE}/${accountId}/feed`, {
           method: 'POST',

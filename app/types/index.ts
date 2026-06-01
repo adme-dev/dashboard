@@ -1201,7 +1201,8 @@ export type DispatchResult =
 export * from './office'
 
 // ── Social Publishing ───────────────────────────────────────────────
-export type SocialPlatform = 'facebook' | 'instagram' | 'linkedin' | 'tiktok' | 'youtube' | 'google-business'
+// NB: distinct from the spend-side `SocialPlatform` (meta/google/…) above.
+export type SocialPublishPlatform = 'facebook' | 'instagram' | 'linkedin' | 'tiktok' | 'youtube' | 'google-business'
 
 export type SocialPostStatus =
   | 'draft' | 'approved' | 'scheduled' | 'publishing'
@@ -1228,7 +1229,7 @@ export interface SocialPost {
   link_url: string | null
   hashtags: string[] | null
   first_comment: string | null
-  platforms: SocialPlatform[]
+  platforms: SocialPublishPlatform[]
   account_ids: string[] | null
   platform_overrides: Record<string, SocialPlatformOverride>
   tags: string[] | null
@@ -1253,7 +1254,7 @@ export interface SocialPost {
 export interface SocialAccount {
   id: string
   client_id: string
-  platform: SocialPlatform
+  platform: SocialPublishPlatform
   platform_account_id: string
   account_name: string | null
   is_active: boolean
@@ -1267,7 +1268,7 @@ export interface SocialSlot {
   id: string
   client_id: string
   name: string
-  platforms: SocialPlatform[]
+  platforms: SocialPublishPlatform[]
   day_of_week: number
   time_of_day: string
   timezone: string

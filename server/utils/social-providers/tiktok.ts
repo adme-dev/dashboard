@@ -215,7 +215,7 @@ export const tiktokProvider: SocialPostProvider = {
 
     // Video post — use the first video
     if (videos.length > 0) {
-      return postVideo(params, videos[0].url)
+      return postVideo(params, videos[0]!.url)
     }
 
     // Photo post — send all image URLs
