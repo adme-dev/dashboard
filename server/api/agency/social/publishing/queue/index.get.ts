@@ -1,0 +1,18 @@
+import { requireAuth } from '~~/server/utils/auth'
+import { queryRows } from '~~/server/utils/db'
+
+/**
+ * GET /api/agency/social/publishing/queue?clientId=
+ * Posts currently in the publishing queue, ordered by queue_position.
+ */
+export default defineEventHandler(async (event) => {
+  await requireAuth(event)
+  const clientId = getQuery(event).clientId as string
+  if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  return await queryRows(
+    `SELECT * FROM social_posts
+      WHERE client_id = $1 AND queue_position IS NOT NULL AND status IN ('draft','scheduled')
+      ORDER BY queue_position ASC`,
+    [clientId],
+  )
+})
