@@ -49,7 +49,7 @@ export async function dispatchReply(
   const target = await resolveReplyTarget(db, conversationId, conv)
   const r = await provider.reply({
     accountId: conv.platform_account_id, accessToken: conv.access_token,
-    conversationId: target, content: args.content,
+    conversationId: target, content: args.content, channelType: conv.channel_type,
   })
   if (r.status !== 'success') return { ok: false, error: r.error || 'reply failed' }
 

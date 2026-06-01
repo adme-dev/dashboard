@@ -43,9 +43,11 @@ export interface FetchInboxResult {
 export interface ReplyParams {
   accountId: string
   accessToken: string
-  /** platform conversation id (post id / review id / parent comment id) */
+  /** resolved reply target: comment id (comment) / object id (review/mention) / participant PSID (dm) */
   conversationId: string
   content: string
+  /** channel being replied on — providers branch DMs (Send API) vs comments (graph comments edge). */
+  channelType?: 'comment' | 'dm' | 'mention' | 'review'
 }
 
 export interface ReplyResult {

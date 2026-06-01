@@ -10,11 +10,33 @@ export const META_D2_SCOPES = [
   'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'pages_manage_engagement',
   'pages_manage_metadata', 'instagram_basic', 'instagram_content_publish', 'instagram_manage_comments',
   'business_management',
-].join(',')
+]
 
-export function buildMetaAuthUrl(appId: string, redirectUri: string, state: string): string {
+// Slice 2d messaging scopes — gated behind Meta App Review. NEVER added to the live OAuth request
+// until the app is approved (an unapproved scope can break the consent dialog that publishing +
+// comments rely on today). The operator flips SOCIAL_DM_ENABLED post-approval and reconnects.
+export const META_MESSAGING_SCOPES = [
+  'pages_messaging', 'instagram_manage_messages',
+]
+
+/** True only when the operator has explicitly enabled the App-Review-gated DM/mention channels. */
+export function isSocialDmEnabled(): boolean {
+  return process.env.SOCIAL_DM_ENABLED === 'true'
+}
+
+/** Scopes to request at connect: the base set, plus messaging only when DM channels are enabled. */
+export function metaScopeSet(includeMessaging = false): string {
+  return (includeMessaging ? [...META_D2_SCOPES, ...META_MESSAGING_SCOPES] : META_D2_SCOPES).join(',')
+}
+
+/** Webhook fields to subscribe a Page to: comments always; mentions + DMs only when enabled. */
+export function metaSubscribedFields(includeMessaging = false): string {
+  return includeMessaging ? 'feed,mention,messages' : 'feed'
+}
+
+export function buildMetaAuthUrl(appId: string, redirectUri: string, state: string, includeMessaging = false): string {
   const params = new URLSearchParams({
-    client_id: appId, redirect_uri: redirectUri, state, scope: META_D2_SCOPES, response_type: 'code',
+    client_id: appId, redirect_uri: redirectUri, state, scope: metaScopeSet(includeMessaging), response_type: 'code',
   })
   return `https://www.facebook.com/v22.0/dialog/oauth?${params.toString()}`
 }
@@ -82,10 +104,17 @@ export async function listManagedPages(userToken: string, f: FetchLike = fetch a
   }))
 }
 
-/** Subscribe the Page to the `feed` webhook field so comments push to /api/webhooks/social/meta. Non-throwing. */
-export async function subscribePageWebhook(pageId: string, pageToken: string, f: FetchLike = fetch as any): Promise<{ ok: boolean; error?: string }> {
+/**
+ * Subscribe the Page to webhook fields so engagement pushes to /api/webhooks/social/meta. Non-throwing.
+ * `fields` defaults to the env-derived set: `feed` (comments) always, plus `mention,messages` only
+ * when the App-Review-gated DM channels are enabled (SOCIAL_DM_ENABLED).
+ */
+export async function subscribePageWebhook(
+  pageId: string, pageToken: string, f: FetchLike = fetch as any,
+  fields: string = metaSubscribedFields(isSocialDmEnabled()),
+): Promise<{ ok: boolean; error?: string }> {
   try {
-    const url = `${GRAPH}/${pageId}/subscribed_apps?subscribed_fields=${encodeURIComponent('feed')}&access_token=${encodeURIComponent(pageToken)}`
+    const url = `${GRAPH}/${pageId}/subscribed_apps?subscribed_fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(pageToken)}`
     await graphJson(f, url, { method: 'POST' })
     return { ok: true }
   } catch (e: any) {

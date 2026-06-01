@@ -1,7 +1,7 @@
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { signState } from '~~/server/utils/socialOAuth/state'
-import { buildMetaAuthUrl } from '~~/server/utils/socialOAuth/meta'
+import { buildMetaAuthUrl, isSocialDmEnabled } from '~~/server/utils/socialOAuth/meta'
 
 /**
  * GET /api/agency/social/publishing/accounts/connect/meta?clientId=
@@ -23,5 +23,7 @@ export default defineEventHandler(async (event) => {
 
   const nonce = crypto.randomUUID()
   const state = signState({ clientId, userId: String(user.id), platform: 'meta', nonce }, secret)
-  return sendRedirect(event, buildMetaAuthUrl(appId, redirectUri, state), 302)
+  // Messaging scopes are only requested once the App-Review-gated DM channels are enabled —
+  // adding them pre-approval would break the live consent dialog that publishing/comments use.
+  return sendRedirect(event, buildMetaAuthUrl(appId, redirectUri, state, isSocialDmEnabled()), 302)
 })

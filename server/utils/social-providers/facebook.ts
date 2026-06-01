@@ -269,7 +269,31 @@ facebookProvider.fetchInbox = async ({ accountId, accessToken, cursor }: FetchIn
   return mapFacebookRatings(await res.json())
 }
 
-facebookProvider.reply = async ({ accessToken, conversationId, content }: ReplyParams): Promise<ReplyResult> => {
+// --- Slice 2d: Messenger DM send (App-Review-gated) ---
+/** Pure: build the Messenger Send API request for a DM reply. recipientId = participant PSID. */
+export function buildMessengerSend(pageId: string, recipientId: string, content: string, accessToken: string) {
+  return {
+    url: `${GRAPH_API_BASE}/${pageId}/messages`,
+    body: {
+      recipient: { id: recipientId },
+      message: { text: content },
+      messaging_type: 'RESPONSE',
+      access_token: accessToken,
+    },
+  }
+}
+
+facebookProvider.reply = async ({ accountId, accessToken, conversationId, content, channelType }: ReplyParams): Promise<ReplyResult> => {
+  // DM: send via the Messenger Send API to the participant PSID (conversationId). Otherwise the
+  // conversationId is a comment/object id and we post a comment on it.
+  if (channelType === 'dm') {
+    const { url, body } = buildMessengerSend(accountId, conversationId, content, accessToken)
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const j: any = await res.json().catch(() => ({}))
+    return res.ok && j.message_id
+      ? { platformMessageId: String(j.message_id), status: 'success' }
+      : { platformMessageId: '', status: 'failed', error: j?.error?.message ?? `http ${res.status}` }
+  }
   // conversationId = the comment id (from webhook) or object id; reply posts a comment on it.
   const res = await fetch(`${GRAPH_API_BASE}/${conversationId}/comments`, {
     method: 'POST',

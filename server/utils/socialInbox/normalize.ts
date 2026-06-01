@@ -24,6 +24,72 @@ export function normalizeInboxItem(platform: string, item: InboxItem): Normalize
   }
 }
 
+/**
+ * Map one Meta webhook `mention` change into a NormalizedEvent (Slice 2d, App-Review-gated).
+ * Fires when the connected Page/IG account is @-tagged. FB `mention` field value:
+ *   { item: 'post'|'comment', post_id?, comment_id?, sender_id, sender_name, message, created_time }
+ * Returns null if it isn't a mention we can anchor to an object id.
+ */
+export function normalizeMetaMentionWebhook(platform: string, change: any): NormalizedEvent | null {
+  if (change?.field !== 'mention' && change?.field !== 'mentions') return null
+  const v = change?.value
+  if (!v) return null
+  // Anchor the conversation on whatever object id the mention carries (comment > post > media).
+  const objectId = v.comment_id ?? v.post_id ?? v.media_id ?? v.media?.id
+  if (!objectId) return null
+  return {
+    platform,
+    channelType: 'mention',
+    platformConversationId: String(objectId),
+    permalink: v.permalink_url ?? v.media?.permalink,
+    participant: { id: v.sender_id ?? v.from?.id, name: v.sender_name ?? v.from?.name },
+    message: {
+      platformMessageId: String(objectId),
+      direction: 'in',
+      authorId: v.sender_id ?? v.from?.id,
+      authorName: v.sender_name ?? v.from?.name,
+      messageType: 'mention',
+      content: v.message ?? v.text ?? '',
+      platformTimestamp: v.created_time ? new Date(v.created_time * 1000).toISOString() : undefined,
+    },
+  }
+}
+
+/**
+ * Map one Meta Messenger / IG-DM webhook event into a NormalizedEvent (Slice 2d, App-Review-gated).
+ * These arrive under `entry.messaging[]` (NOT `entry.changes[]`):
+ *   { sender:{id}, recipient:{id}, timestamp, message:{ mid, text, is_echo?, attachments? } }
+ * The conversation is keyed by the participant PSID (one DM thread per person). Outbound echoes
+ * (our own sends reflected back) and delivery/read receipts are skipped — only inbound text/media.
+ */
+export function normalizeMetaMessageWebhook(platform: string, messaging: any): NormalizedEvent | null {
+  const m = messaging?.message
+  if (!m || m.is_echo) return null // echo = our own outbound reflected back; ignore
+  if (!m.mid) return null
+  const senderId = messaging?.sender?.id
+  if (!senderId) return null
+  const attachments = Array.isArray(m.attachments)
+    ? m.attachments.map((a: any) => ({ url: a?.payload?.url ?? '', type: a?.type ?? 'file' })).filter((a: any) => a.url)
+    : undefined
+  const content = m.text ?? ''
+  if (!content && !attachments?.length) return null // nothing renderable (e.g. a bare reaction)
+  return {
+    platform,
+    channelType: 'dm',
+    platformConversationId: String(senderId),
+    participant: { id: String(senderId) },
+    message: {
+      platformMessageId: String(m.mid),
+      direction: 'in',
+      authorId: String(senderId),
+      messageType: attachments?.length ? (attachments[0]!.type || 'file') : 'text',
+      content,
+      attachments,
+      platformTimestamp: messaging?.timestamp ? new Date(Number(messaging.timestamp)).toISOString() : undefined,
+    },
+  }
+}
+
 /** Map one Meta webhook `feed` change into a NormalizedEvent, or null if not a comment add. */
 export function normalizeMetaCommentWebhook(platform: string, change: any): NormalizedEvent | null {
   const v = change?.value
