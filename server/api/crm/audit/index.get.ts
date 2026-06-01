@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
   const items = await queryRows(
     `SELECT a.id, a.field, a.old_value, a.new_value, a.changed_at, a.changed_by, u.name AS changed_by_name
        FROM crm_audit_log a
-       LEFT JOIN users u ON u.id = a.changed_by
+       LEFT JOIN team_members u ON u.id = a.changed_by
       WHERE a.client_id = $1 AND a.entity_type = $2 AND a.entity_id = $3
       ORDER BY a.changed_at DESC
       LIMIT ${q.limit}`,
