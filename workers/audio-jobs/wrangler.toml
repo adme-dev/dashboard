@@ -46,8 +46,8 @@ class_name = "RenderContainer"
 image = "./container/Dockerfile"
 max_instances = 3
 # ffmpeg 2-pass loudnorm needs real memory — don't run on the smallest instance.
-# ⚠️ confirm valid instance_type values against the wrangler version at deploy.
-instance_type = "standard"
+# "standard" was renamed to "standard-1" (wrangler 4.95+).
+instance_type = "standard-1"
 
 [[durable_objects.bindings]]
 class_name = "RenderContainer"
