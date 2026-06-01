@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useSocialReporting, type ReportKpi } from '~/composables/useSocialReporting'
+import { SOCIAL_PLATFORM_FILTER_OPTIONS } from '~~/app/utils/socialReportScheduleForm'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 useHead({ title: 'Social Reporting' })
@@ -20,15 +21,7 @@ const dayOptions = [
   { label: 'Last 30 days', value: 30 },
   { label: 'Last 90 days', value: 90 },
 ]
-const platformOptions = [
-  { label: 'All networks', value: 'all' },
-  { label: 'Facebook', value: 'facebook' },
-  { label: 'Instagram', value: 'instagram' },
-  { label: 'LinkedIn', value: 'linkedin' },
-  { label: 'YouTube', value: 'youtube' },
-  { label: 'TikTok', value: 'tiktok' },
-  { label: 'Google Business', value: 'google-business' },
-]
+const platformOptions = SOCIAL_PLATFORM_FILTER_OPTIONS
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 const summarising = ref(false)
@@ -36,6 +29,8 @@ async function onSummarise() {
   summarising.value = true
   try { await generateSummary(clientName.value) } finally { summarising.value = false }
 }
+
+const showSchedules = ref(false)
 
 const kpiCards = computed(() => {
   const k = overview.value?.kpis
@@ -71,8 +66,18 @@ onMounted(load)
         <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" placeholder="Client" class="w-52" />
         <USelectMenu v-model="platform" :items="platformOptions" value-key="value" class="w-44" />
         <USelectMenu v-model="days" :items="dayOptions" value-key="value" class="w-36" />
+        <UButton
+          icon="i-lucide-calendar-clock"
+          color="neutral"
+          variant="subtle"
+          label="Schedules"
+          :disabled="!clientId"
+          @click="showSchedules = true"
+        />
       </div>
     </div>
+
+    <SocialReportSchedulesManager v-model:open="showSchedules" :client-id="clientId" :client-name="clientName" />
 
     <div v-if="loading" class="text-sm text-muted">Loading…</div>
     <template v-else-if="overview">
