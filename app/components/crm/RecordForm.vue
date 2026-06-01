@@ -37,9 +37,21 @@ const form = reactive<Record<string, any>>({})
 const custom = reactive<Record<string, any>>({})
 const errors = ref<Record<string, string>>({})
 
+// Lifecycle is usually auto-managed (opportunity/activity hooks) but can be set
+// manually here — e.g. to mark a contact `lost`/`dormant`. '__unset__' ⇒ null.
+const UNSET = '__unset__'
+const lifecycleStage = ref<string>(UNSET)
+const tags = ref<string[]>([])
+const lifecycleOptions = [
+  { label: 'Unset', value: UNSET },
+  ...LIFECYCLE_STAGES.map(s => ({ label: lifecycleLabel(s), value: s })),
+]
+
 watchEffect(() => {
   for (const f of builtins.value) form[f.key] = props.record?.[f.key] ?? ''
   for (const cf of fields.value) custom[cf.key] = (props.record?.custom_fields ?? {})[cf.key] ?? ''
+  lifecycleStage.value = props.record?.lifecycle_stage ?? UNSET
+  tags.value = Array.isArray(props.record?.tags) ? [...props.record!.tags] : []
 })
 
 const loading = ref(false)
@@ -53,6 +65,8 @@ function submit() {
   try {
     const body: Record<string, unknown> = { ...form, custom_fields: { ...custom } }
     if (body.employees === '' || body.employees == null) delete body.employees
+    body.lifecycle_stage = lifecycleStage.value === UNSET ? null : lifecycleStage.value
+    body.tags = tags.value
     emit('submit', body)
   } finally {
     loading.value = false
@@ -74,6 +88,15 @@ function submit() {
           v-model="form[f.key]"
           :type="f.key === 'employees' ? 'number' : (f.key === 'email' ? 'email' : 'text')"
         />
+      </UFormField>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+      <UFormField label="Lifecycle stage" help="Auto-advances on opportunities & activity; override to mark lost / dormant.">
+        <USelectMenu v-model="lifecycleStage" :items="lifecycleOptions" value-key="value" />
+      </UFormField>
+      <UFormField label="Tags">
+        <UInputTags v-model="tags" placeholder="Add tag, press Enter" />
       </UFormField>
     </div>
 

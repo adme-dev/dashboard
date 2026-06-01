@@ -16,6 +16,8 @@ const Body = z.object({
   department: z.string().nullable().optional(),
   city: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
+  lifecycle_stage: z.string().nullable().optional(),
+  tags: z.array(z.string()).optional(),
   custom_fields: z.record(z.string(), z.unknown()).optional(),
 })
 
@@ -29,7 +31,7 @@ export default defineEventHandler(async (event) => {
   const sets: string[] = []
   const params: unknown[] = []
   const set = (col: string, val: unknown) => { params.push(val); sets.push(`${col} = $${params.length}`) }
-  for (const col of ['company_id', 'first_name', 'last_name', 'email', 'phone', 'mobile', 'job_title', 'department', 'city', 'notes'] as const) {
+  for (const col of ['company_id', 'first_name', 'last_name', 'email', 'phone', 'mobile', 'job_title', 'department', 'city', 'notes', 'lifecycle_stage', 'tags'] as const) {
     if (b[col] !== undefined) set(col, b[col])
   }
   if (b.custom_fields !== undefined) {

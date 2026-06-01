@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
+import { applyLifecycleEvent } from '~~/server/utils/crm/lifecycle'
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -39,5 +40,14 @@ export default defineEventHandler(async (event) => {
     [b.client_id, b.name, b.person_id ?? null, b.company_id ?? null, b.stage_id, b.owner_id ?? null,
       b.amount ?? 0, prob, b.expected_close_date ?? null, status, b.source ?? null, b.notes ?? null, user.id],
   )
+  // Opening a deal advances the linked contact(s) to `prospect` (or `customer` if
+  // created straight into a won stage). Best-effort — never fail the create.
+  try {
+    const ev = status === 'won' ? 'opportunity_won' : 'opportunity_created'
+    await applyLifecycleEvent({ clientId: b.client_id, entityType: 'person', entityId: b.person_id ?? null, event: ev })
+    await applyLifecycleEvent({ clientId: b.client_id, entityType: 'company', entityId: b.company_id ?? null, event: ev })
+  } catch (e) {
+    console.error('[crm] lifecycle create hook failed', e)
+  }
   return { item: row }
 })
