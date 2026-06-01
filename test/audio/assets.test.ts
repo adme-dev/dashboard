@@ -1,5 +1,13 @@
-import { describe, it, expect } from 'vitest'
-import { buildMasterKey, mapRow } from '~~/server/utils/audio/assets'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+// Mock the DB so createMusicAsset can be unit-tested without a connection.
+const queryOneMock = vi.fn()
+vi.mock('~~/server/utils/db', () => ({
+  queryOne: (...args: any[]) => queryOneMock(...args),
+  queryRows: vi.fn(),
+}))
+
+import { buildMasterKey, mapRow, createMusicAsset } from '~~/server/utils/audio/assets'
 
 describe('buildMasterKey', () => {
   it('namespaces by client when present', () => {
@@ -28,5 +36,56 @@ describe('mapRow', () => {
     expect(asset.r2KeyMaster).toBe('audio/org/a1/master.mp3')
     expect(asset.channels).toEqual(['tiktok'])
     expect(asset.durationSec).toBe(3.2)
+  })
+
+  it('maps music-specific fields', () => {
+    const row = {
+      id: 'm1', client_id: 'c1', created_by: 'u1', kind: 'music',
+      status: 'queued', title: 'Upbeat promo', prompt: 'energetic synthwave',
+      lang: null, voice: null, channels: [], r2_key_master: null, variants: {},
+      duration_sec: null, cost_cents: null, error: null,
+      is_instrumental: true, lyrics: null, format: 'mp3',
+      created_at: '2026-06-01T00:00:00Z', updated_at: '2026-06-01T00:00:00Z',
+    }
+    const asset = mapRow(row)
+    expect(asset.kind).toBe('music')
+    expect(asset.status).toBe('queued')
+    expect(asset.isInstrumental).toBe(true)
+    expect(asset.format).toBe('mp3')
+    expect(asset.lyrics).toBeNull()
+  })
+})
+
+describe('createMusicAsset', () => {
+  beforeEach(() => queryOneMock.mockReset())
+
+  it('inserts a queued music asset with music fields and sets idempotency_key', async () => {
+    // param order mirrors the INSERT: id, client_id, created_by, title, prompt,
+    // channels, format, is_instrumental, lyrics, idempotency_key
+    queryOneMock.mockImplementationOnce(async (_sql: string, params: any[]) => ({
+      id: params[0], client_id: params[1], created_by: params[2], kind: 'music',
+      status: 'queued', title: params[3], prompt: params[4], lang: null, voice: null,
+      channels: params[5], r2_key_master: null, variants: {}, duration_sec: null,
+      cost_cents: null, error: null, format: params[6], is_instrumental: params[7],
+      lyrics: params[8], created_at: 'now', updated_at: 'now',
+    }))
+
+    const asset = await createMusicAsset({
+      createdBy: 'u1', clientId: 'c1', title: 'Promo bed', prompt: 'warm acoustic',
+      isInstrumental: true, lyrics: null, channels: ['radio'], format: 'mp3',
+      idempotencyKey: 'idem-123',
+    })
+
+    expect(queryOneMock).toHaveBeenCalledTimes(1)
+    const [sql, params] = queryOneMock.mock.calls[0]
+    expect(sql).toMatch(/INSERT INTO audio_assets/i)
+    expect(sql).toMatch(/'music'/)
+    expect(sql).toMatch(/'queued'/)
+    expect(params).toContain('idem-123') // idempotency_key set on create (Phase 1 fast-follow)
+    expect(asset.kind).toBe('music')
+    expect(asset.status).toBe('queued')
+    expect(asset.isInstrumental).toBe(true)
+    expect(asset.r2KeyMaster).toBeNull() // no master yet — the worker uploads later
+    expect(asset.streamUrl).toBeUndefined()
   })
 })
