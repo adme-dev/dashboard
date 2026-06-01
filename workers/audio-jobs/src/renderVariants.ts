@@ -35,7 +35,9 @@ export async function renderVariants(env: RenderEnv, params: {
     const res = await instance.fetch('http://render.local/render', {
       method: 'POST',
       body: masterBytes,
-      headers: { 'x-audio-profile': JSON.stringify(profile) }
+      headers: { 'x-audio-profile': JSON.stringify(profile) },
+      // a wedged ffmpeg pass shouldn't hang the queue message — fail fast → retry
+      signal: AbortSignal.timeout(120_000)
     })
     if (!res.ok) throw new Error(`render ${ch} failed: ${res.status}`)
 

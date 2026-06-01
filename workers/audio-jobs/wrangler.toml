@@ -41,9 +41,13 @@ dead_letter_queue = "music-gen-dlq"
 # (RENDER). The queue handler invokes it per channel to produce loudness-
 # normalised variants. Stateless; the Worker owns R2/DB.
 [[containers]]
+name = "audio-render"
 class_name = "RenderContainer"
 image = "./container/Dockerfile"
 max_instances = 3
+# ffmpeg 2-pass loudnorm needs real memory — don't run on the smallest instance.
+# ⚠️ confirm valid instance_type values against the wrangler version at deploy.
+instance_type = "standard"
 
 [[durable_objects.bindings]]
 class_name = "RenderContainer"
