@@ -1,11 +1,12 @@
 // app/composables/useCrmCompanies.ts
-import type { CrmCompany, CrmListResponse } from '~/types/crm'
+import type { CrmCompany, CrmListResponse, CrmFilterClause } from '~/types/crm'
 
 export function useCrmCompanies(clientId: Ref<string | null>) {
   const base = inject<string>('crmApiBase', '/api/crm')
   const search = useState<string>('crm-companies-search', () => '')
   const lifecycle = useState<string | null>('crm-companies-lifecycle', () => null)
   const tag = useState<string | null>('crm-companies-tag', () => null)
+  const filters = useState<CrmFilterClause[]>('crm-companies-filters', () => [])
   const page = useState<number>('crm-companies-page', () => 1)
   const query = computed(() => {
     const p: Record<string, string> = { page: String(page.value), page_size: '50' }
@@ -13,6 +14,7 @@ export function useCrmCompanies(clientId: Ref<string | null>) {
     if (search.value.trim()) p.q = search.value.trim()
     if (lifecycle.value) p.lifecycle = lifecycle.value
     if (tag.value) p.tag = tag.value
+    if (filters.value.length) p.filters = JSON.stringify(filters.value)
     return p
   })
   const { data, pending, refresh } = useFetch<CrmListResponse<CrmCompany>>(`${base}/companies`, {
@@ -37,5 +39,5 @@ export function useCrmCompanies(clientId: Ref<string | null>) {
     await $fetch(`${base}/companies/${id}`, { method: 'DELETE', query: { client_id: clientId.value } })
     await refresh()
   }
-  return { data, pending, refresh, search, lifecycle, tag, page, create, update, remove }
+  return { data, pending, refresh, search, lifecycle, tag, filters, page, create, update, remove }
 }
