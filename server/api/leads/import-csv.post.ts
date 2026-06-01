@@ -31,7 +31,7 @@ const Body = z.object({
   form_name: z.string().optional(),
   run_rules: z.boolean().default(false),
   csv: z.string().min(1),
-  column_mapping: z.record(z.string()).optional(),
+  column_mapping: z.record(z.string(), z.string()).optional(),
 })
 
 // Header normalisation — Meta's export uses some standard headers. Map these

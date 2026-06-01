@@ -7,7 +7,7 @@ import { normalizeEmail, isValidEmail } from '~~/server/utils/email-marketing/em
 const Body = z.object({
   email: z.string().min(1),
   name: z.string().max(200).optional().nullable(),
-  attribs: z.record(z.any()).optional(),
+  attribs: z.record(z.string(), z.any()).optional(),
   client_id: z.string().uuid().optional().nullable(),
   list_ids: z.array(z.string().uuid()).optional()
 })

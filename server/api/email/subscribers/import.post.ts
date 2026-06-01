@@ -11,7 +11,7 @@ const Body = z.object({
   list_id: z.string().uuid(),
   csv: z.string().min(1),
   client_id: z.string().uuid().optional().nullable(),
-  column_mapping: z.record(z.string()).optional()
+  column_mapping: z.record(z.string(), z.string()).optional()
 })
 
 export default defineEventHandler(async (event) => {
