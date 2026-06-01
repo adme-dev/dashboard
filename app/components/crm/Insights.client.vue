@@ -121,6 +121,8 @@ const perfColumns = [
       </UCard>
     </div>
 
+    <CrmLeaderboard :client-id="clientId" />
+
     <div v-if="pending" class="text-xs text-muted">Loading…</div>
   </div>
 </template>

@@ -98,3 +98,52 @@ export function avgTimeInStageDays(history: StageHistoryRow[]): TimeInStageRow[]
   }
   return [...totals.entries()].map(([stage_id, t]) => ({ stage_id, avgDays: round1(t.sum / t.n) }))
 }
+
+// ── F15: sales targets / attainment + leaderboard ────────────────────────────
+
+export type CrmTargetType = 'revenue' | 'count'
+export interface TargetLike { user_id: string, target_type: CrmTargetType, target_value: number }
+export interface AttainmentRow {
+  user_id: string
+  target_type: CrmTargetType
+  target_value: number
+  actual: number
+  attainment_pct: number
+}
+
+/** Attainment as a percentage; a non-positive target yields 0 (avoids div-by-zero). */
+export function attainmentPct(target: number, actual: number): number {
+  const t = Number(target)
+  if (!t || t <= 0) return 0
+  return round1((Number(actual) || 0) / t * 100)
+}
+
+/**
+ * Per-rep target-vs-actual leaderboard, ranked by attainment. `wonOpps` are the
+ * WON opportunities in the target window (the caller scopes the period); revenue
+ * targets sum amounts, count targets count deals, both keyed by owner.
+ */
+export function leaderboard(
+  targets: TargetLike[],
+  wonOpps: { owner_id: string | null, amount: number }[],
+): AttainmentRow[] {
+  const revenue = new Map<string, number>()
+  const count = new Map<string, number>()
+  for (const o of wonOpps) {
+    if (!o.owner_id) continue
+    revenue.set(o.owner_id, (revenue.get(o.owner_id) || 0) + Number(o.amount || 0))
+    count.set(o.owner_id, (count.get(o.owner_id) || 0) + 1)
+  }
+  return targets
+    .map((t) => {
+      const actual = t.target_type === 'revenue' ? (revenue.get(t.user_id) || 0) : (count.get(t.user_id) || 0)
+      return {
+        user_id: t.user_id,
+        target_type: t.target_type,
+        target_value: Number(t.target_value),
+        actual,
+        attainment_pct: attainmentPct(Number(t.target_value), actual),
+      }
+    })
+    .sort((a, b) => b.attainment_pct - a.attainment_pct)
+}
