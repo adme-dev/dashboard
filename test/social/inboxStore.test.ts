@@ -9,27 +9,33 @@ const ev: NormalizedEvent = {
 }
 
 describe('recordInbound', () => {
-  it('upserts the conversation then inserts the message and bumps counters', async () => {
+  it('ensures the conversation then inserts the message and bumps counters', async () => {
     const calls: string[] = []
     const db = {
-      queryOne: vi.fn(async (sql: string) => {
-        calls.push(sql.trim().split('\n')[0])
-        return { id: 'conv-1' }
-      }),
+      queryOne: vi.fn(async (sql: string) => { calls.push(sql.trim().split('\n')[0]); return { id: 'conv-1' } }),
       execute: vi.fn(async (sql: string) => { calls.push(sql.trim().split('\n')[0]); return 1 }),
     }
     const res = await recordInbound(db as any, 'client-1', 'acct-1', ev)
     expect(res.conversationId).toBe('conv-1')
+    expect(res.inserted).toBe(true)
     expect(calls[0]).toMatch(/INSERT INTO social_conversations/i)
     expect(calls.some(c => /INSERT INTO social_messages/i.test(c))).toBe(true)
+    // genuinely-new message → the counter bump UPDATE runs
+    expect(calls.some(c => /UPDATE social_conversations/i.test(c))).toBe(true)
   })
 
-  it('is idempotent — a duplicate platform_message_id inserts no second message', async () => {
+  it('is idempotent — a duplicate platform_message_id inserts no message AND bumps no counters', async () => {
+    const calls: string[] = []
     const db = {
-      queryOne: vi.fn(async () => ({ id: 'conv-1' })),
-      execute: vi.fn(async (sql: string) => (/INSERT INTO social_messages/i.test(sql) ? 0 : 1)),
+      queryOne: vi.fn(async (sql: string) => { calls.push(sql.trim().split('\n')[0]); return { id: 'conv-1' } }),
+      execute: vi.fn(async (sql: string) => {
+        calls.push(sql.trim().split('\n')[0])
+        return /INSERT INTO social_messages/i.test(sql) ? 0 : 1 // ON CONFLICT DO NOTHING → 0 rows
+      }),
     }
     const res = await recordInbound(db as any, 'client-1', 'acct-1', ev)
     expect(res.inserted).toBe(false)
+    // critical: no counter bump when the message was a duplicate
+    expect(calls.some(c => /UPDATE social_conversations/i.test(c))).toBe(false)
   })
 })

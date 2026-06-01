@@ -1,6 +1,11 @@
 // server/utils/socialInbox/store.ts
 // Idempotent persistence for inbox conversations + messages. Takes an injected
 // query runner so the upsert logic is unit-testable without a live DB.
+//
+// Idempotency contract: the conversation's counters (message_count/unread_count) and
+// last_message_* fields are only advanced when a message row is ACTUALLY new. A duplicate
+// delivery (webhook retry / overlapping poll window) inserts no message row and must not
+// move any counter — so the conversation bump runs AFTER, gated on rows-affected.
 import type { NormalizedEvent } from './types'
 
 export interface DbRunner {
@@ -8,29 +13,25 @@ export interface DbRunner {
   execute(sql: string, params?: any[]): Promise<number>
 }
 
-/** Upsert the conversation for an event, returning its id. */
-async function upsertConversation(db: DbRunner, clientId: string, accountId: string, ev: NormalizedEvent): Promise<string> {
+/** Ensure the conversation exists (identity/profile fields only — NO counter/last_message bump). */
+async function ensureConversation(db: DbRunner, clientId: string, accountId: string, ev: NormalizedEvent): Promise<string> {
   const row = await db.queryOne<{ id: string }>(
     `INSERT INTO social_conversations
        (client_id, social_account_id, platform, channel_type, platform_conversation_id,
-        permalink, participant_id, participant_name, participant_handle, rating,
-        last_message_at, last_message_preview, last_message_direction, message_count, unread_count, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, COALESCE($11, NOW()), $12, $13, 1, 1, NOW())
+        permalink, participant_id, participant_name, participant_handle, rating, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NOW())
      ON CONFLICT (social_account_id, channel_type, platform_conversation_id) DO UPDATE SET
-       last_message_at = COALESCE(EXCLUDED.last_message_at, social_conversations.last_message_at),
-       last_message_preview = EXCLUDED.last_message_preview,
-       last_message_direction = EXCLUDED.last_message_direction,
-       message_count = social_conversations.message_count + 1,
-       unread_count = social_conversations.unread_count + (CASE WHEN EXCLUDED.last_message_direction = 'in' THEN 1 ELSE 0 END),
-       status = CASE WHEN social_conversations.status = 'closed' THEN 'open' ELSE social_conversations.status END,
+       participant_name = COALESCE(EXCLUDED.participant_name, social_conversations.participant_name),
+       participant_handle = COALESCE(EXCLUDED.participant_handle, social_conversations.participant_handle),
+       permalink = COALESCE(EXCLUDED.permalink, social_conversations.permalink),
+       rating = COALESCE(EXCLUDED.rating, social_conversations.rating),
        updated_at = NOW()
      RETURNING id`,
     [clientId, accountId, ev.platform, ev.channelType, ev.platformConversationId,
      ev.permalink ?? null, ev.participant.id ?? null, ev.participant.name ?? null, ev.participant.handle ?? null,
-     ev.rating ?? null, ev.message.platformTimestamp ?? null,
-     (ev.message.content ?? '').slice(0, 200), ev.message.direction],
+     ev.rating ?? null],
   )
-  if (!row) throw new Error('upsertConversation: no id returned')
+  if (!row) throw new Error('ensureConversation: no id returned')
   return row.id
 }
 
@@ -48,14 +49,34 @@ async function insertMessage(db: DbRunner, conversationId: string, clientId: str
   )
 }
 
-/** Record an inbound event: upsert conversation, idempotently insert the message. */
+/** Advance conversation counters + last_message snapshot for a genuinely-new inbound message. */
+async function bumpConversationForInbound(db: DbRunner, conversationId: string, ev: NormalizedEvent): Promise<void> {
+  await db.execute(
+    `UPDATE social_conversations SET
+       last_message_at = GREATEST(COALESCE(last_message_at, '-infinity'::timestamptz), COALESCE($2::timestamptz, NOW())),
+       last_message_preview = $3,
+       last_message_direction = 'in',
+       message_count = message_count + 1,
+       unread_count = unread_count + 1,
+       status = CASE WHEN status = 'closed' THEN 'open' ELSE status END,
+       updated_at = NOW()
+     WHERE id = $1`,
+    [conversationId, ev.message.platformTimestamp ?? null, (ev.message.content ?? '').slice(0, 200)],
+  )
+}
+
+/**
+ * Record an inbound event: ensure the conversation, idempotently insert the message,
+ * and only bump counters/last_message when the message was actually new.
+ */
 export async function recordInbound(db: DbRunner, clientId: string, accountId: string, ev: NormalizedEvent) {
-  const conversationId = await upsertConversation(db, clientId, accountId, ev)
+  const conversationId = await ensureConversation(db, clientId, accountId, ev)
   const affected = await insertMessage(db, conversationId, clientId, ev)
+  if (affected > 0) await bumpConversationForInbound(db, conversationId, ev)
   return { conversationId, inserted: affected > 0 }
 }
 
-/** Record an outbound reply we just sent (direction='out'); also stamps the conversation. */
+/** Record an outbound reply we just sent (direction='out'); always a genuinely-new row. */
 export async function recordOutbound(
   db: DbRunner, conversationId: string, clientId: string,
   args: { platformMessageId: string | null; content: string; sentByUserId: string; messageType?: string },
