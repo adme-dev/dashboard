@@ -37,6 +37,18 @@ onMounted(async () => {
     state.value.scheduleMode = 'schedule'
     state.value.scheduledAt = new Date(route.query.date as string).toISOString()
   }
+  // Deep-link from Banner Studio: ?creative=<bannerPublishedId> prefills the media + creativeId.
+  const creativeId = route.query.creative as string | undefined
+  if (creativeId) {
+    try {
+      const creatives = await $fetch<{ id: string; url: string }[]>('/api/agency/banner-studio/published/with-projects')
+      const match = creatives.find(c => c.id === creativeId)
+      if (match) {
+        if (!state.value.mediaUrls.includes(match.url)) state.value.mediaUrls.push(match.url)
+        state.value.creativeId = match.id
+      }
+    } catch { /* non-fatal — composer still opens */ }
+  }
 })
 
 function guard(): string | null {
