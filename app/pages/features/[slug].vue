@@ -132,6 +132,107 @@ interface Feature {
 }
 
 const features: Record<string, Feature> = {
+  // ─── Social Publishing ────────────────────────────────────────
+  'social-calendar': {
+    title: 'Content Calendar',
+    slug: 'social-calendar',
+    icon: 'i-lucide-calendar-days',
+    category: 'Social Publishing',
+    categoryIcon: 'i-lucide-share-2',
+    categoryIconBg: 'bg-sky-50',
+    categoryIconColor: 'text-sky-600',
+    description: 'A single calendar hub for every organic social post across all your clients\' networks — colour-coded by status, with one-click composing from any day.',
+    details: [
+      {
+        title: 'Month-at-a-Glance Planning',
+        content: 'Every scheduled, drafted, and published post lands on the calendar on its target day, colour-coded by status — draft, scheduled, publishing, published, partially published, or failed. Navigate between months, jump back to today, and see exactly how a client\'s content cadence looks across every network in one view.'
+      },
+      {
+        title: 'Compose From Any Day',
+        content: 'Hover any day and click to start a new post pre-dated to that slot — the composer opens with the client and date already filled in. Click an existing post to jump straight into editing it. The calendar is the hub the whole publishing workflow radiates from.'
+      },
+      {
+        title: 'Built for Agencies',
+        content: 'Switch between clients from a single picker without leaving the page. Pending-approval counts surface right in the header so account managers know when something needs sign-off. Timezone-correct throughout, built on @internationalized/date so a Sydney 9am slot always resolves to the right instant.'
+      }
+    ]
+  },
+  'social-composer': {
+    title: 'Multi-Network Composer',
+    slug: 'social-composer',
+    icon: 'i-lucide-pen-square',
+    category: 'Social Publishing',
+    categoryIcon: 'i-lucide-share-2',
+    categoryIconBg: 'bg-sky-50',
+    categoryIconColor: 'text-sky-600',
+    description: 'Author a post once and tailor it per network — Facebook, Instagram, LinkedIn, TikTok, YouTube, and Google Business — with live per-network previews as you type.',
+    details: [
+      {
+        title: 'Customise Per Network',
+        content: 'Write a base post, then flip on per-network customisation to override the copy or media for any specific platform. Blank tabs inherit the base post automatically, so you only customise what actually needs to differ. Character counters warn you against the tightest limit across your selected networks.'
+      },
+      {
+        title: 'Live Previews',
+        content: 'See exactly how your post will render on each network as you write — Facebook feed, LinkedIn, TikTok, and YouTube previews update in real time from the resolved content (base plus any per-network override), reusing the same preview engine that powers paid ad mockups.'
+      },
+      {
+        title: 'Creative From Banner Studio',
+        content: 'Pull finished creatives straight from Banner Studio, add media from your library, or attach image URLs — the same creative engine your paid ads run on, now feeding organic. Outbound links are automatically UTM-stamped per network so attribution flows into your analytics.'
+      },
+      {
+        title: 'Deep-Linkable',
+        content: 'The composer opens pre-filled from anywhere — a calendar day, an existing draft, or a future campaign — via simple query parameters. First comments, hashtag groups, and internal tags round out a post that\'s ready to schedule across every channel at once.'
+      }
+    ]
+  },
+  'social-scheduling': {
+    title: 'Scheduling & Queue',
+    slug: 'social-scheduling',
+    icon: 'i-lucide-calendar-clock',
+    category: 'Social Publishing',
+    categoryIcon: 'i-lucide-share-2',
+    categoryIconBg: 'bg-sky-50',
+    categoryIconColor: 'text-sky-600',
+    description: 'Publish now, schedule for a specific time, or drop posts into recurring optimal slots — dispatched reliably with partial-success handling and no double-posts.',
+    details: [
+      {
+        title: 'Three Ways to Schedule',
+        content: 'Publish immediately, pick an exact date and time, or add a post to the queue to fill the next free recurring slot. Define posting slots per weekday and time in the Planner, and queued content flows into them automatically in priority order you control.'
+      },
+      {
+        title: 'Reliable Dispatch',
+        content: 'A companion Cloudflare Worker fires the publishing dispatcher every couple of minutes. Each due post is claimed with an idempotent database update, so overlapping runs can never double-publish. Failed attempts are bounded and surfaced — never silently retried into oblivion.'
+      },
+      {
+        title: 'Partial-Success Aware',
+        content: 'When a post targets several networks and one fails — an expired token, a platform hiccup — the others still go out. Per-network results are recorded individually, so you can see exactly what published where and retry only what failed, rather than re-blasting every channel.'
+      }
+    ]
+  },
+  'social-approvals': {
+    title: 'Social Approvals',
+    slug: 'social-approvals',
+    icon: 'i-lucide-clipboard-check',
+    category: 'Social Publishing',
+    categoryIcon: 'i-lucide-share-2',
+    categoryIconBg: 'bg-sky-50',
+    categoryIconColor: 'text-sky-600',
+    description: 'A request → approve/reject workflow with notifications, so nothing goes out without the right sign-off.',
+    details: [
+      {
+        title: 'Built-In Sign-Off',
+        content: 'Creatives request approval on a draft; managers approve or send it back with a reason. Approved posts become eligible to schedule or publish, while rejected ones return to draft with the feedback attached — a clean loop that keeps quality control in the workflow rather than in side-channel chat.'
+      },
+      {
+        title: 'Notifications That Reach the Right People',
+        content: 'Approval requests fan out to management-permission staff through the same notification system that powers the rest of the dashboard — in-app and web push. Decisions notify the original requester instantly, so approvals never stall waiting on someone to check a separate inbox.'
+      },
+      {
+        title: 'Ready for Client Approvals',
+        content: 'The approval workflow is architected so external client-portal sign-off drops in as an alternate approver — letting clients approve their own content without agency staff acting as a relay. Internal approvals ship first; client-facing approval is a fast-follow.'
+      }
+    ]
+  },
   // ─── Work Management ──────────────────────────────────────────
   'boards': {
     title: 'Boards',

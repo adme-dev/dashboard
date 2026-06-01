@@ -598,6 +598,7 @@ const featuresCol3b = [
   { title: 'Banner Studio', subtitle: 'HTML5 ad design & animation', icon: 'i-lucide-palette', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/banner-studio' },
   { title: 'Bulk Ad Launch', subtitle: 'Publish ads across platforms', icon: 'i-lucide-rocket', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/bulk-ad-launch' },
   { title: 'Ad Export', subtitle: 'Platform-compliant ZIP export', icon: 'i-lucide-download', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/ad-platform-export' },
+  { title: 'Social Publishing', subtitle: 'Plan, compose & schedule organic', icon: 'i-lucide-share-2', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', to: '/features/social-composer' },
 ]
 
 const featuresCol4 = [
