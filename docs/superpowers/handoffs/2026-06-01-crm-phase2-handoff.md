@@ -10,7 +10,7 @@
 ## TL;DR
 
 - **Phase 1 (Sales Productivity) is DONE and MERGED to `main`** via PR #60 (squash → `origin/main` `765e09fe`). **Not deployed** (deploy is user-gated).
-- **Phase 2 (Data Quality / Relationships / Governance) is IN PROGRESS** on branch **`feat/crm-enhancements-phase2`** (pushed). Done: migration 148 + **F11 relationships** + **F5 lifecycle+auto-tagging** (`03389626`) + **F12 field-level audit trail** (`fc6ccdc7`). Remaining: **F7, F6**. 92/92 CRM unit tests green.
+- **Phase 2 (Data Quality / Relationships / Governance) is FEATURE-COMPLETE** on branch **`feat/crm-enhancements-phase2`** (pushed, tip `b74963f3`). All of F11 + F5 + F12 + F7 + F6 done. **111/111 CRM unit tests green.** Remaining: 2E close-out (typecheck, open PR), then deploy on user go-ahead.
 - Everything lives in the isolated worktree **`.worktrees/crm-enh-phase1`** (its own non-symlinked `node_modules`). Other sessions are untouched.
 
 ---
@@ -64,6 +64,12 @@ Reference: plan sections 2C/2D. Next free migration is **149** (only if a featur
 ✅ **F5 — Lifecycle + auto-tagging — DONE** (`03389626`). `server/utils/crm/lifecycle.ts` (11 unit tests), hooks on opp-create/won (via `recordStageChange` `isWon`)/activity, agency+portal mirrored, list `?lifecycle/?tag` filters, lifecycle badge + tag chips columns, editable lifecycle+tags (UInputTags) in `RecordForm`. `app/utils/crmLifecycle.ts` shared display helper.
 
 ✅ **F12 — Field-level audit trail — DONE** (`fc6ccdc7`). `server/utils/crm/audit.ts` (`diffFields`/`recordFieldChanges`, 6 unit tests), wired into all 7 PATCH handlers (people/companies/opportunities columnar + engine records data-key+stage diff, agency+portal), `crm/audit/index.get` + portal mirror, `CrmAuditHistory` "History" section in person/company/opportunity/engine-record slideovers.
+
+✅ **F7 — Assignment + ownership/visibility — DONE** (`f8b9668b`). `assignment.ts` pickAssignee (TDD 6) + atomic round-robin `runAssignment` + `autoAssignOnCreate` (hooked into 4 create handlers). Visibility in `queryScope.ts` — `isOwnerScoped`/`visibilityConds`, dormant by default (`crm_settings.record_visibility='team'` ⇒ no extra cond, zero regression verified), wired into 3 agency list endpoints. `crm/settings` GET+PUT(admin) + `crm/assignment-rules` GET/upsert/delete(admin). UI: `CrmGovernanceSettings` "Settings" tab + `CrmOwnerSelect` (owner picker + Claim) in RecordForm/OpportunityForm. owner_id+assigned_to added to contact/opp PATCH (audited).
+
+✅ **F6 — Dedupe + merge — DONE** (`b74963f3`). `dedupe.ts` normalizers/phoneKey/diceCoefficient/similarityScore/candidatePairs (TDD 13) + `mergeContacts` (one-transaction child reassignment, collision+self-edge handling, merge_log). `crm/dedupe/{suggestions.get, merge.post(admin)}`. UI: `CrmDuplicatesManager` "Duplicates" tab. Real-DB integration: zero orphaned rows.
+
+— Below: original F7 spec (now implemented) —
 
 1. **F7 — Assignment + ownership/visibility** (`crm_assignment_rules`, `crm_settings` from 148)
    - TDD `server/utils/crm/assignment.ts`: `pickAssignee(rule)` incl. **atomic round-robin** via `UPDATE crm_assignment_rules SET assignment_index = (assignment_index+1) % len RETURNING`.
