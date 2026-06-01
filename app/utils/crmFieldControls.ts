@@ -24,6 +24,10 @@ export function formatCell(t: string, v: unknown): string {
   if (v === null || v === undefined || v === '') return '—'
   if (t === 'currency') return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(Number(v))
   if (t === 'checkbox') return v ? 'Yes' : 'No'
-  if (t === 'tags' && Array.isArray(v)) return v.join(', ')
+  if (t === 'tags') return Array.isArray(v) ? v.join(', ') : String(v)
+  if (t === 'rating') {
+    const n = Math.max(0, Math.min(5, Math.round(Number(v))))
+    return '★'.repeat(n) + '☆'.repeat(5 - n)
+  }
   return String(v)
 }
