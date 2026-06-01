@@ -1,4 +1,5 @@
-import { requireAuth } from '~~/server/utils/auth'
+import { requireRole } from '~~/server/utils/auth'
+import { PERMISSIONS } from '~~/server/utils/permissions'
 import { signState } from '~~/server/utils/socialOAuth/state'
 import { buildMetaAuthUrl } from '~~/server/utils/socialOAuth/meta'
 
@@ -7,7 +8,7 @@ import { buildMetaAuthUrl } from '~~/server/utils/socialOAuth/meta'
  * Builds a signed-state Meta OAuth URL and 302s the operator to Facebook.
  */
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
+  const user = await requireRole(event, PERMISSIONS.CREATIVE)
   const clientId = getQuery(event).clientId as string
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
 

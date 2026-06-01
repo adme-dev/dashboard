@@ -1,4 +1,5 @@
-import { requireAuth } from '~~/server/utils/auth'
+import { requireRole } from '~~/server/utils/auth'
+import { PERMISSIONS } from '~~/server/utils/permissions'
 import { queryOne, execute } from '~~/server/utils/db'
 import { verifyState } from '~~/server/utils/socialOAuth/state'
 import { mapPagesToAccountRows, subscribePageWebhook } from '~~/server/utils/socialOAuth/meta'
@@ -10,7 +11,7 @@ import { getPending, delPending } from '~~/server/utils/socialOAuth/pending'
  * Finalizes the operator's page selection from the KV-stashed pending connection.
  */
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
+  const user = await requireRole(event, PERMISSIONS.CREATIVE)
   const { token, pageIds } = await readBody(event)
   if (!token || !Array.isArray(pageIds) || !pageIds.length) {
     throw createError({ statusCode: 400, statusMessage: 'token and pageIds required' })
