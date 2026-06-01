@@ -74,16 +74,18 @@ async function loadStaleDimensionMaps(clientId: string | undefined, limit: numbe
     where += ` AND m.client_id = $${params.length}`
   }
   params.push(limit)
+  // Cursor by the per-property last *attempt* (ga4_property_map.dimension_synced_at,
+  // migration 143), NOT by MAX(ga4_daily_dimension.synced_at). Empty properties
+  // produce no dimension rows, so keying off the data table left them perpetually
+  // NULL at the NULLS-FIRST front of the queue — starving trafficked-but-unsynced
+  // properties when the never-attempted set exceeded the per-run batch size.
   return queryRows<MapRow>(
     `SELECT m.property_id, m.client_id, m.connection_id,
             c.access_token, c.refresh_token, c.token_expires_at
      FROM ga4_property_map m
      JOIN social_connections c ON c.id = m.connection_id
-     LEFT JOIN LATERAL (
-       SELECT MAX(d.synced_at) AS last_sync FROM ga4_daily_dimension d WHERE d.property_id = m.property_id
-     ) s ON TRUE
      WHERE ${where}
-     ORDER BY s.last_sync ASC NULLS FIRST
+     ORDER BY m.dimension_synced_at ASC NULLS FIRST
      LIMIT $${params.length}`,
     params
   )
@@ -216,10 +218,16 @@ export async function syncGa4Dimensions(
       }))
       result.eventRowsUpserted += await flushEventRows(evtRows)
 
+      // Stamp the attempt on the map regardless of how many rows came back, so
+      // empty (no-traffic) properties advance past the NULLS-FIRST front of the
+      // cursor after one attempt instead of being re-fetched every run (mig 143).
+      await execute(`UPDATE ga4_property_map SET dimension_synced_at = NOW() WHERE property_id = $1`, [map.property_id])
+
       result.propertiesSynced++
 
       if (quotaShouldThrottle(quota)) result.throttled = true
     } catch (err) {
+      // Leave dimension_synced_at untouched on failure so the property is retried first.
       result.errors.push(`property ${map.property_id}: ${(err as Error).message || err}`)
     }
   }
