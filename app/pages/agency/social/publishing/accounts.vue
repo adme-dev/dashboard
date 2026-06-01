@@ -40,7 +40,7 @@ function expiryState(a: SocialAccount): { label: string; color: string } {
 function connect(platform: string) {
   if (!clientId.value) return
   if (META_PLATFORMS.includes(platform)) {
-    window.location.href = `/api/agency/social/publishing/accounts/connect/meta?clientId=${clientId.value}`
+    window.location.href = `/api/agency/social/publishing/accounts/connect/meta?clientId=${encodeURIComponent(clientId.value)}`
   }
 }
 
@@ -52,7 +52,8 @@ async function disconnect(a: SocialAccount) {
 // --- Page-selection modal (multi-page Meta connections) ---
 const selectOpen = ref(false)
 const selectToken = ref('')
-const selectPages = ref<Array<{ id: string; name: string; igUsername?: string }>>([])
+type SelectPage = { id: string; name: string; igUsername?: string; status?: 'new' | 'connected' | 'conflict' }
+const selectPages = ref<SelectPage[]>([])
 const selectChosen = ref<string[]>([])
 const selecting = ref(false)
 
@@ -77,7 +78,7 @@ async function confirmSelection() {
 
 onMounted(async () => {
   if (route.query.social_connected) {
-    toast.add({ title: `Connected ${route.query.social_connected} page(s)`, color: 'success' })
+    toast.add({ title: 'Page connected', color: 'success' })
     await load(); router.replace({ query: {} })
   } else if (route.query.social_error) {
     toast.add({ title: 'Connection failed', description: String(route.query.social_error).replace(/_/g, ' '), color: 'error' })
@@ -85,8 +86,11 @@ onMounted(async () => {
   } else if (route.query.social_select) {
     selectToken.value = String(route.query.social_select)
     selectChosen.value = []
-    try { selectPages.value = await $fetch('/api/agency/social/publishing/accounts/pending', { query: { token: selectToken.value } }) }
-    catch { selectPages.value = []; toast.add({ title: 'Selection expired — please reconnect', color: 'warning' }) }
+    try {
+      selectPages.value = await $fetch('/api/agency/social/publishing/accounts/pending', { query: { token: selectToken.value } })
+      // Pre-check pages already connected to this client; conflict pages stay unchecked + disabled.
+      selectChosen.value = selectPages.value.filter(p => p.status === 'connected').map(p => p.id)
+    } catch { selectPages.value = []; toast.add({ title: 'Selection expired — please reconnect', color: 'warning' }) }
     if (selectPages.value.length) selectOpen.value = true
     router.replace({ query: {} })
   }
@@ -126,9 +130,12 @@ onMounted(async () => {
         </template>
         <template v-else>
           <UButton
-            v-if="META_PLATFORMS.includes(p)"
+            v-if="p === 'facebook'"
             size="xs" variant="subtle" icon="i-lucide-plus" :disabled="!clientId" @click="connect(p)"
           >Connect</UButton>
+          <UTooltip v-else-if="p === 'instagram'" text="Instagram connects automatically with a linked Facebook Page">
+            <UButton size="xs" variant="subtle" color="neutral" disabled icon="i-lucide-link-2">Via Facebook</UButton>
+          </UTooltip>
           <UTooltip v-else text="Coming soon — needs platform app registration">
             <UButton size="xs" variant="subtle" color="neutral" disabled icon="i-lucide-plus">Connect</UButton>
           </UTooltip>
@@ -144,12 +151,21 @@ onMounted(async () => {
             <p class="text-sm text-muted mt-0.5">These Facebook Pages are available on the authorized Meta account. Pick the ones for this client.</p>
           </div>
           <div class="space-y-2 max-h-80 overflow-auto">
-            <label v-for="pg in selectPages" :key="pg.id" class="flex items-center gap-3 rounded-lg border border-default p-3 cursor-pointer hover:bg-elevated">
-              <UCheckbox :model-value="selectChosen.includes(pg.id)" @update:model-value="(v:any) => togglePage(pg.id, !!v)" />
-              <div class="min-w-0">
+            <label
+              v-for="pg in selectPages" :key="pg.id"
+              class="flex items-center gap-3 rounded-lg border border-default p-3"
+              :class="pg.status === 'conflict' ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:bg-elevated'"
+            >
+              <UCheckbox
+                :model-value="selectChosen.includes(pg.id)" :disabled="pg.status === 'conflict'"
+                @update:model-value="(v:any) => togglePage(pg.id, !!v)"
+              />
+              <div class="min-w-0 flex-1">
                 <div class="text-sm font-medium truncate">{{ pg.name }}</div>
                 <div v-if="pg.igUsername" class="text-xs text-muted truncate">+ Instagram @{{ pg.igUsername }}</div>
               </div>
+              <UBadge v-if="pg.status === 'connected'" color="success" variant="subtle" size="sm">Connected</UBadge>
+              <UBadge v-else-if="pg.status === 'conflict'" color="warning" variant="subtle" size="sm">Another client</UBadge>
             </label>
           </div>
           <div class="flex justify-end gap-2">

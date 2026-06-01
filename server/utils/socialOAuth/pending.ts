@@ -30,7 +30,8 @@ export async function getPending(event: H3Event, nonce: string): Promise<Pending
   const store = kv(event)
   if (!store) return null
   const raw = await store.get(key(nonce))
-  return raw ? JSON.parse(raw) as PendingConnection : null
+  if (!raw) return null
+  try { return JSON.parse(raw) as PendingConnection } catch { return null }
 }
 
 export async function delPending(event: H3Event, nonce: string): Promise<void> {

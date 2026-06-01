@@ -19,9 +19,13 @@ export default defineEventHandler(async (event) => {
   const secret = process.env.SOCIAL_OAUTH_STATE_SECRET || process.env.META_APP_SECRET || ''
   const sel = verifyState<{ nonce: string; clientId: string; userId: string }>(String(token), secret, 600_000)
   if (!sel) throw createError({ statusCode: 400, statusMessage: 'invalid or expired selection' })
+  // Bind the selection to the operator who started it — a leaked token can't be finalized by someone else.
+  if (sel.userId !== String(user.id)) throw createError({ statusCode: 403, statusMessage: 'not your selection' })
 
   const pending = await getPending(event, sel.nonce)
   if (!pending) throw createError({ statusCode: 410, statusMessage: 'selection expired' })
+  // Consume the pending entry up front so a captured token can't be replayed (the second attempt 410s).
+  await delPending(event, sel.nonce)
 
   const chosen = pending.pages.filter(p => pageIds.includes(p.id))
   if (!chosen.length) throw createError({ statusCode: 400, statusMessage: 'no matching pages' })
@@ -40,6 +44,5 @@ export default defineEventHandler(async (event) => {
     }
     if (!conflict) connected.push(page.name)
   }
-  await delPending(event, sel.nonce)
   return { connected, conflicts }
 })

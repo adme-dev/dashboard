@@ -31,6 +31,7 @@ export function verifyState<T = any>(token: string, secret: string, maxAgeMs: nu
   } catch { return null }
   let data: any
   try { data = JSON.parse(fromB64url(body).toString('utf8')) } catch { return null }
-  if (typeof data?.ts === 'number' && Date.now() - data.ts > maxAgeMs) return null
+  // Expiry is mandatory: a payload without a numeric ts is rejected (signState always stamps one).
+  if (typeof data?.ts !== 'number' || Date.now() - data.ts > maxAgeMs) return null
   return data as T
 }
