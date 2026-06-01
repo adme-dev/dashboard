@@ -1,0 +1,12 @@
+// server/api/crm/line-items/index.get.ts — list an opportunity's line-items.
+import { z } from 'zod'
+import { requireAuth } from '~~/server/utils/auth'
+import { listLineItems } from '~~/server/utils/crm/lineItemsDb'
+
+const Query = z.object({ client_id: z.string().uuid(), opportunity_id: z.string().uuid() })
+
+export default defineEventHandler(async (event) => {
+  await requireAuth(event)
+  const q = Query.parse(getQuery(event))
+  return { items: await listLineItems(q.client_id, q.opportunity_id) }
+})

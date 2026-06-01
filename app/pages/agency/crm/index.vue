@@ -61,6 +61,14 @@ const activeObject = computed<CrmObjectDef | null>(() =>
 )
 // Reset to a core tab when the client changes — a config-object tab may not exist for the new client.
 watch(clientId, () => { tab.value = 'people' })
+
+// F8 global search — route a selected hit to the matching list tab.
+const SEARCH_TYPE_TAB: Record<string, string> = {
+  person: 'people', company: 'companies', opportunity: 'pipeline', task: 'tasks', activity: 'tasks',
+}
+function onSearchSelect(r: { type: string }) {
+  tab.value = SEARCH_TYPE_TAB[r.type] ?? 'people'
+}
 </script>
 
 <template>
@@ -70,15 +78,18 @@ watch(clientId, () => { tab.value = 'people' })
         <h1 class="text-2xl font-bold tracking-tight">CRM</h1>
         <p class="text-sm text-muted mt-0.5">Manage a client's contacts and companies.</p>
       </div>
-      <UFormField label="Client" class="w-64">
-        <USelectMenu
-          v-model="clientId"
-          :items="clientOptions"
-          value-key="value"
-          placeholder="Select a client"
-          icon="i-lucide-briefcase"
-        />
-      </UFormField>
+      <div class="flex items-end gap-3">
+        <CrmGlobalSearch v-if="clientId" :client-id="clientId" @select="onSearchSelect" />
+        <UFormField label="Client" class="w-64">
+          <USelectMenu
+            v-model="clientId"
+            :items="clientOptions"
+            value-key="value"
+            placeholder="Select a client"
+            icon="i-lucide-briefcase"
+          />
+        </UFormField>
+      </div>
     </div>
 
     <div

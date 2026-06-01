@@ -320,3 +320,118 @@ export interface CrmSettings {
   record_visibility: 'team' | 'owner'
   updated_at: string
 }
+
+// ── Phase 3: Power-User UX & Integrations ────────────────────────────────────
+
+export type CrmEntity = 'people' | 'companies' | 'opportunities'
+
+/** F9 — one filter clause (matches server/utils/crm/filters.ts grammar). */
+export interface CrmFilterClause {
+  field: string
+  op: string
+  value?: unknown
+}
+
+/** F8 — a unified search hit across CRM entities. */
+export type CrmSearchTargetType = 'person' | 'company' | 'opportunity' | 'activity' | 'task'
+export interface CrmSearchResult {
+  type: CrmSearchTargetType
+  id: string
+  title: string
+  subtitle: string | null
+  rank: number
+}
+
+/** F9 — a saved list view (filters + visible columns). */
+export interface CrmView {
+  id: string
+  client_id: string
+  entity: CrmEntity
+  name: string
+  filters: Record<string, unknown>
+  columns: string[]
+  is_shared: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** F10 — a logged communication on the unified timeline. */
+export type CrmCommChannel = 'email' | 'call' | 'sms' | 'meeting' | 'note'
+export type CrmCommDirection = 'inbound' | 'outbound'
+export type CrmCommSource = 'manual' | 'email_bridge' | 'lead_bridge'
+export interface CrmCommunication {
+  id: string
+  client_id: string
+  person_id: string | null
+  company_id: string | null
+  channel: CrmCommChannel
+  direction: CrmCommDirection | null
+  subject: string | null
+  body: string | null
+  occurred_at: string
+  external_id: string | null
+  source: CrmCommSource
+  metadata: Record<string, unknown>
+  created_by: string | null
+  created_at: string
+}
+
+/** F10 — contact-preference flags (live on the person record). */
+export interface CrmContactPrefs {
+  do_not_contact: boolean
+  do_not_email: boolean
+  do_not_call: boolean
+  do_not_sms: boolean
+  preferred_channel: string | null
+  best_time: string | null
+}
+
+/** F13 — a document/attachment stored in R2 against a record. */
+export interface CrmDocument {
+  id: string
+  client_id: string
+  target_type: 'person' | 'company' | 'opportunity'
+  target_id: string
+  file_key: string
+  file_name: string
+  content_type: string | null
+  size_bytes: number | null
+  document_type: string | null
+  expires_at: string | null
+  uploaded_by: string | null
+  created_at: string
+}
+
+/** F14 — an opportunity line-item (line_total is generated). */
+export interface CrmLineItem {
+  id: string
+  client_id: string
+  opportunity_id: string
+  description: string
+  quantity: number
+  unit_price: number
+  line_total: number
+  position: number
+}
+
+/** F15 — a per-rep sales target over a window, with computed attainment. */
+export type CrmTargetType = 'revenue' | 'count'
+export interface CrmSalesTarget {
+  id: string
+  client_id: string
+  user_id: string
+  period_start: string
+  period_end: string
+  target_type: CrmTargetType
+  target_value: number
+  created_at: string
+}
+export interface CrmAttainmentRow {
+  user_id: string
+  user_name: string | null
+  target_type: CrmTargetType
+  target_value: number
+  actual: number
+  attainment_pct: number
+}

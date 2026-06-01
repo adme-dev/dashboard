@@ -3,12 +3,35 @@ import type { CrmCompany } from '~/types/crm'
 
 const props = defineProps<{ clientId: string }>()
 const clientId = toRef(props, 'clientId')
-const { data, pending, search, lifecycle, tag, create, update, remove } = useCrmCompanies(clientId)
+const { data, pending, refresh, search, lifecycle, tag, filters, create, update, remove } = useCrmCompanies(clientId)
 const toast = useToast()
 
 const slideoverOpen = ref(false)
 const editing = ref<CrmCompany | null>(null)
 const fieldsOpen = ref(false)
+
+// F9 — selection + bulk + export.
+const selected = ref<Set<string>>(new Set())
+const selectedIds = computed(() => [...selected.value])
+function toggleRow(id: string, on: boolean) { on ? selected.value.add(id) : selected.value.delete(id); selected.value = new Set(selected.value) }
+function clearSelection() { selected.value = new Set() }
+async function onBulkDone() { clearSelection(); await refresh() }
+watch(data, () => { if (selected.value.size) clearSelection() })
+const pageIds = computed(() => (data.value?.items ?? []).map(c => c.id))
+const allSelected = computed(() => pageIds.value.length > 0 && pageIds.value.every(id => selected.value.has(id)))
+function toggleAll(on: boolean) {
+  const next = new Set(selected.value)
+  for (const id of pageIds.value) on ? next.add(id) : next.delete(id)
+  selected.value = next
+}
+const exportBase = inject<string>('crmApiBase', '/api/crm')
+function exportUrl(format: 'csv' | 'xlsx') {
+  const p = new URLSearchParams({ entity: 'companies', format })
+  if (exportBase === '/api/crm') p.set('client_id', clientId.value)
+  if (search.value.trim()) p.set('q', search.value.trim())
+  if (filters.value.length) p.set('filters', JSON.stringify(filters.value))
+  return `${exportBase}/export?${p.toString()}`
+}
 
 // Lifecycle + tag filters (sentinel-safe: 'all' ⇒ no filter).
 const lifecycleFilter = computed({
@@ -27,6 +50,7 @@ const tagOptions = computed(() => {
 })
 
 const columns = [
+  { accessorKey: 'select', header: 'select' },
   { accessorKey: 'name', header: 'Name' },
   { accessorKey: 'domain', header: 'Domain' },
   { accessorKey: 'lifecycle', header: 'Lifecycle' },
@@ -64,9 +88,36 @@ async function onDelete(c: CrmCompany) {
     <div class="flex flex-wrap items-center gap-2">
       <USelectMenu v-model="lifecycleFilter" :items="LIFECYCLE_FILTER_OPTIONS" value-key="value" size="sm" class="w-44" />
       <USelectMenu v-model="tagFilter" :items="tagOptions" value-key="value" size="sm" class="w-44" searchable />
+      <CrmFilterBuilder v-model="filters" entity="companies" />
+      <CrmSavedViews v-model="filters" entity="companies" :client-id="clientId" />
+      <div class="flex-1" />
+      <UDropdownMenu :items="[[
+        { label: 'Export CSV', icon: 'i-lucide-file-text', to: exportUrl('csv'), target: '_blank', external: true },
+        { label: 'Export Excel', icon: 'i-lucide-sheet', to: exportUrl('xlsx'), target: '_blank', external: true },
+      ]]">
+        <UButton icon="i-lucide-download" variant="ghost" color="neutral" size="sm" trailing-icon="i-lucide-chevron-down">Export</UButton>
+      </UDropdownMenu>
     </div>
 
+    <CrmBulkBar
+      v-if="selectedIds.length"
+      entity="companies"
+      :client-id="clientId"
+      :selected-ids="selectedIds"
+      @done="onBulkDone"
+    />
+
     <UTable :data="data?.items ?? []" :columns="columns" :loading="pending">
+      <template #select-header>
+        <UCheckbox :model-value="allSelected" aria-label="Select all" @update:model-value="(v: boolean) => toggleAll(!!v)" />
+      </template>
+      <template #select-cell="{ row }">
+        <UCheckbox
+          :model-value="selected.has(row.original.id)"
+          :aria-label="`Select ${row.original.name}`"
+          @update:model-value="(v: boolean) => toggleRow(row.original.id, !!v)"
+        />
+      </template>
       <template #name-cell="{ row }">
         <button class="font-medium text-highlighted hover:underline" @click="openEdit(row.original)">
           {{ row.original.name }}

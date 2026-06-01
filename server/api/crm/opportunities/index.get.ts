@@ -5,12 +5,14 @@ import { z } from 'zod'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRows, queryCount } from '~~/server/utils/db'
 import { isOwnerScoped } from '~~/server/utils/crm/queryScope'
+import { buildFilterConds, parseFilters } from '~~/server/utils/crm/filters'
 
 const Query = z.object({
   client_id: z.string().uuid(),
   stage_id: z.string().uuid().optional(),
   status: z.enum(['open', 'won', 'lost']).optional(),
   q: z.string().optional(),
+  filters: z.string().optional(),
   page: z.coerce.number().int().min(1).default(1),
   page_size: z.coerce.number().int().min(1).max(500).default(200),
 })
@@ -26,6 +28,12 @@ export default defineEventHandler(async (event) => {
   if (q.q) {
     const safe = q.q.replace(/[%_]/g, c => '\\' + c)
     params.push(`%${safe}%`); conds.push(`o.name ILIKE $${params.length}`)
+  }
+  // F9 advanced filters — aliased to `o`; fold each Cond's `?` into numbered params.
+  for (const c of buildFilterConds('opportunities', parseFilters(q.filters), 'o')) {
+    let sql = c.sql
+    for (const p of c.params) { params.push(p); sql = sql.replace('?', `$${params.length}`) }
+    conds.push(sql)
   }
   // Owner-visibility (default 'team' adds nothing → query unchanged).
   if (await isOwnerScoped(q.client_id, user)) {

@@ -5,7 +5,7 @@ import { queryOne, queryRows } from '~~/server/utils/db'
 import { validateCustomFields, type FieldDef } from '~~/server/utils/crm/customFields'
 import { recordFieldChanges } from '~~/server/utils/crm/audit'
 
-const AUDIT_COLS = ['company_id', 'first_name', 'last_name', 'email', 'phone', 'mobile', 'job_title', 'department', 'city', 'notes', 'lifecycle_stage', 'tags', 'owner_id', 'assigned_to'] as const
+const AUDIT_COLS = ['company_id', 'first_name', 'last_name', 'email', 'phone', 'mobile', 'job_title', 'department', 'city', 'notes', 'lifecycle_stage', 'tags', 'owner_id', 'assigned_to', 'do_not_contact', 'do_not_email', 'do_not_call', 'do_not_sms', 'preferred_channel', 'best_time'] as const
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -23,6 +23,13 @@ const Body = z.object({
   tags: z.array(z.string()).optional(),
   owner_id: z.string().uuid().nullable().optional(),
   assigned_to: z.string().uuid().nullable().optional(),
+  // F10 contact preferences.
+  do_not_contact: z.boolean().optional(),
+  do_not_email: z.boolean().optional(),
+  do_not_call: z.boolean().optional(),
+  do_not_sms: z.boolean().optional(),
+  preferred_channel: z.string().nullable().optional(),
+  best_time: z.string().nullable().optional(),
   custom_fields: z.record(z.string(), z.unknown()).optional(),
 })
 

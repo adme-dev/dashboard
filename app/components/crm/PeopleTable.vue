@@ -3,8 +3,26 @@ import type { CrmPerson } from '~/types/crm'
 
 const props = defineProps<{ clientId: string }>()
 const clientId = toRef(props, 'clientId')
-const { data, pending, search, lifecycle, tag, create, update, remove, importCsv } = useCrmPeople(clientId)
+const { data, pending, refresh, search, lifecycle, tag, filters, create, update, remove, importCsv } = useCrmPeople(clientId)
 const toast = useToast()
+
+// F9 — advanced filters, row selection + bulk, and export.
+const selected = ref<Set<string>>(new Set())
+const selectedIds = computed(() => [...selected.value])
+function toggleRow(id: string, on: boolean) { on ? selected.value.add(id) : selected.value.delete(id); selected.value = new Set(selected.value) }
+function clearSelection() { selected.value = new Set() }
+async function onBulkDone() { clearSelection(); await refresh() }
+// Drop stale selections whenever the underlying list changes.
+watch(data, () => { if (selected.value.size) clearSelection() })
+
+const exportBase = inject<string>('crmApiBase', '/api/crm')
+function exportUrl(format: 'csv' | 'xlsx') {
+  const p = new URLSearchParams({ entity: 'people', format })
+  if (exportBase === '/api/crm') p.set('client_id', clientId.value)
+  if (search.value.trim()) p.set('q', search.value.trim())
+  if (filters.value.length) p.set('filters', JSON.stringify(filters.value))
+  return `${exportBase}/export?${p.toString()}`
+}
 
 // Lifecycle + tag filters (sentinel-safe: 'all' ⇒ no filter).
 const lifecycleFilter = computed({
@@ -44,7 +62,16 @@ const rows = computed(() => {
   return [...items].sort((a, b) => (scoreOf(b.id)?.total_score ?? -1) - (scoreOf(a.id)?.total_score ?? -1))
 })
 
+const pageIds = computed(() => (rows.value ?? []).map(p => p.id))
+const allSelected = computed(() => pageIds.value.length > 0 && pageIds.value.every(id => selected.value.has(id)))
+function toggleAll(on: boolean) {
+  const next = new Set(selected.value)
+  for (const id of pageIds.value) on ? next.add(id) : next.delete(id)
+  selected.value = next
+}
+
 const columns = computed(() => [
+  { accessorKey: 'select', header: 'select' },
   { accessorKey: 'name', header: 'Name' },
   { accessorKey: 'email', header: 'Email' },
   { accessorKey: 'phone', header: 'Phone' },
@@ -115,9 +142,36 @@ async function onImport(csv: string) {
     <div class="flex flex-wrap items-center gap-2">
       <USelectMenu v-model="lifecycleFilter" :items="LIFECYCLE_FILTER_OPTIONS" value-key="value" size="sm" class="w-44" />
       <USelectMenu v-model="tagFilter" :items="tagOptions" value-key="value" size="sm" class="w-44" searchable />
+      <CrmFilterBuilder v-model="filters" entity="people" />
+      <CrmSavedViews v-model="filters" entity="people" :client-id="clientId" />
+      <div class="flex-1" />
+      <UDropdownMenu :items="[[
+        { label: 'Export CSV', icon: 'i-lucide-file-text', to: exportUrl('csv'), target: '_blank', external: true },
+        { label: 'Export Excel', icon: 'i-lucide-sheet', to: exportUrl('xlsx'), target: '_blank', external: true },
+      ]]">
+        <UButton icon="i-lucide-download" variant="ghost" color="neutral" size="sm" trailing-icon="i-lucide-chevron-down">Export</UButton>
+      </UDropdownMenu>
     </div>
 
+    <CrmBulkBar
+      v-if="selectedIds.length"
+      entity="people"
+      :client-id="clientId"
+      :selected-ids="selectedIds"
+      @done="onBulkDone"
+    />
+
     <UTable :data="rows" :columns="columns" :loading="pending">
+      <template #select-header>
+        <UCheckbox :model-value="allSelected" aria-label="Select all" @update:model-value="(v: boolean) => toggleAll(!!v)" />
+      </template>
+      <template #select-cell="{ row }">
+        <UCheckbox
+          :model-value="selected.has(row.original.id)"
+          :aria-label="`Select ${fullName(row.original)}`"
+          @update:model-value="(v: boolean) => toggleRow(row.original.id, !!v)"
+        />
+      </template>
       <template #name-cell="{ row }">
         <button class="font-medium text-highlighted hover:underline" @click="openEdit(row.original)">
           {{ fullName(row.original) }}
