@@ -19,6 +19,8 @@ const title = computed(() => props.record ? 'Edit opportunity' : 'New opportunit
       />
       <template v-if="record?.id">
         <USeparator class="my-4" />
+        <CrmLineItems :client-id="clientId" :opportunity="record" />
+        <USeparator class="my-4" />
         <CrmTaskList :client-id="clientId" target-type="opportunity" :target-id="record.id" />
         <USeparator class="my-4" />
         <CrmDocuments :client-id="clientId" target-type="opportunity" :target-id="record.id" />
