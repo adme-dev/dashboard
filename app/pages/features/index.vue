@@ -145,6 +145,8 @@ const categories = [
       { title: 'Multi-Network Composer', slug: 'social-composer', icon: 'i-lucide-pen-square', description: 'Author once, customise per network. Publish to Facebook, Instagram, LinkedIn, TikTok, YouTube, and Google Business with live per-network previews.' },
       { title: 'Scheduling & Queue', slug: 'social-scheduling', icon: 'i-lucide-calendar-clock', description: 'Publish now, schedule for later, or drop into recurring optimal posting slots — dispatched reliably with idempotent, partial-success-aware publishing.' },
       { title: 'Approvals', slug: 'social-approvals', icon: 'i-lucide-clipboard-check', description: 'Request → approve/reject workflow with notifications, so nothing goes out without sign-off.' },
+      { title: 'Engagement Inbox', slug: 'social-inbox', icon: 'i-lucide-messages-square', description: 'Every comment, mention, and message across your networks in one unified inbox — read, triage, and reply without leaving the dashboard.' },
+      { title: 'Reviews', slug: 'social-reviews', icon: 'i-lucide-star', description: 'Track and respond to Google Business and Facebook reviews in one place, with ratings at a glance.' },
     ]
   },
   {

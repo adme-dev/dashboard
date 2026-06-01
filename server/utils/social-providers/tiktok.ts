@@ -10,7 +10,8 @@
  * Rate limits: 6 requests per minute per user token
  */
 
-import type { SocialPostProvider, PostParams, PostResult, MediaItem } from './types'
+import type { SocialPostProvider, PostParams, PostResult, MediaItem, FetchInboxParams, FetchInboxResult, ReplyParams, ReplyResult } from './types'
+import type { InboxItem } from '~~/server/utils/socialInbox/types'
 
 const TIKTOK_API_BASE = 'https://open.tiktokapis.com/v2'
 
@@ -231,4 +232,52 @@ export const tiktokProvider: SocialPostProvider = {
       error: 'No supported media found. Provide at least one image or video.',
     }
   },
+}
+
+// --- Slice 2 inbox: TikTok video comments (best-effort) ---
+/** Pure: map a TikTok comment/list response to InboxItems + next cursor. */
+export function mapTikTokComments(api: any): FetchInboxResult {
+  const d = api?.data ?? {}
+  const items: InboxItem[] = (d.comments ?? []).map((c: any) => ({
+    channelType: 'comment' as const,
+    platformConversationId: String(c.video_id ?? ''),
+    participant: { id: c.user?.open_id, name: c.user?.display_name },
+    platformMessageId: String(c.comment_id ?? ''),
+    authorId: c.user?.open_id,
+    authorName: c.user?.display_name,
+    content: c.text ?? '',
+    messageType: 'comment',
+    platformTimestamp: c.create_time ? new Date(c.create_time * 1000).toISOString() : undefined,
+  }))
+  return { items, nextCursor: d.has_more ? String(d.cursor ?? '') : null }
+}
+
+tiktokProvider.fetchInbox = async ({ accessToken, cursor }: FetchInboxParams): Promise<FetchInboxResult> => {
+  // Best-effort: TikTok comment list requires a video_id (passed via cursor as `${videoId}:${pageCursor}`).
+  if (!cursor) return { items: [], nextCursor: null }
+  const [videoId, page] = cursor.split(':')
+  const res = await fetch(`${TIKTOK_API_BASE}/video/comment/list/`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ video_id: videoId, max_count: 50, cursor: page ? Number(page) : 0 }),
+  })
+  if (!res.ok) throw new Error(`tiktok fetchInbox ${res.status}`)
+  return mapTikTokComments(await res.json())
+}
+
+tiktokProvider.reply = async ({ accessToken, conversationId, content }: ReplyParams): Promise<ReplyResult> => {
+  // TikTok comment reply requires the comment.reply scope, which may be unavailable. Degrade gracefully.
+  try {
+    const res = await fetch(`${TIKTOK_API_BASE}/video/comment/reply/create/`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ comment_id: conversationId, text: content }),
+    })
+    const j: any = await res.json().catch(() => ({}))
+    return res.ok && !j?.error?.code
+      ? { platformMessageId: String(j?.data?.comment_id ?? ''), status: 'success' }
+      : { platformMessageId: '', status: 'failed', error: j?.error?.message ?? `http ${res.status}` }
+  } catch (e: any) {
+    return { platformMessageId: '', status: 'failed', error: e?.message ?? 'tiktok reply failed' }
+  }
 }

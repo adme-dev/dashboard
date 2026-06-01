@@ -1276,6 +1276,43 @@ export interface SocialSlot {
   enabled: boolean
 }
 
+// --- Social Inbox (Slice 2) ---
+export type SocialChannelType = 'comment' | 'dm' | 'mention' | 'review'
+
+export interface SocialConversation {
+  id: string
+  client_id: string
+  social_account_id: string | null
+  platform: string
+  channel_type: SocialChannelType
+  permalink: string | null
+  participant_name: string | null
+  participant_handle: string | null
+  status: 'open' | 'snoozed' | 'closed'
+  last_message_at: string | null
+  last_message_preview: string | null
+  last_message_direction: 'in' | 'out' | null
+  unread_count: number
+  message_count: number
+  rating: number | null
+  tags: string[] | null
+  created_at: string
+}
+
+export interface SocialMessage {
+  id: string
+  conversation_id: string
+  platform_message_id: string | null
+  direction: 'in' | 'out'
+  author_name: string | null
+  message_type: string
+  content: string | null
+  attachments: Array<{ url: string; type: string }>
+  is_internal_note: boolean
+  platform_timestamp: string | null
+  created_at: string
+}
+
 export interface AudioAsset {
   id: string
   clientId: string | null

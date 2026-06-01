@@ -8,7 +8,8 @@
  * Reference: https://developers.facebook.com/docs/video-api/guides/reels-publishing
  */
 
-import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaItem } from './types'
+import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaItem, FetchInboxParams, FetchInboxResult, ReplyParams, ReplyResult } from './types'
+import type { InboxItem } from '~~/server/utils/socialInbox/types'
 
 const GRAPH_API_BASE = 'https://graph.facebook.com/v20.0'
 
@@ -237,4 +238,46 @@ export const facebookProvider: SocialPostProvider = {
       return parseGraphError(err)
     }
   },
+}
+
+// --- Slice 2 inbox: Facebook recommendations (reviews) ---
+/** Pure: map a Facebook page `ratings` edge response to InboxItems + next cursor. */
+export function mapFacebookRatings(api: any): FetchInboxResult {
+  const items: InboxItem[] = (api?.data ?? []).map((r: any) => ({
+    channelType: 'review' as const,
+    platformConversationId: String(r.open_graph_story?.id ?? r.reviewer?.id ?? ''),
+    participant: { id: r.reviewer?.id, name: r.reviewer?.name },
+    platformMessageId: String(r.open_graph_story?.id ?? `${r.reviewer?.id}_${r.created_time}`),
+    authorName: r.reviewer?.name,
+    content: r.review_text ?? '',
+    messageType: 'review',
+    rating: r.recommendation_type === 'positive' ? 5 : r.recommendation_type === 'negative' ? 1 : undefined,
+    platformTimestamp: r.created_time,
+  }))
+  return { items, nextCursor: api?.paging?.cursors?.after ?? null }
+}
+
+facebookProvider.fetchInbox = async ({ accountId, accessToken, cursor }: FetchInboxParams): Promise<FetchInboxResult> => {
+  // Reviews (recommendations). Page comments arrive via the Meta webhook, not this poll.
+  const url = new URL(`${GRAPH_API_BASE}/${accountId}/ratings`)
+  url.searchParams.set('fields', 'reviewer,review_text,recommendation_type,created_time,open_graph_story')
+  url.searchParams.set('access_token', accessToken)
+  url.searchParams.set('limit', '50')
+  if (cursor) url.searchParams.set('after', cursor)
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`facebook fetchInbox ${res.status}`)
+  return mapFacebookRatings(await res.json())
+}
+
+facebookProvider.reply = async ({ accessToken, conversationId, content }: ReplyParams): Promise<ReplyResult> => {
+  // conversationId = the comment id (from webhook) or object id; reply posts a comment on it.
+  const res = await fetch(`${GRAPH_API_BASE}/${conversationId}/comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: content, access_token: accessToken }),
+  })
+  const j: any = await res.json().catch(() => ({}))
+  return res.ok && j.id
+    ? { platformMessageId: String(j.id), status: 'success' }
+    : { platformMessageId: '', status: 'failed', error: j?.error?.message ?? `http ${res.status}` }
 }
