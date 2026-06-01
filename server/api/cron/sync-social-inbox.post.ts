@@ -7,6 +7,9 @@ import { isSocialAutomationEnabled } from '~~/server/utils/socialInbox/automatio
 import { processPendingAutomation } from '~~/server/utils/socialInbox/automation'
 import { generateReplyDraft } from '~~/server/utils/socialInbox/aiDraft'
 import { dispatchReply } from '~~/server/utils/socialInbox/dispatch'
+import { onInboundRecorded } from '~~/server/utils/socialInbox/workflow'
+import { findBreaches } from '~~/server/utils/socialInbox/sla'
+import { createNotification } from '~~/server/utils/notifications'
 
 /**
  * POST /api/cron/sync-social-inbox
@@ -51,7 +54,16 @@ export default defineEventHandler(async (event) => {
         })
         for (const item of items.filter(i => i.channelType === channel)) {
           const res = await recordInbound({ queryOne, execute }, acct.client_id, acct.id, normalizeInboxItem(acct.platform, item))
-          if (res.inserted) synced++
+          if (res.inserted) {
+            synced++
+            await onInboundRecorded({ queryOne, queryRows, execute }, {
+              notifyAssigned: (userId, conversationId, clientId) => createNotification({
+                userId, type: 'social_assigned', title: 'New conversation assigned',
+                message: 'A social conversation was auto-assigned to you.',
+                link: `/agency/social/inbox?c=${conversationId}`, metadata: { conversationId, clientId },
+              }).then(() => {}),
+            }, { conversationId: res.conversationId, clientId: acct.client_id, channelType: item.channelType })
+          }
         }
         await execute(
           `INSERT INTO social_sync_cursors (social_account_id, channel_type, cursor, last_synced_at, last_error, updated_at)
@@ -85,6 +97,22 @@ export default defineEventHandler(async (event) => {
     automated = r.processed
   }
 
-  console.log('social-inbox-sync.run', { accounts: accounts.length, synced, automated })
-  return { synced, automated }
+  // SLA breach scan — flag overdue unanswered conversations and notify the assignee.
+  let breaches = 0
+  try {
+    const breached = await findBreaches({ queryOne, queryRows, execute })
+    breaches = breached.length
+    for (const b of breached) {
+      if (b.assigned_to) {
+        await createNotification({
+          userId: b.assigned_to, type: 'social_sla_breach', title: 'SLA breached',
+          message: 'A social conversation passed its first-response SLA.',
+          link: `/agency/social/inbox?c=${b.id}`, sendEmail: true, metadata: { conversationId: b.id, clientId: b.client_id },
+        })
+      }
+    }
+  } catch (e: any) { console.error('social-inbox-sla.error', String(e?.message ?? e)) }
+
+  console.log('social-inbox-sync.run', { accounts: accounts.length, synced, automated, breaches })
+  return { synced, automated, breaches }
 })

@@ -6,6 +6,13 @@ const draft = ref('')
 const aiDrafting = ref(false)
 const toast = useToast()
 
+const { data: savedReplies } = await useFetch<any[]>('/api/agency/social/inbox/saved-replies', { default: () => [] })
+const replyItems = computed(() => [(savedReplies.value || []).map((r: any) => ({ label: r.name, onSelect: () => insertReply(r) }))])
+function insertReply(r: any) {
+  draft.value = draft.value ? `${draft.value}\n${r.content}` : r.content
+  $fetch(`/api/agency/social/inbox/saved-replies/${r.id}`, { method: 'PATCH', body: { incrementUsage: true } }).catch(() => {})
+}
+
 function send() {
   const c = draft.value.trim()
   if (!c) return
@@ -49,6 +56,9 @@ async function aiDraft() {
           class="w-full ring-1 ring-default rounded-md"
         />
         <div class="flex justify-end gap-2">
+          <UDropdownMenu v-if="replyItems[0].length" :items="replyItems">
+            <UButton label="Saved" icon="i-lucide-message-square-text" color="neutral" variant="ghost" />
+          </UDropdownMenu>
           <UButton
             v-if="conversationId"
             label="AI draft" icon="i-lucide-sparkles" color="neutral" variant="ghost"

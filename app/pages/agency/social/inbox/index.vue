@@ -58,6 +58,11 @@ async function onMarkRead() {
   await markRead(selectedId.value)
   reload()
 }
+async function onAssigned(userId: string | null) {
+  if (!selectedId.value) return
+  await $fetch(`/api/agency/social/inbox/conversations/${selectedId.value}`, { method: 'PATCH', body: { assigned_to: userId } })
+  await reload()
+}
 
 async function onRefresh() {
   syncing.value = true
@@ -94,7 +99,7 @@ const replyDisabled = computed(() => selectedConv.value?.platform === 'tiktok')
           disabled-reason="TikTok replies require additional API access" @send="onSend"
         />
       </div>
-      <SocialInboxActionPanel :conversation="selectedConv" @status="onStatus" @mark-read="onMarkRead" />
+      <SocialInboxActionPanel :conversation="selectedConv" @status="onStatus" @mark-read="onMarkRead" @assigned="onAssigned" />
     </div>
   </div>
 </template>

@@ -13,9 +13,11 @@ export default defineEventHandler(async (event) => {
 
   const params: any[] = [clientId]
   let sql = `SELECT * FROM social_conversations WHERE client_id = $1`
-  for (const [col, key] of [['channel_type', 'channel'], ['platform', 'platform'], ['status', 'status']] as const) {
+  for (const [col, key] of [['channel_type', 'channel'], ['platform', 'platform'], ['status', 'status'], ['assigned_to', 'assignedTo']] as const) {
     if (q[key]) { params.push(q[key]); sql += ` AND ${col} = $${params.length}` }
   }
+  if (q.unassigned === 'true') sql += ` AND assigned_to IS NULL`
+  if (q.breached === 'true') sql += ` AND sla_breached = TRUE`
   params.push(Math.min(Number(q.limit) || 100, 500))
   sql += ` ORDER BY last_message_at DESC NULLS LAST LIMIT $${params.length}`
 

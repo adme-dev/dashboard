@@ -48,4 +48,12 @@ describe('recordInbound', () => {
     await recordInbound(db as any, 'client-1', 'acct-1', ev)
     expect(fullSql.some(s => /automation_state\s*=\s*'pending'/.test(s))).toBe(true)
   })
+
+  it('stamps first_response_at (once) on the outbound update', async () => {
+    const sqls: string[] = []
+    const db = { queryOne: async () => ({ id: 'c1' }), execute: async (sql: string) => { sqls.push(sql); return 1 } }
+    const { recordOutbound } = await import('~~/server/utils/socialInbox/store')
+    await recordOutbound(db as any, 'c1', 'cl1', { platformMessageId: 'p1', content: 'hi', sentByUserId: 'u1' })
+    expect(sqls.some(s => /first_response_at = COALESCE\(first_response_at, NOW\(\)\)/.test(s))).toBe(true)
+  })
 })
