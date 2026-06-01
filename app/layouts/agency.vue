@@ -235,6 +235,20 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     )
   }
 
+  // Social — organic publishing suite (canAccessCreative)
+  if (canAccessCreative.value) {
+    items.push(
+      { type: 'label', label: 'Social' },
+      { label: 'Calendar', icon: 'i-lucide-calendar-days', to: '/agency/social/publishing', exact: true, onSelect: close },
+      { label: 'Compose', icon: 'i-lucide-pen-square', to: '/agency/social/publishing/compose', onSelect: close },
+      { label: 'Queue', icon: 'i-lucide-list-ordered', to: '/agency/social/publishing/queue', onSelect: close },
+      { label: 'Planner', icon: 'i-lucide-calendar-clock', to: '/agency/social/publishing/planner', onSelect: close },
+      { label: 'Approvals', icon: 'i-lucide-clipboard-check', to: '/agency/social/publishing/approvals', onSelect: close },
+      { label: 'Analytics', icon: 'i-lucide-bar-chart-3', to: '/agency/social/publishing/analytics', onSelect: close },
+      { label: 'Accounts', icon: 'i-lucide-plug', to: '/agency/social/publishing/accounts', onSelect: close }
+    )
+  }
+
   // Collaboration — Chat + Virtual Office, visible to all staff
   items.push(
     { type: 'label', label: 'Collaboration' },

@@ -1,0 +1,17 @@
+name = "social-dispatch-cron"
+main = "src/index.ts"
+compatibility_date = "2025-12-01"
+
+# Every 2 minutes. The Pages handler claims at most 10 due posts/run with an
+# idempotent UPDATE, so overlapping ticks can never double-publish.
+[triggers]
+crons = [
+  "*/2 * * * *"   # dispatch scheduled social posts
+]
+
+[vars]
+APP_BASE_URL = "https://agency-dashboard-6cm.pages.dev"
+
+# CRON_SECRET is set as a secret, not a var — must match the Pages project's
+# CRON_SECRET so /api/cron/publish-social-posts accepts the x-cron-secret header:
+#   wrangler secret put CRON_SECRET   (run inside this dir)

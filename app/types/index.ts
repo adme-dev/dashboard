@@ -1199,3 +1199,79 @@ export type DispatchResult =
   | { status: 'failed'; error: string; retry_after_ms?: number }
 
 export * from './office'
+
+// ── Social Publishing ───────────────────────────────────────────────
+// NB: distinct from the spend-side `SocialPlatform` (meta/google/…) above.
+export type SocialPublishPlatform = 'facebook' | 'instagram' | 'linkedin' | 'tiktok' | 'youtube' | 'google-business'
+
+export type SocialPostStatus =
+  | 'draft' | 'approved' | 'scheduled' | 'publishing'
+  | 'published' | 'partially_published' | 'failed' | 'cancelled'
+
+export interface SocialPlatformOverride {
+  content?: string
+  mediaUrls?: string[]
+}
+
+export interface SocialPlatformResult {
+  status: string
+  platformPostId?: string
+  url?: string
+  error?: string | null
+}
+
+export interface SocialPost {
+  id: string
+  client_id: string
+  created_by: string | null
+  content: string
+  media_urls: string[] | null
+  link_url: string | null
+  hashtags: string[] | null
+  first_comment: string | null
+  platforms: SocialPublishPlatform[]
+  account_ids: string[] | null
+  platform_overrides: Record<string, SocialPlatformOverride>
+  tags: string[] | null
+  scheduled_at: string | null
+  timezone: string
+  status: SocialPostStatus
+  platform_results: Record<string, SocialPlatformResult>
+  publish_attempts: number
+  published_at: string | null
+  last_attempt_at: string | null
+  approval_requested_at: string | null
+  approval_requested_by: string | null
+  approved_by: string | null
+  approved_at: string | null
+  rejection_reason: string | null
+  queue_position: number | null
+  metadata: Record<string, any>
+  created_at: string
+  updated_at: string
+}
+
+export interface SocialAccount {
+  id: string
+  client_id: string
+  platform: SocialPublishPlatform
+  platform_account_id: string
+  account_name: string | null
+  is_active: boolean
+  last_error: string | null
+  token_expires_at: string | null
+  last_synced_at: string | null
+  created_at: string
+}
+
+export interface SocialSlot {
+  id: string
+  client_id: string
+  name: string
+  platforms: SocialPublishPlatform[]
+  day_of_week: number
+  time_of_day: string
+  timezone: string
+  capacity: number
+  enabled: boolean
+}
