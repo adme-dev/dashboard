@@ -10,7 +10,8 @@
  * For images from R2, we download the binary and re-upload to LinkedIn's upload URL.
  */
 
-import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaItem } from './types'
+import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaItem, FetchInboxParams, FetchInboxResult, ReplyParams, ReplyResult } from './types'
+import type { InboxItem } from '~~/server/utils/socialInbox/types'
 
 const LINKEDIN_API_BASE = 'https://api.linkedin.com'
 const LINKEDIN_VERSION = '202402'
@@ -509,4 +510,44 @@ export const linkedinProvider: SocialPostProvider = {
       return handleLinkedInError(error, 'comment')
     }
   },
+}
+
+// --- Slice 2 inbox: LinkedIn org-share comments (best-effort) ---
+/** Pure: map a LinkedIn socialActions comments response to InboxItems. */
+export function mapLinkedInComments(api: any): FetchInboxResult {
+  const items: InboxItem[] = (api?.elements ?? []).map((c: any) => ({
+    channelType: 'comment' as const,
+    platformConversationId: String(c.object ?? ''),
+    participant: { id: c.actor },
+    platformMessageId: String(c.id ?? ''),
+    authorId: c.actor,
+    content: c.message?.text ?? '',
+    messageType: 'comment',
+    platformTimestamp: c.created?.time ? new Date(c.created.time).toISOString() : undefined,
+  }))
+  return { items, nextCursor: null }
+}
+
+linkedinProvider.fetchInbox = async ({ accessToken, cursor }: FetchInboxParams): Promise<FetchInboxResult> => {
+  // Best-effort: LinkedIn comment polling targets a known share URN (passed via cursor).
+  // Without a tracked share to enumerate, return empty — full enumeration lands in a later phase.
+  if (!cursor) return { items: [], nextCursor: null }
+  const res = await fetch(`${LINKEDIN_API_BASE}/v2/socialActions/${encodeURIComponent(cursor)}/comments`, {
+    headers: { Authorization: `Bearer ${accessToken}`, 'LinkedIn-Version': LINKEDIN_VERSION },
+  })
+  if (!res.ok) throw new Error(`linkedin fetchInbox ${res.status}`)
+  return mapLinkedInComments(await res.json())
+}
+
+linkedinProvider.reply = async ({ accessToken, conversationId, content }: ReplyParams): Promise<ReplyResult> => {
+  // conversationId = the share/comment URN being replied to.
+  const res = await fetch(`${LINKEDIN_API_BASE}/v2/socialActions/${encodeURIComponent(conversationId)}/comments`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'LinkedIn-Version': LINKEDIN_VERSION },
+    body: JSON.stringify({ message: { text: content } }),
+  })
+  const j: any = await res.json().catch(() => ({}))
+  return res.ok
+    ? { platformMessageId: String(j.id ?? ''), status: 'success' }
+    : { platformMessageId: '', status: 'failed', error: j?.message ?? `http ${res.status}` }
 }

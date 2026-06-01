@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { queryOne } from '~~/server/utils/db'
 import { recomputeIfScorable } from '~~/server/utils/crm/scoreSignals'
+import { applyLifecycleEvent } from '~~/server/utils/crm/lifecycle'
 
 const Body = z.object({
   target_type: z.enum(['person', 'company', 'opportunity']),
@@ -24,5 +25,13 @@ export default defineEventHandler(async (event) => {
     [client.clientId, b.target_type, b.target_id, b.type, b.title, b.body ?? null, b.scheduled_at ?? null, client.id],
   )
   await recomputeIfScorable(client.clientId, b.target_type, b.target_id, 'activity')
+  // First touch sets a contact to `lead` (and revives dormant). Best-effort.
+  if (b.target_type === 'person' || b.target_type === 'company') {
+    try {
+      await applyLifecycleEvent({ clientId: client.clientId, entityType: b.target_type, entityId: b.target_id, event: 'activity_logged' })
+    } catch (e) {
+      console.error('[crm] lifecycle activity hook failed', e)
+    }
+  }
   return { item: row }
 })
