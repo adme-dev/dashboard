@@ -18,7 +18,10 @@ const { data: rules, refresh, pending } = await useFetch<SocialAutomationRule[]>
 
 const toast = useToast()
 const editorOpen = ref(false)
-const editing = ref<Partial<SocialAutomationRule> | null>(null)
+// Editor allows the '__all__' sentinel for platform/channel (mapped back to null on save).
+type RuleEditor = Omit<Partial<SocialAutomationRule>, 'platform' | 'channel_type'>
+  & { platform?: string | null; channel_type?: string | null }
+const editing = ref<RuleEditor | null>(null)
 
 const MODES = [
   { value: 'off', label: 'Off — manual only' },
