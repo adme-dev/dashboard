@@ -24,6 +24,48 @@ export interface SocialPostProvider {
 
   /** Optional: post a reply to a comment/review thread. Returns the platform id of the reply. */
   reply?(params: ReplyParams): Promise<ReplyResult>
+
+  /** Optional: fetch lifetime insights for published posts (Slice 3 reporting). */
+  fetchPostMetrics?(params: FetchPostMetricsParams): Promise<PostMetric[]>
+
+  /** Optional: fetch current account-level metrics (followers/reach) (Slice 3 reporting). */
+  fetchAccountMetrics?(params: FetchAccountMetricsParams): Promise<AccountMetric>
+}
+
+/** Slice 3: fetch per-post insights. `posts` maps our post id → the platform's post id. */
+export interface FetchPostMetricsParams {
+  accountId: string
+  accessToken: string
+  posts: Array<{ postId: string; platformPostId: string }>
+}
+
+/** Normalized per-post metric snapshot (current lifetime totals). */
+export interface PostMetric {
+  postId: string
+  platformPostId: string
+  impressions?: number
+  reach?: number
+  engagements?: number
+  clicks?: number
+  likes?: number
+  commentsCount?: number
+  shares?: number
+  saves?: number
+  videoViews?: number
+  reactions?: number
+}
+
+export interface FetchAccountMetricsParams {
+  accountId: string
+  accessToken: string
+}
+
+/** Normalized account-level metric snapshot. */
+export interface AccountMetric {
+  followers?: number
+  reach?: number
+  impressions?: number
+  profileViews?: number
 }
 
 /** Slice 2 inbox: poll a provider for new engagement since a cursor. */

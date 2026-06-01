@@ -14,8 +14,9 @@
  * Reference: https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/content-publishing
  */
 
-import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaItem, ReplyParams, ReplyResult } from './types'
+import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaItem, ReplyParams, ReplyResult, FetchPostMetricsParams, PostMetric, FetchAccountMetricsParams, AccountMetric } from './types'
 import { buildMessengerSend } from './facebook'
+import { mapIgMediaInsights, mapIgAccountInsights } from '~~/server/utils/socialReporting/normalize'
 
 const GRAPH_API_BASE = 'https://graph.facebook.com/v20.0'
 
@@ -480,4 +481,27 @@ instagramProvider.reply = async ({ accountId, accessToken, conversationId, conte
   return res.ok && j.id
     ? { platformMessageId: String(j.id), status: 'success' }
     : { platformMessageId: '', status: 'failed', error: j?.error?.message ?? `http ${res.status}` }
+}
+
+// --- Slice 3 reporting: organic metrics collection ---
+// ⚠️ Insight metric names follow Graph v20 docs; verify live before relying on prod numbers.
+instagramProvider.fetchPostMetrics = async ({ accessToken, posts }: FetchPostMetricsParams): Promise<PostMetric[]> => {
+  const out: PostMetric[] = []
+  for (const p of posts) {
+    try {
+      const insRes = await fetch(`${GRAPH_API_BASE}/${p.platformPostId}/insights?metric=impressions,reach,likes,comments,saved,shares,video_views&access_token=${encodeURIComponent(accessToken)}`)
+      const ins: any = await insRes.json().catch(() => ({}))
+      out.push(mapIgMediaInsights(p.postId, p.platformPostId, ins))
+    } catch { /* skip this post; others still collect */ }
+  }
+  return out
+}
+
+instagramProvider.fetchAccountMetrics = async ({ accountId, accessToken }: FetchAccountMetricsParams): Promise<AccountMetric> => {
+  const tok = encodeURIComponent(accessToken)
+  const insRes = await fetch(`${GRAPH_API_BASE}/${accountId}/insights?metric=impressions,reach,profile_views&period=day&access_token=${tok}`)
+  const ins: any = await insRes.json().catch(() => ({}))
+  const acctRes = await fetch(`${GRAPH_API_BASE}/${accountId}?fields=followers_count&access_token=${tok}`)
+  const acct: any = await acctRes.json().catch(() => ({}))
+  return mapIgAccountInsights(ins, acct?.followers_count)
 }

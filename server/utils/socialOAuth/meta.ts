@@ -5,10 +5,13 @@
 
 const GRAPH = 'https://graph.facebook.com/v22.0'
 
-// Page + IG comment/publish scopes — comments/reviews need NO App Review (App Review is DMs/mentions, Slice 2d).
+// Page + IG comment/publish/insights scopes — all standard (NO App Review; App Review is DMs/mentions,
+// Slice 2d). FB post/page insights ride `pages_read_engagement` (already present); IG insights need
+// `instagram_manage_insights` (added for Slice 3 reporting → operators reconnect once to collect).
 export const META_D2_SCOPES = [
   'pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'pages_manage_engagement',
-  'pages_manage_metadata', 'instagram_basic', 'instagram_content_publish', 'instagram_manage_comments',
+  'pages_manage_metadata', 'instagram_basic', 'instagram_content_publish',
+  'instagram_manage_comments', 'instagram_manage_insights',
   'business_management',
 ]
 

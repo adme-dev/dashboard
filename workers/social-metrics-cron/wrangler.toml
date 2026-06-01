@@ -1,0 +1,18 @@
+name = "social-metrics-cron"
+main = "src/index.ts"
+compatibility_date = "2025-12-01"
+
+# Collect organic metrics once daily. The Pages handler upserts account snapshots (per day) and
+# re-polls per-post lifetime insights (latest-snapshot), so overlapping/extra ticks are harmless.
+[triggers]
+crons = [
+  "20 3 * * *"   # 03:20 UTC daily — sync social organic metrics
+]
+
+[vars]
+APP_BASE_URL = "https://agency-dashboard-6cm.pages.dev"
+
+# CRON_SECRET is set as a secret, not a var — must match the Pages project's CRON_SECRET so
+# /api/cron/sync-social-metrics accepts the x-cron-secret header:
+#   wrangler secret put CRON_SECRET   (run from an isolated copy outside the repo tree —
+#   the repo root's .wrangler/deploy/config.json redirect otherwise breaks `wrangler deploy`)
