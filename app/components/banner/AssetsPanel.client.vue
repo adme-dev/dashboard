@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { BannerAsset } from '~/types/banner-studio'
+import type { AudioAsset } from '~/types'
 
 const { addLayer, nextId, activeLayers } = useBannerStudio()
 const { decomposingAssetId, decomposeFromUrl } = useDecompose()
@@ -88,6 +89,36 @@ function handleAssetClick(asset: BannerAsset) {
   toast.add({ title: 'Asset added', description: `"${asset.name}" added`, color: 'success' })
 }
 
+// Audio Studio voiceovers — owned, generated audio assets reusable as a layer.
+const { data: voiceoverData } = useFetch<{ assets: AudioAsset[] }>('/api/agency/audio/assets', {
+  query: { kind: 'voiceover' },
+  default: () => ({ assets: [] }),
+  onResponseError() {
+    // Audio Studio API may be unavailable — degrade silently.
+  },
+})
+
+function addVoiceoverLayer(a: AudioAsset) {
+  if (!a.streamUrl) {
+    toast.add({ title: 'Audio unavailable', description: 'This voiceover has no playable source', color: 'warning' })
+    return
+  }
+  addLayer({
+    id: nextId(),
+    type: 'audio',
+    src: a.streamUrl,
+    name: a.title || 'Voiceover',
+    x: 0,
+    y: 0,
+    w: 0,
+    h: 0,
+    fit: undefined,
+    volume: 1,
+    animIn: 'none',
+  })
+  toast.add({ title: 'Voiceover added', description: `"${a.title || 'Voiceover'}" added`, color: 'success' })
+}
+
 async function uploadFiles(files: FileList | File[]) {
   for (const file of files) {
     const formData = new FormData()
@@ -168,6 +199,21 @@ async function deleteAsset(asset: BannerAsset) {
         class="flex-1"
         @click="openGenerate()"
       />
+    </div>
+
+    <!-- Audio Studio voiceovers -->
+    <div v-if="voiceoverData?.assets?.length" class="space-y-1.5">
+      <p class="text-[10px] font-semibold uppercase tracking-wider text-(--ui-text-muted)">Audio Studio</p>
+      <button
+        v-for="a in voiceoverData.assets"
+        :key="a.id"
+        type="button"
+        class="w-full flex items-center gap-2 text-left text-[11px] px-2 py-1.5 rounded bg-(--ui-bg) border border-(--ui-border) hover:bg-(--ui-bg-elevated) transition-colors truncate"
+        @click="addVoiceoverLayer(a)"
+      >
+        <UIcon name="i-lucide-mic" class="w-3.5 h-3.5 shrink-0 text-(--ui-text-muted)" />
+        <span class="truncate">{{ a.title || 'Untitled voiceover' }}</span>
+      </button>
     </div>
 
     <!-- AI Image Suggestions -->
