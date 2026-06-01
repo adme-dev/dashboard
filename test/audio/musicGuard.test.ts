@@ -28,4 +28,19 @@ describe('guardAudioPrompt', () => {
     const r = guardAudioPrompt('chill   sounds like   Adele   vibe')
     expect(r.sanitized).not.toMatch(/\s{2,}/)
   })
+
+  it('does not flag a blocklisted name embedded inside another word', () => {
+    // 'sia' must not fire inside 'Russia'; 'drake' must not fire inside 'draked'
+    const r = guardAudioPrompt('a corporate jingle for our Russian office, modern feel')
+    expect(r.safe).toBe(true)
+    expect(r.violations).toEqual([])
+    expect(r.sanitized).toBe('a corporate jingle for our Russian office, modern feel')
+  })
+
+  it('respects a KV-supplied blocklist override and escapes regex metachars', () => {
+    const r = guardAudioPrompt('a track like Foo+Bar energetic', ['foo+bar'])
+    expect(r.safe).toBe(false)
+    expect(r.violations).toContain('foo+bar')
+    expect(r.sanitized.toLowerCase()).not.toContain('foo+bar')
+  })
 })

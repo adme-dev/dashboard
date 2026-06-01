@@ -36,11 +36,17 @@ export function mapRow(row: any): AudioAsset {
   }
 }
 
-/** Mint a short-lived playback URL for an asset's master (null if no master/key). */
+/** Mint a short-lived playback URL for an asset's master (undefined if no master
+ * key or if presigning fails — a presign error must NOT fail an already-committed
+ * create, nor sink an entire list because one key is bad). */
 export async function streamUrlFor(asset: AudioAsset): Promise<string | undefined> {
   if (!asset.r2KeyMaster) return undefined
   if (!isStorageConfigured()) return `/api/_uploads/${asset.r2KeyMaster}`
-  return getPresignedDownloadUrl(asset.r2KeyMaster, PRESIGN_TTL)
+  try {
+    return await getPresignedDownloadUrl(asset.r2KeyMaster, PRESIGN_TTL)
+  } catch {
+    return undefined
+  }
 }
 
 export interface CreateVoiceAssetInput {

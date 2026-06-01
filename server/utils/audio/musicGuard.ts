@@ -31,12 +31,17 @@ export function guardAudioPrompt(prompt: string, blocklist: string[] = ARTIST_BL
     return ''
   })
 
-  // 2. Bare artist-name mentions anywhere.
-  const lower = sanitized.toLowerCase()
+  // 2. Bare artist-name mentions anywhere. Match whole words only (so 'sia'
+  // does not fire inside 'Russia') and regex-escape the name (so a blocklist
+  // entry with metacharacters can't break or mis-match). Lookarounds on letters
+  // rather than \b keep accented names (e.g. 'beyoncé') matchable.
   for (const name of blocklist) {
-    if (lower.includes(name)) {
+    const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const re = new RegExp(`(?<![a-z])${esc}(?![a-z])`, 'gi')
+    const replaced = sanitized.replace(re, '')
+    if (replaced !== sanitized) {
       violations.push(name)
-      sanitized = sanitized.replace(new RegExp(name, 'gi'), '')
+      sanitized = replaced
     }
   }
 
