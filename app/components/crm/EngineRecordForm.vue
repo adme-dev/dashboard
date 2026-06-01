@@ -21,6 +21,10 @@ function toCalendarDate(iso: unknown): CalendarDate | null {
 function setDate(key: string, cd: CalendarDate | null) {
   local[key] = cd ? cd.toString() : null
 }
+// Click a star to set the rating; click the active star again to step down (1 → 0 clears).
+function setRating(key: string, n: number) {
+  local[key] = Number(local[key]) === n ? n - 1 : n
+}
 </script>
 
 <template>
@@ -45,6 +49,32 @@ function setDate(key: string, cd: CalendarDate | null) {
           />
         </template>
       </UPopover>
+
+      <UInputTags
+        v-else-if="controlForFieldType(f.field_type) === 'tags'"
+        :model-value="(local[f.key] as string[]) || []"
+        placeholder="Add tag, press Enter"
+        @update:model-value="(v) => (local[f.key] = v)"
+      />
+
+      <div v-else-if="controlForFieldType(f.field_type) === 'rating'" class="flex items-center gap-0.5">
+        <UButton
+          v-for="n in 5"
+          :key="n"
+          variant="ghost"
+          size="xs"
+          class="p-0.5"
+          :aria-label="`Rate ${n} of 5`"
+          @click="setRating(f.key, n)"
+        >
+          <UIcon
+            name="i-lucide-star"
+            class="size-5 transition-colors"
+            :class="Number(local[f.key]) >= n ? 'text-amber-400 fill-amber-400' : 'text-muted hover:text-amber-300'"
+          />
+        </UButton>
+        <span class="ml-1.5 text-xs text-muted tabular-nums">{{ Number(local[f.key]) || 0 }}/5</span>
+      </div>
 
       <CrmRelationPicker
         v-else-if="controlForFieldType(f.field_type) === 'relation' && f.relation_target"
