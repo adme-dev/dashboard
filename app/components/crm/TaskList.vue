@@ -159,7 +159,7 @@ function rowMenu(t: CrmTask) {
       </template>
     </UModal>
 
-    <UModal v-model:open="confirmDelete" title="Delete task">
+    <UModal :open="!!confirmDelete" title="Delete task" @update:open="(v: boolean) => { if (!v) confirmDelete = null }">
       <template #body>
         <p class="text-sm text-muted">
           Delete “{{ confirmDelete?.title }}”? This can't be undone.

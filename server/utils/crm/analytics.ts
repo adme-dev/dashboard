@@ -87,8 +87,10 @@ export function avgTimeInStageDays(history: StageHistoryRow[]): TimeInStageRow[]
   for (const rows of byOpp.values()) {
     const sorted = [...rows].sort((a, b) => new Date(a.changed_at).getTime() - new Date(b.changed_at).getTime())
     for (let i = 0; i < sorted.length - 1; i++) {
-      const stageId = sorted[i].to_stage_id
-      const days = (new Date(sorted[i + 1].changed_at).getTime() - new Date(sorted[i].changed_at).getTime()) / DAY
+      const cur = sorted[i]!
+      const next = sorted[i + 1]!
+      const stageId = cur.to_stage_id
+      const days = (new Date(next.changed_at).getTime() - new Date(cur.changed_at).getTime()) / DAY
       const t = totals.get(stageId) ?? { sum: 0, n: 0 }
       t.sum += days; t.n += 1
       totals.set(stageId, t)

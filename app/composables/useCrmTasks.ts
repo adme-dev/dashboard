@@ -2,18 +2,7 @@
 // Works in both the agency surface (provide 'crmApiBase' = '/api/crm') and the
 // client portal ('/api/client-portal/crm'). client_id is always sent; portal
 // endpoints ignore it and scope by session.
-import type { CrmTask } from '~/types/crm'
-
-export interface CrmTaskFilters {
-  target_type?: 'person' | 'company' | 'opportunity'
-  target_id?: string
-  status?: string
-  priority?: string
-  task_type?: string
-  assigned_to?: string
-  page?: number
-  page_size?: number
-}
+import type { CrmTask, CrmTaskFilters } from '~/types/crm'
 
 export function useCrmTasks(
   clientId: Ref<string | null>,

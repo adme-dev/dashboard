@@ -184,6 +184,17 @@ export interface CrmTask {
   updated_at: string
 }
 
+export interface CrmTaskFilters {
+  target_type?: 'person' | 'company' | 'opportunity'
+  target_id?: string
+  status?: string
+  priority?: string
+  task_type?: string
+  assigned_to?: string
+  page?: number
+  page_size?: number
+}
+
 export interface CrmStageAutomationTemplate {
   title: string
   task_type: CrmTaskType
