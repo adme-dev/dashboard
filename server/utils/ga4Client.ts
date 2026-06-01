@@ -137,6 +137,9 @@ export async function ga4RunReport(
     `${GA4_DATA_BASE}/properties/${propertyId}:runReport`,
     {
       method: 'POST',
+      // Fail fast on a stuck property so it can't hang the whole sync (ofetch
+      // has no default timeout — a hung request would otherwise block forever).
+      timeout: 20_000,
       headers: { Authorization: `Bearer ${accessToken}` },
       body: {
         dimensions: [{ name: 'date' }, { name: 'sessionDefaultChannelGroup' }],

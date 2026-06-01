@@ -7,7 +7,79 @@
  */
 import { queryRows, execute } from './db'
 import { refreshGoogleToken } from './googleAdsClient'
-import { ga4RunReport } from './ga4Client'
+import { ga4RunReport, type Ga4ReportRow } from './ga4Client'
+
+/** Max GA4 property report fetches in flight at once. Kept ≤6 to respect
+ *  Cloudflare's per-invocation simultaneous-connection cap. */
+export const GA4_FETCH_CONCURRENCY = 6
+
+/** Rows per multi-row upsert statement. 13 params/row, far under PG's 65535. */
+export const GA4_UPSERT_CHUNK = 500
+const GA4_UPSERT_COLS = 13
+
+const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e))
+
+/**
+ * Run `fn` over `items` with at most `limit` in flight, preserving input order.
+ * `fn` should not throw — callers fold per-item errors into the result.
+ */
+export async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let next = 0
+  const workerCount = Math.max(1, Math.min(limit, items.length))
+  const workers = Array.from({ length: workerCount }, async () => {
+    for (;;) {
+      const i = next++
+      if (i >= items.length) return
+      results[i] = await fn(items[i], i)
+    }
+  })
+  await Promise.all(workers)
+  return results
+}
+
+/**
+ * Build a single multi-row upsert into ga4_daily_channel for one property's
+ * rows. Replaces the old row-by-row INSERT loop (the prime cause of the cron
+ * timeout: ~3,900 sequential round-trips became ~1 statement per property).
+ */
+export function buildGa4ChannelUpsert(
+  map: { connection_id: string, client_id: string, property_id: string },
+  rows: Ga4ReportRow[]
+): { text: string, values: unknown[] } {
+  const values: unknown[] = []
+  const tuples = rows.map((row, i) => {
+    const b = i * GA4_UPSERT_COLS
+    values.push(
+      map.connection_id, map.client_id, map.property_id, row.date, row.channelGroup,
+      row.sessions, row.totalUsers, row.newUsers, row.engagedSessions, row.engagementRate,
+      row.avgSessionDuration, row.keyEvents, row.purchaseRevenue
+    )
+    return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7},`
+      + `$${b + 8},$${b + 9},$${b + 10},$${b + 11},$${b + 12},$${b + 13},NOW())`
+  })
+  const text = `INSERT INTO ga4_daily_channel
+       (connection_id, client_id, property_id, metric_date, channel_group,
+        sessions, total_users, new_users, engaged_sessions, engagement_rate,
+        avg_session_duration, key_events, purchase_revenue, synced_at)
+     VALUES ${tuples.join(',')}
+     ON CONFLICT (connection_id, property_id, metric_date, channel_group)
+     DO UPDATE SET
+       sessions = EXCLUDED.sessions,
+       total_users = EXCLUDED.total_users,
+       new_users = EXCLUDED.new_users,
+       engaged_sessions = EXCLUDED.engaged_sessions,
+       engagement_rate = EXCLUDED.engagement_rate,
+       avg_session_duration = EXCLUDED.avg_session_duration,
+       key_events = EXCLUDED.key_events,
+       purchase_revenue = EXCLUDED.purchase_revenue,
+       synced_at = NOW()`
+  return { text, values }
+}
 
 export interface Ga4SyncResult {
   propertiesSynced: number
@@ -104,9 +176,12 @@ export async function syncGa4(
 
   const { startDate, endDate } = ga4SyncWindow(opts)
 
-  // Accumulate per-connection outcome so the status row reflects the whole run
-  // (one connection can map multiple properties).
+  // Per-connection outcome so the status row reflects the whole run
+  // (one connection can map many properties).
   const perConnection = new Map<string, { rows: number, error: string | null }>()
+  for (const map of maps) {
+    if (!perConnection.has(map.connection_id)) perConnection.set(map.connection_id, { rows: 0, error: null })
+  }
   const noteConnection = (id: string, patch: { rows?: number, error?: string | null }) => {
     const cur = perConnection.get(id) || { rows: 0, error: null }
     if (patch.rows) cur.rows += patch.rows
@@ -114,44 +189,59 @@ export async function syncGa4(
     perConnection.set(id, cur)
   }
 
+  // 1. Refresh the access token ONCE per distinct connection. All of a
+  //    connection's property maps share its token; the old per-property refresh
+  //    fired dozens of redundant OAuth calls per run.
+  const tokenByConnection = new Map<string, string>()
+  const firstMapForConnection = new Map<string, MapRow>()
   for (const map of maps) {
-    if (!perConnection.has(map.connection_id)) perConnection.set(map.connection_id, { rows: 0, error: null })
+    if (!firstMapForConnection.has(map.connection_id)) firstMapForConnection.set(map.connection_id, map)
+  }
+  for (const [connectionId, map] of firstMapForConnection) {
     try {
-      const token = await ensureFreshGa4Token(map, config)
-
-      const rows = await ga4RunReport(map.property_id, token, { startDate, endDate })
-      for (const row of rows) {
-        await execute(
-          `INSERT INTO ga4_daily_channel
-             (connection_id, client_id, property_id, metric_date, channel_group,
-              sessions, total_users, new_users, engaged_sessions, engagement_rate,
-              avg_session_duration, key_events, purchase_revenue, synced_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
-           ON CONFLICT (connection_id, property_id, metric_date, channel_group)
-           DO UPDATE SET
-             sessions = EXCLUDED.sessions,
-             total_users = EXCLUDED.total_users,
-             new_users = EXCLUDED.new_users,
-             engaged_sessions = EXCLUDED.engaged_sessions,
-             engagement_rate = EXCLUDED.engagement_rate,
-             avg_session_duration = EXCLUDED.avg_session_duration,
-             key_events = EXCLUDED.key_events,
-             purchase_revenue = EXCLUDED.purchase_revenue,
-             synced_at = NOW()`,
-          [
-            map.connection_id, map.client_id, map.property_id, row.date, row.channelGroup,
-            row.sessions, row.totalUsers, row.newUsers, row.engagedSessions, row.engagementRate,
-            row.avgSessionDuration, row.keyEvents, row.purchaseRevenue
-          ]
-        )
-        result.rowsUpserted++
-        noteConnection(map.connection_id, { rows: 1 })
-      }
-      result.propertiesSynced++
-    } catch (err: any) {
-      const message = `property ${map.property_id}: ${err.message || err}`
+      tokenByConnection.set(connectionId, await ensureFreshGa4Token(map, config))
+    } catch (err) {
+      const message = `connection ${connectionId} token refresh: ${errMsg(err)}`
       result.errors.push(message)
-      noteConnection(map.connection_id, { error: message })
+      noteConnection(connectionId, { error: message })
+    }
+  }
+
+  // 2. Fetch every property's report with bounded concurrency. 87 sequential
+  //    report fetches was the dominant cause of the cron timeout.
+  type Fetched = { map: MapRow, rows: Ga4ReportRow[] | null, error: string | null }
+  const fetched = await mapWithConcurrency<MapRow, Fetched>(maps, GA4_FETCH_CONCURRENCY, async (map) => {
+    const token = tokenByConnection.get(map.connection_id)
+    if (!token) return { map, rows: null, error: null } // connection token already failed (recorded above)
+    try {
+      const rows = await ga4RunReport(map.property_id, token, { startDate, endDate })
+      return { map, rows, error: null }
+    } catch (err) {
+      return { map, rows: null, error: `property ${map.property_id}: ${errMsg(err)}` }
+    }
+  })
+
+  // 3. Upsert sequentially (the prod pg.Client can't take concurrent queries),
+  //    one batched multi-row statement per property instead of row-by-row.
+  for (const f of fetched) {
+    if (f.error) {
+      result.errors.push(f.error)
+      noteConnection(f.map.connection_id, { error: f.error })
+      continue
+    }
+    if (!f.rows) continue
+    try {
+      for (let i = 0; i < f.rows.length; i += GA4_UPSERT_CHUNK) {
+        const { text, values } = buildGa4ChannelUpsert(f.map, f.rows.slice(i, i + GA4_UPSERT_CHUNK))
+        await execute(text, values)
+      }
+      result.rowsUpserted += f.rows.length
+      noteConnection(f.map.connection_id, { rows: f.rows.length })
+      result.propertiesSynced++
+    } catch (err) {
+      const message = `property ${f.map.property_id} upsert: ${errMsg(err)}`
+      result.errors.push(message)
+      noteConnection(f.map.connection_id, { error: message })
     }
   }
 
