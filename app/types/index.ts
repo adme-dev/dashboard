@@ -1275,3 +1275,25 @@ export interface SocialSlot {
   capacity: number
   enabled: boolean
 }
+
+export interface AudioAsset {
+  id: string
+  clientId: string | null
+  createdBy: string
+  kind: 'voiceover' | 'music'
+  status: 'queued' | 'processing' | 'rendering' | 'done' | 'failed' | 'ready'
+  title: string | null
+  prompt: string | null
+  lang: string | null
+  voice: string | null
+  channels: string[]
+  r2KeyMaster: string | null
+  variants: Record<string, string>
+  durationSec: number | null
+  costCents: number | null
+  error: string | null
+  createdAt: string
+  updatedAt: string
+  /** Short-lived presigned playback URL, minted by the API on read. */
+  streamUrl?: string
+}
