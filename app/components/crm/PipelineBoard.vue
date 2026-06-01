@@ -6,8 +6,17 @@ const props = defineProps<{ clientId: string }>()
 const clientId = toRef(props, 'clientId')
 const toast = useToast()
 const { stages } = useCrmStages(clientId)
-const { data, pending, refresh, move, create, update } = useCrmOpportunities(clientId)
+const { data, pending, refresh, filters, move, create, update } = useCrmOpportunities(clientId)
 const { summary, refresh: refreshSummary } = useCrmPipeline(clientId)
+
+// F9 — advanced filters + export on the pipeline (reuses the F9 backend).
+const exportBase = inject<string>('crmApiBase', '/api/crm')
+function exportUrl(format: 'csv' | 'xlsx') {
+  const p = new URLSearchParams({ entity: 'opportunities', format })
+  if (exportBase === '/api/crm') p.set('client_id', clientId.value)
+  if (filters.value.length) p.set('filters', JSON.stringify(filters.value))
+  return `${exportBase}/export?${p.toString()}`
+}
 
 // Local per-stage buckets derived from the fetched list.
 const buckets = computed<Record<string, CrmOpportunity[]>>(() => {
@@ -68,7 +77,16 @@ function money(n: number) {
         <div><span class="text-muted">Open value</span> <span class="font-semibold ml-1">{{ money(summary?.openTotal ?? 0) }}</span></div>
         <div><span class="text-muted">Weighted</span> <span class="font-semibold ml-1">{{ money(summary?.weightedTotal ?? 0) }}</span></div>
       </div>
-      <UButton icon="i-lucide-plus" @click="openNew">Add opportunity</UButton>
+      <div class="flex items-center gap-2">
+        <CrmFilterBuilder v-model="filters" entity="opportunities" />
+        <UDropdownMenu :items="[[
+          { label: 'Export CSV', icon: 'i-lucide-file-text', to: exportUrl('csv'), target: '_blank', external: true },
+          { label: 'Export Excel', icon: 'i-lucide-sheet', to: exportUrl('xlsx'), target: '_blank', external: true },
+        ]]">
+          <UButton icon="i-lucide-download" variant="ghost" color="neutral" size="sm" trailing-icon="i-lucide-chevron-down">Export</UButton>
+        </UDropdownMenu>
+        <UButton icon="i-lucide-plus" @click="openNew">Add opportunity</UButton>
+      </div>
     </div>
 
     <div v-if="pending" class="text-sm text-muted py-8 text-center">Loading pipeline…</div>
