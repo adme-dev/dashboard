@@ -233,6 +233,58 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  'social-inbox': {
+    title: 'Engagement Inbox',
+    slug: 'social-inbox',
+    icon: 'i-lucide-messages-square',
+    category: 'Social Publishing',
+    categoryIcon: 'i-lucide-share-2',
+    categoryIconBg: 'bg-sky-50',
+    categoryIconColor: 'text-sky-600',
+    description: 'Every comment, mention, and message across your social networks in one unified inbox — read, triage, and reply without leaving the dashboard.',
+    details: [
+      {
+        title: 'One Inbox, Every Network',
+        content: 'Comments on the posts you publish, plus mentions and direct messages, flow into a single conversation view across Facebook, Instagram, LinkedIn, TikTok, YouTube, and Google Business. Each thread keeps the full back-and-forth so your team always has context before they reply.'
+      },
+      {
+        title: 'Reply In Place',
+        content: 'Respond to a comment or message straight from the dashboard — the reply posts back to the originating network through the same connection that powers publishing. No tab-switching, no copy-paste, no missed replies.'
+      },
+      {
+        title: 'Real-Time, Reliable Ingestion',
+        content: 'Webhooks bring Meta comments in the moment they happen, while a steady background sync pulls comments and reviews from the other networks — de-duplicated so nothing shows up twice and nothing slips through.'
+      },
+      {
+        title: 'Built For What’s Next',
+        content: 'The inbox is the foundation for AI-assisted replies, automation rules, team assignment, and SLA tracking — rolling out in stages on top of the unified conversation model.'
+      }
+    ]
+  },
+  'social-reviews': {
+    title: 'Review Management',
+    slug: 'social-reviews',
+    icon: 'i-lucide-star',
+    category: 'Social Publishing',
+    categoryIcon: 'i-lucide-share-2',
+    categoryIconBg: 'bg-sky-50',
+    categoryIconColor: 'text-sky-600',
+    description: 'Track and respond to Google Business and Facebook reviews in one place, with ratings and sentiment at a glance.',
+    details: [
+      {
+        title: 'Every Review, One View',
+        content: 'Google Business reviews and Facebook recommendations land in a dedicated review surface with the star rating, reviewer, and full text — sorted by recency so the freshest feedback is always on top.'
+      },
+      {
+        title: 'Respond Where It Counts',
+        content: 'Reply to a review directly from the dashboard and it posts back to the platform. Average rating and a per-star distribution sit at the top so you can read the room before you respond.'
+      },
+      {
+        title: 'AI Responses On The Roadmap',
+        content: 'Review replies plug into the same engine as the engagement inbox, so AI-drafted and rule-based responses (with approval guardrails) layer on as the automation phase ships.'
+      }
+    ]
+  },
   // ─── Work Management ──────────────────────────────────────────
   'boards': {
     title: 'Boards',
