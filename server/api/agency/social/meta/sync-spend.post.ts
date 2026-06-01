@@ -2,18 +2,21 @@ import { requireAuth } from '~~/server/utils/auth'
 import { syncMetaSpend } from '~~/server/utils/spendSync'
 import { runSpendSyncInBackground } from '~~/server/utils/asyncBackground'
 import { createSpendSyncJob, completeSpendSyncJob, failSpendSyncJob } from '~~/server/utils/spendSyncJobs'
+import { getQueue } from '~~/server/utils/queue'
 
 /**
  * POST /api/agency/social/meta/sync-spend
  *
- * Kicks off Meta campaign spend sync in the background via waitUntil and
- * returns immediately. The sync loop over multiple ad accounts almost always
- * exceeds CF Pages' ~30s function limit when run inline, which surfaces as a
- * 504 to the browser.
+ * Meta has 100+ connected ad accounts; the sequential sync over all of them
+ * can take 10+ minutes and was getting evicted mid-run on the request's
+ * waitUntil background (leaving accounts unsynced). So we dispatch the work to
+ * the Cloudflare Queue consumer, which has a much longer runtime budget and
+ * always runs the full sync to completion. Locally (no JOBS_QUEUE binding) — or
+ * if enqueue fails — we fall back to the inline waitUntil path.
  *
  * A spend_sync_jobs row is created so the UI can poll
  * /api/agency/social/spend/sync-status and refresh its content (and surface any
- * per-account failures) when the sync actually finishes.
+ * per-account failures) when the sync finishes. The consumer updates that row.
  *
  * Body: { month?: number, year?: number }
  */
@@ -28,6 +31,21 @@ export default eventHandler(async (event) => {
 
   const jobId = await createSpendSyncJob('meta', period, (user as any)?.id ?? null)
 
+  // Preferred path: hand off to the Queue consumer (long runtime budget).
+  const queue = getQueue(event)
+  if (queue) {
+    try {
+      await queue.send(
+        { type: 'spend.sync.meta', payload: { month, year, jobId }, enqueuedAt: new Date().toISOString() },
+        { contentType: 'json' }
+      )
+      return { status: 'started', startedAt: new Date().toISOString(), jobId, queued: true }
+    } catch (err) {
+      console.error('[meta sync-spend] enqueue failed, falling back to inline waitUntil:', err)
+    }
+  }
+
+  // Fallback: no queue binding (local dev) or enqueue failed → run inline.
   return runSpendSyncInBackground(event, {
     label: `meta sync-spend ${period}`,
     sync: () => syncMetaSpend(month, year),
@@ -37,7 +55,7 @@ export default eventHandler(async (event) => {
       `spend:meta:accounts:${period}`,
       `spend:daily:meta:${period}`,
     ],
-    extra: { jobId },
+    extra: { jobId, queued: false },
     onComplete: (result) => completeSpendSyncJob(jobId, result),
     onError: (err: any) => failSpendSyncJob(jobId, err?.message || String(err)),
   })

@@ -114,7 +114,20 @@ async function processEomGenerate(payload: Record<string, any>): Promise<void> {
 
 async function processMetaSpendSync(payload: Record<string, any>): Promise<void> {
   const { syncMetaSpend } = await import('~~/server/utils/spendSync')
-  await syncMetaSpend(payload.month, payload.year)
+  const jobId = payload.jobId as string | undefined
+  try {
+    const result = await syncMetaSpend(payload.month, payload.year)
+    if (jobId) {
+      const { completeSpendSyncJob } = await import('~~/server/utils/spendSyncJobs')
+      await completeSpendSyncJob(jobId, result)
+    }
+  } catch (err: any) {
+    if (jobId) {
+      const { failSpendSyncJob } = await import('~~/server/utils/spendSyncJobs')
+      await failSpendSyncJob(jobId, err?.message || String(err))
+    }
+    throw err // let the queue retry
+  }
 }
 
 async function processGoogleSpendSync(payload: Record<string, any>): Promise<void> {

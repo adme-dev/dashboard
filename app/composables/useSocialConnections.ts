@@ -188,9 +188,11 @@ export function useSocialConnections() {
     await fetchConnections()
   }
 
-  async function fetchAccountSpend(platform: SocialPlatform, month: number, year: number) {
+  async function fetchAccountSpend(platform: SocialPlatform, month: number, year: number, refresh = false) {
     return await $fetch<any[]>(`/api/agency/social/${platform}/account-spend`, {
-      params: { month, year },
+      // refresh bypasses the KV cache — used after a sync completes, since a
+      // queue-run sync can't bust the cache itself.
+      params: { month, year, ...(refresh ? { refresh: 1 } : {}) },
     })
   }
 
@@ -214,9 +216,10 @@ export function useSocialConnections() {
     )
   }
 
-  async function fetchCampaignDailySpend(platform: SocialPlatform, month: number, year: number, connectionId?: string) {
+  async function fetchCampaignDailySpend(platform: SocialPlatform, month: number, year: number, connectionId?: string, refresh = false) {
     const params: Record<string, any> = { platform, month, year }
     if (connectionId) params.connectionId = connectionId
+    if (refresh) params.refresh = 1
     return await $fetch<CampaignDailySpendResponse>(
       `/api/agency/social/campaign-daily-spend`,
       { params }
