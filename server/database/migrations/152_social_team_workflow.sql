@@ -28,3 +28,7 @@ CREATE TABLE IF NOT EXISTS social_sla_policies (
   UNIQUE (client_id, channel_type)
 );
 CREATE INDEX IF NOT EXISTS idx_social_sla_client ON social_sla_policies(client_id, enabled);
+-- UNIQUE(client_id, channel_type) does NOT constrain NULL channel_type (NULLs are distinct), so the
+-- "all channels" policy needs a dedicated partial unique index to keep upserts idempotent.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_social_sla_client_allchannels
+  ON social_sla_policies (client_id) WHERE channel_type IS NULL;

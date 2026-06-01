@@ -31,9 +31,8 @@ export async function autoAssignConversation(db: AssignDb, conversationId: strin
 
   const last = await db.queryOne<{ assigned_to: string }>(
     `SELECT assigned_to FROM social_conversations
-       WHERE client_id = $1 AND assigned_to IS NOT NULL AND assigned_at = (
-         SELECT MAX(assigned_at) FROM social_conversations WHERE client_id = $1 AND assigned_to IS NOT NULL)
-       LIMIT 1`, [clientId])
+       WHERE client_id = $1 AND assigned_to IS NOT NULL
+       ORDER BY assigned_at DESC, id DESC LIMIT 1`, [clientId])
 
   const next = pickRoundRobin(members, last?.assigned_to ?? null)
   if (!next) return null

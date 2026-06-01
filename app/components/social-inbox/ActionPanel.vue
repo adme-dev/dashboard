@@ -13,11 +13,12 @@ const status = ref<'open' | 'snoozed' | 'closed'>(props.conversation?.status ?? 
 watch(() => props.conversation, (c) => { status.value = c?.status ?? 'open' })
 watch(status, (s) => { if (props.conversation && s !== props.conversation.status) emit('status', s) })
 
-const { data: members } = await useFetch<any[]>('/api/agency/team-members', { default: () => [] })
-const memberOptions = computed(() => [{ label: 'Unassigned', value: '' }, ...(members.value || []).map((m: any) => ({ label: m.name || m.email, value: String(m.id) }))])
+const { data: teamData } = await useFetch<{ members: any[] }>('/api/agency/team-members', { default: () => ({ members: [] }) })
+const UNASSIGNED = '__unassigned__'
+const memberOptions = computed(() => [{ label: 'Unassigned', value: UNASSIGNED }, ...(teamData.value?.members || []).map((m: any) => ({ label: m.name || m.email, value: String(m.id) }))])
 const assignee = computed({
-  get: () => (props.conversation as any)?.assigned_to || '',
-  set: (v: string) => emit('assigned', v || null),
+  get: () => props.conversation?.assigned_to || UNASSIGNED,
+  set: (v: string) => emit('assigned', v === UNASSIGNED ? null : (v || null)),
 })
 
 const noteText = ref('')

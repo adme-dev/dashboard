@@ -25,7 +25,7 @@ describe('autoAssignConversation', () => {
     return {
       queryOne: vi.fn(async (sql: string) => {
         if (/assigned_to FROM social_conversations WHERE id/.test(sql)) return { assigned_to: alreadyAssigned }
-        if (/MAX\(assigned_at\)/.test(sql)) return lastAssignee ? { assigned_to: lastAssignee } : null
+        if (/ORDER BY assigned_at DESC/.test(sql)) return lastAssignee ? { assigned_to: lastAssignee } : null
         return null
       }),
       queryRows: vi.fn(async (sql: string) => {

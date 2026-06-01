@@ -1297,6 +1297,12 @@ export interface SocialConversation {
   rating: number | null
   tags: string[] | null
   created_at: string
+  // Slice 2c team workflow
+  assigned_to?: string | null
+  assigned_at?: string | null
+  sla_due_at?: string | null
+  first_response_at?: string | null
+  sla_breached?: boolean
 }
 
 export interface SocialMessage {

@@ -20,10 +20,11 @@ async function addReply() {
 }
 async function delReply(id: string) { await $fetch(`/api/agency/social/inbox/saved-replies/${id}`, { method: 'DELETE' }); await refreshReplies() }
 
-const newPolicy = reactive({ channel_type: '', target_minutes: 240 })
-const CHANNELS = [{ label: 'All channels', value: '' }, { label: 'Comments', value: 'comment' }, { label: 'Reviews', value: 'review' }]
+const ALL_CHANNELS = '__all__'
+const newPolicy = reactive({ channel_type: ALL_CHANNELS, target_minutes: 240 })
+const CHANNELS = [{ label: 'All channels', value: ALL_CHANNELS }, { label: 'Comments', value: 'comment' }, { label: 'Reviews', value: 'review' }]
 async function savePolicy() {
-  await $fetch('/api/agency/social/inbox/sla-policies', { method: 'POST', body: { client_id: clientId.value, channel_type: newPolicy.channel_type || null, target_minutes: newPolicy.target_minutes } })
+  await $fetch('/api/agency/social/inbox/sla-policies', { method: 'POST', body: { client_id: clientId.value, channel_type: newPolicy.channel_type === ALL_CHANNELS ? null : newPolicy.channel_type, target_minutes: newPolicy.target_minutes } })
   await refreshPolicies(); toast.add({ title: 'SLA policy saved', color: 'success' })
 }
 async function delPolicy(id: string) { await $fetch(`/api/agency/social/inbox/sla-policies/${id}`, { method: 'DELETE' }); await refreshPolicies() }
