@@ -11,9 +11,12 @@ export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
   const id = getRouterParam(event, 'id')!
   const body = await readBody(event).catch(() => ({}))
+  const clientId = body?.clientId
+  if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
 
+  // Scope by client_id (defense-in-depth: an approval triggers a live external send).
   const row = await queryOne<any>(
-    `SELECT * FROM social_response_queue WHERE id = $1`, [id])
+    `SELECT * FROM social_response_queue WHERE id = $1 AND client_id = $2`, [id, clientId])
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Not found' })
   if (row.status !== 'pending' && row.status !== 'approved')
     throw createError({ statusCode: 409, statusMessage: `cannot approve a ${row.status} item` })

@@ -30,7 +30,8 @@ function bodyFor(it: SocialResponseQueueItem) { return edits[it.id] ?? it.draft_
 async function approve(it: SocialResponseQueueItem) {
   busy.value = it.id
   try {
-    await $fetch(`/api/agency/social/inbox/response-queue/${it.id}/approve`, { method: 'POST', body: { content: bodyFor(it) } })
+    await $fetch(`/api/agency/social/inbox/response-queue/${it.id}/approve`, { method: 'POST', body: { clientId: clientId.value, content: bodyFor(it) } })
+    delete edits[it.id]
     toast.add({ title: 'Sent', color: 'success' })
     await refresh()
   } catch (e: any) {
@@ -40,8 +41,11 @@ async function approve(it: SocialResponseQueueItem) {
 async function reject(it: SocialResponseQueueItem) {
   busy.value = it.id
   try {
-    await $fetch(`/api/agency/social/inbox/response-queue/${it.id}/reject`, { method: 'POST' })
+    await $fetch(`/api/agency/social/inbox/response-queue/${it.id}/reject`, { method: 'POST', body: { clientId: clientId.value } })
+    delete edits[it.id]
     await refresh()
+  } catch (e: any) {
+    toast.add({ title: 'Reject failed', description: e?.data?.statusMessage, color: 'error' })
   } finally { busy.value = null }
 }
 </script>

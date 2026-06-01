@@ -80,11 +80,11 @@ async function save() {
   }
 }
 async function toggleEnabled(r: SocialAutomationRule) {
-  await $fetch(`/api/agency/social/inbox/automation-rules/${r.id}`, { method: 'PATCH', body: { enabled: !r.enabled } })
+  await $fetch(`/api/agency/social/inbox/automation-rules/${r.id}`, { method: 'PATCH', body: { client_id: r.client_id, enabled: !r.enabled } })
   await refresh()
 }
 async function remove(r: SocialAutomationRule) {
-  await $fetch(`/api/agency/social/inbox/automation-rules/${r.id}`, { method: 'DELETE' })
+  await $fetch(`/api/agency/social/inbox/automation-rules/${r.id}`, { method: 'DELETE', query: { clientId: r.client_id } })
   await refresh()
 }
 const modeColor = (m: string) => (({ off: 'neutral', suggest: 'info', approval: 'warning', autopilot: 'success' } as Record<string, string>)[m] || 'neutral')

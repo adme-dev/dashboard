@@ -1,6 +1,13 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 
+/** Confidence floor must be a finite number in [0,1]; default 0.7. Guards the autopilot safety gate. */
+function clampFloor(v: unknown): number {
+  const n = Number(v ?? 0.7)
+  if (!Number.isFinite(n)) return 0.7
+  return Math.min(1, Math.max(0, n))
+}
+
 /** POST /api/agency/social/inbox/automation-rules  body: full rule (client_id required) */
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -15,7 +22,7 @@ export default defineEventHandler(async (event) => {
     [b.client_id, b.name.trim(), b.platform ?? null, b.channel_type ?? null, mode,
      JSON.stringify(b.conditions ?? {}), JSON.stringify(b.action ?? {}),
      ['staff', 'client', 'none'].includes(b.approval_by) ? b.approval_by : 'staff',
-     Number(b.rate_limit) || 0, Number(b.confidence_floor ?? 0.7),
+     Number(b.rate_limit) || 0, clampFloor(b.confidence_floor),
      b.business_hours ? JSON.stringify(b.business_hours) : null,
      Number(b.priority) || 100, b.enabled !== false, String(user.id)])
 })

@@ -5,7 +5,11 @@ import { queryOne, execute } from '~~/server/utils/db'
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
   const id = getRouterParam(event, 'id')!
-  const row = await queryOne<any>(`SELECT conversation_id, status FROM social_response_queue WHERE id = $1`, [id])
+  const body = await readBody(event).catch(() => ({}))
+  const clientId = body?.clientId
+  if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  const row = await queryOne<any>(
+    `SELECT conversation_id, status FROM social_response_queue WHERE id = $1 AND client_id = $2`, [id, clientId])
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Not found' })
   if (row.status !== 'pending') throw createError({ statusCode: 409, statusMessage: `cannot reject a ${row.status} item` })
   await execute(

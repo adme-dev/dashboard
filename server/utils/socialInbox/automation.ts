@@ -49,6 +49,10 @@ export function resolveEffectiveMode(
   if (rule.rate_limit > 0 && usage.recentCount >= rule.rate_limit) {
     return { mode: 'skip', notes: `rate limit reached (${usage.recentCount}/${rule.rate_limit})` }
   }
+  // HARD rule: a low review rating IS a complaint by definition — force a human regardless of wording.
+  if (ctx.rating != null && ctx.rating <= 2) {
+    return { mode: 'approval', notes: `forced to human — low rating ${ctx.rating}` }
+  }
   // HARD negative-sentiment / PR-risk guard (deterministic, primary).
   const risk = detectReplyRisk(ctx.inboundContent)
   if (risk.risky) {
@@ -69,11 +73,15 @@ export function resolveEffectiveMode(
   return { mode: 'autopilot', notes: 'all guardrails passed' }
 }
 
-/** Count autopilot sends for this rule in the trailing hour (rate-limit input). */
+/**
+ * Count autopilot actions for this rule in the trailing hour (rate-limit input).
+ * Includes in-flight 'approved' rows (not yet flipped to 'sent') so overlapping ticks
+ * can't each read a stale 'sent'-only count and collectively exceed the cap.
+ */
 async function recentAutopilotCount(db: EngineDb, ruleId: string): Promise<number> {
   const row = await db.queryOne<{ n: number }>(
     `SELECT COUNT(*)::int AS n FROM social_response_queue
-       WHERE rule_id = $1 AND status = 'sent' AND created_at > NOW() - INTERVAL '1 hour'`,
+       WHERE rule_id = $1 AND status IN ('approved','sent') AND created_at > NOW() - INTERVAL '1 hour'`,
     [ruleId],
   )
   return row?.n ?? 0
@@ -141,22 +149,27 @@ export async function runAutomationForConversation(db: EngineDb, deps: EngineDep
   }
 
   // Insert the queue row first (audit before any send). autopilot starts 'approved' (machine-approved),
-  // approval starts 'pending' (awaits human).
+  // approval starts 'pending' (awaits human). ON CONFLICT DO NOTHING makes the SEND idempotent: if a
+  // racing tick already inserted a row for this inbound message, RETURNING yields no row → queueId is
+  // undefined → we clear state and return without drafting a second reply or dispatching.
   const startStatus = decision.mode === 'autopilot' ? 'approved' : 'pending'
   const queueRow = await db.queryOne<{ id: string }>(
     `INSERT INTO social_response_queue
        (client_id, conversation_id, message_id, rule_id, draft_content, confidence, status, effective_mode, approver_type, guardrail_notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+     ON CONFLICT (message_id) WHERE message_id IS NOT NULL DO NOTHING
+     RETURNING id`,
     [conv.client_id, conversationId, inbound.id, rule.id, draft.reply, draft.confidence,
      startStatus, decision.mode, decision.mode === 'autopilot' ? 'none' : rule.approval_by, decision.notes])
   const queueId = queueRow?.id
+  if (!queueId) { await clearState(); return } // another tick already owns this message
 
   // Mark conversation's automation snapshot for the UI badge.
   await db.execute(
     `UPDATE social_conversations SET automation_state = $2, updated_at = NOW() WHERE id = $1`,
     [conversationId, decision.mode === 'autopilot' ? 'auto_replied' : 'awaiting_approval'])
 
-  if (decision.mode === 'autopilot' && queueId) {
+  if (decision.mode === 'autopilot') {
     const res = await deps.dispatch({
       conversationId, clientId: conv.client_id, content: draft.reply, aiGenerated: true, queueId,
     })
@@ -173,6 +186,11 @@ export async function processPendingAutomation(db: EngineDb, deps: EngineDeps, l
     `SELECT id FROM social_conversations WHERE automation_state = 'pending' ORDER BY updated_at ASC LIMIT $1`, [limit])
   let processed = 0
   for (const row of pending) {
+    // Atomically claim the conversation so two overlapping cron ticks can't both process it.
+    const claimed = await db.queryOne<{ id: string }>(
+      `UPDATE social_conversations SET automation_state = 'processing', updated_at = NOW()
+         WHERE id = $1 AND automation_state = 'pending' RETURNING id`, [row.id])
+    if (!claimed) continue // another tick took it
     try { await runAutomationForConversation(db, deps, row.id); processed++ }
     catch (e: any) {
       await db.execute(`UPDATE social_conversations SET automation_state = NULL, updated_at = NOW() WHERE id = $1`, [row.id])

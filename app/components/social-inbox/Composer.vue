@@ -23,7 +23,7 @@ async function aiDraft() {
       toast.add({ title: 'No draft', description: 'This one needs a human — the model flagged it.', color: 'warning' })
     } else {
       draft.value = res.reply
-      if (res.risk || res.confidence < 0.6) {
+      if (res.risk || (res.confidence ?? 0) < 0.6) {
         toast.add({
           title: 'Review carefully',
           description: `Low confidence (${Math.round(res.confidence * 100)}%) — edit before sending.`,

@@ -19,6 +19,12 @@ describe('detectReplyRisk — HARD negative-sentiment→human guard', () => {
       expect(detectReplyRisk(txt).risky, txt).toBe(true)
     }
   })
+  it('flags common complaint words missing from a naive list', () => {
+    for (const txt of ['absolutely horrible service', 'so rude to me', 'the product was broken',
+                        'arrived defective', 'you overcharged me', 'this is misleading', 'what a liar']) {
+      expect(detectReplyRisk(txt).risky, txt).toBe(true)
+    }
+  })
   it('does not flag ordinary positive/neutral comments', () => {
     for (const txt of ['love this product', 'when do you open?', 'great work team', 'nice colours']) {
       expect(detectReplyRisk(txt).risky, txt).toBe(false)

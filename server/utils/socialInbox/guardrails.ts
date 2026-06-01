@@ -13,8 +13,10 @@ import type { AutomationContext, BusinessHours, RuleConditions } from './automat
 const RISK_TERMS: string[] = [
   'sue', 'lawyer', 'legal', 'lawsuit', 'court', 'attorney',
   'scam', 'fraud', 'stole', 'stolen', 'theft', 'rip off', 'ripoff', 'ripped off',
-  'refund', 'chargeback', 'money back', 'compensation',
+  'refund', 'chargeback', 'money back', 'compensation', 'overcharged', 'overcharge',
   'disgusting', 'disgrace', 'appalling', 'unacceptable', 'worst', 'terrible', 'awful',
+  'horrible', 'rude', 'liar', 'lying', 'lied', 'mislead', 'misleading', 'misled', 'false',
+  'broken', 'defective', 'faulty', 'damaged', 'useless',
   'report you', 'reported', 'complaint', 'complain', 'ombudsman', 'accc', 'fair trading',
   'dangerous', 'injury', 'injured', 'sick', 'unsafe', 'allergic',
   'racist', 'sexist', 'harass',
@@ -65,6 +67,11 @@ function hhmmToMinutes(hhmm: string): number {
   return (h || 0) * 60 + (m || 0)
 }
 
+/**
+ * True if `now` falls within the rule's business-hours window. Assumes start <= end on the same
+ * day (no overnight wrap — an overnight window evaluates as "never in hours", which is the safe
+ * direction since it only downgrades autopilot → approval). null window = always within.
+ */
 export function isWithinBusinessHours(now: Date, bh: BusinessHours | null): boolean {
   if (!bh) return true
   let lp

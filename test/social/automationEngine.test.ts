@@ -46,6 +46,15 @@ describe('resolveEffectiveMode — guardrails', () => {
     expect(r.mode).toBe('approval')
     expect(r.notes).toMatch(/risk/i)
   })
+  it('HARD rule: a low rating (<=2) forces approval even with a clean, keyword-free comment', () => {
+    const r = resolveEffectiveMode(rule({ mode: 'autopilot' }), ctx({ channelType: 'review', rating: 1, inboundContent: 'meh' }), goodDraft, { recentCount: 0 })
+    expect(r.mode).toBe('approval')
+    expect(r.notes).toMatch(/rating/i)
+  })
+  it('a high rating with a clean comment stays autopilot', () => {
+    const r = resolveEffectiveMode(rule({ mode: 'autopilot' }), ctx({ channelType: 'review', rating: 5, inboundContent: 'great!' }), goodDraft, { recentCount: 0 })
+    expect(r.mode).toBe('autopilot')
+  })
   it('model self-risk forces approval', () => {
     const r = resolveEffectiveMode(rule({ mode: 'autopilot' }), ctx(), { ...goodDraft, risk: true }, { recentCount: 0 })
     expect(r.mode).toBe('approval')
