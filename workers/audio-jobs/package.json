@@ -10,6 +10,7 @@
     "dev": "wrangler dev"
   },
   "dependencies": {
+    "@cloudflare/containers": "*",
     "pg": "*"
   },
   "devDependencies": {

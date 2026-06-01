@@ -1337,4 +1337,6 @@ export interface AudioAsset {
   format?: string | null
   /** Short-lived presigned playback URL, minted by the API on read. */
   streamUrl?: string
+  /** Short-lived per-channel variant download URLs (Phase 3 render tier). */
+  variantUrls?: Record<string, string>
 }

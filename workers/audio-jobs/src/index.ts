@@ -1,18 +1,28 @@
 // workers/audio-jobs/src/index.ts
 //
-// CF Queue consumer for Audio Studio music generation. The Pages app produces
-// to the `music-gen` queue (POST /api/agency/audio/music/generate); this Worker
-// consumes, calls the MiniMax music model, fetches the generated track, uploads
-// it to R2, and advances the audio_assets row.
+// CF Queue consumer for Audio Studio music generation + (Phase 3) render.
+// The Pages app produces to `music-gen`; this Worker consumes, calls the MiniMax
+// music model, uploads the master to R2, then renders per-channel variants via
+// the FFmpeg Container (RENDER) bound below.
 //
-// Bindings (wrangler.toml): AI, AUDIO_BUCKET (R2, bucket 'agency-files'),
-// HYPERDRIVE (→ Neon), and DATABASE_URL secret as a fallback connection string.
-
+// Bindings (wrangler.toml): AI, AUDIO_BUCKET (R2, 'agency-files'), HYPERDRIVE
+// (→ Neon), DATABASE_URL secret, and RENDER (FFmpeg Container).
+import { Container } from '@cloudflare/containers'
 import type { MusicJobBody } from './musicWorker'
+
+/** FFmpeg render service — a Linux container running ffmpeg over HTTP. The Worker
+ * invokes it per channel (POST /render with the master bytes + an x-audio-profile
+ * header); it returns the loudness-normalised variant bytes. Stateless: no R2/DB
+ * creds in the container — the Worker owns persistence. */
+export class RenderContainer extends Container {
+  defaultPort = 8080
+  sleepAfter = '5m'
+}
 
 interface Env {
   AI: { run(model: string, inputs: Record<string, unknown>): Promise<any> }
   AUDIO_BUCKET: R2Bucket
+  RENDER: unknown
   HYPERDRIVE?: { connectionString: string }
   DATABASE_URL?: string
 }
@@ -32,7 +42,7 @@ export default {
 
     for (const msg of batch.messages) {
       try {
-        await runMusicJob(msg.body, { AI: env.AI, AUDIO_BUCKET: env.AUDIO_BUCKET })
+        await runMusicJob(msg.body, { AI: env.AI, AUDIO_BUCKET: env.AUDIO_BUCKET as any, RENDER: env.RENDER })
         msg.ack()
       } catch (e) {
         console.error('audio-jobs.queue.error', msg.body?.assetId, e)

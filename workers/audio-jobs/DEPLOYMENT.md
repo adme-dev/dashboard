@@ -50,3 +50,27 @@ design.** Phase 1 voiceover and everything else are unaffected.
 - The master is uploaded to R2 at `audio/<clientId|org>/<assetId>/master.<ext>`
   (matches the Pages presigner key shape); the row gets `status='done'` +
   `r2_key_master`, and the Pages status endpoint mints a playback URL.
+
+## Phase 3 — FFmpeg render container (RENDER)
+
+The `RenderContainer` (`container/Dockerfile` — node + ffmpeg) renders per-channel
+loudness-normalised variants. After the master uploads, if the asset has target
+channels, the worker sets `status='rendering'`, invokes the container once per
+channel (POST /render, master bytes + `x-audio-profile` header), uploads each
+variant to `audio/<client|org>/<assetId>/<channel>.<ext>`, writes the
+`{channel→key}` map to `audio_assets.variants`, and flips `status='done'`. The
+Pages reads mint per-variant download URLs (`variantUrls`).
+
+- **Deploy** builds + ships the container automatically — `wrangler deploy` (from
+  `workers/audio-jobs/`) detects `[[containers]]` and builds `container/Dockerfile`
+  (needs Docker available locally, or CF builds remotely). The `[[migrations]]`
+  tag registers the `RenderContainer` Durable Object class.
+- **Render-only retries are cheap**: if a master already exists, a retry skips the
+  model call and only re-renders (no MiniMax re-bill).
+- **LUFS profiles** (`server/utils/audio/profiles.ts`): social −14 / radio −24,
+  −1 dBTP. ⚠️ Confirm the radio target against the **delivering network's spec**
+  (overridable per call — no redeploy). The ffmpeg "math" is unit-tested in
+  `server/utils/audio/render.ts`; `container/render.mjs` is its JS port — **keep
+  the two in sync**. Validate measured loudness against real audio post-deploy.
+- **Stateless container**: no R2/DB creds inside it — the worker owns persistence.
+  `sleepAfter = 5m`, `max_instances = 3`.
