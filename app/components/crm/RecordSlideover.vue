@@ -38,6 +38,8 @@ const title = computed(() =>
         <USeparator class="my-4" />
         <CrmTaskList :client-id="clientId" :target-type="objectType" :target-id="record.id" />
         <USeparator class="my-4" />
+        <CrmDocuments :client-id="clientId" :target-type="objectType" :target-id="record.id" />
+        <USeparator class="my-4" />
         <h3 class="text-sm font-medium text-muted mb-3">Communications &amp; activity</h3>
         <CrmCommTimeline :client-id="clientId" :target-type="objectType" :target-id="record.id" />
         <USeparator class="my-4" />

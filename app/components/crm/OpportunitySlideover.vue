@@ -21,6 +21,8 @@ const title = computed(() => props.record ? 'Edit opportunity' : 'New opportunit
         <USeparator class="my-4" />
         <CrmTaskList :client-id="clientId" target-type="opportunity" :target-id="record.id" />
         <USeparator class="my-4" />
+        <CrmDocuments :client-id="clientId" target-type="opportunity" :target-id="record.id" />
+        <USeparator class="my-4" />
         <h3 class="text-sm font-medium text-muted mb-3">Activity</h3>
         <CrmActivityTimeline :client-id="clientId" target-type="opportunity" :target-id="record.id" />
         <USeparator class="my-4" />
