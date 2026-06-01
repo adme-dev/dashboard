@@ -6,7 +6,7 @@ import { updateSubscriber } from '~~/server/utils/email-marketing/db'
 const Body = z.object({
   name: z.string().max(200).optional().nullable(),
   status: z.enum(['enabled', 'disabled', 'blocklisted']).optional(),
-  attribs: z.record(z.any()).optional()
+  attribs: z.record(z.string(), z.any()).optional()
 })
 
 export default defineEventHandler(async (event) => {

@@ -11,7 +11,7 @@ const Body = z.object({
   body_source: z.any(),
   subject: z.string().optional().nullable(),
   preview_text: z.string().optional().nullable(),
-  variables: z.record(z.string()).optional()
+  variables: z.record(z.string(), z.string()).optional()
 })
 
 export default defineEventHandler(async (event) => {

@@ -10,7 +10,7 @@ import { notifyOnNewLead } from '~~/server/utils/leads/notifyOnNew'
 
 const Body = z.object({
   client_id: z.string().uuid(),
-  field_data: z.record(z.string()),
+  field_data: z.record(z.string(), z.string()),
   form_name: z.string().optional().nullable(),
   notes: z.string().optional(),
   run_rules: z.boolean().optional().default(false),
