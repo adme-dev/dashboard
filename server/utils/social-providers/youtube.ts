@@ -13,7 +13,8 @@
  *   - Update metadata: 50 units
  */
 
-import type { SocialPostProvider, PostParams, PostResult, CommentParams } from './types'
+import type { SocialPostProvider, PostParams, PostResult, CommentParams, FetchInboxParams, FetchInboxResult, ReplyParams, ReplyResult } from './types'
+import type { InboxItem } from '~~/server/utils/socialInbox/types'
 
 const YOUTUBE_API_BASE = 'https://www.googleapis.com'
 const YOUTUBE_UPLOAD_BASE = `${YOUTUBE_API_BASE}/upload/youtube/v3`
@@ -398,4 +399,51 @@ export const youtubeProvider: SocialPostProvider = {
       return parseYouTubeError(err)
     }
   },
+}
+
+// --- Slice 2 inbox: YouTube comments ---
+/** Pure: map a YouTube commentThreads.list response to InboxItems + next cursor. */
+export function mapYouTubeThreads(api: any): FetchInboxResult {
+  const items: InboxItem[] = (api?.items ?? []).map((t: any) => {
+    const c = t.snippet?.topLevelComment
+    const s = c?.snippet ?? {}
+    return {
+      channelType: 'comment' as const,
+      platformConversationId: String(t.snippet?.videoId ?? ''),
+      permalink: t.snippet?.videoId ? `https://youtu.be/${t.snippet.videoId}` : undefined,
+      participant: { id: s.authorChannelId?.value, name: s.authorDisplayName },
+      platformMessageId: String(c?.id ?? ''),
+      authorId: s.authorChannelId?.value,
+      authorName: s.authorDisplayName,
+      content: s.textDisplay ?? '',
+      messageType: 'comment',
+      platformTimestamp: s.publishedAt,
+    }
+  })
+  return { items, nextCursor: api?.nextPageToken ?? null }
+}
+
+youtubeProvider.fetchInbox = async ({ accountId, accessToken, cursor }: FetchInboxParams): Promise<FetchInboxResult> => {
+  const url = new URL(`${YOUTUBE_API_BASE}/youtube/v3/commentThreads`)
+  url.searchParams.set('part', 'snippet')
+  url.searchParams.set('allThreadsRelatedToChannelId', accountId) // platform_account_id = channel id
+  url.searchParams.set('maxResults', '50')
+  url.searchParams.set('order', 'time')
+  if (cursor) url.searchParams.set('pageToken', cursor)
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
+  if (!res.ok) throw new Error(`youtube fetchInbox ${res.status}`)
+  return mapYouTubeThreads(await res.json())
+}
+
+youtubeProvider.reply = async ({ accessToken, conversationId, content }: ReplyParams): Promise<ReplyResult> => {
+  // conversationId = the parent top-level comment id (the reply endpoint passes the latest inbound message id)
+  const res = await fetch(`${YOUTUBE_API_BASE}/youtube/v3/comments?part=snippet`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ snippet: { parentId: conversationId, textOriginal: content } }),
+  })
+  const j: any = await res.json().catch(() => ({}))
+  return res.ok
+    ? { platformMessageId: String(j.id ?? ''), status: 'success' }
+    : { platformMessageId: '', status: 'failed', error: j?.error?.message ?? `http ${res.status}` }
 }

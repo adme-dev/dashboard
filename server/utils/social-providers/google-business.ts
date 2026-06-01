@@ -13,7 +13,8 @@
  * Endpoint format: accounts/{accountId}/locations/{locationId}/localPosts
  */
 
-import type { SocialPostProvider, PostParams, PostResult } from './types'
+import type { SocialPostProvider, PostParams, PostResult, FetchInboxParams, FetchInboxResult, ReplyParams, ReplyResult } from './types'
+import type { InboxItem } from '~~/server/utils/socialInbox/types'
 
 const GBP_API_BASE = 'https://mybusiness.googleapis.com/v4'
 
@@ -324,4 +325,47 @@ export const googleBusinessProvider: SocialPostProvider = {
       return parseGBPError(err)
     }
   },
+}
+
+// --- Slice 2 inbox: Google Business reviews ---
+const GBP_STAR: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 }
+
+/** Pure: map a GBP reviews.list response to InboxItems + next cursor. */
+export function mapGoogleReviews(api: any): FetchInboxResult {
+  const items: InboxItem[] = (api?.reviews ?? []).map((r: any) => ({
+    channelType: 'review' as const,
+    // full resource name (accounts/*/locations/*/reviews/*) so reply() can target it directly
+    platformConversationId: String(r.name ?? r.reviewId ?? ''),
+    participant: { name: r.reviewer?.displayName },
+    platformMessageId: String(r.reviewId ?? r.name ?? ''),
+    authorName: r.reviewer?.displayName,
+    content: r.comment ?? '',
+    messageType: 'review',
+    rating: GBP_STAR[r.starRating] ?? undefined,
+    platformTimestamp: r.createTime,
+  }))
+  return { items, nextCursor: api?.nextPageToken ?? null }
+}
+
+googleBusinessProvider.fetchInbox = async ({ accountId, accessToken, cursor }: FetchInboxParams): Promise<FetchInboxResult> => {
+  // accountId = the location resource name `accounts/{acct}/locations/{loc}` (set at connect time)
+  const url = new URL(`${GBP_API_BASE}/${accountId}/reviews`)
+  url.searchParams.set('pageSize', '50')
+  if (cursor) url.searchParams.set('pageToken', cursor)
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
+  if (!res.ok) throw new Error(`gbp fetchInbox ${res.status}`)
+  return mapGoogleReviews(await res.json())
+}
+
+googleBusinessProvider.reply = async ({ accessToken, conversationId, content }: ReplyParams): Promise<ReplyResult> => {
+  // conversationId = full review resource name; reply endpoint is `.../reviews/{id}/reply` (PUT)
+  const res = await fetch(`${GBP_API_BASE}/${conversationId}/reply`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ comment: content }),
+  })
+  const j: any = await res.json().catch(() => ({}))
+  return res.ok
+    ? { platformMessageId: String(conversationId), status: 'success' }
+    : { platformMessageId: '', status: 'failed', error: j?.error?.message ?? `http ${res.status}` }
 }
