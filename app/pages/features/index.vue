@@ -147,6 +147,7 @@ const categories = [
       { title: 'Approvals', slug: 'social-approvals', icon: 'i-lucide-clipboard-check', description: 'Request → approve/reject workflow with notifications, so nothing goes out without sign-off.' },
       { title: 'Engagement Inbox', slug: 'social-inbox', icon: 'i-lucide-messages-square', description: 'Every comment, mention, and message across your networks in one unified inbox — read, triage, and reply without leaving the dashboard.' },
       { title: 'Reviews', slug: 'social-reviews', icon: 'i-lucide-star', description: 'Track and respond to Google Business and Facebook reviews in one place, with ratings at a glance.' },
+      { title: 'Reply Automation', slug: 'social-automation', icon: 'i-lucide-bot', description: 'AI drafts replies to comments and reviews — suggest, approve, or autopilot, with hard safety guardrails and a global kill-switch.' },
     ]
   },
   {
