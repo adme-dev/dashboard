@@ -14,6 +14,7 @@ import { resolveSiteByWriteKey, isOriginAllowed, shouldBlockOrigin } from '~~/se
 import { snapshotConsent } from '~~/server/utils/tracking/consent'
 import { buildEventRows } from '~~/server/utils/tracking/event-insert'
 import { rateCheck } from '~~/server/utils/tracking/rate-limit'
+import { resolveClientIp } from '~~/server/utils/tracking/client-ip'
 
 async function sha256Hex(value: string): Promise<string> {
   try {
@@ -74,7 +75,10 @@ export default defineEventHandler(async (event) => {
     // reversible (the whole v4 space is ~4.3B preimages), so an unpeppered hash
     // is effectively raw IP. With TRACKING_IP_SALT set the hash is non-reversible
     // without the server secret. (Falls back to unsalted only if the env is unset.)
-    const ip = getRequestIP(event, { xForwardedFor: true }) || ''
+    // cf-connecting-ip is the only IP source CF populates in the Workers runtime;
+    // getRequestIP returns empty there (was silently NULLing every ip_hash + the
+    // rate-limiter's per-IP layer since Slice 1). See resolveClientIp.
+    const ip = resolveClientIp(getHeader(event, 'cf-connecting-ip'), getRequestIP(event, { xForwardedFor: true }))
     const ipSalt = process.env.TRACKING_IP_SALT || ''
     const ctx = {
       ua: getHeader(event, 'user-agent') || null,
