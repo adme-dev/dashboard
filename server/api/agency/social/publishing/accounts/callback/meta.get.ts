@@ -43,7 +43,7 @@ export default defineEventHandler(async (event) => {
 
   // 1 page → finalize inline.
   if (pages.length === 1) {
-    const r = await finalizePage(state.clientId, state.userId, pages[0], expiresAt)
+    const r = await finalizePage(state.clientId, state.userId, pages[0]!, expiresAt)
     if (r === 'conflict') return fail('page_owned_by_another_client')
     return sendRedirect(event, `${ACCOUNTS_PATH}?social_connected=1`, 302)
   }
