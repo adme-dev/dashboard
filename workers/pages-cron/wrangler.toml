@@ -8,6 +8,7 @@ compatibility_date = "2025-12-01"
 [triggers]
 crons = [
   "0 * * * *",    # anomaly-detection + ga4-sync
+  "30 * * * *",   # ga4-dimensions
   "*/5 * * * *",  # office-assistant
   "35 3 * * *",   # office-retention
   "45 3 * * *"    # tracking-retention
