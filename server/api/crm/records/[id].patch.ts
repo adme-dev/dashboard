@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { loadFieldDefs, validateAndCheckRelations, assertStageBelongsToClient } from '~~/server/utils/crm/engine/recordWrite'
+import { recordFieldChanges } from '~~/server/utils/crm/audit'
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -11,14 +12,14 @@ const Body = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
   await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')
   const parsed = Body.safeParse(await readBody(event))
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: parsed.error.message })
   const b = parsed.data
-  const existing = await queryOne<{ object_def_id: string }>(
-    `SELECT object_def_id FROM crm_records WHERE id = $1 AND client_id = $2 AND deleted_at IS NULL`,
+  const existing = await queryOne<{ object_def_id: string, data: Record<string, unknown>, stage_id: string | null }>(
+    `SELECT object_def_id, data, stage_id FROM crm_records WHERE id = $1 AND client_id = $2 AND deleted_at IS NULL`,
     [id, b.client_id],
   )
   if (!existing) throw createError({ statusCode: 404, statusMessage: 'Record not found' })
@@ -38,9 +39,20 @@ export default defineEventHandler(async (event) => {
   sets.push('updated_at = NOW()')
   params.push(id); const idIdx = params.length
   params.push(b.client_id); const clientIdx = params.length
-  const row = await queryOne(
+  const row = await queryOne<{ data: Record<string, unknown>, stage_id: string | null }>(
     `UPDATE crm_records SET ${sets.join(', ')} WHERE id = $${idIdx} AND client_id = $${clientIdx} AND deleted_at IS NULL RETURNING *`,
     params,
   )
+  if (!row) throw createError({ statusCode: 404, statusMessage: 'Record not found' })
+  // Audit the record's data fields (generic key diff) + stage transitions.
+  try {
+    const dataKeys = [...new Set([...Object.keys(existing.data ?? {}), ...Object.keys(row.data ?? {})])]
+    await recordFieldChanges({
+      clientId: b.client_id, entityType: 'record', entityId: id as string,
+      before: { ...(existing.data ?? {}), stage_id: existing.stage_id },
+      after: { ...(row.data ?? {}), stage_id: row.stage_id },
+      fields: [...dataKeys, 'stage_id'], actor: user.id,
+    })
+  } catch (e) { console.error('[crm] audit failed', e) }
   return { item: row }
 })

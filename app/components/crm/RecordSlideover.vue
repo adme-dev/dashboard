@@ -36,6 +36,8 @@ const title = computed(() =>
         <USeparator class="my-4" />
         <h3 class="text-sm font-medium text-muted mb-3">Activity</h3>
         <CrmActivityTimeline :client-id="clientId" :target-type="objectType" :target-id="record.id" />
+        <USeparator class="my-4" />
+        <CrmAuditHistory :client-id="clientId" :entity-type="objectType" :entity-id="record.id" />
       </template>
     </template>
   </USlideover>
