@@ -42,7 +42,7 @@ export async function createComm(input: CreateCommInput) {
  * (off by default), idempotent by external_id, and honours contact prefs on OUTBOUND.
  * Returns whether a row was logged (and, if skipped for prefs, the reason).
  */
-export async function bridgeCommunication(input: {
+export interface BridgeCommunicationInput {
   clientId: string
   contactEmail: string
   channel: CommChannel
@@ -52,7 +52,9 @@ export async function bridgeCommunication(input: {
   subject?: string | null
   body?: string | null
   occurredAt?: string | null
-}): Promise<{ logged: boolean, blocked?: string }> {
+}
+
+export async function bridgeCommunication(input: BridgeCommunicationInput): Promise<{ logged: boolean, blocked?: string }> {
   if (process.env.CRM_COMMS_BRIDGE_ENABLED !== 'true') return { logged: false }
   if (!input.contactEmail) return { logged: false }
   const person = await queryOne<{ id: string, do_not_contact: boolean, do_not_email: boolean, do_not_call: boolean, do_not_sms: boolean }>(

@@ -1,16 +1,23 @@
 // server/utils/leads/notifyOnNew.ts
 // Surfaces a notification to the assigned AM (or the client's primary/secondary AM)
-// when a lead arrives. Uses the existing notifications subsystem so Smart Watch /
-// inbox / digest features all light up automatically.
+// when a lead arrives, and bridges the lead onto the CRM timeline (F10). Uses the
+// existing notifications subsystem so Smart Watch / inbox / digest features all
+// light up automatically. All inbound paths converge here, so it's the single
+// place new-lead side-effects are wired.
 
 import { queryRows } from '~~/server/utils/db'
 import { createNotification } from '~~/server/utils/notifications'
+import { bridgeLeadToCrm } from '~~/server/utils/leads/crmBridge'
 import type { Lead } from '~~/app/types'
 
 type MinimalLead = Pick<Lead,
-  'id' | 'client_id' | 'source' | 'form_id' | 'form_name' | 'assigned_to' | 'field_data'>
+  'id' | 'client_id' | 'source' | 'form_id' | 'form_name' | 'assigned_to' | 'field_data' | 'submitted_at'>
 
 export async function notifyOnNewLead(lead: MinimalLead): Promise<void> {
+  // CRM timeline bridge first — independent of notification recipients, and a
+  // no-op (gated + self-guarding) until the operator enables CRM_COMMS_BRIDGE_ENABLED.
+  await bridgeLeadToCrm(lead)
+
   const f = lead.field_data ?? {}
   const summary = [f.full_name, f.email, f.phone_number ?? f.phone]
     .filter(Boolean)

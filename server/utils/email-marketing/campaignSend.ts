@@ -3,6 +3,8 @@
 // sender (2b-2) and the campaign endpoints compose these. Kept side-effect-free
 // so the send-gate + pacing logic is unit-testable without a DB or Resend.
 
+import type { BridgeCommunicationInput } from '~~/server/utils/crm/commsDb'
+
 export const CAMPAIGN_STATUSES = [
   'draft', 'scheduled', 'sending', 'paused', 'sent', 'cancelled'
 ] as const
@@ -187,4 +189,28 @@ export function parseRetryAfter(
     }
   }
   return fallbackSec
+}
+
+// ── CRM communication bridge (F10) ──────────────────────────────────────────
+// Map one campaign send to a CRM-timeline communication. Pure: the gate,
+// person-lookup, contact-pref enforcement and idempotency all live in
+// bridgeCommunication(). Returns null when there's nothing to log (no tenant to
+// scope to, or no recipient address). The externalId is deterministic
+// (campaign:subscriber) so a re-send of the same recipient dedupes — it does NOT
+// depend on the Resend message id, which may be null on a partial batch result.
+export function buildCampaignBridgeInput(
+  campaign: { id: string, client_id: string | null, subject: string | null },
+  recipient: { email: string, subscriber_id: string },
+): BridgeCommunicationInput | null {
+  if (!campaign.client_id || !recipient.email) return null
+  return {
+    clientId: campaign.client_id,
+    contactEmail: recipient.email,
+    channel: 'email',
+    direction: 'outbound',
+    source: 'email_bridge',
+    externalId: `${campaign.id}:${recipient.subscriber_id}`,
+    subject: campaign.subject,
+    body: null,
+  }
 }

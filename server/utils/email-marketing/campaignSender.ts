@@ -11,7 +11,8 @@
 
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { getResendClient, getAppUrl, isEmailConfigured } from '~~/server/utils/email'
-import { RESEND_BATCH_LIMIT, buildBatchEmail, isRateLimitError, parseRetryAfter, canEnterSending } from './campaignSend'
+import { RESEND_BATCH_LIMIT, buildBatchEmail, isRateLimitError, parseRetryAfter, canEnterSending, buildCampaignBridgeInput } from './campaignSend'
+import { bridgeCommunication } from '~~/server/utils/crm/commsDb'
 import { signEmailToken, emailLinkSecret } from './links'
 import { getCampaign, materializeRecipients, setCampaignStatus, type Campaign } from './campaigns'
 
@@ -118,6 +119,7 @@ export async function sendCampaignChunk(campaign: Campaign): Promise<ChunkResult
     const ids = (data?.data ?? []) as Array<{ id: string }>
     for (let i = 0; i < recipients.length; i++) {
       const r = recipients[i]
+      if (!r) continue
       const messageId = ids[i]?.id ?? null
       await execute(`
         UPDATE campaign_recipients
@@ -128,6 +130,13 @@ export async function sendCampaignChunk(campaign: Campaign): Promise<ChunkResult
         INSERT INTO email_events (campaign_id, subscriber_id, resend_message_id, event_type)
         VALUES ($1, $2, $3, 'sent')
       `, [campaign.id, r.subscriber_id, messageId])
+      // F10 bridge: log this send onto the CRM timeline when the recipient maps
+      // to a CRM person. Gated + idempotent inside bridgeCommunication; never let
+      // a CRM failure abort the batch loop.
+      const bridge = buildCampaignBridgeInput(campaign, { email: r.email, subscriber_id: r.subscriber_id })
+      if (bridge) {
+        try { await bridgeCommunication(bridge) } catch (e) { console.warn('crmBridge.email.error', e) }
+      }
       sent++
     }
   } catch (err) {
