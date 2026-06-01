@@ -1,0 +1,18 @@
+name = "social-inbox-cron"
+main = "src/index.ts"
+compatibility_date = "2025-12-01"
+
+# Poll comments + reviews every 5 minutes. The Pages handler advances per-account
+# cursors and records idempotently, so overlapping ticks can never double-ingest.
+[triggers]
+crons = [
+  "*/5 * * * *"   # sync social engagement inbox (comments + reviews)
+]
+
+[vars]
+APP_BASE_URL = "https://agency-dashboard-6cm.pages.dev"
+
+# CRON_SECRET is set as a secret, not a var — must match the Pages project's
+# CRON_SECRET so /api/cron/sync-social-inbox accepts the x-cron-secret header:
+#   wrangler secret put CRON_SECRET   (run from an isolated copy outside the repo tree —
+#   the repo root's .wrangler/deploy/config.json redirect otherwise breaks `wrangler deploy`)
