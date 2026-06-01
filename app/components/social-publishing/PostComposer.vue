@@ -43,6 +43,84 @@ function removeMedia(url: string) {
   state.value.mediaUrls = state.value.mediaUrls.filter(u => u !== url)
 }
 
+// Banner Studio creative picker
+interface BannerCreative { id: string; url: string; projectName: string; formatKey: string; width: number; height: number }
+const bannerOpen = ref(false)
+const bannerLoading = ref(false)
+const bannerCreatives = ref<BannerCreative[]>([])
+const bannerByProject = computed(() => {
+  const groups: Record<string, BannerCreative[]> = {}
+  for (const c of bannerCreatives.value) (groups[c.projectName] ??= []).push(c)
+  return groups
+})
+async function openBanner() {
+  bannerOpen.value = true
+  if (bannerCreatives.value.length) return
+  bannerLoading.value = true
+  try {
+    bannerCreatives.value = await $fetch<BannerCreative[]>('/api/agency/banner-studio/published/with-projects')
+  } catch {
+    bannerCreatives.value = []
+  } finally {
+    bannerLoading.value = false
+  }
+}
+function pickCreative(c: BannerCreative) {
+  if (!state.value.mediaUrls.includes(c.url)) state.value.mediaUrls.push(c.url)
+  state.value.creativeId = c.id
+  bannerOpen.value = false
+}
+
+const toast = useToast()
+
+// AI caption
+const aiOpen = ref(false)
+const aiBrief = ref('')
+const aiTone = ref('friendly')
+const aiLoading = ref(false)
+const TONES = ['friendly', 'professional', 'playful', 'bold', 'informative']
+async function generateCaption() {
+  const topic = aiBrief.value.trim() || state.value.content.trim()
+  if (!topic) { toast.add({ title: 'Add a brief or some copy first', color: 'warning' }); return }
+  aiLoading.value = true
+  try {
+    const { caption } = await $fetch<{ caption: string }>('/api/agency/social/publishing/ai/generate-caption', {
+      method: 'POST',
+      body: { topic, platform: state.value.platforms[0] ?? 'facebook', tone: aiTone.value },
+    })
+    state.value.content = caption
+    aiOpen.value = false
+    aiBrief.value = ''
+  } catch (e: any) {
+    toast.add({ title: 'Caption generation failed', description: e?.data?.statusMessage, color: 'error' })
+  } finally {
+    aiLoading.value = false
+  }
+}
+
+// AI image (reuses the Banner Studio image generator → R2 url)
+const aiImgOpen = ref(false)
+const aiImgPrompt = ref('')
+const aiImgLoading = ref(false)
+async function generateImage() {
+  const prompt = aiImgPrompt.value.trim()
+  if (!prompt) { toast.add({ title: 'Describe the image first', color: 'warning' }); return }
+  aiImgLoading.value = true
+  try {
+    const { url } = await $fetch<{ url: string }>('/api/agency/banner-studio/ai/generate-image', {
+      method: 'POST',
+      body: { prompt },
+    })
+    if (url && !state.value.mediaUrls.includes(url)) state.value.mediaUrls.push(url)
+    aiImgOpen.value = false
+    aiImgPrompt.value = ''
+  } catch (e: any) {
+    toast.add({ title: 'Image generation failed', description: e?.data?.statusMessage, color: 'error' })
+  } finally {
+    aiImgLoading.value = false
+  }
+}
+
 // schedule date bridge (ISO <-> CalendarDate)
 function toCalendarDate(iso: string | null): DateValue | null {
   if (!iso) return null
@@ -113,6 +191,11 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
 
     <!-- Base content -->
     <UFormField label="Post content">
+      <template #hint>
+        <UButton size="xs" variant="ghost" color="primary" icon="i-lucide-sparkles" @click="aiOpen = true">
+          Write with AI
+        </UButton>
+      </template>
       <UTextarea
         v-model="state.content"
         :rows="6"
@@ -168,18 +251,91 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
       </UFormField>
     </div>
 
-    <UFormField label="Media" help="Add image URLs (R2 / Banner Studio creatives). Banner Studio picker + AI image are a fast-follow.">
+    <UFormField label="Media" help="Pick a Banner Studio creative, or add an image URL (R2 / external).">
       <div class="flex gap-2">
+        <UButton icon="i-lucide-image" color="neutral" variant="subtle" @click="openBanner">Banner Studio</UButton>
+        <UButton icon="i-lucide-sparkles" color="primary" variant="subtle" @click="aiImgOpen = true">AI image</UButton>
         <UInput v-model="newMediaUrl" placeholder="https://…/image.jpg" class="flex-1" @keydown.enter.prevent="addMedia" />
         <UButton icon="i-lucide-plus" color="neutral" variant="subtle" @click="addMedia">Add</UButton>
       </div>
       <div v-if="state.mediaUrls.length" class="mt-2 flex flex-wrap gap-2">
-        <UBadge v-for="url in state.mediaUrls" :key="url" color="neutral" variant="subtle" class="max-w-full">
-          <span class="truncate max-w-[200px]">{{ url.split('/').pop() }}</span>
-          <UButton icon="i-lucide-x" size="xs" variant="link" color="neutral" class="-mr-1" @click="removeMedia(url)" />
-        </UBadge>
+        <div v-for="url in state.mediaUrls" :key="url" class="relative group/media">
+          <img :src="url" alt="" class="h-16 w-16 rounded-md object-cover border border-default">
+          <UButton
+            icon="i-lucide-x" size="xs" color="neutral" variant="solid"
+            class="absolute -top-1.5 -right-1.5 opacity-0 group-hover/media:opacity-100 transition-opacity rounded-full"
+            @click="removeMedia(url)"
+          />
+        </div>
       </div>
     </UFormField>
+
+    <!-- Banner Studio picker -->
+    <UModal v-model:open="bannerOpen" :ui="{ content: 'max-w-3xl' }">
+      <template #content>
+        <div class="p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold">Pick a Banner Studio creative</h3>
+            <UButton icon="i-lucide-x" color="neutral" variant="ghost" @click="bannerOpen = false" />
+          </div>
+          <div v-if="bannerLoading" class="py-10 text-center text-sm text-muted">Loading creatives…</div>
+          <div v-else-if="!bannerCreatives.length" class="py-10 text-center text-sm text-muted">
+            No published Banner Studio creatives found.
+          </div>
+          <div v-else class="max-h-[60vh] overflow-y-auto space-y-5">
+            <div v-for="(items, project) in bannerByProject" :key="project">
+              <div class="text-xs font-medium uppercase tracking-wide text-muted mb-2">{{ project }}</div>
+              <div class="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                <button
+                  v-for="c in items" :key="c.id" type="button"
+                  class="group/c rounded-lg border border-default overflow-hidden hover:ring-2 hover:ring-primary transition-all text-left"
+                  @click="pickCreative(c)"
+                >
+                  <img :src="c.url" :alt="c.formatKey" class="w-full aspect-square object-cover bg-elevated">
+                  <div class="px-2 py-1 text-[11px] text-muted truncate">{{ c.formatKey }}</div>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- AI caption -->
+    <UModal v-model:open="aiOpen">
+      <template #content>
+        <div class="p-5 space-y-4">
+          <h3 class="font-semibold flex items-center gap-2"><UIcon name="i-lucide-sparkles" class="size-4 text-primary" /> Write with AI</h3>
+          <UFormField label="What's the post about?" help="Leave blank to rewrite your current draft.">
+            <UTextarea v-model="aiBrief" :rows="3" placeholder="e.g. launch of our new winter range, 20% off this weekend" class="w-full" />
+          </UFormField>
+          <UFormField label="Tone">
+            <USelectMenu v-model="aiTone" :items="TONES" class="w-44" />
+          </UFormField>
+          <p class="text-xs text-muted">Tuned for {{ labelFor(state.platforms[0]) || 'Facebook' }} (your first selected network).</p>
+          <div class="flex justify-end gap-2">
+            <UButton color="neutral" variant="ghost" @click="aiOpen = false">Cancel</UButton>
+            <UButton color="primary" icon="i-lucide-sparkles" :loading="aiLoading" @click="generateCaption">Generate</UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- AI image -->
+    <UModal v-model:open="aiImgOpen">
+      <template #content>
+        <div class="p-5 space-y-4">
+          <h3 class="font-semibold flex items-center gap-2"><UIcon name="i-lucide-sparkles" class="size-4 text-primary" /> Generate an image</h3>
+          <UFormField label="Describe the image" help="Generated via the Banner Studio image engine and added to your media.">
+            <UTextarea v-model="aiImgPrompt" :rows="3" placeholder="e.g. cosy winter scene, knitted jumper flatlay, warm tones" class="w-full" />
+          </UFormField>
+          <div class="flex justify-end gap-2">
+            <UButton color="neutral" variant="ghost" @click="aiImgOpen = false">Cancel</UButton>
+            <UButton color="primary" icon="i-lucide-sparkles" :loading="aiImgLoading" @click="generateImage">Generate</UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
 
     <!-- Tags + hashtags -->
     <div class="grid grid-cols-2 gap-4">
@@ -205,7 +361,11 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
           <UPopover>
             <UButton icon="i-lucide-calendar" color="neutral" variant="subtle">{{ scheduleLabel }}</UButton>
             <template #content>
-              <UCalendar v-model="scheduleDate" class="p-2" />
+              <UCalendar
+                :model-value="(scheduleDate ?? undefined) as any"
+                class="p-2"
+                @update:model-value="(v: any) => scheduleDate = v"
+              />
             </template>
           </UPopover>
           <USelectMenu

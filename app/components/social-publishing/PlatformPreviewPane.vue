@@ -10,11 +10,11 @@ const props = defineProps<{
 
 const META = {
   facebook: { label: 'Facebook', icon: 'i-lucide-facebook', comp: 'AdPreviewMetaFeedPreview' },
-  instagram: { label: 'Instagram', icon: 'i-lucide-instagram', comp: 'AdPreviewMetaFeedPreview' },
+  instagram: { label: 'Instagram', icon: 'i-lucide-instagram', comp: 'AdPreviewInstagramPreview' },
   linkedin: { label: 'LinkedIn', icon: 'i-lucide-linkedin', comp: 'AdPreviewLinkedInPreview' },
   tiktok: { label: 'TikTok', icon: 'i-lucide-music', comp: 'AdPreviewTikTokPreview' },
   youtube: { label: 'YouTube', icon: 'i-lucide-youtube', comp: 'AdPreviewYouTubePreview' },
-  'google-business': { label: 'Google Business', icon: 'i-lucide-store', comp: null },
+  'google-business': { label: 'Google Business', icon: 'i-lucide-store', comp: 'AdPreviewGoogleBusinessPreview' },
 } as const
 
 const cards = computed(() =>

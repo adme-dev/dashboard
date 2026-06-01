@@ -17,6 +17,7 @@ export interface ComposerState {
   scheduleMode: ScheduleMode
   scheduledAt: string | null
   timezone: string
+  creativeId: string | null
 }
 
 export function emptyComposerState(): ComposerState {
@@ -35,6 +36,7 @@ export function emptyComposerState(): ComposerState {
     scheduleMode: 'schedule',
     scheduledAt: null,
     timezone: 'Australia/Sydney',
+    creativeId: null,
   }
 }
 
@@ -66,6 +68,7 @@ export function composerToBody(state: ComposerState, clientId: string): Record<s
     scheduledAt: state.scheduleMode === 'now' ? null : state.scheduledAt,
     timezone: state.timezone,
     status: 'draft',
+    metadata: state.creativeId ? { creativeId: state.creativeId } : {},
   }
 }
 
@@ -92,6 +95,7 @@ export function useSocialComposer() {
       scheduleMode: post.scheduled_at ? 'schedule' : 'now',
       scheduledAt: post.scheduled_at,
       timezone: post.timezone ?? 'Australia/Sydney',
+      creativeId: (post.metadata as any)?.creativeId ?? null,
     }
   }
 
