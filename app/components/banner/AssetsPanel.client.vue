@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { BannerAsset } from '~/types/banner-studio'
+import type { AudioAsset } from '~/types'
 
 const { addLayer, nextId, activeLayers } = useBannerStudio()
 const { decomposingAssetId, decomposeFromUrl } = useDecompose()
@@ -11,7 +12,7 @@ const isDragging = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 
 // AI Image Suggestions
-const aiSuggestions = ref<{ keyword: string; description: string; style: string }[]>([])
+const aiSuggestions = ref<{ keyword: string, description: string, style: string }[]>([])
 const aiLoading = ref(false)
 const showAiSuggestions = ref(false)
 
@@ -19,7 +20,7 @@ const STYLE_COLORS: Record<string, string> = {
   photo: 'primary',
   illustration: 'success',
   abstract: 'warning',
-  pattern: 'neutral',
+  pattern: 'neutral'
 }
 
 async function fetchImageSuggestions() {
@@ -36,7 +37,7 @@ async function fetchImageSuggestions() {
   try {
     const result = await $fetch<{ suggestions: typeof aiSuggestions.value }>('/api/agency/banner-studio/ai/image-suggest', {
       method: 'POST',
-      body: { texts },
+      body: { texts }
     })
     aiSuggestions.value = result.suggestions || []
   } catch {
@@ -54,7 +55,7 @@ const { data: assetsData, refresh: refreshAssets } = useFetch<{ assets: BannerAs
   default: () => ({ assets: [] }),
   onResponseError() {
     // API may not exist yet
-  },
+  }
 })
 
 const assets = computed(() => {
@@ -83,9 +84,39 @@ function handleAssetClick(asset: BannerAsset) {
     h: isAudio ? 0 : 150,
     fit: isAudio ? undefined : 'cover',
     volume: isAudio ? 1 : undefined,
-    animIn: isAudio ? 'none' : 'fadeIn',
+    animIn: isAudio ? 'none' : 'fadeIn'
   })
   toast.add({ title: 'Asset added', description: `"${asset.name}" added`, color: 'success' })
+}
+
+// Audio Studio voiceovers — owned, generated audio assets reusable as a layer.
+const { data: voiceoverData } = useFetch<{ assets: AudioAsset[] }>('/api/agency/audio/assets', {
+  query: { kind: 'voiceover' },
+  default: () => ({ assets: [] }),
+  onResponseError() {
+    // Audio Studio API may be unavailable — degrade silently.
+  }
+})
+
+function addVoiceoverLayer(a: AudioAsset) {
+  if (!a.streamUrl) {
+    toast.add({ title: 'Audio unavailable', description: 'This voiceover has no playable source', color: 'warning' })
+    return
+  }
+  addLayer({
+    id: nextId(),
+    type: 'audio',
+    src: a.streamUrl,
+    name: a.title || 'Voiceover',
+    x: 0,
+    y: 0,
+    w: 0,
+    h: 0,
+    fit: undefined,
+    volume: 1,
+    animIn: 'none'
+  })
+  toast.add({ title: 'Voiceover added', description: `"${a.title || 'Voiceover'}" added`, color: 'success' })
 }
 
 async function uploadFiles(files: FileList | File[]) {
@@ -95,7 +126,7 @@ async function uploadFiles(files: FileList | File[]) {
     try {
       await $fetch('/api/agency/banner-studio/assets/upload', {
         method: 'POST',
-        body: formData,
+        body: formData
       })
       toast.add({ title: 'Uploaded', description: `${file.name} uploaded`, color: 'success' })
     } catch {
@@ -146,7 +177,9 @@ async function deleteAsset(asset: BannerAsset) {
       @click="fileInput?.click()"
     >
       <UIcon name="i-lucide-upload-cloud" class="w-6 h-6 text-(--ui-text-muted) mx-auto mb-1" />
-      <p class="text-xs text-(--ui-text-muted)">Drop files or click to upload</p>
+      <p class="text-xs text-(--ui-text-muted)">
+        Drop files or click to upload
+      </p>
       <input
         ref="fileInput"
         type="file"
@@ -170,6 +203,23 @@ async function deleteAsset(asset: BannerAsset) {
       />
     </div>
 
+    <!-- Audio Studio voiceovers -->
+    <div v-if="voiceoverData?.assets?.length" class="space-y-1.5">
+      <p class="text-[10px] font-semibold uppercase tracking-wider text-(--ui-text-muted)">
+        Audio Studio
+      </p>
+      <button
+        v-for="a in voiceoverData.assets"
+        :key="a.id"
+        type="button"
+        class="w-full flex items-center gap-2 text-left text-[11px] px-2 py-1.5 rounded bg-(--ui-bg) border border-(--ui-border) hover:bg-(--ui-bg-elevated) transition-colors truncate"
+        @click="addVoiceoverLayer(a)"
+      >
+        <UIcon name="i-lucide-mic" class="w-3.5 h-3.5 shrink-0 text-(--ui-text-muted)" />
+        <span class="truncate">{{ a.title || 'Untitled voiceover' }}</span>
+      </button>
+    </div>
+
     <!-- AI Image Suggestions -->
     <div>
       <button
@@ -190,9 +240,18 @@ async function deleteAsset(asset: BannerAsset) {
         >
           <div class="flex items-center gap-1.5">
             <span class="text-[11px] font-medium text-(--ui-text) group-hover:text-(--ui-primary) transition-colors">{{ s.keyword }}</span>
-            <UBadge :color="STYLE_COLORS[s.style] || 'neutral'" variant="subtle" size="xs" class="ml-auto shrink-0">{{ s.style }}</UBadge>
+            <UBadge
+              :color="STYLE_COLORS[s.style] || 'neutral'"
+              variant="subtle"
+              size="xs"
+              class="ml-auto shrink-0"
+            >
+              {{ s.style }}
+            </UBadge>
           </div>
-          <p v-if="s.description" class="text-[10px] text-(--ui-text-muted) mt-0.5">{{ s.description }}</p>
+          <p v-if="s.description" class="text-[10px] text-(--ui-text-muted) mt-0.5">
+            {{ s.description }}
+          </p>
         </button>
       </div>
     </div>
@@ -216,8 +275,12 @@ async function deleteAsset(asset: BannerAsset) {
           <UIcon v-else name="i-lucide-file" class="w-8 h-8 text-(--ui-text-muted)" />
         </div>
         <div class="px-1.5 py-1 bg-(--ui-bg-elevated)">
-          <div class="text-[10px] font-medium truncate text-(--ui-text)">{{ asset.name }}</div>
-          <div class="text-[9px] text-(--ui-text-muted)">{{ formatSize(asset.fileSize) }}</div>
+          <div class="text-[10px] font-medium truncate text-(--ui-text)">
+            {{ asset.name }}
+          </div>
+          <div class="text-[9px] text-(--ui-text-muted)">
+            {{ formatSize(asset.fileSize) }}
+          </div>
         </div>
         <!-- Decompose overlay (image assets only) -->
         <div

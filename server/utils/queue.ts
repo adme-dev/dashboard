@@ -8,6 +8,7 @@ export type JobType =
   | 'board.automate'
   | 'eom.generate'
   | 'spend.sync.meta'
+  | 'spend.sync.meta.account'
   | 'spend.sync.google'
   | 'spend.sync.tiktok'
   | 'embed.task'

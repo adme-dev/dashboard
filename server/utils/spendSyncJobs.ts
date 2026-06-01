@@ -51,6 +51,36 @@ export async function completeSpendSyncJob(jobId: string, result: SyncJobResult)
   )
 }
 
+/** Record how many accounts this job fanned out to (per-account chunking). */
+export async function setSyncJobTotalAccounts(jobId: string, total: number): Promise<void> {
+  await execute(
+    `UPDATE spend_sync_jobs SET total_accounts = $2 WHERE id = $1`,
+    [jobId, total]
+  )
+}
+
+/**
+ * Fan-in one account's result into the job. Atomic single UPDATE so concurrent
+ * per-account consumer invocations don't race: increments processed_accounts,
+ * accumulates synced/spend/failures, and flips status to 'completed' on the
+ * UPDATE that reaches total_accounts.
+ */
+export async function recordSyncJobAccountResult(jobId: string, result: SyncJobResult): Promise<void> {
+  await execute(
+    `UPDATE spend_sync_jobs
+       SET processed_accounts = processed_accounts + 1,
+           synced_count = synced_count + $2,
+           total_spend = total_spend + $3,
+           failures = failures || $4::jsonb,
+           status = CASE WHEN total_accounts IS NOT NULL AND processed_accounts + 1 >= total_accounts
+                         THEN 'completed' ELSE status END,
+           finished_at = CASE WHEN total_accounts IS NOT NULL AND processed_accounts + 1 >= total_accounts
+                              THEN NOW() ELSE finished_at END
+     WHERE id = $1`,
+    [jobId, result.synced, result.totalSpend, JSON.stringify(result.failures || [])]
+  )
+}
+
 /** Mark a job failed with an error message. */
 export async function failSpendSyncJob(jobId: string, error: string): Promise<void> {
   await execute(

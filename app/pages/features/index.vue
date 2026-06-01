@@ -159,6 +159,7 @@ const categories = [
       { title: 'Ad Previews', slug: 'ad-previews', icon: 'i-lucide-monitor-smartphone', description: 'Preview banners in 8 platform mockups — Meta Feed, Stories, Reels, LinkedIn, and more.' },
       { title: 'Safe Zone Overlays', slug: 'safe-zones', icon: 'i-lucide-scan', description: 'Platform-specific safe zone guides for 11 ad platforms to ensure text and logos stay visible.' },
       { title: 'Meta Upload Wizard', slug: 'meta-upload-wizard', icon: 'i-lucide-upload', description: 'Five-step wizard to publish directly to Meta — select account, campaign, ad set, creatives, and go live.' },
+      { title: 'Audio Studio', slug: 'audio-studio', icon: 'i-lucide-mic', description: 'Generate owned AI voiceover that runs legally across radio, TikTok and Meta — no clearance, no takedowns. Drops straight into Banner Studio audio layers.' },
     ]
   },
   {

@@ -32,6 +32,10 @@ export async function processJob(job: QueueJob): Promise<void> {
         await processMetaSpendSync(job.payload)
         break
 
+      case 'spend.sync.meta.account':
+        await processMetaAccountSpendSync(job.payload)
+        break
+
       case 'spend.sync.google':
         await processGoogleSpendSync(job.payload)
         break
@@ -114,7 +118,32 @@ async function processEomGenerate(payload: Record<string, any>): Promise<void> {
 
 async function processMetaSpendSync(payload: Record<string, any>): Promise<void> {
   const { syncMetaSpend } = await import('~~/server/utils/spendSync')
-  await syncMetaSpend(payload.month, payload.year)
+  const jobId = payload.jobId as string | undefined
+  try {
+    const result = await syncMetaSpend(payload.month, payload.year)
+    if (jobId) {
+      const { completeSpendSyncJob } = await import('~~/server/utils/spendSyncJobs')
+      await completeSpendSyncJob(jobId, result)
+    }
+  } catch (err: any) {
+    if (jobId) {
+      const { failSpendSyncJob } = await import('~~/server/utils/spendSyncJobs')
+      await failSpendSyncJob(jobId, err?.message || String(err))
+    }
+    throw err // let the queue retry
+  }
+}
+
+// Per-account Meta sync chunk. Each message handles one ad account and atomically
+// fans its result into the job row; the job completes when the last account lands.
+// syncMetaSpendByConnectionId catches per-account Graph errors (returns them as
+// failures) so this rarely throws — keeping the fan-in increment exactly-once.
+async function processMetaAccountSpendSync(payload: Record<string, any>): Promise<void> {
+  const { syncMetaSpendByConnectionId } = await import('~~/server/utils/spendSync')
+  const { recordSyncJobAccountResult } = await import('~~/server/utils/spendSyncJobs')
+  const jobId = payload.jobId as string | undefined
+  const result = await syncMetaSpendByConnectionId(payload.connectionId, payload.month, payload.year)
+  if (jobId) await recordSyncJobAccountResult(jobId, result)
 }
 
 async function processGoogleSpendSync(payload: Record<string, any>): Promise<void> {
