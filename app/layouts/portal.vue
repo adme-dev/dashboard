@@ -30,6 +30,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
   { label: 'Leads', icon: 'i-lucide-inbox', to: '/portal/leads', onSelect: close },
   { label: 'CRM', icon: 'i-lucide-contact', to: '/portal/crm', onSelect: close },
   { label: 'Social', icon: 'i-lucide-messages-square', to: '/portal/social-inbox', onSelect: close },
+  { label: 'Social Reports', icon: 'i-lucide-line-chart', to: '/portal/social-reporting', onSelect: close },
   { label: 'Meetings', icon: 'i-lucide-video', to: '/portal/meetings?view=upcoming', onSelect: close },
   ...(user.value?.permissions?.canSubmitRequests
     ? [
