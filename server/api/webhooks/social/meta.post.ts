@@ -3,6 +3,7 @@ import { queryOne, execute } from '~~/server/utils/db'
 import { verifyMetaWebhookSignature } from '~~/server/utils/socialInbox/metaWebhook'
 import {
   normalizeMetaCommentWebhook, normalizeMetaMentionWebhook, normalizeMetaMessageWebhook,
+  normalizeIgCommentWebhook,
 } from '~~/server/utils/socialInbox/normalize'
 import { recordInbound } from '~~/server/utils/socialInbox/store'
 import { emitInboxEvent } from '~~/server/utils/socialInbox/events'
@@ -43,9 +44,15 @@ export default defineEventHandler(async (event) => {
       [accountId, platform],
     )
     if (!account) continue
-    // Comments + mentions (entry.changes[]).
+    // Comments + mentions (entry.changes[]). FB comments arrive as `feed`, IG as `comments`.
     for (const change of entry.changes ?? []) {
-      await ingest(account, normalizeMetaCommentWebhook(platform, change) ?? normalizeMetaMentionWebhook(platform, change))
+      // Skip our own replies echoed back as IG `comments` events (from = the connected IG account):
+      // ingesting them as inbound would create noise and re-trigger automation.
+      if (platform === 'instagram' && change?.field === 'comments' && String(change?.value?.from?.id ?? '') === accountId) continue
+      const ev = normalizeMetaCommentWebhook(platform, change)
+        ?? normalizeIgCommentWebhook(change)
+        ?? normalizeMetaMentionWebhook(platform, change)
+      await ingest(account, ev)
     }
     // DMs (entry.messaging[]) — Messenger / IG direct messages.
     for (const messaging of entry.messaging ?? []) {

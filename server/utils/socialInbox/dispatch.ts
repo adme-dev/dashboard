@@ -37,7 +37,7 @@ export async function dispatchReply(
   args: { content: string; sentByUserId: string; aiGenerated?: boolean },
 ): Promise<{ ok: boolean; platformMessageId?: string; error?: string; clientId?: string }> {
   const conv = await db.queryOne<any>(
-    `SELECT c.*, a.platform_account_id, a.access_token
+    `SELECT c.*, a.platform_account_id, a.access_token, a.metadata AS account_metadata
        FROM social_conversations c JOIN social_accounts a ON a.id = c.social_account_id
       WHERE c.id = $1`, [conversationId])
   if (!conv) return { ok: false, error: 'conversation not found' }
@@ -50,6 +50,8 @@ export async function dispatchReply(
   const r = await provider.reply({
     accountId: conv.platform_account_id, accessToken: conv.access_token,
     conversationId: target, content: args.content, channelType: conv.channel_type,
+    // IG DMs route through the linked Page (stored on the IG account row at metadata.via_page_id).
+    viaPageId: conv.account_metadata?.via_page_id,
   })
   if (r.status !== 'success') return { ok: false, error: r.error || 'reply failed' }
 
