@@ -37,6 +37,8 @@ async function onSummarise() {
   try { await generateSummary(clientName.value) } finally { summarising.value = false }
 }
 
+const showSchedules = ref(false)
+
 const kpiCards = computed(() => {
   const k = overview.value?.kpis
   if (!k) return []
@@ -71,8 +73,18 @@ onMounted(load)
         <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" placeholder="Client" class="w-52" />
         <USelectMenu v-model="platform" :items="platformOptions" value-key="value" class="w-44" />
         <USelectMenu v-model="days" :items="dayOptions" value-key="value" class="w-36" />
+        <UButton
+          icon="i-lucide-calendar-clock"
+          color="neutral"
+          variant="subtle"
+          label="Schedules"
+          :disabled="!clientId"
+          @click="showSchedules = true"
+        />
       </div>
     </div>
+
+    <SocialReportSchedulesManager v-model:open="showSchedules" :client-id="clientId" :client-name="clientName" />
 
     <div v-if="loading" class="text-sm text-muted">Loading…</div>
     <template v-else-if="overview">
