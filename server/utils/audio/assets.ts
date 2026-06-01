@@ -32,7 +32,7 @@ export function mapRow(row: any): AudioAsset {
     costCents: row.cost_cents != null ? Number(row.cost_cents) : null,
     error: row.error ?? null,
     createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    updatedAt: row.updated_at
   }
 }
 
@@ -58,7 +58,7 @@ export interface CreateVoiceAssetInput {
   voice: string | null
   channels: string[]
   audio: ArrayBuffer | Uint8Array
-  format: string            // e.g. 'mp3'
+  format: string // e.g. 'mp3'
   durationSec?: number | null
 }
 
@@ -76,7 +76,7 @@ export async function createVoiceAsset(input: CreateVoiceAssetInput): Promise<Au
      VALUES ($1, $2, $3, 'voiceover', 'ready', $4, $5, $6, $7, $8, $9, $10)
      RETURNING *`,
     [id, input.clientId, input.createdBy, input.title, input.text, input.lang,
-     input.voice, input.channels, key, input.durationSec ?? null],
+      input.voice, input.channels, key, input.durationSec ?? null]
   )
   const asset = mapRow(row)
   asset.streamUrl = await streamUrlFor(asset)
@@ -93,10 +93,17 @@ export interface ListAssetsFilter {
 export async function listAssets(filter: ListAssetsFilter = {}): Promise<AudioAsset[]> {
   const where: string[] = []
   const params: any[] = []
-  if (filter.kind) { params.push(filter.kind); where.push(`kind = $${params.length}`) }
+  if (filter.kind) {
+    params.push(filter.kind)
+    where.push(`kind = $${params.length}`)
+  }
   if (filter.clientId !== undefined) {
-    if (filter.clientId === null) where.push('client_id IS NULL')
-    else { params.push(filter.clientId); where.push(`client_id = $${params.length}`) }
+    if (filter.clientId === null) {
+      where.push('client_id IS NULL')
+    } else {
+      params.push(filter.clientId)
+      where.push(`client_id = $${params.length}`)
+    }
   }
   params.push(Math.min(filter.limit ?? 100, 200))
   const sql = `SELECT * FROM audio_assets
@@ -104,6 +111,8 @@ export async function listAssets(filter: ListAssetsFilter = {}): Promise<AudioAs
     ORDER BY created_at DESC LIMIT $${params.length}`
   const rows = await queryRows(sql, params)
   const assets = rows.map(mapRow)
-  await Promise.all(assets.map(async a => { a.streamUrl = await streamUrlFor(a) }))
+  await Promise.all(assets.map(async (a) => {
+    a.streamUrl = await streamUrlFor(a)
+  }))
   return assets
 }

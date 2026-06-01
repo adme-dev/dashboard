@@ -5,7 +5,7 @@ import { listAssets } from '~~/server/utils/audio/assets'
 const QuerySchema = z.object({
   kind: z.enum(['voiceover', 'music']).optional(),
   clientId: z.string().uuid().optional(),
-  limit: z.coerce.number().int().positive().max(200).optional(),
+  limit: z.coerce.number().int().positive().max(200).optional()
 })
 
 export default defineEventHandler(async (event) => {

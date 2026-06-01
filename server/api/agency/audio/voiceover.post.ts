@@ -9,7 +9,7 @@ const BodySchema = z.object({
   clientId: z.string().uuid().nullish(),
   lang: z.string().max(8).default('en'),
   voice: z.string().max(40).nullish(),
-  channels: z.array(z.enum(['radio', 'tiktok', 'meta'])).default([]),
+  channels: z.array(z.enum(['radio', 'tiktok', 'meta'])).default([])
 })
 
 export default defineEventHandler(async (event) => {
@@ -30,7 +30,7 @@ export default defineEventHandler(async (event) => {
     voice: body.voice ?? null,
     channels: body.channels,
     audio: generated.audioBuffer,
-    format: generated.format,
+    format: generated.format
   })
 
   return { asset, violations: generated.violations }

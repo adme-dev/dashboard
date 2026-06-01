@@ -5,12 +5,16 @@ export function useAudioStudio() {
   const toast = useToast()
 
   async function generateVoiceover(payload: {
-    text: string; title?: string; clientId?: string | null; lang?: string; channels?: string[]
+    text: string
+    title?: string
+    clientId?: string | null
+    lang?: string
+    channels?: string[]
   }): Promise<AudioAsset | null> {
     generating.value = true
     try {
-      const res = await $fetch<{ asset: AudioAsset; violations: string[] }>(
-        '/api/agency/audio/voiceover', { method: 'POST', body: payload },
+      const res = await $fetch<{ asset: AudioAsset, violations: string[] }>(
+        '/api/agency/audio/voiceover', { method: 'POST', body: payload }
       )
       if (res.violations?.length) {
         toast.add({ title: 'Mimicry phrasing removed', description: res.violations.join(', '), color: 'warning' })
@@ -28,7 +32,7 @@ export function useAudioStudio() {
   function listVoiceovers() {
     return useFetch<{ assets: AudioAsset[] }>('/api/agency/audio/assets', {
       query: { kind: 'voiceover' },
-      default: () => ({ assets: [] }),
+      default: () => ({ assets: [] })
     })
   }
 

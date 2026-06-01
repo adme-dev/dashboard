@@ -19,7 +19,7 @@ export interface VoiceoverResult {
 
 export async function generateVoiceover(
   event: H3Event,
-  input: GenerateVoiceoverInput,
+  input: GenerateVoiceoverInput
 ): Promise<VoiceoverResult | null> {
   // Advisory guard: strip artist-mimicry phrasing from VO scripts. We do NOT
   // hard-block voiceover (it's spoken words, not a sound-alike track), but we
@@ -37,6 +37,6 @@ export async function generateVoiceover(
     audioBuffer: tts.audioBuffer,
     format: tts.format,
     sanitizedText: guard.sanitized,
-    violations: guard.violations,
+    violations: guard.violations
   }
 }

@@ -11,7 +11,7 @@ const channels = ref<string[]>([])
 const channelOptions = [
   { label: 'TikTok', value: 'tiktok' },
   { label: 'Meta', value: 'meta' },
-  { label: 'Radio', value: 'radio' },
+  { label: 'Radio', value: 'radio' }
 ]
 
 const MAX = 2000
@@ -23,7 +23,7 @@ async function submit() {
   const asset = await generateVoiceover({
     text: text.value.trim(),
     title: title.value.trim() || undefined,
-    channels: channels.value,
+    channels: channels.value
   })
   if (asset) {
     emit('generated', asset)
@@ -69,7 +69,9 @@ async function submit() {
       </UFormField>
 
       <div class="flex items-center justify-between pt-1">
-        <p class="text-xs text-muted">Owned audio — legal across radio, TikTok &amp; Meta.</p>
+        <p class="text-xs text-muted">
+          Owned audio — legal across radio, TikTok &amp; Meta.
+        </p>
         <UButton
           :loading="generating"
           :disabled="!canSubmit"

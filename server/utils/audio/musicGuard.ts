@@ -15,11 +15,11 @@ export interface GuardResult {
 // loadBlocklist). Illustrative only.
 const ARTIST_BLOCKLIST = [
   'taylor swift', 'beyonce', 'beyoncé', 'drake', 'the weeknd', 'ed sheeran',
-  'billie eilish', 'sabrina carpenter', 'kendrick lamar', 'sia', 'adele',
+  'billie eilish', 'sabrina carpenter', 'kendrick lamar', 'sia', 'adele'
 ]
 
-const STYLE_CLAUSE =
-  /\b(?:in the style of|sounds? like|similar to|inspired by|reminiscent of|a la|à la|mimic(?:king)?|imitat\w+|cover of|rip[- ]?off of)\b\s+([^.,;]+)/gi
+const STYLE_CLAUSE
+  = /\b(?:in the style of|sounds? like|similar to|inspired by|reminiscent of|a la|à la|mimic(?:king)?|imitat\w+|cover of|rip[- ]?off of)\b\s+([^.,;]+)/gi
 
 export function guardAudioPrompt(prompt: string, blocklist: string[] = ARTIST_BLOCKLIST): GuardResult {
   const violations: string[] = []
@@ -55,7 +55,7 @@ export function guardAudioPrompt(prompt: string, blocklist: string[] = ARTIST_BL
  * unavailable (local dev). Never throws.
  */
 export async function loadBlocklist(
-  kv: { get(key: string, type: 'json'): Promise<unknown> } | null,
+  kv: { get(key: string, type: 'json'): Promise<unknown> } | null
 ): Promise<string[]> {
   if (!kv) return ARTIST_BLOCKLIST
   try {

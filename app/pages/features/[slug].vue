@@ -233,6 +233,31 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  // ─── Creative Production ──────────────────────────────────────
+  'audio-studio': {
+    title: 'Audio Studio',
+    slug: 'audio-studio',
+    icon: 'i-lucide-mic',
+    category: 'Creative Production',
+    categoryIcon: 'i-lucide-rocket',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Generate owned AI voiceover you can use across radio, TikTok and Meta — no clearance, no takedown risk — and drop it straight into your ad creatives.',
+    details: [
+      {
+        title: 'Owned Audio That Travels',
+        content: 'TikTok\'s Commercial Music Library is TikTok-only and Meta\'s Sound Collection is Facebook/Instagram-only — neither clears for use anywhere else. Audio you generate here is yours: one voiceover runs on radio, TikTok, and Meta with no licensing, no clearance, and no takedown risk across your whole client roster.'
+      },
+      {
+        title: 'Mimicry Guardrail Built In',
+        content: 'Meta bans AI audio that imitates a specific copyrighted artist. Every script passes an artist-mimicry guard that strips "in the style of <artist>" phrasing before synthesis — pattern and blocklist first, maintained without a redeploy — so your generated audio stays compliant by default rather than risking an account flag.'
+      },
+      {
+        title: 'Straight Into Banner Studio',
+        content: 'Generated voiceovers land in a reusable library tagged per client, then appear directly in the Banner Studio asset picker — one click drops a voiceover onto your ad as an audio layer. The same owned-audio engine is built tenant-aware so client self-serve in the portal is a fast-follow.'
+      }
+    ]
+  },
   // ─── Work Management ──────────────────────────────────────────
   'boards': {
     title: 'Boards',
