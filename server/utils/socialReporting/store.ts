@@ -6,12 +6,12 @@
 // OVERWRITE via ON CONFLICT, so the table always reflects current lifetime totals / today's snapshot.
 import type { PostMetric, AccountMetric } from '~~/server/utils/social-providers/types'
 
-export interface DbRunner {
+export interface MetricsDbRunner {
   execute(sql: string, params?: any[]): Promise<number>
 }
 
 /** Upsert one post's metrics for a platform (overwrite on re-poll). No-op for an empty metric. */
-export async function upsertPostMetric(db: DbRunner, platform: string, m: PostMetric): Promise<void> {
+export async function upsertPostMetric(db: MetricsDbRunner, platform: string, m: PostMetric): Promise<void> {
   await db.execute(
     `INSERT INTO social_post_metrics
        (post_id, platform, impressions, reach, engagements, clicks, likes, comments_count,
@@ -29,7 +29,7 @@ export async function upsertPostMetric(db: DbRunner, platform: string, m: PostMe
 
 /** Upsert today's account snapshot (overwrite if re-polled same day). `snapshotDate` ISO date string. */
 export async function upsertAccountMetric(
-  db: DbRunner, args: { clientId: string; accountId: string; platform: string; snapshotDate: string; postsCount?: number; metric: AccountMetric },
+  db: MetricsDbRunner, args: { clientId: string; accountId: string; platform: string; snapshotDate: string; postsCount?: number; metric: AccountMetric },
 ): Promise<void> {
   const { clientId, accountId, platform, snapshotDate, metric, postsCount } = args
   await db.execute(
