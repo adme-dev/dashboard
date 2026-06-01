@@ -10,7 +10,7 @@
 ## TL;DR
 
 - **Phase 1 (Sales Productivity) is DONE and MERGED to `main`** via PR #60 (squash → `origin/main` `765e09fe`). **Not deployed** (deploy is user-gated).
-- **Phase 2 (Data Quality / Relationships / Governance) is IN PROGRESS** on branch **`feat/crm-enhancements-phase2`** (pushed). Done: migration 148 + **F11 relationships**. Remaining: **F5, F12, F7, F6**.
+- **Phase 2 (Data Quality / Relationships / Governance) is IN PROGRESS** on branch **`feat/crm-enhancements-phase2`** (pushed). Done: migration 148 + **F11 relationships** + **F5 lifecycle+auto-tagging** (`03389626`) + **F12 field-level audit trail** (`fc6ccdc7`). Remaining: **F7, F6**. 92/92 CRM unit tests green.
 - Everything lives in the isolated worktree **`.worktrees/crm-enh-phase1`** (its own non-symlinked `node_modules`). Other sessions are untouched.
 
 ---
@@ -59,25 +59,19 @@ Migration **148** (already run on dev DB) adds: `lifecycle_stage`+`tags`+`owner_
 
 ## Remaining Phase 2 work (do in this order)
 
-Reference: plan sections 2B/2C/2D/2F/2G. Next free migration is **149** (only if a feature needs new columns — F5 columns already exist from 148; F7/F6 mostly use 148 tables). Re-verify the number at build time (parallel sessions consume numbers).
+Reference: plan sections 2C/2D. Next free migration is **149** (only if a feature needs new columns — F7/F6 mostly use 148 tables). Re-verify the number at build time (parallel sessions consume numbers).
 
-1. **F5 — Lifecycle + auto-tagging** (columns already in 148)
-   - TDD `server/utils/crm/lifecycle.ts`: `nextLifecycle(event, current)` over `lead→prospect→active→customer→lost→dormant`; tag derivation.
-   - Hook (non-fatal, in-band): opportunity create → `prospect`; opportunity won (in `recordStageChange` or move handler) → `customer` + `won` tag.
-   - UI: lifecycle badge + tag chips on People/Companies tables + slideovers; filter by lifecycle/tag (sentinel-safe USelectMenu). Portal mirror.
+✅ **F5 — Lifecycle + auto-tagging — DONE** (`03389626`). `server/utils/crm/lifecycle.ts` (11 unit tests), hooks on opp-create/won (via `recordStageChange` `isWon`)/activity, agency+portal mirrored, list `?lifecycle/?tag` filters, lifecycle badge + tag chips columns, editable lifecycle+tags (UInputTags) in `RecordForm`. `app/utils/crmLifecycle.ts` shared display helper.
 
-2. **F12 — Field-level audit trail** (`crm_audit_log` from 148)
-   - TDD `server/utils/crm/audit.ts`: `recordFieldChanges({entityType, entityId, before, after, fields, actor})` — diff whitelisted fields, skip `updated_at`/JSONB.
-   - Invoke from the PATCH handlers of people/companies/opportunities/records (one call site each).
-   - `crm/audit/index.get` + History section in slideovers. Portal mirror for read.
+✅ **F12 — Field-level audit trail — DONE** (`fc6ccdc7`). `server/utils/crm/audit.ts` (`diffFields`/`recordFieldChanges`, 6 unit tests), wired into all 7 PATCH handlers (people/companies/opportunities columnar + engine records data-key+stage diff, agency+portal), `crm/audit/index.get` + portal mirror, `CrmAuditHistory` "History" section in person/company/opportunity/engine-record slideovers.
 
-3. **F7 — Assignment + ownership/visibility** (`crm_assignment_rules`, `crm_settings` from 148)
+1. **F7 — Assignment + ownership/visibility** (`crm_assignment_rules`, `crm_settings` from 148)
    - TDD `server/utils/crm/assignment.ts`: `pickAssignee(rule)` incl. **atomic round-robin** via `UPDATE crm_assignment_rules SET assignment_index = (assignment_index+1) % len RETURNING`.
    - Hook on person/opportunity create without owner.
    - **Visibility:** read `crm_settings.record_visibility` in `queryScope.ts`; when `'owner'`, append `AND (owner_id = :uid OR assigned_to = :uid)` for non-admin/manager. **DEFAULT `'team'` path MUST be byte-for-byte unchanged (zero regression).** Gate the `'owner'` branch behind real demand (possible YAGNI — ship the column + flag regardless).
    - Settings endpoint + reassign/claim UI.
 
-4. **F6 — Dedupe + merge** (`crm_merge_log` + `pg_trgm` from 148)
+2. **F6 — Dedupe + merge** (`crm_merge_log` + `pg_trgm` from 148)
    - TDD `server/utils/crm/dedupe.ts`: `normalizeEmail/Phone/Name`, `candidatePairs` (trigram + exact key), `similarityScore`.
    - `crm/dedupe/{suggestions.get, merge.post}` — merge reassigns ALL children (opportunities, activities, tasks, scores, stage_history, relationships) loser→winner in **one `transaction()`**, deletes loser, writes `crm_merge_log`. ADMIN-gated.
    - Duplicates view + side-by-side merge modal. Real-DB integration: **zero orphaned child rows**.
