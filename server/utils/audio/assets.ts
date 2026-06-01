@@ -52,6 +52,25 @@ export async function streamUrlFor(asset: AudioAsset): Promise<string | undefine
   }
 }
 
+/** Mint short-lived download URLs for each rendered per-channel variant (Phase 3).
+ * Mirrors streamUrlFor's fail-soft contract — a bad key is skipped, never throws. */
+export async function variantUrlsFor(asset: AudioAsset): Promise<Record<string, string>> {
+  const out: Record<string, string> = {}
+  for (const [channel, key] of Object.entries(asset.variants || {})) {
+    if (!key) continue
+    if (!isStorageConfigured()) {
+      out[channel] = `/api/_uploads/${key}`
+      continue
+    }
+    try {
+      out[channel] = await getPresignedDownloadUrl(key, PRESIGN_TTL)
+    } catch {
+      // skip a bad/missing variant key — don't sink the whole asset
+    }
+  }
+  return out
+}
+
 export interface CreateVoiceAssetInput {
   createdBy: string
   clientId: string | null
@@ -120,6 +139,7 @@ export async function getAsset(id: string): Promise<AudioAsset | null> {
   if (!row) return null
   const asset = mapRow(row)
   asset.streamUrl = await streamUrlFor(asset)
+  asset.variantUrls = await variantUrlsFor(asset)
   return asset
 }
 
@@ -153,6 +173,7 @@ export async function listAssets(filter: ListAssetsFilter = {}): Promise<AudioAs
   const assets = rows.map(mapRow)
   await Promise.all(assets.map(async (a) => {
     a.streamUrl = await streamUrlFor(a)
+    a.variantUrls = await variantUrlsFor(a)
   }))
   return assets
 }

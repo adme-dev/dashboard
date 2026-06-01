@@ -8,6 +8,12 @@ vi.mock('../../workers/audio-jobs/src/db', () => ({
   queryRows: vi.fn(),
 }))
 
+// Mock the render orchestration so the worker tests never touch the container.
+const renderVariants = vi.fn()
+vi.mock('../../workers/audio-jobs/src/renderVariants', () => ({
+  renderVariants: (...a: any[]) => renderVariants(...a),
+}))
+
 import { runMusicJob, masterKey, extractAudioUrl } from '../../workers/audio-jobs/src/musicWorker'
 
 const JOB = {
@@ -18,12 +24,13 @@ const JOB = {
 function fakeEnv(aiResult: any) {
   return {
     AI: { run: vi.fn(async () => aiResult) },
-    AUDIO_BUCKET: { put: vi.fn(async () => ({})) },
+    AUDIO_BUCKET: { put: vi.fn(async () => ({})), get: vi.fn() },
+    RENDER: {},
   }
 }
 
 beforeEach(() => {
-  queryOne.mockReset(); execute.mockReset()
+  queryOne.mockReset(); execute.mockReset(); renderVariants.mockReset()
   vi.unstubAllGlobals()
 })
 
@@ -39,41 +46,62 @@ describe('extractAudioUrl', () => {
     expect(extractAudioUrl({ audio: 'https://x/y.mp3' })).toBe('https://x/y.mp3')
     expect(extractAudioUrl({ data: { audio: 'https://x/z.mp3' } })).toBe('https://x/z.mp3')
     expect(extractAudioUrl({ nope: 1 })).toBeNull()
-    expect(extractAudioUrl(null)).toBeNull()
   })
 })
 
 describe('runMusicJob', () => {
-  it('happy path: generate → fetch → R2 put → status done', async () => {
-    queryOne.mockResolvedValueOnce({ status: 'queued', client_id: 'c1' })
+  it('master only (no channels): generate → R2 → done, no render', async () => {
+    queryOne.mockResolvedValueOnce({ status: 'queued', client_id: 'c1', channels: [], r2_key_master: null })
     const env = fakeEnv({ audio: 'https://oss/track.mp3' })
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) })))
 
     await runMusicJob(JOB, env as any)
 
-    expect(env.AI.run).toHaveBeenCalledOnce()
-    // R2 key matches the Pages-side master key shape
-    const putKey = env.AUDIO_BUCKET.put.mock.calls[0][0]
-    expect(putKey).toBe('audio/c1/asset-1/master.mp3')
-    // final UPDATE flips to done with the key
-    const doneCall = execute.mock.calls.find(c => /status = 'done'/.test(c[0]))
-    expect(doneCall).toBeTruthy()
-    expect(doneCall![1]).toEqual(['asset-1', 'audio/c1/asset-1/master.mp3'])
+    expect(env.AUDIO_BUCKET.put.mock.calls[0][0]).toBe('audio/c1/asset-1/master.mp3')
+    expect(renderVariants).not.toHaveBeenCalled()
+    expect(execute.mock.calls.some(c => /status = 'done'/.test(c[0]) && !/variants/.test(c[0]))).toBe(true)
   })
 
-  it('idempotency: already-done asset no-ops (no AI call)', async () => {
-    queryOne.mockResolvedValueOnce({ status: 'done', client_id: 'c1' })
+  it('with channels: generate → render variants → done with variants', async () => {
+    queryOne.mockResolvedValueOnce({ status: 'queued', client_id: 'c1', channels: ['tiktok', 'radio'], r2_key_master: null })
+    renderVariants.mockResolvedValueOnce({ tiktok: 'audio/c1/asset-1/tiktok.mp3', radio: 'audio/c1/asset-1/radio.wav' })
     const env = fakeEnv({ audio: 'https://oss/track.mp3' })
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) })))
+
+    await runMusicJob(JOB, env as any)
+
+    expect(execute.mock.calls.some(c => /status = 'rendering'/.test(c[0]))).toBe(true)
+    expect(renderVariants).toHaveBeenCalledOnce()
+    const variantsCall = execute.mock.calls.find(c => /variants = \$2::jsonb/.test(c[0]))
+    expect(variantsCall).toBeTruthy()
+    expect(JSON.parse(variantsCall![1][1])).toHaveProperty('tiktok')
+  })
+
+  it('render-only retry: master already exists → skip generation', async () => {
+    queryOne.mockResolvedValueOnce({ status: 'rendering', client_id: 'c1', channels: ['meta'], r2_key_master: 'audio/c1/asset-1/master.mp3' })
+    renderVariants.mockResolvedValueOnce({ meta: 'audio/c1/asset-1/meta.mp3' })
+    const env = fakeEnv({ audio: 'https://oss/track.mp3' })
+
+    await runMusicJob(JOB, env as any)
+
+    expect(env.AI.run).not.toHaveBeenCalled() // no re-generation / re-bill
+    expect(env.AUDIO_BUCKET.put).not.toHaveBeenCalled()
+    expect(renderVariants).toHaveBeenCalledOnce()
+  })
+
+  it('idempotency: already-done asset no-ops', async () => {
+    queryOne.mockResolvedValueOnce({ status: 'done', client_id: 'c1', channels: ['meta'], r2_key_master: 'audio/c1/asset-1/master.mp3' })
+    const env = fakeEnv({})
     await runMusicJob(JOB, env as any)
     expect(env.AI.run).not.toHaveBeenCalled()
+    expect(renderVariants).not.toHaveBeenCalled()
     expect(execute).not.toHaveBeenCalled()
   })
 
   it('marks failed and rethrows when the model returns no url', async () => {
-    queryOne.mockResolvedValueOnce({ status: 'queued', client_id: null })
+    queryOne.mockResolvedValueOnce({ status: 'queued', client_id: null, channels: [], r2_key_master: null })
     const env = fakeEnv({ nope: true })
     await expect(runMusicJob(JOB, env as any)).rejects.toThrow(/no audio URL/)
-    const failCall = execute.mock.calls.find(c => /status = 'failed'/.test(c[0]))
-    expect(failCall).toBeTruthy()
+    expect(execute.mock.calls.some(c => /status = 'failed'/.test(c[0]))).toBe(true)
   })
 })

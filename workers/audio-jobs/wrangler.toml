@@ -1,5 +1,5 @@
 # workers/audio-jobs/wrangler.toml
-# Audio Studio Phase 2 — music generation queue consumer.
+# Audio Studio Phase 2/3 — music generation queue consumer + FFmpeg render container.
 #
 # Why a standalone Worker (not the Pages app): the deployed Pages worker entry
 # (scripts/wrap-worker.mjs) exports only fetch + scheduled, so a Pages-side queue
@@ -36,3 +36,23 @@ max_batch_size = 1
 max_batch_timeout = 30
 max_retries = 3
 dead_letter_queue = "music-gen-dlq"
+
+# Phase 3 — FFmpeg render service as a CF Container bound to this Worker
+# (RENDER). The queue handler invokes it per channel to produce loudness-
+# normalised variants. Stateless; the Worker owns R2/DB.
+[[containers]]
+name = "audio-render"
+class_name = "RenderContainer"
+image = "./container/Dockerfile"
+max_instances = 3
+# ffmpeg 2-pass loudnorm needs real memory — don't run on the smallest instance.
+# ⚠️ confirm valid instance_type values against the wrangler version at deploy.
+instance_type = "standard"
+
+[[durable_objects.bindings]]
+class_name = "RenderContainer"
+name = "RENDER"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RenderContainer"]

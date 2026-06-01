@@ -63,6 +63,19 @@ function statusBadge(a: AudioAsset): { label: string, color: 'neutral' | 'info' 
               {{ c }}
             </UBadge>
           </div>
+          <div v-if="a.variantUrls && Object.keys(a.variantUrls).length" class="flex flex-wrap items-center gap-3 mt-2">
+            <span class="text-[10px] font-semibold uppercase tracking-wider text-dimmed">Variants</span>
+            <a
+              v-for="(url, ch) in a.variantUrls"
+              :key="ch"
+              :href="url"
+              download
+              class="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+            >
+              <UIcon name="i-lucide-download" class="size-3" />
+              {{ ch }}
+            </a>
+          </div>
         </div>
         <audio
           v-if="a.streamUrl"

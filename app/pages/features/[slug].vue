@@ -339,6 +339,10 @@ const features: Record<string, Feature> = {
       {
         title: 'Straight Into Banner Studio',
         content: 'Generated voiceovers and music land in a reusable library tagged per client, then appear directly in the Banner Studio asset picker — one click drops a track onto your ad as an audio layer. The same owned-audio engine is built tenant-aware so client self-serve in the portal is a fast-follow.'
+      },
+      {
+        title: 'Channel-Ready Loudness',
+        content: 'Every track can be rendered to each channel\'s loudness spec automatically — broadcast/radio at around −24 LKFS, TikTok/Meta at −14 LUFS with a −1 dBTP ceiling, plus social cut-downs. Two-pass loudness normalisation runs on the edge, so the master you generate ships compliant everywhere it runs, with per-channel variants ready to download.'
       }
     ]
   },
