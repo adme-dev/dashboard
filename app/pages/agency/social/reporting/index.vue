@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useSocialReporting, type ReportKpi } from '~/composables/useSocialReporting'
+import { SOCIAL_PLATFORM_FILTER_OPTIONS } from '~~/app/utils/socialReportScheduleForm'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 useHead({ title: 'Social Reporting' })
@@ -20,15 +21,7 @@ const dayOptions = [
   { label: 'Last 30 days', value: 30 },
   { label: 'Last 90 days', value: 90 },
 ]
-const platformOptions = [
-  { label: 'All networks', value: 'all' },
-  { label: 'Facebook', value: 'facebook' },
-  { label: 'Instagram', value: 'instagram' },
-  { label: 'LinkedIn', value: 'linkedin' },
-  { label: 'YouTube', value: 'youtube' },
-  { label: 'TikTok', value: 'tiktok' },
-  { label: 'Google Business', value: 'google-business' },
-]
+const platformOptions = SOCIAL_PLATFORM_FILTER_OPTIONS
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 const summarising = ref(false)

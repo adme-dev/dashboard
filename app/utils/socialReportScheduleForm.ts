@@ -24,19 +24,28 @@ export function parseRecipients(raw: string): string[] {
   return out
 }
 
-const PLATFORM_LABELS: Record<string, string> = {
-  facebook: 'Facebook',
-  instagram: 'Instagram',
-  linkedin: 'LinkedIn',
-  youtube: 'YouTube',
-  tiktok: 'TikTok',
-  'google-business': 'Google Business',
-}
+export interface PlatformOption { label: string; value: string }
+
+/** The six supported social networks (stored platform values). Single source of truth. */
+export const SOCIAL_NETWORK_OPTIONS: PlatformOption[] = [
+  { label: 'Facebook', value: 'facebook' },
+  { label: 'Instagram', value: 'instagram' },
+  { label: 'LinkedIn', value: 'linkedin' },
+  { label: 'YouTube', value: 'youtube' },
+  { label: 'TikTok', value: 'tiktok' },
+  { label: 'Google Business', value: 'google-business' },
+]
+
+/** Network options prefixed with the "all networks" sentinel — for filter/select menus. */
+export const SOCIAL_PLATFORM_FILTER_OPTIONS: PlatformOption[] = [
+  { label: 'All networks', value: 'all' },
+  ...SOCIAL_NETWORK_OPTIONS,
+]
 
 /** Human label for a stored platform value (null = all networks). */
 export function platformLabel(platform: string | null): string {
   if (!platform) return 'all networks'
-  return PLATFORM_LABELS[platform] ?? platform
+  return SOCIAL_NETWORK_OPTIONS.find(o => o.value === platform)?.label ?? platform
 }
 
 export interface ScheduleSummaryInput {

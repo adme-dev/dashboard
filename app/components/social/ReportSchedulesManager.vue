@@ -5,7 +5,7 @@
 // hits the ungated preview endpoint (human-initiated, no email). Scheduled SENDING stays behind
 // the operator's SOCIAL_REPORTS_ENABLED gate — surfaced here as an honest dormant notice.
 import { useSocialReportSchedules, type ReportSchedule, type ReportScheduleInput } from '~/composables/useSocialReportSchedules'
-import { parseRecipients, scheduleSummary } from '~~/app/utils/socialReportScheduleForm'
+import { parseRecipients, scheduleSummary, SOCIAL_PLATFORM_FILTER_OPTIONS } from '~~/app/utils/socialReportScheduleForm'
 
 const props = defineProps<{
   open: boolean
@@ -34,15 +34,7 @@ const windowOptions = [
   { label: 'Last 60 days', value: 60 },
   { label: 'Last 90 days', value: 90 },
 ]
-const platformOptions = [
-  { label: 'All networks', value: 'all' },
-  { label: 'Facebook', value: 'facebook' },
-  { label: 'Instagram', value: 'instagram' },
-  { label: 'LinkedIn', value: 'linkedin' },
-  { label: 'YouTube', value: 'youtube' },
-  { label: 'TikTok', value: 'tiktok' },
-  { label: 'Google Business', value: 'google-business' },
-]
+const platformOptions = SOCIAL_PLATFORM_FILTER_OPTIONS
 
 type Mode = 'list' | 'edit'
 const mode = ref<Mode>('list')
