@@ -14,6 +14,7 @@ const tabItems = [
   { label: 'People', value: 'people', icon: 'i-lucide-users' },
   { label: 'Companies', value: 'companies', icon: 'i-lucide-building-2' },
   { label: 'Pipeline', value: 'pipeline', icon: 'i-lucide-trello' },
+  { label: 'Tasks', value: 'tasks', icon: 'i-lucide-list-checks' },
 ]
 
 // Config objects defined for this client (read-only in portal — no designer tab).
@@ -40,6 +41,7 @@ const activeObject = computed<CrmObjectDef | null>(() =>
       <CrmPeopleTable v-if="tab === 'people'" :client-id="clientId" />
       <CrmCompaniesTable v-else-if="tab === 'companies'" :client-id="clientId" />
       <CrmPipelineBoard v-else-if="tab === 'pipeline'" :client-id="clientId" />
+      <CrmTaskList v-else-if="tab === 'tasks'" :client-id="clientId" show-filters class="max-w-3xl" />
       <template v-else-if="activeObject">
         <CrmEnginePipelineBoard v-if="activeObject.has_pipeline" :client-id="clientId" :object-key="activeObject.key" />
         <CrmEngineRecordsTable v-else :client-id="clientId" :object-key="activeObject.key" />

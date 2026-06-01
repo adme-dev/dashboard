@@ -14,6 +14,7 @@ const tabItems = [
   { label: 'People', value: 'people', icon: 'i-lucide-users' },
   { label: 'Companies', value: 'companies', icon: 'i-lucide-building-2' },
   { label: 'Pipeline', value: 'pipeline', icon: 'i-lucide-trello' },
+  { label: 'Tasks', value: 'tasks', icon: 'i-lucide-list-checks' },
 ]
 
 // Custom config objects for the active client + the verticals that drive the designer.
@@ -90,6 +91,7 @@ watch(clientId, () => { tab.value = 'people' })
       <CrmPeopleTable v-if="tab === 'people'" :client-id="clientId" />
       <CrmCompaniesTable v-else-if="tab === 'companies'" :client-id="clientId" />
       <CrmPipelineBoard v-else-if="tab === 'pipeline'" :client-id="clientId" />
+      <CrmTaskList v-else-if="tab === 'tasks'" :client-id="clientId" show-filters class="max-w-3xl" />
       <template v-else-if="tab === 'designer'">
         <div class="space-y-5">
           <!-- Enable / disable config verticals for this client -->
