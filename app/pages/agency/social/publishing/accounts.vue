@@ -6,6 +6,8 @@ definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
 const api = useSocialPublishing()
 const toast = useToast()
+const route = useRoute()
+const router = useRouter()
 
 const { data: clientsData } = await useFetch('/api/agency/clients', { query: { limit: 200 } })
 const clients = computed<any[]>(() => {
@@ -19,6 +21,7 @@ const accounts = ref<SocialAccount[]>([])
 const loading = ref(false)
 
 const PLATFORMS = ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube', 'google-business']
+const META_PLATFORMS = ['facebook', 'instagram'] // both connect via the same Meta flow
 
 async function load() {
   if (!clientId.value) return
@@ -34,10 +37,60 @@ function expiryState(a: SocialAccount): { label: string; color: string } {
   return { label: 'Connected', color: 'success' }
 }
 
+function connect(platform: string) {
+  if (!clientId.value) return
+  if (META_PLATFORMS.includes(platform)) {
+    window.location.href = `/api/agency/social/publishing/accounts/connect/meta?clientId=${clientId.value}`
+  }
+}
+
 async function disconnect(a: SocialAccount) {
   try { await api.deleteAccount(a.id); toast.add({ title: 'Disconnected', color: 'success' }); await load() }
   catch (e: any) { toast.add({ title: 'Failed', description: e?.data?.statusMessage, color: 'error' }) }
 }
+
+// --- Page-selection modal (multi-page Meta connections) ---
+const selectOpen = ref(false)
+const selectToken = ref('')
+const selectPages = ref<Array<{ id: string; name: string; igUsername?: string }>>([])
+const selectChosen = ref<string[]>([])
+const selecting = ref(false)
+
+function togglePage(id: string, on: boolean) {
+  selectChosen.value = on ? [...selectChosen.value, id] : selectChosen.value.filter(x => x !== id)
+}
+
+async function confirmSelection() {
+  selecting.value = true
+  try {
+    const res = await $fetch<{ connected: string[]; conflicts: string[] }>('/api/agency/social/publishing/accounts/complete', {
+      method: 'POST', body: { token: selectToken.value, pageIds: selectChosen.value },
+    })
+    selectOpen.value = false
+    if (res.connected.length) toast.add({ title: `Connected: ${res.connected.join(', ')}`, color: 'success' })
+    if (res.conflicts.length) toast.add({ title: 'Some pages were skipped', description: res.conflicts.join('; '), color: 'warning' })
+    await load()
+  } catch (e: any) {
+    toast.add({ title: 'Could not complete', description: e?.data?.statusMessage, color: 'error' })
+  } finally { selecting.value = false }
+}
+
+onMounted(async () => {
+  if (route.query.social_connected) {
+    toast.add({ title: `Connected ${route.query.social_connected} page(s)`, color: 'success' })
+    await load(); router.replace({ query: {} })
+  } else if (route.query.social_error) {
+    toast.add({ title: 'Connection failed', description: String(route.query.social_error).replace(/_/g, ' '), color: 'error' })
+    router.replace({ query: {} })
+  } else if (route.query.social_select) {
+    selectToken.value = String(route.query.social_select)
+    selectChosen.value = []
+    try { selectPages.value = await $fetch('/api/agency/social/publishing/accounts/pending', { query: { token: selectToken.value } }) }
+    catch { selectPages.value = []; toast.add({ title: 'Selection expired — please reconnect', color: 'warning' }) }
+    if (selectPages.value.length) selectOpen.value = true
+    router.replace({ query: {} })
+  }
+})
 </script>
 
 <template>
@@ -52,8 +105,8 @@ async function disconnect(a: SocialAccount) {
 
     <UAlert
       icon="i-lucide-info" color="info" variant="subtle" class="mb-5"
-      title="OAuth connect is operator-activated"
-      description="Connecting a network requires per-network app credentials + a registered redirect URI. See the release runbook to enable it."
+      title="Meta (Facebook + Instagram) is connectable"
+      description="Connect a Meta Page to activate publishing, the engagement inbox, and reply automation for that page. Other networks need per-network app registration (coming soon)."
     />
 
     <div class="space-y-2">
@@ -71,8 +124,40 @@ async function disconnect(a: SocialAccount) {
             <UButton icon="i-lucide-unlink" size="xs" variant="ghost" color="error" @click="disconnect(a)" />
           </template>
         </template>
-        <UButton v-else size="xs" variant="subtle" color="neutral" disabled icon="i-lucide-plus">Connect</UButton>
+        <template v-else>
+          <UButton
+            v-if="META_PLATFORMS.includes(p)"
+            size="xs" variant="subtle" icon="i-lucide-plus" :disabled="!clientId" @click="connect(p)"
+          >Connect</UButton>
+          <UTooltip v-else text="Coming soon — needs platform app registration">
+            <UButton size="xs" variant="subtle" color="neutral" disabled icon="i-lucide-plus">Connect</UButton>
+          </UTooltip>
+        </template>
       </div>
     </div>
+
+    <UModal v-model:open="selectOpen">
+      <template #content>
+        <div class="p-6 space-y-4">
+          <div>
+            <h2 class="text-lg font-semibold">Choose pages to connect</h2>
+            <p class="text-sm text-muted mt-0.5">These Facebook Pages are available on the authorized Meta account. Pick the ones for this client.</p>
+          </div>
+          <div class="space-y-2 max-h-80 overflow-auto">
+            <label v-for="pg in selectPages" :key="pg.id" class="flex items-center gap-3 rounded-lg border border-default p-3 cursor-pointer hover:bg-elevated">
+              <UCheckbox :model-value="selectChosen.includes(pg.id)" @update:model-value="(v:any) => togglePage(pg.id, !!v)" />
+              <div class="min-w-0">
+                <div class="text-sm font-medium truncate">{{ pg.name }}</div>
+                <div v-if="pg.igUsername" class="text-xs text-muted truncate">+ Instagram @{{ pg.igUsername }}</div>
+              </div>
+            </label>
+          </div>
+          <div class="flex justify-end gap-2">
+            <UButton color="neutral" variant="ghost" label="Cancel" @click="selectOpen = false" />
+            <UButton label="Connect selected" icon="i-lucide-link" :loading="selecting" :disabled="!selectChosen.length" @click="confirmSelection" />
+          </div>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>
