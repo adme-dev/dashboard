@@ -1,4 +1,7 @@
--- 147_audio_assets.sql — Audio Studio owned-audio asset spine.
+-- 149_audio_assets.sql — Audio Studio owned-audio asset spine.
+-- (Originally authored as 147; renumbered to 149 to avoid colliding with
+--  147-crm-sales-productivity and the in-flight 148 social-inbox migration.
+--  Idempotent — the table is already live on prod, so re-running is a no-op.)
 -- One row per generated asset (voiceover now; music in Phase 2).
 CREATE TABLE IF NOT EXISTS audio_assets (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
