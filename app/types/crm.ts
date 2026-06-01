@@ -153,3 +153,91 @@ export interface CrmRecord {
   created_at: string
   updated_at: string
 }
+
+// --- Sales Productivity (Phase 1) ---
+export type CrmTaskType = 'call' | 'email' | 'sms' | 'meeting' | 'follow_up' | 'general'
+export type CrmTaskPriority = 'low' | 'medium' | 'high' | 'urgent'
+export type CrmTaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled'
+// 'overdue' is a derived (read-time) status, never persisted.
+export type CrmTaskDerivedStatus = CrmTaskStatus | 'overdue'
+export type CrmTaskOutcome =
+  | 'contacted' | 'voicemail' | 'no_answer' | 'rescheduled' | 'converted' | 'not_interested'
+
+export interface CrmTask {
+  id: string
+  client_id: string
+  target_type: 'person' | 'company' | 'opportunity'
+  target_id: string
+  title: string
+  description: string | null
+  task_type: CrmTaskType
+  priority: CrmTaskPriority
+  status: CrmTaskStatus
+  derived_status?: CrmTaskDerivedStatus
+  due_at: string | null
+  reminder_at: string | null
+  completed_at: string | null
+  outcome: CrmTaskOutcome | null
+  assigned_to: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CrmStageAutomationTemplate {
+  title: string
+  task_type: CrmTaskType
+  priority: CrmTaskPriority
+  due_offset_days: number
+  assigned_to?: string | null
+}
+
+export interface CrmStageAutomation {
+  id: string
+  client_id: string
+  stage_id: string
+  object_type: string
+  action: 'create_task'
+  task_template: CrmStageAutomationTemplate
+  is_active: boolean
+  created_at: string
+}
+
+export type CrmScoreType = 'lead' | 'health'
+export type CrmGrade = 'Hot' | 'Warm' | 'Cold'
+
+export interface CrmScore {
+  id: string
+  client_id: string
+  target_type: 'person' | 'company'
+  target_id: string
+  score_type: CrmScoreType
+  total_score: number
+  grade: CrmGrade
+  engagement_score: number
+  intent_score: number
+  fit_score: number
+  recency_score: number
+  score_version: number
+  computed_at: string
+  updated_at: string
+}
+
+export interface CrmScoreComponents {
+  engagement: number
+  intent: number
+  fit: number
+  recency: number
+  total: number
+  grade: CrmGrade
+}
+
+export interface CrmOpportunityStageHistoryRow {
+  id: string
+  client_id: string
+  opportunity_id: string
+  from_stage_id: string | null
+  to_stage_id: string
+  changed_by: string | null
+  changed_at: string
+}
