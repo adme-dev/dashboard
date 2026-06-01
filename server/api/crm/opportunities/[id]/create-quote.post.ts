@@ -40,10 +40,20 @@ export default defineEventHandler(async (event) => {
     userId: user.id,
   })
 
-  await execute(
-    `UPDATE crm_opportunities SET quote_id = $1, updated_at = NOW() WHERE id = $2 AND client_id = $3`,
+  // Link conditionally on quote_id IS NULL — closes the TOCTOU between the 409
+  // check above and this write (two tabs / a retry could both pass the check).
+  const linked = await queryOne<{ id: string }>(
+    `UPDATE crm_opportunities SET quote_id = $1, updated_at = NOW()
+      WHERE id = $2 AND client_id = $3 AND quote_id IS NULL
+      RETURNING id`,
     [quote.id, opp.id, client_id],
   )
+  if (!linked) {
+    // Lost the race — another request linked a quote first. Drop the just-created
+    // orphan quote (cascade removes its line items) so no dangling draft remains.
+    await execute(`DELETE FROM quotes WHERE id = $1`, [quote.id])
+    throw createError({ statusCode: 409, statusMessage: 'This opportunity already has a linked quote — unlink it first.' })
+  }
   try {
     await recordFieldChanges({
       clientId: client_id, entityType: 'opportunity', entityId: opp.id,
