@@ -19,14 +19,15 @@ export interface AssignResult { userId: string | null, nextIndex: number }
 export function pickAssignee(rule: AssignmentRule, ctx: AssignContext = {}): AssignResult {
   const pool = rule.pool ?? []
   if (!pool.length) return { userId: null, nextIndex: rule.assignment_index }
+  const first = pool[0]! // length checked above
   switch (rule.strategy) {
     case 'single':
     case 'priority':
-      return { userId: pool[0], nextIndex: rule.assignment_index }
+      return { userId: first, nextIndex: rule.assignment_index }
     case 'load_balanced': {
       const loads = ctx.loads ?? {}
-      let best = pool[0]
-      let bestLoad = loads[pool[0]] ?? 0
+      let best = first
+      let bestLoad = loads[first] ?? 0
       for (const u of pool) {
         const l = loads[u] ?? 0
         if (l < bestLoad) { best = u; bestLoad = l }
@@ -37,7 +38,7 @@ export function pickAssignee(rule: AssignmentRule, ctx: AssignContext = {}): Ass
     default: {
       const len = pool.length
       const idx = ((rule.assignment_index % len) + len) % len // tolerate oob / negative
-      return { userId: pool[idx], nextIndex: (idx + 1) % len }
+      return { userId: pool[idx]!, nextIndex: (idx + 1) % len }
     }
   }
 }

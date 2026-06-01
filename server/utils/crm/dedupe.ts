@@ -85,7 +85,7 @@ export function candidatePairs(records: DedupeRecord[], threshold = 0.72): Candi
     if (group.length < 2) continue
     for (let i = 0; i < group.length; i++) {
       for (let j = i + 1; j < group.length; j++) {
-        const a = group[i], b = group[j]
+        const a = group[i]!, b = group[j]! // i,j within bounds
         if (a.id === b.id) continue
         const pk = a.id < b.id ? a.id + '|' + b.id : b.id + '|' + a.id
         if (scored.has(pk)) continue
