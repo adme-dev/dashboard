@@ -361,7 +361,11 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
           <UPopover>
             <UButton icon="i-lucide-calendar" color="neutral" variant="subtle">{{ scheduleLabel }}</UButton>
             <template #content>
-              <UCalendar v-model="scheduleDate" class="p-2" />
+              <UCalendar
+                :model-value="(scheduleDate ?? undefined) as any"
+                class="p-2"
+                @update:model-value="(v: any) => scheduleDate = v"
+              />
             </template>
           </UPopover>
           <USelectMenu
