@@ -116,3 +116,40 @@ export interface CrmActivity {
   created_at: string
   updated_at: string
 }
+
+// --- Custom-objects engine (Phase B) ---
+export interface CrmObjectDef {
+  id: string
+  client_id: string
+  vertical_key: string
+  key: string
+  label: string
+  label_plural: string
+  icon: string | null
+  has_pipeline: boolean
+  position: number
+}
+
+export interface CrmFieldDef {
+  id: string
+  client_id: string
+  object_def_id: string
+  key: string
+  label: string
+  field_type: string
+  options: string[]
+  relation_target: 'person' | 'company' | null
+  is_required: boolean
+  is_title: boolean
+  position: number
+}
+
+export interface CrmRecord {
+  id: string
+  client_id: string
+  object_def_id: string
+  data: Record<string, unknown>
+  stage_id: string | null
+  created_at: string
+  updated_at: string
+}
