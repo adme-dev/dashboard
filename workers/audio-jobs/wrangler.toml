@@ -1,0 +1,38 @@
+# workers/audio-jobs/wrangler.toml
+# Audio Studio Phase 2 — music generation queue consumer.
+#
+# Why a standalone Worker (not the Pages app): the deployed Pages worker entry
+# (scripts/wrap-worker.mjs) exports only fetch + scheduled, so a Pages-side queue
+# consumer never fires, and AI/R2 bindings aren't reachable outside a request.
+# This Worker has AI + R2 + DB as first-class bindings. Mirrors leads-delivery-worker.
+name = "audio-jobs"
+main = "src/index.ts"
+compatibility_date = "2025-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Workers AI — used for the MiniMax music model (partner model via AI Gateway).
+[ai]
+binding = "AI"
+
+# Same R2 bucket the Pages app presigns from (server/utils/storage.ts →
+# R2_BUCKET_NAME, default 'agency-files'). The Worker .put()s the master here;
+# Pages reads audio_assets.r2_key_master and presigns it. One object store.
+[[r2_buckets]]
+binding = "AUDIO_BUCKET"
+bucket_name = "agency-files"
+
+# Shares the Hyperdrive pooler (→ same Neon DB) as leads-delivery-worker.
+# pg over raw TCP isn't possible in a Worker without Hyperdrive.
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "900b4b74ec41462cbbabebd0aa8775aa"
+
+# Queue consumer — the Pages app produces to `music-gen`, this Worker consumes.
+# Standalone Workers MAY declare consumers in wrangler.toml (unlike Pages).
+# batch size 1: each generation is a long-running AI call — process one at a time.
+[[queues.consumers]]
+queue = "music-gen"
+max_batch_size = 1
+max_batch_timeout = 30
+max_retries = 3
+dead_letter_queue = "music-gen-dlq"

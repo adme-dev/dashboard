@@ -1,0 +1,4 @@
+# wrangler local artifacts
+.wrangler/
+.dev.vars
+node_modules/

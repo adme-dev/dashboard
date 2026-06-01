@@ -294,19 +294,23 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-rocket',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'Generate owned AI voiceover you can use across radio, TikTok and Meta — no clearance, no takedown risk — and drop it straight into your ad creatives.',
+    description: 'Generate owned AI voiceover and music you can use across radio, TikTok and Meta — no clearance, no takedown risk — and drop it straight into your ad creatives.',
     details: [
       {
         title: 'Owned Audio That Travels',
-        content: 'TikTok\'s Commercial Music Library is TikTok-only and Meta\'s Sound Collection is Facebook/Instagram-only — neither clears for use anywhere else. Audio you generate here is yours: one voiceover runs on radio, TikTok, and Meta with no licensing, no clearance, and no takedown risk across your whole client roster.'
+        content: 'TikTok\'s Commercial Music Library is TikTok-only and Meta\'s Sound Collection is Facebook/Instagram-only — neither clears for use anywhere else. Audio you generate here is yours: one voiceover or one music track runs on radio, TikTok, and Meta with no licensing, no clearance, and no takedown risk across your whole client roster.'
+      },
+      {
+        title: 'Voiceover And Music From A Brief',
+        content: 'Type a script and get an owned voiceover in seconds. Describe a mood — "warm, upbeat acoustic, ~110 bpm" — and get an original instrumental bed, or supply your own lyrics for a full vocal track. Both land in the same reusable, per-client library you can reach for again and again.'
       },
       {
         title: 'Mimicry Guardrail Built In',
-        content: 'Meta bans AI audio that imitates a specific copyrighted artist. Every script passes an artist-mimicry guard that strips "in the style of <artist>" phrasing before synthesis — pattern and blocklist first, maintained without a redeploy — so your generated audio stays compliant by default rather than risking an account flag.'
+        content: 'Meta bans AI audio that imitates a specific copyrighted artist. Every brief passes an artist-mimicry guard — pattern and blocklist first, maintained without a redeploy. Voiceover scripts have the offending phrasing stripped; music briefs that name an artist are rejected outright, so your generated audio stays compliant by default rather than risking an account flag.'
       },
       {
         title: 'Straight Into Banner Studio',
-        content: 'Generated voiceovers land in a reusable library tagged per client, then appear directly in the Banner Studio asset picker — one click drops a voiceover onto your ad as an audio layer. The same owned-audio engine is built tenant-aware so client self-serve in the portal is a fast-follow.'
+        content: 'Generated voiceovers and music land in a reusable library tagged per client, then appear directly in the Banner Studio asset picker — one click drops a track onto your ad as an audio layer. The same owned-audio engine is built tenant-aware so client self-serve in the portal is a fast-follow.'
       }
     ]
   },

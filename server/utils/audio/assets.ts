@@ -32,7 +32,10 @@ export function mapRow(row: any): AudioAsset {
     costCents: row.cost_cents != null ? Number(row.cost_cents) : null,
     error: row.error ?? null,
     createdAt: row.created_at,
-    updatedAt: row.updated_at
+    updatedAt: row.updated_at,
+    isInstrumental: row.is_instrumental ?? null,
+    lyrics: row.lyrics ?? null,
+    format: row.format ?? null
   }
 }
 
@@ -78,6 +81,43 @@ export async function createVoiceAsset(input: CreateVoiceAssetInput): Promise<Au
     [id, input.clientId, input.createdBy, input.title, input.text, input.lang,
       input.voice, input.channels, key, input.durationSec ?? null]
   )
+  const asset = mapRow(row)
+  asset.streamUrl = await streamUrlFor(asset)
+  return asset
+}
+
+export interface CreateMusicAssetInput {
+  createdBy: string
+  clientId: string | null
+  title: string | null
+  prompt: string // the music brief
+  isInstrumental: boolean
+  lyrics: string | null
+  channels: string[]
+  format: string // 'mp3' | 'wav'
+  idempotencyKey?: string | null
+}
+
+/** Insert a QUEUED music asset (no master yet — the audio-jobs worker generates,
+ * fetches the MiniMax URL, uploads to R2, and flips status to done/failed). */
+export async function createMusicAsset(input: CreateMusicAssetInput): Promise<AudioAsset> {
+  const id = randomUUID()
+  const row = await queryOne(
+    `INSERT INTO audio_assets
+       (id, client_id, created_by, kind, status, title, prompt, channels, format, is_instrumental, lyrics, idempotency_key)
+     VALUES ($1, $2, $3, 'music', 'queued', $4, $5, $6, $7, $8, $9, $10)
+     RETURNING *`,
+    [id, input.clientId, input.createdBy, input.title, input.prompt, input.channels,
+      input.format, input.isInstrumental, input.lyrics, input.idempotencyKey ?? null]
+  )
+  return mapRow(row)
+}
+
+/** Scoped single-asset read for the status endpoint. Mints a streamUrl when a
+ * master exists (i.e. once the worker has uploaded a completed track). */
+export async function getAsset(id: string): Promise<AudioAsset | null> {
+  const row = await queryOne(`SELECT * FROM audio_assets WHERE id = $1`, [id])
+  if (!row) return null
   const asset = mapRow(row)
   asset.streamUrl = await streamUrlFor(asset)
   return asset

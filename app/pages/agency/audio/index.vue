@@ -3,11 +3,20 @@ import type { AudioAsset } from '~/types'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
-const { listVoiceovers } = useAudioStudio()
-const { data, refresh } = listVoiceovers()
+const { listVoiceovers, listMusic } = useAudioStudio()
+const { data: voData, refresh: refreshVo } = listVoiceovers()
+const { data: muData, refresh: refreshMu } = listMusic()
 
-function onGenerated(_asset: AudioAsset) {
-  refresh()
+const tabs = [
+  { label: 'Voiceover', icon: 'i-lucide-mic', slot: 'voiceover' as const },
+  { label: 'Music', icon: 'i-lucide-music', slot: 'music' as const }
+]
+
+function onVoGenerated(_asset: AudioAsset) {
+  refreshVo()
+}
+function onMuGenerated(_asset: AudioAsset) {
+  refreshMu()
 }
 </script>
 
@@ -18,17 +27,34 @@ function onGenerated(_asset: AudioAsset) {
         Audio Studio
       </h1>
       <p class="text-sm text-muted">
-        Generate owned voiceover you can use across radio, TikTok and Meta — no clearance, no takedown risk.
+        Generate owned voiceover and music you can use across radio, TikTok and Meta — no clearance, no takedown risk.
       </p>
     </header>
 
-    <AudioVoiceoverForm @generated="onGenerated" />
+    <UTabs :items="tabs" variant="link" class="gap-6">
+      <template #voiceover>
+        <div class="space-y-8 pt-2">
+          <AudioVoiceoverForm @generated="onVoGenerated" />
+          <section class="space-y-3">
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-muted">
+              Voiceover library
+            </h2>
+            <AudioAssetLibrary :assets="voData?.assets ?? []" kind="voiceover" />
+          </section>
+        </div>
+      </template>
 
-    <section class="space-y-3">
-      <h2 class="text-xs font-semibold uppercase tracking-wider text-muted">
-        Library
-      </h2>
-      <AudioAssetLibrary :assets="data?.assets ?? []" />
-    </section>
+      <template #music>
+        <div class="space-y-8 pt-2">
+          <AudioMusicForm @generated="onMuGenerated" />
+          <section class="space-y-3">
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-muted">
+              Music library
+            </h2>
+            <AudioAssetLibrary :assets="muData?.assets ?? []" kind="music" />
+          </section>
+        </div>
+      </template>
+    </UTabs>
   </div>
 </template>
