@@ -243,6 +243,8 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { label: 'Compose', icon: 'i-lucide-pen-square', to: '/agency/social/publishing/compose', onSelect: close },
       { label: 'Inbox', icon: 'i-lucide-messages-square', to: '/agency/social/inbox', exact: true, onSelect: close },
       { label: 'Reviews', icon: 'i-lucide-star', to: '/agency/social/inbox/reviews', onSelect: close },
+      { label: 'Automation', icon: 'i-lucide-bot', to: '/agency/social/inbox/automation', onSelect: close },
+      { label: 'Reply Queue', icon: 'i-lucide-clipboard-check', to: '/agency/social/inbox/approvals', onSelect: close },
       { label: 'Queue', icon: 'i-lucide-list-ordered', to: '/agency/social/publishing/queue', onSelect: close },
       { label: 'Planner', icon: 'i-lucide-calendar-clock', to: '/agency/social/publishing/planner', onSelect: close },
       { label: 'Approvals', icon: 'i-lucide-clipboard-check', to: '/agency/social/publishing/approvals', onSelect: close },
