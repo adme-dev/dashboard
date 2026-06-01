@@ -1,6 +1,6 @@
 import { defineEventHandler, readRawBody, getHeader, createError } from 'h3'
 import { queryOne, execute } from '~~/server/utils/db'
-import { verifyMetaSignature } from '~~/server/utils/socialInbox/metaWebhook'
+import { verifyMetaWebhookSignature } from '~~/server/utils/socialInbox/metaWebhook'
 import { normalizeMetaCommentWebhook } from '~~/server/utils/socialInbox/normalize'
 import { recordInbound } from '~~/server/utils/socialInbox/store'
 
@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
   const raw = (await readRawBody(event)) || ''
   const sig = getHeader(event, 'x-hub-signature-256')
   const secret = process.env.META_APP_SECRET || ''
-  if (!import.meta.dev && !verifyMetaSignature(raw, sig, secret)) {
+  if (!import.meta.dev && !verifyMetaWebhookSignature(raw, sig, secret)) {
     throw createError({ statusCode: 401, statusMessage: 'bad signature' })
   }
 
