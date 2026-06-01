@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
+import { recomputeIfScorable } from '~~/server/utils/crm/scoreSignals'
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -24,5 +25,7 @@ export default defineEventHandler(async (event) => {
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
     [b.client_id, b.target_type, b.target_id, b.type, b.title, b.body ?? null, b.scheduled_at ?? null, user.id],
   )
+  // Logging activity bumps the contact's engagement + recency score.
+  await recomputeIfScorable(b.client_id, b.target_type, b.target_id, 'activity')
   return { item: row }
 })

@@ -3,6 +3,7 @@
 // tasks from per-client automation rules. buildAutomationTasks is pure (TDD);
 // recordStageChange does the DB I/O and idempotency.
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
+import { recomputeIfScorable } from './scoreSignals'
 
 export interface StageAutomationTemplate {
   title?: string
@@ -70,6 +71,16 @@ export async function recordStageChange(opts: {
      VALUES ($1,$2,$3,$4,$5)`,
     [opts.clientId, opts.opportunityId, opts.fromStageId, opts.toStageId, opts.changedBy],
   )
+
+  // A stage change shifts open-opportunity intent — refresh the linked contact's score.
+  const contacts = await queryOne<{ person_id: string | null, company_id: string | null }>(
+    `SELECT person_id, company_id FROM crm_opportunities WHERE id = $1`,
+    [opts.opportunityId],
+  )
+  if (contacts) {
+    await recomputeIfScorable(opts.clientId, 'person', contacts.person_id, 'opportunity_stage')
+    await recomputeIfScorable(opts.clientId, 'company', contacts.company_id, 'opportunity_stage')
+  }
 
   const rules = await queryRows<StageAutomationRule>(
     `SELECT * FROM crm_stage_automations WHERE client_id = $1 AND stage_id = $2 AND is_active = true`,
