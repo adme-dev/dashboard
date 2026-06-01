@@ -48,6 +48,7 @@ export default defineEventHandler(async (event) => {
         toStageId: b.stage_id,
         ownerId: row.owner_id ?? prev.owner_id,
         changedBy: user.id,
+        isWon: stage.is_won,
       })
     } catch (e) {
       console.error('[crm] stage-change hook failed', e)

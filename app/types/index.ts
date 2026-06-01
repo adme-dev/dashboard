@@ -1385,6 +1385,10 @@ export interface AudioAsset {
   error: string | null
   createdAt: string
   updatedAt: string
+  /** Music (Phase 2) fields — null on voiceover assets. */
+  isInstrumental?: boolean | null
+  lyrics?: string | null
+  format?: string | null
   /** Short-lived presigned playback URL, minted by the API on read. */
   streamUrl?: string
 }

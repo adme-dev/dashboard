@@ -2,6 +2,9 @@
 import { z } from 'zod'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
+import { recordFieldChanges } from '~~/server/utils/crm/audit'
+
+const AUDIT_COLS = ['name', 'person_id', 'company_id', 'owner_id', 'assigned_to', 'amount', 'probability', 'expected_close_date', 'source', 'competitor', 'lost_reason', 'notes', 'next_action', 'next_action_date'] as const
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -9,6 +12,7 @@ const Body = z.object({
   person_id: z.string().uuid().nullable().optional(),
   company_id: z.string().uuid().nullable().optional(),
   owner_id: z.string().uuid().nullable().optional(),
+  assigned_to: z.string().uuid().nullable().optional(),
   amount: z.coerce.number().optional(),
   probability: z.coerce.number().int().min(0).max(100).optional(),
   expected_close_date: z.string().nullable().optional(),
@@ -21,16 +25,18 @@ const Body = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
   await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')
   const parsed = Body.safeParse(await readBody(event))
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: parsed.error.message })
   const b = parsed.data
+  const before = await queryOne<Record<string, unknown>>(
+    `SELECT * FROM crm_opportunities WHERE id = $1 AND client_id = $2 AND deleted_at IS NULL`, [id, b.client_id])
   const sets: string[] = []
   const params: unknown[] = []
   const set = (col: string, val: unknown) => { params.push(val); sets.push(`${col} = $${params.length}`) }
-  for (const col of ['name', 'person_id', 'company_id', 'owner_id', 'amount', 'probability', 'expected_close_date', 'source', 'competitor', 'lost_reason', 'notes', 'next_action', 'next_action_date'] as const) {
+  for (const col of AUDIT_COLS) {
     if (b[col] !== undefined) set(col, b[col])
   }
   if (!sets.length) throw createError({ statusCode: 400, statusMessage: 'No fields to update' })
@@ -42,5 +48,8 @@ export default defineEventHandler(async (event) => {
     params,
   )
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Opportunity not found' })
+  try {
+    await recordFieldChanges({ clientId: b.client_id, entityType: 'opportunity', entityId: id as string, before, after: row, fields: [...AUDIT_COLS], actor: user.id })
+  } catch (e) { console.error('[crm] audit failed', e) }
   return { item: row }
 })

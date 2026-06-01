@@ -17,6 +17,10 @@ async function onSave() {
   <USlideover :open="open" :title="record && Object.keys(record).length ? 'Edit record' : 'New record'" @update:open="emit('update:open', $event)">
     <template #body>
       <CrmEngineRecordForm v-model="form" :fields="fields" :client-id="clientId" />
+      <template v-if="record && (record as any).id">
+        <USeparator class="my-4" />
+        <CrmAuditHistory :client-id="clientId" entity-type="record" :entity-id="(record as any).id" />
+      </template>
     </template>
     <template #footer>
       <div class="flex justify-end gap-2 w-full">

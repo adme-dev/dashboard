@@ -12,6 +12,10 @@ export interface CrmCompany {
   postal_code: string | null
   country: string | null
   notes: string | null
+  lifecycle_stage: string | null
+  tags: string[]
+  owner_id: string | null
+  assigned_to: string | null
   custom_fields: Record<string, unknown>
   created_at: string
   updated_at: string
@@ -30,6 +34,10 @@ export interface CrmPerson {
   department: string | null
   city: string | null
   notes: string | null
+  lifecycle_stage: string | null
+  tags: string[]
+  owner_id: string | null
+  assigned_to: string | null
   custom_fields: Record<string, unknown>
   created_at: string
   updated_at: string
@@ -251,4 +259,64 @@ export interface CrmOpportunityStageHistoryRow {
   to_stage_id: string
   changed_by: string | null
   changed_at: string
+}
+
+// --- Data Quality, Relationships & Governance (Phase 2) ---
+export type CrmEndpointType = 'person' | 'company'
+
+export interface CrmRelationship {
+  id: string
+  client_id: string
+  from_type: CrmEndpointType
+  from_id: string
+  to_type: CrmEndpointType
+  to_id: string
+  relationship_type: string
+  is_decision_maker: boolean
+  is_primary_contact: boolean
+  notes: string | null
+  created_by: string | null
+  created_at: string
+}
+
+export interface CrmAuditRow {
+  id: string
+  client_id: string
+  entity_type: string
+  entity_id: string
+  field: string
+  old_value: string | null
+  new_value: string | null
+  changed_by: string | null
+  changed_at: string
+}
+
+export type CrmAssignmentStrategy = 'round_robin' | 'load_balanced' | 'priority' | 'single'
+
+export interface CrmAssignmentRule {
+  id: string
+  client_id: string
+  object_type: 'person' | 'opportunity'
+  strategy: CrmAssignmentStrategy
+  pool: string[]
+  assignment_index: number
+  is_active: boolean
+  created_at: string
+}
+
+export interface CrmMergeLogRow {
+  id: string
+  client_id: string
+  entity_type: CrmEndpointType
+  winner_id: string
+  loser_id: string
+  detail: Record<string, unknown>
+  merged_by: string | null
+  merged_at: string
+}
+
+export interface CrmSettings {
+  client_id: string
+  record_visibility: 'team' | 'owner'
+  updated_at: string
 }
