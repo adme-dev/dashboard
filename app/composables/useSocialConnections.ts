@@ -163,9 +163,11 @@ export function useSocialConnections() {
     )
   }
 
-  async function fetchSpendSummary(month: number, year: number, platform?: string): Promise<SpendSummary> {
+  async function fetchSpendSummary(month: number, year: number, platform?: string, refresh = false): Promise<SpendSummary> {
     const params: any = { month, year }
     if (platform && platform !== 'all') params.platform = platform
+    // refresh bypasses the KV cache — used after a sync (a queue-run sync can't bust it).
+    if (refresh) params.refresh = 1
     return await $fetch('/api/agency/social/spend/summary', { params })
   }
 

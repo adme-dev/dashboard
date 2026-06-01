@@ -110,7 +110,7 @@ const expiryLabel = computed(() => {
           v-if="worstHealth && worstHealth !== 'healthy'"
           class="flex items-center gap-2 mb-4 flex-wrap"
         >
-          <ConnectionHealthBadge :status="worstHealth" :count="accountCount" />
+          <SocialConnectionHealthBadge :status="worstHealth" :count="accountCount" />
           <span v-if="expiryLabel" class="text-xs text-amber-500">{{ expiryLabel }}</span>
         </div>
 
