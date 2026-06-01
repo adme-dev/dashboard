@@ -325,6 +325,13 @@ export interface CrmSettings {
 
 export type CrmEntity = 'people' | 'companies' | 'opportunities'
 
+/** F9 — one filter clause (matches server/utils/crm/filters.ts grammar). */
+export interface CrmFilterClause {
+  field: string
+  op: string
+  value?: unknown
+}
+
 /** F8 — a unified search hit across CRM entities. */
 export type CrmSearchTargetType = 'person' | 'company' | 'opportunity' | 'activity' | 'task'
 export interface CrmSearchResult {

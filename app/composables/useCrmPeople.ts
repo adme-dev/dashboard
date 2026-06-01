@@ -1,5 +1,5 @@
 // app/composables/useCrmPeople.ts
-import type { CrmPerson, CrmListResponse } from '~/types/crm'
+import type { CrmPerson, CrmListResponse, CrmFilterClause } from '~/types/crm'
 
 export function useCrmPeople(clientId: Ref<string | null>) {
   const base = inject<string>('crmApiBase', '/api/crm')
@@ -7,6 +7,7 @@ export function useCrmPeople(clientId: Ref<string | null>) {
   const companyId = useState<string | null>('crm-people-company', () => null)
   const lifecycle = useState<string | null>('crm-people-lifecycle', () => null)
   const tag = useState<string | null>('crm-people-tag', () => null)
+  const filters = useState<CrmFilterClause[]>('crm-people-filters', () => [])
   const page = useState<number>('crm-people-page', () => 1)
   const query = computed(() => {
     const p: Record<string, string> = { page: String(page.value), page_size: '50' }
@@ -15,6 +16,7 @@ export function useCrmPeople(clientId: Ref<string | null>) {
     if (companyId.value) p.company_id = companyId.value
     if (lifecycle.value) p.lifecycle = lifecycle.value
     if (tag.value) p.tag = tag.value
+    if (filters.value.length) p.filters = JSON.stringify(filters.value)
     return p
   })
   const { data, pending, refresh } = useFetch<CrmListResponse<CrmPerson>>(`${base}/people`, {
@@ -46,5 +48,5 @@ export function useCrmPeople(clientId: Ref<string | null>) {
     await refresh()
     return res
   }
-  return { data, pending, refresh, search, companyId, lifecycle, tag, page, create, update, remove, importCsv }
+  return { data, pending, refresh, search, companyId, lifecycle, tag, filters, page, create, update, remove, importCsv }
 }
