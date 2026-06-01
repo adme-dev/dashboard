@@ -1,8 +1,9 @@
--- 150_social_automation.sql — Social Suite Slice 2 Phase 2b: reply automation engine.
+-- 151_social_automation.sql — Social Suite Slice 2 Phase 2b: reply automation engine.
+-- (Numbered 151: 149 = audio voiceover, 150 = audio music-gen (PR #64) — dodged that collision.)
 -- Additive. The 2b COLUMNS on social_conversations/social_messages already shipped in
 -- 148_social_inbox.sql (automation_state, ai_generated, ai_suggested, ai_confidence,
 -- automation_rule_id). This migration adds only the two new 2b tables.
--- Run: psql "$DATABASE_URL" -f server/database/migrations/150_social_automation.sql
+-- Run: psql "$DATABASE_URL" -f server/database/migrations/151_social_automation.sql
 
 CREATE TABLE IF NOT EXISTS social_automation_rules (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
