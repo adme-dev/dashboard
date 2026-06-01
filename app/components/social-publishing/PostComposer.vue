@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CalendarDate, parseDate, type DateValue } from '@internationalized/date'
+import { CalendarDate, CalendarDateTime, parseDate, toZoned, type DateValue } from '@internationalized/date'
 import type { SocialPublishPlatform } from '~/types'
 import { useSocialComposer, type ScheduleMode } from '~/composables/useSocialComposer'
 
@@ -48,16 +48,45 @@ function toCalendarDate(iso: string | null): DateValue | null {
   if (!iso) return null
   try { return parseDate(iso.slice(0, 10)) } catch { return null }
 }
-const scheduleDateModel = computed<DateValue | null>({
-  get: () => toCalendarDate(state.value.scheduledAt),
-  set: (cd) => {
-    if (!cd) { state.value.scheduledAt = null; return }
-    const d = cd as CalendarDate
-    state.value.scheduledAt = new Date(d.year, d.month - 1, d.day, 9, 0).toISOString()
-  },
+// Half-hour time options (HH:MM)
+const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) =>
+  `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`)
+
+// Derive the initial time-of-day (in the post's timezone) from an existing scheduledAt.
+function timeFromScheduled(): string {
+  if (!state.value.scheduledAt) return '09:00'
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit', minute: '2-digit', hour12: false, timeZone: state.value.timezone,
+    }).format(new Date(state.value.scheduledAt))
+  } catch { return '09:00' }
+}
+
+const scheduleDate = ref<DateValue | null>(toCalendarDate(state.value.scheduledAt))
+const scheduleTime = ref(timeFromScheduled())
+
+// Combine the chosen calendar date + time into an instant in the post's timezone.
+function recomputeScheduledAt() {
+  if (!scheduleDate.value) { state.value.scheduledAt = null; return }
+  const d = scheduleDate.value as CalendarDate
+  const [h, m] = scheduleTime.value.split(':').map(Number)
+  const cdt = new CalendarDateTime(d.year, d.month, d.day, h || 0, m || 0)
+  state.value.scheduledAt = toZoned(cdt, state.value.timezone || 'Australia/Sydney').toDate().toISOString()
+}
+watch([scheduleDate, scheduleTime], recomputeScheduledAt)
+
+// Re-sync the local date/time controls if the post is (re)loaded externally (e.g. ?edit).
+watch(() => state.value.scheduledAt, (iso) => {
+  const next = toCalendarDate(iso)
+  if (next?.toString() !== scheduleDate.value?.toString()) scheduleDate.value = next
+  const t = timeFromScheduled()
+  if (t !== scheduleTime.value) scheduleTime.value = t
 })
+
 const dateFmt = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
-const scheduleLabel = computed(() => state.value.scheduledAt ? dateFmt.format(new Date(state.value.scheduledAt)) : 'Pick a date')
+const scheduleLabel = computed(() => scheduleDate.value
+  ? dateFmt.format(new Date(state.value.scheduledAt || Date.now()))
+  : 'Pick a date')
 
 const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
   { value: 'now', label: 'Publish now', icon: 'i-lucide-send' },
@@ -172,12 +201,21 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
           label-key="label"
           class="w-44"
         />
-        <UPopover v-if="state.scheduleMode === 'schedule'">
-          <UButton icon="i-lucide-calendar" color="neutral" variant="subtle">{{ scheduleLabel }}</UButton>
-          <template #content>
-            <UCalendar v-model="scheduleDateModel" class="p-2" />
-          </template>
-        </UPopover>
+        <template v-if="state.scheduleMode === 'schedule'">
+          <UPopover>
+            <UButton icon="i-lucide-calendar" color="neutral" variant="subtle">{{ scheduleLabel }}</UButton>
+            <template #content>
+              <UCalendar v-model="scheduleDate" class="p-2" />
+            </template>
+          </UPopover>
+          <USelectMenu
+            v-model="scheduleTime"
+            :items="TIME_OPTIONS"
+            icon="i-lucide-clock"
+            class="w-28"
+          />
+          <span class="text-xs text-muted">{{ state.timezone }}</span>
+        </template>
         <span v-else-if="state.scheduleMode === 'queue'" class="text-sm text-muted">
           Drops into the next free posting slot.
         </span>
