@@ -66,6 +66,19 @@ async function unlinkQuote() {
   await $fetch(`${base}/opportunities/${props.opportunity.id}`, { method: 'PATCH', body: { client_id: props.clientId, quote_id: null } })
   emit('changed')
 }
+const generating = ref(false)
+async function generateQuote() {
+  generating.value = true
+  try {
+    await $fetch(`${base}/opportunities/${props.opportunity.id}/create-quote`, {
+      method: 'POST', body: { client_id: props.clientId },
+    })
+    toast.add({ title: 'Quote created', description: 'A draft quote was generated from these line items.', color: 'success' })
+    emit('changed'); await refreshQuote()
+  } catch (e: any) {
+    toast.add({ title: 'Could not create quote', description: e?.data?.statusMessage || e?.message, color: 'error' })
+  } finally { generating.value = false }
+}
 const STATUS_COLOR: Record<string, string> = { draft: 'neutral', sent: 'info', accepted: 'success', rejected: 'error', expired: 'warning' }
 </script>
 
@@ -112,6 +125,10 @@ const STATUS_COLOR: Record<string, string> = { draft: 'neutral', sent: 'info', a
         <UButton icon="i-lucide-unlink" size="xs" variant="ghost" color="neutral" @click="unlinkQuote">Unlink</UButton>
       </template>
       <template v-else>
+        <UButton
+          v-if="rows.length" size="xs" variant="soft" color="primary" icon="i-lucide-file-plus"
+          :loading="generating" @click="generateQuote"
+        >Generate quote</UButton>
         <UPopover v-model:open="linkOpen">
           <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-link" @click="openLink">Link a quote</UButton>
           <template #content>
