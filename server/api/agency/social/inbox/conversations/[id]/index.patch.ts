@@ -1,5 +1,6 @@
 import { requireAuth } from '~~/server/utils/auth'
-import { execute } from '~~/server/utils/db'
+import { queryOne } from '~~/server/utils/db'
+import { emitInboxEvent } from '~~/server/utils/socialInbox/events'
 
 /**
  * PATCH /api/agency/social/inbox/conversations/:id
@@ -24,6 +25,14 @@ export default defineEventHandler(async (event) => {
   if (!sets.length) throw createError({ statusCode: 400, statusMessage: 'nothing to update' })
 
   params.push(id)
-  await execute(`UPDATE social_conversations SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${params.length}`, params)
+  const row = await queryOne<{ client_id: string }>(
+    `UPDATE social_conversations SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${params.length} RETURNING client_id`, params)
+
+  // Broadcast assignment/status/snooze changes (not a pure mark-read, which is per-viewer state
+  // and would otherwise trigger needless refreshes / loops on other clients).
+  const broadcastWorthy = !!(body.status || body.assigned_to !== undefined || body.snoozed_until !== undefined)
+  if (row && broadcastWorthy) {
+    emitInboxEvent({ clientId: row.client_id, type: 'conversation.changed', conversationId: id }, event)
+  }
   return { ok: true }
 })

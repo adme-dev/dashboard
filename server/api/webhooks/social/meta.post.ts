@@ -3,6 +3,7 @@ import { queryOne, execute } from '~~/server/utils/db'
 import { verifyMetaWebhookSignature } from '~~/server/utils/socialInbox/metaWebhook'
 import { normalizeMetaCommentWebhook } from '~~/server/utils/socialInbox/normalize'
 import { recordInbound } from '~~/server/utils/socialInbox/store'
+import { emitInboxEvent } from '~~/server/utils/socialInbox/events'
 
 /**
  * POST /api/webhooks/social/meta — Facebook/Instagram comment + mention events.
@@ -33,7 +34,10 @@ export default defineEventHandler(async (event) => {
     if (!account) continue
     for (const change of entry.changes ?? []) {
       const ev = normalizeMetaCommentWebhook(platform, change)
-      if (ev) await recordInbound({ queryOne, execute }, account.client_id, account.id, ev)
+      if (ev) {
+        const rec = await recordInbound({ queryOne, execute }, account.client_id, account.id, ev)
+        if (rec.inserted) emitInboxEvent({ clientId: account.client_id, type: 'message.added', conversationId: rec.conversationId }, event)
+      }
     }
   }
   return { ok: true }

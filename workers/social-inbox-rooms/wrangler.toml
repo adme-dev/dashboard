@@ -1,0 +1,11 @@
+name = "social-inbox-rooms"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[durable_objects]
+bindings = [{ name = "SOCIAL_INBOX_ROOMS", class_name = "InboxRoom" }]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["InboxRoom"]

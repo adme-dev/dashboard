@@ -1,6 +1,7 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne, execute } from '~~/server/utils/db'
 import { dispatchReply } from '~~/server/utils/socialInbox/dispatch'
+import { emitInboxEvent } from '~~/server/utils/socialInbox/events'
 
 /**
  * POST /api/agency/social/inbox/conversations/:id/reply
@@ -19,5 +20,6 @@ export default defineEventHandler(async (event) => {
     aiGenerated: false,
   })
   if (!res.ok) throw createError({ statusCode: 502, statusMessage: res.error || 'reply failed' })
+  if (res.clientId) emitInboxEvent({ clientId: res.clientId, type: 'message.added', conversationId: id, actorId: String(user.id) }, event)
   return { ok: true, platformMessageId: res.platformMessageId }
 })

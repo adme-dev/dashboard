@@ -7,6 +7,7 @@ import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { queryOne, execute, queryRows } from '~~/server/utils/db'
 import { loadClientApprovable } from '~~/server/utils/socialInbox/portal'
 import { dispatchReply } from '~~/server/utils/socialInbox/dispatch'
+import { emitInboxEvent } from '~~/server/utils/socialInbox/events'
 
 /** POST /api/client-portal/social/response-queue/:id/approve  body { content? } */
 export default defineEventHandler(async (event) => {
@@ -44,5 +45,6 @@ export default defineEventHandler(async (event) => {
   await execute(
     `UPDATE social_conversations SET automation_state = NULL, updated_at = NOW() WHERE id = $1`, [row.conversation_id])
   if (!res.ok) throw createError({ statusCode: 502, statusMessage: res.error || 'send failed' })
+  emitInboxEvent({ clientId: client.clientId, type: 'message.added', conversationId: row.conversation_id, actorId: `client:${client.id}` }, event)
   return { ok: true, platformMessageId: res.platformMessageId }
 })

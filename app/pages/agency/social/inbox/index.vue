@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useSocialInbox } from '~/composables/useSocialInbox'
+import { useSocialInboxRealtime } from '~/composables/useSocialInboxRealtime'
 import type { SocialConversation, SocialMessage } from '~/types'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
@@ -79,6 +80,18 @@ async function onRefresh() {
 
 const selectedConv = computed(() => thread.value.conversation)
 const replyDisabled = computed(() => selectedConv.value?.platform === 'tiktok')
+
+// Live updates: refresh the list on any event for this client, and the open thread if it's the
+// affected conversation. Degrades to polling when SSE/the DO are unavailable.
+const sseEndpoint = computed(() => clientId.value ? `/api/agency/social/inbox/events?clientId=${clientId.value}` : null)
+useSocialInboxRealtime(sseEndpoint, {
+  onRefresh: () => { reload() },
+  onEvent: async (e) => {
+    if (e.conversationId && e.conversationId === selectedId.value) {
+      thread.value = await open(selectedId.value)
+    }
+  },
+})
 </script>
 
 <template>
