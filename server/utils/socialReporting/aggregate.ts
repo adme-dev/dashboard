@@ -18,6 +18,7 @@ export interface PostMetricRow {
   published_at?: string | null
   content?: string | null
   permalink?: string | null
+  platform_results?: Record<string, any> | null
 }
 
 export interface MetricTotals {
