@@ -42,7 +42,7 @@ export async function isOwnerScoped(clientId: string, user: User): Promise<boole
     [clientId],
   )
   if (!settings || settings.record_visibility !== 'owner') return false
-  return !hasRole(user, PERMISSIONS.MANAGEMENT)
+  return !hasRole(user, [...PERMISSIONS.MANAGEMENT])
 }
 
 export async function visibilityConds(clientId: string, user: User): Promise<Cond[]> {
