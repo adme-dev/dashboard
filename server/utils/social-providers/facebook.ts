@@ -8,8 +8,9 @@
  * Reference: https://developers.facebook.com/docs/video-api/guides/reels-publishing
  */
 
-import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaItem, FetchInboxParams, FetchInboxResult, ReplyParams, ReplyResult } from './types'
+import type { SocialPostProvider, PostParams, PostResult, CommentParams, MediaItem, FetchInboxParams, FetchInboxResult, ReplyParams, ReplyResult, FetchPostMetricsParams, PostMetric, FetchAccountMetricsParams, AccountMetric } from './types'
 import type { InboxItem } from '~~/server/utils/socialInbox/types'
+import { mapFbPostInsights, mapFbAccountInsights } from '~~/server/utils/socialReporting/normalize'
 
 const GRAPH_API_BASE = 'https://graph.facebook.com/v20.0'
 
@@ -304,4 +305,33 @@ facebookProvider.reply = async ({ accountId, accessToken, conversationId, conten
   return res.ok && j.id
     ? { platformMessageId: String(j.id), status: 'success' }
     : { platformMessageId: '', status: 'failed', error: j?.error?.message ?? `http ${res.status}` }
+}
+
+// --- Slice 3 reporting: organic metrics collection ---
+// ⚠️ Insight metric names follow Graph v20 docs; verify live before relying on prod numbers.
+facebookProvider.fetchPostMetrics = async ({ accessToken, posts }: FetchPostMetricsParams): Promise<PostMetric[]> => {
+  const out: PostMetric[] = []
+  for (const p of posts) {
+    try {
+      const tok = encodeURIComponent(accessToken)
+      const insRes = await fetch(`${GRAPH_API_BASE}/${p.platformPostId}/insights?metric=post_impressions,post_impressions_unique,post_clicks,post_video_views,post_reactions_by_type_total&access_token=${tok}`)
+      const ins: any = await insRes.json().catch(() => ({}))
+      // comments/shares aren't insight metrics — read them off the post object.
+      const fldRes = await fetch(`${GRAPH_API_BASE}/${p.platformPostId}?fields=comments.summary(true).limit(0),shares&access_token=${tok}`)
+      const fld: any = await fldRes.json().catch(() => ({}))
+      out.push(mapFbPostInsights(p.postId, p.platformPostId, ins, {
+        comments: fld?.comments?.summary?.total_count, shares: fld?.shares?.count,
+      }))
+    } catch { /* skip this post; others still collect */ }
+  }
+  return out
+}
+
+facebookProvider.fetchAccountMetrics = async ({ accountId, accessToken }: FetchAccountMetricsParams): Promise<AccountMetric> => {
+  const tok = encodeURIComponent(accessToken)
+  const insRes = await fetch(`${GRAPH_API_BASE}/${accountId}/insights?metric=page_impressions,page_impressions_unique,page_views_total&period=day&access_token=${tok}`)
+  const ins: any = await insRes.json().catch(() => ({}))
+  const pageRes = await fetch(`${GRAPH_API_BASE}/${accountId}?fields=fan_count&access_token=${tok}`)
+  const page: any = await pageRes.json().catch(() => ({}))
+  return mapFbAccountInsights(ins, page?.fan_count)
 }
