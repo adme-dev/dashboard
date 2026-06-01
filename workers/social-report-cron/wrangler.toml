@@ -1,0 +1,17 @@
+name = "social-report-cron"
+main = "src/index.ts"
+compatibility_date = "2025-12-01"
+
+# Daily check for due report schedules. The Pages handler is HARD-gated by SOCIAL_REPORTS_ENABLED
+# and self-selects which schedules are due (cadence + last_sent_at), so extra ticks are harmless.
+[triggers]
+crons = [
+  "30 6 * * *"   # 06:30 UTC daily — send due social reports
+]
+
+[vars]
+APP_BASE_URL = "https://agency-dashboard-6cm.pages.dev"
+
+# CRON_SECRET is set as a secret (must match the Pages project's CRON_SECRET):
+#   wrangler secret put CRON_SECRET   (deploy from an isolated copy outside the repo tree —
+#   the root .wrangler/deploy/config.json redirect otherwise breaks sub-worker `wrangler deploy`)
