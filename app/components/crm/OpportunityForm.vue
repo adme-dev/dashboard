@@ -22,6 +22,7 @@ const form = reactive({
   amount: props.record?.amount ?? 0,
   person_id: props.record?.person_id ?? null,
   company_id: props.record?.company_id ?? null,
+  owner_id: props.record?.owner_id ?? null,
   notes: props.record?.notes ?? '',
 })
 const errors = ref<Record<string, string>>({})
@@ -57,6 +58,9 @@ function submit() {
       </UFormField>
       <UFormField label="Contact">
         <USelectMenu v-model="form.person_id" :items="personItems" value-key="value" placeholder="—" />
+      </UFormField>
+      <UFormField label="Owner" class="col-span-2">
+        <CrmOwnerSelect v-model="form.owner_id" />
       </UFormField>
     </div>
     <UFormField label="Notes">

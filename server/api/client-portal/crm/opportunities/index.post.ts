@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { queryOne } from '~~/server/utils/db'
 import { applyLifecycleEvent } from '~~/server/utils/crm/lifecycle'
+import { autoAssignOnCreate } from '~~/server/utils/crm/assignment'
 
 const Body = z.object({
   name: z.string().min(1),
@@ -45,5 +46,9 @@ export default defineEventHandler(async (event) => {
   } catch (e) {
     console.error('[crm] lifecycle create hook failed', e)
   }
+  try {
+    const owner = await autoAssignOnCreate({ clientId: client.clientId, objectType: 'opportunity', table: 'crm_opportunities', recordId: (row as any).id, currentOwner: (row as any).owner_id })
+    if (owner) { (row as any).owner_id = owner; (row as any).assigned_to = (row as any).assigned_to ?? owner }
+  } catch (e) { console.error('[crm] auto-assign failed', e) }
   return { item: row }
 })

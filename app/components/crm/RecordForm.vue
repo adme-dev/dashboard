@@ -42,6 +42,7 @@ const errors = ref<Record<string, string>>({})
 const UNSET = '__unset__'
 const lifecycleStage = ref<string>(UNSET)
 const tags = ref<string[]>([])
+const ownerId = ref<string | null>(null)
 const lifecycleOptions = [
   { label: 'Unset', value: UNSET },
   ...LIFECYCLE_STAGES.map(s => ({ label: lifecycleLabel(s), value: s })),
@@ -52,6 +53,7 @@ watchEffect(() => {
   for (const cf of fields.value) custom[cf.key] = (props.record?.custom_fields ?? {})[cf.key] ?? ''
   lifecycleStage.value = props.record?.lifecycle_stage ?? UNSET
   tags.value = Array.isArray(props.record?.tags) ? [...props.record!.tags] : []
+  ownerId.value = props.record?.owner_id ?? null
 })
 
 const loading = ref(false)
@@ -67,6 +69,7 @@ function submit() {
     if (body.employees === '' || body.employees == null) delete body.employees
     body.lifecycle_stage = lifecycleStage.value === UNSET ? null : lifecycleStage.value
     body.tags = tags.value
+    body.owner_id = ownerId.value
     emit('submit', body)
   } finally {
     loading.value = false
@@ -97,6 +100,9 @@ function submit() {
       </UFormField>
       <UFormField label="Tags">
         <UInputTags v-model="tags" placeholder="Add tag, press Enter" />
+      </UFormField>
+      <UFormField label="Owner" class="col-span-2">
+        <CrmOwnerSelect v-model="ownerId" />
       </UFormField>
     </div>
 

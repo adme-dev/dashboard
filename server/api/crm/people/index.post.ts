@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { validateCustomFields, type FieldDef } from '~~/server/utils/crm/customFields'
+import { autoAssignOnCreate } from '~~/server/utils/crm/assignment'
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -41,5 +42,10 @@ export default defineEventHandler(async (event) => {
       b.phone ?? null, b.mobile ?? null, b.job_title ?? null, b.department ?? null, b.city ?? null,
       b.notes ?? null, JSON.stringify(cf), user.id],
   )
+  // Auto-assign to a rep if a rule is configured and no owner was set. Best-effort.
+  try {
+    const owner = await autoAssignOnCreate({ clientId: b.client_id, objectType: 'person', table: 'crm_people', recordId: (row as any).id, currentOwner: (row as any).owner_id })
+    if (owner) { (row as any).owner_id = owner; (row as any).assigned_to = (row as any).assigned_to ?? owner }
+  } catch (e) { console.error('[crm] auto-assign failed', e) }
   return { item: row }
 })

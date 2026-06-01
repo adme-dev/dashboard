@@ -4,7 +4,7 @@ import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { recordFieldChanges } from '~~/server/utils/crm/audit'
 
-const AUDIT_COLS = ['name', 'person_id', 'company_id', 'owner_id', 'amount', 'probability', 'expected_close_date', 'source', 'competitor', 'lost_reason', 'notes', 'next_action', 'next_action_date'] as const
+const AUDIT_COLS = ['name', 'person_id', 'company_id', 'owner_id', 'assigned_to', 'amount', 'probability', 'expected_close_date', 'source', 'competitor', 'lost_reason', 'notes', 'next_action', 'next_action_date'] as const
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -12,6 +12,7 @@ const Body = z.object({
   person_id: z.string().uuid().nullable().optional(),
   company_id: z.string().uuid().nullable().optional(),
   owner_id: z.string().uuid().nullable().optional(),
+  assigned_to: z.string().uuid().nullable().optional(),
   amount: z.coerce.number().optional(),
   probability: z.coerce.number().int().min(0).max(100).optional(),
   expected_close_date: z.string().nullable().optional(),

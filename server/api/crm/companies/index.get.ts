@@ -3,7 +3,7 @@
 import { z } from 'zod'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRows, queryCount } from '~~/server/utils/db'
-import { buildWhere, type Cond } from '~~/server/utils/crm/queryScope'
+import { buildWhere, visibilityConds, type Cond } from '~~/server/utils/crm/queryScope'
 
 const Query = z.object({
   client_id: z.string().uuid(),
@@ -15,10 +15,11 @@ const Query = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
   const q = Query.parse(getQuery(event))
 
   const conds: Cond[] = []
+  conds.push(...await visibilityConds(q.client_id, user))
   if (q.q) {
     const safe = q.q.replace(/[%_]/g, c => '\\' + c)
     conds.push({ sql: '(name ILIKE ? OR domain ILIKE ?)', params: [`%${safe}%`, `%${safe}%`] })
