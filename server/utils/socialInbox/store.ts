@@ -91,7 +91,9 @@ export async function recordOutbound(
   await db.execute(
     `UPDATE social_conversations SET
        last_message_at = NOW(), last_message_preview = $2, last_message_direction = 'out',
-       message_count = message_count + 1, unread_count = 0, updated_at = NOW()
+       message_count = message_count + 1, unread_count = 0,
+       first_response_at = COALESCE(first_response_at, NOW()),
+       updated_at = NOW()
      WHERE id = $1`,
     [conversationId, args.content.slice(0, 200)],
   )
