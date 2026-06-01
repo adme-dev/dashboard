@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { AudioAsset } from '~/types'
 
+definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
+
 const { listVoiceovers } = useAudioStudio()
 const { data, refresh } = listVoiceovers()
 
