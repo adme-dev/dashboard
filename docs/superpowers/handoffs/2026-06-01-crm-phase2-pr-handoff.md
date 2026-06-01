@@ -11,7 +11,7 @@
 
 ## TL;DR
 
-CRM **Phase 2 (Data Quality / Relationships / Governance) is feature-complete** and in review as **PR #63**. All five features done, **111/111 CRM unit tests green**, each with throwaway real-DB integration. Two type errors were caught by the close-out typecheck and fixed. **One item remains before merge: confirm the clean full typecheck is 0-new-errors** (a run was in progress at handoff — see below). Then: user merges #63 → deploy `origin/main` from a clean checkout → browser eyeball.
+CRM **Phase 2 (Data Quality / Relationships / Governance) is feature-complete** and in review as **PR #63**. All five features done, **111/111 CRM unit tests green**, each with throwaway real-DB integration. **✅ Typecheck CONFIRMED CLEAN** (cache-cleared full run: 1272 errors = documented pre-existing baseline, ZERO in Phase 2 files; result commented on #63). All close-out gates passed. **Remaining: user merges #63 → deploy `origin/main` from a clean checkout → browser eyeball.**
 
 ---
 
@@ -58,11 +58,7 @@ Real-DB integration verified per feature (all throwaway, NOT committed): lifecyc
 
 ## Remaining work (in order)
 
-1. **Confirm the clean typecheck (LAST gate before merge).** A full run was in progress at handoff → `/tmp/crm_typecheck3.log` (task `bdyc34we4`). Verify 0 errors in Phase 2 files:
-   ```bash
-   grep -nE "crm/(lifecycle|audit|assignment|dedupe|queryScope)\.ts|crm/(settings|assignment-rules|dedupe|audit)|crmLifecycle|crm/(GovernanceSettings|OwnerSelect|DuplicatesManager|AuditHistory|RecordForm|OpportunityForm|PeopleTable|CompaniesTable|RecordSlideover|OpportunitySlideover|EngineRecordSlideover)" /tmp/crm_typecheck3.log | grep "error TS"
-   ```
-   Expect **no output**. The ~1287 baseline errors are PRE-EXISTING (`strict:false`, webPush/SharedArrayBuffer/etc.) — ignore them. ⚠️ **`nuxt typecheck` is incremental** — it caches `.nuxt/*.tsbuildinfo` and a stale cache gives a MISLEADING partial result (this bit us: the first run reported only 1 error, the real total was caught after clearing). For a trustworthy full run: `find . -name "*.tsbuildinfo" -not -path "*/node_modules/*" -delete` first, then `NODE_OPTIONS='--max-old-space-size=16384' pnpm exec nuxt typecheck`. Then comment the result on PR #63.
+1. ✅ **DONE — typecheck confirmed clean** (0 new errors; result on PR #63). _For reference if re-checking:_ `nuxt typecheck` is incremental and caches `.nuxt/*.tsbuildinfo`; clear it (`find . -name "*.tsbuildinfo" -not -path "*/node_modules/*" -delete`) before trusting a full run, else you get a misleading partial. Baseline is ~1272 pre-existing errors (`strict:false`) — grep for your own file paths.
 2. **User merges PR #63** (squash). Conflict-free: branched off `765e09fe`, origin/main is now `12ab7bef`, **zero overlapping files**; mig 148 vs their 149 = no collision.
 3. **Deploy** (user go-ahead only) — `pnpm deploy:production` from a checkout of `origin/main` with its OWN `node_modules`. Mig 148 applies on first DB hit. Verify with `wrangler pages deployment list` (top row Production + Source=main), not just HTTP 200.
 4. **Browser eyeball** (couldn't drive Chrome here) — `/agency/crm`: **Duplicates** tab (scan + survivor-picker merge modal), **Settings** tab (visibility toggle + per-object assignment-rule editor), the **Owner** picker + **Claim** on a person/opportunity, lifecycle **badges/tag chips + filters** on People/Companies, **History** section in slideovers. Then `/portal/crm` (owner control should read "Managed by your agency"; lifecycle/audit present).
