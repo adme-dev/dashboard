@@ -32,6 +32,8 @@ export type NotificationType =
   | 'board_member_added'
   | 'anomaly_critical'
   | 'lead'
+  | 'social_assigned'
+  | 'social_sla_breach'
 
 export type NotificationReason =
   | 'mentioned'
