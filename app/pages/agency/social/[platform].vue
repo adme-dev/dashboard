@@ -293,6 +293,8 @@ interface SyncStatusResponse {
   status: 'running' | 'completed' | 'failed'
   syncedCount: number
   failures: Array<{ account: string; reason: string }>
+  totalAccounts?: number | null
+  processedAccounts?: number
 }
 
 async function handleSyncAll() {
@@ -336,6 +338,10 @@ function pollSyncStatus(jobId: string) {
         await finishSync(s)
         return
       }
+      // Show per-account progress for chunked (fan-out) syncs.
+      syncStatusLabel.value = s.totalAccounts
+        ? `Syncing ${platformConfig.value.displayName} spend… ${s.processedAccounts ?? 0}/${s.totalAccounts} accounts`
+        : `Syncing ${platformConfig.value.displayName} spend…`
     } catch {
       // transient (e.g. job row not visible yet) — keep polling until timeout
     }

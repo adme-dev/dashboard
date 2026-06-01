@@ -27,8 +27,11 @@ export default eventHandler(async (event) => {
     error: string | null
     started_at: string
     finished_at: string | null
+    total_accounts: number | null
+    processed_accounts: number
   }>(
-    `SELECT id, platform, period, status, synced_count, total_spend, failures, error, started_at, finished_at
+    `SELECT id, platform, period, status, synced_count, total_spend, failures, error, started_at, finished_at,
+            total_accounts, processed_accounts
      FROM spend_sync_jobs
      WHERE id = $1`,
     [jobId]
@@ -49,5 +52,7 @@ export default eventHandler(async (event) => {
     error: row.error,
     startedAt: row.started_at,
     finishedAt: row.finished_at,
+    totalAccounts: row.total_accounts,
+    processedAccounts: row.processed_accounts,
   }
 })
