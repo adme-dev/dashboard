@@ -8,6 +8,7 @@ import { processPendingAutomation } from '~~/server/utils/socialInbox/automation
 import { generateReplyDraft } from '~~/server/utils/socialInbox/aiDraft'
 import { dispatchReply } from '~~/server/utils/socialInbox/dispatch'
 import { onInboundRecorded } from '~~/server/utils/socialInbox/workflow'
+import { emitInboxEvent } from '~~/server/utils/socialInbox/events'
 import { findBreaches } from '~~/server/utils/socialInbox/sla'
 import { createNotification } from '~~/server/utils/notifications'
 
@@ -56,6 +57,7 @@ export default defineEventHandler(async (event) => {
           const res = await recordInbound({ queryOne, execute }, acct.client_id, acct.id, normalizeInboxItem(acct.platform, item))
           if (res.inserted) {
             synced++
+            emitInboxEvent({ clientId: acct.client_id, type: 'message.added', conversationId: res.conversationId }, event)
             await onInboundRecorded({ queryOne, queryRows, execute }, {
               notifyAssigned: (userId, conversationId, clientId) => createNotification({
                 userId, type: 'social_assigned', title: 'New conversation assigned',

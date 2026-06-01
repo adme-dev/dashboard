@@ -35,7 +35,7 @@ export async function dispatchReply(
   db: FullDb,
   conversationId: string,
   args: { content: string; sentByUserId: string; aiGenerated?: boolean },
-): Promise<{ ok: boolean; platformMessageId?: string; error?: string }> {
+): Promise<{ ok: boolean; platformMessageId?: string; error?: string; clientId?: string }> {
   const conv = await db.queryOne<any>(
     `SELECT c.*, a.platform_account_id, a.access_token
        FROM social_conversations c JOIN social_accounts a ON a.id = c.social_account_id
@@ -58,5 +58,5 @@ export async function dispatchReply(
     content: args.content,
     sentByUserId: args.sentByUserId,
   })
-  return { ok: true, platformMessageId: r.platformMessageId }
+  return { ok: true, platformMessageId: r.platformMessageId, clientId: conv.client_id }
 }

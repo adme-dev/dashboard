@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { usePortalSocialInbox } from '~/composables/usePortalSocialInbox'
+import { useSocialInboxRealtime } from '~/composables/useSocialInboxRealtime'
 import { usePortalAuth } from '~/composables/usePortalAuth'
 import type { SocialConversation, SocialMessage } from '~/types'
 
@@ -60,6 +61,18 @@ async function onReject(id: string) {
     busyId.value = null
   }
 }
+
+// Live updates for the client's own inbox (session-scoped endpoint, no clientId in the URL).
+// Refresh the list + approvals on any event, and the open thread if it's the affected conversation.
+const sseEndpoint = ref<string | null>('/api/client-portal/social/events')
+useSocialInboxRealtime(sseEndpoint, {
+  onRefresh: () => { reload(); loadApprovals() },
+  onEvent: async (e) => {
+    if (e.conversationId && e.conversationId === selectedId.value) {
+      thread.value = await open(selectedId.value)
+    }
+  },
+})
 
 onMounted(async () => { await Promise.all([reload(), loadApprovals()]) })
 </script>
