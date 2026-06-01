@@ -258,13 +258,13 @@ async function loadBankCharges(opts: { refresh?: boolean } = {}) {
   }
 }
 
-async function loadSpendData() {
+async function loadSpendData(refresh = false) {
   spendLoading.value = true
   chartLoading.value = true
   try {
     const [accounts, chartData] = await Promise.all([
-      fetchAccountSpend(platform.value as 'meta' | 'google' | 'tiktok', selectedMonth.value, selectedYear.value),
-      fetchCampaignDailySpend(platform.value as 'meta' | 'google' | 'tiktok', selectedMonth.value, selectedYear.value).catch((err) => {
+      fetchAccountSpend(platform.value as 'meta' | 'google' | 'tiktok', selectedMonth.value, selectedYear.value, refresh),
+      fetchCampaignDailySpend(platform.value as 'meta' | 'google' | 'tiktok', selectedMonth.value, selectedYear.value, undefined, refresh).catch((err) => {
         console.error('[CampaignDailySpend] fetch failed:', err)
         return { campaigns: [], totals: [] }
       }),
@@ -293,6 +293,8 @@ interface SyncStatusResponse {
   status: 'running' | 'completed' | 'failed'
   syncedCount: number
   failures: Array<{ account: string; reason: string }>
+  totalAccounts?: number | null
+  processedAccounts?: number
 }
 
 async function handleSyncAll() {
@@ -336,6 +338,10 @@ function pollSyncStatus(jobId: string) {
         await finishSync(s)
         return
       }
+      // Show per-account progress for chunked (fan-out) syncs.
+      syncStatusLabel.value = s.totalAccounts
+        ? `Syncing ${platformConfig.value.displayName} spend… ${s.processedAccounts ?? 0}/${s.totalAccounts} accounts`
+        : `Syncing ${platformConfig.value.displayName} spend…`
     } catch {
       // transient (e.g. job row not visible yet) — keep polling until timeout
     }
@@ -380,10 +386,12 @@ async function finishSync(s: SyncStatusResponse) {
 
 // Re-fetch the page's data in place (no full reload).
 async function refreshContent() {
-  await Promise.all([loadSpendData(), loadBankCharges({ refresh: true })])
+  // refresh:true bypasses the KV cache — the sync may have run on the queue
+  // consumer, which can't bust the cache itself.
+  await Promise.all([loadSpendData(true), loadBankCharges({ refresh: true })])
   // loadSpendData refreshes the global chart; only re-scope if a single account
   // chart is active (it would otherwise have been overwritten with global data).
-  if (chartAccountId.value) loadChartData(chartAccountId.value)
+  if (chartAccountId.value) loadChartData(chartAccountId.value, true)
   for (const accountId of Array.from(expandedAccounts.value)) {
     try {
       campaignData.value[accountId] = await fetchAccountCampaigns(
@@ -430,11 +438,11 @@ async function toggleExpand(accountId: string) {
   }
 }
 
-async function loadChartData(connectionId?: string) {
+async function loadChartData(connectionId?: string, refresh = false) {
   chartLoading.value = true
   try {
     campaignDailyData.value = await fetchCampaignDailySpend(
-      platform.value as 'meta' | 'google' | 'tiktok', selectedMonth.value, selectedYear.value, connectionId
+      platform.value as 'meta' | 'google' | 'tiktok', selectedMonth.value, selectedYear.value, connectionId, refresh
     )
   } catch (err) {
     console.error('[CampaignDailySpend] fetch failed:', err)

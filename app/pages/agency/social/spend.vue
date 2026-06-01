@@ -37,10 +37,10 @@ function formatCurrency(val: number) {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0 }).format(val)
 }
 
-async function loadSpend() {
+async function loadSpend(refresh = false) {
   loading.value = true
   try {
-    spendData.value = await fetchSpendSummary(selectedMonth.value, selectedYear.value, selectedPlatform.value)
+    spendData.value = await fetchSpendSummary(selectedMonth.value, selectedYear.value, selectedPlatform.value, refresh)
   } catch (e: any) {
     toast.add({ title: 'Error loading spend', description: e.message, color: 'error' })
   } finally {
@@ -55,19 +55,20 @@ async function loadSpend() {
 let bankChargesDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let bankChargesAbort: AbortController | null = null
 
-function loadBankCharges() {
+function loadBankCharges(refresh = false) {
   if (bankChargesDebounceTimer) clearTimeout(bankChargesDebounceTimer)
-  bankChargesDebounceTimer = setTimeout(() => { void doLoadBankCharges() }, 300)
+  bankChargesDebounceTimer = setTimeout(() => { void doLoadBankCharges(refresh) }, 300)
 }
 
-async function doLoadBankCharges() {
+async function doLoadBankCharges(refresh = false) {
   if (bankChargesAbort) bankChargesAbort.abort()
   const ctrl = new AbortController()
   bankChargesAbort = ctrl
   bankLoading.value = true
   try {
     bankCharges.value = await $fetch('/api/agency/social/spend/bank-charges', {
-      query: { month: selectedMonth.value, year: selectedYear.value },
+      // refresh bypasses the KV cache after a sync.
+      query: { month: selectedMonth.value, year: selectedYear.value, ...(refresh ? { refresh: 1 } : {}) },
       signal: ctrl.signal,
     })
   } catch (err: any) {
@@ -85,35 +86,134 @@ async function doLoadBankCharges() {
 
 const syncablePlatforms = ['meta', 'google', 'tiktok', 'linkedin', 'pinterest', 'snapchat', 'twitter', 'microsoft_ads'] as const
 
+// Live multi-platform sync: fire every platform, then poll the job rows that
+// support tracking (Meta + Google return a jobId) until they finish, keeping a
+// progress bar up the whole time and refreshing content on completion — instead
+// of guessing with fixed 30/60/120s refreshes that no longer match real
+// durations (Meta on the queue can run several minutes).
+const syncStatusLabel = ref('')
+let syncPollTimer: ReturnType<typeof setTimeout> | null = null
+const SYNC_POLL_INTERVAL = 4000
+const SYNC_POLL_TIMEOUT = 16 * 60_000
+
+interface SyncStatusResponse {
+  jobId: string
+  platform: string
+  status: 'running' | 'completed' | 'failed'
+  syncedCount: number
+  failures: Array<{ account: string; reason: string }>
+  totalAccounts?: number | null
+  processedAccounts?: number
+}
+
 async function handleSyncAll() {
+  if (syncing.value) return
   syncing.value = true
+  syncStatusLabel.value = 'Starting sync…'
   try {
-    // Each call now returns immediately; the actual sync runs in the
-    // background via Cloudflare waitUntil (see asyncBackground.ts). We count
-    // how many platforms accepted the start signal so the toast doesn't
-    // promise success on platforms that returned an error.
     const results = await Promise.allSettled(
       syncablePlatforms.map(p => syncSpend(p as any, selectedMonth.value, selectedYear.value))
     )
-    const started = results.filter(r => r.status === 'fulfilled').length
-    const failed = results.length - started
-    toast.add({
-      title: failed === 0 ? 'Sync started' : `Sync started (${failed} failed to start)`,
-      description: `${started} platforms syncing in background — refreshing data as it lands.`,
-      color: failed === 0 ? 'info' : 'warning',
-    })
-    // Background sync typically completes in 30–90s. Refresh the table a few
-    // times so the user sees data as it lands without manual reloads.
-    const REFRESH_AT_MS = [30_000, 60_000, 120_000]
-    for (const delay of REFRESH_AT_MS) {
-      setTimeout(() => loadSpend(), delay)
+    const jobIds: string[] = []
+    let started = 0
+    let failedToStart = 0
+    for (const r of results) {
+      if (r.status === 'fulfilled') {
+        started++
+        const jid = (r.value as any)?.jobId
+        if (jid) jobIds.push(jid)
+      } else {
+        failedToStart++
+      }
+    }
+    if (failedToStart > 0) {
+      toast.add({ title: `${failedToStart} platform${failedToStart === 1 ? '' : 's'} failed to start`, color: 'warning' })
+    }
+
+    if (jobIds.length > 0) {
+      // Tracked platforms (Meta/Google) — poll to real completion. The
+      // untracked waitUntil platforms finish quickly and are picked up by the
+      // final refresh.
+      syncStatusLabel.value = `Syncing ${started} platform${started === 1 ? '' : 's'}…`
+      pollSyncStatus(jobIds)
+    } else {
+      // No tracked jobs — fall back to a single delayed refresh.
+      toast.add({ title: 'Sync started', description: `${started} platforms syncing in background.`, color: 'info' })
+      setTimeout(() => loadSpend(true), 45_000)
+      syncing.value = false
+      syncStatusLabel.value = ''
     }
   } catch (e: any) {
     toast.add({ title: 'Sync error', description: e.message, color: 'error' })
-  } finally {
     syncing.value = false
+    syncStatusLabel.value = ''
   }
 }
+
+function stopSyncPoll() {
+  if (syncPollTimer) { clearTimeout(syncPollTimer); syncPollTimer = null }
+}
+
+function pollSyncStatus(jobIds: string[]) {
+  const startedAt = Date.now()
+  const tick = async () => {
+    const statuses = (await Promise.all(
+      jobIds.map(id =>
+        $fetch<SyncStatusResponse>('/api/agency/social/spend/sync-status', { query: { jobId: id } }).catch(() => null)
+      )
+    )).filter(Boolean) as SyncStatusResponse[]
+
+    const settled = statuses.filter(s => s.status !== 'running').length
+    // If any tracked job is chunked per-account, surface account-level progress.
+    const acctTotal = statuses.reduce((s, r) => s + (r.totalAccounts || 0), 0)
+    const acctDone = statuses.reduce((s, r) => s + (r.processedAccounts || 0), 0)
+    syncStatusLabel.value = acctTotal > 0
+      ? `Syncing… ${acctDone}/${acctTotal} accounts (${settled}/${jobIds.length} platforms)`
+      : `Syncing… ${settled}/${jobIds.length} platforms done`
+
+    if (statuses.length === jobIds.length && settled === jobIds.length) {
+      await finishSync(statuses)
+      return
+    }
+    if (Date.now() - startedAt > SYNC_POLL_TIMEOUT) {
+      stopSyncPoll()
+      syncing.value = false
+      syncStatusLabel.value = ''
+      toast.add({ title: 'Still syncing', description: 'Some platforms are taking longer than expected — showing the latest data.', color: 'warning' })
+      await refreshAfterSync()
+      return
+    }
+    syncPollTimer = setTimeout(tick, SYNC_POLL_INTERVAL)
+  }
+  syncPollTimer = setTimeout(tick, SYNC_POLL_INTERVAL)
+}
+
+async function finishSync(statuses: SyncStatusResponse[]) {
+  stopSyncPoll()
+  syncing.value = false
+  syncStatusLabel.value = ''
+  const totalSynced = statuses.reduce((s, r) => s + (r.syncedCount || 0), 0)
+  const allFailures = statuses.flatMap(r => r.failures || [])
+  const failedPlatforms = statuses.filter(r => r.status === 'failed').map(r => r.platform)
+
+  if (failedPlatforms.length) {
+    toast.add({ title: `Sync finished — ${failedPlatforms.length} platform${failedPlatforms.length === 1 ? '' : 's'} failed`, description: failedPlatforms.join(', '), color: 'warning' })
+  } else if (allFailures.length) {
+    const names = allFailures.slice(0, 3).map(f => f.account).join(', ')
+    toast.add({ title: `Sync complete — ${allFailures.length} account issue${allFailures.length === 1 ? '' : 's'}`, description: `${totalSynced} campaigns updated. Couldn't sync: ${names}${allFailures.length > 3 ? ` +${allFailures.length - 3} more` : ''}.`, color: 'warning' })
+  } else {
+    toast.add({ title: 'Sync complete', description: `${totalSynced} campaigns updated.`, color: 'success' })
+  }
+  await refreshAfterSync()
+}
+
+// Re-fetch summary + bank charges, bypassing the KV cache.
+async function refreshAfterSync() {
+  await loadSpend(true)
+  loadBankCharges(true)
+}
+
+onBeforeUnmount(() => stopSyncPoll())
 
 function exportCSV() {
   if (!spendData.value?.items?.length) return
@@ -275,7 +375,7 @@ const bankDiscrepancy = computed(() => {
       />
 
       <!-- Connection Health Strip -->
-      <ConnectionHealthStrip />
+      <SocialConnectionHealthStrip />
 
       <!-- Summary Cards -->
       <div v-if="spendData" class="grid grid-cols-2 lg:grid-cols-6 gap-4">
@@ -444,5 +544,25 @@ const bankDiscrepancy = computed(() => {
 
     <!-- Import Modal -->
     <SocialSpendImportModal v-model:open="showImportModal" @imported="loadSpend" />
+
+    <!-- Background sync progress bar — stays up for the whole multi-platform run
+         and refreshes the page when the tracked syncs finish. -->
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition-all duration-200 ease-out"
+        enter-from-class="opacity-0 translate-y-full"
+        leave-active-class="transition-all duration-200 ease-in"
+        leave-to-class="opacity-0 translate-y-full"
+      >
+        <div v-if="syncing" class="fixed inset-x-0 bottom-0 z-50">
+          <div class="flex items-center gap-3 px-6 py-2.5 bg-elevated/95 backdrop-blur border-t border-default shadow-lg">
+            <UIcon name="i-lucide-loader-2" class="w-4 h-4 animate-spin text-primary shrink-0" />
+            <span class="text-sm font-medium text-default">{{ syncStatusLabel || 'Syncing…' }}</span>
+            <span class="text-xs text-muted hidden sm:inline">Updates automatically when finished</span>
+          </div>
+          <UProgress size="sm" class="block" />
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>

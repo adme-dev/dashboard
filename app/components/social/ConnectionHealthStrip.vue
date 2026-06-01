@@ -55,7 +55,7 @@ const platforms = computed(() =>
       :to="`/agency/social#${p.platform}`"
       class="no-underline"
     >
-      <ConnectionHealthBadge
+      <SocialConnectionHealthBadge
         :status="p.summary.worst_status"
         :label="p.label"
         :count="worstCount(p.summary)"

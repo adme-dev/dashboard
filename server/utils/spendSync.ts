@@ -9,166 +9,211 @@ import { queryRows, queryOne } from '~~/server/utils/db'
 
 // ─── Meta Spend Sync ────────────────────────────────────────────
 
-export async function syncMetaSpend(month: number, year: number): Promise<{ synced: number; totalSpend: number; failures: Array<{ account: string; reason: string }> }> {
+interface MetaConn {
+  id: string
+  account_id: string
+  account_name: string
+  access_token: string
+  metadata: any
+}
+interface AccountMapping {
+  connection_id: string
+  campaign_id: string | null
+  campaign_name_pattern: string | null
+  xero_client_name: string
+  xero_client_code: string | null
+}
+type SyncResult = { synced: number; totalSpend: number; failures: Array<{ account: string; reason: string }> }
+
+/**
+ * Sync a single Meta ad account. This is the unit of work for the per-account
+ * queue chunking — it's small enough to finish inside one Cloudflare Queue
+ * consumer invocation even on the slower neon() HTTP DB path. Per-account Graph
+ * errors are returned as failures (never thrown) so the caller can fan-in.
+ */
+export async function syncMetaSpendAccount(conn: MetaConn, month: number, year: number, mappings: AccountMapping[]): Promise<SyncResult> {
   const { getCampaignInsights, getCampaignDailyInsights, getCampaigns, mapMetaCampaignMeta, extractConversions, extractRevenue } = await import('~~/server/utils/metaClient')
-  const failures: Array<{ account: string; reason: string }> = []
-
   const period = `${year}-${String(month).padStart(2, '0')}`
+  const failures: Array<{ account: string; reason: string }> = []
+  let totalSynced = 0
+  let totalSpend = 0
 
-  const connections = await queryRows<{
-    id: string
-    account_id: string
-    account_name: string
-    access_token: string
-    metadata: any
-  }>(
+  const actId = conn.metadata?.actId || `act_${conn.account_id}`
+
+  let campaigns
+  try {
+    campaigns = await getCampaignInsights(actId, conn.access_token, month, year)
+  } catch (err: any) {
+    console.error(`[MetaSync] Failed to fetch insights for ${conn.account_name}:`, err.message)
+    const gErr = err?.data?.error
+    const reason = gErr
+      ? `${gErr.message || 'Graph error'}${gErr.code ? ` (#${gErr.code})` : ''}`
+      : (err?.message || 'Unknown error')
+    failures.push({ account: conn.account_name, reason })
+    return { synced: 0, totalSpend: 0, failures }
+  }
+
+  // Enrich with campaign-level metadata (status, end date, bid strategy, budget type).
+  // One call per account; non-fatal on failure.
+  const campaignMetaById = new Map<string, ReturnType<typeof mapMetaCampaignMeta>>()
+  try {
+    const campObjs = await getCampaigns(actId, conn.access_token)
+    for (const c of campObjs) campaignMetaById.set(c.id, mapMetaCampaignMeta(c))
+  } catch (err: any) {
+    console.warn(`[MetaSync] Campaign metadata fetch failed for ${conn.account_name}:`, err.message)
+  }
+
+  for (const campaign of campaigns) {
+    const spend = parseFloat(campaign.spend || '0')
+    if (spend === 0) continue
+
+    totalSpend += spend
+
+    let clientId: string | null = null
+    let commissionRate = 0
+    const mapping = findMapping(mappings, conn.id, campaign.campaign_id, campaign.campaign_name)
+    if (mapping) {
+      const client = await queryOne<{ id: string; media_commission_rate: string | null }>(
+        `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR code = $2 LIMIT 1`,
+        [mapping.xero_client_name, mapping.xero_client_code]
+      )
+      clientId = client?.id || null
+      commissionRate = parseFloat(client?.media_commission_rate || '0') || 0
+    }
+
+    const conversions = extractConversions(campaign.actions)
+    const revenue = extractRevenue(campaign.action_values)
+    const impressions = parseInt(campaign.impressions || '0', 10)
+    const clicks = parseInt(campaign.clicks || '0', 10)
+
+    const cmeta = campaign.campaign_id ? (campaignMetaById.get(campaign.campaign_id) || null) : null
+
+    const existing = await queryOne<{ id: string }>(
+      `SELECT id FROM media_spend
+       WHERE connection_id = $1 AND platform = 'meta' AND period = $2 AND campaign_id = $3`,
+      [conn.id, period, campaign.campaign_id]
+    )
+
+    if (existing) {
+      await queryOne(
+        `UPDATE media_spend SET
+           actual_spend = $1, campaign_name = $2, impressions = $3, clicks = $4,
+           conversions = $5, client_id = COALESCE($6, media_spend.client_id),
+           commission_rate = CASE WHEN $8 > 0 THEN $8 ELSE media_spend.commission_rate END,
+           revenue = $9,
+           campaign_status = COALESCE($10, media_spend.campaign_status),
+           end_date = COALESCE($11, media_spend.end_date),
+           bid_strategy = COALESCE($12, media_spend.bid_strategy),
+           budget_type = COALESCE($13, media_spend.budget_type),
+           synced_at = NOW(), updated_at = NOW()
+         WHERE id = $7`,
+        [spend, campaign.campaign_name || null, impressions, clicks, conversions, clientId, existing.id, commissionRate, revenue,
+         cmeta?.status || null, cmeta?.endDate || null, cmeta?.bidStrategy || null, cmeta?.budgetType || null]
+      )
+    } else {
+      // Check for rolling budget from previous month
+      const rolled = await getRollingBudget(clientId, 'meta', period)
+      const budgetVal = rolled ? rolled.budget : 0
+      const rollingVal = rolled ? rolled.rolling : false
+
+      await queryOne(
+        `INSERT INTO media_spend (
+           client_id, platform, period, budget_allocated, actual_spend,
+           commission_rate, connection_id, campaign_id, campaign_name,
+           impressions, clicks, conversions, budget_rolling, revenue,
+           campaign_status, end_date, bid_strategy, budget_type, synced_at
+         ) VALUES ($1, 'meta', $2, $11, $3, $4, $5, $6, $7, $8, $9, $10, $12, $13, $14, $15, $16, $17, NOW())
+         RETURNING id`,
+        [clientId, period, spend, commissionRate, conn.id, campaign.campaign_id || null, campaign.campaign_name || null, impressions, clicks, conversions, budgetVal, rollingVal, revenue,
+         cmeta?.status || null, cmeta?.endDate || null, cmeta?.bidStrategy || null, cmeta?.budgetType || null]
+      )
+    }
+
+    totalSynced++
+  }
+
+  // Daily spend pass
+  try {
+    const dailyInsights = await getCampaignDailyInsights(actId, conn.access_token, month, year)
+    if (dailyInsights.length > 0) {
+      const spendRows = await queryRows<{ id: string; campaign_id: string }>(
+        `SELECT id, campaign_id FROM media_spend
+         WHERE connection_id = $1 AND platform = 'meta' AND period = $2 AND campaign_id IS NOT NULL`,
+        [conn.id, period]
+      )
+      const campaignToSpendId = new Map(spendRows.map(r => [r.campaign_id, r.id]))
+
+      for (const day of dailyInsights) {
+        const mediaSpendId = campaignToSpendId.get(day.campaign_id || '')
+        if (!mediaSpendId) continue
+
+        await queryOne(
+          `INSERT INTO daily_spend (media_spend_id, spend_date, spend, impressions, clicks, conversions, revenue)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT (media_spend_id, spend_date)
+           DO UPDATE SET spend = $3, impressions = $4, clicks = $5, conversions = $6, revenue = $7`,
+          [mediaSpendId, day.date_start, parseFloat(day.spend || '0'), parseInt(day.impressions || '0', 10), parseInt(day.clicks || '0', 10), extractConversions(day.actions), extractRevenue(day.action_values)]
+        )
+      }
+    }
+  } catch (err: any) {
+    console.error(`[MetaSync] Daily spend failed for ${conn.account_name}:`, err.message)
+  }
+
+  return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100, failures }
+}
+
+/** Sync one Meta account by connection id — the per-account queue chunk entry point. */
+export async function syncMetaSpendByConnectionId(connectionId: string, month: number, year: number): Promise<SyncResult> {
+  const conn = await queryOne<MetaConn>(
+    `SELECT id, account_id, access_token, account_name, metadata
+     FROM social_connections
+     WHERE id = $1 AND platform = 'meta' AND status = 'active'`,
+    [connectionId]
+  )
+  if (!conn) return { synced: 0, totalSpend: 0, failures: [] }
+
+  const mappings = await queryRows<AccountMapping>(
+    `SELECT connection_id, campaign_id, campaign_name_pattern, xero_client_name, xero_client_code
+     FROM ad_account_client_map WHERE connection_id = $1`,
+    [connectionId]
+  )
+
+  return syncMetaSpendAccount(conn, month, year, mappings)
+}
+
+/** List active Meta connection ids — used to fan out per-account queue messages. */
+export async function listMetaConnectionIds(): Promise<string[]> {
+  const rows = await queryRows<{ id: string }>(
+    `SELECT id FROM social_connections WHERE platform = 'meta' AND status = 'active'`
+  )
+  return rows.map(r => r.id)
+}
+
+export async function syncMetaSpend(month: number, year: number): Promise<SyncResult> {
+  const connections = await queryRows<MetaConn>(
     `SELECT id, account_id, access_token, account_name, metadata
      FROM social_connections
      WHERE platform = 'meta' AND status = 'active'`
   )
+  if (connections.length === 0) return { synced: 0, totalSpend: 0, failures: [] }
 
-  if (connections.length === 0) return { synced: 0, totalSpend: 0, failures }
-
-  const mappings = await queryRows<{
-    connection_id: string
-    campaign_id: string | null
-    campaign_name_pattern: string | null
-    xero_client_name: string
-    xero_client_code: string | null
-  }>(
+  const mappings = await queryRows<AccountMapping>(
     `SELECT connection_id, campaign_id, campaign_name_pattern, xero_client_name, xero_client_code
      FROM ad_account_client_map`
   )
 
   let totalSynced = 0
   let totalSpend = 0
+  const failures: Array<{ account: string; reason: string }> = []
 
   for (const conn of connections) {
-    const actId = conn.metadata?.actId || `act_${conn.account_id}`
-
-    let campaigns
-    try {
-      campaigns = await getCampaignInsights(actId, conn.access_token, month, year)
-    } catch (err: any) {
-      console.error(`[MetaSync] Failed to fetch insights for ${conn.account_name}:`, err.message)
-      const gErr = err?.data?.error
-      const reason = gErr
-        ? `${gErr.message || 'Graph error'}${gErr.code ? ` (#${gErr.code})` : ''}`
-        : (err?.message || 'Unknown error')
-      failures.push({ account: conn.account_name, reason })
-      continue
-    }
-
-    // Enrich with campaign-level metadata (status, end date, bid strategy, budget type).
-    // One call per account; non-fatal on failure.
-    const campaignMetaById = new Map<string, ReturnType<typeof mapMetaCampaignMeta>>()
-    try {
-      const campObjs = await getCampaigns(actId, conn.access_token)
-      for (const c of campObjs) campaignMetaById.set(c.id, mapMetaCampaignMeta(c))
-    } catch (err: any) {
-      console.warn(`[MetaSync] Campaign metadata fetch failed for ${conn.account_name}:`, err.message)
-    }
-
-    for (const campaign of campaigns) {
-      const spend = parseFloat(campaign.spend || '0')
-      if (spend === 0) continue
-
-      totalSpend += spend
-
-      let clientId: string | null = null
-      let commissionRate = 0
-      const mapping = findMapping(mappings, conn.id, campaign.campaign_id, campaign.campaign_name)
-      if (mapping) {
-        const client = await queryOne<{ id: string; media_commission_rate: string | null }>(
-          `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR code = $2 LIMIT 1`,
-          [mapping.xero_client_name, mapping.xero_client_code]
-        )
-        clientId = client?.id || null
-        commissionRate = parseFloat(client?.media_commission_rate || '0') || 0
-      }
-
-      const conversions = extractConversions(campaign.actions)
-      const revenue = extractRevenue(campaign.action_values)
-      const impressions = parseInt(campaign.impressions || '0', 10)
-      const clicks = parseInt(campaign.clicks || '0', 10)
-
-      const cmeta = campaign.campaign_id ? (campaignMetaById.get(campaign.campaign_id) || null) : null
-
-      const existing = await queryOne<{ id: string }>(
-        `SELECT id FROM media_spend
-         WHERE connection_id = $1 AND platform = 'meta' AND period = $2 AND campaign_id = $3`,
-        [conn.id, period, campaign.campaign_id]
-      )
-
-      if (existing) {
-        await queryOne(
-          `UPDATE media_spend SET
-             actual_spend = $1, campaign_name = $2, impressions = $3, clicks = $4,
-             conversions = $5, client_id = COALESCE($6, media_spend.client_id),
-             commission_rate = CASE WHEN $8 > 0 THEN $8 ELSE media_spend.commission_rate END,
-             revenue = $9,
-             campaign_status = COALESCE($10, media_spend.campaign_status),
-             end_date = COALESCE($11, media_spend.end_date),
-             bid_strategy = COALESCE($12, media_spend.bid_strategy),
-             budget_type = COALESCE($13, media_spend.budget_type),
-             synced_at = NOW(), updated_at = NOW()
-           WHERE id = $7`,
-          [spend, campaign.campaign_name || null, impressions, clicks, conversions, clientId, existing.id, commissionRate, revenue,
-           cmeta?.status || null, cmeta?.endDate || null, cmeta?.bidStrategy || null, cmeta?.budgetType || null]
-        )
-      } else {
-        // Check for rolling budget from previous month
-        const rolled = await getRollingBudget(clientId, 'meta', period)
-        const budgetVal = rolled ? rolled.budget : 0
-        const rollingVal = rolled ? rolled.rolling : false
-
-        await queryOne(
-          `INSERT INTO media_spend (
-             client_id, platform, period, budget_allocated, actual_spend,
-             commission_rate, connection_id, campaign_id, campaign_name,
-             impressions, clicks, conversions, budget_rolling, revenue,
-             campaign_status, end_date, bid_strategy, budget_type, synced_at
-           ) VALUES ($1, 'meta', $2, $11, $3, $4, $5, $6, $7, $8, $9, $10, $12, $13, $14, $15, $16, $17, NOW())
-           RETURNING id`,
-          [clientId, period, spend, commissionRate, conn.id, campaign.campaign_id || null, campaign.campaign_name || null, impressions, clicks, conversions, budgetVal, rollingVal, revenue,
-           cmeta?.status || null, cmeta?.endDate || null, cmeta?.bidStrategy || null, cmeta?.budgetType || null]
-        )
-      }
-
-      totalSynced++
-    }
-
-    // Daily spend pass
-    try {
-      const dailyInsights = await getCampaignDailyInsights(actId, conn.access_token, month, year)
-      if (dailyInsights.length > 0) {
-        const spendRows = await queryRows<{ id: string; campaign_id: string }>(
-          `SELECT id, campaign_id FROM media_spend
-           WHERE connection_id = $1 AND platform = 'meta' AND period = $2 AND campaign_id IS NOT NULL`,
-          [conn.id, period]
-        )
-        const campaignToSpendId = new Map(spendRows.map(r => [r.campaign_id, r.id]))
-
-        for (const day of dailyInsights) {
-          const mediaSpendId = campaignToSpendId.get(day.campaign_id || '')
-          if (!mediaSpendId) continue
-
-          await queryOne(
-            `INSERT INTO daily_spend (media_spend_id, spend_date, spend, impressions, clicks, conversions, revenue)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
-             ON CONFLICT (media_spend_id, spend_date)
-             DO UPDATE SET spend = $3, impressions = $4, clicks = $5, conversions = $6, revenue = $7`,
-            [mediaSpendId, day.date_start, parseFloat(day.spend || '0'), parseInt(day.impressions || '0', 10), parseInt(day.clicks || '0', 10), extractConversions(day.actions), extractRevenue(day.action_values)]
-          )
-        }
-      }
-    } catch (err: any) {
-      console.error(`[MetaSync] Daily spend failed for ${conn.account_name}:`, err.message)
-    }
+    const connMappings = mappings.filter(m => m.connection_id === conn.id)
+    const r = await syncMetaSpendAccount(conn, month, year, connMappings)
+    totalSynced += r.synced
+    totalSpend += r.totalSpend
+    failures.push(...r.failures)
   }
-
-  // Breakdowns + creatives are now fetched on-demand when a user expands a campaign row
-  // (see server/utils/onDemandSync.ts). Removed from bulk sync to keep it fast.
 
   return { synced: totalSynced, totalSpend: Math.round(totalSpend * 100) / 100, failures }
 }
