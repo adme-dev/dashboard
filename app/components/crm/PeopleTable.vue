@@ -11,13 +11,45 @@ const editing = ref<CrmPerson | null>(null)
 const importOpen = ref(false)
 const fieldsOpen = ref(false)
 
-const columns = [
+// Lead scores are an agency-only feature (endpoints live under /api/crm).
+const base = inject<string>('crmApiBase', '/api/crm')
+const isAgency = base === '/api/crm'
+const scoreQuery = computed(() => ({ client_id: clientId.value, target_type: 'person' }))
+const { data: scoreData, refresh: refreshScores } = useFetch<{ byTarget: Record<string, { total_score: number, grade: string }> }>('/api/crm/scoring', {
+  query: scoreQuery, watch: [scoreQuery], immediate: isAgency, default: () => ({ byTarget: {} }),
+})
+const scoreOf = (id: string) => scoreData.value?.byTarget?.[id] ?? null
+const gradeColor: Record<string, string> = { Hot: 'success', Warm: 'warning', Cold: 'neutral' }
+
+const sortByScore = ref(false)
+const rows = computed(() => {
+  const items = data.value?.items ?? []
+  if (!sortByScore.value) return items
+  return [...items].sort((a, b) => (scoreOf(b.id)?.total_score ?? -1) - (scoreOf(a.id)?.total_score ?? -1))
+})
+
+const columns = computed(() => [
   { accessorKey: 'name', header: 'Name' },
   { accessorKey: 'email', header: 'Email' },
   { accessorKey: 'phone', header: 'Phone' },
   { accessorKey: 'job_title', header: 'Title' },
+  ...(isAgency ? [{ accessorKey: 'score', header: 'Score' }] : []),
   { accessorKey: 'actions', header: '' },
-]
+])
+
+const rescoring = ref(false)
+async function rescoreAll() {
+  rescoring.value = true
+  try {
+    await $fetch('/api/crm/scoring/compute', { method: 'POST', body: { client_id: clientId.value, target_type: 'person', all: true } })
+    await refreshScores()
+    toast.add({ title: 'Scores recomputed', color: 'success' })
+  } catch (e: any) {
+    toast.add({ title: 'Could not recompute', description: e?.data?.statusMessage || e?.message, color: 'error' })
+  } finally {
+    rescoring.value = false
+  }
+}
 
 function fullName(p: CrmPerson) {
   return [p.first_name, p.last_name].filter(Boolean).join(' ')
@@ -50,12 +82,20 @@ async function onImport(csv: string) {
   <div class="space-y-3">
     <div class="flex items-center gap-2">
       <UInput v-model="search" placeholder="Search people…" icon="i-lucide-search" class="flex-1" />
+      <UButton
+        v-if="isAgency"
+        :icon="sortByScore ? 'i-lucide-arrow-down-wide-narrow' : 'i-lucide-arrow-up-down'"
+        :variant="sortByScore ? 'soft' : 'ghost'"
+        color="neutral"
+        @click="sortByScore = !sortByScore"
+      >Score</UButton>
+      <UButton v-if="isAgency" icon="i-lucide-refresh-cw" variant="ghost" color="neutral" :loading="rescoring" @click="rescoreAll">Rescore</UButton>
       <UButton icon="i-lucide-sliders-horizontal" variant="ghost" color="neutral" @click="fieldsOpen = true">Fields</UButton>
       <UButton icon="i-lucide-upload" variant="ghost" color="neutral" @click="importOpen = true">Import</UButton>
       <UButton icon="i-lucide-plus" @click="openNew">Add person</UButton>
     </div>
 
-    <UTable :data="data?.items ?? []" :columns="columns" :loading="pending">
+    <UTable :data="rows" :columns="columns" :loading="pending">
       <template #name-cell="{ row }">
         <button class="font-medium text-highlighted hover:underline" @click="openEdit(row.original)">
           {{ fullName(row.original) }}
@@ -69,6 +109,12 @@ async function onImport(csv: string) {
       </template>
       <template #job_title-cell="{ row }">
         <span class="text-muted">{{ row.original.job_title || '—' }}</span>
+      </template>
+      <template #score-cell="{ row }">
+        <UBadge v-if="scoreOf(row.original.id)" :color="(gradeColor[scoreOf(row.original.id)!.grade] as any)" variant="subtle" size="sm">
+          {{ scoreOf(row.original.id)!.grade }} · {{ scoreOf(row.original.id)!.total_score }}
+        </UBadge>
+        <span v-else class="text-xs text-muted">—</span>
       </template>
       <template #actions-cell="{ row }">
         <UDropdownMenu :items="[[

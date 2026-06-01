@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { queryOne } from '~~/server/utils/db'
+import { recomputeIfScorable } from '~~/server/utils/crm/scoreSignals'
 
 const Body = z.object({
   target_type: z.enum(['person', 'company', 'opportunity']),
@@ -22,5 +23,6 @@ export default defineEventHandler(async (event) => {
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
     [client.clientId, b.target_type, b.target_id, b.type, b.title, b.body ?? null, b.scheduled_at ?? null, client.id],
   )
+  await recomputeIfScorable(client.clientId, b.target_type, b.target_id, 'activity')
   return { item: row }
 })
