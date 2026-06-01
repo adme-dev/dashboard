@@ -4,6 +4,7 @@
 import { z } from 'zod'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRows, queryCount } from '~~/server/utils/db'
+import { isOwnerScoped } from '~~/server/utils/crm/queryScope'
 
 const Query = z.object({
   client_id: z.string().uuid(),
@@ -15,7 +16,7 @@ const Query = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
   const q = Query.parse(getQuery(event))
 
   const params: unknown[] = [q.client_id]
@@ -25,6 +26,11 @@ export default defineEventHandler(async (event) => {
   if (q.q) {
     const safe = q.q.replace(/[%_]/g, c => '\\' + c)
     params.push(`%${safe}%`); conds.push(`o.name ILIKE $${params.length}`)
+  }
+  // Owner-visibility (default 'team' adds nothing → query unchanged).
+  if (await isOwnerScoped(q.client_id, user)) {
+    params.push(user.id)
+    conds.push(`(o.owner_id = $${params.length} OR o.assigned_to = $${params.length})`)
   }
   const where = `WHERE ${conds.join(' AND ')}`
   const offset = (q.page - 1) * q.page_size

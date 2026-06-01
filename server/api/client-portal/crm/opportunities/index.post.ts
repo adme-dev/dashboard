@@ -2,6 +2,8 @@
 import { z } from 'zod'
 import { requireClientAuth } from '~~/server/utils/clientAuth'
 import { queryOne } from '~~/server/utils/db'
+import { applyLifecycleEvent } from '~~/server/utils/crm/lifecycle'
+import { autoAssignOnCreate } from '~~/server/utils/crm/assignment'
 
 const Body = z.object({
   name: z.string().min(1),
@@ -35,5 +37,18 @@ export default defineEventHandler(async (event) => {
     [client.clientId, b.name, b.person_id ?? null, b.company_id ?? null, b.stage_id,
       b.amount ?? 0, prob, b.expected_close_date ?? null, status, b.source ?? null, b.notes ?? null, client.id],
   )
+  // Opening a deal advances the linked contact(s) to `prospect` (or `customer` if
+  // created straight into a won stage). Best-effort — never fail the create.
+  try {
+    const ev = status === 'won' ? 'opportunity_won' : 'opportunity_created'
+    await applyLifecycleEvent({ clientId: client.clientId, entityType: 'person', entityId: b.person_id ?? null, event: ev })
+    await applyLifecycleEvent({ clientId: client.clientId, entityType: 'company', entityId: b.company_id ?? null, event: ev })
+  } catch (e) {
+    console.error('[crm] lifecycle create hook failed', e)
+  }
+  try {
+    const owner = await autoAssignOnCreate({ clientId: client.clientId, objectType: 'opportunity', table: 'crm_opportunities', recordId: (row as any).id, currentOwner: (row as any).owner_id })
+    if (owner) { (row as any).owner_id = owner; (row as any).assigned_to = (row as any).assigned_to ?? owner }
+  } catch (e) { console.error('[crm] auto-assign failed', e) }
   return { item: row }
 })

@@ -5,12 +5,16 @@ export function useCrmPeople(clientId: Ref<string | null>) {
   const base = inject<string>('crmApiBase', '/api/crm')
   const search = useState<string>('crm-people-search', () => '')
   const companyId = useState<string | null>('crm-people-company', () => null)
+  const lifecycle = useState<string | null>('crm-people-lifecycle', () => null)
+  const tag = useState<string | null>('crm-people-tag', () => null)
   const page = useState<number>('crm-people-page', () => 1)
   const query = computed(() => {
     const p: Record<string, string> = { page: String(page.value), page_size: '50' }
     if (clientId.value) p.client_id = clientId.value
     if (search.value.trim()) p.q = search.value.trim()
     if (companyId.value) p.company_id = companyId.value
+    if (lifecycle.value) p.lifecycle = lifecycle.value
+    if (tag.value) p.tag = tag.value
     return p
   })
   const { data, pending, refresh } = useFetch<CrmListResponse<CrmPerson>>(`${base}/people`, {
@@ -42,5 +46,5 @@ export function useCrmPeople(clientId: Ref<string | null>) {
     await refresh()
     return res
   }
-  return { data, pending, refresh, search, companyId, page, create, update, remove, importCsv }
+  return { data, pending, refresh, search, companyId, lifecycle, tag, page, create, update, remove, importCsv }
 }

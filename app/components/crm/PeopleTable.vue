@@ -3,8 +3,24 @@ import type { CrmPerson } from '~/types/crm'
 
 const props = defineProps<{ clientId: string }>()
 const clientId = toRef(props, 'clientId')
-const { data, pending, search, create, update, remove, importCsv } = useCrmPeople(clientId)
+const { data, pending, search, lifecycle, tag, create, update, remove, importCsv } = useCrmPeople(clientId)
 const toast = useToast()
+
+// Lifecycle + tag filters (sentinel-safe: 'all' ⇒ no filter).
+const lifecycleFilter = computed({
+  get: () => lifecycle.value ?? 'all',
+  set: (v: string) => { lifecycle.value = v === 'all' ? null : v },
+})
+const tagFilter = computed({
+  get: () => tag.value ?? 'all',
+  set: (v: string) => { tag.value = v === 'all' ? null : v },
+})
+const tagOptions = computed(() => {
+  const set = new Set<string>()
+  for (const p of data.value?.items ?? []) for (const t of (p.tags ?? [])) set.add(t)
+  if (tag.value) set.add(tag.value) // keep the active filter selectable even if it filtered itself out
+  return [{ label: 'All tags', value: 'all' }, ...[...set].sort().map(t => ({ label: t, value: t }))]
+})
 
 const slideoverOpen = ref(false)
 const editing = ref<CrmPerson | null>(null)
@@ -33,6 +49,7 @@ const columns = computed(() => [
   { accessorKey: 'email', header: 'Email' },
   { accessorKey: 'phone', header: 'Phone' },
   { accessorKey: 'job_title', header: 'Title' },
+  { accessorKey: 'lifecycle', header: 'Lifecycle' },
   ...(isAgency ? [{ accessorKey: 'score', header: 'Score' }] : []),
   { accessorKey: 'actions', header: '' },
 ])
@@ -95,6 +112,11 @@ async function onImport(csv: string) {
       <UButton icon="i-lucide-plus" @click="openNew">Add person</UButton>
     </div>
 
+    <div class="flex flex-wrap items-center gap-2">
+      <USelectMenu v-model="lifecycleFilter" :items="LIFECYCLE_FILTER_OPTIONS" value-key="value" size="sm" class="w-44" />
+      <USelectMenu v-model="tagFilter" :items="tagOptions" value-key="value" size="sm" class="w-44" searchable />
+    </div>
+
     <UTable :data="rows" :columns="columns" :loading="pending">
       <template #name-cell="{ row }">
         <button class="font-medium text-highlighted hover:underline" @click="openEdit(row.original)">
@@ -109,6 +131,15 @@ async function onImport(csv: string) {
       </template>
       <template #job_title-cell="{ row }">
         <span class="text-muted">{{ row.original.job_title || '—' }}</span>
+      </template>
+      <template #lifecycle-cell="{ row }">
+        <div class="flex flex-wrap items-center gap-1">
+          <UBadge v-if="row.original.lifecycle_stage" :color="(lifecycleColor(row.original.lifecycle_stage) as any)" variant="subtle" size="sm">
+            {{ lifecycleLabel(row.original.lifecycle_stage) }}
+          </UBadge>
+          <span v-else class="text-xs text-muted">—</span>
+          <UBadge v-for="t in (row.original.tags || [])" :key="t" color="neutral" variant="soft" size="sm">{{ t }}</UBadge>
+        </div>
       </template>
       <template #score-cell="{ row }">
         <UBadge v-if="scoreOf(row.original.id)" :color="(gradeColor[scoreOf(row.original.id)!.grade] as any)" variant="subtle" size="sm">

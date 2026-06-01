@@ -3,6 +3,9 @@ import { z } from 'zod'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { validateCustomFields, type FieldDef } from '~~/server/utils/crm/customFields'
+import { recordFieldChanges } from '~~/server/utils/crm/audit'
+
+const AUDIT_COLS = ['name', 'domain', 'phone', 'employees', 'address_line1', 'city', 'state', 'postal_code', 'country', 'notes', 'lifecycle_stage', 'tags', 'owner_id', 'assigned_to'] as const
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -16,22 +19,28 @@ const Body = z.object({
   postal_code: z.string().nullable().optional(),
   country: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
+  lifecycle_stage: z.string().nullable().optional(),
+  tags: z.array(z.string()).optional(),
+  owner_id: z.string().uuid().nullable().optional(),
+  assigned_to: z.string().uuid().nullable().optional(),
   custom_fields: z.record(z.string(), z.unknown()).optional(),
 })
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
   await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')
   const parsed = Body.safeParse(await readBody(event))
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: parsed.error.message })
   const b = parsed.data
 
+  const before = await queryOne<Record<string, unknown>>(
+    `SELECT * FROM crm_companies WHERE id = $1 AND client_id = $2 AND deleted_at IS NULL`, [id, b.client_id])
   const sets: string[] = []
   const params: unknown[] = []
   const set = (col: string, val: unknown) => { params.push(val); sets.push(`${col} = $${params.length}`) }
 
-  for (const col of ['name', 'domain', 'phone', 'employees', 'address_line1', 'city', 'state', 'postal_code', 'country', 'notes'] as const) {
+  for (const col of AUDIT_COLS) {
     if (b[col] !== undefined) set(col, b[col])
   }
   if (b.custom_fields !== undefined) {
@@ -56,5 +65,8 @@ export default defineEventHandler(async (event) => {
     params,
   )
   if (!row) throw createError({ statusCode: 404, statusMessage: 'Company not found' })
+  try {
+    await recordFieldChanges({ clientId: b.client_id, entityType: 'company', entityId: id as string, before, after: row, fields: [...AUDIT_COLS], actor: user.id })
+  } catch (e) { console.error('[crm] audit failed', e) }
   return { item: row }
 })

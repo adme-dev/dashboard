@@ -4,6 +4,7 @@
 // recordStageChange does the DB I/O and idempotency.
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { recomputeIfScorable } from './scoreSignals'
+import { applyLifecycleEvent } from './lifecycle'
 
 export interface StageAutomationTemplate {
   title?: string
@@ -62,6 +63,7 @@ export async function recordStageChange(opts: {
   toStageId: string
   ownerId: string | null
   changedBy: string | null
+  isWon?: boolean
   now?: Date
 }): Promise<void> {
   const now = opts.now ?? new Date()
@@ -80,6 +82,15 @@ export async function recordStageChange(opts: {
   if (contacts) {
     await recomputeIfScorable(opts.clientId, 'person', contacts.person_id, 'opportunity_stage')
     await recomputeIfScorable(opts.clientId, 'company', contacts.company_id, 'opportunity_stage')
+    // Winning a deal promotes the linked contact(s) to `customer` + a `won` tag.
+    if (opts.isWon) {
+      try {
+        await applyLifecycleEvent({ clientId: opts.clientId, entityType: 'person', entityId: contacts.person_id, event: 'opportunity_won' })
+        await applyLifecycleEvent({ clientId: opts.clientId, entityType: 'company', entityId: contacts.company_id, event: 'opportunity_won' })
+      } catch (e) {
+        console.error('[crm] lifecycle win hook failed', e)
+      }
+    }
   }
 
   const rules = await queryRows<StageAutomationRule>(
