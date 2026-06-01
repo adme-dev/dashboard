@@ -325,8 +325,11 @@ export async function invalidateAllSessions(userId: string): Promise<void> {
 }
 
 // Require pricing access (stub for compatibility)
+// `owner` is the top-level superuser (treated as such everywhere else in auth,
+// e.g. board access) — without it the agency owner is locked out of creating /
+// editing quotes in the Pricing module and CRM quote generation. Grant-only.
 export async function requirePricingAccess(event: any): Promise<User> {
-  return requireRole(event, ['admin', 'project_manager'])
+  return requireRole(event, ['owner', 'admin', 'project_manager'])
 }
 
 // ============================================
