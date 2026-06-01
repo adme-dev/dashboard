@@ -1,13 +1,31 @@
 # Audio Studio — Phase 1 (Voiceover) Handoff
 
-**Date:** 2026-06-01 · **Status:** Built, reviewed, green — NOT merged, NOT deployed.
+**Date:** 2026-06-01 · **Status:** Built, reviewed, green, **deployed to PREVIEW &
+wiring-verified** — NOT merged to main, NOT on production.
 
 ## TL;DR
 
 Phase 1 of the Audio Studio (owned AI voiceover) is fully implemented on an
-isolated branch. All automated gates pass. The only thing left unverified is a
-live generate→R2→playback round-trip, which needs the Workers AI binding (i.e. a
-deploy). Nothing is merged to `main`; `main` is untouched.
+isolated branch and **deployed to the Pages `preview` branch** (clean build, no
+prerender regression). All automated gates pass and the deployed wiring is
+verified. The ONLY remaining unverified step is the authenticated live
+generate→R2→playback round-trip (needs a logged-in session + Workers AI inference)
+— deliberately deferred per owner decision. Nothing is merged to `main`; production
+is untouched.
+
+## Preview deployment (2026-06-01)
+
+- **URL:** https://preview.agency-dashboard-6cm.pages.dev (deployment
+  `ff86a2a1.agency-dashboard-6cm.pages.dev`)
+- Deployed from the `.worktrees/audio-studio-p1` worktree (own `node_modules`) →
+  **no prerender/importNotDefined regression** (the cache-collision trap avoided).
+- **Verified on preview:** `/agency/audio` → 200 (no 500); `POST
+  /api/agency/audio/voiceover` (unauth) → 401 (wired, not 404); `GET
+  /api/agency/audio/assets` (unauth) → 401; `/features/audio-studio/` → 200 and
+  renders the detail content; features index lists it.
+- **NOT yet done:** authenticated live generate (script → TTS → R2 → playback →
+  Banner layer). Owner chose to stop at wiring-verified. This is the one thing to
+  click through (on preview, logged in) before merging to production.
 
 ## Where the work lives
 
@@ -77,10 +95,12 @@ Plan:        `docs/superpowers/plans/2026-06-01-audio-studio-phase1-voiceover.md
 
 ## ⚠️ The one thing NOT verified
 
-A real **generate → R2 → playback** round-trip. `aiVoice.textToSpeech` needs the
-Cloudflare **Workers AI binding**, absent in local dev (the endpoint correctly
-returns `503` locally — graceful degradation). To verify: deploy the branch to a
-Pages preview and exercise `/agency/audio`.
+A real **authenticated generate → R2 → playback** round-trip. `aiVoice.textToSpeech`
+needs the Cloudflare **Workers AI binding** AND a logged-in session
+(`requireWriteAccess`). The branch is now on the Pages `preview` URL (see above) —
+to finish: sign in on preview, open `/agency/audio`, generate a voiceover, confirm
+it plays and drops into a Banner Studio audio layer. Locally the endpoint correctly
+returns `503` (graceful degradation, no binding).
 
 ## To resume / finish
 
