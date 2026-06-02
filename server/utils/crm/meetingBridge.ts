@@ -109,6 +109,20 @@ export function rankTargets(input: {
   })
 }
 
+// Is the caller-chosen target one the resolver actually proposed for this meeting
+// (primary OR an alternative, all three fields matching)? Shared by both convert
+// endpoints — the single cross-tenant-injection guard, so it lives in one place.
+export function isTargetInCandidates(
+  proposals: TargetProposal[],
+  chosen: { client_id: string, target_type: string, target_id: string },
+): boolean {
+  return proposals.some(p =>
+    [{ client_id: p.client_id, target_type: p.target_type, target_id: p.target_id }, ...p.alternatives]
+      .some(t => t.client_id === chosen.client_id
+        && t.target_type === chosen.target_type
+        && t.target_id === chosen.target_id))
+}
+
 export interface ActionItemForBridge {
   id: string
   meeting_session_id: string
@@ -227,15 +241,20 @@ export async function convertActionItemToCrmTask(
 ): Promise<ConvertResult> {
   if (actionItem.crm_task_id) {
     // Re-read both rows so the idempotent return reflects current DB state, not
-    // the caller's (possibly pre-stamp) in-memory snapshot.
+    // the caller's (possibly pre-stamp) in-memory snapshot. Only a LIVE task
+    // counts as "already converted" — if the linked task was soft-deleted, fall
+    // through and create a fresh one (the in-txn guard below re-links over the
+    // stale reference).
     const [existing, currentAi] = await Promise.all([
-      queryOne(`SELECT * FROM crm_tasks WHERE id = $1`, [actionItem.crm_task_id]),
+      queryOne(`SELECT * FROM crm_tasks WHERE id = $1 AND deleted_at IS NULL`, [actionItem.crm_task_id]),
       queryOne(`SELECT * FROM office_meeting_action_items WHERE id = $1`, [actionItem.id]),
     ])
-    return {
-      task: existing as Record<string, unknown>,
-      actionItem: currentAi as Record<string, unknown>,
-      created: false,
+    if (existing) {
+      return {
+        task: existing as Record<string, unknown>,
+        actionItem: currentAi as Record<string, unknown>,
+        created: false,
+      }
     }
   }
 
@@ -253,11 +272,18 @@ export async function convertActionItemToCrmTask(
     const task = taskRes.rows[0]
 
     const aiRes = await client.query(
+      // Matches when crm_task_id IS NULL OR points at a soft-deleted/missing task
+      // (re-link); does NOT match when a LIVE task is already linked → rowCount 0
+      // → AlreadyConvertedError (the lost-race guard).
       `UPDATE office_meeting_action_items
        SET crm_task_id = $1,
            metadata = metadata || $2::jsonb,
            updated_at = now()
-       WHERE id = $3 AND crm_task_id IS NULL
+       WHERE id = $3
+         AND NOT EXISTS (
+           SELECT 1 FROM crm_tasks t
+           WHERE t.id = office_meeting_action_items.crm_task_id AND t.deleted_at IS NULL
+         )
        RETURNING *`,
       [task.id, JSON.stringify({
         crm_task_id: task.id,
@@ -301,12 +327,15 @@ export interface MeetingActionForContact {
 }
 
 // CRM-side surfacing: unconverted meeting action items linkable to a CRM record,
-// matched by guest-email overlap. Client-scoped (the CRM record's own client).
+// matched by guest-email overlap. Client-scoped (the CRM record's own client) AND
+// office-membership-scoped (`userId` must belong to the meeting's office — meeting
+// content is office-private, mirroring the office-side endpoints' 403).
 // Person → that contact's email; company → every contact email under the company.
 export async function listMeetingActionsForCrmTarget(
   targetType: 'person' | 'company',
   targetId: string,
   clientId: string,
+  userId: string,
 ): Promise<MeetingActionForContact[]> {
   const emailColumnFilter = targetType === 'person' ? 'p.id = $1' : 'p.company_id = $1'
   const emails = await queryRows<{ email: string }>(
@@ -326,9 +355,10 @@ export async function listMeetingActionsForCrmTarget(
      CROSS JOIN LATERAL unnest(oms.guest_emails) AS ge(email)
      WHERE omai.crm_task_id IS NULL
        AND lower(trim(ge.email)) = ANY($1::text[])
+       AND omai.office_id IN (SELECT office_id FROM office_members WHERE user_id = $2)
      ORDER BY created_at DESC
      LIMIT 50`,
-    [emailList],
+    [emailList, userId],
   )
 }
 

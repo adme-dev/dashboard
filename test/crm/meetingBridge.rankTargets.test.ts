@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rankTargets, normalizeGuestEmail } from '~~/server/utils/crm/meetingBridge'
+import { rankTargets, normalizeGuestEmail, isTargetInCandidates } from '~~/server/utils/crm/meetingBridge'
 import type { CandidatePerson, CandidateOpp } from '~~/server/utils/crm/meetingBridge'
 
 const person = (over: Partial<CandidatePerson> = {}): CandidatePerson => ({
@@ -88,5 +88,26 @@ describe('rankTargets', () => {
     const [t] = rankTargets({ candidatePeople: [person()], candidateOpps: [otherCompanyOpp] })
     expect(t.target_type).toBe('person')
     expect(t.target_id).toBe('p1')
+  })
+})
+
+describe('isTargetInCandidates', () => {
+  const proposals = rankTargets({ candidatePeople: [person()], candidateOpps: [opp()] })
+  // proposals[0] = opportunity o1 (primary); alternatives include person p1 + company co1.
+
+  it('accepts the primary target', () => {
+    expect(isTargetInCandidates(proposals, { client_id: 'c1', target_type: 'opportunity', target_id: 'o1' })).toBe(true)
+  })
+
+  it('accepts an alternative target (the person)', () => {
+    expect(isTargetInCandidates(proposals, { client_id: 'c1', target_type: 'person', target_id: 'p1' })).toBe(true)
+  })
+
+  it('rejects a target not in the candidate set', () => {
+    expect(isTargetInCandidates(proposals, { client_id: 'c1', target_type: 'opportunity', target_id: 'o-NOPE' })).toBe(false)
+  })
+
+  it('rejects a target with the right id but a different client (cross-tenant injection)', () => {
+    expect(isTargetInCandidates(proposals, { client_id: 'c2', target_type: 'opportunity', target_id: 'o1' })).toBe(false)
   })
 })

@@ -7,7 +7,7 @@ import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { ensureOfficeMeetingArtifactsTables } from '~~/server/utils/officeMeetingArtifacts'
 import {
-  findMeetingCrmCandidates, rankTargets, convertActionItemToCrmTask, AlreadyConvertedError,
+  findMeetingCrmCandidates, rankTargets, isTargetInCandidates, convertActionItemToCrmTask, AlreadyConvertedError,
 } from '~~/server/utils/crm/meetingBridge'
 import type { OfficeMemberRow, OfficeMeetingActionItemRow } from '~~/app/types/office'
 
@@ -50,13 +50,9 @@ export default defineEventHandler(async (event) => {
   // Guard: the chosen target must be one the resolver actually proposed (primary
   // OR an alternative) — blocks injecting an arbitrary cross-tenant target.
   const proposals = rankTargets(await findMeetingCrmCandidates(meetingId))
-  const allTargets = proposals.flatMap(p => [
-    { client_id: p.client_id, target_type: p.target_type, target_id: p.target_id },
-    ...p.alternatives.map(a => ({ client_id: a.client_id, target_type: a.target_type, target_id: a.target_id })),
-  ])
-  const ok = allTargets.some(t =>
-    t.client_id === body.client_id && t.target_type === body.target_type && t.target_id === body.target_id)
-  if (!ok) throw createError({ statusCode: 400, statusMessage: 'Chosen target is not a valid candidate for this meeting' })
+  if (!isTargetInCandidates(proposals, body)) {
+    throw createError({ statusCode: 400, statusMessage: 'Chosen target is not a valid candidate for this meeting' })
+  }
 
   try {
     return await convertActionItemToCrmTask(

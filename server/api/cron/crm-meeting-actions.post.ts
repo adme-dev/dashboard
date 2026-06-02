@@ -68,8 +68,15 @@ export default defineEventHandler(async (event) => {
   let converted = 0
   let skipped = 0
   let failed = 0
+  // Resolution is by meeting guest_emails (stable per meeting within a sweep), so
+  // cache it — many action items share one meeting_session_id.
+  const candidateCache = new Map<string, ReturnType<typeof rankTargets>>()
   for (const item of items) {
-    const proposals = rankTargets(await findMeetingCrmCandidates(item.meeting_session_id))
+    let proposals = candidateCache.get(item.meeting_session_id)
+    if (!proposals) {
+      proposals = rankTargets(await findMeetingCrmCandidates(item.meeting_session_id))
+      candidateCache.set(item.meeting_session_id, proposals)
+    }
     if (proposals.length === 0) { await recordSkipReason(item.id, 'no_crm_match'); skipped++; continue }
     const distinctClients = new Set(proposals.map(p => p.client_id))
     if (distinctClients.size > 1) { await recordSkipReason(item.id, 'ambiguous_multi_client'); skipped++; continue }

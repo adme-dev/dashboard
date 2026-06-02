@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import {
-  findMeetingCrmCandidates, rankTargets, convertActionItemToCrmTask, AlreadyConvertedError,
+  findMeetingCrmCandidates, rankTargets, isTargetInCandidates, convertActionItemToCrmTask, AlreadyConvertedError,
 } from '~~/server/utils/crm/meetingBridge'
 
 const Body = z.object({
@@ -33,25 +33,24 @@ export default defineEventHandler(async (event) => {
   if (!actionItemId) throw createError({ statusCode: 400, statusMessage: 'actionItemId required' })
   const body = Body.parse(await readBody(event))
 
+  // Office-membership scoped: meeting action-item content is office-private, so a
+  // non-member resolves to 404 (same as not-found — doesn't leak existence).
   const actionItem = await queryOne<ActionItemWithMeetingTitle>(
     `SELECT omai.id, omai.meeting_session_id, omai.source_artifact_id, omai.content,
             omai.due_at, omai.crm_task_id, oms.title AS meeting_title
      FROM office_meeting_action_items omai
      JOIN office_meeting_sessions oms ON oms.id = omai.meeting_session_id
-     WHERE omai.id = $1`,
-    [actionItemId],
+     WHERE omai.id = $1
+       AND omai.office_id IN (SELECT office_id FROM office_members WHERE user_id = $2)`,
+    [actionItemId, user.id],
   )
   if (!actionItem) throw createError({ statusCode: 404, statusMessage: 'Action item not found' })
 
   // Guard: the chosen target must be one the resolver proposed for this meeting.
   const proposals = rankTargets(await findMeetingCrmCandidates(actionItem.meeting_session_id))
-  const allTargets = proposals.flatMap(p => [
-    { client_id: p.client_id, target_type: p.target_type, target_id: p.target_id },
-    ...p.alternatives.map(a => ({ client_id: a.client_id, target_type: a.target_type, target_id: a.target_id })),
-  ])
-  const ok = allTargets.some(t =>
-    t.client_id === body.client_id && t.target_type === body.target_type && t.target_id === body.target_id)
-  if (!ok) throw createError({ statusCode: 400, statusMessage: 'Chosen target is not a valid candidate for this meeting' })
+  if (!isTargetInCandidates(proposals, body)) {
+    throw createError({ statusCode: 400, statusMessage: 'Chosen target is not a valid candidate for this meeting' })
+  }
 
   try {
     return await convertActionItemToCrmTask(

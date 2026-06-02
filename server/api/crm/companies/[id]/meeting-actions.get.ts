@@ -8,10 +8,10 @@ import { listMeetingActionsForCrmTarget } from '~~/server/utils/crm/meetingBridg
 const Query = z.object({ client_id: z.string().uuid() })
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id required' })
   const { client_id } = Query.parse(getQuery(event))
-  const actionItems = await listMeetingActionsForCrmTarget('company', id, client_id)
+  const actionItems = await listMeetingActionsForCrmTarget('company', id, client_id, user.id)
   return { actionItems }
 })
