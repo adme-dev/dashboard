@@ -108,6 +108,7 @@ async function sendTest() {
         <USelect
           v-model="cfg.digest_hour"
           :items="hourOptions"
+          value-key="value"
           class="w-48"
         />
       </UFormField>
