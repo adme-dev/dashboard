@@ -2,7 +2,7 @@ import { defineEventHandler, readBody, createError } from 'h3'
 import { z } from 'zod'
 import { requireAuth, requireRole } from '~~/server/utils/auth'
 import { getSelectedTenant } from '~~/server/utils/session'
-import { saveBudgetSlackConfig, DEFAULT_BUDGET_SLACK_CONFIG } from '~~/server/utils/budgetSlackConfig'
+import { getBudgetSlackConfig, saveBudgetSlackConfig } from '~~/server/utils/budgetSlackConfig'
 import { validateWebhook } from '~~/server/utils/anomalyDetection/slackBudget'
 
 const Body = z.object({
@@ -29,7 +29,10 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'webhook_url must be a Slack incoming webhook (https://hooks.slack.com/services/...)' })
   }
 
-  const cfg = { ...DEFAULT_BUDGET_SLACK_CONFIG, ...body } as any
+  // Merge over the EXISTING stored config (not defaults) so a partial PUT only
+  // updates the fields it sends — never silently clobbers the rest.
+  const current = await getBudgetSlackConfig(tenantId)
+  const cfg = { ...current, ...body }
   await saveBudgetSlackConfig(tenantId, cfg, user.id)
   return { ok: true }
 })
