@@ -100,12 +100,12 @@ export async function runMusicJob(job: MusicJobBody, env: MusicWorkerEnv): Promi
         channels,
       })
       await execute(
-        `UPDATE audio_assets SET variants = $2::jsonb, status = 'done', updated_at = now() WHERE id = $1`,
+        `UPDATE audio_assets SET variants = $2::jsonb, status = 'done', error = NULL, updated_at = now() WHERE id = $1`,
         [job.assetId, JSON.stringify(variants)],
       )
     } else {
       await execute(
-        `UPDATE audio_assets SET status = 'done', updated_at = now() WHERE id = $1`,
+        `UPDATE audio_assets SET status = 'done', error = NULL, updated_at = now() WHERE id = $1`,
         [job.assetId],
       )
     }
