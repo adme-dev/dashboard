@@ -8,7 +8,6 @@
 // Bindings (wrangler.toml): AI, AUDIO_BUCKET (R2, 'agency-files'), HYPERDRIVE
 // (→ Neon), DATABASE_URL secret, and RENDER (FFmpeg Container).
 import { Container } from '@cloudflare/containers'
-import type { MusicJobBody } from './musicWorker'
 
 /** FFmpeg render service — a Linux container running ffmpeg over HTTP. The Worker
  * invokes it per channel (POST /render with the master bytes + an x-audio-profile
