@@ -2362,6 +2362,10 @@ const features: Record<string, Feature> = {
       {
         title: 'Accountability Tasks',
         content: 'For each critical pacing issue, the system can optionally create an accountability task assigned to the responsible media buyer, due in 24 hours. This bridges the gap between detection and resolution — the alert is not just a notification that gets buried, it becomes a tracked work item with an owner and a deadline. Tasks are created through the existing work management system so they appear in the assignee\'s board and notifications alongside their other work.'
+      },
+      {
+        title: 'Connecting Slack in Two Minutes',
+        content: 'Setup is a one-time, no-code step. In Slack, create an Incoming Webhook for the channel your media buyers watch, copy the generated https://hooks.slack.com/services/… URL, and paste it into Settings → Budget Alerts — an in-app guide walks you through it. Pick the hour your daily review should land, then send a test message to confirm it posts. From there the daily digest and real-time critical alerts flow automatically with no per-campaign configuration, and you can toggle the digest, real-time alerts, and accountability tasks independently whenever you like.'
       }
     ]
   },
