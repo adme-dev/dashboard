@@ -1,4 +1,4 @@
--- 155_social_listening.sql — Social Suite Slice 4: brand listening.
+-- 156_social_listening.sql — Social Suite Slice 4: brand listening.
 -- Additive + idempotent. External source adapters, enrichment, and alerting are later
 -- phases (4b–4d) and ship dormant; this migration only adds storage.
 
