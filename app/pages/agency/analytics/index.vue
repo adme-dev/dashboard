@@ -157,15 +157,14 @@ async function syncAll() {
       class="w-full"
     />
 
-    <!-- Ask box (Overview only) -->
-    <AgencyAnalyticsAskBox
-      v-show="activeTab === 'overview'"
-      :start-date="filters.startDate"
-      :end-date="filters.endDate"
-      :client-id="filters.clientId"
-    />
-
     <div v-show="activeTab === 'overview'" class="space-y-6">
+      <!-- Ask box -->
+      <AgencyAnalyticsAskBox
+        :start-date="filters.startDate"
+        :end-date="filters.endDate"
+        :client-id="filters.clientId"
+      />
+
       <!-- KPI Cards -->
       <AnalyticsKPICards
         :totals="totals"
