@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { recomputeIfScorable } from '~~/server/utils/crm/scoreSignals'
+import { recomputeHealthIfCustomer } from '~~/server/utils/crm/healthSignals'
 import { applyLifecycleEvent } from '~~/server/utils/crm/lifecycle'
 
 const Body = z.object({
@@ -28,6 +29,8 @@ export default defineEventHandler(async (event) => {
   )
   // Logging activity bumps the contact's engagement + recency score.
   await recomputeIfScorable(b.client_id, b.target_type, b.target_id, 'activity')
+  // For customers, the same touch refreshes the health/churn score in-band.
+  await recomputeHealthIfCustomer(b.client_id, b.target_type, b.target_id, 'activity')
   // First touch sets a contact to `lead` (and revives dormant). Best-effort.
   if (b.target_type === 'person' || b.target_type === 'company') {
     try {

@@ -62,6 +62,21 @@ const adoptionCards = computed(() => {
   ]
 })
 
+// Churn risk — customers whose health score is At risk / Critical (P4.2).
+interface AtRiskRow {
+  target_type: 'person' | 'company'
+  target_id: string
+  total_score: number
+  grade: 'Hot' | 'Warm' | 'Cold'
+  name: string | null
+}
+const { data: atRisk } = useFetch<{ items: AtRiskRow[] }>('/api/crm/health/at-risk', {
+  query: computed(() => ({ client_id: clientId.value })), watch: [clientId],
+  default: () => ({ items: [] }),
+})
+const healthGradeLabel: Record<string, string> = { Warm: 'At risk', Cold: 'Critical' }
+const healthGradeColor: Record<string, string> = { Warm: 'warning', Cold: 'error' }
+
 const money = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
 const pct = (n: number) => `${Math.round(n * 100)}%`
 
@@ -161,6 +176,28 @@ const perfColumns = [
         </UTable>
       </UCard>
     </div>
+
+    <UCard>
+      <template #header>
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-sm font-medium">Churn risk</span>
+          <span class="text-xs text-muted">Customers with declining health — worst first</span>
+        </div>
+      </template>
+      <div v-if="(atRisk?.items ?? []).length" class="divide-y divide-default">
+        <div v-for="r in atRisk!.items" :key="`${r.target_type}-${r.target_id}`" class="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0">
+          <div class="flex items-center gap-2 min-w-0">
+            <UIcon :name="r.target_type === 'company' ? 'i-lucide-building-2' : 'i-lucide-user'" class="size-4 shrink-0 text-muted" />
+            <span class="truncate text-sm">{{ r.name || 'Unnamed' }}</span>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="text-xs tabular-nums text-muted">{{ r.total_score }}</span>
+            <UBadge :color="(healthGradeColor[r.grade] as any)" variant="subtle" size="sm">{{ healthGradeLabel[r.grade] }}</UBadge>
+          </div>
+        </div>
+      </div>
+      <p v-else class="text-sm text-muted text-center py-6">No customers flagged at risk — health scores accrue from the hourly sweep.</p>
+    </UCard>
 
     <CrmLeaderboard :client-id="clientId" />
 
