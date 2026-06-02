@@ -32,6 +32,12 @@ describe('benchmarkBadge', () => {
   it('null rank → no badge', () => {
     expect(benchmarkBadge(null, false)).toBeNull()
   })
+  it('clamps the extremes so the best/worst performer never reads 0%', () => {
+    expect(benchmarkBadge(1, false)!.label).toBe('Top 1%')
+    expect(benchmarkBadge(0, false)!.label).toBe('Bottom 1%')
+    expect(benchmarkBadge(0, true)!.label).toBe('Top 1%')
+    expect(benchmarkBadge(1, true)!.label).toBe('Bottom 1%')
+  })
 })
 
 describe('benchmarkMarkerPct', () => {

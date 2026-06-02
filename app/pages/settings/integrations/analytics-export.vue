@@ -21,8 +21,8 @@ interface ExportToken {
 const { data, refresh } = await useFetch<{ tokens: ExportToken[] }>('/api/agency/analytics/export-tokens')
 const tokens = computed(() => data.value?.tokens ?? [])
 
-// Client options for the scope picker
-const { data: clientData } = await useFetch<Array<{ id: string, name: string }>>('/api/agency/clients')
+// Client options for the scope picker — non-blocking (only used inside the mint modal).
+const { data: clientData } = useFetch<Array<{ id: string, name: string }>>('/api/agency/clients', { lazy: true })
 const scopeItems = computed(() => [
   { label: 'Agency-wide (all clients)', value: AGENCY_SCOPE_SENTINEL },
   ...((clientData.value ?? []).map(c => ({ label: c.name, value: c.id })))
@@ -100,7 +100,9 @@ const columns = [
 ]
 
 function scopeOf(t: ExportToken): string { return tokenScopeLabel(t) }
-function fmtDate(iso: string): string { return new Date(iso).toLocaleDateString() }
+function fmtDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+}
 </script>
 
 <template>

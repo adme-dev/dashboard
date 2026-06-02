@@ -32,9 +32,9 @@ export function benchmarkBadge(percentileRank: number | null, lowerIsBetter: boo
   const goodness = lowerIsBetter ? 1 - percentileRank : percentileRank
   const pct = Math.round(goodness * 100)
   if (goodness >= 0.5) {
-    return { label: `Top ${100 - pct}%`, tone: goodness >= 0.75 ? 'success' : 'neutral' }
+    return { label: `Top ${Math.max(1, 100 - pct)}%`, tone: goodness >= 0.75 ? 'success' : 'neutral' }
   }
-  return { label: `Bottom ${pct}%`, tone: goodness <= 0.25 ? 'error' : 'neutral' }
+  return { label: `Bottom ${Math.max(1, pct)}%`, tone: goodness <= 0.25 ? 'error' : 'neutral' }
 }
 
 /** Position of `value` along the portfolio min→max range, as 0..100. */

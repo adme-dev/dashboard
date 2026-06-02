@@ -172,97 +172,97 @@ async function syncAll() {
         :loading="loading"
       />
 
-    <!-- Platform Chart -->
-    <div class="border border-default rounded-lg p-4">
-      <h3 class="text-sm font-semibold text-default mb-3">
-        Spend by Platform
-      </h3>
-      <AnalyticsPlatformChart
-        :data="trendPoints"
-        :loading="trendStatus === 'pending'"
-      />
-    </div>
-
-    <!-- Platform Table -->
-    <div>
-      <h3 class="text-sm font-semibold text-default mb-3">
-        Platform Breakdown
-      </h3>
-      <AnalyticsPlatformTable
-        :platforms="byPlatform"
-        :loading="loading"
-      />
-    </div>
-
-    <!-- Trend Chart -->
-    <div class="border border-default rounded-lg p-4">
-      <div class="flex items-center justify-between mb-3">
-        <h3 class="text-sm font-semibold text-default">
-          Performance Trends
+      <!-- Platform Chart -->
+      <div class="border border-default rounded-lg p-4">
+        <h3 class="text-sm font-semibold text-default mb-3">
+          Spend by Platform
         </h3>
-        <div class="flex items-center gap-2">
-          <USelectMenu
-            v-model="trendMetric"
-            :items="metricOptions"
-            value-key="value"
-            size="xs"
-            class="w-32"
-          />
-          <USelectMenu
-            v-model="trendGroupBy"
-            :items="groupByOptions"
-            value-key="value"
-            size="xs"
-            class="w-28"
-          />
-        </div>
+        <AnalyticsPlatformChart
+          :data="trendPoints"
+          :loading="trendStatus === 'pending'"
+        />
       </div>
-      <AnalyticsTrendChart
-        :data="trendPoints"
-        :metric="trendMetric"
-        :loading="trendStatus === 'pending'"
+
+      <!-- Platform Table -->
+      <div>
+        <h3 class="text-sm font-semibold text-default mb-3">
+          Platform Breakdown
+        </h3>
+        <AnalyticsPlatformTable
+          :platforms="byPlatform"
+          :loading="loading"
+        />
+      </div>
+
+      <!-- Trend Chart -->
+      <div class="border border-default rounded-lg p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-semibold text-default">
+            Performance Trends
+          </h3>
+          <div class="flex items-center gap-2">
+            <USelectMenu
+              v-model="trendMetric"
+              :items="metricOptions"
+              value-key="value"
+              size="xs"
+              class="w-32"
+            />
+            <USelectMenu
+              v-model="trendGroupBy"
+              :items="groupByOptions"
+              value-key="value"
+              size="xs"
+              class="w-28"
+            />
+          </div>
+        </div>
+        <AnalyticsTrendChart
+          :data="trendPoints"
+          :metric="trendMetric"
+          :loading="trendStatus === 'pending'"
+        />
+      </div>
+
+      <!-- Campaigns Table -->
+      <AnalyticsCampaignTable
+        :start-date="filters.startDate"
+        :end-date="filters.endDate"
+        :platforms="filters.platforms"
+        :client-id="filters.clientId"
+        columns-storage-key="analytics:campaign-cols:agency"
+        show-lead-columns
+        lead-link-base="/agency/leads"
       />
-    </div>
 
-    <!-- Campaigns Table -->
-    <AnalyticsCampaignTable
-      :start-date="filters.startDate"
-      :end-date="filters.endDate"
-      :platforms="filters.platforms"
-      :client-id="filters.clientId"
-      columns-storage-key="analytics:campaign-cols:agency"
-      show-lead-columns
-      lead-link-base="/agency/leads"
-    />
-
-    <!-- GA4 website funnel (per-client agency view) — wrapper prompts for a
-         client when none is selected, and self-hides without GA4 data. -->
-    <AnalyticsFunnelChart
-      :client-id="filters.clientId"
-      :start-date="filters.startDate"
-      :end-date="filters.endDate"
-    />
-
-    <!-- Blended channels — works agency-wide or per client; self-hides when no data -->
-    <AgencyBlendedPanel
-      :start-date="filters.startDate"
-      :end-date="filters.endDate"
-      :client-id="filters.clientId"
-    />
-
-    <!-- Client Breakdown -->
-    <div>
-      <h3 class="text-sm font-semibold text-default mb-3">
-        Client Breakdown
-      </h3>
-      <AnalyticsClientBreakdown
-        :clients="byClient"
-        :loading="loading"
+      <!-- GA4 website funnel (per-client agency view) — wrapper prompts for a
+           client when none is selected, and self-hides without GA4 data. -->
+      <AnalyticsFunnelChart
+        :client-id="filters.clientId"
         :start-date="filters.startDate"
         :end-date="filters.endDate"
       />
-    </div>
-    </div>
+
+      <!-- Blended channels — works agency-wide or per client; self-hides when no data -->
+      <AgencyBlendedPanel
+        :start-date="filters.startDate"
+        :end-date="filters.endDate"
+        :client-id="filters.clientId"
+      />
+
+      <!-- Client Breakdown -->
+      <div>
+        <h3 class="text-sm font-semibold text-default mb-3">
+          Client Breakdown
+        </h3>
+        <AnalyticsClientBreakdown
+          :clients="byClient"
+          :loading="loading"
+          :start-date="filters.startDate"
+          :end-date="filters.endDate"
+        />
+      </div>
+    </div><!-- /Overview tab -->
 
     <!-- Insights tab -->
     <div v-show="activeTab === 'insights'" class="space-y-6">

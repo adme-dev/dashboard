@@ -33,6 +33,7 @@ const { data, status } = await useFetch<BenchmarksResponse>('/api/agency/analyti
 })
 
 const loading = computed(() => status.value === 'pending')
+const hasError = computed(() => status.value === 'error')
 const hasClient = computed(() => !!props.clientId)
 
 const METRICS: Array<{ key: BenchmarkMetricKey, label: string, kind: 'currency' | 'percent' }> = [
@@ -95,6 +96,10 @@ const leaderboardColumns = [
 
     <div v-if="loading" class="py-10 text-center text-muted text-sm">
       Loading benchmarks…
+    </div>
+
+    <div v-else-if="hasError" class="py-10 text-center text-error text-sm">
+      Couldn't load benchmarks. Try again shortly.
     </div>
 
     <div v-else-if="!data || data.clientCount === 0" class="py-10 text-center text-muted text-sm">

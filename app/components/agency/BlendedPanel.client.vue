@@ -54,7 +54,8 @@ const ALL_COLUMNS = [
   { accessorKey: 'sessions', header: 'Sessions' }
 ]
 
-const { data: presetData } = await useFetch<{ presets: BlendPreset[] }>('/api/agency/analytics/presets')
+// Non-blocking: presets only back the view dropdown; don't suspend the table on them.
+const { data: presetData } = useFetch<{ presets: BlendPreset[] }>('/api/agency/analytics/presets', { lazy: true })
 
 const selectedPreset = ref<string>(ALL_PRESET_SENTINEL)
 const presetItems = computed(() => [
