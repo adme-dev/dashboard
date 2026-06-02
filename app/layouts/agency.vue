@@ -252,6 +252,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { label: 'Approvals', icon: 'i-lucide-clipboard-check', to: '/agency/social/publishing/approvals', onSelect: close },
       { label: 'Analytics', icon: 'i-lucide-bar-chart-3', to: '/agency/social/publishing/analytics', onSelect: close },
       { label: 'Reporting', icon: 'i-lucide-line-chart', to: '/agency/social/reporting', exact: true, onSelect: close },
+      { label: 'Listening', icon: 'i-lucide-radar', to: '/agency/social/listening', exact: true, onSelect: close },
       { label: 'Accounts', icon: 'i-lucide-plug', to: '/agency/social/publishing/accounts', onSelect: close }
     )
   }
