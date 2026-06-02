@@ -243,11 +243,27 @@ it unchanged.
 ---
 
 ## 8. Activation (operator, post-merge — no auto-enable)
-Manual surfaces are live on deploy. To enable **auto-create**:
-1. Confirm `CRM_AI_ENABLED='true'` on prod Pages.
-2. Set per-client `crm_settings.meeting_bridge_autocreate` opt-in for the pilot client(s).
-3. Ensure `workers/crm-cron` is deployed with `CRON_SECRET` and the new schedule.
-4. Since-deploy cutoff means only *new* action-items convert — no backlog flood.
+Manual surfaces (office "Create CRM task" button + the CRM "From recent meetings"
+panel) are **live on deploy** — no flag. To enable the dormant **auto-create**
+cron (`POST /api/cron/crm-meeting-actions`, wired into `workers/crm-cron` as the
+`crm-meeting-actions` job):
+
+1. Confirm `CRM_AI_ENABLED='true'` on the prod Pages project (the cron returns
+   `{ skipped: 'flag_disabled' }` until then).
+2. Opt the pilot client(s) in — the timestamp you set **is** the since-deploy
+   cutoff (only action items created after it convert):
+   ```sql
+   UPDATE crm_settings
+      SET meeting_bridge_autocreate = true, meeting_bridge_enabled_at = now()
+    WHERE client_id = '<pilot-client-uuid>';
+   ```
+   (With no opt-in rows the cron returns `{ skipped: 'no_optin_clients' }`.)
+3. Ensure `workers/crm-cron` is deployed with its `CRON_SECRET` secret set
+   (`wrangler secret put CRON_SECRET` inside `workers/crm-cron/`) matching the
+   Pages project's `CRON_SECRET`. The job already runs hourly via the existing
+   `0 * * * *` trigger — no schedule change needed.
+4. Only **unambiguous single-person/single-client** matches auto-convert; multi /
+   zero matches record a `crm_skip_reason` and are left for manual handling.
 
 ⚠️ Never enable auto-create without explicit go-ahead (consistent with the
 project's standing rule on gated AI/automation features).
