@@ -28,7 +28,7 @@ export interface ScheduledClip {
 export interface DuckRamp {
   targetTrackId: string
   atSec: number      // timeline time the ramp starts
-  toGainDb: number   // amount_db (duck down) or 0 (restore)
+  toGainDb: number   // DELTA from the target bus's nominal gain: amount_db (duck) or 0 (restore)
   rampSec: number    // attack (down) or release (restore), seconds
 }
 
