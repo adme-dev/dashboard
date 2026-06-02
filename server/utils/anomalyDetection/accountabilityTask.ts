@@ -80,7 +80,7 @@ export async function maybeCreateAccountabilityTasks(tenantId: string, anomalyId
   const rows = await queryRows<AnomalyRowForTask>(
     `SELECT id, title, description, fingerprint, context
      FROM anomalies
-     WHERE tenant_id = $1 AND id = ANY($2) AND type IN ('adspend','budget')`,
+     WHERE tenant_id = $1 AND id = ANY($2::uuid[]) AND type IN ('adspend','budget')`,
     [tenantId, anomalyIds],
   )
   const now = new Date()

@@ -18,8 +18,8 @@ export async function dispatchCriticalBudgetSlack(tenantId: string, anomalyIds: 
   const rows = await queryRows<Row>(
     `SELECT type, severity, title, description, context
      FROM anomalies
-     WHERE id = ANY($1) AND type IN ('adspend','budget')`,
-    [anomalyIds],
+     WHERE id = ANY($1::uuid[]) AND tenant_id = $2 AND type IN ('adspend','budget')`,
+    [anomalyIds, tenantId],
   )
   if (rows.length === 0) return
 
