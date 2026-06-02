@@ -8,7 +8,7 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY server.mjs render.mjs ./
+COPY server.mjs render.mjs timelineFiltergraph.mjs ./
 
 EXPOSE 8080
 CMD ["node", "server.mjs"]

@@ -1382,6 +1382,12 @@ And add this route handler branch (before the final 404), reading the JSON body,
 
 > Base64-in-JSON is simple and dependency-free; ad-length clips are a few MB each. If payloads get large, switch to multipart in a later optimisation — out of SP1 scope.
 
+⚠️ **CRITICAL — update the container Dockerfile COPY.** `server.mjs` now imports `./timelineFiltergraph.mjs`, but `workers/audio-jobs/container/Dockerfile` only `COPY`s `server.mjs render.mjs`. The built image would crash at startup (`ERR_MODULE_NOT_FOUND`), killing the WHOLE RenderContainer — both the new master path AND the existing `/render` variant path. Change the COPY line to include the new file:
+```dockerfile
+COPY server.mjs render.mjs timelineFiltergraph.mjs ./
+```
+(No test catches this — tests import the `.mjs` from the repo, never the built image. The audio-jobs Worker image must be rebuilt/redeployed after this change.)
+
 - [ ] **Step 6: Write the Worker-side `timelineMasterRender.ts`**
 
 Create `workers/audio-jobs/src/timelineMasterRender.ts`:
