@@ -75,12 +75,19 @@ export default defineEventHandler(async (event) => {
     if (distinctClients.size > 1) { await recordSkipReason(item.id, 'ambiguous_multi_client'); skipped++; continue }
     if (proposals.length > 1) { await recordSkipReason(item.id, 'ambiguous_multi_person'); skipped++; continue }
 
+    // Single person + single client past the checks above ⇒ confidence is 'high'.
     const p = proposals[0]!
-    if (p.confidence !== 'high') { await recordSkipReason(item.id, 'ambiguous_multi_person'); skipped++; continue }
 
     // Per-client opt-in + since-deploy cutoff (the matched client, not the meeting's).
     const cutoffMs = cutoffByClient.get(p.client_id)
-    if (cutoffMs === undefined || Number(item.created_ms) < cutoffMs) { skipped++; continue }
+    if (cutoffMs === undefined) {
+      // Resolved to a client that hasn't opted in. It will never become eligible
+      // (a later opt-in stamps enabled_at=now(), leaving this item pre-cutoff), so
+      // stamp it out of future scans to avoid starving newer items.
+      await recordSkipReason(item.id, 'client_not_opted_in'); skipped++; continue
+    }
+    // Pre-cutoff items stay unstamped (rescannable) — intentional flood guard.
+    if (Number(item.created_ms) < cutoffMs) { skipped++; continue }
 
     try {
       await convertActionItemToCrmTask(
@@ -99,5 +106,7 @@ export default defineEventHandler(async (event) => {
       else { console.warn('[crm-meeting-actions] convert failed:', item.id, e); failed++ }
     }
   }
-  return { converted, skipped, failed, scanned: items.length }
+  const result = { converted, skipped, failed, scanned: items.length }
+  console.log('[crm-cron] meeting-actions', result)
+  return result
 })

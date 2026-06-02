@@ -262,6 +262,7 @@ export async function convertActionItemToCrmTask(
       [task.id, JSON.stringify({
         crm_task_id: task.id,
         crm_task_created_at: new Date().toISOString(),
+        crm_task_created_by: opts.actor,
         crm_bridge_mode: opts.mode,
       }), actionItem.id],
     )
@@ -331,7 +332,11 @@ export async function listMeetingActionsForCrmTarget(
   )
 }
 
-export type SkipReason = 'ambiguous_multi_person' | 'ambiguous_multi_client' | 'no_crm_match'
+export type SkipReason =
+  | 'ambiguous_multi_person'
+  | 'ambiguous_multi_client'
+  | 'no_crm_match'
+  | 'client_not_opted_in'
 
 export async function recordSkipReason(actionItemId: string, reason: SkipReason): Promise<void> {
   await execute(
