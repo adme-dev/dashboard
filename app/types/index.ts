@@ -1465,3 +1465,19 @@ export interface MediaTimeline {
   createdBy: string
   createdAt: string
 }
+
+export type MediaRenderJobStatus = 'queued' | 'rendering' | 'done' | 'failed'
+
+export interface MediaRenderJob {
+  id: string
+  timelineId: string
+  projectId: string
+  channels: string[]
+  status: MediaRenderJobStatus
+  variants: Record<string, string>
+  costCents: number | null
+  error: string | null
+  requestedBy: string
+  createdAt: string
+  updatedAt: string
+}

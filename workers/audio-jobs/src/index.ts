@@ -8,7 +8,6 @@
 // Bindings (wrangler.toml): AI, AUDIO_BUCKET (R2, 'agency-files'), HYPERDRIVE
 // (→ Neon), DATABASE_URL secret, and RENDER (FFmpeg Container).
 import { Container } from '@cloudflare/containers'
-import type { MusicJobBody } from './musicWorker'
 
 /** FFmpeg render service — a Linux container running ffmpeg over HTTP. The Worker
  * invokes it per channel (POST /render with the master bytes + an x-audio-profile
@@ -25,11 +24,12 @@ interface Env {
   RENDER: unknown
   HYPERDRIVE?: { connectionString: string }
   DATABASE_URL?: string
+  RENDER_CENTS_PER_SEC?: string
 }
 
 export default {
   async queue(
-    batch: MessageBatch<MusicJobBody>,
+    batch: MessageBatch<any>,
     env: Env,
     _ctx: ExecutionContext,
   ): Promise<void> {
@@ -38,8 +38,35 @@ export default {
     }
     if (env.DATABASE_URL) process.env.DATABASE_URL = env.DATABASE_URL
 
-    const { runMusicJob } = await import('./musicWorker')
+    if (batch.queue === 'timeline-render') {
+      const { runTimelineRenderJob } = await import('./timelineRenderWorker')
+      const { renderVariants } = await import('./renderVariants')
+      const { renderTimelineMaster } = await import('./timelineMasterRender')
+      const db = await import('./db')
+      for (const msg of batch.messages) {
+        try {
+          await runTimelineRenderJob(msg.body as any, {
+            loadTimelineState: db.dbLoadTimelineState,
+            markRendering: db.dbMarkRenderRendering,
+            markDone: db.dbMarkRenderDone,
+            markFailed: db.dbMarkRenderFailed,
+            renderMaster: ({ projectId, jobId, state }) =>
+              renderTimelineMaster({ RENDER: env.RENDER, AUDIO_BUCKET: env.AUDIO_BUCKET as any }, { projectId, jobId, state }),
+            renderVariants: ({ projectId, jobId, masterKey, channels, clientId }) =>
+              renderVariants({ RENDER: env.RENDER, AUDIO_BUCKET: env.AUDIO_BUCKET as any },
+                { clientId, assetId: `${projectId}/${jobId}`, masterKey, channels }),
+            centsPerSec: Number(env.RENDER_CENTS_PER_SEC ?? '2')
+          })
+          msg.ack()
+        } catch (e) {
+          console.error('audio-jobs.timeline-render.error', (msg.body as any)?.jobId, e)
+          msg.retry({ delaySeconds: 30 })
+        }
+      }
+      return
+    }
 
+    const { runMusicJob } = await import('./musicWorker')
     for (const msg of batch.messages) {
       try {
         await runMusicJob(msg.body, { AI: env.AI, AUDIO_BUCKET: env.AUDIO_BUCKET as any, RENDER: env.RENDER })

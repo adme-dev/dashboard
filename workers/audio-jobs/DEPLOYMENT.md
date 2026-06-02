@@ -124,3 +124,34 @@ Pages reads mint per-variant download URLs (`variantUrls`).
   the two in sync**. Validate measured loudness against real audio post-deploy.
 - **Stateless container**: no R2/DB creds inside it — the worker owns persistence.
   `sleepAfter = 5m`, `max_instances = 3`.
+
+## Media Studio SP1 — timeline render (operator steps to activate)
+
+The render spine ships dormant until the queue + binding exist. To activate:
+
+1. **Create the queues** (once):
+   ```bash
+   wrangler queues create timeline-render
+   wrangler queues create timeline-render-dlq
+   ```
+2. **Deploy this Worker** — `wrangler.toml` already declares the `timeline-render`
+   consumer (alongside `music-gen`); the `queue()` handler branches on
+   `batch.queue`. `RENDER_CENTS_PER_SEC` (optional, default `'2'`) sets the
+   per-render-second cost written to `media_render_jobs.cost_cents` (SP6 metering
+   seam; capture-only, not enforced).
+3. **Set the producer binding on the dashboard Pages project** — Workers & Pages →
+   `agency-dashboard` → Settings → Bindings → add a **Queue producer**
+   `TIMELINE_RENDER_QUEUE` → queue `timeline-render`. ⚠️ Beware the Direct-Upload
+   `dist/wrangler.json` override (the `MUSIC_QUEUE` precedent): verify post-deploy
+   that `event.context.cloudflare.env.TIMELINE_RENDER_QUEUE` is present, else
+   `POST /agency/audio/projects/:id/render` returns 502 and marks the job failed.
+4. **Verify**: create a project, `POST …/render`, watch the job go
+   queued→rendering→done in `GET …/render-jobs`; the master lands at
+   `media/<projectId>/<jobId>/master.wav` and per-channel variants beside it.
+
+**Carried verify-live items** (SP1 spec §10): ear-check the `afade` curve tokens +
+the `duckRatioFromAmountDb`/`duckThresholdLinear` ducking calibration on a real
+multi-track timeline; confirm Container CPU/time limits vs worst-case ad-length
+timelines. The render filtergraph math is unit-tested in
+`server/utils/audio/timelineFiltergraph.ts`; `container/timelineFiltergraph.mjs` is
+its JS port — **keep in sync** (guarded by `test/audio/timelineFiltergraphSync.test.ts`).

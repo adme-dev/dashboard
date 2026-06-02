@@ -42,3 +42,22 @@ export async function execute(sql: string, params?: any[]): Promise<number> {
   const result = await c.query(sql, params)
   return result.rowCount ?? 0
 }
+
+// Render-job status writers (Hyperdrive→Neon). Mirror the music writers' execute() usage.
+export async function dbMarkRenderRendering(jobId: string): Promise<void> {
+  await execute(`UPDATE media_render_jobs SET status='rendering', updated_at=now() WHERE id=$1`, [jobId])
+}
+export async function dbMarkRenderDone(jobId: string, variants: Record<string, string>, costCents: number | null): Promise<void> {
+  await execute(
+    `UPDATE media_render_jobs SET status='done', variants=$1::jsonb, cost_cents=$2, updated_at=now() WHERE id=$3`,
+    [JSON.stringify(variants), costCents, jobId]
+  )
+}
+export async function dbMarkRenderFailed(jobId: string, error: string): Promise<void> {
+  await execute(`UPDATE media_render_jobs SET status='failed', error=$1, updated_at=now() WHERE id=$2`, [error, jobId])
+}
+export async function dbLoadTimelineState(timelineId: string): Promise<any> {
+  const row = await queryOne<{ state: any }>(`SELECT state FROM media_timelines WHERE id=$1`, [timelineId])
+  if (!row) throw new Error(`timeline ${timelineId} not found`)
+  return row.state
+}

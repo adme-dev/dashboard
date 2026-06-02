@@ -9,6 +9,7 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildMeasurePassArgs, parseLoudnormJson, buildRenderPassArgs } from './render.mjs'
+import { buildMasterRenderArgs } from './timelineFiltergraph.mjs'
 
 const PORT = process.env.PORT || 8080
 
@@ -35,6 +36,33 @@ const server = createServer(async (req, res) => {
   if (req.url === '/health') {
     res.writeHead(200); return res.end('ok')
   }
+
+  if (req.method === 'POST' && req.url === '/render-timeline') {
+    const dir = mkdtempSync(join(tmpdir(), 'tlrender-'))
+    try {
+      const payload = JSON.parse((await readBody(req)).toString('utf8')) // { plan, files: [{ b64 }] in input order }
+      const paths = payload.files.map((f, i) => {
+        const p = join(dir, `in${i}`)
+        writeFileSync(p, Buffer.from(f.b64, 'base64'))
+        return p
+      })
+      const outPath = join(dir, 'master.wav')
+      const pass = await runFfmpeg(buildMasterRenderArgs(payload.plan, paths, outPath))
+      if (pass.code !== 0) {
+        console.error('timeline master ffmpeg failed', pass.stderr.slice(-800))
+        res.writeHead(500); return res.end('timeline render failed')
+      }
+      const out = readFileSync(outPath)
+      res.writeHead(200, { 'content-type': 'audio/wav' })
+      return res.end(out)
+    } catch (e) {
+      console.error('render-timeline error', e)
+      res.writeHead(500); return res.end('render-timeline error')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
   if (req.method !== 'POST' || req.url !== '/render') {
     res.writeHead(404); return res.end('not found')
   }

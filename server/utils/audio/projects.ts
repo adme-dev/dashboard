@@ -3,7 +3,7 @@
 // Validation/duration math lives in the pure timelineSchema.ts; this file is the
 // DB boundary only.
 import { randomUUID } from 'crypto'
-import type { MediaProject, MediaTimeline } from '~~/app/types'
+import type { MediaProject, MediaTimeline, MediaRenderJob } from '~~/app/types'
 import { queryOne, queryRows, transaction } from '~~/server/utils/db'
 import { computeDuration, type TimelineState } from '~~/server/utils/audio/timelineSchema'
 
@@ -159,4 +159,104 @@ export async function listVersions(projectId: string): Promise<MediaTimeline[]> 
     [projectId]
   )
   return rows.map(mapTimelineRow)
+}
+
+/** Pure: media_render_jobs row → MediaRenderJob (camelCase). */
+export function mapRenderJobRow(row: any): MediaRenderJob {
+  return {
+    id: row.id,
+    timelineId: row.timeline_id,
+    projectId: row.project_id,
+    channels: row.channels ?? [],
+    status: row.status,
+    variants: row.variants ?? {},
+    costCents: row.cost_cents ?? null,
+    error: row.error ?? null,
+    requestedBy: row.requested_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  }
+}
+
+export interface CreateRenderJobInput {
+  projectId: string
+  requestedBy: string
+  channels: string[]
+}
+
+/** Snapshot the current draft into a new immutable version (SP0 §6), then insert a
+ * queued render job pointing at that frozen version — all in one transaction so a
+ * job never references a half-written version. */
+export async function createRenderJob(input: CreateRenderJobInput): Promise<MediaRenderJob> {
+  const newTimelineId = randomUUID()
+  const jobId = randomUUID()
+  return transaction(async (db) => {
+    const cur = await db.query(
+      `SELECT t.state AS state,
+              (SELECT MAX(version) FROM media_timelines WHERE project_id = $1) AS max_version
+       FROM media_projects p
+       JOIN media_timelines t ON t.id = p.current_timeline_id
+       WHERE p.id = $1`,
+      [input.projectId]
+    )
+    if (!cur.rows[0]) throw new Error(`project ${input.projectId} has no current timeline`)
+    const nextVersion = Number(cur.rows[0].max_version) + 1
+    await db.query(
+      `INSERT INTO media_timelines (id, project_id, version, label, state, schema_version, created_by)
+       VALUES ($1, $2, $3, 'render snapshot', $4, 1, $5)`,
+      [newTimelineId, input.projectId, nextVersion, JSON.stringify(cur.rows[0].state), input.requestedBy]
+    )
+    await db.query(
+      `UPDATE media_projects SET current_timeline_id = $1, updated_at = now() WHERE id = $2`,
+      [newTimelineId, input.projectId]
+    )
+    const job = await db.query(
+      `INSERT INTO media_render_jobs (id, timeline_id, project_id, channels, status, requested_by)
+       VALUES ($1, $2, $3, $4, 'queued', $5) RETURNING *`,
+      [jobId, newTimelineId, input.projectId, input.channels, input.requestedBy]
+    )
+    return mapRenderJobRow(job.rows[0])
+  })
+}
+
+/** Render jobs for a project, newest-first. */
+export async function listRenderJobs(projectId: string): Promise<MediaRenderJob[]> {
+  const rows = await queryRows(
+    `SELECT * FROM media_render_jobs WHERE project_id = $1 ORDER BY created_at DESC LIMIT 100`,
+    [projectId]
+  )
+  return rows.map(mapRenderJobRow)
+}
+
+export async function markRenderJobRendering(jobId: string): Promise<MediaRenderJob> {
+  const row = await queryOne(
+    `UPDATE media_render_jobs SET status = 'rendering', updated_at = now() WHERE id = $1 RETURNING *`,
+    [jobId]
+  )
+  if (!row) throw new Error(`render job ${jobId} not found`)
+  return mapRenderJobRow(row)
+}
+
+export async function markRenderJobDone(
+  jobId: string,
+  variants: Record<string, string>,
+  costCents: number | null
+): Promise<MediaRenderJob> {
+  const row = await queryOne(
+    `UPDATE media_render_jobs SET status = 'done', variants = $1, cost_cents = $2, updated_at = now()
+     WHERE id = $3 RETURNING *`,
+    [JSON.stringify(variants), costCents, jobId]
+  )
+  if (!row) throw new Error(`render job ${jobId} not found`)
+  return mapRenderJobRow(row)
+}
+
+export async function markRenderJobFailed(jobId: string, error: string): Promise<MediaRenderJob> {
+  const row = await queryOne(
+    `UPDATE media_render_jobs SET status = 'failed', error = $1, updated_at = now()
+     WHERE id = $2 RETURNING *`,
+    [error, jobId]
+  )
+  if (!row) throw new Error(`render job ${jobId} not found`)
+  return mapRenderJobRow(row)
 }
