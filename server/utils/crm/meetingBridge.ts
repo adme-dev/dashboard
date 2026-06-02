@@ -290,6 +290,47 @@ export async function convertActionItemToCrmTask(
   return { ...result, created: true }
 }
 
+export interface MeetingActionForContact {
+  id: string
+  content: string
+  due_at: string | null
+  meeting_session_id: string
+  meeting_title: string
+  created_at: string
+}
+
+// CRM-side surfacing: unconverted meeting action items linkable to a CRM record,
+// matched by guest-email overlap. Client-scoped (the CRM record's own client).
+// Person → that contact's email; company → every contact email under the company.
+export async function listMeetingActionsForCrmTarget(
+  targetType: 'person' | 'company',
+  targetId: string,
+  clientId: string,
+): Promise<MeetingActionForContact[]> {
+  const emailColumnFilter = targetType === 'person' ? 'p.id = $1' : 'p.company_id = $1'
+  const emails = await queryRows<{ email: string }>(
+    `SELECT lower(trim(p.email)) AS email FROM crm_people p
+     WHERE ${emailColumnFilter} AND p.client_id = $2 AND p.deleted_at IS NULL AND p.email IS NOT NULL`,
+    [targetId, clientId],
+  )
+  if (emails.length === 0) return []
+  const emailList = [...new Set(emails.map(e => e.email))]
+
+  return queryRows<MeetingActionForContact>(
+    `SELECT DISTINCT omai.id, omai.content, omai.due_at, omai.meeting_session_id,
+            oms.title AS meeting_title,
+            to_char(omai.created_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_at
+     FROM office_meeting_action_items omai
+     JOIN office_meeting_sessions oms ON oms.id = omai.meeting_session_id
+     CROSS JOIN LATERAL unnest(oms.guest_emails) AS ge(email)
+     WHERE omai.crm_task_id IS NULL
+       AND lower(trim(ge.email)) = ANY($1::text[])
+     ORDER BY created_at DESC
+     LIMIT 50`,
+    [emailList],
+  )
+}
+
 export type SkipReason = 'ambiguous_multi_person' | 'ambiguous_multi_client' | 'no_crm_match'
 
 export async function recordSkipReason(actionItemId: string, reason: SkipReason): Promise<void> {
