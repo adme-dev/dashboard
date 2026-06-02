@@ -90,3 +90,24 @@ describe('markRenderJob* status writers', () => {
     expect(j.error).toBe('boom')
   })
 })
+
+describe('render-job throw paths', () => {
+  it('createRenderJob throws when the project has no current timeline', async () => {
+    const dbQuery = vi.fn().mockResolvedValueOnce({ rows: [] }) // SELECT returns nothing
+    transactionMock.mockImplementation(async (cb: any) => cb({ query: dbQuery }))
+    await expect(createRenderJob({ projectId: 'nope', requestedBy: 'u1', channels: ['radio'] }))
+      .rejects.toThrow()
+  })
+  it('markRenderJobRendering throws when the job is missing', async () => {
+    queryOneMock.mockResolvedValueOnce(null)
+    await expect(markRenderJobRendering('missing')).rejects.toThrow()
+  })
+  it('markRenderJobDone throws when the job is missing', async () => {
+    queryOneMock.mockResolvedValueOnce(null)
+    await expect(markRenderJobDone('missing', { radio: 'k' }, 5)).rejects.toThrow()
+  })
+  it('markRenderJobFailed throws when the job is missing', async () => {
+    queryOneMock.mockResolvedValueOnce(null)
+    await expect(markRenderJobFailed('missing', 'boom')).rejects.toThrow()
+  })
+})
