@@ -24,6 +24,17 @@ const hourOptions = Array.from({ length: 24 }, (_, h) => ({
   value: h
 }))
 
+// Inline Slack incoming-webhook setup guide (collapsed by default).
+const guideItems = [{ label: 'How to create your Slack webhook', icon: 'i-lucide-webhook', slot: 'guide' as const }]
+const setupSteps = [
+  'Go to api.slack.com/apps and click “Create New App” → “From scratch”. Name it (e.g. “XeroFlow Budget Alerts”) and pick your workspace.',
+  'In the app’s left sidebar, open “Incoming Webhooks” and toggle “Activate Incoming Webhooks” on.',
+  'Click “Add New Webhook to Workspace”, choose the channel to post to (e.g. #budget-tracker), then click “Allow”.',
+  'Copy the generated Webhook URL — it starts with https://hooks.slack.com/services/.',
+  'Paste it into the Webhook URL field above, set your digest hour, then click “Save settings”.',
+  'Click “Send test message” to confirm it posts to your Slack channel.'
+]
+
 async function save() {
   saving.value = true
   try {
@@ -86,6 +97,18 @@ async function sendTest() {
           class="w-full"
         />
       </UFormField>
+
+      <UAccordion :items="guideItems">
+        <template #guide>
+          <ol class="list-decimal space-y-2 pl-5 text-sm text-gray-600 dark:text-gray-300">
+            <li v-for="(step, i) in setupSteps" :key="i">{{ step }}</li>
+          </ol>
+          <p class="mt-3 text-xs text-gray-500">
+            The destination channel is fixed when the webhook is created, so “Channel override” only takes
+            effect with legacy custom-integration webhooks — leave it blank otherwise.
+          </p>
+        </template>
+      </UAccordion>
     </div>
 
     <!-- Section: Notification behaviour -->
