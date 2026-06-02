@@ -92,6 +92,12 @@ export function createAudioEngine(deps: AudioEngineDeps): AudioEngine {
   function scheduleRamp(targetTrackId: string, atSec: number, toGainDb: number, rampSec: number): void {
     const bus = trackBus.get(targetTrackId)
     if (!bus) return
+    // TODO(SP2b): anchor the ramp start with setValueAtTime(<held value>, ctxStart + atSec)
+    // before this linearRamp — Web Audio ramps from the PREVIOUS automation event, so a duck
+    // whose atSec > 0 currently starts depressing gain from t≈0 instead of holding flat until
+    // atSec. Harmless in SP2a (headless, no real ctx). The held/target values also need to
+    // compose with the bus's nominal track gain rather than treating dbToGain(0) as unity —
+    // resolve both when the real AudioContext + audible verification land in SP2b.
     bus.gain.linearRampToValueAtTime(dbToGain(toGainDb), ctxStart + atSec + rampSec)
   }
 

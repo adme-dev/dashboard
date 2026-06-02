@@ -60,6 +60,9 @@ export async function renderPreview(
 
   for (const r of plan.ramps) {
     const bus = trackBus.get(r.targetTrackId)
+    // TODO(SP2b): same ramp-anchor gap as useAudioEngine.scheduleRamp — a duck whose atSec > 0
+    // ramps from t≈0 without a preceding setValueAtTime anchor. Kept identical to the live engine
+    // so preview and playback agree; fix both together with the real-context work in SP2b.
     if (bus) bus.gain.linearRampToValueAtTime(dbToGain(r.toGainDb), r.atSec + r.rampSec)
   }
 
