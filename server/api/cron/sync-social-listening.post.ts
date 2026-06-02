@@ -9,6 +9,8 @@ import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { collectForQuery } from '~~/server/utils/socialListening/collect'
 import { upsertMentions } from '~~/server/utils/socialListening/store'
 import { LISTENING_SOURCES } from '~~/server/utils/socialListening/sources/registry'
+import { enrichUnenriched } from '~~/server/utils/socialListening/enrich'
+import { generateGroqInsight } from '~~/server/utils/groqClient'
 
 export default defineEventHandler(async (event) => {
   const secret = getHeader(event, 'x-cron-secret')
@@ -28,5 +30,10 @@ export default defineEventHandler(async (event) => {
     if (hits.length) mentionsUpserted += await upsertMentions({ queryRows, queryOne, execute }, q.client_id, q.id, hits)
     queriesRun++
   }
-  return { ok: true, queriesRun, mentionsUpserted }
+  // Enrich any mentions still missing sentiment/topics (this run's + any backlog). Fail-safe.
+  const enriched = await enrichUnenriched(
+    { queryRows, execute },
+    (prompt) => generateGroqInsight(prompt, { maxTokens: 500, systemPrompt: 'You are a precise social-media sentiment classifier. Output only JSON.' }),
+  )
+  return { ok: true, queriesRun, mentionsUpserted, enriched }
 })
