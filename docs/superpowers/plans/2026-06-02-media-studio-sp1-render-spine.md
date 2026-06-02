@@ -334,7 +334,7 @@ describe('buildTimelineFiltergraph — ducking', () => {
     // source bus c0 split → [c0] used in final mix + [sc0] feeds the sidechain key
     expect(fc).toContain('[c0]asplit=2[c0a][sc0]')
     // target bus c1 compressed keyed by [sc0]
-    expect(fc).toContain('[c1][sc0]sidechaincompress=threshold=-30:ratio=5:attack=50:release=300[d0]')
+    expect(fc).toContain('[c1][sc0]sidechaincompress=threshold=0.031623:ratio=5:attack=50:release=300[d0]')
     // final mix uses the post-split source [c0a] and the ducked target [d0], duration=longest + alimiter
     expect(fc).toContain('[c0a][d0]amix=inputs=2:normalize=0:duration=longest,alimiter=limit=0.95[mix]')
   })
@@ -396,6 +396,14 @@ export function duckRatioFromAmountDb(amountDb: number): number {
   return Math.min(20, Math.max(1, ratio))
 }
 
+/** ffmpeg sidechaincompress `threshold` is a LINEAR amplitude in [0.000977, 1],
+ * NOT dB. Convert the contract's threshold_db and clamp to ffmpeg's valid range. */
+export function duckThresholdLinear(thresholdDb: number): number {
+  const linear = Math.pow(10, thresholdDb / 20)
+  const clamped = Math.min(1, Math.max(0.000977, linear))
+  return Math.round(clamped * 1e6) / 1e6
+}
+
 export function buildTimelineFiltergraph(state: TimelineState): FiltergraphPlan {
   const acc = buildClipAndTrackChains(state)
   const activeTracks = state.tracks.filter((t) => !t.muted)
@@ -426,7 +434,7 @@ export function buildTimelineFiltergraph(state: TimelineState): FiltergraphPlan 
     const duckedLabel = `d${ruleIdx}`
     const ratio = duckRatioFromAmountDb(rule.amount_db)
     acc.chains.push(
-      `[${tgtLabel}][${scLabel}]sidechaincompress=threshold=${rule.threshold_db}` +
+      `[${tgtLabel}][${scLabel}]sidechaincompress=threshold=${duckThresholdLinear(rule.threshold_db)}` +
         `:ratio=${ratio}:attack=${rule.attack_ms}:release=${rule.release_ms}[${duckedLabel}]`
     )
     acc.busLabels[tgtK] = duckedLabel
@@ -1247,6 +1255,11 @@ export function duckRatioFromAmountDb(amountDb) {
   const mag = Math.abs(amountDb)
   const ratio = Math.round((1 + mag / 3) * 10) / 10
   return Math.min(20, Math.max(1, ratio))
+}
+export function duckThresholdLinear(thresholdDb) {
+  const linear = Math.pow(10, thresholdDb / 20)
+  const clamped = Math.min(1, Math.max(0.000977, linear))
+  return Math.round(clamped * 1e6) / 1e6
 }
 function buildClipAndTrackChains(state) {
   const acc = { inputs: [], chains: [], busLabels: [] }

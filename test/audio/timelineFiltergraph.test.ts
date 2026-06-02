@@ -95,7 +95,7 @@ describe('buildTimelineFiltergraph — per-track bus', () => {
   })
 })
 
-import { buildMasterRenderArgs, duckRatioFromAmountDb } from '~~/server/utils/audio/timelineFiltergraph'
+import { buildMasterRenderArgs, duckRatioFromAmountDb, duckThresholdLinear } from '~~/server/utils/audio/timelineFiltergraph'
 
 describe('duckRatioFromAmountDb', () => {
   it('is a documented monotonic map from attenuation magnitude to sidechain ratio', () => {
@@ -104,6 +104,14 @@ describe('duckRatioFromAmountDb', () => {
     expect(duckRatioFromAmountDb(-6)).toBe(3)
     expect(duckRatioFromAmountDb(0)).toBe(1)
     expect(duckRatioFromAmountDb(-100)).toBe(20) // clamped
+  })
+})
+
+describe('duckThresholdLinear', () => {
+  it('converts threshold_db to a clamped linear amplitude', () => {
+    expect(duckThresholdLinear(-30)).toBe(0.031623)
+    expect(duckThresholdLinear(0)).toBe(1)
+    expect(duckThresholdLinear(-200)).toBe(0.000977) // clamped to ffmpeg min
   })
 })
 
@@ -124,9 +132,31 @@ describe('buildTimelineFiltergraph — ducking', () => {
     // source bus c0 split → [c0] used in final mix + [sc0] feeds the sidechain key
     expect(fc).toContain('[c0]asplit=2[c0a][sc0]')
     // target bus c1 compressed keyed by [sc0]
-    expect(fc).toContain('[c1][sc0]sidechaincompress=threshold=-30:ratio=5:attack=50:release=300[d0]')
+    expect(fc).toContain('[c1][sc0]sidechaincompress=threshold=0.031623:ratio=5:attack=50:release=300[d0]')
     // final mix uses the post-split source [c0a] and the ducked target [d0], duration=longest + alimiter
     expect(fc).toContain('[c0a][d0]amix=inputs=2:normalize=0:duration=longest,alimiter=limit=0.95[mix]')
+  })
+})
+
+describe('buildTimelineFiltergraph — multi-rule ducking', () => {
+  it('re-splits one source across two targets without label collision', () => {
+    const s = tl({
+      tracks: [
+        { id: 'vo', name: 'VO', kind: 'voiceover', clips: [{ id: 'a', r2_key: 'k/a', timeline_start_sec: 0, source_out_sec: 5 }] },
+        { id: 'mus', name: 'M', kind: 'music', clips: [{ id: 'b', r2_key: 'k/b', timeline_start_sec: 0, source_out_sec: 30 }] },
+        { id: 'sfx', name: 'S', kind: 'sfx', clips: [{ id: 'c', r2_key: 'k/c', timeline_start_sec: 0, source_out_sec: 30 }] }
+      ],
+      ducking: [
+        { id: 'd1', source_track_id: 'vo', target_track_id: 'mus', amount_db: -12 },
+        { id: 'd2', source_track_id: 'vo', target_track_id: 'sfx', amount_db: -9 }
+      ]
+    })
+    const fc = buildTimelineFiltergraph(s).filterComplex
+    expect(fc).toContain('[c0]asplit=2[c0a][sc0]')
+    expect(fc).toContain('[c0a]asplit=2[c0aa][sc1]')
+    expect(fc).toContain('[c1][sc0]sidechaincompress=threshold=0.031623:ratio=5:attack=50:release=300[d0]')
+    expect(fc).toContain('[c2][sc1]sidechaincompress=threshold=0.031623:ratio=4:attack=50:release=300[d1]')
+    expect(fc).toContain('[c0aa][d0][d1]amix=inputs=3:normalize=0:duration=longest,alimiter=limit=0.95[mix]')
   })
 })
 
