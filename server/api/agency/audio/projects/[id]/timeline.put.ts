@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid timeline', data: { errors: parsed.error.issues.map(i => i.message) } })
   }
   const check = validateTimeline(parsed.data)
-  if (!check.ok) {
+  if (check.ok === false) {
     throw createError({ statusCode: 400, statusMessage: 'Invalid timeline', data: { errors: check.errors } })
   }
 
