@@ -99,14 +99,15 @@ async function ask() {
 
     <div v-else-if="answer" class="mt-4 rounded-lg bg-elevated p-4">
       <p class="text-sm text-default whitespace-pre-line">{{ answer.answer }}</p>
-      <button
-        type="button"
-        class="text-xs text-muted hover:text-default mt-3 inline-flex items-center gap-1"
+      <UButton
+        label="Show the numbers"
+        :icon="showNumbers ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+        variant="link"
+        color="neutral"
+        size="xs"
+        class="mt-3 px-0"
         @click="showNumbers = !showNumbers"
-      >
-        <UIcon :name="showNumbers ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" />
-        Show the numbers
-      </button>
+      />
       <div v-if="showNumbers" class="mt-3">
         <UTable :data="answer.grounding.channels" :columns="groundingColumns">
           <template #spend-cell="{ row }">{{ fmtCurrency(row.original.spend) }}</template>
