@@ -1,0 +1,162 @@
+// server/utils/audio/projects.ts — SOLE gateway to media_projects / media_timelines.
+// Mirrors assets.ts so a future client-portal surface (SP6) reuses it untouched.
+// Validation/duration math lives in the pure timelineSchema.ts; this file is the
+// DB boundary only.
+import { randomUUID } from 'crypto'
+import type { MediaProject, MediaTimeline } from '~~/app/types'
+import { queryOne, queryRows, transaction } from '~~/server/utils/db'
+import { computeDuration, type TimelineState } from '~~/server/utils/audio/timelineSchema'
+
+/** Pure: DB row (snake_case) → MediaProject (camelCase). */
+export function mapProjectRow(row: any): MediaProject {
+  return {
+    id: row.id,
+    clientId: row.client_id ?? null,
+    createdBy: row.created_by,
+    title: row.title ?? null,
+    mediaType: row.media_type,
+    status: row.status,
+    currentTimelineId: row.current_timeline_id ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  }
+}
+
+/** Pure: DB row (snake_case) → MediaTimeline (camelCase). */
+export function mapTimelineRow(row: any): MediaTimeline {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    version: row.version,
+    label: row.label ?? null,
+    state: row.state,
+    schemaVersion: row.schema_version,
+    createdBy: row.created_by,
+    createdAt: row.created_at
+  }
+}
+
+export interface CreateProjectInput {
+  createdBy: string
+  clientId: string | null
+  title: string | null
+  initialState: TimelineState
+}
+
+/** Insert a project + its v1 timeline in one transaction, then point
+ * current_timeline_id at the v1 row. Inside transaction(), use db.query()
+ * directly (a dedicated client) — never queryOne/execute (separate connection). */
+export async function createProject(
+  input: CreateProjectInput
+): Promise<{ project: MediaProject; timeline: MediaTimeline }> {
+  const projectId = randomUUID()
+  const timelineId = randomUUID()
+  const state = { ...input.initialState, duration_sec: computeDuration(input.initialState) }
+
+  return transaction(async (db) => {
+    const projRes = await db.query(
+      `INSERT INTO media_projects (id, client_id, created_by, title, media_type, status)
+       VALUES ($1, $2, $3, $4, 'audio', 'draft') RETURNING *`,
+      [projectId, input.clientId, input.createdBy, input.title]
+    )
+    const tlRes = await db.query(
+      `INSERT INTO media_timelines (id, project_id, version, state, schema_version, created_by)
+       VALUES ($1, $2, 1, $3, 1, $4) RETURNING *`,
+      [timelineId, projectId, JSON.stringify(state), input.createdBy]
+    )
+    const updRes = await db.query(
+      `UPDATE media_projects SET current_timeline_id = $1, updated_at = now()
+       WHERE id = $2 RETURNING *`,
+      [timelineId, projectId]
+    )
+    return {
+      project: mapProjectRow(updRes.rows[0]),
+      timeline: mapTimelineRow(tlRes.rows[0])
+    }
+  })
+}
+
+/** Project + its current timeline (the draft pointer). null if no such project. */
+export async function getProjectWithCurrentTimeline(
+  id: string
+): Promise<{ project: MediaProject; timeline: MediaTimeline | null } | null> {
+  const projectRow = await queryOne(`SELECT * FROM media_projects WHERE id = $1`, [id])
+  if (!projectRow) return null
+  const project = mapProjectRow(projectRow)
+  let timeline: MediaTimeline | null = null
+  if (project.currentTimelineId) {
+    const tlRow = await queryOne(`SELECT * FROM media_timelines WHERE id = $1`, [project.currentTimelineId])
+    timeline = tlRow ? mapTimelineRow(tlRow) : null
+  }
+  return { project, timeline }
+}
+
+/** List projects, optionally filtered by client. */
+export async function listProjects(clientId?: string): Promise<MediaProject[]> {
+  const where = clientId ? 'WHERE client_id = $1' : ''
+  const params = clientId ? [clientId] : []
+  // SP0: hard cap; pagination deferred (mirrors assets.ts ceiling)
+  const rows = await queryRows(
+    `SELECT * FROM media_projects ${where} ORDER BY updated_at DESC LIMIT 200`,
+    params
+  )
+  return rows.map(mapProjectRow)
+}
+
+/** Autosave: overwrite a draft timeline row's state in place, recomputing
+ * duration_sec into the persisted state. The caller (endpoint) is responsible
+ * for confirming the project is still in 'draft' status. */
+export async function saveDraftTimeline(timelineId: string, state: TimelineState): Promise<MediaTimeline> {
+  const persisted = { ...state, duration_sec: computeDuration(state) }
+  const row = await queryOne(
+    `UPDATE media_timelines SET state = $1 WHERE id = $2 RETURNING *`,
+    [JSON.stringify(persisted), timelineId]
+  )
+  if (!row) throw new Error(`timeline ${timelineId} not found`)
+  return mapTimelineRow(row)
+}
+
+export interface CreateVersionInput {
+  projectId: string
+  createdBy: string
+  label?: string | null
+}
+
+/** Duplicate-to-version: snapshot the project's current state into a new
+ * version (max+1) and repoint current_timeline_id at it. The new row becomes the
+ * editable draft; the prior row is frozen history. */
+export async function createVersion(input: CreateVersionInput): Promise<MediaTimeline> {
+  const newId = randomUUID()
+  return transaction(async (db) => {
+    const cur = await db.query(
+      `SELECT t.state AS state,
+              (SELECT MAX(version) FROM media_timelines WHERE project_id = $1) AS max_version
+       FROM media_projects p
+       JOIN media_timelines t ON t.id = p.current_timeline_id
+       WHERE p.id = $1`,
+      [input.projectId]
+    )
+    if (!cur.rows[0]) throw new Error(`project ${input.projectId} has no current timeline`)
+    const nextVersion = Number(cur.rows[0].max_version) + 1
+    const ins = await db.query(
+      `INSERT INTO media_timelines (id, project_id, version, label, state, schema_version, created_by)
+       VALUES ($1, $2, $3, $4, $5, 1, $6) RETURNING *`,
+      [newId, input.projectId, nextVersion, input.label ?? null,
+        JSON.stringify(cur.rows[0].state), input.createdBy]
+    )
+    await db.query(
+      `UPDATE media_projects SET current_timeline_id = $1, updated_at = now() WHERE id = $2`,
+      [newId, input.projectId]
+    )
+    return mapTimelineRow(ins.rows[0])
+  })
+}
+
+/** Version history for a project, newest-first. */
+export async function listVersions(projectId: string): Promise<MediaTimeline[]> {
+  const rows = await queryRows(
+    `SELECT * FROM media_timelines WHERE project_id = $1 ORDER BY version DESC`,
+    [projectId]
+  )
+  return rows.map(mapTimelineRow)
+}

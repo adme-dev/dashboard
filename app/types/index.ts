@@ -1434,3 +1434,34 @@ export interface AudioAsset {
   /** Short-lived per-channel variant download URLs (Phase 3 render tier). */
   variantUrls?: Record<string, string>
 }
+
+// --- Media Studio (Phase 1b SP0) ---
+// camelCase shapes returned by server/utils/audio/projects.ts mappers.
+
+export type MediaProjectStatus = 'draft' | 'in_review' | 'approved' | 'archived'
+
+export interface MediaProject {
+  id: string
+  clientId: string | null
+  createdBy: string
+  title: string | null
+  mediaType: 'audio' | 'av'
+  status: MediaProjectStatus
+  currentTimelineId: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MediaTimeline {
+  id: string
+  projectId: string
+  version: number
+  label: string | null
+  // The TimelineState contract lives in server/utils/audio/timelineSchema.ts.
+  // Typed as unknown here to avoid a server-util import in the shared app types;
+  // server code narrows it via TimelineStateSchema.
+  state: unknown
+  schemaVersion: number
+  createdBy: string
+  createdAt: string
+}
