@@ -1,6 +1,7 @@
 // server/utils/crm/meetingBridge.ts
 // Deterministic resolution of office-meeting guests → CRM targets, plus the
 // pure CRM-task payload builder. DB-touching helpers live below the pure block.
+import type { TASK_PRIORITIES } from './tasks'
 
 export interface CandidatePerson {
   person_id: string
@@ -104,4 +105,51 @@ export function rankTargets(input: {
     const bo = b.target_type === 'opportunity' ? 0 : 1
     return ao - bo || a.label.localeCompare(b.label)
   })
+}
+
+export interface ActionItemForBridge {
+  id: string
+  meeting_session_id: string
+  meeting_title: string
+  source_artifact_id: string | null
+  content: string
+  due_at: string | null
+}
+
+export interface CrmTaskPayload {
+  client_id: string
+  target_type: 'opportunity' | 'person' | 'company'
+  target_id: string
+  title: string
+  description: string
+  task_type: 'meeting'
+  priority: (typeof TASK_PRIORITIES)[number]
+  due_at: string | null
+}
+
+export function buildCrmTaskPayload(
+  actionItem: ActionItemForBridge,
+  target: { client_id: string, target_type: 'opportunity' | 'person' | 'company', target_id: string },
+  opts: { priority?: (typeof TASK_PRIORITIES)[number] } = {},
+): CrmTaskPayload {
+  const description = [
+    `Source: Office meeting "${actionItem.meeting_title}"`,
+    '',
+    actionItem.content,
+    '',
+    `Meeting ID: ${actionItem.meeting_session_id}`,
+    `Action item ID: ${actionItem.id}`,
+    actionItem.source_artifact_id ? `Artifact ID: ${actionItem.source_artifact_id}` : null,
+  ].filter(Boolean).join('\n')
+
+  return {
+    client_id: target.client_id,
+    target_type: target.target_type,
+    target_id: target.target_id,
+    title: actionItem.content.slice(0, 255),
+    description,
+    task_type: 'meeting',
+    priority: opts.priority ?? 'medium',
+    due_at: actionItem.due_at ?? null,
+  }
 }
