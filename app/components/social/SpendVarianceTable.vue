@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { BudgetEditTarget } from './SpendBudgetEditModal.vue'
+
 const props = defineProps<{
   items: Array<{
     platform: string
@@ -33,16 +35,29 @@ const emit = defineEmits<{
   (e: 'budget-updated'): void
 }>()
 
-const toast = useToast()
 const sortKey = ref<string>('spend')
 const sortDir = ref<'asc' | 'desc'>('desc')
 
-// Inline budget editing
-const editingKey = ref<string | null>(null)
-const editBudget = ref('')
-const editCommissionRate = ref('')
-const editRolling = ref(false)
-const saving = ref(false)
+// Budget edit modal
+const budgetModalOpen = ref(false)
+const budgetModalTarget = ref<BudgetEditTarget | null>(null)
+
+function openBudgetModal(item: typeof props.items[0]) {
+  budgetModalTarget.value = {
+    title: item.clientName,
+    subtitle: platformLabel(item.platform),
+    platform: item.platform,
+    spendIds: item.spendIds ?? [],
+    budget: item.budget,
+    spend: item.spend,
+    commission: item.commission,
+    commissionRate: item.commissionRate ?? null,
+    rolling: item.rolling ?? false,
+    lastSyncedAt: item.lastSyncedAt ?? null,
+    historySpendId: null // aggregated per-client row — no single-row history
+  }
+  budgetModalOpen.value = true
+}
 
 const hasBankData = computed(() => {
   if (!props.bankCharges?.connected) return false
@@ -137,58 +152,6 @@ const filtered = computed(() => {
 
 function itemKey(item: { platform: string; clientName: string }) {
   return `${item.platform}-${item.clientName}`
-}
-
-function startEdit(item: typeof props.items[0]) {
-  editingKey.value = itemKey(item)
-  editBudget.value = item.budget > 0 ? String(item.budget) : ''
-  editCommissionRate.value = (item.commissionRate ?? 0) > 0 ? String(item.commissionRate) : ''
-  editRolling.value = item.rolling || false
-  nextTick(() => {
-    const el = document.querySelector(`input[data-budget-edit="${editingKey.value}"]`) as HTMLInputElement
-    el?.select()
-  })
-}
-
-function cancelEdit() {
-  editingKey.value = null
-  editBudget.value = ''
-  editCommissionRate.value = ''
-  editRolling.value = false
-}
-
-async function saveBudget(item: typeof props.items[0]) {
-  const budget = parseFloat(editBudget.value)
-  if (isNaN(budget) || budget < 0) {
-    toast.add({ title: 'Invalid budget', description: 'Enter a valid non-negative number', color: 'error' })
-    return
-  }
-
-  const commRate = editCommissionRate.value ? parseFloat(editCommissionRate.value) : null
-  if (commRate != null && (isNaN(commRate) || commRate < 0 || commRate > 100)) {
-    toast.add({ title: 'Invalid commission rate', description: 'Enter a percentage between 0 and 100', color: 'error' })
-    return
-  }
-
-  const ids = item.spendIds
-  if (!ids?.length) {
-    toast.add({ title: 'Cannot update', description: 'No spend records linked', color: 'error' })
-    return
-  }
-
-  saving.value = true
-  try {
-    const body: any = { spendIds: ids, budgetAllocated: budget, rolling: editRolling.value }
-    if (commRate != null) body.commissionRate = commRate
-    await $fetch('/api/agency/social/spend/bulk-budget', { method: 'PATCH', body })
-    toast.add({ title: 'Budget updated', description: `${item.clientName} budget set to ${formatCurrency(budget)}`, color: 'success' })
-    editingKey.value = null
-    emit('budget-updated')
-  } catch (e: any) {
-    toast.add({ title: 'Error', description: e.data?.statusMessage || e.message, color: 'error' })
-  } finally {
-    saving.value = false
-  }
 }
 
 const STALE_MS = 24 * 60 * 60 * 1000
@@ -313,52 +276,12 @@ const totalColSpan = computed(() => hasBankData.value ? 9 : 8)
               <span>{{ platformLabel(item.platform) }}</span>
             </div>
           </td>
-          <!-- Budget cell — click to edit -->
+          <!-- Budget cell — click to open the budget editor modal -->
           <td class="py-2 px-3 text-right">
-            <div v-if="editingKey === itemKey(item)" class="flex flex-col items-end gap-1.5">
-              <div class="flex items-center gap-1">
-                <span class="text-xs text-muted">$</span>
-                <input
-                  v-model="editBudget"
-                  :data-budget-edit="itemKey(item)"
-                  type="number"
-                  min="0"
-                  step="100"
-                  placeholder="Budget"
-                  class="w-24 text-right text-sm rounded border border-default bg-default px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary"
-                  @keydown.enter="saveBudget(item)"
-                  @keydown.escape="cancelEdit"
-                />
-                <UButton size="xs" variant="soft" color="primary" icon="i-lucide-check" :loading="saving" @click="saveBudget(item)" />
-                <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-x" @click="cancelEdit" />
-              </div>
-              <div class="flex items-center gap-1">
-                <span class="text-xs text-muted">Commission</span>
-                <input
-                  v-model="editCommissionRate"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.5"
-                  placeholder="0"
-                  class="w-16 text-right text-sm rounded border border-default bg-default px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary"
-                  @keydown.enter="saveBudget(item)"
-                  @keydown.escape="cancelEdit"
-                />
-                <span class="text-xs text-muted">%</span>
-              </div>
-              <label class="flex items-center gap-1.5 text-xs text-muted cursor-pointer select-none">
-                <UCheckbox v-model="editRolling" />
-                <span>Rolling budget</span>
-                <UTooltip text="When enabled, this budget carries forward to future months automatically">
-                  <UIcon name="i-lucide-info" class="size-3 text-muted" />
-                </UTooltip>
-              </label>
-            </div>
-            <div v-else class="flex flex-col items-end gap-0.5">
+            <div class="flex flex-col items-end gap-0.5">
               <button
                 class="inline-flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
-                @click="startEdit(item)"
+                @click="openBudgetModal(item)"
               >
                 <span v-if="item.budget > 0">{{ formatCurrency(item.budget) }}</span>
                 <span v-else class="text-muted/50 text-xs">Set budget</span>
@@ -458,5 +381,12 @@ const totalColSpan = computed(() => hasBankData.value ? 9 : 8)
         </tr>
       </tfoot>
     </table>
+
+    <SocialSpendBudgetEditModal
+      v-model:open="budgetModalOpen"
+      :target="budgetModalTarget"
+      :month-progress="monthProgress"
+      @saved="$emit('budget-updated')"
+    />
   </div>
 </template>
