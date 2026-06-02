@@ -89,9 +89,9 @@ definePageMeta({
 
 useSeoMeta({
   title: 'Features — XeroFlow',
-  description: 'Explore 80+ features across work management, banner studio, creative production, financial operations, analytics, communication, AI intelligence, client portal, time tracking, briefs & proposals, and administration.',
+  description: 'Explore 90+ features across work management, sales & CRM, banner studio, creative production, financial operations, analytics, communication, AI intelligence, client portal, time tracking, briefs & proposals, and administration.',
   ogTitle: 'Features — XeroFlow',
-  ogDescription: 'Explore 80+ features across work management, banner studio, creative production, financial operations, analytics, communication, AI intelligence, client portal, time tracking, briefs & proposals, and administration.',
+  ogDescription: 'Explore 90+ features across work management, sales & CRM, banner studio, creative production, financial operations, analytics, communication, AI intelligence, client portal, time tracking, briefs & proposals, and administration.',
 })
 
 const categories = [
@@ -111,6 +111,23 @@ const categories = [
       { title: 'Groups & Subtasks', slug: 'groups-subtasks', icon: 'i-lucide-list-tree', description: 'Organize tasks into collapsible groups with nested subtasks for complex projects.' },
       { title: 'Templates', slug: 'templates', icon: 'i-lucide-copy', description: 'Save board configurations as templates. Spin up new projects in seconds.' },
       { title: 'Real-Time Updates', slug: 'real-time-sse', icon: 'i-lucide-radio', description: 'Live updates via SSE and Durable Objects — see changes from teammates instantly.' },
+    ]
+  },
+  {
+    title: 'Sales & CRM',
+    subtitle: 'Contacts, pipeline, scoring, and quotes',
+    icon: 'i-lucide-handshake',
+    iconBg: 'bg-teal-50 dark:bg-teal-500/10',
+    iconColor: 'text-teal-600',
+    features: [
+      { title: 'Contacts & Companies', slug: 'crm-contacts', icon: 'i-lucide-contact-round', description: 'A full contact and company database with linked relationships, a complete activity timeline, attached documents, and a logged history of every email, call, and note.' },
+      { title: 'Sales Pipeline', slug: 'crm-pipeline', icon: 'i-lucide-square-kanban', description: 'Track opportunities through customisable stages on a drag-and-drop board, with weighted, stage-based revenue forecasting that shows what is likely to close.' },
+      { title: 'Activities & Tasks', slug: 'crm-activities', icon: 'i-lucide-list-checks', description: 'Assign tasks with due dates and reminders against any contact or deal. A unified activity timeline captures every touchpoint automatically.' },
+      { title: 'Lead Scoring', slug: 'crm-scoring', icon: 'i-lucide-gauge', description: 'Deterministic lead grading from engagement, recency, and fit signals — so reps always know which leads are hot and which are going cold.' },
+      { title: 'Insights & Forecasting', slug: 'crm-insights', icon: 'i-lucide-trending-up', description: 'Pipeline analytics, conversion funnels, weighted revenue forecasts, and a rep leaderboard — the numbers that run your sales review.' },
+      { title: 'Saved Views & Export', slug: 'crm-saved-views', icon: 'i-lucide-bookmark', description: 'Save any filtered, sorted view of contacts or deals and switch between them in one click. Export any view to CSV for reporting.' },
+      { title: 'Duplicate Detection & Merge', slug: 'crm-dedupe', icon: 'i-lucide-git-merge', description: 'Automatic duplicate detection across contacts and companies, with a safe side-by-side merge that preserves every linked activity and note.' },
+      { title: 'Quote Generation', slug: 'crm-quotes', icon: 'i-lucide-file-signature', description: 'Turn an opportunity\'s line items into a quote in one click — atomic, race-safe, sequentially numbered, and ready to push to Xero.' },
     ]
   },
   {

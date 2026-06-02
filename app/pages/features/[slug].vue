@@ -132,6 +132,204 @@ interface Feature {
 }
 
 const features: Record<string, Feature> = {
+  // ─── Sales & CRM ──────────────────────────────────────────────
+  'crm-contacts': {
+    title: 'Contacts & Companies',
+    slug: 'crm-contacts',
+    icon: 'i-lucide-contact-round',
+    category: 'Sales & CRM',
+    categoryIcon: 'i-lucide-handshake',
+    categoryIconBg: 'bg-teal-50',
+    categoryIconColor: 'text-teal-600',
+    description: 'A full contact and company database — people and organisations, the relationships between them, and a complete, automatically captured history of every interaction.',
+    details: [
+      {
+        title: 'People and Companies, Linked',
+        content: 'Store every contact and company as a rich record, then link them the way the real world works — people belong to companies, companies have parent and subsidiary relationships, and contacts connect to the deals, tasks, and documents they touch. Open any record and you immediately see who they work with and what is in flight, instead of hunting across spreadsheets and inboxes.'
+      },
+      {
+        title: 'A Complete Activity Timeline',
+        content: 'Every email logged, call noted, task completed, stage change, and field edit lands on a single chronological timeline for the contact or company. Reps pick up a relationship mid-conversation without asking "where did we leave this?", and managers can audit the full history of an account at a glance.'
+      },
+      {
+        title: 'Communications Log & Documents',
+        content: 'Sent emails and inbound leads flow straight into the contact\'s communications log through the platform\'s comms bridge, so the record stays current without manual data entry. Attach proposals, contracts, and supporting files directly to the record, and they travel with the relationship — and surface in the client portal where you choose to share them.'
+      }
+    ]
+  },
+  'crm-pipeline': {
+    title: 'Sales Pipeline',
+    slug: 'crm-pipeline',
+    icon: 'i-lucide-square-kanban',
+    category: 'Sales & CRM',
+    categoryIcon: 'i-lucide-handshake',
+    categoryIconBg: 'bg-teal-50',
+    categoryIconColor: 'text-teal-600',
+    description: 'Track opportunities through customisable stages on a drag-and-drop board, with weighted revenue forecasting that shows what is actually likely to close.',
+    details: [
+      {
+        title: 'Drag-and-Drop Deal Stages',
+        content: 'Model your sales process as a set of customisable pipeline stages, then move opportunities through them on a Kanban-style board. Each deal carries its value, owner, expected close date, and linked contact, so the board is both a working view and an honest picture of where revenue sits today.'
+      },
+      {
+        title: 'Weighted Revenue Forecasting',
+        content: 'Every stage carries a win probability, so the pipeline rolls up into a weighted forecast rather than a wishful total. See committed versus best-case revenue, filter by owner or close date, and walk into a sales review with numbers you can defend instead of a gut feel.'
+      },
+      {
+        title: 'Stage Automation',
+        content: 'Moving a deal between stages can trigger follow-up tasks, score recalculation, and timeline entries automatically — so the next action is never lost when a deal advances. The process runs the rep, not the other way around.'
+      },
+      {
+        title: 'Line Items to Quote',
+        content: 'Build an opportunity up from line items, then generate a formatted quote from them in one click — atomic and race-safe, with sequential quote numbering — ready to push to Xero. The path from "interested" to "here is your quote" stays inside one tool.'
+      }
+    ]
+  },
+  'crm-activities': {
+    title: 'Activities & Tasks',
+    slug: 'crm-activities',
+    icon: 'i-lucide-list-checks',
+    category: 'Sales & CRM',
+    categoryIcon: 'i-lucide-handshake',
+    categoryIconBg: 'bg-teal-50',
+    categoryIconColor: 'text-teal-600',
+    description: 'Assign tasks with due dates and reminders against any contact or deal, and let a unified activity timeline capture every touchpoint automatically.',
+    details: [
+      {
+        title: 'Tasks Against Any Record',
+        content: 'Create a task — a call to make, a proposal to send, a contract to chase — and attach it to the contact, company, or opportunity it belongs to. Assign it to a teammate, set a due date and a reminder, and it shows up in their queue with the full context one click away.'
+      },
+      {
+        title: 'Nothing Goes Cold Silently',
+        content: 'Tasks carry due dates and reminders, and overdue work is surfaced rather than buried. The CRM is built so that a deal with no next step, or a reminder that has come due, gets attention — turning those signals into timely nudges instead of letting follow-ups quietly lapse.'
+      },
+      {
+        title: 'Automatic Touchpoint Capture',
+        content: 'Logged emails, notes, stage changes, and completed tasks all post to the record\'s activity timeline automatically. Reps spend their time selling rather than maintaining the CRM, and the history stays trustworthy because it is captured as work happens, not reconstructed afterwards.'
+      }
+    ]
+  },
+  'crm-scoring': {
+    title: 'Lead Scoring',
+    slug: 'crm-scoring',
+    icon: 'i-lucide-gauge',
+    category: 'Sales & CRM',
+    categoryIcon: 'i-lucide-handshake',
+    categoryIconBg: 'bg-teal-50',
+    categoryIconColor: 'text-teal-600',
+    description: 'Deterministic lead grading from engagement, recency, and fit signals — so reps always know which leads are hot, and which are quietly going cold.',
+    details: [
+      {
+        title: 'Transparent, Deterministic Scoring',
+        content: 'Leads are graded by a deterministic model that combines engagement, recency of activity, and fit — not an opaque black box. Because the formula is explainable, reps trust the score and managers can see exactly why one lead outranks another. The grade is a badge on every record and a sortable column in every view.'
+      },
+      {
+        title: 'Recency That Decays',
+        content: 'A lead that was hot last month is not hot today if nothing has happened since. Scores erode as activity goes stale, so the ranking reflects current reality. Hot leads rise to the top of the list and neglected ones visibly cool off — a prompt to act before the opportunity is gone.'
+      },
+      {
+        title: 'Drives Prioritisation Everywhere',
+        content: 'The score feeds saved views, the pipeline board, and reporting, so prioritisation is consistent across the whole CRM. Build a "hottest leads" view, sort a stage by score, or surface cooling accounts for a re-engagement push — all from the same honest signal.'
+      }
+    ]
+  },
+  'crm-insights': {
+    title: 'Insights & Forecasting',
+    slug: 'crm-insights',
+    icon: 'i-lucide-trending-up',
+    category: 'Sales & CRM',
+    categoryIcon: 'i-lucide-handshake',
+    categoryIconBg: 'bg-teal-50',
+    categoryIconColor: 'text-teal-600',
+    description: 'Pipeline analytics, conversion funnels, weighted revenue forecasts, and a rep leaderboard — the numbers that run your weekly sales review.',
+    details: [
+      {
+        title: 'Pipeline Analytics & Funnels',
+        content: 'See how deals move and where they stall: stage-by-stage conversion funnels, win rates, average deal size, and cycle time. Instead of guessing why the quarter is soft, you can point to the exact stage where opportunities leak and fix the process there.'
+      },
+      {
+        title: 'Weighted Revenue Forecast',
+        content: 'The forecast rolls every open opportunity up by stage probability into committed and best-case numbers, sliceable by owner and close date. It is the same weighted logic that drives the pipeline board, so the dashboard and the deals always agree.'
+      },
+      {
+        title: 'Rep Leaderboard',
+        content: 'A leaderboard ranks the team on the metrics that matter — deals won, revenue closed, activity volume — turning the CRM into a light, motivating scoreboard for the sales floor and a quick read on who needs support.'
+      }
+    ]
+  },
+  'crm-saved-views': {
+    title: 'Saved Views & Export',
+    slug: 'crm-saved-views',
+    icon: 'i-lucide-bookmark',
+    category: 'Sales & CRM',
+    categoryIcon: 'i-lucide-handshake',
+    categoryIconBg: 'bg-teal-50',
+    categoryIconColor: 'text-teal-600',
+    description: 'Save any filtered, sorted view of contacts or deals and switch between them in one click — then export any view to CSV for reporting.',
+    details: [
+      {
+        title: 'Your Views, One Click Away',
+        content: 'Filter and sort contacts, companies, or opportunities however you work — "my open deals closing this month", "hot leads in retail", "accounts with no activity in 30 days" — then save the view and return to it instantly. Each rep keeps the working set they need without rebuilding filters every morning.'
+      },
+      {
+        title: 'Built for the Whole Team',
+        content: 'Saved views make the CRM feel personal at scale. A media buyer, an account manager, and a sales lead each land on the slice of data that matters to them, all reading from the same single source of truth underneath.'
+      },
+      {
+        title: 'Export to CSV',
+        content: 'Any view exports to CSV with its current filters and columns intact — drop it into a board report, a spreadsheet model, or a client update without copy-pasting. The data you see is the data you get.'
+      }
+    ]
+  },
+  'crm-dedupe': {
+    title: 'Duplicate Detection & Merge',
+    slug: 'crm-dedupe',
+    icon: 'i-lucide-git-merge',
+    category: 'Sales & CRM',
+    categoryIcon: 'i-lucide-handshake',
+    categoryIconBg: 'bg-teal-50',
+    categoryIconColor: 'text-teal-600',
+    description: 'Automatic duplicate detection across contacts and companies, with a safe side-by-side merge that preserves every linked activity, task, and note.',
+    details: [
+      {
+        title: 'Catch Duplicates Automatically',
+        content: 'Leads arrive from ad forms, imports, and manual entry, and duplicates are inevitable. The CRM flags likely duplicate contacts and companies so the same person does not end up scattered across three half-complete records — keeping the database clean enough to trust.'
+      },
+      {
+        title: 'Safe, Lossless Merge',
+        content: 'Review suspected duplicates side by side, choose the surviving record and which field values to keep, and merge. Every linked activity, task, note, document, and deal is re-pointed to the surviving record — nothing is orphaned and no history is lost.'
+      },
+      {
+        title: 'Honest Data, Honest Metrics',
+        content: 'A clean database is the foundation for everything else — accurate scoring, trustworthy forecasts, and a duplicate rate you can actually measure and drive down over time. Dedupe is what keeps the rest of the CRM honest.'
+      }
+    ]
+  },
+  'crm-quotes': {
+    title: 'Quote Generation',
+    slug: 'crm-quotes',
+    icon: 'i-lucide-file-signature',
+    category: 'Sales & CRM',
+    categoryIcon: 'i-lucide-handshake',
+    categoryIconBg: 'bg-teal-50',
+    categoryIconColor: 'text-teal-600',
+    description: 'Turn an opportunity\'s line items into a formatted quote in one click — atomic, race-safe, sequentially numbered, and ready to push to Xero.',
+    details: [
+      {
+        title: 'Opportunity to Quote in One Click',
+        content: 'Build a deal up from line items as you scope it, then generate a quote from those items without re-keying anything. The pricing, the contact, and the line detail all carry over, so the quote is an extension of the deal rather than a separate document you maintain by hand.'
+      },
+      {
+        title: 'Atomic and Race-Safe',
+        content: 'Quote generation runs as a single atomic operation with sequential quote numbering, so two reps acting at once never collide or skip a number. The result is a clean, correctly numbered quote every time — the kind of reliability finance teams expect from a system of record.'
+      },
+      {
+        title: 'Straight Into Xero',
+        content: 'Quotes flow into the platform\'s Xero integration, ready to become invoices when the deal is won — closing the loop from pipeline to revenue inside one connected platform instead of bouncing between disconnected tools.'
+      }
+    ]
+  },
+
   // ─── Social Publishing ────────────────────────────────────────
   'social-calendar': {
     title: 'Content Calendar',
