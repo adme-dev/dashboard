@@ -1,6 +1,7 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
 import { collectClipKeys } from '~~/server/utils/audio/clipSources'
+import { TimelineStateSchema } from '~~/server/utils/audio/timelineSchema'
 import { getPresignedDownloadUrl, isStorageConfigured } from '~~/server/utils/storage'
 
 const PRESIGN_TTL = 60 * 60 // 1 hour, matches asset playback URLs
@@ -18,7 +19,13 @@ export default defineEventHandler(async (event) => {
   const sources: Record<string, string> = {}
   if (!res.timeline) return { sources }
 
-  for (const key of collectClipKeys(res.timeline)) {
+  // The gateway returns the MediaTimeline wrapper; the TimelineState lives in `.state`
+  // (typed unknown). Narrow it via the SP0 schema (mirrors render.post). An unparseable
+  // timeline yields empty sources — the editor then surfaces a load error.
+  const parsed = TimelineStateSchema.safeParse(res.timeline.state)
+  if (!parsed.success) return { sources }
+
+  for (const key of collectClipKeys(parsed.data)) {
     if (!isStorageConfigured()) { sources[key] = `/api/_uploads/${key}`; continue }
     try {
       sources[key] = await getPresignedDownloadUrl(key, PRESIGN_TTL)
