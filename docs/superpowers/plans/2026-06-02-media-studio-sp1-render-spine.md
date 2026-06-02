@@ -415,12 +415,15 @@ export function buildTimelineFiltergraph(state: TimelineState): FiltergraphPlan 
     const tgtLabel = acc.busLabels[tgtK]
     if (!srcLabel || !tgtLabel) continue
 
+    const ruleIdx = scCount++
     const keepLabel = `${srcLabel}a`
-    const scLabel = `sc${scCount++}`
+    const scLabel = `sc${ruleIdx}`
     acc.chains.push(`[${srcLabel}]asplit=2[${keepLabel}][${scLabel}]`)
     acc.busLabels[srcK] = keepLabel // the source stays in the final mix via its kept half
 
-    const duckedLabel = `d${tgtK}`
+    // rule-indexed ducked label (NOT tgtK-indexed) so two rules on the same target
+    // chain cleanly without label collision.
+    const duckedLabel = `d${ruleIdx}`
     const ratio = duckRatioFromAmountDb(rule.amount_db)
     acc.chains.push(
       `[${tgtLabel}][${scLabel}]sidechaincompress=threshold=${rule.threshold_db}` +
@@ -1290,10 +1293,10 @@ export function buildTimelineFiltergraph(state) {
     if (srcK == null || tgtK == null) continue
     const srcLabel = acc.busLabels[srcK]; const tgtLabel = acc.busLabels[tgtK]
     if (!srcLabel || !tgtLabel) continue
-    const keepLabel = `${srcLabel}a`; const scLabel = `sc${scCount++}`
+    const ruleIdx = scCount++; const keepLabel = `${srcLabel}a`; const scLabel = `sc${ruleIdx}`
     acc.chains.push(`[${srcLabel}]asplit=2[${keepLabel}][${scLabel}]`)
     acc.busLabels[srcK] = keepLabel
-    const duckedLabel = `d${tgtK}`; const ratio = duckRatioFromAmountDb(rule.amount_db)
+    const duckedLabel = `d${ruleIdx}`; const ratio = duckRatioFromAmountDb(rule.amount_db)
     acc.chains.push(`[${tgtLabel}][${scLabel}]sidechaincompress=threshold=${rule.threshold_db}:ratio=${ratio}:attack=${rule.attack_ms}:release=${rule.release_ms}[${duckedLabel}]`)
     acc.busLabels[tgtK] = duckedLabel
   }
