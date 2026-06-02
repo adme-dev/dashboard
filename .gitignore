@@ -44,3 +44,6 @@ server/uploads/
 
 # Git worktrees
 .worktrees/
+
+# Visual brainstorming companion
+.superpowers/
