@@ -123,7 +123,7 @@ async function submit() {
 </script>
 
 <template>
-  <UModal v-model:open="open" title="Create CRM task" :description="actionItem?.content">
+  <UModal v-model:open="open">
     <template #content>
       <div class="flex flex-col gap-4 p-4">
         <div>
