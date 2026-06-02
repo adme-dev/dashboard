@@ -79,9 +79,10 @@ function statusBadge(a: AudioAsset): { label: string, color: 'neutral' | 'info' 
         </div>
         <audio
           v-if="a.streamUrl"
+          :key="a.r2KeyMaster || a.id"
           :src="a.streamUrl"
           controls
-          preload="none"
+          preload="metadata"
           class="h-9 shrink-0"
         />
         <UBadge

@@ -21,7 +21,8 @@ function onMuGenerated(_asset: AudioAsset) {
 </script>
 
 <template>
-  <div class="max-w-3xl mx-auto p-6 space-y-8">
+  <div class="flex-1 min-h-0 overflow-y-auto">
+    <div class="max-w-3xl mx-auto p-6 space-y-8">
     <header class="space-y-1">
       <h1 class="text-2xl font-semibold tracking-tight">
         Audio Studio
@@ -56,5 +57,6 @@ function onMuGenerated(_asset: AudioAsset) {
         </div>
       </template>
     </UTabs>
+    </div>
   </div>
 </template>
