@@ -33,7 +33,17 @@ const { data, pending } = await useFetch<BlendedResponse>('/api/agency/analytics
 
 const hasData = computed(() => !pending.value && !!data.value && data.value.channels.length > 0)
 
-const columns = [
+import { presetColumnKeys, ALL_PRESET_SENTINEL, type BlendMetric } from '~~/app/utils/blendPresetColumns'
+
+interface BlendPreset {
+  id: string
+  label: string
+  description: string
+  metrics: BlendMetric[]
+  attributionModel: string
+}
+
+const ALL_COLUMNS = [
   { accessorKey: 'channel', header: 'Channel' },
   { accessorKey: 'spend', header: 'Spend' },
   { accessorKey: 'leads', header: 'Leads' },
@@ -44,6 +54,34 @@ const columns = [
   { accessorKey: 'roas', header: 'ROAS' },
   { accessorKey: 'sessions', header: 'Sessions' }
 ]
+
+const { data: presetData } = await useFetch<{ presets: BlendPreset[] }>('/api/agency/analytics/presets')
+
+const selectedPreset = ref<string>(ALL_PRESET_SENTINEL)
+const presetItems = computed(() => [
+  { label: 'All metrics', value: ALL_PRESET_SENTINEL },
+  ...(presetData.value?.presets ?? []).map(p => ({ label: p.label, value: p.id }))
+])
+
+const activePreset = computed<BlendPreset | null>(() =>
+  selectedPreset.value === ALL_PRESET_SENTINEL
+    ? null
+    : presetData.value?.presets.find(p => p.id === selectedPreset.value) ?? null
+)
+
+const ATTRIBUTION_LABELS: Record<string, string> = {
+  last: 'Last-click attribution',
+  linear: 'Linear attribution',
+  position: 'Position-based attribution'
+}
+const attributionCaption = computed(() =>
+  activePreset.value ? (ATTRIBUTION_LABELS[activePreset.value.attributionModel] ?? null) : null
+)
+
+const visibleKeys = computed(() =>
+  presetColumnKeys(activePreset.value ? activePreset.value.metrics : ALL_PRESET_SENTINEL)
+)
+const columns = computed(() => ALL_COLUMNS.filter(c => visibleKeys.value.includes(c.accessorKey)))
 
 function fmtMoney(v: number | null): string {
   return v === null ? '—' : fmtCurrency(v)
@@ -69,12 +107,24 @@ function deltaClass(metric: ComparedMetric): string {
 <template>
   <UCard v-if="hasData">
     <template #header>
-      <div class="flex items-center gap-2">
-        <UIcon name="i-lucide-layers" class="text-primary" />
-        <span class="font-semibold">Blended Channels</span>
-        <UTooltip text="Spend, GA4 sessions and owned leads blended onto one canonical-channel axis. Conversions & ROAS are platform-reported (each platform's own counting), not deduplicated cross-platform.">
-          <UIcon name="i-lucide-info" class="text-muted" />
-        </UTooltip>
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-layers" class="text-primary" />
+          <span class="font-semibold">Blended Channels</span>
+          <UTooltip text="Spend, GA4 sessions and owned leads blended onto one canonical-channel axis. Conversions & ROAS are platform-reported (each platform's own counting), not deduplicated cross-platform.">
+            <UIcon name="i-lucide-info" class="text-muted" />
+          </UTooltip>
+        </div>
+        <div class="flex flex-col items-end">
+          <USelectMenu
+            v-model="selectedPreset"
+            :items="presetItems"
+            value-key="value"
+            size="xs"
+            class="w-48"
+          />
+          <span v-if="attributionCaption" class="text-xs text-muted mt-1">{{ attributionCaption }}</span>
+        </div>
       </div>
     </template>
 
