@@ -17,8 +17,9 @@ Phase 1b (the audio timeline editor) is too large for one spec. It decomposes in
 - **SP3 — Editor affordances** — per-track hide/lock/mute, auto-ducking duck-amount control, transcript-driven VO editing, per-segment history/2-takes, render-status indicator.
 - **SP4 — Model selector + governance** *(parallel)* — audio capability-bucket picker, per-model invocation contracts, live-endpoint verification, audit/redaction/rollback.
 - **SP5 — Hygiene track (deferred)** — Brand Kit, folders/versioning, ad-cleared badge.
+- **SP6 — Client-portal marketplace surface + per-tenant entitlement + cost metering/caps + billing tie-in** *(launch-gating for any client-facing release)* — the enterprise-defining slice. Exposes the studio to dealers via the existing client portal (`requireClientAuth`, tenant-scoped to `client.clientId`, Social-Suite portal precedent), behind a per-client plugin entitlement, with **per-tenant cost metering + pre-generation estimate + hard caps**. See §12.
 
-Build order: `0 → 1 → 2 → 3`, with `4` parallel after `0`, `5` deferred.
+Build order: `0 → 1 → 2 → 3`, with `4` parallel after `0`, `5` deferred. **SP6 gates client-facing launch** and is not required for the agency-internal tool, but its load-bearing decisions (tenant scoping, cost attribution) are honoured from SP0 onward so it lands additively, not as a rewrite.
 
 **The timeline JSON is the contract between the editing layer (SP2) and the render layer (SP1).** Designing it first — and co-designing it against SP1's filtergraph needs (its first real consumer) — is what lets the model roster and the editor churn freely without destabilising each other. Getting tenancy, versioning, audit, and a video-forward-compat path wrong here is the most expensive retrofit in the whole phase, so they are baked in from day one.
 
@@ -88,6 +89,7 @@ Ownership chain: **Project → versioned Timeline → Render jobs.** Clips are `
 | `channels` | TEXT[] NOT NULL DEFAULT `'{}'` | requested profiles (radio/tiktok/meta) |
 | `status` | TEXT NOT NULL DEFAULT `'queued'` | CHECK (`'queued','rendering','done','failed'`) |
 | `variants` | JSONB NOT NULL DEFAULT `'{}'::jsonb` | channel→R2 key (mirrors `audio_assets.variants`) |
+| `cost_cents` | INTEGER NULL | render cost attribution — additive seam for SP6 per-tenant metering (mirrors `audio_assets.cost_cents`); written by the SP1 Worker, NULL until then |
 | `error` | TEXT NULL | |
 | `requested_by` | UUID NOT NULL | |
 | `created_at` / `updated_at` | TIMESTAMPTZ DEFAULT `now()` | |
@@ -228,3 +230,16 @@ The table shape does not change for video — JSONB absorbs the additions, gated
 - **`computeDuration` and `source_out_sec: null`** — true clip length needs the decoded source duration, which the contract layer doesn't have. SP2 supplies decoded durations from the audio engine; SP0's helper documents that a null `source_out_sec` yields a lower-bound duration until then. Not a blocker — the render (SP1) reads source length from the file directly.
 - **SP4 governance is net-new** (see §2) — flag for the SP4 spec, not SP0.
 - **LUFS targets** remain tunable (`profiles.ts`), per the parent brief §8.
+
+---
+
+## 12. Product direction — client-portal marketplace plugin (SP6, recorded 2026-06-02)
+
+Decided this session: the Media Studio is intended to ship as a **client-portal marketplace plugin / subscription** — dealers self-serve generation/editing/render through the existing portal, behind a per-client entitlement. This elevates the target from "agency-internal tool" toward white-label SaaS. Implications captured so the near-term slices stay compatible:
+
+- **Tenant isolation is the portal boundary.** No SP0 schema change — `media_projects.client_id` already scopes per tenant, and `requireClientAuth` (scoped to `client.clientId`, Social-Suite portal precedent) is the isolation gate. SP6 adds portal-facing read/write endpoints; SP0's agency endpoints are unaffected.
+- **Per-tenant cost governance is promoted from deferred to launch-gating.** Coupling recurring revenue to real marginal AI cost (per-generation credits + Container CPU per render) means a flat "unlimited" subscription is an unbounded-cost trap. SP6 owns metered usage / credit bundles / hard caps + a pre-generation cost estimate. **Seam honoured now:** `audio_assets.cost_cents` (generation) already exists; SP0 adds `media_render_jobs.cost_cents` (render) so end-to-end per-tenant cost is attributable without a retrofit.
+- **Licensing becomes a launch gate, not a someday-decision.** Once a dealer redistributes the audio directly, the unresolved owned-vs-proprietary music thesis (parent brief §8) blocks client-facing launch. Resolve before SP6 ships; does not block SP0–SP3 internal work.
+- **Brand Kit enforcement + approval gates (SP3/SP5) stop being optional** — self-serve AI by non-experts needs guardrails before it's client-facing.
+
+SP6's pricing/billing specifics (flat vs credits vs metered; Xero vs Stripe; entitlement schema) are deliberately deferred to its own spec → plan cycle.
