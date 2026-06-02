@@ -107,6 +107,26 @@
           </div>
         </div>
       </UCard>
+
+      <!-- Analytics data export -->
+      <UCard>
+        <div class="flex items-start gap-4">
+          <div class="w-12 h-12 bg-emerald-100 dark:bg-emerald-500/10 rounded-xl flex items-center justify-center">
+            <UIcon name="i-lucide-database" class="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <div class="flex-1">
+            <h3 class="font-semibold">Analytics data export</h3>
+            <p class="text-sm text-muted mt-1">
+              Mint API tokens to pull the canonical analytics fact into a warehouse or share with clients.
+            </p>
+            <div class="mt-4">
+              <UButton to="/settings/integrations/analytics-export" variant="solid" size="sm">
+                Manage
+              </UButton>
+            </div>
+          </div>
+        </div>
+      </UCard>
     </div>
   </div>
 </template>

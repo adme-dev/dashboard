@@ -2482,6 +2482,102 @@ const features: Record<string, Feature> = {
     ]
   },
 
+  'analytics-ask': {
+    title: 'Ask Your Data',
+    slug: 'analytics-ask',
+    icon: 'i-lucide-sparkles',
+    category: 'Analytics & Reporting',
+    categoryIcon: 'i-lucide-chart-area',
+    categoryIconBg: 'bg-cyan-50',
+    categoryIconColor: 'text-cyan-600',
+    description: 'Ask a plain-English question about any client\'s performance and get a straight answer — grounded only in your real numbers, never invented.',
+    details: [
+      {
+        title: 'Plain questions, real answers',
+        content: 'Type a question the way you would ask a colleague — "which channel had the best cost per lead?" or "where should we shift budget?" — and get a concise, specific answer back. It reads the same filters you are already looking at, so the answer is always about the client and date range on screen.'
+      },
+      {
+        title: 'Grounded in your numbers, not guesses',
+        content: 'Every answer is built only from your actual per-channel spend, leads, conversions and revenue for the period. The assistant is instructed to use those figures and nothing else, so it cites concrete numbers and says so plainly when the data does not contain an answer — no confident hallucinations.'
+      },
+      {
+        title: 'Show the numbers',
+        content: 'One click expands the exact per-channel table the answer was based on, so you can sanity-check the claim before you repeat it to a client. The reasoning is transparent rather than a black box.'
+      }
+    ]
+  },
+
+  'analytics-benchmarks': {
+    title: 'Portfolio Benchmarks',
+    slug: 'analytics-benchmarks',
+    icon: 'i-lucide-gauge',
+    category: 'Analytics & Reporting',
+    categoryIcon: 'i-lucide-chart-area',
+    categoryIconBg: 'bg-cyan-50',
+    categoryIconColor: 'text-cyan-600',
+    description: 'See exactly where a client sits against the rest of your book — engagement, conversion rate, CPL and CPA — as plain percentile rankings.',
+    details: [
+      {
+        title: 'Where does this client really stand?',
+        content: 'For the selected client, each key metric is shown against the portfolio: the client value, the portfolio median, and a percentile badge like "Top 22%". It is the line an account manager actually says out loud, backed by the whole book rather than a gut feel.'
+      },
+      {
+        title: 'Direction-aware, so good always reads as good',
+        content: 'Engagement and conversion rate are higher-is-better; cost per lead and cost per acquisition are lower-is-better. The ranking understands the difference, so a low CPL correctly shows as top-of-class rather than bottom — no misleading badges.'
+      },
+      {
+        title: 'An agency-wide leaderboard',
+        content: 'With no client selected, the same data becomes a sortable leaderboard across every client, so you can spot which accounts are leading and which are lagging on any metric in seconds — the view that runs your internal performance review.'
+      }
+    ]
+  },
+
+  'analytics-presets': {
+    title: 'Blend Presets',
+    slug: 'analytics-presets',
+    icon: 'i-lucide-sliders-horizontal',
+    category: 'Analytics & Reporting',
+    categoryIcon: 'i-lucide-chart-area',
+    categoryIconBg: 'bg-cyan-50',
+    categoryIconColor: 'text-cyan-600',
+    description: 'One-click views over the blended cross-channel table, so the right metrics are always a single selection away.',
+    details: [
+      {
+        title: 'The view you need, in one click',
+        content: 'The blended channel table can show everything at once, which is rarely what you want in a review. Presets — paid channel mix, last-click, blended ROAS, organic vs paid, position-based lead credit — instantly narrow the table to the metrics that matter for that conversation.'
+      },
+      {
+        title: 'Named, reusable, consistent',
+        content: 'Each preset is a saved definition rather than ad-hoc fiddling, so the same view looks the same every time and across every client. Switching back to all metrics is always one selection away.'
+      }
+    ]
+  },
+
+  'analytics-export-api': {
+    title: 'Analytics Export API',
+    slug: 'analytics-export-api',
+    icon: 'i-lucide-database',
+    category: 'Analytics & Reporting',
+    categoryIcon: 'i-lucide-chart-area',
+    categoryIconBg: 'bg-cyan-50',
+    categoryIconColor: 'text-cyan-600',
+    description: 'Mint scoped bearer tokens to pull the canonical analytics fact into a warehouse or share with a client — revocable at any time.',
+    details: [
+      {
+        title: 'Your data, on tap',
+        content: 'A token-authenticated export endpoint serves the same canonical daily fact the dashboards are built on, as CSV or JSON. Point a warehouse job at it, schedule a nightly pull, or hand a client a read-only feed — the shape is stable and documented.'
+      },
+      {
+        title: 'Scoped and revocable',
+        content: 'Each token is minted with a clear label and a scope: agency-wide across every client, or locked to a single client who should only ever see their own data. The plaintext token is shown exactly once at creation and only its hash is stored, so it can never leak from the dashboard later.'
+      },
+      {
+        title: 'Full control, no surprises',
+        content: 'Every token is listed with its label, scope and creation date, and any token can be revoked in one click — instantly cutting off a warehouse job or a former client without disturbing the others.'
+      }
+    ]
+  },
+
   // ─── Communication (additional) ─────────────────────────────────
   'link-previews': {
     title: 'Link Previews',

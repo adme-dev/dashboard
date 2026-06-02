@@ -128,7 +128,26 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    return { window: { startDate, endDate }, clientCount: metricsByClient.size, metrics }
+    // Per-client leaderboard — only the no-client (agency-wide) view consumes it,
+    // so skip the extra name lookup and payload entirely when a client is selected.
+    let clients: Array<{ clientId: string, clientName: string, metrics: ClientMetrics }> = []
+    if (!clientId) {
+      const ids = [...metricsByClient.keys()]
+      const nameRows = ids.length
+        ? await queryRows<{ id: string, name: string }>(
+            `SELECT id::text AS id, name FROM agency_clients WHERE id = ANY($1::uuid[])`,
+            [ids]
+          )
+        : []
+      const nameById = new Map(nameRows.map(r => [r.id, r.name]))
+      clients = ids.map(id => ({
+        clientId: id,
+        clientName: nameById.get(id) ?? 'Unknown client',
+        metrics: metricsByClient.get(id)!
+      }))
+    }
+
+    return { window: { startDate, endDate }, clientCount: metricsByClient.size, metrics, clients }
   } catch (error) {
     console.error('Internal benchmarks failed:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to compute internal benchmarks' })

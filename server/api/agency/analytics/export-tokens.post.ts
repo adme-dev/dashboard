@@ -16,6 +16,9 @@ export default defineEventHandler(async (event) => {
   if (!label) {
     throw createError({ statusCode: 400, statusMessage: 'label is required' })
   }
+  if (label.length > 100) {
+    throw createError({ statusCode: 400, statusMessage: 'label must be under 100 characters' })
+  }
 
   const token = generateExportToken()
   const tokenHash = await sha256Hex(token)
