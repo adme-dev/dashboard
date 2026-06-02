@@ -13,8 +13,9 @@ export interface MentionRow {
 export function sentimentSplit(rows: MentionRow[]): { positive: number; neutral: number; negative: number; unknown: number } {
   const out = { positive: 0, neutral: 0, negative: 0, unknown: 0 }
   for (const r of rows) {
-    const s = (r.sentiment ?? 'unknown') as keyof typeof out
-    if (s in out) out[s]++; else out.unknown++
+    const s = r.sentiment ?? 'unknown'
+    if (s === 'positive' || s === 'neutral' || s === 'negative') out[s]++
+    else out.unknown++
   }
   return out
 }
