@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rankTargets, normalizeEmail } from '~~/server/utils/crm/meetingBridge'
+import { rankTargets, normalizeGuestEmail } from '~~/server/utils/crm/meetingBridge'
 import type { CandidatePerson, CandidateOpp } from '~~/server/utils/crm/meetingBridge'
 
 const person = (over: Partial<CandidatePerson> = {}): CandidatePerson => ({
@@ -10,9 +10,9 @@ const opp = (over: Partial<CandidateOpp> = {}): CandidateOpp => ({
   updated_at: '2026-06-01T00:00:00.000Z', ...over,
 })
 
-describe('normalizeEmail', () => {
+describe('normalizeGuestEmail', () => {
   it('trims and lowercases', () => {
-    expect(normalizeEmail('  Jane@ACME.com ')).toBe('jane@acme.com')
+    expect(normalizeGuestEmail('  Jane@ACME.com ')).toBe('jane@acme.com')
   })
 })
 

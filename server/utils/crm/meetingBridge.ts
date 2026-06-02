@@ -37,7 +37,7 @@ export interface TargetProposal extends TargetRef {
   alternatives: TargetRef[]
 }
 
-export function normalizeEmail(s: string): string {
+export function normalizeGuestEmail(s: string): string {
   return s.trim().toLowerCase()
 }
 
@@ -85,12 +85,12 @@ export function rankTargets(input: {
 
     let primary: TargetRef
     const alternatives: TargetRef[] = []
-    if (rankedOpps.length) {
-      const [best, ...rest] = rankedOpps
+    const best = rankedOpps[0]
+    if (best) {
       primary = { client_id: p.client_id, target_type: 'opportunity', target_id: best.opportunity_id, label: best.name }
       alternatives.push(personRef)
       if (companyRef) alternatives.push(companyRef)
-      for (const o of rest) {
+      for (const o of rankedOpps.slice(1)) {
         alternatives.push({ client_id: p.client_id, target_type: 'opportunity', target_id: o.opportunity_id, label: o.name })
       }
     } else {
