@@ -1,0 +1,17 @@
+name = "crm-cron"
+main = "src/index.ts"
+compatibility_date = "2025-12-01"
+
+# Hourly. Each Pages endpoint self-gates + is idempotent (reminders fire once via
+# reminded_at; decay only touches scores >20h old; dormancy is a no-op once moved).
+[triggers]
+crons = [
+  "0 * * * *"   # CRM task reminders + lead-score decay + lifecycle dormancy
+]
+
+[vars]
+APP_BASE_URL = "https://agency-dashboard-6cm.pages.dev"
+
+# CRON_SECRET is a secret, not a var — must match the Pages project's CRON_SECRET
+# so the /api/cron/crm-* endpoints accept the x-cron-secret header:
+#   wrangler secret put CRON_SECRET   (run inside this dir)
