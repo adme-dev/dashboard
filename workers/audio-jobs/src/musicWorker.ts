@@ -6,11 +6,12 @@
 import { queryOne, execute } from './db'
 import { renderVariants, type RenderEnv } from './renderVariants'
 
-// ⚠️ VERIFY at deploy: exact AI.run string for the MiniMax music model on
-// Workers AI (doc path is `minimax/music-2.6`; partner models are typically
-// addressed `@cf/<provider>/<model>`). And confirm the response field carrying
-// the audio URL — we probe the common shapes below.
-export const MUSIC_MODEL = '@cf/minimax/music-2.6'
+// MiniMax partner models on Workers AI use the bare `provider/model` id — NOT
+// the `@cf/...` prefix. `@cf/minimax/music-2.6` returns "5007: No such model".
+// Verified live 2026-06-02 against developers.cloudflare.com/ai/models/minimax/
+// music-2.6/ (env.AI.run('minimax/music-2.6', ...) → { result: { audio: <URL> } },
+// which extractAudioUrl probes below).
+export const MUSIC_MODEL = 'minimax/music-2.6'
 
 export interface MusicJobBody {
   assetId: string
