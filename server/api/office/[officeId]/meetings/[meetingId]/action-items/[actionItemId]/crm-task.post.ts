@@ -9,7 +9,9 @@ import { ensureOfficeMeetingArtifactsTables } from '~~/server/utils/officeMeetin
 import {
   findMeetingCrmCandidates, rankTargets, convertActionItemToCrmTask, AlreadyConvertedError,
 } from '~~/server/utils/crm/meetingBridge'
-import type { OfficeMemberRow } from '~~/app/types/office'
+import type { OfficeMemberRow, OfficeMeetingActionItemRow } from '~~/app/types/office'
+
+type ActionItemWithMeetingTitle = OfficeMeetingActionItemRow & { meeting_title: string }
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -36,7 +38,7 @@ export default defineEventHandler(async (event) => {
   const body = Body.parse(await readBody(event))
   await ensureOfficeMeetingArtifactsTables()
 
-  const actionItem = await queryOne<any>(
+  const actionItem = await queryOne<ActionItemWithMeetingTitle>(
     `SELECT omai.*, oms.title AS meeting_title
      FROM office_meeting_action_items omai
      JOIN office_meeting_sessions oms ON oms.id = omai.meeting_session_id
