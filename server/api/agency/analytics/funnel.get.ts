@@ -86,6 +86,10 @@ export default defineEventHandler(async (event) => {
   return {
     ...funnel,
     comparison: buildComparison(funnel.totals, prevFunnel.totals),
+    // Raw previous-period totals for the agency funnel view (AnalyticsFunnelChart),
+    // which computes its own deltas via funnelView. Additive — `comparison` stays
+    // for any existing consumer.
+    previous: { totals: prevFunnel.totals },
     hasGa4: current.ga4RowCount > 0
   }
 })
