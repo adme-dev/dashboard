@@ -1,5 +1,6 @@
 <!-- app/components/agency/BlendedPanel.client.vue -->
 <script setup lang="ts">
+import { presetColumnKeys, ALL_PRESET_SENTINEL, type BlendMetric } from '~~/app/utils/blendPresetColumns'
 // Blended cross-channel metrics by canonical channel (Meta + Google + GA4).
 // clientId is optional — omit for an agency-wide blend.
 const props = defineProps<{ startDate: string, endDate: string, clientId?: string | null }>()
@@ -32,8 +33,6 @@ const { data, pending } = await useFetch<BlendedResponse>('/api/agency/analytics
 })
 
 const hasData = computed(() => !pending.value && !!data.value && data.value.channels.length > 0)
-
-import { presetColumnKeys, ALL_PRESET_SENTINEL, type BlendMetric } from '~~/app/utils/blendPresetColumns'
 
 interface BlendPreset {
   id: string
@@ -71,8 +70,10 @@ const activePreset = computed<BlendPreset | null>(() =>
 
 const ATTRIBUTION_LABELS: Record<string, string> = {
   last: 'Last-click attribution',
+  first: 'First-click attribution',
   linear: 'Linear attribution',
-  position: 'Position-based attribution'
+  position: 'Position-based attribution',
+  time_decay: 'Time-decay attribution'
 }
 const attributionCaption = computed(() =>
   activePreset.value ? (ATTRIBUTION_LABELS[activePreset.value.attributionModel] ?? null) : null
