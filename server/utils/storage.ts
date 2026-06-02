@@ -7,6 +7,7 @@
 
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { FetchHttpHandler } from '@smithy/fetch-http-handler'
 import { randomUUID } from 'crypto'
 import { promises as fs } from 'fs'
 import { join, dirname } from 'path'
@@ -33,7 +34,14 @@ function getR2Client(): S3Client {
     credentials: {
       accessKeyId: R2_ACCESS_KEY_ID,
       secretAccessKey: R2_SECRET_ACCESS_KEY
-    }
+    },
+    // The Cloudflare Workers runtime (Nitro's unenv) does NOT implement
+    // node:https.request, so the SDK's default node-http-handler throws
+    // "[unenv] https.request is not implemented yet!" on every PutObject/Get/etc.
+    // Force the fetch-based handler — fetch is native in workerd (and Node 18+),
+    // so this works in both prod and local dev. Presigning never hit this (it
+    // makes no HTTP call), which is why uploads 500'd while stream URLs worked.
+    requestHandler: new FetchHttpHandler()
   })
 }
 
