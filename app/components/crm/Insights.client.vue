@@ -40,6 +40,28 @@ const { data: perf } = useFetch<{ items: PerfRow[] }>('/api/crm/analytics/perfor
   default: () => ({ items: [] }),
 })
 
+// CRM adoption — instruments the Phase 1–3 success metrics (P4.0b), agency-only.
+interface Adoption {
+  oppTaskCoveragePct: number
+  peopleScoredPct: number
+  savedViewsPerUser: number
+  duplicateRatePct: number
+  raw: { activeOpps: number, activeOppsWithOpenTask: number, people: number, peopleWithScore: number, views: number, viewUsers: number, contacts: number, merges: number }
+}
+const { data: adoption } = useFetch<Adoption>('/api/crm/analytics/adoption', {
+  query: computed(() => ({ client_id: clientId.value })), watch: [clientId],
+  default: () => ({ oppTaskCoveragePct: 0, peopleScoredPct: 0, savedViewsPerUser: 0, duplicateRatePct: 0, raw: { activeOpps: 0, activeOppsWithOpenTask: 0, people: 0, peopleWithScore: 0, views: 0, viewUsers: 0, contacts: 0, merges: 0 } }),
+})
+const adoptionCards = computed(() => {
+  const a = adoption.value
+  return [
+    { label: 'Open deals with a next step', value: `${a.oppTaskCoveragePct}%`, sub: `${a.raw.activeOppsWithOpenTask}/${a.raw.activeOpps} have an open task`, icon: 'i-lucide-list-checks' },
+    { label: 'People scored', value: `${a.peopleScoredPct}%`, sub: `${a.raw.peopleWithScore}/${a.raw.people} contacts`, icon: 'i-lucide-gauge' },
+    { label: 'Saved views / user', value: `${a.savedViewsPerUser}`, sub: `${a.raw.views} views · ${a.raw.viewUsers} ${a.raw.viewUsers === 1 ? 'user' : 'users'}`, icon: 'i-lucide-bookmark' },
+    { label: 'Duplicate rate', value: `${a.duplicateRatePct}%`, sub: `${a.raw.merges} merged away`, icon: 'i-lucide-git-merge' },
+  ]
+})
+
 const money = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
 const pct = (n: number) => `${Math.round(n * 100)}%`
 
@@ -68,6 +90,25 @@ const perfColumns = [
       <p class="text-sm text-muted">Cycle-time metrics reflect stage changes recorded from when this feature shipped.</p>
       <USelectMenu v-model="period" :items="periodItems" value-key="value" size="sm" class="w-40" />
     </div>
+
+    <UCard>
+      <template #header>
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-sm font-medium">CRM adoption</span>
+          <span class="text-xs text-muted">How thoroughly the team is using the CRM</span>
+        </div>
+      </template>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div v-for="c in adoptionCards" :key="c.label" class="flex items-start justify-between">
+          <div>
+            <p class="text-xs text-muted">{{ c.label }}</p>
+            <p class="text-2xl font-bold tracking-tight mt-1">{{ c.value }}</p>
+            <p class="text-xs text-muted mt-0.5">{{ c.sub }}</p>
+          </div>
+          <UIcon :name="c.icon" class="size-5 text-muted" />
+        </div>
+      </div>
+    </UCard>
 
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
       <UCard v-for="c in cards" :key="c.label">
