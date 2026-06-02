@@ -18,6 +18,7 @@ const title = computed(() => props.record ? 'Edit opportunity' : 'New opportunit
         @cancel="emit('update:open', false)"
       />
       <template v-if="record?.id">
+        <CrmAiSuggestions :client-id="clientId" :opportunity-id="record.id" />
         <USeparator class="my-4" />
         <CrmLineItems :client-id="clientId" :opportunity="record" />
         <USeparator class="my-4" />
