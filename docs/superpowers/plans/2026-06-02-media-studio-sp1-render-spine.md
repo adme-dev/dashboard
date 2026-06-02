@@ -1252,10 +1252,10 @@ export function curveToken(curve) {
   if (curve === 'log') return 'log'
   return 'tri'
 }
-function computeDuration(state) {
+function computeDuration(state, sourceDurations = {}) {
   let max = 0
   for (const track of state.tracks) for (const clip of track.clips) {
-    const end = clip.source_out_sec ?? null
+    const end = clip.source_out_sec ?? sourceDurations[clip.id] ?? null
     const clipEnd = end == null ? clip.timeline_start_sec : clip.timeline_start_sec + (end - clip.source_in_sec)
     if (clipEnd > max) max = clipEnd
   }
