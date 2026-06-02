@@ -37,8 +37,8 @@ export function parseEnrichmentResponse(text: string): Record<string, EnrichResu
     if (!id) continue
     const s = String(row?.sentiment ?? '').toLowerCase() as Sentiment
     const sentiment: Sentiment = (VALID.includes(s) && s !== 'unknown') ? s : 'unknown'
-    const topics = Array.isArray(row?.topics)
-      ? [...new Set(row.topics.map((t: any) => String(t).trim().toLowerCase()).filter(Boolean))].slice(0, 5)
+    const topics: string[] = Array.isArray(row?.topics)
+      ? [...new Set<string>(row.topics.map((t: any) => String(t).trim().toLowerCase()).filter(Boolean))].slice(0, 5)
       : []
     out[id] = { sentiment, topics }
   }

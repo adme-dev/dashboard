@@ -12,7 +12,7 @@ const clients = computed<any[]>(() => {
 const clientOptions = computed(() => clients.value.map(c => ({ label: c.name, value: c.id })))
 const clientId = ref<string | null>(clients.value[0]?.id ?? null)
 
-const { mentions, loading, filterSource, filterSentiment, load, loadMentions, syncOwned } = useSocialListening(clientId)
+const { mentions, loading, filterSource, filterSentiment, overview, days, load, loadMentions, loadOverview, syncOwned } = useSocialListening(clientId)
 
 const showQueries = ref(false)
 const syncing = ref(false)
@@ -32,6 +32,7 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString()
 
 watch(clientId, load)
 watch([filterSource, filterSentiment], loadMentions)
+watch(days, () => { loadMentions(); loadOverview() })
 onMounted(load)
 </script>
 
@@ -46,6 +47,7 @@ onMounted(load)
         <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" placeholder="Client" class="w-52" />
         <USelectMenu v-model="filterSource" :items="sourceFilterOptions" value-key="value" class="w-40" />
         <USelectMenu v-model="filterSentiment" :items="sentimentFilterOptions" value-key="value" class="w-40" />
+        <USelectMenu v-model="days" :items="[{label:'7d',value:7},{label:'30d',value:30},{label:'90d',value:90}]" value-key="value" class="w-28" />
         <UButton icon="i-lucide-refresh-cw" color="neutral" variant="subtle" label="Sync inbox" :loading="syncing" :disabled="!clientId" @click="onSync" />
         <UButton icon="i-lucide-radar" color="neutral" variant="subtle" label="Queries" :disabled="!clientId" @click="showQueries = true" />
       </div>
@@ -55,6 +57,36 @@ onMounted(load)
 
     <div v-if="loading" class="text-sm text-muted">Loading…</div>
     <template v-else-if="clientId">
+      <!-- Analytics dashboard -->
+      <div v-if="overview && overview.total" class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div class="rounded-lg border border-default bg-default p-4">
+          <div class="text-xs text-muted">Mentions</div>
+          <div class="text-2xl font-semibold mt-1">{{ overview.total }}</div>
+        </div>
+        <div class="rounded-lg border border-default bg-default p-4">
+          <div class="text-xs text-muted mb-2">Sentiment</div>
+          <div class="flex items-center gap-2 text-sm">
+            <UBadge color="success" variant="subtle" size="xs">+{{ overview.sentiment.positive }}</UBadge>
+            <UBadge color="neutral" variant="subtle" size="xs">~{{ overview.sentiment.neutral }}</UBadge>
+            <UBadge color="error" variant="subtle" size="xs">-{{ overview.sentiment.negative }}</UBadge>
+          </div>
+        </div>
+        <div class="rounded-lg border border-default bg-default p-4">
+          <div class="text-xs text-muted mb-2">Share of voice</div>
+          <div class="space-y-1">
+            <div v-for="s in overview.shareOfVoice" :key="s.category" class="flex justify-between text-xs">
+              <span class="capitalize">{{ s.category }}</span><span class="tabular-nums text-muted">{{ s.count }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="rounded-lg border border-default bg-default p-4">
+          <div class="text-xs text-muted mb-2">Top topics</div>
+          <div class="flex flex-wrap gap-1">
+            <UBadge v-for="t in overview.topTopics.slice(0, 8)" :key="t.topic" color="primary" variant="subtle" size="xs">{{ t.topic }} {{ t.count }}</UBadge>
+            <span v-if="!overview.topTopics.length" class="text-xs text-muted">—</span>
+          </div>
+        </div>
+      </div>
       <div v-if="mentions.length" class="space-y-2">
         <div v-for="m in mentions" :key="m.id" class="rounded-lg border border-default bg-default p-3">
           <div class="flex items-center gap-2 text-xs text-muted mb-1">

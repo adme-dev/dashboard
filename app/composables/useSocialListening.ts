@@ -31,6 +31,8 @@ export function useSocialListening(clientId: Ref<string | null>) {
   const loading = ref(false)
   const filterSource = ref('all')
   const filterSentiment = ref('all')
+  const overview = ref<any | null>(null)
+  const days = ref(30)
 
   async function loadQueries() {
     if (!clientId.value) { queries.value = []; return }
@@ -45,10 +47,15 @@ export function useSocialListening(clientId: Ref<string | null>) {
     mentions.value = await $fetch<any[]>('/api/agency/social/listening/mentions', { query })
   }
 
+  async function loadOverview() {
+    if (!clientId.value) { overview.value = null; return }
+    overview.value = await $fetch<any>('/api/agency/social/listening/overview', { query: { clientId: clientId.value, days: days.value } })
+  }
+
   async function load() {
-    if (!clientId.value) { queries.value = []; mentions.value = []; return }
+    if (!clientId.value) { queries.value = []; mentions.value = []; overview.value = null; return }
     loading.value = true
-    try { await Promise.all([loadQueries(), loadMentions()]) } finally { loading.value = false }
+    try { await Promise.all([loadQueries(), loadMentions(), loadOverview()]) } finally { loading.value = false }
   }
 
   async function createQuery(input: ListeningQueryInput) {
@@ -70,5 +77,5 @@ export function useSocialListening(clientId: Ref<string | null>) {
     await loadMentions()
   }
 
-  return { queries, mentions, loading, filterSource, filterSentiment, load, loadQueries, loadMentions, createQuery, updateQuery, removeQuery, syncOwned }
+  return { queries, mentions, loading, filterSource, filterSentiment, overview, days, load, loadQueries, loadMentions, loadOverview, createQuery, updateQuery, removeQuery, syncOwned }
 }
