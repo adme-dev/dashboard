@@ -192,6 +192,7 @@ export async function findMeetingCrmCandidates(meetingSessionId: string): Promis
      WHERE status = 'open' AND deleted_at IS NULL
        AND ( person_id = ANY($1::uuid[])
              OR (person_id IS NULL AND company_id = ANY($2::uuid[])) )`,
+    // Postgres ANY() rejects an empty array — use a nil UUID that never matches.
     [personIds, companyIds.length ? companyIds : ['00000000-0000-0000-0000-000000000000']],
   )
   return { candidatePeople: people, candidateOpps: opps }
@@ -205,6 +206,17 @@ export interface ConvertResult {
   created: boolean
 }
 
+// Thrown only on the genuine concurrent-double-convert race (the pre-flight
+// crm_task_id check passed for two callers at once and one lost the in-txn guard).
+// Callers should treat it as "already converted" — endpoints return 409, the cron
+// counts it as a skip — not a 500.
+export class AlreadyConvertedError extends Error {
+  constructor() {
+    super('action_item_already_converted')
+    this.name = 'AlreadyConvertedError'
+  }
+}
+
 // Idempotent: if the action item already has a crm_task_id, return the existing
 // task untouched. Otherwise insert the crm_task, stamp the action item, and write
 // an audit row — all in one transaction.
@@ -214,10 +226,15 @@ export async function convertActionItemToCrmTask(
   opts: { actor: string | null, mode: BridgeMode, priority?: (typeof TASK_PRIORITIES)[number] },
 ): Promise<ConvertResult> {
   if (actionItem.crm_task_id) {
-    const existing = await queryOne(`SELECT * FROM crm_tasks WHERE id = $1`, [actionItem.crm_task_id])
+    // Re-read both rows so the idempotent return reflects current DB state, not
+    // the caller's (possibly pre-stamp) in-memory snapshot.
+    const [existing, currentAi] = await Promise.all([
+      queryOne(`SELECT * FROM crm_tasks WHERE id = $1`, [actionItem.crm_task_id]),
+      queryOne(`SELECT * FROM office_meeting_action_items WHERE id = $1`, [actionItem.id]),
+    ])
     return {
       task: existing as Record<string, unknown>,
-      actionItem: actionItem as unknown as Record<string, unknown>,
+      actionItem: currentAi as Record<string, unknown>,
       created: false,
     }
   }
@@ -250,7 +267,7 @@ export async function convertActionItemToCrmTask(
     )
     // Lost-race guard: another tx stamped it first → roll back our insert.
     if (aiRes.rowCount === 0) {
-      throw new Error('action_item_already_converted')
+      throw new AlreadyConvertedError()
     }
     return { task, actionItem: aiRes.rows[0] }
   })
