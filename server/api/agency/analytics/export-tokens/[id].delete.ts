@@ -7,11 +7,20 @@ import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 
 export default defineEventHandler(async (event) => {
-  await requireRole(event, [...new Set([...PERMISSIONS.CLIENTS, ...PERMISSIONS.MEDIA_BUYING])])
+  const user = await requireRole(event, [...new Set([...PERMISSIONS.CLIENTS, ...PERMISSIONS.MEDIA_BUYING])])
   const id = getRouterParam(event, 'id')
   if (!id) {
     throw createError({ statusCode: 400, statusMessage: 'token id required' })
   }
-  await execute(`UPDATE analytics_export_tokens SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL`, [id])
+  // Only the token's creator or an owner/admin may revoke it.
+  const isAdmin = PERMISSIONS.ADMIN.includes(user.role)
+  const affected = await execute(
+    `UPDATE analytics_export_tokens SET revoked_at = NOW()
+     WHERE id = $1 AND revoked_at IS NULL AND (created_by = $2 OR $3::boolean)`,
+    [id, user.id, isAdmin]
+  )
+  if (affected === 0) {
+    throw createError({ statusCode: 404, statusMessage: 'Token not found or already revoked' })
+  }
   return { ok: true }
 })

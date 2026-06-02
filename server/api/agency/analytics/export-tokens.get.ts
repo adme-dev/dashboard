@@ -12,6 +12,7 @@ export default defineEventHandler(async (event) => {
     id: string
     label: string
     client_id: string | null
+    client_name: string | null
     created_at: string
     last_used_at: string | null
     revoked_at: string | null
