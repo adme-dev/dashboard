@@ -7,7 +7,7 @@ import type { RawMention } from '~~/server/utils/socialListening/types'
 
 const tag = (xml: string, name: string): string | null => {
   const m = xml.match(new RegExp(`<${name}[^>]*>([\\s\\S]*?)</${name}>`, 'i'))
-  if (!m) return null
+  if (!m?.[1]) return null
   return m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim() || null
 }
