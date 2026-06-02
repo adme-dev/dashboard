@@ -86,9 +86,19 @@ export async function textToSpeech(
       lang: options.lang || 'en',
     })
 
-    if (!result || (!(result instanceof ReadableStream) && !result.byteLength)) return null
+    if (!result) return null
 
-    // Handle ReadableStream response
+    // Primary shape: Workers AI returns base64-encoded audio in a JSON object,
+    // i.e. { audio: "<base64>" } — NOT raw bytes or a stream. (Verified live
+    // against @cf/myshell-ai/melotts, 2026-06-02; the bytes are a WAV.) Decode it.
+    if (typeof result === 'object' && typeof (result as any).audio === 'string' && (result as any).audio.length > 0) {
+      const bytes = Buffer.from((result as any).audio, 'base64')
+      if (!bytes.byteLength) return null
+      const audioBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+      return { audioBuffer, format: detectAudioFormat(bytes) }
+    }
+
+    // Fallback: ReadableStream response (older Workers AI behaviour).
     if (result instanceof ReadableStream) {
       const reader = result.getReader()
       try {
@@ -105,17 +115,42 @@ export async function textToSpeech(
           merged.set(chunk, offset)
           offset += chunk.length
         }
-        return { audioBuffer: merged.buffer.slice(0, totalLength), format: 'mp3' }
+        if (!totalLength) return null
+        return { audioBuffer: merged.buffer.slice(0, totalLength), format: detectAudioFormat(merged) }
       } finally {
         reader.releaseLock()
       }
     }
 
-    return { audioBuffer: result, format: 'mp3' }
+    // Fallback: raw ArrayBuffer / typed-array.
+    if ((result as any).byteLength) {
+      const bytes = result instanceof Uint8Array ? result : new Uint8Array(result as ArrayBuffer)
+      return { audioBuffer: result as ArrayBuffer, format: detectAudioFormat(bytes) }
+    }
+
+    return null
   } catch (err) {
     console.error('[aiVoice] TTS failed:', err)
     return null
   }
+}
+
+/** Sniff the container from the leading magic bytes so we label/serve the audio
+ * correctly (MeloTTS returns WAV; other models may return MP3). Defaults to mp3. */
+export function detectAudioFormat(bytes: Uint8Array): string {
+  // "RIFF" .... "WAVE"
+  if (
+    bytes.length >= 12
+    && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
+    && bytes[8] === 0x57 && bytes[9] === 0x41 && bytes[10] === 0x56 && bytes[11] === 0x45
+  ) return 'wav'
+  // "ID3" tag or MPEG audio frame sync (0xFFEx/0xFFFx)
+  if (
+    bytes.length >= 2
+    && ((bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33)
+      || (bytes[0] === 0xFF && (bytes[1] & 0xE0) === 0xE0))
+  ) return 'mp3'
+  return 'mp3'
 }
 
 /** Strip markdown formatting for cleaner TTS output */
