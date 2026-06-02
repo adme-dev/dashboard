@@ -204,6 +204,25 @@
                     </NuxtLink>
                   </div>
 
+                  <h4 class="text-[14px] font-semibold text-white/40 tracking-wide mb-5 mt-8">Sales & CRM</h4>
+                  <div class="flex flex-col gap-1">
+                    <NuxtLink
+                      v-for="item in featuresCrm"
+                      :key="item.title"
+                      :to="item.to"
+                      class="flex items-center gap-3.5 px-3 py-2.5 -mx-3 rounded-xl hover:bg-white/[0.04] transition-colors group"
+                      @click="openDropdown = null"
+                    >
+                      <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" :class="item.iconBg">
+                        <UIcon :name="item.icon" class="w-[18px] h-[18px]" :class="item.iconColor" />
+                      </div>
+                      <div>
+                        <div class="text-[14px] font-medium text-white group-hover:text-white">{{ item.title }}</div>
+                        <div class="text-[12px] text-white/35 leading-snug">{{ item.subtitle }}</div>
+                      </div>
+                    </NuxtLink>
+                  </div>
+
                 </div>
 
                 <!-- AI & Portal Column -->
@@ -619,6 +638,14 @@ const featuresCol5 = [
   { title: 'Roles & Admin', subtitle: 'Custom roles and permissions', icon: 'i-lucide-shield', iconBg: 'bg-slate-500/15', iconColor: 'text-slate-400', to: '/features/custom-roles' },
 ]
 
+const featuresCrm = [
+  { title: 'Contacts & Companies', subtitle: 'Records, relationships & timeline', icon: 'i-lucide-contact-round', iconBg: 'bg-teal-500/15', iconColor: 'text-teal-400', to: '/features/crm-contacts' },
+  { title: 'Sales Pipeline', subtitle: 'Opportunities & weighted forecast', icon: 'i-lucide-square-kanban', iconBg: 'bg-teal-500/15', iconColor: 'text-teal-400', to: '/features/crm-pipeline' },
+  { title: 'Lead Scoring', subtitle: 'Know which leads are hot', icon: 'i-lucide-gauge', iconBg: 'bg-teal-500/15', iconColor: 'text-teal-400', to: '/features/crm-scoring' },
+  { title: 'CRM Insights', subtitle: 'Funnels, forecast & leaderboard', icon: 'i-lucide-trending-up', iconBg: 'bg-teal-500/15', iconColor: 'text-teal-400', to: '/features/crm-insights' },
+  { title: 'Quote Generation', subtitle: 'Opportunity to quote in one click', icon: 'i-lucide-file-signature', iconBg: 'bg-teal-500/15', iconColor: 'text-teal-400', to: '/features/crm-quotes' },
+]
+
 // ---- Resources data ----
 
 const resourcesCol1 = [
@@ -653,6 +680,7 @@ const mobileFeatureSections = [
   { label: 'Creative', items: featuresCol3b },
   { label: 'Financial Operations', items: featuresCol2 },
   { label: 'Communication', items: featuresCol3a },
+  { label: 'Sales & CRM', items: featuresCrm },
   { label: 'AI & Intelligence', items: featuresCol4 },
   { label: 'Portal & Time', items: featuresCol5 },
 ]
