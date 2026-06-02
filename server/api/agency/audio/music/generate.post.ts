@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { guardAudioPrompt, loadBlocklist } from '~~/server/utils/audio/musicGuard'
-import { createMusicAsset } from '~~/server/utils/audio/assets'
+import { createMusicAsset, getMusicAssetByIdempotencyKey, requeueFailedMusicAsset } from '~~/server/utils/audio/assets'
 import { getMusicQueue, musicIdempotencyKey, type MusicJobPayload } from '~~/server/utils/audio/musicJob'
 
 const BodySchema = z.object({
@@ -63,12 +63,19 @@ export default defineEventHandler(async (event) => {
       idempotencyKey
     })
   } catch {
-    // Almost certainly the idempotency_key UNIQUE constraint — the same brief was
-    // just submitted. Treat as a duplicate rather than a 500.
-    throw createError({
-      statusCode: 409,
-      statusMessage: 'That exact brief was just submitted — check the library'
-    })
+    // idempotency_key UNIQUE collision — the same brief already exists. If that
+    // prior attempt FAILED, let the user retry it (re-queue + re-enqueue) rather
+    // than dead-ending on a 409 forever. A still-pending/done brief is a genuine
+    // duplicate.
+    const existing = await getMusicAssetByIdempotencyKey(idempotencyKey)
+    if (existing && existing.status === 'failed' && await requeueFailedMusicAsset(existing.id)) {
+      asset = { ...existing, status: 'queued', error: null }
+    } else {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'That exact brief was just submitted — check the library'
+      })
+    }
   }
 
   const payload: MusicJobPayload = {

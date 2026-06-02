@@ -132,6 +132,31 @@ export async function createMusicAsset(input: CreateMusicAssetInput): Promise<Au
   return mapRow(row)
 }
 
+/** Look up an existing asset by its idempotency key (used to resolve the unique
+ * collision in createMusicAsset — distinguishes a true duplicate from a retry of
+ * a failed brief). */
+export async function getMusicAssetByIdempotencyKey(key: string): Promise<AudioAsset | null> {
+  const row = await queryOne(
+    `SELECT * FROM audio_assets WHERE kind = 'music' AND idempotency_key = $1`,
+    [key]
+  )
+  return row ? mapRow(row) : null
+}
+
+/** Re-queue a FAILED music asset for another attempt: clear the error and flip
+ * back to 'queued'. Keeps r2_key_master if one exists so a render-only retry
+ * doesn't re-bill the model (the worker skips generation when a master is set).
+ * Returns true if a failed row was actually reset. */
+export async function requeueFailedMusicAsset(id: string): Promise<boolean> {
+  const row = await queryOne(
+    `UPDATE audio_assets SET status = 'queued', error = NULL, updated_at = now()
+     WHERE id = $1 AND kind = 'music' AND status = 'failed'
+     RETURNING id`,
+    [id]
+  )
+  return !!row
+}
+
 /** Scoped single-asset read for the status endpoint. Mints a streamUrl when a
  * master exists (i.e. once the worker has uploaded a completed track). */
 export async function getAsset(id: string): Promise<AudioAsset | null> {
