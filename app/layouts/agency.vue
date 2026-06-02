@@ -230,6 +230,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { label: 'Templates', icon: 'i-lucide-layout-template', to: '/agency/banner-studio/templates', onSelect: close },
       { label: 'Brand Kits', icon: 'i-lucide-paintbrush', to: '/agency/banner-studio/brand-kits', onSelect: close },
       { label: 'Upload Banners', icon: 'i-lucide-upload', to: '/agency/banner-studio/upload', onSelect: close },
+      { label: 'Audio Studio', icon: 'i-lucide-mic', to: '/agency/audio', onSelect: close },
       { label: 'Ad Preview', icon: 'i-lucide-monitor-play', to: '/agency/ad-preview', onSelect: close },
       { label: 'Bulk Ad Launch', icon: 'i-lucide-rocket', to: '/agency/ad-publish', onSelect: close }
     )
