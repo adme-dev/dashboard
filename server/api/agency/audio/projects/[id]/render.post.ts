@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
-import { getProjectWithCurrentTimeline, createRenderJob } from '~~/server/utils/audio/projects'
+import { getProjectWithCurrentTimeline, createRenderJob, markRenderJobFailed } from '~~/server/utils/audio/projects'
 import { TimelineStateSchema, validateTimeline } from '~~/server/utils/audio/timelineSchema'
 import { enqueueTimelineRender } from '~~/server/utils/audio/renderQueue'
 import type { AudioChannel } from '~~/server/utils/audio/profiles'
@@ -36,9 +36,16 @@ export default defineEventHandler(async (event) => {
   }
 
   const job = await createRenderJob({ projectId: id, requestedBy: user.id, channels })
-  await enqueueTimelineRender(event, {
-    jobId: job.id, projectId: id, timelineId: job.timelineId, channels
-  })
+  try {
+    await enqueueTimelineRender(event, {
+      jobId: job.id, projectId: id, timelineId: job.timelineId, channels
+    })
+  } catch (e: any) {
+    // The DB row is the durable record; if enqueue fails, mark the job failed so it
+    // surfaces in the list instead of hanging in 'queued' with nothing to consume it.
+    await markRenderJobFailed(job.id, `enqueue failed: ${e?.message ?? String(e)}`)
+    throw createError({ statusCode: 502, statusMessage: 'Failed to enqueue render' })
+  }
 
   setResponseStatus(event, 202)
   return { job }

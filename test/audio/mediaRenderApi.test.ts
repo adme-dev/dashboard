@@ -19,10 +19,12 @@ vi.mock('~~/server/utils/auth', () => ({
 const mockGetProject = vi.fn()
 const mockCreateRenderJob = vi.fn()
 const mockListRenderJobs = vi.fn()
+const mockMarkFailed = vi.fn()
 vi.mock('~~/server/utils/audio/projects', () => ({
   getProjectWithCurrentTimeline: (...a: unknown[]) => mockGetProject(...a),
   createRenderJob: (...a: unknown[]) => mockCreateRenderJob(...a),
-  listRenderJobs: (...a: unknown[]) => mockListRenderJobs(...a)
+  listRenderJobs: (...a: unknown[]) => mockListRenderJobs(...a),
+  markRenderJobFailed: (...a: unknown[]) => mockMarkFailed(...a)
 }))
 
 const mockEnqueue = vi.fn()
@@ -90,6 +92,15 @@ describe('POST /agency/audio/projects/:id/render', () => {
       timeline: { id: 't1', state: goodTimeline } })
     await expect(renderH({ params: { id: 'p1' }, body: { channels: ['bogus'] }, context: {} } as any))
       .rejects.toMatchObject({ statusCode: 400 })
+  })
+  it('marks the job failed and 502s when enqueue throws', async () => {
+    mockGetProject.mockResolvedValue({ project: { id: 'p1', currentTimelineId: 't1' },
+      timeline: { id: 't1', state: goodTimeline } })
+    mockCreateRenderJob.mockResolvedValue({ id: 'j1', timelineId: 't2', status: 'queued' })
+    mockEnqueue.mockRejectedValue(new Error('queue down'))
+    await expect(renderH({ params: { id: 'p1' }, body: {}, context: {} } as any))
+      .rejects.toMatchObject({ statusCode: 502 })
+    expect(mockMarkFailed).toHaveBeenCalledWith('j1', expect.stringContaining('enqueue failed'))
   })
 })
 
