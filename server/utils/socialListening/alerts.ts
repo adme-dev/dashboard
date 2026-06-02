@@ -63,14 +63,20 @@ export async function dispatchListeningAlerts(deps: DispatchDeps): Promise<numbe
   for (const m of negs) {
     const snippet = (m.title || m.content || 'New negative mention').slice(0, 140)
     for (const r of recipients) {
-      await notify({
-        userId: r.id, type: 'system', reason: 'direct',
-        title: 'Negative brand mention detected',
-        message: snippet,
-        link: m.url || `${baseUrl}/agency/social/listening`,
-        metadata: { source: 'social_listening', mentionId: m.id, clientId: m.client_id },
-      })
-      raised++
+      // Isolate per-recipient failures so one bad notify doesn't abort the run and re-alert the
+      // whole batch next cron (alerted_at is stamped below regardless).
+      try {
+        await notify({
+          userId: r.id, type: 'system', reason: 'direct',
+          title: 'Negative brand mention detected',
+          message: snippet,
+          link: m.url || `${baseUrl}/agency/social/listening`,
+          metadata: { source: 'social_listening', mentionId: m.id, clientId: m.client_id },
+        })
+        raised++
+      } catch (err) {
+        console.error('listening.alert.notify_failed', { mentionId: m.id, userId: r.id, error: String(err) })
+      }
     }
     await db.execute(`UPDATE social_listening_mentions SET alerted_at = NOW() WHERE id = $1`, [m.id])
   }
