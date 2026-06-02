@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-02
 **Status:** Approved (pending implementation plan)
-**Scope:** Frontend UI only — wire four already-built, RBAC-gated GA4 Phase-3 APIs into the agency analytics surface. No backend changes, no database migrations.
+**Scope:** Primarily frontend UI — wire four already-built, RBAC-gated GA4 Phase-3 APIs into the agency analytics surface. **One small additive backend change** is required: the `internal-benchmarks` endpoint must also return a per-client array so the agency leaderboard (no-client view) can rank clients (the data is already computed inside the handler; only the response is extended). No database migrations.
 
 ## Background
 
@@ -70,7 +70,8 @@ Two render modes, switched on whether the filter bar has a client selected:
   - **Metric cards** (one per metric): the client's value, the portfolio median, and a percentile badge ("Top 22%", "P78"). Reuses the existing KPI-card visual pattern. Badge color is semantic and **direction-aware** — for cost metrics (CPL, CPA) lower is better, so a low percentile of cost is good; the component must encode per-metric "good direction" so badges aren't misleading.
   - **Percentile bars** below the cards (one per metric): a range bar (portfolio min→max with quartile ticks) and a marker dot for this client, for distribution context.
 - **No client selected → agency leaderboard:**
-  - A `UTable` ranking clients per metric (sortable columns), so the agency can spot leaders/laggards across the portfolio. Columns: client name + each metric value (+ optionally the client's percentile). Uses Nuxt UI v4 `UTable` column shape (`accessorKey`/`header`, `row.original.*`).
+  - A `UTable` ranking clients per metric (sortable columns), so the agency can spot leaders/laggards across the portfolio. Columns: client name + each metric value. Uses Nuxt UI v4 `UTable` column shape (`accessorKey`/`header`, `row.original.*`). Ranking/sort is a pure frontend helper over the new `clients[]` array.
+  - **Backend prerequisite:** `internal-benchmarks.get.ts` already computes `metricsByClient` internally but only returns the distribution summary + focal client. Extend its response with `clients: Array<{ clientId, clientName, metrics: { engagementRate, cvr, cpl, cpa } }>` (joined to `agency_clients` for the name). This is the only backend change in the spec; it is additive and does not alter existing fields.
 
 States: loading (skeleton), empty (no portfolio data / `clientCount` 0 → friendly empty state), error (toast). Semantic dark-mode colors throughout.
 
@@ -109,7 +110,7 @@ States: dropdown disabled while presets are loading; if the presets fetch fails,
 - **USelectMenu values** — never empty strings; use sentinels (`'all'`, agency-wide marker) and map back before API calls.
 - **Dark mode** — semantic colors (`text-muted`, `bg-elevated`, `border-default`) and `dark:` variants; status/badge colors get `dark:` variants for contrast.
 - **Data access** — `useFetch` for reads, `$fetch` for mutations. Reads inherit the shared filter props and `watch` them.
-- **No backend / DB changes** — all four endpoints, their RBAC gates, and the export consumer already exist. This is purely additive UI.
+- **Backend changes** — exactly one, additive: extend the `internal-benchmarks` response with a `clients[]` array (above). All other endpoints, their RBAC gates, and the export consumer are used as-is. No DB migrations.
 - **RBAC** — pages/components surface only to roles already permitted by the endpoints (CLIENTS / MEDIA_BUYING permission sets); rely on the existing server gates plus standard page middleware.
 
 ## Testing
