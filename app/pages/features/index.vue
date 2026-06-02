@@ -214,6 +214,10 @@ const categories = [
       { title: 'On-Demand Sync', slug: 'on-demand-sync', icon: 'i-lucide-refresh-cw', description: 'Pull the latest data from ad platforms on demand — no waiting for scheduled syncs.' },
       { title: 'Export & Reporting', slug: 'export-reporting', icon: 'i-lucide-file-down', description: 'Export analytics to CSV with date ranges, breakdowns, and AI-generated summaries.' },
       { title: 'GA4 Funnel & Website Analytics', slug: 'ga4-funnel', icon: 'i-lucide-filter', description: 'Connect Google Analytics 4 and see the full funnel — ad spend through sessions, on-site conversions, and captured leads, attributed by channel.' },
+      { title: 'Ask Your Data', slug: 'analytics-ask', icon: 'i-lucide-sparkles', description: 'Ask a plain-English question about any client\'s performance and get an answer grounded only in your real numbers — with the per-channel figures it used one click away.' },
+      { title: 'Portfolio Benchmarks', slug: 'analytics-benchmarks', icon: 'i-lucide-gauge', description: 'See exactly where a client sits against the rest of your book — engagement, conversion rate, CPL and CPA as percentile rankings, plus an agency-wide leaderboard.' },
+      { title: 'Blend Presets', slug: 'analytics-presets', icon: 'i-lucide-sliders-horizontal', description: 'One-click views over the blended cross-channel table — paid mix, last-click, blended ROAS, organic vs paid — so the right metrics are always one selection away.' },
+      { title: 'Analytics Export API', slug: 'analytics-export-api', icon: 'i-lucide-database', description: 'Mint scoped bearer tokens to pull the canonical analytics fact into a warehouse or share with a client — agency-wide or locked to a single client, revocable anytime.' },
     ]
   },
   {
