@@ -1,0 +1,18 @@
+name = "social-listening-cron"
+main = "src/index.ts"
+compatibility_date = "2025-12-01"
+
+# Poll external listening sources a few times a day. The endpoint is idempotent (upsert by
+# source+external_id), so overlapping ticks are harmless.
+[triggers]
+crons = [
+  "40 */6 * * *"   # every 6 hours at :40
+]
+
+[vars]
+APP_BASE_URL = "https://agency-dashboard-6cm.pages.dev"
+
+# CRON_SECRET is a secret (not a var) — must match the Pages project's CRON_SECRET.
+#   wrangler secret put CRON_SECRET
+# Deploy from an isolated copy OUTSIDE the repo tree (root .wrangler/deploy/config.json redirect
+# breaks sub-worker `wrangler deploy`).
