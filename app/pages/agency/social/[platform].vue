@@ -28,7 +28,7 @@ if (!validPlatforms.includes(platform.value)) {
 const {
   loading, fetchConnections, disconnectConnection,
   syncSpend, fetchAccountSpend, fetchAccountCampaigns,
-  updateCampaignBudget, fetchCampaignDailySpend, fetchBudgetHistory,
+  updateCampaignBudget, fetchCampaignDailySpend,
 } = useSocialConnections()
 
 // Client assignment — for linking ad accounts to agency clients
@@ -98,89 +98,40 @@ const chartAccountName = ref<string | null>(null)
 const campaignData = ref<Record<string, any[]>>({})
 const campaignLoading = ref<Record<string, boolean>>({})
 
-// Inline budget editing
-const editingBudget = ref<string | null>(null) // media_spend id currently editing
-const editingBudgetValue = ref('')
-const editingCommissionRate = ref('')
-const editingRolling = ref(false)
+// Budget edit modal (replaces the old inline cell editor + history dropdown)
+const budgetModalOpen = ref(false)
+const budgetModalTarget = ref<any>(null)
 
-// Budget history
-const budgetHistoryId = ref<string | null>(null)
-const budgetHistory = ref<any[]>([])
-const budgetHistoryLoading = ref(false)
-
-async function toggleBudgetHistory(spendId: string) {
-  if (budgetHistoryId.value === spendId) {
-    budgetHistoryId.value = null
-    return
+function openBudgetModal(camp: any, e?: MouseEvent) {
+  e?.stopPropagation()
+  budgetModalTarget.value = {
+    title: camp.campaignName || 'Campaign',
+    subtitle: null,
+    platform: platform.value,
+    spendIds: [camp.id],
+    budget: camp.budget ?? 0,
+    spend: camp.spend ?? 0,
+    commission: camp.commission,
+    commissionRate: camp.commissionRate ?? null,
+    rolling: camp.rolling ?? false,
+    lastSyncedAt: camp.lastSyncedAt ?? null,
+    historySpendId: camp.id
   }
-  budgetHistoryId.value = spendId
-  budgetHistoryLoading.value = true
-  try {
-    budgetHistory.value = await fetchBudgetHistory(spendId)
-  } catch {
-    budgetHistory.value = []
-  } finally {
-    budgetHistoryLoading.value = false
-  }
+  budgetModalOpen.value = true
 }
 
-function formatHistoryTime(dateStr: string) {
-  const d = new Date(dateStr)
-  return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) + ' ' +
-    d.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })
-}
-
-function startBudgetEdit(camp: any, e: MouseEvent) {
-  e.stopPropagation()
-  editingBudget.value = camp.id
-  editingBudgetValue.value = camp.budget > 0 ? String(camp.budget) : ''
-  editingCommissionRate.value = camp.commissionRate > 0 ? String(camp.commissionRate) : ''
-  editingRolling.value = camp.rolling || false
-  nextTick(() => {
-    const input = document.querySelector(`[data-budget-id="${camp.id}"]`) as HTMLInputElement
-    input?.focus()
-    input?.select()
-  })
-}
-
-async function saveBudget(camp: any) {
-  const val = parseFloat(editingBudgetValue.value)
-  const budget = isNaN(val) || val < 0 ? 0 : val
-  const commRate = editingCommissionRate.value ? parseFloat(editingCommissionRate.value) : null
-  if (commRate != null && (isNaN(commRate) || commRate < 0 || commRate > 100)) {
-    toast.add({ title: 'Invalid commission', description: 'Enter a percentage between 0 and 100', color: 'error' })
-    return
-  }
-  editingBudget.value = null
-
-  // Optimistic update
-  const rolling = editingRolling.value
-  camp.budget = budget
-  camp.rolling = rolling
-  if (commRate != null) camp.commissionRate = commRate
-  try {
-    const body: any = { spendIds: [camp.id], budgetAllocated: budget, rolling }
-    if (commRate != null) body.commissionRate = commRate
-    await $fetch('/api/agency/social/spend/bulk-budget', { method: 'PATCH', body })
-  } catch (e: any) {
-    toast.add({ title: 'Error saving budget', description: e.data?.statusMessage || e.message, color: 'error' })
-    // Reload to revert
-    const acctId = Object.keys(campaignData.value).find(k =>
-      campaignData.value[k]?.some((c: any) => c.id === camp.id)
+// After a save, re-fetch the affected account's campaigns to reflect the change.
+async function onBudgetSaved() {
+  const id = budgetModalTarget.value?.spendIds?.[0]
+  if (!id) return
+  const acctId = Object.keys(campaignData.value).find(k =>
+    campaignData.value[k]?.some((c: any) => c.id === id)
+  )
+  if (acctId) {
+    campaignData.value[acctId] = await fetchAccountCampaigns(
+      platform.value as 'meta' | 'google' | 'tiktok', acctId, selectedMonth.value, selectedYear.value
     )
-    if (acctId) {
-      campaignData.value[acctId] = await fetchAccountCampaigns(
-        platform.value as 'meta' | 'google' | 'tiktok', acctId, selectedMonth.value, selectedYear.value
-      )
-    }
   }
-}
-
-function cancelBudgetEdit() {
-  editingBudget.value = null
-  editingCommissionRate.value = ''
-  editingRolling.value = false
 }
 
 // Summary stats
@@ -831,93 +782,21 @@ async function confirmDisconnect() {
                               <span v-else class="text-muted text-xs">{{ (camp as any).health ? healthLabel((camp as any).health.verdict) : '-' }}</span>
                             </td>
                             <td class="px-4 py-2 text-right tabular-nums">{{ formatCurrency(camp.spend) }}</td>
-                            <!-- Budget (inline-editable) -->
-                            <td class="px-4 py-2 text-right tabular-nums relative" @click.stop>
-                              <div v-if="editingBudget === camp.id" class="flex flex-col items-end gap-1">
-                                <div class="flex items-center gap-1">
-                                  <input
-                                    :data-budget-id="camp.id"
-                                    v-model="editingBudgetValue"
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    class="w-24 text-right text-sm border border-primary rounded px-2 py-0.5 bg-default tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
-                                    @keydown.enter.prevent="saveBudget(camp)"
-                                    @keydown.escape.prevent="cancelBudgetEdit()"
-                                  />
-                                  <UButton size="xs" variant="soft" color="primary" icon="i-lucide-check" @click="saveBudget(camp)" />
-                                  <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-x" @click="cancelBudgetEdit()" />
-                                </div>
-                                <div class="flex items-center gap-1">
-                                  <span class="text-xs text-muted">Comm.</span>
-                                  <input
-                                    v-model="editingCommissionRate"
-                                    type="number"
-                                    min="0"
-                                    max="100"
-                                    step="0.5"
-                                    placeholder="0"
-                                    class="w-16 text-right text-sm rounded border border-default bg-default px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary"
-                                    @keydown.enter.prevent="saveBudget(camp)"
-                                    @keydown.escape.prevent="cancelBudgetEdit()"
-                                  />
-                                  <span class="text-xs text-muted">%</span>
-                                </div>
-                                <label class="flex items-center gap-1.5 text-xs text-muted cursor-pointer select-none">
-                                  <UCheckbox v-model="editingRolling" />
-                                  <span>Rolling</span>
-                                </label>
-                              </div>
-                              <div v-else class="flex flex-col items-end gap-0.5">
-                                <div class="flex items-center gap-1">
-                                  <span
-                                    class="cursor-pointer hover:text-primary transition-colors"
-                                    :class="camp.budget > 0 ? '' : 'text-muted italic'"
-                                    @click="startBudgetEdit(camp, $event)"
-                                  >
-                                    {{ camp.budget > 0 ? formatCurrency(camp.budget) : 'Set budget' }}
-                                  </span>
-                                  <button
-                                    v-if="camp.budget > 0"
-                                    class="p-0.5 rounded hover:bg-elevated/60 text-muted hover:text-default transition-colors"
-                                    title="Budget history"
-                                    @click="toggleBudgetHistory(camp.id)"
-                                  >
-                                    <UIcon name="i-lucide-history" class="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
+                            <!-- Budget — opens the budget editor modal -->
+                            <td class="px-4 py-2 text-right tabular-nums" @click.stop>
+                              <div class="flex flex-col items-end gap-0.5">
+                                <button
+                                  class="group inline-flex items-center gap-1 cursor-pointer hover:text-primary transition-colors"
+                                  :class="camp.budget > 0 ? '' : 'text-muted italic'"
+                                  @click="openBudgetModal(camp, $event)"
+                                >
+                                  <span>{{ camp.budget > 0 ? formatCurrency(camp.budget) : 'Set budget' }}</span>
+                                  <UIcon name="i-lucide-pencil" class="size-3 opacity-0 group-hover:opacity-50" />
+                                </button>
                                 <UBadge v-if="camp.rolling" size="xs" color="info" variant="subtle" class="gap-0.5">
                                   <UIcon name="i-lucide-repeat" class="size-3" />
                                   Rolling
                                 </UBadge>
-                              </div>
-                              <!-- Budget history dropdown -->
-                              <div
-                                v-if="budgetHistoryId === camp.id"
-                                class="absolute right-0 mt-1 z-20 w-72 bg-elevated border border-default rounded-lg shadow-lg p-3 text-left"
-                              >
-                                <div class="flex items-center justify-between mb-2">
-                                  <span class="text-xs font-medium">Budget History</span>
-                                  <button class="text-muted hover:text-default" @click="budgetHistoryId = null">
-                                    <UIcon name="i-lucide-x" class="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                                <div v-if="budgetHistoryLoading" class="text-xs text-muted py-2 text-center">Loading...</div>
-                                <div v-else-if="budgetHistory.length === 0" class="text-xs text-muted py-2 text-center">No changes recorded</div>
-                                <div v-else class="space-y-2 max-h-48 overflow-y-auto">
-                                  <div v-for="entry in budgetHistory" :key="entry.id" class="flex items-start gap-2 text-xs">
-                                    <UAvatar v-if="entry.changedByAvatar" :src="entry.changedByAvatar" size="2xs" />
-                                    <UIcon v-else name="i-lucide-user" class="w-4 h-4 text-muted mt-0.5 shrink-0" />
-                                    <div class="min-w-0">
-                                      <span class="font-medium">{{ entry.changedByName }}</span>
-                                      <span class="text-muted"> changed </span>
-                                      <span class="line-through text-muted">{{ formatCurrency(entry.previousBudget) }}</span>
-                                      <span class="text-muted"> → </span>
-                                      <span class="font-medium">{{ formatCurrency(entry.newBudget) }}</span>
-                                      <div class="text-muted">{{ formatHistoryTime(entry.changedAt) }}</div>
-                                    </div>
-                                  </div>
-                                </div>
                               </div>
                             </td>
                             <!-- Variance (spend - budget) -->
@@ -1031,5 +910,11 @@ async function confirmDisconnect() {
         </div>
       </Transition>
     </Teleport>
+
+    <SocialSpendBudgetEditModal
+      v-model:open="budgetModalOpen"
+      :target="budgetModalTarget"
+      @saved="onBudgetSaved"
+    />
   </div>
 </template>
