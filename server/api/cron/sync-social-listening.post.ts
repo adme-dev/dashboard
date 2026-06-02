@@ -11,6 +11,8 @@ import { upsertMentions } from '~~/server/utils/socialListening/store'
 import { LISTENING_SOURCES } from '~~/server/utils/socialListening/sources/registry'
 import { enrichUnenriched } from '~~/server/utils/socialListening/enrich'
 import { generateGroqInsight } from '~~/server/utils/groqClient'
+import { dispatchListeningAlerts } from '~~/server/utils/socialListening/alerts'
+import { createNotification } from '~~/server/utils/notifications'
 
 export default defineEventHandler(async (event) => {
   const secret = getHeader(event, 'x-cron-secret')
@@ -35,5 +37,9 @@ export default defineEventHandler(async (event) => {
     { queryRows, execute },
     (prompt) => generateGroqInsight(prompt, { maxTokens: 500, systemPrompt: 'You are a precise social-media sentiment classifier. Output only JSON.' }),
   )
-  return { ok: true, queriesRun, mentionsUpserted, enriched }
+  const alerts = await dispatchListeningAlerts({
+    db: { queryRows, execute }, env: process.env as Record<string, string | undefined>,
+    notify: createNotification, baseUrl: process.env.APP_BASE_URL || '',
+  })
+  return { ok: true, queriesRun, mentionsUpserted, enriched, alerts }
 })
