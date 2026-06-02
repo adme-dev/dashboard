@@ -4,6 +4,12 @@ definePageMeta({ layout: 'agency', middleware: ['role-media'] })
 const route = useRoute()
 const { filters, apiQuery } = useAnalytics()
 
+const activeTab = ref<'overview' | 'insights'>('overview')
+const tabItems = [
+  { label: 'Overview', value: 'overview', icon: 'i-lucide-layout-dashboard' },
+  { label: 'Insights', value: 'insights', icon: 'i-lucide-gauge' }
+]
+
 interface AnalyticsOverview {
   totals: Record<string, number | null>
   previousPeriod: Record<string, number | null>
@@ -144,12 +150,28 @@ async function syncAll() {
     <!-- Filter Bar -->
     <AnalyticsFilterBar />
 
-    <!-- KPI Cards -->
-    <AnalyticsKPICards
-      :totals="totals"
-      :previous-period="previousPeriod"
-      :loading="loading"
+    <!-- Tabs (filter bar above stays shared across both) -->
+    <UTabs
+      v-model="activeTab"
+      :items="tabItems"
+      class="w-full"
     />
+
+    <!-- Ask box (Overview only) -->
+    <AgencyAnalyticsAskBox
+      v-show="activeTab === 'overview'"
+      :start-date="filters.startDate"
+      :end-date="filters.endDate"
+      :client-id="filters.clientId"
+    />
+
+    <div v-show="activeTab === 'overview'" class="space-y-6">
+      <!-- KPI Cards -->
+      <AnalyticsKPICards
+        :totals="totals"
+        :previous-period="previousPeriod"
+        :loading="loading"
+      />
 
     <!-- Platform Chart -->
     <div class="border border-default rounded-lg p-4">
@@ -239,6 +261,16 @@ async function syncAll() {
         :loading="loading"
         :start-date="filters.startDate"
         :end-date="filters.endDate"
+      />
+    </div>
+    </div>
+
+    <!-- Insights tab -->
+    <div v-show="activeTab === 'insights'" class="space-y-6">
+      <AgencyAnalyticsBenchmarks
+        :start-date="filters.startDate"
+        :end-date="filters.endDate"
+        :client-id="filters.clientId"
       />
     </div>
   </div>
