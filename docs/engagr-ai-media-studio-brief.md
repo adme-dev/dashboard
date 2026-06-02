@@ -4,7 +4,7 @@
 **Scope:** AI-generated music + voiceover (generation + single-clip render SHIPPED; timeline + multi-clip mixdown in build) → AI-generated video with synced audio (separate, forthcoming video brief)
 **Stack:** Nuxt 4 / Vue 3 / TypeScript on Cloudflare (Workers, R2, Queues, Containers GA Apr 2026, Workers AI). **Primary datastore is Neon Postgres** (the app's DB, via `server/utils/db.ts`); D1/KV are available but not the default — see §4.
 **Model roster verified against:** Cloudflare AI model catalog + live provider endpoints, this session. Roster is a moving target — see governance rule below; do not treat any model list here as durable.
-**See also:** `engagr-ai-media-studio-competitive-patterns.md` — competitive UI/UX R&D and the specific patterns we're adopting.
+**See also:** `engagr-ai-media-studio-competitive-patterns.md` (competitive UI/UX R&D + patterns we're adopting) and `engagr-ai-media-studio-oss-prior-art.md` (open-source we can depend on / borrow + the edge-case checklist).
 
 ---
 

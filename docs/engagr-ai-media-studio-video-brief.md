@@ -2,7 +2,7 @@
 
 **Status:** Draft for review
 **Companion to:** engagr AI Media Studio — Architecture Brief (audio). Shared layers — model governance, the `AudioContext` master-clock rule, and the **R2 / Neon Postgres / Queues / Container** wiring — are defined there and not repeated; this document covers what video adds and changes. (Datastore is **Neon, not D1** — see the audio brief §0/§4.)
-**See also:** `engagr-ai-media-studio-competitive-patterns.md` for the competitive UI/UX patterns referenced here (cost-on-commit, brand kits, approval/provenance).
+**See also:** `engagr-ai-media-studio-competitive-patterns.md` (competitive UI/UX patterns — cost-on-commit, brand kits, approval/provenance) and `engagr-ai-media-studio-oss-prior-art.md` (OSS to piggyback on + the render/headless edge-case checklist — Kent C. Dodds CF-ffmpeg lifecycle, HyperFrames headless container, Remotion `delayRender`, OTIO time model).
 **Scope:** AI-generated video + GSAP-composited overlays + synced audio → finished video ad asset (social, pre-roll, dealer site).
 **Model roster verified against:** Cloudflare AI model catalog, this session. Non-durable — verify against the live endpoint before any model enters the picker (standing rule).
 
