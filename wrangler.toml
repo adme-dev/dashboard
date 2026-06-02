@@ -29,6 +29,14 @@ queue = "agency-jobs"
 binding = "LEADS_DELIVERY_QUEUE"
 queue = "leads-delivery-queue"
 
+# Producer binding for the Audio Studio music-generation queue. Consumer runs in
+# workers/audio-jobs/ (the Pages worker entry exports only fetch+scheduled, so a
+# Pages-side queue consumer never fires — it must live in a standalone Worker).
+# Without this binding generate.post.ts returns 503 ("not enabled yet").
+[[queues.producers]]
+binding = "MUSIC_QUEUE"
+queue = "music-gen"
+
 # AI — Workers AI for embeddings and edge inference
 [ai]
 binding = "AI"
