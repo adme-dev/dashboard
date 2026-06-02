@@ -1,5 +1,7 @@
 import { queryRows, transaction } from '~~/server/utils/db'
 import { queueAnomalyNotification } from './notify'
+import { dispatchCriticalBudgetSlack } from './budgetSlackDispatch'
+import { maybeCreateAccountabilityTasks } from './accountabilityTask'
 import type { DetectedAnomaly, AnomalyRow } from './types'
 
 export interface ReconcileResult {
@@ -149,6 +151,20 @@ export async function reconcile(
       console.error('[anomalies] notification queue failed for', id, err)
       // Best-effort: row already persisted with notification_sent_at.
     }
+  }
+
+  // Pass 3b: real-time Slack for newly-inserted critical budget anomalies.
+  try {
+    await dispatchCriticalBudgetSlack(tenantId, newlyInsertedCriticalIds)
+  } catch (err) {
+    console.error('[anomalies] budget Slack dispatch failed', err)
+  }
+
+  // Pass 3c: optional accountability tasks for newly-inserted critical budget anomalies.
+  try {
+    await maybeCreateAccountabilityTasks(tenantId, newlyInsertedCriticalIds)
+  } catch (err) {
+    console.error('[anomalies] accountability task creation failed', err)
   }
 
   return result
