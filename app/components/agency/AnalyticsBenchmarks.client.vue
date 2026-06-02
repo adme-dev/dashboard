@@ -47,10 +47,6 @@ function fmtVal(v: number | null, kind: 'currency' | 'percent'): string {
   return kind === 'currency' ? fmtCurrency(v, 2) : fmtPercent(v * 100)
 }
 
-function badgeColor(tone: 'success' | 'error' | 'neutral'): 'success' | 'error' | 'neutral' {
-  return tone
-}
-
 // Client-standing cards
 const cards = computed(() => {
   if (!data.value || !hasClient.value) return []
@@ -112,7 +108,7 @@ const leaderboardColumns = [
           <p class="text-xs text-muted">{{ c.label }}</p>
           <p class="text-xl font-semibold mt-1">{{ fmtVal(c.value, c.kind) }}</p>
           <div class="flex items-center gap-2 mt-2">
-            <UBadge v-if="c.badge" :color="badgeColor(c.badge.tone)" variant="subtle" size="sm">
+            <UBadge v-if="c.badge" :color="c.badge.tone" variant="subtle" size="sm">
               {{ c.badge.label }}
             </UBadge>
             <span class="text-xs text-muted">med {{ fmtVal(c.median, c.kind) }}</span>
@@ -128,8 +124,8 @@ const leaderboardColumns = [
             <span class="text-xs text-muted">{{ c.lowerIsBetter ? 'lower is better' : 'higher is better' }}</span>
           </div>
           <div class="relative h-3 rounded-full" :class="c.lowerIsBetter
-            ? 'bg-gradient-to-r from-success to-error'
-            : 'bg-gradient-to-r from-error to-success'">
+            ? 'bg-gradient-to-r from-emerald-500 to-red-500'
+            : 'bg-gradient-to-r from-red-500 to-emerald-500'">
             <div
               v-if="c.markerPct !== null"
               class="absolute -top-1 w-2.5 h-5 rounded-sm bg-inverted border-2 border-default"
