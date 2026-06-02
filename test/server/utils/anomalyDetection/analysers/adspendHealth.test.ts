@@ -151,6 +151,19 @@ describe('detectPausedWithBudget', () => {
     const z = base('PAUSED', 50); z.budget = 0
     expect(detectPausedWithBudget(z, now)).toBeNull()
   })
+
+  it("fires on Meta compound effective_status (CAMPAIGN_PAUSED / ADSET_PAUSED / ARCHIVED)", () => {
+    // Meta writes effective_status to campaign_status — compound values must match.
+    expect(detectPausedWithBudget(base('CAMPAIGN_PAUSED', 50), now)).not.toBeNull()
+    expect(detectPausedWithBudget(base('ADSET_PAUSED', 50), now)).not.toBeNull()
+    expect(detectPausedWithBudget(base('ARCHIVED', 50), now)).not.toBeNull()
+  })
+
+  it('does not false-positive on other Meta effective_status values', () => {
+    for (const s of ['WITH_ISSUES', 'IN_PROCESS', 'PENDING_REVIEW', 'DISAPPROVED']) {
+      expect(detectPausedWithBudget(base(s, 50), now)).toBeNull()
+    }
+  })
 })
 
 describe('detectOverspend', () => {

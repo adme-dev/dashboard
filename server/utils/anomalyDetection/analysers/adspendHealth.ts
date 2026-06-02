@@ -127,13 +127,18 @@ export function detectStopped(g: Group, now: Date): DetectedAnomaly | null {
   }
 }
 
-const PAUSED_STATUSES = ['paused', 'removed', 'disabled', 'archived']
+// Substring tokens, not exact statuses: Meta writes the campaign EFFECTIVE_STATUS
+// (metaClient.ts → `effective_status || status`), which uses compound values like
+// CAMPAIGN_PAUSED / ADSET_PAUSED. Google writes plain ENABLED / PAUSED / REMOVED.
+// Matching by substring catches both — `adset_paused`.includes('paused') etc. —
+// without false-positiving on active/with_issues/in_process/pending_review.
+const PAUSED_STATUS_TOKENS = ['paused', 'removed', 'disabled', 'archived']
 
 export function detectPausedWithBudget(g: Group, now: Date): DetectedAnomaly | null {
   if (g.period !== periodOf(now)) return null
   if (g.budget <= 0) return null
   const status = (g.campaignStatus ?? '').toLowerCase()
-  if (!PAUSED_STATUSES.includes(status)) return null
+  if (!PAUSED_STATUS_TOKENS.some(t => status.includes(t))) return null
 
   const spent = mtd(g)
   const expected = expectedToDate(g.budget, now)
