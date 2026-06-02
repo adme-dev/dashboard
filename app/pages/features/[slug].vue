@@ -1328,11 +1328,11 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-brain',
     categoryIconBg: 'bg-amber-50',
     categoryIconColor: 'text-amber-600',
-    description: 'Eight specialized analyzers that proactively flag spend anomalies, deadline risks, and budget issues before they become problems.',
+    description: 'Ten specialized analyzers that proactively flag spend anomalies, deadline risks, and budget issues before they become problems.',
     details: [
       {
-        title: 'Nine Specialized Analyzers',
-        content: 'The detection layer runs nine independent analyzers across financial domains: profitability (margin compression and net loss), revenue (period-over-period and year-over-year decline), expenses (category concentration, vendor outliers, statistical spikes), cashflow (overdraft, low reserves, burn rate, projected shortfall), receivables (overdue concentration, slow payers, client concentration), budget (overspend and category-level overruns), ad-spend (per-client/platform daily-spend spikes), per-client (scope creep and revenue concentration), and transaction-level outliers. Each analyzer runs in parallel during scheduled and on-demand scans.'
+        title: 'Ten Specialized Analyzers',
+        content: 'The detection layer runs ten independent analyzers across financial domains: profitability (margin compression and net loss), revenue (period-over-period and year-over-year decline), expenses (category concentration, vendor outliers, statistical spikes), cashflow (overdraft, low reserves, burn rate, projected shortfall), receivables (overdue concentration, slow payers, client concentration), budget (overspend and category-level overruns), ad-spend daily-spend spikes (per-client/platform), ad-spend pacing and delivery health (underspend, overspend, stopped, paused-with-budget, stale-sync, zero-conversion), per-client (scope creep and revenue concentration), and transaction-level outliers. Each analyzer runs in parallel during scheduled and on-demand scans.'
       },
       {
         title: 'Proactive Notifications',
@@ -2345,23 +2345,23 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-chart-area',
     categoryIconBg: 'bg-cyan-50',
     categoryIconColor: 'text-cyan-600',
-    description: 'Automated alerts for spend anomalies, pacing issues, and budget thresholds across all connected ad platforms.',
+    description: 'Detects ad-spend pacing problems — underspend, overspend, stopped, paused-with-budget, stale-sync and zero-conversion — then posts a daily Slack budget review plus real-time critical alerts.',
     details: [
       {
-        title: 'Spend Anomaly Detection',
-        content: 'The alerting engine compares current spend against historical averages and flags significant deviations. A campaign that suddenly spends 3x its daily average triggers an alert before it burns through the monthly budget. Sensitivity is configurable — set tighter thresholds for high-spend accounts and looser ones for experimental campaigns.'
+        title: 'The Gap This Closes',
+        content: 'The feature was built around a real failure mode: a SEM campaign running well below its monthly budget for weeks without anyone noticing until the client asked why results were down. Scheduled syncs were working, but nobody was looking at pacing against budget — just at results. The ad-spend health analyser runs daily across every active campaign and compares projected month-end spend against allocated budget, catching underspend and overspend early enough to act on them.'
       },
       {
-        title: 'Budget Pacing',
-        content: 'Track how campaigns are pacing against their monthly budget. Alerts fire when a campaign is projected to overspend or significantly underspend by month-end. Early warnings give media buyers time to adjust bids, budgets, or targeting before the situation becomes critical.'
+        title: 'Six Pacing and Delivery Signals',
+        content: 'The analyser detects six distinct conditions across Meta and Google campaigns. Underspend: campaign is tracking well below its budget pace and will likely leave significant spend on the table by month-end. Overspend: projected to exceed the monthly budget before the month ends. Stopped: a campaign that had consistent recent spend has gone to zero — could be an accidental pause, a payment issue, or a platform policy flag. Paused-with-budget: a campaign is paused or removed at the platform level but budget is still allocated in the system, meaning the client is potentially expecting delivery that is not happening. Stale-sync: the spend data has not refreshed recently enough to trust pacing calculations — this alert prompts a manual sync before acting on the numbers. Zero-conversion: a campaign is spending real budget but recording no conversions, which could mean a tracking breakage, a landing-page issue, or a targeting problem.'
       },
       {
-        title: 'Performance Degradation',
-        content: 'Alerts trigger when key metrics decline beyond thresholds — CTR drops below 1%, CPC rises above target, conversion rate falls significantly. Each alert includes the metric, current value, threshold, and trend direction so the media buyer has immediate context to investigate.'
+        title: 'Daily Slack Budget Review',
+        content: 'Each morning at 9am tenant-local time (configurable in Settings → Budget Alerts), a Budget Review message is posted to your configured Slack channel. The digest covers every client and campaign with a detected pacing issue — grouped by severity — so your media buying team starts the day with a clear list of what needs attention. The webhook URL is set once in Settings and the timing can be adjusted to match your team\'s morning standup. Critical issues also trigger an immediate real-time Slack alert outside the daily window — a stopped campaign at 2pm does not wait until the next morning digest.'
       },
       {
-        title: 'Dashboard Widget',
-        content: 'Active alerts appear in a dashboard widget with severity indicators. Critical alerts (budget exceeded, account paused) surface at the top, while informational alerts (minor pacing deviation, slight CTR decline) sit below. Click any alert to jump to the relevant campaign detail for investigation.'
+        title: 'Accountability Tasks',
+        content: 'For each critical pacing issue, the system can optionally create an accountability task assigned to the responsible media buyer, due in 24 hours. This bridges the gap between detection and resolution — the alert is not just a notification that gets buried, it becomes a tracked work item with an owner and a deadline. Tasks are created through the existing work management system so they appear in the assignee\'s board and notifications alongside their other work.'
       }
     ]
   },

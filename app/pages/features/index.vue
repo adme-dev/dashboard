@@ -209,7 +209,7 @@ const categories = [
     features: [
       { title: 'Cross-Platform Dashboard', slug: 'cross-platform-dashboard', icon: 'i-lucide-layout-dashboard', description: 'Aggregated performance across Meta, Google, and other ad platforms in a unified view. Ads Manager–style campaign columns with a saveable layout, one-click Meta Ads preset, and per-campaign health scores that flag what to scale or cut against each client\'s own KPI targets.' },
       { title: 'Hourly Breakdowns', slug: 'hourly-breakdowns', icon: 'i-lucide-clock-4', description: 'Granular hourly performance data with spend, impressions, and conversion trends throughout the day.' },
-      { title: 'Campaign Alerts', slug: 'campaign-alerts', icon: 'i-lucide-bell-ring', description: 'Automated alerts for spend anomalies, pacing issues, and budget thresholds across platforms.' },
+      { title: 'Campaign Alerts', slug: 'campaign-alerts', icon: 'i-lucide-bell-ring', description: 'Detects ad-spend pacing problems — underspend, overspend, stopped, paused-with-budget, stale-sync and zero-conversion — then posts a daily Slack budget review plus real-time critical alerts.' },
       { title: 'Platform Comparison', slug: 'platform-comparison', icon: 'i-lucide-git-compare', description: 'Side-by-side platform performance with unified metrics, normalised for cross-channel analysis.' },
       { title: 'On-Demand Sync', slug: 'on-demand-sync', icon: 'i-lucide-refresh-cw', description: 'Pull the latest data from ad platforms on demand — no waiting for scheduled syncs.' },
       { title: 'Export & Reporting', slug: 'export-reporting', icon: 'i-lucide-file-down', description: 'Export analytics to CSV with date ranges, breakdowns, and AI-generated summaries.' },
@@ -247,7 +247,7 @@ const categories = [
     features: [
       { title: 'AI Chat', slug: 'ai-chat', icon: 'i-lucide-bot', description: 'Groq-powered conversational AI with @entity mentions for clients, tasks, and projects.' },
       { title: 'Voice AI', slug: 'voice-ai', icon: 'i-lucide-mic', description: 'Talk to your AI assistant. Speech-to-text transcription and text-to-speech responses powered by Workers AI.' },
-      { title: 'Anomaly Detection', slug: 'anomaly-detection', icon: 'i-lucide-alert-triangle', description: '9 specialised analysers that proactively flag financial anomalies across profit, revenue, expenses, cashflow, receivables, budget, ad-spend and per-client risk.' },
+      { title: 'Anomaly Detection', slug: 'anomaly-detection', icon: 'i-lucide-alert-triangle', description: '10 specialised analysers that proactively flag anomalies across profit, revenue, expenses, cashflow, receivables, budget, ad-spend pacing/delivery health and per-client risk — surfaced in the daily digest, push, and in-app.' },
       { title: 'Semantic Search', slug: 'semantic-search', icon: 'i-lucide-search', description: 'Vectorize-powered search across tasks, clients, briefs, and knowledge base entries.' },
       { title: 'Intent Classification', slug: 'intent-classification', icon: 'i-lucide-target', description: 'Edge-first intent classifier routes queries to the right data sources automatically.' },
       { title: 'Composite Scoring', slug: 'composite-scoring', icon: 'i-lucide-blend', description: 'Five-signal retrieval formula — semantic, recency, importance, intent match, and entity overlap.' },
