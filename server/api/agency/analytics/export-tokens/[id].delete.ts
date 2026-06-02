@@ -3,7 +3,7 @@
  * DELETE /api/agency/analytics/export-tokens/:id
  */
 import { execute } from '~~/server/utils/db'
-import { requireRole } from '~~/server/utils/auth'
+import { requireRole, hasRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 
 export default defineEventHandler(async (event) => {
@@ -12,8 +12,8 @@ export default defineEventHandler(async (event) => {
   if (!id) {
     throw createError({ statusCode: 400, statusMessage: 'token id required' })
   }
-  // Only the token's creator or an owner/admin may revoke it.
-  const isAdmin = PERMISSIONS.ADMIN.includes(user.role)
+  // Only the token's creator or an admin (incl. custom admin roles) may revoke it.
+  const isAdmin = hasRole(user, PERMISSIONS.ADMIN)
   const affected = await execute(
     `UPDATE analytics_export_tokens SET revoked_at = NOW()
      WHERE id = $1 AND revoked_at IS NULL AND (created_by = $2 OR $3::boolean)`,
