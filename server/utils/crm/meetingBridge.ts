@@ -1,6 +1,8 @@
 // server/utils/crm/meetingBridge.ts
 // Deterministic resolution of office-meeting guests → CRM targets, plus the
 // pure CRM-task payload builder. DB-touching helpers live below the pure block.
+import { queryRows, queryOne, execute, transaction } from '~~/server/utils/db'
+import { recordFieldChanges } from './audit'
 import type { TASK_PRIORITIES } from './tasks'
 
 export interface CandidatePerson {
@@ -152,4 +154,132 @@ export function buildCrmTaskPayload(
     priority: opts.priority ?? 'medium',
     due_at: actionItem.due_at ?? null,
   }
+}
+
+// ── DB layer ─────────────────────────────────────────────────────────────────
+
+// Cross-client by design: agency staff resolve a meeting against every client's
+// contacts (the meeting carries no client_id). Tenant isolation is enforced at
+// conversion (the chosen target's client_id is authoritative).
+export async function findMeetingCrmCandidates(meetingSessionId: string): Promise<{
+  candidatePeople: CandidatePerson[]
+  candidateOpps: CandidateOpp[]
+}> {
+  const people = await queryRows<CandidatePerson>(
+    `SELECT p.id AS person_id, p.client_id, p.company_id,
+            co.name AS company_name,
+            lower(trim(p.email)) AS email,
+            trim(concat_ws(' ', p.first_name, p.last_name)) AS display_name
+     FROM office_meeting_sessions s
+     CROSS JOIN LATERAL unnest(s.guest_emails) AS ge(email)
+     JOIN crm_people p
+       ON p.deleted_at IS NULL
+      AND p.email IS NOT NULL
+      AND lower(trim(p.email)) = lower(trim(ge.email))
+     LEFT JOIN crm_companies co ON co.id = p.company_id AND co.deleted_at IS NULL
+     WHERE s.id = $1`,
+    [meetingSessionId],
+  )
+  if (people.length === 0) return { candidatePeople: [], candidateOpps: [] }
+
+  const personIds = [...new Set(people.map(p => p.person_id))]
+  const companyIds = [...new Set(people.map(p => p.company_id).filter(Boolean))] as string[]
+
+  const opps = await queryRows<CandidateOpp>(
+    `SELECT id AS opportunity_id, client_id, person_id, company_id, name,
+            to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at
+     FROM crm_opportunities
+     WHERE status = 'open' AND deleted_at IS NULL
+       AND ( person_id = ANY($1::uuid[])
+             OR (person_id IS NULL AND company_id = ANY($2::uuid[])) )`,
+    [personIds, companyIds.length ? companyIds : ['00000000-0000-0000-0000-000000000000']],
+  )
+  return { candidatePeople: people, candidateOpps: opps }
+}
+
+export type BridgeMode = 'manual_office' | 'manual_crm' | 'auto'
+
+export interface ConvertResult {
+  task: Record<string, unknown>
+  actionItem: Record<string, unknown>
+  created: boolean
+}
+
+// Idempotent: if the action item already has a crm_task_id, return the existing
+// task untouched. Otherwise insert the crm_task, stamp the action item, and write
+// an audit row — all in one transaction.
+export async function convertActionItemToCrmTask(
+  actionItem: ActionItemForBridge & { crm_task_id: string | null },
+  target: { client_id: string, target_type: 'opportunity' | 'person' | 'company', target_id: string },
+  opts: { actor: string | null, mode: BridgeMode, priority?: (typeof TASK_PRIORITIES)[number] },
+): Promise<ConvertResult> {
+  if (actionItem.crm_task_id) {
+    const existing = await queryOne(`SELECT * FROM crm_tasks WHERE id = $1`, [actionItem.crm_task_id])
+    return {
+      task: existing as Record<string, unknown>,
+      actionItem: actionItem as unknown as Record<string, unknown>,
+      created: false,
+    }
+  }
+
+  const payload = buildCrmTaskPayload(actionItem, target, { priority: opts.priority })
+
+  const result = await transaction(async (client) => {
+    const taskRes = await client.query(
+      `INSERT INTO crm_tasks
+         (client_id, target_type, target_id, title, description, task_type, priority, due_at, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       RETURNING *`,
+      [payload.client_id, payload.target_type, payload.target_id, payload.title,
+       payload.description, payload.task_type, payload.priority, payload.due_at, opts.actor],
+    )
+    const task = taskRes.rows[0]
+
+    const aiRes = await client.query(
+      `UPDATE office_meeting_action_items
+       SET crm_task_id = $1,
+           metadata = metadata || $2::jsonb,
+           updated_at = now()
+       WHERE id = $3 AND crm_task_id IS NULL
+       RETURNING *`,
+      [task.id, JSON.stringify({
+        crm_task_id: task.id,
+        crm_task_created_at: new Date().toISOString(),
+        crm_bridge_mode: opts.mode,
+      }), actionItem.id],
+    )
+    // Lost-race guard: another tx stamped it first → roll back our insert.
+    if (aiRes.rowCount === 0) {
+      throw new Error('action_item_already_converted')
+    }
+    return { task, actionItem: aiRes.rows[0] }
+  })
+
+  // Best-effort audit (never rolls back the conversion).
+  try {
+    await recordFieldChanges({
+      clientId: target.client_id,
+      entityType: 'crm_task',
+      entityId: result.task.id as string,
+      before: null,
+      after: { created_from_meeting: actionItem.id },
+      fields: ['created_from_meeting'],
+      actor: opts.actor,
+    })
+  } catch (e) {
+    console.warn('[meetingBridge] audit write failed:', e)
+  }
+
+  return { ...result, created: true }
+}
+
+export type SkipReason = 'ambiguous_multi_person' | 'ambiguous_multi_client' | 'no_crm_match'
+
+export async function recordSkipReason(actionItemId: string, reason: SkipReason): Promise<void> {
+  await execute(
+    `UPDATE office_meeting_action_items
+     SET metadata = metadata || $2::jsonb, updated_at = now()
+     WHERE id = $1`,
+    [actionItemId, JSON.stringify({ crm_skip_reason: reason, crm_skip_at: new Date().toISOString() })],
+  )
 }
