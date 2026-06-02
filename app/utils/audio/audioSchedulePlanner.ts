@@ -69,5 +69,34 @@ export function planTimeline(state: TimelineState): TimelinePlan {
   }
   clips.sort((a, b) => a.timelineStartSec - b.timelineStartSec)
 
-  return { tracks, clips, ramps: [] }
+  // Ducking → scheduled gain ramps on the target bus at each source-clip boundary.
+  const activeIds = new Set(active.map((t) => t.id))
+  const ramps: DuckRamp[] = []
+  for (const rule of state.ducking) {
+    // Skip if either side is muted/absent (no bus to ramp / no trigger audio).
+    if (!activeIds.has(rule.source_track_id) || !activeIds.has(rule.target_track_id)) continue
+    const sourceTrack = active.find((t) => t.id === rule.source_track_id)!
+    for (const clip of sourceTrack.clips) {
+      const start = clip.timeline_start_sec
+      ramps.push({ targetTrackId: rule.target_track_id, atSec: start, toGainDb: rule.amount_db, rampSec: rule.attack_ms / 1000 })
+      // Restore only when the source clip's end is known; null-out clips get their
+      // restore filled by the adapter once the decoded buffer duration is available.
+      if (clip.source_out_sec != null) {
+        const end = start + (clip.source_out_sec - clip.source_in_sec)
+        ramps.push({ targetTrackId: rule.target_track_id, atSec: end, toGainDb: 0, rampSec: rule.release_ms / 1000 })
+      }
+    }
+  }
+  ramps.sort((a, b) => a.atSec - b.atSec)
+
+  return { tracks, clips, ramps }
+}
+
+/** Pure lookahead slice: clips whose start ∈ [fromSec, toSec) and ramps whose
+ * atSec ∈ [fromSec, toSec). The per-tick heart of the scheduler loop. */
+export function windowEvents(plan: TimelinePlan, fromSec: number, toSec: number): { clips: ScheduledClip[]; ramps: DuckRamp[] } {
+  return {
+    clips: plan.clips.filter((c) => c.timelineStartSec >= fromSec && c.timelineStartSec < toSec),
+    ramps: plan.ramps.filter((r) => r.atSec >= fromSec && r.atSec < toSec)
+  }
 }
