@@ -65,6 +65,13 @@ This keeps the fragile/slow headless path scoped to the overlay layer, lets ffmp
 ### 4.5 Determinism
 Fixed frame rate (25/30fps), fixed timestep capture, GSAP seeked to exact `time()` per frame (seekable timelines make this clean), generated clips at known durations. Same Queue→Container→R2→**Neon**-status async wiring as audio — and that wiring already runs in prod (the `audio-jobs` Worker + `RenderContainer` consuming a Cloudflare Queue). The video render is a new, longer/heavier job type on the same rails, plus the headless-overlay Container. **R2 gotcha (shared):** server-side R2 access via the AWS S3 SDK needs `@smithy/fetch-http-handler` in the Workers runtime (or the native R2 binding) — see audio brief §5.
 
+### 4.6 Distribution — per-platform video profiles
+Finished video posts through the **existing Social Suite providers** (`server/utils/social-providers/`) — YouTube (resumable upload, incl. Shorts), TikTok (pull-from-URL), Facebook Reels, Instagram Reels/Stories, LinkedIn — so distribution is a **wiring job, not a new build** (see audio brief §5 "Distribution handoff"). The video render must emit **destination-correct profiles**, not one master:
+- **Aspect/format per surface** — 9:16 (Shorts / Reels / TikTok / Stories), 1:1, 16:9 (YouTube standard) — driven by the format the user targets, the same way Banner Studio fans out sizes.
+- **Duration caps + codec/bitrate** per each provider's `PlatformCapabilities` (`maxVideoSizeMB`, `supportsReels/Stories`); H.264/AAC platform profiles.
+- **LUFS per platform** (§4.4 / `profiles.ts`).
+- Render writes the variant to R2 and hands the **R2 key** to the provider (pull-from-URL or resumable upload); the existing scheduler owns timing. **Per-tenant OAuth** activates each platform.
+
 ## 5. Cost & latency reality
 
 Video is the expensive product on two axes simultaneously:

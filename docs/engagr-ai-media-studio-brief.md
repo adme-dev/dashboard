@@ -105,6 +105,14 @@ Client saves timeline → Worker enqueues a render job (Cloudflare Queue) with p
 
 > **Runtime gotcha (learned in prod):** server-side R2 access via the AWS S3 SDK throws `[unenv] https.request is not implemented` in the Workers runtime. The S3 client must use `@smithy/fetch-http-handler` (`requestHandler: new FetchHttpHandler()`), or use the native R2 binding (`env.BUCKET.put/get`). Applies to any External-path re-upload and all mixdown I/O.
 
+### Distribution / publishing handoff (reuse the Social Suite)
+A finished asset isn't done until it's posted — and the platform already ships **video-capable publishing providers**: `server/utils/social-providers/` (YouTube Data API v3 resumable upload incl. Shorts; TikTok Content Posting API pull-from-URL; Facebook video/Reels; Instagram video/Reel/Stories; LinkedIn) behind a `registry`, with a `MediaItem { type: 'image' | 'video' }` + `PlatformCapabilities` (`maxVideoSizeMB`, `supportsReels/Stories`, `supportedMediaTypes`) contract and the existing scheduler. So the studio's last mile is **wiring, not new integrations**: render → R2 → hand the R2 key to the provider → scheduled multi-platform publish. This closed loop (generate → edit → render → scheduled multi-platform post) is a moat competitors charge separately for, and it's real in code today.
+
+Contract the render layer must honour:
+- **Emit per-platform variants** keyed to each provider's `PlatformCapabilities` — aspect ratio, duration cap, codec/bitrate, and **LUFS** (radio −24 / social −14). Don't post one master everywhere.
+- **Delivery mode differs per provider** — TikTok/Instagram *pull from a public R2 URL*; YouTube does a *resumable upload*. The render produces the right file + R2 key; the provider handles transport.
+- **Per-tenant OAuth activation gate** — like Meta today, each of YouTube/TikTok/LinkedIn is enabled per dealer via its OAuth connection (provider code exists; connection is the operational step).
+
 ## 6. Video extension (later phase — see the forthcoming dedicated video brief)
 
 > Full detail for this phase moves to a separate **video brief** (in progress). The summary below is the bridge; once the video brief lands, treat it as authoritative and this section as a pointer.
