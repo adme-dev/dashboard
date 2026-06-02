@@ -159,6 +159,13 @@ const creatingTaskForActionItemId = ref<string | null>(null)
 const creatingAllActionItemTasks = ref(false)
 const creatingAssistantForActionItemId = ref<string | null>(null)
 const actionItemTaskDepartmentId = ref('')
+const crmTaskModalOpen = ref(false)
+const crmTaskModalItem = ref<{ id: string, content: string, crm_task_id: string | null } | null>(null)
+
+function openCrmTaskModal(item: OfficeMeetingActionItemRow) {
+  crmTaskModalItem.value = { id: item.id, content: item.content, crm_task_id: item.crm_task_id }
+  crmTaskModalOpen.value = true
+}
 const meetingQuestion = ref('')
 const meetingAnswer = ref('')
 const meetingAnswerSources = ref<MeetingQuestionSource[]>([])
@@ -4086,6 +4093,23 @@ onBeforeUnmount(() => {
                 >
                   {{ creatingTaskForActionItemId === item.id ? 'Creating' : 'Create task' }}
                 </button>
+                <span
+                  v-if="item.crm_task_id"
+                  class="rounded-md bg-teal-400/10 px-2 py-1 text-[11px] font-medium text-teal-100 ring-1 ring-teal-300/15"
+                  :title="item.crm_task_id"
+                >
+                  CRM linked
+                </span>
+                <button
+                  v-else
+                  type="button"
+                  class="inline-flex items-center gap-1 rounded-md bg-teal-400/10 px-2 py-1 text-[11px] font-semibold text-teal-100 ring-1 ring-teal-300/15 transition hover:bg-teal-400/15"
+                  title="Create a CRM follow-up task from this action item"
+                  @click="openCrmTaskModal(item)"
+                >
+                  <UIcon name="i-lucide-contact" class="size-3" />
+                  Create CRM task
+                </button>
                 <button
                   v-if="item.status !== 'done'"
                   type="button"
@@ -4517,5 +4541,13 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+
+    <OfficeMeetingCrmTaskModal
+      v-model:open="crmTaskModalOpen"
+      :office-id="props.officeId"
+      :meeting-id="selectedMeeting?.id ?? null"
+      :action-item="crmTaskModalItem"
+      @converted="refreshActionItems"
+    />
   </section>
 </template>

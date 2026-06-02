@@ -292,6 +292,7 @@ export interface OfficeMeetingActionItemRow {
   status: OfficeMeetingActionItemStatus
   assignee_user_id: string | null
   task_id: string | null
+  crm_task_id: string | null
   due_at: string | null
   metadata: Record<string, unknown>
   created_by: string | null
