@@ -6,6 +6,7 @@ import { cashflowAnalyser } from './analysers/cashflow'
 import { receivablesAnalyser } from './analysers/receivables'
 import { budgetAnalyser } from './analysers/budget'
 import { adspendAnalyser } from './analysers/adspend'
+import { adspendHealthAnalyser } from './analysers/adspendHealth'
 import { clientsAnalyser } from './analysers/clients'
 import { transactionsAnalyser } from './analysers/transactions'
 import { ga4Analyser } from './analysers/ga4'
@@ -20,6 +21,7 @@ const ALL = [
   receivablesAnalyser,
   budgetAnalyser,
   adspendAnalyser,
+  adspendHealthAnalyser,
   clientsAnalyser,
   transactionsAnalyser,
   ga4Analyser,

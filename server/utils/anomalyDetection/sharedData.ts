@@ -40,7 +40,13 @@ export async function fetchSharedData(event: H3Event | null): Promise<SharedData
         ac.name AS client_name,
         ms.platform,
         ds.spend_date::text AS spend_date,
-        ds.spend::numeric AS spend
+        ds.spend::numeric AS spend,
+        ms.id::text AS media_spend_id,
+        ms.budget_allocated::numeric AS budget_allocated,
+        ms.period,
+        ms.campaign_status,
+        ms.synced_at,
+        ds.conversions::numeric AS conversions
       FROM daily_spend ds
       JOIN media_spend ms ON ds.media_spend_id = ms.id
       LEFT JOIN agency_clients ac ON ms.client_id = ac.id
