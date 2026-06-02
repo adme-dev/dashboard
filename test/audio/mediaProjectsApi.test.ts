@@ -44,9 +44,9 @@ beforeEach(() => {
 describe('GET /agency/audio/projects', () => {
   it('lists projects, passing the clientId filter through', async () => {
     mockListProjects.mockResolvedValue([{ id: 'p1' }])
-    const res = await listH({ query: { clientId: '11111111-1111-1111-1111-111111111111' } } as any)
+    const res = await listH({ query: { clientId: '11111111-1111-4111-8111-111111111111' } } as any)
     expect(res).toEqual({ projects: [{ id: 'p1' }] })
-    expect(mockListProjects).toHaveBeenCalledWith('11111111-1111-1111-1111-111111111111')
+    expect(mockListProjects).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111')
   })
   it('lists all projects when no filter', async () => {
     mockListProjects.mockResolvedValue([])

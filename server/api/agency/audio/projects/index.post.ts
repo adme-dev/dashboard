@@ -5,7 +5,7 @@ import { TimelineStateSchema, validateTimeline } from '~~/server/utils/audio/tim
 
 const BodySchema = z.object({
   title: z.string().max(200).nullish(),
-  clientId: z.string().guid().nullish(),
+  clientId: z.string().uuid().nullish(),
   // Optional seed timeline; defaults to an empty audio timeline when omitted.
   initialState: z.unknown().optional()
 })
