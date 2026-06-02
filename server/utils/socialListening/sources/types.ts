@@ -12,7 +12,7 @@ export interface SourceSearchInput {
 }
 
 export interface ListeningSource {
-  key: 'reddit' | 'news' | 'youtube' | 'bluesky' | 'mastodon'
+  key: 'reddit' | 'news' | 'youtube' | 'bluesky' | 'mastodon' | 'hackernews' | 'lemmy'
   isEnabled(env: SourceEnv): boolean
   search(input: SourceSearchInput): Promise<RawMention[]>
 }

@@ -24,6 +24,8 @@ const sourceOptions = [
   { label: 'YouTube', value: 'youtube' },
   { label: 'Bluesky', value: 'bluesky' },
   { label: 'Mastodon', value: 'mastodon' },
+  { label: 'Hacker News', value: 'hackernews' },
+  { label: 'Lemmy', value: 'lemmy' },
 ]
 
 type Mode = 'list' | 'edit'
@@ -87,7 +89,7 @@ watch(() => [props.open, props.clientId], ([isOpen]) => { if (isOpen) { backToLi
           color="neutral"
           variant="subtle"
           title="External sources activate later"
-          description="Queries are saved now. Off-property sources (Reddit, News, YouTube, Bluesky, Mastodon) start collecting once an operator enables them; owned mentions from your inbox show immediately."
+          description="Queries are saved now. Off-property sources (Reddit, News, YouTube, Bluesky, Mastodon, Hacker News, Lemmy) start collecting once an operator enables them; owned mentions from your inbox show immediately."
         />
 
         <template v-if="mode === 'list'">

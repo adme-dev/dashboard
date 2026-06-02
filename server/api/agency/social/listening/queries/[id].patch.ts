@@ -2,7 +2,7 @@ import { requireAuth } from '~~/server/utils/auth'
 import { execute } from '~~/server/utils/db'
 
 const CATEGORIES = new Set(['brand', 'competitor', 'product', 'campaign'])
-const SOURCES = new Set(['reddit', 'news', 'youtube', 'bluesky', 'mastodon'])
+const SOURCES = new Set(['reddit', 'news', 'youtube', 'bluesky', 'mastodon', 'hackernews', 'lemmy'])
 const cleanArr = (v: any, allow?: Set<string>): string[] =>
   Array.isArray(v) ? [...new Set(v.map((x: any) => String(x).trim()).filter((x: string) => x && (!allow || allow.has(x))))] : []
 
