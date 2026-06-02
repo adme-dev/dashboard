@@ -7,7 +7,7 @@ definePageMeta({
 const toast = useToast()
 
 // Active tab
-const activeTab = ref<'departments' | 'statuses' | 'labels'>('departments')
+const activeTab = ref<'departments' | 'statuses' | 'labels' | 'budget-alerts'>('departments')
 
 // ==================== DEPARTMENTS ====================
 
@@ -354,6 +354,17 @@ const presetColors = [
               class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600"
             />
           </button>
+          <button
+            class="pb-3 px-1 text-sm font-medium transition-colors relative"
+            :class="activeTab === 'budget-alerts' ? 'text-primary-600' : 'text-gray-500 hover:text-gray-700'"
+            @click="activeTab = 'budget-alerts'"
+          >
+            Budget Alerts
+            <span
+              v-if="activeTab === 'budget-alerts'"
+              class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600"
+            />
+          </button>
         </div>
 
         <!-- Departments Tab -->
@@ -573,6 +584,11 @@ const presetColors = [
               <p>No labels yet. Create one to get started!</p>
             </div>
           </div>
+        </div>
+
+        <!-- Budget Alerts Tab -->
+        <div v-if="activeTab === 'budget-alerts'">
+          <SettingsBudgetAlertsSettings />
         </div>
       </div>
     </UDashboardPanel>
