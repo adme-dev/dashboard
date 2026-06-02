@@ -80,7 +80,7 @@ export function buildClipAndTrackChains(state: TimelineState): BuildAccum {
     }
     const busLabel = `t${acc.busLabels.length}`
     if (clipLabels.length === 1 && track.gain_db === 0) {
-      acc.busLabels.push(clipLabels[0]) // reuse clip label; no extra filter node
+      acc.busLabels.push(clipLabels[0]!) // reuse clip label; no extra filter node (length===1 ⇒ defined)
     } else {
       const ins = clipLabels.map((l) => `[${l}]`).join('')
       const post = track.gain_db !== 0 ? `,volume=${track.gain_db}dB` : ''

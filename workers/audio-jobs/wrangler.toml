@@ -37,6 +37,17 @@ max_batch_timeout = 30
 max_retries = 3
 dead_letter_queue = "music-gen-dlq"
 
+# Media Studio SP1 — timeline render queue. The Pages app produces to
+# `timeline-render` (TIMELINE_RENDER_QUEUE binding); this Worker consumes and
+# branches on batch.queue in index.ts. batch size 1: a multi-clip ffmpeg mixdown
+# + per-channel loudnorm is heavy — one job per invocation.
+[[queues.consumers]]
+queue = "timeline-render"
+max_batch_size = 1
+max_batch_timeout = 5
+max_retries = 3
+dead_letter_queue = "timeline-render-dlq"
+
 # Phase 3 — FFmpeg render service as a CF Container bound to this Worker
 # (RENDER). The queue handler invokes it per channel to produce loudness-
 # normalised variants. Stateless; the Worker owns R2/DB.
