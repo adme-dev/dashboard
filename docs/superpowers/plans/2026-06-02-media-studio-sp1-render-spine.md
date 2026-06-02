@@ -1310,7 +1310,7 @@ export function buildTimelineFiltergraph(state) {
     acc.chains.push(`[${srcLabel}]asplit=2[${keepLabel}][${scLabel}]`)
     acc.busLabels[srcK] = keepLabel
     const duckedLabel = `d${ruleIdx}`; const ratio = duckRatioFromAmountDb(rule.amount_db)
-    acc.chains.push(`[${tgtLabel}][${scLabel}]sidechaincompress=threshold=${rule.threshold_db}:ratio=${ratio}:attack=${rule.attack_ms}:release=${rule.release_ms}[${duckedLabel}]`)
+    acc.chains.push(`[${tgtLabel}][${scLabel}]sidechaincompress=threshold=${duckThresholdLinear(rule.threshold_db)}:ratio=${ratio}:attack=${rule.attack_ms}:release=${rule.release_ms}[${duckedLabel}]`)
     acc.busLabels[tgtK] = duckedLabel
   }
   const buses = acc.busLabels.filter(Boolean)
