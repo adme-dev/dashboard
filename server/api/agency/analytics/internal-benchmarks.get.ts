@@ -128,7 +128,22 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    return { window: { startDate, endDate }, clientCount: metricsByClient.size, metrics }
+    // Names for the per-client leaderboard (no-client view in the UI).
+    const ids = [...metricsByClient.keys()]
+    const nameRows = ids.length
+      ? await queryRows<{ id: string, name: string }>(
+          `SELECT id::text AS id, name FROM agency_clients WHERE id = ANY($1::uuid[])`,
+          [ids]
+        )
+      : []
+    const nameById = new Map(nameRows.map(r => [r.id, r.name]))
+    const clients = ids.map(id => ({
+      clientId: id,
+      clientName: nameById.get(id) ?? 'Unknown client',
+      metrics: metricsByClient.get(id)!
+    }))
+
+    return { window: { startDate, endDate }, clientCount: metricsByClient.size, metrics, clients }
   } catch (error) {
     console.error('Internal benchmarks failed:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to compute internal benchmarks' })
