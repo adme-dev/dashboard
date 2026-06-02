@@ -95,6 +95,7 @@ export async function getProjectWithCurrentTimeline(
 export async function listProjects(clientId?: string): Promise<MediaProject[]> {
   const where = clientId ? 'WHERE client_id = $1' : ''
   const params = clientId ? [clientId] : []
+  // SP0: hard cap; pagination deferred (mirrors assets.ts ceiling)
   const rows = await queryRows(
     `SELECT * FROM media_projects ${where} ORDER BY updated_at DESC LIMIT 200`,
     params

@@ -82,6 +82,18 @@ describe('createProject', () => {
     expect(timeline.version).toBe(1)
     expect(dbQuery).toHaveBeenCalledTimes(3)
   })
+
+  it('propagates a mid-transaction failure (does not swallow)', async () => {
+    const dbQuery = vi.fn()
+      .mockResolvedValueOnce({ rows: [projectRow] })   // INSERT project
+      .mockRejectedValueOnce(new Error('boom'))        // INSERT v1 timeline fails
+    transactionMock.mockImplementation(async (cb: any) => cb({ query: dbQuery }))
+
+    await expect(createProject({
+      createdBy: 'u1', clientId: 'c1', title: 'x',
+      initialState: { schema_version: 1, media_type: 'audio', sample_rate: 48000, duration_sec: 0, tracks: [], ducking: [] }
+    })).rejects.toThrow('boom')
+  })
 })
 
 describe('getProjectWithCurrentTimeline', () => {
@@ -130,6 +142,18 @@ describe('saveDraftTimeline', () => {
     expect(persistedState.duration_sec).toBe(8)
     expect((saved.state as any).duration_sec).toBe(8)
   })
+
+  it('throws when the UPDATE returns no row', async () => {
+    const state: TimelineState = {
+      schema_version: 1, media_type: 'audio', sample_rate: 48000, duration_sec: 0,
+      tracks: [{ id: 't', name: 'M', kind: 'music', gain_db: 0, muted: false, locked: false, hidden: false,
+        clips: [{ id: 'c', asset_id: null, r2_key: 'k', timeline_start_sec: 0, source_in_sec: 0,
+          source_out_sec: 8, gain_db: 0, fade_in_sec: 0, fade_out_sec: 0, fade_curve: 'linear' }] }],
+      ducking: []
+    }
+    queryOneMock.mockResolvedValueOnce(null)
+    await expect(saveDraftTimeline('missing', state)).rejects.toThrow()
+  })
 })
 
 describe('createVersion', () => {
@@ -147,6 +171,12 @@ describe('createVersion', () => {
     expect(v.version).toBe(2)
     expect(v.id).toBe('t2')
     expect(dbQuery).toHaveBeenCalledTimes(3)
+  })
+
+  it('throws when there is no current timeline', async () => {
+    transactionMock.mockImplementation(async (cb: any) =>
+      cb({ query: vi.fn().mockResolvedValueOnce({ rows: [] }) }))
+    await expect(createVersion({ projectId: 'p1', createdBy: 'u1' })).rejects.toThrow()
   })
 })
 
