@@ -105,8 +105,10 @@ describe('buildTimelineFiltergraph — per-clip chain', () => {
           gain_db: -3, fade_in_sec: 0.5, fade_out_sec: 1, fade_curve: 'exp' } ] }
     ] })
     const fc = buildTimelineFiltergraph(s).filterComplex
-    // input 0 → clip chain [c0]; playLen = 6-1 = 5, fade-out starts at 5-1 = 4
-    expect(fc).toContain('[0:a]atrim=start=1:end=6,asetpts=N/SR/TB,adelay=2000:all=1,volume=-3dB,'
+    // input 0 → clip chain [c0]; aformat first (prior-art: every input before amix);
+    // playLen = 6-1 = 5, fade-out starts at 5-1 = 4
+    expect(fc).toContain('[0:a]aformat=sample_rates=48000:channel_layouts=stereo,'
+      + 'atrim=start=1:end=6,asetpts=N/SR/TB,adelay=2000:all=1,volume=-3dB,'
       + 'afade=t=in:st=0:d=0.5:curve=exp,afade=t=out:st=4:d=1:curve=exp[c0]')
   })
 
@@ -116,7 +118,7 @@ describe('buildTimelineFiltergraph — per-clip chain', () => {
         { id: 'a', r2_key: 'k/a', timeline_start_sec: 0, source_out_sec: null } ] }
     ] })
     const fc = buildTimelineFiltergraph(s).filterComplex
-    expect(fc).toContain('[0:a]atrim=start=0,asetpts=N/SR/TB[c0]')
+    expect(fc).toContain('[0:a]aformat=sample_rates=48000:channel_layouts=stereo,atrim=start=0,asetpts=N/SR/TB[c0]')
     expect(fc).not.toContain('adelay')
     expect(fc).not.toContain('volume=')
     expect(fc).not.toContain('afade')
@@ -130,18 +132,18 @@ describe('buildTimelineFiltergraph — per-track bus', () => {
         { id: 'b', r2_key: 'k/b', timeline_start_sec: 0, source_out_sec: 10 } ] }
     ] })
     const plan = buildTimelineFiltergraph(s)
-    // one track, one clip, no gain → final mix is just the clip (single-bus anull to [mix])
-    expect(plan.filterComplex).toContain('[c0]anull[mix]')
+    // one track, one clip, no gain → final mix is just the clip, always alimiter-guarded
+    expect(plan.filterComplex).toContain('[c0]alimiter=limit=0.95[mix]')
   })
 
-  it('amixes a multi-clip track and applies track gain', () => {
+  it('amixes a multi-clip track (duration=longest) and applies track gain', () => {
     const s = tl({ tracks: [
       { id: 'mus', name: 'M', kind: 'music', gain_db: -2, clips: [
         { id: 'b', r2_key: 'k/b', timeline_start_sec: 0, source_out_sec: 10 },
         { id: 'c', r2_key: 'k/c', timeline_start_sec: 10, source_out_sec: 20 } ] }
     ] })
     const fc = buildTimelineFiltergraph(s).filterComplex
-    expect(fc).toContain('[c0][c1]amix=inputs=2:normalize=0,volume=-2dB[t0]')
+    expect(fc).toContain('[c0][c1]amix=inputs=2:normalize=0:duration=longest,volume=-2dB[t0]')
   })
 })
 ```
@@ -205,7 +207,9 @@ export function buildClipAndTrackChains(state: TimelineState): BuildAccum {
     for (const clip of track.clips) {
       const i = inputIdx++
       acc.inputs.push({ clipId: clip.id, r2_key: clip.r2_key })
-      const parts: string[] = []
+      // aformat FIRST — normalise rate/layout before any amix (prior-art: the #1
+      // silent amix failure). Applied at source so track + final amix are both safe.
+      const parts: string[] = [`aformat=sample_rates=${state.sample_rate}:channel_layouts=stereo`]
       parts.push(
         clip.source_out_sec != null
           ? `atrim=start=${clip.source_in_sec}:end=${clip.source_out_sec}`
@@ -240,7 +244,7 @@ export function buildClipAndTrackChains(state: TimelineState): BuildAccum {
     } else {
       const ins = clipLabels.map((l) => `[${l}]`).join('')
       const post = track.gain_db !== 0 ? `,volume=${track.gain_db}dB` : ''
-      const body = clipLabels.length === 1 ? `[${clipLabels[0]}]anull` : `${ins}amix=inputs=${clipLabels.length}:normalize=0`
+      const body = clipLabels.length === 1 ? `[${clipLabels[0]}]anull` : `${ins}amix=inputs=${clipLabels.length}:normalize=0:duration=longest`
       acc.chains.push(`${body}${post}[${busLabel}]`)
       acc.busLabels.push(busLabel)
     }
@@ -248,16 +252,21 @@ export function buildClipAndTrackChains(state: TimelineState): BuildAccum {
   return acc
 }
 
-// buildTimelineFiltergraph (with ducking + final mix) is completed in Task 2.
+/** Final master mix of the surviving track buses: amix (duration=longest, since
+ * clips are positioned by adelay) then alimiter (prior-art: prevent post-mix WAV
+ * clipping before the per-channel loudnorm). Always alimiter-guarded, even for one bus. */
+export function finalMixChain(busLabels: string[]): string | null {
+  const buses = busLabels.filter(Boolean)
+  if (buses.length === 0) return null
+  if (buses.length === 1) return `[${buses[0]}]alimiter=limit=0.95[mix]`
+  return `${buses.map((b) => `[${b}]`).join('')}amix=inputs=${buses.length}:normalize=0:duration=longest,alimiter=limit=0.95[mix]`
+}
+
+// buildTimelineFiltergraph (with ducking) is completed in Task 2.
 export function buildTimelineFiltergraph(state: TimelineState): FiltergraphPlan {
   const acc = buildClipAndTrackChains(state)
-  // Placeholder final mix (Task 2 replaces with ducking + general amix):
-  const buses = acc.busLabels.filter(Boolean)
-  if (buses.length === 1) {
-    acc.chains.push(`[${buses[0]}]anull[mix]`)
-  } else if (buses.length > 1) {
-    acc.chains.push(`${buses.map((b) => `[${b}]`).join('')}amix=inputs=${buses.length}:normalize=0[mix]`)
-  }
+  const finalChain = finalMixChain(acc.busLabels)
+  if (finalChain) acc.chains.push(finalChain)
   return {
     inputs: acc.inputs,
     chains_internal: acc.chains, // removed in Task 2
@@ -326,8 +335,8 @@ describe('buildTimelineFiltergraph — ducking', () => {
     expect(fc).toContain('[c0]asplit=2[c0a][sc0]')
     // target bus c1 compressed keyed by [sc0]
     expect(fc).toContain('[c1][sc0]sidechaincompress=threshold=-30:ratio=5:attack=50:release=300[d0]')
-    // final mix uses the post-split source [c0a] and the ducked target [d0]
-    expect(fc).toContain('[c0a][d0]amix=inputs=2:normalize=0[mix]')
+    // final mix uses the post-split source [c0a] and the ducked target [d0], duration=longest + alimiter
+    expect(fc).toContain('[c0a][d0]amix=inputs=2:normalize=0:duration=longest,alimiter=limit=0.95[mix]')
   })
 })
 
@@ -420,13 +429,9 @@ export function buildTimelineFiltergraph(state: TimelineState): FiltergraphPlan 
     acc.busLabels[tgtK] = duckedLabel
   }
 
-  // Final mix of all surviving track buses.
-  const buses = acc.busLabels.filter(Boolean)
-  if (buses.length === 1) {
-    acc.chains.push(`[${buses[0]}]anull[mix]`)
-  } else if (buses.length > 1) {
-    acc.chains.push(`${buses.map((b) => `[${b}]`).join('')}amix=inputs=${buses.length}:normalize=0[mix]`)
-  }
+  // Final mix (duration=longest + alimiter) — shared with the Task 1 helper.
+  const finalChain = finalMixChain(acc.busLabels)
+  if (finalChain) acc.chains.push(finalChain)
 
   return {
     inputs: acc.inputs,
@@ -1249,7 +1254,7 @@ function buildClipAndTrackChains(state) {
     for (const clip of track.clips) {
       const i = inputIdx++
       acc.inputs.push({ clipId: clip.id, r2_key: clip.r2_key })
-      const parts = []
+      const parts = [`aformat=sample_rates=${state.sample_rate}:channel_layouts=stereo`]
       parts.push(clip.source_out_sec != null ? `atrim=start=${clip.source_in_sec}:end=${clip.source_out_sec}` : `atrim=start=${clip.source_in_sec}`, 'asetpts=N/SR/TB')
       if (clip.timeline_start_sec > 0) parts.push(`adelay=${Math.round(clip.timeline_start_sec * 1000)}:all=1`)
       if (clip.gain_db !== 0) parts.push(`volume=${clip.gain_db}dB`)
@@ -1266,7 +1271,7 @@ function buildClipAndTrackChains(state) {
     else {
       const ins = clipLabels.map((l) => `[${l}]`).join('')
       const post = track.gain_db !== 0 ? `,volume=${track.gain_db}dB` : ''
-      const body = clipLabels.length === 1 ? `[${clipLabels[0]}]anull` : `${ins}amix=inputs=${clipLabels.length}:normalize=0`
+      const body = clipLabels.length === 1 ? `[${clipLabels[0]}]anull` : `${ins}amix=inputs=${clipLabels.length}:normalize=0:duration=longest`
       acc.chains.push(`${body}${post}[${busLabel}]`)
       acc.busLabels.push(busLabel)
     }
@@ -1293,8 +1298,8 @@ export function buildTimelineFiltergraph(state) {
     acc.busLabels[tgtK] = duckedLabel
   }
   const buses = acc.busLabels.filter(Boolean)
-  if (buses.length === 1) acc.chains.push(`[${buses[0]}]anull[mix]`)
-  else if (buses.length > 1) acc.chains.push(`${buses.map((b) => `[${b}]`).join('')}amix=inputs=${buses.length}:normalize=0[mix]`)
+  if (buses.length === 1) acc.chains.push(`[${buses[0]}]alimiter=limit=0.95[mix]`)
+  else if (buses.length > 1) acc.chains.push(`${buses.map((b) => `[${b}]`).join('')}amix=inputs=${buses.length}:normalize=0:duration=longest,alimiter=limit=0.95[mix]`)
   return { inputs: acc.inputs, filterComplex: acc.chains.join(';'), outLabel: '[mix]', sampleRate: state.sample_rate, durationSec: computeDuration(state) }
 }
 export function buildMasterRenderArgs(plan, inputPaths, outputPath) {
@@ -1387,6 +1392,10 @@ export async function renderTimelineMaster(
   }
 
   const instance = getContainer(env.RENDER, `tl:${args.jobId}`)
+  // Prior-art lifecycle: keep the instance alive for a long master render so
+  // sleepAfter='5m' can't reap it mid-render. renewActivityTimeout is the SDK
+  // heartbeat primitive; call it before the (bounded) synchronous render call.
+  ;(instance as any).renewActivityTimeout?.()
   const res = await instance.fetch('http://render.local/render-timeline', {
     method: 'POST',
     body: JSON.stringify({ plan, files }),
@@ -1478,4 +1487,6 @@ git commit -m "chore(media-studio): SP1 timeline-render queue binding + verifica
 
 **Out of scope (correctly absent):** editor UI / Web Audio / clock (SP2), render-status UX (SP3), model selector (SP4), billing/credits/caps + cost estimate (SP6 — SP1 only captures cost_cents), video/`'av'`.
 
-**Carried implementation watch-items (from spec §10, not blockers):** exact ffmpeg `afade` curve tokens and the `duckRatioFromAmountDb` calibration are pinned by tests but need one ear-verify on real audio; `render.mjs`/`timelineFiltergraph.mjs` duplication is guarded by the sync test but remains a maintenance surface; Container CPU/time vs worst-case timelines should be checked under load.
+**Prior-art edge cases incorporated (`oss-prior-art.md` §2/§4):** `aformat=sample_rates=<SR>:channel_layouts=stereo` is the first filter on every clip chain (the #1 silent `amix` failure) — Tasks 1 + 6; `amix` is explicit `:duration=longest` and the master ends in `alimiter=limit=0.95` to prevent pre-loudnorm WAV clipping — Tasks 1/2 + 6; `adelay=…:all=1` (per-channel trap) — Task 1; the Container `renewActivityTimeout()` heartbeat against `sleepAfter` reaping a long render — Task 6. Two-pass `loudnorm`+`linear=true` is inherited unchanged from `render.ts`.
+
+**Carried implementation watch-items (from spec §10, not blockers):** exact ffmpeg `afade` curve tokens and the `duckRatioFromAmountDb` calibration are pinned by tests but need one ear-verify on real audio; `loudnorm`'s silent dynamic-AGC fallback under tight headroom + the VBR mp3 duration-header trap live in the reused `render.ts` (log/regression-test if touched, but out of SP1 scope); `render.mjs`/`timelineFiltergraph.mjs` duplication is guarded by the sync test but remains a maintenance surface; Container CPU/time vs worst-case timelines should be checked under load.
