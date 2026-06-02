@@ -24,13 +24,15 @@ vi.mock('~~/server/utils/storage', () => ({
 const { TimelineStateSchema } = await import('~~/server/utils/audio/timelineSchema')
 const { default: handler } = await import('../../server/api/agency/audio/projects/[id]/clip-sources.get')
 
-const timeline = TimelineStateSchema.parse({
+const state = TimelineStateSchema.parse({
   tracks: [
     { id: 'vo', name: 'VO', kind: 'voiceover', clips: [{ id: 'a', r2_key: 'k/a', timeline_start_sec: 0, source_out_sec: 5 }] },
     { id: 'mus', name: 'M', kind: 'music', clips: [{ id: 'b', r2_key: 'k/b', timeline_start_sec: 0, source_out_sec: 30 }] },
     { id: 'sfx', name: 'S', kind: 'sfx', muted: true, clips: [{ id: 'x', r2_key: 'k/x', timeline_start_sec: 0, source_out_sec: 2 }] }
   ]
 })
+// The gateway returns the MediaTimeline WRAPPER; the TimelineState is in `.state`.
+const timeline = { id: 't1', projectId: 'p1', version: 1, label: null, state, schemaVersion: 1, createdBy: 'u1', createdAt: '2026-06-03T00:00:00Z' }
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -72,5 +74,12 @@ describe('GET /agency/audio/projects/:id/clip-sources', () => {
     mockGetProject.mockResolvedValue({ project: { id: 'p1' }, timeline: null })
     const res = await handler({ params: { id: 'p1' } } as any)
     expect(res).toEqual({ sources: {} })
+  })
+
+  it('returns empty sources when the timeline state is unparseable', async () => {
+    mockGetProject.mockResolvedValue({ project: { id: 'p1' }, timeline: { ...timeline, state: { not: 'a timeline' } } })
+    const res = await handler({ params: { id: 'p1' } } as any)
+    expect(res).toEqual({ sources: {} })
+    expect(mockPresign).not.toHaveBeenCalled()
   })
 })

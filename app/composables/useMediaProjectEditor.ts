@@ -27,23 +27,26 @@ export function useMediaProjectEditor(projectId: string) {
     status.value = 'loading'
     error.value = null
     try {
+      // The SP0 project GET returns the MediaTimeline WRAPPER; the TimelineState lives
+      // in `.state` (validated on write — cast rather than re-import the Zod value client-side).
       const [proj, src] = await Promise.all([
-        $fetch<{ project: unknown; timeline: TimelineState | null }>(`/api/agency/audio/projects/${projectId}`),
+        $fetch<{ project: unknown; timeline: { state: unknown } | null }>(`/api/agency/audio/projects/${projectId}`),
         $fetch<{ sources: Record<string, string> }>(`/api/agency/audio/projects/${projectId}/clip-sources`)
       ])
-      if (!proj.timeline) { status.value = 'error'; error.value = 'This project has no timeline yet.'; return }
-      timeline.value = proj.timeline
-      const plan = planTimeline(proj.timeline)
+      const state = proj.timeline?.state as TimelineState | undefined
+      if (!state) { status.value = 'error'; error.value = 'This project has no timeline yet.'; return }
+      timeline.value = state
+      const plan = planTimeline(state)
       clips.value = plan.clips
       tracks.value = plan.tracks
-      const ctx = createBrowserAudioContext(proj.timeline.sample_rate)
+      const ctx = createBrowserAudioContext(state.sample_rate)
       engine = createAudioEngine({
         ctx: ctx as any,
         resolveBuffer: makeR2Resolver(src.sources, ctx),
         setTimer: browserSetTimer,
         now: () => ctx.currentTime
       })
-      await engine.load(proj.timeline)
+      await engine.load(state)
       duration.value = engine.duration()
       status.value = 'ready'
     } catch (e: any) {
