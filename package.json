@@ -78,6 +78,7 @@
     "pg": "^8.20.0",
     "pngjs": "^7.0.0",
     "resend": "^6.6.0",
+    "standardized-audio-context": "^25.3.77",
     "xero-node": "^13.0.0",
     "xlsx": "^0.18.5",
     "zod": "^4.3.6"
