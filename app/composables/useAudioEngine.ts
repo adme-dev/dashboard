@@ -3,7 +3,7 @@
 // graph + transport + the lookahead loop. Collaborators (ctx, resolveBuffer, timer)
 // are injected so it's unit-testable with a mock context (no real audio). The real
 // AudioContext (via standardized-audio-context) is created + injected by SP2b.
-// ctx.currentTime is the MASTER clock; SP2b slaves the GSAP playhead to currentTime().
+// ctx.currentTime is the MASTER clock; SP2b's rAF playhead reads currentTime() (slaves to it).
 import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
 import {
   planTimeline, windowEvents, dbToGain,
