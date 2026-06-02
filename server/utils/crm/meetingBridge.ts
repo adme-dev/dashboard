@@ -6,6 +6,7 @@ export interface CandidatePerson {
   person_id: string
   client_id: string
   company_id: string | null
+  company_name: string | null
   email: string          // already normalized; the guest email that matched
   display_name: string
 }
@@ -38,7 +39,9 @@ export function normalizeEmail(s: string): string {
 }
 
 function byUpdatedDesc(a: CandidateOpp, b: CandidateOpp): number {
-  return b.updated_at.localeCompare(a.updated_at)
+  // Secondary sort on the stable opportunity_id keeps the "most-recently-updated
+  // wins" contract deterministic when two opps share an updated_at.
+  return b.updated_at.localeCompare(a.updated_at) || a.opportunity_id.localeCompare(b.opportunity_id)
 }
 
 export function rankTargets(input: {
@@ -61,20 +64,20 @@ export function rankTargets(input: {
   const proposals: TargetProposal[] = people.map((p) => {
     // Open opps for this person, then (fallback) for this person's company.
     const personOpps = input.candidateOpps
-      .filter(o => o.person_id === p.person_id)
+      .filter(o => o.person_id === p.person_id && o.client_id === p.client_id)
       .sort(byUpdatedDesc)
     const companyOpps = p.company_id
       ? input.candidateOpps
-          .filter(o => o.person_id === null && o.company_id === p.company_id)
+          .filter(o => o.person_id === null && o.company_id === p.company_id && o.client_id === p.client_id)
           .sort(byUpdatedDesc)
       : []
     const rankedOpps = personOpps.length ? personOpps : companyOpps
 
     const personRef: TargetRef = {
-      client_id: p.client_id, target_type: 'person', target_id: p.person_id, label: p.display_name,
+      client_id: p.client_id, target_type: 'person', target_id: p.person_id, label: p.display_name || p.email,
     }
     const companyRef: TargetRef | null = p.company_id
-      ? { client_id: p.client_id, target_type: 'company', target_id: p.company_id, label: `${p.display_name} · company` }
+      ? { client_id: p.client_id, target_type: 'company', target_id: p.company_id, label: p.company_name || 'Company' }
       : null
 
     let primary: TargetRef

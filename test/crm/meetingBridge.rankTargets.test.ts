@@ -3,7 +3,7 @@ import { rankTargets, normalizeEmail } from '~~/server/utils/crm/meetingBridge'
 import type { CandidatePerson, CandidateOpp } from '~~/server/utils/crm/meetingBridge'
 
 const person = (over: Partial<CandidatePerson> = {}): CandidatePerson => ({
-  person_id: 'p1', client_id: 'c1', company_id: 'co1', email: 'jane@acme.com', display_name: 'Jane Doe', ...over,
+  person_id: 'p1', client_id: 'c1', company_id: 'co1', company_name: 'Acme Inc', email: 'jane@acme.com', display_name: 'Jane Doe', ...over,
 })
 const opp = (over: Partial<CandidateOpp> = {}): CandidateOpp => ({
   opportunity_id: 'o1', client_id: 'c1', person_id: 'p1', company_id: 'co1', name: 'Acme renewal',
@@ -74,5 +74,19 @@ describe('rankTargets', () => {
       candidateOpps: [],
     })
     expect(out).toHaveLength(1)
+  })
+
+  it('excludes an opp whose person_id matches but client_id differs', () => {
+    const foreignOpp = opp({ opportunity_id: 'o-foreign', client_id: 'c2' })
+    const [t] = rankTargets({ candidatePeople: [person()], candidateOpps: [foreignOpp] })
+    expect(t.target_type).toBe('person')   // no in-client opp → falls back to person
+    expect(t.target_id).toBe('p1')
+  })
+
+  it('excludes a company-opp whose company_id does not match', () => {
+    const otherCompanyOpp = opp({ opportunity_id: 'o-other', person_id: null, company_id: 'co-NOPE' })
+    const [t] = rankTargets({ candidatePeople: [person()], candidateOpps: [otherCompanyOpp] })
+    expect(t.target_type).toBe('person')
+    expect(t.target_id).toBe('p1')
   })
 })
