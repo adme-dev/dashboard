@@ -1,4 +1,6 @@
 import { $fetch } from 'ofetch'
+import { queryRows } from '~~/server/utils/db'
+import { buildBudgetChatContext } from '~~/server/utils/budgetChatContext'
 
 export default eventHandler(async (event) => {
   const body = await readBody<{ prompt?: string }>(event)
@@ -10,7 +12,8 @@ export default eventHandler(async (event) => {
     pnl: /p&l|profit|revenue|expenses|margin/.test(prompt),
     cash: /cash|balance|bank|runway|forecast/.test(prompt),
     invoices: /invoice|overdue|outstanding|paid/.test(prompt),
-    expenses: /expense|vendor|category|spend/.test(prompt)
+    expenses: /expense|vendor|category|spend/.test(prompt),
+    budget: /underspend|overspend|pacing|budget tracker|on track|campaign spend|ad ?spend/.test(prompt)
   }
 
   const results: string[] = []
@@ -43,6 +46,17 @@ export default eventHandler(async (event) => {
       const top = ex.categories?.[0]
       results.push(`Expenses: Top category ${top?.name || 'N/A'} at ${Math.round(top?.amount || 0).toLocaleString('en-US')} last 90d`)
     }
+  }
+
+  if (want.budget) {
+    const rows = await queryRows<{ severity: string; title: string; tags: string[] | null }>(
+      `SELECT severity, title, tags
+       FROM anomalies
+       WHERE type = 'adspend' AND status NOT IN ('resolved','dismissed')
+       ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END
+       LIMIT 20`,
+    ).catch(() => [])
+    results.push(buildBudgetChatContext(rows))
   }
 
   if (!results.length) {
