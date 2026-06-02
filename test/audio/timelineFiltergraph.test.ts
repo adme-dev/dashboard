@@ -94,3 +94,74 @@ describe('buildTimelineFiltergraph — per-track bus', () => {
     expect(fc).toContain('[c0][c1]amix=inputs=2:normalize=0:duration=longest,volume=-2dB[t0]')
   })
 })
+
+import { buildMasterRenderArgs, duckRatioFromAmountDb } from '~~/server/utils/audio/timelineFiltergraph'
+
+describe('duckRatioFromAmountDb', () => {
+  it('is a documented monotonic map from attenuation magnitude to sidechain ratio', () => {
+    // ratio = clamp(round(1 + |amount_db|/3, 1dp), 1, 20). amount -12 → 1+4 = 5.
+    expect(duckRatioFromAmountDb(-12)).toBe(5)
+    expect(duckRatioFromAmountDb(-6)).toBe(3)
+    expect(duckRatioFromAmountDb(0)).toBe(1)
+    expect(duckRatioFromAmountDb(-100)).toBe(20) // clamped
+  })
+})
+
+describe('buildTimelineFiltergraph — ducking', () => {
+  it('splits the source bus and sidechain-compresses the target, then mixes', () => {
+    const s = tl({
+      tracks: [
+        { id: 'vo', name: 'VO', kind: 'voiceover', clips: [
+          { id: 'a', r2_key: 'k/a', timeline_start_sec: 0, source_out_sec: 5 } ] },
+        { id: 'mus', name: 'M', kind: 'music', clips: [
+          { id: 'b', r2_key: 'k/b', timeline_start_sec: 0, source_out_sec: 30 } ] }
+      ],
+      ducking: [
+        { id: 'd1', source_track_id: 'vo', target_track_id: 'mus', amount_db: -12,
+          attack_ms: 50, release_ms: 300, threshold_db: -30 } ]
+    })
+    const fc = buildTimelineFiltergraph(s).filterComplex
+    // source bus c0 split → [c0] used in final mix + [sc0] feeds the sidechain key
+    expect(fc).toContain('[c0]asplit=2[c0a][sc0]')
+    // target bus c1 compressed keyed by [sc0]
+    expect(fc).toContain('[c1][sc0]sidechaincompress=threshold=-30:ratio=5:attack=50:release=300[d0]')
+    // final mix uses the post-split source [c0a] and the ducked target [d0], duration=longest + alimiter
+    expect(fc).toContain('[c0a][d0]amix=inputs=2:normalize=0:duration=longest,alimiter=limit=0.95[mix]')
+  })
+})
+
+describe('buildMasterRenderArgs', () => {
+  it('assembles -i per input (in order), -filter_complex, -map [mix], wav out at sample_rate', () => {
+    const s = tl({ tracks: [
+      { id: 'mus', name: 'M', kind: 'music', clips: [
+        { id: 'b', r2_key: 'k/b', timeline_start_sec: 0, source_out_sec: 10 } ] }
+    ] })
+    const plan = buildTimelineFiltergraph(s)
+    const args = buildMasterRenderArgs(plan, ['/tmp/in0.wav'], '/tmp/master.wav')
+    expect(args).toEqual([
+      '-hide_banner', '-nostats',
+      '-i', '/tmp/in0.wav',
+      '-filter_complex', plan.filterComplex,
+      '-map', '[mix]',
+      '-ar', '48000',
+      '-codec:a', 'pcm_s16le',
+      '-y', '/tmp/master.wav'
+    ])
+  })
+
+  it('throws when inputPaths length does not match plan.inputs', () => {
+    const s = tl({ tracks: [ { id: 'm', name: 'M', kind: 'music', clips: [
+      { id: 'b', r2_key: 'k/b', timeline_start_sec: 0, source_out_sec: 10 } ] } ] })
+    const plan = buildTimelineFiltergraph(s)
+    expect(() => buildMasterRenderArgs(plan, [], '/tmp/master.wav')).toThrow()
+  })
+})
+
+describe('buildTimelineFiltergraph — empty timeline', () => {
+  it('produces no inputs and an empty filter graph', () => {
+    const s = tl({ tracks: [], ducking: [] })
+    const plan = buildTimelineFiltergraph(s)
+    expect(plan.inputs).toEqual([])
+    expect(plan.filterComplex).toBe('')
+  })
+})

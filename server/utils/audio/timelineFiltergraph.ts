@@ -102,11 +102,53 @@ export function finalMixChain(busLabels: string[]): string | null {
   return `${buses.map((b) => `[${b}]`).join('')}amix=inputs=${buses.length}:normalize=0:duration=longest,alimiter=limit=0.95[mix]`
 }
 
-// buildTimelineFiltergraph (with ducking) is completed in Task 2.
+/** Documented, monotonic map from desired attenuation magnitude (dB) to a
+ * sidechaincompress ratio. The *structure* is pinned here + in tests; the exact
+ * perceptual calibration is an ear-verify item (spec §10). */
+export function duckRatioFromAmountDb(amountDb: number): number {
+  const mag = Math.abs(amountDb)
+  const ratio = Math.round((1 + mag / 3) * 10) / 10
+  return Math.min(20, Math.max(1, ratio))
+}
+
 export function buildTimelineFiltergraph(state: TimelineState): FiltergraphPlan {
   const acc = buildClipAndTrackChains(state)
+  const activeTracks = state.tracks.filter((t) => !t.muted)
+
+  // Map each active track id → its current bus label index (aligned to acc.busLabels).
+  const idToBusIdx = new Map<string, number>()
+  activeTracks.forEach((t, k) => idToBusIdx.set(t.id, k))
+
+  // Ducking: split each source bus per rule; sidechaincompress each target bus.
+  let scCount = 0
+  for (const rule of state.ducking) {
+    const srcK = idToBusIdx.get(rule.source_track_id)
+    const tgtK = idToBusIdx.get(rule.target_track_id)
+    // A muted source/target has no bus → skip (validateTimeline guarantees the ids exist).
+    if (srcK == null || tgtK == null) continue
+    const srcLabel = acc.busLabels[srcK]
+    const tgtLabel = acc.busLabels[tgtK]
+    if (!srcLabel || !tgtLabel) continue
+
+    const ruleIdx = scCount++
+    const keepLabel = `${srcLabel}a`
+    const scLabel = `sc${ruleIdx}`
+    acc.chains.push(`[${srcLabel}]asplit=2[${keepLabel}][${scLabel}]`)
+    acc.busLabels[srcK] = keepLabel // the source stays in the final mix via its kept half
+
+    const duckedLabel = `d${ruleIdx}`
+    const ratio = duckRatioFromAmountDb(rule.amount_db)
+    acc.chains.push(
+      `[${tgtLabel}][${scLabel}]sidechaincompress=threshold=${rule.threshold_db}` +
+        `:ratio=${ratio}:attack=${rule.attack_ms}:release=${rule.release_ms}[${duckedLabel}]`
+    )
+    acc.busLabels[tgtK] = duckedLabel
+  }
+
+  // Final mix (duration=longest + alimiter) — shared with the Task 1 helper.
   const finalChain = finalMixChain(acc.busLabels)
   if (finalChain) acc.chains.push(finalChain)
+
   return {
     inputs: acc.inputs,
     filterComplex: acc.chains.join(';'),
@@ -114,4 +156,18 @@ export function buildTimelineFiltergraph(state: TimelineState): FiltergraphPlan 
     sampleRate: state.sample_rate,
     durationSec: computeDuration(state)
   }
+}
+
+/** Assemble the full ffmpeg argv for the master mixdown. inputPaths must align 1:1
+ * (and in order) with plan.inputs. Output is a full-quality WAV at the timeline
+ * sample rate; per-channel loudnorm/encoding is the existing render.ts pass. */
+export function buildMasterRenderArgs(plan: FiltergraphPlan, inputPaths: string[], outputPath: string): string[] {
+  if (inputPaths.length !== plan.inputs.length) {
+    throw new Error(`inputPaths (${inputPaths.length}) must match plan.inputs (${plan.inputs.length})`)
+  }
+  const args = ['-hide_banner', '-nostats']
+  for (const p of inputPaths) args.push('-i', p)
+  args.push('-filter_complex', plan.filterComplex, '-map', plan.outLabel)
+  args.push('-ar', String(plan.sampleRate), '-codec:a', 'pcm_s16le', '-y', outputPath)
+  return args
 }
