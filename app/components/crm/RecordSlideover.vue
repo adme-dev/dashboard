@@ -34,6 +34,8 @@ const title = computed(() =>
         <USeparator class="my-4" />
         <CrmScorePanel :client-id="clientId" :target-type="objectType" :target-id="record.id" />
         <USeparator class="my-4" />
+        <CrmHealthPanel :client-id="clientId" :target-type="objectType" :target-id="record.id" />
+        <USeparator class="my-4" />
         <CrmRelationshipsPanel :client-id="clientId" :target-type="objectType" :target-id="record.id" />
         <USeparator class="my-4" />
         <CrmTaskList :client-id="clientId" :target-type="objectType" :target-id="record.id" />
