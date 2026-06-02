@@ -63,16 +63,22 @@ async function mint() {
 
 async function copyToken() {
   if (!mintedToken.value) return
-  await navigator.clipboard.writeText(mintedToken.value)
-  toast.add({ title: 'Token copied', color: 'success' })
+  try {
+    await navigator.clipboard.writeText(mintedToken.value)
+    toast.add({ title: 'Token copied', color: 'success' })
+  } catch {
+    toast.add({ title: 'Copy failed — select and copy manually', color: 'error' })
+  }
 }
 
 // Revoke
 const showRevoke = ref(false)
+const revoking = ref(false)
 const revokeTarget = ref<ExportToken | null>(null)
 function askRevoke(t: ExportToken) { revokeTarget.value = t; showRevoke.value = true }
 async function confirmRevoke() {
   if (!revokeTarget.value) return
+  revoking.value = true
   try {
     await $fetch(`/api/agency/analytics/export-tokens/${revokeTarget.value.id}`, { method: 'DELETE' })
     toast.add({ title: 'Token revoked', color: 'success' })
@@ -80,6 +86,7 @@ async function confirmRevoke() {
   } catch {
     toast.add({ title: 'Could not revoke token', color: 'error' })
   } finally {
+    revoking.value = false
     showRevoke.value = false
     revokeTarget.value = null
   }
@@ -182,8 +189,8 @@ function fmtDate(iso: string): string { return new Date(iso).toLocaleDateString(
             “{{ revokeTarget?.label }}” will stop working immediately. Any warehouse job or client using it will lose access.
           </p>
           <div class="flex justify-end gap-2">
-            <UButton label="Cancel" variant="ghost" color="neutral" @click="showRevoke = false" />
-            <UButton label="Revoke" color="error" @click="confirmRevoke" />
+            <UButton label="Cancel" variant="ghost" color="neutral" :disabled="revoking" @click="showRevoke = false" />
+            <UButton label="Revoke" color="error" :loading="revoking" @click="confirmRevoke" />
           </div>
         </div>
       </template>
