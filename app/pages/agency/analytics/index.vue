@@ -214,13 +214,12 @@ async function syncAll() {
       lead-link-base="/agency/leads"
     />
 
-    <!-- Website & Funnel (GA4) — requires a specific client; self-hides without GA4 -->
-    <PortalFunnelChart
-      v-if="filters.clientId"
+    <!-- GA4 website funnel (per-client agency view) — wrapper prompts for a
+         client when none is selected, and self-hides without GA4 data. -->
+    <AnalyticsFunnelChart
+      :client-id="filters.clientId"
       :start-date="filters.startDate"
       :end-date="filters.endDate"
-      :client-id="filters.clientId"
-      api-base="/api/agency/analytics/funnel"
     />
 
     <!-- Blended channels — works agency-wide or per client; self-hides when no data -->
