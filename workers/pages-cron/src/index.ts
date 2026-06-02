@@ -21,7 +21,7 @@ const ROUTES: Record<string, string[]> = {
   // hourly — anomaly handler self-gates to 7am tenant-local; ga4-sync re-pulls
   // the trailing ~14d window (idempotent). ga4-sync was fixed in PR #49 to run
   // concurrently + batch upserts (~33s for 87 properties, was a >150s hang).
-  '0 * * * *': ['/api/cron/anomaly-detection', '/api/cron/ga4-sync'],
+  '0 * * * *': ['/api/cron/anomaly-detection', '/api/cron/ga4-sync', '/api/cron/budget-slack-digest'],
   // hourly at :30 — GA4 richer dimension/event breakdowns. Offset 30 min from
   // ga4-sync to spread GA4 API load; the endpoint self-limits to the 25 stalest
   // properties per run (cursored by ga4_property_map.dimension_synced_at, mig
