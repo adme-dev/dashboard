@@ -124,7 +124,7 @@ export default defineEventHandler(async (event) => {
          FROM xero_customer_rollups r
          LEFT JOIN xero_contacts_cache c
            ON c.tenant_id = r.tenant_id AND c.contact_id = r.contact_id
-         LEFT JOIN this_month tm USING (contact_id)
+         LEFT JOIN this_month tm ON tm.contact_id = r.contact_id
          WHERE r.tenant_id = $1
            AND r.inferred_mrr_cents > 0
            AND r.inferred_mrr_confidence IN ('high','medium')

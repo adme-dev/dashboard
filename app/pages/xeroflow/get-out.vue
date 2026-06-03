@@ -787,12 +787,11 @@ function fmtMonthLabel(label: string): string {
             <div v-else-if="!topClients.clients.length" class="px-6 py-12 text-center">
               <UIcon name="i-lucide-receipt" class="size-8 text-muted mx-auto mb-2" />
               <p class="text-sm text-muted">
-                Top contributors will appear here once May invoicing starts.
-                <br>
-                Last month's contributors:
+                Top contributors will appear here once {{ data.period.monthName }} invoicing starts.
               </p>
-              <p class="text-sm font-medium mt-2">
-                {{ formatCurrency(pacing?.priorTotal ?? 0) }} across the month
+              <p v-if="(pacing?.priorTotal ?? 0) > 0" class="text-sm text-muted mt-3">
+                Last month's contributors totalled
+                <span class="font-medium text-default">{{ formatCurrency(pacing!.priorTotal) }}</span>.
               </p>
             </div>
             <div v-else class="overflow-x-auto">
