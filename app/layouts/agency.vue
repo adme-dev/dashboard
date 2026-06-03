@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
-import { socialSpendNavItems } from '~/utils/socialSpendNavigation'
+import { socialSpendNavItems, socialSpendSuiteNavItems } from '~/utils/socialSpendNavigation'
 import { socialSuiteNavItems } from '~/utils/socialSuiteNavigation'
 
 const route = useRoute()
@@ -265,11 +265,18 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     )
   }
 
-  // Social — organic publishing suite (canAccessCreative)
+  // Social — paid + organic social operations
+  const socialItems: NavigationMenuItem[] = []
+  if (canAccessMediaBuying.value) {
+    socialItems.push(...socialSpendSuiteNavItems(close))
+  }
   if (canAccessCreative.value) {
+    socialItems.push(...socialSuiteNavItems(close))
+  }
+  if (socialItems.length) {
     items.push(
       { type: 'label', label: 'Social' },
-      ...socialSuiteNavItems(close)
+      ...socialItems
     )
   }
 

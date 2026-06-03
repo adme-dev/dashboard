@@ -136,6 +136,19 @@ export function socialSpendNavItems(onSelect: () => void) {
   }))
 }
 
+export function socialSpendSuiteNavItems(onSelect: () => void) {
+  return [
+    { type: 'label' as const, label: 'Paid Social' },
+    ...SOCIAL_SPEND_ROUTE_ORDER.map(item => ({
+      label: item.label,
+      icon: item.icon,
+      to: item.to,
+      exact: item.exact,
+      onSelect
+    }))
+  ]
+}
+
 export function socialSpendRouteForPath(path: string) {
   return SOCIAL_SPEND_ROUTE_ORDER.find((item) => {
     if (item.exact) return path === item.to

@@ -7,6 +7,7 @@ import {
   SOCIAL_SPEND_WORKFLOW_ROUTES,
   socialSpendNavItems,
   socialSpendRouteForPath,
+  socialSpendSuiteNavItems,
   socialSpendStepForPath
 } from '../../app/utils/socialSpendNavigation'
 
@@ -67,6 +68,22 @@ describe('social spend navigation', () => {
       '/agency/social/meta',
       '/agency/social/google',
       '/agency/social/tiktok'
+    ])
+  })
+
+  it('maps every paid social route into the social sidebar subsection', () => {
+    expect(socialSpendSuiteNavItems(() => {}).map(item => item.label)).toEqual([
+      'Paid Social',
+      'Connections',
+      'Ad Spend',
+      'Meta Ads',
+      'Google Ads',
+      'TikTok Ads',
+      'LinkedIn Ads',
+      'Pinterest Ads',
+      'Snapchat Ads',
+      'X Ads',
+      'Microsoft Ads'
     ])
   })
 
