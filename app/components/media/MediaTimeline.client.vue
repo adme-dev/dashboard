@@ -329,16 +329,18 @@ onMounted(() => window.addEventListener('keydown', onKeyDown))
 onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
 
 // ─── Waveforms (wavesurfer.js) ────────────────────────────────────────────────
-// One WaveSurfer instance per r2_key, cached. Never plays audio — the SP2a engine
-// is the clock. Only renders the waveform SVG/canvas.
+// One WaveSurfer instance PER CLIP (keyed by clipId), so two clips sharing the
+// same r2_key (e.g. the two halves of a slice) each render their own waveform
+// into their own lane container. Never plays audio — the SP2a engine is the clock.
 
 const waveInstances = new Map<string, WaveSurfer>()
 const waveContainers = ref<Record<string, HTMLElement | null>>({})
 
 function mountWaveform(clipId: string, r2Key: string, el: HTMLElement | null) {
   if (!el) return
-  // Keyed by r2_key so clips sharing the same asset reuse the same decode
-  if (waveInstances.has(r2Key)) return
+  // Keyed by clipId so each clip renders its own waveform (slice → two clips,
+  // same r2_key, both need a waveform).
+  if (waveInstances.has(clipId)) return
   const url = props.sources?.[r2Key]
   if (!url) return
 
@@ -354,13 +356,22 @@ function mountWaveform(clipId: string, r2Key: string, el: HTMLElement | null) {
     // Never auto-play
     autoplay: false,
   })
-  waveInstances.set(r2Key, ws)
+  waveInstances.set(clipId, ws)
 }
 
-// Reactive: when new clips appear or sources become available, mount waveforms
+// Reactive: when new clips appear or sources become available, mount waveforms.
+// Also tear down instances for clips that no longer exist (deleted / merged away).
 watch(
   [() => props.clips, () => props.sources],
   () => {
+    const liveClipIds = new Set(props.clips.map(c => c.clipId))
+    for (const [clipId, ws] of waveInstances) {
+      if (!liveClipIds.has(clipId)) {
+        try { ws.destroy() } catch { /* already gone */ }
+        waveInstances.delete(clipId)
+        delete waveContainers.value[clipId]
+      }
+    }
     for (const [clipId, el] of Object.entries(waveContainers.value)) {
       const clip = props.clips.find(c => c.clipId === clipId)
       if (clip && el) mountWaveform(clipId, clip.r2_key, el)
@@ -371,7 +382,7 @@ watch(
 
 onUnmounted(() => {
   for (const ws of waveInstances.values()) {
-    try { ws.destroy() } catch {}
+    try { ws.destroy() } catch { /* noop */ }
   }
   waveInstances.clear()
 })
