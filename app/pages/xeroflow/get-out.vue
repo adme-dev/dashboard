@@ -180,6 +180,14 @@ const { data: agiData } = await useFetch<{
   trailing12: { totalAgi: number; avgMarginPct: number | null; months: number }
 }>('/api/xero/get-out/agi', { query: { months: 13 }, lazy: true, server: false })
 
+// ── Category breakdown (last complete month, real Xero account names, from cache) ──
+const { data: categoryData } = await useFetch<{
+  month: { year: number; month: number; label: string }
+  categoryCount: number
+  total: number
+  categories: Array<{ code: string; name: string; lines: number; total: number }>
+}>('/api/xero/get-out/category-breakdown', { lazy: true, server: false })
+
 function severityIconOps(s: string) {
   if (s === 'critical') return 'i-lucide-alert-octagon'
   if (s === 'high') return 'i-lucide-alert-triangle'
@@ -1179,17 +1187,21 @@ function fmtMonthLabel(label: string): string {
           </UCard>
         </div>
 
-        <!-- ═══ Row: Category breakdown (full width when it has data) ═══ -->
-        <UCard v-if="data.categoryBreakdown?.length">
+        <!-- ═══ Row: Revenue by category (last complete month, real Xero names) ═══ -->
+        <UCard v-if="categoryData?.categories?.length">
           <template #header>
             <div class="flex items-center justify-between">
-              <h3 class="font-semibold">This month by category</h3>
-              <p class="text-sm text-muted">{{ data.categoryBreakdown.length }} categories</p>
+              <div>
+                <h3 class="font-semibold">Revenue by category</h3>
+                <p class="text-sm text-muted">
+                  {{ categoryData.month.label }} · {{ categoryData.categoryCount }} categories · {{ formatCurrency(categoryData.total) }} ex-GST
+                </p>
+              </div>
             </div>
           </template>
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
             <div
-              v-for="cat in data.categoryBreakdown"
+              v-for="cat in categoryData.categories"
               :key="cat.code"
               class="flex items-center justify-between py-2 px-3 rounded border border-default/50"
             >
@@ -1199,7 +1211,7 @@ function fmtMonthLabel(label: string): string {
               </div>
               <div class="text-right shrink-0 ml-2">
                 <span class="font-medium tabular-nums">{{ formatCurrency(cat.total) }}</span>
-                <p class="text-xs text-muted">{{ cat.count }} lines</p>
+                <p class="text-xs text-muted">{{ cat.lines }} lines</p>
               </div>
             </div>
           </div>
