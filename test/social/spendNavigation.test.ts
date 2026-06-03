@@ -3,9 +3,7 @@ import {
   SOCIAL_SPEND_OBJECTIVE,
   SOCIAL_SPEND_PLATFORM_ROUTES,
   SOCIAL_SPEND_ROUTE_ORDER,
-  SOCIAL_SPEND_SIDEBAR_ROUTES,
   SOCIAL_SPEND_WORKFLOW_ROUTES,
-  socialSpendNavItems,
   socialSpendRouteForPath,
   socialSpendSuiteNavItems,
   socialSpendStepForPath
@@ -33,18 +31,10 @@ describe('social spend navigation', () => {
     ])
   })
 
-  it('keeps workflow and sidebar route sets intentional', () => {
+  it('keeps workflow route shortcuts intentional', () => {
     expect(SOCIAL_SPEND_WORKFLOW_ROUTES.map(item => item.key)).toEqual([
       'connections',
       'spend'
-    ])
-
-    expect(SOCIAL_SPEND_SIDEBAR_ROUTES.map(item => item.key)).toEqual([
-      'connections',
-      'spend',
-      'meta',
-      'google',
-      'tiktok'
     ])
   })
 
@@ -58,16 +48,6 @@ describe('social spend navigation', () => {
       'snapchat',
       'twitter',
       'microsoft_ads'
-    ])
-  })
-
-  it('maps ordered routes into Nuxt UI navigation items', () => {
-    expect(socialSpendNavItems(() => {}).map(item => item.to)).toEqual([
-      '/agency/social',
-      '/agency/social/spend',
-      '/agency/social/meta',
-      '/agency/social/google',
-      '/agency/social/tiktok'
     ])
   })
 

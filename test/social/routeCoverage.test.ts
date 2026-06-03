@@ -81,4 +81,15 @@ describe('social route navigation coverage', () => {
     expect(socialIndex).toBeLessThan(leadsIndex)
     expect(socialIndex).toBeLessThan(creativeIndex)
   })
+
+  it('keeps paid social routes in the Social group instead of duplicating them in Budget Tracker', () => {
+    const layout = read('app/layouts/agency.vue')
+
+    const budgetIndex = layout.indexOf('// Budget Tracker')
+    const socialIndex = layout.indexOf('// Social — paid + organic social operations')
+    const budgetSection = layout.slice(budgetIndex, socialIndex)
+
+    expect(budgetSection).not.toContain('socialSpendNavItems')
+    expect(budgetSection).not.toContain('/agency/social')
+  })
 })

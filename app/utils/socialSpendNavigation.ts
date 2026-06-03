@@ -114,27 +114,9 @@ export const SOCIAL_SPEND_ROUTE_ORDER: SocialSpendRouteItem[] = [
   ...platformRouteItems
 ]
 
-export const SOCIAL_SPEND_SIDEBAR_ROUTES = SOCIAL_SPEND_ROUTE_ORDER.filter(item =>
-  item.key === 'connections'
-  || item.key === 'spend'
-  || item.key === 'meta'
-  || item.key === 'google'
-  || item.key === 'tiktok'
-)
-
 export const SOCIAL_SPEND_WORKFLOW_ROUTES = SOCIAL_SPEND_ROUTE_ORDER.filter(item =>
   item.key === 'connections' || item.key === 'spend'
 )
-
-export function socialSpendNavItems(onSelect: () => void) {
-  return SOCIAL_SPEND_SIDEBAR_ROUTES.map(item => ({
-    label: item.label,
-    icon: item.icon,
-    to: item.to,
-    exact: item.exact,
-    onSelect
-  }))
-}
 
 export function socialSpendSuiteNavItems(onSelect: () => void) {
   return [

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
-import { socialSpendNavItems, socialSpendSuiteNavItems } from '~/utils/socialSpendNavigation'
+import { socialSpendSuiteNavItems } from '~/utils/socialSpendNavigation'
 import { socialSuiteNavItems } from '~/utils/socialSuiteNavigation'
 
 const route = useRoute()
@@ -143,7 +143,6 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     items.push(
       { type: 'label', label: 'Budget Tracker' },
       { label: 'Analytics', icon: 'i-lucide-bar-chart-4', to: '/agency/analytics', onSelect: close },
-      ...socialSpendNavItems(close),
       { label: 'Budget Health', icon: 'i-lucide-gauge', to: '/agency/budget-health', onSelect: close },
       { label: 'Site Tracking', icon: 'i-lucide-radio', to: '/agency/tracking', onSelect: close }
     )
