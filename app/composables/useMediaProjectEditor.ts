@@ -32,6 +32,58 @@ export function makeDebouncedSaver(fn: () => Promise<void>, ms: number): { trigg
   }
 }
 
+// ---------------------------------------------------------------------------
+// Engine-reload orchestrator — extracted as a pure factory so the two reload
+// correctness invariants can be unit-tested with a mock engine:
+//   1. Latest-wins serialization: engine.load() clears+repopulates shared
+//      instance maps and accumulates durationSec, so overlapping reloads
+//      (rapid edits / undo spam) would interleave into a corrupt node graph.
+//      A superseded reload aborts after its await without committing state.
+//   2. Pause-before-load: engine.load() does NOT pause the transport or stop
+//      active sources, so editing during playback would keep old sources
+//      playing under the new schedule. We pause first, then restore + clamp the
+//      playhead. Edits never auto-resume — the user presses play again.
+export interface ReloaderEngine {
+  isPlaying(): boolean
+  pause(): void
+  load(state: TimelineState): Promise<void>
+  duration(): number
+  seek(sec: number): void
+  currentTime(): number
+}
+
+export interface ReloaderSink {
+  /** Current playhead position (read before pause, restored after load). */
+  getPlayhead(): number
+  /** Called when a reload pauses an in-flight transport (mirror isPlaying=false + cancel rAF). */
+  onPaused(): void
+  /** Commit the planned clips/tracks once this reload wins. */
+  commitPlan(state: TimelineState): void
+  /** Commit duration + playhead once this reload wins. */
+  commitTransport(duration: number, currentTime: number): void
+}
+
+export function makeEngineReloader(
+  engine: ReloaderEngine,
+  sink: ReloaderSink,
+  plan: (state: TimelineState) => void
+) {
+  let reloadSeq = 0
+  return async function reload(state: TimelineState) {
+    const wasPlaying = engine.isPlaying()
+    const at = sink.getPlayhead()
+    if (wasPlaying) { engine.pause(); sink.onPaused() }
+    const seq = ++reloadSeq
+    plan(state)               // planning is local/cheap; commit of clips/tracks waits for the win
+    await engine.load(state)
+    if (seq !== reloadSeq) return            // a newer reload superseded this one
+    sink.commitPlan(state)
+    const duration = engine.duration()
+    engine.seek(Math.min(at, duration))      // clamp the playhead if the timeline shortened
+    sink.commitTransport(duration, engine.currentTime())
+  }
+}
+
 export function useMediaProjectEditor(projectId: string) {
   const timeline = ref<TimelineState | null>(null)
   const clips = ref<ScheduledClip[]>([])
@@ -74,13 +126,12 @@ export function useMediaProjectEditor(projectId: string) {
   // ---------------------------------------------------------------------------
   // Engine reload — re-plans and re-loads the engine after an edit
   // ---------------------------------------------------------------------------
-  async function reloadEngine(state: TimelineState) {
-    if (!engine) return
-    const plan = planTimeline(state)
-    clips.value = plan.clips
-    tracks.value = plan.tracks
-    await engine.load(state)
-    duration.value = engine.duration()
+  // The serialize/pause/clamp logic lives in the testable makeEngineReloader
+  // factory (see top of file). It's bound lazily once the engine exists.
+  let runReload: ((state: TimelineState) => Promise<void>) | null = null
+  function reloadEngine(state: TimelineState): Promise<void> {
+    if (!engine || !runReload) return Promise.resolve()
+    return runReload(state)
   }
 
   // ---------------------------------------------------------------------------
@@ -209,6 +260,17 @@ export function useMediaProjectEditor(projectId: string) {
         setTimer: browserSetTimer,
         now: () => ctx.currentTime
       })
+      // Bind the serialized reload orchestrator to this engine + reactive sink.
+      runReload = makeEngineReloader(
+        engine,
+        {
+          getPlayhead: () => currentTime.value,
+          onPaused: () => { isPlaying.value = false; cancelAnimationFrame(raf) },
+          commitPlan: (s) => { const p = planTimeline(s); clips.value = p.clips; tracks.value = p.tracks },
+          commitTransport: (dur, ct) => { duration.value = dur; currentTime.value = ct }
+        },
+        () => { /* planning committed on win in commitPlan */ }
+      )
       await engine.load(state)
       duration.value = engine.duration()
       status.value = 'ready'
