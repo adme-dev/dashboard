@@ -29,6 +29,16 @@ export function deleteClip(state: TimelineState, { clipId }: { clipId: string })
   return next
 }
 
+export function snapTime(t: number, targets: number[], pxPerSec: number, thresholdPx = 8): number {
+  const windowSec = thresholdPx / pxPerSec
+  let best = t, bestDist = windowSec
+  for (const target of targets) {
+    const d = Math.abs(t - target)
+    if (d <= bestDist) { best = target; bestDist = d }
+  }
+  return best
+}
+
 export function sliceClipAt(
   state: TimelineState,
   { clipId, timeSec, leftId, rightId }:

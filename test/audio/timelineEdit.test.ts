@@ -6,6 +6,7 @@ import {
   addClip,
   trimClip,
   sliceClipAt,
+  snapTime,
   type EditableState
 } from '~~/app/utils/audio/timelineEdit'
 import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
@@ -100,5 +101,13 @@ describe('sliceClipAt', () => {
   it('is a no-op when the time is outside the clip', () => {
     expect(sliceClipAt(base, { clipId: 'c1', timeSec: 9, leftId: 'L', rightId: 'R' })
       .tracks[0].clips).toHaveLength(1)
+  })
+})
+
+describe('snapTime', () => {
+  it('snaps to the nearest target within the pixel threshold', () => {
+    // 100 px/sec, 8px threshold → 0.08s window
+    expect(snapTime(2.05, [2, 5], 100, 8)).toBe(2)      // within window
+    expect(snapTime(2.5, [2, 5], 100, 8)).toBe(2.5)     // outside → unchanged
   })
 })
