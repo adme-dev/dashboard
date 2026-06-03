@@ -21,3 +21,10 @@ function findClip(state: TimelineState, clipId: string): { track: Track; clip: C
   }
   return null
 }
+
+export function deleteClip(state: TimelineState, { clipId }: { clipId: string }): TimelineState {
+  const next = cloneState(state)
+  for (const track of next.tracks) track.clips = track.clips.filter(c => c.id !== clipId)
+  next.duration_sec = computeDuration(next)
+  return next
+}

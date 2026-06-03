@@ -20,3 +20,16 @@ describe('cloneState', () => {
     expect(cloneState(base).duration_sec).toBe(5)              // recomputed from clips
   })
 })
+
+import { deleteClip } from '~~/app/utils/audio/timelineEdit'
+describe('deleteClip', () => {
+  it('removes the clip and recomputes duration', () => {
+    const out = deleteClip(base, { clipId: 'c1' })
+    expect(out.tracks[0].clips).toHaveLength(0)
+    expect(out.duration_sec).toBe(0)
+    expect(base.tracks[0].clips).toHaveLength(1) // input untouched
+  })
+  it('is a no-op for an unknown clip id', () => {
+    expect(deleteClip(base, { clipId: 'nope' }).tracks[0].clips).toHaveLength(1)
+  })
+})
