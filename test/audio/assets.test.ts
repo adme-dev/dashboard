@@ -7,7 +7,15 @@ vi.mock('~~/server/utils/db', () => ({
   queryRows: vi.fn(),
 }))
 
-import { buildMasterKey, mapRow, createMusicAsset } from '~~/server/utils/audio/assets'
+const mockPresign = vi.fn()
+const mockIsStorageConfigured = vi.fn()
+vi.mock('~~/server/utils/storage', () => ({
+  uploadFile: vi.fn(),
+  getPresignedDownloadUrl: (...args: any[]) => mockPresign(...args),
+  isStorageConfigured: (...args: any[]) => mockIsStorageConfigured(...args),
+}))
+
+import { buildMasterKey, mapRow, createMusicAsset, streamUrlFor } from '~~/server/utils/audio/assets'
 
 describe('buildMasterKey', () => {
   it('namespaces by client when present', () => {
@@ -87,5 +95,29 @@ describe('createMusicAsset', () => {
     expect(asset.isInstrumental).toBe(true)
     expect(asset.r2KeyMaster).toBeNull() // no master yet — the worker uploads later
     expect(asset.streamUrl).toBeUndefined()
+  })
+})
+
+describe('streamUrlFor', () => {
+  beforeEach(() => {
+    mockPresign.mockReset()
+    mockIsStorageConfigured.mockReset()
+  })
+
+  it('returns a stable same-origin stream endpoint for assets with a master key', async () => {
+    mockIsStorageConfigured.mockReturnValue(true)
+    mockPresign.mockResolvedValue('https://signed.example.com/audio.wav')
+
+    const url = await streamUrlFor({
+      id: 'a1',
+      r2KeyMaster: 'audio/org/a1/master.wav',
+    } as any)
+
+    expect(url).toBe('/api/agency/audio/assets/a1/stream')
+    expect(mockPresign).not.toHaveBeenCalled()
+  })
+
+  it('returns undefined when the asset has no master key', async () => {
+    await expect(streamUrlFor({ id: 'a1', r2KeyMaster: null } as any)).resolves.toBeUndefined()
   })
 })

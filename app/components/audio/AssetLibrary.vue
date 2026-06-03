@@ -44,7 +44,7 @@ function statusBadge(a: AudioAsset): { label: string, color: 'neutral' | 'info' 
     </div>
 
     <UCard v-for="a in assets" :key="a.id">
-      <div class="flex items-center gap-4">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-center">
         <div class="min-w-0 flex-1">
           <p class="font-medium truncate">
             {{ titleFor(a) }}
@@ -77,13 +77,13 @@ function statusBadge(a: AudioAsset): { label: string, color: 'neutral' | 'info' 
             </a>
           </div>
         </div>
-        <audio
+        <AudioAssetPlayer
           v-if="a.streamUrl"
           :key="a.r2KeyMaster || a.id"
           :src="a.streamUrl"
-          controls
-          preload="metadata"
-          class="h-9 shrink-0"
+          :duration-sec="a.durationSec"
+          :title="titleFor(a)"
+          class="shrink-0"
         />
         <UBadge
           v-else

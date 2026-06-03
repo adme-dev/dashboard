@@ -39,21 +39,16 @@ export function mapRow(row: any): AudioAsset {
   }
 }
 
-/** Mint a short-lived playback URL for an asset's master (undefined if no master
- * key or if presigning fails — a presign error must NOT fail an already-committed
- * create, nor sink an entire list because one key is bad). */
+/** Return a stable same-origin playback URL for an asset's master. The route
+ * mints a fresh short-lived R2 URL at play/load time, avoiding stale signed URLs
+ * in long-lived browser sessions. */
 export async function streamUrlFor(asset: AudioAsset): Promise<string | undefined> {
   if (!asset.r2KeyMaster) return undefined
-  if (!isStorageConfigured()) return `/api/_uploads/${asset.r2KeyMaster}`
-  try {
-    return await getPresignedDownloadUrl(asset.r2KeyMaster, PRESIGN_TTL)
-  } catch {
-    return undefined
-  }
+  return `/api/agency/audio/assets/${encodeURIComponent(asset.id)}/stream`
 }
 
 /** Mint short-lived download URLs for each rendered per-channel variant (Phase 3).
- * Mirrors streamUrlFor's fail-soft contract — a bad key is skipped, never throws. */
+ * A bad key is skipped, never throws. */
 export async function variantUrlsFor(asset: AudioAsset): Promise<Record<string, string>> {
   const out: Record<string, string> = {}
   for (const [channel, key] of Object.entries(asset.variants || {})) {

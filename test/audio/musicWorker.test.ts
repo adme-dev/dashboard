@@ -14,7 +14,7 @@ vi.mock('../../workers/audio-jobs/src/renderVariants', () => ({
   renderVariants: (...a: any[]) => renderVariants(...a),
 }))
 
-import { runMusicJob, masterKey, extractAudioUrl } from '../../workers/audio-jobs/src/musicWorker'
+import { runMusicJob, masterKey, extractAudioUrl, estimateAudioDurationSec } from '../../workers/audio-jobs/src/musicWorker'
 
 const JOB = {
   assetId: 'asset-1', prompt: 'warm acoustic bed', isInstrumental: true,
@@ -27,6 +27,19 @@ function fakeEnv(aiResult: any) {
     AUDIO_BUCKET: { put: vi.fn(async () => ({})), get: vi.fn() },
     RENDER: {},
   }
+}
+
+function mp3Frames(count: number): Uint8Array {
+  const frameLength = 417
+  const out = new Uint8Array(frameLength * count)
+  for (let i = 0; i < count; i++) {
+    const off = i * frameLength
+    out[off] = 0xff
+    out[off + 1] = 0xfb
+    out[off + 2] = 0x90
+    out[off + 3] = 0x64
+  }
+  return out
 }
 
 beforeEach(() => {
@@ -49,15 +62,24 @@ describe('extractAudioUrl', () => {
   })
 })
 
+describe('estimateAudioDurationSec', () => {
+  it('counts MP3 frame samples', () => {
+    expect(estimateAudioDurationSec(mp3Frames(10), 'mp3')).toBeCloseTo(10 * 1152 / 44100, 5)
+  })
+})
+
 describe('runMusicJob', () => {
   it('master only (no channels): generate → R2 → done, no render', async () => {
     queryOne.mockResolvedValueOnce({ status: 'queued', client_id: 'c1', channels: [], r2_key_master: null })
     const env = fakeEnv({ audio: 'https://oss/track.mp3' })
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) })))
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => mp3Frames(10).buffer })))
 
     await runMusicJob(JOB, env as any)
 
     expect(env.AUDIO_BUCKET.put.mock.calls[0][0]).toBe('audio/c1/asset-1/master.mp3')
+    const masterUpdate = execute.mock.calls.find(c => /r2_key_master/.test(c[0]))
+    expect(masterUpdate?.[0]).toMatch(/duration_sec/)
+    expect(masterUpdate?.[1][2]).toBeCloseTo(10 * 1152 / 44100, 5)
     expect(renderVariants).not.toHaveBeenCalled()
     expect(execute.mock.calls.some(c => /status = 'done'/.test(c[0]) && !/variants/.test(c[0]))).toBe(true)
   })
