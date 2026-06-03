@@ -170,6 +170,16 @@ const { data: quoteVel } = await useFetch<{
   ageBuckets: { fresh: { count: number; value: number }; warming: { count: number; value: number }; stale: { count: number; value: number }; dead: { count: number; value: number } }
 }>('/api/xero/get-out/quote-velocity', { lazy: true, server: false })
 
+// ── True position (AGI) — accurate model from Xero actuals (revenue − direct costs) ──
+const { data: agiData } = await useFetch<{
+  currentMon: string
+  overheadsActualTrailing3: number
+  overheadsOnlyTarget: number
+  targetBreakdown: { wages: number; overheadsActual: number; extras: number }
+  headline: { agiTrailing3Avg: number; agiTrailing12Avg: number; marginPctTrailing12: number | null; currentMonthAgi: number | null; truePosition: number }
+  trailing12: { totalAgi: number; avgMarginPct: number | null; months: number }
+}>('/api/xero/get-out/agi', { query: { months: 13 }, lazy: true, server: false })
+
 function severityIconOps(s: string) {
   if (s === 'critical') return 'i-lucide-alert-octagon'
   if (s === 'high') return 'i-lucide-alert-triangle'
@@ -304,6 +314,60 @@ function fmtMonthLabel(label: string): string {
       />
 
       <div v-else-if="data" class="space-y-6">
+        <!-- ═══ True Position (AGI) — accurate model from Xero actuals ═══ -->
+        <UCard v-if="agiData" class="ring-1 ring-primary/40">
+          <template #header>
+            <div class="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h3 class="font-semibold flex items-center gap-2">
+                  <UIcon name="i-lucide-gem" class="text-primary" />
+                  True position — Agency Gross Income
+                </h3>
+                <p class="text-sm text-muted">
+                  Revenue − direct costs vs an overheads-only target · {{ agiData.trailing12.months }}mo of Xero actuals
+                </p>
+              </div>
+              <UBadge :color="agiData.headline.truePosition >= 0 ? 'success' : 'error'" variant="subtle" size="lg">
+                {{ agiData.headline.truePosition >= 0 ? '+' : '' }}{{ formatCurrency(agiData.headline.truePosition) }}/mo
+              </UBadge>
+            </div>
+          </template>
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <p class="text-xs uppercase text-muted tracking-wide">AGI · trailing 3mo</p>
+              <p class="text-2xl font-bold tabular-nums text-primary">{{ formatCurrency(agiData.headline.agiTrailing3Avg) }}</p>
+              <p class="text-xs text-muted mt-0.5">{{ agiData.headline.marginPctTrailing12 ?? '—' }}% gross margin</p>
+            </div>
+            <div>
+              <p class="text-xs uppercase text-muted tracking-wide">Overheads-only target</p>
+              <p class="text-2xl font-bold tabular-nums">{{ formatCurrency(agiData.overheadsOnlyTarget) }}</p>
+              <p class="text-xs text-muted mt-0.5">wages + overheads + extras</p>
+            </div>
+            <div>
+              <p class="text-xs uppercase text-muted tracking-wide">Operating surplus</p>
+              <p
+                class="text-2xl font-bold tabular-nums"
+                :class="agiData.headline.truePosition >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'"
+              >
+                {{ agiData.headline.truePosition >= 0 ? '+' : '' }}{{ formatCurrency(agiData.headline.truePosition) }}
+              </p>
+              <p class="text-xs text-muted mt-0.5">per month</p>
+            </div>
+            <div>
+              <p class="text-xs uppercase text-muted tracking-wide">12-mo total AGI</p>
+              <p class="text-2xl font-bold tabular-nums">{{ formatCurrency(agiData.trailing12.totalAgi) }}</p>
+            </div>
+          </div>
+          <div class="mt-3 pt-3 border-t border-default flex items-center justify-between gap-2 flex-wrap">
+            <p class="text-xs text-muted">
+              Target = wages {{ formatCurrency(agiData.targetBreakdown.wages) }}
+              + overheads {{ formatCurrency(agiData.targetBreakdown.overheadsActual) }} <span class="italic">(Xero actual — verify if you pay any by card/direct debit)</span>
+              + extras {{ formatCurrency(agiData.targetBreakdown.extras) }}
+            </p>
+            <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-flask-conical" label="Reconcile" to="/xeroflow/get-out-reconciliation" />
+          </div>
+        </UCard>
+
         <!-- ═══ Smart action list — what to do this month ═══ -->
         <UCard v-if="opsActions?.actions?.length" :ui="{ body: '!p-0' }">
           <template #header>

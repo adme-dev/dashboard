@@ -91,12 +91,21 @@ export default defineEventHandler(async (event) => {
     ? Math.round((completeOverheads.reduce((s, x) => s + x, 0) / completeOverheads.length) * 100) / 100
     : 0
 
-  // Configured Get Out target. NOTE: for an apples-to-apples AGI comparison the
-  // target should be OVERHEADS ONLY (direct costs are already netted into AGI).
-  // We surface it as-is plus a flag so the UI can prompt for reconfiguration.
   const config = await loadGetOutConfig(tenantId)
-  const target = summariseConfig(config).totalCents / 100
+  const summary = summariseConfig(config)
   const round2 = (n: number) => Math.round(n * 100) / 100
+
+  // Configured target (legacy) — mixes overheads + a direct-cost estimate, so
+  // it double-counts against AGI. Kept for reference / the old card.
+  const target = summary.totalCents / 100
+
+  // Grounded OVERHEADS-ONLY target for the AGI comparison:
+  //   wages (config — payroll, not in Xero) + actual operating overheads
+  //   (Xero EXPENSE/OVERHEADS) + extras (config — ATO/loans). Direct costs are
+  //   excluded because AGI already nets them out.
+  const wages = summary.wagesCents / 100
+  const extras = summary.extrasCents / 100
+  const overheadsOnlyTarget = round2(wages + overheadsActualTrailing3 + extras)
 
   // Headline AGI = trailing-3 average (smooths accrual noise), falling back to
   // current month then trailing-12.
@@ -109,12 +118,15 @@ export default defineEventHandler(async (event) => {
     overheadCodeCount: overheadCodes.length,
     overheadsActualTrailing3,
     target: round2(target),
+    overheadsOnlyTarget,
+    targetBreakdown: { wages: round2(wages), overheadsActual: overheadsActualTrailing3, extras: round2(extras) },
     headline: {
       agiTrailing3Avg: series.trailing3.avgAgi,
       agiTrailing12Avg: series.trailing12.avgAgi,
       marginPctTrailing12: series.trailing12.avgMarginPct,
       currentMonthAgi: series.current?.agi ?? null,
       position: round2(headlineAgi - target),
+      truePosition: round2(headlineAgi - overheadsOnlyTarget),
     },
     months: series.months,
     trailing3: series.trailing3,
