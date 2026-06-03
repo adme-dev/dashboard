@@ -17,16 +17,20 @@ export function browserSetTimer(cb: () => void, ms: number): () => void {
   return () => clearTimeout(id)
 }
 
-/** Build a resolveBuffer over a { r2_key → presigned URL } map: fetch → arrayBuffer →
+/** Build a resolveBuffer over a LIVE { r2_key → presigned URL } map: fetch → arrayBuffer →
  * decodeAudioData. Caches by r2_key (clips sharing a source fetch+decode once).
- * Rejects if a clip's key is absent (the editor surfaces it as a hard load error). */
+ * Rejects if a clip's key is absent (the editor surfaces it as a hard load error).
+ *
+ * The resolver reads `clipSources` on EVERY call (not a snapshot) so that newly
+ * added clip URLs merged in after init (via mergeSource in the editor composable)
+ * are immediately visible without rebuilding the resolver. */
 export function makeR2Resolver(
-  clipSources: Record<string, string>,
+  clipSources: Map<string, string>,
   ctx: Pick<AudioContext, 'decodeAudioData'>
 ): (clip: ScheduledClip) => Promise<AudioBuffer> {
   const cache = new Map<string, Promise<AudioBuffer>>()
   return (clip: ScheduledClip) => {
-    const url = clipSources[clip.r2_key]
+    const url = clipSources.get(clip.r2_key)
     if (!url) return Promise.reject(new Error(`No source URL for clip ${clip.clipId} (key ${clip.r2_key})`))
     let p = cache.get(clip.r2_key)
     if (!p) {

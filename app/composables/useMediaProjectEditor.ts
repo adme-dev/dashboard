@@ -96,6 +96,13 @@ export function useMediaProjectEditor(projectId: string) {
   const canUndo = ref(false)
   const canRedo = ref(false)
   const saveStatus = ref<SaveStatus>('idle')
+  // Live presigned-URL map — keyed by r2_key. makeR2Resolver reads from this map
+  // on every resolve call so newly-added clip URLs are visible without rebuilding
+  // the resolver.  sourcesRef is a reactive snapshot of the map — passed as the
+  // :sources prop to MediaTimeline so wavesurfer waveforms update when new clips
+  // are added.
+  const sourcesMap = new Map<string, string>()
+  const sourcesRef = ref<Record<string, string>>({})
 
   let engine: AudioEngine | null = null
   let raf = 0
@@ -175,8 +182,25 @@ export function useMediaProjectEditor(projectId: string) {
     }))
   }
 
-  function addClipAction(trackId: string, asset: { id: string; r2_key_master: string }, startSec: number) {
+  /** Merge a presigned URL into the live sources map so the resolver + waveform
+   * prop see it immediately. Call this BEFORE addClipAction when you have a URL. */
+  function mergeSource(r2Key: string, url: string) {
+    sourcesMap.set(r2Key, url)
+    // Bump sourcesRef so watchers / MediaTimeline :sources prop update
+    sourcesRef.value = Object.fromEntries(sourcesMap)
+  }
+
+  function addClipAction(
+    trackId: string,
+    asset: { id: string; r2_key_master: string },
+    startSec: number,
+    presignedUrl?: string
+  ) {
     if (!timeline.value) return
+    // Merge the presigned URL before the engine reload so the resolver sees it.
+    if (presignedUrl && asset.r2_key_master) {
+      mergeSource(asset.r2_key_master, presignedUrl)
+    }
     applyEdit(addClip(timeline.value, { trackId, id: crypto.randomUUID(), asset, startSec }))
   }
 
@@ -250,13 +274,16 @@ export function useMediaProjectEditor(projectId: string) {
       const state = proj.timeline?.state as TimelineState | undefined
       if (!state) { status.value = 'error'; error.value = 'This project has no timeline yet.'; return }
       timeline.value = state
+      // Populate the live sources map from the initial presigned URLs
+      for (const [k, v] of Object.entries(src.sources)) sourcesMap.set(k, v)
+      sourcesRef.value = Object.fromEntries(sourcesMap)
       const plan = planTimeline(state)
       clips.value = plan.clips
       tracks.value = plan.tracks
       const ctx = createBrowserAudioContext(state.sample_rate)
       engine = createAudioEngine({
         ctx: ctx as any,
-        resolveBuffer: makeR2Resolver(src.sources, ctx),
+        resolveBuffer: makeR2Resolver(sourcesMap, ctx),
         setTimer: browserSetTimer,
         now: () => ctx.currentTime
       })
@@ -321,12 +348,16 @@ export function useMediaProjectEditor(projectId: string) {
     timeline, clips, tracks, status, error,
     isPlaying, currentTime, duration,
     canUndo, canRedo, saveStatus,
+    /** Reactive snapshot of { r2_key → presigned URL } — pass as :sources to MediaTimeline */
+    sources: sourcesRef,
     // Transport
     play, pause, seek,
     // Edit actions
     moveClipAction, trimClipAction, sliceAction,
     addClipAction, deleteClipAction,
     undoAction, redoAction,
+    /** Merge a new presigned URL into the live sources map (called before addClipAction). */
+    mergeSource,
     // Version management
     saveVersion, listVersions, restoreVersion
   }
