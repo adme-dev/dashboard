@@ -41,15 +41,17 @@ export function snapTime(t: number, targets: number[], pxPerSec: number, thresho
 
 export function sliceClipAt(
   state: TimelineState,
-  { clipId, timeSec, leftId, rightId }:
-    { clipId: string; timeSec: number; leftId: string; rightId: string }
+  { clipId, timeSec, leftId, rightId, sourceDurationSec }:
+    { clipId: string; timeSec: number; leftId: string; rightId: string; sourceDurationSec: number }
 ): TimelineState {
   const next = cloneState(state)
   for (const track of next.tracks) {
     const i = track.clips.findIndex(c => c.id === clipId)
     if (i < 0) continue
     const clip = track.clips[i]
-    const endTl = clip.timeline_start_sec + ((clip.source_out_sec ?? Infinity) - clip.source_in_sec)
+    // Play-to-end clips (source_out_sec === null) end at the decoded source length.
+    const trueOut = clip.source_out_sec ?? sourceDurationSec
+    const endTl = clip.timeline_start_sec + (trueOut - clip.source_in_sec)
     if (timeSec <= clip.timeline_start_sec || timeSec >= endTl) return state // outside → no-op
     const cutSrc = clip.source_in_sec + (timeSec - clip.timeline_start_sec)
     const left: Clip = { ...clip, id: leftId, source_out_sec: cutSrc, fade_out_sec: 0 }

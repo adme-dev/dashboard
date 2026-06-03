@@ -102,7 +102,7 @@ describe('trimClip', () => {
 
 describe('sliceClipAt', () => {
   it('splits one clip into two at the playhead, ids supplied', () => {
-    const out = sliceClipAt(base, { clipId: 'c1', timeSec: 2, leftId: 'L', rightId: 'R' })
+    const out = sliceClipAt(base, { clipId: 'c1', timeSec: 2, leftId: 'L', rightId: 'R', sourceDurationSec: 5 })
     const clips = out.tracks[0].clips
     expect(clips.map(c => c.id)).toEqual(['L', 'R'])
     expect(clips[0].timeline_start_sec).toBe(0)
@@ -111,8 +111,19 @@ describe('sliceClipAt', () => {
     expect(clips[1].source_in_sec).toBe(2)
   })
   it('is a no-op when the time is outside the clip', () => {
-    expect(sliceClipAt(base, { clipId: 'c1', timeSec: 9, leftId: 'L', rightId: 'R' })
+    expect(sliceClipAt(base, { clipId: 'c1', timeSec: 9, leftId: 'L', rightId: 'R', sourceDurationSec: 5 })
       .tracks[0].clips).toHaveLength(1)
+  })
+  it('honors sourceDurationSec for a play-to-end clip (source_out_sec null) — no-op past true end', () => {
+    const playToEnd: TimelineState = {
+      ...base,
+      tracks: [{ ...base.tracks[0],
+        clips: [{ ...base.tracks[0].clips[0], source_out_sec: null }] }]
+    }
+    // true end = timeline_start 0 + (5 - 0) = 5; slicing at 9 is past the true end → no-op
+    const out = sliceClipAt(playToEnd, { clipId: 'c1', timeSec: 9, leftId: 'L', rightId: 'R', sourceDurationSec: 5 })
+    expect(out).toBe(playToEnd)                 // returns the original by reference
+    expect(out.tracks[0].clips).toHaveLength(1)
   })
 })
 
