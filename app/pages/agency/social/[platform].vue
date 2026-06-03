@@ -98,6 +98,9 @@ const chartAccountName = ref<string | null>(null)
 const campaignData = ref<Record<string, any[]>>({})
 const campaignLoading = ref<Record<string, boolean>>({})
 
+// Active pacing alerts, matched to campaigns by media_spend id.
+const { alertsFor } = useSpendAlerts()
+
 // Budget edit modal (replaces the old inline cell editor + history dropdown)
 const budgetModalOpen = ref(false)
 const budgetModalTarget = ref<any>(null)
@@ -115,7 +118,8 @@ function openBudgetModal(camp: any, e?: MouseEvent) {
     commissionRate: camp.commissionRate ?? null,
     rolling: camp.rolling ?? false,
     lastSyncedAt: camp.lastSyncedAt ?? null,
-    historySpendId: camp.id
+    historySpendId: camp.id,
+    alerts: alertsFor([camp.id])
   }
   budgetModalOpen.value = true
 }
@@ -748,7 +752,10 @@ async function confirmDisconnect() {
                           >
                             <td class="w-8"></td>
                             <td class="px-4 py-2">
-                              <p class="font-medium text-sm">{{ camp.campaignName }}</p>
+                              <p class="font-medium text-sm flex items-center gap-1.5">
+                                <span class="truncate">{{ camp.campaignName }}</span>
+                                <SocialSpendAlertBadge :alerts="alertsFor([camp.id])" />
+                              </p>
                               <p class="text-xs text-muted">{{ camp.campaignId }}</p>
                             </td>
                             <td v-if="platform === 'google' || platform === 'tiktok'" class="px-4 py-2">
