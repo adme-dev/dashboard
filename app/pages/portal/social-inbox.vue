@@ -86,6 +86,9 @@ onMounted(async () => { await Promise.all([reload(), loadApprovals()]) })
       </div>
       <UTabs v-model="tab" :items="tabItems" class="ml-auto w-auto" :content="false" size="sm" />
     </div>
+    <div class="px-6">
+      <PortalSocialSectionNav />
+    </div>
 
     <!-- Inbox -->
     <div v-show="tab === 'inbox'" class="flex-1 grid grid-cols-[320px_1fr] min-h-0">

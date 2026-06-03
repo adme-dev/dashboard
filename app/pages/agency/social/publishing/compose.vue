@@ -134,6 +134,8 @@ const primaryLabel = computed(() => ({
       />
     </div>
 
+    <SocialPublishingSectionNav />
+
     <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px] gap-8">
       <!-- Authoring -->
       <div>

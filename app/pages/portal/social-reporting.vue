@@ -61,6 +61,7 @@ onMounted(load)
         <USelectMenu v-model="days" :items="dayOptions" value-key="value" class="w-36" />
       </div>
     </div>
+    <PortalSocialSectionNav />
 
     <div v-if="loading" class="text-sm text-muted">Loading…</div>
     <template v-else-if="overview">

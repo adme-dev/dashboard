@@ -102,6 +102,9 @@ useSocialInboxRealtime(sseEndpoint, {
       <UButton to="/agency/social/inbox/reviews" label="Reviews" icon="i-lucide-star" variant="subtle" size="sm" />
       <UButton class="ml-auto" label="Refresh" icon="i-lucide-refresh-cw" :loading="syncing" variant="subtle" size="sm" @click="onRefresh" />
     </div>
+    <div class="px-4">
+      <SocialSuiteSectionNav />
+    </div>
     <div class="flex-1 grid grid-cols-[320px_1fr_240px] min-h-0">
       <SocialInboxSidebar :conversations="conversations" :selected-id="selectedId" :loading="loading" @select="select" @filter="onFilter" />
       <div class="flex flex-col min-h-0">

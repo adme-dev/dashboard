@@ -103,6 +103,8 @@ const modeColor = (m: string) => (({ off: 'neutral', suggest: 'info', approval: 
       </div>
     </div>
 
+    <SocialSuiteSectionNav />
+
     <UAlert v-if="!clientId" color="warning" variant="subtle" title="Select a client"
       description="Choose a client to manage its automation rules." icon="i-lucide-info" />
 

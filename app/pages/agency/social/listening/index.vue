@@ -53,6 +53,8 @@ onMounted(load)
       </div>
     </div>
 
+    <SocialSuiteSectionNav />
+
     <SocialListeningQueryManager v-model:open="showQueries" :client-id="clientId" />
 
     <div v-if="loading" class="text-sm text-muted">Loading…</div>

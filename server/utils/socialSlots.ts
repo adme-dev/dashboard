@@ -2,12 +2,12 @@
  * Posting-slot helpers — compute the next free optimal posting times for a client
  * from their recurring social_slot_schedules, timezone-correct via @internationalized/date.
  */
-import { CalendarDateTime, toZoned, getDayOfWeek, now } from '@internationalized/date'
+import { CalendarDateTime, toZoned, getDayOfWeek, fromDate } from '@internationalized/date'
 import { queryRows } from '~~/server/utils/db'
 
 interface SlotRow {
-  day_of_week: number          // 0=Sun..6=Sat
-  time_of_day: string          // 'HH:MM[:SS]'
+  day_of_week: number // 0=Sun..6=Sat
+  time_of_day: string // 'HH:MM[:SS]'
   timezone: string
   capacity: number
 }
@@ -19,19 +19,19 @@ interface SlotRow {
 export async function nextOptimalSlots(
   clientId: string,
   count: number,
-  fromInstant: Date = new Date(),
+  fromInstant: Date = new Date()
 ): Promise<Date[]> {
   if (count <= 0) return []
   const slots = await queryRows<SlotRow>(
     `SELECT day_of_week, time_of_day, timezone, capacity
        FROM social_slot_schedules
       WHERE client_id = $1 AND enabled = TRUE`,
-    [clientId],
+    [clientId]
   )
   if (!slots.length) return []
 
   const baseTz = slots[0]!.timezone || 'Australia/Sydney'
-  const start = now(baseTz)
+  const start = fromDate(fromInstant, baseTz)
   const out: Date[] = []
   const maxDays = count * 7 + 14
 

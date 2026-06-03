@@ -107,6 +107,8 @@ onMounted(async () => {
       <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" label-key="label" icon="i-lucide-building-2" class="w-56" />
     </div>
 
+    <SocialPublishingSectionNav />
+
     <UAlert
       icon="i-lucide-info" color="info" variant="subtle" class="mb-5"
       title="Meta (Facebook + Instagram) is connectable"

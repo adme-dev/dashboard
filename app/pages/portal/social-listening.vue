@@ -21,6 +21,7 @@ onMounted(load)
       </div>
       <USelectMenu v-model="days" :items="[{label:'7d',value:7},{label:'30d',value:30},{label:'90d',value:90}]" value-key="value" class="w-28 ml-auto" />
     </div>
+    <PortalSocialSectionNav />
 
     <div v-if="loading" class="text-sm text-muted">Loading…</div>
     <template v-else>

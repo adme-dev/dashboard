@@ -77,6 +77,8 @@ onMounted(load)
       </div>
     </div>
 
+    <SocialSuiteSectionNav />
+
     <SocialReportSchedulesManager v-model:open="showSchedules" :client-id="clientId" :client-name="clientName" />
 
     <div v-if="loading" class="text-sm text-muted">Loading…</div>

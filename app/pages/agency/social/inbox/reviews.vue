@@ -63,6 +63,9 @@ async function onSend(content: string) {
         <span v-for="n in [5, 4, 3, 2, 1]" :key="n" class="text-muted">{{ n }}★ {{ dist[n] }}</span>
       </div>
     </div>
+    <div class="px-4">
+      <SocialSuiteSectionNav />
+    </div>
     <div class="flex-1 grid grid-cols-[320px_1fr] min-h-0">
       <SocialInboxSidebar :conversations="conversations" :selected-id="selectedId" :loading="loading" @select="select" @filter="() => {}" />
       <div class="flex flex-col min-h-0">

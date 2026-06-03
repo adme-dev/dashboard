@@ -49,6 +49,8 @@ function move(i: number, dir: -1 | 1) {
       <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" label-key="label" icon="i-lucide-building-2" class="w-56" />
     </div>
 
+    <SocialPublishingSectionNav />
+
     <div v-if="loading" class="text-sm text-muted">Loading…</div>
     <div v-else-if="!queue.length" class="rounded-lg border border-default p-10 text-center text-muted">
       <UIcon name="i-lucide-list" class="size-8 mx-auto mb-2 opacity-50" />

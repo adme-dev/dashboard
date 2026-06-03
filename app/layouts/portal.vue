@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
+import { portalSocialNavItems } from '~/utils/portalSocialNavigation'
 
 const { user, stats, logout } = usePortalAuth()
 const open = ref(false)
@@ -29,9 +30,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
   { label: 'Requests', icon: 'i-lucide-message-square-plus', to: stats.value?.openRequests ? '/portal/requests?view=open' : '/portal/requests?view=resolved', badge: navBadge(stats.value?.openRequests), onSelect: close },
   { label: 'Leads', icon: 'i-lucide-inbox', to: '/portal/leads', onSelect: close },
   { label: 'CRM', icon: 'i-lucide-contact', to: '/portal/crm', onSelect: close },
-  { label: 'Social', icon: 'i-lucide-messages-square', to: '/portal/social-inbox', onSelect: close },
-  { label: 'Social Reports', icon: 'i-lucide-line-chart', to: '/portal/social-reporting', onSelect: close },
-  { label: 'Social Listening', icon: 'i-lucide-radar', to: '/portal/social-listening', onSelect: close },
+  ...portalSocialNavItems(close),
   { label: 'Meetings', icon: 'i-lucide-video', to: '/portal/meetings?view=upcoming', onSelect: close },
   ...(user.value?.permissions?.canSubmitRequests
     ? [

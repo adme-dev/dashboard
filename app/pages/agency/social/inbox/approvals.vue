@@ -60,6 +60,8 @@ async function reject(it: SocialResponseQueueItem) {
       <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" placeholder="Select client" class="w-56" />
     </div>
 
+    <SocialSuiteSectionNav />
+
     <UAlert v-if="!clientId" color="warning" variant="subtle" title="Select a client"
       description="Choose a client to review its pending replies." icon="i-lucide-info" />
     <div v-else-if="pending" class="text-sm text-muted">Loading…</div>

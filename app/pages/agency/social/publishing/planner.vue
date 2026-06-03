@@ -64,6 +64,8 @@ const dowLabel = (v: number) => DOW.find(d => d.value === v)?.label ?? v
       <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" label-key="label" icon="i-lucide-building-2" class="w-56" />
     </div>
 
+    <SocialPublishingSectionNav />
+
     <div class="rounded-lg border border-default p-4 mb-6">
       <h2 class="text-sm font-medium mb-3">Add a posting slot</h2>
       <div class="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-4 items-end">

@@ -38,6 +38,8 @@ async function confirmReject() {
     <h1 class="text-2xl font-semibold tracking-tight mb-1">Approvals</h1>
     <p class="text-sm text-muted mb-6">Posts awaiting sign-off before they schedule or publish.</p>
 
+    <SocialPublishingSectionNav />
+
     <div v-if="loading" class="text-sm text-muted">Loading…</div>
     <div v-else-if="!pending.length" class="rounded-lg border border-default p-10 text-center text-muted">
       <UIcon name="i-lucide-check-circle-2" class="size-8 mx-auto mb-2 opacity-50" />

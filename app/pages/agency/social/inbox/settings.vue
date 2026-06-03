@@ -37,6 +37,8 @@ async function delPolicy(id: string) { await $fetch(`/api/agency/social/inbox/sl
       <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" placeholder="Select client" class="w-56" />
     </div>
 
+    <SocialSuiteSectionNav />
+
     <section class="space-y-3">
       <h2 class="font-medium">Saved replies</h2>
       <div class="grid grid-cols-[1fr_2fr_auto] gap-2 items-end">

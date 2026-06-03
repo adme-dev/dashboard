@@ -1,22 +1,53 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
+import { socialSuiteNavItems } from '~/utils/socialSuiteNavigation'
 
 const route = useRoute()
 const open = ref(false)
 const selectedWorkspace = ref<string | null>(null)
 
 // RBAC: permission-gated navigation
-const { canAccessClients, canAccessMediaBuying, canAccessFinance, canAccessInvoices, canAccessSales, canAccessReports, canAccessCreative, canAccessAdmin, canAccessAiTraining, canAccessAutomation, canWrite } = useAuth()
+const {
+  canAccessClients,
+  canAccessMediaBuying,
+  canAccessFinance,
+  canAccessInvoices,
+  canAccessSales,
+  canAccessReports,
+  canAccessCreative,
+  canAccessAdmin,
+  canAccessAiTraining,
+  canAccessAutomation
+} = useAuth()
 
-const close = () => { open.value = false }
+const close = () => {
+  open.value = false
+}
 
 // Fetch workspaces
 const { data: workspacesData } = useLazyFetch('/api/agency/workspaces')
 const workspaces = computed(() => workspacesData.value?.workspaces || [])
 
+interface AgencyWorkspaceBoard {
+  name: string
+  slug: string
+  taskCount: number
+}
+
+interface AgencyWorkspace {
+  id: string
+  name: string
+  slug: string
+  icon?: string | null
+  stats?: {
+    boards?: number | null
+  } | null
+  boards?: AgencyWorkspaceBoard[] | null
+}
+
 // Build navigation from workspaces
 const workspaceNav = computed(() => {
-  return workspaces.value.map((ws: any) => ({
+  return (workspaces.value as AgencyWorkspace[]).map(ws => ({
     label: ws.name,
     icon: `i-lucide-${ws.icon || 'briefcase'}`,
     to: `/agency/w/${ws.slug}`,
@@ -25,7 +56,7 @@ const workspaceNav = computed(() => {
       close()
       selectedWorkspace.value = ws.id
     },
-    children: ws.boards?.map((board: any) => ({
+    children: ws.boards?.map(board => ({
       label: board.name,
       to: `/agency/boards/${board.slug}`,
       badge: board.taskCount > 0 ? board.taskCount.toString() : undefined,
@@ -241,21 +272,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
   if (canAccessCreative.value) {
     items.push(
       { type: 'label', label: 'Social' },
-      { label: 'Calendar', icon: 'i-lucide-calendar-days', to: '/agency/social/publishing', exact: true, onSelect: close },
-      { label: 'Compose', icon: 'i-lucide-pen-square', to: '/agency/social/publishing/compose', onSelect: close },
-      { label: 'Inbox', icon: 'i-lucide-messages-square', to: '/agency/social/inbox', exact: true, onSelect: close },
-      { label: 'Reviews', icon: 'i-lucide-star', to: '/agency/social/inbox/reviews', onSelect: close },
-      { label: 'Automation', icon: 'i-lucide-bot', to: '/agency/social/inbox/automation', onSelect: close },
-      { label: 'Reply Queue', icon: 'i-lucide-bot-message-square', to: '/agency/social/inbox/approvals', onSelect: close },
-      { label: 'Inbox Analytics', icon: 'i-lucide-bar-chart-3', to: '/agency/social/inbox/analytics', onSelect: close },
-      { label: 'Inbox Settings', icon: 'i-lucide-sliders-horizontal', to: '/agency/social/inbox/settings', onSelect: close },
-      { label: 'Queue', icon: 'i-lucide-list-ordered', to: '/agency/social/publishing/queue', onSelect: close },
-      { label: 'Planner', icon: 'i-lucide-calendar-clock', to: '/agency/social/publishing/planner', onSelect: close },
-      { label: 'Approvals', icon: 'i-lucide-clipboard-check', to: '/agency/social/publishing/approvals', onSelect: close },
-      { label: 'Analytics', icon: 'i-lucide-bar-chart-3', to: '/agency/social/publishing/analytics', onSelect: close },
-      { label: 'Reporting', icon: 'i-lucide-line-chart', to: '/agency/social/reporting', exact: true, onSelect: close },
-      { label: 'Listening', icon: 'i-lucide-radar', to: '/agency/social/listening', exact: true, onSelect: close },
-      { label: 'Accounts', icon: 'i-lucide-plug', to: '/agency/social/publishing/accounts', onSelect: close }
+      ...socialSuiteNavItems(close)
     )
   }
 

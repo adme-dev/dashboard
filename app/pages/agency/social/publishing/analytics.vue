@@ -45,6 +45,8 @@ const cards = computed(() => data.value ? [
       <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" label-key="label" icon="i-lucide-building-2" class="w-56" />
     </div>
 
+    <SocialPublishingSectionNav />
+
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
       <div v-for="c in cards" :key="c.label" class="rounded-lg border border-default p-4">
         <div class="flex items-center gap-2 text-xs text-muted uppercase tracking-wide">

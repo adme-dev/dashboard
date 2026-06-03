@@ -33,6 +33,7 @@ const cards = computed(() => a.value ? [
         <USelect v-model="days" :items="[{ label: '7 days', value: 7 }, { label: '30 days', value: 30 }, { label: '90 days', value: 90 }]" value-key="value" class="w-32" />
       </div>
     </div>
+    <SocialSuiteSectionNav />
     <div v-if="pending" class="text-sm text-muted">Loading…</div>
     <div v-else class="grid grid-cols-2 md:grid-cols-3 gap-4">
       <UCard v-for="c in cards" :key="c.label">
