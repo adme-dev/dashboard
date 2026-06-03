@@ -4,6 +4,7 @@ import {
   deleteClip,
   moveClip,
   addClip,
+  trimClip,
   type EditableState
 } from '~~/app/utils/audio/timelineEdit'
 import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
@@ -67,5 +68,20 @@ describe('addClip', () => {
     expect(added.asset_id).toBe('a2')
     expect(added.timeline_start_sec).toBe(4)
     expect(added.source_out_sec).toBeNull() // play to end
+  })
+})
+
+describe('trimClip', () => {
+  it('trims the END, clamped to the source duration', () => {
+    const out = trimClip(base, { clipId: 'c1', edge: 'end', newTimeSec: 3, sourceDurationSec: 5 })
+    expect(out.tracks[0].clips[0].source_out_sec).toBe(3)
+    // never past source length:
+    const out2 = trimClip(base, { clipId: 'c1', edge: 'end', newTimeSec: 99, sourceDurationSec: 5 })
+    expect(out2.tracks[0].clips[0].source_out_sec).toBe(5)
+  })
+  it('trims the START, advancing source_in and timeline_start together', () => {
+    const out = trimClip(base, { clipId: 'c1', edge: 'start', newTimeSec: 2, sourceDurationSec: 5 })
+    expect(out.tracks[0].clips[0].source_in_sec).toBe(2)
+    expect(out.tracks[0].clips[0].timeline_start_sec).toBe(2)
   })
 })

@@ -29,6 +29,29 @@ export function deleteClip(state: TimelineState, { clipId }: { clipId: string })
   return next
 }
 
+export function trimClip(
+  state: TimelineState,
+  { clipId, edge, newTimeSec, sourceDurationSec }:
+    { clipId: string; edge: 'start' | 'end'; newTimeSec: number; sourceDurationSec: number }
+): TimelineState {
+  const next = cloneState(state)
+  const found = next.tracks.flatMap(t => t.clips).find(c => c.id === clipId)
+  if (!found) return state
+  const srcOut = found.source_out_sec ?? sourceDurationSec
+  if (edge === 'end') {
+    // timeline delta from the clip start maps 1:1 to source seconds
+    const newSrcOut = found.source_in_sec + Math.max(0, newTimeSec - found.timeline_start_sec)
+    found.source_out_sec = Math.min(sourceDurationSec, Math.max(found.source_in_sec + 0.01, newSrcOut))
+  } else {
+    const advance = Math.max(0, newTimeSec - found.timeline_start_sec)
+    const newSrcIn = Math.min(srcOut - 0.01, found.source_in_sec + advance)
+    found.source_in_sec = Math.max(0, newSrcIn)
+    found.timeline_start_sec = found.timeline_start_sec + advance
+  }
+  next.duration_sec = computeDuration(next)
+  return next
+}
+
 export function addClip(
   state: TimelineState,
   { trackId, id, asset, startSec }:
