@@ -2,15 +2,12 @@
 import {
   SOCIAL_SPEND_OBJECTIVE,
   SOCIAL_SPEND_PLATFORM_ROUTES,
-  SOCIAL_SPEND_ROUTE_ORDER,
+  SOCIAL_SPEND_WORKFLOW_ROUTES,
   socialSpendRouteForPath,
   socialSpendStepForPath
 } from '~/utils/socialSpendNavigation'
 
 const route = useRoute()
-const workflowItems = SOCIAL_SPEND_ROUTE_ORDER.filter(item =>
-  item.key === 'connections' || item.key === 'spend'
-)
 const activeRoute = computed(() => socialSpendRouteForPath(route.path))
 const activeStep = computed(() => socialSpendStepForPath(route.path))
 </script>
@@ -41,7 +38,7 @@ const activeStep = computed(() => socialSpendStepForPath(route.path))
             Workflow
           </span>
           <UTooltip
-            v-for="item in workflowItems"
+            v-for="item in SOCIAL_SPEND_WORKFLOW_ROUTES"
             :key="item.key"
             :text="item.objective"
           >

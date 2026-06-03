@@ -3,6 +3,8 @@ import {
   SOCIAL_SPEND_OBJECTIVE,
   SOCIAL_SPEND_PLATFORM_ROUTES,
   SOCIAL_SPEND_ROUTE_ORDER,
+  SOCIAL_SPEND_SIDEBAR_ROUTES,
+  SOCIAL_SPEND_WORKFLOW_ROUTES,
   socialSpendNavItems,
   socialSpendRouteForPath,
   socialSpendStepForPath
@@ -17,6 +19,26 @@ describe('social spend navigation', () => {
 
   it('orders paid social routes from setup through spend review', () => {
     expect(SOCIAL_SPEND_ROUTE_ORDER.map(item => item.key)).toEqual([
+      'connections',
+      'spend',
+      'meta',
+      'google',
+      'tiktok',
+      'linkedin',
+      'pinterest',
+      'snapchat',
+      'twitter',
+      'microsoft_ads'
+    ])
+  })
+
+  it('keeps workflow and sidebar route sets intentional', () => {
+    expect(SOCIAL_SPEND_WORKFLOW_ROUTES.map(item => item.key)).toEqual([
+      'connections',
+      'spend'
+    ])
+
+    expect(SOCIAL_SPEND_SIDEBAR_ROUTES.map(item => item.key)).toEqual([
       'connections',
       'spend',
       'meta',
@@ -52,12 +74,19 @@ describe('social spend navigation', () => {
     expect(socialSpendRouteForPath('/agency/social')?.key).toBe('connections')
     expect(socialSpendRouteForPath('/agency/social/spend')?.key).toBe('spend')
     expect(socialSpendRouteForPath('/agency/social/google')?.key).toBe('google')
+    expect(socialSpendRouteForPath('/agency/social/microsoft_ads')?.key).toBe('microsoft_ads')
     expect(socialSpendRouteForPath('/agency/social/publishing')).toBeUndefined()
 
     expect(socialSpendStepForPath('/agency/social/google')).toMatchObject({
       position: 4,
-      total: 5,
+      total: 10,
       item: { key: 'google' }
+    })
+
+    expect(socialSpendStepForPath('/agency/social/microsoft_ads')).toMatchObject({
+      position: 10,
+      total: 10,
+      item: { key: 'microsoft_ads' }
     })
   })
 })

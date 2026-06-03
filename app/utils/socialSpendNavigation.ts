@@ -111,11 +111,23 @@ export const SOCIAL_SPEND_ROUTE_ORDER: SocialSpendRouteItem[] = [
     exact: true,
     objective: 'Review monthly spend, budgets, bank charges, commission, and platform variance.'
   },
-  ...platformRouteItems.slice(0, 3)
+  ...platformRouteItems
 ]
 
+export const SOCIAL_SPEND_SIDEBAR_ROUTES = SOCIAL_SPEND_ROUTE_ORDER.filter(item =>
+  item.key === 'connections'
+  || item.key === 'spend'
+  || item.key === 'meta'
+  || item.key === 'google'
+  || item.key === 'tiktok'
+)
+
+export const SOCIAL_SPEND_WORKFLOW_ROUTES = SOCIAL_SPEND_ROUTE_ORDER.filter(item =>
+  item.key === 'connections' || item.key === 'spend'
+)
+
 export function socialSpendNavItems(onSelect: () => void) {
-  return SOCIAL_SPEND_ROUTE_ORDER.map(item => ({
+  return SOCIAL_SPEND_SIDEBAR_ROUTES.map(item => ({
     label: item.label,
     icon: item.icon,
     to: item.to,
@@ -125,7 +137,7 @@ export function socialSpendNavItems(onSelect: () => void) {
 }
 
 export function socialSpendRouteForPath(path: string) {
-  return [...SOCIAL_SPEND_ROUTE_ORDER, ...SOCIAL_SPEND_PLATFORM_ROUTES].find((item) => {
+  return SOCIAL_SPEND_ROUTE_ORDER.find((item) => {
     if (item.exact) return path === item.to
     return path === item.to || path.startsWith(`${item.to}/`)
   })
