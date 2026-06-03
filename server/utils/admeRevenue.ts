@@ -30,7 +30,11 @@ export interface AdmeRevenueRules {
 
 export const DEFAULT_ADME_RULES: AdmeRevenueRules = {
   bucketByCode: {
-    '220': 'media', '330': 'media',
+    // 220 "Sales - Media" = ADME's media billing (commission applies).
+    '220': 'media',
+    // 330 "Direct Costs: Media Other (Reimb Exp)" = pure Facebook/Google
+    // passthrough reimbursed by the client — ADME keeps 0%. NOT 16%.
+    '330': 'excluded',
     '205': 'printing',
     '210': 'owned', '215': 'owned', '216': 'owned',
     '217': 'owned', '219': 'owned', '225': 'owned',
