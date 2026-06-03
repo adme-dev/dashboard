@@ -10,8 +10,9 @@ import { createBrowserAudioContext, browserSetTimer, makeR2Resolver } from '~~/a
 import { createUndoStack } from '~~/app/composables/useTimelineUndo'
 import {
   cloneState,
-  addClip, deleteClip, moveClip, trimClip, sliceClipAt
+  addClip, addTrack, deleteClip, moveClip, trimClip, sliceClipAt
 } from '~~/app/utils/audio/timelineEdit'
+import type { Track } from '~~/server/utils/audio/timelineSchema'
 
 export type EditorStatus = 'idle' | 'loading' | 'ready' | 'error'
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -204,6 +205,46 @@ export function useMediaProjectEditor(projectId: string) {
     applyEdit(addClip(timeline.value, { trackId, id: crypto.randomUUID(), asset, startSec }))
   }
 
+  /** Append a new empty track of the given kind. Returns the new track id (or null
+   * if there's no timeline yet). One undo step. */
+  function addTrackAction(kind: Track['kind'], name?: string): string | null {
+    if (!timeline.value) return null
+    const id = crypto.randomUUID()
+    applyEdit(addTrack(timeline.value, { id, kind, name }))
+    return id
+  }
+
+  /** Add a clip, creating a track of the asset's kind if none exists. Resolves the
+   * dead-end where a project with no matching lane silently dropped the add. Track
+   * creation + clip insert collapse into a single edit (one undo step). */
+  function addClipToKindTrackAction(
+    asset: { id: string; r2_key_master: string; kind: Track['kind'] },
+    startSec: number,
+    presignedUrl?: string
+  ) {
+    if (!timeline.value) return
+    if (presignedUrl && asset.r2_key_master) {
+      mergeSource(asset.r2_key_master, presignedUrl)
+    }
+    let next = timeline.value
+    let track = next.tracks.find(t => t.kind === asset.kind) ?? next.tracks[0]
+    if (!track) {
+      // Empty timeline (no tracks at all) — create one of the asset's kind.
+      const id = crypto.randomUUID()
+      next = addTrack(next, { id, kind: asset.kind })
+      track = next.tracks.find(t => t.id === id)!
+    } else if (track.kind !== asset.kind) {
+      // No lane of the asset's kind — append one rather than mixing kinds.
+      const id = crypto.randomUUID()
+      next = addTrack(next, { id, kind: asset.kind })
+      track = next.tracks.find(t => t.id === id)!
+    }
+    applyEdit(addClip(next, {
+      trackId: track.id, id: crypto.randomUUID(),
+      asset: { id: asset.id, r2_key_master: asset.r2_key_master }, startSec
+    }))
+  }
+
   function deleteClipAction(clipId: string) {
     if (!timeline.value) return
     applyEdit(deleteClip(timeline.value, { clipId }))
@@ -354,7 +395,7 @@ export function useMediaProjectEditor(projectId: string) {
     play, pause, seek,
     // Edit actions
     moveClipAction, trimClipAction, sliceAction,
-    addClipAction, deleteClipAction,
+    addClipAction, addTrackAction, addClipToKindTrackAction, deleteClipAction,
     undoAction, redoAction,
     /** Merge a new presigned URL into the live sources map (called before addClipAction). */
     mergeSource,

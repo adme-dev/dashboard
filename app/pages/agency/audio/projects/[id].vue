@@ -27,14 +27,14 @@ const pickerOpen = ref(false)
 
 function onPickerPick(asset: PickedAsset) {
   if (!editor.timeline.value) return
-  // Find the first track that matches the asset kind; fall back to the first track
-  const track = editor.timeline.value.tracks.find(t => t.kind === asset.kind)
-    ?? editor.timeline.value.tracks[0]
-  if (!track) return
-  editor.addClipAction(track.id, {
-    id: asset.id,
-    r2_key_master: asset.r2_key_master
-  }, editor.currentTime.value, asset.streamUrl)
+  // Defensive add: if the project has no track of the asset's kind (e.g. an empty
+  // timeline), addClipToKindTrackAction appends one before adding — the add never
+  // silently no-ops. Track-create + clip-insert collapse into one undo step.
+  editor.addClipToKindTrackAction(
+    { id: asset.id, r2_key_master: asset.r2_key_master, kind: asset.kind },
+    editor.currentTime.value,
+    asset.streamUrl
+  )
 }
 
 // ─── Save version modal ──────────────────────────────────────────────────────

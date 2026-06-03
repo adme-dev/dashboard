@@ -107,6 +107,26 @@ export function addClip(
   return next
 }
 
+/** Append a new empty track. The id is passed in by the caller (deterministic →
+ * testable). name defaults to a capitalised kind when omitted. */
+export function addTrack(
+  state: TimelineState,
+  { id, kind, name }: { id: string; kind: Track['kind']; name?: string }
+): TimelineState {
+  const next = cloneState(state)
+  next.tracks.push({
+    id,
+    name: name ?? (kind.charAt(0).toUpperCase() + kind.slice(1)),
+    kind,
+    gain_db: 0,
+    muted: false,
+    locked: false,
+    hidden: false,
+    clips: []
+  })
+  return next
+}
+
 export function moveClip(
   state: TimelineState,
   { clipId, toTrackId, newStartSec }: { clipId: string; toTrackId: string; newStartSec: number }

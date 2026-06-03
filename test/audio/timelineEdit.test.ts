@@ -4,6 +4,7 @@ import {
   deleteClip,
   moveClip,
   addClip,
+  addTrack,
   trimClip,
   sliceClipAt,
   snapTime,
@@ -143,5 +144,24 @@ describe('snapTime', () => {
     // 100 px/sec, 8px threshold → 0.08s window
     expect(snapTime(2.05, [2, 5], 100, 8)).toBe(2)      // within window
     expect(snapTime(2.5, [2, 5], 100, 8)).toBe(2.5)     // outside → unchanged
+  })
+})
+
+describe('addTrack', () => {
+  it('appends an empty track with the supplied id, kind, and name', () => {
+    const out = addTrack(base, { id: 'trk-mus', kind: 'music', name: 'Music' })
+    expect(out.tracks).toHaveLength(2)
+    const added = out.tracks[1]
+    expect(added.id).toBe('trk-mus')
+    expect(added.kind).toBe('music')
+    expect(added.name).toBe('Music')
+    expect(added.clips).toHaveLength(0)
+    expect(added.muted).toBe(false)
+    // input untouched
+    expect(base.tracks).toHaveLength(1)
+  })
+  it('defaults the name to a capitalised kind when omitted', () => {
+    const out = addTrack(base, { id: 't2', kind: 'sfx' })
+    expect(out.tracks[1].name).toBe('Sfx')
   })
 })
