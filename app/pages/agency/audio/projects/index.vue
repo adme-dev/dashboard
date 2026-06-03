@@ -24,6 +24,11 @@ const columns = [
   { accessorKey: 'actions', header: '' }
 ]
 
+/** Type-narrow a UTable row.original (typed {} by Nuxt UI) to MediaProject. */
+function asProject(row: { original: unknown }): MediaProject {
+  return row.original as MediaProject
+}
+
 function fmtDate(iso: string) {
   try {
     return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(iso))
@@ -152,31 +157,31 @@ async function createProject() {
       />
 
       <div v-else class="rounded-lg border border-default overflow-hidden">
-        <UTable :rows="projects" :columns="columns" @select="(row) => openProject(row)">
+        <UTable :rows="projects" :columns="columns">
           <template #title-cell="{ row }">
             <button
               class="text-left font-medium text-highlighted hover:text-primary transition-colors"
-              @click="openProject(row.original)"
+              @click="openProject(asProject(row))"
             >
-              {{ row.original.title ?? '(untitled)' }}
+              {{ asProject(row).title ?? '(untitled)' }}
             </button>
           </template>
 
           <template #mediaType-cell="{ row }">
-            <UBadge :label="row.original.mediaType" size="xs" variant="subtle" color="neutral" />
+            <UBadge :label="asProject(row).mediaType" size="xs" variant="subtle" color="neutral" />
           </template>
 
           <template #status-cell="{ row }">
             <UBadge
-              :label="row.original.status"
+              :label="asProject(row).status"
               size="xs"
               variant="subtle"
-              :color="row.original.status === 'published' ? 'success' : 'neutral'"
+              :color="asProject(row).status === 'published' ? 'success' : 'neutral'"
             />
           </template>
 
           <template #updatedAt-cell="{ row }">
-            <span class="text-sm text-muted">{{ fmtDate(row.original.updatedAt) }}</span>
+            <span class="text-sm text-muted">{{ fmtDate(asProject(row).updatedAt) }}</span>
           </template>
 
           <template #actions-cell="{ row }">
@@ -187,7 +192,7 @@ async function createProject() {
                 variant="ghost"
                 color="neutral"
                 aria-label="Open editor"
-                @click.stop="openProject(row.original)"
+                @click.stop="openProject(asProject(row))"
               />
               <UButton
                 icon="i-lucide-copy"
@@ -195,8 +200,8 @@ async function createProject() {
                 variant="ghost"
                 color="neutral"
                 aria-label="Duplicate"
-                :loading="duplicating === row.original.id"
-                @click.stop="duplicateProject(row.original)"
+                :loading="duplicating === asProject(row).id"
+                @click.stop="duplicateProject(asProject(row))"
               />
               <UButton
                 icon="i-lucide-trash-2"
@@ -204,7 +209,7 @@ async function createProject() {
                 variant="ghost"
                 color="error"
                 aria-label="Delete"
-                @click.stop="promptDelete(row.original)"
+                @click.stop="promptDelete(asProject(row))"
               />
             </div>
           </template>
