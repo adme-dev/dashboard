@@ -4,10 +4,27 @@
 import { ref, computed } from 'vue'
 import { navigateTo } from '#app'
 import type { MediaProject } from '~~/app/types'
+import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
 const toast = useToast()
+
+// A fresh project seeds two empty lanes so "Add clip" has somewhere to land
+// (index.post defaults to tracks:[], which would dead-end the picker).
+function defaultTimelineState(): TimelineState {
+  return {
+    schema_version: 1,
+    media_type: 'audio',
+    sample_rate: 48000,
+    duration_sec: 0,
+    tracks: [
+      { id: crypto.randomUUID(), name: 'Voiceover', kind: 'voiceover', gain_db: 0, muted: false, locked: false, hidden: false, clips: [] },
+      { id: crypto.randomUUID(), name: 'Music', kind: 'music', gain_db: 0, muted: false, locked: false, hidden: false, clips: [] }
+    ],
+    ducking: []
+  }
+}
 
 // ─── Projects list ────────────────────────────────────────────────────────────
 
@@ -51,9 +68,15 @@ async function duplicateProject(project: MediaProject) {
   if (duplicating.value) return
   duplicating.value = project.id
   try {
+    // Fetch the source project's current timeline so the copy is a REAL copy
+    // (not an empty project). Fall back to default lanes if it has no timeline.
+    const src = await $fetch<{ project: MediaProject; timeline: { state: TimelineState } | null }>(
+      `/api/agency/audio/projects/${project.id}`
+    )
+    const initialState = src.timeline?.state ?? defaultTimelineState()
     const res = await $fetch<{ project: MediaProject }>('/api/agency/audio/projects', {
       method: 'POST',
-      body: { title: `${project.title ?? 'Untitled'} (copy)`, media_type: 'audio' }
+      body: { title: `${project.title ?? 'Untitled'} (copy)`, initialState }
     })
     toast.add({ title: 'Project duplicated', color: 'success' })
     await refresh()
@@ -79,13 +102,15 @@ function promptDelete(project: MediaProject) {
 async function confirmDelete() {
   if (!projectToDelete.value || deleting.value) return
   deleting.value = true
+  const id = projectToDelete.value.id
   try {
-    // No dedicated DELETE endpoint yet — soft delete via status update would need an
-    // endpoint. For now just close the modal and inform the user.
-    // TODO: add DELETE /api/agency/audio/projects/[id] if needed.
-    toast.add({ title: 'Delete not yet available via API', color: 'warning', description: 'A DELETE endpoint will be added in a follow-up sprint.' })
+    await $fetch(`/api/agency/audio/projects/${id}`, { method: 'DELETE' })
+    toast.add({ title: 'Project deleted', color: 'success' })
     deleteConfirmOpen.value = false
     projectToDelete.value = null
+    await refresh()
+  } catch {
+    toast.add({ title: 'Failed to delete project', color: 'error' })
   } finally {
     deleting.value = false
   }
@@ -107,8 +132,8 @@ async function createProject() {
         method: 'POST',
         body: {
           title: newTitle.value.trim() || null,
-          // media_type is inferred server-side from the empty timeline default; still
-          // accepted in the body by the schema even though the server normalises it.
+          // Seed two empty lanes so the editor opens with usable tracks for "Add clip".
+          initialState: defaultTimelineState()
         }
       }
     )
@@ -157,7 +182,7 @@ async function createProject() {
       />
 
       <div v-else class="rounded-lg border border-default overflow-hidden">
-        <UTable :rows="projects" :columns="columns">
+        <UTable :data="projects" :columns="columns">
           <template #title-cell="{ row }">
             <button
               class="text-left font-medium text-highlighted hover:text-primary transition-colors"
