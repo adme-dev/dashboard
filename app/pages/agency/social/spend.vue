@@ -365,6 +365,8 @@ const bankDiscrepancy = computed(() => {
         </div>
       </div>
 
+      <SocialSpendSectionNav />
+
       <!-- Period Picker -->
       <SocialSpendPeriodPicker
         :month="selectedMonth"

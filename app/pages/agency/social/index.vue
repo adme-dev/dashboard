@@ -234,6 +234,10 @@ const graphExplorerLabel = computed(() => {
       </div>
     </div>
 
+    <div class="px-6 pt-5 max-w-6xl mx-auto">
+      <SocialSpendSectionNav />
+    </div>
+
     <div class="p-6 max-w-6xl mx-auto space-y-5">
       <!-- OAuth Result Banner -->
       <div

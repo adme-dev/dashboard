@@ -566,6 +566,10 @@ async function confirmDisconnect() {
       </div>
     </div>
 
+    <div class="px-6 pt-5">
+      <SocialSpendSectionNav />
+    </div>
+
     <div class="p-6">
       <div v-if="loading || spendLoading" class="flex justify-center py-16">
         <XfLoader size="sm" />

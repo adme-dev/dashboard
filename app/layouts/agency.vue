@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
+import { socialSpendNavItems } from '~/utils/socialSpendNavigation'
 import { socialSuiteNavItems } from '~/utils/socialSuiteNavigation'
 
 const route = useRoute()
@@ -142,11 +143,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     items.push(
       { type: 'label', label: 'Budget Tracker' },
       { label: 'Analytics', icon: 'i-lucide-bar-chart-4', to: '/agency/analytics', onSelect: close },
-      { label: 'Ad Spend', icon: 'i-lucide-wallet', to: '/agency/social/spend', onSelect: close },
-      { label: 'Meta Ads', icon: 'i-lucide-facebook', to: '/agency/social/meta', onSelect: close },
-      { label: 'Google Ads', icon: 'i-lucide-chrome', to: '/agency/social/google', onSelect: close },
-      { label: 'TikTok Ads', icon: 'i-lucide-music', to: '/agency/social/tiktok', onSelect: close },
-      { label: 'Connections', icon: 'i-lucide-plug', to: '/agency/social', onSelect: close },
+      ...socialSpendNavItems(close),
       { label: 'Budget Health', icon: 'i-lucide-gauge', to: '/agency/budget-health', onSelect: close },
       { label: 'Site Tracking', icon: 'i-lucide-radio', to: '/agency/tracking', onSelect: close }
     )
