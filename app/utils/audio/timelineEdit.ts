@@ -28,3 +28,22 @@ export function deleteClip(state: TimelineState, { clipId }: { clipId: string })
   next.duration_sec = computeDuration(next)
   return next
 }
+
+export function moveClip(
+  state: TimelineState,
+  { clipId, toTrackId, newStartSec }: { clipId: string; toTrackId: string; newStartSec: number }
+): TimelineState {
+  const next = cloneState(state)
+  let moved: Clip | undefined
+  for (const track of next.tracks) {
+    const i = track.clips.findIndex(c => c.id === clipId)
+    if (i >= 0) { moved = track.clips.splice(i, 1)[0]; break }
+  }
+  if (!moved) return state
+  moved.timeline_start_sec = Math.max(0, newStartSec)
+  const dest = next.tracks.find(t => t.id === toTrackId)
+  if (!dest) return state // unknown track → no-op
+  dest.clips.push(moved)
+  next.duration_sec = computeDuration(next)
+  return next
+}

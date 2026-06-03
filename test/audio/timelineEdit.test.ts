@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { cloneState, type EditableState } from '~~/app/utils/audio/timelineEdit'
+import {
+  cloneState,
+  deleteClip,
+  moveClip,
+  type EditableState
+} from '~~/app/utils/audio/timelineEdit'
 import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
 
 const base: TimelineState = {
@@ -21,7 +26,6 @@ describe('cloneState', () => {
   })
 })
 
-import { deleteClip } from '~~/app/utils/audio/timelineEdit'
 describe('deleteClip', () => {
   it('removes the clip and recomputes duration', () => {
     const out = deleteClip(base, { clipId: 'c1' })
@@ -31,5 +35,24 @@ describe('deleteClip', () => {
   })
   it('is a no-op for an unknown clip id', () => {
     expect(deleteClip(base, { clipId: 'nope' }).tracks[0].clips).toHaveLength(1)
+  })
+})
+
+describe('moveClip', () => {
+  function cloneStateForTest(): TimelineState {
+    const s = structuredClone(base)
+    s.tracks.push({ id: 'trk-mus', name: 'Music', kind: 'music', gain_db: 0, muted: false, locked: false, hidden: false, clips: [] })
+    return s
+  }
+  const two = cloneStateForTest()
+  it('moves within a track and clamps start at 0', () => {
+    const out = moveClip(two, { clipId: 'c1', toTrackId: 'trk-vo', newStartSec: -3 })
+    expect(out.tracks[0].clips[0].timeline_start_sec).toBe(0)
+  })
+  it('moves a clip to a different track', () => {
+    const out = moveClip(two, { clipId: 'c1', toTrackId: 'trk-mus', newStartSec: 2 })
+    expect(out.tracks[0].clips).toHaveLength(0)
+    expect(out.tracks[1].clips[0].id).toBe('c1')
+    expect(out.tracks[1].clips[0].timeline_start_sec).toBe(2)
   })
 })
