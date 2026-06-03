@@ -86,6 +86,18 @@ describe('trimClip', () => {
     expect(out.tracks[0].clips[0].source_in_sec).toBe(2)
     expect(out.tracks[0].clips[0].timeline_start_sec).toBe(2)
   })
+  it('trims the START past the clip end without desyncing the two fields', () => {
+    // base c1: source_in 0, source_out 5, timeline_start 0 → max trimmable advance = (5 - 0.01) - 0 = 4.99
+    const out = trimClip(base, { clipId: 'c1', edge: 'start', newTimeSec: 99, sourceDurationSec: 5 })
+    const clip = out.tracks[0].clips[0]
+    // both fields advance by the SAME clamped amount (no sliver teleport)
+    const advanceSrc = clip.source_in_sec - 0
+    const advanceTl = clip.timeline_start_sec - 0
+    expect(advanceTl).toBe(advanceSrc)
+    expect(clip.source_in_sec).toBeCloseTo(4.99, 10)
+    // source_in never reaches/exceeds source_out
+    expect(clip.source_in_sec).toBeLessThan(clip.source_out_sec!)
+  })
 })
 
 describe('sliceClipAt', () => {

@@ -75,9 +75,11 @@ export function trimClip(
     const newSrcOut = found.source_in_sec + Math.max(0, newTimeSec - found.timeline_start_sec)
     found.source_out_sec = Math.min(sourceDurationSec, Math.max(found.source_in_sec + 0.01, newSrcOut))
   } else {
-    const advance = Math.max(0, newTimeSec - found.timeline_start_sec)
-    const newSrcIn = Math.min(srcOut - 0.01, found.source_in_sec + advance)
-    found.source_in_sec = Math.max(0, newSrcIn)
+    // Clamp the advance to the trimmable range and apply the SAME amount to BOTH
+    // fields so source_in_sec and timeline_start_sec never desync (no sliver teleport).
+    const maxAdvance = (srcOut - 0.01) - found.source_in_sec
+    const advance = Math.max(0, Math.min(newTimeSec - found.timeline_start_sec, maxAdvance))
+    found.source_in_sec = found.source_in_sec + advance
     found.timeline_start_sec = found.timeline_start_sec + advance
   }
   next.duration_sec = computeDuration(next)
