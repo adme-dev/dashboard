@@ -1037,13 +1037,13 @@ function fmtMonthLabel(label: string): string {
                    never moved off SENT in Xero. Surfaced so the "dead" bucket
                    doesn't tell the operator to archive won business. -->
               <div
-                v-if="quoteVel.wonUnmarked.count > 0"
+                v-if="(quoteVel.wonUnmarked?.count ?? 0) > 0"
                 class="flex items-start gap-2 p-3 rounded-lg border border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-500/5"
               >
                 <UIcon name="i-lucide-circle-check" class="size-4 text-emerald-500 mt-0.5 shrink-0" />
                 <div class="min-w-0">
                   <p class="text-sm font-medium">
-                    {{ quoteVel.wonUnmarked.count }} likely already won · {{ formatCurrency(quoteVel.wonUnmarked.value) }}
+                    {{ quoteVel.wonUnmarked?.count ?? 0 }} likely already won · {{ formatCurrency(quoteVel.wonUnmarked?.value ?? 0) }}
                   </p>
                   <p class="text-xs text-muted mt-0.5">
                     Invoiced but still “Sent” in Xero — mark them Accepted to clean up the pipeline.
