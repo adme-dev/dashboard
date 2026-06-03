@@ -53,6 +53,20 @@ const { data, pending, error, refresh } = await useFetch<ReconResponse>(
   { query, lazy: true, server: false },
 )
 
+// ── AGI (accurate model: Revenue − Direct Costs from cached lines) ──
+interface AgiResponse {
+  currentMon: string
+  directCostCodes: string[]
+  target: number
+  headline: { agiTrailing3Avg: number; agiTrailing12Avg: number; marginPctTrailing12: number | null; currentMonthAgi: number | null; position: number }
+  months: Array<{ mon: string; revenue: number; directCost: number; agi: number; marginPct: number | null }>
+  trailing12: { avgAgi: number; avgMarginPct: number | null; totalRevenue: number; totalDirectCost: number; totalAgi: number; months: number }
+  note: string
+}
+const { data: agi } = await useFetch<AgiResponse>('/api/xero/get-out/agi', {
+  query: { months: 13 }, lazy: true, server: false,
+})
+
 const fmt = (v: number) =>
   new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(v)
 const fmtc = (v: number) =>
@@ -88,6 +102,70 @@ const buckets = computed(() => {
           title="Read-only accuracy harness"
           description="Reconciles live Xero invoicing to ADME net revenue. Dial the media/printing rates until ADME margin matches your spreadsheet total, then we lock them in."
         />
+
+        <!-- ═══ AGI — accurate model (Revenue − Direct Costs from cached lines) ═══ -->
+        <UCard v-if="agi" class="ring-1 ring-primary/30">
+          <template #header>
+            <div class="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h3 class="font-semibold flex items-center gap-2">
+                  <UIcon name="i-lucide-trending-up" class="text-primary" />
+                  Agency Gross Income (AGI) — accurate model
+                </h3>
+                <p class="text-sm text-muted">
+                  Revenue − direct costs (Xero DIRECTCOSTS), {{ agi.trailing12.months }} months of cached lines · no guessed rates
+                </p>
+              </div>
+              <UBadge :color="agi.headline.position >= 0 ? 'success' : 'error'" variant="subtle" size="lg">
+                {{ agi.headline.position >= 0 ? '+' : '' }}{{ fmt(agi.headline.position) }} vs target
+              </UBadge>
+            </div>
+          </template>
+
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <p class="text-xs uppercase text-muted">AGI · trailing 3mo avg</p>
+              <p class="text-2xl font-bold tabular-nums text-primary">{{ fmt(agi.headline.agiTrailing3Avg) }}</p>
+            </div>
+            <div>
+              <p class="text-xs uppercase text-muted">Gross margin · 12mo</p>
+              <p class="text-2xl font-bold tabular-nums">{{ agi.headline.marginPctTrailing12 ?? '—' }}%</p>
+            </div>
+            <div>
+              <p class="text-xs uppercase text-muted">Target (configured)</p>
+              <p class="text-2xl font-bold tabular-nums">{{ fmt(agi.target) }}</p>
+              <p class="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">⚠ still includes direct costs — reconfigure to overheads-only</p>
+            </div>
+            <div>
+              <p class="text-xs uppercase text-muted">12-mo total AGI</p>
+              <p class="text-2xl font-bold tabular-nums">{{ fmt(agi.trailing12.totalAgi) }}</p>
+            </div>
+          </div>
+
+          <div class="mt-4 overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="text-xs uppercase text-muted border-b border-default">
+                <tr>
+                  <th class="text-left font-medium py-1.5">Month</th>
+                  <th class="text-right font-medium">Revenue</th>
+                  <th class="text-right font-medium">Direct cost</th>
+                  <th class="text-right font-medium">AGI</th>
+                  <th class="text-right font-medium">Margin</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-default">
+                <tr v-for="m in agi.months" :key="m.mon" :class="m.mon === agi.currentMon ? 'text-muted italic' : ''">
+                  <td class="py-1.5">{{ m.mon }}<span v-if="m.mon === agi.currentMon"> (partial)</span></td>
+                  <td class="text-right tabular-nums">{{ fmt(m.revenue) }}</td>
+                  <td class="text-right tabular-nums text-muted">{{ fmt(m.directCost) }}</td>
+                  <td class="text-right tabular-nums font-medium">{{ fmt(m.agi) }}</td>
+                  <td class="text-right tabular-nums">{{ m.marginPct ?? '—' }}%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="text-xs text-muted italic mt-2">{{ agi.note }}</p>
+        </UCard>
 
         <!-- Controls -->
         <UCard>
