@@ -23,6 +23,8 @@ function findClip(state: TimelineState, clipId: string): { track: Track; clip: C
 }
 
 export function deleteClip(state: TimelineState, { clipId }: { clipId: string }): TimelineState {
+  // No match → return the original so callers can detect "no change" by reference equality.
+  if (!findClip(state, clipId)) return state
   const next = cloneState(state)
   for (const track of next.tracks) track.clips = track.clips.filter(c => c.id !== clipId)
   next.duration_sec = computeDuration(next)

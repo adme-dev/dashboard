@@ -37,8 +37,10 @@ describe('deleteClip', () => {
     expect(out.duration_sec).toBe(0)
     expect(base.tracks[0].clips).toHaveLength(1) // input untouched
   })
-  it('is a no-op for an unknown clip id', () => {
-    expect(deleteClip(base, { clipId: 'nope' }).tracks[0].clips).toHaveLength(1)
+  it('is a no-op (same reference) for an unknown clip id', () => {
+    const out = deleteClip(base, { clipId: 'nope' })
+    expect(out).toBe(base)                      // unchanged → reference equality
+    expect(out.tracks[0].clips).toHaveLength(1)
   })
 })
 
@@ -59,6 +61,10 @@ describe('moveClip', () => {
     expect(out.tracks[1].clips[0].id).toBe('c1')
     expect(out.tracks[1].clips[0].timeline_start_sec).toBe(2)
   })
+  it('is a no-op (same reference) for an unknown toTrackId', () => {
+    const out = moveClip(two, { clipId: 'c1', toTrackId: 'nope', newStartSec: 2 })
+    expect(out).toBe(two)
+  })
 })
 
 describe('addClip', () => {
@@ -70,6 +76,11 @@ describe('addClip', () => {
     expect(added.asset_id).toBe('a2')
     expect(added.timeline_start_sec).toBe(4)
     expect(added.source_out_sec).toBeNull() // play to end
+  })
+  it('is a no-op (same reference) for an unknown trackId', () => {
+    const out = addClip(base, { trackId: 'nope', id: 'c2',
+      asset: { id: 'a2', r2_key_master: 'k2' }, startSec: 4 })
+    expect(out).toBe(base)
   })
 })
 
