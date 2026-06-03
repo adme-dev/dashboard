@@ -176,7 +176,7 @@ async function createProject() {
               :label="asProject(row).status"
               size="xs"
               variant="subtle"
-              :color="asProject(row).status === 'published' ? 'success' : 'neutral'"
+              :color="asProject(row).status === 'approved' ? 'success' : 'neutral'"
             />
           </template>
 
