@@ -91,6 +91,23 @@ export async function getProjectWithCurrentTimeline(
   return { project, timeline }
 }
 
+/** Delete a project and all its dependent rows in one transaction.
+ * media_timelines cascades from media_projects (FK ON DELETE CASCADE), but
+ * media_render_jobs.timeline_id references media_timelines WITHOUT a cascade —
+ * so the render jobs must be removed first (by project_id) or the timeline
+ * delete is blocked. Returns false if the project did not exist. */
+export async function deleteProject(id: string): Promise<boolean> {
+  return transaction(async (db) => {
+    const exists = await db.query(`SELECT id FROM media_projects WHERE id = $1`, [id])
+    if (!exists.rows[0]) return false
+    // Render jobs first (no cascade on timeline_id FK).
+    await db.query(`DELETE FROM media_render_jobs WHERE project_id = $1`, [id])
+    // Deleting the project cascades its media_timelines rows.
+    await db.query(`DELETE FROM media_projects WHERE id = $1`, [id])
+    return true
+  })
+}
+
 /** List projects, optionally filtered by client. */
 export async function listProjects(clientId?: string): Promise<MediaProject[]> {
   const where = clientId ? 'WHERE client_id = $1' : ''
