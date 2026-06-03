@@ -59,6 +59,57 @@ async function doSaveVersion() {
   }
 }
 
+// ─── Versions slideover ───────────────────────────────────────────────────────
+
+interface VersionRow {
+  id: string
+  version: number
+  label: string | null
+  createdAt: string
+  state: import('~~/server/utils/audio/timelineSchema').TimelineState
+}
+
+const versionsOpen = ref(false)
+const versions = ref<VersionRow[]>([])
+const versionsLoading = ref(false)
+const restoringId = ref<string | null>(null)
+
+async function loadVersions() {
+  versionsLoading.value = true
+  try {
+    const res = await editor.listVersions()
+    versions.value = res.versions
+  } catch {
+    toast.add({ title: 'Failed to load versions', color: 'error' })
+  } finally {
+    versionsLoading.value = false
+  }
+}
+
+function openVersions() {
+  versionsOpen.value = true
+  void loadVersions()
+}
+
+function restore(version: VersionRow) {
+  restoringId.value = version.id
+  try {
+    editor.restoreVersion(version.state)
+    toast.add({ title: `Restored ${version.label ?? `v${version.version}`}`, color: 'success' })
+    versionsOpen.value = false
+  } finally {
+    restoringId.value = null
+  }
+}
+
+function fmtVersionDate(iso: string) {
+  try {
+    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso))
+  } catch {
+    return iso
+  }
+}
+
 // ─── Keyboard shortcuts ──────────────────────────────────────────────────────
 // S and Delete are handled inside MediaTimeline (window listener).
 // Cmd/Ctrl+Z → undo, Cmd/Ctrl+Shift+Z → redo.
@@ -172,6 +223,16 @@ const saveStatusColor = computed(() => {
           label="Save version"
           @click="saveVersionOpen = true"
         />
+
+        <!-- Versions history -->
+        <UButton
+          icon="i-lucide-history"
+          size="sm"
+          variant="ghost"
+          color="neutral"
+          label="Versions"
+          @click="openVersions"
+        />
       </div>
 
       <!-- Loading / error states -->
@@ -232,6 +293,58 @@ const saveStatusColor = computed(() => {
     v-model:open="pickerOpen"
     @pick="onPickerPick"
   />
+
+  <!-- Versions slideover -->
+  <USlideover
+    v-model:open="versionsOpen"
+    title="Version history"
+    description="Restore a previously-saved snapshot of this timeline."
+  >
+    <template #body>
+      <div class="space-y-2">
+        <div v-if="versionsLoading" class="space-y-2">
+          <USkeleton v-for="n in 3" :key="n" class="h-14 w-full rounded-lg" />
+        </div>
+
+        <UAlert
+          v-else-if="!versions.length"
+          color="neutral"
+          variant="subtle"
+          icon="i-lucide-history"
+          title="No saved versions"
+          description="Use 'Save version' to checkpoint the current timeline."
+        />
+
+        <div
+          v-for="version in versions"
+          :key="version.id"
+          class="flex items-center gap-3 rounded-lg border border-default bg-elevated p-3"
+        >
+          <div class="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10">
+            <UIcon name="i-lucide-bookmark" class="size-4 text-primary" />
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="truncate text-sm font-medium text-highlighted">
+              {{ version.label ?? `Version ${version.version}` }}
+            </p>
+            <p class="text-xs text-muted mt-0.5 flex items-center gap-1.5">
+              <UBadge :label="`v${version.version}`" size="xs" variant="subtle" color="neutral" />
+              <span>{{ fmtVersionDate(version.createdAt) }}</span>
+            </p>
+          </div>
+          <UButton
+            icon="i-lucide-rotate-ccw"
+            size="xs"
+            variant="soft"
+            color="primary"
+            label="Restore"
+            :loading="restoringId === version.id"
+            @click="restore(version)"
+          />
+        </div>
+      </div>
+    </template>
+  </USlideover>
 
   <!-- Save version modal -->
   <UModal v-model:open="saveVersionOpen" title="Save version">

@@ -287,9 +287,10 @@ export function useMediaProjectEditor(projectId: string) {
     })
   }
 
-  /** List all saved versions for this project. Returns { versions: [...] } */
+  /** List all saved versions for this project. The endpoint returns mapped
+   * MediaTimeline rows (camelCase createdAt, plus version), newest-first. */
   async function listVersions() {
-    return $fetch<{ versions: Array<{ id: string; label: string | null; created_at: string; state: TimelineState }> }>(
+    return $fetch<{ versions: Array<{ id: string; version: number; label: string | null; createdAt: string; state: TimelineState }> }>(
       `/api/agency/audio/projects/${projectId}/versions`
     )
   }
