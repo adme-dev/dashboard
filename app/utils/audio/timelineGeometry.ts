@@ -22,3 +22,10 @@ export function playheadX(currentTimeSec: number, pxPerSec: number): number {
 export function trackLaneCount(timeline: TimelineState): number {
   return timeline.tracks.length
 }
+
+/** Inverse of playheadX: convert a pixel offset (from the left edge of the clip
+ * canvas, NOT including the label column) back to a timeline time in seconds. */
+export function timeAtX(px: number, pxPerSec: number): number {
+  if (pxPerSec <= 0) return 0
+  return Math.max(0, px / pxPerSec)
+}

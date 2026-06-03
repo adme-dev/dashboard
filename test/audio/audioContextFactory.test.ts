@@ -15,7 +15,7 @@ describe('makeR2Resolver', () => {
     const fetchMock = vi.fn(async () => ({ ok: true, arrayBuffer: async () => ab }))
     vi.stubGlobal('fetch', fetchMock)
     const ctx = { decodeAudioData: vi.fn(async () => stubBuffer) }
-    const resolve = makeR2Resolver({ 'k/a': 'https://signed/k/a' }, ctx as any)
+    const resolve = makeR2Resolver(new Map([['k/a', 'https://signed/k/a']]), ctx as any)
     const buf = await resolve(clip())
     expect(buf).toBe(stubBuffer)
     expect(fetchMock).toHaveBeenCalledWith('https://signed/k/a')
@@ -24,7 +24,7 @@ describe('makeR2Resolver', () => {
 
   it('rejects when the clip key is missing from the sources map', async () => {
     const ctx = { decodeAudioData: vi.fn() }
-    const resolve = makeR2Resolver({}, ctx as any)
+    const resolve = makeR2Resolver(new Map(), ctx as any)
     await expect(resolve(clip({ r2_key: 'k/missing' }))).rejects.toThrow(/k\/missing/)
     expect(ctx.decodeAudioData).not.toHaveBeenCalled()
   })
@@ -32,7 +32,7 @@ describe('makeR2Resolver', () => {
   it('rejects on a non-ok fetch response', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 403, arrayBuffer: async () => new ArrayBuffer(0) })))
     const ctx = { decodeAudioData: vi.fn() }
-    const resolve = makeR2Resolver({ 'k/a': 'https://signed/k/a' }, ctx as any)
+    const resolve = makeR2Resolver(new Map([['k/a', 'https://signed/k/a']]), ctx as any)
     await expect(resolve(clip())).rejects.toThrow(/403/)
   })
 
@@ -41,10 +41,22 @@ describe('makeR2Resolver', () => {
     const fetchMock = vi.fn(async () => ({ ok: true, arrayBuffer: async () => ab }))
     vi.stubGlobal('fetch', fetchMock)
     const ctx = { decodeAudioData: vi.fn(async () => stubBuffer) }
-    const resolve = makeR2Resolver({ 'k/a': 'https://signed/k/a' }, ctx as any)
+    const resolve = makeR2Resolver(new Map([['k/a', 'https://signed/k/a']]), ctx as any)
     const [b1, b2] = await Promise.all([resolve(clip({ clipId: 'c1' })), resolve(clip({ clipId: 'c2' }))])
     expect(b1).toBe(stubBuffer); expect(b2).toBe(stubBuffer)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(ctx.decodeAudioData).toHaveBeenCalledTimes(1)
+  })
+
+  it('picks up a URL merged after resolver creation (live-map behavior)', async () => {
+    const ab = new ArrayBuffer(8)
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => ab })))
+    const ctx = { decodeAudioData: vi.fn(async () => stubBuffer) }
+    const liveMap = new Map<string, string>()
+    const resolve = makeR2Resolver(liveMap, ctx as any)
+    // key missing at creation time → merge it in after
+    liveMap.set('k/a', 'https://signed/k/a')
+    const buf = await resolve(clip())
+    expect(buf).toBe(stubBuffer)
   })
 })

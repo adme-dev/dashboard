@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { clipRect, playheadX, trackLaneCount } from '~~/app/utils/audio/timelineGeometry'
+import { clipRect, playheadX, trackLaneCount, timeAtX } from '~~/app/utils/audio/timelineGeometry'
 import { TimelineStateSchema } from '~~/server/utils/audio/timelineSchema'
 
 describe('clipRect', () => {
@@ -18,6 +18,19 @@ describe('playheadX', () => {
   it('scales the current time by pxPerSec, clamped at 0', () => {
     expect(playheadX(3, 10)).toBe(30)
     expect(playheadX(-1, 10)).toBe(0)
+  })
+})
+
+describe('timeAtX', () => {
+  it('inverts playheadX: px / pxPerSec → seconds', () => {
+    expect(timeAtX(300, 100)).toBe(3)
+    expect(timeAtX(0, 100)).toBe(0)
+  })
+  it('clamps negative px to 0 seconds', () => {
+    expect(timeAtX(-50, 100)).toBe(0)
+  })
+  it('guards against division-by-zero (pxPerSec=0 → 0)', () => {
+    expect(timeAtX(100, 0)).toBe(0)
   })
 })
 

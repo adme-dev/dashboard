@@ -29,6 +29,7 @@ export interface AudioEngine {
   duration(): number
   isPlaying(): boolean
   dispose(): void
+  clipSourceDuration(clipId: string): number
 }
 
 export function createAudioEngine(deps: AudioEngineDeps): AudioEngine {
@@ -36,6 +37,7 @@ export function createAudioEngine(deps: AudioEngineDeps): AudioEngine {
 
   let plan: TimelinePlan = { tracks: [], clips: [], ramps: [] }
   const buffers = new Map<string, any>()
+  const sourceDur = new Map<string, number>()
   const trackBus = new Map<string, any>()
   const busNominalDb = new Map<string, number>()   // each bus's nominal gain in dB
   const busCurrentGain = new Map<string, number>() // last scheduled LINEAR gain on each bus
@@ -50,7 +52,7 @@ export function createAudioEngine(deps: AudioEngineDeps): AudioEngine {
 
   async function load(state: TimelineState): Promise<void> {
     plan = planTimeline(state)
-    buffers.clear(); trackBus.clear(); busNominalDb.clear(); busCurrentGain.clear()
+    buffers.clear(); sourceDur.clear(); trackBus.clear(); busNominalDb.clear(); busCurrentGain.clear()
     for (const t of plan.tracks) {
       const bus = ctx.createGain()
       bus.gain.value = dbToGain(t.gainDb)
@@ -63,6 +65,7 @@ export function createAudioEngine(deps: AudioEngineDeps): AudioEngine {
     for (const clip of plan.clips) {
       const buf = await resolveBuffer(clip)
       buffers.set(clip.clipId, buf)
+      sourceDur.set(clip.clipId, buf.duration)
       const dur = clip.durationSec ?? Math.max(0, buf.duration - clip.sourceInSec)
       durationSec = Math.max(durationSec, clip.timelineStartSec + dur)
     }
@@ -161,5 +164,5 @@ export function createAudioEngine(deps: AudioEngineDeps): AudioEngine {
     trackBus.clear(); buffers.clear()
   }
 
-  return { load, play, pause, seek, currentTime, duration: () => durationSec, isPlaying: () => playing, dispose }
+  return { load, play, pause, seek, currentTime, duration: () => durationSec, isPlaying: () => playing, dispose, clipSourceDuration: (clipId: string) => sourceDur.get(clipId) ?? 0 }
 }

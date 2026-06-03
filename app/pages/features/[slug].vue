@@ -544,6 +544,35 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  // ─── Media Studio Editor ─────────────────────────────────────
+  'media-studio-editor': {
+    title: 'Media Studio Editor',
+    slug: 'media-studio-editor',
+    icon: 'i-lucide-film',
+    category: 'Creative Production',
+    categoryIcon: 'i-lucide-rocket',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'A browser-based multitrack audio editor that lets you drag, trim, slice, and layer clips on a pixel-accurate timeline — with full undo/redo, debounced autosave, and named version snapshots.',
+    details: [
+      {
+        title: 'Pixel-Accurate Multitrack Timeline',
+        content: 'Every clip sits on a lane colour-coded by kind — voiceover, music, SFX. Drag to move across the timeline or across tracks. Trim the start or end of any clip by dragging its handle. A snap system locks clip edges to the grid, the playhead, and neighbouring clip boundaries so your mix stays tight without pixel-hunting.'
+      },
+      {
+        title: 'Non-Destructive Undo and Autosave',
+        content: 'Every edit — move, trim, slice, add, delete — is undoable and redoable via a 100-step in-memory stack (Cmd+Z / Cmd+Shift+Z). Edits are also debounced-saved to the server automatically after 1.5 seconds of inactivity, so you never lose work. Named version snapshots let you checkpoint a milestone ("Before final mix") and restore it at any time.'
+      },
+      {
+        title: 'Add Clips From The Audio Library',
+        content: 'Click "Add clip" to open the asset picker — a sliding panel listing every voiceover and music track in your library with kind filter, title search, and an inline play button for a quick listen. Selecting a track drops it onto the matching kind\'s lane at the current playhead position, with the presigned URL already wired so the engine resolves it immediately.'
+      },
+      {
+        title: 'Waveform Visualisation And Zoom',
+        content: 'Each clip block renders its waveform — a visual fingerprint that makes it easy to see phrase boundaries, silence gaps, and music sections at a glance. Zoom controls adjust pixels-per-second so you can work at the level of the whole mix or zoom into a half-second splice point.'
+      }
+    ]
+  },
   // ─── Work Management ──────────────────────────────────────────
   'boards': {
     title: 'Boards',

@@ -152,6 +152,9 @@ importers:
       standardized-audio-context:
         specifier: ^25.3.77
         version: 25.3.77
+      wavesurfer.js:
+        specifier: ^7.12.7
+        version: 7.12.7
       xero-node:
         specifier: ^13.0.0
         version: 13.0.0
@@ -8102,6 +8105,9 @@ packages:
 
   w3c-keyname@2.2.8:
     resolution: {integrity: sha512-dpojBhNsCNN7T82Tm7k26A6G9ML3NkhDsnw9n/eoxSRlVBB4CEtIQ/KTCLI2Fwf3ataSXRhYFkQi3SlnFwPvPQ==}
+
+  wavesurfer.js@7.12.7:
+    resolution: {integrity: sha512-TIe7hB6OCZysNOZ2cn2NR8Qpko22POWel6rauNcqOammFoH65NYQUM35unNLLMIlUMVYvjJ6w/TTl/G/m+w0nA==}
 
   web-streams-polyfill@3.3.3:
     resolution: {integrity: sha512-d2JWLCivmZYTSIoge9MsgFCZrt571BikcWGYkjC1khllbTeDlGqZ2D8vD8E/lJa8WGWbb7Plm8/XJYV7IJHZZw==}
@@ -17386,6 +17392,8 @@ snapshots:
       typescript: 5.9.2
 
   w3c-keyname@2.2.8: {}
+
+  wavesurfer.js@7.12.7: {}
 
   web-streams-polyfill@3.3.3:
     optional: true
