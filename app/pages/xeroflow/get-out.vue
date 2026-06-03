@@ -255,6 +255,14 @@ function fmtMonthLabel(label: string): string {
               Live
             </div>
             <UButton
+              icon="i-lucide-flask-conical"
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              label="Reconcile"
+              to="/xeroflow/get-out-reconciliation"
+            />
+            <UButton
               icon="i-lucide-settings"
               color="neutral"
               variant="ghost"
