@@ -13,7 +13,7 @@ import { defineEventHandler, createError, readBody } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
 import { getActiveTokenForSession } from '~~/server/utils/tokenStore'
 import { getSelectedTenant } from '~~/server/utils/session'
-import { syncInvoiceLines } from '~~/server/utils/xeroInvoiceLinesSync'
+import { syncInvoiceLines, syncAccounts } from '~~/server/utils/xeroInvoiceLinesSync'
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
@@ -58,8 +58,18 @@ export default defineEventHandler(async (event) => {
     types,
   })
 
+  // Refresh the chart-of-accounts cache (best-effort; needed for type-driven
+  // direct-cost / overhead classification).
+  let accounts = 0
+  try {
+    accounts = await syncAccounts({ accessToken: token.access_token!, tenantId })
+  } catch (err: any) {
+    console.warn('[sync-invoice-lines] accounts sync failed:', err?.message)
+  }
+
   return {
     ok: true,
+    accounts,
     window: {
       from: fromDate.toISOString().slice(0, 10),
       to: toDate ? toDate.toISOString().slice(0, 10) : 'now',

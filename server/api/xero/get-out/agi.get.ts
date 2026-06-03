@@ -29,27 +29,45 @@ export default defineEventHandler(async (event) => {
   const q = getQuery(event)
   const months = Math.min(24, Math.max(1, Number(q.months) || 13))
 
-  const cfgRow = await queryOne<{ value: any }>(
-    `SELECT value FROM agency_settings WHERE tenant_id = $1 AND key = 'direct_cost_account_codes'`,
+  // Direct-cost codes — prefer Xero account TYPE (DIRECTCOSTS) from the accounts
+  // cache; fall back to config override, then the built-in default set.
+  const dcRows = await queryRows<{ code: string }>(
+    `SELECT code FROM xero_accounts_cache WHERE tenant_id = $1 AND type = 'DIRECTCOSTS'`,
     [tenantId],
   )
-  const directCostCodes: string[] =
-    Array.isArray(cfgRow?.value?.codes) && cfgRow.value.codes.length
-      ? cfgRow.value.codes.map(String)
-      : DEFAULT_DIRECT_COST_CODES
+  let directCostCodes = dcRows.map(r => r.code)
+  let directCostSource = 'xero_type'
+  if (!directCostCodes.length) {
+    const cfgRow = await queryOne<{ value: any }>(
+      `SELECT value FROM agency_settings WHERE tenant_id = $1 AND key = 'direct_cost_account_codes'`,
+      [tenantId],
+    )
+    const cfgCodes = Array.isArray(cfgRow?.value?.codes) ? cfgRow.value.codes.map(String) : []
+    directCostCodes = cfgCodes.length ? cfgCodes : DEFAULT_DIRECT_COST_CODES
+    directCostSource = cfgCodes.length ? 'config' : 'default'
+  }
+
+  // Operating-overhead codes (EXPENSE/OVERHEADS) for a grounded overheads
+  // reference — excludes liabilities (GST/PAYG/super payable, director loans).
+  const ohRows = await queryRows<{ code: string }>(
+    `SELECT code FROM xero_accounts_cache WHERE tenant_id = $1 AND type IN ('EXPENSE','OVERHEADS')`,
+    [tenantId],
+  )
+  const overheadCodes = ohRows.map(r => r.code)
 
   const now = new Date()
   const fromDate = new Date(now.getFullYear(), now.getMonth() - months + 1, 1)
   const currentMon = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
-  const rows = await queryRows<{ mon: string; revenue_cents: string; direct_cost_cents: string }>(
+  const rows = await queryRows<{ mon: string; revenue_cents: string; direct_cost_cents: string; overhead_cents: string }>(
     `SELECT to_char(invoice_date, 'YYYY-MM') AS mon,
             COALESCE(SUM(line_ex_gst_cents) FILTER (WHERE invoice_type = 'ACCREC'), 0)::text AS revenue_cents,
-            COALESCE(SUM(line_ex_gst_cents) FILTER (WHERE invoice_type = 'ACCPAY' AND account_code = ANY($2)), 0)::text AS direct_cost_cents
+            COALESCE(SUM(line_ex_gst_cents) FILTER (WHERE invoice_type = 'ACCPAY' AND account_code = ANY($2)), 0)::text AS direct_cost_cents,
+            COALESCE(SUM(line_ex_gst_cents) FILTER (WHERE invoice_type = 'ACCPAY' AND account_code = ANY($4)), 0)::text AS overhead_cents
        FROM xero_invoice_lines_cache
       WHERE tenant_id = $1 AND invoice_date >= $3::date
       GROUP BY 1`,
-    [tenantId, directCostCodes, fromDate.toISOString().slice(0, 10)],
+    [tenantId, directCostCodes, fromDate.toISOString().slice(0, 10), overheadCodes],
   )
 
   const series = buildAgiSeries(
@@ -60,6 +78,18 @@ export default defineEventHandler(async (event) => {
     })),
     { currentMon },
   )
+
+  // Actual operating overheads (Xero EXPENSE/OVERHEADS), trailing-3 avg over
+  // COMPLETE months — a grounded anchor for the overheads-only target. NB:
+  // wages/super are payroll (not ACCPAY) so they're NOT in this figure.
+  const completeOverheads = rows
+    .filter(r => r.mon !== currentMon)
+    .sort((a, b) => a.mon.localeCompare(b.mon))
+    .slice(-3)
+    .map(r => Number(r.overhead_cents) / 100)
+  const overheadsActualTrailing3 = completeOverheads.length
+    ? Math.round((completeOverheads.reduce((s, x) => s + x, 0) / completeOverheads.length) * 100) / 100
+    : 0
 
   // Configured Get Out target. NOTE: for an apples-to-apples AGI comparison the
   // target should be OVERHEADS ONLY (direct costs are already netted into AGI).
@@ -74,7 +104,10 @@ export default defineEventHandler(async (event) => {
 
   return {
     currentMon,
-    directCostCodes,
+    directCostSource,
+    directCostCodeCount: directCostCodes.length,
+    overheadCodeCount: overheadCodes.length,
+    overheadsActualTrailing3,
     target: round2(target),
     headline: {
       agiTrailing3Avg: series.trailing3.avgAgi,

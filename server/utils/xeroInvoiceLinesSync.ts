@@ -21,6 +21,43 @@ export interface SyncInvoiceLinesResult {
   byType: Record<string, number>
 }
 
+/**
+ * Sync the Xero chart of accounts (code → name/type/class) into
+ * xero_accounts_cache. One Accounts call; cheap to run alongside a line sync.
+ */
+export async function syncAccounts(opts: { accessToken: string; tenantId: string }): Promise<number> {
+  const body = await xeroFetch<any>({ accessToken: opts.accessToken, tenantId: opts.tenantId, path: 'Accounts' })
+  const rows = (body?.accounts ?? [])
+    .filter((a: any) => a?.code)
+    .map((a: any) => ({
+      code: String(a.code),
+      name: String(a.name ?? a.code),
+      type: a.type != null ? String(a.type) : null,
+      cls: (a._class ?? a.class) != null ? String(a._class ?? a.class) : null,
+    }))
+  if (!rows.length) return 0
+
+  await transaction(async (db) => {
+    for (let i = 0; i < rows.length; i += 200) {
+      const chunk = rows.slice(i, i + 200)
+      const values: any[] = []
+      const placeholders = chunk.map((r: any, j: number) => {
+        const b = j * 5
+        values.push(opts.tenantId, r.code, r.name, r.type, r.cls)
+        return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5})`
+      }).join(',')
+      await db.query(
+        `INSERT INTO xero_accounts_cache (tenant_id, code, name, type, class)
+         VALUES ${placeholders}
+         ON CONFLICT (tenant_id, code) DO UPDATE SET
+           name = EXCLUDED.name, type = EXCLUDED.type, class = EXCLUDED.class, synced_at = NOW()`,
+        values,
+      )
+    }
+  })
+  return rows.length
+}
+
 const INSERT_COLS = 16
 
 async function fetchInvoices(
