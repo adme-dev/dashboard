@@ -227,14 +227,10 @@ export function useMediaProjectEditor(projectId: string) {
       mergeSource(asset.r2_key_master, presignedUrl)
     }
     let next = timeline.value
-    let track = next.tracks.find(t => t.kind === asset.kind) ?? next.tracks[0]
+    let track = next.tracks.find(t => t.kind === asset.kind)
     if (!track) {
-      // Empty timeline (no tracks at all) — create one of the asset's kind.
-      const id = crypto.randomUUID()
-      next = addTrack(next, { id, kind: asset.kind })
-      track = next.tracks.find(t => t.id === id)!
-    } else if (track.kind !== asset.kind) {
-      // No lane of the asset's kind — append one rather than mixing kinds.
+      // No lane of the asset's kind (or an empty timeline) — append one rather
+      // than mixing kinds or silently dropping the add.
       const id = crypto.randomUUID()
       next = addTrack(next, { id, kind: asset.kind })
       track = next.tracks.find(t => t.id === id)!
