@@ -27,11 +27,15 @@ export async function renderPreview(
   const ctx: any = new OfflineCtor(2, length, sampleRate)
 
   const trackBus = new Map<string, any>()
+  const busNominalDb = new Map<string, number>()
+  const busCurrentGain = new Map<string, number>()
   for (const t of plan.tracks) {
     const bus = ctx.createGain()
     bus.gain.value = dbToGain(t.gainDb)
     bus.connect(ctx.destination)
     trackBus.set(t.trackId, bus)
+    busNominalDb.set(t.trackId, t.gainDb)
+    busCurrentGain.set(t.trackId, dbToGain(t.gainDb))
   }
 
   for (const clip of plan.clips) {
@@ -60,10 +64,14 @@ export async function renderPreview(
 
   for (const r of plan.ramps) {
     const bus = trackBus.get(r.targetTrackId)
-    // TODO(SP2b): same ramp-anchor gap as useAudioEngine.scheduleRamp — a duck whose atSec > 0
-    // ramps from t≈0 without a preceding setValueAtTime anchor. Kept identical to the live engine
-    // so preview and playback agree; fix both together with the real-context work in SP2b.
-    if (bus) bus.gain.linearRampToValueAtTime(dbToGain(r.toGainDb), r.atSec + r.rampSec)
+    if (!bus) continue
+    // r.toGainDb is a DELTA from the bus's nominal gain (see DuckRamp doc).
+    const nominalDb = busNominalDb.get(r.targetTrackId) ?? 0
+    const target = dbToGain(nominalDb + r.toGainDb)
+    const held = busCurrentGain.get(r.targetTrackId) ?? dbToGain(nominalDb)
+    bus.gain.setValueAtTime(held, r.atSec)
+    bus.gain.linearRampToValueAtTime(target, r.atSec + r.rampSec)
+    busCurrentGain.set(r.targetTrackId, target)
   }
 
   return ctx.startRendering()
