@@ -99,6 +99,7 @@ describe('social route navigation coverage', () => {
     expect(layout).toContain('agency-main-nav')
     expect(layout).toContain('scrollActiveMainNavItemIntoView')
     expect(layout).toContain('route.path.startsWith(\'/agency/social\')')
-    expect(layout).toContain('watch(() => route.path')
+    expect(layout).toContain('window.setTimeout(() => scrollActiveMainNavItemIntoView')
+    expect(layout).toContain('watch([() => route.path, () => mainNav.value.length]')
   })
 })

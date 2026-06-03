@@ -356,7 +356,7 @@ const groups = computed(() => [{
   }]
 }])
 
-const scrollActiveMainNavItemIntoView = async () => {
+const scrollActiveMainNavItemIntoView = async (attempt = 0) => {
   if (!import.meta.client || !route.path.startsWith('/agency/social')) return
 
   await nextTick()
@@ -369,7 +369,12 @@ const scrollActiveMainNavItemIntoView = async () => {
   })
   const scrollContainer = activeLink?.closest<HTMLElement>('.overflow-y-auto')
 
-  if (!activeLink || !scrollContainer) return
+  if (!activeLink || !scrollContainer) {
+    if (attempt < 10) {
+      window.setTimeout(() => scrollActiveMainNavItemIntoView(attempt + 1), 150)
+    }
+    return
+  }
 
   const linkRect = activeLink.getBoundingClientRect()
   const containerRect = scrollContainer.getBoundingClientRect()
@@ -389,9 +394,9 @@ onMounted(() => {
   scrollActiveMainNavItemIntoView()
 })
 
-watch(() => route.path, () => {
+watch([() => route.path, () => mainNav.value.length], () => {
   scrollActiveMainNavItemIntoView()
-})
+}, { flush: 'post' })
 </script>
 
 <template>
