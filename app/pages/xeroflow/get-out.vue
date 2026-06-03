@@ -252,7 +252,7 @@ function fmtMonthLabel(label: string): string {
   <UDashboardPanel id="get-out">
     <template #header>
       <UDashboardNavbar
-        title="Get Out — Cashflow Target"
+        title="Get Out — True Position"
         :description="data ? `${data.period.monthName} ${data.period.year} · day ${data.period.dayOfMonth} of ${data.period.daysInMonth}` : undefined"
       >
         <template #leading>
@@ -361,7 +361,7 @@ function fmtMonthLabel(label: string): string {
           <div class="mt-3 pt-3 border-t border-default flex items-center justify-between gap-2 flex-wrap">
             <p class="text-xs text-muted">
               Target = wages {{ formatCurrency(agiData.targetBreakdown.wages) }}
-              + overheads {{ formatCurrency(agiData.targetBreakdown.overheadsActual) }} <span class="italic">(Xero actual — verify if you pay any by card/direct debit)</span>
+              + overheads {{ formatCurrency(agiData.targetBreakdown.overheadsActual) }} <span class="italic">(Xero actuals)</span>
               + extras {{ formatCurrency(agiData.targetBreakdown.extras) }}
             </p>
             <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-flask-conical" label="Reconcile" to="/xeroflow/get-out-reconciliation" />
@@ -440,7 +440,7 @@ function fmtMonthLabel(label: string): string {
 
           <UCard :ui="{ body: '!p-4' }" :class="differenceBg">
             <div class="flex items-start justify-between mb-2">
-              <p class="text-sm text-muted uppercase tracking-wide">{{ isPositive ? 'Surplus' : 'Shortfall' }}</p>
+              <p class="text-sm text-muted uppercase tracking-wide">Invoiced vs target (MTD)</p>
               <UIcon
                 :name="isPositive ? 'i-lucide-trending-up' : 'i-lucide-trending-down'"
                 class="size-5"
@@ -450,7 +450,7 @@ function fmtMonthLabel(label: string): string {
             <p class="text-2xl font-bold tabular-nums" :class="differenceColor">
               {{ isPositive ? '+' : '' }}{{ formatCurrency(data.difference) }}
             </p>
-            <p class="text-xs text-muted mt-1">{{ isPositive ? 'Ahead of target' : 'Behind target' }} · ex-GST</p>
+            <p class="text-xs text-muted mt-1">This month's ex-GST invoicing pace · see True Position above for the real result</p>
           </UCard>
 
           <UCard :ui="{ body: '!p-4' }">
