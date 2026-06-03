@@ -145,3 +145,77 @@ confirmed rule config and a cached line source instead of guesses.
    option? (They should agree via the COA map; confirm which wins on conflict.)
 3. **Unmapped account codes** — default to 100% (owned) or exclude?
 4. **Scope of revenue** — ACCREC only, or net of ACCRECCREDIT credit notes too?
+
+---
+
+# v2 — ACCURATE AGI MODEL (supersedes the rate-based approach)
+
+**Decision (2026-06-03):** stop applying *guessed commission rates* to media
+revenue. Compute the true margin from **actual revenue − actual cost**. A
+"16% vs 10%" debate is just two approximations of a figure Xero holds exactly:
+what you billed minus what you paid the vendor. The commission rate becomes a
+**reported output**, not an input.
+
+## The model
+
+**ADME Net Revenue (Agency Gross Income) = Revenue − media pass-through cost**
+
+- **Revenue** = all ACCREC ex-GST (owned services + media billed + passthrough
+  billed).
+- **Media pass-through cost** = what ADME actually paid media vendors:
+  - Digital (FB/Google/etc.) → `media_spend.actual_spend` (already captured via
+    the Meta/Google API integrations).
+  - Traditional (shopping-centre, TV, billboards, print, RED, carsales) → Xero
+    **ACCPAY** vendor bills coded to media/direct-cost accounts.
+
+This nets *media* (true passthrough) out of revenue. It does **not** net
+delivery costs (wages, freelance/production contractors) — those sit on the
+**Get Out target** side (the PDF target is "wages + expenses **inc DrCost DA
+contractors + bal est DrCosts** + extras"). Keeping that split is what avoids
+**double-counting**: media cost nets from revenue; people/contractor cost is the
+target. AGI is then compared to that target.
+
+## Why the existing `margin.get.ts` isn't enough
+
+It has the right *concept* (`AGI = Revenue − passthrough`, configurable
+`passthrough_account_codes`) but an incomplete cost source: it only subtracts
+`media_spend.actual_spend` (digital) and never the **traditional-media ACCPAY
+bills**, and it reads revenue gross from headers. The accurate model needs the
+ACCPAY cost side, which we don't yet store.
+
+## Data gap to close
+
+- **ACCREC line items** (revenue by code/tracking) — proposed `xero_invoice_lines_cache`.
+- **ACCPAY bills + line items** (cost by code/tracking/vendor) — **new sync; not
+  currently pulled at all.** Extend the cache + sync to `type IN (ACCREC, ACCPAY)`.
+- **`media_spend`** (digital cost) — already present; join by client + month.
+
+## Cost classification (grounded in real accounts, not guesses)
+
+Tag each cost account as **media-passthrough** (nets from revenue) vs
+**delivery/overhead** (target side). Driven by the Xero cost accounts
+("Direct Costs: Media…", "AP - Media Vendors", contractor/labour accounts) +
+the `Media` tracking dimension — a config table, confirmed once with the owner,
+not curve-fitted to the PDF.
+
+## Reported outputs (the PDF becomes a cross-check, not the source)
+
+- ADME Net Revenue (AGI) vs Get Out target → true position.
+- **Effective media margin %** per category (revenue − cost) ÷ revenue — this is
+  where "is it 10% or 16%?" gets *answered from data* instead of assumed.
+- Gross billings + passthrough still shown for volume/context.
+
+## Revised rollout
+
+1. Sync **ACCPAY** (cost side) + ACCREC line items into the line-item cache.
+2. Cost-classification config (media-passthrough vs delivery), owner-confirmed.
+3. Extend the reconciliation view to show Revenue − actual cost = AGI, with the
+   derived effective media margin %. Cross-check against the PDF; investigate
+   divergences (Xero is system of record).
+4. Lock the model; build the production "true position" card on Get Out.
+
+## Open question for the owner (just one, now)
+
+**Which cost accounts/vendors count as media pass-through** (netted from
+revenue) vs **delivery cost** (target side)? Everything else is computed from
+actual Xero data.
