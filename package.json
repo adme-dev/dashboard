@@ -79,6 +79,7 @@
     "pngjs": "^7.0.0",
     "resend": "^6.6.0",
     "standardized-audio-context": "^25.3.77",
+    "wavesurfer.js": "^7.12.7",
     "xero-node": "^13.0.0",
     "xlsx": "^0.18.5",
     "zod": "^4.3.6"
