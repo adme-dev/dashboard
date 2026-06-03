@@ -89,11 +89,11 @@ export default defineEventHandler(async (event) => {
          COALESCE(SUM(CASE
            WHEN status NOT IN ('VOIDED','DRAFT','DELETED')
                 AND date BETWEEN $2::date AND $3::date
-           THEN total_cents ELSE 0 END), 0)::text AS invoiced_cents,
+           THEN subtotal_cents ELSE 0 END), 0)::text AS invoiced_cents,
          COALESCE(SUM(CASE
            WHEN status = 'VOIDED'
                 AND date BETWEEN $2::date AND $3::date
-           THEN total_cents ELSE 0 END), 0)::text AS voided_cents,
+           THEN subtotal_cents ELSE 0 END), 0)::text AS voided_cents,
          COALESCE(SUM(CASE
            WHEN status = 'AUTHORISED'
                 AND amount_due_cents > 0
@@ -104,9 +104,15 @@ export default defineEventHandler(async (event) => {
       [tenantId, monthStart, monthEnd],
     )
 
+    // The forecast is on an ex-GST basis to match the Get Out target (a
+    // GST-exclusive obligation). invoiced/voided come from subtotal_cents
+    // (exact ex-GST). The remaining Xero amounts are GST-inclusive, so strip
+    // the AU 1/11 GST uniformly via EX_GST. (Approximation for AR/quotes/
+    // recurring/credit-notes; the hero card uses the exact per-invoice split.)
+    const EX_GST = 1 / 1.1
     const invoiced = dollars(totals?.invoiced_cents)
     const voided = dollars(totals?.voided_cents)
-    const arCollectible = dollars(totals?.ar_collectible_cents)
+    const arCollectible = dollars(totals?.ar_collectible_cents) * EX_GST
 
     // ── Live: open quotes (filtered to anything still in play) ──
     let quotesByStatus: Record<string, { count: number; total: number }> = {
@@ -126,7 +132,7 @@ export default defineEventHandler(async (event) => {
       for (const q of (quotesBody?.quotes ?? [])) {
         const status = String(q.status ?? '').toUpperCase()
         if (!QUOTE_PROBABILITY[status]) continue
-        const total = n(q.total)
+        const total = n(q.total) * EX_GST
         quotesByStatus[status]!.count++
         quotesByStatus[status]!.total += total
         quotesProbable += total * QUOTE_PROBABILITY[status]
@@ -156,7 +162,7 @@ export default defineEventHandler(async (event) => {
         // Past-of-month means it already fired and is in the cache as a real invoice.
         const todayStr = today.toISOString().slice(0, 10)
         if (nextStr < todayStr || nextStr > monthEnd) continue
-        recurringRemaining += n(r.total)
+        recurringRemaining += n(r.total) * EX_GST
         recurringSchedulesRemaining++
       }
     } catch (err: any) {
@@ -175,7 +181,7 @@ export default defineEventHandler(async (event) => {
       for (const c of (creditBody?.creditNotes ?? [])) {
         const dateStr = c.date ? String(c.date).slice(0, 10) : null
         if (!dateStr || dateStr < monthStart || dateStr > monthEnd) continue
-        creditNotesIssued += n(c.total)
+        creditNotesIssued += n(c.total) * EX_GST
         creditNotesCount++
       }
     } catch (err: any) {

@@ -20,6 +20,7 @@ import { cachedFetch } from '../../utils/kv'
 import { toXeroDateTime } from '../../utils/xeroDataFetcher'
 import { dedupedXeroCall } from '../../utils/xeroRateLimit'
 import { loadGetOutConfig, summariseConfig } from '../../utils/getOutConfig'
+import { splitInvoiceTotals } from '../../utils/getOutInvoiceTotals'
 
 export default eventHandler(async (event) => {
   await requireAuth(event)
@@ -75,10 +76,13 @@ export default eventHandler(async (event) => {
     }
 
     const { invoices, truncated } = await fetchAllPages()
-    const currentMonthInvoicedTotal = invoices.reduce(
-      (sum: number, inv: any) => sum + (Number(inv.total) || 0),
-      0,
-    )
+    // Split the month's invoicing into gross / ex-GST / GST. The Get Out target
+    // is a GST-exclusive cash obligation, so coverage must be measured ex-GST —
+    // crediting the ~1/11 GST (the ATO's money) overstates how covered we are.
+    const invoiceTotals = splitInvoiceTotals(invoices)
+    const currentMonthInvoicedTotal = invoiceTotals.inclGst   // gross — preserves existing semantics
+    const currentMonthInvoicedExGst = invoiceTotals.exGst
+    const currentMonthGst = invoiceTotals.gst
     const currentMonthInvoicedCount = invoices.length
 
     // ── Configurable inputs (DB-backed via agency_settings) ──
@@ -92,7 +96,8 @@ export default eventHandler(async (event) => {
     const extrasTotal = totals.extrasCents / 100
     const expensesTotalIncExtras = expensesEstimated + extrasTotal
     const getOutTarget = wages + expensesTotalIncExtras
-    const difference = currentMonthInvoicedTotal - getOutTarget
+    // Coverage is ex-GST vs the (ex-GST) obligation target.
+    const difference = currentMonthInvoicedExGst - getOutTarget
 
     // ── Projection ──
     // If we keep invoicing at current pace, where do we land?
@@ -164,12 +169,15 @@ export default eventHandler(async (event) => {
       },
       getOutTarget,
       currentMonth: {
-        invoicedTotal: Math.round(currentMonthInvoicedTotal * 100) / 100,
+        invoicedTotal: Math.round(currentMonthInvoicedTotal * 100) / 100,   // gross (incl GST)
+        invoicedExGst: currentMonthInvoicedExGst,                            // ex-GST (coverage basis)
+        gstCollected: currentMonthGst,                                      // GST owed to ATO
         invoicedCount: currentMonthInvoicedCount,
         paceProjection: monthPaceProjection,
         truncated,
       },
       difference: Math.round(difference * 100) / 100,
+      basis: 'ex_gst' as const,
       status: difference >= 0 ? 'surplus' : 'shortfall',
       categoryBreakdown,
       updatedAt: new Date().toISOString(),

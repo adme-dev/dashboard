@@ -357,7 +357,13 @@ function fmtMonthLabel(label: string): string {
               <UIcon name="i-lucide-receipt" class="size-5 text-emerald-500" />
             </div>
             <p class="text-2xl font-bold tabular-nums">{{ formatCurrency(data.currentMonth.invoicedTotal) }}</p>
-            <p class="text-xs text-muted mt-1">{{ data.currentMonth.invoicedCount }} invoices</p>
+            <p class="text-xs text-muted mt-1">
+              {{ data.currentMonth.invoicedCount }} invoices
+              <template v-if="data.currentMonth.invoicedExGst != null">
+                · ex-GST {{ formatCurrency(data.currentMonth.invoicedExGst) }}
+                <span v-if="(data.currentMonth.gstCollected ?? 0) > 0">· {{ formatCurrency(data.currentMonth.gstCollected) }} GST to ATO</span>
+              </template>
+            </p>
           </UCard>
 
           <UCard :ui="{ body: '!p-4' }" :class="differenceBg">
@@ -372,7 +378,7 @@ function fmtMonthLabel(label: string): string {
             <p class="text-2xl font-bold tabular-nums" :class="differenceColor">
               {{ isPositive ? '+' : '' }}{{ formatCurrency(data.difference) }}
             </p>
-            <p class="text-xs text-muted mt-1">{{ isPositive ? 'Ahead of target' : 'Behind target' }}</p>
+            <p class="text-xs text-muted mt-1">{{ isPositive ? 'Ahead of target' : 'Behind target' }} · ex-GST</p>
           </UCard>
 
           <UCard :ui="{ body: '!p-4' }">

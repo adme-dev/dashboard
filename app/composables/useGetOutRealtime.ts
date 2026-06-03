@@ -37,11 +37,14 @@ export interface GetOutData {
   }
   getOutTarget: number
   currentMonth: {
-    invoicedTotal: number
+    invoicedTotal: number          // gross (incl GST)
+    invoicedExGst?: number         // ex-GST (coverage basis)
+    gstCollected?: number          // GST owed to ATO
     invoicedCount: number
     paceProjection: number
   }
-  difference: number
+  difference: number               // ex-GST basis: invoicedExGst − getOutTarget
+  basis?: 'ex_gst'
   status: 'surplus' | 'shortfall'
   categoryBreakdown: Array<{ code: string; name: string; total: number; count: number }>
   updatedAt: string
