@@ -74,7 +74,7 @@ export async function syncMetaSpendAccount(conn: MetaConn, month: number, year: 
     const mapping = findMapping(mappings, conn.id, campaign.campaign_id, campaign.campaign_name)
     if (mapping) {
       const client = await queryOne<{ id: string; media_commission_rate: string | null }>(
-        `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR code = $2 LIMIT 1`,
+        `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR (xero_contact_id IS NOT NULL AND xero_contact_id = $2) LIMIT 1`,
         [mapping.xero_client_name, mapping.xero_client_code]
       )
       clientId = client?.id || null
@@ -311,7 +311,7 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
       const mapping = findMapping(mappings, conn.id, campaign.campaignId, campaign.campaignName)
       if (mapping) {
         const client = await queryOne<{ id: string; media_commission_rate: string | null }>(
-          `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR code = $2 LIMIT 1`,
+          `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR (xero_contact_id IS NOT NULL AND xero_contact_id = $2) LIMIT 1`,
           [mapping.xero_client_name, mapping.xero_client_code]
         )
         clientId = client?.id || null
@@ -450,7 +450,7 @@ export async function syncTikTokSpend(month: number, year: number): Promise<{ sy
       const mapping = findMapping(mappings, conn.id, campaign.campaign_id, campaign.campaign_name)
       if (mapping) {
         const client = await queryOne<{ id: string; media_commission_rate: string | null }>(
-          `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR code = $2 LIMIT 1`,
+          `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR (xero_contact_id IS NOT NULL AND xero_contact_id = $2) LIMIT 1`,
           [mapping.xero_client_name, mapping.xero_client_code]
         )
         clientId = client?.id || null
@@ -609,7 +609,7 @@ export async function syncLinkedinSpend(month: number, year: number): Promise<{ 
       const mapping = findMapping(mappings, conn.id, campaign.campaign_id, campaign.campaign_name)
       if (mapping) {
         const client = await queryOne<{ id: string; media_commission_rate: string | null }>(
-          `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR code = $2 LIMIT 1`,
+          `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR (xero_contact_id IS NOT NULL AND xero_contact_id = $2) LIMIT 1`,
           [mapping.xero_client_name, mapping.xero_client_code]
         )
         clientId = client?.id || null
@@ -765,7 +765,7 @@ export async function syncPinterestSpend(month: number, year: number): Promise<{
       const mapping = findMapping(mappings, conn.id, campaign.campaign_id, campaign.campaign_name)
       if (mapping) {
         const client = await queryOne<{ id: string; media_commission_rate: string | null }>(
-          `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR code = $2 LIMIT 1`,
+          `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR (xero_contact_id IS NOT NULL AND xero_contact_id = $2) LIMIT 1`,
           [mapping.xero_client_name, mapping.xero_client_code]
         )
         clientId = client?.id || null
@@ -924,7 +924,7 @@ export async function syncSnapchatSpend(month: number, year: number): Promise<{ 
       const mapping = findMapping(mappings, conn.id, campaign.campaign_id, campaign.campaign_name)
       if (mapping) {
         const client = await queryOne<{ id: string; media_commission_rate: string | null }>(
-          `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR code = $2 LIMIT 1`,
+          `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR (xero_contact_id IS NOT NULL AND xero_contact_id = $2) LIMIT 1`,
           [mapping.xero_client_name, mapping.xero_client_code]
         )
         clientId = client?.id || null
@@ -1080,7 +1080,7 @@ export async function syncTwitterSpend(month: number, year: number): Promise<{ s
       const mapping = findMapping(mappings, conn.id, campaign.campaign_id, campaign.campaign_name)
       if (mapping) {
         const client = await queryOne<{ id: string; media_commission_rate: string | null }>(
-          `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR code = $2 LIMIT 1`,
+          `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR (xero_contact_id IS NOT NULL AND xero_contact_id = $2) LIMIT 1`,
           [mapping.xero_client_name, mapping.xero_client_code]
         )
         clientId = client?.id || null
@@ -1236,7 +1236,7 @@ export async function syncMicrosoftSpend(month: number, year: number): Promise<{
       const mapping = findMapping(mappings, conn.id, campaign.campaign_id, campaign.campaign_name)
       if (mapping) {
         const client = await queryOne<{ id: string; media_commission_rate: string | null }>(
-          `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR code = $2 LIMIT 1`,
+          `SELECT id, media_commission_rate FROM agency_clients WHERE name = $1 OR (xero_contact_id IS NOT NULL AND xero_contact_id = $2) LIMIT 1`,
           [mapping.xero_client_name, mapping.xero_client_code]
         )
         clientId = client?.id || null
