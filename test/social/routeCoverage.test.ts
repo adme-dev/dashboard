@@ -92,4 +92,13 @@ describe('social route navigation coverage', () => {
     expect(budgetSection).not.toContain('socialSpendNavItems')
     expect(budgetSection).not.toContain('/agency/social')
   })
+
+  it('keeps active social sidebar items scrolled into view on social routes', () => {
+    const layout = read('app/layouts/agency.vue')
+
+    expect(layout).toContain('agency-main-nav')
+    expect(layout).toContain('scrollActiveMainNavItemIntoView')
+    expect(layout).toContain('route.path.startsWith(\'/agency/social\')')
+    expect(layout).toContain('watch(() => route.path')
+  })
 })

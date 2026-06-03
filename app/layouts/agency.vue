@@ -355,6 +355,43 @@ const groups = computed(() => [{
     target: '_blank'
   }]
 }])
+
+const scrollActiveMainNavItemIntoView = async () => {
+  if (!import.meta.client || !route.path.startsWith('/agency/social')) return
+
+  await nextTick()
+
+  const currentPath = route.path.replace(/\/$/, '') || '/'
+  const links = Array.from(document.querySelectorAll<HTMLAnchorElement>('.agency-main-nav a[href]'))
+  const activeLink = links.find((link) => {
+    const linkPath = new URL(link.href, window.location.origin).pathname.replace(/\/$/, '') || '/'
+    return linkPath === currentPath
+  })
+  const scrollContainer = activeLink?.closest<HTMLElement>('.overflow-y-auto')
+
+  if (!activeLink || !scrollContainer) return
+
+  const linkRect = activeLink.getBoundingClientRect()
+  const containerRect = scrollContainer.getBoundingClientRect()
+  const targetTop = scrollContainer.scrollTop
+    + linkRect.top
+    - containerRect.top
+    - (containerRect.height / 2)
+    + (linkRect.height / 2)
+
+  scrollContainer.scrollTo({
+    top: Math.max(0, targetTop),
+    behavior: 'smooth'
+  })
+}
+
+onMounted(() => {
+  scrollActiveMainNavItemIntoView()
+})
+
+watch(() => route.path, () => {
+  scrollActiveMainNavItemIntoView()
+})
 </script>
 
 <template>
@@ -406,12 +443,14 @@ const groups = computed(() => [{
         />
 
         <!-- Main Navigation -->
-        <UNavigationMenu
-          :collapsed="collapsed"
-          :items="mainNav"
-          orientation="vertical"
-          tooltip
-        />
+        <div class="agency-main-nav">
+          <UNavigationMenu
+            :collapsed="collapsed"
+            :items="mainNav"
+            orientation="vertical"
+            tooltip
+          />
+        </div>
 
         <!-- Footer Navigation -->
         <UNavigationMenu
