@@ -68,4 +68,17 @@ describe('social route navigation coverage', () => {
       expect(read(routeFile)).toContain(portalSocialRouteNavs.get(routeFile))
     }
   })
+
+  it('keeps the full agency Social group near the media buying shortcuts', () => {
+    const layout = read('app/layouts/agency.vue')
+
+    const budgetIndex = layout.indexOf('// Budget Tracker')
+    const socialIndex = layout.indexOf('// Social — paid + organic social operations')
+    const leadsIndex = layout.indexOf('// Leads — inbound inquiries')
+    const creativeIndex = layout.indexOf('// Creative — canAccessCreative')
+
+    expect(socialIndex).toBeGreaterThan(budgetIndex)
+    expect(socialIndex).toBeLessThan(leadsIndex)
+    expect(socialIndex).toBeLessThan(creativeIndex)
+  })
 })

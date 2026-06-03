@@ -149,6 +149,21 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
     )
   }
 
+  // Social — paid + organic social operations
+  const socialItems: NavigationMenuItem[] = []
+  if (canAccessMediaBuying.value) {
+    socialItems.push(...socialSpendSuiteNavItems(close))
+  }
+  if (canAccessCreative.value) {
+    socialItems.push(...socialSuiteNavItems(close))
+  }
+  if (socialItems.length) {
+    items.push(
+      { type: 'label', label: 'Social' },
+      ...socialItems
+    )
+  }
+
   // Leads — inbound inquiries from Meta + Google lead forms. Visible to all
   // authenticated users; row-level access enforced server-side per client.
   items.push(
@@ -262,21 +277,6 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
       { label: 'Audio Projects', icon: 'i-lucide-film', to: '/agency/audio/projects', onSelect: close },
       { label: 'Ad Preview', icon: 'i-lucide-monitor-play', to: '/agency/ad-preview', onSelect: close },
       { label: 'Bulk Ad Launch', icon: 'i-lucide-rocket', to: '/agency/ad-publish', onSelect: close }
-    )
-  }
-
-  // Social — paid + organic social operations
-  const socialItems: NavigationMenuItem[] = []
-  if (canAccessMediaBuying.value) {
-    socialItems.push(...socialSpendSuiteNavItems(close))
-  }
-  if (canAccessCreative.value) {
-    socialItems.push(...socialSuiteNavItems(close))
-  }
-  if (socialItems.length) {
-    items.push(
-      { type: 'label', label: 'Social' },
-      ...socialItems
     )
   }
 
