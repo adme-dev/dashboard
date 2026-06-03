@@ -3,6 +3,7 @@ import {
   cloneState,
   deleteClip,
   moveClip,
+  addClip,
   type EditableState
 } from '~~/app/utils/audio/timelineEdit'
 import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
@@ -54,5 +55,17 @@ describe('moveClip', () => {
     expect(out.tracks[0].clips).toHaveLength(0)
     expect(out.tracks[1].clips[0].id).toBe('c1')
     expect(out.tracks[1].clips[0].timeline_start_sec).toBe(2)
+  })
+})
+
+describe('addClip', () => {
+  it('appends a clip with the asset key and given id at the start time', () => {
+    const out = addClip(base, { trackId: 'trk-vo', id: 'c2',
+      asset: { id: 'a2', r2_key_master: 'k2' }, startSec: 4 })
+    const added = out.tracks[0].clips.find(c => c.id === 'c2')!
+    expect(added.r2_key).toBe('k2')
+    expect(added.asset_id).toBe('a2')
+    expect(added.timeline_start_sec).toBe(4)
+    expect(added.source_out_sec).toBeNull() // play to end
   })
 })

@@ -29,6 +29,23 @@ export function deleteClip(state: TimelineState, { clipId }: { clipId: string })
   return next
 }
 
+export function addClip(
+  state: TimelineState,
+  { trackId, id, asset, startSec }:
+    { trackId: string; id: string; asset: { id: string; r2_key_master: string }; startSec: number }
+): TimelineState {
+  const next = cloneState(state)
+  const track = next.tracks.find(t => t.id === trackId)
+  if (!track) return state
+  track.clips.push({
+    id, asset_id: asset.id, r2_key: asset.r2_key_master,
+    timeline_start_sec: Math.max(0, startSec), source_in_sec: 0, source_out_sec: null,
+    gain_db: 0, fade_in_sec: 0, fade_out_sec: 0, fade_curve: 'linear'
+  })
+  next.duration_sec = computeDuration(next)
+  return next
+}
+
 export function moveClip(
   state: TimelineState,
   { clipId, toTrackId, newStartSec }: { clipId: string; toTrackId: string; newStartSec: number }
