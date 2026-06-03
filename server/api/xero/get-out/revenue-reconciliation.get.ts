@@ -67,12 +67,22 @@ export default defineEventHandler(async (event) => {
     },
   }
 
-  // ── Xero chart of accounts: code → name (one call) ──
+  // ── Xero chart of accounts: code → name (+ type/class for classification) ──
   const accountName: Record<string, string> = {}
+  const accountList: Array<{ code: string; name: string; type: string | null; class: string | null }> = []
   try {
     const acctBody = await xeroFetch<any>({ accessToken, tenantId, path: 'Accounts' })
     for (const a of (acctBody?.accounts ?? [])) {
-      if (a?.code) accountName[String(a.code)] = String(a.name ?? a.code)
+      if (!a?.code) continue
+      const code = String(a.code)
+      const name = String(a.name ?? a.code)
+      accountName[code] = name
+      accountList.push({
+        code,
+        name,
+        type: a.type != null ? String(a.type) : null,
+        class: (a._class ?? a.class) != null ? String(a._class ?? a.class) : null,
+      })
     }
   } catch (err: any) {
     console.warn('[revenue-reconciliation] accounts fetch failed:', err?.message)
@@ -169,6 +179,7 @@ export default defineEventHandler(async (event) => {
     position: round2(result.admeMargin - target),
     detailCode,
     lineDetail: detailCode ? lineDetail : undefined,
+    accounts: q.accounts ? accountList.sort((a, b) => a.code.localeCompare(b.code)) : undefined,
     note: 'Read-only reconciliation. Tune ?mediaKeep= / ?printingKeep= to match the spreadsheet ADME total. Pass ?detailCode=220 for line-level drill-down.',
   }
 })
