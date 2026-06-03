@@ -97,6 +97,10 @@ export default defineEventHandler(async (event) => {
   let grossExGst = 0
   let grossGst = 0
 
+  // Optional line-level drill-down for one account code (accuracy investigation).
+  const detailCode = typeof q.detailCode === 'string' ? q.detailCode : null
+  const lineDetail: Array<{ contact: string; invoice: string; description: string; trackingMedia: string | null; taxType: string | null; exGst: number }> = []
+
   for (const inv of invoices) {
     const lat = String(inv?.lineAmountTypes ?? '').toUpperCase()
     const inclusive = lat.includes('INCL')
@@ -106,6 +110,7 @@ export default defineEventHandler(async (event) => {
       const exGst = inclusive ? lineAmount - taxAmount : lineAmount
       const gst = taxAmount
       const code = String(li?.accountCode ?? '(none)')
+      const media = (li?.tracking ?? []).find((t: any) => /media/i.test(String(t?.name ?? '')))?.option ?? null
 
       const cur = perCode.get(code) ?? { exGst: 0, gst: 0 }
       cur.exGst += exGst; cur.gst += gst
@@ -113,10 +118,21 @@ export default defineEventHandler(async (event) => {
 
       grossExGst += exGst; grossGst += gst
 
-      const media = (li?.tracking ?? []).find((t: any) => /media/i.test(String(t?.name ?? '')))?.option
       if (media) perTracking.set(String(media), (perTracking.get(String(media)) ?? 0) + exGst)
+
+      if (detailCode && code === detailCode && lineDetail.length < 300) {
+        lineDetail.push({
+          contact: String(inv?.contact?.name ?? ''),
+          invoice: String(inv?.invoiceNumber ?? ''),
+          description: String(li?.description ?? '').slice(0, 120),
+          trackingMedia: media ? String(media) : null,
+          taxType: li?.taxType ? String(li.taxType) : null,
+          exGst: Math.round(exGst * 100) / 100,
+        })
+      }
     }
   }
+  lineDetail.sort((a, b) => b.exGst - a.exGst)
 
   // ── Classify + compute ADME margin ──
   const codes: CodeAmount[] = [...perCode.entries()].map(([code, v]) => ({
@@ -151,6 +167,8 @@ export default defineEventHandler(async (event) => {
       .slice(0, 25),
     target: round2(target),
     position: round2(result.admeMargin - target),
-    note: 'Read-only reconciliation. Tune ?mediaKeep= / ?printingKeep= to match the spreadsheet ADME total.',
+    detailCode,
+    lineDetail: detailCode ? lineDetail : undefined,
+    note: 'Read-only reconciliation. Tune ?mediaKeep= / ?printingKeep= to match the spreadsheet ADME total. Pass ?detailCode=220 for line-level drill-down.',
   }
 })
