@@ -29,6 +29,28 @@ export function deleteClip(state: TimelineState, { clipId }: { clipId: string })
   return next
 }
 
+export function sliceClipAt(
+  state: TimelineState,
+  { clipId, timeSec, leftId, rightId }:
+    { clipId: string; timeSec: number; leftId: string; rightId: string }
+): TimelineState {
+  const next = cloneState(state)
+  for (const track of next.tracks) {
+    const i = track.clips.findIndex(c => c.id === clipId)
+    if (i < 0) continue
+    const clip = track.clips[i]
+    const endTl = clip.timeline_start_sec + ((clip.source_out_sec ?? Infinity) - clip.source_in_sec)
+    if (timeSec <= clip.timeline_start_sec || timeSec >= endTl) return state // outside → no-op
+    const cutSrc = clip.source_in_sec + (timeSec - clip.timeline_start_sec)
+    const left: Clip = { ...clip, id: leftId, source_out_sec: cutSrc, fade_out_sec: 0 }
+    const right: Clip = { ...clip, id: rightId, timeline_start_sec: timeSec, source_in_sec: cutSrc, fade_in_sec: 0 }
+    track.clips.splice(i, 1, left, right)
+    next.duration_sec = computeDuration(next)
+    return next
+  }
+  return state
+}
+
 export function trimClip(
   state: TimelineState,
   { clipId, edge, newTimeSec, sourceDurationSec }:

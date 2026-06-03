@@ -5,6 +5,7 @@ import {
   moveClip,
   addClip,
   trimClip,
+  sliceClipAt,
   type EditableState
 } from '~~/app/utils/audio/timelineEdit'
 import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
@@ -83,5 +84,21 @@ describe('trimClip', () => {
     const out = trimClip(base, { clipId: 'c1', edge: 'start', newTimeSec: 2, sourceDurationSec: 5 })
     expect(out.tracks[0].clips[0].source_in_sec).toBe(2)
     expect(out.tracks[0].clips[0].timeline_start_sec).toBe(2)
+  })
+})
+
+describe('sliceClipAt', () => {
+  it('splits one clip into two at the playhead, ids supplied', () => {
+    const out = sliceClipAt(base, { clipId: 'c1', timeSec: 2, leftId: 'L', rightId: 'R' })
+    const clips = out.tracks[0].clips
+    expect(clips.map(c => c.id)).toEqual(['L', 'R'])
+    expect(clips[0].timeline_start_sec).toBe(0)
+    expect(clips[0].source_out_sec).toBe(2)
+    expect(clips[1].timeline_start_sec).toBe(2)
+    expect(clips[1].source_in_sec).toBe(2)
+  })
+  it('is a no-op when the time is outside the clip', () => {
+    expect(sliceClipAt(base, { clipId: 'c1', timeSec: 9, leftId: 'L', rightId: 'R' })
+      .tracks[0].clips).toHaveLength(1)
   })
 })
