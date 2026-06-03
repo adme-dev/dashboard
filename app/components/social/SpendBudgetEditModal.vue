@@ -4,6 +4,14 @@
 // (per-campaign, single spendId + budget history). Owns the bulk-budget PATCH
 // and emits `saved` so the parent can refresh.
 
+export interface SpendAlertLite {
+  id: string
+  severity: string
+  title: string
+  description: string
+  recommendation?: string | null
+}
+
 export interface BudgetEditTarget {
   title: string
   subtitle?: string | null
@@ -16,6 +24,7 @@ export interface BudgetEditTarget {
   rolling?: boolean
   lastSyncedAt?: string | null
   historySpendId?: string | null
+  alerts?: SpendAlertLite[]
 }
 
 const open = defineModel<boolean>('open', { default: false })
@@ -81,6 +90,13 @@ function platformIcon(p: string) {
   if (p === 'meta') return 'i-lucide-facebook'
   if (p === 'google' || p === 'google_ads') return 'i-lucide-chrome'
   return 'i-lucide-globe'
+}
+
+function alertIcon(sev: string) {
+  return sev === 'critical' ? 'i-lucide-octagon-alert' : 'i-lucide-triangle-alert'
+}
+function alertColor(sev: string) {
+  return sev === 'critical' ? 'text-red-500' : 'text-amber-500'
 }
 
 const variance = computed(() => {
@@ -200,6 +216,21 @@ async function save() {
             <p class="text-[11px] uppercase tracking-wide text-muted">Commission</p>
             <p class="mt-0.5 font-semibold tabular-nums">{{ (target.commission ?? 0) > 0 ? fmt(target.commission!) : '—' }}</p>
           </div>
+        </div>
+
+        <!-- Active alerts -->
+        <div v-if="target.alerts?.length" class="px-4 sm:px-5 py-4">
+          <p class="text-xs font-medium text-muted mb-2">Active alerts</p>
+          <ul class="space-y-2.5">
+            <li v-for="a in target.alerts" :key="a.id" class="flex items-start gap-2">
+              <UIcon :name="alertIcon(a.severity)" class="size-4 mt-0.5 shrink-0" :class="alertColor(a.severity)" />
+              <div class="min-w-0 text-xs">
+                <p class="font-medium">{{ a.title }}</p>
+                <p class="text-muted">{{ a.description }}</p>
+                <p v-if="a.recommendation" class="text-muted/80 mt-0.5 italic">{{ a.recommendation }}</p>
+              </div>
+            </li>
+          </ul>
         </div>
 
         <!-- Pacing -->

@@ -38,6 +38,9 @@ const emit = defineEmits<{
 const sortKey = ref<string>('spend')
 const sortDir = ref<'asc' | 'desc'>('desc')
 
+// Active pacing alerts, matched to rows by media_spend id.
+const { alertsFor } = useSpendAlerts()
+
 // Budget edit modal
 const budgetModalOpen = ref(false)
 const budgetModalTarget = ref<BudgetEditTarget | null>(null)
@@ -54,7 +57,8 @@ function openBudgetModal(item: typeof props.items[0]) {
     commissionRate: item.commissionRate ?? null,
     rolling: item.rolling ?? false,
     lastSyncedAt: item.lastSyncedAt ?? null,
-    historySpendId: null // aggregated per-client row — no single-row history
+    historySpendId: null, // aggregated per-client row — no single-row history
+    alerts: alertsFor(item.spendIds)
   }
   budgetModalOpen.value = true
 }
@@ -269,6 +273,7 @@ const totalColSpan = computed(() => hasBankData.value ? 9 : 8)
                 stale
               </UBadge>
             </UTooltip>
+            <SocialSpendAlertBadge :alerts="alertsFor(item.spendIds)" class="ml-2" />
           </td>
           <td class="py-2 px-3">
             <div class="flex items-center gap-1">
