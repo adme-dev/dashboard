@@ -10,6 +10,7 @@ crons = [
   "0 * * * *",    # anomaly-detection + ga4-sync
   "30 * * * *",   # ga4-dimensions
   "*/5 * * * *",  # office-assistant
+  "20 3 * * *",   # xero-invoice-lines-sync (AGI cache refresh)
   "35 3 * * *",   # office-retention
   "45 3 * * *"    # tracking-retention
 ]

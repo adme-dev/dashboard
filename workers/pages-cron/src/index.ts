@@ -29,6 +29,9 @@ const ROUTES: Record<string, string[]> = {
   '30 * * * *': ['/api/cron/ga4-dimensions'],
   // every 5 min — office-assistant watch evaluation (own 15-min debounce)
   '*/5 * * * *': ['/api/cron/office-assistant'],
+  // daily — refresh the Xero invoice line-item cache (AGI / True Position).
+  // Syncs current + previous month so month-end backdated entries are caught.
+  '20 3 * * *': ['/api/cron/xero-invoice-lines-sync'],
   // daily — office meeting/recording retention cleanup
   '35 3 * * *': ['/api/cron/office-retention'],
   // daily — purge tracking_events past each site's retention_days
