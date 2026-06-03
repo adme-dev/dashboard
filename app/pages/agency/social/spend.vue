@@ -32,6 +32,7 @@ const platformOptions = [
 ]
 
 const showImportModal = ref(false)
+const showAccountMapping = ref(false)
 
 function formatCurrency(val: number) {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0 }).format(val)
@@ -355,6 +356,9 @@ const bankDiscrepancy = computed(() => {
           <UButton variant="ghost" icon="i-lucide-upload" size="sm" @click="showImportModal = true">
             Import
           </UButton>
+          <UButton variant="ghost" icon="i-lucide-link" size="sm" @click="showAccountMapping = true">
+            Map accounts
+          </UButton>
           <UButton to="/agency/social" variant="ghost" icon="i-lucide-plug" size="sm">
             Connections
           </UButton>
@@ -544,6 +548,9 @@ const bankDiscrepancy = computed(() => {
 
     <!-- Import Modal -->
     <SocialSpendImportModal v-model:open="showImportModal" @imported="loadSpend" />
+
+    <!-- Account → client mapping -->
+    <SocialSpendAccountMappingManager v-model:open="showAccountMapping" @mapped="loadSpend(true)" />
 
     <!-- Background sync progress bar — stays up for the whole multi-platform run
          and refreshes the page when the tracked syncs finish. -->
