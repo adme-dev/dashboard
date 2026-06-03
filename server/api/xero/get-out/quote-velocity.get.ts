@@ -30,6 +30,12 @@ import { xeroFetch } from '~~/server/utils/xeroClient'
 import { getActiveTokenForSession } from '~~/server/utils/tokenStore'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { cachedFetch } from '~~/server/utils/kv'
+import { queryRows } from '~~/server/utils/db'
+import {
+  indexInvoicesByContact,
+  quoteHasMatchingInvoice,
+  type MatchInvoice,
+} from '~~/server/utils/quoteInvoiceMatch'
 
 function n(v: unknown): number {
   if (v == null) return 0
@@ -104,20 +110,71 @@ export default defineEventHandler(async (event) => {
       ? Math.round((acceptedCount / closedTotal) * 1000) / 10
       : null
 
-    // ── Open SENT quotes: age + likely-by-EOM prediction ──
-    let openCount = 0
-    let openValue = 0
-    let likelyByEomCount = 0
-    let likelyByEomValue = 0
-    const ageBuckets = { fresh: 0, warming: 0, stale: 0, dead: 0 }
-    const ageBucketsValue = { fresh: 0, warming: 0, stale: 0, dead: 0 }
+    // ── Collect open SENT quotes ──
+    interface OpenQuote { contactId: string; date: string; total: number; age: number }
+    const openQuotes: OpenQuote[] = []
     for (const q of quotes) {
       const status = String(q.status ?? '').toUpperCase()
       if (status !== 'SENT') continue
       const dateStr = q.date ? String(q.date).slice(0, 10) : null
       if (!dateStr) continue
-      const total = n(q.total)
-      const age = Math.max(0, daysBetween(dateStr, todayStr))
+      openQuotes.push({
+        contactId: String(q.contact?.contactID ?? q.contact?.contactId ?? ''),
+        date: dateStr,
+        total: n(q.total),
+        age: Math.max(0, daysBetween(dateStr, todayStr)),
+      })
+    }
+
+    // Cross-reference open SENT quotes against the invoice cache. A quote whose
+    // contact was invoiced for ~the same amount shortly after it was sent almost
+    // certainly converted — the agency just never moved the quote off SENT in
+    // Xero. Reclassify those as "won (unmarked)" so they stop masquerading as
+    // dead pipeline the operator is told to chase/archive.
+    let invoiceIndex = new Map<string, MatchInvoice[]>()
+    const openContactIds = [...new Set(openQuotes.map(q => q.contactId).filter(Boolean))]
+    if (openContactIds.length > 0) {
+      const earliest = openQuotes.reduce((min, q) => (q.date < min ? q.date : min), todayStr)
+      try {
+        const invRows = await queryRows<{ contact_id: string; date: string; total_cents: string | number }>(
+          `SELECT contact_id, date::text AS date, total_cents
+             FROM xero_invoices_cache
+            WHERE tenant_id = $1
+              AND type = 'ACCREC'
+              AND status IN ('AUTHORISED','PAID','SUBMITTED')
+              AND contact_id = ANY($2)
+              AND date >= $3::date`,
+          [tenantId, openContactIds, earliest],
+        )
+        invoiceIndex = indexInvoicesByContact(
+          invRows.map(r => ({
+            contactId: r.contact_id,
+            date: String(r.date).slice(0, 10),
+            totalCents: n(r.total_cents),
+          })),
+        )
+      } catch (err: any) {
+        console.warn('[quote-velocity] invoice cross-ref failed:', err?.message)
+      }
+    }
+
+    // ── Bucket live pipeline + age + likely-by-EOM prediction ──
+    let openCount = 0
+    let openValue = 0
+    let likelyByEomCount = 0
+    let likelyByEomValue = 0
+    let wonUnmarkedCount = 0
+    let wonUnmarkedValue = 0
+    const ageBuckets = { fresh: 0, warming: 0, stale: 0, dead: 0 }
+    const ageBucketsValue = { fresh: 0, warming: 0, stale: 0, dead: 0 }
+    for (const q of openQuotes) {
+      const { date: dateStr, total, age } = q
+      // Won-but-unmarked: pull out of the live pipeline entirely.
+      if (quoteHasMatchingInvoice({ contactId: q.contactId, date: dateStr, total }, invoiceIndex)) {
+        wonUnmarkedCount++
+        wonUnmarkedValue += total
+        continue
+      }
       openCount++
       openValue += total
       // Bucket by age
@@ -130,8 +187,10 @@ export default defineEventHandler(async (event) => {
       if (avgSentToCloseDays != null) {
         const expectedClose = new Date(new Date(dateStr + 'T00:00:00Z').getTime() + avgSentToCloseDays * 86_400_000)
           .toISOString().slice(0, 10)
-        // Skip "dead" quotes from the optimistic projection
-        if (age <= 90 && expectedClose <= monthEnd) {
+        // "Likely by EOM" = the model's predicted close date lands between now
+        // and month end. Skip dead quotes (age>90) AND quotes whose predicted
+        // close is already in the past — those are overdue, not "likely to land".
+        if (age <= 90 && expectedClose >= todayStr && expectedClose <= monthEnd) {
           likelyByEomCount++
           likelyByEomValue += total
         }
@@ -154,13 +213,17 @@ export default defineEventHandler(async (event) => {
           value: Math.round(likelyByEomValue * 100) / 100,
         },
       },
+      wonUnmarked: {
+        count: wonUnmarkedCount,
+        value: Math.round(wonUnmarkedValue * 100) / 100,
+      },
       ageBuckets: {
         fresh:   { count: ageBuckets.fresh,   value: Math.round(ageBucketsValue.fresh * 100) / 100 },
         warming: { count: ageBuckets.warming, value: Math.round(ageBucketsValue.warming * 100) / 100 },
         stale:   { count: ageBuckets.stale,   value: Math.round(ageBucketsValue.stale * 100) / 100 },
         dead:    { count: ageBuckets.dead,    value: Math.round(ageBucketsValue.dead * 100) / 100 },
       },
-      methodology: 'Velocity = average days between Date and UpdatedDateUTC for closed quotes. Likely-by-EOM = sent quotes whose (sentDate + avg) <= month end.',
+      methodology: 'Velocity = average days between Date and UpdatedDateUTC for closed quotes. Likely-by-EOM = live sent quotes whose (sentDate + avg) lands between today and month end. Won-unmarked = sent quotes whose contact was invoiced ~the same amount within 120d (converted but never marked Accepted in Xero).',
     }
   })
 })

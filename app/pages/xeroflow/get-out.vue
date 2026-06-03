@@ -166,6 +166,7 @@ const { data: taxProvision } = await useFetch<{
 const { data: quoteVel } = await useFetch<{
   velocity: { avgSentToCloseDays: number | null; sampleSize: number; acceptanceRate: number | null; acceptedCount: number; declinedCount: number }
   openSent: { totalCount: number; totalValue: number; likelyByEom: { count: number; value: number } }
+  wonUnmarked: { count: number; value: number }
   ageBuckets: { fresh: { count: number; value: number }; warming: { count: number; value: number }; stale: { count: number; value: number }; dead: { count: number; value: number } }
 }>('/api/xero/get-out/quote-velocity', { lazy: true, server: false })
 
@@ -1031,6 +1032,24 @@ function fmtMonthLabel(label: string): string {
                   {{ quoteVel.openSent.likelyByEom.count }} of {{ quoteVel.openSent.totalCount }} open sent quotes
                 </p>
               </div>
+
+              <!-- Won-but-unmarked: quotes that converted to an invoice but were
+                   never moved off SENT in Xero. Surfaced so the "dead" bucket
+                   doesn't tell the operator to archive won business. -->
+              <div
+                v-if="quoteVel.wonUnmarked.count > 0"
+                class="flex items-start gap-2 p-3 rounded-lg border border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-500/5"
+              >
+                <UIcon name="i-lucide-circle-check" class="size-4 text-emerald-500 mt-0.5 shrink-0" />
+                <div class="min-w-0">
+                  <p class="text-sm font-medium">
+                    {{ quoteVel.wonUnmarked.count }} likely already won · {{ formatCurrency(quoteVel.wonUnmarked.value) }}
+                  </p>
+                  <p class="text-xs text-muted mt-0.5">
+                    Invoiced but still “Sent” in Xero — mark them Accepted to clean up the pipeline.
+                  </p>
+                </div>
+              </div>
               <div class="space-y-1.5 pt-3 border-t border-default">
                 <p class="text-xs uppercase text-muted mb-2">Open sent by age</p>
                 <div class="flex items-center justify-between">
@@ -1076,7 +1095,7 @@ function fmtMonthLabel(label: string): string {
               </div>
               <p class="text-xs text-muted italic pt-2 border-t border-default">
                 Velocity from {{ quoteVel.velocity.sampleSize }} closed quote{{ quoteVel.velocity.sampleSize === 1 ? '' : 's' }}.
-                Dead quotes &gt; 90d should be archived.
+                Dead quotes &gt; 90d with no matching invoice are genuinely cold — chase or archive.
               </p>
             </div>
           </UCard>
