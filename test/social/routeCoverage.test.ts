@@ -102,4 +102,29 @@ describe('social route navigation coverage', () => {
     expect(layout).toContain('window.setTimeout(() => scrollActiveMainNavItemIntoView')
     expect(layout).toContain('watch([() => route.path, () => mainNav.value.length]')
   })
+
+  it('keeps engagement social headers responsive around client controls', () => {
+    const compactInboxHeaders = [
+      'app/pages/agency/social/inbox/index.vue',
+      'app/pages/agency/social/inbox/reviews.vue'
+    ]
+    const stackedInboxHeaders = [
+      'app/pages/agency/social/inbox/analytics.vue',
+      'app/pages/agency/social/inbox/approvals.vue',
+      'app/pages/agency/social/inbox/automation.vue',
+      'app/pages/agency/social/inbox/settings.vue'
+    ]
+
+    for (const routeFile of compactInboxHeaders) {
+      const source = read(routeFile)
+      expect(source).toContain('flex flex-wrap items-center gap-3 p-4 border-b border-default')
+      expect(source).toContain('w-56 max-w-full')
+    }
+
+    for (const routeFile of stackedInboxHeaders) {
+      const source = read(routeFile)
+      expect(source).toContain('flex flex-wrap')
+      expect(source).toContain('w-56 max-w-full')
+    }
+  })
 })

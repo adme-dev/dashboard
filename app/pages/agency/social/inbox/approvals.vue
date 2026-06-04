@@ -52,12 +52,12 @@ async function reject(it: SocialResponseQueueItem) {
 
 <template>
   <div class="p-6 space-y-6">
-    <div class="flex items-center justify-between gap-3">
+    <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
         <h1 class="text-xl font-semibold">Reply Queue</h1>
         <p class="text-sm text-muted">AI-drafted replies awaiting approval. Edit before sending if needed.</p>
       </div>
-      <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" placeholder="Select client" class="w-56" />
+      <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" placeholder="Select client" class="w-56 max-w-full" />
     </div>
 
     <SocialSuiteSectionNav />

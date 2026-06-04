@@ -54,11 +54,11 @@ async function onSend(content: string) {
 
 <template>
   <div class="h-[calc(100vh-4rem)] flex flex-col">
-    <div class="flex items-center gap-3 p-4 border-b border-default">
+    <div class="flex flex-wrap items-center gap-3 p-4 border-b border-default">
       <h1 class="text-lg font-semibold">Reviews</h1>
-      <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" placeholder="Select client" class="w-56" />
+      <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" placeholder="Select client" class="w-56 max-w-full" />
       <UButton to="/agency/social/inbox" label="Inbox" icon="i-lucide-inbox" variant="subtle" size="sm" />
-      <div class="ml-auto flex items-center gap-4 text-sm">
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm sm:ml-auto">
         <span class="font-semibold text-warning">★ {{ avg.toFixed(1) }}</span>
         <span v-for="n in [5, 4, 3, 2, 1]" :key="n" class="text-muted">{{ n }}★ {{ dist[n] }}</span>
       </div>

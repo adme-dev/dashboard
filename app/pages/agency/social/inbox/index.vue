@@ -96,11 +96,11 @@ useSocialInboxRealtime(sseEndpoint, {
 
 <template>
   <div class="h-[calc(100vh-4rem)] flex flex-col">
-    <div class="flex items-center gap-3 p-4 border-b border-default">
+    <div class="flex flex-wrap items-center gap-3 p-4 border-b border-default">
       <h1 class="text-lg font-semibold">Engagement Inbox</h1>
-      <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" placeholder="Select client" class="w-56" />
+      <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" placeholder="Select client" class="w-56 max-w-full" />
       <UButton to="/agency/social/inbox/reviews" label="Reviews" icon="i-lucide-star" variant="subtle" size="sm" />
-      <UButton class="ml-auto" label="Refresh" icon="i-lucide-refresh-cw" :loading="syncing" variant="subtle" size="sm" @click="onRefresh" />
+      <UButton class="sm:ml-auto" label="Refresh" icon="i-lucide-refresh-cw" :loading="syncing" variant="subtle" size="sm" @click="onRefresh" />
     </div>
     <div class="px-4">
       <SocialSuiteSectionNav />

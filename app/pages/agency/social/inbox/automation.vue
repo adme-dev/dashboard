@@ -92,13 +92,13 @@ const modeColor = (m: string) => (({ off: 'neutral', suggest: 'info', approval: 
 
 <template>
   <div class="p-6 space-y-6">
-    <div class="flex items-center justify-between gap-3">
+    <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
         <h1 class="text-xl font-semibold">Reply Automation</h1>
         <p class="text-sm text-muted">AI-assisted replies for comments and reviews. Autopilot stays dormant until enabled by an operator.</p>
       </div>
-      <div class="flex items-center gap-2">
-        <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" placeholder="Select client" class="w-56" />
+      <div class="flex flex-wrap items-center gap-2">
+        <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" placeholder="Select client" class="w-56 max-w-full" />
         <UButton icon="i-lucide-plus" label="New rule" :disabled="!clientId" @click="newRule" />
       </div>
     </div>

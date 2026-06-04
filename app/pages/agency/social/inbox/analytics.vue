@@ -23,13 +23,13 @@ const cards = computed(() => a.value ? [
 
 <template>
   <div class="p-6 space-y-6">
-    <div class="flex items-center justify-between gap-3">
+    <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
         <h1 class="text-xl font-semibold">Inbox Analytics</h1>
         <p class="text-sm text-muted">Response time, SLA and automation over the selected window.</p>
       </div>
-      <div class="flex items-center gap-2">
-        <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" placeholder="Select client" class="w-56" />
+      <div class="flex flex-wrap items-center gap-2">
+        <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" placeholder="Select client" class="w-56 max-w-full" />
         <USelect v-model="days" :items="[{ label: '7 days', value: 7 }, { label: '30 days', value: 30 }, { label: '90 days', value: 90 }]" value-key="value" class="w-32" />
       </div>
     </div>

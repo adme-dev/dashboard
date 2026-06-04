@@ -32,9 +32,9 @@ async function delPolicy(id: string) { await $fetch(`/api/agency/social/inbox/sl
 
 <template>
   <div class="p-6 space-y-8 max-w-3xl">
-    <div class="flex items-center justify-between gap-3">
+    <div class="flex flex-wrap items-center justify-between gap-3">
       <h1 class="text-xl font-semibold">Inbox Settings</h1>
-      <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" placeholder="Select client" class="w-56" />
+      <USelectMenu v-model="clientId" :items="clientOptions" value-key="value" placeholder="Select client" class="w-56 max-w-full" />
     </div>
 
     <SocialSuiteSectionNav />
