@@ -7,13 +7,14 @@ import {
   PreviewToneSchema
 } from '~~/server/utils/email-marketing/customModules'
 
+// Phase 2 modules are agency-wide (no per-client scoping yet), mirroring
+// edm_templates' agency-wide default. The client_id column stays for future use.
 const Body = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(500).optional().nullable(),
   category: z.string().min(1).max(80).optional().nullable(),
   preview_tone: PreviewToneSchema.optional().nullable(),
-  blocks: z.unknown(),
-  client_id: z.string().uuid().optional().nullable()
+  blocks: z.unknown()
 })
 
 export default defineEventHandler(async (event) => {
@@ -40,7 +41,6 @@ export default defineEventHandler(async (event) => {
     category: parsed.data.category ?? 'custom',
     preview_tone: parsed.data.preview_tone ?? 'light',
     blocks: fragment,
-    client_id: parsed.data.client_id ?? null,
     created_by: user.id
   })
   return { module }

@@ -30,11 +30,28 @@ export interface EdmCustomModule {
 // Guardrails: a module is operator-authored block JSON, but we still bound it so
 // a malformed/oversized payload can't be persisted. Pure + unit-tested.
 export const MAX_MODULE_BLOCKS = 300
+export const MAX_MODULE_BYTES = 512 * 1024 // 512KB serialized fragment
 
 const BlockSchema = z.object({
   type: z.string().min(1).max(80),
   data: z.record(z.string(), z.unknown())
 }).passthrough()
+
+// Child ids a block references, across both container shapes (childrenIds +
+// ColumnsContainer props.columns[].childrenIds). Mirrors edmModuleFragment.
+function blockChildRefs(block: { data?: Record<string, unknown> }): string[] {
+  const data = (block?.data ?? {}) as Record<string, unknown>
+  const ids: string[] = []
+  if (Array.isArray(data.childrenIds)) ids.push(...(data.childrenIds as string[]))
+  const props = data.props as Record<string, unknown> | undefined
+  const columns = props?.columns as Array<{ childrenIds?: string[] }> | undefined
+  if (Array.isArray(columns)) {
+    for (const col of columns) {
+      if (Array.isArray(col?.childrenIds)) ids.push(...col.childrenIds)
+    }
+  }
+  return ids
+}
 
 export const ModuleFragmentSchema = z.object({
   blocks: z.record(z.string().min(1), BlockSchema),
@@ -52,6 +69,19 @@ export const ModuleFragmentSchema = z.object({
     if (!frag.blocks[rid]) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: `rootChildrenIds references unknown block: ${rid}` })
     }
+  }
+  // the fragment must be internally closed — every block's child references must
+  // resolve within the map, else inserting it could leak/collide ids.
+  for (const [id, block] of Object.entries(frag.blocks)) {
+    for (const ref of blockChildRefs(block)) {
+      if (!frag.blocks[ref]) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `block ${id} references unknown child: ${ref}` })
+      }
+    }
+  }
+  // overall size guard (passthrough allows arbitrary per-block width)
+  if (JSON.stringify(frag).length > MAX_MODULE_BYTES) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: `fragment exceeds ${MAX_MODULE_BYTES} bytes` })
   }
 })
 

@@ -57,6 +57,16 @@ describe('extractFragment', () => {
     expect((doc.heading.data.props as Record<string, unknown>).text).toBe('Hi')
   })
 
+  it('strips dangling child refs so the fragment is internally closed', () => {
+    const doc = sampleDoc()
+    // container references a child that does not exist in the document
+    doc.container.data.childrenIds = ['heading', 'text', 'ghost']
+    const frag = extractFragment(doc, 'container')
+    expect(Object.keys(frag.blocks)).not.toContain('ghost')
+    // the dangling ref is removed from the parent's childrenIds too
+    expect(frag.blocks.container.data.childrenIds).toEqual(['heading', 'text'])
+  })
+
   it('throws on the root block', () => {
     expect(() => extractFragment(sampleDoc(), 'root')).toThrow()
   })
@@ -97,6 +107,37 @@ describe('reidFragment', () => {
     const allCol = columns.flatMap(c => c.childrenIds)
     expect(allCol.every(id => id.startsWith('new-'))).toBe(true)
     expect(allCol.every(id => out.blocks[id])).toBe(true)
+  })
+
+  it('drops unmapped (dangling) child refs instead of leaking the original id', () => {
+    // a fragment that is NOT internally closed: container points at a ghost id
+    const frag = {
+      blocks: {
+        container: { type: 'Container', data: { childrenIds: ['heading', 'ghost'] } },
+        heading: { type: 'Heading', data: { props: { text: 'Hi' } } }
+      },
+      rootChildrenIds: ['container']
+    }
+    const out = reidFragment(frag, seq())
+    const container = out.blocks[out.rootChildrenIds[0]]
+    const childIds = container.data.childrenIds as string[]
+    // 'ghost' was never minted → dropped, not passed through as 'ghost'
+    expect(childIds).toHaveLength(1)
+    expect(childIds.every(id => id.startsWith('new-'))).toBe(true)
+    expect(out.blocks.ghost).toBeUndefined()
+  })
+
+  it('never reuses an id even if the generator collides', () => {
+    const frag = extractFragment(sampleDoc(), 'container')
+    // a generator that returns the same id twice before varying
+    let n = 0
+    const collidingGen = () => {
+      const seqIds = ['dup', 'dup', 'dup', 'b', 'c', 'd']
+      return seqIds[n++] ?? `x-${n}`
+    }
+    const out = reidFragment(frag, collidingGen)
+    const ids = Object.keys(out.blocks)
+    expect(new Set(ids).size).toBe(ids.length) // all unique despite collisions
   })
 
   it('produces a fragment whose ids are disjoint from the original', () => {

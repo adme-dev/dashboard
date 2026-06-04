@@ -47,6 +47,35 @@ describe('validateModuleFragment', () => {
     expect(() => validateModuleFragment({ blocks, rootChildrenIds: ['b0'] })).toThrow()
   })
 
+  it('rejects a fragment with a block referencing an unknown child (not closed)', () => {
+    expect(() => validateModuleFragment({
+      blocks: {
+        a: { type: 'Container', data: { childrenIds: ['b', 'ghost'] } },
+        b: { type: 'Text', data: {} }
+      },
+      rootChildrenIds: ['a']
+    })).toThrow()
+  })
+
+  it('accepts a closed nested fragment (childrenIds all resolve)', () => {
+    const out = validateModuleFragment({
+      blocks: {
+        a: { type: 'Container', data: { childrenIds: ['b'] } },
+        b: { type: 'Text', data: {} }
+      },
+      rootChildrenIds: ['a']
+    })
+    expect(Object.keys(out.blocks)).toEqual(['a', 'b'])
+  })
+
+  it('rejects a fragment over the byte cap', () => {
+    const big = 'x'.repeat(600 * 1024)
+    expect(() => validateModuleFragment({
+      blocks: { a: { type: 'Html', data: { props: { html: big } } } },
+      rootChildrenIds: ['a']
+    })).toThrow()
+  })
+
   it('preserves arbitrary block data via passthrough', () => {
     const out = validateModuleFragment({
       blocks: { a: { type: 'Html', data: { props: { html: 'x' }, style: { color: '#fff' }, childrenIds: [] } } },

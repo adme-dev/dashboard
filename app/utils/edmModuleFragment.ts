@@ -33,6 +33,27 @@ function childIdsOf(block: EdmFlyhubBlock): string[] {
   return ids
 }
 
+// Rewrite a block's child-reference arrays (childrenIds + columns childrenIds)
+// in place via `fn`. `fn` returns the replacement id, or null to drop the ref.
+// Mutates the passed block (callers pass a clone).
+function rewriteChildRefs(block: EdmFlyhubBlock, fn: (id: string) => string | null): void {
+  if (Array.isArray(block.data.childrenIds)) {
+    block.data.childrenIds = block.data.childrenIds
+      .map(fn)
+      .filter((id): id is string => id !== null)
+  }
+  const columns = block.data.props?.columns as ColumnSlot[] | undefined
+  if (Array.isArray(columns)) {
+    for (const col of columns) {
+      if (Array.isArray(col?.childrenIds)) {
+        col.childrenIds = col.childrenIds
+          .map(fn)
+          .filter((id): id is string => id !== null)
+      }
+    }
+  }
+}
+
 /**
  * Collect `rootBlockId` and its full descendant subtree into a deep-cloned
  * fragment. Throws on the layout root or a missing block.
@@ -57,6 +78,13 @@ export function extractFragment(document: EdmFlyhubDocument, rootBlockId: string
     stack.push(...childIdsOf(block))
   }
 
+  // Closure pass: strip any child reference that didn't resolve to a collected
+  // block, so the persisted fragment is internally closed (no dangling refs that
+  // could leak an original id on insert — see reidFragment).
+  for (const block of Object.values(blocks)) {
+    rewriteChildRefs(block, id => (blocks[id] ? id : null))
+  }
+
   return { blocks, rootChildrenIds: [rootBlockId] }
 }
 
@@ -68,30 +96,33 @@ export function reidFragment(
   fragment: EdmDocumentFragment,
   genId: () => string = generateBlockId
 ): EdmDocumentFragment {
+  // Assign a fresh, unique id to every block. Guard against id-generator
+  // collisions (generateBlockId is time+random; a tight loop shares Date.now()).
   const idMap = new Map<string, string>()
+  const used = new Set<string>()
   for (const oldId of Object.keys(fragment.blocks)) {
-    idMap.set(oldId, genId())
+    let next = genId()
+    while (used.has(next)) next = genId()
+    used.add(next)
+    idMap.set(oldId, next)
   }
-  const remap = (id: string) => idMap.get(id) ?? id
+  // Only remap ids we actually minted; an unmapped (dangling) ref is dropped
+  // rather than passed through as its original id (which could collide with a
+  // block already in the target document).
+  const remap = (id: string): string | null => idMap.get(id) ?? null
 
   const blocks: Record<string, EdmFlyhubBlock> = {}
   for (const [oldId, block] of Object.entries(fragment.blocks)) {
     const clone = structuredClone(block)
-    if (Array.isArray(clone.data.childrenIds)) {
-      clone.data.childrenIds = clone.data.childrenIds.map(remap)
-    }
-    const columns = clone.data.props?.columns as ColumnSlot[] | undefined
-    if (Array.isArray(columns)) {
-      for (const col of columns) {
-        if (Array.isArray(col?.childrenIds)) col.childrenIds = col.childrenIds.map(remap)
-      }
-    }
-    blocks[remap(oldId)] = clone
+    rewriteChildRefs(clone, remap)
+    blocks[idMap.get(oldId) as string] = clone
   }
 
   return {
     blocks,
-    rootChildrenIds: fragment.rootChildrenIds.map(remap)
+    rootChildrenIds: fragment.rootChildrenIds
+      .map(remap)
+      .filter((id): id is string => id !== null)
   }
 }
 

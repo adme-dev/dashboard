@@ -227,12 +227,14 @@ const customModules = useEdmCustomModules()
 const showSaveModuleModal = ref(false)
 const moduleName = ref('')
 const moduleDescription = ref('')
+const saveModuleBlockType = ref('')
 const savingModule = ref(false)
 
 function openSaveModule() {
   if (!selectedBlock.value) return
   moduleName.value = ''
   moduleDescription.value = ''
+  saveModuleBlockType.value = selectedBlock.value.type
   showSaveModuleModal.value = true
 }
 
@@ -719,7 +721,7 @@ onMounted(async () => {
       <template #content>
         <div class="p-4 space-y-4">
           <p class="text-sm text-muted">
-            Saves the selected <span class="font-medium text-default">{{ selectedBlock?.type }}</span>
+            Saves the selected <span class="font-medium text-default">{{ saveModuleBlockType }}</span>
             block (and its contents) as a reusable module. It'll appear in the
             <span class="font-medium text-default">Custom Modules</span> palette category for any email.
           </p>
