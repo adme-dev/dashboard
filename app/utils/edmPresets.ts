@@ -325,7 +325,7 @@ const CONTENT_PRESETS: EdmSectionPreset[] = [
           textAlign: 'center',
           backgroundColor: '#ffffff'
         },
-        props: { url: '', alt: 'Campaign story image' }
+        props: { url: 'https://placehold.co/600x400/f5f5f5/ccc?text=Your+Image', alt: 'Campaign story image' }
       }),
       block('Heading', {
         style: {
@@ -585,7 +585,7 @@ const ECOMMERCE_PRESETS: EdmSectionPreset[] = [
           textAlign: 'center',
           backgroundColor: '#ffffff'
         },
-        props: { url: '', alt: 'Featured product' }
+        props: { url: 'https://placehold.co/600x400/f5f5f5/ccc?text=Your+Image', alt: 'Featured product' }
       }),
       block('Heading', {
         style: {
@@ -833,7 +833,7 @@ const FOOTER_PRESETS: EdmSectionPreset[] = [
     name: 'Address Footer',
     description: 'Mailing address with unsubscribe link.',
     icon: 'i-lucide-map-pin',
-    previewTone: 'light',
+    previewTone: 'dark',
     blocks: [
       block('footer', {
         style: {
