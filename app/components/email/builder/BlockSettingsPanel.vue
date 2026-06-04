@@ -4,6 +4,8 @@
      layers/edm/.../BlockSettingsPanel.vue, re-skinned shadcn→Nuxt UI; the CMS media
      library + automotive deps are stripped (image is a plain URL input). -->
 <script setup lang="ts">
+import { getEdmSectionSettings } from '~~/app/utils/edmSectionSettings'
+
 interface BlockData {
   style?: {
     padding?: { top: number, bottom: number, left: number, right: number }
@@ -62,6 +64,8 @@ const COLUMN_ALIGNMENTS = [
 
 const TEXT_ALIGNMENTS = ['left', 'center', 'right']
 
+const sectionSettings = computed(() => getEdmSectionSettings(props.block.type))
+
 function alignIcon(align: string): string {
   if (align === 'center') return 'i-lucide-align-center'
   if (align === 'right') return 'i-lucide-align-right'
@@ -70,6 +74,30 @@ function alignIcon(align: string): string {
 
 function updateProp(key: string, value: unknown) {
   emit('update', { props: { ...(props.block.data?.props || {}), [key]: value } })
+}
+
+function propArray<T>(key: string, fallback: T[]): T[] {
+  return ((props.block.data?.props?.[key] as T[] | undefined) || fallback)
+}
+
+function updateMenuItem(index: number, key: 'label' | 'url', value: string) {
+  const items = [...propArray<{ label: string, url: string }>('items', [{ label: '', url: '' }])]
+  items[index] = { ...(items[index] || { label: '', url: '' }), [key]: value }
+  updateProp('items', items)
+}
+
+function addMenuItem() {
+  updateProp('items', [...propArray<{ label: string, url: string }>('items', []), { label: 'Link', url: '#' }])
+}
+
+function updateFeatureItem(index: number, key: 'icon' | 'heading' | 'description', value: string) {
+  const features = [...propArray<{ icon?: string, heading: string, description: string }>('features', [])]
+  features[index] = { ...(features[index] || { icon: '•', heading: '', description: '' }), [key]: value }
+  updateProp('features', features)
+}
+
+function addFeatureItem() {
+  updateProp('features', [...propArray<{ icon?: string, heading: string, description: string }>('features', []), { icon: '•', heading: 'Feature', description: 'Short description.' }])
 }
 
 function updateStyle(key: string, value: unknown) {
@@ -617,6 +645,128 @@ function updateColumnWidth(index: number, value: string | number) {
           />
         </div>
       </UFormField>
+    </template>
+
+    <template v-else-if="sectionSettings">
+      <template v-for="field in sectionSettings.fields" :key="field.key">
+        <UFormField v-if="field.type === 'text' || field.type === 'url'" :label="field.label">
+          <UInput
+            :model-value="(block.data?.props?.[field.key] as string) || ''"
+            :placeholder="field.placeholder"
+            class="w-full"
+            @update:model-value="updateProp(field.key, $event)"
+          />
+        </UFormField>
+
+        <UFormField v-else-if="field.type === 'textarea'" :label="field.label">
+          <UTextarea
+            :model-value="(block.data?.props?.[field.key] as string) || ''"
+            :rows="3"
+            class="w-full"
+            @update:model-value="updateProp(field.key, $event)"
+          />
+        </UFormField>
+
+        <UFormField v-else-if="field.type === 'color'" :label="field.label">
+          <div class="flex gap-2">
+            <UInput
+              type="color"
+              :model-value="(block.data?.props?.[field.key] as string) || '#ffffff'"
+              class="w-12"
+              @update:model-value="updateProp(field.key, $event)"
+            />
+            <UInput
+              :model-value="(block.data?.props?.[field.key] as string) || ''"
+              class="flex-1"
+              @update:model-value="updateProp(field.key, $event)"
+            />
+          </div>
+        </UFormField>
+
+        <UFormField v-else-if="field.type === 'number'" :label="field.label">
+          <UInput
+            type="number"
+            :model-value="(block.data?.props?.[field.key] as number) ?? ''"
+            class="w-full"
+            :min="field.min"
+            :max="field.max"
+            :step="field.step"
+            @update:model-value="updateProp(field.key, Number($event))"
+          />
+        </UFormField>
+
+        <UFormField v-else-if="field.type === 'boolean'" :label="field.label">
+          <UCheckbox
+            :model-value="block.data?.props?.[field.key] !== false"
+            :label="field.label"
+            @update:model-value="updateProp(field.key, $event)"
+          />
+        </UFormField>
+
+        <UFormField v-else-if="field.type === 'menu-items'" :label="field.label">
+          <div class="space-y-2">
+            <div
+              v-for="(item, index) in propArray<{ label: string, url: string }>('items', [])"
+              :key="index"
+              class="grid grid-cols-2 gap-2"
+            >
+              <UInput
+                :model-value="item.label"
+                placeholder="Label"
+                @update:model-value="updateMenuItem(index, 'label', String($event))"
+              />
+              <UInput
+                :model-value="item.url"
+                placeholder="URL"
+                @update:model-value="updateMenuItem(index, 'url', String($event))"
+              />
+            </div>
+            <UButton
+              icon="i-lucide-plus"
+              variant="outline"
+              color="neutral"
+              size="xs"
+              label="Add item"
+              @click="addMenuItem()"
+            />
+          </div>
+        </UFormField>
+
+        <UFormField v-else-if="field.type === 'feature-items'" :label="field.label">
+          <div class="space-y-3">
+            <div
+              v-for="(item, index) in propArray<{ icon?: string, heading: string, description: string }>('features', [])"
+              :key="index"
+              class="space-y-2 rounded border border-default p-2"
+            >
+              <UInput
+                :model-value="item.icon || ''"
+                placeholder="Icon"
+                @update:model-value="updateFeatureItem(index, 'icon', String($event))"
+              />
+              <UInput
+                :model-value="item.heading"
+                placeholder="Heading"
+                @update:model-value="updateFeatureItem(index, 'heading', String($event))"
+              />
+              <UTextarea
+                :model-value="item.description"
+                :rows="2"
+                placeholder="Description"
+                @update:model-value="updateFeatureItem(index, 'description', String($event))"
+              />
+            </div>
+            <UButton
+              icon="i-lucide-plus"
+              variant="outline"
+              color="neutral"
+              size="xs"
+              label="Add feature"
+              @click="addFeatureItem()"
+            />
+          </div>
+        </UFormField>
+      </template>
     </template>
 
     <!-- Shared: padding (all block types) -->

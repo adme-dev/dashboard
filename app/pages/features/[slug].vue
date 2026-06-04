@@ -1215,23 +1215,23 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-message-circle',
     categoryIconBg: 'bg-violet-50',
     categoryIconColor: 'text-violet-600',
-    description: 'A drag-and-drop visual editor for marketing emails — compose with reusable blocks, preview live, and render to bulletproof email HTML that looks right in every client.',
+    description: 'A visual, section-based email builder — drop in pre-designed sections, start from a curated template, fine-tune every block, and render to bulletproof email HTML that looks right in every inbox.',
     details: [
       {
-        title: 'Drag-and-Drop Canvas',
-        content: 'Compose emails from a palette of blocks — headings, text, buttons, images, dividers, spacers, multi-column layouts, and containers. Drop blocks where you want them, reorder by dragging, and duplicate or delete with a click. Insert zones between every block make it effortless to build a polished layout without touching a line of code.'
+        title: 'Sections and Building Blocks',
+        content: 'Build emails from a rich library of pre-designed sections organised by purpose — Header, Content, Feature, Call to action, E-Commerce, Transactional, and Footer — alongside basic blocks like headings, text, buttons, images, dividers, spacers, columns, and containers. Drop a whole section onto the canvas and you get a polished, on-brand layout in one click instead of assembling it element by element. Reorder, duplicate, or delete with a click, and use the insert zones between blocks to slot new content exactly where you want it.'
       },
       {
-        title: 'Per-Block Styling',
-        content: 'Select any block to open its inspector and fine-tune typography, colour, padding, alignment, and more, plus document-level layout settings for width, background, and spacing. Changes reflect on the canvas instantly, so what you build is what your subscribers see.'
+        title: 'Live Section Previews',
+        content: 'The section palette shows each preset as a live-rendered thumbnail, not a vague icon, so you can see exactly what a section looks like before you add it. Hover any category and a flyout reveals miniature previews of every section inside it — pick the right header, hero, or footer at a glance, then click to drop it in.'
       },
       {
-        title: 'Bulletproof Email HTML',
-        content: 'Behind the friendly editor is a server-side renderer that turns your design into table-based, inline-styled HTML — the kind that survives Outlook, Gmail, Apple Mail, and everything in between. Flip between Editor, live Preview, and the raw HTML at any time, and copy the output if you need it elsewhere.'
+        title: 'Starter Templates and a Visual Gallery',
+        content: 'Skip the blank canvas with curated starter templates — a Weekly Digest newsletter, a Product Offer promo, and a Confirmation Update — each pre-assembled from coordinated sections. A visual template gallery on the email page lays out a blank-start card next to every starter, so anyone on the team can launch a properly structured email in a single click and customise from there.'
       },
       {
-        title: 'Reusable Templates',
-        content: 'Save any design as a template and reuse it across campaigns. The Templates manager lets you open, duplicate, rename, and delete your saved layouts, so your team starts from a consistent, on-brand foundation every time instead of rebuilding from scratch.'
+        title: 'Per-Block Styling and Bulletproof HTML',
+        content: 'Select any block to open its inspector and fine-tune typography, colour, padding, alignment, and more, plus document-level settings for width, background, and spacing — with changes reflected on the canvas instantly. Behind the friendly editor, a server-side renderer turns your design into table-based, inline-styled HTML that survives Outlook, Gmail, Apple Mail, and everything in between. Flip between Editor, live Preview, and raw HTML at any time, and save any design as a reusable template your team can open, duplicate, rename, and reuse across campaigns.'
       }
     ]
   },

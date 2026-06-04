@@ -6,16 +6,22 @@
  */
 
 import { ref, computed } from 'vue'
-import { createEmptyDocument, generateBlockId } from '~~/app/types/edm'
-import type {
-  EdmBlockBase,
-  EdmFlyhubDocument,
-  EdmEmailLayoutSettings,
-  SidebarTab,
-  MainTab,
-  ScreenSize,
-  EditorSnapshot
+import {
+  createEmptyDocument,
+  generateBlockId,
+  type EdmFlyhubBlock,
+  type EdmBlockBase,
+  type EdmFlyhubDocument,
+  type EdmEmailLayoutSettings,
+  type SidebarTab,
+  type MainTab,
+  type ScreenSize,
+  type EditorSnapshot
 } from '~~/app/types/edm'
+import {
+  buildSectionDocumentFragment,
+  buildStarterTemplateDocument
+} from '~~/app/utils/edmPresets'
 
 const HISTORY_LIMIT = 50
 
@@ -307,6 +313,45 @@ function createStore() {
     return blockId
   }
 
+  function insertBlocks(
+    blocks: Record<string, EdmFlyhubBlock>,
+    blockIds: string[],
+    parentId: string = 'root',
+    position?: number
+  ) {
+    const parent = document.value[parentId]
+    if (!parent) return
+
+    recordHistory()
+    const childrenIds = [...(parent.data.childrenIds || [])]
+    const insertAt = position === undefined
+      ? childrenIds.length
+      : Math.max(0, Math.min(position, childrenIds.length))
+
+    childrenIds.splice(insertAt, 0, ...blockIds)
+
+    document.value = {
+      ...document.value,
+      ...blocks,
+      [parentId]: {
+        ...parent,
+        data: {
+          ...parent.data,
+          childrenIds
+        }
+      }
+    }
+  }
+
+  function insertSectionPreset(sectionPresetId: string, position?: number) {
+    const fragment = buildSectionDocumentFragment(sectionPresetId)
+    insertBlocks(fragment.blocks, fragment.rootChildrenIds, 'root', position)
+  }
+
+  function setTemplatePreset(starterTemplateId: string) {
+    resetDocument(buildStarterTemplateDocument(starterTemplateId))
+  }
+
   function removeBlock(blockId: string) {
     recordHistory()
     if (blockId === 'root') {
@@ -564,6 +609,9 @@ function createStore() {
 
     // Block CRUD
     addBlock,
+    insertBlocks,
+    insertSectionPreset,
+    setTemplatePreset,
     removeBlock,
     moveBlock,
     duplicateBlock,

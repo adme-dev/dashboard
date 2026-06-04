@@ -1,9 +1,11 @@
 <!-- app/components/email/builder/EdmFlyhubBuilder.client.vue -->
 <!-- Editor shell: canvas (2a-ii-2) + block inspector (2a-ii-3) + toolbar with
      undo/redo, Editor/Preview/HTML views, and Save to edm_templates (2a-ii-4).
-     Loads an existing template via ?id=. -->
+     Loads an existing template via ?id= or a starter layout via ?starter=. -->
 <script setup lang="ts">
-import { BLOCK_PALETTE, getDefaultBlockData } from '~~/app/utils/edmBlocks'
+import { getDefaultBlockData } from '~~/app/utils/edmBlocks'
+import { EDM_SECTION_CATEGORIES, findStarterTemplate } from '~~/app/utils/edmPresets'
+import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
 import type { EdmFlyhubDocument } from '~~/app/types/edm'
 
 const store = useEdmBuilder()
@@ -11,6 +13,64 @@ const route = useRoute()
 const toast = useToast()
 
 const layout = computed(() => store.getLayoutSettings())
+
+// ── Palette ───────────────────────────────────────────────────────────────
+// Slim category list; each category is a hover/focus flyout (UPopover) that
+// reveals live-rendered thumbnails of its presets. Per-category open state lets
+// us close the flyout the moment a preset is inserted.
+const flyoutOpen = reactive<Record<string, boolean>>({})
+
+// Add-at-end picker keeps a selected category (its own popover is a
+// category → presets browser anchored to the canvas "+" button).
+const selectedCategoryId = ref(EDM_SECTION_CATEGORIES[0]?.id || 'basic')
+const selectedCategory = computed(() => {
+  return EDM_SECTION_CATEGORIES.find(category => category.id === selectedCategoryId.value) || EDM_SECTION_CATEGORIES[0]
+})
+
+// Insert by preset OBJECT so callers don't depend on the active category.
+// Handles both Basic blocks (kind:'block') and full sections (kind:'section').
+function insertPreset(preset: EdmSectionPreset, position?: number) {
+  if (preset.kind === 'block') {
+    const block = preset.blocks[0]
+    if (!block) return
+    store.addBlock(block.type, 'root', position, block.data)
+    return
+  }
+  store.insertSectionPreset(preset.id, position)
+}
+
+// Hybrid open/close: controlled popover (click + Enter/Space + focus reachable)
+// with hover-to-open layered on top. A short close delay lets the pointer
+// travel from trigger into the panel without it snapping shut.
+const closeTimers: Record<string, ReturnType<typeof setTimeout> | undefined> = {}
+
+function cancelCloseFlyout(id: string) {
+  if (closeTimers[id]) {
+    clearTimeout(closeTimers[id])
+    closeTimers[id] = undefined
+  }
+}
+
+function openFlyout(id: string) {
+  cancelCloseFlyout(id)
+  flyoutOpen[id] = true
+}
+
+function scheduleCloseFlyout(id: string) {
+  cancelCloseFlyout(id)
+  closeTimers[id] = setTimeout(() => {
+    flyoutOpen[id] = false
+    closeTimers[id] = undefined
+  }, 150)
+}
+
+function insertFromFlyout(category: { id: string }, preset: EdmSectionPreset) {
+  insertPreset(preset)
+  cancelCloseFlyout(category.id)
+  flyoutOpen[category.id] = false
+}
+
+const addAtEndOpen = ref(false)
 
 const childBlocks = computed(() => {
   const root = store.document.value.root
@@ -190,6 +250,18 @@ onMounted(async () => {
     return
   }
 
+  const starter = route.query.starter
+  if (typeof starter === 'string' && starter) {
+    const starterTemplate = findStarterTemplate(starter)
+    if (starterTemplate) {
+      store.setTemplatePreset(starterTemplate.id)
+      name.value = starterTemplate.name
+      subject.value = starterTemplate.subject
+      previewText.value = starterTemplate.previewText
+    }
+    return
+  }
+
   const id = route.query.id
   if (typeof id !== 'string' || !id) return
   try {
@@ -288,22 +360,56 @@ onMounted(async () => {
     <div class="flex-1 overflow-hidden">
       <!-- Editor -->
       <div v-show="viewMode === 'editor'" class="flex h-full">
-        <!-- Left: block palette -->
-        <aside class="w-56 border-r border-default p-3 overflow-auto">
-          <p class="text-xs font-semibold uppercase text-muted mb-3">
-            Add blocks
-          </p>
-          <div class="grid grid-cols-2 gap-2">
+        <!-- Left: slim category rail; hovering/focusing a category opens a
+             flyout of live-rendered section thumbnails (Postcards fidelity). -->
+        <aside class="w-44 border-r border-default bg-default p-2 overflow-auto">
+          <p class="px-2 py-2 text-[11px] font-semibold uppercase text-muted">Modules</p>
+          <UPopover
+            v-for="category in EDM_SECTION_CATEGORIES"
+            :key="category.id"
+            v-model:open="flyoutOpen[category.id]"
+            :content="{ side: 'right', align: 'start' }"
+          >
             <button
-              v-for="blockType in BLOCK_PALETTE"
-              :key="blockType.type"
-              class="flex flex-col items-center justify-center p-3 rounded-md border border-default bg-elevated/50 text-default cursor-pointer transition-all hover:border-primary hover:bg-primary/10"
-              @click="addBlock(blockType.type)"
+              type="button"
+              class="w-full flex items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors"
+              :class="flyoutOpen[category.id] ? 'bg-elevated text-default font-semibold' : 'text-muted hover:text-default hover:bg-elevated/60'"
+              @mouseenter="openFlyout(category.id)"
+              @mouseleave="scheduleCloseFlyout(category.id)"
             >
-              <UIcon :name="blockType.icon" class="h-5 w-5 mb-1" />
-              <span class="text-xs">{{ blockType.name }}</span>
+              <UIcon :name="category.icon" class="h-4 w-4 shrink-0" />
+              <span class="truncate flex-1">{{ category.label }}</span>
+              <UIcon name="i-lucide-chevron-right" class="h-3.5 w-3.5 shrink-0 opacity-50" />
             </button>
-          </div>
+
+            <template #content>
+              <div
+                class="w-[340px] max-h-[70vh] overflow-auto p-3"
+                @mouseenter="cancelCloseFlyout(category.id)"
+                @mouseleave="scheduleCloseFlyout(category.id)"
+              >
+                <p class="text-[11px] font-semibold uppercase text-muted mb-3">{{ category.label }}</p>
+                <div class="space-y-3">
+                  <button
+                    v-for="preset in category.presets"
+                    :key="preset.id"
+                    type="button"
+                    class="block w-full overflow-hidden rounded-md border border-default bg-default text-left transition hover:border-primary hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    @click="insertFromFlyout(category, preset)"
+                  >
+                    <!-- Fixed-height clip so short & tall presets yield even tiles. -->
+                    <div class="h-32 overflow-hidden bg-elevated/40 flex items-start justify-center">
+                      <EmailBuilderEdmSectionThumbnail :preset="preset" :width="300" />
+                    </div>
+                    <div class="p-3">
+                      <p class="text-sm font-semibold">{{ preset.name }}</p>
+                      <p class="mt-1 text-xs text-muted leading-snug">{{ preset.description }}</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </template>
+          </UPopover>
         </aside>
 
         <!-- Center: canvas -->
@@ -323,9 +429,8 @@ onMounted(async () => {
               class="flex flex-col items-center justify-center py-20 text-center"
             >
               <UIcon name="i-lucide-plus" class="h-12 w-12 text-muted/50 mb-4" />
-              <p class="text-muted">
-                Click a block from the sidebar to add it here
-              </p>
+              <p class="font-medium text-default">Start with a section or Basic block</p>
+              <p class="mt-1 text-sm text-muted">Hover a module category on the left to preview and add a section.</p>
             </div>
 
             <!-- Block list -->
@@ -360,9 +465,10 @@ onMounted(async () => {
               </EmailBuilderEditorBlockWrapper>
             </template>
 
-            <!-- Add at end -->
+            <!-- Add at end: category browser with live thumbnails, inserts at
+                 the end of the block list (position = childBlocks.length). -->
             <div v-if="childBlocks.length > 0" class="flex justify-center py-3">
-              <UPopover :content="{ side: 'bottom', align: 'center' }">
+              <UPopover v-model:open="addAtEndOpen" :content="{ side: 'bottom', align: 'center' }">
                 <UButton
                   icon="i-lucide-plus"
                   variant="soft"
@@ -371,16 +477,36 @@ onMounted(async () => {
                   label="Add block"
                 />
                 <template #content>
-                  <div class="grid grid-cols-4 gap-1 p-2 w-64">
-                    <button
-                      v-for="blockType in BLOCK_PALETTE"
-                      :key="blockType.type"
-                      class="flex flex-col items-center justify-center gap-1 p-2 rounded-md cursor-pointer hover:bg-muted min-w-14"
-                      @click="addBlock(blockType.type)"
-                    >
-                      <UIcon :name="blockType.icon" class="h-4 w-4" />
-                      <span class="text-[10px]">{{ blockType.name }}</span>
-                    </button>
+                  <div class="flex w-[460px] max-h-[60vh]">
+                    <div class="w-36 shrink-0 border-r border-default p-2 overflow-auto">
+                      <button
+                        v-for="category in EDM_SECTION_CATEGORIES"
+                        :key="category.id"
+                        type="button"
+                        class="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors"
+                        :class="selectedCategoryId === category.id ? 'bg-elevated text-default font-semibold' : 'text-muted hover:text-default hover:bg-elevated/60'"
+                        @click="selectedCategoryId = category.id"
+                      >
+                        <UIcon :name="category.icon" class="h-3.5 w-3.5 shrink-0" />
+                        <span class="truncate">{{ category.label }}</span>
+                      </button>
+                    </div>
+                    <div class="flex-1 overflow-auto p-3 space-y-3">
+                      <button
+                        v-for="preset in selectedCategory?.presets"
+                        :key="preset.id"
+                        type="button"
+                        class="block w-full overflow-hidden rounded-md border border-default bg-default text-left transition hover:border-primary hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        @click="insertPreset(preset, childBlocks.length); addAtEndOpen = false"
+                      >
+                        <div class="h-28 overflow-hidden bg-elevated/40 flex items-start justify-center">
+                          <EmailBuilderEdmSectionThumbnail :preset="preset" :width="240" />
+                        </div>
+                        <div class="p-2">
+                          <p class="text-xs font-semibold">{{ preset.name }}</p>
+                        </div>
+                      </button>
+                    </div>
                   </div>
                 </template>
               </UPopover>
