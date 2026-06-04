@@ -2,6 +2,7 @@ import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { resolveFontFamily, formatPadding } from './types'
 import { escapeHtml, escapeFontFamilyForHtml } from './helpers'
+import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 import { extendedStyleCss } from '~~/app/utils/edmStyle'
 
 registerBlock({
@@ -157,7 +158,7 @@ registerBlock({
 
     // Use MSO padding hack for proper button rendering in Outlook
     return `
-        <tr>
+        <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; text-align: ${textAlign || 'center'}; ${bgColor ? `background-color: ${bgColor};` : ''}">
             <a href="${buttonUrl}" style="display: inline-block; padding: ${innerPadding}; background-color: ${buttonBgColor}; color: ${buttonTextColor}; text-decoration: none; font-family: ${escapeFontFamilyForHtml(fontFamily)}; font-weight: ${fontWeight === 'bold' ? 'bold' : '600'}; font-size: ${buttonFontSize}; line-height: 1; border-radius: ${borderRadius}; ${fullWidth ? 'width: 100%; text-align: center;' : ''}${extendedStyleCss(style)}">
               <!--[if mso]><i style="mso-font-width: 150%; mso-text-raise: ${msoPadding.pb};" hidden>&emsp;</i><![endif]-->

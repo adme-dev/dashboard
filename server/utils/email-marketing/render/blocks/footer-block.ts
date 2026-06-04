@@ -2,6 +2,7 @@ import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
 import { escapeHtml } from './helpers'
+import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 
 registerBlock({
   type: 'footer',
@@ -113,7 +114,7 @@ registerBlock({
     }
 
     return `
-        <tr>
+        <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; text-align: center; background-color: ${bgColor};">
             ${lines.join('\n            ')}
           </td>

@@ -2,6 +2,7 @@ import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
 import { escapeHtml } from './helpers'
+import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 
 registerBlock({
   type: 'hero-section',
@@ -64,7 +65,7 @@ registerBlock({
         : ''
 
     return `
-        <tr>
+        <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; text-align: center; ${bgStyle}">
             <h1 style="margin:0;font-size:28px;font-weight:bold;color:${textColor};line-height:1.3;">${escapeHtml(heading)}</h1>
             ${subheadingHtml}

@@ -1,6 +1,7 @@
 import { registerBlock, renderBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
+import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 import { extendedStyleCss } from '~~/app/utils/edmStyle'
 
 registerBlock({
@@ -93,7 +94,7 @@ registerBlock({
       .join('\n')
 
     return `
-        <tr>
+        <tr${anchorIdAttribute(props)}>
           <td style="${containerBgColor ? `background-color: ${containerBgColor};` : ''}${extendedStyleCss(style)}">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
               ${childrenHtml}

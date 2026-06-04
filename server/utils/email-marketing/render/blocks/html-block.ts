@@ -11,6 +11,7 @@ import { formatPadding } from './types'
 import { escapeHtml } from './helpers'
 import { generateHeroTemplateHtml, generateMaizzleVehiclesSectionHtml } from './maizzle-helpers'
 import { generateOffersSectionHtml, type OfferData } from './offer-html-generator'
+import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 
 // ---------------------------------------------------------------------------
 // MJML vehicle/offer rendering helpers
@@ -1046,7 +1047,7 @@ registerBlock({
 
     // Regular HTML content (non-dynamic block)
     return `
-        <tr>
+        <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; ${bgColor ? `background-color: ${bgColor};` : ''}">
             ${contents}
           </td>

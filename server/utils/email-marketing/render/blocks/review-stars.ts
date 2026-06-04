@@ -2,6 +2,7 @@ import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
 import { escapeHtml, renderStarsHtml, renderStarsMjml } from './helpers'
+import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 
 const SIZE_MAP: Record<string, string> = {
   sm: '14px',
@@ -67,7 +68,7 @@ registerBlock({
       : ''
 
     return `
-        <tr>
+        <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; text-align: center;">
             ${starsMarkup}${labelMarkup}
           </td>

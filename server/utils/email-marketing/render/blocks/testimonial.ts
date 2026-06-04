@@ -8,6 +8,7 @@ import {
   renderStarsHtml,
   renderStarsMjml
 } from './helpers'
+import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 
 registerBlock({
   type: 'testimonial',
@@ -108,7 +109,7 @@ registerBlock({
       : ''
 
     return `
-        <tr>
+        <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; text-align: center;">
             <p style="margin: 0 0 8px 0; color: #d1d5db; font-size: 48px; font-family: Georgia, serif; line-height: 1;">&ldquo;</p>
             <p style="margin: 0 0 16px 0; color: #374151; font-size: 16px; font-family: ${fontFamily}; font-style: italic; line-height: 1.6;">${escapeHtml(quote)}</p>

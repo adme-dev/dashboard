@@ -80,4 +80,10 @@ describe('BlockSettingsPanel — Phase 3a grouped style sections', () => {
     expect(html).toContain('Hide on mobile')
     expect(html).toContain('Hide on desktop')
   })
+
+  it('exposes an Advanced anchor ID control for link targets', async () => {
+    const html = await render({ id: 'b', type: 'Text', data: { props: { text: 'Hi', anchorId: 'intro' }, style: {} } })
+    expect(html).toContain('Advanced')
+    expect(html).toContain('Anchor ID')
+  })
 })

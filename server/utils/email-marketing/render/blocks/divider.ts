@@ -1,6 +1,7 @@
 import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
+import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 import { dividerLineThickness } from '~~/app/utils/edmDivider'
 import { extendedStyleCss } from '~~/app/utils/edmStyle'
 
@@ -52,7 +53,7 @@ registerBlock({
     const lineThickness = dividerLineThickness(props)
 
     return `
-        <tr>
+        <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; ${bgColor ? `background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
             <hr style="border: none; border-top: ${lineThickness}px solid ${lineColor}; margin: 0;" />
           </td>

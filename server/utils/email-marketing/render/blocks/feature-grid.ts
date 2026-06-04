@@ -2,6 +2,7 @@ import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
 import { escapeHtml } from './helpers'
+import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 
 interface FeatureItem {
   icon: string
@@ -66,7 +67,7 @@ registerBlock({
       .join('')
 
     return `
-        <tr>
+        <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding};${bgColor ? ` background-color: ${bgColor};` : ''}">
             <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
               <tr>

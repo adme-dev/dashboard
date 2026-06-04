@@ -2,6 +2,7 @@ import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
 import { escapeHtml, escapeUrl } from './helpers'
+import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 
 registerBlock({
   type: 'header',
@@ -56,7 +57,7 @@ registerBlock({
       : ''
 
     return `
-        <tr>
+        <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; text-align: ${alignment}; background-color: ${bgColor};">
             ${logoHtml}
             ${taglineHtml}

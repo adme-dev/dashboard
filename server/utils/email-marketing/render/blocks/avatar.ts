@@ -1,6 +1,7 @@
 import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
+import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 import { extendedStyleCss } from '~~/app/utils/edmStyle'
 
 registerBlock({
@@ -82,7 +83,7 @@ registerBlock({
 
     if (!avatarSrc) {
       return `
-          <tr>
+          <tr${anchorIdAttribute(props)}>
             <td style="padding: ${padding}; text-align: ${textAlign || 'center'}; ${bgColor ? `background-color: ${bgColor};` : ''}">
               <div style="width: ${avatarSize}px; height: ${avatarSize}px; border-radius: ${borderRadius}; background-color: #e5e7eb; display: inline-block;"></div>
             </td>
@@ -90,7 +91,7 @@ registerBlock({
     }
 
     return `
-        <tr>
+        <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; text-align: ${textAlign || 'center'}; ${bgColor ? `background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
             <img src="${avatarSrc}" alt="Avatar" style="width: ${avatarSize}px; height: ${avatarSize}px; border-radius: ${borderRadius}; display: inline-block;" />
           </td>

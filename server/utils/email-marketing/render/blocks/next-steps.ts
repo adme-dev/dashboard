@@ -1,6 +1,7 @@
 import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { escapeHtml } from './helpers'
+import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 
 interface StepItem {
   title: string
@@ -69,7 +70,7 @@ registerBlock({
       .join('')
 
     return `
-        <tr>
+        <tr${anchorIdAttribute(props)}>
           <td style="padding:16px 24px;">
             <p style="margin:0 0 12px;font-size:20px;font-weight:bold;color:#111827;">Next Steps</p>
             <table width="100%" cellpadding="0" cellspacing="0" border="0">

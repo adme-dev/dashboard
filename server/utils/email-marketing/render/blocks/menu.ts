@@ -2,6 +2,7 @@ import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
 import { escapeHtml } from './helpers'
+import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 
 registerBlock({
   type: 'menu',
@@ -52,7 +53,7 @@ registerBlock({
       .join(` <span style="color:#9ca3af;padding:0 4px;">${escapeHtml(separator)}</span> `)
 
     return `
-        <tr>
+        <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; text-align: center; font-size: 14px;${bgColor ? ` background-color: ${bgColor};` : ''}">
             ${linkElements}
           </td>

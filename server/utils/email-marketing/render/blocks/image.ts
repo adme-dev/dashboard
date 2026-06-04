@@ -2,6 +2,7 @@ import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
 import { escapeHtml } from './helpers'
+import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 import { extendedStyleCss } from '~~/app/utils/edmStyle'
 
 registerBlock({
@@ -82,7 +83,7 @@ registerBlock({
 
     if (!imageUrl) {
       return `
-          <tr>
+          <tr${anchorIdAttribute(props)}>
             <td style="padding: ${padding}; text-align: ${contentAlignment}; ${bgColor ? `background-color: ${bgColor};` : ''}">
               <div style="background-color: #f3f4f6; padding: 32px; color: #9ca3af;">No image selected</div>
             </td>
@@ -93,7 +94,7 @@ registerBlock({
     const imageHtml = imageLinkHref ? `<a href="${imageLinkHref}">${imgTag}</a>` : imgTag
 
     return `
-        <tr>
+        <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; text-align: ${contentAlignment}; ${bgColor ? `background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
             ${imageHtml}
           </td>

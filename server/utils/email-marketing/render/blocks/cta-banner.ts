@@ -2,6 +2,7 @@ import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { resolveFontFamily, formatPadding } from './types'
 import { escapeHtml, escapeUrl, escapeFontFamilyForHtml } from './helpers'
+import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 
 registerBlock({
   type: 'cta-banner',
@@ -78,7 +79,7 @@ registerBlock({
     const textColor = (props.textColor as string) || '#ffffff'
 
     return `
-        <tr>
+        <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; background-color: ${backgroundColor}; text-align: center;">
             <h2 style="margin: 0 0 8px 0; color: ${textColor}; font-size: 24px; font-family: ${fontFamily}; font-weight: bold; line-height: 1.3;">${escapeHtml(heading)}</h2>${
               subheading

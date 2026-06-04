@@ -2,6 +2,7 @@ import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { resolveFontFamily, formatPadding } from './types'
 import { escapeFontFamilyForHtml } from './helpers'
+import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 import { extendedStyleCss } from '~~/app/utils/edmStyle'
 
 registerBlock({
@@ -69,7 +70,7 @@ registerBlock({
     const text = (props.text as string) || ''
     const textFontSize = fontSize || '16px'
     return `
-        <tr>
+        <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; text-align: ${textAlign}; color: ${textColor || '#374151'}; font-size: ${textFontSize}; font-family: ${escapeFontFamilyForHtml(fontFamily)}; font-weight: ${fontWeight}; line-height: 1.6; ${bgColor ? `background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
             ${text}
           </td>

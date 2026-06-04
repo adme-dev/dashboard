@@ -1,5 +1,6 @@
 import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
+import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 
 registerBlock({
   type: 'Spacer',
@@ -35,7 +36,7 @@ registerBlock({
 
     const height = (props.height as number) || 24
     return `
-        <tr>
+        <tr${anchorIdAttribute(props)}>
           <td style="height: ${height}px; ${bgColor ? `background-color: ${bgColor};` : ''}">&nbsp;</td>
         </tr>`
   },

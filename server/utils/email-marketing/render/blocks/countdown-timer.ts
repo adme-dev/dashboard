@@ -2,6 +2,7 @@ import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
 import { escapeHtml } from './helpers'
+import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 
 registerBlock({
   type: 'countdown-timer',
@@ -70,7 +71,7 @@ registerBlock({
     const countdownText = isExpired ? expiredText : `${days} days, ${hours} hours remaining`
 
     return `
-        <tr>
+        <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; background-color: ${backgroundColor}; text-align: center;">
             <p style="margin: 0 0 4px 0; color: ${textColor}; font-size: 14px; font-weight: 600; line-height: 1.4;">${escapeHtml(label)}</p>
             <p style="margin: 0; color: ${textColor}; font-size: 24px; font-weight: bold; line-height: 1.3;">${escapeHtml(countdownText)}</p>

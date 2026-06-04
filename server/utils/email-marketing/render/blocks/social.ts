@@ -2,6 +2,7 @@ import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
 import { escapeHtml, escapeUrl } from './helpers'
+import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 
 const PLATFORM_NAMES: Record<string, string> = {
   facebook: 'Facebook',
@@ -63,7 +64,7 @@ registerBlock({
       .join(' ')
 
     return `
-        <tr>
+        <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; text-align: ${alignment};${bgColor ? ` background-color: ${bgColor};` : ''}">
             ${linkElements}
           </td>

@@ -95,7 +95,8 @@ const openGroups = reactive<Record<string, boolean>>({
   spacing: true,
   typography: false,
   effects: false,
-  background: false
+  background: false,
+  advanced: false
 })
 function toggleGroup(id: string) {
   openGroups[id] = !openGroups[id]
@@ -1025,6 +1026,28 @@ function updateColumnWidth(index: number, value: string | number) {
               @click="updateStyle('backgroundImage', null)"
             />
           </div>
+        </UFormField>
+      </div>
+    </div>
+
+    <!-- Advanced — cross-block metadata used by sent HTML -->
+    <div class="pt-3 border-t border-default">
+      <button
+        type="button"
+        class="w-full flex items-center justify-between py-1.5 text-xs font-semibold uppercase text-muted hover:text-default transition-colors"
+        @click="toggleGroup('advanced')"
+      >
+        <span>Advanced</span>
+        <UIcon :name="openGroups.advanced ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" class="h-4 w-4" />
+      </button>
+      <div v-show="openGroups.advanced" class="space-y-3 pt-2">
+        <UFormField label="Anchor ID" help="Optional HTML id for email links. Start with a letter; use letters, numbers, dashes, underscores, or colons.">
+          <UInput
+            :model-value="(block.data?.props?.anchorId as string) || ''"
+            placeholder="intro-section"
+            class="w-full"
+            @update:model-value="updateProp('anchorId', $event)"
+          />
         </UFormField>
       </div>
     </div>
