@@ -5,11 +5,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { EDM_STARTER_TEMPLATES } from '~~/app/utils/edmPresets'
+import type { EdmFlyhubDocument } from '~~/app/types/edm'
 
 interface TemplateRow {
   id: string
   name: string
   subject: string | null
+  preview_text?: string | null
+  body_source?: unknown
   updated_at: string
 }
 interface FullTemplate {
@@ -165,6 +168,12 @@ function fmtDate(s: string): string {
   return Number.isNaN(d.getTime())
     ? ''
     : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
+  if (!row.body_source || typeof row.body_source !== 'object') return null
+  const candidate = row.body_source as Partial<EdmFlyhubDocument>
+  return candidate.root?.type === 'EmailLayout' ? candidate as EdmFlyhubDocument : null
 }
 </script>
 
@@ -341,26 +350,41 @@ function fmtDate(s: string): string {
         No templates yet. Build one in the composer and save it to reuse across campaigns.
       </div>
 
-      <div v-else class="border border-default rounded-lg divide-y divide-default">
+      <div v-else class="saved-template-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <div
           v-for="row in data.items"
           :key="row.id"
-          class="flex items-center justify-between gap-4 px-4 py-3"
+          class="saved-template-card group flex min-h-80 flex-col overflow-hidden rounded-lg border border-default bg-default hover:border-primary hover:shadow-sm"
         >
           <button
             type="button"
-            class="min-w-0 text-left cursor-pointer group"
+            class="flex flex-1 flex-col text-left cursor-pointer"
             @click="openComposer(row.id)"
           >
-            <p class="font-medium truncate group-hover:text-primary">
-              {{ row.name }}
-            </p>
-            <p class="text-sm text-muted truncate">
-              {{ row.subject || 'No subject' }} · Updated {{ fmtDate(row.updated_at) }}
-            </p>
+            <div class="flex h-52 items-start justify-center overflow-hidden bg-elevated/40 p-3">
+              <EmailBuilderEdmDocumentThumbnail
+                :document="templateDocument(row)"
+                :width="300"
+                :max-height="184"
+              />
+            </div>
+            <div class="flex-1 border-t border-default p-4">
+              <p class="font-semibold truncate group-hover:text-primary">
+                {{ row.name }}
+              </p>
+              <p class="mt-1 text-sm text-muted truncate">
+                {{ row.subject || 'No subject' }}
+              </p>
+              <p v-if="row.preview_text" class="mt-2 line-clamp-2 text-sm text-muted leading-snug">
+                {{ row.preview_text }}
+              </p>
+              <p class="mt-3 text-xs text-muted">
+                Updated {{ fmtDate(row.updated_at) }}
+              </p>
+            </div>
           </button>
 
-          <div class="flex items-center gap-1 shrink-0">
+          <div class="flex items-center justify-end gap-1 border-t border-default px-3 py-2">
             <UButton
               icon="i-lucide-pencil"
               variant="ghost"
