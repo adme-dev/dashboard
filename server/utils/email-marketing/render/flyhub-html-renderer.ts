@@ -13,7 +13,7 @@
 // tree-shake the side-effect import (which registers every block type).
 import { BLOCKS_LOADED } from './blocks'
 import { renderBlock } from './block-registry'
-import { FONT_FAMILY_MAP } from './blocks/types'
+import { resolveFontFamily } from './blocks/types'
 import {
   edmBlockHasResponsiveRules,
   edmResponsiveClassForBlock,
@@ -58,7 +58,7 @@ function collectResponsiveCss(doc: FlyhubDocument): { desktopCss: string[], mobi
  * Get font family CSS from FlyHub font family key
  */
 function getFontFamily(fontKey: string | null | undefined): string {
-  return FONT_FAMILY_MAP[fontKey || 'MODERN_SANS'] || FONT_FAMILY_MAP['MODERN_SANS']
+  return resolveFontFamily(fontKey)
 }
 
 /**

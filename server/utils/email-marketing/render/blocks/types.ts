@@ -26,6 +26,8 @@ export const FONT_FAMILY_MAP: Record<string, string> = {
   MONOSPACE: '"Nimbus Mono PS", "Courier New", "Cutive Mono", monospace'
 }
 
+const DEFAULT_FONT_FAMILY = FONT_FAMILY_MAP.MODERN_SANS || '"Helvetica Neue", "Arial Nova", "Nimbus Sans", Arial, sans-serif'
+
 // ---------------------------------------------------------------------------
 // Helper functions
 // ---------------------------------------------------------------------------
@@ -35,8 +37,9 @@ export const FONT_FAMILY_MAP: Record<string, string> = {
  * Falls back to MODERN_SANS when the key is missing or unrecognised.
  */
 export function resolveFontFamily(key?: string | null, fallback?: string): string {
-  if (!key) return fallback || FONT_FAMILY_MAP.MODERN_SANS
-  return FONT_FAMILY_MAP[key] || fallback || FONT_FAMILY_MAP.MODERN_SANS
+  const fallbackFont = fallback || DEFAULT_FONT_FAMILY
+  if (!key) return fallbackFont
+  return FONT_FAMILY_MAP[key] || fallbackFont
 }
 
 /**

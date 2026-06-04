@@ -3,12 +3,11 @@ import {
   safeCssColor,
   type EdmExtendedStyle
 } from '~~/app/utils/edmStyle'
-import type { EdmFlyhubBlock } from '~~/app/types/edm'
 
 export type EdmDevice = 'desktop' | 'mobile'
 
 export interface EdmMobileOverride {
-  style?: Partial<NonNullable<EdmFlyhubBlock['data']['style']>> | null
+  style?: unknown
   props?: Record<string, unknown> | null
 }
 
@@ -16,7 +15,7 @@ type ResponsiveBlock = {
   type: string
   data: {
     props?: Record<string, unknown> | null
-    style?: Record<string, unknown> | null
+    style?: unknown
     mobile?: EdmMobileOverride | null
     hideOnMobile?: boolean | null
     hideOnDesktop?: boolean | null
@@ -28,10 +27,14 @@ function hasKeys(value: unknown): boolean {
   return !!value && typeof value === 'object' && Object.keys(value as Record<string, unknown>).length > 0
 }
 
+function toRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : {}
+}
+
 function cloneBlock<T extends ResponsiveBlock>(
   block: T,
   blockProps: Record<string, unknown> | null | undefined,
-  style: Record<string, unknown> | null | undefined
+  style: unknown
 ): T {
   return {
     ...block,
@@ -50,7 +53,9 @@ export function getBlockForDevice<T extends ResponsiveBlock>(block: T, device: E
   return cloneBlock(
     block,
     { ...(block.data.props || {}), ...(mobile.props || {}) },
-    { ...(block.data.style || {}), ...(mobile.style || {}) }
+    hasKeys(mobile.style)
+      ? { ...toRecord(block.data.style), ...toRecord(mobile.style) }
+      : block.data.style
   )
 }
 
@@ -90,8 +95,8 @@ function baseStyleDeclarations(style: Record<string, unknown>): Array<[string, s
 }
 
 export function mobileStyleDeclarationsForBlock(block: ResponsiveBlock): Array<[string, string]> {
-  const mobileStyle = block.data.mobile?.style as Record<string, unknown> | null | undefined
-  if (!mobileStyle) return []
+  const mobileStyle = toRecord(block.data.mobile?.style)
+  if (!hasKeys(mobileStyle)) return []
   return [
     ...baseStyleDeclarations(mobileStyle),
     ...extendedStyleDeclarations(mobileStyle as EdmExtendedStyle)
