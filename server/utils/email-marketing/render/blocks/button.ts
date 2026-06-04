@@ -17,6 +17,7 @@ registerBlock({
     const fontSize = style.fontSize ? `${style.fontSize}px` : null
     const fontFamily = resolveFontFamily(style.fontFamily, context.fontFamily)
     const fontWeight = (style.fontWeight as string) || 'normal'
+    const richStyle = extendedStyleCss(style)
 
     const buttonText = (props.text as string) || 'Click here'
     const buttonUrl = (props.url as string) || '#'
@@ -37,6 +38,21 @@ registerBlock({
     }
     const innerPadding = innerPaddingMap[buttonSize] || '12px 24px'
     const buttonFontSize = fontSize || '16px'
+
+    if (richStyle) {
+      return `
+        <mj-section padding="0"${bgColor ? ` background-color="${bgColor}"` : ''}>
+          <mj-column>
+            <mj-raw>
+              <div style="padding: ${padding}; text-align: ${textAlign || 'center'}; ${bgColor ? `background-color: ${bgColor};` : ''}">
+                <a href="${buttonUrl}" style="display: inline-block; padding: ${innerPadding}; background-color: ${buttonBgColor}; color: ${buttonTextColor}; text-decoration: none; font-family: ${escapeFontFamilyForHtml(fontFamily)}; font-weight: ${fontWeight === 'bold' ? 'bold' : '600'}; font-size: ${buttonFontSize}; line-height: 1; border-radius: ${borderRadius}; ${fullWidth ? 'width: 100%; text-align: center;' : ''}${richStyle}">
+                  ${escapeHtml(buttonText)}
+                </a>
+              </div>
+            </mj-raw>
+          </mj-column>
+        </mj-section>`
+    }
 
     return `
         <mj-section padding="0"${bgColor ? ` background-color="${bgColor}"` : ''}>
@@ -67,6 +83,7 @@ registerBlock({
     const fontSize = style.fontSize ? `${style.fontSize}px` : null
     const fontFamily = resolveFontFamily(style.fontFamily, context.fontFamily)
     const fontWeight = (style.fontWeight as string) || 'normal'
+    const richStyle = extendedStyleCss(style)
 
     const buttonText = (props.text as string) || 'Click here'
     const buttonUrl = (props.url as string) || '#'
@@ -74,6 +91,7 @@ registerBlock({
     const buttonTextColor = (props.buttonTextColor as string) || '#ffffff'
     const buttonStyle = (props.buttonStyle as string) || 'rounded'
     const buttonSize = (props.size as string) || 'medium'
+    const fullWidth = (props.fullWidth as boolean) || false
     const borderRadius
       = buttonStyle === 'pill' ? '9999px' : buttonStyle === 'rounded' ? '8px' : '0px'
     const innerPaddingMap: Record<string, string> = {
@@ -84,6 +102,17 @@ registerBlock({
     }
     const innerPadding = innerPaddingMap[buttonSize] || '12px 24px'
     const buttonFontSize = fontSize || '16px'
+
+    if (richStyle) {
+      return `
+        <mj-raw>
+          <div style="padding: ${padding}; text-align: ${textAlign || 'center'};">
+            <a href="${buttonUrl}" style="display: inline-block; padding: ${innerPadding}; background-color: ${buttonBgColor}; color: ${buttonTextColor}; text-decoration: none; font-family: ${escapeFontFamilyForHtml(fontFamily)}; font-weight: ${fontWeight === 'bold' ? 'bold' : '600'}; font-size: ${buttonFontSize}; line-height: 1; border-radius: ${borderRadius}; ${fullWidth ? 'width: 100%; text-align: center;' : ''}${richStyle}">
+              ${escapeHtml(buttonText)}
+            </a>
+          </div>
+        </mj-raw>`
+    }
 
     return `<mj-button padding="${padding}" align="${textAlign || 'center'}" href="${buttonUrl}" background-color="${buttonBgColor}" color="${buttonTextColor}" border-radius="${borderRadius}" font-family="${fontFamily}" font-weight="${fontWeight === 'bold' ? 'bold' : '600'}" font-size="${buttonFontSize}" inner-padding="${innerPadding}">${escapeHtml(buttonText)}</mj-button>`
   },

@@ -16,6 +16,7 @@ registerBlock({
     const containerBgColor = bgColor || (props.backgroundColor as string) || ''
     const containerBorderColor = style.borderColor || ''
     const containerBorderRadius = style.borderRadius ? `${style.borderRadius}px` : '0'
+    const richStyle = extendedStyleCss(style)
     const childrenIds = (data.childrenIds || []) as string[]
 
     // Resolve and render children via the registry
@@ -28,17 +29,24 @@ registerBlock({
       .join('\n')
 
     // Build border style if borderColor is set
-    const borderStyle = containerBorderColor ? `border: 1px solid ${containerBorderColor};` : ''
+    const borderStyle = containerBorderColor && !richStyle.includes('border:')
+      ? `border: 1px solid ${containerBorderColor};`
+      : ''
     const radiusStyle
-      = containerBorderRadius !== '0' ? `border-radius: ${containerBorderRadius};` : ''
+      = containerBorderRadius !== '0' && !richStyle.includes('border-radius:')
+        ? `border-radius: ${containerBorderRadius};`
+        : ''
+    const wrapperStyle = [borderStyle, radiusStyle, richStyle, 'overflow: hidden;', `padding: ${padding};`]
+      .filter(Boolean)
+      .join(' ')
 
     // Use mj-section with mj-raw for container styling (avoid mj-wrapper nesting issues)
-    if (borderStyle || radiusStyle) {
+    if (borderStyle || radiusStyle || richStyle) {
       return `
           <mj-section padding="0"${containerBgColor ? ` background-color="${containerBgColor}"` : ''}>
             <mj-column>
               <mj-raw>
-                <div style="${borderStyle} ${radiusStyle} overflow: hidden; padding: ${padding};">
+                <div style="${wrapperStyle}">
               </mj-raw>
             </mj-column>
           </mj-section>

@@ -13,19 +13,39 @@ registerBlock({
     const padding = formatPadding(style.padding)
     const textAlign = (style.textAlign as string) || 'left'
     const bgColor = (style.backgroundColor as string) || ''
+    const richStyle = extendedStyleCss(style)
 
     const avatarSrc = (props.src as string) || ''
     const avatarSize = (props.size as number) || 64
     const avatarShape = (props.shape as string) || 'circle'
     const borderRadius = avatarShape === 'circle' ? '50%' : avatarShape === 'rounded' ? '8px' : '0'
+    const wrapperStyle = [
+      `padding: ${padding};`,
+      `text-align: ${textAlign || 'center'};`,
+      bgColor ? `background-color: ${bgColor};` : '',
+      richStyle
+    ].filter(Boolean).join(' ')
 
     if (!avatarSrc) {
       return `
           <mj-section padding="0"${bgColor ? ` background-color="${bgColor}"` : ''}>
             <mj-column>
               <mj-raw>
-                <div style="padding: ${padding}; text-align: ${textAlign || 'center'};">
+                <div style="${wrapperStyle}">
                   <div style="width: ${avatarSize}px; height: ${avatarSize}px; border-radius: ${borderRadius}; background-color: #e5e7eb; display: inline-block;"></div>
+                </div>
+              </mj-raw>
+            </mj-column>
+          </mj-section>`
+    }
+
+    if (richStyle) {
+      return `
+          <mj-section padding="0"${bgColor ? ` background-color="${bgColor}"` : ''}>
+            <mj-column>
+              <mj-raw>
+                <div style="${wrapperStyle}">
+                  <img src="${avatarSrc}" alt="Avatar" style="width: ${avatarSize}px; height: ${avatarSize}px; border-radius: ${borderRadius}; display: inline-block;" />
                 </div>
               </mj-raw>
             </mj-column>
