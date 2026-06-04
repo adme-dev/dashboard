@@ -45,7 +45,7 @@ export interface EdmStarterTemplate {
   usage: string
   style: string
   previewTone: EdmPreviewTone
-  sectionPresetIds: string[]
+  sectionPresetIds: readonly EdmSectionPresetId[]
   subject: string
   previewText: string
 }
@@ -54,6 +54,30 @@ export interface EdmDocumentFragment {
   blocks: Record<string, EdmFlyhubBlock>
   rootChildrenIds: string[]
 }
+
+export const EDM_SECTION_PRESET_IDS = [
+  'basic-heading',
+  'basic-text',
+  'basic-button',
+  'basic-image',
+  'basic-avatar',
+  'basic-divider',
+  'basic-spacer',
+  'basic-html',
+  'basic-columns-container',
+  'basic-container',
+  'header-logo-menu',
+  'header-dark-brand',
+  'content-editorial-intro',
+  'content-logo-grid',
+  'feature-icon-grid',
+  'cta-blue-banner',
+  'hero-dark-product',
+  'transactional-next-steps',
+  'footer-legal'
+] as const
+
+export type EdmSectionPresetId = typeof EDM_SECTION_PRESET_IDS[number]
 
 interface NextStepItem {
   title: string
