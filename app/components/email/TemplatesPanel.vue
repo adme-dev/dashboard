@@ -3,6 +3,7 @@
      lifecycle actions around the composer: new / open / duplicate / rename /
      delete. Reuses the existing /api/email/templates CRUD — no new endpoints. -->
 <script setup lang="ts">
+import { computed, ref } from 'vue'
 import { EDM_STARTER_TEMPLATES } from '~~/app/utils/edmPresets'
 
 interface TemplateRow {
@@ -34,6 +35,52 @@ function openComposer(id?: string) {
 function openStarter(starterId: string) {
   navigateTo(`/agency/email/compose?starter=${starterId}`)
 }
+
+// ── Starter gallery: filters + search ────────────────────────────────────────
+const usageOptions = computed(() =>
+  Array.from(new Set(EDM_STARTER_TEMPLATES.map(t => t.usage)))
+)
+const styleOptions = computed(() =>
+  Array.from(new Set(EDM_STARTER_TEMPLATES.map(t => t.style)))
+)
+
+const selectedUsages = ref<string[]>([])
+const selectedStyles = ref<string[]>([])
+const starterSearch = ref('')
+
+function toggleUsage(usage: string) {
+  selectedUsages.value = selectedUsages.value.includes(usage)
+    ? selectedUsages.value.filter(u => u !== usage)
+    : [...selectedUsages.value, usage]
+}
+function toggleStyle(style: string) {
+  selectedStyles.value = selectedStyles.value.includes(style)
+    ? selectedStyles.value.filter(s => s !== style)
+    : [...selectedStyles.value, style]
+}
+function resetFilters() {
+  selectedUsages.value = []
+  selectedStyles.value = []
+  starterSearch.value = ''
+}
+
+const hasActiveFilters = computed(() =>
+  selectedUsages.value.length > 0
+  || selectedStyles.value.length > 0
+  || starterSearch.value.trim().length > 0
+)
+
+const filteredStarters = computed(() => {
+  const q = starterSearch.value.trim().toLowerCase()
+  return EDM_STARTER_TEMPLATES.filter((t) => {
+    const usageOk = selectedUsages.value.length === 0 || selectedUsages.value.includes(t.usage)
+    const styleOk = selectedStyles.value.length === 0 || selectedStyles.value.includes(t.style)
+    const searchOk = !q
+      || t.name.toLowerCase().includes(q)
+      || t.description.toLowerCase().includes(q)
+    return usageOk && styleOk && searchOk
+  })
+})
 
 // ── Rename ──────────────────────────────────────────────────────────────────
 const showRename = ref(false)
@@ -135,24 +182,83 @@ function fmtDate(s: string): string {
       <UButton icon="i-lucide-plus" label="Blank template" @click="openComposer()" />
     </div>
 
-    <section>
-      <div class="mb-3 flex items-center justify-between">
+    <section class="space-y-4">
+      <div class="flex items-center justify-between gap-4">
         <p class="text-xs font-semibold uppercase text-muted">
           Starter templates
         </p>
-        <div class="flex gap-2">
-          <UBadge variant="subtle" color="neutral" label="Newsletter" />
-          <UBadge variant="subtle" color="neutral" label="Promotion" />
-          <UBadge variant="subtle" color="neutral" label="Transactional" />
-        </div>
+        <UButton
+          v-if="hasActiveFilters"
+          variant="ghost"
+          color="neutral"
+          size="xs"
+          icon="i-lucide-x"
+          label="Clear filters"
+          @click="resetFilters()"
+        />
       </div>
-      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+
+      <!-- Filters -->
+      <div class="space-y-3 rounded-lg border border-default bg-elevated/30 p-4">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <span class="w-16 shrink-0 text-xs font-semibold uppercase text-muted">Usage</span>
+          <div class="flex flex-wrap gap-2">
+            <UButton
+              size="xs"
+              :variant="selectedUsages.length === 0 ? 'solid' : 'outline'"
+              :color="selectedUsages.length === 0 ? 'primary' : 'neutral'"
+              label="All"
+              @click="selectedUsages = []"
+            />
+            <UButton
+              v-for="usage in usageOptions"
+              :key="usage"
+              size="xs"
+              :variant="selectedUsages.includes(usage) ? 'solid' : 'outline'"
+              :color="selectedUsages.includes(usage) ? 'primary' : 'neutral'"
+              :label="usage"
+              @click="toggleUsage(usage)"
+            />
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <span class="w-16 shrink-0 text-xs font-semibold uppercase text-muted">Style</span>
+          <div class="flex flex-wrap gap-2">
+            <UButton
+              size="xs"
+              :variant="selectedStyles.length === 0 ? 'solid' : 'outline'"
+              :color="selectedStyles.length === 0 ? 'primary' : 'neutral'"
+              label="All"
+              @click="selectedStyles = []"
+            />
+            <UButton
+              v-for="style in styleOptions"
+              :key="style"
+              size="xs"
+              :variant="selectedStyles.includes(style) ? 'solid' : 'outline'"
+              :color="selectedStyles.includes(style) ? 'primary' : 'neutral'"
+              :label="style"
+              @click="toggleStyle(style)"
+            />
+          </div>
+        </div>
+
+        <UInput
+          v-model="starterSearch"
+          icon="i-lucide-search"
+          placeholder="Search templates by name or description…"
+          class="w-full"
+        />
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <button
           type="button"
-          class="min-h-80 rounded-lg border border-dashed border-default bg-elevated/40 p-4 text-center hover:border-primary hover:bg-primary/5"
+          class="flex min-h-72 flex-col rounded-lg border border-dashed border-default bg-elevated/40 p-4 text-center hover:border-primary hover:bg-primary/5"
           @click="openComposer()"
         >
-          <div class="flex h-52 items-center justify-center rounded-md bg-default">
+          <div class="flex flex-1 items-center justify-center rounded-md bg-default">
             <UIcon name="i-lucide-plus" class="h-8 w-8 text-muted" />
           </div>
           <p class="mt-4 font-semibold">
@@ -164,51 +270,64 @@ function fmtDate(s: string): string {
         </button>
 
         <button
-          v-for="starter in EDM_STARTER_TEMPLATES"
+          v-for="starter in filteredStarters"
           :key="starter.id"
           type="button"
-          class="overflow-hidden rounded-lg border border-default bg-default text-left hover:border-primary hover:shadow-sm"
+          class="group flex flex-col overflow-hidden rounded-lg border border-default bg-default text-left hover:border-primary hover:shadow-sm"
           @click="openStarter(starter.id)"
         >
-          <div
-            class="h-52 p-4"
-            :class="{
-              'bg-[#171717] text-white': starter.previewTone === 'dark',
-              'bg-primary/10 text-default': starter.previewTone === 'accent',
-              'bg-white dark:bg-elevated text-default': starter.previewTone === 'light'
-            }"
-          >
-            <div class="flex h-full flex-col justify-between rounded border border-current/15 p-4">
-              <p class="text-xs font-semibold uppercase opacity-70">
-                {{ starter.usage }}
-              </p>
-              <p class="text-2xl font-bold leading-tight">
-                {{ starter.name }}
-              </p>
-              <p class="text-xs opacity-70">
-                {{ starter.style }}
-              </p>
-            </div>
+          <div class="flex items-start justify-center overflow-hidden bg-elevated/40 p-3" style="height: 220px">
+            <EmailBuilderEdmTemplateThumbnail
+              :template-id="starter.id"
+              :width="300"
+              :max-height="196"
+            />
           </div>
-          <div class="p-4">
+          <div class="border-t border-default p-4">
             <div class="flex items-center gap-2">
-              <UBadge color="success" size="xs" label="New" />
-              <p class="font-semibold">
+              <UBadge
+                v-if="starter.isNew"
+                color="success"
+                size="xs"
+                label="NEW"
+              />
+              <p class="font-semibold group-hover:text-primary">
                 {{ starter.name }}
               </p>
             </div>
             <p class="mt-2 text-sm text-muted leading-snug">
               {{ starter.description }}
             </p>
+            <div class="mt-3 flex flex-wrap gap-1.5">
+              <UBadge
+                variant="subtle"
+                color="neutral"
+                size="xs"
+                :label="starter.usage"
+              />
+              <UBadge
+                variant="subtle"
+                color="neutral"
+                size="xs"
+                :label="starter.style"
+              />
+            </div>
           </div>
         </button>
+      </div>
+
+      <div
+        v-if="filteredStarters.length === 0"
+        class="rounded-lg border border-dashed border-default py-10 text-center text-sm text-muted"
+      >
+        No templates match your filters.
       </div>
     </section>
 
     <section class="space-y-4">
       <div class="flex items-center justify-between">
         <p class="text-xs font-semibold uppercase text-muted">
-          Saved templates
+          Your templates
         </p>
         <p class="text-sm text-muted">
           {{ data?.items?.length ?? 0 }} template(s)
