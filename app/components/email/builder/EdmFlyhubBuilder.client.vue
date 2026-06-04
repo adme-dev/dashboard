@@ -20,13 +20,6 @@ const layout = computed(() => store.getLayoutSettings())
 // us close the flyout the moment a preset is inserted.
 const flyoutOpen = reactive<Record<string, boolean>>({})
 
-// Add-at-end picker keeps a selected category (its own popover is a
-// category → presets browser anchored to the canvas "+" button).
-const selectedCategoryId = ref(EDM_SECTION_CATEGORIES[0]?.id || 'basic')
-const selectedCategory = computed(() => {
-  return EDM_SECTION_CATEGORIES.find(category => category.id === selectedCategoryId.value) || EDM_SECTION_CATEGORIES[0]
-})
-
 // Insert by preset OBJECT so callers don't depend on the active category.
 // Handles both Basic blocks (kind:'block') and full sections (kind:'section').
 function insertPreset(preset: EdmSectionPreset, position?: number) {
@@ -71,6 +64,7 @@ function insertFromFlyout(category: { id: string }, preset: EdmSectionPreset) {
 }
 
 const addAtEndOpen = ref(false)
+const emptyAddOpen = ref(false)
 
 const childBlocks = computed(() => {
   const root = store.document.value.root
@@ -427,14 +421,25 @@ onMounted(async () => {
             :style="{ backgroundColor: layout.canvasColor, color: layout.textColor }"
             @click.stop
           >
-            <!-- Empty state -->
+            <!-- Empty state: click to open the unified Add module bubble (opens
+                 on Basic modules). Hovering the left rail still works too. -->
             <div
               v-if="childBlocks.length === 0"
               class="flex flex-col items-center justify-center py-20 text-center"
             >
-              <UIcon name="i-lucide-plus" class="h-12 w-12 text-muted/50 mb-4" />
-              <p class="font-medium text-default">Start with a section or Basic block</p>
-              <p class="mt-1 text-sm text-muted">Hover a module category on the left to preview and add a section.</p>
+              <UPopover v-model:open="emptyAddOpen" :content="{ side: 'bottom', align: 'center' }">
+                <button
+                  type="button"
+                  class="flex flex-col items-center justify-center text-center rounded-lg px-6 py-4 transition-colors hover:bg-elevated/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <UIcon name="i-lucide-plus" class="h-12 w-12 text-muted/50 mb-4" />
+                  <span class="font-medium text-default">Start with a section or Basic block</span>
+                  <span class="mt-1 text-sm text-muted">Add a Basic module or a section to begin.</span>
+                </button>
+                <template #content>
+                  <EmailBuilderEdmAddModuleMenu @insert="(preset) => { insertPreset(preset, 0); emptyAddOpen = false }" />
+                </template>
+              </UPopover>
             </div>
 
             <!-- Block list -->
@@ -481,37 +486,7 @@ onMounted(async () => {
                   label="Add block"
                 />
                 <template #content>
-                  <div class="flex w-[460px] max-h-[60vh]">
-                    <div class="w-36 shrink-0 border-r border-default p-2 overflow-auto">
-                      <button
-                        v-for="category in EDM_SECTION_CATEGORIES"
-                        :key="category.id"
-                        type="button"
-                        class="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors"
-                        :class="selectedCategoryId === category.id ? 'bg-elevated text-default font-semibold' : 'text-muted hover:text-default hover:bg-elevated/60'"
-                        @click="selectedCategoryId = category.id"
-                      >
-                        <UIcon :name="category.icon" class="h-3.5 w-3.5 shrink-0" />
-                        <span class="truncate">{{ category.label }}</span>
-                      </button>
-                    </div>
-                    <div class="flex-1 overflow-auto p-3 space-y-3">
-                      <button
-                        v-for="preset in selectedCategory?.presets"
-                        :key="preset.id"
-                        type="button"
-                        class="block w-full overflow-hidden rounded-md border border-default bg-default text-left transition hover:border-primary hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                        @click="insertPreset(preset, childBlocks.length); addAtEndOpen = false"
-                      >
-                        <div class="h-28 overflow-hidden bg-elevated/40 flex items-start justify-center">
-                          <EmailBuilderEdmSectionThumbnail :preset="preset" :width="240" />
-                        </div>
-                        <div class="p-2">
-                          <p class="text-xs font-semibold">{{ preset.name }}</p>
-                        </div>
-                      </button>
-                    </div>
-                  </div>
+                  <EmailBuilderEdmAddModuleMenu @insert="(preset) => { insertPreset(preset, childBlocks.length); addAtEndOpen = false }" />
                 </template>
               </UPopover>
             </div>
