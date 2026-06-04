@@ -87,6 +87,11 @@ export interface FlyhubBlockStyle {
   backgroundImage?: string | null
 }
 
+export interface FlyhubMobileOverride {
+  style?: Partial<FlyhubBlockStyle> | null
+  props?: Record<string, unknown> | null
+}
+
 /**
  * A single block within a FlyHub document tree.
  */
@@ -95,6 +100,9 @@ export interface FlyhubBlock {
   data: {
     props?: Record<string, unknown> | null
     style?: FlyhubBlockStyle | null
+    mobile?: FlyhubMobileOverride | null
+    hideOnMobile?: boolean | null
+    hideOnDesktop?: boolean | null
     childrenIds?: string[]
   }
 }

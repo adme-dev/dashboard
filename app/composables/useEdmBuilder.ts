@@ -263,6 +263,64 @@ function createStore() {
     }
   }
 
+  function updateBlockMobileStyle(
+    blockId: string,
+    styleUpdates: Partial<NonNullable<EdmFlyhubBlock['data']['style']>>
+  ) {
+    recordHistory()
+    const block = document.value[blockId]
+    if (!block) return
+    const mobile = block.data.mobile || {}
+
+    document.value = {
+      ...document.value,
+      [blockId]: {
+        ...block,
+        data: {
+          ...block.data,
+          mobile: {
+            ...mobile,
+            style: {
+              ...(mobile.style || {}),
+              ...styleUpdates
+            }
+          }
+        }
+      }
+    }
+  }
+
+  function updateBlockMobileProps(blockId: string, propsUpdates: Record<string, unknown>) {
+    recordHistory()
+    const block = document.value[blockId]
+    if (!block) return
+    const mobile = block.data.mobile || {}
+
+    document.value = {
+      ...document.value,
+      [blockId]: {
+        ...block,
+        data: {
+          ...block.data,
+          mobile: {
+            ...mobile,
+            props: {
+              ...(mobile.props || {}),
+              ...propsUpdates
+            }
+          }
+        }
+      }
+    }
+  }
+
+  function updateBlockVisibility(
+    blockId: string,
+    flags: { hideOnMobile?: boolean, hideOnDesktop?: boolean }
+  ) {
+    updateBlockData(blockId, flags)
+  }
+
   // ========================================
   // Block CRUD Operations
   // ========================================
@@ -606,6 +664,9 @@ function createStore() {
     updateBlockData,
     updateBlockStyle,
     updateBlockProps,
+    updateBlockMobileStyle,
+    updateBlockMobileProps,
+    updateBlockVisibility,
 
     // Block CRUD
     addBlock,

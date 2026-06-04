@@ -3,6 +3,11 @@
 // (promotion-knoxgwmhaval/layers/edm/stores/edmBuilder.ts). Exact shapes kept
 // so the ported store + components stay consistent.
 
+export interface EdmMobileOverride {
+  style?: Partial<NonNullable<EdmFlyhubBlock['data']['style']>> | null
+  props?: Record<string, unknown> | null
+}
+
 // A single block within a flyhub document.
 export interface EdmFlyhubBlock {
   type: string
@@ -34,6 +39,9 @@ export interface EdmFlyhubBlock {
       backgroundImage?: string | null
     } | null
     props?: Record<string, unknown> | null
+    mobile?: EdmMobileOverride | null
+    hideOnMobile?: boolean | null
+    hideOnDesktop?: boolean | null
     childrenIds?: string[]
   }
 }
