@@ -31,6 +31,11 @@ function isSafeHref(href: string): boolean {
   return /^(https?:\/\/|mailto:)/i.test(v) && !/["'`<>]/.test(v) && !/\s/.test(v)
 }
 
+export function safeInlineHref(href: string): string {
+  const value = href.trim()
+  return isSafeHref(value) ? value : ''
+}
+
 // Recursively produce sanitised clones of a node's allowed content.
 function cleanNode(node: Node, doc: Document): Node[] {
   // Text node → keep (its data is inserted as text, so it's inert)
@@ -55,9 +60,9 @@ function cleanNode(node: Node, doc: Document): Node[] {
 
   const out = doc.createElement(tag.toLowerCase())
   if (tag === 'A') {
-    const href = el.getAttribute('href') || ''
-    if (isSafeHref(href)) {
-      out.setAttribute('href', href.trim())
+    const href = safeInlineHref(el.getAttribute('href') || '')
+    if (href) {
+      out.setAttribute('href', href)
       out.setAttribute('target', '_blank')
       out.setAttribute('rel', 'noopener noreferrer')
     }

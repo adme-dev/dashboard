@@ -22,12 +22,36 @@
     <!-- Text -->
     <div
       v-else-if="type === 'Text'"
-      :style="textStyle"
-      :class="['revert-browser-styles', { 'edm-editable': editable }]"
-      :contenteditable="editable ? 'true' : undefined"
-      @blur="editable && onTextEdit($event, true)"
-      v-html="blockProps.text || ''"
-    />
+      class="edm-rich-text-wrap"
+    >
+      <div
+        v-if="editable"
+        class="edm-inline-toolbar"
+        role="toolbar"
+        aria-label="Text formatting"
+      >
+        <button
+          v-for="action in inlineFormatActions"
+          :key="action.command"
+          type="button"
+          class="edm-inline-toolbar-button"
+          :aria-label="action.label"
+          :title="action.label"
+          @mousedown.prevent
+          @click.stop="applyInlineFormat(action.command)"
+        >
+          <span :class="action.icon" aria-hidden="true" />
+        </button>
+      </div>
+      <div
+        ref="textEditorEl"
+        :style="textStyle"
+        :class="['revert-browser-styles', { 'edm-editable': editable }]"
+        :contenteditable="editable ? 'true' : undefined"
+        @blur="editable && onTextEdit($event, true)"
+        v-html="blockProps.text || ''"
+      />
+    </div>
 
     <!-- Button -->
     <div v-else-if="type === 'Button'" :style="buttonWrapperStyle">
@@ -214,10 +238,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { dividerLineThickness } from '~~/app/utils/edmDivider'
 import { extendedStyleVue } from '~~/app/utils/edmStyle'
-import { sanitizeInlineHtml, extractPlainText } from '~~/app/utils/edmInlineText'
+import { sanitizeInlineHtml, extractPlainText, safeInlineHref } from '~~/app/utils/edmInlineText'
 
 const props = defineProps<{
   type: string
@@ -229,6 +253,15 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ 'update:text': [value: string] }>()
+
+const textEditorEl = ref<HTMLElement | null>(null)
+const inlineFormatActions = [
+  { command: 'bold', label: 'Bold', icon: 'i-lucide-bold' },
+  { command: 'italic', label: 'Italic', icon: 'i-lucide-italic' },
+  { command: 'underline', label: 'Underline', icon: 'i-lucide-underline' },
+  { command: 'createLink', label: 'Link', icon: 'i-lucide-link' }
+] as const
+type InlineFormatCommand = typeof inlineFormatActions[number]['command']
 
 // Capture edited text on blur (not input) so the reactive value only changes
 // once the field loses focus — avoids the contenteditable cursor-jump that a
@@ -247,6 +280,30 @@ function onTextEdit(e: Event, asHtml: boolean) {
   // sees a placeholder in preview otherwise. Empty Text (HTML) is allowed.
   if (!asHtml && value === '') return
   emit('update:text', value)
+}
+
+function commitTextEditorHtml(el: HTMLElement) {
+  const value = sanitizeInlineHtml(el.innerHTML)
+  el.innerHTML = value
+  const current = (props.props?.text as string) ?? ''
+  if (value !== current) emit('update:text', value)
+}
+
+function applyInlineFormat(command: InlineFormatCommand) {
+  if (!props.editable || props.type !== 'Text') return
+  const el = textEditorEl.value
+  if (!el || typeof document === 'undefined') return
+  if (typeof document.execCommand !== 'function') return
+
+  el.focus()
+  if (command === 'createLink') {
+    const href = safeInlineHref(window.prompt('Link URL') || '')
+    if (!href) return
+    document.execCommand('createLink', false, href)
+  } else {
+    document.execCommand(command)
+  }
+  commitTextEditorHtml(el)
 }
 
 // Enter commits the edit (blur) for single-line Heading/Button rather than
@@ -739,5 +796,58 @@ const columnsContainerCellStyle = {
   outline: 2px solid rgb(59, 130, 246);
   outline-offset: 2px;
   border-radius: 2px;
+}
+
+.edm-rich-text-wrap {
+  position: relative;
+}
+
+.edm-inline-toolbar {
+  position: absolute;
+  z-index: 5;
+  top: -36px;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  background: var(--ui-bg);
+  box-shadow: 0 8px 20px rgb(15 23 42 / 0.12);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.edm-rich-text-wrap:hover .edm-inline-toolbar,
+.edm-rich-text-wrap:focus-within .edm-inline-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.edm-inline-toolbar-button {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ui-text);
+  cursor: pointer;
+}
+
+.edm-inline-toolbar-button:hover,
+.edm-inline-toolbar-button:focus-visible {
+  background: var(--ui-bg-muted);
+  outline: none;
+}
+
+.edm-inline-toolbar-button span {
+  width: 15px;
+  height: 15px;
 }
 </style>

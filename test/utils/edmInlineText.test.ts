@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect } from 'vitest'
-import { sanitizeInlineHtml, extractPlainText } from '~~/app/utils/edmInlineText'
+import { sanitizeInlineHtml, extractPlainText, safeInlineHref } from '~~/app/utils/edmInlineText'
 
 describe('sanitizeInlineHtml', () => {
   it('keeps whitelisted inline formatting tags', () => {
@@ -78,6 +78,19 @@ describe('sanitizeInlineHtml', () => {
 
   it('normalises non-breaking spaces to regular spaces', () => {
     expect(sanitizeInlineHtml('a b')).toBe('a b')
+  })
+})
+
+describe('safeInlineHref', () => {
+  it('normalises safe http, https, and mailto links for toolbar insertion', () => {
+    expect(safeInlineHref(' https://x.com/a ')).toBe('https://x.com/a')
+    expect(safeInlineHref('mailto:team@example.com')).toBe('mailto:team@example.com')
+  })
+
+  it('rejects unsafe links before creating a contenteditable anchor', () => {
+    expect(safeInlineHref('javascript:alert(1)')).toBe('')
+    expect(safeInlineHref('https://x.com/`onmouseover=alert(1)`')).toBe('')
+    expect(safeInlineHref('https://x.com/ a')).toBe('')
   })
 })
 

@@ -92,6 +92,18 @@ describe('EmailBuilderEdmBlockRenderer inline editing (Phase 3b)', () => {
     expect(button).not.toContain('target="_blank"')
   })
 
+  it('shows rich-text controls for editable Text blocks only', async () => {
+    const text = await renderBlock('Text', { text: 'Body' }, {}, { editable: true })
+    expect(text).toContain('aria-label="Bold"')
+    expect(text).toContain('aria-label="Italic"')
+    expect(text).toContain('aria-label="Underline"')
+    expect(text).toContain('aria-label="Link"')
+
+    const heading = await renderBlock('Heading', { text: 'Hi', level: 'h1' }, {}, { editable: true })
+    expect(heading).not.toContain('aria-label="Bold"')
+    expect(heading).not.toContain('aria-label="Link"')
+  })
+
   it('is NOT contenteditable by default (thumbnails/preview)', async () => {
     const heading = await renderBlock('Heading', { text: 'Hi', level: 'h1' })
     expect(heading).not.toContain('contenteditable')
