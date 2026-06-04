@@ -445,7 +445,7 @@ const CONTENT_PRESETS: EdmSectionPreset[] = [
           textAlign: 'center',
           backgroundColor: '#ffffff'
         },
-        props: { url: 'https://placehold.co/600x400/f5f5f5/ccc?text=Your+Image', alt: 'Campaign story image' }
+        props: { url: 'https://picsum.photos/seed/content-story/600/400', alt: 'Campaign story image' }
       }),
       block('Heading', {
         style: {
