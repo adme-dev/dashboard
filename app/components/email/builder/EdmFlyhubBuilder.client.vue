@@ -8,6 +8,7 @@ import { EDM_SECTION_CATEGORIES, findStarterTemplate } from '~~/app/utils/edmPre
 import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
 import type { EdmFlyhubDocument } from '~~/app/types/edm'
 import { extractFragment, reidFragment } from '~~/app/utils/edmModuleFragment'
+import { resolveRootDropIndex, type EdmRootDropPlacement } from '~~/app/utils/edmDragReorder'
 import type { EdmCustomModule } from '~~/app/composables/useEdmCustomModules'
 
 const store = useEdmBuilder()
@@ -78,6 +79,9 @@ const childBlocks = computed(() => {
   }))
 })
 
+const draggedRootBlockId = ref<string | null>(null)
+const rootDropPreview = ref<{ targetBlockId: string, placement: EdmRootDropPlacement } | null>(null)
+
 function addBlock(type: string, position?: number) {
   store.addBlock(type, 'root', position, getDefaultBlockData(type))
 }
@@ -91,6 +95,57 @@ function moveBlock(blockId: string, direction: 'up' | 'down') {
   if (newIndex < 0 || newIndex >= childrenIds.length) return
   ;[childrenIds[index], childrenIds[newIndex]] = [childrenIds[newIndex], childrenIds[index]]
   store.updateBlockData('root', { childrenIds })
+}
+
+function getRootChildrenIds() {
+  return store.document.value.root?.data?.childrenIds || []
+}
+
+function getDropBoundaryIndex(targetBlockId: string, placement: EdmRootDropPlacement) {
+  const targetIndex = getRootChildrenIds().indexOf(targetBlockId)
+  if (targetIndex === -1) return null
+  return placement === 'after' ? targetIndex + 1 : targetIndex
+}
+
+function startRootDrag(blockId: string) {
+  draggedRootBlockId.value = blockId
+  rootDropPreview.value = null
+  store.setSelectedBlockId(blockId)
+}
+
+function previewRootDrop(targetBlockId: string, placement: EdmRootDropPlacement) {
+  const draggedBlockId = draggedRootBlockId.value
+  const dropBoundaryIndex = getDropBoundaryIndex(targetBlockId, placement)
+  if (!draggedBlockId || dropBoundaryIndex === null) {
+    rootDropPreview.value = null
+    return
+  }
+
+  const newIndex = resolveRootDropIndex(getRootChildrenIds(), draggedBlockId, dropBoundaryIndex)
+  rootDropPreview.value = newIndex === null ? null : { targetBlockId, placement }
+}
+
+function clearRootDropPreview(targetBlockId: string) {
+  if (rootDropPreview.value?.targetBlockId === targetBlockId) {
+    rootDropPreview.value = null
+  }
+}
+
+function dropRootBlock(targetBlockId: string, placement: EdmRootDropPlacement) {
+  const draggedBlockId = draggedRootBlockId.value
+  const dropBoundaryIndex = getDropBoundaryIndex(targetBlockId, placement)
+  if (draggedBlockId && dropBoundaryIndex !== null) {
+    const newIndex = resolveRootDropIndex(getRootChildrenIds(), draggedBlockId, dropBoundaryIndex)
+    if (newIndex !== null) {
+      store.moveBlock(draggedBlockId, 'root', newIndex)
+    }
+  }
+  clearRootDrag()
+}
+
+function clearRootDrag() {
+  draggedRootBlockId.value = null
+  rootDropPreview.value = null
 }
 
 function updateLayout(patch: Record<string, unknown>) {
@@ -466,7 +521,9 @@ onMounted(async () => {
         <!-- Left: slim category rail; hovering/focusing a category opens a
              flyout of live-rendered section thumbnails (Postcards fidelity). -->
         <aside class="w-44 border-r border-default bg-default p-2 overflow-auto">
-          <p class="px-2 py-2 text-[11px] font-semibold uppercase text-muted">Modules</p>
+          <p class="px-2 py-2 text-[11px] font-semibold uppercase text-muted">
+            Modules
+          </p>
           <UPopover
             v-for="category in EDM_SECTION_CATEGORIES"
             :key="category.id"
@@ -491,7 +548,9 @@ onMounted(async () => {
                 @mouseenter="cancelCloseFlyout(category.id)"
                 @mouseleave="scheduleCloseFlyout(category.id)"
               >
-                <p class="text-[11px] font-semibold uppercase text-muted mb-1">{{ category.label }}</p>
+                <p class="text-[11px] font-semibold uppercase text-muted mb-1">
+                  {{ category.label }}
+                </p>
                 <p v-if="category.id !== 'basic'" class="text-[11px] text-muted/80 mb-3 flex items-center gap-1">
                   <UIcon name="i-lucide-image" class="h-3 w-3 shrink-0" />
                   Preview images are placeholders — swap before sending.
@@ -509,8 +568,12 @@ onMounted(async () => {
                       <EmailBuilderEdmSectionThumbnail :preset="preset" :width="300" />
                     </div>
                     <div class="p-3">
-                      <p class="text-sm font-semibold">{{ preset.name }}</p>
-                      <p class="mt-1 text-xs text-muted leading-snug">{{ preset.description }}</p>
+                      <p class="text-sm font-semibold">
+                        {{ preset.name }}
+                      </p>
+                      <p class="mt-1 text-xs text-muted leading-snug">
+                        {{ preset.description }}
+                      </p>
                     </div>
                   </button>
                 </div>
@@ -560,12 +623,19 @@ onMounted(async () => {
             <template v-for="(block, index) in childBlocks" :key="block.id">
               <EmailBuilderEditorBlockWrapper
                 :block-id="block.id"
+                :is-drag-source="draggedRootBlockId === block.id"
+                :drop-placement="rootDropPreview?.targetBlockId === block.id ? rootDropPreview.placement : null"
                 @move-up="moveBlock(block.id, 'up')"
                 @move-down="moveBlock(block.id, 'down')"
                 @duplicate="store.duplicateBlock(block.id)"
                 @delete="store.removeBlock(block.id)"
                 @insert-above="addBlock($event, index)"
                 @insert-below="addBlock($event, index + 1)"
+                @drag-start="startRootDrag(block.id)"
+                @drag-over="(placement) => previewRootDrop(block.id, placement)"
+                @drag-leave="clearRootDropPreview(block.id)"
+                @drop="(placement) => dropRootBlock(block.id, placement)"
+                @drag-end="clearRootDrag"
               >
                 <EmailBuilderContainerBlockRenderer
                   v-if="block.type === 'Container'"
@@ -762,8 +832,18 @@ onMounted(async () => {
             <UInput v-model="renameModuleDescription" placeholder="Optional description" class="w-full" />
           </UFormField>
           <div class="flex justify-end gap-2 pt-2">
-            <UButton variant="ghost" color="neutral" label="Cancel" @click="showRenameModuleModal = false" />
-            <UButton color="primary" label="Save" :loading="renamingModule" @click="confirmRenameModule()" />
+            <UButton
+              variant="ghost"
+              color="neutral"
+              label="Cancel"
+              @click="showRenameModuleModal = false"
+            />
+            <UButton
+              color="primary"
+              label="Save"
+              :loading="renamingModule"
+              @click="confirmRenameModule()"
+            />
           </div>
         </div>
       </template>
@@ -778,8 +858,18 @@ onMounted(async () => {
             This removes it from the Custom Modules palette. Emails you already built with it are unaffected.
           </p>
           <div class="flex justify-end gap-2 pt-2">
-            <UButton variant="ghost" color="neutral" label="Cancel" @click="showDeleteModuleModal = false" />
-            <UButton color="error" label="Delete" :loading="deletingModule" @click="confirmDeleteModule()" />
+            <UButton
+              variant="ghost"
+              color="neutral"
+              label="Cancel"
+              @click="showDeleteModuleModal = false"
+            />
+            <UButton
+              color="error"
+              label="Delete"
+              :loading="deletingModule"
+              @click="confirmDeleteModule()"
+            />
           </div>
         </div>
       </template>

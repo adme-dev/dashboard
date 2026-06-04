@@ -4,10 +4,22 @@
      dynamic-block paths removed. -->
 <template>
   <div
-    :class="['editor-block-wrapper', { 'is-selected': isSelected, 'is-hovered': isHovered }]"
+    :class="[
+      'editor-block-wrapper',
+      {
+        'is-selected': isSelected,
+        'is-hovered': isHovered,
+        'is-drag-source': isDragSource,
+        'is-drop-before': dropPlacement === 'before',
+        'is-drop-after': dropPlacement === 'after'
+      }
+    ]"
     @mouseenter.stop="isHovered = true"
     @mouseleave="onLeave"
     @click.stop="handleClick"
+    @dragover.stop="handleDragOver"
+    @dragleave.stop="emit('drag-leave')"
+    @drop.stop="handleDrop"
   >
     <!-- Insert Above Zone -->
     <div
@@ -42,6 +54,19 @@
     <!-- Block Actions (shows on selection) -->
     <div v-if="isSelected" class="block-actions">
       <UButton
+        data-edm-drag-handle
+        icon="i-lucide-grip-vertical"
+        variant="ghost"
+        color="neutral"
+        size="xs"
+        class="drag-handle"
+        title="Drag to reorder"
+        draggable="true"
+        @click.stop
+        @dragstart.stop="handleDragStart"
+        @dragend.stop="handleDragEnd"
+      />
+      <UButton
         icon="i-lucide-chevron-up"
         variant="ghost"
         color="neutral"
@@ -75,8 +100,20 @@
       />
     </div>
 
+    <div
+      v-if="dropPlacement === 'before'"
+      class="drop-indicator drop-indicator-before"
+      aria-hidden="true"
+    />
+
     <!-- Block Content -->
     <slot />
+
+    <div
+      v-if="dropPlacement === 'after'"
+      class="drop-indicator drop-indicator-after"
+      aria-hidden="true"
+    />
 
     <!-- Insert Below Zone -->
     <div
@@ -113,8 +150,16 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { BLOCK_PALETTE } from '~~/app/utils/edmBlocks'
+import type { EdmRootDropPlacement } from '~~/app/utils/edmDragReorder'
 
-const props = defineProps<{ blockId: string }>()
+const props = withDefaults(defineProps<{
+  blockId: string
+  isDragSource?: boolean
+  dropPlacement?: EdmRootDropPlacement | null
+}>(), {
+  isDragSource: false,
+  dropPlacement: null
+})
 
 const emit = defineEmits<{
   'move-up': []
@@ -123,6 +168,11 @@ const emit = defineEmits<{
   'delete': []
   'insert-above': [type: string]
   'insert-below': [type: string]
+  'drag-start': []
+  'drag-over': [placement: EdmRootDropPlacement]
+  'drag-leave': []
+  'drop': [placement: EdmRootDropPlacement]
+  'drag-end': []
 }>()
 
 const store = useEdmBuilder()
@@ -152,6 +202,39 @@ function insertBlockAbove(type: string) {
 function insertBlockBelow(type: string) {
   emit('insert-below', type)
   insertBelowOpen.value = false
+}
+
+function getDropPlacement(event: DragEvent): EdmRootDropPlacement {
+  const el = event.currentTarget as HTMLElement | null
+  if (!el) return 'after'
+  const rect = el.getBoundingClientRect()
+  return event.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+}
+
+function handleDragStart(event: DragEvent) {
+  event.dataTransfer?.setData('text/plain', props.blockId)
+  event.dataTransfer?.setData('application/x-edm-root-block-id', props.blockId)
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+  }
+  emit('drag-start')
+}
+
+function handleDragOver(event: DragEvent) {
+  event.preventDefault()
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move'
+  }
+  emit('drag-over', getDropPlacement(event))
+}
+
+function handleDrop(event: DragEvent) {
+  event.preventDefault()
+  emit('drop', getDropPlacement(event))
+}
+
+function handleDragEnd() {
+  emit('drag-end')
 }
 </script>
 
@@ -183,6 +266,38 @@ function insertBlockBelow(type: string) {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   z-index: 10;
   background-color: var(--ui-bg);
+}
+
+.drag-handle {
+  cursor: grab;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.editor-block-wrapper.is-drag-source {
+  opacity: 0.55;
+}
+
+.drop-indicator {
+  position: absolute;
+  left: -8px;
+  right: -8px;
+  height: 3px;
+  border-radius: 9999px;
+  background-color: rgb(59, 130, 246);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.16);
+  pointer-events: none;
+  z-index: 12;
+}
+
+.drop-indicator-before {
+  top: -8px;
+}
+
+.drop-indicator-after {
+  bottom: -8px;
 }
 
 .insert-zone {
