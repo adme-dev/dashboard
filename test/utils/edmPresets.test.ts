@@ -25,6 +25,12 @@ function buildSectionPresetDocument(sectionPresetId: string) {
   return document
 }
 
+const sectionPresets = EDM_SECTION_CATEGORIES.flatMap(category => category.presets).filter(
+  preset => preset.kind === 'section'
+)
+
+const nonBasicCategories = EDM_SECTION_CATEGORIES.filter(category => category.id !== 'basic')
+
 const expectedContentByPresetId: Partial<Record<string, string[]>> = {
   'basic-heading': ['New Heading'],
   'basic-text': ['Enter your text here...'],
@@ -102,6 +108,66 @@ describe('edmPresets', () => {
       const roundTripped = roundTrip(document)
       expect(roundTripped.root).toBeDefined()
       expect(roundTripped.root.data.childrenIds).toEqual(document.root.data.childrenIds)
+    }
+  })
+
+  it('exposes a rich section library with at least two presets per non-basic category', () => {
+    for (const category of nonBasicCategories) {
+      const categorySectionPresets = category.presets.filter(preset => preset.kind === 'section')
+      expect(
+        categorySectionPresets.length,
+        `category ${category.id} should have >= 2 section presets`
+      ).toBeGreaterThanOrEqual(2)
+    }
+  })
+
+  it('builds every section preset fragment with unique ids that render without fallback markup', () => {
+    expect(sectionPresets.length).toBeGreaterThan(0)
+
+    for (const preset of sectionPresets) {
+      const fragment = buildSectionDocumentFragment(preset.id)
+
+      expect(fragment.rootChildrenIds.length, `preset ${preset.id} produced no blocks`).toBe(
+        preset.blocks.length
+      )
+      expect(
+        new Set(fragment.rootChildrenIds).size,
+        `preset ${preset.id} has duplicate root ids`
+      ).toBe(fragment.rootChildrenIds.length)
+      expect(Object.keys(fragment.blocks).sort()).toEqual([...fragment.rootChildrenIds].sort())
+
+      const document = createEmptyDocument()
+      document.root.data.childrenIds = [...fragment.rootChildrenIds]
+      Object.assign(document, fragment.blocks)
+
+      const html = renderTemplateDocument(document, {
+        subjectLine: 'Section preview',
+        previewText: 'Section preview text'
+      })
+
+      expect(isFlyhubFormat(document)).toBe(true)
+      expect(
+        html,
+        `preset ${preset.id} rendered fallback markup`
+      ).not.toContain('available in upcoming update')
+    }
+  })
+
+  it('resolves every referenced section preset id', () => {
+    const referencedIds = [
+      'header-logo-menu',
+      'header-dark-brand',
+      'content-editorial-intro',
+      'content-logo-grid',
+      'feature-icon-grid',
+      'cta-blue-banner',
+      'hero-dark-product',
+      'transactional-next-steps',
+      'footer-legal'
+    ]
+
+    for (const id of referencedIds) {
+      expect(findSectionPreset(id), `expected ${id} to resolve`).not.toBeNull()
     }
   })
 

@@ -68,13 +68,27 @@ export const EDM_SECTION_PRESET_IDS = [
   'basic-container',
   'header-logo-menu',
   'header-dark-brand',
+  'header-minimal',
+  'header-nav-bar',
   'content-editorial-intro',
   'content-logo-grid',
+  'content-image-story',
+  'content-quote',
   'feature-icon-grid',
+  'feature-two-up',
+  'feature-checklist',
   'cta-blue-banner',
+  'cta-dark-banner',
+  'cta-soft-banner',
   'hero-dark-product',
+  'ecommerce-product-row',
+  'ecommerce-sale-banner',
   'transactional-next-steps',
-  'footer-legal'
+  'transactional-receipt',
+  'transactional-verify',
+  'footer-legal',
+  'footer-social',
+  'footer-address'
 ] as const
 
 export type EdmSectionPresetId = typeof EDM_SECTION_PRESET_IDS[number]
@@ -167,6 +181,68 @@ const HEADER_PRESETS: EdmSectionPreset[] = [
         props: { logoUrl: '', tagline: 'postcards', alignment: 'center', backgroundColor: '#171717' }
       })
     ]
+  },
+  {
+    id: 'header-minimal',
+    categoryId: 'header',
+    kind: 'section',
+    name: 'Minimal Wordmark',
+    description: 'Left-aligned wordmark with a thin divider.',
+    icon: 'i-lucide-minus',
+    previewTone: 'light',
+    blocks: [
+      block('header', {
+        style: {
+          padding: { top: 24, right: 28, bottom: 12, left: 28 },
+          textAlign: 'left',
+          color: '#111827',
+          backgroundColor: '#ffffff'
+        },
+        props: { logoUrl: '', tagline: 'XeroFlow', alignment: 'left', backgroundColor: '#ffffff' }
+      }),
+      block('Divider', {
+        style: {
+          padding: { top: 0, right: 28, bottom: 8, left: 28 },
+          backgroundColor: '#ffffff'
+        },
+        props: { lineColor: '#e5e7eb', lineHeight: 1 }
+      })
+    ]
+  },
+  {
+    id: 'header-nav-bar',
+    categoryId: 'header',
+    kind: 'section',
+    name: 'Navigation Bar',
+    description: 'Brand line above a four-link navigation row.',
+    icon: 'i-lucide-navigation',
+    previewTone: 'light',
+    blocks: [
+      block('header', {
+        style: {
+          padding: { top: 20, right: 24, bottom: 4, left: 24 },
+          textAlign: 'center',
+          backgroundColor: '#f8fafc'
+        },
+        props: { logoUrl: '', tagline: 'The Agency', alignment: 'center', backgroundColor: '#f8fafc' }
+      }),
+      block('menu', {
+        style: {
+          padding: { top: 4, right: 24, bottom: 18, left: 24 },
+          color: '#0f172a',
+          backgroundColor: '#f8fafc'
+        },
+        props: {
+          separator: '/',
+          items: [
+            { label: 'Services', url: '#' },
+            { label: 'Case Studies', url: '#' },
+            { label: 'Pricing', url: '#' },
+            { label: 'Book a Call', url: '#' }
+          ]
+        }
+      })
+    ]
   }
 ]
 
@@ -233,6 +309,72 @@ const CONTENT_PRESETS: EdmSectionPreset[] = [
         }
       })
     ]
+  },
+  {
+    id: 'content-image-story',
+    categoryId: 'content',
+    kind: 'section',
+    name: 'Image Story',
+    description: 'Hero image with a headline and short narrative.',
+    icon: 'i-lucide-image',
+    previewTone: 'light',
+    blocks: [
+      block('Image', {
+        style: {
+          padding: { top: 24, right: 32, bottom: 16, left: 32 },
+          textAlign: 'center',
+          backgroundColor: '#ffffff'
+        },
+        props: { url: '', alt: 'Campaign story image' }
+      }),
+      block('Heading', {
+        style: {
+          padding: { top: 0, right: 32, bottom: 8, left: 32 },
+          textAlign: 'left',
+          fontSize: 24,
+          color: '#111827'
+        },
+        props: { level: 'h2', text: 'Behind the campaign' }
+      }),
+      block('Text', {
+        style: {
+          padding: { top: 0, right: 32, bottom: 24, left: 32 },
+          textAlign: 'left',
+          color: '#4b5563'
+        },
+        props: {
+          text: 'See how the team turned a single brief into a multi-channel launch that landed on time and on budget.'
+        }
+      })
+    ]
+  },
+  {
+    id: 'content-quote',
+    categoryId: 'content',
+    kind: 'section',
+    name: 'Pull Quote',
+    description: 'Centered client quote with attribution.',
+    icon: 'i-lucide-quote',
+    previewTone: 'accent',
+    blocks: [
+      block('Heading', {
+        style: {
+          padding: { top: 32, right: 40, bottom: 8, left: 40 },
+          textAlign: 'center',
+          fontSize: 22,
+          color: '#0f172a'
+        },
+        props: { level: 'h3', text: '“The launch beat every benchmark we set.”' }
+      }),
+      block('Text', {
+        style: {
+          padding: { top: 0, right: 40, bottom: 32, left: 40 },
+          textAlign: 'center',
+          color: '#64748b'
+        },
+        props: { text: 'Head of Marketing, Retail Partner' }
+      })
+    ]
   }
 ]
 
@@ -258,6 +400,67 @@ const FEATURE_PRESETS: EdmSectionPreset[] = [
             { icon: '•', heading: 'Plan', description: 'Map the launch.' },
             { icon: '•', heading: 'Build', description: 'Create the assets.' },
             { icon: '•', heading: 'Send', description: 'Reach the audience.' }
+          ]
+        }
+      })
+    ]
+  },
+  {
+    id: 'feature-two-up',
+    categoryId: 'feature',
+    kind: 'section',
+    name: 'Two-Up Benefits',
+    description: 'Two side-by-side benefit cards.',
+    icon: 'i-lucide-columns-2',
+    previewTone: 'light',
+    blocks: [
+      block('feature-grid', {
+        style: {
+          padding: { top: 28, right: 32, bottom: 28, left: 32 },
+          backgroundColor: '#ffffff'
+        },
+        props: {
+          columns: 2,
+          iconColor: '#7c3aed',
+          features: [
+            { icon: '★', heading: 'Strategy', description: 'A clear plan tied to your goals.' },
+            { icon: '⚡', heading: 'Delivery', description: 'Assets shipped fast, every sprint.' }
+          ]
+        }
+      })
+    ]
+  },
+  {
+    id: 'feature-checklist',
+    categoryId: 'feature',
+    kind: 'section',
+    name: "What's Included",
+    description: 'Headline above a four-point checklist.',
+    icon: 'i-lucide-list-checks',
+    previewTone: 'light',
+    blocks: [
+      block('Heading', {
+        style: {
+          padding: { top: 28, right: 32, bottom: 8, left: 32 },
+          textAlign: 'center',
+          fontSize: 22,
+          color: '#111827'
+        },
+        props: { level: 'h2', text: "What's included" }
+      }),
+      block('feature-grid', {
+        style: {
+          padding: { top: 8, right: 24, bottom: 28, left: 24 },
+          backgroundColor: '#ffffff'
+        },
+        props: {
+          columns: 2,
+          iconColor: '#10b981',
+          features: [
+            { icon: '✓', heading: 'Audience research', description: 'Targeting built on real data.' },
+            { icon: '✓', heading: 'Creative production', description: 'On-brand designs and copy.' },
+            { icon: '✓', heading: 'Multi-channel launch', description: 'Email, social, and ads.' },
+            { icon: '✓', heading: 'Reporting', description: 'Clear results after every send.' }
           ]
         }
       })
@@ -290,6 +493,56 @@ const CTA_PRESETS: EdmSectionPreset[] = [
         }
       })
     ]
+  },
+  {
+    id: 'cta-dark-banner',
+    categoryId: 'call-to-action',
+    kind: 'section',
+    name: 'Dark CTA',
+    description: 'High-contrast dark call to action.',
+    icon: 'i-lucide-mouse-pointer-click',
+    previewTone: 'dark',
+    blocks: [
+      block('cta-banner', {
+        style: {
+          padding: { top: 36, right: 32, bottom: 36, left: 32 },
+          fontFamily: 'MODERN_SANS'
+        },
+        props: {
+          heading: 'Book your strategy call',
+          subheading: 'Spend 30 minutes with our team and leave with a plan.',
+          ctaText: 'Schedule now',
+          ctaUrl: '#',
+          backgroundColor: '#111827',
+          textColor: '#ffffff'
+        }
+      })
+    ]
+  },
+  {
+    id: 'cta-soft-banner',
+    categoryId: 'call-to-action',
+    kind: 'section',
+    name: 'Soft Invite',
+    description: 'Light, low-pressure call to action.',
+    icon: 'i-lucide-hand',
+    previewTone: 'light',
+    blocks: [
+      block('cta-banner', {
+        style: {
+          padding: { top: 32, right: 32, bottom: 32, left: 32 },
+          fontFamily: 'MODERN_SANS'
+        },
+        props: {
+          heading: 'Want the full case study?',
+          subheading: 'We will send the breakdown straight to your inbox.',
+          ctaText: 'Send it over',
+          ctaUrl: '#',
+          backgroundColor: '#eef2ff',
+          textColor: '#1e3a8a'
+        }
+      })
+    ]
   }
 ]
 
@@ -312,6 +565,80 @@ const ECOMMERCE_PRESETS: EdmSectionPreset[] = [
           ctaText: 'Claim offer',
           ctaUrl: '#',
           overlayOpacity: 0.35,
+          textColor: '#ffffff'
+        }
+      })
+    ]
+  },
+  {
+    id: 'ecommerce-product-row',
+    categoryId: 'e-commerce',
+    kind: 'section',
+    name: 'Product Spotlight',
+    description: 'Product image, name, price, and buy button.',
+    icon: 'i-lucide-package',
+    previewTone: 'light',
+    blocks: [
+      block('Image', {
+        style: {
+          padding: { top: 28, right: 32, bottom: 12, left: 32 },
+          textAlign: 'center',
+          backgroundColor: '#ffffff'
+        },
+        props: { url: '', alt: 'Featured product' }
+      }),
+      block('Heading', {
+        style: {
+          padding: { top: 0, right: 32, bottom: 4, left: 32 },
+          textAlign: 'center',
+          fontSize: 20,
+          color: '#111827'
+        },
+        props: { level: 'h3', text: 'Signature Campaign Kit' }
+      }),
+      block('Text', {
+        style: {
+          padding: { top: 0, right: 32, bottom: 12, left: 32 },
+          textAlign: 'center',
+          color: '#0f766e',
+          fontWeight: 'bold'
+        },
+        props: { text: '$249' }
+      }),
+      block('Button', {
+        style: {
+          padding: { top: 0, right: 24, bottom: 28, left: 24 },
+          textAlign: 'center'
+        },
+        props: {
+          text: 'Add to cart',
+          url: '#',
+          buttonBackgroundColor: '#0f766e',
+          buttonTextColor: '#ffffff'
+        }
+      })
+    ]
+  },
+  {
+    id: 'ecommerce-sale-banner',
+    categoryId: 'e-commerce',
+    kind: 'section',
+    name: 'Sale Banner',
+    description: 'Bold seasonal-sale promo banner.',
+    icon: 'i-lucide-tag',
+    previewTone: 'accent',
+    blocks: [
+      block('cta-banner', {
+        style: {
+          padding: { top: 36, right: 32, bottom: 36, left: 32 },
+          fontFamily: 'MODERN_SANS'
+        },
+        props: {
+          heading: 'Spring sale — 30% off',
+          subheading: 'Save on every campaign package through the end of the month.',
+          ctaText: 'Shop the sale',
+          ctaUrl: '#',
+          backgroundColor: '#be123c',
           textColor: '#ffffff'
         }
       })
@@ -343,6 +670,97 @@ const TRANSACTIONAL_PRESETS: EdmSectionPreset[] = [
         }
       })
     ]
+  },
+  {
+    id: 'transactional-receipt',
+    categoryId: 'transactional',
+    kind: 'section',
+    name: 'Order Receipt',
+    description: 'Confirmation heading with order summary and link.',
+    icon: 'i-lucide-receipt',
+    previewTone: 'light',
+    blocks: [
+      block('Heading', {
+        style: {
+          padding: { top: 28, right: 32, bottom: 8, left: 32 },
+          textAlign: 'left',
+          fontSize: 22,
+          color: '#111827'
+        },
+        props: { level: 'h2', text: 'Thanks for your order' }
+      }),
+      block('Text', {
+        style: {
+          padding: { top: 0, right: 32, bottom: 12, left: 32 },
+          textAlign: 'left',
+          color: '#4b5563'
+        },
+        props: {
+          text: 'Order #10482 — Campaign Kit · $249.00. A copy of this receipt has been emailed to you.'
+        }
+      }),
+      block('Divider', {
+        style: {
+          padding: { top: 0, right: 32, bottom: 12, left: 32 },
+          backgroundColor: '#ffffff'
+        },
+        props: { lineColor: '#e5e7eb', lineHeight: 1 }
+      }),
+      block('Button', {
+        style: {
+          padding: { top: 0, right: 32, bottom: 28, left: 32 },
+          textAlign: 'left'
+        },
+        props: {
+          text: 'View order',
+          url: '#',
+          buttonBackgroundColor: '#111827',
+          buttonTextColor: '#ffffff'
+        }
+      })
+    ]
+  },
+  {
+    id: 'transactional-verify',
+    categoryId: 'transactional',
+    kind: 'section',
+    name: 'Verify Email',
+    description: 'Account verification prompt with action button.',
+    icon: 'i-lucide-mail-check',
+    previewTone: 'light',
+    blocks: [
+      block('Heading', {
+        style: {
+          padding: { top: 28, right: 32, bottom: 8, left: 32 },
+          textAlign: 'center',
+          fontSize: 22,
+          color: '#111827'
+        },
+        props: { level: 'h2', text: 'Confirm your email address' }
+      }),
+      block('Text', {
+        style: {
+          padding: { top: 0, right: 40, bottom: 16, left: 40 },
+          textAlign: 'center',
+          color: '#4b5563'
+        },
+        props: {
+          text: 'Tap the button below to verify your address and finish setting up your account.'
+        }
+      }),
+      block('Button', {
+        style: {
+          padding: { top: 0, right: 24, bottom: 28, left: 24 },
+          textAlign: 'center'
+        },
+        props: {
+          text: 'Verify email',
+          url: '#',
+          buttonBackgroundColor: '#2563eb',
+          buttonTextColor: '#ffffff'
+        }
+      })
+    ]
   }
 ]
 
@@ -366,6 +784,68 @@ const FOOTER_PRESETS: EdmSectionPreset[] = [
           showAddress: false,
           additionalText: 'You are receiving this email because you subscribed to updates.',
           backgroundColor: '#f5f5f5'
+        }
+      })
+    ]
+  },
+  {
+    id: 'footer-social',
+    categoryId: 'footer',
+    kind: 'section',
+    name: 'Social Footer',
+    description: 'Social links above the legal footer.',
+    icon: 'i-lucide-share-2',
+    previewTone: 'light',
+    blocks: [
+      block('menu', {
+        style: {
+          padding: { top: 20, right: 24, bottom: 4, left: 24 },
+          color: '#6b7280',
+          backgroundColor: '#f5f5f5'
+        },
+        props: {
+          separator: '·',
+          items: [
+            { label: 'Instagram', url: '#' },
+            { label: 'LinkedIn', url: '#' },
+            { label: 'YouTube', url: '#' }
+          ]
+        }
+      }),
+      block('footer', {
+        style: {
+          padding: { top: 4, right: 32, bottom: 24, left: 32 },
+          backgroundColor: '#f5f5f5'
+        },
+        props: {
+          showUnsubscribe: true,
+          showAddress: false,
+          additionalText: 'Follow along for more campaign updates.',
+          backgroundColor: '#f5f5f5'
+        }
+      })
+    ]
+  },
+  {
+    id: 'footer-address',
+    categoryId: 'footer',
+    kind: 'section',
+    name: 'Address Footer',
+    description: 'Mailing address with unsubscribe link.',
+    icon: 'i-lucide-map-pin',
+    previewTone: 'light',
+    blocks: [
+      block('footer', {
+        style: {
+          padding: { top: 24, right: 32, bottom: 24, left: 32 },
+          backgroundColor: '#111827',
+          color: '#9ca3af'
+        },
+        props: {
+          showUnsubscribe: true,
+          showAddress: false,
+          additionalText: 'The Agency · 100 George St, Sydney NSW 2000, Australia',
+          backgroundColor: '#111827'
         }
       })
     ]
