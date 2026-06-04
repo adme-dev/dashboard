@@ -13,6 +13,8 @@ interface TemplateRow {
   subject: string | null
   preview_text?: string | null
   body_source?: unknown
+  template_kind?: 'template' | 'draft' | null
+  folder_name?: string | null
   updated_at: string
 }
 interface FullTemplate {
@@ -20,6 +22,13 @@ interface FullTemplate {
   subject: string | null
   preview_text: string | null
   body_source: unknown
+  template_kind?: 'template' | 'draft' | null
+  folder_name?: string | null
+}
+interface TemplateGroup {
+  key: string
+  title: string
+  rows: TemplateRow[]
 }
 
 const toast = useToast()
@@ -30,6 +39,35 @@ const { data, refresh, pending } = await useFetch<{ items: TemplateRow[] }>(
 )
 
 const busyId = ref<string | null>(null)
+const savedRows = computed(() => data.value?.items ?? [])
+
+function rowKind(row: TemplateRow): 'template' | 'draft' {
+  return row.template_kind === 'draft' ? 'draft' : 'template'
+}
+
+function rowFolder(row: TemplateRow): string {
+  return row.folder_name?.trim() || 'Unfiled'
+}
+
+const savedTemplateGroups = computed<TemplateGroup[]>(() => {
+  const drafts = savedRows.value.filter(row => rowKind(row) === 'draft')
+  const templates = savedRows.value.filter(row => rowKind(row) === 'template')
+  const groups: TemplateGroup[] = []
+  if (drafts.length > 0) {
+    groups.push({ key: 'drafts', title: 'Drafts', rows: drafts })
+  }
+
+  const byFolder = new Map<string, TemplateRow[]>()
+  for (const row of templates) {
+    const folder = rowFolder(row)
+    byFolder.set(folder, [...(byFolder.get(folder) ?? []), row])
+  }
+  for (const [folder, rows] of Array.from(byFolder.entries()).sort(([a], [b]) => a.localeCompare(b))) {
+    groups.push({ key: `folder:${folder}`, title: folder, rows })
+  }
+
+  return groups
+})
 
 function openComposer(id?: string) {
   navigateTo(id ? `/agency/email/compose?id=${id}` : '/agency/email/compose')
@@ -126,7 +164,9 @@ async function duplicate(row: TemplateRow) {
         name: `${template.name} (copy)`,
         subject: template.subject,
         preview_text: template.preview_text,
-        body_source: template.body_source
+        body_source: template.body_source,
+        template_kind: template.template_kind === 'draft' ? 'draft' : 'template',
+        folder_name: template.folder_name || null
       }
     })
     toast.add({ title: 'Template duplicated', color: 'success' })
@@ -339,90 +379,121 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
           Your templates
         </p>
         <p class="text-sm text-muted">
-          {{ data?.items?.length ?? 0 }} template(s)
+          {{ savedRows.length }} template(s)
         </p>
       </div>
 
       <div v-if="pending" class="text-sm text-muted">
         Loading…
       </div>
-      <div v-else-if="!data?.items?.length" class="text-sm text-muted py-8 text-center">
+      <div v-else-if="!savedRows.length" class="text-sm text-muted py-8 text-center">
         No templates yet. Build one in the composer and save it to reuse across campaigns.
       </div>
 
-      <div v-else class="saved-template-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <div
-          v-for="row in data.items"
-          :key="row.id"
-          class="saved-template-card group flex min-h-80 flex-col overflow-hidden rounded-lg border border-default bg-default hover:border-primary hover:shadow-sm"
+      <div v-else class="space-y-6">
+        <section
+          v-for="group in savedTemplateGroups"
+          :key="group.key"
+          class="space-y-3"
         >
-          <button
-            type="button"
-            class="flex flex-1 flex-col text-left cursor-pointer"
-            @click="openComposer(row.id)"
-          >
-            <div class="flex h-52 items-start justify-center overflow-hidden bg-elevated/40 p-3">
-              <EmailBuilderEdmDocumentThumbnail
-                :document="templateDocument(row)"
-                :width="300"
-                :max-height="184"
-              />
-            </div>
-            <div class="flex-1 border-t border-default p-4">
-              <p class="font-semibold truncate group-hover:text-primary">
-                {{ row.name }}
-              </p>
-              <p class="mt-1 text-sm text-muted truncate">
-                {{ row.subject || 'No subject' }}
-              </p>
-              <p v-if="row.preview_text" class="mt-2 line-clamp-2 text-sm text-muted leading-snug">
-                {{ row.preview_text }}
-              </p>
-              <p class="mt-3 text-xs text-muted">
-                Updated {{ fmtDate(row.updated_at) }}
-              </p>
-            </div>
-          </button>
-
-          <div class="flex items-center justify-end gap-1 border-t border-default px-3 py-2">
-            <UButton
-              icon="i-lucide-pencil"
-              variant="ghost"
-              color="neutral"
-              size="xs"
-              label="Edit"
-              @click="openComposer(row.id)"
-            />
-            <UTooltip text="Duplicate">
-              <UButton
-                icon="i-lucide-copy"
-                variant="ghost"
-                color="neutral"
-                size="xs"
-                :loading="busyId === row.id"
-                @click="duplicate(row)"
-              />
-            </UTooltip>
-            <UTooltip text="Rename">
-              <UButton
-                icon="i-lucide-text-cursor-input"
-                variant="ghost"
-                color="neutral"
-                size="xs"
-                @click="openRename(row)"
-              />
-            </UTooltip>
-            <UTooltip text="Delete">
-              <UButton
-                icon="i-lucide-trash-2"
-                variant="ghost"
-                color="error"
-                size="xs"
-                @click="confirmDelete(row)"
-              />
-            </UTooltip>
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="text-sm font-semibold text-default">
+              {{ group.title }}
+            </h3>
+            <span class="text-xs text-muted">{{ group.rows.length }} template(s)</span>
           </div>
-        </div>
+
+          <div class="saved-template-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div
+              v-for="row in group.rows"
+              :key="row.id"
+              class="saved-template-card group flex min-h-80 flex-col overflow-hidden rounded-lg border border-default bg-default hover:border-primary hover:shadow-sm"
+            >
+              <button
+                type="button"
+                class="flex flex-1 flex-col text-left cursor-pointer"
+                @click="openComposer(row.id)"
+              >
+                <div class="flex h-52 items-start justify-center overflow-hidden bg-elevated/40 p-3">
+                  <EmailBuilderEdmDocumentThumbnail
+                    :document="templateDocument(row)"
+                    :width="300"
+                    :max-height="184"
+                  />
+                </div>
+                <div class="flex-1 border-t border-default p-4">
+                  <div class="mb-2 flex flex-wrap gap-1.5">
+                    <UBadge
+                      v-if="rowKind(row) === 'draft'"
+                      variant="subtle"
+                      color="warning"
+                      size="xs"
+                      label="Draft"
+                    />
+                    <UBadge
+                      v-else
+                      variant="subtle"
+                      color="neutral"
+                      size="xs"
+                      :label="rowFolder(row)"
+                    />
+                  </div>
+                  <p class="font-semibold truncate group-hover:text-primary">
+                    {{ row.name }}
+                  </p>
+                  <p class="mt-1 text-sm text-muted truncate">
+                    {{ row.subject || 'No subject' }}
+                  </p>
+                  <p v-if="row.preview_text" class="mt-2 line-clamp-2 text-sm text-muted leading-snug">
+                    {{ row.preview_text }}
+                  </p>
+                  <p class="mt-3 text-xs text-muted">
+                    Updated {{ fmtDate(row.updated_at) }}
+                  </p>
+                </div>
+              </button>
+
+              <div class="flex items-center justify-end gap-1 border-t border-default px-3 py-2">
+                <UButton
+                  icon="i-lucide-pencil"
+                  variant="ghost"
+                  color="neutral"
+                  size="xs"
+                  label="Edit"
+                  @click="openComposer(row.id)"
+                />
+                <UTooltip text="Duplicate">
+                  <UButton
+                    icon="i-lucide-copy"
+                    variant="ghost"
+                    color="neutral"
+                    size="xs"
+                    :loading="busyId === row.id"
+                    @click="duplicate(row)"
+                  />
+                </UTooltip>
+                <UTooltip text="Rename">
+                  <UButton
+                    icon="i-lucide-text-cursor-input"
+                    variant="ghost"
+                    color="neutral"
+                    size="xs"
+                    @click="openRename(row)"
+                  />
+                </UTooltip>
+                <UTooltip text="Delete">
+                  <UButton
+                    icon="i-lucide-trash-2"
+                    variant="ghost"
+                    color="error"
+                    size="xs"
+                    @click="confirmDelete(row)"
+                  />
+                </UTooltip>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
     </section>
 

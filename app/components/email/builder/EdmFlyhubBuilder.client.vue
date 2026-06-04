@@ -255,6 +255,13 @@ const subject = ref('')
 const previewText = ref('')
 const saving = ref(false)
 const showSaveModal = ref(false)
+type TemplateKind = 'template' | 'draft'
+const templateKind = ref<TemplateKind>('template')
+const templateFolderName = ref('')
+const TEMPLATE_KIND_OPTIONS: { label: string, value: TemplateKind }[] = [
+  { label: 'Template', value: 'template' },
+  { label: 'Draft', value: 'draft' }
+]
 
 async function save() {
   saving.value = true
@@ -283,7 +290,9 @@ async function save() {
       name: name.value.trim(),
       subject: subject.value || null,
       preview_text: previewText.value || null,
-      body_source: store.document.value
+      body_source: store.document.value,
+      template_kind: templateKind.value,
+      folder_name: templateFolderName.value.trim() || null
     }
     if (templateId.value) {
       await $fetch(`/api/email/templates/${templateId.value}`, { method: 'PATCH', body })
@@ -448,6 +457,8 @@ onMounted(async () => {
       name.value = starterTemplate.name
       subject.value = starterTemplate.subject
       previewText.value = starterTemplate.previewText
+      templateKind.value = 'template'
+      templateFolderName.value = ''
     }
     return
   }
@@ -462,6 +473,8 @@ onMounted(async () => {
         subject: string | null
         preview_text: string | null
         body_source: unknown
+        template_kind?: TemplateKind | null
+        folder_name?: string | null
       }
     }>(`/api/email/templates/${id}`)
     if (res.template?.body_source) {
@@ -471,6 +484,8 @@ onMounted(async () => {
     name.value = res.template.name || ''
     subject.value = res.template.subject || ''
     previewText.value = res.template.preview_text || ''
+    templateKind.value = res.template.template_kind === 'draft' ? 'draft' : 'template'
+    templateFolderName.value = res.template.folder_name || ''
   } catch {
     toast.add({ title: 'Load failed', description: 'Could not load that template.', color: 'error' })
   }
@@ -817,6 +832,19 @@ onMounted(async () => {
           <UFormField v-if="!campaignId" label="Name" required>
             <UInput v-model="name" placeholder="e.g. Monthly newsletter" class="w-full" />
           </UFormField>
+          <div v-if="!campaignId" class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <UFormField label="Save as">
+              <USelect
+                v-model="templateKind"
+                :items="TEMPLATE_KIND_OPTIONS"
+                value-key="value"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="Folder">
+              <UInput v-model="templateFolderName" placeholder="e.g. Newsletters" class="w-full" />
+            </UFormField>
+          </div>
           <UFormField label="Subject line">
             <UInput v-model="subject" placeholder="Subject shown in the inbox" class="w-full" />
           </UFormField>

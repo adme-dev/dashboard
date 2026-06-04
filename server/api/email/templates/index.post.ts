@@ -8,6 +8,8 @@ const Body = z.object({
   subject: z.string().max(300).optional().nullable(),
   preview_text: z.string().max(300).optional().nullable(),
   body_source: z.any().optional(),
+  template_kind: z.enum(['template', 'draft']).optional(),
+  folder_name: z.string().max(120).optional().nullable(),
   client_id: z.string().uuid().optional().nullable()
 })
 

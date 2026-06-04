@@ -7,7 +7,9 @@ const Body = z.object({
   name: z.string().min(1).max(200).optional(),
   subject: z.string().max(300).optional().nullable(),
   preview_text: z.string().max(300).optional().nullable(),
-  body_source: z.any().optional()
+  body_source: z.any().optional(),
+  template_kind: z.enum(['template', 'draft']).optional(),
+  folder_name: z.string().max(120).optional().nullable()
 })
 
 export default defineEventHandler(async (event) => {

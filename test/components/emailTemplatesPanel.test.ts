@@ -16,6 +16,8 @@ const savedTemplates = [
     subject: 'June update',
     preview_text: 'Preview line',
     body_source: savedDocument,
+    template_kind: 'template',
+    folder_name: 'Newsletters',
     updated_at: '2026-06-05T01:00:00.000Z'
   },
   {
@@ -24,6 +26,8 @@ const savedTemplates = [
     subject: null,
     preview_text: null,
     body_source: savedDocument,
+    template_kind: 'draft',
+    folder_name: null,
     updated_at: '2026-06-04T01:00:00.000Z'
   }
 ]
@@ -92,5 +96,14 @@ describe('Email TemplatesPanel saved templates', () => {
     expect(html).toContain('Delete')
     expect(html).toContain('data-icon="i-lucide-copy"')
     expect(html).toContain('data-icon="i-lucide-trash-2"')
+  })
+
+  it('groups saved templates by drafts and folder name', async () => {
+    const html = await renderPanel()
+
+    expect(html).toContain('Drafts')
+    expect(html).toContain('Newsletters')
+    expect(html).toContain('Saved Newsletter')
+    expect(html).toContain('Saved Promo')
   })
 })
