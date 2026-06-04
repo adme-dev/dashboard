@@ -23,6 +23,19 @@ describe('EmailBuilderEdmBlockRenderer custom sections', () => {
     expect(html).not.toContain('Unknown block')
   })
 
+  it('renders hero-section cover imagery and hides CTA when omitted', async () => {
+    const html = await renderBlock('hero-section', {
+      imageUrl: 'https://example.com/hero.jpg',
+      heading: 'Launch week'
+    })
+    expect(html).toContain('https://example.com/hero.jpg')
+    expect(html).toContain('background-size:cover')
+    expect(html).toContain('background-position:center')
+    expect(html).toContain('background-image:linear-gradient')
+    expect(html).not.toContain('Call to action')
+    expect(html).not.toContain('Unknown block')
+  })
+
   it('renders feature-grid preview items', async () => {
     const html = await renderBlock('feature-grid', {
       features: [
@@ -37,9 +50,9 @@ describe('EmailBuilderEdmBlockRenderer custom sections', () => {
   })
 
   it('renders header, menu, cta-banner, and footer previews', async () => {
-    expect(await renderBlock('header', { tagline: 'Your brand' })).toContain('Your brand')
-    expect(await renderBlock('menu', { items: [{ label: 'Work', url: '#' }] })).toContain('Work')
+    expect(await renderBlock('header', {})).toContain('Your brand')
+    expect(await renderBlock('menu', { items: [{ label: 'Work', url: '/work' }] })).toContain('href="/work"')
     expect(await renderBlock('cta-banner', { heading: 'Ready?', ctaText: 'Start now' })).toContain('Ready?')
-    expect(await renderBlock('footer', { additionalText: 'You subscribed to updates.' })).toContain('You subscribed to updates.')
+    expect(await renderBlock('footer', {})).toContain('You are receiving this email because you subscribed to updates.')
   })
 })

@@ -81,7 +81,9 @@
       :key="`${item.label}-${index}`"
       :style="menuItemStyle"
     >
-      {{ item.label }}
+      <a :href="item.url" :style="menuLinkStyle" target="_blank">
+        {{ item.label }}
+      </a>
       <span v-if="index < menuItems.length - 1" :style="menuSeparatorStyle">{{ menuSeparator }}</span>
     </span>
   </div>
@@ -94,7 +96,7 @@
     <div v-if="heroSubheading" :style="heroSubheadingStyle">
       {{ heroSubheading }}
     </div>
-    <span :style="heroCtaStyle">
+    <span v-if="heroHasCta" :style="heroCtaStyle">
       {{ heroCtaText }}
     </span>
   </div>
@@ -278,7 +280,7 @@ const headerStyle = computed(() => ({
   boxSizing: 'border-box'
 }))
 const headerLogoUrl = computed(() => asString(blockProps.value.logoUrl))
-const headerTagline = computed(() => asString(blockProps.value.tagline))
+const headerTagline = computed(() => asString(blockProps.value.tagline) || 'Your brand')
 const headerLogoStyle = computed(() => ({
   display: 'block',
   maxWidth: '180px',
@@ -317,11 +319,20 @@ const menuItemStyle = {
   fontWeight: '500',
   whiteSpace: 'nowrap'
 }
+const menuLinkStyle = {
+  color: (props.style?.color as string) || '#111827',
+  textDecoration: 'none'
+}
 const menuSeparatorStyle = {
   padding: '0 8px',
   color: '#9ca3af'
 }
 
+const heroImageUrl = computed(() => asString(blockProps.value.imageUrl))
+const heroOverlayOpacity = computed(() => {
+  const value = blockProps.value.overlayOpacity
+  return typeof value === 'number' ? value : 0.4
+})
 const heroStyle = computed(() => ({
   ...buildBaseStyle(props.style),
   display: 'flex',
@@ -331,13 +342,20 @@ const heroStyle = computed(() => ({
   gap: '10px',
   minHeight: '180px',
   backgroundColor: (props.style?.backgroundColor as string) || '#1f2937',
+  backgroundImage: heroImageUrl.value
+    ? `linear-gradient(rgba(0, 0, 0, ${heroOverlayOpacity.value}), rgba(0, 0, 0, ${heroOverlayOpacity.value})), url("${heroImageUrl.value}")`
+    : undefined,
+  backgroundSize: heroImageUrl.value ? 'cover' : undefined,
+  backgroundPosition: heroImageUrl.value ? 'center' : undefined,
+  backgroundRepeat: heroImageUrl.value ? 'no-repeat' : undefined,
   color: (blockProps.value.textColor as string) || '#ffffff',
   textAlign: 'center' as const,
   boxSizing: 'border-box'
 }))
 const heroHeading = computed(() => asString(blockProps.value.heading) || 'Hero headline')
 const heroSubheading = computed(() => asString(blockProps.value.subheading))
-const heroCtaText = computed(() => asString(blockProps.value.ctaText) || 'Call to action')
+const heroCtaText = computed(() => asString(blockProps.value.ctaText))
+const heroHasCta = computed(() => heroCtaText.value.length > 0)
 const heroHeadingStyle = {
   fontSize: '28px',
   lineHeight: '1.25',
@@ -468,7 +486,9 @@ const footerStyle = computed(() => ({
   minHeight: '80px',
   boxSizing: 'border-box'
 }))
-const footerAdditionalText = computed(() => asString(blockProps.value.additionalText))
+const footerAdditionalText = computed(() =>
+  asString(blockProps.value.additionalText) || 'You are receiving this email because you subscribed to updates.'
+)
 const footerShowUnsubscribe = computed(() => blockProps.value.showUnsubscribe !== false)
 const footerAdditionalTextStyle = {
   fontSize: '12px',
