@@ -233,6 +233,12 @@ function onTextEdit(e: Event, asHtml: boolean) {
   const value = asHtml
     ? sanitizeInlineHtml(el.innerHTML)
     : extractPlainText(el.textContent || '')
+  const current = (props.props?.text as string) ?? ''
+  // No-op edit → skip (avoids a needless v-html re-render/flash on blur).
+  if (value === current) return
+  // Don't persist an empty plain-text Heading/Button over its content — the user
+  // sees a placeholder in preview otherwise. Empty Text (HTML) is allowed.
+  if (!asHtml && value === '') return
   emit('update:text', value)
 }
 

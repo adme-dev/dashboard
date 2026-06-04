@@ -10,13 +10,25 @@
 // every attribute is stripped except a validated href on <a>.
 
 const ALLOWED_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'A', 'BR', 'SPAN'])
+// Tags whose entire subtree is dropped (not unwrapped). Covers raw-text /
+// metadata / foreign-content elements: in a real (spec-compliant) browser these
+// parse into namespaced or raw-text subtrees where unwrapping could leak markup
+// or treat an SVG <a> as an HTML anchor. Dropping them wholesale is the safe
+// default; happy-dom is lenient here but prod browsers are not.
+const DROP_SUBTREE_TAGS = new Set([
+  'SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'TEXTAREA', 'TITLE',
+  'IFRAME', 'OBJECT', 'EMBED', 'SVG', 'MATH'
+])
 // Matches a non-breaking space as the raw char (real browsers serialise it so)
 // or as the &nbsp; entity (happy-dom / some browsers serialise it that way).
 const NBSP = /\u00A0|&nbsp;/g
 
 function isSafeHref(href: string): boolean {
   const v = href.trim()
-  return /^(https?:\/\/|mailto:)/i.test(v) && !/["'<>]/.test(v)
+  // http(s)/mailto only, and reject any char that could break out of the
+  // attribute or smuggle a handler: quotes, angle brackets, backtick, and any
+  // whitespace/control char.
+  return /^(https?:\/\/|mailto:)/i.test(v) && !/["'`<>]/.test(v) && !/\s/.test(v)
 }
 
 // Recursively produce sanitised clones of a node's allowed content.
@@ -30,9 +42,15 @@ function cleanNode(node: Node, doc: Document): Node[] {
 
   const el = node as Element
   const tag = el.tagName.toUpperCase()
+
+  // Dangerous / foreign-content / raw-text tags → drop the WHOLE subtree before
+  // recursing (don't leak their contents as text, don't treat foreign <a> as an
+  // HTML anchor).
+  if (DROP_SUBTREE_TAGS.has(tag)) return []
+
   const cleanedChildren = Array.from(el.childNodes).flatMap(c => cleanNode(c, doc))
 
-  // Disallowed tag → unwrap (keep its sanitised children, drop the tag itself)
+  // Other disallowed tags → unwrap (keep sanitised children, drop the tag).
   if (!ALLOWED_TAGS.has(tag)) return cleanedChildren
 
   const out = doc.createElement(tag.toLowerCase())

@@ -43,7 +43,7 @@ registerBlock({
               font-family="${fontFamily}"
               font-weight="${fontWeight === 'bold' ? 'bold' : 'bold'}"
               line-height="1.3"
-            >${text}</mj-text>
+            >${escapeHtml(text)}</mj-text>
           </mj-column>
         </mj-section>`
   },
@@ -62,7 +62,7 @@ registerBlock({
     const text = (props.text as string) || ''
     const headingFontSize = fontSize || HEADING_FONT_SIZE_MAP[level] || '24px'
 
-    return `<mj-text padding="${padding}" align="${textAlign}" color="${textColor || '#111827'}" font-size="${headingFontSize}" font-family="${fontFamily}" font-weight="bold" line-height="1.3">${text}</mj-text>`
+    return `<mj-text padding="${padding}" align="${textAlign}" color="${textColor || '#111827'}" font-size="${headingFontSize}" font-family="${fontFamily}" font-weight="bold" line-height="1.3">${escapeHtml(text)}</mj-text>`
   },
 
   renderHtml(block: FlyhubBlock, _context: BlockRenderContext): string {

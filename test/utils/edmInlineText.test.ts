@@ -41,6 +41,30 @@ describe('sanitizeInlineHtml', () => {
     expect(out).not.toContain('href=')
   })
 
+  it('drops SVG/MATH foreign-content subtrees wholesale (incl. nested svg <a>/script)', () => {
+    // NB: exact placement of text around foreign content is parser-dependent
+    // (happy-dom vs real browsers differ) — we assert SAFETY, not text layout.
+    const svg = sanitizeInlineHtml('before<svg><a href="javascript:alert(1)">x</a><script>y</script></svg>')
+    expect(svg).not.toContain('javascript')
+    expect(svg).not.toContain('<a')
+    expect(svg).not.toContain('<svg')
+    expect(svg).not.toContain('<script')
+    expect(svg).toContain('before')
+    expect(sanitizeInlineHtml('<math><mi>x</mi></math>')).not.toContain('<math')
+  })
+
+  it('drops style/template/noscript/textarea content entirely (no text leak)', () => {
+    expect(sanitizeInlineHtml('a<style>.x{color:red}</style>b')).toBe('ab')
+    expect(sanitizeInlineHtml('a<template><b>hidden</b></template>b')).toBe('ab')
+    expect(sanitizeInlineHtml('a<noscript>ns</noscript>b')).toBe('ab')
+    expect(sanitizeInlineHtml('a<textarea><b>t</b></textarea>b')).toBe('ab')
+  })
+
+  it('rejects hrefs containing backticks or whitespace', () => {
+    expect(sanitizeInlineHtml('<a href="https://x.com/`onmouseover=alert(1)`">x</a>')).not.toContain('href=')
+    expect(sanitizeInlineHtml('<a href="https://x.com/ a">x</a>')).not.toContain('href=')
+  })
+
   it('drops an img/onerror payload', () => {
     const out = sanitizeInlineHtml('<img src=x onerror="alert(1)">caption')
     expect(out).not.toContain('<img')
