@@ -4,9 +4,8 @@ import { renderToString } from 'vue/server-renderer'
 import BlockSettingsPanel from '~~/app/components/email/builder/BlockSettingsPanel.vue'
 
 // Expose the Nuxt auto-imports the component relies on.
-;(globalThis as Record<string, unknown>).ref = ref
-;(globalThis as Record<string, unknown>).computed = computed
-;(globalThis as Record<string, unknown>).reactive = reactive
+
+Object.assign(globalThis, { ref, computed, reactive })
 
 // Generic passthrough stubs for the Nuxt UI components — group headers are
 // native <button>/<span> so they render regardless; we only need the U-*
@@ -18,14 +17,18 @@ const stubs: Record<string, unknown> = {
   UTextarea: { name: 'UTextarea', props: ['modelValue'], template: '<textarea />' },
   USelect: { name: 'USelect', props: ['modelValue', 'items'], template: '<select />' },
   USlider: { name: 'USlider', props: ['modelValue'], template: '<div class="slider" />' },
-  UCheckbox: { name: 'UCheckbox', props: ['modelValue', 'label'], template: '<input type="checkbox" />' },
+  UCheckbox: { name: 'UCheckbox', props: ['modelValue', 'label'], template: '<label><input type="checkbox" />{{ label }}</label>' },
+  UBadge: { name: 'UBadge', template: '<span><slot /></span>' },
   UButton: { name: 'UButton', props: ['label', 'icon'], template: '<button><slot />{{ label }}</button>' },
   UIcon: { name: 'UIcon', props: ['name'], template: '<i :data-icon="name" />' },
   UTooltip: passthrough('UTooltip')
 }
 
-async function render(block: { id: string, type: string, data: Record<string, unknown> }) {
-  const app = createSSRApp({ render: () => h(BlockSettingsPanel, { block }) })
+async function render(
+  block: { id: string, type: string, data: Record<string, unknown> },
+  extra: Record<string, unknown> = {}
+) {
+  const app = createSSRApp({ render: () => h(BlockSettingsPanel, { block, ...extra }) })
   Object.entries(stubs).forEach(([name, comp]) => app.component(name, comp as never))
   return renderToString(app)
 }
@@ -54,5 +57,21 @@ describe('BlockSettingsPanel — Phase 3a grouped style sections', () => {
   it('hides Background image for a Divider (not a bg-image block)', async () => {
     const html = await render({ id: 'b', type: 'Divider', data: { props: {}, style: {} } })
     expect(html).not.toContain('Background image')
+  })
+
+  it('labels the inspector as Mobile override when editing mobile styles', async () => {
+    const html = await render({
+      id: 'b',
+      type: 'Text',
+      data: {
+        props: { text: 'Desktop' },
+        style: { color: '#111111' },
+        mobile: { props: { text: 'Mobile' }, style: { color: '#222222' } }
+      }
+    }, { device: 'mobile' })
+
+    expect(html).toContain('Mobile override')
+    expect(html).toContain('Hide on mobile')
+    expect(html).toContain('Hide on desktop')
   })
 })

@@ -6,6 +6,7 @@
 <script setup lang="ts">
 import { getEdmSectionSettings } from '~~/app/utils/edmSectionSettings'
 import { BORDER_STYLES, TEXT_TRANSFORMS, SHADOW_OPTIONS } from '~~/app/utils/edmStyle'
+import type { EdmDevice } from '~~/app/utils/edmResponsive'
 
 interface BlockData {
   style?: {
@@ -21,13 +22,20 @@ interface BlockData {
     [key: string]: unknown
   }
   props?: Record<string, unknown>
+  hideOnMobile?: boolean | null
+  hideOnDesktop?: boolean | null
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   block: { id: string, type: string, data: BlockData }
-}>()
+  baseBlock?: { id: string, type: string, data: BlockData } | null
+  device?: EdmDevice
+}>(), {
+  baseBlock: null,
+  device: 'desktop'
+})
 
-const emit = defineEmits<{ update: [updates: { style?: unknown, props?: unknown }] }>()
+const emit = defineEmits<{ update: [updates: { style?: unknown, props?: unknown, visibility?: { hideOnMobile?: boolean, hideOnDesktop?: boolean } }] }>()
 
 const FONT_OPTIONS = [
   { label: 'Modern Sans', value: 'MODERN_SANS' },
@@ -78,6 +86,8 @@ const BG_IMAGE_BLOCKS = ['Text', 'Heading', 'Container', 'ColumnsContainer']
 const showTypographyGroup = computed(() => TEXTUAL_BLOCKS.includes(props.block.type))
 const showEffectsGroup = computed(() => STYLEABLE_BLOCKS.includes(props.block.type))
 const showBackgroundImage = computed(() => BG_IMAGE_BLOCKS.includes(props.block.type))
+const isMobileEditing = computed(() => props.device === 'mobile')
+const visibilityData = computed(() => props.baseBlock?.data || props.block.data)
 
 // Collapsible open-state per group (Spacing open by default; advanced groups closed).
 const openGroups = reactive<Record<string, boolean>>({
@@ -142,6 +152,10 @@ function updateStyle(key: string, value: unknown) {
   emit('update', { style: { ...(props.block.data?.style || {}), [key]: value } })
 }
 
+function updateVisibility(key: 'hideOnMobile' | 'hideOnDesktop', value: boolean) {
+  emit('update', { visibility: { [key]: value } })
+}
+
 function updatePadding(side: 'top' | 'bottom' | 'left' | 'right', value: number) {
   emit('update', {
     style: {
@@ -171,6 +185,23 @@ function updateColumnWidth(index: number, value: string | number) {
 
 <template>
   <div class="space-y-4">
+    <UBadge v-if="isMobileEditing" color="primary" variant="soft">
+      Mobile override
+    </UBadge>
+
+    <div class="grid grid-cols-2 gap-2 rounded-md border border-default p-2">
+      <UCheckbox
+        :model-value="!!visibilityData.hideOnMobile"
+        label="Hide on mobile"
+        @update:model-value="updateVisibility('hideOnMobile', !!$event)"
+      />
+      <UCheckbox
+        :model-value="!!visibilityData.hideOnDesktop"
+        label="Hide on desktop"
+        @update:model-value="updateVisibility('hideOnDesktop', !!$event)"
+      />
+    </div>
+
     <!-- Text / Heading -->
     <template v-if="block.type === 'Text' || block.type === 'Heading'">
       <UFormField label="Content">

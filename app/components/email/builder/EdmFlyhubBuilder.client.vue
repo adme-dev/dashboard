@@ -9,6 +9,7 @@ import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
 import type { EdmFlyhubDocument } from '~~/app/types/edm'
 import { extractFragment, reidFragment } from '~~/app/utils/edmModuleFragment'
 import { resolveRootDropIndex, type EdmRootDropPlacement } from '~~/app/utils/edmDragReorder'
+import { getBlockForDevice, type EdmDevice } from '~~/app/utils/edmResponsive'
 import type { EdmCustomModule } from '~~/app/composables/useEdmCustomModules'
 
 const store = useEdmBuilder()
@@ -159,12 +160,19 @@ const selectedBlock = computed(() => {
   if (!id || id === 'root') return null
   const b = store.document.value[id]
   if (!b) return null
-  return { id, type: b.type, data: b.data }
+  const active = getBlockForDevice({ id, type: b.type, data: b.data }, activeDevice.value)
+  return { id, type: b.type, data: active.data, baseData: b.data }
 })
 
-function onBlockUpdate(updates: { style?: unknown, props?: unknown }) {
+function onBlockUpdate(updates: { style?: unknown, props?: unknown, visibility?: { hideOnMobile?: boolean, hideOnDesktop?: boolean } }) {
   const id = store.selectedBlockId.value
   if (!id) return
+  if (updates.visibility) store.updateBlockVisibility(id, updates.visibility)
+  if (activeDevice.value === 'mobile') {
+    if (updates.style) store.updateBlockMobileStyle(id, updates.style as Record<string, unknown>)
+    if (updates.props) store.updateBlockMobileProps(id, updates.props as Record<string, unknown>)
+    return
+  }
   if (updates.style) store.updateBlockStyle(id, updates.style as Record<string, unknown>)
   if (updates.props) store.updateBlockProps(id, updates.props as Record<string, unknown>)
 }
@@ -172,6 +180,7 @@ function onBlockUpdate(updates: { style?: unknown, props?: unknown }) {
 // ── View modes + preview ────────────────────────────────────────────────
 type ViewMode = 'editor' | 'preview' | 'html'
 const viewMode = ref<ViewMode>('editor')
+const activeDevice = ref<EdmDevice>('desktop')
 const previewHtml = ref('')
 const previewLoading = ref(false)
 const previewError = ref('')
@@ -180,6 +189,11 @@ const VIEW_TABS: { value: ViewMode, label: string, icon: string }[] = [
   { value: 'editor', label: 'Editor', icon: 'i-lucide-pencil' },
   { value: 'preview', label: 'Preview', icon: 'i-lucide-eye' },
   { value: 'html', label: 'HTML', icon: 'i-lucide-code' }
+]
+
+const DEVICE_TABS: { value: EdmDevice, label: string, icon: string }[] = [
+  { value: 'desktop', label: 'Desktop', icon: 'i-lucide-monitor' },
+  { value: 'mobile', label: 'Mobile', icon: 'i-lucide-smartphone' }
 ]
 
 async function renderPreview() {
@@ -483,6 +497,19 @@ onMounted(async () => {
         />
       </div>
 
+      <div class="inline-flex rounded-md border border-default bg-default p-1 ml-2">
+        <UButton
+          v-for="device in DEVICE_TABS"
+          :key="device.value"
+          :icon="device.icon"
+          :label="device.label"
+          size="xs"
+          :variant="activeDevice === device.value ? 'solid' : 'ghost'"
+          color="neutral"
+          @click="activeDevice = device.value"
+        />
+      </div>
+
       <span v-if="name" class="ml-2 text-xs text-muted truncate max-w-48">{{ name }}</span>
 
       <div class="flex-1" />
@@ -702,7 +729,12 @@ onMounted(async () => {
                 />
               </UTooltip>
             </div>
-            <EmailBuilderBlockSettingsPanel :block="selectedBlock" @update="onBlockUpdate" />
+            <EmailBuilderBlockSettingsPanel
+              :block="selectedBlock"
+              :base-block="{ id: selectedBlock.id, type: selectedBlock.type, data: selectedBlock.baseData }"
+              :device="activeDevice"
+              @update="onBlockUpdate"
+            />
           </template>
           <template v-else>
             <p class="text-xs font-semibold uppercase text-muted mb-3">
