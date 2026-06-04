@@ -39,8 +39,34 @@ function insertPreset(preset: EdmSectionPreset, position?: number) {
   store.insertSectionPreset(preset.id, position)
 }
 
+// Hybrid open/close: controlled popover (click + Enter/Space + focus reachable)
+// with hover-to-open layered on top. A short close delay lets the pointer
+// travel from trigger into the panel without it snapping shut.
+const closeTimers: Record<string, ReturnType<typeof setTimeout> | undefined> = {}
+
+function cancelCloseFlyout(id: string) {
+  if (closeTimers[id]) {
+    clearTimeout(closeTimers[id])
+    closeTimers[id] = undefined
+  }
+}
+
+function openFlyout(id: string) {
+  cancelCloseFlyout(id)
+  flyoutOpen[id] = true
+}
+
+function scheduleCloseFlyout(id: string) {
+  cancelCloseFlyout(id)
+  closeTimers[id] = setTimeout(() => {
+    flyoutOpen[id] = false
+    closeTimers[id] = undefined
+  }, 150)
+}
+
 function insertFromFlyout(category: { id: string }, preset: EdmSectionPreset) {
   insertPreset(preset)
+  cancelCloseFlyout(category.id)
   flyoutOpen[category.id] = false
 }
 
@@ -342,13 +368,14 @@ onMounted(async () => {
             v-for="category in EDM_SECTION_CATEGORIES"
             :key="category.id"
             v-model:open="flyoutOpen[category.id]"
-            mode="hover"
             :content="{ side: 'right', align: 'start' }"
           >
             <button
               type="button"
               class="w-full flex items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors"
               :class="flyoutOpen[category.id] ? 'bg-elevated text-default font-semibold' : 'text-muted hover:text-default hover:bg-elevated/60'"
+              @mouseenter="openFlyout(category.id)"
+              @mouseleave="scheduleCloseFlyout(category.id)"
             >
               <UIcon :name="category.icon" class="h-4 w-4 shrink-0" />
               <span class="truncate flex-1">{{ category.label }}</span>
@@ -356,14 +383,18 @@ onMounted(async () => {
             </button>
 
             <template #content>
-              <div class="w-[340px] max-h-[70vh] overflow-auto p-3">
+              <div
+                class="w-[340px] max-h-[70vh] overflow-auto p-3"
+                @mouseenter="cancelCloseFlyout(category.id)"
+                @mouseleave="scheduleCloseFlyout(category.id)"
+              >
                 <p class="text-[11px] font-semibold uppercase text-muted mb-3">{{ category.label }}</p>
                 <div class="space-y-3">
                   <button
                     v-for="preset in category.presets"
                     :key="preset.id"
                     type="button"
-                    class="group block w-full overflow-hidden rounded-md border border-default bg-default text-left transition hover:border-primary hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    class="block w-full overflow-hidden rounded-md border border-default bg-default text-left transition hover:border-primary hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     @click="insertFromFlyout(category, preset)"
                   >
                     <!-- Fixed-height clip so short & tall presets yield even tiles. -->
