@@ -12,7 +12,7 @@ Object.assign(globalThis, { ref, computed, reactive })
 // components not to crash SSR.
 const passthrough = (name: string) => ({ name, template: '<div><slot /></div>' })
 const stubs: Record<string, unknown> = {
-  UFormField: { name: 'UFormField', props: ['label', 'help'], template: '<div><slot /></div>' },
+  UFormField: { name: 'UFormField', props: ['label', 'help'], template: '<div>{{ label }}<slot /></div>' },
   UInput: { name: 'UInput', props: ['modelValue', 'type', 'items'], template: '<input />' },
   UTextarea: { name: 'UTextarea', props: ['modelValue'], template: '<textarea />' },
   USelect: { name: 'USelect', props: ['modelValue', 'items'], template: '<select />' },
@@ -57,6 +57,12 @@ describe('BlockSettingsPanel — Phase 3a grouped style sections', () => {
   it('hides Background image for a Divider (not a bg-image block)', async () => {
     const html = await render({ id: 'b', type: 'Divider', data: { props: {}, style: {} } })
     expect(html).not.toContain('Background image')
+  })
+
+  it('labels Divider thickness separately from CSS line-height', async () => {
+    const html = await render({ id: 'b', type: 'Divider', data: { props: { lineThickness: 2 }, style: {} } })
+    expect(html).toContain('Line thickness')
+    expect(html).not.toContain('Line height —')
   })
 
   it('labels the inspector as Mobile override when editing mobile styles', async () => {

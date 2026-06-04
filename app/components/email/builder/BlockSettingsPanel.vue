@@ -4,6 +4,7 @@
      layers/edm/.../BlockSettingsPanel.vue, re-skinned shadcn→Nuxt UI; the CMS media
      library + automotive deps are stripped (image is a plain URL input). -->
 <script setup lang="ts">
+import { dividerLineThickness } from '~~/app/utils/edmDivider'
 import { getEdmSectionSettings } from '~~/app/utils/edmSectionSettings'
 import { BORDER_STYLES, TEXT_TRANSFORMS, SHADOW_OPTIONS } from '~~/app/utils/edmStyle'
 import type { EdmDevice } from '~~/app/utils/edmResponsive'
@@ -538,13 +539,13 @@ function updateColumnWidth(index: number, value: string | number) {
         </div>
       </UFormField>
 
-      <UFormField :label="`Line height — ${block.data?.props?.lineHeight || 1}px`">
+      <UFormField :label="`Line thickness — ${dividerLineThickness(block.data?.props)}px`">
         <USlider
-          :model-value="(block.data?.props?.lineHeight as number) || 1"
+          :model-value="dividerLineThickness(block.data?.props)"
           :min="1"
           :max="10"
           :step="1"
-          @update:model-value="updateProp('lineHeight', $event)"
+          @update:model-value="updateProp('lineThickness', $event)"
         />
       </UFormField>
     </template>

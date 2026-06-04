@@ -29,4 +29,18 @@ describe('renderTemplateDocument — multi-block document', () => {
     expect(isFlyhubFormat({ not: 'a doc' })).toBe(false)
     expect(isFlyhubFormat({ root: { type: 'EmailLayout', data: {} } })).toBe(true)
   })
+
+  it('renders Divider lineThickness while preserving legacy lineHeight fallback', () => {
+    const next = renderTemplateDocument({
+      root: { type: 'EmailLayout', data: { props: {}, childrenIds: ['d'] } },
+      d: { type: 'Divider', data: { props: { lineColor: '#111111', lineThickness: 5, lineHeight: 1 }, style: {} } }
+    })
+    expect(next).toContain('border-top: 5px solid #111111')
+
+    const legacy = renderTemplateDocument({
+      root: { type: 'EmailLayout', data: { props: {}, childrenIds: ['d'] } },
+      d: { type: 'Divider', data: { props: { lineColor: '#222222', lineHeight: 3 }, style: {} } }
+    })
+    expect(legacy).toContain('border-top: 3px solid #222222')
+  })
 })

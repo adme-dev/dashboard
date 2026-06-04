@@ -114,3 +114,13 @@ describe('EmailBuilderEdmBlockRenderer inline editing (Phase 3b)', () => {
     expect(html).toContain('Hidden mobile copy')
   })
 })
+
+describe('EmailBuilderEdmBlockRenderer Divider props', () => {
+  it('prefers lineThickness while preserving legacy lineHeight fallback', async () => {
+    const next = await renderBlock('Divider', { lineColor: '#111111', lineThickness: 5, lineHeight: 1 })
+    expect(next).toContain('border-top:5px solid #111111')
+
+    const legacy = await renderBlock('Divider', { lineColor: '#222222', lineHeight: 3 })
+    expect(legacy).toContain('border-top:3px solid #222222')
+  })
+})

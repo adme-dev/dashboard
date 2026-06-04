@@ -37,7 +37,7 @@ function getDefaultProps(type: string): Record<string, unknown> {
     case 'Spacer':
       return { height: 24 }
     case 'Divider':
-      return { lineColor: '#e5e7eb' }
+      return { lineColor: '#e5e7eb', lineThickness: 1 }
     case 'Html':
       return { contents: '<p>Custom HTML content</p>' }
     case 'ColumnsContainer':

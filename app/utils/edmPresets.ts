@@ -18,15 +18,15 @@ import {
   imageTextRow
 } from '~~/app/utils/edmSectionBuilders'
 
-export type EdmSectionCategoryId =
-  | 'basic'
-  | 'header'
-  | 'content'
-  | 'feature'
-  | 'call-to-action'
-  | 'e-commerce'
-  | 'transactional'
-  | 'footer'
+export type EdmSectionCategoryId
+  = | 'basic'
+    | 'header'
+    | 'content'
+    | 'feature'
+    | 'call-to-action'
+    | 'e-commerce'
+    | 'transactional'
+    | 'footer'
 
 export type EdmPresetKind = 'block' | 'section'
 export type EdmPreviewTone = 'light' | 'dark' | 'accent'
@@ -54,21 +54,21 @@ export interface EdmSectionCategory {
   presets: EdmSectionPreset[]
 }
 
-export type EdmStarterUsage =
-  | 'Newsletter'
-  | 'Promotion'
-  | 'Transactional'
-  | 'Announcement'
-  | 'Event'
-  | 'Welcome'
+export type EdmStarterUsage
+  = | 'Newsletter'
+    | 'Promotion'
+    | 'Transactional'
+    | 'Announcement'
+    | 'Event'
+    | 'Welcome'
 
-export type EdmStarterStyle =
-  | 'Editorial'
-  | 'Retail'
-  | 'Utility'
-  | 'Bold'
-  | 'Minimal'
-  | 'Corporate'
+export type EdmStarterStyle
+  = | 'Editorial'
+    | 'Retail'
+    | 'Utility'
+    | 'Bold'
+    | 'Minimal'
+    | 'Corporate'
 
 export interface EdmStarterTemplate {
   id: string
@@ -266,7 +266,7 @@ const HEADER_PRESETS: EdmSectionPreset[] = [
           padding: { top: 0, right: 28, bottom: 8, left: 28 },
           backgroundColor: '#ffffff'
         },
-        props: { lineColor: '#e5e7eb', lineHeight: 1 }
+        props: { lineColor: '#e5e7eb', lineThickness: 1 }
       })
     ]
   },
@@ -714,7 +714,7 @@ const FEATURE_PRESETS: EdmSectionPreset[] = [
     id: 'feature-checklist',
     categoryId: 'feature',
     kind: 'section',
-    name: "What's Included",
+    name: 'What\'s Included',
     description: 'Headline above a four-point checklist.',
     icon: 'i-lucide-list-checks',
     previewTone: 'light',
@@ -726,7 +726,7 @@ const FEATURE_PRESETS: EdmSectionPreset[] = [
           fontSize: 22,
           color: '#111827'
         },
-        props: { level: 'h2', text: "What's included" }
+        props: { level: 'h2', text: 'What\'s included' }
       }),
       block('feature-grid', {
         style: {
@@ -1217,7 +1217,7 @@ const TRANSACTIONAL_PRESETS: EdmSectionPreset[] = [
           padding: { top: 0, right: 32, bottom: 12, left: 32 },
           backgroundColor: '#ffffff'
         },
-        props: { lineColor: '#e5e7eb', lineHeight: 1 }
+        props: { lineColor: '#e5e7eb', lineThickness: 1 }
       }),
       block('Button', {
         style: {
@@ -1300,11 +1300,11 @@ const TRANSACTIONAL_PRESETS: EdmSectionPreset[] = [
         },
         props: {
           contents:
-            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px;color:#111827;">' +
-            '<tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">Campaign Kit</td><td align="right" style="padding:10px 0;border-bottom:1px solid #e5e7eb;">$249.00</td></tr>' +
-            '<tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">Setup &amp; onboarding</td><td align="right" style="padding:10px 0;border-bottom:1px solid #e5e7eb;">$49.00</td></tr>' +
-            '<tr><td style="padding:12px 0;font-weight:700;">Total</td><td align="right" style="padding:12px 0;font-weight:700;">$298.00</td></tr>' +
-            '</table>'
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px;color:#111827;">'
+            + '<tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">Campaign Kit</td><td align="right" style="padding:10px 0;border-bottom:1px solid #e5e7eb;">$249.00</td></tr>'
+            + '<tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">Setup &amp; onboarding</td><td align="right" style="padding:10px 0;border-bottom:1px solid #e5e7eb;">$49.00</td></tr>'
+            + '<tr><td style="padding:12px 0;font-weight:700;">Total</td><td align="right" style="padding:12px 0;font-weight:700;">$298.00</td></tr>'
+            + '</table>'
         }
       })
     ]
@@ -1527,12 +1527,12 @@ const FOOTER_PRESETS: EdmSectionPreset[] = [
         },
         props: {
           contents:
-            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,sans-serif;">' +
-            '<tr><td align="center" style="padding:8px;font-size:15px;font-weight:700;color:#111827;">Get the app</td></tr>' +
-            '<tr><td align="center" style="padding:8px;">' +
-            `<img src="${picsum('app-store', 120, 40)}" alt="App Store" width="120" height="40" style="display:inline-block;margin:0 6px;border-radius:6px;" />` +
-            `<img src="${picsum('play-store', 120, 40)}" alt="Google Play" width="120" height="40" style="display:inline-block;margin:0 6px;border-radius:6px;" />` +
-            '</td></tr></table>'
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,sans-serif;">'
+            + '<tr><td align="center" style="padding:8px;font-size:15px;font-weight:700;color:#111827;">Get the app</td></tr>'
+            + '<tr><td align="center" style="padding:8px;">'
+            + `<img src="${picsum('app-store', 120, 40)}" alt="App Store" width="120" height="40" style="display:inline-block;margin:0 6px;border-radius:6px;" />`
+            + `<img src="${picsum('play-store', 120, 40)}" alt="Google Play" width="120" height="40" style="display:inline-block;margin:0 6px;border-radius:6px;" />`
+            + '</td></tr></table>'
         }
       }),
       richFooter({

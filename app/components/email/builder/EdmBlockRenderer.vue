@@ -215,6 +215,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { dividerLineThickness } from '~~/app/utils/edmDivider'
 import { extendedStyleVue } from '~~/app/utils/edmStyle'
 import { sanitizeInlineHtml, extractPlainText } from '~~/app/utils/edmInlineText'
 
@@ -365,7 +366,7 @@ const dividerWrapperStyle = computed(() => ({
 const dividerLineStyle = computed(() => ({
   width: '100%',
   border: 'none',
-  borderTop: `${(blockProps.value.lineHeight as number) || 1}px solid ${(blockProps.value.lineColor as string) || '#e5e7eb'}`,
+  borderTop: `${dividerLineThickness(blockProps.value)}px solid ${(blockProps.value.lineColor as string) || '#e5e7eb'}`,
   margin: '0'
 }))
 
