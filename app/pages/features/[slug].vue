@@ -1215,7 +1215,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-message-circle',
     categoryIconBg: 'bg-violet-50',
     categoryIconColor: 'text-violet-600',
-    description: 'A visual, section-based email builder — drop in pre-designed sections, start from a curated template, fine-tune every block, and render to bulletproof email HTML that looks right in every inbox.',
+    description: 'A visual, section-based email builder — drop in pre-designed sections, launch from a gallery of 12 starter templates, fine-tune every block, and render to bulletproof email HTML that looks right in every inbox.',
     details: [
       {
         title: 'Sections and Building Blocks',
@@ -1227,7 +1227,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Starter Templates and a Visual Gallery',
-        content: 'Skip the blank canvas with curated starter templates — a Weekly Digest newsletter, a Product Offer promo, and a Confirmation Update — each pre-assembled from coordinated sections. A visual template gallery on the email page lays out a blank-start card next to every starter, so anyone on the team can launch a properly structured email in a single click and customise from there.'
+        content: 'Skip the blank canvas with a library of 12 curated starter templates — newsletters, promotions, product launches, welcome and onboarding emails, event invites, order confirmations, case-study spotlights, and more — each pre-assembled from coordinated sections and rendered as a live full-email preview, not a flat thumbnail. Filter the gallery by usage (Newsletter, Promotion, Announcement, Welcome, Event, Transactional) and by style (Editorial, Bold, Minimal, Corporate, Retail, Utility), or search by name, and freshly added designs are flagged with a NEW badge. A blank-start card sits alongside the starters, so anyone on the team can launch a properly structured email in a single click and customise from there.'
       },
       {
         title: 'Per-Block Styling and Bulletproof HTML',
