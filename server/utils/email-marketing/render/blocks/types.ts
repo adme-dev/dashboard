@@ -75,6 +75,16 @@ export interface FlyhubBlockStyle {
   fontWeight?: string | null
   borderColor?: string | null
   borderRadius?: number | null
+  // Phase 3a — rich per-element styling (all optional; absent ⇒ unchanged
+  // render). Emitted via app/utils/edmStyle.ts (extendedStyleCss) per block.
+  lineHeight?: number | string | null
+  letterSpacing?: number | null
+  textTransform?: string | null
+  opacity?: number | null
+  borderWidth?: number | null
+  borderStyle?: string | null
+  boxShadow?: string | null
+  backgroundImage?: string | null
 }
 
 /**

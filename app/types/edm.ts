@@ -20,6 +20,18 @@ export interface EdmFlyhubBlock {
         left: number
         right: number
       } | null
+      // Phase 3a — rich per-element styling (all optional; absent ⇒ unchanged
+      // render). Shared emission via app/utils/edmStyle.ts across both renderers.
+      lineHeight?: number | string | null
+      letterSpacing?: number | null
+      textTransform?: string | null
+      opacity?: number | null
+      borderWidth?: number | null
+      borderStyle?: string | null
+      borderColor?: string | null
+      borderRadius?: number | null
+      boxShadow?: string | null
+      backgroundImage?: string | null
     } | null
     props?: Record<string, unknown> | null
     childrenIds?: string[]
