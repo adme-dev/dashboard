@@ -1,6 +1,21 @@
 import { BLOCK_PALETTE, getDefaultBlockData } from '~~/app/utils/edmBlocks'
 import { createEmptyDocument, generateBlockId } from '~~/app/types/edm'
 import type { EdmFlyhubBlock, EdmFlyhubDocument } from '~~/app/types/edm'
+import {
+  picsum,
+  heroImage,
+  ctaBanner,
+  featureRow,
+  brandHeader,
+  navMenu,
+  richFooter,
+  blogCardRow,
+  clientLogoStrip,
+  storyGrid,
+  productCard,
+  productRow,
+  imageTextRow
+} from '~~/app/utils/edmSectionBuilders'
 
 export type EdmSectionCategoryId =
   | 'basic'
@@ -70,25 +85,51 @@ export const EDM_SECTION_PRESET_IDS = [
   'header-dark-brand',
   'header-minimal',
   'header-nav-bar',
+  'header-logo-image',
+  'header-announcement',
+  'header-hero-image',
   'content-editorial-intro',
   'content-logo-grid',
   'content-image-story',
   'content-quote',
+  'content-blog-cards',
+  'content-top-stories',
+  'content-client-logos',
+  'content-feature-story',
+  'content-newsletter-intro',
   'feature-icon-grid',
   'feature-two-up',
   'feature-checklist',
+  'feature-three-col',
+  'feature-image-set',
+  'feature-spotlight',
   'cta-blue-banner',
   'cta-dark-banner',
   'cta-soft-banner',
+  'cta-image-banner',
+  'cta-accent-banner',
+  'cta-split',
   'hero-dark-product',
   'ecommerce-product-row',
   'ecommerce-sale-banner',
+  'ecommerce-product-grid',
+  'ecommerce-product-card',
+  'ecommerce-sale-hero',
+  'ecommerce-two-up',
+  'ecommerce-discount-banner',
   'transactional-next-steps',
   'transactional-receipt',
   'transactional-verify',
+  'transactional-order-summary',
+  'transactional-shipping',
+  'transactional-welcome',
+  'transactional-password-reset',
   'footer-legal',
   'footer-social',
-  'footer-address'
+  'footer-address',
+  'footer-dark-social',
+  'footer-app-download',
+  'footer-newsletter-signup'
 ] as const
 
 export type EdmSectionPresetId = typeof EDM_SECTION_PRESET_IDS[number]
@@ -243,6 +284,83 @@ const HEADER_PRESETS: EdmSectionPreset[] = [
         }
       })
     ]
+  },
+  {
+    id: 'header-logo-image',
+    categoryId: 'header',
+    kind: 'section',
+    name: 'Logo + Nav',
+    description: 'Image logo above a slash-separated navigation row.',
+    icon: 'i-lucide-image',
+    previewTone: 'light',
+    blocks: [
+      brandHeader({
+        tagline: '',
+        logoUrl: picsum('agency-logo', 160, 48),
+        alignment: 'center',
+        backgroundColor: '#ffffff',
+        padding: { top: 24, right: 24, bottom: 8, left: 24 }
+      }),
+      navMenu({
+        items: [
+          { label: 'Work', url: '#' },
+          { label: 'Services', url: '#' },
+          { label: 'About', url: '#' },
+          { label: 'Contact', url: '#' }
+        ],
+        separator: '/',
+        color: '#0f172a',
+        backgroundColor: '#ffffff',
+        padding: { top: 4, right: 24, bottom: 18, left: 24 }
+      })
+    ]
+  },
+  {
+    id: 'header-announcement',
+    categoryId: 'header',
+    kind: 'section',
+    name: 'Announcement Bar',
+    description: 'Accent banner announcing a launch or offer.',
+    icon: 'i-lucide-megaphone',
+    previewTone: 'accent',
+    blocks: [
+      block('header', {
+        style: {
+          padding: { top: 14, right: 24, bottom: 14, left: 24 },
+          textAlign: 'center',
+          backgroundColor: '#0f62fe',
+          color: '#ffffff'
+        },
+        props: { logoUrl: '', tagline: 'New: campaign reporting is here', alignment: 'center', backgroundColor: '#0f62fe' }
+      }),
+      brandHeader({
+        tagline: 'The Agency',
+        alignment: 'center',
+        backgroundColor: '#ffffff',
+        color: '#111827',
+        padding: { top: 22, right: 24, bottom: 18, left: 24 }
+      })
+    ]
+  },
+  {
+    id: 'header-hero-image',
+    categoryId: 'header',
+    kind: 'section',
+    name: 'Hero Image Header',
+    description: 'Full-bleed image header with brand line and CTA.',
+    icon: 'i-lucide-panels-top-left',
+    previewTone: 'dark',
+    blocks: [
+      heroImage({
+        heading: 'The Agency',
+        subheading: 'Campaigns that move the numbers.',
+        ctaText: 'See our work',
+        ctaUrl: '#',
+        imageSeed: 'header-hero',
+        overlayOpacity: 0.45,
+        padding: { top: 48, right: 32, bottom: 48, left: 32 }
+      })
+    ]
   }
 ]
 
@@ -375,6 +493,132 @@ const CONTENT_PRESETS: EdmSectionPreset[] = [
         props: { text: 'Head of Marketing, Retail Partner' }
       })
     ]
+  },
+  {
+    id: 'content-blog-cards',
+    categoryId: 'content',
+    kind: 'section',
+    name: 'Blog Cards',
+    description: 'Two image cards linking to your latest posts.',
+    icon: 'i-lucide-layout-grid',
+    previewTone: 'light',
+    blocks: [
+      block('Heading', {
+        style: {
+          padding: { top: 28, right: 32, bottom: 8, left: 32 },
+          textAlign: 'left',
+          fontSize: 22,
+          color: '#111827'
+        },
+        props: { level: 'h2', text: 'From the blog' }
+      }),
+      blogCardRow({
+        cards: [
+          { date: 'Strategy', title: 'How we cut a client’s cost per lead in half', imageSeed: 'blog-cpl' },
+          { date: 'Creative', title: 'The hooks that made our last launch convert', imageSeed: 'blog-hooks' }
+        ],
+        accentColor: '#0ea5e9',
+        padding: { top: 4, right: 24, bottom: 28, left: 24 }
+      })
+    ]
+  },
+  {
+    id: 'content-top-stories',
+    categoryId: 'content',
+    kind: 'section',
+    name: 'Top Stories',
+    description: 'Image + heading + blurb story grid.',
+    icon: 'i-lucide-newspaper',
+    previewTone: 'light',
+    blocks: [
+      storyGrid({
+        stories: [
+          { heading: 'Inside the rebrand', blurb: 'A look at the strategy behind the refresh.', imageSeed: 'story-rebrand' },
+          { heading: 'Q2 in numbers', blurb: 'The campaigns that beat their targets.', imageSeed: 'story-numbers' }
+        ],
+        columns: 2,
+        padding: { top: 28, right: 24, bottom: 28, left: 24 }
+      })
+    ]
+  },
+  {
+    id: 'content-client-logos',
+    categoryId: 'content',
+    kind: 'section',
+    name: 'Our Clients',
+    description: 'Logo strip of brands you work with.',
+    icon: 'i-lucide-badge-check',
+    previewTone: 'light',
+    blocks: [
+      block('Heading', {
+        style: {
+          padding: { top: 28, right: 32, bottom: 4, left: 32 },
+          textAlign: 'center',
+          fontSize: 18,
+          color: '#6b7280'
+        },
+        props: { level: 'h3', text: 'Trusted by teams like' }
+      }),
+      clientLogoStrip({
+        brands: [
+          { name: 'Northwind', imageSeed: 'logo-northwind' },
+          { name: 'Brightly', imageSeed: 'logo-brightly' },
+          { name: 'Harbor', imageSeed: 'logo-harbor' }
+        ],
+        columns: 3,
+        padding: { top: 4, right: 32, bottom: 28, left: 32 }
+      })
+    ]
+  },
+  {
+    id: 'content-feature-story',
+    categoryId: 'content',
+    kind: 'section',
+    name: 'Feature Story',
+    description: 'Image beside a headline, copy, and link.',
+    icon: 'i-lucide-book-open',
+    previewTone: 'light',
+    blocks: [
+      imageTextRow({
+        heading: 'The campaign that doubled signups',
+        text: 'We rebuilt the funnel from the first ad to the welcome email — here is how it played out.',
+        ctaText: 'Read the story',
+        ctaUrl: '#',
+        imageSeed: 'feature-story',
+        imageSide: 'left',
+        padding: { top: 28, right: 24, bottom: 28, left: 24 }
+      })
+    ]
+  },
+  {
+    id: 'content-newsletter-intro',
+    categoryId: 'content',
+    kind: 'section',
+    name: 'Newsletter Intro',
+    description: 'Friendly lead-in for a recurring update.',
+    icon: 'i-lucide-mail',
+    previewTone: 'light',
+    blocks: [
+      block('Heading', {
+        style: {
+          padding: { top: 28, right: 32, bottom: 8, left: 32 },
+          textAlign: 'left',
+          fontSize: 24,
+          color: '#111827'
+        },
+        props: { level: 'h1', text: 'Hello from the team' }
+      }),
+      block('Text', {
+        style: {
+          padding: { top: 0, right: 32, bottom: 24, left: 32 },
+          textAlign: 'left',
+          color: '#4b5563'
+        },
+        props: {
+          text: 'Here is what we shipped, learned, and are excited about this month. Grab a coffee and dig in.'
+        }
+      })
+    ]
   }
 ]
 
@@ -465,6 +709,67 @@ const FEATURE_PRESETS: EdmSectionPreset[] = [
         }
       })
     ]
+  },
+  {
+    id: 'feature-three-col',
+    categoryId: 'feature',
+    kind: 'section',
+    name: 'Three Pillars',
+    description: 'Three-column overview of your core offering.',
+    icon: 'i-lucide-columns-3',
+    previewTone: 'light',
+    blocks: [
+      featureRow({
+        features: [
+          { icon: '◎', heading: 'Strategy', description: 'A plan tied to real goals.' },
+          { icon: '✎', heading: 'Creative', description: 'On-brand assets that convert.' },
+          { icon: '↗', heading: 'Growth', description: 'Channels tuned for results.' }
+        ],
+        columns: 3,
+        iconColor: '#0ea5e9',
+        padding: { top: 28, right: 24, bottom: 28, left: 24 }
+      })
+    ]
+  },
+  {
+    id: 'feature-image-set',
+    categoryId: 'feature',
+    kind: 'section',
+    name: 'Feature Showcase',
+    description: 'Image-led story grid of capabilities.',
+    icon: 'i-lucide-images',
+    previewTone: 'light',
+    blocks: [
+      storyGrid({
+        stories: [
+          { heading: 'Campaign builder', blurb: 'Plan, brief, and ship in one place.', imageSeed: 'feat-builder' },
+          { heading: 'Live reporting', blurb: 'See spend and results as they land.', imageSeed: 'feat-reporting' }
+        ],
+        columns: 2,
+        padding: { top: 28, right: 24, bottom: 28, left: 24 }
+      })
+    ]
+  },
+  {
+    id: 'feature-spotlight',
+    categoryId: 'feature',
+    kind: 'section',
+    name: 'Feature Spotlight',
+    description: 'Single feature with image, copy, and CTA.',
+    icon: 'i-lucide-zap',
+    previewTone: 'light',
+    blocks: [
+      imageTextRow({
+        heading: 'Reporting that proves the work',
+        text: 'Automated dashboards turn raw spend into a story your clients actually understand.',
+        ctaText: 'See it live',
+        ctaUrl: '#',
+        imageSeed: 'feat-spotlight',
+        imageSide: 'right',
+        buttonColor: '#7c3aed',
+        padding: { top: 28, right: 24, bottom: 28, left: 24 }
+      })
+    ]
   }
 ]
 
@@ -541,6 +846,66 @@ const CTA_PRESETS: EdmSectionPreset[] = [
           backgroundColor: '#eef2ff',
           textColor: '#1e3a8a'
         }
+      })
+    ]
+  },
+  {
+    id: 'cta-image-banner',
+    categoryId: 'call-to-action',
+    kind: 'section',
+    name: 'Image CTA',
+    description: 'Image-backed call to action with overlay text.',
+    icon: 'i-lucide-image-plus',
+    previewTone: 'dark',
+    blocks: [
+      heroImage({
+        heading: 'Let’s build your next campaign',
+        subheading: 'Book a free strategy session with the team.',
+        ctaText: 'Book a call',
+        ctaUrl: '#',
+        imageSeed: 'cta-image',
+        overlayOpacity: 0.5,
+        padding: { top: 52, right: 32, bottom: 52, left: 32 }
+      })
+    ]
+  },
+  {
+    id: 'cta-accent-banner',
+    categoryId: 'call-to-action',
+    kind: 'section',
+    name: 'Accent CTA',
+    description: 'Vibrant accent-colour call to action.',
+    icon: 'i-lucide-sparkle',
+    previewTone: 'accent',
+    blocks: [
+      ctaBanner({
+        heading: 'Get the campaign playbook',
+        subheading: 'Our step-by-step framework for high-performing launches.',
+        ctaText: 'Download free',
+        ctaUrl: '#',
+        backgroundColor: '#7c3aed',
+        textColor: '#ffffff'
+      })
+    ]
+  },
+  {
+    id: 'cta-split',
+    categoryId: 'call-to-action',
+    kind: 'section',
+    name: 'Split CTA',
+    description: 'Image beside a heading, copy, and action button.',
+    icon: 'i-lucide-square-split-horizontal',
+    previewTone: 'light',
+    blocks: [
+      imageTextRow({
+        heading: 'Ready when you are',
+        text: 'Tell us your goals and we will map the first 90 days.',
+        ctaText: 'Start the conversation',
+        ctaUrl: '#',
+        imageSeed: 'cta-split',
+        imageSide: 'left',
+        buttonColor: '#0f62fe',
+        padding: { top: 28, right: 24, bottom: 28, left: 24 }
       })
     ]
   }
@@ -641,6 +1006,115 @@ const ECOMMERCE_PRESETS: EdmSectionPreset[] = [
           backgroundColor: '#be123c',
           textColor: '#ffffff'
         }
+      })
+    ]
+  },
+  {
+    id: 'ecommerce-product-grid',
+    categoryId: 'e-commerce',
+    kind: 'section',
+    name: 'Product Grid',
+    description: 'Three products with image, price, and shop button.',
+    icon: 'i-lucide-layout-grid',
+    previewTone: 'light',
+    blocks: [
+      productRow({
+        products: [
+          { name: 'Starter Kit', price: '$99', imageSeed: 'prod-starter' },
+          { name: 'Growth Kit', price: '$249', imageSeed: 'prod-growth' },
+          { name: 'Scale Kit', price: '$499', imageSeed: 'prod-scale' }
+        ],
+        columns: 3,
+        buttonColor: '#0f766e',
+        padding: { top: 28, right: 16, bottom: 28, left: 16 }
+      })
+    ]
+  },
+  {
+    id: 'ecommerce-product-card',
+    categoryId: 'e-commerce',
+    kind: 'section',
+    name: 'Single Product',
+    description: 'One product hero with image, price, and CTA.',
+    icon: 'i-lucide-package-2',
+    previewTone: 'light',
+    blocks: [
+      productCard({
+        name: 'Signature Campaign Kit',
+        price: '$249',
+        ctaText: 'Add to cart',
+        ctaUrl: '#',
+        imageSeed: 'prod-signature',
+        buttonColor: '#0f766e',
+        padding: { top: 28, right: 32, bottom: 28, left: 32 }
+      })
+    ]
+  },
+  {
+    id: 'ecommerce-sale-hero',
+    categoryId: 'e-commerce',
+    kind: 'section',
+    name: 'Sale Hero',
+    description: 'Image-backed seasonal sale hero with CTA.',
+    icon: 'i-lucide-flame',
+    previewTone: 'dark',
+    blocks: [
+      heroImage({
+        heading: 'Summer sale is on',
+        subheading: 'Up to 30% off every package — this week only.',
+        ctaText: 'Shop the sale',
+        ctaUrl: '#',
+        imageSeed: 'sale-hero',
+        overlayOpacity: 0.45,
+        padding: { top: 52, right: 32, bottom: 52, left: 32 }
+      })
+    ]
+  },
+  {
+    id: 'ecommerce-two-up',
+    categoryId: 'e-commerce',
+    kind: 'section',
+    name: 'Two-Up Picks',
+    description: 'Two featured products as image cards.',
+    icon: 'i-lucide-columns-2',
+    previewTone: 'light',
+    blocks: [
+      block('Heading', {
+        style: {
+          padding: { top: 28, right: 32, bottom: 8, left: 32 },
+          textAlign: 'left',
+          fontSize: 22,
+          color: '#111827'
+        },
+        props: { level: 'h2', text: 'Picked for you' }
+      }),
+      productRow({
+        products: [
+          { name: 'Launch Bundle', price: '$349', imageSeed: 'pick-launch' },
+          { name: 'Refresh Bundle', price: '$199', imageSeed: 'pick-refresh' }
+        ],
+        columns: 2,
+        buttonColor: '#0f766e',
+        padding: { top: 4, right: 16, bottom: 28, left: 16 }
+      })
+    ]
+  },
+  {
+    id: 'ecommerce-discount-banner',
+    categoryId: 'e-commerce',
+    kind: 'section',
+    name: 'Discount Banner',
+    description: 'Coupon-style banner with promo code CTA.',
+    icon: 'i-lucide-ticket-percent',
+    previewTone: 'accent',
+    blocks: [
+      ctaBanner({
+        heading: 'Take 15% off your first order',
+        subheading: 'Use code WELCOME15 at checkout.',
+        ctaText: 'Shop now',
+        ctaUrl: '#',
+        backgroundColor: '#0f766e',
+        textColor: '#ffffff'
       })
     ]
   }
@@ -761,6 +1235,123 @@ const TRANSACTIONAL_PRESETS: EdmSectionPreset[] = [
         }
       })
     ]
+  },
+  {
+    id: 'transactional-order-summary',
+    categoryId: 'transactional',
+    kind: 'section',
+    name: 'Order Summary',
+    description: 'Itemised order table with a total row.',
+    icon: 'i-lucide-table',
+    previewTone: 'light',
+    blocks: [
+      block('Heading', {
+        style: {
+          padding: { top: 28, right: 32, bottom: 8, left: 32 },
+          textAlign: 'left',
+          fontSize: 22,
+          color: '#111827'
+        },
+        props: { level: 'h2', text: 'Your order summary' }
+      }),
+      block('Html', {
+        style: {
+          padding: { top: 0, right: 32, bottom: 28, left: 32 },
+          backgroundColor: '#ffffff'
+        },
+        props: {
+          contents:
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px;color:#111827;">' +
+            '<tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">Campaign Kit</td><td align="right" style="padding:10px 0;border-bottom:1px solid #e5e7eb;">$249.00</td></tr>' +
+            '<tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">Setup &amp; onboarding</td><td align="right" style="padding:10px 0;border-bottom:1px solid #e5e7eb;">$49.00</td></tr>' +
+            '<tr><td style="padding:12px 0;font-weight:700;">Total</td><td align="right" style="padding:12px 0;font-weight:700;">$298.00</td></tr>' +
+            '</table>'
+        }
+      })
+    ]
+  },
+  {
+    id: 'transactional-shipping',
+    categoryId: 'transactional',
+    kind: 'section',
+    name: 'Shipping Update',
+    description: 'Status image beside a tracking message and link.',
+    icon: 'i-lucide-truck',
+    previewTone: 'light',
+    blocks: [
+      imageTextRow({
+        heading: 'Your order is on the way',
+        text: 'Order #10482 shipped today and should arrive within 3–5 business days.',
+        ctaText: 'Track shipment',
+        ctaUrl: '#',
+        imageSeed: 'shipping',
+        imageSide: 'left',
+        buttonColor: '#0f766e',
+        padding: { top: 28, right: 24, bottom: 28, left: 24 }
+      })
+    ]
+  },
+  {
+    id: 'transactional-welcome',
+    categoryId: 'transactional',
+    kind: 'section',
+    name: 'Welcome Aboard',
+    description: 'Image-backed welcome hero for new accounts.',
+    icon: 'i-lucide-party-popper',
+    previewTone: 'dark',
+    blocks: [
+      heroImage({
+        heading: 'Welcome aboard',
+        subheading: 'Your account is ready — let’s get you set up.',
+        ctaText: 'Get started',
+        ctaUrl: '#',
+        imageSeed: 'welcome',
+        overlayOpacity: 0.45,
+        padding: { top: 48, right: 32, bottom: 48, left: 32 }
+      })
+    ]
+  },
+  {
+    id: 'transactional-password-reset',
+    categoryId: 'transactional',
+    kind: 'section',
+    name: 'Password Reset',
+    description: 'Secure reset prompt with a single action button.',
+    icon: 'i-lucide-key-round',
+    previewTone: 'light',
+    blocks: [
+      block('Heading', {
+        style: {
+          padding: { top: 28, right: 32, bottom: 8, left: 32 },
+          textAlign: 'center',
+          fontSize: 22,
+          color: '#111827'
+        },
+        props: { level: 'h2', text: 'Reset your password' }
+      }),
+      block('Text', {
+        style: {
+          padding: { top: 0, right: 40, bottom: 16, left: 40 },
+          textAlign: 'center',
+          color: '#4b5563'
+        },
+        props: {
+          text: 'We received a request to reset your password. This link expires in 30 minutes.'
+        }
+      }),
+      block('Button', {
+        style: {
+          padding: { top: 0, right: 24, bottom: 28, left: 24 },
+          textAlign: 'center'
+        },
+        props: {
+          text: 'Reset password',
+          url: '#',
+          buttonBackgroundColor: '#111827',
+          buttonTextColor: '#ffffff'
+        }
+      })
+    ]
   }
 ]
 
@@ -847,6 +1438,111 @@ const FOOTER_PRESETS: EdmSectionPreset[] = [
           additionalText: 'The Agency · 100 George St, Sydney NSW 2000, Australia',
           backgroundColor: '#111827'
         }
+      })
+    ]
+  },
+  {
+    id: 'footer-dark-social',
+    categoryId: 'footer',
+    kind: 'section',
+    name: 'Dark Social Bar',
+    description: 'Social links and legal text on a dark bar.',
+    icon: 'i-lucide-share',
+    previewTone: 'dark',
+    blocks: [
+      navMenu({
+        items: [
+          { label: 'Instagram', url: '#' },
+          { label: 'LinkedIn', url: '#' },
+          { label: 'YouTube', url: '#' },
+          { label: 'X', url: '#' }
+        ],
+        separator: '·',
+        color: '#d1d5db',
+        backgroundColor: '#111827',
+        padding: { top: 22, right: 24, bottom: 4, left: 24 }
+      }),
+      richFooter({
+        additionalText: 'Follow along for more campaign updates.',
+        showUnsubscribe: true,
+        showAddress: false,
+        backgroundColor: '#111827',
+        color: '#9ca3af',
+        padding: { top: 4, right: 32, bottom: 24, left: 32 }
+      })
+    ]
+  },
+  {
+    id: 'footer-app-download',
+    categoryId: 'footer',
+    kind: 'section',
+    name: 'App Download',
+    description: 'Promote the mobile app above the legal footer.',
+    icon: 'i-lucide-smartphone',
+    previewTone: 'light',
+    blocks: [
+      block('Html', {
+        style: {
+          padding: { top: 24, right: 32, bottom: 8, left: 32 },
+          backgroundColor: '#f5f5f5'
+        },
+        props: {
+          contents:
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,sans-serif;">' +
+            '<tr><td align="center" style="padding:8px;font-size:15px;font-weight:700;color:#111827;">Get the app</td></tr>' +
+            '<tr><td align="center" style="padding:8px;">' +
+            `<img src="${picsum('app-store', 120, 40)}" alt="App Store" width="120" height="40" style="display:inline-block;margin:0 6px;border-radius:6px;" />` +
+            `<img src="${picsum('play-store', 120, 40)}" alt="Google Play" width="120" height="40" style="display:inline-block;margin:0 6px;border-radius:6px;" />` +
+            '</td></tr></table>'
+        }
+      }),
+      richFooter({
+        additionalText: 'You are receiving this email because you subscribed to updates.',
+        showUnsubscribe: true,
+        showAddress: false,
+        backgroundColor: '#f5f5f5',
+        color: '#6b7280',
+        padding: { top: 4, right: 32, bottom: 24, left: 32 }
+      })
+    ]
+  },
+  {
+    id: 'footer-newsletter-signup',
+    categoryId: 'footer',
+    kind: 'section',
+    name: 'Newsletter Signup',
+    description: 'Subscribe prompt with a CTA above the legal footer.',
+    icon: 'i-lucide-mail-plus',
+    previewTone: 'light',
+    blocks: [
+      block('Heading', {
+        style: {
+          padding: { top: 24, right: 32, bottom: 4, left: 32 },
+          textAlign: 'center',
+          fontSize: 18,
+          color: '#111827'
+        },
+        props: { level: 'h3', text: 'Never miss an update' }
+      }),
+      block('Button', {
+        style: {
+          padding: { top: 4, right: 24, bottom: 8, left: 24 },
+          textAlign: 'center'
+        },
+        props: {
+          text: 'Subscribe',
+          url: '#',
+          buttonBackgroundColor: '#0ea5e9',
+          buttonTextColor: '#ffffff'
+        }
+      }),
+      richFooter({
+        additionalText: 'Unsubscribe at any time from the link below.',
+        showUnsubscribe: true,
+        showAddress: false,
+        backgroundColor: '#f5f5f5',
+        color: '#6b7280',
+        padding: { top: 4, right: 32, bottom: 24, left: 32 }
       })
     ]
   }

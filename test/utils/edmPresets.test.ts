@@ -111,13 +111,13 @@ describe('edmPresets', () => {
     }
   })
 
-  it('exposes a rich section library with at least two presets per non-basic category', () => {
+  it('exposes a rich section library with at least six presets per non-basic category', () => {
     for (const category of nonBasicCategories) {
       const categorySectionPresets = category.presets.filter(preset => preset.kind === 'section')
       expect(
         categorySectionPresets.length,
-        `category ${category.id} should have >= 2 section presets`
-      ).toBeGreaterThanOrEqual(2)
+        `category ${category.id} should have >= 6 section presets`
+      ).toBeGreaterThanOrEqual(6)
     }
   })
 
