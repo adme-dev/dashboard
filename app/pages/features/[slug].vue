@@ -1235,7 +1235,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Per-Block Styling and Bulletproof HTML',
-        content: 'Select any block to open its inspector and fine-tune typography, colour, padding, alignment, and more, plus document-level settings for width, background, and spacing — with changes reflected on the canvas instantly. Behind the friendly editor, a server-side renderer turns your design into table-based, inline-styled HTML that survives Outlook, Gmail, Apple Mail, and everything in between. Flip between Editor, live Preview, and raw HTML at any time, and save any design as a reusable template your team can open, duplicate, rename, and reuse across campaigns.'
+        content: 'Select any block to open a rich, grouped inspector — Spacing, Typography (line height, letter spacing, text transform), and Border & effects (border, corner radius, shadow, opacity), plus background colour and image — alongside document-level settings for width, background, and spacing, with every change reflected on the canvas instantly. Behind the friendly editor, a server-side renderer turns your design into table-based, inline-styled HTML that survives Outlook, Gmail, Apple Mail, and everything in between. Flip between Editor, live Preview, and raw HTML at any time, and save any design as a reusable template your team can open, duplicate, rename, and reuse across campaigns.'
       }
     ]
   },
