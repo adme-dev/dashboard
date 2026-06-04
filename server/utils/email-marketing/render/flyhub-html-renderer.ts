@@ -14,6 +14,12 @@
 import { BLOCKS_LOADED } from './blocks'
 import { renderBlock } from './block-registry'
 import { FONT_FAMILY_MAP } from './blocks/types'
+import {
+  edmBlockHasResponsiveRules,
+  edmResponsiveClassForBlock,
+  getHideClassForBlock,
+  mobileStyleDeclarationsForBlock
+} from '~~/app/utils/edmResponsive'
 import type {
   FlyhubBlock,
   BlockRenderContext,
@@ -23,6 +29,30 @@ import type {
 } from './blocks/types'
 
 void BLOCKS_LOADED
+
+function collectResponsiveCss(doc: FlyhubDocument): { desktopCss: string[], mobileCss: string[] } {
+  const desktopCss: string[] = []
+  const mobileCss: string[] = []
+
+  for (const [blockId, block] of Object.entries(doc)) {
+    if (blockId === 'root' || !edmBlockHasResponsiveRules(block)) continue
+    const className = edmResponsiveClassForBlock(blockId)
+    const hideClass = getHideClassForBlock(block)
+    const mobileDeclarations = mobileStyleDeclarationsForBlock(block)
+
+    if (mobileDeclarations.length > 0) {
+      mobileCss.push(`      .${className} { ${mobileDeclarations.map(([prop, value]) => `${prop}: ${value} !important;`).join(' ')} }`)
+    }
+    if (hideClass === 'edm-hide-desktop' || hideClass === 'edm-hide-all') {
+      desktopCss.push(`    .${hideClass} { display: none !important; max-height: 0 !important; overflow: hidden !important; }`)
+    }
+    if (hideClass === 'edm-hide-mobile' || hideClass === 'edm-hide-all') {
+      mobileCss.push(`      .${hideClass} { display: none !important; max-height: 0 !important; overflow: hidden !important; }`)
+    }
+  }
+
+  return { desktopCss, mobileCss }
+}
 
 /**
  * Get font family CSS from FlyHub font family key
@@ -84,6 +114,7 @@ export function renderFlyhubDocumentToHtml(
   const borderColor = (rootProps.borderColor as string) || ''
   const contentWidth = 600
   const primaryColor = options.primaryColor || '#2f4574'
+  const responsiveCss = collectResponsiveCss(doc)
 
   // Build context and render all child blocks via the block registry
   const blockCtx = buildBlockRenderContext(
@@ -117,11 +148,11 @@ export function renderFlyhubDocumentToHtml(
     img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
     body { height: 100% !important; margin: 0 !important; padding: 0 !important; width: 100% !important; }
     a[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; font-size: inherit !important; font-family: inherit !important; font-weight: inherit !important; line-height: inherit !important; }
-    @media only screen and (max-width: 620px) {
+${responsiveCss.desktopCss.length ? `${responsiveCss.desktopCss.join('\n')}\n` : ''}    @media only screen and (max-width: 620px) {
       .email-container { width: 100% !important; max-width: 100% !important; }
       .fluid { max-width: 100% !important; height: auto !important; margin-left: auto !important; margin-right: auto !important; }
       .stack-column, .stack-column-center { display: block !important; width: 100% !important; max-width: 100% !important; direction: ltr !important; }
-      .columns-row { display: block !important; }
+      .columns-row { display: block !important; }${responsiveCss.mobileCss.length ? `\n${responsiveCss.mobileCss.join('\n')}` : ''}
     }
   </style>
 </head>

@@ -1,5 +1,18 @@
 import { registerBlock, renderBlock } from '../block-registry'
+import { edmResponsiveClassForBlock, getHideClassForBlock, mobileStyleDeclarationsForBlock } from '~~/app/utils/edmResponsive'
 import type { FlyhubBlock, BlockRenderContext } from './types'
+
+function responsiveClassesForChild(id: string, childBlock: FlyhubBlock): string {
+  return [
+    mobileStyleDeclarationsForBlock(childBlock).length > 0 ? edmResponsiveClassForBlock(id) : '',
+    getHideClassForBlock(childBlock) || ''
+  ].filter(Boolean).join(' ')
+}
+
+function wrapResponsiveHtml(id: string, childBlock: FlyhubBlock, html: string): string {
+  const className = responsiveClassesForChild(id, childBlock)
+  return className ? `<div class="${className}">${html}</div>` : html
+}
 
 registerBlock({
   type: 'EmailLayout',
@@ -25,7 +38,7 @@ registerBlock({
       .map((id) => {
         const childBlock = context._document?.[id]
         if (!childBlock) return ''
-        return renderBlock(childBlock, 'html', context)
+        return wrapResponsiveHtml(id, childBlock, renderBlock(childBlock, 'html', context))
       })
       .join('\n')
   },
