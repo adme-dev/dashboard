@@ -25,10 +25,12 @@ and deployed:
 | `d4fe3d0a` | Phase 1 nit: saved "Your templates" section is now a preview-card grid with live EDM document thumbnails. |
 | `1fbdc281` | Optional block anchor IDs: Advanced inspector control writes `props.anchorId`; server HTML renderers emit safe IDs on wrapper rows and omit unsafe values. |
 | `6ef51b04` | Phase 3b follow-up: editable Text blocks now expose a hover/focus mini-toolbar for bold, italic, underline, and safe links. |
+| `ffdb74af` | Phase 1b template folders + drafts: migration 164 adds `template_kind`/`folder_name`; save/edit persists metadata; saved templates group under Drafts and folder names. |
 
-Focused EDM verification after the continuation: 181 tests green across
+Focused EDM verification after the continuation: 184 tests green across
 `test/utils/edm*`, `test/utils/emailRender*`, `test/components/emailEdm*`,
-`test/components/emailTemplatesPanel.test.ts`, `test/components/emailEditorBlockWrapper.test.ts`,
+`test/utils/emailTemplatesMeta.test.ts`, `test/components/emailTemplatesPanel.test.ts`,
+`test/components/emailEditorBlockWrapper.test.ts`,
 `test/app/edmBuilderStore.test.ts`, and `test/server/edmCustomModules.test.ts`. Targeted ESLint for touched files
 passed; `EdmBlockRenderer.vue` still has the known `vue/no-v-html` warnings. `pnpm run typecheck` is not a clean gate
 on this branch: the default heap OOMs, and rerunning with `NODE_OPTIONS=--max-old-space-size=8192` exits non-zero on
@@ -56,8 +58,10 @@ issues in `columns-container.ts`/`html-block.ts`.
 
 ## ▶️ What's LEFT
 
-### 1. Lower priority / optional
-- **Phase 1b** — template folders + drafts grouping (needs persistence). Deferred.
+### 1. Merge/deploy only
+- Branch-local EDM continuation work now covers T3b.3, Phase 3c, the review follow-ups, anchor IDs, the inline text toolbar, and **Phase 1b template folders + drafts**.
+- **Before deploying Phase 1b**, apply migration 164 (`server/database/migrations/164-edm-template-folders-drafts.sql`) to the target DB. The templates list endpoint now selects/orders by `template_kind` and `folder_name`, so the code requires those columns.
+- No required EDM enterprise implementation follow-ups are open in this handoff. Optional future polish, if product asks for it: richer folder management such as rename/delete folders.
 
 ---
 
@@ -66,6 +70,7 @@ issues in `columns-container.ts`/`html-block.ts`.
 - **Build in the worktree** `.worktrees/edm-postcards-builder` (branch `feature/edm-postcards-builder`, real `node_modules`). It's fast-forwarded to `origin/main`. Before vitest in a fresh worktree run `nuxt prepare`.
 - **The MAIN checkout** (`/Users/paulgiurin/Documents/Projects/dashboard`) carries ~40 uncommitted **social-publishing WIP files — DO NOT disturb them.** None overlap EDM files. Local `main` is currently synced to `origin/main` (`24cb25f3`).
 - **Merge:** EDM commits are linear/ff-able onto `origin/main` — `git push origin HEAD:main` from the worktree. (Direct push works; review already done per-phase via subagent.)
+- **DB migration for Phase 1b:** apply `server/database/migrations/164-edm-template-folders-drafts.sql` before or with the deploy that includes `ffdb74af`.
 - **Deploy from the clean** `.worktrees/deploy-prod` worktree: `git checkout <commit>` → (deps unchanged ⇒ no install needed) → `pnpm deploy:production` (uses `--branch main` = production). Cold Nitro build ≈ 8 min. Verify the prod alias + `/agency/email`.
 - **Dev server:** a fresh one was started this session (background, PID may be stale by next session) on `:3000` from the main checkout. **After any branch/file sync, RESTART the dev server** — HMR does not register new auto-imported files (composables/API routes/components) from a bulk git update. (`:3000` EADDRINUSE ⇒ kill the old PID first.) `pnpm dev` inside a `.worktrees/*` worktree needs `CHOKIDAR_USEPOLLING=true`. To pick a port from a worktree, prefer `pnpm exec nuxt dev --port <port>`; `pnpm dev -- --port <port>` was observed to start a Nuxt welcome shell because the extra `--` is passed through to `nuxt dev`.
 
@@ -79,5 +84,5 @@ issues in `columns-container.ts`/`html-block.ts`.
 
 ## State
 - Original handoff baseline: `origin/main`/local `main` at `09fe609f`.
-- Continuation branch: `feature/edm-postcards-builder` includes feature commits through `6ef51b04` plus this handoff update.
-- Memory: `~/.claude/projects/.../memory/edm-postcards-builder.md` (+ MEMORY.md index) — update after 3b.3 / 3c.
+- Continuation branch: `feature/edm-postcards-builder` includes feature commits through `ffdb74af` plus this handoff update.
+- Memory: `~/.claude/projects/.../memory/edm-postcards-builder.md` (+ MEMORY.md index) may lag this continuation; this handoff is the source of truth.
