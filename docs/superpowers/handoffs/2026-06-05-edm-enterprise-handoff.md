@@ -24,8 +24,9 @@ and deployed:
 | `91bec914` | Phase 1 nit: `EdmTemplateThumbnail` now keys rendered starter blocks by document block id, not array index. |
 | `d4fe3d0a` | Phase 1 nit: saved "Your templates" section is now a preview-card grid with live EDM document thumbnails. |
 | `1fbdc281` | Optional block anchor IDs: Advanced inspector control writes `props.anchorId`; server HTML renderers emit safe IDs on wrapper rows and omit unsafe values. |
+| `6ef51b04` | Phase 3b follow-up: editable Text blocks now expose a hover/focus mini-toolbar for bold, italic, underline, and safe links. |
 
-Focused EDM verification after the continuation: 178 tests green across
+Focused EDM verification after the continuation: 181 tests green across
 `test/utils/edm*`, `test/utils/emailRender*`, `test/components/emailEdm*`,
 `test/components/emailTemplatesPanel.test.ts`, `test/components/emailEditorBlockWrapper.test.ts`,
 `test/app/edmBuilderStore.test.ts`, and `test/server/edmCustomModules.test.ts`. Targeted ESLint for touched files
@@ -55,10 +56,7 @@ issues in `columns-container.ts`/`html-block.ts`.
 
 ## ▶️ What's LEFT
 
-### 1. Review follow-ups still open
-- **3b — rich-text inline formatting.** Inline editing is plain-text for Heading/Button and sanitised-HTML for Text, but there's **no formatting toolbar** (bold/italic/link) on the canvas. Optional enhancement: a floating mini-toolbar that wraps the selection in the whitelisted tags `sanitizeInlineHtml` already allows.
-
-### 2. Lower priority / optional
+### 1. Lower priority / optional
 - **Phase 1b** — template folders + drafts grouping (needs persistence). Deferred.
 
 ---
@@ -81,5 +79,5 @@ issues in `columns-container.ts`/`html-block.ts`.
 
 ## State
 - Original handoff baseline: `origin/main`/local `main` at `09fe609f`.
-- Continuation branch: `feature/edm-postcards-builder` includes feature commits through `1fbdc281` plus this handoff update.
+- Continuation branch: `feature/edm-postcards-builder` includes feature commits through `6ef51b04` plus this handoff update.
 - Memory: `~/.claude/projects/.../memory/edm-postcards-builder.md` (+ MEMORY.md index) — update after 3b.3 / 3c.
