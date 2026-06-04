@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractFragment, reidFragment } from '~~/app/utils/edmModuleFragment'
+import { extractFragment, reidFragment, fragmentTopLevelTemplates } from '~~/app/utils/edmModuleFragment'
 import type { EdmFlyhubDocument, EdmFlyhubBlock } from '~~/app/types/edm'
 
 // ── Test fixtures ────────────────────────────────────────────────────────────
@@ -111,5 +111,28 @@ describe('reidFragment', () => {
     const out = reidFragment(frag) // default id generator
     const ids = Object.keys(out.blocks)
     expect(new Set(ids).size).toBe(ids.length)
+  })
+})
+
+describe('fragmentTopLevelTemplates', () => {
+  it('returns one { type, data } template per rootChildId, in order', () => {
+    const frag = {
+      blocks: {
+        a: { type: 'Html', data: { props: { html: 'x' } } },
+        b: { type: 'Heading', data: { props: { text: 'T' } } }
+      },
+      rootChildrenIds: ['a', 'b']
+    }
+    const tpls = fragmentTopLevelTemplates(frag)
+    expect(tpls.map(t => t.type)).toEqual(['Html', 'Heading'])
+    expect(tpls[0].data).toEqual({ props: { html: 'x' } })
+  })
+
+  it('skips rootChildIds with no matching block (defensive)', () => {
+    const frag = {
+      blocks: { a: { type: 'Html', data: {} } },
+      rootChildrenIds: ['a', 'missing']
+    }
+    expect(fragmentTopLevelTemplates(frag).map(t => t.type)).toEqual(['Html'])
   })
 })

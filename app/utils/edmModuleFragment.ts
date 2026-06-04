@@ -16,7 +16,7 @@
 
 import type { EdmFlyhubBlock, EdmFlyhubDocument } from '~~/app/types/edm'
 import { generateBlockId } from '~~/app/types/edm'
-import type { EdmDocumentFragment } from '~~/app/utils/edmPresets'
+import type { EdmDocumentFragment, EdmPresetBlockTemplate } from '~~/app/utils/edmPresets'
 
 interface ColumnSlot { childrenIds?: string[] }
 
@@ -93,4 +93,16 @@ export function reidFragment(
     blocks,
     rootChildrenIds: fragment.rootChildrenIds.map(remap)
   }
+}
+
+/**
+ * The fragment's top-level blocks as preset block templates ({ type, data }).
+ * Used to render a saved module's thumbnail through EdmSectionThumbnail, which
+ * renders each top-level block standalone (rich sections are single Html blocks).
+ */
+export function fragmentTopLevelTemplates(fragment: EdmDocumentFragment): EdmPresetBlockTemplate[] {
+  return fragment.rootChildrenIds
+    .map(id => fragment.blocks[id])
+    .filter((b): b is EdmFlyhubBlock => Boolean(b))
+    .map(b => ({ type: b.type, data: b.data }))
 }

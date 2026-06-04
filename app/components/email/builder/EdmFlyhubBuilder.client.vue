@@ -7,6 +7,8 @@ import { getDefaultBlockData } from '~~/app/utils/edmBlocks'
 import { EDM_SECTION_CATEGORIES, findStarterTemplate } from '~~/app/utils/edmPresets'
 import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
 import type { EdmFlyhubDocument } from '~~/app/types/edm'
+import { extractFragment, reidFragment } from '~~/app/utils/edmModuleFragment'
+import type { EdmCustomModule } from '~~/app/composables/useEdmCustomModules'
 
 const store = useEdmBuilder()
 const route = useRoute()
@@ -215,6 +217,111 @@ async function save() {
     })
   } finally {
     saving.value = false
+  }
+}
+
+// ── Save selection as a custom module ────────────────────────────────────
+// Captures the selected block's subtree (extractFragment) and persists it as a
+// reusable module that shows up in the "Custom Modules" palette category.
+const customModules = useEdmCustomModules()
+const showSaveModuleModal = ref(false)
+const moduleName = ref('')
+const moduleDescription = ref('')
+const savingModule = ref(false)
+
+function openSaveModule() {
+  if (!selectedBlock.value) return
+  moduleName.value = ''
+  moduleDescription.value = ''
+  showSaveModuleModal.value = true
+}
+
+async function saveModule() {
+  const block = selectedBlock.value
+  if (!block) return
+  if (!moduleName.value.trim()) {
+    toast.add({ title: 'Name required', description: 'Give the module a name.', color: 'error' })
+    return
+  }
+  savingModule.value = true
+  try {
+    const fragment = extractFragment(store.document.value, block.id)
+    await customModules.save({
+      name: moduleName.value.trim(),
+      description: moduleDescription.value.trim() || null,
+      blocks: fragment
+    })
+    toast.add({ title: 'Saved', description: 'Module saved to your palette.', color: 'success' })
+    showSaveModuleModal.value = false
+  } catch {
+    toast.add({ title: 'Save failed', description: 'Could not save the module.', color: 'error' })
+  } finally {
+    savingModule.value = false
+  }
+}
+
+// Insert a saved module: re-ID its fragment so ids never collide with blocks
+// already in the document, then splice it in at the given position.
+function insertCustomModule(module: EdmCustomModule, position?: number) {
+  const fragment = reidFragment(module.blocks)
+  store.insertBlocks(fragment.blocks, fragment.rootChildrenIds, 'root', position)
+}
+
+// ── Manage saved modules (rename / delete) ───────────────────────────────
+const showRenameModuleModal = ref(false)
+const showDeleteModuleModal = ref(false)
+const moduleBeingManaged = ref<EdmCustomModule | null>(null)
+const renameModuleName = ref('')
+const renameModuleDescription = ref('')
+const renamingModule = ref(false)
+const deletingModule = ref(false)
+
+function openRenameModule(module: EdmCustomModule) {
+  moduleBeingManaged.value = module
+  renameModuleName.value = module.name
+  renameModuleDescription.value = module.description ?? ''
+  showRenameModuleModal.value = true
+}
+
+async function confirmRenameModule() {
+  const module = moduleBeingManaged.value
+  if (!module) return
+  if (!renameModuleName.value.trim()) {
+    toast.add({ title: 'Name required', description: 'Give the module a name.', color: 'error' })
+    return
+  }
+  renamingModule.value = true
+  try {
+    await customModules.rename(module.id, {
+      name: renameModuleName.value.trim(),
+      description: renameModuleDescription.value.trim() || null
+    })
+    toast.add({ title: 'Renamed', description: 'Module updated.', color: 'success' })
+    showRenameModuleModal.value = false
+  } catch {
+    toast.add({ title: 'Rename failed', description: 'Could not update the module.', color: 'error' })
+  } finally {
+    renamingModule.value = false
+  }
+}
+
+function openDeleteModule(module: EdmCustomModule) {
+  moduleBeingManaged.value = module
+  showDeleteModuleModal.value = true
+}
+
+async function confirmDeleteModule() {
+  const module = moduleBeingManaged.value
+  if (!module) return
+  deletingModule.value = true
+  try {
+    await customModules.remove(module.id)
+    toast.add({ title: 'Deleted', description: 'Module removed.', color: 'success' })
+    showDeleteModuleModal.value = false
+  } catch {
+    toast.add({ title: 'Delete failed', description: 'Could not delete the module.', color: 'error' })
+  } finally {
+    deletingModule.value = false
   }
 }
 
@@ -437,7 +544,12 @@ onMounted(async () => {
                   <span class="mt-1 text-sm text-muted">Add a Basic module or a section to begin.</span>
                 </button>
                 <template #content>
-                  <EmailBuilderEdmAddModuleMenu @insert="(preset) => { insertPreset(preset, 0); emptyAddOpen = false }" />
+                  <EmailBuilderEdmAddModuleMenu
+                    @insert="(preset) => { insertPreset(preset, 0); emptyAddOpen = false }"
+                    @insert-module="(m) => { insertCustomModule(m, 0); emptyAddOpen = false }"
+                    @rename-module="openRenameModule"
+                    @delete-module="openDeleteModule"
+                  />
                 </template>
               </UPopover>
             </div>
@@ -486,7 +598,12 @@ onMounted(async () => {
                   label="Add block"
                 />
                 <template #content>
-                  <EmailBuilderEdmAddModuleMenu @insert="(preset) => { insertPreset(preset, childBlocks.length); addAtEndOpen = false }" />
+                  <EmailBuilderEdmAddModuleMenu
+                    @insert="(preset) => { insertPreset(preset, childBlocks.length); addAtEndOpen = false }"
+                    @insert-module="(m) => { insertCustomModule(m, childBlocks.length); addAtEndOpen = false }"
+                    @rename-module="openRenameModule"
+                    @delete-module="openDeleteModule"
+                  />
                 </template>
               </UPopover>
             </div>
@@ -496,9 +613,21 @@ onMounted(async () => {
         <!-- Right: block inspector when a block is selected, else email settings -->
         <aside class="w-80 border-l border-default p-3 overflow-auto">
           <template v-if="selectedBlock">
-            <p class="text-xs font-semibold uppercase text-muted mb-3">
-              {{ selectedBlock.type }} settings
-            </p>
+            <div class="flex items-center justify-between mb-3">
+              <p class="text-xs font-semibold uppercase text-muted">
+                {{ selectedBlock.type }} settings
+              </p>
+              <UTooltip text="Save this block as a reusable module">
+                <UButton
+                  icon="i-lucide-bookmark-plus"
+                  variant="ghost"
+                  color="neutral"
+                  size="xs"
+                  label="Save module"
+                  @click="openSaveModule()"
+                />
+              </UTooltip>
+            </div>
             <EmailBuilderBlockSettingsPanel :block="selectedBlock" @update="onBlockUpdate" />
           </template>
           <template v-else>
@@ -580,6 +709,73 @@ onMounted(async () => {
               :loading="saving"
               @click="save()"
             />
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Save selection as a reusable custom module -->
+    <UModal v-model:open="showSaveModuleModal" title="Save as module">
+      <template #content>
+        <div class="p-4 space-y-4">
+          <p class="text-sm text-muted">
+            Saves the selected <span class="font-medium text-default">{{ selectedBlock?.type }}</span>
+            block (and its contents) as a reusable module. It'll appear in the
+            <span class="font-medium text-default">Custom Modules</span> palette category for any email.
+          </p>
+          <UFormField label="Name" required>
+            <UInput v-model="moduleName" placeholder="e.g. Brand header, Footer with socials" class="w-full" />
+          </UFormField>
+          <UFormField label="Description" help="Optional — a short note to recognise it later.">
+            <UInput v-model="moduleDescription" placeholder="Optional description" class="w-full" />
+          </UFormField>
+          <div class="flex justify-end gap-2 pt-2">
+            <UButton
+              variant="ghost"
+              color="neutral"
+              label="Cancel"
+              @click="showSaveModuleModal = false"
+            />
+            <UButton
+              color="primary"
+              label="Save module"
+              :loading="savingModule"
+              @click="saveModule()"
+            />
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Rename a saved module -->
+    <UModal v-model:open="showRenameModuleModal" title="Rename module">
+      <template #content>
+        <div class="p-4 space-y-4">
+          <UFormField label="Name" required>
+            <UInput v-model="renameModuleName" placeholder="Module name" class="w-full" />
+          </UFormField>
+          <UFormField label="Description" help="Optional.">
+            <UInput v-model="renameModuleDescription" placeholder="Optional description" class="w-full" />
+          </UFormField>
+          <div class="flex justify-end gap-2 pt-2">
+            <UButton variant="ghost" color="neutral" label="Cancel" @click="showRenameModuleModal = false" />
+            <UButton color="primary" label="Save" :loading="renamingModule" @click="confirmRenameModule()" />
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Delete a saved module (confirm) -->
+    <UModal v-model:open="showDeleteModuleModal" title="Delete module">
+      <template #content>
+        <div class="p-4 space-y-4">
+          <p class="text-sm text-muted">
+            Delete <span class="font-medium text-default">{{ moduleBeingManaged?.name }}</span>?
+            This removes it from the Custom Modules palette. Emails you already built with it are unaffected.
+          </p>
+          <div class="flex justify-end gap-2 pt-2">
+            <UButton variant="ghost" color="neutral" label="Cancel" @click="showDeleteModuleModal = false" />
+            <UButton color="error" label="Delete" :loading="deletingModule" @click="confirmDeleteModule()" />
           </div>
         </div>
       </template>

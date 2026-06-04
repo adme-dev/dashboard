@@ -4,10 +4,21 @@ import { renderToString } from 'vue/server-renderer'
 import EdmAddModuleMenu from '~~/app/components/email/builder/EdmAddModuleMenu.vue'
 import { EDM_SECTION_CATEGORIES } from '~~/app/utils/edmPresets'
 
-// The component relies on Nuxt auto-imports for ref/computed; expose them as
-// globals so it renders in a bare SSR app.
+// The component relies on Nuxt auto-imports for ref/computed/onMounted and the
+// useEdmCustomModules composable; expose them as globals so it renders in a bare
+// SSR app. The composable is stubbed with an empty module list.
 ;(globalThis as Record<string, unknown>).ref = ref
 ;(globalThis as Record<string, unknown>).computed = computed
+;(globalThis as Record<string, unknown>).onMounted = () => {}
+;(globalThis as Record<string, unknown>).useEdmCustomModules = () => ({
+  modules: ref([]),
+  loading: ref(false),
+  loaded: ref(false),
+  load: () => {},
+  save: async () => ({}),
+  rename: async () => ({}),
+  remove: async () => {}
+})
 
 // Stub the auto-imported children Nuxt would resolve at runtime so the
 // component can render in a bare SSR app.
@@ -49,5 +60,10 @@ describe('EdmAddModuleMenu', () => {
     for (const category of EDM_SECTION_CATEGORIES) {
       expect(html).toContain(category.label)
     }
+  })
+
+  it('renders a Custom Modules rail entry', async () => {
+    const html = await render()
+    expect(html).toContain('Custom Modules')
   })
 })
