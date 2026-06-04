@@ -292,7 +292,7 @@ export function blogCardRow(opts: BlogCardRowOpts = {}): EdmPresetBlockTemplate 
       const href = escapeAttr(card.url || '#')
       return `<td valign="top" width="${cellWidth}%" style="padding:8px;font-family:Arial,sans-serif;">
         <a href="${href}" style="text-decoration:none;color:inherit;">
-          <img src="${escapeAttr(img)}" alt="${escapeAttr(card.title || 'Blog image')}" width="100%" height="160" style="display:block;width:100%;height:160px;object-fit:cover;border-radius:8px;" />
+          <img loading="lazy" src="${escapeAttr(img)}" alt="${escapeAttr(card.title || 'Blog image')}" width="100%" height="160" style="display:block;width:100%;height:160px;object-fit:cover;border-radius:8px;" />
           <div style="margin-top:10px;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:${escapeAttr(accentColor)};">${escapeHtml(card.date || '')}</div>
           <div style="margin-top:4px;font-size:16px;font-weight:700;line-height:1.3;color:#111827;">${escapeHtml(card.title || '')}</div>
         </a>
@@ -331,7 +331,7 @@ export function clientLogoStrip(opts: ClientLogoStripOpts = {}): EdmPresetBlockT
     const seed = brand.imageSeed || `logo-${i}`
     const img = brand.imageUrl || picsum(seed, 120, 60)
     return `<td valign="middle" align="center" width="${cellWidth}%" style="padding:12px 8px;font-family:Arial,sans-serif;">
-      <img src="${escapeAttr(img)}" alt="${escapeAttr(brand.name || 'Brand logo')}" width="96" height="48" style="display:inline-block;width:96px;height:48px;object-fit:contain;opacity:0.85;" />
+      <img loading="lazy" src="${escapeAttr(img)}" alt="${escapeAttr(brand.name || 'Brand logo')}" width="96" height="48" style="display:inline-block;width:96px;height:48px;object-fit:contain;opacity:0.85;" />
       <div style="margin-top:6px;font-size:12px;font-weight:700;color:#9ca3af;">${escapeHtml(brand.name || '')}</div>
     </td>`
   }
@@ -381,7 +381,7 @@ export function storyGrid(opts: StoryGridOpts = {}): EdmPresetBlockTemplate {
     const href = escapeAttr(story.url || '#')
     return `<td valign="top" width="${cellWidth}%" style="padding:8px;font-family:Arial,sans-serif;">
       <a href="${href}" style="text-decoration:none;color:inherit;">
-        <img src="${escapeAttr(img)}" alt="${escapeAttr(story.heading || 'Story image')}" width="100%" height="150" style="display:block;width:100%;height:150px;object-fit:cover;border-radius:8px;" />
+        <img loading="lazy" src="${escapeAttr(img)}" alt="${escapeAttr(story.heading || 'Story image')}" width="100%" height="150" style="display:block;width:100%;height:150px;object-fit:cover;border-radius:8px;" />
         <div style="margin-top:10px;font-size:17px;font-weight:700;line-height:1.3;color:#111827;">${escapeHtml(story.heading || '')}</div>
         <div style="margin-top:4px;font-size:13px;line-height:1.5;color:#4b5563;">${escapeHtml(story.blurb || '')}</div>
       </a>
@@ -428,7 +428,7 @@ export function productCard(opts: ProductCardOpts = {}): EdmPresetBlockTemplate 
   const contents = `${TABLE_OPEN} style="border-collapse:collapse;">
     <tr>
       <td align="center" style="padding:8px;font-family:Arial,sans-serif;">
-        <img src="${escapeAttr(imageUrl)}" alt="${escapeAttr(name)}" width="100%" height="200" style="display:block;width:100%;height:200px;object-fit:cover;border-radius:8px;" />
+        <img loading="lazy" src="${escapeAttr(imageUrl)}" alt="${escapeAttr(name)}" width="100%" height="200" style="display:block;width:100%;height:200px;object-fit:cover;border-radius:8px;" />
         <div style="margin-top:12px;font-size:18px;font-weight:700;color:#111827;">${escapeHtml(name)}</div>
         <div style="margin-top:4px;font-size:16px;font-weight:700;color:${escapeAttr(buttonColor)};">${escapeHtml(price)}</div>
         <a href="${escapeAttr(ctaUrl)}" style="display:inline-block;margin-top:14px;padding:10px 24px;background:${escapeAttr(buttonColor)};color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;border-radius:6px;">${escapeHtml(ctaText)}</a>
@@ -473,7 +473,7 @@ export function productRow(opts: ProductRowOpts = {}): EdmPresetBlockTemplate {
     const seed = product.imageSeed || `product-${i}`
     const img = product.imageUrl || picsum(seed, 260, 180)
     return `<td valign="top" align="center" width="${cellWidth}%" style="padding:8px;font-family:Arial,sans-serif;">
-      <img src="${escapeAttr(img)}" alt="${escapeAttr(product.name || 'Product')}" width="100%" height="150" style="display:block;width:100%;height:150px;object-fit:cover;border-radius:8px;" />
+      <img loading="lazy" src="${escapeAttr(img)}" alt="${escapeAttr(product.name || 'Product')}" width="100%" height="150" style="display:block;width:100%;height:150px;object-fit:cover;border-radius:8px;" />
       <div style="margin-top:10px;font-size:15px;font-weight:700;color:#111827;">${escapeHtml(product.name || '')}</div>
       <div style="margin-top:2px;font-size:14px;font-weight:700;color:${escapeAttr(buttonColor)};">${escapeHtml(product.price || '')}</div>
       <a href="${escapeAttr(product.ctaUrl || '#')}" style="display:inline-block;margin-top:10px;padding:8px 18px;background:${escapeAttr(buttonColor)};color:#ffffff;font-size:13px;font-weight:600;text-decoration:none;border-radius:6px;">${escapeHtml(product.ctaText || 'Shop now')}</a>
@@ -520,7 +520,7 @@ export function imageTextRow(opts: ImageTextRowOpts = {}): EdmPresetBlockTemplat
   } = opts
 
   const imageCell = `<td valign="middle" width="44%" style="padding:8px;font-family:Arial,sans-serif;">
-    <img src="${escapeAttr(imageUrl)}" alt="${escapeAttr(heading)}" width="100%" height="180" style="display:block;width:100%;height:180px;object-fit:cover;border-radius:8px;" />
+    <img loading="lazy" src="${escapeAttr(imageUrl)}" alt="${escapeAttr(heading)}" width="100%" height="180" style="display:block;width:100%;height:180px;object-fit:cover;border-radius:8px;" />
   </td>`
 
   const ctaHtml = ctaText
