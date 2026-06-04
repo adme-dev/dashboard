@@ -5,6 +5,7 @@
      library + automotive deps are stripped (image is a plain URL input). -->
 <script setup lang="ts">
 import { getEdmSectionSettings } from '~~/app/utils/edmSectionSettings'
+import { BORDER_STYLES, TEXT_TRANSFORMS, SHADOW_OPTIONS } from '~~/app/utils/edmStyle'
 
 interface BlockData {
   style?: {
@@ -65,6 +66,43 @@ const COLUMN_ALIGNMENTS = [
 const TEXT_ALIGNMENTS = ['left', 'center', 'right']
 
 const sectionSettings = computed(() => getEdmSectionSettings(props.block.type))
+
+// ── Phase 3a: rich style groups (collapsible, block-type aware) ──────────────
+// Which advanced groups apply to the selected block. Typography depth only for
+// text-bearing blocks; border/effects + background-image for blocks that render
+// a styleable cell.
+const TEXTUAL_BLOCKS = ['Text', 'Heading', 'Button']
+const STYLEABLE_BLOCKS = ['Text', 'Heading', 'Button', 'Image', 'Avatar', 'Container', 'ColumnsContainer', 'Divider']
+const BG_IMAGE_BLOCKS = ['Text', 'Heading', 'Container', 'ColumnsContainer']
+
+const showTypographyGroup = computed(() => TEXTUAL_BLOCKS.includes(props.block.type))
+const showEffectsGroup = computed(() => STYLEABLE_BLOCKS.includes(props.block.type))
+const showBackgroundImage = computed(() => BG_IMAGE_BLOCKS.includes(props.block.type))
+
+// Collapsible open-state per group (Spacing open by default; advanced groups closed).
+const openGroups = reactive<Record<string, boolean>>({
+  spacing: true,
+  typography: false,
+  effects: false,
+  background: false
+})
+function toggleGroup(id: string) {
+  openGroups[id] = !openGroups[id]
+}
+
+const BORDER_STYLE_OPTIONS = BORDER_STYLES.map(v => ({ value: v, label: v[0].toUpperCase() + v.slice(1) }))
+const TEXT_TRANSFORM_OPTIONS = TEXT_TRANSFORMS.map(v => ({ value: v, label: v === 'none' ? 'None' : v[0].toUpperCase() + v.slice(1) }))
+const SHADOW_SELECT_OPTIONS = SHADOW_OPTIONS.map(v => ({ value: v, label: v === 'none' ? 'None' : v.toUpperCase() }))
+
+function styleNum(key: string, fallback: number): number {
+  const v = props.block.data?.style?.[key]
+  return typeof v === 'number' ? v : fallback
+}
+// Opacity is stored 0–1 but edited as a 0–100 percentage.
+const opacityPct = computed(() => Math.round((styleNum('opacity', 1)) * 100))
+function updateOpacityPct(pct: number) {
+  updateStyle('opacity', Math.max(0, Math.min(100, pct)) / 100)
+}
 
 function alignIcon(align: string): string {
   if (align === 'center') return 'i-lucide-align-center'
@@ -769,12 +807,19 @@ function updateColumnWidth(index: number, value: string | number) {
       </template>
     </template>
 
-    <!-- Shared: padding (all block types) -->
-    <div class="pt-4 border-t border-default">
-      <p class="text-xs font-semibold uppercase text-muted mb-3">
-        Padding
-      </p>
-      <div class="space-y-3">
+    <!-- ── Grouped, collapsible style sections (Phase 3a) ─────────────────── -->
+
+    <!-- Spacing (padding) — all block types -->
+    <div class="pt-3 border-t border-default">
+      <button
+        type="button"
+        class="w-full flex items-center justify-between py-1.5 text-xs font-semibold uppercase text-muted hover:text-default transition-colors"
+        @click="toggleGroup('spacing')"
+      >
+        <span>Spacing</span>
+        <UIcon :name="openGroups.spacing ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" class="h-4 w-4" />
+      </button>
+      <div v-show="openGroups.spacing" class="space-y-3 pt-2">
         <div
           v-for="pad in [
             { side: 'top', icon: 'i-lucide-arrow-up-from-line', def: 16 },
@@ -798,6 +843,157 @@ function updateColumnWidth(index: number, value: string | number) {
             {{ block.data?.style?.padding?.[pad.side as 'top' | 'bottom' | 'left' | 'right'] ?? pad.def }}px
           </span>
         </div>
+      </div>
+    </div>
+
+    <!-- group: text-bearing blocks -->
+    <div v-if="showTypographyGroup" class="pt-3 border-t border-default">
+      <button
+        type="button"
+        class="w-full flex items-center justify-between py-1.5 text-xs font-semibold uppercase text-muted hover:text-default transition-colors"
+        @click="toggleGroup('typography')"
+      >
+        <span>Typography</span>
+        <UIcon :name="openGroups.typography ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" class="h-4 w-4" />
+      </button>
+      <div v-show="openGroups.typography" class="space-y-4 pt-2">
+        <UFormField :label="`Line height — ${block.data?.style?.lineHeight ?? 'default'}`">
+          <USlider
+            :model-value="Number(block.data?.style?.lineHeight ?? 1.5)"
+            :min="1"
+            :max="2.5"
+            :step="0.1"
+            @update:model-value="updateStyle('lineHeight', $event)"
+          />
+        </UFormField>
+        <UFormField :label="`Letter spacing — ${block.data?.style?.letterSpacing ?? 0}px`">
+          <USlider
+            :model-value="Number(block.data?.style?.letterSpacing ?? 0)"
+            :min="-2"
+            :max="8"
+            :step="0.5"
+            @update:model-value="updateStyle('letterSpacing', $event)"
+          />
+        </UFormField>
+        <UFormField label="Text transform">
+          <USelect
+            :model-value="(block.data?.style?.textTransform as string) || 'none'"
+            :items="TEXT_TRANSFORM_OPTIONS"
+            value-key="value"
+            class="w-full"
+            @update:model-value="updateStyle('textTransform', $event)"
+          />
+        </UFormField>
+      </div>
+    </div>
+
+    <!-- Border & effects — styleable blocks -->
+    <div v-if="showEffectsGroup" class="pt-3 border-t border-default">
+      <button
+        type="button"
+        class="w-full flex items-center justify-between py-1.5 text-xs font-semibold uppercase text-muted hover:text-default transition-colors"
+        @click="toggleGroup('effects')"
+      >
+        <span>Border &amp; effects</span>
+        <UIcon :name="openGroups.effects ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" class="h-4 w-4" />
+      </button>
+      <div v-show="openGroups.effects" class="space-y-4 pt-2">
+        <div class="grid grid-cols-2 gap-4">
+          <UFormField :label="`Border width — ${block.data?.style?.borderWidth ?? 0}px`">
+            <USlider
+              :model-value="Number(block.data?.style?.borderWidth ?? 0)"
+              :min="0"
+              :max="8"
+              :step="1"
+              @update:model-value="updateStyle('borderWidth', $event)"
+            />
+          </UFormField>
+          <UFormField label="Border style">
+            <USelect
+              :model-value="(block.data?.style?.borderStyle as string) || 'solid'"
+              :items="BORDER_STYLE_OPTIONS"
+              value-key="value"
+              class="w-full"
+              @update:model-value="updateStyle('borderStyle', $event)"
+            />
+          </UFormField>
+        </div>
+        <UFormField label="Border color">
+          <div class="flex gap-2">
+            <UInput
+              type="color"
+              :model-value="block.data?.style?.borderColor || '#000000'"
+              class="w-12"
+              @update:model-value="updateStyle('borderColor', $event)"
+            />
+            <UInput
+              :model-value="block.data?.style?.borderColor || ''"
+              placeholder="#000000"
+              class="flex-1"
+              @update:model-value="updateStyle('borderColor', $event)"
+            />
+          </div>
+        </UFormField>
+        <UFormField :label="`Corner radius — ${block.data?.style?.borderRadius ?? 0}px`">
+          <USlider
+            :model-value="Number(block.data?.style?.borderRadius ?? 0)"
+            :min="0"
+            :max="32"
+            :step="1"
+            @update:model-value="updateStyle('borderRadius', $event)"
+          />
+        </UFormField>
+        <UFormField label="Shadow">
+          <USelect
+            :model-value="(block.data?.style?.boxShadow as string) || 'none'"
+            :items="SHADOW_SELECT_OPTIONS"
+            value-key="value"
+            class="w-full"
+            @update:model-value="updateStyle('boxShadow', $event)"
+          />
+        </UFormField>
+        <UFormField :label="`Opacity — ${opacityPct}%`">
+          <USlider
+            :model-value="opacityPct"
+            :min="0"
+            :max="100"
+            :step="5"
+            @update:model-value="updateOpacityPct($event)"
+          />
+        </UFormField>
+      </div>
+    </div>
+
+    <!-- group: container-like + text blocks -->
+    <div v-if="showBackgroundImage" class="pt-3 border-t border-default">
+      <button
+        type="button"
+        class="w-full flex items-center justify-between py-1.5 text-xs font-semibold uppercase text-muted hover:text-default transition-colors"
+        @click="toggleGroup('background')"
+      >
+        <span>Background image</span>
+        <UIcon :name="openGroups.background ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" class="h-4 w-4" />
+      </button>
+      <div v-show="openGroups.background" class="space-y-3 pt-2">
+        <UFormField label="Image URL" help="Shown behind content (cover/centred). Use an absolute https URL.">
+          <div class="flex gap-2 items-center">
+            <UInput
+              :model-value="(block.data?.style?.backgroundImage as string) || ''"
+              placeholder="https://"
+              class="flex-1"
+              @update:model-value="updateStyle('backgroundImage', $event)"
+            />
+            <UButton
+              v-if="block.data?.style?.backgroundImage"
+              icon="i-lucide-x"
+              variant="ghost"
+              color="neutral"
+              size="xs"
+              title="Clear background image"
+              @click="updateStyle('backgroundImage', null)"
+            />
+          </div>
+        </UFormField>
       </div>
     </div>
   </div>
