@@ -54,16 +54,34 @@ export interface EdmSectionCategory {
   presets: EdmSectionPreset[]
 }
 
+export type EdmStarterUsage =
+  | 'Newsletter'
+  | 'Promotion'
+  | 'Transactional'
+  | 'Announcement'
+  | 'Event'
+  | 'Welcome'
+
+export type EdmStarterStyle =
+  | 'Editorial'
+  | 'Retail'
+  | 'Utility'
+  | 'Bold'
+  | 'Minimal'
+  | 'Corporate'
+
 export interface EdmStarterTemplate {
   id: string
   name: string
   description: string
-  usage: string
-  style: string
+  usage: EdmStarterUsage | string
+  style: EdmStarterStyle | string
   previewTone: EdmPreviewTone
   sectionPresetIds: readonly EdmSectionPresetId[]
   subject: string
   previewText: string
+  industry?: string
+  isNew?: boolean
 }
 
 export interface EdmDocumentFragment {
@@ -1611,7 +1629,8 @@ export const EDM_STARTER_TEMPLATES: EdmStarterTemplate[] = [
       'footer-legal'
     ],
     subject: 'Weekly digest',
-    previewText: 'Latest updates from the team'
+    previewText: 'Latest updates from the team',
+    industry: 'Agency'
   },
   {
     id: 'product-offer',
@@ -1628,7 +1647,8 @@ export const EDM_STARTER_TEMPLATES: EdmStarterTemplate[] = [
       'footer-legal'
     ],
     subject: 'Limited-time offer',
-    previewText: 'A new campaign offer is ready'
+    previewText: 'A new campaign offer is ready',
+    industry: 'Retail'
   },
   {
     id: 'confirmation-update',
@@ -1640,6 +1660,178 @@ export const EDM_STARTER_TEMPLATES: EdmStarterTemplate[] = [
     sectionPresetIds: ['header-logo-menu', 'transactional-next-steps', 'footer-legal'],
     subject: 'Your update is confirmed',
     previewText: 'Here is what happens next'
+  },
+  {
+    id: 'monthly-newsletter',
+    name: 'Monthly Stories',
+    description: 'Image-led monthly newsletter with top stories and a feature read.',
+    usage: 'Newsletter',
+    style: 'Editorial',
+    previewTone: 'light',
+    sectionPresetIds: [
+      'header-logo-image',
+      'content-newsletter-intro',
+      'content-top-stories',
+      'content-feature-story',
+      'footer-social'
+    ],
+    subject: 'This month at the studio',
+    previewText: 'The stories, wins, and reads worth your time',
+    industry: 'Agency',
+    isNew: true
+  },
+  {
+    id: 'flash-sale',
+    name: 'Flash Sale',
+    description: 'High-energy sale email with an image hero, product grid, and discount banner.',
+    usage: 'Promotion',
+    style: 'Bold',
+    previewTone: 'dark',
+    sectionPresetIds: [
+      'header-announcement',
+      'ecommerce-sale-hero',
+      'ecommerce-product-grid',
+      'ecommerce-discount-banner',
+      'footer-legal'
+    ],
+    subject: 'Flash sale — up to 30% off',
+    previewText: 'Our biggest savings of the season end soon',
+    industry: 'Retail',
+    isNew: true
+  },
+  {
+    id: 'product-launch',
+    name: 'Product Launch',
+    description: 'Announcement email pairing a hero header with a feature spotlight and CTA.',
+    usage: 'Announcement',
+    style: 'Bold',
+    previewTone: 'dark',
+    sectionPresetIds: [
+      'header-hero-image',
+      'feature-spotlight',
+      'feature-checklist',
+      'cta-dark-banner',
+      'footer-dark-social'
+    ],
+    subject: 'Introducing our newest release',
+    previewText: 'Built for teams who move fast',
+    industry: 'SaaS',
+    isNew: true
+  },
+  {
+    id: 'welcome-onboarding',
+    name: 'Welcome Aboard',
+    description: 'Warm welcome email that gets new accounts set up with clear next steps.',
+    usage: 'Welcome',
+    style: 'Minimal',
+    previewTone: 'light',
+    sectionPresetIds: [
+      'header-minimal',
+      'transactional-welcome',
+      'transactional-next-steps',
+      'cta-soft-banner',
+      'footer-legal'
+    ],
+    subject: 'Welcome aboard — let’s get started',
+    previewText: 'A quick guide to your first few steps',
+    industry: 'SaaS',
+    isNew: true
+  },
+  {
+    id: 'event-invite',
+    name: 'Event Invite',
+    description: 'Event invitation with a hero header, agenda highlights, and an RSVP CTA.',
+    usage: 'Event',
+    style: 'Bold',
+    previewTone: 'dark',
+    sectionPresetIds: [
+      'header-hero-image',
+      'content-image-story',
+      'feature-three-col',
+      'cta-image-banner',
+      'footer-address'
+    ],
+    subject: 'You’re invited — save the date',
+    previewText: 'Join us for an evening of ideas and connections',
+    industry: 'Events',
+    isNew: true
+  },
+  {
+    id: 'order-confirmation',
+    name: 'Order Confirmation',
+    description: 'Transactional receipt with an order summary and shipping update.',
+    usage: 'Transactional',
+    style: 'Utility',
+    previewTone: 'light',
+    sectionPresetIds: [
+      'header-minimal',
+      'transactional-receipt',
+      'transactional-order-summary',
+      'transactional-shipping',
+      'footer-address'
+    ],
+    subject: 'Your order is confirmed',
+    previewText: 'Thanks for your order — here are the details',
+    industry: 'Retail',
+    isNew: true
+  },
+  {
+    id: 'corporate-update',
+    name: 'Corporate Update',
+    description: 'Polished company announcement with services overview and a strategy CTA.',
+    usage: 'Announcement',
+    style: 'Corporate',
+    previewTone: 'light',
+    sectionPresetIds: [
+      'header-nav-bar',
+      'content-feature-story',
+      'content-services',
+      'cta-dark-banner',
+      'footer-address'
+    ],
+    subject: 'An important update from our team',
+    previewText: 'What’s changing and what it means for you',
+    industry: 'Agency',
+    isNew: true
+  },
+  {
+    id: 'case-study-spotlight',
+    name: 'Case Study Spotlight',
+    description: 'Editorial case-study email with a pull quote, client logos, and a soft CTA.',
+    usage: 'Newsletter',
+    style: 'Editorial',
+    previewTone: 'light',
+    sectionPresetIds: [
+      'header-logo-image',
+      'content-feature-story',
+      'content-quote',
+      'content-client-logos',
+      'cta-soft-banner',
+      'footer-social'
+    ],
+    subject: 'How we doubled their signups',
+    previewText: 'A real campaign, broken down step by step',
+    industry: 'Agency',
+    isNew: true
+  },
+  {
+    id: 'seasonal-promo',
+    name: 'Seasonal Promo',
+    description: 'Retail promo with a bold sale banner, picks, and a coupon CTA.',
+    usage: 'Promotion',
+    style: 'Retail',
+    previewTone: 'accent',
+    sectionPresetIds: [
+      'header-dark-brand',
+      'ecommerce-sale-banner',
+      'ecommerce-two-up',
+      'ecommerce-discount-banner',
+      'footer-newsletter-signup'
+    ],
+    subject: 'Seasonal savings are here',
+    previewText: 'Hand-picked deals before they’re gone',
+    industry: 'Retail',
+    isNew: true
   }
 ]
 

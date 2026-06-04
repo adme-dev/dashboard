@@ -221,4 +221,50 @@ describe('edmPresets', () => {
     expect(findSectionPreset('missing-section')).toBeNull()
     expect(findStarterTemplate('missing-starter')).toBeNull()
   })
+
+  it('ships an expanded starter library of at least ten complete templates', () => {
+    expect(EDM_STARTER_TEMPLATES.length).toBeGreaterThanOrEqual(10)
+  })
+
+  it('keeps the original three starters and unique starter ids', () => {
+    const starterIds = EDM_STARTER_TEMPLATES.map(starter => starter.id)
+
+    expect(new Set(starterIds).size).toBe(starterIds.length)
+    for (const id of ['newsletter-digest', 'product-offer', 'confirmation-update']) {
+      expect(starterIds, `expected original starter ${id} to remain`).toContain(id)
+    }
+  })
+
+  it('resolves every section preset id referenced by every starter', () => {
+    for (const starter of EDM_STARTER_TEMPLATES) {
+      for (const sectionPresetId of starter.sectionPresetIds) {
+        expect(
+          findSectionPreset(sectionPresetId),
+          `starter ${starter.id} references unknown section ${sectionPresetId}`
+        ).not.toBeNull()
+      }
+    }
+  })
+
+  it('builds a valid full document for every starter that renders without fallback markup', () => {
+    for (const starter of EDM_STARTER_TEMPLATES) {
+      const document = buildStarterTemplateDocument(starter.id)
+
+      expect(isFlyhubFormat(document), `starter ${starter.id} is not flyhub format`).toBe(true)
+      expect(
+        document.root.data.childrenIds.length,
+        `starter ${starter.id} should have >= 3 root children`
+      ).toBeGreaterThanOrEqual(3)
+
+      const html = renderTemplateDocument(document, {
+        subjectLine: starter.subject,
+        previewText: starter.previewText
+      })
+
+      expect(
+        html,
+        `starter ${starter.id} rendered fallback markup`
+      ).not.toContain('available in upcoming update')
+    }
+  })
 })
