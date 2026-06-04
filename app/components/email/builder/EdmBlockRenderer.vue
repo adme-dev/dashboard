@@ -310,25 +310,27 @@ const menuItems = computed(() => asArray<{ label?: string, url?: string }>(block
   .map(item => ({ label: asString(item.label), url: asString(item.url) }))
   .filter(item => item.label))
 const menuSeparator = computed(() => asString(blockProps.value.separator) || '•')
-const menuItemStyle = {
+const menuTextColor = computed(() => (props.style?.color as string) || '#111827')
+const menuItemStyle = computed(() => ({
   display: 'inline-flex',
   alignItems: 'center',
   fontSize: '14px',
   lineHeight: '1.4',
-  color: (props.style?.color as string) || '#111827',
+  color: menuTextColor.value,
   fontWeight: '500',
   whiteSpace: 'nowrap'
-}
-const menuLinkStyle = {
-  color: (props.style?.color as string) || '#111827',
+}))
+const menuLinkStyle = computed(() => ({
+  color: menuTextColor.value,
   textDecoration: 'none'
-}
+}))
 const menuSeparatorStyle = {
   padding: '0 8px',
   color: '#9ca3af'
 }
 
 const heroImageUrl = computed(() => asString(blockProps.value.imageUrl))
+const heroTextColor = computed(() => (blockProps.value.textColor as string) || '#ffffff')
 const heroOverlayOpacity = computed(() => {
   const value = blockProps.value.overlayOpacity
   return typeof value === 'number' ? value : 0.4
@@ -348,7 +350,7 @@ const heroStyle = computed(() => ({
   backgroundSize: heroImageUrl.value ? 'cover' : undefined,
   backgroundPosition: heroImageUrl.value ? 'center' : undefined,
   backgroundRepeat: heroImageUrl.value ? 'no-repeat' : undefined,
-  color: (blockProps.value.textColor as string) || '#ffffff',
+  color: heroTextColor.value,
   textAlign: 'center' as const,
   boxSizing: 'border-box'
 }))
@@ -356,41 +358,48 @@ const heroHeading = computed(() => asString(blockProps.value.heading) || 'Hero h
 const heroSubheading = computed(() => asString(blockProps.value.subheading))
 const heroCtaText = computed(() => asString(blockProps.value.ctaText))
 const heroHasCta = computed(() => heroCtaText.value.length > 0)
-const heroHeadingStyle = {
+const heroHeadingStyle = computed(() => ({
   fontSize: '28px',
   lineHeight: '1.25',
   fontWeight: '700',
-  color: (blockProps.value.textColor as string) || '#ffffff',
+  color: heroTextColor.value,
   letterSpacing: '0',
   maxWidth: '100%',
   wordBreak: 'break-word' as const
-}
-const heroSubheadingStyle = {
+}))
+const heroSubheadingStyle = computed(() => ({
   fontSize: '16px',
   lineHeight: '1.5',
-  color: (blockProps.value.textColor as string) || '#ffffff',
+  color: heroTextColor.value,
   maxWidth: '520px',
   wordBreak: 'break-word' as const
-}
-const heroCtaStyle = {
+}))
+const heroCtaBackgroundColor = computed(() => (blockProps.value.ctaBackgroundColor as string) || '#ffffff')
+const heroCtaTextColor = computed(() => (blockProps.value.ctaTextColor as string) || (props.style?.backgroundColor as string) || '#1f2937')
+const heroCtaStyle = computed(() => ({
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
   minHeight: '40px',
   padding: '0 18px',
   borderRadius: '6px',
-  backgroundColor: (blockProps.value.ctaBackgroundColor as string) || '#ffffff',
-  color: (blockProps.value.ctaTextColor as string) || (props.style?.backgroundColor as string) || '#1f2937',
+  backgroundColor: heroCtaBackgroundColor.value,
+  color: heroCtaTextColor.value,
   fontSize: '15px',
   lineHeight: '1',
   fontWeight: '600',
   whiteSpace: 'nowrap' as const
-}
+}))
 
+const featureColumnCount = computed(() => {
+  const raw = Number(blockProps.value.columns ?? 3)
+  if (!Number.isFinite(raw)) return 3
+  return Math.max(1, Math.min(6, Math.trunc(raw)))
+})
 const featureGridStyle = computed(() => ({
   ...buildBaseStyle(props.style),
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+  gridTemplateColumns: `repeat(${featureColumnCount.value}, minmax(0, 1fr))`,
   gap: '12px',
   boxSizing: 'border-box'
 }))
@@ -400,6 +409,7 @@ const featureItems = computed(() => asArray<{ icon?: string, heading?: string, d
     heading: asString(feature.heading) || 'Feature',
     description: asString(feature.description)
   })))
+const featureIconColor = computed(() => (blockProps.value.iconColor as string) || '#3b82f6')
 const featureCardStyle = {
   display: 'flex',
   flexDirection: 'column' as const,
@@ -412,11 +422,11 @@ const featureCardStyle = {
   backgroundColor: '#ffffff',
   boxSizing: 'border-box'
 }
-const featureIconStyle = {
+const featureIconStyle = computed(() => ({
   fontSize: '28px',
   lineHeight: '1',
-  color: (blockProps.value.iconColor as string) || '#3b82f6'
-}
+  color: featureIconColor.value
+}))
 const featureHeadingStyle = {
   fontSize: '15px',
   lineHeight: '1.35',
@@ -447,34 +457,38 @@ const ctaBannerStyle = computed(() => ({
 const ctaHeading = computed(() => asString(blockProps.value.heading) || 'Ready?')
 const ctaSubheading = computed(() => asString(blockProps.value.subheading))
 const ctaText = computed(() => asString(blockProps.value.ctaText) || 'Learn More')
-const ctaHeadingStyle = {
+const ctaBannerTextColor = computed(() => (blockProps.value.textColor as string) || '#ffffff')
+const ctaHeadingStyle = computed(() => ({
   fontSize: '24px',
   lineHeight: '1.3',
   fontWeight: '700',
-  color: (blockProps.value.textColor as string) || '#ffffff',
+  color: ctaBannerTextColor.value,
   wordBreak: 'break-word' as const
-}
-const ctaSubheadingStyle = {
+}))
+const ctaSubheadingStyle = computed(() => ({
   fontSize: '15px',
   lineHeight: '1.45',
   maxWidth: '520px',
-  color: (blockProps.value.textColor as string) || '#ffffff',
+  color: ctaBannerTextColor.value,
   wordBreak: 'break-word' as const
-}
-const ctaTextStyle = {
+}))
+const ctaBannerBackgroundColor = computed(() => (blockProps.value.backgroundColor as string) || '#1e40af')
+const ctaTextBackgroundColor = computed(() => ctaBannerTextColor.value)
+const ctaTextForegroundColor = computed(() => ctaBannerBackgroundColor.value)
+const ctaTextStyle = computed(() => ({
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
   minHeight: '40px',
   padding: '0 18px',
   borderRadius: '8px',
-  backgroundColor: (blockProps.value.textColor as string) || '#ffffff',
-  color: (blockProps.value.backgroundColor as string) || '#1e40af',
+  backgroundColor: ctaTextBackgroundColor.value,
+  color: ctaTextForegroundColor.value,
   fontSize: '15px',
   lineHeight: '1',
   fontWeight: '600',
   whiteSpace: 'nowrap' as const
-}
+}))
 
 const footerStyle = computed(() => ({
   ...buildBaseStyle(props.style),
