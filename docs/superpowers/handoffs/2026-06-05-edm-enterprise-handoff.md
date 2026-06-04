@@ -23,12 +23,16 @@ and deployed:
 | `cccff5b6` | Real-browser Chrome sanitizer coverage for `sanitizeInlineHtml` via dependency-free CDP harness. |
 | `91bec914` | Phase 1 nit: `EdmTemplateThumbnail` now keys rendered starter blocks by document block id, not array index. |
 | `d4fe3d0a` | Phase 1 nit: saved "Your templates" section is now a preview-card grid with live EDM document thumbnails. |
+| `1fbdc281` | Optional block anchor IDs: Advanced inspector control writes `props.anchorId`; server HTML renderers emit safe IDs on wrapper rows and omit unsafe values. |
 
-Focused EDM verification after the continuation: 174 tests green across
+Focused EDM verification after the continuation: 178 tests green across
 `test/utils/edm*`, `test/utils/emailRender*`, `test/components/emailEdm*`,
 `test/components/emailTemplatesPanel.test.ts`, `test/components/emailEditorBlockWrapper.test.ts`,
 `test/app/edmBuilderStore.test.ts`, and `test/server/edmCustomModules.test.ts`. Targeted ESLint for touched files
-passed; `EdmBlockRenderer.vue` still has the known `vue/no-v-html` warnings.
+passed; `EdmBlockRenderer.vue` still has the known `vue/no-v-html` warnings. `pnpm run typecheck` is not a clean gate
+on this branch: the default heap OOMs, and rerunning with `NODE_OPTIONS=--max-old-space-size=8192` exits non-zero on
+existing repo-wide TypeScript errors across unrelated analytics/banner/Monday/Xero files plus pre-existing EDM strictness
+issues in `columns-container.ts`/`html-block.ts`.
 
 ---
 
@@ -56,7 +60,6 @@ passed; `EdmBlockRenderer.vue` still has the known `vue/no-v-html` warnings.
 
 ### 2. Lower priority / optional
 - **Phase 1b** — template folders + drafts grouping (needs persistence). Deferred.
-- **anchor-id control** — deferred in 3a because renderers don't emit a block `id` attribute. If wanted: emit `id` on the block's outer element in each `renderHtml` + add an "Advanced › Anchor ID" inspector control.
 
 ---
 
@@ -78,5 +81,5 @@ passed; `EdmBlockRenderer.vue` still has the known `vue/no-v-html` warnings.
 
 ## State
 - Original handoff baseline: `origin/main`/local `main` at `09fe609f`.
-- Continuation branch: `feature/edm-postcards-builder` at `d4fe3d0a`.
+- Continuation branch: `feature/edm-postcards-builder` includes feature commits through `1fbdc281` plus this handoff update.
 - Memory: `~/.claude/projects/.../memory/edm-postcards-builder.md` (+ MEMORY.md index) — update after 3b.3 / 3c.
