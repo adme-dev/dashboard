@@ -2,209 +2,214 @@
 <!-- Stateless leaf renderer: block type/style/props → editor-preview markup.
      Ported from layers/edm/.../EdmBlockRenderer.vue (shadcn class re-skinned). -->
 <template>
-  <!-- Heading -->
-  <component
-    :is="headingTag"
-    v-if="type === 'Heading'"
-    :style="headingStyle"
-    :class="{ 'edm-editable': editable }"
-    :contenteditable="editable ? 'plaintext-only' : undefined"
-    @blur="editable && onTextEdit($event, false)"
-    @keydown="onEditableKeydown"
-  >
-    {{ blockProps.text || (editable ? '' : 'New Heading') }}
-  </component>
-
-  <!-- Text -->
   <div
-    v-else-if="type === 'Text'"
-    :style="textStyle"
-    :class="['revert-browser-styles', { 'edm-editable': editable }]"
-    :contenteditable="editable ? 'true' : undefined"
-    @blur="editable && onTextEdit($event, true)"
-    v-html="blockProps.text || ''"
-  />
-
-  <!-- Button -->
-  <div v-else-if="type === 'Button'" :style="buttonWrapperStyle">
-    <a
-      :href="(blockProps.url as string) || '#'"
-      :style="buttonLinkStyle"
+    :class="['edm-render-shell', { 'edm-hidden-on-device': hiddenOnDevice }]"
+    :data-hidden-on-device="hiddenOnDevice ? 'true' : undefined"
+  >
+    <!-- Heading -->
+    <component
+      :is="headingTag"
+      v-if="type === 'Heading'"
+      :style="headingStyle"
       :class="{ 'edm-editable': editable }"
       :contenteditable="editable ? 'plaintext-only' : undefined"
-      :target="editable ? undefined : '_blank'"
-      @click="editable && $event.preventDefault()"
       @blur="editable && onTextEdit($event, false)"
       @keydown="onEditableKeydown"
     >
-      {{ blockProps.text || (editable ? '' : 'Click Here') }}
-    </a>
-  </div>
+      {{ blockProps.text || (editable ? '' : 'New Heading') }}
+    </component>
 
-  <!-- Image -->
-  <div v-else-if="type === 'Image'" :style="imageWrapperStyle">
-    <a
-      v-if="blockProps.linkHref"
-      :href="blockProps.linkHref as string"
-      target="_blank"
-      style="text-decoration: none"
-    >
-      <img :src="(blockProps.url as string) || ''" :alt="(blockProps.alt as string) || ''" :style="imageStyle">
-    </a>
-    <img
-      v-else
-      :src="(blockProps.url as string) || ''"
-      :alt="(blockProps.alt as string) || ''"
-      :style="imageStyle"
-    >
-  </div>
-
-  <!-- Avatar -->
-  <div v-else-if="type === 'Avatar'" :style="avatarWrapperStyle">
-    <img :src="(blockProps.imageUrl as string) || ''" :alt="(blockProps.alt as string) || 'Avatar'" :style="avatarStyle">
-  </div>
-
-  <!-- Divider -->
-  <div v-else-if="type === 'Divider'" :style="dividerWrapperStyle">
-    <hr :style="dividerLineStyle">
-  </div>
-
-  <!-- Spacer -->
-  <div v-else-if="type === 'Spacer'" :style="{ height: ((blockProps.height as number) || 24) + 'px' }" />
-
-  <!-- Html -->
-  <div
-    v-else-if="type === 'Html'"
-    :style="baseStyle"
-    class="revert-browser-styles"
-    v-html="blockProps.contents || ''"
-  />
-
-  <!-- Header -->
-  <div v-else-if="type === 'header'" :style="headerStyle" class="edm-preview-section">
-    <img
-      v-if="headerLogoUrl"
-      :src="headerLogoUrl"
-      alt="Logo"
-      :style="headerLogoStyle"
-    >
-    <div v-if="headerTagline" :style="headerTaglineStyle">
-      {{ headerTagline }}
-    </div>
-  </div>
-
-  <!-- Menu -->
-  <div v-else-if="type === 'menu'" :style="menuStyle" class="edm-preview-section">
-    <span
-      v-for="(item, index) in menuItems"
-      :key="`${item.label}-${index}`"
-      :style="menuItemStyle"
-    >
-      <a :href="item.url" :style="menuLinkStyle" target="_blank">
-        {{ item.label }}
-      </a>
-      <span v-if="index < menuItems.length - 1" :style="menuSeparatorStyle">{{ menuSeparator }}</span>
-    </span>
-  </div>
-
-  <!-- Hero section -->
-  <div v-else-if="type === 'hero-section'" :style="heroStyle" class="edm-preview-section">
-    <div :style="heroHeadingStyle">
-      {{ heroHeading }}
-    </div>
-    <div v-if="heroSubheading" :style="heroSubheadingStyle">
-      {{ heroSubheading }}
-    </div>
-    <span v-if="heroHasCta" :style="heroCtaStyle">
-      {{ heroCtaText }}
-    </span>
-  </div>
-
-  <!-- Feature grid -->
-  <div v-else-if="type === 'feature-grid'" :style="featureGridStyle" class="edm-preview-section">
+    <!-- Text -->
     <div
-      v-for="(feature, index) in featureItems"
-      :key="`${feature.heading}-${index}`"
-      :style="featureCardStyle"
-    >
-      <div :style="featureIconStyle">
-        {{ feature.icon || '•' }}
-      </div>
-      <div :style="featureHeadingStyle">
-        {{ feature.heading }}
-      </div>
-      <div :style="featureDescriptionStyle">
-        {{ feature.description }}
-      </div>
-    </div>
-  </div>
-
-  <!-- CTA banner -->
-  <div v-else-if="type === 'cta-banner'" :style="ctaBannerStyle" class="edm-preview-section">
-    <div :style="ctaHeadingStyle">
-      {{ ctaHeading }}
-    </div>
-    <div v-if="ctaSubheading" :style="ctaSubheadingStyle">
-      {{ ctaSubheading }}
-    </div>
-    <span :style="ctaTextStyle">
-      {{ ctaText }}
-    </span>
-  </div>
-
-  <!-- Footer -->
-  <div v-else-if="type === 'footer'" :style="footerStyle" class="edm-preview-section">
-    <div v-if="footerAdditionalText" :style="footerAdditionalTextStyle">
-      {{ footerAdditionalText }}
-    </div>
-    <div v-if="footerShowUnsubscribe" :style="footerUnsubscribeStyle">
-      Unsubscribe
-    </div>
-  </div>
-
-  <!-- Next steps -->
-  <div v-else-if="type === 'next-steps'" :style="nextStepsStyle" class="edm-preview-section">
-    <div :style="nextStepsHeadingStyle">
-      Next Steps
-    </div>
-    <div
-      v-for="(step, index) in nextStepsItems"
-      :key="`${step.title}-${index}`"
-      :style="nextStepsItemStyle"
-    >
-      <div :style="nextStepsNumberStyle">
-        {{ index + 1 }}
-      </div>
-      <div>
-        <div :style="nextStepsTitleStyle">
-          {{ step.title }}
-        </div>
-        <div v-if="step.description" :style="nextStepsDescriptionStyle">
-          {{ step.description }}
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Container (representative empty box for thumbnail; canvas uses ContainerBlockRenderer) -->
-  <div v-else-if="type === 'Container'" :style="containerStyle" class="edm-preview-section" />
-
-  <!-- Columns container (representative columns for thumbnail; canvas uses ColumnsContainerRenderer) -->
-  <div v-else-if="type === 'ColumnsContainer'" :style="columnsContainerStyle" class="edm-preview-section">
-    <div
-      v-for="col in columnsContainerCount"
-      :key="col"
-      :style="columnsContainerCellStyle"
+      v-else-if="type === 'Text'"
+      :style="textStyle"
+      :class="['revert-browser-styles', { 'edm-editable': editable }]"
+      :contenteditable="editable ? 'true' : undefined"
+      @blur="editable && onTextEdit($event, true)"
+      v-html="blockProps.text || ''"
     />
-  </div>
 
-  <!-- Unknown -->
-  <div
-    v-else
-    :style="baseStyle"
-    class="text-muted text-sm p-4 text-center border border-dashed rounded"
-  >
-    Unknown block: {{ type }}
+    <!-- Button -->
+    <div v-else-if="type === 'Button'" :style="buttonWrapperStyle">
+      <a
+        :href="(blockProps.url as string) || '#'"
+        :style="buttonLinkStyle"
+        :class="{ 'edm-editable': editable }"
+        :contenteditable="editable ? 'plaintext-only' : undefined"
+        :target="editable ? undefined : '_blank'"
+        @click="editable && $event.preventDefault()"
+        @blur="editable && onTextEdit($event, false)"
+        @keydown="onEditableKeydown"
+      >
+        {{ blockProps.text || (editable ? '' : 'Click Here') }}
+      </a>
+    </div>
+
+    <!-- Image -->
+    <div v-else-if="type === 'Image'" :style="imageWrapperStyle">
+      <a
+        v-if="blockProps.linkHref"
+        :href="blockProps.linkHref as string"
+        target="_blank"
+        style="text-decoration: none"
+      >
+        <img :src="(blockProps.url as string) || ''" :alt="(blockProps.alt as string) || ''" :style="imageStyle">
+      </a>
+      <img
+        v-else
+        :src="(blockProps.url as string) || ''"
+        :alt="(blockProps.alt as string) || ''"
+        :style="imageStyle"
+      >
+    </div>
+
+    <!-- Avatar -->
+    <div v-else-if="type === 'Avatar'" :style="avatarWrapperStyle">
+      <img :src="(blockProps.imageUrl as string) || ''" :alt="(blockProps.alt as string) || 'Avatar'" :style="avatarStyle">
+    </div>
+
+    <!-- Divider -->
+    <div v-else-if="type === 'Divider'" :style="dividerWrapperStyle">
+      <hr :style="dividerLineStyle">
+    </div>
+
+    <!-- Spacer -->
+    <div v-else-if="type === 'Spacer'" :style="{ height: ((blockProps.height as number) || 24) + 'px' }" />
+
+    <!-- Html -->
+    <div
+      v-else-if="type === 'Html'"
+      :style="baseStyle"
+      class="revert-browser-styles"
+      v-html="blockProps.contents || ''"
+    />
+
+    <!-- Header -->
+    <div v-else-if="type === 'header'" :style="headerStyle" class="edm-preview-section">
+      <img
+        v-if="headerLogoUrl"
+        :src="headerLogoUrl"
+        alt="Logo"
+        :style="headerLogoStyle"
+      >
+      <div v-if="headerTagline" :style="headerTaglineStyle">
+        {{ headerTagline }}
+      </div>
+    </div>
+
+    <!-- Menu -->
+    <div v-else-if="type === 'menu'" :style="menuStyle" class="edm-preview-section">
+      <span
+        v-for="(item, index) in menuItems"
+        :key="`${item.label}-${index}`"
+        :style="menuItemStyle"
+      >
+        <a :href="item.url" :style="menuLinkStyle" target="_blank">
+          {{ item.label }}
+        </a>
+        <span v-if="index < menuItems.length - 1" :style="menuSeparatorStyle">{{ menuSeparator }}</span>
+      </span>
+    </div>
+
+    <!-- Hero section -->
+    <div v-else-if="type === 'hero-section'" :style="heroStyle" class="edm-preview-section">
+      <div :style="heroHeadingStyle">
+        {{ heroHeading }}
+      </div>
+      <div v-if="heroSubheading" :style="heroSubheadingStyle">
+        {{ heroSubheading }}
+      </div>
+      <span v-if="heroHasCta" :style="heroCtaStyle">
+        {{ heroCtaText }}
+      </span>
+    </div>
+
+    <!-- Feature grid -->
+    <div v-else-if="type === 'feature-grid'" :style="featureGridStyle" class="edm-preview-section">
+      <div
+        v-for="(feature, index) in featureItems"
+        :key="`${feature.heading}-${index}`"
+        :style="featureCardStyle"
+      >
+        <div :style="featureIconStyle">
+          {{ feature.icon || '•' }}
+        </div>
+        <div :style="featureHeadingStyle">
+          {{ feature.heading }}
+        </div>
+        <div :style="featureDescriptionStyle">
+          {{ feature.description }}
+        </div>
+      </div>
+    </div>
+
+    <!-- CTA banner -->
+    <div v-else-if="type === 'cta-banner'" :style="ctaBannerStyle" class="edm-preview-section">
+      <div :style="ctaHeadingStyle">
+        {{ ctaHeading }}
+      </div>
+      <div v-if="ctaSubheading" :style="ctaSubheadingStyle">
+        {{ ctaSubheading }}
+      </div>
+      <span :style="ctaTextStyle">
+        {{ ctaText }}
+      </span>
+    </div>
+
+    <!-- Footer -->
+    <div v-else-if="type === 'footer'" :style="footerStyle" class="edm-preview-section">
+      <div v-if="footerAdditionalText" :style="footerAdditionalTextStyle">
+        {{ footerAdditionalText }}
+      </div>
+      <div v-if="footerShowUnsubscribe" :style="footerUnsubscribeStyle">
+        Unsubscribe
+      </div>
+    </div>
+
+    <!-- Next steps -->
+    <div v-else-if="type === 'next-steps'" :style="nextStepsStyle" class="edm-preview-section">
+      <div :style="nextStepsHeadingStyle">
+        Next Steps
+      </div>
+      <div
+        v-for="(step, index) in nextStepsItems"
+        :key="`${step.title}-${index}`"
+        :style="nextStepsItemStyle"
+      >
+        <div :style="nextStepsNumberStyle">
+          {{ index + 1 }}
+        </div>
+        <div>
+          <div :style="nextStepsTitleStyle">
+            {{ step.title }}
+          </div>
+          <div v-if="step.description" :style="nextStepsDescriptionStyle">
+            {{ step.description }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Container (representative empty box for thumbnail; canvas uses ContainerBlockRenderer) -->
+    <div v-else-if="type === 'Container'" :style="containerStyle" class="edm-preview-section" />
+
+    <!-- Columns container (representative columns for thumbnail; canvas uses ColumnsContainerRenderer) -->
+    <div v-else-if="type === 'ColumnsContainer'" :style="columnsContainerStyle" class="edm-preview-section">
+      <div
+        v-for="col in columnsContainerCount"
+        :key="col"
+        :style="columnsContainerCellStyle"
+      />
+    </div>
+
+    <!-- Unknown -->
+    <div
+      v-else
+      :style="baseStyle"
+      class="text-muted text-sm p-4 text-center border border-dashed rounded"
+    >
+      Unknown block: {{ type }}
+    </div>
   </div>
 </template>
 
@@ -219,6 +224,7 @@ const props = defineProps<{
   props?: Record<string, unknown> | null
   /** Phase 3b: when true, text blocks are contenteditable on the canvas. */
   editable?: boolean
+  hiddenOnDevice?: boolean
 }>()
 
 const emit = defineEmits<{ 'update:text': [value: string] }>()
@@ -694,6 +700,30 @@ const columnsContainerCellStyle = {
 </script>
 
 <style scoped>
+.edm-render-shell {
+  display: contents;
+}
+
+.edm-hidden-on-device {
+  display: block;
+  filter: grayscale(0.35);
+  opacity: 0.38;
+  position: relative;
+}
+
+.edm-hidden-on-device::after {
+  content: "Hidden on this device";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--ui-text-muted);
+  background: color-mix(in srgb, var(--ui-bg) 65%, transparent);
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
 /* Inline-edit affordance (Phase 3b) — only present on the editable canvas, not
    in thumbnails/preview where `editable` is never set. */
 .edm-editable {

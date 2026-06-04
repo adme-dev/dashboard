@@ -24,6 +24,7 @@
               :type="getBlockType(childId)"
               :style="getBlockData(childId).style"
               :props="getBlockData(childId).props"
+              :hidden-on-device="isBlockHiddenOnDevice(childId)"
             />
           </div>
         </template>
@@ -61,11 +62,13 @@
 import { computed, reactive } from 'vue'
 import { BLOCK_PALETTE, getDefaultBlockData } from '~~/app/utils/edmBlocks'
 import { generateBlockId } from '~~/app/types/edm'
+import { getBlockForDevice, isHiddenOnDevice, type EdmDevice } from '~~/app/utils/edmResponsive'
 
 interface ColumnData { childrenIds: string[] }
 
 const props = defineProps<{
   blockId: string
+  device?: EdmDevice
   style?: {
     backgroundColor?: string | null
     padding?: { top: number, bottom: number, left: number, right: number } | null
@@ -143,7 +146,13 @@ function getBlockType(blockId: string): string {
 }
 
 function getBlockData(blockId: string): Record<string, unknown> {
-  return store.document.value[blockId]?.data || {}
+  const block = store.document.value[blockId]
+  return block ? getBlockForDevice(block, props.device || 'desktop').data : {}
+}
+
+function isBlockHiddenOnDevice(blockId: string): boolean {
+  const block = store.document.value[blockId]
+  return block ? isHiddenOnDevice(block, props.device || 'desktop') : false
 }
 
 function addBlockToColumn(type: string, columnIndex: number) {

@@ -21,6 +21,7 @@
           :type="child.type"
           :style="child.data.style"
           :props="child.data.props"
+          :hidden-on-device="child.hiddenOnDevice"
         />
       </div>
     </template>
@@ -51,9 +52,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { BLOCK_PALETTE, getDefaultBlockData } from '~~/app/utils/edmBlocks'
+import { getBlockForDevice, isHiddenOnDevice, type EdmDevice } from '~~/app/utils/edmResponsive'
 
 const props = defineProps<{
   blockId: string
+  device?: EdmDevice
   style?: {
     backgroundColor?: string | null
     borderColor?: string | null
@@ -91,11 +94,17 @@ const childBlocks = computed(() => {
   const block = store.document.value[props.blockId]
   if (!block) return []
   const childrenIds = block.data?.childrenIds || []
-  return childrenIds.map(id => ({
-    id,
-    type: store.document.value[id]?.type || 'Unknown',
-    data: store.document.value[id]?.data || {}
-  }))
+  return childrenIds.map((id) => {
+    const childBlock = store.document.value[id]
+    if (!childBlock) return { id, type: 'Unknown', data: {}, hiddenOnDevice: false }
+    const active = getBlockForDevice(childBlock, props.device || 'desktop')
+    return {
+      id,
+      type: childBlock.type,
+      data: active.data,
+      hiddenOnDevice: isHiddenOnDevice(childBlock, props.device || 'desktop')
+    }
+  })
 })
 
 function addChildBlock(type: string) {

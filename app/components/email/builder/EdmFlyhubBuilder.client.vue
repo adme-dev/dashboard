@@ -9,7 +9,7 @@ import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
 import type { EdmFlyhubDocument } from '~~/app/types/edm'
 import { extractFragment, reidFragment } from '~~/app/utils/edmModuleFragment'
 import { resolveRootDropIndex, type EdmRootDropPlacement } from '~~/app/utils/edmDragReorder'
-import { getBlockForDevice, type EdmDevice } from '~~/app/utils/edmResponsive'
+import { getBlockForDevice, isHiddenOnDevice, type EdmDevice } from '~~/app/utils/edmResponsive'
 import type { EdmCustomModule } from '~~/app/composables/useEdmCustomModules'
 
 const store = useEdmBuilder()
@@ -175,6 +175,24 @@ function onBlockUpdate(updates: { style?: unknown, props?: unknown, visibility?:
   }
   if (updates.style) store.updateBlockStyle(id, updates.style as Record<string, unknown>)
   if (updates.props) store.updateBlockProps(id, updates.props as Record<string, unknown>)
+}
+
+function blockForCanvas(blockId: string) {
+  const block = store.document.value[blockId]
+  return block ? getBlockForDevice(block, activeDevice.value) : null
+}
+
+function hiddenOnCanvas(blockId: string): boolean {
+  const block = store.document.value[blockId]
+  return block ? isHiddenOnDevice(block, activeDevice.value) : false
+}
+
+function updateCanvasText(blockId: string, text: string) {
+  if (activeDevice.value === 'mobile') {
+    store.updateBlockMobileProps(blockId, { text })
+    return
+  }
+  store.updateBlockProps(blockId, { text })
 }
 
 // ── View modes + preview ────────────────────────────────────────────────
@@ -667,22 +685,25 @@ onMounted(async () => {
                 <EmailBuilderContainerBlockRenderer
                   v-if="block.type === 'Container'"
                   :block-id="block.id"
-                  :style="block.data?.style"
-                  :props="block.data?.props"
+                  :style="blockForCanvas(block.id)?.data?.style"
+                  :props="blockForCanvas(block.id)?.data?.props"
+                  :device="activeDevice"
                 />
                 <EmailBuilderColumnsContainerRenderer
                   v-else-if="block.type === 'ColumnsContainer'"
                   :block-id="block.id"
-                  :style="block.data?.style"
-                  :props="block.data?.props"
+                  :style="blockForCanvas(block.id)?.data?.style"
+                  :props="blockForCanvas(block.id)?.data?.props"
+                  :device="activeDevice"
                 />
                 <EmailBuilderEdmBlockRenderer
                   v-else
                   :type="block.type"
-                  :style="block.data?.style"
-                  :props="block.data?.props"
+                  :style="blockForCanvas(block.id)?.data?.style"
+                  :props="blockForCanvas(block.id)?.data?.props"
+                  :hidden-on-device="hiddenOnCanvas(block.id)"
                   editable
-                  @update:text="(t) => store.updateBlockProps(block.id, { text: t })"
+                  @update:text="(t) => updateCanvasText(block.id, t)"
                 />
               </EmailBuilderEditorBlockWrapper>
             </template>

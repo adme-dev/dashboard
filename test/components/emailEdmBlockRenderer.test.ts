@@ -101,4 +101,16 @@ describe('EmailBuilderEdmBlockRenderer inline editing (Phase 3b)', () => {
     const button = await renderBlock('Button', { text: 'Go', url: 'https://x.com' })
     expect(button).toContain('target="_blank"')
   })
+
+  it('marks hidden-on-device blocks in editor mode without removing their content', async () => {
+    const html = await renderBlock(
+      'Text',
+      { text: 'Hidden mobile copy' },
+      { color: '#111111' },
+      { editable: true, hiddenOnDevice: true }
+    )
+
+    expect(html).toContain('edm-hidden-on-device')
+    expect(html).toContain('Hidden mobile copy')
+  })
 })
