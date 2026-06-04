@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useSocialPublishing } from '~/composables/useSocialPublishing'
-import { useSocialComposer } from '~/composables/useSocialComposer'
+import { missingAccountPlatforms, useSocialComposer } from '~/composables/useSocialComposer'
+import type { SocialAccount } from '~/types'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
@@ -18,8 +19,34 @@ const clients = computed<any[]>(() => {
 const clientOptions = computed(() => clients.value.map(c => ({ label: c.name, value: c.id })))
 const clientId = ref<string | null>((route.query.client as string) || null)
 const pageName = computed(() => clients.value.find(c => c.id === clientId.value)?.name || '')
+const accounts = ref<SocialAccount[]>([])
+const accountsLoading = ref(false)
 
 const saving = ref(false)
+
+const platformLabel: Record<string, string> = {
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  linkedin: 'LinkedIn',
+  tiktok: 'TikTok',
+  youtube: 'YouTube',
+  'google-business': 'Google Business',
+}
+
+async function loadAccounts() {
+  if (!clientId.value) {
+    accounts.value = []
+    return
+  }
+  accountsLoading.value = true
+  try {
+    accounts.value = await api.listAccounts(clientId.value)
+  } finally {
+    accountsLoading.value = false
+  }
+}
+
+watch(clientId, loadAccounts, { immediate: true })
 
 onMounted(async () => {
   reset()
@@ -54,6 +81,15 @@ onMounted(async () => {
 function guard(): string | null {
   if (!clientId.value) { toast.add({ title: 'Pick a client first', color: 'warning' }); return null }
   if (!state.value.platforms.length) { toast.add({ title: 'Select at least one network', color: 'warning' }); return null }
+  const missing = missingAccountPlatforms(state.value.platforms, state.value.accountIds, accounts.value)
+  if (missing.length) {
+    toast.add({
+      title: 'Select publishing accounts',
+      description: missing.map(platform => platformLabel[platform] || platform).join(', '),
+      color: 'warning',
+    })
+    return null
+  }
   return clientId.value
 }
 
@@ -92,7 +128,7 @@ async function primaryAction() {
   saving.value = true
   try {
     if (state.value.scheduleMode === 'now') {
-      const id = await upsert({ status: 'draft' })
+      const id = await upsert({ status: 'approved' })
       if (!id) return
       await api.publishNow(id)
       toast.add({ title: 'Published', color: 'success' })
@@ -139,7 +175,11 @@ const primaryLabel = computed(() => ({
     <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px] gap-8">
       <!-- Authoring -->
       <div>
-        <SocialPublishingPostComposer />
+        <SocialPublishingPostComposer
+          :client-id="clientId"
+          :accounts="accounts"
+          :accounts-loading="accountsLoading"
+        />
 
         <div class="mt-8 flex flex-wrap items-center gap-3 border-t border-default pt-5">
           <UButton :loading="saving" color="primary" icon="i-lucide-check" @click="primaryAction">

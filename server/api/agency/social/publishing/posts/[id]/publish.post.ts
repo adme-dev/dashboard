@@ -26,8 +26,9 @@ export default defineEventHandler(async (event) => {
 
   const accounts = await queryRows<any>(
     `SELECT id, platform, platform_account_id, access_token, account_name
-       FROM social_accounts WHERE id = ANY($1) AND is_active = TRUE`,
-    [post.account_ids ?? []],
+       FROM social_accounts
+      WHERE id = ANY($1) AND client_id = $2 AND is_active = TRUE`,
+    [post.account_ids ?? [], post.client_id],
   )
 
   await execute(
@@ -40,7 +41,8 @@ export default defineEventHandler(async (event) => {
   await execute(
     `UPDATE social_posts SET status=$2, platform_results=$3::jsonb,
        publish_attempts=publish_attempts+1,
-       published_at=COALESCE(published_at, NOW()), updated_at=NOW()
+       published_at=CASE WHEN $2 IN ('published','partially_published') THEN COALESCE(published_at, NOW()) ELSE published_at END,
+       updated_at=NOW()
      WHERE id=$1`,
     [id, outcome.status, JSON.stringify(outcome.platformResults)],
   )

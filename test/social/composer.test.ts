@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { resolveComposerContent, composerToBody, emptyComposerState } from '../../app/composables/useSocialComposer'
+import {
+  composerToBody,
+  emptyComposerState,
+  missingAccountPlatforms,
+  resolveComposerContent,
+  syncComposerAccountIds,
+} from '../../app/composables/useSocialComposer'
 
 describe('resolveComposerContent', () => {
   const base = { ...emptyComposerState(), content: 'Base', mediaUrls: ['a.jpg'] }
@@ -37,5 +43,25 @@ describe('composerToBody', () => {
     const body = composerToBody(s, 'C1')
     expect(body.scheduledAt).toBe('2026-06-10T00:00:00Z')
     expect(body.platformOverrides).toEqual({ instagram: { content: 'IG' } })
+  })
+})
+
+describe('composer account binding', () => {
+  const accounts = [
+    { id: 'fb1', platform: 'facebook' as const, is_active: true, last_error: null },
+    { id: 'ig1', platform: 'instagram' as const, is_active: true, last_error: null },
+    { id: 'old', platform: 'linkedin' as const, is_active: false, last_error: null },
+  ]
+
+  it('auto-selects the only active account for each selected platform', () => {
+    expect(syncComposerAccountIds(['facebook', 'instagram'], [], accounts)).toEqual(['fb1', 'ig1'])
+  })
+
+  it('drops accounts for unselected or inactive platforms', () => {
+    expect(syncComposerAccountIds(['facebook'], ['ig1', 'old'], accounts)).toEqual(['fb1'])
+  })
+
+  it('reports platforms that still need a selected account', () => {
+    expect(missingAccountPlatforms(['facebook', 'linkedin'], ['fb1'], accounts)).toEqual(['linkedin'])
   })
 })

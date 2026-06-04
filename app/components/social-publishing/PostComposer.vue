@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import { CalendarDate, CalendarDateTime, parseDate, toZoned, type DateValue } from '@internationalized/date'
-import type { SocialPublishPlatform } from '~/types'
-import { useSocialComposer, type ScheduleMode } from '~/composables/useSocialComposer'
+import type { SocialAccount, SocialPublishPlatform } from '~/types'
+import { syncComposerAccountIds, useSocialComposer, type ScheduleMode } from '~/composables/useSocialComposer'
 
 const { state, setOverride, resolved } = useSocialComposer()
+
+const props = defineProps<{
+  clientId: string | null
+  accounts: SocialAccount[]
+  accountsLoading?: boolean
+}>()
 
 const PLATFORM_OPTIONS: { value: SocialPublishPlatform; label: string; icon: string; limit: number }[] = [
   { value: 'facebook', label: 'Facebook', icon: 'i-lucide-facebook', limit: 63206 },
@@ -14,6 +20,46 @@ const PLATFORM_OPTIONS: { value: SocialPublishPlatform; label: string; icon: str
   { value: 'google-business', label: 'Google Business', icon: 'i-lucide-store', limit: 1500 },
 ]
 const labelFor = (p: string) => PLATFORM_OPTIONS.find(o => o.value === p)?.label ?? p
+
+const activeAccounts = computed(() => props.accounts.filter(account => account.is_active && !account.last_error))
+
+function accountsFor(platform: SocialPublishPlatform) {
+  return activeAccounts.value.filter(account => account.platform === platform)
+}
+
+function accountOptionsFor(platform: SocialPublishPlatform) {
+  return accountsFor(platform).map(account => ({
+    label: account.account_name || account.platform_account_id,
+    value: account.id,
+  }))
+}
+
+function selectedAccountFor(platform: SocialPublishPlatform): string | null {
+  const selected = activeAccounts.value.find(account =>
+    account.platform === platform && state.value.accountIds.includes(account.id))
+  return selected?.id ?? null
+}
+
+function setPlatformAccount(platform: SocialPublishPlatform, accountId: string | null) {
+  const otherAccountIds = state.value.accountIds.filter((id) => {
+    const account = activeAccounts.value.find(item => item.id === id)
+    return account && account.platform !== platform
+  })
+  state.value.accountIds = accountId ? [...otherAccountIds, accountId] : otherAccountIds
+}
+
+const accountsRoute = computed(() => props.clientId
+  ? { path: '/agency/social/publishing/accounts', query: { client: props.clientId } }
+  : '/agency/social/publishing/accounts')
+
+watch(
+  () => [state.value.platforms, props.accounts] as const,
+  () => {
+    const next = syncComposerAccountIds(state.value.platforms, state.value.accountIds, props.accounts)
+    if (next.join('|') !== state.value.accountIds.join('|')) state.value.accountIds = next
+  },
+  { deep: true, immediate: true },
+)
 
 // tightest character limit across selected networks, for the base counter
 const tightestLimit = computed(() => {
@@ -188,6 +234,69 @@ const scheduleModes: { value: ScheduleMode; label: string; icon: string }[] = [
         class="w-full"
       />
     </UFormField>
+
+    <!-- Connected accounts -->
+    <div
+      v-if="state.platforms.length"
+      class="rounded-lg border border-default p-4 space-y-3"
+    >
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <div class="text-sm font-medium">
+            Publishing accounts
+          </div>
+          <div class="text-xs text-muted">
+            {{ props.clientId ? 'Choose the Page or profile for each selected network.' : 'Select a client first.' }}
+          </div>
+        </div>
+        <UButton
+          v-if="props.clientId"
+          :to="accountsRoute"
+          size="xs"
+          variant="ghost"
+          icon="i-lucide-link"
+        >
+          Manage
+        </UButton>
+      </div>
+
+      <div
+        v-for="platform in state.platforms"
+        :key="platform"
+        class="flex flex-wrap items-center gap-3 rounded-md bg-elevated/40 px-3 py-2"
+      >
+        <div class="flex min-w-36 items-center gap-2 text-sm font-medium">
+          <UIcon :name="PLATFORM_OPTIONS.find(item => item.value === platform)?.icon || 'i-lucide-share-2'" class="size-4 text-muted" />
+          {{ labelFor(platform) }}
+        </div>
+        <USelectMenu
+          v-if="accountOptionsFor(platform).length"
+          :model-value="selectedAccountFor(platform)"
+          :items="accountOptionsFor(platform)"
+          value-key="value"
+          label-key="label"
+          :loading="props.accountsLoading"
+          class="min-w-56 flex-1"
+          placeholder="Select account"
+          @update:model-value="(value: string | null) => setPlatformAccount(platform, value)"
+        />
+        <div
+          v-else
+          class="flex flex-1 flex-wrap items-center gap-2 text-xs text-muted"
+        >
+          <span>No connected {{ labelFor(platform) }} account.</span>
+          <UButton
+            v-if="platform === 'facebook'"
+            :to="accountsRoute"
+            size="xs"
+            variant="subtle"
+            icon="i-lucide-plus"
+          >
+            Connect
+          </UButton>
+        </div>
+      </div>
+    </div>
 
     <!-- Base content -->
     <UFormField label="Post content">

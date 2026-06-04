@@ -1,4 +1,4 @@
-import type { SocialPublishPlatform, SocialPlatformOverride, SocialPost } from '~/types'
+import type { SocialAccount, SocialPublishPlatform, SocialPlatformOverride, SocialPost } from '~/types'
 
 export type ScheduleMode = 'now' | 'schedule' | 'queue'
 
@@ -70,6 +70,48 @@ export function composerToBody(state: ComposerState, clientId: string): Record<s
     status: 'draft',
     metadata: state.creativeId ? { creativeId: state.creativeId } : {},
   }
+}
+
+type ComposerAccount = Pick<SocialAccount, 'id' | 'platform' | 'is_active' | 'last_error'>
+
+function activeAccountById(accounts: ComposerAccount[]) {
+  return new Map(accounts
+    .filter(account => account.is_active && !account.last_error)
+    .map(account => [account.id, account]))
+}
+
+export function syncComposerAccountIds(
+  platforms: SocialPublishPlatform[],
+  accountIds: string[],
+  accounts: ComposerAccount[],
+): string[] {
+  const selectedPlatforms = new Set(platforms)
+  const byId = activeAccountById(accounts)
+  const next = accountIds.filter((id) => {
+    const account = byId.get(id)
+    return account && selectedPlatforms.has(account.platform)
+  })
+
+  for (const platform of platforms) {
+    const hasSelectedAccount = next.some(id => byId.get(id)?.platform === platform)
+    if (hasSelectedAccount) continue
+
+    const platformAccounts = accounts.filter(account =>
+      account.platform === platform && account.is_active && !account.last_error)
+    if (platformAccounts.length === 1) next.push(platformAccounts[0]!.id)
+  }
+
+  return next
+}
+
+export function missingAccountPlatforms(
+  platforms: SocialPublishPlatform[],
+  accountIds: string[],
+  accounts: ComposerAccount[],
+): SocialPublishPlatform[] {
+  const byId = activeAccountById(accounts)
+  return platforms.filter(platform =>
+    !accountIds.some(id => byId.get(id)?.platform === platform))
 }
 
 export function useSocialComposer() {

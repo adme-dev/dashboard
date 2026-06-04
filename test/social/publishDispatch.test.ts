@@ -40,12 +40,14 @@ describe('manual publish endpoint', () => {
   })
 
   it('publishes an approved post and persists results', async () => {
-    mockQueryOne.mockResolvedValueOnce({ id: 'P1', status: 'approved', account_ids: ['a1'], platforms: ['facebook'] })
+    mockQueryOne.mockResolvedValueOnce({ id: 'P1', client_id: 'C1', status: 'approved', account_ids: ['a1'], platforms: ['facebook'] })
     const res = await publishH({ params: { id: 'P1' } } as any)
     expect(res.status).toBe('published')
     expect(mockPublishPost).toHaveBeenCalledOnce()
+    expect(mockQueryRows).toHaveBeenCalledWith(expect.stringContaining('client_id = $2'), [['a1'], 'C1'])
     // final UPDATE persists status + platform_results
     const finalUpdate = mockExecute.mock.calls.at(-1)!
+    expect(finalUpdate[0]).toContain('published_at=CASE')
     expect(finalUpdate[1][1]).toBe('published')
   })
 
@@ -66,7 +68,7 @@ describe('dispatcher cron — idempotent claim', () => {
     vi.clearAllMocks()
     process.env.CRON_SECRET = 'test-secret'
     mockQueryRows.mockResolvedValue([{ id: 'P1' }]) // one due post
-    mockQueryOne.mockResolvedValue({ id: 'P1', account_ids: ['a1'], platforms: ['facebook'] })
+    mockQueryOne.mockResolvedValue({ id: 'P1', client_id: 'C1', account_ids: ['a1'], platforms: ['facebook'] })
     mockPublishPost.mockResolvedValue({ status: 'published', platformResults: {} })
   })
   const evt = { headers: { 'x-cron-secret': 'test-secret' } } as any
@@ -76,6 +78,7 @@ describe('dispatcher cron — idempotent claim', () => {
     const res = await cronH(evt)
     expect(res.processed).toBe(1)
     expect(mockPublishPost).toHaveBeenCalledOnce()
+    expect(mockQueryRows).toHaveBeenCalledWith(expect.stringContaining('client_id = $2'), [['a1'], 'C1'])
   })
 
   it('skips the post when the claim loses (execute→0): no double publish', async () => {

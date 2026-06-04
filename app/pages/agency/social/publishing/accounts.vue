@@ -15,7 +15,12 @@ const clients = computed<any[]>(() => {
   return Array.isArray(d) ? d : (d?.clients ?? [])
 })
 const clientOptions = computed(() => clients.value.map(c => ({ label: c.name, value: c.id })))
-const clientId = ref<string | null>(clients.value[0]?.id ?? null)
+const routeClientId = computed(() => typeof route.query.client === 'string' ? route.query.client : null)
+const initialClientId = computed(() => {
+  const requested = routeClientId.value
+  return clients.value.some(c => c.id === requested) ? requested : (clients.value[0]?.id ?? null)
+})
+const clientId = ref<string | null>(initialClientId.value)
 
 const accounts = ref<SocialAccount[]>([])
 const loading = ref(false)

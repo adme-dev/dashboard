@@ -7,6 +7,11 @@ import { putPending } from '~~/server/utils/socialOAuth/pending'
 
 const ACCOUNTS_PATH = '/agency/social/publishing/accounts'
 
+function accountsPath(query: Record<string, string>) {
+  const params = new URLSearchParams(query)
+  return `${ACCOUNTS_PATH}?${params.toString()}`
+}
+
 /**
  * GET /api/agency/social/publishing/accounts/callback/meta?code&state
  * Meta redirects here. Verifies state, exchanges the code for a long-lived user token, lists managed
@@ -19,7 +24,10 @@ export default defineEventHandler(async (event) => {
   const appSecret = process.env.META_APP_SECRET || ''
   const base = process.env.SOCIAL_OAUTH_REDIRECT_BASE || getRequestURL(event).origin
   const redirectUri = `${base}/api/agency/social/publishing/accounts/callback/meta`
-  const fail = (reason: string) => sendRedirect(event, `${ACCOUNTS_PATH}?social_error=${encodeURIComponent(reason)}`, 302)
+  const fail = (reason: string, clientId?: string) => sendRedirect(event, accountsPath({
+    social_error: reason,
+    ...(clientId ? { client: clientId } : {}),
+  }), 302)
 
   if (q.error) return fail(String(q.error_description || q.error))
   const state = verifyState<{ clientId: string; userId: string }>(String(q.state || ''), secret, 600_000)
@@ -34,26 +42,26 @@ export default defineEventHandler(async (event) => {
     userToken = long.access_token
     if (long.expires_in) expiresAt = new Date(Date.now() + long.expires_in * 1000).toISOString()
   } catch {
-    return fail('token_exchange_failed')
+    return fail('token_exchange_failed', state.clientId)
   }
 
   let pages: ManagedPage[]
-  try { pages = await listManagedPages(userToken) } catch { return fail('page_list_failed') }
-  if (!pages.length) return fail('no_pages')
+  try { pages = await listManagedPages(userToken) } catch { return fail('page_list_failed', state.clientId) }
+  if (!pages.length) return fail('no_pages', state.clientId)
 
   // 1 page → finalize inline.
   if (pages.length === 1) {
     const r = await finalizePage(state.clientId, state.userId, pages[0]!, expiresAt)
-    if (r === 'conflict') return fail('page_owned_by_another_client')
-    return sendRedirect(event, `${ACCOUNTS_PATH}?social_connected=1`, 302)
+    if (r === 'conflict') return fail('page_owned_by_another_client', state.clientId)
+    return sendRedirect(event, accountsPath({ social_connected: '1', client: state.clientId }), 302)
   }
 
   // >1 page → stash server-side, bounce to the selection UI with only a signed nonce.
   const nonce = crypto.randomUUID()
   const stored = await putPending(event, nonce, { clientId: state.clientId, userId: state.userId, expiresAt, pages })
-  if (!stored) return fail('selection_unavailable') // KV missing (e.g. local dev) — operator retries in prod
+  if (!stored) return fail('selection_unavailable', state.clientId) // KV missing (e.g. local dev) — operator retries in prod
   const sel = signState({ nonce, clientId: state.clientId, userId: state.userId }, secret)
-  return sendRedirect(event, `${ACCOUNTS_PATH}?social_select=${encodeURIComponent(sel)}`, 302)
+  return sendRedirect(event, accountsPath({ social_select: sel, client: state.clientId }), 302)
 })
 
 /** Upsert a page (+IG) and subscribe its webhook. Returns 'conflict' if owned by another client. */
