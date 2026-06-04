@@ -20,8 +20,9 @@ and deployed:
 | `3cdf0904` → `d060cf8c` | Phase 3c responsive model/editor/server rendering, with backwards-compat coverage. |
 | `952c5591` | Divider naming follow-up: new `props.lineThickness`, legacy `props.lineHeight` fallback. |
 | `2a65682a` | MJML preview parity follow-up for rich border/radius styles in Container, Avatar, and Button. |
+| `cccff5b6` | Real-browser Chrome sanitizer coverage for `sanitizeInlineHtml` via dependency-free CDP harness. |
 
-Focused EDM verification after the continuation: 167 tests green across
+Focused EDM verification after the continuation: 169 tests green across
 `test/utils/edm*`, `test/utils/emailRender*`, `test/components/emailEdm*`,
 `test/components/emailEditorBlockWrapper.test.ts`, `test/app/edmBuilderStore.test.ts`,
 and `test/server/edmCustomModules.test.ts`. Targeted ESLint for touched files
@@ -49,7 +50,6 @@ passed; `EdmBlockRenderer.vue` still has the known `vue/no-v-html` warnings.
 ## ▶️ What's LEFT
 
 ### 1. Review follow-ups still open
-- **3b-H1 — sanitizer tested only under happy-dom.** `sanitizeInlineHtml` runs in the real browser but tests use happy-dom (non-spec parser). The wholesale-drop deny-list (svg/math/script/style/template/…) is robust regardless, but add a **real-browser sanitizer test** before heavy reliance. Repo currently has no Playwright/Vitest-browser dependency; local Chrome exists if a dependency-free CDP harness is worth the complexity.
 - **3b — rich-text inline formatting.** Inline editing is plain-text for Heading/Button and sanitised-HTML for Text, but there's **no formatting toolbar** (bold/italic/link) on the canvas. Optional enhancement: a floating mini-toolbar that wraps the selection in the whitelisted tags `sanitizeInlineHtml` already allows.
 
 ### 2. Lower priority / optional
@@ -65,7 +65,7 @@ passed; `EdmBlockRenderer.vue` still has the known `vue/no-v-html` warnings.
 - **The MAIN checkout** (`/Users/paulgiurin/Documents/Projects/dashboard`) carries ~40 uncommitted **social-publishing WIP files — DO NOT disturb them.** None overlap EDM files. Local `main` is currently synced to `origin/main` (`24cb25f3`).
 - **Merge:** EDM commits are linear/ff-able onto `origin/main` — `git push origin HEAD:main` from the worktree. (Direct push works; review already done per-phase via subagent.)
 - **Deploy from the clean** `.worktrees/deploy-prod` worktree: `git checkout <commit>` → (deps unchanged ⇒ no install needed) → `pnpm deploy:production` (uses `--branch main` = production). Cold Nitro build ≈ 8 min. Verify the prod alias + `/agency/email`.
-- **Dev server:** a fresh one was started this session (background, PID may be stale by next session) on `:3000` from the main checkout. **After any branch/file sync, RESTART the dev server** — HMR does not register new auto-imported files (composables/API routes/components) from a bulk git update. (`:3000` EADDRINUSE ⇒ kill the old PID first.) `pnpm dev` inside a `.worktrees/*` worktree needs `CHOKIDAR_USEPOLLING=true`.
+- **Dev server:** a fresh one was started this session (background, PID may be stale by next session) on `:3000` from the main checkout. **After any branch/file sync, RESTART the dev server** — HMR does not register new auto-imported files (composables/API routes/components) from a bulk git update. (`:3000` EADDRINUSE ⇒ kill the old PID first.) `pnpm dev` inside a `.worktrees/*` worktree needs `CHOKIDAR_USEPOLLING=true`. To pick a port from a worktree, prefer `pnpm exec nuxt dev --port <port>`; `pnpm dev -- --port <port>` was observed to start a Nuxt welcome shell because the extra `--` is passed through to `nuxt dev`.
 
 ## Key architecture / gotchas
 - **Two renderers, kept in lockstep by `app/utils/edmStyle.ts`** — `extendedStyleVue` (editor `:style`) + `extendedStyleCss` (server inline CSS). Server imports `~~/app/utils/edmStyle` (Nitro resolves `~~/app/*`; precedent `officeLobbyAvailability`). **Invariant: when a prop is absent, emit nothing → byte-identical render.** Keep this when adding 3c device overrides.
@@ -77,5 +77,5 @@ passed; `EdmBlockRenderer.vue` still has the known `vue/no-v-html` warnings.
 
 ## State
 - Original handoff baseline: `origin/main`/local `main` at `09fe609f`.
-- Continuation branch: `feature/edm-postcards-builder` at `2a65682a`.
+- Continuation branch: `feature/edm-postcards-builder` at `cccff5b6`.
 - Memory: `~/.claude/projects/.../memory/edm-postcards-builder.md` (+ MEMORY.md index) — update after 3b.3 / 3c.
