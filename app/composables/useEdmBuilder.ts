@@ -20,8 +20,7 @@ import {
 } from '~~/app/types/edm'
 import {
   buildSectionDocumentFragment,
-  buildStarterTemplateDocument,
-  type EdmSectionPresetId
+  buildStarterTemplateDocument
 } from '~~/app/utils/edmPresets'
 
 const HISTORY_LIMIT = 50
@@ -344,7 +343,7 @@ function createStore() {
     }
   }
 
-  function insertSectionPreset(sectionPresetId: EdmSectionPresetId, position?: number) {
+  function insertSectionPreset(sectionPresetId: string, position?: number) {
     const fragment = buildSectionDocumentFragment(sectionPresetId)
     insertBlocks(fragment.blocks, fragment.rootChildrenIds, 'root', position)
   }
