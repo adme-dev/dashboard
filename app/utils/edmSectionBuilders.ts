@@ -257,6 +257,31 @@ function htmlBlock(contents: string, padding: Padding, backgroundColor: string):
   })
 }
 
+/**
+ * Email-safe "heading + See all ›" row that MIMICS Postcards content headers:
+ * a bold heading on the left, an optional small pill link on the right.
+ * Returns a `<tr>` to be embedded inside an outer presentation table.
+ */
+function headingRowWithSeeAll(
+  heading: string,
+  seeAll: boolean,
+  colspan: number,
+  seeAllUrl = '#'
+): string {
+  if (!heading && !seeAll) return ''
+  const pill = seeAll
+    ? `<a href="${escapeAttr(seeAllUrl)}" style="display:inline-block;padding:5px 12px;background:#f3f4f6;border-radius:999px;font-size:12px;font-weight:700;color:#374151;text-decoration:none;white-space:nowrap;">See all &rsaquo;</a>`
+    : ''
+  return `<tr><td colspan="${Math.max(1, colspan)}" style="padding:0 8px 14px 8px;font-family:Arial,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+      <tr>
+        <td valign="middle" style="font-size:20px;font-weight:700;line-height:1.3;color:#111827;">${escapeHtml(heading)}</td>
+        <td valign="middle" align="right" style="white-space:nowrap;">${pill}</td>
+      </tr>
+    </table>
+  </td></tr>`
+}
+
 export interface BlogCard {
   date?: string
   title?: string
@@ -266,21 +291,29 @@ export interface BlogCard {
 }
 
 export interface BlogCardRowOpts {
+  heading?: string
   cards?: BlogCard[]
   backgroundColor?: string
   accentColor?: string
   padding?: Padding
 }
 
-/** Html: 2-up image cards with date + title. */
+/**
+ * Html: row of blog cards that MIMICS Postcards "CONTENT 1" — optional centered
+ * heading above a row of photo cards, each card overlaying the date (small
+ * uppercase accent label) + bold WHITE title ON the image via an email-safe
+ * `background-image` cell with a dark bottom gradient. The `<img>` stays as a
+ * graceful fallback for clients that strip background images.
+ */
 export function blogCardRow(opts: BlogCardRowOpts = {}): EdmPresetBlockTemplate {
   const {
+    heading = '',
     cards = [
       { date: 'Latest', title: 'Your first post title' },
       { date: 'Latest', title: 'Your second post title' }
     ],
     backgroundColor = '#ffffff',
-    accentColor = '#0ea5e9',
+    accentColor = '#7dd3fc',
     padding = PAD_SECTION
   } = opts
 
@@ -290,86 +323,224 @@ export function blogCardRow(opts: BlogCardRowOpts = {}): EdmPresetBlockTemplate 
       const seed = card.imageSeed || `blog-${i}`
       const img = card.imageUrl || picsum(seed, 280, 180)
       const href = escapeAttr(card.url || '#')
+      const safeImg = escapeAttr(img)
       return `<td valign="top" width="${cellWidth}%" style="padding:8px;font-family:Arial,sans-serif;">
-        <a href="${href}" style="text-decoration:none;color:inherit;">
-          <img loading="lazy" src="${escapeAttr(img)}" alt="${escapeAttr(card.title || 'Blog image')}" width="100%" height="160" style="display:block;width:100%;height:160px;object-fit:cover;border-radius:8px;" />
-          <div style="margin-top:10px;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:${escapeAttr(accentColor)};">${escapeHtml(card.date || '')}</div>
-          <div style="margin-top:4px;font-size:16px;font-weight:700;line-height:1.3;color:#111827;">${escapeHtml(card.title || '')}</div>
+        <a href="${href}" style="text-decoration:none;color:inherit;display:block;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;border-radius:8px;overflow:hidden;background-color:#1f2937;background-image:url('${safeImg}');background-size:cover;background-position:center;height:180px;">
+            <tr>
+              <td valign="bottom" height="180" style="height:180px;background-image:url('${safeImg}');background-size:cover;background-position:center;">
+                <div style="padding:14px 14px 12px 14px;background:linear-gradient(to top, rgba(0,0,0,0.78), rgba(0,0,0,0.15) 70%, rgba(0,0,0,0));">
+                  <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${escapeAttr(accentColor)};">${escapeHtml(card.date || '')}</div>
+                  <div style="margin-top:4px;font-size:16px;font-weight:700;line-height:1.3;color:#ffffff;">${escapeHtml(card.title || '')}</div>
+                </div>
+              </td>
+            </tr>
+          </table>
+          <img loading="lazy" src="${safeImg}" alt="${escapeAttr(card.title || 'Blog image')}" width="1" height="1" style="display:none;width:1px;height:1px;max-height:0;overflow:hidden;opacity:0;" />
         </a>
       </td>`
     })
     .join('')
 
-  const contents = `${TABLE_OPEN} style="border-collapse:collapse;"><tr>${cells}</tr></table>`
+  const headingHtml = heading
+    ? `<tr><td colspan="${Math.max(1, cards.length)}" align="center" style="padding:0 8px 16px 8px;font-family:Arial,sans-serif;">
+        <div style="font-size:18px;font-weight:700;line-height:1.3;color:#111827;">${escapeHtml(heading)}</div>
+      </td></tr>`
+    : ''
+
+  const contents = `${TABLE_OPEN} style="border-collapse:collapse;">${headingHtml}<tr>${cells}</tr></table>`
   return htmlBlock(contents, padding, backgroundColor)
 }
 
 export interface BrandLogo {
   name?: string
-  imageUrl?: string
-  imageSeed?: string
 }
 
 export interface ClientLogoStripOpts {
+  heading?: string
+  subtitle?: string
   brands?: BrandLogo[]
   columns?: number
   backgroundColor?: string
   padding?: Padding
 }
 
-/** Html: logo / brand-name grid. */
+/**
+ * Html: client-logo grid that MIMICS Postcards "CONTENT 3/4" — optional centered
+ * heading + subtitle above a grid of GRAYSCALE brand WORDMARKS rendered as
+ * styled text (bold, gray). No photos / Picsum — logos are text, not imagery.
+ * Defaults are generic placeholder names (no real trademarks).
+ */
 export function clientLogoStrip(opts: ClientLogoStripOpts = {}): EdmPresetBlockTemplate {
   const {
-    brands = [{ name: 'Brand One' }, { name: 'Brand Two' }, { name: 'Brand Three' }],
+    heading = '',
+    subtitle = '',
+    brands = [
+      { name: 'Northwind' },
+      { name: 'Globex' },
+      { name: 'Acme' },
+      { name: 'Umbrella' },
+      { name: 'Initech' },
+      { name: 'Soylent' }
+    ],
     columns = 3,
     backgroundColor = '#ffffff',
     padding = { top: 24, right: 32, bottom: 24, left: 32 }
   } = opts
 
   const cellWidth = Math.floor(100 / Math.max(1, columns))
-  const cellFor = (brand: BrandLogo, i: number): string => {
-    const seed = brand.imageSeed || `logo-${i}`
-    const img = brand.imageUrl || picsum(seed, 120, 60)
-    return `<td valign="middle" align="center" width="${cellWidth}%" style="padding:12px 8px;font-family:Arial,sans-serif;">
-      <img loading="lazy" src="${escapeAttr(img)}" alt="${escapeAttr(brand.name || 'Brand logo')}" width="96" height="48" style="display:inline-block;width:96px;height:48px;object-fit:contain;opacity:0.85;" />
-      <div style="margin-top:6px;font-size:12px;font-weight:700;color:#9ca3af;">${escapeHtml(brand.name || '')}</div>
+  const cellFor = (brand: BrandLogo): string => {
+    return `<td valign="middle" align="center" width="${cellWidth}%" style="padding:14px 8px;font-family:Arial,sans-serif;">
+      <div style="color:#9ca3af;font-weight:700;font-size:16px;letter-spacing:0.01em;">${escapeHtml(brand.name || '')}</div>
     </td>`
   }
 
   const rows: string[] = []
   for (let i = 0; i < brands.length; i += columns) {
     const rowBrands = brands.slice(i, i + columns)
-    const cells = rowBrands.map((b, j) => cellFor(b, i + j)).join('')
+    const cells = rowBrands.map(b => cellFor(b)).join('')
     rows.push(`<tr>${cells}</tr>`)
   }
 
-  const contents = `${TABLE_OPEN} style="border-collapse:collapse;">${rows.join('')}</table>`
+  const headingRows: string[] = []
+  if (heading) {
+    headingRows.push(`<tr><td colspan="${Math.max(1, columns)}" align="center" style="padding:0 8px 4px 8px;font-family:Arial,sans-serif;">
+      <div style="font-size:18px;font-weight:700;line-height:1.3;color:#111827;">${escapeHtml(heading)}</div>
+    </td></tr>`)
+  }
+  if (subtitle) {
+    headingRows.push(`<tr><td colspan="${Math.max(1, columns)}" align="center" style="padding:0 8px 12px 8px;font-family:Arial,sans-serif;">
+      <div style="font-size:13px;line-height:1.5;color:#6b7280;">${escapeHtml(subtitle)}</div>
+    </td></tr>`)
+  }
+
+  const contents = `${TABLE_OPEN} style="border-collapse:collapse;">${headingRows.join('')}${rows.join('')}</table>`
+  return htmlBlock(contents, padding, backgroundColor)
+}
+
+export interface ServiceItem {
+  name?: string
+  text?: string
+  iconColor?: string
+  iconLabel?: string
+}
+
+export interface ServicesGridOpts {
+  heading?: string
+  seeAll?: boolean
+  seeAllUrl?: string
+  description?: string
+  columns?: number
+  items?: ServiceItem[]
+  backgroundColor?: string
+  padding?: Padding
+}
+
+const SERVICE_ICON_COLORS = ['#0ea5e9', '#7c3aed', '#10b981', '#f59e0b', '#ef4444', '#14b8a6']
+
+/**
+ * Html: services / features grid that MIMICS Postcards "CONTENT 2" — a bold
+ * heading with an optional "See all ›" pill on the same row, an optional
+ * one-line description, then a 2-column grid of items. Each item = a small
+ * colored rounded-square CSS ICON (no photos) + bold name + muted supporting
+ * line. Icons are styled `<td>` cells with a background color, NOT Picsum.
+ */
+export function servicesGrid(opts: ServicesGridOpts = {}): EdmPresetBlockTemplate {
+  const {
+    heading = '',
+    seeAll = false,
+    seeAllUrl = '#',
+    description = '',
+    columns = 2,
+    items = [
+      { name: 'Strategy', text: 'A plan tied to your goals.' },
+      { name: 'Creative', text: 'On-brand designs and copy.' },
+      { name: 'Delivery', text: 'Assets shipped every sprint.' },
+      { name: 'Reporting', text: 'Clear results after each send.' }
+    ],
+    backgroundColor = '#ffffff',
+    padding = PAD_SECTION
+  } = opts
+
+  const safeColumns = Math.max(1, columns)
+  const cellWidth = Math.floor(100 / safeColumns)
+
+  const cellFor = (item: ServiceItem, i: number): string => {
+    const iconColor = item.iconColor || SERVICE_ICON_COLORS[i % SERVICE_ICON_COLORS.length]
+    const iconLabel = escapeHtml(item.iconLabel || (item.name ? item.name.charAt(0).toUpperCase() : '•'))
+    return `<td valign="top" width="${cellWidth}%" style="padding:10px 8px;font-family:Arial,sans-serif;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+        <tr>
+          <td valign="top" width="40" style="width:40px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+              <tr>
+                <td align="center" valign="middle" width="40" height="40" style="width:40px;height:40px;background-color:${escapeAttr(iconColor)};border-radius:10px;color:#ffffff;font-size:16px;font-weight:700;line-height:40px;text-align:center;">${iconLabel}</td>
+              </tr>
+            </table>
+          </td>
+          <td valign="top" style="padding-left:12px;">
+            <div style="font-size:15px;font-weight:700;line-height:1.3;color:#111827;">${escapeHtml(item.name || '')}</div>
+            <div style="margin-top:3px;font-size:13px;line-height:1.5;color:#6b7280;">${escapeHtml(item.text || '')}</div>
+          </td>
+        </tr>
+      </table>
+    </td>`
+  }
+
+  const rows: string[] = []
+  for (let i = 0; i < items.length; i += safeColumns) {
+    const rowItems = items.slice(i, i + safeColumns)
+    const cells = rowItems.map((it, j) => cellFor(it, i + j)).join('')
+    rows.push(`<tr>${cells}</tr>`)
+  }
+
+  const headerRow = headingRowWithSeeAll(heading, seeAll, safeColumns, seeAllUrl)
+  const descRow = description
+    ? `<tr><td colspan="${safeColumns}" style="padding:0 8px 14px 8px;font-family:Arial,sans-serif;">
+        <div style="font-size:14px;line-height:1.6;color:#4b5563;">${escapeHtml(description)}</div>
+      </td></tr>`
+    : ''
+
+  const contents = `${TABLE_OPEN} style="border-collapse:collapse;">${headerRow}${descRow}${rows.join('')}</table>`
   return htmlBlock(contents, padding, backgroundColor)
 }
 
 export interface StoryItem {
   heading?: string
   blurb?: string
+  date?: string
   url?: string
   imageUrl?: string
   imageSeed?: string
 }
 
 export interface StoryGridOpts {
+  heading?: string
+  seeAll?: boolean
+  seeAllUrl?: string
   stories?: StoryItem[]
   columns?: number
+  accentColor?: string
   backgroundColor?: string
   padding?: Padding
 }
 
-/** Html: image + heading + blurb cards. */
+/**
+ * Html: image-card story grid that MIMICS Postcards "CONTENT 5" — optional
+ * heading + "See all ›" pill row, then photo cards with an optional date label,
+ * a bold heading, and a short blurb beneath each image.
+ */
 export function storyGrid(opts: StoryGridOpts = {}): EdmPresetBlockTemplate {
   const {
+    heading = '',
+    seeAll = false,
+    seeAllUrl = '#',
     stories = [
       { heading: 'Story one', blurb: 'A short supporting line.' },
       { heading: 'Story two', blurb: 'A short supporting line.' }
     ],
     columns = 2,
+    accentColor = '#0ea5e9',
     backgroundColor = '#ffffff',
     padding = PAD_SECTION
   } = opts
@@ -379,10 +550,15 @@ export function storyGrid(opts: StoryGridOpts = {}): EdmPresetBlockTemplate {
     const seed = story.imageSeed || `story-${i}`
     const img = story.imageUrl || picsum(seed, 280, 180)
     const href = escapeAttr(story.url || '#')
+    const dateHtml = story.date
+      ? `<div style="margin-top:10px;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:${escapeAttr(accentColor)};">${escapeHtml(story.date)}</div>`
+      : ''
+    const headingMargin = story.date ? '4px' : '10px'
     return `<td valign="top" width="${cellWidth}%" style="padding:8px;font-family:Arial,sans-serif;">
       <a href="${href}" style="text-decoration:none;color:inherit;">
         <img loading="lazy" src="${escapeAttr(img)}" alt="${escapeAttr(story.heading || 'Story image')}" width="100%" height="150" style="display:block;width:100%;height:150px;object-fit:cover;border-radius:8px;" />
-        <div style="margin-top:10px;font-size:17px;font-weight:700;line-height:1.3;color:#111827;">${escapeHtml(story.heading || '')}</div>
+        ${dateHtml}
+        <div style="margin-top:${headingMargin};font-size:17px;font-weight:700;line-height:1.3;color:#111827;">${escapeHtml(story.heading || '')}</div>
         <div style="margin-top:4px;font-size:13px;line-height:1.5;color:#4b5563;">${escapeHtml(story.blurb || '')}</div>
       </a>
     </td>`
@@ -395,7 +571,8 @@ export function storyGrid(opts: StoryGridOpts = {}): EdmPresetBlockTemplate {
     rows.push(`<tr>${cells}</tr>`)
   }
 
-  const contents = `${TABLE_OPEN} style="border-collapse:collapse;">${rows.join('')}</table>`
+  const headerRow = headingRowWithSeeAll(heading, seeAll, columns, seeAllUrl)
+  const contents = `${TABLE_OPEN} style="border-collapse:collapse;">${headerRow}${rows.join('')}</table>`
   return htmlBlock(contents, padding, backgroundColor)
 }
 

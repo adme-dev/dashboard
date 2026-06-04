@@ -12,6 +12,7 @@ import {
   blogCardRow,
   clientLogoStrip,
   storyGrid,
+  servicesGrid,
   productCard,
   productRow,
   imageTextRow
@@ -95,6 +96,7 @@ export const EDM_SECTION_PRESET_IDS = [
   'content-blog-cards',
   'content-top-stories',
   'content-client-logos',
+  'content-services',
   'content-feature-story',
   'content-newsletter-intro',
   'feature-icon-grid',
@@ -499,26 +501,18 @@ const CONTENT_PRESETS: EdmSectionPreset[] = [
     categoryId: 'content',
     kind: 'section',
     name: 'Blog Cards',
-    description: 'Two image cards linking to your latest posts.',
+    description: 'Photo cards with the date and title overlaid on each image.',
     icon: 'i-lucide-layout-grid',
     previewTone: 'light',
     blocks: [
-      block('Heading', {
-        style: {
-          padding: { top: 28, right: 32, bottom: 8, left: 32 },
-          textAlign: 'left',
-          fontSize: 22,
-          color: '#111827'
-        },
-        props: { level: 'h2', text: 'From the blog' }
-      }),
       blogCardRow({
+        heading: 'Latest from the blog',
         cards: [
           { date: 'Strategy', title: 'How we cut a client’s cost per lead in half', imageSeed: 'blog-cpl' },
           { date: 'Creative', title: 'The hooks that made our last launch convert', imageSeed: 'blog-hooks' }
         ],
-        accentColor: '#0ea5e9',
-        padding: { top: 4, right: 24, bottom: 28, left: 24 }
+        accentColor: '#7dd3fc',
+        padding: { top: 28, right: 24, bottom: 28, left: 24 }
       })
     ]
   },
@@ -527,14 +521,17 @@ const CONTENT_PRESETS: EdmSectionPreset[] = [
     categoryId: 'content',
     kind: 'section',
     name: 'Top Stories',
-    description: 'Image + heading + blurb story grid.',
+    description: 'Heading + “See all” pill above a date-stamped story grid.',
     icon: 'i-lucide-newspaper',
     previewTone: 'light',
     blocks: [
       storyGrid({
+        heading: 'Top stories',
+        seeAll: true,
+        seeAllUrl: '#',
         stories: [
-          { heading: 'Inside the rebrand', blurb: 'A look at the strategy behind the refresh.', imageSeed: 'story-rebrand' },
-          { heading: 'Q2 in numbers', blurb: 'The campaigns that beat their targets.', imageSeed: 'story-numbers' }
+          { date: 'Brand', heading: 'Inside the rebrand', blurb: 'A look at the strategy behind the refresh.', imageSeed: 'story-rebrand' },
+          { date: 'Results', heading: 'Q2 in numbers', blurb: 'The campaigns that beat their targets.', imageSeed: 'story-numbers' }
         ],
         columns: 2,
         padding: { top: 28, right: 24, bottom: 28, left: 24 }
@@ -546,27 +543,48 @@ const CONTENT_PRESETS: EdmSectionPreset[] = [
     categoryId: 'content',
     kind: 'section',
     name: 'Our Clients',
-    description: 'Logo strip of brands you work with.',
+    description: 'Heading + subtitle above a grid of grayscale brand wordmarks.',
     icon: 'i-lucide-badge-check',
     previewTone: 'light',
     blocks: [
-      block('Heading', {
-        style: {
-          padding: { top: 28, right: 32, bottom: 4, left: 32 },
-          textAlign: 'center',
-          fontSize: 18,
-          color: '#6b7280'
-        },
-        props: { level: 'h3', text: 'Trusted by teams like' }
-      }),
       clientLogoStrip({
+        heading: 'Our clients',
+        subtitle: 'Trusted by teams across every vertical.',
         brands: [
-          { name: 'Northwind', imageSeed: 'logo-northwind' },
-          { name: 'Brightly', imageSeed: 'logo-brightly' },
-          { name: 'Harbor', imageSeed: 'logo-harbor' }
+          { name: 'Northwind' },
+          { name: 'Globex' },
+          { name: 'Acme' },
+          { name: 'Umbrella' },
+          { name: 'Initech' },
+          { name: 'Soylent' }
         ],
         columns: 3,
-        padding: { top: 4, right: 32, bottom: 28, left: 32 }
+        padding: { top: 28, right: 32, bottom: 28, left: 32 }
+      })
+    ]
+  },
+  {
+    id: 'content-services',
+    categoryId: 'content',
+    kind: 'section',
+    name: 'Services Grid',
+    description: 'Heading + “See all” above colored-icon service items.',
+    icon: 'i-lucide-layout-list',
+    previewTone: 'light',
+    blocks: [
+      servicesGrid({
+        heading: 'What we do',
+        seeAll: true,
+        seeAllUrl: '#',
+        description: 'A full-service team for every stage of your campaign.',
+        columns: 2,
+        items: [
+          { name: 'Strategy', text: 'A plan tied to your goals.', iconColor: '#0ea5e9' },
+          { name: 'Creative', text: 'On-brand designs and copy.', iconColor: '#7c3aed' },
+          { name: 'Delivery', text: 'Assets shipped every sprint.', iconColor: '#10b981' },
+          { name: 'Reporting', text: 'Clear results after each send.', iconColor: '#f59e0b' }
+        ],
+        padding: { top: 28, right: 24, bottom: 28, left: 24 }
       })
     ]
   },
@@ -741,6 +759,9 @@ const FEATURE_PRESETS: EdmSectionPreset[] = [
     previewTone: 'light',
     blocks: [
       storyGrid({
+        heading: 'What you get',
+        seeAll: true,
+        seeAllUrl: '#',
         stories: [
           { heading: 'Campaign builder', blurb: 'Plan, brief, and ship in one place.', imageSeed: 'feat-builder' },
           { heading: 'Live reporting', blurb: 'See spend and results as they land.', imageSeed: 'feat-reporting' }
