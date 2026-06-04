@@ -25,6 +25,52 @@ describe('useEdmBuilder preset actions', () => {
     expect(childIds[1]).toBe(firstId)
   })
 
+  it('insertBlocks is a no-op when the parent is missing', () => {
+    const store = useEdmBuilder()
+    const before = JSON.parse(JSON.stringify(store.document.value))
+
+    store.insertBlocks({}, [], 'missing-parent')
+
+    expect(store.document.value).toEqual(before)
+    expect(store.canUndo.value).toBe(false)
+    expect(store.canRedo.value).toBe(false)
+  })
+
+  it('creates an undo frame for preset insertion after a microtask boundary', async () => {
+    const store = useEdmBuilder()
+    const firstId = store.addBlock('Heading')
+    await Promise.resolve()
+
+    store.insertSectionPreset('header-logo-menu')
+    const insertedIds = [...(store.document.value.root.data.childrenIds || [])]
+
+    expect(store.canUndo.value).toBe(true)
+    expect(insertedIds).toHaveLength(3)
+
+    store.undo()
+
+    expect(store.document.value.root.data.childrenIds).toEqual([firstId])
+    for (const insertedId of insertedIds.slice(1)) {
+      expect(store.document.value[insertedId]).toBeUndefined()
+    }
+  })
+
+  it('clamps preset insertion positions within the root bounds', () => {
+    const store = useEdmBuilder()
+
+    store.insertSectionPreset('footer-legal', -12)
+    const negativeChildIds = store.document.value.root.data.childrenIds || []
+    expect(store.document.value[negativeChildIds[0]]?.type).toBe('footer')
+
+    store.resetDocument()
+    const endBlockId = store.addBlock('Heading')
+    store.insertSectionPreset('footer-legal', 999)
+    const largeChildIds = store.document.value.root.data.childrenIds || []
+    expect(largeChildIds).toHaveLength(2)
+    expect(largeChildIds[0]).toBe(endBlockId)
+    expect(store.document.value[largeChildIds[1]]?.type).toBe('footer')
+  })
+
   it('loads a starter template document and resets history', () => {
     const store = useEdmBuilder()
     store.addBlock('Heading')

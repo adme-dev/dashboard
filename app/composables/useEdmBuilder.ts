@@ -6,21 +6,23 @@
  */
 
 import { ref, computed } from 'vue'
-import { createEmptyDocument, generateBlockId } from '~~/app/types/edm'
-import type { EdmFlyhubBlock } from '~~/app/types/edm'
+import {
+  createEmptyDocument,
+  generateBlockId,
+  type EdmFlyhubBlock,
+  type EdmBlockBase,
+  type EdmFlyhubDocument,
+  type EdmEmailLayoutSettings,
+  type SidebarTab,
+  type MainTab,
+  type ScreenSize,
+  type EditorSnapshot
+} from '~~/app/types/edm'
 import {
   buildSectionDocumentFragment,
-  buildStarterTemplateDocument
+  buildStarterTemplateDocument,
+  type EdmSectionPresetId
 } from '~~/app/utils/edmPresets'
-import type {
-  EdmBlockBase,
-  EdmFlyhubDocument,
-  EdmEmailLayoutSettings,
-  SidebarTab,
-  MainTab,
-  ScreenSize,
-  EditorSnapshot
-} from '~~/app/types/edm'
 
 const HISTORY_LIMIT = 50
 
@@ -318,10 +320,10 @@ function createStore() {
     parentId: string = 'root',
     position?: number
   ) {
-    recordHistory()
     const parent = document.value[parentId]
     if (!parent) return
 
+    recordHistory()
     const childrenIds = [...(parent.data.childrenIds || [])]
     const insertAt = position === undefined
       ? childrenIds.length
@@ -342,7 +344,7 @@ function createStore() {
     }
   }
 
-  function insertSectionPreset(sectionPresetId: string, position?: number) {
+  function insertSectionPreset(sectionPresetId: EdmSectionPresetId, position?: number) {
     const fragment = buildSectionDocumentFragment(sectionPresetId)
     insertBlocks(fragment.blocks, fragment.rootChildrenIds, 'root', position)
   }
