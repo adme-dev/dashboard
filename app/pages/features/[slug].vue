@@ -1219,7 +1219,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'Sections and Building Blocks',
-        content: 'Build emails from a rich library of pre-designed sections organised by purpose — Header, Content, Feature, Call to action, E-Commerce, Transactional, and Footer — alongside basic blocks like headings, text, buttons, images, dividers, spacers, columns, and containers. Drop a whole section onto the canvas and you get a polished, on-brand layout in one click instead of assembling it element by element. Reorder by dragging, duplicate or delete with a click, and use the insert zones between blocks to slot new content exactly where you want it.'
+        content: 'Build emails from a rich library of pre-designed sections organised by purpose — Header, Content, Feature, Call to action, E-Commerce, Transactional, and Footer — alongside basic blocks like headings, text, buttons, images, dividers, spacers, columns, and containers. Drop a whole section onto the canvas and you get a polished, on-brand layout in one click instead of assembling it element by element. Reorder, duplicate, or delete with a click, and use the insert zones between blocks to slot new content exactly where you want it.'
       },
       {
         title: 'Live Section Previews',

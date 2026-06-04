@@ -143,6 +143,42 @@
     </div>
   </div>
 
+  <!-- Next steps -->
+  <div v-else-if="type === 'next-steps'" :style="nextStepsStyle" class="edm-preview-section">
+    <div :style="nextStepsHeadingStyle">
+      Next Steps
+    </div>
+    <div
+      v-for="(step, index) in nextStepsItems"
+      :key="`${step.title}-${index}`"
+      :style="nextStepsItemStyle"
+    >
+      <div :style="nextStepsNumberStyle">
+        {{ index + 1 }}
+      </div>
+      <div>
+        <div :style="nextStepsTitleStyle">
+          {{ step.title }}
+        </div>
+        <div v-if="step.description" :style="nextStepsDescriptionStyle">
+          {{ step.description }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Container (representative empty box for thumbnail; canvas uses ContainerBlockRenderer) -->
+  <div v-else-if="type === 'Container'" :style="containerStyle" class="edm-preview-section" />
+
+  <!-- Columns container (representative columns for thumbnail; canvas uses ColumnsContainerRenderer) -->
+  <div v-else-if="type === 'ColumnsContainer'" :style="columnsContainerStyle" class="edm-preview-section">
+    <div
+      v-for="col in columnsContainerCount"
+      :key="col"
+      :style="columnsContainerCellStyle"
+    />
+  </div>
+
   <!-- Unknown -->
   <div
     v-else
@@ -515,5 +551,87 @@ const footerUnsubscribeStyle = {
   lineHeight: '1.45',
   color: '#6b7280',
   textDecoration: 'underline'
+}
+
+// Next steps — mirrors server next-steps block (heading + steps[{title, description}])
+const nextStepsItems = computed(() =>
+  asArray<{ title?: string, description?: string }>(blockProps.value.steps)
+    .map(step => ({ title: asString(step.title) || 'Step', description: asString(step.description) }))
+)
+const nextStepsStyle = computed(() => ({
+  ...buildBaseStyle(props.style),
+  display: 'flex',
+  flexDirection: 'column' as const,
+  gap: '14px',
+  boxSizing: 'border-box'
+}))
+const nextStepsHeadingStyle = {
+  fontSize: '20px',
+  lineHeight: '1.3',
+  fontWeight: '700',
+  color: '#111827'
+}
+const nextStepsItemStyle = {
+  display: 'flex',
+  flexDirection: 'row' as const,
+  alignItems: 'flex-start',
+  gap: '12px'
+}
+const nextStepsNumberStyle = {
+  flex: '0 0 auto',
+  width: '28px',
+  height: '28px',
+  borderRadius: '50%',
+  backgroundColor: '#3b82f6',
+  color: '#ffffff',
+  fontSize: '14px',
+  fontWeight: '700',
+  lineHeight: '28px',
+  textAlign: 'center' as const
+}
+const nextStepsTitleStyle = {
+  fontSize: '15px',
+  lineHeight: '1.35',
+  fontWeight: '700',
+  color: '#111827',
+  wordBreak: 'break-word' as const
+}
+const nextStepsDescriptionStyle = {
+  fontSize: '14px',
+  lineHeight: '1.4',
+  color: '#6b7280',
+  wordBreak: 'break-word' as const
+}
+
+// Container — representative empty padded box (thumbnail only; canvas has its own renderer)
+const containerStyle = computed(() => ({
+  ...buildBaseStyle(props.style),
+  minHeight: '56px',
+  backgroundColor: (props.style?.backgroundColor as string) || '#ffffff',
+  border: '1px dashed #d1d5db',
+  borderRadius: '6px',
+  boxSizing: 'border-box'
+}))
+
+// Columns container — representative placeholder cells (thumbnail only)
+const columnsContainerCount = computed(() => {
+  const raw = Number(blockProps.value.columnsCount ?? 2)
+  if (!Number.isFinite(raw)) return 2
+  return Math.max(1, Math.min(4, Math.trunc(raw)))
+})
+const columnsContainerStyle = computed(() => ({
+  ...buildBaseStyle(props.style),
+  display: 'flex',
+  flexDirection: 'row' as const,
+  gap: ((blockProps.value.columnsGap as number) ?? 16) + 'px',
+  boxSizing: 'border-box'
+}))
+const columnsContainerCellStyle = {
+  flex: '1 1 0',
+  minHeight: '48px',
+  backgroundColor: '#ffffff',
+  border: '1px dashed #d1d5db',
+  borderRadius: '6px',
+  boxSizing: 'border-box' as const
 }
 </script>
