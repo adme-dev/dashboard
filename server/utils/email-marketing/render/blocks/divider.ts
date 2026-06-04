@@ -1,6 +1,7 @@
 import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
+import { extendedStyleCss } from '~~/app/utils/edmStyle'
 
 registerBlock({
   type: 'Divider',
@@ -51,7 +52,7 @@ registerBlock({
 
     return `
         <tr>
-          <td style="padding: ${padding}; ${bgColor ? `background-color: ${bgColor};` : ''}">
+          <td style="padding: ${padding}; ${bgColor ? `background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
             <hr style="border: none; border-top: ${lineHeight}px solid ${lineColor}; margin: 0;" />
           </td>
         </tr>`

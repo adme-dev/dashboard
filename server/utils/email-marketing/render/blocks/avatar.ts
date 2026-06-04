@@ -1,6 +1,7 @@
 import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
+import { extendedStyleCss } from '~~/app/utils/edmStyle'
 
 registerBlock({
   type: 'Avatar',
@@ -70,7 +71,7 @@ registerBlock({
 
     return `
         <tr>
-          <td style="padding: ${padding}; text-align: ${textAlign || 'center'}; ${bgColor ? `background-color: ${bgColor};` : ''}">
+          <td style="padding: ${padding}; text-align: ${textAlign || 'center'}; ${bgColor ? `background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
             <img src="${avatarSrc}" alt="Avatar" style="width: ${avatarSize}px; height: ${avatarSize}px; border-radius: ${borderRadius}; display: inline-block;" />
           </td>
         </tr>`

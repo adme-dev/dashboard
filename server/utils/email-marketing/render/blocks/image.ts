@@ -2,6 +2,7 @@ import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
 import { escapeHtml } from './helpers'
+import { extendedStyleCss } from '~~/app/utils/edmStyle'
 
 registerBlock({
   type: 'Image',
@@ -93,7 +94,7 @@ registerBlock({
 
     return `
         <tr>
-          <td style="padding: ${padding}; text-align: ${contentAlignment}; ${bgColor ? `background-color: ${bgColor};` : ''}">
+          <td style="padding: ${padding}; text-align: ${contentAlignment}; ${bgColor ? `background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
             ${imageHtml}
           </td>
         </tr>`

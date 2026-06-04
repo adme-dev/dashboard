@@ -1,6 +1,7 @@
 import { registerBlock, renderBlock, getBlockDefinition } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
+import { extendedStyleCss } from '~~/app/utils/edmStyle'
 
 /**
  * Render a child block within an MJML column (without wrapping section).
@@ -114,7 +115,7 @@ registerBlock({
 
     return `
         <tr>
-          <td style="padding: ${padding}; ${bgColor ? `background-color: ${bgColor};` : ''}">
+          <td style="padding: ${padding}; ${bgColor ? `background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
               <tr class="columns-row">
                 ${columnCells}

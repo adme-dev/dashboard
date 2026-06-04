@@ -2,6 +2,7 @@ import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { resolveFontFamily, formatPadding } from './types'
 import { escapeHtml, escapeFontFamilyForHtml } from './helpers'
+import { extendedStyleCss } from '~~/app/utils/edmStyle'
 
 const HEADING_FONT_SIZE_MAP: Record<string, string> = {
   h1: '32px',
@@ -82,7 +83,7 @@ registerBlock({
     return `
         <tr>
           <td style="padding: ${padding}; text-align: ${textAlign}; ${bgColor ? `background-color: ${bgColor};` : ''}">
-            <${level} style="margin: 0; color: ${textColor || '#111827'}; font-size: ${headingFontSize}; font-family: ${escapeFontFamilyForHtml(fontFamily)}; font-weight: bold; line-height: 1.3;">
+            <${level} style="margin: 0; color: ${textColor || '#111827'}; font-size: ${headingFontSize}; font-family: ${escapeFontFamilyForHtml(fontFamily)}; font-weight: bold; line-height: 1.3; ${extendedStyleCss(style)}">
               ${escapeHtml(text)}
             </${level}>
           </td>

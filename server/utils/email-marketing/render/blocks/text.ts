@@ -2,6 +2,7 @@ import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { resolveFontFamily, formatPadding } from './types'
 import { escapeFontFamilyForHtml } from './helpers'
+import { extendedStyleCss } from '~~/app/utils/edmStyle'
 
 registerBlock({
   type: 'Text',
@@ -69,7 +70,7 @@ registerBlock({
     const textFontSize = fontSize || '16px'
     return `
         <tr>
-          <td style="padding: ${padding}; text-align: ${textAlign}; color: ${textColor || '#374151'}; font-size: ${textFontSize}; font-family: ${escapeFontFamilyForHtml(fontFamily)}; font-weight: ${fontWeight}; line-height: 1.6; ${bgColor ? `background-color: ${bgColor};` : ''}">
+          <td style="padding: ${padding}; text-align: ${textAlign}; color: ${textColor || '#374151'}; font-size: ${textFontSize}; font-family: ${escapeFontFamilyForHtml(fontFamily)}; font-weight: ${fontWeight}; line-height: 1.6; ${bgColor ? `background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
             ${text}
           </td>
         </tr>`

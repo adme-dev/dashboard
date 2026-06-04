@@ -191,6 +191,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { extendedStyleVue } from '~~/app/utils/edmStyle'
 
 const props = defineProps<{
   type: string
@@ -217,7 +218,10 @@ function buildBaseStyle(
     fontSize: s.fontSize ? `${s.fontSize}px` : undefined,
     fontWeight: (s.fontWeight as string) || undefined,
     textAlign: (s.textAlign as string) || undefined,
-    padding: getPadding(s.padding)
+    padding: getPadding(s.padding),
+    // Phase 3a rich props (lineHeight, letterSpacing, textTransform, opacity,
+    // border, borderRadius, boxShadow, backgroundImage) — omitted when absent.
+    ...extendedStyleVue(s)
   }
 }
 
