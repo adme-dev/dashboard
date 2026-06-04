@@ -584,6 +584,8 @@ onMounted(async () => {
                   :type="block.type"
                   :style="block.data?.style"
                   :props="block.data?.props"
+                  editable
+                  @update:text="(t) => store.updateBlockProps(block.id, { text: t })"
                 />
               </EmailBuilderEditorBlockWrapper>
             </template>

@@ -3,22 +3,41 @@
      Ported from layers/edm/.../EdmBlockRenderer.vue (shadcn class re-skinned). -->
 <template>
   <!-- Heading -->
-  <component :is="headingTag" v-if="type === 'Heading'" :style="headingStyle">
-    {{ blockProps.text || 'New Heading' }}
+  <component
+    :is="headingTag"
+    v-if="type === 'Heading'"
+    :style="headingStyle"
+    :class="{ 'edm-editable': editable }"
+    :contenteditable="editable ? 'plaintext-only' : undefined"
+    @blur="editable && onTextEdit($event, false)"
+    @keydown="onEditableKeydown"
+  >
+    {{ blockProps.text || (editable ? '' : 'New Heading') }}
   </component>
 
   <!-- Text -->
   <div
     v-else-if="type === 'Text'"
     :style="textStyle"
-    class="revert-browser-styles"
+    :class="['revert-browser-styles', { 'edm-editable': editable }]"
+    :contenteditable="editable ? 'true' : undefined"
+    @blur="editable && onTextEdit($event, true)"
     v-html="blockProps.text || ''"
   />
 
   <!-- Button -->
   <div v-else-if="type === 'Button'" :style="buttonWrapperStyle">
-    <a :href="(blockProps.url as string) || '#'" :style="buttonLinkStyle" target="_blank">
-      {{ blockProps.text || 'Click Here' }}
+    <a
+      :href="(blockProps.url as string) || '#'"
+      :style="buttonLinkStyle"
+      :class="{ 'edm-editable': editable }"
+      :contenteditable="editable ? 'plaintext-only' : undefined"
+      :target="editable ? undefined : '_blank'"
+      @click="editable && $event.preventDefault()"
+      @blur="editable && onTextEdit($event, false)"
+      @keydown="onEditableKeydown"
+    >
+      {{ blockProps.text || (editable ? '' : 'Click Here') }}
     </a>
   </div>
 
@@ -192,12 +211,40 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { extendedStyleVue } from '~~/app/utils/edmStyle'
+import { sanitizeInlineHtml, extractPlainText } from '~~/app/utils/edmInlineText'
 
 const props = defineProps<{
   type: string
   style?: Record<string, unknown> | null
   props?: Record<string, unknown> | null
+  /** Phase 3b: when true, text blocks are contenteditable on the canvas. */
+  editable?: boolean
 }>()
+
+const emit = defineEmits<{ 'update:text': [value: string] }>()
+
+// Capture edited text on blur (not input) so the reactive value only changes
+// once the field loses focus — avoids the contenteditable cursor-jump that a
+// per-keystroke re-render would cause. Text is HTML-sanitised; Heading/Button
+// are captured as plain text (they render escaped).
+function onTextEdit(e: Event, asHtml: boolean) {
+  const el = e.target as HTMLElement | null
+  if (!el) return
+  const value = asHtml
+    ? sanitizeInlineHtml(el.innerHTML)
+    : extractPlainText(el.textContent || '')
+  emit('update:text', value)
+}
+
+// Enter commits the edit (blur) for single-line Heading/Button rather than
+// inserting a newline.
+function onEditableKeydown(e: KeyboardEvent) {
+  if (!props.editable) return
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    ;(e.target as HTMLElement)?.blur()
+  }
+}
 
 const blockProps = computed(() => (props.props || {}) as Record<string, unknown>)
 
@@ -639,3 +686,21 @@ const columnsContainerCellStyle = {
   boxSizing: 'border-box' as const
 }
 </script>
+
+<style scoped>
+/* Inline-edit affordance (Phase 3b) — only present on the editable canvas, not
+   in thumbnails/preview where `editable` is never set. */
+.edm-editable {
+  cursor: text;
+  outline: none;
+}
+.edm-editable:hover {
+  outline: 1px dashed rgba(59, 130, 246, 0.5);
+  outline-offset: 2px;
+}
+.edm-editable:focus {
+  outline: 2px solid rgb(59, 130, 246);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+</style>

@@ -3,9 +3,9 @@ import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import EdmBlockRenderer from '~~/app/components/email/builder/EdmBlockRenderer.vue'
 
-async function renderBlock(type: string, blockProps: Record<string, unknown>, style: Record<string, unknown> = {}) {
+async function renderBlock(type: string, blockProps: Record<string, unknown>, style: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) {
   const app = createSSRApp({
-    render: () => h(EdmBlockRenderer, { type, props: blockProps, style })
+    render: () => h(EdmBlockRenderer, { type, props: blockProps, style, ...extra })
   })
   return renderToString(app)
 }
@@ -74,5 +74,31 @@ describe('EmailBuilderEdmBlockRenderer custom sections', () => {
     expect(ctaHtml).toContain('color:#abcdef')
     expect(ctaHtml).toContain('color:#123456')
     expect(await renderBlock('footer', {})).toContain('You are receiving this email because you subscribed to updates.')
+  })
+})
+
+describe('EmailBuilderEdmBlockRenderer inline editing (Phase 3b)', () => {
+  it('makes Heading/Text/Button contenteditable when editable=true', async () => {
+    const heading = await renderBlock('Heading', { text: 'Hi', level: 'h1' }, {}, { editable: true })
+    expect(heading).toContain('contenteditable="plaintext-only"')
+    expect(heading).toContain('Hi')
+
+    const text = await renderBlock('Text', { text: '<b>Bold</b>' }, {}, { editable: true })
+    expect(text).toContain('contenteditable="true"')
+
+    const button = await renderBlock('Button', { text: 'Go', url: 'https://x.com' }, {}, { editable: true })
+    expect(button).toContain('contenteditable="plaintext-only"')
+    // editable buttons drop target=_blank so the click can be intercepted
+    expect(button).not.toContain('target="_blank"')
+  })
+
+  it('is NOT contenteditable by default (thumbnails/preview)', async () => {
+    const heading = await renderBlock('Heading', { text: 'Hi', level: 'h1' })
+    expect(heading).not.toContain('contenteditable')
+    const text = await renderBlock('Text', { text: 'Body' })
+    expect(text).not.toContain('contenteditable')
+    // non-editable button keeps its target
+    const button = await renderBlock('Button', { text: 'Go', url: 'https://x.com' })
+    expect(button).toContain('target="_blank"')
   })
 })
