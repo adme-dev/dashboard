@@ -22,11 +22,12 @@ and deployed:
 | `2a65682a` | MJML preview parity follow-up for rich border/radius styles in Container, Avatar, and Button. |
 | `cccff5b6` | Real-browser Chrome sanitizer coverage for `sanitizeInlineHtml` via dependency-free CDP harness. |
 | `91bec914` | Phase 1 nit: `EdmTemplateThumbnail` now keys rendered starter blocks by document block id, not array index. |
+| `d4fe3d0a` | Phase 1 nit: saved "Your templates" section is now a preview-card grid with live EDM document thumbnails. |
 
-Focused EDM verification after the continuation: 170 tests green across
+Focused EDM verification after the continuation: 174 tests green across
 `test/utils/edm*`, `test/utils/emailRender*`, `test/components/emailEdm*`,
-`test/components/emailEditorBlockWrapper.test.ts`, `test/app/edmBuilderStore.test.ts`,
-and `test/server/edmCustomModules.test.ts`. Targeted ESLint for touched files
+`test/components/emailTemplatesPanel.test.ts`, `test/components/emailEditorBlockWrapper.test.ts`,
+`test/app/edmBuilderStore.test.ts`, and `test/server/edmCustomModules.test.ts`. Targeted ESLint for touched files
 passed; `EdmBlockRenderer.vue` still has the known `vue/no-v-html` warnings.
 
 ---
@@ -55,7 +56,6 @@ passed; `EdmBlockRenderer.vue` still has the known `vue/no-v-html` warnings.
 
 ### 2. Lower priority / optional
 - **Phase 1b** — template folders + drafts grouping (needs persistence). Deferred.
-- **Phase 1 nit** — "Your templates" is a list (spec wanted a preview grid).
 - **anchor-id control** — deferred in 3a because renderers don't emit a block `id` attribute. If wanted: emit `id` on the block's outer element in each `renderHtml` + add an "Advanced › Anchor ID" inspector control.
 
 ---
@@ -78,5 +78,5 @@ passed; `EdmBlockRenderer.vue` still has the known `vue/no-v-html` warnings.
 
 ## State
 - Original handoff baseline: `origin/main`/local `main` at `09fe609f`.
-- Continuation branch: `feature/edm-postcards-builder` at `91bec914`.
+- Continuation branch: `feature/edm-postcards-builder` at `d4fe3d0a`.
 - Memory: `~/.claude/projects/.../memory/edm-postcards-builder.md` (+ MEMORY.md index) — update after 3b.3 / 3c.
