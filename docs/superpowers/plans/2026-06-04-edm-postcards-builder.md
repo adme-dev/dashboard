@@ -1577,3 +1577,30 @@ Constraints carried from the base plan: keep the flat `EdmFlyhubDocument` as the
 
 - Run the full email + feature test set plus the two new component tests; typecheck (record only pre-existing/unrelated errors); serve-check `/agency/email` and `/agency/email/compose`; dev-log clean.
 - Final whole-feature code review over the Task 8 range before finishing the branch.
+
+---
+
+# Task 9 Addendum: Rich Image-Driven Section Library (Postcards-fidelity)
+
+**Goal:** Owner reviewed the live flyout (mechanism ✅) and wants the SECTION LIBRARY to match Postcards depth/polish: ~6–8 rich, image-driven variants per non-basic category, rendering beautifully in the flyout thumbnails. Owner decisions: imagery from a **royalty-free service** (Lorem Picsum `https://picsum.photos/seed/<seed>/<w>/<h>` — deterministic, free, no key; users swap their own); depth = **match Postcards (~6–8/category)**. Use OUR OWN content (watchpoint: never copy Designmodo templates/branding/assets).
+
+**Constraints:** keep flat `EdmFlyhubDocument` (no new persistence); KEEP all existing preset ids (starters + tests reference them) — ADD new rich variants, don't rename/remove. Block types must be the editor∩server intersection (`header, menu, hero-section, feature-grid, cta-banner, footer`, primitives `Heading/Text/Button/Image/Divider/Html`, and `Container/ColumnsContainer` now have editor branches but the thumbnail does NOT recurse children — so rich multi-column/image layouts must be built as `Html` blocks, which render identically in editor preview, thumbnail, and server export). Tradeoff accepted: rich content sections are `Html` blocks (visual fidelity, edited as HTML) while hero/cta/feature/header/footer stay inspector-editable; granular per-element editing of Html sections is a future follow-up.
+
+### Task 9a: Section-builder helpers + image strategy
+
+**Files:** Create `app/utils/edmSectionBuilders.ts`; create `test/utils/edmSectionBuilders.test.ts`.
+
+- `picsum(seed: string, w: number, h: number)` → `https://picsum.photos/seed/${encodeURIComponent(seed)}/${w}/${h}`.
+- Composable builders returning `EdmPresetBlockTemplate` (or arrays): `heroImage(opts)` (hero-section w/ picsum imageUrl), `ctaBanner(opts)`, `featureRow(opts)` (feature-grid), `brandHeader(opts)`/`navMenu(opts)`, `richFooter(opts)`, and **Html rich-layout builders**: `blogCardRow(cards)`, `clientLogoStrip(items)`, `storyGrid(stories)`, `productCard(opts)`/`productRow(items)`, `imageTextRow(opts)`. Html builders emit EMAIL-SAFE markup: `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">`, inline styles only (no flex/grid in exported HTML — use tables/`align`), explicit colors, `<img>` with width/height/alt + picsum src, sensible dark/light section backgrounds. Escape any caller text.
+- TDD `test/utils/edmSectionBuilders.test.ts`: each builder returns block data whose `type` is in the intersection set; Html builders' `contents` contain expected copy + a `picsum.photos` URL + a `<table`; assembling builder output into a doc and rendering via `renderTemplateDocument` produces no `available in upcoming update` fallback.
+
+### Task 9b: Deep per-category library
+
+**Files:** Modify `app/utils/edmPresets.ts` (+ extend `test/utils/edmPresets.test.ts`); thumbnails covered by `test/components/emailEdmSectionThumbnail.test.ts` all-presets loop.
+
+- Using the 9a helpers, bring each non-basic category to ~6–8 section presets (header, content, feature, call-to-action, e-commerce, transactional, footer). KEEP existing ids; add new rich, image-driven, distinctly-named variants (e.g. content: blog-card row, client-logo strip, story grid, image+text, editorial intro, quote; e-commerce: product hero, product row, sale banner, single-product card; footer: rich 2-col social footer, dark social bar, minimal legal; etc.). Vary `previewTone` to match each section's actual background.
+- Extend `edmPresets.test.ts`: ≥6 section presets per non-basic category; every section preset renders (server) with no fallback (existing generic loop covers new ones). Ensure `emailEdmSectionThumbnail.test.ts`'s all-presets loop still passes (no "Unknown block" in editor thumbnails).
+
+### Task 9c: Verify
+
+- Full email/edm test set; serve-check compose 200; dev-log clean; restart dev server so the owner sees the rich flyout. Final review over the Task 9 range. Owner eyeballs the flyout.

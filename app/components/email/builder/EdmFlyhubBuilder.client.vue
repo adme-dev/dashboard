@@ -388,7 +388,11 @@ onMounted(async () => {
                 @mouseenter="cancelCloseFlyout(category.id)"
                 @mouseleave="scheduleCloseFlyout(category.id)"
               >
-                <p class="text-[11px] font-semibold uppercase text-muted mb-3">{{ category.label }}</p>
+                <p class="text-[11px] font-semibold uppercase text-muted mb-1">{{ category.label }}</p>
+                <p v-if="category.id !== 'basic'" class="text-[11px] text-muted/80 mb-3 flex items-center gap-1">
+                  <UIcon name="i-lucide-image" class="h-3 w-3 shrink-0" />
+                  Preview images are placeholders — swap before sending.
+                </p>
                 <div class="space-y-3">
                   <button
                     v-for="preset in category.presets"
