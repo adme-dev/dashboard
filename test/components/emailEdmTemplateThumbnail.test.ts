@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import EdmTemplateThumbnail from '~~/app/components/email/builder/EdmTemplateThumbnail.vue'
@@ -40,5 +41,15 @@ describe('EdmTemplateThumbnail', () => {
     expect(html).toContain('width:600px')
     expect(html).toContain('scale(0.5)')
     expect(html).toContain('pointer-events:none')
+  })
+
+  it('keys rendered starter blocks by document block id, not array index', () => {
+    const source = readFileSync(
+      new URL('../../app/components/email/builder/EdmTemplateThumbnail.vue', import.meta.url),
+      'utf8'
+    )
+
+    expect(source).toContain(':key="entry.id"')
+    expect(source).not.toContain(':key="i"')
   })
 })

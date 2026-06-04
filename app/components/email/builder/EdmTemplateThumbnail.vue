@@ -14,6 +14,11 @@ import type { EdmFlyhubBlock } from '~~/app/types/edm'
 
 const EMAIL_WIDTH = 600
 
+interface ThumbnailBlockEntry {
+  id: string
+  block: EdmFlyhubBlock
+}
+
 const props = withDefaults(defineProps<{
   /** Starter template id (see EDM_STARTER_TEMPLATES). */
   templateId: string
@@ -27,12 +32,12 @@ const props = withDefaults(defineProps<{
 })
 
 // Build once per template id. buildStarterTemplateDocument is pure + SSR-safe.
-const blocks = computed<EdmFlyhubBlock[]>(() => {
+const blocks = computed<ThumbnailBlockEntry[]>(() => {
   const document = buildStarterTemplateDocument(props.templateId)
   const childrenIds = document.root?.data?.childrenIds ?? []
   return childrenIds
-    .map(id => document[id])
-    .filter((block): block is EdmFlyhubBlock => Boolean(block))
+    .map(id => ({ id, block: document[id] }))
+    .filter((entry): entry is ThumbnailBlockEntry => Boolean(entry.block))
 })
 
 const scale = computed(() => props.width / EMAIL_WIDTH)
@@ -57,11 +62,11 @@ const innerStyle = computed(() => ({
   >
     <div :style="innerStyle">
       <EdmBlockRenderer
-        v-for="(block, i) in blocks"
-        :key="i"
-        :type="block.type"
-        :props="block.data?.props || {}"
-        :style="block.data?.style || {}"
+        v-for="entry in blocks"
+        :key="entry.id"
+        :type="entry.block.type"
+        :props="entry.block.data?.props || {}"
+        :style="entry.block.data?.style || {}"
       />
     </div>
   </div>
