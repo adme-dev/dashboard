@@ -1,9 +1,10 @@
 <!-- app/components/email/builder/EdmFlyhubBuilder.client.vue -->
 <!-- Editor shell: canvas (2a-ii-2) + block inspector (2a-ii-3) + toolbar with
      undo/redo, Editor/Preview/HTML views, and Save to edm_templates (2a-ii-4).
-     Loads an existing template via ?id=. -->
+     Loads an existing template via ?id= or a starter layout via ?starter=. -->
 <script setup lang="ts">
-import { BLOCK_PALETTE, getDefaultBlockData } from '~~/app/utils/edmBlocks'
+import { getDefaultBlockData } from '~~/app/utils/edmBlocks'
+import { EDM_SECTION_CATEGORIES, findStarterTemplate } from '~~/app/utils/edmPresets'
 import type { EdmFlyhubDocument } from '~~/app/types/edm'
 
 const store = useEdmBuilder()
@@ -11,6 +12,23 @@ const route = useRoute()
 const toast = useToast()
 
 const layout = computed(() => store.getLayoutSettings())
+
+const selectedCategoryId = ref(EDM_SECTION_CATEGORIES[0]?.id || 'basic')
+const selectedCategory = computed(() => {
+  return EDM_SECTION_CATEGORIES.find(category => category.id === selectedCategoryId.value) || EDM_SECTION_CATEGORIES[0]
+})
+
+function addPreset(presetId: string, position?: number) {
+  const preset = selectedCategory.value?.presets.find(item => item.id === presetId)
+  if (!preset) return
+  if (preset.kind === 'block') {
+    const block = preset.blocks[0]
+    if (!block) return
+    store.addBlock(block.type, 'root', position, block.data)
+    return
+  }
+  store.insertSectionPreset(preset.id, position)
+}
 
 const childBlocks = computed(() => {
   const root = store.document.value.root
@@ -190,6 +208,18 @@ onMounted(async () => {
     return
   }
 
+  const starter = route.query.starter
+  if (typeof starter === 'string' && starter) {
+    const starterTemplate = findStarterTemplate(starter)
+    if (starterTemplate) {
+      store.setTemplatePreset(starterTemplate.id)
+      name.value = starterTemplate.name
+      subject.value = starterTemplate.subject
+      previewText.value = starterTemplate.previewText
+    }
+    return
+  }
+
   const id = route.query.id
   if (typeof id !== 'string' || !id) return
   try {
@@ -288,21 +318,50 @@ onMounted(async () => {
     <div class="flex-1 overflow-hidden">
       <!-- Editor -->
       <div v-show="viewMode === 'editor'" class="flex h-full">
-        <!-- Left: block palette -->
-        <aside class="w-56 border-r border-default p-3 overflow-auto">
-          <p class="text-xs font-semibold uppercase text-muted mb-3">
-            Add blocks
-          </p>
-          <div class="grid grid-cols-2 gap-2">
+        <!-- Left: module library (category rail + section thumbnails) -->
+        <aside class="w-[340px] border-r border-default bg-elevated/30 flex overflow-hidden">
+          <div class="w-36 border-r border-default bg-default p-2 overflow-auto">
+            <p class="px-2 py-2 text-[11px] font-semibold uppercase text-muted">Modules</p>
             <button
-              v-for="blockType in BLOCK_PALETTE"
-              :key="blockType.type"
-              class="flex flex-col items-center justify-center p-3 rounded-md border border-default bg-elevated/50 text-default cursor-pointer transition-all hover:border-primary hover:bg-primary/10"
-              @click="addBlock(blockType.type)"
+              v-for="category in EDM_SECTION_CATEGORIES"
+              :key="category.id"
+              type="button"
+              class="w-full flex items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors"
+              :class="selectedCategoryId === category.id ? 'bg-elevated text-default font-semibold' : 'text-muted hover:text-default hover:bg-elevated/60'"
+              @click="selectedCategoryId = category.id"
             >
-              <UIcon :name="blockType.icon" class="h-5 w-5 mb-1" />
-              <span class="text-xs">{{ blockType.name }}</span>
+              <UIcon :name="category.icon" class="h-4 w-4 shrink-0" />
+              <span class="truncate">{{ category.label }}</span>
             </button>
+          </div>
+          <div class="flex-1 overflow-auto p-3">
+            <p class="text-[11px] font-semibold uppercase text-muted mb-3">{{ selectedCategory?.label }}</p>
+            <div class="space-y-3">
+              <button
+                v-for="preset in selectedCategory?.presets"
+                :key="preset.id"
+                type="button"
+                class="w-full overflow-hidden rounded-md border border-default bg-default text-left transition hover:border-primary hover:shadow-sm"
+                @click="addPreset(preset.id)"
+              >
+                <div
+                  class="h-28 p-3"
+                  :class="{
+                    'bg-[#171717] text-white': preset.previewTone === 'dark',
+                    'bg-primary/10 text-default': preset.previewTone === 'accent',
+                    'bg-white dark:bg-elevated text-default': preset.previewTone === 'light'
+                  }"
+                >
+                  <div class="flex items-center justify-center h-full rounded border border-dashed border-current/20">
+                    <UIcon :name="preset.icon" class="h-6 w-6 opacity-70" />
+                  </div>
+                </div>
+                <div class="p-3">
+                  <p class="text-sm font-semibold">{{ preset.name }}</p>
+                  <p class="mt-1 text-xs text-muted leading-snug">{{ preset.description }}</p>
+                </div>
+              </button>
+            </div>
           </div>
         </aside>
 
@@ -323,9 +382,8 @@ onMounted(async () => {
               class="flex flex-col items-center justify-center py-20 text-center"
             >
               <UIcon name="i-lucide-plus" class="h-12 w-12 text-muted/50 mb-4" />
-              <p class="text-muted">
-                Click a block from the sidebar to add it here
-              </p>
+              <p class="font-medium text-default">Start with a section or Basic block</p>
+              <p class="mt-1 text-sm text-muted">Choose a module from the left panel to build your email.</p>
             </div>
 
             <!-- Block list -->
@@ -371,16 +429,19 @@ onMounted(async () => {
                   label="Add block"
                 />
                 <template #content>
-                  <div class="grid grid-cols-4 gap-1 p-2 w-64">
-                    <button
-                      v-for="blockType in BLOCK_PALETTE"
-                      :key="blockType.type"
-                      class="flex flex-col items-center justify-center gap-1 p-2 rounded-md cursor-pointer hover:bg-muted min-w-14"
-                      @click="addBlock(blockType.type)"
-                    >
-                      <UIcon :name="blockType.icon" class="h-4 w-4" />
-                      <span class="text-[10px]">{{ blockType.name }}</span>
-                    </button>
+                  <div class="p-2 w-64">
+                    <p class="px-1 pb-2 text-[10px] font-semibold uppercase text-muted">{{ selectedCategory?.label }}</p>
+                    <div class="grid grid-cols-4 gap-1">
+                      <button
+                        v-for="preset in selectedCategory?.presets"
+                        :key="preset.id"
+                        class="flex flex-col items-center justify-center gap-1 p-2 rounded-md cursor-pointer hover:bg-muted min-w-14 text-center"
+                        @click="addPreset(preset.id)"
+                      >
+                        <UIcon :name="preset.icon" class="h-4 w-4" />
+                        <span class="text-[10px] leading-tight">{{ preset.name }}</span>
+                      </button>
+                    </div>
                   </div>
                 </template>
               </UPopover>

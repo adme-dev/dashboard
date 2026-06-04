@@ -71,6 +71,15 @@ describe('useEdmBuilder preset actions', () => {
     expect(store.document.value[largeChildIds[1]]?.type).toBe('footer')
   })
 
+  it('keeps Basic block insertion available after section insertion', () => {
+    const store = useEdmBuilder()
+    store.insertSectionPreset('hero-dark-product')
+    const headingId = store.addBlock('Heading')
+    const childIds = store.document.value.root.data.childrenIds || []
+    expect(childIds).toContain(headingId)
+    expect(store.document.value[headingId]?.type).toBe('Heading')
+  })
+
   it('loads a starter template document and resets history', () => {
     const store = useEdmBuilder()
     store.addBlock('Heading')
