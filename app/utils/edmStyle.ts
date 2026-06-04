@@ -67,6 +67,38 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+// ── Inline-CSS value sanitisation ────────────────────────────────────────────
+// Every string-valued style prop below is emitted, unescaped, inside an inline
+// style="…" attribute in the PRODUCTION email-send HTML (no downstream
+// sanitiser). A hostile value (from saved JSON, an imported template, or a
+// free-text field) must not be able to break out of the attribute or inject
+// extra declarations. Each validator returns null ⇒ the declaration is omitted.
+
+/** A CSS color: hex, rg[b]a()/hsl[a]() with only safe inner chars, or a named color. */
+export function safeCssColor(value: string | null | undefined): string | null {
+  if (!value) return null
+  const v = String(value).trim()
+  if (/^#[0-9a-fA-F]{3,8}$/.test(v)) return v
+  if (/^(rgb|rgba|hsl|hsla)\([0-9.,%/\s]+\)$/i.test(v)) return v
+  if (/^[a-zA-Z]{1,24}$/.test(v)) return v // named colors (e.g. "red", "transparent")
+  return null
+}
+
+/** A CSS line-height: a unitless number or a number with px/em/rem/% unit. */
+export function safeLineHeight(value: number | string | null | undefined): string | null {
+  if (value === null || value === undefined || value === '') return null
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : null
+  const v = String(value).trim()
+  return /^[0-9]+(\.[0-9]+)?(px|em|rem|%)?$/.test(v) ? v : null
+}
+
+/** Restrict a value to a fixed allow-list of keywords. */
+function oneOf(value: string | null | undefined, allowed: readonly string[]): string | null {
+  if (!value) return null
+  const v = String(value).trim().toLowerCase()
+  return allowed.includes(v) ? v : null
+}
+
 /**
  * The extended-style declarations for a block, in deterministic order.
  * Returns kebab-case CSS property names paired with their CSS values. Only the
@@ -78,24 +110,25 @@ export function extendedStyleDeclarations(style: EdmExtendedStyle | null | undef
   if (!style) return []
   const out: Array<[string, string]> = []
 
-  if (style.lineHeight !== null && style.lineHeight !== undefined && style.lineHeight !== '') {
-    out.push(['line-height', String(style.lineHeight)])
-  }
+  const lh = safeLineHeight(style.lineHeight)
+  if (lh !== null) out.push(['line-height', lh])
+
   const ls = num(style.letterSpacing)
   if (ls !== null) out.push(['letter-spacing', `${ls}px`])
 
-  if (style.textTransform && style.textTransform !== 'none') {
-    out.push(['text-transform', style.textTransform])
-  }
+  const tt = oneOf(style.textTransform, TEXT_TRANSFORMS)
+  if (tt && tt !== 'none') out.push(['text-transform', tt])
 
   const op = num(style.opacity)
   if (op !== null && op < 1) out.push(['opacity', String(Math.max(0, Math.min(1, op)))])
 
-  // Border: composite only when width + style are both meaningful.
+  // Border: composite only when width + a valid style are present. Color is
+  // validated; an unsafe/invalid color falls back to black rather than emitting
+  // attacker-controlled text into the inline style attribute.
   const bw = num(style.borderWidth)
-  const bs = style.borderStyle
+  const bs = oneOf(style.borderStyle, BORDER_STYLES)
   if (bw !== null && bw > 0 && bs && bs !== 'none') {
-    const color = style.borderColor || '#000000'
+    const color = safeCssColor(style.borderColor) || '#000000'
     out.push(['border', `${bw}px ${bs} ${color}`])
   }
   const br = num(style.borderRadius)

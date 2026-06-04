@@ -67,6 +67,39 @@ describe('extendedStyleDeclarations — emission', () => {
   })
 })
 
+describe('inline-CSS injection safety (string-valued props)', () => {
+  it('rejects an attribute-breakout borderColor and falls back to black', () => {
+    const css = extendedStyleCss({ borderWidth: 2, borderStyle: 'solid', borderColor: 'red" onmouseover="alert(1)' })
+    expect(css).not.toContain('onmouseover')
+    expect(css).not.toContain('"')
+    expect(css).toContain('border: 2px solid #000000;')
+  })
+
+  it('accepts valid color formats, rejects ones with unsafe chars', () => {
+    expect(extendedStyleCss({ borderWidth: 1, borderStyle: 'solid', borderColor: '#aabbcc' })).toContain('#aabbcc')
+    expect(extendedStyleCss({ borderWidth: 1, borderStyle: 'solid', borderColor: 'rgb(1,2,3)' })).toContain('rgb(1,2,3)')
+    expect(extendedStyleCss({ borderWidth: 1, borderStyle: 'solid', borderColor: 'red' })).toContain('red')
+    // injection attempt with semicolon/braces → fallback black
+    expect(extendedStyleCss({ borderWidth: 1, borderStyle: 'solid', borderColor: '#fff;}body{x' })).toContain('#000000')
+  })
+
+  it('rejects a non-whitelisted borderStyle (no border emitted)', () => {
+    expect(extendedStyleCss({ borderWidth: 2, borderStyle: 'solid;}evil' as unknown as string })).toBe('')
+  })
+
+  it('rejects a non-whitelisted textTransform', () => {
+    expect(extendedStyleCss({ textTransform: 'uppercase;}x' as unknown as string })).toBe('')
+    expect(extendedStyleCss({ textTransform: 'capitalize' })).toContain('text-transform: capitalize;')
+  })
+
+  it('only allows numeric/unit lineHeight, rejecting CSS-breakout strings', () => {
+    expect(extendedStyleCss({ lineHeight: 1.6 })).toContain('line-height: 1.6;')
+    expect(extendedStyleCss({ lineHeight: '1.5em' })).toContain('line-height: 1.5em;')
+    expect(extendedStyleCss({ lineHeight: '2;}body{display:none' })).toBe('')
+    expect(extendedStyleCss({ lineHeight: 'red"x' })).toBe('')
+  })
+})
+
 describe('safeCssUrl + background-image (injection safety)', () => {
   it('accepts http(s) urls', () => {
     expect(safeCssUrl('https://x.com/a.png')).toBe('https://x.com/a.png')
