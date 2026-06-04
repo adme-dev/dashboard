@@ -238,7 +238,7 @@ const categories = [
       { title: 'Smart Watch', slug: 'smart-watch', icon: 'i-lucide-bell-ring', description: 'AI-scored inbox, daily digest narrative, snooze, quiet hours, and semantic keyword subscriptions across every board.' },
       { title: 'Email Templates', slug: 'email-templates', icon: 'i-lucide-mail', description: 'Resend-powered email templates for notifications, invites, and client communications.' },
       { title: 'Email Campaigns', slug: 'email-campaigns', icon: 'i-lucide-send', description: 'Design, target, and send marketing email campaigns to subscriber lists — with merge tags, delivery tracking, and one-click unsubscribe built in.' },
-      { title: 'Email Builder', slug: 'email-builder', icon: 'i-lucide-layout-template', description: 'Visual section-based email editor — drop in pre-designed sections with live previews, launch from a gallery of 12 starter templates filterable by usage and style, and render to bulletproof email HTML.' },
+      { title: 'Email Builder', slug: 'email-builder', icon: 'i-lucide-layout-template', description: 'Visual section-based email editor — drop in pre-designed sections with live previews, launch from a gallery of 12 starter templates, save your own sections as reusable custom modules, and render to bulletproof email HTML.' },
       { title: 'Subscriber Lists', slug: 'email-lists', icon: 'i-lucide-users', description: 'Build lists, import via CSV, and grow them with public subscribe forms — double opt-in, preference centre, and RFC 8058 compliant unsubscribe.' },
       { title: 'Automations', slug: 'automations', icon: 'i-lucide-zap', description: 'Trigger → action recipes. Auto-notify on status changes, assignments, and due dates.' },
     ]

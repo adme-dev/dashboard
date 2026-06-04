@@ -1226,6 +1226,10 @@ const features: Record<string, Feature> = {
         content: 'The section palette shows each preset as a live-rendered thumbnail, not a vague icon, so you can see exactly what a section looks like before you add it. Hover any category and a flyout reveals miniature previews of every section inside it — pick the right header, hero, or footer at a glance, then click to drop it in.'
       },
       {
+        title: 'Save Your Own Custom Modules',
+        content: 'Built a header, footer, or promo block you want to reuse? Select it and save it as a Custom Module — it joins its own category in the palette with a live thumbnail, ready to drop into any email. Saved modules are shared across your team and can be renamed or removed at any time, so your house style becomes a reusable kit instead of something you rebuild every send.'
+      },
+      {
         title: 'Starter Templates and a Visual Gallery',
         content: 'Skip the blank canvas with a library of 12 curated starter templates — newsletters, promotions, product launches, welcome and onboarding emails, event invites, order confirmations, case-study spotlights, and more — each pre-assembled from coordinated sections and rendered as a live full-email preview, not a flat thumbnail. Filter the gallery by usage (Newsletter, Promotion, Announcement, Welcome, Event, Transactional) and by style (Editorial, Bold, Minimal, Corporate, Retail, Utility), or search by name, and freshly added designs are flagged with a NEW badge. A blank-start card sits alongside the starters, so anyone on the team can launch a properly structured email in a single click and customise from there.'
       },
