@@ -1530,3 +1530,50 @@ If no fixes were needed, do not create an empty commit.
 - Starter templates load through query params without new persistence APIs.
 - Existing email render tests and new preset/component tests pass.
 - Browser verification confirms the page is usable at desktop dimensions.
+
+---
+
+# Task 8 Addendum: Postcards-Fidelity Palette (live-rendered thumbnails + hover flyout)
+
+**Goal:** Raise the section palette to Postcards fidelity — each section shown as a **live-rendered mini email preview** (not an icon), revealed via a **hover/focus flyout** off a slim category list. Use our OWN section content (no Designmodo branding/templates). Decisions confirmed with the owner: live-rendered minis; hover flyout; include richer presets + marketing-page sync. The `@vitejs/plugin-vue` dev-dep fix is already committed.
+
+Constraints carried from the base plan: keep the flat `EdmFlyhubDocument` as the only persisted format; presets expand into normal blocks; existing preset ids stay stable (starters + tests reference them); category id order stays `basic, header, content, feature, call-to-action, e-commerce, transactional, footer`; only block `type`s that both `EdmBlockRenderer.vue` and the server renderer support may be used.
+
+### Task 8b: Richer Section Presets
+
+**Files:** Modify `app/utils/edmPresets.ts`; extend `test/utils/edmPresets.test.ts`.
+
+- Add 1–3 additional section presets per non-basic category using our own content, so each flyout shows a substantial set. Reuse existing supported block types only (`header`, `menu`, `hero-section`, `feature-grid`, `cta-banner`, `footer`, `next-steps`, and primitives `Heading`/`Text`/`Button`/`Image`/`Html`). Do NOT rename or remove existing preset ids.
+- Keep every preset render-clean: each must build a valid fragment whose blocks render through the server renderer without unknown-block fallback.
+- Extend `test/utils/edmPresets.test.ts` to assert: category id order unchanged; every section preset (loop over all categories' section presets) builds a fragment whose blocks, when assembled into a document, render through `renderTemplateDocument` without the `available in upcoming update` fallback; existing preset ids still resolve via `findSectionPreset`.
+- Acceptance: `pnpm test:run test/utils/edmPresets.test.ts` PASS; no new typecheck errors in the file.
+
+### Task 8c: Live-Rendered Mini Thumbnail Component
+
+**Files:** Create `app/components/email/builder/EdmSectionThumbnail.vue`; create `test/components/emailEdmSectionThumbnail.test.ts`.
+
+- Component props: `preset: EdmSectionPreset` (or `blocks` + optional canvas width). It renders the preset's blocks in order through the existing `EmailBuilderEdmBlockRenderer` inside a fixed-width canvas (e.g. 600px) wrapped in a scale transform so it fits the rail/flyout width; the inner canvas is non-interactive (`pointer-events:none`), overflow-clipped, with a sensible max preview height. Background reflects the document canvas (light) so previews read like real emails.
+- Must be SSR-safe (used in `renderToString` test). No browser-only APIs at module/setup top level that break SSR.
+- `test/components/emailEdmSectionThumbnail.test.ts`: render at least a `header-logo-menu`/hero/feature-grid preset via `renderToString` and assert the section's text content appears and there is no `Unknown block` fallback.
+- Acceptance: `pnpm test:run test/components/emailEdmSectionThumbnail.test.ts` PASS.
+
+### Task 8d: Hover-Flyout Palette
+
+**Files:** Modify `app/components/email/builder/EdmFlyhubBuilder.client.vue`.
+
+- Replace the always-open two-pane palette with a slim category list (icon + label) per `EDM_SECTION_CATEGORIES`. Hovering a category (and focus/click, so it works for keyboard + touch) opens a floating flyout panel anchored to that category, showing `EdmSectionThumbnail` previews of that category's presets. Clicking a thumbnail inserts via the existing `addPreset(preset.id)` and closes the flyout.
+- Keep Basic Modules working (block presets still insert via `addPreset`). Keep the canvas, inspector, undo/redo, preview/HTML modes, `?starter=` loading, and the add-at-end popover all intact (the popover may keep its simpler list or adopt thumbnails — do not break it).
+- Accessibility/robustness: flyout reachable without a mouse (focus/click toggles), closes on Escape/outside-click/selection; no layout shift that hides the canvas; use Nuxt UI components / semantic dark-mode colors (thumbnail chrome excepted).
+- Acceptance: `pnpm test:run test/utils/useEdmBuilderPresets.test.ts test/utils/edmPresets.test.ts test/components/emailEdmBlockRenderer.test.ts test/components/emailEdmSectionThumbnail.test.ts` PASS; `/agency/email/compose` serves 200; no new render errors in the dev log.
+
+### Task 8e: Marketing-Page Sync
+
+**Files:** Modify `app/pages/features/index.vue`, `app/pages/features/[slug].vue`, `app/components/MarketingNav.vue` (and any feature-count/SEO references that list email features).
+
+- Add/refresh an EDM email-builder feature entry (Postcards-style section builder + starter templates + visual gallery) in the features index under the correct category, a detailed `[slug]` entry with 3–4 content sections, and the mega-menu if it belongs there. Follow existing marketing dark-mode color conventions (every hardcoded hex needs a `dark:` variant).
+- Acceptance: pages compile/serve 200; content matches the shipped capability; no marketing dark-mode regressions.
+
+### Task 8 Verification
+
+- Run the full email + feature test set plus the two new component tests; typecheck (record only pre-existing/unrelated errors); serve-check `/agency/email` and `/agency/email/compose`; dev-log clean.
+- Final whole-feature code review over the Task 8 range before finishing the branch.
