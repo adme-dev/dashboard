@@ -86,4 +86,49 @@ describe('BlockSettingsPanel — Phase 3a grouped style sections', () => {
     expect(html).toContain('Advanced')
     expect(html).toContain('Anchor ID')
   })
+
+  it('shows dynamic text controls for a selected imported HTML text region', async () => {
+    const html = await render({
+      id: 'b',
+      type: 'Html',
+      data: { props: { contents: '<div>Drive smarter</div>' }, style: {} }
+    }, {
+      htmlEditable: {
+        blockId: 'b',
+        id: 'text:0',
+        kind: 'text',
+        label: 'Text',
+        text: 'Drive smarter',
+        html: 'Drive smarter',
+        style: { color: '#111111' }
+      }
+    })
+
+    expect(html).toContain('Imported text')
+    expect(html).toContain('Text color')
+    expect(html).not.toContain('HTML content')
+  })
+
+  it('shows dynamic image controls for a selected imported HTML image region', async () => {
+    const html = await render({
+      id: 'b',
+      type: 'Html',
+      data: { props: { contents: '<img src="/car.png" alt="Car">' }, style: {} }
+    }, {
+      htmlEditable: {
+        blockId: 'b',
+        id: 'image:0',
+        kind: 'image',
+        label: 'Image',
+        src: '/car.png',
+        alt: 'Car',
+        linkHref: '/offers'
+      }
+    })
+
+    expect(html).toContain('Imported image')
+    expect(html).toContain('Image URL')
+    expect(html).toContain('Link URL')
+    expect(html).not.toContain('HTML content')
+  })
 })

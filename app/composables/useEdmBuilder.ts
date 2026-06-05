@@ -18,6 +18,7 @@ import {
   type ScreenSize,
   type EditorSnapshot
 } from '~~/app/types/edm'
+import type { EdmHtmlEditableSelection } from '~~/app/utils/edmHtmlEditables'
 import {
   buildSectionDocumentFragment,
   buildStarterTemplateDocument
@@ -37,6 +38,7 @@ function createStore() {
   const selectedSidebarTab = ref<SidebarTab>('styles')
   const selectedMainTab = ref<MainTab>('editor')
   const selectedScreenSize = ref<ScreenSize>('desktop')
+  const selectedHtmlEditable = ref<EdmHtmlEditableSelection | null>(null)
   const inspectorDrawerOpen = ref(false)
 
   // Dynamic blocks are managed separately (our custom feature)
@@ -119,11 +121,19 @@ function createStore() {
 
     selectedBlockId.value = blockId
     selectedSidebarTab.value = tab
+    if (selectedHtmlEditable.value && selectedHtmlEditable.value.blockId !== blockId) {
+      selectedHtmlEditable.value = null
+    }
   }
 
   function clearSelection() {
     selectedBlockId.value = null
     selectedSidebarTab.value = 'styles'
+    selectedHtmlEditable.value = null
+  }
+
+  function selectHtmlEditable(selection: EdmHtmlEditableSelection | null) {
+    selectedHtmlEditable.value = selection
   }
 
   // ========================================
@@ -161,6 +171,7 @@ function createStore() {
     future.value = []
     selectedSidebarTab.value = 'styles'
     selectedBlockId.value = null
+    selectedHtmlEditable.value = null
     dynamicBlocks.value = []
     selectedDynamicBlock.value = null
     dynamicBlockMapping.value.clear()
@@ -647,6 +658,7 @@ function createStore() {
     selectedSidebarTab,
     selectedMainTab,
     selectedScreenSize,
+    selectedHtmlEditable,
     inspectorDrawerOpen,
     dynamicBlocks,
     selectedDynamicBlock,
@@ -655,6 +667,7 @@ function createStore() {
     // Block Selection
     setSelectedBlockId,
     clearSelection,
+    selectHtmlEditable,
 
     // Document Management
     setDocument,

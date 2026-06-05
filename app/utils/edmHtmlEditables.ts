@@ -1,0 +1,329 @@
+import { extractPlainText, sanitizeInlineHtml } from './edmInlineText'
+
+export type EdmHtmlEditableKind = 'text' | 'link' | 'image'
+
+export interface EdmHtmlEditableSelection {
+  blockId?: string
+  id: string
+  kind: EdmHtmlEditableKind
+  label: string
+  text?: string
+  html?: string
+  href?: string
+  src?: string
+  alt?: string
+  linkHref?: string
+  style?: {
+    color?: string
+    fontSize?: string
+    fontWeight?: string
+    textAlign?: string
+  }
+}
+
+export type EdmHtmlEditableUpdate =
+  | { kind: 'text', text?: string, html?: string, color?: string, fontSize?: string, fontWeight?: string, textAlign?: string }
+  | { kind: 'link', text?: string, html?: string, href?: string, color?: string }
+  | { kind: 'image', src?: string, alt?: string, linkHref?: string }
+
+const SKIP_TAGS = new Set([
+  'STYLE', 'SCRIPT', 'NOSCRIPT', 'TEMPLATE', 'TEXTAREA', 'TITLE',
+  'META', 'LINK', 'HEAD', 'SVG', 'MATH'
+])
+
+function canUseDom(): boolean {
+  return typeof document !== 'undefined' && typeof document.createElement === 'function'
+}
+
+function parseHtml(html: string): HTMLElement | null {
+  if (!canUseDom()) return null
+  const root = document.createElement('div')
+  root.innerHTML = html || ''
+  return root
+}
+
+function normaliseText(value: string | null | undefined): string {
+  return extractPlainText(value || '')
+}
+
+function elementPath(el: Element, root: Element): string {
+  const parts: string[] = []
+  let cur: Element | null = el
+  while (cur && cur !== root) {
+    const parent = cur.parentElement
+    if (!parent) break
+    const siblings = Array.from(parent.children).filter(child => child.tagName === cur?.tagName)
+    parts.unshift(`${cur.tagName.toLowerCase()}[${siblings.indexOf(cur)}]`)
+    cur = parent
+  }
+  return parts.join('/')
+}
+
+function findByPath(root: Element, path: string): Element | null {
+  let cur: Element | null = root
+  for (const part of path.split('/').filter(Boolean)) {
+    const match = /^([a-z0-9-]+)\[(\d+)\]$/i.exec(part)
+    if (!match || !cur) return null
+    const [, tag, indexRaw] = match
+    const index = Number(indexRaw)
+    const candidates = Array.from(cur.children).filter(child => child.tagName.toLowerCase() === tag.toLowerCase())
+    cur = candidates[index] || null
+  }
+  return cur
+}
+
+function editableId(kind: EdmHtmlEditableKind, el: Element, root: Element): string {
+  return `${kind}:${elementPath(el, root)}`
+}
+
+function splitEditableId(id: string): { kind: EdmHtmlEditableKind, path: string } | null {
+  const index = id.indexOf(':')
+  if (index <= 0) return null
+  const kind = id.slice(0, index) as EdmHtmlEditableKind
+  if (!['text', 'link', 'image'].includes(kind)) return null
+  return { kind, path: id.slice(index + 1) }
+}
+
+function directText(el: Element): string {
+  return Array.from(el.childNodes)
+    .filter(node => node.nodeType === 3)
+    .map(node => node.nodeValue || '')
+    .join('')
+}
+
+function hasMeaningfulDirectText(el: Element): boolean {
+  return normaliseText(directText(el)).length >= 2
+}
+
+function hasElementChildrenOtherThanBr(el: Element): boolean {
+  return Array.from(el.children).some(child => child.tagName !== 'BR')
+}
+
+function getElementStyle(el: Element): EdmHtmlEditableSelection['style'] {
+  const style = (el as HTMLElement).style
+  return {
+    color: style.color || undefined,
+    fontSize: style.fontSize || undefined,
+    fontWeight: style.fontWeight || undefined,
+    textAlign: style.textAlign || undefined
+  }
+}
+
+function selectionFromElement(
+  el: Element,
+  root: Element,
+  kind: EdmHtmlEditableKind
+): EdmHtmlEditableSelection | null {
+  const id = editableId(kind, el, root)
+  if (kind === 'image') {
+    const image = el as HTMLImageElement
+    const closestLink = image.closest('a[href]')
+    return {
+      id,
+      kind,
+      label: 'Image',
+      src: image.getAttribute('src') || '',
+      alt: image.getAttribute('alt') || '',
+      linkHref: closestLink?.getAttribute('href') || ''
+    }
+  }
+  if (kind === 'link') {
+    const link = el as HTMLAnchorElement
+    return {
+      id,
+      kind,
+      label: 'Link',
+      text: normaliseText(link.textContent),
+      html: link.innerHTML,
+      href: link.getAttribute('href') || '',
+      style: getElementStyle(link)
+    }
+  }
+  return {
+    id,
+    kind,
+    label: 'Text',
+    text: normaliseText(el.textContent),
+    html: (el as HTMLElement).innerHTML,
+    style: getElementStyle(el)
+  }
+}
+
+function collectEditables(root: Element): EdmHtmlEditableSelection[] {
+  const out: EdmHtmlEditableSelection[] = []
+
+  function walk(el: Element) {
+    if (SKIP_TAGS.has(el.tagName)) return
+
+    if (el.tagName === 'IMG' && el.getAttribute('src')) {
+      const selection = selectionFromElement(el, root, 'image')
+      if (selection) out.push(selection)
+      return
+    }
+
+    if (el.tagName === 'A' && normaliseText(el.textContent).length >= 1) {
+      const selection = selectionFromElement(el, root, 'link')
+      if (selection) out.push(selection)
+      return
+    }
+
+    if (hasMeaningfulDirectText(el) && !hasElementChildrenOtherThanBr(el)) {
+      const selection = selectionFromElement(el, root, 'text')
+      if (selection) out.push(selection)
+      return
+    }
+
+    Array.from(el.children).forEach(child => walk(child))
+  }
+
+  Array.from(root.children).forEach(child => walk(child))
+  return out
+}
+
+function findSelectionElement(root: Element, id: string): { el: Element, kind: EdmHtmlEditableKind } | null {
+  const parsed = splitEditableId(id)
+  if (!parsed) return null
+  const el = findByPath(root, parsed.path)
+  if (!el) return null
+  return { el, kind: parsed.kind }
+}
+
+function isSafeEditableHref(value: string): boolean {
+  const href = value.trim()
+  if (href === '' || href === '#') return true
+  if (/["'`<>]/.test(href) || /\s/.test(href)) return false
+  return /^(https?:\/\/|mailto:|\/|\.\/|\.\.\/|#)/i.test(href)
+}
+
+function safeEditableHref(value: string): string {
+  const href = value.trim()
+  return isSafeEditableHref(href) ? href : ''
+}
+
+function safeImageSrc(value: string): string {
+  const src = value.trim()
+  if (!src || /["'`<>]/.test(src) || /\s/.test(src)) return ''
+  if (/^javascript:/i.test(src)) return ''
+  if (/^(https?:\/\/|\/|\.\/|\.\.\/)/i.test(src)) return src
+  if (/^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=]+$/i.test(src)) return src
+  return ''
+}
+
+function stripEditorAttributes(root: Element) {
+  for (const el of Array.from(root.querySelectorAll('[data-edm-html-editable-id]'))) {
+    el.removeAttribute('data-edm-html-editable-id')
+    el.removeAttribute('data-edm-html-editable-kind')
+    el.removeAttribute('contenteditable')
+    el.removeAttribute('role')
+    el.removeAttribute('tabindex')
+    el.removeAttribute('aria-label')
+    el.classList.remove('edm-html-editable', 'is-selected')
+    if (!el.getAttribute('class')) el.removeAttribute('class')
+  }
+}
+
+function serialise(root: Element): string {
+  stripEditorAttributes(root)
+  return root.innerHTML
+}
+
+export function annotateHtmlEditables(
+  html: string,
+  options: { editable?: boolean, selectedId?: string | null } = {}
+): string {
+  if (!options.editable) return html || ''
+  const root = parseHtml(html)
+  if (!root) return html || ''
+
+  for (const selection of collectEditables(root)) {
+    const found = findSelectionElement(root, selection.id)
+    if (!found) continue
+    const el = found.el as HTMLElement
+    el.dataset.edmHtmlEditableId = selection.id
+    el.dataset.edmHtmlEditableKind = selection.kind
+    el.classList.add('edm-html-editable')
+    if (selection.id === options.selectedId) el.classList.add('is-selected')
+    if (selection.kind === 'text' || selection.kind === 'link') {
+      el.setAttribute('contenteditable', 'true')
+      el.setAttribute('role', 'textbox')
+      el.setAttribute('aria-label', selection.kind === 'link' ? 'Edit link text' : 'Edit text')
+    } else {
+      el.setAttribute('tabindex', '0')
+      el.setAttribute('role', 'button')
+      el.setAttribute('aria-label', 'Edit image')
+    }
+  }
+
+  return root.innerHTML
+}
+
+export function getHtmlEditableSelection(html: string, id: string): EdmHtmlEditableSelection | null {
+  const root = parseHtml(html)
+  if (!root) return null
+  const found = findSelectionElement(root, id)
+  if (!found) return null
+  return selectionFromElement(found.el, root, found.kind)
+}
+
+export function updateHtmlEditable(
+  html: string,
+  id: string,
+  update: EdmHtmlEditableUpdate
+): string {
+  const root = parseHtml(html)
+  if (!root) return html || ''
+  const found = findSelectionElement(root, id)
+  if (!found || found.kind !== update.kind) return html || ''
+
+  const { el } = found
+  if (update.kind === 'text') {
+    if (typeof update.html === 'string') {
+      ;(el as HTMLElement).innerHTML = sanitizeInlineHtml(update.html)
+    } else if (typeof update.text === 'string') {
+      el.textContent = update.text
+    }
+    if (update.color !== undefined) (el as HTMLElement).style.color = update.color
+    if (update.fontSize !== undefined) (el as HTMLElement).style.fontSize = update.fontSize
+    if (update.fontWeight !== undefined) (el as HTMLElement).style.fontWeight = update.fontWeight
+    if (update.textAlign !== undefined) (el as HTMLElement).style.textAlign = update.textAlign
+  }
+
+  if (update.kind === 'link') {
+    const link = el as HTMLAnchorElement
+    if (typeof update.html === 'string') {
+      link.innerHTML = sanitizeInlineHtml(update.html)
+    } else if (typeof update.text === 'string') {
+      link.textContent = update.text
+    }
+    if (update.href !== undefined) {
+      const href = safeEditableHref(update.href)
+      if (href) link.setAttribute('href', href)
+    }
+    if (update.color !== undefined) link.style.color = update.color
+  }
+
+  if (update.kind === 'image') {
+    const image = el as HTMLImageElement
+    if (update.src !== undefined) {
+      const src = safeImageSrc(update.src)
+      if (src) image.setAttribute('src', src)
+    }
+    if (update.alt !== undefined) image.setAttribute('alt', update.alt)
+    if (update.linkHref !== undefined) {
+      const href = safeEditableHref(update.linkHref)
+      let link = image.closest('a')
+      if (href) {
+        if (!link) {
+          link = document.createElement('a')
+          image.replaceWith(link)
+          link.appendChild(image)
+        }
+        link.setAttribute('href', href)
+      } else if (link) {
+        link.replaceWith(image)
+      }
+    }
+  }
+
+  return serialise(root)
+}

@@ -10,6 +10,12 @@ import type { EdmFlyhubDocument } from '~~/app/types/edm'
 import { extractFragment, reidFragment } from '~~/app/utils/edmModuleFragment'
 import { resolveRootDropIndex, type EdmRootDropPlacement } from '~~/app/utils/edmDragReorder'
 import { getBlockForDevice, isHiddenOnDevice, type EdmDevice } from '~~/app/utils/edmResponsive'
+import {
+  getHtmlEditableSelection,
+  updateHtmlEditable,
+  type EdmHtmlEditableSelection,
+  type EdmHtmlEditableUpdate
+} from '~~/app/utils/edmHtmlEditables'
 import type { EdmCustomModule } from '~~/app/composables/useEdmCustomModules'
 
 const store = useEdmBuilder()
@@ -175,9 +181,10 @@ const selectedBlock = computed(() => {
   return { id, type: b.type, data: active.data, baseData: b.data }
 })
 
-function onBlockUpdate(updates: { style?: unknown, props?: unknown, visibility?: { hideOnMobile?: boolean, hideOnDesktop?: boolean } }) {
+function onBlockUpdate(updates: { style?: unknown, props?: unknown, visibility?: { hideOnMobile?: boolean, hideOnDesktop?: boolean }, htmlEditable?: EdmHtmlEditableUpdate }) {
   const id = store.selectedBlockId.value
   if (!id) return
+  if (updates.htmlEditable) updateSelectedHtmlEditable(updates.htmlEditable)
   if (updates.visibility) store.updateBlockVisibility(id, updates.visibility)
   if (activeDevice.value === 'mobile') {
     if (updates.style) store.updateBlockMobileStyle(id, updates.style as Record<string, unknown>)
@@ -220,6 +227,31 @@ function updateCanvasStyle(blockId: string, stylePatch: Record<string, unknown>)
     return
   }
   store.updateBlockStyle(blockId, stylePatch)
+}
+
+function selectCanvasHtmlEditable(blockId: string, selection: EdmHtmlEditableSelection) {
+  store.setSelectedBlockId(blockId)
+  store.selectHtmlEditable({ ...selection, blockId })
+}
+
+function selectedHtmlEditableFor(blockId: string): EdmHtmlEditableSelection | null {
+  const selection = store.selectedHtmlEditable.value
+  return selection?.blockId === blockId ? selection : null
+}
+
+function updateSelectedHtmlEditable(update: EdmHtmlEditableUpdate) {
+  const blockId = store.selectedBlockId.value
+  const selection = blockId ? selectedHtmlEditableFor(blockId) : null
+  if (!blockId || !selection) return
+
+  const activeBlock = blockForCanvas(blockId)
+  const contents = (activeBlock?.data?.props?.contents as string) || ''
+  const next = updateHtmlEditable(contents, selection.id, update)
+  if (next === contents) return
+
+  updateCanvasProps(blockId, { contents: next })
+  const nextSelection = getHtmlEditableSelection(next, selection.id)
+  store.selectHtmlEditable(nextSelection ? { ...nextSelection, blockId } : null)
 }
 
 // ── View modes + preview ────────────────────────────────────────────────
@@ -712,10 +744,12 @@ onMounted(async () => {
                   :style="blockForCanvas(block.id)?.data?.style"
                   :props="blockForCanvas(block.id)?.data?.props"
                   :hidden-on-device="hiddenOnCanvas(block.id)"
+                  :selected-html-editable-id="selectedHtmlEditableFor(block.id)?.id"
                   editable
                   @update:text="(t) => updateCanvasText(block.id, t)"
                   @update:props="(p) => updateCanvasProps(block.id, p)"
                   @update:style="(s) => updateCanvasStyle(block.id, s)"
+                  @select:html-editable="(selection) => selectCanvasHtmlEditable(block.id, selection)"
                 />
               </EmailBuilderEditorBlockWrapper>
             </template>
@@ -766,6 +800,7 @@ onMounted(async () => {
               :block="selectedBlock"
               :base-block="{ id: selectedBlock.id, type: selectedBlock.type, data: selectedBlock.baseData }"
               :device="activeDevice"
+              :html-editable="selectedHtmlEditableFor(selectedBlock.id)"
               @update="onBlockUpdate"
             />
           </template>

@@ -7,6 +7,7 @@
 import { dividerLineThickness } from '~~/app/utils/edmDivider'
 import { getEdmSectionSettings } from '~~/app/utils/edmSectionSettings'
 import { BORDER_STYLES, TEXT_TRANSFORMS, SHADOW_OPTIONS } from '~~/app/utils/edmStyle'
+import type { EdmHtmlEditableSelection, EdmHtmlEditableUpdate } from '~~/app/utils/edmHtmlEditables'
 import type { EdmDevice } from '~~/app/utils/edmResponsive'
 
 interface BlockData {
@@ -31,12 +32,14 @@ const props = withDefaults(defineProps<{
   block: { id: string, type: string, data: BlockData }
   baseBlock?: { id: string, type: string, data: BlockData } | null
   device?: EdmDevice
+  htmlEditable?: EdmHtmlEditableSelection | null
 }>(), {
   baseBlock: null,
-  device: 'desktop'
+  device: 'desktop',
+  htmlEditable: null
 })
 
-const emit = defineEmits<{ update: [updates: { style?: unknown, props?: unknown, visibility?: { hideOnMobile?: boolean, hideOnDesktop?: boolean } }] }>()
+const emit = defineEmits<{ update: [updates: { style?: unknown, props?: unknown, visibility?: { hideOnMobile?: boolean, hideOnDesktop?: boolean }, htmlEditable?: EdmHtmlEditableUpdate }] }>()
 
 const FONT_OPTIONS = [
   { label: 'Modern Sans', value: 'MODERN_SANS' },
@@ -89,6 +92,7 @@ const showEffectsGroup = computed(() => STYLEABLE_BLOCKS.includes(props.block.ty
 const showBackgroundImage = computed(() => BG_IMAGE_BLOCKS.includes(props.block.type))
 const isMobileEditing = computed(() => props.device === 'mobile')
 const visibilityData = computed(() => props.baseBlock?.data || props.block.data)
+const selectedHtmlEditable = computed(() => props.block.type === 'Html' ? props.htmlEditable : null)
 
 // Collapsible open-state per group (Spacing open by default; advanced groups closed).
 const openGroups = reactive<Record<string, boolean>>({
@@ -156,6 +160,10 @@ function updateStyle(key: string, value: unknown) {
 
 function updateVisibility(key: 'hideOnMobile' | 'hideOnDesktop', value: boolean) {
   emit('update', { visibility: { [key]: value } })
+}
+
+function updateSelectedHtmlEditable(update: EdmHtmlEditableUpdate) {
+  emit('update', { htmlEditable: update })
 }
 
 function updatePadding(side: 'top' | 'bottom' | 'left' | 'right', value: number) {
@@ -549,6 +557,135 @@ function updateColumnWidth(index: number, value: string | number) {
           @update:model-value="updateProp('lineThickness', $event)"
         />
       </UFormField>
+    </template>
+
+    <!-- Imported HTML sub-element controls -->
+    <template v-else-if="block.type === 'Html' && selectedHtmlEditable">
+      <template v-if="selectedHtmlEditable.kind === 'text'">
+        <p class="text-xs font-semibold uppercase text-muted">
+          Imported text
+        </p>
+        <UFormField label="Content">
+          <UTextarea
+            :model-value="selectedHtmlEditable.html || selectedHtmlEditable.text || ''"
+            :rows="3"
+            class="w-full"
+            @update:model-value="updateSelectedHtmlEditable({ kind: 'text', html: String($event) })"
+          />
+        </UFormField>
+        <UFormField label="Text color">
+          <div class="flex gap-2">
+            <UInput
+              type="color"
+              :model-value="selectedHtmlEditable.style?.color || '#000000'"
+              class="w-12"
+              @update:model-value="updateSelectedHtmlEditable({ kind: 'text', color: String($event) })"
+            />
+            <UInput
+              :model-value="selectedHtmlEditable.style?.color || '#000000'"
+              class="flex-1"
+              @update:model-value="updateSelectedHtmlEditable({ kind: 'text', color: String($event) })"
+            />
+          </div>
+        </UFormField>
+        <UFormField label="Font size">
+          <UInput
+            :model-value="selectedHtmlEditable.style?.fontSize || ''"
+            placeholder="24px"
+            class="w-full"
+            @update:model-value="updateSelectedHtmlEditable({ kind: 'text', fontSize: String($event) })"
+          />
+        </UFormField>
+        <UFormField label="Alignment">
+          <div class="grid grid-cols-3 gap-2">
+            <UButton
+              v-for="align in TEXT_ALIGNMENTS"
+              :key="align"
+              block
+              :icon="alignIcon(align)"
+              :variant="(selectedHtmlEditable.style?.textAlign || 'left') === align ? 'solid' : 'outline'"
+              :color="(selectedHtmlEditable.style?.textAlign || 'left') === align ? 'primary' : 'neutral'"
+              @click="updateSelectedHtmlEditable({ kind: 'text', textAlign: align })"
+            />
+          </div>
+        </UFormField>
+      </template>
+
+      <template v-else-if="selectedHtmlEditable.kind === 'link'">
+        <p class="text-xs font-semibold uppercase text-muted">
+          Imported link
+        </p>
+        <UFormField label="Text">
+          <UInput
+            :model-value="selectedHtmlEditable.text || ''"
+            class="w-full"
+            @update:model-value="updateSelectedHtmlEditable({ kind: 'link', text: String($event) })"
+          />
+        </UFormField>
+        <UFormField label="URL">
+          <UInput
+            :model-value="selectedHtmlEditable.href || ''"
+            placeholder="https://"
+            class="w-full"
+            @update:model-value="updateSelectedHtmlEditable({ kind: 'link', href: String($event) })"
+          />
+        </UFormField>
+        <UFormField label="Text color">
+          <div class="flex gap-2">
+            <UInput
+              type="color"
+              :model-value="selectedHtmlEditable.style?.color || '#000000'"
+              class="w-12"
+              @update:model-value="updateSelectedHtmlEditable({ kind: 'link', color: String($event) })"
+            />
+            <UInput
+              :model-value="selectedHtmlEditable.style?.color || '#000000'"
+              class="flex-1"
+              @update:model-value="updateSelectedHtmlEditable({ kind: 'link', color: String($event) })"
+            />
+          </div>
+        </UFormField>
+      </template>
+
+      <template v-else-if="selectedHtmlEditable.kind === 'image'">
+        <p class="text-xs font-semibold uppercase text-muted">
+          Imported image
+        </p>
+        <div
+          v-if="selectedHtmlEditable.src"
+          class="relative aspect-video rounded-lg overflow-hidden bg-elevated"
+        >
+          <img
+            :src="selectedHtmlEditable.src"
+            :alt="selectedHtmlEditable.alt || 'Preview'"
+            class="w-full h-full object-cover"
+          >
+        </div>
+        <UFormField label="Image URL">
+          <UInput
+            :model-value="selectedHtmlEditable.src || ''"
+            placeholder="https://"
+            class="w-full"
+            @update:model-value="updateSelectedHtmlEditable({ kind: 'image', src: String($event) })"
+          />
+        </UFormField>
+        <UFormField label="Alt text">
+          <UInput
+            :model-value="selectedHtmlEditable.alt || ''"
+            placeholder="Describe the image for accessibility"
+            class="w-full"
+            @update:model-value="updateSelectedHtmlEditable({ kind: 'image', alt: String($event) })"
+          />
+        </UFormField>
+        <UFormField label="Link URL">
+          <UInput
+            :model-value="selectedHtmlEditable.linkHref || ''"
+            placeholder="https://"
+            class="w-full"
+            @update:model-value="updateSelectedHtmlEditable({ kind: 'image', linkHref: String($event) })"
+          />
+        </UFormField>
+      </template>
     </template>
 
     <!-- Html -->

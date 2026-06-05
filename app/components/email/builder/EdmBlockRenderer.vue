@@ -199,10 +199,59 @@
     <!-- Html -->
     <div
       v-else-if="type === 'Html'"
+      ref="htmlEditableWrapEl"
       :style="baseStyle"
-      class="revert-browser-styles"
-      v-html="blockProps.contents || ''"
-    />
+      class="edm-html-block-wrap revert-browser-styles"
+      @click="onHtmlEditableClick"
+      @contextmenu="onHtmlEditableContextMenu"
+      @blur.capture="onHtmlEditableBlur"
+    >
+      <div
+        v-if="selectedHtmlEditable"
+        data-edm-html-region-toolbar
+        class="edm-html-region-toolbar"
+        :style="htmlRegionToolbarStyle"
+        role="toolbar"
+        :aria-label="`Imported ${selectedHtmlEditable.kind} quick actions`"
+        @click.stop
+        @mousedown.prevent
+      >
+        <button
+          v-if="selectedHtmlEditable.kind === 'image'"
+          type="button"
+          data-edm-html-action="change-image"
+          class="edm-html-region-toolbar-button"
+          aria-label="Change image"
+          title="Change image"
+          @click.stop="changeHtmlImage(selectedHtmlEditable)"
+        >
+          <UIcon name="i-lucide-image-up" class="edm-html-region-toolbar-icon" aria-hidden="true" />
+        </button>
+        <button
+          v-if="selectedHtmlEditable.kind === 'image'"
+          type="button"
+          data-edm-html-action="edit-image-link"
+          class="edm-html-region-toolbar-button"
+          aria-label="Edit image link"
+          title="Edit image link"
+          @click.stop="editHtmlImageLink(selectedHtmlEditable)"
+        >
+          <UIcon name="i-lucide-link" class="edm-html-region-toolbar-icon" aria-hidden="true" />
+        </button>
+        <button
+          v-if="selectedHtmlEditable.kind === 'link'"
+          type="button"
+          data-edm-html-action="edit-link"
+          class="edm-html-region-toolbar-button"
+          aria-label="Edit link URL"
+          title="Edit link URL"
+          @click.stop="editHtmlLink(selectedHtmlEditable)"
+        >
+          <UIcon name="i-lucide-link" class="edm-html-region-toolbar-icon" aria-hidden="true" />
+        </button>
+      </div>
+      <div v-html="htmlContents" />
+    </div>
 
     <!-- Header -->
     <div v-else-if="type === 'header'" :style="headerStyle" class="edm-preview-section">
@@ -352,6 +401,12 @@ import { computed, ref } from 'vue'
 import { dividerLineThickness } from '~~/app/utils/edmDivider'
 import { extendedStyleVue } from '~~/app/utils/edmStyle'
 import { sanitizeInlineHtml, extractPlainText, safeInlineHref } from '~~/app/utils/edmInlineText'
+import {
+  annotateHtmlEditables,
+  getHtmlEditableSelection,
+  updateHtmlEditable,
+  type EdmHtmlEditableSelection
+} from '~~/app/utils/edmHtmlEditables'
 
 const props = defineProps<{
   type: string
@@ -360,15 +415,19 @@ const props = defineProps<{
   /** Phase 3b: when true, text blocks are contenteditable on the canvas. */
   editable?: boolean
   hiddenOnDevice?: boolean
+  selectedHtmlEditableId?: string | null
 }>()
 
 const emit = defineEmits<{
   'update:text': [value: string]
   'update:props': [value: Record<string, unknown>]
   'update:style': [value: Record<string, unknown>]
+  'select:html-editable': [value: EdmHtmlEditableSelection]
 }>()
 
 const textEditorEl = ref<HTMLElement | null>(null)
+const htmlEditableWrapEl = ref<HTMLElement | null>(null)
+const htmlRegionToolbarPosition = ref<{ left: number, top: number } | null>(null)
 const showTextColorInput = ref(false)
 const inlineFontOptions = [
   { label: 'Modern Sans', value: 'MODERN_SANS' },
@@ -493,6 +552,120 @@ function onEditableKeydown(e: KeyboardEvent) {
 }
 
 const blockProps = computed(() => (props.props || {}) as Record<string, unknown>)
+const rawHtmlContents = computed(() => (blockProps.value.contents as string) || '')
+const htmlContents = computed(() => {
+  if (!props.editable || props.type !== 'Html') return rawHtmlContents.value
+  return annotateHtmlEditables(rawHtmlContents.value, {
+    editable: true,
+    selectedId: props.selectedHtmlEditableId || null
+  })
+})
+const selectedHtmlEditable = computed(() => {
+  if (!props.editable || props.type !== 'Html' || !props.selectedHtmlEditableId) return null
+  return getHtmlEditableSelection(rawHtmlContents.value, props.selectedHtmlEditableId)
+})
+const htmlRegionToolbarStyle = computed(() => {
+  const position = htmlRegionToolbarPosition.value
+  if (!position) {
+    return { left: '50%', top: '0px', transform: 'translate(-50%, -100%)' }
+  }
+  return {
+    left: `${position.left}px`,
+    top: `${position.top}px`,
+    transform: 'translate(-50%, -100%)'
+  }
+})
+
+function closestHtmlEditable(target: EventTarget | null): HTMLElement | null {
+  if (!props.editable || props.type !== 'Html') return null
+  const el = target as HTMLElement | null
+  return el?.closest?.('[data-edm-html-editable-id]') as HTMLElement | null
+}
+
+function positionHtmlRegionToolbar(el: HTMLElement) {
+  const wrap = htmlEditableWrapEl.value
+  if (!wrap || typeof wrap.getBoundingClientRect !== 'function') return
+  const wrapRect = wrap.getBoundingClientRect()
+  const elRect = el.getBoundingClientRect()
+  htmlRegionToolbarPosition.value = {
+    left: elRect.left - wrapRect.left + elRect.width / 2,
+    top: Math.max(0, elRect.top - wrapRect.top - 8)
+  }
+}
+
+function emitHtmlEditableUpdate(selection: EdmHtmlEditableSelection, update: Parameters<typeof updateHtmlEditable>[2]) {
+  const next = updateHtmlEditable(rawHtmlContents.value, selection.id, update)
+  if (next === rawHtmlContents.value) return
+  emit('update:props', { contents: next })
+  const nextSelection = getHtmlEditableSelection(next, selection.id)
+  if (nextSelection) emit('select:html-editable', nextSelection)
+}
+
+function onHtmlEditableClick(event: MouseEvent) {
+  const el = closestHtmlEditable(event.target)
+  if (!el) return
+  event.stopPropagation()
+  event.preventDefault()
+  positionHtmlRegionToolbar(el)
+  const id = el.dataset.edmHtmlEditableId || ''
+  const selection = getHtmlEditableSelection(rawHtmlContents.value, id)
+  if (selection) emit('select:html-editable', selection)
+}
+
+function onHtmlEditableContextMenu(event: MouseEvent) {
+  const el = closestHtmlEditable(event.target)
+  if (!el) return
+  const id = el.dataset.edmHtmlEditableId || ''
+  const selection = getHtmlEditableSelection(rawHtmlContents.value, id)
+  if (!selection || selection.kind !== 'image') return
+
+  event.stopPropagation()
+  event.preventDefault()
+  positionHtmlRegionToolbar(el)
+  emit('select:html-editable', selection)
+  changeHtmlImage(selection)
+}
+
+function onHtmlEditableBlur(event: FocusEvent) {
+  const el = closestHtmlEditable(event.target)
+  if (!el) return
+  const id = el.dataset.edmHtmlEditableId || ''
+  const kind = el.dataset.edmHtmlEditableKind
+  if (kind !== 'text' && kind !== 'link') return
+
+  const next = updateHtmlEditable(rawHtmlContents.value, id, {
+    kind,
+    html: el.innerHTML
+  })
+  if (next === rawHtmlContents.value) return
+  emit('update:props', { contents: next })
+  const selection = getHtmlEditableSelection(next, id)
+  if (selection) emit('select:html-editable', selection)
+}
+
+function changeHtmlImage(selection: EdmHtmlEditableSelection | null = selectedHtmlEditable.value) {
+  if (!selection || selection.kind !== 'image') return
+  if (typeof window === 'undefined' || typeof window.prompt !== 'function') return
+  const nextSrc = window.prompt('Image URL', selection.src || '')
+  if (nextSrc === null) return
+  emitHtmlEditableUpdate(selection, { kind: 'image', src: nextSrc })
+}
+
+function editHtmlImageLink(selection: EdmHtmlEditableSelection | null = selectedHtmlEditable.value) {
+  if (!selection || selection.kind !== 'image') return
+  if (typeof window === 'undefined' || typeof window.prompt !== 'function') return
+  const nextHref = window.prompt('Image link URL', selection.linkHref || '')
+  if (nextHref === null) return
+  emitHtmlEditableUpdate(selection, { kind: 'image', linkHref: nextHref })
+}
+
+function editHtmlLink(selection: EdmHtmlEditableSelection | null = selectedHtmlEditable.value) {
+  if (!selection || selection.kind !== 'link') return
+  if (typeof window === 'undefined' || typeof window.prompt !== 'function') return
+  const nextHref = window.prompt('Link URL', selection.href || '')
+  if (nextHref === null) return
+  emitHtmlEditableUpdate(selection, { kind: 'link', href: nextHref })
+}
 
 function getPadding(p: unknown): string | undefined {
   if (!p || typeof p !== 'object') return undefined
@@ -972,6 +1145,67 @@ const columnsContainerCellStyle = {
   outline: 2px solid rgb(59, 130, 246);
   outline-offset: 2px;
   border-radius: 2px;
+}
+
+.edm-html-block-wrap {
+  position: relative;
+}
+
+.edm-html-region-toolbar {
+  position: absolute;
+  z-index: 8;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 6px;
+  border: 1px solid var(--ui-border);
+  border-radius: 9999px;
+  background: var(--ui-bg);
+  box-shadow: 0 10px 24px rgb(15 23 42 / 0.16);
+}
+
+.edm-html-region-toolbar-button {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--ui-text);
+  cursor: pointer;
+}
+
+.edm-html-region-toolbar-button:hover,
+.edm-html-region-toolbar-button:focus-visible {
+  background: var(--ui-bg-muted);
+  outline: none;
+}
+
+.edm-html-region-toolbar-icon {
+  width: 15px;
+  height: 15px;
+}
+
+:deep(.edm-html-editable) {
+  cursor: text;
+  outline: 1px dashed transparent;
+  outline-offset: 2px;
+  transition: outline-color 120ms ease, box-shadow 120ms ease;
+}
+
+:deep(.edm-html-editable[data-edm-html-editable-kind="image"]) {
+  cursor: pointer;
+}
+
+:deep(.edm-html-editable:hover),
+:deep(.edm-html-editable:focus),
+:deep(.edm-html-editable.is-selected) {
+  outline-color: rgb(59, 130, 246);
+}
+
+:deep(.edm-html-editable.is-selected) {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.18);
 }
 
 .edm-rich-text-wrap {
