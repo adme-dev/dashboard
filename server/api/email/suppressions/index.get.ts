@@ -9,7 +9,7 @@ import {
 
 const Query = z.object({
   q: z.string().trim().optional(),
-  reason: z.enum(['hard_bounce', 'complaint', 'manual', 'global_unsubscribe']).optional(),
+  reason: z.enum(['hard_bounce', 'complaint', 'manual', 'global_unsubscribe', 'soft_bounce']).optional(),
   page: z.coerce.number().int().min(1).default(1),
   page_size: z.coerce.number().int().min(1).max(200).default(50)
 })

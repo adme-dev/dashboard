@@ -2,7 +2,7 @@
 <script setup lang="ts">
 interface SuppressionRow {
   email: string
-  reason: 'hard_bounce' | 'complaint' | 'manual' | 'global_unsubscribe'
+  reason: 'hard_bounce' | 'complaint' | 'manual' | 'global_unsubscribe' | 'soft_bounce'
   campaign_id?: string | null
   created_at?: string | null
   updated_at?: string | null
@@ -21,6 +21,7 @@ const reasonOptions = [
   { value: 'all', label: 'All reasons' },
   { value: 'manual', label: 'Manual' },
   { value: 'global_unsubscribe', label: 'Global unsubscribe' },
+  { value: 'soft_bounce', label: 'Soft bounce' },
   { value: 'hard_bounce', label: 'Hard bounce' },
   { value: 'complaint', label: 'Complaint' }
 ]
@@ -62,7 +63,7 @@ function formatDate(value?: string | null): string {
 
 function reasonColor(value: SuppressionRow['reason']): 'error' | 'warning' | 'info' | 'neutral' {
   if (value === 'complaint' || value === 'hard_bounce') return 'error'
-  if (value === 'global_unsubscribe') return 'warning'
+  if (value === 'global_unsubscribe' || value === 'soft_bounce') return 'warning'
   if (value === 'manual') return 'info'
   return 'neutral'
 }

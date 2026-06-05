@@ -51,6 +51,7 @@ describe('handleResendEvent suppression audit', () => {
   beforeEach(() => {
     queryOneMock.mockReset()
     executeMock.mockReset()
+    delete process.env.EMAIL_SOFT_BOUNCE_SUPPRESSION_THRESHOLD
   })
 
   it('records suppression history when a hard bounce suppresses a subscriber', async () => {
@@ -118,6 +119,44 @@ describe('handleResendEvent suppression audit', () => {
       'webhook',
       null,
       '{"resendEventId":"evt-soft-1","resendMessageId":"msg-1","resendType":"email.delivery_delayed"}'
+    ])
+  })
+
+  it('suppresses repeated soft bounces only when a threshold is configured', async () => {
+    process.env.EMAIL_SOFT_BOUNCE_SUPPRESSION_THRESHOLD = '3'
+    queryOneMock
+      .mockResolvedValueOnce({ campaign_id: 'camp-1', subscriber_id: 'sub-1' })
+      .mockResolvedValueOnce({ email: 'person@example.com', soft_bounce_count: 2 })
+    executeMock
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+
+    const result = await handleResendEvent({
+      type: 'email.delivery_delayed',
+      data: { email_id: 'msg-1' }
+    }, 'evt-soft-3')
+
+    expect(result).toEqual({ status: 'recorded' })
+    const suppressionListCall = executeMock.mock.calls.find(([sql]) =>
+      String(sql).includes('INSERT INTO suppression_list')
+    )
+    expect(suppressionListCall?.[1]).toEqual(['person@example.com', 'soft_bounce', 'camp-1'])
+    const suppressionEventCalls = executeMock.mock.calls.filter(([sql]) =>
+      String(sql).includes('INSERT INTO suppression_events')
+    )
+    expect(suppressionEventCalls.map(call => (call[1] as unknown[])[4])).toEqual(['recorded', 'added'])
+    expect(suppressionEventCalls[1]?.[1]).toEqual([
+      'person@example.com',
+      'sub-1',
+      'camp-1',
+      'soft_bounce',
+      'added',
+      'webhook',
+      null,
+      '{"resendEventId":"evt-soft-3","resendMessageId":"msg-1","resendType":"email.delivery_delayed","softBounceCount":3,"threshold":3}'
     ])
   })
 })

@@ -4,7 +4,7 @@
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { assertEmailClientAccess } from '~~/server/utils/email-marketing/access'
-import { getCampaign } from '~~/server/utils/email-marketing/campaigns'
+import { getCampaign, prepareCampaignHtmlForSend } from '~~/server/utils/email-marketing/campaigns'
 import { buildBatchEmail, buildCampaignPreflight } from '~~/server/utils/email-marketing/campaignSend'
 import { isCampaignSendingEnabled } from '~~/server/utils/email-marketing/campaignSender'
 import { getAppUrl } from '~~/server/utils/appUrl'
@@ -32,9 +32,15 @@ export default defineEventHandler(async (event) => {
   await assertEmailClientAccess(event, user, campaign.client_id)
   if (!campaign.from_email) throw createError({ statusCode: 422, statusMessage: 'missing_from_email' })
 
+  const appUrl = getAppUrl(event)
+  const testUser = user as { id?: string, email?: string, name?: string }
+  const preparedCampaign = await prepareCampaignHtmlForSend(campaign, {
+    appUrl,
+    userId: String(testUser.id || testUser.email || id)
+  })
   const sendingConfigured = isEmailConfigured(event)
   const preflight = buildCampaignPreflight({
-    campaign,
+    campaign: preparedCampaign,
     toSend: 1,
     sendingConfigured,
     senderDomainAuthenticated: sendingConfigured
@@ -48,10 +54,10 @@ export default defineEventHandler(async (event) => {
   }
 
   const email = buildBatchEmail(
-    campaign,
-    { email: to, name: (user as { name?: string }).name ?? null, subscriber_id: 'test' },
+    preparedCampaign,
+    { email: to, name: testUser.name ?? null, subscriber_id: 'test' },
     id,
-    getAppUrl(event)
+    appUrl
   )
   const { error } = await client.emails.send({
     from: email.from,

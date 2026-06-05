@@ -87,6 +87,15 @@ describe('email suppressions routes', () => {
     })
   })
 
+  it('allows filtering thresholded soft-bounce suppressions', async () => {
+    const handler = (await import('~~/server/api/email/suppressions/index.get')).default
+    mockGetQuery.mockReturnValue({ reason: 'soft_bounce' })
+
+    await handler({} as never)
+
+    expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['soft_bounce'])
+  })
+
   it('manually suppresses a normalized email and records an audit event', async () => {
     const handler = (await import('~~/server/api/email/suppressions/index.post')).default
     mockReadBody.mockResolvedValue({ email: ' Person@Example.COM ', note: 'requested by support' })

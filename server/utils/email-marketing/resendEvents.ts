@@ -30,6 +30,11 @@ export function ruleForResendType(type: string): ResendEventRule | null {
   return RESEND_EVENT_MAP[type] ?? null
 }
 
+export function softBounceSuppressionThreshold(): number | null {
+  const value = Number.parseInt(process.env.EMAIL_SOFT_BOUNCE_SUPPRESSION_THRESHOLD || '', 10)
+  return Number.isFinite(value) && value >= 2 ? value : null
+}
+
 export interface ResendWebhookPayload {
   type: string
   created_at?: string
@@ -90,11 +95,12 @@ export async function handleResendEvent(
   }
 
   if (rule.softBounce) {
-    const email = await queryOne<{ email: string }>(
-      'SELECT email::text AS email FROM email_subscribers WHERE id = $1',
+    const email = await queryOne<{ email: string, soft_bounce_count?: number }>(
+      'SELECT email::text AS email, soft_bounce_count::int AS soft_bounce_count FROM email_subscribers WHERE id = $1',
       [recipient.subscriber_id]
     )
     if (email?.email) {
+      const nextSoftBounceCount = Number(email.soft_bounce_count ?? 0) + 1
       await execute(
         `UPDATE email_subscribers
          SET soft_bounce_count = soft_bounce_count + 1,
@@ -116,6 +122,29 @@ export async function handleResendEvent(
           resendType: payload.type
         }
       })
+      const threshold = softBounceSuppressionThreshold()
+      if (threshold && nextSoftBounceCount >= threshold) {
+        const suppressionInserted = await execute(`
+          INSERT INTO suppression_list (email, reason, campaign_id)
+          VALUES ($1, $2, $3)
+          ON CONFLICT (email) DO NOTHING
+        `, [email.email, 'soft_bounce', recipient.campaign_id])
+        await recordSuppressionEvent({
+          email: email.email,
+          subscriberId: recipient.subscriber_id,
+          campaignId: recipient.campaign_id,
+          reason: 'soft_bounce',
+          action: suppressionInserted > 0 ? 'added' : 'ignored',
+          source: 'webhook',
+          metadata: {
+            resendEventId: eventId,
+            resendMessageId: messageId,
+            resendType: payload.type,
+            softBounceCount: nextSoftBounceCount,
+            threshold
+          }
+        })
+      }
     }
   }
 
