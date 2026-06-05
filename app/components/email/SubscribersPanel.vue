@@ -29,6 +29,13 @@ const { data, refresh, pending } = await useFetch<{ items: SubRow[], total: numb
 
 const showAdd = ref(false)
 const showImport = ref(false)
+const showDetail = ref(false)
+const selectedSubscriberId = ref<string | null>(null)
+
+function openDetails(row: SubRow) {
+  selectedSubscriberId.value = row.id
+  showDetail.value = true
+}
 </script>
 
 <template>
@@ -68,7 +75,12 @@ const showImport = ref(false)
     </div>
 
     <div v-else class="border border-default rounded-lg divide-y divide-default">
-      <div v-for="row in data.items" :key="row.id" class="flex items-center justify-between px-4 py-2.5">
+      <div
+        v-for="row in data.items"
+        :key="row.id"
+        class="flex items-center justify-between gap-4 px-4 py-2.5 cursor-pointer hover:bg-elevated/50 transition-colors"
+        @click="openDetails(row)"
+      >
         <div>
           <p class="font-medium">
             {{ row.email }}
@@ -77,9 +89,19 @@ const showImport = ref(false)
             {{ row.name }}
           </p>
         </div>
-        <UBadge :color="row.status === 'enabled' ? 'success' : 'neutral'" variant="subtle">
-          {{ row.status }}
-        </UBadge>
+        <div class="flex items-center gap-2">
+          <UBadge :color="row.status === 'enabled' ? 'success' : 'neutral'" variant="subtle">
+            {{ row.status }}
+          </UBadge>
+          <UButton
+            icon="i-lucide-history"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            aria-label="View subscriber history"
+            @click.stop="openDetails(row)"
+          />
+        </div>
       </div>
     </div>
 
@@ -89,5 +111,6 @@ const showImport = ref(false)
 
     <EmailSubscriberFormModal v-model:open="showAdd" :lists="lists" @saved="refresh" />
     <EmailImportModal v-model:open="showImport" :lists="lists" @imported="refresh" />
+    <EmailSubscriberDetailDrawer v-model:open="showDetail" :subscriber-id="selectedSubscriberId" />
   </div>
 </template>

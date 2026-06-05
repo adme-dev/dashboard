@@ -19,6 +19,7 @@ export interface EdmImageAsset {
   thumbnailUrl: string | null
   tags: string[]
   uploadedBy: string
+  clientId?: string | null
   createdAt: string
 }
 

@@ -4,12 +4,14 @@
 // (recipients materialized + unsubscribe link present). Sends in a capped,
 // paced loop; large campaigns continue on subsequent calls (2b-2b: queue/cron).
 import { requireWriteAccess } from '~~/server/utils/auth'
+import { assertEmailClientAccess } from '~~/server/utils/email-marketing/access'
 import { getCampaign, setCampaignStatus } from '~~/server/utils/email-marketing/campaigns'
-import { canEnterSending } from '~~/server/utils/email-marketing/campaignSend'
+import { buildCampaignPreflight, canEnterSending } from '~~/server/utils/email-marketing/campaignSend'
 import { isCampaignSendingEnabled, runCampaignSend } from '~~/server/utils/email-marketing/campaignSender'
+import { isEmailConfigured } from '~~/server/utils/email'
 
 export default defineEventHandler(async (event) => {
-  await requireWriteAccess(event)
+  const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'missing_id' })
 
@@ -23,8 +25,24 @@ export default defineEventHandler(async (event) => {
 
   const campaign = await getCampaign(id)
   if (!campaign) throw createError({ statusCode: 404, statusMessage: 'not_found' })
+  await assertEmailClientAccess(event, user, campaign.client_id)
   if (!campaign.from_email) {
     throw createError({ statusCode: 422, statusMessage: 'missing_from_email' })
+  }
+
+  const sendingConfigured = isEmailConfigured(event)
+  const preflight = buildCampaignPreflight({
+    campaign,
+    toSend: campaign.to_send,
+    sendingConfigured,
+    senderDomainAuthenticated: sendingConfigured
+  })
+  if (preflight.blocked) {
+    throw createError({
+      statusCode: 422,
+      statusMessage: 'campaign_preflight_blocked',
+      data: { preflight }
+    })
   }
 
   const gate = canEnterSending({

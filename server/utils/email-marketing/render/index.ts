@@ -4,6 +4,7 @@
 // substitutes {{merge_tags}} from `variables`.
 
 import { renderFlyhubDocumentToHtml, isFlyhubFormat } from './flyhub-html-renderer'
+import { rewriteHtmlLinksForTracking, type RewriteTrackingInput } from '../trackingLinks'
 import type { FlyhubDocument } from './blocks/types'
 
 export interface RenderTemplateOptions {
@@ -11,6 +12,7 @@ export interface RenderTemplateOptions {
   previewText?: string
   primaryColor?: string
   variables?: Record<string, string>
+  tracking?: RewriteTrackingInput
 }
 
 export function renderTemplateDocument(doc: unknown, opts: RenderTemplateOptions = {}): string {
@@ -23,4 +25,12 @@ export function renderTemplateDocument(doc: unknown, opts: RenderTemplateOptions
     primaryColor: opts.primaryColor,
     variables: opts.variables
   })
+}
+
+export async function renderTrackedTemplateDocument(
+  doc: unknown,
+  opts: RenderTemplateOptions = {}
+): Promise<string> {
+  const html = renderTemplateDocument(doc, opts)
+  return opts.tracking ? rewriteHtmlLinksForTracking(html, opts.tracking) : html
 }

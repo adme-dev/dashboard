@@ -5,6 +5,12 @@
 // these — the functions here trust their inputs and only enforce data rules.
 
 import { queryRows, queryOne, execute, transaction } from '~~/server/utils/db'
+import {
+  INSERT_CONSENT_EVENT_SQL,
+  INSERT_SUPPRESSION_EVENT_SQL,
+  consentEventParams,
+  suppressionEventParams
+} from './audit'
 import type { MembershipStatus } from './types'
 
 export interface PublicSubscriber {
@@ -67,6 +73,14 @@ export async function globalUnsubscribe(opts: {
        WHERE subscriber_id = $1 AND status <> 'unsubscribed'`,
       [opts.subscriberId]
     )
+    await db.query(INSERT_SUPPRESSION_EVENT_SQL, suppressionEventParams({
+      email: sub.email,
+      subscriberId: opts.subscriberId,
+      campaignId: opts.campaignId ?? null,
+      reason: 'global_unsubscribe',
+      action: (supp.rowCount ?? 0) > 0 ? 'added' : 'ignored',
+      source: 'one_click'
+    }))
 
     // Record the event + bump the counter on the FIRST explicit unsubscribe —
     // i.e. when this call either newly suppressed the email OR transitioned an
@@ -76,6 +90,13 @@ export async function globalUnsubscribe(opts: {
     // Repeat clicks / mailbox retries find nothing to transition → no dup event.
     const firstExplicit = (supp.rowCount ?? 0) > 0 || (memberships.rowCount ?? 0) > 0
     if (firstExplicit) {
+      await db.query(INSERT_CONSENT_EVENT_SQL, consentEventParams({
+        subscriberId: opts.subscriberId,
+        email: sub.email,
+        campaignId: opts.campaignId ?? null,
+        eventType: 'global_unsubscribed',
+        source: 'one_click'
+      }))
       await db.query(
         `INSERT INTO email_events (campaign_id, subscriber_id, event_type)
          VALUES ($1, $2, 'unsubscribed')`,
@@ -123,12 +144,31 @@ export async function setListSubscription(opts: {
       return (res.rowCount ?? 0) > 0
     })
   }
-  const n = await execute(
-    `UPDATE subscriber_lists SET status = 'unsubscribed', unsubscribed_at = NOW()
-     WHERE subscriber_id = $1 AND list_id = $2 AND status <> 'unsubscribed'`,
-    [opts.subscriberId, opts.listId]
-  )
-  return n > 0
+  return transaction(async (db) => {
+    const res = await db.query(
+      `UPDATE subscriber_lists SET status = 'unsubscribed', unsubscribed_at = NOW()
+       WHERE subscriber_id = $1 AND list_id = $2 AND status <> 'unsubscribed'`,
+      [opts.subscriberId, opts.listId]
+    )
+    const changed = (res.rowCount ?? 0) > 0
+    if (changed) {
+      const { rows } = await db.query(
+        'SELECT email FROM email_subscribers WHERE id = $1',
+        [opts.subscriberId]
+      )
+      const email = rows[0]?.email as string | undefined
+      if (email) {
+        await db.query(INSERT_CONSENT_EVENT_SQL, consentEventParams({
+          subscriberId: opts.subscriberId,
+          email,
+          listId: opts.listId,
+          eventType: 'list_unsubscribed',
+          source: 'preference_center'
+        }))
+      }
+    }
+    return changed
+  })
 }
 
 export interface SubscribeResult {
@@ -194,6 +234,13 @@ export async function subscribePublic(opts: {
     // only lifted on proven consent: a double-opt-in confirm, or the
     // token-authenticated preference center. A previously-suppressed email
     // therefore stays suppressed until it confirms.
+    await db.query(INSERT_CONSENT_EVENT_SQL, consentEventParams({
+      subscriberId,
+      email: opts.email,
+      listId: opts.listId,
+      eventType: 'form_submitted',
+      source: opts.source ?? 'form'
+    }))
 
     return {
       subscriberId,
@@ -231,6 +278,20 @@ export async function confirmSubscription(opts: {
            AND email = (SELECT email FROM email_subscribers WHERE id = $1)`,
         [opts.subscriberId]
       )
+      const { rows } = await db.query(
+        'SELECT email FROM email_subscribers WHERE id = $1',
+        [opts.subscriberId]
+      )
+      const email = rows[0]?.email as string | undefined
+      if (email) {
+        await db.query(INSERT_CONSENT_EVENT_SQL, consentEventParams({
+          subscriberId: opts.subscriberId,
+          email,
+          listId: opts.listId,
+          eventType: 'confirmed',
+          source: 'form'
+        }))
+      }
     }
     return confirmed
   })

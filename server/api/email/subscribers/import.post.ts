@@ -4,6 +4,7 @@
 
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
+import { isAgencyEmailUser, resolveEmailWriteClientId } from '~~/server/utils/email-marketing/access'
 import { parseSubscriberCsv } from '~~/server/utils/email-marketing/importParse'
 import { upsertSubscriber, addToList, getList } from '~~/server/utils/email-marketing/db'
 
@@ -24,6 +25,11 @@ export default defineEventHandler(async (event) => {
 
   const list = await getList(input.list_id)
   if (!list) throw createError({ statusCode: 404, statusMessage: 'list_not_found' })
+  const requestedClientId = input.client_id ?? list.client_id
+  if (!isAgencyEmailUser(user) && requestedClientId !== list.client_id) {
+    throw createError({ statusCode: 403, statusMessage: 'email_list_client_mismatch' })
+  }
+  const clientId = await resolveEmailWriteClientId(event, user, requestedClientId)
 
   const { subscribers, errors } = parseSubscriberCsv(input.csv, input.column_mapping)
   if (!subscribers.length && errors.length === 1 && errors[0].row === 0) {
@@ -37,10 +43,18 @@ export default defineEventHandler(async (event) => {
       email: s.email,
       name: s.name ?? null,
       attribs: s.attribs ?? {},
-      client_id: input.client_id ?? null,
+      client_id: clientId,
       created_by: user.id
     })
-    await addToList(id, input.list_id, 'import')
+    await addToList(id, input.list_id, 'import', {
+      actorUserId: user.id,
+      email: s.email,
+      metadata: {
+        source: 'csv_upload',
+        importTotal: subscribers.length,
+        skippedRows: errors.length
+      }
+    })
     imported++
   }
 

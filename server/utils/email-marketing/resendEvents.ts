@@ -4,19 +4,22 @@
 // Idempotent on the Svix message id (stored as resend_event_id).
 
 import { queryOne, execute } from '~~/server/utils/db'
+import { recordSuppressionEvent } from './audit'
 
 // Resend event type → our normalized event_type, the campaigns counter column to
 // bump (null = don't bump; 'sent' is already counted at send time), and whether
 // it triggers global suppression. `email.sent` is recorded but not re-counted.
 export interface ResendEventRule {
-  eventType: 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'complained'
+  eventType: 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'complained' | 'delivery_delayed'
   counterColumn: 'delivered' | 'opened' | 'clicked' | 'bounced' | 'complained' | null
   suppress: false | 'hard_bounce' | 'complaint'
+  softBounce?: boolean
 }
 
 export const RESEND_EVENT_MAP: Record<string, ResendEventRule> = {
   'email.sent': { eventType: 'sent', counterColumn: null, suppress: false },
   'email.delivered': { eventType: 'delivered', counterColumn: 'delivered', suppress: false },
+  'email.delivery_delayed': { eventType: 'delivery_delayed', counterColumn: null, suppress: false, softBounce: true },
   'email.opened': { eventType: 'opened', counterColumn: 'opened', suppress: false },
   'email.clicked': { eventType: 'clicked', counterColumn: 'clicked', suppress: false },
   'email.bounced': { eventType: 'bounced', counterColumn: 'bounced', suppress: 'hard_bounce' },
@@ -86,6 +89,36 @@ export async function handleResendEvent(
     )
   }
 
+  if (rule.softBounce) {
+    const email = await queryOne<{ email: string }>(
+      'SELECT email::text AS email FROM email_subscribers WHERE id = $1',
+      [recipient.subscriber_id]
+    )
+    if (email?.email) {
+      await execute(
+        `UPDATE email_subscribers
+         SET soft_bounce_count = soft_bounce_count + 1,
+             last_soft_bounce_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $1`,
+        [recipient.subscriber_id]
+      )
+      await recordSuppressionEvent({
+        email: email.email,
+        subscriberId: recipient.subscriber_id,
+        campaignId: recipient.campaign_id,
+        reason: 'soft_bounce',
+        action: 'recorded',
+        source: 'webhook',
+        metadata: {
+          resendEventId: eventId,
+          resendMessageId: messageId,
+          resendType: payload.type
+        }
+      })
+    }
+  }
+
   // Global suppression + blocklist on hard bounce / complaint.
   if (rule.suppress) {
     const email = await queryOne<{ email: string }>(
@@ -93,11 +126,24 @@ export async function handleResendEvent(
       [recipient.subscriber_id]
     )
     if (email?.email) {
-      await execute(`
+      const suppressionInserted = await execute(`
         INSERT INTO suppression_list (email, reason, campaign_id)
         VALUES ($1, $2, $3)
         ON CONFLICT (email) DO NOTHING
       `, [email.email, rule.suppress, recipient.campaign_id])
+      await recordSuppressionEvent({
+        email: email.email,
+        subscriberId: recipient.subscriber_id,
+        campaignId: recipient.campaign_id,
+        reason: rule.suppress,
+        action: suppressionInserted > 0 ? 'added' : 'ignored',
+        source: 'webhook',
+        metadata: {
+          resendEventId: eventId,
+          resendMessageId: messageId,
+          resendType: payload.type
+        }
+      })
       await execute(
         `UPDATE email_subscribers SET status = 'blocklisted', updated_at = NOW() WHERE id = $1`,
         [recipient.subscriber_id]

@@ -4,6 +4,7 @@ import {
   canTransition,
   bodyHasUnsubscribe,
   canEnterSending,
+  buildCampaignPreflight,
   RESEND_BATCH_LIMIT
 } from '~~/server/utils/email-marketing/campaignSend'
 
@@ -82,5 +83,69 @@ describe('canEnterSending', () => {
     const r = canEnterSending({ status: 'sent', toSend: 10, bodyHtml: goodBody })
     expect(r.ok).toBe(false)
     expect(r.reason).toMatch(/cannot send/)
+  })
+})
+
+describe('buildCampaignPreflight', () => {
+  const cleanCampaign = {
+    subject: 'June offers',
+    from_email: 'sales@example.com',
+    body_html: [
+      '<!doctype html><html><body>',
+      '<p>Latest offer</p>',
+      '<img src="https://cdn.example.com/car.png">',
+      '<a href="{{ unsubscribe_url }}">Unsubscribe</a>',
+      '<footer>XeroFlow Agency, 1 Market Street, Melbourne VIC 3000</footer>',
+      '</body></html>'
+    ].join('')
+  }
+
+  it('returns structured passing checks for a sendable campaign', () => {
+    const result = buildCampaignPreflight({
+      campaign: cleanCampaign,
+      toSend: 42,
+      sendingConfigured: true,
+      senderDomainAuthenticated: true
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.blocked).toBe(false)
+    expect(result.recipientCount).toBe(42)
+    expect(result.checks.map(check => check.code)).toEqual([
+      'unsubscribe',
+      'sender',
+      'auth_readiness',
+      'media_urls',
+      'html_size',
+      'footer_identity'
+    ])
+    expect(result.checks.every(check => check.status === 'pass')).toBe(true)
+  })
+
+  it('surfaces blocked checks and warnings for unsafe campaign state', () => {
+    const result = buildCampaignPreflight({
+      campaign: {
+        subject: '',
+        from_email: null,
+        body_html: `<p>Hello</p><img src="/asset.png">${'x'.repeat(110 * 1024)}`
+      },
+      toSend: 0,
+      sendingConfigured: false,
+      senderDomainAuthenticated: false
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.blocked).toBe(true)
+    expect(result.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'unsubscribe', status: 'blocked' }),
+      expect.objectContaining({ code: 'sender', status: 'blocked' }),
+      expect.objectContaining({ code: 'auth_readiness', status: 'blocked' }),
+      expect.objectContaining({ code: 'media_urls', status: 'warning' }),
+      expect.objectContaining({ code: 'html_size', status: 'warning' }),
+      expect.objectContaining({ code: 'footer_identity', status: 'warning' })
+    ]))
+    expect(result.checks.find(check => check.code === 'recipients')).toEqual(
+      expect.objectContaining({ status: 'blocked' })
+    )
   })
 })

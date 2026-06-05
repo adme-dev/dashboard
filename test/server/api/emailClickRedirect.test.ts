@@ -1,0 +1,120 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { signEmailToken } from '~~/server/utils/email-marketing/links'
+
+const mockGetQuery = vi.fn()
+const mockSendRedirect = vi.fn()
+const mockExecute = vi.fn()
+
+const testGlobal = globalThis as unknown as {
+  defineEventHandler: <T>(fn: T) => T
+  createError: (input: { statusCode: number, statusMessage: string }) => Error & {
+    statusCode: number
+    statusMessage: string
+  }
+  getQuery: typeof mockGetQuery
+  sendRedirect: typeof mockSendRedirect
+}
+
+testGlobal.defineEventHandler = fn => fn
+testGlobal.createError = input => Object.assign(new Error(input.statusMessage), input)
+testGlobal.getQuery = mockGetQuery
+testGlobal.sendRedirect = mockSendRedirect
+
+vi.mock('~~/server/utils/db', () => ({
+  execute: (...args: unknown[]) => mockExecute(...args)
+}))
+
+vi.mock('~~/server/utils/email-marketing/links', async (original) => {
+  const actual = await original<typeof import('~~/server/utils/email-marketing/links')>()
+  return {
+    ...actual,
+    emailLinkSecret: () => 'secret'
+  }
+})
+
+describe('email click redirect route', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockSendRedirect.mockResolvedValue(undefined)
+    mockExecute.mockResolvedValue(1)
+  })
+
+  it('records the click and redirects to the destination with UTM attribution', async () => {
+    const handler = (await import('~~/server/api/public/email/click.get')).default
+    const destination = 'https://dealer.example.com/offers'
+    const token = await signEmailToken('secret', 'click', 'camp-1', 'sub-1', destination)
+    mockGetQuery.mockReturnValue({
+      c: 'camp-1',
+      s: 'sub-1',
+      u: destination,
+      t: token
+    })
+
+    await handler({
+      node: {
+        req: {
+          headers: {
+            'user-agent': 'Vitest',
+            'cf-connecting-ip': '203.0.113.10'
+          }
+        }
+      }
+    } as never)
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO email_events'),
+      [
+        'camp-1',
+        'sub-1',
+        expect.stringContaining('https://dealer.example.com/offers?utm_source=email&utm_medium=email&utm_campaign=camp-1'),
+        expect.stringContaining('"source":"first_party_redirect"')
+      ]
+    )
+    expect(mockSendRedirect).toHaveBeenCalledWith(
+      expect.anything(),
+      'https://dealer.example.com/offers?utm_source=email&utm_medium=email&utm_campaign=camp-1',
+      302
+    )
+  })
+
+  it('rejects an invalid signature before recording a click', async () => {
+    const handler = (await import('~~/server/api/public/email/click.get')).default
+    mockGetQuery.mockReturnValue({
+      c: 'camp-1',
+      s: 'sub-1',
+      u: 'https://dealer.example.com/offers',
+      t: 'bad-token'
+    })
+
+    await expect(handler({ node: { req: { headers: {} } } } as never)).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: 'invalid_click_token'
+    })
+    expect(mockExecute).not.toHaveBeenCalled()
+  })
+
+  it('stores suspected scanner classification in click metadata', async () => {
+    const handler = (await import('~~/server/api/public/email/click.get')).default
+    const destination = 'https://dealer.example.com/offers'
+    const token = await signEmailToken('secret', 'click', 'camp-1', 'sub-1', destination)
+    mockGetQuery.mockReturnValue({
+      c: 'camp-1',
+      s: 'sub-1',
+      u: destination,
+      t: token
+    })
+
+    await handler({
+      node: {
+        req: {
+          headers: {
+            'user-agent': 'Proofpoint URL Defense'
+          }
+        }
+      }
+    } as never)
+
+    expect(mockExecute.mock.calls[0]?.[1]?.[3]).toContain('"suspectedScanner":true')
+    expect(mockExecute.mock.calls[0]?.[1]?.[3]).toContain('scanner_user_agent')
+  })
+})

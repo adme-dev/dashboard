@@ -1,6 +1,7 @@
 // server/api/email/campaigns/index.post.ts
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
+import { resolveEmailWriteClientId } from '~~/server/utils/email-marketing/access'
 import { createCampaign } from '~~/server/utils/email-marketing/campaigns'
 import { isValidSegment } from '~~/server/utils/email-marketing/segment'
 
@@ -26,6 +27,7 @@ export default defineEventHandler(async (event) => {
   if (parsed.data.filter_rules != null && !isValidSegment(parsed.data.filter_rules)) {
     throw createError({ statusCode: 400, statusMessage: 'invalid_segment' })
   }
-  const campaign = await createCampaign({ ...parsed.data, created_by: user.id })
+  const clientId = await resolveEmailWriteClientId(event, user, parsed.data.client_id ?? null)
+  const campaign = await createCampaign({ ...parsed.data, client_id: clientId, created_by: user.id })
   return { campaign }
 })

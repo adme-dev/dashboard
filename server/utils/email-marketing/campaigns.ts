@@ -3,11 +3,13 @@
 // (re)rendered from body_source on write. NO sending here — the chunked Resend
 // sender lands in 2b-2; this module only builds the resumable work queue.
 
+import { createError } from 'h3'
 import { queryRows, queryOne, execute, transaction } from '~~/server/utils/db'
 import { renderTemplateDocument } from './render'
 import { isFlyhubFormat } from './render/flyhub-html-renderer'
-import { canTransition, type CampaignStatus } from './campaignSend'
+import { buildCampaignPreflight, canTransition, type CampaignPreflightResult, type CampaignStatus } from './campaignSend'
 import { evaluateSegment, isValidSegment } from './segment'
+import { addEmailClientScopeCondition, type EmailClientScope } from './access'
 
 export interface Campaign {
   id: string
@@ -36,8 +38,21 @@ export interface Campaign {
   bounced: number
   complained: number
   unsubscribed: number
+  preflight_result?: CampaignPreflightResult | null
+  preflight_checked_at?: string | null
+  recipient_snapshot?: unknown
   created_at: string
   updated_at: string
+}
+
+export interface CampaignRecipientSnapshot {
+  listIds: string[]
+  dedupedRecipients: number
+  excludedUnsubscribed: number
+  excludedSuppressed: number
+  excludedBlocklisted: number
+  toSend: number
+  generatedAt: string
 }
 
 function renderHtml(bodySource: unknown, subject?: string | null, previewText?: string | null): string {
@@ -48,8 +63,12 @@ function renderHtml(bodySource: unknown, subject?: string | null, previewText?: 
   })
 }
 
-export async function listCampaigns(): Promise<Campaign[]> {
-  return queryRows<Campaign>('SELECT * FROM campaigns ORDER BY updated_at DESC')
+export async function listCampaigns(clientIds?: EmailClientScope): Promise<Campaign[]> {
+  const conditions: string[] = []
+  const params: unknown[] = []
+  addEmailClientScopeCondition(conditions, params, 'client_id', clientIds)
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+  return queryRows<Campaign>(`SELECT * FROM campaigns ${where} ORDER BY updated_at DESC`, params)
 }
 
 export async function getCampaign(id: string): Promise<Campaign | null> {
@@ -61,6 +80,66 @@ export async function getCampaignListIds(campaignId: string): Promise<string[]> 
     'SELECT list_id FROM campaign_lists WHERE campaign_id = $1', [campaignId]
   )
   return rows.map(r => r.list_id)
+}
+
+export async function buildCampaignRecipientSnapshot(
+  campaignId: string,
+  listIds: string[],
+  toSend: number,
+  generatedAt: string
+): Promise<CampaignRecipientSnapshot> {
+  const row = await queryOne<{
+    deduped_recipients: number | string
+    excluded_unsubscribed: number | string
+    excluded_suppressed: number | string
+    excluded_blocklisted: number | string
+  }>(`
+    WITH candidates AS (
+      SELECT
+        sl.subscriber_id,
+        s.email,
+        s.status AS subscriber_status,
+        sl.status AS membership_status
+      FROM campaign_lists cl
+      JOIN subscriber_lists sl ON sl.list_id = cl.list_id
+      JOIN email_subscribers s ON s.id = sl.subscriber_id
+      WHERE cl.campaign_id = $1
+    ),
+    deduped AS (
+      SELECT
+        c.subscriber_id,
+        BOOL_OR(c.membership_status = 'unsubscribed') AS has_unsubscribed_membership,
+        BOOL_OR(c.membership_status <> 'unsubscribed') AS has_sendable_membership,
+        BOOL_OR(c.subscriber_status = 'blocklisted') AS is_blocklisted,
+        BOOL_OR(c.subscriber_status = 'enabled') AS is_enabled,
+        BOOL_OR(sup.email IS NOT NULL) AS is_suppressed
+      FROM candidates c
+      LEFT JOIN suppression_list sup ON sup.email = c.email
+      GROUP BY c.subscriber_id
+    )
+    SELECT
+      COUNT(*)::int AS deduped_recipients,
+      COUNT(*) FILTER (
+        WHERE has_unsubscribed_membership AND NOT has_sendable_membership
+      )::int AS excluded_unsubscribed,
+      COUNT(*) FILTER (
+        WHERE has_sendable_membership AND is_enabled AND is_suppressed
+      )::int AS excluded_suppressed,
+      COUNT(*) FILTER (
+        WHERE has_sendable_membership AND is_blocklisted
+      )::int AS excluded_blocklisted
+    FROM deduped
+  `, [campaignId])
+
+  return {
+    listIds,
+    dedupedRecipients: Number(row?.deduped_recipients ?? 0),
+    excludedUnsubscribed: Number(row?.excluded_unsubscribed ?? 0),
+    excludedSuppressed: Number(row?.excluded_suppressed ?? 0),
+    excludedBlocklisted: Number(row?.excluded_blocklisted ?? 0),
+    toSend,
+    generatedAt
+  }
 }
 
 export async function createCampaign(input: {
@@ -254,6 +333,64 @@ export async function materializeRecipients(campaignId: string): Promise<number>
     )
     return toSend
   })
+}
+
+export async function scheduleCampaign(
+  campaignId: string,
+  scheduledAt: string,
+  opts: {
+    sendingConfigured: boolean
+    senderDomainAuthenticated: boolean
+    checkedAt?: string
+  }
+): Promise<Campaign> {
+  const existing = await getCampaign(campaignId)
+  if (!existing) throw createError({ statusCode: 404, statusMessage: 'not_found' })
+  if (existing.status !== 'draft') {
+    throw createError({ statusCode: 409, statusMessage: 'campaign_not_schedulable' })
+  }
+
+  const toSend = await materializeRecipients(campaignId)
+  const campaign = await getCampaign(campaignId)
+  if (!campaign) throw createError({ statusCode: 404, statusMessage: 'not_found' })
+
+  const checkedAt = opts.checkedAt ?? new Date().toISOString()
+  const preflight = buildCampaignPreflight({
+    campaign,
+    toSend,
+    sendingConfigured: opts.sendingConfigured,
+    senderDomainAuthenticated: opts.senderDomainAuthenticated,
+    checkedAt
+  })
+  const listIds = await getCampaignListIds(campaignId)
+  const snapshot = await buildCampaignRecipientSnapshot(campaignId, listIds, toSend, checkedAt)
+
+  if (preflight.blocked) {
+    throw createError({
+      statusCode: 422,
+      statusMessage: 'campaign_preflight_blocked',
+      data: { preflight, recipientSnapshot: snapshot }
+    })
+  }
+
+  const row = await queryOne<Campaign>(`
+    UPDATE campaigns
+    SET status = 'scheduled',
+        scheduled_at = $2,
+        preflight_result = $3::jsonb,
+        preflight_checked_at = $4::timestamptz,
+        recipient_snapshot = $5::jsonb,
+        updated_at = NOW()
+    WHERE id = $1
+    RETURNING *
+  `, [
+    campaignId,
+    scheduledAt,
+    JSON.stringify(preflight),
+    checkedAt,
+    JSON.stringify(snapshot)
+  ])
+  return row as Campaign
 }
 
 // Guarded status setter (used by later send/schedule flows). Exposed now so the

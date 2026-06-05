@@ -4,6 +4,7 @@
 // so the send-gate + pacing logic is unit-testable without a DB or Resend.
 
 import type { BridgeCommunicationInput } from '~~/server/utils/crm/commsDb'
+import { rewriteHtmlLinksForTracking, type RewriteTrackingInput } from './trackingLinks'
 
 export const CAMPAIGN_STATUSES = [
   'draft', 'scheduled', 'sending', 'paused', 'sent', 'cancelled'
@@ -60,6 +61,32 @@ export interface SendGateResult {
   reason?: string
 }
 
+export type CampaignPreflightStatus = 'pass' | 'warning' | 'blocked'
+export type CampaignPreflightCode =
+  | 'unsubscribe'
+  | 'sender'
+  | 'auth_readiness'
+  | 'media_urls'
+  | 'html_size'
+  | 'footer_identity'
+  | 'recipients'
+
+export interface CampaignPreflightCheck {
+  code: CampaignPreflightCode
+  status: CampaignPreflightStatus
+  message: string
+  value?: string | number | boolean | null
+}
+
+export interface CampaignPreflightResult {
+  ok: boolean
+  blocked: boolean
+  checkedAt: string
+  htmlBytes: number
+  recipientCount: number
+  checks: CampaignPreflightCheck[]
+}
+
 // Whether a campaign may enter the `sending` state. Enforced in code, not just
 // convention (spec §2 "Send gate").
 export function canEnterSending(input: SendGateInput): SendGateResult {
@@ -73,6 +100,112 @@ export function canEnterSending(input: SendGateInput): SendGateResult {
     return { ok: false, reason: 'body is missing an unsubscribe link ({{unsubscribe_url}})' }
   }
   return { ok: true }
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const DEFAULT_MAX_HTML_BYTES = 102 * 1024
+const RELATIVE_MEDIA_RE = /\b(?:src|background)\s*=\s*["'](?!https?:\/\/|cid:|data:image\/)[^"']+["']|url\(\s*['"]?(?!https?:\/\/|cid:|data:image\/)([^'")]+)['"]?\s*\)/i
+const NON_HTTPS_MEDIA_RE = /\b(?:src|background)\s*=\s*["']http:\/\/[^"']+["']|url\(\s*['"]?http:\/\/[^'")]+['"]?\s*\)/i
+const FOOTER_IDENTITY_RE = /\b(?:street|st\b|road|rd\b|avenue|ave\b|melbourne|sydney|brisbane|perth|adelaide|australia|vic|nsw|qld|wa|sa|tas|act|nt)\b/i
+
+function preflightCheck(
+  code: CampaignPreflightCode,
+  status: CampaignPreflightStatus,
+  message: string,
+  value?: CampaignPreflightCheck['value']
+): CampaignPreflightCheck {
+  return value === undefined ? { code, status, message } : { code, status, message, value }
+}
+
+export function buildCampaignPreflight(input: {
+  campaign: {
+    subject?: string | null
+    from_email?: string | null
+    body_html?: string | null
+  }
+  toSend: number
+  sendingConfigured: boolean
+  senderDomainAuthenticated: boolean
+  checkedAt?: string
+  maxHtmlBytes?: number
+}): CampaignPreflightResult {
+  const html = input.campaign.body_html || ''
+  const htmlBytes = Buffer.byteLength(html, 'utf8')
+  const maxHtmlBytes = input.maxHtmlBytes ?? DEFAULT_MAX_HTML_BYTES
+  const fromEmail = input.campaign.from_email?.trim() || ''
+  const senderOk = fromEmail && EMAIL_RE.test(fromEmail) && Boolean(input.campaign.subject?.trim())
+  const checks: CampaignPreflightCheck[] = []
+
+  checks.push(preflightCheck(
+    'unsubscribe',
+    bodyHasUnsubscribe(html) ? 'pass' : 'blocked',
+    bodyHasUnsubscribe(html)
+      ? 'Unsubscribe affordance is present.'
+      : 'Campaign HTML must include {{ unsubscribe_url }} or an unsubscribe link.'
+  ))
+
+  checks.push(preflightCheck(
+    'sender',
+    senderOk ? 'pass' : 'blocked',
+    senderOk
+      ? 'Sender and subject are present.'
+      : 'Campaign needs a valid From email before scheduling.',
+    fromEmail || null
+  ))
+
+  checks.push(preflightCheck(
+    'auth_readiness',
+    input.sendingConfigured && input.senderDomainAuthenticated ? 'pass' : 'blocked',
+    input.sendingConfigured && input.senderDomainAuthenticated
+      ? 'Sending transport and sender domain readiness checks passed.'
+      : 'Sending transport or sender domain readiness is not configured.',
+    input.senderDomainAuthenticated
+  ))
+
+  const hasUnsafeMedia = RELATIVE_MEDIA_RE.test(html) || NON_HTTPS_MEDIA_RE.test(html)
+  checks.push(preflightCheck(
+    'media_urls',
+    hasUnsafeMedia ? 'warning' : 'pass',
+    hasUnsafeMedia
+      ? 'Use absolute HTTPS media URLs for sendable email assets.'
+      : 'Media URLs are sendable.'
+  ))
+
+  checks.push(preflightCheck(
+    'html_size',
+    htmlBytes > maxHtmlBytes ? 'warning' : 'pass',
+    htmlBytes > maxHtmlBytes
+      ? `Rendered HTML is ${htmlBytes} bytes; keep it below ${maxHtmlBytes} bytes to reduce clipping risk.`
+      : 'Rendered HTML is below the clipping warning threshold.',
+    htmlBytes
+  ))
+
+  checks.push(preflightCheck(
+    'footer_identity',
+    FOOTER_IDENTITY_RE.test(html) ? 'pass' : 'warning',
+    FOOTER_IDENTITY_RE.test(html)
+      ? 'Physical sender identity footer appears present.'
+      : 'Add a physical sender identity and postal address footer for marketing mail.'
+  ))
+
+  if (input.toSend < 1) {
+    checks.push(preflightCheck(
+      'recipients',
+      'blocked',
+      'No recipients are in the scheduled campaign snapshot.',
+      input.toSend
+    ))
+  }
+
+  const blocked = checks.some(check => check.status === 'blocked')
+  return {
+    ok: !blocked,
+    blocked,
+    checkedAt: input.checkedAt ?? new Date().toISOString(),
+    htmlBytes,
+    recipientCount: input.toSend,
+    checks
+  }
 }
 
 // ── Pure send-formatting helpers (no I/O — kept here so they're testable
@@ -154,6 +287,21 @@ export function buildBatchEmail(
   }
   if (campaign.reply_to) email.replyTo = campaign.reply_to
   return email
+}
+
+export async function buildTrackedBatchEmail(
+  campaign: CampaignContent,
+  recipient: { email: string, name: string | null, subscriber_id: string },
+  campaignId: string,
+  appUrl: string,
+  unsubToken: string | undefined,
+  tracking: RewriteTrackingInput
+): Promise<BatchEmail> {
+  const email = buildBatchEmail(campaign, recipient, campaignId, appUrl, unsubToken)
+  return {
+    ...email,
+    html: await rewriteHtmlLinksForTracking(email.html, tracking)
+  }
 }
 
 // ── Pure: rate-limit (429) handling ─────────────────────────────────────────

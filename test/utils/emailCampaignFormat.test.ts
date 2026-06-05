@@ -3,7 +3,8 @@ import {
   substituteMergeTags,
   recipientVars,
   unsubscribeUrl,
-  buildBatchEmail
+  buildBatchEmail,
+  buildTrackedBatchEmail
 } from '~~/server/utils/email-marketing/campaignSend'
 
 describe('substituteMergeTags', () => {
@@ -79,5 +80,29 @@ describe('buildBatchEmail', () => {
     )
     expect(email.from).toBe('hi@xf.com')
     expect(email.replyTo).toBe('reply@xf.com')
+  })
+
+  it('rewrites destination links through first-party click tracking when tracking context is supplied', async () => {
+    const email = await buildTrackedBatchEmail(
+      {
+        ...campaign,
+        body_html: '<p>Hi {{ first_name }}</p><a href="https://dealer.example.com/offers">Offer</a><a href="{{ unsubscribe_url }}">stop</a>'
+      },
+      recipient,
+      'c9',
+      'https://app.test',
+      'sig123',
+      {
+        appUrl: 'https://app.test',
+        campaignId: 'c9',
+        subscriberId: 's9',
+        secret: 'secret'
+      }
+    )
+
+    expect(email.html).toContain('https://app.test/email/click?')
+    expect(email.html).toContain('u=https%3A%2F%2Fdealer.example.com%2Foffers')
+    expect(email.html).toContain('https://app.test/email/unsubscribe?c=c9&s=s9&t=sig123')
+    expect(email.headers['List-Unsubscribe']).toBe('<https://app.test/email/unsubscribe?c=c9&s=s9&t=sig123>')
   })
 })

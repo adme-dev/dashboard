@@ -2,6 +2,7 @@ import { readMultipartFormData } from 'h3'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { uploadBannerAsset } from '~~/server/utils/bannerStorage'
+import { resolveEmailWriteClientId } from '~~/server/utils/email-marketing/access'
 import {
   EMAIL_IMAGE_ASSET_MAX_BYTES,
   emailImageAssetStorageName,
@@ -13,6 +14,10 @@ export default defineEventHandler(async (event) => {
   const user = await requireWriteAccess(event)
   const formData = await readMultipartFormData(event)
   const file = formData?.find(field => field.name === 'file')
+  const clientField = formData?.find(field => field.name === 'client_id')
+  const requestedClientId = clientField?.data
+    ? Buffer.from(clientField.data).toString('utf8').trim() || null
+    : null
 
   if (!file?.data) {
     throw createError({ statusCode: 400, statusMessage: 'missing_file' })
@@ -35,10 +40,11 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const clientId = await resolveEmailWriteClientId(event, user, requestedClientId)
   const { key, url, size } = await uploadBannerAsset(buffer, storageFileName, mimeType, user.id)
   const asset = await queryOne(`
-    INSERT INTO banner_assets (name, mime_type, file_size, r2_key, url, tags, uploaded_by)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    INSERT INTO banner_assets (name, mime_type, file_size, r2_key, url, tags, uploaded_by, client_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     RETURNING
       id,
       name,
@@ -49,8 +55,9 @@ export default defineEventHandler(async (event) => {
       thumbnail_url AS "thumbnailUrl",
       tags,
       uploaded_by AS "uploadedBy",
+      client_id AS "clientId",
       created_at AS "createdAt"
-  `, [fileName, mimeType, size, key, url, ['email', 'image'], user.id])
+  `, [fileName, mimeType, size, key, url, ['email', 'image'], user.id, clientId])
 
   return { asset }
 })

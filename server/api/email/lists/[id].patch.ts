@@ -1,7 +1,8 @@
 // server/api/email/lists/[id].patch.ts
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
-import { updateList } from '~~/server/utils/email-marketing/db'
+import { assertEmailClientAccess } from '~~/server/utils/email-marketing/access'
+import { getList, updateList } from '~~/server/utils/email-marketing/db'
 
 const Body = z.object({
   name: z.string().min(1).max(200).optional(),
@@ -10,13 +11,16 @@ const Body = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  await requireWriteAccess(event)
+  const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'missing_id' })
   const parsed = Body.safeParse(await readBody(event))
   if (!parsed.success) {
     throw createError({ statusCode: 400, statusMessage: 'invalid_body', data: parsed.error.issues })
   }
+  const existing = await getList(id)
+  if (!existing) throw createError({ statusCode: 404, statusMessage: 'not_found' })
+  await assertEmailClientAccess(event, user, existing.client_id)
   const list = await updateList(id, parsed.data)
   if (!list) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   return { list }

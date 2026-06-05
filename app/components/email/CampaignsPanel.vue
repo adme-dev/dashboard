@@ -7,12 +7,36 @@ interface CampaignRow {
   name: string
   subject: string | null
   status: string
+  scheduled_at?: string | null
   to_send: number
   sent: number
   updated_at: string
   filter_rules?: { match: 'all' | 'any', rules: Array<{ field: string, op: string, value?: unknown }> } | null
+  preflight_result?: CampaignPreflightResult | null
+  recipient_snapshot?: RecipientSnapshot | null
 }
 interface ListRow { id: string, name: string }
+interface CampaignPreflightCheck {
+  code: string
+  label: string
+  status: 'pass' | 'warning' | 'blocked'
+  message: string
+}
+interface CampaignPreflightResult {
+  ok: boolean
+  blocked: boolean
+  checkedAt?: string
+  checks: CampaignPreflightCheck[]
+}
+interface RecipientSnapshot {
+  listIds?: string[]
+  dedupedRecipients?: number
+  excludedUnsubscribed?: number
+  excludedSuppressed?: number
+  excludedBlocklisted?: number
+  toSend?: number
+  generatedAt?: string
+}
 
 const toast = useToast()
 
@@ -97,6 +121,13 @@ const sendingEnabled = computed(() => !!cfg.value?.sending_enabled)
 const busyId = ref<string | null>(null)
 const showSend = ref(false)
 const sendTarget = ref<CampaignRow | null>(null)
+const showSchedule = ref(false)
+const scheduleTarget = ref<CampaignRow | null>(null)
+const showReport = ref(false)
+const reportTarget = ref<CampaignRow | null>(null)
+const scheduleAt = ref('')
+const scheduleErrorPreflight = ref<CampaignPreflightResult | null>(null)
+const scheduleErrorSnapshot = ref<RecipientSnapshot | null>(null)
 
 // Audience / segment editing
 const showSegment = ref(false)
@@ -114,6 +145,74 @@ function errMessage(e: unknown): string {
 function confirmSend(row: CampaignRow) {
   sendTarget.value = row
   showSend.value = true
+}
+
+function openSchedule(row: CampaignRow) {
+  scheduleTarget.value = row
+  scheduleAt.value = ''
+  scheduleErrorPreflight.value = null
+  scheduleErrorSnapshot.value = null
+  showSchedule.value = true
+}
+
+function openReport(row: CampaignRow) {
+  reportTarget.value = row
+  showReport.value = true
+}
+
+function snapshotFallback(row: CampaignRow | null): RecipientSnapshot | null {
+  if (!row) return null
+  return row.recipient_snapshot ?? {
+    toSend: row.to_send,
+    generatedAt: row.updated_at
+  }
+}
+
+const schedulePreflight = computed(() =>
+  scheduleErrorPreflight.value ?? scheduleTarget.value?.preflight_result ?? null
+)
+const scheduleSnapshot = computed(() =>
+  scheduleErrorSnapshot.value ?? snapshotFallback(scheduleTarget.value)
+)
+const sendPreflight = computed(() => sendTarget.value?.preflight_result ?? null)
+const sendSnapshot = computed(() => snapshotFallback(sendTarget.value))
+const scheduleBlocked = computed(() => !!schedulePreflight.value?.blocked)
+
+async function scheduleCampaign() {
+  const row = scheduleTarget.value
+  if (!row) return
+  if (!scheduleAt.value) {
+    toast.add({ title: 'Schedule time required', color: 'error' })
+    return
+  }
+  busyId.value = row.id
+  scheduleErrorPreflight.value = null
+  scheduleErrorSnapshot.value = null
+  try {
+    await $fetch(`/api/email/campaigns/${row.id}`, {
+      method: 'PATCH',
+      body: { scheduled_at: new Date(scheduleAt.value).toISOString() }
+    })
+    toast.add({ title: 'Campaign scheduled', color: 'success' })
+    showSchedule.value = false
+    refresh()
+  } catch (e) {
+    const err = e as {
+      data?: {
+        statusMessage?: string
+        message?: string
+        data?: {
+          preflight?: CampaignPreflightResult
+          recipientSnapshot?: RecipientSnapshot
+        }
+      }
+    }
+    scheduleErrorPreflight.value = err.data?.data?.preflight ?? null
+    scheduleErrorSnapshot.value = err.data?.data?.recipientSnapshot ?? null
+    toast.add({ title: 'Schedule failed', description: errMessage(e), color: 'error' })
+  } finally {
+    busyId.value = null
+  }
 }
 
 async function doSend() {
@@ -248,6 +347,24 @@ const TERMINAL = new Set(['sent', 'cancelled'])
             />
           </UTooltip>
           <UButton
+            icon="i-lucide-chart-no-axes-column"
+            variant="ghost"
+            color="neutral"
+            size="xs"
+            label="Report"
+            @click="openReport(row)"
+          />
+          <UButton
+            v-if="row.status === 'draft'"
+            icon="i-lucide-calendar-clock"
+            variant="ghost"
+            color="neutral"
+            size="xs"
+            label="Schedule"
+            :loading="busyId === row.id"
+            @click="openSchedule(row)"
+          />
+          <UButton
             v-if="!TERMINAL.has(row.status)"
             icon="i-lucide-mail-check"
             variant="ghost"
@@ -333,6 +450,60 @@ const TERMINAL = new Set(['sent', 'cancelled'])
       </template>
     </UModal>
 
+    <UModal v-model:open="showSchedule" title="Schedule campaign" :ui="{ content: 'max-w-2xl' }">
+      <template #content>
+        <div class="p-4 space-y-4">
+          <div>
+            <p class="text-sm font-semibold">
+              Schedule “{{ scheduleTarget?.name }}”
+            </p>
+            <p class="text-sm text-muted">
+              Preflight runs again when the schedule is saved.
+            </p>
+          </div>
+
+          <EmailCampaignPreflightPanel
+            :preflight="schedulePreflight"
+            :recipient-snapshot="scheduleSnapshot"
+          />
+
+          <UFormField label="Send at" required>
+            <UInput
+              v-model="scheduleAt"
+              type="datetime-local"
+              class="w-full"
+            />
+          </UFormField>
+
+          <UAlert
+            v-if="scheduleBlocked"
+            color="error"
+            variant="subtle"
+            icon="i-lucide-shield-alert"
+            title="Campaign is blocked"
+            description="Resolve the blocked preflight checks before scheduling."
+          />
+
+          <div class="flex justify-end gap-2 pt-2">
+            <UButton
+              variant="ghost"
+              color="neutral"
+              label="Cancel"
+              @click="showSchedule = false"
+            />
+            <UButton
+              color="primary"
+              icon="i-lucide-calendar-check"
+              label="Schedule"
+              :loading="busyId === scheduleTarget?.id"
+              :disabled="scheduleBlocked"
+              @click="scheduleCampaign()"
+            />
+          </div>
+        </div>
+      </template>
+    </UModal>
+
     <UModal v-model:open="showSend" title="Send campaign">
       <template #content>
         <div class="p-4 space-y-4">
@@ -344,6 +515,10 @@ const TERMINAL = new Set(['sent', 'cancelled'])
             <span class="font-medium text-default">{{ sendTarget?.to_send }}</span>
             recipient(s). This can't be undone.
           </p>
+          <EmailCampaignPreflightPanel
+            :preflight="sendPreflight"
+            :recipient-snapshot="sendSnapshot"
+          />
           <div class="flex justify-end gap-2 pt-2">
             <UButton
               variant="ghost"
@@ -369,6 +544,11 @@ const TERMINAL = new Set(['sent', 'cancelled'])
       :campaign-name="segmentTarget?.name"
       :initial="segmentTarget?.filter_rules || null"
       @saved="refresh()"
+    />
+    <EmailCampaignReportDrawer
+      v-model:open="showReport"
+      :campaign-id="reportTarget?.id || null"
+      :campaign-name="reportTarget?.name"
     />
   </div>
 </template>

@@ -12,7 +12,7 @@
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { getResendClient, isEmailConfigured } from '~~/server/utils/email'
-import { RESEND_BATCH_LIMIT, buildBatchEmail, isRateLimitError, parseRetryAfter, canEnterSending, buildCampaignBridgeInput } from './campaignSend'
+import { RESEND_BATCH_LIMIT, buildTrackedBatchEmail, isRateLimitError, parseRetryAfter, canEnterSending, buildCampaignBridgeInput } from './campaignSend'
 import { bridgeCommunication } from '~~/server/utils/crm/commsDb'
 import { signEmailToken, emailLinkSecret } from './links'
 import { getCampaign, materializeRecipients, setCampaignStatus, type Campaign } from './campaigns'
@@ -60,6 +60,19 @@ async function releaseClaims(ids: string[]): Promise<void> {
   await execute('UPDATE campaign_recipients SET claimed_at = NULL WHERE id = ANY($1::uuid[])', [ids])
 }
 
+export async function cancelSuppressedPendingRecipients(campaignId: string): Promise<number> {
+  return execute(`
+    UPDATE campaign_recipients cr
+    SET status = 'cancelled',
+        error = 'suppressed_at_send_time'
+    WHERE cr.campaign_id = $1
+      AND cr.status = 'pending'
+      AND EXISTS (
+        SELECT 1 FROM suppression_list sup WHERE sup.email = cr.email
+      )
+  `, [campaignId])
+}
+
 // Watchdog: free rows whose claim went stale (sender crashed after claiming,
 // before sending), so the next dispatch tick re-sends them.
 export async function releaseStaleClaims(campaignId: string, olderThanMinutes = 10): Promise<number> {
@@ -91,18 +104,25 @@ export async function sendCampaignChunk(campaign: Campaign): Promise<ChunkResult
   const client = getResendClient()
   if (!client) throw createError({ statusCode: 503, statusMessage: 'resend_unavailable' })
 
+  await cancelSuppressedPendingRecipients(campaign.id)
   const recipients = await claimPendingChunk(campaign.id, RESEND_BATCH_LIMIT)
   if (recipients.length === 0) return { sent: 0, failed: 0, rateLimited: false, retryAfterSec: 0 }
 
   const appUrl = getAppUrl()
   const secret = emailLinkSecret()
   const payload = await Promise.all(recipients.map(async r =>
-    buildBatchEmail(
+    buildTrackedBatchEmail(
       campaign,
       { email: r.email, name: r.name, subscriber_id: r.subscriber_id },
       campaign.id,
       appUrl,
-      await signEmailToken(secret, 'unsub', campaign.id, r.subscriber_id)
+      await signEmailToken(secret, 'unsub', campaign.id, r.subscriber_id),
+      {
+        appUrl,
+        campaignId: campaign.id,
+        subscriberId: r.subscriber_id,
+        secret
+      }
     )
   ))
 

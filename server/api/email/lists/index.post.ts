@@ -1,6 +1,7 @@
 // server/api/email/lists/index.post.ts
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
+import { resolveEmailWriteClientId } from '~~/server/utils/email-marketing/access'
 import { createList } from '~~/server/utils/email-marketing/db'
 
 const Body = z.object({
@@ -16,6 +17,7 @@ export default defineEventHandler(async (event) => {
   if (!parsed.success) {
     throw createError({ statusCode: 400, statusMessage: 'invalid_body', data: parsed.error.issues })
   }
-  const list = await createList({ ...parsed.data, created_by: user.id })
+  const clientId = await resolveEmailWriteClientId(event, user, parsed.data.client_id ?? null)
+  const list = await createList({ ...parsed.data, client_id: clientId, created_by: user.id })
   return { list }
 })

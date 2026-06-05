@@ -4,6 +4,37 @@
 export type SubscriberStatus = 'enabled' | 'disabled' | 'blocklisted'
 export type MembershipStatus = 'unconfirmed' | 'confirmed' | 'unsubscribed'
 export type MembershipSource = 'import' | 'form' | 'manual' | 'leads' | 'clients'
+export type ConsentEventType =
+  | 'form_submitted'
+  | 'confirmed'
+  | 'imported'
+  | 'manual_added'
+  | 'list_unsubscribed'
+  | 'global_unsubscribed'
+  | 'resubscribed'
+export type ConsentEventSource =
+  | 'form'
+  | 'import'
+  | 'manual'
+  | 'leads'
+  | 'clients'
+  | 'preference_center'
+  | 'one_click'
+  | 'webhook'
+  | 'system'
+export type SuppressionReason =
+  | 'hard_bounce'
+  | 'complaint'
+  | 'manual'
+  | 'global_unsubscribe'
+  | 'soft_bounce'
+export type SuppressionAuditAction = 'added' | 'ignored' | 'removed' | 'recorded'
+export type SuppressionAuditSource =
+  | 'webhook'
+  | 'one_click'
+  | 'preference_center'
+  | 'manual'
+  | 'system'
 
 export interface EmailSubscriber {
   id: string
@@ -13,6 +44,8 @@ export interface EmailSubscriber {
   status: SubscriberStatus
   client_id: string | null
   created_by: string | null
+  soft_bounce_count?: number
+  last_soft_bounce_at?: string | null
   created_at: string
   updated_at: string
 }

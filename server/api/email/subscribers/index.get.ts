@@ -1,7 +1,8 @@
 // server/api/email/subscribers/index.get.ts
 import { z } from 'zod'
 import { requireAuth } from '~~/server/utils/auth'
-import { listSubscribers } from '~~/server/utils/email-marketing/db'
+import { assertEmailClientAccess, resolveEmailClientScope } from '~~/server/utils/email-marketing/access'
+import { getList, listSubscribers } from '~~/server/utils/email-marketing/db'
 
 const Query = z.object({
   list_id: z.string().uuid().optional(),
@@ -12,13 +13,20 @@ const Query = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
   const q = Query.parse(getQuery(event))
+  const clientIds = await resolveEmailClientScope(event, user)
+  if (q.list_id) {
+    const list = await getList(q.list_id)
+    if (!list) throw createError({ statusCode: 404, statusMessage: 'list_not_found' })
+    await assertEmailClientAccess(event, user, list.client_id)
+  }
   return listSubscribers({
     listId: q.list_id,
     status: q.status,
     q: q.q,
     page: q.page,
-    pageSize: q.page_size
+    pageSize: q.page_size,
+    clientIds
   })
 })

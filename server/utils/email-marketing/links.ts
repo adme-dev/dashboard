@@ -14,7 +14,7 @@
 
 import { getCachedBinding } from '~~/server/utils/email'
 
-export type EmailLinkPurpose = 'unsub' | 'confirm'
+export type EmailLinkPurpose = 'unsub' | 'confirm' | 'click'
 
 /**
  * The signing secret. Dedicated env var so rotating it doesn't disturb other

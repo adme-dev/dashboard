@@ -3,6 +3,8 @@
 // endpoints stay declarative. Uses the shared db.ts helpers.
 
 import { queryRows, queryOne, queryCount, execute } from '~~/server/utils/db'
+import { recordConsentEvent } from './audit'
+import { addEmailClientScopeCondition, type EmailClientScope } from './access'
 import type { EmailList, EmailSubscriber, MembershipSource, SubscriberInput } from './types'
 
 // ---------- Lists ----------
@@ -11,8 +13,15 @@ export interface ListWithCount extends EmailList {
   subscriber_count: number
 }
 
-export async function listLists(opts: { includeArchived?: boolean } = {}): Promise<ListWithCount[]> {
-  const where = opts.includeArchived ? '' : 'WHERE l.archived_at IS NULL'
+export async function listLists(opts: {
+  includeArchived?: boolean
+  clientIds?: EmailClientScope
+} = {}): Promise<ListWithCount[]> {
+  const conditions: string[] = []
+  const params: unknown[] = []
+  if (!opts.includeArchived) conditions.push('l.archived_at IS NULL')
+  addEmailClientScopeCondition(conditions, params, 'l.client_id', opts.clientIds)
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
   return queryRows<ListWithCount>(`
     SELECT l.*,
            COALESCE(c.cnt, 0)::int AS subscriber_count
@@ -25,11 +34,19 @@ export async function listLists(opts: { includeArchived?: boolean } = {}): Promi
     ) c ON c.list_id = l.id
     ${where}
     ORDER BY l.created_at DESC
-  `)
+  `, params)
 }
 
 export async function getList(id: string): Promise<EmailList | null> {
   return queryOne<EmailList>('SELECT * FROM email_lists WHERE id = $1', [id])
+}
+
+export async function getListClientIds(ids: string[]): Promise<Array<{ id: string, client_id: string | null }>> {
+  if (!ids.length) return []
+  return queryRows<Array<{ id: string, client_id: string | null }>[number]>(
+    'SELECT id, client_id FROM email_lists WHERE id = ANY($1::uuid[]) AND archived_at IS NULL',
+    [ids]
+  )
 }
 
 export async function createList(input: {
@@ -112,7 +129,12 @@ export async function upsertSubscriber(input: SubscriberInput & {
 export async function addToList(
   subscriberId: string,
   listId: string,
-  source: MembershipSource
+  source: MembershipSource,
+  audit?: {
+    actorUserId?: string | null
+    email?: string | null
+    metadata?: Record<string, unknown> | null
+  }
 ): Promise<void> {
   const list = await getList(listId)
   if (!list) return
@@ -125,6 +147,23 @@ export async function addToList(
                     THEN 'unconfirmed' ELSE subscriber_lists.status END,
       unsubscribed_at = NULL
   `, [subscriberId, listId, initialStatus, source])
+  if (source === 'import') {
+    const email = audit?.email ?? (await queryOne<{ email: string }>(
+      'SELECT email FROM email_subscribers WHERE id = $1',
+      [subscriberId]
+    ))?.email
+    if (email) {
+      await recordConsentEvent({
+        subscriberId,
+        email,
+        listId,
+        eventType: 'imported',
+        source: 'import',
+        actorUserId: audit?.actorUserId ?? null,
+        metadata: audit?.metadata ?? null
+      })
+    }
+  }
 }
 
 export async function removeFromList(subscriberId: string, listId: string): Promise<void> {
@@ -148,6 +187,7 @@ export async function listSubscribers(opts: {
   status?: string
   page: number
   pageSize: number
+  clientIds?: EmailClientScope
 }): Promise<ListSubscribersResult> {
   const conds: string[] = []
   const params: unknown[] = []
@@ -159,6 +199,7 @@ export async function listSubscribers(opts: {
   const join = opts.listId ? 'JOIN subscriber_lists sl ON sl.subscriber_id = s.id' : ''
   if (opts.listId) push('sl.list_id = ?', opts.listId)
   if (opts.status) push('s.status = ?', opts.status)
+  addEmailClientScopeCondition(conds, params, 's.client_id', opts.clientIds)
   if (opts.q) {
     // Two distinct placeholders (email + name). Use params.push()'s returned
     // length as each index — never reuse a $N, per the SQL-indexing gotcha.

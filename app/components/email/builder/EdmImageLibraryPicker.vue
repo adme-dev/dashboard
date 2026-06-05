@@ -15,7 +15,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
-  pick: [asset: EdmImageAsset]
+  'pick': [asset: EdmImageAsset]
 }>()
 
 const toast = useToast()
@@ -103,7 +103,7 @@ function onFileSelect(event: Event) {
               Image Library
             </p>
             <p class="text-xs text-muted">
-              Agency-wide assets · {{ maxSizeLabel }} max
+              Email-ready assets · {{ maxSizeLabel }} max
             </p>
           </div>
           <UButton
