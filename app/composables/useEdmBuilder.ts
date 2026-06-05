@@ -337,7 +337,7 @@ function createStore() {
   // ========================================
 
   function getDefaultBlockStyle(blockType: string): NonNullable<EdmFlyhubBlock['data']['style']> {
-    if (blockType === 'Button') {
+    if (blockType === 'Button' || blockType === 'ColumnsContainer') {
       return {
         padding: { top: 0, bottom: 0, left: 0, right: 0 }
       }

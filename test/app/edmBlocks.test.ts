@@ -33,6 +33,7 @@ describe('getDefaultBlockData', () => {
   it('gives a ColumnsContainer a 3-slot columns array + layout props, plus childrenIds', () => {
     const d = getDefaultBlockData('ColumnsContainer')
     expect(d.childrenIds).toEqual([])
+    expect(d.style).toEqual({ padding: { top: 0, bottom: 0, left: 0, right: 0 } })
     expect(d.props).toEqual({
       columnsCount: 2,
       columnsGap: 16,

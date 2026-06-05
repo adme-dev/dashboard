@@ -55,7 +55,11 @@ function getDefaultProps(type: string): Record<string, unknown> {
 // Default `data` payload for a newly-added block, ready to pass to store.addBlock.
 export function getDefaultBlockData(type: string): Record<string, unknown> {
   const data: Record<string, unknown> = {
-    style: { padding: { top: 16, bottom: 16, left: 24, right: 24 } },
+    style: {
+      padding: type === 'ColumnsContainer'
+        ? { top: 0, bottom: 0, left: 0, right: 0 }
+        : { top: 16, bottom: 16, left: 24, right: 24 }
+    },
     props: getDefaultProps(type)
   }
   if (type === 'Container' || type === 'ColumnsContainer') {

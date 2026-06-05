@@ -46,6 +46,18 @@ describe('useEdmBuilder store', () => {
     })
   })
 
+  it('starts newly inserted columns containers with zero outer spacing', () => {
+    const s = useEdmBuilder()
+    const columnsId = s.addBlock('ColumnsContainer', 'root')
+
+    expect(s.document.value[columnsId].data.style?.padding).toEqual({
+      top: 0,
+      bottom: 0,
+      left: 0,
+      right: 0
+    })
+  })
+
   it('starts detached column-ready blocks with zero bottom spacing', () => {
     const s = useEdmBuilder()
 
