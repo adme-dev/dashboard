@@ -9,6 +9,7 @@ const mockIsCampaignSendingEnabled = vi.fn()
 const mockGetResendClient = vi.fn()
 const mockIsEmailConfigured = vi.fn()
 const mockEmailsSend = vi.fn()
+const mockResolveCampaignSenderDomains = vi.fn()
 
 const testGlobal = globalThis as unknown as {
   defineEventHandler: <T>(fn: T) => T
@@ -44,6 +45,10 @@ vi.mock('~~/server/utils/email', () => ({
   isEmailConfigured: (...args: unknown[]) => mockIsEmailConfigured(...args)
 }))
 
+vi.mock('~~/server/utils/email-marketing/senderIdentity', () => ({
+  resolveCampaignSenderDomains: (...args: unknown[]) => mockResolveCampaignSenderDomains(...args)
+}))
+
 vi.mock('~~/server/utils/appUrl', () => ({
   getAppUrl: () => 'https://app.test'
 }))
@@ -64,6 +69,7 @@ describe('campaign test-send preflight', () => {
     mockGetResendClient.mockReturnValue({ emails: { send: mockEmailsSend } })
     mockEmailsSend.mockResolvedValue({ data: { id: 'msg-1' }, error: null })
     mockPrepareCampaignHtmlForSend.mockImplementation(async campaign => campaign)
+    mockResolveCampaignSenderDomains.mockReturnValue(['example.com'])
   })
 
   it('blocks campaign test sends when preflight has blocking checks', async () => {

@@ -10,6 +10,7 @@ import { buildCampaignPreflight, canEnterSending } from '~~/server/utils/email-m
 import { isCampaignSendingEnabled, runCampaignSend } from '~~/server/utils/email-marketing/campaignSender'
 import { isEmailConfigured } from '~~/server/utils/email'
 import { getAppUrl } from '~~/server/utils/appUrl'
+import { resolveCampaignSenderDomains } from '~~/server/utils/email-marketing/senderIdentity'
 
 function emailSendUserId(user: unknown): string {
   const value = user as { id?: string, email?: string }
@@ -45,7 +46,8 @@ export default defineEventHandler(async (event) => {
     campaign,
     toSend: campaign.to_send,
     sendingConfigured,
-    senderDomainAuthenticated: sendingConfigured
+    senderDomainAuthenticated: sendingConfigured,
+    allowedSenderDomains: resolveCampaignSenderDomains(event)
   })
   if (preflight.blocked) {
     throw createError({

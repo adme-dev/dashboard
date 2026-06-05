@@ -148,4 +148,22 @@ describe('buildCampaignPreflight', () => {
       expect.objectContaining({ status: 'blocked' })
     )
   })
+
+  it('blocks auth readiness when the From domain is not in the allowed sender domains', () => {
+    const result = buildCampaignPreflight({
+      campaign: cleanCampaign,
+      toSend: 42,
+      sendingConfigured: true,
+      senderDomainAuthenticated: true,
+      allowedSenderDomains: ['adme.net.au']
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.checks.find(check => check.code === 'auth_readiness')).toEqual(
+      expect.objectContaining({
+        status: 'blocked',
+        value: false
+      })
+    )
+  })
 })

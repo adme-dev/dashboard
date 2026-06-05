@@ -388,6 +388,7 @@ export async function scheduleCampaign(
   opts: {
     sendingConfigured: boolean
     senderDomainAuthenticated: boolean
+    allowedSenderDomains?: string[]
     checkedAt?: string
   } & CampaignHtmlPrepareOptions
 ): Promise<Campaign> {
@@ -407,6 +408,7 @@ export async function scheduleCampaign(
     toSend,
     sendingConfigured: opts.sendingConfigured,
     senderDomainAuthenticated: opts.senderDomainAuthenticated,
+    allowedSenderDomains: opts.allowedSenderDomains,
     checkedAt
   })
   const listIds = await getCampaignListIds(campaignId)

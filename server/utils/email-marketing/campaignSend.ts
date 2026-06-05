@@ -62,14 +62,14 @@ export interface SendGateResult {
 }
 
 export type CampaignPreflightStatus = 'pass' | 'warning' | 'blocked'
-export type CampaignPreflightCode =
-  | 'unsubscribe'
-  | 'sender'
-  | 'auth_readiness'
-  | 'media_urls'
-  | 'html_size'
-  | 'footer_identity'
-  | 'recipients'
+export type CampaignPreflightCode
+  = | 'unsubscribe'
+    | 'sender'
+    | 'auth_readiness'
+    | 'media_urls'
+    | 'html_size'
+    | 'footer_identity'
+    | 'recipients'
 
 export interface CampaignPreflightCheck {
   code: CampaignPreflightCode
@@ -108,6 +108,26 @@ const RELATIVE_MEDIA_RE = /\b(?:src|background)\s*=\s*["'](?!https?:\/\/|cid:|da
 const NON_HTTPS_MEDIA_RE = /\b(?:src|background)\s*=\s*["']http:\/\/[^"']+["']|url\(\s*['"]?http:\/\/[^'")]+['"]?\s*\)/i
 const FOOTER_IDENTITY_RE = /\b(?:street|st\b|road|rd\b|avenue|ave\b|melbourne|sydney|brisbane|perth|adelaide|australia|vic|nsw|qld|wa|sa|tas|act|nt)\b/i
 
+export function senderDomainFromEmail(value: string | null | undefined): string | null {
+  const email = value?.trim().toLowerCase() || ''
+  const at = email.lastIndexOf('@')
+  if (at < 1 || at === email.length - 1) return null
+  return email.slice(at + 1)
+}
+
+export function isSenderDomainAllowed(
+  fromEmail: string | null | undefined,
+  allowedSenderDomains?: readonly string[]
+): boolean {
+  if (allowedSenderDomains === undefined) return true
+  const domain = senderDomainFromEmail(fromEmail)
+  if (!domain) return false
+  return allowedSenderDomains
+    .map(value => value.trim().toLowerCase())
+    .filter(Boolean)
+    .some(allowed => domain === allowed || domain.endsWith(`.${allowed}`))
+}
+
 function preflightCheck(
   code: CampaignPreflightCode,
   status: CampaignPreflightStatus,
@@ -126,6 +146,7 @@ export function buildCampaignPreflight(input: {
   toSend: number
   sendingConfigured: boolean
   senderDomainAuthenticated: boolean
+  allowedSenderDomains?: string[]
   checkedAt?: string
   maxHtmlBytes?: number
 }): CampaignPreflightResult {
@@ -134,6 +155,7 @@ export function buildCampaignPreflight(input: {
   const maxHtmlBytes = input.maxHtmlBytes ?? DEFAULT_MAX_HTML_BYTES
   const fromEmail = input.campaign.from_email?.trim() || ''
   const senderOk = fromEmail && EMAIL_RE.test(fromEmail) && Boolean(input.campaign.subject?.trim())
+  const senderDomainReady = input.senderDomainAuthenticated && isSenderDomainAllowed(fromEmail, input.allowedSenderDomains)
   const checks: CampaignPreflightCheck[] = []
 
   checks.push(preflightCheck(
@@ -155,11 +177,11 @@ export function buildCampaignPreflight(input: {
 
   checks.push(preflightCheck(
     'auth_readiness',
-    input.sendingConfigured && input.senderDomainAuthenticated ? 'pass' : 'blocked',
-    input.sendingConfigured && input.senderDomainAuthenticated
+    input.sendingConfigured && senderDomainReady ? 'pass' : 'blocked',
+    input.sendingConfigured && senderDomainReady
       ? 'Sending transport and sender domain readiness checks passed.'
-      : 'Sending transport or sender domain readiness is not configured.',
-    input.senderDomainAuthenticated
+      : 'Sending transport is not configured or the From domain is not allowed.',
+    senderDomainReady
   ))
 
   const hasUnsafeMedia = RELATIVE_MEDIA_RE.test(html) || NON_HTTPS_MEDIA_RE.test(html)
@@ -348,7 +370,7 @@ export function parseRetryAfter(
 // depend on the Resend message id, which may be null on a partial batch result.
 export function buildCampaignBridgeInput(
   campaign: { id: string, client_id: string | null, subject: string | null },
-  recipient: { email: string, subscriber_id: string },
+  recipient: { email: string, subscriber_id: string }
 ): BridgeCommunicationInput | null {
   if (!campaign.client_id || !recipient.email) return null
   return {
@@ -359,6 +381,6 @@ export function buildCampaignBridgeInput(
     source: 'email_bridge',
     externalId: `${campaign.id}:${recipient.subscriber_id}`,
     subject: campaign.subject,
-    body: null,
+    body: null
   }
 }

@@ -9,6 +9,7 @@ import { buildBatchEmail, buildCampaignPreflight } from '~~/server/utils/email-m
 import { isCampaignSendingEnabled } from '~~/server/utils/email-marketing/campaignSender'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { getResendClient, isEmailConfigured } from '~~/server/utils/email'
+import { resolveCampaignSenderDomains } from '~~/server/utils/email-marketing/senderIdentity'
 
 const Body = z.object({ to: z.string().email().optional() })
 
@@ -43,7 +44,8 @@ export default defineEventHandler(async (event) => {
     campaign: preparedCampaign,
     toSend: 1,
     sendingConfigured,
-    senderDomainAuthenticated: sendingConfigured
+    senderDomainAuthenticated: sendingConfigured,
+    allowedSenderDomains: resolveCampaignSenderDomains(event)
   })
   if (preflight.blocked) {
     throw createError({

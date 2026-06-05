@@ -6,6 +6,7 @@ import { getCampaign, scheduleCampaign, updateCampaign } from '~~/server/utils/e
 import { isValidSegment } from '~~/server/utils/email-marketing/segment'
 import { isEmailConfigured } from '~~/server/utils/email'
 import { getAppUrl } from '~~/server/utils/appUrl'
+import { resolveCampaignSenderDomains } from '~~/server/utils/email-marketing/senderIdentity'
 
 const Body = z.object({
   name: z.string().min(1).max(200).optional(),
@@ -49,6 +50,7 @@ export default defineEventHandler(async (event) => {
     const campaign = await scheduleCampaign(id, scheduledAt, {
       sendingConfigured,
       senderDomainAuthenticated: sendingConfigured,
+      allowedSenderDomains: resolveCampaignSenderDomains(event),
       appUrl: getAppUrl(event),
       userId: emailSendUserId(user)
     })

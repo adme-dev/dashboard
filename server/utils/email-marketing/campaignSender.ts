@@ -12,10 +12,11 @@
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { getResendClient, isEmailConfigured } from '~~/server/utils/email'
-import { RESEND_BATCH_LIMIT, buildTrackedBatchEmail, isRateLimitError, parseRetryAfter, canEnterSending, buildCampaignBridgeInput } from './campaignSend'
+import { RESEND_BATCH_LIMIT, buildTrackedBatchEmail, isRateLimitError, parseRetryAfter, canEnterSending, buildCampaignBridgeInput, buildCampaignPreflight } from './campaignSend'
 import { bridgeCommunication } from '~~/server/utils/crm/commsDb'
 import { signEmailToken, emailLinkSecret } from './links'
 import { getCampaign, materializeRecipients, prepareCampaignHtmlForSend, setCampaignStatus, type Campaign } from './campaigns'
+import { resolveCampaignSenderDomains } from './senderIdentity'
 
 export interface RecipientRow {
   id: string
@@ -258,6 +259,18 @@ export async function dispatchCampaigns(opts: { maxChunksPerCampaign?: number } 
       await materializeRecipients(c.id)
       const full = await getCampaign(c.id)
       if (!full) continue
+      const sendingConfigured = isEmailConfigured()
+      const preflight = buildCampaignPreflight({
+        campaign: full,
+        toSend: full.to_send,
+        sendingConfigured,
+        senderDomainAuthenticated: sendingConfigured,
+        allowedSenderDomains: resolveCampaignSenderDomains()
+      })
+      if (preflight.blocked) {
+        console.warn(`[campaign-dispatch] scheduled campaign ${c.id} preflight blocked`)
+        continue
+      }
       const gate = canEnterSending({ status: full.status, toSend: full.to_send, bodyHtml: full.body_html })
       if (!gate.ok) {
         console.warn(`[campaign-dispatch] scheduled campaign ${c.id} blocked: ${gate.reason}`)
