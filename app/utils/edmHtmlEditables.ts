@@ -2,6 +2,13 @@ import { extractPlainText, sanitizeInlineHtml } from './edmInlineText'
 
 export type EdmHtmlEditableKind = 'text' | 'link' | 'image'
 
+export interface EdmHtmlEditablePadding {
+  top?: number
+  bottom?: number
+  left?: number
+  right?: number
+}
+
 export interface EdmHtmlEditableSelection {
   blockId?: string
   id: string
@@ -20,13 +27,14 @@ export interface EdmHtmlEditableSelection {
     fontSize?: string
     fontWeight?: string
     textAlign?: string
+    padding?: EdmHtmlEditablePadding
   }
 }
 
 export type EdmHtmlEditableUpdate =
-  | { kind: 'text', text?: string, html?: string, color?: string, fontFamily?: string, fontSize?: string, fontWeight?: string, textAlign?: string }
-  | { kind: 'link', text?: string, html?: string, href?: string, color?: string, fontFamily?: string, fontSize?: string, fontWeight?: string, textAlign?: string }
-  | { kind: 'image', src?: string, alt?: string, linkHref?: string }
+  | { kind: 'text', text?: string, html?: string, color?: string, fontFamily?: string, fontSize?: string, fontWeight?: string, textAlign?: string, padding?: EdmHtmlEditablePadding }
+  | { kind: 'link', text?: string, html?: string, href?: string, color?: string, fontFamily?: string, fontSize?: string, fontWeight?: string, textAlign?: string, padding?: EdmHtmlEditablePadding }
+  | { kind: 'image', src?: string, alt?: string, linkHref?: string, padding?: EdmHtmlEditablePadding }
 
 const SKIP_TAGS = new Set([
   'STYLE', 'SCRIPT', 'NOSCRIPT', 'TEMPLATE', 'TEXTAREA', 'TITLE',
@@ -112,6 +120,36 @@ function getElementStyle(el: Element): EdmHtmlEditableSelection['style'] {
   }
 }
 
+function cssPixelNumber(value: string | null | undefined): number | undefined {
+  if (!value) return undefined
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? Math.round(parsed) : undefined
+}
+
+function readPadding(el: Element): EdmHtmlEditablePadding {
+  const style = (el as HTMLElement).style
+  return {
+    top: cssPixelNumber(style.paddingTop),
+    bottom: cssPixelNumber(style.paddingBottom),
+    left: cssPixelNumber(style.paddingLeft),
+    right: cssPixelNumber(style.paddingRight)
+  }
+}
+
+function paddingReadTargets(target: Element): Element[] {
+  if (target.tagName !== 'TR') return [target]
+  const cells = Array.from(target.children).filter(child => child.tagName === 'TD' || child.tagName === 'TH')
+  return cells.length > 0 ? cells : [target]
+}
+
+function getEditableItemPadding(el: Element, root: Element): EdmHtmlEditablePadding | undefined {
+  const target = editableItemTargetForElement(el, root)
+  const [readTarget] = paddingReadTargets(target)
+  if (!readTarget) return undefined
+  const padding = readPadding(readTarget)
+  return Object.values(padding).some(value => value !== undefined) ? padding : undefined
+}
+
 function cssUrlValue(value: string | null | undefined): string {
   const match = /url\(\s*(['"]?)(.*?)\1\s*\)/i.exec(value || '')
   return match?.[2] || ''
@@ -153,7 +191,10 @@ function selectionFromElement(
       src: imageSrc(el),
       alt: el.getAttribute('alt') || '',
       imageMode: mode,
-      linkHref: closestLink?.getAttribute('href') || ''
+      linkHref: closestLink?.getAttribute('href') || '',
+      style: {
+        padding: getEditableItemPadding(el, root)
+      }
     }
   }
   if (kind === 'link') {
@@ -165,7 +206,10 @@ function selectionFromElement(
       text: normaliseText(link.textContent),
       html: link.innerHTML,
       href: link.getAttribute('href') || '',
-      style: getElementStyle(link)
+      style: {
+        ...getElementStyle(link),
+        padding: getEditableItemPadding(link, root)
+      }
     }
   }
   return {
@@ -174,7 +218,10 @@ function selectionFromElement(
     label: 'Text',
     text: normaliseText(el.textContent),
     html: (el as HTMLElement).innerHTML,
-    style: getElementStyle(el)
+    style: {
+      ...getElementStyle(el),
+      padding: getEditableItemPadding(el, root)
+    }
   }
 }
 
@@ -286,6 +333,28 @@ function updateImageSrc(el: Element, src: string) {
     el.setAttribute('background', src)
   }
   ;(el as HTMLElement).style.backgroundImage = cssUrl(src)
+}
+
+function safePaddingPx(value: number | undefined): string | null {
+  if (value === undefined) return null
+  if (!Number.isFinite(value)) return null
+  return `${Math.max(0, Math.min(240, Math.round(value)))}px`
+}
+
+function applyItemPadding(el: Element, root: Element, padding: EdmHtmlEditablePadding | undefined) {
+  if (!padding) return
+  const target = editableItemTargetForElement(el, root)
+  for (const padTarget of paddingReadTargets(target)) {
+    const style = (padTarget as HTMLElement).style
+    const top = safePaddingPx(padding.top)
+    const bottom = safePaddingPx(padding.bottom)
+    const left = safePaddingPx(padding.left)
+    const right = safePaddingPx(padding.right)
+    if (top !== null) style.paddingTop = top
+    if (bottom !== null) style.paddingBottom = bottom
+    if (left !== null) style.paddingLeft = left
+    if (right !== null) style.paddingRight = right
+  }
 }
 
 function stripEditorAttributes(root: Element) {
@@ -414,6 +483,7 @@ export function updateHtmlEditable(
     if (update.fontSize !== undefined) (el as HTMLElement).style.fontSize = update.fontSize
     if (update.fontWeight !== undefined) (el as HTMLElement).style.fontWeight = update.fontWeight
     if (update.textAlign !== undefined) (el as HTMLElement).style.textAlign = update.textAlign
+    applyItemPadding(el, root, update.padding)
   }
 
   if (update.kind === 'link') {
@@ -435,6 +505,7 @@ export function updateHtmlEditable(
     if (update.fontSize !== undefined) link.style.fontSize = update.fontSize
     if (update.fontWeight !== undefined) link.style.fontWeight = update.fontWeight
     if (update.textAlign !== undefined) link.style.textAlign = update.textAlign
+    applyItemPadding(link, root, update.padding)
   }
 
   if (update.kind === 'image') {
@@ -462,6 +533,7 @@ export function updateHtmlEditable(
         link.replaceWith(el)
       }
     }
+    applyItemPadding(el, root, update.padding)
 
     const next = serialise(root)
     return replacedBackgroundSrc

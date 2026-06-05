@@ -106,6 +106,7 @@ describe('BlockSettingsPanel — Phase 3a grouped style sections', () => {
 
     expect(html).toContain('Imported text')
     expect(html).toContain('Text color')
+    expect(html).toContain('Item padding')
     expect(html).not.toContain('HTML content')
   })
 

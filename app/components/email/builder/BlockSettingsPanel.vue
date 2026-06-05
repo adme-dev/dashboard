@@ -76,6 +76,12 @@ const COLUMN_ALIGNMENTS = [
 ]
 
 const TEXT_ALIGNMENTS = ['left', 'center', 'right']
+const HTML_ITEM_PADDING_CONTROLS = [
+  { side: 'top', icon: 'i-lucide-arrow-up-from-line' },
+  { side: 'bottom', icon: 'i-lucide-arrow-down-from-line' },
+  { side: 'left', icon: 'i-lucide-arrow-left-from-line' },
+  { side: 'right', icon: 'i-lucide-arrow-right-from-line' }
+] as const
 
 const sectionSettings = computed(() => getEdmSectionSettings(props.block.type))
 
@@ -164,6 +170,23 @@ function updateVisibility(key: 'hideOnMobile' | 'hideOnDesktop', value: boolean)
 
 function updateSelectedHtmlEditable(update: EdmHtmlEditableUpdate) {
   emit('update', { htmlEditable: update })
+}
+
+function htmlEditablePadding(side: 'top' | 'bottom' | 'left' | 'right'): number {
+  return selectedHtmlEditable.value?.style?.padding?.[side] ?? 0
+}
+
+function updateSelectedHtmlEditablePadding(side: 'top' | 'bottom' | 'left' | 'right', value: number | string) {
+  const selection = selectedHtmlEditable.value
+  if (!selection) return
+  const numeric = typeof value === 'string' ? Number.parseInt(value, 10) : value
+  updateSelectedHtmlEditable({
+    kind: selection.kind,
+    padding: {
+      ...(selection.style?.padding || {}),
+      [side]: Number.isFinite(numeric) ? numeric : 0
+    }
+  } as EdmHtmlEditableUpdate)
 }
 
 function updatePadding(side: 'top' | 'bottom' | 'left' | 'right', value: number) {
@@ -686,6 +709,29 @@ function updateColumnWidth(index: number, value: string | number) {
           />
         </UFormField>
       </template>
+
+      <UFormField label="Item padding">
+        <div class="space-y-3">
+          <div
+            v-for="pad in HTML_ITEM_PADDING_CONTROLS"
+            :key="pad.side"
+            class="flex items-center gap-3"
+          >
+            <UIcon :name="pad.icon" class="h-4 w-4 text-muted shrink-0" />
+            <USlider
+              class="flex-1"
+              :model-value="htmlEditablePadding(pad.side)"
+              :min="0"
+              :max="96"
+              :step="2"
+              @update:model-value="updateSelectedHtmlEditablePadding(pad.side, $event)"
+            />
+            <span class="text-xs text-muted w-10 text-right">
+              {{ htmlEditablePadding(pad.side) }}px
+            </span>
+          </div>
+        </div>
+      </UFormField>
     </template>
 
     <!-- Html -->

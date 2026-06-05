@@ -176,4 +176,29 @@ describe('edmHtmlEditables', () => {
     expect(deleted.contents).not.toContain('data-edm-html-editable')
     expect(deleted.selection).toBeNull()
   })
+
+  it('updates item padding for the nearest repeated imported HTML item', () => {
+    const annotated = annotateHtmlEditables(repeatedOfferHtml, { editable: true })
+    const doc = document.createElement('div')
+    doc.innerHTML = annotated
+    const text = Array.from(doc.querySelectorAll('[data-edm-html-editable-kind="text"]'))
+      .find(el => el.textContent?.includes('20% off')) as HTMLElement
+
+    const updated = updateHtmlEditable(repeatedOfferHtml, text.dataset.edmHtmlEditableId || '', {
+      kind: 'text',
+      padding: { top: 12, bottom: 16, left: 20, right: 24 }
+    })
+
+    const updatedDoc = document.createElement('div')
+    updatedDoc.innerHTML = updated
+    const firstRowCells = Array.from(updatedDoc.querySelectorAll('tr:first-child td')) as HTMLElement[]
+    expect(firstRowCells[0]?.style.paddingTop).toBe('12px')
+    expect(firstRowCells[0]?.style.paddingBottom).toBe('16px')
+    expect(firstRowCells[0]?.style.paddingLeft).toBe('20px')
+    expect(firstRowCells[0]?.style.paddingRight).toBe('24px')
+    expect(updated).not.toContain('data-edm-html-editable')
+
+    const selected = getHtmlEditableSelection(updated, text.dataset.edmHtmlEditableId || '')
+    expect(selected?.style?.padding).toEqual({ top: 12, bottom: 16, left: 20, right: 24 })
+  })
 })
