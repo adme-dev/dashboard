@@ -6,14 +6,14 @@ import {
   validateModuleFragment,
   PreviewToneSchema
 } from '~~/server/utils/email-marketing/customModules'
+import { resolveEmailWriteClientId } from '~~/server/utils/email-marketing/access'
 
-// Phase 2 modules are agency-wide (no per-client scoping yet), mirroring
-// edm_templates' agency-wide default. The client_id column stays for future use.
 const Body = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(500).optional().nullable(),
   category: z.string().min(1).max(80).optional().nullable(),
   preview_tone: PreviewToneSchema.optional().nullable(),
+  client_id: z.string().uuid().optional().nullable(),
   blocks: z.unknown()
 })
 
@@ -35,12 +35,14 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const clientId = await resolveEmailWriteClientId(event, user, parsed.data.client_id ?? null)
   const module = await createCustomModule({
     name: parsed.data.name,
     description: parsed.data.description ?? null,
     category: parsed.data.category ?? 'custom',
     preview_tone: parsed.data.preview_tone ?? 'light',
     blocks: fragment,
+    client_id: clientId,
     created_by: user.id
   })
   return { module }

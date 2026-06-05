@@ -20,6 +20,12 @@ const mockCreateTemplate = vi.fn()
 const mockGetTemplate = vi.fn()
 const mockUpdateTemplate = vi.fn()
 const mockDeleteTemplate = vi.fn()
+const mockListCustomModules = vi.fn()
+const mockCreateCustomModule = vi.fn()
+const mockGetCustomModule = vi.fn()
+const mockUpdateCustomModule = vi.fn()
+const mockDeleteCustomModule = vi.fn()
+const mockValidateModuleFragment = vi.fn()
 
 const CLIENT_1 = '11111111-1111-4111-8111-111111111111'
 const CLIENT_2 = '22222222-2222-4222-8222-222222222222'
@@ -92,6 +98,19 @@ vi.mock('~~/server/utils/email-marketing/templates', () => ({
   deleteTemplate: (...args: unknown[]) => mockDeleteTemplate(...args)
 }))
 
+vi.mock('~~/server/utils/email-marketing/customModules', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('~~/server/utils/email-marketing/customModules')>()
+  return {
+    ...actual,
+    listCustomModules: (...args: unknown[]) => mockListCustomModules(...args),
+    createCustomModule: (...args: unknown[]) => mockCreateCustomModule(...args),
+    getCustomModule: (...args: unknown[]) => mockGetCustomModule(...args),
+    updateCustomModule: (...args: unknown[]) => mockUpdateCustomModule(...args),
+    deleteCustomModule: (...args: unknown[]) => mockDeleteCustomModule(...args),
+    validateModuleFragment: (...args: unknown[]) => mockValidateModuleFragment(...args)
+  }
+})
+
 describe('email client-scoped route policy', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -115,6 +134,12 @@ describe('email client-scoped route policy', () => {
     mockGetTemplate.mockResolvedValue({ id: 'tpl-1', client_id: CLIENT_1 })
     mockUpdateTemplate.mockResolvedValue({ id: 'tpl-1', client_id: CLIENT_1 })
     mockDeleteTemplate.mockResolvedValue(undefined)
+    mockListCustomModules.mockResolvedValue([])
+    mockCreateCustomModule.mockResolvedValue({ id: 'mod-1', client_id: CLIENT_1 })
+    mockGetCustomModule.mockResolvedValue({ id: 'mod-1', client_id: CLIENT_1 })
+    mockUpdateCustomModule.mockResolvedValue({ id: 'mod-1', client_id: CLIENT_1 })
+    mockDeleteCustomModule.mockResolvedValue(undefined)
+    mockValidateModuleFragment.mockImplementation(input => input)
   })
 
   it('passes assigned client ids into list reads for scoped users', async () => {
@@ -232,5 +257,44 @@ describe('email client-scoped route policy', () => {
       statusMessage: 'email_client_forbidden'
     })
     expect(mockUpdateTemplate).not.toHaveBeenCalled()
+  })
+
+  it('passes assigned client ids into custom module reads for scoped users', async () => {
+    const handler = (await import('~~/server/api/agency/email/modules/index.get')).default
+
+    await handler({} as never)
+
+    expect(mockListCustomModules).toHaveBeenCalledWith([CLIENT_1])
+  })
+
+  it('defaults new scoped custom modules to the actor assigned client', async () => {
+    const handler = (await import('~~/server/api/agency/email/modules/index.post')).default
+    const blocks = {
+      blocks: { block_1: { type: 'Text', data: { props: { text: 'Saved' } } } },
+      rootChildrenIds: ['block_1']
+    }
+    mockReadBody.mockResolvedValueOnce({ name: 'Client module', blocks })
+
+    await handler({} as never)
+
+    expect(mockCreateCustomModule).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Client module',
+      blocks,
+      client_id: CLIENT_1,
+      created_by: 'user-1'
+    }))
+  })
+
+  it('blocks custom module updates across client scope', async () => {
+    const handler = (await import('~~/server/api/agency/email/modules/[id].patch')).default
+    mockGetRouterParam.mockReturnValueOnce('mod-2')
+    mockReadBody.mockResolvedValueOnce({ name: 'Other client module' })
+    mockGetCustomModule.mockResolvedValueOnce({ id: 'mod-2', client_id: CLIENT_2 })
+
+    await expect(handler({} as never)).rejects.toMatchObject({
+      statusCode: 403,
+      statusMessage: 'email_client_forbidden'
+    })
+    expect(mockUpdateCustomModule).not.toHaveBeenCalled()
   })
 })

@@ -5,11 +5,12 @@
 
 import { z } from 'zod'
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
+import { addEmailClientScopeCondition, type EmailClientScope } from './access'
 
 export type EdmModulePreviewTone = 'light' | 'dark' | 'accent'
 
 export interface EdmModuleFragment {
-  blocks: Record<string, { type: string; data: Record<string, unknown> }>
+  blocks: Record<string, { type: string, data: Record<string, unknown> }>
   rootChildrenIds: string[]
 }
 
@@ -96,8 +97,12 @@ export function validateModuleFragment(input: unknown): EdmModuleFragment {
 }
 
 // ── DB layer ─────────────────────────────────────────────────────────────────
-export async function listCustomModules(): Promise<EdmCustomModule[]> {
-  return queryRows<EdmCustomModule>('SELECT * FROM edm_custom_modules ORDER BY updated_at DESC')
+export async function listCustomModules(clientIds?: EmailClientScope): Promise<EdmCustomModule[]> {
+  const conditions: string[] = []
+  const params: unknown[] = []
+  addEmailClientScopeCondition(conditions, params, 'client_id', clientIds)
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+  return queryRows<EdmCustomModule>(`SELECT * FROM edm_custom_modules ${where} ORDER BY updated_at DESC`, params)
 }
 
 export async function getCustomModule(id: string): Promise<EdmCustomModule | null> {

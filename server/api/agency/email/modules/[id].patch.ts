@@ -1,7 +1,8 @@
 // server/api/agency/email/modules/[id].patch.ts
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
-import { updateCustomModule, PreviewToneSchema } from '~~/server/utils/email-marketing/customModules'
+import { getCustomModule, updateCustomModule, PreviewToneSchema } from '~~/server/utils/email-marketing/customModules'
+import { assertEmailClientAccess } from '~~/server/utils/email-marketing/access'
 
 const Body = z.object({
   name: z.string().min(1).max(200).optional(),
@@ -11,7 +12,7 @@ const Body = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  await requireWriteAccess(event)
+  const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'missing_id' })
 
@@ -20,6 +21,9 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'invalid_body', data: parsed.error.issues })
   }
 
+  const existing = await getCustomModule(id)
+  if (!existing) throw createError({ statusCode: 404, statusMessage: 'not_found' })
+  await assertEmailClientAccess(event, user, existing.client_id)
   const module = await updateCustomModule(id, parsed.data)
   if (!module) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   return { module }
