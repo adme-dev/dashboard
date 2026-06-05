@@ -78,50 +78,55 @@ function openStarter(starterId: string) {
 }
 
 // ── Starter gallery: filters + search ────────────────────────────────────────
+const industryOptions = computed(() =>
+  Array.from(new Set(EDM_STARTER_TEMPLATES.map(t => t.industry || 'General')))
+)
 const usageOptions = computed(() =>
   Array.from(new Set(EDM_STARTER_TEMPLATES.map(t => t.usage)))
 )
 const styleOptions = computed(() =>
   Array.from(new Set(EDM_STARTER_TEMPLATES.map(t => t.style)))
 )
+const seasonOptions = ['Spring', 'Summer', 'Autumn', 'Winter']
 
-const selectedUsages = ref<string[]>([])
-const selectedStyles = ref<string[]>([])
+const selectedIndustry = ref('')
+const selectedUsage = ref('')
+const selectedStyle = ref('')
+const selectedSeason = ref('')
 const starterSearch = ref('')
 
-function toggleUsage(usage: string) {
-  selectedUsages.value = selectedUsages.value.includes(usage)
-    ? selectedUsages.value.filter(u => u !== usage)
-    : [...selectedUsages.value, usage]
-}
-function toggleStyle(style: string) {
-  selectedStyles.value = selectedStyles.value.includes(style)
-    ? selectedStyles.value.filter(s => s !== style)
-    : [...selectedStyles.value, style]
-}
 function resetFilters() {
-  selectedUsages.value = []
-  selectedStyles.value = []
+  selectedIndustry.value = ''
+  selectedUsage.value = ''
+  selectedStyle.value = ''
+  selectedSeason.value = ''
   starterSearch.value = ''
 }
 
 const hasActiveFilters = computed(() =>
-  selectedUsages.value.length > 0
-  || selectedStyles.value.length > 0
+  selectedIndustry.value.length > 0
+  || selectedUsage.value.length > 0
+  || selectedStyle.value.length > 0
+  || selectedSeason.value.length > 0
   || starterSearch.value.trim().length > 0
 )
 
 const filteredStarters = computed(() => {
   const q = starterSearch.value.trim().toLowerCase()
   return EDM_STARTER_TEMPLATES.filter((t) => {
-    const usageOk = selectedUsages.value.length === 0 || selectedUsages.value.includes(t.usage)
-    const styleOk = selectedStyles.value.length === 0 || selectedStyles.value.includes(t.style)
+    const industryOk = !selectedIndustry.value || (t.industry || 'General') === selectedIndustry.value
+    const usageOk = !selectedUsage.value || t.usage === selectedUsage.value
+    const styleOk = !selectedStyle.value || t.style === selectedStyle.value
     const searchOk = !q
       || t.name.toLowerCase().includes(q)
       || t.description.toLowerCase().includes(q)
-    return usageOk && styleOk && searchOk
+    return industryOk && usageOk && styleOk && searchOk
   })
 })
+
+function starterPreviewImageUrl(starterId: string): string {
+  return `/email/template-previews/${starterId}.jpeg`
+}
 
 // ── Rename ──────────────────────────────────────────────────────────────────
 const showRename = ref(false)
@@ -218,23 +223,59 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
 </script>
 
 <template>
-  <div class="space-y-8">
-    <div class="flex justify-between items-center">
-      <div>
-        <p class="text-sm font-medium">
-          Templates
-        </p>
-        <p class="text-sm text-muted">
-          Start blank, use a starter layout, or reopen a saved template.
+  <div class="email-template-gallery-shell min-h-[calc(100vh-13rem)] overflow-hidden rounded-xl border border-default bg-default lg:flex">
+    <aside class="email-template-gallery-sidebar shrink-0 border-b border-default bg-elevated/20 lg:w-64 lg:border-b-0 lg:border-r">
+      <div class="flex h-16 items-center border-b border-default px-5">
+        <p class="text-sm font-semibold">
+          Team
         </p>
       </div>
-      <UButton icon="i-lucide-plus" label="Blank template" @click="openComposer()" />
-    </div>
+      <div class="border-b border-default p-4">
+        <UInput
+          v-model="starterSearch"
+          icon="i-lucide-search"
+          placeholder="Search"
+          class="w-full"
+        />
+      </div>
+      <nav class="space-y-1 p-3 text-sm">
+        <button type="button" class="email-template-nav-item">
+          <UIcon name="i-lucide-clock-3" class="size-4" />
+          <span>Recently Viewed</span>
+        </button>
+        <button type="button" class="email-template-nav-item">
+          <UIcon name="i-lucide-file" class="size-4" />
+          <span>Drafts</span>
+        </button>
+        <button type="button" class="email-template-nav-item is-active">
+          <UIcon name="i-lucide-gallery-horizontal-end" class="size-4" />
+          <span>Templates</span>
+        </button>
+        <button type="button" class="email-template-nav-item">
+          <UIcon name="i-lucide-folder-plus" class="size-4" />
+          <span>New Folder...</span>
+        </button>
+        <div class="my-3 border-t border-default" />
+        <button type="button" class="email-template-nav-item">
+          <UIcon name="i-lucide-user-plus" class="size-4" />
+          <span>Invite a Teammate</span>
+        </button>
+        <button type="button" class="email-template-nav-item">
+          <UIcon name="i-lucide-images" class="size-4" />
+          <span>Image Library</span>
+          <span class="rounded bg-success px-1.5 py-0.5 text-[10px] font-bold text-white">NEW</span>
+        </button>
+        <button type="button" class="email-template-nav-item">
+          <UIcon name="i-lucide-message-circle" class="size-4" />
+          <span>Chat with Us</span>
+        </button>
+      </nav>
+    </aside>
 
-    <section class="space-y-4">
-      <div class="flex items-center justify-between gap-4">
-        <p class="text-xs font-semibold uppercase text-muted">
-          Starter templates
+    <main class="min-w-0 flex-1 bg-default">
+      <div class="flex h-16 items-center justify-between border-b border-default px-6">
+        <p class="text-sm font-semibold">
+          Templates
         </p>
         <UButton
           v-if="hasActiveFilters"
@@ -247,255 +288,230 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
         />
       </div>
 
-      <!-- Filters -->
-      <div class="space-y-3 rounded-lg border border-default bg-elevated/30 p-4">
-        <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <span class="w-16 shrink-0 text-xs font-semibold uppercase text-muted">Usage</span>
-          <div class="flex flex-wrap gap-2">
-            <UButton
-              size="xs"
-              :variant="selectedUsages.length === 0 ? 'solid' : 'outline'"
-              :color="selectedUsages.length === 0 ? 'primary' : 'neutral'"
-              label="All"
-              @click="selectedUsages = []"
-            />
-            <UButton
-              v-for="usage in usageOptions"
-              :key="usage"
-              size="xs"
-              :variant="selectedUsages.includes(usage) ? 'solid' : 'outline'"
-              :color="selectedUsages.includes(usage) ? 'primary' : 'neutral'"
-              :label="usage"
-              @click="toggleUsage(usage)"
-            />
-          </div>
-        </div>
-
-        <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <span class="w-16 shrink-0 text-xs font-semibold uppercase text-muted">Style</span>
-          <div class="flex flex-wrap gap-2">
-            <UButton
-              size="xs"
-              :variant="selectedStyles.length === 0 ? 'solid' : 'outline'"
-              :color="selectedStyles.length === 0 ? 'primary' : 'neutral'"
-              label="All"
-              @click="selectedStyles = []"
-            />
-            <UButton
-              v-for="style in styleOptions"
-              :key="style"
-              size="xs"
-              :variant="selectedStyles.includes(style) ? 'solid' : 'outline'"
-              :color="selectedStyles.includes(style) ? 'primary' : 'neutral'"
-              :label="style"
-              @click="toggleStyle(style)"
-            />
-          </div>
-        </div>
-
-        <UInput
-          v-model="starterSearch"
-          icon="i-lucide-search"
-          placeholder="Search templates by name or description…"
-          class="w-full"
-        />
-      </div>
-
-      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <button
-          type="button"
-          class="flex min-h-72 flex-col rounded-lg border border-dashed border-default bg-elevated/40 p-4 text-center hover:border-primary hover:bg-primary/5"
-          @click="openComposer()"
-        >
-          <div class="flex flex-1 items-center justify-center rounded-md bg-default">
-            <UIcon name="i-lucide-plus" class="h-8 w-8 text-muted" />
-          </div>
-          <p class="mt-4 font-semibold">
-            Create blank template
-          </p>
-          <p class="mt-1 text-sm text-muted">
-            Start from Basic blocks and build manually.
-          </p>
-        </button>
-
-        <button
-          v-for="starter in filteredStarters"
-          :key="starter.id"
-          type="button"
-          class="group flex flex-col overflow-hidden rounded-lg border border-default bg-default text-left hover:border-primary hover:shadow-sm"
-          @click="openStarter(starter.id)"
-        >
-          <div class="flex items-start justify-center overflow-hidden bg-elevated/40 p-3" style="height: 220px">
-            <EmailBuilderEdmTemplateThumbnail
-              :template-id="starter.id"
-              :width="300"
-              :max-height="196"
-            />
-          </div>
-          <div class="border-t border-default p-4">
-            <div class="flex items-center gap-2">
-              <UBadge
-                v-if="starter.isNew"
-                color="success"
-                size="xs"
-                label="NEW"
-              />
-              <p class="font-semibold group-hover:text-primary">
-                {{ starter.name }}
-              </p>
-            </div>
-            <p class="mt-2 text-sm text-muted leading-snug">
-              {{ starter.description }}
-            </p>
-            <div class="mt-3 flex flex-wrap gap-1.5">
-              <UBadge
-                variant="subtle"
-                color="neutral"
-                size="xs"
-                :label="starter.usage"
-              />
-              <UBadge
-                variant="subtle"
-                color="neutral"
-                size="xs"
-                :label="starter.style"
-              />
-            </div>
-          </div>
-        </button>
-      </div>
-
-      <div
-        v-if="filteredStarters.length === 0"
-        class="rounded-lg border border-dashed border-default py-10 text-center text-sm text-muted"
-      >
-        No templates match your filters.
-      </div>
-    </section>
-
-    <section class="space-y-4">
-      <div class="flex items-center justify-between">
-        <p class="text-xs font-semibold uppercase text-muted">
-          Your templates
-        </p>
-        <p class="text-sm text-muted">
-          {{ savedRows.length }} template(s)
-        </p>
-      </div>
-
-      <div v-if="pending" class="text-sm text-muted">
-        Loading…
-      </div>
-      <div v-else-if="!savedRows.length" class="text-sm text-muted py-8 text-center">
-        No templates yet. Build one in the composer and save it to reuse across campaigns.
-      </div>
-
-      <div v-else class="space-y-6">
-        <section
-          v-for="group in savedTemplateGroups"
-          :key="group.key"
-          class="space-y-3"
-        >
-          <div class="flex items-center justify-between gap-3">
-            <h3 class="text-sm font-semibold text-default">
-              {{ group.title }}
-            </h3>
-            <span class="text-xs text-muted">{{ group.rows.length }} template(s)</span>
+      <div class="space-y-10 p-6">
+        <section class="space-y-5">
+          <div class="flex flex-wrap items-center gap-4 text-sm text-muted">
+            <label class="email-template-filter">
+              <span>Industry</span>
+              <select v-model="selectedIndustry">
+                <option value="">
+                  All industries
+                </option>
+                <option v-for="industry in industryOptions" :key="industry" :value="industry">
+                  {{ industry }}
+                </option>
+              </select>
+            </label>
+            <label class="email-template-filter">
+              <span>Usage</span>
+              <select v-model="selectedUsage">
+                <option value="">
+                  All usage
+                </option>
+                <option v-for="usage in usageOptions" :key="usage" :value="usage">
+                  {{ usage }}
+                </option>
+              </select>
+            </label>
+            <label class="email-template-filter">
+              <span>Season</span>
+              <select v-model="selectedSeason">
+                <option value="">
+                  All seasons
+                </option>
+                <option v-for="season in seasonOptions" :key="season" :value="season">
+                  {{ season }}
+                </option>
+              </select>
+            </label>
+            <label class="email-template-filter">
+              <span>Brand</span>
+              <select v-model="selectedStyle">
+                <option value="">
+                  All brands
+                </option>
+                <option v-for="style in styleOptions" :key="style" :value="style">
+                  {{ style }}
+                </option>
+              </select>
+            </label>
+            <UIcon name="i-lucide-search" class="size-5 text-muted" />
           </div>
 
-          <div class="saved-template-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <div
-              v-for="row in group.rows"
-              :key="row.id"
-              class="saved-template-card group flex min-h-80 flex-col overflow-hidden rounded-lg border border-default bg-default hover:border-primary hover:shadow-sm"
+          <div class="email-starter-gallery-grid grid gap-x-5 gap-y-10 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            <button
+              type="button"
+              class="email-starter-blank-card flex min-h-[430px] flex-col items-center justify-center rounded-lg border border-default bg-elevated/30 text-center transition hover:border-primary hover:bg-primary/5"
+              @click="openComposer()"
             >
-              <button
-                type="button"
-                class="flex flex-1 flex-col text-left cursor-pointer"
-                @click="openComposer(row.id)"
-              >
-                <div class="flex h-52 items-start justify-center overflow-hidden bg-elevated/40 p-3">
-                  <EmailBuilderEdmDocumentThumbnail
-                    :document="templateDocument(row)"
-                    :width="300"
-                    :max-height="184"
-                  />
+              <UIcon name="i-lucide-plus" class="size-10 text-muted" />
+              <p class="mt-5 text-sm font-semibold text-muted">
+                Create Blank Template
+              </p>
+            </button>
+
+            <button
+              v-for="starter in filteredStarters"
+              :key="starter.id"
+              type="button"
+              class="email-starter-card group min-w-0 text-left"
+              @click="openStarter(starter.id)"
+            >
+              <div class="overflow-hidden rounded-lg border border-default bg-elevated/30 transition group-hover:border-primary group-hover:shadow-sm">
+                <EmailBuilderEdmTemplateThumbnail
+                  :template-id="starter.id"
+                  :preview-image-url="starterPreviewImageUrl(starter.id)"
+                  :width="320"
+                  :max-height="430"
+                />
+              </div>
+              <div class="mt-3 min-w-0">
+                <div class="flex min-w-0 items-center gap-2">
+                  <span v-if="starter.isNew" class="rounded bg-success px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">NEW</span>
+                  <p class="truncate text-base font-semibold group-hover:text-primary">
+                    {{ starter.name }}
+                  </p>
                 </div>
-                <div class="flex-1 border-t border-default p-4">
-                  <div class="mb-2 flex flex-wrap gap-1.5">
-                    <UBadge
-                      v-if="rowKind(row) === 'draft'"
-                      variant="subtle"
-                      color="warning"
-                      size="xs"
-                      label="Draft"
-                    />
-                    <UBadge
-                      v-else
-                      variant="subtle"
+                <p class="mt-2 truncate text-sm text-muted">
+                  {{ starter.industry || 'General' }} · {{ starter.usage }} · {{ starter.style }} · {{ starter.description }}
+                </p>
+              </div>
+            </button>
+          </div>
+
+          <div
+            v-if="filteredStarters.length === 0"
+            class="rounded-lg border border-dashed border-default py-10 text-center text-sm text-muted"
+          >
+            No templates match your filters.
+          </div>
+        </section>
+
+        <section class="space-y-4">
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-semibold uppercase text-muted">
+              Your templates
+            </p>
+            <p class="text-sm text-muted">
+              {{ savedRows.length }} template(s)
+            </p>
+          </div>
+
+          <div v-if="pending" class="text-sm text-muted">
+            Loading…
+          </div>
+          <div v-else-if="!savedRows.length" class="text-sm text-muted py-8 text-center">
+            No templates yet. Build one in the composer and save it to reuse across campaigns.
+          </div>
+
+          <div v-else class="space-y-6">
+            <section
+              v-for="group in savedTemplateGroups"
+              :key="group.key"
+              class="space-y-3"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <h3 class="text-sm font-semibold text-default">
+                  {{ group.title }}
+                </h3>
+                <span class="text-xs text-muted">{{ group.rows.length }} template(s)</span>
+              </div>
+
+              <div class="saved-template-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <div
+                  v-for="row in group.rows"
+                  :key="row.id"
+                  class="saved-template-card group flex min-h-80 flex-col overflow-hidden rounded-lg border border-default bg-default hover:border-primary hover:shadow-sm"
+                >
+                  <button
+                    type="button"
+                    class="flex flex-1 flex-col text-left cursor-pointer"
+                    @click="openComposer(row.id)"
+                  >
+                    <div class="flex h-52 items-start justify-center overflow-hidden bg-elevated/40 p-3">
+                      <EmailBuilderEdmDocumentThumbnail
+                        :document="templateDocument(row)"
+                        :width="300"
+                        :max-height="184"
+                      />
+                    </div>
+                    <div class="flex-1 border-t border-default p-4">
+                      <div class="mb-2 flex flex-wrap gap-1.5">
+                        <UBadge
+                          v-if="rowKind(row) === 'draft'"
+                          variant="subtle"
+                          color="warning"
+                          size="xs"
+                          label="Draft"
+                        />
+                        <UBadge
+                          v-else
+                          variant="subtle"
+                          color="neutral"
+                          size="xs"
+                          :label="rowFolder(row)"
+                        />
+                      </div>
+                      <p class="font-semibold truncate group-hover:text-primary">
+                        {{ row.name }}
+                      </p>
+                      <p class="mt-1 text-sm text-muted truncate">
+                        {{ row.subject || 'No subject' }}
+                      </p>
+                      <p v-if="row.preview_text" class="mt-2 line-clamp-2 text-sm text-muted leading-snug">
+                        {{ row.preview_text }}
+                      </p>
+                      <p class="mt-3 text-xs text-muted">
+                        Updated {{ fmtDate(row.updated_at) }}
+                      </p>
+                    </div>
+                  </button>
+
+                  <div class="flex items-center justify-end gap-1 border-t border-default px-3 py-2">
+                    <UButton
+                      icon="i-lucide-pencil"
+                      variant="ghost"
                       color="neutral"
                       size="xs"
-                      :label="rowFolder(row)"
+                      label="Edit"
+                      @click="openComposer(row.id)"
                     />
+                    <UTooltip text="Duplicate">
+                      <UButton
+                        icon="i-lucide-copy"
+                        variant="ghost"
+                        color="neutral"
+                        size="xs"
+                        :loading="busyId === row.id"
+                        @click="duplicate(row)"
+                      />
+                    </UTooltip>
+                    <UTooltip text="Rename">
+                      <UButton
+                        icon="i-lucide-text-cursor-input"
+                        variant="ghost"
+                        color="neutral"
+                        size="xs"
+                        @click="openRename(row)"
+                      />
+                    </UTooltip>
+                    <UTooltip text="Delete">
+                      <UButton
+                        icon="i-lucide-trash-2"
+                        variant="ghost"
+                        color="error"
+                        size="xs"
+                        @click="confirmDelete(row)"
+                      />
+                    </UTooltip>
                   </div>
-                  <p class="font-semibold truncate group-hover:text-primary">
-                    {{ row.name }}
-                  </p>
-                  <p class="mt-1 text-sm text-muted truncate">
-                    {{ row.subject || 'No subject' }}
-                  </p>
-                  <p v-if="row.preview_text" class="mt-2 line-clamp-2 text-sm text-muted leading-snug">
-                    {{ row.preview_text }}
-                  </p>
-                  <p class="mt-3 text-xs text-muted">
-                    Updated {{ fmtDate(row.updated_at) }}
-                  </p>
                 </div>
-              </button>
-
-              <div class="flex items-center justify-end gap-1 border-t border-default px-3 py-2">
-                <UButton
-                  icon="i-lucide-pencil"
-                  variant="ghost"
-                  color="neutral"
-                  size="xs"
-                  label="Edit"
-                  @click="openComposer(row.id)"
-                />
-                <UTooltip text="Duplicate">
-                  <UButton
-                    icon="i-lucide-copy"
-                    variant="ghost"
-                    color="neutral"
-                    size="xs"
-                    :loading="busyId === row.id"
-                    @click="duplicate(row)"
-                  />
-                </UTooltip>
-                <UTooltip text="Rename">
-                  <UButton
-                    icon="i-lucide-text-cursor-input"
-                    variant="ghost"
-                    color="neutral"
-                    size="xs"
-                    @click="openRename(row)"
-                  />
-                </UTooltip>
-                <UTooltip text="Delete">
-                  <UButton
-                    icon="i-lucide-trash-2"
-                    variant="ghost"
-                    color="error"
-                    size="xs"
-                    @click="confirmDelete(row)"
-                  />
-                </UTooltip>
               </div>
-            </div>
+            </section>
           </div>
         </section>
       </div>
-    </section>
+    </main>
 
     <UModal v-model:open="showRename" title="Rename template">
       <template #content>
@@ -561,3 +577,45 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
     </UModal>
   </div>
 </template>
+
+<style scoped>
+.email-template-nav-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  color: var(--ui-text-muted);
+  font-weight: 600;
+  text-align: left;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.email-template-nav-item:hover,
+.email-template-nav-item.is-active {
+  background: var(--ui-bg-muted);
+  color: var(--ui-text);
+}
+
+.email-template-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.email-template-filter span {
+  color: var(--ui-text);
+  font-weight: 500;
+}
+
+.email-template-filter select {
+  max-width: 11rem;
+  border: 0;
+  background: transparent;
+  color: var(--ui-text-muted);
+  cursor: pointer;
+  font-size: 0.875rem;
+  outline: none;
+}
+</style>

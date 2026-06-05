@@ -7,7 +7,7 @@
      from the width prop, and the renderer is imported explicitly so the tile is
      testable via renderToString. Non-interactive — the parent owns clicks. -->
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import EdmBlockRenderer from './EdmBlockRenderer.vue'
 import { buildStarterTemplateDocument } from '~~/app/utils/edmPresets'
 import type { EdmFlyhubBlock } from '~~/app/types/edm'
@@ -22,6 +22,8 @@ interface ThumbnailBlockEntry {
 const props = withDefaults(defineProps<{
   /** Starter template id (see EDM_STARTER_TEMPLATES). */
   templateId: string
+  /** Optional owned image preview URL. Falls back to live render on load error. */
+  previewImageUrl?: string | null
   /** Target rendered width of the thumbnail tile, in px. */
   width?: number
   /** Max visible height of the clipped tile, in px. */
@@ -29,6 +31,11 @@ const props = withDefaults(defineProps<{
 }>(), {
   width: 260,
   maxHeight: 360
+})
+
+const imageFailed = ref(false)
+watch(() => props.previewImageUrl, () => {
+  imageFailed.value = false
 })
 
 // Build once per template id. buildStarterTemplateDocument is pure + SSR-safe.
@@ -42,8 +49,11 @@ const blocks = computed<ThumbnailBlockEntry[]>(() => {
 
 const scale = computed(() => props.width / EMAIL_WIDTH)
 
+const useImagePreview = computed(() => Boolean(props.previewImageUrl && !imageFailed.value))
+
 const tileStyle = computed(() => ({
   width: props.width + 'px',
+  height: useImagePreview.value ? props.maxHeight + 'px' : undefined,
   maxHeight: props.maxHeight + 'px'
 }))
 
@@ -60,7 +70,15 @@ const innerStyle = computed(() => ({
     class="edm-template-thumbnail relative overflow-hidden rounded-md border border-default bg-white"
     :style="tileStyle"
   >
-    <div :style="innerStyle">
+    <img
+      v-if="useImagePreview"
+      class="email-starter-preview-image block h-full w-full object-cover object-top"
+      :src="previewImageUrl || ''"
+      alt=""
+      loading="lazy"
+      @error="imageFailed = true"
+    >
+    <div v-else :style="innerStyle">
       <EdmBlockRenderer
         v-for="entry in blocks"
         :key="entry.id"

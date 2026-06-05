@@ -55,8 +55,8 @@ const stubs: Record<string, unknown> = {
   UFormField: { name: 'UFormField', props: ['label'], template: '<div>{{ label }}<slot /></div>' },
   EmailBuilderEdmTemplateThumbnail: {
     name: 'EmailBuilderEdmTemplateThumbnail',
-    props: ['templateId'],
-    template: '<div class="starter-thumb" :data-template-id="templateId" />'
+    props: ['templateId', 'previewImageUrl'],
+    template: '<img class="email-starter-preview-image starter-thumb" :data-template-id="templateId" :data-preview-image-url="previewImageUrl" :src="previewImageUrl || \'\'">'
   },
   EmailBuilderEdmDocumentThumbnail: {
     name: 'EmailBuilderEdmDocumentThumbnail',
@@ -74,6 +74,23 @@ async function renderPanel() {
 }
 
 describe('Email TemplatesPanel saved templates', () => {
+  it('renders a reference-style starter gallery with image preview cards', async () => {
+    const html = await renderPanel()
+
+    expect(html).toContain('email-template-gallery-shell')
+    expect(html).toContain('email-template-gallery-sidebar')
+    expect(html).toContain('Recently Viewed')
+    expect(html).toContain('Image Library')
+    expect(html).toContain('email-starter-gallery-grid')
+    expect(html).toContain('email-starter-card')
+    expect(html).toContain('email-starter-preview-image')
+    expect(html).toContain('Create Blank Template')
+    expect(html).toContain('Industry')
+    expect(html).toContain('Usage')
+    expect(html).toContain('Season')
+    expect(html).toContain('Brand')
+  })
+
   it('renders saved templates as preview cards instead of a divided row list', async () => {
     const html = await renderPanel()
 
