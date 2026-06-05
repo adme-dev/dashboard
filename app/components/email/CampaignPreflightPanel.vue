@@ -4,7 +4,7 @@ import { computed } from 'vue'
 
 interface CampaignPreflightCheck {
   code: string
-  label: string
+  label?: string
   status: 'pass' | 'warning' | 'blocked'
   message: string
 }
@@ -48,6 +48,20 @@ function checkColor(check: CampaignPreflightCheck): 'error' | 'warning' | 'succe
   if (check.status === 'warning') return 'warning'
   if (check.status === 'pass') return 'success'
   return 'neutral'
+}
+
+const CHECK_LABELS: Record<string, string> = {
+  unsubscribe: 'Unsubscribe',
+  sender: 'Sender',
+  auth_readiness: 'Authentication readiness',
+  media_urls: 'Media URLs',
+  html_size: 'HTML size',
+  footer_identity: 'Footer identity',
+  recipients: 'Recipients'
+}
+
+function checkLabel(check: CampaignPreflightCheck): string {
+  return check.label || CHECK_LABELS[check.code] || check.code.replace(/_/g, ' ')
 }
 
 function formatDate(value?: string): string {
@@ -150,7 +164,7 @@ function formatDate(value?: string): string {
       <div v-for="check in activeChecks" :key="check.code" class="flex items-start justify-between gap-3 px-3 py-2.5">
         <div class="min-w-0">
           <p class="text-sm font-medium">
-            {{ check.label }}
+            {{ checkLabel(check) }}
           </p>
           <p class="text-xs text-muted">
             {{ check.message }}

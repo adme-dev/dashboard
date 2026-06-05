@@ -119,6 +119,14 @@ describe('buildCampaignPreflight', () => {
       'html_size',
       'footer_identity'
     ])
+    expect(result.checks.map(check => check.label)).toEqual([
+      'Unsubscribe',
+      'Sender',
+      'Authentication readiness',
+      'Media URLs',
+      'HTML size',
+      'Footer identity'
+    ])
     expect(result.checks.every(check => check.status === 'pass')).toBe(true)
   })
 

@@ -72,4 +72,25 @@ describe('CampaignPreflightPanel', () => {
     expect(html).toContain('Ready to send')
     expect(html).toContain('12')
   })
+
+  it('falls back to readable labels for stored checks without labels', async () => {
+    const html = await renderPanel({
+      preflight: {
+        ok: false,
+        blocked: true,
+        checkedAt: '2026-06-05T00:00:00.000Z',
+        checks: [
+          {
+            code: 'auth_readiness',
+            status: 'blocked',
+            message: 'Sending transport is not configured or the From domain is not allowed.'
+          }
+        ]
+      },
+      recipientSnapshot: { toSend: 10 }
+    })
+
+    expect(html).toContain('Authentication readiness')
+    expect(html).toContain('From domain is not allowed')
+  })
 })

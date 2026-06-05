@@ -73,6 +73,7 @@ export type CampaignPreflightCode
 
 export interface CampaignPreflightCheck {
   code: CampaignPreflightCode
+  label: string
   status: CampaignPreflightStatus
   message: string
   value?: string | number | boolean | null
@@ -107,6 +108,15 @@ const DEFAULT_MAX_HTML_BYTES = 102 * 1024
 const RELATIVE_MEDIA_RE = /\b(?:src|background)\s*=\s*["'](?!https?:\/\/|cid:|data:image\/)[^"']+["']|url\(\s*['"]?(?!https?:\/\/|cid:|data:image\/)([^'")]+)['"]?\s*\)/i
 const NON_HTTPS_MEDIA_RE = /\b(?:src|background)\s*=\s*["']http:\/\/[^"']+["']|url\(\s*['"]?http:\/\/[^'")]+['"]?\s*\)/i
 const FOOTER_IDENTITY_RE = /\b(?:street|st\b|road|rd\b|avenue|ave\b|melbourne|sydney|brisbane|perth|adelaide|australia|vic|nsw|qld|wa|sa|tas|act|nt)\b/i
+const PREFLIGHT_LABELS: Record<CampaignPreflightCode, string> = {
+  unsubscribe: 'Unsubscribe',
+  sender: 'Sender',
+  auth_readiness: 'Authentication readiness',
+  media_urls: 'Media URLs',
+  html_size: 'HTML size',
+  footer_identity: 'Footer identity',
+  recipients: 'Recipients'
+}
 
 export function senderDomainFromEmail(value: string | null | undefined): string | null {
   const email = value?.trim().toLowerCase() || ''
@@ -134,7 +144,8 @@ function preflightCheck(
   message: string,
   value?: CampaignPreflightCheck['value']
 ): CampaignPreflightCheck {
-  return value === undefined ? { code, status, message } : { code, status, message, value }
+  const base = { code, label: PREFLIGHT_LABELS[code], status, message }
+  return value === undefined ? base : { ...base, value }
 }
 
 export function buildCampaignPreflight(input: {
