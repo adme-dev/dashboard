@@ -137,6 +137,33 @@ describe('email subscription audit integration', () => {
     ])
   })
 
+  it('records suppression removal history when double opt-in confirmation lifts global unsubscribe', async () => {
+    const dbQueryMock = vi.fn()
+    transactionMock.mockImplementationOnce(async (cb: (db: { query: typeof dbQueryMock }) => Promise<unknown>) => cb({ query: dbQueryMock }))
+    dbQueryMock
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ email: 'person@example.com' }] })
+      .mockResolvedValueOnce({ rowCount: 1 })
+
+    const confirmed = await confirmSubscription({ subscriberId: 'sub-1', listId: 'list-1' })
+
+    expect(confirmed).toBe(true)
+    const suppressionEventCall = dbQueryMock.mock.calls.find(([sql]) =>
+      String(sql).includes('INSERT INTO suppression_events')
+    )
+    expect(suppressionEventCall?.[1]).toEqual([
+      'person@example.com',
+      'sub-1',
+      null,
+      'global_unsubscribe',
+      'removed',
+      'form',
+      null,
+      '{}'
+    ])
+  })
+
   it('records list_unsubscribed consent history for preference-center unsubscribe', async () => {
     const dbQueryMock = vi.fn()
     executeMock.mockResolvedValueOnce(1)

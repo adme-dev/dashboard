@@ -296,7 +296,7 @@ export async function confirmSubscription(opts: {
     )
     const confirmed = (res.rowCount ?? 0) > 0
     if (confirmed) {
-      await db.query(
+      const suppression = await db.query(
         `DELETE FROM suppression_list
          WHERE reason = 'global_unsubscribe'
            AND email = (SELECT email FROM email_subscribers WHERE id = $1)`,
@@ -315,6 +315,15 @@ export async function confirmSubscription(opts: {
           eventType: 'confirmed',
           source: 'form'
         }))
+        if ((suppression.rowCount ?? 0) > 0) {
+          await db.query(INSERT_SUPPRESSION_EVENT_SQL, suppressionEventParams({
+            email,
+            subscriberId: opts.subscriberId,
+            reason: 'global_unsubscribe',
+            action: 'removed',
+            source: 'form'
+          }))
+        }
       }
     }
     return confirmed
