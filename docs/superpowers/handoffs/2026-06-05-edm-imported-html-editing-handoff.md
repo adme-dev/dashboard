@@ -6,7 +6,8 @@ Continuation handoff for the EDM/Postcards builder work in
 ## Repo State
 
 - Branch: `main`
-- Current shipped commit: `e788e6b9 fix(email): harden test sends and utility exports`
+- Current shipped commit before this browser-verification update:
+  `3c7a9c70 docs(email): update EDM imported editing handoff`
 - Prior template-import commits brought in GlideX, FuturaX, and Aviro; MetaHome and
   the loose `Downloads/index.html` were intentionally excluded after the single
   HTML import corrupted the mixed template set.
@@ -78,6 +79,23 @@ Confirmed:
   sidebar inspector.
 - Saved modules can be stored under built-in or newly created categories and
   are grouped by category in the Custom Modules picker.
+
+Latest current-`main` picker check:
+
+- Nuxt dev server was restarted on `http://127.0.0.1:3000`.
+- Opened `/agency/email/compose?starter=postcards-glidex` in the real browser.
+- Switched from Preview to Editor mode and selected the imported GlideX HTML
+  wrapper.
+- Confirmed imported HTML annotations were active for text and image regions.
+- Selected the first imported GlideX background-image table cell. The floating
+  widget showed the imported-image actions: duplicate, change image, link, and
+  delete.
+- The sidebar switched to imported image controls.
+- The change-image action opened the Image Library slideover with agency-wide
+  assets and the 200 MB upload cap.
+- A scoped click on an actual image-library asset card changed the selected
+  imported background URL from the bundled GlideX image to the R2 public asset
+  URL and closed the picker.
 
 ### Media Library Picker
 
@@ -210,24 +228,17 @@ Typecheck status:
   done yet.
 - Right-click is an accelerator only. The floating widget remains the primary
   visible action surface.
-- Kimi browser verification was attempted after the latest toolbar/background
-  fixes, but the WebBridge session was stuck on an older auth redirect tab and
-  did not attach to the visible composer tab. Automated DOM/component coverage is
-  the current verification for those two fixes.
+- Latest Kimi browser verification now succeeds on current `main` for imported
+  text/image selection, imported background-image selection, sidebar mode,
+  image-library opening, and applying a selected agency asset.
 
 ## Recommended Next Steps
 
-1. Browser-check the picker on current `main`:
-   - Open `/agency/email/compose?starter=postcards-glidex`.
-   - Select an imported image.
-   - Click the floating widget image-change action.
-   - Confirm the Image Library slideover opens instead of a prompt.
-   - Select an asset if one exists; otherwise confirm empty/upload state renders.
-2. Decide the sendable-asset policy:
+1. Decide the sendable-asset policy:
    - keep current same-origin absolute URL preparation for local/dev tests, or
    - ingest imported template/media-library assets into a dedicated public email
      asset bucket before send/test-send.
-3. Consider suppressing or stubbing `UIcon` in the SSR thumbnail tests to reduce
+2. Consider suppressing or stubbing `UIcon` in the SSR thumbnail tests to reduce
    noisy warning output.
 
 ## Product Direction
