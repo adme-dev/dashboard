@@ -23,6 +23,16 @@
             <div v-if="store.selectedBlockId.value === childId" class="column-child-actions">
               <button
                 type="button"
+                data-edm-column-child-save
+                class="column-child-action"
+                title="Save element"
+                aria-label="Save element"
+                @click.stop="emit('saveBlock', childId)"
+              >
+                <UIcon name="i-lucide-bookmark-plus" class="h-3.5 w-3.5 pointer-events-none" />
+              </button>
+              <button
+                type="button"
                 data-edm-column-child-delete
                 class="column-child-action is-danger"
                 title="Delete element"
@@ -96,6 +106,10 @@ const props = defineProps<{
     columns?: ColumnData[]
     fixedWidths?: (number | null)[]
   } | null
+}>()
+
+const emit = defineEmits<{
+  saveBlock: [blockId: string]
 }>()
 
 const store = useEdmBuilder()

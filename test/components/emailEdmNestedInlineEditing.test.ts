@@ -209,4 +209,26 @@ describe('nested EDM inline editing', () => {
     app.unmount()
     host.remove()
   })
+
+  it('emits a save action for the selected column child', async () => {
+    const store = makeStore()
+    const savedBlockIds: string[] = []
+    const { app, host } = mount(ColumnsContainerRenderer, {
+      blockId: 'columns',
+      device: 'desktop',
+      style: store.document.value.columns.data.style,
+      props: store.document.value.columns.data.props,
+      onSaveBlock: (blockId: string) => savedBlockIds.push(blockId)
+    }, store)
+
+    const saveButton = host.querySelector('[data-edm-column-child-save]') as HTMLButtonElement | null
+    expect(saveButton?.getAttribute('title')).toBe('Save element')
+
+    saveButton?.click()
+
+    expect(savedBlockIds).toEqual(['text-child'])
+
+    app.unmount()
+    host.remove()
+  })
 })

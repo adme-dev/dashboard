@@ -429,6 +429,11 @@ function openSaveModule() {
   showSaveModuleModal.value = true
 }
 
+function openSaveModuleForBlock(blockId: string) {
+  store.setSelectedBlockId(blockId)
+  openSaveModule()
+}
+
 async function saveModule() {
   const block = selectedBlock.value
   if (!block) return
@@ -775,6 +780,7 @@ onMounted(async () => {
                   :style="blockForCanvas(block.id)?.data?.style"
                   :props="blockForCanvas(block.id)?.data?.props"
                   :device="activeDevice"
+                  @save-block="openSaveModuleForBlock"
                 />
                 <EmailBuilderColumnsContainerRenderer
                   v-else-if="block.type === 'ColumnsContainer'"
