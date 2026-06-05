@@ -82,6 +82,7 @@ describe('email template test-send endpoint', () => {
       headers: { 'content-type': 'image/png' }
     })))
     process.env.EMAIL_TEST_SENDING_ENABLED = 'true'
+    process.env.EMAIL_SENDER_DOMAINS = 'example.com'
   })
 
   it('renders the provided editor document and sends it as a test email', async () => {
@@ -122,6 +123,23 @@ describe('email template test-send endpoint', () => {
     await expect(handler({} as never)).rejects.toMatchObject({
       statusCode: 422,
       statusMessage: 'sendability_failed'
+    })
+    expect(mockEmailsSend).not.toHaveBeenCalled()
+  })
+
+  it('blocks the send when the configured From domain is not allowed', async () => {
+    const handler = (await import('~~/server/api/email/templates/test-send.post')).default
+    process.env.EMAIL_SENDER_DOMAINS = 'client.example'
+    mockReadBody.mockResolvedValue({
+      to: 'test@example.com',
+      subject: 'Subject line',
+      preview_text: 'Inbox preview',
+      body_source: validDocument
+    })
+
+    await expect(handler({} as never)).rejects.toMatchObject({
+      statusCode: 422,
+      statusMessage: 'sender_domain_not_allowed'
     })
     expect(mockEmailsSend).not.toHaveBeenCalled()
   })

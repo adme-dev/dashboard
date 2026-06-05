@@ -7,6 +7,8 @@ import { getAppUrl } from '~~/server/utils/appUrl'
 import { getResendClient, isEmailConfigured } from '~~/server/utils/email'
 import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
 import { isFlyhubFormat } from '~~/server/utils/email-marketing/render/flyhub-html-renderer'
+import { isSenderDomainAllowed } from '~~/server/utils/email-marketing/campaignSend'
+import { resolveCampaignSenderDomains } from '~~/server/utils/email-marketing/senderIdentity'
 import { checkEmailSendability, htmlToPlainText } from '~~/server/utils/email-marketing/sendability'
 import { prepareSendableHtmlWithMirroredAssets } from '~~/server/utils/email-marketing/sendableHtml'
 
@@ -24,10 +26,15 @@ function resolveFromHeader(event: Parameters<typeof getAppUrl>[0] | undefined): 
   const appName = typeof env?.APP_NAME === 'string'
     ? env.APP_NAME
     : (config.public?.appName || process.env.APP_NAME || 'XeroFlow Agency')
-  const fromEmail = typeof env?.EMAIL_FROM === 'string'
+  return `${appName} <${resolveFromEmail(event)}>`
+}
+
+function resolveFromEmail(event: Parameters<typeof getAppUrl>[0] | undefined): string {
+  const config = useRuntimeConfig()
+  const env = (event?.context as { cloudflare?: { env?: Record<string, unknown> } } | undefined)?.cloudflare?.env
+  return typeof env?.EMAIL_FROM === 'string'
     ? env.EMAIL_FROM
     : (config.emailFrom || process.env.EMAIL_FROM || 'noreply@yourdomain.com')
-  return `${appName} <${fromEmail}>`
 }
 
 function getSendFlag(event: Parameters<typeof getAppUrl>[0] | undefined, key: string): string | undefined {
@@ -65,6 +72,16 @@ export default defineEventHandler(async (event) => {
 
   const to = parsed.data.to || (user as { email?: string }).email
   if (!to) throw createError({ statusCode: 422, statusMessage: 'no_test_recipient' })
+
+  const fromEmail = resolveFromEmail(event)
+  const allowedSenderDomains = resolveCampaignSenderDomains(event)
+  if (!isSenderDomainAllowed(fromEmail, allowedSenderDomains)) {
+    throw createError({
+      statusCode: 422,
+      statusMessage: 'sender_domain_not_allowed',
+      data: { allowedSenderDomains }
+    })
+  }
 
   const subject = parsed.data.subject?.trim() || ''
   const previewText = parsed.data.preview_text?.trim() || ''
