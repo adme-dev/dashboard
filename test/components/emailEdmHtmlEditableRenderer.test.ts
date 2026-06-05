@@ -22,6 +22,7 @@ async function renderHtmlBlock(extra: Record<string, unknown> = {}) {
         contents: sampleContents
       },
       editable: true,
+      htmlEditingEnabled: true,
       ...extra
     })
   })
@@ -59,6 +60,15 @@ describe('EmailBuilderEdmBlockRenderer imported HTML editables', () => {
     expect(html).toContain('data-edm-html-editable-kind="link"')
     expect(html).toContain('data-edm-html-editable-kind="image"')
     expect(html).toContain('contenteditable="true"')
+  })
+
+  it('keeps unselected imported HTML cheap to render on initial canvas load', async () => {
+    const html = await renderHtmlBlock({ htmlEditingEnabled: false })
+
+    expect(html).toContain('Drive smarter')
+    expect(html).not.toContain('data-edm-html-editable-kind')
+    expect(html).not.toContain('edm-html-editable')
+    expect(html).not.toContain('contenteditable="true"')
   })
 
   it('marks the selected imported HTML region without making thumbnails editable by default', async () => {
@@ -107,6 +117,7 @@ describe('EmailBuilderEdmBlockRenderer imported HTML editables', () => {
         type: 'Html',
         props: { contents: sampleContents },
         editable: true,
+        htmlEditingEnabled: true,
         'onSelect:html-editable': (value: unknown) => selections.push(value)
       })
     })
@@ -134,6 +145,7 @@ describe('EmailBuilderEdmBlockRenderer imported HTML editables', () => {
         type: 'Html',
         props: { contents: sampleContents },
         editable: true,
+        htmlEditingEnabled: true,
         'onSelect:html-editable': (value: unknown) => selections.push(value)
       })
     })
@@ -163,6 +175,7 @@ describe('EmailBuilderEdmBlockRenderer imported HTML editables', () => {
         type: 'Html',
         props: { contents: repeatedOfferContents },
         editable: true,
+        htmlEditingEnabled: true,
         selectedHtmlEditableId: textId,
         'onUpdate:props': (value: Record<string, unknown>) => updates.push(value),
         'onSelect:html-editable': (value: unknown) => selections.push(value)
@@ -193,6 +206,7 @@ describe('EmailBuilderEdmBlockRenderer imported HTML editables', () => {
         type: 'Html',
         props: { contents: repeatedOfferContents },
         editable: true,
+        htmlEditingEnabled: true,
         selectedHtmlEditableId: textId,
         'onUpdate:props': (value: Record<string, unknown>) => updates.push(value),
         'onSelect:html-editable': (value: unknown) => selections.push(value)
@@ -231,6 +245,7 @@ describe('EmailBuilderEdmBlockRenderer imported HTML editables', () => {
           type: 'Html',
           props: { contents: sampleContents },
           editable: true,
+          htmlEditingEnabled: true,
           selectedHtmlEditableId: imageId,
           'onUpdate:props': (value: Record<string, unknown>) => updates.push(value)
         })

@@ -336,6 +336,30 @@ function createStore() {
   // Block CRUD Operations
   // ========================================
 
+  function getDefaultBlockStyle(blockType: string): NonNullable<EdmFlyhubBlock['data']['style']> {
+    if (blockType === 'Button') {
+      return {
+        padding: { top: 0, bottom: 0, left: 0, right: 0 }
+      }
+    }
+
+    return {
+      padding: { top: 16, bottom: 16, left: 24, right: 24 }
+    }
+  }
+
+  function getDefaultDetachedBlockStyle(blockType: string): NonNullable<EdmFlyhubBlock['data']['style']> {
+    if (blockType === 'Button') {
+      return {
+        padding: { top: 0, bottom: 0, left: 0, right: 0 }
+      }
+    }
+
+    return {
+      padding: { top: 8, bottom: 8, left: 8, right: 8 }
+    }
+  }
+
   function addBlock(
     blockType: string,
     parentId: string = 'root',
@@ -355,9 +379,7 @@ function createStore() {
     const newBlock: EdmFlyhubBlock = {
       type: blockType,
       data: {
-        style: {
-          padding: { top: 16, bottom: 16, left: 24, right: 24 }
-        },
+        style: getDefaultBlockStyle(blockType),
         props: {},
         ...initialData
       }
@@ -524,9 +546,7 @@ function createStore() {
     const newBlock: EdmFlyhubBlock = {
       type: blockType,
       data: {
-        style: {
-          padding: { top: 8, bottom: 8, left: 8, right: 8 }
-        },
+        style: getDefaultDetachedBlockStyle(blockType),
         props: {},
         ...initialData
       }

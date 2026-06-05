@@ -540,6 +540,7 @@ const props = defineProps<{
   props?: Record<string, unknown> | null
   /** Phase 3b: when true, text blocks are contenteditable on the canvas. */
   editable?: boolean
+  htmlEditingEnabled?: boolean
   imageLibraryEnabled?: boolean
   hiddenOnDevice?: boolean
   selectedHtmlEditableId?: string | null
@@ -688,8 +689,13 @@ function onEditableKeydown(e: KeyboardEvent) {
 
 const blockProps = computed(() => (props.props || {}) as Record<string, unknown>)
 const rawHtmlContents = computed(() => (blockProps.value.contents as string) || '')
+const htmlAnnotationEnabled = computed(() => {
+  return props.editable
+    && props.type === 'Html'
+    && (props.htmlEditingEnabled || Boolean(props.selectedHtmlEditableId))
+})
 const htmlContents = computed(() => {
-  if (!props.editable || props.type !== 'Html') return rawHtmlContents.value
+  if (!htmlAnnotationEnabled.value) return rawHtmlContents.value
   return annotateHtmlEditables(rawHtmlContents.value, {
     editable: true,
     selectedId: props.selectedHtmlEditableId || null
@@ -926,19 +932,43 @@ const buttonWrapperStyle = computed(() => ({
   textAlign: (props.style?.textAlign as string) || undefined,
   padding: getPadding(props.style?.padding)
 }))
+const BUTTON_PADDING_BY_SIZE: Record<string, string> = {
+  'x-small': '6px 12px',
+  'small': '8px 16px',
+  'medium': '12px 24px',
+  'large': '16px 32px'
+}
+const BUTTON_RADIUS_BY_STYLE: Record<string, string> = {
+  rectangle: '0',
+  rounded: '8px',
+  pill: '9999px'
+}
 const buttonLinkStyle = computed(() => {
   const bgColor = (blockProps.value.buttonBackgroundColor as string) || '#2f4574'
   const textColor = (blockProps.value.buttonTextColor as string) || '#ffffff'
+  const base = buildBaseStyle(props.style)
+  const size = (blockProps.value.size as string) || 'medium'
+  const buttonStyle = (blockProps.value.buttonStyle as string) || 'rounded'
+  const fullWidth = blockProps.value.fullWidth === true
   return {
-    display: 'inline-block',
-    padding: '12px 20px',
-    fontSize: '16px',
-    fontWeight: '600',
+    display: fullWidth ? 'block' : 'inline-block',
+    width: fullWidth ? '100%' : undefined,
+    boxSizing: fullWidth ? 'border-box' : undefined,
+    padding: BUTTON_PADDING_BY_SIZE[size] || BUTTON_PADDING_BY_SIZE.medium,
+    fontFamily: base.fontFamily,
+    fontSize: base.fontSize || '16px',
+    fontWeight: base.fontWeight || '600',
+    letterSpacing: base.letterSpacing,
+    lineHeight: base.lineHeight || '1',
+    textTransform: base.textTransform,
+    textAlign: fullWidth ? 'center' : undefined,
     textDecoration: 'none',
     backgroundColor: bgColor,
     color: textColor,
-    borderRadius: '4px',
-    lineHeight: '1'
+    border: base.border,
+    borderRadius: base.borderRadius || BUTTON_RADIUS_BY_STYLE[buttonStyle] || BUTTON_RADIUS_BY_STYLE.rounded,
+    boxShadow: base.boxShadow,
+    opacity: base.opacity
   }
 })
 

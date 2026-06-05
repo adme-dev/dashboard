@@ -790,6 +790,7 @@ onMounted(async () => {
                   :props="blockForCanvas(block.id)?.data?.props"
                   :hidden-on-device="hiddenOnCanvas(block.id)"
                   :selected-html-editable-id="selectedHtmlEditableFor(block.id)?.id"
+                  :html-editing-enabled="store.selectedBlockId.value === block.id"
                   :image-library-enabled="true"
                   editable
                   @update:text="(t) => updateCanvasText(block.id, t)"

@@ -1,5 +1,6 @@
+// @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
-import { computed, createSSRApp, h, reactive, ref } from 'vue'
+import { computed, createApp, createSSRApp, h, nextTick, reactive, ref } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import ContainerBlockRenderer from '~~/app/components/email/builder/ContainerBlockRenderer.vue'
 import ColumnsContainerRenderer from '~~/app/components/email/builder/ColumnsContainerRenderer.vue'
@@ -29,6 +30,13 @@ function makeStore() {
           }
         }
       },
+      'button-child': {
+        type: 'Button',
+        data: {
+          style: { fontSize: 16 },
+          props: { text: 'Click Here', buttonBackgroundColor: '#2f4574' }
+        }
+      },
       'text-child': {
         type: 'Text',
         data: {
@@ -53,7 +61,7 @@ const stubs = {
     name: 'EmailBuilderEdmBlockRenderer',
     props: ['type', 'style', 'props', 'hiddenOnDevice', 'editable'],
     emits: ['update:text'],
-    template: '<button class="child-renderer" :data-type="type" :data-editable="editable" @click="$emit(\'update:text\', \'Updated nested copy\')">{{ props?.text }}</button>'
+    template: '<button class="child-renderer" :data-type="type" :data-editable="editable" :data-button-color="props?.buttonBackgroundColor" :data-font-size="style?.fontSize" @click="$emit(\'update:text\', \'Updated nested copy\')">{{ props?.text }}</button>'
   },
   EmailBuilderEdmAddModuleMenu: {
     name: 'EmailBuilderEdmAddModuleMenu',
@@ -68,6 +76,16 @@ async function render(component: unknown, props: Record<string, unknown>, store 
   })
   Object.entries(stubs).forEach(([name, stub]) => app.component(name, stub))
   return renderToString(app)
+}
+
+function mount(component: unknown, props: Record<string, unknown>, store = makeStore()) {
+  ;(globalThis as Record<string, unknown>).useEdmBuilder = () => store
+  const host = document.createElement('div')
+  document.body.appendChild(host)
+  const app = createApp({ render: () => h(component as never, props) })
+  Object.entries(stubs).forEach(([name, stub]) => app.component(name, stub))
+  app.mount(host)
+  return { app, host }
 }
 
 describe('nested EDM inline editing', () => {
@@ -125,7 +143,47 @@ describe('nested EDM inline editing', () => {
     }, store)
     const emptyColumnAddButton = html.match(/<button[^>]*data-edm-nested-add-trigger[^>]*data-edm-column-index="1"[^>]*>/)?.[0] || ''
 
+    expect(html).toContain('class="column is-empty"')
+    expect(html).toContain('min-height:60px')
+    expect(html).toContain('class="column-add-block is-inline"')
+    expect(html).toContain('class="column-add-block is-empty"')
     expect(emptyColumnAddButton).toContain('data-edm-column-index="1"')
     expect(emptyColumnAddButton).not.toContain('display:none')
+  })
+
+  it('refreshes nested child renderer props when selected block settings change', async () => {
+    const store = makeStore()
+    store.document.value.columns.data.props = {
+      columnsCount: 2,
+      columns: [{ childrenIds: ['button-child'] }, { childrenIds: [] }]
+    }
+    const { app, host } = mount(ColumnsContainerRenderer, {
+      blockId: 'columns',
+      device: 'desktop',
+      style: store.document.value.columns.data.style,
+      props: store.document.value.columns.data.props
+    }, store)
+
+    expect(host.querySelector('.child-renderer')?.textContent).toBe('Click Here')
+    expect(host.querySelector('.child-renderer')?.getAttribute('data-button-color')).toBe('#2f4574')
+
+    store.document.value = {
+      ...store.document.value,
+      'button-child': {
+        ...store.document.value['button-child'],
+        data: {
+          style: { fontSize: 26 },
+          props: { text: 'Updated CTA', buttonBackgroundColor: '#123456' }
+        }
+      }
+    }
+    await nextTick()
+
+    expect(host.querySelector('.child-renderer')?.textContent).toBe('Updated CTA')
+    expect(host.querySelector('.child-renderer')?.getAttribute('data-button-color')).toBe('#123456')
+    expect(host.querySelector('.child-renderer')?.getAttribute('data-font-size')).toBe('26')
+
+    app.unmount()
+    host.remove()
   })
 })

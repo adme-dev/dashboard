@@ -20,6 +20,7 @@
           :style="child.data.style"
           :props="child.data.props"
           :hidden-on-device="child.hiddenOnDevice"
+          :html-editing-enabled="store.selectedBlockId.value === child.id"
           editable
           @update:text="(text) => updateChildText(child.id, text)"
           @update:props="(propsPatch) => updateChildProps(child.id, propsPatch)"

@@ -7,7 +7,8 @@
         v-for="(column, colIndex) in columns"
         :key="colIndex"
         class="column"
-        :style="getColumnStyle()"
+        :class="{ 'is-empty': isColumnEmpty(colIndex) }"
+        :style="getColumnStyle(colIndex)"
         @mouseenter="columnHovered[colIndex] = true"
         @mouseleave="columnHovered[colIndex] = false"
       >
@@ -24,6 +25,7 @@
               :style="getBlockData(childId).style"
               :props="getBlockData(childId).props"
               :hidden-on-device="isBlockHiddenOnDevice(childId)"
+              :html-editing-enabled="store.selectedBlockId.value === childId"
               editable
               @update:text="(text) => updateChildText(childId, text)"
               @update:props="(propsPatch) => updateChildProps(childId, propsPatch)"
@@ -32,7 +34,7 @@
           </div>
         </template>
 
-        <div class="column-add-block">
+        <div class="column-add-block" :class="isColumnEmpty(colIndex) ? 'is-empty' : 'is-inline'">
           <UPopover v-model:open="columnPickerOpen[colIndex]" :content="{ side: 'bottom', align: 'center' }">
             <button
               v-show="isColumnEmpty(colIndex) || columnHovered[colIndex] || columnPickerOpen[colIndex]"
@@ -126,7 +128,17 @@ const gridStyle = computed(() => {
   }
 })
 
-function getColumnStyle() {
+function getColumnStyle(columnIndex: number) {
+  if (isColumnEmpty(columnIndex)) {
+    return {
+      display: 'flex',
+      flexDirection: 'column' as const,
+      alignItems: 'stretch',
+      justifyContent: 'center',
+      minHeight: '60px'
+    }
+  }
+
   const alignment = props.props?.contentAlignment || 'top'
   let alignItems = 'flex-start'
   if (alignment === 'middle') alignItems = 'center'
@@ -198,7 +210,7 @@ function updateChildStyle(blockId: string, stylePatch: Record<string, unknown>) 
 
 <style scoped>
 .columns-container {
-  min-height: 80px;
+  min-height: 60px;
   position: relative;
 }
 
@@ -207,11 +219,17 @@ function updateChildStyle(blockId: string, stylePatch: Record<string, unknown>) 
 }
 
 .column {
+  position: relative;
   background: rgba(59, 130, 246, 0.05);
   border: 1px dashed rgba(59, 130, 246, 0.3);
   border-radius: 4px;
   padding: 8px;
   min-height: 60px;
+}
+
+.column.is-empty {
+  background: rgba(59, 130, 246, 0.04);
+  border-color: rgba(59, 130, 246, 0.28);
 }
 
 .column-child {
@@ -232,9 +250,28 @@ function updateChildStyle(blockId: string, stylePatch: Record<string, unknown>) 
 
 .column-add-block {
   display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 8px 0;
-  margin-top: auto;
+  width: 100%;
+}
+
+.column-add-block.is-inline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -11px;
+  height: 22px;
+  padding: 0;
+  margin: 0;
+  pointer-events: none;
+  z-index: 8;
+}
+
+.column-add-block.is-empty {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0;
+  margin-top: 0;
 }
 
 .add-block-trigger {
@@ -249,6 +286,15 @@ function updateChildStyle(blockId: string, stylePatch: Record<string, unknown>) 
   border: none;
   cursor: pointer;
   transition: all 0.15s ease;
+  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.18);
+}
+
+.column-add-block.is-inline .add-block-trigger {
+  width: 22px;
+  height: 22px;
+  border: 2px solid white;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.24);
+  pointer-events: auto;
 }
 
 .add-block-trigger:hover {

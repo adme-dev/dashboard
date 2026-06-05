@@ -26,6 +26,26 @@ describe('useEdmBuilder store', () => {
     expect(s.canUndo.value).toBe(true)
   })
 
+  it('starts newly inserted buttons with zero outer spacing', () => {
+    const s = useEdmBuilder()
+    const rootButtonId = s.addBlock('Button', 'root')
+
+    s.addBlockToDocument('nestedButton', 'Button')
+
+    expect(s.document.value[rootButtonId].data.style?.padding).toEqual({
+      top: 0,
+      bottom: 0,
+      left: 0,
+      right: 0
+    })
+    expect(s.document.value.nestedButton.data.style?.padding).toEqual({
+      top: 0,
+      bottom: 0,
+      left: 0,
+      right: 0
+    })
+  })
+
   it('undo reverses the last addBlock', () => {
     const s = useEdmBuilder()
     const id = s.addBlock('Heading', 'root')

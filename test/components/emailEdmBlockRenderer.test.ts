@@ -96,6 +96,42 @@ describe('EmailBuilderEdmBlockRenderer inline editing (Phase 3b)', () => {
     expect(button).not.toContain('target="_blank"')
   })
 
+  it('renders button settings from the sidebar controls', async () => {
+    const html = await renderBlock(
+      'Button',
+      {
+        text: 'Claim offer',
+        url: '#',
+        fullWidth: true,
+        size: 'large',
+        buttonStyle: 'pill',
+        buttonBackgroundColor: '#123456',
+        buttonTextColor: '#abcdef'
+      },
+      {
+        fontFamily: 'GEOMETRIC_SANS',
+        fontSize: 26,
+        fontWeight: 'bold',
+        textAlign: 'right',
+        letterSpacing: 1.5,
+        padding: { top: 4, right: 7, bottom: 5, left: 6 }
+      }
+    )
+
+    expect(html).toContain('Claim offer')
+    expect(html).toContain('background-color:#123456')
+    expect(html).toContain('color:#abcdef')
+    expect(html).toContain('font-family:GEOMETRIC_SANS')
+    expect(html).toContain('font-size:26px')
+    expect(html).toContain('font-weight:bold')
+    expect(html).toContain('letter-spacing:1.5px')
+    expect(html).toContain('text-align:right')
+    expect(html).toContain('width:100%')
+    expect(html).toContain('box-sizing:border-box')
+    expect(html).toContain('border-radius:9999px')
+    expect(html).toContain('padding:16px 32px')
+  })
+
   it('makes feature-grid card text contenteditable when editable=true', async () => {
     const html = await renderBlock('feature-grid', {
       features: [
