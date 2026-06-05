@@ -289,6 +289,20 @@ const activeDevice = ref<EdmDevice>('desktop')
 const previewHtml = ref('')
 const previewLoading = ref(false)
 const previewError = ref('')
+const showTestSendModal = ref(false)
+const testSendTo = ref('')
+const testSending = ref(false)
+const testSendError = ref('')
+const testSendResult = ref<{
+  sent_to: string
+  message_id: string | null
+  sendability: {
+    ok: boolean
+    htmlBytes: number
+    warnings: Array<{ code: string, message: string }>
+    errors: Array<{ code: string, message: string }>
+  }
+} | null>(null)
 
 const VIEW_TABS: { value: ViewMode, label: string, icon: string }[] = [
   { value: 'editor', label: 'Editor', icon: 'i-lucide-pencil' },
@@ -300,6 +314,12 @@ const DEVICE_TABS: { value: EdmDevice, label: string, icon: string }[] = [
   { value: 'desktop', label: 'Desktop', icon: 'i-lucide-monitor' },
   { value: 'mobile', label: 'Mobile', icon: 'i-lucide-smartphone' }
 ]
+
+const previewFrameClass = computed(() => {
+  return activeDevice.value === 'mobile'
+    ? 'max-w-[390px]'
+    : 'max-w-[760px]'
+})
 
 async function renderPreview() {
   previewLoading.value = true
@@ -329,6 +349,45 @@ watch(viewMode, (mode) => {
 function copyHtml() {
   navigator.clipboard?.writeText(previewHtml.value)
   toast.add({ title: 'Copied', description: 'HTML copied to clipboard.', color: 'success' })
+}
+
+function openTestSend() {
+  testSendError.value = ''
+  testSendResult.value = null
+  showTestSendModal.value = true
+}
+
+function errorMessage(error: unknown): string {
+  const data = (error as { data?: { message?: string, statusMessage?: string } })?.data
+  return data?.message || data?.statusMessage || 'Could not send the test email.'
+}
+
+async function sendTestEmail() {
+  testSending.value = true
+  testSendError.value = ''
+  testSendResult.value = null
+  try {
+    const res = await $fetch<typeof testSendResult.value>('/api/email/templates/test-send', {
+      method: 'POST',
+      body: {
+        to: testSendTo.value.trim() || null,
+        subject: subject.value || null,
+        preview_text: previewText.value || null,
+        body_source: store.document.value
+      }
+    })
+    testSendResult.value = res
+    toast.add({
+      title: 'Test sent',
+      description: `Sent to ${res?.sent_to || testSendTo.value || 'your account email'}.`,
+      color: 'success'
+    })
+  } catch (error) {
+    testSendError.value = errorMessage(error)
+    toast.add({ title: 'Test send failed', description: testSendError.value, color: 'error' })
+  } finally {
+    testSending.value = false
+  }
 }
 
 // ── Save / load ─────────────────────────────────────────────────────────
@@ -674,6 +733,14 @@ onMounted(async () => {
         @click="renderPreview()"
       />
       <UButton
+        icon="i-lucide-send"
+        variant="outline"
+        color="neutral"
+        size="sm"
+        label="Send test"
+        @click="openTestSend()"
+      />
+      <UButton
         icon="i-lucide-save"
         color="primary"
         size="sm"
@@ -877,7 +944,10 @@ onMounted(async () => {
           :srcdoc="previewHtml"
           sandbox=""
           title="Email preview"
-          class="mx-auto block w-full max-w-[600px] h-full min-h-[600px] rounded border border-default bg-white"
+          :class="[
+            'mx-auto block w-full h-full min-h-[600px] rounded border border-default bg-white',
+            previewFrameClass
+          ]"
         />
       </div>
 
@@ -1009,6 +1079,69 @@ onMounted(async () => {
       v-model:open="imageLibraryOpen"
       @pick="applyImageLibraryAsset"
     />
+
+    <!-- Send the current unsaved editor document as a single test email. -->
+    <UModal v-model:open="showTestSendModal" title="Send test email">
+      <template #content>
+        <div class="p-4 space-y-4">
+          <p class="text-sm text-muted">
+            Sends the current editor content through the production renderer and
+            checks the sendability gate before Resend receives it.
+          </p>
+          <UFormField label="Recipient" help="Leave blank to send to your account email.">
+            <UInput
+              v-model="testSendTo"
+              type="email"
+              placeholder="name@example.com"
+              class="w-full"
+            />
+          </UFormField>
+          <UAlert
+            v-if="testSendError"
+            color="error"
+            title="Test send failed"
+            :description="testSendError"
+          />
+          <UAlert
+            v-if="testSendResult"
+            color="success"
+            title="Test sent"
+            :description="`Sent to ${testSendResult.sent_to}. Rendered HTML: ${testSendResult.sendability.htmlBytes} bytes.`"
+          />
+          <div
+            v-if="testSendResult?.sendability.warnings.length"
+            class="rounded-md border border-warning/30 bg-warning/5 p-3"
+          >
+            <p class="text-xs font-semibold uppercase text-warning mb-2">
+              Sendability warnings
+            </p>
+            <ul class="space-y-1 text-sm text-muted">
+              <li
+                v-for="warning in testSendResult.sendability.warnings"
+                :key="warning.code"
+              >
+                {{ warning.message }}
+              </li>
+            </ul>
+          </div>
+          <div class="flex justify-end gap-2 pt-2">
+            <UButton
+              variant="ghost"
+              color="neutral"
+              label="Cancel"
+              @click="showTestSendModal = false"
+            />
+            <UButton
+              color="primary"
+              icon="i-lucide-send"
+              label="Send test"
+              :loading="testSending"
+              @click="sendTestEmail()"
+            />
+          </div>
+        </div>
+      </template>
+    </UModal>
 
     <!-- Rename a saved module -->
     <UModal v-model:open="showRenameModuleModal" title="Rename module">
