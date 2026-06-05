@@ -759,6 +759,7 @@ onMounted(async () => {
                 @move-up="moveBlock(block.id, 'up')"
                 @move-down="moveBlock(block.id, 'down')"
                 @duplicate="store.duplicateBlock(block.id)"
+                @save="openSaveModule()"
                 @delete="store.removeBlock(block.id)"
                 @insert-above="addBlock($event, index)"
                 @insert-below="addBlock($event, index + 1)"

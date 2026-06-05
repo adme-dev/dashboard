@@ -1,5 +1,5 @@
 <!-- app/components/email/builder/EditorBlockWrapper.vue -->
-<!-- Wraps a top-level canvas block: hover/selection outline, move/duplicate/delete
+<!-- Wraps a top-level canvas block: hover/selection outline, move/save/duplicate/delete
      actions, and insert-above/below "+" popovers. Ported + Nuxt UI re-skin;
      dynamic-block paths removed. -->
 <template>
@@ -91,6 +91,14 @@
         @click.stop="emit('duplicate')"
       />
       <UButton
+        icon="i-lucide-bookmark-plus"
+        variant="ghost"
+        color="neutral"
+        size="xs"
+        title="Save module"
+        @click.stop="emit('save')"
+      />
+      <UButton
         icon="i-lucide-trash-2"
         variant="ghost"
         color="error"
@@ -165,6 +173,7 @@ const emit = defineEmits<{
   'move-up': []
   'move-down': []
   'duplicate': []
+  'save': []
   'delete': []
   'insert-above': [type: string]
   'insert-below': [type: string]

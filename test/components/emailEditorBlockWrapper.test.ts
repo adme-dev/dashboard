@@ -42,4 +42,11 @@ describe('EditorBlockWrapper drag reorder affordance', () => {
     expect(html).toContain('drop-indicator-before')
     expect(html).toContain('Hero block')
   })
+
+  it('renders a save control for selected root blocks', async () => {
+    const html = await renderWrapper()
+
+    expect(html).toContain('title="Save module"')
+    expect(html).toContain('data-icon="i-lucide-bookmark-plus"')
+  })
 })
