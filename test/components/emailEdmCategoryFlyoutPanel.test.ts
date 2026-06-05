@@ -8,8 +8,8 @@ const stubs = {
   UIcon: { name: 'UIcon', props: ['name'], template: '<i :data-icon="name" />' },
   EmailBuilderEdmSectionThumbnail: {
     name: 'EmailBuilderEdmSectionThumbnail',
-    props: ['preset', 'width', 'maxHeight'],
-    template: '<div class="thumb" :data-preset="preset?.id" :data-width="width" :data-max-height="maxHeight" />'
+    props: ['preset', 'width', 'maxHeight', 'surface'],
+    template: '<div class="thumb" :data-preset="preset?.id" :data-width="width" :data-max-height="maxHeight" :data-surface="surface" />'
   }
 }
 
@@ -34,8 +34,10 @@ describe('EdmCategoryFlyoutPanel', () => {
     expect(html).toContain('HEADER 1')
     expect(html).toContain('HEADER 2')
     expect(html).toContain('data-preset="header-logo-menu"')
-    expect(html).toContain('data-width="360"')
+    expect(html).toContain('data-width="384"')
     expect(html).toContain('data-max-height="420"')
+    expect(html).toContain('data-surface="transparent"')
+    expect(html).not.toContain('overflow-hidden bg-white')
   })
 
   it('renders Basic modules as a compact top-docked quick-add grid', async () => {

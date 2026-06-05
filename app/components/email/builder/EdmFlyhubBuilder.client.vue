@@ -3,7 +3,6 @@
      undo/redo, Editor/Preview/HTML views, and Save to edm_templates (2a-ii-4).
      Loads an existing template via ?id= or a starter layout via ?starter=. -->
 <script setup lang="ts">
-import { getDefaultBlockData } from '~~/app/utils/edmBlocks'
 import { EDM_SECTION_CATEGORIES, findStarterTemplate } from '~~/app/utils/edmPresets'
 import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
 import type { EdmFlyhubDocument } from '~~/app/types/edm'
@@ -108,10 +107,6 @@ const childBlocks = computed(() => {
 
 const draggedRootBlockId = ref<string | null>(null)
 const rootDropPreview = ref<{ targetBlockId: string, placement: EdmRootDropPlacement } | null>(null)
-
-function addBlock(type: string, position?: number) {
-  store.addBlock(type, 'root', position, getDefaultBlockData(type))
-}
 
 function moveBlock(blockId: string, direction: 'up' | 'down') {
   const root = store.document.value.root
@@ -844,8 +839,12 @@ onMounted(async () => {
                 @duplicate="store.duplicateBlock(block.id)"
                 @save="openSaveModule()"
                 @delete="store.removeBlock(block.id)"
-                @insert-above="addBlock($event, index)"
-                @insert-below="addBlock($event, index + 1)"
+                @insert-preset-above="(preset) => insertPreset(preset, index)"
+                @insert-preset-below="(preset) => insertPreset(preset, index + 1)"
+                @insert-module-above="(module) => insertCustomModule(module, index)"
+                @insert-module-below="(module) => insertCustomModule(module, index + 1)"
+                @rename-module="openRenameModule"
+                @delete-module="openDeleteModule"
                 @drag-start="startRootDrag(block.id)"
                 @drag-over="(placement) => previewRootDrop(block.id, placement)"
                 @drag-leave="clearRootDropPreview(block.id)"

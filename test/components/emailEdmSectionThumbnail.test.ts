@@ -58,15 +58,28 @@ describe('EdmSectionThumbnail', () => {
     }
   })
 
-  it('scales the inner canvas down to fit the target width', async () => {
+  it('scales the inner canvas down without reserving unscaled layout height', async () => {
     const preset = findSectionPreset('header-logo-menu')!
     const app = createSSRApp({
       render: () => h(EdmSectionThumbnail, { preset, width: 300 })
     })
     const html = await renderToString(app)
-    // inner canvas computed at full email width then visually shrunk
+    // The inner canvas renders at full email width, but uses layout-affecting
+    // zoom so the flyout tile does not keep the unscaled section height.
     expect(html).toContain('width:600px')
-    expect(html).toContain('scale(0.5)')
+    expect(html).toContain('zoom:0.5')
+    expect(html).not.toContain('transform:scale')
     expect(html).toContain('pointer-events:none')
+  })
+
+  it('can render a transparent preview shell for dark flyout panels', async () => {
+    const preset = findSectionPreset('postcards-glidex-02-hero')!
+    const app = createSSRApp({
+      render: () => h(EdmSectionThumbnail, { preset, surface: 'transparent' })
+    })
+    const html = await renderToString(app)
+    expect(html).toContain('edm-section-thumbnail')
+    expect(html).toContain('bg-transparent')
+    expect(html).not.toContain('edm-section-thumbnail relative overflow-hidden rounded-md border border-default bg-white')
   })
 })

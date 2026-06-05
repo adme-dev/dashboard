@@ -13,6 +13,8 @@ defineEmits<{
   insert: [preset: EdmSectionPreset]
 }>()
 
+const RICH_THUMBNAIL_WIDTH = 384
+
 function presetLabel(category: EdmSectionCategory, index: number) {
   const base = category.id === 'basic' ? 'Module' : category.label
   return `${base} ${index + 1}`.toUpperCase()
@@ -59,11 +61,12 @@ function presetLabel(category: EdmSectionCategory, index: number) {
           <span
             class="block overflow-hidden rounded-md border border-default bg-default shadow-sm transition group-hover:border-primary group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-primary"
           >
-            <span class="block overflow-hidden bg-white">
+            <span class="block overflow-hidden">
               <EmailBuilderEdmSectionThumbnail
                 :preset="preset"
-                :width="360"
+                :width="RICH_THUMBNAIL_WIDTH"
                 :max-height="420"
+                surface="transparent"
               />
             </span>
           </span>

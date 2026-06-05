@@ -36,17 +36,12 @@
           <UIcon name="i-lucide-plus" class="h-3 w-3 pointer-events-none" />
         </button>
         <template #content>
-          <div class="grid grid-cols-4 gap-1 p-2">
-            <button
-              v-for="blockType in BLOCK_PALETTE"
-              :key="blockType.type"
-              class="block-picker-item"
-              @click="insertBlockAbove(blockType.type)"
-            >
-              <UIcon :name="blockType.icon" class="h-4 w-4" />
-              <span class="text-[10px]">{{ blockType.name }}</span>
-            </button>
-          </div>
+          <EmailBuilderEdmAddModuleMenu
+            @insert="insertPresetAbove"
+            @insert-module="insertCustomModuleAbove"
+            @rename-module="renameModule"
+            @delete-module="deleteModule"
+          />
         </template>
       </UPopover>
     </div>
@@ -138,17 +133,12 @@
           <UIcon name="i-lucide-plus" class="h-3 w-3 pointer-events-none" />
         </button>
         <template #content>
-          <div class="grid grid-cols-4 gap-1 p-2">
-            <button
-              v-for="blockType in BLOCK_PALETTE"
-              :key="blockType.type"
-              class="block-picker-item"
-              @click="insertBlockBelow(blockType.type)"
-            >
-              <UIcon :name="blockType.icon" class="h-4 w-4" />
-              <span class="text-[10px]">{{ blockType.name }}</span>
-            </button>
-          </div>
+          <EmailBuilderEdmAddModuleMenu
+            @insert="insertPresetBelow"
+            @insert-module="insertCustomModuleBelow"
+            @rename-module="renameModule"
+            @delete-module="deleteModule"
+          />
         </template>
       </UPopover>
     </div>
@@ -157,8 +147,9 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { BLOCK_PALETTE } from '~~/app/utils/edmBlocks'
 import type { EdmRootDropPlacement } from '~~/app/utils/edmDragReorder'
+import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
+import type { EdmCustomModule } from '~~/app/composables/useEdmCustomModules'
 
 const props = withDefaults(defineProps<{
   blockId: string
@@ -175,8 +166,12 @@ const emit = defineEmits<{
   'duplicate': []
   'save': []
   'delete': []
-  'insert-above': [type: string]
-  'insert-below': [type: string]
+  'insert-preset-above': [preset: EdmSectionPreset]
+  'insert-preset-below': [preset: EdmSectionPreset]
+  'insert-module-above': [module: EdmCustomModule]
+  'insert-module-below': [module: EdmCustomModule]
+  'rename-module': [module: EdmCustomModule]
+  'delete-module': [module: EdmCustomModule]
   'drag-start': []
   'drag-over': [placement: EdmRootDropPlacement]
   'drag-leave': []
@@ -203,14 +198,32 @@ function handleClick() {
   store.setSelectedBlockId(props.blockId)
 }
 
-function insertBlockAbove(type: string) {
-  emit('insert-above', type)
+function insertPresetAbove(preset: EdmSectionPreset) {
+  emit('insert-preset-above', preset)
   insertAboveOpen.value = false
 }
 
-function insertBlockBelow(type: string) {
-  emit('insert-below', type)
+function insertPresetBelow(preset: EdmSectionPreset) {
+  emit('insert-preset-below', preset)
   insertBelowOpen.value = false
+}
+
+function insertCustomModuleAbove(module: EdmCustomModule) {
+  emit('insert-module-above', module)
+  insertAboveOpen.value = false
+}
+
+function insertCustomModuleBelow(module: EdmCustomModule) {
+  emit('insert-module-below', module)
+  insertBelowOpen.value = false
+}
+
+function renameModule(module: EdmCustomModule) {
+  emit('rename-module', module)
+}
+
+function deleteModule(module: EdmCustomModule) {
+  emit('delete-module', module)
 }
 
 function getDropPlacement(event: DragEvent): EdmRootDropPlacement {

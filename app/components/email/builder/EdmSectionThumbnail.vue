@@ -1,7 +1,7 @@
 <!-- app/components/email/builder/EdmSectionThumbnail.vue -->
 <!-- Live-rendered mini preview of a section preset. Renders each preset block
-     through the real EdmBlockRenderer at full email width (600px), then scales
-     the canvas down to the target thumbnail width via CSS transform.
+     through the real EdmBlockRenderer at full email width (600px), then zooms
+     the canvas down to the target thumbnail width.
      SSR-safe: no browser APIs; scale is derived purely from the width prop.
      Non-interactive — the parent (palette flyout button) owns clicks. -->
 <script setup lang="ts">
@@ -10,6 +10,7 @@ import EdmBlockRenderer from './EdmBlockRenderer.vue'
 import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
 
 const EMAIL_WIDTH = 600
+type ThumbnailSurface = 'white' | 'transparent'
 
 const props = withDefaults(defineProps<{
   preset: EdmSectionPreset
@@ -17,12 +18,16 @@ const props = withDefaults(defineProps<{
   width?: number
   /** Maximum visible tile height. Pass null for an uncapped tile. */
   maxHeight?: number | null
+  /** Outer preview chrome background. The email content controls its own background. */
+  surface?: ThumbnailSurface
 }>(), {
   width: 260,
-  maxHeight: 220
+  maxHeight: 220,
+  surface: 'white'
 })
 
 const scale = computed(() => props.width / EMAIL_WIDTH)
+const surfaceClass = computed(() => props.surface === 'transparent' ? 'bg-transparent' : 'bg-white')
 
 // The visible tile takes the target width; its height is the scaled-down
 // height of whatever the inner canvas renders, capped by max-height clipping.
@@ -38,7 +43,7 @@ const tileStyle = computed(() => {
 
 const innerStyle = computed(() => ({
   width: EMAIL_WIDTH + 'px',
-  transform: `scale(${scale.value})`,
+  zoom: String(scale.value),
   transformOrigin: 'top left',
   pointerEvents: 'none' as const
 }))
@@ -46,7 +51,8 @@ const innerStyle = computed(() => ({
 
 <template>
   <div
-    class="edm-section-thumbnail relative overflow-hidden rounded-md border border-default bg-white"
+    class="edm-section-thumbnail relative overflow-hidden rounded-md border border-default"
+    :class="surfaceClass"
     :style="tileStyle"
   >
     <div :style="innerStyle">

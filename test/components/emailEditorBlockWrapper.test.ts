@@ -17,7 +17,11 @@ const stubs = {
     template: '<button v-bind="$attrs" :title="title"><i v-if="icon" :data-icon="icon" /><slot /></button>'
   },
   UIcon: { name: 'UIcon', props: ['name'], template: '<i :data-icon="name" />' },
-  UPopover: { name: 'UPopover', template: '<div><slot /><slot name="content" /></div>' }
+  UPopover: { name: 'UPopover', template: '<div><slot /><slot name="content" /></div>' },
+  EmailBuilderEdmAddModuleMenu: {
+    name: 'EmailBuilderEdmAddModuleMenu',
+    template: '<div data-edm-add-module-menu />'
+  }
 }
 
 async function renderWrapper(props: Record<string, unknown> = {}) {
@@ -48,5 +52,12 @@ describe('EditorBlockWrapper drag reorder affordance', () => {
 
     expect(html).toContain('title="Save module"')
     expect(html).toContain('data-icon="i-lucide-bookmark-plus"')
+  })
+
+  it('uses the unified module selector for insert-above and insert-below menus', async () => {
+    const html = await renderWrapper()
+
+    expect(html.match(/data-edm-add-module-menu/g)?.length).toBe(2)
+    expect(html).not.toContain('block-picker-item')
   })
 })
