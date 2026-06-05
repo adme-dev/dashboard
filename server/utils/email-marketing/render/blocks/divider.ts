@@ -5,8 +5,10 @@ import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 import { dividerLineThickness } from '~~/app/utils/edmDivider'
 import { extendedStyleCss } from '~~/app/utils/edmStyle'
 
+export const DIVIDER_BLOCK_TYPE = 'Divider'
+
 registerBlock({
-  type: 'Divider',
+  type: DIVIDER_BLOCK_TYPE,
 
   renderMjml(block: FlyhubBlock, _context: BlockRenderContext): string {
     const { data } = block

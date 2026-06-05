@@ -877,8 +877,10 @@ async function getOfferGenerator() {
 // Block registration
 // ---------------------------------------------------------------------------
 
+export const HTML_BLOCK_TYPE = 'Html'
+
 registerBlock({
-  type: 'Html',
+  type: HTML_BLOCK_TYPE,
 
   renderMjml(block: FlyhubBlock, context: BlockRenderContext): string {
     const { data } = block

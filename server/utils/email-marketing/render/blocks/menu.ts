@@ -4,8 +4,10 @@ import { formatPadding } from './types'
 import { escapeHtml } from './helpers'
 import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 
+export const MENU_BLOCK_TYPE = 'menu'
+
 registerBlock({
-  type: 'menu',
+  type: MENU_BLOCK_TYPE,
 
   renderMjml(block: FlyhubBlock, _context: BlockRenderContext): string {
     const { data } = block

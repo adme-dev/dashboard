@@ -8,8 +8,10 @@ interface StepItem {
   description: string
 }
 
+export const NEXT_STEPS_BLOCK_TYPE = 'next-steps'
+
 registerBlock({
-  type: 'next-steps',
+  type: NEXT_STEPS_BLOCK_TYPE,
 
   renderMjml(block: FlyhubBlock, context: BlockRenderContext): string {
     const props = (block.data.props || {}) as Record<string, unknown>

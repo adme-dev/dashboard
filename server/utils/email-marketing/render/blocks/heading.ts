@@ -14,8 +14,10 @@ const HEADING_FONT_SIZE_MAP: Record<string, string> = {
   h6: '14px'
 }
 
+export const HEADING_BLOCK_TYPE = 'Heading'
+
 registerBlock({
-  type: 'Heading',
+  type: HEADING_BLOCK_TYPE,
 
   renderMjml(block: FlyhubBlock, context: BlockRenderContext): string {
     const { data } = block

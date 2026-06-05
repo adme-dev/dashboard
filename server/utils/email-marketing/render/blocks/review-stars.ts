@@ -10,8 +10,10 @@ const SIZE_MAP: Record<string, string> = {
   lg: '24px'
 }
 
+export const REVIEW_STARS_BLOCK_TYPE = 'review-stars'
+
 registerBlock({
-  type: 'review-stars',
+  type: REVIEW_STARS_BLOCK_TYPE,
 
   renderMjml(block: FlyhubBlock, _context: BlockRenderContext): string {
     const { data } = block

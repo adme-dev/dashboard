@@ -4,8 +4,10 @@ import { formatPadding } from './types'
 import { escapeHtml, escapeUrl } from './helpers'
 import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 
+export const HEADER_BLOCK_TYPE = 'header'
+
 registerBlock({
-  type: 'header',
+  type: HEADER_BLOCK_TYPE,
 
   renderMjml(block: FlyhubBlock, context: BlockRenderContext): string {
     const { data } = block

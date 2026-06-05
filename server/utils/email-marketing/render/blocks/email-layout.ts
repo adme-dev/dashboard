@@ -14,8 +14,10 @@ function wrapResponsiveHtml(id: string, childBlock: FlyhubBlock, html: string): 
   return className ? `<div class="${className}">${html}</div>` : html
 }
 
+export const EMAIL_LAYOUT_BLOCK_TYPE = 'EmailLayout'
+
 registerBlock({
-  type: 'EmailLayout',
+  type: EMAIL_LAYOUT_BLOCK_TYPE,
 
   renderMjml(block: FlyhubBlock, context: BlockRenderContext): string {
     const { data } = block

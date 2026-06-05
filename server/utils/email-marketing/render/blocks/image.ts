@@ -5,8 +5,10 @@ import { escapeHtml } from './helpers'
 import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 import { extendedStyleCss } from '~~/app/utils/edmStyle'
 
+export const IMAGE_BLOCK_TYPE = 'Image'
+
 registerBlock({
-  type: 'Image',
+  type: IMAGE_BLOCK_TYPE,
 
   renderMjml(block: FlyhubBlock, _context: BlockRenderContext): string {
     const { data } = block

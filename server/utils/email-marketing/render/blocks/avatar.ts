@@ -4,8 +4,10 @@ import { formatPadding } from './types'
 import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 import { extendedStyleCss } from '~~/app/utils/edmStyle'
 
+export const AVATAR_BLOCK_TYPE = 'Avatar'
+
 registerBlock({
-  type: 'Avatar',
+  type: AVATAR_BLOCK_TYPE,
 
   renderMjml(block: FlyhubBlock, _context: BlockRenderContext): string {
     const { data } = block

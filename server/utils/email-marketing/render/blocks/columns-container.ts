@@ -27,8 +27,10 @@ function renderColumnChildToMjml(block: FlyhubBlock, context: BlockRenderContext
   return mjml
 }
 
+export const COLUMNS_CONTAINER_BLOCK_TYPE = 'ColumnsContainer'
+
 registerBlock({
-  type: 'ColumnsContainer',
+  type: COLUMNS_CONTAINER_BLOCK_TYPE,
 
   renderMjml(block: FlyhubBlock, context: BlockRenderContext): string {
     const { data } = block

@@ -14,6 +14,7 @@
 import { BLOCKS_LOADED } from './blocks'
 import { renderBlock } from './block-registry'
 import { resolveFontFamily } from './blocks/types'
+import { escapeFontFamilyForHtml } from './blocks/helpers'
 import {
   edmBlockHasResponsiveRules,
   edmResponsiveClassForBlock,
@@ -52,6 +53,44 @@ function collectResponsiveCss(doc: FlyhubDocument): { desktopCss: string[], mobi
   }
 
   return { desktopCss, mobileCss }
+}
+
+function responsiveClassesForBlock(id: string, block: FlyhubBlock): string {
+  return [
+    mobileStyleDeclarationsForBlock(block).length > 0 ? edmResponsiveClassForBlock(id) : '',
+    getHideClassForBlock(block) || ''
+  ].filter(Boolean).join(' ')
+}
+
+function withResponsiveRowClass(id: string, block: FlyhubBlock, html: string): string {
+  const className = responsiveClassesForBlock(id, block)
+  if (!className) return html
+
+  return html.replace(/<tr([^>]*)>/, (_match, attrs: string) => {
+    const currentAttrs = attrs || ''
+    if (/\sclass=(["'])/.test(currentAttrs)) {
+      return `<tr${currentAttrs.replace(/\sclass=(["'])(.*?)\1/, ` class=$1$2 ${className}$1`)}>`
+    }
+    return `<tr${currentAttrs} class="${className}">`
+  })
+}
+
+function renderRootChildrenHtml(
+  rootBlock: FlyhubBlock,
+  doc: FlyhubDocument,
+  context: BlockRenderContext
+): string {
+  const childrenIds = Array.isArray(rootBlock.data.childrenIds)
+    ? rootBlock.data.childrenIds as string[]
+    : []
+
+  return childrenIds
+    .map((id) => {
+      const childBlock = doc[id]
+      if (!childBlock) return ''
+      return withResponsiveRowClass(id, childBlock, renderBlock(childBlock, 'html', context))
+    })
+    .join('\n')
 }
 
 /**
@@ -110,20 +149,22 @@ export function renderFlyhubDocumentToHtml(
   const canvasColor = (rootProps.canvasColor as string) || '#FFFFFF'
   const textColor = (rootProps.textColor as string) || '#262626'
   const fontFamily = getFontFamily(rootProps.fontFamily as string)
+  const htmlFontFamily = escapeFontFamilyForHtml(fontFamily)
   const borderRadius = (rootProps.borderRadius as number) || 0
   const borderColor = (rootProps.borderColor as string) || ''
   const contentWidth = 600
   const primaryColor = options.primaryColor || '#2f4574'
   const responsiveCss = collectResponsiveCss(doc)
 
-  // Build context and render all child blocks via the block registry
+  // EmailLayout is the document root; render its children here so a stale dev
+  // registry cannot turn the whole preview into an EmailLayout placeholder.
   const blockCtx = buildBlockRenderContext(
     doc,
     primaryColor,
     options.dynamicBlockVehicles,
     options.dynamicBlockOffers
   )
-  const contentHtml = renderBlock(rootBlock, 'html', blockCtx)
+  const contentHtml = renderRootChildrenHtml(rootBlock, doc, blockCtx)
 
   let html = `
 <!DOCTYPE html>
@@ -156,18 +197,14 @@ ${responsiveCss.desktopCss.length ? `${responsiveCss.desktopCss.join('\n')}\n` :
     }
   </style>
 </head>
-<body style="margin: 0; padding: 0; background-color: ${backdropColor}; font-family: ${fontFamily}; color: ${textColor};">
+<body style="margin: 0; padding: 0; background-color: ${backdropColor}; font-family: ${htmlFontFamily}; color: ${textColor};">
   ${options.previewText ? `<div style="display: none; font-size: 1px; color: ${backdropColor}; line-height: 1px; max-height: 0; max-width: 0; opacity: 0; overflow: hidden;">${options.previewText}</div>` : ''}
 
   <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: ${backdropColor};">
     <tr>
       <td align="center" style="padding: 20px 10px;">
         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="${contentWidth}" class="email-container" style="max-width: ${contentWidth}px; background-color: ${canvasColor}; ${borderRadius ? `border-radius: ${borderRadius}px;` : ''} ${borderColor ? `border: 1px solid ${borderColor};` : ''} overflow: hidden;">
-          <tr>
-            <td>
-              ${contentHtml}
-            </td>
-          </tr>
+          ${contentHtml}
         </table>
       </td>
     </tr>

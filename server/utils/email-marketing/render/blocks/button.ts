@@ -5,8 +5,10 @@ import { escapeHtml, escapeFontFamilyForHtml } from './helpers'
 import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 import { extendedStyleCss } from '~~/app/utils/edmStyle'
 
+export const BUTTON_BLOCK_TYPE = 'Button'
+
 registerBlock({
-  type: 'Button',
+  type: BUTTON_BLOCK_TYPE,
 
   renderMjml(block: FlyhubBlock, context: BlockRenderContext): string {
     const { data } = block

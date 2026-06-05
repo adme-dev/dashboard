@@ -2,8 +2,10 @@ import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 
+export const SPACER_BLOCK_TYPE = 'Spacer'
+
 registerBlock({
-  type: 'Spacer',
+  type: SPACER_BLOCK_TYPE,
 
   renderMjml(block: FlyhubBlock, _context: BlockRenderContext): string {
     const { data } = block

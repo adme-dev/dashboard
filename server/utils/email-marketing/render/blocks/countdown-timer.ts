@@ -4,8 +4,10 @@ import { formatPadding } from './types'
 import { escapeHtml } from './helpers'
 import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 
+export const COUNTDOWN_TIMER_BLOCK_TYPE = 'countdown-timer'
+
 registerBlock({
-  type: 'countdown-timer',
+  type: COUNTDOWN_TIMER_BLOCK_TYPE,
 
   renderMjml(block: FlyhubBlock, _context: BlockRenderContext): string {
     const { data } = block

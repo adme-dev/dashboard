@@ -4,8 +4,10 @@ import { resolveFontFamily, formatPadding } from './types'
 import { escapeHtml, escapeUrl, escapeFontFamilyForHtml } from './helpers'
 import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 
+export const CTA_BANNER_BLOCK_TYPE = 'cta-banner'
+
 registerBlock({
-  type: 'cta-banner',
+  type: CTA_BANNER_BLOCK_TYPE,
 
   renderMjml(block: FlyhubBlock, context: BlockRenderContext): string {
     const { data } = block

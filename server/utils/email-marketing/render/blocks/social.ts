@@ -14,8 +14,10 @@ const PLATFORM_NAMES: Record<string, string> = {
   google: 'Google'
 }
 
+export const SOCIAL_BLOCK_TYPE = 'social'
+
 registerBlock({
-  type: 'social',
+  type: SOCIAL_BLOCK_TYPE,
 
   renderMjml(block: FlyhubBlock, _context: BlockRenderContext): string {
     const { data } = block

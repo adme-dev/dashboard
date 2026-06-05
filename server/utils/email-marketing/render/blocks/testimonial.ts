@@ -10,8 +10,10 @@ import {
 } from './helpers'
 import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 
+export const TESTIMONIAL_BLOCK_TYPE = 'testimonial'
+
 registerBlock({
-  type: 'testimonial',
+  type: TESTIMONIAL_BLOCK_TYPE,
 
   renderMjml(block: FlyhubBlock, context: BlockRenderContext): string {
     const { data } = block

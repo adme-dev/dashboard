@@ -30,6 +30,7 @@ describe('responsive server render', () => {
     })
 
     expect(html).toContain('class="edm-r-a"')
+    expect(html).toMatch(/<tr class="edm-r-a"/)
     expect(html).toContain('@media only screen and (max-width: 620px)')
     expect(html).toContain('.edm-r-a { color: #222222 !important; font-size: 14px !important; }')
   })

@@ -10,8 +10,10 @@ interface FeatureItem {
   description: string
 }
 
+export const FEATURE_GRID_BLOCK_TYPE = 'feature-grid'
+
 registerBlock({
-  type: 'feature-grid',
+  type: FEATURE_GRID_BLOCK_TYPE,
 
   renderMjml(block: FlyhubBlock, _context: BlockRenderContext): string {
     const { data } = block

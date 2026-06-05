@@ -1,6 +1,7 @@
 // test/utils/emailRenderDocument.test.ts
 import { describe, it, expect } from 'vitest'
 import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
+import { getBlockDefinition, registerBlock } from '~~/server/utils/email-marketing/render/block-registry'
 import { isFlyhubFormat } from '~~/server/utils/email-marketing/render/flyhub-html-renderer'
 
 describe('renderTemplateDocument — multi-block document', () => {
@@ -22,6 +23,49 @@ describe('renderTemplateDocument — multi-block document', () => {
   it('renders an empty EmailLayout without throwing', () => {
     const html = renderTemplateDocument({ root: { type: 'EmailLayout', data: { childrenIds: [] } } })
     expect(html).toContain('<!DOCTYPE html>')
+  })
+
+  it('places root block rows directly in the email container table', () => {
+    const html = renderTemplateDocument({
+      root: { type: 'EmailLayout', data: { props: {}, childrenIds: ['h'] } },
+      h: { type: 'Heading', data: { props: { level: 'h2', text: 'Preview Root Test' }, style: {} } }
+    })
+
+    expect(html).not.toMatch(/<td>\s*<tr/)
+    expect(html).toMatch(/class="email-container"[^>]*>\s*<tr/)
+  })
+
+  it('escapes wrapper font family quotes inside style attributes', () => {
+    const html = renderTemplateDocument({
+      root: { type: 'EmailLayout', data: { props: {}, childrenIds: ['h'] } },
+      h: { type: 'Heading', data: { props: { level: 'h2', text: 'Preview Root Test' }, style: {} } }
+    })
+
+    expect(html).toContain("font-family: 'Helvetica Neue', 'Arial Nova', 'Nimbus Sans', Arial, sans-serif;")
+    expect(html).not.toContain('font-family: "Helvetica Neue"')
+  })
+
+  it('renders root children when the EmailLayout block registry entry is stale', () => {
+    const emailLayoutDefinition = getBlockDefinition('EmailLayout')
+    expect(emailLayoutDefinition).toBeTruthy()
+
+    const registry = (globalThis as unknown as { __edmBlockRegistry?: Map<string, unknown> }).__edmBlockRegistry
+    expect(registry).toBeTruthy()
+
+    registry?.delete('EmailLayout')
+
+    try {
+      const html = renderTemplateDocument({
+        root: { type: 'EmailLayout', data: { props: {}, childrenIds: ['h'] } },
+        h: { type: 'Heading', data: { props: { level: 'h2', text: 'Preview Root Test' }, style: {} } }
+      })
+
+      expect(html).toContain('Preview Root Test')
+      expect(html).not.toContain('[EmailLayout]')
+      expect(html).not.toContain('available in upcoming update')
+    } finally {
+      if (emailLayoutDefinition) registerBlock(emailLayoutDefinition)
+    }
   })
 
   it('guards document format', () => {

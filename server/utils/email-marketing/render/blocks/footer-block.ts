@@ -4,8 +4,10 @@ import { formatPadding } from './types'
 import { escapeHtml } from './helpers'
 import { anchorIdAttribute } from '~~/app/utils/edmAnchor'
 
+export const FOOTER_BLOCK_TYPE = 'footer'
+
 registerBlock({
-  type: 'footer',
+  type: FOOTER_BLOCK_TYPE,
 
   renderMjml(block: FlyhubBlock, context: BlockRenderContext): string {
     const { data } = block
