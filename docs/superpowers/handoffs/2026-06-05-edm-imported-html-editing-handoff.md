@@ -6,12 +6,12 @@ Continuation handoff for the EDM/Postcards builder work in
 ## Repo State
 
 - Branch: `main`
-- Current shipped commit: `66801771 feat(email): add editable imported HTML regions`
+- Current shipped commit: `e788e6b9 fix(email): harden test sends and utility exports`
 - Prior template-import commits brought in GlideX, FuturaX, and Aviro; MetaHome and
   the loose `Downloads/index.html` were intentionally excluded after the single
   HTML import corrupted the mixed template set.
-- The checkout contains many unrelated WIP files. Stage only the scoped email
-  builder/media-library files listed below.
+- The checkout still contains many unrelated social-publishing/app WIP files.
+  Do not disturb them when continuing EDM/email work.
 
 ## What Is Completed
 
@@ -79,9 +79,7 @@ Confirmed:
 - Saved modules can be stored under built-in or newly created categories and
   are grouped by category in the Custom Modules picker.
 
-### Media Library Picker WIP
-
-Currently uncommitted scoped work:
+### Media Library Picker
 
 - `app/utils/edmImageAssets.ts`
   - Defines image MIME allow-list: JPEG, PNG, GIF, WebP.
@@ -115,6 +113,35 @@ Currently uncommitted scoped work:
   - Opens the image library from imported image quick actions/right-click.
   - Applies the selected image asset back to the selected imported image region.
 
+### Test Send / Sendability Gate
+
+Committed in `78dec522` and `e788e6b9`:
+
+- The EDM builder has a test-send modal with an optional email recipient field.
+  Leaving it blank sends to the current account email.
+- Test sends use `EMAIL_TEST_SENDING_ENABLED=true` instead of being coupled to
+  the campaign send gate.
+- The test-send endpoint runs the production renderer before Resend receives the
+  message and returns sendability warnings to the UI.
+- Relative media URLs are converted to absolute app URLs before sendability
+  checks and sending.
+- Exact duplicate `<style>` tags are deduped before test send to reduce clipping
+  risk for imported Postcards HTML.
+- Sendability now warns on non-HTTPS media URLs, since localhost/dev URLs are not
+  reliable for real recipients.
+
+### Auto-Import Warning Cleanup
+
+Committed in `e788e6b9`:
+
+- Removed the `getAppUrl` re-export from `server/utils/email.ts`; call sites now
+  import it from `server/utils/appUrl.ts`.
+- Renamed domain-specific helper exports that collided with Nuxt auto-imports:
+  `CampaignHealthResult`, `parseEmailMarketingCsv`,
+  `normalizeSubscriberEmail`, `buildCrmDraftPrompt`,
+  `renderSavedReplyTemplate`, `socialPctDelta`, and `isSocialReportDue`.
+- Removed the duplicate `AccountRow` re-export from Meta OAuth helpers.
+
 ## Verification Already Run
 
 For committed imported HTML editing:
@@ -123,7 +150,7 @@ For committed imported HTML editing:
 - Wider EDM pass: 11 files / 89 tests passed.
 - Kimi browser checks confirmed imported text/image selection and sidebar mode.
 
-For media-library/text-toolbar/background-image WIP before this handoff update:
+For media-library/text-toolbar/background-image work before this handoff update:
 
 - Red test pass failed before the picker/util existed and before image-library
   emission replaced prompt behavior.
@@ -144,6 +171,21 @@ For media-library/text-toolbar/background-image WIP before this handoff update:
   - Result: 16 files / 115 tests passed.
 - `git diff --check` passed.
 
+For test-send/sendability and duplicate auto-import cleanup:
+
+- Focused utility/send gate pass:
+  - `pnpm vitest run test/server/utils/campaignHealth.test.ts test/crm/healthScoring.test.ts test/crm/aiDraft.test.ts test/social/aiDraft.test.ts test/social/savedReplies.test.ts test/social/oauthStore.test.ts test/social/oauthMetaMap.test.ts test/social/reportingAggregate.test.ts test/social/reportSchedule.test.ts test/utils/emailMarketingCsv.test.ts test/utils/emailMarketingEmail.test.ts test/server/utils/email.test.ts test/utils/emailSendability.test.ts test/utils/emailSendableHtml.test.ts test/server/api/emailTemplateTestSend.test.ts`
+  - Result: 15 files / 89 tests passed.
+- Nuxt startup check on `127.0.0.1:3001` showed no duplicate auto-import
+  warnings. Temporary server was stopped and the port was cleared.
+
+Fresh combined EDM/media/send-test pass on current `main`:
+
+- `pnpm vitest run test/utils/edmImageAssets.test.ts test/utils/edmHtmlEditables.test.ts test/utils/edmCustomModuleCategories.test.ts test/components/emailEdmImageLibraryPicker.test.ts test/components/emailEdmHtmlEditableRenderer.test.ts test/components/emailEdmBlockRenderer.test.ts test/components/emailEdmBlockSettingsPanel.test.ts test/components/emailEdmAddModuleMenu.test.ts test/components/emailEdmCategoryFlyoutPanel.test.ts test/utils/edmInlineText.test.ts test/utils/edmPresets.test.ts test/utils/useEdmBuilderPresets.test.ts test/components/emailEdmTemplateThumbnail.test.ts test/components/emailEdmSectionThumbnail.test.ts test/components/emailTemplatesPanel.test.ts test/app/edmBuilderStore.test.ts test/utils/emailSendability.test.ts test/utils/emailSendableHtml.test.ts test/server/api/emailTemplateTestSend.test.ts`
+- Result: 19 files / 138 tests passed.
+- Existing SSR test warnings remain for unresolved stubbed `UIcon` in thumbnail
+  tests; they do not fail the suite.
+
 Typecheck status:
 
 - `pnpm run typecheck` OOMs at the default heap.
@@ -160,6 +202,9 @@ Typecheck status:
 - Uploads currently use existing banner asset storage. This is pragmatic for the
   first email media library pass, but long-lived public delivery rules for sent
   emails still need product/infra decisions.
+- Current test-send preparation makes relative URLs absolute. It does not yet
+  ingest third-party or local template assets into an email-owned bucket by
+  default.
 - The picker is attached to imported HTML image replacement. Richer image
   controls such as crop, focal point, and dedicated gallery management are not
   done yet.
@@ -172,27 +217,18 @@ Typecheck status:
 
 ## Recommended Next Steps
 
-1. Run fresh verification for the media-library WIP:
-   - `pnpm vitest run test/utils/edmImageAssets.test.ts test/utils/edmHtmlEditables.test.ts test/components/emailEdmImageLibraryPicker.test.ts test/components/emailEdmHtmlEditableRenderer.test.ts test/components/emailEdmBlockRenderer.test.ts test/components/emailEdmBlockSettingsPanel.test.ts test/utils/edmInlineText.test.ts test/utils/edmPresets.test.ts test/utils/useEdmBuilderPresets.test.ts test/components/emailEdmTemplateThumbnail.test.ts test/components/emailEdmSectionThumbnail.test.ts test/components/emailTemplatesPanel.test.ts test/app/edmBuilderStore.test.ts`
-   - `git diff --check`
-2. Browser-check the picker:
+1. Browser-check the picker on current `main`:
    - Open `/agency/email/compose?starter=postcards-glidex`.
    - Select an imported image.
    - Click the floating widget image-change action.
    - Confirm the Image Library slideover opens instead of a prompt.
    - Select an asset if one exists; otherwise confirm empty/upload state renders.
-3. Commit only scoped files:
-   - `app/utils/edmImageAssets.ts`
-   - `app/utils/edmHtmlEditables.ts`
-   - `server/api/agency/email/assets/index.get.ts`
-   - `server/api/agency/email/assets/upload.post.ts`
-   - `app/components/email/builder/EdmImageLibraryPicker.vue`
-   - `app/components/email/builder/EdmBlockRenderer.vue`
-   - `app/components/email/builder/EdmFlyhubBuilder.client.vue`
-   - `test/utils/edmImageAssets.test.ts`
-   - `test/components/emailEdmImageLibraryPicker.test.ts`
-   - `test/components/emailEdmHtmlEditableRenderer.test.ts`
-   - this handoff doc
+2. Decide the sendable-asset policy:
+   - keep current same-origin absolute URL preparation for local/dev tests, or
+   - ingest imported template/media-library assets into a dedicated public email
+     asset bucket before send/test-send.
+3. Consider suppressing or stubbing `UIcon` in the SSR thumbnail tests to reduce
+   noisy warning output.
 
 ## Product Direction
 
