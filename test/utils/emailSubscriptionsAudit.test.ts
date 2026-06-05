@@ -169,4 +169,51 @@ describe('email subscription audit integration', () => {
       '{}'
     ])
   })
+
+  it('records resubscribe consent and suppression removal history for preference-center subscribe', async () => {
+    const dbQueryMock = vi.fn()
+    transactionMock.mockImplementationOnce(async (cb: (db: { query: typeof dbQueryMock }) => Promise<unknown>) => cb({ query: dbQueryMock }))
+    dbQueryMock
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ email: 'person@example.com' }] })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 })
+
+    const changed = await setListSubscription({
+      subscriberId: 'sub-1',
+      listId: 'list-1',
+      subscribe: true
+    })
+
+    expect(changed).toBe(true)
+    const consentEventCall = dbQueryMock.mock.calls.find(([sql]) =>
+      String(sql).includes('INSERT INTO email_consent_events')
+    )
+    expect(consentEventCall?.[1]).toEqual([
+      'sub-1',
+      'person@example.com',
+      'list-1',
+      null,
+      'resubscribed',
+      'preference_center',
+      null,
+      null,
+      null,
+      '{}'
+    ])
+    const suppressionEventCall = dbQueryMock.mock.calls.find(([sql]) =>
+      String(sql).includes('INSERT INTO suppression_events')
+    )
+    expect(suppressionEventCall?.[1]).toEqual([
+      'person@example.com',
+      'sub-1',
+      null,
+      'global_unsubscribe',
+      'removed',
+      'preference_center',
+      null,
+      '{}'
+    ])
+  })
 })

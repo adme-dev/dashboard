@@ -4,7 +4,7 @@
 // Every caller MUST verify a signed link token (links.ts) before invoking
 // these — the functions here trust their inputs and only enforce data rules.
 
-import { queryRows, queryOne, execute, transaction } from '~~/server/utils/db'
+import { queryRows, queryOne, transaction } from '~~/server/utils/db'
 import {
   INSERT_CONSENT_EVENT_SQL,
   INSERT_SUPPRESSION_EVENT_SQL,
@@ -135,13 +135,37 @@ export async function setListSubscription(opts: {
          WHERE subscriber_id = $1 AND list_id = $2`,
         [opts.subscriberId, opts.listId]
       )
-      await db.query(
+      const { rows } = await db.query(
+        'SELECT email FROM email_subscribers WHERE id = $1',
+        [opts.subscriberId]
+      )
+      const email = rows[0]?.email as string | undefined
+      const suppression = await db.query(
         `DELETE FROM suppression_list
          WHERE reason = 'global_unsubscribe'
            AND email = (SELECT email FROM email_subscribers WHERE id = $1)`,
         [opts.subscriberId]
       )
-      return (res.rowCount ?? 0) > 0
+      const changed = (res.rowCount ?? 0) > 0
+      if (changed && email) {
+        await db.query(INSERT_CONSENT_EVENT_SQL, consentEventParams({
+          subscriberId: opts.subscriberId,
+          email,
+          listId: opts.listId,
+          eventType: 'resubscribed',
+          source: 'preference_center'
+        }))
+      }
+      if ((suppression.rowCount ?? 0) > 0 && email) {
+        await db.query(INSERT_SUPPRESSION_EVENT_SQL, suppressionEventParams({
+          email,
+          subscriberId: opts.subscriberId,
+          reason: 'global_unsubscribe',
+          action: 'removed',
+          source: 'preference_center'
+        }))
+      }
+      return changed
     })
   }
   return transaction(async (db) => {
