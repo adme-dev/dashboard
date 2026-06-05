@@ -16,6 +16,7 @@ import {
   type EdmHtmlEditableUpdate
 } from '~~/app/utils/edmHtmlEditables'
 import { normaliseEmailImageAssetUrl, type EdmImageAsset } from '~~/app/utils/edmImageAssets'
+import { buildCampaignEditorPatch } from '~~/app/utils/emailCampaignEditor'
 import {
   CUSTOM_MODULE_NEW_CATEGORY,
   EDM_CUSTOM_MODULE_CATEGORY_OPTIONS,
@@ -405,6 +406,7 @@ const campaignId = ref<string | null>(null)
 const name = ref('')
 const subject = ref('')
 const previewText = ref('')
+const fromEmail = ref('')
 const saving = ref(false)
 const showSaveModal = ref(false)
 type TemplateKind = 'template' | 'draft'
@@ -423,11 +425,12 @@ async function save() {
     if (campaignId.value) {
       await $fetch(`/api/email/campaigns/${campaignId.value}`, {
         method: 'PATCH',
-        body: {
-          subject: subject.value || null,
-          preview_text: previewText.value || null,
-          body_source: store.document.value
-        }
+        body: buildCampaignEditorPatch({
+          subject: subject.value,
+          previewText: previewText.value,
+          fromEmail: fromEmail.value,
+          bodySource: store.document.value
+        })
       })
       toast.add({ title: 'Saved', description: 'Campaign content saved.', color: 'success' })
       showSaveModal.value = false
@@ -606,6 +609,7 @@ onMounted(async () => {
           id: string
           name: string
           subject: string | null
+          from_email: string | null
           preview_text: string | null
           body_source: unknown
         }
@@ -615,6 +619,7 @@ onMounted(async () => {
       }
       name.value = res.campaign.name || ''
       subject.value = res.campaign.subject || ''
+      fromEmail.value = res.campaign.from_email || ''
       previewText.value = res.campaign.preview_text || ''
     } catch {
       toast.add({ title: 'Load failed', description: 'Could not load that campaign.', color: 'error' })
@@ -992,7 +997,7 @@ onMounted(async () => {
             {{ campaignId ? `Save content to “${name || 'campaign'}”` : (templateId ? 'Update template' : 'Save template') }}
           </p>
           <p v-if="campaignId" class="text-sm text-muted">
-            This updates the campaign's email content and subject. Manage its name and
+            This updates the campaign's email content, subject, and sender. Manage its name and
             recipients from the Campaigns tab.
           </p>
           <UFormField v-if="!campaignId" label="Name" required>
@@ -1013,6 +1018,19 @@ onMounted(async () => {
           </div>
           <UFormField label="Subject line">
             <UInput v-model="subject" placeholder="Subject shown in the inbox" class="w-full" />
+          </UFormField>
+          <UFormField
+            v-if="campaignId"
+            label="From email"
+            required
+            help="Use an address on an authenticated sender domain."
+          >
+            <UInput
+              v-model="fromEmail"
+              type="email"
+              placeholder="newsletter@example.com"
+              class="w-full"
+            />
           </UFormField>
           <UFormField label="Preview text" help="The snippet shown after the subject in most inboxes.">
             <UInput v-model="previewText" placeholder="Preview text" class="w-full" />
