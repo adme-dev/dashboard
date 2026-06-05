@@ -8,7 +8,18 @@ const toast = useToast()
 const importing = ref(false)
 const listId = ref<string | undefined>(undefined)
 const csv = ref('')
-const result = ref<{ imported: number, skipped: number } | null>(null)
+const result = ref<{
+  imported: number
+  skipped: number
+  review?: {
+    valid_rows: number
+    invalid_rows: number
+    duplicate_rows: number
+    previously_unsubscribed: number
+    suppressed: number
+    blocklisted: number
+  }
+} | null>(null)
 
 const listOptions = computed(() => props.lists.map(l => ({ value: l.id, label: l.name })))
 
@@ -84,6 +95,56 @@ async function run() {
           variant="subtle"
           :title="`Imported ${result.imported}, skipped ${result.skipped}`"
         />
+        <div v-if="result?.review" class="grid gap-2 sm:grid-cols-3">
+          <div class="rounded-lg border border-default p-3">
+            <p class="text-xs text-muted">
+              Valid rows
+            </p>
+            <p class="mt-1 text-lg font-semibold tabular-nums">
+              {{ result.review.valid_rows }}
+            </p>
+          </div>
+          <div class="rounded-lg border border-default p-3">
+            <p class="text-xs text-muted">
+              Invalid rows
+            </p>
+            <p class="mt-1 text-lg font-semibold tabular-nums">
+              {{ result.review.invalid_rows }}
+            </p>
+          </div>
+          <div class="rounded-lg border border-default p-3">
+            <p class="text-xs text-muted">
+              Duplicates
+            </p>
+            <p class="mt-1 text-lg font-semibold tabular-nums">
+              {{ result.review.duplicate_rows }}
+            </p>
+          </div>
+          <div class="rounded-lg border border-default p-3">
+            <p class="text-xs text-muted">
+              Unsubscribed
+            </p>
+            <p class="mt-1 text-lg font-semibold tabular-nums">
+              {{ result.review.previously_unsubscribed }}
+            </p>
+          </div>
+          <div class="rounded-lg border border-default p-3">
+            <p class="text-xs text-muted">
+              Suppressed
+            </p>
+            <p class="mt-1 text-lg font-semibold tabular-nums">
+              {{ result.review.suppressed }}
+            </p>
+          </div>
+          <div class="rounded-lg border border-default p-3">
+            <p class="text-xs text-muted">
+              Blocklisted
+            </p>
+            <p class="mt-1 text-lg font-semibold tabular-nums">
+              {{ result.review.blocklisted }}
+            </p>
+          </div>
+        </div>
 
         <div class="flex justify-end gap-2 pt-4 border-t border-default">
           <UButton

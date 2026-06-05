@@ -7,6 +7,7 @@ import { requireWriteAccess } from '~~/server/utils/auth'
 import { isAgencyEmailUser, resolveEmailWriteClientId } from '~~/server/utils/email-marketing/access'
 import { parseSubscriberCsv } from '~~/server/utils/email-marketing/importParse'
 import { upsertSubscriber, addToList, getList } from '~~/server/utils/email-marketing/db'
+import { queryRows } from '~~/server/utils/db'
 
 const Body = z.object({
   list_id: z.string().uuid(),
@@ -14,6 +15,52 @@ const Body = z.object({
   client_id: z.string().uuid().optional().nullable(),
   column_mapping: z.record(z.string(), z.string()).optional()
 })
+
+interface ImportCandidateState {
+  email: string
+  subscriber_status: string | null
+  membership_status: string | null
+  suppression_reason: string | null
+}
+
+interface ImportReview {
+  valid_rows: number
+  invalid_rows: number
+  duplicate_rows: number
+  previously_unsubscribed: number
+  suppressed: number
+  blocklisted: number
+}
+
+async function loadImportCandidateStates(emails: string[], listId: string): Promise<ImportCandidateState[]> {
+  if (!emails.length) return []
+  return queryRows<ImportCandidateState>(`
+    SELECT
+      s.email::text AS email,
+      s.status::text AS subscriber_status,
+      sl.status::text AS membership_status,
+      sup.reason::text AS suppression_reason
+    FROM email_subscribers s
+    LEFT JOIN subscriber_lists sl ON sl.subscriber_id = s.id AND sl.list_id = $2
+    LEFT JOIN suppression_list sup ON sup.email = s.email
+    WHERE s.email = ANY($1::citext[])
+  `, [emails, listId])
+}
+
+function buildImportReview(input: {
+  validRows: number
+  errors: Array<{ message: string }>
+  candidateStates: ImportCandidateState[]
+}): ImportReview {
+  return {
+    valid_rows: input.validRows,
+    invalid_rows: input.errors.filter(error => error.message === 'invalid_email').length,
+    duplicate_rows: input.errors.filter(error => error.message === 'duplicate_in_file').length,
+    previously_unsubscribed: input.candidateStates.filter(row => row.membership_status === 'unsubscribed').length,
+    suppressed: input.candidateStates.filter(row => !!row.suppression_reason).length,
+    blocklisted: input.candidateStates.filter(row => row.subscriber_status === 'blocklisted').length
+  }
+}
 
 export default defineEventHandler(async (event) => {
   const user = await requireWriteAccess(event)
@@ -37,6 +84,16 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: errors[0].message })
   }
 
+  const candidateStates = await loadImportCandidateStates(
+    subscribers.map(subscriber => subscriber.email),
+    input.list_id
+  )
+  const review = buildImportReview({
+    validRows: subscribers.length,
+    errors,
+    candidateStates
+  })
+
   let imported = 0
   for (const s of subscribers) {
     const id = await upsertSubscriber({
@@ -58,5 +115,5 @@ export default defineEventHandler(async (event) => {
     imported++
   }
 
-  return { imported, skipped: errors.length, errors }
+  return { imported, skipped: errors.length, errors, review }
 })
