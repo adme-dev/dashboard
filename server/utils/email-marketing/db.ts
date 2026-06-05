@@ -175,7 +175,10 @@ export async function removeFromList(subscriberId: string, listId: string): Prom
 }
 
 export interface ListSubscribersResult {
-  items: EmailSubscriber[]
+  items: Array<EmailSubscriber & {
+    suppression_reason?: string | null
+    suppressed_at?: string | null
+  }>
   total: number
   page: number
   page_size: number
@@ -197,6 +200,7 @@ export async function listSubscribers(opts: {
   }
 
   const join = opts.listId ? 'JOIN subscriber_lists sl ON sl.subscriber_id = s.id' : ''
+  const suppressionJoin = 'LEFT JOIN suppression_list sup ON sup.email = s.email'
   if (opts.listId) push('sl.list_id = ?', opts.listId)
   if (opts.status) push('s.status = ?', opts.status)
   addEmailClientScopeCondition(conds, params, 's.client_id', opts.clientIds)
@@ -211,8 +215,14 @@ export async function listSubscribers(opts: {
   const where = conds.length ? `WHERE ${conds.join(' AND ')}` : ''
   const offset = (opts.page - 1) * opts.pageSize
 
-  const items = await queryRows<EmailSubscriber>(`
-    SELECT DISTINCT s.* FROM email_subscribers s ${join} ${where}
+  const items = await queryRows<ListSubscribersResult['items'][number]>(`
+    SELECT DISTINCT
+      s.*,
+      s.soft_bounce_count::int AS soft_bounce_count,
+      s.last_soft_bounce_at,
+      sup.reason::text AS suppression_reason,
+      sup.created_at AS suppressed_at
+    FROM email_subscribers s ${join} ${suppressionJoin} ${where}
     ORDER BY s.created_at DESC
     LIMIT ${opts.pageSize} OFFSET ${offset}
   `, params)

@@ -1,6 +1,16 @@
 <!-- app/components/email/SubscribersPanel.vue -->
 <script setup lang="ts">
-interface SubRow { id: string, email: string, name: string | null, status: string, created_at: string }
+interface SubRow {
+  id: string
+  email: string
+  name: string | null
+  status: string
+  created_at: string
+  soft_bounce_count?: number | null
+  last_soft_bounce_at?: string | null
+  suppression_reason?: string | null
+  suppressed_at?: string | null
+}
 
 const listFilter = ref<string>('all')
 const search = ref('')
@@ -35,6 +45,28 @@ const selectedSubscriberId = ref<string | null>(null)
 function openDetails(row: SubRow) {
   selectedSubscriberId.value = row.id
   showDetail.value = true
+}
+
+function statusColor(status: string): 'success' | 'error' | 'neutral' {
+  if (status === 'enabled') return 'success'
+  if (status === 'blocklisted') return 'error'
+  return 'neutral'
+}
+
+function suppressionColor(reason: string): 'error' | 'warning' | 'info' | 'neutral' {
+  if (reason === 'complaint' || reason === 'hard_bounce') return 'error'
+  if (reason === 'global_unsubscribe' || reason === 'soft_bounce') return 'warning'
+  if (reason === 'manual') return 'info'
+  return 'neutral'
+}
+
+function formatReason(reason: string): string {
+  return reason.replace(/_/g, ' ')
+}
+
+function softBounceLabel(count?: number | null): string {
+  const value = Number(count ?? 0)
+  return `${value} soft bounce${value === 1 ? '' : 's'}`
 }
 </script>
 
@@ -90,8 +122,18 @@ function openDetails(row: SubRow) {
           </p>
         </div>
         <div class="flex items-center gap-2">
-          <UBadge :color="row.status === 'enabled' ? 'success' : 'neutral'" variant="subtle">
+          <UBadge :color="statusColor(row.status)" variant="subtle">
             {{ row.status }}
+          </UBadge>
+          <UBadge
+            v-if="row.suppression_reason"
+            :color="suppressionColor(row.suppression_reason)"
+            variant="subtle"
+          >
+            {{ formatReason(row.suppression_reason) }}
+          </UBadge>
+          <UBadge v-else-if="Number(row.soft_bounce_count ?? 0) > 0" color="warning" variant="subtle">
+            {{ softBounceLabel(row.soft_bounce_count) }}
           </UBadge>
           <UButton
             icon="i-lucide-history"
