@@ -20,6 +20,18 @@
             :class="{ 'is-selected': store.selectedBlockId.value === childId }"
             @click.stop="store.setSelectedBlockId(childId)"
           >
+            <div v-if="store.selectedBlockId.value === childId" class="column-child-actions">
+              <button
+                type="button"
+                data-edm-column-child-delete
+                class="column-child-action is-danger"
+                title="Delete element"
+                aria-label="Delete element"
+                @click.stop="store.removeBlock(childId)"
+              >
+                <UIcon name="i-lucide-trash-2" class="h-3.5 w-3.5 pointer-events-none" />
+              </button>
+            </div>
             <EmailBuilderEdmBlockRenderer
               :type="getBlockType(childId)"
               :style="getBlockData(childId).style"
@@ -246,6 +258,48 @@ function updateChildStyle(blockId: string, stylePatch: Record<string, unknown>) 
 .column-child.is-selected {
   outline: 2px solid rgb(59, 130, 246);
   outline-offset: 2px;
+}
+
+.column-child-actions {
+  position: absolute;
+  top: -14px;
+  right: -12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgb(17, 24, 39);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18);
+  z-index: 12;
+}
+
+.column-child-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  color: rgb(203, 213, 225);
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.column-child-action:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.column-child-action.is-danger {
+  color: rgb(248, 113, 113);
+}
+
+.column-child-action.is-danger:hover {
+  background: rgba(248, 113, 113, 0.14);
+  color: rgb(254, 202, 202);
 }
 
 .column-add-block {

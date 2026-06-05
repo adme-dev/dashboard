@@ -486,13 +486,46 @@ function createStore() {
     if (!block) return
 
     // Find parent and remove from children
+    let foundParent = false
     for (const [id, b] of Object.entries(document.value)) {
       if (b.data.childrenIds?.includes(blockId)) {
         updateBlockData(id, {
           childrenIds: b.data.childrenIds.filter(cid => cid !== blockId)
         })
+        foundParent = true
         break
       }
+    }
+
+    if (!foundParent) {
+      const nextDocument = { ...document.value }
+      for (const [id, b] of Object.entries(document.value)) {
+        const columns = b.data.props?.columns
+        if (!Array.isArray(columns)) continue
+
+        const nextColumns = columns.map(column => ({
+          childrenIds: Array.isArray(column?.childrenIds)
+            ? column.childrenIds.filter((cid: string) => cid !== blockId)
+            : []
+        }))
+        const changed = nextColumns.some((column, index) => {
+          return column.childrenIds.length !== (columns[index]?.childrenIds || []).length
+        })
+        if (!changed) continue
+
+        nextDocument[id] = {
+          ...b,
+          data: {
+            ...b.data,
+            props: {
+              ...b.data.props,
+              columns: nextColumns
+            }
+          }
+        }
+        break
+      }
+      document.value = nextDocument
     }
 
     // Remove the block itself by creating a new object without the key

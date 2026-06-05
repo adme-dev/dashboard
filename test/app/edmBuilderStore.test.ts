@@ -173,4 +173,29 @@ describe('useEdmBuilder store', () => {
       left: 24
     })
   })
+
+  it('removeBlock removes a nested block from columns containers', () => {
+    const s = useEdmBuilder()
+    const columnsId = s.addBlock('ColumnsContainer', 'root', undefined, {
+      props: {
+        columnsCount: 2,
+        columns: [{ childrenIds: [] }, { childrenIds: [] }, { childrenIds: [] }]
+      }
+    })
+
+    s.insertBlocksToColumn(columnsId, 0, {
+      nestedText: {
+        type: 'Text',
+        data: { props: { text: 'Column copy' } }
+      }
+    }, ['nestedText'])
+    s.setSelectedBlockId('nestedText')
+
+    s.removeBlock('nestedText')
+
+    const columns = s.document.value[columnsId].data.props?.columns as Array<{ childrenIds: string[] }>
+    expect(s.document.value.nestedText).toBeUndefined()
+    expect(columns[0]?.childrenIds).toEqual([])
+    expect(s.selectedBlockId.value).toBeNull()
+  })
 })

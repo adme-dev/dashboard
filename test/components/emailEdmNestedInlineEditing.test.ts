@@ -8,8 +8,10 @@ import ColumnsContainerRenderer from '~~/app/components/email/builder/ColumnsCon
 Object.assign(globalThis, { computed, reactive, ref })
 
 function makeStore() {
+  const removedBlockIds: string[] = []
   return {
     selectedBlockId: ref('text-child'),
+    removedBlockIds,
     document: ref({
       'root': { type: 'root', data: { childrenIds: ['container'] } },
       'container': {
@@ -46,6 +48,7 @@ function makeStore() {
       }
     }),
     setSelectedBlockId: () => {},
+    removeBlock: (blockId: string) => removedBlockIds.push(blockId),
     addBlock: () => '',
     addBlockToDocument: () => {},
     addBlockToColumn: () => {},
@@ -182,6 +185,26 @@ describe('nested EDM inline editing', () => {
     expect(host.querySelector('.child-renderer')?.textContent).toBe('Updated CTA')
     expect(host.querySelector('.child-renderer')?.getAttribute('data-button-color')).toBe('#123456')
     expect(host.querySelector('.child-renderer')?.getAttribute('data-font-size')).toBe('26')
+
+    app.unmount()
+    host.remove()
+  })
+
+  it('shows a delete action for the selected column child', async () => {
+    const store = makeStore()
+    const { app, host } = mount(ColumnsContainerRenderer, {
+      blockId: 'columns',
+      device: 'desktop',
+      style: store.document.value.columns.data.style,
+      props: store.document.value.columns.data.props
+    }, store)
+
+    const deleteButton = host.querySelector('[data-edm-column-child-delete]') as HTMLButtonElement | null
+    expect(deleteButton?.getAttribute('title')).toBe('Delete element')
+
+    deleteButton?.click()
+
+    expect(store.removedBlockIds).toEqual(['text-child'])
 
     app.unmount()
     host.remove()
