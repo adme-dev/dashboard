@@ -8,7 +8,7 @@ import { getResendClient, isEmailConfigured } from '~~/server/utils/email'
 import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
 import { isFlyhubFormat } from '~~/server/utils/email-marketing/render/flyhub-html-renderer'
 import { checkEmailSendability, htmlToPlainText } from '~~/server/utils/email-marketing/sendability'
-import { prepareSendableHtml } from '~~/server/utils/email-marketing/sendableHtml'
+import { prepareSendableHtmlWithMirroredAssets } from '~~/server/utils/email-marketing/sendableHtml'
 
 const Body = z.object({
   to: z.string().email().optional().nullable(),
@@ -73,7 +73,11 @@ export default defineEventHandler(async (event) => {
     previewText,
     variables: parsed.data.variables
   })
-  const sendableHtml = prepareSendableHtml(html, getAppUrl(event))
+  const appUrl = getAppUrl(event)
+  const sendableHtml = await prepareSendableHtmlWithMirroredAssets(html, {
+    appUrl,
+    userId: String((user as { id?: string, email?: string }).id || (user as { email?: string }).email || 'email-test')
+  })
   const sendability = checkEmailSendability({
     html: sendableHtml,
     subject,
@@ -95,7 +99,7 @@ export default defineEventHandler(async (event) => {
     text: htmlToPlainText(sendableHtml),
     headers: {
       'X-Email-Test': 'true',
-      'X-Email-Preview-Origin': getAppUrl(event)
+      'X-Email-Preview-Origin': appUrl
     }
   })
   if (error) throw createError({ statusCode: 502, statusMessage: 'test_send_failed', message: error.message })

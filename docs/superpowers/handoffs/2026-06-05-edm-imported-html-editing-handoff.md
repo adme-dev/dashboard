@@ -6,8 +6,8 @@ Continuation handoff for the EDM/Postcards builder work in
 ## Repo State
 
 - Branch: `main`
-- Current shipped commit before this browser-verification update:
-  `3c7a9c70 docs(email): update EDM imported editing handoff`
+- Current shipped commit before sendable-asset mirroring:
+  `cd2bc4f5 docs(email): record EDM image picker verification`
 - Prior template-import commits brought in GlideX, FuturaX, and Aviro; MetaHome and
   the loose `Downloads/index.html` were intentionally excluded after the single
   HTML import corrupted the mixed template set.
@@ -148,6 +148,27 @@ Committed in `78dec522` and `e788e6b9`:
 - Sendability now warns on non-HTTPS media URLs, since localhost/dev URLs are not
   reliable for real recipients.
 
+Latest sendable-asset mirroring pass:
+
+- `server/utils/email-marketing/sendableHtml.ts`
+  - Keeps the existing sync `prepareSendableHtml` for simple absolute-URL
+    preparation.
+  - Adds `prepareSendableHtmlWithMirroredAssets`, an async test-send prep path
+    that dedupes exact style tags, discovers `src`, `background`, and CSS
+    `url(...)` image references, fetches eligible raster images, uploads them
+    through existing banner/email asset storage, and replaces all matching media
+    references with the uploaded public URL.
+  - Mirrors same-origin imported images such as `/email/postcards/...`, local
+    `http:` image URLs, and external raster image URLs by default.
+  - Skips inline `data:image`, `cid:`, template placeholders, protocol-relative
+    URLs, and already-public R2 URLs.
+  - Enforces the same email image MIME allow-list and 200 MB cap used by the
+    Image Library upload endpoint.
+- `server/api/email/templates/test-send.post.ts`
+  - Uses the mirrored asset prep path before sendability checks and before
+    Resend receives the HTML.
+  - Uses the authenticated user id for the storage path where available.
+
 ### Auto-Import Warning Cleanup
 
 Committed in `e788e6b9`:
@@ -204,6 +225,13 @@ Fresh combined EDM/media/send-test pass on current `main`:
 - Existing SSR test warnings remain for unresolved stubbed `UIcon` in thumbnail
   tests; they do not fail the suite.
 
+Fresh combined EDM/media/send-test pass after sendable-asset mirroring:
+
+- `pnpm vitest run test/utils/edmImageAssets.test.ts test/utils/edmHtmlEditables.test.ts test/utils/edmCustomModuleCategories.test.ts test/components/emailEdmImageLibraryPicker.test.ts test/components/emailEdmHtmlEditableRenderer.test.ts test/components/emailEdmBlockRenderer.test.ts test/components/emailEdmBlockSettingsPanel.test.ts test/components/emailEdmAddModuleMenu.test.ts test/components/emailEdmCategoryFlyoutPanel.test.ts test/utils/edmInlineText.test.ts test/utils/edmPresets.test.ts test/utils/useEdmBuilderPresets.test.ts test/components/emailEdmTemplateThumbnail.test.ts test/components/emailEdmSectionThumbnail.test.ts test/components/emailTemplatesPanel.test.ts test/app/edmBuilderStore.test.ts test/utils/emailSendability.test.ts test/utils/emailSendableHtml.test.ts test/server/api/emailTemplateTestSend.test.ts`
+- Result: 19 files / 141 tests passed.
+- Existing SSR test warnings remain for unresolved stubbed `UIcon` in thumbnail
+  tests; they do not fail the suite.
+
 Typecheck status:
 
 - `pnpm run typecheck` OOMs at the default heap.
@@ -220,9 +248,11 @@ Typecheck status:
 - Uploads currently use existing banner asset storage. This is pragmatic for the
   first email media library pass, but long-lived public delivery rules for sent
   emails still need product/infra decisions.
-- Current test-send preparation makes relative URLs absolute. It does not yet
-  ingest third-party or local template assets into an email-owned bucket by
-  default.
+- Compose/template test sends now mirror eligible imported/local/external raster
+  image URLs through existing email/banner asset storage before Resend receives
+  the HTML. The stored campaign body HTML and campaign fan-out send path still
+  need the same policy applied at save/materialization time, otherwise applying
+  it per recipient could re-upload the same images repeatedly.
 - The picker is attached to imported HTML image replacement. Richer image
   controls such as crop, focal point, and dedicated gallery management are not
   done yet.
@@ -234,10 +264,12 @@ Typecheck status:
 
 ## Recommended Next Steps
 
-1. Decide the sendable-asset policy:
-   - keep current same-origin absolute URL preparation for local/dev tests, or
-   - ingest imported template/media-library assets into a dedicated public email
-     asset bucket before send/test-send.
+1. Extend mirrored asset preparation to stored campaigns:
+   - Best option: mirror eligible image URLs when campaign/template `body_html`
+     is rendered or locked for sending, then reuse that prepared HTML for every
+     recipient.
+   - Avoid mirroring inside each per-recipient batch payload unless a cache is
+     added, because that can re-fetch/re-upload the same assets repeatedly.
 2. Consider suppressing or stubbing `UIcon` in the SSR thumbnail tests to reduce
    noisy warning output.
 

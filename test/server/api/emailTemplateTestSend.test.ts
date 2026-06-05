@@ -6,6 +6,7 @@ const mockEmailsSend = vi.fn()
 const mockGetResendClient = vi.fn()
 const mockIsEmailConfigured = vi.fn()
 const mockIsCampaignSendingEnabled = vi.fn()
+const mockUploadBannerAsset = vi.fn()
 
 const testGlobal = globalThis as unknown as {
   defineEventHandler: <T>(fn: T) => T
@@ -29,8 +30,15 @@ vi.mock('~~/server/utils/auth', () => ({
 
 vi.mock('~~/server/utils/email', () => ({
   getResendClient: (...args: unknown[]) => mockGetResendClient(...args),
-  isEmailConfigured: (...args: unknown[]) => mockIsEmailConfigured(...args),
+  isEmailConfigured: (...args: unknown[]) => mockIsEmailConfigured(...args)
+}))
+
+vi.mock('~~/server/utils/appUrl', () => ({
   getAppUrl: () => 'https://app.test'
+}))
+
+vi.mock('~~/server/utils/bannerStorage', () => ({
+  uploadBannerAsset: (...args: unknown[]) => mockUploadBannerAsset(...args)
 }))
 
 vi.mock('~~/server/utils/email-marketing/campaignSender', () => ({
@@ -43,6 +51,19 @@ const validDocument = {
   f: { type: 'footer', data: { props: {}, style: {} } }
 }
 
+const documentWithImportedImage = {
+  root: { type: 'EmailLayout', data: { props: {}, childrenIds: ['html'] } },
+  html: {
+    type: 'Html',
+    data: {
+      props: {
+        contents: '<img src="/email/postcards/glidex/car.png" alt="Car">'
+      },
+      style: {}
+    }
+  }
+}
+
 describe('email template test-send endpoint', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -51,6 +72,15 @@ describe('email template test-send endpoint', () => {
     mockIsEmailConfigured.mockReturnValue(true)
     mockGetResendClient.mockReturnValue({ emails: { send: mockEmailsSend } })
     mockEmailsSend.mockResolvedValue({ data: { id: 'msg_123' }, error: null })
+    mockUploadBannerAsset.mockResolvedValue({
+      key: 'banner-assets/author-1/email/car.png',
+      url: 'https://email-assets.example.com/car.png',
+      size: 9
+    })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(Buffer.from('car-image'), {
+      status: 200,
+      headers: { 'content-type': 'image/png' }
+    })))
     process.env.EMAIL_TEST_SENDING_ENABLED = 'true'
   })
 
@@ -113,5 +143,30 @@ describe('email template test-send endpoint', () => {
       message_id: 'msg_123'
     }))
     expect(mockEmailsSend).toHaveBeenCalledOnce()
+  })
+
+  it('mirrors imported image assets before sending the test email', async () => {
+    const handler = (await import('~~/server/api/email/templates/test-send.post')).default
+    mockRequireWriteAccess.mockResolvedValue({ id: 'author-1', email: 'author@example.com', name: 'Author User' })
+    mockReadBody.mockResolvedValue({
+      to: 'test@example.com',
+      subject: 'Subject line',
+      preview_text: 'Inbox preview',
+      body_source: documentWithImportedImage
+    })
+
+    await handler({} as never)
+
+    expect(fetch).toHaveBeenCalledWith('https://app.test/email/postcards/glidex/car.png')
+    expect(mockUploadBannerAsset).toHaveBeenCalledWith(
+      expect.any(Buffer),
+      'car.png',
+      'image/png',
+      'author-1'
+    )
+    expect(mockEmailsSend).toHaveBeenCalledWith(expect.objectContaining({
+      html: expect.stringContaining('src="https://email-assets.example.com/car.png"')
+    }))
+    expect(mockEmailsSend.mock.calls[0]?.[0]?.html).not.toContain('https://app.test/email/postcards')
   })
 })
