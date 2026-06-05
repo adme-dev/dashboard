@@ -15,7 +15,7 @@ import { getResendClient, isEmailConfigured } from '~~/server/utils/email'
 import { RESEND_BATCH_LIMIT, buildTrackedBatchEmail, isRateLimitError, parseRetryAfter, canEnterSending, buildCampaignBridgeInput } from './campaignSend'
 import { bridgeCommunication } from '~~/server/utils/crm/commsDb'
 import { signEmailToken, emailLinkSecret } from './links'
-import { getCampaign, materializeRecipients, setCampaignStatus, type Campaign } from './campaigns'
+import { getCampaign, materializeRecipients, prepareCampaignHtmlForSend, setCampaignStatus, type Campaign } from './campaigns'
 
 export interface RecipientRow {
   id: string
@@ -156,7 +156,11 @@ export async function sendCampaignChunk(campaign: Campaign): Promise<ChunkResult
       // a CRM failure abort the batch loop.
       const bridge = buildCampaignBridgeInput(campaign, { email: r.email, subscriber_id: r.subscriber_id })
       if (bridge) {
-        try { await bridgeCommunication(bridge) } catch (e) { console.warn('crmBridge.email.error', e) }
+        try {
+          await bridgeCommunication(bridge)
+        } catch (e) {
+          console.warn('crmBridge.email.error', e)
+        }
       }
       sent++
     }
@@ -198,15 +202,18 @@ export interface SendRunResult {
 // on a 429 so the next tick backs off.
 export async function runCampaignSend(
   campaign: Campaign,
-  opts: { maxChunks?: number, pacingMs?: number } = {}
+  opts: { maxChunks?: number, pacingMs?: number, prepareHtml?: boolean } = {}
 ): Promise<SendRunResult> {
+  const preparedCampaign = opts.prepareHtml === false
+    ? campaign
+    : await prepareCampaignHtmlForSend(campaign)
   const maxChunks = opts.maxChunks ?? 50
   const pacingMs = opts.pacingMs ?? 500
   let sent = 0
   let failed = 0
   let rateLimited = false
   for (let i = 0; i < maxChunks; i++) {
-    const result = await sendCampaignChunk(campaign)
+    const result = await sendCampaignChunk(preparedCampaign)
     sent += result.sent
     failed += result.failed
     if (result.rateLimited) {

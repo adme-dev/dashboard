@@ -5,11 +5,16 @@
 
 import { createError } from 'h3'
 import { queryRows, queryOne, execute, transaction } from '~~/server/utils/db'
+import { getAppUrl } from '~~/server/utils/appUrl'
 import { renderTemplateDocument } from './render'
 import { isFlyhubFormat } from './render/flyhub-html-renderer'
 import { buildCampaignPreflight, canTransition, type CampaignPreflightResult, type CampaignStatus } from './campaignSend'
 import { evaluateSegment, isValidSegment } from './segment'
 import { addEmailClientScopeCondition, type EmailClientScope } from './access'
+import {
+  prepareSendableHtmlWithMirroredAssets,
+  type PrepareSendableHtmlWithMirroredAssetsOptions
+} from './sendableHtml'
 
 export interface Campaign {
   id: string
@@ -55,12 +60,50 @@ export interface CampaignRecipientSnapshot {
   generatedAt: string
 }
 
+export interface CampaignHtmlPrepareOptions {
+  appUrl?: string
+  userId?: string
+  fetchAsset?: PrepareSendableHtmlWithMirroredAssetsOptions['fetchAsset']
+  uploadAsset?: PrepareSendableHtmlWithMirroredAssetsOptions['uploadAsset']
+  mirrorExternalAssets?: boolean
+}
+
 function renderHtml(bodySource: unknown, subject?: string | null, previewText?: string | null): string {
   if (!isFlyhubFormat(bodySource)) return ''
   return renderTemplateDocument(bodySource, {
     subjectLine: subject ?? undefined,
     previewText: previewText ?? undefined
   })
+}
+
+function campaignSendUserId(campaign: Campaign, fallback?: string): string {
+  return fallback || campaign.created_by || campaign.id
+}
+
+export async function prepareCampaignHtmlForSend(
+  campaign: Campaign,
+  opts: CampaignHtmlPrepareOptions = {}
+): Promise<Campaign> {
+  const html = campaign.body_html || ''
+  if (!html) return campaign
+
+  const prepared = await prepareSendableHtmlWithMirroredAssets(html, {
+    appUrl: opts.appUrl || getAppUrl(),
+    userId: campaignSendUserId(campaign, opts.userId),
+    fetchAsset: opts.fetchAsset,
+    uploadAsset: opts.uploadAsset,
+    mirrorExternalAssets: opts.mirrorExternalAssets
+  })
+  if (prepared === html) return campaign
+
+  const row = await queryOne<Campaign>(`
+    UPDATE campaigns
+    SET body_html = $2,
+        updated_at = NOW()
+    WHERE id = $1
+    RETURNING *
+  `, [campaign.id, prepared])
+  return row || { ...campaign, body_html: prepared }
 }
 
 export async function listCampaigns(clientIds?: EmailClientScope): Promise<Campaign[]> {
@@ -265,14 +308,18 @@ export async function setCampaignLists(campaignId: string, listIds: string[]): P
 // further narrowed to subscribers whose attribs/status match — evaluated in-app
 // (no JSONB→SQL translation), then applied as an id allowlist on the insert.
 // Sets campaigns.to_send. Does NOT send. Returns the recipient count.
-export async function materializeRecipients(campaignId: string): Promise<number> {
+export async function materializeRecipients(
+  campaignId: string,
+  opts: CampaignHtmlPrepareOptions = {}
+): Promise<number> {
   const existing = await getCampaign(campaignId)
   if (!existing) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   if (existing.status !== 'draft' && existing.status !== 'scheduled') {
     throw createError({ statusCode: 409, statusMessage: 'campaign_not_materializable' })
   }
 
-  const segment = isValidSegment(existing.filter_rules) ? existing.filter_rules : null
+  const prepared = await prepareCampaignHtmlForSend(existing, opts)
+  const segment = isValidSegment(prepared.filter_rules) ? prepared.filter_rules : null
 
   return transaction(async (db) => {
     // Rebuild the pending queue so the result reflects the CURRENT lists +
@@ -342,7 +389,7 @@ export async function scheduleCampaign(
     sendingConfigured: boolean
     senderDomainAuthenticated: boolean
     checkedAt?: string
-  }
+  } & CampaignHtmlPrepareOptions
 ): Promise<Campaign> {
   const existing = await getCampaign(campaignId)
   if (!existing) throw createError({ statusCode: 404, statusMessage: 'not_found' })
@@ -350,7 +397,7 @@ export async function scheduleCampaign(
     throw createError({ statusCode: 409, statusMessage: 'campaign_not_schedulable' })
   }
 
-  const toSend = await materializeRecipients(campaignId)
+  const toSend = await materializeRecipients(campaignId, opts)
   const campaign = await getCampaign(campaignId)
   if (!campaign) throw createError({ statusCode: 404, statusMessage: 'not_found' })
 

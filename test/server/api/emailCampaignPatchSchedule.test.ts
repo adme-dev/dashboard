@@ -7,6 +7,7 @@ const mockGetCampaign = vi.fn()
 const mockUpdateCampaign = vi.fn()
 const mockScheduleCampaign = vi.fn()
 const mockIsEmailConfigured = vi.fn()
+const mockGetAppUrl = vi.fn()
 
 const testGlobal = globalThis as unknown as {
   defineEventHandler: <T>(fn: T) => T
@@ -42,12 +43,17 @@ vi.mock('~~/server/utils/email', () => ({
   isEmailConfigured: (...args: unknown[]) => mockIsEmailConfigured(...args)
 }))
 
+vi.mock('~~/server/utils/appUrl', () => ({
+  getAppUrl: (...args: unknown[]) => mockGetAppUrl(...args)
+}))
+
 describe('campaign patch scheduling', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockRequireWriteAccess.mockResolvedValue({ id: 'user-1', role: 'admin' })
     mockGetRouterParam.mockReturnValue('camp-1')
     mockIsEmailConfigured.mockReturnValue(true)
+    mockGetAppUrl.mockReturnValue('https://app.example.com')
     mockGetCampaign.mockResolvedValue({ id: 'camp-1', client_id: null })
     mockUpdateCampaign.mockResolvedValue({ id: 'camp-1', name: 'June offers' })
     mockScheduleCampaign.mockResolvedValue({ id: 'camp-1', status: 'scheduled' })
@@ -65,7 +71,9 @@ describe('campaign patch scheduling', () => {
     expect(mockUpdateCampaign).toHaveBeenCalledWith('camp-1', { name: 'June offers' })
     expect(mockScheduleCampaign).toHaveBeenCalledWith('camp-1', '2026-06-06T00:00:00.000Z', {
       sendingConfigured: true,
-      senderDomainAuthenticated: true
+      senderDomainAuthenticated: true,
+      appUrl: 'https://app.example.com',
+      userId: 'user-1'
     })
     expect(result).toEqual({ campaign: { id: 'camp-1', status: 'scheduled' } })
   })

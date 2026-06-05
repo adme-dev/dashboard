@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { scheduleCampaign } from '~~/server/utils/email-marketing/campaigns'
+import { materializeRecipients, scheduleCampaign } from '~~/server/utils/email-marketing/campaigns'
 
 const queryOneMock = vi.fn()
 const queryRowsMock = vi.fn()
@@ -58,6 +58,59 @@ describe('scheduleCampaign', () => {
     transactionMock.mockReset()
   })
 
+  it('mirrors campaign media once while materializing the send snapshot', async () => {
+    const dbQueryMock = vi.fn()
+    const campaign = {
+      ...draftCampaign,
+      body_html: [
+        '<p>Offer</p>',
+        '<img src="/email/postcards/glidex/car.png">',
+        '<img src="/email/postcards/glidex/car.png">',
+        '<a href="{{ unsubscribe_url }}">Unsubscribe</a>',
+        '<footer>XeroFlow Agency, 1 Market Street, Melbourne VIC 3000</footer>'
+      ].join('')
+    }
+    queryOneMock
+      .mockResolvedValueOnce(campaign)
+      .mockResolvedValueOnce({
+        ...campaign,
+        body_html: campaign.body_html.replaceAll(
+          '/email/postcards/glidex/car.png',
+          'https://pub-123.r2.dev/banner-assets/user-1/car.png'
+        )
+      })
+    transactionMock.mockImplementationOnce(async (cb: (db: { query: typeof dbQueryMock }) => Promise<unknown>) => cb({ query: dbQueryMock }))
+    dbQueryMock
+      .mockResolvedValueOnce({ rowCount: 2 })
+      .mockResolvedValueOnce({ rowCount: 2 })
+      .mockResolvedValueOnce({ rows: [{ n: 2 }] })
+      .mockResolvedValueOnce({ rowCount: 1 })
+
+    const fetchAsset = vi.fn(async () => ({
+      buffer: Buffer.from('car'),
+      mimeType: 'image/png',
+      fileName: 'car.png'
+    }))
+    const uploadAsset = vi.fn(async () => 'https://pub-123.r2.dev/banner-assets/user-1/car.png')
+
+    const count = await materializeRecipients('camp-1', {
+      appUrl: 'http://localhost:3000',
+      userId: 'user-1',
+      fetchAsset,
+      uploadAsset
+    })
+
+    expect(count).toBe(2)
+    expect(fetchAsset).toHaveBeenCalledTimes(1)
+    expect(fetchAsset).toHaveBeenCalledWith('http://localhost:3000/email/postcards/glidex/car.png')
+    expect(uploadAsset).toHaveBeenCalledTimes(1)
+    const updateCall = queryOneMock.mock.calls.find(([sql]) => String(sql).includes('body_html = $2'))
+    expect(updateCall?.[1]).toEqual([
+      'camp-1',
+      expect.stringContaining('https://pub-123.r2.dev/banner-assets/user-1/car.png')
+    ])
+  })
+
   it('materializes recipients and stores preflight result plus recipient snapshot', async () => {
     const dbQueryMock = vi.fn()
     queryOneMock
@@ -82,7 +135,9 @@ describe('scheduleCampaign', () => {
     const result = await scheduleCampaign('camp-1', '2026-06-06T00:00:00.000Z', {
       sendingConfigured: true,
       senderDomainAuthenticated: true,
-      checkedAt: '2026-06-05T00:00:00.000Z'
+      checkedAt: '2026-06-05T00:00:00.000Z',
+      appUrl: 'https://app.example.com',
+      mirrorExternalAssets: false
     })
 
     expect(result.status).toBe('scheduled')
@@ -129,7 +184,9 @@ describe('scheduleCampaign', () => {
     await expect(scheduleCampaign('camp-1', '2026-06-06T00:00:00.000Z', {
       sendingConfigured: true,
       senderDomainAuthenticated: true,
-      checkedAt: '2026-06-05T00:00:00.000Z'
+      checkedAt: '2026-06-05T00:00:00.000Z',
+      appUrl: 'https://app.example.com',
+      mirrorExternalAssets: false
     })).rejects.toMatchObject({
       statusCode: 422,
       statusMessage: 'campaign_preflight_blocked'

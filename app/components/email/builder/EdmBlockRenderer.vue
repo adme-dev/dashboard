@@ -566,11 +566,11 @@ const inlineFontOptions = [
   { label: 'Monospace', value: 'MONOSPACE' }
 ] as const
 const htmlInlineFontOptions = [
-  { label: 'Inter', value: "'Inter', Arial, Helvetica, sans-serif" },
+  { label: 'Inter', value: '\'Inter\', Arial, Helvetica, sans-serif' },
   { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
   { label: 'Georgia', value: 'Georgia, serif' },
-  { label: 'Times', value: "'Times New Roman', Times, serif" },
-  { label: 'Mono', value: "'SFMono-Regular', Consolas, monospace" }
+  { label: 'Times', value: '\'Times New Roman\', Times, serif' },
+  { label: 'Mono', value: '\'SFMono-Regular\', Consolas, monospace' }
 ] as const
 const inlineFormatActions = [
   { command: 'bold', label: 'Bold', icon: 'i-lucide-bold' },

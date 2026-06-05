@@ -4,6 +4,12 @@
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { assertEmailClientAccess } from '~~/server/utils/email-marketing/access'
 import { getCampaign, materializeRecipients } from '~~/server/utils/email-marketing/campaigns'
+import { getAppUrl } from '~~/server/utils/appUrl'
+
+function emailSendUserId(user: unknown): string {
+  const value = user as { id?: string, email?: string }
+  return String(value.id || value.email || 'campaign-materialize')
+}
 
 export default defineEventHandler(async (event) => {
   const user = await requireWriteAccess(event)
@@ -12,6 +18,9 @@ export default defineEventHandler(async (event) => {
   const campaign = await getCampaign(id)
   if (!campaign) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   await assertEmailClientAccess(event, user, campaign.client_id)
-  const to_send = await materializeRecipients(id)
+  const to_send = await materializeRecipients(id, {
+    appUrl: getAppUrl(event),
+    userId: emailSendUserId(user)
+  })
   return { to_send }
 })

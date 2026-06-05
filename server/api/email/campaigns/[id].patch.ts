@@ -5,6 +5,7 @@ import { assertEmailClientAccess } from '~~/server/utils/email-marketing/access'
 import { getCampaign, scheduleCampaign, updateCampaign } from '~~/server/utils/email-marketing/campaigns'
 import { isValidSegment } from '~~/server/utils/email-marketing/segment'
 import { isEmailConfigured } from '~~/server/utils/email'
+import { getAppUrl } from '~~/server/utils/appUrl'
 
 const Body = z.object({
   name: z.string().min(1).max(200).optional(),
@@ -18,6 +19,11 @@ const Body = z.object({
   scheduled_at: z.string().datetime().optional().nullable(),
   filter_rules: z.any().optional().nullable()
 })
+
+function emailSendUserId(user: unknown): string {
+  const value = user as { id?: string, email?: string }
+  return String(value.id || value.email || 'campaign-schedule')
+}
 
 export default defineEventHandler(async (event) => {
   const user = await requireWriteAccess(event)
@@ -42,7 +48,9 @@ export default defineEventHandler(async (event) => {
     const sendingConfigured = isEmailConfigured(event)
     const campaign = await scheduleCampaign(id, scheduledAt, {
       sendingConfigured,
-      senderDomainAuthenticated: sendingConfigured
+      senderDomainAuthenticated: sendingConfigured,
+      appUrl: getAppUrl(event),
+      userId: emailSendUserId(user)
     })
     return { campaign }
   }
