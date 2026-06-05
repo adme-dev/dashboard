@@ -13,8 +13,10 @@ export interface EdmHtmlEditableSelection {
   src?: string
   alt?: string
   linkHref?: string
+  imageMode?: 'inline' | 'background'
   style?: {
     color?: string
+    fontFamily?: string
     fontSize?: string
     fontWeight?: string
     textAlign?: string
@@ -22,8 +24,8 @@ export interface EdmHtmlEditableSelection {
 }
 
 export type EdmHtmlEditableUpdate =
-  | { kind: 'text', text?: string, html?: string, color?: string, fontSize?: string, fontWeight?: string, textAlign?: string }
-  | { kind: 'link', text?: string, html?: string, href?: string, color?: string }
+  | { kind: 'text', text?: string, html?: string, color?: string, fontFamily?: string, fontSize?: string, fontWeight?: string, textAlign?: string }
+  | { kind: 'link', text?: string, html?: string, href?: string, color?: string, fontFamily?: string, fontSize?: string, fontWeight?: string, textAlign?: string }
   | { kind: 'image', src?: string, alt?: string, linkHref?: string }
 
 const SKIP_TAGS = new Set([
@@ -103,10 +105,36 @@ function getElementStyle(el: Element): EdmHtmlEditableSelection['style'] {
   const style = (el as HTMLElement).style
   return {
     color: style.color || undefined,
+    fontFamily: style.fontFamily || undefined,
     fontSize: style.fontSize || undefined,
     fontWeight: style.fontWeight || undefined,
     textAlign: style.textAlign || undefined
   }
+}
+
+function cssUrlValue(value: string | null | undefined): string {
+  const match = /url\(\s*(['"]?)(.*?)\1\s*\)/i.exec(value || '')
+  return match?.[2] || ''
+}
+
+function backgroundImageSrc(el: Element): string {
+  const explicit = el.getAttribute('background') || ''
+  if (explicit) return explicit
+  const style = el as HTMLElement
+  return cssUrlValue(style.style.backgroundImage)
+}
+
+function hasEditableBackgroundImage(el: Element): boolean {
+  return el.tagName !== 'IMG' && Boolean(backgroundImageSrc(el))
+}
+
+function imageSrc(el: Element): string {
+  if (el.tagName === 'IMG') return el.getAttribute('src') || ''
+  return backgroundImageSrc(el)
+}
+
+function imageMode(el: Element): 'inline' | 'background' {
+  return el.tagName === 'IMG' ? 'inline' : 'background'
 }
 
 function selectionFromElement(
@@ -116,14 +144,15 @@ function selectionFromElement(
 ): EdmHtmlEditableSelection | null {
   const id = editableId(kind, el, root)
   if (kind === 'image') {
-    const image = el as HTMLImageElement
-    const closestLink = image.closest('a[href]')
+    const mode = imageMode(el)
+    const closestLink = el.closest('a[href]')
     return {
       id,
       kind,
-      label: 'Image',
-      src: image.getAttribute('src') || '',
-      alt: image.getAttribute('alt') || '',
+      label: mode === 'background' ? 'Background image' : 'Image',
+      src: imageSrc(el),
+      alt: el.getAttribute('alt') || '',
+      imageMode: mode,
       linkHref: closestLink?.getAttribute('href') || ''
     }
   }
@@ -155,6 +184,12 @@ function collectEditables(root: Element): EdmHtmlEditableSelection[] {
   function walk(el: Element) {
     if (SKIP_TAGS.has(el.tagName)) return
 
+    const hasBackgroundImage = hasEditableBackgroundImage(el)
+    if (hasBackgroundImage) {
+      const selection = selectionFromElement(el, root, 'image')
+      if (selection) out.push(selection)
+    }
+
     if (el.tagName === 'IMG' && el.getAttribute('src')) {
       const selection = selectionFromElement(el, root, 'image')
       if (selection) out.push(selection)
@@ -167,7 +202,7 @@ function collectEditables(root: Element): EdmHtmlEditableSelection[] {
       return
     }
 
-    if (hasMeaningfulDirectText(el) && !hasElementChildrenOtherThanBr(el)) {
+    if (!hasBackgroundImage && hasMeaningfulDirectText(el) && !hasElementChildrenOtherThanBr(el)) {
       const selection = selectionFromElement(el, root, 'text')
       if (selection) out.push(selection)
       return
@@ -209,6 +244,28 @@ function safeImageSrc(value: string): string {
   return ''
 }
 
+function safeFontFamily(value: string): string {
+  const fontFamily = value.trim()
+  if (!fontFamily || fontFamily.length > 180) return ''
+  return /^[a-z0-9\s"',._-]+$/i.test(fontFamily) ? fontFamily : ''
+}
+
+function cssUrl(src: string): string {
+  return `url('${src.replace(/'/g, '%27')}')`
+}
+
+function updateImageSrc(el: Element, src: string) {
+  if (el.tagName === 'IMG') {
+    el.setAttribute('src', src)
+    return
+  }
+
+  if (el.hasAttribute('background') || ['TD', 'TH', 'TABLE'].includes(el.tagName)) {
+    el.setAttribute('background', src)
+  }
+  ;(el as HTMLElement).style.backgroundImage = cssUrl(src)
+}
+
 function stripEditorAttributes(root: Element) {
   for (const el of Array.from(root.querySelectorAll('[data-edm-html-editable-id]'))) {
     el.removeAttribute('data-edm-html-editable-id')
@@ -217,6 +274,7 @@ function stripEditorAttributes(root: Element) {
     el.removeAttribute('role')
     el.removeAttribute('tabindex')
     el.removeAttribute('aria-label')
+    el.removeAttribute('data-edm-html-editable-mode')
     el.classList.remove('edm-html-editable', 'is-selected')
     if (!el.getAttribute('class')) el.removeAttribute('class')
   }
@@ -241,6 +299,7 @@ export function annotateHtmlEditables(
     const el = found.el as HTMLElement
     el.dataset.edmHtmlEditableId = selection.id
     el.dataset.edmHtmlEditableKind = selection.kind
+    if (selection.imageMode) el.dataset.edmHtmlEditableMode = selection.imageMode
     el.classList.add('edm-html-editable')
     if (selection.id === options.selectedId) el.classList.add('is-selected')
     if (selection.kind === 'text' || selection.kind === 'link') {
@@ -283,6 +342,10 @@ export function updateHtmlEditable(
       el.textContent = update.text
     }
     if (update.color !== undefined) (el as HTMLElement).style.color = update.color
+    if (update.fontFamily !== undefined) {
+      const fontFamily = safeFontFamily(update.fontFamily)
+      if (fontFamily) (el as HTMLElement).style.fontFamily = fontFamily
+    }
     if (update.fontSize !== undefined) (el as HTMLElement).style.fontSize = update.fontSize
     if (update.fontWeight !== undefined) (el as HTMLElement).style.fontWeight = update.fontWeight
     if (update.textAlign !== undefined) (el as HTMLElement).style.textAlign = update.textAlign
@@ -300,29 +363,45 @@ export function updateHtmlEditable(
       if (href) link.setAttribute('href', href)
     }
     if (update.color !== undefined) link.style.color = update.color
+    if (update.fontFamily !== undefined) {
+      const fontFamily = safeFontFamily(update.fontFamily)
+      if (fontFamily) link.style.fontFamily = fontFamily
+    }
+    if (update.fontSize !== undefined) link.style.fontSize = update.fontSize
+    if (update.fontWeight !== undefined) link.style.fontWeight = update.fontWeight
+    if (update.textAlign !== undefined) link.style.textAlign = update.textAlign
   }
 
   if (update.kind === 'image') {
-    const image = el as HTMLImageElement
+    let replacedBackgroundSrc: { from: string, to: string } | null = null
     if (update.src !== undefined) {
       const src = safeImageSrc(update.src)
-      if (src) image.setAttribute('src', src)
+      if (src) {
+        const from = imageSrc(el)
+        updateImageSrc(el, src)
+        if (imageMode(el) === 'background' && from && from !== src) replacedBackgroundSrc = { from, to: src }
+      }
     }
-    if (update.alt !== undefined) image.setAttribute('alt', update.alt)
+    if (update.alt !== undefined) el.setAttribute('alt', update.alt)
     if (update.linkHref !== undefined) {
       const href = safeEditableHref(update.linkHref)
-      let link = image.closest('a')
+      let link = el.closest('a')
       if (href) {
         if (!link) {
           link = document.createElement('a')
-          image.replaceWith(link)
-          link.appendChild(image)
+          el.replaceWith(link)
+          link.appendChild(el)
         }
         link.setAttribute('href', href)
       } else if (link) {
-        link.replaceWith(image)
+        link.replaceWith(el)
       }
     }
+
+    const next = serialise(root)
+    return replacedBackgroundSrc
+      ? next.split(replacedBackgroundSrc.from).join(replacedBackgroundSrc.to)
+      : next
   }
 
   return serialise(root)

@@ -18,6 +18,16 @@ const sampleHtml = `
   </table>
 `
 
+const backgroundHtml = `
+  <table>
+    <tr>
+      <td background="/email/postcards/glidex/images/hero-bg.jpg" style="background-image:url('/email/postcards/glidex/images/hero-bg.jpg');background-size:cover;">
+        <div style="font-size:32px;color:#ffffff;">Drive smarter</div>
+      </td>
+    </tr>
+  </table>
+`
+
 describe('edmHtmlEditables', () => {
   it('discovers editor-safe text, link, and image editables from imported HTML', () => {
     const annotated = annotateHtmlEditables(sampleHtml, { editable: true })
@@ -84,5 +94,33 @@ describe('edmHtmlEditables', () => {
     })
     expect(linkUpdated).toContain('Reserve now')
     expect(linkUpdated).not.toContain('javascript:alert')
+  })
+
+  it('discovers and updates background images without hiding nested text editables', () => {
+    const annotated = annotateHtmlEditables(backgroundHtml, { editable: true })
+    const doc = document.createElement('div')
+    doc.innerHTML = annotated
+    const background = doc.querySelector('[data-edm-html-editable-mode="background"]') as HTMLElement
+    const text = doc.querySelector('[data-edm-html-editable-kind="text"]') as HTMLElement
+
+    expect(background).toBeTruthy()
+    expect(text).toBeTruthy()
+
+    const selection = getHtmlEditableSelection(backgroundHtml, background.dataset.edmHtmlEditableId || '')
+    expect(selection).toMatchObject({
+      kind: 'image',
+      imageMode: 'background',
+      src: '/email/postcards/glidex/images/hero-bg.jpg'
+    })
+
+    const updated = updateHtmlEditable(backgroundHtml, background.dataset.edmHtmlEditableId || '', {
+      kind: 'image',
+      src: '/email/postcards/glidex/images/new-hero.jpg'
+    })
+
+    expect(updated).toContain('background="/email/postcards/glidex/images/new-hero.jpg"')
+    expect(updated).toContain('/email/postcards/glidex/images/new-hero.jpg')
+    expect(updated).not.toContain('/email/postcards/glidex/images/hero-bg.jpg')
+    expect(updated).not.toContain('data-edm-html-editable')
   })
 })

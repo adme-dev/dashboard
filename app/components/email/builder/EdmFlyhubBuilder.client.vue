@@ -16,6 +16,7 @@ import {
   type EdmHtmlEditableSelection,
   type EdmHtmlEditableUpdate
 } from '~~/app/utils/edmHtmlEditables'
+import { normaliseEmailImageAssetUrl, type EdmImageAsset } from '~~/app/utils/edmImageAssets'
 import type { EdmCustomModule } from '~~/app/composables/useEdmCustomModules'
 
 const store = useEdmBuilder()
@@ -252,6 +253,25 @@ function updateSelectedHtmlEditable(update: EdmHtmlEditableUpdate) {
   updateCanvasProps(blockId, { contents: next })
   const nextSelection = getHtmlEditableSelection(next, selection.id)
   store.selectHtmlEditable(nextSelection ? { ...nextSelection, blockId } : null)
+}
+
+const imageLibraryOpen = ref(false)
+const imageLibraryTarget = ref<{ blockId: string, selectionId: string } | null>(null)
+
+function openHtmlImageLibrary(blockId: string, selection: EdmHtmlEditableSelection) {
+  selectCanvasHtmlEditable(blockId, selection)
+  imageLibraryTarget.value = { blockId, selectionId: selection.id }
+  imageLibraryOpen.value = true
+}
+
+function applyImageLibraryAsset(asset: EdmImageAsset) {
+  const target = imageLibraryTarget.value
+  if (!target) return
+  const selection = selectedHtmlEditableFor(target.blockId)
+  if (!selection || selection.id !== target.selectionId || selection.kind !== 'image') return
+  updateSelectedHtmlEditable({ kind: 'image', src: normaliseEmailImageAssetUrl(asset.url), alt: selection.alt || asset.name })
+  imageLibraryOpen.value = false
+  imageLibraryTarget.value = null
 }
 
 // ── View modes + preview ────────────────────────────────────────────────
@@ -745,11 +765,13 @@ onMounted(async () => {
                   :props="blockForCanvas(block.id)?.data?.props"
                   :hidden-on-device="hiddenOnCanvas(block.id)"
                   :selected-html-editable-id="selectedHtmlEditableFor(block.id)?.id"
+                  :image-library-enabled="true"
                   editable
                   @update:text="(t) => updateCanvasText(block.id, t)"
                   @update:props="(p) => updateCanvasProps(block.id, p)"
                   @update:style="(s) => updateCanvasStyle(block.id, s)"
                   @select:html-editable="(selection) => selectCanvasHtmlEditable(block.id, selection)"
+                  @request:html-image-library="(selection) => openHtmlImageLibrary(block.id, selection)"
                 />
               </EmailBuilderEditorBlockWrapper>
             </template>
@@ -933,6 +955,11 @@ onMounted(async () => {
         </div>
       </template>
     </UModal>
+
+    <EmailBuilderEdmImageLibraryPicker
+      v-model:open="imageLibraryOpen"
+      @pick="applyImageLibraryAsset"
+    />
 
     <!-- Rename a saved module -->
     <UModal v-model:open="showRenameModuleModal" title="Rename module">

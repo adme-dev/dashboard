@@ -209,13 +209,111 @@
       <div
         v-if="selectedHtmlEditable"
         data-edm-html-region-toolbar
-        class="edm-html-region-toolbar"
+        :data-edm-html-text-toolbar="isHtmlTextSelection ? 'true' : undefined"
+        :class="['edm-html-region-toolbar', { 'edm-html-text-toolbar': isHtmlTextSelection }]"
         :style="htmlRegionToolbarStyle"
         role="toolbar"
         :aria-label="`Imported ${selectedHtmlEditable.kind} quick actions`"
         @click.stop
-        @mousedown.prevent
+        @mousedown.stop
       >
+        <template v-if="isHtmlTextSelection">
+          <select
+            class="edm-inline-toolbar-select edm-inline-toolbar-font"
+            :value="currentHtmlTextFontFamily"
+            aria-label="Font family"
+            title="Font family"
+            @change.stop="onHtmlTextToolbarSelect('fontFamily', $event)"
+          >
+            <option
+              v-for="font in htmlInlineFontOptionsForSelection"
+              :key="font.value"
+              :value="font.value"
+            >
+              {{ font.label }}
+            </option>
+          </select>
+          <span class="edm-inline-toolbar-divider" aria-hidden="true" />
+          <button
+            type="button"
+            class="edm-inline-toolbar-button edm-inline-toolbar-text-button"
+            aria-label="Decrease font size"
+            title="Decrease font size"
+            @click.stop="adjustHtmlTextFontSize(-1)"
+          >
+            A-
+          </button>
+          <span class="edm-inline-toolbar-size" aria-label="Current font size">{{ currentHtmlTextFontSize }}px</span>
+          <button
+            type="button"
+            class="edm-inline-toolbar-button edm-inline-toolbar-text-button"
+            aria-label="Increase font size"
+            title="Increase font size"
+            @click.stop="adjustHtmlTextFontSize(1)"
+          >
+            A+
+          </button>
+          <span class="edm-inline-toolbar-divider" aria-hidden="true" />
+          <select
+            class="edm-inline-toolbar-select"
+            :value="currentHtmlTextFontWeight"
+            aria-label="Font weight"
+            title="Font weight"
+            @change.stop="onHtmlTextToolbarSelect('fontWeight', $event)"
+          >
+            <option value="normal">
+              Regular
+            </option>
+            <option value="bold">
+              Bold
+            </option>
+          </select>
+          <span class="edm-inline-toolbar-divider" aria-hidden="true" />
+          <button
+            v-for="align in inlineAlignments"
+            :key="`html-${align.value}`"
+            type="button"
+            class="edm-inline-toolbar-button"
+            :class="{ 'is-active': currentHtmlTextAlign === align.value }"
+            :aria-label="align.label"
+            :title="align.label"
+            @click.stop="updateHtmlTextStyle({ textAlign: align.value })"
+          >
+            <UIcon :name="align.icon" class="edm-inline-toolbar-icon" aria-hidden="true" />
+          </button>
+          <span class="edm-inline-toolbar-divider" aria-hidden="true" />
+          <div class="edm-inline-toolbar-color">
+            <button
+              type="button"
+              class="edm-inline-toolbar-button"
+              aria-label="Text color"
+              title="Text color"
+              @click.stop="showTextColorInput = !showTextColorInput"
+            >
+              <span
+                class="edm-inline-toolbar-swatch"
+                :style="{ backgroundColor: currentHtmlTextColor }"
+                aria-hidden="true"
+              />
+            </button>
+            <div v-if="showTextColorInput" class="edm-inline-toolbar-color-popover">
+              <input
+                type="color"
+                class="edm-inline-toolbar-color-input"
+                :value="currentHtmlTextColor"
+                aria-label="Text color picker"
+                @input.stop="onHtmlTextToolbarColor"
+              >
+              <input
+                type="text"
+                class="edm-inline-toolbar-color-value"
+                :value="currentHtmlTextColor"
+                aria-label="Text color value"
+                @change.stop="onHtmlTextToolbarColor"
+              >
+            </div>
+          </div>
+        </template>
         <button
           v-if="selectedHtmlEditable.kind === 'image'"
           type="button"
@@ -405,6 +503,7 @@ import {
   annotateHtmlEditables,
   getHtmlEditableSelection,
   updateHtmlEditable,
+  type EdmHtmlEditableUpdate,
   type EdmHtmlEditableSelection
 } from '~~/app/utils/edmHtmlEditables'
 
@@ -414,6 +513,7 @@ const props = defineProps<{
   props?: Record<string, unknown> | null
   /** Phase 3b: when true, text blocks are contenteditable on the canvas. */
   editable?: boolean
+  imageLibraryEnabled?: boolean
   hiddenOnDevice?: boolean
   selectedHtmlEditableId?: string | null
 }>()
@@ -423,6 +523,7 @@ const emit = defineEmits<{
   'update:props': [value: Record<string, unknown>]
   'update:style': [value: Record<string, unknown>]
   'select:html-editable': [value: EdmHtmlEditableSelection]
+  'request:html-image-library': [value: EdmHtmlEditableSelection]
 }>()
 
 const textEditorEl = ref<HTMLElement | null>(null)
@@ -435,6 +536,13 @@ const inlineFontOptions = [
   { label: 'Geometric Sans', value: 'GEOMETRIC_SANS' },
   { label: 'Modern Serif', value: 'MODERN_SERIF' },
   { label: 'Monospace', value: 'MONOSPACE' }
+] as const
+const htmlInlineFontOptions = [
+  { label: 'Inter', value: "'Inter', Arial, Helvetica, sans-serif" },
+  { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
+  { label: 'Georgia', value: 'Georgia, serif' },
+  { label: 'Times', value: "'Times New Roman', Times, serif" },
+  { label: 'Mono', value: "'SFMono-Regular', Consolas, monospace" }
 ] as const
 const inlineFormatActions = [
   { command: 'bold', label: 'Bold', icon: 'i-lucide-bold' },
@@ -564,6 +672,29 @@ const selectedHtmlEditable = computed(() => {
   if (!props.editable || props.type !== 'Html' || !props.selectedHtmlEditableId) return null
   return getHtmlEditableSelection(rawHtmlContents.value, props.selectedHtmlEditableId)
 })
+const isHtmlTextSelection = computed(() => {
+  const kind = selectedHtmlEditable.value?.kind
+  return kind === 'text' || kind === 'link'
+})
+const currentHtmlTextFontFamily = computed(() => selectedHtmlEditable.value?.style?.fontFamily || htmlInlineFontOptions[0]?.value || '')
+const htmlInlineFontOptionsForSelection = computed(() => {
+  const current = currentHtmlTextFontFamily.value
+  if (!current || htmlInlineFontOptions.some(font => font.value === current)) return htmlInlineFontOptions
+  return [{ label: 'Current', value: current }, ...htmlInlineFontOptions]
+})
+const currentHtmlTextFontSize = computed(() => {
+  const raw = selectedHtmlEditable.value?.style?.fontSize || ''
+  const value = Number.parseFloat(raw)
+  return Number.isFinite(value) ? Math.max(10, Math.min(96, Math.round(value))) : 16
+})
+const currentHtmlTextFontWeight = computed(() => {
+  const value = selectedHtmlEditable.value?.style?.fontWeight || ''
+  const numeric = Number.parseInt(value, 10)
+  if (value === 'bold' || (Number.isFinite(numeric) && numeric >= 600)) return 'bold'
+  return 'normal'
+})
+const currentHtmlTextAlign = computed(() => selectedHtmlEditable.value?.style?.textAlign || 'left')
+const currentHtmlTextColor = computed(() => selectedHtmlEditable.value?.style?.color || '#000000')
 const htmlRegionToolbarStyle = computed(() => {
   const position = htmlRegionToolbarPosition.value
   if (!position) {
@@ -601,6 +732,31 @@ function emitHtmlEditableUpdate(selection: EdmHtmlEditableSelection, update: Par
   if (nextSelection) emit('select:html-editable', nextSelection)
 }
 
+function updateHtmlTextStyle(stylePatch: Omit<Extract<EdmHtmlEditableUpdate, { kind: 'text' }>, 'kind'>) {
+  const selection = selectedHtmlEditable.value
+  if (!selection || (selection.kind !== 'text' && selection.kind !== 'link')) return
+  emitHtmlEditableUpdate(selection, {
+    kind: selection.kind,
+    ...stylePatch
+  } as Extract<EdmHtmlEditableUpdate, { kind: 'text' | 'link' }>)
+}
+
+function adjustHtmlTextFontSize(delta: 1 | -1) {
+  updateHtmlTextStyle({ fontSize: `${Math.max(10, Math.min(96, currentHtmlTextFontSize.value + delta))}px` })
+}
+
+function onHtmlTextToolbarSelect(key: 'fontFamily' | 'fontWeight', e: Event) {
+  const el = e.target as HTMLSelectElement | null
+  if (!el) return
+  updateHtmlTextStyle({ [key]: el.value })
+}
+
+function onHtmlTextToolbarColor(e: Event) {
+  const el = e.target as HTMLInputElement | null
+  if (!el) return
+  updateHtmlTextStyle({ color: el.value || '#000000' })
+}
+
 function onHtmlEditableClick(event: MouseEvent) {
   const el = closestHtmlEditable(event.target)
   if (!el) return
@@ -609,7 +765,9 @@ function onHtmlEditableClick(event: MouseEvent) {
   positionHtmlRegionToolbar(el)
   const id = el.dataset.edmHtmlEditableId || ''
   const selection = getHtmlEditableSelection(rawHtmlContents.value, id)
-  if (selection) emit('select:html-editable', selection)
+  if (!selection) return
+  if (selection.kind !== 'text') event.preventDefault()
+  emit('select:html-editable', selection)
 }
 
 function onHtmlEditableContextMenu(event: MouseEvent) {
@@ -645,6 +803,10 @@ function onHtmlEditableBlur(event: FocusEvent) {
 
 function changeHtmlImage(selection: EdmHtmlEditableSelection | null = selectedHtmlEditable.value) {
   if (!selection || selection.kind !== 'image') return
+  if (props.imageLibraryEnabled) {
+    emit('request:html-image-library', selection)
+    return
+  }
   if (typeof window === 'undefined' || typeof window.prompt !== 'function') return
   const nextSrc = window.prompt('Image URL', selection.src || '')
   if (nextSrc === null) return
@@ -1185,6 +1347,16 @@ const columnsContainerCellStyle = {
 .edm-html-region-toolbar-icon {
   width: 15px;
   height: 15px;
+}
+
+.edm-html-text-toolbar {
+  gap: 2px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.edm-html-text-toolbar .edm-inline-toolbar-color-popover {
+  top: calc(100% + 8px);
 }
 
 :deep(.edm-html-editable) {

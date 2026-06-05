@@ -6,6 +6,7 @@ import EdmBlockRenderer from '~~/app/components/email/builder/EdmBlockRenderer.v
 import { annotateHtmlEditables } from '~~/app/utils/edmHtmlEditables'
 
 const sampleContents = '<table><tr><td><div>Drive smarter</div><a href="https://example.com">Claim offer</a><img src="/car.png" alt="Car"></td></tr></table>'
+const backgroundContents = '<table><tr><td background="/hero-bg.jpg" style="background-image:url(\'/hero-bg.jpg\');background-size:cover;"><div>Drive smarter</div></td></tr></table>'
 
 const iconStub = {
   props: ['name'],
@@ -31,6 +32,13 @@ function editableIdFor(kind: string): string {
   const root = document.createElement('div')
   root.innerHTML = annotateHtmlEditables(sampleContents, { editable: true })
   const el = root.querySelector(`[data-edm-html-editable-kind="${kind}"]`) as HTMLElement | null
+  return el?.dataset.edmHtmlEditableId || ''
+}
+
+function backgroundEditableId(): string {
+  const root = document.createElement('div')
+  root.innerHTML = annotateHtmlEditables(backgroundContents, { editable: true })
+  const el = root.querySelector('[data-edm-html-editable-mode="background"]') as HTMLElement | null
   return el?.dataset.edmHtmlEditableId || ''
 }
 
@@ -67,6 +75,16 @@ describe('EmailBuilderEdmBlockRenderer imported HTML editables', () => {
     expect(html).toContain('aria-label="Imported image quick actions"')
     expect(html).toContain('aria-label="Change image"')
     expect(html).toContain('aria-label="Edit image link"')
+  })
+
+  it('renders a formatting toolbar for the selected imported HTML text region', async () => {
+    const html = await renderHtmlBlock({ selectedHtmlEditableId: editableIdFor('text') })
+
+    expect(html).toContain('data-edm-html-region-toolbar')
+    expect(html).toContain('data-edm-html-text-toolbar')
+    expect(html).toContain('aria-label="Imported text quick actions"')
+    expect(html).toContain('aria-label="Decrease font size"')
+    expect(html).toContain('aria-label="Text color"')
   })
 
   it('changes a selected imported image from the right-click path', async () => {
@@ -108,5 +126,73 @@ describe('EmailBuilderEdmBlockRenderer imported HTML editables', () => {
     } finally {
       window.prompt = originalPrompt
     }
+  })
+
+  it('requests the image library for selected imported images when enabled', async () => {
+    const imageId = editableIdFor('image')
+    const requests: unknown[] = []
+    let promptCalled = false
+    const originalPrompt = window.prompt
+    window.prompt = (() => {
+      promptCalled = true
+      return '/should-not-be-used.png'
+    }) as typeof window.prompt
+
+    try {
+      const host = document.createElement('div')
+      document.body.appendChild(host)
+      const app = createApp({
+        render: () => h(EdmBlockRenderer, {
+          type: 'Html',
+          props: { contents: sampleContents },
+          editable: true,
+          imageLibraryEnabled: true,
+          selectedHtmlEditableId: imageId,
+          'onRequest:html-image-library': (value: unknown) => requests.push(value)
+        })
+      })
+      app.component('UIcon', iconStub)
+      app.mount(host)
+
+      const image = host.querySelector('[data-edm-html-editable-kind="image"]') as HTMLElement
+      image.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+
+      expect(promptCalled).toBe(false)
+      expect(requests).toHaveLength(1)
+      expect(requests[0]).toMatchObject({ kind: 'image', src: '/car.png' })
+
+      app.unmount()
+      host.remove()
+    } finally {
+      window.prompt = originalPrompt
+    }
+  })
+
+  it('requests the image library for imported background images when enabled', async () => {
+    const backgroundId = backgroundEditableId()
+    const requests: unknown[] = []
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const app = createApp({
+      render: () => h(EdmBlockRenderer, {
+        type: 'Html',
+        props: { contents: backgroundContents },
+        editable: true,
+        imageLibraryEnabled: true,
+        selectedHtmlEditableId: backgroundId,
+        'onRequest:html-image-library': (value: unknown) => requests.push(value)
+      })
+    })
+    app.component('UIcon', iconStub)
+    app.mount(host)
+
+    const background = host.querySelector('[data-edm-html-editable-mode="background"]') as HTMLElement
+    background.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0]).toMatchObject({ kind: 'image', imageMode: 'background', src: '/hero-bg.jpg' })
+
+    app.unmount()
+    host.remove()
   })
 })
