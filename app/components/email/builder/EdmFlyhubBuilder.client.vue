@@ -19,10 +19,12 @@ const toast = useToast()
 const layout = computed(() => store.getLayoutSettings())
 
 // ── Palette ───────────────────────────────────────────────────────────────
-// Slim category list; each category is a hover/focus flyout (UPopover) that
-// reveals live-rendered thumbnails of its presets. Per-category open state lets
-// us close the flyout the moment a preset is inserted.
-const flyoutOpen = reactive<Record<string, boolean>>({})
+// Slim category list; each category opens a single top-docked flyout panel
+// immediately to the rail's right, matching the Postcards module browser.
+const activeFlyoutCategoryId = ref<string | null>(null)
+const activeFlyoutCategory = computed(() => {
+  return EDM_SECTION_CATEGORIES.find(category => category.id === activeFlyoutCategoryId.value) ?? null
+})
 
 // Insert by preset OBJECT so callers don't depend on the active category.
 // Handles both Basic blocks (kind:'block') and full sections (kind:'section').
@@ -36,35 +38,44 @@ function insertPreset(preset: EdmSectionPreset, position?: number) {
   store.insertSectionPreset(preset.id, position)
 }
 
-// Hybrid open/close: controlled popover (click + Enter/Space + focus reachable)
-// with hover-to-open layered on top. A short close delay lets the pointer
-// travel from trigger into the panel without it snapping shut.
+// Hybrid open/close: click/focus keeps the panel keyboard reachable while a
+// short hover-close delay lets the pointer travel from the rail into the panel.
 const closeTimers: Record<string, ReturnType<typeof setTimeout> | undefined> = {}
+const FLYOUT_TIMER_ID = 'module-rail'
 
-function cancelCloseFlyout(id: string) {
-  if (closeTimers[id]) {
-    clearTimeout(closeTimers[id])
-    closeTimers[id] = undefined
+function cancelCloseFlyout() {
+  if (closeTimers[FLYOUT_TIMER_ID]) {
+    clearTimeout(closeTimers[FLYOUT_TIMER_ID])
+    closeTimers[FLYOUT_TIMER_ID] = undefined
   }
 }
 
 function openFlyout(id: string) {
-  cancelCloseFlyout(id)
-  flyoutOpen[id] = true
+  cancelCloseFlyout()
+  activeFlyoutCategoryId.value = id
 }
 
-function scheduleCloseFlyout(id: string) {
-  cancelCloseFlyout(id)
-  closeTimers[id] = setTimeout(() => {
-    flyoutOpen[id] = false
-    closeTimers[id] = undefined
+function closeFlyout() {
+  cancelCloseFlyout()
+  activeFlyoutCategoryId.value = null
+}
+
+function scheduleCloseFlyout() {
+  cancelCloseFlyout()
+  closeTimers[FLYOUT_TIMER_ID] = setTimeout(() => {
+    closeFlyout()
+    closeTimers[FLYOUT_TIMER_ID] = undefined
   }, 150)
 }
 
-function insertFromFlyout(category: { id: string }, preset: EdmSectionPreset) {
+function insertFromFlyout(preset: EdmSectionPreset) {
   insertPreset(preset)
-  cancelCloseFlyout(category.id)
-  flyoutOpen[category.id] = false
+  closeFlyout()
+}
+
+function onCanvasClick() {
+  store.clearSelection()
+  closeFlyout()
 }
 
 const addAtEndOpen = ref(false)
@@ -578,75 +589,43 @@ onMounted(async () => {
     <div class="flex-1 overflow-hidden">
       <!-- Editor -->
       <div v-show="viewMode === 'editor'" class="flex h-full">
-        <!-- Left: slim category rail; hovering/focusing a category opens a
-             flyout of live-rendered section thumbnails (Postcards fidelity). -->
-        <aside class="w-44 border-r border-default bg-default p-2 overflow-auto">
-          <p class="px-2 py-2 text-[11px] font-semibold uppercase text-muted">
-            Modules
-          </p>
-          <UPopover
-            v-for="category in EDM_SECTION_CATEGORIES"
-            :key="category.id"
-            v-model:open="flyoutOpen[category.id]"
-            :content="{ side: 'right', align: 'start' }"
-          >
+        <!-- Left: slim category rail with a top-docked flyout panel. -->
+        <div class="relative flex h-full shrink-0" @keydown.esc.stop="closeFlyout()">
+          <aside class="w-52 border-r border-default bg-default p-2 overflow-auto">
+            <p class="px-2 py-2 text-[11px] font-semibold uppercase text-muted">
+              Modules
+            </p>
             <button
+              v-for="category in EDM_SECTION_CATEGORIES"
+              :key="category.id"
               type="button"
               class="w-full flex items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors"
-              :class="flyoutOpen[category.id] ? 'bg-elevated text-default font-semibold' : 'text-muted hover:text-default hover:bg-elevated/60'"
+              :class="activeFlyoutCategoryId === category.id ? 'bg-elevated text-default font-semibold' : 'text-muted hover:text-default hover:bg-elevated/60'"
               @mouseenter="openFlyout(category.id)"
-              @mouseleave="scheduleCloseFlyout(category.id)"
+              @mouseleave="scheduleCloseFlyout()"
+              @focus="openFlyout(category.id)"
+              @click="openFlyout(category.id)"
             >
               <UIcon :name="category.icon" class="h-4 w-4 shrink-0" />
               <span class="truncate flex-1">{{ category.label }}</span>
               <UIcon name="i-lucide-chevron-right" class="h-3.5 w-3.5 shrink-0 opacity-50" />
             </button>
+          </aside>
 
-            <template #content>
-              <div
-                class="w-[340px] max-h-[70vh] overflow-auto p-3"
-                @mouseenter="cancelCloseFlyout(category.id)"
-                @mouseleave="scheduleCloseFlyout(category.id)"
-              >
-                <p class="text-[11px] font-semibold uppercase text-muted mb-1">
-                  {{ category.label }}
-                </p>
-                <p v-if="category.id !== 'basic'" class="text-[11px] text-muted/80 mb-3 flex items-center gap-1">
-                  <UIcon name="i-lucide-image" class="h-3 w-3 shrink-0" />
-                  Preview images are placeholders — swap before sending.
-                </p>
-                <div class="space-y-3">
-                  <button
-                    v-for="preset in category.presets"
-                    :key="preset.id"
-                    type="button"
-                    class="block w-full overflow-hidden rounded-md border border-default bg-default text-left transition hover:border-primary hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    @click="insertFromFlyout(category, preset)"
-                  >
-                    <!-- Fixed-height clip so short & tall presets yield even tiles. -->
-                    <div class="h-32 overflow-hidden bg-elevated/40 flex items-start justify-center">
-                      <EmailBuilderEdmSectionThumbnail :preset="preset" :width="300" />
-                    </div>
-                    <div class="p-3">
-                      <p class="text-sm font-semibold">
-                        {{ preset.name }}
-                      </p>
-                      <p class="mt-1 text-xs text-muted leading-snug">
-                        {{ preset.description }}
-                      </p>
-                    </div>
-                  </button>
-                </div>
-              </div>
-            </template>
-          </UPopover>
-        </aside>
+          <EmailBuilderEdmCategoryFlyoutPanel
+            v-if="activeFlyoutCategory"
+            :category="activeFlyoutCategory"
+            @insert="insertFromFlyout"
+            @mouseenter="cancelCloseFlyout()"
+            @mouseleave="scheduleCloseFlyout()"
+          />
+        </div>
 
         <!-- Center: canvas -->
         <main
           class="flex-1 p-6 overflow-auto"
           :style="{ backgroundColor: layout.backdropColor }"
-          @click="store.clearSelection()"
+          @click="onCanvasClick()"
         >
           <div
             class="mx-auto max-w-[600px] min-h-64 rounded shadow-sm"

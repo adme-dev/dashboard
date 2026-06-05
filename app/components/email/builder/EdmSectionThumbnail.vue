@@ -15,17 +15,26 @@ const props = withDefaults(defineProps<{
   preset: EdmSectionPreset
   /** Target rendered width of the thumbnail tile, in px. */
   width?: number
+  /** Maximum visible tile height. Pass null for an uncapped tile. */
+  maxHeight?: number | null
 }>(), {
-  width: 260
+  width: 260,
+  maxHeight: 220
 })
 
 const scale = computed(() => props.width / EMAIL_WIDTH)
 
 // The visible tile takes the target width; its height is the scaled-down
 // height of whatever the inner canvas renders, capped by max-height clipping.
-const tileStyle = computed(() => ({
-  width: props.width + 'px'
-}))
+const tileStyle = computed(() => {
+  const style: Record<string, string> = {
+    width: props.width + 'px'
+  }
+  if (props.maxHeight !== null) {
+    style.maxHeight = props.maxHeight + 'px'
+  }
+  return style
+})
 
 const innerStyle = computed(() => ({
   width: EMAIL_WIDTH + 'px',
@@ -51,10 +60,3 @@ const innerStyle = computed(() => ({
     </div>
   </div>
 </template>
-
-<style scoped>
-.edm-section-thumbnail {
-  /* Clip overly-tall sections so the tile chrome stays compact. */
-  max-height: 220px;
-}
-</style>
