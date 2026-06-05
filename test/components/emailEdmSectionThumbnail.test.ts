@@ -14,6 +14,15 @@ async function renderThumbnail(presetId: string) {
 }
 
 describe('EdmSectionThumbnail', () => {
+  it('adds imported Postcards sections to the module library', async () => {
+    const imported = EDM_SECTION_CATEGORIES.find(category => category.id === 'imported')
+    expect(imported?.presets.map(preset => preset.id)).toContain('postcards-glidex-02-hero')
+
+    const html = await renderThumbnail('postcards-glidex-02-hero')
+    expect(html).toContain('Drive smarter')
+    expect(html).not.toContain('Unknown block')
+  })
+
   it('renders the header-logo-menu preset through the real block renderer', async () => {
     const html = await renderThumbnail('header-logo-menu')
     expect(html).toContain('Your brand')

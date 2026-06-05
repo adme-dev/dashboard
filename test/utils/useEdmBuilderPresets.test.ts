@@ -84,9 +84,9 @@ describe('useEdmBuilder preset actions', () => {
     const store = useEdmBuilder()
     store.addBlock('Heading')
     expect(store.canUndo.value).toBe(true)
-    store.setTemplatePreset('newsletter-digest')
+    store.setTemplatePreset('postcards-glidex')
     expect(store.document.value.root.data.childrenIds?.length).toBe(
-      buildStarterTemplateDocument('newsletter-digest').root.data.childrenIds?.length
+      buildStarterTemplateDocument('postcards-glidex').root.data.childrenIds?.length
     )
     expect(store.canUndo.value).toBe(false)
   })

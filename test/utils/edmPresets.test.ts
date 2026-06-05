@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
 import { isFlyhubFormat } from '~~/server/utils/email-marketing/render/flyhub-html-renderer'
 import { createEmptyDocument } from '~~/app/types/edm'
+import { POSTCARDS_IMPORTED_HTML } from '~~/app/utils/edmImportedPostcardsHtml.js'
 import {
   EDM_SECTION_CATEGORIES,
   EDM_STARTER_TEMPLATES,
@@ -49,15 +50,16 @@ const expectedContentByPresetId: Partial<Record<string, string[]>> = {
 }
 
 const expectedStarterContentById: Record<string, string[]> = {
-  'newsletter-digest': ['Weekly digest', 'Latest updates from the team', 'Read the update'],
-  'product-offer': ['Limited-time offer', 'Claim offer'],
-  'confirmation-update': ['Next Steps', 'Here is what happens next']
+  'postcards-glidex': ['Drive smarter, safer, and more efficiently', 'Claim Your Offer Now'],
+  'postcards-futurax': ['Reserve your FuturaX', 'TurboNexus Motor'],
+  'postcards-aviro': ['Fresh bicycle models now in stock and ready', 'In the shopping cart']
 }
 
 describe('edmPresets', () => {
   it('includes basic scratch blocks and Postcards-style section categories', () => {
     expect(EDM_SECTION_CATEGORIES.map(category => category.id)).toEqual([
       'basic',
+      'imported',
       'header',
       'content',
       'feature',
@@ -222,17 +224,42 @@ describe('edmPresets', () => {
     expect(findStarterTemplate('missing-starter')).toBeNull()
   })
 
-  it('ships an expanded starter library of at least ten complete templates', () => {
-    expect(EDM_STARTER_TEMPLATES.length).toBeGreaterThanOrEqual(10)
+  it('keeps the existing starter library and appends imported Postcards templates', () => {
+    const starterIds = EDM_STARTER_TEMPLATES.map(starter => starter.id)
+
+    for (const id of ['newsletter-digest', 'product-offer', 'confirmation-update', 'flash-sale']) {
+      expect(starterIds, `expected existing starter ${id} to remain`).toContain(id)
+    }
+    for (const id of ['postcards-glidex', 'postcards-futurax', 'postcards-aviro']) {
+      expect(starterIds, `expected imported starter ${id} to be added`).toContain(id)
+    }
+    expect(starterIds).not.toContain('postcards-metahome')
   })
 
-  it('keeps the original three starters and unique starter ids', () => {
+  it('excludes the problematic MetaHome import from starters and sections', () => {
+    const starterIds = EDM_STARTER_TEMPLATES.map(starter => starter.id)
+    const sectionPresetIds = EDM_SECTION_CATEGORIES.flatMap(category => category.presets.map(preset => preset.id))
+
+    expect(starterIds).not.toContain('postcards-metahome')
+    expect(sectionPresetIds.some(id => id.startsWith('postcards-metahome'))).toBe(false)
+  })
+
+  it('keeps imported and existing starter ids unique', () => {
     const starterIds = EDM_STARTER_TEMPLATES.map(starter => starter.id)
 
     expect(new Set(starterIds).size).toBe(starterIds.length)
-    for (const id of ['newsletter-digest', 'product-offer', 'confirmation-update']) {
-      expect(starterIds, `expected original starter ${id} to remain`).toContain(id)
-    }
+  })
+
+  it('builds imported sections from the scripted Postcards exports', () => {
+    const hero = findSectionPreset('postcards-glidex-02-hero')
+    const importedHtmlIds = Object.keys(POSTCARDS_IMPORTED_HTML)
+
+    expect(hero?.blocks.map(block => block.type)).toEqual(['Html'])
+    expect(importedHtmlIds).toHaveLength(19)
+    expect(importedHtmlIds.some(id => id.startsWith('postcards-metahome'))).toBe(false)
+    expect(POSTCARDS_IMPORTED_HTML['postcards-glidex-02-hero']).toContain('pc-component')
+    expect(POSTCARDS_IMPORTED_HTML['postcards-glidex-02-hero']).toContain('Drive smarter')
+    expect(JSON.stringify(POSTCARDS_IMPORTED_HTML)).not.toContain('designmodo.com/postcards')
   })
 
   it('resolves every section preset id referenced by every starter', () => {

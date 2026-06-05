@@ -13,17 +13,29 @@ async function renderThumbnail(templateId: string, width?: number) {
 }
 
 describe('EdmTemplateThumbnail', () => {
-  it('renders the newsletter-digest template through the real block renderer', async () => {
-    const html = await renderThumbnail('newsletter-digest')
-    expect(html).toContain('Weekly digest')
-    expect(html).toContain('Ready to launch?')
+  it('keeps the existing starter library and appends imported Postcards templates', () => {
+    const ids = EDM_STARTER_TEMPLATES.map(template => template.id)
+    expect(ids).toContain('newsletter-digest')
+    expect(ids).toContain('flash-sale')
+    expect(ids).toContain('postcards-glidex')
+    expect(ids).toContain('postcards-futurax')
+    expect(ids).toContain('postcards-aviro')
+    expect(ids).not.toContain('postcards-metahome')
+  })
+
+  it('renders the GlideX template through the real block renderer', async () => {
+    const html = await renderThumbnail('postcards-glidex')
+    expect(html).toContain('Drive smarter')
+    expect(html).toContain('Claim Your Offer Now')
     expect(html).not.toContain('Unknown block')
   })
 
-  it('renders the flash-sale template with its hero and discount copy', async () => {
-    const html = await renderThumbnail('flash-sale')
-    expect(html).toContain('Summer sale is on')
-    expect(html).toContain('Take 15% off your first order')
+  it('renders the Aviro template built from the downloaded asset folder', async () => {
+    const html = await renderThumbnail('postcards-aviro')
+    expect(html).toContain('Fresh ')
+    expect(html).toContain('bicycle')
+    expect(html).toContain('models now in stock')
+    expect(html).toContain('In the shopping cart')
     expect(html).not.toContain('Unknown block')
   })
 
@@ -37,7 +49,7 @@ describe('EdmTemplateThumbnail', () => {
   })
 
   it('scales the inner canvas down to fit the target width', async () => {
-    const html = await renderThumbnail('newsletter-digest', 300)
+    const html = await renderThumbnail('postcards-glidex', 300)
     expect(html).toContain('width:600px')
     expect(html).toContain('scale(0.5)')
     expect(html).toContain('pointer-events:none')

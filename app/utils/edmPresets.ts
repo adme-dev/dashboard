@@ -17,9 +17,15 @@ import {
   productRow,
   imageTextRow
 } from '~~/app/utils/edmSectionBuilders'
+import {
+  IMPORTED_POSTCARDS_SECTION_IDS,
+  IMPORTED_POSTCARDS_SECTION_PRESETS,
+  IMPORTED_POSTCARDS_STARTER_TEMPLATES
+} from '~~/app/utils/edmImportedPostcards'
 
 export type EdmSectionCategoryId
   = | 'basic'
+    | 'imported'
     | 'header'
     | 'content'
     | 'feature'
@@ -149,7 +155,8 @@ export const EDM_SECTION_PRESET_IDS = [
   'footer-address',
   'footer-dark-social',
   'footer-app-download',
-  'footer-newsletter-signup'
+  'footer-newsletter-signup',
+  ...IMPORTED_POSTCARDS_SECTION_IDS
 ] as const
 
 export type EdmSectionPresetId = typeof EDM_SECTION_PRESET_IDS[number]
@@ -1589,6 +1596,12 @@ const FOOTER_PRESETS: EdmSectionPreset[] = [
 
 export const EDM_SECTION_CATEGORIES: EdmSectionCategory[] = [
   { id: 'basic', label: 'Basic Modules', icon: 'i-lucide-box', presets: BASIC_PRESETS },
+  {
+    id: 'imported',
+    label: 'Imported',
+    icon: 'i-lucide-import',
+    presets: IMPORTED_POSTCARDS_SECTION_PRESETS
+  },
   { id: 'header', label: 'Header', icon: 'i-lucide-panel-top', presets: HEADER_PRESETS },
   { id: 'content', label: 'Content', icon: 'i-lucide-layout-list', presets: CONTENT_PRESETS },
   { id: 'feature', label: 'Feature', icon: 'i-lucide-sparkles', presets: FEATURE_PRESETS },
@@ -1613,7 +1626,7 @@ export const EDM_SECTION_CATEGORIES: EdmSectionCategory[] = [
   { id: 'footer', label: 'Footer', icon: 'i-lucide-panel-bottom', presets: FOOTER_PRESETS }
 ]
 
-export const EDM_STARTER_TEMPLATES: EdmStarterTemplate[] = [
+const LEGACY_EDM_STARTER_TEMPLATES: EdmStarterTemplate[] = [
   {
     id: 'newsletter-digest',
     name: 'Weekly Digest',
@@ -1833,6 +1846,11 @@ export const EDM_STARTER_TEMPLATES: EdmStarterTemplate[] = [
     industry: 'Retail',
     isNew: true
   }
+]
+
+export const EDM_STARTER_TEMPLATES: EdmStarterTemplate[] = [
+  ...LEGACY_EDM_STARTER_TEMPLATES,
+  ...IMPORTED_POSTCARDS_STARTER_TEMPLATES
 ]
 
 const ALL_SECTION_PRESETS = EDM_SECTION_CATEGORIES.flatMap(category => category.presets)
