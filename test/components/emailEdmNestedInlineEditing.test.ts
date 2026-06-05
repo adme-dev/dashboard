@@ -40,7 +40,9 @@ function makeStore() {
     setSelectedBlockId: () => {},
     addBlock: () => '',
     addBlockToDocument: () => {},
-    addBlockToColumn: () => {}
+    addBlockToColumn: () => {},
+    insertBlocks: () => {},
+    insertBlocksToColumn: () => {}
   }
 }
 
@@ -52,6 +54,10 @@ const stubs = {
     props: ['type', 'style', 'props', 'hiddenOnDevice', 'editable'],
     emits: ['update:text'],
     template: '<button class="child-renderer" :data-type="type" :data-editable="editable" @click="$emit(\'update:text\', \'Updated nested copy\')">{{ props?.text }}</button>'
+  },
+  EmailBuilderEdmAddModuleMenu: {
+    name: 'EmailBuilderEdmAddModuleMenu',
+    template: '<div class="nested-module-picker">Unified module picker</div>'
   }
 }
 
@@ -87,5 +93,39 @@ describe('nested EDM inline editing', () => {
     expect(html).toContain('data-type="Text"')
     expect(html).toContain('data-editable')
     expect(html).toContain('Nested copy')
+  })
+
+  it('uses the unified module picker when adding children to containers', async () => {
+    const html = await render(ContainerBlockRenderer, { blockId: 'container', device: 'desktop' })
+
+    expect(html).toContain('nested-module-picker')
+    expect(html).toContain('Unified module picker')
+  })
+
+  it('uses the unified module picker when adding children to columns', async () => {
+    const store = makeStore()
+    const html = await render(ColumnsContainerRenderer, {
+      blockId: 'columns',
+      device: 'desktop',
+      style: store.document.value.columns.data.style,
+      props: store.document.value.columns.data.props
+    }, store)
+
+    expect(html).toContain('nested-module-picker')
+    expect(html).toContain('Unified module picker')
+  })
+
+  it('keeps the add control visible in empty columns', async () => {
+    const store = makeStore()
+    const html = await render(ColumnsContainerRenderer, {
+      blockId: 'columns',
+      device: 'desktop',
+      style: store.document.value.columns.data.style,
+      props: store.document.value.columns.data.props
+    }, store)
+    const emptyColumnAddButton = html.match(/<button[^>]*data-edm-nested-add-trigger[^>]*data-edm-column-index="1"[^>]*>/)?.[0] || ''
+
+    expect(emptyColumnAddButton).toContain('data-edm-column-index="1"')
+    expect(emptyColumnAddButton).not.toContain('display:none')
   })
 })

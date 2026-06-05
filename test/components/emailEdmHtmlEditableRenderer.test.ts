@@ -98,6 +98,60 @@ describe('EmailBuilderEdmBlockRenderer imported HTML editables', () => {
     expect(html).toContain('aria-label="Delete item"')
   })
 
+  it('prevents editable imported HTML links from navigating while selecting them', async () => {
+    const selections: unknown[] = []
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const app = createApp({
+      render: () => h(EdmBlockRenderer, {
+        type: 'Html',
+        props: { contents: sampleContents },
+        editable: true,
+        'onSelect:html-editable': (value: unknown) => selections.push(value)
+      })
+    })
+    app.component('UIcon', iconStub)
+    app.mount(host)
+
+    const link = host.querySelector('[data-edm-html-editable-kind="link"]') as HTMLElement
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true })
+    const dispatched = link.dispatchEvent(event)
+
+    expect(dispatched).toBe(false)
+    expect(event.defaultPrevented).toBe(true)
+    expect(selections.at(-1)).toMatchObject({ kind: 'link', href: 'https://example.com' })
+
+    app.unmount()
+    host.remove()
+  })
+
+  it('does not cancel plain imported HTML text clicks while selecting them', async () => {
+    const selections: unknown[] = []
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const app = createApp({
+      render: () => h(EdmBlockRenderer, {
+        type: 'Html',
+        props: { contents: sampleContents },
+        editable: true,
+        'onSelect:html-editable': (value: unknown) => selections.push(value)
+      })
+    })
+    app.component('UIcon', iconStub)
+    app.mount(host)
+
+    const text = host.querySelector('[data-edm-html-editable-kind="text"]') as HTMLElement
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true })
+    const dispatched = text.dispatchEvent(event)
+
+    expect(dispatched).toBe(true)
+    expect(event.defaultPrevented).toBe(false)
+    expect(selections.at(-1)).toMatchObject({ kind: 'text', text: 'Drive smarter' })
+
+    app.unmount()
+    host.remove()
+  })
+
   it('duplicates a selected imported HTML item from the quick-action toolbar', async () => {
     const textId = repeatedOfferTextId()
     const updates: Record<string, unknown>[] = []

@@ -1,6 +1,5 @@
 <!-- app/components/email/builder/ColumnsContainerRenderer.vue -->
-<!-- Renders a ColumnsContainer (2 or 3 columns) with per-column children + add
-     buttons. Ported; dynamic-block + @flyhub block-component paths removed. -->
+<!-- Renders a ColumnsContainer with per-column children + unified add popovers. -->
 <template>
   <div class="columns-container" :style="containerStyle">
     <div class="columns-grid" :style="gridStyle">
@@ -36,24 +35,21 @@
         <div class="column-add-block">
           <UPopover v-model:open="columnPickerOpen[colIndex]" :content="{ side: 'bottom', align: 'center' }">
             <button
-              v-show="columnHovered[colIndex] || columnPickerOpen[colIndex]"
+              v-show="isColumnEmpty(colIndex) || columnHovered[colIndex] || columnPickerOpen[colIndex]"
               type="button"
+              data-edm-nested-add-trigger
+              :data-edm-column-index="colIndex"
               class="add-block-trigger"
             >
               <UIcon name="i-lucide-plus" class="h-4 w-4 pointer-events-none" />
             </button>
             <template #content>
-              <div class="grid grid-cols-4 gap-1 p-2 w-64">
-                <button
-                  v-for="blockType in CHILD_PALETTE"
-                  :key="blockType.type"
-                  class="block-picker-item"
-                  @click="addBlockToColumn(blockType.type, colIndex)"
-                >
-                  <UIcon :name="blockType.icon" class="h-4 w-4" />
-                  <span class="text-[10px]">{{ blockType.name }}</span>
-                </button>
-              </div>
+              <EmailBuilderEdmAddModuleMenu
+                @insert="(preset) => insertPresetInColumn(preset, colIndex)"
+                @insert-module="(module) => insertCustomModuleInColumn(module, colIndex)"
+                @rename-module="noop"
+                @delete-module="noop"
+              />
             </template>
           </UPopover>
         </div>
@@ -64,9 +60,11 @@
 
 <script setup lang="ts">
 import { computed, reactive } from 'vue'
-import { BLOCK_PALETTE, getDefaultBlockData } from '~~/app/utils/edmBlocks'
-import { generateBlockId } from '~~/app/types/edm'
+import { buildSectionDocumentFragment } from '~~/app/utils/edmPresets'
+import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
+import { reidFragment } from '~~/app/utils/edmModuleFragment'
 import { getBlockForDevice, isHiddenOnDevice, type EdmDevice } from '~~/app/utils/edmResponsive'
+import type { EdmCustomModule } from '~~/app/composables/useEdmCustomModules'
 
 interface ColumnData { childrenIds: string[] }
 
@@ -89,10 +87,6 @@ const props = defineProps<{
 const store = useEdmBuilder()
 const columnHovered = reactive<boolean[]>([false, false, false])
 const columnPickerOpen = reactive<boolean[]>([false, false, false])
-
-const CHILD_PALETTE = BLOCK_PALETTE.filter(
-  b => b.type !== 'Container' && b.type !== 'ColumnsContainer'
-)
 
 const columnsCount = computed(() => props.props?.columnsCount || 2)
 
@@ -159,14 +153,23 @@ function isBlockHiddenOnDevice(blockId: string): boolean {
   return block ? isHiddenOnDevice(block, props.device || 'desktop') : false
 }
 
-function addBlockToColumn(type: string, columnIndex: number) {
-  const newBlockId = generateBlockId()
-  const data = getDefaultBlockData(type)
-  data.style = { padding: { top: 8, bottom: 8, left: 8, right: 8 } }
-  store.addBlockToDocument(newBlockId, type, data)
-  store.addBlockToColumn(props.blockId, columnIndex, newBlockId)
+function isColumnEmpty(columnIndex: number): boolean {
+  return !columns.value[columnIndex]?.childrenIds?.length
+}
+
+function insertPresetInColumn(preset: EdmSectionPreset, columnIndex: number) {
+  const fragment = buildSectionDocumentFragment(preset.id)
+  store.insertBlocksToColumn(props.blockId, columnIndex, fragment.blocks, fragment.rootChildrenIds)
   columnPickerOpen[columnIndex] = false
 }
+
+function insertCustomModuleInColumn(module: EdmCustomModule, columnIndex: number) {
+  const fragment = reidFragment(module.blocks)
+  store.insertBlocksToColumn(props.blockId, columnIndex, fragment.blocks, fragment.rootChildrenIds)
+  columnPickerOpen[columnIndex] = false
+}
+
+function noop() {}
 
 function updateChildText(blockId: string, text: string) {
   if ((props.device || 'desktop') === 'mobile') {

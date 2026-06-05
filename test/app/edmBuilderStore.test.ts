@@ -68,4 +68,25 @@ describe('useEdmBuilder store', () => {
     expect(s.document.value[id].data.hideOnDesktop).toBe(true)
     expect(s.document.value[id].data.hideOnMobile).toBe(false)
   })
+
+  it('inserts multiple blocks into a ColumnsContainer column', () => {
+    const s = useEdmBuilder()
+    const columnsId = s.addBlock('ColumnsContainer', 'root', undefined, {
+      props: {
+        columnsCount: 2,
+        columns: [{ childrenIds: [] }, { childrenIds: [] }, { childrenIds: [] }]
+      }
+    })
+
+    s.insertBlocksToColumn(columnsId, 1, {
+      nestedHeading: { type: 'Heading', data: { props: { text: 'Nested heading' } } },
+      nestedButton: { type: 'Button', data: { props: { text: 'Nested CTA', url: '#' } } }
+    }, ['nestedHeading', 'nestedButton'])
+
+    expect(s.document.value.nestedHeading.type).toBe('Heading')
+    expect(s.document.value.nestedButton.type).toBe('Button')
+    const columns = s.document.value[columnsId].data.props?.columns as Array<{ childrenIds: string[] }>
+    expect(columns[1]?.childrenIds).toEqual(['nestedHeading', 'nestedButton'])
+    expect(s.canUndo.value).toBe(true)
+  })
 })

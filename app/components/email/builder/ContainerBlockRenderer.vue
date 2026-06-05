@@ -1,7 +1,5 @@
 <!-- app/components/email/builder/ContainerBlockRenderer.vue -->
-<!-- Renders a Container block's children + an add-child "+" popover.
-     Ported; dynamic-block + @flyhub block-component paths removed (children
-     render through EdmBlockRenderer). -->
+<!-- Renders a Container block's children + unified add-child module popover. -->
 <template>
   <div
     class="container-block"
@@ -36,17 +34,12 @@
           <UIcon name="i-lucide-plus" class="h-4 w-4 pointer-events-none" />
         </button>
         <template #content>
-          <div class="grid grid-cols-4 gap-1 p-2 w-64">
-            <button
-              v-for="blockType in CHILD_PALETTE"
-              :key="blockType.type"
-              class="block-picker-item"
-              @click="addChildBlock(blockType.type)"
-            >
-              <UIcon :name="blockType.icon" class="h-4 w-4" />
-              <span class="text-[10px]">{{ blockType.name }}</span>
-            </button>
-          </div>
+          <EmailBuilderEdmAddModuleMenu
+            @insert="insertPresetChild"
+            @insert-module="insertCustomModuleChild"
+            @rename-module="noop"
+            @delete-module="noop"
+          />
         </template>
       </UPopover>
     </div>
@@ -55,8 +48,11 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { BLOCK_PALETTE, getDefaultBlockData } from '~~/app/utils/edmBlocks'
+import { buildSectionDocumentFragment } from '~~/app/utils/edmPresets'
+import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
+import { reidFragment } from '~~/app/utils/edmModuleFragment'
 import { getBlockForDevice, isHiddenOnDevice, type EdmDevice } from '~~/app/utils/edmResponsive'
+import type { EdmCustomModule } from '~~/app/composables/useEdmCustomModules'
 
 const props = defineProps<{
   blockId: string
@@ -73,11 +69,6 @@ const props = defineProps<{
 const store = useEdmBuilder()
 const isHovered = ref(false)
 const showBlockPicker = ref(false)
-
-// Containers can only hold leaf blocks (no nested containers/columns) — matches source.
-const CHILD_PALETTE = BLOCK_PALETTE.filter(
-  b => b.type !== 'Container' && b.type !== 'ColumnsContainer'
-)
 
 const containerStyle = computed(() => {
   const style = props.style || {}
@@ -111,13 +102,19 @@ const childBlocks = computed(() => {
   })
 })
 
-function addChildBlock(type: string) {
-  // Tighter default padding for nested blocks.
-  const data = getDefaultBlockData(type)
-  data.style = { padding: { top: 8, bottom: 8, left: 16, right: 16 } }
-  store.addBlock(type, props.blockId, undefined, data)
+function insertPresetChild(preset: EdmSectionPreset) {
+  const fragment = buildSectionDocumentFragment(preset.id)
+  store.insertBlocks(fragment.blocks, fragment.rootChildrenIds, props.blockId)
   showBlockPicker.value = false
 }
+
+function insertCustomModuleChild(module: EdmCustomModule) {
+  const fragment = reidFragment(module.blocks)
+  store.insertBlocks(fragment.blocks, fragment.rootChildrenIds, props.blockId)
+  showBlockPicker.value = false
+}
+
+function noop() {}
 
 function updateChildText(blockId: string, text: string) {
   if ((props.device || 'desktop') === 'mobile') {

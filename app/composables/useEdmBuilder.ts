@@ -565,6 +565,54 @@ function createStore() {
     updateBlockProps(columnsContainerId, { columns })
   }
 
+  function insertBlocksToColumn(
+    columnsContainerId: string,
+    columnIndex: number,
+    blocks: Record<string, EdmFlyhubBlock>,
+    blockIds: string[],
+    position?: number
+  ) {
+    const container = document.value[columnsContainerId]
+    if (!container) {
+      console.error(`ColumnsContainer ${columnsContainerId} not found`)
+      return
+    }
+
+    recordHistory()
+    const props = container.data.props || {}
+    const columns = [...((props.columns as Array<{ childrenIds: string[] }>) || [
+      { childrenIds: [] },
+      { childrenIds: [] },
+      { childrenIds: [] }
+    ])].map(column => ({ childrenIds: [...(column?.childrenIds || [])] }))
+
+    if (!columns[columnIndex]) {
+      columns[columnIndex] = { childrenIds: [] }
+    }
+
+    const childrenIds = [...columns[columnIndex].childrenIds]
+    const insertAt = position === undefined
+      ? childrenIds.length
+      : Math.max(0, Math.min(position, childrenIds.length))
+    childrenIds.splice(insertAt, 0, ...blockIds)
+    columns[columnIndex] = { childrenIds }
+
+    document.value = {
+      ...document.value,
+      ...blocks,
+      [columnsContainerId]: {
+        ...container,
+        data: {
+          ...container.data,
+          props: {
+            ...props,
+            columns
+          }
+        }
+      }
+    }
+  }
+
   // ========================================
   // Dynamic Blocks Management
   // ========================================
@@ -691,6 +739,7 @@ function createStore() {
     duplicateBlock,
     addBlockToDocument,
     addBlockToColumn,
+    insertBlocksToColumn,
 
     // Dynamic Blocks
     addDynamicBlock,

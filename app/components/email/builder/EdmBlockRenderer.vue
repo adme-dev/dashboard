@@ -740,6 +740,11 @@ function closestHtmlEditable(target: EventTarget | null): HTMLElement | null {
   return el?.closest?.('[data-edm-html-editable-id]') as HTMLElement | null
 }
 
+function closestHtmlAnchor(target: EventTarget | null): HTMLElement | null {
+  const el = target as HTMLElement | null
+  return el?.closest?.('a[href]') as HTMLElement | null
+}
+
 function positionHtmlRegionToolbar(el: HTMLElement) {
   const wrap = htmlEditableWrapEl.value
   if (!wrap || typeof wrap.getBoundingClientRect !== 'function') return
@@ -808,7 +813,7 @@ function onHtmlEditableClick(event: MouseEvent) {
   const id = el.dataset.edmHtmlEditableId || ''
   const selection = getHtmlEditableSelection(rawHtmlContents.value, id)
   if (!selection) return
-  if (selection.kind !== 'text' && selection.kind !== 'link') event.preventDefault()
+  if (selection.kind !== 'text' || closestHtmlAnchor(event.target)) event.preventDefault()
   emit('select:html-editable', selection)
 }
 
