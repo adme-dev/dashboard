@@ -7,6 +7,7 @@ import { annotateHtmlEditables } from '~~/app/utils/edmHtmlEditables'
 
 const sampleContents = '<table><tr><td><div>Drive smarter</div><a href="https://example.com">Claim offer</a><img src="/car.png" alt="Car"></td></tr></table>'
 const backgroundContents = '<table><tr><td background="/hero-bg.jpg" style="background-image:url(\'/hero-bg.jpg\');background-size:cover;"><div>Drive smarter</div></td></tr></table>'
+const repeatedOfferContents = '<table><tbody><tr><td><img src="/check-1.png" alt=""></td><td><span>20% off your first upgrade</span></td></tr><tr><td><img src="/check-2.png" alt=""></td><td><span>Get 30% off on your setup</span></td></tr></tbody></table>'
 
 const iconStub = {
   props: ['name'],
@@ -39,6 +40,14 @@ function backgroundEditableId(): string {
   const root = document.createElement('div')
   root.innerHTML = annotateHtmlEditables(backgroundContents, { editable: true })
   const el = root.querySelector('[data-edm-html-editable-mode="background"]') as HTMLElement | null
+  return el?.dataset.edmHtmlEditableId || ''
+}
+
+function repeatedOfferTextId(): string {
+  const root = document.createElement('div')
+  root.innerHTML = annotateHtmlEditables(repeatedOfferContents, { editable: true })
+  const el = Array.from(root.querySelectorAll('[data-edm-html-editable-kind="text"]'))
+    .find(node => node.textContent?.includes('20% off')) as HTMLElement | undefined
   return el?.dataset.edmHtmlEditableId || ''
 }
 
@@ -85,6 +94,69 @@ describe('EmailBuilderEdmBlockRenderer imported HTML editables', () => {
     expect(html).toContain('aria-label="Imported text quick actions"')
     expect(html).toContain('aria-label="Decrease font size"')
     expect(html).toContain('aria-label="Text color"')
+    expect(html).toContain('aria-label="Duplicate item"')
+    expect(html).toContain('aria-label="Delete item"')
+  })
+
+  it('duplicates a selected imported HTML item from the quick-action toolbar', async () => {
+    const textId = repeatedOfferTextId()
+    const updates: Record<string, unknown>[] = []
+    const selections: unknown[] = []
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const app = createApp({
+      render: () => h(EdmBlockRenderer, {
+        type: 'Html',
+        props: { contents: repeatedOfferContents },
+        editable: true,
+        selectedHtmlEditableId: textId,
+        'onUpdate:props': (value: Record<string, unknown>) => updates.push(value),
+        'onSelect:html-editable': (value: unknown) => selections.push(value)
+      })
+    })
+    app.component('UIcon', iconStub)
+    app.mount(host)
+
+    const duplicate = host.querySelector('[data-edm-html-action="duplicate"]') as HTMLElement
+    duplicate.click()
+
+    expect(String(updates[0]?.contents || '').match(/20% off your first upgrade/g)).toHaveLength(2)
+    expect(String(updates[0]?.contents || '').match(/check-1\.png/g)).toHaveLength(2)
+    expect(selections.at(-1)).toMatchObject({ kind: 'text', text: '20% off your first upgrade' })
+
+    app.unmount()
+    host.remove()
+  })
+
+  it('deletes a selected imported HTML item from the quick-action toolbar', async () => {
+    const textId = repeatedOfferTextId()
+    const updates: Record<string, unknown>[] = []
+    const selections: unknown[] = []
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const app = createApp({
+      render: () => h(EdmBlockRenderer, {
+        type: 'Html',
+        props: { contents: repeatedOfferContents },
+        editable: true,
+        selectedHtmlEditableId: textId,
+        'onUpdate:props': (value: Record<string, unknown>) => updates.push(value),
+        'onSelect:html-editable': (value: unknown) => selections.push(value)
+      })
+    })
+    app.component('UIcon', iconStub)
+    app.mount(host)
+
+    const deleteItem = host.querySelector('[data-edm-html-action="delete"]') as HTMLElement
+    deleteItem.click()
+
+    expect(String(updates[0]?.contents || '')).not.toContain('20% off your first upgrade')
+    expect(String(updates[0]?.contents || '')).not.toContain('check-1.png')
+    expect(String(updates[0]?.contents || '')).toContain('Get 30% off on your setup')
+    expect(selections.at(-1)).toBeNull()
+
+    app.unmount()
+    host.remove()
   })
 
   it('changes a selected imported image from the right-click path', async () => {

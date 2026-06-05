@@ -217,6 +217,21 @@
         @click.stop
         @mousedown.stop
       >
+        <button
+          type="button"
+          data-edm-html-action="duplicate"
+          class="edm-html-region-toolbar-button"
+          aria-label="Duplicate item"
+          title="Duplicate item"
+          @click.stop="duplicateHtmlRegion(selectedHtmlEditable)"
+        >
+          <UIcon name="i-lucide-copy-plus" class="edm-html-region-toolbar-icon" aria-hidden="true" />
+        </button>
+        <span
+          v-if="isHtmlTextSelection"
+          class="edm-inline-toolbar-divider"
+          aria-hidden="true"
+        />
         <template v-if="isHtmlTextSelection">
           <select
             class="edm-inline-toolbar-select edm-inline-toolbar-font"
@@ -346,6 +361,16 @@
           @click.stop="editHtmlLink(selectedHtmlEditable)"
         >
           <UIcon name="i-lucide-link" class="edm-html-region-toolbar-icon" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          data-edm-html-action="delete"
+          class="edm-html-region-toolbar-button edm-html-region-toolbar-button-danger"
+          aria-label="Delete item"
+          title="Delete item"
+          @click.stop="deleteHtmlRegion(selectedHtmlEditable)"
+        >
+          <UIcon name="i-lucide-trash-2" class="edm-html-region-toolbar-icon" aria-hidden="true" />
         </button>
       </div>
       <div v-html="htmlContents" />
@@ -501,6 +526,8 @@ import { extendedStyleVue } from '~~/app/utils/edmStyle'
 import { sanitizeInlineHtml, extractPlainText, safeInlineHref } from '~~/app/utils/edmInlineText'
 import {
   annotateHtmlEditables,
+  deleteHtmlEditable,
+  duplicateHtmlEditable,
   getHtmlEditableSelection,
   updateHtmlEditable,
   type EdmHtmlEditableUpdate,
@@ -522,7 +549,7 @@ const emit = defineEmits<{
   'update:text': [value: string]
   'update:props': [value: Record<string, unknown>]
   'update:style': [value: Record<string, unknown>]
-  'select:html-editable': [value: EdmHtmlEditableSelection]
+  'select:html-editable': [value: EdmHtmlEditableSelection | null]
   'request:html-image-library': [value: EdmHtmlEditableSelection]
 }>()
 
@@ -732,6 +759,22 @@ function emitHtmlEditableUpdate(selection: EdmHtmlEditableSelection, update: Par
   if (nextSelection) emit('select:html-editable', nextSelection)
 }
 
+function duplicateHtmlRegion(selection: EdmHtmlEditableSelection | null = selectedHtmlEditable.value) {
+  if (!selection) return
+  const next = duplicateHtmlEditable(rawHtmlContents.value, selection.id)
+  if (next.contents === rawHtmlContents.value) return
+  emit('update:props', { contents: next.contents })
+  if (next.selection) emit('select:html-editable', next.selection)
+}
+
+function deleteHtmlRegion(selection: EdmHtmlEditableSelection | null = selectedHtmlEditable.value) {
+  if (!selection) return
+  const next = deleteHtmlEditable(rawHtmlContents.value, selection.id)
+  if (next.contents === rawHtmlContents.value) return
+  emit('update:props', { contents: next.contents })
+  emit('select:html-editable', next.selection)
+}
+
 function updateHtmlTextStyle(stylePatch: Omit<Extract<EdmHtmlEditableUpdate, { kind: 'text' }>, 'kind'>) {
   const selection = selectedHtmlEditable.value
   if (!selection || (selection.kind !== 'text' && selection.kind !== 'link')) return
@@ -761,12 +804,11 @@ function onHtmlEditableClick(event: MouseEvent) {
   const el = closestHtmlEditable(event.target)
   if (!el) return
   event.stopPropagation()
-  event.preventDefault()
   positionHtmlRegionToolbar(el)
   const id = el.dataset.edmHtmlEditableId || ''
   const selection = getHtmlEditableSelection(rawHtmlContents.value, id)
   if (!selection) return
-  if (selection.kind !== 'text') event.preventDefault()
+  if (selection.kind !== 'text' && selection.kind !== 'link') event.preventDefault()
   emit('select:html-editable', selection)
 }
 
@@ -1342,6 +1384,10 @@ const columnsContainerCellStyle = {
 .edm-html-region-toolbar-button:focus-visible {
   background: var(--ui-bg-muted);
   outline: none;
+}
+
+.edm-html-region-toolbar-button-danger {
+  color: var(--ui-error, #dc2626);
 }
 
 .edm-html-region-toolbar-icon {

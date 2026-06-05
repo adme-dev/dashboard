@@ -223,6 +223,28 @@ function findSelectionElement(root: Element, id: string): { el: Element, kind: E
   return { el, kind: parsed.kind }
 }
 
+function sameTagSiblingCount(el: Element): number {
+  const parent = el.parentElement
+  if (!parent) return 0
+  return Array.from(parent.children).filter(child => child.tagName === el.tagName).length
+}
+
+function editableItemTargetForElement(el: Element, root: Element): Element {
+  let cur: Element | null = el
+  while (cur && cur !== root) {
+    if ((cur.tagName === 'TR' || cur.tagName === 'LI') && sameTagSiblingCount(cur) > 1) return cur
+    cur = cur.parentElement
+  }
+
+  cur = el
+  while (cur && cur !== root) {
+    if ((cur.tagName === 'P' || cur.tagName === 'DIV') && sameTagSiblingCount(cur) > 1) return cur
+    cur = cur.parentElement
+  }
+
+  return el
+}
+
 function isSafeEditableHref(value: string): boolean {
   const href = value.trim()
   if (href === '' || href === '#') return true
@@ -322,6 +344,49 @@ export function getHtmlEditableSelection(html: string, id: string): EdmHtmlEdita
   const found = findSelectionElement(root, id)
   if (!found) return null
   return selectionFromElement(found.el, root, found.kind)
+}
+
+export function duplicateHtmlEditable(
+  html: string,
+  id: string
+): { contents: string, selection: EdmHtmlEditableSelection | null } {
+  const root = parseHtml(html)
+  if (!root) return { contents: html || '', selection: null }
+  const found = findSelectionElement(root, id)
+  if (!found) return { contents: html || '', selection: null }
+
+  const target = editableItemTargetForElement(found.el, root)
+  const relativeSelectionPath = target === found.el ? '' : elementPath(found.el, target)
+  const clone = target.cloneNode(true) as Element
+  target.parentElement?.insertBefore(clone, target.nextSibling)
+
+  const clonedSelectionEl = relativeSelectionPath ? findByPath(clone, relativeSelectionPath) : clone
+  const selection = clonedSelectionEl
+    ? selectionFromElement(clonedSelectionEl, root, found.kind)
+    : null
+
+  return {
+    contents: serialise(root),
+    selection
+  }
+}
+
+export function deleteHtmlEditable(
+  html: string,
+  id: string
+): { contents: string, selection: EdmHtmlEditableSelection | null } {
+  const root = parseHtml(html)
+  if (!root) return { contents: html || '', selection: null }
+  const found = findSelectionElement(root, id)
+  if (!found) return { contents: html || '', selection: null }
+
+  const target = editableItemTargetForElement(found.el, root)
+  target.parentElement?.removeChild(target)
+
+  return {
+    contents: serialise(root),
+    selection: null
+  }
 }
 
 export function updateHtmlEditable(

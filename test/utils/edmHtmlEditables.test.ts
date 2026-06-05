@@ -2,6 +2,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   annotateHtmlEditables,
+  deleteHtmlEditable,
+  duplicateHtmlEditable,
   getHtmlEditableSelection,
   updateHtmlEditable
 } from '~~/app/utils/edmHtmlEditables'
@@ -25,6 +27,21 @@ const backgroundHtml = `
         <div style="font-size:32px;color:#ffffff;">Drive smarter</div>
       </td>
     </tr>
+  </table>
+`
+
+const repeatedOfferHtml = `
+  <table>
+    <tbody>
+      <tr>
+        <td><img src="/check-1.png" alt=""></td>
+        <td><span>20% off your first upgrade</span></td>
+      </tr>
+      <tr>
+        <td><img src="/check-2.png" alt=""></td>
+        <td><span>Get 30% off on your setup</span></td>
+      </tr>
+    </tbody>
   </table>
 `
 
@@ -122,5 +139,41 @@ describe('edmHtmlEditables', () => {
     expect(updated).toContain('/email/postcards/glidex/images/new-hero.jpg')
     expect(updated).not.toContain('/email/postcards/glidex/images/hero-bg.jpg')
     expect(updated).not.toContain('data-edm-html-editable')
+  })
+
+  it('duplicates the nearest repeated imported HTML item for a selected nested text region', () => {
+    const annotated = annotateHtmlEditables(repeatedOfferHtml, { editable: true })
+    const doc = document.createElement('div')
+    doc.innerHTML = annotated
+    const text = Array.from(doc.querySelectorAll('[data-edm-html-editable-kind="text"]'))
+      .find(el => el.textContent?.includes('20% off')) as HTMLElement
+
+    const duplicated = duplicateHtmlEditable(repeatedOfferHtml, text.dataset.edmHtmlEditableId || '')
+
+    expect(duplicated.contents.match(/20% off your first upgrade/g)).toHaveLength(2)
+    expect(duplicated.contents.match(/check-1\.png/g)).toHaveLength(2)
+    expect(duplicated.contents).toContain('Get 30% off on your setup')
+    expect(duplicated.contents).not.toContain('data-edm-html-editable')
+    expect(duplicated.selection).toMatchObject({
+      kind: 'text',
+      text: '20% off your first upgrade'
+    })
+  })
+
+  it('deletes the nearest repeated imported HTML item for a selected nested text region', () => {
+    const annotated = annotateHtmlEditables(repeatedOfferHtml, { editable: true })
+    const doc = document.createElement('div')
+    doc.innerHTML = annotated
+    const text = Array.from(doc.querySelectorAll('[data-edm-html-editable-kind="text"]'))
+      .find(el => el.textContent?.includes('20% off')) as HTMLElement
+
+    const deleted = deleteHtmlEditable(repeatedOfferHtml, text.dataset.edmHtmlEditableId || '')
+
+    expect(deleted.contents).not.toContain('20% off your first upgrade')
+    expect(deleted.contents).not.toContain('check-1.png')
+    expect(deleted.contents).toContain('Get 30% off on your setup')
+    expect(deleted.contents).toContain('check-2.png')
+    expect(deleted.contents).not.toContain('data-edm-html-editable')
+    expect(deleted.selection).toBeNull()
   })
 })

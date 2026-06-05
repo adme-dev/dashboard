@@ -33,6 +33,10 @@ Committed in `66801771`:
   - Shows the existing floating widget for selected imported regions.
   - Shows a compact formatting toolbar for selected imported text/link regions
     with font family, size, weight, alignment, and color controls.
+  - Adds selected-region duplicate and delete actions. For nested imported
+    table designs, both actions prefer the nearest repeated row/list item so
+    benefit rows clone/remove with their icon plus copy instead of acting only
+    on a text span.
   - Supports right-click on imported images as an image-replacement accelerator.
   - Supports imported background-image regions through the same image quick
     action and image-library request path as normal `<img>` tags.
@@ -62,6 +66,8 @@ Confirmed:
 - Selected imported text now shows the quick formatting toolbar instead of an
   empty region bubble.
 - Imported background images are now selectable/editable as image regions.
+- Selected imported rows/items can now be duplicated or deleted from the region
+  toolbar.
 
 ### Media Library Picker WIP
 
@@ -118,7 +124,7 @@ For media-library/text-toolbar/background-image WIP before this handoff update:
   - Result: 2 files / 12 tests passed.
 - Latest wider pass:
   - `pnpm vitest run test/utils/edmImageAssets.test.ts test/utils/edmHtmlEditables.test.ts test/components/emailEdmImageLibraryPicker.test.ts test/components/emailEdmHtmlEditableRenderer.test.ts test/components/emailEdmBlockRenderer.test.ts test/components/emailEdmBlockSettingsPanel.test.ts test/utils/edmInlineText.test.ts test/utils/edmPresets.test.ts test/utils/useEdmBuilderPresets.test.ts test/components/emailEdmTemplateThumbnail.test.ts test/components/emailEdmSectionThumbnail.test.ts test/components/emailTemplatesPanel.test.ts test/app/edmBuilderStore.test.ts`
-  - Result: 13 files / 99 tests passed.
+  - Result after duplicate/delete-region actions: 13 files / 103 tests passed.
 - `git diff --check` passed.
 
 Typecheck status:

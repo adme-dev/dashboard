@@ -230,9 +230,9 @@ function updateCanvasStyle(blockId: string, stylePatch: Record<string, unknown>)
   store.updateBlockStyle(blockId, stylePatch)
 }
 
-function selectCanvasHtmlEditable(blockId: string, selection: EdmHtmlEditableSelection) {
+function selectCanvasHtmlEditable(blockId: string, selection: EdmHtmlEditableSelection | null) {
   store.setSelectedBlockId(blockId)
-  store.selectHtmlEditable({ ...selection, blockId })
+  store.selectHtmlEditable(selection ? { ...selection, blockId } : null)
 }
 
 function selectedHtmlEditableFor(blockId: string): EdmHtmlEditableSelection | null {
