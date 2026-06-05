@@ -9,6 +9,7 @@
 import { EDM_SECTION_CATEGORIES } from '~~/app/utils/edmPresets'
 import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
 import { fragmentTopLevelTemplates } from '~~/app/utils/edmModuleFragment'
+import { groupCustomModulesByCategory } from '~~/app/utils/edmCustomModuleCategories'
 import type { EdmCustomModule } from '~~/app/composables/useEdmCustomModules'
 
 defineEmits<{
@@ -18,6 +19,12 @@ defineEmits<{
   deleteModule: [module: EdmCustomModule]
 }>()
 
+const props = withDefaults(defineProps<{
+  initialCategoryId?: string
+}>(), {
+  initialCategoryId: 'basic'
+})
+
 const CUSTOM_ID = '__custom__'
 
 const customModules = useEdmCustomModules()
@@ -25,13 +32,14 @@ onMounted(() => customModules.load())
 
 // Own category state, defaulting to Basic so the bubble always opens on the
 // compact icon grid regardless of any parent selection.
-const activeCategoryId = ref<string>('basic')
+const activeCategoryId = ref<string>(props.initialCategoryId)
 const activeCategory = computed(() => {
   return (
     EDM_SECTION_CATEGORIES.find(category => category.id === activeCategoryId.value)
     || EDM_SECTION_CATEGORIES[0]
   )
 })
+const customModuleGroups = computed(() => groupCustomModulesByCategory(customModules.modules.value))
 
 // Render a saved module's thumbnail through EdmSectionThumbnail by adapting it
 // to the preset shape the thumbnail expects (only reads blocks + previewTone).
@@ -108,44 +116,50 @@ function moduleThumbPreset(m: EdmCustomModule): EdmSectionPreset {
             to reuse it here.
           </p>
         </div>
-        <div
-          v-for="m in customModules.modules.value"
-          :key="m.id"
-          class="group relative overflow-hidden rounded-md border border-default bg-default transition hover:border-primary hover:shadow-sm"
-        >
-          <button
-            type="button"
-            class="block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            @click="$emit('insertModule', m)"
+        <div v-for="group in customModuleGroups" :key="group.category" class="space-y-2">
+          <div class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+            <UIcon :name="group.icon" class="h-3.5 w-3.5 shrink-0" />
+            <span>{{ group.label }}</span>
+          </div>
+          <div
+            v-for="m in group.modules"
+            :key="m.id"
+            class="group relative overflow-hidden rounded-md border border-default bg-default transition hover:border-primary hover:shadow-sm"
           >
-            <div class="h-28 overflow-hidden bg-elevated/40 flex items-start justify-center">
-              <EmailBuilderEdmSectionThumbnail :preset="moduleThumbPreset(m)" :width="240" />
+            <button
+              type="button"
+              class="block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              @click="$emit('insertModule', m)"
+            >
+              <div class="h-28 overflow-hidden bg-elevated/40 flex items-start justify-center">
+                <EmailBuilderEdmSectionThumbnail :preset="moduleThumbPreset(m)" :width="240" />
+              </div>
+              <div class="p-2">
+                <p class="text-xs font-semibold truncate">{{ m.name }}</p>
+                <p v-if="m.description" class="mt-0.5 text-[11px] text-muted leading-snug truncate">{{ m.description }}</p>
+              </div>
+            </button>
+            <!-- Manage actions (appear on hover/focus) -->
+            <div class="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+              <UTooltip text="Rename">
+                <UButton
+                  icon="i-lucide-pencil"
+                  size="xs"
+                  variant="solid"
+                  color="neutral"
+                  @click.stop="$emit('renameModule', m)"
+                />
+              </UTooltip>
+              <UTooltip text="Delete">
+                <UButton
+                  icon="i-lucide-trash-2"
+                  size="xs"
+                  variant="solid"
+                  color="error"
+                  @click.stop="$emit('deleteModule', m)"
+                />
+              </UTooltip>
             </div>
-            <div class="p-2">
-              <p class="text-xs font-semibold truncate">{{ m.name }}</p>
-              <p v-if="m.description" class="mt-0.5 text-[11px] text-muted leading-snug truncate">{{ m.description }}</p>
-            </div>
-          </button>
-          <!-- Manage actions (appear on hover/focus) -->
-          <div class="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
-            <UTooltip text="Rename">
-              <UButton
-                icon="i-lucide-pencil"
-                size="xs"
-                variant="solid"
-                color="neutral"
-                @click.stop="$emit('renameModule', m)"
-              />
-            </UTooltip>
-            <UTooltip text="Delete">
-              <UButton
-                icon="i-lucide-trash-2"
-                size="xs"
-                variant="solid"
-                color="error"
-                @click.stop="$emit('deleteModule', m)"
-              />
-            </UTooltip>
           </div>
         </div>
       </div>

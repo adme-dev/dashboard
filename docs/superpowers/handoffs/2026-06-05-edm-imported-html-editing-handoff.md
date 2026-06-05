@@ -40,6 +40,9 @@ Committed in `66801771`:
   - Adds selected item padding controls for imported sub-regions. For repeated
     table rows, padding is written to the row cells so duplicated or individual
     benefit rows can be spaced independently.
+  - Adds category-aware saved modules. The existing `edm_custom_modules.category`
+    field is now exposed in save/rename UI, supports free-form new categories,
+    and groups saved modules inside the Custom Modules palette.
   - Supports right-click on imported images as an image-replacement accelerator.
   - Supports imported background-image regions through the same image quick
     action and image-library request path as normal `<img>` tags.
@@ -73,6 +76,8 @@ Confirmed:
   toolbar.
 - Selected imported rows/items expose top/bottom/left/right item padding in the
   sidebar inspector.
+- Saved modules can be stored under built-in or newly created categories and
+  are grouped by category in the Custom Modules picker.
 
 ### Media Library Picker WIP
 
@@ -131,6 +136,12 @@ For media-library/text-toolbar/background-image WIP before this handoff update:
   - `pnpm vitest run test/utils/edmImageAssets.test.ts test/utils/edmHtmlEditables.test.ts test/components/emailEdmImageLibraryPicker.test.ts test/components/emailEdmHtmlEditableRenderer.test.ts test/components/emailEdmBlockRenderer.test.ts test/components/emailEdmBlockSettingsPanel.test.ts test/utils/edmInlineText.test.ts test/utils/edmPresets.test.ts test/utils/useEdmBuilderPresets.test.ts test/components/emailEdmTemplateThumbnail.test.ts test/components/emailEdmSectionThumbnail.test.ts test/components/emailTemplatesPanel.test.ts test/app/edmBuilderStore.test.ts`
   - Result after duplicate/delete-region actions and item padding controls:
     13 files / 104 tests passed.
+- Saved-module category focused pass:
+  - `pnpm vitest run test/utils/edmCustomModuleCategories.test.ts test/components/emailEdmAddModuleMenu.test.ts`
+  - Result: 2 files / 9 tests passed.
+- Latest wider pass after saved-module categories:
+  - `pnpm vitest run test/utils/edmImageAssets.test.ts test/utils/edmHtmlEditables.test.ts test/utils/edmCustomModuleCategories.test.ts test/components/emailEdmImageLibraryPicker.test.ts test/components/emailEdmHtmlEditableRenderer.test.ts test/components/emailEdmBlockRenderer.test.ts test/components/emailEdmBlockSettingsPanel.test.ts test/components/emailEdmAddModuleMenu.test.ts test/components/emailEdmCategoryFlyoutPanel.test.ts test/utils/edmInlineText.test.ts test/utils/edmPresets.test.ts test/utils/useEdmBuilderPresets.test.ts test/components/emailEdmTemplateThumbnail.test.ts test/components/emailEdmSectionThumbnail.test.ts test/components/emailTemplatesPanel.test.ts test/app/edmBuilderStore.test.ts`
+  - Result: 16 files / 115 tests passed.
 - `git diff --check` passed.
 
 Typecheck status:

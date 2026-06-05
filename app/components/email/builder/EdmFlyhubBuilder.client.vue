@@ -17,6 +17,14 @@ import {
   type EdmHtmlEditableUpdate
 } from '~~/app/utils/edmHtmlEditables'
 import { normaliseEmailImageAssetUrl, type EdmImageAsset } from '~~/app/utils/edmImageAssets'
+import {
+  CUSTOM_MODULE_NEW_CATEGORY,
+  EDM_CUSTOM_MODULE_CATEGORY_OPTIONS,
+  inferCustomModuleCategoryFromBlockType,
+  labelCustomModuleCategory,
+  normaliseCustomModuleCategory,
+  resolveCustomModuleCategorySelection
+} from '~~/app/utils/edmCustomModuleCategories'
 import type { EdmCustomModule } from '~~/app/composables/useEdmCustomModules'
 
 const store = useEdmBuilder()
@@ -402,13 +410,21 @@ const customModules = useEdmCustomModules()
 const showSaveModuleModal = ref(false)
 const moduleName = ref('')
 const moduleDescription = ref('')
+const moduleCategory = ref('custom')
+const moduleCustomCategory = ref('')
 const saveModuleBlockType = ref('')
 const savingModule = ref(false)
+const moduleCategoryOptions = computed(() => [
+  ...EDM_CUSTOM_MODULE_CATEGORY_OPTIONS.map(option => ({ label: option.label, value: option.value })),
+  { label: 'Create new category...', value: CUSTOM_MODULE_NEW_CATEGORY }
+])
 
 function openSaveModule() {
   if (!selectedBlock.value) return
   moduleName.value = ''
   moduleDescription.value = ''
+  moduleCategory.value = inferCustomModuleCategoryFromBlockType(selectedBlock.value.type)
+  moduleCustomCategory.value = ''
   saveModuleBlockType.value = selectedBlock.value.type
   showSaveModuleModal.value = true
 }
@@ -426,6 +442,7 @@ async function saveModule() {
     await customModules.save({
       name: moduleName.value.trim(),
       description: moduleDescription.value.trim() || null,
+      category: resolveCustomModuleCategorySelection(moduleCategory.value, moduleCustomCategory.value),
       blocks: fragment
     })
     toast.add({ title: 'Saved', description: 'Module saved to your palette.', color: 'success' })
@@ -450,6 +467,8 @@ const showDeleteModuleModal = ref(false)
 const moduleBeingManaged = ref<EdmCustomModule | null>(null)
 const renameModuleName = ref('')
 const renameModuleDescription = ref('')
+const renameModuleCategory = ref('custom')
+const renameModuleCustomCategory = ref('')
 const renamingModule = ref(false)
 const deletingModule = ref(false)
 
@@ -457,6 +476,10 @@ function openRenameModule(module: EdmCustomModule) {
   moduleBeingManaged.value = module
   renameModuleName.value = module.name
   renameModuleDescription.value = module.description ?? ''
+  const category = normaliseCustomModuleCategory(module.category)
+  const known = EDM_CUSTOM_MODULE_CATEGORY_OPTIONS.some(option => option.value === category)
+  renameModuleCategory.value = known ? category : CUSTOM_MODULE_NEW_CATEGORY
+  renameModuleCustomCategory.value = known ? '' : labelCustomModuleCategory(category)
   showRenameModuleModal.value = true
 }
 
@@ -471,7 +494,8 @@ async function confirmRenameModule() {
   try {
     await customModules.rename(module.id, {
       name: renameModuleName.value.trim(),
-      description: renameModuleDescription.value.trim() || null
+      description: renameModuleDescription.value.trim() || null,
+      category: resolveCustomModuleCategorySelection(renameModuleCategory.value, renameModuleCustomCategory.value)
     })
     toast.add({ title: 'Renamed', description: 'Module updated.', color: 'success' })
     showRenameModuleModal.value = false
@@ -938,6 +962,23 @@ onMounted(async () => {
           <UFormField label="Description" help="Optional — a short note to recognise it later.">
             <UInput v-model="moduleDescription" placeholder="Optional description" class="w-full" />
           </UFormField>
+          <UFormField label="Category">
+            <USelect
+              v-model="moduleCategory"
+              :items="moduleCategoryOptions"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField
+            v-if="moduleCategory === CUSTOM_MODULE_NEW_CATEGORY"
+            label="New category"
+          >
+            <UInput
+              v-model="moduleCustomCategory"
+              placeholder="e.g. Dealer specials"
+              class="w-full"
+            />
+          </UFormField>
           <div class="flex justify-end gap-2 pt-2">
             <UButton
               variant="ghost"
@@ -970,6 +1011,23 @@ onMounted(async () => {
           </UFormField>
           <UFormField label="Description" help="Optional.">
             <UInput v-model="renameModuleDescription" placeholder="Optional description" class="w-full" />
+          </UFormField>
+          <UFormField label="Category">
+            <USelect
+              v-model="renameModuleCategory"
+              :items="moduleCategoryOptions"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField
+            v-if="renameModuleCategory === CUSTOM_MODULE_NEW_CATEGORY"
+            label="New category"
+          >
+            <UInput
+              v-model="renameModuleCustomCategory"
+              placeholder="e.g. Dealer specials"
+              class="w-full"
+            />
           </UFormField>
           <div class="flex justify-end gap-2 pt-2">
             <UButton
