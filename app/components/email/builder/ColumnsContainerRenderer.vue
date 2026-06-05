@@ -28,6 +28,7 @@
               editable
               @update:text="(text) => updateChildText(childId, text)"
               @update:props="(propsPatch) => updateChildProps(childId, propsPatch)"
+              @update:style="(stylePatch) => updateChildStyle(childId, stylePatch)"
             />
           </div>
         </template>
@@ -181,6 +182,14 @@ function updateChildProps(blockId: string, propsPatch: Record<string, unknown>) 
     return
   }
   store.updateBlockProps(blockId, propsPatch)
+}
+
+function updateChildStyle(blockId: string, stylePatch: Record<string, unknown>) {
+  if ((props.device || 'desktop') === 'mobile') {
+    store.updateBlockMobileStyle(blockId, stylePatch)
+    return
+  }
+  store.updateBlockStyle(blockId, stylePatch)
 }
 </script>
 

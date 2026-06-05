@@ -7,6 +7,10 @@ async function renderBlock(type: string, blockProps: Record<string, unknown>, st
   const app = createSSRApp({
     render: () => h(EdmBlockRenderer, { type, props: blockProps, style, ...extra })
   })
+  app.component('UIcon', {
+    props: ['name'],
+    template: '<span :data-icon="name" />'
+  })
   return renderToString(app)
 }
 
@@ -108,7 +112,13 @@ describe('EmailBuilderEdmBlockRenderer inline editing (Phase 3b)', () => {
   })
 
   it('shows rich-text controls for editable Text blocks only', async () => {
-    const text = await renderBlock('Text', { text: 'Body' }, {}, { editable: true })
+    const text = await renderBlock('Text', { text: 'Body' }, { fontSize: 16, color: '#111111' }, { editable: true })
+    expect(text).toContain('aria-label="Font family"')
+    expect(text).toContain('aria-label="Decrease font size"')
+    expect(text).toContain('aria-label="Increase font size"')
+    expect(text).toContain('aria-label="Font weight"')
+    expect(text).toContain('aria-label="Align left"')
+    expect(text).toContain('aria-label="Text color"')
     expect(text).toContain('aria-label="Bold"')
     expect(text).toContain('aria-label="Italic"')
     expect(text).toContain('aria-label="Underline"')

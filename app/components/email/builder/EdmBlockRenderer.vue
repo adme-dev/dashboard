@@ -30,6 +30,70 @@
         role="toolbar"
         aria-label="Text formatting"
       >
+        <select
+          class="edm-inline-toolbar-select edm-inline-toolbar-font"
+          :value="currentTextFontFamily"
+          aria-label="Font family"
+          title="Font family"
+          @change.stop="onToolbarSelect('fontFamily', $event)"
+        >
+          <option
+            v-for="font in inlineFontOptions"
+            :key="font.value"
+            :value="font.value"
+          >
+            {{ font.label }}
+          </option>
+        </select>
+        <span class="edm-inline-toolbar-divider" aria-hidden="true" />
+        <button
+          type="button"
+          class="edm-inline-toolbar-button edm-inline-toolbar-text-button"
+          aria-label="Decrease font size"
+          title="Decrease font size"
+          @click.stop="adjustTextFontSize(-1)"
+        >
+          A-
+        </button>
+        <span class="edm-inline-toolbar-size" aria-label="Current font size">{{ currentTextFontSize }}px</span>
+        <button
+          type="button"
+          class="edm-inline-toolbar-button edm-inline-toolbar-text-button"
+          aria-label="Increase font size"
+          title="Increase font size"
+          @click.stop="adjustTextFontSize(1)"
+        >
+          A+
+        </button>
+        <span class="edm-inline-toolbar-divider" aria-hidden="true" />
+        <select
+          class="edm-inline-toolbar-select"
+          :value="currentTextFontWeight"
+          aria-label="Font weight"
+          title="Font weight"
+          @change.stop="onToolbarSelect('fontWeight', $event)"
+        >
+          <option value="normal">
+            Regular
+          </option>
+          <option value="bold">
+            Bold
+          </option>
+        </select>
+        <span class="edm-inline-toolbar-divider" aria-hidden="true" />
+        <button
+          v-for="align in inlineAlignments"
+          :key="align.value"
+          type="button"
+          class="edm-inline-toolbar-button"
+          :class="{ 'is-active': currentTextAlign === align.value }"
+          :aria-label="align.label"
+          :title="align.label"
+          @click.stop="updateTextStyle({ textAlign: align.value })"
+        >
+          <UIcon :name="align.icon" class="edm-inline-toolbar-icon" aria-hidden="true" />
+        </button>
+        <span class="edm-inline-toolbar-divider" aria-hidden="true" />
         <button
           v-for="action in inlineFormatActions"
           :key="action.command"
@@ -40,8 +104,40 @@
           @mousedown.prevent
           @click.stop="applyInlineFormat(action.command)"
         >
-          <span :class="action.icon" aria-hidden="true" />
+          <UIcon :name="action.icon" class="edm-inline-toolbar-icon" aria-hidden="true" />
         </button>
+        <span class="edm-inline-toolbar-divider" aria-hidden="true" />
+        <div class="edm-inline-toolbar-color">
+          <button
+            type="button"
+            class="edm-inline-toolbar-button"
+            aria-label="Text color"
+            title="Text color"
+            @click.stop="showTextColorInput = !showTextColorInput"
+          >
+            <span
+              class="edm-inline-toolbar-swatch"
+              :style="{ backgroundColor: currentTextColor }"
+              aria-hidden="true"
+            />
+          </button>
+          <div v-if="showTextColorInput" class="edm-inline-toolbar-color-popover">
+            <input
+              type="color"
+              class="edm-inline-toolbar-color-input"
+              :value="currentTextColor"
+              aria-label="Text color picker"
+              @input.stop="onToolbarColor"
+            >
+            <input
+              type="text"
+              class="edm-inline-toolbar-color-value"
+              :value="currentTextColor"
+              aria-label="Text color value"
+              @change.stop="onToolbarColor"
+            >
+          </div>
+        </div>
       </div>
       <div
         ref="textEditorEl"
@@ -269,14 +365,28 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:text': [value: string]
   'update:props': [value: Record<string, unknown>]
+  'update:style': [value: Record<string, unknown>]
 }>()
 
 const textEditorEl = ref<HTMLElement | null>(null)
+const showTextColorInput = ref(false)
+const inlineFontOptions = [
+  { label: 'Modern Sans', value: 'MODERN_SANS' },
+  { label: 'Book Sans', value: 'BOOK_SANS' },
+  { label: 'Geometric Sans', value: 'GEOMETRIC_SANS' },
+  { label: 'Modern Serif', value: 'MODERN_SERIF' },
+  { label: 'Monospace', value: 'MONOSPACE' }
+] as const
 const inlineFormatActions = [
   { command: 'bold', label: 'Bold', icon: 'i-lucide-bold' },
   { command: 'italic', label: 'Italic', icon: 'i-lucide-italic' },
   { command: 'underline', label: 'Underline', icon: 'i-lucide-underline' },
   { command: 'createLink', label: 'Link', icon: 'i-lucide-link' }
+] as const
+const inlineAlignments = [
+  { value: 'left', label: 'Align left', icon: 'i-lucide-align-left' },
+  { value: 'center', label: 'Align center', icon: 'i-lucide-align-center' },
+  { value: 'right', label: 'Align right', icon: 'i-lucide-align-right' }
 ] as const
 type InlineFormatCommand = typeof inlineFormatActions[number]['command']
 
@@ -337,6 +447,39 @@ function applyInlineFormat(command: InlineFormatCommand) {
     document.execCommand(command)
   }
   commitTextEditorHtml(el)
+}
+
+const currentTextFontFamily = computed(() => (props.style?.fontFamily as string) || 'MODERN_SANS')
+const currentTextFontSize = computed(() => {
+  const value = Number(props.style?.fontSize ?? 16)
+  return Number.isFinite(value) ? Math.max(10, Math.min(48, Math.round(value))) : 16
+})
+const currentTextFontWeight = computed(() => {
+  const value = props.style?.fontWeight
+  return value === 'bold' ? 'bold' : 'normal'
+})
+const currentTextAlign = computed(() => (props.style?.textAlign as string) || 'left')
+const currentTextColor = computed(() => (props.style?.color as string) || '#000000')
+
+function updateTextStyle(stylePatch: Record<string, unknown>) {
+  if (!props.editable || props.type !== 'Text') return
+  emit('update:style', stylePatch)
+}
+
+function adjustTextFontSize(delta: 1 | -1) {
+  updateTextStyle({ fontSize: Math.max(10, Math.min(48, currentTextFontSize.value + delta)) })
+}
+
+function onToolbarSelect(key: 'fontFamily' | 'fontWeight', e: Event) {
+  const el = e.target as HTMLSelectElement | null
+  if (!el) return
+  updateTextStyle({ [key]: el.value })
+}
+
+function onToolbarColor(e: Event) {
+  const el = e.target as HTMLInputElement | null
+  if (!el) return
+  updateTextStyle({ color: el.value || '#000000' })
 }
 
 // Enter commits the edit (blur) for single-line Heading/Button rather than
@@ -838,27 +981,30 @@ const columnsContainerCellStyle = {
 .edm-inline-toolbar {
   position: absolute;
   z-index: 5;
-  top: -36px;
-  right: 0;
+  bottom: calc(100% + 8px);
+  left: 50%;
   display: inline-flex;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 2px;
-  padding: 3px;
+  max-width: min(760px, calc(100vw - 24px));
+  padding: 4px 6px;
   border: 1px solid var(--ui-border);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--ui-bg);
   box-shadow: 0 8px 20px rgb(15 23 42 / 0.12);
   opacity: 0;
   pointer-events: none;
-  transform: translateY(4px);
+  transform: translate(-50%, 4px);
   transition: opacity 120ms ease, transform 120ms ease;
+  white-space: nowrap;
 }
 
 .edm-rich-text-wrap:hover .edm-inline-toolbar,
 .edm-rich-text-wrap:focus-within .edm-inline-toolbar {
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(0);
+  transform: translate(-50%, 0);
 }
 
 .edm-inline-toolbar-button {
@@ -873,14 +1019,103 @@ const columnsContainerCellStyle = {
   cursor: pointer;
 }
 
+.edm-inline-toolbar-button.is-active,
 .edm-inline-toolbar-button:hover,
 .edm-inline-toolbar-button:focus-visible {
   background: var(--ui-bg-muted);
   outline: none;
 }
 
-.edm-inline-toolbar-button span {
+.edm-inline-toolbar-icon {
   width: 15px;
   height: 15px;
+}
+
+.edm-inline-toolbar-text-button {
+  width: 30px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.edm-inline-toolbar-size {
+  min-width: 28px;
+  padding: 0 2px;
+  color: var(--ui-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  text-align: center;
+}
+
+.edm-inline-toolbar-select {
+  height: 26px;
+  max-width: 118px;
+  border: 1px solid var(--ui-border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ui-text);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 0 6px;
+}
+
+.edm-inline-toolbar-font {
+  min-width: 104px;
+}
+
+.edm-inline-toolbar-divider {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: var(--ui-border);
+}
+
+.edm-inline-toolbar-color {
+  position: relative;
+}
+
+.edm-inline-toolbar-swatch {
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--ui-border);
+  border-radius: 3px;
+}
+
+.edm-inline-toolbar-color-popover {
+  position: absolute;
+  z-index: 6;
+  top: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  background: var(--ui-bg);
+  box-shadow: 0 10px 24px rgb(15 23 42 / 0.14);
+}
+
+.edm-inline-toolbar-color-input {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.edm-inline-toolbar-color-value {
+  width: 82px;
+  height: 28px;
+  border: 1px solid var(--ui-border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ui-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  padding: 0 7px;
 }
 </style>

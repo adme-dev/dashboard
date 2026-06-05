@@ -214,6 +214,14 @@ function updateCanvasProps(blockId: string, propsPatch: Record<string, unknown>)
   store.updateBlockProps(blockId, propsPatch)
 }
 
+function updateCanvasStyle(blockId: string, stylePatch: Record<string, unknown>) {
+  if (activeDevice.value === 'mobile') {
+    store.updateBlockMobileStyle(blockId, stylePatch)
+    return
+  }
+  store.updateBlockStyle(blockId, stylePatch)
+}
+
 // ── View modes + preview ────────────────────────────────────────────────
 type ViewMode = 'editor' | 'preview' | 'html'
 const viewMode = ref<ViewMode>('editor')
@@ -707,6 +715,7 @@ onMounted(async () => {
                   editable
                   @update:text="(t) => updateCanvasText(block.id, t)"
                   @update:props="(p) => updateCanvasProps(block.id, p)"
+                  @update:style="(s) => updateCanvasStyle(block.id, s)"
                 />
               </EmailBuilderEditorBlockWrapper>
             </template>
