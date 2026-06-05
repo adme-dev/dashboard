@@ -1,7 +1,7 @@
 import { emailLinkSecret } from '~~/server/utils/email-marketing/links'
 import { appendEmailUtm, verifyEmailClickToken } from '~~/server/utils/email-marketing/trackingLinks'
 import { classifyEmailClick } from '~~/server/utils/email-marketing/clickClassifier'
-import { execute } from '~~/server/utils/db'
+import { execute, queryOne } from '~~/server/utils/db'
 
 function one(value: unknown): string | null {
   if (Array.isArray(value)) return typeof value[0] === 'string' ? value[0] : null
@@ -50,11 +50,24 @@ export default defineEventHandler(async (event) => {
 
   const attributedUrl = appendEmailUtm(destination, campaignId)
   const userAgent = requestHeader(event, 'user-agent')
-  const classification = classifyEmailClick({ userAgent })
+  const clickedAt = new Date().toISOString()
+  const recipientSend = await queryOne<{ sent_at: string | null }>(`
+    SELECT sent_at::text AS sent_at
+    FROM campaign_recipients
+    WHERE campaign_id = $1 AND subscriber_id = $2
+    LIMIT 1
+  `, [campaignId, subscriberId])
+  const classification = classifyEmailClick({
+    userAgent,
+    sentAt: recipientSend?.sent_at ?? null,
+    clickedAt
+  })
   const metadata = {
     source: 'first_party_redirect',
     userAgent,
     ipAddress: requestHeader(event, 'cf-connecting-ip') ?? requestHeader(event, 'x-forwarded-for'),
+    sentAt: recipientSend?.sent_at ?? null,
+    clickedAt,
     clickClassification: classification
   }
 

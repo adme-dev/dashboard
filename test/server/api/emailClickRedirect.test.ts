@@ -4,6 +4,7 @@ import { signEmailToken } from '~~/server/utils/email-marketing/links'
 const mockGetQuery = vi.fn()
 const mockSendRedirect = vi.fn()
 const mockExecute = vi.fn()
+const mockQueryOne = vi.fn()
 
 const testGlobal = globalThis as unknown as {
   defineEventHandler: <T>(fn: T) => T
@@ -21,6 +22,7 @@ testGlobal.getQuery = mockGetQuery
 testGlobal.sendRedirect = mockSendRedirect
 
 vi.mock('~~/server/utils/db', () => ({
+  queryOne: (...args: unknown[]) => mockQueryOne(...args),
   execute: (...args: unknown[]) => mockExecute(...args)
 }))
 
@@ -37,6 +39,7 @@ describe('email click redirect route', () => {
     vi.clearAllMocks()
     mockSendRedirect.mockResolvedValue(undefined)
     mockExecute.mockResolvedValue(1)
+    mockQueryOne.mockResolvedValue(null)
   })
 
   it('records the click and redirects to the destination with UTM attribution', async () => {
@@ -116,5 +119,41 @@ describe('email click redirect route', () => {
 
     expect(mockExecute.mock.calls[0]?.[1]?.[3]).toContain('"suspectedScanner":true')
     expect(mockExecute.mock.calls[0]?.[1]?.[3]).toContain('scanner_user_agent')
+  })
+
+  it('uses recipient send timing to tag impossible scanner clicks', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-05T00:00:02.000Z'))
+    try {
+      const handler = (await import('~~/server/api/public/email/click.get')).default
+      const destination = 'https://dealer.example.com/offers'
+      const token = await signEmailToken('secret', 'click', 'camp-1', 'sub-1', destination)
+      mockGetQuery.mockReturnValue({
+        c: 'camp-1',
+        s: 'sub-1',
+        u: destination,
+        t: token
+      })
+      mockQueryOne.mockResolvedValueOnce({ sent_at: '2026-06-05T00:00:00.000Z' })
+
+      await handler({
+        node: {
+          req: {
+            headers: {
+              'user-agent': 'Mozilla/5.0'
+            }
+          }
+        }
+      } as never)
+
+      expect(mockQueryOne).toHaveBeenCalledWith(
+        expect.stringContaining('FROM campaign_recipients'),
+        ['camp-1', 'sub-1']
+      )
+      expect(mockExecute.mock.calls[0]?.[1]?.[3]).toContain('"suspectedScanner":true')
+      expect(mockExecute.mock.calls[0]?.[1]?.[3]).toContain('impossible_timing')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
