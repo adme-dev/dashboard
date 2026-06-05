@@ -10,7 +10,8 @@
 // watchdog. This module sends synchronously in a capped, paced loop for now.
 
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
-import { getResendClient, getAppUrl, isEmailConfigured } from '~~/server/utils/email'
+import { getAppUrl } from '~~/server/utils/appUrl'
+import { getResendClient, isEmailConfigured } from '~~/server/utils/email'
 import { RESEND_BATCH_LIMIT, buildBatchEmail, isRateLimitError, parseRetryAfter, canEnterSending, buildCampaignBridgeInput } from './campaignSend'
 import { bridgeCommunication } from '~~/server/utils/crm/commsDb'
 import { signEmailToken, emailLinkSecret } from './links'

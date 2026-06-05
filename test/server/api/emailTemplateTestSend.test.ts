@@ -4,6 +4,7 @@ const mockReadBody = vi.fn()
 const mockRequireWriteAccess = vi.fn()
 const mockEmailsSend = vi.fn()
 const mockGetResendClient = vi.fn()
+const mockIsEmailConfigured = vi.fn()
 const mockIsCampaignSendingEnabled = vi.fn()
 
 const testGlobal = globalThis as unknown as {
@@ -28,6 +29,7 @@ vi.mock('~~/server/utils/auth', () => ({
 
 vi.mock('~~/server/utils/email', () => ({
   getResendClient: (...args: unknown[]) => mockGetResendClient(...args),
+  isEmailConfigured: (...args: unknown[]) => mockIsEmailConfigured(...args),
   getAppUrl: () => 'https://app.test'
 }))
 
@@ -46,8 +48,10 @@ describe('email template test-send endpoint', () => {
     vi.clearAllMocks()
     mockRequireWriteAccess.mockResolvedValue({ email: 'author@example.com', name: 'Author User' })
     mockIsCampaignSendingEnabled.mockReturnValue(true)
+    mockIsEmailConfigured.mockReturnValue(true)
     mockGetResendClient.mockReturnValue({ emails: { send: mockEmailsSend } })
     mockEmailsSend.mockResolvedValue({ data: { id: 'msg_123' }, error: null })
+    process.env.EMAIL_TEST_SENDING_ENABLED = 'true'
   })
 
   it('renders the provided editor document and sends it as a test email', async () => {
@@ -90,5 +94,24 @@ describe('email template test-send endpoint', () => {
       statusMessage: 'sendability_failed'
     })
     expect(mockEmailsSend).not.toHaveBeenCalled()
+  })
+
+  it('allows compose test sends without enabling the campaign send gate', async () => {
+    const handler = (await import('~~/server/api/email/templates/test-send.post')).default
+    mockIsCampaignSendingEnabled.mockReturnValue(false)
+    mockReadBody.mockResolvedValue({
+      to: 'test@example.com',
+      subject: 'Subject line',
+      preview_text: 'Inbox preview',
+      body_source: validDocument
+    })
+
+    const result = await handler({} as never)
+
+    expect(result).toEqual(expect.objectContaining({
+      sent_to: 'test@example.com',
+      message_id: 'msg_123'
+    }))
+    expect(mockEmailsSend).toHaveBeenCalledOnce()
   })
 })

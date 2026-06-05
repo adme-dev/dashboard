@@ -5,7 +5,8 @@
 
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { createNotification, createBulkNotifications } from '~~/server/utils/notifications'
-import { sendBriefStatusEmail, sendBriefCommentEmail, sendBriefAssignedEmail, getAppUrl } from '~~/server/utils/email'
+import { getAppUrl } from '~~/server/utils/appUrl'
+import { sendBriefStatusEmail, sendBriefCommentEmail, sendBriefAssignedEmail } from '~~/server/utils/email'
 
 const formatStatus = (s: string) =>
   s.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')

@@ -9,7 +9,8 @@
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { createNotification } from '~~/server/utils/notifications'
 import { getSubscribers } from '~~/server/utils/subscriptions'
-import { sendBoardMemberAddedEmail, getAppUrl } from '~~/server/utils/email'
+import { getAppUrl } from '~~/server/utils/appUrl'
+import { sendBoardMemberAddedEmail } from '~~/server/utils/email'
 import { findKeywordMatches } from '~~/server/utils/keywordSubscriptions'
 
 interface BoardEventNotification {

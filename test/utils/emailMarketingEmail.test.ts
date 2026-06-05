@@ -1,10 +1,10 @@
 // test/utils/emailMarketingEmail.test.ts
 import { describe, it, expect } from 'vitest'
-import { normalizeEmail, isValidEmail } from '~~/server/utils/email-marketing/email'
+import { normalizeSubscriberEmail, isValidEmail } from '~~/server/utils/email-marketing/email'
 
-describe('normalizeEmail', () => {
+describe('normalizeSubscriberEmail', () => {
   it('trims and lowercases', () => {
-    expect(normalizeEmail('  Paul@ADME.net.au ')).toBe('paul@adme.net.au')
+    expect(normalizeSubscriberEmail('  Paul@ADME.net.au ')).toBe('paul@adme.net.au')
   })
 })
 

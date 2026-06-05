@@ -30,6 +30,8 @@ const UNSAFE_TAG_RE = /<\s*(script|iframe|object|embed|form|input|textarea|selec
 const PLACEHOLDER_RE = /\[[\w -]+\]\s*(?:—|-)\s*available in upcoming update/i
 const RELATIVE_MEDIA_ATTR_RE = /\b(?:src|background)\s*=\s*["'](?!https?:\/\/|cid:|data:image\/)[^"']+["']/gi
 const RELATIVE_CSS_URL_RE = /url\(\s*['"]?(?!https?:\/\/|cid:|data:image\/)([^'")]+)['"]?\s*\)/gi
+const NON_HTTPS_MEDIA_ATTR_RE = /\b(?:src|background)\s*=\s*["']http:\/\/[^"']+["']/gi
+const NON_HTTPS_CSS_URL_RE = /url\(\s*['"]?http:\/\/[^'")]+['"]?\s*\)/gi
 
 function issue(severity: SendabilitySeverity, code: string, message: string, value?: string): SendabilityIssue {
   return value ? { severity, code, message, value } : { severity, code, message }
@@ -85,6 +87,19 @@ export function checkEmailSendability(input: SendabilityInput): SendabilityRepor
       'relative_media_url',
       'Use absolute HTTPS media URLs for sendable email assets.',
       mediaMatches[0]?.[0]
+    ))
+  }
+
+  const nonHttpsMediaMatches = [
+    ...html.matchAll(NON_HTTPS_MEDIA_ATTR_RE),
+    ...html.matchAll(NON_HTTPS_CSS_URL_RE)
+  ]
+  if (nonHttpsMediaMatches.length > 0) {
+    issues.push(issue(
+      'warning',
+      'non_https_media_url',
+      'Use public HTTPS media URLs for sendable email assets.',
+      nonHttpsMediaMatches[0]?.[0]
     ))
   }
 

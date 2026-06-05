@@ -28,7 +28,7 @@ export interface HealthInput {
   target: { targetCostPerResult: number; targetCtr?: number | null; maxFrequency?: number | null } | null
 }
 
-export interface HealthResult {
+export interface CampaignHealthResult {
   score: number | null
   verdict: 'scale' | 'hold' | 'cut' | 'insufficient' | 'no-target'
   confidence: 'low' | 'med' | 'high'
@@ -37,14 +37,14 @@ export interface HealthResult {
 
 const money = (n: number) => `$${n.toFixed(2)}`
 
-export function scoreCampaignHealth(input: HealthInput): HealthResult {
+export function scoreCampaignHealth(input: HealthInput): CampaignHealthResult {
   const target = input.target
   if (!target || !(target.targetCostPerResult > 0)) {
     return { score: null, verdict: 'no-target', confidence: 'low', reasons: ['No KPI target set for this result type'] }
   }
 
   const results = input.resultCount || 0
-  const confidence: HealthResult['confidence'] =
+  const confidence: CampaignHealthResult['confidence'] =
     results >= CONFIDENCE_RESULTS.high ? 'high' : results >= CONFIDENCE_RESULTS.med ? 'med' : 'low'
 
   // Hard case: spending with nothing to show
@@ -116,7 +116,7 @@ export function scoreCampaignHealth(input: HealthInput): HealthResult {
 
   // Verdict
   const efficiencyNonNeg = cpr == null || cpr <= target.targetCostPerResult * EFFICIENCY_BANDS.near
-  let verdict: HealthResult['verdict']
+  let verdict: CampaignHealthResult['verdict']
   if (score >= VERDICT_BANDS.scale && efficiencyNonNeg) verdict = 'scale'
   else if (score <= VERDICT_BANDS.cut) verdict = 'cut'
   else verdict = 'hold'

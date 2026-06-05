@@ -3,11 +3,12 @@
 // checks sendability, then sends one email through Resend.
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
-import { getResendClient, getAppUrl } from '~~/server/utils/email'
+import { getAppUrl } from '~~/server/utils/appUrl'
+import { getResendClient, isEmailConfigured } from '~~/server/utils/email'
 import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
 import { isFlyhubFormat } from '~~/server/utils/email-marketing/render/flyhub-html-renderer'
-import { isCampaignSendingEnabled } from '~~/server/utils/email-marketing/campaignSender'
 import { checkEmailSendability, htmlToPlainText } from '~~/server/utils/email-marketing/sendability'
+import { prepareSendableHtml } from '~~/server/utils/email-marketing/sendableHtml'
 
 const Body = z.object({
   to: z.string().email().optional().nullable(),
@@ -29,13 +30,25 @@ function resolveFromHeader(event: Parameters<typeof getAppUrl>[0] | undefined): 
   return `${appName} <${fromEmail}>`
 }
 
+function getSendFlag(event: Parameters<typeof getAppUrl>[0] | undefined, key: string): string | undefined {
+  const env = (event?.context as { cloudflare?: { env?: Record<string, unknown> } } | undefined)?.cloudflare?.env
+  const binding = env?.[key]
+  return typeof binding === 'string' ? binding : process.env[key]
+}
+
+function isTemplateTestSendingEnabled(event: Parameters<typeof getAppUrl>[0] | undefined): boolean {
+  const enabled = getSendFlag(event, 'EMAIL_TEST_SENDING_ENABLED') === 'true'
+    || getSendFlag(event, 'EMAIL_SENDING_ENABLED') === 'true'
+  return enabled && isEmailConfigured(event)
+}
+
 export default defineEventHandler(async (event) => {
   const user = await requireWriteAccess(event)
-  if (!isCampaignSendingEnabled()) {
+  if (!isTemplateTestSendingEnabled(event)) {
     throw createError({
       statusCode: 403,
       statusMessage: 'sending_disabled',
-      message: 'Email sending is disabled. Set EMAIL_SENDING_ENABLED=true and configure Resend to send tests.'
+      message: 'Test email sending is disabled. Set EMAIL_TEST_SENDING_ENABLED=true and configure Resend to send tests.'
     })
   }
 
@@ -60,8 +73,9 @@ export default defineEventHandler(async (event) => {
     previewText,
     variables: parsed.data.variables
   })
+  const sendableHtml = prepareSendableHtml(html, getAppUrl(event))
   const sendability = checkEmailSendability({
-    html,
+    html: sendableHtml,
     subject,
     previewText
   })
@@ -77,8 +91,8 @@ export default defineEventHandler(async (event) => {
     from: resolveFromHeader(event),
     to: [to],
     subject: `[TEST] ${subject}`,
-    html,
-    text: htmlToPlainText(html),
+    html: sendableHtml,
+    text: htmlToPlainText(sendableHtml),
     headers: {
       'X-Email-Test': 'true',
       'X-Email-Preview-Origin': getAppUrl(event)

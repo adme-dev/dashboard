@@ -19,7 +19,7 @@ export function cadenceMinDays(cadence: string): number {
  * True if a schedule should send now: enabled, and either never sent or enough time has elapsed
  * since the last send for its cadence. `now` is injected (no Date.now()) for deterministic tests.
  */
-export function isReportDue(s: ReportScheduleRow, now: Date): boolean {
+export function isSocialReportDue(s: ReportScheduleRow, now: Date): boolean {
   if (!s.enabled) return false
   if (!s.last_sent_at) return true
   const last = new Date(s.last_sent_at)

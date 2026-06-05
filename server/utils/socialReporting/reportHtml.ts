@@ -13,7 +13,7 @@ export interface ReportHtmlData {
   aiSummary?: string | null
 }
 
-export function escapeHtml(s: string): string {
+export function escapeReportHtml(s: string): string {
   return String(s ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
@@ -45,11 +45,11 @@ export function buildReportHtml(data: ReportHtmlData): string {
   ).join('')
 
   const best = (data.bestContent ?? []).map(b =>
-    `<tr><td>${escapeHtml(b.content) || '<em>(no caption)</em>'}</td><td class="num">${num(b.engagements)}</td><td class="num">${num(b.engagementRate)}%</td></tr>`,
+    `<tr><td>${escapeReportHtml(b.content) || '<em>(no caption)</em>'}</td><td class="num">${num(b.engagements)}</td><td class="num">${num(b.engagementRate)}%</td></tr>`,
   ).join('')
 
   const summary = data.aiSummary
-    ? `<div class="summary"><strong>Summary</strong><p>${escapeHtml(data.aiSummary)}</p></div>` : ''
+    ? `<div class="summary"><strong>Summary</strong><p>${escapeReportHtml(data.aiSummary)}</p></div>` : ''
 
   return `<!doctype html><html><head><meta charset="utf-8"><style>
     body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#111;margin:32px;}
@@ -61,8 +61,8 @@ export function buildReportHtml(data: ReportHtmlData): string {
     table{width:100%;border-collapse:collapse;font-size:13px;} th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #eee;}
     td.num,th.num{text-align:right;white-space:nowrap;} h2{font-size:15px;margin:0 0 8px;}
   </style></head><body>
-    <h1>${escapeHtml(data.clientName)} — Social Performance</h1>
-    <p class="sub">${escapeHtml(data.periodLabel)}</p>
+    <h1>${escapeReportHtml(data.clientName)} — Social Performance</h1>
+    <p class="sub">${escapeReportHtml(data.periodLabel)}</p>
     <div class="cards">${kpiHtml}</div>
     ${summary}
     ${best ? `<h2>Top content</h2><table><thead><tr><th>Post</th><th class="num">Engagements</th><th class="num">Eng. rate</th></tr></thead><tbody>${best}</tbody></table>` : ''}

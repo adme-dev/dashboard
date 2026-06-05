@@ -1,7 +1,7 @@
 // server/utils/email-marketing/email.ts
 // Pure email normalization + validation for subscriber records.
 
-export function normalizeEmail(raw: string): string {
+export function normalizeSubscriberEmail(raw: string): string {
   return raw.trim().toLowerCase()
 }
 
@@ -11,7 +11,7 @@ export function normalizeEmail(raw: string): string {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export function isValidEmail(raw: string): boolean {
-  const e = normalizeEmail(raw)
+  const e = normalizeSubscriberEmail(raw)
   if (e.length === 0 || e.length > 254) return false
   return EMAIL_RE.test(e)
 }

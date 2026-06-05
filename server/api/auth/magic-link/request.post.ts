@@ -4,8 +4,9 @@
  * Body: { email: string }
  */
 
-import { readBody, createError, getRequestURL } from 'h3'
+import { readBody, createError } from 'h3'
 import { getUserByEmail, generateMagicLink } from '../../../utils/auth'
+import { getAppUrl } from '../../../utils/appUrl'
 import { sendMagicLinkEmail, isEmailConfigured } from '../../../utils/email'
 
 export default defineEventHandler(async (event) => {
@@ -57,9 +58,8 @@ export default defineEventHandler(async (event) => {
     // Generate magic link token
     const token = await generateMagicLink(user.id, user.email)
 
-    // Derive the app URL from the incoming request (works for any deployment)
-    const reqUrl = getRequestURL(event)
-    const appUrl = `${reqUrl.protocol}//${reqUrl.host}`
+    // Use the canonical app URL so magic links always land on the admin host.
+    const appUrl = getAppUrl(event).replace(/\/$/, '')
 
     // Build magic link URL
     const magicLinkUrl = `${appUrl}/auth/magic-link?token=${token}`

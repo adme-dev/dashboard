@@ -7,7 +7,8 @@ import { queryOne, queryRows, execute } from '~~/server/utils/db'
 import { runAllAnalyzers, type AnalysisResult, type AnalysisFinding } from '~~/server/utils/aiAgentAnalyzer'
 import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
 import { createNotification } from '~~/server/utils/notifications'
-import { sendAiDigestEmail, getAppUrl } from '~~/server/utils/email'
+import { getAppUrl } from '~~/server/utils/appUrl'
+import { sendAiDigestEmail } from '~~/server/utils/email'
 import type { AgentRunType } from '~/types'
 
 interface TeamMember {

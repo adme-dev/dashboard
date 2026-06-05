@@ -2,7 +2,7 @@
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { upsertSubscriber, addToList } from '~~/server/utils/email-marketing/db'
-import { normalizeEmail, isValidEmail } from '~~/server/utils/email-marketing/email'
+import { normalizeSubscriberEmail, isValidEmail } from '~~/server/utils/email-marketing/email'
 
 const Body = z.object({
   email: z.string().min(1),
@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'invalid_email' })
   }
   const id = await upsertSubscriber({
-    email: normalizeEmail(input.email),
+    email: normalizeSubscriberEmail(input.email),
     name: input.name ?? null,
     attribs: input.attribs ?? {},
     client_id: input.client_id ?? null,

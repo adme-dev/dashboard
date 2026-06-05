@@ -4,8 +4,8 @@
 // columnMapping (header verbatim -> role) overrides auto-detection:
 //   role is 'email' | 'name' | 'ignore' | any custom attrib key.
 
-import { parseCsv } from './csv'
-import { normalizeEmail, isValidEmail } from './email'
+import { parseEmailMarketingCsv } from './csv'
+import { normalizeSubscriberEmail, isValidEmail } from './email'
 import type { SubscriberInput } from './types'
 
 const EMAIL_HEADERS = new Set(['email', 'email address', 'e-mail', 'email_address'])
@@ -25,7 +25,7 @@ export function parseSubscriberCsv(
   csvText: string,
   columnMapping?: Record<string, string>
 ): CsvImportParse {
-  const rows = parseCsv(csvText)
+  const rows = parseEmailMarketingCsv(csvText)
   if (rows.length < 2) {
     return { subscribers: [], errors: [{ row: 0, message: 'empty_csv' }], total: 0 }
   }
@@ -65,7 +65,7 @@ export function parseSubscriberCsv(
       errors.push({ row: rowNum, message: 'invalid_email' })
       continue
     }
-    const email = normalizeEmail(rawEmail)
+    const email = normalizeSubscriberEmail(rawEmail)
     if (seen.has(email)) {
       errors.push({ row: rowNum, message: 'duplicate_in_file' })
       continue

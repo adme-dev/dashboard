@@ -46,6 +46,17 @@ describe('checkEmailSendability', () => {
     )
   })
 
+  it('warns on non-HTTPS media URLs because recipients cannot rely on local assets', () => {
+    const report = checkEmailSendability({
+      html: '<img src="http://localhost:3000/email/postcards/glidex/car.png">',
+      subject: 'Test',
+      previewText: 'Preview'
+    })
+
+    expect(report.ok).toBe(true)
+    expect(report.warnings.map(issue => issue.code)).toContain('non_https_media_url')
+  })
+
   it('requires an unsubscribe affordance only when requested', () => {
     const report = checkEmailSendability({
       html: '<p>Hello</p>',

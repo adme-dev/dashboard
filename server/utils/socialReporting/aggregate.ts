@@ -34,7 +34,7 @@ export interface MetricTotals {
 }
 
 /** Percentage change current vs prior. null when prior is 0 (no baseline — avoid divide-by-zero / ∞). */
-export function pctDelta(current: number, prior: number): number | null {
+export function socialPctDelta(current: number, prior: number): number | null {
   if (!prior) return null
   return Math.round(((current - prior) / prior) * 1000) / 10 // 1 decimal
 }
@@ -91,7 +91,7 @@ export function cadenceByWeekday(rows: PostMetricRow[]): Array<{ weekday: number
 export function buildOverview(current: PostMetricRow[], prior: PostMetricRow[]) {
   const cur = rollupPostMetrics(current)
   const prev = rollupPostMetrics(prior)
-  const kpi = (c: number, p: number) => ({ value: c, deltaPct: pctDelta(c, p) })
+  const kpi = (c: number, p: number) => ({ value: c, deltaPct: socialPctDelta(c, p) })
   return {
     posts: kpi(cur.posts, prev.posts),
     impressions: kpi(cur.impressions, prev.impressions),
@@ -100,7 +100,7 @@ export function buildOverview(current: PostMetricRow[], prior: PostMetricRow[]) 
     clicks: kpi(cur.clicks, prev.clicks),
     engagementRate: {
       value: engagementRate(cur.engagements, cur.reach, cur.impressions),
-      deltaPct: pctDelta(
+      deltaPct: socialPctDelta(
         engagementRate(cur.engagements, cur.reach, cur.impressions),
         engagementRate(prev.engagements, prev.reach, prev.impressions),
       ),

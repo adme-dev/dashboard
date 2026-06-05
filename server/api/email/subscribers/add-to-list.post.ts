@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
 import { upsertSubscriber, addToList, getList } from '~~/server/utils/email-marketing/db'
-import { normalizeEmail, isValidEmail } from '~~/server/utils/email-marketing/email'
+import { normalizeSubscriberEmail, isValidEmail } from '~~/server/utils/email-marketing/email'
 
 const Body = z.object({
   list_id: z.string().uuid(),
@@ -47,7 +47,7 @@ export default defineEventHandler(async (event) => {
       const name = fd.full_name || fd.name
         || [fd.first_name, fd.last_name].filter(Boolean).join(' ') || null
       const id = await upsertSubscriber({
-        email: normalizeEmail(email),
+        email: normalizeSubscriberEmail(email),
         name,
         attribs: {},
         client_id: lead.client_id,
@@ -70,7 +70,7 @@ export default defineEventHandler(async (event) => {
     for (const c of contacts) {
       if (!c.email || !isValidEmail(c.email)) continue
       const id = await upsertSubscriber({
-        email: normalizeEmail(c.email),
+        email: normalizeSubscriberEmail(c.email),
         name: c.name,
         attribs: {},
         client_id: c.client_id,

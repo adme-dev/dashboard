@@ -4,7 +4,8 @@
  */
 
 import { queryOne, queryRows } from '~~/server/utils/db'
-import { sendTaskAssignedEmail, sendMentionEmail, sendApprovalRequestEmail, sendDueReminderEmail, getAppUrl } from '~~/server/utils/email'
+import { getAppUrl } from '~~/server/utils/appUrl'
+import { sendTaskAssignedEmail, sendMentionEmail, sendApprovalRequestEmail, sendDueReminderEmail } from '~~/server/utils/email'
 import { autoSubscribeIfEnabled } from '~~/server/utils/subscriptions'
 import { isWithinQuietHours } from '~~/server/utils/quietHours'
 import { computeImportance } from '~~/server/utils/notificationImportance'

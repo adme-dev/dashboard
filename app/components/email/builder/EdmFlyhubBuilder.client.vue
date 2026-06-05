@@ -362,7 +362,18 @@ function errorMessage(error: unknown): string {
   return data?.message || data?.statusMessage || 'Could not send the test email.'
 }
 
+function isEmailAddress(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+}
+
 async function sendTestEmail() {
+  const recipient = testSendTo.value.trim()
+  if (recipient && !isEmailAddress(recipient)) {
+    testSendError.value = 'Enter a valid email address, or leave the recipient blank to use your account email.'
+    toast.add({ title: 'Invalid recipient', description: testSendError.value, color: 'error' })
+    return
+  }
+
   testSending.value = true
   testSendError.value = ''
   testSendResult.value = null
@@ -370,7 +381,7 @@ async function sendTestEmail() {
     const res = await $fetch<typeof testSendResult.value>('/api/email/templates/test-send', {
       method: 'POST',
       body: {
-        to: testSendTo.value.trim() || null,
+        to: recipient || null,
         subject: subject.value || null,
         preview_text: previewText.value || null,
         body_source: store.document.value
@@ -1092,6 +1103,12 @@ onMounted(async () => {
             <UInput
               v-model="testSendTo"
               type="email"
+              name="email"
+              autocomplete="email"
+              inputmode="email"
+              autocapitalize="none"
+              autocorrect="off"
+              :spellcheck="false"
               placeholder="name@example.com"
               class="w-full"
             />

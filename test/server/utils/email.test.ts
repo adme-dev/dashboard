@@ -21,7 +21,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
   public: { appName: '', appUrl: '' }
 })
 
-import { setCfBindings, getCachedBinding, isEmailConfigured, getAppUrl } from '../../../server/utils/email'
+import { getAppUrl } from '../../../server/utils/appUrl'
+import { setCfBindings, getCachedBinding, isEmailConfigured } from '../../../server/utils/email'
 
 const ORIGINAL_RESEND = process.env.RESEND_API_KEY
 const ORIGINAL_APP_URL = process.env.APP_URL
@@ -73,17 +74,11 @@ describe('email binding resolution', () => {
     expect(isEmailConfigured(event)).toBe(true)
   })
 
-  it('getAppUrl falls back to localhost when nothing is set', () => {
-    expect(getAppUrl()).toBe('http://localhost:3000')
+  it('getAppUrl falls back to the configured production app host when nothing is set', () => {
+    expect(getAppUrl()).toBe('https://app.xeroflow.io')
   })
 
-  it('getAppUrl prefers cached APP_URL over the localhost fallback', () => {
-    setCfBindings({ APP_URL: 'https://app.example.com' })
-    expect(getAppUrl()).toBe('https://app.example.com')
-  })
-
-  it('getAppUrl prefers per-request event over cached APP_URL', () => {
-    setCfBindings({ APP_URL: 'https://cached.example.com' })
+  it('getAppUrl prefers per-request event over the configured fallback', () => {
     const event = { context: { cloudflare: { env: { APP_URL: 'https://event.example.com' } } } } as any
     expect(getAppUrl(event)).toBe('https://event.example.com')
   })

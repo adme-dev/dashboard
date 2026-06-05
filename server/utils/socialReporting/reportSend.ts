@@ -5,7 +5,7 @@
 //
 // HARD GATE: nothing sends unless SOCIAL_REPORTS_ENABLED === 'true' (mirrors EMAIL_SENDING_ENABLED /
 // SOCIAL_AUTOMATION_ENABLED). Off by default → the whole pipeline is dormant.
-import { isReportDue, type ReportScheduleRow } from './reportSchedule'
+import { isSocialReportDue, type ReportScheduleRow } from './reportSchedule'
 import { buildReportHtml, type ReportHtmlData } from './reportHtml'
 
 export function isSocialReportsEnabled(): boolean {
@@ -40,12 +40,12 @@ export async function processDueReports(db: ReportSendDb, deps: ReportSendDeps):
   )
   let sent = 0, skipped = 0, failed = 0
 
-  // Re-send protection is last_sent_at + cadence (isReportDue). This assumes a SINGLE daily trigger
+  // Re-send protection is last_sent_at + cadence (isSocialReportDue). This assumes a SINGLE daily trigger
   // (the social-report-cron worker) — there is no manual trigger, so two concurrent runs reading the
   // same last_sent_at (a TOCTOU double-send) can't occur in practice. If a manual trigger is ever
   // added, claim each schedule atomically (e.g. UPDATE ... WHERE last_sent_at IS DISTINCT FROM …) first.
   for (const s of schedules) {
-    if (!isReportDue(s, deps.now)) { skipped++; continue }
+    if (!isSocialReportDue(s, deps.now)) { skipped++; continue }
     // Skip schedules with no recipients — nothing to deliver to.
     if (!Array.isArray(s.recipients) || s.recipients.length === 0) { skipped++; continue }
     try {

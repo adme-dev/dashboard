@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  pctDelta, engagementRate, rollupPostMetrics, rankBestContent, cadenceByWeekday, buildOverview,
+  socialPctDelta, engagementRate, rollupPostMetrics, rankBestContent, cadenceByWeekday, buildOverview,
   type PostMetricRow,
 } from '~~/server/utils/socialReporting/aggregate'
 import { buildSummaryPrompt } from '~~/server/utils/socialReporting/aiSummary'
@@ -10,13 +10,13 @@ const row = (over: Partial<PostMetricRow>): PostMetricRow => ({
   likes: 0, comments_count: 0, shares: 0, saves: 0, video_views: 0, reactions: 0, ...over,
 })
 
-describe('pctDelta', () => {
+describe('socialPctDelta', () => {
   it('computes 1-decimal percentage change', () => {
-    expect(pctDelta(120, 100)).toBe(20)
-    expect(pctDelta(75, 100)).toBe(-25)
+    expect(socialPctDelta(120, 100)).toBe(20)
+    expect(socialPctDelta(75, 100)).toBe(-25)
   })
   it('returns null with no baseline (avoids divide-by-zero/∞)', () => {
-    expect(pctDelta(50, 0)).toBeNull()
+    expect(socialPctDelta(50, 0)).toBeNull()
   })
 })
 

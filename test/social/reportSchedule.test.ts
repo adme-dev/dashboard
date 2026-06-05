@@ -1,26 +1,26 @@
 import { describe, it, expect } from 'vitest'
-import { isReportDue, cadenceMinDays, type ReportScheduleRow } from '~~/server/utils/socialReporting/reportSchedule'
-import { buildReportHtml, escapeHtml } from '~~/server/utils/socialReporting/reportHtml'
+import { isSocialReportDue, cadenceMinDays, type ReportScheduleRow } from '~~/server/utils/socialReporting/reportSchedule'
+import { buildReportHtml, escapeReportHtml } from '~~/server/utils/socialReporting/reportHtml'
 
 const sched = (o: Partial<ReportScheduleRow>): ReportScheduleRow => ({
   id: 's', client_id: 'c', cadence: 'monthly', enabled: true, last_sent_at: null, ...o,
 })
 
-describe('isReportDue', () => {
+describe('isSocialReportDue', () => {
   const now = new Date('2026-06-30T00:00:00Z')
   it('disabled schedules are never due', () => {
-    expect(isReportDue(sched({ enabled: false }), now)).toBe(false)
+    expect(isSocialReportDue(sched({ enabled: false }), now)).toBe(false)
   })
   it('never-sent schedules are due', () => {
-    expect(isReportDue(sched({ last_sent_at: null }), now)).toBe(true)
+    expect(isSocialReportDue(sched({ last_sent_at: null }), now)).toBe(true)
   })
   it('monthly: due after 28d, not before', () => {
-    expect(isReportDue(sched({ cadence: 'monthly', last_sent_at: '2026-06-01T00:00:00Z' }), now)).toBe(true)  // 29d
-    expect(isReportDue(sched({ cadence: 'monthly', last_sent_at: '2026-06-20T00:00:00Z' }), now)).toBe(false) // 10d
+    expect(isSocialReportDue(sched({ cadence: 'monthly', last_sent_at: '2026-06-01T00:00:00Z' }), now)).toBe(true)  // 29d
+    expect(isSocialReportDue(sched({ cadence: 'monthly', last_sent_at: '2026-06-20T00:00:00Z' }), now)).toBe(false) // 10d
   })
   it('weekly: due after 7d', () => {
-    expect(isReportDue(sched({ cadence: 'weekly', last_sent_at: '2026-06-22T00:00:00Z' }), now)).toBe(true)  // 8d
-    expect(isReportDue(sched({ cadence: 'weekly', last_sent_at: '2026-06-26T00:00:00Z' }), now)).toBe(false) // 4d
+    expect(isSocialReportDue(sched({ cadence: 'weekly', last_sent_at: '2026-06-22T00:00:00Z' }), now)).toBe(true)  // 8d
+    expect(isSocialReportDue(sched({ cadence: 'weekly', last_sent_at: '2026-06-26T00:00:00Z' }), now)).toBe(false) // 4d
   })
   it('cadenceMinDays', () => {
     expect(cadenceMinDays('weekly')).toBe(7)
@@ -56,7 +56,7 @@ describe('buildReportHtml', () => {
     expect(html).toContain('&lt;img')
     expect(html).not.toContain('<b>hi</b>')
   })
-  it('escapeHtml handles all the dangerous chars', () => {
-    expect(escapeHtml(`<>&"'`)).toBe('&lt;&gt;&amp;&quot;&#39;')
+  it('escapeReportHtml handles all the dangerous chars', () => {
+    expect(escapeReportHtml(`<>&"'`)).toBe('&lt;&gt;&amp;&quot;&#39;')
   })
 })

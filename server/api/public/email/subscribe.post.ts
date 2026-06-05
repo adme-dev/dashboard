@@ -3,7 +3,8 @@
 // For a double-opt-in list it sends a confirmation email (best-effort) and the
 // membership stays 'unconfirmed' until the recipient clicks through.
 import { z } from 'zod'
-import { getAppUrl, sendDoubleOptInEmail } from '~~/server/utils/email'
+import { getAppUrl } from '~~/server/utils/appUrl'
+import { sendDoubleOptInEmail } from '~~/server/utils/email'
 import { emailLinkSecret, signEmailToken } from '~~/server/utils/email-marketing/links'
 import { subscribePublic } from '~~/server/utils/email-marketing/subscriptions'
 import { isTurnstileEnabled, verifyTurnstile } from '~~/server/utils/turnstile'

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { upsertSocialAccount } from '~~/server/utils/socialOAuth/store'
-import type { AccountRow } from '~~/server/utils/socialOAuth/meta'
+import type { AccountRow } from '~~/server/utils/socialOAuth/store'
 
 const row: AccountRow = {
   platform: 'facebook', platform_account_id: 'P1', account_name: 'Acme',

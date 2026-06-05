@@ -2,6 +2,7 @@
 // Meta (Facebook + Instagram) OAuth helpers for the publishing/inbox connection (social_accounts).
 // Pure functions (buildMetaAuthUrl, mapPagesToAccountRows) + injected-fetch Graph calls
 // (listManagedPages, subscribePageWebhook) so everything is unit-testable.
+import type { AccountRow } from './store'
 
 const GRAPH = 'https://graph.facebook.com/v22.0'
 
@@ -51,15 +52,6 @@ export interface ManagedPage {
   category?: string
   igId?: string
   igUsername?: string
-}
-
-export interface AccountRow {
-  platform: 'facebook' | 'instagram'
-  platform_account_id: string
-  account_name: string
-  access_token: string
-  token_expires_at: string | null
-  metadata: Record<string, any>
 }
 
 /** Pure: a managed Page → its social_accounts rows (a facebook row, plus an instagram row if linked). */

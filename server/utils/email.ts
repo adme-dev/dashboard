@@ -4,6 +4,7 @@
 
 import type { H3Event } from 'h3'
 import { Resend } from 'resend'
+import { getAppUrl } from '~~/server/utils/appUrl'
 
 /**
  * Escape HTML special characters to prevent XSS in email templates.
@@ -76,19 +77,6 @@ function resolveApiKey(event?: H3Event): string | null {
 }
 
 /**
- * Resolve the public app URL for use in email CTAs / links.
- * On CF Pages, `process.env.APP_URL` is empty unless wired as a non-secret
- * env var, so module-level constants would resolve to localhost. Use this
- * per-call instead.
- */
-export function getAppUrl(event?: H3Event): string {
-  return getCfBinding(event, 'APP_URL')
-    || (useRuntimeConfig().public as any)?.appUrl
-    || process.env.APP_URL
-    || 'http://localhost:3000'
-}
-
-/**
  * Check if the email service is configured (Resend API key present).
  * Pass the H3Event for accurate detection in Cloudflare Pages.
  */
@@ -117,7 +105,7 @@ function getEmailConfig(event?: H3Event) {
   return {
     appName: getCfBinding(event, 'APP_NAME') || config.public?.appName || process.env.APP_NAME || 'XeroFlow Agency',
     fromEmail: getCfBinding(event, 'EMAIL_FROM') || config.emailFrom || process.env.EMAIL_FROM || 'noreply@yourdomain.com',
-    appUrl: getCfBinding(event, 'APP_URL') || config.public?.appUrl || process.env.APP_URL || 'http://localhost:3000'
+    appUrl: getAppUrl(event)
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildDraftPrompt, type DraftContext } from '~~/server/utils/crm/aiDraft'
+import { buildCrmDraftPrompt, type DraftContext } from '~~/server/utils/crm/aiDraft'
 
 const ctx: DraftContext = {
   contactName: 'Jane Doe',
@@ -12,9 +12,9 @@ const ctx: DraftContext = {
   senderName: 'Paul',
 }
 
-describe('buildDraftPrompt', () => {
+describe('buildCrmDraftPrompt', () => {
   it('includes the supplied facts', () => {
-    const p = buildDraftPrompt(ctx)
+    const p = buildCrmDraftPrompt(ctx)
     expect(p).toContain('Jane Doe')
     expect(p).toContain('Acme Co')
     expect(p).toContain('Q3 Retainer')
@@ -23,13 +23,13 @@ describe('buildDraftPrompt', () => {
   })
 
   it('instructs the model not to fabricate and to return JSON', () => {
-    const p = buildDraftPrompt(ctx)
+    const p = buildCrmDraftPrompt(ctx)
     expect(p.toLowerCase()).toContain('do not invent')
     expect(p).toContain('JSON')
   })
 
   it('degrades gracefully with no context', () => {
-    const p = buildDraftPrompt({
+    const p = buildCrmDraftPrompt({
       contactName: null, companyName: null, oppTitle: null, stageName: null,
       amount: null, daysSinceLastActivity: null, daysSinceLastComm: null, senderName: null,
     })

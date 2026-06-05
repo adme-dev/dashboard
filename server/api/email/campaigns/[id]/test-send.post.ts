@@ -6,7 +6,8 @@ import { requireWriteAccess } from '~~/server/utils/auth'
 import { getCampaign } from '~~/server/utils/email-marketing/campaigns'
 import { buildBatchEmail } from '~~/server/utils/email-marketing/campaignSend'
 import { isCampaignSendingEnabled } from '~~/server/utils/email-marketing/campaignSender'
-import { getResendClient, getAppUrl } from '~~/server/utils/email'
+import { getAppUrl } from '~~/server/utils/appUrl'
+import { getResendClient } from '~~/server/utils/email'
 
 const Body = z.object({ to: z.string().email().optional() })
 

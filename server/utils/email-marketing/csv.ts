@@ -3,7 +3,7 @@
 // CRLF/LF line endings. Ported from the leads importer so both stay consistent.
 // For pathological input we'd reach for papaparse, but that adds ~50KB to the bundle.
 
-export function parseCsv(text: string): string[][] {
+export function parseEmailMarketingCsv(text: string): string[][] {
   const rows: string[][] = []
   let row: string[] = []
   let cell = ''

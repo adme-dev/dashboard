@@ -6,8 +6,9 @@
  * In dev: unrestricted. In production: requires admin auth.
  */
 
-import { readBody, createError, getRequestURL } from 'h3'
+import { readBody, createError } from 'h3'
 import { getUserByEmail, generateMagicLink, requireRole } from '../../utils/auth'
+import { getAppUrl } from '../../utils/appUrl'
 import { sendMagicLinkEmail, isEmailConfigured } from '../../utils/email'
 
 export default defineEventHandler(async (event) => {
@@ -65,9 +66,8 @@ export default defineEventHandler(async (event) => {
     const token = await generateMagicLink(user.id, user.email)
     debug.steps.push({ step: 'Generate token', token: token.substring(0, 10) + '...' })
 
-    // Step 3: Build URL from request origin
-    const reqUrl = getRequestURL(event)
-    const appUrl = `${reqUrl.protocol}//${reqUrl.host}`
+    // Step 3: Build URL from the canonical app origin.
+    const appUrl = getAppUrl(event).replace(/\/$/, '')
     const magicLinkUrl = `${appUrl}/auth/magic-link?token=${token}`
     debug.steps.push({ step: 'Build URL', url: magicLinkUrl })
 
