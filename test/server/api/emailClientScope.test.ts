@@ -15,6 +15,11 @@ const mockGetCampaign = vi.fn()
 const mockGetListClientIds = vi.fn()
 const mockSetCampaignLists = vi.fn()
 const mockGetCampaignListIds = vi.fn()
+const mockListTemplates = vi.fn()
+const mockCreateTemplate = vi.fn()
+const mockGetTemplate = vi.fn()
+const mockUpdateTemplate = vi.fn()
+const mockDeleteTemplate = vi.fn()
 
 const CLIENT_1 = '11111111-1111-4111-8111-111111111111'
 const CLIENT_2 = '22222222-2222-4222-8222-222222222222'
@@ -79,6 +84,14 @@ vi.mock('~~/server/utils/email-marketing/campaigns', () => ({
   getCampaignListIds: (...args: unknown[]) => mockGetCampaignListIds(...args)
 }))
 
+vi.mock('~~/server/utils/email-marketing/templates', () => ({
+  listTemplates: (...args: unknown[]) => mockListTemplates(...args),
+  createTemplate: (...args: unknown[]) => mockCreateTemplate(...args),
+  getTemplate: (...args: unknown[]) => mockGetTemplate(...args),
+  updateTemplate: (...args: unknown[]) => mockUpdateTemplate(...args),
+  deleteTemplate: (...args: unknown[]) => mockDeleteTemplate(...args)
+}))
+
 describe('email client-scoped route policy', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -97,6 +110,11 @@ describe('email client-scoped route policy', () => {
     mockGetListClientIds.mockResolvedValue([{ id: LIST_1, client_id: CLIENT_1 }])
     mockSetCampaignLists.mockResolvedValue(undefined)
     mockGetCampaignListIds.mockResolvedValue(['list-1'])
+    mockListTemplates.mockResolvedValue([])
+    mockCreateTemplate.mockResolvedValue({ id: 'tpl-1', client_id: CLIENT_1 })
+    mockGetTemplate.mockResolvedValue({ id: 'tpl-1', client_id: CLIENT_1 })
+    mockUpdateTemplate.mockResolvedValue({ id: 'tpl-1', client_id: CLIENT_1 })
+    mockDeleteTemplate.mockResolvedValue(undefined)
   })
 
   it('passes assigned client ids into list reads for scoped users', async () => {
@@ -180,5 +198,39 @@ describe('email client-scoped route policy', () => {
       statusMessage: 'campaign_mixed_client_lists'
     })
     expect(mockSetCampaignLists).not.toHaveBeenCalled()
+  })
+
+  it('passes assigned client ids into template reads for scoped users', async () => {
+    const handler = (await import('~~/server/api/email/templates/index.get')).default
+
+    await handler({} as never)
+
+    expect(mockListTemplates).toHaveBeenCalledWith([CLIENT_1])
+  })
+
+  it('defaults new scoped templates to the actor assigned client', async () => {
+    const handler = (await import('~~/server/api/email/templates/index.post')).default
+    mockReadBody.mockResolvedValueOnce({ name: 'Client template' })
+
+    await handler({} as never)
+
+    expect(mockCreateTemplate).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Client template',
+      client_id: CLIENT_1,
+      created_by: 'user-1'
+    }))
+  })
+
+  it('blocks template updates across client scope', async () => {
+    const handler = (await import('~~/server/api/email/templates/[id].patch')).default
+    mockGetRouterParam.mockReturnValueOnce('tpl-2')
+    mockReadBody.mockResolvedValueOnce({ name: 'Other client template' })
+    mockGetTemplate.mockResolvedValueOnce({ id: 'tpl-2', client_id: CLIENT_2 })
+
+    await expect(handler({} as never)).rejects.toMatchObject({
+      statusCode: 403,
+      statusMessage: 'email_client_forbidden'
+    })
+    expect(mockUpdateTemplate).not.toHaveBeenCalled()
   })
 })

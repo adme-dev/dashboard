@@ -5,6 +5,7 @@
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { renderTemplateDocument } from './render'
 import { isFlyhubFormat } from './render/flyhub-html-renderer'
+import { addEmailClientScopeCondition, type EmailClientScope } from './access'
 
 export type EdmTemplateKind = 'template' | 'draft'
 
@@ -32,15 +33,20 @@ function renderHtml(bodySource: unknown, subject?: string | null, previewText?: 
   })
 }
 
-export async function listTemplates(): Promise<EdmTemplate[]> {
+export async function listTemplates(clientIds?: EmailClientScope): Promise<EdmTemplate[]> {
+  const conditions: string[] = []
+  const params: unknown[] = []
+  addEmailClientScopeCondition(conditions, params, 'client_id', clientIds)
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
   return queryRows<EdmTemplate>(`
     SELECT *
     FROM edm_templates
+    ${where}
     ORDER BY
       CASE WHEN template_kind = 'draft' THEN 0 ELSE 1 END,
       COALESCE(folder_name, ''),
       updated_at DESC
-  `)
+  `, params)
 }
 
 export async function getTemplate(id: string): Promise<EdmTemplate | null> {

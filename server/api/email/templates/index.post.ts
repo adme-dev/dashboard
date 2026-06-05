@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { createTemplate } from '~~/server/utils/email-marketing/templates'
+import { resolveEmailWriteClientId } from '~~/server/utils/email-marketing/access'
 
 const Body = z.object({
   name: z.string().min(1).max(200),
@@ -19,6 +20,7 @@ export default defineEventHandler(async (event) => {
   if (!parsed.success) {
     throw createError({ statusCode: 400, statusMessage: 'invalid_body', data: parsed.error.issues })
   }
-  const template = await createTemplate({ ...parsed.data, created_by: user.id })
+  const clientId = await resolveEmailWriteClientId(event, user, parsed.data.client_id ?? null)
+  const template = await createTemplate({ ...parsed.data, client_id: clientId, created_by: user.id })
   return { template }
 })
