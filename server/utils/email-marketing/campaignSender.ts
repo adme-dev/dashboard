@@ -15,7 +15,7 @@ import { getResendClient, isEmailConfigured } from '~~/server/utils/email'
 import { RESEND_BATCH_LIMIT, buildTrackedBatchEmail, isRateLimitError, parseRetryAfter, canEnterSending, buildCampaignBridgeInput, buildCampaignPreflight } from './campaignSend'
 import { bridgeCommunication } from '~~/server/utils/crm/commsDb'
 import { signEmailToken, emailLinkSecret } from './links'
-import { getCampaign, materializeRecipients, prepareCampaignHtmlForSend, setCampaignStatus, type Campaign } from './campaigns'
+import { getCampaign, prepareCampaignHtmlForSend, setCampaignStatus, type Campaign } from './campaigns'
 import { resolveCampaignSenderDomains } from './senderIdentity'
 
 export interface RecipientRow {
@@ -248,7 +248,9 @@ export async function dispatchCampaigns(opts: { maxChunksPerCampaign?: number } 
     return { skipped: 'sending_disabled', promoted: 0, drained: 0, sent: 0, failed: 0 }
   }
 
-  // 1. Promote due scheduled campaigns (re-checking the send gate first).
+  // 1. Promote due scheduled campaigns. The recipient queue was materialized
+  // when the campaign was scheduled; do not rebuild it here or the locked
+  // snapshot can drift as lists change before send time.
   const due = await queryRows<{ id: string }>(`
     SELECT id FROM campaigns
     WHERE status = 'scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= NOW()
@@ -256,7 +258,6 @@ export async function dispatchCampaigns(opts: { maxChunksPerCampaign?: number } 
   let promoted = 0
   for (const c of due) {
     try {
-      await materializeRecipients(c.id)
       const full = await getCampaign(c.id)
       if (!full) continue
       const sendingConfigured = isEmailConfigured()
