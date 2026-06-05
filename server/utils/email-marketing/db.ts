@@ -124,8 +124,9 @@ export async function upsertSubscriber(input: SubscriberInput & {
 }
 
 // Add a subscriber to a list. Initial membership status depends on the list's
-// double_optin flag: single-opt-in lists confirm immediately. Re-adding a
-// previously-unsubscribed member reactivates them as unconfirmed.
+// double_optin flag: single-opt-in lists confirm immediately. Explicit re-adds
+// reactivate unsubscribed members as unconfirmed; imports preserve unsubscribed
+// state so a CSV upload cannot silently re-consent someone.
 export async function addToList(
   subscriberId: string,
   listId: string,
@@ -139,14 +140,16 @@ export async function addToList(
   const list = await getList(listId)
   if (!list) return
   const initialStatus = list.double_optin ? 'unconfirmed' : 'confirmed'
+  const reactivateUnsubscribed = source !== 'import'
   await execute(`
     INSERT INTO subscriber_lists (subscriber_id, list_id, status, source)
     VALUES ($1, $2, $3, $4)
     ON CONFLICT (subscriber_id, list_id) DO UPDATE SET
-      status = CASE WHEN subscriber_lists.status = 'unsubscribed'
+      status = CASE WHEN subscriber_lists.status = 'unsubscribed' AND $5::boolean
                     THEN 'unconfirmed' ELSE subscriber_lists.status END,
-      unsubscribed_at = NULL
-  `, [subscriberId, listId, initialStatus, source])
+      unsubscribed_at = CASE WHEN subscriber_lists.status = 'unsubscribed' AND NOT $5::boolean
+                             THEN subscriber_lists.unsubscribed_at ELSE NULL END
+  `, [subscriberId, listId, initialStatus, source, reactivateUnsubscribed])
   if (source === 'import') {
     const email = audit?.email ?? (await queryOne<{ email: string }>(
       'SELECT email FROM email_subscribers WHERE id = $1',
