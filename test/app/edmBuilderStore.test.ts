@@ -46,6 +46,19 @@ describe('useEdmBuilder store', () => {
     })
   })
 
+  it('starts detached column-ready blocks with zero bottom spacing', () => {
+    const s = useEdmBuilder()
+
+    s.addBlockToDocument('nestedText', 'Text')
+
+    expect(s.document.value.nestedText.data.style?.padding).toEqual({
+      top: 8,
+      bottom: 0,
+      left: 8,
+      right: 8
+    })
+  })
+
   it('undo reverses the last addBlock', () => {
     const s = useEdmBuilder()
     const id = s.addBlock('Heading', 'root')
@@ -108,5 +121,44 @@ describe('useEdmBuilder store', () => {
     const columns = s.document.value[columnsId].data.props?.columns as Array<{ childrenIds: string[] }>
     expect(columns[1]?.childrenIds).toEqual(['nestedHeading', 'nestedButton'])
     expect(s.canUndo.value).toBe(true)
+  })
+
+  it('starts blocks inserted into columns with zero bottom spacing', () => {
+    const s = useEdmBuilder()
+    const columnsId = s.addBlock('ColumnsContainer', 'root', undefined, {
+      props: {
+        columnsCount: 2,
+        columns: [{ childrenIds: [] }, { childrenIds: [] }, { childrenIds: [] }]
+      }
+    })
+
+    s.insertBlocksToColumn(columnsId, 0, {
+      paddedText: {
+        type: 'Text',
+        data: {
+          style: { padding: { top: 16, right: 24, bottom: 16, left: 24 } },
+          props: { text: 'Column copy' }
+        }
+      },
+      unpaddedImage: {
+        type: 'Image',
+        data: {
+          props: { url: '/image.png', alt: 'Image' }
+        }
+      }
+    }, ['paddedText', 'unpaddedImage'])
+
+    expect(s.document.value.paddedText.data.style?.padding).toEqual({
+      top: 16,
+      right: 24,
+      bottom: 0,
+      left: 24
+    })
+    expect(s.document.value.unpaddedImage.data.style?.padding).toEqual({
+      top: 16,
+      right: 24,
+      bottom: 0,
+      left: 24
+    })
   })
 })

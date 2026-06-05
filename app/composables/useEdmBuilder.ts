@@ -356,8 +356,40 @@ function createStore() {
     }
 
     return {
-      padding: { top: 8, bottom: 8, left: 8, right: 8 }
+      padding: { top: 8, bottom: 0, left: 8, right: 8 }
     }
+  }
+
+  function normalizeColumnChildBlocks(
+    blocks: Record<string, EdmFlyhubBlock>,
+    blockIds: string[]
+  ): Record<string, EdmFlyhubBlock> {
+    const normalized = { ...blocks }
+
+    for (const blockId of blockIds) {
+      const block = normalized[blockId]
+      if (!block) continue
+
+      const style = block.data.style || {}
+      const padding = style.padding || { top: 16, right: 24, bottom: 16, left: 24 }
+      normalized[blockId] = {
+        ...block,
+        data: {
+          ...block.data,
+          style: {
+            ...style,
+            padding: {
+              top: padding.top ?? 16,
+              right: padding.right ?? 24,
+              bottom: 0,
+              left: padding.left ?? 24
+            }
+          }
+        }
+      }
+    }
+
+    return normalized
   }
 
   function addBlock(
@@ -616,10 +648,11 @@ function createStore() {
       : Math.max(0, Math.min(position, childrenIds.length))
     childrenIds.splice(insertAt, 0, ...blockIds)
     columns[columnIndex] = { childrenIds }
+    const normalizedBlocks = normalizeColumnChildBlocks(blocks, blockIds)
 
     document.value = {
       ...document.value,
-      ...blocks,
+      ...normalizedBlocks,
       [columnsContainerId]: {
         ...container,
         data: {
