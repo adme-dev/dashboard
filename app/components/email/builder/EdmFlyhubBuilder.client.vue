@@ -206,6 +206,14 @@ function updateCanvasText(blockId: string, text: string) {
   store.updateBlockProps(blockId, { text })
 }
 
+function updateCanvasProps(blockId: string, propsPatch: Record<string, unknown>) {
+  if (activeDevice.value === 'mobile') {
+    store.updateBlockMobileProps(blockId, propsPatch)
+    return
+  }
+  store.updateBlockProps(blockId, propsPatch)
+}
+
 // ── View modes + preview ────────────────────────────────────────────────
 type ViewMode = 'editor' | 'preview' | 'html'
 const viewMode = ref<ViewMode>('editor')
@@ -698,6 +706,7 @@ onMounted(async () => {
                   :hidden-on-device="hiddenOnCanvas(block.id)"
                   editable
                   @update:text="(t) => updateCanvasText(block.id, t)"
+                  @update:props="(p) => updateCanvasProps(block.id, p)"
                 />
               </EmailBuilderEditorBlockWrapper>
             </template>

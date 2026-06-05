@@ -158,10 +158,24 @@
         <div :style="featureIconStyle">
           {{ feature.icon || '•' }}
         </div>
-        <div :style="featureHeadingStyle">
+        <div
+          :style="featureHeadingStyle"
+          :class="{ 'edm-editable': editable }"
+          :contenteditable="editable ? 'plaintext-only' : undefined"
+          :data-edm-editable-element="editable ? 'feature-heading' : undefined"
+          @blur="editable && onFeatureEdit(index, 'heading', $event)"
+          @keydown="onEditableKeydown"
+        >
           {{ feature.heading }}
         </div>
-        <div :style="featureDescriptionStyle">
+        <div
+          :style="featureDescriptionStyle"
+          :class="{ 'edm-editable': editable }"
+          :contenteditable="editable ? 'plaintext-only' : undefined"
+          :data-edm-editable-element="editable ? 'feature-description' : undefined"
+          @blur="editable && onFeatureEdit(index, 'description', $event)"
+          @keydown="onEditableKeydown"
+        >
           {{ feature.description }}
         </div>
       </div>
@@ -252,7 +266,10 @@ const props = defineProps<{
   hiddenOnDevice?: boolean
 }>()
 
-const emit = defineEmits<{ 'update:text': [value: string] }>()
+const emit = defineEmits<{
+  'update:text': [value: string]
+  'update:props': [value: Record<string, unknown>]
+}>()
 
 const textEditorEl = ref<HTMLElement | null>(null)
 const inlineFormatActions = [
@@ -280,6 +297,22 @@ function onTextEdit(e: Event, asHtml: boolean) {
   // sees a placeholder in preview otherwise. Empty Text (HTML) is allowed.
   if (!asHtml && value === '') return
   emit('update:text', value)
+}
+
+function onFeatureEdit(index: number, key: 'heading' | 'description', e: Event) {
+  const el = e.target as HTMLElement | null
+  if (!el) return
+  const value = extractPlainText(el.textContent || '')
+  if (value === '') return
+
+  const rawFeatures = Array.isArray(blockProps.value.features)
+    ? [...(blockProps.value.features as Record<string, unknown>[])]
+    : featureItems.value.map(feature => ({ ...feature }))
+  const current = { ...(rawFeatures[index] || {}) }
+  if ((current[key] as string | undefined) === value) return
+
+  rawFeatures[index] = { ...current, [key]: value }
+  emit('update:props', { features: rawFeatures })
 }
 
 function commitTextEditorHtml(el: HTMLElement) {

@@ -22,6 +22,9 @@
           :style="child.data.style"
           :props="child.data.props"
           :hidden-on-device="child.hiddenOnDevice"
+          editable
+          @update:text="(text) => updateChildText(child.id, text)"
+          @update:props="(propsPatch) => updateChildProps(child.id, propsPatch)"
         />
       </div>
     </template>
@@ -113,6 +116,22 @@ function addChildBlock(type: string) {
   data.style = { padding: { top: 8, bottom: 8, left: 16, right: 16 } }
   store.addBlock(type, props.blockId, undefined, data)
   showBlockPicker.value = false
+}
+
+function updateChildText(blockId: string, text: string) {
+  if ((props.device || 'desktop') === 'mobile') {
+    store.updateBlockMobileProps(blockId, { text })
+    return
+  }
+  store.updateBlockProps(blockId, { text })
+}
+
+function updateChildProps(blockId: string, propsPatch: Record<string, unknown>) {
+  if ((props.device || 'desktop') === 'mobile') {
+    store.updateBlockMobileProps(blockId, propsPatch)
+    return
+  }
+  store.updateBlockProps(blockId, propsPatch)
 }
 </script>
 

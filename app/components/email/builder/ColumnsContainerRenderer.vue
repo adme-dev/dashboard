@@ -25,6 +25,9 @@
               :style="getBlockData(childId).style"
               :props="getBlockData(childId).props"
               :hidden-on-device="isBlockHiddenOnDevice(childId)"
+              editable
+              @update:text="(text) => updateChildText(childId, text)"
+              @update:props="(propsPatch) => updateChildProps(childId, propsPatch)"
             />
           </div>
         </template>
@@ -162,6 +165,22 @@ function addBlockToColumn(type: string, columnIndex: number) {
   store.addBlockToDocument(newBlockId, type, data)
   store.addBlockToColumn(props.blockId, columnIndex, newBlockId)
   columnPickerOpen[columnIndex] = false
+}
+
+function updateChildText(blockId: string, text: string) {
+  if ((props.device || 'desktop') === 'mobile') {
+    store.updateBlockMobileProps(blockId, { text })
+    return
+  }
+  store.updateBlockProps(blockId, { text })
+}
+
+function updateChildProps(blockId: string, propsPatch: Record<string, unknown>) {
+  if ((props.device || 'desktop') === 'mobile') {
+    store.updateBlockMobileProps(blockId, propsPatch)
+    return
+  }
+  store.updateBlockProps(blockId, propsPatch)
 }
 </script>
 

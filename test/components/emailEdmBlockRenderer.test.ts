@@ -92,6 +92,21 @@ describe('EmailBuilderEdmBlockRenderer inline editing (Phase 3b)', () => {
     expect(button).not.toContain('target="_blank"')
   })
 
+  it('makes feature-grid card text contenteditable when editable=true', async () => {
+    const html = await renderBlock('feature-grid', {
+      features: [
+        { icon: '•', heading: 'Plan', description: 'Map the launch.' },
+        { icon: '•', heading: 'Build', description: 'Create assets.' }
+      ]
+    }, {}, { editable: true })
+
+    expect(html).toContain('Plan')
+    expect(html).toContain('Map the launch.')
+    expect(html).toContain('contenteditable="plaintext-only"')
+    expect(html).toContain('data-edm-editable-element="feature-heading"')
+    expect(html).toContain('data-edm-editable-element="feature-description"')
+  })
+
   it('shows rich-text controls for editable Text blocks only', async () => {
     const text = await renderBlock('Text', { text: 'Body' }, {}, { editable: true })
     expect(text).toContain('aria-label="Bold"')
