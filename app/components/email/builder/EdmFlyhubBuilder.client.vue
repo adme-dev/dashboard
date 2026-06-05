@@ -17,6 +17,7 @@ import {
 } from '~~/app/utils/edmHtmlEditables'
 import { normaliseEmailImageAssetUrl, type EdmImageAsset } from '~~/app/utils/edmImageAssets'
 import { buildCampaignEditorPatch } from '~~/app/utils/emailCampaignEditor'
+import { buildEmailBuilderTestSendRequest } from '~~/app/utils/emailBuilderTestSend'
 import {
   CUSTOM_MODULE_NEW_CATEGORY,
   EDM_CUSTOM_MODULE_CATEGORY_OPTIONS,
@@ -291,8 +292,8 @@ const testSending = ref(false)
 const testSendError = ref('')
 const testSendResult = ref<{
   sent_to: string
-  message_id: string | null
-  sendability: {
+  message_id?: string | null
+  sendability?: {
     ok: boolean
     htmlBytes: number
     warnings: Array<{ code: string, message: string }>
@@ -362,6 +363,24 @@ function isEmailAddress(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 }
 
+async function saveCampaignContent() {
+  if (!campaignId.value) return
+  await $fetch(`/api/email/campaigns/${campaignId.value}`, {
+    method: 'PATCH',
+    body: buildCampaignEditorPatch({
+      subject: subject.value,
+      previewText: previewText.value,
+      fromEmail: fromEmail.value,
+      bodySource: store.document.value
+    })
+  })
+}
+
+function testSendSuccessDescription(result: NonNullable<typeof testSendResult.value>) {
+  const renderDetails = result.sendability ? ` Rendered HTML: ${result.sendability.htmlBytes} bytes.` : ''
+  return `Sent to ${result.sent_to}.${renderDetails}`
+}
+
 async function sendTestEmail() {
   const recipient = testSendTo.value.trim()
   if (recipient && !isEmailAddress(recipient)) {
@@ -374,14 +393,17 @@ async function sendTestEmail() {
   testSendError.value = ''
   testSendResult.value = null
   try {
-    const res = await $fetch<typeof testSendResult.value>('/api/email/templates/test-send', {
+    if (campaignId.value) await saveCampaignContent()
+    const request = buildEmailBuilderTestSendRequest({
+      campaignId: campaignId.value,
+      to: recipient,
+      subject: subject.value,
+      previewText: previewText.value,
+      bodySource: store.document.value
+    })
+    const res = await $fetch<typeof testSendResult.value>(request.url, {
       method: 'POST',
-      body: {
-        to: recipient || null,
-        subject: subject.value || null,
-        preview_text: previewText.value || null,
-        body_source: store.document.value
-      }
+      body: request.body
     })
     testSendResult.value = res
     toast.add({
@@ -423,15 +445,7 @@ async function save() {
     // Campaign mode: the campaign already exists (its name is managed in the
     // Campaigns tab), so we patch subject + body onto it — no name required.
     if (campaignId.value) {
-      await $fetch(`/api/email/campaigns/${campaignId.value}`, {
-        method: 'PATCH',
-        body: buildCampaignEditorPatch({
-          subject: subject.value,
-          previewText: previewText.value,
-          fromEmail: fromEmail.value,
-          bodySource: store.document.value
-        })
-      })
+      await saveCampaignContent()
       toast.add({ title: 'Saved', description: 'Campaign content saved.', color: 'success' })
       showSaveModal.value = false
       return
@@ -1108,13 +1122,17 @@ onMounted(async () => {
       @pick="applyImageLibraryAsset"
     />
 
-    <!-- Send the current unsaved editor document as a single test email. -->
+    <!-- Send a single test email from the active builder context. -->
     <UModal v-model:open="showTestSendModal" title="Send test email">
       <template #content>
         <div class="p-4 space-y-4">
           <p class="text-sm text-muted">
-            Sends the current editor content through the production renderer and
-            checks the sendability gate before Resend receives it.
+            <template v-if="campaignId">
+              Saves the current campaign content, then checks campaign preflight and sender-domain readiness before Resend receives it.
+            </template>
+            <template v-else>
+              Sends the current editor content through the production renderer and checks the sendability gate before Resend receives it.
+            </template>
           </p>
           <UFormField label="Recipient" help="Leave blank to send to your account email.">
             <UInput
@@ -1140,10 +1158,10 @@ onMounted(async () => {
             v-if="testSendResult"
             color="success"
             title="Test sent"
-            :description="`Sent to ${testSendResult.sent_to}. Rendered HTML: ${testSendResult.sendability.htmlBytes} bytes.`"
+            :description="testSendSuccessDescription(testSendResult)"
           />
           <div
-            v-if="testSendResult?.sendability.warnings.length"
+            v-if="testSendResult?.sendability?.warnings.length"
             class="rounded-md border border-warning/30 bg-warning/5 p-3"
           >
             <p class="text-xs font-semibold uppercase text-warning mb-2">
@@ -1151,7 +1169,7 @@ onMounted(async () => {
             </p>
             <ul class="space-y-1 text-sm text-muted">
               <li
-                v-for="warning in testSendResult.sendability.warnings"
+                v-for="warning in testSendResult.sendability?.warnings"
                 :key="warning.code"
               >
                 {{ warning.message }}
