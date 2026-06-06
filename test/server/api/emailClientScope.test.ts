@@ -227,6 +227,38 @@ describe('email client-scoped route policy', () => {
     }))
   })
 
+  it('trims subscriber search before list reads', async () => {
+    const handler = (await import('~~/server/api/email/subscribers/index.get')).default
+    mockGetQuery.mockReturnValueOnce({
+      q: '  person@example.com  ',
+      page: '1',
+      page_size: '50'
+    })
+
+    await handler({} as never)
+
+    expect(mockListSubscribers).toHaveBeenCalledWith(expect.objectContaining({
+      q: 'person@example.com',
+      clientIds: [CLIENT_1]
+    }))
+  })
+
+  it('omits blank subscriber search before list reads', async () => {
+    const handler = (await import('~~/server/api/email/subscribers/index.get')).default
+    mockGetQuery.mockReturnValueOnce({
+      q: '   ',
+      page: '1',
+      page_size: '50'
+    })
+
+    await handler({} as never)
+
+    expect(mockListSubscribers).toHaveBeenCalledWith(expect.objectContaining({
+      q: undefined,
+      clientIds: [CLIENT_1]
+    }))
+  })
+
   it('blocks scoped manual subscriber add when the email already belongs to another client', async () => {
     const handler = (await import('~~/server/api/email/subscribers/index.post')).default
     mockReadBody.mockResolvedValueOnce({

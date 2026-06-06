@@ -8,7 +8,10 @@ const Query = z.object({
   list_id: z.string().uuid().optional(),
   status: z.enum(['enabled', 'disabled', 'blocklisted']).optional(),
   deliverability: z.enum(['mailable', 'soft_bounced', 'suppressed']).optional(),
-  q: z.string().optional(),
+  q: z.preprocess((value) => {
+    if (typeof value !== 'string') return value
+    return value.trim() || undefined
+  }, z.string().optional()),
   page: z.coerce.number().int().min(1).default(1),
   page_size: z.coerce.number().int().min(1).max(200).default(50)
 })
