@@ -73,6 +73,7 @@ describe('EmailSubscribersPanel', () => {
 
     expect(html).toContain('soft@example.com')
     expect(html).toContain('2 soft bounces')
+    expect(html).toContain('Last soft bounce')
     expect(html).toContain('blocked@example.com')
     expect(html).toContain('hard bounce')
   })

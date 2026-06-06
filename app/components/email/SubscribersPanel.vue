@@ -77,6 +77,18 @@ function softBounceLabel(count?: number | null): string {
   const value = Number(count ?? 0)
   return `${value} soft bounce${value === 1 ? '' : 's'}`
 }
+
+function formatDate(value?: string | null): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+function lastSoftBounceLabel(value?: string | null): string {
+  const formatted = formatDate(value)
+  return formatted ? `Last soft bounce ${formatted}` : 'Soft bounce history recorded'
+}
 </script>
 
 <template>
@@ -147,7 +159,13 @@ function softBounceLabel(count?: number | null): string {
           >
             {{ formatReason(row.suppression_reason) }}
           </UBadge>
-          <UBadge v-else-if="Number(row.soft_bounce_count ?? 0) > 0" color="warning" variant="subtle">
+          <UBadge
+            v-else-if="Number(row.soft_bounce_count ?? 0) > 0"
+            color="warning"
+            variant="subtle"
+            :title="lastSoftBounceLabel(row.last_soft_bounce_at)"
+            :aria-label="lastSoftBounceLabel(row.last_soft_bounce_at)"
+          >
             {{ softBounceLabel(row.soft_bounce_count) }}
           </UBadge>
           <UButton
