@@ -39,7 +39,8 @@ function formatImportErrorMessage(message: string): string {
     duplicate_in_file: 'Duplicate in file',
     empty_csv: 'Empty CSV',
     invalid_email: 'Invalid email',
-    no_email_column: 'No email column'
+    no_email_column: 'No email column',
+    suppressed_or_blocklisted: 'Suppressed or blocklisted'
   }
   return labels[message] ?? message.replace(/_/g, ' ')
 }

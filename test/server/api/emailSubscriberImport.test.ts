@@ -96,6 +96,11 @@ describe('email subscriber import route', () => {
     expect(result).toEqual(expect.objectContaining({
       imported: 1,
       skipped: 3,
+      errors: [
+        { row: 1, message: 'invalid_email' },
+        { row: 4, message: 'duplicate_in_file' },
+        { row: 3, message: 'suppressed_or_blocklisted' }
+      ],
       review: {
         valid_rows: 2,
         invalid_rows: 1,

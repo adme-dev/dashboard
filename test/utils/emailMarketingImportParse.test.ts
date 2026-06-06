@@ -9,29 +9,29 @@ describe('parseSubscriberCsv', () => {
     expect(r.total).toBe(2)
     expect(r.errors).toEqual([])
     expect(r.subscribers).toEqual([
-      { email: 'a@x.com', name: 'Alice', attribs: { company: 'Acme' } },
-      { email: 'b@y.com', name: 'Bob', attribs: { company: 'Globex' } }
+      { email: 'a@x.com', name: 'Alice', attribs: { company: 'Acme' }, row: 1 },
+      { email: 'b@y.com', name: 'Bob', attribs: { company: 'Globex' }, row: 2 }
     ])
   })
 
   it('records an error for rows with invalid/blank email and skips them', () => {
     const csv = 'email,name\nbad-email,Nope\nc@z.com,Cara'
     const r = parseSubscriberCsv(csv)
-    expect(r.subscribers).toEqual([{ email: 'c@z.com', name: 'Cara', attribs: {} }])
+    expect(r.subscribers).toEqual([{ email: 'c@z.com', name: 'Cara', attribs: {}, row: 2 }])
     expect(r.errors).toEqual([{ row: 1, message: 'invalid_email' }])
   })
 
   it('dedupes repeated emails within the file (first wins)', () => {
     const csv = 'email,name\nd@z.com,First\nD@z.com,Second'
     const r = parseSubscriberCsv(csv)
-    expect(r.subscribers).toEqual([{ email: 'd@z.com', name: 'First', attribs: {} }])
+    expect(r.subscribers).toEqual([{ email: 'd@z.com', name: 'First', attribs: {}, row: 1 }])
     expect(r.errors).toEqual([{ row: 2, message: 'duplicate_in_file' }])
   })
 
   it('honors an explicit column mapping and "ignore"', () => {
     const csv = 'Contact,Person,Junk\ne@z.com,Eve,xxx'
     const r = parseSubscriberCsv(csv, { Contact: 'email', Person: 'name', Junk: 'ignore' })
-    expect(r.subscribers).toEqual([{ email: 'e@z.com', name: 'Eve', attribs: {} }])
+    expect(r.subscribers).toEqual([{ email: 'e@z.com', name: 'Eve', attribs: {}, row: 1 }])
   })
 
   it('errors when no email column can be resolved', () => {

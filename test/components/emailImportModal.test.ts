@@ -93,7 +93,8 @@ describe('EmailImportModal', () => {
       skipped: 2,
       errors: [
         { row: 1, message: 'invalid_email' },
-        { row: 4, message: 'duplicate_in_file' }
+        { row: 4, message: 'duplicate_in_file' },
+        { row: 3, message: 'suppressed_or_blocklisted' }
       ],
       review: {
         valid_rows: 2,
@@ -138,6 +139,8 @@ describe('EmailImportModal', () => {
     expect(host.textContent).toContain('Invalid email')
     expect(host.textContent).toContain('Row 4')
     expect(host.textContent).toContain('Duplicate in file')
+    expect(host.textContent).toContain('Row 3')
+    expect(host.textContent).toContain('Suppressed or blocklisted')
 
     app.unmount()
   })

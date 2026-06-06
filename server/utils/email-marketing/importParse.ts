@@ -12,7 +12,7 @@ const EMAIL_HEADERS = new Set(['email', 'email address', 'e-mail', 'email_addres
 const NAME_HEADERS = new Set(['name', 'full name', 'full_name', 'first name', 'first_name'])
 
 export interface CsvImportParse {
-  subscribers: SubscriberInput[]
+  subscribers: Array<SubscriberInput & { row: number }>
   errors: Array<{ row: number, message: string }>
   total: number
 }
@@ -50,7 +50,7 @@ export function parseSubscriberCsv(
     return { subscribers: [], errors: [{ row: 0, message: 'no_email_column' }], total: 0 }
   }
 
-  const subscribers: SubscriberInput[] = []
+  const subscribers: Array<SubscriberInput & { row: number }> = []
   const errors: Array<{ row: number, message: string }> = []
   const seen = new Set<string>()
   const dataRows = rows.slice(1)
@@ -85,7 +85,7 @@ export function parseSubscriberCsv(
       if (role.startsWith('attr:')) attribs[role.slice(5)] = val
     })
 
-    subscribers.push({ email, name, attribs })
+    subscribers.push({ email, name, attribs, row: rowNum })
   }
 
   return { subscribers, errors, total: subscribers.length }
