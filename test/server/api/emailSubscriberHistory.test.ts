@@ -4,6 +4,16 @@ const mockGetRouterParam = vi.fn()
 const mockRequireAuth = vi.fn()
 const mockQueryOne = vi.fn()
 const mockQueryRows = vi.fn()
+const subscriberRow = {
+  id: 'sub-1',
+  email: 'person@example.com',
+  name: 'Person',
+  status: 'enabled',
+  soft_bounce_count: 2,
+  last_soft_bounce_at: '2026-06-05T00:00:00.000Z',
+  created_at: '2026-06-01T00:00:00.000Z',
+  updated_at: '2026-06-05T00:00:00.000Z'
+}
 
 const testGlobal = globalThis as unknown as {
   defineEventHandler: <T>(fn: T) => T
@@ -33,16 +43,9 @@ describe('subscriber history route', () => {
     vi.clearAllMocks()
     mockRequireAuth.mockResolvedValue({ id: 'user-1', role: 'admin' })
     mockGetRouterParam.mockReturnValue('sub-1')
-    mockQueryOne.mockResolvedValue({
-      id: 'sub-1',
-      email: 'person@example.com',
-      name: 'Person',
-      status: 'enabled',
-      soft_bounce_count: 2,
-      last_soft_bounce_at: '2026-06-05T00:00:00.000Z',
-      created_at: '2026-06-01T00:00:00.000Z',
-      updated_at: '2026-06-05T00:00:00.000Z'
-    })
+    mockQueryOne
+      .mockResolvedValueOnce(subscriberRow)
+      .mockResolvedValueOnce(null)
     mockQueryRows
       .mockResolvedValueOnce([{ list_id: 'list-1', list_name: 'Retail', status: 'confirmed' }])
       .mockResolvedValueOnce([{ event_type: 'confirmed', source: 'form' }])
@@ -67,6 +70,7 @@ describe('subscriber history route', () => {
     expect(String(mockQueryRows.mock.calls[3]?.[0])).toContain('email_events')
     expect(result).toEqual({
       subscriber: expect.objectContaining({ id: 'sub-1', email: 'person@example.com' }),
+      current_suppression: null,
       lists: [{ list_id: 'list-1', list_name: 'Retail', status: 'confirmed' }],
       consent_events: [{ event_type: 'confirmed', source: 'form' }],
       suppression_events: [{ reason: 'manual', action: 'added' }],
@@ -74,8 +78,35 @@ describe('subscriber history route', () => {
     })
   })
 
+  it('returns current suppression state even when history is sparse', async () => {
+    const handler = (await import('~~/server/api/email/subscribers/[id]/history.get')).default
+    mockQueryOne
+      .mockReset()
+      .mockResolvedValueOnce(subscriberRow)
+      .mockResolvedValueOnce({
+        email: 'person@example.com',
+        reason: 'hard_bounce',
+        campaign_id: 'camp-1',
+        created_at: '2026-06-04T00:00:00.000Z',
+        updated_at: '2026-06-05T00:00:00.000Z'
+      })
+
+    const result = await handler({} as never)
+
+    expect(String(mockQueryOne.mock.calls[1]?.[0])).toContain('FROM suppression_list')
+    expect(mockQueryOne.mock.calls[1]?.[1]).toEqual(['person@example.com'])
+    expect(result.current_suppression).toEqual({
+      email: 'person@example.com',
+      reason: 'hard_bounce',
+      campaign_id: 'camp-1',
+      created_at: '2026-06-04T00:00:00.000Z',
+      updated_at: '2026-06-05T00:00:00.000Z'
+    })
+  })
+
   it('returns 404 when the subscriber does not exist', async () => {
     const handler = (await import('~~/server/api/email/subscribers/[id]/history.get')).default
+    mockQueryOne.mockReset()
     mockQueryOne.mockResolvedValueOnce(null)
 
     await expect(handler({} as never)).rejects.toMatchObject({

@@ -11,6 +11,13 @@ interface SubscriberHistory {
     created_at: string
     updated_at: string
   }
+  current_suppression?: {
+    email: string
+    reason: string
+    campaign_id?: string | null
+    created_at?: string | null
+    updated_at?: string | null
+  } | null
   lists: Array<{
     list_id: string
     list_name: string
@@ -44,7 +51,7 @@ function eventLabel(event: Record<string, unknown>): string {
 
 function badgeColor(value: unknown): 'success' | 'warning' | 'error' | 'info' | 'neutral' {
   if (value === 'confirmed' || value === 'enabled' || value === 'delivered') return 'success'
-  if (value === 'unconfirmed' || value === 'soft_bounce' || value === 'delivery_delayed') return 'warning'
+  if (value === 'unconfirmed' || value === 'soft_bounce' || value === 'delivery_delayed' || value === 'global_unsubscribe') return 'warning'
   if (value === 'unsubscribed' || value === 'complaint' || value === 'hard_bounce') return 'error'
   if (value === 'manual' || value === 'clicked' || value === 'opened') return 'info'
   return 'neutral'
@@ -108,7 +115,7 @@ watch([open, () => props.subscriberId], load, { immediate: true })
         </div>
 
         <div v-else-if="history" class="flex-1 overflow-auto p-5 space-y-6">
-          <section class="grid gap-3 sm:grid-cols-3">
+          <section class="grid gap-3 sm:grid-cols-4">
             <div class="rounded-lg border border-default p-3">
               <p class="text-xs text-muted">
                 Soft bounces
@@ -118,6 +125,26 @@ watch([open, () => props.subscriberId], load, { immediate: true })
               </p>
               <p v-if="history.subscriber.last_soft_bounce_at" class="text-xs text-muted">
                 Last {{ formatDate(history.subscriber.last_soft_bounce_at) }}
+              </p>
+            </div>
+            <div class="rounded-lg border border-default p-3">
+              <p class="text-xs text-muted">
+                Current suppression
+              </p>
+              <div class="mt-1">
+                <UBadge
+                  v-if="history.current_suppression"
+                  :color="badgeColor(history.current_suppression.reason)"
+                  variant="subtle"
+                >
+                  {{ String(history.current_suppression.reason).replace(/_/g, ' ') }}
+                </UBadge>
+                <p v-else class="text-sm font-medium">
+                  None
+                </p>
+              </div>
+              <p v-if="history.current_suppression?.updated_at" class="mt-1 text-xs text-muted">
+                Updated {{ formatDate(history.current_suppression.updated_at) }}
               </p>
             </div>
             <div class="rounded-lg border border-default p-3">

@@ -27,6 +27,18 @@ export default defineEventHandler(async (event) => {
   if (!subscriber) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   await assertEmailClientAccess(event, user, subscriber.client_id)
 
+  const currentSuppression = await queryOne<{
+    email: string
+    reason: string
+    campaign_id: string | null
+    created_at: string
+    updated_at: string
+  }>(`
+    SELECT email::text AS email, reason::text AS reason, campaign_id, created_at, updated_at
+    FROM suppression_list
+    WHERE email = $1
+  `, [subscriber.email])
+
   const [lists, consentEvents, suppressionEvents, campaignEvents] = await Promise.all([
     queryRows(`
       SELECT
@@ -97,6 +109,7 @@ export default defineEventHandler(async (event) => {
 
   return {
     subscriber,
+    current_suppression: currentSuppression,
     lists,
     consent_events: consentEvents,
     suppression_events: suppressionEvents,
