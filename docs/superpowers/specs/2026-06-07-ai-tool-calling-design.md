@@ -40,6 +40,8 @@ This slice adds a **gated tool-calling loop** to the shared chat engine so the a
 | **Gate model** | **Rule-based on the intent already computed** by `retrieveContext()` (≈ free); `gpt-oss-20b` only for ambiguous cases | Gate only *narrows* (never grants capability). |
 | **Provider routing** | All LLM calls through **Cloudflare AI Gateway** (unified billing, no markup + 5% credit fee, caching, observability, ordered fallback). Extend `claudeClient.ts` to use the gateway `baseURL` (`/anthropic`), mirroring `groqClient.ts` (`/groq`). | Existing `AI_GATEWAY_URL` runtime config; Anthropic + Groq are named unified-billing partners. |
 
+> **Model strategy update (decided 2026-06-07) — Option 2: Groq open-source default.** Supersedes the two "Loop model" rows above. **Primary = Groq `gpt-oss-120b`, fallback = Kimi K2 (`groq/moonshotai/kimi-k2-instruct`)** — both gateway `/groq`; open-weight, cheap/fast, and **fully buildable + bake-off-able locally today** (`GROQ_API_KEY` is set; local env has no `ANTHROPIC_API_KEY`/`AI_GATEWAY_URL`, so the Anthropic path is prod-only). **Claude Sonnet 4.6 is kept as a dormant escape hatch** (`@ai-sdk/anthropic` stays installed; activates only with `ANTHROPIC_API_KEY` + gateway in prod) for prod A/B or if the Groq bake-off shows insufficient tool reliability. The bake-off (§12 / Plan Phase 8) now runs locally across Groq models. Going full Option 1 (drop Anthropic) later = remove the dep + fallback.
+
 ## 3a. Harness Alternatives — Why AI SDK Now, Flue Later
 
 We evaluated standing on a dedicated agent-harness framework instead of the Vercel AI SDK. Two were assessed at the code/docs level:
@@ -257,6 +259,7 @@ Confirmed from source (`cloudflare/agents-starter`, `vercel/ai` v6 docs, `mastra
 - **Confirmation-before-write defaults** (Notion "Always ask") — slice 1 already does this for `create_task`; keep it the default for all future write tools.
 - **Action logs / audit trails** (Asana) — `ai_pending_actions` is the start.
 - **MCP-server exposure** — let external agents (Claude/Copilot) act on platform data; now table-stakes among PSA peers (Wrike, Teamwork, Scoro). Strong future slice.
+- **Skill-packs / prompt libraries** (cf. Flue skills, `krusemediallc/arcads-claude-code`) — package proven domain playbooks as loadable `SKILL.md` + a prompt library. The future **Marketing persona** could ship an ad-formula skill-pack + per-client brand context (`MASTER_CONTEXT`-style) that *orchestrates our existing creative / audio / banner studios + social publishing* via tools.
 
 **Candidate future agent tools** (ranked by value × feasibility; we already hold the data via Xero + time tracking + CRM + rate cards):
 1. `get_client_profitability` (read) — margin by client/project. Highest-trust, zero-risk; answers the #1 agency question.
