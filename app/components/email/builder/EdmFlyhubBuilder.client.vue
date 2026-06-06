@@ -22,6 +22,12 @@ import {
   describeEmailBuilderTestSendError
 } from '~~/app/utils/emailBuilderTestSend'
 import {
+  buildEmailBuilderScheduleRequest,
+  extractEmailBuilderScheduleError,
+  type EmailBuilderSchedulePreflight,
+  type EmailBuilderScheduleRecipientSnapshot
+} from '~~/app/utils/emailBuilderSchedule'
+import {
   CUSTOM_MODULE_NEW_CATEGORY,
   EDM_CUSTOM_MODULE_CATEGORY_OPTIONS,
   inferCustomModuleCategoryFromBlockType,
@@ -303,6 +309,14 @@ const testSendResult = ref<{
     errors: Array<{ code: string, message: string }>
   }
 } | null>(null)
+const showScheduleModal = ref(false)
+const scheduleAt = ref('')
+const scheduling = ref(false)
+const scheduleError = ref('')
+const campaignPreflight = ref<EmailBuilderSchedulePreflight | null>(null)
+const campaignSnapshot = ref<EmailBuilderScheduleRecipientSnapshot | null>(null)
+const schedulePreflight = ref<EmailBuilderSchedulePreflight | null>(null)
+const scheduleSnapshot = ref<EmailBuilderScheduleRecipientSnapshot | null>(null)
 
 const VIEW_TABS: { value: ViewMode, label: string, icon: string }[] = [
   { value: 'editor', label: 'Editor', icon: 'i-lucide-pencil' },
@@ -355,6 +369,14 @@ function openTestSend() {
   testSendError.value = ''
   testSendResult.value = null
   showTestSendModal.value = true
+}
+
+function openSchedule() {
+  scheduleAt.value = ''
+  scheduleError.value = ''
+  schedulePreflight.value = campaignPreflight.value
+  scheduleSnapshot.value = campaignSnapshot.value
+  showScheduleModal.value = true
 }
 
 function isEmailAddress(value: string): boolean {
@@ -414,6 +436,57 @@ async function sendTestEmail() {
     toast.add({ title: 'Test send failed', description: testSendError.value, color: 'error' })
   } finally {
     testSending.value = false
+  }
+}
+
+async function scheduleCampaignFromBuilder() {
+  if (!campaignId.value) return
+  if (!scheduleAt.value) {
+    scheduleError.value = 'Choose a send time.'
+    toast.add({ title: 'Schedule time required', description: scheduleError.value, color: 'error' })
+    return
+  }
+
+  const scheduledDate = new Date(scheduleAt.value)
+  if (Number.isNaN(scheduledDate.getTime())) {
+    scheduleError.value = 'Choose a valid send time.'
+    toast.add({ title: 'Invalid schedule time', description: scheduleError.value, color: 'error' })
+    return
+  }
+
+  scheduling.value = true
+  scheduleError.value = ''
+  schedulePreflight.value = null
+  scheduleSnapshot.value = null
+  try {
+    await saveCampaignContent()
+    const request = buildEmailBuilderScheduleRequest({
+      campaignId: campaignId.value,
+      scheduledAt: scheduledDate.toISOString()
+    })
+    const res = await $fetch<{
+      campaign?: {
+        preflight_result?: EmailBuilderSchedulePreflight | null
+        recipient_snapshot?: EmailBuilderScheduleRecipientSnapshot | null
+      }
+    }>(request.url, {
+      method: 'PATCH',
+      body: request.body
+    })
+    campaignPreflight.value = res.campaign?.preflight_result ?? null
+    campaignSnapshot.value = res.campaign?.recipient_snapshot ?? null
+    schedulePreflight.value = campaignPreflight.value
+    scheduleSnapshot.value = campaignSnapshot.value
+    toast.add({ title: 'Campaign scheduled', color: 'success' })
+    showScheduleModal.value = false
+  } catch (error) {
+    const details = extractEmailBuilderScheduleError(error)
+    scheduleError.value = details.message
+    schedulePreflight.value = details.preflight
+    scheduleSnapshot.value = details.recipientSnapshot
+    toast.add({ title: 'Schedule failed', description: details.message, color: 'error' })
+  } finally {
+    scheduling.value = false
   }
 }
 
@@ -624,6 +697,8 @@ onMounted(async () => {
           from_email: string | null
           preview_text: string | null
           body_source: unknown
+          preflight_result?: EmailBuilderSchedulePreflight | null
+          recipient_snapshot?: EmailBuilderScheduleRecipientSnapshot | null
         }
       }>(`/api/email/campaigns/${campaign}`)
       if (res.campaign?.body_source) {
@@ -633,6 +708,10 @@ onMounted(async () => {
       subject.value = res.campaign.subject || ''
       fromEmail.value = res.campaign.from_email || ''
       previewText.value = res.campaign.preview_text || ''
+      campaignPreflight.value = res.campaign.preflight_result ?? null
+      campaignSnapshot.value = res.campaign.recipient_snapshot ?? null
+      schedulePreflight.value = campaignPreflight.value
+      scheduleSnapshot.value = campaignSnapshot.value
     } catch {
       toast.add({ title: 'Load failed', description: 'Could not load that campaign.', color: 'error' })
     }
@@ -754,6 +833,15 @@ onMounted(async () => {
         :loading="previewLoading"
         label="Refresh"
         @click="renderPreview()"
+      />
+      <UButton
+        v-if="campaignId"
+        icon="i-lucide-calendar-clock"
+        variant="outline"
+        color="neutral"
+        size="sm"
+        label="Schedule"
+        @click="openSchedule()"
       />
       <UButton
         icon="i-lucide-send"
@@ -1187,6 +1275,58 @@ onMounted(async () => {
               label="Send test"
               :loading="testSending"
               @click="sendTestEmail()"
+            />
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Schedule the active campaign from the builder after saving current content. -->
+    <UModal v-model:open="showScheduleModal" title="Schedule campaign" :ui="{ content: 'max-w-2xl' }">
+      <template #content>
+        <div class="p-4 space-y-4">
+          <div>
+            <p class="text-sm font-semibold">
+              Schedule “{{ name || 'campaign' }}”
+            </p>
+            <p class="text-sm text-muted">
+              Saves the current campaign content, then runs the campaign preflight before booking the send.
+            </p>
+          </div>
+
+          <EmailCampaignPreflightPanel
+            :preflight="schedulePreflight"
+            :recipient-snapshot="scheduleSnapshot"
+          />
+
+          <UFormField label="Send at" required>
+            <UInput
+              v-model="scheduleAt"
+              type="datetime-local"
+              class="w-full"
+            />
+          </UFormField>
+
+          <UAlert
+            v-if="scheduleError"
+            color="error"
+            title="Schedule failed"
+            :description="scheduleError"
+          />
+
+          <div class="flex justify-end gap-2 pt-2">
+            <UButton
+              variant="ghost"
+              color="neutral"
+              label="Cancel"
+              @click="showScheduleModal = false"
+            />
+            <UButton
+              color="primary"
+              icon="i-lucide-calendar-check"
+              label="Schedule"
+              :loading="scheduling"
+              @click="scheduleCampaignFromBuilder()"
             />
           </div>
         </div>
