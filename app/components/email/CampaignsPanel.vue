@@ -177,6 +177,18 @@ const scheduleSnapshot = computed(() =>
 const sendPreflight = computed(() => sendTarget.value?.preflight_result ?? null)
 const sendSnapshot = computed(() => snapshotFallback(sendTarget.value))
 const scheduleBlocked = computed(() => !!schedulePreflight.value?.blocked)
+const sendBlocked = computed(() => !!sendPreflight.value?.blocked)
+
+function rowSendBlocked(row: CampaignRow): boolean {
+  return row.preflight_result?.blocked === true
+}
+
+function sendActionTooltip(row: CampaignRow): string {
+  if (!sendingEnabled.value) return 'Sending disabled'
+  if (rowSendBlocked(row)) return 'Resolve blocked preflight checks'
+  if (row.to_send < 1) return 'No recipients ready'
+  return 'Send'
+}
 
 async function scheduleCampaign() {
   const row = scheduleTarget.value
@@ -218,6 +230,14 @@ async function scheduleCampaign() {
 async function doSend() {
   const row = sendTarget.value
   if (!row) return
+  if (sendBlocked.value) {
+    toast.add({
+      title: 'Campaign is blocked',
+      description: 'Resolve the blocked preflight checks before sending.',
+      color: 'error'
+    })
+    return
+  }
   busyId.value = row.id
   try {
     const res = await $fetch<{ sent: number, remaining: number, status: string }>(
@@ -375,14 +395,14 @@ const TERMINAL = new Set(['sent', 'cancelled'])
             :disabled="!sendingEnabled"
             @click="testSend(row)"
           />
-          <UTooltip v-if="SENDABLE.has(row.status)" :text="sendingEnabled ? 'Send' : 'Sending disabled'">
+          <UTooltip v-if="SENDABLE.has(row.status)" :text="sendActionTooltip(row)">
             <UButton
               icon="i-lucide-send"
               color="primary"
               size="xs"
               label="Send"
               :loading="busyId === row.id"
-              :disabled="!sendingEnabled || row.to_send < 1"
+              :disabled="!sendingEnabled || row.to_send < 1 || rowSendBlocked(row)"
               @click="confirmSend(row)"
             />
           </UTooltip>
@@ -519,6 +539,14 @@ const TERMINAL = new Set(['sent', 'cancelled'])
             :preflight="sendPreflight"
             :recipient-snapshot="sendSnapshot"
           />
+          <UAlert
+            v-if="sendBlocked"
+            color="error"
+            variant="subtle"
+            icon="i-lucide-shield-alert"
+            title="Campaign is blocked"
+            description="Resolve the blocked preflight checks before sending."
+          />
           <div class="flex justify-end gap-2 pt-2">
             <UButton
               variant="ghost"
@@ -531,6 +559,7 @@ const TERMINAL = new Set(['sent', 'cancelled'])
               icon="i-lucide-send"
               label="Send now"
               :loading="busyId === sendTarget?.id"
+              :disabled="sendBlocked"
               @click="doSend()"
             />
           </div>
