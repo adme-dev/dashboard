@@ -9,6 +9,8 @@ export type ToolContext = {
   userId: string
   userRole: string
   clientScope?: string
+  /** Set by the loop; required for write tools that persist a proposal (create_task). */
+  conversationId?: string
   event: H3Event
 }
 
