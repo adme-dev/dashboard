@@ -86,6 +86,7 @@ export async function cancelIneligiblePendingRecipients(campaignId: string): Pro
   return execute(`
     UPDATE campaign_recipients cr
     SET status = 'cancelled',
+        claimed_at = NULL,
         error = CASE
           WHEN EXISTS (
             SELECT 1 FROM suppression_list sup WHERE sup.email = cr.email

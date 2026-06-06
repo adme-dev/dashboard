@@ -42,6 +42,7 @@ describe('cancelIneligiblePendingRecipients', () => {
     expect(cancelled).toBe(3)
     expect(String(executeMock.mock.calls[0][0])).toContain('suppression_list')
     expect(String(executeMock.mock.calls[0][0])).toContain('status = \'cancelled\'')
+    expect(String(executeMock.mock.calls[0][0])).toContain('claimed_at = NULL')
     expect(executeMock.mock.calls[0][1]).toEqual(['camp-1'])
   })
 
