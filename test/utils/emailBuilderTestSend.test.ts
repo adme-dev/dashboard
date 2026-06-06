@@ -75,4 +75,18 @@ describe('describeEmailBuilderTestSendError', () => {
 
     expect(message).toBe('sendability_failed: Subject line is required.')
   })
+
+  it('includes body validation issues from invalid test-send payloads', () => {
+    const message = describeEmailBuilderTestSendError({
+      data: {
+        statusMessage: 'invalid_body',
+        data: [
+          { message: 'Invalid email address.' },
+          { message: 'Body source is required.' }
+        ]
+      }
+    })
+
+    expect(message).toBe('invalid_body: Invalid email address.; Body source is required.')
+  })
 })

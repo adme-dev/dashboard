@@ -48,6 +48,11 @@ function collectTestSendDetails(payload: unknown): string[] {
     errors?: TestSendErrorDetail[]
     warnings?: TestSendErrorDetail[]
   } | null | undefined
+  if (Array.isArray(payload)) {
+    return payload
+      .map(messageForDetail)
+      .filter((message): message is string => !!message)
+  }
   const checks = Array.isArray(data?.preflight?.checks)
     ? data.preflight.checks.filter(check => check.status !== 'pass')
     : []
