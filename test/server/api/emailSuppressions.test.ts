@@ -5,10 +5,13 @@ const mockReadBody = vi.fn()
 const mockGetRouterParam = vi.fn()
 const mockRequireAuth = vi.fn()
 const mockRequireWriteAccess = vi.fn()
+const mockGetAssignedClientIds = vi.fn()
 const mockQueryOne = vi.fn()
 const mockQueryRows = vi.fn()
 const mockQueryCount = vi.fn()
 const mockExecute = vi.fn()
+
+const CLIENT_1 = '11111111-1111-4111-8111-111111111111'
 
 const testGlobal = globalThis as unknown as {
   defineEventHandler: <T>(fn: T) => T
@@ -33,6 +36,10 @@ vi.mock('~~/server/utils/auth', () => ({
   requireWriteAccess: (...args: unknown[]) => mockRequireWriteAccess(...args)
 }))
 
+vi.mock('~~/server/utils/clientScoping', () => ({
+  getAssignedClientIds: (...args: unknown[]) => mockGetAssignedClientIds(...args)
+}))
+
 vi.mock('~~/server/utils/db', () => ({
   queryOne: (...args: unknown[]) => mockQueryOne(...args),
   queryRows: (...args: unknown[]) => mockQueryRows(...args),
@@ -45,6 +52,7 @@ describe('email suppressions routes', () => {
     vi.clearAllMocks()
     mockRequireAuth.mockResolvedValue({ id: 'user-1', role: 'admin' })
     mockRequireWriteAccess.mockResolvedValue({ id: 'user-1', role: 'admin' })
+    mockGetAssignedClientIds.mockResolvedValue([CLIENT_1])
     mockGetQuery.mockReturnValue({})
     mockReadBody.mockResolvedValue({})
     mockGetRouterParam.mockReturnValue('person%40example.com')
@@ -154,6 +162,25 @@ describe('email suppressions routes', () => {
     await expect(handler({} as never)).rejects.toMatchObject({
       statusCode: 409,
       statusMessage: 'suppression_removal_requires_confirmation'
+    })
+    expect(mockExecute).not.toHaveBeenCalled()
+  })
+
+  it('requires agency admin role before removing confirmed hard-bounce suppressions', async () => {
+    const handler = (await import('~~/server/api/email/suppressions/[email].delete')).default
+    mockRequireWriteAccess.mockResolvedValueOnce({
+      id: 'am-1',
+      role: 'account_manager',
+      is_active: true
+    })
+    mockReadBody.mockResolvedValue({ confirm: true, note: 'verified provider status' })
+    mockQueryOne
+      .mockResolvedValueOnce({ email: 'person@example.com', reason: 'hard_bounce' })
+      .mockResolvedValueOnce({ id: 'sub-1', email: 'person@example.com', client_id: CLIENT_1 })
+
+    await expect(handler({} as never)).rejects.toMatchObject({
+      statusCode: 403,
+      statusMessage: 'suppression_removal_admin_required'
     })
     expect(mockExecute).not.toHaveBeenCalled()
   })

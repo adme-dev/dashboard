@@ -2,7 +2,7 @@
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { execute, queryOne } from '~~/server/utils/db'
-import { assertEmailClientAccess } from '~~/server/utils/email-marketing/access'
+import { assertEmailClientAccess, isAgencyEmailUser } from '~~/server/utils/email-marketing/access'
 import { recordSuppressionEvent } from '~~/server/utils/email-marketing/audit'
 import { isValidEmail, normalizeSubscriberEmail } from '~~/server/utils/email-marketing/email'
 import type { SuppressionReason } from '~~/server/utils/email-marketing/types'
@@ -47,8 +47,13 @@ export default defineEventHandler(async (event) => {
   )
   await assertEmailClientAccess(event, user, subscriber?.client_id ?? null)
 
-  if (CONFIRMATION_REQUIRED.has(current.reason) && !parsed.data.confirm) {
-    throw createError({ statusCode: 409, statusMessage: 'suppression_removal_requires_confirmation' })
+  if (CONFIRMATION_REQUIRED.has(current.reason)) {
+    if (!isAgencyEmailUser(user)) {
+      throw createError({ statusCode: 403, statusMessage: 'suppression_removal_admin_required' })
+    }
+    if (!parsed.data.confirm) {
+      throw createError({ statusCode: 409, statusMessage: 'suppression_removal_requires_confirmation' })
+    }
   }
 
   await execute('DELETE FROM suppression_list WHERE email = $1', [email])
