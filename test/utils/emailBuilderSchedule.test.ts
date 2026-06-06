@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   buildEmailBuilderScheduleRequest,
   extractEmailBuilderScheduleError,
-  isEmailBuilderScheduleBlocked
+  isEmailBuilderScheduleBlocked,
+  validateEmailBuilderScheduleAt
 } from '~~/app/utils/emailBuilderSchedule'
 
 describe('buildEmailBuilderScheduleRequest', () => {
@@ -63,5 +64,17 @@ describe('isEmailBuilderScheduleBlocked', () => {
       ]
     })).toBe(false)
     expect(isEmailBuilderScheduleBlocked(null)).toBe(false)
+  })
+})
+
+describe('validateEmailBuilderScheduleAt', () => {
+  const now = new Date('2026-06-06T10:00:00.000Z')
+
+  it('requires a valid future schedule time before the builder calls the API', () => {
+    expect(validateEmailBuilderScheduleAt('', now)).toBe('Choose a send time.')
+    expect(validateEmailBuilderScheduleAt('not-a-date', now)).toBe('Choose a valid send time.')
+    expect(validateEmailBuilderScheduleAt('2026-06-06T09:59:59.999Z', now)).toBe('Choose a future send time.')
+    expect(validateEmailBuilderScheduleAt('2026-06-06T10:00:00.000Z', now)).toBe('Choose a future send time.')
+    expect(validateEmailBuilderScheduleAt('2026-06-06T10:00:01.000Z', now)).toBeNull()
   })
 })

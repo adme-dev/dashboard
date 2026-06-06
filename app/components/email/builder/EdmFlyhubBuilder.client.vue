@@ -25,6 +25,7 @@ import {
   buildEmailBuilderScheduleRequest,
   extractEmailBuilderScheduleError,
   isEmailBuilderScheduleBlocked,
+  validateEmailBuilderScheduleAt,
   type EmailBuilderSchedulePreflight,
   type EmailBuilderScheduleRecipientSnapshot
 } from '~~/app/utils/emailBuilderSchedule'
@@ -453,19 +454,18 @@ async function scheduleCampaignFromBuilder() {
     })
     return
   }
-  if (!scheduleAt.value) {
-    scheduleError.value = 'Choose a send time.'
-    toast.add({ title: 'Schedule time required', description: scheduleError.value, color: 'error' })
+  const scheduleValidation = validateEmailBuilderScheduleAt(scheduleAt.value)
+  if (scheduleValidation) {
+    scheduleError.value = scheduleValidation
+    toast.add({
+      title: scheduleAt.value ? 'Invalid schedule time' : 'Schedule time required',
+      description: scheduleError.value,
+      color: 'error'
+    })
     return
   }
 
   const scheduledDate = new Date(scheduleAt.value)
-  if (Number.isNaN(scheduledDate.getTime())) {
-    scheduleError.value = 'Choose a valid send time.'
-    toast.add({ title: 'Invalid schedule time', description: scheduleError.value, color: 'error' })
-    return
-  }
-
   scheduling.value = true
   scheduleError.value = ''
   schedulePreflight.value = null

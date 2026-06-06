@@ -41,6 +41,17 @@ export function buildEmailBuilderScheduleRequest(input: {
   }
 }
 
+export function validateEmailBuilderScheduleAt(
+  value: string,
+  now: Date = new Date()
+): string | null {
+  if (!value) return 'Choose a send time.'
+  const scheduledDate = new Date(value)
+  if (Number.isNaN(scheduledDate.getTime())) return 'Choose a valid send time.'
+  if (scheduledDate.getTime() <= now.getTime()) return 'Choose a future send time.'
+  return null
+}
+
 export function extractEmailBuilderScheduleError(error: unknown): {
   message: string
   preflight: EmailBuilderSchedulePreflight | null
