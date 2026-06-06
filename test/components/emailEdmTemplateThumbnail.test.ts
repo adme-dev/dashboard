@@ -5,10 +5,13 @@ import { renderToString } from 'vue/server-renderer'
 import EdmTemplateThumbnail from '~~/app/components/email/builder/EdmTemplateThumbnail.vue'
 import { EDM_STARTER_TEMPLATES } from '~~/app/utils/edmPresets'
 
+const iconStub = { name: 'UIcon', props: ['name'], template: '<i :data-icon="name" />' }
+
 async function renderThumbnail(templateId: string, width?: number) {
   const app = createSSRApp({
     render: () => h(EdmTemplateThumbnail, width ? { templateId, width } : { templateId })
   })
+  app.component('UIcon', iconStub)
   return renderToString(app)
 }
 

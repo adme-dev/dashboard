@@ -10,10 +10,13 @@ const document: EdmFlyhubDocument = {
   t: { type: 'Text', data: { props: { text: 'Saved body copy' }, style: {} } }
 }
 
+const iconStub = { name: 'UIcon', props: ['name'], template: '<i :data-icon="name" />' }
+
 async function renderThumbnail(width?: number) {
   const app = createSSRApp({
     render: () => h(EdmDocumentThumbnail, width ? { document, width } : { document })
   })
+  app.component('UIcon', iconStub)
   return renderToString(app)
 }
 

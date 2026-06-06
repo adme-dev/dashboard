@@ -4,12 +4,15 @@ import { renderToString } from 'vue/server-renderer'
 import EdmSectionThumbnail from '~~/app/components/email/builder/EdmSectionThumbnail.vue'
 import { EDM_SECTION_CATEGORIES, findSectionPreset } from '~~/app/utils/edmPresets'
 
+const iconStub = { name: 'UIcon', props: ['name'], template: '<i :data-icon="name" />' }
+
 async function renderThumbnail(presetId: string) {
   const preset = findSectionPreset(presetId)
   if (!preset) throw new Error(`Preset not found: ${presetId}`)
   const app = createSSRApp({
     render: () => h(EdmSectionThumbnail, { preset })
   })
+  app.component('UIcon', iconStub)
   return renderToString(app)
 }
 
@@ -63,6 +66,7 @@ describe('EdmSectionThumbnail', () => {
     const app = createSSRApp({
       render: () => h(EdmSectionThumbnail, { preset, width: 300 })
     })
+    app.component('UIcon', iconStub)
     const html = await renderToString(app)
     // The inner canvas renders at full email width, but uses layout-affecting
     // zoom so the flyout tile does not keep the unscaled section height.
@@ -77,6 +81,7 @@ describe('EdmSectionThumbnail', () => {
     const app = createSSRApp({
       render: () => h(EdmSectionThumbnail, { preset, surface: 'transparent' })
     })
+    app.component('UIcon', iconStub)
     const html = await renderToString(app)
     expect(html).toContain('edm-section-thumbnail')
     expect(html).toContain('bg-transparent')
