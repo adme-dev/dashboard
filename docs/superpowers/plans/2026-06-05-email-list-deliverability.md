@@ -45,7 +45,7 @@ Result: default typecheck reaches the local Node heap limit, high-heap typecheck
 
 ---
 
-## Task 1: Backend Audit Foundation
+## [x] Task 1: Backend Audit Foundation
 
 **Files:**
 - Create: `server/database/migrations/165-email-consent-suppression-audit.sql`
@@ -59,7 +59,7 @@ Result: default typecheck reaches the local Node heap limit, high-heap typecheck
 - Subscriber rows can track soft-bounce count and last soft-bounce time.
 - Migration is additive and safe to run more than once.
 
-## Task 2: Integrate Audit Into Existing Flows
+## [x] Task 2: Integrate Audit Into Existing Flows
 
 **Files:**
 - Modify: `server/utils/email-marketing/subscriptions.ts`
@@ -77,7 +77,7 @@ Result: default typecheck reaches the local Node heap limit, high-heap typecheck
 - Resend complaint records `complaint` suppression history.
 - Imports record `imported` consent/provenance events.
 
-## Task 3: Soft Bounce Handling
+## [x] Task 3: Soft Bounce Handling
 
 **Files:**
 - Modify: `server/utils/email-marketing/resendEvents.ts`
@@ -90,7 +90,7 @@ Result: default typecheck reaches the local Node heap limit, high-heap typecheck
 - Soft bounces do not immediately insert into `suppression_list`.
 - A configurable threshold can later suppress repeated soft bounces without changing the public schema.
 
-## Task 4: Scheduled Send Preflight And Snapshot
+## [x] Task 4: Scheduled Send Preflight And Snapshot
 
 **Files:**
 - Modify: `server/utils/email-marketing/campaignSend.ts`
@@ -107,7 +107,7 @@ Result: default typecheck reaches the local Node heap limit, high-heap typecheck
 - Sending rechecks suppression immediately before claiming recipients.
 - Test send uses the same renderer and preflight path as campaign send.
 
-## Task 5: First-Party Click Redirect And UTM Attribution
+## [x] Task 5: First-Party Click Redirect And UTM Attribution
 
 **Files:**
 - Create: `server/utils/email-marketing/trackingLinks.ts`
@@ -123,7 +123,7 @@ Result: default typecheck reaches the local Node heap limit, high-heap typecheck
 - Click events record campaign, subscriber, destination URL, and metadata.
 - Unsubscribe, `mailto:`, `tel:`, and anchor-only links are not rewritten.
 
-## Task 6: Bot And Scanner Click Filtering
+## [x] Task 6: Bot And Scanner Click Filtering
 
 **Files:**
 - Create: `server/utils/email-marketing/clickClassifier.ts`
@@ -134,7 +134,7 @@ Result: default typecheck reaches the local Node heap limit, high-heap typecheck
 - Known scanner user agents and impossible timing patterns are tagged as suspected scanner clicks.
 - Scanner clicks remain stored but do not inflate primary human-click metrics.
 
-## Task 7: Subscriber And Suppression Admin UI
+## [x] Task 7: Subscriber And Suppression Admin UI
 
 **Files:**
 - Modify: `app/pages/agency/email/index.vue`
@@ -154,7 +154,7 @@ Result: default typecheck reaches the local Node heap limit, high-heap typecheck
 - Staff can remove only manual/global-unsubscribe suppressions where policy allows.
 - Hard bounce and complaint removals require explicit admin confirmation and are audited.
 
-## Task 8: Campaign Schedule UX
+## [x] Task 8: Campaign Schedule UX
 
 **Files:**
 - Modify: `app/pages/agency/email/compose.vue`
@@ -167,7 +167,7 @@ Result: default typecheck reaches the local Node heap limit, high-heap typecheck
 - Recipient snapshot includes selected lists, deduped recipients, unsubscribed exclusions, suppressed exclusions, and blocklisted exclusions.
 - Users cannot schedule a blocked campaign.
 
-## Task 9: Campaign Reporting And Tracking Join
+## [x] Task 9: Campaign Reporting And Tracking Join
 
 **Files:**
 - Modify: campaign report page/components.
@@ -180,7 +180,7 @@ Result: default typecheck reaches the local Node heap limit, high-heap typecheck
 - Opens are labelled as directional.
 - Email click IDs can join to website/session/conversion tracking where available.
 
-## Task 10: Client-Scoped Ownership Policy
+## [x] Task 10: Client-Scoped Ownership Policy
 
 **Files:**
 - Modify: list/subscriber/campaign APIs under `server/api/email`.
