@@ -1,8 +1,8 @@
 // server/api/email/campaigns/[id].patch.ts
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
-import { assertEmailClientAccess } from '~~/server/utils/email-marketing/access'
-import { getCampaign, scheduleCampaign, updateCampaign } from '~~/server/utils/email-marketing/campaigns'
+import { assertEmailClientAccess, assertScopedCampaignLists } from '~~/server/utils/email-marketing/access'
+import { getCampaign, getCampaignListClientIds, scheduleCampaign, updateCampaign } from '~~/server/utils/email-marketing/campaigns'
 import { isValidSegment } from '~~/server/utils/email-marketing/segment'
 import { isEmailConfigured } from '~~/server/utils/email'
 import { getAppUrl } from '~~/server/utils/appUrl'
@@ -42,6 +42,7 @@ export default defineEventHandler(async (event) => {
   await assertEmailClientAccess(event, user, existing.client_id)
   const { scheduled_at: scheduledAt, ...draftPatch } = parsed.data
   if (scheduledAt) {
+    assertScopedCampaignLists(user, existing.client_id, await getCampaignListClientIds(id))
     if (Object.keys(draftPatch).length > 0) {
       const updated = await updateCampaign(id, draftPatch)
       if (!updated) throw createError({ statusCode: 404, statusMessage: 'not_found' })

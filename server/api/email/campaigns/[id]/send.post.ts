@@ -4,8 +4,8 @@
 // (recipients materialized + unsubscribe link present). Sends in a capped,
 // paced loop; large campaigns continue on subsequent calls (2b-2b: queue/cron).
 import { requireWriteAccess } from '~~/server/utils/auth'
-import { assertEmailClientAccess } from '~~/server/utils/email-marketing/access'
-import { getCampaign, prepareCampaignHtmlForSend, setCampaignStatus } from '~~/server/utils/email-marketing/campaigns'
+import { assertEmailClientAccess, assertScopedCampaignLists } from '~~/server/utils/email-marketing/access'
+import { getCampaign, getCampaignListClientIds, prepareCampaignHtmlForSend, setCampaignStatus } from '~~/server/utils/email-marketing/campaigns'
 import { buildCampaignPreflight, canEnterSending } from '~~/server/utils/email-marketing/campaignSend'
 import { isCampaignSendingEnabled, runCampaignSend } from '~~/server/utils/email-marketing/campaignSender'
 import { isEmailConfigured } from '~~/server/utils/email'
@@ -33,6 +33,7 @@ export default defineEventHandler(async (event) => {
   let campaign = await getCampaign(id)
   if (!campaign) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   await assertEmailClientAccess(event, user, campaign.client_id)
+  assertScopedCampaignLists(user, campaign.client_id, await getCampaignListClientIds(id))
   if (!campaign.from_email) {
     throw createError({ statusCode: 422, statusMessage: 'missing_from_email' })
   }

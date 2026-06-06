@@ -4,6 +4,7 @@ const mockReadBody = vi.fn()
 const mockGetRouterParam = vi.fn()
 const mockRequireWriteAccess = vi.fn()
 const mockGetCampaign = vi.fn()
+const mockGetCampaignListClientIds = vi.fn()
 const mockUpdateCampaign = vi.fn()
 const mockScheduleCampaign = vi.fn()
 const mockIsEmailConfigured = vi.fn()
@@ -32,6 +33,7 @@ vi.mock('~~/server/utils/auth', () => ({
 
 vi.mock('~~/server/utils/email-marketing/campaigns', () => ({
   getCampaign: (...args: unknown[]) => mockGetCampaign(...args),
+  getCampaignListClientIds: (...args: unknown[]) => mockGetCampaignListClientIds(...args),
   updateCampaign: (...args: unknown[]) => mockUpdateCampaign(...args),
   scheduleCampaign: (...args: unknown[]) => mockScheduleCampaign(...args)
 }))
@@ -61,6 +63,7 @@ describe('campaign patch scheduling', () => {
     mockGetAppUrl.mockReturnValue('https://app.example.com')
     mockResolveCampaignSenderDomains.mockReturnValue(['adme.net.au'])
     mockGetCampaign.mockResolvedValue({ id: 'camp-1', client_id: null })
+    mockGetCampaignListClientIds.mockResolvedValue([])
     mockUpdateCampaign.mockResolvedValue({ id: 'camp-1', name: 'June offers' })
     mockScheduleCampaign.mockResolvedValue({ id: 'camp-1', status: 'scheduled' })
   })

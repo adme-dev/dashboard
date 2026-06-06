@@ -125,6 +125,16 @@ export async function getCampaignListIds(campaignId: string): Promise<string[]> 
   return rows.map(r => r.list_id)
 }
 
+export async function getCampaignListClientIds(campaignId: string): Promise<Array<{ client_id: string | null }>> {
+  return queryRows<{ client_id: string | null }>(`
+    SELECT l.client_id
+    FROM campaign_lists cl
+    JOIN email_lists l ON l.id = cl.list_id
+    WHERE cl.campaign_id = $1
+      AND l.archived_at IS NULL
+  `, [campaignId])
+}
+
 export async function buildCampaignRecipientSnapshot(
   campaignId: string,
   listIds: string[],
