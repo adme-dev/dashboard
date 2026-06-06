@@ -129,6 +129,17 @@ describe('email suppressions routes', () => {
     expect(result).toEqual({ ok: true, email: 'person@example.com', action: 'added' })
   })
 
+  it('requires a staff note when manually suppressing an email', async () => {
+    const handler = (await import('~~/server/api/email/suppressions/index.post')).default
+    mockReadBody.mockResolvedValue({ email: 'person@example.com', note: '   ' })
+
+    await expect(handler({} as never)).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: 'suppression_note_required'
+    })
+    expect(mockExecute).not.toHaveBeenCalled()
+  })
+
   it('removes manual suppressions and audits the removal', async () => {
     const handler = (await import('~~/server/api/email/suppressions/[email].delete')).default
     mockReadBody.mockResolvedValue({ note: 'restored by admin' })
@@ -152,6 +163,18 @@ describe('email suppressions routes', () => {
       '{"note":"restored by admin","confirmed":false}'
     ])
     expect(result).toEqual({ ok: true, email: 'person@example.com', removed: true })
+  })
+
+  it('requires a staff note when removing a suppression', async () => {
+    const handler = (await import('~~/server/api/email/suppressions/[email].delete')).default
+    mockReadBody.mockResolvedValue({ note: '   ' })
+    mockQueryOne.mockResolvedValueOnce({ email: 'person@example.com', reason: 'manual' })
+
+    await expect(handler({} as never)).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: 'suppression_note_required'
+    })
+    expect(mockExecute).not.toHaveBeenCalled()
   })
 
   it('requires explicit confirmation before removing hard-bounce suppressions', async () => {
@@ -188,9 +211,12 @@ describe('email suppressions routes', () => {
   it('removes confirmed complaint suppressions and audits the confirmation', async () => {
     const handler = (await import('~~/server/api/email/suppressions/[email].delete')).default
     mockReadBody.mockResolvedValue({ confirm: true, note: 'verified provider status' })
-    mockQueryOne
-      .mockResolvedValueOnce({ email: 'person@example.com', reason: 'complaint' })
-      .mockResolvedValueOnce({ id: 'sub-1', email: 'person@example.com' })
+    mockQueryOne.mockImplementation((sql: string) => {
+      if (sql.includes('FROM suppression_list')) {
+        return Promise.resolve({ email: 'person@example.com', reason: 'complaint' })
+      }
+      return Promise.resolve({ id: 'sub-1', email: 'person@example.com', client_id: null })
+    })
 
     await handler({} as never)
 

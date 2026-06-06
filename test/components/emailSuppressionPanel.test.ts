@@ -45,13 +45,23 @@ const stubs: Record<string, unknown> = {
     emits: ['click'],
     template: '<button :data-icon="icon" :disabled="disabled" @click="$emit(\'click\', $event)"><slot />{{ label }}</button>'
   },
-  UInput: { name: 'UInput', props: ['modelValue', 'placeholder'], template: '<input :placeholder="placeholder">' },
+  UInput: {
+    name: 'UInput',
+    props: ['modelValue', 'placeholder'],
+    emits: ['update:modelValue'],
+    template: '<input :value="modelValue" :placeholder="placeholder" @input="$emit(\'update:modelValue\', $event.target.value)">'
+  },
   USelectMenu: {
     name: 'USelectMenu',
     props: ['items'],
     template: '<select><option v-for="item in items" :key="item.value">{{ item.label }}</option></select>'
   },
-  UTextarea: { name: 'UTextarea', props: ['modelValue', 'placeholder'], template: '<textarea :placeholder="placeholder" />' }
+  UTextarea: {
+    name: 'UTextarea',
+    props: ['modelValue', 'placeholder'],
+    emits: ['update:modelValue'],
+    template: '<textarea :value="modelValue" :placeholder="placeholder" @input="$emit(\'update:modelValue\', $event.target.value)" />'
+  }
 }
 
 async function flush() {
@@ -123,6 +133,26 @@ describe('EmailSuppressionPanel', () => {
         note: 'Support confirmed consent before lifting'
       }
     })
+
+    app.unmount()
+  })
+
+  it('requires a reason before manually suppressing an email', async () => {
+    const { app, host } = await mountPanel()
+    const emailInput = Array.from(host.querySelectorAll('input'))
+      .find(input => input.getAttribute('placeholder') === 'person@example.com') as HTMLInputElement | undefined
+    const suppressButton = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Suppress'))
+
+    if (emailInput) {
+      emailInput.value = 'new@example.com'
+      emailInput.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    suppressButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush()
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(toastAddMock).toHaveBeenCalledWith({ title: 'Suppression reason required', color: 'error' })
 
     app.unmount()
   })

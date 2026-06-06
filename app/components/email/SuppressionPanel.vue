@@ -78,13 +78,18 @@ async function addSuppression() {
     toast.add({ title: 'Email required', color: 'error' })
     return
   }
+  const note = form.note.trim()
+  if (!note) {
+    toast.add({ title: 'Suppression reason required', color: 'error' })
+    return
+  }
   saving.value = true
   try {
     const result = await $fetch<{ action: 'added' | 'ignored', email: string }>('/api/email/suppressions', {
       method: 'POST',
       body: {
         email: form.email,
-        note: form.note || undefined
+        note
       }
     })
     toast.add({

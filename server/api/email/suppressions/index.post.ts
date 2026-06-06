@@ -21,13 +21,16 @@ export default defineEventHandler(async (event) => {
   if (!isValidEmail(parsed.data.email)) {
     throw createError({ statusCode: 400, statusMessage: 'invalid_email' })
   }
-
   const email = normalizeSubscriberEmail(parsed.data.email)
   const subscriber = await queryOne<{ id: string, email: string, client_id: string | null }>(
     'SELECT id, email, client_id FROM email_subscribers WHERE email = $1',
     [email]
   )
   await assertEmailClientAccess(event, user, subscriber?.client_id ?? null)
+  const note = parsed.data.note?.trim() ?? ''
+  if (!note) {
+    throw createError({ statusCode: 400, statusMessage: 'suppression_note_required' })
+  }
   const existing = await queryOne<{ email: string, reason: string }>(
     'SELECT email::text, reason FROM suppression_list WHERE email = $1',
     [email]
@@ -49,7 +52,7 @@ export default defineEventHandler(async (event) => {
     source: 'manual',
     actorUserId: user.id,
     metadata: {
-      ...(parsed.data.note ? { note: parsed.data.note } : {}),
+      note,
       ...(existing ? { existingReason: existing.reason } : {})
     }
   })

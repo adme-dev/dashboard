@@ -55,6 +55,10 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 409, statusMessage: 'suppression_removal_requires_confirmation' })
     }
   }
+  const note = parsed.data.note?.trim() ?? ''
+  if (!note) {
+    throw createError({ statusCode: 400, statusMessage: 'suppression_note_required' })
+  }
 
   await execute('DELETE FROM suppression_list WHERE email = $1', [email])
   await recordSuppressionEvent({
@@ -65,7 +69,7 @@ export default defineEventHandler(async (event) => {
     source: 'manual',
     actorUserId: user.id,
     metadata: {
-      ...(parsed.data.note ? { note: parsed.data.note } : {}),
+      note,
       confirmed: parsed.data.confirm === true
     }
   })
