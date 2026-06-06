@@ -348,6 +348,35 @@ export function isRateLimitError(err: unknown): boolean {
   return /rate.?limit|too many requests/i.test(e.message || '')
 }
 
+function retryAfterFromHeaders(headers: unknown): string | undefined {
+  if (!headers || typeof headers !== 'object') return undefined
+  const get = (headers as { get?: unknown }).get
+  if (typeof get === 'function') {
+    const value = get.call(headers, 'retry-after') ?? get.call(headers, 'Retry-After')
+    return typeof value === 'string' && value.trim() ? value : undefined
+  }
+  const record = headers as Record<string, unknown>
+  const value = record['retry-after'] ?? record['Retry-After']
+  if (typeof value === 'string' && value.trim()) return value
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  return undefined
+}
+
+export function retryAfterHeaderFromError(err: unknown): string | undefined {
+  if (!err || typeof err !== 'object') return undefined
+  const e = err as {
+    headers?: unknown
+    response?: { headers?: unknown }
+    retryAfter?: unknown
+    retry_after?: unknown
+  }
+  const header = retryAfterFromHeaders(e.headers) ?? retryAfterFromHeaders(e.response?.headers)
+  if (header) return header
+  if (typeof e.retryAfter === 'string' || typeof e.retryAfter === 'number') return String(e.retryAfter)
+  if (typeof e.retry_after === 'string' || typeof e.retry_after === 'number') return String(e.retry_after)
+  return undefined
+}
+
 // Parse a Retry-After header (integer seconds, or HTTP-date) into a clamped
 // number of seconds. Falls back to `fallbackSec` when absent/unparseable.
 export function parseRetryAfter(

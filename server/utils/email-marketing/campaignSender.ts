@@ -12,7 +12,7 @@
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { getResendClient, isEmailConfigured } from '~~/server/utils/email'
-import { RESEND_BATCH_LIMIT, buildTrackedBatchEmail, isRateLimitError, parseRetryAfter, canEnterSending, buildCampaignBridgeInput, buildCampaignPreflight } from './campaignSend'
+import { RESEND_BATCH_LIMIT, buildTrackedBatchEmail, isRateLimitError, parseRetryAfter, retryAfterHeaderFromError, canEnterSending, buildCampaignBridgeInput, buildCampaignPreflight } from './campaignSend'
 import { bridgeCommunication } from '~~/server/utils/crm/commsDb'
 import { signEmailToken, emailLinkSecret } from './links'
 import { getCampaign, prepareCampaignHtmlForSend, setCampaignStatus, type Campaign } from './campaigns'
@@ -134,7 +134,7 @@ export async function sendCampaignChunk(campaign: Campaign): Promise<ChunkResult
     if (error) {
       if (isRateLimitError(error)) {
         await releaseClaims(recipients.map(r => r.id))
-        return { sent: 0, failed: 0, rateLimited: true, retryAfterSec: parseRetryAfter(undefined) }
+        return { sent: 0, failed: 0, rateLimited: true, retryAfterSec: parseRetryAfter(retryAfterHeaderFromError(error)) }
       }
       throw new Error(error.message || 'batch_send_failed')
     }
@@ -168,7 +168,7 @@ export async function sendCampaignChunk(campaign: Campaign): Promise<ChunkResult
   } catch (err) {
     if (isRateLimitError(err)) {
       await releaseClaims(recipients.map(r => r.id))
-      return { sent: 0, failed: 0, rateLimited: true, retryAfterSec: parseRetryAfter(undefined) }
+      return { sent: 0, failed: 0, rateLimited: true, retryAfterSec: parseRetryAfter(retryAfterHeaderFromError(err)) }
     }
     const message = err instanceof Error ? err.message : 'send_failed'
     for (const r of recipients) {
