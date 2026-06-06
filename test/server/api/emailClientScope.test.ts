@@ -6,9 +6,12 @@ const mockGetRouterParam = vi.fn()
 const mockRequireAuth = vi.fn()
 const mockRequireWriteAccess = vi.fn()
 const mockGetAssignedClientIds = vi.fn()
+const mockQueryOne = vi.fn()
 const mockListLists = vi.fn()
 const mockCreateList = vi.fn()
 const mockListSubscribers = vi.fn()
+const mockUpsertSubscriber = vi.fn()
+const mockAddToList = vi.fn()
 const mockListCampaigns = vi.fn()
 const mockCreateCampaign = vi.fn()
 const mockGetCampaign = vi.fn()
@@ -75,10 +78,18 @@ vi.mock('~~/server/utils/clientScoping', () => ({
   getAssignedClientIds: (...args: unknown[]) => mockGetAssignedClientIds(...args)
 }))
 
+vi.mock('~~/server/utils/db', () => ({
+  queryOne: (...args: unknown[]) => mockQueryOne(...args),
+  queryRows: vi.fn(),
+  execute: vi.fn()
+}))
+
 vi.mock('~~/server/utils/email-marketing/db', () => ({
   listLists: (...args: unknown[]) => mockListLists(...args),
   createList: (...args: unknown[]) => mockCreateList(...args),
   listSubscribers: (...args: unknown[]) => mockListSubscribers(...args),
+  upsertSubscriber: (...args: unknown[]) => mockUpsertSubscriber(...args),
+  addToList: (...args: unknown[]) => mockAddToList(...args),
   getListClientIds: (...args: unknown[]) => mockGetListClientIds(...args)
 }))
 
@@ -120,9 +131,12 @@ describe('email client-scoped route policy', () => {
     mockRequireAuth.mockResolvedValue(scopedUser)
     mockRequireWriteAccess.mockResolvedValue(scopedUser)
     mockGetAssignedClientIds.mockResolvedValue([CLIENT_1])
+    mockQueryOne.mockResolvedValue(null)
     mockListLists.mockResolvedValue([])
     mockCreateList.mockResolvedValue({ id: LIST_1, client_id: CLIENT_1 })
     mockListSubscribers.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 50 })
+    mockUpsertSubscriber.mockResolvedValue('sub-1')
+    mockAddToList.mockResolvedValue(undefined)
     mockListCampaigns.mockResolvedValue([])
     mockCreateCampaign.mockResolvedValue({ id: 'camp-1', client_id: CLIENT_1 })
     mockGetCampaign.mockResolvedValue({ id: 'camp-1', client_id: CLIENT_1, status: 'draft' })
@@ -205,6 +219,22 @@ describe('email client-scoped route policy', () => {
       deliverability: 'suppressed',
       clientIds: [CLIENT_1]
     }))
+  })
+
+  it('blocks scoped manual subscriber add when the email already belongs to another client', async () => {
+    const handler = (await import('~~/server/api/email/subscribers/index.post')).default
+    mockReadBody.mockResolvedValueOnce({
+      email: 'existing@example.com',
+      list_ids: [LIST_1]
+    })
+    mockQueryOne.mockResolvedValueOnce({ id: 'sub-other', client_id: CLIENT_2 })
+
+    await expect(handler({} as never)).rejects.toMatchObject({
+      statusCode: 403,
+      statusMessage: 'email_list_client_mismatch'
+    })
+    expect(mockUpsertSubscriber).not.toHaveBeenCalled()
+    expect(mockAddToList).not.toHaveBeenCalled()
   })
 
   it('passes assigned client ids into campaign reads for scoped users', async () => {
