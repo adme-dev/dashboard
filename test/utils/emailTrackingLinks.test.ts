@@ -39,6 +39,13 @@ describe('email tracking links', () => {
       .toBe('https://dealer.example.com/offers?utm_source=partner&utm_medium=email&utm_campaign=camp-1')
   })
 
+  it('appends email click IDs for website attribution joins without overwriting an existing value', () => {
+    expect(appendEmailUtm('https://dealer.example.com/offers', 'camp-1', 'click-1'))
+      .toBe('https://dealer.example.com/offers?utm_source=email&utm_medium=email&utm_campaign=camp-1&email_click_id=click-1')
+    expect(appendEmailUtm('https://dealer.example.com/offers?email_click_id=existing', 'camp-1', 'click-1'))
+      .toContain('email_click_id=existing')
+  })
+
   it('rewrites only trackable links and skips unsubscribe, mailto, tel, and anchors', async () => {
     const html = [
       '<a href="https://dealer.example.com/offers">Offer</a>',

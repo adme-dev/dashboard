@@ -55,8 +55,12 @@ export function buildEventRows(
 ): TrackingEventRow[] {
   return payload.events.map((ev) => {
     const attr = (ev.attribution ?? {}) as Record<string, string | null | undefined>
-    const flat: any = {}
+    const flat = {} as Record<(typeof ATTR_KEYS)[number], string | null>
     for (const k of ATTR_KEYS) flat[k] = attr[k] ?? null
+    const eventData = { ...((ev.event_data ?? {}) as Record<string, unknown>) }
+    if (attr.email_click_id && !eventData.email_click_id) {
+      eventData.email_click_id = attr.email_click_id
+    }
     return {
       site_id: site.id,
       client_id: site.clientId,
@@ -67,7 +71,7 @@ export function buildEventRows(
       page_url: ev.page_url ?? null,
       referrer: ev.referrer ?? null,
       ...flat,
-      event_data: (ev.event_data ?? {}) as Record<string, unknown>,
+      event_data: eventData,
       consent: ctx.consent,
       ua: ctx.ua,
       ip_hash: ctx.ipHash,

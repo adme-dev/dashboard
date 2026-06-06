@@ -48,7 +48,8 @@ const AttributionSchema = z.object({
   fbp: z.string().max(512).nullable().optional(),
   ttclid: z.string().max(512).nullable().optional(),
   msclkid: z.string().max(512).nullable().optional(),
-  li_fat_id: z.string().max(512).nullable().optional()
+  li_fat_id: z.string().max(512).nullable().optional(),
+  email_click_id: z.string().max(128).nullable().optional()
 })
 
 const TrackEventSchema = z.object({

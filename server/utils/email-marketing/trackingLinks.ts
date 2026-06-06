@@ -26,11 +26,16 @@ export interface RewriteTrackingInput {
 const HREF_RE = /\bhref\s*=\s*(["'])(.*?)\1/gi
 const SKIP_PROTOCOL_RE = /^(?:mailto:|tel:|sms:)/i
 
-export function appendEmailUtm(destinationUrl: string, campaignId: string): string {
+export function appendEmailUtm(
+  destinationUrl: string,
+  campaignId: string,
+  emailClickId?: string | null
+): string {
   const url = new URL(destinationUrl)
   if (!url.searchParams.has('utm_source')) url.searchParams.set('utm_source', 'email')
   if (!url.searchParams.has('utm_medium')) url.searchParams.set('utm_medium', 'email')
   if (!url.searchParams.has('utm_campaign')) url.searchParams.set('utm_campaign', campaignId)
+  if (emailClickId && !url.searchParams.has('email_click_id')) url.searchParams.set('email_click_id', emailClickId)
   return url.toString()
 }
 

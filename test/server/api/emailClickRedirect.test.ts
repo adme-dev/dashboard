@@ -67,17 +67,17 @@ describe('email click redirect route', () => {
     expect(mockExecute).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO email_events'),
       [
+        expect.stringMatching(/^[0-9a-f-]{36}$/),
         'camp-1',
         'sub-1',
-        expect.stringContaining('https://dealer.example.com/offers?utm_source=email&utm_medium=email&utm_campaign=camp-1'),
+        expect.stringMatching(/^https:\/\/dealer\.example\.com\/offers\?utm_source=email&utm_medium=email&utm_campaign=camp-1&email_click_id=[0-9a-f-]{36}$/),
         expect.stringContaining('"source":"first_party_redirect"')
       ]
     )
-    expect(mockSendRedirect).toHaveBeenCalledWith(
-      expect.anything(),
-      'https://dealer.example.com/offers?utm_source=email&utm_medium=email&utm_campaign=camp-1',
-      302
-    )
+    const insertedClickId = mockExecute.mock.calls[0]?.[1]?.[0]
+    const redirectedUrl = mockSendRedirect.mock.calls[0]?.[1]
+    expect(redirectedUrl).toBe(`https://dealer.example.com/offers?utm_source=email&utm_medium=email&utm_campaign=camp-1&email_click_id=${insertedClickId}`)
+    expect(mockSendRedirect).toHaveBeenCalledWith(expect.anything(), redirectedUrl, 302)
   })
 
   it('serves the generated clean /email/click tracking URL', async () => {
@@ -107,7 +107,7 @@ describe('email click redirect route', () => {
     )
     expect(mockSendRedirect).toHaveBeenCalledWith(
       expect.anything(),
-      'https://dealer.example.com/offers?utm_source=email&utm_medium=email&utm_campaign=camp-1',
+      expect.stringMatching(/^https:\/\/dealer\.example\.com\/offers\?utm_source=email&utm_medium=email&utm_campaign=camp-1&email_click_id=[0-9a-f-]{36}$/),
       302
     )
   })
@@ -149,8 +149,8 @@ describe('email click redirect route', () => {
       }
     } as never)
 
-    expect(mockExecute.mock.calls[0]?.[1]?.[3]).toContain('"suspectedScanner":true')
-    expect(mockExecute.mock.calls[0]?.[1]?.[3]).toContain('scanner_user_agent')
+    expect(mockExecute.mock.calls[0]?.[1]?.[4]).toContain('"suspectedScanner":true')
+    expect(mockExecute.mock.calls[0]?.[1]?.[4]).toContain('scanner_user_agent')
   })
 
   it('uses recipient send timing to tag impossible scanner clicks', async () => {
@@ -182,8 +182,8 @@ describe('email click redirect route', () => {
         expect.stringContaining('FROM campaign_recipients'),
         ['camp-1', 'sub-1']
       )
-      expect(mockExecute.mock.calls[0]?.[1]?.[3]).toContain('"suspectedScanner":true')
-      expect(mockExecute.mock.calls[0]?.[1]?.[3]).toContain('impossible_timing')
+      expect(mockExecute.mock.calls[0]?.[1]?.[4]).toContain('"suspectedScanner":true')
+      expect(mockExecute.mock.calls[0]?.[1]?.[4]).toContain('impossible_timing')
     } finally {
       vi.useRealTimers()
     }

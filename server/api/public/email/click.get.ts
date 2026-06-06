@@ -1,3 +1,4 @@
+import { randomUUID } from 'uncrypto'
 import { emailLinkSecret } from '~~/server/utils/email-marketing/links'
 import { appendEmailUtm, verifyEmailClickToken } from '~~/server/utils/email-marketing/trackingLinks'
 import { classifyEmailClick } from '~~/server/utils/email-marketing/clickClassifier'
@@ -48,7 +49,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'invalid_click_token' })
   }
 
-  const attributedUrl = appendEmailUtm(destination, campaignId)
+  const clickId = randomUUID()
+  const attributedUrl = appendEmailUtm(destination, campaignId, clickId)
   const userAgent = requestHeader(event, 'user-agent')
   const clickedAt = new Date().toISOString()
   const recipientSend = await queryOne<{ sent_at: string | null }>(`
@@ -68,13 +70,14 @@ export default defineEventHandler(async (event) => {
     ipAddress: requestHeader(event, 'cf-connecting-ip') ?? requestHeader(event, 'x-forwarded-for'),
     sentAt: recipientSend?.sent_at ?? null,
     clickedAt,
+    emailClickId: clickId,
     clickClassification: classification
   }
 
   await execute(`
-    INSERT INTO email_events (campaign_id, subscriber_id, event_type, url, raw)
-    VALUES ($1, $2, 'clicked', $3, $4::jsonb)
-  `, [campaignId, subscriberId, attributedUrl, JSON.stringify(metadata)])
+    INSERT INTO email_events (id, campaign_id, subscriber_id, event_type, url, raw)
+    VALUES ($1, $2, $3, 'clicked', $4, $5::jsonb)
+  `, [clickId, campaignId, subscriberId, attributedUrl, JSON.stringify(metadata)])
 
   return sendRedirect(event, attributedUrl, 302)
 })

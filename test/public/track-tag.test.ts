@@ -76,6 +76,20 @@ describe('public/track.js transport', () => {
     }
   })
 
+  it('forwards email click IDs from the landing URL attribution', () => {
+    window.history.pushState({}, '', '/offers?utm_source=email&utm_medium=email&utm_campaign=camp-1&email_click_id=click-1')
+    loadTag()
+    ;(window as any).xf.init({ writeKey: 'TESTKEY' })
+    beacons = []
+    ;(window as any).xf.track('page_view', {})
+
+    const parsed = parseTrackPayload(JSON.parse(beacons[0].body))
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) {
+      expect(parsed.payload.events[0].attribution?.email_click_id).toBe('click-1')
+    }
+  })
+
   it('forwards the raw _xf_consent cookie value in the batch (cross-origin relay)', () => {
     const cookie = JSON.stringify({ tracking: true, analytics: true, marketing: false, updatedAt: '2026-05-31T00:00:00Z' })
     document.cookie = '_xf_consent=' + encodeURIComponent(cookie)

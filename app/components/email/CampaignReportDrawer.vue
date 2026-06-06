@@ -30,6 +30,7 @@ interface AttributionSummary {
   sessions: number
   page_views: number
   conversions: number
+  click_attributed_events: number
   leads: number
 }
 
@@ -38,6 +39,7 @@ interface AttributionSession {
   anon_id: string
   events: number
   conversions: number
+  email_click_ids?: string[] | null
   first_seen_at?: string | null
   last_seen_at?: string | null
 }
@@ -241,6 +243,14 @@ watch([open, () => props.campaignId], load, { immediate: true })
               </div>
               <div class="rounded-lg border border-default p-3">
                 <p class="text-xs text-muted">
+                  Email-linked
+                </p>
+                <p class="mt-1 text-lg font-semibold tabular-nums">
+                  {{ attributionSummary?.click_attributed_events ?? 0 }}
+                </p>
+              </div>
+              <div class="rounded-lg border border-default p-3">
+                <p class="text-xs text-muted">
                   Leads
                 </p>
                 <p class="mt-1 text-lg font-semibold tabular-nums">
@@ -301,6 +311,9 @@ watch([open, () => props.campaignId], load, { immediate: true })
                   </p>
                   <p class="text-xs text-muted">
                     {{ session.events }} event(s) - {{ session.conversions }} conversion(s)
+                  </p>
+                  <p v-if="session.email_click_ids?.length" class="mt-1 truncate text-xs text-muted">
+                    Clicks {{ session.email_click_ids.join(', ') }}
                   </p>
                 </div>
                 <p class="shrink-0 text-xs text-muted">

@@ -402,7 +402,8 @@
         key === 'msclkid' ||
         key === 'gbraid' ||
         key === 'wbraid' ||
-        key === 'li_fat_id'
+        key === 'li_fat_id' ||
+        key === 'email_click_id'
       ) {
         params[key] = decodeURIComponent(pair[1] || '')
       }
@@ -446,6 +447,7 @@
       gbraid: utmParams.gbraid,
       wbraid: utmParams.wbraid,
       li_fat_id: utmParams.li_fat_id,
+      email_click_id: utmParams.email_click_id,
       timestamp: new Date().toISOString(),
     }
 
@@ -486,6 +488,7 @@
           ttclid: payload.ttclid,
           msclkid: payload.msclkid,
           li_fat_id: payload.li_fat_id,
+          email_click_id: payload.email_click_id,
         },
         event_data: payload.event_data || {},
       }],

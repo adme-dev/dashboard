@@ -21,6 +21,7 @@ export default defineEventHandler(async (event) => {
     sessions: number | string
     page_views: number | string
     conversions: number | string
+    click_attributed_events: number | string
   }>(`
     SELECT
       COUNT(*)::int AS website_events,
@@ -28,7 +29,8 @@ export default defineEventHandler(async (event) => {
       COUNT(*) FILTER (WHERE event_name = 'page_view')::int AS page_views,
       COUNT(*) FILTER (
         WHERE event_name IN ('form_submit', 'generate_lead', 'test_drive_booking')
-      )::int AS conversions
+      )::int AS conversions,
+      COUNT(*) FILTER (WHERE event_data->>'email_click_id' IS NOT NULL)::int AS click_attributed_events
     FROM tracking_events
     WHERE utm_source = 'email'
       AND utm_medium = 'email'
@@ -53,7 +55,8 @@ export default defineEventHandler(async (event) => {
       COUNT(*)::int AS events,
       COUNT(*) FILTER (
         WHERE event_name IN ('form_submit', 'generate_lead', 'test_drive_booking')
-      )::int AS conversions
+      )::int AS conversions,
+      ARRAY_REMOVE(ARRAY_AGG(DISTINCT event_data->>'email_click_id'), NULL) AS email_click_ids
     FROM tracking_events
     WHERE utm_source = 'email'
       AND utm_medium = 'email'
@@ -70,6 +73,7 @@ export default defineEventHandler(async (event) => {
       sessions: toNumber(tracking?.sessions),
       page_views: toNumber(tracking?.page_views),
       conversions: toNumber(tracking?.conversions),
+      click_attributed_events: toNumber(tracking?.click_attributed_events),
       leads: toNumber(leadSummary?.leads)
     },
     sessions

@@ -43,7 +43,8 @@ describe('email campaign attribution route', () => {
         website_events: 12,
         sessions: 4,
         page_views: 5,
-        conversions: 2
+        conversions: 2,
+        click_attributed_events: 3
       })
       .mockResolvedValueOnce({ leads: 1 })
     mockQueryRows.mockResolvedValue([
@@ -51,7 +52,8 @@ describe('email campaign attribution route', () => {
         session_id: 'sess-1',
         anon_id: 'anon-1',
         events: 4,
-        conversions: 1
+        conversions: 1,
+        email_click_ids: ['click-1']
       }
     ])
   })
@@ -65,9 +67,11 @@ describe('email campaign attribution route', () => {
     expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('FROM tracking_events')
     expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('utm_source = \'email\'')
     expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('utm_campaign = $1')
+    expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('event_data->>\'email_click_id\'')
     expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('COALESCE(consent->>\'tracking\', \'denied\') = \'granted\'')
     expect(String(mockQueryOne.mock.calls[1]?.[0])).toContain('FROM leads')
     expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('COALESCE(consent->>\'tracking\', \'denied\') = \'granted\'')
+    expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('ARRAY_AGG(DISTINCT event_data->>\'email_click_id\')')
     expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('GROUP BY session_id, anon_id')
     expect(result).toEqual({
       summary: {
@@ -75,6 +79,7 @@ describe('email campaign attribution route', () => {
         sessions: 4,
         page_views: 5,
         conversions: 2,
+        click_attributed_events: 3,
         leads: 1
       },
       sessions: [
@@ -82,7 +87,8 @@ describe('email campaign attribution route', () => {
           session_id: 'sess-1',
           anon_id: 'anon-1',
           events: 4,
-          conversions: 1
+          conversions: 1,
+          email_click_ids: ['click-1']
         }
       ]
     })

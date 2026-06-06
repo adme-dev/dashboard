@@ -43,6 +43,21 @@ describe('parseTrackPayload', () => {
     }
   })
 
+  it('accepts email click IDs in attribution for email campaign joins', () => {
+    const r = parseTrackPayload({
+      events: [{
+        ...valid.events[0],
+        attribution: {
+          ...valid.events[0].attribution,
+          email_click_id: 'click-1'
+        }
+      }]
+    })
+
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.payload.events[0].attribution?.email_click_id).toBe('click-1')
+  })
+
   it('rejects an event with empty event_id (Pitfall 4)', () => {
     const bad = { events: [{ ...valid.events[0], event_id: '' }] }
     const r = parseTrackPayload(bad)
