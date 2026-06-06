@@ -10,6 +10,7 @@ import { isCampaignSendingEnabled } from '~~/server/utils/email-marketing/campai
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { getResendClient, isEmailConfigured } from '~~/server/utils/email'
 import { resolveCampaignSenderDomains } from '~~/server/utils/email-marketing/senderIdentity'
+import { emailLinkSecret, signEmailToken } from '~~/server/utils/email-marketing/links'
 
 const Body = z.object({ to: z.string().email().optional() })
 
@@ -59,7 +60,8 @@ export default defineEventHandler(async (event) => {
     preparedCampaign,
     { email: to, name: testUser.name ?? null, subscriber_id: 'test' },
     id,
-    appUrl
+    appUrl,
+    await signEmailToken(emailLinkSecret(), 'unsub', id, 'test')
   )
   const { error } = await client.emails.send({
     from: email.from,

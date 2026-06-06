@@ -42,7 +42,8 @@ vi.mock('~~/server/utils/email-marketing/campaignSender', () => ({
 
 vi.mock('~~/server/utils/email', () => ({
   getResendClient: (...args: unknown[]) => mockGetResendClient(...args),
-  isEmailConfigured: (...args: unknown[]) => mockIsEmailConfigured(...args)
+  isEmailConfigured: (...args: unknown[]) => mockIsEmailConfigured(...args),
+  getCachedBinding: vi.fn(() => undefined)
 }))
 
 vi.mock('~~/server/utils/email-marketing/senderIdentity', () => ({
@@ -123,5 +124,32 @@ describe('campaign test-send preflight', () => {
       html: expect.stringContaining('src="https://email-assets.example.com/car.png"')
     }))
     expect(mockEmailsSend.mock.calls[0]?.[0]?.html).not.toContain('/email/postcards/car.png')
+  })
+
+  it('signs the unsubscribe URL in campaign test-send headers and body', async () => {
+    const handler = (await import('~~/server/api/email/campaigns/[id]/test-send.post')).default
+    mockGetCampaign.mockResolvedValue({
+      id: 'camp-1',
+      subject: 'Subject',
+      from_name: 'XeroFlow',
+      from_email: 'sales@example.com',
+      reply_to: null,
+      client_id: null,
+      body_html: [
+        '<p>Offer</p>',
+        '<a href="{{ unsubscribe_url }}">Unsubscribe</a>',
+        '<footer>XeroFlow Agency, 1 Market Street, Melbourne VIC 3000</footer>'
+      ].join('')
+    })
+
+    await handler({} as never)
+
+    const payload = mockEmailsSend.mock.calls[0]?.[0]
+    expect(payload?.headers['List-Unsubscribe']).toMatch(
+      /^<https:\/\/app\.test\/email\/unsubscribe\?c=camp-1&s=test&t=[a-f0-9]{32}>$/
+    )
+    expect(payload?.html).toMatch(
+      /https:\/\/app\.test\/email\/unsubscribe\?c=camp-1&s=test&t=[a-f0-9]{32}/
+    )
   })
 })
