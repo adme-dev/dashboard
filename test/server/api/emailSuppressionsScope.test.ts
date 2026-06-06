@@ -115,4 +115,22 @@ describe('email suppressions client-scoped policy', () => {
     })
     expect(mockExecute).not.toHaveBeenCalled()
   })
+
+  it('checks scoped access before requiring hard-bounce removal confirmation', async () => {
+    const handler = (await import('~~/server/api/email/suppressions/[email].delete')).default
+    mockReadBody.mockResolvedValueOnce({})
+    mockQueryOne
+      .mockResolvedValueOnce({ email: 'person@example.com', reason: 'hard_bounce' })
+      .mockResolvedValueOnce({
+        id: 'sub-1',
+        email: 'person@example.com',
+        client_id: CLIENT_2
+      })
+
+    await expect(handler({} as never)).rejects.toMatchObject({
+      statusCode: 403,
+      statusMessage: 'email_client_forbidden'
+    })
+    expect(mockExecute).not.toHaveBeenCalled()
+  })
 })

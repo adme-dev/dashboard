@@ -41,15 +41,15 @@ export default defineEventHandler(async (event) => {
   )
   if (!current) throw createError({ statusCode: 404, statusMessage: 'not_found' })
 
-  if (CONFIRMATION_REQUIRED.has(current.reason) && !parsed.data.confirm) {
-    throw createError({ statusCode: 409, statusMessage: 'suppression_removal_requires_confirmation' })
-  }
-
   const subscriber = await queryOne<{ id: string, email: string, client_id: string | null }>(
     'SELECT id, email, client_id FROM email_subscribers WHERE email = $1',
     [email]
   )
   await assertEmailClientAccess(event, user, subscriber?.client_id ?? null)
+
+  if (CONFIRMATION_REQUIRED.has(current.reason) && !parsed.data.confirm) {
+    throw createError({ statusCode: 409, statusMessage: 'suppression_removal_requires_confirmation' })
+  }
 
   await execute('DELETE FROM suppression_list WHERE email = $1', [email])
   await recordSuppressionEvent({
