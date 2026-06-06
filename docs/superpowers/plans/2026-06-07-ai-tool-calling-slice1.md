@@ -12,6 +12,19 @@
 
 ---
 
+## ⚠️ Implementation corrections (verified against installed `ai@6.0.197`, 2026-06-07)
+
+The pre-build research got three SDK details backwards + a few codebase assumptions. The shipped code follows the **corrected** facts below; later code snippets in this plan still show the old names — trust the code, not the snippets.
+
+- **`stepCountIs(5)`**, NOT `isStepCount(5)` — `isStepCount` does not exist in `ai@6.0.197`.
+- **HITL approval:** installed v6 uses tool-level **`needsApproval`** (there is **no** call-level `toolApproval` on `generateText`). We use **neither** — Option B is **"execute-that-proposes"**: `create_task`'s `execute` only persists an `ai_pending_actions` proposal and returns `{ proposalId, resolved }`; `runToolLoop` reads it from the **tool RESULT** (not an approval-request part); the confirm endpoint does the real write.
+- **`MockLanguageModelV3`** (from `ai/test`), NOT `MockLanguageModelV2`.
+- **Migration `171`** (`171-ai-tool-calling.sql`), not 163; `ai_pending_actions.user_id`/`confirmed_by` are **UUID** (match `ai_conversations.user_id`).
+- **`permissions.ts` had no `hasPermission`/`PermissionCategory`** — added `roleHasPermission(role, group: PermissionGroup)` (fail-closed); registry uses `PermissionGroup` for `requiredPermission`; write tools hidden from read-only roles pre-send.
+- **Model default = Groq `gpt-oss-120b` / fallback Kimi K2** (Option 2; supersedes the "Sonnet 4.6 default" line above). Finance/Xero data is route-mediated → tool `defaultDeps` use internal `$fetch`, not a pure util.
+
+---
+
 ## File Structure
 
 **Create**
