@@ -61,4 +61,20 @@ describe('listSubscribers', () => {
     expect(countSql).toContain('s.status = \'enabled\'')
     expect(countSql).toContain('sup.email IS NULL')
   })
+
+  it('excludes list-level unsubscribes from list-scoped mailable reads', async () => {
+    await listSubscribers({
+      page: 1,
+      pageSize: 50,
+      listId: 'list-1',
+      deliverability: 'mailable'
+    })
+
+    const rowsSql = String(queryRowsMock.mock.calls[0]?.[0])
+    const countSql = String(queryCountMock.mock.calls[0]?.[0])
+    expect(rowsSql).toContain('JOIN subscriber_lists sl ON sl.subscriber_id = s.id')
+    expect(rowsSql).toContain('sl.status <> \'unsubscribed\'')
+    expect(countSql).toContain('JOIN subscriber_lists sl ON sl.subscriber_id = s.id')
+    expect(countSql).toContain('sl.status <> \'unsubscribed\'')
+  })
 })

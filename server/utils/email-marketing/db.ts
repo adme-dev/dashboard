@@ -216,6 +216,7 @@ export async function listSubscribers(opts: {
   } else if (opts.deliverability === 'mailable') {
     conds.push('s.status = \'enabled\'')
     conds.push('sup.email IS NULL')
+    if (opts.listId) conds.push('sl.status <> \'unsubscribed\'')
   }
   addEmailClientScopeCondition(conds, params, 's.client_id', opts.clientIds)
   if (opts.q) {
