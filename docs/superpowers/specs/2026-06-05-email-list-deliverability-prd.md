@@ -1,6 +1,6 @@
 # PRD - Email Lists, Consent, Suppression, Scheduled Sends, and Tracking
 
-**Status:** Active
+**Status:** Implemented
 **Date:** 2026-06-05
 **Owner:** Paul / XeroFlow Agency
 **Surface:** `/agency/email`
@@ -24,15 +24,15 @@ Already implemented in the repo:
 - Signed unsubscribe flow and RFC 8058 headers on campaign sends.
 - Sendability/test-send gate that checks unsubscribe presence, HTML size, and sendable media URLs.
 
-Main gaps:
+Implemented by this epic:
 
-- No consent/provenance audit history.
-- No suppression history beyond the current `suppression_list` row.
-- No soft-bounce model.
-- No first-party click redirect or site-tracking join.
-- Limited scheduled-send observability and no locked send snapshot.
-- No list-management UI for suppression/consent history.
-- Client/tenant ownership is additive but needs policy enforcement before client-scoped sending.
+- Consent/provenance audit history is stored in `email_consent_events`.
+- Suppression history is stored in `suppression_events` alongside the current `suppression_list` state.
+- Soft-bounce count and last-soft-bounce timestamp are tracked on subscribers; optional threshold suppression is configurable.
+- First-party click redirect, signed tracking links, UTM attribution, scanner classification, and campaign attribution joins are implemented.
+- Scheduled-send preflight, recipient exclusion snapshots, queue claim cleanup, pause/cancel safety, and dispatch preflight failure persistence are implemented.
+- Subscriber detail, suppression management, import review, schedule preflight, and campaign report UI surfaces are implemented.
+- Client-scoped list, subscriber, campaign, media, and suppression policies are enforced for email routes.
 
 ## 3. Goals
 
