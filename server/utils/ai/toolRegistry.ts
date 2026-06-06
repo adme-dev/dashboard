@@ -1,6 +1,6 @@
 import type { z } from 'zod'
 import { tool, type Tool } from 'ai'
-import { roleHasPermission, type PermissionGroup } from '~~/server/utils/permissions'
+import { roleHasPermission, isReadOnlyRole, type PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext, ToolResult } from './toolContext'
 import { spotlight } from './spotlight'
 
@@ -28,7 +28,11 @@ export interface AiTool<A> {
  * Synchronous + fail-closed (see roleHasPermission in permissions.ts).
  */
 export function filterToolsForUser<A>(reg: AiTool<A>[], role: string): AiTool<A>[] {
-  return reg.filter(t => !t.requiredPermission || roleHasPermission(role, t.requiredPermission))
+  return reg.filter((t) => {
+    // Write tools are never shown to read-only roles (viewer/guest).
+    if (t.mutates && isReadOnlyRole(role)) return false
+    return !t.requiredPermission || roleHasPermission(role, t.requiredPermission)
+  })
 }
 
 /**

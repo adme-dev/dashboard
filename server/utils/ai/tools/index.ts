@@ -8,9 +8,9 @@ import { clientOverviewTool } from './clients'
 import { knowledgeTool } from './knowledge'
 import { socialTool } from './social'
 import { briefsTool } from './briefs'
-// createTaskTool (the single write tool) is appended in Phase 5.
+import { createTaskTool } from './createTask'
 
-/** The assembled tool registry — 9 read tools (Slice 1). */
+/** The assembled tool registry — 9 read tools + 1 write tool (create_task), Slice 1. */
 export const registry: AiTool<any>[] = [
   financeTool,
   adspendTool,
@@ -21,4 +21,5 @@ export const registry: AiTool<any>[] = [
   knowledgeTool,
   socialTool,
   briefsTool,
+  createTaskTool,
 ]
