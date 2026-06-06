@@ -19,6 +19,17 @@ export function isReadOnlyRole(role: string): boolean {
   return role === 'viewer' || role === 'guest'
 }
 
+/**
+ * Static system-role permission check by group name (e.g. roleHasPermission('finance', 'FINANCE')).
+ * Mirrors the existing `PERMISSIONS.X.includes(role)` idiom (see clientScoping.ts). Fail-closed for
+ * DB-driven custom roles — they resolve via roleResolver.ts, but the AI tool registry uses this
+ * conservative static check pre-send with a handler-time re-check as defense-in-depth (see
+ * server/utils/ai/toolRegistry.ts). Denying a custom-role user a tool is safe; granting wrongly is not.
+ */
+export function roleHasPermission(role: string, group: PermissionGroup): boolean {
+  return (PERMISSIONS[group] as readonly string[]).includes(role)
+}
+
 // Permission groups for dynamic role resolution
 export const PERMISSION_GROUPS = [
   'ADMIN', 'MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS',
