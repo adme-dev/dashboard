@@ -3,11 +3,14 @@ import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
 import { retrieveContext } from '~~/server/utils/aiContextRetriever'
 import { getRelevantPatterns } from '~~/server/utils/aiFeedbackProcessor'
+import { shouldUseToolLoop } from '~~/server/utils/ai/gate'
 import type { AiMessage, AiContextSource, AiIntent } from '~/types'
 
 export interface ChatResponse {
   message: AiMessage
   contextSources: AiContextSource[]
+  /** Present when the assistant proposed a guarded write (create_task) awaiting user confirmation. */
+  proposedAction?: { proposalId: string, resolved: unknown } | null
 }
 
 // Multi-model routing: pick the best model based on intent complexity
@@ -421,8 +424,42 @@ export async function processUserMessage(
   let usedLora = false
   let loraAdapterId: string | null = null
 
+  // 7a. GATE → gated tool-calling loop (Slice 1, behind AI_TOOLS_ENABLED). Trivial chit-chat keeps
+  // the existing fast path; data/action intents route through the agentic loop. Failures degrade
+  // to the existing single-shot path below.
+  const cfg = useRuntimeConfig() as any
+  let proposedAction: { proposalId: string, resolved: unknown } | null = null
+  let toolTrace: Array<{ name: string, args: unknown }> = []
+  let usedToolLoop = false
+  if (shouldUseToolLoop({ aiToolsEnabled: !!cfg.aiToolsEnabled, hasEvent: !!event, intent: contextBundle.intent })) {
+    try {
+      const { runToolLoop } = await import('~~/server/utils/ai/toolLoop')
+      const loopMessages = history
+        .map(m => ({ role: m.role, content: m.content }))
+        .concat([{ role: 'user' as const, content }])
+      const loop = await runToolLoop({
+        ctx: { userId, userRole, conversationId, event },
+        system: systemPrompt,
+        messages: loopMessages,
+        seed: conversationId,
+      })
+      aiContent = loop.text
+      toolTrace = loop.toolCalls
+      proposedAction = loop.proposedAction
+      usedToolLoop = true
+      if (!aiContent.trim()) {
+        aiContent = proposedAction
+          ? 'I’ve prepared this action — please review and confirm below.'
+          : 'I looked into that but didn’t find anything to report.'
+      }
+    } catch (err) {
+      console.error('AI tool loop failed; falling back to single-shot:', err)
+      // fall through to the existing LoRA/Groq path
+    }
+  }
+
   // For 8B-eligible queries, try LoRA-enhanced edge inference first
-  if (selectedModel === GROQ_MODELS.LLAMA_8B) {
+  if (!usedToolLoop && selectedModel === GROQ_MODELS.LLAMA_8B) {
     try {
       const { getActiveAdapter } = await import('~~/server/utils/aiLoraManager')
       const { edgeGenerateWithLoRA } = await import('~~/server/utils/edgeAi')
@@ -445,8 +482,8 @@ export async function processUserMessage(
     }
   }
 
-  // Fall back to Groq if LoRA didn't produce a response
-  if (!aiContent) {
+  // Fall back to Groq if neither the tool loop nor LoRA produced a response
+  if (!usedToolLoop && !aiContent) {
     try {
       aiContent = await generateGroqInsight(fullPrompt, {
         model: selectedModel,
@@ -476,19 +513,20 @@ export async function processUserMessage(
 
   // 10. Save the assistant reply (with LoRA tracking)
   const assistantMsg = await queryOne<any>(`
-    INSERT INTO ai_messages (conversation_id, role, content, context_sources, token_count, model, latency_ms, is_error, is_lora, lora_adapter_id)
-    VALUES ($1, 'assistant', $2, $3::jsonb, $4, $5, $6, $7, $8, $9)
+    INSERT INTO ai_messages (conversation_id, role, content, context_sources, token_count, model, latency_ms, is_error, is_lora, lora_adapter_id, tool_calls)
+    VALUES ($1, 'assistant', $2, $3::jsonb, $4, $5, $6, $7, $8, $9, $10::jsonb)
     RETURNING *
   `, [
     conversationId,
     aiContent,
     JSON.stringify(contextSources),
     tokenEstimate,
-    selectedModel,
+    usedToolLoop ? (cfg.aiLoopModel || 'tool-loop') : selectedModel,
     latencyMs,
     isError,
     usedLora,
     loraAdapterId,
+    toolTrace.length ? JSON.stringify(toolTrace) : null,
   ])
 
   // 11. Update conversation metadata
@@ -520,5 +558,6 @@ export async function processUserMessage(
   return {
     message: mapMessageRow(assistantMsg),
     contextSources,
+    proposedAction,
   }
 }
