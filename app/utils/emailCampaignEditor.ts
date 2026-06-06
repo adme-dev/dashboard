@@ -4,10 +4,12 @@ export function buildCampaignEditorPatch(input: {
   fromEmail: string
   bodySource: unknown
 }) {
+  const subject = input.subject.trim()
+  const previewText = input.previewText.trim()
   const fromEmail = input.fromEmail.trim()
   return {
-    subject: input.subject || null,
-    preview_text: input.previewText || null,
+    subject: subject || null,
+    preview_text: previewText || null,
     from_email: fromEmail || null,
     body_source: input.bodySource
   }
