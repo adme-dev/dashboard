@@ -31,6 +31,12 @@ export function isEmailBuilderScheduleBlocked(
   )
 }
 
+export function shouldDisableEmailBuilderScheduleAction(
+  preflight: EmailBuilderSchedulePreflight | null | undefined
+): boolean {
+  return isEmailBuilderScheduleBlocked(preflight)
+}
+
 export function buildEmailBuilderScheduleRequest(input: {
   campaignId: string
   scheduledAt: string

@@ -3,6 +3,7 @@ import {
   buildEmailBuilderScheduleRequest,
   extractEmailBuilderScheduleError,
   isEmailBuilderScheduleBlocked,
+  shouldDisableEmailBuilderScheduleAction,
   validateEmailBuilderScheduleAt
 } from '~~/app/utils/emailBuilderSchedule'
 
@@ -76,5 +77,25 @@ describe('validateEmailBuilderScheduleAt', () => {
     expect(validateEmailBuilderScheduleAt('2026-06-06T09:59:59.999Z', now)).toBe('Choose a future send time.')
     expect(validateEmailBuilderScheduleAt('2026-06-06T10:00:00.000Z', now)).toBe('Choose a future send time.')
     expect(validateEmailBuilderScheduleAt('2026-06-06T10:00:01.000Z', now)).toBeNull()
+  })
+})
+
+describe('shouldDisableEmailBuilderScheduleAction', () => {
+  it('disables scheduling from the builder whenever preflight has a blocked check', () => {
+    expect(shouldDisableEmailBuilderScheduleAction({
+      ok: false,
+      blocked: false,
+      checks: [
+        { code: 'sender', status: 'blocked', message: 'Missing sender' }
+      ]
+    })).toBe(true)
+
+    expect(shouldDisableEmailBuilderScheduleAction({
+      ok: true,
+      blocked: false,
+      checks: [
+        { code: 'html_size', status: 'warning', message: 'Large HTML' }
+      ]
+    })).toBe(false)
   })
 })

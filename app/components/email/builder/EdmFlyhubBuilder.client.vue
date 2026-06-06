@@ -24,7 +24,7 @@ import {
 import {
   buildEmailBuilderScheduleRequest,
   extractEmailBuilderScheduleError,
-  isEmailBuilderScheduleBlocked,
+  shouldDisableEmailBuilderScheduleAction,
   validateEmailBuilderScheduleAt,
   type EmailBuilderSchedulePreflight,
   type EmailBuilderScheduleRecipientSnapshot
@@ -320,7 +320,7 @@ const campaignSnapshot = ref<EmailBuilderScheduleRecipientSnapshot | null>(null)
 const schedulePreflight = ref<EmailBuilderSchedulePreflight | null>(null)
 const scheduleSnapshot = ref<EmailBuilderScheduleRecipientSnapshot | null>(null)
 const scheduleBlocked = computed(() =>
-  Boolean(scheduleError.value) && isEmailBuilderScheduleBlocked(schedulePreflight.value)
+  shouldDisableEmailBuilderScheduleAction(schedulePreflight.value)
 )
 
 const VIEW_TABS: { value: ViewMode, label: string, icon: string }[] = [
