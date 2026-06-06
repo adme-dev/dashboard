@@ -2,6 +2,8 @@
 <!-- Campaigns list + draft creation (Phase 2b-1). Creating a draft optionally
      targets lists and materializes the recipient set (no sending — that's 2b-2). -->
 <script setup lang="ts">
+import { validateEmailBuilderScheduleAt as validateCampaignScheduleAt } from '~~/app/utils/emailBuilderSchedule'
+
 interface CampaignRow {
   id: string
   name: string
@@ -184,6 +186,9 @@ const scheduleSnapshot = computed(() =>
 const sendPreflight = computed(() => sendTarget.value?.preflight_result ?? null)
 const sendSnapshot = computed(() => snapshotFallback(sendTarget.value))
 const scheduleBlocked = computed(() => !!schedulePreflight.value?.blocked)
+const scheduleActionDisabled = computed(() =>
+  scheduleBlocked.value || validateCampaignScheduleAt(scheduleAt.value) !== null
+)
 const sendBlocked = computed(() => !!sendPreflight.value?.blocked)
 
 function rowSendBlocked(row: CampaignRow): boolean {
@@ -200,8 +205,13 @@ function sendActionTooltip(row: CampaignRow): string {
 async function scheduleCampaign() {
   const row = scheduleTarget.value
   if (!row) return
-  if (!scheduleAt.value) {
-    toast.add({ title: 'Schedule time required', color: 'error' })
+  const scheduleValidation = validateCampaignScheduleAt(scheduleAt.value)
+  if (scheduleValidation) {
+    toast.add({
+      title: scheduleAt.value ? 'Invalid schedule time' : 'Schedule time required',
+      description: scheduleValidation,
+      color: 'error'
+    })
     return
   }
   busyId.value = row.id
@@ -526,7 +536,7 @@ const TERMINAL = new Set(['sent', 'cancelled'])
               icon="i-lucide-calendar-check"
               label="Schedule"
               :loading="busyId === scheduleTarget?.id"
-              :disabled="scheduleBlocked"
+              :disabled="scheduleActionDisabled"
               @click="scheduleCampaign()"
             />
           </div>

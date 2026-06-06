@@ -63,7 +63,7 @@ Object.assign(globalThis, {
   })
 })
 
-const passthrough = (name: string) => ({ name, template: '<div><slot /></div>' })
+const passthrough = (name: string) => ({ name, template: '<div><slot /><slot name="content" /></div>' })
 const stubs: Record<string, unknown> = {
   UAlert: { name: 'UAlert', props: ['title', 'description'], template: '<div>{{ title }} {{ description }}<slot /></div>' },
   UBadge: { name: 'UBadge', props: ['label'], template: '<span><slot />{{ label }}</span>' },
@@ -103,5 +103,11 @@ describe('EmailCampaignsPanel', () => {
     expect(html).toContain('Booked launch')
     expect(html).toContain('Scheduled')
     expect(html).toContain('Jun')
+  })
+
+  it('keeps the schedule modal action disabled until a send time is selected', async () => {
+    const html = await renderPanel()
+
+    expect(html).toMatch(/<button[^>]*data-icon="i-lucide-calendar-check"[^>]*disabled/)
   })
 })
