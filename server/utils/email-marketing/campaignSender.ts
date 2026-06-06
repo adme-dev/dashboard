@@ -269,6 +269,11 @@ export interface SendRunResult {
   retryAfterSec: number
 }
 
+async function campaignStillSending(campaignId: string): Promise<boolean> {
+  const latest = await getCampaign(campaignId)
+  return latest?.status === 'sending'
+}
+
 // Drive a campaign's send in a capped, paced loop (≤2 req/s → ~500ms between
 // batches, under Resend's default cap). Capped at maxChunks per invocation to
 // keep one request/tick bounded; larger campaigns continue on the next cron
@@ -288,6 +293,7 @@ export async function runCampaignSend(
   let rateLimited = false
   let retryAfterSec = 0
   for (let i = 0; i < maxChunks; i++) {
+    if (!(await campaignStillSending(campaign.id))) break
     const result = await sendCampaignChunk(preparedCampaign)
     sent += result.sent
     failed += result.failed

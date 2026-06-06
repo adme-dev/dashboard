@@ -39,71 +39,53 @@ const campaign = {
   from_name: null,
   from_email: 'sales@example.com',
   reply_to: null,
-  body_html: '<p>Offer</p><a href="{{ unsubscribe_url }}">Unsubscribe</a>',
-  client_id: null
+  body_html: [
+    '<p>Offer</p>',
+    '<a href="{{ unsubscribe_url }}">Unsubscribe</a>',
+    '<footer>XeroFlow Agency, 1 Market Street, Melbourne VIC 3000</footer>'
+  ].join(''),
+  client_id: null,
+  status: 'sending'
 }
 
-describe('sendCampaignChunk rate limiting', () => {
+describe('runCampaignSend pause/cancel safety', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.EMAIL_SENDING_ENABLED = 'true'
     mockIsEmailConfigured.mockReturnValue(true)
     mockGetResendClient.mockReturnValue({ batch: { send: mockBatchSend } })
     mockExecute.mockResolvedValue(0)
-    mockGetCampaign.mockResolvedValue({ ...campaign, status: 'sending' })
-    mockQueryRows.mockResolvedValue([
-      {
-        id: 'recipient-1',
-        subscriber_id: 'sub-1',
-        email: 'person@example.com',
-        name: null
-      }
-    ])
+    mockBatchSend.mockResolvedValue({ data: { data: [{ id: 'msg-1' }] }, error: null })
+    mockQueryRows
+      .mockResolvedValueOnce([
+        { id: 'recipient-1', subscriber_id: 'sub-1', email: 'one@example.com', name: null }
+      ])
+      .mockResolvedValueOnce([
+        { id: 'recipient-2', subscriber_id: 'sub-2', email: 'two@example.com', name: null }
+      ])
+    mockQueryOne.mockResolvedValue({ n: 1 })
+    mockGetCampaign
+      .mockResolvedValueOnce({ ...campaign, status: 'sending' })
+      .mockResolvedValueOnce({ ...campaign, status: 'paused' })
   })
 
-  it('returns the provider retry-after delay when Resend rate-limits a batch', async () => {
-    const { sendCampaignChunk } = await import('~~/server/utils/email-marketing/campaignSender')
-    mockBatchSend.mockResolvedValueOnce({
-      data: null,
-      error: {
-        statusCode: 429,
-        message: 'Too many requests',
-        headers: { 'retry-after': '17' }
-      }
-    })
-
-    const result = await sendCampaignChunk(campaign as never)
-
-    expect(result).toEqual({
-      sent: 0,
-      failed: 0,
-      rateLimited: true,
-      retryAfterSec: 17
-    })
-    expect(String(mockExecute.mock.calls.at(-1)?.[0])).toContain('claimed_at = NULL')
-  })
-
-  it('propagates the provider retry-after delay from a send run', async () => {
+  it('stops claiming new chunks when a campaign is paused after the current chunk', async () => {
     const { runCampaignSend } = await import('~~/server/utils/email-marketing/campaignSender')
-    mockBatchSend.mockResolvedValueOnce({
-      data: null,
-      error: {
-        statusCode: 429,
-        message: 'Too many requests',
-        headers: { 'retry-after': '23' }
-      }
+
+    const result = await runCampaignSend(campaign as never, {
+      maxChunks: 2,
+      pacingMs: 0,
+      prepareHtml: false
     })
-    mockQueryOne.mockResolvedValueOnce({ n: 1 })
 
-    const result = await runCampaignSend(campaign as never, { pacingMs: 0 })
-
+    expect(mockBatchSend).toHaveBeenCalledTimes(1)
     expect(result).toEqual({
-      sent: 0,
+      sent: 1,
       failed: 0,
       remaining: 1,
       drained: false,
-      rateLimited: true,
-      retryAfterSec: 23
+      rateLimited: false,
+      retryAfterSec: 0
     })
   })
 })
