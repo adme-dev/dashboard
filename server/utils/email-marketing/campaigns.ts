@@ -56,6 +56,7 @@ export interface CampaignRecipientSnapshot {
   excludedUnsubscribed: number
   excludedSuppressed: number
   excludedBlocklisted: number
+  excludedDisabled: number
   toSend: number
   generatedAt: string
 }
@@ -158,6 +159,7 @@ export async function buildCampaignRecipientSnapshot(
     excluded_unsubscribed: number | string
     excluded_suppressed: number | string
     excluded_blocklisted: number | string
+    excluded_disabled: number | string
   }>(`
     WITH candidates AS (
       SELECT
@@ -193,7 +195,10 @@ export async function buildCampaignRecipientSnapshot(
       )::int AS excluded_suppressed,
       COUNT(*) FILTER (
         WHERE has_sendable_membership AND is_blocklisted
-      )::int AS excluded_blocklisted
+      )::int AS excluded_blocklisted,
+      COUNT(*) FILTER (
+        WHERE has_sendable_membership AND NOT is_enabled AND NOT is_blocklisted
+      )::int AS excluded_disabled
     FROM deduped
   `, [campaignId])
 
@@ -203,6 +208,7 @@ export async function buildCampaignRecipientSnapshot(
     excludedUnsubscribed: Number(row?.excluded_unsubscribed ?? 0),
     excludedSuppressed: Number(row?.excluded_suppressed ?? 0),
     excludedBlocklisted: Number(row?.excluded_blocklisted ?? 0),
+    excludedDisabled: Number(row?.excluded_disabled ?? 0),
     toSend,
     generatedAt
   }

@@ -18,6 +18,7 @@ export interface EmailBuilderScheduleRecipientSnapshot {
   excludedUnsubscribed?: number
   excludedSuppressed?: number
   excludedBlocklisted?: number
+  excludedDisabled?: number
   toSend?: number
   generatedAt?: string
 }

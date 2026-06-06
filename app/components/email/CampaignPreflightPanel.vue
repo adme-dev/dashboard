@@ -22,6 +22,7 @@ interface RecipientSnapshot {
   excludedUnsubscribed?: number
   excludedSuppressed?: number
   excludedBlocklisted?: number
+  excludedDisabled?: number
   toSend?: number
   generatedAt?: string
 }
@@ -141,13 +142,21 @@ function formatDate(value?: string): string {
       </div>
     </div>
 
-    <div class="grid gap-2 sm:grid-cols-2">
+    <div class="grid gap-2 sm:grid-cols-3">
       <div class="rounded-md border border-default p-2">
         <p class="text-xs text-muted">
           Blocklisted
         </p>
         <p class="mt-1 text-lg font-semibold tabular-nums">
           {{ recipientSnapshot?.excludedBlocklisted ?? 0 }}
+        </p>
+      </div>
+      <div class="rounded-md border border-default p-2">
+        <p class="text-xs text-muted">
+          Disabled
+        </p>
+        <p class="mt-1 text-lg font-semibold tabular-nums">
+          {{ recipientSnapshot?.excludedDisabled ?? 0 }}
         </p>
       </div>
       <div class="rounded-md border border-default p-2">

@@ -35,6 +35,7 @@ describe('CampaignPreflightPanel', () => {
         excludedUnsubscribed: 5,
         excludedSuppressed: 3,
         excludedBlocklisted: 2,
+        excludedDisabled: 1,
         toSend: 32,
         generatedAt: '2026-06-05T00:00:00.000Z'
       }
@@ -55,6 +56,7 @@ describe('CampaignPreflightPanel', () => {
     expect(html).toContain('Unsubscribed')
     expect(html).toContain('Suppressed')
     expect(html).toContain('Blocklisted')
+    expect(html).toContain('Disabled')
   })
 
   it('renders a not-run state before schedule preflight has been checked', async () => {

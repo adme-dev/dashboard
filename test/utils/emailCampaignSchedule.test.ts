@@ -221,7 +221,8 @@ describe('scheduleCampaign', () => {
         deduped_recipients: 7,
         excluded_unsubscribed: 2,
         excluded_suppressed: 1,
-        excluded_blocklisted: 2
+        excluded_blocklisted: 2,
+        excluded_disabled: 1
       })
       .mockResolvedValueOnce({ ...draftCampaign, status: 'scheduled', to_send: 2 })
     queryRowsMock.mockResolvedValueOnce([{ list_id: 'list-1' }, { list_id: 'list-2' }])
@@ -255,6 +256,7 @@ describe('scheduleCampaign', () => {
         excludedUnsubscribed: 2,
         excludedSuppressed: 1,
         excludedBlocklisted: 2,
+        excludedDisabled: 1,
         toSend: 2,
         generatedAt: '2026-06-05T00:00:00.000Z'
       })
@@ -271,7 +273,8 @@ describe('scheduleCampaign', () => {
         deduped_recipients: 1,
         excluded_unsubscribed: 0,
         excluded_suppressed: 0,
-        excluded_blocklisted: 0
+        excluded_blocklisted: 0,
+        excluded_disabled: 0
       })
     queryRowsMock.mockResolvedValueOnce([{ list_id: 'list-1' }])
     transactionMock.mockImplementationOnce(async (cb: (db: { query: typeof dbQueryMock }) => Promise<unknown>) => cb({ query: dbQueryMock }))

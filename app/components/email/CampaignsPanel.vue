@@ -41,6 +41,7 @@ interface RecipientSnapshot {
   excludedUnsubscribed?: number
   excludedSuppressed?: number
   excludedBlocklisted?: number
+  excludedDisabled?: number
   toSend?: number
   generatedAt?: string
 }
