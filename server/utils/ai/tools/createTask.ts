@@ -87,6 +87,19 @@ export async function proposeCreateTask(args: Args, ctx: ToolContext, deps: Crea
   return ok({ proposalId, resolved })
 }
 
+/** Map a stored create_task proposal to the body the /api/agency/tasks endpoint expects. */
+export function proposalToTaskBody(payload: any, reporterId: string) {
+  return {
+    departmentId: payload?.departmentId,
+    title: payload?.title,
+    projectId: payload?.projectId ?? undefined,
+    assigneeId: payload?.assigneeId ?? undefined,
+    dueDate: payload?.dueDate ?? undefined,
+    description: payload?.description ?? undefined,
+    reporterId,
+  }
+}
+
 export const createTaskTool: AiTool<Args> = {
   name: 'create_task',
   description: 'PROPOSE creating a new work-management task. This does NOT create the task — it prepares a proposal that the user must explicitly confirm with a button click. Requires a board/department name (ask the user if unknown). Optionally takes a project, assignee, due date (ISO), and description. Use when the user asks to add/create a task or follow-up. Always tell the user the task is pending their confirmation; never claim it was created.',
