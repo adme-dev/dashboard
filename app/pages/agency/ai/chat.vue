@@ -1009,6 +1009,24 @@ function getRenderedMarkdown(content: string): string {
                   </NuxtLink>
                 </div>
 
+                <!-- Tool-call trace (assistant messages that consulted live data) -->
+                <div
+                  v-if="msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0"
+                  class="flex flex-wrap items-center gap-1 mt-2 pt-2 border-t border-default/50"
+                >
+                  <span class="inline-flex items-center gap-1 text-[10px] text-muted">
+                    <UIcon name="i-lucide-search" class="size-3" /> Consulted:
+                  </span>
+                  <UBadge
+                    v-for="(tc, i) in msg.toolCalls"
+                    :key="`tool-${i}`"
+                    :label="tc.name"
+                    size="xs"
+                    color="neutral"
+                    variant="soft"
+                  />
+                </div>
+
                 <!-- Timestamp + Feedback -->
                 <div
                   :class="[

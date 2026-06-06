@@ -11,10 +11,28 @@ export interface LoopOutput {
   toolCalls: Array<{ name: string, args: unknown }>
   proposedAction: { proposalId: string, resolved: unknown } | null
   usage?: { inputTokens?: number, outputTokens?: number, totalTokens?: number }
+  /** Estimated turn cost in USD (from usage + the model's price). */
+  costUsd?: number
 }
 
 const STEP_CAP = 5
 const DEADLINE_MS = 25_000
+
+// $/Mtok (input, output). Keyed by the provider-relative model id (matched as a substring of the
+// spec, e.g. 'groq/openai/gpt-oss-120b'). Rough — for budgeting/observability, not billing.
+const PRICE_PER_MTOK: Record<string, { in: number, out: number }> = {
+  'openai/gpt-oss-120b': { in: 0.15, out: 0.60 },
+  'openai/gpt-oss-20b': { in: 0.10, out: 0.40 },
+  'moonshotai/kimi-k2-instruct': { in: 1.0, out: 3.0 },
+  'claude-sonnet-4-6': { in: 3.0, out: 15.0 },
+}
+
+/** Estimate a turn's cost in USD from token usage + the model spec. Returns 0 when unknown. */
+export function estimateCostUsd(usage: { inputTokens?: number, outputTokens?: number } | undefined, modelSpec = ''): number {
+  const entry = Object.entries(PRICE_PER_MTOK).find(([k]) => modelSpec.includes(k))?.[1]
+  if (!entry || !usage) return 0
+  return ((usage.inputTokens ?? 0) * entry.in + (usage.outputTokens ?? 0) * entry.out) / 1_000_000
+}
 
 /**
  * PURE extraction of the loop's output from a generateText result. Kept separate so the
@@ -77,19 +95,25 @@ export async function runToolLoop(opts: {
     tools: sdkTools,
     stopWhen: [stepCountIs(STEP_CAP)],
     abortSignal: signal,
+    // OTel GenAI spans — metadata only (no prompt/arg/output capture). No-op unless a tracer is registered.
+    experimental_telemetry: { isEnabled: true, recordInputs: false, recordOutputs: false, functionId: 'ai-tool-loop' },
   })
 
-  const primary = opts.model ?? resolveModel(opts.modelSpec ?? cfg.aiLoopModel)
+  const primarySpec = opts.modelSpec ?? cfg.aiLoopModel
+  const fallbackSpec = opts.fallbackSpec ?? cfg.aiLoopFallbackModel
+  let usedSpec: string = opts.model ? 'injected' : primarySpec
   let result
   try {
-    result = await run(primary)
+    result = await run(opts.model ?? resolveModel(primarySpec))
   } catch (err) {
     // Provider/gateway failure → ordered fallback to a second model.
-    const fb = opts.fallbackModel
-      ?? ((opts.fallbackSpec ?? cfg.aiLoopFallbackModel) ? resolveModel(opts.fallbackSpec ?? cfg.aiLoopFallbackModel) : null)
+    const fb = opts.fallbackModel ?? (fallbackSpec ? resolveModel(fallbackSpec) : null)
     if (!fb) throw err
+    usedSpec = opts.fallbackModel ? 'injected' : fallbackSpec
     result = await run(fb)
   }
 
-  return extractLoopOutput(result)
+  const out = extractLoopOutput(result)
+  out.costUsd = estimateCostUsd(out.usage, usedSpec)
+  return out
 }

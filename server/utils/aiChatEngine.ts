@@ -197,6 +197,7 @@ function mapMessageRow(row: any): AiMessage {
     model: row.model,
     latencyMs: row.latency_ms,
     isError: row.is_error,
+    toolCalls: row.tool_calls || null,
     createdAt: row.created_at,
   }
 }

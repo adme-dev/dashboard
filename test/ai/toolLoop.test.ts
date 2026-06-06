@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { MockLanguageModelV3 } from 'ai/test'
-import { extractLoopOutput, runToolLoop } from '~~/server/utils/ai/toolLoop'
+import { extractLoopOutput, runToolLoop, estimateCostUsd } from '~~/server/utils/ai/toolLoop'
 
 // toolLoop calls useRuntimeConfig() (Nuxt auto-import). Stub it for unit tests; model specs
 // aren't read when a model is injected, so an empty config is enough.
@@ -51,6 +51,17 @@ describe('extractLoopOutput (pure)', () => {
   it('does NOT surface a proposal when create_task failed (ok:false)', () => {
     const result = { text: 'x', steps: [{ toolResults: [{ toolName: 'create_task', output: { ok: false, error: 'nope' } }] }] }
     expect(extractLoopOutput(result).proposedAction).toBeNull()
+  })
+})
+
+describe('estimateCostUsd', () => {
+  it('prices a known model from token usage', () => {
+    // gpt-oss-120b: $0.15/Mtok in + $0.60/Mtok out
+    expect(estimateCostUsd({ inputTokens: 1_000_000, outputTokens: 1_000_000 }, 'groq/openai/gpt-oss-120b')).toBeCloseTo(0.75, 6)
+  })
+  it('returns 0 for an unknown model or missing usage', () => {
+    expect(estimateCostUsd({ inputTokens: 1000, outputTokens: 1000 }, 'groq/unknown-model')).toBe(0)
+    expect(estimateCostUsd(undefined, 'groq/openai/gpt-oss-120b')).toBe(0)
   })
 })
 
