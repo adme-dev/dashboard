@@ -17,7 +17,10 @@ import {
 } from '~~/app/utils/edmHtmlEditables'
 import { normaliseEmailImageAssetUrl, type EdmImageAsset } from '~~/app/utils/edmImageAssets'
 import { buildCampaignEditorPatch } from '~~/app/utils/emailCampaignEditor'
-import { buildEmailBuilderTestSendRequest } from '~~/app/utils/emailBuilderTestSend'
+import {
+  buildEmailBuilderTestSendRequest,
+  describeEmailBuilderTestSendError
+} from '~~/app/utils/emailBuilderTestSend'
 import {
   CUSTOM_MODULE_NEW_CATEGORY,
   EDM_CUSTOM_MODULE_CATEGORY_OPTIONS,
@@ -354,11 +357,6 @@ function openTestSend() {
   showTestSendModal.value = true
 }
 
-function errorMessage(error: unknown): string {
-  const data = (error as { data?: { message?: string, statusMessage?: string } })?.data
-  return data?.message || data?.statusMessage || 'Could not send the test email.'
-}
-
 function isEmailAddress(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 }
@@ -412,7 +410,7 @@ async function sendTestEmail() {
       color: 'success'
     })
   } catch (error) {
-    testSendError.value = errorMessage(error)
+    testSendError.value = describeEmailBuilderTestSendError(error)
     toast.add({ title: 'Test send failed', description: testSendError.value, color: 'error' })
   } finally {
     testSending.value = false

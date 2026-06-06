@@ -23,3 +23,58 @@ export function buildEmailBuilderTestSendRequest(input: {
     }
   }
 }
+
+interface TestSendErrorDetail {
+  code?: unknown
+  label?: unknown
+  status?: unknown
+  message?: unknown
+}
+
+function labelForDetail(detail: TestSendErrorDetail): string {
+  if (typeof detail.label === 'string' && detail.label.trim()) return detail.label.trim()
+  return ''
+}
+
+function messageForDetail(detail: TestSendErrorDetail): string | null {
+  if (typeof detail.message !== 'string' || !detail.message.trim()) return null
+  const label = labelForDetail(detail)
+  return label ? `${label}: ${detail.message.trim()}` : detail.message.trim()
+}
+
+function collectTestSendDetails(payload: unknown): string[] {
+  const data = payload as {
+    preflight?: { checks?: TestSendErrorDetail[] }
+    errors?: TestSendErrorDetail[]
+    warnings?: TestSendErrorDetail[]
+  } | null | undefined
+  const checks = Array.isArray(data?.preflight?.checks)
+    ? data.preflight.checks.filter(check => check.status !== 'pass')
+    : []
+  const errors = Array.isArray(data?.errors) ? data.errors : []
+  return [...checks, ...errors]
+    .map(messageForDetail)
+    .filter((message): message is string => !!message)
+}
+
+export function describeEmailBuilderTestSendError(error: unknown): string {
+  const payload = error as {
+    data?: {
+      message?: unknown
+      statusMessage?: unknown
+      data?: unknown
+    }
+    message?: unknown
+  } | null | undefined
+  const responseData = payload?.data
+  const base = typeof responseData?.message === 'string' && responseData.message.trim()
+    ? responseData.message.trim()
+    : typeof responseData?.statusMessage === 'string' && responseData.statusMessage.trim()
+      ? responseData.statusMessage.trim()
+      : typeof payload?.message === 'string' && payload.message.trim()
+        ? payload.message.trim()
+        : 'Could not send the test email.'
+
+  const details = collectTestSendDetails(responseData?.data)
+  return details.length ? `${base}: ${details.slice(0, 4).join('; ')}` : base
+}
