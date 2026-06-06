@@ -108,6 +108,16 @@ async function removeSuppression(row: SuppressionRow) {
     ? window.confirm(`Remove ${row.reason.replace(/_/g, ' ')} suppression for ${row.email}?`)
     : false
   if (requiresConfirmation && !confirmed) return
+  const note = window.prompt(
+    `Reason for removing suppression for ${row.email}`,
+    requiresConfirmation ? 'Confirmed admin removal' : ''
+  )
+  if (note === null) return
+  const trimmedNote = note.trim()
+  if (!trimmedNote) {
+    toast.add({ title: 'Removal reason required', color: 'error' })
+    return
+  }
 
   removing.value = row.email
   try {
@@ -115,7 +125,7 @@ async function removeSuppression(row: SuppressionRow) {
       method: 'DELETE',
       body: {
         confirm: confirmed,
-        note: confirmed ? 'Confirmed admin removal' : undefined
+        note: trimmedNote
       }
     })
     toast.add({ title: 'Suppression removed', description: row.email, color: 'success' })

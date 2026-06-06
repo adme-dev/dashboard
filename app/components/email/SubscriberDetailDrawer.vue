@@ -57,6 +57,13 @@ function badgeColor(value: unknown): 'success' | 'warning' | 'error' | 'info' | 
   return 'neutral'
 }
 
+function metadataNote(event: Record<string, unknown>): string {
+  const metadata = event.metadata
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return ''
+  const note = (metadata as Record<string, unknown>).note
+  return typeof note === 'string' ? note.trim() : ''
+}
+
 async function load() {
   if (!open.value || !props.subscriberId) return
   pending.value = true
@@ -209,6 +216,9 @@ watch([open, () => props.subscriberId], load, { immediate: true })
                 <p class="text-xs text-muted">
                   {{ formatDate(event.occurred_at) }}
                 </p>
+                <p v-if="metadataNote(event)" class="mt-1 text-xs text-muted">
+                  {{ metadataNote(event) }}
+                </p>
               </div>
             </div>
           </section>
@@ -232,6 +242,9 @@ watch([open, () => props.subscriberId], load, { immediate: true })
                 </div>
                 <p class="text-xs text-muted">
                   {{ formatDate(event.occurred_at) }}
+                </p>
+                <p v-if="metadataNote(event)" class="mt-1 text-xs text-muted">
+                  {{ metadataNote(event) }}
                 </p>
               </div>
             </div>
