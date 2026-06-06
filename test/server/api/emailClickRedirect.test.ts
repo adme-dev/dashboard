@@ -80,6 +80,38 @@ describe('email click redirect route', () => {
     )
   })
 
+  it('serves the generated clean /email/click tracking URL', async () => {
+    const handler = (await import('~~/server/routes/email/click.get')).default
+    const destination = 'https://dealer.example.com/offers'
+    const token = await signEmailToken('secret', 'click', 'camp-1', 'sub-1', destination)
+    mockGetQuery.mockReturnValue({
+      c: 'camp-1',
+      s: 'sub-1',
+      u: destination,
+      t: token
+    })
+
+    await handler({
+      node: {
+        req: {
+          headers: {
+            'user-agent': 'Vitest'
+          }
+        }
+      }
+    } as never)
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO email_events'),
+      expect.arrayContaining(['camp-1', 'sub-1'])
+    )
+    expect(mockSendRedirect).toHaveBeenCalledWith(
+      expect.anything(),
+      'https://dealer.example.com/offers?utm_source=email&utm_medium=email&utm_campaign=camp-1',
+      302
+    )
+  })
+
   it('rejects an invalid signature before recording a click', async () => {
     const handler = (await import('~~/server/api/public/email/click.get')).default
     mockGetQuery.mockReturnValue({
