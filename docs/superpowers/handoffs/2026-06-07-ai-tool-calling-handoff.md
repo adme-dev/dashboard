@@ -88,6 +88,7 @@ Full agent transcripts (if needed) are under the session's `subagents/` dirs, bu
 ---
 
 ## Gotchas / environment
+- **Local vs prod build split:** local env has NO `ANTHROPIC_API_KEY` / `AI_GATEWAY_URL` → the gateway + Sonnet path are **prod-only**. Plan **Phases 0–7 are fully buildable + unit-testable locally** (tests inject/mock the model — the plan is already designed this way). **Phase 8** (live model bake-off) + **Phase 9** (browser/voice verification) need operator keys + the CF dashboard → build them, then hand the final live steps to the operator.
 - Typecheck OOMs at default heap: `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec nuxt typecheck` (~60 pre-existing baseline errors are expected).
 - Tests: `pnpm exec vitest run <path>` (bare `vitest` = watch).
 - Migrations: run immediately — `export DATABASE_URL=$(grep '^DATABASE_URL=' .env | cut -d= -f2-); psql "$DATABASE_URL" -f <file>`.
