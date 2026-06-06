@@ -29,6 +29,7 @@ describe('email subscription audit integration', () => {
     queryOneMock.mockResolvedValueOnce({ email: 'person@example.com' })
     transactionMock.mockImplementationOnce(async (cb: (db: { query: typeof dbQueryMock }) => Promise<unknown>) => cb({ query: dbQueryMock }))
     dbQueryMock
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rowCount: 1 })
       .mockResolvedValueOnce({ rowCount: 2 })
       .mockResolvedValueOnce({ rowCount: 1 })
@@ -66,6 +67,40 @@ describe('email subscription audit integration', () => {
       null,
       null,
       '{}'
+    ])
+  })
+
+  it('upgrades one-click unsubscribe over an existing soft-bounce suppression', async () => {
+    const dbQueryMock = vi.fn()
+    queryOneMock.mockResolvedValueOnce({ email: 'person@example.com' })
+    transactionMock.mockImplementationOnce(async (cb: (db: { query: typeof dbQueryMock }) => Promise<unknown>) => cb({ query: dbQueryMock }))
+    dbQueryMock
+      .mockResolvedValueOnce({ rows: [{ reason: 'soft_bounce' }] })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 })
+
+    await globalUnsubscribe({ subscriberId: 'sub-1', campaignId: 'camp-1' })
+
+    const suppressionUpsertCall = dbQueryMock.mock.calls.find(([sql]) =>
+      String(sql).includes('INSERT INTO suppression_list')
+    )
+    expect(String(suppressionUpsertCall?.[0])).toContain('DO UPDATE')
+    expect(String(suppressionUpsertCall?.[0])).toContain('suppression_list.reason = \'soft_bounce\'')
+    const suppressionEventCall = dbQueryMock.mock.calls.find(([sql]) =>
+      String(sql).includes('INSERT INTO suppression_events')
+    )
+    expect(suppressionEventCall?.[1]).toEqual([
+      'person@example.com',
+      'sub-1',
+      'camp-1',
+      'global_unsubscribe',
+      'updated',
+      'one_click',
+      null,
+      '{"previousReason":"soft_bounce"}'
     ])
   })
 

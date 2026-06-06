@@ -62,12 +62,24 @@ export async function globalUnsubscribe(opts: {
   if (!sub) return null
 
   await transaction(async (db) => {
+    const currentSuppression = await db.query(
+      'SELECT reason::text AS reason FROM suppression_list WHERE email = $1',
+      [sub.email]
+    )
+    const previousReason = currentSuppression.rows[0]?.reason as string | undefined
     const supp = await db.query(
       `INSERT INTO suppression_list (email, reason, campaign_id)
        VALUES ($1, 'global_unsubscribe', $2)
-       ON CONFLICT (email) DO NOTHING`,
+       ON CONFLICT (email) DO UPDATE
+         SET reason = EXCLUDED.reason,
+             campaign_id = EXCLUDED.campaign_id,
+             updated_at = NOW()
+         WHERE suppression_list.reason = 'soft_bounce'`,
       [sub.email, opts.campaignId ?? null]
     )
+    const suppressionAction = (supp.rowCount ?? 0) > 0
+      ? previousReason === 'soft_bounce' ? 'updated' : 'added'
+      : 'ignored'
 
     const memberships = await db.query(
       `UPDATE subscriber_lists SET status = 'unsubscribed', unsubscribed_at = NOW()
@@ -79,8 +91,13 @@ export async function globalUnsubscribe(opts: {
       subscriberId: opts.subscriberId,
       campaignId: opts.campaignId ?? null,
       reason: 'global_unsubscribe',
-      action: (supp.rowCount ?? 0) > 0 ? 'added' : 'ignored',
-      source: 'one_click'
+      action: suppressionAction,
+      source: 'one_click',
+      metadata: suppressionAction === 'updated'
+        ? { previousReason }
+        : suppressionAction === 'ignored' && previousReason
+          ? { existingReason: previousReason }
+          : null
     }))
 
     // Record the event + bump the counter on the FIRST explicit unsubscribe —
