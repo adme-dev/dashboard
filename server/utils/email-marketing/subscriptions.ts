@@ -11,6 +11,7 @@ import {
   consentEventParams,
   suppressionEventParams
 } from './audit'
+import { normalizeSubscriberEmail } from './email'
 import type { MembershipStatus } from './types'
 
 export interface PublicSubscriber {
@@ -234,6 +235,7 @@ export async function subscribePublic(opts: {
   if (!list) throw createError({ statusCode: 404, statusMessage: 'list_not_found' })
 
   const targetStatus: MembershipStatus = list.double_optin ? 'unconfirmed' : 'confirmed'
+  const email = normalizeSubscriberEmail(opts.email)
 
   return transaction(async (db) => {
     const { rows } = await db.query(
@@ -243,7 +245,7 @@ export async function subscribePublic(opts: {
          SET name = COALESCE(NULLIF(EXCLUDED.name, ''), email_subscribers.name),
              updated_at = NOW()
        RETURNING id, status`,
-      [opts.email, opts.name?.trim() || null]
+      [email, opts.name?.trim() || null]
     )
     const subscriberId = rows[0].id as string
     const subscriberStatus = rows[0].status as string
@@ -272,7 +274,7 @@ export async function subscribePublic(opts: {
     // therefore stays suppressed until it confirms.
     await db.query(INSERT_CONSENT_EVENT_SQL, consentEventParams({
       subscriberId,
-      email: opts.email,
+      email,
       listId: opts.listId,
       eventType: 'form_submitted',
       source: opts.source ?? 'form'

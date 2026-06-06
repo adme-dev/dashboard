@@ -69,7 +69,7 @@ describe('email subscription audit integration', () => {
     ])
   })
 
-  it('records form_submitted consent history for public form subscribe', async () => {
+  it('normalizes email while recording form_submitted consent history for public form subscribe', async () => {
     const dbQueryMock = vi.fn()
     queryOneMock.mockResolvedValueOnce({ id: 'list-1', name: 'Retail News', double_optin: true })
     transactionMock.mockImplementationOnce(async (cb: (db: { query: typeof dbQueryMock }) => Promise<unknown>) => cb({ query: dbQueryMock }))
@@ -79,7 +79,7 @@ describe('email subscription audit integration', () => {
       .mockResolvedValueOnce({ rowCount: 1 })
 
     const result = await subscribePublic({
-      email: 'person@example.com',
+      email: ' Person@Example.COM ',
       name: 'Person',
       listId: 'list-1',
       source: 'form'
@@ -91,6 +91,7 @@ describe('email subscription audit integration', () => {
       status: 'unconfirmed',
       needsConfirm: true
     })
+    expect(dbQueryMock.mock.calls[0]?.[1]).toEqual(['person@example.com', 'Person'])
     const consentEventCall = dbQueryMock.mock.calls.find(([sql]) =>
       String(sql).includes('INSERT INTO email_consent_events')
     )
