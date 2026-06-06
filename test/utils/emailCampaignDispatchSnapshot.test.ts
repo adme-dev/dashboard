@@ -76,4 +76,29 @@ describe('dispatchCampaigns scheduled recipient snapshot', () => {
     expect(mockGetCampaign).toHaveBeenCalledWith('camp-1')
     expect(mockSetCampaignStatus).toHaveBeenCalledWith('camp-1', 'sending')
   })
+
+  it('stores a fresh blocked preflight result when a due campaign is no longer sendable', async () => {
+    const { dispatchCampaigns } = await import('~~/server/utils/email-marketing/campaignSender')
+    mockGetCampaign.mockResolvedValueOnce({
+      ...scheduledCampaign,
+      body_html: '<p>Offer without opt-out</p>'
+    })
+    mockQueryRows
+      .mockReset()
+      .mockResolvedValueOnce([{ id: 'camp-1' }])
+      .mockResolvedValueOnce([])
+
+    const result = await dispatchCampaigns()
+
+    expect(result.promoted).toBe(0)
+    expect(mockSetCampaignStatus).not.toHaveBeenCalled()
+    const updateCall = mockExecute.mock.calls.find(([sql]) =>
+      String(sql).includes('preflight_result')
+    )
+    expect(updateCall?.[1]).toEqual([
+      'camp-1',
+      expect.stringContaining('"blocked":true'),
+      expect.any(String)
+    ])
+  })
 })

@@ -325,6 +325,17 @@ export interface DispatchSummary {
   retryAfterSec: number
 }
 
+async function storeCampaignPreflight(campaignId: string, preflight: ReturnType<typeof buildCampaignPreflight>): Promise<void> {
+  const checkedAt = preflight.checkedAt
+  await execute(`
+    UPDATE campaigns
+    SET preflight_result = $2::jsonb,
+        preflight_checked_at = $3::timestamptz,
+        updated_at = NOW()
+    WHERE id = $1
+  `, [campaignId, JSON.stringify(preflight), checkedAt])
+}
+
 export async function dispatchCampaigns(opts: { maxChunksPerCampaign?: number } = {}): Promise<DispatchSummary> {
   if (!isCampaignSendingEnabled()) {
     return { skipped: 'sending_disabled', promoted: 0, drained: 0, sent: 0, failed: 0, retryAfterSec: 0 }
@@ -351,6 +362,7 @@ export async function dispatchCampaigns(opts: { maxChunksPerCampaign?: number } 
         allowedSenderDomains: resolveCampaignSenderDomains()
       })
       if (preflight.blocked) {
+        await storeCampaignPreflight(c.id, preflight)
         console.warn(`[campaign-dispatch] scheduled campaign ${c.id} preflight blocked`)
         continue
       }
