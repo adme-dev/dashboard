@@ -18,6 +18,7 @@ const Body = z.object({
 
 interface ImportCandidateState {
   email: string
+  client_id: string | null
   subscriber_status: string | null
   membership_status: string | null
   suppression_reason: string | null
@@ -37,6 +38,7 @@ async function loadImportCandidateStates(emails: string[], listId: string): Prom
   return queryRows<ImportCandidateState>(`
     SELECT
       s.email::text AS email,
+      s.client_id,
       s.status::text AS subscriber_status,
       sl.status::text AS membership_status,
       sup.reason::text AS suppression_reason
@@ -89,6 +91,9 @@ export default defineEventHandler(async (event) => {
     subscribers.map(subscriber => subscriber.email),
     input.list_id
   )
+  if (!isAgencyEmailUser(user) && candidateStates.some(row => row.client_id !== list.client_id)) {
+    throw createError({ statusCode: 403, statusMessage: 'email_list_client_mismatch' })
+  }
   const review = buildImportReview({
     validRows: subscribers.length,
     errors,

@@ -10,6 +10,7 @@ const mockAddToList = vi.fn()
 
 const LIST_1 = '11111111-1111-4111-8111-111111111111'
 const CLIENT_1 = '22222222-2222-4222-8222-222222222222'
+const CLIENT_2 = '33333333-3333-4333-8333-333333333333'
 
 const testGlobal = globalThis as unknown as {
   defineEventHandler: <T>(fn: T) => T
@@ -124,6 +125,36 @@ describe('email subscriber import route', () => {
       statusMessage: 'email_client_scope_required'
     })
 
+    expect(mockUpsertSubscriber).not.toHaveBeenCalled()
+    expect(mockAddToList).not.toHaveBeenCalled()
+  })
+
+  it('blocks scoped imports from attaching another client existing subscriber', async () => {
+    const handler = (await import('~~/server/api/email/subscribers/import.post')).default
+    mockRequireWriteAccess.mockResolvedValueOnce({
+      id: 'user-1',
+      role: 'account_manager',
+      permissionGroups: []
+    })
+    mockGetList.mockResolvedValueOnce({ id: LIST_1, client_id: CLIENT_1 })
+    mockReadBody.mockResolvedValue({
+      list_id: LIST_1,
+      csv: ['email,name', 'existing@example.com,Existing'].join('\n')
+    })
+    mockQueryRows.mockResolvedValueOnce([
+      {
+        email: 'existing@example.com',
+        client_id: CLIENT_2,
+        subscriber_status: 'enabled',
+        membership_status: null,
+        suppression_reason: null
+      }
+    ])
+
+    await expect(handler({} as never)).rejects.toMatchObject({
+      statusCode: 403,
+      statusMessage: 'email_list_client_mismatch'
+    })
     expect(mockUpsertSubscriber).not.toHaveBeenCalled()
     expect(mockAddToList).not.toHaveBeenCalled()
   })
