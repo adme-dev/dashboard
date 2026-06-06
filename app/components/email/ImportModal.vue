@@ -11,6 +11,7 @@ const csv = ref('')
 const result = ref<{
   imported: number
   skipped: number
+  errors?: Array<{ row: number, message: string }>
   review?: {
     valid_rows: number
     invalid_rows: number
@@ -35,6 +36,16 @@ function errMessage(e: unknown): string {
   return e && typeof e === 'object' && 'data' in e
     ? (e as { data?: { statusMessage?: string } }).data?.statusMessage ?? ''
     : ''
+}
+
+function formatImportErrorMessage(message: string): string {
+  const labels: Record<string, string> = {
+    duplicate_in_file: 'Duplicate in file',
+    empty_csv: 'Empty CSV',
+    invalid_email: 'Invalid email',
+    no_email_column: 'No email column'
+  }
+  return labels[message] ?? message.replace(/_/g, ' ')
 }
 
 async function run() {
@@ -144,6 +155,22 @@ async function run() {
               {{ result.review.blocklisted }}
             </p>
           </div>
+        </div>
+        <div v-if="result?.errors?.length" class="rounded-lg border border-warning/30 bg-warning/5 p-3">
+          <p class="mb-2 text-xs font-semibold uppercase text-warning">
+            Rows to review
+          </p>
+          <ul class="space-y-1 text-sm text-muted">
+            <li
+              v-for="error in result.errors.slice(0, 8)"
+              :key="`${error.row}-${error.message}`"
+            >
+              Row {{ error.row }}: {{ formatImportErrorMessage(error.message) }}
+            </li>
+          </ul>
+          <p v-if="result.errors.length > 8" class="mt-2 text-xs text-muted">
+            {{ result.errors.length - 8 }} more row(s) not shown.
+          </p>
         </div>
 
         <div class="flex justify-end gap-2 pt-4 border-t border-default">
