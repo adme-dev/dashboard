@@ -267,4 +267,36 @@ describe('email subscription audit integration', () => {
       String(sql).includes('INSERT INTO suppression_events')
     )).toBe(false)
   })
+
+  it('limits preference-center subscribe updates to non-archived list memberships', async () => {
+    const dbQueryMock = vi.fn()
+    transactionMock.mockImplementationOnce(async (cb: (db: { query: typeof dbQueryMock }) => Promise<unknown>) => cb({ query: dbQueryMock }))
+    dbQueryMock.mockResolvedValueOnce({ rowCount: 0 })
+
+    await setListSubscription({
+      subscriberId: 'sub-1',
+      listId: 'list-1',
+      subscribe: true
+    })
+
+    const sql = String(dbQueryMock.mock.calls[0]?.[0])
+    expect(sql).toContain('email_lists')
+    expect(sql).toContain('archived_at IS NULL')
+  })
+
+  it('limits preference-center unsubscribe updates to non-archived list memberships', async () => {
+    const dbQueryMock = vi.fn()
+    transactionMock.mockImplementationOnce(async (cb: (db: { query: typeof dbQueryMock }) => Promise<unknown>) => cb({ query: dbQueryMock }))
+    dbQueryMock.mockResolvedValueOnce({ rowCount: 0 })
+
+    await setListSubscription({
+      subscriberId: 'sub-1',
+      listId: 'list-1',
+      subscribe: false
+    })
+
+    const sql = String(dbQueryMock.mock.calls[0]?.[0])
+    expect(sql).toContain('email_lists')
+    expect(sql).toContain('archived_at IS NULL')
+  })
 })

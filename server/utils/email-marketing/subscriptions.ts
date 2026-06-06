@@ -130,9 +130,13 @@ export async function setListSubscription(opts: {
     // lifting the global hard-stop here is authorized.
     return transaction(async (db) => {
       const res = await db.query(
-        `UPDATE subscriber_lists
+        `UPDATE subscriber_lists sl
          SET status = 'confirmed', unsubscribed_at = NULL, subscribed_at = NOW()
-         WHERE subscriber_id = $1 AND list_id = $2`,
+         FROM email_lists el
+         WHERE sl.subscriber_id = $1
+           AND sl.list_id = $2
+           AND el.id = sl.list_id
+           AND el.archived_at IS NULL`,
         [opts.subscriberId, opts.listId]
       )
       const changed = (res.rowCount ?? 0) > 0
@@ -172,8 +176,14 @@ export async function setListSubscription(opts: {
   }
   return transaction(async (db) => {
     const res = await db.query(
-      `UPDATE subscriber_lists SET status = 'unsubscribed', unsubscribed_at = NOW()
-       WHERE subscriber_id = $1 AND list_id = $2 AND status <> 'unsubscribed'`,
+      `UPDATE subscriber_lists sl
+       SET status = 'unsubscribed', unsubscribed_at = NOW()
+       FROM email_lists el
+       WHERE sl.subscriber_id = $1
+         AND sl.list_id = $2
+         AND sl.status <> 'unsubscribed'
+         AND el.id = sl.list_id
+         AND el.archived_at IS NULL`,
       [opts.subscriberId, opts.listId]
     )
     const changed = (res.rowCount ?? 0) > 0
