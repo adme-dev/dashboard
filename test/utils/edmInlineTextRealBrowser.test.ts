@@ -17,6 +17,7 @@ const CHROME_CANDIDATES = [
 ].filter((value): value is string => Boolean(value))
 
 const chromePath = CHROME_CANDIDATES.find(candidate => existsSync(candidate))
+const runRealBrowserTests = process.env.RUN_REAL_BROWSER_TESTS === 'true'
 
 interface ChromeHarness {
   browser: ChildProcessWithoutNullStreams
@@ -186,7 +187,7 @@ async function browserSanitize(inputs: string[]): Promise<string[]> {
   return result.result?.value || []
 }
 
-describe.skipIf(!chromePath)('sanitizeInlineHtml in a real Chromium parser', () => {
+describe.skipIf(!runRealBrowserTests || !chromePath)('sanitizeInlineHtml in a real Chromium parser', () => {
   it('drops foreign-content and raw-text payloads under Chrome', async () => {
     const [svg, math, style, template] = await browserSanitize([
       'before<svg><a href="javascript:alert(1)">x</a><script>y</script></svg>after',

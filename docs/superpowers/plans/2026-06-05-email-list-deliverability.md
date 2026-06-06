@@ -28,10 +28,10 @@ Last updated: 2026-06-06.
 Verification on 2026-06-06:
 
 ```bash
-pnpm vitest run test/utils/email*.test.ts test/server/api/email*.test.ts test/components/email*.test.ts test/utils/edmPresets.test.ts test/utils/edmSectionBuilders.test.ts test/utils/edmInlineText.test.ts test/utils/edmModuleFragment.test.ts test/utils/edmHtmlEditables.test.ts test/utils/edmStyle.test.ts test/utils/edmResponsive.test.ts test/utils/edmDivider.test.ts test/utils/edmDragReorder.test.ts test/utils/edmImageAssets.test.ts test/utils/edmCustomModuleCategories.test.ts test/utils/edmSectionSettings.test.ts test/app/edmBuilderStore.test.ts test/server/edmCustomModules.test.ts
+pnpm vitest run test/utils/email*.test.ts test/server/api/email*.test.ts test/components/email*.test.ts test/utils/edmPresets.test.ts test/utils/edmSectionBuilders.test.ts test/utils/edmInlineText.test.ts test/utils/edmInlineTextRealBrowser.test.ts test/utils/edmModuleFragment.test.ts test/utils/edmHtmlEditables.test.ts test/utils/edmStyle.test.ts test/utils/edmResponsive.test.ts test/utils/edmDivider.test.ts test/utils/edmDragReorder.test.ts test/utils/edmImageAssets.test.ts test/utils/edmCustomModuleCategories.test.ts test/utils/edmSectionSettings.test.ts test/app/edmBuilderStore.test.ts test/server/edmCustomModules.test.ts
 ```
 
-Result: 88 test files passed, 507 tests passed. Known caveat: `test/utils/edmInlineTextRealBrowser.test.ts` remains excluded from this sweep because it depends on a local Chrome/browser environment rather than the standard Vitest environment.
+Result: 88 test files passed, 1 real-browser file skipped, 507 tests passed, 2 real-browser tests skipped. Real-browser sanitizer coverage is opt-in with `RUN_REAL_BROWSER_TESTS=true`; the default sweep stays stable when Chrome is installed but not launchable in the local runner.
 
 ---
 
