@@ -1,7 +1,24 @@
 import type { AiTool } from '../toolRegistry'
+import { financeTool } from './finance'
+import { adspendTool } from './adspend'
+import { tasksTool } from './tasks'
+import { projectsTool } from './projects'
+import { anomaliesTool } from './anomalies'
+import { clientOverviewTool } from './clients'
+import { knowledgeTool } from './knowledge'
+import { socialTool } from './social'
+import { briefsTool } from './briefs'
+// createTaskTool (the single write tool) is appended in Phase 5.
 
-/**
- * The assembled tool registry. Populated in Phase 4.10 once each tool file exists.
- * Kept as an empty array for now so toolRegistry.ts (and its tests) resolve cleanly.
- */
-export const registry: AiTool<any>[] = []
+/** The assembled tool registry — 9 read tools (Slice 1). */
+export const registry: AiTool<any>[] = [
+  financeTool,
+  adspendTool,
+  tasksTool,
+  projectsTool,
+  anomaliesTool,
+  clientOverviewTool,
+  knowledgeTool,
+  socialTool,
+  briefsTool,
+]
