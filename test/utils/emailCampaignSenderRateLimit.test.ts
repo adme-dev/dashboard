@@ -75,4 +75,28 @@ describe('sendCampaignChunk rate limiting', () => {
     })
     expect(String(mockExecute.mock.calls.at(-1)?.[0])).toContain('claimed_at = NULL')
   })
+
+  it('propagates the provider retry-after delay from a send run', async () => {
+    const { runCampaignSend } = await import('~~/server/utils/email-marketing/campaignSender')
+    mockBatchSend.mockResolvedValueOnce({
+      data: null,
+      error: {
+        statusCode: 429,
+        message: 'Too many requests',
+        headers: { 'retry-after': '23' }
+      }
+    })
+    mockQueryOne.mockResolvedValueOnce({ n: 1 })
+
+    const result = await runCampaignSend(campaign as never, { pacingMs: 0 })
+
+    expect(result).toEqual({
+      sent: 0,
+      failed: 0,
+      remaining: 1,
+      drained: false,
+      rateLimited: true,
+      retryAfterSec: 23
+    })
+  })
 })

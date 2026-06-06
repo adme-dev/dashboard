@@ -194,6 +194,7 @@ export interface SendRunResult {
   remaining: number
   drained: boolean
   rateLimited: boolean
+  retryAfterSec: number
 }
 
 // Drive a campaign's send in a capped, paced loop (≤2 req/s → ~500ms between
@@ -213,19 +214,21 @@ export async function runCampaignSend(
   let sent = 0
   let failed = 0
   let rateLimited = false
+  let retryAfterSec = 0
   for (let i = 0; i < maxChunks; i++) {
     const result = await sendCampaignChunk(preparedCampaign)
     sent += result.sent
     failed += result.failed
     if (result.rateLimited) {
       rateLimited = true
+      retryAfterSec = result.retryAfterSec
       break
     }
     if (result.sent === 0 && result.failed === 0) break
     if (i < maxChunks - 1) await new Promise(resolve => setTimeout(resolve, pacingMs))
   }
   const remaining = await countPending(campaign.id)
-  return { sent, failed, remaining, drained: remaining === 0, rateLimited }
+  return { sent, failed, remaining, drained: remaining === 0, rateLimited, retryAfterSec }
 }
 
 // ── Dispatcher (cron-driven) ────────────────────────────────────────────────
@@ -241,11 +244,12 @@ export interface DispatchSummary {
   drained: number
   sent: number
   failed: number
+  retryAfterSec: number
 }
 
 export async function dispatchCampaigns(opts: { maxChunksPerCampaign?: number } = {}): Promise<DispatchSummary> {
   if (!isCampaignSendingEnabled()) {
-    return { skipped: 'sending_disabled', promoted: 0, drained: 0, sent: 0, failed: 0 }
+    return { skipped: 'sending_disabled', promoted: 0, drained: 0, sent: 0, failed: 0, retryAfterSec: 0 }
   }
 
   // 1. Promote due scheduled campaigns. The recipient queue was materialized
@@ -289,12 +293,14 @@ export async function dispatchCampaigns(opts: { maxChunksPerCampaign?: number } 
   let sent = 0
   let failed = 0
   let drained = 0
+  let retryAfterSec = 0
   for (const campaign of sending) {
     try {
       await releaseStaleClaims(campaign.id)
       const result = await runCampaignSend(campaign, { maxChunks: opts.maxChunksPerCampaign ?? 50 })
       sent += result.sent
       failed += result.failed
+      retryAfterSec = Math.max(retryAfterSec, result.retryAfterSec)
       if (result.drained) {
         await setCampaignStatus(campaign.id, 'sent')
         drained++
@@ -304,5 +310,5 @@ export async function dispatchCampaigns(opts: { maxChunksPerCampaign?: number } 
     }
   }
 
-  return { promoted, drained, sent, failed }
+  return { promoted, drained, sent, failed, retryAfterSec }
 }
