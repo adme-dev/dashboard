@@ -25,6 +25,26 @@ const campaignRows = [
       toSend: 25,
       generatedAt: '2026-06-05T00:00:00.000Z'
     }
+  },
+  {
+    id: 'camp-2',
+    name: 'Booked launch',
+    subject: 'Booked offer',
+    status: 'scheduled',
+    scheduled_at: '2026-06-06T02:30:00.000Z',
+    to_send: 40,
+    sent: 0,
+    updated_at: '2026-06-05T00:00:00.000Z',
+    preflight_result: {
+      ok: true,
+      blocked: false,
+      checkedAt: '2026-06-05T00:00:00.000Z',
+      checks: []
+    },
+    recipient_snapshot: {
+      toSend: 40,
+      generatedAt: '2026-06-05T00:00:00.000Z'
+    }
   }
 ]
 
@@ -75,5 +95,13 @@ describe('EmailCampaignsPanel', () => {
     expect(html).toContain('Blocked launch')
     expect(html).toContain('Resolve blocked preflight checks')
     expect(html).toMatch(/<button[^>]*data-icon="i-lucide-send"[^>]*disabled/)
+  })
+
+  it('shows the booked send time for scheduled campaigns', async () => {
+    const html = await renderPanel()
+
+    expect(html).toContain('Booked launch')
+    expect(html).toContain('Scheduled')
+    expect(html).toContain('Jun')
   })
 })

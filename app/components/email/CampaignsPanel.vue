@@ -142,6 +142,13 @@ function errMessage(e: unknown): string {
   return err?.data?.message || err?.data?.statusMessage || err?.statusMessage || 'Something went wrong.'
 }
 
+function formatDate(value?: string | null): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+}
+
 function confirmSend(row: CampaignRow) {
   sendTarget.value = row
   showSend.value = true
@@ -338,6 +345,9 @@ const TERMINAL = new Set(['sent', 'cancelled'])
           </p>
           <p v-if="row.subject" class="text-sm text-muted truncate">
             {{ row.subject }}
+          </p>
+          <p v-if="row.scheduled_at" class="mt-0.5 text-xs text-muted">
+            Scheduled {{ formatDate(row.scheduled_at) }}
           </p>
         </div>
         <div class="flex items-center gap-2 shrink-0">
