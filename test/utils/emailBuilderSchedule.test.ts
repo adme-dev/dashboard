@@ -46,6 +46,22 @@ describe('extractEmailBuilderScheduleError', () => {
     expect(result.recipientSnapshot?.toSend).toBe(24)
     expect(result.recipientSnapshot?.excludedSuppressed).toBe(3)
   })
+
+  it('includes validation issues from invalid schedule payloads', () => {
+    const result = extractEmailBuilderScheduleError({
+      data: {
+        statusMessage: 'invalid_body',
+        data: [
+          { message: 'Choose a future send time.' },
+          { message: 'Campaign ID is required.' }
+        ]
+      }
+    })
+
+    expect(result.message).toBe('invalid_body: Choose a future send time.; Campaign ID is required.')
+    expect(result.preflight).toBeNull()
+    expect(result.recipientSnapshot).toBeNull()
+  })
 })
 
 describe('isEmailBuilderScheduleBlocked', () => {

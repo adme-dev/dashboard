@@ -22,6 +22,16 @@ export interface EmailBuilderScheduleRecipientSnapshot {
   generatedAt?: string
 }
 
+interface EmailBuilderScheduleErrorDetail {
+  label?: unknown
+  message?: unknown
+}
+
+function detailMessage(detail: EmailBuilderScheduleErrorDetail): string | null {
+  if (typeof detail.message !== 'string' || !detail.message.trim()) return null
+  return detail.message.trim()
+}
+
 export function isEmailBuilderScheduleBlocked(
   preflight: EmailBuilderSchedulePreflight | null | undefined
 ): boolean {
@@ -79,6 +89,11 @@ export function extractEmailBuilderScheduleError(error: unknown): {
     message?: unknown
   } | null | undefined
   const responseData = payload?.data
+  const details = Array.isArray(responseData?.data)
+    ? responseData.data
+        .map(detailMessage)
+        .filter((message): message is string => !!message)
+    : []
   const message = typeof responseData?.message === 'string' && responseData.message.trim()
     ? responseData.message.trim()
     : typeof responseData?.statusMessage === 'string' && responseData.statusMessage.trim()
@@ -88,7 +103,7 @@ export function extractEmailBuilderScheduleError(error: unknown): {
         : 'Could not schedule the campaign.'
 
   return {
-    message,
+    message: details.length ? `${message}: ${details.slice(0, 4).join('; ')}` : message,
     preflight: responseData?.data?.preflight ?? null,
     recipientSnapshot: responseData?.data?.recipientSnapshot ?? null
   }
