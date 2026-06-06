@@ -94,6 +94,41 @@ export async function handleResendEvent(
     )
   }
 
+  if (rule.eventType === 'delivered') {
+    const reset = await queryOne<{ email: string }>(
+      `UPDATE email_subscribers
+       SET soft_bounce_count = 0,
+           last_soft_bounce_at = NULL,
+           updated_at = NOW()
+       WHERE id = $1
+         AND soft_bounce_count > 0
+       RETURNING email::text AS email`,
+      [recipient.subscriber_id]
+    )
+    if (reset?.email) {
+      const removed = await execute(`
+        DELETE FROM suppression_list
+        WHERE email = $1
+          AND reason = 'soft_bounce'
+      `, [reset.email])
+      if (removed > 0) {
+        await recordSuppressionEvent({
+          email: reset.email,
+          subscriberId: recipient.subscriber_id,
+          campaignId: recipient.campaign_id,
+          reason: 'soft_bounce',
+          action: 'removed',
+          source: 'webhook',
+          metadata: {
+            resendEventId: eventId,
+            resendMessageId: messageId,
+            resendType: payload.type
+          }
+        })
+      }
+    }
+  }
+
   if (rule.softBounce) {
     const email = await queryOne<{ email: string, soft_bounce_count?: number }>(
       'SELECT email::text AS email, soft_bounce_count::int AS soft_bounce_count FROM email_subscribers WHERE id = $1',

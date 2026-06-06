@@ -159,4 +159,44 @@ describe('handleResendEvent suppression audit', () => {
       '{"resendEventId":"evt-soft-3","resendMessageId":"msg-1","resendType":"email.delivery_delayed","softBounceCount":3,"threshold":3}'
     ])
   })
+
+  it('clears soft-bounce suppression when a delayed message later delivers', async () => {
+    queryOneMock
+      .mockResolvedValueOnce({ campaign_id: 'camp-1', subscriber_id: 'sub-1' })
+      .mockResolvedValueOnce({ email: 'person@example.com' })
+    executeMock
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+
+    const result = await handleResendEvent({
+      type: 'email.delivered',
+      data: { email_id: 'msg-1' }
+    }, 'evt-delivered-1')
+
+    expect(result).toEqual({ status: 'recorded' })
+    expect(queryOneMock.mock.calls.some(([sql, params]) =>
+      String(sql).includes('soft_bounce_count = 0')
+      && JSON.stringify(params) === JSON.stringify(['sub-1'])
+    )).toBe(true)
+    const softBounceRemovalCall = executeMock.mock.calls.find(([sql]) =>
+      String(sql).includes('DELETE FROM suppression_list')
+      && String(sql).includes('reason = \'soft_bounce\'')
+    )
+    expect(softBounceRemovalCall?.[1]).toEqual(['person@example.com'])
+    const suppressionEventCall = executeMock.mock.calls.find(([sql]) =>
+      String(sql).includes('INSERT INTO suppression_events')
+    )
+    expect(suppressionEventCall?.[1]).toEqual([
+      'person@example.com',
+      'sub-1',
+      'camp-1',
+      'soft_bounce',
+      'removed',
+      'webhook',
+      null,
+      '{"resendEventId":"evt-delivered-1","resendMessageId":"msg-1","resendType":"email.delivered"}'
+    ])
+  })
 })
