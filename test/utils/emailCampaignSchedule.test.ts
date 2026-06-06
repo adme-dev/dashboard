@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getCampaignListIds, materializeRecipients, scheduleCampaign, updateCampaign } from '~~/server/utils/email-marketing/campaigns'
+import { createCampaign, getCampaignListIds, materializeRecipients, scheduleCampaign, updateCampaign } from '~~/server/utils/email-marketing/campaigns'
 
 const queryOneMock = vi.fn()
 const queryRowsMock = vi.fn()
@@ -89,6 +89,36 @@ describe('updateCampaign', () => {
       String(sql).includes('UPDATE campaigns SET')
     )
     expect(updateCall?.[1]).toEqual(expect.arrayContaining([
+      'June offers',
+      'XeroFlow',
+      'Sales@Example.COM',
+      'Replies@Example.COM',
+      'Latest deals inside'
+    ]))
+  })
+})
+
+describe('createCampaign', () => {
+  beforeEach(() => {
+    queryOneMock.mockReset()
+  })
+
+  it('normalizes campaign metadata when creating a campaign', async () => {
+    queryOneMock.mockResolvedValueOnce({ ...draftCampaign, id: 'camp-new' })
+
+    await createCampaign({
+      name: '  June campaign  ',
+      subject: '  June offers  ',
+      from_name: '  XeroFlow  ',
+      from_email: '  Sales@Example.COM  ',
+      reply_to: '  Replies@Example.COM  ',
+      preview_text: '  Latest deals inside  ',
+      body_source: null,
+      created_by: 'user-1'
+    })
+
+    expect(queryOneMock.mock.calls[0]?.[1]).toEqual(expect.arrayContaining([
+      'June campaign',
       'June offers',
       'XeroFlow',
       'Sales@Example.COM',

@@ -222,7 +222,13 @@ export async function createCampaign(input: {
   created_by: string | null
 }): Promise<Campaign> {
   const source = input.body_source ?? { root: { type: 'EmailLayout', data: { childrenIds: [] } } }
-  const html = renderHtml(source, input.subject, input.preview_text)
+  const name = input.name.trim()
+  const subject = normalizeNullableText(input.subject) ?? null
+  const fromName = normalizeNullableText(input.from_name) ?? null
+  const fromEmail = normalizeNullableText(input.from_email) ?? null
+  const replyTo = normalizeNullableText(input.reply_to) ?? null
+  const previewText = normalizeNullableText(input.preview_text) ?? null
+  const html = renderHtml(source, subject, previewText)
   const row = await queryOne<Campaign>(`
     INSERT INTO campaigns
       (name, subject, from_name, from_email, reply_to, preview_text,
@@ -230,12 +236,12 @@ export async function createCampaign(input: {
     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12::jsonb)
     RETURNING *
   `, [
-    input.name,
-    input.subject ?? null,
-    input.from_name ?? null,
-    input.from_email ?? null,
-    input.reply_to ?? null,
-    input.preview_text ?? null,
+    name,
+    subject,
+    fromName,
+    fromEmail,
+    replyTo,
+    previewText,
     JSON.stringify(source),
     html,
     input.template_id ?? null,
