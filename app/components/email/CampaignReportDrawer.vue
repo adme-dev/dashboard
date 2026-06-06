@@ -284,6 +284,9 @@ watch([open, () => props.campaignId], load, { immediate: true })
                   <p v-if="event.url" class="mt-1 truncate text-xs text-muted">
                     {{ event.url }}
                   </p>
+                  <p v-if="event.metric_note" class="mt-1 text-xs text-muted">
+                    {{ event.metric_note }}
+                  </p>
                 </div>
                 <p class="shrink-0 text-xs text-muted">
                   {{ formatDate(event.occurred_at) }}
