@@ -2,7 +2,9 @@
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { assertEmailClientAccess } from '~~/server/utils/email-marketing/access'
+import { recordSuppressionEvent } from '~~/server/utils/email-marketing/audit'
 import { getSubscriber, updateSubscriber } from '~~/server/utils/email-marketing/db'
+import type { SubscriberStatus } from '~~/server/utils/email-marketing/types'
 
 const Body = z.object({
   name: z.string().max(200).optional().nullable(),
@@ -23,5 +25,27 @@ export default defineEventHandler(async (event) => {
   await assertEmailClientAccess(event, user, existing.client_id)
   const sub = await updateSubscriber(id, parsed.data)
   if (!sub) throw createError({ statusCode: 404, statusMessage: 'not_found' })
+  if (parsed.data.status && parsed.data.status !== existing.status) {
+    const previousStatus = existing.status as SubscriberStatus
+    const nextStatus = parsed.data.status
+    const action = nextStatus === 'blocklisted'
+      ? 'recorded'
+      : previousStatus === 'blocklisted' ? 'removed' : null
+    if (action) {
+      await recordSuppressionEvent({
+        email: existing.email,
+        subscriberId: existing.id,
+        reason: 'manual',
+        action,
+        source: 'manual',
+        actorUserId: user.id,
+        metadata: {
+          route: 'email_subscriber_patch',
+          previousStatus,
+          status: nextStatus
+        }
+      })
+    }
+  }
   return { subscriber: sub }
 })
