@@ -10,6 +10,29 @@
 
 **Spec:** `docs/superpowers/specs/2026-06-05-email-list-deliverability-prd.md`
 
+## Implementation Status
+
+Last updated: 2026-06-06.
+
+- [x] Backend audit foundation: consent events, suppression events, soft-bounce fields, and audit helpers are implemented.
+- [x] Consent/suppression integration: imports, manual adds, public subscribe/confirm, preference unsubscribe, global one-click unsubscribe, Resend hard bounces, complaints, and blocklist status changes write history.
+- [x] Bounce lifecycle: delivery-delay soft bounces increment subscriber counters, optional threshold suppression is configurable, hard bounces/complaints suppress and blocklist, and later delivery clears soft-bounce state.
+- [x] Scheduled send preflight and snapshot: schedule/send/test-send use structured preflight, physical footer identity is enforced, recipient snapshots include disabled/blocklisted/suppressed/unsubscribed exclusions, and dispatch failures persist preflight details.
+- [x] Queue safety: dispatch rechecks suppression and list membership before claiming, pause stops future sends, cancellation clears pending claims, stale claims are released, and rate-limit paths release claimed recipients.
+- [x] First-party click redirect and attribution: signed redirects, UTM rewriting, scanner classification, campaign event summaries, and attribution joins are implemented.
+- [x] Subscriber and suppression admin UI: subscriber rows show bounce/suppression state, detail history is available, suppression search/add/remove routes and UI are implemented with policy checks.
+- [x] Campaign schedule UX: preflight panel renders blocked/warning checks and recipient exclusions, and blocked campaigns cannot be scheduled.
+- [x] Campaign reporting: report distinguishes delivery, opens, clicks, human-clicks, delayed, bounced, complained, unsubscribed, and site attribution; opens are labelled directional.
+- [x] Client-scoped ownership policy: list/subscriber/campaign/media/suppression routes enforce assigned-client scope and block mixed-client campaign targeting.
+
+Verification on 2026-06-06:
+
+```bash
+pnpm vitest run test/utils/email*.test.ts test/server/api/email*.test.ts test/components/email*.test.ts test/utils/edmPresets.test.ts test/utils/edmSectionBuilders.test.ts test/utils/edmInlineText.test.ts test/utils/edmModuleFragment.test.ts test/utils/edmHtmlEditables.test.ts test/utils/edmStyle.test.ts test/utils/edmResponsive.test.ts test/utils/edmDivider.test.ts test/utils/edmDragReorder.test.ts test/utils/edmImageAssets.test.ts test/utils/edmCustomModuleCategories.test.ts test/utils/edmSectionSettings.test.ts test/app/edmBuilderStore.test.ts test/server/edmCustomModules.test.ts
+```
+
+Result: 88 test files passed, 507 tests passed. Known caveat: `test/utils/edmInlineTextRealBrowser.test.ts` remains excluded from this sweep because it depends on a local Chrome/browser environment rather than the standard Vitest environment.
+
 ---
 
 ## Task 1: Backend Audit Foundation
