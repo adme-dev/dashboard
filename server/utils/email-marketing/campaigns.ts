@@ -76,6 +76,13 @@ function renderHtml(bodySource: unknown, subject?: string | null, previewText?: 
   })
 }
 
+function normalizeNullableText(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined
+  if (value === null) return null
+  const trimmed = value.trim()
+  return trimmed || null
+}
+
 function campaignSendUserId(campaign: Campaign, fallback?: string): string {
   return fallback || campaign.created_by || campaign.id
 }
@@ -260,11 +267,15 @@ export async function updateCampaign(id: string, patch: {
     throw createError({ statusCode: 409, statusMessage: 'campaign_not_editable' })
   }
 
-  const subject = patch.subject !== undefined ? patch.subject : existing.subject
-  const previewText = patch.preview_text !== undefined ? patch.preview_text : existing.preview_text
+  const subject = patch.subject !== undefined ? normalizeNullableText(patch.subject) : existing.subject
+  const previewText = patch.preview_text !== undefined ? normalizeNullableText(patch.preview_text) : existing.preview_text
+  const fromName = patch.from_name !== undefined ? normalizeNullableText(patch.from_name) : existing.from_name
+  const fromEmail = patch.from_email !== undefined ? normalizeNullableText(patch.from_email) : existing.from_email
+  const replyTo = patch.reply_to !== undefined ? normalizeNullableText(patch.reply_to) : existing.reply_to
   const source = patch.body_source !== undefined ? patch.body_source : existing.body_source
   const html = renderHtml(source, subject, previewText)
   const filterRules = patch.filter_rules !== undefined ? patch.filter_rules : existing.filter_rules
+  const name = patch.name !== undefined ? patch.name.trim() || existing.name : existing.name
 
   const row = await queryOne<Campaign>(`
     UPDATE campaigns SET
@@ -284,11 +295,11 @@ export async function updateCampaign(id: string, patch: {
     RETURNING *
   `, [
     id,
-    patch.name ?? existing.name,
+    name,
     subject,
-    patch.from_name !== undefined ? patch.from_name : existing.from_name,
-    patch.from_email !== undefined ? patch.from_email : existing.from_email,
-    patch.reply_to !== undefined ? patch.reply_to : existing.reply_to,
+    fromName,
+    fromEmail,
+    replyTo,
     previewText,
     JSON.stringify(source ?? null),
     html,
