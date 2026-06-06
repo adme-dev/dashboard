@@ -83,6 +83,7 @@ Full agent transcripts (if needed) are under the session's `subagents/` dirs, bu
 - Groq client: `server/utils/groqClient.ts:14` — already routes via `AI_GATEWAY_URL`; model catalog comments already call `gpt-oss-120b` "best JSON adherence + tool use".
 - Permissions: `server/utils/permissions.ts:5` `PERMISSIONS` (FINANCE/CLIENTS/MANAGEMENT/…) + `hasPermission(role, category)`. Auth: `server/utils/auth.ts` `requireAuth`/`requireRole:217`/`requireWriteAccess:233`.
 - DB: `server/utils/db.ts` — `queryRows/queryOne/execute/transaction`. Tables: `ai_conversations`, `ai_messages` (per-user). Server imports use `~~/`.
+- **Existing Workflow-Oracle precursor (user-flagged 2026-06-07):** `server/utils/aiAgentRunner.ts` (`runAgentDigest`) + `aiAgentAnalyzer.ts` (11 business-wide analyzers + `runAllAnalyzers`) + `ai_agent_runs` (mig 015) + `/api/agency/ai/agent/*` (trigger/preferences/runs/reports) + internal daily-digest/weekly-report crons. Already does proactive oversight + run-audit → **evolve into the Workflow Oracle, don't rebuild** (spec §15).
 - Tool sources (spec §6): cashflow.get.ts, xero/invoices.get.ts, advisorMetrics.ts, anomalyDetection/analysers/adspendHealth.ts, spend/summary.get.ts + alerts.get.ts, tasks/projects tables, anomalies table, agency_clients + briefs, aiVectorize.searchSimilar, socialReporting/aggregate.ts + reporting/overview.get.ts, briefs/index.get.ts.
 
 ---
