@@ -5,12 +5,18 @@ import { resolveEmailWriteClientId } from '~~/server/utils/email-marketing/acces
 import { createCampaign } from '~~/server/utils/email-marketing/campaigns'
 import { isValidSegment } from '~~/server/utils/email-marketing/segment'
 
+const OptionalEmail = z.preprocess((value) => {
+  if (typeof value !== 'string') return value
+  const trimmed = value.trim()
+  return trimmed || null
+}, z.string().email().max(300).optional().nullable())
+
 const Body = z.object({
   name: z.string().min(1).max(200),
   subject: z.string().max(300).optional().nullable(),
   from_name: z.string().max(200).optional().nullable(),
-  from_email: z.string().email().max(300).optional().nullable(),
-  reply_to: z.string().email().max(300).optional().nullable(),
+  from_email: OptionalEmail,
+  reply_to: OptionalEmail,
   preview_text: z.string().max(300).optional().nullable(),
   body_source: z.any().optional(),
   template_id: z.string().uuid().optional().nullable(),

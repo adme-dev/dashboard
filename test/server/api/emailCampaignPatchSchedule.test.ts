@@ -114,4 +114,20 @@ describe('campaign patch scheduling', () => {
       vi.useRealTimers()
     }
   })
+
+  it('trims sender email fields before saving campaign edits', async () => {
+    const handler = (await import('~~/server/api/email/campaigns/[id].patch')).default
+    mockReadBody.mockResolvedValue({
+      from_email: '  Sales@Example.COM  ',
+      reply_to: '  Replies@Example.COM  '
+    })
+
+    await handler({} as never)
+
+    expect(mockUpdateCampaign).toHaveBeenCalledWith('camp-1', {
+      from_email: 'Sales@Example.COM',
+      reply_to: 'Replies@Example.COM'
+    })
+    expect(mockScheduleCampaign).not.toHaveBeenCalled()
+  })
 })

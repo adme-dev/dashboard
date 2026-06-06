@@ -312,6 +312,22 @@ describe('email client-scoped route policy', () => {
     expect(mockCreateCampaign).not.toHaveBeenCalled()
   })
 
+  it('trims sender email fields before creating a campaign', async () => {
+    const handler = (await import('~~/server/api/email/campaigns/index.post')).default
+    mockReadBody.mockResolvedValueOnce({
+      name: 'Client campaign',
+      from_email: '  Sales@Example.COM  ',
+      reply_to: '  Replies@Example.COM  '
+    })
+
+    await handler({} as never)
+
+    expect(mockCreateCampaign).toHaveBeenCalledWith(expect.objectContaining({
+      from_email: 'Sales@Example.COM',
+      reply_to: 'Replies@Example.COM'
+    }))
+  })
+
   it('blocks mixed-client campaign targets for scoped users', async () => {
     const handler = (await import('~~/server/api/email/campaigns/[id]/lists.put')).default
     mockReadBody.mockResolvedValueOnce({ list_ids: [LIST_1, LIST_2] })
