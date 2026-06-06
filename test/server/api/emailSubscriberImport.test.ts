@@ -94,8 +94,8 @@ describe('email subscriber import route', () => {
       ]
     )
     expect(result).toEqual(expect.objectContaining({
-      imported: 2,
-      skipped: 2,
+      imported: 1,
+      skipped: 3,
       review: {
         valid_rows: 2,
         invalid_rows: 1,
@@ -105,6 +105,11 @@ describe('email subscriber import route', () => {
         blocklisted: 1
       }
     }))
+    expect(mockUpsertSubscriber).toHaveBeenCalledTimes(1)
+    expect(mockUpsertSubscriber).toHaveBeenCalledWith(expect.objectContaining({
+      email: 'a@example.com'
+    }))
+    expect(mockAddToList).toHaveBeenCalledTimes(1)
   })
 
   it('blocks scoped users from importing into agency-wide lists', async () => {

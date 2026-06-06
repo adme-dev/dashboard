@@ -99,9 +99,15 @@ export default defineEventHandler(async (event) => {
     errors,
     candidateStates
   })
+  const unsafeExistingEmails = new Set(
+    candidateStates
+      .filter(row => row.subscriber_status === 'blocklisted' || !!row.suppression_reason)
+      .map(row => row.email.toLowerCase())
+  )
 
   let imported = 0
   for (const s of subscribers) {
+    if (unsafeExistingEmails.has(s.email.toLowerCase())) continue
     const id = await upsertSubscriber({
       email: s.email,
       name: s.name ?? null,
@@ -121,5 +127,5 @@ export default defineEventHandler(async (event) => {
     imported++
   }
 
-  return { imported, skipped: errors.length, errors, review }
+  return { imported, skipped: errors.length + unsafeExistingEmails.size, errors, review }
 })
