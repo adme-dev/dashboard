@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, createApp, createSSRApp, h, nextTick, ref, Suspense } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import EdmImageLibraryPicker from '~~/app/components/email/builder/EdmImageLibraryPicker.vue'
@@ -87,9 +87,14 @@ async function mountPicker() {
 }
 
 describe('EmailBuilderEdmImageLibraryPicker', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   beforeEach(() => {
     document.body.innerHTML = ''
     vi.clearAllMocks()
+    vi.spyOn(console, 'info').mockImplementation(() => {})
   })
 
   it('renders the agency image library with upload controls and image assets only', async () => {

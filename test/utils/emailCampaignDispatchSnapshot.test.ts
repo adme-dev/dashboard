@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockQueryRows = vi.fn()
 const mockQueryOne = vi.fn()
@@ -53,6 +53,10 @@ const scheduledCampaign = {
 }
 
 describe('dispatchCampaigns scheduled recipient snapshot', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.EMAIL_SENDING_ENABLED = 'true'
@@ -78,6 +82,7 @@ describe('dispatchCampaigns scheduled recipient snapshot', () => {
   })
 
   it('stores a fresh blocked preflight result when a due campaign is no longer sendable', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { dispatchCampaigns } = await import('~~/server/utils/email-marketing/campaignSender')
     mockGetCampaign.mockResolvedValueOnce({
       ...scheduledCampaign,
@@ -90,6 +95,7 @@ describe('dispatchCampaigns scheduled recipient snapshot', () => {
 
     const result = await dispatchCampaigns()
 
+    expect(warnSpy).toHaveBeenCalledWith('[campaign-dispatch] scheduled campaign camp-1 preflight blocked')
     expect(result.promoted).toBe(0)
     expect(mockSetCampaignStatus).not.toHaveBeenCalled()
     const updateCall = mockExecute.mock.calls.find(([sql]) =>
