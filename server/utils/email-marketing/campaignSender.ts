@@ -61,18 +61,63 @@ async function releaseClaims(ids: string[]): Promise<void> {
   await execute('UPDATE campaign_recipients SET claimed_at = NULL WHERE id = ANY($1::uuid[])', [ids])
 }
 
-export async function cancelSuppressedPendingRecipients(campaignId: string): Promise<number> {
+export async function cancelIneligiblePendingRecipients(campaignId: string): Promise<number> {
   return execute(`
     UPDATE campaign_recipients cr
     SET status = 'cancelled',
-        error = 'suppressed_at_send_time'
+        error = CASE
+          WHEN EXISTS (
+            SELECT 1 FROM suppression_list sup WHERE sup.email = cr.email
+          ) THEN 'suppressed_at_send_time'
+          WHEN EXISTS (
+            SELECT 1
+            FROM email_subscribers s
+            WHERE s.id = cr.subscriber_id
+              AND s.status <> 'enabled'
+          ) THEN 'subscriber_ineligible_at_send_time'
+          WHEN NOT EXISTS (
+            SELECT 1
+            FROM campaign_lists cl
+            JOIN subscriber_lists sl
+              ON sl.list_id = cl.list_id
+             AND sl.subscriber_id = cr.subscriber_id
+            JOIN email_subscribers s
+              ON s.id = cr.subscriber_id
+            WHERE cl.campaign_id = cr.campaign_id
+              AND sl.status <> 'unsubscribed'
+              AND s.status = 'enabled'
+          ) THEN 'unsubscribed_at_send_time'
+          ELSE 'ineligible_at_send_time'
+        END
     WHERE cr.campaign_id = $1
       AND cr.status = 'pending'
-      AND EXISTS (
-        SELECT 1 FROM suppression_list sup WHERE sup.email = cr.email
+      AND (
+        EXISTS (
+          SELECT 1 FROM suppression_list sup WHERE sup.email = cr.email
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM email_subscribers s
+          WHERE s.id = cr.subscriber_id
+            AND s.status <> 'enabled'
+        )
+        OR NOT EXISTS (
+          SELECT 1
+          FROM campaign_lists cl
+          JOIN subscriber_lists sl
+            ON sl.list_id = cl.list_id
+           AND sl.subscriber_id = cr.subscriber_id
+          JOIN email_subscribers s
+            ON s.id = cr.subscriber_id
+          WHERE cl.campaign_id = cr.campaign_id
+            AND sl.status <> 'unsubscribed'
+            AND s.status = 'enabled'
+        )
       )
   `, [campaignId])
 }
+
+export const cancelSuppressedPendingRecipients = cancelIneligiblePendingRecipients
 
 // Watchdog: free rows whose claim went stale (sender crashed after claiming,
 // before sending), so the next dispatch tick re-sends them.
@@ -105,7 +150,7 @@ export async function sendCampaignChunk(campaign: Campaign): Promise<ChunkResult
   const client = getResendClient()
   if (!client) throw createError({ statusCode: 503, statusMessage: 'resend_unavailable' })
 
-  await cancelSuppressedPendingRecipients(campaign.id)
+  await cancelIneligiblePendingRecipients(campaign.id)
   const recipients = await claimPendingChunk(campaign.id, RESEND_BATCH_LIMIT)
   if (recipients.length === 0) return { sent: 0, failed: 0, rateLimited: false, retryAfterSec: 0 }
 
