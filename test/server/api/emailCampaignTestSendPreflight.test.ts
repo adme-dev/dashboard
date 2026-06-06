@@ -151,6 +151,30 @@ describe('campaign test-send preflight', () => {
     expect(result).toEqual({ sent_to: 'Buyer@Example.COM' })
   })
 
+  it('rejects invalid explicit recipients instead of falling back to the current user', async () => {
+    const handler = (await import('~~/server/api/email/campaigns/[id]/test-send.post')).default
+    mockReadBody.mockResolvedValue({ to: 'not-an-email' })
+    mockGetCampaign.mockResolvedValue({
+      id: 'camp-1',
+      subject: 'Subject',
+      from_name: 'XeroFlow',
+      from_email: 'sales@example.com',
+      reply_to: null,
+      client_id: null,
+      body_html: [
+        '<p>Offer</p>',
+        '<a href="{{ unsubscribe_url }}">Unsubscribe</a>',
+        '<footer>XeroFlow Agency, 1 Market Street, Melbourne VIC 3000</footer>'
+      ].join('')
+    })
+
+    await expect(handler({} as never)).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: 'invalid_body'
+    })
+    expect(mockEmailsSend).not.toHaveBeenCalled()
+  })
+
   it('signs the unsubscribe URL in campaign test-send headers and body', async () => {
     const handler = (await import('~~/server/api/email/campaigns/[id]/test-send.post')).default
     mockGetCampaign.mockResolvedValue({

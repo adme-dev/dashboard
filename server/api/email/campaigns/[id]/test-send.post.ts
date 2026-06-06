@@ -32,7 +32,10 @@ export default defineEventHandler(async (event) => {
   if (!client) throw createError({ statusCode: 503, statusMessage: 'resend_unavailable' })
 
   const parsed = Body.safeParse(await readBody(event).catch(() => ({})))
-  const to = parsed.success && parsed.data.to ? parsed.data.to : (user as { email?: string }).email
+  if (!parsed.success) {
+    throw createError({ statusCode: 400, statusMessage: 'invalid_body', data: parsed.error.issues })
+  }
+  const to = parsed.data.to || (user as { email?: string }).email
   if (!to) throw createError({ statusCode: 422, statusMessage: 'no_test_recipient' })
 
   const campaign = await getCampaign(id)
