@@ -42,6 +42,10 @@ export default defineEventHandler(async (event) => {
   await assertEmailClientAccess(event, user, existing.client_id)
   const { scheduled_at: scheduledAt, ...draftPatch } = parsed.data
   if (scheduledAt) {
+    const scheduledDate = new Date(scheduledAt)
+    if (scheduledDate.getTime() <= Date.now()) {
+      throw createError({ statusCode: 422, statusMessage: 'schedule_time_in_past' })
+    }
     assertScopedCampaignLists(user, existing.client_id, await getCampaignListClientIds(id))
     if (Object.keys(draftPatch).length > 0) {
       const updated = await updateCampaign(id, draftPatch)

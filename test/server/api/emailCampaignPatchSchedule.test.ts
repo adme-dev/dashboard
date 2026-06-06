@@ -69,22 +69,49 @@ describe('campaign patch scheduling', () => {
   })
 
   it('saves draft edits before scheduling with preflight readiness inputs', async () => {
-    const handler = (await import('~~/server/api/email/campaigns/[id].patch')).default
-    mockReadBody.mockResolvedValue({
-      name: 'June offers',
-      scheduled_at: '2026-06-06T00:00:00.000Z'
-    })
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-05T00:00:00.000Z'))
+    try {
+      const handler = (await import('~~/server/api/email/campaigns/[id].patch')).default
+      mockReadBody.mockResolvedValue({
+        name: 'June offers',
+        scheduled_at: '2026-06-06T00:00:00.000Z'
+      })
 
-    const result = await handler({} as never)
+      const result = await handler({} as never)
 
-    expect(mockUpdateCampaign).toHaveBeenCalledWith('camp-1', { name: 'June offers' })
-    expect(mockScheduleCampaign).toHaveBeenCalledWith('camp-1', '2026-06-06T00:00:00.000Z', {
-      sendingConfigured: true,
-      senderDomainAuthenticated: true,
-      allowedSenderDomains: ['adme.net.au'],
-      appUrl: 'https://app.example.com',
-      userId: 'user-1'
-    })
-    expect(result).toEqual({ campaign: { id: 'camp-1', status: 'scheduled' } })
+      expect(mockUpdateCampaign).toHaveBeenCalledWith('camp-1', { name: 'June offers' })
+      expect(mockScheduleCampaign).toHaveBeenCalledWith('camp-1', '2026-06-06T00:00:00.000Z', {
+        sendingConfigured: true,
+        senderDomainAuthenticated: true,
+        allowedSenderDomains: ['adme.net.au'],
+        appUrl: 'https://app.example.com',
+        userId: 'user-1'
+      })
+      expect(result).toEqual({ campaign: { id: 'camp-1', status: 'scheduled' } })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('rejects expired schedule times before saving draft edits', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-06T00:00:00.000Z'))
+    try {
+      const handler = (await import('~~/server/api/email/campaigns/[id].patch')).default
+      mockReadBody.mockResolvedValue({
+        name: 'Past send',
+        scheduled_at: '2026-06-05T23:59:00.000Z'
+      })
+
+      await expect(handler({} as never)).rejects.toMatchObject({
+        statusCode: 422,
+        statusMessage: 'schedule_time_in_past'
+      })
+      expect(mockUpdateCampaign).not.toHaveBeenCalled()
+      expect(mockScheduleCampaign).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
