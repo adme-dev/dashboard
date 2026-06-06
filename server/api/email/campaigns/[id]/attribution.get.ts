@@ -16,6 +16,10 @@ export default defineEventHandler(async (event) => {
   if (!campaign) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   await assertEmailClientAccess(event, user, campaign.client_id)
 
+  const params: unknown[] = [id]
+  const clientScope = campaign.client_id ? 'AND client_id = $2::uuid' : ''
+  if (campaign.client_id) params.push(campaign.client_id)
+
   const tracking = await queryOne<{
     website_events: number | string
     sessions: number | string
@@ -35,8 +39,9 @@ export default defineEventHandler(async (event) => {
     WHERE utm_source = 'email'
       AND utm_medium = 'email'
       AND utm_campaign = $1
+      ${clientScope}
       AND COALESCE(consent->>'tracking', 'denied') = 'granted'
-  `, [id])
+  `, params)
 
   const leadSummary = await queryOne<{ leads: number | string }>(`
     SELECT COUNT(*)::int AS leads
@@ -44,7 +49,8 @@ export default defineEventHandler(async (event) => {
     WHERE attribution->>'utm_source' = 'email'
       AND attribution->>'utm_medium' = 'email'
       AND attribution->>'utm_campaign' = $1
-  `, [id])
+      ${clientScope}
+  `, params)
 
   const sessions = await queryRows(`
     SELECT
@@ -61,11 +67,12 @@ export default defineEventHandler(async (event) => {
     WHERE utm_source = 'email'
       AND utm_medium = 'email'
       AND utm_campaign = $1
+      ${clientScope}
       AND COALESCE(consent->>'tracking', 'denied') = 'granted'
     GROUP BY session_id, anon_id
     ORDER BY last_seen_at DESC
     LIMIT 100
-  `, [id])
+  `, params)
 
   return {
     summary: {

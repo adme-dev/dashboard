@@ -5,6 +5,7 @@ const mockRequireAuth = vi.fn()
 const mockQueryOne = vi.fn()
 const mockQueryRows = vi.fn()
 const mockGetCampaign = vi.fn()
+const CLIENT_1 = '11111111-1111-4111-8111-111111111111'
 
 const testGlobal = globalThis as unknown as {
   defineEventHandler: <T>(fn: T) => T
@@ -92,5 +93,19 @@ describe('email campaign attribution route', () => {
         }
       ]
     })
+  })
+
+  it('scopes attribution tracking and leads to the campaign client', async () => {
+    const handler = (await import('~~/server/api/email/campaigns/[id]/attribution.get')).default
+    mockGetCampaign.mockResolvedValueOnce({ id: 'camp-1', client_id: CLIENT_1 })
+
+    await handler({} as never)
+
+    expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('client_id = $2::uuid')
+    expect(mockQueryOne.mock.calls[0]?.[1]).toEqual(['camp-1', CLIENT_1])
+    expect(String(mockQueryOne.mock.calls[1]?.[0])).toContain('client_id = $2::uuid')
+    expect(mockQueryOne.mock.calls[1]?.[1]).toEqual(['camp-1', CLIENT_1])
+    expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('client_id = $2::uuid')
+    expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['camp-1', CLIENT_1])
   })
 })
