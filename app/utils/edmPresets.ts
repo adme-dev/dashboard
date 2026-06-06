@@ -1419,7 +1419,7 @@ const FOOTER_PRESETS: EdmSectionPreset[] = [
         props: {
           showUnsubscribe: true,
           showAddress: false,
-          additionalText: 'You are receiving this email because you subscribed to updates.',
+          additionalText: 'The Agency · 100 George St, Sydney NSW 2000, Australia. You are receiving this email because you subscribed to updates.',
           backgroundColor: '#f5f5f5'
         }
       })
@@ -1457,7 +1457,7 @@ const FOOTER_PRESETS: EdmSectionPreset[] = [
         props: {
           showUnsubscribe: true,
           showAddress: false,
-          additionalText: 'Follow along for more campaign updates.',
+          additionalText: 'The Agency · 100 George St, Sydney NSW 2000, Australia. Follow along for more campaign updates.',
           backgroundColor: '#f5f5f5'
         }
       })
@@ -1509,7 +1509,7 @@ const FOOTER_PRESETS: EdmSectionPreset[] = [
         padding: { top: 22, right: 24, bottom: 4, left: 24 }
       }),
       richFooter({
-        additionalText: 'Follow along for more campaign updates.',
+        additionalText: 'The Agency · 100 George St, Sydney NSW 2000, Australia. Follow along for more campaign updates.',
         showUnsubscribe: true,
         showAddress: false,
         backgroundColor: '#111827',
@@ -1543,7 +1543,7 @@ const FOOTER_PRESETS: EdmSectionPreset[] = [
         }
       }),
       richFooter({
-        additionalText: 'You are receiving this email because you subscribed to updates.',
+        additionalText: 'The Agency · 100 George St, Sydney NSW 2000, Australia. You are receiving this email because you subscribed to updates.',
         showUnsubscribe: true,
         showAddress: false,
         backgroundColor: '#f5f5f5',
@@ -1583,7 +1583,7 @@ const FOOTER_PRESETS: EdmSectionPreset[] = [
         }
       }),
       richFooter({
-        additionalText: 'Unsubscribe at any time from the link below.',
+        additionalText: 'The Agency · 100 George St, Sydney NSW 2000, Australia. Unsubscribe at any time from the link below.',
         showUnsubscribe: true,
         showAddress: false,
         backgroundColor: '#f5f5f5',

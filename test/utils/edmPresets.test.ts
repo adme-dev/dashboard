@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { buildCampaignPreflight } from '~~/server/utils/email-marketing/campaignSend'
 import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
 import { isFlyhubFormat } from '~~/server/utils/email-marketing/render/flyhub-html-renderer'
 import { createEmptyDocument } from '~~/app/types/edm'
@@ -110,6 +111,31 @@ describe('edmPresets', () => {
       const roundTripped = roundTrip(document)
       expect(roundTripped.root).toBeDefined()
       expect(roundTripped.root.data.childrenIds).toEqual(document.root.data.childrenIds)
+    }
+  })
+
+  it('builds starter template HTML that passes campaign identity preflight', () => {
+    for (const starter of EDM_STARTER_TEMPLATES) {
+      const document = buildStarterTemplateDocument(starter.id)
+      const html = renderTemplateDocument(document, {
+        subjectLine: starter.subject,
+        previewText: starter.previewText
+      })
+      const preflight = buildCampaignPreflight({
+        campaign: {
+          subject: starter.subject,
+          from_email: 'news@example.com',
+          body_html: html
+        },
+        toSend: 1,
+        sendingConfigured: true,
+        senderDomainAuthenticated: true
+      })
+
+      expect(
+        preflight.checks.find(check => check.code === 'footer_identity'),
+        `starter ${starter.id} should include a physical sender identity footer`
+      ).toEqual(expect.objectContaining({ status: 'pass' }))
     }
   })
 

@@ -107,7 +107,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const DEFAULT_MAX_HTML_BYTES = 102 * 1024
 const RELATIVE_MEDIA_RE = /\b(?:src|background)\s*=\s*["'](?!https?:\/\/|cid:|data:image\/)[^"']+["']|url\(\s*['"]?(?!https?:\/\/|cid:|data:image\/)([^'")]+)['"]?\s*\)/i
 const NON_HTTPS_MEDIA_RE = /\b(?:src|background)\s*=\s*["']http:\/\/[^"']+["']|url\(\s*['"]?http:\/\/[^'")]+['"]?\s*\)/i
-const FOOTER_IDENTITY_RE = /\b(?:street|st\b|road|rd\b|avenue|ave\b|melbourne|sydney|brisbane|perth|adelaide|australia|vic|nsw|qld|wa|sa|tas|act|nt)\b/i
+const STREET_ADDRESS_RE = /\b\d+[a-z]?(?:\s*[-/]\s*\d+[a-z]?)?\s+[\w\s,'.-]{2,80}\b(?:street|st\b|road|rd\b|avenue|ave\b|drive|dr\b|lane|ln\b|court|ct\b|place|pl\b|parade|pde\b|crescent|cres\b|highway|hwy\b|boulevard|blvd\b|terrace|tce\b|way\b)\b/i
+const PO_BOX_RE = /\b(?:p\.?\s*o\.?\s*box|po\s+box|locked\s+bag|private\s+bag)\s+\d+\b/i
+const LOCALITY_RE = /\b(?:melbourne|sydney|brisbane|perth|adelaide|hobart|darwin|canberra|australia|vic|nsw|qld|wa|sa|tas|act|nt)\b|\b\d{4}\b/i
 const PREFLIGHT_LABELS: Record<CampaignPreflightCode, string> = {
   unsubscribe: 'Unsubscribe',
   sender: 'Sender',
@@ -146,6 +148,16 @@ function preflightCheck(
 ): CampaignPreflightCheck {
   const base = { code, label: PREFLIGHT_LABELS[code], status, message }
   return value === undefined ? base : { ...base, value }
+}
+
+function hasPhysicalSenderIdentity(html: string): boolean {
+  const text = html
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return (STREET_ADDRESS_RE.test(text) || PO_BOX_RE.test(text)) && LOCALITY_RE.test(text)
 }
 
 export function buildCampaignPreflight(input: {
@@ -213,10 +225,11 @@ export function buildCampaignPreflight(input: {
     htmlBytes
   ))
 
+  const footerIdentityPresent = hasPhysicalSenderIdentity(html)
   checks.push(preflightCheck(
     'footer_identity',
-    FOOTER_IDENTITY_RE.test(html) ? 'pass' : 'warning',
-    FOOTER_IDENTITY_RE.test(html)
+    footerIdentityPresent ? 'pass' : 'blocked',
+    footerIdentityPresent
       ? 'Physical sender identity footer appears present.'
       : 'Add a physical sender identity and postal address footer for marketing mail.'
   ))

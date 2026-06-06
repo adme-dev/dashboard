@@ -62,6 +62,7 @@ export interface Padding {
 }
 
 const PAD_SECTION: Padding = { top: 28, right: 24, bottom: 28, left: 24 }
+const DEFAULT_FOOTER_LEGAL_TEXT = 'The Agency · 100 George St, Sydney NSW 2000, Australia. You are receiving this email because you subscribed to updates.'
 
 function block(type: string, data: EdmPresetBlockTemplate['data']): EdmPresetBlockTemplate {
   return { type, data }
@@ -231,7 +232,7 @@ export interface RichFooterOpts {
 /** footer — legal / unsubscribe footer. */
 export function richFooter(opts: RichFooterOpts = {}): EdmPresetBlockTemplate {
   const {
-    additionalText = 'You are receiving this email because you subscribed to updates.',
+    additionalText = DEFAULT_FOOTER_LEGAL_TEXT,
     showUnsubscribe = true,
     showAddress = false,
     backgroundColor = '#f5f5f5',

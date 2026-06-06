@@ -18,6 +18,24 @@ function importedHtmlBlock(contents: string) {
   }
 }
 
+function importedLegalFooterBlock() {
+  return {
+    type: 'footer',
+    data: {
+      style: {
+        padding: { top: 20, right: 32, bottom: 24, left: 32 },
+        backgroundColor: '#f5f5f5'
+      },
+      props: {
+        showUnsubscribe: true,
+        showAddress: false,
+        additionalText: 'The Agency · 100 George St, Sydney NSW 2000, Australia. You are receiving this email because you subscribed to updates.',
+        backgroundColor: '#f5f5f5'
+      }
+    }
+  }
+}
+
 export const IMPORTED_POSTCARDS_SECTION_IDS = [
   "postcards-glidex-01-brand",
   "postcards-glidex-02-hero",
@@ -109,7 +127,10 @@ export const IMPORTED_POSTCARDS_SECTION_PRESETS: EdmSectionPreset[] = [
     description: "Brand footer with links and preferences.",
     icon: "i-lucide-panel-bottom",
     previewTone: "light",
-    blocks: [importedHtmlBlock(POSTCARDS_IMPORTED_HTML["postcards-glidex-07-footer"] || '')]
+    blocks: [
+      importedHtmlBlock(POSTCARDS_IMPORTED_HTML["postcards-glidex-07-footer"] || ''),
+      importedLegalFooterBlock()
+    ]
   },
   {
     id: "postcards-futurax-01-hero",
@@ -159,7 +180,10 @@ export const IMPORTED_POSTCARDS_SECTION_PRESETS: EdmSectionPreset[] = [
     description: "FuturaX legal footer with navigation links.",
     icon: "i-lucide-panel-bottom",
     previewTone: "light",
-    blocks: [importedHtmlBlock(POSTCARDS_IMPORTED_HTML["postcards-futurax-05-footer"] || '')]
+    blocks: [
+      importedHtmlBlock(POSTCARDS_IMPORTED_HTML["postcards-futurax-05-footer"] || ''),
+      importedLegalFooterBlock()
+    ]
   },
   {
     id: "postcards-aviro-01-nav",
@@ -229,7 +253,10 @@ export const IMPORTED_POSTCARDS_SECTION_PRESETS: EdmSectionPreset[] = [
     description: "Aviro footer with support and legal links.",
     icon: "i-lucide-panel-bottom",
     previewTone: "dark",
-    blocks: [importedHtmlBlock(POSTCARDS_IMPORTED_HTML["postcards-aviro-07-footer"] || '')]
+    blocks: [
+      importedHtmlBlock(POSTCARDS_IMPORTED_HTML["postcards-aviro-07-footer"] || ''),
+      importedLegalFooterBlock()
+    ]
   }
 ]
 

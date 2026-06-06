@@ -150,10 +150,37 @@ describe('buildCampaignPreflight', () => {
       expect.objectContaining({ code: 'auth_readiness', status: 'blocked' }),
       expect.objectContaining({ code: 'media_urls', status: 'warning' }),
       expect.objectContaining({ code: 'html_size', status: 'warning' }),
-      expect.objectContaining({ code: 'footer_identity', status: 'warning' })
+      expect.objectContaining({ code: 'footer_identity', status: 'blocked' })
     ]))
     expect(result.checks.find(check => check.code === 'recipients')).toEqual(
       expect.objectContaining({ status: 'blocked' })
+    )
+  })
+
+  it('blocks otherwise sendable campaigns without a physical sender identity footer', () => {
+    const result = buildCampaignPreflight({
+      campaign: {
+        subject: 'June offers',
+        from_email: 'sales@example.com',
+        body_html: [
+          '<p>Latest offer</p>',
+          '<img src="https://cdn.example.com/car.png">',
+          '<a href="{{ unsubscribe_url }}">Unsubscribe</a>',
+          '<footer>Thanks for reading</footer>'
+        ].join('')
+      },
+      toSend: 42,
+      sendingConfigured: true,
+      senderDomainAuthenticated: true
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.blocked).toBe(true)
+    expect(result.checks.find(check => check.code === 'footer_identity')).toEqual(
+      expect.objectContaining({
+        status: 'blocked',
+        message: expect.stringMatching(/physical sender identity/i)
+      })
     )
   })
 
