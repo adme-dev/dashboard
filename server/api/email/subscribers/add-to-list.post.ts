@@ -23,6 +23,9 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'invalid_body', data: parsed.error.issues })
   }
   const { list_id, subscriber_ids = [], lead_ids = [], client_ids = [] } = parsed.data
+  const uniqueSubscriberIds = Array.from(new Set(subscriber_ids))
+  const uniqueLeadIds = Array.from(new Set(lead_ids))
+  const uniqueClientIds = Array.from(new Set(client_ids))
 
   const list = await getList(list_id)
   if (!list) throw createError({ statusCode: 404, statusMessage: 'list_not_found' })
@@ -33,12 +36,12 @@ export default defineEventHandler(async (event) => {
   let leads: Array<{ id: string, client_id: string | null, field_data: Record<string, string> }> = []
   let contacts: Array<{ client_id: string, name: string | null, email: string | null }> = []
 
-  if (subscriber_ids.length) {
+  if (uniqueSubscriberIds.length) {
     subscriberRows = await queryRows<{ id: string, client_id: string | null }>(
       'SELECT id, client_id FROM email_subscribers WHERE id = ANY($1::uuid[])',
-      [subscriber_ids]
+      [uniqueSubscriberIds]
     )
-    if (subscriberRows.length !== Array.from(new Set(subscriber_ids)).length) {
+    if (new Set(subscriberRows.map(row => row.id)).size !== uniqueSubscriberIds.length) {
       throw createError({ statusCode: 404, statusMessage: 'subscriber_not_found' })
     }
     if (!agencyUser && subscriberRows.some(row => row.client_id !== list.client_id)) {
@@ -46,11 +49,14 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  if (lead_ids.length) {
+  if (uniqueLeadIds.length) {
     leads = await queryRows<{ id: string, client_id: string | null, field_data: Record<string, string> }>(
       'SELECT id, client_id, field_data FROM leads WHERE id = ANY($1::uuid[])',
-      [lead_ids]
+      [uniqueLeadIds]
     )
+    if (new Set(leads.map(lead => lead.id)).size !== uniqueLeadIds.length) {
+      throw createError({ statusCode: 404, statusMessage: 'lead_not_found' })
+    }
     for (const lead of leads) {
       if (!agencyUser && lead.client_id !== list.client_id) {
         throw createError({ statusCode: 403, statusMessage: 'email_list_client_mismatch' })
@@ -58,14 +64,17 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  if (client_ids.length) {
+  if (uniqueClientIds.length) {
     contacts = await queryRows<{ client_id: string, name: string | null, email: string | null }>(
       `SELECT ac.id AS client_id, ac.name, x.email AS email
        FROM agency_clients ac
        LEFT JOIN xero_contacts_cache x ON x.contact_id = ac.xero_contact_id
        WHERE ac.id = ANY($1::uuid[])`,
-      [client_ids]
+      [uniqueClientIds]
     )
+    if (new Set(contacts.map(contact => contact.client_id)).size !== uniqueClientIds.length) {
+      throw createError({ statusCode: 404, statusMessage: 'client_not_found' })
+    }
     for (const c of contacts) {
       if (!agencyUser && c.client_id !== list.client_id) {
         throw createError({ statusCode: 403, statusMessage: 'email_list_client_mismatch' })

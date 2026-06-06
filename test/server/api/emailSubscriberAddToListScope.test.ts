@@ -5,6 +5,7 @@ const CLIENT_2 = '22222222-2222-4222-8222-222222222222'
 const LIST_1 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const SUB_1 = '33333333-3333-4333-8333-333333333333'
 const LEAD_1 = '44444444-4444-4444-8444-444444444444'
+const CLIENT_CONTACT_1 = '55555555-5555-4555-8555-555555555555'
 
 const mockReadBody = vi.fn()
 const mockRequireWriteAccess = vi.fn()
@@ -80,6 +81,50 @@ describe('email subscriber add-to-list client scope', () => {
     await expect(handler({} as never)).rejects.toMatchObject({
       statusCode: 403,
       statusMessage: 'email_list_client_mismatch'
+    })
+
+    expect(mockAddToList).not.toHaveBeenCalled()
+    expect(mockUpsertSubscriber).not.toHaveBeenCalled()
+  })
+
+  it('rejects missing leads before adding any subscribers', async () => {
+    mockReadBody.mockResolvedValue({
+      list_id: LIST_1,
+      subscriber_ids: [SUB_1],
+      lead_ids: [LEAD_1]
+    })
+    mockQueryRows.mockReset()
+    mockQueryRows
+      .mockResolvedValueOnce([{ id: SUB_1, client_id: CLIENT_1 }])
+      .mockResolvedValueOnce([])
+
+    const handler = (await import('~~/server/api/email/subscribers/add-to-list.post')).default
+
+    await expect(handler({} as never)).rejects.toMatchObject({
+      statusCode: 404,
+      statusMessage: 'lead_not_found'
+    })
+
+    expect(mockAddToList).not.toHaveBeenCalled()
+    expect(mockUpsertSubscriber).not.toHaveBeenCalled()
+  })
+
+  it('rejects missing client contacts before adding any subscribers', async () => {
+    mockReadBody.mockResolvedValue({
+      list_id: LIST_1,
+      subscriber_ids: [SUB_1],
+      client_ids: [CLIENT_CONTACT_1]
+    })
+    mockQueryRows.mockReset()
+    mockQueryRows
+      .mockResolvedValueOnce([{ id: SUB_1, client_id: CLIENT_1 }])
+      .mockResolvedValueOnce([])
+
+    const handler = (await import('~~/server/api/email/subscribers/add-to-list.post')).default
+
+    await expect(handler({} as never)).rejects.toMatchObject({
+      statusCode: 404,
+      statusMessage: 'client_not_found'
     })
 
     expect(mockAddToList).not.toHaveBeenCalled()
