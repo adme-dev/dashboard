@@ -11,6 +11,8 @@ interface SuppressionRow {
   subscriber_status?: string | null
 }
 
+type SuppressionWriteAction = 'added' | 'ignored' | 'updated'
+
 const toast = useToast()
 const search = ref('')
 const reason = ref<'all' | SuppressionRow['reason']>('all')
@@ -73,6 +75,12 @@ function errMessage(e: unknown): string {
   return err?.data?.message || err?.data?.statusMessage || err?.statusMessage || ''
 }
 
+function suppressionToast(action: SuppressionWriteAction): { title: string, color: 'success' | 'warning' } {
+  if (action === 'added') return { title: 'Email suppressed', color: 'success' }
+  if (action === 'updated') return { title: 'Suppression updated', color: 'success' }
+  return { title: 'Suppression already exists', color: 'warning' }
+}
+
 async function addSuppression() {
   if (!form.email.trim()) {
     toast.add({ title: 'Email required', color: 'error' })
@@ -85,17 +93,18 @@ async function addSuppression() {
   }
   saving.value = true
   try {
-    const result = await $fetch<{ action: 'added' | 'ignored', email: string }>('/api/email/suppressions', {
+    const result = await $fetch<{ action: SuppressionWriteAction, email: string }>('/api/email/suppressions', {
       method: 'POST',
       body: {
         email: form.email,
         note
       }
     })
+    const toastDetails = suppressionToast(result.action)
     toast.add({
-      title: result.action === 'added' ? 'Email suppressed' : 'Suppression already exists',
+      title: toastDetails.title,
       description: result.email,
-      color: result.action === 'added' ? 'success' : 'warning'
+      color: toastDetails.color
     })
     form.email = ''
     form.note = ''

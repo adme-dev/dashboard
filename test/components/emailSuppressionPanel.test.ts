@@ -156,4 +156,41 @@ describe('EmailSuppressionPanel', () => {
 
     app.unmount()
   })
+
+  it('shows an updated toast when manual suppression upgrades an existing soft-bounce suppression', async () => {
+    fetchMock.mockResolvedValueOnce({ action: 'updated', email: 'soft@example.com' })
+    const { app, host } = await mountPanel()
+    const emailInput = Array.from(host.querySelectorAll('input'))
+      .find(input => input.getAttribute('placeholder') === 'person@example.com') as HTMLInputElement | undefined
+    const noteInput = host.querySelector('textarea') as HTMLTextAreaElement | null
+    const suppressButton = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Suppress'))
+
+    if (emailInput) {
+      emailInput.value = 'soft@example.com'
+      emailInput.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    if (noteInput) {
+      noteInput.value = 'Delivery kept failing'
+      noteInput.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    suppressButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush()
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/email/suppressions', {
+      method: 'POST',
+      body: {
+        email: 'soft@example.com',
+        note: 'Delivery kept failing'
+      }
+    })
+    expect(toastAddMock).toHaveBeenCalledWith({
+      title: 'Suppression updated',
+      description: 'soft@example.com',
+      color: 'success'
+    })
+    expect(refreshMock).toHaveBeenCalled()
+
+    app.unmount()
+  })
 })
