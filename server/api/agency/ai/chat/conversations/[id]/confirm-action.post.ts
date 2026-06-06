@@ -73,7 +73,7 @@ export default defineEventHandler(async (event) => {
   const result = await executeProposal(proposalId, ctx, db)
 
   if (!result.ok) {
-    return { ok: false, error: result.error }
+    return { ok: false, error: 'error' in result ? result.error : 'Could not complete the action.' }
   }
 
   const taskId = (result.data as any)?.taskId as string

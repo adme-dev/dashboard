@@ -79,7 +79,7 @@ export async function getProjectStatus(args: Args, ctx: ToolContext, deps: Proje
       })
     }
 
-    const p = matches[0]
+    const p = matches[0]! // length === 1 here (0 and >1 handled above)
     const rollup = await deps.taskRollup(p.id, ctx)
     return ok({
       name: p.name,

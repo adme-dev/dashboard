@@ -432,7 +432,7 @@ export async function processUserMessage(
   let proposedAction: { proposalId: string, resolved: unknown } | null = null
   let toolTrace: Array<{ name: string, args: unknown }> = []
   let usedToolLoop = false
-  if (shouldUseToolLoop({ aiToolsEnabled: !!cfg.aiToolsEnabled, hasEvent: !!event, intent: contextBundle.intent })) {
+  if (event && shouldUseToolLoop({ aiToolsEnabled: !!cfg.aiToolsEnabled, hasEvent: !!event, intent: contextBundle.intent })) {
     try {
       const { runToolLoop } = await import('~~/server/utils/ai/toolLoop')
       const loopMessages = history
