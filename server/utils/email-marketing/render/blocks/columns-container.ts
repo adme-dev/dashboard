@@ -23,7 +23,7 @@ function renderColumnChildToMjml(block: FlyhubBlock, context: BlockRenderContext
   const match = mjml.match(
     /<mj-section[^>]*>\s*<mj-column[^>]*>([\s\S]*?)<\/mj-column>\s*<\/mj-section>/
   )
-  if (match) return match[1].trim()
+  if (match?.[1]) return match[1].trim()
   return mjml
 }
 

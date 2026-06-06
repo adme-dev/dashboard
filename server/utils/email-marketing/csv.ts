@@ -45,7 +45,7 @@ export function parseEmailMarketingCsv(text: string): string[][] {
     }
     if (ch === '\n') {
       row.push(cell)
-      if (row.length > 1 || row[0].trim() !== '') rows.push(row)
+      if (row.length > 1 || (row[0] ?? '').trim() !== '') rows.push(row)
       row = []
       cell = ''
       i++
@@ -55,6 +55,6 @@ export function parseEmailMarketingCsv(text: string): string[][] {
     i++
   }
   row.push(cell)
-  if (row.length > 1 || row[0].trim() !== '') rows.push(row)
+  if (row.length > 1 || (row[0] ?? '').trim() !== '') rows.push(row)
   return rows
 }

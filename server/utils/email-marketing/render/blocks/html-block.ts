@@ -265,6 +265,7 @@ function generateOffersSectionMjml(
   // Featured layout - hero + smaller cards
   if (layout === 'featured' && offers.length > 0) {
     const heroOffer = offers[0]
+    if (!heroOffer) return ''
     const remainingOffers = offers.slice(1)
     const heroImageUrl = heroOffer.vehicleImageUrl || heroOffer.imageUrl
 

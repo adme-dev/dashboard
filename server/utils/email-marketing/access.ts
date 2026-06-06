@@ -42,7 +42,7 @@ export async function resolveEmailWriteClientId(
     assertEmailClientIdInScope(scope, requestedClientId)
     return requestedClientId
   }
-  if (scope.length === 1) return scope[0]
+  if (scope.length === 1 && scope[0]) return scope[0]
   throw createError({ statusCode: 403, statusMessage: 'email_client_scope_required' })
 }
 

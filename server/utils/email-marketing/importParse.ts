@@ -30,7 +30,7 @@ export function parseSubscriberCsv(
     return { subscribers: [], errors: [{ row: 0, message: 'empty_csv' }], total: 0 }
   }
 
-  const headers = rows[0].map(h => h.trim())
+  const headers = (rows[0] ?? []).map(h => h.trim())
   // Resolve each column to a role: 'email' | 'name' | 'ignore' | 'attr:<key>'
   const roles = headers.map((h) => {
     const lower = h.toLowerCase()
@@ -56,7 +56,7 @@ export function parseSubscriberCsv(
   const dataRows = rows.slice(1)
 
   for (let r = 0; r < dataRows.length; r++) {
-    const cols = dataRows[r]
+    const cols = dataRows[r] ?? []
     const rowNum = r + 1 // 1-indexed data row (header excluded)
     if (cols.every(c => !c.trim())) continue
 
