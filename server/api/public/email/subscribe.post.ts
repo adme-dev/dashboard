@@ -10,8 +10,13 @@ import { emailLinkSecret, signEmailToken } from '~~/server/utils/email-marketing
 import { subscribePublic } from '~~/server/utils/email-marketing/subscriptions'
 import { isTurnstileEnabled, verifyTurnstile } from '~~/server/utils/turnstile'
 
+const EmailInput = z.preprocess(
+  value => typeof value === 'string' ? value.trim() : value,
+  z.string().email().max(300)
+)
+
 const Body = z.object({
-  email: z.string().email().max(300),
+  email: EmailInput,
   name: z.string().max(200).optional().nullable(),
   listId: z.string().uuid(),
   turnstileToken: z.string().max(2048).optional()

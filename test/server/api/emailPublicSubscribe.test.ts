@@ -47,7 +47,7 @@ describe('public email subscribe route', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockReadBody.mockResolvedValue({
-      email: 'Person@Example.COM',
+      email: '  Person@Example.COM  ',
       name: 'Person',
       listId: LIST_ID
     })
