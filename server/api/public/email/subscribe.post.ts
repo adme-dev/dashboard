@@ -5,6 +5,7 @@
 import { z } from 'zod'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { sendDoubleOptInEmail } from '~~/server/utils/email'
+import { normalizeSubscriberEmail } from '~~/server/utils/email-marketing/email'
 import { emailLinkSecret, signEmailToken } from '~~/server/utils/email-marketing/links'
 import { subscribePublic } from '~~/server/utils/email-marketing/subscriptions'
 import { isTurnstileEnabled, verifyTurnstile } from '~~/server/utils/turnstile'
@@ -22,6 +23,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'invalid_body', data: parsed.error.issues })
   }
   const { email, name, listId, turnstileToken } = parsed.data
+  const normalizedEmail = normalizeSubscriberEmail(email)
 
   // Bot / abuse protection. No-op until the operator configures Turnstile
   // (TURNSTILE_SECRET_KEY) — see server/utils/turnstile.ts. Once enabled it
@@ -33,14 +35,14 @@ export default defineEventHandler(async (event) => {
     if (!ok) throw createError({ statusCode: 403, statusMessage: 'captcha_failed' })
   }
 
-  const result = await subscribePublic({ email, name, listId, source: 'form' })
+  const result = await subscribePublic({ email: normalizedEmail, name, listId, source: 'form' })
 
   if (result.needsConfirm) {
     const token = await signEmailToken(emailLinkSecret(), 'confirm', result.subscriberId, result.listId)
     const base = getAppUrl(event).replace(/\/+$/, '')
     const confirmUrl = `${base}/email/confirm?s=${result.subscriberId}&l=${result.listId}&t=${token}`
     // Best-effort — sendDoubleOptInEmail no-ops when Resend isn't configured.
-    await sendDoubleOptInEmail({ to: email, listName: result.listName, confirmUrl })
+    await sendDoubleOptInEmail({ to: normalizedEmail, listName: result.listName, confirmUrl })
   }
 
   return {
