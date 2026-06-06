@@ -44,9 +44,30 @@ async function claimPendingChunk(campaignId: string, size: number): Promise<Reci
     UPDATE campaign_recipients cr
     SET claimed_at = NOW()
     FROM (
-      SELECT id FROM campaign_recipients
-      WHERE campaign_id = $1 AND status = 'pending' AND claimed_at IS NULL
-      ORDER BY created_at
+      SELECT pending.id
+      FROM campaign_recipients pending
+      WHERE pending.campaign_id = $1
+        AND pending.status = 'pending'
+        AND pending.claimed_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM suppression_list sup WHERE sup.email = pending.email
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM campaign_lists cl
+          JOIN subscriber_lists sl
+            ON sl.list_id = cl.list_id
+           AND sl.subscriber_id = pending.subscriber_id
+          JOIN email_lists l
+            ON l.id = cl.list_id
+           AND l.archived_at IS NULL
+          JOIN email_subscribers s
+            ON s.id = pending.subscriber_id
+          WHERE cl.campaign_id = pending.campaign_id
+            AND sl.status <> 'unsubscribed'
+            AND s.status = 'enabled'
+        )
+      ORDER BY pending.created_at
       LIMIT $2
       FOR UPDATE SKIP LOCKED
     ) sel

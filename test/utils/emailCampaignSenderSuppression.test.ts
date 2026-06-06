@@ -1,17 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { cancelIneligiblePendingRecipients } from '~~/server/utils/email-marketing/campaignSender'
+import { cancelIneligiblePendingRecipients, sendCampaignChunk } from '~~/server/utils/email-marketing/campaignSender'
 
 const executeMock = vi.fn()
+const queryRowsMock = vi.fn()
+const queryOneMock = vi.fn()
+const getResendClientMock = vi.fn()
 
 vi.mock('~~/server/utils/db', () => ({
   execute: (...args: unknown[]) => executeMock(...args),
-  queryRows: vi.fn(),
-  queryOne: vi.fn()
+  queryRows: (...args: unknown[]) => queryRowsMock(...args),
+  queryOne: (...args: unknown[]) => queryOneMock(...args)
 }))
 
 vi.mock('~~/server/utils/email', () => ({
   isEmailConfigured: vi.fn(() => true),
-  getResendClient: vi.fn()
+  getResendClient: (...args: unknown[]) => getResendClientMock(...args)
 }))
 
 vi.mock('~~/server/utils/appUrl', () => ({
@@ -25,6 +28,10 @@ vi.mock('~~/server/utils/crm/commsDb', () => ({
 describe('cancelIneligiblePendingRecipients', () => {
   beforeEach(() => {
     executeMock.mockReset()
+    queryRowsMock.mockReset()
+    queryOneMock.mockReset()
+    getResendClientMock.mockReset()
+    delete process.env.EMAIL_SENDING_ENABLED
   })
 
   it('cancels pending recipients that became suppressed after materialization', async () => {
@@ -52,5 +59,21 @@ describe('cancelIneligiblePendingRecipients', () => {
     expect(sql).toContain('subscriber_ineligible_at_send_time')
     expect(sql).toContain('unsubscribed_at_send_time')
     expect(executeMock.mock.calls[0][1]).toEqual(['camp-1'])
+  })
+
+  it('rechecks suppression and membership eligibility inside the recipient claim query', async () => {
+    process.env.EMAIL_SENDING_ENABLED = 'true'
+    executeMock.mockResolvedValueOnce(0)
+    queryRowsMock.mockResolvedValueOnce([])
+    getResendClientMock.mockReturnValue({ batch: { send: vi.fn() } })
+
+    await sendCampaignChunk({ id: 'camp-1' } as never)
+
+    const claimSql = String(queryRowsMock.mock.calls[0]?.[0])
+    expect(claimSql).toContain('suppression_list sup')
+    expect(claimSql).toContain('email_subscribers s')
+    expect(claimSql).toContain('subscriber_lists sl')
+    expect(claimSql).toContain('s.status = \'enabled\'')
+    expect(claimSql).toContain('sl.status <> \'unsubscribed\'')
   })
 })
