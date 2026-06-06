@@ -1,6 +1,7 @@
 <!-- app/components/email/CampaignReportDrawer.vue -->
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { describeEmailActionError } from '~~/app/utils/emailActionError'
 
 interface EventsSummary {
   sent: number
@@ -86,10 +87,9 @@ async function load() {
     attributionSummary.value = attributionResult.summary
     sessions.value = attributionResult.sessions
   } catch (e) {
-    const err = e as { data?: { statusMessage?: string } }
     toast.add({
       title: 'Campaign report failed',
-      description: err.data?.statusMessage,
+      description: describeEmailActionError(e, 'Could not load campaign report.'),
       color: 'error'
     })
   } finally {

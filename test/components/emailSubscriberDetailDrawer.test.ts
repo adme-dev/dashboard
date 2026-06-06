@@ -104,4 +104,27 @@ describe('EmailSubscriberDetailDrawer', () => {
 
     app.unmount()
   })
+
+  it('surfaces backend validation details when subscriber history loading fails', async () => {
+    fetchMock.mockRejectedValueOnce({
+      data: {
+        statusMessage: 'invalid_body',
+        data: [
+          { message: 'Subscriber ID is required.' },
+          { message: 'Subscriber is not accessible.' }
+        ]
+      }
+    })
+
+    const { app } = mountDrawer()
+    await flush()
+
+    expect(toastAddMock).toHaveBeenCalledWith({
+      title: 'Subscriber history failed',
+      description: 'invalid_body: Subscriber ID is required.; Subscriber is not accessible.',
+      color: 'error'
+    })
+
+    app.unmount()
+  })
 })

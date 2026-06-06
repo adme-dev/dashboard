@@ -1,5 +1,7 @@
 <!-- app/components/email/SubscriberFormModal.vue -->
 <script setup lang="ts">
+import { describeEmailActionError } from '~~/app/utils/emailActionError'
+
 const props = defineProps<{ lists: { id: string, name: string }[] }>()
 const emit = defineEmits<{ (e: 'saved'): void }>()
 const open = defineModel<boolean>('open', { default: false })
@@ -18,12 +20,6 @@ watch(open, (v) => {
   }
 })
 
-function errMessage(e: unknown): string {
-  return e && typeof e === 'object' && 'data' in e
-    ? (e as { data?: { statusMessage?: string } }).data?.statusMessage ?? ''
-    : ''
-}
-
 async function save() {
   if (!form.email.trim()) {
     toast.add({ title: 'Email required', color: 'error' })
@@ -36,7 +32,11 @@ async function save() {
     open.value = false
     emit('saved')
   } catch (e: unknown) {
-    toast.add({ title: 'Add failed', description: errMessage(e), color: 'error' })
+    toast.add({
+      title: 'Add failed',
+      description: describeEmailActionError(e, 'Could not add subscriber.'),
+      color: 'error'
+    })
   } finally {
     saving.value = false
   }

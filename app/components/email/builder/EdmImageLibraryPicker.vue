@@ -8,6 +8,7 @@ import {
   isWithinEmailImageAssetLimit,
   type EdmImageAsset
 } from '~~/app/utils/edmImageAssets'
+import { describeEmailActionError } from '~~/app/utils/emailActionError'
 
 const props = defineProps<{
   open?: boolean
@@ -77,8 +78,8 @@ async function uploadFile(file: File) {
     await refresh()
     pick(asset)
     toast.add({ title: 'Image uploaded', description: asset.name, color: 'success' })
-  } catch {
-    errorMessage.value = 'Could not upload the image.'
+  } catch (error) {
+    errorMessage.value = describeEmailActionError(error, 'Could not upload the image.')
     toast.add({ title: 'Upload failed', description: errorMessage.value, color: 'error' })
   } finally {
     isUploading.value = false

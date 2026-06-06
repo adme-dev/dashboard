@@ -1,12 +1,18 @@
-import { describe, expect, it } from 'vitest'
-import { computed, createSSRApp, h, ref } from 'vue'
+// @vitest-environment happy-dom
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { computed, createApp, createSSRApp, h, nextTick, ref, Suspense } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import EdmImageLibraryPicker from '~~/app/components/email/builder/EdmImageLibraryPicker.vue'
+
+const fetchMock = vi.fn()
+const refreshMock = vi.fn()
+const toastAddMock = vi.fn()
 
 Object.assign(globalThis, {
   ref,
   computed,
-  useToast: () => ({ add: () => {} }),
+  $fetch: (...args: unknown[]) => fetchMock(...args),
+  useToast: () => ({ add: toastAddMock }),
   useFetch: async () => ({
     data: ref({
       assets: [
@@ -36,7 +42,7 @@ Object.assign(globalThis, {
         }
       ]
     }),
-    refresh: () => {},
+    refresh: refreshMock,
     pending: ref(false)
   })
 })
@@ -58,7 +64,34 @@ async function renderPicker() {
   return renderToString(app)
 }
 
+async function flush() {
+  await Promise.resolve()
+  await nextTick()
+  await Promise.resolve()
+  await nextTick()
+}
+
+async function mountPicker() {
+  const host = document.createElement('div')
+  document.body.appendChild(host)
+  const app = createApp({
+    render: () => h(Suspense, null, {
+      default: () => h(EdmImageLibraryPicker, { open: true }),
+      fallback: () => h('div', 'loading')
+    })
+  })
+  Object.entries(stubs).forEach(([name, comp]) => app.component(name, comp as never))
+  app.mount(host)
+  await flush()
+  return { app, host }
+}
+
 describe('EmailBuilderEdmImageLibraryPicker', () => {
+  beforeEach(() => {
+    document.body.innerHTML = ''
+    vi.clearAllMocks()
+  })
+
   it('renders the agency image library with upload controls and image assets only', async () => {
     const html = await renderPicker()
 
@@ -67,5 +100,41 @@ describe('EmailBuilderEdmImageLibraryPicker', () => {
     expect(html).toContain('Hero car.png')
     expect(html).toContain('1.5 KB')
     expect(html).not.toContain('Deck.pdf')
+  })
+
+  it('surfaces backend validation details when upload fails', async () => {
+    fetchMock.mockRejectedValueOnce({
+      data: {
+        statusMessage: 'invalid_body',
+        data: [
+          { message: 'Image file is required.' },
+          { message: 'Unsupported image type.' }
+        ]
+      }
+    })
+
+    const { app, host } = await mountPicker()
+    const input = host.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(['image'], 'hero.png', { type: 'image/png' })
+    Object.defineProperty(input, 'files', {
+      value: [file],
+      configurable: true
+    })
+
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+    await flush()
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/agency/email/assets/upload', {
+      method: 'POST',
+      body: expect.any(FormData)
+    })
+    expect(toastAddMock).toHaveBeenCalledWith({
+      title: 'Upload failed',
+      description: 'invalid_body: Image file is required.; Unsupported image type.',
+      color: 'error'
+    })
+    expect(host.textContent).toContain('invalid_body: Image file is required.; Unsupported image type.')
+
+    app.unmount()
   })
 })

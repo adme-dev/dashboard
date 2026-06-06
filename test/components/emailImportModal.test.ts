@@ -141,4 +141,37 @@ describe('EmailImportModal', () => {
 
     app.unmount()
   })
+
+  it('surfaces backend validation details when the import body is invalid', async () => {
+    fetchMock.mockRejectedValueOnce({
+      data: {
+        statusMessage: 'invalid_body',
+        data: [
+          { message: 'list_id is required' },
+          { message: 'csv is required' }
+        ]
+      }
+    })
+
+    const { app, host } = mountModal()
+    const select = host.querySelector('select') as HTMLSelectElement
+    const textarea = host.querySelector('textarea') as HTMLTextAreaElement
+    const importButton = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Import'))
+
+    select.value = 'list-1'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    textarea.value = 'email,name\n'
+    textarea.dispatchEvent(new Event('input', { bubbles: true }))
+    importButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush()
+
+    expect(toastAddMock).toHaveBeenCalledWith({
+      title: 'Import failed',
+      description: 'invalid_body: list_id is required; csv is required',
+      color: 'error'
+    })
+
+    app.unmount()
+  })
 })

@@ -193,4 +193,67 @@ describe('EmailSuppressionPanel', () => {
 
     app.unmount()
   })
+
+  it('surfaces backend validation details when manual suppression fails', async () => {
+    fetchMock.mockRejectedValueOnce({
+      data: {
+        statusMessage: 'invalid_body',
+        data: [
+          { message: 'Enter a valid email address.' },
+          { message: 'Suppression note is required.' }
+        ]
+      }
+    })
+    const { app, host } = await mountPanel()
+    const emailInput = Array.from(host.querySelectorAll('input'))
+      .find(input => input.getAttribute('placeholder') === 'person@example.com') as HTMLInputElement | undefined
+    const noteInput = host.querySelector('textarea') as HTMLTextAreaElement | null
+    const suppressButton = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Suppress'))
+
+    if (emailInput) {
+      emailInput.value = 'bad@example'
+      emailInput.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    if (noteInput) {
+      noteInput.value = 'Delivery issue'
+      noteInput.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    suppressButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush()
+
+    expect(toastAddMock).toHaveBeenCalledWith({
+      title: 'Suppress failed',
+      description: 'invalid_body: Enter a valid email address.; Suppression note is required.',
+      color: 'error'
+    })
+
+    app.unmount()
+  })
+
+  it('surfaces backend validation details when suppression removal fails', async () => {
+    fetchMock.mockRejectedValueOnce({
+      data: {
+        statusMessage: 'invalid_body',
+        data: [
+          { message: 'Removal confirmation is required.' },
+          { message: 'Removal note is required.' }
+        ]
+      }
+    })
+    const { app, host } = await mountPanel()
+    const removeButton = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Remove'))
+
+    removeButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush()
+
+    expect(toastAddMock).toHaveBeenCalledWith({
+      title: 'Remove failed',
+      description: 'invalid_body: Removal confirmation is required.; Removal note is required.',
+      color: 'error'
+    })
+
+    app.unmount()
+  })
 })

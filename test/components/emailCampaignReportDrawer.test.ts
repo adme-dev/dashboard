@@ -123,4 +123,27 @@ describe('EmailCampaignReportDrawer', () => {
 
     app.unmount()
   })
+
+  it('surfaces backend validation details when report loading fails', async () => {
+    fetchMock.mockRejectedValueOnce({
+      data: {
+        statusMessage: 'invalid_body',
+        data: [
+          { message: 'Campaign ID is required.' },
+          { message: 'Campaign is not accessible.' }
+        ]
+      }
+    })
+
+    const { app } = mountDrawer()
+    await flush()
+
+    expect(toastAddMock).toHaveBeenCalledWith({
+      title: 'Campaign report failed',
+      description: 'invalid_body: Campaign ID is required.; Campaign is not accessible.',
+      color: 'error'
+    })
+
+    app.unmount()
+  })
 })

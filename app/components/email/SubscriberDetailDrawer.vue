@@ -1,5 +1,7 @@
 <!-- app/components/email/SubscriberDetailDrawer.vue -->
 <script setup lang="ts">
+import { describeEmailActionError } from '~~/app/utils/emailActionError'
+
 interface SubscriberHistory {
   subscriber: {
     id: string
@@ -71,10 +73,9 @@ async function load() {
     history.value = await $fetch<SubscriberHistory>(`/api/email/subscribers/${props.subscriberId}/history`)
   } catch (e) {
     history.value = null
-    const err = e as { data?: { statusMessage?: string } }
     toast.add({
       title: 'Subscriber history failed',
-      description: err.data?.statusMessage,
+      description: describeEmailActionError(e, 'Could not load subscriber history.'),
       color: 'error'
     })
   } finally {

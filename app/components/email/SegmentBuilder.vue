@@ -4,6 +4,8 @@
      re-materialises to show how many recipients now match. Draft-only (the API
      rejects edits once a campaign leaves draft). Mirrors the leads filter grammar. -->
 <script setup lang="ts">
+import { describeEmailActionError } from '~~/app/utils/emailActionError'
+
 interface Rule { field: string, op: string, value: string }
 interface StoredRule { field: string, op: string, value?: unknown }
 interface StoredSegment { match: 'all' | 'any', rules: StoredRule[] }
@@ -109,7 +111,7 @@ async function save() {
         ? 'This campaign can no longer be edited.'
         : sm === 'invalid_segment'
           ? 'One of the rules is invalid — check the operator.'
-          : 'Please try again.',
+          : describeEmailActionError(e, 'Please try again.'),
       color: 'error'
     })
   } finally {

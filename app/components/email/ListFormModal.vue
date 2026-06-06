@@ -1,5 +1,7 @@
 <!-- app/components/email/ListFormModal.vue -->
 <script setup lang="ts">
+import { describeEmailActionError } from '~~/app/utils/emailActionError'
+
 interface ListInput { id: string, name: string, description: string | null, double_optin: boolean }
 const props = defineProps<{ list?: ListInput | null }>()
 const emit = defineEmits<{ (e: 'saved'): void }>()
@@ -17,12 +19,6 @@ watch(open, (v) => {
   }
 })
 
-function errMessage(e: unknown): string {
-  return e && typeof e === 'object' && 'data' in e
-    ? (e as { data?: { statusMessage?: string } }).data?.statusMessage ?? ''
-    : ''
-}
-
 async function save() {
   if (!form.name.trim()) {
     toast.add({ title: 'Name required', color: 'error' })
@@ -39,7 +35,11 @@ async function save() {
     open.value = false
     emit('saved')
   } catch (e: unknown) {
-    toast.add({ title: 'Save failed', description: errMessage(e), color: 'error' })
+    toast.add({
+      title: 'Save failed',
+      description: describeEmailActionError(e, 'Could not save list.'),
+      color: 'error'
+    })
   } finally {
     saving.value = false
   }

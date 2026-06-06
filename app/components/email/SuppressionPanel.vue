@@ -1,5 +1,7 @@
 <!-- app/components/email/SuppressionPanel.vue -->
 <script setup lang="ts">
+import { describeEmailActionError } from '~~/app/utils/emailActionError'
+
 interface SuppressionRow {
   email: string
   reason: 'hard_bounce' | 'complaint' | 'manual' | 'global_unsubscribe' | 'soft_bounce'
@@ -70,11 +72,6 @@ function reasonColor(value: SuppressionRow['reason']): 'error' | 'warning' | 'in
   return 'neutral'
 }
 
-function errMessage(e: unknown): string {
-  const err = e as { data?: { statusMessage?: string, message?: string }, statusMessage?: string }
-  return err?.data?.message || err?.data?.statusMessage || err?.statusMessage || ''
-}
-
 function suppressionToast(action: SuppressionWriteAction): { title: string, color: 'success' | 'warning' } {
   if (action === 'added') return { title: 'Email suppressed', color: 'success' }
   if (action === 'updated') return { title: 'Suppression updated', color: 'success' }
@@ -110,7 +107,11 @@ async function addSuppression() {
     form.note = ''
     refresh()
   } catch (e) {
-    toast.add({ title: 'Suppress failed', description: errMessage(e), color: 'error' })
+    toast.add({
+      title: 'Suppress failed',
+      description: describeEmailActionError(e, 'Could not suppress email.'),
+      color: 'error'
+    })
   } finally {
     saving.value = false
   }
@@ -145,7 +146,11 @@ async function removeSuppression(row: SuppressionRow) {
     toast.add({ title: 'Suppression removed', description: row.email, color: 'success' })
     refresh()
   } catch (e) {
-    toast.add({ title: 'Remove failed', description: errMessage(e), color: 'error' })
+    toast.add({
+      title: 'Remove failed',
+      description: describeEmailActionError(e, 'Could not remove suppression.'),
+      color: 'error'
+    })
   } finally {
     removing.value = null
   }

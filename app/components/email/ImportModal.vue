@@ -1,5 +1,7 @@
 <!-- app/components/email/ImportModal.vue -->
 <script setup lang="ts">
+import { describeEmailActionError } from '~~/app/utils/emailActionError'
+
 const props = defineProps<{ lists: { id: string, name: string }[] }>()
 const emit = defineEmits<{ (e: 'imported'): void }>()
 const open = defineModel<boolean>('open', { default: false })
@@ -32,12 +34,6 @@ watch(open, (v) => {
   }
 })
 
-function errMessage(e: unknown): string {
-  return e && typeof e === 'object' && 'data' in e
-    ? (e as { data?: { statusMessage?: string } }).data?.statusMessage ?? ''
-    : ''
-}
-
 function formatImportErrorMessage(message: string): string {
   const labels: Record<string, string> = {
     duplicate_in_file: 'Duplicate in file',
@@ -66,7 +62,11 @@ async function run() {
     toast.add({ title: `Imported ${result.value?.imported}, skipped ${result.value?.skipped}`, color: 'success' })
     emit('imported')
   } catch (e: unknown) {
-    toast.add({ title: 'Import failed', description: errMessage(e), color: 'error' })
+    toast.add({
+      title: 'Import failed',
+      description: describeEmailActionError(e, 'Could not import subscribers.'),
+      color: 'error'
+    })
   } finally {
     importing.value = false
   }

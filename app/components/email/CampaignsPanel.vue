@@ -2,7 +2,12 @@
 <!-- Campaigns list + draft creation (Phase 2b-1). Creating a draft optionally
      targets lists and materializes the recipient set (no sending — that's 2b-2). -->
 <script setup lang="ts">
-import { validateEmailBuilderScheduleAt as validateCampaignScheduleAt } from '~~/app/utils/emailBuilderSchedule'
+import {
+  extractEmailBuilderScheduleError,
+  validateEmailBuilderScheduleAt as validateCampaignScheduleAt
+} from '~~/app/utils/emailBuilderSchedule'
+import { describeEmailActionError } from '~~/app/utils/emailActionError'
+import { describeEmailBuilderTestSendError } from '~~/app/utils/emailBuilderTestSend'
 
 interface CampaignRow {
   id: string
@@ -139,11 +144,6 @@ function openSegment(row: CampaignRow) {
   showSegment.value = true
 }
 
-function errMessage(e: unknown): string {
-  const err = e as { data?: { statusMessage?: string, message?: string }, statusMessage?: string }
-  return err?.data?.message || err?.data?.statusMessage || err?.statusMessage || 'Something went wrong.'
-}
-
 function formatDate(value?: string | null): string {
   if (!value) return ''
   const date = new Date(value)
@@ -226,19 +226,10 @@ async function scheduleCampaign() {
     showSchedule.value = false
     refresh()
   } catch (e) {
-    const err = e as {
-      data?: {
-        statusMessage?: string
-        message?: string
-        data?: {
-          preflight?: CampaignPreflightResult
-          recipientSnapshot?: RecipientSnapshot
-        }
-      }
-    }
-    scheduleErrorPreflight.value = err.data?.data?.preflight ?? null
-    scheduleErrorSnapshot.value = err.data?.data?.recipientSnapshot ?? null
-    toast.add({ title: 'Schedule failed', description: errMessage(e), color: 'error' })
+    const details = extractEmailBuilderScheduleError(e)
+    scheduleErrorPreflight.value = details.preflight
+    scheduleErrorSnapshot.value = details.recipientSnapshot
+    toast.add({ title: 'Schedule failed', description: details.message, color: 'error' })
   } finally {
     busyId.value = null
   }
@@ -268,7 +259,11 @@ async function doSend() {
     showSend.value = false
     refresh()
   } catch (e) {
-    toast.add({ title: 'Send failed', description: errMessage(e), color: 'error' })
+    toast.add({
+      title: 'Send failed',
+      description: describeEmailActionError(e, 'Could not send campaign.'),
+      color: 'error'
+    })
   } finally {
     busyId.value = null
   }
@@ -281,7 +276,11 @@ async function pause(row: CampaignRow) {
     toast.add({ title: 'Paused', color: 'success' })
     refresh()
   } catch (e) {
-    toast.add({ title: 'Pause failed', description: errMessage(e), color: 'error' })
+    toast.add({
+      title: 'Pause failed',
+      description: describeEmailActionError(e, 'Could not pause campaign.'),
+      color: 'error'
+    })
   } finally {
     busyId.value = null
   }
@@ -294,7 +293,11 @@ async function cancel(row: CampaignRow) {
     toast.add({ title: 'Cancelled', color: 'success' })
     refresh()
   } catch (e) {
-    toast.add({ title: 'Cancel failed', description: errMessage(e), color: 'error' })
+    toast.add({
+      title: 'Cancel failed',
+      description: describeEmailActionError(e, 'Could not cancel campaign.'),
+      color: 'error'
+    })
   } finally {
     busyId.value = null
   }
@@ -308,7 +311,11 @@ async function testSend(row: CampaignRow) {
     )
     toast.add({ title: 'Test sent', description: `Sent to ${res.sent_to}.`, color: 'success' })
   } catch (e) {
-    toast.add({ title: 'Test failed', description: errMessage(e), color: 'error' })
+    toast.add({
+      title: 'Test failed',
+      description: describeEmailBuilderTestSendError(e),
+      color: 'error'
+    })
   } finally {
     busyId.value = null
   }
