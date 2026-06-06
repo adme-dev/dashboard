@@ -2,10 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockReadBody = vi.fn()
 const mockRequireWriteAccess = vi.fn()
+const mockGetAssignedClientIds = vi.fn()
 const mockQueryRows = vi.fn()
 const mockGetList = vi.fn()
 const mockUpsertSubscriber = vi.fn()
 const mockAddToList = vi.fn()
+
+const LIST_1 = '11111111-1111-4111-8111-111111111111'
+const CLIENT_1 = '22222222-2222-4222-8222-222222222222'
 
 const testGlobal = globalThis as unknown as {
   defineEventHandler: <T>(fn: T) => T
@@ -25,6 +29,10 @@ vi.mock('~~/server/utils/auth', () => ({
   requireWriteAccess: (...args: unknown[]) => mockRequireWriteAccess(...args)
 }))
 
+vi.mock('~~/server/utils/clientScoping', () => ({
+  getAssignedClientIds: (...args: unknown[]) => mockGetAssignedClientIds(...args)
+}))
+
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args)
 }))
@@ -39,7 +47,8 @@ describe('email subscriber import route', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockRequireWriteAccess.mockResolvedValue({ id: 'user-1', role: 'admin' })
-    mockGetList.mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111', client_id: null })
+    mockGetAssignedClientIds.mockResolvedValue([CLIENT_1])
+    mockGetList.mockResolvedValue({ id: LIST_1, client_id: null })
     mockQueryRows.mockResolvedValue([])
     mockUpsertSubscriber
       .mockResolvedValueOnce('sub-a')
@@ -50,7 +59,7 @@ describe('email subscriber import route', () => {
   it('returns an import review for invalid, duplicate, unsubscribed, suppressed, and blocklisted rows', async () => {
     const handler = (await import('~~/server/api/email/subscribers/import.post')).default
     mockReadBody.mockResolvedValue({
-      list_id: '11111111-1111-4111-8111-111111111111',
+      list_id: LIST_1,
       csv: [
         'email,name',
         'bad-email,Bad',
@@ -80,7 +89,7 @@ describe('email subscriber import route', () => {
       expect.stringContaining('FROM email_subscribers s'),
       [
         ['a@example.com', 'b@example.com'],
-        '11111111-1111-4111-8111-111111111111'
+        LIST_1
       ]
     )
     expect(result).toEqual(expect.objectContaining({
@@ -95,5 +104,27 @@ describe('email subscriber import route', () => {
         blocklisted: 1
       }
     }))
+  })
+
+  it('blocks scoped users from importing into agency-wide lists', async () => {
+    const handler = (await import('~~/server/api/email/subscribers/import.post')).default
+    mockRequireWriteAccess.mockResolvedValueOnce({
+      id: 'user-1',
+      role: 'account_manager',
+      permissionGroups: []
+    })
+    mockGetList.mockResolvedValueOnce({ id: LIST_1, client_id: null })
+    mockReadBody.mockResolvedValue({
+      list_id: LIST_1,
+      csv: ['email,name', 'a@example.com,Alice'].join('\n')
+    })
+
+    await expect(handler({} as never)).rejects.toMatchObject({
+      statusCode: 403,
+      statusMessage: 'email_client_scope_required'
+    })
+
+    expect(mockUpsertSubscriber).not.toHaveBeenCalled()
+    expect(mockAddToList).not.toHaveBeenCalled()
   })
 })

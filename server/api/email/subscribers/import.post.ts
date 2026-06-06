@@ -4,7 +4,7 @@
 
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
-import { isAgencyEmailUser, resolveEmailWriteClientId } from '~~/server/utils/email-marketing/access'
+import { assertEmailClientAccess, isAgencyEmailUser, resolveEmailWriteClientId } from '~~/server/utils/email-marketing/access'
 import { parseSubscriberCsv } from '~~/server/utils/email-marketing/importParse'
 import { upsertSubscriber, addToList, getList } from '~~/server/utils/email-marketing/db'
 import { queryRows } from '~~/server/utils/db'
@@ -72,6 +72,7 @@ export default defineEventHandler(async (event) => {
 
   const list = await getList(input.list_id)
   if (!list) throw createError({ statusCode: 404, statusMessage: 'list_not_found' })
+  await assertEmailClientAccess(event, user, list.client_id)
   const requestedClientId = input.client_id ?? list.client_id
   if (!isAgencyEmailUser(user) && requestedClientId !== list.client_id) {
     throw createError({ statusCode: 403, statusMessage: 'email_list_client_mismatch' })
