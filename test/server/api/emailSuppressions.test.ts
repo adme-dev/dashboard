@@ -175,7 +175,8 @@ describe('email suppressions routes', () => {
     const result = await handler({} as never)
 
     expect(String(mockExecute.mock.calls[0]?.[0])).toContain('DELETE FROM suppression_list')
-    expect(mockExecute.mock.calls[0]?.[1]).toEqual(['person@example.com'])
+    expect(String(mockExecute.mock.calls[0]?.[0])).toContain('reason = $2')
+    expect(mockExecute.mock.calls[0]?.[1]).toEqual(['person@example.com', 'manual'])
     const auditCall = mockExecute.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO suppression_events'))
     expect(auditCall?.[1]).toEqual([
       'person@example.com',
@@ -200,6 +201,21 @@ describe('email suppressions routes', () => {
       statusMessage: 'suppression_note_required'
     })
     expect(mockExecute).not.toHaveBeenCalled()
+  })
+
+  it('does not audit removal when the reviewed suppression reason changes before delete', async () => {
+    const handler = (await import('~~/server/api/email/suppressions/[email].delete')).default
+    mockReadBody.mockResolvedValue({ note: 'restored by admin' })
+    mockQueryOne
+      .mockResolvedValueOnce({ email: 'person@example.com', reason: 'manual' })
+      .mockResolvedValueOnce({ id: 'sub-1', email: 'person@example.com' })
+    mockExecute.mockResolvedValueOnce(0)
+
+    await expect(handler({} as never)).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: 'suppression_changed'
+    })
+    expect(mockExecute).toHaveBeenCalledTimes(1)
   })
 
   it('requires explicit confirmation before removing hard-bounce suppressions', async () => {

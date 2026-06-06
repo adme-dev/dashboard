@@ -60,7 +60,10 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'suppression_note_required' })
   }
 
-  await execute('DELETE FROM suppression_list WHERE email = $1', [email])
+  const removed = await execute('DELETE FROM suppression_list WHERE email = $1 AND reason = $2', [email, current.reason])
+  if (removed === 0) {
+    throw createError({ statusCode: 409, statusMessage: 'suppression_changed' })
+  }
   await recordSuppressionEvent({
     email,
     subscriberId: subscriber?.id ?? null,
