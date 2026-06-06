@@ -33,6 +33,16 @@ pnpm vitest run test/utils/email*.test.ts test/server/api/email*.test.ts test/co
 
 Result: 88 test files passed, 1 real-browser file skipped, 507 tests passed, 2 real-browser tests skipped. Real-browser sanitizer coverage is opt-in with `RUN_REAL_BROWSER_TESTS=true`; the default sweep stays stable when Chrome is installed but not launchable in the local runner.
 
+Typecheck status on 2026-06-06:
+
+```bash
+pnpm run typecheck
+NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck
+NODE_OPTIONS=--max-old-space-size=8192 pnpm exec vue-tsc --noEmit --pretty false 2>&1 | rg "server/utils/email-marketing|server/api/email|app/components/email|app/pages/agency/email|app/utils/email|test/.*/email|test/.*/edm"
+```
+
+Result: default typecheck reaches the local Node heap limit, high-heap typecheck completes and still fails on unrelated repo-wide baseline errors, and the filtered high-heap scan reports no email/EDM diagnostics.
+
 ---
 
 ## Task 1: Backend Audit Foundation
@@ -193,4 +203,4 @@ pnpm vitest run test/server/api/emailSubscriberHistory.test.ts test/server/api/e
 pnpm run typecheck
 ```
 
-Known caveat: repo-wide typecheck currently has unrelated baseline errors. Focused Vitest suites are the primary verification while this branch is in active development.
+Known caveat: repo-wide typecheck currently requires a larger local Node heap to complete and still has unrelated baseline errors. Email/EDM-specific type diagnostics are clean under the filtered high-heap scan; focused Vitest suites remain the primary verification while this branch is in active development.
