@@ -120,7 +120,12 @@ export async function getCampaign(id: string): Promise<Campaign | null> {
 
 export async function getCampaignListIds(campaignId: string): Promise<string[]> {
   const rows = await queryRows<{ list_id: string }>(
-    'SELECT list_id FROM campaign_lists WHERE campaign_id = $1', [campaignId]
+    `SELECT cl.list_id
+     FROM campaign_lists cl
+     JOIN email_lists l ON l.id = cl.list_id
+     WHERE cl.campaign_id = $1
+       AND l.archived_at IS NULL`,
+    [campaignId]
   )
   return rows.map(r => r.list_id)
 }
@@ -154,6 +159,7 @@ export async function buildCampaignRecipientSnapshot(
         s.status AS subscriber_status,
         sl.status AS membership_status
       FROM campaign_lists cl
+      JOIN email_lists l ON l.id = cl.list_id AND l.archived_at IS NULL
       JOIN subscriber_lists sl ON sl.list_id = cl.list_id
       JOIN email_subscribers s ON s.id = sl.subscriber_id
       WHERE cl.campaign_id = $1
@@ -351,6 +357,7 @@ export async function materializeRecipients(
         SELECT DISTINCT ON (s.id) s.id, s.email, s.name, s.status, s.attribs
         FROM subscriber_lists sl
         JOIN campaign_lists cl ON cl.list_id = sl.list_id AND cl.campaign_id = $1
+        JOIN email_lists l ON l.id = cl.list_id AND l.archived_at IS NULL
         JOIN email_subscribers s ON s.id = sl.subscriber_id
         WHERE sl.status <> 'unsubscribed'
           AND s.status = 'enabled'
@@ -372,6 +379,7 @@ export async function materializeRecipients(
       SELECT DISTINCT ON (s.id) $1, s.id, s.email
       FROM subscriber_lists sl
       JOIN campaign_lists cl ON cl.list_id = sl.list_id AND cl.campaign_id = $1
+      JOIN email_lists l ON l.id = cl.list_id AND l.archived_at IS NULL
       JOIN email_subscribers s ON s.id = sl.subscriber_id
       WHERE sl.status <> 'unsubscribed'
         AND s.status = 'enabled'

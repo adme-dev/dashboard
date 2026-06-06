@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { materializeRecipients, scheduleCampaign } from '~~/server/utils/email-marketing/campaigns'
+import { getCampaignListIds, materializeRecipients, scheduleCampaign } from '~~/server/utils/email-marketing/campaigns'
 
 const queryOneMock = vi.fn()
 const queryRowsMock = vi.fn()
@@ -50,6 +50,22 @@ const draftCampaign = {
   created_at: '2026-06-05T00:00:00.000Z',
   updated_at: '2026-06-05T00:00:00.000Z'
 }
+
+describe('getCampaignListIds', () => {
+  beforeEach(() => {
+    queryRowsMock.mockReset()
+  })
+
+  it('reads only active campaign target lists', async () => {
+    queryRowsMock.mockResolvedValueOnce([{ list_id: 'list-1' }])
+
+    await expect(getCampaignListIds('camp-1')).resolves.toEqual(['list-1'])
+
+    const sql = String(queryRowsMock.mock.calls[0]?.[0])
+    expect(sql).toContain('JOIN email_lists l ON l.id = cl.list_id')
+    expect(sql).toContain('l.archived_at IS NULL')
+  })
+})
 
 describe('scheduleCampaign', () => {
   beforeEach(() => {
@@ -109,6 +125,29 @@ describe('scheduleCampaign', () => {
       'camp-1',
       expect.stringContaining('https://pub-123.r2.dev/banner-assets/user-1/car.png')
     ])
+  })
+
+  it('materializes recipients only from active campaign lists', async () => {
+    const dbQueryMock = vi.fn()
+    queryOneMock.mockResolvedValueOnce(draftCampaign)
+    transactionMock.mockImplementationOnce(async (cb: (db: { query: typeof dbQueryMock }) => Promise<unknown>) => cb({ query: dbQueryMock }))
+    dbQueryMock
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ n: 1 }] })
+      .mockResolvedValueOnce({ rowCount: 1 })
+
+    await materializeRecipients('camp-1', {
+      appUrl: 'https://app.example.com',
+      mirrorExternalAssets: false
+    })
+
+    const recipientInsertCall = dbQueryMock.mock.calls.find(([sql]) =>
+      String(sql).includes('INSERT INTO campaign_recipients')
+    )
+    const sql = String(recipientInsertCall?.[0])
+    expect(sql).toContain('JOIN email_lists l ON l.id = cl.list_id')
+    expect(sql).toContain('l.archived_at IS NULL')
   })
 
   it('materializes recipients and stores preflight result plus recipient snapshot', async () => {
