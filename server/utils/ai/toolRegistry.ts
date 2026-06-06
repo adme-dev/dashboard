@@ -64,5 +64,3 @@ export function toSdkTools(tools: AiTool<any>[], ctx: ToolContext, seed: string)
   }
   return out
 }
-
-export { registry } from './tools/index'

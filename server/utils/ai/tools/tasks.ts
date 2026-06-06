@@ -17,7 +17,7 @@ const CAP = 20
 const MANAGER_ROLES = new Set(['owner', 'admin', 'lead', 'project_manager'])
 
 /** Compact, model-facing projection of a task. */
-export type TaskRow = {
+export type AiTaskRow = {
   id: string
   title: string
   status: string | null
@@ -41,7 +41,7 @@ export type TaskFilter = {
 }
 
 export type TasksDeps = {
-  fetchTasks: (filter: TaskFilter) => Promise<TaskRow[]>
+  fetchTasks: (filter: TaskFilter) => Promise<AiTaskRow[]>
 }
 
 // Real wiring: tasks live in Postgres. Column names copied from server/api/agency/tasks/*
