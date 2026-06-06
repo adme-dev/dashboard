@@ -98,4 +98,18 @@ describe('shouldDisableEmailBuilderScheduleAction', () => {
       ]
     })).toBe(false)
   })
+
+  it('disables scheduling from the builder until the send time is valid and in the future', () => {
+    const now = new Date('2026-06-06T10:00:00.000Z')
+    const readyPreflight = {
+      ok: true,
+      blocked: false,
+      checks: []
+    }
+
+    expect(shouldDisableEmailBuilderScheduleAction(readyPreflight, '', now)).toBe(true)
+    expect(shouldDisableEmailBuilderScheduleAction(readyPreflight, 'not-a-date', now)).toBe(true)
+    expect(shouldDisableEmailBuilderScheduleAction(readyPreflight, '2026-06-06T10:00:00.000Z', now)).toBe(true)
+    expect(shouldDisableEmailBuilderScheduleAction(readyPreflight, '2026-06-06T10:00:01.000Z', now)).toBe(false)
+  })
 })

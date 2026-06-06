@@ -24,6 +24,7 @@ import {
 import {
   buildEmailBuilderScheduleRequest,
   extractEmailBuilderScheduleError,
+  isEmailBuilderScheduleBlocked,
   shouldDisableEmailBuilderScheduleAction,
   validateEmailBuilderScheduleAt,
   type EmailBuilderSchedulePreflight,
@@ -320,7 +321,10 @@ const campaignSnapshot = ref<EmailBuilderScheduleRecipientSnapshot | null>(null)
 const schedulePreflight = ref<EmailBuilderSchedulePreflight | null>(null)
 const scheduleSnapshot = ref<EmailBuilderScheduleRecipientSnapshot | null>(null)
 const scheduleBlocked = computed(() =>
-  shouldDisableEmailBuilderScheduleAction(schedulePreflight.value)
+  isEmailBuilderScheduleBlocked(schedulePreflight.value)
+)
+const scheduleActionDisabled = computed(() =>
+  shouldDisableEmailBuilderScheduleAction(schedulePreflight.value, scheduleAt.value)
 )
 
 const VIEW_TABS: { value: ViewMode, label: string, icon: string }[] = [
@@ -1339,7 +1343,7 @@ onMounted(async () => {
               icon="i-lucide-calendar-check"
               label="Schedule"
               :loading="scheduling"
-              :disabled="scheduleBlocked"
+              :disabled="scheduleActionDisabled"
               @click="scheduleCampaignFromBuilder()"
             />
           </div>

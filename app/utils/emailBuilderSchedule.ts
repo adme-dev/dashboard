@@ -32,9 +32,13 @@ export function isEmailBuilderScheduleBlocked(
 }
 
 export function shouldDisableEmailBuilderScheduleAction(
-  preflight: EmailBuilderSchedulePreflight | null | undefined
+  preflight: EmailBuilderSchedulePreflight | null | undefined,
+  scheduledAt?: string,
+  now: Date = new Date()
 ): boolean {
-  return isEmailBuilderScheduleBlocked(preflight)
+  if (isEmailBuilderScheduleBlocked(preflight)) return true
+  if (scheduledAt === undefined) return false
+  return validateEmailBuilderScheduleAt(scheduledAt, now) !== null
 }
 
 export function buildEmailBuilderScheduleRequest(input: {
