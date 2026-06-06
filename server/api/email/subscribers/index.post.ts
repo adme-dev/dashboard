@@ -60,6 +60,20 @@ export default defineEventHandler(async (event) => {
     client_id: clientId,
     created_by: user.id
   })
+  if (!listIds.length) {
+    await recordConsentEvent({
+      subscriberId: id,
+      email: normalizedEmail,
+      listId: null,
+      eventType: 'manual_added',
+      source: 'manual',
+      actorUserId: user.id,
+      metadata: {
+        clientId,
+        route: 'email_subscribers_manual_add'
+      }
+    })
+  }
   for (const listId of listIds) {
     await addToList(id, listId, 'manual')
     await recordConsentEvent({

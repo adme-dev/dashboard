@@ -268,6 +268,31 @@ describe('email client-scoped route policy', () => {
     })
   })
 
+  it('records consent provenance when manually creating a subscriber without lists', async () => {
+    const handler = (await import('~~/server/api/email/subscribers/index.post')).default
+    mockReadBody.mockResolvedValueOnce({
+      email: 'Listless.Person@Example.COM',
+      name: 'Listless Person'
+    })
+    mockGetListClientIds.mockResolvedValueOnce([])
+
+    await handler({} as never)
+
+    expect(mockAddToList).not.toHaveBeenCalled()
+    expect(mockRecordConsentEvent).toHaveBeenCalledWith({
+      subscriberId: 'sub-1',
+      email: 'listless.person@example.com',
+      listId: null,
+      eventType: 'manual_added',
+      source: 'manual',
+      actorUserId: 'user-1',
+      metadata: {
+        clientId: CLIENT_1,
+        route: 'email_subscribers_manual_add'
+      }
+    })
+  })
+
   it('passes assigned client ids into campaign reads for scoped users', async () => {
     const handler = (await import('~~/server/api/email/campaigns/index.get')).default
 
