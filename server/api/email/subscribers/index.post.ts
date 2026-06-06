@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { isAgencyEmailUser, resolveEmailWriteClientId } from '~~/server/utils/email-marketing/access'
+import { recordConsentEvent } from '~~/server/utils/email-marketing/audit'
 import { upsertSubscriber, addToList, getListClientIds } from '~~/server/utils/email-marketing/db'
 import { normalizeSubscriberEmail, isValidEmail } from '~~/server/utils/email-marketing/email'
 
@@ -61,6 +62,18 @@ export default defineEventHandler(async (event) => {
   })
   for (const listId of listIds) {
     await addToList(id, listId, 'manual')
+    await recordConsentEvent({
+      subscriberId: id,
+      email: normalizedEmail,
+      listId,
+      eventType: 'manual_added',
+      source: 'manual',
+      actorUserId: user.id,
+      metadata: {
+        clientId,
+        route: 'email_subscribers_manual_add'
+      }
+    })
   }
   return { ok: true, subscriber_id: id }
 })

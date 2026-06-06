@@ -7,6 +7,7 @@ const mockRequireAuth = vi.fn()
 const mockRequireWriteAccess = vi.fn()
 const mockGetAssignedClientIds = vi.fn()
 const mockQueryOne = vi.fn()
+const mockRecordConsentEvent = vi.fn()
 const mockListLists = vi.fn()
 const mockCreateList = vi.fn()
 const mockListSubscribers = vi.fn()
@@ -84,6 +85,10 @@ vi.mock('~~/server/utils/db', () => ({
   execute: vi.fn()
 }))
 
+vi.mock('~~/server/utils/email-marketing/audit', () => ({
+  recordConsentEvent: (...args: unknown[]) => mockRecordConsentEvent(...args)
+}))
+
 vi.mock('~~/server/utils/email-marketing/db', () => ({
   listLists: (...args: unknown[]) => mockListLists(...args),
   createList: (...args: unknown[]) => mockCreateList(...args),
@@ -132,6 +137,7 @@ describe('email client-scoped route policy', () => {
     mockRequireWriteAccess.mockResolvedValue(scopedUser)
     mockGetAssignedClientIds.mockResolvedValue([CLIENT_1])
     mockQueryOne.mockResolvedValue(null)
+    mockRecordConsentEvent.mockResolvedValue(undefined)
     mockListLists.mockResolvedValue([])
     mockCreateList.mockResolvedValue({ id: LIST_1, client_id: CLIENT_1 })
     mockListSubscribers.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 50 })
@@ -235,6 +241,31 @@ describe('email client-scoped route policy', () => {
     })
     expect(mockUpsertSubscriber).not.toHaveBeenCalled()
     expect(mockAddToList).not.toHaveBeenCalled()
+  })
+
+  it('records consent history when manually adding a subscriber to a list', async () => {
+    const handler = (await import('~~/server/api/email/subscribers/index.post')).default
+    mockReadBody.mockResolvedValueOnce({
+      email: 'New.Person@Example.COM',
+      name: 'New Person',
+      list_ids: [LIST_1]
+    })
+
+    await handler({} as never)
+
+    expect(mockAddToList).toHaveBeenCalledWith('sub-1', LIST_1, 'manual')
+    expect(mockRecordConsentEvent).toHaveBeenCalledWith({
+      subscriberId: 'sub-1',
+      email: 'new.person@example.com',
+      listId: LIST_1,
+      eventType: 'manual_added',
+      source: 'manual',
+      actorUserId: 'user-1',
+      metadata: {
+        clientId: CLIENT_1,
+        route: 'email_subscribers_manual_add'
+      }
+    })
   })
 
   it('passes assigned client ids into campaign reads for scoped users', async () => {
