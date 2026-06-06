@@ -135,6 +135,9 @@ export async function setListSubscription(opts: {
          WHERE subscriber_id = $1 AND list_id = $2`,
         [opts.subscriberId, opts.listId]
       )
+      const changed = (res.rowCount ?? 0) > 0
+      if (!changed) return false
+
       const { rows } = await db.query(
         'SELECT email FROM email_subscribers WHERE id = $1',
         [opts.subscriberId]
@@ -146,8 +149,7 @@ export async function setListSubscription(opts: {
            AND email = (SELECT email FROM email_subscribers WHERE id = $1)`,
         [opts.subscriberId]
       )
-      const changed = (res.rowCount ?? 0) > 0
-      if (changed && email) {
+      if (email) {
         await db.query(INSERT_CONSENT_EVENT_SQL, consentEventParams({
           subscriberId: opts.subscriberId,
           email,

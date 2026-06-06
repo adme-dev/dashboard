@@ -243,4 +243,28 @@ describe('email subscription audit integration', () => {
       '{}'
     ])
   })
+
+  it('does not lift global suppression when preference-center subscribe matches no membership', async () => {
+    const dbQueryMock = vi.fn()
+    transactionMock.mockImplementationOnce(async (cb: (db: { query: typeof dbQueryMock }) => Promise<unknown>) => cb({ query: dbQueryMock }))
+    dbQueryMock
+      .mockResolvedValueOnce({ rowCount: 0 })
+      .mockResolvedValueOnce({ rows: [{ email: 'person@example.com' }] })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 })
+
+    const changed = await setListSubscription({
+      subscriberId: 'sub-1',
+      listId: 'not-a-membership',
+      subscribe: true
+    })
+
+    expect(changed).toBe(false)
+    expect(dbQueryMock.mock.calls.some(([sql]) =>
+      String(sql).includes('DELETE FROM suppression_list')
+    )).toBe(false)
+    expect(dbQueryMock.mock.calls.some(([sql]) =>
+      String(sql).includes('INSERT INTO suppression_events')
+    )).toBe(false)
+  })
 })
