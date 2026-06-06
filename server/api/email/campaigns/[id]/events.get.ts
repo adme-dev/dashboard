@@ -33,7 +33,8 @@ export default defineEventHandler(async (event) => {
       COUNT(*) FILTER (WHERE event_type = 'clicked')::int AS clicked,
       COUNT(*) FILTER (
         WHERE event_type = 'clicked'
-          AND COALESCE(raw #>> '{clickClassification,suspectedScanner}', 'false') <> 'true'
+          AND raw->>'source' = 'first_party_redirect'
+          AND COALESCE(raw #>> '{clickClassification,suspectedScanner}', 'true') = 'false'
       )::int AS human_clicked,
       COUNT(*) FILTER (WHERE event_type = 'bounced')::int AS bounced,
       COUNT(*) FILTER (WHERE event_type = 'complained')::int AS complained,

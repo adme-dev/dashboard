@@ -65,6 +65,7 @@ describe('email campaign events route', () => {
 
     expect(mockRequireAuth).toHaveBeenCalled()
     expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('human_clicked')
+    expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('raw->>\'source\' = \'first_party_redirect\'')
     expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('raw #>> \'{clickClassification,suspectedScanner}\'')
     expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('email_events ee')
     expect(result).toEqual({
