@@ -34,11 +34,32 @@ This slice adds a **gated tool-calling loop** to the shared chat engine so the a
 
 | Decision | Choice | Basis |
 |---|---|---|
-| **Loop framework** | **Vercel AI SDK v6** (`ai@^6`, `latest`=6.0.197) | One unified tool interface across providers (Anthropic `tool_use` vs Groq `tool_calls` dialects differ); native `needsApproval` HITL; `stopWhen`/`stepCountIs` loop cap; edge-compatible. v7 is beta-only — do not use. |
+| **Loop framework** | **Vercel AI SDK v6** (`ai@^6`, `latest`=6.0.197) | One unified tool interface across providers (Anthropic `tool_use` vs Groq `tool_calls` dialects differ); native HITL via **`toolApproval`** on the call (tool-level `needsApproval` is **deprecated** in v6); `stopWhen: isStepCount(5)` loop cap; edge-compatible. v7 is beta-only — do not use. |
 | **Loop model (default)** | **Claude Sonnet 4.6** via AI Gateway `/anthropic`, **fallback → Groq `gpt-oss-120b`** | Reliability is the priority; live BFCL v4: Sonnet-4-5 **73.24** / Haiku-4-5 **68.7** vs Kimi K2 **59.06**, qwen3-32b **48.71**, llama-3.3-70b **31.9**; gpt-oss not independently ranked. In a multi-step loop, malformed/hallucinated calls compound. Prompt caching (cache-read ~$0.30/M) softens $3/$15. |
 | **Loop model (to confirm)** | **Bake-off before final lock**: Sonnet 4.6 vs Kimi K2 vs `gpt-oss-120b` on *our* tools + injection suite | Groq is ~10–20× cheaper and far faster (`gpt-oss-120b` ~500 t/s, $0.15/$0.60). The AI SDK makes the model a one-line knob; pick by eval, not vibes. |
 | **Gate model** | **Rule-based on the intent already computed** by `retrieveContext()` (≈ free); `gpt-oss-20b` only for ambiguous cases | Gate only *narrows* (never grants capability). |
 | **Provider routing** | All LLM calls through **Cloudflare AI Gateway** (unified billing, no markup + 5% credit fee, caching, observability, ordered fallback). Extend `claudeClient.ts` to use the gateway `baseURL` (`/anthropic`), mirroring `groqClient.ts` (`/groq`). | Existing `AI_GATEWAY_URL` runtime config; Anthropic + Groq are named unified-billing partners. |
+
+## 3a. Harness Alternatives — Why AI SDK Now, Flue Later
+
+We evaluated standing on a dedicated agent-harness framework instead of the Vercel AI SDK. Two were assessed at the code/docs level:
+
+- **Flue** (`withastro/flue`, flueframework.com) — "The Agent Harness Framework" (Astro team). `createAgent({ model, instructions, tools, skills, sandbox })`; agents (sessions/HTTP/WS) vs workflows (`run()` → `init(agent)` → `session.prompt()`); `defineTool({ name, description, parameters: Type.*, execute })` (**TypeBox**, not Zod); **skills as runtime-loadable `SKILL.md`**; **subagents**; **sandboxes**; **durable execution** (workflow `runId`, recover across restarts); **built-in cost tracking** (`response.usage.cost.total`); observability via `observe()` + OTel/Braintrust/Sentry; deploys to Node / **Cloudflare Workers** / CI; model specifiers like `anthropic/claude-sonnet-4-6`, `openrouter/moonshotai/kimi-k2.6`.
+- **Paperclip** (`paperclipai/paperclip`) — a control plane *over* agents: org charts, **per-agent budgets + throttling**, **governance/approval gates with rollback**, **heartbeats** (scheduled agents), ticketing + **immutable audit + full tool-call tracing**, **multi-company isolation**, goal ancestry. The "run a company of agents" layer.
+
+**Decision: stay on the Vercel AI SDK for Slice 1.**
+- **Maturity/risk** — AI SDK is Apache-2.0, ~24.7k★, battle-tested; Flue is new (docs dated May 2026; some deploy guides "coming soon"). Betting our core conversational engine — over financial/client data — on a nascent framework is the wrong risk for a first slice.
+- **Fit** — Flue is a heavier, opinionated *full* harness built around autonomous agents with filesystem + sandbox + subagents (coding-agent shape). Slice 1 is a single gated tool-loop inside our existing Nitro request over Postgres; we need none of that machinery yet. The AI SDK is the lighter exact fit.
+- **Integration** — the AI SDK drops into the existing `processUserMessage`; Flue imposes its own project layout (`agents/`/`workflows/`/`.flue/`), CLI (`flue dev/run`), runtime (`@flue/runtime`), and TypeBox schemas (we use Zod everywhere). A far larger architectural commitment than augmenting our engine.
+
+**Re-evaluate Flue before the proactive / multi-agent tier.** Its model maps almost 1:1 onto our deferred roadmap — skills, subagents, durable execution (scheduled/heartbeat agents that survive restarts), sandboxes (code-exec tools), built-in cost tracking, OTel observability, CF-native, same models. If/when we build the autonomous agent fleet, Flue is a credible harness candidate; revisit once it has matured.
+
+**Concepts to borrow now (while on the AI SDK):**
+- **Built-in per-run cost tracking** (Flue `usage.cost.total`) + **per-agent budgets/throttle** (Paperclip) → add a **token-budget cap** to §10 loop control; surface cost per turn via the gateway in §11.
+- **Append-only / immutable audit + full tool-call tracing** (Paperclip) → make the `ai_pending_actions` write audit append-only (§11).
+- **"Tool parameters are model-selected inputs, not authorization"** (Flue docs) → validates §7 handler-time re-check + tool-layer row scoping.
+- **Skills as `SKILL.md`** (Flue) → future packaging format for tool-use playbooks (§15).
+- **Heartbeats / goal ancestry / governance-with-rollback** (Paperclip) → §15 roadmap (proactive agents, `route_for_approval` control plane, passing client/project goals into tool context).
 
 ## 4. Architecture
 
@@ -68,11 +89,11 @@ user message
      • data/action-ish                    → tool loop (AI SDK):
           system prompt (role + light context + tool-use + untrusted-data rules)
           tools = registry filtered by user's role/permissions  ← model never sees disallowed tools
-          generateText({ model, tools, messages, stopWhen: stepCountIs(5) }) via AI Gateway
+          generateText({ model, tools, messages, stopWhen: isStepCount(5) }) via AI Gateway
             on tool call:
               validate args (Zod) → re-check permission → inject row-scope (userId/clientId) → run handler
               spotlight any untrusted text in the result → return as tool result
-              (create_task: needsApproval → NOT executed; returns a proposal)
+              (create_task: toolApproval halts loop → NOT executed; returns a proposal)
             on finish: final text
  → auto-link entities [existing] → persist assistant msg + tool-call trace
  → return ChatResponse (+ proposedAction when create_task was proposed)
@@ -105,13 +126,15 @@ interface AiTool<A> {
   description: string                   // 3–4 sentences: purpose, when to use, when NOT, what it returns
   parameters: z.ZodType<A>             // validated in; emitted as JSON schema to the SDK
   requiredPermission?: PermissionCategory  // from permissions.ts; undefined = any authed user
-  mutates?: boolean                     // true → needsApproval (propose→confirm→execute)
+  mutates?: boolean                     // true → toolApproval gate (propose→confirm→execute)
   returnsUntrusted?: boolean            // true → results spotlighted before entering context
   handler: (args: A, ctx: ToolContext) => Promise<ToolResult>
 }
 type ToolContext = { userId: string; userRole: string; clientScope?: string; event: H3Event }
 type ToolResult  = { ok: true; data: unknown } | { ok: false; error: string }  // errors are recoverable, natural-language
 ```
+
+> **AI SDK v6 mapping:** each entry is built on `tool({ description, inputSchema, execute })` — v6 names the schema **`inputSchema`** (Zod), not `parameters`; the runtime `ToolContext` is passed via `contextSchema`/`toolsContext`. Our `requiredPermission` / `mutates` / `returnsUntrusted` are **our own annotations** (no native SDK slots); `toolLoop` derives the call-level `toolApproval` policy from `mutates`.
 
 Handlers call the underlying util/query **directly** (no internal `$fetch`). Where logic lives inside an endpoint today, extract a shared util both call. Results are **compact** (names + key numbers + IDs), capped (top ~20) with a model-visible "N more" signal — never raw DB rows, never silent truncation.
 
@@ -144,7 +167,7 @@ Filtering is by **name** (`clientName`, `projectName`), resolved to IDs in the h
 The model **cannot write**. It can only *prepare* a proposal; a human click executes it.
 
 ```
-model calls create_task(args)  →  needsApproval (AI SDK v6) → NOT executed
+model calls create_task(args)  →  toolApproval:'user-approval' halts loop → NOT executed
  → resolve+dry-run handler: validate, resolve names→IDs, parse dueDate, check write perm
  → persist a server-issued, integrity-bound, EXPIRING proposal row (ai_pending_actions, status='proposed')
  → return tool result "prepared, id=<proposalId>, awaiting confirmation" + proposedAction in ChatResponse
@@ -155,6 +178,8 @@ model calls create_task(args)  →  needsApproval (AI SDK v6) → NOT executed
 ```
 
 Anti-tamper: the user confirms the **exact server-issued proposal**; the confirm endpoint trusts only `proposalId`, re-checks permission, and the proposal **expires**. Voice reads freely but `create_task` via voice still surfaces the on-screen confirmation card (no spoken auto-create).
+
+**Why direct-execute, not the SDK's native resume (harness code-study):** AI SDK v6 `toolApproval` is a *two-model-call* flow — it returns a `tool-approval-request`, you append a `tool-approval-response`, and **re-call the model** (which then runs the tool). That assumes you persist/rehydrate the whole `messages` array and pay a second model call. We deliberately choose **Option B**: treat the `create_task` call as a *proposal only*, persist the validated input to `ai_pending_actions`, and have the **separate confirm endpoint execute the write directly** (re-validating with the same Zod schema) — no message rehydration, no second model call. This is the Mastra `runId`→load→execute / LangGraph checkpointer pattern, with `ai_pending_actions.id` as the correlation key. (Option A — the SDK-native re-call where the model sees the result and continues the same turn — remains available later if we want same-turn continuation.)
 
 ## 9. Untrusted-data & Prompt-Injection Defense (highest risk)
 
@@ -168,8 +193,8 @@ LLMs cannot reliably separate instructions from data once both are in context. A
 
 ## 10. Loop Safety & Error Handling
 
-- **Step cap** `stopWhen: stepCountIs(5)` → on cap, return best partial + a note.
-- **Wall-clock deadline (~25s)** + **per-turn token budget** (bound an agentic turn; CF Workers limits).
+- **Step cap** `stopWhen: isStepCount(5)` (v6 canonical; `stepCountIs` is the older spelling) → on cap, return best partial + a note.
+- **Wall-clock deadline (~25s)** + **per-turn token/cost budget** via a custom `StopCondition` (`({steps}) => costSoFar > budget`) — cost read from the SDK `usage` / gateway. Bounds an agentic turn (CF Workers limits). *(Borrowed from Flue per-run cost tracking + Paperclip per-agent budgets.)*
 - **Handlers never throw to the loop** — return `{ok:false, error}` → recoverable, natural-language tool result; model recovers.
 - **Unknown tool / bad args** → structured error result (Zod), self-corrects.
 - **Provider/gateway failure** → (1) gateway ordered fallback (Sonnet 4.6 → `gpt-oss-120b`); (2) app-level fallback to the existing Groq RAG single-shot so the user still gets *an* answer (degraded, no tools).
@@ -179,7 +204,7 @@ LLMs cannot reliably separate instructions from data once both are in context. A
 ## 11. Observability & Audit
 
 - **`ai_messages.tool_calls JSONB`** (new column) — per-turn read-tool trace (tools, arg summary, latency); powers a "🔎 Consulted: …" UX chip + debugging.
-- **`ai_pending_actions`** (new table) — every AI-initiated mutation, proposed→executed, with actor + timestamps = compliance-grade write audit.
+- **`ai_pending_actions`** (new table, **append-only**) — every AI-initiated mutation, proposed→executed, with actor + timestamps = compliance-grade, immutable write audit (status transitions append; rows never hard-deleted). Surface per-turn token cost (SDK `usage` / gateway analytics) here too.
 - **OTel GenAI spans** — `invoke_agent` → `chat` / `execute_tool`; metadata-only capture by default (gate any sensitive prompt/arg capture; scope retention).
 
 ## 12. Testing & Evals
@@ -199,12 +224,21 @@ One migration (next sequential number; verify at plan time):
 
 ## 14. OSS to Study Before Building (license-checked)
 
-- **`cloudflare/agents-starter`** (MIT, TS, CF Workers + AI SDK) — our exact stack; demonstrates the `needsApproval` approval-gated tool pattern. Clone first.
-- **Vercel AI SDK v6 HITL** (`needsApproval`) — canonical propose→confirm→execute.
+- **`cloudflare/agents-starter`** (MIT, TS, CF Workers + AI SDK) — our exact stack; demonstrates approval-gated tools + `stopWhen: stepCountIs(5)`. Clone first. *(Note: it still uses the legacy `needsApproval`; new code uses `toolApproval`.)*
+- **Vercel AI SDK v6** — `toolApproval` (call-level) is the canonical HITL; `tool-approval-request` / `tool-approval-response` two-call flow.
 - **`promptfoo`** (MIT, TS) + **`autoevals`** (TS) — adopt for the eval harness.
 - **`tldrsec/prompt-injection-defenses`** (catalog) + spotlighting (Microsoft) + canary (Rebuff) — read before implementing `spotlight.ts`.
 - **`mastra` / `langgraphjs`** — storage-backed suspend/resume HITL reference (our confirm spans two requests).
 - **Pattern-only (copyleft):** Worklenz (agency PSA — profitability), Twenty (AI-native CRM).
+
+## 14b. Implementation Reference (harness code-study)
+
+Confirmed from source (`cloudflare/agents-starter`, `vercel/ai` v6 docs, `mastra`):
+- **Tool def:** `tool({ description, inputSchema: zod, execute })`; kind by shape (server-exec has `execute`); `contextSchema` + `toolsContext` carry `ctx`.
+- **Loop:** `generateText({ model, tools, messages, stopWhen: isStepCount(5) })`; `prepareStep({ stepNumber, steps, messages })` swaps `model` (the fallback hook) / `activeTools` / compacts `messages`.
+- **Approval:** `toolApproval` on the call (`'user-approval'` or `({ input }) => …`). The SDK-native resume appends a `tool-approval-response` and **re-calls the model** (two model calls). **We use Option B** (§8) — direct-execute via a separate endpoint — instead.
+- **Provider fallback (pick one):** (1) raw `createAnthropic({ baseURL })` + `createGroq({ baseURL })` pointed at the CF gateway, fallback via try/catch or `prepareStep`; (2) the `ai-gateway-provider` package — `createAiGateway([anthropic(...), groq('openai/gpt-oss-120b')])` — native ordered fallback + retries.
+- **⚠️ Verify at build time:** the exact CF gateway `baseURL` shape (`gateway.ai.cloudflare.com/v1/{acct}/{gw}/{provider}`) + any `cf-aig-authorization` header when used as an AI-SDK `baseURL` (CF documents the `createAiGateway()` wrapper, not raw `baseURL`); and that **`gpt-oss-120b` is enabled** on the gateway's Groq route. Don't conflate the deprecated tool-level `needsApproval` with `WorkflowAgent.needsApproval` (a separate durable-workflow API).
 
 ## 15. Deferred / Future Roadmap
 
