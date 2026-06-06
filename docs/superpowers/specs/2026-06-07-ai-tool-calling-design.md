@@ -274,6 +274,8 @@ Confirmed from source (`cloudflare/agents-starter`, `vercel/ai` v6 docs, `mastra
 
 **Platform feature gaps surfaced** (agency-defining, host strong future tools): resource/capacity planning, per-client profitability reporting, retainer management, proposals/SOW/estimates, general approval workflows, forward revenue forecasting, DAM. These are roadmap candidates beyond this slice.
 
+**Workflow Oracle / supervisor (control plane over all jobs) — deferred to the multi-agent tier; NOT in Slice 1.** A meta-orchestrator that *oversees the whole job/agent fleet* rather than answering one chat turn: a job/agent registry + live status, heartbeat scheduling, routing/delegation to functional agents (marketing/finance/sales), cost/budget governance + throttling, approval gating (`route_for_approval`), failure/retry oversight, and unified audit/observability. This is the Paperclip "company of agents" control plane — distinct from Slice 1's single-assistant loop. It's the natural home for BOTH the future AI agent fleet AND oversight of our existing background-job fleet (crons, companion Workers, queues — anomaly detection, social dispatch, ga4-sync, audio-jobs, etc.). Build on the existing notifications/anomaly infra + the companion-Worker/cron pattern + `ai_pending_actions` audit; **re-evaluate Flue** (durable execution / subagents) here. A substantial future slice in its own right.
+
 ## 16. Rollout
 
 1. Migration + registry + `toolLoop` (Sonnet 4.6, gateway fallback) + gate wiring.
