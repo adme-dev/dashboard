@@ -45,6 +45,13 @@ export default defineEventHandler(async (event) => {
     WHERE campaign_id = $1
   `, [id])
 
+  const eventParams: unknown[] = [id]
+  const subscriberJoinConditions = ['s.id = ee.subscriber_id']
+  if (campaign.client_id) {
+    eventParams.push(campaign.client_id)
+    subscriberJoinConditions.push(`s.client_id = $${eventParams.length}::uuid`)
+  }
+
   const events = await queryRows(`
     SELECT
       ee.id,
@@ -59,11 +66,11 @@ export default defineEventHandler(async (event) => {
       CASE WHEN ee.event_type = 'opened' THEN 'directional' ELSE NULL END AS metric_note,
       ee.occurred_at
     FROM email_events ee
-    LEFT JOIN email_subscribers s ON s.id = ee.subscriber_id
+    LEFT JOIN email_subscribers s ON ${subscriberJoinConditions.join(' AND ')}
     WHERE ee.campaign_id = $1
     ORDER BY ee.occurred_at DESC
     LIMIT 200
-  `, [id])
+  `, eventParams)
 
   return {
     summary: {

@@ -5,6 +5,7 @@ const mockRequireAuth = vi.fn()
 const mockQueryOne = vi.fn()
 const mockQueryRows = vi.fn()
 const mockGetCampaign = vi.fn()
+const CLIENT_1 = '11111111-1111-4111-8111-111111111111'
 
 const testGlobal = globalThis as unknown as {
   defineEventHandler: <T>(fn: T) => T
@@ -92,5 +93,15 @@ describe('email campaign events route', () => {
         }
       ]
     })
+  })
+
+  it('scopes subscriber identity joins to the campaign client', async () => {
+    const handler = (await import('~~/server/api/email/campaigns/[id]/events.get')).default
+    mockGetCampaign.mockResolvedValueOnce({ id: 'camp-1', client_id: CLIENT_1 })
+
+    await handler({} as never)
+
+    expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('s.client_id = $2::uuid')
+    expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['camp-1', CLIENT_1])
   })
 })
