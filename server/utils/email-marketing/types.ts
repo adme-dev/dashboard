@@ -28,7 +28,7 @@ export type SuppressionReason
     | 'manual'
     | 'global_unsubscribe'
     | 'soft_bounce'
-export type SuppressionAuditAction = 'added' | 'ignored' | 'removed' | 'recorded'
+export type SuppressionAuditAction = 'added' | 'ignored' | 'removed' | 'recorded' | 'updated'
 export type SuppressionAuditSource
   = | 'form'
     | 'webhook'

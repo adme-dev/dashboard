@@ -185,11 +185,16 @@ export async function handleResendEvent(
 
   // Global suppression + blocklist on hard bounce / complaint.
   if (rule.suppress) {
-    const email = await queryOne<{ email: string }>(
-      'SELECT email::text AS email FROM email_subscribers WHERE id = $1',
+    const email = await queryOne<{ email: string, suppression_reason?: string | null }>(
+      `SELECT s.email::text AS email,
+              sup.reason::text AS suppression_reason
+       FROM email_subscribers s
+       LEFT JOIN suppression_list sup ON sup.email = s.email
+       WHERE s.id = $1`,
       [recipient.subscriber_id]
     )
     if (email?.email) {
+      const previousReason = email.suppression_reason ?? null
       const suppressionInserted = await execute(`
         INSERT INTO suppression_list (email, reason, campaign_id)
         VALUES ($1, $2, $3)
@@ -199,17 +204,22 @@ export async function handleResendEvent(
               updated_at = NOW()
           WHERE suppression_list.reason = 'soft_bounce'
       `, [email.email, rule.suppress, recipient.campaign_id])
+      let action: 'added' | 'ignored' | 'updated' = 'ignored'
+      if (suppressionInserted > 0) {
+        action = previousReason === 'soft_bounce' ? 'updated' : 'added'
+      }
       await recordSuppressionEvent({
         email: email.email,
         subscriberId: recipient.subscriber_id,
         campaignId: recipient.campaign_id,
         reason: rule.suppress,
-        action: suppressionInserted > 0 ? 'added' : 'ignored',
+        action,
         source: 'webhook',
         metadata: {
           resendEventId: eventId,
           resendMessageId: messageId,
-          resendType: payload.type
+          resendType: payload.type,
+          ...(action === 'updated' ? { previousReason } : {})
         }
       })
       await execute(

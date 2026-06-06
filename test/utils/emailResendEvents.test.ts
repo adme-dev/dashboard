@@ -163,7 +163,7 @@ describe('handleResendEvent suppression audit', () => {
   it('upgrades an existing soft-bounce suppression when a hard bounce arrives', async () => {
     queryOneMock
       .mockResolvedValueOnce({ campaign_id: 'camp-1', subscriber_id: 'sub-1' })
-      .mockResolvedValueOnce({ email: 'person@example.com' })
+      .mockResolvedValueOnce({ email: 'person@example.com', suppression_reason: 'soft_bounce' })
     executeMock
       .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(1)
@@ -186,6 +186,19 @@ describe('handleResendEvent suppression audit', () => {
     expect(sql).toContain('ON CONFLICT (email) DO UPDATE')
     expect(sql).toContain('reason = EXCLUDED.reason')
     expect(sql).toContain('suppression_list.reason = \'soft_bounce\'')
+    const suppressionEventCall = executeMock.mock.calls.find(([sql]) =>
+      String(sql).includes('INSERT INTO suppression_events')
+    )
+    expect(suppressionEventCall?.[1]).toEqual([
+      'person@example.com',
+      'sub-1',
+      'camp-1',
+      'hard_bounce',
+      'updated',
+      'webhook',
+      null,
+      '{"resendEventId":"evt-hard-after-soft","resendMessageId":"msg-1","resendType":"email.bounced","previousReason":"soft_bounce"}'
+    ])
   })
 
   it('clears soft-bounce suppression when a delayed message later delivers', async () => {
