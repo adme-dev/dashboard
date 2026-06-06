@@ -22,6 +22,7 @@ export default defineEventHandler(async (event) => {
     opened: number | string
     clicked: number | string
     human_clicked: number | string
+    delivery_delayed: number | string
     bounced: number | string
     complained: number | string
     unsubscribed: number | string
@@ -36,6 +37,7 @@ export default defineEventHandler(async (event) => {
           AND raw->>'source' = 'first_party_redirect'
           AND COALESCE(raw #>> '{clickClassification,suspectedScanner}', 'true') = 'false'
       )::int AS human_clicked,
+      COUNT(*) FILTER (WHERE event_type = 'delivery_delayed')::int AS delivery_delayed,
       COUNT(*) FILTER (WHERE event_type = 'bounced')::int AS bounced,
       COUNT(*) FILTER (WHERE event_type = 'complained')::int AS complained,
       COUNT(*) FILTER (WHERE event_type = 'unsubscribed')::int AS unsubscribed
@@ -71,6 +73,7 @@ export default defineEventHandler(async (event) => {
       opened_label: 'directional',
       clicked: toNumber(summaryRow?.clicked),
       human_clicked: toNumber(summaryRow?.human_clicked),
+      delivery_delayed: toNumber(summaryRow?.delivery_delayed),
       bounced: toNumber(summaryRow?.bounced),
       complained: toNumber(summaryRow?.complained),
       unsubscribed: toNumber(summaryRow?.unsubscribed)

@@ -9,6 +9,7 @@ interface EventsSummary {
   opened_label: string
   clicked: number
   human_clicked: number
+  delivery_delayed: number
   bounced: number
   complained: number
   unsubscribed: number
@@ -167,6 +168,14 @@ watch([open, () => props.campaignId], load, { immediate: true })
                 </p>
                 <p class="mt-1 text-lg font-semibold tabular-nums">
                   {{ eventsSummary?.human_clicked ?? 0 }}
+                </p>
+              </div>
+              <div class="rounded-lg border border-default p-3">
+                <p class="text-xs text-muted">
+                  Delayed
+                </p>
+                <p class="mt-1 text-lg font-semibold tabular-nums">
+                  {{ eventsSummary?.delivery_delayed ?? 0 }}
                 </p>
               </div>
               <div class="rounded-lg border border-default p-3">

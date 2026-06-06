@@ -60,6 +60,7 @@ describe('EmailCampaignReportDrawer', () => {
             opened_label: 'directional',
             clicked: 5,
             human_clicked: 3,
+            delivery_delayed: 2,
             bounced: 1,
             complained: 0,
             unsubscribed: 1
@@ -114,6 +115,7 @@ describe('EmailCampaignReportDrawer', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/email/campaigns/camp-1/attribution')
     expect(host.textContent).toContain('June Offers')
     expect(host.textContent).toContain('Human-clicked')
+    expect(host.textContent).toContain('Delayed')
     expect(host.textContent).toContain('Open metrics are directional')
     expect(host.textContent).toContain('scanner')
     expect(host.textContent).toContain('Email-linked')

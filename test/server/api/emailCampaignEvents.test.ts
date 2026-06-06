@@ -44,6 +44,7 @@ describe('email campaign events route', () => {
       opened: 6,
       clicked: 4,
       human_clicked: 3,
+      delivery_delayed: 2,
       bounced: 1,
       complained: 1,
       unsubscribed: 2
@@ -67,6 +68,7 @@ describe('email campaign events route', () => {
     expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('human_clicked')
     expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('raw->>\'source\' = \'first_party_redirect\'')
     expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('raw #>> \'{clickClassification,suspectedScanner}\'')
+    expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('delivery_delayed')
     expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('email_events ee')
     expect(result).toEqual({
       summary: {
@@ -76,6 +78,7 @@ describe('email campaign events route', () => {
         opened_label: 'directional',
         clicked: 4,
         human_clicked: 3,
+        delivery_delayed: 2,
         bounced: 1,
         complained: 1,
         unsubscribed: 2
