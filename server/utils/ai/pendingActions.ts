@@ -65,12 +65,23 @@ export async function executeProposal(id: string, ctx: ToolContext, db: PendingA
   if (!row) {
     return fail('This action was already handled, has expired, or is not yours to confirm.')
   }
+
+  // Only the MUTATION failing may roll back (so the user can retry). A failure in post-create
+  // bookkeeping must NOT revert — the task already exists and reverting would let a retry create
+  // a duplicate. The atomic claim already marked the row executed, so bookkeeping failure is safe.
+  let created: { id: string }
   try {
-    const created = await db.createTask(row.resolved_payload, ctx)
-    await db.markExecuted(id, created.id)
-    return ok({ taskId: created.id })
+    created = await db.createTask(row.resolved_payload, ctx)
   } catch {
     if (db.revertToProposed) await db.revertToProposed(id)
     return fail('Could not complete the action — the task was not created. Please try again.')
   }
+
+  try {
+    await db.markExecuted(id, created.id)
+  } catch {
+    // Non-critical: the task was created and the row is already 'executed'. Log-and-continue.
+    console.error(`[pendingActions] markExecuted failed for ${id} (task ${created.id} created)`)
+  }
+  return ok({ taskId: created.id })
 }

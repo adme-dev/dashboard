@@ -96,8 +96,8 @@ async function handleVoiceRecord() {
       }
     }
 
-    // Add assistant message
-    messages.value.push(result.message)
+    // Add assistant message (carry any proposed action so the confirm card renders)
+    messages.value.push({ ...result.message, proposedAction: (result as any).proposedAction ?? null })
 
     // Update conversation metadata
     if (activeConversation.value) {
@@ -1008,6 +1008,14 @@ function getRenderedMarkdown(content: string): string {
                     />
                   </NuxtLink>
                 </div>
+
+                <!-- Proposed action (guarded write awaiting the user's confirmation) -->
+                <AiProposedActionCard
+                  v-if="msg.role === 'assistant' && msg.proposedAction"
+                  :conversation-id="msg.conversationId"
+                  :proposal="msg.proposedAction"
+                  @cancelled="msg.proposedAction = null"
+                />
 
                 <!-- Tool-call trace (assistant messages that consulted live data) -->
                 <div

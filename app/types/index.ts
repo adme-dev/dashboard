@@ -650,6 +650,8 @@ export interface AiMessage {
   isError: boolean
   /** Read-tool trace for AI tool-calling turns (powers the "Consulted: …" chip). */
   toolCalls?: Array<{ name: string, args?: unknown }> | null
+  /** Transient (not persisted): a guarded write the assistant proposed, rendered as a confirm card. */
+  proposedAction?: { proposalId: string, resolved: any } | null
   feedback?: AiFeedback | null
   createdAt: string
 }

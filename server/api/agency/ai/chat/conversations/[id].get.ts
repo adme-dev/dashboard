@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
   const messageParams: any[] = [id, limit]
   let messageQuery = `
     SELECT id, conversation_id, role, content, context_sources,
-           token_count, model, latency_ms, is_error, created_at
+           token_count, model, latency_ms, is_error, tool_calls, created_at
     FROM ai_messages
     WHERE conversation_id = $1`
 
@@ -54,6 +54,7 @@ export default defineEventHandler(async (event) => {
     model: r.model,
     latencyMs: r.latency_ms,
     isError: r.is_error,
+    toolCalls: r.tool_calls || null,
     createdAt: r.created_at,
   }))
 

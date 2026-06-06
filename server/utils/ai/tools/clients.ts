@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { queryRows, queryOne } from '~~/server/utils/db'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
 
 const params = z.object({ clientName: z.string() })
 type Args = z.infer<typeof params>
@@ -25,7 +25,7 @@ export type ClientsDeps = {
 // list endpoint's `stats` subquery), so the snapshot mirrors that calculation.
 const defaultDeps: ClientsDeps = {
   findClients: async (name) => {
-    const safe = name.replace(/[%_]/g, c => '\\' + c)
+    const safe = escapeLike(name)
     return (await queryRows(
       `SELECT id, name, is_active, billing_type
          FROM agency_clients
@@ -52,11 +52,15 @@ const defaultDeps: ClientsDeps = {
        FROM projects p
        LEFT JOIN (
          SELECT project_id, SUM(hours * hourly_rate) AS labor_cost
-         FROM time_entries GROUP BY project_id
+         FROM time_entries
+         WHERE project_id IN (SELECT id FROM projects WHERE client_id = $1)
+         GROUP BY project_id
        ) t ON p.id = t.project_id
        LEFT JOIN (
          SELECT project_id, SUM(amount) AS expense_cost
-         FROM project_expenses GROUP BY project_id
+         FROM project_expenses
+         WHERE project_id IN (SELECT id FROM projects WHERE client_id = $1)
+         GROUP BY project_id
        ) e ON p.id = e.project_id
        WHERE p.client_id = $1`,
       [clientId],

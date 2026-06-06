@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { $fetch } from 'ofetch'
 import { queryOne } from '~~/server/utils/db'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
 
 const params = z.object({
   clientName: z.string().optional(),
@@ -54,12 +54,12 @@ export type SocialDeps = {
 // headers (mirrors finance.ts; the endpoint computes the prior-period deltas from from/to).
 const defaultDeps: SocialDeps = {
   overview: async ({ clientName, from, to }, ctx) => {
-    const row = clientName
-      ? await queryOne<{ id: string }>(
-          'SELECT id FROM agency_clients WHERE name ILIKE $1 ORDER BY name ASC LIMIT 1',
-          [`%${clientName.replace(/[%_]/g, '\\$&')}%`],
-        )
-      : await queryOne<{ id: string }>('SELECT id FROM agency_clients ORDER BY name ASC LIMIT 1', [])
+    // Require an explicit client — never silently report an arbitrary one.
+    if (!clientName) throw new Error('A client name is required for social performance.')
+    const row = await queryOne<{ id: string }>(
+      'SELECT id FROM agency_clients WHERE name ILIKE $1 ORDER BY name ASC LIMIT 1',
+      [`%${escapeLike(clientName)}%`],
+    )
     if (!row?.id) throw new Error('no matching client')
     return await $fetch<SocialOverview>('/api/agency/social/reporting/overview', {
       query: { clientId: row.id, from, to },

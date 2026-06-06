@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { queryRows } from '~~/server/utils/db'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
 
 const params = z.object({
   scope: z.enum(['mine', 'all']).default('mine'),
@@ -60,7 +60,7 @@ const defaultDeps: TasksDeps = {
     }
 
     if (filter.status) {
-      const escaped = filter.status.replace(/%/g, '\\%').replace(/_/g, '\\_')
+      const escaped = escapeLike(filter.status)
       conditions.push(`ts.name ILIKE $${idx}`)
       values.push(`%${escaped}%`)
       idx++
@@ -71,7 +71,7 @@ const defaultDeps: TasksDeps = {
     }
 
     if (filter.projectOrClientName) {
-      const escaped = filter.projectOrClientName.replace(/%/g, '\\%').replace(/_/g, '\\_')
+      const escaped = escapeLike(filter.projectOrClientName)
       conditions.push(`p.name ILIKE $${idx}`)
       values.push(`%${escaped}%`)
       idx++

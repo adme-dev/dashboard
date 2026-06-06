@@ -87,14 +87,15 @@ export async function runToolLoop(opts: {
     .filter(Boolean)
     .join('\n\n')
 
-  const signal = opts.signal ?? AbortSignal.timeout(DEADLINE_MS)
+  // Fresh deadline per attempt: if a caller signal is injected both attempts share it, otherwise
+  // each gets its own timeout so a primary TIMEOUT doesn't instantly abort the fallback too.
   const run = (m: LanguageModel) => generateText({
     model: m,
     system,
     messages: opts.messages,
     tools: sdkTools,
     stopWhen: [stepCountIs(STEP_CAP)],
-    abortSignal: signal,
+    abortSignal: opts.signal ?? AbortSignal.timeout(DEADLINE_MS),
     // OTel GenAI spans — metadata only (no prompt/arg/output capture). No-op unless a tracer is registered.
     experimental_telemetry: { isEnabled: true, recordInputs: false, recordOutputs: false, functionId: 'ai-tool-loop' },
   })

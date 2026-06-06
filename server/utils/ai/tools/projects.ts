@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { queryRows, queryOne } from '~~/server/utils/db'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
 
 const params = z.object({
   projectName: z.string().optional(),
@@ -20,7 +20,7 @@ export type ProjectsDeps = {
 }
 
 // ILIKE wildcard escaping — canonical pattern used across the codebase (crm/filters.ts, leads).
-const escapeLike = (v: string) => '%' + v.replace(/[%_]/g, c => '\\' + c) + '%'
+const likePattern = (v: string) => '%' + escapeLike(v) + '%'
 
 const defaultDeps: ProjectsDeps = {
   findProjects: async (args) => {
@@ -31,11 +31,11 @@ const defaultDeps: ProjectsDeps = {
     let i = 1
     if (args.projectName) {
       where.push(`p.name ILIKE $${i++}`)
-      sqlParams.push(escapeLike(args.projectName))
+      sqlParams.push(likePattern(args.projectName))
     }
     if (args.clientName) {
       where.push(`c.name ILIKE $${i++}`)
-      sqlParams.push(escapeLike(args.clientName))
+      sqlParams.push(likePattern(args.clientName))
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
     const rows = await queryRows(

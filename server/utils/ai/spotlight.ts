@@ -28,8 +28,9 @@ export function spotlight(untrusted: string, seed: string): string {
   const id = markerId(seed)
   const open = `<untrusted_data id="${id}">`
   const close = `</untrusted_data id="${id}">`
-  // Strip any literal occurrence of our id-bearing markers so the payload can't forge a closer.
-  const safe = String(untrusted).split(open).join('').split(close).join('')
+  // Neutralize ANY untrusted_data marker in the payload — including a forged bare `</untrusted_data>`
+  // or a different-id marker — so the payload can never break out of (or forge) the envelope.
+  const safe = String(untrusted).replace(/<\/?untrusted_data\b[^>]*>/gi, '[redacted-marker]')
   return `${open}\n${safe}\n${close}`
 }
 

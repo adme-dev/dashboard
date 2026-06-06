@@ -44,7 +44,8 @@ const defaultDeps: AnomaliesDeps = {
     return queryRows<AnomalyRecord>(
       `SELECT type, severity, title, description FROM anomalies
        WHERE ${where.join(' AND ')}
-       ORDER BY (severity = 'critical') DESC, first_detected_at DESC
+       ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 WHEN 'info' THEN 2 ELSE 3 END,
+                first_detected_at DESC
        LIMIT 100`,
       sqlParams,
     )

@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { queryRows } from '~~/server/utils/db'
 import { isReadOnlyRole } from '~~/server/utils/permissions'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
 import { proposeAction } from '../pendingActions'
 
 const params = z.object({
@@ -26,7 +26,7 @@ export type CreateTaskDeps = {
 }
 
 function ilike(name: string): string {
-  return `%${name.replace(/%/g, '\\%').replace(/_/g, '\\_')}%`
+  return `%${escapeLike(name)}%`
 }
 
 const defaultDeps: CreateTaskDeps = {
