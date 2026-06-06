@@ -101,6 +101,15 @@ user message
 
 The gate is near-free (intent is already computed). The fast path preserves today's latency/cost for chit-chat.
 
+### Persona-readiness (single assistant now; named personas next)
+
+A full agency product will want **named personas** — Finance, Marketing/Media, Sales, Account Manager — each with a tailored instruction preamble, tone, and a *subset* of tools. A persona is **configuration over this same loop, not a separate engine**: `persona = { key, label, instructionsPreamble, toolAllowlist }`. The loop takes an optional `persona` that (a) prepends its preamble to the system prompt and (b) **intersects** its allowlist with the RBAC-filtered toolset (persona *narrows*; RBAC still governs).
+
+- **Slice 1 ships one generalist "Agency Assistant"** (the default persona) — prove the loop first.
+- **The loop is built persona-ready now** (the optional `persona` param) so adding personas is **zero engine rework**.
+- **Slice 1.5 adds the named personas** as pure config + a persona picker in the chat UI.
+- The *autonomous* functional-agent fleet (a Finance/Marketing/Sales agent that *acts proactively* on heartbeats with org-chart/delegation) is the deferred **multi-agent tier** (§15) — Paperclip-style governance + a Flue re-evaluation. Personas-as-config (here) ≠ autonomous-agents-as-fleet (later).
+
 ## 5. Model Selection (detail)
 
 Primary-source evidence (live BFCL v4 leaderboard, 2026-06-07; vendor pricing/cards):
