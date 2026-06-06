@@ -5,6 +5,7 @@
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
+import { recordConsentEvent } from '~~/server/utils/email-marketing/audit'
 import { upsertSubscriber, addToList, getList } from '~~/server/utils/email-marketing/db'
 import { assertEmailClientAccess, isAgencyEmailUser } from '~~/server/utils/email-marketing/access'
 import { normalizeSubscriberEmail, isValidEmail } from '~~/server/utils/email-marketing/email'
@@ -32,13 +33,13 @@ export default defineEventHandler(async (event) => {
   await assertEmailClientAccess(event, user, list.client_id)
   const agencyUser = isAgencyEmailUser(user)
 
-  let subscriberRows: Array<{ id: string, client_id: string | null }> = []
+  let subscriberRows: Array<{ id: string, email: string, client_id: string | null }> = []
   let leads: Array<{ id: string, client_id: string | null, field_data: Record<string, string> }> = []
   let contacts: Array<{ client_id: string, name: string | null, email: string | null }> = []
 
   if (uniqueSubscriberIds.length) {
-    subscriberRows = await queryRows<{ id: string, client_id: string | null }>(
-      'SELECT id, client_id FROM email_subscribers WHERE id = ANY($1::uuid[])',
+    subscriberRows = await queryRows<{ id: string, email: string, client_id: string | null }>(
+      'SELECT id, email, client_id FROM email_subscribers WHERE id = ANY($1::uuid[])',
       [uniqueSubscriberIds]
     )
     if (new Set(subscriberRows.map(row => row.id)).size !== uniqueSubscriberIds.length) {
@@ -83,10 +84,41 @@ export default defineEventHandler(async (event) => {
   }
 
   let added = 0
+  async function recordAddToListConsent(input: {
+    subscriberId: string
+    email: string
+    source: 'manual' | 'leads' | 'clients'
+    sourceId: string
+    sourceType: 'subscriber' | 'lead' | 'client'
+    clientId: string | null
+  }) {
+    await recordConsentEvent({
+      subscriberId: input.subscriberId,
+      email: input.email,
+      listId: list_id,
+      eventType: 'manual_added',
+      source: input.source,
+      actorUserId: user.id,
+      metadata: {
+        clientId: input.clientId,
+        route: 'email_subscribers_add_to_list',
+        sourceId: input.sourceId,
+        sourceType: input.sourceType
+      }
+    })
+  }
 
   // 1. Existing subscribers — straight membership add.
-  for (const sid of subscriberRows.map(row => row.id)) {
-    await addToList(sid, list_id, 'manual')
+  for (const row of subscriberRows) {
+    await addToList(row.id, list_id, 'manual')
+    await recordAddToListConsent({
+      subscriberId: row.id,
+      email: row.email,
+      source: 'manual',
+      sourceId: row.id,
+      sourceType: 'subscriber',
+      clientId: row.client_id
+    })
     added++
   }
 
@@ -97,28 +129,46 @@ export default defineEventHandler(async (event) => {
     if (!email || !isValidEmail(email)) continue
     const name = fd.full_name || fd.name
       || [fd.first_name, fd.last_name].filter(Boolean).join(' ') || null
+    const normalizedEmail = normalizeSubscriberEmail(email)
     const id = await upsertSubscriber({
-      email: normalizeSubscriberEmail(email),
+      email: normalizedEmail,
       name,
       attribs: {},
       client_id: lead.client_id,
       created_by: user.id
     })
     await addToList(id, list_id, 'leads')
+    await recordAddToListConsent({
+      subscriberId: id,
+      email: normalizedEmail,
+      source: 'leads',
+      sourceId: lead.id,
+      sourceType: 'lead',
+      clientId: lead.client_id
+    })
     added++
   }
 
   // 3. Clients — pull cached primary contact email from xero_contacts_cache.
   for (const c of contacts) {
     if (!c.email || !isValidEmail(c.email)) continue
+    const normalizedEmail = normalizeSubscriberEmail(c.email)
     const id = await upsertSubscriber({
-      email: normalizeSubscriberEmail(c.email),
+      email: normalizedEmail,
       name: c.name,
       attribs: {},
       client_id: c.client_id,
       created_by: user.id
     })
     await addToList(id, list_id, 'clients')
+    await recordAddToListConsent({
+      subscriberId: id,
+      email: normalizedEmail,
+      source: 'clients',
+      sourceId: c.client_id,
+      sourceType: 'client',
+      clientId: c.client_id
+    })
     added++
   }
 

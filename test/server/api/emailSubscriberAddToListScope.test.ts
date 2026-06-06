@@ -11,6 +11,7 @@ const mockReadBody = vi.fn()
 const mockRequireWriteAccess = vi.fn()
 const mockGetAssignedClientIds = vi.fn()
 const mockQueryRows = vi.fn()
+const mockRecordConsentEvent = vi.fn()
 const mockGetList = vi.fn()
 const mockUpsertSubscriber = vi.fn()
 const mockAddToList = vi.fn()
@@ -41,6 +42,10 @@ vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args)
 }))
 
+vi.mock('~~/server/utils/email-marketing/audit', () => ({
+  recordConsentEvent: (...args: unknown[]) => mockRecordConsentEvent(...args)
+}))
+
 vi.mock('~~/server/utils/email-marketing/db', () => ({
   getList: (...args: unknown[]) => mockGetList(...args),
   upsertSubscriber: (...args: unknown[]) => mockUpsertSubscriber(...args),
@@ -59,6 +64,7 @@ describe('email subscriber add-to-list client scope', () => {
     })
     mockGetAssignedClientIds.mockResolvedValue([CLIENT_1])
     mockGetList.mockResolvedValue({ id: LIST_1, client_id: CLIENT_1 })
+    mockRecordConsentEvent.mockResolvedValue(undefined)
     mockReadBody.mockResolvedValue({
       list_id: LIST_1,
       subscriber_ids: [SUB_1],
@@ -129,5 +135,74 @@ describe('email subscriber add-to-list client scope', () => {
 
     expect(mockAddToList).not.toHaveBeenCalled()
     expect(mockUpsertSubscriber).not.toHaveBeenCalled()
+  })
+
+  it('records consent history for each add-to-list source path', async () => {
+    mockReadBody.mockResolvedValue({
+      list_id: LIST_1,
+      subscriber_ids: [SUB_1],
+      lead_ids: [LEAD_1],
+      client_ids: [CLIENT_1]
+    })
+    mockQueryRows.mockReset()
+    mockQueryRows
+      .mockResolvedValueOnce([{ id: SUB_1, email: 'existing@example.com', client_id: CLIENT_1 }])
+      .mockResolvedValueOnce([{
+        id: LEAD_1,
+        client_id: CLIENT_1,
+        field_data: { email: 'Lead.Person@Example.COM', full_name: 'Lead Person' }
+      }])
+      .mockResolvedValueOnce([{ client_id: CLIENT_1, name: 'Client Contact', email: 'Client.Contact@Example.COM' }])
+    mockUpsertSubscriber
+      .mockResolvedValueOnce('sub-lead')
+      .mockResolvedValueOnce('sub-client')
+
+    const handler = (await import('~~/server/api/email/subscribers/add-to-list.post')).default
+
+    await expect(handler({} as never)).resolves.toEqual({ added: 3 })
+
+    expect(mockRecordConsentEvent).toHaveBeenCalledTimes(3)
+    expect(mockRecordConsentEvent).toHaveBeenNthCalledWith(1, {
+      subscriberId: SUB_1,
+      email: 'existing@example.com',
+      listId: LIST_1,
+      eventType: 'manual_added',
+      source: 'manual',
+      actorUserId: 'user-1',
+      metadata: {
+        clientId: CLIENT_1,
+        route: 'email_subscribers_add_to_list',
+        sourceId: SUB_1,
+        sourceType: 'subscriber'
+      }
+    })
+    expect(mockRecordConsentEvent).toHaveBeenNthCalledWith(2, {
+      subscriberId: 'sub-lead',
+      email: 'lead.person@example.com',
+      listId: LIST_1,
+      eventType: 'manual_added',
+      source: 'leads',
+      actorUserId: 'user-1',
+      metadata: {
+        clientId: CLIENT_1,
+        route: 'email_subscribers_add_to_list',
+        sourceId: LEAD_1,
+        sourceType: 'lead'
+      }
+    })
+    expect(mockRecordConsentEvent).toHaveBeenNthCalledWith(3, {
+      subscriberId: 'sub-client',
+      email: 'client.contact@example.com',
+      listId: LIST_1,
+      eventType: 'manual_added',
+      source: 'clients',
+      actorUserId: 'user-1',
+      metadata: {
+        clientId: CLIENT_1,
+        route: 'email_subscribers_add_to_list',
+        sourceId: CLIENT_1,
+        sourceType: 'client'
+      }
+    })
   })
 })
