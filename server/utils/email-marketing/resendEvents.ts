@@ -193,7 +193,11 @@ export async function handleResendEvent(
       const suppressionInserted = await execute(`
         INSERT INTO suppression_list (email, reason, campaign_id)
         VALUES ($1, $2, $3)
-        ON CONFLICT (email) DO NOTHING
+        ON CONFLICT (email) DO UPDATE
+          SET reason = EXCLUDED.reason,
+              campaign_id = EXCLUDED.campaign_id,
+              updated_at = NOW()
+          WHERE suppression_list.reason = 'soft_bounce'
       `, [email.email, rule.suppress, recipient.campaign_id])
       await recordSuppressionEvent({
         email: email.email,

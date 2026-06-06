@@ -160,6 +160,34 @@ describe('handleResendEvent suppression audit', () => {
     ])
   })
 
+  it('upgrades an existing soft-bounce suppression when a hard bounce arrives', async () => {
+    queryOneMock
+      .mockResolvedValueOnce({ campaign_id: 'camp-1', subscriber_id: 'sub-1' })
+      .mockResolvedValueOnce({ email: 'person@example.com' })
+    executeMock
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+
+    const result = await handleResendEvent({
+      type: 'email.bounced',
+      data: { email_id: 'msg-1' }
+    }, 'evt-hard-after-soft')
+
+    expect(result).toEqual({ status: 'recorded' })
+    const suppressionListCall = executeMock.mock.calls.find(([sql, params]) =>
+      String(sql).includes('INSERT INTO suppression_list')
+      && (params as unknown[] | undefined)?.[1] === 'hard_bounce'
+    )
+    const sql = String(suppressionListCall?.[0])
+    expect(suppressionListCall?.[1]).toEqual(['person@example.com', 'hard_bounce', 'camp-1'])
+    expect(sql).toContain('ON CONFLICT (email) DO UPDATE')
+    expect(sql).toContain('reason = EXCLUDED.reason')
+    expect(sql).toContain('suppression_list.reason = \'soft_bounce\'')
+  })
+
   it('clears soft-bounce suppression when a delayed message later delivers', async () => {
     queryOneMock
       .mockResolvedValueOnce({ campaign_id: 'camp-1', subscriber_id: 'sub-1' })
