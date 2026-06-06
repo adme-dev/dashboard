@@ -129,6 +129,31 @@ describe('email suppressions routes', () => {
     expect(result).toEqual({ ok: true, email: 'person@example.com', action: 'added' })
   })
 
+  it('upgrades existing soft-bounce suppressions when staff manually suppresses an email', async () => {
+    const handler = (await import('~~/server/api/email/suppressions/index.post')).default
+    mockReadBody.mockResolvedValue({ email: 'person@example.com', note: 'persistent delivery issue' })
+    mockQueryOne
+      .mockResolvedValueOnce({ id: 'sub-1', email: 'person@example.com', client_id: null })
+      .mockResolvedValueOnce({ email: 'person@example.com', reason: 'soft_bounce' })
+
+    const result = await handler({} as never)
+
+    const updateCall = mockExecute.mock.calls.find(([sql]) => String(sql).includes('UPDATE suppression_list'))
+    expect(updateCall?.[1]).toEqual(['person@example.com', 'manual'])
+    const auditCall = mockExecute.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO suppression_events'))
+    expect(auditCall?.[1]).toEqual([
+      'person@example.com',
+      'sub-1',
+      null,
+      'manual',
+      'updated',
+      'manual',
+      'user-1',
+      '{"note":"persistent delivery issue","previousReason":"soft_bounce"}'
+    ])
+    expect(result).toEqual({ ok: true, email: 'person@example.com', action: 'updated' })
+  })
+
   it('requires a staff note when manually suppressing an email', async () => {
     const handler = (await import('~~/server/api/email/suppressions/index.post')).default
     mockReadBody.mockResolvedValue({ email: 'person@example.com', note: '   ' })

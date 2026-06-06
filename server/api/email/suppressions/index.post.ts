@@ -36,12 +36,21 @@ export default defineEventHandler(async (event) => {
     [email]
   )
 
-  const action = existing ? 'ignored' : 'added'
+  let action: 'added' | 'ignored' | 'updated' = existing ? 'ignored' : 'added'
   if (!existing) {
     await execute(`
       INSERT INTO suppression_list (email, reason)
       VALUES ($1, $2)
     `, [email, parsed.data.reason])
+  } else if (existing.reason === 'soft_bounce') {
+    await execute(`
+      UPDATE suppression_list
+      SET reason = $2,
+          updated_at = NOW()
+      WHERE email = $1
+        AND reason = 'soft_bounce'
+    `, [email, parsed.data.reason])
+    action = 'updated'
   }
 
   await recordSuppressionEvent({
@@ -53,7 +62,8 @@ export default defineEventHandler(async (event) => {
     actorUserId: user.id,
     metadata: {
       note,
-      ...(existing ? { existingReason: existing.reason } : {})
+      ...(action === 'updated' ? { previousReason: existing?.reason } : {}),
+      ...(action === 'ignored' && existing ? { existingReason: existing.reason } : {})
     }
   })
 
