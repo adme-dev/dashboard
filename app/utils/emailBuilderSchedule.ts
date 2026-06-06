@@ -22,6 +22,15 @@ export interface EmailBuilderScheduleRecipientSnapshot {
   generatedAt?: string
 }
 
+export function isEmailBuilderScheduleBlocked(
+  preflight: EmailBuilderSchedulePreflight | null | undefined
+): boolean {
+  return Boolean(
+    preflight?.blocked
+    || preflight?.checks?.some(check => check.status === 'blocked')
+  )
+}
+
 export function buildEmailBuilderScheduleRequest(input: {
   campaignId: string
   scheduledAt: string

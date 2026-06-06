@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildEmailBuilderScheduleRequest,
-  extractEmailBuilderScheduleError
+  extractEmailBuilderScheduleError,
+  isEmailBuilderScheduleBlocked
 } from '~~/app/utils/emailBuilderSchedule'
 
 describe('buildEmailBuilderScheduleRequest', () => {
@@ -42,5 +43,25 @@ describe('extractEmailBuilderScheduleError', () => {
     expect(result.preflight?.checks[0]?.message).toBe('Missing sender email')
     expect(result.recipientSnapshot?.toSend).toBe(24)
     expect(result.recipientSnapshot?.excludedSuppressed).toBe(3)
+  })
+})
+
+describe('isEmailBuilderScheduleBlocked', () => {
+  it('treats blocked preflight state as a disabled schedule action', () => {
+    expect(isEmailBuilderScheduleBlocked({
+      ok: false,
+      blocked: true,
+      checks: [
+        { code: 'sender', status: 'blocked', message: 'Missing sender' }
+      ]
+    })).toBe(true)
+    expect(isEmailBuilderScheduleBlocked({
+      ok: true,
+      blocked: false,
+      checks: [
+        { code: 'html_size', status: 'warning', message: 'Large HTML' }
+      ]
+    })).toBe(false)
+    expect(isEmailBuilderScheduleBlocked(null)).toBe(false)
   })
 })

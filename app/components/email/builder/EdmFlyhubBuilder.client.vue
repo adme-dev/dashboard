@@ -24,6 +24,7 @@ import {
 import {
   buildEmailBuilderScheduleRequest,
   extractEmailBuilderScheduleError,
+  isEmailBuilderScheduleBlocked,
   type EmailBuilderSchedulePreflight,
   type EmailBuilderScheduleRecipientSnapshot
 } from '~~/app/utils/emailBuilderSchedule'
@@ -317,6 +318,9 @@ const campaignPreflight = ref<EmailBuilderSchedulePreflight | null>(null)
 const campaignSnapshot = ref<EmailBuilderScheduleRecipientSnapshot | null>(null)
 const schedulePreflight = ref<EmailBuilderSchedulePreflight | null>(null)
 const scheduleSnapshot = ref<EmailBuilderScheduleRecipientSnapshot | null>(null)
+const scheduleBlocked = computed(() =>
+  Boolean(scheduleError.value) && isEmailBuilderScheduleBlocked(schedulePreflight.value)
+)
 
 const VIEW_TABS: { value: ViewMode, label: string, icon: string }[] = [
   { value: 'editor', label: 'Editor', icon: 'i-lucide-pencil' },
@@ -441,6 +445,14 @@ async function sendTestEmail() {
 
 async function scheduleCampaignFromBuilder() {
   if (!campaignId.value) return
+  if (scheduleBlocked.value) {
+    toast.add({
+      title: 'Campaign is blocked',
+      description: 'Resolve the blocked preflight checks before scheduling.',
+      color: 'error'
+    })
+    return
+  }
   if (!scheduleAt.value) {
     scheduleError.value = 'Choose a send time.'
     toast.add({ title: 'Schedule time required', description: scheduleError.value, color: 'error' })
@@ -1310,8 +1322,9 @@ onMounted(async () => {
           <UAlert
             v-if="scheduleError"
             color="error"
-            title="Schedule failed"
-            :description="scheduleError"
+            :icon="scheduleBlocked ? 'i-lucide-shield-alert' : undefined"
+            :title="scheduleBlocked ? 'Campaign is blocked' : 'Schedule failed'"
+            :description="scheduleBlocked ? 'Resolve the blocked preflight checks before scheduling.' : scheduleError"
           />
 
           <div class="flex justify-end gap-2 pt-2">
@@ -1326,6 +1339,7 @@ onMounted(async () => {
               icon="i-lucide-calendar-check"
               label="Schedule"
               :loading="scheduling"
+              :disabled="scheduleBlocked"
               @click="scheduleCampaignFromBuilder()"
             />
           </div>
