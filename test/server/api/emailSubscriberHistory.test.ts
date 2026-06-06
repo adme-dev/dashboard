@@ -4,6 +4,7 @@ const mockGetRouterParam = vi.fn()
 const mockRequireAuth = vi.fn()
 const mockQueryOne = vi.fn()
 const mockQueryRows = vi.fn()
+const mockGetAssignedClientIds = vi.fn()
 const subscriberRow = {
   id: 'sub-1',
   email: 'person@example.com',
@@ -38,11 +39,16 @@ vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args)
 }))
 
+vi.mock('~~/server/utils/clientScoping', () => ({
+  getAssignedClientIds: (...args: unknown[]) => mockGetAssignedClientIds(...args)
+}))
+
 describe('subscriber history route', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockRequireAuth.mockResolvedValue({ id: 'user-1', role: 'admin' })
     mockGetRouterParam.mockReturnValue('sub-1')
+    mockGetAssignedClientIds.mockResolvedValue(['client-1'])
     mockQueryOne
       .mockResolvedValueOnce(subscriberRow)
       .mockResolvedValueOnce(null)
@@ -102,6 +108,23 @@ describe('subscriber history route', () => {
       created_at: '2026-06-04T00:00:00.000Z',
       updated_at: '2026-06-05T00:00:00.000Z'
     })
+  })
+
+  it('filters joined list and campaign history to assigned clients for scoped users', async () => {
+    const handler = (await import('~~/server/api/email/subscribers/[id]/history.get')).default
+    mockRequireAuth.mockResolvedValueOnce({ id: 'user-1', role: 'account_manager' })
+    mockQueryOne
+      .mockReset()
+      .mockResolvedValueOnce({ ...subscriberRow, client_id: 'client-1' })
+      .mockResolvedValueOnce(null)
+
+    await handler({} as never)
+
+    expect(mockGetAssignedClientIds).toHaveBeenCalledWith(expect.anything(), 'user-1')
+    expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('el.client_id = ANY($2::uuid[])')
+    expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['sub-1', ['client-1']])
+    expect(String(mockQueryRows.mock.calls[3]?.[0])).toContain('c.client_id = ANY($2::uuid[])')
+    expect(mockQueryRows.mock.calls[3]?.[1]).toEqual(['sub-1', ['client-1']])
   })
 
   it('returns 404 when the subscriber does not exist', async () => {

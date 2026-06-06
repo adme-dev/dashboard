@@ -1,7 +1,11 @@
 // server/api/email/subscribers/[id]/history.get.ts
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne, queryRows } from '~~/server/utils/db'
-import { assertEmailClientAccess } from '~~/server/utils/email-marketing/access'
+import {
+  addEmailClientScopeCondition,
+  assertEmailClientIdInScope,
+  resolveEmailClientScope
+} from '~~/server/utils/email-marketing/access'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -25,7 +29,8 @@ export default defineEventHandler(async (event) => {
   `, [id])
 
   if (!subscriber) throw createError({ statusCode: 404, statusMessage: 'not_found' })
-  await assertEmailClientAccess(event, user, subscriber.client_id)
+  const clientScope = await resolveEmailClientScope(event, user)
+  assertEmailClientIdInScope(clientScope, subscriber.client_id)
 
   const currentSuppression = await queryOne<{
     email: string
@@ -39,6 +44,17 @@ export default defineEventHandler(async (event) => {
     WHERE email = $1
   `, [subscriber.email])
 
+  const listConditions = ['sl.subscriber_id = $1']
+  const listParams: unknown[] = [id]
+  addEmailClientScopeCondition(listConditions, listParams, 'el.client_id', clientScope)
+
+  const campaignEventConditions = ['ee.subscriber_id = $1']
+  const campaignEventParams: unknown[] = [id]
+  if (clientScope !== 'all') {
+    campaignEventParams.push(clientScope)
+    campaignEventConditions.push(`(ee.campaign_id IS NULL OR c.client_id = ANY($${campaignEventParams.length}::uuid[]))`)
+  }
+
   const [lists, consentEvents, suppressionEvents, campaignEvents] = await Promise.all([
     queryRows(`
       SELECT
@@ -50,9 +66,9 @@ export default defineEventHandler(async (event) => {
         sl.unsubscribed_at
       FROM subscriber_lists sl
       JOIN email_lists el ON el.id = sl.list_id
-      WHERE sl.subscriber_id = $1
+      WHERE ${listConditions.join(' AND ')}
       ORDER BY el.name ASC
-    `, [id]),
+    `, listParams),
     queryRows(`
       SELECT
         id,
@@ -101,10 +117,10 @@ export default defineEventHandler(async (event) => {
         ee.occurred_at
       FROM email_events ee
       LEFT JOIN campaigns c ON c.id = ee.campaign_id
-      WHERE ee.subscriber_id = $1
+      WHERE ${campaignEventConditions.join(' AND ')}
       ORDER BY ee.occurred_at DESC
       LIMIT 100
-    `, [id])
+    `, campaignEventParams)
   ])
 
   return {
