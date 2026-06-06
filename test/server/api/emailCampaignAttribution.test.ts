@@ -65,7 +65,9 @@ describe('email campaign attribution route', () => {
     expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('FROM tracking_events')
     expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('utm_source = \'email\'')
     expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('utm_campaign = $1')
+    expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('COALESCE(consent->>\'tracking\', \'denied\') = \'granted\'')
     expect(String(mockQueryOne.mock.calls[1]?.[0])).toContain('FROM leads')
+    expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('COALESCE(consent->>\'tracking\', \'denied\') = \'granted\'')
     expect(String(mockQueryRows.mock.calls[0]?.[0])).toContain('GROUP BY session_id, anon_id')
     expect(result).toEqual({
       summary: {

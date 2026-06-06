@@ -33,6 +33,7 @@ export default defineEventHandler(async (event) => {
     WHERE utm_source = 'email'
       AND utm_medium = 'email'
       AND utm_campaign = $1
+      AND COALESCE(consent->>'tracking', 'denied') = 'granted'
   `, [id])
 
   const leadSummary = await queryOne<{ leads: number | string }>(`
@@ -57,6 +58,7 @@ export default defineEventHandler(async (event) => {
     WHERE utm_source = 'email'
       AND utm_medium = 'email'
       AND utm_campaign = $1
+      AND COALESCE(consent->>'tracking', 'denied') = 'granted'
     GROUP BY session_id, anon_id
     ORDER BY last_seen_at DESC
     LIMIT 100
