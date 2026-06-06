@@ -7,6 +7,7 @@ import { getList, listSubscribers } from '~~/server/utils/email-marketing/db'
 const Query = z.object({
   list_id: z.string().uuid().optional(),
   status: z.enum(['enabled', 'disabled', 'blocklisted']).optional(),
+  deliverability: z.enum(['mailable', 'soft_bounced', 'suppressed']).optional(),
   q: z.string().optional(),
   page: z.coerce.number().int().min(1).default(1),
   page_size: z.coerce.number().int().min(1).max(200).default(50)
@@ -24,6 +25,7 @@ export default defineEventHandler(async (event) => {
   return listSubscribers({
     listId: q.list_id,
     status: q.status,
+    deliverability: q.deliverability,
     q: q.q,
     page: q.page,
     pageSize: q.page_size,

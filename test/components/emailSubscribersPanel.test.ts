@@ -45,7 +45,11 @@ Object.assign(globalThis, {
 const passthrough = (name: string) => ({ name, template: '<div><slot /></div>' })
 const stubs: Record<string, unknown> = {
   UInput: { name: 'UInput', props: ['modelValue', 'placeholder'], template: '<input :placeholder="placeholder">' },
-  USelectMenu: { name: 'USelectMenu', template: '<select />' },
+  USelectMenu: {
+    name: 'USelectMenu',
+    props: ['items'],
+    template: '<select><option v-for="item in items" :key="item.value">{{ item.label }}</option></select>'
+  },
   UButton: { name: 'UButton', props: ['label', 'icon'], template: '<button :data-icon="icon"><slot />{{ label }}</button>' },
   UBadge: { name: 'UBadge', props: ['label'], template: '<span><slot />{{ label }}</span>' },
   EmailSubscriberFormModal: passthrough('EmailSubscriberFormModal'),
@@ -71,5 +75,13 @@ describe('EmailSubscribersPanel', () => {
     expect(html).toContain('2 soft bounces')
     expect(html).toContain('blocked@example.com')
     expect(html).toContain('hard bounce')
+  })
+
+  it('renders deliverability filter options for bounce triage', async () => {
+    const html = await renderPanel()
+
+    expect(html).toContain('Mailable')
+    expect(html).toContain('Soft bounced')
+    expect(html).toContain('Suppressed')
   })
 })

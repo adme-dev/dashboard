@@ -29,4 +29,36 @@ describe('listSubscribers', () => {
     expect(sql).toContain('sup.reason::text AS suppression_reason')
     expect(sql).toContain('sup.created_at AS suppressed_at')
   })
+
+  it('filters subscriber rows by suppression state', async () => {
+    await listSubscribers({ page: 1, pageSize: 50, deliverability: 'suppressed' })
+
+    const rowsSql = String(queryRowsMock.mock.calls[0]?.[0])
+    const countSql = String(queryCountMock.mock.calls[0]?.[0])
+    expect(rowsSql).toContain('LEFT JOIN suppression_list sup ON sup.email = s.email')
+    expect(rowsSql).toContain('sup.email IS NOT NULL')
+    expect(countSql).toContain('LEFT JOIN suppression_list sup ON sup.email = s.email')
+    expect(countSql).toContain('sup.email IS NOT NULL')
+  })
+
+  it('filters subscriber rows by soft-bounce count', async () => {
+    await listSubscribers({ page: 1, pageSize: 50, deliverability: 'soft_bounced' })
+
+    const rowsSql = String(queryRowsMock.mock.calls[0]?.[0])
+    const countSql = String(queryCountMock.mock.calls[0]?.[0])
+    expect(rowsSql).toContain('s.soft_bounce_count > 0')
+    expect(countSql).toContain('s.soft_bounce_count > 0')
+  })
+
+  it('filters subscriber rows down to mailable subscribers', async () => {
+    await listSubscribers({ page: 1, pageSize: 50, deliverability: 'mailable' })
+
+    const rowsSql = String(queryRowsMock.mock.calls[0]?.[0])
+    const countSql = String(queryCountMock.mock.calls[0]?.[0])
+    expect(rowsSql).toContain('s.status = \'enabled\'')
+    expect(rowsSql).toContain('sup.email IS NULL')
+    expect(countSql).toContain('LEFT JOIN suppression_list sup ON sup.email = s.email')
+    expect(countSql).toContain('s.status = \'enabled\'')
+    expect(countSql).toContain('sup.email IS NULL')
+  })
 })

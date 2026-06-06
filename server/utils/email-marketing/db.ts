@@ -7,6 +7,8 @@ import { recordConsentEvent } from './audit'
 import { addEmailClientScopeCondition, type EmailClientScope } from './access'
 import type { EmailList, EmailSubscriber, MembershipSource, SubscriberInput } from './types'
 
+export type SubscriberDeliverabilityFilter = 'mailable' | 'soft_bounced' | 'suppressed'
+
 // ---------- Lists ----------
 
 export interface ListWithCount extends EmailList {
@@ -191,6 +193,7 @@ export async function listSubscribers(opts: {
   listId?: string
   q?: string
   status?: string
+  deliverability?: SubscriberDeliverabilityFilter
   page: number
   pageSize: number
   clientIds?: EmailClientScope
@@ -206,6 +209,14 @@ export async function listSubscribers(opts: {
   const suppressionJoin = 'LEFT JOIN suppression_list sup ON sup.email = s.email'
   if (opts.listId) push('sl.list_id = ?', opts.listId)
   if (opts.status) push('s.status = ?', opts.status)
+  if (opts.deliverability === 'suppressed') {
+    conds.push('sup.email IS NOT NULL')
+  } else if (opts.deliverability === 'soft_bounced') {
+    conds.push('s.soft_bounce_count > 0')
+  } else if (opts.deliverability === 'mailable') {
+    conds.push('s.status = \'enabled\'')
+    conds.push('sup.email IS NULL')
+  }
   addEmailClientScopeCondition(conds, params, 's.client_id', opts.clientIds)
   if (opts.q) {
     // Two distinct placeholders (email + name). Use params.push()'s returned
@@ -230,7 +241,7 @@ export async function listSubscribers(opts: {
     LIMIT ${opts.pageSize} OFFSET ${offset}
   `, params)
   const total = await queryCount(
-    `SELECT COUNT(DISTINCT s.id)::text AS count FROM email_subscribers s ${join} ${where}`,
+    `SELECT COUNT(DISTINCT s.id)::text AS count FROM email_subscribers s ${join} ${suppressionJoin} ${where}`,
     params
   )
   return { items, total, page: opts.page, page_size: opts.pageSize }

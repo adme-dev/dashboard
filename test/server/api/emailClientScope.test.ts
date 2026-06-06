@@ -191,6 +191,22 @@ describe('email client-scoped route policy', () => {
     }))
   })
 
+  it('passes deliverability filters into subscriber reads', async () => {
+    const handler = (await import('~~/server/api/email/subscribers/index.get')).default
+    mockGetQuery.mockReturnValueOnce({
+      page: '1',
+      page_size: '50',
+      deliverability: 'suppressed'
+    })
+
+    await handler({} as never)
+
+    expect(mockListSubscribers).toHaveBeenCalledWith(expect.objectContaining({
+      deliverability: 'suppressed',
+      clientIds: [CLIENT_1]
+    }))
+  })
+
   it('passes assigned client ids into campaign reads for scoped users', async () => {
     const handler = (await import('~~/server/api/email/campaigns/index.get')).default
 

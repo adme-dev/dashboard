@@ -13,6 +13,7 @@ interface SubRow {
 }
 
 const listFilter = ref<string>('all')
+const deliverabilityFilter = ref<'all' | 'mailable' | 'soft_bounced' | 'suppressed'>('all')
 const search = ref('')
 const page = ref(1)
 
@@ -26,8 +27,16 @@ const listFilterOptions = computed(() => [
   ...lists.value.map(l => ({ value: l.id, label: l.name }))
 ])
 
+const deliverabilityFilterOptions = [
+  { value: 'all', label: 'All subscribers' },
+  { value: 'mailable', label: 'Mailable' },
+  { value: 'soft_bounced', label: 'Soft bounced' },
+  { value: 'suppressed', label: 'Suppressed' }
+]
+
 const query = computed(() => ({
   list_id: listFilter.value === 'all' ? undefined : listFilter.value,
+  deliverability: deliverabilityFilter.value === 'all' ? undefined : deliverabilityFilter.value,
   q: search.value || undefined,
   page: page.value,
   page_size: 50
@@ -83,6 +92,12 @@ function softBounceLabel(count?: number | null): string {
         <USelectMenu
           v-model="listFilter"
           :items="listFilterOptions"
+          value-key="value"
+          class="w-48"
+        />
+        <USelectMenu
+          v-model="deliverabilityFilter"
+          :items="deliverabilityFilterOptions"
           value-key="value"
           class="w-48"
         />
