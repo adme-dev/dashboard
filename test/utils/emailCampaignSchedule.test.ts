@@ -1,15 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createCampaign, getCampaignListIds, materializeRecipients, scheduleCampaign, updateCampaign } from '~~/server/utils/email-marketing/campaigns'
+import { cancelPendingRecipients, createCampaign, getCampaignListIds, materializeRecipients, scheduleCampaign, updateCampaign } from '~~/server/utils/email-marketing/campaigns'
 
 const queryOneMock = vi.fn()
 const queryRowsMock = vi.fn()
 const transactionMock = vi.fn()
+const executeMock = vi.fn()
 
 vi.mock('~~/server/utils/db', () => ({
   queryOne: (...args: unknown[]) => queryOneMock(...args),
   queryRows: (...args: unknown[]) => queryRowsMock(...args),
   transaction: (cb: unknown) => transactionMock(cb),
-  execute: vi.fn()
+  execute: (...args: unknown[]) => executeMock(...args)
 }))
 
 const draftCampaign = {
@@ -294,5 +295,21 @@ describe('scheduleCampaign', () => {
       statusCode: 422,
       statusMessage: 'campaign_preflight_blocked'
     })
+  })
+})
+
+describe('cancelPendingRecipients', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('clears stale claims when cancelling remaining pending recipients', async () => {
+    executeMock.mockResolvedValueOnce(2)
+
+    const cancelled = await cancelPendingRecipients('camp-1')
+
+    expect(cancelled).toBe(2)
+    expect(String(executeMock.mock.calls[0]?.[0])).toContain('claimed_at = NULL')
+    expect(executeMock.mock.calls[0]?.[1]).toEqual(['camp-1'])
   })
 })

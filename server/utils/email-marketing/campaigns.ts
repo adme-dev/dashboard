@@ -504,7 +504,10 @@ export async function setCampaignStatus(id: string, to: CampaignStatus): Promise
 // Mark a campaign's remaining pending recipients as cancelled (used by cancel).
 export async function cancelPendingRecipients(campaignId: string): Promise<number> {
   return execute(
-    `UPDATE campaign_recipients SET status = 'cancelled' WHERE campaign_id = $1 AND status = 'pending'`,
+    `UPDATE campaign_recipients
+     SET status = 'cancelled',
+         claimed_at = NULL
+     WHERE campaign_id = $1 AND status = 'pending'`,
     [campaignId]
   )
 }
