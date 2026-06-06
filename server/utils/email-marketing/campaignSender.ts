@@ -102,6 +102,9 @@ export async function cancelIneligiblePendingRecipients(campaignId: string): Pro
             JOIN subscriber_lists sl
               ON sl.list_id = cl.list_id
              AND sl.subscriber_id = cr.subscriber_id
+            JOIN email_lists l
+              ON l.id = cl.list_id
+             AND l.archived_at IS NULL
             JOIN email_subscribers s
               ON s.id = cr.subscriber_id
             WHERE cl.campaign_id = cr.campaign_id
@@ -128,6 +131,9 @@ export async function cancelIneligiblePendingRecipients(campaignId: string): Pro
           JOIN subscriber_lists sl
             ON sl.list_id = cl.list_id
            AND sl.subscriber_id = cr.subscriber_id
+          JOIN email_lists l
+            ON l.id = cl.list_id
+           AND l.archived_at IS NULL
           JOIN email_subscribers s
             ON s.id = cr.subscriber_id
           WHERE cl.campaign_id = cr.campaign_id

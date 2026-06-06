@@ -61,6 +61,16 @@ describe('cancelIneligiblePendingRecipients', () => {
     expect(executeMock.mock.calls[0][1]).toEqual(['camp-1'])
   })
 
+  it('cancels pending recipients whose targeted list was archived before send', async () => {
+    executeMock.mockResolvedValueOnce(1)
+
+    await cancelIneligiblePendingRecipients('camp-1')
+
+    const sql = String(executeMock.mock.calls[0][0])
+    expect(sql).toContain('JOIN email_lists l')
+    expect(sql).toContain('l.archived_at IS NULL')
+  })
+
   it('rechecks suppression and membership eligibility inside the recipient claim query', async () => {
     process.env.EMAIL_SENDING_ENABLED = 'true'
     executeMock.mockResolvedValueOnce(0)
