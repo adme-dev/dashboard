@@ -12,7 +12,13 @@ import { getResendClient, isEmailConfigured } from '~~/server/utils/email'
 import { resolveCampaignSenderDomains } from '~~/server/utils/email-marketing/senderIdentity'
 import { emailLinkSecret, signEmailToken } from '~~/server/utils/email-marketing/links'
 
-const Body = z.object({ to: z.string().email().optional() })
+const OptionalTestRecipient = z.preprocess((value) => {
+  if (typeof value !== 'string') return value
+  const trimmed = value.trim()
+  return trimmed || null
+}, z.string().email().optional().nullable())
+
+const Body = z.object({ to: OptionalTestRecipient })
 
 export default defineEventHandler(async (event) => {
   const user = await requireWriteAccess(event)

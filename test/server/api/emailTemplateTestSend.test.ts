@@ -111,6 +111,25 @@ describe('email template test-send endpoint', () => {
     }))
   })
 
+  it('trims explicit recipients before sending template tests', async () => {
+    const handler = (await import('~~/server/api/email/templates/test-send.post')).default
+    mockReadBody.mockResolvedValue({
+      to: '  Buyer@Example.COM  ',
+      subject: 'Subject line',
+      preview_text: 'Inbox preview',
+      body_source: validDocument
+    })
+
+    const result = await handler({} as never)
+
+    expect(mockEmailsSend).toHaveBeenCalledWith(expect.objectContaining({
+      to: ['Buyer@Example.COM']
+    }))
+    expect(result).toEqual(expect.objectContaining({
+      sent_to: 'Buyer@Example.COM'
+    }))
+  })
+
   it('blocks the send when sendability has errors', async () => {
     const handler = (await import('~~/server/api/email/templates/test-send.post')).default
     mockReadBody.mockResolvedValue({

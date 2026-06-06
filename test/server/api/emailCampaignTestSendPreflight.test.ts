@@ -126,6 +126,31 @@ describe('campaign test-send preflight', () => {
     expect(mockEmailsSend.mock.calls[0]?.[0]?.html).not.toContain('/email/postcards/car.png')
   })
 
+  it('trims explicit recipients before sending campaign test emails', async () => {
+    const handler = (await import('~~/server/api/email/campaigns/[id]/test-send.post')).default
+    mockReadBody.mockResolvedValue({ to: '  Buyer@Example.COM  ' })
+    mockGetCampaign.mockResolvedValue({
+      id: 'camp-1',
+      subject: 'Subject',
+      from_name: 'XeroFlow',
+      from_email: 'sales@example.com',
+      reply_to: null,
+      client_id: null,
+      body_html: [
+        '<p>Offer</p>',
+        '<a href="{{ unsubscribe_url }}">Unsubscribe</a>',
+        '<footer>XeroFlow Agency, 1 Market Street, Melbourne VIC 3000</footer>'
+      ].join('')
+    })
+
+    const result = await handler({} as never)
+
+    expect(mockEmailsSend).toHaveBeenCalledWith(expect.objectContaining({
+      to: ['Buyer@Example.COM']
+    }))
+    expect(result).toEqual({ sent_to: 'Buyer@Example.COM' })
+  })
+
   it('signs the unsubscribe URL in campaign test-send headers and body', async () => {
     const handler = (await import('~~/server/api/email/campaigns/[id]/test-send.post')).default
     mockGetCampaign.mockResolvedValue({

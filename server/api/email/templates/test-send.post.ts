@@ -12,8 +12,14 @@ import { resolveCampaignSenderDomains } from '~~/server/utils/email-marketing/se
 import { checkEmailSendability, htmlToPlainText } from '~~/server/utils/email-marketing/sendability'
 import { prepareSendableHtmlWithMirroredAssets } from '~~/server/utils/email-marketing/sendableHtml'
 
+const OptionalTestRecipient = z.preprocess((value) => {
+  if (typeof value !== 'string') return value
+  const trimmed = value.trim()
+  return trimmed || null
+}, z.string().email().optional().nullable())
+
 const Body = z.object({
-  to: z.string().email().optional().nullable(),
+  to: OptionalTestRecipient,
   subject: z.string().optional().nullable(),
   preview_text: z.string().optional().nullable(),
   body_source: z.any(),
