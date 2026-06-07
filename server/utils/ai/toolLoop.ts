@@ -102,13 +102,15 @@ export async function runToolLoop(opts: {
 
   const primarySpec = opts.modelSpec ?? cfg.aiLoopModel
   const fallbackSpec = opts.fallbackSpec ?? cfg.aiLoopFallbackModel
+  // Workers AI models (workersai/@cf/...) resolve via the request's edge AI binding.
+  const aiBinding = (opts.ctx.event?.context as any)?.cloudflare?.env?.AI
   let usedSpec: string = opts.model ? 'injected' : primarySpec
   let result
   try {
-    result = await run(opts.model ?? resolveModel(primarySpec))
+    result = await run(opts.model ?? resolveModel(primarySpec, { aiBinding }))
   } catch (err) {
     // Provider/gateway failure → ordered fallback to a second model.
-    const fb = opts.fallbackModel ?? (fallbackSpec ? resolveModel(fallbackSpec) : null)
+    const fb = opts.fallbackModel ?? (fallbackSpec ? resolveModel(fallbackSpec, { aiBinding }) : null)
     if (!fb) throw err
     usedSpec = opts.fallbackModel ? 'injected' : fallbackSpec
     result = await run(fb)

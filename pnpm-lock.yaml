@@ -164,6 +164,9 @@ importers:
       wavesurfer.js:
         specifier: ^7.12.7
         version: 7.12.7
+      workers-ai-provider:
+        specifier: ^3.1.14
+        version: 3.1.14(@ai-sdk/provider@3.0.10)(ai@6.0.197(zod@4.3.6))
       xero-node:
         specifier: ^13.0.0
         version: 13.0.0
@@ -10482,6 +10485,12 @@ packages:
     resolution: {integrity: sha512-IHzymht98p10JH1zzwdCpbViAqw97HrwKl7+KfZeASFMsYSrIsAULWdPn0LRC5FTUzBpamLNyKCCKxbgXHgRHQ==}
     engines: {node: '>=16'}
     hasBin: true
+
+  workers-ai-provider@3.1.14:
+    resolution: {integrity: sha512-/umrajFP6OkZVbDAxwkrO9NPdNFG4c+i0fiVqdf4PGsLN+CiDsLJCI6xW0WXDLDR1ZZyjE4T6Xp6O/IKBIWGHQ==}
+    peerDependencies:
+      '@ai-sdk/provider': ^3.0.0
+      ai: ^6.0.0
 
   wrangler@4.95.0:
     resolution: {integrity: sha512-vgXzFVSCdUbeCadgVXvu8fK5tzNm8T9W+7lriyGWZMx0B1+CAdr4d8JTlZszHfgjypRAHmAxb49etZGIRD9pgg==}
@@ -22777,6 +22786,11 @@ snapshots:
       '@cloudflare/workerd-linux-64': 1.20260526.1
       '@cloudflare/workerd-linux-arm64': 1.20260526.1
       '@cloudflare/workerd-windows-64': 1.20260526.1
+
+  workers-ai-provider@3.1.14(@ai-sdk/provider@3.0.10)(ai@6.0.197(zod@4.3.6)):
+    dependencies:
+      '@ai-sdk/provider': 3.0.10
+      ai: 6.0.197(zod@4.3.6)
 
   wrangler@4.95.0:
     dependencies:

@@ -3,6 +3,7 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import type { z } from 'zod'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGroq } from '@ai-sdk/groq'
+import { createWorkersAI } from 'workers-ai-provider'
 import type { LanguageModel } from 'ai'
 
 let client: Anthropic | null = null
@@ -179,13 +180,25 @@ export function getGroqProvider() {
 }
 
 /**
- * Resolve a model spec string to an AI SDK LanguageModel.
- *   'groq/openai/gpt-oss-120b'        → Groq, model 'openai/gpt-oss-120b'
- *   'groq/moonshotai/kimi-k2-instruct'→ Groq, model 'moonshotai/kimi-k2-instruct'
- *   'anthropic/claude-sonnet-4-6'     → Anthropic, model 'claude-sonnet-4-6'
+ * Cloudflare Workers AI provider — runs `@cf/...` models on CF's edge via the `AI` binding (no API
+ * key, no egress). Pass the binding from the request: `event.context.cloudflare.env.AI`.
+ * (REST mode `createWorkersAI({ accountId, apiKey })` is available too, but the binding is the
+ * idiomatic edge path inside a Worker.)
  */
-export function resolveModel(spec: string): LanguageModel {
+export function getWorkersAiProvider(binding: unknown) {
+  if (!binding) throw new Error('Workers AI binding (env.AI) is unavailable in this context')
+  return createWorkersAI({ binding: binding as any })
+}
+
+/**
+ * Resolve a model spec string to an AI SDK LanguageModel.
+ *   'groq/openai/gpt-oss-120b'                       → Groq, model 'openai/gpt-oss-120b'
+ *   'anthropic/claude-sonnet-4-6'                    → Anthropic, model 'claude-sonnet-4-6'
+ *   'workersai/@cf/meta/llama-3.3-70b-instruct-fp8-fast' → Cloudflare Workers AI (needs opts.aiBinding)
+ */
+export function resolveModel(spec: string, opts?: { aiBinding?: unknown }): LanguageModel {
   if (spec.startsWith('anthropic/')) return getAnthropicProvider()(spec.slice('anthropic/'.length))
   if (spec.startsWith('groq/')) return getGroqProvider()(spec.slice('groq/'.length))
+  if (spec.startsWith('workersai/')) return getWorkersAiProvider(opts?.aiBinding)(spec.slice('workersai/'.length) as any)
   throw new Error(`Unknown model spec: ${spec}`)
 }
