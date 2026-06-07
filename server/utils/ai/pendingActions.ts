@@ -53,6 +53,34 @@ export async function proposeAction(
   return row.id
 }
 
+/** Shape surfaced to the chat UI so a still-open proposal can be rehydrated after a page reload. */
+export interface OpenProposal {
+  proposalId: string
+  toolName: string
+  resolved: unknown
+}
+
+/**
+ * Look up the most recent still-actionable proposal for a conversation so the confirm card can be
+ * re-shown after a reload (the proposal otherwise lives only in the in-memory message returned by
+ * the send call). `query` is injected — the endpoint supplies the real SQL (status = 'proposed'
+ * AND expires_at > NOW(), most recent first); unit tests supply a stub. Fail-safe: any error (e.g.
+ * the table absent in a pre-migration env) yields null so conversation loading never breaks.
+ */
+export async function loadOpenProposal(
+  conversationId: string,
+  userId: string,
+  query: (conversationId: string, userId: string) => Promise<{ id: string, tool_name: string, resolved_payload: unknown } | null>,
+): Promise<OpenProposal | null> {
+  try {
+    const row = await query(conversationId, userId)
+    if (!row) return null
+    return { proposalId: row.id, toolName: row.tool_name, resolved: row.resolved_payload }
+  } catch {
+    return null
+  }
+}
+
 /**
  * Execute a confirmed proposal. Idempotent: a second confirm claims nothing and returns an error.
  * Re-checks write access server-side (defense in depth) before the atomic claim.

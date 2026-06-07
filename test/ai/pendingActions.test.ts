@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { executeProposal, type PendingActionDb, type PendingRow } from '~~/server/utils/ai/pendingActions'
+import { executeProposal, loadOpenProposal, type PendingActionDb, type PendingRow } from '~~/server/utils/ai/pendingActions'
 
 const ctx = (role = 'owner', userId = 'u1') => ({ userId, userRole: role, event: {} as any })
 const row = (): PendingRow => ({
@@ -65,5 +65,26 @@ describe('executeProposal', () => {
     expect((await executeProposal('expired', ctx() as any, db)).ok).toBe(false)        // expired
     expect((await executeProposal('live', ctx('owner', 'someone_else') as any, db)).ok).toBe(false) // wrong user
     expect((await executeProposal('live', ctx('owner', 'u1') as any, db)).ok).toBe(true)            // rightful owner
+  })
+})
+
+describe('loadOpenProposal (reload rehydration)', () => {
+  it('maps a DB row to the confirm-card shape', async () => {
+    const query = vi.fn().mockResolvedValue({
+      id: 'p7', tool_name: 'create_task', resolved_payload: { title: 'Follow up with ACME' },
+    })
+    const res = await loadOpenProposal('c1', 'u1', query)
+    expect(res).toEqual({ proposalId: 'p7', toolName: 'create_task', resolved: { title: 'Follow up with ACME' } })
+    expect(query).toHaveBeenCalledWith('c1', 'u1')
+  })
+
+  it('returns null when there is no open proposal', async () => {
+    const res = await loadOpenProposal('c1', 'u1', vi.fn().mockResolvedValue(null))
+    expect(res).toBeNull()
+  })
+
+  it('is fail-safe: a query error yields null (conversation load must not break)', async () => {
+    const res = await loadOpenProposal('c1', 'u1', vi.fn().mockRejectedValue(new Error('relation does not exist')))
+    expect(res).toBeNull()
   })
 })

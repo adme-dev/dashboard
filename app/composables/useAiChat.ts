@@ -10,6 +10,9 @@ interface ConversationDetail {
   conversation: AiConversation
   messages: AiMessage[]
   hasMore: boolean
+  // Set on the initial load when a still-open AI proposal exists — re-attached to the last
+  // assistant message so the confirm card survives a page reload (Option B rehydration).
+  pendingAction?: { proposalId: string, toolName?: string, resolved: any } | null
 }
 
 interface ChatMessageResponse {
@@ -74,6 +77,17 @@ export function useAiChat() {
       activeConversation.value = data.conversation
       messages.value = data.messages
       hasMoreMessages.value = data.hasMore
+      // Rehydrate an open proposal onto the most recent assistant message so its confirm card
+      // re-renders after a reload (matches the inline shape attached during send()).
+      if (data.pendingAction) {
+        for (let i = messages.value.length - 1; i >= 0; i--) {
+          if (messages.value[i].role === 'assistant') {
+            // Spread-replace the element (guaranteed reactive) so the card re-renders.
+            messages.value[i] = { ...messages.value[i], proposedAction: data.pendingAction } as AiMessage
+            break
+          }
+        }
+      }
     } catch (err) {
       console.error('Failed to load conversation:', err)
     } finally {
