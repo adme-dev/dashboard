@@ -29,13 +29,29 @@ function ilike(name: string): string {
   return `%${escapeLike(name)}%`
 }
 
+/**
+ * Collapse fuzzy name matches to a single ref when the query EXACTLY names one (case-insensitive),
+ * even if it's also a substring of others. Boards live in `departments` as fully-qualified names
+ * (e.g. "ADME Creative Request" among many "ADME …"), so a substring match alone almost always
+ * returns many and dead-ends in disambiguation — never producing a real proposal (so the confirm
+ * card never renders). An exact match is unambiguous user intent; honor it. Returns the original
+ * list otherwise (no exact, or >1 exact) so the caller's count-based logic still applies.
+ */
+export function pickByExactName<T extends { name: string }>(candidates: T[], name: string): T[] {
+  const target = name.trim().toLowerCase()
+  const exact = candidates.filter(c => c.name.trim().toLowerCase() === target)
+  return exact.length === 1 ? exact : candidates
+}
+
 const defaultDeps: CreateTaskDeps = {
+  // Exact-name matches sort first so a fully-specified name is always within the LIMIT (and thus
+  // selectable by pickByExactName) even when many substring matches exist.
   resolveDepartment: async name =>
-    queryRows<NamedRef>('SELECT id, name FROM departments WHERE name ILIKE $1 AND is_active = true ORDER BY name LIMIT 6', [ilike(name)]),
+    queryRows<NamedRef>('SELECT id, name FROM departments WHERE name ILIKE $1 AND is_active = true ORDER BY (lower(name) = lower($2)) DESC, name LIMIT 6', [ilike(name), name]),
   resolveProject: async name =>
-    queryRows<NamedRef>('SELECT id, name FROM projects WHERE name ILIKE $1 ORDER BY name LIMIT 6', [ilike(name)]),
+    queryRows<NamedRef>('SELECT id, name FROM projects WHERE name ILIKE $1 ORDER BY (lower(name) = lower($2)) DESC, name LIMIT 6', [ilike(name), name]),
   resolveAssignee: async name =>
-    queryRows<NamedRef>('SELECT id, name FROM team_members WHERE name ILIKE $1 AND is_active = true ORDER BY name LIMIT 6', [ilike(name)]),
+    queryRows<NamedRef>('SELECT id, name FROM team_members WHERE name ILIKE $1 AND is_active = true ORDER BY (lower(name) = lower($2)) DESC, name LIMIT 6', [ilike(name), name]),
   propose: (ctx, payload) => proposeAction(ctx, ctx.conversationId!, 'create_task', payload),
 }
 
@@ -49,17 +65,19 @@ export async function proposeCreateTask(args: Args, ctx: ToolContext, deps: Crea
   if (!ctx.conversationId) return fail('Cannot prepare a task outside a conversation.')
   if (!args.title?.trim()) return fail('A task needs a title.')
 
-  // Department/board is REQUIRED to create a task — resolve it or ask.
+  // Department/board is REQUIRED to create a task — resolve it or ask. An exact name match wins over
+  // broader substring matches (pickByExactName) so a fully-specified board proposes cleanly.
   if (!args.boardName) return fail('Which board or department should this task go on?')
-  const depts = await deps.resolveDepartment(args.boardName, ctx)
-  if (depts.length === 0) return fail(`No board or department matching "${args.boardName}".`)
+  const deptMatches = await deps.resolveDepartment(args.boardName, ctx)
+  if (deptMatches.length === 0) return fail(`No board or department matching "${args.boardName}".`)
+  const depts = pickByExactName(deptMatches, args.boardName)
   if (depts.length > 1) return ok({ disambiguation: { field: 'boardName', options: depts } })
   const department = depts[0]!
 
   // Optional project — disambiguate if multiple match; ignore if none.
   let project: NamedRef | null = null
   if (args.projectName) {
-    const ps = await deps.resolveProject(args.projectName, ctx)
+    const ps = pickByExactName(await deps.resolveProject(args.projectName, ctx), args.projectName)
     if (ps.length > 1) return ok({ disambiguation: { field: 'projectName', options: ps } })
     project = ps[0] ?? null
   }
@@ -67,7 +85,7 @@ export async function proposeCreateTask(args: Args, ctx: ToolContext, deps: Crea
   // Optional assignee — disambiguate if multiple match; ignore if none.
   let assignee: NamedRef | null = null
   if (args.assigneeName) {
-    const as = await deps.resolveAssignee(args.assigneeName, ctx)
+    const as = pickByExactName(await deps.resolveAssignee(args.assigneeName, ctx), args.assigneeName)
     if (as.length > 1) return ok({ disambiguation: { field: 'assigneeName', options: as } })
     assignee = as[0] ?? null
   }
@@ -102,7 +120,7 @@ export function proposalToTaskBody(payload: any, reporterId: string) {
 
 export const createTaskTool: AiTool<Args> = {
   name: 'create_task',
-  description: 'PROPOSE creating a new work-management task. This does NOT create the task — it prepares a proposal that the user must explicitly confirm with a button click. Requires a board/department name (ask the user if unknown). Optionally takes a project, assignee, due date (ISO), and description. Use when the user asks to add/create a task or follow-up. Always tell the user the task is pending their confirmation; never claim it was created.',
+  description: 'PROPOSE creating a new work-management task. This does NOT create the task — it prepares a proposal that the user must explicitly confirm with a button click. Requires a board/department name (ask the user if unknown). Optionally takes a project, assignee, due date (ISO), and description. Use when the user asks to add/create a task or follow-up. If the result contains a `disambiguation` (several matching boards/projects/people), the proposal was NOT prepared — list the exact options and ask the user to pick one; only call again with an exact name. Only state that a proposal is ready for confirmation when the result contains a `proposalId`. Never claim the task was created.',
   parameters: params,
   mutates: true,
   handler: (a, c) => proposeCreateTask(a, c),
