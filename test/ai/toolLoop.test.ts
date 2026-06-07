@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { MockLanguageModelV3 } from 'ai/test'
 import { extractLoopOutput, runToolLoop, estimateCostUsd } from '~~/server/utils/ai/toolLoop'
+import * as economics from '~~/server/utils/ai/tools/economics'
 
 // Stub fetchClientEconomics so the get_client_profitability handler never touches the DB.
+// Imported back via `economics` so tests can assert the REAL registered handler ran (the loop's
+// registry → toSdkTools → execute path actually called it), not just that the mock emitted a call.
 vi.mock('~~/server/utils/ai/tools/economics', async (importOriginal) => {
   const original = await importOriginal<typeof import('~~/server/utils/ai/tools/economics')>()
   return {
@@ -101,6 +104,7 @@ describe('runToolLoop (Slice-2 tool selection)', () => {
   // Positive: model emits a tool-call for get_client_profitability on step 1, then text on step 2.
   // The handler resolves via the mocked fetchClientEconomics (stubbed at module level above).
   it('selects get_client_profitability for a finance question and records it in the trace', async () => {
+    vi.mocked(economics.fetchClientEconomics).mockClear()
     let callCount = 0
     const model = new MockLanguageModelV3({
       doGenerate: async () => {
@@ -136,6 +140,10 @@ describe('runToolLoop (Slice-2 tool selection)', () => {
     expect(out.toolCalls).toHaveLength(1)
     expect(out.toolCalls[0].name).toBe('get_client_profitability')
     expect((out.toolCalls[0].args as any).period).toBe('mtd')
+    // The REAL registered profitabilityTool handler must have executed via the loop's
+    // registry → toSdkTools → execute path. This is the assertion that fails if the tool is
+    // dropped from the registry — out.toolCalls alone would still echo the mock's emitted call.
+    expect(vi.mocked(economics.fetchClientEconomics)).toHaveBeenCalledTimes(1)
     // The final answer text must be present
     expect(out.text).toContain('Acme')
     // No proposal was created (this is a read tool)
