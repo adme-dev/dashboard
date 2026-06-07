@@ -1,5 +1,6 @@
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { loadOpenProposal } from '~~/server/utils/ai/pendingActions'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -58,6 +59,21 @@ export default defineEventHandler(async (event) => {
     createdAt: r.created_at,
   }))
 
+  // Rehydrate a still-open AI proposal (Option B) so a page reload doesn't strand the confirm card.
+  // Only on the initial load (not when paginating older messages via `before`). Fail-safe: null on
+  // any error — the table is only populated when AI_TOOLS_ENABLED, and absence must not break load.
+  const pendingAction = before
+    ? null
+    : await loadOpenProposal(id, String(user.id), (conversationId, userId) =>
+        queryOne<{ id: string, tool_name: string, resolved_payload: unknown }>(`
+          SELECT id, tool_name, resolved_payload
+          FROM ai_pending_actions
+          WHERE conversation_id = $1 AND user_id = $2
+            AND status = 'proposed' AND expires_at > NOW()
+          ORDER BY created_at DESC
+          LIMIT 1
+        `, [conversationId, userId]))
+
   return {
     conversation: {
       id: conv.id,
@@ -75,5 +91,6 @@ export default defineEventHandler(async (event) => {
     },
     messages,
     hasMore: messages.length === limit,
+    pendingAction,
   }
 })
