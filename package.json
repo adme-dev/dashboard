@@ -20,6 +20,9 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "eval:ai:export": "tsx --tsconfig .nuxt/tsconfig.server.json scripts/export-ai-tools.ts",
+    "eval:ai": "promptfoo eval -c evals/ai-tools/promptfooconfig.yaml",
+    "eval:ai:injection": "promptfoo eval -c evals/ai-tools/injection.yaml",
     "zero:dev": "npx @rocicorp/zero-cache serve",
     "db:setup": "cd server/database && psql $DATABASE_URL -f schema.sql",
     "db:seed": "psql $DATABASE_URL -f server/database/seed-coa.sql",
@@ -32,6 +35,8 @@
     "env:dev": "npx wrangler pages dev -- npm run dev"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.81",
+    "@ai-sdk/groq": "^3.0.39",
     "@anthropic-ai/sdk": "^0.90.0",
     "@aws-sdk/client-s3": "^3.952.0",
     "@aws-sdk/s3-request-presigner": "^3.952.0",
@@ -62,6 +67,7 @@
     "@unovis/ts": "^1.6.1",
     "@unovis/vue": "^1.6.1",
     "@vueuse/nuxt": "^13.9.0",
+    "ai": "^6.0.197",
     "aws4fetch": "^1.0.20",
     "bcryptjs": "^3.0.3",
     "codemirror": "^6.0.1",
@@ -80,6 +86,7 @@
     "resend": "^6.6.0",
     "standardized-audio-context": "^25.3.77",
     "wavesurfer.js": "^7.12.7",
+    "workers-ai-provider": "^3.1.14",
     "xero-node": "^13.0.0",
     "xlsx": "^0.18.5",
     "zod": "^4.3.6"
@@ -94,6 +101,7 @@
     "concurrently": "^9.1.0",
     "eslint": "^9.39.2",
     "happy-dom": "^20.0.11",
+    "promptfoo": "^0.121.15",
     "typescript": "^5.9.2",
     "vitest": "^4.0.15",
     "vue-tsc": "^3.0.7",

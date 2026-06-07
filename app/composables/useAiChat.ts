@@ -15,6 +15,7 @@ interface ConversationDetail {
 interface ChatMessageResponse {
   message: AiMessage
   contextSources: AiContextSource[]
+  proposedAction?: { proposalId: string, resolved: any } | null
 }
 
 export function useAiChat() {
@@ -186,8 +187,9 @@ export function useAiChat() {
         }
       )
 
-      // The server returns the assistant message; the user message was already added optimistically
-      messages.value.push(result.message)
+      // The server returns the assistant message; the user message was already added optimistically.
+      // Attach any proposed action so the confirmation card renders on that message.
+      messages.value.push({ ...result.message, proposedAction: result.proposedAction ?? null })
 
       // Update conversation metadata in the list
       if (activeConversation.value) {

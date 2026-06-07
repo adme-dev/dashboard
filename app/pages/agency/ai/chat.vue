@@ -96,8 +96,8 @@ async function handleVoiceRecord() {
       }
     }
 
-    // Add assistant message
-    messages.value.push(result.message)
+    // Add assistant message (carry any proposed action so the confirm card renders)
+    messages.value.push({ ...result.message, proposedAction: (result as any).proposedAction ?? null })
 
     // Update conversation metadata
     if (activeConversation.value) {
@@ -1007,6 +1007,32 @@ function getRenderedMarkdown(content: string): string {
                       class="cursor-pointer hover:bg-elevated"
                     />
                   </NuxtLink>
+                </div>
+
+                <!-- Proposed action (guarded write awaiting the user's confirmation) -->
+                <AiProposedActionCard
+                  v-if="msg.role === 'assistant' && msg.proposedAction"
+                  :conversation-id="msg.conversationId"
+                  :proposal="msg.proposedAction"
+                  @cancelled="msg.proposedAction = null"
+                />
+
+                <!-- Tool-call trace (assistant messages that consulted live data) -->
+                <div
+                  v-if="msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0"
+                  class="flex flex-wrap items-center gap-1 mt-2 pt-2 border-t border-default/50"
+                >
+                  <span class="inline-flex items-center gap-1 text-[10px] text-muted">
+                    <UIcon name="i-lucide-search" class="size-3" /> Consulted:
+                  </span>
+                  <UBadge
+                    v-for="(tc, i) in msg.toolCalls"
+                    :key="`tool-${i}`"
+                    :label="tc.name"
+                    size="xs"
+                    color="neutral"
+                    variant="soft"
+                  />
                 </div>
 
                 <!-- Timestamp + Feedback -->

@@ -1,6 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import type { z } from 'zod'
+import { createAnthropic } from '@ai-sdk/anthropic'
+import { createGroq } from '@ai-sdk/groq'
+import { createWorkersAI } from 'workers-ai-provider'
+import type { LanguageModel } from 'ai'
 
 let client: Anthropic | null = null
 
@@ -135,4 +139,66 @@ export async function generateClaudeStructured<T extends z.ZodType>(
       cacheCreationTokens: response.usage.cache_creation_input_tokens ?? 0,
     },
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI SDK v6 providers — used by the tool-calling loop (server/utils/ai/toolLoop.ts).
+// All LLM calls route through the Cloudflare AI Gateway when AI_GATEWAY_URL is set
+// (unified billing, caching, analytics); otherwise they hit the provider directly.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve the gateway base URL for a given provider. AI_GATEWAY_URL may already
+ * carry a provider suffix (the existing groqClient.ts points it at `/groq`), so we
+ * strip any known suffix and re-append the requested provider path.
+ * Returns undefined when no gateway is configured → providers go direct.
+ */
+function gatewayBase(provider: 'anthropic' | 'groq'): string | undefined {
+  const cfg = useRuntimeConfig()
+  const base = (cfg as any).aiGatewayUrl || process.env.AI_GATEWAY_URL
+  if (!base) return undefined
+  const root = String(base)
+    .replace(/\/(groq|anthropic|perplexity-ai)\/?$/, '')
+    .replace(/\/+$/, '')
+  return `${root}/${provider}`
+}
+
+export function getAnthropicProvider() {
+  const cfg = useRuntimeConfig()
+  return createAnthropic({
+    apiKey: (cfg as any).anthropicApiKey || process.env.ANTHROPIC_API_KEY,
+    baseURL: gatewayBase('anthropic'),
+  })
+}
+
+export function getGroqProvider() {
+  const cfg = useRuntimeConfig()
+  return createGroq({
+    apiKey: (cfg as any).groqApiKey || process.env.GROQ_API_KEY,
+    baseURL: gatewayBase('groq'),
+  })
+}
+
+/**
+ * Cloudflare Workers AI provider — runs `@cf/...` models on CF's edge via the `AI` binding (no API
+ * key, no egress). Pass the binding from the request: `event.context.cloudflare.env.AI`.
+ * (REST mode `createWorkersAI({ accountId, apiKey })` is available too, but the binding is the
+ * idiomatic edge path inside a Worker.)
+ */
+export function getWorkersAiProvider(binding: unknown) {
+  if (!binding) throw new Error('Workers AI binding (env.AI) is unavailable in this context')
+  return createWorkersAI({ binding: binding as any })
+}
+
+/**
+ * Resolve a model spec string to an AI SDK LanguageModel.
+ *   'groq/openai/gpt-oss-120b'                       → Groq, model 'openai/gpt-oss-120b'
+ *   'anthropic/claude-sonnet-4-6'                    → Anthropic, model 'claude-sonnet-4-6'
+ *   'workersai/@cf/meta/llama-3.3-70b-instruct-fp8-fast' → Cloudflare Workers AI (needs opts.aiBinding)
+ */
+export function resolveModel(spec: string, opts?: { aiBinding?: unknown }): LanguageModel {
+  if (spec.startsWith('anthropic/')) return getAnthropicProvider()(spec.slice('anthropic/'.length))
+  if (spec.startsWith('groq/')) return getGroqProvider()(spec.slice('groq/'.length))
+  if (spec.startsWith('workersai/')) return getWorkersAiProvider(opts?.aiBinding)(spec.slice('workersai/'.length) as any)
+  throw new Error(`Unknown model spec: ${spec}`)
 }

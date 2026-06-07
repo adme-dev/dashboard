@@ -1,0 +1,91 @@
+# Tool-selection eval + model bake-off for the AI tool-calling loop (Slice 1).
+# Tool defs are generated from the Zod registry — regenerate with: pnpm eval:ai:export
+# Run: pnpm eval:ai   (needs GROQ_API_KEY)
+description: AI tool-calling — tool selection + model bake-off
+
+prompts:
+  - file://prompt.json
+
+# Bake-off: all three Groq open-source candidates in one run. The winner becomes AI_LOOP_MODEL,
+# the runner-up AI_LOOP_FALLBACK_MODEL. (Sonnet 4.6 can be A/B'd in prod via @ai-sdk/anthropic.)
+# OpenAI-compatible provider pointed at Groq — it folds tool_calls into `output` (the bare `groq:`
+# provider returns output:null on a tool call, which assertions can't see).
+providers:
+  - id: openai:chat:openai/gpt-oss-120b
+    label: gpt-oss-120b
+    config:
+      apiBaseUrl: https://api.groq.com/openai/v1
+      apiKeyEnvar: GROQ_API_KEY
+      tools: file://tools.json
+      temperature: 0
+  - id: openai:chat:openai/gpt-oss-20b
+    label: gpt-oss-20b
+    config:
+      apiBaseUrl: https://api.groq.com/openai/v1
+      apiKeyEnvar: GROQ_API_KEY
+      tools: file://tools.json
+      temperature: 0
+  - id: openai:chat:qwen/qwen3-32b
+    label: qwen3-32b
+    config:
+      apiBaseUrl: https://api.groq.com/openai/v1
+      apiKeyEnvar: GROQ_API_KEY
+      tools: file://tools.json
+      temperature: 0
+  # Cloudflare Workers AI candidates (fully-on-CF: edge + unified billing + no egress).
+  # Needs CLOUDFLARE_ACCOUNT_ID (= R2_ACCOUNT_ID) + CLOUDFLARE_API_KEY (token with Workers AI access).
+  # Verify the current function-calling catalog at developers.cloudflare.com/workers-ai/models (filter: Function calling).
+  - id: cloudflare-ai:chat:@cf/meta/llama-3.3-70b-instruct-fp8-fast
+    label: cf-llama-3.3-70b
+    config:
+      tools: file://tools.json
+      temperature: 0
+  - id: cloudflare-ai:chat:@hf/nousresearch/hermes-2-pro-mistral-7b
+    label: cf-hermes-2-pro
+    config:
+      tools: file://tools.json
+      temperature: 0
+  - id: cloudflare-ai:chat:@cf/meta/llama-4-scout-17b-16e-instruct
+    label: cf-llama-4-scout
+    config:
+      tools: file://tools.json
+      temperature: 0
+
+# Helper assertions (flexible to provider output shape: tool calls may surface as structured
+# output or JSON text — we stringify and inspect).
+defaultTest:
+  options:
+    transform: 'JSON.stringify(output)'
+
+tests:
+  # ── Correct tool selection ──────────────────────────────────────────────
+  - vars: { query: "What's our cash runway right now?" }
+    assert:
+      - { type: contains, value: get_finance_snapshot }
+      - { type: not-contains, value: create_task }
+  - vars: { query: "Who owes us money — show the biggest overdue invoices." }
+    assert: [{ type: contains, value: get_finance_snapshot }]
+  - vars: { query: "Are any Meta campaigns overpacing this month?" }
+    assert: [{ type: contains, value: get_adspend_pacing }]
+  - vars: { query: "What am I working on that's overdue?" }
+    assert: [{ type: contains, value: get_tasks }]
+  - vars: { query: "What's the status of the Acme Rebrand project?" }
+    assert: [{ type: contains, value: get_project_status }]
+  - vars: { query: "Any open financial anomalies I should worry about?" }
+    assert: [{ type: contains, value: get_open_anomalies }]
+  - vars: { query: "Give me an overview of the client Acme." }
+    assert: [{ type: contains, value: get_client_overview }]
+  - vars: { query: "How did our social posts perform over the last 30 days?" }
+    assert: [{ type: contains, value: get_social_performance }]
+  - vars: { query: "Show me the briefs that are still in draft." }
+    assert: [{ type: contains, value: get_briefs }]
+  - vars: { query: "What does our onboarding process look like? Search the knowledge base." }
+    assert: [{ type: contains, value: search_knowledge }]
+  - vars: { query: "Create a task to follow up with Acme on the Creative board, due Friday." }
+    assert: [{ type: contains, value: create_task }]
+
+  # ── Should NOT call any tool (chit-chat) ────────────────────────────────
+  - vars: { query: "Hey, good morning!" }
+    assert: [{ type: not-contains, value: '"name"' }]
+  - vars: { query: "Thanks, that's all for now." }
+    assert: [{ type: not-contains, value: create_task }]

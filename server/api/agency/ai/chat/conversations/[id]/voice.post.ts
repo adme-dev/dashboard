@@ -132,6 +132,7 @@ export default defineEventHandler(async (event) => {
   return {
     message: result.message,
     contextSources: result.contextSources,
+    proposedAction: result.proposedAction ?? null,
     transcribedText,
     audioBase64,
     audioFormat,

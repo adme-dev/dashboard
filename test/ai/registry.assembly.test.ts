@@ -1,0 +1,45 @@
+import { describe, it, expect } from 'vitest'
+import { registry } from '~~/server/utils/ai/tools/index'
+import { filterToolsForUser } from '~~/server/utils/ai/toolRegistry'
+
+const READ_TOOLS = [
+  'get_finance_snapshot', 'get_adspend_pacing', 'get_tasks', 'get_project_status',
+  'get_open_anomalies', 'get_client_overview', 'search_knowledge',
+  'get_social_performance', 'get_briefs',
+]
+const ALL = [...READ_TOOLS, 'create_task']
+
+describe('assembled tool registry (Slice 1)', () => {
+  it('contains the 9 read tools + create_task', () => {
+    expect(registry.map(t => t.name).sort()).toEqual([...ALL].sort())
+  })
+
+  it('every tool has a description and a Zod parameters schema', () => {
+    for (const t of registry) {
+      expect(typeof t.description).toBe('string')
+      expect(t.description.length).toBeGreaterThan(20)
+      expect(t.parameters).toBeTruthy()
+    }
+  })
+
+  it('exactly one tool (create_task) is mutating', () => {
+    expect(registry.filter(t => t.mutates).map(t => t.name)).toEqual(['create_task'])
+  })
+
+  it('RBAC filter hides FINANCE/CLIENTS tools from a low-privilege role but keeps create_task', () => {
+    const creative = filterToolsForUser(registry, 'creative').map(t => t.name)
+    expect(creative).not.toContain('get_finance_snapshot') // FINANCE
+    expect(creative).not.toContain('get_client_overview')  // CLIENTS
+    expect(creative).toContain('get_tasks')                // any authed
+    expect(creative).toContain('create_task')              // creative is not read-only
+  })
+
+  it('hides create_task (write tool) from read-only roles', () => {
+    expect(filterToolsForUser(registry, 'viewer').map(t => t.name)).not.toContain('create_task')
+    expect(filterToolsForUser(registry, 'guest').map(t => t.name)).not.toContain('create_task')
+  })
+
+  it('owner sees all 10', () => {
+    expect(filterToolsForUser(registry, 'owner')).toHaveLength(10)
+  })
+})

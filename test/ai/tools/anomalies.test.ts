@@ -1,0 +1,80 @@
+import { describe, it, expect, vi } from 'vitest'
+import { getOpenAnomalies, type AnomaliesDeps, type AnomalyQuery } from '~~/server/utils/ai/tools/anomalies'
+
+const ctx = { userId: 'u1', userRole: 'owner', event: {} as any }
+
+function row(over: Partial<{ type: string; severity: string; title: string; description: string }> = {}) {
+  return {
+    type: over.type ?? 'expenses',
+    severity: over.severity ?? 'warning',
+    title: over.title ?? 'Unusual expense',
+    description: over.description ?? 'Office supplies up 220% vs trailing average',
+  }
+}
+
+describe('get_open_anomalies', () => {
+  it('requests OPEN-only rows (never resolved/dismissed) and passes filters through', async () => {
+    const fetchAnomalies = vi.fn<[AnomalyQuery], Promise<any[]>>().mockResolvedValue([row()])
+    const deps: AnomaliesDeps = { fetchAnomalies }
+
+    const res = await getOpenAnomalies({ type: 'expenses', severity: 'critical' }, ctx, deps)
+
+    expect(res.ok).toBe(true)
+    expect(fetchAnomalies).toHaveBeenCalledTimes(1)
+    const q = fetchAnomalies.mock.calls[0]![0]
+    // (b) handler asks for open-only — explicitly excludes the closed statuses.
+    expect(q.excludeStatuses).toEqual(expect.arrayContaining(['resolved', 'dismissed']))
+    // (a) severity + type filters forwarded
+    expect(q.severity).toBe('critical')
+    expect(q.type).toBe('expenses')
+  })
+
+  it('returns a compact projection — only type/severity/title/context', async () => {
+    const deps: AnomaliesDeps = {
+      fetchAnomalies: vi.fn().mockResolvedValue([
+        row({ type: 'cashflow', severity: 'critical', title: 'Low runway', description: '12 days of cash left' }),
+      ]),
+    }
+    const res = await getOpenAnomalies({}, ctx, deps)
+    expect(res.ok).toBe(true)
+    const data = (res as any).data
+    expect(data.anomalies).toHaveLength(1)
+    expect(data.anomalies[0]).toEqual({
+      type: 'cashflow',
+      severity: 'critical',
+      title: 'Low runway',
+      context: '12 days of cash left',
+    })
+    // no leaked columns
+    expect(Object.keys(data.anomalies[0]).sort()).toEqual(['context', 'severity', 'title', 'type'])
+  })
+
+  it('caps at 20 and reports the overflow count in `more`', async () => {
+    const many = Array.from({ length: 27 }, (_, i) => row({ title: `A${i}` }))
+    const deps: AnomaliesDeps = { fetchAnomalies: vi.fn().mockResolvedValue(many) }
+
+    const res = await getOpenAnomalies({}, ctx, deps)
+    expect(res.ok).toBe(true)
+    const data = (res as any).data
+    expect(data.anomalies).toHaveLength(20)
+    expect(data.more).toBe(7)
+    expect(data.anomalies[0].title).toBe('A0')
+  })
+
+  it('reports zero `more` when under the cap', async () => {
+    const deps: AnomaliesDeps = { fetchAnomalies: vi.fn().mockResolvedValue([row(), row()]) }
+    const res = await getOpenAnomalies({}, ctx, deps)
+    const data = (res as any).data
+    expect(data.anomalies).toHaveLength(2)
+    expect(data.more).toBe(0)
+  })
+
+  it('returns a recoverable error (never throws) when the source fails', async () => {
+    const deps: AnomaliesDeps = {
+      fetchAnomalies: vi.fn().mockRejectedValue(new Error('db down')),
+    }
+    const res = await getOpenAnomalies({}, ctx, deps)
+    expect(res.ok).toBe(false)
+    expect((res as any).error).toMatch(/anomal/i)
+  })
+})
