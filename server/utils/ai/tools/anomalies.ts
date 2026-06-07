@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, capWithMore, type ToolContext, type ToolResult } from '../toolContext'
 import { queryRows } from '~~/server/utils/db'
 import { getSelectedTenant } from '~~/server/utils/session'
 
@@ -66,10 +66,8 @@ export async function getOpenAnomalies(args: Args, ctx: ToolContext, deps: Anoma
       title: r.title,
       context: r.description,
     }))
-    return ok({
-      anomalies: compact.slice(0, CAP),
-      more: Math.max(0, compact.length - CAP),
-    })
+    const { items, more } = capWithMore(compact, CAP)
+    return ok({ anomalies: items, more })
   } catch {
     return fail('Could not load open anomalies — the anomaly data may be unavailable or no organisation is selected.')
   }

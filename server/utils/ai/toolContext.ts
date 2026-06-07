@@ -32,3 +32,8 @@ export const fail = (error: string): ToolResult => ({ ok: false, error })
 export function escapeLike(s: string): string {
   return s.replace(/[\\%_]/g, c => '\\' + c)
 }
+
+/** Cap a list to `n` items and report how many more exist — the compact-projection idiom every read tool uses. */
+export function capWithMore<T>(rows: T[], n: number): { items: T[], more: number } {
+  return { items: rows.slice(0, n), more: Math.max(0, rows.length - n) }
+}

@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import { queryRows } from '~~/server/utils/db'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, escapeLike, capWithMore, type ToolContext, type ToolResult } from '../toolContext'
+import { PERMISSIONS } from '~~/server/utils/permissions'
 
 const params = z.object({
   scope: z.enum(['mine', 'all']).default('mine'),
@@ -13,8 +14,8 @@ type Args = z.infer<typeof params>
 
 const CAP = 20
 
-/** Roles allowed to read tasks beyond their own (mirrors PERMISSIONS.MANAGEMENT). */
-const MANAGER_ROLES = new Set(['owner', 'admin', 'lead', 'project_manager'])
+/** Roles allowed to read tasks beyond their own — single-sourced from PERMISSIONS.MANAGEMENT. */
+const MANAGER_ROLES = new Set<string>(PERMISSIONS.MANAGEMENT)
 
 /** Compact, model-facing projection of a task. */
 export type AiTaskRow = {
@@ -127,17 +128,16 @@ export async function getTasks(args: Args, ctx: ToolContext, deps: TasksDeps = d
     }
 
     const rows = await deps.fetchTasks(filter)
-    const projected = rows.slice(0, CAP).map(r => ({
-      title: r.title,
-      status: r.status,
-      assignee: r.assignee,
-      due: r.due,
-      project: r.project,
-    }))
-
+    const { items, more } = capWithMore(rows, CAP)
     return ok({
-      tasks: projected,
-      more: Math.max(0, rows.length - CAP),
+      tasks: items.map(r => ({
+        title: r.title,
+        status: r.status,
+        assignee: r.assignee,
+        due: r.due,
+        project: r.project,
+      })),
+      more,
     })
   } catch {
     return fail('Could not load tasks — the task store may be unavailable.')

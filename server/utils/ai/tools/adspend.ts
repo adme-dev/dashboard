@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { $fetch } from 'ofetch'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, capWithMore, type ToolContext, type ToolResult } from '../toolContext'
 import { expectedToDate } from '~~/server/utils/anomalyDetection/adPacingMath'
 
 const params = z.object({
@@ -82,19 +82,8 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
       return true
     })
 
-    const projected: PacingCampaign[] = filtered.map(c => ({
-      client: c.client,
-      platform: c.platform,
-      spend: c.spend,
-      budget: c.budget,
-      pacePct: c.pacePct,
-      status: c.status,
-    }))
-
-    return ok({
-      campaigns: projected.slice(0, 20),
-      more: Math.max(0, projected.length - 20),
-    })
+    const { items, more } = capWithMore(filtered, 20)
+    return ok({ campaigns: items, more })
   } catch {
     return fail('Could not load ad-spend pacing — the spend sync may be unavailable or no budgets are set for this period.')
   }

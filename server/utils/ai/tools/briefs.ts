@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { queryRows } from '~~/server/utils/db'
 import type { AiTool } from '../toolRegistry'
-import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
+import { ok, fail, escapeLike, capWithMore, type ToolContext, type ToolResult } from '../toolContext'
 
 const params = z.object({
   status: z.string().optional(),
@@ -18,9 +18,6 @@ type BriefQuery = { status?: string, clientName?: string }
 export type BriefsDeps = {
   query: (q: BriefQuery, ctx: ToolContext) => Promise<BriefRow[]>
 }
-
-/** Escape ILIKE wildcards so user/model input matches literally (see RULES.md ILIKE injection). */
-const escapeLike = (s: string) => s.replace(/[\\%_]/g, c => `\\${c}`)
 
 // Real wiring mirrors server/api/agency/briefs/index.get.ts: briefs JOIN brief_templates
 // JOIN brief_categories, LEFT JOIN agency_clients for the client name. We only select the
@@ -62,12 +59,13 @@ export async function getBriefs(args: Args, ctx: ToolContext, deps: BriefsDeps =
       // pre-escape here so both the default SQL dep AND test assertions see literal-safe input
       clientName: args.clientName ? escapeLike(args.clientName) : undefined,
     }, ctx)
-    const capped = rows.slice(0, 20).map(r => ({
+    const { items, more } = capWithMore(rows, 20)
+    const briefs = items.map(r => ({
       title: r.title ?? '—',
       status: r.status ?? 'unknown',
       client: r.client ?? null,
     }))
-    return ok({ briefs: capped, more: Math.max(0, rows.length - 20) })
+    return ok({ briefs, more })
   } catch {
     return fail('Could not load briefs — the briefs data source may be unavailable.')
   }
