@@ -55,4 +55,9 @@ describe('flag_over_servicing', () => {
     expect(res.ok).toBe(false)
     expect((res as any).error).toMatch(/over-servicing/i)
   })
+
+  it('invalid args (out-of-range threshold) → recoverable error, never throws', async () => {
+    const res = await flagOverServicing({ thresholdPct: 9999 } as any, ctx, deps())
+    expect(res.ok).toBe(false)
+  })
 })

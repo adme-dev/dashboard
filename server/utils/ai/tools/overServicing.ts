@@ -27,8 +27,8 @@ const defaultDeps: OverServicingDeps = {
 const round = (n: number) => Math.round(n * 100) / 100
 
 export async function flagOverServicing(rawArgs: Args, ctx: ToolContext, deps: OverServicingDeps = defaultDeps): Promise<ToolResult> {
-  const args = params.parse(rawArgs)
   try {
+    const args = params.parse(rawArgs)
     const [retainers, econ] = await Promise.all([deps.fetchRetainers(), deps.fetchEconomics(ctx.event, 'mtd')])
     if (retainers.length === 0) return ok({ note: 'No clients with a scope baseline (retainer cap) on record.' })
 

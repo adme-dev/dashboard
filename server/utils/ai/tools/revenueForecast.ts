@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { $fetch } from 'ofetch'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 
@@ -12,13 +13,11 @@ export type ForecastDeps = {
   fetchCoverage: (ctx: ToolContext) => Promise<any>
 }
 
-// Nitro global $fetch (auto-imported in the server runtime). Preferred over `import {$fetch} from 'ofetch'`
-// because raw ofetch relative URLs failed on CF Workers (PR #129). Forward the caller's headers so Xero
-// connection + tenant resolve in the endpoint.
-const $f = (globalThis as any).$fetch as <T>(url: string, opts?: any) => Promise<T>
+// Internal route fetch via ofetch with the caller's headers forwarded so Xero connection + tenant
+// resolve in the endpoint. Mirrors the prod-verified pattern in finance.ts.
 const defaultDeps: ForecastDeps = {
-  fetchForecast: ctx => $f('/api/xero/get-out/forecast', { headers: (ctx.event as any).headers }),
-  fetchCoverage: ctx => $f('/api/xero/get-out/pipeline-coverage', { headers: (ctx.event as any).headers }),
+  fetchForecast: ctx => $fetch('/api/xero/get-out/forecast', { headers: ctx.event.headers as any }),
+  fetchCoverage: ctx => $fetch('/api/xero/get-out/pipeline-coverage', { headers: ctx.event.headers as any }),
 }
 
 const num = (v: unknown): number => {

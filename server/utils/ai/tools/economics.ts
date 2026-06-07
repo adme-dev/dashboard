@@ -67,39 +67,39 @@ export async function fetchClientEconomics(event: H3Event, period: Period): Prom
   if (!tenantId) return []
   const { start, end, mediaPeriods } = periodBounds(period)
 
-  const revenue = await queryRows<{ client_id: string, name: string, revenue_cents: string }>(
-    `SELECT ac.id AS client_id, ac.name AS name,
-            COALESCE(SUM(ic.total_cents), 0)::text AS revenue_cents
-       FROM agency_clients ac
-       LEFT JOIN xero_invoices_cache ic
-         ON ic.contact_id = ac.xero_contact_id
-        AND ic.tenant_id = $1
-        AND ic.type = 'ACCREC'
-        AND ic.status NOT IN ('VOIDED','DRAFT','DELETED')
-        AND ic.date BETWEEN $2::date AND $3::date
-      GROUP BY ac.id, ac.name`,
-    [tenantId, start, end],
-  )
-
-  const passthrough = await queryRows<{ client_id: string, passthrough_cents: string }>(
-    `SELECT client_id, COALESCE(SUM(actual_spend) * 100, 0)::bigint::text AS passthrough_cents
-       FROM media_spend
-      WHERE period = ANY($1::text[])
-      GROUP BY client_id`,
-    [mediaPeriods],
-  )
+  const [revenue, passthrough, labor] = await Promise.all([
+    queryRows<{ client_id: string, name: string, revenue_cents: string }>(
+      `SELECT ac.id AS client_id, ac.name AS name,
+              COALESCE(SUM(ic.total_cents), 0)::text AS revenue_cents
+         FROM agency_clients ac
+         LEFT JOIN xero_invoices_cache ic
+           ON ic.contact_id = ac.xero_contact_id
+          AND ic.tenant_id = $1
+          AND ic.type = 'ACCREC'
+          AND ic.status NOT IN ('VOIDED','DRAFT','DELETED')
+          AND ic.date BETWEEN $2::date AND $3::date
+        GROUP BY ac.id, ac.name`,
+      [tenantId, start, end],
+    ),
+    queryRows<{ client_id: string, passthrough_cents: string }>(
+      `SELECT client_id, COALESCE(SUM(actual_spend) * 100, 0)::bigint::text AS passthrough_cents
+         FROM media_spend
+        WHERE period = ANY($1::text[])
+        GROUP BY client_id`,
+      [mediaPeriods],
+    ),
+    queryRows<{ client_id: string, labor_cents: string, hours: string }>(
+      `SELECT p.client_id,
+              COALESCE(SUM(te.hours * te.hourly_rate) * 100, 0)::bigint::text AS labor_cents,
+              COALESCE(SUM(te.hours), 0)::text AS hours
+         FROM time_entries te
+         JOIN projects p ON te.project_id = p.id
+        WHERE te.date BETWEEN $1::date AND $2::date
+        GROUP BY p.client_id`,
+      [start, end],
+    ),
+  ])
   const ptMap = new Map(passthrough.map(r => [r.client_id, num(r.passthrough_cents)]))
-
-  const labor = await queryRows<{ client_id: string, labor_cents: string, hours: string }>(
-    `SELECT p.client_id,
-            COALESCE(SUM(te.hours * te.hourly_rate) * 100, 0)::bigint::text AS labor_cents,
-            COALESCE(SUM(te.hours), 0)::text AS hours
-       FROM time_entries te
-       JOIN projects p ON te.project_id = p.id
-      WHERE te.date BETWEEN $1::date AND $2::date
-      GROUP BY p.client_id`,
-    [start, end],
-  )
   const laborMap = new Map(labor.map(r => [r.client_id, { cents: num(r.labor_cents), hours: num(r.hours) }]))
 
   return revenue.map(r => ({

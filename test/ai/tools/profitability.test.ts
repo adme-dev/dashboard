@@ -63,4 +63,24 @@ describe('get_client_profitability', () => {
     expect(res.ok).toBe(false)
     expect((res as any).error).toMatch(/profitab/i)
   })
+
+  it('loss-making clients (AGI <= 0) appear in bottomByMargin as the worst, with marginPct null', async () => {
+    const lossRows: ClientEconomicsRow[] = [
+      { clientId: 'a', name: 'Acme', revenueCents: 10000_00, passthroughCents: 2000_00, laborCents: 3000_00, hours: 100 }, // agi 8000, margin 62.5
+      { clientId: 'b', name: 'Globex', revenueCents: 5000_00, passthroughCents: 0, laborCents: 4500_00, hours: 120 },        // agi 5000, margin 10
+      { clientId: 'l', name: 'LossCo', revenueCents: 5000_00, passthroughCents: 8000_00, laborCents: 1000_00, hours: 40 },   // agi -3000, margin null
+    ]
+    const res = await getClientProfitability({ period: 'mtd' }, ctx, deps({ fetchEconomics: vi.fn().mockResolvedValue(lossRows) }))
+    const d = (res as any).data
+    expect(d.bottomByMargin[0].client).toBe('LossCo')   // loss-maker is the worst
+    expect(d.bottomByMargin[0].marginPct).toBeNull()
+    expect(d.bottomByMargin[0].agi).toBe(-3000)
+    expect(d.topByMargin.map((c: any) => c.client)).not.toContain('LossCo') // never shown as "top"
+  })
+
+  it('more counts only active clients shown in neither list (not a raw length - 5)', async () => {
+    // 2 active clients, both shown across top+bottom → more must be 0 (was incorrectly reported as a negative-clamped count)
+    const res = await getClientProfitability({ period: 'mtd' }, ctx, deps())
+    expect((res as any).data.more).toBe(0)
+  })
 })

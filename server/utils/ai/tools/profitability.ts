@@ -39,6 +39,8 @@ export async function getClientProfitability(args: Args, ctx: ToolContext, deps:
     const rows = await deps.fetchEconomics(ctx.event, args.period)
     if (rows.length === 0) return ok({ period: args.period, note: 'No client financial data available — Xero may be disconnected or the invoice cache is empty.' })
 
+    const totalRev = rows.reduce((s, r) => s + r.revenueCents, 0)
+
     if (args.clientName) {
       const { match, candidates } = resolveByName(rows, args.clientName)
       if (!match) {
@@ -46,24 +48,33 @@ export async function getClientProfitability(args: Args, ctx: ToolContext, deps:
         return ok({ note: `No client matching "${args.clientName}".` })
       }
       const c = compute(match)
-      const totalRev = rows.reduce((s, r) => s + r.revenueCents, 0)
       const sharePct = totalRev > 0 ? round1((match.revenueCents / totalRev) * 100) : 0
       return ok({ period: args.period, ...c, sharePct })
     }
 
     const computed = rows.map(compute)
-    const totalRev = rows.reduce((s, r) => s + r.revenueCents, 0)
     const byRevDesc = [...rows].sort((a, b) => b.revenueCents - a.revenueCents)
     const shareOfTop = (n: number) =>
       totalRev > 0 ? round1((byRevDesc.slice(0, n).reduce((s, r) => s + r.revenueCents, 0) / totalRev) * 100) : 0
-    const ranked = computed.filter(c => c.deliveryMarginPct != null).sort((a, b) => b.deliveryMarginPct! - a.deliveryMarginPct!)
 
+    // Only clients with financial activity this period are ranked (all-zero clients are excluded).
+    const active = computed.filter(c => c.revenue > 0 || c.laborCost > 0 || c.passthrough > 0)
+    const withMargin = active.filter(c => c.deliveryMarginPct != null)
+    // Loss-making clients (AGI <= 0 → margin undefined) are the WORST; order most-negative AGI first.
+    const lossMaking = active.filter(c => c.deliveryMarginPct == null).sort((a, b) => a.agi - b.agi)
+
+    const topByMargin = [...withMargin].sort((a, b) => b.deliveryMarginPct! - a.deliveryMarginPct!).slice(0, 5)
+    const worstFirst = [...lossMaking, ...[...withMargin].sort((a, b) => a.deliveryMarginPct! - b.deliveryMarginPct!)]
+    const bottomByMargin = worstFirst.slice(0, 5)
+    const shown = new Set<string>([...topByMargin, ...bottomByMargin].map(c => c.client))
+
+    const project = (c: Computed) => ({ client: c.client, revenue: c.revenue, agi: c.agi, marginPct: c.deliveryMarginPct })
     return ok({
       period: args.period,
-      topByMargin: ranked.slice(0, 5).map(({ client, revenue, agi, deliveryMarginPct }) => ({ client, revenue, agi, marginPct: deliveryMarginPct })),
-      bottomByMargin: ranked.slice(-5).reverse().map(({ client, revenue, agi, deliveryMarginPct }) => ({ client, revenue, agi, marginPct: deliveryMarginPct })),
+      topByMargin: topByMargin.map(project),
+      bottomByMargin: bottomByMargin.map(project),
       agencyConcentration: { top5Pct: shareOfTop(5), top10Pct: shareOfTop(10) },
-      more: Math.max(0, ranked.length - 5),
+      more: Math.max(0, active.length - shown.size),
     })
   } catch {
     return fail('Could not compute client profitability — the financial data may be unavailable.')
