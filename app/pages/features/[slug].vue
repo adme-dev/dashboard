@@ -1316,6 +1316,10 @@ const features: Record<string, Feature> = {
         content: 'Beyond pre-loaded context, the assistant can call dedicated tools to pull live numbers on demand — a finance snapshot, ad-spend pacing, open anomalies, project status, client overviews, social performance, briefs, and the knowledge base — so answers reflect what is true right now, with the exact sources it used one click away. Every tool runs inside your existing permissions, so the assistant can only ever see what you can. For anything that changes data, it follows a strict propose-then-confirm model: it drafts the action — for example, creating a task — and shows it to you for review; nothing is written until you confirm.'
       },
       {
+        title: 'Client Profitability & Revenue Forecasting',
+        content: 'Ask which clients are most and least profitable — the assistant surfaces Agency Gross Income and delivery margin per client so you can see at a glance where the agency is making and losing money. You can also see how fast each client is burning its monthly retainer, with end-of-month projections so you know which accounts are at risk of over-running before they do. Flag where the agency is over-servicing — labour delivered beyond retainer scope — so account managers can have the right conversation early. And ask for a month-end revenue forecast or 90-day pipeline coverage against target, pulling from live Xero and project data.'
+      },
+      {
         title: 'Role-Focused Assistants',
         content: 'Pick the assistant that fits the job — Finance, Marketing, Sales, or Account Management — or stay with the general Agency Assistant. Each persona keeps the same engine but leads with the right focus and narrows to the tools that matter for that role, always within your permissions. Switching is one click in the chat bar, and your choice sticks to the conversation, including on voice.'
       },
