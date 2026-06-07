@@ -7,10 +7,13 @@ const READ_TOOLS = [
   'get_open_anomalies', 'get_client_overview', 'search_knowledge',
   'get_social_performance', 'get_briefs',
 ]
-const ALL = [...READ_TOOLS, 'create_task']
+const SLICE2_TOOLS = [
+  'get_client_profitability', 'monitor_retainer_burn', 'flag_over_servicing', 'forecast_revenue',
+]
+const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, 'create_task']
 
-describe('assembled tool registry (Slice 1)', () => {
-  it('contains the 9 read tools + create_task', () => {
+describe('assembled tool registry (Slices 1–2)', () => {
+  it('contains the 13 read tools + create_task', () => {
     expect(registry.map(t => t.name).sort()).toEqual([...ALL].sort())
   })
 
@@ -39,7 +42,23 @@ describe('assembled tool registry (Slice 1)', () => {
     expect(filterToolsForUser(registry, 'guest').map(t => t.name)).not.toContain('create_task')
   })
 
-  it('owner sees all 10', () => {
-    expect(filterToolsForUser(registry, 'owner')).toHaveLength(10)
+  it('owner sees all 14', () => {
+    expect(filterToolsForUser(registry, 'owner')).toHaveLength(14)
+  })
+
+  it('includes the Slice-2 margin & forecasting tools', () => {
+    const names = registry.map(t => t.name)
+    for (const n of ['get_client_profitability', 'monitor_retainer_burn', 'flag_over_servicing', 'forecast_revenue']) {
+      expect(names).toContain(n)
+    }
+  })
+
+  it('Slice-2 tools are FINANCE-gated read tools (not mutating)', () => {
+    const slice2 = registry.filter(t => ['get_client_profitability', 'monitor_retainer_burn', 'flag_over_servicing', 'forecast_revenue'].includes(t.name))
+    expect(slice2).toHaveLength(4)
+    for (const t of slice2) {
+      expect(t.requiredPermission).toBe('FINANCE')
+      expect(t.mutates).toBeFalsy()
+    }
   })
 })
