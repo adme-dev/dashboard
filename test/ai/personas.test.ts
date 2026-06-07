@@ -55,6 +55,15 @@ describe('persona definitions', () => {
   })
 })
 
+describe('Finance persona slice-2 tools', () => {
+  it('the Finance persona includes the Slice-2 margin & forecasting tools', () => {
+    const allow = PERSONAS.finance!.toolAllowlist ?? []
+    for (const n of ['get_client_profitability', 'monitor_retainer_burn', 'flag_over_servicing', 'forecast_revenue']) {
+      expect(allow).toContain(n)
+    }
+  })
+})
+
 describe('persona narrowing is bounded by RBAC (never grants beyond the role)', () => {
   // Replicates the loop's two-step: RBAC filter THEN persona allowlist intersection.
   function toolsFor(role: string, personaKey: string): string[] {

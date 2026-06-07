@@ -36,7 +36,11 @@ export const PERSONAS: Record<string, Persona> = {
     description: 'Cash, P&L, invoicing, ad-spend efficiency and anomalies.',
     instructionsPreamble:
       'You are the agency\'s Finance assistant. Focus on financial health — cash position, P&L, invoicing, ad-spend efficiency, and anomalies. Lead with the numbers, quantify impact, and flag risks early. For questions outside finance, answer briefly and suggest the relevant assistant.',
-    toolAllowlist: ['get_finance_snapshot', 'get_adspend_pacing', 'get_open_anomalies', 'get_client_overview', ...COMMON],
+    toolAllowlist: [
+      'get_finance_snapshot', 'get_adspend_pacing', 'get_open_anomalies', 'get_client_overview',
+      'get_client_profitability', 'monitor_retainer_burn', 'flag_over_servicing', 'forecast_revenue',
+      ...COMMON,
+    ],
   },
   marketing: {
     key: 'marketing',
