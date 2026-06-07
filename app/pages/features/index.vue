@@ -250,7 +250,7 @@ const categories = [
     iconBg: 'bg-amber-50 dark:bg-amber-500/10',
     iconColor: 'text-amber-600',
     features: [
-      { title: 'AI Chat', slug: 'ai-chat', icon: 'i-lucide-bot', description: 'Groq-powered conversational AI with @entity mentions for clients, tasks, and projects.' },
+      { title: 'AI Chat', slug: 'ai-chat', icon: 'i-lucide-bot', description: 'Conversational AI that pulls live agency data on demand — finance, ad-spend, tasks, clients and more — with @entity mentions, role-focused assistants, and propose-then-confirm actions that never change anything without your click.' },
       { title: 'Voice AI', slug: 'voice-ai', icon: 'i-lucide-mic', description: 'Talk to your AI assistant. Speech-to-text transcription and text-to-speech responses powered by Workers AI.' },
       { title: 'Anomaly Detection', slug: 'anomaly-detection', icon: 'i-lucide-alert-triangle', description: '10 specialised analysers that proactively flag anomalies across profit, revenue, expenses, cashflow, receivables, budget, ad-spend pacing/delivery health and per-client risk — surfaced in the daily digest, push, and in-app.' },
       { title: 'Semantic Search', slug: 'semantic-search', icon: 'i-lucide-search', description: 'Vectorize-powered search across tasks, clients, briefs, and knowledge base entries.' },

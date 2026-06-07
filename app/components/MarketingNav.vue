@@ -624,7 +624,7 @@ const featuresCol3b = [
 ]
 
 const featuresCol4 = [
-  { title: 'AI Assistant', subtitle: 'Chat, anomaly detection, search', icon: 'i-lucide-sparkles', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/platform/ai' },
+  { title: 'AI Assistant', subtitle: 'Agentic chat, anomaly detection, search', icon: 'i-lucide-sparkles', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/platform/ai' },
   { title: 'Advisor Backlog', subtitle: 'CFO recommendations as a triage queue', icon: 'i-lucide-target', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/features/advisor-backlog' },
   { title: 'AI Training', subtitle: 'Your data trains your AI, privately', icon: 'i-lucide-brain', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/ai-training' },
   { title: 'Voice AI', subtitle: 'Talk to your AI by voice', icon: 'i-lucide-mic', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/voice-ai' },

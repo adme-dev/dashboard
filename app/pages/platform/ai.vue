@@ -283,6 +283,16 @@ const chatFeatures = [
     description: 'Intent classification routes queries to the right data sources -- spend, timesheets, tasks, briefs, or knowledge base.'
   },
   {
+    title: 'Live Data Tools',
+    icon: 'i-lucide-wrench',
+    description: 'The assistant calls dedicated tools to pull live numbers on demand -- finance, ad-spend, anomalies, projects, clients, social -- and proposes any change (like creating a task) for you to confirm. It never acts on its own, and only ever within your permissions.'
+  },
+  {
+    title: 'Role-Focused Assistants',
+    icon: 'i-lucide-users',
+    description: 'Switch between Finance, Marketing, Sales, and Account Management assistants -- same engine, each leading with the right focus and tools for the role.'
+  },
+  {
     title: 'Conversation Pinning',
     icon: 'i-lucide-pin',
     description: 'Pin important conversations for quick access. Up to 25 pinned threads per user with dedicated sidebar section.'
