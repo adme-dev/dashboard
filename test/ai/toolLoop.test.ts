@@ -1,6 +1,20 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { MockLanguageModelV3 } from 'ai/test'
 import { extractLoopOutput, runToolLoop, estimateCostUsd } from '~~/server/utils/ai/toolLoop'
+import * as economics from '~~/server/utils/ai/tools/economics'
+
+// Stub fetchClientEconomics so the get_client_profitability handler never touches the DB.
+// Imported back via `economics` so tests can assert the REAL registered handler ran (the loop's
+// registry → toSdkTools → execute path actually called it), not just that the mock emitted a call.
+vi.mock('~~/server/utils/ai/tools/economics', async (importOriginal) => {
+  const original = await importOriginal<typeof import('~~/server/utils/ai/tools/economics')>()
+  return {
+    ...original,
+    fetchClientEconomics: vi.fn().mockResolvedValue([
+      { clientId: 'a', name: 'Acme', revenueCents: 10000_00, passthroughCents: 2000_00, laborCents: 3000_00, hours: 100 },
+    ]),
+  }
+})
 
 // toolLoop calls useRuntimeConfig() (Nuxt auto-import). Stub it for unit tests; model specs
 // aren't read when a model is injected, so an empty config is enough.
@@ -83,5 +97,71 @@ describe('runToolLoop (injected mock model)', () => {
       seed: 'c1', model: badModel, fallbackModel: textModel('Recovered via fallback.'),
     })
     expect(out.text).toContain('fallback')
+  })
+})
+
+describe('runToolLoop (Slice-2 tool selection)', () => {
+  // Positive: model emits a tool-call for get_client_profitability on step 1, then text on step 2.
+  // The handler resolves via the mocked fetchClientEconomics (stubbed at module level above).
+  it('selects get_client_profitability for a finance question and records it in the trace', async () => {
+    vi.mocked(economics.fetchClientEconomics).mockClear()
+    let callCount = 0
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => {
+        callCount++
+        if (callCount === 1) {
+          // Step 1: model asks to call the profitability tool
+          return {
+            content: [{ type: 'tool-call', toolCallId: 'tc-prof-1', toolName: 'get_client_profitability', input: '{"period":"mtd"}' }],
+            finishReason: 'stop',
+            usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+            warnings: [],
+          }
+        }
+        // Step 2: model answers after seeing the tool result
+        return {
+          content: [{ type: 'text', text: 'Acme has a 62.5% delivery margin.' }],
+          finishReason: 'stop',
+          usage: { inputTokens: 20, outputTokens: 10, totalTokens: 30 },
+          warnings: [],
+        }
+      },
+    })
+
+    const out = await runToolLoop({
+      ctx: ctx as any,
+      system: 'sys',
+      messages: [{ role: 'user', content: 'Which client is most profitable this month?' }],
+      seed: 'c1',
+      model,
+    })
+
+    // The tool must appear exactly once in the trace
+    expect(out.toolCalls).toHaveLength(1)
+    expect(out.toolCalls[0].name).toBe('get_client_profitability')
+    expect((out.toolCalls[0].args as any).period).toBe('mtd')
+    // The REAL registered profitabilityTool handler must have executed via the loop's
+    // registry → toSdkTools → execute path. This is the assertion that fails if the tool is
+    // dropped from the registry — out.toolCalls alone would still echo the mock's emitted call.
+    expect(vi.mocked(economics.fetchClientEconomics)).toHaveBeenCalledTimes(1)
+    // The final answer text must be present
+    expect(out.text).toContain('Acme')
+    // No proposal was created (this is a read tool)
+    expect(out.proposedAction).toBeNull()
+  })
+
+  // Negative: model answers with plain text for chit-chat — no tool is ever called.
+  it('does not invoke any tool when the model answers chit-chat with plain text', async () => {
+    const out = await runToolLoop({
+      ctx: ctx as any,
+      system: 'sys',
+      messages: [{ role: 'user', content: 'What is the weather like today?' }],
+      seed: 'c1',
+      model: textModel('I am an agency assistant and cannot check the weather.'),
+    })
+
+    expect(out.toolCalls).toEqual([])
+    expect(out.proposedAction).toBeNull()
+    expect(out.text).toContain('agency assistant')
   })
 })
