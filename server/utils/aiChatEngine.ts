@@ -455,6 +455,10 @@ export async function processUserMessage(
   let proposedAction: { proposalId: string, resolved: unknown } | null = null
   let toolTrace: Array<{ name: string, args: unknown }> = []
   let usedToolLoop = false
+  // Tool-loop cost/usage — persisted so Groq spend is queryable (estimateCostUsd from real token usage).
+  let toolCostUsd: number | null = null
+  let promptTokens: number | null = null
+  let completionTokens: number | null = null
   if (event && shouldUseToolLoop({ aiToolsEnabled: !!cfg.aiToolsEnabled, hasEvent: !!event, intent: contextBundle.intent })) {
     try {
       const { runToolLoop } = await import('~~/server/utils/ai/toolLoop')
@@ -472,6 +476,9 @@ export async function processUserMessage(
       toolTrace = loop.toolCalls
       proposedAction = loop.proposedAction
       usedToolLoop = true
+      toolCostUsd = loop.costUsd ?? null
+      promptTokens = loop.usage?.inputTokens ?? null
+      completionTokens = loop.usage?.outputTokens ?? null
       if (!aiContent.trim()) {
         aiContent = proposedAction
           ? 'I’ve prepared this action — please review and confirm below.'
@@ -538,8 +545,8 @@ export async function processUserMessage(
 
   // 10. Save the assistant reply (with LoRA tracking)
   const assistantMsg = await queryOne<any>(`
-    INSERT INTO ai_messages (conversation_id, role, content, context_sources, token_count, model, latency_ms, is_error, is_lora, lora_adapter_id, tool_calls)
-    VALUES ($1, 'assistant', $2, $3::jsonb, $4, $5, $6, $7, $8, $9, $10::jsonb)
+    INSERT INTO ai_messages (conversation_id, role, content, context_sources, token_count, model, latency_ms, is_error, is_lora, lora_adapter_id, tool_calls, cost_usd, prompt_tokens, completion_tokens)
+    VALUES ($1, 'assistant', $2, $3::jsonb, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13)
     RETURNING *
   `, [
     conversationId,
@@ -552,6 +559,9 @@ export async function processUserMessage(
     usedLora,
     loraAdapterId,
     toolTrace.length ? JSON.stringify(toolTrace) : null,
+    toolCostUsd,
+    promptTokens,
+    completionTokens,
   ])
 
   // 11. Update conversation metadata
