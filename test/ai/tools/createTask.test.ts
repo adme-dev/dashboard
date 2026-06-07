@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { proposeCreateTask, type CreateTaskDeps } from '~~/server/utils/ai/tools/createTask'
+import { proposeCreateTask, pickByExactName, type CreateTaskDeps } from '~~/server/utils/ai/tools/createTask'
 
 const ctx = (over: Partial<{ userRole: string, conversationId?: string }> = {}) => ({
   userId: 'u1', userRole: over.userRole ?? 'account_manager',
@@ -47,13 +47,30 @@ describe('proposeCreateTask (Option B — propose only)', () => {
     expect(deps.propose).not.toHaveBeenCalled()
   })
 
-  it('returns a disambiguation list when the board matches multiple (no proposal)', async () => {
+  it('returns a disambiguation list when the board partially matches multiple (no exact match, no proposal)', async () => {
     const deps = mkDeps({ resolveDepartment: vi.fn().mockResolvedValue([{ id: 'd1', name: 'Creative' }, { id: 'd2', name: 'Creative Ops' }]) })
-    const res = await proposeCreateTask({ title: 'X', boardName: 'Creative' }, ctx() as any, deps)
+    const res = await proposeCreateTask({ title: 'X', boardName: 'Creat' }, ctx() as any, deps)
     expect(res.ok).toBe(true)
     expect((res as any).data.disambiguation.field).toBe('boardName')
     expect((res as any).data.disambiguation.options).toHaveLength(2)
     expect(deps.propose).not.toHaveBeenCalled()
+  })
+
+  it('proposes cleanly when the board name EXACTLY matches one, even among broader substring matches', async () => {
+    // "ADME Creative Request" exactly names one board though many "ADME …" boards also match.
+    const deps = mkDeps({
+      resolveDepartment: vi.fn().mockResolvedValue([
+        { id: 'd1', name: 'ADME Creative Request' },
+        { id: 'd2', name: 'ADME Creative Request Archive' },
+        { id: 'd3', name: 'ADME Creative Requests 2024' },
+      ]),
+    })
+    const res = await proposeCreateTask({ title: 'Design a banner', boardName: 'adme creative request' }, ctx() as any, deps)
+    expect(res.ok).toBe(true)
+    expect((res as any).data.proposalId).toBe('prop-1')
+    expect((res as any).data.resolved.departmentId).toBe('d1')
+    expect((res as any).data.resolved.departmentName).toBe('ADME Creative Request')
+    expect(deps.propose).toHaveBeenCalledTimes(1)
   })
 
   it('refuses to prepare a task outside a conversation', async () => {
@@ -61,5 +78,27 @@ describe('proposeCreateTask (Option B — propose only)', () => {
     const res = await proposeCreateTask({ title: 'X', boardName: 'Creative' }, ctx({ conversationId: undefined }) as any, deps)
     expect(res.ok).toBe(false)
     expect(deps.propose).not.toHaveBeenCalled()
+  })
+})
+
+describe('pickByExactName', () => {
+  const opts = [{ name: 'Creative' }, { name: 'Creative Ops' }, { name: 'creative' }]
+
+  it('collapses to the single exact (case-insensitive) match among substring matches', () => {
+    expect(pickByExactName([{ name: 'ADME' }, { name: 'ADME Creative' }, { name: 'ADME Promo' }], 'adme')).toEqual([{ name: 'ADME' }])
+    expect(pickByExactName([{ name: 'Creative' }, { name: 'Creative Ops' }], 'CREATIVE')).toEqual([{ name: 'Creative' }])
+  })
+
+  it('returns all candidates when there is no exact match', () => {
+    const cands = [{ name: 'Creative' }, { name: 'Creative Ops' }]
+    expect(pickByExactName(cands, 'Creat')).toBe(cands)
+  })
+
+  it('returns all candidates when more than one exact match exists (genuinely ambiguous)', () => {
+    expect(pickByExactName(opts, 'creative')).toBe(opts) // 'Creative' and 'creative' both match
+  })
+
+  it('trims whitespace on both sides before comparing', () => {
+    expect(pickByExactName([{ name: ' Creative ' }, { name: 'Creative Ops' }], 'creative')).toEqual([{ name: ' Creative ' }])
   })
 })
