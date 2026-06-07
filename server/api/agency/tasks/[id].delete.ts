@@ -80,11 +80,12 @@ export default defineEventHandler(async (event) => {
           WHERE id = $2
         `, [cancelledStatus.id, id])
 
-        // Log deletion activity
+        // Log deletion as a status_change — 'deleted' is NOT an allowed activity_type
+        // (task_activities_activity_type_check), which made every soft delete throw a generic 500.
         await client.query(`
           INSERT INTO task_activities (task_id, activity_type, content)
-          VALUES ($1, 'deleted', $2)
-        `, [id, `Task "${task.title}" was deleted`])
+          VALUES ($1, 'status_change', $2)
+        `, [id, `Task "${task.title}" was deleted (cancelled)`])
       })
 
       return { success: true, message: 'Task marked as cancelled' }
