@@ -22,6 +22,7 @@ const sourceFilterOptions = [
   { label: 'All sources', value: 'all' }, { label: 'Owned (inbox)', value: 'owned' },
   { label: 'Reddit', value: 'reddit' }, { label: 'News', value: 'news' }, { label: 'YouTube', value: 'youtube' },
   { label: 'Bluesky', value: 'bluesky' }, { label: 'Mastodon', value: 'mastodon' },
+  { label: 'Hacker News', value: 'hackernews' }, { label: 'Lemmy', value: 'lemmy' },
 ]
 const sentimentFilterOptions = [
   { label: 'All sentiment', value: 'all' }, { label: 'Positive', value: 'positive' },

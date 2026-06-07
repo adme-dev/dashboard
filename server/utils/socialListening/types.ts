@@ -1,7 +1,7 @@
 // server/utils/socialListening/types.ts
 import type { Sentiment } from '~~/app/utils/socialListeningMatch'
 
-export type MentionSource = 'reddit' | 'news' | 'youtube' | 'bluesky' | 'mastodon' | 'owned'
+export type MentionSource = 'reddit' | 'news' | 'youtube' | 'bluesky' | 'mastodon' | 'hackernews' | 'lemmy' | 'owned'
 
 /** A normalized hit, pre-persist. Adapters (4b) and the owned projection both emit this. */
 export interface RawMention {
