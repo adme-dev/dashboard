@@ -1305,11 +1305,19 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-brain',
     categoryIconBg: 'bg-amber-50',
     categoryIconColor: 'text-amber-600',
-    description: 'Groq-powered conversational AI with @entity mentions for clients, tasks, and projects. Ask questions about your agency data in natural language.',
+    description: 'Conversational AI that answers from your live agency data — finance, ad-spend, tasks, projects, clients and more — with @entity mentions, role-focused assistants, and propose-then-confirm actions. Ask questions in natural language.',
     details: [
       {
         title: 'Natural Language Queries',
         content: 'Ask questions about your agency in plain English. "How much did we spend on Meta for Client X last month?" or "Which tasks are overdue this week?" The AI understands your agency context — clients, projects, tasks, financial data — and retrieves the relevant information using a composite scoring system that combines semantic similarity, recency, importance, and entity matching.'
+      },
+      {
+        title: 'Live Data Lookups & Guarded Actions',
+        content: 'Beyond pre-loaded context, the assistant can call dedicated tools to pull live numbers on demand — a finance snapshot, ad-spend pacing, open anomalies, project status, client overviews, social performance, briefs, and the knowledge base — so answers reflect what is true right now, with the exact sources it used one click away. Every tool runs inside your existing permissions, so the assistant can only ever see what you can. For anything that changes data, it follows a strict propose-then-confirm model: it drafts the action — for example, creating a task — and shows it to you for review; nothing is written until you confirm.'
+      },
+      {
+        title: 'Role-Focused Assistants',
+        content: 'Pick the assistant that fits the job — Finance, Marketing, Sales, or Account Management — or stay with the general Agency Assistant. Each persona keeps the same engine but leads with the right focus and narrows to the tools that matter for that role, always within your permissions. Switching is one click in the chat bar, and your choice sticks to the conversation, including on voice.'
       },
       {
         title: '@Entity Mentions',
