@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatDistanceToNow } from 'date-fns'
 import type { AiConversation, AiMessage } from '~/types'
+import { AI_PERSONA_OPTIONS } from '~~/app/utils/aiPersonas'
 
 definePageMeta({ layout: 'agency' })
 
@@ -10,12 +11,15 @@ const toast = useToast()
 const { user } = useAuth()
 
 const {
-  conversations, activeConversation, messages, loading, sending,
+  conversations, activeConversation, messages, selectedPersona, loading, sending,
   hasMoreConversations, hasMoreMessages, totalConversations,
   fetchConversations, loadMoreConversations, createConversation,
   loadConversation, loadMoreMessages, renameConversation, togglePin,
   sendMessage, archiveConversation, cleanupOldConversations, submitFeedback,
 } = useAiChat()
+
+// Slice 1.5 persona picker — narrows the AI's tools/focus (∩ RBAC). Generalist by default.
+const personaItems = AI_PERSONA_OPTIONS.map(o => ({ label: o.label, value: o.key }))
 
 // --- Voice Chat ---
 const {
@@ -1180,6 +1184,18 @@ function getRenderedMarkdown(content: string): string {
               <!-- Bottom bar inside the card -->
               <div class="flex items-center justify-between px-3 py-2">
                 <div class="flex items-center gap-1">
+                  <!-- Persona picker (Slice 1.5) — narrows the AI's tools/focus, generalist by default -->
+                  <USelect
+                    v-model="selectedPersona"
+                    :items="personaItems"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    icon="i-lucide-sparkles"
+                    class="w-auto mr-1"
+                    :disabled="sending"
+                    :ui="{ base: 'text-[11px]' }"
+                  />
                   <!-- Recording indicator -->
                   <template v-if="isRecording">
                     <span class="flex items-center gap-1.5 px-1">

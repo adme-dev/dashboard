@@ -13,6 +13,8 @@ interface ConversationDetail {
   // Set on the initial load when a still-open AI proposal exists — re-attached to the last
   // assistant message so the confirm card survives a page reload (Option B rehydration).
   pendingAction?: { proposalId: string, toolName?: string, resolved: any } | null
+  // Active persona key for the conversation (Slice 1.5) — re-selects the picker on reload.
+  persona?: string
 }
 
 interface ChatMessageResponse {
@@ -25,6 +27,8 @@ export function useAiChat() {
   const conversations = useState<AiConversation[]>('ai-chat-conversations', () => [])
   const activeConversation = useState<AiConversation | null>('ai-chat-active', () => null)
   const messages = useState<AiMessage[]>('ai-chat-messages', () => [])
+  // Slice 1.5: active persona key sent with each message; re-initialised from the conversation on load.
+  const selectedPersona = useState<string>('ai-chat-persona', () => 'general')
   const loading = ref(false)
   const sending = ref(false)
   const hasMoreConversations = ref(false)
@@ -77,6 +81,7 @@ export function useAiChat() {
       activeConversation.value = data.conversation
       messages.value = data.messages
       hasMoreMessages.value = data.hasMore
+      selectedPersona.value = data.persona || 'general'
       // Rehydrate an open proposal onto the most recent assistant message so its confirm card
       // re-renders after a reload (matches the inline shape attached during send()).
       if (data.pendingAction) {
@@ -192,6 +197,7 @@ export function useAiChat() {
         body.mentionedEntities = mentionedEntities
       }
       if (boardId) body.boardId = boardId
+      if (selectedPersona.value) body.persona = selectedPersona.value
 
       const result = await $fetch<ChatMessageResponse>(
         `/api/agency/ai/chat/conversations/${activeConversation.value.id}/messages`,
@@ -275,6 +281,7 @@ export function useAiChat() {
     conversations,
     activeConversation,
     messages,
+    selectedPersona,
     loading,
     sending,
     hasMoreConversations,
