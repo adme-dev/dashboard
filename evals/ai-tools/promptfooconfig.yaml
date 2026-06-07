@@ -33,21 +33,29 @@ providers:
       tools: file://tools.json
       temperature: 0
   # Cloudflare Workers AI candidates (fully-on-CF: edge + unified billing + no egress).
-  # Needs CLOUDFLARE_ACCOUNT_ID (= R2_ACCOUNT_ID) + CLOUDFLARE_API_KEY (token with Workers AI access).
-  # Verify the current function-calling catalog at developers.cloudflare.com/workers-ai/models (filter: Function calling).
-  - id: cloudflare-ai:chat:@cf/meta/llama-3.3-70b-instruct-fp8-fast
+  # Routed via Workers AI's OpenAI-compatible endpoint (/ai/v1) — promptfoo's native `cloudflare-ai`
+  # provider sends message content as an ARRAY, which Workers AI rejects ('array' not in 'string').
+  # Needs CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_KEY (a token or wrangler OAuth token with Workers AI access).
+  # Verify the function-calling catalog at developers.cloudflare.com/workers-ai/models (filter: Function calling).
+  - id: openai:chat:@cf/meta/llama-3.3-70b-instruct-fp8-fast
     label: cf-llama-3.3-70b
     config:
+      apiBaseUrl: https://api.cloudflare.com/client/v4/accounts/{{ env.CLOUDFLARE_ACCOUNT_ID }}/ai/v1
+      apiKeyEnvar: CLOUDFLARE_API_KEY
       tools: file://tools.json
       temperature: 0
-  - id: cloudflare-ai:chat:@hf/nousresearch/hermes-2-pro-mistral-7b
+  - id: openai:chat:@hf/nousresearch/hermes-2-pro-mistral-7b
     label: cf-hermes-2-pro
     config:
+      apiBaseUrl: https://api.cloudflare.com/client/v4/accounts/{{ env.CLOUDFLARE_ACCOUNT_ID }}/ai/v1
+      apiKeyEnvar: CLOUDFLARE_API_KEY
       tools: file://tools.json
       temperature: 0
-  - id: cloudflare-ai:chat:@cf/meta/llama-4-scout-17b-16e-instruct
+  - id: openai:chat:@cf/meta/llama-4-scout-17b-16e-instruct
     label: cf-llama-4-scout
     config:
+      apiBaseUrl: https://api.cloudflare.com/client/v4/accounts/{{ env.CLOUDFLARE_ACCOUNT_ID }}/ai/v1
+      apiKeyEnvar: CLOUDFLARE_API_KEY
       tools: file://tools.json
       temperature: 0
 
