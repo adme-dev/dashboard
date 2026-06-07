@@ -8,7 +8,9 @@
  * so resolved fields cannot be tampered with after proposal.
  */
 
-import { $fetch } from 'ofetch'
+// Use Nitro's global $fetch (NOT raw ofetch): it resolves internal relative routes like
+// '/api/agency/tasks' on the Cloudflare Workers runtime. Raw ofetch has no origin base for a
+// relative URL on the server, so it threw and the task-create silently reverted (Option B).
 import { queryOne, execute } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { executeProposal, type PendingActionDb, type PendingRow } from '~~/server/utils/ai/pendingActions'
