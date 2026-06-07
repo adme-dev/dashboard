@@ -19,6 +19,8 @@ export type NamedRef = { id: string, name: string }
 
 export type CreateTaskDeps = {
   resolveDepartment: (name: string, ctx: ToolContext) => Promise<NamedRef[]>
+  /** Boards belonging to a workspace EXACTLY named `name` (the sidebar groupings: Main/ADME/…); [] if no such workspace. */
+  resolveWorkspaceBoards: (name: string, ctx: ToolContext) => Promise<NamedRef[]>
   resolveProject: (name: string, ctx: ToolContext) => Promise<NamedRef[]>
   resolveAssignee: (name: string, ctx: ToolContext) => Promise<NamedRef[]>
   /** Persist the proposal; returns the proposal id. */
@@ -48,6 +50,19 @@ const defaultDeps: CreateTaskDeps = {
   // selectable by pickByExactName) even when many substring matches exist.
   resolveDepartment: async name =>
     queryRows<NamedRef>('SELECT id, name FROM departments WHERE name ILIKE $1 AND is_active = true ORDER BY (lower(name) = lower($2)) DESC, name LIMIT 6', [ilike(name), name]),
+  // Workspace fallback: the boards inside a workspace EXACTLY named `name` (e.g. "Main", "ADME"),
+  // so a casual workspace name leads to a board pick instead of dead-ending. Exact (not substring)
+  // workspace match avoids "Mar" pulling the whole Marketing workspace.
+  resolveWorkspaceBoards: async name =>
+    queryRows<NamedRef>(
+      `SELECT d.id, d.name FROM departments d
+         JOIN workspaces w ON w.id = d.workspace_id
+        WHERE lower(w.name) = lower($1) AND d.is_active = true
+          AND d.name NOT ILIKE 'Subitems of %'   -- hide auto-generated subitem boards
+        ORDER BY d.sort_order NULLS LAST, d.name
+        LIMIT 12`,
+      [name],
+    ),
   resolveProject: async name =>
     queryRows<NamedRef>('SELECT id, name FROM projects WHERE name ILIKE $1 ORDER BY (lower(name) = lower($2)) DESC, name LIMIT 6', [ilike(name), name]),
   resolveAssignee: async name =>
@@ -65,13 +80,20 @@ export async function proposeCreateTask(args: Args, ctx: ToolContext, deps: Crea
   if (!ctx.conversationId) return fail('Cannot prepare a task outside a conversation.')
   if (!args.title?.trim()) return fail('A task needs a title.')
 
-  // Department/board is REQUIRED to create a task — resolve it or ask. An exact name match wins over
-  // broader substring matches (pickByExactName) so a fully-specified board proposes cleanly.
+  // Department/board is REQUIRED to create a task — resolve it or ask. An exact board name wins over
+  // broader substring matches (pickByExactName). When the name isn't a unique board, fall back to
+  // treating it as a WORKSPACE and listing that workspace's boards (so casual names like "Main"/
+  // "ADME"/"Marketing" lead to a board pick instead of dead-ending or matching random boards).
   if (!args.boardName) return fail('Which board or department should this task go on?')
-  const deptMatches = await deps.resolveDepartment(args.boardName, ctx)
-  if (deptMatches.length === 0) return fail(`No board or department matching "${args.boardName}".`)
-  const depts = pickByExactName(deptMatches, args.boardName)
-  if (depts.length > 1) return ok({ disambiguation: { field: 'boardName', options: depts } })
+  const depts = pickByExactName(await deps.resolveDepartment(args.boardName, ctx), args.boardName)
+  if (depts.length !== 1) {
+    const wsBoards = await deps.resolveWorkspaceBoards(args.boardName, ctx)
+    if (wsBoards.length > 0) {
+      return ok({ disambiguation: { field: 'boardName', options: wsBoards, note: `"${args.boardName}" is a workspace — choose one of its boards.` } })
+    }
+    if (depts.length === 0) return fail(`No board or workspace matching "${args.boardName}".`)
+    return ok({ disambiguation: { field: 'boardName', options: depts } })
+  }
   const department = depts[0]!
 
   // Optional project — disambiguate if multiple match; ignore if none.

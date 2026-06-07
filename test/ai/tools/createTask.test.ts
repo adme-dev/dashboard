@@ -9,6 +9,7 @@ const ctx = (over: Partial<{ userRole: string, conversationId?: string }> = {}) 
 
 const mkDeps = (over: Partial<CreateTaskDeps> = {}): CreateTaskDeps => ({
   resolveDepartment: vi.fn().mockResolvedValue([{ id: 'd1', name: 'Creative' }]),
+  resolveWorkspaceBoards: vi.fn().mockResolvedValue([]),
   resolveProject: vi.fn().mockResolvedValue([{ id: 'p1', name: 'Acme Rebrand' }]),
   resolveAssignee: vi.fn().mockResolvedValue([{ id: 'm1', name: 'Sam' }]),
   propose: vi.fn().mockResolvedValue('prop-1'),
@@ -71,6 +72,41 @@ describe('proposeCreateTask (Option B — propose only)', () => {
     expect((res as any).data.resolved.departmentId).toBe('d1')
     expect((res as any).data.resolved.departmentName).toBe('ADME Creative Request')
     expect(deps.propose).toHaveBeenCalledTimes(1)
+  })
+
+  it('treats a workspace name as a board container — lists that workspace\'s boards (no dead-end)', async () => {
+    // "Main" is a workspace, not a board → 0 board matches, but the workspace has boards to choose from.
+    const deps = mkDeps({
+      resolveDepartment: vi.fn().mockResolvedValue([]),
+      resolveWorkspaceBoards: vi.fn().mockResolvedValue([{ id: 'b1', name: 'Main Tasks' }, { id: 'b2', name: 'Main Calendar' }]),
+    })
+    const res = await proposeCreateTask({ title: 'X', boardName: 'Main' }, ctx() as any, deps)
+    expect(res.ok).toBe(true)
+    const d = (res as any).data.disambiguation
+    expect(d.field).toBe('boardName')
+    expect(d.options.map((o: any) => o.name)).toEqual(['Main Tasks', 'Main Calendar'])
+    expect(d.note).toMatch(/workspace/i)
+    expect(deps.propose).not.toHaveBeenCalled()
+  })
+
+  it('prefers a workspace match over random substring board matches', async () => {
+    // "Marketing" substring-matches some boards but is also a workspace — surface the workspace's boards.
+    const deps = mkDeps({
+      resolveDepartment: vi.fn().mockResolvedValue([{ id: 'x1', name: 'Email Marketing' }, { id: 'x2', name: 'Marketing Calendar' }]),
+      resolveWorkspaceBoards: vi.fn().mockResolvedValue([{ id: 'w1', name: 'Campaigns' }, { id: 'w2', name: 'Social' }]),
+    })
+    const res = await proposeCreateTask({ title: 'X', boardName: 'Marketing' }, ctx() as any, deps)
+    expect(res.ok).toBe(true)
+    expect((res as any).data.disambiguation.options.map((o: any) => o.name)).toEqual(['Campaigns', 'Social'])
+    expect((res as any).data.disambiguation.note).toMatch(/workspace/i)
+  })
+
+  it('fails clearly when the name is neither a board nor a workspace', async () => {
+    const deps = mkDeps({ resolveDepartment: vi.fn().mockResolvedValue([]), resolveWorkspaceBoards: vi.fn().mockResolvedValue([]) })
+    const res = await proposeCreateTask({ title: 'X', boardName: 'Nonexistent' }, ctx() as any, deps)
+    expect(res.ok).toBe(false)
+    expect((res as any).error).toMatch(/no board or workspace/i)
+    expect(deps.propose).not.toHaveBeenCalled()
   })
 
   it('refuses to prepare a task outside a conversation', async () => {
