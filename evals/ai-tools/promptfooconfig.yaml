@@ -8,20 +8,28 @@ prompts:
 
 # Bake-off: all three Groq open-source candidates in one run. The winner becomes AI_LOOP_MODEL,
 # the runner-up AI_LOOP_FALLBACK_MODEL. (Sonnet 4.6 can be A/B'd in prod via @ai-sdk/anthropic.)
+# OpenAI-compatible provider pointed at Groq — it folds tool_calls into `output` (the bare `groq:`
+# provider returns output:null on a tool call, which assertions can't see).
 providers:
-  - id: groq:openai/gpt-oss-120b
+  - id: openai:chat:openai/gpt-oss-120b
     label: gpt-oss-120b
     config:
+      apiBaseUrl: https://api.groq.com/openai/v1
+      apiKeyEnvar: GROQ_API_KEY
       tools: file://tools.json
       temperature: 0
-  - id: groq:moonshotai/kimi-k2-instruct
-    label: kimi-k2
-    config:
-      tools: file://tools.json
-      temperature: 0
-  - id: groq:openai/gpt-oss-20b
+  - id: openai:chat:openai/gpt-oss-20b
     label: gpt-oss-20b
     config:
+      apiBaseUrl: https://api.groq.com/openai/v1
+      apiKeyEnvar: GROQ_API_KEY
+      tools: file://tools.json
+      temperature: 0
+  - id: openai:chat:qwen/qwen3-32b
+    label: qwen3-32b
+    config:
+      apiBaseUrl: https://api.groq.com/openai/v1
+      apiKeyEnvar: GROQ_API_KEY
       tools: file://tools.json
       temperature: 0
 

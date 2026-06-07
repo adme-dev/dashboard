@@ -88,7 +88,8 @@ export default defineNuxtConfig({
     // AI tool-calling (Slice 1) — OFF by default; flip per-env to enable the loop
     aiToolsEnabled: process.env.AI_TOOLS_ENABLED === 'true',
     aiLoopModel: process.env.AI_LOOP_MODEL || 'groq/openai/gpt-oss-120b',           // Option 2: Groq open-source default
-    aiLoopFallbackModel: process.env.AI_LOOP_FALLBACK_MODEL || 'groq/moonshotai/kimi-k2-instruct',
+    // Fallback was kimi-k2 but Groq returns 404 for it (not on the account) — gpt-oss-20b is the valid sibling.
+    aiLoopFallbackModel: process.env.AI_LOOP_FALLBACK_MODEL || 'groq/openai/gpt-oss-20b',
     // Sonnet 4.6 = dormant prod escape hatch via 'anthropic/claude-sonnet-4-6' (needs ANTHROPIC_API_KEY + gateway)
     aiGateBudgetUsd: Number(process.env.AI_LOOP_BUDGET_USD || '0.25'), // per-turn cost cap
 

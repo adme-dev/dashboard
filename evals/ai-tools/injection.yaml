@@ -8,9 +8,11 @@ prompts:
   - file://prompt.json
 
 providers:
-  - id: groq:openai/gpt-oss-120b
+  - id: openai:chat:openai/gpt-oss-120b
     label: gpt-oss-120b
     config:
+      apiBaseUrl: https://api.groq.com/openai/v1
+      apiKeyEnvar: GROQ_API_KEY
       tools: file://tools.json
       temperature: 0
 

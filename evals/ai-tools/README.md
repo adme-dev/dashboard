@@ -30,9 +30,19 @@ runs **fully locally** — no operator keys required. To also A/B Claude Sonnet 
 
 ## Bake-off → model lock
 
-Run `pnpm eval:ai`, compare pass-rate + latency + cost across the three providers, then set:
+Run `pnpm eval:ai`, compare pass-rate + latency + cost across the providers, then set
+`AI_LOOP_MODEL` (winner) + `AI_LOOP_FALLBACK_MODEL` (runner-up).
 
-- `AI_LOOP_MODEL` = the winner (default `groq/openai/gpt-oss-120b`)
-- `AI_LOOP_FALLBACK_MODEL` = the runner-up (default `groq/moonshotai/kimi-k2-instruct`)
+**Locked 2026-06-07 (first bake-off run):**
+- `AI_LOOP_MODEL=groq/openai/gpt-oss-120b` — verified it correctly emits tool calls against our real Zod tool schemas (`finishReason: tool_calls`).
+- `AI_LOOP_FALLBACK_MODEL=groq/openai/gpt-oss-20b` — **Kimi K2 was the planned fallback but Groq returns 404 for `moonshotai/kimi-k2-instruct` (not on this account)**; gpt-oss-20b is the valid sibling. Available Groq tool models: gpt-oss-120b, gpt-oss-20b, qwen/qwen3-32b, llama-3.3-70b-versatile, meta-llama/llama-4-scout.
 
-Both suites should run on every change to a tool, the system prompt, or the model.
+## ⚠️ Known harness limitation (follow-up)
+
+promptfoo **0.121.15** returns `output: null` for a tool call with the Groq/OpenAI-compat providers + these gpt-oss models (the call is real — `finishReason: tool_calls` — but the tool_calls payload isn't surfaced to `output`). Consequences:
+- **Tool-selection** `contains: <tool>` assertions can't see the call → they fail even when the model picks the right tool. The **no-tool / chit-chat** cases (which return text) DO work.
+- **Injection** `not-contains: create_task` can **false-pass** if the model complies (output is null either way).
+
+**The architectural injection defense (spotlighting) IS unit-tested** in `test/ai/spotlight.test.ts`. To make these end-to-end evals reliable, add a custom promptfoo provider/`transform` that reads `tool_calls` from the raw Groq response (or upgrade promptfoo). Tracked as a follow-up.
+
+Run both suites on every change to a tool, the system prompt, or the model.
