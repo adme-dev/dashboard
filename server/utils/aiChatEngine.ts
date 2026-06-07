@@ -4,6 +4,7 @@ import { generateGroqInsight, GROQ_MODELS } from '~~/server/utils/groqClient'
 import { retrieveContext } from '~~/server/utils/aiContextRetriever'
 import { getRelevantPatterns } from '~~/server/utils/aiFeedbackProcessor'
 import { shouldUseToolLoop } from '~~/server/utils/ai/gate'
+import { resolvePersona } from '~~/server/utils/ai/personas'
 import type { AiMessage, AiContextSource, AiIntent } from '~/types'
 
 export interface ChatResponse {
@@ -339,8 +340,30 @@ export async function processUserMessage(
   event?: H3Event,
   mentionedEntities?: Array<{ type: string; id: string }>,
   boardId?: string,
+  persona?: string,
 ): Promise<ChatResponse> {
   const startTime = Date.now()
+  // Slice 1.5: resolve the (optional) named persona — narrows tools (∩ RBAC) + adds a focus preamble.
+  // An explicit arg (from the chat picker) wins; otherwise fall back to the persona persisted on the
+  // conversation so callers that don't pass one (voice, quick-action) still honor the user's choice.
+  // Unknown/absent → the generalist.
+  let personaKey = persona
+  if (!personaKey && event) {
+    const convRow = await queryOne<{ system_context: any }>(
+      `SELECT system_context FROM ai_conversations WHERE id = $1`, [conversationId])
+    personaKey = (convRow?.system_context as any)?.persona
+  }
+  const activePersona = resolvePersona(personaKey)
+  // Persist an explicit choice (migration-free: system_context JSONB) so it sticks across reloads and
+  // for the voice/quick-action paths above. Non-fatal if persistence fails.
+  if (persona && event) {
+    await execute(
+      `UPDATE ai_conversations
+       SET system_context = COALESCE(system_context, '{}'::jsonb) || jsonb_build_object('persona', $2::text)
+       WHERE id = $1`,
+      [conversationId, activePersona.key],
+    ).catch(() => {})
+  }
 
   // 1. Load recent conversation history (last 10 messages)
   const historyRows = await queryRows(`
@@ -443,6 +466,7 @@ export async function processUserMessage(
         system: systemPrompt,
         messages: loopMessages,
         seed: conversationId,
+        persona: activePersona,
       })
       aiContent = loop.text
       toolTrace = loop.toolCalls

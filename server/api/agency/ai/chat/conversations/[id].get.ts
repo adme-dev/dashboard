@@ -92,5 +92,7 @@ export default defineEventHandler(async (event) => {
     messages,
     hasMore: messages.length === limit,
     pendingAction,
+    // Active persona (Slice 1.5) so the picker re-selects it on reload; defaults to the generalist.
+    persona: (conv.system_context as any)?.persona || 'general',
   }
 })

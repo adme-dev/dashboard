@@ -60,8 +60,11 @@ export default defineEventHandler(async (event) => {
   // so codebase context is scoped to that board's connected repo.
   const boardId = typeof body?.boardId === 'string' ? body.boardId : undefined
 
+  // Optional: named persona key (Slice 1.5). Unknown/absent → generalist (validated server-side).
+  const persona = typeof body?.persona === 'string' ? body.persona : undefined
+
   try {
-    const result = await processUserMessage(id, user.id, user.role, content, event, mentionedEntities, boardId)
+    const result = await processUserMessage(id, user.id, user.role, content, event, mentionedEntities, boardId, persona)
     return result
   } catch (err: any) {
     console.error('Failed to process AI message:', err)
