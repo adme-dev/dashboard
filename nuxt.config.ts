@@ -169,7 +169,12 @@ export default defineNuxtConfig({
       // Cloudflare Turnstile site key for the public email subscribe form. Empty
       // until the operator creates a widget — the widget + server check stay
       // inert (form works without it) while unset.
-      turnstileSiteKey: process.env.NUXT_PUBLIC_TURNSTILE_SITE_KEY || ''
+      turnstileSiteKey: process.env.NUXT_PUBLIC_TURNSTILE_SITE_KEY || '',
+      // Client-visible mirror of the private `aiToolsEnabled` flag, used ONLY to gate
+      // agentic-AI UI (e.g. the chat persona picker) so it stays hidden until the loop
+      // is live. The real authorization boundary is the server-side flag + RBAC; this is
+      // a non-sensitive boolean for presentation only.
+      aiToolsEnabled: process.env.AI_TOOLS_ENABLED === 'true'
     }
   },
 

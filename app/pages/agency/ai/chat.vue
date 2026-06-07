@@ -19,6 +19,9 @@ const {
 } = useAiChat()
 
 // Slice 1.5 persona picker — narrows the AI's tools/focus (∩ RBAC). Generalist by default.
+// Hidden until the agentic tool loop is live: the picker only does anything once
+// AI_TOOLS_ENABLED is on, so gate its visibility on the client-visible mirror of that flag.
+const aiToolsEnabled = Boolean(useRuntimeConfig().public.aiToolsEnabled)
 const personaItems = AI_PERSONA_OPTIONS.map(o => ({ label: o.label, value: o.key }))
 
 // --- Voice Chat ---
@@ -1184,8 +1187,10 @@ function getRenderedMarkdown(content: string): string {
               <!-- Bottom bar inside the card -->
               <div class="flex items-center justify-between px-3 py-2">
                 <div class="flex items-center gap-1">
-                  <!-- Persona picker (Slice 1.5) — narrows the AI's tools/focus, generalist by default -->
+                  <!-- Persona picker (Slice 1.5) — narrows the AI's tools/focus, generalist by default.
+                       Hidden until AI_TOOLS_ENABLED is on (the loop it drives is flag-gated). -->
                   <USelect
+                    v-if="aiToolsEnabled"
                     v-model="selectedPersona"
                     :items="personaItems"
                     size="xs"
