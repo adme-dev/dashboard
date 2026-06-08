@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { $fetch } from 'ofetch'
+// Use Nitro's global $fetch (auto-imported), NOT raw ofetch — it resolves relative internal routes
+// on the Cloudflare runtime; raw ofetch throws on a relative URL (no origin base). See #129.
 import { queryOne } from '~~/server/utils/db'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
