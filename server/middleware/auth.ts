@@ -41,7 +41,10 @@ const publicRoutes = [
   '/api/leads/webhook/',
   // Analytics export destination — authed by a hashed bearer token validated
   // inline against analytics_export_tokens (no session cookie).
-  '/api/export/'
+  '/api/export/',
+  // Public token-gated render redirect — for social platforms fetching media_urls
+  // at publish time (incl. scheduled posts days later). Auth is the HMAC token itself.
+  '/api/public/renders/'
 ]
 
 // Paths that an authenticated cron can read with X-Internal-Cron-Secret.
