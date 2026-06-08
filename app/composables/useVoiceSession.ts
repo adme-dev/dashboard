@@ -133,27 +133,19 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
       return
     }
 
-    const convId = await opts.ensureConversation()
-    if (!convId) {
-      dispatch({ type: 'ERROR', message: 'No conversation' })
-      return
-    }
-
-    // Transcribe the confirm utterance by reusing the voice endpoint's STT. We only use its
-    // transcript here; the classification (not the agent) decides whether to execute.
-    let transcript = ''
-    try {
-      const r = await voice.sendVoiceMessage(convId, blob) as VoiceTurnResult
-      transcript = r.transcribedText || ''
-    } catch {
-      transcript = ''
-    }
-
+    // Transcribe the confirm utterance with STT ONLY — do not run the agent on "confirm"/"cancel"
+    // (that would pollute the thread and could leak a stray proposal). Classification decides.
+    const transcript = await transcribe(blob)
     const intent = classifyConfirmUtterance(transcript)
     const proposalId = state.value.pendingProposalId
     dispatch({ type: 'CONFIRM_INTENT', intent })
 
     if (intent === 'affirmative' && proposalId) {
+      const convId = await opts.ensureConversation()
+      if (!convId) {
+        dispatch({ type: 'ERROR', message: 'No conversation' })
+        return
+      }
       await executeProposal(convId, proposalId)
     } else if (intent === 'negative') {
       opts.onProposalResolved()
@@ -206,7 +198,18 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
     if (state.value.phase === 'listening') void runListen()
   }
 
-  // --- TTS helpers ----------------------------------------------------------
+  // --- STT / TTS helpers ----------------------------------------------------
+  async function transcribe(blob: Blob): Promise<string> {
+    try {
+      const fd = new FormData()
+      fd.append('audio', blob)
+      const r = await $fetch<{ text: string } | null>('/api/agency/ai/chat/transcribe', { method: 'POST', body: fd })
+      return r?.text || ''
+    } catch {
+      return ''
+    }
+  }
+
   async function speakText(text: string) {
     try {
       const res = await $fetch<{ audioBase64: string, audioFormat: string } | null>(
