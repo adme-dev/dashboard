@@ -8,7 +8,10 @@ export function collectClipKeys(timeline: TimelineState): string[] {
   const keys = new Set<string>()
   for (const track of timeline.tracks) {
     if (track.muted) continue
-    for (const clip of track.clips) keys.add(clip.r2_key)
+    for (const clip of track.clips) {
+      const key = (clip as { r2_key?: string }).r2_key
+      if (key) keys.add(key)   // overlay clips have no r2_key — skip them
+    }
   }
   return [...keys]
 }
