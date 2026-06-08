@@ -226,5 +226,12 @@ async function syncAll() {
         :end-date="filters.endDate"
       />
     </div>
+
+    <!-- GA4 Website & Funnel (per-client) -->
+    <AnalyticsFunnelChart
+      :client-id="filters.clientId"
+      :start-date="filters.startDate"
+      :end-date="filters.endDate"
+    />
   </div>
 </template>

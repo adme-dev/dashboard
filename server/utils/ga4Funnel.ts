@@ -19,7 +19,7 @@ export interface FunnelChannelRow {
   sessionToLeadRate: number | null
 }
 
-interface Ga4ChannelAgg { sessions: number; engagedSessions: number; keyEvents: number }
+interface Ga4ChannelAgg { sessions: number, engagedSessions: number, keyEvents: number }
 
 export interface FunnelInput {
   spendByChannel: Record<string, number>
@@ -39,7 +39,7 @@ function emptyRow(channel: string): FunnelChannelRow {
   }
 }
 
-export function buildFunnel(input: FunnelInput): { channels: FunnelChannelRow[]; totals: FunnelChannelRow } {
+export function buildFunnel(input: FunnelInput): { channels: FunnelChannelRow[], totals: FunnelChannelRow } {
   const channels = new Set<string>([
     ...Object.keys(input.spendByChannel),
     ...Object.keys(input.ga4ByChannel),
@@ -81,4 +81,23 @@ export function buildFunnel(input: FunnelInput): { channels: FunnelChannelRow[];
   totals.sessionToLeadRate = ratio(totals.leads, totals.sessions)
 
   return { channels: rows, totals }
+}
+
+const DAY_MS = 86_400_000
+
+/**
+ * Previous equal-length window, ending the day before startDate.
+ * Dates are treated as UTC calendar days; returns YYYY-MM-DD strings.
+ * Equivalent (for calendar-date inputs) to the prior-period logic in server/api/agency/analytics/overview.get.ts.
+ */
+export function previousWindow(startDate: string, endDate: string): { prevStart: string, prevEnd: string } {
+  const start = new Date(startDate)
+  const end = new Date(endDate)
+  const durationMs = end.getTime() - start.getTime()
+  const prevEnd = new Date(start.getTime() - DAY_MS)
+  const prevStart = new Date(prevEnd.getTime() - durationMs)
+  return {
+    prevStart: prevStart.toISOString().slice(0, 10),
+    prevEnd: prevEnd.toISOString().slice(0, 10)
+  }
 }
