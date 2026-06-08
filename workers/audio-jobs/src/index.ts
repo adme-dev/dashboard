@@ -50,10 +50,13 @@ export default {
             markRendering: db.dbMarkRenderRendering,
             markDone: db.dbMarkRenderDone,
             markFailed: db.dbMarkRenderFailed,
-            renderOne: ({ projectId, jobId, state, formatKey }) =>
-              renderComposite({ RENDER: env.RENDER, AUDIO_BUCKET: env.AUDIO_BUCKET as any }, {
-                projectId, jobId, state, profile: videoFormatFor(formatKey)
-              }),
+            renderOne: ({ projectId, jobId, state, formatKey, resolvedOverlays }) => {
+              const profile = videoFormatFor(formatKey)
+              if (!profile) throw new Error(`unknown video format: ${formatKey}`)
+              return renderComposite({ RENDER: env.RENDER, AUDIO_BUCKET: env.AUDIO_BUCKET as any }, {
+                projectId, jobId, state, profile, resolvedOverlays
+              })
+            },
             centsPerSec: Number(env.RENDER_CENTS_PER_SEC ?? '2')
           })
           msg.ack()

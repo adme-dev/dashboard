@@ -24,4 +24,26 @@ describe('runVideoCompositeJob', () => {
     await expect(runVideoCompositeJob({ jobId: 'j', projectId: 'p', timelineId: 't', formats: ['reels_9x16'] }, d as any)).rejects.toThrow('boom')
     expect(d.markFailed).toHaveBeenCalledWith('j', 'boom')
   })
+  it('threads resolvedOverlays from the message through to deps.renderOne', async () => {
+    const overlays = [
+      { clipId: 'o1', htmlKey: 'media/p/j/overlay-o1.html', timeline_start_sec: 0, duration_sec: 5 }
+    ]
+    const d = deps()
+    await runVideoCompositeJob(
+      { jobId: 'j', projectId: 'p', timelineId: 't', formats: ['reels_9x16'], resolvedOverlays: overlays },
+      d as any
+    )
+    expect(d.renderOne).toHaveBeenCalledTimes(1)
+    expect(d.renderOne.mock.calls[0][0]).toMatchObject({ formatKey: 'reels_9x16', resolvedOverlays: overlays })
+  })
+  it('passes undefined resolvedOverlays when the message has none', async () => {
+    const d = deps()
+    await runVideoCompositeJob(
+      { jobId: 'j', projectId: 'p', timelineId: 't', formats: ['reels_9x16'] },
+      d as any
+    )
+    expect(d.renderOne).toHaveBeenCalledTimes(1)
+    // resolvedOverlays should be undefined (not a filled array) when not in the message
+    expect(d.renderOne.mock.calls[0][0].resolvedOverlays).toBeUndefined()
+  })
 })
