@@ -216,3 +216,57 @@ describe('Backward compatibility (schema_version 1 audio unchanged)', () => {
     expect(clip.fade_curve).toBe('linear')
   })
 })
+
+describe('validateTimeline (AV semantics)', () => {
+  const baseAv = () => TimelineStateSchema.parse({
+    schema_version: 2, media_type: 'av',
+    tracks: [
+      { id: 'vid', name: 'Video', kind: 'video', clips: [
+        { type: 'video', id: 'v1', r2_key: 'm/f.mp4', timeline_start_sec: 0, duration_sec: 5, base_source: 'uploaded_footage' }
+      ] },
+      { id: 'ovl', name: 'Overlay', kind: 'overlay', clips: [
+        { type: 'overlay', id: 'o1', timeline_start_sec: 0, duration_sec: 5, gsap_project_id: 'b1' }
+      ] }
+    ]
+  })
+
+  it('accepts a well-formed AV timeline', () => {
+    expect(validateTimeline(baseAv()).ok).toBe(true)
+  })
+
+  it('rejects a clip whose type does not match its track kind', () => {
+    const s = baseAv()
+    ;(s.tracks[0].clips[0] as any).type = 'overlay'
+    expect(validateTimeline(s).ok).toBe(false)
+  })
+
+  it('rejects a still_kenburns video clip with no kenburns params', () => {
+    const s = baseAv()
+    ;(s.tracks[0].clips[0] as any).base_source = 'still_kenburns'
+    ;(s.tracks[0].clips[0] as any).kenburns = null
+    expect(validateTimeline(s).ok).toBe(false)
+  })
+
+  it('rejects a non-positive duration_sec on a video/overlay clip', () => {
+    const s = baseAv()
+    ;(s.tracks[0].clips[0] as any).duration_sec = 0
+    expect(validateTimeline(s).ok).toBe(false)
+  })
+})
+
+describe('computeDuration (AV)', () => {
+  it('uses timeline_start + duration_sec for video/overlay clips', () => {
+    const s = TimelineStateSchema.parse({
+      schema_version: 2, media_type: 'av',
+      tracks: [
+        { id: 'vid', name: 'V', kind: 'video', clips: [
+          { type: 'video', id: 'v1', r2_key: 'm/f.mp4', timeline_start_sec: 10, duration_sec: 5, base_source: 'uploaded_footage' }
+        ] },
+        { id: 'ovl', name: 'O', kind: 'overlay', clips: [
+          { type: 'overlay', id: 'o1', timeline_start_sec: 0, duration_sec: 8, gsap_project_id: 'b1' }
+        ] }
+      ]
+    })
+    expect(computeDuration(s)).toBe(15)
+  })
+})

@@ -112,6 +112,10 @@ export function validateTimeline(state: TimelineState): ValidateResult {
   const errors: string[] = []
   const trackIds = new Set<string>()
 
+  const expectedClipType: Record<string, 'audio' | 'video' | 'overlay'> = {
+    voiceover: 'audio', music: 'audio', sfx: 'audio', video: 'video', overlay: 'overlay'
+  }
+
   for (const track of state.tracks) {
     if (trackIds.has(track.id)) errors.push(`duplicate track id: ${track.id}`)
     trackIds.add(track.id)
@@ -121,10 +125,27 @@ export function validateTimeline(state: TimelineState): ValidateResult {
       const c = clip as any
       if (clipIds.has(c.id)) errors.push(`duplicate clip id "${c.id}" in track ${track.id}`)
       clipIds.add(c.id)
-      if (c.timeline_start_sec < 0) errors.push(`clip ${c.id}: timeline_start_sec must be >= 0`)
-      if (c.source_in_sec != null && c.source_in_sec < 0) errors.push(`clip ${c.id}: source_in_sec must be >= 0`)
-      if (c.source_out_sec != null && c.source_in_sec != null && c.source_out_sec <= c.source_in_sec) {
-        errors.push(`clip ${c.id}: source_out_sec must be > source_in_sec`)
+
+      const want = expectedClipType[track.kind]
+      const got = c.type ?? 'audio'
+      if (want && got !== want) {
+        errors.push(`clip ${clip.id}: type "${got}" does not match track kind "${track.kind}"`)
+      }
+      if (got === 'audio') {
+        if (c.timeline_start_sec < 0) errors.push(`clip ${c.id}: timeline_start_sec must be >= 0`)
+        if (c.source_in_sec < 0) errors.push(`clip ${c.id}: source_in_sec must be >= 0`)
+        if (c.source_out_sec != null && c.source_out_sec <= c.source_in_sec) {
+          errors.push(`clip ${c.id}: source_out_sec must be > source_in_sec`)
+        }
+      } else if (got === 'video') {
+        if (c.timeline_start_sec < 0) errors.push(`clip ${c.id}: timeline_start_sec must be >= 0`)
+        if (c.duration_sec <= 0) errors.push(`clip ${c.id}: duration_sec must be > 0`)
+        if (c.base_source === 'still_kenburns' && !c.kenburns) {
+          errors.push(`clip ${c.id}: still_kenburns requires kenburns params`)
+        }
+      } else if (got === 'overlay') {
+        if (c.timeline_start_sec < 0) errors.push(`clip ${c.id}: timeline_start_sec must be >= 0`)
+        if (c.duration_sec <= 0) errors.push(`clip ${c.id}: duration_sec must be > 0`)
       }
     }
   }
@@ -150,11 +171,14 @@ export function computeDuration(state: TimelineState, sourceDurations: Record<st
   for (const track of state.tracks) {
     for (const clip of track.clips) {
       const c = clip as any
-      const end = c.source_out_sec ?? sourceDurations[c.id] ?? null
-      const source_in = c.source_in_sec ?? 0
-      const clipEnd = end == null
-        ? c.timeline_start_sec
-        : c.timeline_start_sec + (end - source_in)
+      const type = c.type ?? 'audio'
+      let clipEnd: number
+      if (type === 'audio') {
+        const end = c.source_out_sec ?? sourceDurations[c.id] ?? null
+        clipEnd = end == null ? c.timeline_start_sec : c.timeline_start_sec + (end - c.source_in_sec)
+      } else {
+        clipEnd = c.timeline_start_sec + c.duration_sec
+      }
       if (clipEnd > max) max = clipEnd
     }
   }
