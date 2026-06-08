@@ -360,6 +360,13 @@ export function useMediaProjectEditor(projectId: string) {
     })
   }
 
+  /** Send a rendered variant to the client portal for review. Returns the created review or throws. */
+  async function sendToPortal(jobId: string, format: string): Promise<{ review: any }> {
+    return await $fetch(`/api/agency/audio/projects/${projectId}/renders/${jobId}/send-to-portal`, {
+      method: 'POST', body: { format }
+    })
+  }
+
   function deleteClipAction(clipId: string) {
     if (!timeline.value) return
     applyEdit(deleteClip(timeline.value, { clipId }))
@@ -516,7 +523,7 @@ export function useMediaProjectEditor(projectId: string) {
     undoAction, redoAction,
     // AV actions
     uploadMedia, addVideoClipAction, addOverlayClipAction,
-    renderVideoAction, refreshRenderJobs, renderJobs, rendering, publishToSocial,
+    renderVideoAction, refreshRenderJobs, renderJobs, rendering, publishToSocial, sendToPortal,
     /** Merge a new presigned URL into the live sources map (called before addClipAction). */
     mergeSource,
     // Version management

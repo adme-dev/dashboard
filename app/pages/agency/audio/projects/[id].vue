@@ -79,6 +79,15 @@ async function onPublishToSocial(job: any, format: string) {
   }
 }
 
+async function onSendToPortal(job: any, format: string) {
+  try {
+    await editor.sendToPortal(job.id, String(format))
+    toast.add({ title: 'Sent to client portal', description: 'The client can review it in their portal.', color: 'success' })
+  } catch (e: any) {
+    toast.add({ title: 'Could not send to portal', description: e?.data?.statusMessage ?? '', color: 'error' })
+  }
+}
+
 function jobStatusColor(s: string) { return s === 'done' ? 'success' : s === 'failed' ? 'error' : 'info' }
 
 // Refresh render jobs once an AV project finishes loading (isAv depends on the
@@ -372,6 +381,12 @@ const saveStatusColor = computed(() => {
                 :items="[Object.keys(job.variants || {}).map((fmt) => ({ label: `Publish ${fmt}`, icon: 'i-lucide-share-2', onSelect: () => onPublishToSocial(job, String(fmt)) }))]"
               >
                 <UButton icon="i-lucide-share-2" size="xs" variant="ghost" color="primary" label="Publish" />
+              </UDropdownMenu>
+              <UDropdownMenu
+                v-if="job.status === 'done'"
+                :items="[Object.keys(job.variants || {}).map((fmt) => ({ label: `Send ${fmt} to portal`, icon: 'i-lucide-send', onSelect: () => onSendToPortal(job, String(fmt)) }))]"
+              >
+                <UButton icon="i-lucide-send" size="xs" variant="ghost" color="neutral" label="To portal" />
               </UDropdownMenu>
             </div>
           </div>
