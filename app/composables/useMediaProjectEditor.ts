@@ -14,6 +14,7 @@ import {
   addVideoClip, addOverlayClip, trimVisualClip
 } from '~~/app/utils/audio/timelineEdit'
 import type { Track } from '~~/server/utils/audio/timelineSchema'
+import type { MediaRenderJob } from '~~/app/types'
 
 export type EditorStatus = 'idle' | 'loading' | 'ready' | 'error'
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -315,14 +316,14 @@ export function useMediaProjectEditor(projectId: string) {
   }
 
   // ─── Render jobs ────────────────────────────────────────────────────────────
-  const renderJobs = ref<any[]>([])
+  const renderJobs = ref<MediaRenderJob[]>([])
   const rendering = ref(false)
   let pollTimer: ReturnType<typeof setTimeout> | null = null
 
   async function refreshRenderJobs() {
     try {
-      const res = await $fetch<{ jobs: any[] }>(`/api/agency/audio/projects/${projectId}/render-jobs`)
-      renderJobs.value = res.jobs
+      const res = await $fetch<{ jobs: MediaRenderJob[] }>(`/api/agency/audio/projects/${projectId}/render-jobs`)
+      renderJobs.value = res?.jobs ?? []
     } catch { /* surfaced via UI emptiness */ }
   }
 
