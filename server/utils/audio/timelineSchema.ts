@@ -52,6 +52,7 @@ export const OverlayClipSchema = z.object({
   timeline_start_sec: z.number(),
   duration_sec: z.number(),
   gsap_project_id: z.string().min(1),
+  gsap_format_key: z.string().nullable().default(null),
   opacity: z.number().default(1)
 })
 

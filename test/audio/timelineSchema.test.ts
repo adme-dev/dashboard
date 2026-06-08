@@ -289,3 +289,16 @@ describe('migrateTimeline + emptyAvTimeline', () => {
     expect(validateTimeline(s).ok).toBe(true)
   })
 })
+
+describe('OverlayClip gsap_format_key', () => {
+  it('parses an overlay clip with a gsap_format_key and defaults it when absent', () => {
+    const s = TimelineStateSchema.parse({ schema_version: 2, media_type: 'av', tracks: [
+      { id: 'ovl', name: 'O', kind: 'overlay', clips: [
+        { type: 'overlay', id: 'o1', timeline_start_sec: 0, duration_sec: 5, gsap_project_id: 'b1', gsap_format_key: 'fb_story' },
+        { type: 'overlay', id: 'o2', timeline_start_sec: 5, duration_sec: 5, gsap_project_id: 'b1' }
+      ] }
+    ] })
+    expect((s.tracks[0].clips[0] as any).gsap_format_key).toBe('fb_story')
+    expect((s.tracks[0].clips[1] as any).gsap_format_key).toBeNull()  // default null → resolver picks by aspect
+  })
+})
