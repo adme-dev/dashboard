@@ -68,8 +68,8 @@ function getDmUserId(ch: ChatChannel): string | undefined {
       <UDropdownMenu
         :items="[
           [
-            { label: 'New Channel', icon: 'i-lucide-hash', click: () => emit('create-channel') },
-            { label: 'New Message', icon: 'i-lucide-pen-square', click: () => emit('create-dm') }
+            { label: 'New Channel', icon: 'i-lucide-hash', onSelect: () => emit('create-channel') },
+            { label: 'New Message', icon: 'i-lucide-pen-square', onSelect: () => emit('create-dm') }
           ]
         ]"
       >

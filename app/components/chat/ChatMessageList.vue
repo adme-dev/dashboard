@@ -413,13 +413,13 @@ defineExpose({ scrollToBottom, scrollToUnread })
                   @update:open="v => menuOpenMessageId = v ? msg.id : (menuOpenMessageId === msg.id ? null : menuOpenMessageId)"
                   :items="[
                     [
-                      { label: 'Reply', icon: 'i-lucide-reply', click: () => emit('reply', msg) },
-                      { label: 'Forward', icon: 'i-lucide-forward', click: () => emit('forward', msg) },
-                      { label: 'Save message', icon: 'i-lucide-bookmark', click: () => emit('save', msg.id) },
-                      { label: 'Pin message', icon: 'i-lucide-pin', click: () => emit('pin', msg.id) },
+                      { label: 'Reply', icon: 'i-lucide-reply', onSelect: () => emit('reply', msg) },
+                      { label: 'Forward', icon: 'i-lucide-forward', onSelect: () => emit('forward', msg) },
+                      { label: 'Save message', icon: 'i-lucide-bookmark', onSelect: () => emit('save', msg.id) },
+                      { label: 'Pin message', icon: 'i-lucide-pin', onSelect: () => emit('pin', msg.id) },
                       ...(msg.user_id === currentUserId ? [
-                        { label: 'Edit', icon: 'i-lucide-pencil', click: () => emit('edit', msg) },
-                        { label: 'Delete', icon: 'i-lucide-trash-2', click: () => emit('delete', msg.id) }
+                        { label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => emit('edit', msg) },
+                        { label: 'Delete', icon: 'i-lucide-trash-2', onSelect: () => emit('delete', msg.id) }
                       ] : [])
                     ]
                   ]"

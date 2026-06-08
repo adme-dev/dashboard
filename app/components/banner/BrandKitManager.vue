@@ -259,11 +259,11 @@ function applyKit(kit: BannerBrandKit) {
             <UDropdownMenu
               :items="[
                 [
-                  { label: 'Apply to Studio', icon: 'i-lucide-paintbrush', click: () => applyKit(kit) },
-                  { label: 'Edit', icon: 'i-lucide-pencil', click: () => openEdit(kit) },
+                  { label: 'Apply to Studio', icon: 'i-lucide-paintbrush', onSelect: () => applyKit(kit) },
+                  { label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => openEdit(kit) },
                 ],
                 [
-                  { label: 'Delete', icon: 'i-lucide-trash-2', click: () => confirmDelete(kit) },
+                  { label: 'Delete', icon: 'i-lucide-trash-2', onSelect: () => confirmDelete(kit) },
                 ],
               ]"
             >

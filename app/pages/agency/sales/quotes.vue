@@ -103,17 +103,17 @@ const columns: any[] = [
 // Actions
 const getActions = (quote: any) => [
   [
-    { label: 'View Details', icon: 'i-lucide-eye', click: () => navigateTo(`/agency/sales/quotes/${quote.id}`) },
-    { label: 'Edit Quote', icon: 'i-lucide-pencil', click: () => navigateTo(`/agency/sales/quotes/${quote.id}/edit`), disabled: quote.status === 'accepted' },
-    { label: 'Duplicate', icon: 'i-lucide-copy', click: () => duplicateQuote(quote) }
+    { label: 'View Details', icon: 'i-lucide-eye', onSelect: () => navigateTo(`/agency/sales/quotes/${quote.id}`) },
+    { label: 'Edit Quote', icon: 'i-lucide-pencil', onSelect: () => navigateTo(`/agency/sales/quotes/${quote.id}/edit`), disabled: quote.status === 'accepted' },
+    { label: 'Duplicate', icon: 'i-lucide-copy', onSelect: () => duplicateQuote(quote) }
   ],
   [
-    { label: 'Send to Client', icon: 'i-lucide-send', click: () => sendQuote(quote), disabled: ['accepted', 'rejected', 'sent'].includes(quote.status) },
-    { label: 'Mark as Accepted', icon: 'i-lucide-check-circle', click: () => acceptQuote(quote), disabled: quote.status === 'accepted' },
-    { label: 'Mark as Rejected', icon: 'i-lucide-x-circle', click: () => rejectQuote(quote), disabled: quote.status === 'rejected' }
+    { label: 'Send to Client', icon: 'i-lucide-send', onSelect: () => sendQuote(quote), disabled: ['accepted', 'rejected', 'sent'].includes(quote.status) },
+    { label: 'Mark as Accepted', icon: 'i-lucide-check-circle', onSelect: () => acceptQuote(quote), disabled: quote.status === 'accepted' },
+    { label: 'Mark as Rejected', icon: 'i-lucide-x-circle', onSelect: () => rejectQuote(quote), disabled: quote.status === 'rejected' }
   ],
   [
-    { label: 'Push to Xero', icon: 'i-lucide-upload-cloud', click: () => pushToXero(quote), disabled: !!quote.xeroQuoteId },
+    { label: 'Push to Xero', icon: 'i-lucide-upload-cloud', onSelect: () => pushToXero(quote), disabled: !!quote.xeroQuoteId },
     { label: 'Download PDF', icon: 'i-lucide-download' }
   ]
 ]

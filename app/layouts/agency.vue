@@ -7,6 +7,10 @@ const route = useRoute()
 const open = ref(false)
 const selectedWorkspace = ref<string | null>(null)
 
+// The Activity Hub floating bubble is hidden on the full-screen Chat surface —
+// it duplicates chat and overlaps the bottom-anchored message composer.
+const showActivityHub = computed(() => !route.path.startsWith('/agency/chat'))
+
 // RBAC: permission-gated navigation
 const {
   canAccessClients,
@@ -479,7 +483,7 @@ watch([() => route.path, () => mainNav.value.length], () => {
     </div>
 
     <ClientOnly>
-      <ActivityHub />
+      <ActivityHub v-if="showActivityHub" />
     </ClientOnly>
   </UDashboardGroup>
 </template>

@@ -174,7 +174,7 @@ const removeMember = async (memberId: string, memberName: string) => {
               label: 'Remove',
               icon: 'i-lucide-user-minus',
               color: 'error' as const,
-              click: () => removeMember(member.team_member_id, member.member_name)
+              onSelect: () => removeMember(member.team_member_id, member.member_name)
             }]]"
           >
             <UButton

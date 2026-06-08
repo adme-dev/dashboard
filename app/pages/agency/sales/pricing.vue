@@ -89,9 +89,9 @@ const columns: any[] = [
 // Actions
 const getActions = (item: any) => [
   [
-    { label: 'View Details', icon: 'i-lucide-eye', click: () => navigateTo(`/agency/sales/pricing/${item.id}`) },
-    { label: 'View Quote', icon: 'i-lucide-file-text', click: () => navigateTo(`/agency/sales/quotes/${item.quoteId}`), disabled: !item.quoteId },
-    { label: 'View Brief', icon: 'i-lucide-clipboard', click: () => navigateTo(`/agency/briefs/${item.briefId}`), disabled: !item.briefId }
+    { label: 'View Details', icon: 'i-lucide-eye', onSelect: () => navigateTo(`/agency/sales/pricing/${item.id}`) },
+    { label: 'View Quote', icon: 'i-lucide-file-text', onSelect: () => navigateTo(`/agency/sales/quotes/${item.quoteId}`), disabled: !item.quoteId },
+    { label: 'View Brief', icon: 'i-lucide-clipboard', onSelect: () => navigateTo(`/agency/briefs/${item.briefId}`), disabled: !item.briefId }
   ],
   [
     { label: 'Create Invoice', icon: 'i-lucide-receipt' },

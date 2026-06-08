@@ -584,12 +584,12 @@ const getDepartmentActions = (dept: Department) => [[
   {
     label: 'Edit',
     icon: 'i-lucide-pencil',
-    click: () => openDepartmentModal(dept)
+    onSelect: () => openDepartmentModal(dept)
   },
   {
     label: dept.isActive ? 'Deactivate' : 'Activate',
     icon: dept.isActive ? 'i-lucide-eye-off' : 'i-lucide-eye',
-    click: async () => {
+    onSelect: async () => {
       try {
         await $fetch(`/api/agency/departments/${dept.id}`, {
           method: 'PUT',
@@ -683,7 +683,7 @@ const getStatusActions = (status: Status) => [[
   {
     label: 'Edit',
     icon: 'i-lucide-pencil',
-    click: () => openStatusModal(status)
+    onSelect: () => openStatusModal(status)
   }
 ]]
 
@@ -747,12 +747,12 @@ const getTagActions = (tag: Tag) => [[
   {
     label: 'Edit',
     icon: 'i-lucide-pencil',
-    click: () => openTagModal(tag)
+    onSelect: () => openTagModal(tag)
   },
   {
     label: 'Delete',
     icon: 'i-lucide-trash-2',
-    click: () => requestDelete(
+    onSelect: () => requestDelete(
       `Delete tag "${tag.name}"?`,
       'This action cannot be undone.',
       async () => {
@@ -869,12 +869,12 @@ const getExpenseCategoryActions = (cat: ExpenseCategory) => [[
   {
     label: 'Edit',
     icon: 'i-lucide-pencil',
-    click: () => openExpenseCategoryModal(cat)
+    onSelect: () => openExpenseCategoryModal(cat)
   },
   {
     label: cat.isActive ? 'Deactivate' : 'Activate',
     icon: cat.isActive ? 'i-lucide-eye-off' : 'i-lucide-eye',
-    click: async () => {
+    onSelect: async () => {
       try {
         await $fetch(`/api/agency/expense-categories/${cat.id}`, {
           method: 'PUT',
@@ -890,7 +890,7 @@ const getExpenseCategoryActions = (cat: ExpenseCategory) => [[
   {
     label: 'Delete',
     icon: 'i-lucide-trash-2',
-    click: () => requestDelete(
+    onSelect: () => requestDelete(
       `Delete category "${cat.name}"?`,
       cat.expenseCount > 0
         ? 'This category has expenses and will be deactivated instead of deleted.'

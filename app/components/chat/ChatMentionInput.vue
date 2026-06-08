@@ -4,6 +4,11 @@ import type { ChatMessage } from '~/types'
 const props = defineProps<{
   typingText?: string
   disabled?: boolean
+  // Connection-state signal that drives the "Reconnecting…" banner. Distinct
+  // from `disabled` (which also goes true for transient reasons like an
+  // in-flight REST send in the Activity Hub mini-chat) so the banner only
+  // appears when the socket is genuinely down.
+  reconnecting?: boolean
   editingMessage?: { id: number; content: string } | null
   replyingTo?: ChatMessage | null
   channelId?: string
@@ -39,6 +44,12 @@ function insertEmoji(emoji: string) {
 const content = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const showFormatBar = ref(false)
+const focused = ref(false)
+
+// The send/save button is active only when there's something to send.
+const canSend = computed(() =>
+  (content.value.trim().length > 0 || pendingAttachments.value.length > 0) && !props.disabled
+)
 
 // ── Formatting helpers ──
 function getTextarea(): HTMLTextAreaElement | null {
@@ -263,6 +274,16 @@ function handleSend() {
 
 <template>
   <div class="border-t border-default px-4 py-3">
+    <!-- Connection state — only while the socket is genuinely down (not for an
+         in-flight send), so the mini-chat doesn't flash this on every message. -->
+    <div
+      v-if="reconnecting"
+      class="flex items-center gap-2 mb-2 px-2.5 py-1.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs"
+    >
+      <UIcon name="i-lucide-loader-circle" class="w-3.5 h-3.5 animate-spin shrink-0" />
+      <span>Reconnecting to chat… you can’t send messages right now.</span>
+    </div>
+
     <!-- Typing indicator -->
     <div v-if="typingText" class="text-xs text-muted mb-1.5 px-1 animate-pulse">
       {{ typingText }}
@@ -371,78 +392,100 @@ function handleSend() {
         </div>
       </div>
 
-      <div class="flex items-end gap-1.5">
-        <!-- File upload -->
-        <ChatFileUpload
-          v-if="channelId && !editingMessage"
-          ref="fileUploadRef"
-          :channel-id="channelId"
-          :disabled="disabled"
-          @uploaded="handleFileUploaded"
-        />
-
-        <!-- Formatting toggle -->
-        <UTooltip :text="showFormatBar ? 'Hide formatting' : 'Show formatting'">
-          <UButton
-            icon="i-lucide-a-large-small"
-            variant="ghost"
-            :color="showFormatBar ? 'primary' : 'neutral'"
-            size="sm"
-            :disabled="disabled"
-            @click="showFormatBar = !showFormatBar"
-          />
-        </UTooltip>
-
-        <!-- Emoji picker -->
-        <UPopover v-model:open="showEmojiPicker">
-          <UTooltip text="Emoji">
-            <UButton
-              icon="i-lucide-smile"
-              variant="ghost"
-              color="neutral"
-              size="sm"
-              :disabled="disabled"
-              @click="showEmojiPicker = !showEmojiPicker"
-            />
-          </UTooltip>
-          <template #content>
-            <ChatEmojiPicker @select="insertEmoji" />
-          </template>
-        </UPopover>
-
-        <div class="flex-1 relative">
+      <!-- Unified composer — textarea on top, action toolbar below, all inside a
+           single focus-within container for a cohesive, professional feel. -->
+      <div
+        class="rounded-xl border border-default bg-default shadow-sm transition-colors focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/25"
+      >
+        <div class="px-3 pt-2.5">
           <UTextarea
             ref="textareaRef"
             v-model="content"
-            :placeholder="editingMessage ? 'Edit your message...' : 'Type a message... (@ to mention)'"
+            color="neutral"
+            variant="none"
+            :placeholder="editingMessage ? 'Edit your message…' : 'Type a message…'"
             :rows="1"
             autoresize
             :maxrows="6"
             :disabled="disabled"
+            class="w-full"
+            :ui="{ base: 'p-0 resize-none text-sm' }"
             @input="handleInput"
             @keydown="handleKeydown"
+            @focus="focused = true"
+            @blur="focused = false"
           />
         </div>
-        <UButton
-          :icon="editingMessage ? 'i-lucide-check' : 'i-lucide-send'"
-          :color="editingMessage ? 'success' : 'primary'"
-          size="md"
-          :disabled="(!content.trim() && pendingAttachments.length === 0) || disabled"
-          @click="handleSend"
-        />
+
+        <div class="flex items-center gap-0.5 px-2 pb-2 pt-1">
+          <!-- File upload -->
+          <ChatFileUpload
+            v-if="channelId && !editingMessage"
+            ref="fileUploadRef"
+            :channel-id="channelId"
+            :disabled="disabled"
+            @uploaded="handleFileUploaded"
+          />
+
+          <!-- Formatting toggle -->
+          <UTooltip :text="showFormatBar ? 'Hide formatting' : 'Show formatting'">
+            <UButton
+              icon="i-lucide-a-large-small"
+              variant="ghost"
+              :color="showFormatBar ? 'primary' : 'neutral'"
+              size="sm"
+              :disabled="disabled"
+              @click="showFormatBar = !showFormatBar"
+            />
+          </UTooltip>
+
+          <!-- Emoji picker -->
+          <UPopover v-model:open="showEmojiPicker">
+            <UTooltip text="Emoji">
+              <UButton
+                icon="i-lucide-smile"
+                variant="ghost"
+                color="neutral"
+                size="sm"
+                :disabled="disabled"
+                @click="showEmojiPicker = !showEmojiPicker"
+              />
+            </UTooltip>
+            <template #content>
+              <ChatEmojiPicker @select="insertEmoji" />
+            </template>
+          </UPopover>
+
+          <div class="flex-1" />
+
+          <!-- Send / save -->
+          <UTooltip :text="editingMessage ? 'Save changes (Enter)' : 'Send message (Enter)'">
+            <UButton
+              :icon="editingMessage ? 'i-lucide-check' : 'i-lucide-send'"
+              :color="editingMessage ? 'success' : 'primary'"
+              :variant="canSend ? 'solid' : 'soft'"
+              size="sm"
+              :disabled="!canSend"
+              @click="handleSend"
+            />
+          </UTooltip>
+        </div>
       </div>
     </div>
 
-    <p class="text-[10px] text-muted mt-1 px-1">
-      <kbd class="font-mono">Enter</kbd> send
-      <span class="mx-1">·</span>
-      <kbd class="font-mono">Shift+Enter</kbd> new line
-      <span class="mx-1">·</span>
-      <kbd class="font-mono">@</kbd> mention
-      <span class="mx-1">·</span>
-      <kbd class="font-mono">Ctrl+B</kbd> bold
-      <span class="mx-1">·</span>
-      <kbd class="font-mono">Ctrl+I</kbd> italic
-    </p>
+    <!-- Hints surface only while composing — fixed height avoids layout shift.
+         Formatting shortcuts (Ctrl+B/I/K) live in the AA toolbar tooltips. -->
+    <div class="h-4 mt-1 px-1 overflow-hidden">
+      <p
+        v-show="focused || content.length > 0"
+        class="text-[10px] text-muted leading-4 whitespace-nowrap"
+      >
+        <kbd class="font-mono">Enter</kbd> send
+        <span class="mx-1 opacity-60">·</span>
+        <kbd class="font-mono">Shift+Enter</kbd> new line
+        <span class="mx-1 opacity-60">·</span>
+        <kbd class="font-mono">@</kbd> mention
+      </p>
+    </div>
   </div>
 </template>
