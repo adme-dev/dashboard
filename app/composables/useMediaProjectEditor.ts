@@ -2,7 +2,7 @@
 // clip URLs into a REAL SP2a audio engine and exposes transport + edit actions.
 // The master clock is engine.currentTime(); an rAF loop mirrors it into currentTime
 // for the playhead (clock rule: the view slaves to the engine, never the reverse).
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
 import { planTimeline, type ScheduledClip, type TrackBus } from '~~/app/utils/audio/audioSchedulePlanner'
 import { createAudioEngine, type AudioEngine } from '~~/app/composables/useAudioEngine'
@@ -10,7 +10,8 @@ import { createBrowserAudioContext, browserSetTimer, makeR2Resolver } from '~~/a
 import { createUndoStack } from '~~/app/composables/useTimelineUndo'
 import {
   cloneState,
-  addClip, addTrack, deleteClip, moveClip, trimClip, sliceClipAt
+  addClip, addTrack, deleteClip, moveClip, trimClip, sliceClipAt,
+  addVideoClip, addOverlayClip, trimVisualClip
 } from '~~/app/utils/audio/timelineEdit'
 import type { Track } from '~~/server/utils/audio/timelineSchema'
 
@@ -85,6 +86,39 @@ export function makeEngineReloader(
   }
 }
 
+// ---------------------------------------------------------------------------
+// V1.3 AV pure helpers — exported for unit testing
+// ---------------------------------------------------------------------------
+
+/** Resolve a clip's kind from the timeline. Missing `type` === audio (addClip omits it). */
+export function clipKindOf(state: TimelineState, clipId: string): 'audio' | 'video' | 'overlay' | null {
+  for (const t of state.tracks) {
+    const c = t.clips.find((x: any) => x.id === clipId) as any
+    if (c) return c.type === 'video' ? 'video' : c.type === 'overlay' ? 'overlay' : 'audio'
+  }
+  return null
+}
+
+/** Poll cadence for render jobs: null = stop (terminal), else ms until next poll. */
+export function nextPollDelay(status: string): number | null {
+  if (status === 'done' || status === 'failed') return null
+  return 2500
+}
+
+/** Read a video File's intrinsic duration (seconds) via an object URL. Falls back to 5s. */
+function readVideoDuration(file: File): Promise<number> {
+  return new Promise((resolve) => {
+    try {
+      const url = URL.createObjectURL(file)
+      const v = document.createElement('video')
+      v.preload = 'metadata'
+      v.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 5) }
+      v.onerror = () => { URL.revokeObjectURL(url); resolve(5) }
+      v.src = url
+    } catch { resolve(5) }
+  })
+}
+
 export function useMediaProjectEditor(projectId: string) {
   const timeline = ref<TimelineState | null>(null)
   const clips = ref<ScheduledClip[]>([])
@@ -97,6 +131,7 @@ export function useMediaProjectEditor(projectId: string) {
   const canUndo = ref(false)
   const canRedo = ref(false)
   const saveStatus = ref<SaveStatus>('idle')
+  const mediaType = computed(() => timeline.value?.media_type ?? 'audio')
   // Live presigned-URL map — keyed by r2_key. makeR2Resolver reads from this map
   // on every resolve call so newly-added clip URLs are visible without rebuilding
   // the resolver.  sourcesRef is a reactive snapshot of the map — passed as the
@@ -169,12 +204,19 @@ export function useMediaProjectEditor(projectId: string) {
   }
 
   function trimClipAction(clipId: string, edge: 'start' | 'end', newTimeSec: number) {
-    if (!timeline.value || !engine) return
+    if (!timeline.value) return
+    const kind = clipKindOf(timeline.value, clipId)
+    if (kind === 'video' || kind === 'overlay') {
+      applyEdit(trimVisualClip(timeline.value, { clipId, edge, newTimeSec }))
+      return
+    }
+    if (!engine) return
     applyEdit(trimClip(timeline.value, { clipId, edge, newTimeSec, sourceDurationSec: engine.clipSourceDuration(clipId) }))
   }
 
   function sliceAction(clipId: string, timeSec: number) {
     if (!timeline.value || !engine) return
+    if (clipKindOf(timeline.value, clipId) !== 'audio') return   // V1.3: audio-only slice
     applyEdit(sliceClipAt(timeline.value, {
       clipId, timeSec,
       leftId: crypto.randomUUID(),
@@ -239,6 +281,75 @@ export function useMediaProjectEditor(projectId: string) {
       trackId: track.id, id: crypto.randomUUID(),
       asset: { id: asset.id, r2_key_master: asset.r2_key_master }, startSec
     }))
+  }
+
+  // ─── V1.3 AV actions ──────────────────────────────────────────────────────────
+
+  /** Upload footage/still → R2 → merge its presigned URL into sources → return r2_key + duration. */
+  async function uploadMedia(file: File, kind: 'footage' | 'still'): Promise<{ r2Key: string; url: string; durationSec: number }> {
+    const durationSec = kind === 'footage' ? await readVideoDuration(file) : 5
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('kind', kind)
+    const res = await $fetch<{ r2_key: string; url: string }>(`/api/agency/audio/projects/${projectId}/upload-media`, { method: 'POST', body: fd })
+    mergeSource(res.r2_key, res.url)
+    return { r2Key: res.r2_key, url: res.url, durationSec }
+  }
+
+  /** Add a video clip (footage or still). Ensures a video track exists. One undo step. */
+  function addVideoClipAction(r2Key: string, durationSec: number, baseSource: 'uploaded_footage' | 'still_kenburns', startSec: number) {
+    if (!timeline.value) return
+    let next = timeline.value
+    let track = next.tracks.find(t => t.kind === 'video')
+    if (!track) { const tid = crypto.randomUUID(); next = addTrack(next, { id: tid, kind: 'video' }); track = next.tracks.find(t => t.id === tid)! }
+    applyEdit(addVideoClip(next, { trackId: track.id, id: crypto.randomUUID(), r2Key, startSec: Math.max(0, startSec), durationSec, baseSource }))
+  }
+
+  /** Add an overlay clip from a Banner project + format. Ensures an overlay track exists. */
+  function addOverlayClipAction(gsapProjectId: string, gsapFormatKey: string, durationSec: number, startSec: number) {
+    if (!timeline.value) return
+    let next = timeline.value
+    let track = next.tracks.find(t => t.kind === 'overlay')
+    if (!track) { const tid = crypto.randomUUID(); next = addTrack(next, { id: tid, kind: 'overlay' }); track = next.tracks.find(t => t.id === tid)! }
+    applyEdit(addOverlayClip(next, { trackId: track.id, id: crypto.randomUUID(), gsapProjectId, gsapFormatKey, startSec: Math.max(0, startSec), durationSec }))
+  }
+
+  // ─── Render jobs ────────────────────────────────────────────────────────────
+  const renderJobs = ref<any[]>([])
+  const rendering = ref(false)
+  let pollTimer: ReturnType<typeof setTimeout> | null = null
+
+  async function refreshRenderJobs() {
+    try {
+      const res = await $fetch<{ jobs: any[] }>(`/api/agency/audio/projects/${projectId}/render-jobs`)
+      renderJobs.value = res.jobs
+    } catch { /* surfaced via UI emptiness */ }
+  }
+
+  function scheduleJobPoll() {
+    if (pollTimer) clearTimeout(pollTimer)
+    const active = renderJobs.value.some(j => j.status === 'queued' || j.status === 'rendering')
+    const delay = active ? nextPollDelay('rendering') : null
+    if (delay == null) return
+    pollTimer = setTimeout(async () => { await refreshRenderJobs(); scheduleJobPoll() }, delay)
+  }
+
+  /** Enqueue a composite-video render. Returns false (with a flag-off signal) on 404. */
+  async function renderVideoAction(formats?: string[]): Promise<{ ok: boolean; flagOff?: boolean }> {
+    if (rendering.value) return { ok: false }
+    rendering.value = true
+    try {
+      await doSave()
+      await $fetch(`/api/agency/audio/projects/${projectId}/render-video`, { method: 'POST', body: formats?.length ? { formats } : {} })
+      await refreshRenderJobs()
+      scheduleJobPoll()
+      return { ok: true }
+    } catch (e: any) {
+      if (e?.statusCode === 404 || e?.response?.status === 404) return { ok: false, flagOff: true }
+      return { ok: false }
+    } finally {
+      rendering.value = false
+    }
   }
 
   function deleteClipAction(clipId: string) {
@@ -379,13 +490,14 @@ export function useMediaProjectEditor(projectId: string) {
   }
 
   onMounted(() => { void init() })
-  onBeforeUnmount(() => { cancelAnimationFrame(raf); engine?.dispose(); engine = null })
+  onBeforeUnmount(() => { cancelAnimationFrame(raf); if (pollTimer) clearTimeout(pollTimer); engine?.dispose(); engine = null })
 
   return {
     // State
     timeline, clips, tracks, status, error,
     isPlaying, currentTime, duration,
     canUndo, canRedo, saveStatus,
+    mediaType,
     /** Reactive snapshot of { r2_key → presigned URL } — pass as :sources to MediaTimeline */
     sources: sourcesRef,
     // Transport
@@ -394,6 +506,9 @@ export function useMediaProjectEditor(projectId: string) {
     moveClipAction, trimClipAction, sliceAction,
     addClipAction, addTrackAction, addClipToKindTrackAction, deleteClipAction,
     undoAction, redoAction,
+    // AV actions
+    uploadMedia, addVideoClipAction, addOverlayClipAction,
+    renderVideoAction, refreshRenderJobs, renderJobs, rendering,
     /** Merge a new presigned URL into the live sources map (called before addClipAction). */
     mergeSource,
     // Version management
