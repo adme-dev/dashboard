@@ -70,6 +70,15 @@ async function onRenderVideo() {
   else toast.add({ title: 'Failed to queue render', color: 'error' })
 }
 
+async function onPublishToSocial(job: any, format: string) {
+  try {
+    const res = await editor.publishToSocial(job.id, format)
+    await navigateTo(`/agency/social/publishing/compose?edit=${res.postId}&client=${res.clientId}`)
+  } catch (e: any) {
+    toast.add({ title: 'Could not publish to social', description: e?.data?.statusMessage ?? '', color: 'error' })
+  }
+}
+
 function jobStatusColor(s: string) { return s === 'done' ? 'success' : s === 'failed' ? 'error' : 'info' }
 
 // Refresh render jobs once an AV project finishes loading (isAv depends on the
@@ -358,6 +367,12 @@ const saveStatusColor = computed(() => {
                 :to="`/api/agency/audio/projects/${projectId}/renders/${job.id}/${fmt}`"
                 target="_blank"
               />
+              <UDropdownMenu
+                v-if="job.status === 'done'"
+                :items="[Object.keys(job.variants || {}).map((fmt) => ({ label: `Publish ${fmt}`, icon: 'i-lucide-share-2', onSelect: () => onPublishToSocial(job, String(fmt)) }))]"
+              >
+                <UButton icon="i-lucide-share-2" size="xs" variant="ghost" color="primary" label="Publish" />
+              </UDropdownMenu>
             </div>
           </div>
         </div>

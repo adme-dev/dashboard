@@ -353,6 +353,13 @@ export function useMediaProjectEditor(projectId: string) {
     }
   }
 
+  /** Draft a social post from a rendered variant. Returns { postId, clientId } or throws (page toasts). */
+  async function publishToSocial(jobId: string, format: string): Promise<{ postId: string; clientId: string }> {
+    return await $fetch(`/api/agency/audio/projects/${projectId}/renders/${jobId}/publish-social`, {
+      method: 'POST', body: { format }
+    })
+  }
+
   function deleteClipAction(clipId: string) {
     if (!timeline.value) return
     applyEdit(deleteClip(timeline.value, { clipId }))
@@ -509,7 +516,7 @@ export function useMediaProjectEditor(projectId: string) {
     undoAction, redoAction,
     // AV actions
     uploadMedia, addVideoClipAction, addOverlayClipAction,
-    renderVideoAction, refreshRenderJobs, renderJobs, rendering,
+    renderVideoAction, refreshRenderJobs, renderJobs, rendering, publishToSocial,
     /** Merge a new presigned URL into the live sources map (called before addClipAction). */
     mergeSource,
     // Version management
