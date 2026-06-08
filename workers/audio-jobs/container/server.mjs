@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildMeasurePassArgs, parseLoudnormJson, buildRenderPassArgs } from './render.mjs'
 import { buildMasterRenderArgs } from './timelineFiltergraph.mjs'
+import { buildCompositeRenderArgs } from './videoCompositeGraph.mjs'
 
 const PORT = process.env.PORT || 8080
 
@@ -58,6 +59,32 @@ const server = createServer(async (req, res) => {
     } catch (e) {
       console.error('render-timeline error', e)
       res.writeHead(500); return res.end('render-timeline error')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  if (req.method === 'POST' && req.url === '/render-composite') {
+    const dir = mkdtempSync(join(tmpdir(), 'composite-'))
+    try {
+      const payload = JSON.parse((await readBody(req)).toString('utf8')) // { plan, files: [{ b64 }] }
+      const paths = payload.files.map((f, i) => {
+        const p = join(dir, `in${i}`)
+        writeFileSync(p, Buffer.from(f.b64, 'base64'))
+        return p
+      })
+      const outPath = join(dir, 'out.mp4')
+      const pass = await runFfmpeg(buildCompositeRenderArgs(payload.plan, paths, outPath))
+      if (pass.code !== 0) {
+        console.error('composite render ffmpeg failed', pass.stderr.slice(-800))
+        res.writeHead(500); return res.end('composite render failed')
+      }
+      const out = readFileSync(outPath)
+      res.writeHead(200, { 'content-type': 'video/mp4' })
+      return res.end(out)
+    } catch (e) {
+      console.error('render-composite error', e)
+      res.writeHead(500); return res.end('render-composite error')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
