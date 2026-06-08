@@ -197,3 +197,17 @@ export function migrateTimeline(state: TimelineState): TimelineState {
       throw new Error(`Unsupported timeline schema_version: ${(state as any).schema_version}`)
   }
 }
+
+/** A blank AV project: Video + Overlay + VO + Music lanes, no clips. Pure. */
+export function emptyAvTimeline(): TimelineState {
+  return TimelineStateSchema.parse({
+    schema_version: 2,
+    media_type: 'av',
+    tracks: [
+      { id: 'video', name: 'Video', kind: 'video', clips: [] },
+      { id: 'overlay', name: 'Overlay', kind: 'overlay', clips: [] },
+      { id: 'vo', name: 'Voiceover', kind: 'voiceover', clips: [] },
+      { id: 'music', name: 'Music', kind: 'music', clips: [] }
+    ]
+  })
+}

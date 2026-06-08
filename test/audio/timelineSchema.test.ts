@@ -4,6 +4,7 @@ import {
   validateTimeline,
   computeDuration,
   migrateTimeline,
+  emptyAvTimeline,
   type TimelineState
 } from '~~/server/utils/audio/timelineSchema'
 
@@ -268,5 +269,23 @@ describe('computeDuration (AV)', () => {
       ]
     })
     expect(computeDuration(s)).toBe(15)
+  })
+})
+
+describe('migrateTimeline + emptyAvTimeline', () => {
+  it('passes through schema_version 2 unchanged', () => {
+    const s = emptyAvTimeline()
+    expect(migrateTimeline(s)).toEqual(s)
+  })
+  it('still passes through schema_version 1', () => {
+    const s = TimelineStateSchema.parse(rawTimeline())
+    expect(migrateTimeline(s).schema_version).toBe(1)
+  })
+  it('emptyAvTimeline seeds a valid AV project with Video/Overlay/VO/Music lanes', () => {
+    const s = emptyAvTimeline()
+    expect(s.schema_version).toBe(2)
+    expect(s.media_type).toBe('av')
+    expect(s.tracks.map(t => t.kind)).toEqual(['video', 'overlay', 'voiceover', 'music'])
+    expect(validateTimeline(s).ok).toBe(true)
   })
 })
