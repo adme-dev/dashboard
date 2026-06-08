@@ -7,6 +7,8 @@ interface VoiceResponse {
   audioBase64: string | null
   audioFormat: string | null
   sttLatencyMs: number
+  // Present when the agent proposed a guarded write (the endpoint returns it; voice mode acts on it).
+  proposedAction?: { proposalId: string, resolved: unknown } | null
 }
 
 const MAX_RECORDING_DURATION = 60_000 // 60 seconds

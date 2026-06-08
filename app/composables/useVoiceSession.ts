@@ -10,14 +10,6 @@ import type { AiMessage } from '~/types'
 
 type Proposal = { proposalId: string, resolved: unknown }
 
-interface VoiceTurnResult {
-  message: AiMessage
-  transcribedText: string
-  audioBase64: string | null
-  audioFormat: string | null
-  proposedAction?: Proposal | null
-}
-
 export interface UseVoiceSessionOptions {
   /** Returns the active conversation id, creating one if needed. */
   ensureConversation: () => Promise<string | null>
@@ -63,7 +55,7 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
   }
 
   function teardown() {
-    voice.stopRecording()
+    voice.cancelRecording() // discard any in-flight capture (don't resolve it with a stale blob)
     voice.stopAudio()
     stopBargeMonitor()
     if (confirmTimer) {
@@ -78,6 +70,13 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
     const blob = await voice.startRecording() // resolves on VAD silence / max-duration
     if (state.value.phase !== 'listening') return // stopped or barged mid-record
     if (!blob) {
+      // A null blob WITH an error means the mic is unavailable (denied/revoked/in use): surface it
+      // and stop the loop instead of tight-spinning getUserMedia. A null blob WITHOUT an error is a
+      // benign empty/cancelled capture, so just re-arm.
+      if (voice.error.value) {
+        dispatch({ type: 'ERROR', message: voice.error.value })
+        return
+      }
       if (state.value.phase === 'listening') void runListen()
       return
     }
@@ -91,7 +90,7 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
 
     dispatch({ type: 'SPEECH_CAPTURED' })
     try {
-      const result = await voice.sendVoiceMessage(convId, blob) as VoiceTurnResult
+      const result = await voice.sendVoiceMessage(convId, blob)
       if (state.value.phase !== 'processing') return // stop() fired mid-request
       const proposal = result.proposedAction ?? null
       opts.onTurn(result.transcribedText, result.message, proposal)

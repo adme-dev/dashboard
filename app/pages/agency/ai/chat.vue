@@ -1362,7 +1362,7 @@ function getRenderedMarkdown(content: string): string {
                       (!messageInput.trim() || sending || isRecording) ? 'opacity-40' : 'opacity-100 shadow-sm'
                     ]"
                     :loading="sending"
-                    :disabled="!messageInput.trim() || sending || isRecording"
+                    :disabled="!messageInput.trim() || sending || isRecording || voiceSession.isActive.value"
                     @click="handleSend"
                   />
                 </div>
