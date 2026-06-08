@@ -64,6 +64,21 @@ describe('POST /api/agency/ai/chat/transcribe', () => {
       .rejects.toMatchObject({ statusCode: 400 })
   })
 
+  it('rejects an oversized clip with 400', async () => {
+    await expect(run([{ name: 'audio', data: Buffer.alloc(10 * 1024 * 1024 + 1, 1), type: 'audio/webm' }]))
+      .rejects.toMatchObject({ statusCode: 400 })
+  })
+
+  it('rejects a too-short clip with 422', async () => {
+    await expect(run([{ name: 'audio', data: Buffer.alloc(50, 1), type: 'audio/webm' }]))
+      .rejects.toMatchObject({ statusCode: 422 })
+  })
+
+  it('accepts a codec-qualified mime (audio/webm;codecs=opus)', async () => {
+    mockSpeechToText.mockResolvedValue({ text: 'yes', durationMs: 4 })
+    expect(await run([{ name: 'audio', data: Buffer.alloc(200, 1), type: 'audio/webm;codecs=opus' }])).toEqual({ text: 'yes' })
+  })
+
   it('returns 422 when STT finds nothing', async () => {
     mockSpeechToText.mockResolvedValue(null)
     await expect(run([audio()])).rejects.toMatchObject({ statusCode: 422 })

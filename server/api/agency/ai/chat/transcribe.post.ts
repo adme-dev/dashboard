@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const type = audioPart.type
-  if (!type || !ALLOWED_AUDIO_TYPES.some(t => type.startsWith(t))) {
+  if (!type || !ALLOWED_AUDIO_TYPES.some(t => type === t || type.startsWith(`${t};`))) {
     throw createError({ statusCode: 400, statusMessage: 'Invalid audio format' })
   }
   if (audioPart.data.length > MAX_AUDIO_SIZE) {

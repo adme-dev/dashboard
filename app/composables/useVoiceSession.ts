@@ -85,12 +85,14 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
     const convId = await opts.ensureConversation()
     if (!convId) {
       dispatch({ type: 'ERROR', message: 'No conversation' })
+      void resumeAfterError()
       return
     }
 
     dispatch({ type: 'SPEECH_CAPTURED' })
     try {
       const result = await voice.sendVoiceMessage(convId, blob) as VoiceTurnResult
+      if (state.value.phase !== 'processing') return // stop() fired mid-request
       const proposal = result.proposedAction ?? null
       opts.onTurn(result.transcribedText, result.message, proposal)
       dispatch({ type: 'RESPONSE', proposalId: proposal?.proposalId ?? null })
@@ -136,6 +138,7 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
     // Transcribe the confirm utterance with STT ONLY — do not run the agent on "confirm"/"cancel"
     // (that would pollute the thread and could leak a stray proposal). Classification decides.
     const transcript = await transcribe(blob)
+    if (state.value.phase !== 'awaitingConfirm') return // stop()/timeout fired mid-transcribe
     const intent = classifyConfirmUtterance(transcript)
     const proposalId = state.value.pendingProposalId
     dispatch({ type: 'CONFIRM_INTENT', intent })
@@ -144,9 +147,14 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
       const convId = await opts.ensureConversation()
       if (!convId) {
         dispatch({ type: 'ERROR', message: 'No conversation' })
+        void resumeAfterError()
         return
       }
       await executeProposal(convId, proposalId)
+    } else if (intent === 'affirmative') {
+      // proposalId vanished unexpectedly — don't hang in 'confirming'
+      dispatch({ type: 'CONFIRM_DONE' })
+      if (state.value.phase === 'listening') void runListen()
     } else if (intent === 'negative') {
       opts.onProposalResolved()
       await speakText('Cancelled.')
@@ -216,7 +224,9 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
         '/api/agency/ai/chat/speak',
         { method: 'POST', body: { text } }
       )
-      if (res?.audioBase64) await playWithBargeIn(res.audioBase64, res.audioFormat)
+      // System utterances (hint / "Cancelled." / result) are short — play them WITHOUT barge-in
+      // so they can't race the explicit re-arm below. Only the main agent reply is interruptible.
+      if (res?.audioBase64) await voice.playAudio(res.audioBase64, res.audioFormat || 'mp3')
     } catch {
       // soft-fail: the text is already shown in the thread
     }
