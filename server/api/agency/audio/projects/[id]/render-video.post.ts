@@ -46,6 +46,8 @@ export default defineEventHandler(async (event) => {
 
   // Resolve overlay clips → server-built banner HTML → upload to R2.
   // Uses the first requested format's dimensions to determine the default banner format.
+  // KNOWN LIMITATION (V1.2b): overlay HTML is resolved once from the first format's aspect;
+  // mixed-aspect multi-format requests reuse it. Per-format overlay resolution is a follow-up.
   const firstFormat = videoFormatFor(formats[0])
   const profileW = firstFormat?.width ?? 1080
   const profileH = firstFormat?.height ?? 1920
