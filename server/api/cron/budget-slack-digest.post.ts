@@ -5,8 +5,7 @@ import { defineEventHandler, getHeader, getQuery, createError } from 'h3'
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { getBudgetSlackConfig } from '~~/server/utils/budgetSlackConfig'
 import { buildDigestBlocks, postSlack, validateWebhook, type BudgetSlackItem } from '~~/server/utils/anomalyDetection/slackBudget'
-
-const APP_BASE = process.env.APP_BASE_URL || 'https://agency-dashboard-6cm.pages.dev'
+import { getAppUrl } from '~~/server/utils/appUrl'
 
 export default defineEventHandler(async (event) => {
   const cronSecret = getHeader(event, 'x-cron-secret')
@@ -50,7 +49,7 @@ export default defineEventHandler(async (event) => {
     type: r.type, severity: r.severity, title: r.title, description: r.description, client: r.context?.client ?? null,
   }))
   const date = new Date().toLocaleDateString('en-AU', { timeZone: tz, day: 'numeric', month: 'short', year: 'numeric' })
-  const res = await postSlack(cfg.webhook_url, buildDigestBlocks(items, { date, dashboardUrl: `${APP_BASE}/agency/anomalies` }), cfg.channel ?? undefined)
+  const res = await postSlack(cfg.webhook_url, buildDigestBlocks(items, { date, dashboardUrl: `${getAppUrl(event)}/agency/anomalies` }), cfg.channel ?? undefined)
 
   return { ok: res.ok, posted: items.length, error: res.error }
 })

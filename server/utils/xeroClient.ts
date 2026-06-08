@@ -1,7 +1,8 @@
-import { createError, getRequestURL } from 'h3'
+import { createError } from 'h3'
 import { XeroClient } from 'xero-node'
 import type { TokenSet } from 'xero-node'
 import type { H3Event } from 'h3'
+import { getAppUrl } from '~~/server/utils/appUrl'
 
 const DEFAULT_SCOPES = [
   'offline_access',
@@ -76,12 +77,12 @@ function resolveRedirectUri(config: any, event?: H3Event): string {
   if (event) {
     const host = getRequestHeader(event, 'x-forwarded-host')
       || getRequestHeader(event, 'host')
-      || 'agency-dashboard-6cm.pages.dev'
+      || 'app.xeroflow.io'
     const proto = getRequestHeader(event, 'x-forwarded-proto') || 'https'
     return `${proto}://${host}${redirectUri}`
   }
 
-  return `${process.env.APP_URL || 'https://agency-dashboard-6cm.pages.dev'}${redirectUri}`
+  return `${getAppUrl()}${redirectUri}`
 }
 
 /**

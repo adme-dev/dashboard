@@ -11,6 +11,7 @@
 
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { getAppUrl } from '~~/server/utils/appUrl'
 import { randomBytes } from 'crypto'
 
 interface TokenBody {
@@ -19,7 +20,7 @@ interface TokenBody {
 }
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
+  await requireAuth(event)
   const body = await readBody<TokenBody>(event)
 
   const { approvalId, expiresInHours = 72 } = body
@@ -82,9 +83,7 @@ export default defineEventHandler(async (event) => {
     `, [token, expiresAt.toISOString(), approvalId])
 
     // Build the approval URL
-    const config = useRuntimeConfig()
-    const baseUrl = config.public?.appUrl || process.env.NUXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    const approvalUrl = `${baseUrl}/approve/${token}`
+    const approvalUrl = `${getAppUrl(event)}/approve/${token}`
 
     return {
       success: true,

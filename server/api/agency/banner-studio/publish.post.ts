@@ -1,6 +1,7 @@
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { uploadFile } from '~~/server/utils/storage'
+import { getAppUrl } from '~~/server/utils/appUrl'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -65,8 +66,7 @@ export default defineEventHandler(async (event) => {
     const pixels: string[] = []
 
     // Built-in analytics pixels (using projectId+formatKey so we don't need published_id at build time)
-    const config = useRuntimeConfig()
-    const appUrl = (config.public?.appUrl || 'http://localhost:3000').replace(/\/$/, '')
+    const appUrl = getAppUrl(event).replace(/\/$/, '')
     const basePixelUrl = `${appUrl}/api/public/banner-pixel`
     const pixelParams = `pid=${encodeURIComponent(projectId)}&fk=${encodeURIComponent(formatKey)}`
     pixels.push(`<img src="${basePixelUrl}/impression?${pixelParams}" width="1" height="1" style="position:absolute;left:-9999px;" alt="" />`)

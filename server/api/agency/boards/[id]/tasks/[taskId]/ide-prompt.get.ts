@@ -11,6 +11,7 @@
 
 import { createError, defineEventHandler, getRouterParam } from 'h3'
 import { requireBoardAccess } from '~~/server/utils/auth'
+import { getAppUrl } from '~~/server/utils/appUrl'
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { isUUID } from '~~/server/utils/ids'
 
@@ -36,8 +37,6 @@ interface RepoRow {
   default_branch: string
   graphify_path: string | null
 }
-
-const APP_URL = process.env.APP_URL || 'https://agency-dashboard-6cm.pages.dev'
 
 export default defineEventHandler(async (event) => {
   const idOrSlug = getRouterParam(event, 'id')
@@ -84,7 +83,7 @@ export default defineEventHandler(async (event) => {
   )
 
   const prompt = buildPrompt(task, subtasks, repo)
-  const boardLink = `${APP_URL}/agency/boards/${task.board_slug}`
+  const boardLink = `${getAppUrl(event)}/agency/boards/${task.board_slug}`
 
   return {
     taskId: task.id,
