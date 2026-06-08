@@ -281,24 +281,24 @@ const metrics = computed(() => metricsData.value as LoraMetricsComparison | null
               [{
                 label: 'View Metrics',
                 icon: 'i-lucide-bar-chart-3',
-                click: () => viewMetrics(row.original),
+                onSelect: () => viewMetrics(row.original),
               }],
               [{
                 label: 'Upload Weights',
                 icon: 'i-lucide-upload',
-                click: () => triggerUpload(row.original.id),
+                onSelect: () => triggerUpload(row.original.id),
               }],
               [{
                 label: 'Activate',
                 icon: 'i-lucide-play',
                 disabled: row.original.status === 'active',
-                click: () => updateStatus(row.original, 'active'),
+                onSelect: () => updateStatus(row.original, 'active'),
               },
               {
                 label: 'Retire',
                 icon: 'i-lucide-archive',
                 disabled: row.original.status === 'retired',
-                click: () => updateStatus(row.original, 'retired'),
+                onSelect: () => updateStatus(row.original, 'retired'),
               }],
             ]"
           >

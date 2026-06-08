@@ -239,8 +239,8 @@ watch(bulkAssignValue, (val) => {
 // Actions dropdown items
 const getActions = (brief: any) => [
   [
-    { label: 'View Details', icon: 'i-lucide-eye', click: () => navigateTo(`/agency/briefs/${brief.id}`) },
-    { label: 'Edit Brief', icon: 'i-lucide-pencil', click: () => navigateTo(`/agency/briefs/${brief.id}/edit`), disabled: brief.status !== 'draft' }
+    { label: 'View Details', icon: 'i-lucide-eye', onSelect: () => navigateTo(`/agency/briefs/${brief.id}`) },
+    { label: 'Edit Brief', icon: 'i-lucide-pencil', onSelect: () => navigateTo(`/agency/briefs/${brief.id}/edit`), disabled: brief.status !== 'draft' }
   ],
   [
     { label: 'Add Comment', icon: 'i-lucide-message-square' },

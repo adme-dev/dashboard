@@ -217,11 +217,11 @@ async function duplicateTemplate(tmpl: any) {
 function getTemplateActions(tmpl: any) {
   return [
     [
-      { label: 'Edit', icon: 'i-lucide-pencil', click: () => navigateTo(`/agency/briefs/templates/${tmpl.id}`) },
-      { label: 'Duplicate', icon: 'i-lucide-copy', click: () => duplicateTemplate(tmpl) }
+      { label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => navigateTo(`/agency/briefs/templates/${tmpl.id}`) },
+      { label: 'Duplicate', icon: 'i-lucide-copy', onSelect: () => duplicateTemplate(tmpl) }
     ],
     [
-      { label: 'Archive', icon: 'i-lucide-archive', click: () => confirmDelete(tmpl) }
+      { label: 'Archive', icon: 'i-lucide-archive', onSelect: () => confirmDelete(tmpl) }
     ]
   ]
 }

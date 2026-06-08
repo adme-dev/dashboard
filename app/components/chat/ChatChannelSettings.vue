@@ -269,7 +269,7 @@ onMounted(fetchNotifPrefs)
           :items="[
             muteOptions.map(opt => ({
               label: opt.label,
-              click: () => handleMute(opt.value)
+              onSelect: () => handleMute(opt.value)
             }))
           ]"
         >

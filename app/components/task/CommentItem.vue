@@ -223,14 +223,14 @@ const actionItems = computed(() => [
   [{
     label: 'Edit',
     icon: 'i-lucide-pencil',
-    click: () => {
+    onSelect: () => {
       editContent.value = props.comment.content
       isEditing.value = true
     }
   }, {
     label: 'Delete',
     icon: 'i-lucide-trash-2',
-    click: () => {
+    onSelect: () => {
       showDeleteConfirm.value = true
     }
   }]

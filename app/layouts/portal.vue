@@ -132,7 +132,7 @@ async function handleLogout() {
              {
                label: 'Sign out',
                icon: 'i-lucide-log-out',
-               click: handleLogout
+               onSelect: handleLogout
              }]
           ]"
         >

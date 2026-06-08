@@ -164,8 +164,10 @@ async function handleSelectChannel(channel: ChatChannel) {
   editingMessage.value = null
   replyingTo.value = null
 
-  // Use last_read_message_id from channel membership for unread divider
-  lastReadMessageId.value = ch?.last_read_message_id || 0
+  // Use last_read_message_id from channel membership for unread divider.
+  // Postgres bigint arrives as a string over the wire — coerce so the
+  // ChatMessageList :last-read-message-id Number prop doesn't warn.
+  lastReadMessageId.value = Number(ch?.last_read_message_id) || 0
 
   // Collapse sidebar on mobile
   if (window.innerWidth < 768) {
@@ -533,6 +535,7 @@ onUnmounted(() => {
               :editing-message="editingMessage"
               :replying-to="replyingTo"
               :disabled="!wsComposable?.isConnected.value"
+              :reconnecting="!wsComposable?.isConnected.value"
               :channel-id="activeChannel?.id"
               @send="handleSendMessage"
               @typing="handleTyping"
@@ -603,31 +606,29 @@ onUnmounted(() => {
       <template #content>
         <div class="p-6">
           <div class="space-y-4">
-            <div>
-              <label class="text-sm font-medium mb-1 block">Channel name</label>
+            <UFormField label="Channel name">
               <UInput
                 v-model="newChannelName"
                 placeholder="e.g. project-updates"
                 icon="i-lucide-hash"
+                class="w-full"
                 @keydown.enter="handleCreateChannel"
               />
-            </div>
+            </UFormField>
 
-            <div>
-              <label class="text-sm font-medium mb-1 block">Description (optional)</label>
+            <UFormField label="Description" hint="Optional">
               <UInput
                 v-model="newChannelDescription"
                 placeholder="What's this channel about?"
+                class="w-full"
               />
-            </div>
+            </UFormField>
 
-            <div class="flex items-center gap-2">
-              <UCheckbox v-model="newChannelPrivate" />
-              <div>
-                <span class="text-sm font-medium">Private channel</span>
-                <p class="text-xs text-muted">Only invited members can see and join</p>
-              </div>
-            </div>
+            <UCheckbox
+              v-model="newChannelPrivate"
+              label="Private channel"
+              description="Only invited members can see and join"
+            />
           </div>
 
           <div class="flex justify-end gap-2 mt-6">

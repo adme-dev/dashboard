@@ -532,18 +532,18 @@ const commonDepartments = [
                   [{
                      label: 'View Clients',
                      icon: 'i-lucide-briefcase',
-                     click: () => openClientBook(tableMember(r))
+                     onSelect: () => openClientBook(tableMember(r))
                    },
                    {
                      label: 'Edit',
                      icon: 'i-lucide-edit',
-                     click: () => openEditModal(tableMember(r))
+                     onSelect: () => openEditModal(tableMember(r))
                    }],
                   [{
                     label: 'Delete',
                     icon: 'i-lucide-trash-2',
                     color: 'error' as const,
-                    click: () => confirmDelete(tableMember(r))
+                    onSelect: () => confirmDelete(tableMember(r))
                   }]
                 ]"
               >

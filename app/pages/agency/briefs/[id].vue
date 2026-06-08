@@ -438,7 +438,7 @@ async function duplicateBrief() {
               v-if="availableStatuses.length > 0 && isAdmin"
               :items="[availableStatuses.map(s => ({
                 label: formatStatus(s),
-                click: () => updateStatus(s)
+                onSelect: () => updateStatus(s)
               }))]"
             >
               <UButton
@@ -455,7 +455,7 @@ async function duplicateBrief() {
               :items="[
                 [
                   { label: 'Edit Brief', icon: 'i-lucide-pencil', disabled: brief.status !== 'draft' },
-                  { label: 'Duplicate', icon: 'i-lucide-copy', click: duplicateBrief },
+                  { label: 'Duplicate', icon: 'i-lucide-copy', onSelect: duplicateBrief },
                   { label: 'Download PDF', icon: 'i-lucide-download' },
                   { label: 'Print', icon: 'i-lucide-printer' }
                 ]

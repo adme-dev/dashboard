@@ -172,11 +172,11 @@ const categoryLabel = (cat: string) => categories.find(c => c.value === cat)?.la
             <UDropdownMenu
               :items="[
                 [
-                  { label: 'Preview', icon: 'i-lucide-eye', click: () => openPreview(tpl) },
-                  { label: 'Use Template', icon: 'i-lucide-copy', click: () => useTemplate(tpl) },
+                  { label: 'Preview', icon: 'i-lucide-eye', onSelect: () => openPreview(tpl) },
+                  { label: 'Use Template', icon: 'i-lucide-copy', onSelect: () => useTemplate(tpl) },
                 ],
                 [
-                  { label: 'Delete', icon: 'i-lucide-trash-2', click: () => deleteTemplate(tpl) },
+                  { label: 'Delete', icon: 'i-lucide-trash-2', onSelect: () => deleteTemplate(tpl) },
                 ],
               ]"
             >

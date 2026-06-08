@@ -192,8 +192,8 @@ onMounted(() => {
           <UDropdownMenu
             :items="[
               [
-                { label: 'Edit', icon: 'i-lucide-pencil', click: () => openEdit(article) },
-                { label: 'Delete', icon: 'i-lucide-trash-2', click: () => confirmDelete(article.id) },
+                { label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => openEdit(article) },
+                { label: 'Delete', icon: 'i-lucide-trash-2', onSelect: () => confirmDelete(article.id) },
               ],
             ]"
             @click.stop
