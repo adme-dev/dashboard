@@ -5,7 +5,7 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
 import { planTimeline, type ScheduledClip, type TrackBus } from '~~/app/utils/audio/audioSchedulePlanner'
-import { createAudioEngine, type AudioEngine } from '~~/app/composables/useAudioEngine'
+import { createAudioEngine, type AudioEngine, type LoadResult } from '~~/app/composables/useAudioEngine'
 import { createBrowserAudioContext, browserSetTimer, makeR2Resolver } from '~~/app/utils/audio/audioContextFactory'
 import { createUndoStack } from '~~/app/composables/useTimelineUndo'
 import {
@@ -47,7 +47,7 @@ export function makeDebouncedSaver(fn: () => Promise<void>, ms: number): { trigg
 export interface ReloaderEngine {
   isPlaying(): boolean
   pause(): void
-  load(state: TimelineState): Promise<void>
+  load(state: TimelineState): Promise<LoadResult | void>
   duration(): number
   seek(sec: number): void
   currentTime(): number
@@ -60,6 +60,9 @@ export interface ReloaderSink {
   onPaused(): void
   /** Commit the planned clips/tracks once this reload wins. */
   commitPlan(state: TimelineState): void
+  /** Commit the set of clips whose source couldn't be resolved, once this reload wins.
+   * Lets the warning banner clear after the user removes/replaces a dead clip. */
+  commitMissing(missingClipIds: string[]): void
   /** Commit duration + playhead once this reload wins. */
   commitTransport(duration: number, currentTime: number): void
 }
@@ -76,9 +79,10 @@ export function makeEngineReloader(
     if (wasPlaying) { engine.pause(); sink.onPaused() }
     const seq = ++reloadSeq
     plan(state)               // planning is local/cheap; commit of clips/tracks waits for the win
-    await engine.load(state)
+    const result = await engine.load(state)
     if (seq !== reloadSeq) return            // a newer reload superseded this one
     sink.commitPlan(state)
+    sink.commitMissing(result ? result.missingClipIds : [])
     const duration = engine.duration()
     engine.seek(Math.min(at, duration))      // clamp the playhead if the timeline shortened
     sink.commitTransport(duration, engine.currentTime())
@@ -97,6 +101,10 @@ export function useMediaProjectEditor(projectId: string) {
   const canUndo = ref(false)
   const canRedo = ref(false)
   const saveStatus = ref<SaveStatus>('idle')
+  // Clip ids whose audio source couldn't be resolved (deleted/404). Non-fatal: the
+  // project still loads (status 'ready'); the page shows a warning so the user can
+  // remove or replace them. Kept in sync on every engine reload via commitMissing.
+  const missingClipIds = ref<string[]>([])
   // Live presigned-URL map — keyed by r2_key. makeR2Resolver reads from this map
   // on every resolve call so newly-added clip URLs are visible without rebuilding
   // the resolver.  sourcesRef is a reactive snapshot of the map — passed as the
@@ -332,11 +340,13 @@ export function useMediaProjectEditor(projectId: string) {
           getPlayhead: () => currentTime.value,
           onPaused: () => { isPlaying.value = false; cancelAnimationFrame(raf) },
           commitPlan: (s) => { const p = planTimeline(s); clips.value = p.clips; tracks.value = p.tracks },
+          commitMissing: (ids) => { missingClipIds.value = ids },
           commitTransport: (dur, ct) => { duration.value = dur; currentTime.value = ct }
         },
         () => { /* planning committed on win in commitPlan */ }
       )
-      await engine.load(state)
+      const result = await engine.load(state)
+      missingClipIds.value = result.missingClipIds
       duration.value = engine.duration()
       status.value = 'ready'
     } catch (e: any) {
@@ -386,6 +396,8 @@ export function useMediaProjectEditor(projectId: string) {
     timeline, clips, tracks, status, error,
     isPlaying, currentTime, duration,
     canUndo, canRedo, saveStatus,
+    /** Clip ids whose source couldn't be loaded (deleted/404). Non-fatal warning. */
+    missingClipIds,
     /** Reactive snapshot of { r2_key → presigned URL } — pass as :sources to MediaTimeline */
     sources: sourcesRef,
     // Transport

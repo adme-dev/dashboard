@@ -49,6 +49,14 @@ const oneClip = TimelineStateSchema.parse({
   ducking: []
 })
 
+// Two clips on one track; 'dead' references a key whose source can't be fetched.
+const twoClips = TimelineStateSchema.parse({
+  tracks: [{ id: 'mus', name: 'M', kind: 'music', clips: [
+    { id: 'good', r2_key: 'k/good', timeline_start_sec: 0, source_out_sec: 10 },
+    { id: 'dead', r2_key: 'k/dead', timeline_start_sec: 0, source_out_sec: 5 } ] }],
+  ducking: []
+})
+
 beforeEach(() => vi.clearAllMocks())
 
 describe('createAudioEngine — load', () => {
@@ -59,6 +67,41 @@ describe('createAudioEngine — load', () => {
     expect(h.gains[0].connect).toHaveBeenCalledWith(h.ctx.destination)
     expect(h.resolveBuffer).toHaveBeenCalledTimes(1)
     expect(h.engine.duration()).toBe(10)
+  })
+
+  it('returns no missing clip ids when every buffer resolves', async () => {
+    const h = makeEngine(oneClip)
+    const result = await h.engine.load(oneClip)
+    expect(result.missingClipIds).toEqual([])
+  })
+})
+
+describe('createAudioEngine — load tolerates a missing clip source', () => {
+  // A deleted R2 object (404) makes resolveBuffer reject for that clip. The load
+  // must NOT abort — the project has to stay openable so the user can remove the
+  // dead clip — so the bad clip is skipped and reported instead.
+  function deadResolver() {
+    return vi.fn(async (clip: any) => {
+      if (clip.r2_key === 'k/dead') throw new Error('Fetch failed (404) for k/dead')
+      return stubBuffer
+    })
+  }
+
+  it('skips the unresolvable clip, loads the rest, and reports it', async () => {
+    const h = makeEngine(twoClips, { resolveBuffer: deadResolver() })
+    const result = await h.engine.load(twoClips)   // must not throw
+    expect(result.missingClipIds).toEqual(['dead'])
+    expect(h.engine.duration()).toBe(10)           // only the good clip contributes
+    expect(h.engine.clipSourceDuration('good')).toBe(stubBuffer.duration)
+    expect(h.engine.clipSourceDuration('dead')).toBe(0)
+  })
+
+  it('only the resolved clip is scheduled on play (the dead clip is silent)', async () => {
+    const h = makeEngine(twoClips, { resolveBuffer: deadResolver() })
+    await h.engine.load(twoClips)
+    h.engine.play()
+    h.timer.tick()
+    expect(h.sources).toHaveLength(1)
   })
 })
 
