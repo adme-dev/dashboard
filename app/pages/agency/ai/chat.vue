@@ -1349,7 +1349,7 @@ function getRenderedMarkdown(content: string): string {
                     size="sm"
                     class="rounded-lg"
                     :loading="voiceProcessing"
-                    :disabled="sending || voiceProcessing"
+                    :disabled="sending || voiceProcessing || voiceSession.isActive.value"
                     @click="handleVoiceRecord"
                   />
                   <!-- Send button -->
