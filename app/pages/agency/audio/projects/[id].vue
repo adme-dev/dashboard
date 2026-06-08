@@ -248,6 +248,17 @@ const saveStatusColor = computed(() => {
       />
 
       <template v-else-if="editor.status.value === 'ready' && editor.timeline.value">
+        <!-- Missing-source warning — non-fatal. The project still loads so the user
+             can remove or replace clips whose audio files are gone (deleted/404). -->
+        <UAlert
+          v-if="editor.missingClipIds.value.length"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-triangle-alert"
+          :title="`${editor.missingClipIds.value.length} ${editor.missingClipIds.value.length === 1 ? 'clip is' : 'clips are'} missing audio`"
+          description="Their source files couldn't be loaded — they may have been deleted. These clips appear on the timeline but produce no sound. Remove or replace them, then save."
+        />
+
         <!-- Timeline with full SP2c interaction layer -->
         <MediaTimeline
           :timeline="editor.timeline.value"

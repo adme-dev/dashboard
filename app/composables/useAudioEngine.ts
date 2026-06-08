@@ -20,8 +20,14 @@ export interface AudioEngineDeps {
   now?: () => number                         // reserved; loop uses ctx.currentTime
 }
 
+/** Outcome of a load: which clips could NOT be resolved (deleted R2 object, 404,
+ * decode failure). A non-empty list is non-fatal — the rest of the timeline loads. */
+export interface LoadResult {
+  missingClipIds: string[]
+}
+
 export interface AudioEngine {
-  load(state: TimelineState): Promise<void>
+  load(state: TimelineState): Promise<LoadResult>
   play(): void
   pause(): void
   seek(sec: number): void
@@ -50,7 +56,7 @@ export function createAudioEngine(deps: AudioEngineDeps): AudioEngine {
   let cancelTimer: (() => void) | null = null
   let active: any[] = []     // live buffer sources
 
-  async function load(state: TimelineState): Promise<void> {
+  async function load(state: TimelineState): Promise<LoadResult> {
     plan = planTimeline(state)
     buffers.clear(); sourceDur.clear(); trackBus.clear(); busNominalDb.clear(); busCurrentGain.clear()
     for (const t of plan.tracks) {
@@ -62,13 +68,27 @@ export function createAudioEngine(deps: AudioEngineDeps): AudioEngine {
       busCurrentGain.set(t.trackId, dbToGain(t.gainDb))
     }
     durationSec = 0
+    const missingClipIds: string[] = []
     for (const clip of plan.clips) {
-      const buf = await resolveBuffer(clip)
+      let buf: any
+      try {
+        buf = await resolveBuffer(clip)
+      } catch {
+        // The clip's source couldn't be fetched/decoded (deleted R2 object, 404,
+        // decode failure). Skip it rather than aborting the whole load: the project
+        // must stay openable so the user can remove or replace the dead clip. The
+        // clip still RENDERS on the timeline (planTimeline is buffer-independent) —
+        // it just produces no audio and contributes nothing to duration. scheduleClip
+        // already no-ops when a clip has no buffer, so playback tolerates it too.
+        missingClipIds.push(clip.clipId)
+        continue
+      }
       buffers.set(clip.clipId, buf)
       sourceDur.set(clip.clipId, buf.duration)
       const dur = clip.durationSec ?? Math.max(0, buf.duration - clip.sourceInSec)
       durationSec = Math.max(durationSec, clip.timelineStartSec + dur)
     }
+    return { missingClipIds }
   }
 
   function scheduleClip(clip: ScheduledClip): void {

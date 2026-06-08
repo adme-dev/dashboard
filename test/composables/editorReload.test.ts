@@ -4,14 +4,16 @@ import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
 
 const state = { schema_version: 1, media_type: 'audio', sample_rate: 48000, duration_sec: 0, tracks: [], ducking: [] } as unknown as TimelineState
 
-function makeSink(playhead = 0): ReloaderSink & { committedDuration: number | null; committedTime: number | null; pausedCalled: number } {
+function makeSink(playhead = 0): ReloaderSink & { committedDuration: number | null; committedTime: number | null; pausedCalled: number; committedMissing: string[] | null } {
   return {
     committedDuration: null,
     committedTime: null,
     pausedCalled: 0,
+    committedMissing: null,
     getPlayhead: () => playhead,
     onPaused() { this.pausedCalled++ },
     commitPlan() { /* noop for these tests */ },
+    commitMissing(ids: string[]) { this.committedMissing = ids },
     commitTransport(duration: number, currentTime: number) { this.committedDuration = duration; this.committedTime = currentTime }
   }
 }
@@ -64,6 +66,20 @@ describe('makeEngineReloader', () => {
     await makeEngineReloader(engine, sink, () => {})(state)
     expect(seek).toHaveBeenCalledWith(4) // clamped, not 9
     expect(sink.committedDuration).toBe(4)
+  })
+
+  it('forwards the load result missing-clip ids to the sink (winner only)', async () => {
+    const engine: ReloaderEngine = {
+      isPlaying: () => false,
+      pause: () => {},
+      load: async () => ({ missingClipIds: ['dead'] }),
+      duration: () => 10,
+      seek: () => {},
+      currentTime: () => 0
+    }
+    const sink = makeSink()
+    await makeEngineReloader(engine, sink, () => {})(state)
+    expect(sink.committedMissing).toEqual(['dead'])
   })
 
   it('latest-wins: a stale (superseded) reload does not commit transport state', async () => {
