@@ -147,3 +147,16 @@ describe('GET /agency/audio/projects/:id/versions', () => {
     expect(res.versions.map((v: any) => v.version)).toEqual([2, 1])
   })
 })
+
+describe('POST /agency/audio/projects (AV)', () => {
+  it('creates an AV project, passing mediaType through and seeding an AV timeline', async () => {
+    mockCreateProject.mockResolvedValue({ project: { id: 'p9', media_type: 'av' }, timeline: { id: 't9' } })
+    const res = await createH({ body: { title: 'Vid', mediaType: 'av' } } as any)
+    expect(mockCreateProject).toHaveBeenCalledTimes(1)
+    const arg = mockCreateProject.mock.calls[0][0]
+    expect(arg.mediaType).toBe('av')
+    expect(arg.initialState.media_type).toBe('av')
+    expect(arg.initialState.tracks.map((t: any) => t.kind)).toContain('video')
+    expect(res.project.id).toBe('p9')
+  })
+})
