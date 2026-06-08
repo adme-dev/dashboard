@@ -1456,6 +1456,22 @@ export interface VideoReview {
   updatedAt: string
 }
 
+export interface VideoAsset {
+  id: string
+  clientId: string | null
+  createdBy: string
+  title: string | null
+  sourceProjectId: string | null
+  sourceJobId: string | null
+  r2Key: string
+  format: string
+  width: number | null
+  height: number | null
+  durationSec: number | null
+  createdAt: string
+  updatedAt: string
+}
+
 // --- Media Studio (Phase 1b SP0) ---
 // camelCase shapes returned by server/utils/audio/projects.ts mappers.
 
