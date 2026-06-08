@@ -1439,6 +1439,23 @@ export interface AudioAsset {
   variantUrls?: Record<string, string>
 }
 
+export interface VideoReview {
+  id: string
+  clientId: string
+  mediaProjectId: string
+  jobId: string
+  format: string
+  r2Key: string
+  title: string | null
+  status: 'pending' | 'approved' | 'rejected' | 'revision_requested'
+  responseNotes: string | null
+  respondedBy: string | null
+  respondedAt: string | null
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
 // --- Media Studio (Phase 1b SP0) ---
 // camelCase shapes returned by server/utils/audio/projects.ts mappers.
 
