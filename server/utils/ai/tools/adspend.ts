@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { $fetch } from 'ofetch'
+// Use Nitro's global $fetch (auto-imported), NOT raw ofetch — it resolves relative internal routes
+// on the Cloudflare runtime; raw ofetch throws on a relative URL (no origin base). See #129.
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, capWithMore, type ToolContext, type ToolResult } from '../toolContext'
 import { expectedToDate } from '~~/server/utils/anomalyDetection/adPacingMath'
@@ -46,7 +47,7 @@ function classify(pacePct: number): PacingStatus {
 // pace against the expected-to-date budget burn.
 const defaultDeps: AdspendDeps = {
   pacing: async (ctx) => {
-    const r = await $fetch<any>('/api/agency/social/spend/summary', { headers: ctx.event.headers as any })
+    const r: any = await $fetch('/api/agency/social/spend/summary', { headers: ctx.event.headers as any })
     const now = new Date()
     const items: any[] = Array.isArray(r?.items) ? r.items : []
     return items.map((it): PacingCampaign => {
