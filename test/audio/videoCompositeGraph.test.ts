@@ -78,3 +78,19 @@ describe('buildCompositeRenderArgs', () => {
     expect(() => buildCompositeRenderArgs(p, ['only-one'], 'out.mp4')).toThrow()
   })
 })
+
+describe('buildCompositePlan with overlays', () => {
+  it('appends overlay frame-sequence inputs and composites them onto [vout]', () => {
+    const overlays = [{ clipId: 'o1', framesPattern: 'ovl_o1/%05d.png', fps: 30, timeline_start_sec: 0, duration_sec: 10 }]
+    const p = buildCompositePlan(avState(), profile, overlays)
+    // overlay frames become an extra image input; composited via overlay=enable
+    expect(p.overlayInputs.map(o => o.framesPattern)).toEqual(['ovl_o1/%05d.png'])
+    expect(p.filterComplex).toContain("overlay=enable='between(t,0.000,10.000)'")
+    expect(p.vLabel).toBe('[vout]')
+  })
+  it('without overlays behaves exactly as V1.2a (base only)', () => {
+    const a = buildCompositePlan(avState(), profile)
+    const b = buildCompositePlan(avState(), profile, [])
+    expect(a).toEqual(b)
+  })
+})

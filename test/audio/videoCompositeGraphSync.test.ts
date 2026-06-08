@@ -24,4 +24,13 @@ describe('videoCompositeGraph .ts ↔ .mjs parity', () => {
     const p = ts(av(), profile)
     expect(mjsArgs(p, ['a', 'b'], 'o.mp4')).toEqual(tsArgs(p, ['a', 'b'], 'o.mp4'))
   })
+  it('produces identical plans with overlays', () => {
+    const overlays = [{ clipId: 'o1', framesPattern: 'ovl_o1/%05d.png', fps: 30, timeline_start_sec: 0, duration_sec: 5 }]
+    expect(mjs(av(), profile, overlays)).toEqual(ts(av(), profile, overlays))
+  })
+  it('produces identical args with overlays', () => {
+    const overlays = [{ clipId: 'o1', framesPattern: 'ovl_o1/%05d.png', fps: 30, timeline_start_sec: 0, duration_sec: 5 }]
+    const p = ts(av(), profile, overlays)
+    expect(mjsArgs(p, ['a', 'b'], 'o.mp4')).toEqual(tsArgs(p, ['a', 'b'], 'o.mp4'))
+  })
 })

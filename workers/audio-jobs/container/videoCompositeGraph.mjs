@@ -1,7 +1,7 @@
 // workers/audio-jobs/container/videoCompositeGraph.mjs — Node port of
 // server/utils/audio/videoCompositeGraph.ts. KEEP IN SYNC (the render.ts↔render.mjs
 // convention; guarded by test/audio/videoCompositeGraphSync.test.ts).
-// Overlay tracks are IGNORED in V1.2a.
+// V1.2b: overlays are transparent PNG image-sequences alpha-composited onto [vout].
 import { buildTimelineFiltergraph } from './timelineFiltergraph.mjs'
 
 const AUDIO_KINDS = ['voiceover', 'music', 'sfx']
@@ -31,7 +31,7 @@ function kenburnsExpr(k, W, H, fps, dur) {
   return `zoompan=z='${zf}+${step}*on':d=${frames}:s=${W}x${H}:fps=${fps}`
 }
 
-export function buildCompositePlan(state, profile) {
+export function buildCompositePlan(state, profile, overlays = []) {
   const W = profile.width, H = profile.height, fps = profile.fps
   const duration = computeDuration(state)
 
@@ -63,7 +63,6 @@ export function buildCompositePlan(state, profile) {
       baseLabel = outLabel
     }
   }
-  vChains.push(`[${baseLabel}]format=yuv420p[vout]`)
 
   // --- audio bed: reuse the audio filtergraph, offset its [k:a] inputs by V ---
   const V = videoInputs.length
@@ -74,6 +73,24 @@ export function buildCompositePlan(state, profile) {
     ? audioPlan.filterComplex.replace(/\[(\d+):a\]/g, (_m, n) => `[${Number(n) + V}:a]`).replace(/\[mix\]/g, '[aout]')
     : ''
 
+  // --- V1.2b: overlay frame-sequence compositing ---
+  // Overlay inputs are added AFTER video + audio inputs in the ffmpeg -i list.
+  // Input index for overlay N = V + audioInputs.length + N
+  const A = audioPlan.inputs.length
+  if (overlays.length > 0) {
+    for (let ovIdx = 0; ovIdx < overlays.length; ovIdx++) {
+      const ov = overlays[ovIdx]
+      const inputIdx = V + A + ovIdx
+      const ovLabel = `ov${ovIdx}`
+      const nextLabel = `vb${++baseN}`
+      // The overlay frame-sequence input is referenced by its input index as a video stream
+      vChains.push(`[${inputIdx}:v]setpts=PTS-STARTPTS+${ov.timeline_start_sec.toFixed(3)}/TB[${ovLabel}]`)
+      vChains.push(`[${baseLabel}][${ovLabel}]overlay=enable='between(t,${ov.timeline_start_sec.toFixed(3)},${(ov.timeline_start_sec + ov.duration_sec).toFixed(3)})'[${nextLabel}]`)
+      baseLabel = nextLabel
+    }
+  }
+  vChains.push(`[${baseLabel}]format=yuv420p[vout]`)
+
   const filterComplex = [...vChains, offsetAudio].filter(Boolean).join(';')
 
   return {
@@ -82,7 +99,8 @@ export function buildCompositePlan(state, profile) {
     vLabel: '[vout]',
     aLabel: hasAudio ? '[aout]' : null,
     durationSec: duration,
-    profile
+    profile,
+    overlayInputs: overlays
   }
 }
 
@@ -91,7 +109,12 @@ export function buildCompositeRenderArgs(plan, inputPaths, outputPath) {
     throw new Error(`inputPaths (${inputPaths.length}) must match plan.inputs (${plan.inputs.length})`)
   }
   const args = ['-hide_banner', '-nostats']
+  // Regular video + audio inputs (must come first, matching plan.inputs order)
   for (const p of inputPaths) args.push('-i', p)
+  // Overlay frame-sequence inputs come after, matching filtergraph input indices
+  for (const ov of plan.overlayInputs) {
+    args.push('-framerate', String(ov.fps), '-i', ov.framesPattern)
+  }
   args.push('-filter_complex', plan.filterComplex, '-map', plan.vLabel)
   if (plan.aLabel) args.push('-map', plan.aLabel)
   args.push('-r', String(plan.profile.fps), '-c:v', 'libx264', '-b:v', plan.profile.videoBitrate, '-pix_fmt', 'yuv420p', '-movflags', '+faststart')
