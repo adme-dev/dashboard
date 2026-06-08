@@ -40,6 +40,7 @@ function getVideoEl(clip: any): HTMLVideoElement | null {
   if (!el) {
     el = document.createElement('video')
     el.muted = true; el.playsInline = true; el.preload = 'auto'; el.crossOrigin = 'anonymous'
+    el.addEventListener('loadeddata', () => draw())   // repaint once the first frame is decodable
     el.src = url
     videoEls.set(clip.id, el)
   } else if (el.src !== url) {
@@ -52,7 +53,7 @@ function getImgEl(clip: any): HTMLImageElement | null {
   const url = props.sources[clip.r2_key]
   if (!url) return null
   let el = imgEls.get(clip.id)
-  if (!el) { el = new Image(); el.crossOrigin = 'anonymous'; el.src = url; imgEls.set(clip.id, el) }
+  if (!el) { el = new Image(); el.crossOrigin = 'anonymous'; el.onload = () => draw(); el.src = url; imgEls.set(clip.id, el) }
   return el
 }
 
@@ -87,6 +88,10 @@ function draw() {
 }
 
 watch(() => props.currentTime, () => { draw(); syncVideoSeek(); syncOverlays() })
+
+// Repaint when clips are added/removed or a source URL arrives (the playhead may be
+// stationary, so the currentTime watch wouldn't fire). Overlay iframes self-seek on @load.
+watch([videoClips, () => props.sources], () => { draw() }, { deep: true })
 
 function syncVideoSeek() {
   const active = activeVisualClipAt(videoClips.value, props.currentTime)

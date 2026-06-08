@@ -149,7 +149,7 @@ async function createProject() {
       <!-- Header -->
       <header class="flex items-center justify-between gap-2">
         <div>
-          <h1 class="text-2xl font-semibold tracking-tight">Audio projects</h1>
+          <h1 class="text-2xl font-semibold tracking-tight">Audio &amp; video projects</h1>
           <p class="text-sm text-muted">Multitrack audio + video timeline sessions — open any project to edit it in the editor.</p>
         </div>
         <UButton
