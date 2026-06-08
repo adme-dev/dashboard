@@ -42,7 +42,7 @@ describe('mapRenderJobRow', () => {
 describe('createRenderJob', () => {
   it('snapshots a new version then inserts a queued job pointing at it (one transaction)', async () => {
     const dbQuery = vi.fn()
-      .mockResolvedValueOnce({ rows: [{ state: { schema_version: 1, media_type: 'audio', sample_rate: 48000, duration_sec: 0, tracks: [], ducking: [] }, max_version: 1 }] })
+      .mockResolvedValueOnce({ rows: [{ state: { schema_version: 1, media_type: 'audio', sample_rate: 48000, duration_sec: 0, tracks: [], ducking: [] }, schema_version: 1, max_version: 1 }] })
       .mockResolvedValueOnce({ rows: [{ id: 't2', project_id: 'p1', version: 2, label: 'render', state: {}, schema_version: 1, created_by: 'u1', created_at: 'x' }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [jobRow] })
@@ -53,6 +53,26 @@ describe('createRenderJob', () => {
     expect(job.timelineId).toBe('t2')
     expect(job.status).toBe('queued')
     expect(dbQuery).toHaveBeenCalledTimes(4)
+    // schema_version from source row must be forwarded (not hardcoded 1)
+    const insertCall = dbQuery.mock.calls[1]
+    expect(insertCall[0]).toContain('INSERT INTO media_timelines')
+    // params[4] is schema_version (0-indexed: newTimelineId, projectId, version, state, schema_version, requestedBy)
+    expect(insertCall[1][4]).toBe(1)
+  })
+
+  it('preserves schema_version=2 from the source AV timeline (not hardcoded 1)', async () => {
+    const dbQuery = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ state: { schema_version: 2, media_type: 'av', tracks: [], ducking: [] }, schema_version: 2, max_version: 3 }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ ...jobRow, id: 'j2', timeline_id: 'tnew' }] })
+    transactionMock.mockImplementation(async (cb: any) => cb({ query: dbQuery }))
+
+    await createRenderJob({ projectId: 'p1', requestedBy: 'u1', channels: [] })
+    const insertCall = dbQuery.mock.calls[1]
+    expect(insertCall[0]).toContain('INSERT INTO media_timelines')
+    // schema_version param (index 4) must be 2, not 1
+    expect(insertCall[1][4]).toBe(2)
   })
 })
 

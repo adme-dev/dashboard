@@ -212,7 +212,7 @@ export async function createRenderJob(input: CreateRenderJobInput): Promise<Medi
   const jobId = randomUUID()
   return transaction(async (db) => {
     const cur = await db.query(
-      `SELECT t.state AS state,
+      `SELECT t.state AS state, t.schema_version AS schema_version,
               (SELECT MAX(version) FROM media_timelines WHERE project_id = $1) AS max_version
        FROM media_projects p
        JOIN media_timelines t ON t.id = p.current_timeline_id
@@ -221,10 +221,11 @@ export async function createRenderJob(input: CreateRenderJobInput): Promise<Medi
     )
     if (!cur.rows[0]) throw new Error(`project ${input.projectId} has no current timeline`)
     const nextVersion = Number(cur.rows[0].max_version) + 1
+    const sourceSchemaVersion = cur.rows[0].schema_version ?? 1
     await db.query(
       `INSERT INTO media_timelines (id, project_id, version, label, state, schema_version, created_by)
-       VALUES ($1, $2, $3, 'render snapshot', $4, 1, $5)`,
-      [newTimelineId, input.projectId, nextVersion, JSON.stringify(cur.rows[0].state), input.requestedBy]
+       VALUES ($1, $2, $3, 'render snapshot', $4, $5, $6)`,
+      [newTimelineId, input.projectId, nextVersion, JSON.stringify(cur.rows[0].state), sourceSchemaVersion, input.requestedBy]
     )
     await db.query(
       `UPDATE media_projects SET current_timeline_id = $1, updated_at = now() WHERE id = $2`,
