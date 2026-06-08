@@ -367,6 +367,18 @@ export function useMediaProjectEditor(projectId: string) {
     })
   }
 
+  /** Save a rendered variant to the reusable video library. */
+  async function saveAsset(jobId: string, format: string, title?: string | null): Promise<{ asset: any }> {
+    return await $fetch(`/api/agency/audio/projects/${projectId}/renders/${jobId}/save-asset`, {
+      method: 'POST', body: { format, title: title ?? null }
+    })
+  }
+
+  /** List saved video assets (for the library). */
+  async function listVideoAssets(): Promise<{ assets: any[] }> {
+    return await $fetch('/api/agency/video/assets')
+  }
+
   function deleteClipAction(clipId: string) {
     if (!timeline.value) return
     applyEdit(deleteClip(timeline.value, { clipId }))
@@ -524,6 +536,7 @@ export function useMediaProjectEditor(projectId: string) {
     // AV actions
     uploadMedia, addVideoClipAction, addOverlayClipAction,
     renderVideoAction, refreshRenderJobs, renderJobs, rendering, publishToSocial, sendToPortal,
+    saveAsset, listVideoAssets,
     /** Merge a new presigned URL into the live sources map (called before addClipAction). */
     mergeSource,
     // Version management

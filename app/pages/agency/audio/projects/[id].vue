@@ -88,6 +88,27 @@ async function onSendToPortal(job: any, format: string) {
   }
 }
 
+async function onSaveAsset(job: any, format: string) {
+  try {
+    await editor.saveAsset(job.id, String(format))
+    toast.add({ title: 'Saved to library', color: 'success' })
+  } catch (e: any) {
+    toast.add({ title: 'Could not save to library', description: e?.data?.statusMessage ?? '', color: 'error' })
+  }
+}
+
+// Video library (AV reuse)
+const libraryOpen = ref(false)
+async function onLibraryPublish(p: { sourceJobId: string | null; format: string }) {
+  if (!p.sourceJobId) { toast.add({ title: 'Source render unavailable for this asset', color: 'warning' }); return }
+  try {
+    const res = await editor.publishToSocial(p.sourceJobId, p.format)
+    await navigateTo(`/agency/social/publishing/compose?edit=${res.postId}&client=${res.clientId}`)
+  } catch (e: any) {
+    toast.add({ title: 'Could not publish from library', description: e?.data?.statusMessage ?? '', color: 'error' })
+  }
+}
+
 function jobStatusColor(s: string) { return s === 'done' ? 'success' : s === 'failed' ? 'error' : 'info' }
 
 // Refresh render jobs once an AV project finishes loading (isAv depends on the
@@ -282,6 +303,9 @@ const saveStatusColor = computed(() => {
           <UButton icon="i-lucide-clapperboard" size="sm" variant="ghost" color="neutral" label="Render video" disabled />
         </UTooltip>
 
+        <!-- Video library (AV only) -->
+        <UButton v-if="isAv" icon="i-lucide-clapperboard" size="sm" variant="ghost" color="neutral" label="Library" @click="libraryOpen = true" />
+
         <!-- Save version -->
         <UButton
           icon="i-lucide-bookmark"
@@ -388,6 +412,12 @@ const saveStatusColor = computed(() => {
               >
                 <UButton icon="i-lucide-send" size="xs" variant="ghost" color="neutral" label="To portal" />
               </UDropdownMenu>
+              <UDropdownMenu
+                v-if="job.status === 'done'"
+                :items="[Object.keys(job.variants || {}).map((fmt) => ({ label: `Save ${fmt} to library`, icon: 'i-lucide-bookmark', onSelect: () => onSaveAsset(job, String(fmt)) }))]"
+              >
+                <UButton icon="i-lucide-bookmark" size="xs" variant="ghost" color="neutral" label="Library" />
+              </UDropdownMenu>
             </div>
           </div>
         </div>
@@ -406,6 +436,7 @@ const saveStatusColor = computed(() => {
 
   <!-- Overlay picker -->
   <MediaOverlayPicker v-model:open="overlayPickerOpen" @pick="onOverlayPick" />
+  <MediaVideoLibrary v-model:open="libraryOpen" @publish="onLibraryPublish" />
 
   <!-- Versions slideover -->
   <USlideover
