@@ -14,7 +14,7 @@
  * the CF dashboard: Workers & Pages → agency-dashboard → Settings →
  * Functions → Cron Triggers). A curl example from the cron:
  *
- *   curl -X POST https://agency-dashboard-6cm.pages.dev/api/internal/warmup \
+ *   curl -X POST https://app.xeroflow.io/api/internal/warmup \
  *        -H "X-Warmup-Secret: $WARMUP_SECRET"
  *
  * Response summarises hit/miss per endpoint so the cron owner can
@@ -76,7 +76,7 @@ export default eventHandler(async (event) => {
               return acc
             }, {} as Record<string, string>)
           ).toString() : ''
-          const url = `https://agency-dashboard-6cm.pages.dev${path}${qs}`
+          const url = `https://app.xeroflow.io${path}${qs}`
           const response = await fetch(url, {
             method: 'GET',
             headers: {

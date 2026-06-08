@@ -1265,6 +1265,7 @@ export interface SocialAccount {
   last_error: string | null
   token_expires_at: string | null
   last_synced_at: string | null
+  metadata?: Record<string, any>
   created_at: string
 }
 

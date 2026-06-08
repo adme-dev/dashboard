@@ -1,6 +1,11 @@
 import { defineEventHandler, getHeader, createError } from 'h3'
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
-import { publishPost } from '~~/server/utils/socialPublishing'
+import { publishPost, type PublishableAccount, type PublishablePost } from '~~/server/utils/socialPublishing'
+
+interface SocialPostRow extends PublishablePost {
+  client_id: string
+  account_ids: string[] | null
+}
 
 /**
  * POST /api/cron/publish-social-posts
@@ -19,25 +24,26 @@ export default defineEventHandler(async (event) => {
   const due = await queryRows<{ id: string }>(
     `SELECT id FROM social_posts
       WHERE scheduled_at <= NOW() AND status IN ('scheduled','approved') AND publish_attempts < 3
-      ORDER BY scheduled_at ASC LIMIT 10`,
+      ORDER BY scheduled_at ASC LIMIT 10`
   )
 
-  const results: Array<{ id: string; status: string }> = []
+  const results: Array<{ id: string, status: string }> = []
   for (const { id } of due) {
     // Idempotent claim — only the tick that flips the row out of scheduled/approved proceeds.
     const claimed = await execute(
       `UPDATE social_posts SET status='publishing', last_attempt_at=NOW(), updated_at=NOW()
         WHERE id=$1 AND status IN ('scheduled','approved')`,
-      [id],
+      [id]
     )
     if (claimed === 0) continue
 
-    const post = await queryOne<any>('SELECT * FROM social_posts WHERE id=$1', [id])
-    const accounts = await queryRows<any>(
-      `SELECT id, platform, platform_account_id, access_token, account_name
+    const post = await queryOne<SocialPostRow>('SELECT * FROM social_posts WHERE id=$1', [id])
+    if (!post) continue
+    const accounts = await queryRows<PublishableAccount>(
+      `SELECT id, platform, platform_account_id, access_token, refresh_token, token_expires_at, account_name, metadata
          FROM social_accounts
         WHERE id = ANY($1) AND client_id = $2 AND is_active = TRUE`,
-      [post.account_ids ?? [], post.client_id],
+      [post.account_ids ?? [], post.client_id]
     )
     const outcome = await publishPost({ ...post, accounts })
     await execute(
@@ -46,7 +52,7 @@ export default defineEventHandler(async (event) => {
          published_at=CASE WHEN $2 IN ('published','partially_published') THEN COALESCE(published_at, NOW()) ELSE published_at END,
          updated_at=NOW()
        WHERE id=$1`,
-      [id, outcome.status, JSON.stringify(outcome.platformResults)],
+      [id, outcome.status, JSON.stringify(outcome.platformResults)]
     )
     results.push({ id, status: outcome.status })
   }

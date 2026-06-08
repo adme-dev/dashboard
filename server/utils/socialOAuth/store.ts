@@ -2,19 +2,28 @@
 // DB-injected upsert for social_accounts honoring UNIQUE(platform, platform_account_id):
 // new page → insert; page owned by THIS client → update (re-auth refresh); page owned by ANOTHER
 // client → 'conflict' (no write), so the endpoint can return a clear 409.
-import type { AccountRow } from './meta'
 
-export interface AccountDb {
-  queryOne<T = any>(sql: string, params?: any[]): Promise<T | null>
-  execute(sql: string, params?: any[]): Promise<number>
+export interface AccountRow {
+  platform: 'facebook' | 'instagram' | 'google-business'
+  platform_account_id: string
+  account_name: string
+  access_token: string
+  refresh_token?: string | null
+  token_expires_at: string | null
+  metadata: Record<string, unknown>
 }
 
-export type UpsertResult =
-  | { status: 'inserted' | 'updated'; id: string }
-  | { status: 'conflict'; conflictClientName: string | null }
+export interface AccountDb {
+  queryOne<T = unknown>(sql: string, params?: unknown[]): Promise<T | null>
+  execute(sql: string, params?: unknown[]): Promise<number>
+}
+
+export type UpsertResult
+  = { status: 'inserted' | 'updated', id: string }
+    | { status: 'conflict', conflictClientName: string | null }
 
 export async function upsertSocialAccount(db: AccountDb, clientId: string, row: AccountRow, createdBy: string): Promise<UpsertResult> {
-  const existing = await db.queryOne<{ id: string; client_id: string }>(
+  const existing = await db.queryOne<{ id: string, client_id: string }>(
     `SELECT id, client_id FROM social_accounts WHERE platform = $1 AND platform_account_id = $2`,
     [row.platform, row.platform_account_id])
 
@@ -25,18 +34,20 @@ export async function upsertSocialAccount(db: AccountDb, clientId: string, row: 
 
   if (existing) {
     await db.queryOne(
-      `UPDATE social_accounts SET account_name = $2, access_token = $3, token_expires_at = $4,
-         metadata = social_accounts.metadata || $5::jsonb, is_active = TRUE, last_error = NULL, updated_at = NOW()
+      `UPDATE social_accounts SET account_name = $2, access_token = $3,
+         refresh_token = COALESCE($4, social_accounts.refresh_token),
+         token_expires_at = $5,
+         metadata = social_accounts.metadata || $6::jsonb, is_active = TRUE, last_error = NULL, updated_at = NOW()
        WHERE id = $1 RETURNING id`,
-      [existing.id, row.account_name, row.access_token, row.token_expires_at, JSON.stringify(row.metadata)])
+      [existing.id, row.account_name, row.access_token, row.refresh_token ?? null, row.token_expires_at, JSON.stringify(row.metadata)])
     return { status: 'updated', id: existing.id }
   }
 
   const inserted = await db.queryOne<{ id: string }>(
     `INSERT INTO social_accounts
-       (client_id, platform, platform_account_id, account_name, access_token, token_expires_at, metadata, is_active, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb, TRUE, $8) RETURNING id`,
-    [clientId, row.platform, row.platform_account_id, row.account_name, row.access_token, row.token_expires_at, JSON.stringify(row.metadata), createdBy])
+       (client_id, platform, platform_account_id, account_name, access_token, refresh_token, token_expires_at, metadata, is_active, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb, TRUE, $9) RETURNING id`,
+    [clientId, row.platform, row.platform_account_id, row.account_name, row.access_token, row.refresh_token ?? null, row.token_expires_at, JSON.stringify(row.metadata), createdBy])
   return { status: 'inserted', id: inserted!.id }
 }
 

@@ -110,6 +110,11 @@ export default defineNuxtConfig({
     ga4RedirectUri: process.env.GA4_REDIRECT_URI || '/api/agency/social/ga4/callback',
     googleDeveloperToken: process.env.GOOGLE_DEVELOPER_TOKEN || '',
 
+    // Google Business Profile publishing
+    googleBusinessClientId: process.env.GOOGLE_BUSINESS_CLIENT_ID || '',
+    googleBusinessClientSecret: process.env.GOOGLE_BUSINESS_CLIENT_SECRET || '',
+    googleBusinessRedirectUri: process.env.GOOGLE_BUSINESS_REDIRECT_URI || '/api/agency/social/publishing/accounts/callback/google-business',
+
     // TikTok Ads
     tiktokAppId: process.env.TIKTOK_APP_ID || '',
     tiktokAppSecret: process.env.TIKTOK_APP_SECRET || '',
@@ -186,8 +191,9 @@ export default defineNuxtConfig({
   ignore: devWatcherIgnored,
 
   routeRules: {
-    // Prerender static marketing pages at build time
-    '/': { prerender: true },
+    // Keep `/` dynamic so host-aware server middleware can route
+    // `app.xeroflow.io` to the admin surface while `xeroflow.io` continues
+    // to serve the public website.
     '/pricing': { prerender: true },
     '/features': { prerender: true },
     '/features/**': { prerender: true },
@@ -264,8 +270,8 @@ export default defineNuxtConfig({
     },
     prerender: {
       crawlLinks: true,
-      // Ignore auth-gated routes and API endpoints during prerendering
-      ignore: ['/agency', '/portal', '/admin', '/settings', '/api', '/chat', '/invoices', '/customers', '/insights', '/profit-loss', '/expenses', '/cashflow', '/reports', '/anomalies', '/recommendations', '/xeroflow', '/review', '/approve', '/intake']
+      // Ignore the host-aware root, auth-gated routes and API endpoints during prerendering
+      ignore: ['/', '/agency', '/portal', '/admin', '/settings', '/api', '/chat', '/invoices', '/customers', '/insights', '/profit-loss', '/expenses', '/cashflow', '/reports', '/anomalies', '/recommendations', '/xeroflow', '/review', '/approve', '/intake']
     },
     rollupConfig: {
       external: ['@react-email/render', '@cloudflare/puppeteer', 'puppeteer', 'gifenc', 'pngjs', 'pg-native']

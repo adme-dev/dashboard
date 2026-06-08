@@ -46,6 +46,8 @@ function connect(platform: string) {
   if (!clientId.value) return
   if (META_PLATFORMS.includes(platform)) {
     window.location.href = `/api/agency/social/publishing/accounts/connect/meta?clientId=${encodeURIComponent(clientId.value)}`
+  } else if (platform === 'google-business') {
+    window.location.href = `/api/agency/social/publishing/accounts/connect/google-business?clientId=${encodeURIComponent(clientId.value)}`
   }
 }
 
@@ -54,10 +56,10 @@ async function disconnect(a: SocialAccount) {
   catch (e: any) { toast.add({ title: 'Failed', description: e?.data?.statusMessage, color: 'error' }) }
 }
 
-// --- Page-selection modal (multi-page Meta connections) ---
+// --- Account-selection modal (multi-page Meta / multi-location Google connections) ---
 const selectOpen = ref(false)
 const selectToken = ref('')
-type SelectPage = { id: string; name: string; igUsername?: string; status?: 'new' | 'connected' | 'conflict' }
+type SelectPage = { id: string; name: string; subtitle?: string | null; igUsername?: string; platform?: string; status?: 'new' | 'connected' | 'conflict' }
 const selectPages = ref<SelectPage[]>([])
 const selectChosen = ref<string[]>([])
 const selecting = ref(false)
@@ -116,8 +118,8 @@ onMounted(async () => {
 
     <UAlert
       icon="i-lucide-info" color="info" variant="subtle" class="mb-5"
-      title="Meta (Facebook + Instagram) is connectable"
-      description="Connect a Meta Page to activate publishing, the engagement inbox, and reply automation for that page. Other networks need per-network app registration (coming soon)."
+      title="Publishing accounts"
+      description="Connect Meta Pages for Facebook and Instagram publishing, or Google Business Profile locations for local posts. Other networks still need per-network app registration."
     />
 
     <div class="space-y-2">
@@ -140,6 +142,10 @@ onMounted(async () => {
             v-if="p === 'facebook'"
             size="xs" variant="subtle" icon="i-lucide-plus" :disabled="!clientId" @click="connect(p)"
           >Connect</UButton>
+          <UButton
+            v-else-if="p === 'google-business'"
+            size="xs" variant="subtle" icon="i-lucide-plus" :disabled="!clientId" @click="connect(p)"
+          >Connect</UButton>
           <UTooltip v-else-if="p === 'instagram'" text="Instagram connects automatically with a linked Facebook Page">
             <UButton size="xs" variant="subtle" color="neutral" disabled icon="i-lucide-link-2">Via Facebook</UButton>
           </UTooltip>
@@ -154,8 +160,8 @@ onMounted(async () => {
       <template #content>
         <div class="p-6 space-y-4">
           <div>
-            <h2 class="text-lg font-semibold">Choose pages to connect</h2>
-            <p class="text-sm text-muted mt-0.5">These Facebook Pages are available on the authorized Meta account. Pick the ones for this client.</p>
+            <h2 class="text-lg font-semibold">Choose accounts to connect</h2>
+            <p class="text-sm text-muted mt-0.5">Pick the pages or locations that belong to this client.</p>
           </div>
           <div class="space-y-2 max-h-80 overflow-auto">
             <label
@@ -169,7 +175,7 @@ onMounted(async () => {
               />
               <div class="min-w-0 flex-1">
                 <div class="text-sm font-medium truncate">{{ pg.name }}</div>
-                <div v-if="pg.igUsername" class="text-xs text-muted truncate">+ Instagram @{{ pg.igUsername }}</div>
+                <div v-if="pg.subtitle" class="text-xs text-muted truncate">{{ pg.subtitle }}</div>
               </div>
               <UBadge v-if="pg.status === 'connected'" color="success" variant="subtle" size="sm">Connected</UBadge>
               <UBadge v-else-if="pg.status === 'conflict'" color="warning" variant="subtle" size="sm">Another client</UBadge>
