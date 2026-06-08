@@ -15,6 +15,11 @@ const publicRoutes = [
   '/api/admin/magic-link-debug',
   '/api/test/cookies',
   '/api/webhooks',
+  // Client portal — has its own cookie-based session auth (client_session_token,
+  // validated by requireClientAuth). The staff auth_token check below MUST NOT
+  // run for these, or portal users (who never get an auth_token) get 401'd.
+  // rbac.ts already exempts the same prefix for the read-only-role gate.
+  '/api/portal/',
   '/api/office/_internal/',
   '/api/public/office-lobby',
   // Public email-marketing surfaces (Phase 4) — unsubscribe / subscribe /
