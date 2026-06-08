@@ -188,3 +188,41 @@ describe('listVersions', () => {
     expect(queryRowsMock.mock.calls[0][0]).toContain('ORDER BY version DESC')
   })
 })
+
+describe('createProject (AV)', () => {
+  it('persists media_type "av" and schema_version 2 for an AV project', async () => {
+    const calls: Array<{ sql: string; params: any[] }> = []
+    const fakeDb = { query: vi.fn(async (sql: string, params: any[]) => {
+      calls.push({ sql, params })
+      return { rows: [{ ...projectRow, media_type: 'av' }] }
+    }) }
+    transactionMock.mockImplementation(async (cb: any) => cb(fakeDb))
+
+    await createProject({
+      createdBy: 'u1', clientId: null, title: 'Vid', mediaType: 'av',
+      initialState: { schema_version: 2, media_type: 'av', tracks: [], ducking: [] } as any
+    })
+
+    const projInsert = calls.find(c => c.sql.includes('INSERT INTO media_projects'))!
+    const tlInsert = calls.find(c => c.sql.includes('INSERT INTO media_timelines'))!
+    expect(projInsert.params).toContain('av')
+    expect(tlInsert.params).toContain(2)
+  })
+
+  it('still persists media_type "audio" and schema_version 1 by default', async () => {
+    const calls: Array<{ sql: string; params: any[] }> = []
+    const fakeDb = { query: vi.fn(async (sql: string, params: any[]) => {
+      calls.push({ sql, params }); return { rows: [projectRow] }
+    }) }
+    transactionMock.mockImplementation(async (cb: any) => cb(fakeDb))
+
+    await createProject({
+      createdBy: 'u1', clientId: null, title: 'Aud',
+      initialState: { schema_version: 1, media_type: 'audio', tracks: [], ducking: [] } as any
+    })
+    const projInsert = calls.find(c => c.sql.includes('INSERT INTO media_projects'))!
+    const tlInsert = calls.find(c => c.sql.includes('INSERT INTO media_timelines'))!
+    expect(projInsert.params).toContain('audio')
+    expect(tlInsert.params).toContain(1)
+  })
+})

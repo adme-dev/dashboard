@@ -41,6 +41,7 @@ export interface CreateProjectInput {
   clientId: string | null
   title: string | null
   initialState: TimelineState
+  mediaType?: 'audio' | 'av'
 }
 
 /** Insert a project + its v1 timeline in one transaction, then point
@@ -52,17 +53,19 @@ export async function createProject(
   const projectId = randomUUID()
   const timelineId = randomUUID()
   const state = { ...input.initialState, duration_sec: computeDuration(input.initialState) }
+  const mediaType = input.mediaType ?? 'audio'
+  const schemaVersion = input.initialState.schema_version
 
   return transaction(async (db) => {
     const projRes = await db.query(
       `INSERT INTO media_projects (id, client_id, created_by, title, media_type, status)
-       VALUES ($1, $2, $3, $4, 'audio', 'draft') RETURNING *`,
-      [projectId, input.clientId, input.createdBy, input.title]
+       VALUES ($1, $2, $3, $4, $5, 'draft') RETURNING *`,
+      [projectId, input.clientId, input.createdBy, input.title, mediaType]
     )
     const tlRes = await db.query(
       `INSERT INTO media_timelines (id, project_id, version, state, schema_version, created_by)
-       VALUES ($1, $2, 1, $3, 1, $4) RETURNING *`,
-      [timelineId, projectId, JSON.stringify(state), input.createdBy]
+       VALUES ($1, $2, 1, $3, $4, $5) RETURNING *`,
+      [timelineId, projectId, JSON.stringify(state), schemaVersion, input.createdBy]
     )
     const updRes = await db.query(
       `UPDATE media_projects SET current_timeline_id = $1, updated_at = now()
@@ -209,7 +212,7 @@ export async function createRenderJob(input: CreateRenderJobInput): Promise<Medi
   const jobId = randomUUID()
   return transaction(async (db) => {
     const cur = await db.query(
-      `SELECT t.state AS state,
+      `SELECT t.state AS state, t.schema_version AS schema_version,
               (SELECT MAX(version) FROM media_timelines WHERE project_id = $1) AS max_version
        FROM media_projects p
        JOIN media_timelines t ON t.id = p.current_timeline_id
@@ -218,10 +221,11 @@ export async function createRenderJob(input: CreateRenderJobInput): Promise<Medi
     )
     if (!cur.rows[0]) throw new Error(`project ${input.projectId} has no current timeline`)
     const nextVersion = Number(cur.rows[0].max_version) + 1
+    const sourceSchemaVersion = cur.rows[0].schema_version ?? 1
     await db.query(
       `INSERT INTO media_timelines (id, project_id, version, label, state, schema_version, created_by)
-       VALUES ($1, $2, $3, 'render snapshot', $4, 1, $5)`,
-      [newTimelineId, input.projectId, nextVersion, JSON.stringify(cur.rows[0].state), input.requestedBy]
+       VALUES ($1, $2, $3, 'render snapshot', $4, $5, $6)`,
+      [newTimelineId, input.projectId, nextVersion, JSON.stringify(cur.rows[0].state), sourceSchemaVersion, input.requestedBy]
     )
     await db.query(
       `UPDATE media_projects SET current_timeline_id = $1, updated_at = now() WHERE id = $2`,

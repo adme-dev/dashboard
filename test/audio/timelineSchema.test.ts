@@ -4,6 +4,7 @@ import {
   validateTimeline,
   computeDuration,
   migrateTimeline,
+  emptyAvTimeline,
   type TimelineState
 } from '~~/server/utils/audio/timelineSchema'
 
@@ -158,5 +159,163 @@ describe('migrateTimeline', () => {
   it('throws on an unknown future schema_version', () => {
     const s = { ...TimelineStateSchema.parse(rawTimeline()), schema_version: 99 } as unknown as TimelineState
     expect(() => migrateTimeline(s)).toThrow()
+  })
+})
+
+describe('AV timeline (schema_version 2) parse', () => {
+  function rawAv(overrides: Record<string, any> = {}) {
+    return {
+      schema_version: 2,
+      media_type: 'av',
+      tracks: [
+        { id: 'vid', name: 'Video', kind: 'video', clips: [
+          { type: 'video', id: 'v1', r2_key: 'media/org/f1.mp4', timeline_start_sec: 0, duration_sec: 8, base_source: 'uploaded_footage' },
+          { type: 'video', id: 'v2', r2_key: 'media/org/s1.jpg', timeline_start_sec: 8, duration_sec: 5, base_source: 'still_kenburns', kenburns: { zoom_from: 1, zoom_to: 1.2 } }
+        ] },
+        { id: 'ovl', name: 'Overlay', kind: 'overlay', clips: [
+          { type: 'overlay', id: 'o1', timeline_start_sec: 0, duration_sec: 13, gsap_project_id: 'banner-123' }
+        ] },
+        { id: 'vo', name: 'VO', kind: 'voiceover', clips: [
+          { id: 'c1', r2_key: 'audio/org/a1.mp3', timeline_start_sec: 0, source_out_sec: 13 }
+        ] }
+      ],
+      ...overrides
+    }
+  }
+
+  it('parses an AV document and applies defaults', () => {
+    const s = TimelineStateSchema.parse(rawAv())
+    expect(s.schema_version).toBe(2)
+    expect(s.media_type).toBe('av')
+    expect(s.fps).toBe(30)
+    expect(s.width).toBe(1080)
+    expect(s.height).toBe(1920)
+    const vid = s.tracks[0]
+    expect(vid.kind).toBe('video')
+    expect((vid.clips[0] as any).type).toBe('video')
+    expect((vid.clips[0] as any).audio_mode).toBe('mute')
+    expect((vid.clips[1] as any).base_source).toBe('still_kenburns')
+    expect((s.tracks[1].clips[0] as any).opacity).toBe(1)
+  })
+
+  it('treats an audio clip with no explicit type as type "audio"', () => {
+    const s = TimelineStateSchema.parse(rawAv())
+    const voClip = s.tracks[2].clips[0] as any
+    expect(voClip.type).toBe('audio')
+    expect(voClip.gain_db).toBe(0)
+  })
+})
+
+describe('Backward compatibility (schema_version 1 audio unchanged)', () => {
+  it('parses a v1 audio document exactly as before', () => {
+    const s = TimelineStateSchema.parse(rawTimeline())
+    expect(s.schema_version).toBe(1)
+    expect(s.media_type).toBe('audio')
+    expect(s.fps).toBe(30)
+    const clip = s.tracks[0].clips[0] as any
+    expect(clip.type).toBe('audio')
+    expect(clip.fade_curve).toBe('linear')
+  })
+})
+
+describe('validateTimeline (AV semantics)', () => {
+  const baseAv = () => TimelineStateSchema.parse({
+    schema_version: 2, media_type: 'av',
+    tracks: [
+      { id: 'vid', name: 'Video', kind: 'video', clips: [
+        { type: 'video', id: 'v1', r2_key: 'm/f.mp4', timeline_start_sec: 0, duration_sec: 5, base_source: 'uploaded_footage' }
+      ] },
+      { id: 'ovl', name: 'Overlay', kind: 'overlay', clips: [
+        { type: 'overlay', id: 'o1', timeline_start_sec: 0, duration_sec: 5, gsap_project_id: 'b1' }
+      ] }
+    ]
+  })
+
+  it('accepts a well-formed AV timeline', () => {
+    expect(validateTimeline(baseAv()).ok).toBe(true)
+  })
+
+  it('rejects a clip whose type does not match its track kind', () => {
+    const s = baseAv()
+    ;(s.tracks[0].clips[0] as any).type = 'overlay'
+    expect(validateTimeline(s).ok).toBe(false)
+  })
+
+  it('rejects a still_kenburns video clip with no kenburns params', () => {
+    const s = baseAv()
+    ;(s.tracks[0].clips[0] as any).base_source = 'still_kenburns'
+    ;(s.tracks[0].clips[0] as any).kenburns = null
+    expect(validateTimeline(s).ok).toBe(false)
+  })
+
+  it('rejects a non-positive duration_sec on a video/overlay clip', () => {
+    const s = baseAv()
+    ;(s.tracks[0].clips[0] as any).duration_sec = 0
+    expect(validateTimeline(s).ok).toBe(false)
+  })
+
+  it('rejects a video clip with negative source_in_sec', () => {
+    const s = baseAv()
+    ;(s.tracks[0].clips[0] as any).source_in_sec = -1
+    const r = validateTimeline(s)
+    expect(r.ok).toBe(false)
+    expect(r.ok === false && r.errors.join(' ')).toContain('source_in_sec')
+  })
+
+  it('rejects a video clip with source_out_sec <= source_in_sec', () => {
+    const s = baseAv()
+    ;(s.tracks[0].clips[0] as any).source_in_sec = 3
+    ;(s.tracks[0].clips[0] as any).source_out_sec = 3
+    const r = validateTimeline(s)
+    expect(r.ok).toBe(false)
+    expect(r.ok === false && r.errors.join(' ')).toContain('source_out_sec')
+  })
+})
+
+describe('computeDuration (AV)', () => {
+  it('uses timeline_start + duration_sec for video/overlay clips', () => {
+    const s = TimelineStateSchema.parse({
+      schema_version: 2, media_type: 'av',
+      tracks: [
+        { id: 'vid', name: 'V', kind: 'video', clips: [
+          { type: 'video', id: 'v1', r2_key: 'm/f.mp4', timeline_start_sec: 10, duration_sec: 5, base_source: 'uploaded_footage' }
+        ] },
+        { id: 'ovl', name: 'O', kind: 'overlay', clips: [
+          { type: 'overlay', id: 'o1', timeline_start_sec: 0, duration_sec: 8, gsap_project_id: 'b1' }
+        ] }
+      ]
+    })
+    expect(computeDuration(s)).toBe(15)
+  })
+})
+
+describe('migrateTimeline + emptyAvTimeline', () => {
+  it('passes through schema_version 2 unchanged', () => {
+    const s = emptyAvTimeline()
+    expect(migrateTimeline(s)).toEqual(s)
+  })
+  it('still passes through schema_version 1', () => {
+    const s = TimelineStateSchema.parse(rawTimeline())
+    expect(migrateTimeline(s).schema_version).toBe(1)
+  })
+  it('emptyAvTimeline seeds a valid AV project with Video/Overlay/VO/Music lanes', () => {
+    const s = emptyAvTimeline()
+    expect(s.schema_version).toBe(2)
+    expect(s.media_type).toBe('av')
+    expect(s.tracks.map(t => t.kind)).toEqual(['video', 'overlay', 'voiceover', 'music'])
+    expect(validateTimeline(s).ok).toBe(true)
+  })
+})
+
+describe('OverlayClip gsap_format_key', () => {
+  it('parses an overlay clip with a gsap_format_key and defaults it when absent', () => {
+    const s = TimelineStateSchema.parse({ schema_version: 2, media_type: 'av', tracks: [
+      { id: 'ovl', name: 'O', kind: 'overlay', clips: [
+        { type: 'overlay', id: 'o1', timeline_start_sec: 0, duration_sec: 5, gsap_project_id: 'b1', gsap_format_key: 'fb_story' },
+        { type: 'overlay', id: 'o2', timeline_start_sec: 5, duration_sec: 5, gsap_project_id: 'b1' }
+      ] }
+    ] })
+    expect((s.tracks[0].clips[0] as any).gsap_format_key).toBe('fb_story')
+    expect((s.tracks[0].clips[1] as any).gsap_format_key).toBeNull()  // default null → resolver picks by aspect
   })
 })

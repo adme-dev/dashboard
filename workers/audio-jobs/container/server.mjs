@@ -3,13 +3,16 @@
 // POST /render: body = master audio bytes, header x-audio-profile = ChannelProfile
 // JSON. Runs 2-pass loudnorm (measure → linear normalize) + trim/fade, returns
 // the variant bytes. No R2/DB creds here — the Worker owns persistence.
+// V1.2b: /render-composite also accepts overlays (banner HTML → Chromium capture → composite).
 import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildMeasurePassArgs, parseLoudnormJson, buildRenderPassArgs } from './render.mjs'
 import { buildMasterRenderArgs } from './timelineFiltergraph.mjs'
+import { buildCompositeRenderArgs } from './videoCompositeGraph.mjs'
+import { captureOverlay } from './overlayCapture.mjs'
 
 const PORT = process.env.PORT || 8080
 
@@ -58,6 +61,71 @@ const server = createServer(async (req, res) => {
     } catch (e) {
       console.error('render-timeline error', e)
       res.writeHead(500); return res.end('render-timeline error')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  if (req.method === 'POST' && req.url === '/render-composite') {
+    const dir = mkdtempSync(join(tmpdir(), 'composite-'))
+    let browser = null
+    try {
+      // Body: { plan, files: [{ b64 }], overlays?: [{ clipId, html, framesPattern, fps, durationSec, width, height }] }
+      const payload = JSON.parse((await readBody(req)).toString('utf8'))
+      const paths = payload.files.map((f, i) => {
+        const p = join(dir, `in${i}`)
+        writeFileSync(p, Buffer.from(f.b64, 'base64'))
+        return p
+      })
+
+      // V1.2b: capture overlay frames from banner HTML before ffmpeg composite.
+      const overlays = Array.isArray(payload.overlays) ? payload.overlays : []
+      if (overlays.length > 0) {
+        // Dynamically import puppeteer (installed in Dockerfile).
+        const puppeteer = (await import('@cloudflare/puppeteer')).default
+        browser = await puppeteer.launch({
+          executablePath: '/usr/bin/chromium',
+          args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+        })
+        for (const ov of overlays) {
+          // framesPattern is e.g. 'ovl_clipId/%05d.png'; the dir part is the outDir.
+          const framesDirName = ov.framesPattern.split('/')[0]
+          const outDir = join(dir, framesDirName)
+          mkdirSync(outDir, { recursive: true })
+          await captureOverlay(browser, {
+            html: ov.html,
+            width: ov.width,
+            height: ov.height,
+            fps: ov.fps,
+            durationSec: ov.durationSec,
+            outDir,
+          })
+          // Replace the framesPattern in the plan's overlayInputs with an absolute path
+          // so ffmpeg can find the frames. The plan already has the relative pattern;
+          // buildCompositeRenderArgs uses plan.overlayInputs[].framesPattern.
+          for (const planOv of payload.plan.overlayInputs) {
+            if (planOv.clipId === ov.clipId) {
+              planOv.framesPattern = join(outDir, 'ovl_%05d.png')
+            }
+          }
+        }
+        await browser.close()
+        browser = null
+      }
+
+      const outPath = join(dir, 'out.mp4')
+      const pass = await runFfmpeg(buildCompositeRenderArgs(payload.plan, paths, outPath))
+      if (pass.code !== 0) {
+        console.error('composite render ffmpeg failed', pass.stderr.slice(-800))
+        res.writeHead(500); return res.end('composite render failed')
+      }
+      const out = readFileSync(outPath)
+      res.writeHead(200, { 'content-type': 'video/mp4' })
+      return res.end(out)
+    } catch (e) {
+      console.error('render-composite error', e)
+      if (browser) { try { await browser.close() } catch {} }
+      res.writeHead(500); return res.end('render-composite error')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

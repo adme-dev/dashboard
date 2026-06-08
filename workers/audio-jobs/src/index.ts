@@ -38,6 +38,36 @@ export default {
     }
     if (env.DATABASE_URL) process.env.DATABASE_URL = env.DATABASE_URL
 
+    if (batch.queue === 'video-render') {
+      const { runVideoCompositeJob } = await import('./videoCompositeRender')
+      const { renderComposite } = await import('./videoCompositeContainer')
+      const { videoFormatFor } = await import('../container/videoProfiles.mjs')
+      const db = await import('./db')
+      for (const msg of batch.messages) {
+        try {
+          await runVideoCompositeJob(msg.body as any, {
+            loadTimelineState: db.dbLoadTimelineState,
+            markRendering: db.dbMarkRenderRendering,
+            markDone: db.dbMarkRenderDone,
+            markFailed: db.dbMarkRenderFailed,
+            renderOne: ({ projectId, jobId, state, formatKey, resolvedOverlays }) => {
+              const profile = videoFormatFor(formatKey)
+              if (!profile) throw new Error(`unknown video format: ${formatKey}`)
+              return renderComposite({ RENDER: env.RENDER, AUDIO_BUCKET: env.AUDIO_BUCKET as any }, {
+                projectId, jobId, state, profile, resolvedOverlays
+              })
+            },
+            centsPerSec: Number(env.RENDER_CENTS_PER_SEC ?? '2')
+          })
+          msg.ack()
+        } catch (e) {
+          console.error('audio-jobs.video-render.error', (msg.body as any)?.jobId, e)
+          msg.retry({ delaySeconds: 30 })
+        }
+      }
+      return
+    }
+
     if (batch.queue === 'timeline-render') {
       const { runTimelineRenderJob } = await import('./timelineRenderWorker')
       const { renderVariants } = await import('./renderVariants')

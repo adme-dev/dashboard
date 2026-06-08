@@ -18,11 +18,16 @@ export default defineConfig({
     setupFiles: ['./test/setup.ts']
   },
   resolve: {
-    alias: {
-      '~': resolve(__dirname, '.'),
-      '~~': resolve(__dirname, '.'),
-      '@': resolve(__dirname, '.'),
-      '~~/server': resolve(__dirname, 'server')
-    }
+    alias: [
+      // More-specific prefixes must come before the bare ~ catch-all
+      { find: '~~/server', replacement: resolve(__dirname, 'server') },
+      { find: '~/utils', replacement: resolve(__dirname, 'app/utils') },
+      { find: '~/types', replacement: resolve(__dirname, 'app/types') },
+      { find: '~/composables', replacement: resolve(__dirname, 'app/composables') },
+      { find: '~/components', replacement: resolve(__dirname, 'app/components') },
+      { find: '~', replacement: resolve(__dirname, '.') },
+      { find: '~~', replacement: resolve(__dirname, '.') },
+      { find: '@', replacement: resolve(__dirname, '.') }
+    ]
   }
 })

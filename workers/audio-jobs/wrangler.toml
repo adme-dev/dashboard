@@ -48,6 +48,16 @@ max_batch_timeout = 5
 max_retries = 3
 dead_letter_queue = "timeline-render-dlq"
 
+# Video Studio V1.2a — composite video render queue. The Pages app produces to
+# `video-render` (VIDEO_RENDER_QUEUE binding); this Worker consumes and branches
+# on batch.queue in index.ts. batch size 1: a full ffmpeg composite encode is heavy.
+[[queues.consumers]]
+queue = "video-render"
+max_batch_size = 1
+max_batch_timeout = 5
+max_retries = 3
+dead_letter_queue = "video-render-dlq"
+
 # Phase 3 — FFmpeg render service as a CF Container bound to this Worker
 # (RENDER). The queue handler invokes it per channel to produce loudness-
 # normalised variants. Stateless; the Worker owns R2/DB.
