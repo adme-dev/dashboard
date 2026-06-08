@@ -145,3 +145,86 @@ export function moveClip(
   next.duration_sec = computeDuration(next)
   return next
 }
+
+// ─── V1.3 AV edit helpers ──────────────────────────────────────────────────────
+// New clip-kind helpers. The audio addClip/trimClip/sliceClipAt above are LEFT
+// UNTOUCHED (they assume source_*/fade_* fields only audio clips have).
+
+const DEFAULT_KENBURNS = { zoom_from: 1, zoom_to: 1.1, pan_from: [0, 0] as [number, number], pan_to: [0, 0] as [number, number] }
+
+/** Append a video clip (uploaded footage or a ken-burns still) to a video track. */
+export function addVideoClip(
+  state: TimelineState,
+  { trackId, id, r2Key, startSec, durationSec, baseSource }:
+    { trackId: string; id: string; r2Key: string; startSec: number; durationSec: number; baseSource: 'uploaded_footage' | 'still_kenburns' }
+): TimelineState {
+  const next = cloneState(state)
+  const track = next.tracks.find(t => t.id === trackId)
+  if (!track) return state
+  track.clips.push({
+    type: 'video', id, asset_id: null, r2_key: r2Key,
+    timeline_start_sec: Math.max(0, startSec),
+    source_in_sec: 0, source_out_sec: null,
+    duration_sec: Math.max(0.1, durationSec),
+    base_source: baseSource,
+    kenburns: baseSource === 'still_kenburns' ? { ...DEFAULT_KENBURNS } : null,
+    audio_mode: 'mute'
+  } as unknown as Clip)
+  next.duration_sec = computeDuration(next)
+  return next
+}
+
+/** Append an overlay clip (a Banner Studio project + format key) to an overlay track. */
+export function addOverlayClip(
+  state: TimelineState,
+  { trackId, id, gsapProjectId, gsapFormatKey, startSec, durationSec }:
+    { trackId: string; id: string; gsapProjectId: string; gsapFormatKey: string | null; startSec: number; durationSec: number }
+): TimelineState {
+  const next = cloneState(state)
+  const track = next.tracks.find(t => t.id === trackId)
+  if (!track) return state
+  track.clips.push({
+    type: 'overlay', id,
+    timeline_start_sec: Math.max(0, startSec),
+    duration_sec: Math.max(0.1, durationSec),
+    gsap_project_id: gsapProjectId,
+    gsap_format_key: gsapFormatKey,
+    opacity: 1
+  } as unknown as Clip)
+  next.duration_sec = computeDuration(next)
+  return next
+}
+
+/** Trim a VIDEO or OVERLAY clip. Overlays + stills resize duration only; footage also
+ * shifts source_in_sec on a start-trim so the visible window stays consistent. Audio
+ * clips must go through trimClip (this returns state unchanged for them). */
+export function trimVisualClip(
+  state: TimelineState,
+  { clipId, edge, newTimeSec }: { clipId: string; edge: 'start' | 'end'; newTimeSec: number }
+): TimelineState {
+  const found = findClip(state, clipId)
+  if (!found) return state
+  const c = found.clip as any
+  if (c.type !== 'video' && c.type !== 'overlay') return state
+  const MIN = 0.1
+  const next = cloneState(state)
+  const clip = findClip(next, clipId)!.clip as any
+  if (edge === 'end') {
+    clip.duration_sec = Math.max(MIN, newTimeSec - clip.timeline_start_sec)
+    if (clip.type === 'video' && clip.source_out_sec != null) {
+      clip.source_out_sec = clip.source_in_sec + clip.duration_sec
+    }
+  } else {
+    const maxAdvance = clip.duration_sec - MIN
+    const requested = newTimeSec - clip.timeline_start_sec
+    const advance = Math.max(-clip.timeline_start_sec, Math.min(requested, maxAdvance))
+    clip.timeline_start_sec = clip.timeline_start_sec + advance
+    clip.duration_sec = clip.duration_sec - advance
+    if (clip.type === 'video') {
+      clip.source_in_sec = Math.max(0, clip.source_in_sec + advance)
+      if (clip.source_out_sec != null) clip.source_out_sec = clip.source_in_sec + clip.duration_sec
+    }
+  }
+  next.duration_sec = computeDuration(next)
+  return next
+}

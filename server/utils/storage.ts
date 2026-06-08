@@ -46,7 +46,7 @@ function getR2Client(): S3Client {
 }
 
 // File type categories for organization
-export type FileCategory = 'avatars' | 'attachments' | 'expenses' | 'briefs' | 'invoices' | 'general'
+export type FileCategory = 'avatars' | 'attachments' | 'expenses' | 'briefs' | 'invoices' | 'general' | 'media-video' | 'media-image'
 
 // Allowed MIME types per category
 const ALLOWED_TYPES: Record<FileCategory, string[]> = {
@@ -67,7 +67,10 @@ const ALLOWED_TYPES: Record<FileCategory, string[]> = {
     'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   ],
   invoices: ['application/pdf', 'image/jpeg', 'image/png'],
-  general: ['*'] // Allow all types
+  general: ['*'], // Allow all types
+  // Video Studio AV-project media uploads
+  'media-video': ['video/mp4', 'video/webm', 'video/quicktime'],
+  'media-image': ['image/jpeg', 'image/png', 'image/webp']
 }
 
 // Max file sizes per category (in bytes)
@@ -77,7 +80,9 @@ const MAX_FILE_SIZES: Record<FileCategory, number> = {
   expenses: 10 * 1024 * 1024, // 10MB
   briefs: 25 * 1024 * 1024, // 25MB
   invoices: 10 * 1024 * 1024, // 10MB
-  general: 100 * 1024 * 1024 // 100MB
+  general: 100 * 1024 * 1024, // 100MB
+  'media-video': 500 * 1024 * 1024, // 500MB
+  'media-image': 50 * 1024 * 1024 // 50MB
 }
 
 /**

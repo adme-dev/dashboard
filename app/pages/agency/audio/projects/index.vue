@@ -120,26 +120,19 @@ async function confirmDelete() {
 
 const createOpen = ref(false)
 const newTitle = ref('')
+const newKind = ref<'audio' | 'av'>('audio')
 const creating = ref(false)
 
 async function createProject() {
   if (creating.value) return
   creating.value = true
   try {
-    const res = await $fetch<{ project: MediaProject; timeline: unknown }>(
-      '/api/agency/audio/projects',
-      {
-        method: 'POST',
-        body: {
-          title: newTitle.value.trim() || null,
-          // Seed two empty lanes so the editor opens with usable tracks for "Add clip".
-          initialState: defaultTimelineState()
-        }
-      }
-    )
+    const body: Record<string, unknown> = { title: newTitle.value.trim() || null, mediaType: newKind.value }
+    // Audio seeds two empty lanes; AV is auto-seeded server-side via emptyAvTimeline().
+    if (newKind.value === 'audio') body.initialState = defaultTimelineState()
+    const res = await $fetch<{ project: MediaProject }>('/api/agency/audio/projects', { method: 'POST', body })
     toast.add({ title: 'Project created', color: 'success' })
-    createOpen.value = false
-    newTitle.value = ''
+    createOpen.value = false; newTitle.value = ''; newKind.value = 'audio'
     await navigateTo(`/agency/audio/projects/${res.project.id}`)
   } catch (e: any) {
     toast.add({ title: 'Failed to create project', description: e?.data?.statusMessage ?? '', color: 'error' })
@@ -156,8 +149,8 @@ async function createProject() {
       <!-- Header -->
       <header class="flex items-center justify-between gap-2">
         <div>
-          <h1 class="text-2xl font-semibold tracking-tight">Audio projects</h1>
-          <p class="text-sm text-muted">Multitrack timeline sessions — open any project to edit it in the editor.</p>
+          <h1 class="text-2xl font-semibold tracking-tight">Audio &amp; video projects</h1>
+          <p class="text-sm text-muted">Multitrack audio + video timeline sessions — open any project to edit it in the editor.</p>
         </div>
         <UButton
           icon="i-lucide-plus"
@@ -245,9 +238,16 @@ async function createProject() {
   </div>
 
   <!-- Create project modal -->
-  <UModal v-model:open="createOpen" title="New audio project">
+  <UModal v-model:open="createOpen" title="New project">
     <template #content>
       <div class="p-4 space-y-4">
+        <UFormField label="Project type">
+          <USelect
+            v-model="newKind"
+            :items="[{ label: 'Audio (multitrack)', value: 'audio' }, { label: 'Video (footage + overlay)', value: 'av' }]"
+            value-key="value"
+          />
+        </UFormField>
         <UFormField label="Project title">
           <UInput
             v-model="newTitle"
