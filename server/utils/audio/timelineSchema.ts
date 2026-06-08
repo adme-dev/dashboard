@@ -141,6 +141,10 @@ export function validateTimeline(state: TimelineState): ValidateResult {
       } else if (got === 'video') {
         if (c.timeline_start_sec < 0) errors.push(`clip ${c.id}: timeline_start_sec must be >= 0`)
         if (c.duration_sec <= 0) errors.push(`clip ${c.id}: duration_sec must be > 0`)
+        if (c.source_in_sec < 0) errors.push(`clip ${c.id}: source_in_sec must be >= 0`)
+        if (c.source_out_sec != null && c.source_out_sec <= c.source_in_sec) {
+          errors.push(`clip ${c.id}: source_out_sec must be > source_in_sec`)
+        }
         if (c.base_source === 'still_kenburns' && !c.kenburns) {
           errors.push(`clip ${c.id}: still_kenburns requires kenburns params`)
         }

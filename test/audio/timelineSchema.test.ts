@@ -253,6 +253,23 @@ describe('validateTimeline (AV semantics)', () => {
     ;(s.tracks[0].clips[0] as any).duration_sec = 0
     expect(validateTimeline(s).ok).toBe(false)
   })
+
+  it('rejects a video clip with negative source_in_sec', () => {
+    const s = baseAv()
+    ;(s.tracks[0].clips[0] as any).source_in_sec = -1
+    const r = validateTimeline(s)
+    expect(r.ok).toBe(false)
+    expect(r.ok === false && r.errors.join(' ')).toContain('source_in_sec')
+  })
+
+  it('rejects a video clip with source_out_sec <= source_in_sec', () => {
+    const s = baseAv()
+    ;(s.tracks[0].clips[0] as any).source_in_sec = 3
+    ;(s.tracks[0].clips[0] as any).source_out_sec = 3
+    const r = validateTimeline(s)
+    expect(r.ok).toBe(false)
+    expect(r.ok === false && r.errors.join(' ')).toContain('source_out_sec')
+  })
 })
 
 describe('computeDuration (AV)', () => {
