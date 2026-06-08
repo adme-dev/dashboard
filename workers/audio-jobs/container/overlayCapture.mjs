@@ -30,7 +30,10 @@ export async function captureOverlay(browser, { html, width, height, fps, durati
     const c = g && g.globalTimeline.getChildren(false)
     return (c && c[0]) ? c[0].duration() : null
   })
-  const totalDuration = typeof gDuration === 'number' ? gDuration : durationSec
+  // Use GSAP duration when it is a positive number; fall back to the caller-supplied
+  // durationSec when GSAP reports 0 (e.g. timeline not yet started) or null (no tl).
+  // Without this guard, zero frames → ffmpeg fails.
+  const totalDuration = (typeof gDuration === 'number' && gDuration > 0) ? gDuration : durationSec
 
   const frames = Math.ceil(totalDuration * fps)
 
