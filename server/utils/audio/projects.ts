@@ -41,6 +41,7 @@ export interface CreateProjectInput {
   clientId: string | null
   title: string | null
   initialState: TimelineState
+  mediaType?: 'audio' | 'av'
 }
 
 /** Insert a project + its v1 timeline in one transaction, then point
@@ -52,17 +53,19 @@ export async function createProject(
   const projectId = randomUUID()
   const timelineId = randomUUID()
   const state = { ...input.initialState, duration_sec: computeDuration(input.initialState) }
+  const mediaType = input.mediaType ?? 'audio'
+  const schemaVersion = input.initialState.schema_version
 
   return transaction(async (db) => {
     const projRes = await db.query(
       `INSERT INTO media_projects (id, client_id, created_by, title, media_type, status)
-       VALUES ($1, $2, $3, $4, 'audio', 'draft') RETURNING *`,
-      [projectId, input.clientId, input.createdBy, input.title]
+       VALUES ($1, $2, $3, $4, $5, 'draft') RETURNING *`,
+      [projectId, input.clientId, input.createdBy, input.title, mediaType]
     )
     const tlRes = await db.query(
       `INSERT INTO media_timelines (id, project_id, version, state, schema_version, created_by)
-       VALUES ($1, $2, 1, $3, 1, $4) RETURNING *`,
-      [timelineId, projectId, JSON.stringify(state), input.createdBy]
+       VALUES ($1, $2, 1, $3, $4, $5) RETURNING *`,
+      [timelineId, projectId, JSON.stringify(state), schemaVersion, input.createdBy]
     )
     const updRes = await db.query(
       `UPDATE media_projects SET current_timeline_id = $1, updated_at = now()
