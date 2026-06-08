@@ -29,6 +29,6 @@ export default defineEventHandler(async (event) => {
 
   return {
     audioBase64: Buffer.from(result.audioBuffer).toString('base64'),
-    audioFormat: result.format,
+    audioFormat: result.format
   }
 })

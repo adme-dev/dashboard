@@ -1,13 +1,13 @@
 import type { ConfirmIntent } from './voiceConfirm'
 
 /** Lifecycle of one hands-free voice session. Pure reducer — the composable owns the side effects. */
-export type VoicePhase =
-  | 'idle'            // no session
-  | 'listening'       // mic armed, capturing a turn (or a confirm utterance)
-  | 'processing'      // turn sent to the agent, awaiting reply
-  | 'speaking'        // playing the assistant's TTS reply
-  | 'awaitingConfirm' // a write was proposed; waiting for a spoken confirm/cancel
-  | 'confirming'      // executing the confirmed write
+export type VoicePhase
+  = | 'idle' // no session
+    | 'listening' // mic armed, capturing a turn (or a confirm utterance)
+    | 'processing' // turn sent to the agent, awaiting reply
+    | 'speaking' // playing the assistant's TTS reply
+    | 'awaitingConfirm' // a write was proposed; waiting for a spoken confirm/cancel
+    | 'confirming' // executing the confirmed write
 
 export interface VoiceSessionState {
   phase: VoicePhase
@@ -20,20 +20,20 @@ export const initialVoiceSession: VoiceSessionState = {
   phase: 'idle',
   pendingProposalId: null,
   repromptCount: 0,
-  error: null,
+  error: null
 }
 
-export type VoiceEvent =
-  | { type: 'START' }
-  | { type: 'STOP' }
-  | { type: 'SPEECH_CAPTURED' }
-  | { type: 'RESPONSE', proposalId: string | null }
-  | { type: 'PLAYBACK_DONE' }
-  | { type: 'BARGE_IN' }
-  | { type: 'CONFIRM_INTENT', intent: ConfirmIntent }
-  | { type: 'CONFIRM_DONE' }
-  | { type: 'TIMEOUT' }
-  | { type: 'ERROR', message: string }
+export type VoiceEvent
+  = | { type: 'START' }
+    | { type: 'STOP' }
+    | { type: 'SPEECH_CAPTURED' }
+    | { type: 'RESPONSE', proposalId: string | null }
+    | { type: 'PLAYBACK_DONE' }
+    | { type: 'BARGE_IN' }
+    | { type: 'CONFIRM_INTENT', intent: ConfirmIntent }
+    | { type: 'CONFIRM_DONE' }
+    | { type: 'TIMEOUT' }
+    | { type: 'ERROR', message: string }
 
 const MAX_REPROMPTS = 2
 

@@ -22,6 +22,6 @@ export function createBargeInDetector(opts: { threshold?: number, sustainMs?: nu
       aboveSince = null
       return false
     },
-    reset() { aboveSince = null },
+    reset() { aboveSince = null }
   }
 }

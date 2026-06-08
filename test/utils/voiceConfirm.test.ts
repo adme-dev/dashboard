@@ -8,7 +8,7 @@ describe('classifyConfirmUtterance', () => {
     }
   })
   it('detects negatives', () => {
-    for (const s of ['cancel', 'No', 'nope', "don't do that", 'never mind', 'abort', 'stop']) {
+    for (const s of ['cancel', 'No', 'nope', 'don\'t do that', 'never mind', 'abort', 'stop']) {
       expect(classifyConfirmUtterance(s)).toBe('negative')
     }
   })
@@ -18,7 +18,7 @@ describe('classifyConfirmUtterance', () => {
     }
   })
   it('treats anything else (or empty) as ambiguous', () => {
-    for (const s of ['', '   ', "what's the weather", 'create another task', 'maybe later']) {
+    for (const s of ['', '   ', 'what\'s the weather', 'create another task', 'maybe later']) {
       expect(classifyConfirmUtterance(s)).toBe('ambiguous')
     }
   })

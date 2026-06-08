@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   initialVoiceSession,
   voiceSessionReducer,
-  type VoiceSessionState,
+  type VoiceSessionState
 } from '~~/app/utils/voiceSessionMachine'
 
 const at = (overrides: Partial<VoiceSessionState>): VoiceSessionState => ({ ...initialVoiceSession, ...overrides })

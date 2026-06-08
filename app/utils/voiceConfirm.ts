@@ -8,11 +8,11 @@ export type ConfirmIntent = 'affirmative' | 'negative' | 'stop' | 'ambiguous'
 const STOP_PHRASES = ['stop listening', 'stop voice', 'end session', 'exit voice', 'goodbye']
 const AFFIRMATIVE = [
   'confirm', 'confirmed', 'yes', 'yep', 'yeah', 'yup', 'do it', 'go ahead',
-  'proceed', 'approve', 'approved', 'please do', 'sounds good',
+  'proceed', 'approve', 'approved', 'please do', 'sounds good'
 ]
 const NEGATIVE = [
-  'cancel', 'no', 'nope', 'nah', "don't", 'do not', 'abort',
-  'never mind', 'nevermind', 'stop', 'forget it', 'discard',
+  'cancel', 'no', 'nope', 'nah', 'don\'t', 'do not', 'abort',
+  'never mind', 'nevermind', 'stop', 'forget it', 'discard'
 ]
 
 function normalize(raw: string): string {
