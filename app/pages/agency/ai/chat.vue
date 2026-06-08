@@ -39,6 +39,85 @@ watch(voiceError, (err) => {
   if (err) toast.add({ title: 'Voice', description: err, color: 'warning' })
 })
 
+// --- Hands-free Voice Session (open-mic, agentic, barge-in) ---
+// A continuous voice loop over the live tool-calling agent: listen → answer aloud → re-arm,
+// with barge-in and spoken write-confirmation. Gated (in the template) behind aiToolsEnabled.
+async function ensureConversationId(): Promise<string | null> {
+  if (activeConversation.value) return activeConversation.value.id
+  try {
+    const conv = await createConversation()
+    updateUrl(conv.id)
+    return conv.id
+  } catch {
+    toast.add({ title: 'Error', description: 'Failed to create conversation', color: 'error' })
+    return null
+  }
+}
+
+function pushVoiceTurn(
+  userText: string,
+  assistant: AiMessage,
+  proposedAction: { proposalId: string, resolved: unknown } | null,
+) {
+  if (!activeConversation.value) return
+  messages.value.push({
+    id: `voice-user-${Date.now()}`,
+    conversationId: activeConversation.value.id,
+    role: 'user',
+    content: userText,
+    contextSources: [],
+    tokenCount: null,
+    model: null,
+    latencyMs: null,
+    isError: false,
+    createdAt: new Date().toISOString(),
+  })
+  messages.value.push({ ...assistant, proposedAction: proposedAction ?? null })
+  activeConversation.value.messageCount += 2
+  activeConversation.value.lastMessageAt = new Date().toISOString()
+}
+
+function pushAssistantNote(text: string) {
+  if (!activeConversation.value) return
+  messages.value.push({
+    id: `voice-note-${Date.now()}`,
+    conversationId: activeConversation.value.id,
+    role: 'assistant',
+    content: text,
+    contextSources: [],
+    tokenCount: null,
+    model: null,
+    latencyMs: null,
+    isError: false,
+    createdAt: new Date().toISOString(),
+  })
+}
+
+function resolveLastProposal() {
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    if (messages.value[i].role === 'assistant' && messages.value[i].proposedAction) {
+      messages.value[i] = { ...messages.value[i], proposedAction: null } as AiMessage
+      break
+    }
+  }
+}
+
+const voiceSession = useVoiceSession({
+  ensureConversation: ensureConversationId,
+  onTurn: pushVoiceTurn,
+  onAssistantNote: pushAssistantNote,
+  onProposalResolved: resolveLastProposal,
+})
+
+function toggleVoiceSession() {
+  if (voiceSession.isActive.value) voiceSession.stop()
+  else voiceSession.start()
+}
+
+watch(voiceSession.error, (err) => {
+  if (err) toast.add({ title: 'Voice', description: err, color: 'warning' })
+})
+
 async function handleVoiceRecord() {
   // If currently playing audio, stop it
   if (voicePlaying.value) {
@@ -1150,6 +1229,16 @@ function getRenderedMarkdown(content: string): string {
               </div>
             </Transition>
 
+            <!-- Hands-free voice session status -->
+            <VoiceModePanel
+              v-if="voiceSession.isActive.value"
+              :phase="voiceSession.phase.value"
+              :volume-level="voiceSession.volumeLevel.value"
+              :error="voiceSession.error.value"
+              class="mb-2"
+              @stop="voiceSession.stop()"
+            />
+
             <div class="bg-elevated border border-default rounded-2xl shadow-lg ring-1 ring-black/[0.03] dark:ring-white/[0.03] overflow-hidden">
               <!-- Entity chips (referenced items) -->
               <div v-if="mentionedEntities.length > 0" class="flex flex-wrap gap-1.5 px-4 pt-3 pb-1">
@@ -1239,6 +1328,18 @@ function getRenderedMarkdown(content: string): string {
                   </template>
                 </div>
                 <div class="flex items-center gap-1.5">
+                  <!-- Hands-free voice session (agentic, open-mic) — gated like the persona picker -->
+                  <UButton
+                    v-if="aiToolsEnabled && voiceAvailable"
+                    :icon="voiceSession.isActive.value ? 'i-lucide-square' : 'i-lucide-radio'"
+                    :color="voiceSession.isActive.value ? 'error' : 'neutral'"
+                    :variant="voiceSession.isActive.value ? 'solid' : 'ghost'"
+                    size="sm"
+                    class="rounded-lg"
+                    :disabled="sending || isRecording || voiceProcessing"
+                    :title="voiceSession.isActive.value ? 'Stop voice session' : 'Start hands-free voice session'"
+                    @click="toggleVoiceSession"
+                  />
                   <!-- Voice button -->
                   <UButton
                     v-if="voiceAvailable"
