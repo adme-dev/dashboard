@@ -2,7 +2,7 @@
 // SP2c full multitrack editor. Extends the SP2b read-only preview by wiring every
 // MediaTimeline emit to the composable actions, adding an edit toolbar (undo/redo,
 // split, add-clip, save-version), and passing the reactive sources map for waveforms.
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMediaProjectEditor } from '~~/app/composables/useMediaProjectEditor'
 import type { PickedAsset } from '~~/app/components/media/MediaAssetPicker.vue'
@@ -43,6 +43,38 @@ const saveVersionOpen = ref(false)
 const versionLabel = ref('')
 const savingVersion = ref(false)
 const toast = useToast()
+
+// ─── AV (video studio) wiring ──────────────────────────────────────────────────
+// Everything below is AV-only; audio projects (`!isAv`) keep the original behavior.
+
+const config = useRuntimeConfig()
+const videoStudioEnabled = computed(() => Boolean((config.public as any).videoStudioEnabled))
+const isAv = computed(() => editor.mediaType.value === 'av')
+
+// AV pickers
+const overlayPickerOpen = ref(false)
+const mediaPickerOpen = ref(false)
+
+function onOverlayPick(p: { gsapProjectId: string; gsapFormatKey: string }) {
+  editor.addOverlayClipAction(p.gsapProjectId, p.gsapFormatKey, 5, editor.currentTime.value)
+}
+function onMediaUploaded(p: { r2Key: string; durationSec: number; baseSource: 'uploaded_footage' | 'still_kenburns' }) {
+  editor.addVideoClipAction(p.r2Key, p.durationSec, p.baseSource, editor.currentTime.value)
+}
+
+// Render
+async function onRenderVideo() {
+  const res = await editor.renderVideoAction()
+  if (res.ok) toast.add({ title: 'Render queued', description: 'Your video is rendering.', color: 'success' })
+  else if (res.flagOff) toast.add({ title: 'Video rendering is disabled', description: 'Ask an admin to enable VIDEO_STUDIO_ENABLED.', color: 'warning' })
+  else toast.add({ title: 'Failed to queue render', color: 'error' })
+}
+
+function jobStatusColor(s: string) { return s === 'done' ? 'success' : s === 'failed' ? 'error' : 'info' }
+
+// Refresh render jobs once an AV project finishes loading (isAv depends on the
+// async-loaded timeline, so watch it rather than onMounted).
+watch(isAv, (av) => { if (av) void editor.refreshRenderJobs() }, { immediate: true })
 
 async function doSaveVersion() {
   if (savingVersion.value) return
@@ -165,7 +197,7 @@ const saveStatusColor = computed(() => {
         />
         <div class="space-y-0.5 flex-1">
           <h1 class="text-2xl font-semibold tracking-tight">Timeline editor</h1>
-          <p class="text-sm text-muted">Multitrack editor — drag, trim, slice, and layer your clips.</p>
+          <p class="text-sm text-muted">{{ isAv ? 'Video editor — assemble footage, stills, overlays and audio, then render.' : 'Multitrack editor — drag, trim, slice, and layer your clips.' }}</p>
         </div>
         <!-- Save status pill -->
         <span
@@ -204,15 +236,33 @@ const saveStatusColor = computed(() => {
 
         <div class="h-5 w-px bg-default mx-1" />
 
-        <!-- Add clip -->
+        <!-- Add (audio: single button; AV: menu) -->
         <UButton
-          icon="i-lucide-plus-circle"
-          size="sm"
-          variant="soft"
-          color="primary"
-          label="Add clip"
+          v-if="!isAv"
+          icon="i-lucide-plus-circle" size="sm" variant="soft" color="primary" label="Add clip"
           @click="pickerOpen = true"
         />
+        <UDropdownMenu
+          v-else
+          :items="[[
+            { label: 'Audio clip', icon: 'i-lucide-music', onSelect: () => { pickerOpen = true } },
+            { label: 'Footage / still', icon: 'i-lucide-film', onSelect: () => { mediaPickerOpen = true } },
+            { label: 'Overlay', icon: 'i-lucide-shapes', onSelect: () => { overlayPickerOpen = true } }
+          ]]"
+        >
+          <UButton icon="i-lucide-plus-circle" size="sm" variant="soft" color="primary" label="Add" trailing-icon="i-lucide-chevron-down" />
+        </UDropdownMenu>
+
+        <!-- Render video (AV only; gated) -->
+        <UButton
+          v-if="isAv && videoStudioEnabled"
+          icon="i-lucide-clapperboard" size="sm" variant="soft" color="primary" label="Render video"
+          :loading="editor.rendering.value"
+          @click="onRenderVideo"
+        />
+        <UTooltip v-else-if="isAv" text="Video rendering is disabled (VIDEO_STUDIO_ENABLED off)">
+          <UButton icon="i-lucide-clapperboard" size="sm" variant="ghost" color="neutral" label="Render video" disabled />
+        </UTooltip>
 
         <!-- Save version -->
         <UButton
@@ -248,6 +298,15 @@ const saveStatusColor = computed(() => {
       />
 
       <template v-else-if="editor.status.value === 'ready' && editor.timeline.value">
+        <!-- AV preview (frame-accurate compositor) -->
+        <MediaAvPreview
+          v-if="isAv"
+          :timeline="editor.timeline.value"
+          :current-time="editor.currentTime.value"
+          :is-playing="editor.isPlaying.value"
+          :sources="editor.sources.value"
+        />
+
         <!-- Timeline with full SP2c interaction layer -->
         <MediaTimeline
           :timeline="editor.timeline.value"
@@ -284,6 +343,20 @@ const saveStatusColor = computed(() => {
             @update:model-value="(v: number | number[]) => editor.seek(Array.isArray(v) ? v[0]! : v)"
           />
         </div>
+
+        <!-- Render jobs (AV) -->
+        <div v-if="isAv && editor.renderJobs.value.length" class="rounded-lg border border-default bg-elevated p-3 space-y-2">
+          <p class="text-xs font-medium text-muted">Render jobs</p>
+          <div v-for="job in editor.renderJobs.value" :key="job.id" class="flex items-center gap-3 text-sm">
+            <UBadge :label="job.status" size="xs" variant="subtle" :color="jobStatusColor(job.status)" />
+            <span class="text-muted tabular-nums">{{ new Date(job.createdAt).toLocaleString() }}</span>
+            <span v-if="job.error" class="text-error truncate">{{ job.error }}</span>
+            <div class="ml-auto flex gap-2">
+              <UButton v-for="(key, fmt) in (job.variants || {})" :key="fmt" :label="String(fmt)" size="xs" variant="soft" color="neutral"
+                       :to="`/api/_uploads/${key}`" target="_blank" />
+            </div>
+          </div>
+        </div>
       </template>
     </div>
   </div>
@@ -293,6 +366,12 @@ const saveStatusColor = computed(() => {
     v-model:open="pickerOpen"
     @pick="onPickerPick"
   />
+
+  <!-- Footage / still uploader -->
+  <MediaMediaPicker v-model:open="mediaPickerOpen" :uploader="editor.uploadMedia" @uploaded="onMediaUploaded" />
+
+  <!-- Overlay picker -->
+  <MediaOverlayPicker v-model:open="overlayPickerOpen" @pick="onOverlayPick" />
 
   <!-- Versions slideover -->
   <USlideover
