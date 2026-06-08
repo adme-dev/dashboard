@@ -160,3 +160,59 @@ describe('migrateTimeline', () => {
     expect(() => migrateTimeline(s)).toThrow()
   })
 })
+
+describe('AV timeline (schema_version 2) parse', () => {
+  function rawAv(overrides: Record<string, any> = {}) {
+    return {
+      schema_version: 2,
+      media_type: 'av',
+      tracks: [
+        { id: 'vid', name: 'Video', kind: 'video', clips: [
+          { type: 'video', id: 'v1', r2_key: 'media/org/f1.mp4', timeline_start_sec: 0, duration_sec: 8, base_source: 'uploaded_footage' },
+          { type: 'video', id: 'v2', r2_key: 'media/org/s1.jpg', timeline_start_sec: 8, duration_sec: 5, base_source: 'still_kenburns', kenburns: { zoom_from: 1, zoom_to: 1.2 } }
+        ] },
+        { id: 'ovl', name: 'Overlay', kind: 'overlay', clips: [
+          { type: 'overlay', id: 'o1', timeline_start_sec: 0, duration_sec: 13, gsap_project_id: 'banner-123' }
+        ] },
+        { id: 'vo', name: 'VO', kind: 'voiceover', clips: [
+          { id: 'c1', r2_key: 'audio/org/a1.mp3', timeline_start_sec: 0, source_out_sec: 13 }
+        ] }
+      ],
+      ...overrides
+    }
+  }
+
+  it('parses an AV document and applies defaults', () => {
+    const s = TimelineStateSchema.parse(rawAv())
+    expect(s.schema_version).toBe(2)
+    expect(s.media_type).toBe('av')
+    expect(s.fps).toBe(30)
+    expect(s.width).toBe(1080)
+    expect(s.height).toBe(1920)
+    const vid = s.tracks[0]
+    expect(vid.kind).toBe('video')
+    expect((vid.clips[0] as any).type).toBe('video')
+    expect((vid.clips[0] as any).audio_mode).toBe('mute')
+    expect((vid.clips[1] as any).base_source).toBe('still_kenburns')
+    expect((s.tracks[1].clips[0] as any).opacity).toBe(1)
+  })
+
+  it('treats an audio clip with no explicit type as type "audio"', () => {
+    const s = TimelineStateSchema.parse(rawAv())
+    const voClip = s.tracks[2].clips[0] as any
+    expect(voClip.type).toBe('audio')
+    expect(voClip.gain_db).toBe(0)
+  })
+})
+
+describe('Backward compatibility (schema_version 1 audio unchanged)', () => {
+  it('parses a v1 audio document exactly as before', () => {
+    const s = TimelineStateSchema.parse(rawTimeline())
+    expect(s.schema_version).toBe(1)
+    expect(s.media_type).toBe('audio')
+    expect(s.fps).toBe(30)
+    const clip = s.tracks[0].clips[0] as any
+    expect(clip.type).toBe('audio')
+    expect(clip.fade_curve).toBe('linear')
+  })
+})
