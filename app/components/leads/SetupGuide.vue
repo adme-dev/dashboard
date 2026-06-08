@@ -85,7 +85,7 @@ const selectedEndpoint = computed(() =>
 )
 
 const baseUrl = computed(() =>
-  import.meta.client ? window.location.origin : 'https://agency-dashboard-6cm.pages.dev'
+  import.meta.client ? window.location.origin : 'https://app.xeroflow.io'
 )
 const googleWebhookUrl = computed(() =>
   selectedEndpoint.value ? `${baseUrl.value}/api/leads/webhook/google/${selectedEndpoint.value.url_token}` : ''
@@ -432,7 +432,7 @@ watch(endpointItems, (items) => {
                   <li>
                     Meta App Dashboard → Webhooks → Page → Add subscription:
                     <ul class="list-disc list-inside ml-4 mt-1">
-                      <li>Callback URL: <code class="bg-elevated px-1 py-0.5 rounded">https://agency-dashboard-6cm.pages.dev/api/leads/webhook/meta</code></li>
+                      <li>Callback URL: <code class="bg-elevated px-1 py-0.5 rounded">https://app.xeroflow.io/api/leads/webhook/meta</code></li>
                       <li>Verify token: the value from step 1</li>
                       <li>Subscribe field: <code class="bg-elevated px-1 py-0.5 rounded">leadgen</code></li>
                     </ul>
@@ -471,7 +471,7 @@ watch(endpointItems, (items) => {
                 <p class="font-medium mb-1.5">
                   Endpoint
                 </p>
-                <pre class="bg-elevated rounded p-3 text-xs font-mono overflow-x-auto"><span class="text-muted">POST</span> https://agency-dashboard-6cm.pages.dev/api/leads/webhook/generic/<span class="text-primary-500">&lt;url_token&gt;</span></pre>
+                <pre class="bg-elevated rounded p-3 text-xs font-mono overflow-x-auto"><span class="text-muted">POST</span> https://app.xeroflow.io/api/leads/webhook/generic/<span class="text-primary-500">&lt;url_token&gt;</span></pre>
               </div>
 
               <div>
@@ -511,7 +511,7 @@ watch(endpointItems, (items) => {
                   Quick test with curl
                 </p>
                 <pre class="bg-elevated rounded p-3 text-xs font-mono overflow-x-auto leading-relaxed">curl -X POST \
-  https://agency-dashboard-6cm.pages.dev/api/leads/webhook/generic/&lt;token&gt; \
+  https://app.xeroflow.io/api/leads/webhook/generic/&lt;token&gt; \
   -H 'Content-Type: application/json' \
   -d '{
     "key": "&lt;secret_key&gt;",

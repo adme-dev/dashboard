@@ -16,6 +16,7 @@
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { sendClientApprovalRequestEmail } from '~~/server/utils/email'
+import { getAppUrl } from '~~/server/utils/appUrl'
 import { randomBytes } from 'crypto'
 
 interface CreateApprovalBody {
@@ -97,9 +98,7 @@ export default defineEventHandler(async (event) => {
     ])
 
     // Build the public approval URL
-    const config = useRuntimeConfig()
-    const baseUrl = config.public?.appUrl || process.env.NUXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    const approvalUrl = `${baseUrl}/approve/${approvalToken}`
+    const approvalUrl = `${getAppUrl(event)}/approve/${approvalToken}`
 
     // Get client users who can approve
     const approvers = await queryOne(`

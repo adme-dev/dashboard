@@ -2,12 +2,11 @@
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { createNotification } from '~~/server/utils/notifications'
 import { sendAnomalyAlertEmail } from '~~/server/utils/email'
+import { getAppUrl } from '~~/server/utils/appUrl'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { resolveUserPermissions } from '~~/server/utils/roleResolver'
 import { hasRole } from '~~/server/utils/auth'
 import type { AnomalyRow } from './types'
-
-const BASE_URL = process.env.PUBLIC_BASE_URL || 'https://agency-dashboard-6cm.pages.dev'
 
 interface Recipient {
   id: string
@@ -105,7 +104,7 @@ export async function queueAnomalyNotification(anomalyId: string): Promise<void>
     return
   }
 
-  const url = `${BASE_URL}/anomalies?focus=${anomaly.id}`
+  const url = `${getAppUrl()}/anomalies?focus=${anomaly.id}`
   const metricLabel = anomaly.metric?.label
   const metricValue = formatMetricForEmail(anomaly.metric)
 

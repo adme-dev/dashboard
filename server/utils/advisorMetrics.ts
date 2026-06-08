@@ -12,6 +12,7 @@
  */
 
 import type { H3Event } from 'h3'
+import { getAppUrl } from '~~/server/utils/appUrl'
 
 type Direction = 'up' | 'down'
 
@@ -185,7 +186,7 @@ export async function fetchMetricValue(
     const res = await $fetch(entry.endpoint, {
       headers: Object.keys(headers).length ? headers : undefined,
       query,
-      baseURL: process.env.APP_BASE_URL || undefined,
+      baseURL: getAppUrl(),
     })
     return readPath(res, entry.path)
   } catch (err: any) {

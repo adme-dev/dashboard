@@ -95,7 +95,7 @@ CREATE INDEX idx_spend_alert_events_dedupe ON spend_alert_events(rule_id, trigge
 
 After deploy, add CF Workers cron trigger in dashboard:
 - Schedule: `0 * * * *` (hourly)
-- Target: `POST https://agency-dashboard-6cm.pages.dev/api/cron/spend-alerts`
+- Target: `POST https://app.xeroflow.io/api/cron/spend-alerts`
 - Header: `Authorization: Bearer ${CRON_SECRET}`
 
 ## Out of scope
