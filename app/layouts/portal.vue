@@ -27,6 +27,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => [
     onSelect: close
   },
   { label: 'Approvals', icon: 'i-lucide-check-circle', to: stats.value?.pendingApprovals ? '/portal/approvals?status=pending' : '/portal/approvals', badge: navBadge(stats.value?.pendingApprovals), onSelect: close },
+  { label: 'Video reviews', icon: 'i-lucide-clapperboard', to: '/portal/video-reviews', onSelect: close },
   { label: 'Requests', icon: 'i-lucide-message-square-plus', to: stats.value?.openRequests ? '/portal/requests?view=open' : '/portal/requests?view=resolved', badge: navBadge(stats.value?.openRequests), onSelect: close },
   { label: 'Leads', icon: 'i-lucide-inbox', to: '/portal/leads', onSelect: close },
   { label: 'CRM', icon: 'i-lucide-contact', to: '/portal/crm', onSelect: close },
