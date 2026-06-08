@@ -31,6 +31,27 @@ vi.mock('~~/server/utils/audio/renderQueue', () => ({
   enqueueTimelineRender: vi.fn()
 }))
 
+// T6: overlay resolution mocks
+const mockLoadBannerLayers = vi.fn()
+const mockResolveOverlayFormatKey = vi.fn()
+vi.mock('~~/server/utils/audio/bannerOverlay', () => ({
+  loadBannerLayers: (...a: unknown[]) => mockLoadBannerLayers(...a),
+  resolveOverlayFormatKey: (...a: unknown[]) => mockResolveOverlayFormatKey(...a),
+}))
+
+const mockBuildBannerHTML = vi.fn()
+vi.mock('~~/server/utils/banner/htmlBuilder', () => ({
+  buildBannerHTML: (...a: unknown[]) => mockBuildBannerHTML(...a),
+}))
+
+const mockUploadFile = vi.fn()
+vi.mock('~~/server/utils/storage', () => ({
+  uploadFile: (...a: unknown[]) => mockUploadFile(...a),
+  isStorageConfigured: () => false,
+  validateFileType: vi.fn(),
+  validateFileSize: vi.fn(),
+}))
+
 const { default: renderVideoH } = await import('../../server/api/agency/audio/projects/[id]/render-video.post')
 
 const avProject = {
@@ -104,5 +125,120 @@ describe('POST /agency/audio/projects/:id/render-video', () => {
     await expect(renderVideoH({ params: { id: 'p1' }, body: {}, context: {} } as any))
       .rejects.toMatchObject({ statusCode: 502 })
     expect(mockMarkFailed).toHaveBeenCalledWith('j1', expect.stringContaining('enqueue failed'))
+  })
+})
+
+// T6: overlay resolution tests
+describe('POST /agency/audio/projects/:id/render-video — overlay resolution', () => {
+  const overlayTimeline = {
+    id: 't1',
+    state: {
+      schema_version: 2,
+      media_type: 'av',
+      tracks: [
+        {
+          id: 'ovl',
+          name: 'Overlay',
+          kind: 'overlay',
+          clips: [
+            {
+              type: 'overlay',
+              id: 'o1',
+              timeline_start_sec: 0,
+              duration_sec: 10,
+              gsap_project_id: 'bp1',
+              gsap_format_key: 'fb_story',
+            }
+          ]
+        }
+      ]
+    }
+  }
+
+  beforeEach(() => {
+    mockRequireWriteAccess.mockResolvedValue({ id: 'u1' })
+    mockEnqueueVideoRender.mockResolvedValue(undefined)
+    mockLoadBannerLayers.mockResolvedValue({ layers: [{ id: 'l1', type: 'text', text: 'Hi' }], width: 1080, height: 1920 })
+    mockResolveOverlayFormatKey.mockReturnValue('fb_story')
+    mockBuildBannerHTML.mockReturnValue('<html>banner</html>')
+    mockUploadFile.mockResolvedValue({ key: 'media/p1/j1/overlay-o1.html', url: '/uploads/x', size: 20 })
+  })
+
+  it('calls loadBannerLayers + buildBannerHTML + uploadFile and enqueues resolvedOverlays', async () => {
+    mockGetProject.mockResolvedValue({ project: avProject, timeline: overlayTimeline })
+    mockCreateRenderJob.mockResolvedValue({ id: 'j1', timelineId: 't1', status: 'queued' })
+
+    const res = await renderVideoH({ params: { id: 'p1' }, body: {}, context: {} } as any)
+
+    // loadBannerLayers called with the project id + the gsap_format_key from the clip
+    expect(mockLoadBannerLayers).toHaveBeenCalledWith('bp1', 'fb_story')
+
+    // buildBannerHTML called with formatKey + layers
+    expect(mockBuildBannerHTML).toHaveBeenCalledWith('fb_story', [{ id: 'l1', type: 'text', text: 'Hi' }], expect.any(Object))
+
+    // uploadFile called with an html buffer, the expected R2 key, and text/html content-type
+    expect(mockUploadFile).toHaveBeenCalledWith(
+      expect.any(Buffer),
+      'media/p1/j1/overlay-o1.html',
+      'text/html'
+    )
+
+    // enqueueVideoRender message includes resolvedOverlays
+    const msg = mockEnqueueVideoRender.mock.calls[0][1]
+    expect(msg.resolvedOverlays).toEqual([
+      {
+        clipId: 'o1',
+        htmlKey: 'media/p1/j1/overlay-o1.html',
+        timeline_start_sec: 0,
+        duration_sec: 10,
+      }
+    ])
+
+    expect(res.job.id).toBe('j1')
+  })
+
+  it('uses resolveOverlayFormatKey when gsap_format_key is null', async () => {
+    const noKeyTimeline = {
+      id: 't1',
+      state: {
+        schema_version: 2,
+        media_type: 'av',
+        tracks: [
+          {
+            id: 'ovl',
+            name: 'Overlay',
+            kind: 'overlay',
+            clips: [
+              {
+                type: 'overlay',
+                id: 'o2',
+                timeline_start_sec: 2,
+                duration_sec: 5,
+                gsap_project_id: 'bp2',
+                gsap_format_key: null,
+              }
+            ]
+          }
+        ]
+      }
+    }
+    mockGetProject.mockResolvedValue({ project: avProject, timeline: noKeyTimeline })
+    mockCreateRenderJob.mockResolvedValue({ id: 'j2', timelineId: 't1', status: 'queued' })
+    mockResolveOverlayFormatKey.mockReturnValue('fb_story')
+
+    await renderVideoH({ params: { id: 'p1' }, body: {}, context: {} } as any)
+
+    // When gsap_format_key is null, resolveOverlayFormatKey is used
+    expect(mockResolveOverlayFormatKey).toHaveBeenCalled()
+    expect(mockLoadBannerLayers).toHaveBeenCalledWith('bp2', 'fb_story')
+  })
+
+  it('400s when loadBannerLayers throws (missing project/format)', async () => {
+    mockGetProject.mockResolvedValue({ project: avProject, timeline: overlayTimeline })
+    mockCreateRenderJob.mockResolvedValue({ id: 'j3', timelineId: 't1', status: 'queued' })
+    mockLoadBannerLayers.mockRejectedValue(new Error('banner project not found: bp1'))
+
+    await expect(renderVideoH({ params: { id: 'p1' }, body: {}, context: {} } as any))
+      .rejects.toMatchObject({ statusCode: 400 })
   })
 })

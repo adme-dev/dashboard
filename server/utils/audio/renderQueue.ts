@@ -10,11 +10,19 @@ export interface TimelineRenderMessage {
   channels: AudioChannel[]
 }
 
+export interface ResolvedOverlay {
+  clipId: string
+  htmlKey: string               // R2 key for the uploaded banner HTML
+  timeline_start_sec: number
+  duration_sec: number
+}
+
 export interface VideoRenderMessage {
   jobId: string
   projectId: string
   timelineId: string
   formats: string[]
+  resolvedOverlays?: ResolvedOverlay[]
 }
 
 interface QueueBinding { send(body: unknown): Promise<void> }
