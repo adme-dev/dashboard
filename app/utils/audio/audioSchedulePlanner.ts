@@ -53,6 +53,10 @@ export function planTimeline(state: TimelineState): TimelinePlan {
   const clips: ScheduledClip[] = []
   for (const track of active) {
     for (const clip of track.clips) {
+      // V1.3: the audio engine schedules ONLY audio clips. Video/overlay clips have no
+      // decodable audio buffer (overlays have no r2_key at all). Missing `type` ===
+      // legacy audio clip (addClip omits it), so only EXPLICIT video/overlay are skipped.
+      if ((clip as { type?: string }).type === 'video' || (clip as { type?: string }).type === 'overlay') continue
       clips.push({
         clipId: clip.id,
         trackId: track.id,

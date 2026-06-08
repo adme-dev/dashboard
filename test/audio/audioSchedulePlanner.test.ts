@@ -134,3 +134,38 @@ describe('windowEvents', () => {
     expect(w2.ramps).toEqual([{ targetTrackId: 'mus', atSec: 10, toGainDb: -12, rampSec: 0.05 }])
   })
 })
+
+import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
+
+describe('planTimeline — AV clip kinds', () => {
+  it('schedules audio clips but skips video and overlay clips', () => {
+    const state = {
+      schema_version: 2, media_type: 'av', sample_rate: 48000, fps: 30, width: 1080, height: 1920,
+      duration_sec: 0, ducking: [],
+      tracks: [
+        { id: 'vid', name: 'Video', kind: 'video', gain_db: 0, muted: false, locked: false, hidden: false, clips: [
+          { type: 'video', id: 'v1', asset_id: null, r2_key: 'media/p/footage.mp4', timeline_start_sec: 0, source_in_sec: 0, source_out_sec: null, duration_sec: 5, base_source: 'uploaded_footage', kenburns: null, audio_mode: 'mute' }
+        ] },
+        { id: 'ov', name: 'Overlay', kind: 'overlay', gain_db: 0, muted: false, locked: false, hidden: false, clips: [
+          { type: 'overlay', id: 'o1', timeline_start_sec: 0, duration_sec: 5, gsap_project_id: 'b1', gsap_format_key: 'fb_story', opacity: 1 }
+        ] },
+        { id: 'vo', name: 'VO', kind: 'voiceover', gain_db: 0, muted: false, locked: false, hidden: false, clips: [
+          { type: 'audio', id: 'a1', asset_id: null, r2_key: 'audio/vo.mp3', timeline_start_sec: 0, source_in_sec: 0, source_out_sec: 3, gain_db: 0, fade_in_sec: 0, fade_out_sec: 0, fade_curve: 'linear' }
+        ] }
+      ]
+    } as unknown as TimelineState
+
+    const plan = planTimeline(state)
+    expect(plan.clips.map(c => c.clipId)).toEqual(['a1'])
+  })
+
+  it('schedules legacy audio clips that have no `type` field', () => {
+    const state = {
+      schema_version: 1, media_type: 'audio', sample_rate: 48000, duration_sec: 0, ducking: [],
+      tracks: [{ id: 'm', name: 'Music', kind: 'music', gain_db: 0, muted: false, locked: false, hidden: false, clips: [
+        { id: 'legacy', asset_id: null, r2_key: 'audio/m.mp3', timeline_start_sec: 0, source_in_sec: 0, source_out_sec: 2, gain_db: 0, fade_in_sec: 0, fade_out_sec: 0, fade_curve: 'linear' }
+      ] }]
+    } as unknown as TimelineState
+    expect(planTimeline(state).clips.map(c => c.clipId)).toEqual(['legacy'])
+  })
+})
