@@ -352,8 +352,12 @@ const saveStatusColor = computed(() => {
             <span class="text-muted tabular-nums">{{ new Date(job.createdAt).toLocaleString() }}</span>
             <span v-if="job.error" class="text-error truncate">{{ job.error }}</span>
             <div class="ml-auto flex gap-2">
-              <UButton v-for="(key, fmt) in (job.variants || {})" :key="fmt" :label="String(fmt)" size="xs" variant="soft" color="neutral"
-                       :to="`/api/_uploads/${key}`" target="_blank" />
+              <UButton
+                v-for="(key, fmt) in (job.variants || {})" :key="fmt"
+                :label="String(fmt)" size="xs" variant="soft" color="neutral"
+                :to="`/api/agency/audio/projects/${projectId}/renders/${job.id}/${fmt}`"
+                target="_blank"
+              />
             </div>
           </div>
         </div>
