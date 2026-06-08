@@ -32,7 +32,7 @@ function hasPhrase(text: string, phrase: string): boolean {
 export function classifyConfirmUtterance(raw: string): ConfirmIntent {
   const t = normalize(raw)
   if (!t) return 'ambiguous'
-  if (STOP_PHRASES.some(p => t === p || t.includes(p))) return 'stop'
+  if (STOP_PHRASES.some(p => hasPhrase(t, p))) return 'stop'
   if (AFFIRMATIVE.some(p => hasPhrase(t, p))) return 'affirmative'
   if (NEGATIVE.some(p => hasPhrase(t, p))) return 'negative'
   return 'ambiguous'

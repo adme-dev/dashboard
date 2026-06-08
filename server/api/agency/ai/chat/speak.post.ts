@@ -19,9 +19,9 @@ export default defineEventHandler(async (event) => {
   if (text.length > MAX_TEXT) {
     throw createError({ statusCode: 400, statusMessage: 'Text too long' })
   }
-  const lang = typeof body?.lang === 'string' ? body.lang : 'en'
 
-  const result = await textToSpeech(event, text, { lang })
+  // v1 uses a single voice (design) — lang is not user-configurable.
+  const result = await textToSpeech(event, text, { lang: 'en' })
   if (!result) {
     setResponseStatus(event, 204)
     return null

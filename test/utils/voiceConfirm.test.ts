@@ -25,4 +25,8 @@ describe('classifyConfirmUtterance', () => {
   it('uses word boundaries (no false positives inside words)', () => {
     expect(classifyConfirmUtterance('snowfall is heavy')).toBe('ambiguous') // not "no"
   })
+  it('matches stop phrases on word boundaries too (not substrings of larger words)', () => {
+    expect(classifyConfirmUtterance('goodbyes everyone')).toBe('ambiguous') // not "goodbye"
+    expect(classifyConfirmUtterance('say goodbye')).toBe('stop') // whole word still matches
+  })
 })

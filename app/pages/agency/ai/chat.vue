@@ -1266,7 +1266,7 @@ function getRenderedMarkdown(content: string): string {
                   placeholder="Ask about your tasks, clients, boards... Type @ to reference"
                   class="w-full resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted min-h-[72px] max-h-[200px]"
                   :rows="3"
-                  :disabled="sending"
+                  :disabled="sending || voiceSession.isActive.value"
                   :aria-expanded="mentionDropdownOpen && mentionResults.length > 0"
                   aria-controls="mention-listbox"
                   @keydown="handleKeydown"
