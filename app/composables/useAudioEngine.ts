@@ -69,6 +69,11 @@ export function createAudioEngine(deps: AudioEngineDeps): AudioEngine {
       const dur = clip.durationSec ?? Math.max(0, buf.duration - clip.sourceInSec)
       durationSec = Math.max(durationSec, clip.timelineStartSec + dur)
     }
+    // V1.3: floor the transport duration at the full timeline length so a video-only AV
+    // project (no audio clips → audio durationSec 0) still advances the clock. computeDuration
+    // (baked into state.duration_sec on every edit) spans audio + video + overlay clips.
+    // For pure audio this never shortens — decoded-buffer durations above already win.
+    durationSec = Math.max(durationSec, (state as { duration_sec?: number }).duration_sec ?? 0)
   }
 
   function scheduleClip(clip: ScheduledClip): void {
