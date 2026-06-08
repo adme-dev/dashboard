@@ -9,6 +9,13 @@
  */
 import { getProviderOrThrow } from '~~/server/utils/social-providers/registry'
 
+/** Classify a media URL as video or image for provider dispatch. Render links + .mp4/.mov → video. */
+export function mediaTypeForUrl(url: string): 'video' | 'image' {
+  const u = url.toLowerCase()
+  if (/\.(mp4|mov|webm|m4v)(\?|$)/.test(u) || u.includes('/api/public/renders/')) return 'video'
+  return 'image'
+}
+
 export interface BaseContent {
   content: string
   mediaUrls: string[]
@@ -98,7 +105,7 @@ export async function publishPost(post: PublishablePost): Promise<PublishOutcome
         accountId: account.platform_account_id,
         accessToken: account.access_token,
         content,
-        media: resolved.mediaUrls.map(url => ({ url, type: 'image' as const })),
+        media: resolved.mediaUrls.map(url => ({ url, type: mediaTypeForUrl(url) })),
       })
       results[platform] = {
         status: r.status,

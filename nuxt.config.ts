@@ -69,6 +69,8 @@ export default defineNuxtConfig({
     jwtSecret: process.env.JWT_SECRET || '',
     sessionSecret: process.env.SESSION_SECRET || '',
     cronSecret: process.env.CRON_SECRET || '',
+    // Secret for signing public render links (V1.4). Unset → public render links fail closed in prod.
+    renderLinkSecret: process.env.RENDER_LINK_SECRET || '',
 
     // Xero OAuth
     xeroClientId: process.env.XERO_CLIENT_ID || '',
@@ -174,7 +176,10 @@ export default defineNuxtConfig({
       // agentic-AI UI (e.g. the chat persona picker) so it stays hidden until the loop
       // is live. The real authorization boundary is the server-side flag + RBAC; this is
       // a non-sensitive boolean for presentation only.
-      aiToolsEnabled: process.env.AI_TOOLS_ENABLED === 'true'
+      aiToolsEnabled: process.env.AI_TOOLS_ENABLED === 'true',
+      // Client-visible mirror of VIDEO_STUDIO_ENABLED — gates ONLY the "Render video"
+      // button in the AV editor (the server endpoint is the real boundary; it 404s when off).
+      videoStudioEnabled: process.env.VIDEO_STUDIO_ENABLED === 'true'
     }
   },
 

@@ -240,6 +240,12 @@ export async function createRenderJob(input: CreateRenderJobInput): Promise<Medi
   })
 }
 
+/** Single render job by id, or null if not found. */
+export async function getRenderJob(jobId: string): Promise<MediaRenderJob | null> {
+  const row = await queryOne(`SELECT * FROM media_render_jobs WHERE id = $1`, [jobId])
+  return row ? mapRenderJobRow(row) : null
+}
+
 /** Render jobs for a project, newest-first. */
 export async function listRenderJobs(projectId: string): Promise<MediaRenderJob[]> {
   const rows = await queryRows(
