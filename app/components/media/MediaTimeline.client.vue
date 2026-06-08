@@ -10,6 +10,7 @@ import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
 import type { ScheduledClip, TrackBus } from '~~/app/utils/audio/audioSchedulePlanner'
 import { clipRect, playheadX, timeAtX } from '~~/app/utils/audio/timelineGeometry'
 import { snapTime } from '~~/app/utils/audio/timelineEdit'
+import { toDisplayLanes, type DisplayClip } from '~~/app/utils/audio/timelineDisplay'
 
 // ─── Props & Emits ────────────────────────────────────────────────────────────
 
@@ -99,12 +100,12 @@ const playheadLeft = computed(() =>
   LABEL_WIDTH + playheadX(props.currentTime, internalPxPerSec.value)
 )
 
-function rect(clip: ScheduledClip) {
+function rect(clip: DisplayClip) {
   const fallback = Math.max(0, props.duration - clip.timelineStartSec)
   return clipRect(clip, internalPxPerSec.value, fallback)
 }
 
-function fmtDur(clip: ScheduledClip) {
+function fmtDur(clip: DisplayClip) {
   const fallback = Math.max(0, props.duration - clip.timelineStartSec)
   const d = clip.durationSec ?? fallback
   return `${d.toFixed(1)}s`
@@ -112,14 +113,10 @@ function fmtDur(clip: ScheduledClip) {
 
 // ─── Lanes (one per track) ────────────────────────────────────────────────────
 
-const lanes = computed(() =>
-  props.timeline.tracks.map((t) => ({
-    id: t.id,
-    name: t.name,
-    muted: t.muted,
-    clips: props.clips.filter((c) => c.trackId === t.id)
-  }))
-)
+const lanes = computed(() => toDisplayLanes(props.timeline, props.clips))
+
+/** Flat list of every display clip across all lanes — for interaction handlers. */
+const allDisplayClips = computed<DisplayClip[]>(() => lanes.value.flatMap(l => l.clips))
 
 // ─── Ruler ticks ─────────────────────────────────────────────────────────────
 
@@ -156,7 +153,7 @@ function clearSelection() {
 
 function getSnapTargets(excludeClipId: string): number[] {
   const targets: number[] = [0, props.currentTime]
-  for (const clip of props.clips) {
+  for (const clip of allDisplayClips.value) {
     if (clip.clipId === excludeClipId) continue
     targets.push(clip.timelineStartSec)
     const end = clip.timelineStartSec + (clip.durationSec ?? Math.max(0, props.duration - clip.timelineStartSec))
@@ -194,7 +191,7 @@ function laneIndexAt(screenY: number): number {
   return Math.max(0, Math.min(lanes.value.length - 1, Math.floor(relY / LANE_HEIGHT)))
 }
 
-function onClipPointerDown(event: PointerEvent, clip: ScheduledClip, laneIdx: number, mode: DragMode) {
+function onClipPointerDown(event: PointerEvent, clip: DisplayClip, laneIdx: number, mode: DragMode) {
   // Don't interfere with click → handled via pointerup
   event.stopPropagation()
   // Select on any pointerdown
@@ -245,7 +242,7 @@ function onPointerUp(event: PointerEvent) {
   } else {
     // trim-start or trim-end: newTimeSec in TIMELINE space
     const deltaSec = dx / pps
-    const clip = props.clips.find(c => c.clipId === d.clipId)
+    const clip = allDisplayClips.value.find(c => c.clipId === d.clipId)
     if (clip) {
       if (d.mode === 'trim-start') {
         const rawTime = clip.timelineStartSec + deltaSec
@@ -289,8 +286,8 @@ function onLaneClick(event: MouseEvent) {
 // ─── Slice + Delete keyboard ──────────────────────────────────────────────────
 
 /** Find the clip (if any) that contains the current playhead position */
-function clipUnderPlayhead(): ScheduledClip | null {
-  for (const clip of props.clips) {
+function clipUnderPlayhead(): DisplayClip | null {
+  for (const clip of allDisplayClips.value) {
     const end = clip.timelineStartSec + (clip.durationSec ?? Math.max(0, props.duration - clip.timelineStartSec))
     if (props.currentTime >= clip.timelineStartSec && props.currentTime < end) return clip
   }
@@ -362,9 +359,9 @@ function mountWaveform(clipId: string, r2Key: string, el: HTMLElement | null) {
 // Reactive: when new clips appear or sources become available, mount waveforms.
 // Also tear down instances for clips that no longer exist (deleted / merged away).
 watch(
-  [() => props.clips, () => props.sources],
+  [() => props.clips, () => props.sources, lanes],
   () => {
-    const liveClipIds = new Set(props.clips.map(c => c.clipId))
+    const liveClipIds = new Set(allDisplayClips.value.map(c => c.clipId))
     for (const [clipId, ws] of waveInstances) {
       if (!liveClipIds.has(clipId)) {
         try { ws.destroy() } catch { /* already gone */ }
@@ -373,8 +370,8 @@ watch(
       }
     }
     for (const [clipId, el] of Object.entries(waveContainers.value)) {
-      const clip = props.clips.find(c => c.clipId === clipId)
-      if (clip && el) mountWaveform(clipId, clip.r2_key, el)
+      const clip = allDisplayClips.value.find(c => c.clipId === clipId)
+      if (clip && clip.kind === 'audio' && clip.r2_key && el) mountWaveform(clipId, clip.r2_key, el)
     }
   },
   { deep: true }
@@ -507,7 +504,9 @@ onUnmounted(() => {
           :key="clip.clipId"
           class="absolute top-2 flex items-center rounded-md overflow-hidden cursor-grab active:cursor-grabbing"
           :class="[
-            lane.muted ? 'bg-muted' : 'bg-primary',
+            clip.kind === 'video' ? 'bg-blue-600 dark:bg-blue-500'
+              : clip.kind === 'overlay' ? 'bg-fuchsia-600 dark:bg-fuchsia-500'
+              : lane.muted ? 'bg-muted' : 'bg-primary',
             selectedClipId === clip.clipId ? 'ring-2 ring-white ring-offset-1' : '',
             drag?.clipId === clip.clipId ? 'transition-none' : 'transition-shadow'
           ]"
@@ -529,15 +528,24 @@ onUnmounted(() => {
             <div class="w-0.5 h-4 bg-white/60 rounded-full" />
           </div>
 
-          <!-- Waveform container -->
+          <!-- Audio: wavesurfer waveform -->
           <div
-            :ref="(el) => { if (el) { waveContainers[clip.clipId] = el as HTMLElement; mountWaveform(clip.clipId, clip.r2_key, el as HTMLElement) } }"
+            v-if="clip.kind === 'audio'"
+            :ref="(el) => { if (el) { waveContainers[clip.clipId] = el as HTMLElement; mountWaveform(clip.clipId, clip.r2_key as string, el as HTMLElement) } }"
             class="absolute inset-0 pointer-events-none overflow-hidden"
           />
+          <!-- Video: icon strip -->
+          <div v-else-if="clip.kind === 'video'" class="absolute inset-0 flex items-center gap-1 px-2 pointer-events-none">
+            <UIcon :name="clip.baseSource === 'still_kenburns' ? 'i-lucide-image' : 'i-lucide-film'" class="size-3.5 text-inverted/80" />
+          </div>
+          <!-- Overlay: badge -->
+          <div v-else class="absolute inset-0 flex items-center gap-1 px-2 pointer-events-none">
+            <UIcon name="i-lucide-shapes" class="size-3.5 text-inverted/80" />
+          </div>
 
-          <!-- Clip label (above waveform) -->
+          <!-- Clip label -->
           <span class="relative z-10 truncate px-2 text-xs font-medium text-inverted ml-1">
-            {{ clip.clipId }} · {{ fmtDur(clip) }}
+            {{ clip.label }} · {{ fmtDur(clip) }}
           </span>
 
           <!-- Trim handle — end (right edge) -->
