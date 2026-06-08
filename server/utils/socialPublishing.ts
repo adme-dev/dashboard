@@ -12,7 +12,7 @@ import { getProviderOrThrow } from '~~/server/utils/social-providers/registry'
 /** Classify a media URL as video or image for provider dispatch. Render links + .mp4/.mov → video. */
 export function mediaTypeForUrl(url: string): 'video' | 'image' {
   const u = url.toLowerCase()
-  if (/\.(mp4|mov|webm|m4v)(\?|$)/.test(u) || u.includes('/api/public/renders/') || u.includes('/renders/')) return 'video'
+  if (/\.(mp4|mov|webm|m4v)(\?|$)/.test(u) || u.includes('/api/public/renders/')) return 'video'
   return 'image'
 }
 

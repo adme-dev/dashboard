@@ -10,5 +10,6 @@ describe('mediaTypeForUrl', () => {
   it('classifies images as image', () => {
     expect(mediaTypeForUrl('https://x/y.jpg')).toBe('image')
     expect(mediaTypeForUrl('https://x/y.png')).toBe('image')
+    expect(mediaTypeForUrl('https://x/renders/thumbnails/photo.jpg')).toBe('image')
   })
 })
