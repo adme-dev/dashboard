@@ -29,6 +29,10 @@ export async function finalizeVideoGenerationJob(
   const bytes = Buffer.from(await res.arrayBuffer())
   const r2Key = `video-generation/${job.tenantId}/${job.id}/output.mp4`
   await deps.uploadFile(bytes, r2Key, 'video/mp4', { projectId: job.projectId, jobId: job.id })
+  // NOTE: a concurrent webhook+reconcile finalize of the same job can still create a
+  // duplicate video_assets row here (the markSucceeded below is idempotent, but the
+  // insert already ran). Window is tiny (hourly cron, >2min threshold, prompt webhooks)
+  // and gated; a fully-exclusive claim would need a status-enum migration. Verify-live.
   const asset = await deps.createVideoAsset({
     clientId: job.tenantId === 'agency' ? null : job.tenantId,
     createdBy: job.createdBy,

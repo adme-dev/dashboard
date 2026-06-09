@@ -152,10 +152,15 @@ export async function markVideoGenerationJobSucceeded(input: {
      SET status = 'succeeded', provider_status = $2, provider_result_url = $3,
          output_asset_id = $4, output_r2_key = $5, actual_cost_cents = $6,
          completed_at = now(), updated_at = now()
-     WHERE id = $1 RETURNING *`,
+     WHERE id = $1 AND status NOT IN ('succeeded','failed') RETURNING *`,
     [input.id, input.providerStatus, input.providerResultUrl, input.outputAssetId, input.outputR2Key, input.actualCostCents]
   )
-  if (!row) throw new Error(`video generation job ${input.id} not found`)
+  if (!row) {
+    // Already finalized by a concurrent webhook/reconcile — idempotent no-op.
+    const existing = await getVideoGenerationJob(input.id)
+    if (!existing) throw new Error(`video generation job ${input.id} not found`)
+    return existing
+  }
   return mapVideoGenerationJobRow(row)
 }
 
@@ -163,10 +168,14 @@ export async function markVideoGenerationJobFailed(id: string, errorMessage: str
   const row = await queryOne(
     `UPDATE video_generation_jobs
      SET status = 'failed', error_message = $2, completed_at = now(), updated_at = now()
-     WHERE id = $1 RETURNING *`,
+     WHERE id = $1 AND status NOT IN ('succeeded','failed') RETURNING *`,
     [id, errorMessage]
   )
-  if (!row) throw new Error(`video generation job ${id} not found`)
+  if (!row) {
+    const existing = await getVideoGenerationJob(id)
+    if (!existing) throw new Error(`video generation job ${id} not found`)
+    return existing
+  }
   return mapVideoGenerationJobRow(row)
 }
 
