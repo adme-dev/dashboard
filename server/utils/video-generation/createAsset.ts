@@ -2,7 +2,7 @@ import { queryOne } from '~~/server/utils/db'
 
 // NOTE: mirror of workers/video-generation/src/db.ts::dbCreateVideoAsset (Pages runtime
 // uses the shared queryOne; the Worker has its own pg client). Keep the two in sync.
-export async function createVideoAsset(input: {
+export async function createGeneratedVideoAsset(input: {
   clientId: string | null
   createdBy: string
   title: string | null

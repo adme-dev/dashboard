@@ -1,17 +1,17 @@
 import type { VideoGenerationJob } from '~~/server/utils/video-generation/types'
 import type { VideoGenerationProviderResult } from '~~/server/utils/video-generation/providers/types'
 import { uploadFile } from '~~/server/utils/storage'
-import { createVideoAsset } from '~~/server/utils/video-generation/createAsset'
+import { createGeneratedVideoAsset } from '~~/server/utils/video-generation/createAsset'
 import { markVideoGenerationJobSucceeded } from '~~/server/utils/video-generation/jobs'
 
 export interface FinalizeDeps {
   fetchImpl: typeof fetch
   uploadFile: typeof uploadFile
-  createVideoAsset: typeof createVideoAsset
+  createVideoAsset: typeof createGeneratedVideoAsset
   markSucceeded: typeof markVideoGenerationJobSucceeded
 }
 
-const defaultDeps: FinalizeDeps = { fetchImpl: fetch, uploadFile, createVideoAsset, markSucceeded: markVideoGenerationJobSucceeded }
+const defaultDeps: FinalizeDeps = { fetchImpl: fetch, uploadFile, createVideoAsset: createGeneratedVideoAsset, markSucceeded: markVideoGenerationJobSucceeded }
 
 /** Download the provider output, store it in R2, create a video_asset row, and mark the job succeeded.
  *  Throws on download failure so callers (webhook/reconcile) can mark the job failed. */
