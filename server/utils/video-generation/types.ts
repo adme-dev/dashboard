@@ -46,6 +46,41 @@ export interface VideoGenerationProvenanceInput {
   idempotencyKey: string
 }
 
+export type VideoGenerationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked'
+
+export interface VideoGenerationJob {
+  id: string
+  tenantId: string
+  projectId: string
+  timelineId: string | null
+  createdBy: string
+  status: VideoGenerationJobStatus
+  mode: VideoGenerationMode
+  modelId: string
+  provider: string
+  prompt: string
+  sourceAssetIds: string[]
+  durationSeconds: number
+  aspectRatio: string
+  resolution: string | null
+  subjectType: VideoGenerationSubjectType
+  complianceStatus: string
+  complianceReasons: string[]
+  estimatedCostCents: number
+  actualCostCents: number | null
+  idempotencyKey: string
+  providerRequestId: string | null
+  providerStatus: string | null
+  providerResultUrl: string | null
+  outputAssetId: string | null
+  outputR2Key: string | null
+  errorMessage: string | null
+  createdAt: string
+  updatedAt: string
+  startedAt: string | null
+  completedAt: string | null
+}
+
 export type VideoGenerationComplianceResult =
   | {
       allowed: true

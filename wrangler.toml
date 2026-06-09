@@ -49,6 +49,12 @@ queue = "timeline-render"
 binding = "VIDEO_RENDER_QUEUE"
 queue = "video-render"
 
+# Producer binding for AI Video Studio generation jobs. Consumer runs in
+# workers/video-generation/ as the `video-generation` queue branch.
+[[queues.producers]]
+binding = "VIDEO_GENERATION_QUEUE"
+queue = "video-generation"
+
 # AI — Workers AI for embeddings and edge inference
 [ai]
 binding = "AI"

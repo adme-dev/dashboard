@@ -13,5 +13,6 @@ describe('Pages queue producer bindings', () => {
 
     expect(queueForBinding(config, 'TIMELINE_RENDER_QUEUE')).toBe('timeline-render')
     expect(queueForBinding(config, 'VIDEO_RENDER_QUEUE')).toBe('video-render')
+    expect(queueForBinding(config, 'VIDEO_GENERATION_QUEUE')).toBe('video-generation')
   })
 })
