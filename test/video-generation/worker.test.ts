@@ -71,6 +71,24 @@ describe('video generation worker orchestration', () => {
     expect(d.providers.mock.submit).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'job-1' }))
   })
 
+  it('defers a queued async submission to the reconcile cron without polling', async () => {
+    const d = deps(baseJob, {
+      providers: {
+        mock: {
+          submit: vi.fn().mockResolvedValue({ providerRequestId: 'cf-req-1', status: 'queued', modelId: 'aigateway/seedance-i2v' }),
+          poll: vi.fn(),
+        },
+      },
+    })
+
+    const result = await processVideoGenerationJob({ jobId: 'job-1', tenantId: 'tenant-1', idempotencyKey: 'idem-1' }, d)
+
+    expect(result).toEqual({ skipped: false, status: 'running' })
+    expect(d.markRunning).toHaveBeenCalledWith('job-1', 'cf-req-1')
+    expect(d.providers.mock.poll).not.toHaveBeenCalled()
+    expect(d.markSucceeded).not.toHaveBeenCalled()
+  })
+
   it('marks failed on provider error', async () => {
     const d = deps(baseJob, {
       providers: {

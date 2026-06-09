@@ -54,10 +54,16 @@ export async function processVideoGenerationJob(
       aspectRatio: job.aspectRatio, resolution: job.resolution,
     })
     await deps.markRunning(job.id, submission.providerRequestId)
+    if (submission.status === 'queued') {
+      // Async provider (Cloudflare batch API): the job is queued on the provider and the
+      // result is minutes away. Don't poll here — an immediate poll races the just-created
+      // request_id, and a transient error would wrongly fail the job. The reconcile cron
+      // polls it to completion. Leave it 'running'.
+      return { skipped: false, status: 'running' }
+    }
     const result = await provider.poll(submission)
     if (result.status === 'running') {
-      // Async provider: leave the job 'running'; the webhook (Task 5) or reconcile cron
-      // (Task 7) finalizes it. Nothing else finalizes here.
+      // Async provider still working: leave the job 'running'; the reconcile cron finalizes it.
       return { skipped: false, status: 'running' }
     }
     if (result.status !== 'succeeded' || !result.outputUrl) {

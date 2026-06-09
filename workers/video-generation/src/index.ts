@@ -61,7 +61,8 @@ export default {
           providers: {
             mock: mockVideoGenerationProvider,
             aigateway: makeAiGatewayProvider({
-              run: (model, inputs, meta) => env.AI.run(model, inputs, { gateway: { metadata: { tenantId: meta.tenantId ?? '', jobId: meta.jobId } } }),
+              // Faithful passthrough — the provider builds the queueRequest + gateway-metadata options.
+              run: (model, inputs, options) => env.AI.run(model, inputs as any, options as any),
             }),
           },
         })

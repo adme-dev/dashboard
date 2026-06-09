@@ -12,7 +12,7 @@ export interface ReconcileDeps {
 export async function reconcileRunningJob(job: VideoGenerationJob, deps: ReconcileDeps): Promise<'succeeded' | 'failed' | 'running' | 'skipped'> {
   const provider = deps.providers[job.provider]
   if (!provider || !job.providerRequestId) return 'skipped'
-  const result = await provider.poll({ providerRequestId: job.providerRequestId, status: job.providerStatus ?? 'running' })
+  const result = await provider.poll({ providerRequestId: job.providerRequestId, status: job.providerStatus ?? 'running', modelId: job.modelId })
   if (result.status === 'running') return 'running'
   if (result.status !== 'succeeded' || !result.outputUrl) {
     await deps.markFailed(job.id, result.errorMessage || `reconcile: provider ${result.status}`)

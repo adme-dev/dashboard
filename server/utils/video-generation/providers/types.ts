@@ -16,6 +16,8 @@ export interface VideoGenerationProviderRequest {
 export interface VideoGenerationProviderSubmission {
   providerRequestId: string
   status: string
+  /** Registry model id — async providers need it to poll the same model by request_id. */
+  modelId?: string
 }
 
 export interface VideoGenerationProviderResult {
