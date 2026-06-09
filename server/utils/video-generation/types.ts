@@ -29,6 +29,12 @@ export interface VideoGenerationModel {
   muapi?: {
     endpoint: string            // muapi model endpoint slug, e.g. 'generate_kling_i2v'
   }
+  /** Cloudflare Workers AI model id for provider==='aigateway' (the env.AI.run string). */
+  cfModel?: string
+  /** Where the model may be offered. 'internal' models are never tenant-selectable. */
+  surface?: 'tenant' | 'internal'
+  /** Generation modality (governance: tenant path is i2v-only — enforced in Slice 2B). */
+  modality?: 'i2v' | 't2v' | 'i2v+t2v'
 }
 
 export interface VideoGenerationTenantPolicy {
