@@ -45,10 +45,13 @@ vi.mock('~~/server/utils/video-generation/enqueue', () => ({
 }))
 
 const mockLoadTenantPolicy = vi.fn()
-const mockGetTenantSpend = vi.fn()
 vi.mock('~~/server/utils/video-generation/policy', () => ({
   loadTenantVideoGenerationPolicy: (...a: unknown[]) => mockLoadTenantPolicy(...a),
-  getTenantVideoGenerationSpendCents: (...a: unknown[]) => mockGetTenantSpend(...a),
+}))
+
+const mockReserve = vi.fn()
+vi.mock('~~/server/utils/video-generation/budget', () => ({
+  reserveAndCreateVideoGenerationJob: (...a: unknown[]) => mockReserve(...a),
 }))
 
 const mockLoadSourceAssets = vi.fn()
@@ -92,10 +95,14 @@ beforeEach(() => {
     monthlyCapCents: 10_000,
     allowedModelIds: ['mock/i2v-safe', 'mock/t2v-broll'],
   })
-  mockGetTenantSpend.mockResolvedValue(0)
   mockLoadSourceAssets.mockResolvedValue([{ id: 'asset-1', approved: true, subjectType: 'vehicle' }])
   mockGetJobByIdempotency.mockResolvedValue(null)
   mockCreateJob.mockImplementation(async (input) => ({ id: 'job-1', ...input, status: input.status ?? 'queued' }))
+  mockReserve.mockImplementation(async (input) => ({
+    ok: true,
+    reused: false,
+    job: { id: 'job-1', ...input, status: input.status ?? 'queued' },
+  }))
   mockResolveSourceAssetUrls.mockResolvedValue(['https://r2.example/asset-1?sig=abc'])
   mockMarkJobFailed.mockResolvedValue(undefined)
 })
@@ -131,13 +138,17 @@ describe('POST /agency/video/generation/jobs', () => {
   it('creates and enqueues an allowed image-to-video job', async () => {
     const res = await createH({ body: allowedBody, context: {} } as any)
 
-    expect(mockCreateJob).toHaveBeenCalledWith(expect.objectContaining({
-      tenantId: avProject.clientId,
-      projectId: avProject.id,
-      timelineId: timeline.id,
-      modelId: 'mock/i2v-safe',
-      estimatedCostCents: 250,
-    }))
+    // Allowed path goes through the atomic budget reservation, not the bare createJob.
+    expect(mockReserve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: avProject.clientId,
+        projectId: avProject.id,
+        timelineId: timeline.id,
+        modelId: 'mock/i2v-safe',
+        estimatedCostCents: 250,
+      }),
+      expect.objectContaining({ enabled: true })
+    )
     expect(mockEnqueue).toHaveBeenCalledWith(expect.anything(), {
       jobId: 'job-1',
       tenantId: avProject.clientId,
@@ -148,11 +159,19 @@ describe('POST /agency/video/generation/jobs', () => {
     expect(res.job.id).toBe('job-1')
   })
 
+  it('returns 402 and does not enqueue when the reservation exceeds the budget cap', async () => {
+    mockReserve.mockResolvedValue({ ok: false, reason: 'tenant_cap_exceeded', remainingCents: 0 })
+
+    await expect(createH({ body: allowedBody, context: {} } as any)).rejects.toMatchObject({ statusCode: 402 })
+    expect(mockEnqueue).not.toHaveBeenCalled()
+  })
+
   it('reuses duplicate idempotency keys without enqueueing again', async () => {
     mockGetJobByIdempotency.mockResolvedValue({ id: 'existing-job', tenantId: avProject.clientId, idempotencyKey: 'idem-1' })
 
     const res = await createH({ body: allowedBody, context: {} } as any)
 
+    expect(mockReserve).not.toHaveBeenCalled()
     expect(mockCreateJob).not.toHaveBeenCalled()
     expect(mockEnqueue).not.toHaveBeenCalled()
     expect(res.job.id).toBe('existing-job')

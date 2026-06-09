@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
-import { canSpendVideoGenerationCents, estimateVideoGenerationCostCents } from '~~/server/utils/video-generation/costs'
+import { estimateVideoGenerationCostCents } from '~~/server/utils/video-generation/costs'
 import { evaluateVideoGenerationCompliance } from '~~/server/utils/video-generation/compliance'
 import { enqueueVideoGeneration } from '~~/server/utils/video-generation/enqueue'
 import {
@@ -9,10 +9,11 @@ import {
   getVideoGenerationJobByIdempotencyKey,
   markVideoGenerationJobFailed,
 } from '~~/server/utils/video-generation/jobs'
+import { reserveAndCreateVideoGenerationJob } from '~~/server/utils/video-generation/budget'
 import { resolveSourceAssetUrls } from '~~/server/utils/video-generation/resolveSourceUrls'
 import { getVideoGenerationModel } from '~~/server/utils/video-generation/modelRegistry'
 import { isTenantModel } from '~~/server/utils/video-generation/surface'
-import { getTenantVideoGenerationSpendCents, loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
+import { loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
 import { loadVideoGenerationSourceAssets } from '~~/server/utils/video-generation/sourceAssets'
 
 const BodySchema = z.object({
@@ -66,9 +67,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
 
-  const [tenantPolicy, currentSpendCents, sourceAssets] = await Promise.all([
+  const [tenantPolicy, sourceAssets] = await Promise.all([
     loadTenantVideoGenerationPolicy(tenantId),
-    getTenantVideoGenerationSpendCents(tenantId),
     loadVideoGenerationSourceAssets(body.sourceAssetIds),
   ])
 
@@ -107,31 +107,47 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 422, statusMessage: 'Video generation blocked', data: { job: blocked, reasons: compliance.reasons } })
   }
 
-  const spendDecision = canSpendVideoGenerationCents(tenantPolicy, currentSpendCents, estimatedCostCents)
-  if (!spendDecision.allowed) {
-    throw createError({ statusCode: 402, statusMessage: 'Video generation budget unavailable', data: spendDecision })
-  }
+  // Atomic per-tenant budget reservation + job insert (advisory-locked transaction).
+  // Replaces the old check-then-insert, which could bust the monthly cap under concurrency.
+  const reservation = await reserveAndCreateVideoGenerationJob(
+    {
+      tenantId,
+      projectId: body.projectId,
+      timelineId: existing.timeline?.id ?? existing.project.currentTimelineId ?? null,
+      createdBy: user.id,
+      status: 'queued',
+      mode: body.mode,
+      modelId: model.id,
+      provider: model.provider,
+      prompt: body.prompt,
+      sourceAssetIds: body.sourceAssetIds,
+      durationSeconds: body.durationSeconds,
+      aspectRatio: body.aspectRatio,
+      resolution: body.resolution ?? null,
+      subjectType: body.subjectType,
+      complianceStatus: compliance.classification,
+      complianceReasons: compliance.reasons,
+      estimatedCostCents,
+      idempotencyKey: body.idempotencyKey,
+    },
+    tenantPolicy
+  )
 
-  const job = await createVideoGenerationJob({
-    tenantId,
-    projectId: body.projectId,
-    timelineId: existing.timeline?.id ?? existing.project.currentTimelineId ?? null,
-    createdBy: user.id,
-    status: 'queued',
-    mode: body.mode,
-    modelId: model.id,
-    provider: model.provider,
-    prompt: body.prompt,
-    sourceAssetIds: body.sourceAssetIds,
-    durationSeconds: body.durationSeconds,
-    aspectRatio: body.aspectRatio,
-    resolution: body.resolution ?? null,
-    subjectType: body.subjectType,
-    complianceStatus: compliance.classification,
-    complianceReasons: compliance.reasons,
-    estimatedCostCents,
-    idempotencyKey: body.idempotencyKey,
-  })
+  if (!reservation.ok || !reservation.job) {
+    throw createError({
+      statusCode: 402,
+      statusMessage: 'Video generation budget unavailable',
+      data: { allowed: false, reason: reservation.reason, remainingCents: reservation.remainingCents ?? 0 },
+    })
+  }
+  const job = reservation.job
+
+  // Lost the race to a concurrent same-key request inside the lock — return the existing job,
+  // do not re-enqueue (the winning request already did).
+  if (reservation.reused) {
+    setResponseStatus(event, 202)
+    return { job, reused: true }
+  }
 
   let sourceAssetUrls: string[] = []
   if (body.mode === 'image-to-video') {
