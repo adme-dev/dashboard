@@ -6,13 +6,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 vi.mock('~~/server/utils/email', () => ({ getCachedBinding: () => undefined }))
 vi.stubGlobal('useRuntimeConfig', () => ({}))
 
-import { getGoogleBusinessOAuthConfig, getSocialOauthStateSecret } from '~~/server/utils/socialOAuth/env'
+import { getGoogleBusinessOAuthConfig, getSocialOauthStateSecret, isGoogleBusinessPublishingEnabled } from '~~/server/utils/socialOAuth/env'
 
 const VALID_CLIENT_ID = '65723781223-abcDEF_hyphen.apps.googleusercontent.com'
 const KEYS = [
   'GOOGLE_BUSINESS_OAUTH_CLIENT_ID', 'NUXT_GOOGLE_BUSINESS_CLIENT_ID', 'GOOGLE_BUSINESS_CLIENT_ID',
   'GOOGLE_BUSINESS_OAUTH_CLIENT_SECRET', 'NUXT_GOOGLE_BUSINESS_CLIENT_SECRET', 'GOOGLE_BUSINESS_CLIENT_SECRET',
-  'GOOGLE_BUSINESS_REDIRECT_URI', 'SOCIAL_OAUTH_STATE_SECRET', 'META_APP_SECRET'
+  'GOOGLE_BUSINESS_REDIRECT_URI', 'GOOGLE_BUSINESS_PUBLISHING_ENABLED', 'SOCIAL_OAUTH_STATE_SECRET', 'META_APP_SECRET'
 ]
 
 function clearKeys() {
@@ -55,5 +55,19 @@ describe('getSocialOauthStateSecret', () => {
   it('falls back to META_APP_SECRET so a Meta-only deployment still has a signing secret', () => {
     process.env.META_APP_SECRET = 'meta'
     expect(getSocialOauthStateSecret()).toBe('meta')
+  })
+})
+
+describe('isGoogleBusinessPublishingEnabled', () => {
+  beforeEach(clearKeys)
+  afterEach(clearKeys)
+
+  it('defaults off so GBP can ship dormant before Google approval', () => {
+    expect(isGoogleBusinessPublishingEnabled()).toBe(false)
+  })
+
+  it('turns on only when explicitly enabled', () => {
+    process.env.GOOGLE_BUSINESS_PUBLISHING_ENABLED = 'true'
+    expect(isGoogleBusinessPublishingEnabled()).toBe(true)
   })
 })

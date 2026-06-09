@@ -5,7 +5,8 @@ import { buildGoogleBusinessAuthUrl } from '~~/server/utils/socialOAuth/googleBu
 import {
   buildGoogleBusinessRedirectUri,
   getGoogleBusinessOAuthConfig,
-  getSocialOauthStateSecret
+  getSocialOauthStateSecret,
+  isGoogleBusinessPublishingEnabled
 } from '~~/server/utils/socialOAuth/env'
 
 /**
@@ -14,6 +15,10 @@ import {
  */
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, PERMISSIONS.CREATIVE)
+  if (!isGoogleBusinessPublishingEnabled(event)) {
+    throw createError({ statusCode: 404, statusMessage: 'Google Business publishing is disabled' })
+  }
+
   const clientId = getQuery(event).clientId as string
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
 

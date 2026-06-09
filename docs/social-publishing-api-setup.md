@@ -47,6 +47,18 @@ Notes:
 - The `Google My Business API` v4 service is needed for Local Posts (`mybusiness.googleapis.com/v4/.../localPosts`).
 - If the legacy service page fails to load or is not visible, the project is probably still not approved.
 - Workspace users can also receive `403 PERMISSION_DENIED` if Google Business Profile Manager is disabled in Google Workspace Admin.
+- The dashboard ships this channel dormant. Keep `GOOGLE_BUSINESS_PUBLISHING_ENABLED=false` or unset until Google approves API access and production OAuth secrets are ready.
+
+Production activation:
+
+1. Cloudflare Pages production secrets must include:
+   - `GOOGLE_BUSINESS_CLIENT_ID`
+   - `GOOGLE_BUSINESS_CLIENT_SECRET`
+   - `GOOGLE_BUSINESS_REDIRECT_URI=https://app.xeroflow.io/api/agency/social/publishing/accounts/callback/google-business`
+   - `SOCIAL_OAUTH_STATE_SECRET`
+2. Set `GOOGLE_BUSINESS_PUBLISHING_ENABLED=true`.
+3. Reconnect each Google Business Profile location from `/agency/social/publishing/accounts`.
+4. Publish a low-risk local post and confirm it appears in Google Business Profile Manager.
 
 Reference links:
 

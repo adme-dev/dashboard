@@ -8,6 +8,8 @@ const api = useSocialPublishing()
 const toast = useToast()
 const route = useRoute()
 const router = useRouter()
+const config = useRuntimeConfig()
+const googleBusinessPublishingEnabled = computed(() => Boolean(config.public.googleBusinessPublishingEnabled))
 
 const { data: clientsData } = await useFetch('/api/agency/clients', { query: { limit: 200 } })
 const clients = computed<any[]>(() => {
@@ -143,9 +145,12 @@ onMounted(async () => {
             size="xs" variant="subtle" icon="i-lucide-plus" :disabled="!clientId" @click="connect(p)"
           >Connect</UButton>
           <UButton
-            v-else-if="p === 'google-business'"
+            v-else-if="p === 'google-business' && googleBusinessPublishingEnabled"
             size="xs" variant="subtle" icon="i-lucide-plus" :disabled="!clientId" @click="connect(p)"
           >Connect</UButton>
+          <UTooltip v-else-if="p === 'google-business'" text="Dormant until Google Business API approval and production secrets are enabled">
+            <UButton size="xs" variant="subtle" color="neutral" disabled icon="i-lucide-lock">Dormant</UButton>
+          </UTooltip>
           <UTooltip v-else-if="p === 'instagram'" text="Instagram connects automatically with a linked Facebook Page">
             <UButton size="xs" variant="subtle" color="neutral" disabled icon="i-lucide-link-2">Via Facebook</UButton>
           </UTooltip>
