@@ -9,6 +9,7 @@ import {
   getVideoGenerationJobByIdempotencyKey,
 } from '~~/server/utils/video-generation/jobs'
 import { getVideoGenerationModel } from '~~/server/utils/video-generation/modelRegistry'
+import { isTenantModel } from '~~/server/utils/video-generation/surface'
 import { getTenantVideoGenerationSpendCents, loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
 import { loadVideoGenerationSourceAssets } from '~~/server/utils/video-generation/sourceAssets'
 
@@ -59,6 +60,9 @@ export default defineEventHandler(async (event) => {
 
   const model = getVideoGenerationModel(body.modelId)
   if (!model) throw createError({ statusCode: 400, statusMessage: 'Unknown video generation model' })
+  if (!isTenantModel(model)) {
+    throw createError({ statusCode: 404, statusMessage: 'Not found' })
+  }
 
   const [tenantPolicy, currentSpendCents, sourceAssets] = await Promise.all([
     loadTenantVideoGenerationPolicy(tenantId),
