@@ -25,6 +25,10 @@ export interface VideoGenerationModel {
   costUnit: VideoGenerationCostUnit
   safetyClass: VideoGenerationSafetyClass
   defaultEnabled: boolean
+  /** muapi gateway mapping — present only for provider==='muapi' models. */
+  muapi?: {
+    endpoint: string            // muapi model endpoint slug, e.g. 'generate_kling_i2v'
+  }
 }
 
 export interface VideoGenerationTenantPolicy {
