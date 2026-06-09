@@ -17,3 +17,8 @@ id = "900b4b74ec41462cbbabebd0aa8775aa"
 [[r2_buckets]]
 binding = "AUDIO_BUCKET"
 bucket_name = "agency-files"
+
+# Workers AI binding — env.AI.run("vendor/model", ...) routes third-party video models
+# through Cloudflare AI Gateway (unified billing). Mirrors the audio-jobs worker.
+[ai]
+binding = "AI"

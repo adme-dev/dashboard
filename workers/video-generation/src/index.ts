@@ -1,5 +1,6 @@
 import { mockVideoGenerationProvider } from '../../../server/utils/video-generation/providers/mockProvider'
-import { makeMuapiProvider } from '../../../server/utils/video-generation/providers/muapiProvider'
+import { makeAiGatewayProvider } from '../../../server/utils/video-generation/providers/aiGatewayProvider'
+import { downloadToR2 } from './downloadToR2'
 import {
   dbCreateVideoAsset,
   dbGetVideoGenerationJob,
@@ -18,10 +19,15 @@ interface Env {
   MUAPI_API_KEY?: string
   MUAPI_BASE_URL?: string
   MUAPI_WEBHOOK_URL?: string
+  AI: { run(model: string, inputs: Record<string, unknown>, options?: any): Promise<any> }
+  AUDIO_BUCKET: { put(key: string, value: ArrayBuffer | Uint8Array, options?: any): Promise<unknown> }
 }
 
-async function createOutputAsset(job: VideoGenerationJob, result: VideoGenerationProviderResult) {
+async function createOutputAsset(job: VideoGenerationJob, result: VideoGenerationProviderResult, env: Env) {
   const r2Key = `video-generation/${job.tenantId}/${job.id}/output.mp4`
+  if (result.outputUrl) {
+    await downloadToR2(env.AUDIO_BUCKET, fetch, result.outputUrl, r2Key)
+  }
   const asset = await dbCreateVideoAsset({
     clientId: job.tenantId === 'agency' ? null : job.tenantId,
     createdBy: job.createdBy,
@@ -51,23 +57,12 @@ export default {
           markRunning: dbMarkVideoGenerationJobRunning,
           markFailed: dbMarkVideoGenerationJobFailed,
           markSucceeded: dbMarkVideoGenerationJobSucceeded,
-          createOutputAsset,
+          createOutputAsset: (job, result) => createOutputAsset(job, result, env),
           providers: {
             mock: mockVideoGenerationProvider,
-            // muapi is registered only when configured; otherwise a muapi job fails fast
-            // via the "no provider registered" branch instead of calling with an empty key.
-            ...(env.MUAPI_API_KEY
-              ? {
-                  muapi: makeMuapiProvider(
-                    {
-                      apiKey: env.MUAPI_API_KEY,
-                      baseUrl: env.MUAPI_BASE_URL ?? 'https://api.muapi.ai/api/v1',
-                      webhookUrl: env.MUAPI_WEBHOOK_URL ?? '',
-                    },
-                    fetch,
-                  ),
-                }
-              : {}),
+            aigateway: makeAiGatewayProvider({
+              run: (model, inputs, meta) => env.AI.run(model, inputs, { gateway: { metadata: { tenantId: meta.tenantId ?? '', jobId: meta.jobId } } }),
+            }),
           },
         })
         msg.ack()

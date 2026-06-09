@@ -1,3 +1,5 @@
+// LEGACY/INERT: muapi-shaped webhook. The active CF AI Gateway transport is synchronous and
+// never calls this. Kept for the future fal.ai async path (which will use ED25519, not this).
 import { verifyMuapiSignature } from '~~/server/utils/video-generation/webhookAuth'
 import { queryOne } from '~~/server/utils/db'
 import { mapVideoGenerationJobRow, markVideoGenerationJobFailed } from '~~/server/utils/video-generation/jobs'
