@@ -26,9 +26,14 @@ const modelId = ref<string>(models.value[0]?.id ?? '')
 const model = computed(() => allModels.find((m) => m.id === modelId.value) ?? null)
 const prompt = ref('')
 const sourceAssetId = ref<string | null>(null)
+const sourceFileName = ref<string | null>(null)
 const subjectType = ref<'vehicle' | 'non_vehicle' | 'unknown'>('unknown')
 const durationSeconds = ref<number>(model.value?.durationsSeconds[0] ?? 5)
 const submitting = ref(false)
+const uploading = ref(false)
+
+// Hidden file input ref — triggered programmatically via the upload button
+const fileInputRef = ref<HTMLInputElement | null>(null)
 
 const MODE_OPTIONS = [
   { label: 'Image → video', value: 'image-to-video' },
@@ -46,7 +51,44 @@ const estCostCents = computed(() => (model.value ? costPreviewCents(model.value,
 function onModeChange() {
   modelId.value = models.value[0]?.id ?? ''
   durationSeconds.value = model.value?.durationsSeconds[0] ?? 5
-  if (mode.value === 'text-to-video') sourceAssetId.value = null
+  if (mode.value === 'text-to-video') {
+    sourceAssetId.value = null
+    sourceFileName.value = null
+  }
+}
+
+function triggerFileInput() {
+  fileInputRef.value?.click()
+}
+
+async function onFileSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+
+  uploading.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('subjectType', subjectType.value)
+
+    const res = await $fetch<{ id: string }>('/api/agency/video/generation/source-assets', {
+      method: 'POST',
+      body: formData,
+    })
+
+    sourceAssetId.value = res.id
+    sourceFileName.value = file.name
+  } catch (e: any) {
+    toast.add({ title: 'Upload failed', description: e?.data?.statusMessage ?? 'Failed', color: 'error' })
+    // Reset so the user can retry
+    sourceAssetId.value = null
+    sourceFileName.value = null
+  } finally {
+    uploading.value = false
+    // Reset the input so the same file can be re-selected if needed
+    input.value = ''
+  }
 }
 
 async function submit() {
@@ -95,8 +137,41 @@ async function submit() {
               <USelectMenu v-model="modelId" :items="models.map((m) => ({ label: m.displayName, value: m.id }))" value-key="value" />
             </UFormField>
           </div>
-          <UFormField v-if="mode === 'image-to-video'" label="Source still" help="Pick a still from your timeline to animate.">
-            <USelectMenu v-model="sourceAssetId" :items="timelineStills.map((s) => ({ label: s.label, value: s.assetId }))" value-key="value" placeholder="Pick a still from the timeline" />
+          <UFormField v-if="mode === 'image-to-video'" label="Source image" help="Upload a JPEG, PNG, or WebP still to animate.">
+            <!-- Hidden file input — triggered by the button below -->
+            <input
+              ref="fileInputRef"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              class="sr-only"
+              tabindex="-1"
+              aria-hidden="true"
+              @change="onFileSelected"
+            />
+            <div v-if="sourceFileName" class="flex items-center gap-2">
+              <UIcon name="i-lucide-image" class="size-4 shrink-0 text-muted" />
+              <span class="truncate text-sm text-default">{{ sourceFileName }}</span>
+              <UButton
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                label="Replace"
+                :loading="uploading"
+                :disabled="uploading"
+                class="ml-auto shrink-0"
+                @click="triggerFileInput"
+              />
+            </div>
+            <UButton
+              v-else
+              variant="outline"
+              color="neutral"
+              icon="i-lucide-upload"
+              label="Upload source image"
+              :loading="uploading"
+              :disabled="uploading"
+              @click="triggerFileInput"
+            />
           </UFormField>
         </div>
 
