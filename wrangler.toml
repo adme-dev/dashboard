@@ -37,6 +37,18 @@ queue = "leads-delivery-queue"
 binding = "MUSIC_QUEUE"
 queue = "music-gen"
 
+# Producer binding for Media Studio timeline renders. Consumer runs in
+# workers/audio-jobs/ as the `timeline-render` queue branch.
+[[queues.producers]]
+binding = "TIMELINE_RENDER_QUEUE"
+queue = "timeline-render"
+
+# Producer binding for Video Studio composite renders. Consumer runs in
+# workers/audio-jobs/ as the `video-render` queue branch.
+[[queues.producers]]
+binding = "VIDEO_RENDER_QUEUE"
+queue = "video-render"
+
 # AI — Workers AI for embeddings and edge inference
 [ai]
 binding = "AI"
