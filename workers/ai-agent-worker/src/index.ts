@@ -8,24 +8,9 @@ export default {
     const dayOfWeek = new Date().getUTCDay()
     const hour = new Date().getUTCHours()
 
-    // 6 UTC daily → spend sync (all platforms + breakdowns + creatives)
-    if (hour === 6) {
-      console.log('[AI Agent Worker] Triggering spend sync')
-      const res = await fetch(`${env.API_URL}/api/internal/sync-spend`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${env.INTERNAL_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      })
-      if (!res.ok) {
-        console.error(`[AI Agent Worker] Spend sync failed (${res.status}):`, await res.text())
-      } else {
-        const result = await res.json() as Record<string, unknown>
-        console.log('[AI Agent Worker] Spend sync completed:', JSON.stringify(result))
-      }
-      return
-    }
+    // NOTE: the daily ad-spend sync moved to the pages-cron worker
+    // (0 6 UTC → /api/cron/sync-spend, CRON_SECRET-auth, non-blocking). The old
+    // synchronous /api/internal/sync-spend path here never completed.
 
     // Sunday at 22 UTC = Monday 9am AEDT → weekly report
     // Every day at 21 UTC = 8am AEDT → daily digest

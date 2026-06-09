@@ -17,6 +17,7 @@
     "deploy": "pnpm build && wrangler --cwd dist pages deploy --project-name agency-dashboard --commit-dirty=true",
     "deploy:preview": "pnpm build && wrangler --cwd dist pages deploy --project-name agency-dashboard --branch preview --commit-dirty=true",
     "deploy:production": "pnpm build && wrangler --cwd dist pages deploy --project-name agency-dashboard --branch main --commit-dirty=true",
+    "deploy:workers": "node scripts/deploy-workers.mjs",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",

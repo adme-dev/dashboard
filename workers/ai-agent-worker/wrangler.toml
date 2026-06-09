@@ -2,8 +2,9 @@ name = "ai-agent-worker"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
 
+# 0 6 UTC ad-spend sync moved to the pages-cron worker (/api/cron/sync-spend).
 [triggers]
-crons = ["0 6 * * *", "0 21 * * *", "0 22 * * sun"]
+crons = ["0 21 * * *", "0 22 * * sun"]
 
 [vars]
 API_URL = "https://agency-dashboard-6cm.pages.dev"

@@ -36,6 +36,11 @@ const ROUTES: Record<string, string[]> = {
   '35 3 * * *': ['/api/cron/office-retention'],
   // daily — purge tracking_events past each site's retention_days
   '45 3 * * *': ['/api/cron/tracking-retention'],
+  // daily 6am UTC — ad-spend sync. Meta fans out per account via queue; other
+  // platforms run as background syncs. The endpoint returns immediately so this
+  // never hits the function time limit. Replaces the ai-agent-worker path,
+  // which ran every platform synchronously and never completed.
+  '0 6 * * *': ['/api/cron/sync-spend'],
 }
 
 export default {
