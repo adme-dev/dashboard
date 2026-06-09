@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { addVideoClip, addOverlayClip, trimVisualClip } from '~~/app/utils/audio/timelineEdit'
+import { reactive } from 'vue'
+import { addVideoClip, addOverlayClip, trimVisualClip, cloneState } from '~~/app/utils/audio/timelineEdit'
 import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
 
 function avState(): TimelineState {
@@ -26,6 +27,28 @@ describe('addVideoClip', () => {
     const clip: any = next.tracks[0].clips[0]
     expect(clip.base_source).toBe('still_kenburns')
     expect(clip.kenburns).toEqual({ zoom_from: 1, zoom_to: 1.1, pan_from: [0, 0], pan_to: [0, 0] })
+  })
+})
+
+describe('cloneState', () => {
+  // Regression: the editor passes the live `timeline.value`, a Vue reactive Proxy.
+  // structuredClone() throws DataCloneError on reactive proxies (Safari + Node),
+  // which surfaced as "can't add a still/clip to the timeline". cloneState must
+  // clone reactive state without throwing.
+  it('clones a reactive (proxied) timeline state without throwing', () => {
+    const reactiveState = reactive(avState()) as unknown as TimelineState
+    expect(() => cloneState(reactiveState)).not.toThrow()
+    const copy = cloneState(reactiveState)
+    expect(copy.tracks).toHaveLength(2)
+    // the clone is a plain (non-reactive) snapshot detached from the source
+    copy.tracks[0]!.name = 'changed'
+    expect(reactiveState.tracks[0]!.name).toBe('Video')
+  })
+
+  it('adds a video clip onto a reactive state (the original failing flow)', () => {
+    const reactiveState = reactive(avState()) as unknown as TimelineState
+    const next = addVideoClip(reactiveState, { trackId: 'vid', id: 's1', r2Key: 'media/p/i.jpg', startSec: 0, durationSec: 5, baseSource: 'still_kenburns' })
+    expect(next.tracks[0]!.clips).toHaveLength(1)
   })
 })
 

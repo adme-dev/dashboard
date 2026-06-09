@@ -9,7 +9,13 @@ export type EditableState = TimelineState
 /** Deep clone + recompute duration_sec. sourceDurations lets play-to-end clips
  * (source_out_sec === null) contribute their decoded length. */
 export function cloneState(state: TimelineState, sourceDurations: Record<string, number> = {}): TimelineState {
-  const copy: TimelineState = structuredClone(state)
+  // NOTE: deep-clone via JSON, not structuredClone(). The editor passes the live
+  // `timeline.value`, which is a Vue reactive Proxy, and Safari's structuredClone()
+  // throws `DataCloneError: The object can not be cloned.` on reactive proxies
+  // (Chrome reads through them). The timeline state is strictly JSON-serialisable
+  // (persisted as JSONB, Zod-validated), so a JSON round-trip is equivalent here
+  // and also strips reactivity from the snapshot.
+  const copy: TimelineState = JSON.parse(JSON.stringify(state))
   copy.duration_sec = computeDuration(copy, sourceDurations)
   return copy
 }

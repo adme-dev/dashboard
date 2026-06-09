@@ -33,14 +33,30 @@ async function onFile(e: Event) {
   input.value = ''
   if (!file || !props.uploader) return
   uploading.value = true; error.value = null
+
+  // Phase 1 — upload to R2. A failure here means the file never landed.
+  let res: { r2Key: string; url: string; durationSec: number }
   try {
-    const res = await props.uploader(file, kind.value)
+    res = await props.uploader(file, kind.value)
+  } catch (e: any) {
+    console.error('[MediaMediaPicker] upload failed', e)
+    error.value = e?.data?.statusMessage ?? e?.message ?? 'Upload failed'
+    toast.add({ title: 'Upload failed', description: error.value ?? '', color: 'error' })
+    uploading.value = false
+    return
+  }
+
+  // Phase 2 — add the uploaded clip to the timeline. The file is already in R2,
+  // so a failure here is NOT an upload failure — surface the real cause instead
+  // of the misleading "Upload failed".
+  try {
     emit('uploaded', { r2Key: res.r2Key, durationSec: res.durationSec, baseSource: kind.value === 'footage' ? 'uploaded_footage' : 'still_kenburns' })
     toast.add({ title: 'Media added', color: 'success' })
     emit('update:open', false)
   } catch (e: any) {
-    error.value = e?.data?.statusMessage ?? 'Upload failed'
-    toast.add({ title: 'Upload failed', description: error.value ?? '', color: 'error' })
+    console.error('[MediaMediaPicker] uploaded OK but adding to timeline failed', e)
+    error.value = e?.message ?? 'Could not add the media to the timeline'
+    toast.add({ title: 'Uploaded, but couldn’t add to timeline', description: error.value ?? '', color: 'error' })
   } finally {
     uploading.value = false
   }
