@@ -2,6 +2,7 @@ export interface VideoGenerationMessage {
   jobId: string
   tenantId: string
   idempotencyKey: string
+  sourceAssetUrls?: string[]
 }
 
 interface QueueBinding {

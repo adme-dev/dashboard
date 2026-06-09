@@ -26,10 +26,17 @@ vi.mock('~~/server/utils/audio/projects', () => ({
 const mockCreateJob = vi.fn()
 const mockGetJobByIdempotency = vi.fn()
 const mockGetJob = vi.fn()
+const mockMarkJobFailed = vi.fn()
 vi.mock('~~/server/utils/video-generation/jobs', () => ({
   createVideoGenerationJob: (...a: unknown[]) => mockCreateJob(...a),
   getVideoGenerationJobByIdempotencyKey: (...a: unknown[]) => mockGetJobByIdempotency(...a),
   getVideoGenerationJob: (...a: unknown[]) => mockGetJob(...a),
+  markVideoGenerationJobFailed: (...a: unknown[]) => mockMarkJobFailed(...a),
+}))
+
+const mockResolveSourceAssetUrls = vi.fn()
+vi.mock('~~/server/utils/video-generation/resolveSourceUrls', () => ({
+  resolveSourceAssetUrls: (...a: unknown[]) => mockResolveSourceAssetUrls(...a),
 }))
 
 const mockEnqueue = vi.fn()
@@ -89,6 +96,8 @@ beforeEach(() => {
   mockLoadSourceAssets.mockResolvedValue([{ id: 'asset-1', approved: true, subjectType: 'vehicle' }])
   mockGetJobByIdempotency.mockResolvedValue(null)
   mockCreateJob.mockImplementation(async (input) => ({ id: 'job-1', ...input, status: input.status ?? 'queued' }))
+  mockResolveSourceAssetUrls.mockResolvedValue(['https://r2.example/asset-1?sig=abc'])
+  mockMarkJobFailed.mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -133,6 +142,7 @@ describe('POST /agency/video/generation/jobs', () => {
       jobId: 'job-1',
       tenantId: avProject.clientId,
       idempotencyKey: 'idem-1',
+      sourceAssetUrls: ['https://r2.example/asset-1?sig=abc'],
     })
     expect(g.setResponseStatus).toHaveBeenCalledWith(expect.anything(), 202)
     expect(res.job.id).toBe('job-1')

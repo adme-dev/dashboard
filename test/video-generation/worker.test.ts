@@ -145,4 +145,10 @@ describe('video generation worker orchestration', () => {
     await processVideoGenerationJob({ jobId: 'job-1', tenantId: 'tenant-1', idempotencyKey: 'idem-1' }, d)
     expect(d.providers.mock.submit).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1' }))
   })
+
+  it('uses message.sourceAssetUrls over job.sourceAssetIds when present', async () => {
+    const d = deps(baseJob)
+    await processVideoGenerationJob({ jobId: 'job-1', tenantId: 'tenant-1', idempotencyKey: 'idem-1', sourceAssetUrls: ['https://r2/x?sig'] }, d)
+    expect(d.providers.mock.submit).toHaveBeenCalledWith(expect.objectContaining({ sourceAssetUrls: ['https://r2/x?sig'] }))
+  })
 })

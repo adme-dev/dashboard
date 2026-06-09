@@ -7,7 +7,9 @@ import { enqueueVideoGeneration } from '~~/server/utils/video-generation/enqueue
 import {
   createVideoGenerationJob,
   getVideoGenerationJobByIdempotencyKey,
+  markVideoGenerationJobFailed,
 } from '~~/server/utils/video-generation/jobs'
+import { resolveSourceAssetUrls } from '~~/server/utils/video-generation/resolveSourceUrls'
 import { getVideoGenerationModel } from '~~/server/utils/video-generation/modelRegistry'
 import { isTenantModel } from '~~/server/utils/video-generation/surface'
 import { getTenantVideoGenerationSpendCents, loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
@@ -131,7 +133,16 @@ export default defineEventHandler(async (event) => {
     idempotencyKey: body.idempotencyKey,
   })
 
-  await enqueueVideoGeneration(event, { jobId: job.id, tenantId, idempotencyKey: body.idempotencyKey })
+  let sourceAssetUrls: string[] = []
+  if (body.mode === 'image-to-video') {
+    try {
+      sourceAssetUrls = await resolveSourceAssetUrls(body.sourceAssetIds, tenantId)
+    } catch (e: any) {
+      await markVideoGenerationJobFailed(job.id, `source resolution failed: ${e?.message ?? String(e)}`)
+      throw createError({ statusCode: 400, statusMessage: `Source image unavailable: ${e?.message ?? 'unresolved'}` })
+    }
+  }
+  await enqueueVideoGeneration(event, { jobId: job.id, tenantId, idempotencyKey: body.idempotencyKey, sourceAssetUrls })
   setResponseStatus(event, 202)
   return { job, reused: false }
 })
