@@ -573,6 +573,39 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  // ─── AI Video Generation ─────────────────────────────────────
+  'ai-video-generation': {
+    title: 'AI Video Generation',
+    slug: 'ai-video-generation',
+    icon: 'i-lucide-video',
+    category: 'Creative Production',
+    categoryIcon: 'i-lucide-rocket',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Turn an approved product still into motion, or generate short B-roll from a prompt — owned, brand-safe video clips that drop straight into your media library and video timeline.',
+    details: [
+      {
+        title: 'Image-To-Video From An Approved Still',
+        content: 'Start from a real photo — a car on the forecourt, a product on the shelf — and animate it into a clean, on-brand motion clip: a slow parallax, a subtle reveal, a push-in. Because the motion is generated from your own approved still rather than dreamt up from scratch, the product on screen is the actual product, not an AI hallucination of it. Every image-to-video job is gated to source assets that have been approved and are owned by that client or the agency.'
+      },
+      {
+        title: 'Text-To-Video B-Roll',
+        content: 'Describe a scene — "aerial over a coastal highway at golden hour" — and get short B-roll clips for backgrounds, transitions, and establishing shots, without a stock-footage subscription or a shoot. B-roll generation is kept on a separate track from product imagery, so brand-critical visuals always come from an approved source while filler footage stays fast and flexible.'
+      },
+      {
+        title: 'Brand And Budget Guardrails Built In',
+        content: 'Every generation passes a compliance check before it runs — a request that needs an approved product still but does not have one is blocked, not quietly faked. Spend is governed too: each client carries a monthly budget cap that is reserved atomically before a job is ever queued, so two big renders firing at once can never quietly blow past the limit. Every clip is costed and tagged to its client.'
+      },
+      {
+        title: 'Owned Output On Your Own Storage',
+        content: 'Generation runs on Cloudflare\'s AI network with unified billing and a hard dollar spend-limit as a backstop, and every finished clip lands in your own object storage as an owned asset — not locked inside a third-party tool you have to log back into. The result is a video you control, tagged per client and reusable across every campaign for that brand.'
+      },
+      {
+        title: 'Straight Into Your Video Timeline',
+        content: 'A finished clip becomes a reusable video asset in the same per-client library as your voiceover and music, ready to drop onto the timeline alongside them. From there it flows into the composite render pipeline — layered with audio beds and animated banner overlays — and renders out to a finished MP4, so a generated shot goes from prompt to packaged ad without leaving the platform.'
+      }
+    ]
+  },
   // ─── Work Management ──────────────────────────────────────────
   'boards': {
     title: 'Boards',

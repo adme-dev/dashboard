@@ -181,6 +181,7 @@ const categories = [
       { title: 'Meta Upload Wizard', slug: 'meta-upload-wizard', icon: 'i-lucide-upload', description: 'Five-step wizard to publish directly to Meta — select account, campaign, ad set, creatives, and go live.' },
       { title: 'Audio Studio', slug: 'audio-studio', icon: 'i-lucide-mic', description: 'Generate owned AI voiceover and music that run legally across radio, TikTok and Meta — no clearance, no takedowns. Drops straight into Banner Studio audio layers.' },
       { title: 'Media Studio Editor', slug: 'media-studio-editor', icon: 'i-lucide-film', description: 'Browser-based multitrack audio editor — drag, trim, slice, and layer clips on a pixel-accurate timeline with undo/redo, autosave, and named version snapshots.' },
+      { title: 'AI Video Generation', slug: 'ai-video-generation', icon: 'i-lucide-video', description: 'Animate an approved product still into motion or generate short B-roll from a prompt — owned, brand-safe clips with per-client budget caps that drop straight into your video timeline.' },
     ]
   },
   {
