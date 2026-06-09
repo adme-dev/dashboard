@@ -5,7 +5,11 @@
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["@cloudflare/workers-types"]
+    "types": ["@cloudflare/workers-types"],
+    "baseUrl": ".",
+    "paths": {
+      "~~/*": ["../../*"]
+    }
   },
   "include": ["src/**/*", "../../server/utils/video-generation/**/*", "../../server/utils/video/**/*"]
 }
