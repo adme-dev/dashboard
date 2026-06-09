@@ -1,11 +1,11 @@
 import { mockVideoGenerationProvider } from '../../../server/utils/video-generation/providers/mockProvider'
 import {
-  getVideoGenerationJob,
-  markVideoGenerationJobFailed,
-  markVideoGenerationJobRunning,
-  markVideoGenerationJobSucceeded,
-} from '../../../server/utils/video-generation/jobs'
-import { createVideoAsset } from '../../../server/utils/video/assets'
+  dbCreateVideoAsset,
+  dbGetVideoGenerationJob,
+  dbMarkVideoGenerationJobFailed,
+  dbMarkVideoGenerationJobRunning,
+  dbMarkVideoGenerationJobSucceeded,
+} from './db'
 import type { VideoGenerationMessage } from '../../../server/utils/video-generation/enqueue'
 import type { VideoGenerationJob } from '../../../server/utils/video-generation/types'
 import type { VideoGenerationProviderResult } from '../../../server/utils/video-generation/providers/types'
@@ -18,7 +18,7 @@ interface Env {
 
 async function createOutputAsset(job: VideoGenerationJob, result: VideoGenerationProviderResult) {
   const r2Key = `video-generation/${job.tenantId}/${job.id}/output.mp4`
-  const asset = await createVideoAsset({
+  const asset = await dbCreateVideoAsset({
     clientId: job.tenantId === 'agency' ? null : job.tenantId,
     createdBy: job.createdBy,
     title: `Generated video ${job.id}`,
@@ -43,10 +43,10 @@ export default {
     for (const msg of batch.messages) {
       try {
         await processVideoGenerationJob(msg.body, {
-          getJob: getVideoGenerationJob,
-          markRunning: markVideoGenerationJobRunning,
-          markFailed: markVideoGenerationJobFailed,
-          markSucceeded: markVideoGenerationJobSucceeded,
+          getJob: dbGetVideoGenerationJob,
+          markRunning: dbMarkVideoGenerationJobRunning,
+          markFailed: dbMarkVideoGenerationJobFailed,
+          markSucceeded: dbMarkVideoGenerationJobSucceeded,
           createOutputAsset,
           provider: mockVideoGenerationProvider,
         })

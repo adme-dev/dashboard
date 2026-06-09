@@ -2,7 +2,7 @@ import type {
   VideoGenerationProvider,
   VideoGenerationProviderRequest,
   VideoGenerationProviderSubmission,
-} from '~~/server/utils/video-generation/providers/types'
+} from './types'
 
 export const mockVideoGenerationProvider: VideoGenerationProvider = {
   async submit(request: VideoGenerationProviderRequest): Promise<VideoGenerationProviderSubmission> {
