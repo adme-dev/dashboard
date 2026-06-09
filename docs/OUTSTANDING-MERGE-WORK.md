@@ -1,28 +1,29 @@
 # Outstanding Work & Merge Backlog
 
 **Created:** 2026-06-09
-**Baseline:** `origin/main` = `e7fe24fe` (local `main` = origin = production, all identical).
+**Baseline:** `origin/main` = `6be8b385` (local `main` = origin = production, all identical).
 
 This tracks everything **not yet on `main`** plus the finish-work on features already merged. Work through it top-to-bottom; each item says what it is, where it lives, why it isn't merged, and the steps to land it. Treat each as its own PR — do **not** bulk-merge (the leftover branches are stale/spike/blocked and would conflict or break prod).
 
 ## Already done (reference — no action)
 - ✅ **Voice Admin AI** — merged (PR #134), deployed, live (gated `AI_TOOLS_ENABLED`).
 - ✅ **Video Studio V1.3/V1.4** — merged (PR #136), deployed, dormant (gated `VIDEO_STUDIO_ENABLED`).
+- ✅ **GA4 Agency Funnel** — merged (PR #88), deployed; stale `feat/ga4-agency-funnel` must not be merged directly because the clean extract is already on `main`.
+- ✅ **Google Business Profile publishing** — merged dormant (PR #138), deployed with `GOOGLE_BUSINESS_PUBLISHING_ENABLED=false`; activation waits on Google API approval and production secrets.
 - ✅ All previously-shipped features (audio studio, CRM, EDM, analytics/GA4 P3, anomalies, leads, media-studio sp0/1/2) — content is on `main`; their old branches only *look* unmerged due to squash-merge SHA divergence.
 
 ---
 
-## A. Features to land (real, unshipped work)
+## A. Features to activate later
 
-### A1. GA4 Agency Funnel
-- [ ] **Branch:** `feat/ga4-agency-funnel` (~19 new files not on main). Spec: `docs/superpowers/specs/2026-05-30-ga4-funnel-integration-design.md`.
-- **Status:** designed + built, never PR'd; now stale vs `main`.
-- **Steps:** create a fresh branch off `main` → bring the funnel work in (rebase or cherry-pick) → resolve conflicts → `pnpm test:run` (no new failures vs the ~122 baseline) + `pnpm typecheck` → `/code-review high` → PR → squash-merge → deploy. Gate behind a flag if it changes existing analytics UI.
+### A1. Google Business Profile (GBP) publishing activation
+- [ ] **Code state:** dormant on `main` via PR #138, deployed with `GOOGLE_BUSINESS_PUBLISHING_ENABLED=false`.
+- **Blocked by:** Google Business Profile API approval / quota, plus production secrets and account reconnects.
+- **Activation steps:** confirm Google API approval → set GBP OAuth/client secrets in production → reconnect accounts → flip `GOOGLE_BUSINESS_PUBLISHING_ENABLED=true` → run focused publishing smoke tests → deploy.
 
-### A2. Google Business Profile (GBP) publishing
-- [ ] **Branch:** `feat/google-business-publishing` (~13 new files). Memory: GBP local-posts channel + `app.xeroflow.io` host split; 16 tests; **NO migration**.
-- **Status:** built, **blocked on Google API approval (0 QPM)** + unset prod secrets. Code can ship **gated/dormant** now.
-- **Steps:** rebase on `main` → resolve → tests + typecheck → `/code-review` → PR → squash-merge (dormant). **Activation later** when Google approves: set GBP secrets + reconnect accounts. Decide first whether to land-dormant now or keep parked.
+### A2. GA4 Agency Funnel follow-ups
+- [ ] **Code state:** clean agency funnel extract is on `main` via PR #88; stale `feat/ga4-agency-funnel` is historical only.
+- **Follow-ups:** operator review of live data quality, client/property mapping coverage, and any UX refinements from actual agency use.
 
 ---
 
@@ -72,10 +73,10 @@ This tracks everything **not yet on `main`** plus the finish-work on features al
 ## Suggested order
 1. **C1 + C2 + C3** (cleanup — fast, low risk, fixes the local file-watcher pain).
 2. **B1 + B2** decisions (close or schedule a re-cut).
-3. **A2 (GBP)** land-dormant if wanted; **A1 (GA4 funnel)** as a proper feature PR.
-4. **D1 / D2** finish-work to take the merged features fully live.
+3. **A1 (GBP activation)** only after Google approval + production secrets are ready.
+4. **A2 / D1 / D2** finish-work to take the merged features fully live.
 
 ## Working rules (learned this session)
 - `origin/main` is the **single source of truth**; keep local `main` **fast-forward-only** (never merge feature branches into local main directly — that caused the divergence we just untangled).
-- Deploy from a clean checkout with **`AI_TOOLS_ENABLED=true pnpm deploy:production`** (flag is build-baked; must stay on every deploy).
+- Deploy from a clean checkout with **`AI_TOOLS_ENABLED=true VIDEO_STUDIO_ENABLED=false GOOGLE_BUSINESS_PUBLISHING_ENABLED=false pnpm deploy:production`** until Video/GBP are intentionally activated (flags are build-baked; keep them explicit on every deploy).
 - Pushing needs the **`adme-dev`** gh account.
