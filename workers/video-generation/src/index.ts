@@ -1,4 +1,5 @@
 import { mockVideoGenerationProvider } from '../../../server/utils/video-generation/providers/mockProvider'
+import { makeMuapiProvider } from '../../../server/utils/video-generation/providers/muapiProvider'
 import {
   dbCreateVideoAsset,
   dbGetVideoGenerationJob,
@@ -14,6 +15,9 @@ import { processVideoGenerationJob } from './worker'
 interface Env {
   DATABASE_URL?: string
   HYPERDRIVE?: { connectionString: string }
+  MUAPI_API_KEY?: string
+  MUAPI_BASE_URL?: string
+  MUAPI_WEBHOOK_URL?: string
 }
 
 async function createOutputAsset(job: VideoGenerationJob, result: VideoGenerationProviderResult) {
@@ -23,7 +27,7 @@ async function createOutputAsset(job: VideoGenerationJob, result: VideoGeneratio
     createdBy: job.createdBy,
     title: `Generated video ${job.id}`,
     sourceProjectId: job.projectId,
-    sourceJobId: null,
+    sourceJobId: job.id,
     r2Key,
     format: job.aspectRatio,
     width: null,
@@ -48,7 +52,23 @@ export default {
           markFailed: dbMarkVideoGenerationJobFailed,
           markSucceeded: dbMarkVideoGenerationJobSucceeded,
           createOutputAsset,
-          provider: mockVideoGenerationProvider,
+          providers: {
+            mock: mockVideoGenerationProvider,
+            // muapi is registered only when configured; otherwise a muapi job fails fast
+            // via the "no provider registered" branch instead of calling with an empty key.
+            ...(env.MUAPI_API_KEY
+              ? {
+                  muapi: makeMuapiProvider(
+                    {
+                      apiKey: env.MUAPI_API_KEY,
+                      baseUrl: env.MUAPI_BASE_URL ?? 'https://api.muapi.ai/api/v1',
+                      webhookUrl: env.MUAPI_WEBHOOK_URL ?? '',
+                    },
+                    fetch,
+                  ),
+                }
+              : {}),
+          },
         })
         msg.ack()
       } catch (error) {

@@ -9,7 +9,7 @@ export interface VideoGenerationOutputAsset {
 
 export interface ProcessVideoGenerationDeps {
   getJob(id: string): Promise<VideoGenerationJob | null>
-  markRunning(id: string): Promise<VideoGenerationJob>
+  markRunning(id: string, providerRequestId?: string | null): Promise<VideoGenerationJob>
   markFailed(id: string, errorMessage: string): Promise<VideoGenerationJob>
   markSucceeded(input: {
     id: string
@@ -20,12 +20,12 @@ export interface ProcessVideoGenerationDeps {
     actualCostCents: number | null
   }): Promise<VideoGenerationJob>
   createOutputAsset(job: VideoGenerationJob, result: VideoGenerationProviderResult): Promise<VideoGenerationOutputAsset>
-  provider: VideoGenerationProvider
+  providers: Record<string, VideoGenerationProvider>
 }
 
 export type ProcessVideoGenerationResult =
   | { skipped: true; reason: 'missing_job' | 'terminal_or_running' }
-  | { skipped: false; status: 'succeeded' | 'failed' }
+  | { skipped: false; status: 'succeeded' | 'failed' | 'running' }
 
 function safeErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message
@@ -43,31 +43,31 @@ export async function processVideoGenerationJob(
   }
 
   try {
-    await deps.markRunning(job.id)
-    const submission = await deps.provider.submit({
-      jobId: job.id,
-      modelId: job.modelId,
-      mode: job.mode,
-      prompt: job.prompt,
-      sourceAssetUrls: job.sourceAssetIds,
-      durationSeconds: job.durationSeconds,
-      aspectRatio: job.aspectRatio,
-      resolution: job.resolution,
+    const provider = deps.providers[job.provider]
+    if (!provider) {
+      await deps.markFailed(job.id, `no provider registered for '${job.provider}'`)
+      return { skipped: false, status: 'failed' }
+    }
+    const submission = await provider.submit({
+      jobId: job.id, modelId: job.modelId, mode: job.mode, prompt: job.prompt,
+      sourceAssetUrls: job.sourceAssetIds, durationSeconds: job.durationSeconds,
+      aspectRatio: job.aspectRatio, resolution: job.resolution,
     })
-    const result = await deps.provider.poll(submission)
+    await deps.markRunning(job.id, submission.providerRequestId)
+    const result = await provider.poll(submission)
+    if (result.status === 'running') {
+      // Async provider: leave the job 'running'; the webhook (Task 5) or reconcile cron
+      // (Task 7) finalizes it. Nothing else finalizes here.
+      return { skipped: false, status: 'running' }
+    }
     if (result.status !== 'succeeded' || !result.outputUrl) {
-      const message = result.errorMessage || `provider returned ${result.status}`
-      await deps.markFailed(job.id, message)
+      await deps.markFailed(job.id, result.errorMessage || `provider returned ${result.status}`)
       return { skipped: false, status: 'failed' }
     }
     const asset = await deps.createOutputAsset(job, result)
     await deps.markSucceeded({
-      id: job.id,
-      providerStatus: result.status,
-      providerResultUrl: result.outputUrl,
-      outputAssetId: asset.id,
-      outputR2Key: asset.r2Key,
-      actualCostCents: result.actualCostCents,
+      id: job.id, providerStatus: result.status, providerResultUrl: result.outputUrl,
+      outputAssetId: asset.id, outputR2Key: asset.r2Key, actualCostCents: result.actualCostCents,
     })
     return { skipped: false, status: 'succeeded' }
   } catch (error) {

@@ -42,13 +42,11 @@ function deps(job: VideoGenerationJob, overrides: Record<string, any> = {}) {
     markFailed: vi.fn().mockResolvedValue({ ...job, status: 'failed' }),
     markSucceeded: vi.fn().mockResolvedValue({ ...job, status: 'succeeded' }),
     createOutputAsset: vi.fn().mockResolvedValue({ id: 'asset-out', r2Key: 'video-generation/job-1/output.mp4' }),
-    provider: {
-      submit: vi.fn().mockResolvedValue({ providerRequestId: 'provider-job-1', status: 'submitted' }),
-      poll: vi.fn().mockResolvedValue({
-        status: 'succeeded',
-        outputUrl: 'https://provider.example/output.mp4',
-        actualCostCents: 123,
-      }),
+    providers: {
+      mock: {
+        submit: vi.fn().mockResolvedValue({ providerRequestId: 'provider-job-1', status: 'submitted' }),
+        poll: vi.fn().mockResolvedValue({ status: 'succeeded', outputUrl: 'https://provider.example/output.mp4', actualCostCents: 123 }),
+      },
     },
     ...overrides,
   }
@@ -61,23 +59,25 @@ describe('video generation worker orchestration', () => {
     const result = await processVideoGenerationJob({ jobId: 'job-1', tenantId: 'tenant-1', idempotencyKey: 'idem-1' }, d)
 
     expect(result).toEqual({ skipped: true, reason: 'terminal_or_running' })
-    expect(d.provider.submit).not.toHaveBeenCalled()
+    expect(d.providers.mock.submit).not.toHaveBeenCalled()
   })
 
-  it('marks running before provider submit', async () => {
+  it('marks running after provider submit', async () => {
     const d = deps(baseJob)
 
     await processVideoGenerationJob({ jobId: 'job-1', tenantId: 'tenant-1', idempotencyKey: 'idem-1' }, d)
 
-    expect(d.markRunning).toHaveBeenCalledWith('job-1')
-    expect(d.provider.submit).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'job-1' }))
+    expect(d.markRunning).toHaveBeenCalledWith('job-1', 'provider-job-1')
+    expect(d.providers.mock.submit).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'job-1' }))
   })
 
   it('marks failed on provider error', async () => {
     const d = deps(baseJob, {
-      provider: {
-        submit: vi.fn().mockRejectedValue(new Error('provider unavailable')),
-        poll: vi.fn(),
+      providers: {
+        mock: {
+          submit: vi.fn().mockRejectedValue(new Error('provider unavailable')),
+          poll: vi.fn(),
+        },
       },
     })
 
@@ -102,5 +102,41 @@ describe('video generation worker orchestration', () => {
       actualCostCents: 123,
     })
     expect(result.status).toBe('succeeded')
+  })
+
+  it('leaves async jobs running (no finalize) when poll returns running', async () => {
+    const d = deps({ ...baseJob, provider: 'muapi', modelId: 'muapi/i2v-kling' }, {
+      providers: {
+        muapi: {
+          submit: vi.fn().mockResolvedValue({ providerRequestId: 'req-9', status: 'submitted' }),
+          poll: vi.fn().mockResolvedValue({ status: 'running', outputUrl: null, actualCostCents: null }),
+        },
+      },
+    })
+    const result = await processVideoGenerationJob({ jobId: 'job-1', tenantId: 'tenant-1', idempotencyKey: 'idem-1' }, d)
+    expect(result).toEqual({ skipped: false, status: 'running' })
+    expect(d.markRunning).toHaveBeenCalledWith('job-1', 'req-9')
+    expect(d.markSucceeded).not.toHaveBeenCalled()
+    expect(d.createOutputAsset).not.toHaveBeenCalled()
+  })
+
+  it('selects the provider by job.provider', async () => {
+    const d = deps({ ...baseJob, provider: 'muapi', modelId: 'muapi/i2v-kling' }, {
+      providers: {
+        mock: { submit: vi.fn(), poll: vi.fn() },
+        muapi: { submit: vi.fn().mockResolvedValue({ providerRequestId: 'req-9', status: 'submitted' }), poll: vi.fn().mockResolvedValue({ status: 'running', outputUrl: null, actualCostCents: null }) },
+      },
+    })
+    await processVideoGenerationJob({ jobId: 'job-1', tenantId: 'tenant-1', idempotencyKey: 'idem-1' }, d)
+    expect(d.providers.muapi.submit).toHaveBeenCalled()
+    expect(d.providers.mock.submit).not.toHaveBeenCalled()
+  })
+
+  it('marks the job failed when no provider is registered for job.provider', async () => {
+    const d = deps({ ...baseJob, provider: 'ghost' }, { providers: { mock: { submit: vi.fn(), poll: vi.fn() } } })
+    const result = await processVideoGenerationJob({ jobId: 'job-1', tenantId: 'tenant-1', idempotencyKey: 'idem-1' }, d)
+    expect(result).toEqual({ skipped: false, status: 'failed' })
+    expect(d.markFailed).toHaveBeenCalledWith('job-1', expect.stringContaining("no provider registered for 'ghost'"))
+    expect(d.providers.mock.submit).not.toHaveBeenCalled()
   })
 })

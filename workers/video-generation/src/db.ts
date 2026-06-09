@@ -87,13 +87,13 @@ export async function dbGetVideoGenerationJob(id: string): Promise<VideoGenerati
   return row ? mapJob(row) : null
 }
 
-export async function dbMarkVideoGenerationJobRunning(id: string): Promise<VideoGenerationJob> {
+export async function dbMarkVideoGenerationJobRunning(id: string, providerRequestId?: string | null): Promise<VideoGenerationJob> {
   const row = await queryOne(
     `UPDATE video_generation_jobs
-     SET status = 'running', provider_status = 'running',
-         started_at = COALESCE(started_at, now()), updated_at = now()
+     SET status = 'running', provider_request_id = COALESCE($2, provider_request_id),
+         provider_status = 'running', started_at = COALESCE(started_at, now()), updated_at = now()
      WHERE id = $1 RETURNING *`,
-    [id]
+    [id, providerRequestId ?? null]
   )
   if (!row) throw new Error(`video generation job ${id} not found`)
   return mapJob(row)
