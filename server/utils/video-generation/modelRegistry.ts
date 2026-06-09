@@ -1,0 +1,65 @@
+import type { VideoGenerationModel } from '~~/server/utils/video-generation/types'
+
+const MODELS: VideoGenerationModel[] = [
+  {
+    id: 'mock/i2v-safe',
+    provider: 'mock',
+    displayName: 'Mock Safe Image-to-Video',
+    modes: ['image-to-video'],
+    allowedSubjectTypes: ['vehicle', 'non_vehicle'],
+    requiresApprovedSourceAsset: true,
+    supportsNativeAudio: false,
+    durationsSeconds: [5, 10],
+    aspectRatios: ['16:9', '9:16', '1:1'],
+    resolutions: ['720p'],
+    estimatedCostCents: 50,
+    costUnit: 'second',
+    safetyClass: 'vehicle_i2v_safe',
+    defaultEnabled: true,
+  },
+  {
+    id: 'mock/t2v-broll',
+    provider: 'mock',
+    displayName: 'Mock Non-Vehicle Text-to-Video',
+    modes: ['text-to-video'],
+    allowedSubjectTypes: ['non_vehicle'],
+    requiresApprovedSourceAsset: false,
+    supportsNativeAudio: false,
+    durationsSeconds: [5],
+    aspectRatios: ['16:9', '9:16'],
+    resolutions: ['720p'],
+    estimatedCostCents: 200,
+    costUnit: 'generation',
+    safetyClass: 'non_vehicle_t2v',
+    defaultEnabled: false,
+  },
+  {
+    id: 'gateway/i2v-dormant',
+    provider: 'gateway',
+    displayName: 'Dormant Gateway Image-to-Video',
+    modes: ['image-to-video'],
+    allowedSubjectTypes: ['vehicle', 'non_vehicle'],
+    requiresApprovedSourceAsset: true,
+    supportsNativeAudio: true,
+    durationsSeconds: [5, 10],
+    aspectRatios: ['16:9', '9:16'],
+    resolutions: ['720p', '1080p'],
+    estimatedCostCents: 500,
+    costUnit: 'second',
+    safetyClass: 'disabled',
+    defaultEnabled: false,
+  },
+]
+
+export function listVideoGenerationModels(): VideoGenerationModel[] {
+  return MODELS.map((model) => ({ ...model, modes: [...model.modes], allowedSubjectTypes: [...model.allowedSubjectTypes] }))
+}
+
+export function listSelectableVideoGenerationModels(): VideoGenerationModel[] {
+  return listVideoGenerationModels().filter((model) => model.defaultEnabled && model.safetyClass !== 'disabled')
+}
+
+export function getVideoGenerationModel(id: string): VideoGenerationModel | null {
+  const model = MODELS.find((candidate) => candidate.id === id)
+  return model ? { ...model, modes: [...model.modes], allowedSubjectTypes: [...model.allowedSubjectTypes] } : null
+}
