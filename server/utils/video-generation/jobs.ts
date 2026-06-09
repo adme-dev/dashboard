@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { queryOne } from '~~/server/utils/db'
+import { queryOne, queryRows } from '~~/server/utils/db'
 import type {
   VideoGenerationJob,
   VideoGenerationJobStatus,
@@ -168,4 +168,12 @@ export async function markVideoGenerationJobFailed(id: string, errorMessage: str
   )
   if (!row) throw new Error(`video generation job ${id} not found`)
   return mapVideoGenerationJobRow(row)
+}
+
+export async function listVideoGenerationJobsForProject(projectId: string, limit = 50): Promise<VideoGenerationJob[]> {
+  const rows = await queryRows(
+    `SELECT * FROM video_generation_jobs WHERE project_id = $1 ORDER BY created_at DESC LIMIT $2`,
+    [projectId, limit]
+  )
+  return rows.map(mapVideoGenerationJobRow)
 }
