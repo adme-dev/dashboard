@@ -62,6 +62,36 @@ function onMediaUploaded(p: { r2Key: string; durationSec: number; baseSource: 'u
   editor.addVideoClipAction(p.r2Key, p.durationSec, p.baseSource, editor.currentTime.value)
 }
 
+// ─── Video generation wiring ──────────────────────────────────────────────────
+
+const videoGenerationEnabled = computed(() => Boolean((config.public as any).videoGenerationEnabled))
+const generatePickerOpen = ref(false)
+const genJobs = useVideoGenerationJobs(projectId.value)
+
+// Stills already on the timeline that have a backing video_assets id (i2v source).
+// NOTE: clips added via addVideoClip have asset_id=null, so this is usually empty in
+// slice 1 — i2v source-still selection is a documented follow-up. Kept so the prop is wired.
+const timelineStills = computed(() => {
+  const tl = editor.timeline.value
+  if (!tl) return [] as { assetId: string; label: string }[]
+  const out: { assetId: string; label: string }[] = []
+  for (const t of tl.tracks) if (t.kind === 'video') for (const c of (t.clips as any[])) {
+    if (c.base_source === 'still_kenburns' && c.asset_id) out.push({ assetId: c.asset_id, label: `Still @ ${Math.round(c.timeline_start_sec)}s` })
+  }
+  return out
+})
+const projectAspect = computed(() => {
+  const tl = editor.timeline.value
+  if (!tl) return '9:16'
+  return tl.width >= tl.height ? '16:9' : '9:16'
+})
+
+function onGenerationSubmitted(_jobId: string) { void genJobs.start() }
+function onLibraryAddToTimeline(p: { r2Key: string; durationSec: number }) {
+  editor.addVideoClipAction(p.r2Key, p.durationSec, 'uploaded_footage', editor.currentTime.value)
+  toast.add({ title: 'Added to timeline', color: 'success' })
+}
+
 // Render
 async function onRenderVideo() {
   const res = await editor.renderVideoAction()
@@ -197,8 +227,14 @@ function onKeyDown(event: KeyboardEvent) {
   }
 }
 
-onMounted(() => window.addEventListener('keydown', onKeyDown))
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown))
+onMounted(() => {
+  window.addEventListener('keydown', onKeyDown)
+  if (videoGenerationEnabled.value) void genJobs.start()
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeyDown)
+  genJobs.stop()
+})
 
 // ─── Save status label ────────────────────────────────────────────────────────
 
@@ -286,7 +322,8 @@ const saveStatusColor = computed(() => {
           :items="[[
             { label: 'Audio clip', icon: 'i-lucide-music', onSelect: () => { pickerOpen = true } },
             { label: 'Footage / still', icon: 'i-lucide-film', onSelect: () => { mediaPickerOpen = true } },
-            { label: 'Overlay', icon: 'i-lucide-shapes', onSelect: () => { overlayPickerOpen = true } }
+            { label: 'Overlay', icon: 'i-lucide-shapes', onSelect: () => { overlayPickerOpen = true } },
+            ...(videoGenerationEnabled.value ? [{ label: 'Generate (AI)', icon: 'i-lucide-sparkles', onSelect: () => { generatePickerOpen.value = true } }] : []),
           ]]"
         >
           <UButton icon="i-lucide-plus-circle" size="sm" variant="soft" color="primary" label="Add" trailing-icon="i-lucide-chevron-down" />
@@ -447,7 +484,18 @@ const saveStatusColor = computed(() => {
 
   <!-- Overlay picker -->
   <MediaOverlayPicker v-model:open="overlayPickerOpen" @pick="onOverlayPick" />
-  <MediaVideoLibrary v-model:open="libraryOpen" @publish="onLibraryPublish" />
+
+  <!-- AI video generation picker -->
+  <MediaGeneratePicker
+    v-if="videoGenerationEnabled"
+    v-model:open="generatePickerOpen"
+    :project-id="projectId"
+    :timeline-stills="timelineStills"
+    :default-aspect="projectAspect"
+    @submitted="onGenerationSubmitted"
+  />
+
+  <MediaVideoLibrary v-model:open="libraryOpen" @publish="onLibraryPublish" @add-to-timeline="onLibraryAddToTimeline" />
 
   <!-- Versions slideover -->
   <USlideover

@@ -9,6 +9,7 @@ const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{
   (e: 'update:open', value: boolean): void
   (e: 'publish', payload: { sourceJobId: string | null; format: string }): void
+  (e: 'add-to-timeline', payload: { r2Key: string; durationSec: number }): void
 }>()
 
 interface VideoAsset {
@@ -31,6 +32,10 @@ function fmtDate(iso: string): string {
 
 function onPublish(a: VideoAsset) {
   emit('publish', { sourceJobId: a.sourceJobId, format: a.format })
+}
+
+function onAddToTimeline(a: VideoAsset) {
+  emit('add-to-timeline', { r2Key: a.r2Key, durationSec: a.durationSec ?? 5 })
 }
 </script>
 
@@ -62,7 +67,15 @@ function onPublish(a: VideoAsset) {
               </div>
               <UBadge :label="a.format" size="xs" variant="subtle" color="neutral" />
             </div>
-            <div class="flex justify-end">
+            <div class="flex justify-end gap-2">
+              <UButton
+                icon="i-lucide-plus-circle"
+                size="xs"
+                color="neutral"
+                variant="soft"
+                label="Add to timeline"
+                @click="onAddToTimeline(a)"
+              />
               <UTooltip :text="a.sourceJobId ? '' : 'Source render unavailable'" :disabled="!!a.sourceJobId">
                 <UButton
                   icon="i-lucide-share-2"
