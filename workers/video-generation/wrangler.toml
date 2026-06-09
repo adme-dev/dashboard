@@ -1,0 +1,19 @@
+name = "video-generation"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[queues.consumers]]
+queue = "video-generation"
+max_batch_size = 1
+max_batch_timeout = 30
+max_retries = 2
+dead_letter_queue = "video-generation-dlq"
+
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "900b4b74ec41462cbbabebd0aa8775aa"
+
+[[r2_buckets]]
+binding = "AUDIO_BUCKET"
+bucket_name = "agency-files"
