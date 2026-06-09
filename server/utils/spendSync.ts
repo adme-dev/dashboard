@@ -220,6 +220,32 @@ export async function syncMetaSpend(month: number, year: number): Promise<SyncRe
 
 // ─── Google Spend Sync ──────────────────────────────────────────
 
+/**
+ * Resolve the Google Ads `login-customer-id` (manager / MCC) to send when
+ * querying a client account's spend. Client accounts under a manager MUST
+ * carry the manager's id in this header or the API returns 403
+ * USER_PERMISSION_DENIED. A configured GOOGLE_ADS_LOGIN_CUSTOMER_ID always
+ * wins; otherwise the manager is auto-detected as an accessible customer that
+ * isn't itself one of the connected client accounts. Dashes are stripped.
+ *
+ * The previous logic detected one id from a single arbitrary connection and
+ * reused it for every account; when accounts spanned managers (or the heuristic
+ * picked a non-manager id) almost every account 403'd. Connected account ids
+ * are expected to already be dash-stripped.
+ */
+export function resolveGoogleManagerId(opts: {
+  configured?: string | null
+  accessibleIds?: string[]
+  connectionAccountIds?: Set<string>
+}): string | undefined {
+  const norm = (s: string) => s.replace(/-/g, '')
+  const configured = opts.configured ? norm(opts.configured) : ''
+  if (configured) return configured
+  const accessible = (opts.accessibleIds || []).map(norm).filter(Boolean)
+  const connected = opts.connectionAccountIds || new Set<string>()
+  return accessible.find(id => !connected.has(id)) || accessible[0] || undefined
+}
+
 export async function syncGoogleSpend(month: number, year: number): Promise<{ synced: number; totalSpend: number; failures: Array<{ account: string; reason: string }> }> {
   const { getMonthlySpend, getDailySpend, refreshGoogleToken, listAccessibleCustomers } = await import('~~/server/utils/googleAdsClient')
   const failures: Array<{ account: string; reason: string }> = []
@@ -255,13 +281,18 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
   )
 
   let mccId: string | undefined
-  const firstConn = connections[0]!
-  try {
-    const accessibleIds = await listAccessibleCustomers(firstConn.access_token, config.googleDeveloperToken)
-    const connAccountIds = new Set(connections.map(c => c.account_id.replace(/-/g, '')))
-    mccId = accessibleIds.find(id => !connAccountIds.has(id)) || accessibleIds[0] || undefined
-  } catch (err: any) {
-    console.warn(`[GoogleSync] Could not detect MCC:`, err.message)
+  const connAccountIds = new Set(connections.map(c => c.account_id.replace(/-/g, '')))
+  const configuredMcc = (config.googleAdsLoginCustomerId as string) || ''
+  if (configuredMcc) {
+    mccId = resolveGoogleManagerId({ configured: configuredMcc })
+  } else {
+    const firstConn = connections[0]!
+    try {
+      const accessibleIds = await listAccessibleCustomers(firstConn.access_token, config.googleDeveloperToken)
+      mccId = resolveGoogleManagerId({ accessibleIds, connectionAccountIds: connAccountIds })
+    } catch (err: any) {
+      console.warn(`[GoogleSync] Could not detect MCC:`, err.message)
+    }
   }
 
   let totalSynced = 0
@@ -289,8 +320,22 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
     }
 
     let campaigns
+    let effectiveMccId = mccId
     try {
-      campaigns = await getMonthlySpend(conn.account_id, accessToken, config.googleDeveloperToken, month, year, mccId)
+      try {
+        campaigns = await getMonthlySpend(conn.account_id, accessToken, config.googleDeveloperToken, month, year, mccId)
+      } catch (err: any) {
+        const status = err?.status || err?.statusCode
+        // A 403 under a manager context can also mean this account is directly
+        // owned (not a child of the MCC) — retry once without the manager
+        // header before recording a failure.
+        if (status === 403 && mccId) {
+          campaigns = await getMonthlySpend(conn.account_id, accessToken, config.googleDeveloperToken, month, year, undefined)
+          effectiveMccId = undefined
+        } else {
+          throw err
+        }
+      }
     } catch (err: any) {
       console.error(`[GoogleSync] Failed to fetch spend for ${conn.account_name}:`, err.message)
       const status = err?.status || err?.statusCode
@@ -361,7 +406,7 @@ export async function syncGoogleSpend(month: number, year: number): Promise<{ sy
 
     // Daily spend pass
     try {
-      const dailyRows = await getDailySpend(conn.account_id, accessToken, config.googleDeveloperToken, month, year, mccId)
+      const dailyRows = await getDailySpend(conn.account_id, accessToken, config.googleDeveloperToken, month, year, effectiveMccId)
       if (dailyRows.length > 0) {
         const spendRows = await queryRows<{ id: string; campaign_id: string }>(
           `SELECT id, campaign_id FROM media_spend

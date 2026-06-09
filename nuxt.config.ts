@@ -109,6 +109,10 @@ export default defineNuxtConfig({
     googleRedirectUri: process.env.GOOGLE_REDIRECT_URI || '/api/agency/social/google/callback',
     ga4RedirectUri: process.env.GA4_REDIRECT_URI || '/api/agency/social/ga4/callback',
     googleDeveloperToken: process.env.GOOGLE_DEVELOPER_TOKEN || '',
+    // Manager (MCC) account id sent as login-customer-id when querying client
+    // ad accounts accessed via a manager link. Without it the Google Ads API
+    // returns 403 USER_PERMISSION_DENIED for child accounts.
+    googleAdsLoginCustomerId: process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || '',
 
     // Google Business Profile publishing
     googleBusinessPublishingEnabled: process.env.GOOGLE_BUSINESS_PUBLISHING_ENABLED === 'true',
