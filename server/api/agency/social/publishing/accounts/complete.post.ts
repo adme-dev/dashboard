@@ -3,8 +3,10 @@ import { PERMISSIONS } from '~~/server/utils/permissions'
 import { queryOne, execute } from '~~/server/utils/db'
 import { verifyState } from '~~/server/utils/socialOAuth/state'
 import { mapPagesToAccountRows, subscribePageWebhook } from '~~/server/utils/socialOAuth/meta'
+import { mapGoogleBusinessLocationsToAccountRows } from '~~/server/utils/socialOAuth/googleBusiness'
 import { upsertSocialAccount, markWebhookSubscribed } from '~~/server/utils/socialOAuth/store'
 import { getPending, delPending } from '~~/server/utils/socialOAuth/pending'
+import { getSocialOauthStateSecret } from '~~/server/utils/socialOAuth/env'
 
 /**
  * POST /api/agency/social/publishing/accounts/complete  body { token, pageIds: string[] }
@@ -16,8 +18,8 @@ export default defineEventHandler(async (event) => {
   if (!token || !Array.isArray(pageIds) || !pageIds.length) {
     throw createError({ statusCode: 400, statusMessage: 'token and pageIds required' })
   }
-  const secret = process.env.SOCIAL_OAUTH_STATE_SECRET || process.env.META_APP_SECRET || ''
-  const sel = verifyState<{ nonce: string; clientId: string; userId: string }>(String(token), secret, 600_000)
+  const secret = getSocialOauthStateSecret(event)
+  const sel = verifyState<{ nonce: string, clientId: string, userId: string }>(String(token), secret, 600_000)
   if (!sel) throw createError({ statusCode: 400, statusMessage: 'invalid or expired selection' })
   // Bind the selection to the operator who started it — a leaked token can't be finalized by someone else.
   if (sel.userId !== String(user.id)) throw createError({ statusCode: 403, statusMessage: 'not your selection' })
@@ -27,7 +29,32 @@ export default defineEventHandler(async (event) => {
   // Consume the pending entry up front so a captured token can't be replayed (the second attempt 410s).
   await delPending(event, sel.nonce)
 
-  const chosen = pending.pages.filter(p => pageIds.includes(p.id))
+  if (pending.platform === 'google-business') {
+    const google = pending.googleBusiness
+    if (!google) throw createError({ statusCode: 410, statusMessage: 'selection expired' })
+    const chosen = google.locations.filter(location => pageIds.includes(location.id))
+    if (!chosen.length) throw createError({ statusCode: 400, statusMessage: 'no matching locations' })
+
+    const connected: string[] = []
+    const conflicts: string[] = []
+    const rows = mapGoogleBusinessLocationsToAccountRows(
+      chosen,
+      google.accessToken,
+      google.refreshToken,
+      pending.expiresAt
+    )
+    for (const row of rows) {
+      const res = await upsertSocialAccount({ queryOne, execute }, pending.clientId, row, String(user.id))
+      if (res.status === 'conflict') {
+        conflicts.push(`${row.account_name} -> ${res.conflictClientName || 'another client'}`)
+      } else {
+        connected.push(row.account_name)
+      }
+    }
+    return { connected, conflicts }
+  }
+
+  const chosen = (pending.pages ?? []).filter(p => pageIds.includes(p.id))
   if (!chosen.length) throw createError({ statusCode: 400, statusMessage: 'no matching pages' })
 
   const connected: string[] = []
@@ -39,7 +66,11 @@ export default defineEventHandler(async (event) => {
     for (const row of rows) {
       row.metadata.webhook_subscribed = sub.ok
       const res = await upsertSocialAccount({ queryOne, execute }, pending.clientId, row, String(user.id))
-      if (res.status === 'conflict') { conflict = true; conflicts.push(`${page.name} → ${res.conflictClientName || 'another client'}`); break }
+      if (res.status === 'conflict') {
+        conflict = true
+        conflicts.push(`${page.name} -> ${res.conflictClientName || 'another client'}`)
+        break
+      }
       if (!sub.ok) await markWebhookSubscribed({ queryOne, execute }, res.id, false, `webhook subscribe failed: ${sub.error}`)
     }
     if (!conflict) connected.push(page.name)

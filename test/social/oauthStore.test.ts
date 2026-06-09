@@ -41,4 +41,23 @@ describe('upsertSocialAccount', () => {
     // no insert/update issued
     expect(d.queryOne).not.toHaveBeenCalledWith(expect.stringMatching(/INSERT INTO social_accounts/), expect.anything())
   })
+
+  it('persists refresh_token on insert (Google Business needs it for offline refresh)', async () => {
+    const d = db(null)
+    const gbpRow: AccountRow = {
+      platform: 'google-business', platform_account_id: 'acc:loc', account_name: 'Store',
+      access_token: 'AT', refresh_token: 'RT', token_expires_at: '2026-08-01T00:00:00.000Z', metadata: {},
+    }
+    await upsertSocialAccount(d as any, 'clientA', gbpRow, 'userX')
+    const insert = d.queryOne.mock.calls.find((c: any[]) => /INSERT INTO social_accounts/.test(c[0]))!
+    expect(insert[0]).toMatch(/refresh_token/)
+    expect(insert[1]).toContain('RT')
+  })
+
+  it('updates refresh_token with COALESCE so a missing token keeps the stored one', async () => {
+    const d = db({ id: 'acc1', client_id: 'clientA' })
+    await upsertSocialAccount(d as any, 'clientA', { ...row, refresh_token: null }, 'userX')
+    const update = d.queryOne.mock.calls.find((c: any[]) => /UPDATE social_accounts/.test(c[0]))!
+    expect(update[0]).toMatch(/refresh_token = COALESCE/)
+  })
 })

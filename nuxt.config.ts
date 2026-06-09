@@ -110,6 +110,12 @@ export default defineNuxtConfig({
     ga4RedirectUri: process.env.GA4_REDIRECT_URI || '/api/agency/social/ga4/callback',
     googleDeveloperToken: process.env.GOOGLE_DEVELOPER_TOKEN || '',
 
+    // Google Business Profile publishing
+    googleBusinessPublishingEnabled: process.env.GOOGLE_BUSINESS_PUBLISHING_ENABLED === 'true',
+    googleBusinessClientId: process.env.GOOGLE_BUSINESS_CLIENT_ID || '',
+    googleBusinessClientSecret: process.env.GOOGLE_BUSINESS_CLIENT_SECRET || '',
+    googleBusinessRedirectUri: process.env.GOOGLE_BUSINESS_REDIRECT_URI || '/api/agency/social/publishing/accounts/callback/google-business',
+
     // TikTok Ads
     tiktokAppId: process.env.TIKTOK_APP_ID || '',
     tiktokAppSecret: process.env.TIKTOK_APP_SECRET || '',
@@ -179,15 +185,19 @@ export default defineNuxtConfig({
       aiToolsEnabled: process.env.AI_TOOLS_ENABLED === 'true',
       // Client-visible mirror of VIDEO_STUDIO_ENABLED — gates ONLY the "Render video"
       // button in the AV editor (the server endpoint is the real boundary; it 404s when off).
-      videoStudioEnabled: process.env.VIDEO_STUDIO_ENABLED === 'true'
+      videoStudioEnabled: process.env.VIDEO_STUDIO_ENABLED === 'true',
+      // Client-visible mirror of GOOGLE_BUSINESS_PUBLISHING_ENABLED. Server endpoints
+      // remain the real boundary; this keeps the dormant channel hidden until approval.
+      googleBusinessPublishingEnabled: process.env.GOOGLE_BUSINESS_PUBLISHING_ENABLED === 'true'
     }
   },
 
   ignore: devWatcherIgnored,
 
   routeRules: {
-    // Prerender static marketing pages at build time
-    '/': { prerender: true },
+    // Keep `/` dynamic so host-aware server middleware can route
+    // `app.xeroflow.io` to the admin surface while `xeroflow.io` continues
+    // to serve the public website.
     '/pricing': { prerender: true },
     '/features': { prerender: true },
     '/features/**': { prerender: true },
@@ -264,8 +274,8 @@ export default defineNuxtConfig({
     },
     prerender: {
       crawlLinks: true,
-      // Ignore auth-gated routes and API endpoints during prerendering
-      ignore: ['/agency', '/portal', '/admin', '/settings', '/api', '/chat', '/invoices', '/customers', '/insights', '/profit-loss', '/expenses', '/cashflow', '/reports', '/anomalies', '/recommendations', '/xeroflow', '/review', '/approve', '/intake']
+      // Ignore the host-aware root, auth-gated routes and API endpoints during prerendering
+      ignore: ['/', '/agency', '/portal', '/admin', '/settings', '/api', '/chat', '/invoices', '/customers', '/insights', '/profit-loss', '/expenses', '/cashflow', '/reports', '/anomalies', '/recommendations', '/xeroflow', '/review', '/approve', '/intake']
     },
     rollupConfig: {
       external: ['@react-email/render', '@cloudflare/puppeteer', 'puppeteer', 'gifenc', 'pngjs', 'pg-native']

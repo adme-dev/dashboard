@@ -1,7 +1,11 @@
 <script setup lang="ts">
 const colorMode = useColorMode()
+const APP_HOST = 'app.xeroflow.io'
+const requestURL = useRequestURL()
+const currentHost = computed(() => import.meta.client ? window.location.host.toLowerCase() : requestURL.host.toLowerCase())
 
 const color = computed(() => colorMode.value === 'dark' ? '#1b1718' : 'white')
+const isAdminHost = computed(() => currentHost.value === APP_HOST)
 
 useHead({
   meta: [
@@ -16,6 +20,18 @@ useHead({
     lang: 'en'
   }
 })
+
+useHead(() => ({
+  meta: isAdminHost.value
+    ? []
+    : [
+        {
+          key: 'robots',
+          name: 'robots',
+          content: 'noindex,nofollow'
+        }
+      ]
+}))
 
 const title = 'XeroFlow — Agency Operations Platform'
 const description = 'The all-in-one operations platform for digital marketing agencies. Boards, invoicing, chat, AI insights, time tracking, client portal, and ad spend management — all in one place.'
