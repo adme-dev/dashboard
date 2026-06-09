@@ -323,7 +323,7 @@ const saveStatusColor = computed(() => {
             { label: 'Audio clip', icon: 'i-lucide-music', onSelect: () => { pickerOpen = true } },
             { label: 'Footage / still', icon: 'i-lucide-film', onSelect: () => { mediaPickerOpen = true } },
             { label: 'Overlay', icon: 'i-lucide-shapes', onSelect: () => { overlayPickerOpen = true } },
-            ...(videoGenerationEnabled.value ? [{ label: 'Generate (AI)', icon: 'i-lucide-sparkles', onSelect: () => { generatePickerOpen.value = true } }] : []),
+            ...(videoGenerationEnabled ? [{ label: 'Generate (AI)', icon: 'i-lucide-sparkles', onSelect: () => { generatePickerOpen = true } }] : []),
           ]]"
         >
           <UButton icon="i-lucide-plus-circle" size="sm" variant="soft" color="primary" label="Add" trailing-icon="i-lucide-chevron-down" />
