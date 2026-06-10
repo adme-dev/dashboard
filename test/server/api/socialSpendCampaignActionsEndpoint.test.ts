@@ -55,7 +55,9 @@ describe('GET /api/agency/social/spend/:id/actions', () => {
 
     expect(mockRequireAuth).toHaveBeenCalled()
     expect(mockQueryRows.mock.calls[0][1]).toEqual(['spend-1'])
-    expect(String(mockQueryRows.mock.calls[0][0])).toContain('campaign_action_log')
+    const sql = String(mockQueryRows.mock.calls[0][0])
+    expect(sql).toContain('campaign_action_log')
+    expect(sql).toContain("ORDER BY COALESCE(cal.executed_at, (cal.metadata->>'cancelledAt')::timestamptz, cal.approved_at, cal.requested_at) DESC")
     expect(result).toEqual([
       {
         id: 'action-1',

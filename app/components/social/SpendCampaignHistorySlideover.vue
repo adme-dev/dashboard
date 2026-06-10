@@ -195,6 +195,10 @@ function isCancellableAction(action: CampaignActionEntry) {
   return action.actionStatus === 'planned' || action.actionStatus === 'approved'
 }
 
+function actionDisplayTime(action: CampaignActionEntry) {
+  return action.executedAt || action.cancelledAt || action.approvedAt || action.requestedAt
+}
+
 async function approvePlannedAction(action: CampaignActionEntry) {
   if (!props.item || action.actionStatus !== 'planned' || approvingActionId.value) return
   approvingActionId.value = action.id
@@ -423,7 +427,7 @@ function summarizeValue(value: Record<string, unknown>) {
                       </UBadge>
                     </div>
                     <p class="mt-0.5 text-xs text-muted">
-                      {{ action.requestedByName || 'System' }} · {{ formatBudgetHistoryTime(action.executedAt || action.requestedAt) }}
+                      {{ action.requestedByName || 'System' }} · {{ formatBudgetHistoryTime(actionDisplayTime(action)) }}
                     </p>
                   </div>
                   <div class="flex shrink-0 items-center gap-2">

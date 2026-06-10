@@ -62,7 +62,7 @@ export default eventHandler(async (event) => {
      LEFT JOIN team_members approver ON approver.id = cal.approved_by
      LEFT JOIN team_members canceller ON canceller.id::text = cal.metadata->>'cancelledBy'
      WHERE cal.media_spend_id = $1
-     ORDER BY COALESCE(cal.executed_at, cal.requested_at) DESC
+     ORDER BY COALESCE(cal.executed_at, (cal.metadata->>'cancelledAt')::timestamptz, cal.approved_at, cal.requested_at) DESC
      LIMIT 50`,
     [id]
   )
