@@ -47,10 +47,10 @@ export default eventHandler(async (event) => {
             approver.name as approved_by_name,
             approver.avatar_url as approved_by_avatar,
             cal.approved_at::text,
-            cal.metadata->>'cancelledBy' as cancelled_by,
+            cal.cancelled_by::text,
             canceller.name as cancelled_by_name,
             canceller.avatar_url as cancelled_by_avatar,
-            cal.metadata->>'cancelledAt' as cancelled_at,
+            cal.cancelled_at::text,
             cal.executed_at::text,
             cal.previous_value,
             cal.new_value,
@@ -60,9 +60,9 @@ export default eventHandler(async (event) => {
      FROM campaign_action_log cal
      LEFT JOIN team_members tm ON tm.id = cal.requested_by
      LEFT JOIN team_members approver ON approver.id = cal.approved_by
-     LEFT JOIN team_members canceller ON canceller.id::text = cal.metadata->>'cancelledBy'
+     LEFT JOIN team_members canceller ON canceller.id = cal.cancelled_by
      WHERE cal.media_spend_id = $1
-     ORDER BY COALESCE(cal.executed_at, (cal.metadata->>'cancelledAt')::timestamptz, cal.approved_at, cal.requested_at) DESC
+     ORDER BY COALESCE(cal.executed_at, cal.cancelled_at, cal.approved_at, cal.requested_at) DESC
      LIMIT 50`,
     [id]
   )

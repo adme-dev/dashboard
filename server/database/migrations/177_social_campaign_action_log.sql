@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS campaign_action_log (
   requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   approved_by UUID REFERENCES team_members(id) ON DELETE SET NULL,
   approved_at TIMESTAMPTZ,
+  cancelled_by UUID REFERENCES team_members(id) ON DELETE SET NULL,
+  cancelled_at TIMESTAMPTZ,
   executed_at TIMESTAMPTZ,
   previous_value JSONB NOT NULL DEFAULT '{}'::jsonb,
   new_value JSONB NOT NULL DEFAULT '{}'::jsonb,

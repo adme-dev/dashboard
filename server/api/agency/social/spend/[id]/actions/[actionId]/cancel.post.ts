@@ -16,6 +16,8 @@ export default eventHandler(async (event) => {
   const row = await queryOne<CampaignActionRow>(
     `UPDATE campaign_action_log
      SET action_status = 'cancelled',
+         cancelled_by = $3,
+         cancelled_at = NOW(),
          metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
            'cancelledBy', $3::text,
            'cancelledAt', NOW()::text
@@ -33,6 +35,8 @@ export default eventHandler(async (event) => {
                action_status,
                requested_by::text,
                requested_at::text,
+               cancelled_by::text,
+               cancelled_at::text,
                previous_value,
                new_value,
                reason`,
@@ -54,6 +58,8 @@ interface CampaignActionRow {
   action_status: string
   requested_by: string | null
   requested_at: string
+  cancelled_by: string | null
+  cancelled_at: string | null
   previous_value: Record<string, unknown>
   new_value: Record<string, unknown>
   reason: string | null
@@ -68,6 +74,8 @@ function normalizeAction(row: CampaignActionRow) {
     actionStatus: row.action_status,
     requestedBy: row.requested_by,
     requestedAt: row.requested_at,
+    cancelledBy: row.cancelled_by,
+    cancelledAt: row.cancelled_at,
     previousValue: row.previous_value,
     newValue: row.new_value,
     reason: row.reason,

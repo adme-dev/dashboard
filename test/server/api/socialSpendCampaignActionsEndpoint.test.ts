@@ -57,7 +57,10 @@ describe('GET /api/agency/social/spend/:id/actions', () => {
     expect(mockQueryRows.mock.calls[0][1]).toEqual(['spend-1'])
     const sql = String(mockQueryRows.mock.calls[0][0])
     expect(sql).toContain('campaign_action_log')
-    expect(sql).toContain("ORDER BY COALESCE(cal.executed_at, (cal.metadata->>'cancelledAt')::timestamptz, cal.approved_at, cal.requested_at) DESC")
+    expect(sql).toContain('cal.cancelled_by::text')
+    expect(sql).toContain('cal.cancelled_at::text')
+    expect(sql).toContain('LEFT JOIN team_members canceller ON canceller.id = cal.cancelled_by')
+    expect(sql).toContain('ORDER BY COALESCE(cal.executed_at, cal.cancelled_at, cal.approved_at, cal.requested_at) DESC')
     expect(result).toEqual([
       {
         id: 'action-1',
