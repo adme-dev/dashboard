@@ -1,0 +1,28 @@
+{
+  "rules": [
+    {
+      "allowed": {
+        "origins": [
+          "http://localhost:3000",
+          "https://xeroflow.io",
+          "https://www.xeroflow.io",
+          "https://app.xeroflow.io",
+          "https://agency-dashboard-6cm.pages.dev"
+        ],
+        "methods": ["GET", "HEAD"],
+        "headers": ["*"]
+      },
+      "exposeHeaders": ["ETag", "Content-Length", "Content-Type"],
+      "maxAgeSeconds": 3600
+    },
+    {
+      "allowed": {
+        "origins": ["https://*.agency-dashboard-6cm.pages.dev"],
+        "methods": ["GET", "HEAD"],
+        "headers": ["*"]
+      },
+      "exposeHeaders": ["ETag", "Content-Length", "Content-Type"],
+      "maxAgeSeconds": 3600
+    }
+  ]
+}
