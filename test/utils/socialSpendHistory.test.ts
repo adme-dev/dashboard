@@ -6,7 +6,7 @@ import {
   matchingPlannedBudgetAction,
   performanceSignalRows,
   pacingSignalRows,
-} from '~/app/utils/socialSpendHistory'
+} from '~~/app/utils/socialSpendHistory'
 
 describe('socialSpendHistory', () => {
   it('calculates budget deltas and tone from audit entries', () => {

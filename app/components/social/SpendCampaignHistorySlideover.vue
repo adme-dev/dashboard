@@ -7,7 +7,7 @@ import {
   performanceSignalRows,
   pacingSignalRows,
   type BudgetHistoryTone,
-} from '~/app/utils/socialSpendHistory'
+} from '~/utils/socialSpendHistory'
 
 interface PacingReviewItem {
   mediaSpendId: string
