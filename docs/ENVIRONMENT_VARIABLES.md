@@ -61,6 +61,22 @@ RESEND_API_KEY=re_your_api_key_here
 ```
 Get from [Resend](https://resend.com).
 
+### Video Asset Intelligence
+
+Video Asset Intelligence uses a Cloudflare Pages queue producer plus a standalone Worker consumer:
+
+- `ASSET_INTELLIGENCE_QUEUE` is the Pages producer binding in `wrangler.toml` for enqueueing asset intelligence jobs.
+- `xeroflow-asset-intelligence` is the standalone Worker in `workers/asset-intelligence`, consuming the `asset-intelligence` queue.
+- The Worker requires `HYPERDRIVE` for database access in production, or `DATABASE_URL` for local/fallback database access.
+- The Worker requires the `MEDIA_BUCKET` R2 binding for source and derivative assets.
+- The Worker requires the `AI` binding for Workers AI model execution.
+
+Required production deployment steps:
+
+1. Create the queues with `npx wrangler queues create asset-intelligence` and `npx wrangler queues create asset-intelligence-dlq`.
+2. Deploy the standalone Worker from `workers/asset-intelligence`.
+3. Apply migration `178_video_derivative_bucket_item_unique_index.sql` before relying on race-safe bucket reuse.
+
 ## Environment-Specific Configuration
 
 ### Development (Local)

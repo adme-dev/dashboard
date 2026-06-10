@@ -55,6 +55,12 @@ queue = "video-render"
 binding = "VIDEO_GENERATION_QUEUE"
 queue = "video-generation"
 
+# Producer binding for Video Studio asset intelligence jobs. Consumer runs in
+# workers/asset-intelligence/ as the `asset-intelligence` queue branch.
+[[queues.producers]]
+binding = "ASSET_INTELLIGENCE_QUEUE"
+queue = "asset-intelligence"
+
 # R2 — native object storage binding for server-side uploads. The S3-SDK-over-fetch
 # path silently drops PutObject bodies in the Pages/workerd runtime (200 but no object
 # written — UNSIGNED-PAYLOAD means R2 won't reject a missing body), so storage.ts
