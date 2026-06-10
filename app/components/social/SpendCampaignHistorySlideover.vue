@@ -82,6 +82,7 @@ const toast = useToast()
 const history = ref<BudgetAuditEntry[]>([])
 const platformActions = ref<CampaignActionEntry[]>([])
 const loading = ref(false)
+const planning = ref(false)
 const loadedSpendId = ref<string | null>(null)
 
 const signals = computed(() => props.item ? pacingSignalRows(props.item) : [])
@@ -96,9 +97,12 @@ watch(
   { immediate: true }
 )
 
-async function loadHistory(spendId: string) {
+async function loadHistory(spendId: string, force = false) {
+  if (!force && loadedSpendId.value === spendId) return
   loading.value = true
   try {
+    history.value = []
+    platformActions.value = []
     const [budgetHistory, actionHistory] = await Promise.all([
       $fetch<BudgetAuditEntry[]>(`/api/agency/social/spend/${spendId}/history`),
       $fetch<CampaignActionEntry[]>(`/api/agency/social/spend/${spendId}/actions`),
@@ -114,6 +118,39 @@ async function loadHistory(spendId: string) {
     })
   } finally {
     loading.value = false
+  }
+}
+
+async function planCurrentRecommendation() {
+  if (!props.item || planning.value) return
+  planning.value = true
+  try {
+    await $fetch(`/api/agency/social/spend/${props.item.mediaSpendId}/actions/plan`, {
+      method: 'POST',
+      body: {
+        currentDailyBudget: props.item.currentDailyBudget,
+        recommendedDailyBudget: props.item.recommendedDailyBudget,
+        reason: props.item.recommendedAction,
+        issueType: props.item.issueType,
+        pacingRatio: props.item.pacingRatio,
+        projectedMonthEnd: props.item.projectedMonthEnd,
+        budget: props.item.budget,
+      },
+    })
+    toast.add({
+      title: 'Planned action saved',
+      description: 'The recommendation is now recorded for review before any platform change.',
+      color: 'success',
+    })
+    await loadHistory(props.item.mediaSpendId, true)
+  } catch (e: any) {
+    toast.add({
+      title: 'Could not save planned action',
+      description: e.data?.statusMessage || e.message || 'The recommendation was not recorded',
+      color: 'error',
+    })
+  } finally {
+    planning.value = false
   }
 }
 
@@ -238,9 +275,21 @@ function summarizeValue(value: Record<string, unknown>) {
           </section>
 
           <section class="border-b border-default p-4 sm:p-5">
-            <div class="mb-3 flex items-center gap-2">
-              <UIcon name="i-lucide-sparkles" class="size-4 text-primary" />
-              <h4 class="text-sm font-semibold">Current recommendation</h4>
+            <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div class="flex items-center gap-2">
+                <UIcon name="i-lucide-sparkles" class="size-4 text-primary" />
+                <h4 class="text-sm font-semibold">Current recommendation</h4>
+              </div>
+              <UButton
+                size="xs"
+                variant="soft"
+                color="primary"
+                icon="i-lucide-clipboard-check"
+                :loading="planning"
+                @click="planCurrentRecommendation"
+              >
+                Save as planned action
+              </UButton>
             </div>
             <p class="text-sm text-default">{{ item.recommendedAction }}</p>
           </section>
