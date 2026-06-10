@@ -2,7 +2,7 @@
 // MediaGeneratePicker.vue — USlideover to generate an AI video clip (text-to-video
 // or image-to-video) via the gated generation API. Emits `submitted(jobId)` so the
 // page can start polling; the finished asset surfaces in the Video Library.
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { listSelectableVideoGenerationModels } from '~~/server/utils/video-generation/modelRegistry'
 import { modelsForMode, validateGenerationForm, costPreviewCents } from '~~/app/utils/videoGenerationForm'
 import type { VideoGenerationMode } from '~~/server/utils/video-generation/types'
@@ -55,6 +55,13 @@ function onModeChange() {
   durationSeconds.value = model.value?.durationsSeconds[0] ?? 5
   if (mode.value === 'text-to-video') clearSource()
 }
+
+watch(modelId, () => {
+  if (!model.value) return
+  if (!model.value.durationsSeconds.includes(durationSeconds.value)) {
+    durationSeconds.value = model.value.durationsSeconds[0] ?? 5
+  }
+})
 
 function clearSource() {
   sourceAssetId.value = null

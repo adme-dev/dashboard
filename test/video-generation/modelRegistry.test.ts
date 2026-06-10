@@ -13,10 +13,11 @@ describe('video generation model registry', () => {
     const ids = listSelectableVideoGenerationModels().map((m) => m.id)
     expect(ids).not.toContain('gateway/i2v-dormant')
     expect(ids).not.toContain('mock/t2v-broll')
-    // Mock models return fake output URLs, and the current Cloudflare account does
-    // not expose video models in its Workers AI catalog.
+    // Mock models return fake output URLs, and unsupported/retired providers stay hidden.
     expect(ids).not.toContain('mock/i2v-safe')
-    expect(ids).not.toContain('aigateway/seedance-i2v')
+    expect(ids).toContain('aigateway/seedance-i2v')
+    expect(ids).toContain('aigateway/wan-i2v')
+    expect(ids).toContain('aigateway/hailuo-i2v')
   })
 
   it('describes image-to-video vehicle-safe capabilities', () => {
@@ -49,7 +50,7 @@ describe('video generation model registry', () => {
     expect(getVideoGenerationModel('mock/i2v-safe')!.muapi).toBeUndefined()
   })
 
-  it('keeps CF AI Gateway video model mappings registered but not selectable', () => {
+  it('keeps verified CF AI Gateway image-to-video models selectable', () => {
     const m = getVideoGenerationModel('aigateway/seedance-i2v')
     expect(m).toBeTruthy()
     expect(m!.provider).toBe('aigateway')
@@ -57,7 +58,7 @@ describe('video generation model registry', () => {
     expect(m!.modality).toBe('i2v')
     expect(m!.modes).toContain('image-to-video')
     expect(m!.cfModel).toBe('bytedance/seedance-2.0-fast')
-    expect(listSelectableVideoGenerationModels().map((x) => x.id)).not.toContain('aigateway/seedance-i2v')
+    expect(listSelectableVideoGenerationModels().map((x) => x.id)).toContain('aigateway/seedance-i2v')
   })
 
   it('registers an internal-only CF t2v model that is NOT tenant-selectable', () => {
@@ -67,10 +68,14 @@ describe('video generation model registry', () => {
     expect(ids).not.toContain('aigateway/veo-t2v-internal')
   })
 
-  it('has no default selectable models until a runnable production provider is enabled', () => {
+  it('has only verified CF image-to-video models selectable by default', () => {
     const ids = listSelectableVideoGenerationModels().map((x) => x.id)
     expect(ids).not.toContain('muapi/i2v-kling')
     expect(ids).not.toContain('muapi/t2v-wan')
-    expect(ids).toHaveLength(0)
+    expect(ids).toEqual([
+      'aigateway/seedance-i2v',
+      'aigateway/wan-i2v',
+      'aigateway/hailuo-i2v',
+    ])
   })
 })
