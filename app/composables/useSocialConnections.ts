@@ -23,6 +23,40 @@ interface SpendSummary {
   totals: { budget: number; spend: number; commission: number; variance: number }
 }
 
+interface PacingReview {
+  period: string
+  generatedAt: string
+  items: Array<{
+    mediaSpendId: string
+    clientName: string
+    platform: 'meta' | 'google'
+    campaignId: string | null
+    campaignName: string
+    campaignStatus: string | null
+    issueType: string
+    severity: 'critical' | 'warning' | 'info'
+    budget: number
+    mtdSpend: number
+    expectedToDate: number
+    projectedMonthEnd: number
+    currentDailyBudget: number
+    recommendedDailyBudget: number
+    pacingRatio: number
+    syncedAt: string | null
+    recommendedAction: string
+    canApplyAutomatically: false
+  }>
+  summary: {
+    criticalCount: number
+    warningCount: number
+    infoCount: number
+    staleCount: number
+    projectedOverspend: number
+    projectedUnderspend: number
+  }
+  aiSummary: string | null
+}
+
 export function useSocialConnections() {
   const connections = ref<any[]>([])
   const loading = ref(false)
@@ -171,6 +205,12 @@ export function useSocialConnections() {
     return await $fetch('/api/agency/social/spend/summary', { params })
   }
 
+  async function fetchPacingReview(month: number, year: number, platform?: string): Promise<PacingReview> {
+    const params: any = { month, year }
+    if (platform === 'meta' || platform === 'google') params.platform = platform
+    return await $fetch('/api/agency/social/spend/pacing-review', { params })
+  }
+
   async function updateClientMappings(connectionId: string, mappings: any[]) {
     return await $fetch(`/api/agency/social/connections/${connectionId}/client-map`, {
       method: 'PUT',
@@ -284,6 +324,7 @@ export function useSocialConnections() {
     disconnectPlatform,
     syncSpend,
     fetchSpendSummary,
+    fetchPacingReview,
     updateClientMappings,
     fetchPlatformAccounts,
     fetchAccountSpend,

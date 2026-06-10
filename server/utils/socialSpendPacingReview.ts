@@ -1,0 +1,247 @@
+import { computeCampaignBudgetPacing } from '~~/server/utils/budgetPacing'
+
+export type PacingReviewPlatform = 'meta' | 'google'
+export type PacingReviewIssueType =
+  | 'overpacing'
+  | 'underpacing'
+  | 'no_spend'
+  | 'paused_with_budget'
+  | 'stale_sync'
+  | 'zero_conversion'
+export type PacingReviewSeverity = 'critical' | 'warning' | 'info'
+
+export interface PacingReviewRow {
+  media_spend_id: string
+  client_name: string | null
+  platform: string
+  campaign_id: string | null
+  campaign_name: string | null
+  campaign_status: string | null
+  budget_allocated: number | string | null
+  actual_spend: number | string | null
+  conversions: number | string | null
+  period: string
+  synced_at: string | null
+  end_date: string | null
+}
+
+export interface PacingReviewItem {
+  mediaSpendId: string
+  clientName: string
+  platform: PacingReviewPlatform
+  campaignId: string | null
+  campaignName: string
+  campaignStatus: string | null
+  issueType: PacingReviewIssueType
+  severity: PacingReviewSeverity
+  budget: number
+  mtdSpend: number
+  expectedToDate: number
+  projectedMonthEnd: number
+  currentDailyBudget: number
+  recommendedDailyBudget: number
+  pacingRatio: number
+  syncedAt: string | null
+  recommendedAction: string
+  canApplyAutomatically: false
+}
+
+export interface PacingReviewSummary {
+  criticalCount: number
+  warningCount: number
+  infoCount: number
+  staleCount: number
+  projectedOverspend: number
+  projectedUnderspend: number
+}
+
+export interface PacingReviewResult {
+  period: string
+  generatedAt: string
+  items: PacingReviewItem[]
+  summary: PacingReviewSummary
+}
+
+const PAUSED_STATUS_TOKENS = ['paused', 'removed', 'disabled', 'archived']
+
+function num(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value ?? 0)
+  return Number.isFinite(n) ? n : 0
+}
+
+function money(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
+function normalizePlatform(platform: string): PacingReviewPlatform | null {
+  if (platform === 'meta') return 'meta'
+  if (platform === 'google' || platform === 'google_ads') return 'google'
+  return null
+}
+
+function parsePeriod(period: string): { year: number, month: number } {
+  const match = /^(\d{4})-(\d{2})$/.exec(period)
+  if (!match) return { year: new Date().getFullYear(), month: new Date().getMonth() + 1 }
+  return { year: Number(match[1]), month: Number(match[2]) }
+}
+
+function daysInPeriod(period: string): number {
+  const { year, month } = parsePeriod(period)
+  return new Date(year, month, 0).getDate()
+}
+
+function elapsedDaysForPeriod(period: string, now: Date): number {
+  const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  if (period === currentPeriod) return now.getDate()
+  return daysInPeriod(period)
+}
+
+function expectedToDate(budget: number, period: string, now: Date): number {
+  const elapsed = elapsedDaysForPeriod(period, now)
+  return money(budget * (elapsed / daysInPeriod(period)))
+}
+
+function projectedMonthEnd(spend: number, period: string, now: Date): number {
+  const elapsed = elapsedDaysForPeriod(period, now)
+  return elapsed > 0 ? money(spend * (daysInPeriod(period) / elapsed)) : 0
+}
+
+function isPausedStatus(status: string | null): boolean {
+  const normalized = (status ?? '').toLowerCase()
+  return PAUSED_STATUS_TOKENS.some(token => normalized.includes(token))
+}
+
+function syncAgeHours(syncedAt: string | null, now: Date): number {
+  if (!syncedAt) return Infinity
+  const parsed = new Date(syncedAt)
+  if (Number.isNaN(parsed.getTime())) return Infinity
+  return (now.getTime() - parsed.getTime()) / 3_600_000
+}
+
+function baseItem(row: PacingReviewRow, issueType: PacingReviewIssueType, severity: PacingReviewSeverity, now: Date): PacingReviewItem | null {
+  const platform = normalizePlatform(row.platform)
+  if (!platform) return null
+  const budget = money(num(row.budget_allocated))
+  const spend = money(num(row.actual_spend))
+  const pacing = computeCampaignBudgetPacing({
+    monthlyBudget: budget,
+    mtdSpend: spend,
+    period: row.period,
+    now,
+    campaignStatus: row.campaign_status,
+    endDate: row.end_date,
+  })
+  return {
+    mediaSpendId: row.media_spend_id,
+    clientName: row.client_name || '(unknown client)',
+    platform,
+    campaignId: row.campaign_id,
+    campaignName: row.campaign_name || '(unknown campaign)',
+    campaignStatus: row.campaign_status,
+    issueType,
+    severity,
+    budget,
+    mtdSpend: spend,
+    expectedToDate: expectedToDate(budget, row.period, now),
+    projectedMonthEnd: projectedMonthEnd(spend, row.period, now),
+    currentDailyBudget: pacing.currentDailyBudget,
+    recommendedDailyBudget: pacing.newDailyBudget,
+    pacingRatio: pacing.pacingRatio,
+    syncedAt: row.synced_at,
+    recommendedAction: '',
+    canApplyAutomatically: false,
+  }
+}
+
+function withAction(item: PacingReviewItem): PacingReviewItem {
+  const actionByIssue: Record<PacingReviewIssueType, string> = {
+    overpacing: 'Review delivery and reduce daily budget or cap spend to land on the monthly budget.',
+    underpacing: 'Review delivery constraints and increase delivery, broaden targeting, or reallocate budget before month-end.',
+    no_spend: 'Check campaign setup, billing, policy status, and tracking because budget is allocated but no spend is recorded.',
+    paused_with_budget: 'Re-enable the campaign or move the allocated budget to an active campaign.',
+    stale_sync: 'Sync spend before acting; current pacing may be based on stale platform data.',
+    zero_conversion: 'Check conversion tracking and campaign objective before allowing more budget to run.',
+  }
+  return { ...item, recommendedAction: actionByIssue[item.issueType] }
+}
+
+export function summarizePacingReview(items: PacingReviewItem[]): PacingReviewSummary {
+  return {
+    criticalCount: items.filter(i => i.severity === 'critical').length,
+    warningCount: items.filter(i => i.severity === 'warning').length,
+    infoCount: items.filter(i => i.severity === 'info').length,
+    staleCount: items.filter(i => i.issueType === 'stale_sync').length,
+    projectedOverspend: money(items
+      .filter(i => i.issueType === 'overpacing')
+      .reduce((sum, i) => sum + Math.max(0, i.projectedMonthEnd - i.budget), 0)),
+    projectedUnderspend: money(items
+      .filter(i => i.issueType === 'underpacing' || i.issueType === 'no_spend')
+      .reduce((sum, i) => sum + Math.max(0, i.budget - i.projectedMonthEnd), 0)),
+  }
+}
+
+export function buildPacingReview(rows: PacingReviewRow[], opts: { now?: Date, period: string }): PacingReviewResult {
+  const now = opts.now ?? new Date()
+  const items: PacingReviewItem[] = []
+
+  for (const row of rows) {
+    const budget = num(row.budget_allocated)
+    const spend = num(row.actual_spend)
+    const conversions = num(row.conversions)
+    if (!normalizePlatform(row.platform) || row.period !== opts.period) continue
+
+    const pacing = computeCampaignBudgetPacing({
+      monthlyBudget: budget,
+      mtdSpend: spend,
+      period: row.period,
+      now,
+      campaignStatus: row.campaign_status,
+      endDate: row.end_date,
+    })
+
+    if (syncAgeHours(row.synced_at, now) >= 48 && budget > 0) {
+      const severity = syncAgeHours(row.synced_at, now) >= 72 ? 'critical' : 'warning'
+      const item = baseItem(row, 'stale_sync', severity, now)
+      if (item) items.push(withAction(item))
+    }
+
+    if (budget > 0 && isPausedStatus(row.campaign_status)) {
+      const item = baseItem(row, 'paused_with_budget', 'critical', now)
+      if (item) items.push(withAction(item))
+    }
+
+    if (pacing.pacingStatus === 'critical_over_pacing' || pacing.pacingStatus === 'warning_over_pacing') {
+      const item = baseItem(row, 'overpacing', pacing.pacingStatus === 'critical_over_pacing' ? 'critical' : 'warning', now)
+      if (item) items.push(withAction(item))
+    }
+
+    if (pacing.pacingStatus === 'warning_under_pacing') {
+      const item = baseItem(row, 'underpacing', 'warning', now)
+      if (item) items.push(withAction(item))
+    }
+
+    if (pacing.pacingStatus === 'no_spend') {
+      const item = baseItem(row, 'no_spend', 'critical', now)
+      if (item) items.push(withAction(item))
+    }
+
+    if (now.getDate() >= 10 && budget > 0 && spend > 500 && conversions <= 0) {
+      const item = baseItem(row, 'zero_conversion', 'warning', now)
+      if (item) items.push(withAction(item))
+    }
+  }
+
+  items.sort((a, b) => {
+    const severityRank: Record<PacingReviewSeverity, number> = { critical: 0, warning: 1, info: 2 }
+    return severityRank[a.severity] - severityRank[b.severity]
+      || Math.max(0, b.projectedMonthEnd - b.budget) - Math.max(0, a.projectedMonthEnd - a.budget)
+      || a.clientName.localeCompare(b.clientName)
+  })
+
+  return {
+    period: opts.period,
+    generatedAt: now.toISOString(),
+    items,
+    summary: summarizePacingReview(items),
+  }
+}

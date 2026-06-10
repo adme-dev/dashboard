@@ -211,7 +211,7 @@ const categories = [
     features: [
       { title: 'Cross-Platform Dashboard', slug: 'cross-platform-dashboard', icon: 'i-lucide-layout-dashboard', description: 'Aggregated performance across Meta, Google, and other ad platforms in a unified view. Ads Manager–style campaign columns with a saveable layout, one-click Meta Ads preset, and per-campaign health scores that flag what to scale or cut against each client\'s own KPI targets.' },
       { title: 'Hourly Breakdowns', slug: 'hourly-breakdowns', icon: 'i-lucide-clock-4', description: 'Granular hourly performance data with spend, impressions, and conversion trends throughout the day.' },
-      { title: 'Campaign Alerts', slug: 'campaign-alerts', icon: 'i-lucide-bell-ring', description: 'Detects ad-spend pacing problems — underspend, overspend, stopped, paused-with-budget, stale-sync and zero-conversion — then posts a daily Slack budget review plus real-time critical alerts.' },
+      { title: 'Campaign Alerts', slug: 'campaign-alerts', icon: 'i-lucide-bell-ring', description: 'Detects ad-spend pacing problems and adds a recommend-only AI pacing review for Meta and Google budget decisions.' },
       { title: 'Platform Comparison', slug: 'platform-comparison', icon: 'i-lucide-git-compare', description: 'Side-by-side platform performance with unified metrics, normalised for cross-channel analysis.' },
       { title: 'On-Demand Sync', slug: 'on-demand-sync', icon: 'i-lucide-refresh-cw', description: 'Pull the latest data from ad platforms on demand — no waiting for scheduled syncs.' },
       { title: 'Export & Reporting', slug: 'export-reporting', icon: 'i-lucide-file-down', description: 'Export analytics to CSV with date ranges, breakdowns, and AI-generated summaries.' },
