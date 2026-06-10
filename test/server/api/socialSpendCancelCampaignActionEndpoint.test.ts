@@ -33,7 +33,7 @@ describe('POST /api/agency/social/spend/:id/actions/:actionId/cancel', () => {
     })
   })
 
-  it('cancels a planned action without deleting its history row', async () => {
+  it('cancels a planned or approved action without deleting its history row', async () => {
     const handler = (await import('~~/server/api/agency/social/spend/[id]/actions/[actionId]/cancel.post')).default
 
     const result = await handler({ params: { id: 'spend-1', actionId: 'action-1' } } as any)
@@ -41,6 +41,7 @@ describe('POST /api/agency/social/spend/:id/actions/:actionId/cancel', () => {
     expect(mockRequireWriteAccess).toHaveBeenCalled()
     expect(String(mockQueryOne.mock.calls[0][0])).toContain("action_status = 'cancelled'")
     expect(String(mockQueryOne.mock.calls[0][0])).toContain("action_status = 'planned'")
+    expect(String(mockQueryOne.mock.calls[0][0])).toContain("action_status = 'approved'")
     expect(mockQueryOne.mock.calls[0][1]).toEqual(['spend-1', 'action-1', 'user-1'])
     expect(result).toEqual({
       cancelled: true,
@@ -68,13 +69,13 @@ describe('POST /api/agency/social/spend/:id/actions/:actionId/cancel', () => {
     })
   })
 
-  it('rejects non-planned or unknown actions', async () => {
+  it('rejects applied, failed, cancelled, or unknown actions', async () => {
     mockQueryOne.mockResolvedValue(null)
     const handler = (await import('~~/server/api/agency/social/spend/[id]/actions/[actionId]/cancel.post')).default
 
     await expect(handler({ params: { id: 'spend-1', actionId: 'action-1' } } as any)).rejects.toMatchObject({
       statusCode: 404,
-      statusMessage: 'Planned action not found',
+      statusMessage: 'Cancellable action not found',
     })
   })
 })

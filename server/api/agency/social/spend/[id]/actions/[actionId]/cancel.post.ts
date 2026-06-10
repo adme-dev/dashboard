@@ -22,7 +22,10 @@ export default eventHandler(async (event) => {
          )
      WHERE media_spend_id = $1
        AND id = $2
-       AND action_status = 'planned'
+       AND (
+         action_status = 'planned'
+         OR action_status = 'approved'
+       )
      RETURNING id::text,
                media_spend_id::text,
                platform,
@@ -37,7 +40,7 @@ export default eventHandler(async (event) => {
   )
 
   if (!row) {
-    throw createError({ statusCode: 404, statusMessage: 'Planned action not found' })
+    throw createError({ statusCode: 404, statusMessage: 'Cancellable action not found' })
   }
 
   return { cancelled: true, action: normalizeAction(row) }

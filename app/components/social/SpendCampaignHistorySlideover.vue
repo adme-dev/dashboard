@@ -163,14 +163,14 @@ async function planCurrentRecommendation() {
 }
 
 async function cancelPlannedAction(action: CampaignActionEntry) {
-  if (!props.item || action.actionStatus !== 'planned' || cancellingActionId.value) return
+  if (!props.item || !isCancellableAction(action) || cancellingActionId.value) return
   cancellingActionId.value = action.id
   try {
     await $fetch(`/api/agency/social/spend/${props.item.mediaSpendId}/actions/${action.id}/cancel`, {
       method: 'POST',
     })
     toast.add({
-      title: 'Planned action cancelled',
+      title: action.actionStatus === 'approved' ? 'Approved action cancelled' : 'Planned action cancelled',
       description: 'The recommendation remains in history with a cancelled status.',
       color: 'success',
     })
@@ -184,6 +184,10 @@ async function cancelPlannedAction(action: CampaignActionEntry) {
   } finally {
     cancellingActionId.value = null
   }
+}
+
+function isCancellableAction(action: CampaignActionEntry) {
+  return action.actionStatus === 'planned' || action.actionStatus === 'approved'
 }
 
 async function approvePlannedAction(action: CampaignActionEntry) {
@@ -433,7 +437,7 @@ function summarizeValue(value: Record<string, unknown>) {
                       Approve
                     </UButton>
                     <UButton
-                      v-if="action.actionStatus === 'planned'"
+                      v-if="isCancellableAction(action)"
                       size="xs"
                       variant="ghost"
                       color="neutral"
@@ -441,7 +445,7 @@ function summarizeValue(value: Record<string, unknown>) {
                       :loading="cancellingActionId === action.id"
                       @click="cancelPlannedAction(action)"
                     >
-                      Cancel plan
+                      {{ action.actionStatus === 'approved' ? 'Cancel approval' : 'Cancel plan' }}
                     </UButton>
                   </div>
                 </div>
