@@ -4,7 +4,9 @@ import type {
   VideoGenerationProviderResult,
   VideoGenerationProviderSubmission,
 } from './types'
-import { getVideoGenerationModel } from '~~/server/utils/video-generation/modelRegistry'
+// Relative (not ~~/) so the generation Worker bundles this file — wrangler's esbuild
+// doesn't honor tsconfig paths for runtime resolution. Matches ./types above.
+import { getVideoGenerationModel } from '../modelRegistry'
 
 export interface AiGatewayDeps {
   /** Faithful env.AI.run(model, inputs, options?) passthrough. Async video models run on
