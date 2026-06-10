@@ -1,6 +1,6 @@
 name = "xeroflow-asset-intelligence"
 main = "src/index.ts"
-compatibility_date = "2024-07-11"
+compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 
 [[queues.consumers]]
