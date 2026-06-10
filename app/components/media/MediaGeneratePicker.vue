@@ -27,6 +27,7 @@ const model = computed(() => allModels.find((m) => m.id === modelId.value) ?? nu
 const prompt = ref('')
 const sourceAssetId = ref<string | null>(null)
 const sourceFileName = ref<string | null>(null)
+const selectedStillId = ref<string | null>(null)
 const subjectType = ref<'vehicle' | 'non_vehicle' | 'unknown'>('unknown')
 const durationSeconds = ref<number>(model.value?.durationsSeconds[0] ?? 5)
 const submitting = ref(false)
@@ -51,14 +52,37 @@ const estCostCents = computed(() => (model.value ? costPreviewCents(model.value,
 function onModeChange() {
   modelId.value = models.value[0]?.id ?? ''
   durationSeconds.value = model.value?.durationsSeconds[0] ?? 5
-  if (mode.value === 'text-to-video') {
-    sourceAssetId.value = null
-    sourceFileName.value = null
-  }
+  if (mode.value === 'text-to-video') clearSource()
+}
+
+function clearSource() {
+  sourceAssetId.value = null
+  sourceFileName.value = null
+  selectedStillId.value = null
 }
 
 function triggerFileInput() {
   fileInputRef.value?.click()
+}
+
+// Register a still already in this project (on the timeline) as the i2v source —
+// reuses media the user already uploaded instead of a fresh upload.
+async function onExistingStillSelected(assetId: string | null) {
+  if (!assetId) return
+  uploading.value = true
+  try {
+    const res = await $fetch<{ id: string }>('/api/agency/video/generation/source-assets/from-asset', {
+      method: 'POST',
+      body: { assetId, subjectType: subjectType.value },
+    })
+    sourceAssetId.value = res.id
+    sourceFileName.value = props.timelineStills.find((s) => s.assetId === assetId)?.label ?? 'Project still'
+  } catch (e: any) {
+    toast.add({ title: 'Could not use still', description: e?.data?.statusMessage ?? 'Failed', color: 'error' })
+    clearSource()
+  } finally {
+    uploading.value = false
+  }
 }
 
 async function onFileSelected(event: Event) {
@@ -137,8 +161,8 @@ async function submit() {
               <USelectMenu v-model="modelId" :items="models.map((m) => ({ label: m.displayName, value: m.id }))" value-key="value" />
             </UFormField>
           </div>
-          <UFormField v-if="mode === 'image-to-video'" label="Source image" help="Upload a JPEG, PNG, or WebP still to animate.">
-            <!-- Hidden file input — triggered by the button below -->
+          <UFormField v-if="mode === 'image-to-video'" label="Source image" help="Pick a still already in this project, or upload a new one.">
+            <!-- Hidden file input — triggered by the upload button below -->
             <input
               ref="fileInputRef"
               type="file"
@@ -148,30 +172,43 @@ async function submit() {
               aria-hidden="true"
               @change="onFileSelected"
             />
-            <div v-if="sourceFileName" class="flex items-center gap-2">
-              <UIcon name="i-lucide-image" class="size-4 shrink-0 text-muted" />
-              <span class="truncate text-sm text-default">{{ sourceFileName }}</span>
-              <UButton
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                label="Replace"
-                :loading="uploading"
-                :disabled="uploading"
-                class="ml-auto shrink-0"
-                @click="triggerFileInput"
-              />
+            <div class="flex flex-col gap-2">
+              <!-- Selected source -->
+              <div v-if="sourceFileName" class="flex items-center gap-2">
+                <UIcon name="i-lucide-image" class="size-4 shrink-0 text-muted" />
+                <span class="truncate text-sm text-default">{{ sourceFileName }}</span>
+                <UButton
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  label="Clear"
+                  :disabled="uploading"
+                  class="ml-auto shrink-0"
+                  @click="clearSource"
+                />
+              </div>
+              <!-- Pick existing project still, or upload new -->
+              <template v-else>
+                <USelectMenu
+                  v-if="timelineStills.length"
+                  v-model="selectedStillId"
+                  :items="timelineStills.map((s) => ({ label: s.label, value: s.assetId }))"
+                  value-key="value"
+                  placeholder="Use a still from this project"
+                  :disabled="uploading"
+                  @update:model-value="onExistingStillSelected"
+                />
+                <UButton
+                  variant="outline"
+                  color="neutral"
+                  icon="i-lucide-upload"
+                  :label="timelineStills.length ? 'Or upload a new still' : 'Upload source image'"
+                  :loading="uploading"
+                  :disabled="uploading"
+                  @click="triggerFileInput"
+                />
+              </template>
             </div>
-            <UButton
-              v-else
-              variant="outline"
-              color="neutral"
-              icon="i-lucide-upload"
-              label="Upload source image"
-              :loading="uploading"
-              :disabled="uploading"
-              @click="triggerFileInput"
-            />
           </UFormField>
         </div>
 
