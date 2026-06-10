@@ -70,7 +70,7 @@ export default eventHandler(async (event) => {
   return rows.map(r => ({
     id: r.id,
     mediaSpendId: r.media_spend_id,
-    platform: r.platform,
+    platform: normalizePlatform(r.platform),
     actionType: r.action_type,
     actionStatus: r.action_status,
     requestedBy: r.requested_by,
@@ -93,3 +93,7 @@ export default eventHandler(async (event) => {
     errorMessage: r.error_message,
   }))
 })
+
+function normalizePlatform(platform: string) {
+  return platform === 'google_ads' ? 'google' : platform
+}

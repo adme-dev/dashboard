@@ -432,7 +432,7 @@ function summarizeValue(value: Record<string, unknown>) {
                   </div>
                   <div class="flex shrink-0 items-center gap-2">
                     <UBadge color="neutral" variant="subtle" size="sm">
-                      {{ platformLabel(action.platform === 'google_ads' ? 'google' : action.platform) }}
+                      {{ platformLabel(action.platform) }}
                     </UBadge>
                     <UButton
                       v-if="action.actionStatus === 'planned'"

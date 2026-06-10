@@ -23,7 +23,7 @@ describe('GET /api/agency/social/spend/:id/actions', () => {
       {
         id: 'action-1',
         media_spend_id: 'spend-1',
-        platform: 'meta',
+        platform: 'google_ads',
         action_type: 'budget_update',
         action_status: 'applied',
         requested_by: 'user-1',
@@ -42,7 +42,7 @@ describe('GET /api/agency/social/spend/:id/actions', () => {
         previous_value: { dailyBudget: 120 },
         new_value: { dailyBudget: 95 },
         reason: 'Overpacing against monthly budget',
-        external_request_id: 'meta-req-1',
+        external_request_id: 'google-req-1',
         error_message: null,
       },
     ])
@@ -62,7 +62,7 @@ describe('GET /api/agency/social/spend/:id/actions', () => {
       {
         id: 'action-1',
         mediaSpendId: 'spend-1',
-        platform: 'meta',
+        platform: 'google',
         actionType: 'budget_update',
         actionStatus: 'applied',
         requestedBy: 'user-1',
@@ -81,7 +81,7 @@ describe('GET /api/agency/social/spend/:id/actions', () => {
         previousValue: { dailyBudget: 120 },
         newValue: { dailyBudget: 95 },
         reason: 'Overpacing against monthly budget',
-        externalRequestId: 'meta-req-1',
+        externalRequestId: 'google-req-1',
         errorMessage: null,
       },
     ])
