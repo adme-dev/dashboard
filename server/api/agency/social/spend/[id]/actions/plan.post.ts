@@ -38,9 +38,14 @@ export default eventHandler(async (event) => {
             requested_at::text,
             approved_by::text,
             approved_at::text,
+            cancelled_by::text,
+            cancelled_at::text,
+            executed_at::text,
             previous_value,
             new_value,
-            reason
+            reason,
+            external_request_id,
+            error_message
      FROM campaign_action_log
      WHERE media_spend_id = $1
        AND action_type = 'budget_update'
@@ -104,9 +109,14 @@ interface PlannedActionRow {
   requested_at: string
   approved_by: string | null
   approved_at: string | null
+  cancelled_by: string | null
+  cancelled_at: string | null
+  executed_at: string | null
   previous_value: Record<string, unknown>
   new_value: Record<string, unknown>
   reason: string | null
+  external_request_id: string | null
+  error_message: string | null
 }
 
 function normalizePlannedAction(row: PlannedActionRow) {
@@ -120,8 +130,13 @@ function normalizePlannedAction(row: PlannedActionRow) {
     requestedAt: row.requested_at,
     approvedBy: row.approved_by,
     approvedAt: row.approved_at,
+    cancelledBy: row.cancelled_by,
+    cancelledAt: row.cancelled_at,
+    executedAt: row.executed_at,
     previousValue: row.previous_value,
     newValue: row.new_value,
     reason: row.reason,
+    externalRequestId: row.external_request_id,
+    errorMessage: row.error_message,
   }
 }

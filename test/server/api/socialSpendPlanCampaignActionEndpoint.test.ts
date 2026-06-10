@@ -106,6 +106,11 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
         requested_at: '2026-06-10T03:00:00.000Z',
         approved_by: 'manager-1',
         approved_at: '2026-06-10T03:10:00.000Z',
+        cancelled_by: null,
+        cancelled_at: null,
+        executed_at: null,
+        external_request_id: null,
+        error_message: null,
         previous_value: { dailyBudget: 120 },
         new_value: { dailyBudget: 95 },
         reason: 'Projected overspend',
@@ -119,6 +124,11 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
     expect(String(mockQueryOne.mock.calls[1][0])).toContain("action_status = 'approved'")
     expect(String(mockQueryOne.mock.calls[1][0])).toContain('approved_by::text')
     expect(String(mockQueryOne.mock.calls[1][0])).toContain('approved_at::text')
+    expect(String(mockQueryOne.mock.calls[1][0])).toContain('cancelled_by::text')
+    expect(String(mockQueryOne.mock.calls[1][0])).toContain('cancelled_at::text')
+    expect(String(mockQueryOne.mock.calls[1][0])).toContain('executed_at::text')
+    expect(String(mockQueryOne.mock.calls[1][0])).toContain('external_request_id')
+    expect(String(mockQueryOne.mock.calls[1][0])).toContain('error_message')
     expect(String(mockQueryOne.mock.calls[1][0])).toContain("ORDER BY CASE WHEN action_status = 'approved' THEN 0 ELSE 1 END")
     expect(result).toEqual({
       planned: false,
@@ -133,9 +143,14 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
         requestedAt: '2026-06-10T03:00:00.000Z',
         approvedBy: 'manager-1',
         approvedAt: '2026-06-10T03:10:00.000Z',
+        cancelledBy: null,
+        cancelledAt: null,
+        executedAt: null,
         previousValue: { dailyBudget: 120 },
         newValue: { dailyBudget: 95 },
         reason: 'Projected overspend',
+        externalRequestId: null,
+        errorMessage: null,
       },
     })
   })
