@@ -4,10 +4,14 @@ export interface VideoGenerationJobView {
   id: string
   status: 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked'
   mode: string
+  modelId: string
   prompt: string
   outputAssetId: string | null
   outputR2Key: string | null
   errorMessage: string | null
+  createdAt: string
+  startedAt: string | null
+  completedAt: string | null
 }
 
 export function useVideoGenerationJobs(projectId: string) {

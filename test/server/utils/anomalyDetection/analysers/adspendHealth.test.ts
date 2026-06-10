@@ -74,11 +74,12 @@ describe('detectUnderspend', () => {
     }
   }
 
-  it('flags warning when MTD < 50% of expected pace', () => {
-    const a = detectUnderspend(group(3000, 40), now)
+  it('flags warning when MTD is below 80% of expected pace', () => {
+    const a = detectUnderspend(group(3000, 70), now)
     expect(a).not.toBeNull()
     expect(a!.severity).toBe('warning')
     expect(a!.fingerprint).toBe('adspend:underspend-m1-2026-04')
+    expect(a!.description).toContain('recommended daily budget')
   })
 
   it('escalates to critical when MTD < 25% of expected pace', () => {
@@ -175,13 +176,14 @@ describe('detectOverspend', () => {
   })
 
   it('warns when projected > 115% of budget', () => {
-    const a = detectOverspend(g(1500, 60), now)
+    const a = detectOverspend(g(1500, 56), now)
     expect(a!.severity).toBe('warning')
     expect(a!.fingerprint).toBe('adspend:overspend-mo-2026-04')
+    expect(a!.description).toContain('recommended daily budget')
   })
 
-  it('escalates to critical when projected > 130% of budget', () => {
-    expect(detectOverspend(g(1500, 80), now)!.severity).toBe('critical')
+  it('escalates to critical when pacing ratio is at least 125%', () => {
+    expect(detectOverspend(g(1500, 64), now)!.severity).toBe('critical')
   })
 
   it('does not fire when on/under pace', () => {

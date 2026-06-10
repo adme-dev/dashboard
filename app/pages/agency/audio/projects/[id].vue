@@ -495,6 +495,9 @@ const saveStatusColor = computed(() => {
     @submitted="onGenerationSubmitted"
   />
 
+  <!-- AI video generation progress/status (queued/running/failed) -->
+  <MediaGenerationStatus v-if="videoGenerationEnabled" :jobs="genJobs.jobs" />
+
   <MediaVideoLibrary v-model:open="libraryOpen" @publish="onLibraryPublish" @add-to-timeline="onLibraryAddToTimeline" />
 
   <!-- Versions slideover -->
