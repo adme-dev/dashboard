@@ -247,6 +247,36 @@ describe('video asset harness API', () => {
     expect(res).toEqual({ location: 'https://signed.example.com/derivative.png', statusCode: 302 })
   })
 
+  it('rejects derivative stream requests when the derivative is not attached to a project', async () => {
+    mockGetDerivative.mockResolvedValue({ id: 'd-projectless', projectId: null })
+
+    await expect(derivativeStreamHandler({ params: { id: 'd-projectless' } } as any))
+      .rejects
+      .toMatchObject({ statusCode: 400 })
+
+    expect(g.sendRedirect).not.toHaveBeenCalled()
+  })
+
+  it('rejects derivative stream requests when a writable user cannot access the derivative project', async () => {
+    mockRequireWriteAccess.mockResolvedValue({ id: 'user-2', role: 'editor' })
+    mockGetProject.mockResolvedValue({ project: { id: '11111111-1111-4111-8111-111111111111', mediaType: 'av', createdBy: 'user-1' }, timeline: { id: 't1' } })
+
+    await expect(derivativeStreamHandler({ params: { id: 'd1' } } as any))
+      .rejects
+      .toMatchObject({ statusCode: 403, statusMessage: 'Access denied to this project' })
+
+    expect(g.sendRedirect).not.toHaveBeenCalled()
+  })
+
+  it('allows admins to stream derivatives from projects they did not create', async () => {
+    mockRequireWriteAccess.mockResolvedValue({ id: 'admin-1', role: 'admin' })
+    mockGetProject.mockResolvedValue({ project: { id: '11111111-1111-4111-8111-111111111111', mediaType: 'av', createdBy: 'user-1' }, timeline: { id: 't1' } })
+
+    const res = await derivativeStreamHandler({ params: { id: 'd1' } } as any)
+
+    expect(res).toEqual({ location: '/api/_uploads/video-asset-derivatives/p1/a1/foreground.png', statusCode: 302 })
+  })
+
   it('adds a derivative to the requested project bucket', async () => {
     const directive = { prompt: 'place top right' }
     const res = await addDerivativeToBucketHandler({
