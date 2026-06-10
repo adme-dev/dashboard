@@ -21,17 +21,17 @@ describe('asset intelligence lifecycle', () => {
     mockQueryRows.mockReset()
   })
 
-  it('creates queued extraction jobs with a default model/provider', async () => {
+  it('creates queued extraction jobs with a worker-supported default model/provider', async () => {
     mockQueryOne.mockResolvedValue({
       id: 'job-1',
       project_id: 'project-1',
       source_asset_id: 'asset-1',
       bucket_item_id: 'item-1',
-      action: 'erase-fill',
-      model_id: 'workers-ai/flux-edit',
-      provider: 'workers-ai',
+      action: 'mask-only',
+      model_id: 'replicate/sam-2',
+      provider: 'replicate',
       status: 'queued',
-      prompt: 'erase logo',
+      prompt: 'store mask',
       brush_mask_key: 'mask.png',
       output_derivative_ids: [],
       error_message: null,
@@ -46,15 +46,15 @@ describe('asset intelligence lifecycle', () => {
       projectId: 'project-1',
       sourceAssetId: 'asset-1',
       bucketItemId: 'item-1',
-      action: 'erase-fill',
-      prompt: 'erase logo',
+      action: 'mask-only',
+      prompt: 'store mask',
       brushMaskKey: 'mask.png',
       modelId: null,
       createdBy: 'user-1',
     })
 
     expect(mockQueryOne.mock.calls[0][0]).toContain(`'queued'`)
-    expect(job).toMatchObject({ id: 'job-1', status: 'queued', modelId: 'workers-ai/flux-edit' })
+    expect(job).toMatchObject({ id: 'job-1', status: 'queued', modelId: 'replicate/sam-2' })
   })
 
   it('marks jobs running, succeeded and failed idempotently', async () => {

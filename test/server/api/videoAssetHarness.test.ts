@@ -12,8 +12,15 @@ g.setResponseStatus = vi.fn()
 g.sendRedirect = vi.fn((_event: TestEvent, location: string, statusCode: number) => ({ location, statusCode }))
 
 const mockRequireWriteAccess = vi.fn()
+const mockRequireAuth = vi.fn()
 vi.mock('~~/server/utils/auth', () => ({
+  requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
   requireWriteAccess: (...args: unknown[]) => mockRequireWriteAccess(...args)
+}))
+
+const mockQueryOne = vi.fn()
+vi.mock('~~/server/utils/db', () => ({
+  queryOne: (...args: unknown[]) => mockQueryOne(...args),
 }))
 
 const mockGetProject = vi.fn()
@@ -44,6 +51,8 @@ const mockListProjectIntelligenceJobs = vi.fn()
 const mockListDerivatives = vi.fn()
 const mockGetDerivative = vi.fn()
 const mockAddDerivativeToProjectBucket = vi.fn()
+const mockGetAssetProjectRelationship = vi.fn()
+const mockGetBucketItemProjectRelationship = vi.fn()
 vi.mock('~~/server/utils/video-asset-intelligence/db', () => ({
   ensureDefaultBuckets: (...args: unknown[]) => mockEnsureBuckets(...args),
   syncProjectVideoAssetsIntoGeneratedBucket: (...args: unknown[]) => mockSyncGeneratedAssets(...args),
@@ -57,6 +66,8 @@ vi.mock('~~/server/utils/video-asset-intelligence/db', () => ({
   listAssetDerivatives: (...args: unknown[]) => mockListDerivatives(...args),
   getAssetDerivative: (...args: unknown[]) => mockGetDerivative(...args),
   addDerivativeToProjectBucket: (...args: unknown[]) => mockAddDerivativeToProjectBucket(...args),
+  getAssetProjectRelationship: (...args: unknown[]) => mockGetAssetProjectRelationship(...args),
+  getBucketItemProjectRelationship: (...args: unknown[]) => mockGetBucketItemProjectRelationship(...args),
 }))
 
 const mockEnqueueAssetIntelligence = vi.fn()
@@ -75,11 +86,14 @@ const addDerivativeToBucketHandler = (await import('~~/server/api/agency/video/d
 const derivativeStreamHandler = (await import('~~/server/api/agency/video/derivatives/[id]/stream.get')).default
 const assembleHandler = (await import('~~/server/api/agency/video/projects/[id]/assemble.post')).default
 const jobsHandler = (await import('~~/server/api/agency/video/projects/[id]/intelligence-jobs.get')).default
+const thumbnailHandler = (await import('~~/server/api/agency/video/assets/[id]/thumbnail.get')).default
+const captionsHandler = (await import('~~/server/api/agency/video/assets/[id]/captions.vtt.get')).default
 
 describe('video asset harness API', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockRequireWriteAccess.mockResolvedValue({ id: 'user-1', role: 'owner' })
+    mockRequireAuth.mockResolvedValue({ id: 'user-1', role: 'owner' })
     mockGetProject.mockResolvedValue({ project: { id: '11111111-1111-4111-8111-111111111111', mediaType: 'av', createdBy: 'user-1' }, timeline: { id: 't1' } })
     mockEnsureBuckets.mockResolvedValue(undefined)
     mockSyncGeneratedAssets.mockResolvedValue(undefined)
@@ -87,12 +101,20 @@ describe('video asset harness API', () => {
     mockListBucketItems.mockResolvedValue([{ id: 'i1', bucketId: 'b1', assetId: 'a1', r2Key: 'car.mp4', title: 'Car', role: 'hero', directive: {}, status: 'ready', createdAt: 'now', updatedAt: 'now' }])
     mockCreateOrUpdateDirective.mockResolvedValue({ id: 'i1', directive: { prompt: 'lift logo' } })
     mockCreateBlockedExtractionJob.mockResolvedValue({ id: 'j1', status: 'blocked', action: 'mask-lift' })
-    mockCreateQueuedExtractionJob.mockResolvedValue({ id: 'job-queued', status: 'queued', action: 'erase-fill' })
-    mockMarkAssetIntelligenceJobFailed.mockResolvedValue({ id: 'job-queued', status: 'failed', action: 'erase-fill', errorMessage: 'Queue offline' })
+    mockCreateQueuedExtractionJob.mockResolvedValue({ id: 'job-queued', status: 'queued', action: 'mask-only' })
+    mockMarkAssetIntelligenceJobFailed.mockResolvedValue({ id: 'job-queued', status: 'failed', action: 'mask-only', errorMessage: 'Queue offline' })
     mockGetAssetIntelligenceQueue.mockReturnValue(null)
     mockEnqueueAssetIntelligence.mockResolvedValue(undefined)
     mockListProjectIntelligenceJobs.mockResolvedValue([{ id: 'j1', action: 'mask-lift', status: 'blocked' }])
     mockListDerivatives.mockResolvedValue([{ id: 'd1', kind: 'foreground-png' }])
+    mockGetAssetProjectRelationship.mockResolvedValue({
+      assetId: '22222222-2222-4222-8222-222222222222',
+      projectId: '11111111-1111-4111-8111-111111111111',
+    })
+    mockGetBucketItemProjectRelationship.mockResolvedValue({
+      bucketItemId: '33333333-3333-4333-8333-333333333333',
+      projectId: '11111111-1111-4111-8111-111111111111',
+    })
     mockGetDerivative.mockResolvedValue({
       id: 'd1',
       sourceAssetId: 'a1',
@@ -120,6 +142,25 @@ describe('video asset harness API', () => {
     mockGetPresignedDownloadUrl.mockResolvedValue('/signed-mask-url')
     mockGetPublicUrl.mockReturnValue(null)
     mockIsStorageConfigured.mockReturnValue(false)
+    mockQueryOne.mockResolvedValue({
+      id: '22222222-2222-4222-8222-222222222222',
+      client_id: null,
+      created_by: 'user-1',
+      title: 'Asset',
+      source_project_id: '11111111-1111-4111-8111-111111111111',
+      source_job_id: null,
+      r2_key: 'asset.mp4',
+      format: 'mp4',
+      width: 1920,
+      height: 1080,
+      duration_sec: 12,
+      thumbnail_key: 'thumbs/asset.jpg',
+      caption_vtt_key: 'captions/asset.vtt',
+      transcript: null,
+      metadata: {},
+      created_at: 'now',
+      updated_at: 'now',
+    })
     g.readMultipartFormData.mockResolvedValue([])
   })
 
@@ -131,14 +172,43 @@ describe('video asset harness API', () => {
     expect(res.items).toHaveLength(1)
   })
 
+  it('rejects bucket listing when a writable user cannot mutate the project', async () => {
+    mockRequireWriteAccess.mockResolvedValue({ id: 'user-2', role: 'editor' })
+
+    await expect(bucketsHandler({ params: { id: '11111111-1111-4111-8111-111111111111' } } as any))
+      .rejects
+      .toMatchObject({ statusCode: 403, statusMessage: 'Access denied to this project' })
+
+    expect(mockEnsureBuckets).not.toHaveBeenCalled()
+    expect(mockListBuckets).not.toHaveBeenCalled()
+  })
+
   it('updates an item directive for agentic assembly', async () => {
-    const res = await directiveHandler({ params: { id: 'i1' }, body: { role: 'hero', directive: { prompt: 'lift logo' } } } as any)
-    expect(mockCreateOrUpdateDirective).toHaveBeenCalledWith('i1', { role: 'hero', directive: { prompt: 'lift logo' } })
+    const res = await directiveHandler({ params: { id: '33333333-3333-4333-8333-333333333333' }, body: { role: 'hero', directive: { prompt: 'lift logo' } } } as any)
+    expect(mockGetBucketItemProjectRelationship).toHaveBeenCalledWith('33333333-3333-4333-8333-333333333333')
+    expect(mockCreateOrUpdateDirective).toHaveBeenCalledWith('33333333-3333-4333-8333-333333333333', { role: 'hero', directive: { prompt: 'lift logo' } })
     expect(res.item.id).toBe('i1')
+  })
+
+  it('rejects directive updates when the bucket item belongs to another project', async () => {
+    mockGetBucketItemProjectRelationship.mockResolvedValue({
+      bucketItemId: '33333333-3333-4333-8333-333333333333',
+      projectId: '44444444-4444-4444-8444-444444444444',
+    })
+    mockGetProject.mockResolvedValue({ project: { id: '44444444-4444-4444-8444-444444444444', mediaType: 'av', createdBy: 'user-2' }, timeline: { id: 't2' } })
+    mockRequireWriteAccess.mockResolvedValue({ id: 'user-1', role: 'editor' })
+
+    await expect(directiveHandler({ params: { id: '33333333-3333-4333-8333-333333333333' }, body: { role: 'hero', directive: { prompt: 'lift logo' } } } as any))
+      .rejects
+      .toMatchObject({ statusCode: 403 })
+
+    expect(mockCreateOrUpdateDirective).not.toHaveBeenCalled()
   })
 
   it('creates a blocked mask-lift job when extraction provider execution is not configured', async () => {
     const res = await extractHandler({ params: { id: '22222222-2222-4222-8222-222222222222' }, body: { projectId: '11111111-1111-4111-8111-111111111111', action: 'mask-lift', prompt: 'lift embedded logo', brushMaskKey: 'mask.png' } } as any)
+    expect(mockGetProject).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111')
+    expect(mockGetAssetProjectRelationship).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222')
     expect(mockCreateBlockedExtractionJob).toHaveBeenCalledWith(expect.objectContaining({
       sourceAssetId: '22222222-2222-4222-8222-222222222222',
       action: 'mask-lift',
@@ -149,9 +219,9 @@ describe('video asset harness API', () => {
     expect(res.job.status).toBe('blocked')
   })
 
-  it('creates and enqueues executable asset intelligence jobs when queue binding exists', async () => {
+  it('creates blocked jobs for unsupported actions even when queue binding exists', async () => {
     mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
-    mockCreateQueuedExtractionJob.mockResolvedValue({ id: 'job-queued', status: 'queued', action: 'erase-fill' })
+    mockCreateBlockedExtractionJob.mockResolvedValue({ id: 'job-blocked', status: 'blocked', action: 'erase-fill', errorMessage: 'Asset intelligence action erase-fill is not supported by the deployed worker.' })
 
     const res = await extractHandler({
       params: { id: '22222222-2222-4222-8222-222222222222' },
@@ -163,9 +233,34 @@ describe('video asset harness API', () => {
       }
     } as any)
 
-    expect(mockCreateQueuedExtractionJob).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockCreateBlockedExtractionJob).toHaveBeenCalledWith(expect.objectContaining({
       sourceAssetId: '22222222-2222-4222-8222-222222222222',
       action: 'erase-fill',
+      createdBy: 'user-1',
+      errorMessage: 'Asset intelligence action erase-fill is not supported by the deployed worker.',
+    }))
+    expect(mockCreateQueuedExtractionJob).not.toHaveBeenCalled()
+    expect(mockEnqueueAssetIntelligence).not.toHaveBeenCalled()
+    expect(res.job.status).toBe('blocked')
+  })
+
+  it('creates and enqueues executable asset intelligence jobs when queue binding exists', async () => {
+    mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
+    mockCreateQueuedExtractionJob.mockResolvedValue({ id: 'job-queued', status: 'queued', action: 'mask-only' })
+
+    const res = await extractHandler({
+      params: { id: '22222222-2222-4222-8222-222222222222' },
+      body: {
+        projectId: '11111111-1111-4111-8111-111111111111',
+        action: 'mask-only',
+        prompt: 'store mask',
+        brushMaskKey: 'mask.png',
+      }
+    } as any)
+
+    expect(mockCreateQueuedExtractionJob).toHaveBeenCalledWith(expect.objectContaining({
+      sourceAssetId: '22222222-2222-4222-8222-222222222222',
+      action: 'mask-only',
       createdBy: 'user-1',
     }))
     expect(mockEnqueueAssetIntelligence).toHaveBeenCalledWith(expect.anything(), {
@@ -178,20 +273,68 @@ describe('video asset harness API', () => {
 
   it('marks queued asset intelligence jobs failed when enqueue rejects', async () => {
     mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
-    mockCreateQueuedExtractionJob.mockResolvedValue({ id: 'job-queued', status: 'queued', action: 'erase-fill' })
+    mockCreateQueuedExtractionJob.mockResolvedValue({ id: 'job-queued', status: 'queued', action: 'mask-only' })
     mockEnqueueAssetIntelligence.mockRejectedValue(new Error('Queue offline'))
 
     await expect(extractHandler({
       params: { id: '22222222-2222-4222-8222-222222222222' },
       body: {
         projectId: '11111111-1111-4111-8111-111111111111',
-        action: 'erase-fill',
-        prompt: 'erase badge',
+        action: 'mask-only',
+        prompt: 'store mask',
         brushMaskKey: 'mask.png',
       }
     } as any)).rejects.toThrow('Queue offline')
 
     expect(mockMarkAssetIntelligenceJobFailed).toHaveBeenCalledWith('job-queued', 'Queue offline')
+  })
+
+  it('rejects extraction when the caller cannot mutate the project', async () => {
+    mockRequireWriteAccess.mockResolvedValue({ id: 'user-2', role: 'editor' })
+
+    await expect(extractHandler({
+      params: { id: '22222222-2222-4222-8222-222222222222' },
+      body: { projectId: '11111111-1111-4111-8111-111111111111', action: 'mask-only', brushMaskKey: 'mask.png' },
+    } as any)).rejects.toMatchObject({ statusCode: 403, statusMessage: 'Access denied to this project' })
+
+    expect(mockGetAssetProjectRelationship).not.toHaveBeenCalled()
+    expect(mockCreateQueuedExtractionJob).not.toHaveBeenCalled()
+    expect(mockCreateBlockedExtractionJob).not.toHaveBeenCalled()
+  })
+
+  it('rejects extraction when the source asset belongs to another project', async () => {
+    mockGetAssetProjectRelationship.mockResolvedValue({
+      assetId: '22222222-2222-4222-8222-222222222222',
+      projectId: '44444444-4444-4444-8444-444444444444',
+    })
+
+    await expect(extractHandler({
+      params: { id: '22222222-2222-4222-8222-222222222222' },
+      body: { projectId: '11111111-1111-4111-8111-111111111111', action: 'mask-only', brushMaskKey: 'mask.png' },
+    } as any)).rejects.toMatchObject({ statusCode: 403, statusMessage: 'Source asset does not belong to this project' })
+
+    expect(mockCreateQueuedExtractionJob).not.toHaveBeenCalled()
+    expect(mockCreateBlockedExtractionJob).not.toHaveBeenCalled()
+  })
+
+  it('rejects extraction when the bucket item belongs to another project', async () => {
+    mockGetBucketItemProjectRelationship.mockResolvedValue({
+      bucketItemId: '33333333-3333-4333-8333-333333333333',
+      projectId: '44444444-4444-4444-8444-444444444444',
+    })
+
+    await expect(extractHandler({
+      params: { id: '22222222-2222-4222-8222-222222222222' },
+      body: {
+        projectId: '11111111-1111-4111-8111-111111111111',
+        bucketItemId: '33333333-3333-4333-8333-333333333333',
+        action: 'mask-only',
+        brushMaskKey: 'mask.png',
+      },
+    } as any)).rejects.toMatchObject({ statusCode: 403, statusMessage: 'Bucket item does not belong to this project' })
+
+    expect(mockCreateQueuedExtractionJob).not.toHaveBeenCalled()
+    expect(mockCreateBlockedExtractionJob).not.toHaveBeenCalled()
   })
 
   it('uploads a brush mask for a selected asset', async () => {
@@ -381,5 +524,38 @@ describe('video asset harness API', () => {
     const res = await assembleHandler({ params: { id: '11111111-1111-4111-8111-111111111111' }, body: { brief: 'Create a TikTok edit', targetFormat: 'tiktok_9x16' } } as any)
     expect(res.plan).toMatchObject({ projectId: '11111111-1111-4111-8111-111111111111', status: 'draft', brief: 'Create a TikTok edit' })
     expect(res.plan.steps[0]).toMatchObject({ type: 'place-asset', assetId: 'a1' })
+  })
+
+  it('rejects assemble when a writable user cannot mutate the project', async () => {
+    mockRequireWriteAccess.mockResolvedValue({ id: 'user-2', role: 'editor' })
+
+    await expect(assembleHandler({ params: { id: '11111111-1111-4111-8111-111111111111' }, body: { brief: 'Create a TikTok edit' } } as any))
+      .rejects
+      .toMatchObject({ statusCode: 403, statusMessage: 'Access denied to this project' })
+
+    expect(mockListBucketItems).not.toHaveBeenCalled()
+  })
+
+  it('redirects asset thumbnails only after project access is verified', async () => {
+    mockIsStorageConfigured.mockReturnValue(true)
+    mockGetPresignedDownloadUrl.mockResolvedValue('https://signed.example.com/thumb.jpg')
+
+    const res = await thumbnailHandler({ params: { id: '22222222-2222-4222-8222-222222222222' } } as any)
+
+    expect(mockRequireWriteAccess).toHaveBeenCalled()
+    expect(mockGetAssetProjectRelationship).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222')
+    expect(mockGetPresignedDownloadUrl).toHaveBeenCalledWith('thumbs/asset.jpg', 3600)
+    expect(res).toEqual({ location: 'https://signed.example.com/thumb.jpg', statusCode: 302 })
+  })
+
+  it('rejects captions when the asset project is not accessible', async () => {
+    mockRequireWriteAccess.mockResolvedValue({ id: 'user-2', role: 'editor' })
+
+    await expect(captionsHandler({ params: { id: '22222222-2222-4222-8222-222222222222' } } as any))
+      .rejects
+      .toMatchObject({ statusCode: 403, statusMessage: 'Access denied to this project' })
+
+    expect(mockQueryOne).not.toHaveBeenCalled()
+    expect(g.sendRedirect).not.toHaveBeenCalled()
   })
 })

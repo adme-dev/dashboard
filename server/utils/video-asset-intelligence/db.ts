@@ -82,6 +82,25 @@ export async function createOrUpdateBucketItemDirective(id: string, input: { rol
   return mapBucketItemRow(row)
 }
 
+export async function getAssetProjectRelationship(id: string): Promise<{ assetId: string; projectId: string | null } | null> {
+  const row = await queryOne(
+    `SELECT id, source_project_id FROM video_assets WHERE id = $1`,
+    [id]
+  )
+  return row ? { assetId: row.id, projectId: row.source_project_id ?? null } : null
+}
+
+export async function getBucketItemProjectRelationship(id: string): Promise<{ bucketItemId: string; projectId: string } | null> {
+  const row = await queryOne(
+    `SELECT i.id, b.project_id
+       FROM video_project_bucket_items i
+       JOIN video_project_buckets b ON b.id = i.bucket_id
+      WHERE i.id = $1`,
+    [id]
+  )
+  return row ? { bucketItemId: row.id, projectId: row.project_id } : null
+}
+
 export async function listAssetDerivatives(sourceAssetId: string) {
   const rows = await queryRows(
     `SELECT * FROM video_asset_derivatives WHERE source_asset_id = $1 ORDER BY created_at DESC`,
@@ -217,6 +236,7 @@ export async function createBlockedExtractionJob(input: {
   brushMaskKey?: string | null
   modelId?: string | null
   createdBy: string
+  errorMessage?: string | null
 }): Promise<VideoAssetIntelligenceJob> {
   const model = input.modelId ? null : defaultModelForAction(input.action)
   const modelId = input.modelId ?? model?.id ?? 'unconfigured/provider'
@@ -235,7 +255,7 @@ export async function createBlockedExtractionJob(input: {
       provider,
       input.prompt ?? null,
       input.brushMaskKey ?? null,
-      'Asset intelligence provider execution is not configured yet.',
+      input.errorMessage ?? 'Asset intelligence provider execution is not configured yet.',
       input.createdBy,
     ]
   )

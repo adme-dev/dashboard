@@ -25,14 +25,22 @@ with the commands below.
    pnpm exec wrangler queues create asset-intelligence-dlq
    ```
 
-2. **Apply the DB migration before live traffic**
+2. **Apply the DB migrations before live traffic**
 
-   The unique index is required before relying on race-safe derivative bucket
-   reuse.
+   Production needs the video asset migrations in order before this queue is
+   enabled: metadata columns, asset-intelligence harness tables, then the
+   derivative bucket unique index. The unique index is required before relying
+   on race-safe derivative bucket reuse.
 
    ```bash
+   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f server/database/migrations/176_video_assets_metadata.sql
+   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f server/database/migrations/177_video_asset_harness.sql
    psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f server/database/migrations/178_video_derivative_bucket_item_unique_index.sql
    ```
+
+   If the production database also missed the duplicate-numbered source-asset
+   migration, apply `server/database/migrations/176_video_gen_source_assets.sql`
+   before `177_video_asset_harness.sql`.
 
 3. **Deploy the standalone queue consumer Worker**
 
