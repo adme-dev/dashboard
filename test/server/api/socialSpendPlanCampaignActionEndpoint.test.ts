@@ -104,6 +104,8 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
         action_status: 'approved',
         requested_by: 'user-1',
         requested_at: '2026-06-10T03:00:00.000Z',
+        approved_by: 'manager-1',
+        approved_at: '2026-06-10T03:10:00.000Z',
         previous_value: { dailyBudget: 120 },
         new_value: { dailyBudget: 95 },
         reason: 'Projected overspend',
@@ -115,6 +117,8 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
     expect(mockRecordCampaignAction).not.toHaveBeenCalled()
     expect(String(mockQueryOne.mock.calls[1][0])).toContain("action_status = 'planned'")
     expect(String(mockQueryOne.mock.calls[1][0])).toContain("action_status = 'approved'")
+    expect(String(mockQueryOne.mock.calls[1][0])).toContain('approved_by::text')
+    expect(String(mockQueryOne.mock.calls[1][0])).toContain('approved_at::text')
     expect(result).toEqual({
       planned: false,
       existing: true,
@@ -126,6 +130,8 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
         actionStatus: 'approved',
         requestedBy: 'user-1',
         requestedAt: '2026-06-10T03:00:00.000Z',
+        approvedBy: 'manager-1',
+        approvedAt: '2026-06-10T03:10:00.000Z',
         previousValue: { dailyBudget: 120 },
         newValue: { dailyBudget: 95 },
         reason: 'Projected overspend',

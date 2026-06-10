@@ -36,6 +36,8 @@ export default eventHandler(async (event) => {
             action_status,
             requested_by::text,
             requested_at::text,
+            approved_by::text,
+            approved_at::text,
             previous_value,
             new_value,
             reason
@@ -99,6 +101,8 @@ interface PlannedActionRow {
   action_status: string
   requested_by: string | null
   requested_at: string
+  approved_by: string | null
+  approved_at: string | null
   previous_value: Record<string, unknown>
   new_value: Record<string, unknown>
   reason: string | null
@@ -113,6 +117,8 @@ function normalizePlannedAction(row: PlannedActionRow) {
     actionStatus: row.action_status,
     requestedBy: row.requested_by,
     requestedAt: row.requested_at,
+    approvedBy: row.approved_by,
+    approvedAt: row.approved_at,
     previousValue: row.previous_value,
     newValue: row.new_value,
     reason: row.reason,
