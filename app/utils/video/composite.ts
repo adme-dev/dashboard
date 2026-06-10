@@ -23,11 +23,16 @@ export function kenBurnsTransformAt(kb: KenBurns, t: number, durationSec: number
   }
 }
 
-/** The last clip (top-most in array order) whose [start, start+duration) contains t, else null. */
+/** The last clip (top-most in array order) whose [start, start+duration) contains t.
+ * At the final timeline boundary, hold the ending clip so the preview does not blank. */
 export function activeVisualClipAt<T extends { timeline_start_sec: number; duration_sec: number }>(clips: T[], t: number): T | null {
   let hit: T | null = null
   for (const c of clips) {
     if (t >= c.timeline_start_sec && t < c.timeline_start_sec + c.duration_sec) hit = c
+  }
+  if (hit) return hit
+  for (const c of clips) {
+    if (t === c.timeline_start_sec + c.duration_sec) hit = c
   }
   return hit
 }
