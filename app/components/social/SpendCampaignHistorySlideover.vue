@@ -3,6 +3,7 @@ import {
   budgetHistoryDelta,
   budgetHistoryTone,
   formatBudgetHistoryTime,
+  matchingPlannedBudgetAction,
   performanceSignalRows,
   pacingSignalRows,
   type BudgetHistoryTone,
@@ -87,6 +88,7 @@ const loadedSpendId = ref<string | null>(null)
 
 const signals = computed(() => props.item ? pacingSignalRows(props.item) : [])
 const performanceSignals = computed(() => props.item ? performanceSignalRows(props.item.performance) : [])
+const matchingPlannedAction = computed(() => props.item ? matchingPlannedBudgetAction(platformActions.value, props.item.recommendedDailyBudget) : null)
 
 watch(
   () => [open.value, props.item?.mediaSpendId] as const,
@@ -122,7 +124,7 @@ async function loadHistory(spendId: string, force = false) {
 }
 
 async function planCurrentRecommendation() {
-  if (!props.item || planning.value) return
+  if (!props.item || planning.value || matchingPlannedAction.value) return
   planning.value = true
   try {
     await $fetch(`/api/agency/social/spend/${props.item.mediaSpendId}/actions/plan`, {
@@ -284,11 +286,12 @@ function summarizeValue(value: Record<string, unknown>) {
                 size="xs"
                 variant="soft"
                 color="primary"
-                icon="i-lucide-clipboard-check"
+                :icon="matchingPlannedAction ? 'i-lucide-check' : 'i-lucide-clipboard-check'"
                 :loading="planning"
+                :disabled="!!matchingPlannedAction"
                 @click="planCurrentRecommendation"
               >
-                Save as planned action
+                {{ matchingPlannedAction ? 'Planned' : 'Save as planned action' }}
               </UButton>
             </div>
             <p class="text-sm text-default">{{ item.recommendedAction }}</p>

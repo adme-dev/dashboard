@@ -39,6 +39,12 @@ export interface PerformanceSignalSource {
   budgetType: string | null
 }
 
+export interface PlannedBudgetActionLike {
+  actionType: string
+  actionStatus: string
+  newValue: Record<string, unknown>
+}
+
 export function budgetHistoryDelta(entry: BudgetHistoryLike) {
   return entry.newBudget - entry.previousBudget
 }
@@ -146,6 +152,15 @@ export function performanceSignalRows(source: PerformanceSignalSource, locale = 
   return rows
 }
 
+export function matchingPlannedBudgetAction<T extends PlannedBudgetActionLike>(actions: T[], recommendedDailyBudget: number): T | null {
+  const expected = roundMoney(recommendedDailyBudget)
+  return actions.find((action) => {
+    if (action.actionType !== 'budget_update' || action.actionStatus !== 'planned') return false
+    const dailyBudget = Number(action.newValue?.dailyBudget)
+    return Number.isFinite(dailyBudget) && roundMoney(dailyBudget) === expected
+  }) ?? null
+}
+
 function formatCurrency(value: number, locale: string) {
   return new Intl.NumberFormat(locale, {
     style: 'currency',
@@ -153,6 +168,10 @@ function formatCurrency(value: number, locale: string) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(value || 0)
+}
+
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100
 }
 
 function formatInteger(value: number, locale: string) {

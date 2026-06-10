@@ -3,6 +3,7 @@ import {
   budgetHistoryDelta,
   budgetHistoryTone,
   formatBudgetHistoryTime,
+  matchingPlannedBudgetAction,
   performanceSignalRows,
   pacingSignalRows,
 } from '~/app/utils/socialSpendHistory'
@@ -65,5 +66,29 @@ describe('socialSpendHistory', () => {
       { label: 'Google impression share lost', value: '18.25% budget / 9.50% rank', detail: 'Budget and rank limits can explain under-delivery' },
       { label: 'Bid and budget setup', value: 'Maximize Conversions / Daily', detail: 'Platform configuration that affects pacing behavior' },
     ])
+  })
+
+  it('finds a matching planned budget action for the recommended daily budget', () => {
+    const action = matchingPlannedBudgetAction([
+      {
+        actionType: 'budget_update',
+        actionStatus: 'applied',
+        newValue: { dailyBudget: 95 },
+      },
+      {
+        actionType: 'budget_update',
+        actionStatus: 'planned',
+        newValue: { dailyBudget: '95.00' },
+      },
+    ], 95)
+
+    expect(action).toEqual({
+      actionType: 'budget_update',
+      actionStatus: 'planned',
+      newValue: { dailyBudget: '95.00' },
+    })
+    expect(matchingPlannedBudgetAction([
+      { actionType: 'budget_update', actionStatus: 'planned', newValue: { dailyBudget: 80 } },
+    ], 95)).toBeNull()
   })
 })
