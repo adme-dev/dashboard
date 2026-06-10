@@ -4,7 +4,8 @@ export interface VideoAsset {
   id: string; clientId: string | null; createdBy: string; title: string | null
   sourceProjectId: string | null; sourceJobId: string | null
   r2Key: string; format: string; width: number | null; height: number | null
-  durationSec: number | null; createdAt: string; updatedAt: string
+  durationSec: number | null; generationPrompt: string | null; generationModelId: string | null
+  createdAt: string; updatedAt: string
 }
 
 export function mapVideoAssetRow(row: any): VideoAsset {
@@ -14,6 +15,8 @@ export function mapVideoAssetRow(row: any): VideoAsset {
     r2Key: row.r2_key, format: row.format,
     width: row.width != null ? Number(row.width) : null, height: row.height != null ? Number(row.height) : null,
     durationSec: row.duration_sec != null ? Number(row.duration_sec) : null,
+    generationPrompt: row.generation_prompt ?? null,
+    generationModelId: row.generation_model_id ?? null,
     createdAt: row.created_at, updatedAt: row.updated_at
   }
 }
@@ -33,8 +36,14 @@ export async function createVideoAsset(input: {
 
 export async function listVideoAssets(filter: { clientId?: string | null; limit?: number } = {}): Promise<VideoAsset[]> {
   const limit = Math.min(filter.limit ?? 100, 200)
+  const select = `
+    SELECT va.*, vg.prompt AS generation_prompt, vg.model_id AS generation_model_id
+    FROM video_assets va
+    LEFT JOIN video_generation_jobs vg
+      ON vg.output_asset_id = va.id OR vg.id = va.source_job_id
+  `
   if (filter.clientId) {
-    return (await queryRows(`SELECT * FROM video_assets WHERE client_id = $1 ORDER BY created_at DESC LIMIT $2`, [filter.clientId, limit])).map(mapVideoAssetRow)
+    return (await queryRows(`${select} WHERE va.client_id = $1 ORDER BY va.created_at DESC LIMIT $2`, [filter.clientId, limit])).map(mapVideoAssetRow)
   }
-  return (await queryRows(`SELECT * FROM video_assets ORDER BY created_at DESC LIMIT $1`, [limit])).map(mapVideoAssetRow)
+  return (await queryRows(`${select} ORDER BY va.created_at DESC LIMIT $1`, [limit])).map(mapVideoAssetRow)
 }

@@ -90,7 +90,8 @@ const projectAspect = computed(() => {
 })
 
 function onGenerationSubmitted(_jobId: string) { void genJobs.start() }
-function onLibraryAddToTimeline(p: { r2Key: string; durationSec: number }) {
+function onLibraryAddToTimeline(p: { r2Key: string; durationSec: number; streamUrl: string }) {
+  editor.mergeSource(p.r2Key, p.streamUrl)
   editor.addVideoClipAction(p.r2Key, p.durationSec, 'uploaded_footage', editor.currentTime.value)
   toast.add({ title: 'Added to timeline', color: 'success' })
 }

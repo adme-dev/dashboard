@@ -4,19 +4,21 @@
 // social post from a saved asset's source render. Each asset previews via the authed
 // per-asset stream redirect.
 import { ref, computed, watch } from 'vue'
+import { videoLibraryTimelinePayload } from '~~/app/utils/video/videoLibraryTimeline'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{
   (e: 'update:open', value: boolean): void
   (e: 'publish', payload: { sourceJobId: string | null; format: string }): void
-  (e: 'add-to-timeline', payload: { r2Key: string; durationSec: number }): void
+  (e: 'add-to-timeline', payload: { r2Key: string; durationSec: number; streamUrl: string }): void
 }>()
 
 interface VideoAsset {
   id: string; clientId: string | null; createdBy: string; title: string | null
   sourceProjectId: string | null; sourceJobId: string | null
   r2Key: string; format: string; width: number | null; height: number | null
-  durationSec: number | null; createdAt: string; updatedAt: string
+  durationSec: number | null; generationPrompt: string | null; generationModelId: string | null
+  createdAt: string; updatedAt: string
 }
 
 const { data, pending, refresh } = useFetch('/api/agency/video/assets', { lazy: true, immediate: false })
@@ -35,7 +37,7 @@ function onPublish(a: VideoAsset) {
 }
 
 function onAddToTimeline(a: VideoAsset) {
-  emit('add-to-timeline', { r2Key: a.r2Key, durationSec: a.durationSec ?? 5 })
+  emit('add-to-timeline', videoLibraryTimelinePayload(a))
 }
 </script>
 
@@ -64,6 +66,8 @@ function onAddToTimeline(a: VideoAsset) {
               <div class="flex-1 min-w-0">
                 <p class="truncate text-sm font-medium text-highlighted">{{ a.title ?? 'Untitled' }}</p>
                 <p class="text-xs text-muted">{{ fmtDate(a.createdAt) }}</p>
+                <p v-if="a.generationModelId" class="mt-1 truncate text-xs text-muted">Model: {{ a.generationModelId }}</p>
+                <p v-if="a.generationPrompt" class="mt-1 line-clamp-2 text-xs text-muted">{{ a.generationPrompt }}</p>
               </div>
               <UBadge :label="a.format" size="xs" variant="subtle" color="neutral" />
             </div>
