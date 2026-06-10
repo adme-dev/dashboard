@@ -22,6 +22,23 @@ export interface PacingSignalRow {
   detail: string
 }
 
+export interface PerformanceSignalSource {
+  impressions: number
+  clicks: number
+  conversions: number
+  ctr: number | null
+  cpc: number | null
+  costPerConversion: number | null
+  conversionRate: number | null
+  reach: number | null
+  frequency: number | null
+  impressionShare: number | null
+  lostImpressionShareBudget: number | null
+  lostImpressionShareRank: number | null
+  bidStrategy: string | null
+  budgetType: string | null
+}
+
 export function budgetHistoryDelta(entry: BudgetHistoryLike) {
   return entry.newBudget - entry.previousBudget
 }
@@ -89,6 +106,46 @@ export function pacingSignalRows(source: PacingSignalSource, locale = 'en-AU', t
   ]
 }
 
+export function performanceSignalRows(source: PerformanceSignalSource, locale = 'en-AU'): PacingSignalRow[] {
+  const rows: PacingSignalRow[] = []
+  if (source.impressions > 0 || source.clicks > 0) {
+    rows.push({
+      label: 'CTR',
+      value: source.ctr == null ? '-' : formatPercent(source.ctr),
+      detail: `${formatInteger(source.clicks, locale)} clicks from ${formatInteger(source.impressions, locale)} impressions`,
+    })
+  }
+  if (source.conversions > 0 || source.costPerConversion != null) {
+    rows.push({
+      label: 'Cost per conversion',
+      value: source.costPerConversion == null ? '-' : formatCurrency(source.costPerConversion, locale),
+      detail: `${formatInteger(source.conversions, locale)} conversions at ${source.conversionRate == null ? '-' : formatPercent(source.conversionRate)} conversion rate`,
+    })
+  }
+  if (source.reach != null || source.frequency != null) {
+    rows.push({
+      label: 'Reach and frequency',
+      value: `${source.reach == null ? '-' : formatInteger(source.reach, locale)} / ${source.frequency == null ? '-' : `${source.frequency.toFixed(2)}x`}`,
+      detail: 'High frequency can accelerate spend without expanding reach',
+    })
+  }
+  if (source.lostImpressionShareBudget != null || source.lostImpressionShareRank != null) {
+    rows.push({
+      label: 'Google impression share lost',
+      value: `${source.lostImpressionShareBudget == null ? '-' : formatPercent(source.lostImpressionShareBudget)} budget / ${source.lostImpressionShareRank == null ? '-' : formatPercent(source.lostImpressionShareRank)} rank`,
+      detail: 'Budget and rank limits can explain under-delivery',
+    })
+  }
+  if (source.bidStrategy || source.budgetType) {
+    rows.push({
+      label: 'Bid and budget setup',
+      value: `${titleCaseEnum(source.bidStrategy) || '-'} / ${titleCaseEnum(source.budgetType) || '-'}`,
+      detail: 'Platform configuration that affects pacing behavior',
+    })
+  }
+  return rows
+}
+
 function formatCurrency(value: number, locale: string) {
   return new Intl.NumberFormat(locale, {
     style: 'currency',
@@ -98,9 +155,27 @@ function formatCurrency(value: number, locale: string) {
   }).format(value || 0)
 }
 
+function formatInteger(value: number, locale: string) {
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(value || 0)
+}
+
+function formatPercent(value: number) {
+  return `${value.toFixed(2)}%`
+}
+
 function formatSignedCurrency(value: number, locale: string) {
   const formatted = formatCurrency(Math.abs(value), locale)
   if (value > 0) return `+${formatted}`
   if (value < 0) return `-${formatted}`
   return formatted
+}
+
+function titleCaseEnum(value: string | null) {
+  if (!value) return ''
+  return value
+    .toLowerCase()
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
 }

@@ -19,10 +19,36 @@ export interface PacingReviewRow {
   campaign_status: string | null
   budget_allocated: number | string | null
   actual_spend: number | string | null
+  impressions: number | string | null
+  clicks: number | string | null
   conversions: number | string | null
+  reach: number | string | null
+  frequency: number | string | null
+  impression_share: number | string | null
+  lost_impression_share_budget: number | string | null
+  lost_impression_share_rank: number | string | null
+  bid_strategy: string | null
+  budget_type: string | null
   period: string
   synced_at: string | null
   end_date: string | null
+}
+
+export interface PacingReviewPerformance {
+  impressions: number
+  clicks: number
+  conversions: number
+  ctr: number | null
+  cpc: number | null
+  costPerConversion: number | null
+  conversionRate: number | null
+  reach: number | null
+  frequency: number | null
+  impressionShare: number | null
+  lostImpressionShareBudget: number | null
+  lostImpressionShareRank: number | null
+  bidStrategy: string | null
+  budgetType: string | null
 }
 
 export interface PacingReviewItem {
@@ -41,6 +67,7 @@ export interface PacingReviewItem {
   currentDailyBudget: number
   recommendedDailyBudget: number
   pacingRatio: number
+  performance: PacingReviewPerformance
   syncedAt: string | null
   recommendedAction: string
   canApplyAutomatically: false
@@ -71,6 +98,16 @@ function num(value: unknown): number {
 
 function money(value: number): number {
   return Math.round(value * 100) / 100
+}
+
+function pct(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
+function nullableNum(value: unknown): number | null {
+  if (value == null || value === '') return null
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) ? n : null
 }
 
 function normalizePlatform(platform: string): PacingReviewPlatform | null {
@@ -118,6 +155,28 @@ function syncAgeHours(syncedAt: string | null, now: Date): number {
   return (now.getTime() - parsed.getTime()) / 3_600_000
 }
 
+function performanceFromRow(row: PacingReviewRow, spend: number): PacingReviewPerformance {
+  const impressions = num(row.impressions)
+  const clicks = num(row.clicks)
+  const conversions = num(row.conversions)
+  return {
+    impressions,
+    clicks,
+    conversions,
+    ctr: impressions > 0 ? pct((clicks / impressions) * 100) : null,
+    cpc: clicks > 0 ? money(spend / clicks) : null,
+    costPerConversion: conversions > 0 ? money(spend / conversions) : null,
+    conversionRate: clicks > 0 ? pct((conversions / clicks) * 100) : null,
+    reach: nullableNum(row.reach),
+    frequency: nullableNum(row.frequency),
+    impressionShare: nullableNum(row.impression_share),
+    lostImpressionShareBudget: nullableNum(row.lost_impression_share_budget),
+    lostImpressionShareRank: nullableNum(row.lost_impression_share_rank),
+    bidStrategy: row.bid_strategy,
+    budgetType: row.budget_type,
+  }
+}
+
 function baseItem(row: PacingReviewRow, issueType: PacingReviewIssueType, severity: PacingReviewSeverity, now: Date): PacingReviewItem | null {
   const platform = normalizePlatform(row.platform)
   if (!platform) return null
@@ -147,6 +206,7 @@ function baseItem(row: PacingReviewRow, issueType: PacingReviewIssueType, severi
     currentDailyBudget: pacing.currentDailyBudget,
     recommendedDailyBudget: pacing.newDailyBudget,
     pacingRatio: pacing.pacingRatio,
+    performance: performanceFromRow(row, spend),
     syncedAt: row.synced_at,
     recommendedAction: '',
     canApplyAutomatically: false,

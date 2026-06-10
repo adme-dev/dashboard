@@ -42,6 +42,22 @@ interface PacingReview {
     currentDailyBudget: number
     recommendedDailyBudget: number
     pacingRatio: number
+    performance: {
+      impressions: number
+      clicks: number
+      conversions: number
+      ctr: number | null
+      cpc: number | null
+      costPerConversion: number | null
+      conversionRate: number | null
+      reach: number | null
+      frequency: number | null
+      impressionShare: number | null
+      lostImpressionShareBudget: number | null
+      lostImpressionShareRank: number | null
+      bidStrategy: string | null
+      budgetType: string | null
+    }
     syncedAt: string | null
     recommendedAction: string
     canApplyAutomatically: false

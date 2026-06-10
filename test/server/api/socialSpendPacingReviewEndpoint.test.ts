@@ -34,7 +34,16 @@ describe('GET /api/agency/social/spend/pacing-review', () => {
         campaign_status: 'ACTIVE',
         budget_allocated: '3000',
         actual_spend: '1800',
+        impressions: '10000',
+        clicks: '500',
         conversions: '4',
+        reach: '7500',
+        frequency: '1.33',
+        impression_share: null,
+        lost_impression_share_budget: null,
+        lost_impression_share_rank: null,
+        bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+        budget_type: 'daily',
         period: '2026-06',
         synced_at: '2026-06-12T00:00:00.000Z',
         end_date: null,
@@ -57,6 +66,19 @@ describe('GET /api/agency/social/spend/pacing-review', () => {
       issueType: 'overpacing',
       platform: 'meta',
       canApplyAutomatically: false,
+      performance: {
+        impressions: 10000,
+        clicks: 500,
+        conversions: 4,
+        ctr: 5,
+        cpc: 3.6,
+        costPerConversion: 450,
+        conversionRate: 0.8,
+        reach: 7500,
+        frequency: 1.33,
+        bidStrategy: 'LOWEST_COST_WITHOUT_CAP',
+        budgetType: 'daily',
+      },
     })
     vi.useRealTimers()
   })
@@ -67,6 +89,7 @@ describe('GET /api/agency/social/spend/pacing-review', () => {
     await handler({ query: { month: 6, year: 2026, platform: 'google', ai: '0' } } as any)
 
     expect(mockQueryRows.mock.calls[0][1]).toEqual(['2026-06', 'google_ads'])
+    expect(mockQueryRows.mock.calls[0][0]).toContain('ms.lost_impression_share_budget')
     expect(mockGenerateGroqInsight).not.toHaveBeenCalled()
   })
 })

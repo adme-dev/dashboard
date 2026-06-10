@@ -3,6 +3,7 @@ import {
   budgetHistoryDelta,
   budgetHistoryTone,
   formatBudgetHistoryTime,
+  performanceSignalRows,
   pacingSignalRows,
   type BudgetHistoryTone,
 } from '~/app/utils/socialSpendHistory'
@@ -22,6 +23,22 @@ interface PacingReviewItem {
   currentDailyBudget: number
   recommendedDailyBudget: number
   pacingRatio: number
+  performance: {
+    impressions: number
+    clicks: number
+    conversions: number
+    ctr: number | null
+    cpc: number | null
+    costPerConversion: number | null
+    conversionRate: number | null
+    reach: number | null
+    frequency: number | null
+    impressionShare: number | null
+    lostImpressionShareBudget: number | null
+    lostImpressionShareRank: number | null
+    bidStrategy: string | null
+    budgetType: string | null
+  }
   syncedAt: string | null
   recommendedAction: string
 }
@@ -49,6 +66,7 @@ const loading = ref(false)
 const loadedSpendId = ref<string | null>(null)
 
 const signals = computed(() => props.item ? pacingSignalRows(props.item) : [])
+const performanceSignals = computed(() => props.item ? performanceSignalRows(props.item.performance) : [])
 
 watch(
   () => [open.value, props.item?.mediaSpendId] as const,
@@ -150,6 +168,22 @@ function toneClass(tone: BudgetHistoryTone) {
             </div>
             <div class="grid gap-2 sm:grid-cols-2">
               <div v-for="signal in signals" :key="signal.label" class="rounded-lg bg-elevated/40 p-3">
+                <div class="flex items-start justify-between gap-3">
+                  <p class="text-xs font-medium text-muted">{{ signal.label }}</p>
+                  <p class="shrink-0 text-sm font-semibold tabular-nums">{{ signal.value }}</p>
+                </div>
+                <p class="mt-1 text-xs text-muted">{{ signal.detail }}</p>
+              </div>
+            </div>
+          </section>
+
+          <section v-if="performanceSignals.length" class="border-b border-default p-4 sm:p-5">
+            <div class="mb-3 flex items-center gap-2">
+              <UIcon name="i-lucide-gauge" class="size-4 text-primary" />
+              <h4 class="text-sm font-semibold">Performance signals</h4>
+            </div>
+            <div class="grid gap-2 sm:grid-cols-2">
+              <div v-for="signal in performanceSignals" :key="signal.label" class="rounded-lg bg-elevated/40 p-3">
                 <div class="flex items-start justify-between gap-3">
                   <p class="text-xs font-medium text-muted">{{ signal.label }}</p>
                   <p class="shrink-0 text-sm font-semibold tabular-nums">{{ signal.value }}</p>

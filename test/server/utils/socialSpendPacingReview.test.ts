@@ -17,7 +17,16 @@ function row(overrides: Partial<PacingReviewRow> = {}): PacingReviewRow {
     campaign_status: 'ACTIVE',
     budget_allocated: '3000',
     actual_spend: '1200',
+    impressions: '10000',
+    clicks: '500',
     conversions: '4',
+    reach: '7500',
+    frequency: '1.33',
+    impression_share: null,
+    lost_impression_share_budget: null,
+    lost_impression_share_rank: null,
+    bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+    budget_type: 'daily',
     period: '2026-06',
     synced_at: '2026-06-12T00:00:00.000Z',
     end_date: null,
@@ -45,6 +54,41 @@ describe('buildPacingReview', () => {
       severity: 'warning',
     })
     expect(review.items[1].recommendedAction).toContain('increase delivery')
+  })
+
+  it('includes performance metrics that explain pacing pressure', () => {
+    const review = buildPacingReview([
+      row({
+        media_spend_id: 'google',
+        platform: 'google_ads',
+        actual_spend: '1800',
+        impressions: '12000',
+        clicks: '600',
+        conversions: '12',
+        impression_share: '72.5',
+        lost_impression_share_budget: '18.25',
+        lost_impression_share_rank: '9.5',
+        bid_strategy: 'MAXIMIZE_CONVERSIONS',
+        budget_type: 'daily',
+      }),
+    ], { now, period: '2026-06' })
+
+    expect(review.items[0].performance).toEqual({
+      impressions: 12000,
+      clicks: 600,
+      conversions: 12,
+      ctr: 5,
+      cpc: 3,
+      costPerConversion: 150,
+      conversionRate: 2,
+      reach: 7500,
+      frequency: 1.33,
+      impressionShare: 72.5,
+      lostImpressionShareBudget: 18.25,
+      lostImpressionShareRank: 9.5,
+      bidStrategy: 'MAXIMIZE_CONVERSIONS',
+      budgetType: 'daily',
+    })
   })
 
   it('flags stale sync and paused-with-budget campaigns without platform writes', () => {

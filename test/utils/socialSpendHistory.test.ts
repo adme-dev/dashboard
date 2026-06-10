@@ -3,6 +3,7 @@ import {
   budgetHistoryDelta,
   budgetHistoryTone,
   formatBudgetHistoryTime,
+  performanceSignalRows,
   pacingSignalRows,
 } from '~/app/utils/socialSpendHistory'
 
@@ -36,6 +37,33 @@ describe('socialSpendHistory', () => {
       { label: 'Projected variance', value: '+$2,400', detail: '$5,400 projected vs $3,000 budget' },
       { label: 'Daily budget change', value: '-$30/day', detail: '$100/day current to $70/day recommended' },
       { label: 'Last synced', value: '9 Jun 2026, 11:00 pm', detail: 'Fresh platform spend reduces recommendation risk' },
+    ])
+  })
+
+  it('builds performance signal rows from campaign delivery metrics', () => {
+    const rows = performanceSignalRows({
+      impressions: 12000,
+      clicks: 600,
+      conversions: 12,
+      ctr: 5,
+      cpc: 3,
+      costPerConversion: 150,
+      conversionRate: 2,
+      reach: 7500,
+      frequency: 1.6,
+      impressionShare: 72.5,
+      lostImpressionShareBudget: 18.25,
+      lostImpressionShareRank: 9.5,
+      bidStrategy: 'MAXIMIZE_CONVERSIONS',
+      budgetType: 'daily',
+    })
+
+    expect(rows).toEqual([
+      { label: 'CTR', value: '5.00%', detail: '600 clicks from 12,000 impressions' },
+      { label: 'Cost per conversion', value: '$150', detail: '12 conversions at 2.00% conversion rate' },
+      { label: 'Reach and frequency', value: '7,500 / 1.60x', detail: 'High frequency can accelerate spend without expanding reach' },
+      { label: 'Google impression share lost', value: '18.25% budget / 9.50% rank', detail: 'Budget and rank limits can explain under-delivery' },
+      { label: 'Bid and budget setup', value: 'Maximize Conversions / Daily', detail: 'Platform configuration that affects pacing behavior' },
     ])
   })
 })
