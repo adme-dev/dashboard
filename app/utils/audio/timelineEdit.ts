@@ -161,14 +161,14 @@ const DEFAULT_KENBURNS = { zoom_from: 1, zoom_to: 1.1, pan_from: [0, 0] as [numb
 /** Append a video clip (uploaded footage or a ken-burns still) to a video track. */
 export function addVideoClip(
   state: TimelineState,
-  { trackId, id, r2Key, startSec, durationSec, baseSource }:
-    { trackId: string; id: string; r2Key: string; startSec: number; durationSec: number; baseSource: 'uploaded_footage' | 'still_kenburns' }
+  { trackId, id, assetId = null, r2Key, startSec, durationSec, baseSource }:
+    { trackId: string; id: string; assetId?: string | null; r2Key: string; startSec: number; durationSec: number; baseSource: 'uploaded_footage' | 'still_kenburns' }
 ): TimelineState {
   const next = cloneState(state)
   const track = next.tracks.find(t => t.id === trackId)
   if (!track) return state
   track.clips.push({
-    type: 'video', id, asset_id: null, r2_key: r2Key,
+    type: 'video', id, asset_id: assetId, r2_key: r2Key,
     timeline_start_sec: Math.max(0, startSec),
     source_in_sec: 0, source_out_sec: null,
     duration_sec: Math.max(0.1, durationSec),

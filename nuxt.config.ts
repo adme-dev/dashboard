@@ -191,6 +191,7 @@ export default defineNuxtConfig({
       // button in the AV editor (the server endpoint is the real boundary; it 404s when off).
       videoStudioEnabled: process.env.VIDEO_STUDIO_ENABLED === 'true',
       videoGenerationEnabled: process.env.VIDEO_GENERATION_ENABLED === 'true',
+      videoAssetHarnessEnabled: process.env.VIDEO_ASSET_HARNESS_ENABLED === 'true' || process.env.VIDEO_GENERATION_ENABLED === 'true',
       // Client-visible mirror of GOOGLE_BUSINESS_PUBLISHING_ENABLED. Server endpoints
       // remain the real boundary; this keeps the dormant channel hidden until approval.
       googleBusinessPublishingEnabled: process.env.GOOGLE_BUSINESS_PUBLISHING_ENABLED === 'true'

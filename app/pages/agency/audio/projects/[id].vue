@@ -51,6 +51,7 @@ const toast = useToast()
 
 const config = useRuntimeConfig()
 const videoStudioEnabled = computed(() => Boolean((config.public as any).videoStudioEnabled))
+const videoAssetHarnessEnabled = computed(() => Boolean((config.public as any).videoAssetHarnessEnabled))
 const isAv = computed(() => editor.mediaType.value === 'av')
 
 // AV pickers
@@ -95,7 +96,7 @@ const projectAspect = computed(() => {
 function onGenerationSubmitted(_jobId: string) { void genJobs.start() }
 function onLibraryAddToTimeline(p: { assetId: string; r2Key: string; durationSec: number; streamUrl: string; title: string | null; format: string | null }) {
   editor.mergeSource(p.r2Key, p.streamUrl, { durationSec: p.durationSec, assetId: p.assetId, title: p.title, format: p.format })
-  editor.addVideoClipAction(p.r2Key, p.durationSec, 'uploaded_footage', editor.currentTime.value)
+  editor.addVideoClipAction(p.r2Key, p.durationSec, 'uploaded_footage', editor.currentTime.value, p.assetId)
   toast.add({ title: 'Added to timeline', color: 'success' })
 }
 
@@ -133,7 +134,7 @@ function duplicateSelectedGeneratedClip() {
     title: selectedGeneratedClip.value.title,
     format: selectedGeneratedClip.value.format,
   })
-  editor.addVideoClipAction(selectedGeneratedClip.value.r2Key, selectedGeneratedClip.value.durationSec ?? 5, 'uploaded_footage', editor.currentTime.value)
+  editor.addVideoClipAction(selectedGeneratedClip.value.r2Key, selectedGeneratedClip.value.durationSec ?? 5, 'uploaded_footage', editor.currentTime.value, selectedGeneratedClip.value.assetId)
 }
 
 async function publishSelectedGeneratedClip() {
@@ -449,6 +450,11 @@ const saveStatusColor = computed(() => {
           icon="i-lucide-triangle-alert"
           :title="`${editor.missingClipIds.value.length} ${editor.missingClipIds.value.length === 1 ? 'clip is' : 'clips are'} missing audio`"
           description="Their source files couldn't be loaded — they may have been deleted. These clips appear on the timeline but produce no sound. Remove or replace them, then save."
+        />
+
+        <MediaAssetHarness
+          v-if="isAv && videoAssetHarnessEnabled"
+          :project-id="projectId"
         />
 
         <!-- AV preview (frame-accurate compositor) -->
