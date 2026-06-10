@@ -12,6 +12,8 @@ export interface RecordCampaignActionInput {
   requestedBy?: string | null
   approvedBy?: string | null
   approvedAt?: string | null
+  cancelledBy?: string | null
+  cancelledAt?: string | null
   executedAt?: string | null
   previousValue: Record<string, unknown>
   newValue: Record<string, unknown>
@@ -31,6 +33,8 @@ export interface CampaignActionLogEntry {
   requestedAt: string
   approvedBy: string | null
   approvedAt: string | null
+  cancelledBy: string | null
+  cancelledAt: string | null
   executedAt: string | null
   previousValue: Record<string, unknown>
   newValue: Record<string, unknown>
@@ -50,6 +54,8 @@ interface CampaignActionLogRow {
   requested_at: string
   approved_by: string | null
   approved_at: string | null
+  cancelled_by: string | null
+  cancelled_at: string | null
   executed_at: string | null
   previous_value: Record<string, unknown>
   new_value: Record<string, unknown>
@@ -69,6 +75,8 @@ export async function recordCampaignAction(input: RecordCampaignActionInput): Pr
        requested_by,
        approved_by,
        approved_at,
+       cancelled_by,
+       cancelled_at,
        executed_at,
        previous_value,
        new_value,
@@ -76,7 +84,7 @@ export async function recordCampaignAction(input: RecordCampaignActionInput): Pr
        external_request_id,
        error_message,
        metadata
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11, $12, $13, $14::jsonb)
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13, $14, $15, $16::jsonb)
      RETURNING id::text,
                media_spend_id::text,
                platform,
@@ -86,6 +94,8 @@ export async function recordCampaignAction(input: RecordCampaignActionInput): Pr
                requested_at::text,
                approved_by::text,
                approved_at::text,
+               cancelled_by::text,
+               cancelled_at::text,
                executed_at::text,
                previous_value,
                new_value,
@@ -101,6 +111,8 @@ export async function recordCampaignAction(input: RecordCampaignActionInput): Pr
       input.requestedBy ?? null,
       input.approvedBy ?? null,
       input.approvedAt ?? null,
+      input.cancelledBy ?? null,
+      input.cancelledAt ?? null,
       input.executedAt ?? null,
       input.previousValue,
       input.newValue,
@@ -134,6 +146,8 @@ function fromDbRow(row: CampaignActionLogRow): CampaignActionLogEntry {
     requestedAt: row.requested_at,
     approvedBy: row.approved_by,
     approvedAt: row.approved_at,
+    cancelledBy: row.cancelled_by,
+    cancelledAt: row.cancelled_at,
     executedAt: row.executed_at,
     previousValue: row.previous_value,
     newValue: row.new_value,

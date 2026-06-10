@@ -19,6 +19,8 @@ describe('recordCampaignAction', () => {
       requested_at: '2026-06-10T03:00:00.000Z',
       approved_by: null,
       approved_at: null,
+      cancelled_by: 'user-2',
+      cancelled_at: '2026-06-10T03:05:00.000Z',
       executed_at: null,
       previous_value: { dailyBudget: 120 },
       new_value: { dailyBudget: 95 },
@@ -38,6 +40,8 @@ describe('recordCampaignAction', () => {
       actionType: 'budget_update',
       actionStatus: 'pending',
       requestedBy: 'user-1',
+      cancelledBy: 'user-2',
+      cancelledAt: '2026-06-10T03:05:00.000Z',
       previousValue: { dailyBudget: 120 },
       newValue: { dailyBudget: 95 },
       reason: 'Projected overspend',
@@ -46,6 +50,8 @@ describe('recordCampaignAction', () => {
 
     expect(mockQueryOne).toHaveBeenCalledOnce()
     expect(String(mockQueryOne.mock.calls[0][0])).toContain('INSERT INTO campaign_action_log')
+    expect(String(mockQueryOne.mock.calls[0][0])).toContain('cancelled_by')
+    expect(String(mockQueryOne.mock.calls[0][0])).toContain('cancelled_at')
     expect(mockQueryOne.mock.calls[0][1]).toEqual([
       'spend-1',
       'google_ads',
@@ -54,6 +60,8 @@ describe('recordCampaignAction', () => {
       'user-1',
       null,
       null,
+      'user-2',
+      '2026-06-10T03:05:00.000Z',
       null,
       { dailyBudget: 120 },
       { dailyBudget: 95 },
@@ -72,6 +80,8 @@ describe('recordCampaignAction', () => {
       requestedAt: '2026-06-10T03:00:00.000Z',
       approvedBy: null,
       approvedAt: null,
+      cancelledBy: 'user-2',
+      cancelledAt: '2026-06-10T03:05:00.000Z',
       executedAt: null,
       previousValue: { dailyBudget: 120 },
       newValue: { dailyBudget: 95 },
