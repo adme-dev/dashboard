@@ -50,13 +50,23 @@ interface PacingReview {
   aiSummary: string | null
 }
 
+interface BudgetControlSettings {
+  liveBudgetChangesEnabled: boolean
+  metaBudgetWritesEnabled: boolean
+  googleBudgetWritesEnabled: boolean
+}
+
 const props = defineProps<{
   review: PacingReview | null
   loading?: boolean
+  budgetControl?: BudgetControlSettings
+  budgetControlLoading?: boolean
+  budgetControlSaving?: boolean
 }>()
 
 const emit = defineEmits<{
   sync: []
+  updateLiveBudgetChanges: [enabled: boolean]
 }>()
 
 const severityFilter = ref<'all' | 'critical' | 'warning'>('all')
@@ -65,6 +75,7 @@ const historyOpen = ref(false)
 const selectedHistoryItem = ref<PacingReviewItem | null>(null)
 const severityOptions = ['all', 'critical', 'warning'] as const
 const platformOptions = ['all', 'meta', 'google'] as const
+const liveBudgetChangesEnabled = computed(() => Boolean(props.budgetControl?.liveBudgetChangesEnabled))
 
 const filteredItems = computed(() => {
   const items = props.review?.items || []
@@ -103,9 +114,37 @@ function openHistory(item: PacingReviewItem) {
           <UIcon name="i-lucide-sparkles" class="size-4 text-primary" />
           <h2 class="text-sm font-semibold">AI pacing review</h2>
         </div>
-        <p class="text-xs text-muted mt-0.5">Recommend-only checks for Meta and Google. No platform changes are made.</p>
+        <p class="text-xs text-muted mt-0.5">
+          {{ liveBudgetChangesEnabled ? 'Meta and Google budget changes are armed for approved actions.' : 'Recommend-only checks for Meta and Google. No platform changes are made.' }}
+        </p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div class="flex items-center gap-2 rounded-lg border border-default bg-default/40 px-3 py-2">
+          <div>
+            <div class="flex items-center gap-2">
+              <UIcon
+                :name="liveBudgetChangesEnabled ? 'i-lucide-zap' : 'i-lucide-shield-check'"
+                class="size-4"
+                :class="liveBudgetChangesEnabled ? 'text-warning' : 'text-muted'"
+              />
+              <span class="text-xs font-medium">Live budget changes</span>
+              <UBadge
+                size="xs"
+                :color="liveBudgetChangesEnabled ? 'warning' : 'neutral'"
+                variant="soft"
+              >
+                {{ liveBudgetChangesEnabled ? 'Armed' : 'Off' }}
+              </UBadge>
+            </div>
+            <p class="text-[11px] text-muted mt-0.5">Meta and Google</p>
+          </div>
+          <USwitch
+            :model-value="liveBudgetChangesEnabled"
+            :loading="budgetControlLoading || budgetControlSaving"
+            :disabled="budgetControlLoading || budgetControlSaving"
+            @update:model-value="emit('updateLiveBudgetChanges', Boolean($event))"
+          />
+        </div>
         <UButton
           size="xs"
           variant="ghost"

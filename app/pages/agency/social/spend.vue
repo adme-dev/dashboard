@@ -4,7 +4,13 @@ definePageMeta({ layout: 'agency', middleware: ['role-media'] })
 const toast = useToast()
 const route = useRoute()
 const router = useRouter()
-const { fetchSpendSummary, fetchPacingReview, syncSpend } = useSocialConnections()
+const {
+  fetchSpendSummary,
+  fetchPacingReview,
+  fetchBudgetControlSettings,
+  updateBudgetControlSettings,
+  syncSpend,
+} = useSocialConnections()
 
 const now = new Date()
 const selectedMonth = ref(parseInt(String(route.query.month || now.getMonth() + 1), 10))
@@ -19,6 +25,13 @@ const spendData = ref<any>(null)
 const bankCharges = ref<any>(null)
 const pacingReview = ref<any>(null)
 const pacingReviewLoading = ref(false)
+const budgetControlSettings = ref({
+  liveBudgetChangesEnabled: false,
+  metaBudgetWritesEnabled: false,
+  googleBudgetWritesEnabled: false,
+})
+const budgetControlLoading = ref(false)
+const budgetControlSaving = ref(false)
 const bankLoading = ref(false)
 
 const platformOptions = [
@@ -64,6 +77,43 @@ async function loadPacingReview() {
     toast.add({ title: 'Error loading pacing review', description: e.message, color: 'error' })
   } finally {
     pacingReviewLoading.value = false
+  }
+}
+
+async function loadBudgetControlSettings() {
+  budgetControlLoading.value = true
+  try {
+    budgetControlSettings.value = await fetchBudgetControlSettings()
+  } catch (e: any) {
+    toast.add({ title: 'Error loading budget control', description: e.data?.statusMessage || e.message, color: 'error' })
+  } finally {
+    budgetControlLoading.value = false
+  }
+}
+
+async function setLiveBudgetChanges(enabled: boolean) {
+  const previous = { ...budgetControlSettings.value }
+  budgetControlSaving.value = true
+  budgetControlSettings.value = {
+    liveBudgetChangesEnabled: enabled,
+    metaBudgetWritesEnabled: enabled,
+    googleBudgetWritesEnabled: enabled,
+  }
+  try {
+    const result = await updateBudgetControlSettings(budgetControlSettings.value)
+    budgetControlSettings.value = result.config
+    toast.add({
+      title: enabled ? 'Live budget changes armed' : 'Recommend-only mode enabled',
+      description: enabled
+        ? 'Meta and Google budget changes are armed, but platform execution still requires the server write layer.'
+        : 'AI pacing recommendations will stay in review and audit history only.',
+      color: enabled ? 'warning' : 'success',
+    })
+  } catch (e: any) {
+    budgetControlSettings.value = previous
+    toast.add({ title: 'Could not update budget control', description: e.data?.statusMessage || e.message, color: 'error' })
+  } finally {
+    budgetControlSaving.value = false
   }
 }
 
@@ -284,6 +334,7 @@ watch([selectedMonth, selectedYear, selectedPlatform], () => {
 onMounted(() => {
   loadSpend()
   loadPacingReview()
+  loadBudgetControlSettings()
   loadBankCharges()
 })
 
@@ -525,7 +576,11 @@ const bankDiscrepancy = computed(() => {
         v-if="showPacingReview"
         :review="pacingReview"
         :loading="pacingReviewLoading"
+        :budget-control="budgetControlSettings"
+        :budget-control-loading="budgetControlLoading"
+        :budget-control-saving="budgetControlSaving"
         @sync="handleSyncAll"
+        @update-live-budget-changes="setLiveBudgetChanges"
       />
 
       <!-- Loading -->

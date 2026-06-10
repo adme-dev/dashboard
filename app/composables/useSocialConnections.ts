@@ -73,6 +73,12 @@ interface PacingReview {
   aiSummary: string | null
 }
 
+interface SocialBudgetControlSettings {
+  liveBudgetChangesEnabled: boolean
+  metaBudgetWritesEnabled: boolean
+  googleBudgetWritesEnabled: boolean
+}
+
 export function useSocialConnections() {
   const connections = ref<any[]>([])
   const loading = ref(false)
@@ -227,6 +233,17 @@ export function useSocialConnections() {
     return await $fetch('/api/agency/social/spend/pacing-review', { params })
   }
 
+  async function fetchBudgetControlSettings(): Promise<SocialBudgetControlSettings> {
+    return await $fetch('/api/agency/social/spend/budget-control-settings')
+  }
+
+  async function updateBudgetControlSettings(settings: Partial<SocialBudgetControlSettings>) {
+    return await $fetch<{ ok: boolean; config: SocialBudgetControlSettings }>(
+      '/api/agency/social/spend/budget-control-settings',
+      { method: 'PUT', body: settings }
+    )
+  }
+
   async function updateClientMappings(connectionId: string, mappings: any[]) {
     return await $fetch(`/api/agency/social/connections/${connectionId}/client-map`, {
       method: 'PUT',
@@ -341,6 +358,8 @@ export function useSocialConnections() {
     syncSpend,
     fetchSpendSummary,
     fetchPacingReview,
+    fetchBudgetControlSettings,
+    updateBudgetControlSettings,
     updateClientMappings,
     fetchPlatformAccounts,
     fetchAccountSpend,
