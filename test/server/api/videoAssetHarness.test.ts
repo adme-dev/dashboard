@@ -363,10 +363,52 @@ describe('video asset harness API', () => {
     })
   })
 
+  it('rejects mask uploads when a writable user cannot mutate the project', async () => {
+    mockRequireWriteAccess.mockResolvedValue({ id: 'user-2', role: 'editor' })
+    g.readMultipartFormData.mockResolvedValue([
+      { name: 'projectId', data: Buffer.from('11111111-1111-4111-8111-111111111111') },
+      { name: 'file', filename: 'mask.png', type: 'image/png', data: Buffer.from([1, 2, 3, 4]) },
+    ])
+
+    await expect(maskHandler({ params: { id: '22222222-2222-4222-8222-222222222222' } } as any))
+      .rejects
+      .toMatchObject({ statusCode: 403, statusMessage: 'Access denied to this project' })
+
+    expect(mockUploadFile).not.toHaveBeenCalled()
+  })
+
+  it('rejects mask uploads when the source asset belongs to another project', async () => {
+    mockGetAssetProjectRelationship.mockResolvedValue({
+      assetId: '22222222-2222-4222-8222-222222222222',
+      projectId: '44444444-4444-4444-8444-444444444444',
+    })
+    g.readMultipartFormData.mockResolvedValue([
+      { name: 'projectId', data: Buffer.from('11111111-1111-4111-8111-111111111111') },
+      { name: 'file', filename: 'mask.png', type: 'image/png', data: Buffer.from([1, 2, 3, 4]) },
+    ])
+
+    await expect(maskHandler({ params: { id: '22222222-2222-4222-8222-222222222222' } } as any))
+      .rejects
+      .toMatchObject({ statusCode: 403, statusMessage: 'Source asset does not belong to this project' })
+
+    expect(mockUploadFile).not.toHaveBeenCalled()
+  })
+
   it('lists derivatives for an asset', async () => {
-    const res = await derivativesHandler({ params: { id: 'a1' } } as any)
-    expect(mockListDerivatives).toHaveBeenCalledWith('a1')
+    const res = await derivativesHandler({ params: { id: '22222222-2222-4222-8222-222222222222' } } as any)
+    expect(mockGetAssetProjectRelationship).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222')
+    expect(mockListDerivatives).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222')
     expect(res.derivatives[0].kind).toBe('foreground-png')
+  })
+
+  it('rejects derivative listing when a writable user cannot mutate the asset project', async () => {
+    mockRequireWriteAccess.mockResolvedValue({ id: 'user-2', role: 'editor' })
+
+    await expect(derivativesHandler({ params: { id: '22222222-2222-4222-8222-222222222222' } } as any))
+      .rejects
+      .toMatchObject({ statusCode: 403, statusMessage: 'Access denied to this project' })
+
+    expect(mockListDerivatives).not.toHaveBeenCalled()
   })
 
   it('404s derivative stream requests when the derivative is missing', async () => {
@@ -515,9 +557,20 @@ describe('video asset harness API', () => {
 
   it('lists project intelligence jobs for the producer activity panel', async () => {
     const res = await jobsHandler({ params: { id: '11111111-1111-4111-8111-111111111111' }, query: { limit: '20' } } as any)
+    expect(mockRequireWriteAccess).toHaveBeenCalled()
     expect(mockGetProject).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111')
     expect(mockListProjectIntelligenceJobs).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', 20)
     expect(res.jobs).toEqual([{ id: 'j1', action: 'mask-lift', status: 'blocked' }])
+  })
+
+  it('rejects project intelligence jobs when a writable user cannot mutate the project', async () => {
+    mockRequireWriteAccess.mockResolvedValue({ id: 'user-2', role: 'editor' })
+
+    await expect(jobsHandler({ params: { id: '11111111-1111-4111-8111-111111111111' }, query: { limit: '20' } } as any))
+      .rejects
+      .toMatchObject({ statusCode: 403, statusMessage: 'Access denied to this project' })
+
+    expect(mockListProjectIntelligenceJobs).not.toHaveBeenCalled()
   })
 
   it('returns a reviewable assemble plan instead of mutating the timeline', async () => {
