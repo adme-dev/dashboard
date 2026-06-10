@@ -41,6 +41,8 @@ const mockCreateQueuedExtractionJob = vi.fn()
 const mockMarkAssetIntelligenceJobFailed = vi.fn()
 const mockListProjectIntelligenceJobs = vi.fn()
 const mockListDerivatives = vi.fn()
+const mockGetDerivative = vi.fn()
+const mockAddDerivativeToProjectBucket = vi.fn()
 vi.mock('~~/server/utils/video-asset-intelligence/db', () => ({
   ensureDefaultBuckets: (...args: unknown[]) => mockEnsureBuckets(...args),
   syncProjectVideoAssetsIntoGeneratedBucket: (...args: unknown[]) => mockSyncGeneratedAssets(...args),
@@ -52,6 +54,8 @@ vi.mock('~~/server/utils/video-asset-intelligence/db', () => ({
   markAssetIntelligenceJobFailed: (...args: unknown[]) => mockMarkAssetIntelligenceJobFailed(...args),
   listProjectIntelligenceJobs: (...args: unknown[]) => mockListProjectIntelligenceJobs(...args),
   listAssetDerivatives: (...args: unknown[]) => mockListDerivatives(...args),
+  getAssetDerivative: (...args: unknown[]) => mockGetDerivative(...args),
+  addDerivativeToProjectBucket: (...args: unknown[]) => mockAddDerivativeToProjectBucket(...args),
 }))
 
 const mockEnqueueAssetIntelligence = vi.fn()
@@ -66,6 +70,7 @@ const directiveHandler = (await import('~~/server/api/agency/video/bucket-items/
 const extractHandler = (await import('~~/server/api/agency/video/assets/[id]/extract.post')).default
 const maskHandler = (await import('~~/server/api/agency/video/assets/[id]/masks.post')).default
 const derivativesHandler = (await import('~~/server/api/agency/video/assets/[id]/derivatives.get')).default
+const addDerivativeToBucketHandler = (await import('~~/server/api/agency/video/derivatives/[id]/add-to-bucket.post')).default
 const assembleHandler = (await import('~~/server/api/agency/video/projects/[id]/assemble.post')).default
 const jobsHandler = (await import('~~/server/api/agency/video/projects/[id]/intelligence-jobs.get')).default
 
@@ -86,6 +91,29 @@ describe('video asset harness API', () => {
     mockEnqueueAssetIntelligence.mockResolvedValue(undefined)
     mockListProjectIntelligenceJobs.mockResolvedValue([{ id: 'j1', action: 'mask-lift', status: 'blocked' }])
     mockListDerivatives.mockResolvedValue([{ id: 'd1', kind: 'foreground-png' }])
+    mockGetDerivative.mockResolvedValue({
+      id: 'd1',
+      sourceAssetId: 'a1',
+      projectId: '11111111-1111-4111-8111-111111111111',
+      kind: 'foreground-png',
+      r2Key: 'video-asset-derivatives/p1/a1/foreground.png',
+      width: 1080,
+      height: 1080,
+      metadata: { prompt: 'lift logo' },
+      createdAt: 'now',
+    })
+    mockAddDerivativeToProjectBucket.mockResolvedValue({
+      id: 'item-derivative',
+      bucketId: 'bucket-generated',
+      assetId: null,
+      r2Key: 'video-asset-derivatives/p1/a1/foreground.png',
+      title: 'Lifted logo',
+      role: 'hero-overlay',
+      directive: { prompt: 'place top right' },
+      status: 'ready',
+      createdAt: 'now',
+      updatedAt: 'now',
+    })
     mockUploadFile.mockResolvedValue({ key: 'video-asset-masks/p1/a1/mask.png', url: '/api/_uploads/video-asset-masks/p1/a1/mask.png', size: 4 })
     mockGetPresignedDownloadUrl.mockResolvedValue('/signed-mask-url')
     mockGetPublicUrl.mockReturnValue(null)
@@ -194,6 +222,43 @@ describe('video asset harness API', () => {
     const res = await derivativesHandler({ params: { id: 'a1' } } as any)
     expect(mockListDerivatives).toHaveBeenCalledWith('a1')
     expect(res.derivatives[0].kind).toBe('foreground-png')
+  })
+
+  it('adds a derivative to the requested project bucket', async () => {
+    const directive = { prompt: 'place top right' }
+    const res = await addDerivativeToBucketHandler({
+      params: { id: 'd1' },
+      body: {
+        bucketKind: 'graphics',
+        role: 'hero-overlay',
+        title: 'Lifted logo',
+        directive,
+      },
+    } as any)
+
+    expect(mockRequireWriteAccess).toHaveBeenCalledWith(expect.objectContaining({ params: { id: 'd1' } }))
+    expect(mockGetDerivative).toHaveBeenCalledWith('d1')
+    expect(mockGetProject).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111')
+    expect(mockAddDerivativeToProjectBucket).toHaveBeenCalledWith({
+      derivative: expect.objectContaining({ id: 'd1', projectId: '11111111-1111-4111-8111-111111111111' }),
+      bucketKind: 'graphics',
+      role: 'hero-overlay',
+      title: 'Lifted logo',
+      directive,
+    })
+    expect(g.setResponseStatus).toHaveBeenCalledWith(expect.anything(), 201)
+    expect(res).toEqual({
+      item: expect.objectContaining({ id: 'item-derivative', assetId: null }),
+      derivative: expect.objectContaining({ id: 'd1' }),
+    })
+  })
+
+  it('rejects add-to-bucket when the derivative is missing', async () => {
+    mockGetDerivative.mockResolvedValue(null)
+
+    await expect(addDerivativeToBucketHandler({ params: { id: 'missing-derivative' }, body: {} } as any))
+      .rejects
+      .toMatchObject({ statusCode: 404 })
   })
 
   it('lists project intelligence jobs for the producer activity panel', async () => {

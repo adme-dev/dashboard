@@ -6,11 +6,13 @@ import {
   mapDerivativeRow,
   mapIntelligenceJobRow,
   type VideoAssetIntelligenceJob,
+  type VideoAssetDerivative,
   type VideoBucketItem,
+  type VideoBucketKind,
   type VideoProjectBucket,
 } from './buckets'
 import { defaultModelForAction } from './registry'
-import type { AssetIntelligenceActionId } from './registry'
+import type { AssetDerivativeKind, AssetIntelligenceActionId } from './registry'
 
 export async function ensureDefaultBuckets(projectId: string): Promise<void> {
   for (const bucket of DEFAULT_VIDEO_BUCKETS) {
@@ -86,6 +88,89 @@ export async function listAssetDerivatives(sourceAssetId: string) {
     [sourceAssetId]
   )
   return rows.map(mapDerivativeRow)
+}
+
+export async function getAssetDerivative(id: string): Promise<VideoAssetDerivative | null> {
+  const row = await queryOne(
+    `SELECT * FROM video_asset_derivatives WHERE id = $1`,
+    [id]
+  )
+  return row ? mapDerivativeRow(row) : null
+}
+
+export async function createAssetDerivative(input: {
+  id?: string | null
+  sourceAssetId: string
+  projectId?: string | null
+  kind: AssetDerivativeKind
+  r2Key: string
+  width?: number | null
+  height?: number | null
+  metadata?: Record<string, unknown> | null
+}): Promise<VideoAssetDerivative> {
+  const row = await queryOne(
+    `INSERT INTO video_asset_derivatives
+      (id, source_asset_id, project_id, kind, r2_key, width, height, metadata)
+     VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8::jsonb)
+     RETURNING *`,
+    [
+      input.id ?? null,
+      input.sourceAssetId,
+      input.projectId ?? null,
+      input.kind,
+      input.r2Key,
+      input.width ?? null,
+      input.height ?? null,
+      JSON.stringify(input.metadata ?? {}),
+    ]
+  )
+  return mapDerivativeRow(row)
+}
+
+function derivativeTitle(derivative: VideoAssetDerivative): string {
+  const metadataTitle = derivative.metadata.title
+  if (typeof metadataTitle === 'string' && metadataTitle.trim()) return metadataTitle.trim()
+  return `${derivative.kind.replace(/-/g, ' ')} derivative`
+}
+
+export async function addDerivativeToProjectBucket(input: {
+  derivative: VideoAssetDerivative
+  bucketKind?: VideoBucketKind
+  role?: string | null
+  title?: string | null
+  directive?: Record<string, unknown> | null
+}): Promise<VideoBucketItem> {
+  if (!input.derivative.projectId) throw new Error(`asset derivative ${input.derivative.id} is not attached to a project`)
+
+  const bucketKind = input.bucketKind ?? 'generated'
+  await ensureDefaultBuckets(input.derivative.projectId)
+  const bucket = await queryOne(
+    `SELECT id FROM video_project_buckets WHERE project_id = $1 AND kind = $2`,
+    [input.derivative.projectId, bucketKind]
+  )
+  if (!bucket?.id) throw new Error(`video project bucket ${bucketKind} not found for project ${input.derivative.projectId}`)
+
+  const directive = {
+    source: 'video_asset_derivatives',
+    derivativeId: input.derivative.id,
+    sourceAssetId: input.derivative.sourceAssetId,
+    kind: input.derivative.kind,
+    ...(input.directive ?? {}),
+  }
+  const row = await queryOne(
+    `INSERT INTO video_project_bucket_items
+      (bucket_id, asset_id, r2_key, title, role, directive, status)
+     VALUES ($1, null, $2, $3, $4, $5::jsonb, 'ready')
+     RETURNING *`,
+    [
+      bucket.id,
+      input.derivative.r2Key,
+      input.title ?? derivativeTitle(input.derivative),
+      input.role ?? `derivative-${input.derivative.kind}`,
+      JSON.stringify(directive),
+    ]
+  )
+  return mapBucketItemRow(row)
 }
 
 export async function listProjectIntelligenceJobs(projectId: string, limit = 50): Promise<VideoAssetIntelligenceJob[]> {
