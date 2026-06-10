@@ -4,7 +4,13 @@ definePageMeta({ layout: 'agency', middleware: ['role-media'] })
 const toast = useToast()
 const route = useRoute()
 const router = useRouter()
-const { fetchSpendSummary, syncSpend } = useSocialConnections()
+const {
+  fetchSpendSummary,
+  fetchPacingReview,
+  fetchBudgetControlSettings,
+  updateBudgetControlSettings,
+  syncSpend,
+} = useSocialConnections()
 
 const now = new Date()
 const selectedMonth = ref(parseInt(String(route.query.month || now.getMonth() + 1), 10))
@@ -17,6 +23,15 @@ const searchQuery = ref('')
 
 const spendData = ref<any>(null)
 const bankCharges = ref<any>(null)
+const pacingReview = ref<any>(null)
+const pacingReviewLoading = ref(false)
+const budgetControlSettings = ref({
+  liveBudgetChangesEnabled: false,
+  metaBudgetWritesEnabled: false,
+  googleBudgetWritesEnabled: false,
+})
+const budgetControlLoading = ref(false)
+const budgetControlSaving = ref(false)
 const bankLoading = ref(false)
 
 const platformOptions = [
@@ -46,6 +61,59 @@ async function loadSpend(refresh = false) {
     toast.add({ title: 'Error loading spend', description: e.message, color: 'error' })
   } finally {
     loading.value = false
+  }
+}
+
+async function loadPacingReview() {
+  if (!showPacingReview.value) {
+    pacingReview.value = null
+    return
+  }
+  pacingReviewLoading.value = true
+  try {
+    pacingReview.value = await fetchPacingReview(selectedMonth.value, selectedYear.value, selectedPlatform.value)
+  } catch (e: any) {
+    pacingReview.value = null
+    toast.add({ title: 'Error loading pacing review', description: e.message, color: 'error' })
+  } finally {
+    pacingReviewLoading.value = false
+  }
+}
+
+async function loadBudgetControlSettings() {
+  budgetControlLoading.value = true
+  try {
+    budgetControlSettings.value = await fetchBudgetControlSettings()
+  } catch (e: any) {
+    toast.add({ title: 'Error loading budget control', description: e.data?.statusMessage || e.message, color: 'error' })
+  } finally {
+    budgetControlLoading.value = false
+  }
+}
+
+async function setLiveBudgetChanges(enabled: boolean) {
+  const previous = { ...budgetControlSettings.value }
+  budgetControlSaving.value = true
+  budgetControlSettings.value = {
+    liveBudgetChangesEnabled: enabled,
+    metaBudgetWritesEnabled: enabled,
+    googleBudgetWritesEnabled: enabled,
+  }
+  try {
+    const result = await updateBudgetControlSettings(budgetControlSettings.value)
+    budgetControlSettings.value = result.config
+    toast.add({
+      title: enabled ? 'Live budget changes armed' : 'Recommend-only mode enabled',
+      description: enabled
+        ? 'Meta and Google budget changes are armed, but platform execution still requires the server write layer.'
+        : 'AI pacing recommendations will stay in review and audit history only.',
+      color: enabled ? 'warning' : 'success',
+    })
+  } catch (e: any) {
+    budgetControlSettings.value = previous
+    toast.add({ title: 'Could not update budget control', description: e.data?.statusMessage || e.message, color: 'error' })
+  } finally {
+    budgetControlSaving.value = false
   }
 }
 
@@ -210,7 +278,7 @@ async function finishSync(statuses: SyncStatusResponse[]) {
 
 // Re-fetch summary + bank charges, bypassing the KV cache.
 async function refreshAfterSync() {
-  await loadSpend(true)
+  await Promise.all([loadSpend(true), loadPacingReview()])
   loadBankCharges(true)
 }
 
@@ -251,6 +319,7 @@ function exportCSV() {
 
 watch([selectedMonth, selectedYear, selectedPlatform], () => {
   loadSpend()
+  loadPacingReview()
   loadBankCharges()
 
   // Sync URL query string so the current view is linkable
@@ -264,6 +333,8 @@ watch([selectedMonth, selectedYear, selectedPlatform], () => {
 
 onMounted(() => {
   loadSpend()
+  loadPacingReview()
+  loadBudgetControlSettings()
   loadBankCharges()
 })
 
@@ -303,6 +374,8 @@ const hasBankData = computed(() => {
   if (!bankCharges.value?.connected) return false
   return bankCharges.value.total > 0 || (bankCharges.value.metaBilling?.total ?? 0) > 0
 })
+
+const showPacingReview = computed(() => ['all', 'meta', 'google'].includes(selectedPlatform.value))
 
 /** Combined: Xero bank/CC + Meta billing (for platforms not matched in Xero) */
 const combinedBankTotal = computed(() => {
@@ -498,6 +571,17 @@ const bankDiscrepancy = computed(() => {
           <p class="text-2xl font-bold tracking-tight" :class="flaggedItems.length > 0 ? 'text-red-500' : ''">{{ flaggedItems.length }}</p>
         </div>
       </div>
+
+      <SocialSpendPacingReview
+        v-if="showPacingReview"
+        :review="pacingReview"
+        :loading="pacingReviewLoading"
+        :budget-control="budgetControlSettings"
+        :budget-control-loading="budgetControlLoading"
+        :budget-control-saving="budgetControlSaving"
+        @sync="handleSyncAll"
+        @update-live-budget-changes="setLiveBudgetChanges"
+      />
 
       <!-- Loading -->
       <div v-if="loading" class="flex items-center justify-center py-16">

@@ -2423,7 +2423,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-chart-area',
     categoryIconBg: 'bg-cyan-50',
     categoryIconColor: 'text-cyan-600',
-    description: 'Detects ad-spend pacing problems — underspend, overspend, stopped, paused-with-budget, stale-sync and zero-conversion — then posts a daily Slack budget review plus real-time critical alerts.',
+    description: 'Detects ad-spend pacing problems — underspend, overspend, stopped, paused-with-budget, stale-sync and zero-conversion — then adds a recommend-only AI pacing review for Meta and Google budget decisions.',
     details: [
       {
         title: 'The Gap This Closes',
@@ -2432,6 +2432,10 @@ const features: Record<string, Feature> = {
       {
         title: 'Six Pacing and Delivery Signals',
         content: 'The analyser detects six distinct conditions across Meta and Google campaigns. Underspend: campaign is tracking well below its budget pace and will likely leave significant spend on the table by month-end. Overspend: projected to exceed the monthly budget before the month ends. Stopped: a campaign that had consistent recent spend has gone to zero — could be an accidental pause, a payment issue, or a platform policy flag. Paused-with-budget: a campaign is paused or removed at the platform level but budget is still allocated in the system, meaning the client is potentially expecting delivery that is not happening. Stale-sync: the spend data has not refreshed recently enough to trust pacing calculations — this alert prompts a manual sync before acting on the numbers. Zero-conversion: a campaign is spending real budget but recording no conversions, which could mean a tracking breakage, a landing-page issue, or a targeting problem.'
+      },
+      {
+        title: 'AI Pacing Review',
+        content: 'The Ad Spend page turns those same deterministic pacing checks into a recommend-only review queue for Meta and Google. Media buyers see critical and warning counts, projected over- or under-spend, stale-sync flags, and suggested daily budget targets. AI summarizes which campaigns to inspect first, but it never changes platform budgets or statuses in this version.'
       },
       {
         title: 'Daily Slack Budget Review',

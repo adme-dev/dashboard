@@ -23,6 +23,62 @@ interface SpendSummary {
   totals: { budget: number; spend: number; commission: number; variance: number }
 }
 
+interface PacingReview {
+  period: string
+  generatedAt: string
+  items: Array<{
+    mediaSpendId: string
+    clientName: string
+    platform: 'meta' | 'google'
+    campaignId: string | null
+    campaignName: string
+    campaignStatus: string | null
+    issueType: string
+    severity: 'critical' | 'warning' | 'info'
+    budget: number
+    mtdSpend: number
+    expectedToDate: number
+    projectedMonthEnd: number
+    currentDailyBudget: number
+    recommendedDailyBudget: number
+    pacingRatio: number
+    performance: {
+      impressions: number
+      clicks: number
+      conversions: number
+      ctr: number | null
+      cpc: number | null
+      costPerConversion: number | null
+      conversionRate: number | null
+      reach: number | null
+      frequency: number | null
+      impressionShare: number | null
+      lostImpressionShareBudget: number | null
+      lostImpressionShareRank: number | null
+      bidStrategy: string | null
+      budgetType: string | null
+    }
+    syncedAt: string | null
+    recommendedAction: string
+    canApplyAutomatically: false
+  }>
+  summary: {
+    criticalCount: number
+    warningCount: number
+    infoCount: number
+    staleCount: number
+    projectedOverspend: number
+    projectedUnderspend: number
+  }
+  aiSummary: string | null
+}
+
+interface SocialBudgetControlSettings {
+  liveBudgetChangesEnabled: boolean
+  metaBudgetWritesEnabled: boolean
+  googleBudgetWritesEnabled: boolean
+}
+
 export function useSocialConnections() {
   const connections = ref<any[]>([])
   const loading = ref(false)
@@ -171,6 +227,23 @@ export function useSocialConnections() {
     return await $fetch('/api/agency/social/spend/summary', { params })
   }
 
+  async function fetchPacingReview(month: number, year: number, platform?: string): Promise<PacingReview> {
+    const params: any = { month, year }
+    if (platform === 'meta' || platform === 'google') params.platform = platform
+    return await $fetch('/api/agency/social/spend/pacing-review', { params })
+  }
+
+  async function fetchBudgetControlSettings(): Promise<SocialBudgetControlSettings> {
+    return await $fetch('/api/agency/social/spend/budget-control-settings')
+  }
+
+  async function updateBudgetControlSettings(settings: Partial<SocialBudgetControlSettings>) {
+    return await $fetch<{ ok: boolean; config: SocialBudgetControlSettings }>(
+      '/api/agency/social/spend/budget-control-settings',
+      { method: 'PUT', body: settings }
+    )
+  }
+
   async function updateClientMappings(connectionId: string, mappings: any[]) {
     return await $fetch(`/api/agency/social/connections/${connectionId}/client-map`, {
       method: 'PUT',
@@ -284,6 +357,9 @@ export function useSocialConnections() {
     disconnectPlatform,
     syncSpend,
     fetchSpendSummary,
+    fetchPacingReview,
+    fetchBudgetControlSettings,
+    updateBudgetControlSettings,
     updateClientMappings,
     fetchPlatformAccounts,
     fetchAccountSpend,
