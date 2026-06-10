@@ -17,7 +17,8 @@ const {
 
 describe('asset intelligence lifecycle', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    mockQueryOne.mockReset()
+    mockQueryRows.mockReset()
   })
 
   it('creates queued extraction jobs with a default model/provider', async () => {
@@ -65,5 +66,40 @@ describe('asset intelligence lifecycle', () => {
     await expect(markAssetIntelligenceJobRunning('job-1')).resolves.toMatchObject({ status: 'running' })
     await expect(markAssetIntelligenceJobSucceeded({ id: 'job-1', outputDerivativeIds: ['derivative-1'] })).resolves.toMatchObject({ status: 'succeeded' })
     await expect(markAssetIntelligenceJobFailed('job-2', 'bad mask')).resolves.toMatchObject({ status: 'failed', errorMessage: 'bad mask' })
+  })
+
+  it('does not mark final or blocked jobs running when no queued row is updated', async () => {
+    mockQueryOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'job-1', project_id: 'project-1', source_asset_id: 'asset-1', bucket_item_id: null, action: 'mask-only', model_id: 'replicate/sam-2', provider: 'replicate', status: 'succeeded', prompt: null, brush_mask_key: 'mask.png', output_derivative_ids: ['derivative-1'], error_message: null, created_by: 'user-1', created_at: 'now', updated_at: 'now', started_at: 'now', completed_at: 'now' })
+
+    await expect(markAssetIntelligenceJobRunning('job-1')).resolves.toMatchObject({
+      status: 'succeeded',
+      outputDerivativeIds: ['derivative-1'],
+    })
+
+    expect(mockQueryOne.mock.calls[0][0]).toContain(`status = 'queued'`)
+    expect(mockQueryOne.mock.calls[1][0]).toContain('SELECT * FROM video_asset_intelligence_jobs')
+  })
+
+  it('returns blocked jobs unchanged when success or failure finalizers update no rows', async () => {
+    mockQueryOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'job-blocked', project_id: 'project-1', source_asset_id: 'asset-1', bucket_item_id: null, action: 'erase-fill', model_id: 'workers-ai/flux-edit', provider: 'workers-ai', status: 'blocked', prompt: null, brush_mask_key: null, output_derivative_ids: [], error_message: 'queue unavailable', created_by: 'user-1', created_at: 'now', updated_at: 'now', started_at: null, completed_at: 'now' })
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'job-blocked', project_id: 'project-1', source_asset_id: 'asset-1', bucket_item_id: null, action: 'erase-fill', model_id: 'workers-ai/flux-edit', provider: 'workers-ai', status: 'blocked', prompt: null, brush_mask_key: null, output_derivative_ids: [], error_message: 'queue unavailable', created_by: 'user-1', created_at: 'now', updated_at: 'now', started_at: null, completed_at: 'now' })
+
+    await expect(markAssetIntelligenceJobSucceeded({ id: 'job-blocked', outputDerivativeIds: ['derivative-1'] })).resolves.toMatchObject({
+      status: 'blocked',
+      outputDerivativeIds: [],
+      errorMessage: 'queue unavailable',
+    })
+    await expect(markAssetIntelligenceJobFailed('job-blocked', 'new error')).resolves.toMatchObject({
+      status: 'blocked',
+      errorMessage: 'queue unavailable',
+    })
+
+    expect(mockQueryOne.mock.calls[0][0]).toContain(`status IN ('queued','running')`)
+    expect(mockQueryOne.mock.calls[2][0]).toContain(`status IN ('queued','running')`)
   })
 })

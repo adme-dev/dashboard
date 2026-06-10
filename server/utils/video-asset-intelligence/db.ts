@@ -171,11 +171,15 @@ export async function markAssetIntelligenceJobRunning(id: string): Promise<Video
   const row = await queryOne(
     `UPDATE video_asset_intelligence_jobs
         SET status = 'running', started_at = COALESCE(started_at, now()), updated_at = now()
-      WHERE id = $1
+      WHERE id = $1 AND status = 'queued'
       RETURNING *`,
     [id]
   )
-  if (!row) throw new Error(`asset intelligence job ${id} not found`)
+  if (!row) {
+    const existing = await queryOne(`SELECT * FROM video_asset_intelligence_jobs WHERE id = $1`, [id])
+    if (!existing) throw new Error(`asset intelligence job ${id} not found`)
+    return mapIntelligenceJobRow(existing)
+  }
   return mapIntelligenceJobRow(row)
 }
 
@@ -190,7 +194,7 @@ export async function markAssetIntelligenceJobSucceeded(input: {
             error_message = null,
             completed_at = now(),
             updated_at = now()
-      WHERE id = $1 AND status NOT IN ('succeeded','failed')
+      WHERE id = $1 AND status IN ('queued','running')
       RETURNING *`,
     [input.id, JSON.stringify(input.outputDerivativeIds)]
   )
@@ -206,7 +210,7 @@ export async function markAssetIntelligenceJobFailed(id: string, errorMessage: s
   const row = await queryOne(
     `UPDATE video_asset_intelligence_jobs
         SET status = 'failed', error_message = $2, completed_at = now(), updated_at = now()
-      WHERE id = $1 AND status NOT IN ('succeeded','failed')
+      WHERE id = $1 AND status IN ('queued','running')
       RETURNING *`,
     [id, errorMessage]
   )

@@ -38,6 +38,7 @@ const mockListBucketItems = vi.fn()
 const mockCreateOrUpdateDirective = vi.fn()
 const mockCreateBlockedExtractionJob = vi.fn()
 const mockCreateQueuedExtractionJob = vi.fn()
+const mockMarkAssetIntelligenceJobFailed = vi.fn()
 const mockListProjectIntelligenceJobs = vi.fn()
 const mockListDerivatives = vi.fn()
 vi.mock('~~/server/utils/video-asset-intelligence/db', () => ({
@@ -48,6 +49,7 @@ vi.mock('~~/server/utils/video-asset-intelligence/db', () => ({
   createOrUpdateBucketItemDirective: (...args: unknown[]) => mockCreateOrUpdateDirective(...args),
   createBlockedExtractionJob: (...args: unknown[]) => mockCreateBlockedExtractionJob(...args),
   createQueuedExtractionJob: (...args: unknown[]) => mockCreateQueuedExtractionJob(...args),
+  markAssetIntelligenceJobFailed: (...args: unknown[]) => mockMarkAssetIntelligenceJobFailed(...args),
   listProjectIntelligenceJobs: (...args: unknown[]) => mockListProjectIntelligenceJobs(...args),
   listAssetDerivatives: (...args: unknown[]) => mockListDerivatives(...args),
 }))
@@ -79,6 +81,7 @@ describe('video asset harness API', () => {
     mockCreateOrUpdateDirective.mockResolvedValue({ id: 'i1', directive: { prompt: 'lift logo' } })
     mockCreateBlockedExtractionJob.mockResolvedValue({ id: 'j1', status: 'blocked', action: 'mask-lift' })
     mockCreateQueuedExtractionJob.mockResolvedValue({ id: 'job-queued', status: 'queued', action: 'erase-fill' })
+    mockMarkAssetIntelligenceJobFailed.mockResolvedValue({ id: 'job-queued', status: 'failed', action: 'erase-fill', errorMessage: 'Queue offline' })
     mockGetAssetIntelligenceQueue.mockReturnValue(null)
     mockEnqueueAssetIntelligence.mockResolvedValue(undefined)
     mockListProjectIntelligenceJobs.mockResolvedValue([{ id: 'j1', action: 'mask-lift', status: 'blocked' }])
@@ -141,6 +144,24 @@ describe('video asset harness API', () => {
       sourceAssetId: '22222222-2222-4222-8222-222222222222',
     })
     expect(res.job.status).toBe('queued')
+  })
+
+  it('marks queued asset intelligence jobs failed when enqueue rejects', async () => {
+    mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
+    mockCreateQueuedExtractionJob.mockResolvedValue({ id: 'job-queued', status: 'queued', action: 'erase-fill' })
+    mockEnqueueAssetIntelligence.mockRejectedValue(new Error('Queue offline'))
+
+    await expect(extractHandler({
+      params: { id: '22222222-2222-4222-8222-222222222222' },
+      body: {
+        projectId: '11111111-1111-4111-8111-111111111111',
+        action: 'erase-fill',
+        prompt: 'erase badge',
+        brushMaskKey: 'mask.png',
+      }
+    } as any)).rejects.toThrow('Queue offline')
+
+    expect(mockMarkAssetIntelligenceJobFailed).toHaveBeenCalledWith('job-queued', 'Queue offline')
   })
 
   it('uploads a brush mask for a selected asset', async () => {

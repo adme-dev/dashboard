@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getAssetIntelligenceAction } from '~~/server/utils/video-asset-intelligence/registry'
-import { createBlockedExtractionJob, createQueuedExtractionJob } from '~~/server/utils/video-asset-intelligence/db'
+import { createBlockedExtractionJob, createQueuedExtractionJob, markAssetIntelligenceJobFailed } from '~~/server/utils/video-asset-intelligence/db'
 import { enqueueAssetIntelligence, getAssetIntelligenceQueue } from '~~/server/utils/video-asset-intelligence/enqueue'
 
 const BodySchema = z.object({
@@ -33,7 +33,13 @@ export default defineEventHandler(async (event) => {
 
   if (getAssetIntelligenceQueue(event)) {
     const job = await createQueuedExtractionJob(input)
-    await enqueueAssetIntelligence(event, { jobId: job.id, projectId: body.projectId, sourceAssetId })
+    try {
+      await enqueueAssetIntelligence(event, { jobId: job.id, projectId: body.projectId, sourceAssetId })
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error || 'Failed to enqueue asset intelligence job')
+      await markAssetIntelligenceJobFailed(job.id, errorMessage)
+      throw error
+    }
     setResponseStatus(event, 202)
     return { job }
   }
