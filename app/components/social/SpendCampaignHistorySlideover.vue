@@ -54,6 +54,24 @@ interface BudgetAuditEntry {
   note: string | null
 }
 
+interface CampaignActionEntry {
+  id: string
+  mediaSpendId: string
+  platform: string
+  actionType: string
+  actionStatus: string
+  requestedBy: string | null
+  requestedByName: string | null
+  requestedByAvatar: string | null
+  requestedAt: string
+  executedAt: string | null
+  previousValue: Record<string, unknown>
+  newValue: Record<string, unknown>
+  reason: string | null
+  externalRequestId: string | null
+  errorMessage: string | null
+}
+
 const props = defineProps<{
   item: PacingReviewItem | null
 }>()
@@ -62,6 +80,7 @@ const open = defineModel<boolean>('open', { default: false })
 const toast = useToast()
 
 const history = ref<BudgetAuditEntry[]>([])
+const platformActions = ref<CampaignActionEntry[]>([])
 const loading = ref(false)
 const loadedSpendId = ref<string | null>(null)
 
@@ -80,7 +99,12 @@ watch(
 async function loadHistory(spendId: string) {
   loading.value = true
   try {
-    history.value = await $fetch<BudgetAuditEntry[]>(`/api/agency/social/spend/${spendId}/history`)
+    const [budgetHistory, actionHistory] = await Promise.all([
+      $fetch<BudgetAuditEntry[]>(`/api/agency/social/spend/${spendId}/history`),
+      $fetch<CampaignActionEntry[]>(`/api/agency/social/spend/${spendId}/actions`),
+    ])
+    history.value = budgetHistory
+    platformActions.value = actionHistory
     loadedSpendId.value = spendId
   } catch (e: any) {
     toast.add({
@@ -121,6 +145,26 @@ function toneClass(tone: BudgetHistoryTone) {
   if (tone === 'increase') return 'text-emerald-500'
   if (tone === 'decrease') return 'text-red-500'
   return 'text-muted'
+}
+
+function actionLabel(value: string) {
+  return value.split('_').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
+}
+
+function actionStatusColor(value: string) {
+  if (value === 'applied') return 'success'
+  if (value === 'failed' || value === 'cancelled') return 'error'
+  if (value === 'approved' || value === 'pending') return 'warning'
+  return 'neutral'
+}
+
+function summarizeValue(value: Record<string, unknown>) {
+  const entries = Object.entries(value || {})
+  if (!entries.length) return '-'
+  return entries
+    .slice(0, 2)
+    .map(([key, val]) => `${actionLabel(key)}: ${String(val)}`)
+    .join(' · ')
 }
 </script>
 
@@ -201,7 +245,7 @@ function toneClass(tone: BudgetHistoryTone) {
             <p class="text-sm text-default">{{ item.recommendedAction }}</p>
           </section>
 
-          <section class="p-4 sm:p-5">
+          <section class="border-b border-default p-4 sm:p-5">
             <div class="mb-3 flex items-center justify-between gap-3">
               <div class="flex items-center gap-2">
                 <UIcon name="i-lucide-history" class="size-4 text-primary" />
@@ -239,9 +283,51 @@ function toneClass(tone: BudgetHistoryTone) {
             </div>
           </section>
 
-          <div class="border-t border-default bg-elevated/20 px-4 py-3 text-xs text-muted sm:px-5">
-            Platform-side Meta and Google adjustment history will appear here once approved write actions are enabled.
-          </div>
+          <section class="p-4 sm:p-5">
+            <div class="mb-3 flex items-center justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <UIcon name="i-lucide-send" class="size-4 text-primary" />
+                <h4 class="text-sm font-semibold">Platform actions</h4>
+              </div>
+              <UBadge color="neutral" variant="subtle" size="sm">{{ platformActions.length }} recorded</UBadge>
+            </div>
+
+            <div v-if="loading" class="flex items-center gap-2 py-5 text-sm text-muted">
+              <UIcon name="i-lucide-loader-2" class="size-4 animate-spin" />
+              Loading platform actions...
+            </div>
+
+            <div v-else-if="platformActions.length" class="space-y-3">
+              <div v-for="action in platformActions" :key="action.id" class="rounded-lg border border-default p-3">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <p class="text-sm font-medium">{{ actionLabel(action.actionType) }}</p>
+                      <UBadge :color="actionStatusColor(action.actionStatus) as any" variant="soft" size="sm">
+                        {{ actionLabel(action.actionStatus) }}
+                      </UBadge>
+                    </div>
+                    <p class="mt-0.5 text-xs text-muted">
+                      {{ action.requestedByName || 'System' }} · {{ formatBudgetHistoryTime(action.executedAt || action.requestedAt) }}
+                    </p>
+                  </div>
+                  <UBadge color="neutral" variant="subtle" size="sm">
+                    {{ platformLabel(action.platform === 'google_ads' ? 'google' : action.platform) }}
+                  </UBadge>
+                </div>
+                <div class="mt-2 grid gap-2 text-xs text-muted sm:grid-cols-2">
+                  <p>From {{ summarizeValue(action.previousValue) }}</p>
+                  <p>To {{ summarizeValue(action.newValue) }}</p>
+                </div>
+                <p v-if="action.reason" class="mt-2 text-xs text-muted">{{ action.reason }}</p>
+                <p v-if="action.errorMessage" class="mt-2 text-xs text-red-500">{{ action.errorMessage }}</p>
+              </div>
+            </div>
+
+            <div v-else class="rounded-lg border border-dashed border-default p-4 text-sm text-muted">
+              No Meta or Google write actions have been recorded for this campaign yet.
+            </div>
+          </section>
         </div>
       </div>
     </template>
