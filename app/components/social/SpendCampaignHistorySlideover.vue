@@ -84,6 +84,7 @@ const history = ref<BudgetAuditEntry[]>([])
 const platformActions = ref<CampaignActionEntry[]>([])
 const loading = ref(false)
 const planning = ref(false)
+const approvingActionId = ref<string | null>(null)
 const cancellingActionId = ref<string | null>(null)
 const loadedSpendId = ref<string | null>(null)
 
@@ -178,6 +179,30 @@ async function cancelPlannedAction(action: CampaignActionEntry) {
     })
   } finally {
     cancellingActionId.value = null
+  }
+}
+
+async function approvePlannedAction(action: CampaignActionEntry) {
+  if (!props.item || action.actionStatus !== 'planned' || approvingActionId.value) return
+  approvingActionId.value = action.id
+  try {
+    await $fetch(`/api/agency/social/spend/${props.item.mediaSpendId}/actions/${action.id}/approve`, {
+      method: 'POST',
+    })
+    toast.add({
+      title: 'Planned action approved',
+      description: 'The action is approved for a future platform write.',
+      color: 'success',
+    })
+    await loadHistory(props.item.mediaSpendId, true)
+  } catch (e: any) {
+    toast.add({
+      title: 'Could not approve planned action',
+      description: e.data?.statusMessage || e.message || 'The planned action was not updated',
+      color: 'error',
+    })
+  } finally {
+    approvingActionId.value = null
   }
 }
 
@@ -392,6 +417,17 @@ function summarizeValue(value: Record<string, unknown>) {
                     <UBadge color="neutral" variant="subtle" size="sm">
                       {{ platformLabel(action.platform === 'google_ads' ? 'google' : action.platform) }}
                     </UBadge>
+                    <UButton
+                      v-if="action.actionStatus === 'planned'"
+                      size="xs"
+                      variant="soft"
+                      color="primary"
+                      icon="i-lucide-check"
+                      :loading="approvingActionId === action.id"
+                      @click="approvePlannedAction(action)"
+                    >
+                      Approve
+                    </UButton>
                     <UButton
                       v-if="action.actionStatus === 'planned'"
                       size="xs"
