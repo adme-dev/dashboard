@@ -42,7 +42,10 @@ export default eventHandler(async (event) => {
      FROM campaign_action_log
      WHERE media_spend_id = $1
        AND action_type = 'budget_update'
-       AND action_status = 'planned'
+       AND (
+         action_status = 'planned'
+         OR action_status = 'approved'
+       )
        AND metadata->>'source' = 'ai_pacing_review'
        AND (new_value->>'dailyBudget')::numeric = $2
      ORDER BY requested_at DESC

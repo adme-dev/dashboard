@@ -91,4 +91,20 @@ describe('socialSpendHistory', () => {
       { actionType: 'budget_update', actionStatus: 'planned', newValue: { dailyBudget: 80 } },
     ], 95)).toBeNull()
   })
+
+  it('treats approved budget actions as matching active recommendations', () => {
+    const action = matchingPlannedBudgetAction([
+      {
+        actionType: 'budget_update',
+        actionStatus: 'approved',
+        newValue: { dailyBudget: '95.00' },
+      },
+    ], 95)
+
+    expect(action).toEqual({
+      actionType: 'budget_update',
+      actionStatus: 'approved',
+      newValue: { dailyBudget: '95.00' },
+    })
+  })
 })

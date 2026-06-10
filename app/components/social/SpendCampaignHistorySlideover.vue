@@ -99,6 +99,7 @@ const loadedSpendId = ref<string | null>(null)
 const signals = computed(() => props.item ? pacingSignalRows(props.item) : [])
 const performanceSignals = computed(() => props.item ? performanceSignalRows(props.item.performance) : [])
 const matchingPlannedAction = computed(() => props.item ? matchingPlannedBudgetAction(platformActions.value, props.item.recommendedDailyBudget) : null)
+const matchingActionLabel = computed(() => matchingPlannedAction.value?.actionStatus === 'approved' ? 'Approved' : 'Planned')
 
 watch(
   () => [open.value, props.item?.mediaSpendId] as const,
@@ -353,7 +354,7 @@ function summarizeValue(value: Record<string, unknown>) {
                 :disabled="!!matchingPlannedAction"
                 @click="planCurrentRecommendation"
               >
-                {{ matchingPlannedAction ? 'Planned' : 'Save as planned action' }}
+                {{ matchingPlannedAction ? matchingActionLabel : 'Save as planned action' }}
               </UButton>
             </div>
             <p class="text-sm text-default">{{ item.recommendedAction }}</p>

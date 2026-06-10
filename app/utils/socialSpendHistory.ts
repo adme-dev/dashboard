@@ -155,7 +155,7 @@ export function performanceSignalRows(source: PerformanceSignalSource, locale = 
 export function matchingPlannedBudgetAction<T extends PlannedBudgetActionLike>(actions: T[], recommendedDailyBudget: number): T | null {
   const expected = roundMoney(recommendedDailyBudget)
   return actions.find((action) => {
-    if (action.actionType !== 'budget_update' || action.actionStatus !== 'planned') return false
+    if (action.actionType !== 'budget_update' || !['planned', 'approved'].includes(action.actionStatus)) return false
     const dailyBudget = Number(action.newValue?.dailyBudget)
     return Number.isFinite(dailyBudget) && roundMoney(dailyBudget) === expected
   }) ?? null

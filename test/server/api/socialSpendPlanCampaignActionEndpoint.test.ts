@@ -88,7 +88,7 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
     })
   })
 
-  it('returns an existing planned action instead of creating a duplicate', async () => {
+  it('returns an existing planned or approved action instead of creating a duplicate', async () => {
     mockQueryOne.mockReset()
     mockQueryOne
       .mockResolvedValueOnce({
@@ -101,7 +101,7 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
         media_spend_id: 'spend-1',
         platform: 'google_ads',
         action_type: 'budget_update',
-        action_status: 'planned',
+        action_status: 'approved',
         requested_by: 'user-1',
         requested_at: '2026-06-10T03:00:00.000Z',
         previous_value: { dailyBudget: 120 },
@@ -113,6 +113,8 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
     const result = await handler({ params: { id: 'spend-1' } } as any)
 
     expect(mockRecordCampaignAction).not.toHaveBeenCalled()
+    expect(String(mockQueryOne.mock.calls[1][0])).toContain("action_status = 'planned'")
+    expect(String(mockQueryOne.mock.calls[1][0])).toContain("action_status = 'approved'")
     expect(result).toEqual({
       planned: false,
       existing: true,
@@ -121,7 +123,7 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
         mediaSpendId: 'spend-1',
         platform: 'google',
         actionType: 'budget_update',
-        actionStatus: 'planned',
+        actionStatus: 'approved',
         requestedBy: 'user-1',
         requestedAt: '2026-06-10T03:00:00.000Z',
         previousValue: { dailyBudget: 120 },
