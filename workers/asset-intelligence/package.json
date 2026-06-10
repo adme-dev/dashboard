@@ -1,0 +1,17 @@
+{
+  "name": "asset-intelligence-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "pg": "*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "*",
+    "typescript": "*",
+    "wrangler": "^4.95.0"
+  }
+}

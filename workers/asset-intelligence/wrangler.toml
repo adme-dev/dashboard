@@ -1,0 +1,20 @@
+name = "xeroflow-asset-intelligence"
+main = "src/index.ts"
+compatibility_date = "2024-07-11"
+compatibility_flags = ["nodejs_compat"]
+
+[[queues.consumers]]
+queue = "asset-intelligence"
+max_batch_size = 1
+max_batch_timeout = 5
+
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "900b4b74ec41462cbbabebd0aa8775aa"
+
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "agency-files"
+
+[ai]
+binding = "AI"
