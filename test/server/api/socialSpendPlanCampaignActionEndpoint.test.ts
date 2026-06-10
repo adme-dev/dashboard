@@ -119,6 +119,7 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
     expect(String(mockQueryOne.mock.calls[1][0])).toContain("action_status = 'approved'")
     expect(String(mockQueryOne.mock.calls[1][0])).toContain('approved_by::text')
     expect(String(mockQueryOne.mock.calls[1][0])).toContain('approved_at::text')
+    expect(String(mockQueryOne.mock.calls[1][0])).toContain("ORDER BY CASE WHEN action_status = 'approved' THEN 0 ELSE 1 END")
     expect(result).toEqual({
       planned: false,
       existing: true,

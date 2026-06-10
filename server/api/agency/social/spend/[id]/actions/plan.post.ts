@@ -50,7 +50,8 @@ export default eventHandler(async (event) => {
        )
        AND metadata->>'source' = 'ai_pacing_review'
        AND (new_value->>'dailyBudget')::numeric = $2
-     ORDER BY requested_at DESC
+     ORDER BY CASE WHEN action_status = 'approved' THEN 0 ELSE 1 END,
+              COALESCE(approved_at, requested_at) DESC
      LIMIT 1`,
     [id, recommendedDailyBudget]
   )
