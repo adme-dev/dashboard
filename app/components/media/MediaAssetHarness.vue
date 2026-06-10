@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { assemblyPlanToTimelinePayloads, type AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
+import { derivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
 
 const props = defineProps<{ projectId: string }>()
 const emit = defineEmits<{
   (event: 'add-to-timeline', payload: AiAssemblyTimelinePayload): void
+  (event: 'add-derivative-to-timeline', payload: ReturnType<typeof derivativeTimelinePayload>): void
 }>()
 
 interface Bucket {
@@ -54,6 +56,19 @@ interface IntelligenceJob {
   createdAt: string
 }
 
+interface AssetDerivative {
+  id: string
+  sourceAssetId: string
+  projectId: string | null
+  kind: string
+  r2Key: string
+  width: number | null
+  height: number | null
+  metadata: Record<string, unknown>
+  createdAt: string
+  durationSec?: number | null
+}
+
 const toast = useToast()
 const loading = ref(false)
 const buckets = ref<Bucket[]>([])
@@ -61,6 +76,9 @@ const items = ref<BucketItem[]>([])
 const actions = ref<HarnessAction[]>([])
 const models = ref<HarnessModel[]>([])
 const intelligenceJobs = ref<IntelligenceJob[]>([])
+const selectedDerivatives = ref<AssetDerivative[]>([])
+const loadingDerivatives = ref(false)
+const addingDerivativeId = ref<string | null>(null)
 const selectedItemId = ref<string | null>(null)
 const selectedAction = ref('mask-lift')
 const toolPrompt = ref('Lift the highlighted embedded graphic into a transparent layer.')
@@ -89,6 +107,9 @@ const selectedDirectivePrompt = computed(() => {
   const prompt = selectedItem.value?.directive?.prompt
   return typeof prompt === 'string' ? prompt : null
 })
+const selectedAssetActivityVisible = computed(() =>
+  Boolean(selectedDirectivePrompt.value || selectedItemJobs.value.length || selectedDerivatives.value.length || loadingDerivatives.value)
+)
 const selectedAssetThumbnailUrl = computed(() => selectedItem.value?.assetId && !maskPreviewFailed.value
   ? `/api/agency/video/assets/${encodeURIComponent(selectedItem.value.assetId)}/thumbnail`
   : null)
@@ -226,6 +247,28 @@ async function loadJobs() {
   }
 }
 
+async function loadSelectedDerivatives() {
+  const assetId = selectedItem.value?.assetId
+  if (!assetId) {
+    selectedDerivatives.value = []
+    loadingDerivatives.value = false
+    return
+  }
+  loadingDerivatives.value = true
+  try {
+    const res = await $fetch<{ derivatives: AssetDerivative[] }>(`/api/agency/video/assets/${encodeURIComponent(assetId)}/derivatives`)
+    if (selectedItem.value?.assetId === assetId) selectedDerivatives.value = res.derivatives
+  } catch {
+    if (selectedItem.value?.assetId === assetId) selectedDerivatives.value = []
+  } finally {
+    if (selectedItem.value?.assetId === assetId) loadingDerivatives.value = false
+  }
+}
+
+async function refreshActivity() {
+  await Promise.all([loadJobs(), loadSelectedDerivatives()])
+}
+
 async function saveDirective(item: BucketItem) {
   try {
     const directive = {
@@ -267,7 +310,7 @@ async function runExtraction() {
       },
     })
     await saveDirective(item)
-    await loadJobs()
+    await refreshActivity()
     toast.add({
       title: res.job.status === 'blocked' ? 'Extraction tool queued as blocked' : 'Extraction queued',
       description: res.job.status === 'blocked' ? 'Configure the selected provider route to execute this model.' : undefined,
@@ -293,6 +336,32 @@ async function assemblePlan() {
     toast.add({ title: 'Could not assemble plan', description: e?.data?.statusMessage ?? '', color: 'error' })
   } finally {
     assembling.value = false
+  }
+}
+
+function addDerivativeToTimeline(derivative: AssetDerivative) {
+  emit('add-derivative-to-timeline', derivativeTimelinePayload(derivative))
+}
+
+async function addDerivativeToBucket(derivative: AssetDerivative) {
+  addingDerivativeId.value = derivative.id
+  try {
+    await $fetch(`/api/agency/video/derivatives/${encodeURIComponent(derivative.id)}/add-to-bucket`, {
+      method: 'POST',
+      body: {
+        bucketKind: 'generated',
+        role: `derivative-${derivative.kind}`,
+        title: `${derivative.kind} derivative`,
+        directive: { addedFrom: 'harness' },
+      },
+    })
+    await loadHarness()
+    await loadSelectedDerivatives()
+    toast.add({ title: 'Derivative added to bucket', color: 'success' })
+  } catch (e: any) {
+    toast.add({ title: 'Could not add derivative to bucket', description: e?.data?.statusMessage ?? '', color: 'error' })
+  } finally {
+    addingDerivativeId.value = null
   }
 }
 
@@ -326,10 +395,16 @@ function fmtJobDate(iso: string) {
   }
 }
 
+function derivativeLabel(derivative: AssetDerivative) {
+  const title = derivative.metadata?.title
+  return typeof title === 'string' && title.trim() ? title.trim() : derivative.r2Key
+}
+
 watch(() => props.projectId, () => { void loadHarness() })
 watch(selectedItemId, () => {
   clearMask()
   maskPreviewFailed.value = false
+  void loadSelectedDerivatives()
 })
 onMounted(() => { void loadHarness() })
 </script>
@@ -436,13 +511,47 @@ onMounted(() => { void loadHarness() })
               />
             </div>
           </div>
-          <div v-if="selectedDirectivePrompt || selectedItemJobs.length" class="rounded-md border border-default bg-elevated p-2">
+          <div v-if="selectedAssetActivityVisible" class="rounded-md border border-default bg-elevated p-2">
             <p class="text-xs font-medium text-muted">Selected asset activity</p>
             <p v-if="selectedDirectivePrompt" class="mt-1 line-clamp-2 text-xs text-default">{{ selectedDirectivePrompt }}</p>
             <div v-if="selectedItemJobs.length" class="mt-2 space-y-1">
               <div v-for="job in selectedItemJobs" :key="job.id" class="flex items-center gap-2 text-xs">
                 <UBadge :label="job.status" size="xs" :color="jobStatusColor(job.status)" variant="subtle" />
                 <span class="min-w-0 flex-1 truncate text-muted">{{ job.action }} · {{ job.modelId }}</span>
+              </div>
+            </div>
+            <div v-if="loadingDerivatives" class="mt-2 space-y-1">
+              <USkeleton v-for="n in 2" :key="n" class="h-7 w-full rounded-md" />
+            </div>
+            <div v-else-if="selectedDerivatives.length" class="mt-2 space-y-1">
+              <div
+                v-for="derivative in selectedDerivatives"
+                :key="derivative.id"
+                class="flex items-center gap-2 rounded-md border border-default bg-default/40 px-2 py-1"
+              >
+                <UBadge :label="derivative.kind" size="xs" variant="subtle" color="neutral" />
+                <span class="min-w-0 flex-1 truncate text-xs text-muted">{{ derivativeLabel(derivative) }}</span>
+                <UTooltip text="Add derivative to timeline">
+                  <UButton
+                    icon="i-lucide-list-plus"
+                    size="xs"
+                    variant="ghost"
+                    color="primary"
+                    aria-label="Add derivative to timeline"
+                    @click="addDerivativeToTimeline(derivative)"
+                  />
+                </UTooltip>
+                <UTooltip text="Reuse derivative in generated bucket">
+                  <UButton
+                    icon="i-lucide-folder-plus"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    :loading="addingDerivativeId === derivative.id"
+                    aria-label="Reuse derivative in generated bucket"
+                    @click="addDerivativeToBucket(derivative)"
+                  />
+                </UTooltip>
               </div>
             </div>
           </div>
@@ -495,7 +604,7 @@ onMounted(() => { void loadHarness() })
     <div class="mt-3 rounded-md border border-default bg-default/30 p-3">
       <div class="mb-2 flex items-center justify-between gap-2">
         <p class="text-xs font-medium uppercase text-muted">AI activity</p>
-        <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" aria-label="Refresh AI activity" @click="loadJobs" />
+        <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" aria-label="Refresh AI activity" @click="refreshActivity" />
       </div>
       <div v-if="intelligenceJobs.length" class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
         <div v-for="job in intelligenceJobs.slice(0, 6)" :key="job.id" class="rounded-md border border-default bg-elevated p-2">

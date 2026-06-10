@@ -8,6 +8,7 @@ import { useMediaProjectEditor } from '~~/app/composables/useMediaProjectEditor'
 import type { PickedAsset } from '~~/app/components/media/MediaAssetPicker.vue'
 import { resolveGeneratedClipInspector } from '~~/app/utils/video/generatedClipInspector'
 import type { AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
+import type { AssetDerivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
 import type { VideoAsset } from '~~/server/utils/video/assets'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
@@ -105,6 +106,12 @@ function onHarnessAddToTimeline(p: AiAssemblyTimelinePayload) {
   const streamUrl = p.assetId ? `/api/agency/video/assets/${encodeURIComponent(p.assetId)}/stream` : p.r2Key
   editor.mergeSource(p.r2Key, streamUrl, { durationSec: p.durationSec, assetId: p.assetId, title: p.title, format: p.format })
   editor.addVideoClipAction(p.r2Key, p.durationSec, 'uploaded_footage', p.startSec, p.assetId)
+}
+
+function onHarnessAddDerivativeToTimeline(p: AssetDerivativeTimelinePayload) {
+  editor.mergeSource(p.r2Key, p.r2Key, { durationSec: p.durationSec, assetId: p.assetId, title: p.title, format: p.format })
+  editor.addVideoClipAction(p.r2Key, p.durationSec, p.baseSource, editor.currentTime.value, p.assetId)
+  toast.add({ title: 'Derivative added to timeline', color: 'success' })
 }
 
 async function refreshVideoAssets() {
@@ -463,6 +470,7 @@ const saveStatusColor = computed(() => {
           v-if="isAv && videoAssetHarnessEnabled"
           :project-id="projectId"
           @add-to-timeline="onHarnessAddToTimeline"
+          @add-derivative-to-timeline="onHarnessAddDerivativeToTimeline"
         />
 
         <!-- AV preview (frame-accurate compositor) -->
