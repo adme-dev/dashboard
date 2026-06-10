@@ -69,6 +69,10 @@ interface CampaignActionEntry {
   approvedByName: string | null
   approvedByAvatar: string | null
   approvedAt: string | null
+  cancelledBy: string | null
+  cancelledByName: string | null
+  cancelledByAvatar: string | null
+  cancelledAt: string | null
   executedAt: string | null
   previousValue: Record<string, unknown>
   newValue: Record<string, unknown>
@@ -455,6 +459,9 @@ function summarizeValue(value: Record<string, unknown>) {
                 </div>
                 <p v-if="action.approvedAt" class="mt-2 text-xs text-muted">
                   Approved by {{ action.approvedByName || 'Team member' }} · {{ formatBudgetHistoryTime(action.approvedAt) }}
+                </p>
+                <p v-if="action.cancelledAt" class="mt-2 text-xs text-muted">
+                  Cancelled by {{ action.cancelledByName || 'Team member' }} · {{ formatBudgetHistoryTime(action.cancelledAt) }}
                 </p>
                 <p v-if="action.reason" class="mt-2 text-xs text-muted">{{ action.reason }}</p>
                 <p v-if="action.errorMessage" class="mt-2 text-xs text-red-500">{{ action.errorMessage }}</p>

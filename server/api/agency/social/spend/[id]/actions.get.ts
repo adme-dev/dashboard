@@ -23,6 +23,10 @@ export default eventHandler(async (event) => {
     approved_by_name: string | null
     approved_by_avatar: string | null
     approved_at: string | null
+    cancelled_by: string | null
+    cancelled_by_name: string | null
+    cancelled_by_avatar: string | null
+    cancelled_at: string | null
     executed_at: string | null
     previous_value: Record<string, unknown>
     new_value: Record<string, unknown>
@@ -43,6 +47,10 @@ export default eventHandler(async (event) => {
             approver.name as approved_by_name,
             approver.avatar_url as approved_by_avatar,
             cal.approved_at::text,
+            cal.metadata->>'cancelledBy' as cancelled_by,
+            canceller.name as cancelled_by_name,
+            canceller.avatar_url as cancelled_by_avatar,
+            cal.metadata->>'cancelledAt' as cancelled_at,
             cal.executed_at::text,
             cal.previous_value,
             cal.new_value,
@@ -52,6 +60,7 @@ export default eventHandler(async (event) => {
      FROM campaign_action_log cal
      LEFT JOIN team_members tm ON tm.id = cal.requested_by
      LEFT JOIN team_members approver ON approver.id = cal.approved_by
+     LEFT JOIN team_members canceller ON canceller.id::text = cal.metadata->>'cancelledBy'
      WHERE cal.media_spend_id = $1
      ORDER BY COALESCE(cal.executed_at, cal.requested_at) DESC
      LIMIT 50`,
@@ -72,6 +81,10 @@ export default eventHandler(async (event) => {
     approvedByName: r.approved_by_name,
     approvedByAvatar: r.approved_by_avatar,
     approvedAt: r.approved_at,
+    cancelledBy: r.cancelled_by,
+    cancelledByName: r.cancelled_by_name,
+    cancelledByAvatar: r.cancelled_by_avatar,
+    cancelledAt: r.cancelled_at,
     executedAt: r.executed_at,
     previousValue: r.previous_value,
     newValue: r.new_value,
