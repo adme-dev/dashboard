@@ -3,8 +3,8 @@
 // or image-to-video) via the gated generation API. Emits `submitted(jobId)` so the
 // page can start polling; the finished asset surfaces in the Video Library.
 import { ref, computed, watch } from 'vue'
-import { listSelectableVideoGenerationModels } from '~~/server/utils/video-generation/modelRegistry'
 import { modelsForMode, validateGenerationForm, costPreviewCents } from '~~/app/utils/videoGenerationForm'
+import type { VideoModelOption } from '~~/app/utils/video/modelPresentation'
 import type { VideoGenerationMode } from '~~/server/utils/video-generation/types'
 
 const props = defineProps<{
@@ -14,17 +14,19 @@ const props = defineProps<{
   timelineStills: { assetId: string; label: string }[]
   /** default aspect from the project format, e.g. '9:16' */
   defaultAspect: string
+  initialPrompt?: string | null
 }>()
 const emit = defineEmits<{ (e: 'update:open', v: boolean): void; (e: 'submitted', jobId: string): void }>()
 
 const toast = useToast()
-const allModels = listSelectableVideoGenerationModels()
-const hasModels = computed(() => allModels.length > 0)
+const { data: modelData, pending: modelsPending, refresh: refreshModels } = useFetch('/api/agency/video/generation/models', { lazy: true, immediate: false })
+const allModels = computed((): VideoModelOption[] => (modelData.value as any)?.models ?? [])
+const hasModels = computed(() => allModels.value.length > 0)
 
 const mode = ref<VideoGenerationMode>('image-to-video')
-const models = computed(() => modelsForMode(allModels, mode.value))
-const modelId = ref<string>(models.value[0]?.id ?? '')
-const model = computed(() => allModels.find((m) => m.id === modelId.value) ?? null)
+const models = computed(() => modelsForMode(allModels.value, mode.value))
+const modelId = ref<string>('')
+const model = computed(() => allModels.value.find((m) => m.id === modelId.value) ?? null)
 const prompt = ref('')
 const sourceAssetId = ref<string | null>(null)
 const sourceFileName = ref<string | null>(null)
@@ -61,6 +63,19 @@ watch(modelId, () => {
   if (!model.value.durationsSeconds.includes(durationSeconds.value)) {
     durationSeconds.value = model.value.durationsSeconds[0] ?? 5
   }
+})
+
+watch(models, (next) => {
+  if (!next.length) return
+  if (!next.some((candidate) => candidate.id === modelId.value)) {
+    modelId.value = next[0]?.id ?? ''
+  }
+}, { immediate: true })
+
+watch(() => props.open, (isOpen) => {
+  if (!isOpen) return
+  void refreshModels()
+  if (props.initialPrompt) prompt.value = props.initialPrompt
 })
 
 function clearSource() {
@@ -158,7 +173,7 @@ async function submit() {
     <template #body>
       <div class="flex flex-col gap-6 py-1">
         <UAlert
-          v-if="!hasModels"
+          v-if="!modelsPending && !hasModels"
           color="warning"
           variant="subtle"
           icon="i-lucide-triangle-alert"
@@ -167,6 +182,11 @@ async function submit() {
         />
 
         <!-- Mode + Model row -->
+        <div v-if="modelsPending && !hasModels" class="space-y-3">
+          <USkeleton class="h-10 w-full rounded-md" />
+          <USkeleton class="h-24 w-full rounded-md" />
+        </div>
+
         <div v-if="hasModels" class="flex flex-col gap-4">
           <p class="text-xs font-semibold uppercase tracking-widest text-muted">Source &amp; model</p>
           <div class="grid grid-cols-2 gap-4">
@@ -174,7 +194,7 @@ async function submit() {
               <USelect v-model="mode" :items="MODE_OPTIONS" value-key="value" @update:model-value="onModeChange" />
             </UFormField>
             <UFormField label="Model">
-              <USelectMenu v-model="modelId" :items="models.map((m) => ({ label: m.displayName, value: m.id }))" value-key="value" />
+              <USelectMenu v-model="modelId" :items="models.map((m) => ({ label: m.label, value: m.id }))" value-key="value" />
             </UFormField>
           </div>
           <UFormField v-if="mode === 'image-to-video'" label="Source image" help="Pick a still already in this project, or upload a new one.">

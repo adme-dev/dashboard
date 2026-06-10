@@ -4,8 +4,26 @@ export interface VideoAsset {
   id: string; clientId: string | null; createdBy: string; title: string | null
   sourceProjectId: string | null; sourceJobId: string | null
   r2Key: string; format: string; width: number | null; height: number | null
-  durationSec: number | null; generationPrompt: string | null; generationModelId: string | null
+  durationSec: number | null
+  thumbnailKey: string | null; thumbnailUrl: string | null
+  captionVttKey: string | null; captionVttUrl: string | null
+  transcript: string | null; metadata: Record<string, unknown>
+  generationPrompt: string | null; generationModelId: string | null
   createdAt: string; updatedAt: string
+}
+
+function jsonObject(value: unknown): Record<string, unknown> {
+  if (!value) return {}
+  if (typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+    } catch {
+      return {}
+    }
+  }
+  return {}
 }
 
 export function mapVideoAssetRow(row: any): VideoAsset {
@@ -15,6 +33,12 @@ export function mapVideoAssetRow(row: any): VideoAsset {
     r2Key: row.r2_key, format: row.format,
     width: row.width != null ? Number(row.width) : null, height: row.height != null ? Number(row.height) : null,
     durationSec: row.duration_sec != null ? Number(row.duration_sec) : null,
+    thumbnailKey: row.thumbnail_key ?? null,
+    thumbnailUrl: row.thumbnail_key ? `/api/agency/video/assets/${encodeURIComponent(row.id)}/thumbnail` : null,
+    captionVttKey: row.caption_vtt_key ?? null,
+    captionVttUrl: row.caption_vtt_key ? `/api/agency/video/assets/${encodeURIComponent(row.id)}/captions.vtt` : null,
+    transcript: row.transcript ?? null,
+    metadata: jsonObject(row.metadata),
     generationPrompt: row.generation_prompt ?? null,
     generationModelId: row.generation_model_id ?? null,
     createdAt: row.created_at, updatedAt: row.updated_at

@@ -49,7 +49,8 @@ export async function processVideoGenerationJob(
       return { skipped: false, status: 'failed' }
     }
     const submission = await provider.submit({
-      jobId: job.id, tenantId: job.tenantId, modelId: job.modelId, mode: job.mode, prompt: job.prompt,
+      jobId: job.id, tenantId: job.tenantId, projectId: job.projectId, userId: job.createdBy,
+      modelId: job.modelId, mode: job.mode, prompt: job.prompt,
       sourceAssetUrls: message.sourceAssetUrls?.length ? message.sourceAssetUrls : job.sourceAssetIds, durationSeconds: job.durationSeconds,
       aspectRatio: job.aspectRatio, resolution: job.resolution,
     })

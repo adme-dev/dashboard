@@ -15,7 +15,7 @@ import { getGoogleBusinessOAuthConfig } from '~~/server/utils/socialOAuth/env'
 /** Classify a media URL as video or image for provider dispatch. Render links + .mp4/.mov → video. */
 export function mediaTypeForUrl(url: string): 'video' | 'image' {
   const u = url.toLowerCase()
-  if (/\.(mp4|mov|webm|m4v)(\?|$)/.test(u) || u.includes('/api/public/renders/')) return 'video'
+  if (/\.(mp4|mov|webm|m4v)(\?|$)/.test(u) || u.includes('/api/public/renders/') || u.includes('/api/public/video-assets/')) return 'video'
   return 'image'
 }
 

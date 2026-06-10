@@ -11,6 +11,8 @@ export interface VideoGenerationProviderRequest {
   resolution: string | null
   /** Tenant id, for AI Gateway per-tenant metadata tagging. Optional (mock/muapi ignore it). */
   tenantId?: string
+  projectId?: string
+  userId?: string
 }
 
 export interface VideoGenerationProviderSubmission {

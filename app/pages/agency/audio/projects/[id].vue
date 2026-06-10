@@ -5,8 +5,9 @@
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMediaProjectEditor } from '~~/app/composables/useMediaProjectEditor'
-import { listSelectableVideoGenerationModels } from '~~/server/utils/video-generation/modelRegistry'
 import type { PickedAsset } from '~~/app/components/media/MediaAssetPicker.vue'
+import { resolveGeneratedClipInspector } from '~~/app/utils/video/generatedClipInspector'
+import type { VideoAsset } from '~~/server/utils/video/assets'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
@@ -66,10 +67,12 @@ function onMediaUploaded(p: { r2Key: string; durationSec: number; baseSource: 'u
 // ─── Video generation wiring ──────────────────────────────────────────────────
 
 const videoGenerationEnabled = computed(() => Boolean((config.public as any).videoGenerationEnabled))
-const selectableVideoGenerationModels = listSelectableVideoGenerationModels()
-const videoGenerationModelsAvailable = computed(() => selectableVideoGenerationModels.length > 0)
+const videoGenerationModelsAvailable = computed(() => videoGenerationEnabled.value)
 const generatePickerOpen = ref(false)
+const generationDraftPrompt = ref<string | null>(null)
 const genJobs = useVideoGenerationJobs(projectId.value)
+const videoAssets = ref<VideoAsset[]>([])
+const selectedClipId = ref<string | null>(null)
 
 // Stills already on the timeline that have a backing video_assets id (i2v source).
 // NOTE: clips added via addVideoClip have asset_id=null, so this is usually empty in
@@ -94,6 +97,53 @@ function onLibraryAddToTimeline(p: { assetId: string; r2Key: string; durationSec
   editor.mergeSource(p.r2Key, p.streamUrl, { durationSec: p.durationSec, assetId: p.assetId, title: p.title, format: p.format })
   editor.addVideoClipAction(p.r2Key, p.durationSec, 'uploaded_footage', editor.currentTime.value)
   toast.add({ title: 'Added to timeline', color: 'success' })
+}
+
+async function refreshVideoAssets() {
+  try {
+    const res = await editor.listVideoAssets()
+    videoAssets.value = res.assets ?? []
+  } catch {
+    videoAssets.value = []
+  }
+}
+
+function onReusePrompt(p: { prompt: string; modelId: string | null }) {
+  generationDraftPrompt.value = p.prompt
+  libraryOpen.value = false
+  generatePickerOpen.value = true
+}
+
+const selectedGeneratedClip = computed(() => resolveGeneratedClipInspector({
+  selectedClipId: selectedClipId.value,
+  timeline: editor.timeline.value,
+  assets: videoAssets.value,
+}))
+
+async function copySelectedPrompt() {
+  if (selectedGeneratedClip.value.kind !== 'generated-video' || !selectedGeneratedClip.value.prompt) return
+  await navigator.clipboard?.writeText(selectedGeneratedClip.value.prompt)
+}
+
+function duplicateSelectedGeneratedClip() {
+  if (selectedGeneratedClip.value.kind !== 'generated-video') return
+  editor.mergeSource(selectedGeneratedClip.value.r2Key, `/api/agency/video/assets/${selectedGeneratedClip.value.assetId}/stream`, {
+    durationSec: selectedGeneratedClip.value.durationSec ?? 5,
+    assetId: selectedGeneratedClip.value.assetId,
+    title: selectedGeneratedClip.value.title,
+    format: selectedGeneratedClip.value.format,
+  })
+  editor.addVideoClipAction(selectedGeneratedClip.value.r2Key, selectedGeneratedClip.value.durationSec ?? 5, 'uploaded_footage', editor.currentTime.value)
+}
+
+async function publishSelectedGeneratedClip() {
+  if (selectedGeneratedClip.value.kind !== 'generated-video') return
+  try {
+    const res = await editor.publishVideoAssetToSocial(selectedGeneratedClip.value.assetId)
+    await navigateTo(`/agency/social/publishing/compose?edit=${res.postId}&client=${res.clientId}`)
+  } catch (e: any) {
+    toast.add({ title: 'Could not publish selected clip', description: e?.data?.statusMessage ?? '', color: 'error' })
+  }
 }
 
 // Render
@@ -125,6 +175,7 @@ async function onSendToPortal(job: any, format: string) {
 async function onSaveAsset(job: any, format: string) {
   try {
     await editor.saveAsset(job.id, String(format))
+    await refreshVideoAssets()
     toast.add({ title: 'Saved to library', color: 'success' })
   } catch (e: any) {
     toast.add({ title: 'Could not save to library', description: e?.data?.statusMessage ?? '', color: 'error' })
@@ -133,10 +184,9 @@ async function onSaveAsset(job: any, format: string) {
 
 // Video library (AV reuse)
 const libraryOpen = ref(false)
-async function onLibraryPublish(p: { sourceJobId: string | null; format: string }) {
-  if (!p.sourceJobId) { toast.add({ title: 'Source render unavailable for this asset', color: 'warning' }); return }
+async function onLibraryPublish(p: { assetId: string; sourceJobId: string | null; format: string }) {
   try {
-    const res = await editor.publishToSocial(p.sourceJobId, p.format)
+    const res = await editor.publishVideoAssetToSocial(p.assetId)
     await navigateTo(`/agency/social/publishing/compose?edit=${res.postId}&client=${res.clientId}`)
   } catch (e: any) {
     toast.add({ title: 'Could not publish from library', description: e?.data?.statusMessage ?? '', color: 'error' })
@@ -147,7 +197,15 @@ function jobStatusColor(s: string) { return s === 'done' ? 'success' : s === 'fa
 
 // Refresh render jobs once an AV project finishes loading (isAv depends on the
 // async-loaded timeline, so watch it rather than onMounted).
-watch(isAv, (av) => { if (av) void editor.refreshRenderJobs() }, { immediate: true })
+watch(isAv, (av) => {
+  if (!av) return
+  void editor.refreshRenderJobs()
+  void refreshVideoAssets()
+}, { immediate: true })
+
+watch(() => genJobs.jobs.value.map((job) => `${job.id}:${job.status}:${job.outputAssetId ?? ''}`).join('|'), () => {
+  if (genJobs.jobs.value.some((job) => job.status === 'succeeded' && job.outputAssetId)) void refreshVideoAssets()
+})
 
 async function doSaveVersion() {
   if (savingVersion.value) return
@@ -410,13 +468,66 @@ const saveStatusColor = computed(() => {
           :current-time="editor.currentTime.value"
           :duration="editor.duration.value"
           :sources="editor.sources.value"
-          @select="(p) => { /* selection managed inside component */ }"
+          @select="(p) => { selectedClipId = p.clipId }"
           @seek="(sec) => editor.seek(sec)"
           @move-clip="(p) => editor.moveClipAction(p.clipId, p.toTrackId, p.newStartSec)"
           @trim-clip="(p) => editor.trimClipAction(p.clipId, p.edge, p.newTimeSec)"
           @slice="(p) => editor.sliceAction(p.clipId, p.timeSec)"
           @delete-clip="(p) => editor.deleteClipAction(p.clipId)"
         />
+
+        <div v-if="isAv && selectedGeneratedClip.kind === 'generated-video'" class="rounded-lg border border-default bg-elevated p-3">
+          <div class="flex items-start gap-3">
+            <div class="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10">
+              <UIcon name="i-lucide-sparkles" class="size-4 text-primary" />
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="truncate text-sm font-medium text-highlighted">{{ selectedGeneratedClip.title }}</p>
+                <UBadge v-if="selectedGeneratedClip.format" :label="selectedGeneratedClip.format" size="xs" variant="subtle" color="neutral" />
+                <UBadge v-if="selectedGeneratedClip.durationSec" :label="`${selectedGeneratedClip.durationSec}s`" size="xs" variant="subtle" color="neutral" />
+              </div>
+              <p class="mt-1 text-xs text-muted">Model: {{ selectedGeneratedClip.modelLabel }}</p>
+              <p v-if="selectedGeneratedClip.prompt" class="mt-1 line-clamp-2 text-xs text-muted">{{ selectedGeneratedClip.prompt }}</p>
+              <p v-if="selectedGeneratedClip.sourceJobId" class="mt-1 text-[11px] text-muted">Job {{ selectedGeneratedClip.sourceJobId }}</p>
+            </div>
+            <div class="flex flex-wrap justify-end gap-2">
+              <UButton
+                v-if="selectedGeneratedClip.prompt"
+                icon="i-lucide-copy"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                label="Copy prompt"
+                @click="copySelectedPrompt"
+              />
+              <UButton
+                icon="i-lucide-copy-plus"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                label="Duplicate"
+                @click="duplicateSelectedGeneratedClip"
+              />
+              <UButton
+                icon="i-lucide-share-2"
+                size="xs"
+                variant="soft"
+                color="primary"
+                label="Publish"
+                @click="publishSelectedGeneratedClip"
+              />
+              <UButton
+                icon="i-lucide-trash-2"
+                size="xs"
+                variant="ghost"
+                color="error"
+                label="Remove"
+                @click="editor.deleteClipAction(selectedGeneratedClip.clipId)"
+              />
+            </div>
+          </div>
+        </div>
 
         <!-- Transport bar -->
         <div class="flex items-center gap-4 rounded-lg border border-default bg-elevated p-3">
@@ -497,13 +608,14 @@ const saveStatusColor = computed(() => {
     :project-id="projectId"
     :timeline-stills="timelineStills"
     :default-aspect="projectAspect"
+    :initial-prompt="generationDraftPrompt"
     @submitted="onGenerationSubmitted"
   />
 
   <!-- AI video generation progress/status (queued/running/failed) -->
   <MediaGenerationStatus v-if="videoGenerationEnabled" :jobs="genJobs.jobs.value" />
 
-  <MediaVideoLibrary v-model:open="libraryOpen" @publish="onLibraryPublish" @add-to-timeline="onLibraryAddToTimeline" />
+  <MediaVideoLibrary v-model:open="libraryOpen" @publish="onLibraryPublish" @add-to-timeline="onLibraryAddToTimeline" @reuse-prompt="onReusePrompt" />
 
   <!-- Versions slideover -->
   <USlideover

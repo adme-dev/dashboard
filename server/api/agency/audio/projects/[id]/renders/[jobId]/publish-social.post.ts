@@ -5,6 +5,8 @@ import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline, getRenderJob } from '~~/server/utils/audio/projects'
 import { renderPublicUrl } from '~~/server/utils/audio/renderLinks'
 import { queryOne } from '~~/server/utils/db'
+import { buildVideoStudioSocialDraft } from '~~/server/utils/socialVideoDraft'
+import { generateGroqInsight } from '~~/server/utils/groqClient'
 
 const BodySchema = z.object({ format: z.string().min(1) })
 
@@ -28,11 +30,31 @@ export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
   const baseUrl = (config.public as { appUrl?: string }).appUrl || process.env.APP_URL || ''
   const mediaUrl = await renderPublicUrl(jobId, format, baseUrl)
+  const draft = await buildVideoStudioSocialDraft({
+    clientId,
+    createdBy: user.id,
+    mediaUrl,
+    format,
+    projectId: id,
+    jobId,
+    captionGenerator: async ({ topic, platform, tone }) => generateGroqInsight(
+      [
+        `Write a ${tone} organic social media post for ${platform}.`,
+        `Topic / brief: ${topic}`,
+        'Return ONLY the post copy.',
+      ].join('\n'),
+      {
+        temperature: 0.7,
+        maxTokens: 400,
+        systemPrompt: 'You are an expert social media copywriter for a digital marketing agency. Output only the caption text.',
+      },
+    ),
+  })
 
   const row = await queryOne(
-    `INSERT INTO social_posts (client_id, created_by, content, media_urls, status, metadata)
-     VALUES ($1,$2,$3,$4,'draft',$5) RETURNING id`,
-    [clientId, user.id, '', [mediaUrl], JSON.stringify({ source: 'video_studio', jobId, format })]
+    `INSERT INTO social_posts (client_id, created_by, content, media_urls, platforms, tags, status, metadata)
+     VALUES ($1,$2,$3,$4,$5,$6,'draft',$7) RETURNING id`,
+    [clientId, user.id, draft.content, draft.mediaUrls, draft.platforms, draft.tags, JSON.stringify(draft.metadata)]
   )
   return { postId: (row as { id: string }).id, clientId }
 })

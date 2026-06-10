@@ -376,6 +376,11 @@ export function useMediaProjectEditor(projectId: string) {
     })
   }
 
+  /** Draft a social post from a saved/generated video asset. */
+  async function publishVideoAssetToSocial(assetId: string): Promise<{ postId: string; clientId: string }> {
+    return await $fetch(`/api/agency/video/assets/${assetId}/publish-social`, { method: 'POST' })
+  }
+
   /** Send a rendered variant to the client portal for review. Returns the created review or throws. */
   async function sendToPortal(jobId: string, format: string): Promise<{ review: any }> {
     return await $fetch(`/api/agency/audio/projects/${projectId}/renders/${jobId}/send-to-portal`, {
@@ -554,7 +559,7 @@ export function useMediaProjectEditor(projectId: string) {
     undoAction, redoAction,
     // AV actions
     uploadMedia, addVideoClipAction, addOverlayClipAction,
-    renderVideoAction, refreshRenderJobs, renderJobs, rendering, publishToSocial, sendToPortal,
+    renderVideoAction, refreshRenderJobs, renderJobs, rendering, publishToSocial, publishVideoAssetToSocial, sendToPortal,
     saveAsset, listVideoAssets,
     /** Merge a new presigned URL into the live sources map (called before addClipAction). */
     mergeSource,

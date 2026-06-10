@@ -84,7 +84,17 @@ export function makeAiGatewayProvider(deps: AiGatewayDeps): VideoGenerationProvi
       const raw = await deps.run(
         model,
         await buildInputs(model, request),
-        { gateway: { metadata: { tenantId: request.tenantId ?? '', jobId: request.jobId } } }
+        {
+          gateway: {
+            metadata: {
+              tenantId: request.tenantId ?? '',
+              projectId: request.projectId ?? '',
+              userId: request.userId ?? '',
+              jobId: request.jobId,
+              modelId: request.modelId,
+            },
+          },
+        }
       )
       const outputUrl = extractVideoUrl(raw)
       // CF bills via unified billing (dashboard); no per-call cost is returned → null.
