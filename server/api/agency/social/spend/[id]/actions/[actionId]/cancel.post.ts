@@ -39,9 +39,12 @@ export default eventHandler(async (event) => {
                approved_at::text,
                cancelled_by::text,
                cancelled_at::text,
+               executed_at::text,
                previous_value,
                new_value,
-               reason`,
+               reason,
+               external_request_id,
+               error_message`,
     [id, actionId, user.id]
   )
 
@@ -64,9 +67,12 @@ interface CampaignActionRow {
   approved_at: string | null
   cancelled_by: string | null
   cancelled_at: string | null
+  executed_at: string | null
   previous_value: Record<string, unknown>
   new_value: Record<string, unknown>
   reason: string | null
+  external_request_id: string | null
+  error_message: string | null
 }
 
 function normalizeAction(row: CampaignActionRow) {
@@ -82,8 +88,11 @@ function normalizeAction(row: CampaignActionRow) {
     approvedAt: row.approved_at,
     cancelledBy: row.cancelled_by,
     cancelledAt: row.cancelled_at,
+    executedAt: row.executed_at,
     previousValue: row.previous_value,
     newValue: row.new_value,
     reason: row.reason,
+    externalRequestId: row.external_request_id,
+    errorMessage: row.error_message,
   }
 }

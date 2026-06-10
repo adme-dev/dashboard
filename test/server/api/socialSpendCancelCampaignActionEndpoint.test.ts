@@ -31,6 +31,9 @@ describe('POST /api/agency/social/spend/:id/actions/:actionId/cancel', () => {
       approved_at: '2026-06-10T03:02:00.000Z',
       cancelled_by: 'user-1',
       cancelled_at: '2026-06-10T03:05:00.000Z',
+      executed_at: null,
+      external_request_id: null,
+      error_message: null,
       previous_value: { dailyBudget: 120 },
       new_value: { dailyBudget: 95 },
       reason: 'Projected overspend',
@@ -48,6 +51,9 @@ describe('POST /api/agency/social/spend/:id/actions/:actionId/cancel', () => {
     expect(String(mockQueryOne.mock.calls[0][0])).toContain('cancelled_at = NOW()')
     expect(String(mockQueryOne.mock.calls[0][0])).toContain('approved_by::text')
     expect(String(mockQueryOne.mock.calls[0][0])).toContain('approved_at::text')
+    expect(String(mockQueryOne.mock.calls[0][0])).toContain('executed_at::text')
+    expect(String(mockQueryOne.mock.calls[0][0])).toContain('external_request_id')
+    expect(String(mockQueryOne.mock.calls[0][0])).toContain('error_message')
     expect(String(mockQueryOne.mock.calls[0][0])).toContain("action_status = 'planned'")
     expect(String(mockQueryOne.mock.calls[0][0])).toContain("action_status = 'approved'")
     expect(mockQueryOne.mock.calls[0][1]).toEqual(['spend-1', 'action-1', 'user-1'])
@@ -65,9 +71,12 @@ describe('POST /api/agency/social/spend/:id/actions/:actionId/cancel', () => {
         approvedAt: '2026-06-10T03:02:00.000Z',
         cancelledBy: 'user-1',
         cancelledAt: '2026-06-10T03:05:00.000Z',
+        executedAt: null,
         previousValue: { dailyBudget: 120 },
         newValue: { dailyBudget: 95 },
         reason: 'Projected overspend',
+        externalRequestId: null,
+        errorMessage: null,
       },
     })
   })
