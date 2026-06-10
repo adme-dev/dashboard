@@ -13,6 +13,12 @@ import {
   addClip, addTrack, deleteClip, moveClip, trimClip, sliceClipAt,
   addVideoClip, addOverlayClip, trimVisualClip
 } from '~~/app/utils/audio/timelineEdit'
+import {
+  createVideoSourceRegistry,
+  mergeVideoSource,
+  videoSourceRecord,
+  type VideoSourceInput,
+} from '~~/app/utils/video/videoSourceRegistry'
 import type { Track } from '~~/server/utils/audio/timelineSchema'
 import type { MediaRenderJob } from '~~/app/types'
 
@@ -146,7 +152,7 @@ export function useMediaProjectEditor(projectId: string) {
   // the resolver.  sourcesRef is a reactive snapshot of the map — passed as the
   // :sources prop to MediaTimeline so wavesurfer waveforms update when new clips
   // are added.
-  const sourcesMap = new Map<string, string>()
+  const sourcesRegistry = createVideoSourceRegistry()
   const sourcesRef = ref<Record<string, string>>({})
 
   let engine: AudioEngine | null = null
@@ -236,10 +242,10 @@ export function useMediaProjectEditor(projectId: string) {
 
   /** Merge a presigned URL into the live sources map so the resolver + waveform
    * prop see it immediately. Call this BEFORE addClipAction when you have a URL. */
-  function mergeSource(r2Key: string, url: string) {
-    sourcesMap.set(r2Key, url)
+  function mergeSource(r2Key: string, url: string, metadata: Partial<Omit<VideoSourceInput, 'r2Key' | 'url'>> = {}) {
+    mergeVideoSource(sourcesRegistry, { r2Key, url, ...metadata })
     // Bump sourcesRef so watchers / MediaTimeline :sources prop update
-    sourcesRef.value = Object.fromEntries(sourcesMap)
+    sourcesRef.value = videoSourceRecord(sourcesRegistry)
   }
 
   function addClipAction(
@@ -301,7 +307,7 @@ export function useMediaProjectEditor(projectId: string) {
     fd.append('file', file)
     fd.append('kind', kind)
     const res = await $fetch<{ r2_key: string; url: string }>(`/api/agency/audio/projects/${projectId}/upload-media`, { method: 'POST', body: fd })
-    mergeSource(res.r2_key, res.url)
+    mergeSource(res.r2_key, res.url, { durationSec })
     return { r2Key: res.r2_key, url: res.url, durationSec }
   }
 

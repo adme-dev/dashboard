@@ -10,7 +10,7 @@ const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{
   (e: 'update:open', value: boolean): void
   (e: 'publish', payload: { sourceJobId: string | null; format: string }): void
-  (e: 'add-to-timeline', payload: { r2Key: string; durationSec: number; streamUrl: string }): void
+  (e: 'add-to-timeline', payload: { assetId: string; r2Key: string; durationSec: number; streamUrl: string; title: string | null; format: string | null }): void
 }>()
 
 interface VideoAsset {

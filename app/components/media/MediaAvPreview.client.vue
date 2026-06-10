@@ -8,6 +8,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
 import { buildBannerHTML } from '~~/app/utils/banner-html-builder'
 import { fitRect, kenBurnsTransformAt, activeVisualClipAt, extractBannerLayers } from '~~/app/utils/video/composite'
+import { isSamePreviewSourceUrl, resolveVideoPreviewState, type VideoPreviewMediaStatus } from '~~/app/utils/video/videoPreviewState'
 
 const props = defineProps<{
   timeline: TimelineState
@@ -25,6 +26,7 @@ const canvasRef = ref<HTMLCanvasElement | null>(null)
 
 const videoEls = new Map<string, HTMLVideoElement>()
 const imgEls = new Map<string, HTMLImageElement>()
+const mediaStatus = ref<Record<string, VideoPreviewMediaStatus>>({})
 
 const videoClips = computed(() =>
   props.timeline.tracks.filter(t => t.kind === 'video').flatMap(t => t.clips as any[])
@@ -33,6 +35,26 @@ const overlayClips = computed(() =>
   props.timeline.tracks.filter(t => t.kind === 'overlay').flatMap(t => t.clips as any[])
 )
 
+const previewState = computed(() => resolveVideoPreviewState({
+  clips: videoClips.value,
+  currentTime: props.currentTime,
+  sources: props.sources,
+  mediaStatus: mediaStatus.value,
+}))
+
+const previewMessage = computed(() => {
+  if (previewState.value.kind === 'missing-source') return 'Source file unavailable'
+  if (previewState.value.kind === 'loading') return 'Loading preview'
+  if (previewState.value.kind === 'error') return 'Could not decode preview'
+  if (previewState.value.kind === 'empty' && videoClips.value.length) return 'No visual clip at playhead'
+  if (previewState.value.kind === 'empty' && !overlayClips.value.length) return 'Add footage, a still, or an overlay to preview'
+  return null
+})
+
+function setMediaStatus(clipId: string, status: VideoPreviewMediaStatus) {
+  mediaStatus.value = { ...mediaStatus.value, [clipId]: status }
+}
+
 function getVideoEl(clip: any): HTMLVideoElement | null {
   const url = props.sources[clip.r2_key]
   if (!url) return null
@@ -40,10 +62,13 @@ function getVideoEl(clip: any): HTMLVideoElement | null {
   if (!el) {
     el = document.createElement('video')
     el.muted = true; el.playsInline = true; el.preload = 'auto'; el.crossOrigin = 'anonymous'
-    el.addEventListener('loadeddata', () => draw())   // repaint once the first frame is decodable
+    setMediaStatus(clip.id, 'loading')
+    el.addEventListener('loadeddata', () => { setMediaStatus(clip.id, 'ready'); draw() })   // repaint once the first frame is decodable
+    el.addEventListener('error', () => { setMediaStatus(clip.id, 'error'); draw() })
     el.src = url
     videoEls.set(clip.id, el)
-  } else if (el.src !== url) {
+  } else if (!isSamePreviewSourceUrl(el.currentSrc || el.src, url)) {
+    setMediaStatus(clip.id, 'loading')
     el.src = url
   }
   return el
@@ -53,7 +78,15 @@ function getImgEl(clip: any): HTMLImageElement | null {
   const url = props.sources[clip.r2_key]
   if (!url) return null
   let el = imgEls.get(clip.id)
-  if (!el) { el = new Image(); el.crossOrigin = 'anonymous'; el.onload = () => draw(); el.src = url; imgEls.set(clip.id, el) }
+  if (!el) {
+    el = new Image()
+    el.crossOrigin = 'anonymous'
+    setMediaStatus(clip.id, 'loading')
+    el.onload = () => { setMediaStatus(clip.id, 'ready'); draw() }
+    el.onerror = () => { setMediaStatus(clip.id, 'error'); draw() }
+    el.src = url
+    imgEls.set(clip.id, el)
+  }
   return el
 }
 
@@ -189,6 +222,17 @@ onBeforeUnmount(() => {
          class="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted">
       <UIcon name="i-lucide-clapperboard" class="size-8" />
       <p class="text-sm">Add footage, a still, or an overlay to preview</p>
+    </div>
+    <div
+      v-else-if="previewMessage"
+      class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/65 text-muted"
+    >
+      <UIcon
+        :name="previewState.kind === 'error' || previewState.kind === 'missing-source' ? 'i-lucide-triangle-alert' : 'i-lucide-loader-circle'"
+        class="size-8"
+        :class="{ 'animate-spin': previewState.kind === 'loading' }"
+      />
+      <p class="text-sm">{{ previewMessage }}</p>
     </div>
   </div>
 </template>
