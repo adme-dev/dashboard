@@ -38,12 +38,19 @@ function safeErrorMessage(error: unknown): string {
   return String(error || 'asset intelligence failed')
 }
 
+function withContentMetadata(derivative: AssetDerivativeOutput): AssetDerivativeOutput {
+  const metadata = { ...derivative.metadata }
+  if (derivative.contentType) metadata.contentType = derivative.contentType
+  if (typeof derivative.size === 'number') metadata.size = derivative.size
+  return { ...derivative, metadata }
+}
+
 export async function processAssetIntelligenceJob(
   message: AssetIntelligenceMessage,
   deps: ProcessDeps
 ): Promise<ProcessAssetIntelligenceResult> {
   const job = await deps.getJob(message.jobId)
-  if (!job) throw new Error(`asset intelligence job ${message.jobId} not found`)
+  if (!job) return { skipped: true, reason: 'missing_job' }
   if (isTerminalStatus(job.status)) return { skipped: true, reason: 'terminal' }
 
   const claimed = await deps.markRunning(job.id)
@@ -55,13 +62,14 @@ export async function processAssetIntelligenceJob(
     const sourceAssetId = job.sourceAssetId ?? message.sourceAssetId
     for (const derivative of result.derivatives) {
       const persisted = await deps.createDerivative({
-        ...derivative,
+        ...withContentMetadata(derivative),
         sourceAssetId,
         projectId: job.projectId,
       })
       outputDerivativeIds.push(persisted.id)
     }
-    await deps.markSucceeded({ id: job.id, outputDerivativeIds })
+    const completed = await deps.markSucceeded({ id: job.id, outputDerivativeIds })
+    if (completed.status !== 'succeeded') return { skipped: true, reason: 'not_claimed' }
     return { skipped: false, status: 'succeeded' }
   } catch (error) {
     await deps.markFailed(job.id, safeErrorMessage(error))

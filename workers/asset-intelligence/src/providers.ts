@@ -38,10 +38,19 @@ export interface AssetIntelligenceProviderResult {
   derivatives: AssetDerivativeOutput[]
 }
 
+const MASK_ONLY_PROVIDER = 'replicate'
+const MASK_ONLY_MODEL_ID = 'replicate/sam-2'
+const WORKERS_AI_PROVIDER = 'workers-ai'
+const WORKERS_AI_ANALYSIS_MODEL_ID = 'workers-ai/kimi-planner'
+const WORKERS_AI_ANALYSIS_CF_MODEL = '@cf/moonshotai/kimi-k2-instruct'
+
 export async function runAssetIntelligenceProvider(deps: ProviderDeps): Promise<AssetIntelligenceProviderResult> {
   const { job } = deps
 
   if (job.action === 'mask-only') {
+    if (job.provider !== MASK_ONLY_PROVIDER || job.modelId !== MASK_ONLY_MODEL_ID) {
+      throw new Error(`mask-only model not supported: ${job.provider}/${job.modelId}`)
+    }
     if (!job.brushMaskKey) throw new Error('mask-only jobs require brushMaskKey')
     const destinationKey = `video-asset-derivatives/${job.tenantId}/${job.projectId}/${job.id}/mask.png`
     const copied = await deps.copyR2Object(job.brushMaskKey, destinationKey)
@@ -59,11 +68,15 @@ export async function runAssetIntelligenceProvider(deps: ProviderDeps): Promise<
   }
 
   if (job.action === 'asset-analysis') {
+    if (job.provider !== WORKERS_AI_PROVIDER) throw new Error('asset-analysis requires provider workers-ai')
+    if (job.modelId !== WORKERS_AI_ANALYSIS_MODEL_ID) {
+      throw new Error(`asset-analysis model not supported: ${job.modelId}`)
+    }
     if (!job.sourceAssetId) throw new Error('asset-analysis jobs require sourceAssetId')
     if (!deps.env.AI) throw new Error('asset-analysis jobs require env.AI')
     const asset = await deps.fetchAssetBytes(job.sourceAssetId)
     const analysis = await deps.env.AI.run(
-      '@cf/moonshotai/kimi-k2-instruct',
+      WORKERS_AI_ANALYSIS_CF_MODEL,
       { prompt: job.prompt, image: asset.dataUri },
       { gateway: { metadata: { tenantId: job.tenantId, projectId: job.projectId, jobId: job.id, modelId: job.modelId } } }
     )

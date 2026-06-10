@@ -66,4 +66,54 @@ describe('asset intelligence providers', () => {
     )
     expect(result.derivatives[0]).toMatchObject({ kind: 'analysis-json' })
   })
+
+  it('rejects asset-analysis jobs for unsupported providers before calling AI', async () => {
+    const run = vi.fn()
+
+    await expect(runAssetIntelligenceProvider({
+      job: {
+        id: 'job-3',
+        tenantId: 'tenant-1',
+        projectId: 'project-1',
+        sourceAssetId: 'asset-1',
+        action: 'asset-analysis',
+        modelId: 'workers-ai/kimi-planner',
+        provider: 'replicate',
+        prompt: 'analyze this asset',
+        brushMaskKey: null,
+      },
+      env: { AI: { run } } as any,
+      fetchAssetBytes: vi.fn(),
+      copyR2Object: vi.fn(),
+      uploadJson: vi.fn(),
+      uploadBinary: vi.fn(),
+    })).rejects.toThrow('asset-analysis requires provider workers-ai')
+
+    expect(run).not.toHaveBeenCalled()
+  })
+
+  it('rejects asset-analysis jobs for unsupported models before calling AI', async () => {
+    const run = vi.fn()
+
+    await expect(runAssetIntelligenceProvider({
+      job: {
+        id: 'job-4',
+        tenantId: 'tenant-1',
+        projectId: 'project-1',
+        sourceAssetId: 'asset-1',
+        action: 'asset-analysis',
+        modelId: 'workers-ai/other-model',
+        provider: 'workers-ai',
+        prompt: 'analyze this asset',
+        brushMaskKey: null,
+      },
+      env: { AI: { run } } as any,
+      fetchAssetBytes: vi.fn(),
+      copyR2Object: vi.fn(),
+      uploadJson: vi.fn(),
+      uploadBinary: vi.fn(),
+    })).rejects.toThrow('asset-analysis model not supported: workers-ai/other-model')
+
+    expect(run).not.toHaveBeenCalled()
+  })
 })
