@@ -171,7 +171,15 @@ export async function uploadFile(
     ContentLength: bytes.byteLength,
     Metadata: metadata
   }))
-  console.log('[uploadFile] R2 PutObject', key, 'bytes', bytes.byteLength, 'status', put?.$metadata?.httpStatusCode)
+  // Verify the object actually persisted. The S3-over-fetch handler can return a 200
+  // without writing the body in some serverless runtimes (UNSIGNED-PAYLOAD means R2 won't
+  // reject a missing body), which silently created dead references. Fail loud instead.
+  try {
+    const head = await client.send(new HeadObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }))
+    if (!head.ContentLength) throw new Error('zero-length')
+  } catch (e: any) {
+    throw new Error(`R2 write failed for ${key}: object not persisted after PutObject (${e?.message || e})`)
+  }
 
   // Return the public URL if configured, otherwise generate a presigned URL
   const url = R2_PUBLIC_URL

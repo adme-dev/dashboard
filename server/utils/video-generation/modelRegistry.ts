@@ -15,7 +15,9 @@ const MODELS: VideoGenerationModel[] = [
     estimatedCostCents: 50,
     costUnit: 'second',
     safetyClass: 'vehicle_i2v_safe',
-    defaultEnabled: true,
+    // Mock provider returns a fake mock.local URL that can't be downloaded — not selectable
+    // in the picker (would always fail at finalize). Kept for tests/policy allow-lists.
+    defaultEnabled: false,
   },
   {
     id: 'mock/t2v-broll',

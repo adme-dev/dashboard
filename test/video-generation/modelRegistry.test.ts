@@ -13,7 +13,9 @@ describe('video generation model registry', () => {
     const ids = listSelectableVideoGenerationModels().map((m) => m.id)
     expect(ids).not.toContain('gateway/i2v-dormant')
     expect(ids).not.toContain('mock/t2v-broll')
-    expect(ids).toContain('mock/i2v-safe')
+    // mock models are not selectable (fake output URL); the real CF model is.
+    expect(ids).not.toContain('mock/i2v-safe')
+    expect(ids).toContain('aigateway/seedance-i2v')
   })
 
   it('describes image-to-video vehicle-safe capabilities', () => {
