@@ -9,4 +9,5 @@ CREATE INDEX IF NOT EXISTS idx_campaign_action_log_active_ai_pacing_budget
     requested_at DESC
   )
   WHERE metadata->>'source' = 'ai_pacing_review'
+    AND action_type = 'budget_update'
     AND action_status IN ('planned', 'approved');

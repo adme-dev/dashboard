@@ -13,6 +13,7 @@ describe('social campaign action log migrations', () => {
     expect(sql).toContain('media_spend_id')
     expect(sql).toContain("(new_value->>'dailyBudget')::numeric")
     expect(sql).toContain("metadata->>'source' = 'ai_pacing_review'")
+    expect(sql).toContain("action_type = 'budget_update'")
     expect(sql).toContain("action_status IN ('planned', 'approved')")
   })
 })
