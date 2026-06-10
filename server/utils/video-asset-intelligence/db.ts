@@ -170,40 +170,20 @@ export async function addDerivativeToProjectBucket(input: {
   const title = input.title ?? derivativeTitle(input.derivative)
   const role = input.role ?? `derivative-${input.derivative.kind}`
   const directive = derivativeBucketDirective(input.derivative, input.directive)
-  const existingItem = await queryOne(
-    `SELECT * FROM video_project_bucket_items
-      WHERE bucket_id = $1
-        AND directive->>'derivativeId' = $2
-      ORDER BY created_at DESC
-      LIMIT 1`,
-    [bucket.id, input.derivative.id]
-  )
-  if (existingItem?.id) {
-    const row = await queryOne(
-      `UPDATE video_project_bucket_items
-          SET r2_key = $2,
-              title = $3,
-              role = $4,
-              directive = $5::jsonb,
-              status = 'ready',
-              updated_at = now()
-        WHERE id = $1
-        RETURNING *`,
-      [
-        existingItem.id,
-        input.derivative.r2Key,
-        title,
-        role,
-        JSON.stringify(directive),
-      ]
-    )
-    return mapBucketItemRow(row)
-  }
-
   const row = await queryOne(
     `INSERT INTO video_project_bucket_items
       (bucket_id, asset_id, r2_key, title, role, directive, status)
      VALUES ($1, null, $2, $3, $4, $5::jsonb, 'ready')
+     ON CONFLICT (bucket_id, (directive->>'derivativeId'))
+       WHERE directive->>'source' = 'video_asset_derivatives'
+         AND directive ? 'derivativeId'
+     DO UPDATE SET
+       r2_key = EXCLUDED.r2_key,
+       title = EXCLUDED.title,
+       role = EXCLUDED.role,
+       directive = EXCLUDED.directive,
+       status = 'ready',
+       updated_at = now()
      RETURNING *`,
     [
       bucket.id,

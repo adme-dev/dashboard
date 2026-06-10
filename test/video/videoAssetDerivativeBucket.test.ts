@@ -15,25 +15,13 @@ describe('video asset derivative bucket persistence', () => {
     vi.clearAllMocks()
   })
 
-  it('updates the existing derivative bucket item instead of inserting a duplicate and preserves canonical directive provenance', async () => {
+  it('upserts derivative bucket items through the unique derivative conflict target and preserves canonical directive provenance', async () => {
+    let bucketItemSql = ''
     mockQueryOne.mockImplementation(async (sql: string, params: unknown[]) => {
       if (sql.includes('INSERT INTO video_project_buckets')) return { id: 'ensured-bucket' }
       if (sql.includes('SELECT id FROM video_project_buckets')) return { id: 'bucket-graphics' }
-      if (sql.includes('SELECT * FROM video_project_bucket_items')) {
-        return {
-          id: 'existing-item',
-          bucket_id: 'bucket-graphics',
-          asset_id: null,
-          r2_key: 'old-key.png',
-          title: 'Old title',
-          role: 'old-role',
-          directive: { derivativeId: 'd1' },
-          status: 'ready',
-          created_at: 'created',
-          updated_at: 'updated',
-        }
-      }
-      if (sql.includes('UPDATE video_project_bucket_items')) {
+      if (sql.includes('INSERT INTO video_project_bucket_items')) {
+        bucketItemSql = sql
         const directive = JSON.parse(params[4] as string)
         return {
           id: 'existing-item',
@@ -75,9 +63,12 @@ describe('video asset derivative bucket persistence', () => {
       },
     })
 
-    const existingLookup = mockQueryOne.mock.calls.find(([sql]) => String(sql).includes('directive->>\'derivativeId\' = $2'))
-    expect(existingLookup?.[1]).toEqual(['bucket-graphics', 'd1'])
-    expect(mockQueryOne.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO video_project_bucket_items'))).toBe(false)
+    expect(bucketItemSql).toContain('ON CONFLICT')
+    expect(bucketItemSql).toContain("(directive->>'derivativeId')")
+    expect(bucketItemSql).toContain("directive->>'source' = 'video_asset_derivatives'")
+    expect(bucketItemSql).toContain('DO UPDATE')
+    expect(mockQueryOne.mock.calls.some(([sql]) => String(sql).includes('SELECT * FROM video_project_bucket_items'))).toBe(false)
+    expect(mockQueryOne.mock.calls.some(([sql]) => String(sql).includes('UPDATE video_project_bucket_items'))).toBe(false)
     expect(item).toMatchObject({
       id: 'existing-item',
       r2Key: 'new-key.png',
