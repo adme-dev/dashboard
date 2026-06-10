@@ -314,12 +314,12 @@ export function useMediaProjectEditor(projectId: string) {
   }
 
   /** Add a video clip (footage or still). Ensures a video track exists. One undo step. */
-  function addVideoClipAction(r2Key: string, durationSec: number, baseSource: 'uploaded_footage' | 'still_kenburns', startSec: number) {
+  function addVideoClipAction(r2Key: string, durationSec: number, baseSource: 'uploaded_footage' | 'still_kenburns', startSec: number, assetId: string | null = null) {
     if (!timeline.value) return
     let next = timeline.value
     let track = next.tracks.find(t => t.kind === 'video')
     if (!track) { const tid = crypto.randomUUID(); next = addTrack(next, { id: tid, kind: 'video' }); track = next.tracks.find(t => t.id === tid)! }
-    applyEdit(addVideoClip(next, { trackId: track.id, id: crypto.randomUUID(), r2Key, startSec: Math.max(0, startSec), durationSec, baseSource }))
+    applyEdit(addVideoClip(next, { trackId: track.id, id: crypto.randomUUID(), assetId, r2Key, startSec: Math.max(0, startSec), durationSec, baseSource }))
   }
 
   /** Add an overlay clip from a Banner project + format. Ensures an overlay track exists. */
