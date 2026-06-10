@@ -14,7 +14,7 @@ const BodySchema = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  await requireWriteAccess(event)
+  const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'Derivative id is required' })
   const body = BodySchema.parse(await readBody(event))
@@ -25,6 +25,9 @@ export default defineEventHandler(async (event) => {
   const existing = await getProjectWithCurrentTimeline(derivative.projectId)
   if (!existing) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
   if (existing.project.mediaType !== 'av') throw createError({ statusCode: 400, statusMessage: 'Derivative bucket reuse requires an AV project' })
+  if (user.role !== 'admin' && user.role !== 'owner' && existing.project.createdBy !== user.id) {
+    throw createError({ statusCode: 403, statusMessage: 'Access denied to this project' })
+  }
 
   const item = await addDerivativeToProjectBucket({
     derivative,

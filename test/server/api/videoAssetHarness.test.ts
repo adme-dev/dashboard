@@ -77,8 +77,8 @@ const jobsHandler = (await import('~~/server/api/agency/video/projects/[id]/inte
 describe('video asset harness API', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockRequireWriteAccess.mockResolvedValue({ id: 'user-1' })
-    mockGetProject.mockResolvedValue({ project: { id: '11111111-1111-4111-8111-111111111111', mediaType: 'av' }, timeline: { id: 't1' } })
+    mockRequireWriteAccess.mockResolvedValue({ id: 'user-1', role: 'owner' })
+    mockGetProject.mockResolvedValue({ project: { id: '11111111-1111-4111-8111-111111111111', mediaType: 'av', createdBy: 'user-1' }, timeline: { id: 't1' } })
     mockEnsureBuckets.mockResolvedValue(undefined)
     mockSyncGeneratedAssets.mockResolvedValue(undefined)
     mockListBuckets.mockResolvedValue([{ id: 'b1', projectId: 'p1', kind: 'footage', name: 'Footage', sortOrder: 10, createdAt: 'now', updatedAt: 'now' }])
@@ -259,6 +259,62 @@ describe('video asset harness API', () => {
     await expect(addDerivativeToBucketHandler({ params: { id: 'missing-derivative' }, body: {} } as any))
       .rejects
       .toMatchObject({ statusCode: 404 })
+  })
+
+  it('rejects add-to-bucket when the derivative is not attached to a project', async () => {
+    mockGetDerivative.mockResolvedValue({ id: 'd-projectless', projectId: null })
+
+    await expect(addDerivativeToBucketHandler({ params: { id: 'd-projectless' }, body: {} } as any))
+      .rejects
+      .toMatchObject({ statusCode: 400 })
+    expect(mockGetProject).not.toHaveBeenCalled()
+    expect(mockAddDerivativeToProjectBucket).not.toHaveBeenCalled()
+  })
+
+  it('rejects add-to-bucket when the derivative project is missing', async () => {
+    mockGetProject.mockResolvedValue(null)
+
+    await expect(addDerivativeToBucketHandler({ params: { id: 'd1' }, body: {} } as any))
+      .rejects
+      .toMatchObject({ statusCode: 404 })
+    expect(mockAddDerivativeToProjectBucket).not.toHaveBeenCalled()
+  })
+
+  it('rejects add-to-bucket for non-AV projects', async () => {
+    mockGetProject.mockResolvedValue({ project: { id: '11111111-1111-4111-8111-111111111111', mediaType: 'audio', createdBy: 'user-1' }, timeline: { id: 't1' } })
+
+    await expect(addDerivativeToBucketHandler({ params: { id: 'd1' }, body: {} } as any))
+      .rejects
+      .toMatchObject({ statusCode: 400 })
+    expect(mockAddDerivativeToProjectBucket).not.toHaveBeenCalled()
+  })
+
+  it('rejects add-to-bucket when a writable user cannot mutate the derivative project', async () => {
+    mockRequireWriteAccess.mockResolvedValue({ id: 'user-2', role: 'editor' })
+    mockGetProject.mockResolvedValue({ project: { id: '11111111-1111-4111-8111-111111111111', mediaType: 'av', createdBy: 'user-1' }, timeline: { id: 't1' } })
+
+    await expect(addDerivativeToBucketHandler({ params: { id: 'd1' }, body: {} } as any))
+      .rejects
+      .toMatchObject({ statusCode: 403, statusMessage: 'Access denied to this project' })
+    expect(mockAddDerivativeToProjectBucket).not.toHaveBeenCalled()
+  })
+
+  it('allows admins to add derivatives to projects they did not create', async () => {
+    mockRequireWriteAccess.mockResolvedValue({ id: 'admin-1', role: 'admin' })
+    mockGetProject.mockResolvedValue({ project: { id: '11111111-1111-4111-8111-111111111111', mediaType: 'av', createdBy: 'user-1' }, timeline: { id: 't1' } })
+
+    const res = await addDerivativeToBucketHandler({ params: { id: 'd1' }, body: {} } as any)
+
+    expect(res.item.id).toBe('item-derivative')
+    expect(mockAddDerivativeToProjectBucket).toHaveBeenCalled()
+  })
+
+  it('rejects add-to-bucket before lookup when bucket kind is invalid', async () => {
+    await expect(addDerivativeToBucketHandler({ params: { id: 'd1' }, body: { bucketKind: 'not-a-bucket' } } as any))
+      .rejects
+      .toThrow()
+    expect(mockGetDerivative).not.toHaveBeenCalled()
+    expect(mockAddDerivativeToProjectBucket).not.toHaveBeenCalled()
   })
 
   it('lists project intelligence jobs for the producer activity panel', async () => {

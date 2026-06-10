@@ -133,6 +133,23 @@ function derivativeTitle(derivative: VideoAssetDerivative): string {
   return `${derivative.kind.replace(/-/g, ' ')} derivative`
 }
 
+function derivativeBucketDirective(derivative: VideoAssetDerivative, directive?: Record<string, unknown> | null): Record<string, unknown> {
+  const canonical: Record<string, unknown> = {
+    source: 'video_asset_derivatives',
+    derivativeId: derivative.id,
+    sourceAssetId: derivative.sourceAssetId,
+    kind: derivative.kind,
+  }
+  if (derivative.width != null) canonical.width = derivative.width
+  if (derivative.height != null) canonical.height = derivative.height
+  if (typeof derivative.metadata.contentType === 'string') canonical.contentType = derivative.metadata.contentType
+  if (typeof derivative.metadata.size === 'number') canonical.size = derivative.metadata.size
+  return {
+    ...(directive ?? {}),
+    ...canonical,
+  }
+}
+
 export async function addDerivativeToProjectBucket(input: {
   derivative: VideoAssetDerivative
   bucketKind?: VideoBucketKind
@@ -150,13 +167,39 @@ export async function addDerivativeToProjectBucket(input: {
   )
   if (!bucket?.id) throw new Error(`video project bucket ${bucketKind} not found for project ${input.derivative.projectId}`)
 
-  const directive = {
-    source: 'video_asset_derivatives',
-    derivativeId: input.derivative.id,
-    sourceAssetId: input.derivative.sourceAssetId,
-    kind: input.derivative.kind,
-    ...(input.directive ?? {}),
+  const title = input.title ?? derivativeTitle(input.derivative)
+  const role = input.role ?? `derivative-${input.derivative.kind}`
+  const directive = derivativeBucketDirective(input.derivative, input.directive)
+  const existingItem = await queryOne(
+    `SELECT * FROM video_project_bucket_items
+      WHERE bucket_id = $1
+        AND directive->>'derivativeId' = $2
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [bucket.id, input.derivative.id]
+  )
+  if (existingItem?.id) {
+    const row = await queryOne(
+      `UPDATE video_project_bucket_items
+          SET r2_key = $2,
+              title = $3,
+              role = $4,
+              directive = $5::jsonb,
+              status = 'ready',
+              updated_at = now()
+        WHERE id = $1
+        RETURNING *`,
+      [
+        existingItem.id,
+        input.derivative.r2Key,
+        title,
+        role,
+        JSON.stringify(directive),
+      ]
+    )
+    return mapBucketItemRow(row)
   }
+
   const row = await queryOne(
     `INSERT INTO video_project_bucket_items
       (bucket_id, asset_id, r2_key, title, role, directive, status)
@@ -165,8 +208,8 @@ export async function addDerivativeToProjectBucket(input: {
     [
       bucket.id,
       input.derivative.r2Key,
-      input.title ?? derivativeTitle(input.derivative),
-      input.role ?? `derivative-${input.derivative.kind}`,
+      title,
+      role,
       JSON.stringify(directive),
     ]
   )
