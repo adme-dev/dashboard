@@ -153,6 +153,7 @@ export function useMediaProjectEditor(projectId: string) {
   // :sources prop to MediaTimeline so wavesurfer waveforms update when new clips
   // are added.
   const sourcesRegistry = createVideoSourceRegistry()
+  const sourcesMap = new Map<string, string>()
   const sourcesRef = ref<Record<string, string>>({})
 
   let engine: AudioEngine | null = null
@@ -243,6 +244,7 @@ export function useMediaProjectEditor(projectId: string) {
   /** Merge a presigned URL into the live sources map so the resolver + waveform
    * prop see it immediately. Call this BEFORE addClipAction when you have a URL. */
   function mergeSource(r2Key: string, url: string, metadata: Partial<Omit<VideoSourceInput, 'r2Key' | 'url'>> = {}) {
+    sourcesMap.set(r2Key, url)
     mergeVideoSource(sourcesRegistry, { r2Key, url, ...metadata })
     // Bump sourcesRef so watchers / MediaTimeline :sources prop update
     sourcesRef.value = videoSourceRecord(sourcesRegistry)
@@ -465,8 +467,7 @@ export function useMediaProjectEditor(projectId: string) {
       if (!state) { status.value = 'error'; error.value = 'This project has no timeline yet.'; return }
       timeline.value = state
       // Populate the live sources map from the initial presigned URLs
-      for (const [k, v] of Object.entries(src.sources)) sourcesMap.set(k, v)
-      sourcesRef.value = Object.fromEntries(sourcesMap)
+      for (const [k, v] of Object.entries(src.sources)) mergeSource(k, v)
       const plan = planTimeline(state)
       clips.value = plan.clips
       tracks.value = plan.tracks
