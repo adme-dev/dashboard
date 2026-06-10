@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getAssetIntelligenceAction } from '~~/server/utils/video-asset-intelligence/registry'
-import { createBlockedExtractionJob } from '~~/server/utils/video-asset-intelligence/db'
+import { createBlockedExtractionJob, createQueuedExtractionJob } from '~~/server/utils/video-asset-intelligence/db'
+import { enqueueAssetIntelligence, getAssetIntelligenceQueue } from '~~/server/utils/video-asset-intelligence/enqueue'
 
 const BodySchema = z.object({
   projectId: z.string().uuid(),
@@ -19,7 +20,7 @@ export default defineEventHandler(async (event) => {
   const body = BodySchema.parse(await readBody(event))
   const action = getAssetIntelligenceAction(body.action)
   if (!action) throw createError({ statusCode: 400, statusMessage: 'Unknown extraction action' })
-  const job = await createBlockedExtractionJob({
+  const input = {
     projectId: body.projectId,
     sourceAssetId,
     bucketItemId: body.bucketItemId ?? null,
@@ -28,7 +29,16 @@ export default defineEventHandler(async (event) => {
     brushMaskKey: body.brushMaskKey ?? null,
     modelId: body.modelId ?? null,
     createdBy: user.id,
-  })
+  }
+
+  if (getAssetIntelligenceQueue(event)) {
+    const job = await createQueuedExtractionJob(input)
+    await enqueueAssetIntelligence(event, { jobId: job.id, projectId: body.projectId, sourceAssetId })
+    setResponseStatus(event, 202)
+    return { job }
+  }
+
+  const job = await createBlockedExtractionJob(input)
   setResponseStatus(event, 202)
   return { job }
 })

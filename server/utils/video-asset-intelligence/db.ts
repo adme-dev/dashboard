@@ -133,3 +133,87 @@ export async function createBlockedExtractionJob(input: {
   )
   return mapIntelligenceJobRow(row)
 }
+
+export async function createQueuedExtractionJob(input: {
+  projectId: string
+  sourceAssetId: string
+  bucketItemId?: string | null
+  action: AssetIntelligenceActionId
+  prompt?: string | null
+  brushMaskKey?: string | null
+  modelId?: string | null
+  createdBy: string
+}): Promise<VideoAssetIntelligenceJob> {
+  const model = input.modelId ? null : defaultModelForAction(input.action)
+  const modelId = input.modelId ?? model?.id ?? 'unconfigured/provider'
+  const provider = model?.provider ?? modelId.split('/')[0] ?? 'unconfigured'
+  const row = await queryOne(
+    `INSERT INTO video_asset_intelligence_jobs
+      (project_id, source_asset_id, bucket_item_id, action, model_id, provider, status, prompt, brush_mask_key, output_derivative_ids, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,$8,'[]'::jsonb,$9)
+     RETURNING *`,
+    [
+      input.projectId,
+      input.sourceAssetId,
+      input.bucketItemId ?? null,
+      input.action,
+      modelId,
+      provider,
+      input.prompt ?? null,
+      input.brushMaskKey ?? null,
+      input.createdBy,
+    ]
+  )
+  return mapIntelligenceJobRow(row)
+}
+
+export async function markAssetIntelligenceJobRunning(id: string): Promise<VideoAssetIntelligenceJob> {
+  const row = await queryOne(
+    `UPDATE video_asset_intelligence_jobs
+        SET status = 'running', started_at = COALESCE(started_at, now()), updated_at = now()
+      WHERE id = $1
+      RETURNING *`,
+    [id]
+  )
+  if (!row) throw new Error(`asset intelligence job ${id} not found`)
+  return mapIntelligenceJobRow(row)
+}
+
+export async function markAssetIntelligenceJobSucceeded(input: {
+  id: string
+  outputDerivativeIds: string[]
+}): Promise<VideoAssetIntelligenceJob> {
+  const row = await queryOne(
+    `UPDATE video_asset_intelligence_jobs
+        SET status = 'succeeded',
+            output_derivative_ids = $2::jsonb,
+            error_message = null,
+            completed_at = now(),
+            updated_at = now()
+      WHERE id = $1 AND status NOT IN ('succeeded','failed')
+      RETURNING *`,
+    [input.id, JSON.stringify(input.outputDerivativeIds)]
+  )
+  if (!row) {
+    const existing = await queryOne(`SELECT * FROM video_asset_intelligence_jobs WHERE id = $1`, [input.id])
+    if (!existing) throw new Error(`asset intelligence job ${input.id} not found`)
+    return mapIntelligenceJobRow(existing)
+  }
+  return mapIntelligenceJobRow(row)
+}
+
+export async function markAssetIntelligenceJobFailed(id: string, errorMessage: string): Promise<VideoAssetIntelligenceJob> {
+  const row = await queryOne(
+    `UPDATE video_asset_intelligence_jobs
+        SET status = 'failed', error_message = $2, completed_at = now(), updated_at = now()
+      WHERE id = $1 AND status NOT IN ('succeeded','failed')
+      RETURNING *`,
+    [id, errorMessage]
+  )
+  if (!row) {
+    const existing = await queryOne(`SELECT * FROM video_asset_intelligence_jobs WHERE id = $1`, [id])
+    if (!existing) throw new Error(`asset intelligence job ${id} not found`)
+    return mapIntelligenceJobRow(existing)
+  }
+  return mapIntelligenceJobRow(row)
+}

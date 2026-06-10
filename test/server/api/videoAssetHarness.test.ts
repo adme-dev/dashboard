@@ -37,6 +37,7 @@ const mockListBuckets = vi.fn()
 const mockListBucketItems = vi.fn()
 const mockCreateOrUpdateDirective = vi.fn()
 const mockCreateBlockedExtractionJob = vi.fn()
+const mockCreateQueuedExtractionJob = vi.fn()
 const mockListProjectIntelligenceJobs = vi.fn()
 const mockListDerivatives = vi.fn()
 vi.mock('~~/server/utils/video-asset-intelligence/db', () => ({
@@ -46,8 +47,16 @@ vi.mock('~~/server/utils/video-asset-intelligence/db', () => ({
   listBucketItemsForProject: (...args: unknown[]) => mockListBucketItems(...args),
   createOrUpdateBucketItemDirective: (...args: unknown[]) => mockCreateOrUpdateDirective(...args),
   createBlockedExtractionJob: (...args: unknown[]) => mockCreateBlockedExtractionJob(...args),
+  createQueuedExtractionJob: (...args: unknown[]) => mockCreateQueuedExtractionJob(...args),
   listProjectIntelligenceJobs: (...args: unknown[]) => mockListProjectIntelligenceJobs(...args),
   listAssetDerivatives: (...args: unknown[]) => mockListDerivatives(...args),
+}))
+
+const mockEnqueueAssetIntelligence = vi.fn()
+const mockGetAssetIntelligenceQueue = vi.fn()
+vi.mock('~~/server/utils/video-asset-intelligence/enqueue', () => ({
+  getAssetIntelligenceQueue: (...args: unknown[]) => mockGetAssetIntelligenceQueue(...args),
+  enqueueAssetIntelligence: (...args: unknown[]) => mockEnqueueAssetIntelligence(...args),
 }))
 
 const bucketsHandler = (await import('~~/server/api/agency/video/projects/[id]/buckets/index.get')).default
@@ -69,6 +78,9 @@ describe('video asset harness API', () => {
     mockListBucketItems.mockResolvedValue([{ id: 'i1', bucketId: 'b1', assetId: 'a1', r2Key: 'car.mp4', title: 'Car', role: 'hero', directive: {}, status: 'ready', createdAt: 'now', updatedAt: 'now' }])
     mockCreateOrUpdateDirective.mockResolvedValue({ id: 'i1', directive: { prompt: 'lift logo' } })
     mockCreateBlockedExtractionJob.mockResolvedValue({ id: 'j1', status: 'blocked', action: 'mask-lift' })
+    mockCreateQueuedExtractionJob.mockResolvedValue({ id: 'job-queued', status: 'queued', action: 'erase-fill' })
+    mockGetAssetIntelligenceQueue.mockReturnValue(null)
+    mockEnqueueAssetIntelligence.mockResolvedValue(undefined)
     mockListProjectIntelligenceJobs.mockResolvedValue([{ id: 'j1', action: 'mask-lift', status: 'blocked' }])
     mockListDerivatives.mockResolvedValue([{ id: 'd1', kind: 'foreground-png' }])
     mockUploadFile.mockResolvedValue({ key: 'video-asset-masks/p1/a1/mask.png', url: '/api/_uploads/video-asset-masks/p1/a1/mask.png', size: 4 })
@@ -102,6 +114,33 @@ describe('video asset harness API', () => {
       createdBy: 'user-1'
     }))
     expect(res.job.status).toBe('blocked')
+  })
+
+  it('creates and enqueues executable asset intelligence jobs when queue binding exists', async () => {
+    mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
+    mockCreateQueuedExtractionJob.mockResolvedValue({ id: 'job-queued', status: 'queued', action: 'erase-fill' })
+
+    const res = await extractHandler({
+      params: { id: '22222222-2222-4222-8222-222222222222' },
+      body: {
+        projectId: '11111111-1111-4111-8111-111111111111',
+        action: 'erase-fill',
+        prompt: 'erase badge',
+        brushMaskKey: 'mask.png',
+      }
+    } as any)
+
+    expect(mockCreateQueuedExtractionJob).toHaveBeenCalledWith(expect.objectContaining({
+      sourceAssetId: '22222222-2222-4222-8222-222222222222',
+      action: 'erase-fill',
+      createdBy: 'user-1',
+    }))
+    expect(mockEnqueueAssetIntelligence).toHaveBeenCalledWith(expect.anything(), {
+      jobId: 'job-queued',
+      projectId: '11111111-1111-4111-8111-111111111111',
+      sourceAssetId: '22222222-2222-4222-8222-222222222222',
+    })
+    expect(res.job.status).toBe('queued')
   })
 
   it('uploads a brush mask for a selected asset', async () => {
