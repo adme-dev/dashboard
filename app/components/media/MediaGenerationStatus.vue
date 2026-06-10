@@ -13,11 +13,13 @@ onMounted(() => { timer = setInterval(() => { now.value = Date.now() }, 1000) })
 onBeforeUnmount(() => { if (timer) clearInterval(timer) })
 
 // Show active jobs always; show finished (succeeded/failed) until dismissed.
-const visible = computed(() =>
-  props.jobs
+const visible = computed(() => {
+  const raw: any = props.jobs
+  const list: VideoGenerationJobView[] = Array.isArray(raw) ? raw : Array.isArray(raw?.value) ? raw.value : []
+  return list
     .filter((j) => ['queued', 'running', 'succeeded', 'failed'].includes(j.status) && !dismissed.value.has(j.id))
     .slice(0, 4)
-)
+})
 
 function elapsed(j: VideoGenerationJobView): string {
   const start = new Date(j.startedAt || j.createdAt).getTime()
