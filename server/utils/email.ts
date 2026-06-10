@@ -42,6 +42,15 @@ export function getCachedBinding(key: string): string | undefined {
 }
 
 /**
+ * Like getCachedBinding but for non-string bindings (R2 buckets, queues, DOs),
+ * which are objects rather than secret strings.
+ */
+export function getCachedObjectBinding<T = unknown>(key: string): T | undefined {
+  const v = cachedCfBindings?.[key]
+  return v && typeof v === 'object' ? v as T : undefined
+}
+
+/**
  * Read a Cloudflare Pages binding. Order:
  *   1. Per-request event.context.cloudflare.env (most reliable)
  *   2. Module-cached bindings (set by the cf-env middleware on every request)

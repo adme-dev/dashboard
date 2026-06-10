@@ -55,6 +55,16 @@ queue = "video-render"
 binding = "VIDEO_GENERATION_QUEUE"
 queue = "video-generation"
 
+# R2 — native object storage binding for server-side uploads. The S3-SDK-over-fetch
+# path silently drops PutObject bodies in the Pages/workerd runtime (200 but no object
+# written — UNSIGNED-PAYLOAD means R2 won't reject a missing body), so storage.ts
+# prefers this binding and falls back to the S3 SDK only outside Cloudflare.
+# ⚠️ Verify it reaches the deployed Pages runtime via dashboard → Settings → Bindings;
+# binding propagation from wrangler.toml has been inconsistent (VIDEO_RENDER_QUEUE).
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "agency-files"
+
 # AI — Workers AI for embeddings and edge inference
 [ai]
 binding = "AI"

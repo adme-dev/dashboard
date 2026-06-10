@@ -11,6 +11,7 @@ import { FetchHttpHandler } from '@smithy/fetch-http-handler'
 import { randomUUID } from 'crypto'
 import { promises as fs } from 'fs'
 import { join, dirname } from 'path'
+import { getCachedObjectBinding } from '~~/server/utils/email'
 
 // Local upload directory for dev without R2
 const LOCAL_UPLOAD_DIR = join(process.cwd(), 'server', 'uploads')
@@ -43,6 +44,28 @@ function getR2Client(): S3Client {
     // makes no HTTP call), which is why uploads 500'd while stream URLs worked.
     requestHandler: new FetchHttpHandler()
   })
+}
+
+// Minimal shape of the Cloudflare native R2 bucket binding (MEDIA_BUCKET).
+interface R2BucketBinding {
+  put: (key: string, value: Uint8Array, options?: {
+    httpMetadata?: { contentType?: string }
+    customMetadata?: Record<string, string>
+  }) => Promise<unknown>
+  head: (key: string) => Promise<{ size: number } | null>
+  delete: (key: string) => Promise<void>
+}
+
+/**
+ * Cloudflare native R2 binding, when running on Pages/Workers. The S3 SDK's
+ * fetch handler silently drops PutObject bodies in the workerd runtime (200
+ * returned, no object written), so writes must go through this binding there.
+ * The binding is pinned to the agency-files bucket in wrangler.toml, so it is
+ * only used when config targets that bucket.
+ */
+function getNativeBucket(): R2BucketBinding | undefined {
+  if (R2_BUCKET_NAME !== 'agency-files') return undefined
+  return getCachedObjectBinding<R2BucketBinding>('MEDIA_BUCKET')
 }
 
 // File type categories for organization
@@ -157,28 +180,42 @@ export async function uploadFile(
     }
   }
 
-  const client = getR2Client()
-
-  // R2 PutObject. Body is sent as a Uint8Array with an explicit ContentLength: under
-  // Nitro/unenv (dev) and workerd, the fetch handler can mishandle a Node Buffer body
-  // (request sent with no body → 200 but nothing persisted), so normalise it.
   const bytes = new Uint8Array(buffer)
-  const put = await client.send(new PutObjectCommand({
-    Bucket: R2_BUCKET_NAME,
-    Key: key,
-    Body: bytes,
-    ContentType: contentType,
-    ContentLength: bytes.byteLength,
-    Metadata: metadata
-  }))
-  // Verify the object actually persisted. The S3-over-fetch handler can return a 200
-  // without writing the body in some serverless runtimes (UNSIGNED-PAYLOAD means R2 won't
-  // reject a missing body), which silently created dead references. Fail loud instead.
-  try {
-    const head = await client.send(new HeadObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }))
-    if (!head.ContentLength) throw new Error('zero-length')
-  } catch (e: any) {
-    throw new Error(`R2 write failed for ${key}: object not persisted after PutObject (${e?.message || e})`)
+  const bucket = getNativeBucket()
+
+  if (bucket) {
+    // Native R2 binding — the only write path that persists in the Pages runtime.
+    await bucket.put(key, bytes, {
+      httpMetadata: { contentType },
+      customMetadata: metadata
+    })
+    const head = await bucket.head(key)
+    if (!head || !head.size) {
+      throw new Error(`R2 write failed for ${key}: object not persisted after native put`)
+    }
+  } else {
+    const client = getR2Client()
+
+    // R2 PutObject. Body is sent as a Uint8Array with an explicit ContentLength: under
+    // Nitro/unenv (dev) and workerd, the fetch handler can mishandle a Node Buffer body
+    // (request sent with no body → 200 but nothing persisted), so normalise it.
+    await client.send(new PutObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: key,
+      Body: bytes,
+      ContentType: contentType,
+      ContentLength: bytes.byteLength,
+      Metadata: metadata
+    }))
+    // Verify the object actually persisted. The S3-over-fetch handler can return a 200
+    // without writing the body in some serverless runtimes (UNSIGNED-PAYLOAD means R2 won't
+    // reject a missing body), which silently created dead references. Fail loud instead.
+    try {
+      const head = await client.send(new HeadObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }))
+      if (!head.ContentLength) throw new Error('zero-length')
+    } catch (e: any) {
+      throw new Error(`R2 write failed for ${key}: object not persisted after PutObject (${e?.message || e})`)
+    }
   }
 
   // Return the public URL if configured, otherwise generate a presigned URL
@@ -204,6 +241,12 @@ export async function deleteFile(key: string): Promise<void> {
     } catch {
       // File may not exist — ignore
     }
+    return
+  }
+
+  const bucket = getNativeBucket()
+  if (bucket) {
+    await bucket.delete(key)
     return
   }
 
