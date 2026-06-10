@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { processAssetIntelligenceJob } from '~~/workers/asset-intelligence/src/worker'
 
+const validMessage = { jobId: '11111111-1111-4111-8111-111111111111', projectId: 'project-1', sourceAssetId: 'asset-1' }
+
 describe('asset intelligence worker', () => {
   it('marks job running, persists derivatives, then marks succeeded', async () => {
     const deps = {
@@ -25,7 +27,7 @@ describe('asset intelligence worker', () => {
       }),
     }
 
-    await processAssetIntelligenceJob({ jobId: 'job-1', projectId: 'project-1', sourceAssetId: 'asset-1' }, deps)
+    await processAssetIntelligenceJob(validMessage, deps)
 
     expect(deps.markRunning).toHaveBeenCalledWith('job-1')
     expect(deps.createDerivative).toHaveBeenCalledWith(expect.objectContaining({
@@ -46,7 +48,7 @@ describe('asset intelligence worker', () => {
       runProvider: vi.fn(),
     }
 
-    await expect(processAssetIntelligenceJob({ jobId: 'missing-job', projectId: 'project-1', sourceAssetId: 'asset-1' }, deps))
+    await expect(processAssetIntelligenceJob(validMessage, deps))
       .resolves.toEqual({ skipped: true, reason: 'missing_job' })
 
     expect(deps.markRunning).not.toHaveBeenCalled()
@@ -56,7 +58,7 @@ describe('asset intelligence worker', () => {
     expect(deps.markFailed).not.toHaveBeenCalled()
   })
 
-  it.each([null, undefined, 'job-1', 42, {}, { projectId: 'project-1' }])(
+  it.each([null, undefined, 'job-1', 42, {}, { projectId: 'project-1' }, { jobId: 'not-a-uuid' }, { jobId: '   ' }])(
     'skips malformed queue message bodies without side effects: %s',
     async (message) => {
       const deps = {
@@ -90,7 +92,7 @@ describe('asset intelligence worker', () => {
       runProvider: vi.fn(),
     }
 
-    await expect(processAssetIntelligenceJob({ jobId: 'job-1', projectId: 'project-1', sourceAssetId: 'asset-1' }, deps))
+    await expect(processAssetIntelligenceJob(validMessage, deps))
       .rejects.toThrow('database unavailable')
 
     expect(deps.markRunning).not.toHaveBeenCalled()
@@ -107,7 +109,7 @@ describe('asset intelligence worker', () => {
       runProvider: vi.fn(),
     }
 
-    await processAssetIntelligenceJob({ jobId: 'job-1', projectId: 'project-1', sourceAssetId: 'asset-1' }, deps)
+    await processAssetIntelligenceJob(validMessage, deps)
 
     expect(deps.runProvider).not.toHaveBeenCalled()
     expect(deps.createDerivative).not.toHaveBeenCalled()
@@ -126,7 +128,7 @@ describe('asset intelligence worker', () => {
       }),
     }
 
-    await expect(processAssetIntelligenceJob({ jobId: 'job-1', projectId: 'project-1', sourceAssetId: 'asset-1' }, deps))
+    await expect(processAssetIntelligenceJob(validMessage, deps))
       .resolves.toEqual({ skipped: true, reason: 'not_claimed' })
 
     expect(deps.markSucceeded).toHaveBeenCalledWith({ id: 'job-1', outputDerivativeIds: ['derivative-1'] })
@@ -143,7 +145,7 @@ describe('asset intelligence worker', () => {
       runProvider: vi.fn(),
     }
 
-    await processAssetIntelligenceJob({ jobId: 'job-1', projectId: 'project-1', sourceAssetId: 'asset-1' }, deps)
+    await processAssetIntelligenceJob(validMessage, deps)
 
     expect(deps.markRunning).not.toHaveBeenCalled()
     expect(deps.runProvider).not.toHaveBeenCalled()

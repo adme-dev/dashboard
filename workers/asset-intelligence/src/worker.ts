@@ -32,7 +32,10 @@ export type ProcessAssetIntelligenceResult =
 function isValidMessage(message: unknown): message is AssetIntelligenceMessage {
   if (!message || typeof message !== 'object') return false
   const candidate = message as Partial<AssetIntelligenceMessage>
-  return typeof candidate.jobId === 'string' && candidate.jobId.length > 0
+  if (typeof candidate.jobId !== 'string') return false
+  const jobId = candidate.jobId.trim()
+  if (candidate.jobId !== jobId) return false
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(jobId)
 }
 
 function isTerminalStatus(status: string | undefined): boolean {
