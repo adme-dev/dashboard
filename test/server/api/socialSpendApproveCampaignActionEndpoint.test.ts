@@ -29,6 +29,7 @@ describe('POST /api/agency/social/spend/:id/actions/:actionId/approve', () => {
       requested_at: '2026-06-10T03:00:00.000Z',
       approved_by: 'approver-1',
       approved_at: '2026-06-10T03:15:00.000Z',
+      executed_at: null,
       previous_value: { dailyBudget: 120 },
       new_value: { dailyBudget: 95 },
       reason: 'Projected overspend',
@@ -43,6 +44,7 @@ describe('POST /api/agency/social/spend/:id/actions/:actionId/approve', () => {
     expect(mockRequireWriteAccess).toHaveBeenCalled()
     expect(String(mockQueryOne.mock.calls[0][0])).toContain("action_status = 'approved'")
     expect(String(mockQueryOne.mock.calls[0][0])).toContain("action_status = 'planned'")
+    expect(String(mockQueryOne.mock.calls[0][0])).toContain('executed_at::text')
     expect(String(mockQueryOne.mock.calls[0][0])).not.toContain('executed_at =')
     expect(mockQueryOne.mock.calls[0][1]).toEqual(['spend-1', 'action-1', 'approver-1'])
     expect(result).toEqual({
@@ -57,6 +59,7 @@ describe('POST /api/agency/social/spend/:id/actions/:actionId/approve', () => {
         requestedAt: '2026-06-10T03:00:00.000Z',
         approvedBy: 'approver-1',
         approvedAt: '2026-06-10T03:15:00.000Z',
+        executedAt: null,
         previousValue: { dailyBudget: 120 },
         newValue: { dailyBudget: 95 },
         reason: 'Projected overspend',
