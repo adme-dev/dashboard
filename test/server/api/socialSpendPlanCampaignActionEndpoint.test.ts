@@ -35,11 +35,13 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
       budget: 3000,
     }
     mockRequireWriteAccess.mockResolvedValue({ id: 'user-1' })
-    mockQueryOne.mockResolvedValue({
-      id: 'spend-1',
-      platform: 'google_ads',
-      campaign_name: 'Brand Search',
-    })
+    mockQueryOne
+      .mockResolvedValueOnce({
+        id: 'spend-1',
+        platform: 'google_ads',
+        campaign_name: 'Brand Search',
+      })
+      .mockResolvedValueOnce(null)
     mockRecordCampaignAction.mockResolvedValue({
       id: 'action-1',
       mediaSpendId: 'spend-1',
@@ -86,6 +88,49 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
     })
   })
 
+  it('returns an existing planned action instead of creating a duplicate', async () => {
+    mockQueryOne.mockReset()
+    mockQueryOne
+      .mockResolvedValueOnce({
+        id: 'spend-1',
+        platform: 'google_ads',
+        campaign_name: 'Brand Search',
+      })
+      .mockResolvedValueOnce({
+        id: 'action-existing',
+        media_spend_id: 'spend-1',
+        platform: 'google_ads',
+        action_type: 'budget_update',
+        action_status: 'planned',
+        requested_by: 'user-1',
+        requested_at: '2026-06-10T03:00:00.000Z',
+        previous_value: { dailyBudget: 120 },
+        new_value: { dailyBudget: 95 },
+        reason: 'Projected overspend',
+      })
+    const handler = (await import('~~/server/api/agency/social/spend/[id]/actions/plan.post')).default
+
+    const result = await handler({ params: { id: 'spend-1' } } as any)
+
+    expect(mockRecordCampaignAction).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      planned: false,
+      existing: true,
+      action: {
+        id: 'action-existing',
+        mediaSpendId: 'spend-1',
+        platform: 'google',
+        actionType: 'budget_update',
+        actionStatus: 'planned',
+        requestedBy: 'user-1',
+        requestedAt: '2026-06-10T03:00:00.000Z',
+        previousValue: { dailyBudget: 120 },
+        newValue: { dailyBudget: 95 },
+        reason: 'Projected overspend',
+      },
+    })
+  })
+
   it('rejects missing recommended daily budget', async () => {
     mockBody = { currentDailyBudget: 120 }
     const handler = (await import('~~/server/api/agency/social/spend/[id]/actions/plan.post')).default
@@ -97,6 +142,7 @@ describe('POST /api/agency/social/spend/:id/actions/plan', () => {
   })
 
   it('rejects unknown spend rows', async () => {
+    mockQueryOne.mockReset()
     mockQueryOne.mockResolvedValue(null)
     const handler = (await import('~~/server/api/agency/social/spend/[id]/actions/plan.post')).default
 

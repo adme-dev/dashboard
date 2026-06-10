@@ -28,6 +28,31 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Spend record not found' })
   }
 
+  const existing = await queryOne<PlannedActionRow>(
+    `SELECT id::text,
+            media_spend_id::text,
+            platform,
+            action_type,
+            action_status,
+            requested_by::text,
+            requested_at::text,
+            previous_value,
+            new_value,
+            reason
+     FROM campaign_action_log
+     WHERE media_spend_id = $1
+       AND action_type = 'budget_update'
+       AND action_status = 'planned'
+       AND metadata->>'source' = 'ai_pacing_review'
+       AND (new_value->>'dailyBudget')::numeric = $2
+     ORDER BY requested_at DESC
+     LIMIT 1`,
+    [id, recommendedDailyBudget]
+  )
+  if (existing) {
+    return { planned: false, existing: true, action: normalizePlannedAction(existing) }
+  }
+
   const action = await recordCampaignAction({
     mediaSpendId: id,
     platform: spend.platform,
@@ -61,4 +86,32 @@ function parseBudgetNumber(value: unknown, field: string) {
 function numberOrNull(value: unknown) {
   const n = Number(value)
   return Number.isFinite(n) ? n : null
+}
+
+interface PlannedActionRow {
+  id: string
+  media_spend_id: string
+  platform: 'meta' | 'google_ads'
+  action_type: string
+  action_status: string
+  requested_by: string | null
+  requested_at: string
+  previous_value: Record<string, unknown>
+  new_value: Record<string, unknown>
+  reason: string | null
+}
+
+function normalizePlannedAction(row: PlannedActionRow) {
+  return {
+    id: row.id,
+    mediaSpendId: row.media_spend_id,
+    platform: row.platform === 'google_ads' ? 'google' : 'meta',
+    actionType: row.action_type,
+    actionStatus: row.action_status,
+    requestedBy: row.requested_by,
+    requestedAt: row.requested_at,
+    previousValue: row.previous_value,
+    newValue: row.new_value,
+    reason: row.reason,
+  }
 }
