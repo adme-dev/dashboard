@@ -56,6 +56,30 @@ describe('asset intelligence worker', () => {
     expect(deps.markFailed).not.toHaveBeenCalled()
   })
 
+  it.each([null, undefined, 'job-1', 42, {}, { projectId: 'project-1' }])(
+    'skips malformed queue message bodies without side effects: %s',
+    async (message) => {
+      const deps = {
+        getJob: vi.fn(),
+        markRunning: vi.fn(),
+        markFailed: vi.fn(),
+        markSucceeded: vi.fn(),
+        createDerivative: vi.fn(),
+        runProvider: vi.fn(),
+      }
+
+      await expect(processAssetIntelligenceJob(message as any, deps))
+        .resolves.toEqual({ skipped: true, reason: 'malformed_message' })
+
+      expect(deps.getJob).not.toHaveBeenCalled()
+      expect(deps.markRunning).not.toHaveBeenCalled()
+      expect(deps.runProvider).not.toHaveBeenCalled()
+      expect(deps.createDerivative).not.toHaveBeenCalled()
+      expect(deps.markSucceeded).not.toHaveBeenCalled()
+      expect(deps.markFailed).not.toHaveBeenCalled()
+    }
+  )
+
   it('propagates getJob errors so transient database failures can retry', async () => {
     const deps = {
       getJob: vi.fn().mockRejectedValue(new Error('database unavailable')),

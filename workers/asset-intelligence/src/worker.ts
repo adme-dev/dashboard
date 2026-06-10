@@ -26,8 +26,14 @@ export interface ProcessDeps {
 }
 
 export type ProcessAssetIntelligenceResult =
-  | { skipped: true; reason: 'missing_job' | 'terminal' | 'not_claimed' }
+  | { skipped: true; reason: 'malformed_message' | 'missing_job' | 'terminal' | 'not_claimed' }
   | { skipped: false; status: 'succeeded' | 'failed' }
+
+function isValidMessage(message: unknown): message is AssetIntelligenceMessage {
+  if (!message || typeof message !== 'object') return false
+  const candidate = message as Partial<AssetIntelligenceMessage>
+  return typeof candidate.jobId === 'string' && candidate.jobId.length > 0
+}
 
 function isTerminalStatus(status: string | undefined): boolean {
   return status === 'succeeded' || status === 'failed' || status === 'blocked'
@@ -46,9 +52,11 @@ function withContentMetadata(derivative: AssetDerivativeOutput): AssetDerivative
 }
 
 export async function processAssetIntelligenceJob(
-  message: AssetIntelligenceMessage,
+  message: unknown,
   deps: ProcessDeps
 ): Promise<ProcessAssetIntelligenceResult> {
+  if (!isValidMessage(message)) return { skipped: true, reason: 'malformed_message' }
+
   const job = await deps.getJob(message.jobId)
   if (!job) return { skipped: true, reason: 'missing_job' }
   if (isTerminalStatus(job.status)) return { skipped: true, reason: 'terminal' }
