@@ -88,6 +88,18 @@ export async function listAssetDerivatives(sourceAssetId: string) {
   return rows.map(mapDerivativeRow)
 }
 
+export async function listProjectIntelligenceJobs(projectId: string, limit = 50): Promise<VideoAssetIntelligenceJob[]> {
+  const safeLimit = Math.min(Math.max(Math.trunc(limit || 50), 1), 100)
+  const rows = await queryRows(
+    `SELECT * FROM video_asset_intelligence_jobs
+      WHERE project_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2`,
+    [projectId, safeLimit]
+  )
+  return rows.map(mapIntelligenceJobRow)
+}
+
 export async function createBlockedExtractionJob(input: {
   projectId: string
   sourceAssetId: string

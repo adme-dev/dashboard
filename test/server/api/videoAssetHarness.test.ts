@@ -37,6 +37,7 @@ const mockListBuckets = vi.fn()
 const mockListBucketItems = vi.fn()
 const mockCreateOrUpdateDirective = vi.fn()
 const mockCreateBlockedExtractionJob = vi.fn()
+const mockListProjectIntelligenceJobs = vi.fn()
 const mockListDerivatives = vi.fn()
 vi.mock('~~/server/utils/video-asset-intelligence/db', () => ({
   ensureDefaultBuckets: (...args: unknown[]) => mockEnsureBuckets(...args),
@@ -45,6 +46,7 @@ vi.mock('~~/server/utils/video-asset-intelligence/db', () => ({
   listBucketItemsForProject: (...args: unknown[]) => mockListBucketItems(...args),
   createOrUpdateBucketItemDirective: (...args: unknown[]) => mockCreateOrUpdateDirective(...args),
   createBlockedExtractionJob: (...args: unknown[]) => mockCreateBlockedExtractionJob(...args),
+  listProjectIntelligenceJobs: (...args: unknown[]) => mockListProjectIntelligenceJobs(...args),
   listAssetDerivatives: (...args: unknown[]) => mockListDerivatives(...args),
 }))
 
@@ -54,6 +56,7 @@ const extractHandler = (await import('~~/server/api/agency/video/assets/[id]/ext
 const maskHandler = (await import('~~/server/api/agency/video/assets/[id]/masks.post')).default
 const derivativesHandler = (await import('~~/server/api/agency/video/assets/[id]/derivatives.get')).default
 const assembleHandler = (await import('~~/server/api/agency/video/projects/[id]/assemble.post')).default
+const jobsHandler = (await import('~~/server/api/agency/video/projects/[id]/intelligence-jobs.get')).default
 
 describe('video asset harness API', () => {
   beforeEach(() => {
@@ -66,6 +69,7 @@ describe('video asset harness API', () => {
     mockListBucketItems.mockResolvedValue([{ id: 'i1', bucketId: 'b1', assetId: 'a1', r2Key: 'car.mp4', title: 'Car', role: 'hero', directive: {}, status: 'ready', createdAt: 'now', updatedAt: 'now' }])
     mockCreateOrUpdateDirective.mockResolvedValue({ id: 'i1', directive: { prompt: 'lift logo' } })
     mockCreateBlockedExtractionJob.mockResolvedValue({ id: 'j1', status: 'blocked', action: 'mask-lift' })
+    mockListProjectIntelligenceJobs.mockResolvedValue([{ id: 'j1', action: 'mask-lift', status: 'blocked' }])
     mockListDerivatives.mockResolvedValue([{ id: 'd1', kind: 'foreground-png' }])
     mockUploadFile.mockResolvedValue({ key: 'video-asset-masks/p1/a1/mask.png', url: '/api/_uploads/video-asset-masks/p1/a1/mask.png', size: 4 })
     mockGetPresignedDownloadUrl.mockResolvedValue('/signed-mask-url')
@@ -130,6 +134,13 @@ describe('video asset harness API', () => {
     const res = await derivativesHandler({ params: { id: 'a1' } } as any)
     expect(mockListDerivatives).toHaveBeenCalledWith('a1')
     expect(res.derivatives[0].kind).toBe('foreground-png')
+  })
+
+  it('lists project intelligence jobs for the producer activity panel', async () => {
+    const res = await jobsHandler({ params: { id: '11111111-1111-4111-8111-111111111111' }, query: { limit: '20' } } as any)
+    expect(mockGetProject).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111')
+    expect(mockListProjectIntelligenceJobs).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', 20)
+    expect(res.jobs).toEqual([{ id: 'j1', action: 'mask-lift', status: 'blocked' }])
   })
 
   it('returns a reviewable assemble plan instead of mutating the timeline', async () => {

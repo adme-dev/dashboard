@@ -40,12 +40,27 @@ interface HarnessModel {
   notes: string
 }
 
+interface IntelligenceJob {
+  id: string
+  sourceAssetId: string | null
+  bucketItemId: string | null
+  action: string
+  modelId: string
+  provider: string
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked'
+  prompt: string | null
+  brushMaskKey: string | null
+  errorMessage: string | null
+  createdAt: string
+}
+
 const toast = useToast()
 const loading = ref(false)
 const buckets = ref<Bucket[]>([])
 const items = ref<BucketItem[]>([])
 const actions = ref<HarnessAction[]>([])
 const models = ref<HarnessModel[]>([])
+const intelligenceJobs = ref<IntelligenceJob[]>([])
 const selectedItemId = ref<string | null>(null)
 const selectedAction = ref('mask-lift')
 const toolPrompt = ref('Lift the highlighted embedded graphic into a transparent layer.')
@@ -65,6 +80,15 @@ const maskPreviewFailed = ref(false)
 
 const selectedItem = computed(() => items.value.find(item => item.id === selectedItemId.value) ?? null)
 const selectedActionModels = computed(() => models.value.filter(model => model.actions.includes(selectedAction.value)))
+const selectedItemJobs = computed(() => {
+  const item = selectedItem.value
+  if (!item) return []
+  return intelligenceJobs.value.filter(job => job.bucketItemId === item.id || (item.assetId && job.sourceAssetId === item.assetId)).slice(0, 5)
+})
+const selectedDirectivePrompt = computed(() => {
+  const prompt = selectedItem.value?.directive?.prompt
+  return typeof prompt === 'string' ? prompt : null
+})
 const selectedAssetThumbnailUrl = computed(() => selectedItem.value?.assetId && !maskPreviewFailed.value
   ? `/api/agency/video/assets/${encodeURIComponent(selectedItem.value.assetId)}/thumbnail`
   : null)
@@ -174,19 +198,31 @@ async function loadHarness() {
   if (!props.projectId) return
   loading.value = true
   try {
-    const [bucketRes, modelRes] = await Promise.all([
+    const [bucketRes, modelRes, jobsRes] = await Promise.all([
       $fetch<{ buckets: Bucket[]; items: BucketItem[] }>(`/api/agency/video/projects/${props.projectId}/buckets`),
       $fetch<{ actions: HarnessAction[]; models: HarnessModel[] }>('/api/agency/video/asset-intelligence/models'),
+      $fetch<{ jobs: IntelligenceJob[] }>(`/api/agency/video/projects/${props.projectId}/intelligence-jobs`, { query: { limit: 30 } }),
     ])
     buckets.value = bucketRes.buckets
     items.value = bucketRes.items
     actions.value = modelRes.actions
     models.value = modelRes.models
+    intelligenceJobs.value = jobsRes.jobs
     if (!selectedItemId.value && items.value[0]) selectedItemId.value = items.value[0].id
   } catch (e: any) {
     toast.add({ title: 'Could not load AI Producer', description: e?.data?.statusMessage ?? '', color: 'error' })
   } finally {
     loading.value = false
+  }
+}
+
+async function loadJobs() {
+  if (!props.projectId) return
+  try {
+    const res = await $fetch<{ jobs: IntelligenceJob[] }>(`/api/agency/video/projects/${props.projectId}/intelligence-jobs`, { query: { limit: 30 } })
+    intelligenceJobs.value = res.jobs
+  } catch {
+    intelligenceJobs.value = []
   }
 }
 
@@ -231,6 +267,7 @@ async function runExtraction() {
       },
     })
     await saveDirective(item)
+    await loadJobs()
     toast.add({
       title: res.job.status === 'blocked' ? 'Extraction tool queued as blocked' : 'Extraction queued',
       description: res.job.status === 'blocked' ? 'Configure the selected provider route to execute this model.' : undefined,
@@ -267,6 +304,26 @@ function applyAssemblyPlan() {
   }
   for (const payload of payloads) emit('add-to-timeline', payload)
   toast.add({ title: 'Plan added to timeline', description: `${payloads.length} clips inserted.`, color: 'success' })
+}
+
+function jobStatusColor(status: IntelligenceJob['status']) {
+  if (status === 'succeeded') return 'success'
+  if (status === 'failed' || status === 'blocked') return 'error'
+  if (status === 'running') return 'primary'
+  return 'neutral'
+}
+
+function jobAssetLabel(job: IntelligenceJob) {
+  const item = items.value.find(candidate => candidate.id === job.bucketItemId || candidate.assetId === job.sourceAssetId)
+  return item?.title || item?.r2Key || job.sourceAssetId || 'Project asset'
+}
+
+function fmtJobDate(iso: string) {
+  try {
+    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso))
+  } catch {
+    return iso
+  }
 }
 
 watch(() => props.projectId, () => { void loadHarness() })
@@ -379,6 +436,16 @@ onMounted(() => { void loadHarness() })
               />
             </div>
           </div>
+          <div v-if="selectedDirectivePrompt || selectedItemJobs.length" class="rounded-md border border-default bg-elevated p-2">
+            <p class="text-xs font-medium text-muted">Selected asset activity</p>
+            <p v-if="selectedDirectivePrompt" class="mt-1 line-clamp-2 text-xs text-default">{{ selectedDirectivePrompt }}</p>
+            <div v-if="selectedItemJobs.length" class="mt-2 space-y-1">
+              <div v-for="job in selectedItemJobs" :key="job.id" class="flex items-center gap-2 text-xs">
+                <UBadge :label="job.status" size="xs" :color="jobStatusColor(job.status)" variant="subtle" />
+                <span class="min-w-0 flex-1 truncate text-muted">{{ job.action }} · {{ job.modelId }}</span>
+              </div>
+            </div>
+          </div>
           <UButton
             icon="i-lucide-highlighter"
             size="sm"
@@ -422,6 +489,31 @@ onMounted(() => { void loadHarness() })
             </ol>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div class="mt-3 rounded-md border border-default bg-default/30 p-3">
+      <div class="mb-2 flex items-center justify-between gap-2">
+        <p class="text-xs font-medium uppercase text-muted">AI activity</p>
+        <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" aria-label="Refresh AI activity" @click="loadJobs" />
+      </div>
+      <div v-if="intelligenceJobs.length" class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        <div v-for="job in intelligenceJobs.slice(0, 6)" :key="job.id" class="rounded-md border border-default bg-elevated p-2">
+          <div class="flex items-start gap-2">
+            <UBadge :label="job.status" size="xs" :color="jobStatusColor(job.status)" variant="subtle" />
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-xs font-medium text-highlighted">{{ jobAssetLabel(job) }}</p>
+              <p class="mt-0.5 truncate text-[11px] text-muted">{{ job.action }} · {{ job.modelId }}</p>
+            </div>
+            <span class="shrink-0 text-[11px] text-muted">{{ job.provider }}</span>
+          </div>
+          <p v-if="job.prompt" class="mt-2 line-clamp-2 text-xs text-default">{{ job.prompt }}</p>
+          <p v-if="job.errorMessage" class="mt-1 line-clamp-2 text-[11px] text-error">{{ job.errorMessage }}</p>
+          <p class="mt-2 text-[11px] text-muted">{{ fmtJobDate(job.createdAt) }}</p>
+        </div>
+      </div>
+      <div v-else class="rounded-md border border-dashed border-default px-3 py-4 text-center text-xs text-muted">
+        No AI activity yet.
       </div>
     </div>
   </section>
