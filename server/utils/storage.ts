@@ -159,13 +159,19 @@ export async function uploadFile(
 
   const client = getR2Client()
 
-  await client.send(new PutObjectCommand({
+  // R2 PutObject. Body is sent as a Uint8Array with an explicit ContentLength: under
+  // Nitro/unenv (dev) and workerd, the fetch handler can mishandle a Node Buffer body
+  // (request sent with no body → 200 but nothing persisted), so normalise it.
+  const bytes = new Uint8Array(buffer)
+  const put = await client.send(new PutObjectCommand({
     Bucket: R2_BUCKET_NAME,
     Key: key,
-    Body: buffer,
+    Body: bytes,
     ContentType: contentType,
+    ContentLength: bytes.byteLength,
     Metadata: metadata
   }))
+  console.log('[uploadFile] R2 PutObject', key, 'bytes', bytes.byteLength, 'status', put?.$metadata?.httpStatusCode)
 
   // Return the public URL if configured, otherwise generate a presigned URL
   const url = R2_PUBLIC_URL

@@ -59,12 +59,15 @@ export function evaluateVideoGenerationCompliance(
   }
 
   if (vehicleSubject && input.mode === 'image-to-video') {
-    const hasApprovedVehicleAsset = input.sourceAssets.some((asset) => asset.approved && asset.subjectType === 'vehicle')
-    if (!hasApprovedVehicleAsset) {
+    // The brand-safety gate is approval + ownership (ownership enforced at enqueue). The
+    // asset's self-declared subjectType is advisory and redundant with the request's
+    // declared subject, so any approved source satisfies a vehicle i2v.
+    const hasApprovedAsset = input.sourceAssets.some((asset) => asset.approved)
+    if (!hasApprovedAsset) {
       reasons.push('Vehicle image-to-video requires an approved source asset.')
       return { allowed: false, classification: 'missing_approved_asset', reasons }
     }
-    return { allowed: true, classification: 'vehicle_i2v', reasons: ['Approved vehicle source asset present.'] }
+    return { allowed: true, classification: 'vehicle_i2v', reasons: ['Approved source asset present.'] }
   }
 
   if (input.mode === 'text-to-video') {

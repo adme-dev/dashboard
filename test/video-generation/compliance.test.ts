@@ -68,6 +68,23 @@ describe('video generation compliance', () => {
     expect(result.classification).toBe('vehicle_i2v')
   })
 
+  it('allows vehicle image-to-video with an approved source asset of any subject type', () => {
+    const model = getVideoGenerationModel('mock/i2v-safe')!
+
+    const result = evaluateVideoGenerationCompliance({
+      mode: 'image-to-video',
+      prompt: 'make it look like the vehicle is moving through sand',
+      model,
+      sourceAssets: [{ id: 'asset-1', approved: true, subjectType: 'unknown' }],
+      requestedSubjectType: 'vehicle',
+      tenantPolicy,
+      provenance,
+    })
+
+    expect(result.allowed).toBe(true)
+    expect(result.classification).toBe('vehicle_i2v')
+  })
+
   it('blocks vehicle image-to-video without an approved source asset', () => {
     const model = getVideoGenerationModel('mock/i2v-safe')!
 
