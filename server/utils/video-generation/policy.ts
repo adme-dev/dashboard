@@ -6,7 +6,9 @@ export async function loadTenantVideoGenerationPolicy(tenantId: string): Promise
     return {
       enabled: true,
       monthlyCapCents: Number(process.env.VIDEO_GENERATION_TEST_TENANT_CAP_CENTS ?? 1000),
-      allowedModelIds: ['mock/i2v-safe', 'mock/t2v-broll'],
+      // Includes the real CF i2v model so verify-live generation works under the test
+      // tenant (there is no DB-backed per-client policy yet — this flag is the only path).
+      allowedModelIds: ['mock/i2v-safe', 'mock/t2v-broll', 'aigateway/seedance-i2v'],
     }
   }
   return { enabled: false, monthlyCapCents: 0, allowedModelIds: [] }

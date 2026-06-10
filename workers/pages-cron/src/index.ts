@@ -21,14 +21,16 @@ const ROUTES: Record<string, string[]> = {
   // hourly — anomaly handler self-gates to 7am tenant-local; ga4-sync re-pulls
   // the trailing ~14d window (idempotent). ga4-sync was fixed in PR #49 to run
   // concurrently + batch upserts (~33s for 87 properties, was a >150s hang).
-  '0 * * * *': ['/api/cron/anomaly-detection', '/api/cron/ga4-sync', '/api/cron/budget-slack-digest', '/api/cron/video-generation-reconcile'],
+  '0 * * * *': ['/api/cron/anomaly-detection', '/api/cron/ga4-sync', '/api/cron/budget-slack-digest'],
   // hourly at :30 — GA4 richer dimension/event breakdowns. Offset 30 min from
   // ga4-sync to spread GA4 API load; the endpoint self-limits to the 25 stalest
   // properties per run (cursored by ga4_property_map.dimension_synced_at, mig
   // 143), so all properties cycle every ~4h. Idempotent upserts.
   '30 * * * *': ['/api/cron/ga4-dimensions'],
-  // every 5 min — office-assistant watch evaluation (own 15-min debounce)
-  '*/5 * * * *': ['/api/cron/office-assistant'],
+  // every 5 min — office-assistant watch evaluation (own 15-min debounce);
+  // video-generation-reconcile polls in-flight async i2v/t2v jobs (finish ~<5min)
+  // and finalizes them, with its own 20-min timeout reap.
+  '*/5 * * * *': ['/api/cron/office-assistant', '/api/cron/video-generation-reconcile'],
   // daily — refresh the Xero invoice line-item cache (AGI / True Position).
   // Syncs current + previous month so month-end backdated entries are caught.
   '20 3 * * *': ['/api/cron/xero-invoice-lines-sync'],
