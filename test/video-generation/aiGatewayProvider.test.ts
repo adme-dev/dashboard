@@ -29,12 +29,12 @@ describe('aiGateway provider (synchronous partner video models)', () => {
     expect((options as any).queueRequest).toBeUndefined()
   })
 
-  it('submit() omits the image for text-to-video', async () => {
+  it('submit() omits the image for text-to-video and fills veo required defaults', async () => {
     const run = vi.fn(async () => completedResponse)
     const provider = makeAiGatewayProvider({ run })
     await provider.submit({ jobId: 'j', modelId: 'aigateway/veo-t2v-internal', mode: 'text-to-video', prompt: 'x', sourceAssetUrls: [], durationSeconds: 5, aspectRatio: '16:9', resolution: null })
-    expect((run.mock.calls[0]![1] as any).image).toBeUndefined()
-    expect((run.mock.calls[0]![1] as any).resolution).toBeUndefined()
+    // veo schema: image_input absent for t2v; duration is a string enum; resolution + generate_audio required.
+    expect(run.mock.calls[0]![1]).toEqual({ prompt: 'x', duration: '6s', aspect_ratio: '16:9', resolution: '720p', generate_audio: true })
   })
 
   it('submit() throws if the model has no cfModel mapping', async () => {

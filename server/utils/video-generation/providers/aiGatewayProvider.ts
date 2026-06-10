@@ -7,6 +7,7 @@ import type {
 // Relative (not ~~/) so the generation Worker bundles this file — wrangler's esbuild
 // doesn't honor tsconfig paths for runtime resolution. Matches ./types above.
 import { getVideoGenerationModel } from '../modelRegistry'
+import { buildCfVideoInputs, imageInputEncoding } from '../cfInputs'
 
 export interface AiGatewayDeps {
   /** Faithful env.AI.run(model, inputs, options?) passthrough. Partner video models
@@ -24,17 +25,33 @@ function cfModelFor(modelId: string): string {
   return cf
 }
 
-function buildInputs(request: VideoGenerationProviderRequest): Record<string, unknown> {
-  const inputs: Record<string, unknown> = {
+/** Fetch a source image and inline it as a base64 data URI — required by models
+ *  (pixverse, veo) whose image_input accepts only base64. */
+async function fetchAsDataUri(url: string): Promise<string> {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`source image fetch failed: ${res.status}`)
+  const contentType = res.headers.get('content-type')?.split(';')[0] || 'image/jpeg'
+  const bytes = new Uint8Array(await res.arrayBuffer())
+  let binary = ''
+  const CHUNK = 0x8000
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+  }
+  return `data:${contentType};base64,${btoa(binary)}`
+}
+
+async function buildInputs(cfModel: string, request: VideoGenerationProviderRequest): Promise<Record<string, unknown>> {
+  const sourceUrl = request.mode === 'image-to-video' ? request.sourceAssetUrls[0] ?? null : null
+  const image = sourceUrl && imageInputEncoding(cfModel) === 'base64'
+    ? await fetchAsDataUri(sourceUrl)
+    : sourceUrl
+  return buildCfVideoInputs(cfModel, {
     prompt: request.prompt,
-    duration: request.durationSeconds,
-    aspect_ratio: request.aspectRatio,
-  }
-  if (request.resolution) inputs.resolution = request.resolution
-  if (request.mode === 'image-to-video' && request.sourceAssetUrls[0]) {
-    inputs.image = request.sourceAssetUrls[0]
-  }
-  return inputs
+    durationSeconds: request.durationSeconds,
+    aspectRatio: request.aspectRatio,
+    resolution: request.resolution,
+    image,
+  })
 }
 
 function extractState(raw: any): string | null {
@@ -66,7 +83,7 @@ export function makeAiGatewayProvider(deps: AiGatewayDeps): VideoGenerationProvi
       const model = cfModelFor(request.modelId)
       const raw = await deps.run(
         model,
-        buildInputs(request),
+        await buildInputs(model, request),
         { gateway: { metadata: { tenantId: request.tenantId ?? '', jobId: request.jobId } } }
       )
       const outputUrl = extractVideoUrl(raw)
