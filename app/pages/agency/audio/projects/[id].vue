@@ -109,8 +109,8 @@ function onHarnessAddToTimeline(p: AiAssemblyTimelinePayload) {
 }
 
 function onHarnessAddDerivativeToTimeline(p: AssetDerivativeTimelinePayload) {
-  editor.mergeSource(p.r2Key, p.r2Key, { durationSec: p.durationSec, assetId: p.assetId, title: p.title, format: p.format })
-  editor.addVideoClipAction(p.r2Key, p.durationSec, p.baseSource, editor.currentTime.value, p.assetId)
+  editor.mergeSource(p.r2Key, p.streamUrl, { durationSec: p.durationSec, assetId: null, title: p.title, format: p.format })
+  editor.addVideoClipAction(p.r2Key, p.durationSec, p.baseSource, editor.currentTime.value, null)
   toast.add({ title: 'Derivative added to timeline', color: 'success' })
 }
 

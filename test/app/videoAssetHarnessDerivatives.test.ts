@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { derivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
 
 describe('derivativeTimelinePayload', () => {
-  it('turns an edited-image derivative into a still timeline payload using the source asset as provenance', () => {
+  it('turns an edited-image derivative into a still timeline payload with a playable stream URL', () => {
     expect(derivativeTimelinePayload({
       id: 'derivative-1',
       sourceAssetId: 'asset-1',
@@ -11,8 +11,10 @@ describe('derivativeTimelinePayload', () => {
       width: 1080,
       height: 1920,
     })).toEqual({
-      assetId: 'asset-1',
+      assetId: null,
+      sourceAssetId: 'asset-1',
       r2Key: 'video-asset-derivatives/project-1/derivative-1.png',
+      streamUrl: '/api/agency/video/derivatives/derivative-1/stream',
       durationSec: 5,
       title: 'edited-image derivative',
       format: null,
@@ -29,8 +31,10 @@ describe('derivativeTimelinePayload', () => {
       width: 1080,
       height: 1920,
     })).toEqual({
-      assetId: 'asset-2',
+      assetId: null,
+      sourceAssetId: 'asset-2',
       r2Key: 'video-asset-derivatives/project-1/derivative-2.MP4',
+      streamUrl: '/api/agency/video/derivatives/derivative-2/stream',
       durationSec: 5,
       title: 'motion-fill derivative',
       format: null,

@@ -9,6 +9,7 @@ g.readBody = async (event: TestEvent) => event.body ?? {}
 g.readMultipartFormData = vi.fn()
 g.createError = (input: any) => Object.assign(new Error(input.statusMessage), input)
 g.setResponseStatus = vi.fn()
+g.sendRedirect = vi.fn((_event: TestEvent, location: string, statusCode: number) => ({ location, statusCode }))
 
 const mockRequireWriteAccess = vi.fn()
 vi.mock('~~/server/utils/auth', () => ({
@@ -71,6 +72,7 @@ const extractHandler = (await import('~~/server/api/agency/video/assets/[id]/ext
 const maskHandler = (await import('~~/server/api/agency/video/assets/[id]/masks.post')).default
 const derivativesHandler = (await import('~~/server/api/agency/video/assets/[id]/derivatives.get')).default
 const addDerivativeToBucketHandler = (await import('~~/server/api/agency/video/derivatives/[id]/add-to-bucket.post')).default
+const derivativeStreamHandler = (await import('~~/server/api/agency/video/derivatives/[id]/stream.get')).default
 const assembleHandler = (await import('~~/server/api/agency/video/projects/[id]/assemble.post')).default
 const jobsHandler = (await import('~~/server/api/agency/video/projects/[id]/intelligence-jobs.get')).default
 
@@ -222,6 +224,27 @@ describe('video asset harness API', () => {
     const res = await derivativesHandler({ params: { id: 'a1' } } as any)
     expect(mockListDerivatives).toHaveBeenCalledWith('a1')
     expect(res.derivatives[0].kind).toBe('foreground-png')
+  })
+
+  it('404s derivative stream requests when the derivative is missing', async () => {
+    mockGetDerivative.mockResolvedValue(null)
+
+    await expect(derivativeStreamHandler({ params: { id: 'missing-derivative' } } as any))
+      .rejects
+      .toMatchObject({ statusCode: 404 })
+  })
+
+  it('redirects derivative stream requests to the derivative media URL', async () => {
+    mockIsStorageConfigured.mockReturnValue(true)
+    mockGetPublicUrl.mockReturnValue(null)
+    mockGetPresignedDownloadUrl.mockResolvedValue('https://signed.example.com/derivative.png')
+
+    const res = await derivativeStreamHandler({ params: { id: 'd1' } } as any)
+
+    expect(mockRequireWriteAccess).toHaveBeenCalledWith(expect.objectContaining({ params: { id: 'd1' } }))
+    expect(mockGetDerivative).toHaveBeenCalledWith('d1')
+    expect(mockGetPresignedDownloadUrl).toHaveBeenCalledWith('video-asset-derivatives/p1/a1/foreground.png', 3600)
+    expect(res).toEqual({ location: 'https://signed.example.com/derivative.png', statusCode: 302 })
   })
 
   it('adds a derivative to the requested project bucket', async () => {

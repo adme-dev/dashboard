@@ -10,7 +10,9 @@ export interface AssetDerivativeTimelineInput {
 
 export interface AssetDerivativeTimelinePayload {
   assetId: string | null
+  sourceAssetId: string | null
   r2Key: string
+  streamUrl: string
   durationSec: number
   title: string
   format: string | null
@@ -19,8 +21,10 @@ export interface AssetDerivativeTimelinePayload {
 
 export function derivativeTimelinePayload(derivative: AssetDerivativeTimelineInput): AssetDerivativeTimelinePayload {
   return {
-    assetId: derivative.sourceAssetId ?? null,
+    assetId: null,
+    sourceAssetId: derivative.sourceAssetId ?? null,
     r2Key: derivative.r2Key,
+    streamUrl: `/api/agency/video/derivatives/${encodeURIComponent(derivative.id)}/stream`,
     durationSec: typeof derivative.durationSec === 'number' && Number.isFinite(derivative.durationSec) && derivative.durationSec > 0
       ? derivative.durationSec
       : 5,

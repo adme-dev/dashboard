@@ -218,6 +218,7 @@ async function uploadMask(): Promise<string | null> {
 async function loadHarness() {
   if (!props.projectId) return
   loading.value = true
+  const previousSelectedItemId = selectedItemId.value
   try {
     const [bucketRes, modelRes, jobsRes] = await Promise.all([
       $fetch<{ buckets: Bucket[]; items: BucketItem[] }>(`/api/agency/video/projects/${props.projectId}/buckets`),
@@ -229,7 +230,10 @@ async function loadHarness() {
     actions.value = modelRes.actions
     models.value = modelRes.models
     intelligenceJobs.value = jobsRes.jobs
-    if (!selectedItemId.value && items.value[0]) selectedItemId.value = items.value[0].id
+    if (!selectedItemId.value || !items.value.some(item => item.id === selectedItemId.value)) {
+      selectedItemId.value = items.value[0]?.id ?? null
+    }
+    if (selectedItemId.value === previousSelectedItemId) await loadSelectedDerivatives()
   } catch (e: any) {
     toast.add({ title: 'Could not load AI Producer', description: e?.data?.statusMessage ?? '', color: 'error' })
   } finally {
@@ -356,7 +360,6 @@ async function addDerivativeToBucket(derivative: AssetDerivative) {
       },
     })
     await loadHarness()
-    await loadSelectedDerivatives()
     toast.add({ title: 'Derivative added to bucket', color: 'success' })
   } catch (e: any) {
     toast.add({ title: 'Could not add derivative to bucket', description: e?.data?.statusMessage ?? '', color: 'error' })
