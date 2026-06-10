@@ -11,7 +11,9 @@ interface PacingReviewItem {
   mtdSpend: number
   expectedToDate: number
   projectedMonthEnd: number
+  currentDailyBudget: number
   recommendedDailyBudget: number
+  pacingRatio: number
   syncedAt: string | null
   recommendedAction: string
 }
@@ -43,6 +45,8 @@ const emit = defineEmits<{
 
 const severityFilter = ref<'all' | 'critical' | 'warning'>('all')
 const platformFilter = ref<'all' | 'meta' | 'google'>('all')
+const historyOpen = ref(false)
+const selectedHistoryItem = ref<PacingReviewItem | null>(null)
 const severityOptions = ['all', 'critical', 'warning'] as const
 const platformOptions = ['all', 'meta', 'google'] as const
 
@@ -67,6 +71,11 @@ function severityColor(severity: string) {
   if (severity === 'critical') return 'error'
   if (severity === 'warning') return 'warning'
   return 'info'
+}
+
+function openHistory(item: PacingReviewItem) {
+  selectedHistoryItem.value = item
+  historyOpen.value = true
 }
 </script>
 
@@ -172,6 +181,17 @@ function severityColor(severity: string) {
             </div>
             <p class="font-medium mt-2 truncate">{{ item.clientName }} · {{ item.campaignName }}</p>
             <p class="text-sm text-muted mt-1">{{ item.recommendedAction }}</p>
+            <div class="mt-3">
+              <UButton
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                icon="i-lucide-history"
+                @click="openHistory(item)"
+              >
+                History
+              </UButton>
+            </div>
           </div>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-right shrink-0">
             <div>
@@ -202,5 +222,7 @@ function severityColor(severity: string) {
     <div v-else class="p-4 text-sm text-muted">
       No pacing review is available yet. Sync Meta and Google spend to refresh the review.
     </div>
+
+    <SocialSpendCampaignHistorySlideover v-model:open="historyOpen" :item="selectedHistoryItem" />
   </div>
 </template>
