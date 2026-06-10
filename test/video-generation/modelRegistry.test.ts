@@ -13,9 +13,10 @@ describe('video generation model registry', () => {
     const ids = listSelectableVideoGenerationModels().map((m) => m.id)
     expect(ids).not.toContain('gateway/i2v-dormant')
     expect(ids).not.toContain('mock/t2v-broll')
-    // mock models are not selectable (fake output URL); the real CF model is.
+    // Mock models return fake output URLs, and the current Cloudflare account does
+    // not expose video models in its Workers AI catalog.
     expect(ids).not.toContain('mock/i2v-safe')
-    expect(ids).toContain('aigateway/seedance-i2v')
+    expect(ids).not.toContain('aigateway/seedance-i2v')
   })
 
   it('describes image-to-video vehicle-safe capabilities', () => {
@@ -39,7 +40,7 @@ describe('video generation model registry', () => {
     expect(t!.provider).toBe('muapi')
     expect(t!.modes).toContain('text-to-video')
     // muapi models are retired (defaultEnabled: false) — they exist in the registry but are
-    // no longer in the selectable set; aigateway/seedance-i2v replaces them for tenants.
+    // no longer in the selectable set.
     const ids = listSelectableVideoGenerationModels().map((x) => x.id)
     expect(ids).not.toContain('muapi/t2v-wan')
   })
@@ -48,7 +49,7 @@ describe('video generation model registry', () => {
     expect(getVideoGenerationModel('mock/i2v-safe')!.muapi).toBeUndefined()
   })
 
-  it('exposes a tenant-facing CF AI Gateway i2v model with a cfModel mapping', () => {
+  it('keeps CF AI Gateway video model mappings registered but not selectable', () => {
     const m = getVideoGenerationModel('aigateway/seedance-i2v')
     expect(m).toBeTruthy()
     expect(m!.provider).toBe('aigateway')
@@ -56,6 +57,7 @@ describe('video generation model registry', () => {
     expect(m!.modality).toBe('i2v')
     expect(m!.modes).toContain('image-to-video')
     expect(m!.cfModel).toBe('bytedance/seedance-2.0-fast')
+    expect(listSelectableVideoGenerationModels().map((x) => x.id)).not.toContain('aigateway/seedance-i2v')
   })
 
   it('registers an internal-only CF t2v model that is NOT tenant-selectable', () => {
@@ -65,10 +67,10 @@ describe('video generation model registry', () => {
     expect(ids).not.toContain('aigateway/veo-t2v-internal')
   })
 
-  it('retires muapi models from the default selectable set', () => {
+  it('has no default selectable models until a runnable production provider is enabled', () => {
     const ids = listSelectableVideoGenerationModels().map((x) => x.id)
     expect(ids).not.toContain('muapi/i2v-kling')
     expect(ids).not.toContain('muapi/t2v-wan')
-    expect(ids).toContain('aigateway/seedance-i2v')
+    expect(ids).toHaveLength(0)
   })
 })

@@ -5,6 +5,7 @@
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMediaProjectEditor } from '~~/app/composables/useMediaProjectEditor'
+import { listSelectableVideoGenerationModels } from '~~/server/utils/video-generation/modelRegistry'
 import type { PickedAsset } from '~~/app/components/media/MediaAssetPicker.vue'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
@@ -65,6 +66,8 @@ function onMediaUploaded(p: { r2Key: string; durationSec: number; baseSource: 'u
 // ─── Video generation wiring ──────────────────────────────────────────────────
 
 const videoGenerationEnabled = computed(() => Boolean((config.public as any).videoGenerationEnabled))
+const selectableVideoGenerationModels = listSelectableVideoGenerationModels()
+const videoGenerationModelsAvailable = computed(() => selectableVideoGenerationModels.length > 0)
 const generatePickerOpen = ref(false)
 const genJobs = useVideoGenerationJobs(projectId.value)
 
@@ -323,7 +326,8 @@ const saveStatusColor = computed(() => {
             { label: 'Audio clip', icon: 'i-lucide-music', onSelect: () => { pickerOpen = true } },
             { label: 'Footage / still', icon: 'i-lucide-film', onSelect: () => { mediaPickerOpen = true } },
             { label: 'Overlay', icon: 'i-lucide-shapes', onSelect: () => { overlayPickerOpen = true } },
-            ...(videoGenerationEnabled ? [{ label: 'Generate (AI)', icon: 'i-lucide-sparkles', onSelect: () => { generatePickerOpen = true } }] : []),
+            ...(videoGenerationEnabled && videoGenerationModelsAvailable ? [{ label: 'Generate (AI)', icon: 'i-lucide-sparkles', onSelect: () => { generatePickerOpen = true } }] : []),
+            ...(videoGenerationEnabled && !videoGenerationModelsAvailable ? [{ label: 'Generate (AI unavailable)', icon: 'i-lucide-sparkles', disabled: true }] : []),
           ]]"
         >
           <UButton icon="i-lucide-plus-circle" size="sm" variant="soft" color="primary" label="Add" trailing-icon="i-lucide-chevron-down" />

@@ -6,11 +6,10 @@ const selectable = listSelectableVideoGenerationModels()
 
 describe('videoGenerationForm', () => {
   it('filters models by mode', () => {
-    // i2v: seedance + the other CF i2v models are selectable.
-    expect(modelsForMode(selectable, 'image-to-video').map((m) => m.id)).toContain('aigateway/seedance-i2v')
-    // t2v: tenant-selectable t2v models now exist (veo-t2v, hailuo-t2v); the internal veo stays out.
+    // No production video model is selectable until the account has a verified provider.
+    expect(modelsForMode(selectable, 'image-to-video')).toHaveLength(0)
     const t2v = modelsForMode(selectable, 'text-to-video').map((m) => m.id)
-    expect(t2v).toContain('aigateway/veo-t2v')
+    expect(t2v).toHaveLength(0)
     expect(t2v).not.toContain('aigateway/veo-t2v-internal')
   })
 

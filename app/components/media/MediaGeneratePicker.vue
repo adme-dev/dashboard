@@ -19,6 +19,7 @@ const emit = defineEmits<{ (e: 'update:open', v: boolean): void; (e: 'submitted'
 
 const toast = useToast()
 const allModels = listSelectableVideoGenerationModels()
+const hasModels = computed(() => allModels.length > 0)
 
 const mode = ref<VideoGenerationMode>('image-to-video')
 const models = computed(() => modelsForMode(allModels, mode.value))
@@ -149,9 +150,17 @@ async function submit() {
   <USlideover :open="open" title="Generate video (AI)" description="Create a clip from a prompt or animate a still." @update:open="emit('update:open', $event)">
     <template #body>
       <div class="flex flex-col gap-6 py-1">
+        <UAlert
+          v-if="!hasModels"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-triangle-alert"
+          title="AI video generation is unavailable"
+          description="No runnable video models are configured for this Cloudflare account."
+        />
 
         <!-- Mode + Model row -->
-        <div class="flex flex-col gap-4">
+        <div v-if="hasModels" class="flex flex-col gap-4">
           <p class="text-xs font-semibold uppercase tracking-widest text-muted">Source &amp; model</p>
           <div class="grid grid-cols-2 gap-4">
             <UFormField label="Mode">
@@ -212,20 +221,20 @@ async function submit() {
           </UFormField>
         </div>
 
-        <USeparator />
+        <USeparator v-if="hasModels" />
 
         <!-- Prompt -->
-        <div class="flex flex-col gap-4">
+        <div v-if="hasModels" class="flex flex-col gap-4">
           <p class="text-xs font-semibold uppercase tracking-widest text-muted">Generation prompt</p>
           <UFormField label="Prompt" help="Describe the motion, atmosphere, or scene you want.">
             <UTextarea v-model="prompt" :rows="3" placeholder="Describe the motion / scene…" autoresize />
           </UFormField>
         </div>
 
-        <USeparator />
+        <USeparator v-if="hasModels" />
 
         <!-- Duration + Subject + Cost -->
-        <div class="flex flex-col gap-4">
+        <div v-if="hasModels" class="flex flex-col gap-4">
           <p class="text-xs font-semibold uppercase tracking-widest text-muted">Output settings</p>
           <div class="grid grid-cols-2 gap-4">
             <UFormField label="Duration (s)">
@@ -244,9 +253,9 @@ async function submit() {
         </div>
 
         <!-- Validation warning -->
-        <UAlert v-if="!validation.valid" color="warning" variant="subtle" icon="i-lucide-info" :title="validation.errors[0]" />
+        <UAlert v-if="hasModels && !validation.valid" color="warning" variant="subtle" icon="i-lucide-info" :title="validation.errors[0]" />
 
-        <UButton block color="primary" icon="i-lucide-sparkles" :loading="submitting" :disabled="!validation.valid" label="Generate" @click="submit" />
+        <UButton v-if="hasModels" block color="primary" icon="i-lucide-sparkles" :loading="submitting" :disabled="!validation.valid" label="Generate" @click="submit" />
       </div>
     </template>
   </USlideover>
