@@ -26,8 +26,12 @@ export interface ProcessDeps {
 }
 
 export type ProcessAssetIntelligenceResult =
-  | { skipped: true; reason: 'missing_job' | 'not_claimed' }
+  | { skipped: true; reason: 'missing_job' | 'terminal' | 'not_claimed' }
   | { skipped: false; status: 'succeeded' | 'failed' }
+
+function isTerminalStatus(status: string | undefined): boolean {
+  return status === 'succeeded' || status === 'failed' || status === 'blocked'
+}
 
 function safeErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message
@@ -40,6 +44,7 @@ export async function processAssetIntelligenceJob(
 ): Promise<ProcessAssetIntelligenceResult> {
   const job = await deps.getJob(message.jobId)
   if (!job) throw new Error(`asset intelligence job ${message.jobId} not found`)
+  if (isTerminalStatus(job.status)) return { skipped: true, reason: 'terminal' }
 
   const claimed = await deps.markRunning(job.id)
   if (claimed.status !== 'running') return { skipped: true, reason: 'not_claimed' }

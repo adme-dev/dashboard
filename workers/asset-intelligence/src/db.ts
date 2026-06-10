@@ -40,6 +40,7 @@ async function queryOne<T = any>(sql: string, params?: any[]): Promise<T | null>
 function mapJob(row: any): AssetIntelligenceWorkerJob & AssetIntelligenceClaim {
   return {
     id: row.id,
+    tenantId: String(row.tenant_id ?? 'agency'),
     projectId: row.project_id,
     sourceAssetId: row.source_asset_id ?? null,
     action: row.action,
@@ -52,7 +53,15 @@ function mapJob(row: any): AssetIntelligenceWorkerJob & AssetIntelligenceClaim {
 }
 
 export async function getAssetIntelligenceJob(id: string): Promise<AssetIntelligenceWorkerJob | null> {
-  const row = await queryOne(`SELECT * FROM video_asset_intelligence_jobs WHERE id = $1`, [id])
+  const row = await queryOne(
+    `SELECT j.*,
+            COALESCE(mp.client_id::text, va.client_id::text, 'agency') AS tenant_id
+       FROM video_asset_intelligence_jobs j
+       LEFT JOIN media_projects mp ON mp.id = j.project_id
+       LEFT JOIN video_assets va ON va.id = j.source_asset_id
+      WHERE j.id = $1`,
+    [id]
+  )
   return row ? mapJob(row) : null
 }
 

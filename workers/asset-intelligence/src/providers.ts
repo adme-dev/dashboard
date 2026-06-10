@@ -1,10 +1,12 @@
 export interface AssetIntelligenceWorkerJob {
   id: string
+  tenantId: string
   projectId: string
   sourceAssetId: string | null
   action: string
   modelId: string
   provider: string
+  status?: string
   prompt: string | null
   brushMaskKey: string | null
 }
@@ -41,7 +43,7 @@ export async function runAssetIntelligenceProvider(deps: ProviderDeps): Promise<
 
   if (job.action === 'mask-only') {
     if (!job.brushMaskKey) throw new Error('mask-only jobs require brushMaskKey')
-    const destinationKey = `video-asset-derivatives/${job.projectId}/${job.id}/mask.png`
+    const destinationKey = `video-asset-derivatives/${job.tenantId}/${job.projectId}/${job.id}/mask.png`
     const copied = await deps.copyR2Object(job.brushMaskKey, destinationKey)
     return {
       derivatives: [{
@@ -63,11 +65,12 @@ export async function runAssetIntelligenceProvider(deps: ProviderDeps): Promise<
     const analysis = await deps.env.AI.run(
       '@cf/moonshotai/kimi-k2-instruct',
       { prompt: job.prompt, image: asset.dataUri },
-      { gateway: { metadata: { projectId: job.projectId, jobId: job.id, modelId: job.modelId } } }
+      { gateway: { metadata: { tenantId: job.tenantId, projectId: job.projectId, jobId: job.id, modelId: job.modelId } } }
     )
-    const key = `video-asset-derivatives/${job.projectId}/${job.id}/analysis.json`
+    const key = `video-asset-derivatives/${job.tenantId}/${job.projectId}/${job.id}/analysis.json`
     const uploaded = await deps.uploadJson(key, {
       jobId: job.id,
+      tenantId: job.tenantId,
       projectId: job.projectId,
       sourceAssetId: job.sourceAssetId,
       modelId: job.modelId,

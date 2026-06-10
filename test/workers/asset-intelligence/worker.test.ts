@@ -6,11 +6,13 @@ describe('asset intelligence worker', () => {
     const deps = {
       getJob: vi.fn().mockResolvedValue({
         id: 'job-1',
+        tenantId: 'tenant-1',
         projectId: 'project-1',
         sourceAssetId: 'asset-1',
         action: 'mask-only',
         modelId: 'replicate/sam-2',
         provider: 'replicate',
+        status: 'queued',
         prompt: null,
         brushMaskKey: 'mask.png',
       }),
@@ -32,7 +34,7 @@ describe('asset intelligence worker', () => {
 
   it('treats markRunning as a claim step and skips side effects when the job was already final', async () => {
     const deps = {
-      getJob: vi.fn().mockResolvedValue({ id: 'job-1', projectId: 'project-1', sourceAssetId: 'asset-1', action: 'mask-only', modelId: 'replicate/sam-2', provider: 'replicate', prompt: null, brushMaskKey: 'mask.png' }),
+      getJob: vi.fn().mockResolvedValue({ id: 'job-1', tenantId: 'tenant-1', projectId: 'project-1', sourceAssetId: 'asset-1', action: 'mask-only', modelId: 'replicate/sam-2', provider: 'replicate', status: 'queued', prompt: null, brushMaskKey: 'mask.png' }),
       markRunning: vi.fn().mockResolvedValue({ id: 'job-1', status: 'succeeded' }),
       markFailed: vi.fn(),
       markSucceeded: vi.fn(),
@@ -45,5 +47,24 @@ describe('asset intelligence worker', () => {
     expect(deps.runProvider).not.toHaveBeenCalled()
     expect(deps.createDerivative).not.toHaveBeenCalled()
     expect(deps.markSucceeded).not.toHaveBeenCalled()
+  })
+
+  it.each(['succeeded', 'failed', 'blocked'])('skips %s jobs before attempting to claim them', async (status) => {
+    const deps = {
+      getJob: vi.fn().mockResolvedValue({ id: 'job-1', tenantId: 'tenant-1', projectId: 'project-1', sourceAssetId: 'asset-1', action: 'mask-only', modelId: 'replicate/sam-2', provider: 'replicate', status, prompt: null, brushMaskKey: 'mask.png' }),
+      markRunning: vi.fn(),
+      markFailed: vi.fn(),
+      markSucceeded: vi.fn(),
+      createDerivative: vi.fn(),
+      runProvider: vi.fn(),
+    }
+
+    await processAssetIntelligenceJob({ jobId: 'job-1', projectId: 'project-1', sourceAssetId: 'asset-1' }, deps)
+
+    expect(deps.markRunning).not.toHaveBeenCalled()
+    expect(deps.runProvider).not.toHaveBeenCalled()
+    expect(deps.createDerivative).not.toHaveBeenCalled()
+    expect(deps.markSucceeded).not.toHaveBeenCalled()
+    expect(deps.markFailed).not.toHaveBeenCalled()
   })
 })

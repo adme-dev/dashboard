@@ -3,9 +3,11 @@ import { runAssetIntelligenceProvider } from '~~/workers/asset-intelligence/src/
 
 describe('asset intelligence providers', () => {
   it('turns mask-only jobs into a persisted mask derivative without calling AI', async () => {
+    const copyR2Object = vi.fn().mockResolvedValue({ r2Key: 'video-asset-derivatives/tenant-1/project-1/job-1/mask.png', contentType: 'image/png', size: 128 })
     const result = await runAssetIntelligenceProvider({
       job: {
         id: 'job-1',
+        tenantId: 'tenant-1',
         projectId: 'project-1',
         sourceAssetId: 'asset-1',
         action: 'mask-only',
@@ -16,26 +18,32 @@ describe('asset intelligence providers', () => {
       },
       env: { AI: { run: vi.fn() } } as any,
       fetchAssetBytes: vi.fn(),
-      copyR2Object: vi.fn().mockResolvedValue({ r2Key: 'video-asset-derivatives/project-1/job-1/mask.png', contentType: 'image/png', size: 128 }),
+      copyR2Object,
       uploadJson: vi.fn(),
       uploadBinary: vi.fn(),
     })
 
+    expect(copyR2Object).toHaveBeenCalledWith(
+      'video-asset-masks/project-1/asset-1/mask.png',
+      'video-asset-derivatives/tenant-1/project-1/job-1/mask.png'
+    )
     expect(result.derivatives).toEqual([
       expect.objectContaining({
         kind: 'mask-png',
-        r2Key: 'video-asset-derivatives/project-1/job-1/mask.png',
+        r2Key: 'video-asset-derivatives/tenant-1/project-1/job-1/mask.png',
       }),
     ])
+    expect(result.derivatives[0].metadata).toMatchObject({ sourceMaskKey: 'video-asset-masks/project-1/asset-1/mask.png' })
   })
 
   it('runs Workers AI analysis jobs and writes analysis JSON', async () => {
     const run = vi.fn().mockResolvedValue({ response: 'hero vehicle, red sand, logo visible' })
-    const uploadJson = vi.fn().mockResolvedValue({ r2Key: 'video-asset-derivatives/project-1/job-2/analysis.json', contentType: 'application/json', size: 64 })
+    const uploadJson = vi.fn().mockResolvedValue({ r2Key: 'video-asset-derivatives/tenant-1/project-1/job-2/analysis.json', contentType: 'application/json', size: 64 })
 
     const result = await runAssetIntelligenceProvider({
       job: {
         id: 'job-2',
+        tenantId: 'tenant-1',
         projectId: 'project-1',
         sourceAssetId: 'asset-1',
         action: 'asset-analysis',
@@ -52,6 +60,10 @@ describe('asset intelligence providers', () => {
     })
 
     expect(run).toHaveBeenCalled()
+    expect(uploadJson).toHaveBeenCalledWith(
+      'video-asset-derivatives/tenant-1/project-1/job-2/analysis.json',
+      expect.any(Object)
+    )
     expect(result.derivatives[0]).toMatchObject({ kind: 'analysis-json' })
   })
 })
