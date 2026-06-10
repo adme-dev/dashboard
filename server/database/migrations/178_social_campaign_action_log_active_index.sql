@@ -11,3 +11,9 @@ CREATE INDEX IF NOT EXISTS idx_campaign_action_log_active_ai_pacing_budget
   WHERE metadata->>'source' = 'ai_pacing_review'
     AND action_type = 'budget_update'
     AND action_status IN ('planned', 'approved');
+
+CREATE INDEX IF NOT EXISTS idx_campaign_action_log_media_spend_lifecycle
+  ON campaign_action_log (
+    media_spend_id,
+    COALESCE(executed_at, (metadata->>'cancelledAt')::timestamptz, approved_at, requested_at) DESC
+  );

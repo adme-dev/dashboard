@@ -16,4 +16,12 @@ describe('social campaign action log migrations', () => {
     expect(sql).toContain("action_type = 'budget_update'")
     expect(sql).toContain("action_status IN ('planned', 'approved')")
   })
+
+  it('adds an index for per-campaign action history lifecycle ordering', () => {
+    const sql = mig('178_social_campaign_action_log_active_index.sql')
+
+    expect(sql).toContain('idx_campaign_action_log_media_spend_lifecycle')
+    expect(sql).toContain('media_spend_id')
+    expect(sql).toContain("COALESCE(executed_at, (metadata->>'cancelledAt')::timestamptz, approved_at, requested_at) DESC")
+  })
 })
