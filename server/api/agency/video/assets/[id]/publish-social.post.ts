@@ -4,19 +4,15 @@ import { queryOne } from '~~/server/utils/db'
 import { generateGroqInsight } from '~~/server/utils/groqClient'
 import { buildVideoStudioSocialDraft } from '~~/server/utils/socialVideoDraft'
 import { videoAssetPublicUrl } from '~~/server/utils/video/assetLinks'
-import { mapVideoAssetRow } from '~~/server/utils/video/assets'
+import { getAccessibleVideoAsset } from '~~/server/utils/video/assets'
 
 export default defineEventHandler(async (event) => {
   if (process.env.VIDEO_STUDIO_ENABLED !== 'true') throw createError({ statusCode: 404, statusMessage: 'Not found' })
   const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')!
 
-  const row = await queryOne(`SELECT va.*, vg.prompt AS generation_prompt, vg.model_id AS generation_model_id
-    FROM video_assets va
-    LEFT JOIN video_generation_jobs vg ON vg.output_asset_id = va.id OR vg.id = va.source_job_id
-    WHERE va.id = $1`, [id])
-  if (!row) throw createError({ statusCode: 404, statusMessage: 'Asset not found' })
-  const asset = mapVideoAssetRow(row)
+  const asset = await getAccessibleVideoAsset(id, user)
+  if (!asset) throw createError({ statusCode: 404, statusMessage: 'Asset not found' })
 
   let clientId = asset.clientId
   if (!clientId && asset.sourceProjectId) {

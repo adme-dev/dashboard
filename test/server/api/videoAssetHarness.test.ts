@@ -10,6 +10,7 @@ g.readMultipartFormData = vi.fn()
 g.createError = (input: any) => Object.assign(new Error(input.statusMessage), input)
 g.setResponseStatus = vi.fn()
 g.sendRedirect = vi.fn((_event: TestEvent, location: string, statusCode: number) => ({ location, statusCode }))
+g.useRuntimeConfig = () => ({ public: { appUrl: 'https://app.example.test' } })
 
 const mockRequireWriteAccess = vi.fn()
 const mockRequireAuth = vi.fn()
@@ -19,8 +20,10 @@ vi.mock('~~/server/utils/auth', () => ({
 }))
 
 const mockQueryOne = vi.fn()
+const mockQueryRows = vi.fn()
 vi.mock('~~/server/utils/db', () => ({
   queryOne: (...args: unknown[]) => mockQueryOne(...args),
+  queryRows: (...args: unknown[]) => mockQueryRows(...args),
 }))
 
 const mockGetProject = vi.fn()
@@ -37,6 +40,21 @@ vi.mock('~~/server/utils/storage', () => ({
   getPresignedDownloadUrl: (...args: unknown[]) => mockGetPresignedDownloadUrl(...args),
   getPublicUrl: (...args: unknown[]) => mockGetPublicUrl(...args),
   isStorageConfigured: (...args: unknown[]) => mockIsStorageConfigured(...args),
+}))
+
+const mockVideoAssetPublicUrl = vi.fn()
+vi.mock('~~/server/utils/video/assetLinks', () => ({
+  videoAssetPublicUrl: (...args: unknown[]) => mockVideoAssetPublicUrl(...args),
+}))
+
+const mockBuildVideoStudioSocialDraft = vi.fn()
+vi.mock('~~/server/utils/socialVideoDraft', () => ({
+  buildVideoStudioSocialDraft: (...args: unknown[]) => mockBuildVideoStudioSocialDraft(...args),
+}))
+
+const mockGenerateGroqInsight = vi.fn()
+vi.mock('~~/server/utils/groqClient', () => ({
+  generateGroqInsight: (...args: unknown[]) => mockGenerateGroqInsight(...args),
 }))
 
 const mockEnsureBuckets = vi.fn()
@@ -80,6 +98,9 @@ vi.mock('~~/server/utils/video-asset-intelligence/enqueue', () => ({
 const bucketsHandler = (await import('~~/server/api/agency/video/projects/[id]/buckets/index.get')).default
 const directiveHandler = (await import('~~/server/api/agency/video/bucket-items/[id]/directive.post')).default
 const extractHandler = (await import('~~/server/api/agency/video/assets/[id]/extract.post')).default
+const listAssetsHandler = (await import('~~/server/api/agency/video/assets/index.get')).default
+const assetStreamHandler = (await import('~~/server/api/agency/video/assets/[id]/stream.get')).default
+const publishSocialHandler = (await import('~~/server/api/agency/video/assets/[id]/publish-social.post')).default
 const maskHandler = (await import('~~/server/api/agency/video/assets/[id]/masks.post')).default
 const derivativesHandler = (await import('~~/server/api/agency/video/assets/[id]/derivatives.get')).default
 const addDerivativeToBucketHandler = (await import('~~/server/api/agency/video/derivatives/[id]/add-to-bucket.post')).default
@@ -92,6 +113,7 @@ const captionsHandler = (await import('~~/server/api/agency/video/assets/[id]/ca
 describe('video asset harness API', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    process.env.VIDEO_STUDIO_ENABLED = 'true'
     mockRequireWriteAccess.mockResolvedValue({ id: 'user-1', role: 'owner' })
     mockRequireAuth.mockResolvedValue({ id: 'user-1', role: 'owner' })
     mockGetProject.mockResolvedValue({ project: { id: '11111111-1111-4111-8111-111111111111', mediaType: 'av', createdBy: 'user-1' }, timeline: { id: 't1' } })
@@ -142,6 +164,34 @@ describe('video asset harness API', () => {
     mockGetPresignedDownloadUrl.mockResolvedValue('/signed-mask-url')
     mockGetPublicUrl.mockReturnValue(null)
     mockIsStorageConfigured.mockReturnValue(false)
+    mockVideoAssetPublicUrl.mockResolvedValue('https://app.example.test/api/public/video-assets/token')
+    mockBuildVideoStudioSocialDraft.mockResolvedValue({
+      content: 'Draft caption',
+      mediaUrls: ['https://app.example.test/api/public/video-assets/token'],
+      platforms: ['instagram'],
+      tags: ['video-studio', 'mp4'],
+      metadata: { source: 'video_studio' },
+    })
+    mockGenerateGroqInsight.mockResolvedValue('Draft caption')
+    mockQueryRows.mockResolvedValue([{
+      id: '22222222-2222-4222-8222-222222222222',
+      client_id: null,
+      created_by: 'user-1',
+      title: 'Asset',
+      source_project_id: '11111111-1111-4111-8111-111111111111',
+      source_job_id: null,
+      r2_key: 'asset.mp4',
+      format: 'mp4',
+      width: 1920,
+      height: 1080,
+      duration_sec: 12,
+      thumbnail_key: 'thumbs/asset.jpg',
+      caption_vtt_key: 'captions/asset.vtt',
+      transcript: null,
+      metadata: {},
+      created_at: 'now',
+      updated_at: 'now',
+    }])
     mockQueryOne.mockResolvedValue({
       id: '22222222-2222-4222-8222-222222222222',
       client_id: null,
@@ -271,6 +321,36 @@ describe('video asset harness API', () => {
     expect(res.job.status).toBe('queued')
   })
 
+  it('blocks queued asset intelligence when caller supplies an unsupported explicit model', async () => {
+    mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
+    mockCreateBlockedExtractionJob.mockResolvedValue({
+      id: 'job-blocked',
+      status: 'blocked',
+      action: 'asset-analysis',
+      errorMessage: 'Asset intelligence action asset-analysis with model workers-ai/other-model is not supported by the deployed worker.',
+    })
+
+    const res = await extractHandler({
+      params: { id: '22222222-2222-4222-8222-222222222222' },
+      body: {
+        projectId: '11111111-1111-4111-8111-111111111111',
+        action: 'asset-analysis',
+        modelId: 'workers-ai/other-model',
+      },
+    } as any)
+
+    expect(mockCreateBlockedExtractionJob).toHaveBeenCalledWith(expect.objectContaining({
+      sourceAssetId: '22222222-2222-4222-8222-222222222222',
+      action: 'asset-analysis',
+      modelId: 'workers-ai/other-model',
+      createdBy: 'user-1',
+      errorMessage: 'Asset intelligence action asset-analysis with model workers-ai/other-model is not supported by the deployed worker.',
+    }))
+    expect(mockCreateQueuedExtractionJob).not.toHaveBeenCalled()
+    expect(mockEnqueueAssetIntelligence).not.toHaveBeenCalled()
+    expect(res.job.status).toBe('blocked')
+  })
+
   it('marks queued asset intelligence jobs failed when enqueue rejects', async () => {
     mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
     mockCreateQueuedExtractionJob.mockResolvedValue({ id: 'job-queued', status: 'queued', action: 'mask-only' })
@@ -315,6 +395,109 @@ describe('video asset harness API', () => {
 
     expect(mockCreateQueuedExtractionJob).not.toHaveBeenCalled()
     expect(mockCreateBlockedExtractionJob).not.toHaveBeenCalled()
+  })
+
+  it('lists only saved video assets accessible to a non-owner editor', async () => {
+    mockRequireWriteAccess.mockResolvedValue({ id: 'user-2', role: 'editor' })
+
+    const res = await listAssetsHandler({
+      query: {
+        clientId: '55555555-5555-4555-8555-555555555555',
+        limit: '25',
+      },
+    } as any)
+
+    expect(mockQueryRows).toHaveBeenCalledWith(
+      expect.stringContaining('(va.created_by = $1 OR mp.created_by = $1)'),
+      ['user-2', '55555555-5555-4555-8555-555555555555', 25],
+    )
+    expect(res.assets).toHaveLength(1)
+  })
+
+  it('preserves all-assets saved video listing for admins', async () => {
+    mockRequireWriteAccess.mockResolvedValue({ id: 'admin-1', role: 'admin' })
+
+    await listAssetsHandler({ query: { limit: '25' } } as any)
+
+    expect(mockQueryRows).toHaveBeenCalledWith(
+      expect.not.stringContaining('mp.created_by'),
+      [25],
+    )
+  })
+
+  it('rejects saved video asset streams when the editor cannot access the asset', async () => {
+    mockRequireWriteAccess.mockResolvedValue({ id: 'user-2', role: 'editor' })
+    mockQueryOne.mockResolvedValue(null)
+
+    await expect(assetStreamHandler({ params: { id: '22222222-2222-4222-8222-222222222222' } } as any))
+      .rejects
+      .toMatchObject({ statusCode: 404, statusMessage: 'Asset not found' })
+
+    expect(mockQueryOne).toHaveBeenCalledWith(
+      expect.stringContaining('(va.created_by = $2 OR mp.created_by = $2)'),
+      ['22222222-2222-4222-8222-222222222222', 'user-2'],
+    )
+    expect(g.sendRedirect).not.toHaveBeenCalled()
+  })
+
+  it('streams saved video assets created by the editor', async () => {
+    mockRequireWriteAccess.mockResolvedValue({ id: 'user-1', role: 'editor' })
+    mockIsStorageConfigured.mockReturnValue(true)
+    mockGetPresignedDownloadUrl.mockResolvedValue('https://signed.example.com/asset.mp4')
+
+    const res = await assetStreamHandler({ params: { id: '22222222-2222-4222-8222-222222222222' } } as any)
+
+    expect(mockGetPresignedDownloadUrl).toHaveBeenCalledWith('asset.mp4', 3600)
+    expect(res).toEqual({ location: 'https://signed.example.com/asset.mp4', statusCode: 302 })
+  })
+
+  it('rejects social draft publishing when the editor cannot access the saved asset', async () => {
+    mockRequireWriteAccess.mockResolvedValue({ id: 'user-2', role: 'editor' })
+    mockQueryOne.mockResolvedValue(null)
+
+    await expect(publishSocialHandler({ params: { id: '22222222-2222-4222-8222-222222222222' } } as any))
+      .rejects
+      .toMatchObject({ statusCode: 404, statusMessage: 'Asset not found' })
+
+    expect(mockBuildVideoStudioSocialDraft).not.toHaveBeenCalled()
+    expect(mockQueryOne).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO social_posts'), expect.anything())
+  })
+
+  it('creates a social draft for accessible saved video assets', async () => {
+    mockQueryOne.mockResolvedValueOnce({
+      id: '22222222-2222-4222-8222-222222222222',
+      client_id: '55555555-5555-4555-8555-555555555555',
+      created_by: 'user-1',
+      title: 'Asset',
+      source_project_id: '11111111-1111-4111-8111-111111111111',
+      source_job_id: null,
+      r2_key: 'asset.mp4',
+      format: 'mp4',
+      width: 1920,
+      height: 1080,
+      duration_sec: 12,
+      thumbnail_key: null,
+      caption_vtt_key: null,
+      transcript: null,
+      metadata: {},
+      generation_prompt: 'Drive away',
+      generation_model_id: 'aigateway/seedance-i2v',
+      created_at: 'now',
+      updated_at: 'now',
+    })
+    mockQueryOne.mockResolvedValueOnce({ id: 'post-1' })
+
+    const res = await publishSocialHandler({ params: { id: '22222222-2222-4222-8222-222222222222' } } as any)
+
+    expect(mockBuildVideoStudioSocialDraft).toHaveBeenCalledWith(expect.objectContaining({
+      clientId: '55555555-5555-4555-8555-555555555555',
+      createdBy: 'user-1',
+      assetId: '22222222-2222-4222-8222-222222222222',
+      prompt: 'Drive away',
+      modelId: 'aigateway/seedance-i2v',
+    }))
+    expect(mockQueryOne).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO social_posts'), expect.any(Array))
+    expect(res).toEqual({ postId: 'post-1', clientId: '55555555-5555-4555-8555-555555555555' })
   })
 
   it('rejects extraction when the bucket item belongs to another project', async () => {

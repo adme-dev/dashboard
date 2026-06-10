@@ -1,12 +1,18 @@
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { requireVideoProjectWriteAccess } from '~~/server/utils/video-asset-intelligence/access'
-import { getAssetIntelligenceAction } from '~~/server/utils/video-asset-intelligence/registry'
+import { defaultModelForAction, getAssetIntelligenceAction } from '~~/server/utils/video-asset-intelligence/registry'
 import { createBlockedExtractionJob, createQueuedExtractionJob, getAssetProjectRelationship, getBucketItemProjectRelationship, markAssetIntelligenceJobFailed } from '~~/server/utils/video-asset-intelligence/db'
 import { enqueueAssetIntelligence, getAssetIntelligenceQueue } from '~~/server/utils/video-asset-intelligence/enqueue'
 import type { AssetIntelligenceActionId } from '~~/server/utils/video-asset-intelligence/registry'
 
 const QUEUE_SUPPORTED_ACTIONS = new Set<AssetIntelligenceActionId>(['mask-only', 'asset-analysis'])
+
+function queueSupportsExtractionInput(action: AssetIntelligenceActionId, modelId: string | null): boolean {
+  if (!QUEUE_SUPPORTED_ACTIONS.has(action)) return false
+  if (!modelId) return true
+  return defaultModelForAction(action)?.id === modelId
+}
 
 const BodySchema = z.object({
   projectId: z.string().uuid(),
@@ -53,7 +59,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const queue = getAssetIntelligenceQueue(event)
-  if (queue && QUEUE_SUPPORTED_ACTIONS.has(body.action)) {
+  const queueSupportedInput = queueSupportsExtractionInput(body.action, input.modelId)
+  if (queue && queueSupportedInput) {
     const job = await createQueuedExtractionJob(input)
     try {
       await enqueueAssetIntelligence(event, { jobId: job.id, projectId: body.projectId, sourceAssetId })
@@ -69,7 +76,9 @@ export default defineEventHandler(async (event) => {
   const job = await createBlockedExtractionJob({
     ...input,
     errorMessage: queue
-      ? `Asset intelligence action ${body.action} is not supported by the deployed worker.`
+      ? input.modelId
+        ? `Asset intelligence action ${body.action} with model ${input.modelId} is not supported by the deployed worker.`
+        : `Asset intelligence action ${body.action} is not supported by the deployed worker.`
       : undefined,
   })
   setResponseStatus(event, 202)
