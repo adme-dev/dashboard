@@ -481,7 +481,7 @@ export function useMediaProjectEditor(projectId: string) {
         ctx: ctx as any,
         resolveBuffer: makeR2Resolver(sourcesMap, ctx),
         setTimer: browserSetTimer,
-        now: () => ctx.currentTime
+        now: () => performance.now() / 1000
       })
       // Bind the serialized reload orchestrator to this engine + reactive sink.
       runReload = makeEngineReloader(

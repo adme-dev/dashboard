@@ -40,6 +40,7 @@ export interface AudioEngine {
 
 export function createAudioEngine(deps: AudioEngineDeps): AudioEngine {
   const { ctx, resolveBuffer, setTimer } = deps
+  const now = deps.now ?? (() => ctx.currentTime)
 
   let plan: TimelinePlan = { tracks: [], clips: [], ramps: [] }
   const buffers = new Map<string, any>()
@@ -48,9 +49,10 @@ export function createAudioEngine(deps: AudioEngineDeps): AudioEngine {
   const busNominalDb = new Map<string, number>()   // each bus's nominal gain in dB
   const busCurrentGain = new Map<string, number>() // last scheduled LINEAR gain on each bus
   let durationSec = 0
+  let useWallClockTransport = false
 
   let playing = false
-  let ctxStart = 0           // ctx.currentTime corresponding to timeline 0
+  let ctxStart = 0           // transport clock time corresponding to timeline 0
   let pausedAt = 0           // timeline position while paused
   let scheduledUpTo = 0      // timeline time we've scheduled clips/ramps through
   let cancelTimer: (() => void) | null = null
@@ -93,7 +95,16 @@ export function createAudioEngine(deps: AudioEngineDeps): AudioEngine {
     // (baked into state.duration_sec on every edit) spans audio + video + overlay clips.
     // For pure audio this never shortens — decoded-buffer durations above already win.
     durationSec = Math.max(durationSec, (state as { duration_sec?: number }).duration_sec ?? 0)
+    useWallClockTransport = buffers.size === 0 && durationSec > 0
     return { missingClipIds }
+  }
+
+  function transportNow(): number {
+    return useWallClockTransport ? now() : ctx.currentTime
+  }
+
+  function transportPosition(): number {
+    return Math.max(0, transportNow() - ctxStart)
   }
 
   function scheduleClip(clip: ScheduledClip): void {
@@ -138,7 +149,7 @@ export function createAudioEngine(deps: AudioEngineDeps): AudioEngine {
 
   function tick(): void {
     if (!playing) return
-    const pos = ctx.currentTime - ctxStart
+    const pos = transportPosition()
     const horizon = pos + LOOKAHEAD_SEC
     const due = windowEvents(plan, scheduledUpTo, horizon)
     for (const clip of due.clips) scheduleClip(clip)
@@ -152,7 +163,7 @@ export function createAudioEngine(deps: AudioEngineDeps): AudioEngine {
     if (playing) return
     if (ctx.state === 'suspended' && ctx.resume) ctx.resume()
     playing = true
-    ctxStart = ctx.currentTime - pausedAt
+    ctxStart = transportNow() - pausedAt
     scheduledUpTo = pausedAt
     tick()
   }
@@ -164,7 +175,7 @@ export function createAudioEngine(deps: AudioEngineDeps): AudioEngine {
 
   function pause(): void {
     if (!playing) return
-    pausedAt = ctx.currentTime - ctxStart
+    pausedAt = Math.min(durationSec, transportPosition())
     playing = false
     if (cancelTimer) { cancelTimer(); cancelTimer = null }
     stopActive()
@@ -174,13 +185,13 @@ export function createAudioEngine(deps: AudioEngineDeps): AudioEngine {
     pausedAt = sec
     if (playing) {
       stopActive()
-      ctxStart = ctx.currentTime - sec
+      ctxStart = transportNow() - sec
       scheduledUpTo = sec
     }
   }
 
   function currentTime(): number {
-    return playing ? ctx.currentTime - ctxStart : pausedAt
+    return playing ? Math.min(durationSec, transportPosition()) : pausedAt
   }
 
   function dispose(): void {
