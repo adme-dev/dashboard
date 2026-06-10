@@ -4,7 +4,7 @@ import { createSourceAsset } from '~~/server/utils/video-generation/sourceAssetS
 import { randomUUID } from 'node:crypto'
 
 export default defineEventHandler(async (event) => {
-  if (process.env.VIDEO_STUDIO_ENABLED !== 'true' || process.env.VIDEO_GENERATION_ENABLED !== 'true') {
+  if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
   const user = await requireWriteAccess(event)

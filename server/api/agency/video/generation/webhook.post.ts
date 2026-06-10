@@ -7,7 +7,7 @@ import { finalizeVideoGenerationJob } from '~~/server/utils/video-generation/fin
 import { classifyMuapiWebhook } from '~~/server/utils/video-generation/webhookPayload'
 
 export default defineEventHandler(async (event) => {
-  if (process.env.VIDEO_STUDIO_ENABLED !== 'true' || process.env.VIDEO_GENERATION_ENABLED !== 'true') {
+  if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
   const raw = await readRawBody(event)

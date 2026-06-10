@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
   if (getHeader(event, 'x-cron-secret') !== process.env.CRON_SECRET) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
-  if (process.env.VIDEO_STUDIO_ENABLED !== 'true' || process.env.VIDEO_GENERATION_ENABLED !== 'true') {
+  if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
     return { ran: false, reason: 'disabled' }
   }
 

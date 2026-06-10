@@ -30,7 +30,7 @@ const BodySchema = z.object({
 })
 
 function assertEnabled() {
-  if (process.env.VIDEO_STUDIO_ENABLED !== 'true' || process.env.VIDEO_GENERATION_ENABLED !== 'true') {
+  if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
 }

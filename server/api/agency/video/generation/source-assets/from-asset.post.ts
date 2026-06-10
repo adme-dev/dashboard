@@ -16,7 +16,7 @@ const IMAGE_CONTENT_TYPE: Record<string, string> = {
 }
 
 export default defineEventHandler(async (event) => {
-  if (process.env.VIDEO_STUDIO_ENABLED !== 'true' || process.env.VIDEO_GENERATION_ENABLED !== 'true') {
+  if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
   const user = await requireWriteAccess(event)
