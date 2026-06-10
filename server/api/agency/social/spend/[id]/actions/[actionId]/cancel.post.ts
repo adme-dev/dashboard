@@ -35,6 +35,8 @@ export default eventHandler(async (event) => {
                action_status,
                requested_by::text,
                requested_at::text,
+               approved_by::text,
+               approved_at::text,
                cancelled_by::text,
                cancelled_at::text,
                previous_value,
@@ -58,6 +60,8 @@ interface CampaignActionRow {
   action_status: string
   requested_by: string | null
   requested_at: string
+  approved_by: string | null
+  approved_at: string | null
   cancelled_by: string | null
   cancelled_at: string | null
   previous_value: Record<string, unknown>
@@ -74,6 +78,8 @@ function normalizeAction(row: CampaignActionRow) {
     actionStatus: row.action_status,
     requestedBy: row.requested_by,
     requestedAt: row.requested_at,
+    approvedBy: row.approved_by,
+    approvedAt: row.approved_at,
     cancelledBy: row.cancelled_by,
     cancelledAt: row.cancelled_at,
     previousValue: row.previous_value,
