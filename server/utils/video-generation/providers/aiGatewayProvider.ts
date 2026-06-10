@@ -9,9 +9,12 @@ import type {
 import { getVideoGenerationModel } from '../modelRegistry'
 
 export interface AiGatewayDeps {
-  /** Faithful env.AI.run(model, inputs, options?) passthrough. Async video models run on
-   *  Cloudflare's batch API: submit with { queueRequest: true } to get a request_id, then
-   *  poll env.AI.run(model, { request_id }) until it completes. */
+  /** Faithful env.AI.run(model, inputs, options?) passthrough. Partner video models
+   *  (bytedance/seedance, google/veo, …) take FLAT inputs and run SYNCHRONOUSLY —
+   *  the call blocks for the full generation (minutes) and resolves with
+   *  { state, result: { video: url } }. The batch API's { requests: [...] } +
+   *  queueRequest envelope is NOT supported by these models (verified live
+   *  2026-06-10: it is rejected immediately with `7003: User Input Error`). */
   run(model: string, inputs: Record<string, unknown>, options?: Record<string, unknown>): Promise<any>
 }
 
@@ -34,61 +37,55 @@ function buildInputs(request: VideoGenerationProviderRequest): Record<string, un
   return inputs
 }
 
-function extractRequestId(raw: any): string | null {
-  return raw?.request_id ?? raw?.result?.request_id ?? null
+function extractState(raw: any): string | null {
+  const s = raw?.state ?? raw?.result?.state ?? raw?.status
+  return typeof s === 'string' ? s : null
 }
 
-/** A pending poll returns { status: 'queued' | 'running' }; a completed poll returns
- *  { responses: [...] } with no status field. */
-function extractStatus(raw: any): string | null {
-  return typeof raw?.status === 'string' ? raw.status : null
-}
-
-/** Pull the output video url from either the batch envelope (responses[0].result) or a
- *  flat result shape. Field name (video/output/url/videos[0]) is verify-live per model. */
+/** Pull the output video url. Verified live 2026-06-10 (seedance-2.0-fast): the REST API
+ *  returns { result: { state, result: { video } }, success }, the binding returns the
+ *  inner { state, result: { video } } — handle both, plus tolerant fallbacks. */
 function extractVideoUrl(raw: any): string | null {
-  const r = raw?.responses?.[0]?.result ?? raw?.result ?? raw
-  return r?.video ?? r?.output ?? r?.url ?? r?.videos?.[0] ?? null
+  const r = raw?.result?.result ?? raw?.result ?? raw?.responses?.[0]?.result ?? raw
+  const url = r?.video ?? r?.output ?? r?.url ?? r?.videos?.[0] ?? null
+  return typeof url === 'string' ? url : null
 }
 
-/** Asynchronous Cloudflare AI Gateway provider. submit() queues the job and returns the CF
- *  request_id (status 'queued'); the worker leaves the job running and the reconcile cron
- *  poll()s by request_id until the model finishes (~up to 5 min). Stateless across processes. */
+/** Completed generations, keyed by jobId, handed from submit() to the immediate poll()
+ *  in the same Worker invocation. A cross-process poll (the reconcile cron) misses this
+ *  cache by design — it reports 'running' and the reconcile timeout-reaper backstops
+ *  invocations that died mid-generation. */
+const completedResults = new Map<string, VideoGenerationProviderResult>()
+
+/** Synchronous Cloudflare AI Gateway provider. submit() blocks on env.AI.run for the
+ *  full generation, stashes the result, and poll() (called immediately by the worker,
+ *  since submit's status is not 'queued') returns it for finalization in-invocation. */
 export function makeAiGatewayProvider(deps: AiGatewayDeps): VideoGenerationProvider {
   return {
     async submit(request: VideoGenerationProviderRequest): Promise<VideoGenerationProviderSubmission> {
       const model = cfModelFor(request.modelId)
       const raw = await deps.run(
         model,
-        { requests: [buildInputs(request)] },
-        { queueRequest: true, gateway: { metadata: { tenantId: request.tenantId ?? '', jobId: request.jobId } } }
+        buildInputs(request),
+        { gateway: { metadata: { tenantId: request.tenantId ?? '', jobId: request.jobId } } }
       )
-      const requestId = extractRequestId(raw)
-      if (!requestId) throw new Error('AI Gateway returned no request_id for queued video job')
-      return { providerRequestId: requestId, status: extractStatus(raw) ?? 'queued', modelId: request.modelId }
+      const outputUrl = extractVideoUrl(raw)
+      // CF bills via unified billing (dashboard); no per-call cost is returned → null.
+      completedResults.set(request.jobId, outputUrl
+        ? { status: 'succeeded', outputUrl, actualCostCents: null, errorMessage: null }
+        : { status: 'failed', outputUrl: null, actualCostCents: null, errorMessage: `model returned no video url (state=${extractState(raw) ?? 'unknown'})` })
+      return { providerRequestId: request.jobId, status: 'completed', modelId: request.modelId }
     },
 
     async poll(submission: VideoGenerationProviderSubmission): Promise<VideoGenerationProviderResult> {
-      if (!submission.modelId) {
-        return { status: 'failed', outputUrl: null, actualCostCents: null, errorMessage: 'poll submission missing modelId' }
+      const cached = completedResults.get(submission.providerRequestId)
+      if (cached) {
+        completedResults.delete(submission.providerRequestId)
+        return cached
       }
-      const model = cfModelFor(submission.modelId)
-      const raw = await deps.run(model, { request_id: submission.providerRequestId })
-
-      const status = extractStatus(raw)
-      if (status === 'queued' || status === 'running') {
-        return { status: 'running', outputUrl: null, actualCostCents: null }
-      }
-
-      const batch = raw?.responses?.[0]
-      if (batch && batch.success === false) {
-        return { status: 'failed', outputUrl: null, actualCostCents: null, errorMessage: batch.error || 'provider reported failure' }
-      }
-      const outputUrl = extractVideoUrl(raw)
-      // CF bills via unified billing (dashboard); no per-call cost is returned → null.
-      return outputUrl
-        ? { status: 'succeeded', outputUrl, actualCostCents: null, errorMessage: null }
-        : { status: 'failed', outputUrl: null, actualCostCents: null, errorMessage: 'model returned no video url' }
+      // No cached result: this is a cross-process poll (reconcile cron) for a job whose
+      // generating invocation is gone. Report 'running' and let the timeout-reaper decide.
+      return { status: 'running', outputUrl: null, actualCostCents: null }
     },
   }
 }

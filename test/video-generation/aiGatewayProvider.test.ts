@@ -1,49 +1,40 @@
 import { describe, expect, it, vi } from 'vitest'
 import { makeAiGatewayProvider } from '~~/server/utils/video-generation/providers/aiGatewayProvider'
 
-/** Dispatch a fake env.AI.run on the call shape: a `requests` array = submit (queueRequest),
- *  a `request_id` = poll. Tests stage the poll response per case. */
-function makeRun(opts: { submitResponse?: any; pollResponse?: any }) {
-  return vi.fn(async (_model: string, inputs: any, _options?: any) => {
-    if (inputs && 'request_id' in inputs) return opts.pollResponse
-    return opts.submitResponse ?? { status: 'queued', request_id: 'cf-req-1' }
-  })
-}
-
 const i2vReq = {
   jobId: 'job-1', modelId: 'aigateway/seedance-i2v', mode: 'image-to-video' as const,
   prompt: 'slow pan', sourceAssetUrls: ['https://r2/still.png'], durationSeconds: 5,
   aspectRatio: '9:16', resolution: '720p', tenantId: 'dealer-1',
 }
 
-describe('aiGateway provider (asynchronous CF batch API)', () => {
-  it('submit() queues via queueRequest with the image input + tenant metadata, returns the CF request_id', async () => {
-    const run = makeRun({ submitResponse: { status: 'queued', model: 'bytedance/seedance-2.0-fast', request_id: 'cf-req-1' } })
+const completedResponse = { state: 'Completed', result: { video: 'https://cf/out.mp4' }, gatewayMetadata: { keySource: 'Unified' } }
+
+describe('aiGateway provider (synchronous partner video models)', () => {
+  it('submit() sends FLAT inputs (no batch envelope) with tenant metadata and blocks to completion', async () => {
+    const run = vi.fn(async () => completedResponse)
     const provider = makeAiGatewayProvider({ run })
 
     const sub = await provider.submit(i2vReq)
 
-    expect(sub.providerRequestId).toBe('cf-req-1')
-    expect(sub.status).toBe('queued')
+    expect(sub.providerRequestId).toBe('job-1')
+    expect(sub.status).toBe('completed')
     expect(sub.modelId).toBe('aigateway/seedance-i2v')
-    const [model, inputs, options] = run.mock.calls[0]
+    const [model, inputs, options] = run.mock.calls[0]!
     expect(model).toBe('bytedance/seedance-2.0-fast')
-    // CF async batch envelope: a `requests` array, with queueRequest in the options.
-    expect(inputs.requests[0]).toMatchObject({ prompt: 'slow pan', image: 'https://r2/still.png', duration: 5, aspect_ratio: '9:16', resolution: '720p' })
-    expect(options).toMatchObject({ queueRequest: true, gateway: { metadata: { tenantId: 'dealer-1', jobId: 'job-1' } } })
+    // Documented partner shape: flat inputs. The batch { requests: [...] } envelope is
+    // rejected by these models with 7003: User Input Error.
+    expect(inputs).toEqual({ prompt: 'slow pan', image: 'https://r2/still.png', duration: 5, aspect_ratio: '9:16', resolution: '720p' })
+    expect((inputs as any).requests).toBeUndefined()
+    expect(options).toMatchObject({ gateway: { metadata: { tenantId: 'dealer-1', jobId: 'job-1' } } })
+    expect((options as any).queueRequest).toBeUndefined()
   })
 
   it('submit() omits the image for text-to-video', async () => {
-    const run = makeRun({})
+    const run = vi.fn(async () => completedResponse)
     const provider = makeAiGatewayProvider({ run })
     await provider.submit({ jobId: 'j', modelId: 'aigateway/veo-t2v-internal', mode: 'text-to-video', prompt: 'x', sourceAssetUrls: [], durationSeconds: 5, aspectRatio: '16:9', resolution: null })
-    expect(run.mock.calls[0][1].requests[0].image).toBeUndefined()
-  })
-
-  it('submit() throws if the gateway returns no request_id', async () => {
-    const run = makeRun({ submitResponse: { status: 'error' } })
-    const provider = makeAiGatewayProvider({ run })
-    await expect(provider.submit(i2vReq)).rejects.toThrow(/request_id/)
+    expect((run.mock.calls[0]![1] as any).image).toBeUndefined()
+    expect((run.mock.calls[0]![1] as any).resolution).toBeUndefined()
   })
 
   it('submit() throws if the model has no cfModel mapping', async () => {
@@ -51,48 +42,59 @@ describe('aiGateway provider (asynchronous CF batch API)', () => {
     await expect(provider.submit({ ...i2vReq, modelId: 'muapi/i2v-kling' })).rejects.toThrow(/no cfModel/)
   })
 
-  it('poll() reports running while the job is queued or running', async () => {
-    const run = makeRun({ pollResponse: { status: 'running' } })
+  it('poll() right after submit() returns the completed result (same-invocation handoff)', async () => {
+    const run = vi.fn(async () => completedResponse)
     const provider = makeAiGatewayProvider({ run })
 
-    const res = await provider.poll({ providerRequestId: 'cf-req-1', status: 'queued', modelId: 'aigateway/seedance-i2v' })
-
-    expect(res.status).toBe('running')
-    expect(res.outputUrl).toBeNull()
-    // poll calls the same cfModel with just the request_id.
-    const pollCall = run.mock.calls.find((c) => c[1] && 'request_id' in c[1])!
-    expect(pollCall[0]).toBe('bytedance/seedance-2.0-fast')
-    expect(pollCall[1]).toEqual({ request_id: 'cf-req-1' })
-  })
-
-  it('poll() reports succeeded with the url from a completed batch response', async () => {
-    const run = makeRun({ pollResponse: { responses: [{ id: 0, result: { video: 'https://cf/out.mp4' }, success: true }] } })
-    const provider = makeAiGatewayProvider({ run })
-
-    const res = await provider.poll({ providerRequestId: 'cf-req-1', status: 'running', modelId: 'aigateway/seedance-i2v' })
+    const sub = await provider.submit(i2vReq)
+    const res = await provider.poll(sub)
 
     expect(res).toMatchObject({ status: 'succeeded', outputUrl: 'https://cf/out.mp4', actualCostCents: null })
+    expect(run).toHaveBeenCalledTimes(1) // poll must NOT re-run the generation
   })
 
-  it('poll() tolerates a flat result shape (result.url / videos[0])', async () => {
-    const run = makeRun({ pollResponse: { result: { videos: ['https://cf/a.mp4'] } } })
+  it('poll() reports failed when the run completed without a video url', async () => {
+    const run = vi.fn(async () => ({ state: 'Failed', result: {} }))
     const provider = makeAiGatewayProvider({ run })
-    const res = await provider.poll({ providerRequestId: 'r', status: 'running', modelId: 'aigateway/seedance-i2v' })
+
+    const sub = await provider.submit(i2vReq)
+    const res = await provider.poll(sub)
+
+    expect(res.status).toBe('failed')
+    expect(res.outputUrl).toBeNull()
+    expect(res.errorMessage).toMatch(/no video url/)
+    expect(res.errorMessage).toMatch(/Failed/)
+  })
+
+  it('poll() tolerates the REST double-wrapped envelope ({ result: { state, result: { video } } })', async () => {
+    const run = vi.fn(async () => ({ result: { state: 'Completed', result: { video: 'https://cf/rest.mp4' } }, success: true, errors: [], messages: [] }))
+    const provider = makeAiGatewayProvider({ run })
+    const sub = await provider.submit({ ...i2vReq, jobId: 'job-rest' })
+    const res = await provider.poll(sub)
+    expect(res).toMatchObject({ status: 'succeeded', outputUrl: 'https://cf/rest.mp4' })
+  })
+
+  it('poll() tolerates alternate result field names (url / videos[0])', async () => {
+    const run = vi.fn(async () => ({ state: 'Completed', result: { videos: ['https://cf/a.mp4'] } }))
+    const provider = makeAiGatewayProvider({ run })
+    const sub = await provider.submit({ ...i2vReq, jobId: 'job-alt' })
+    const res = await provider.poll(sub)
     expect(res.outputUrl).toBe('https://cf/a.mp4')
   })
 
-  it('poll() reports failed when the batch response completes without a video', async () => {
-    const run = makeRun({ pollResponse: { responses: [{ id: 0, result: {}, success: false }] } })
-    const provider = makeAiGatewayProvider({ run })
-    const res = await provider.poll({ providerRequestId: 'r', status: 'running', modelId: 'aigateway/seedance-i2v' })
-    expect(res.status).toBe('failed')
+  it('cross-process poll() (reconcile cron, no cached result) reports running for the reaper', async () => {
+    const provider = makeAiGatewayProvider({ run: vi.fn() })
+    const res = await provider.poll({ providerRequestId: 'job-elsewhere', status: 'running', modelId: 'aigateway/seedance-i2v' })
+    expect(res.status).toBe('running')
     expect(res.outputUrl).toBeNull()
   })
 
-  it('poll() fails clearly when the submission carries no modelId', async () => {
-    const provider = makeAiGatewayProvider({ run: vi.fn() })
-    const res = await provider.poll({ providerRequestId: 'r', status: 'running' })
-    expect(res.status).toBe('failed')
-    expect(res.errorMessage).toMatch(/modelId/)
+  it('the cached result is consumed once (second poll falls back to running)', async () => {
+    const run = vi.fn(async () => completedResponse)
+    const provider = makeAiGatewayProvider({ run })
+    const sub = await provider.submit({ ...i2vReq, jobId: 'job-once' })
+    await provider.poll(sub)
+    const second = await provider.poll(sub)
+    expect(second.status).toBe('running')
   })
 })
