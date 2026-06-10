@@ -84,6 +84,7 @@ const history = ref<BudgetAuditEntry[]>([])
 const platformActions = ref<CampaignActionEntry[]>([])
 const loading = ref(false)
 const planning = ref(false)
+const cancellingActionId = ref<string | null>(null)
 const loadedSpendId = ref<string | null>(null)
 
 const signals = computed(() => props.item ? pacingSignalRows(props.item) : [])
@@ -153,6 +154,30 @@ async function planCurrentRecommendation() {
     })
   } finally {
     planning.value = false
+  }
+}
+
+async function cancelPlannedAction(action: CampaignActionEntry) {
+  if (!props.item || action.actionStatus !== 'planned' || cancellingActionId.value) return
+  cancellingActionId.value = action.id
+  try {
+    await $fetch(`/api/agency/social/spend/${props.item.mediaSpendId}/actions/${action.id}/cancel`, {
+      method: 'POST',
+    })
+    toast.add({
+      title: 'Planned action cancelled',
+      description: 'The recommendation remains in history with a cancelled status.',
+      color: 'success',
+    })
+    await loadHistory(props.item.mediaSpendId, true)
+  } catch (e: any) {
+    toast.add({
+      title: 'Could not cancel planned action',
+      description: e.data?.statusMessage || e.message || 'The planned action was not updated',
+      color: 'error',
+    })
+  } finally {
+    cancellingActionId.value = null
   }
 }
 
@@ -363,9 +388,22 @@ function summarizeValue(value: Record<string, unknown>) {
                       {{ action.requestedByName || 'System' }} · {{ formatBudgetHistoryTime(action.executedAt || action.requestedAt) }}
                     </p>
                   </div>
-                  <UBadge color="neutral" variant="subtle" size="sm">
-                    {{ platformLabel(action.platform === 'google_ads' ? 'google' : action.platform) }}
-                  </UBadge>
+                  <div class="flex shrink-0 items-center gap-2">
+                    <UBadge color="neutral" variant="subtle" size="sm">
+                      {{ platformLabel(action.platform === 'google_ads' ? 'google' : action.platform) }}
+                    </UBadge>
+                    <UButton
+                      v-if="action.actionStatus === 'planned'"
+                      size="xs"
+                      variant="ghost"
+                      color="neutral"
+                      icon="i-lucide-x"
+                      :loading="cancellingActionId === action.id"
+                      @click="cancelPlannedAction(action)"
+                    >
+                      Cancel plan
+                    </UButton>
+                  </div>
                 </div>
                 <div class="mt-2 grid gap-2 text-xs text-muted sm:grid-cols-2">
                   <p>From {{ summarizeValue(action.previousValue) }}</p>
