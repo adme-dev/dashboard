@@ -55,8 +55,8 @@ queue = "video-render"
 binding = "VIDEO_GENERATION_QUEUE"
 queue = "video-generation"
 
-# Producer binding for Video Studio asset intelligence jobs. Consumer runs in
-# workers/asset-intelligence/ as the `asset-intelligence` queue branch.
+# Producer binding for Video Studio asset intelligence jobs. The dedicated
+# workers/asset-intelligence/ Worker consumes the `asset-intelligence` queue.
 [[queues.producers]]
 binding = "ASSET_INTELLIGENCE_QUEUE"
 queue = "asset-intelligence"

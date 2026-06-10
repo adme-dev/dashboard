@@ -73,9 +73,13 @@ Video Asset Intelligence uses a Cloudflare Pages queue producer plus a standalon
 
 Required production deployment steps:
 
-1. Create the queues with `npx wrangler queues create asset-intelligence` and `npx wrangler queues create asset-intelligence-dlq`.
-2. Deploy the standalone Worker from `workers/asset-intelligence`.
-3. Apply migration `178_video_derivative_bucket_item_unique_index.sql` before relying on race-safe bucket reuse.
+1. Create the queues with `pnpm exec wrangler queues create asset-intelligence` and `pnpm exec wrangler queues create asset-intelligence-dlq`.
+2. Apply migration `178_video_derivative_bucket_item_unique_index.sql` before relying on race-safe bucket reuse.
+3. Deploy the standalone Worker with `pnpm --dir workers/asset-intelligence deploy`.
+4. Deploy the Pages producer binding with `pnpm deploy:production`.
+5. Smoke test one extraction and confirm the queue drains to DB/R2.
+
+Full runbook: `workers/asset-intelligence/DEPLOYMENT.md`.
 
 ## Environment-Specific Configuration
 
